@@ -1,0 +1,71 @@
+version: '3'
+
+dotenv: ['.env']
+
+tasks:
+
+  demo:
+    cmds:
+      - task: install-deps
+      - task: build-protobufs
+      - task: test
+      - task: start
+
+  build:
+    cmds:
+      - go build src/machine/*
+    silent: true
+
+  test:
+    cmds:
+      - task: clean
+      - go test ./...
+
+  test-verbose:
+    cmds:
+      - go test ./... -v
+
+  clean:
+    cmds:
+      - go clean -testcache
+
+  cloc:
+    cmds:
+      - gocloc pkg/machine --not-match=_test\.go
+      - gocloc pkg/machine/*_test.go
+      - gocloc examples
+      - gocloc --include-lang=md docs
+
+  format:
+    cmds:
+      - gofumpt -w pkg/machine/*.go
+      - gofumpt -w examples/*/*.go
+      - goimports -w pkg/**
+
+  lint:
+    cmds:
+      - task: lint-go
+      - task: lint-md
+      # https://github.com/markdownlint/markdownlint/issues/136
+      - |
+        if grep -q "]()" docs/*.md; then
+          echo "Error: Empty links" >&2
+          exit 1
+        fi
+
+  lint-go:
+    cmds:
+      - golangci-lint run
+
+  lint-md:
+    cmds:
+      # TODO -g
+      - mdl -c .mdlrc .
+
+  install-deps:
+    cmds:
+      - go mod tidy
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+      - go install mvdan.cc/gofumpt@latest
+      - go install golang.org/x/tools/cmd/goimports@latest
+      - gem install mdl

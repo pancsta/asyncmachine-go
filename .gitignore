@@ -1,0 +1,48 @@
+# Jetbrains IDEs
+.idea
+
+# Vim
+*.swp
+*.swn
+*.swo
+
+# MacOS system file
+.DS_Store
+
+# Environment variable files
+*.env
+
+# PEM files
+*.pem
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Binaries compiled by Go
+build/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.new
+*.old
+*.out
+
+# Dependency directories
+vendor/
+
+# Redis
+*.rdb
+
+# Go workspace file
+go.work
+
+# local dev
+/.dev
+/pkg/debugger
+/docs/cookbook.md
