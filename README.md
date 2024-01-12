@@ -88,6 +88,7 @@ func HandleFileProcessingTask(ctx context.Context, t *asynq.Task) error {
         return fmt.Errorf("json.Unmarshal failed: %v: %w", err, asynq.SkipRetry)
     }
     log.Printf("Processing file %s", p.Filename)
+    // use the FileProcessing workflow ported from Temporal
     machine, err := processor.FileProcessingFlow(ctx, log.Printf, p.Filename)
     if err != nil {
         return err
@@ -118,3 +119,7 @@ func HandleFileProcessingTask(ctx context.Context, t *asynq.Task) error {
 **Beta** - although the ideas behind AsyncMachine have been proven to work, the golang implementation is fairly fresh
 and may suffer from bugs, memory leaks, race conditions and even panics.
 [Please report bugs](https://github.com/pancsta/asyncmachine-go/issues/new).
+
+## TODO
+
+FUT [issues](https://github.com/pancsta/asyncmachine-go/issues).
