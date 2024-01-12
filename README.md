@@ -1,13 +1,36 @@
 # asyncmachine-go
 
 `asyncmachine-go` is a minimal implementation of [AsyncMachine](https://github.com/TobiaszCudnik/asyncmachine) in
-Golang using _channels_ and _context_. It aims at simplicity and speed.
+Golang using **channels and context**. It aims at simplicity and speed.
 
 It can be used as a lightweight in-memory [Temporal](https://github.com/temporalio/temporal) alternative, worker for
 [Asynq](https://github.com/hibiken/asynq), or to write simple consensus engines, stateful firewalls, telemetry, bots,
 etc.
 
 AsyncMachine is a relational state machine which never blocks.
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+)
+
+func main() {
+    ctx := context.Background()
+    m := am.New(ctx, am.States{
+        "Foo": {
+            Add: am.S{"Bar"}
+        },
+        "Bar": {},
+    }, nil)
+    m.Add(am.S{"Foo"}, nil)
+    fmt.Printf("%s", m) // (Foo:1 Bar:1)
+}
+```
 
 ## Examples
 
