@@ -265,6 +265,20 @@ func (m *Machine) When(states []string, ctx context.Context) chan struct{} {
 			m.indexWhen[s] = append(m.indexWhen[s], binding)
 		}
 	}
+	go func() {
+		// dispose the binding on ctx.Done() and m.Ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-m.Ctx.Done():
+			m.activeStatesLock.Lock()
+			for _, s := range states {
+				if _, ok := m.indexWhen[s]; ok {
+					m.indexWhen[s] = lo.Without(m.indexWhen[s], binding)
+				}
+			}
+			m.activeStatesLock.Unlock()
+		}
+	}()
 	m.activeStatesLock.Unlock()
 
 	return ch
@@ -310,6 +324,20 @@ func (m *Machine) WhenNot(states []string, ctx context.Context) chan struct{} {
 			m.indexWhen[s] = append(m.indexWhen[s], binding)
 		}
 	}
+	go func() {
+		// dispose the binding on ctx.Done() and m.Ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-m.Ctx.Done():
+			m.activeStatesLock.Lock()
+			for _, s := range states {
+				if _, ok := m.indexWhen[s]; ok {
+					m.indexWhen[s] = lo.Without(m.indexWhen[s], binding)
+				}
+			}
+			m.activeStatesLock.Unlock()
+		}
+	}()
 	m.activeStatesLock.Unlock()
 
 	return ch
