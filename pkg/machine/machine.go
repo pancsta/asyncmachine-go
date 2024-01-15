@@ -248,7 +248,7 @@ func (m *Machine) When(states []string, ctx context.Context) chan struct{} {
 		setMap[s] = m.Is(S{s})
 		if setMap[s] {
 			matched++
-		}
+	}
 	}
 	// add the binding to an index of each state
 	binding := &whenBinding{
@@ -265,20 +265,6 @@ func (m *Machine) When(states []string, ctx context.Context) chan struct{} {
 			m.indexWhen[s] = append(m.indexWhen[s], binding)
 		}
 	}
-	go func() {
-		// dispose the binding on ctx.Done() and m.Ctx.Done()
-		select {
-		case <-ctx.Done():
-		case <-m.Ctx.Done():
-			m.activeStatesLock.Lock()
-			for _, s := range states {
-				if _, ok := m.indexWhen[s]; ok {
-					m.indexWhen[s] = lo.Without(m.indexWhen[s], binding)
-				}
-			}
-			m.activeStatesLock.Unlock()
-		}
-	}()
 	m.activeStatesLock.Unlock()
 
 	return ch
@@ -324,20 +310,6 @@ func (m *Machine) WhenNot(states []string, ctx context.Context) chan struct{} {
 			m.indexWhen[s] = append(m.indexWhen[s], binding)
 		}
 	}
-	go func() {
-		// dispose the binding on ctx.Done() and m.Ctx.Done()
-		select {
-		case <-ctx.Done():
-		case <-m.Ctx.Done():
-			m.activeStatesLock.Lock()
-			for _, s := range states {
-				if _, ok := m.indexWhen[s]; ok {
-					m.indexWhen[s] = lo.Without(m.indexWhen[s], binding)
-				}
-			}
-			m.activeStatesLock.Unlock()
-		}
-	}()
 	m.activeStatesLock.Unlock()
 
 	return ch
@@ -843,7 +815,9 @@ func (m *Machine) processStateCtxBindings() {
 	m.activeStatesLock.Lock()
 	var toCancel []context.CancelFunc
 	for _, s := range deactivated {
-		toCancel = append(toCancel, m.indexStateCtx[s]...)
+		for _, cancel := range m.indexStateCtx[s] {
+			toCancel = append(toCancel, cancel)
+		}
 		delete(m.indexStateCtx, s)
 	}
 	m.activeStatesLock.Unlock()
