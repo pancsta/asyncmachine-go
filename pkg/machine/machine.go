@@ -69,9 +69,12 @@ type Machine struct {
 	logLevel LogLevel
 	logger   Logger
 	// Queue mutex.
-	queueLock  sync.RWMutex
-	recoveryCh chan bool
-	disposed   bool
+	queueLock        sync.Mutex
+	activeStatesLock sync.Mutex
+	recoveryCh       chan bool
+	disposed         bool
+	indexWhen        indexWhen
+	indexStateCtx    indexStateCtx
 }
 
 // New creates a new Machine instance, bound to context and modified with
@@ -87,6 +90,8 @@ func New(ctx context.Context, states States, opts *Opts) *Machine {
 		PanicToException: true,
 		LogID:            true,
 		recoveryCh:       make(chan bool, 1),
+		indexWhen:        indexWhen{},
+		indexStateCtx:    indexStateCtx{},
 	}
 	if opts != nil {
 		if opts.ID != "" {
@@ -151,6 +156,16 @@ func (m *Machine) Dispose() {
 		m.disposeEmitter(e)
 	}
 	m.logger = nil
+	// state contexts get cancelled automatically
+	m.indexStateCtx = nil
+	// channels need to be closed manually
+	for s := range m.indexWhen {
+		for k := range m.indexWhen[s] {
+			closeSafe(m.indexWhen[s][k].ch)
+		}
+		m.indexWhen[s] = nil
+	}
+	m.indexWhen = nil
 }
 
 // disposeEmitter detaches the emitter from the machine and disposes it.
@@ -215,69 +230,43 @@ func (m *Machine) GetRelationsOf(fromState string) []Relation {
 // ctx: optional context that will close the channel when done. Useful when
 // listening on 2 When() channels within the same `select` to GC the 2nd one.
 func (m *Machine) When(states []string, ctx context.Context) chan struct{} {
-	setMap := map[string]bool{}
-	for _, s := range states {
-		setMap[s] = m.Is(S{s})
-	}
-	// TODO handle closure while parsing the queue
 	ch := make(chan struct{})
 	if ctx == nil {
 		ctx = m.Ctx
 	}
 
-	// if all active, notify early
-	if isMapTrue(setMap) {
+	// if all active, close early
+	if m.Is(states) {
 		close(ch)
 		return ch
 	}
 
-	// if not all active, start listening
-	go func() {
-		// back from async, re-check
-		for _, s := range states {
-			setMap[s] = m.Is(S{s})
+	m.activeStatesLock.Lock()
+	setMap := stateIsActive{}
+	matched := 0
+	for _, s := range states {
+		setMap[s] = m.Is(S{s})
+		if setMap[s] {
+			matched++
 		}
-		// if all set, close early
-		if isMapTrue(setMap) {
-			close(ch)
-			return
+	}
+	// add the binding to an index of each state
+	binding := &whenBinding{
+		ch:       ch,
+		negation: false,
+		states:   setMap,
+		total:    len(states),
+		matched:  matched,
+	}
+	for _, s := range states {
+		if _, ok := m.indexWhen[s]; !ok {
+			m.indexWhen[s] = []*whenBinding{binding}
+		} else {
+			m.indexWhen[s] = append(m.indexWhen[s], binding)
 		}
-		defer close(ch)
-		emitter := m.newEmitter(fmt.Sprintf("W %s", j(states)))
-		defer m.disposeEmitter(emitter)
-	emitterloop:
-		for {
-			select {
-			// catch _state, _end and update `active`
-			case e, ok := <-emitter.startHandler():
-				if !ok {
-					m.log(LogEverything, "[end] channel closed")
-					break emitterloop
-				}
-				for _, s := range states {
-					if e.Name == s+"State" {
-						setMap[s] = true
-					} else if e.Name == s+"End" {
-						setMap[s] = false
-					}
-				}
-				emitter.endHandler(true)
-				if isMapTrue(setMap) {
-					// notify and dispose
-					m.log(LogEverything, "[end] match %s", emitter.ID)
-					break emitterloop
-				}
-			// machine disposed
-			case <-m.Ctx.Done():
-				m.log(LogEverything, "[end] machineCtx")
-				break emitterloop
-			// context cancelled
-			case <-ctx.Done():
-				m.log(LogEverything, "[end] cancelCtx %s", emitter.ID)
-				break emitterloop
-			}
-		}
-	}()
+	}
+	m.activeStatesLock.Unlock()
+
 	return ch
 }
 
@@ -286,69 +275,43 @@ func (m *Machine) When(states []string, ctx context.Context) chan struct{} {
 // ctx: optional context that will close the channel when done. Useful when
 // listening on 2 WhenNot() channels within the same `select` to GC the 2nd one.
 func (m *Machine) WhenNot(states []string, ctx context.Context) chan struct{} {
-	setMap := map[string]bool{}
-	for _, s := range states {
-		setMap[s] = m.Is(S{s})
-	}
-	// TODO handle closure while parsing the queue
 	ch := make(chan struct{})
 	if ctx == nil {
 		ctx = m.Ctx
 	}
 
 	// if all active, close early
-	if isMapFalse(setMap) {
+	if m.Not(states) {
 		close(ch)
 		return ch
 	}
 
-	// if not all inactive, start listening
-	go func() {
-		// back from async, re-check
-		for _, s := range states {
-			setMap[s] = m.Is(S{s})
+	m.activeStatesLock.Lock()
+	setMap := stateIsActive{}
+	matched := 0
+	for _, s := range states {
+		setMap[s] = m.Is(S{s})
+		if !setMap[s] {
+			matched++
 		}
-		// if all inactive, close early
-		if isMapFalse(setMap) {
-			close(ch)
-			return
+	}
+	// add the binding to an index of each state
+	binding := &whenBinding{
+		ch:       ch,
+		negation: true,
+		states:   setMap,
+		total:    len(states),
+		matched:  matched,
+	}
+	for _, s := range states {
+		if _, ok := m.indexWhen[s]; !ok {
+			m.indexWhen[s] = []*whenBinding{binding}
+		} else {
+			m.indexWhen[s] = append(m.indexWhen[s], binding)
 		}
-		defer close(ch)
-		emitter := m.newEmitter(fmt.Sprintf("WN %s", j(states)))
-		defer m.disposeEmitter(emitter)
-	emitterloop:
-		for {
-			select {
-			// catch _state, _end and update `active`
-			case e, ok := <-emitter.startHandler():
-				if !ok {
-					// channel closed
-					break emitterloop
-				}
-				for _, s := range states {
-					if e.Name == s+"State" {
-						setMap[s] = true
-					} else if e.Name == s+"End" {
-						setMap[s] = false
-					}
-				}
-				emitter.endHandler(true)
-				if isMapFalse(setMap) {
-					// notify and dispose
-					m.log(LogEverything, "[end] match %s", emitter.ID)
-					break emitterloop
-				}
-			// machine disposed
-			case <-m.Ctx.Done():
-				m.log(LogEverything, "[end] machineCtx")
-				break emitterloop
-			// context cancelled
-			case <-ctx.Done():
-				m.log(LogEverything, "[end] cancelCtx %s", emitter.ID)
-				break emitterloop
-			}
-		}
-	}()
+	}
+	m.activeStatesLock.Unlock()
+
 	return ch
 }
 
@@ -506,22 +469,19 @@ func (m *Machine) queueMutation(mutationType MutationType, states S, args A) {
 func (m *Machine) GetStateCtx(state string) context.Context {
 	// TODO handle cancellation while parsing the queue
 	stateCtx, cancel := context.WithCancel(m.Ctx)
-	tick := m.Clock(state)
-	go func() {
-		// back from async, check...
-		// TODO handle cancellation while parsing the queue
-		if !m.Is(S{state}) {
-			cancel()
-		} else {
-			defer cancel()
-			select {
-			case <-m.WhenNot(S{state}, stateCtx):
-			case <-stateCtx.Done():
-				return
-			}
-		}
-		m.log(LogEverything, "[ctx:cancel] %s:%d", state, tick)
-	}()
+	// close early
+	if !m.Is(S{state}) {
+		cancel()
+		return stateCtx
+	}
+	m.activeStatesLock.Lock()
+	// add an index
+	if _, ok := m.indexStateCtx[state]; !ok {
+		m.indexStateCtx[state] = []context.CancelFunc{cancel}
+	} else {
+		m.indexStateCtx[state] = append(m.indexStateCtx[state], cancel)
+	}
+	m.activeStatesLock.Unlock()
 	return stateCtx
 }
 
@@ -664,6 +624,7 @@ emitterloop:
 }
 
 // recoverToErr recovers to the Exception state by catching panics.
+// TODO refresh `m.indexWhen[]states` stateIsActive map
 func (m *Machine) recoverToErr(emitter *emitter, handlerMethods reflect.Value,
 	binding *HandlerBinding,
 ) {
@@ -769,6 +730,7 @@ func (m *Machine) MustParseStates(states S) S {
 func (m *Machine) setActiveStates(calledStates S, targetStates S,
 	isAuto bool,
 ) S {
+	m.activeStatesLock.Lock()
 	previous := m.ActiveStates
 	newStates := DiffStates(targetStates, m.ActiveStates)
 	removedStates := DiffStates(m.ActiveStates, targetStates)
@@ -802,6 +764,7 @@ func (m *Machine) setActiveStates(calledStates S, targetStates S,
 		m.log(LogChanges, "[state%s]"+logMsg, autoLabel)
 	}
 
+	m.activeStatesLock.Unlock()
 	return previous
 }
 
@@ -825,8 +788,8 @@ func (m *Machine) processQueue() Result {
 
 	var ret []Result
 	defer func() {
-		m.Transition = nil
 		m.emit("queue-end", nil, nil)
+		m.Transition = nil
 		m.queueLock.Unlock()
 	}()
 
@@ -835,16 +798,100 @@ func (m *Machine) processQueue() Result {
 		// shift the queue
 		item := &m.Queue[0]
 		m.Queue = m.Queue[1:]
-		t := newTransition(m, item)
+		m.Transition = newTransition(m, item)
 		// execute the transition
-		ret = append(ret, t.emitEvents())
-		// TODO check state contexts and "when" channels. Cancel, close where
-		//   applicable.
+		ret = append(ret, m.Transition.emitEvents())
+		m.processWhenBindings()
+		m.processStateCtxBindings()
 	}
 	if len(ret) == 0 {
 		return Canceled
 	}
 	return ret[0]
+}
+
+func (m *Machine) processStateCtxBindings() {
+	deactivated := DiffStates(m.Transition.StatesBefore, m.ActiveStates)
+	m.activeStatesLock.Lock()
+	var toCancel []context.CancelFunc
+	for _, s := range deactivated {
+		for _, cancel := range m.indexStateCtx[s] {
+			toCancel = append(toCancel, cancel)
+		}
+		delete(m.indexStateCtx, s)
+	}
+	m.activeStatesLock.Unlock()
+	// cancel all the state contexts outside the critical zone
+	for _, cancel := range toCancel {
+		cancel()
+	}
+}
+
+func (m *Machine) processWhenBindings() {
+	activated := DiffStates(m.ActiveStates, m.Transition.StatesBefore)
+	deactivated := DiffStates(m.Transition.StatesBefore, m.ActiveStates)
+	all := S{}
+	all = append(all, activated...)
+	all = append(all, deactivated...)
+	var toClose []chan struct{}
+	m.activeStatesLock.Lock()
+	for _, s := range all {
+		for k, binding := range m.indexWhen[s] {
+			if lo.Contains(activated, s) {
+				// activated
+				if !binding.negation {
+					// When(
+					if !binding.states[s] {
+						binding.matched++
+					}
+				} else {
+					// WhenNot(
+					if !binding.states[s] {
+						binding.matched--
+					}
+				}
+				// mark as active
+				binding.states[s] = true
+			} else {
+				// deactivated
+				if !binding.negation {
+					// When(
+					if binding.states[s] {
+						binding.matched--
+					}
+				} else {
+					// WhenNot(
+					if binding.states[s] {
+						binding.matched++
+					}
+				}
+				// mark as inactive
+				binding.states[s] = false
+			}
+			if binding.matched < binding.total {
+				continue
+			}
+			// completed - close and delete indexes for all involved states
+			for state := range binding.states {
+				if len(m.indexWhen[state]) == 1 {
+					delete(m.indexWhen, state)
+					continue
+				}
+				if state == s {
+					m.indexWhen[s] = append(m.indexWhen[s][:k], m.indexWhen[s][k+1:]...)
+					continue
+				}
+				// TODO slow?
+				m.indexWhen[state] = lo.Without(m.indexWhen[state], binding)
+			}
+			// close outside the critical zone
+			toClose = append(toClose, binding.ch)
+		}
+	}
+	m.activeStatesLock.Unlock()
+	for ch := range toClose {
+		closeSafe(toClose[ch])
+	}
 }
 
 // Log logs an [external] message with the LogChanges level (highest one).

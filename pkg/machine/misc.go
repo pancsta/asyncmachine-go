@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
@@ -192,6 +193,23 @@ const (
 	LogDecisions
 	LogEverything
 )
+
+type (
+	// map of (single) state names to a list of bindings
+	indexWhen map[string][]*whenBinding
+	// map of (single) state names to a list of bindings
+	indexStateCtx map[string][]context.CancelFunc
+)
+
+type whenBinding struct {
+	ch       chan struct{}
+	negation bool
+	states   stateIsActive
+	matched  int
+	total    int
+}
+
+type stateIsActive map[string]bool
 
 // emitter represents a single event consumer, synchronized by channels.
 type emitter struct {
