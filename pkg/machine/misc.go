@@ -308,24 +308,6 @@ func (eh *ExceptionHandler) ExceptionState(e *Event) {
 
 // utils
 
-func isMapTrue(m map[string]bool) bool {
-	for _, value := range m {
-		if !value {
-			return false
-		}
-	}
-	return true
-}
-
-func isMapFalse(setMap map[string]bool) bool {
-	for _, value := range setMap {
-		if value {
-			return false
-		}
-	}
-	return true
-}
-
 // j joins state names
 func j(states []string) string {
 	return strings.Join(states, " ")

@@ -843,9 +843,7 @@ func (m *Machine) processStateCtxBindings() {
 	m.activeStatesLock.Lock()
 	var toCancel []context.CancelFunc
 	for _, s := range deactivated {
-		for _, cancel := range m.indexStateCtx[s] {
-			toCancel = append(toCancel, cancel)
-		}
+		toCancel = append(toCancel, m.indexStateCtx[s]...)
 		delete(m.indexStateCtx, s)
 	}
 	m.activeStatesLock.Unlock()
