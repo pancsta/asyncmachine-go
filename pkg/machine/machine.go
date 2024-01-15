@@ -33,6 +33,7 @@ type Machine struct {
 	// Unique ID of this machine. Default: random UUID.
 	ID string
 	// Time for a handler to execute. Default: time.Second
+	// TODO support
 	HandlerTimeout time.Duration
 	// If true, the machine will print all exceptions to stdout. Default: true.
 	// Requires an ExceptionHandler binding and Machine.PanicToException set.
@@ -75,6 +76,8 @@ type Machine struct {
 	disposed         bool
 	indexWhen        indexWhen
 	indexStateCtx    indexStateCtx
+	indexEventCh     indexEventCh
+	indexEventChLock sync.Mutex
 }
 
 // New creates a new Machine instance, bound to context and modified with
@@ -92,6 +95,7 @@ func New(ctx context.Context, states States, opts *Opts) *Machine {
 		recoveryCh:       make(chan bool, 1),
 		indexWhen:        indexWhen{},
 		indexStateCtx:    indexStateCtx{},
+		indexEventCh:     indexEventCh{},
 	}
 	if opts != nil {
 		if opts.ID != "" {
@@ -165,12 +169,18 @@ func (m *Machine) Dispose() {
 		}
 		m.indexWhen[s] = nil
 	}
+	for e := range m.indexEventCh {
+		for k := range m.indexEventCh[e] {
+			closeSafe(m.indexEventCh[e][k])
+		}
+		m.indexEventCh[e] = nil
+	}
 	m.indexWhen = nil
 }
 
 // disposeEmitter detaches the emitter from the machine and disposes it.
 func (m *Machine) disposeEmitter(emitter *emitter) {
-	m.log(LogEverything, "[end] emitter %s", emitter.ID)
+	m.log(LogEverything, "[end] emitter %s", emitter.id)
 	m.emitters = lo.Without(m.emitters, emitter)
 	emitter.dispose()
 }
@@ -241,6 +251,7 @@ func (m *Machine) When(states []string, ctx context.Context) chan struct{} {
 		return ch
 	}
 
+	// TODO deadlock with processWhenBindings()
 	m.activeStatesLock.Lock()
 	setMap := stateIsActive{}
 	matched := 0
@@ -258,6 +269,21 @@ func (m *Machine) When(states []string, ctx context.Context) chan struct{} {
 		total:    len(states),
 		matched:  matched,
 	}
+	// TODO backport to #2
+	go func() {
+		// dispose the binding on ctx.Done() and m.Ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-m.Ctx.Done():
+			m.activeStatesLock.Lock()
+			for _, s := range states {
+				if _, ok := m.indexWhen[s]; ok {
+					m.indexWhen[s] = lo.Without(m.indexWhen[s], binding)
+				}
+			}
+			m.activeStatesLock.Unlock()
+		}
+	}()
 	for _, s := range states {
 		if _, ok := m.indexWhen[s]; !ok {
 			m.indexWhen[s] = []*whenBinding{binding}
@@ -303,6 +329,21 @@ func (m *Machine) WhenNot(states []string, ctx context.Context) chan struct{} {
 		total:    len(states),
 		matched:  matched,
 	}
+	// TODO backport to #2
+	go func() {
+		// dispose the binding on ctx.Done() and m.Ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-m.Ctx.Done():
+			m.activeStatesLock.Lock()
+			for _, s := range states {
+				if _, ok := m.indexWhen[s]; ok {
+					m.indexWhen[s] = lo.Without(m.indexWhen[s], binding)
+				}
+			}
+			m.activeStatesLock.Unlock()
+		}
+	}()
 	for _, s := range states {
 		if _, ok := m.indexWhen[s]; !ok {
 			m.indexWhen[s] = []*whenBinding{binding}
@@ -492,135 +533,43 @@ func (m *Machine) SetLogLevel(level LogLevel) {
 
 // BindHandlers binds a struct of handler methods to the machine's states.
 // Returns a HandlerBinding object, which signals when the binding is ready.
-func (m *Machine) BindHandlers(handlers any) (*HandlerBinding, error) {
-	binding := &HandlerBinding{
-		Ready: make(chan struct{}),
-	}
+func (m *Machine) BindHandlers(handlers any) error {
+	// binding := &HandlerBinding{
+	// 	Ready: make(chan struct{}),
+	// }
 	v := reflect.ValueOf(handlers)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
 		fmt.Println("Function expects a pointer to a struct")
-		return nil, errors.New("BindHandlers expects a pointer to a struct")
+		return errors.New("BindHandlers expects a pointer to a struct")
 	}
 	name := reflect.TypeOf(handlers).Elem().Name()
-	// spin up an emitter loop
-	emitter := m.newEmitter(name)
-	go m.handleEmitterLoop(emitter, v, binding)
-	return binding, nil
+	// register a new emitter
+	m.newEmitter(name, &v)
+	return nil
 }
 
 // On returns a channel that will be notified with *Event, when any of the
 // passed events happen. It's quick substitute for a predefined transition
 // handler, although it does not guarantee a deterministic order of execution.
 // ctx: optional context to dispose the emitter earlier.
+// TODO dont call inside of handlers
 func (m *Machine) On(events []string, ctx context.Context) chan *Event {
 	ch := make(chan *Event)
-	emitter := m.newEmitter(fmt.Sprintf("ON %s", j(events)))
+	m.indexEventChLock.Lock()
+	defer m.indexEventChLock.Unlock()
+
+	// emitter := m.newEmitter(fmt.Sprintf("ON %s", j(events)))
 	if ctx == nil {
 		ctx = m.Ctx
 	}
-	go func() {
-		defer closeSafe(ch)
-		defer m.disposeEmitter(emitter)
-	emitterloop:
-		for {
-			select {
-			case e, ok := <-emitter.startHandler():
-				if !ok {
-					m.log(LogEverything, "[end] channel closed")
-					break emitterloop
-				}
-				if lo.Contains(events, e.Name) {
-					ch <- e
-				}
-				// end the handler (always accept)
-				emitter.endHandler(true)
-			case <-ctx.Done():
-				// ctx disposed
-				break emitterloop
-			case <-m.Ctx.Done():
-				// machine disposed
-				break emitterloop
-			}
+	for _, e := range events {
+		if _, ok := m.indexEventCh[e]; !ok {
+			m.indexEventCh[e] = []chan *Event{ch}
+		} else {
+			m.indexEventCh[e] = append(m.indexEventCh[e], ch)
 		}
-	}()
+	}
 	return ch
-}
-
-func (m *Machine) handleEmitterLoop(emitter *emitter,
-	handlerMethods reflect.Value, binding *HandlerBinding,
-) {
-	internalEvents := []string{
-		"queue-end",
-		"transition-start",
-		"transition-end",
-		"transition-cancel",
-		"tick",
-	}
-	if m.PanicToException {
-		// catch panics and restart the emitter
-		defer m.log(LogEverything, "[end] handleEmitterLoop %s", emitter.ID)
-		defer m.recoverToErr(emitter, handlerMethods, binding)
-	} else {
-		// dispose and exit
-		defer m.disposeEmitter(emitter)
-		defer closeSafe(binding.Ready)
-		defer m.log(LogEverything, "[end] handleEmitterLoop %s", emitter.ID)
-	}
-
-	// binding is ready, notify AFTER starting listening on the emitter
-	go func() {
-		m.log(LogEverything, "[start] handleEmitterLoop %s", emitter.ID)
-		binding.Ready <- struct{}{}
-	}()
-emitterloop:
-	for {
-		select {
-		// handle an event
-		case e, ok := <-emitter.startHandler():
-			if !ok {
-				m.log(LogEverything, "[end] channel closed")
-				break emitterloop
-			}
-			method := e.Name
-			if lo.Contains(internalEvents, method) {
-				emitter.endHandler(true)
-				continue
-			}
-			// if no handler, log and skip
-			if !handlerMethods.MethodByName(method).IsValid() {
-				emitter.endHandler(true)
-				continue
-			}
-			m.log(LogOps, "[handler] %s", method)
-			if e.step != nil {
-				// TODO pointer
-				m.Transition.addSteps(*e.step)
-			}
-			// call the handler
-			callRet := handlerMethods.MethodByName(e.Name).Call(
-				[]reflect.Value{reflect.ValueOf(e)})
-			var ret bool
-			switch {
-			// returns from these handlers are ignored
-			case strings.HasSuffix(e.Name, "State"):
-			case strings.HasSuffix(e.Name, "End"):
-				ret = true
-			default:
-				if len(callRet) > 0 {
-					ret = callRet[0].Interface().(bool)
-				} else {
-					// no return value, assume true
-					ret = true
-				}
-			}
-			emitter.endHandler(ret)
-
-		// dispose and emitExitEvents
-		case <-m.Ctx.Done():
-			m.log(LogEverything, "[end] ctx done")
-			break emitterloop
-		}
-	}
 }
 
 // recoverToErr recovers to the Exception state by catching panics.
@@ -641,22 +590,23 @@ func (m *Machine) recoverToErr(emitter *emitter, handlerMethods reflect.Value,
 		return
 	}
 	m.log(LogOps, "[recover] handling panic...")
-	defer func() {
-		// re-bind the handlers
-		if emitter.EventChLocked {
-			emitter.EventChMutex.Unlock()
-			emitter.EventChLocked = false
-		}
-		go m.handleEmitterLoop(emitter, handlerMethods, binding)
-		m.log(LogEverything, "[recover] %s during (%s)", emitter.ID,
-			j(t.Mutation.CalledStates))
-		<-binding.Ready
-		m.log(LogEverything, "[recover] new binding ready")
-		// continue the queue
-		if m.Ctx.Err() == nil {
-			m.recoveryCh <- true
-		}
-	}()
+	// TODO
+	// defer func() {
+	// 	// re-bind the handlers
+	// 	if emitter.EventChLocked {
+	// 		emitter.EventChMutex.Unlock()
+	// 		emitter.EventChLocked = false
+	// 	}
+	// 	go m.handleEmitterLoop(emitter, handlerMethods, binding)
+	// 	m.log(LogEverything, "[recover] %s during (%s)", emitter.id,
+	// 		j(t.Mutation.CalledStates))
+	// 	<-binding.Ready
+	// 	m.log(LogEverything, "[recover] new binding ready")
+	// 	// continue the queue
+	// 	if m.Ctx.Err() == nil {
+	// 		m.recoveryCh <- true
+	// 	}
+	// }()
 	err, ok := r.(error)
 	if !ok {
 		err = errors.New(fmt.Sprint(r))
@@ -692,7 +642,7 @@ func (m *Machine) recoverToErr(emitter *emitter, handlerMethods reflect.Value,
 	}
 	if t.Mutation == nil {
 		// TODO can this even happen?
-		panic(fmt.Sprintf("no mutation panic in %s: %s", emitter.ID, err))
+		panic(fmt.Sprintf("no mutation panic in %s: %s", emitter.id, err))
 	}
 	// negotiation phase, simply cancel and...
 	// unshift add:Exception to the beginning of the queue
@@ -834,6 +784,7 @@ func (m *Machine) processWhenBindings() {
 	all = append(all, activated...)
 	all = append(all, deactivated...)
 	var toClose []chan struct{}
+	// deadlock with When
 	m.activeStatesLock.Lock()
 	for _, s := range all {
 		for k, binding := range m.indexWhen[s] {
@@ -924,89 +875,115 @@ func (m *Machine) SetLogger(fn Logger) {
 // emit is a synchronous (blocking) emit with cancellation via a return channel.
 // Can block indefinitely if the handler doesn't return or the emitter isn't
 // accepting events.
+// TODO sync ver
 func (m *Machine) emit(name string, args A, step *TransitionStep) Result {
-	for _, emitter := range m.emitters {
-		e := &Event{
-			Name:    name,
-			Machine: m,
-			Args:    args,
-			step:    step,
-		}
-		t := m.Transition
-		// queue-end lacks a transition
-		targetStates := "---"
-		if t != nil {
-			targetStates = j(t.TargetStates)
+	e := &Event{
+		Name:    name,
+		Machine: m,
+		Args:    args,
+		step:    step,
+	}
+	t := m.Transition
+	// queue-end lacks a transition
+	targetStates := "---"
+	if t != nil {
+		targetStates = j(t.TargetStates)
+	}
+	// call the handlers
+	// TODO timeout, recover
+	res := m.processEmitters(e)
+	// check if this is an internal event
+	if step == nil {
+		return Executed
+	}
+	// negotiation support
+	if !step.IsFinal && res == Canceled {
+		var self string
+		if step.IsSelf {
+			self = ":self"
 		}
 		stepID := name
 		if step != nil {
 			stepID = step.ID[:5]
 		}
-		emitter.EventChMutex.Lock()
-		emitter.EventChLocked = true
-		// cancel when disposed
-		if emitter.Disposed || m.Ctx.Err() != nil {
-			m.log(LogOps, "[cancel:%s] (%s) by disposed emitter", stepID,
-				targetStates)
-			return Canceled
+		m.log(LogOps, "[cancel%s:%s] (%s) by %s", self, stepID,
+			targetStates, name)
+		// queue-end lacks a transition
+		if t != nil {
+			t.addSteps(step)
 		}
-		if step != nil {
-			emitterID := emitter.ID
+		return Canceled
+	}
+	return Executed
+}
+
+func (m *Machine) processEmitters(e *Event) Result {
+	// TODO catch panics
+	// if m.PanicToException {
+	// 	// catch panics and restart the emitter
+	// 	defer m.log(LogEverything, "[end] handleEmitterLoop %s", emitter.id)
+	// 	defer m.recoverToErr(emitter, handlerMethods, binding)
+	// } else {
+	// 	// dispose and exit
+	// 	defer m.disposeEmitter(emitter)
+	// 	defer closeSafe(binding.Ready)
+	// 	defer m.log(LogEverything, "[end] handleEmitterLoop %s", emitter.id)
+	// }
+	for _, emitter := range m.emitters {
+		method := e.Name
+		stepID := method
+		if e.step != nil {
+			stepID = e.step.ID[:5]
+		}
+		// internal event
+		if e.step == nil {
+			break
+		}
+		// if no handler, skip
+		if !emitter.methods.MethodByName(method).IsValid() {
+			continue
+		}
+		m.log(LogOps, "[handler] %s", method)
+		if e.step != nil {
+			emitterID := emitter.id
 			if len(emitterID) > 15 {
 				emitterID = emitterID[:15]
 			}
 			emitterID = padString(strings.ReplaceAll(emitterID, " ", "_"), 15, "_")
 			m.log(LogEverything, "[emit:%-15s:%s] %s", emitterID,
-				stepID, name)
+				stepID, method)
+			m.Transition.addSteps(e.step)
 		}
-		// call the handlers (with timeouts)
-		select {
-		// possible panic in the handler
-		case emitter.EventCh <- e:
-			// OK
-		case <-m.Ctx.Done():
-			m.log(LogOps, "[cancel:%s] (%s) by context", stepID, targetStates)
-			return Canceled
-		case <-time.After(m.HandlerTimeout):
-			m.log(LogOps, "[cancel:%s] (%s) by timeout", stepID, targetStates)
-			return Canceled
-		}
-		emitter.EventChLocked = false
-		emitter.EventChMutex.Unlock()
-		// wait for the handler to finish
-		var res bool
-		select {
-		case res = <-emitter.ReturnCh:
-			// OK
-		case <-m.Ctx.Done():
-			m.log(LogOps, "[cancel:%s] (%s) by context", stepID, targetStates)
-			return Canceled
-		case <-time.After(m.HandlerTimeout):
-			m.log(LogOps, "[cancel:%s] (%s) by timeout", stepID, targetStates)
-			return Canceled
-		// recovery in case of panic
-		case <-m.recoveryCh:
-			m.log(LogOps, "[cancel:%s] (%s) by recover", stepID,
-				targetStates)
-			return Canceled
-		}
-		// check if this is an internal event
-		if step == nil {
-			continue
-		}
-		if !step.IsFinal && !res {
-			var self string
-			if step.IsSelf {
-				self = ":self"
+		// call the handler
+		callRet := emitter.methods.MethodByName(e.Name).Call(
+			[]reflect.Value{reflect.ValueOf(e)})
+		var ret bool
+		switch {
+		// returns from these handlers are ignored
+		case strings.HasSuffix(e.Name, "State"):
+		case strings.HasSuffix(e.Name, "End"):
+			ret = true
+		default:
+			if len(callRet) > 0 {
+				ret = callRet[0].Interface().(bool)
+				if !ret {
+					return Canceled
+				}
 			}
-			m.log(LogOps, "[cancel%s:%s] (%s) by %s", self, stepID,
-				targetStates, name)
-			// queue-end lacks a transition
-			if t != nil {
-				t.addSteps(*step)
-			}
-			return Canceled
 		}
+	}
+	if m.processEventChs(e) == Canceled {
+		return Canceled
+	}
+	return Executed
+}
+
+func (m *Machine) processEventChs(e *Event) Result {
+	// TODO deadlock
+	m.indexEventChLock.Lock()
+	defer m.indexEventChLock.Unlock()
+	for _, ch := range m.indexEventCh[e.Name] {
+		ch <- e
 	}
 	return Executed
 }

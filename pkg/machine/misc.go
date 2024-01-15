@@ -2,8 +2,8 @@ package machine
 
 import (
 	"context"
+	"reflect"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/samber/lo"
@@ -35,6 +35,7 @@ type Event struct {
 	Name    string
 	Machine *Machine
 	Args    A
+	// internal events lack a step
 	step    *TransitionStep
 }
 
@@ -199,6 +200,7 @@ type (
 	indexWhen map[string][]*whenBinding
 	// map of (single) state names to a list of bindings
 	indexStateCtx map[string][]context.CancelFunc
+	indexEventCh map[string][]chan *Event
 )
 
 type whenBinding struct {
@@ -213,41 +215,27 @@ type stateIsActive map[string]bool
 
 // emitter represents a single event consumer, synchronized by channels.
 type emitter struct {
-	ID            string
-	EventCh       chan *Event
-	ReturnCh      chan bool
-	EventChMutex  sync.Mutex
-	EventChLocked bool
-	Disposed      bool
+	id       string
+	disposed bool
+	methods  *reflect.Value
 }
 
 // newEmitter creates a new emitter for Machine.
 // Each emitter should be consumed by one receiver only to guarantee the
 // delivery of all events.
-func (m *Machine) newEmitter(name string) *emitter {
+func (m *Machine) newEmitter(name string, methods *reflect.Value) *emitter {
 	e := &emitter{
-		ID:       name,
-		EventCh:  make(chan *Event),
-		ReturnCh: make(chan bool),
+		id:       name,
+		methods:  methods,
 	}
+	// TODO emitter mutex
 	m.emitters = append(m.emitters, e)
 	return e
 }
 
 func (e *emitter) dispose() {
-	e.Disposed = true
-	closeSafe(e.ReturnCh)
-	closeSafe(e.EventCh)
-}
-
-func (e *emitter) endHandler(result bool) {
-	if !e.Disposed {
-		e.ReturnCh <- result
-	}
-}
-
-func (e *emitter) startHandler() chan *Event {
-	return e.EventCh
+	e.disposed = true
+	e.methods = nil
 }
 
 // DiffStates returns the states that are in states1 but not in states2.
