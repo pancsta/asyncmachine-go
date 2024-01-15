@@ -36,7 +36,7 @@ type Event struct {
 	Machine *Machine
 	Args    A
 	// internal events lack a step
-	step    *TransitionStep
+	step *TransitionStep
 }
 
 type Opts struct {
@@ -200,7 +200,7 @@ type (
 	indexWhen map[string][]*whenBinding
 	// map of (single) state names to a list of bindings
 	indexStateCtx map[string][]context.CancelFunc
-	indexEventCh map[string][]chan *Event
+	indexEventCh  map[string][]chan *Event
 )
 
 type whenBinding struct {
@@ -225,8 +225,8 @@ type emitter struct {
 // delivery of all events.
 func (m *Machine) newEmitter(name string, methods *reflect.Value) *emitter {
 	e := &emitter{
-		id:       name,
-		methods:  methods,
+		id:      name,
+		methods: methods,
 	}
 	// TODO emitter mutex
 	m.emitters = append(m.emitters, e)
