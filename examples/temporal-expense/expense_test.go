@@ -72,7 +72,7 @@
 // --- PASS: TestExpense (2.00s)
 // PASS
 
-package temporal_expense
+package main
 
 import (
 	"context"
@@ -83,8 +83,6 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
@@ -259,7 +257,7 @@ func ExpenseFlow(
 		// WaitingForApproval is an automatic state
 	}
 
-	// string(machine) == [Enabled, ExpenseCreated, WaitingForApproval] TODO
+	_ = machine.String() // (ExpenseCreated:1 WaitingForApproval:1)
 
 	// WaitingForApproval to ApprovalGranted
 	// Passes all new approval IDs to the machine, multiple times.
@@ -289,8 +287,7 @@ func ExpenseFlow(
 	}
 
 	// PaymentInProgress is an automatic state, it will add itself at this point.
-	// string(machine) ==
-	//   [Enabled, ExpenseCreated, ApprovalGranted, PaymentInProgress] TODO
+	_ = machine.String() // (ExpenseCreated:1 ApprovalGranted:1 PaymentInProgress:1)
 
 	// PaymentInProgress to PaymentCompleted
 	log("waiting: PaymentInProgress to PaymentCompleted")
@@ -300,8 +297,8 @@ func ExpenseFlow(
 	case <-machine.When(am.S{"PaymentCompleted"}, nil):
 	}
 
-	// string(machine) ==
-	//   [Enabled, ExpenseCreated, ApprovalGranted, PaymentCompleted] TODO
+	_ = machine.String() // (ExpenseCreated:1 ApprovalGranted:1 PaymentCompleted:1)
+
 	return machine, nil
 }
 
@@ -314,12 +311,12 @@ func TestExpense(t *testing.T) {
 	go func() {
 		expenseId := <-expenseCh
 		t.Log("approval request received: " + expenseId)
-		time.Sleep(1 * time.Second)
+		time.Sleep(10 * time.Millisecond)
 		// approve a random ID
 		t.Log("granting fake approval")
 		approvalCh <- "fake"
 		t.Log("sent fake approval")
-		time.Sleep(1 * time.Second)
+		time.Sleep(10 * time.Millisecond)
 		// approve our ID
 		t.Log("granting real approval")
 		approvalCh <- expenseId
@@ -357,8 +354,12 @@ func TestExpense(t *testing.T) {
 
 	// start the flow and wait for the result
 	machine, err := ExpenseFlow(context.Background(), t.Logf, approvalCh, "123")
-	assert.NoError(t, err)
-	assert.True(t, machine.Is(am.S{"PaymentCompleted"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !machine.Is(am.S{"PaymentCompleted"}) {
+		t.Fatal("not PaymentCompleted")
+	}
 
 	// how it looks at the end
 	t.Log("\n" + machine.String())
