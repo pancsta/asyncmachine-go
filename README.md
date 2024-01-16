@@ -35,7 +35,7 @@ func main() {
 ## Examples
 
 - [Expense Workflow](/examples/temporal-expense/expense_test.go) \|
-  [Temporal version](https://github.com/temporalio/samples-go/blob/main/expense/) \| [Go playground](https://goplay.tools/snippet/KAxlf3gm7pH)
+  [Temporal version](https://github.com/temporalio/samples-go/blob/main/expense/) \| [Go playground](https://play.golang.com/p/CqHX5dR7r_H)
 
 ```go
 am.States{
@@ -70,7 +70,7 @@ am.States{
 ```
 
 - [FileProcessing workflow](/examples/temporal-fileprocessing/fileprocessing.go) \|
-  [Temporal version](https://github.com/temporalio/samples-go/blob/main/fileprocessing/) \| [Go playground](https://goplay.tools/snippet/aTo4hsyJZck)
+  [Temporal version](https://github.com/temporalio/samples-go/blob/main/fileprocessing/) \| [Go playground](https://play.golang.com/p/TXMpqGFKUvM)
 
 ```go
 am.States{
