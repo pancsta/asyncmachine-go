@@ -279,12 +279,7 @@ func (t *Transition) emitEvents() Result {
 	txArgs := A{"transition": t}
 	hasStateChanged := false
 
-	if m.Transition != nil {
-		panic("Already during a transition")
-	}
-
 	// start emitting
-	m.Transition = t
 	m.emit("transition-start", txArgs, nil)
 
 	// NEGOTIATION CALLS PHASE (cancellable)
@@ -325,7 +320,6 @@ func (t *Transition) emitEvents() Result {
 	}
 
 	// stop emitting
-	m.Transition = nil
 	m.emit("transition-end", txArgs, nil)
 
 	if result == Canceled {

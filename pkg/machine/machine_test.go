@@ -851,8 +851,6 @@ func (h *TestStateCtxHandlers) AState(e *am.Event) {
 	h.callbackCh = make(chan bool)
 	go func() {
 		<-stepCh
-		// TODO prevent flaky, close/cancel while processing the queue
-		time.Sleep(10 * time.Millisecond)
 		assertStates(t, e.Machine, S{})
 		assert.Error(t, stateCtx.Err(), "state context should be canceled")
 		h.callbackCh <- true
