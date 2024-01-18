@@ -366,8 +366,12 @@ List of handlers during a transition from `Foo` to `Foo Bar`, in the order of ex
 
 ### Defining Handlers
 
-Each machine can have many handler structs bound to itself using `BindHandlers`, although at least one of the structs
-should embed provided `am.ExceptionHandler` (or equivalent).
+Handlers are defined as struct methods. Each machine can have many handler structs bound to itself using `BindHandlers`,
+although at least one of the structs should embed provided `am.ExceptionHandler` (or equivalent).
+
+Example of binding handlers:
+
+- [go playground](https://play.golang.com/p/C4r1xnu-EpG)
 
 ```go
 type MachineHandlers struct {
@@ -381,18 +385,20 @@ func (h *MachineHandlers) FooEnter(e *am.Event) bool {
     // negotiation entry handler for Foo
     return true // accept this transition by Foo
 }
+
+func main() {
+    // ...
+    err := machine.BindHandlers(&MachineHandlers{})
+}
 ```
 
-Example of binding handlers:
+Log output:
 
-- [go playground](https://goplay.tools/snippet/EQRPFbqBPzo)
-
-```go
-binding, err := m.BindHandlers(&MachineHandlers{})
-if err != nil {
-    panic(err)
-}
-<-binding.Ready
+```text
+[add] Foo
+[handler] FooEnter
+[state] +Foo
+[handler] FooState
 ```
 
 ### Event object
@@ -438,7 +444,7 @@ partially.
 
 Target states can be accessed with `machine.To()` or `machine.From()`.
 
-- [go playground](https://goplay.tools/snippet/gQhFetorZyz)
+- [go playground](https://play.golang.com/p/JxcQ-in4cCk)
 
 ```go
 // machine
@@ -504,7 +510,7 @@ They are allowed to cancel a transition by optionally returning `false`. Negotia
 action which cannot be undone. Their purpose is to make sure that [final transition handlers](#final-handlers) are good
 to go.
 
-- [go playground](https://goplay.tools/snippet/GxklYYyq0Uo)
+- [go playground](https://play.golang.com/p/ISxDpWiwtBc)
 
 ```go
 // machine
@@ -544,7 +550,7 @@ active.
 Like any handler, final handlers cannot block the mutation. That's why they need to start a goroutine and continue their
 execution within it, while asserting the [State Context](#state-context) is still valid.
 
-- [go playground](https://goplay.tools/snippet/5q4TTYbR7iN)
+- [go playground](https://play.golang.com/p/BvZThLj5fje)
 
 ```go
 func (h *MachineHandlers) FooState(e *am.Event) {
@@ -575,7 +581,7 @@ handler, although it does not guarantee a deterministic order of execution. It a
 The main difference of **dynamic handlers** is that they don't return and the machine continues the execution right
 after notifying the channel.
 
-- [go playground](https://goplay.tools/snippet/Qbp7SCVLyde)
+- [go playground](https://play.golang.com/p/Qbp7SCVLyde)
 
 ```go
 // machine
@@ -613,7 +619,7 @@ Steps 1 and 3 will have a different state context for `Foo`, because `Foo`'s clo
 
 Example usage of state clocks:
 
-- [go playground](https://goplay.tools/snippet/Vp_Cp2ZffQx)
+- [go playground](https://play.golang.com/p/ZpkfivDk4ON)
 
 ```go
 func (h *MachineHandlers) ProcessingFileState(e *am.Event) {
@@ -651,7 +657,7 @@ They optionally accept a context to be disposed earlier then the machine itself.
 
 Example of waiting for states `Foo` and `Bar` being active at the same time:
 
-- [go playground](https://goplay.tools/snippet/vMuTHCWsSeL)
+- [go playground](https://play.golang.com/p/vMuTHCWsSeL)
 
 ```go
 // machine
@@ -693,7 +699,7 @@ There are helper methods to make dealing with the `Exception` state, those are `
 
 Example timeout flow with error handling:
 
-- [go playground](https://goplay.tools/snippet/lV1V8yc0yak)
+- [go playground](https://play.golang.com/p/lV1V8yc0yak)
 
 ```go
 select {
@@ -767,7 +773,7 @@ The `Add` relation tries to activate listed states, along with the owner state.
 
 Their activation is optional, meaning if any of those won't get accepted, the transition will still be `Executed`.
 
-- [go playground](https://goplay.tools/snippet/rCrDqWZRN9d)
+- [go playground](https://play.golang.com/p/rCrDqWZRN9d)
 
 ```go
 // machine
@@ -798,7 +804,7 @@ States, the [Transition](#transitions) will be `Canceled`.
 
 Example of an [accepted transition](#transition-lifecycle) involving a `Remove` relation:
 
-- [go playground](https://goplay.tools/snippet/3878ksPe2cN)
+- [go playground](https://play.golang.com/p/3878ksPe2cN)
 
 ```go
 // machine
@@ -825,7 +831,7 @@ println(m.StringAll()) // (Foo:1)[Bar:0 Exception:0]
 Example of a [canceled transition](#transition-lifecycle) involving a `Remove` relation - some of the Called States
 `Remove` other Called States.
 
-- [go playground](https://goplay.tools/snippet/gkZnrLNKnTy)
+- [go playground](https://play.golang.com/p/gkZnrLNKnTy)
 
 ```go
 // machine
@@ -850,7 +856,7 @@ m.StringAll() // ()[Foo:0 Bar:0 Exception:0]
 Example of a [Canceled Transition](#transition-lifecycle) involving a `Remove` relation - some of the Active States
 `Remove` some of the Called States.
 
-- [go playground](https://goplay.tools/snippet/Nv7SvnZbGzN)
+- [go playground](https://play.golang.com/p/32W_04nwbNL)
 
 ```go
 // machine
@@ -880,7 +886,7 @@ The `Require` relation describes the states required for this one to be activate
 
 Example of an [Accepted Transition](#transition-lifecycle) involving a `Require` relation:
 
-- [go playground](https://goplay.tools/snippet/zjX4ShKoTPt)
+- [go playground](https://play.golang.com/p/zjX4ShKoTPt)
 
 ```go
 // machine
@@ -906,7 +912,7 @@ println(m.StringAll()) // (Foo:1 Bar:0)[Exception:0]
 
 Example of a [Canceled Transition](#transition-lifecycle) involving a `Require` relation:
 
-- [go playground](https://goplay.tools/snippet/FPXbIX49fAU)
+- [go playground](https://play.golang.com/p/FPXbIX49fAU)
 
 ```go
 // machine
@@ -933,7 +939,7 @@ println(m.StringAll()) // ()[Foo:0 Bar:0 Exception:0]
 The `After` relation decides about the order of the [Transition Handlers](#transition-handlers). Handlers from
 the defined state will be executed **after** handlers from listed states.
 
-- [go playground](https://goplay.tools/snippet/09D9CQQQnm7)
+- [go playground](https://play.golang.com/p/qnzaHlgGF31)
 
 ```go
 // machine
@@ -975,7 +981,7 @@ time. Every mutation happening inside the handler, will be queued and the mutati
 Queue itself can be accessed via `Machine.Queue` whereas there's also a helper function `IsQueued`, which checks if a
 particular mutation has been queued. It's especially helpful in making decisions based on scheduled actions.
 
-- [go playground](https://goplay.tools/snippet/IClGUHGtNhP)
+- [go playground](https://play.golang.com/p/rD53ejBfRrv)
 
 ```go
 // machine
@@ -1015,7 +1021,7 @@ Besides debugging methods, AsyncMachine offer a very verbose logging system with
 
 Example of all log level for the same code snippet:
 
-- [go playground](https://goplay.tools/snippet/NJFej5X7Io5)
+- [go playground](https://play.golang.com/p/dFdd_5MgGCV)
 
 ```go
 // machine

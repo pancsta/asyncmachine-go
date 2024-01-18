@@ -139,7 +139,9 @@ func HandleFileProcessingTask(ctx context.Context, t *asynq.Task) error {
 
 ## Changelog
 
-Latest release: `v0.2.0`. See [CHANELOG.md](/CHANGELOG.md) for details.
+Latest release: `v0.2.1`.
+
+See [CHANELOG.md](/CHANGELOG.md) for details.
 
 ## Status
 

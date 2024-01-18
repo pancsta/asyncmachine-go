@@ -64,7 +64,7 @@ tasks:
 
   changelog:
     cmds:
-#      - github_changelog_generator
+      - github_changelog_generator
       - head -n -4 CHANGELOG.md > CHANGELOG-tmp.md
       - mv CHANGELOG-tmp.md CHANGELOG.md
 
