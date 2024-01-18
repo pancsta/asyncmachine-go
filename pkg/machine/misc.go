@@ -273,7 +273,7 @@ type ExceptionArgsPanic struct {
 	StackTrace   []byte
 }
 
-// ExceptionState is a (final) handler for the Exception state.
+// ExceptionState is a final entry handler for the Exception state.
 // Args:
 // - err error: The error that caused the Exception state.
 // - panic *ExceptionArgsPanic: Optional details about the panic.
