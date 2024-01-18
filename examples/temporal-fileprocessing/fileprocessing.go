@@ -225,11 +225,10 @@ func FileProcessingFlow(ctx context.Context, log Logger, filename string) (*am.M
 	})
 
 	// bind handlers and wait for Ready
-	binding, err := machine.BindHandlers(&MachineHandlers{})
+	err := machine.BindHandlers(&MachineHandlers{})
 	if err != nil {
 		return machine, err
 	}
-	<-binding.Ready
 
 	// start it up!
 	machine.Add(am.S{"DownloadingFile"}, am.A{"filename": filename})

@@ -10,8 +10,8 @@ import (
 
 func newStep(from string, to string, stepType TransitionStepType,
 	data any,
-) TransitionStep {
-	return TransitionStep{
+) *TransitionStep {
+	return &TransitionStep{
 		ID:        uuid.New().String(),
 		FromState: from,
 		ToState:   to,
@@ -22,8 +22,8 @@ func newStep(from string, to string, stepType TransitionStepType,
 
 func newSteps(from string, toStates S, stepType TransitionStepType,
 	data any,
-) []TransitionStep {
-	var ret []TransitionStep
+) []*TransitionStep {
+	var ret []*TransitionStep
 	for _, to := range toStates {
 		ret = append(ret, newStep(from, to, stepType, data))
 	}
@@ -34,7 +34,7 @@ func newSteps(from string, toStates S, stepType TransitionStepType,
 type Transition struct {
 	// List of steps taken by this transition (so far).
 	// TODO []*TransitionStep
-	Steps []TransitionStep
+	Steps []*TransitionStep
 	// Index of added steps.
 	StepIDs map[string]bool
 	// When true, execution of the transition has been completed.
@@ -129,7 +129,7 @@ func (t *Transition) Type() MutationType {
 	return t.Mutation.Type
 }
 
-func (t *Transition) addSteps(steps ...TransitionStep) {
+func (t *Transition) addSteps(steps ...*TransitionStep) {
 	for _, step := range steps {
 		// prevent dups from >1 emitter
 		if _, ok := t.StepIDs[step.ID]; ok {
@@ -194,7 +194,7 @@ func (t *Transition) emitSelfEvents() Result {
 		step := newStep(s, "", TransitionStepTypeTransition, name)
 		step.IsSelf = true
 		t.addSteps(step)
-		ret = m.emit(name, t.Mutation.Args, &step)
+		ret = m.emit(name, t.Mutation.Args, step)
 		if ret == Canceled {
 			break
 		}
@@ -243,8 +243,8 @@ func (t *Transition) emitExitEvents() Result {
 func (t *Transition) emitHandler(from, to, event string, args A) Result {
 	step := newStep(from, to, TransitionStepTypeTransition, event)
 	t.addSteps(step)
-	t.latestStep = &step
-	return t.Machine.emit(event, args, &step)
+	t.latestStep = step
+	return t.Machine.emit(event, args, step)
 }
 
 func (t *Transition) emitFinalEvents() {
@@ -262,8 +262,8 @@ func (t *Transition) emitFinalEvents() {
 		step := newStep(s, "", TransitionStepTypeTransition, handler)
 		step.IsFinal = true
 		step.IsEnter = isEnter
-		t.latestStep = &step
-		ret := t.Machine.emit(handler, t.Mutation.Args, &step)
+		t.latestStep = step
+		ret := t.Machine.emit(handler, t.Mutation.Args, step)
 		if ret == Canceled {
 			break
 		}

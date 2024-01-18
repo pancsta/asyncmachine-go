@@ -231,11 +231,10 @@ func ExpenseFlow(
 	})
 
 	// bind handlers and wait for Ready
-	binding, err := machine.BindHandlers(&MachineHandlers{})
+	err := machine.BindHandlers(&MachineHandlers{})
 	if err != nil {
 		return machine, err
 	}
-	<-binding.Ready
 
 	// reusable error channel
 	errCh := machine.WhenErr(nil)
