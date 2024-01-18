@@ -35,7 +35,7 @@ func main() {
 ## Examples
 
 - [Expense Workflow](/examples/temporal-expense/expense_test.go) \|
-  [Temporal version](https://github.com/temporalio/samples-go/blob/main/expense/) \| [Go playground](https://play.golang.com/p/CqHX5dR7r_H)
+  [Temporal version](https://github.com/temporalio/samples-go/blob/main/expense/) \| [Go playground](https://play.golang.com/p/P1eg6tKh6E4)
 
 ```go
 am.States{
@@ -70,7 +70,7 @@ am.States{
 ```
 
 - [FileProcessing workflow](/examples/temporal-fileprocessing/fileprocessing.go) \|
-  [Temporal version](https://github.com/temporalio/samples-go/blob/main/fileprocessing/) \| [Go playground](https://play.golang.com/p/TXMpqGFKUvM)
+  [Temporal version](https://github.com/temporalio/samples-go/blob/main/fileprocessing/) \| [Go playground](https://play.golang.com/p/Fv92Xpzlzv6)
 
 ```go
 am.States{
@@ -137,6 +137,10 @@ func HandleFileProcessingTask(ctx context.Context, t *asynq.Task) error {
    - [Relations](/docs/manual.md#relations)
    - [Queue](/docs/manual.md#queue)
 
+## Changelog
+
+Latest release: `v0.2.0`. See [CHANELOG.md](/CHANGELOG.md) for details.
+
 ## Status
 
 **Beta** - although the ideas behind AsyncMachine have been proven to work, the golang implementation is fairly fresh
@@ -145,4 +149,4 @@ and may suffer from bugs, memory leaks, race conditions and even panics.
 
 ## TODO
 
-FUT [issues](https://github.com/pancsta/asyncmachine-go/issues).
+See [issues](https://github.com/pancsta/asyncmachine-go/issues).
