@@ -102,9 +102,8 @@ func TestPopupMachine(t *testing.T) {
 		t.Logf(msg, args...)
 	})
 	// bind the Transition handlers
-	binding, err := machine.BindHandlers(&PopupMachineHandlers{})
+	err := machine.BindHandlers(&PopupMachineHandlers{})
 	assert.NoError(t, err)
-	<-binding.Ready
 
 	// test
 

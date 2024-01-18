@@ -433,9 +433,8 @@ func TestQueue(t *testing.T) {
 	events := []string{"CEnter", "AExit"}
 	history := trackTransitions(m, events)
 	// handlers
-	bindings, err := m.BindHandlers(&TestQueueHandlers{})
+	err := m.BindHandlers(&TestQueueHandlers{})
 	assert.NoError(t, err)
-	<-bindings.Ready
 	// triggers Add(C) from BEnter
 	m.Set(S{"B"}, nil)
 	// assert
@@ -482,9 +481,8 @@ func TestNegotiationCancel(t *testing.T) {
 			m := NewNoRels(t, S{"A"})
 			defer m.Dispose()
 			// bind handlers
-			bindings, err := m.BindHandlers(&TestNegotiationCancelHandlers{})
+			err := m.BindHandlers(&TestNegotiationCancelHandlers{})
 			assert.NoError(t, err)
-			<-bindings.Ready
 			// bind logger
 			log := ""
 			captureLog(t, m, &log)
@@ -531,9 +529,9 @@ func TestNegotiationRemove(t *testing.T) {
 	m := NewNoRels(t, S{"A"})
 	defer m.Dispose()
 	// bind handlers
-	bindings, err := m.BindHandlers(&TestNegotiationRemoveHandlers{})
+	err := m.BindHandlers(&TestNegotiationRemoveHandlers{})
 	assert.NoError(t, err)
-	<-bindings.Ready
+
 	// bind logger
 	log := ""
 	captureLog(t, m, &log)
@@ -566,9 +564,9 @@ func TestHandlerStateInfo(t *testing.T) {
 	events := []string{"DEnter"}
 	history := trackTransitions(m, events)
 	// bind handlers
-	bindings, err := m.BindHandlers(&TestHandlerStateInfoHandlers{})
+	err := m.BindHandlers(&TestHandlerStateInfoHandlers{})
 	assert.NoError(t, err)
-	<-bindings.Ready
+
 	// bind logger
 	log := ""
 	captureLog(t, m, &log)
@@ -608,9 +606,9 @@ func TestHandlerArgs(t *testing.T) {
 	events := []string{"AExit", "BEnter", "CState"}
 	history := trackTransitions(m, events)
 	// bind handlers
-	bindings, err := m.BindHandlers(&TestHandlerArgsHandlers{})
+	err := m.BindHandlers(&TestHandlerArgsHandlers{})
 	assert.NoError(t, err)
-	<-bindings.Ready
+
 	// run the test
 	// handlers will assert
 	m.Add(S{"B"}, A{"t": t, "foo": "bar"})
@@ -623,7 +621,9 @@ func TestHandlerArgs(t *testing.T) {
 // TestSelfHandlersCancellable
 type TestSelfHandlersCancellableHandlers struct{}
 
-func (h *TestSelfHandlersCancellableHandlers) AA(_ *am.Event) bool {
+func (h *TestSelfHandlersCancellableHandlers) AA(e *am.Event) bool {
+	AACounter := e.Args["AACounter"].(*int)
+	*AACounter++
 	return false
 }
 
@@ -635,14 +635,15 @@ func TestSelfHandlersCancellable(t *testing.T) {
 	events := []string{"AA", "AnyB"}
 	history := trackTransitions(m, events)
 	// bind handlers
-	bindings, err := m.BindHandlers(&TestSelfHandlersCancellableHandlers{})
+	err := m.BindHandlers(&TestSelfHandlersCancellableHandlers{})
 	assert.NoError(t, err)
-	<-bindings.Ready
 	// run the test
 	// handlers will assert
-	m.Set(S{"A", "B"}, nil)
+	AACounter := 0
+	m.Set(S{"A", "B"}, A{"AACounter": &AACounter})
 	// assert
-	assert.Equal(t, 1, history.Counter["AA"], "AA call count")
+	assert.Equal(t, 1, AACounter, "AA call count")
+	assert.Equal(t, 0, history.Counter["AA"], "AA call count")
 	assert.Equal(t, 0, history.Counter["AnyB"], "AnyB call count")
 }
 
@@ -720,9 +721,9 @@ func TestWhen(t *testing.T) {
 	m := NewNoRels(t, nil)
 	defer m.Dispose()
 	// bind handlers
-	bindings, err := m.BindHandlers(&TestWhenHandlers{})
+	err := m.BindHandlers(&TestWhenHandlers{})
 	assert.NoError(t, err)
-	<-bindings.Ready
+
 	// run the test
 	m.Set(S{"A"}, nil)
 	<-m.When(S{"B", "C"}, nil)
@@ -757,9 +758,9 @@ func TestWhenNot(t *testing.T) {
 	m := NewNoRels(t, S{"B", "C"})
 	defer m.Dispose()
 	// bind handlers
-	bindings, err := m.BindHandlers(&TestWhenNotHandlers{})
+	err := m.BindHandlers(&TestWhenNotHandlers{})
 	assert.NoError(t, err)
-	<-bindings.Ready
+
 	// run the test
 	m.Add(S{"A"}, nil)
 	<-m.WhenNot(S{"B", "C"}, nil)
@@ -795,9 +796,9 @@ func TestPartialNegotiationPanic(t *testing.T) {
 	log := ""
 	captureLog(t, m, &log)
 	// bind handlers
-	bindings, err := m.BindHandlers(&TestPartialNegotiationPanicHandlers{})
+	err := m.BindHandlers(&TestPartialNegotiationPanicHandlers{})
 	assert.NoError(t, err)
-	<-bindings.Ready
+
 	// run the test
 	assert.Equal(t, am.Canceled, m.Add(S{"B"}, nil))
 	// assert
@@ -823,9 +824,9 @@ func TestPartialFinalPanic(t *testing.T) {
 	log := ""
 	captureLog(t, m, &log)
 	// bind handlers
-	bindings, err := m.BindHandlers(&TestPartialFinalPanicHandlers{})
+	err := m.BindHandlers(&TestPartialFinalPanicHandlers{})
 	assert.NoError(t, err)
-	<-bindings.Ready
+
 	// run the test
 	m.Add(S{"A", "B", "C"}, nil)
 	// assert
@@ -863,9 +864,8 @@ func TestStateCtx(t *testing.T) {
 	defer m.Dispose()
 	// bind handlers
 	handlers := &TestStateCtxHandlers{}
-	bindings, err := m.BindHandlers(handlers)
+	err := m.BindHandlers(handlers)
 	assert.NoError(t, err)
-	<-bindings.Ready
 	// run the test
 	// BState will assert
 	stepCh := make(chan bool)
@@ -909,9 +909,9 @@ func TestQueueCheckable(t *testing.T) {
 	defer m.Dispose()
 	// bind handlers
 	handlers := &TestQueueCheckableHandlers{}
-	bindings, err := m.BindHandlers(handlers)
+	err := m.BindHandlers(handlers)
 	assert.NoError(t, err)
-	<-bindings.Ready
+
 	// test
 	m.Add(S{"A"}, A{"t": t})
 	// assert
