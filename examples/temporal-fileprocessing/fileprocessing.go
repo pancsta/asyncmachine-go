@@ -1,6 +1,6 @@
 // Based on https://github.com/temporalio/samples-go/blob/main/fileprocessing/
 //
-// Go playground: https://goplay.tools/snippet/aTo4hsyJZck
+// Go playground: https://play.golang.com/p/Fv92Xpzlzv6
 //
 // This example shows a simple file processing workflow going from
 // DownloadingFile to FileUploaded.
@@ -224,7 +224,7 @@ func FileProcessingFlow(ctx context.Context, log Logger, filename string) (*am.M
 		log(msg, args...)
 	})
 
-	// bind handlers and wait for Ready
+	// bind handlers
 	err := machine.BindHandlers(&MachineHandlers{})
 	if err != nil {
 		return machine, err
