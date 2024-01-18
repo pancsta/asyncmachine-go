@@ -1,7 +1,8 @@
 # https://github.com/github-changelog-generator/github-changelog-generator/wiki/Advanced-change-log-generation-examples
 issues=false
-unreleased=false
+compare-link=false
 usernames-as-github-logins=true
+pr-label=
 since-tag=v0.1.0
 user=pancsta
 project=asyncmachine-go
