@@ -260,7 +260,7 @@ func (m *Machine) When(states []string, ctx context.Context) chan struct{} {
 		setMap[s] = m.Is(S{s})
 		if setMap[s] {
 			matched++
-	}
+		}
 	}
 	// add the binding to an index of each state
 	binding := &whenBinding{
@@ -974,8 +974,9 @@ func (m *Machine) processEmitters(e *Event) Result {
 				[]reflect.Value{reflect.ValueOf(e)})
 			if len(callRet) > 0 {
 				m.handlerDone <- callRet[0].Interface().(bool)
+				return
 			}
-			// handlers returns true by default
+			// handlers return true by default
 			m.handlerDone <- true
 		}()
 		// wait on the result / timeout / context
