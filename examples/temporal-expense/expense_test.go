@@ -1,6 +1,6 @@
 // Based on https://github.com/temporalio/samples-go/blob/main/expense/
 //
-// Go playgroundL https://goplay.tools/snippet/KAxlf3gm7pH
+// Go playgroundL https://play.golang.com/p/P1eg6tKh6E4
 //
 // This example shows a simple payment workflow with an async approval input,
 // going from CreatingExpense to PaymentCompleted.
@@ -230,7 +230,7 @@ func ExpenseFlow(
 		log(msg, args...)
 	})
 
-	// bind handlers and wait for Ready
+	// bind handlers
 	err := machine.BindHandlers(&MachineHandlers{})
 	if err != nil {
 		return machine, err
