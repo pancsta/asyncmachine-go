@@ -1,46 +1,44 @@
 # asyncmachine-go manual
 
-<!-- TOC -->
-* [asyncmachine-go manual](#asyncmachine-go-manual)
-  * [States](#states)
-    * [Everything is a state](#everything-is-a-state)
-    * [Defining States](#defining-states)
-    * [What to consider a "state"](#what-to-consider-a-state)
-    * [Asynchronous states](#asynchronous-states)
-  * [Mutations](#mutations)
-    * [`Add` mutation](#add-mutation)
-    * [`Remove` mutation](#remove-mutation)
-    * [`Set` mutation](#set-mutation)
-    * [Machine init](#machine-init)
-    * [State Clocks](#state-clocks)
-    * [Checking Active States](#checking-active-states)
-    * [Debugging](#debugging)
-    * [Auto states](#auto-states)
-    * [Multi states](#multi-states)
-    * ["Action" states](#action-states)
-  * [Transitions](#transitions)
-    * [Transition handlers](#transition-handlers)
-    * [Self handlers](#self-handlers)
-    * [Defining Handlers](#defining-handlers)
-    * [Event object](#event-object)
-    * [Transition lifecycle](#transition-lifecycle)
-    * [Calculating Target States](#calculating-target-states)
-    * [Negotiation Handlers](#negotiation-handlers)
-    * [Final Handlers](#final-handlers)
-    * [Dynamic Handlers](#dynamic-handlers)
-    * [State Context](#state-context)
-  * [Wait Methods](#wait-methods)
-  * [Error Handling](#error-handling)
-    * [Panics In Handlers](#panics-in-handlers)
-  * [Relations](#relations)
-    * [`Add` Relation](#add-relation)
-    * [`Remove` Relation](#remove-relation)
-    * [`Require` Relation](#require-relation)
-    * [`After` Relation](#after-relation)
-  * [Queue](#queue)
-  * [Logging](#logging)
-  * [Cheatsheet](#cheatsheet)
-<!-- TOC -->
+- [asyncmachine-go manual](#asyncmachine-go-manual)
+   - [States](#states)
+      - [Everything is a state](#everything-is-a-state)
+      - [Defining States](#defining-states)
+      - [What to consider a "state"](#what-to-consider-a-state)
+      - [Asynchronous states](#asynchronous-states)
+   - [Mutations](#mutations)
+      - [`Add` mutation](#add-mutation)
+      - [`Remove` mutation](#remove-mutation)
+      - [`Set` mutation](#set-mutation)
+      - [Machine init](#machine-init)
+      - [State Clocks](#state-clocks)
+      - [Checking Active States](#checking-active-states)
+      - [Debugging](#debugging)
+      - [Auto states](#auto-states)
+      - [Multi states](#multi-states)
+      - ["Action" states](#action-states)
+   - [Transitions](#transitions)
+      - [Transition handlers](#transition-handlers)
+      - [Self handlers](#self-handlers)
+      - [Defining Handlers](#defining-handlers)
+      - [Event object](#event-object)
+      - [Transition lifecycle](#transition-lifecycle)
+      - [Calculating Target States](#calculating-target-states)
+      - [Negotiation Handlers](#negotiation-handlers)
+      - [Final Handlers](#final-handlers)
+      - [Dynamic Handlers](#dynamic-handlers)
+      - [State Context](#state-context)
+   - [Wait Methods](#wait-methods)
+   - [Error Handling](#error-handling)
+      - [Panics In Handlers](#panics-in-handlers)
+   - [Relations](#relations)
+      - [`Add` Relation](#add-relation)
+      - [`Remove` Relation](#remove-relation)
+      - [`Require` Relation](#require-relation)
+      - [`After` Relation](#after-relation)
+   - [Queue](#queue)
+   - [Logging](#logging)
+   - [Cheatsheet](#cheatsheet)
 
 ## States
 
@@ -1132,13 +1130,16 @@ m.Add(am.S{"Foo"}, nil) // Executed
 ## Cheatsheet
 
 - **State**: main entity of the machine, higher-level abstraction of a meaningful workflow step
-- **Active states**: states currently activated in the machine, `0-n` where `n == len(states)` 
+- **Active states**: states currently activated in the machine, `0-n` where `n == len(states)`
 - **Called states**: states passed to a [Mutation Method](#mutations), explicitly requested
-- **Target states**: states after resolving relations, based on previously Active States, about to become new Active States
+- **Target states**: states after resolving relations, based on previously Active States, about to become new Active
+   States
 - **Mutation**: change to currently Active States, created by [Mutation Methods](#mutations)
 - **Transition**: container object for a Mutation, handles relations and events
 - **Accepted transition**: transition which mutation has passed negotiation and relations
 - **Canceled transition**: transition which mutation has NOT passed negotiation or relations
-- **Queued transition**: transition which couldn't execute, as another one was in progress, as was added to the queue instead
-- **Negotiation handlers**: handlers executed as the first ones, used to make decisions if the transition should be accepted
+- **Queued transition**: transition which couldn't execute, as another one was in progress, as was added to the queue
+   instead
+- **Negotiation handlers**: handlers executed as the first ones, used to make decisions if the transition should be
+   accepted
 - **Final handlers**: handlers executed as the last ones, used for operations with side effects
