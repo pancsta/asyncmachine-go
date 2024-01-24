@@ -1,5 +1,47 @@
 # asyncmachine-go manual
 
+<!-- TOC -->
+* [asyncmachine-go manual](#asyncmachine-go-manual)
+  * [States](#states)
+    * [Everything is a state](#everything-is-a-state)
+    * [Defining States](#defining-states)
+    * [What to consider a "state"](#what-to-consider-a-state)
+    * [Asynchronous states](#asynchronous-states)
+  * [Mutations](#mutations)
+    * [`Add` mutation](#add-mutation)
+    * [`Remove` mutation](#remove-mutation)
+    * [`Set` mutation](#set-mutation)
+    * [Machine init](#machine-init)
+    * [State Clocks](#state-clocks)
+    * [Checking Active States](#checking-active-states)
+    * [Debugging](#debugging)
+    * [Auto states](#auto-states)
+    * [Multi states](#multi-states)
+    * ["Action" states](#action-states)
+  * [Transitions](#transitions)
+    * [Transition handlers](#transition-handlers)
+    * [Self handlers](#self-handlers)
+    * [Defining Handlers](#defining-handlers)
+    * [Event object](#event-object)
+    * [Transition lifecycle](#transition-lifecycle)
+    * [Calculating Target States](#calculating-target-states)
+    * [Negotiation Handlers](#negotiation-handlers)
+    * [Final Handlers](#final-handlers)
+    * [Dynamic Handlers](#dynamic-handlers)
+    * [State Context](#state-context)
+  * [Wait Methods](#wait-methods)
+  * [Error Handling](#error-handling)
+    * [Panics In Handlers](#panics-in-handlers)
+  * [Relations](#relations)
+    * [`Add` Relation](#add-relation)
+    * [`Remove` Relation](#remove-relation)
+    * [`Require` Relation](#require-relation)
+    * [`After` Relation](#after-relation)
+  * [Queue](#queue)
+  * [Logging](#logging)
+  * [Cheatsheet](#cheatsheet)
+<!-- TOC -->
+
 ## States
 
 ### Everything is a state
@@ -34,7 +76,7 @@ am.States{
 State names have a predefined **naming convention** which is `CamelCase`.
 
 Examples here use a string representation of a machine in the format of `(ActiveState:\d)[InactiveState:\d]`
-(see [debug methods](#debug-methods)).
+(see [debugging](#debugging)).
 
 ### What to consider a "state"
 
@@ -193,9 +235,7 @@ machine.Clock("Foo") // 2
 ### Checking Active States
 
 The currently active states can be checked using `Is(states S) bool`, `Not(states S) bool`, and `Any(states ...S) bool`.
-There are also debug methods `String()`, `StringAll()` and `Inspect(states S)`.
-
-#### Is() Method
+There are also debugging `String()`, `StringAll()` and `Inspect(states S)`.
 
 `Is` checks if all the passed states are active.
 
@@ -205,8 +245,6 @@ machine.Add(am.S{"Foo"})
 machine.Is(am.S{"Foo"}) // true
 machine.Is(am.S{"Foo", "Bar"}) // false
 ```
-
-#### Not() Method
 
 `Not` checks if none of the passed states are active.
 
@@ -219,8 +257,6 @@ machine.Not(am.S{"A", "C"}) // false
 machine.Not(am.S{"C", "D"}) // true
 ```
 
-#### Any() Method
-
 `Any` is group call to `Is`, returns true if any of the params return true from `Is`.
 
 ```go
@@ -232,7 +268,7 @@ machine.Any(am.S{"Foo", "Bar"}, am.S{"Bar"}) // false
 machine.Any(am.S{"Foo"}, am.S{"Bar"}) // true
 ```
 
-#### Debug Methods
+### Debugging
 
 Being able to inspect your machine at any given step is VERY important. These are the basic method which don't require
 any additional tools.
@@ -609,7 +645,7 @@ On(FooEnter)
 State Context is a `context.Context()` with a lifetime of a **single state's instance**
  ([clock tick](#state-clocks)).
 
-Consider following transitions (represented by [StringAll()](#debug-methods)):
+Consider following transitions (represented by [StringAll()](#debugging)):
 
 1. `(Foo:1)[Bar:0 Baz:0 Exception:0]`
 2. `()[Foo:1 Bar:0 Baz:0 Exception:0]`
@@ -1095,14 +1131,14 @@ m.Add(am.S{"Foo"}, nil) // Executed
 
 ## Cheatsheet
 
-- State
-- Active states
-- Called states
-- Target states
-- Mutation
-- Transition
-- Accepted transition
-- Canceled transition
-- Queued transition
-- Negotiation handlers
-- Final handlers
+- **State**: main entity of the machine, higher-level abstraction of a meaningful workflow step
+- **Active states**: states currently activated in the machine, `0-n` where `n == len(states)` 
+- **Called states**: states passed to a [Mutation Method](#mutations), explicitly requested
+- **Target states**: states after resolving relations, based on previously Active States, about to become new Active States
+- **Mutation**: change to currently Active States, created by [Mutation Methods](#mutations)
+- **Transition**: container object for a Mutation, handles relations and events
+- **Accepted transition**: transition which mutation has passed negotiation and relations
+- **Canceled transition**: transition which mutation has NOT passed negotiation or relations
+- **Queued transition**: transition which couldn't execute, as another one was in progress, as was added to the queue instead
+- **Negotiation handlers**: handlers executed as the first ones, used to make decisions if the transition should be accepted
+- **Final handlers**: handlers executed as the last ones, used for operations with side effects
