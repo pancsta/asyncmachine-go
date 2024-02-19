@@ -137,9 +137,15 @@ func HandleFileProcessingTask(ctx context.Context, t *asynq.Task) error {
    - [Relations](/docs/manual.md#relations)
    - [Queue](/docs/manual.md#queue)
 
+## Debugger
+
+Preview of the TUI debugger, currently being work on in #5. 
+
+![TUI Debugger](assets/debugger.png)
+
 ## Changelog
 
-Latest release: `v0.2.1`.
+Latest release: `v0.2.1`
 
 See [CHANELOG.md](/CHANGELOG.md) for details.
 
