@@ -139,7 +139,7 @@ func HandleFileProcessingTask(ctx context.Context, t *asynq.Task) error {
 
 ## Debugger
 
-Preview of the TUI debugger, currently being work on in #5. 
+Preview of the TUI debugger, currently being work on in #5.
 
 ![TUI Debugger](assets/debugger.png)
 
