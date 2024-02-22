@@ -78,8 +78,6 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	}
 	// set early to catch the logs
 	m.Transition = t
-	// set early to catch the logs
-	m.Transition = t
 	states := t.CalledStates()
 	mutType := t.Type()
 	t.addSteps(newSteps("", states, TransitionStepTypeRequested, nil)...)
@@ -178,6 +176,7 @@ func (t *Transition) setupExitEnter() {
 	for _, s := range t.TargetStates {
 		// enter activate state only for multi states called directly
 		// not implied by Add
+		// TODO m.is()
 		if m.Is(S{s}) && !(m.States[s].Multi && lo.Contains(t.CalledStates(), s)) {
 			continue
 		}
@@ -291,11 +290,12 @@ func (t *Transition) emitEvents() Result {
 	if !t.Accepted {
 		result = Canceled
 	}
+	// TODO struct type
 	txArgs := A{"transition": t}
 	hasStateChanged := false
 
 	// start emitting
-	m.emit("transition-start", txArgs, nil)
+	m.emit(EventTransitionStart, txArgs, nil)
 
 	// NEGOTIATION CALLS PHASE (cancellable)
 	// FooFoo handlers
@@ -318,13 +318,13 @@ func (t *Transition) emitEvents() Result {
 		t.IsCompleted = true
 		hasStateChanged = m.HasStateChanged(t.StatesBefore, t.ClocksBefore)
 		if hasStateChanged {
-			m.emit("tick", A{"before": t.StatesBefore}, nil)
+			m.emit(EventTick, A{"before": t.StatesBefore}, nil)
 		}
 	}
 
 	// AUTO STATES
 	if result == Canceled {
-		m.emit("transition-cancel", txArgs, nil)
+		m.emit(EventTransitionCancel, txArgs, nil)
 	} else if hasStateChanged && !t.IsAuto() {
 		autoMutation := m.Resolver.GetAutoMutation()
 		if autoMutation != nil {
@@ -340,7 +340,7 @@ func (t *Transition) emitEvents() Result {
 	txArgs["pre_logs"] = m.logEntries
 	m.logEntries = []string{}
 	m.logEntriesLock.Unlock()
-	m.emit("transition-end", txArgs, nil)
+	m.emit(EventTransitionEnd, txArgs, nil)
 
 	if result == Canceled {
 		return Canceled

@@ -832,7 +832,7 @@ func (m *Machine) processQueue() Result {
 		m.queueLock.RUnlock()
 	}
 
-	m.emit("queue-end", nil, nil)
+	m.emit(EventQueueEnd, nil, nil)
 	m.Transition = nil
 	// release the atomic lock
 	m.queueProcessing.Swap(false)
@@ -1295,4 +1295,15 @@ func (m *Machine) Inspect(states S) string {
 		ret += "\n"
 	}
 	return ret
+}
+
+// Switch returns the first state from the passed list that is currently active,
+// making it useful for switch statements.
+func (m *Machine) Switch(states ...string) string {
+	for _, state := range states {
+		if lo.Contains(m.ActiveStates, state) {
+			return state
+		}
+	}
+	return ""
 }
