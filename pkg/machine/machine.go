@@ -417,6 +417,19 @@ func (m *Machine) IsErr() bool {
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (m *Machine) Remove(states S, args A) Result {
+	// return early if none of the states is active
+	m.queueLock.RLock()
+	lenQueue := len(m.Queue)
+	// try ignoring this mutation, if none of the states is currently active
+	var statesAny []S
+	for _, name := range states {
+		statesAny = append(statesAny, S{name})
+	}
+	if lenQueue == 0 && !m.DuringTransition() && !m.Any(statesAny...) {
+		m.queueLock.RUnlock()
+		return Executed
+	}
+	m.queueLock.RUnlock()
 	m.queueMutation(MutationTypeRemove, states, args)
 	return m.processQueue()
 }
