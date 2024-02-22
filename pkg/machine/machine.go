@@ -709,13 +709,30 @@ func (m *Machine) recoverToErr(emitter *emitter, r any) {
 // MustParseStates parses the states and returns them as a list.
 // Panics when a state is not defined.
 func (m *Machine) MustParseStates(states S) S {
-	// check if all FromState are defined in m.FromState
+	// check if all states are defined in m.States
 	for _, s := range states {
 		if _, ok := m.States[s]; !ok {
 			panic(fmt.Sprintf("state %s is not defined", s))
 		}
 	}
-	return states
+	return lo.Uniq(states)
+}
+
+// VerifyStates verifies an array of state names and returns an error in case
+// at least one isn't defined.
+func (m *Machine) VerifyStates(states S) error {
+	var errs []error
+	for _, s := range states {
+		if _, ok := m.States[s]; !ok {
+			errs = append(errs, fmt.Errorf("state %s is not defined", s))
+		}
+	}
+	if len(errs) > 1 {
+		return errors.Join(errs...)
+	} else if len(errs) == 1 {
+		return errs[0]
+	}
+	return nil
 }
 
 // setActiveStates sets the new active states incrementing the counters and
