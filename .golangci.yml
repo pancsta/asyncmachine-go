@@ -1,7 +1,6 @@
 run:
   skip-files:
     - "examples/.*"
-    - "pkg/debugger/.*"
 
 linters:
   enable:

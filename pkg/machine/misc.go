@@ -80,6 +80,14 @@ func (r Result) String() string {
 	return ""
 }
 
+const (
+	EventTransitionEnd    string = "transition-end"
+	EventTransitionStart  string = "transition-start"
+	EventTransitionCancel string = "transition-cancel"
+	EventQueueEnd         string = "queue-end"
+	EventTick             string = "tick"
+)
+
 // MutationType enum
 type MutationType int
 
@@ -110,6 +118,7 @@ type Mutation struct {
 }
 
 // TransitionStepType enum
+// TODO rename to StepType
 type TransitionStepType int
 
 const (
@@ -117,6 +126,7 @@ const (
 	TransitionStepTypeTransition
 	TransitionStepTypeSet
 	TransitionStepTypeRemove
+	// TODO rename to StepTypeRemoveNotSet
 	TransitionStepTypeNoSet
 	TransitionStepTypeRequested
 	TransitionStepTypeCancel
@@ -127,12 +137,14 @@ func (tt TransitionStepType) String() string {
 	case TransitionStepTypeRelation:
 		return "rel"
 	case TransitionStepTypeTransition:
+		// TODO rename to TransitionStepTypeHandler ?
 		return "transition"
 	case TransitionStepTypeSet:
 		return "set"
 	case TransitionStepTypeRemove:
 		return "remove"
 	case TransitionStepTypeNoSet:
+		// TODO rename to TransitionStepTypeRemoveTry ?
 		return "no-set"
 	case TransitionStepTypeRequested:
 		return "requested"
@@ -167,8 +179,8 @@ const (
 	RelationRemove
 )
 
-func (r Relation) String(relation Relation) string {
-	switch relation {
+func (r Relation) String() string {
+	switch r {
 	case RelationAfter:
 		return "after"
 	case RelationAdd:
@@ -283,11 +295,12 @@ type ExceptionArgsPanic struct {
 func (eh *ExceptionHandler) ExceptionState(e *Event) {
 	if e.Machine.PrintExceptions {
 		err := e.Args["err"].(error)
-		details := e.Args["panic"].(*ExceptionArgsPanic)
-		if details == nil {
+		_, detailsOK := e.Args["panic"]
+		if !detailsOK {
 			e.Machine.log(LogChanges, "[error:%s] %s (%s)", err)
 			return
 		}
+		details := e.Args["panic"].(*ExceptionArgsPanic)
 		mutType := details.Transition.Mutation.Type
 		e.Machine.log(LogChanges, "[error:%s] %s (%s)", mutType,
 			j(details.CalledStates), err)

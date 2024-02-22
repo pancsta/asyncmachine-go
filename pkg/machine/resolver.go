@@ -222,7 +222,7 @@ func (rr *DefaultRelationsResolver) getMissingRequires(
 	t := rr.Transition
 	ret := S{}
 	for _, req := range state.Require {
-		t.addSteps(newStep(req, name, TransitionStepTypeRelation,
+		t.addSteps(newStep(name, req, TransitionStepTypeRelation,
 			RelationRequire))
 		if lo.Contains(states, req) {
 			continue
@@ -230,7 +230,7 @@ func (rr *DefaultRelationsResolver) getMissingRequires(
 		ret = append(ret, req)
 		t.addSteps(newStep(name, "", TransitionStepTypeNoSet, nil))
 		if lo.Contains(t.Mutation.CalledStates, name) {
-			t.addSteps(newStep(req, "",
+			t.addSteps(newStep("", req,
 				TransitionStepTypeCancel, nil))
 		}
 	}

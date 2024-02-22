@@ -449,7 +449,6 @@ func (h *TestNegotiationCancelHandlers) DEnter(_ *am.Event) bool {
 	return false
 }
 
-// TODO when transition is canceled, it should not set the auto states
 func TestNegotiationCancel(t *testing.T) {
 	tests := []struct {
 		name string
@@ -952,21 +951,33 @@ func TestClock(t *testing.T) {
 	// ()[]
 	m.Add(S{"A", "B"}, nil)
 	// (A B)[A1 B1]
+	assertStates(t, m, S{"A", "B"})
+
 	m.Add(S{"A", "B"}, nil)
 	// (A B)[A1 B2]
+	assertStates(t, m, S{"A", "B"})
+
 	m.Add(S{"A", "B", "C"}, nil)
 	// (A B C)[A1 B3 C1]
+	assertStates(t, m, S{"A", "B", "C"})
+
 	m.Set(S{"D"}, nil)
 	// (D)[A1 B3 C1 D1]
+	assertStates(t, m, S{"D"})
+
 	m.Add(S{"D", "C"}, nil)
 	// (D C)[A1 B3 C2 D1]
+	assertStates(t, m, S{"D", "C"})
+
 	m.Remove(S{"B", "C"}, nil)
 	// (D)[A1 B3 C2 D1]
+	assertStates(t, m, S{"D"})
+
 	m.Add(S{"A", "B"}, nil)
 	// (D A B)[A2 B4 C2 D1]
+	assertStates(t, m, S{"D", "A", "B"})
 
 	// assert
-	assertStates(t, m, S{"A", "B", "D"})
 	assert.Equal(t, m.Time(S{"A", "B", "C", "D"}), T{2, 4, 2, 1})
 
 	// test 2

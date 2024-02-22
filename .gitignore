@@ -44,5 +44,5 @@ go.work
 
 # local dev
 /.dev
-/pkg/debugger
+/tools/debugger
 /docs/cookbook.md
