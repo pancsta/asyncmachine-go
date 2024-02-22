@@ -2,6 +2,9 @@ version: '3'
 
 dotenv: ['.env']
 
+env:
+  GOFMT: gofumpt
+
 tasks:
 
   demo:
@@ -38,9 +41,11 @@ tasks:
 
   format:
     cmds:
-      - gofumpt -w pkg/machine/*.go
-      - gofumpt -w examples/*/*.go
-      - goimports -w pkg/**
+      - $GOFMT -w pkg/**/*.go
+      - $GOFMT -w examples/*/*.go
+      - $GOFMT -w tools/debugger/*.go
+      - goimports -w -local pkg/**/*.go
+      - goimports -w -local tools/**/*.go
 
   lint:
     cmds:
@@ -52,6 +57,7 @@ tasks:
           echo "Error: Empty links" >&2
           exit 1
         fi
+      - task: check-fmt
 
   lint-go:
     cmds:
@@ -59,8 +65,16 @@ tasks:
 
   lint-md:
     cmds:
-      # TODO -g
-      - mdl -c .mdlrc .
+      - mdl -g -c .mdlrc .
+
+  check-fmt:
+    silent: false
+    cmds:
+      - test -z $($GOFMT -l pkg/**/*.go)
+      - test -z $($GOFMT -l examples/*/*.go)
+      - test -z $($GOFMT -l tools/debugger/*.go)
+      - test -z $(goimports -l -local pkg/**/*.go)
+      - test -z $(goimports -l -local tools/**/*.go)
 
   changelog:
     cmds:
