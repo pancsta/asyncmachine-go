@@ -155,7 +155,8 @@ func (h *machineHandlers) InitState(_ *am.Event) {
 	keystrokesBar := cview.NewFrame(cview.NewBox())
 	keystrokesBar.SetBorders(0, 0, 0, 0, 0, 0)
 	// TODO adjust keystrokes based on focused context
-	keys := "Space: play/pause | Left/Right: rewind/fwd | Alt+e: expand/collapse | Tab: focus"
+	keys := "Space: play/pause | Left/Right: rewind/fwd | Alt+e: " +
+		"expand/collapse | Tab: focus"
 	// TODO legend
 	// * handler, > rel source, < rel target, + add, - remove, bold touched,
 	//   underline requested, ! cancelled
