@@ -18,6 +18,9 @@ type A map[string]any
 // T is an ordered list of state clocks.
 type T []uint64
 
+// Clocks is a map of state names to their clocks.
+type Clocks map[string]uint64
+
 // State defines a single state of a machine, its properties and relations.
 type State struct {
 	Auto    bool

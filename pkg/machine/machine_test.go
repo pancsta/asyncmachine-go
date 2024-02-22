@@ -463,7 +463,7 @@ func TestNegotiationCancel(t *testing.T) {
 				// DEnter will cancel the transition
 				return m.Set(S{"D"}, nil)
 			},
-			regexp.MustCompile(`\[cancel:\w+?] \(D\) by DEnter`),
+			regexp.MustCompile(`\[cancel] \(D\) by DEnter`),
 		},
 		{
 			"using add",
@@ -472,7 +472,7 @@ func TestNegotiationCancel(t *testing.T) {
 				// DEnter will cancel the transition
 				return m.Add(S{"D"}, nil)
 			},
-			regexp.MustCompile(`\[cancel:\w+?] \(D A\) by DEnter`),
+			regexp.MustCompile(`\[cancel] \(D A\) by DEnter`),
 		},
 	}
 	for _, test := range tests {
@@ -541,7 +541,7 @@ func TestNegotiationRemove(t *testing.T) {
 	// assert
 	assert.Equal(t, am.Canceled, result, "transition should be canceled")
 	assertStates(t, m, S{"A"}, "state shouldnt be changed")
-	assert.Regexp(t, `\[cancel:\w+?] \(\) by AExit`, log,
+	assert.Regexp(t, `\[cancel] \(\) by AExit`, log,
 		"log should explain the reason of cancellation")
 }
 
@@ -803,7 +803,7 @@ func TestPartialNegotiationPanic(t *testing.T) {
 	assert.Equal(t, am.Canceled, m.Add(S{"B"}, nil))
 	// assert
 	assertStates(t, m, S{"A", "Exception"})
-	assert.Regexp(t, `\[cancel:\w+?] \(B A\) by recover`, log,
+	assert.Regexp(t, `\[cancel] \(B A\) by recover`, log,
 		"log contains the target states and handler")
 }
 
@@ -835,7 +835,7 @@ func TestPartialFinalPanic(t *testing.T) {
 		"log contains the target states and handler")
 	assert.Contains(t, log, "[error:trace] goroutine",
 		"log contains the stack trace")
-	assert.Regexp(t, `\[cancel:\w+?] \(A B C\) by recover`, log,
+	assert.Regexp(t, `\[cancel] \(A B C\) by recover`, log,
 		"log contains the target states and handler")
 }
 
