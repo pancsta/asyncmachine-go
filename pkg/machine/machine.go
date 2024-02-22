@@ -86,10 +86,19 @@ type Machine struct {
 // New creates a new Machine instance, bound to context and modified with
 // optional Opts
 func New(ctx context.Context, states States, opts *Opts) *Machine {
+	// parse relations
+	parsedStates := cloneStates(states)
+	for name, state := range states {
+		// avoid self removal
+		if lo.Contains(state.Remove, name) {
+			state.Remove = lo.Without(state.Remove, name)
+			parsedStates[name] = state
+		}
+	}
 	m := &Machine{
 		ID:               uuid.New().String(),
 		HandlerTimeout:   time.Second,
-		States:           states,
+		States:           parsedStates,
 		clock:            map[string]uint64{},
 		emitters:         []*emitter{},
 		PrintExceptions:  true,

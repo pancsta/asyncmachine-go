@@ -322,3 +322,32 @@ func padString(str string, length int, pad string) string {
 		}
 	}
 }
+
+// cloneStates deep clones the states struct and returns a copy.
+func cloneStates(states States) States {
+	ret := make(States)
+	for name, state := range states {
+		stateCopy := State{
+			Auto:  state.Auto,
+			Multi: state.Multi,
+		}
+		if state.Require != nil {
+			stateCopy.Require = make(S, len(state.Require))
+			copy(stateCopy.Require, state.Require)
+		}
+		if state.Add != nil {
+			stateCopy.Add = make(S, len(state.Add))
+			copy(stateCopy.Add, state.Add)
+		}
+		if state.Remove != nil {
+			stateCopy.Remove = make(S, len(state.Remove))
+			copy(stateCopy.Remove, state.Remove)
+		}
+		if state.After != nil {
+			stateCopy.After = make(S, len(state.After))
+			copy(stateCopy.After, state.After)
+		}
+		ret[name] = stateCopy
+	}
+	return ret
+}
