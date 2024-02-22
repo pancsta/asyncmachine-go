@@ -60,6 +60,9 @@ type Transition struct {
 
 // newTransition creates a new transition for the given mutation.
 func newTransition(m *Machine, item *Mutation) *Transition {
+	m.activeStatesLock.RLock()
+	defer m.activeStatesLock.RUnlock()
+
 	t := &Transition{
 		Mutation:     item,
 		StatesBefore: m.ActiveStates,
