@@ -85,7 +85,8 @@ type Machine struct {
 
 // New creates a new Machine instance, bound to context and modified with
 // optional Opts
-func New(ctx context.Context, states States, opts *Opts) *Machine { // parse relations
+func New(ctx context.Context, states States, opts *Opts) *Machine {
+	// parse relations
 	parsedStates := cloneStates(states)
 	for name, state := range states {
 		// avoid self removal
