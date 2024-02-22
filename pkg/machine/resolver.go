@@ -61,9 +61,9 @@ func (rr *DefaultRelationsResolver) GetTargetStates(
 		}
 		m.log(lvl, "[rel:remove] %s by %s", name, j(blockedBy))
 		if m.Is(S{name}) {
-			t.addSteps(newStep(name, "", TransitionStepTypeRemove, nil))
+			t.addSteps(newStep("", name, TransitionStepTypeRemove, nil))
 		} else {
-			t.addSteps(newStep(name, "", TransitionStepTypeNoSet, nil))
+			t.addSteps(newStep("", name, TransitionStepTypeNoSet, nil))
 		}
 		return false
 	})
@@ -179,7 +179,7 @@ func (rr *DefaultRelationsResolver) stateBlockedBy(
 		if !lo.Contains(state.Remove, blocked) {
 			continue
 		}
-		t.addSteps(newStep(blocked, blocking, TransitionStepTypeRelation,
+		t.addSteps(newStep(blocking, blocked, TransitionStepTypeRelation,
 			RelationRemove))
 		blockedBy = append(blockedBy, blocking)
 	}
