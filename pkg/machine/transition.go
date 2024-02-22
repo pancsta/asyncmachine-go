@@ -12,7 +12,6 @@ func newStep(from string, to string, stepType TransitionStepType,
 	data any,
 ) *TransitionStep {
 	return &TransitionStep{
-		ID:        uuid.New().String(),
 		FromState: from,
 		ToState:   to,
 		Type:      stepType,
@@ -32,15 +31,15 @@ func newSteps(from string, toStates S, stepType TransitionStepType,
 
 // Transition represents processing of a single mutation withing a machine.
 type Transition struct {
+	ID string
 	// List of steps taken by this transition (so far).
-	// TODO []*TransitionStep
 	Steps []*TransitionStep
-	// Index of added steps.
-	StepIDs map[string]bool
 	// When true, execution of the transition has been completed.
 	IsCompleted bool
 	// states before the transition
 	StatesBefore S
+	// clocks of the states from before the transition
+	ClocksBefore Clocks
 	// States with "enter" handlers to execute
 	Enters S
 	// States with "exit" handlers to executed
@@ -53,6 +52,8 @@ type Transition struct {
 	Mutation *Mutation
 	// Parent machine
 	Machine *Machine
+	// Log entries produced during the transition
+	LogEntries []string
 
 	// Latest / current step of the transition
 	latestStep *TransitionStep
@@ -63,13 +64,22 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	m.activeStatesLock.RLock()
 	defer m.activeStatesLock.RUnlock()
 
+	clocks := Clocks{}
+	for _, state := range m.ActiveStates {
+		clocks[state] = m.clock[state]
+	}
 	t := &Transition{
+		ID:           uuid.New().String(),
 		Mutation:     item,
 		StatesBefore: m.ActiveStates,
+		ClocksBefore: clocks,
 		Machine:      m,
 		Accepted:     true,
-		StepIDs:      map[string]bool{},
 	}
+	// set early to catch the logs
+	m.Transition = t
+	// set early to catch the logs
+	m.Transition = t
 	states := t.CalledStates()
 	mutType := t.Type()
 	t.addSteps(newSteps("", states, TransitionStepTypeRequested, nil)...)
@@ -133,14 +143,7 @@ func (t *Transition) Type() MutationType {
 }
 
 func (t *Transition) addSteps(steps ...*TransitionStep) {
-	for _, step := range steps {
-		// prevent dups from >1 emitter
-		if _, ok := t.StepIDs[step.ID]; ok {
-			continue
-		}
-		t.StepIDs[step.ID] = true
-		t.Steps = append(t.Steps, step)
-	}
+	t.Steps = append(t.Steps, steps...)
 }
 
 // String representation of the transition and the steps taken so far.
@@ -188,6 +191,7 @@ func (t *Transition) setupExitEnter() {
 func (t *Transition) emitSelfEvents() Result {
 	m := t.Machine
 	ret := Executed
+	var handlerCalled bool
 	for _, s := range t.CalledStates() {
 		// only the active states
 		if !t.Machine.Is(S{s}) {
@@ -196,8 +200,10 @@ func (t *Transition) emitSelfEvents() Result {
 		name := s + s
 		step := newStep(s, "", TransitionStepTypeTransition, name)
 		step.IsSelf = true
-		t.addSteps(step)
-		ret = m.emit(name, t.Mutation.Args, step)
+		ret, handlerCalled = m.emit(name, t.Mutation.Args, step)
+		if handlerCalled {
+			t.addSteps(step)
+		}
 		if ret == Canceled {
 			break
 		}
@@ -245,9 +251,12 @@ func (t *Transition) emitExitEvents() Result {
 
 func (t *Transition) emitHandler(from, to, event string, args A) Result {
 	step := newStep(from, to, TransitionStepTypeTransition, event)
-	t.addSteps(step)
 	t.latestStep = step
-	return t.Machine.emit(event, args, step)
+	ret, handlerCalled := t.Machine.emit(event, args, step)
+	if handlerCalled {
+		t.addSteps(step)
+	}
+	return ret
 }
 
 func (t *Transition) emitFinalEvents() {
@@ -266,7 +275,10 @@ func (t *Transition) emitFinalEvents() {
 		step.IsFinal = true
 		step.IsEnter = isEnter
 		t.latestStep = step
-		ret := t.Machine.emit(handler, t.Mutation.Args, step)
+		ret, handlerCalled := t.Machine.emit(handler, t.Mutation.Args, step)
+		if handlerCalled {
+			t.addSteps(step)
+		}
 		if ret == Canceled {
 			break
 		}
@@ -304,7 +316,7 @@ func (t *Transition) emitEvents() Result {
 		m.setActiveStates(t.CalledStates(), t.TargetStates, t.IsAuto())
 		t.emitFinalEvents()
 		t.IsCompleted = true
-		hasStateChanged = m.HasStateChanged(t.StatesBefore)
+		hasStateChanged = m.HasStateChanged(t.StatesBefore, t.ClocksBefore)
 		if hasStateChanged {
 			m.emit("tick", A{"before": t.StatesBefore}, nil)
 		}
@@ -322,7 +334,12 @@ func (t *Transition) emitEvents() Result {
 		}
 	}
 
-	// stop emitting
+	// stop emitting, collect previous log entries
+	m.logEntriesLock.Lock()
+	// TODO struct type
+	txArgs["pre_logs"] = m.logEntries
+	m.logEntries = []string{}
+	m.logEntriesLock.Unlock()
 	m.emit("transition-end", txArgs, nil)
 
 	if result == Canceled {
