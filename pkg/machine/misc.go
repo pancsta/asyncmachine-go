@@ -210,6 +210,22 @@ const (
 	LogEverything
 )
 
+func (l LogLevel) String() string {
+	switch l {
+	case LogNothing:
+		return "nothing"
+	case LogChanges:
+		return "changes"
+	case LogOps:
+		return "ops"
+	case LogDecisions:
+		return "decisions"
+	case LogEverything:
+		return "everything"
+	}
+	return "nothing"
+}
+
 type (
 	// map of (single) state names to a list of bindings
 	indexWhen map[string][]*whenBinding

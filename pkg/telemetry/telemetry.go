@@ -57,6 +57,8 @@ type MsgTx struct {
 	PreLogEntries []string
 	// tx was triggered by an auto state
 	IsAuto bool
+	// queue length at the start of the transition
+	Queue int
 }
 
 func (d *MsgTx) Clock(statesIndex am.S, state string) uint64 {
@@ -118,7 +120,7 @@ func MonitorTransitions(m *am.Machine, url string) error {
 		ID:          m.ID,
 		StatesIndex: m.StateNames,
 		States:      m.States,
-		LogLevel:    m.LogLevel,
+		LogLevel:    m.GetLogLevel(),
 	}
 	// TODO retries
 	err = client.sendMsgStruct(msg)
@@ -127,11 +129,12 @@ func MonitorTransitions(m *am.Machine, url string) error {
 	}
 	go func() {
 		// bind to transitions
-		txEndCh := m.On([]string{"transition-end"}, nil)
+		txEndCh := m.On([]string{am.EventTransitionEnd}, nil)
 		// send incoming transitions
 		for event := range txEndCh {
 			tx := event.Args["transition"].(*am.Transition)
 			preLogs := event.Args["pre_logs"].([]string)
+			queueLen := event.Args["queue_len"].(int)
 			msg := &MsgTx{
 				ID:           tx.ID,
 				StatesActive: make([]bool, len(m.StateNames)),
@@ -144,6 +147,7 @@ func MonitorTransitions(m *am.Machine, url string) error {
 				LogEntries:    tx.LogEntries,
 				PreLogEntries: preLogs,
 				IsAuto:        tx.IsAuto(),
+				Queue:         queueLen,
 			}
 			for i, state := range m.StateNames {
 				msg.StatesActive[i] = m.Is(am.S{state})

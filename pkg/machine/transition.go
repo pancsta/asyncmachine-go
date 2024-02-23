@@ -338,6 +338,7 @@ func (t *Transition) emitEvents() Result {
 	m.logEntriesLock.Lock()
 	// TODO struct type
 	txArgs["pre_logs"] = m.logEntries
+	txArgs["queue_len"] = len(m.Queue)
 	m.logEntries = []string{}
 	m.logEntriesLock.Unlock()
 	m.emit(EventTransitionEnd, txArgs, nil)
