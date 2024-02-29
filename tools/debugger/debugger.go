@@ -59,11 +59,9 @@ func main() {
 	mach.SetLogLevel(am.LogOps)
 	// mach.SetLogLevel(am.LogEverything)
 	mach.LogID = false
-	logBuf := []string{}
 	mach.SetLogger(func(level am.LogLevel, msg string, args ...any) {
 		txt := fmt.Sprintf(msg, args...)
 		log.Print(txt)
-		logBuf = append(logBuf, txt)
 	})
 	h := &machineHandlers{mach: mach}
 	err = mach.BindHandlers(h)
@@ -73,7 +71,7 @@ func main() {
 	// redraw on auto states
 	go func() {
 		// bind to transitions
-		txEndCh := mach.On([]string{"transition-end"}, nil)
+		txEndCh := mach.On([]string{am.EventTransitionEnd}, nil)
 		for event := range txEndCh {
 			tx := event.Args["transition"].(*am.Transition)
 			if tx.IsAuto() && tx.Accepted {
@@ -126,7 +124,9 @@ type machineHandlers struct {
 	nextTxBarLeft  *cview.Frame
 	nextTxBarRight *cview.Frame
 	msgTxsParsed   []MsgTxParsed
-	helpScreen     *cview.Panels
+	// TODO legend
+	helpScreen    *cview.Panels
+	keystrokesBar *cview.TextView
 }
 
 type MsgTxParsed struct {
@@ -152,18 +152,6 @@ func (h *machineHandlers) InitState(_ *am.Event) {
 	h.app = cview.NewApplication()
 	h.InitUIComponents()
 
-	keystrokesBar := cview.NewFrame(cview.NewBox())
-	keystrokesBar.SetBorders(0, 0, 0, 0, 0, 0)
-	// TODO adjust keystrokes based on focused context
-	keys := "Space: play/pause | Left/Right: rewind/fwd | Alt+e: " +
-		"expand/collapse | Tab: focus"
-	// TODO legend
-	// * handler, > rel source, < rel target, + add, - remove, bold touched,
-	//   underline requested, ! cancelled
-	keystrokesBar.AddText(keys, true, cview.AlignRight, colorActive)
-	// keystrokesBar := cview.NewList()
-	// keystrokesBar.AddItem(cview.NewListItem(keys))
-
 	// layout
 	currTxBar := cview.NewGrid()
 	currTxBar.AddItem(h.currTxBarLeft, 0, 0, 1, 1, 0, 0, false)
@@ -182,7 +170,7 @@ func (h *machineHandlers) InitState(_ *am.Event) {
 	mainGrid.AddItem(h.timelineTxs, 2, 0, 1, 3, 0, 0, false)
 	mainGrid.AddItem(nextTxBar, 3, 0, 1, 3, 0, 0, false)
 	mainGrid.AddItem(h.timelineSteps, 4, 0, 1, 3, 0, 0, false)
-	mainGrid.AddItem(keystrokesBar, 5, 0, 1, 3, 0, 0, false)
+	mainGrid.AddItem(h.keystrokesBar, 5, 0, 1, 3, 0, 0, false)
 
 	h.handleKeyboard()
 
@@ -212,7 +200,6 @@ func (h *machineHandlers) InitUIComponents() {
 	// })
 	h.log.SetTextAlign(cview.AlignLeft)
 	h.log.SetDynamicColors(true)
-	// TODO log level shown here
 	h.log.SetTitle(" Log ")
 	// TODO step info bar: type, from, to, data
 	h.currTxBarLeft = cview.NewFrame(cview.NewBox())
@@ -229,8 +216,14 @@ func (h *machineHandlers) InitUIComponents() {
 	// timeline steps
 	h.timelineSteps = cview.NewProgressBar()
 	h.timelineSteps.SetBorder(true)
+	// keystrokes bar
+	h.keystrokesBar = cview.NewTextView()
+	h.keystrokesBar.SetDynamicColors(true)
+
+	// update models
 	h.updateTimelines()
 	h.updateTxBars()
+	h.updateKeyBars()
 	// collect all focusable components
 	h.focusable = []*cview.Box{
 		h.log.Box, h.tree.Box, h.timelineTxs.Box,
@@ -268,13 +261,13 @@ func (h *machineHandlers) handleKeyboard() {
 	for _, key := range cview.Keys.MovePreviousField {
 		err := inputHandler.Set(key, wrap(focusManager.FocusPrevious))
 		if err != nil {
-			log.Fatal(err)
+			h.mach.AddErr(err)
 		}
 	}
 	for _, key := range cview.Keys.MoveNextField {
 		err := inputHandler.Set(key, wrap(focusManager.FocusNext))
 		if err != nil {
-			log.Fatal(err)
+			h.mach.AddErr(err)
 		}
 	}
 
@@ -288,7 +281,7 @@ func (h *machineHandlers) handleKeyboard() {
 		return nil
 	})
 	if err != nil {
-		log.Fatal(err)
+		h.mach.AddErr(err)
 	}
 
 	// left
@@ -299,12 +292,11 @@ func (h *machineHandlers) handleKeyboard() {
 		} else {
 			h.mach.Add(am.S{ss.Rewind}, nil)
 		}
-		// TODO support jump to next tx involving the selected state
-		// TODO fast scroll while holding the key
+		// TODO fast jump scroll while holding the key
 		return nil
 	})
 	if err != nil {
-		log.Fatal(err)
+		h.mach.AddErr(err)
 	}
 
 	// right
@@ -315,16 +307,39 @@ func (h *machineHandlers) handleKeyboard() {
 		} else {
 			h.mach.Add(am.S{ss.Fwd}, nil)
 		}
-		// TODO support jump to next tx involving the selected state
-		// TODO fast scroll while holding the key
+		// TODO fast jump scroll while holding the key
 		return nil
 	})
 	if err != nil {
-		log.Fatal(err)
+		h.mach.AddErr(err)
 	}
 
-	// right
-	err = inputHandler.Set("alt+e", func(ev *tcell.EventKey) *tcell.EventKey {
+	// alt+left state jump back
+	err = inputHandler.Set("alt+Left", func(ev *tcell.EventKey) *tcell.EventKey {
+		if h.mach.Is(am.S{ss.StateNameSelected}) {
+			h.mach.Remove(am.S{ss.Playing}, nil)
+			h.ScrollToStateTx(h.selectedState, false)
+		}
+		return nil
+	})
+	if err != nil {
+		h.mach.AddErr(err)
+	}
+
+	// alt+right state jump fwd
+	err = inputHandler.Set("alt+Right", func(ev *tcell.EventKey) *tcell.EventKey {
+		if h.mach.Is(am.S{ss.StateNameSelected}) {
+			h.mach.Remove(am.S{ss.Playing}, nil)
+			h.ScrollToStateTx(h.selectedState, true)
+		}
+		return nil
+	})
+	if err != nil {
+		h.mach.AddErr(err)
+	}
+
+	// expand / collapse alt+e
+	err = inputHandler.Set("alt+e", func(_ *tcell.EventKey) *tcell.EventKey {
 		expanded := false
 		children := h.tree.GetRoot().GetChildren()
 		for _, child := range children {
@@ -344,7 +359,16 @@ func (h *machineHandlers) handleKeyboard() {
 		return nil
 	})
 	if err != nil {
-		log.Fatal(err)
+		h.mach.AddErr(err)
+	}
+
+	// alt+l live view
+	err = inputHandler.Set("alt+l", func(_ *tcell.EventKey) *tcell.EventKey {
+		h.mach.Add(am.S{ss.LiveView}, nil)
+		return nil
+	})
+	if err != nil {
+		h.mach.AddErr(err)
 	}
 
 	h.app.SetInputCapture(inputHandler.Capture)
@@ -353,6 +377,7 @@ func (h *machineHandlers) handleKeyboard() {
 func (h *machineHandlers) StateNameSelectedState(e *am.Event) {
 	h.selectedState = e.Args["selectedStateName"].(string)
 	h.updateTree()
+	h.updateKeyBars()
 }
 
 func (h *machineHandlers) StateNameSelectedStateNameSelected(e *am.Event) {
@@ -362,6 +387,24 @@ func (h *machineHandlers) StateNameSelectedStateNameSelected(e *am.Event) {
 func (h *machineHandlers) StateNameSelectedEnd(_ *am.Event) {
 	h.selectedState = ""
 	h.updateTree()
+	h.updateKeyBars()
+}
+
+func (h *machineHandlers) LiveViewState(_ *am.Event) {
+	if h.cursorTx == 0 {
+		return
+	}
+	h.cursorTx = len(h.msgTxs)
+	h.fullRedraw()
+}
+
+func (h *machineHandlers) fullRedraw() {
+	h.updateTree()
+	h.updateLog()
+	h.updateTimelines()
+	h.updateTxBars()
+	h.updateKeyBars()
+	h.draw()
 }
 
 func (h *machineHandlers) PlayingState(_ *am.Event) {
@@ -388,7 +431,7 @@ func (h *machineHandlers) PlayingEnd(_ *am.Event) {
 }
 
 func (h *machineHandlers) FwdEnter(_ *am.Event) bool {
-	return h.cursorTx < h.timelineTxs.GetMax()
+	return h.cursorTx < len(h.msgTxs)
 }
 
 func (h *machineHandlers) FwdState(_ *am.Event) {
@@ -398,11 +441,7 @@ func (h *machineHandlers) FwdState(_ *am.Event) {
 	if h.mach.Is(am.S{ss.Playing}) && h.cursorTx == len(h.msgTxs) {
 		h.mach.Remove(am.S{ss.Playing}, nil)
 	}
-	h.updateTree()
-	h.updateLog()
-	h.updateTimelines()
-	h.updateTxBars()
-	h.draw()
+	h.fullRedraw()
 }
 
 func (h *machineHandlers) RewindEnter(_ *am.Event) bool {
@@ -413,11 +452,7 @@ func (h *machineHandlers) RewindState(_ *am.Event) {
 	defer h.mach.Remove(am.S{ss.Rewind}, nil)
 	h.cursorTx--
 	h.cursorStep = 0
-	h.updateTree()
-	h.updateLog()
-	h.updateTimelines()
-	h.updateTxBars()
-	h.draw()
+	h.fullRedraw()
 }
 
 func (h *machineHandlers) FwdStepEnter(_ *am.Event) bool {
@@ -438,9 +473,7 @@ func (h *machineHandlers) FwdStepState(_ *am.Event) {
 		return
 	}
 	h.cursorStep++
-	h.updateTree()
-	h.updateTimelines()
-	h.draw()
+	h.fullRedraw()
 }
 
 func (h *machineHandlers) RewindStepEnter(_ *am.Event) bool {
@@ -458,10 +491,7 @@ func (h *machineHandlers) RewindStepState(_ *am.Event) {
 	} else {
 		h.cursorStep--
 	}
-	h.updateTree()
-	h.updateTimelines()
-	h.updateTxBars()
-	h.draw()
+	h.fullRedraw()
 }
 
 func (h *machineHandlers) Clear() {
@@ -551,12 +581,14 @@ func (h *machineHandlers) parseClientMsg(msgTx *telemetry.MsgTx) {
 	}
 	// added / removed
 	if len(h.msgTxs) > 1 {
-		// TODO honor multistates, check clocks
 		prev := h.msgTxs[len(h.msgTxs)-2]
 		for i, name := range h.msgStruct.StatesIndex {
 			if prev.StatesActive[i] && !msgTx.StatesActive[i] {
 				msgTxParsed.StatesRemoved = append(msgTxParsed.StatesRemoved, name)
 			} else if !prev.StatesActive[i] && msgTx.StatesActive[i] {
+				msgTxParsed.StatesAdded = append(msgTxParsed.StatesAdded, name)
+			} else if prev.Clocks[i] != msgTx.Clocks[i] {
+				// treat multi states as added
 				msgTxParsed.StatesAdded = append(msgTxParsed.StatesAdded, name)
 			}
 		}
@@ -575,9 +607,9 @@ func (h *machineHandlers) parseClientMsg(msgTx *telemetry.MsgTx) {
 }
 
 func (h *machineHandlers) appendLog(msgTx *telemetry.MsgTx) error {
-	logStr := strings.Join(msgTx.PreLogEntries, "\n")
-	for _, logEntry := range msgTx.PreLogEntries {
-		logStr += formatLogEntry(logEntry) + "\n"
+	logStr := formatLogEntry(strings.Join(msgTx.PreLogEntries, "\n"))
+	if len(logStr) > 0 {
+		logStr += "\n"
 	}
 	if len(msgTx.LogEntries) > 0 {
 		logStr += `["` + msgTx.ID + `"]` +
@@ -594,11 +626,11 @@ func (h *machineHandlers) appendLog(msgTx *telemetry.MsgTx) error {
 	return nil
 }
 
-// TODO light mode
 func formatLogEntry(entry string) string {
 	entry = strings.ReplaceAll(strings.ReplaceAll(entry,
 		"[", "{{{"),
 		"]", "}}}")
+	// TODO light mode
 	entry = strings.ReplaceAll(strings.ReplaceAll(entry,
 		"{{{", "[yellow]["),
 		"}}}", "[][white]")
@@ -606,10 +638,10 @@ func formatLogEntry(entry string) string {
 }
 
 func (h *machineHandlers) handleMsgStruct(msg *telemetry.MsgStruct) {
-	h.tree.GetRoot().SetText(msg.ID)
+	h.treeRoot.SetText(msg.ID)
 	h.msgStruct = msg
 	h.treeRoot.ClearChildren()
-	for name := range msg.States {
+	for _, name := range msg.StatesIndex {
 		h.addState(name)
 	}
 }
@@ -683,6 +715,10 @@ func getTxInfo(
 }
 
 func (h *machineHandlers) updateLog() {
+	if h.msgStruct != nil {
+		lvl := h.msgStruct.LogLevel
+		h.log.SetTitle(" Log:" + lvl.String() + " ")
+	}
 	// highlight the next tx if scrolling by steps
 	bySteps := h.mach.Is(am.S{ss.TimelineStepsFocused})
 	tx := h.currentTx()
@@ -742,11 +778,15 @@ func (h *machineHandlers) updateTimelines() {
 
 func (h *machineHandlers) updateTree() {
 	var msg telemetry.Msg
+	queue := ""
 	if h.cursorTx == 0 {
 		msg = h.msgStruct
 	} else {
-		msg = h.msgTxs[h.cursorTx-1]
+		tx := h.msgTxs[h.cursorTx-1]
+		msg = tx
+		queue = "(" + strconv.Itoa(tx.Queue) + ") "
 	}
+	h.tree.SetTitle(" Machine " + queue)
 	var steps []*am.TransitionStep
 	if h.cursorStep > 0 {
 		steps = h.nextTx().Steps
@@ -917,7 +957,7 @@ func (h *machineHandlers) initMachineTree() *cview.TreeView {
 	tree.SetHighlightColor(colorHighlight)
 	tree.SetChangedFunc(func(node *cview.TreeNode) {
 		reference := node.GetReference()
-		if reference == nil {
+		if reference == nil || reference.(nodeRef).stateName == "" {
 			h.mach.Remove(am.S{ss.StateNameSelected}, nil)
 			return
 		}
@@ -937,7 +977,7 @@ func (h *machineHandlers) addState(name string) {
 	stateNode.SetReference(name)
 	stateNode.SetSelectable(true)
 	stateNode.SetReference(nodeRef{stateName: name})
-	h.tree.GetRoot().AddChild(stateNode)
+	h.treeRoot.AddChild(stateNode)
 	stateNode.SetColor(colorInactive)
 	// labels
 	labels := ""
@@ -982,6 +1022,41 @@ func (h *machineHandlers) initHelpScreen() *cview.Panels {
 	panels.AddPanel("modal", modal(box, 40, 10), true, true)
 
 	return panels
+}
+
+// ScrollToStateTx scrolls to the next transition involving the state being
+// activated or deactivated. If fwd is true, it scrolls forward, otherwise
+// backwards.
+func (h *machineHandlers) ScrollToStateTx(state string, fwd bool) {
+	step := -1
+	if fwd {
+		step = 1
+	}
+	for i := h.cursorTx + step; i > 0 && i < len(h.msgTxs)+1; i = i + step {
+		parsed := h.msgTxsParsed[i-1]
+		if !lo.Contains(parsed.StatesAdded, state) &&
+			!lo.Contains(parsed.StatesRemoved, state) {
+			continue
+		}
+		// scroll to this tx
+		h.cursorTx = i
+		h.fullRedraw()
+		break
+	}
+}
+
+func (h *machineHandlers) updateKeyBars() {
+	// TODO light mode
+	stateJump := "[grey]Alt+Left/Right: state jump[yellow]"
+	if h.mach.Is(am.S{ss.StateNameSelected}) {
+		stateJump = "Alt+Left/Right: state jump"
+	}
+	keys := "[yellow]Space: play/pause | Left/Right: rewind/fwd | Alt+e: " +
+		"expand/collapse | Tab: focus | Alt+l: Live view | " + stateJump
+	// TODO legend
+	// * handler, > rel source, < rel target, + add, - remove, bold touched,
+	//   underline requested, ! cancelled
+	h.keystrokesBar.SetText(keys)
 }
 
 func addRelation(
