@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -48,8 +49,6 @@ type Machine struct {
 	// Relations resolver, used to produce target states of a transition.
 	// Default: *DefaultRelationsResolver.
 	Resolver RelationsResolver
-	// Logging level of the machine.
-	LogLevel LogLevel
 	// Ctx is the context of the machine.
 	Ctx context.Context
 	// Err is the last error that occurred.
@@ -150,6 +149,7 @@ func New(ctx context.Context, states States, opts *Opts) *Machine {
 	}
 	for name := range m.States {
 		m.StateNames = append(m.StateNames, name)
+		slices.Sort(m.StateNames)
 		m.clock[name] = 0
 	}
 	// init context
@@ -632,7 +632,7 @@ func (m *Machine) On(events []string, ctx context.Context) chan *Event {
 			for _, e := range events {
 				if _, ok := m.indexEventCh[e]; ok {
 					if len(m.indexEventCh[e]) == 1 {
-						// delete the whole map, as theres many possible events
+						// delete the whole map, as there's many possible events
 						delete(m.indexEventCh, e)
 					} else {
 						m.indexEventCh[e] = lo.Without(m.indexEventCh[e], ch)
@@ -729,7 +729,8 @@ func (m *Machine) MustParseStates(states S) S {
 }
 
 // VerifyStates verifies an array of state names and returns an error in case
-// at least one isn't defined.
+// at least one isn't defined. It also retains the order and uses it for
+// StateNames (only if all states have been passed).
 func (m *Machine) VerifyStates(states S) error {
 	var errs []error
 	for _, s := range states {
@@ -741,6 +742,9 @@ func (m *Machine) VerifyStates(states S) error {
 		return errors.Join(errs...)
 	} else if len(errs) == 1 {
 		return errs[0]
+	}
+	if len(states) == len(m.StateNames) {
+		m.StateNames = states
 	}
 	return nil
 }
@@ -1306,4 +1310,8 @@ func (m *Machine) Switch(states ...string) string {
 		}
 	}
 	return ""
+}
+
+func (m *Machine) GetLogLevel() LogLevel {
+	return m.logLevel
 }

@@ -20,14 +20,14 @@ const (
 	RewindStep           string = "RewindStep"
 	ClientConnected      string = "ClientConnected"
 	LiveView             string = "LiveView"
-	// TODO
-	HelpScreen string = "HelpScreen"
+	HelpScreen           string = "HelpScreen"
+	Exception            string = "Exception"
 )
 
 var Names = am.S{
-	TreeFocused, LogFocused, TimelineTxsFocused, TimelineStepsFocused, ClientMsg,
-	KeystrokeInput, Paused, StateNameSelected, Init, Playing, Fwd, Rewind,
-	ClientConnected, FwdStep, RewindStep, LiveView, HelpScreen,
+	ClientMsg, KeystrokeInput, TreeFocused, LogFocused, TimelineTxsFocused,
+	TimelineStepsFocused, StateNameSelected, ClientConnected, Init, LiveView,
+	Playing, Paused, Fwd, Rewind, FwdStep, RewindStep, HelpScreen, Exception,
 }
 
 var groupFocused = am.S{
