@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime/debug"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -22,6 +23,7 @@ const (
 	cliParamServerURL   string = "server-url"
 	cliParamAmDbgURL    string = "am-dbg-url"
 	cliParamEnableMouse string = "enable-mouse"
+	cliParamVersion     string = "version"
 )
 
 func main() {
@@ -50,11 +52,17 @@ func getRootCmd() *cobra.Command {
 		"Debug this instance of am-dbg with another one")
 	rootCmd.Flags().Bool(cliParamEnableMouse, false,
 		"Enable mouse support")
+	rootCmd.Flags().Bool(cliParamVersion, false,
+		"Print version and exit")
 	return rootCmd
 }
 
 func cliRun(cmd *cobra.Command, _ []string) {
 	// params
+	version, err := cmd.Flags().GetBool(cliParamVersion)
+	if err != nil {
+		panic(err)
+	}
 	logFile := cmd.Flag(cliParamLogFile).Value.String()
 	logLevelInt, err := cmd.Flags().GetInt(cliParamLogLevel)
 	if err != nil {
@@ -66,6 +74,15 @@ func cliRun(cmd *cobra.Command, _ []string) {
 	enableMouse, err := cmd.Flags().GetBool(cliParamEnableMouse)
 	if err != nil {
 		panic(err)
+	}
+
+	if version {
+		build, ok := debug.ReadBuildInfo()
+		if !ok {
+			panic("No build info available")
+		}
+		fmt.Println(build.Main.Version)
+		os.Exit(0)
 	}
 
 	// file logging
