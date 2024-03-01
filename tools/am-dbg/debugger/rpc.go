@@ -36,6 +36,7 @@ func StartRCP(rcvr *RPCServer) {
 	l, err := net.Listen("tcp", url)
 	if err != nil {
 		rcvr.Mach.AddErr(err)
+		// TODO nice err msg
 		panic(err)
 	}
 	log.Println("RPC server started at", url)
