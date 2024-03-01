@@ -182,7 +182,7 @@ Flags:
 
 ## Changelog
 
-Latest release: `v0.3.0`
+Latest release: `v0.3.1`
 
 See [CHANELOG.md](/CHANGELOG.md) for details.
 
