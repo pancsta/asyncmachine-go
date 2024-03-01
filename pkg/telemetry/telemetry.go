@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"encoding/gob"
+	"fmt"
 	"log"
 	"net/rpc"
 
@@ -12,6 +13,7 @@ import (
 
 const RpcHost = "localhost:9823"
 
+// Msg is the interface for the messages to be sent to the am-dbg server.
 type Msg interface {
 	// Clock returns the state's clock, using the passed index
 	Clock(statesIndex am.S, state string) uint64
@@ -39,11 +41,11 @@ func (d *MsgStruct) Is(_ am.S, _ am.S) bool {
 	return false
 }
 
-// MsgTx contains transaction data.
+// MsgTx contains transition data.
 type MsgTx struct {
 	// Transition ID
 	ID string
-	// map of positions from the index to the active state
+	// StatesIndex-based active indicators
 	StatesActive []bool
 	// map of positions from the index to state clocks
 	Clocks []uint64
@@ -51,11 +53,11 @@ type MsgTx struct {
 	Accepted bool
 	// all the transition steps
 	Steps []*am.TransitionStep
-	// log entries since the last diff
+	// log entries created during the transition
 	LogEntries []string
 	// log entries before the transition, which happened after the prev one
 	PreLogEntries []string
-	// tx was triggered by an auto state
+	// transition was triggered by an auto state
 	IsAuto bool
 	// queue length at the start of the transition
 	Queue int
@@ -114,7 +116,7 @@ func MonitorTransitions(m *am.Machine, url string) error {
 	gob.Register(am.Relation(0))
 	client, err := newClient(url)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect to am-dbg: %w", err)
 	}
 	msg := &MsgStruct{
 		ID:          m.ID,
@@ -125,7 +127,7 @@ func MonitorTransitions(m *am.Machine, url string) error {
 	// TODO retries
 	err = client.sendMsgStruct(msg)
 	if err != nil {
-		log.Println(err)
+		return fmt.Errorf("failed to send a msg to am-dbg: %w", err)
 	}
 	go func() {
 		// bind to transitions
@@ -156,7 +158,7 @@ func MonitorTransitions(m *am.Machine, url string) error {
 			// TODO retries
 			err := client.sendMsgTx(msg)
 			if err != nil {
-				log.Println(err)
+				log.Println("failed to send a msg to am-dbg: " + url + err.Error())
 				return
 			}
 		}

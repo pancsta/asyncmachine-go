@@ -45,3 +45,5 @@ go.work
 # local dev
 /.dev
 /docs/cookbook.md
+/tools/am-dbg/am-dbg
+/*.log
