@@ -1,0 +1,49 @@
+# .goreleaser.yml
+
+builds:
+  -
+    id: "am-dbg"
+    env:
+      - CGO_ENABLED=0
+      - GO111MODULE=on
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    main: ./tools/am-dbg/main.go
+    binary: am-dbg
+
+archives:
+  -
+    id: "archive"
+    format: tar.gz
+    name_template: "am-dbg_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [""]
+
+checksum:
+  name_template: 'checksums.txt'
+
+release:
+  github:
+    owner: pancsta
+    name: asyncmachine-go
+  draft: true
+  replace_existing_draft: true
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^refactor:'
+      - '^style:'
+      - '^ci:'
+      - '^perf:'
+      - '^revert:'
+snapshot:
+  name_template: "{{ .Tag }}-next"

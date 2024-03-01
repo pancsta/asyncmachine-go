@@ -125,6 +125,51 @@ func HandleFileProcessingTask(ctx context.Context, t *asynq.Task) error {
 }
 ```
 
+## Usage
+
+- Declarative
+
+```go
+// randomly reject the mutation
+func (h *Handlers) ProcessingFileEnter(e *am.Event) bool {
+    rand.Seed(time.Now().UnixNano())
+    randomBool := rand.Intn(2) == 0
+    return randomBool
+}
+// cause side effects if accepted
+func (h *Handlers) ProcessingFileState(e *am.Event) {
+    mach := e.Machine
+    stateCtx := mach.GetStateCtx("ProcessingFile")
+    go func() {
+        if stateCtx.Err() != nil {
+            return
+        }
+        err := processFile(h.DownloadedName, stateCtx)
+        if err != nil {
+            mach.AddErr(err)
+            return
+        }
+        mach.Add("FileProcessed", nil)
+    }
+}
+```
+
+- Imperative
+
+```go
+// change the state
+mach.Add(am.S{"DownloadingFile"},
+    am.A{"filename": filename})
+// wait for completed
+select {
+case <-time.After(5 * time.Second):
+    return mach, errors.New("timeout")
+case <-mach.WhenErr(nil):
+    return mach, mach.Err
+case <-mach.When(am.S{"FileUploaded"}, nil):
+}
+```
+
 ## Documentation
 
 - [API godoc](https://godoc.org/github.com/pancsta/asyncmachine-go/pkg/machine)
@@ -148,11 +193,13 @@ func HandleFileProcessingTask(ctx context.Context, t *asynq.Task) error {
 
 ![TUI Debugger](assets/am-dbg.png)
 
-### Installation
+### Installing `am-dbg`
+
+[Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest) or use `go install`:
 
 `go install github.com/pancsta/asyncmachine-go/tools/am-dbg@latest`
 
-### Usage
+### Using `am-dbg`
 
 Set up telemetry:
 
@@ -161,7 +208,7 @@ import (
     "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 // ...
-err := telemetry.MonitorTransitions(machine, telemetry.RpcHost)
+err := telemetry.MonitorTransitions(mach, telemetry.RpcHost)
 ```
 
 Run `am-dbg`:
