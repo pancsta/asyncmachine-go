@@ -149,6 +149,11 @@ func (h *MachineHandlers) ProcessingFileState(e *am.Event) {
 	// Using machine's context directly will conflict with retry logic (if any).
 	stateCtx := e.Machine.GetStateCtx("ProcessingFile")
 	go func() {
+		// assert context
+		if stateCtx.Err() != nil {
+			e.Machine.Log("processFileActivity canceled.")
+			return
+		}
 		// read downloaded file
 		data, err := os.ReadFile(h.DownloadedName)
 		if err != nil {
