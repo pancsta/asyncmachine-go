@@ -2,19 +2,47 @@ version: '3'
 
 dotenv: ['.env']
 
+env:
+  GOFMT: gofumpt
+
 tasks:
 
-  demo:
+  build-machine:
     cmds:
-      - task: install-deps
-      - task: build-protobufs
-      - task: test
-      - task: start
+      - go build pkg/machine/*.go
+
+  build-telemetry:
+    cmds:
+      - go build pkg/telemetry/*.go
+
+  build-debugger:
+    cmds:
+      - go build -o build/am-dbg tools/am-dbg/*.go
 
   build:
     cmds:
-      - go build src/machine/*
-    silent: true
+      - task: build-machine
+      - task: build-telemetry
+      - task: build-debugger
+
+  debugger:
+    cmds:
+      - go run tools/am-dbg/main.go {{.CLI_ARGS}}
+
+  debugger-client:
+    cmds:
+      - go run tools/am-dbg/main.go 
+          --log-machine-id false 
+          --log-level 2
+          --am-dbg-url localhost:9913
+
+  debugger-debugger:
+    cmds:
+      - go run tools/am-dbg/main.go 
+          --log-file am-dbg-dbg.log 
+          --log-machine-id false 
+          --log-level 2
+          --server-url localhost:9913
 
   test:
     cmds:
@@ -33,14 +61,17 @@ tasks:
     cmds:
       - gocloc pkg/machine --not-match=_test\.go
       - gocloc pkg/machine/*_test.go
+      - gocloc tools/am-dbg/**/* --not-match=_test\.go
       - gocloc examples
       - gocloc --include-lang=md docs
 
   format:
     cmds:
-      - gofumpt -w pkg/machine/*.go
-      - gofumpt -w examples/*/*.go
-      - goimports -w pkg/**
+      - $GOFMT -w examples/*/*.go
+      - $GOFMT -w pkg/**/*.go
+      - $GOFMT -w tools/**/*.go
+      - goimports -w -local "github.com/pancsta/asyncmachine-go" pkg/**/*.go
+      - goimports -w -local "github.com/pancsta/asyncmachine-go" tools/**/*.go
 
   lint:
     cmds:
@@ -52,15 +83,24 @@ tasks:
           echo "Error: Empty links" >&2
           exit 1
         fi
+      - task: check-fmt
 
   lint-go:
     cmds:
-      - golangci-lint run
+      - golangci-lint run --fix
 
   lint-md:
     cmds:
-      # TODO -g
-      - mdl -c .mdlrc .
+      - mdl -g -c .mdlrc .
+
+  check-fmt:
+    silent: false
+    cmds:
+      - test -z $($GOFMT -l examples/**/*.go)
+      - test -z $($GOFMT -l pkg/**/*.go)
+      - test -z $($GOFMT -l tools/am-dbg/*.go)
+      - test -z $(goimports -l -local "github.com/pancsta/asyncmachine-go" pkg/**/*.go)
+      - test -z $(goimports -l -local "github.com/pancsta/asyncmachine-go" tools/**/*.go)
 
   changelog:
     cmds:
@@ -74,5 +114,6 @@ tasks:
       - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
       - go install mvdan.cc/gofumpt@latest
       - go install golang.org/x/tools/cmd/goimports@latest
+      # TODO switch to nodejs md linter
       - gem install mdl
       - gem install github_changelog_generator
