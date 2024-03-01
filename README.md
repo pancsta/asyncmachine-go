@@ -146,7 +146,7 @@ func HandleFileProcessingTask(ctx context.Context, t *asynq.Task) error {
 - transition steps
 - logs
 
-![TUI Debugger](assets/am-dbg.jpg)
+![TUI Debugger](assets/am-dbg.png)
 
 ### Installation
 
