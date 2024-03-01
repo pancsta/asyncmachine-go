@@ -137,15 +137,52 @@ func HandleFileProcessingTask(ctx context.Context, t *asynq.Task) error {
    - [Relations](/docs/manual.md#relations)
    - [Queue](/docs/manual.md#queue)
 
-## Debugger
+## TUI Debugger
 
-Preview of the TUI debugger, currently being work on in #5.
+`am-dbg` is a simple, yet effective tool to debug your machines, including:
 
-![TUI Debugger](assets/debugger.png)
+- states with relations
+- time travel
+- transition steps
+- logs
+
+![TUI Debugger](assets/am-dbg.jpg)
+
+### Installation
+
+`go install github.com/pancsta/asyncmachine-go/tools/am-dbg@latest`
+
+### Usage
+
+Set up telemetry:
+
+```go
+import (
+    "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+)
+// ...
+err := telemetry.MonitorTransitions(machine, telemetry.RpcHost)
+```
+
+Run `am-dbg`:
+
+```text
+Usage:
+  am-dbg [flags]
+
+Flags:
+      --am-dbg-url string   Debug this instance of am-dbg with another one
+      --enable-mouse        Enable mouse support
+  -h, --help                help for am-dbg
+      --log-file string     Log file path (default "am-dbg.log")
+      --log-level int       Log level, 0-5 (silent-everything)
+      --log-machine-id      Include machine ID in log messages (default true)
+      --server-url string   Host and port for the server to listen on (default "localhost:9823")
+```
 
 ## Changelog
 
-Latest release: `v0.2.1`
+Latest release: `v0.3.0`
 
 See [CHANELOG.md](/CHANGELOG.md) for details.
 
