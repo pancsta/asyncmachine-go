@@ -86,6 +86,8 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.Msg) {
 			color = colorActive
 		}
 		// reset to defaults
+		node.SetText(stateName)
+		// reset to defaults
 		if stateName != d.selectedState {
 			if !ref.isRef {
 				// un-highlight all descendants
@@ -99,9 +101,6 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.Msg) {
 					stateName), 10)
 				node.SetColor(color)
 				node.SetText(stateName + " (" + tick + ")")
-			} else {
-				// reset to defaults
-				node.SetText(stateName)
 			}
 			return true
 		}

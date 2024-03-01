@@ -61,10 +61,17 @@ type MsgTxParsed struct {
 }
 
 type nodeRef struct {
-	stateName   string
-	isRef       bool
-	isRel       bool
-	rel         am.Relation
+	// node is a state (reference or top level)
+	stateName string
+	// node is a state reference, not a top level state
+	// eg Bar in case of: Foo -> Remove -> Bar
+	// TODO name collision with nodeRef
+	isRef bool
+	// node is a relation (Remove, Add, Require, After)
+	isRel bool
+	// relation type (if isRel)
+	rel am.Relation
+	// top level state name (for both rels and refs)
 	parentState string
 }
 
