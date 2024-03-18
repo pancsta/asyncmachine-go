@@ -1,4 +1,4 @@
-package machine_test
+package machine
 
 import (
 	"context"
@@ -6,34 +6,26 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-
-	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
-func NewPopupMachine(ctx context.Context) *am.Machine {
-	return am.New(ctx, am.States{
-		"Enabled": {},
-		"ButtonClicked": {
-			Require: am.S{"Enabled"},
-		},
-		"ShowingDialog": {
-			Remove: am.S{"DialogVisible"},
-		},
+func NewPopupMachine(ctx context.Context) *Machine {
+	return New(ctx, Struct{
+		"Enabled":       {},
+		"ButtonClicked": {Require: S{"Enabled"}},
+		"ShowingDialog": {Remove: S{"DialogVisible"}},
 		"DownloadingData": {
 			Auto:    true,
-			Require: am.S{"ShowingDialog"},
-			Remove:  am.S{"DataDownloaded"},
+			Require: S{"ShowingDialog"},
+			Remove:  S{"DataDownloaded"},
 		},
 		"PreloaderVisible": {
 			Auto:    true,
-			Require: am.S{"DownloadingData"},
+			Require: S{"DownloadingData"},
 		},
-		"DataDownloaded": {
-			Remove: am.S{"DownloadingData"},
-		},
+		"DataDownloaded": {Remove: S{"DownloadingData"}},
 		"DialogVisible": {
-			Require: am.S{"DataDownloaded"},
-			Remove:  am.S{"ShowingDialog"},
+			Require: S{"DataDownloaded"},
+			Remove:  S{"ShowingDialog"},
 		},
 	}, nil)
 }
@@ -43,28 +35,28 @@ type PopupMachineHandlers struct {
 	name string
 }
 
-func (pm *PopupMachineHandlers) ButtonClickedState(e *am.Event) {
+func (pm *PopupMachineHandlers) ButtonClickedState(e *Event) {
 	// args definition
 	pm.name = e.Args["button"].(string)
 
 	// this will get queued
-	e.Machine.Add(am.S{"ShowingDialog"}, nil)
+	e.Machine.Add(S{"ShowingDialog"}, nil)
 	// this will get queued later
-	e.Machine.Remove(am.S{"ButtonClicked"}, nil)
+	e.Machine.Remove(S{"ButtonClicked"}, nil)
 }
 
-func (pm *PopupMachineHandlers) DialogVisibleState(e *am.Event) {
+func (pm *PopupMachineHandlers) DialogVisibleState(e *Event) {
 	// data is guaranteed by the ButtonClicked state
 	e.Machine.Log("THE END for " + pm.name)
 }
 
-func (pm *PopupMachineHandlers) PreloaderVisibleState(e *am.Event) {
+func (pm *PopupMachineHandlers) PreloaderVisibleState(e *Event) {
 	e.Machine.Log("preloader show")
 }
 
-func (pm *PopupMachineHandlers) DownloadingDataState(e *am.Event) {
+func (pm *PopupMachineHandlers) DownloadingDataState(e *Event) {
 	// get the cancel context
-	stateCtx := e.Machine.GetStateCtx("DownloadingData")
+	stateCtx := e.Machine.NewStateCtx("DownloadingData")
 	// dont block
 	go func() {
 		e.Machine.Log("fetchData start")
@@ -78,15 +70,15 @@ func (pm *PopupMachineHandlers) DownloadingDataState(e *am.Event) {
 		}
 		// data accepted
 		// async action finished successfully, transition to DataDownloaded
-		e.Machine.Add(am.S{"DataDownloaded"}, nil)
+		e.Machine.Add(S{"DataDownloaded"}, nil)
 	}()
 }
 
-func (pm *PopupMachineHandlers) DataDownloadedState(e *am.Event) {
-	e.Machine.Add(am.S{"DialogVisible"}, nil)
+func (pm *PopupMachineHandlers) DataDownloadedState(e *Event) {
+	e.Machine.Add(S{"DialogVisible"}, nil)
 }
 
-func (pm *PopupMachineHandlers) PreloaderVisibleEnd(e *am.Event) {
+func (pm *PopupMachineHandlers) PreloaderVisibleEnd(e *Event) {
 	e.Machine.Log("preloader hide")
 }
 
@@ -94,11 +86,11 @@ func TestPopupMachine(t *testing.T) {
 	// create a new machine (with logging)
 	machine := NewPopupMachine(context.Background())
 	defer machine.Dispose()
-	machine.SetLogLevel(am.LogChanges)
-	// machine.SetLogLevel(am.LogOps)
-	// machine.SetLogLevel(am.LogDecisions)
-	// machine.SetLogLevel(am.LogEverything)
-	machine.SetLogger(func(_ am.LogLevel, msg string, args ...any) {
+	machine.SetLogLevel(LogChanges)
+	// machine.SetLogLevel(LogOps)
+	// machine.SetLogLevel(LogDecisions)
+	// machine.SetLogLevel(LogEverything)
+	machine.SetLogger(func(_ LogLevel, msg string, args ...any) {
 		t.Logf(msg, args...)
 	})
 	// bind the Transition handlers
@@ -106,11 +98,13 @@ func TestPopupMachine(t *testing.T) {
 	assert.NoError(t, err)
 
 	// test
+	// TODO add timing, duplicate input events and assert correct handing of
+	// edge cases
 
 	// start accepting input
-	machine.Add(am.S{"Enabled"}, nil)
+	machine.Add(S{"Enabled"}, nil)
 	// external action triggers the popup workflow
-	machine.Add(am.S{"ButtonClicked"}, am.A{"button": "red"})
+	machine.Add(S{"ButtonClicked"}, A{"button": "red"})
 	// wait for DialogVisible
 	<-machine.When(S{"DialogVisible"}, nil)
 

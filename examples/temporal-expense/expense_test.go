@@ -1,7 +1,5 @@
 // Based on https://github.com/temporalio/samples-go/blob/main/expense/
 //
-// Go playgroundL https://play.golang.com/p/P1eg6tKh6E4
-//
 // This example shows a simple payment workflow with an async approval input,
 // going from CreatingExpense to PaymentCompleted.
 //
@@ -9,68 +7,64 @@
 //
 // Sample output (LogLevel == LogChanges):
 //
-// === RUN   TestExpense
-//     expense_test.go:160: [7dce4] [state] +CreatingExpense
-//     expense_test.go:180: waiting: CreatingExpense to WaitingForApproval
-//     expense_test.go:266: expense API called
-//     expense_test.go:244: approval request received: 123
-//     expense_test.go:160: [7dce4] [state] +ExpenseCreated -CreatingExpense
-//     expense_test.go:160: [7dce4] [state:auto] +WaitingForApproval
-//     expense_test.go:196: waiting: WaitingForApproval to ApprovalGranted
-//     expense_test.go:247: granting fake approval
-//     expense_test.go:249: sent fake approval
-//     expense_test.go:204: received approval ID: fake
-//     expense_test.go:196: waiting: WaitingForApproval to ApprovalGranted
-//     expense_test.go:252: granting real approval
-//     expense_test.go:254: sent real approval
-//     expense_test.go:204: received approval ID: 123
-//     expense_test.go:160: [7dce4] [state] +ApprovalGranted -WaitingForApproval
-//     expense_test.go:160: [7dce4] [state:auto] +PaymentInProgress
-//     expense_test.go:196: waiting: WaitingForApproval to ApprovalGranted
-//     expense_test.go:224: waiting: PaymentInProgress to PaymentCompleted
-//     expense_test.go:279: payment API called
-//     expense_test.go:160: [7dce4] [state] +PaymentCompleted -PaymentInProgress
-//     expense_test.go:292:
-//         (PaymentCompleted:1 ApprovalGranted:1 ExpenseCreated:1)
-//     expense_test.go:293:
-//         (ExpenseCreated:1 ApprovalGranted:1 PaymentCompleted:1)[CreatingExpense:1 WaitingForApproval:1 PaymentInProgress:1 Exception:0]
-//     expense_test.go:294:
-//         CreatingExpense:
-//           State:   false 1
-//           Remove:  ExpenseCreated
+//=== RUN   TestExpense
+//    expense_test.go:145: [state] +CreatingExpense
+//    expense_test.go:145: [state:auto] +WaitingForApproval +PaymentInProgress
+//    expense_test.go:164: waiting: CreatingExpense to WaitingForApproval
+//    expense_test.go:180: waiting: WaitingForApproval to ApprovalGranted
+//    expense_test.go:250: expense API called
+//    expense_test.go:233: approval request received: 123
+//    expense_test.go:263: payment API called
+//    expense_test.go:145: [state] +ExpenseCreated -CreatingExpense
+//    expense_test.go:145: [state] +PaymentCompleted -PaymentInProgress
+//    expense_test.go:237: granting fake approval
+//    expense_test.go:239: sent fake approval
+//    expense_test.go:192: received approval ID: fake
+//    expense_test.go:180: waiting: WaitingForApproval to ApprovalGranted
+//    expense_test.go:243: granting real approval
+//    expense_test.go:192: received approval ID: 123
+//    expense_test.go:245: sent real approval
+//    expense_test.go:145: [state] +ApprovalGranted -WaitingForApproval
+//    expense_test.go:180: waiting: WaitingForApproval to ApprovalGranted
+//    expense_test.go:213: waiting: PaymentInProgress to PaymentCompleted
+//    expense_test.go:280:
+//        (ApprovalGranted:1 PaymentCompleted:1 ExpenseCreated:1)
+//    expense_test.go:281:
+//        (ApprovalGranted:1 ExpenseCreated:1 PaymentCompleted:1)[CreatingExpense:2 Exception:0 PaymentInProgress:2 WaitingForApproval:2]
+//    expense_test.go:282:
+//        ApprovalGranted:
+//          State:   true 1
+//          Remove:  WaitingForApproval
 //
-//         ExpenseCreated:
-//           State:   true 1
-//           Remove:  CreatingExpense
+//        CreatingExpense:
+//          State:   false 2
+//          Remove:  ExpenseCreated
 //
-//         WaitingForApproval:
-//           State:   false 1
-//           Auto:    true
-//           Require: ExpenseCreated
-//           Remove:  ApprovalGranted
+//        Exception:
+//          State:   false 0
+//          Multi:   true
 //
-//         ApprovalGranted:
-//           State:   true 1
-//           Require: ExpenseCreated
-//           Remove:  WaitingForApproval
+//        ExpenseCreated:
+//          State:   true 1
+//          Remove:  CreatingExpense
 //
-//         PaymentInProgress:
-//           State:   false 1
-//           Auto:    true
-//           Require: ApprovalGranted
-//           Remove:  PaymentCompleted
+//        PaymentCompleted:
+//          State:   true 1
+//          Remove:  PaymentInProgress
 //
-//         PaymentCompleted:
-//           State:   true 1
-//           Require: ExpenseCreated ApprovalGranted
-//           Remove:  PaymentInProgress
+//        PaymentInProgress:
+//          State:   false 2
+//          Auto:    true
+//          Remove:  PaymentCompleted
 //
-//         Exception:
-//           State:   false 0
+//        WaitingForApproval:
+//          State:   false 2
+//          Auto:    true
+//          Remove:  ApprovalGranted
 //
 //
-// --- PASS: TestExpense (2.00s)
-// PASS
+//--- PASS: TestExpense (0.02s)
+//PASS
 
 package main
 
@@ -84,7 +78,9 @@ import (
 	"testing"
 	"time"
 
+	sse "github.com/pancsta/asyncmachine-go/examples/temporal-expense/states"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	//"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
 var (
@@ -98,35 +94,9 @@ type Logger func(msg string, args ...any)
 // PaymentCompleted flow.
 func NewMachine(ctx context.Context) *am.Machine {
 	// define states
-	return am.New(ctx, am.States{
-		// CreateExpenseActivity
-		"CreatingExpense": {
-			Remove: am.S{"ExpenseCreated"},
-		},
-		"ExpenseCreated": {
-			Remove: am.S{"CreatingExpense"},
-		},
-		// WaitForDecisionActivity
-		"WaitingForApproval": {
-			Auto:    true,
-			Require: am.S{"ExpenseCreated"},
-			Remove:  am.S{"ApprovalGranted"},
-		},
-		"ApprovalGranted": {
-			Require: am.S{"ExpenseCreated"},
-			Remove:  am.S{"WaitingForApproval"},
-		},
-		// PaymentActivity
-		"PaymentInProgress": {
-			Auto:    true,
-			Require: am.S{"ApprovalGranted"},
-			Remove:  am.S{"PaymentCompleted"},
-		},
-		"PaymentCompleted": {
-			Require: am.S{"ExpenseCreated", "ApprovalGranted"},
-			Remove:  am.S{"PaymentInProgress"},
-		},
-	}, nil)
+	return am.New(ctx, sse.States, &am.Opts{
+		DontLogID: true,
+	})
 }
 
 // MachineHandlers is a struct of handlers & their data for the Expense machine.
@@ -143,15 +113,16 @@ func (h *MachineHandlers) CreatingExpenseState(e *am.Event) {
 	// args definition
 	h.expenseID = e.Args["expenseID"].(string)
 	// get a context of this particular state's instance (clock's tick)
-	stateCtx := e.Machine.GetStateCtx("CreatingExpense")
+	stateCtx := e.Machine.NewStateCtx(sse.CreatingExpense)
 
-	// never block in a handler, always "go func" it
+	// never block in a handler, always fork
 	go func() {
 		resp, err := http.Get(expenseBackendURL + "?id=" + h.expenseID)
 		if err != nil {
 			e.Machine.AddErr(err)
 			return
 		}
+
 		body, err := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if err != nil {
@@ -162,11 +133,12 @@ func (h *MachineHandlers) CreatingExpenseState(e *am.Event) {
 			e.Machine.AddErrStr(string(body))
 			return
 		}
+
 		// make sure this should still be happening
 		if stateCtx.Err() != nil {
-			return
+			return // expired
 		}
-		e.Machine.Add(am.S{"ExpenseCreated"}, nil)
+		e.Machine.Add1(sse.ExpenseCreated, nil)
 	}()
 }
 
@@ -204,7 +176,7 @@ func (h *MachineHandlers) PaymentInProgressState(e *am.Event) {
 			return
 		}
 
-		e.Machine.Add(am.S{"PaymentCompleted"}, nil)
+		e.Machine.Add1(sse.PaymentCompleted, nil)
 	}()
 }
 
@@ -239,8 +211,8 @@ func ExpenseFlow(
 	// reusable error channel
 	errCh := machine.WhenErr(nil)
 
-	// start it up!
-	machine.Add(am.S{"CreatingExpense"}, am.A{"expenseID": expenseID})
+	// start the flow
+	machine.Add1(sse.CreatingExpense, am.A{"expenseID": expenseID})
 
 	// CreatingExpense is an automatic state, it will add itself at this point.
 	// string(machine) == [Enabled, CreatingExpense]
@@ -252,7 +224,7 @@ func ExpenseFlow(
 		return machine, errors.New("timeout")
 	case <-errCh:
 		return machine, machine.Err
-	case <-machine.When(am.S{"WaitingForApproval"}, nil):
+	case <-machine.When1(sse.WaitingForApproval, nil):
 		// WaitingForApproval is an automatic state
 	}
 
@@ -263,24 +235,30 @@ func ExpenseFlow(
 	granted := false
 	for !granted {
 		log("waiting: WaitingForApproval to ApprovalGranted")
+
 		// wait with a timeout
 		select {
+
 		// new approvals
 		case approvedID, ok := <-approvalCh:
 			if !ok {
 				return machine, errors.New("approval channel closed")
 			}
-			log("received approval ID: %s", approvedID)
+
 			// TRY to approve the existing expense
-			machine.Add(am.S{"ApprovalGranted"}, am.A{"approvedID": approvedID})
+			log("received approval ID: %s", approvedID)
+			machine.Add1(sse.ApprovalGranted, am.A{"approvedID": approvedID})
+
 		// approval timeout
 		case <-time.After(10 * time.Minute):
 			return machine, errors.New("timeout")
+
 		// error or machine disposed
 		case <-errCh:
 			return machine, machine.Err
+
 		// approval granted
-		case <-machine.When(am.S{"ApprovalGranted"}, nil):
+		case <-machine.When1(sse.ApprovalGranted, nil):
 			granted = true
 		}
 	}
@@ -293,7 +271,7 @@ func ExpenseFlow(
 	select {
 	case <-errCh:
 		return machine, machine.Err
-	case <-machine.When(am.S{"PaymentCompleted"}, nil):
+	case <-machine.When1(sse.PaymentCompleted, nil):
 	}
 
 	_ = machine.String() // (ExpenseCreated:1 ApprovalGranted:1 PaymentCompleted:1)
@@ -311,23 +289,18 @@ func TestExpense(t *testing.T) {
 		expenseId := <-expenseCh
 		t.Log("approval request received: " + expenseId)
 		time.Sleep(10 * time.Millisecond)
+
 		// approve a random ID
 		t.Log("granting fake approval")
 		approvalCh <- "fake"
 		t.Log("sent fake approval")
 		time.Sleep(10 * time.Millisecond)
+
 		// approve our ID
 		t.Log("granting real approval")
 		approvalCh <- expenseId
 		t.Log("sent real approval")
 	}()
-
-	// mock an external approval flow
-	// go func() {
-	// 	println("TEST3")
-	// 	println(<-approvalCh)
-	// 	println("TEST4")
-	// }()
 
 	// mock the expense API
 	expenseAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -346,7 +319,7 @@ func TestExpense(t *testing.T) {
 	) {
 		t.Log("payment API called")
 		// payment successful
-		fmt.Fprint(w, "SUCCEED")
+		_, _ = fmt.Fprint(w, "SUCCEED")
 	}))
 	defer paymentAPI.Close()
 	paymentBackendURL = paymentAPI.URL
@@ -356,7 +329,7 @@ func TestExpense(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !machine.Is(am.S{"PaymentCompleted"}) {
+	if !machine.Is1(sse.PaymentCompleted) {
 		t.Fatal("not PaymentCompleted")
 	}
 

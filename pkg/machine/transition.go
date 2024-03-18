@@ -1,17 +1,14 @@
 package machine
 
 import (
+	"slices"
 	"strings"
-
-	"github.com/google/uuid"
-
-	"github.com/samber/lo"
 )
 
-func newStep(from string, to string, stepType TransitionStepType,
+func newStep(from string, to string, stepType StepType,
 	data any,
-) *TransitionStep {
-	return &TransitionStep{
+) *Step {
+	return &Step{
 		FromState: from,
 		ToState:   to,
 		Type:      stepType,
@@ -19,10 +16,10 @@ func newStep(from string, to string, stepType TransitionStepType,
 	}
 }
 
-func newSteps(from string, toStates S, stepType TransitionStepType,
+func newSteps(from string, toStates S, stepType StepType,
 	data any,
-) []*TransitionStep {
-	var ret []*TransitionStep
+) []*Step {
+	var ret []*Step
 	for _, to := range toStates {
 		ret = append(ret, newStep(from, to, stepType, data))
 	}
@@ -33,16 +30,20 @@ func newSteps(from string, toStates S, stepType TransitionStepType,
 type Transition struct {
 	ID string
 	// List of steps taken by this transition (so far).
-	Steps []*TransitionStep
+	Steps []*Step
 	// When true, execution of the transition has been completed.
 	IsCompleted bool
 	// states before the transition
 	StatesBefore S
 	// clocks of the states from before the transition
+	// TODO timeBefore, produce Clocks via ClockBefore(), add index diffs
 	ClocksBefore Clocks
-	// States with "enter" handlers to execute
+	// clocks of the states from after the transition
+	// TODO timeAfter, produce Clocks via ClockAfter(), add index diffs
+	ClocksAfter Clocks
+	// Struct with "enter" handlers to execute
 	Enters S
-	// States with "exit" handlers to executed
+	// Struct with "exit" handlers to executed
 	Exits S
 	// target states after parsing the relations
 	TargetStates S
@@ -54,9 +55,10 @@ type Transition struct {
 	Machine *Machine
 	// Log entries produced during the transition
 	LogEntries []string
+	// start time of the transition
 
 	// Latest / current step of the transition
-	latestStep *TransitionStep
+	latestStep *Step
 }
 
 // newTransition creates a new transition for the given mutation.
@@ -65,52 +67,70 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	defer m.activeStatesLock.RUnlock()
 
 	clocks := Clocks{}
-	for _, state := range m.ActiveStates {
+	for _, state := range m.StateNames {
 		clocks[state] = m.clock[state]
 	}
+
 	t := &Transition{
-		ID:           uuid.New().String(),
+		ID:           randID(),
 		Mutation:     item,
-		StatesBefore: m.ActiveStates,
+		StatesBefore: m.activeStates,
 		ClocksBefore: clocks,
 		Machine:      m,
 		Accepted:     true,
 	}
-	// set early to catch the logs
+
+	// assign early to catch the logs
 	m.Transition = t
+
+	// tracers
+	for i := range t.Machine.Tracers {
+		t.Machine.Tracers[i].TransitionInit(t)
+		m.emit(EventTransitionInit, nil, nil)
+	}
+
+	// log
 	states := t.CalledStates()
 	mutType := t.Type()
-	t.addSteps(newSteps("", states, TransitionStepTypeRequested, nil)...)
+	logArgs := t.LogArgs()
+	t.addSteps(newSteps("", states, StepRequested, nil)...)
+
 	if item.Auto {
-		m.log(LogDecisions, "[%s:auto] %s", mutType, j(states))
+		m.log(LogDecisions, "[%s:auto] %s%s", mutType, j(states), logArgs)
 	} else {
-		m.log(LogOps, "[%s] %s", mutType, j(states))
+		m.log(LogOps, "[%s] %s%s", mutType, j(states), logArgs)
 	}
+
 	statesToSet := S{}
 	switch mutType {
-	case MutationTypeRemove:
-		statesToSet = lo.Filter(m.ActiveStates, func(state string, _ int) bool {
-			return !lo.Contains(states, state)
+
+	case MutationRemove:
+		statesToSet = slicesFilter(m.activeStates, func(state string, _ int) bool {
+			return !slices.Contains(states, state)
 		})
-		t.addSteps(newSteps("", states, TransitionStepTypeRemove, nil)...)
-	case MutationTypeAdd:
+		t.addSteps(newSteps("", states, StepRemove, nil)...)
+
+	case MutationAdd:
 		statesToSet = append(statesToSet, states...)
-		statesToSet = append(statesToSet, m.ActiveStates...)
-		t.addSteps(newSteps("", DiffStates(statesToSet, m.ActiveStates),
-			TransitionStepTypeSet, nil)...)
-	case MutationTypeSet:
+		statesToSet = append(statesToSet, m.activeStates...)
+		t.addSteps(newSteps("", DiffStates(statesToSet, m.activeStates),
+			StepSet, nil)...)
+
+	case MutationSet:
 		statesToSet = states
-		t.addSteps(newSteps("", DiffStates(statesToSet, m.ActiveStates),
-			TransitionStepTypeSet, nil)...)
-		t.addSteps(newSteps("", DiffStates(m.ActiveStates, statesToSet),
-			TransitionStepTypeRemove, nil)...)
+		t.addSteps(newSteps("", DiffStates(statesToSet, m.activeStates),
+			StepSet, nil)...)
+		t.addSteps(newSteps("", DiffStates(m.activeStates, statesToSet),
+			StepRemove, nil)...)
 	}
+
 	t.TargetStates = m.Resolver.GetTargetStates(t, statesToSet)
 
 	impliedStates := DiffStates(t.TargetStates, statesToSet)
 	if len(impliedStates) > 0 {
 		m.log(LogOps, "[implied] %s", j(impliedStates))
 	}
+
 	t.setupAccepted()
 	if t.Accepted {
 		t.setupExitEnter()
@@ -130,7 +150,8 @@ func (t *Transition) CalledStates() S {
 	return t.Mutation.CalledStates
 }
 
-// Args returns the argument object passed to the mutation method (if any).
+// Args returns the argument map passed to the mutation method
+// (or an empty one).
 func (t *Transition) Args() A {
 	return t.Mutation.Args
 }
@@ -140,7 +161,26 @@ func (t *Transition) Type() MutationType {
 	return t.Mutation.Type
 }
 
-func (t *Transition) addSteps(steps ...*TransitionStep) {
+// LogArgs returns a text snippet with arguments which should be logged for this
+// Mutation.
+func (t *Transition) LogArgs() string {
+	matcher := t.Machine.GetLogArgs()
+	if matcher == nil {
+		return ""
+	}
+
+	var args []string
+	for k, v := range matcher(t.Mutation.Args) {
+		args = append(args, k+"="+v)
+	}
+	if len(args) == 0 {
+		return ""
+	}
+
+	return " (" + strings.Join(args, " ") + ")"
+}
+
+func (t *Transition) addSteps(steps ...*Step) {
 	t.Steps = append(t.Steps, steps...)
 }
 
@@ -149,11 +189,13 @@ func (t *Transition) addSteps(steps ...*TransitionStep) {
 func (t *Transition) String() string {
 	var lines []string
 	for k := range t.Steps {
+
 		touch := t.Steps[k]
 		line := ""
 		if touch.ToState != "" {
 			line += touch.ToState + " -> "
 		}
+
 		line += touch.FromState
 		if touch.Type > 0 {
 			line += touch.Type.String()
@@ -161,27 +203,30 @@ func (t *Transition) String() string {
 		if touch.Data != nil {
 			line += "   (" + touch.Data.(string) + ")"
 		}
+
 		lines = append(lines, line)
 	}
+
 	return strings.Join(lines, "\n")
 }
 
 func (t *Transition) setupExitEnter() {
 	m := t.Machine
+
 	// collect the exit handlers
-	exits := DiffStates(m.ActiveStates, t.TargetStates)
+	exits := DiffStates(m.activeStates, t.TargetStates)
 	m.Resolver.SortStates(exits)
+
 	// collect the enters handlers
-	enters := S{}
+	var enters S
 	for _, s := range t.TargetStates {
 		// enter activate state only for multi states called directly
-		// not implied by Add
-		// TODO m.is()
-		if m.Is(S{s}) && !(m.States[s].Multi && lo.Contains(t.CalledStates(), s)) {
-			continue
+		state := m.states[s]
+		if !m.is(S{s}) || (state.Multi && slices.Contains(t.CalledStates(), s)) {
+			enters = append(enters, s)
 		}
-		enters = append(enters, s)
 	}
+
 	// save
 	t.Exits = exits
 	t.Enters = enters
@@ -197,7 +242,7 @@ func (t *Transition) emitSelfEvents() Result {
 			continue
 		}
 		name := s + s
-		step := newStep(s, "", TransitionStepTypeTransition, name)
+		step := newStep(s, "", StepHandler, name)
 		step.IsSelf = true
 		ret, handlerCalled = m.emit(name, t.Mutation.Args, step)
 		if handlerCalled {
@@ -212,18 +257,23 @@ func (t *Transition) emitSelfEvents() Result {
 
 func (t *Transition) emitEnterEvents() Result {
 	for _, toState := range t.Enters {
+
+		// TODO double check removal
 		// states implied by Add cant cancel the transition
-		isCalled := lo.Contains(t.CalledStates(), toState)
+		// isCalled := slices.Contains(t.CalledStates(), toState)
 		args := t.Mutation.Args
+
 		ret := t.emitHandler("Any", toState, "Any"+toState, args)
-		if ret == Canceled && isCalled {
+		if ret == Canceled {
 			return ret
 		}
+
 		ret = t.emitHandler("", toState, toState+"Enter", args)
-		if ret == Canceled && isCalled {
+		if ret == Canceled {
 			return ret
 		}
 	}
+
 	return Executed
 }
 
@@ -249,7 +299,7 @@ func (t *Transition) emitExitEvents() Result {
 }
 
 func (t *Transition) emitHandler(from, to, event string, args A) Result {
-	step := newStep(from, to, TransitionStepTypeTransition, event)
+	step := newStep(from, to, StepHandler, event)
 	t.latestStep = step
 	ret, handlerCalled := t.Machine.emit(event, args, step)
 	if handlerCalled {
@@ -262,22 +312,27 @@ func (t *Transition) emitFinalEvents() {
 	finals := S{}
 	finals = append(finals, t.Exits...)
 	finals = append(finals, t.Enters...)
+
 	for _, s := range finals {
-		isEnter := lo.Contains(t.Enters, s)
+		isEnter := slices.Contains(t.Enters, s)
+
 		var handler string
 		if isEnter {
 			handler = s + "State"
 		} else {
 			handler = s + "End"
 		}
-		step := newStep(s, "", TransitionStepTypeTransition, handler)
+
+		step := newStep(s, "", StepHandler, handler)
 		step.IsFinal = true
 		step.IsEnter = isEnter
 		t.latestStep = step
 		ret, handlerCalled := t.Machine.emit(handler, t.Mutation.Args, step)
+
 		if handlerCalled {
 			t.addSteps(step)
 		}
+
 		if ret == Canceled {
 			break
 		}
@@ -299,13 +354,15 @@ func (t *Transition) emitEvents() Result {
 
 	// NEGOTIATION CALLS PHASE (cancellable)
 	// FooFoo handlers
-	if result != Canceled && t.Type() != MutationTypeRemove {
+	if result != Canceled && t.Type() != MutationRemove {
 		result = t.emitSelfEvents()
 	}
+
 	// FooExit handlers
 	if result != Canceled {
 		result = t.emitExitEvents()
 	}
+
 	// FooEnter handlers
 	if result != Canceled {
 		result = t.emitEnterEvents()
@@ -313,24 +370,37 @@ func (t *Transition) emitEvents() Result {
 
 	// FINAL HANDLERS (non cancellable)
 	if result != Canceled {
+
 		m.setActiveStates(t.CalledStates(), t.TargetStates, t.IsAuto())
 		t.emitFinalEvents()
 		t.IsCompleted = true
-		hasStateChanged = m.HasStateChanged(t.StatesBefore, t.ClocksBefore)
+
+		hasStateChanged = m.HasStateChangedSince(t.ClocksBefore)
+
 		if hasStateChanged {
 			m.emit(EventTick, A{"before": t.StatesBefore}, nil)
 		}
 	}
 
+	// gather new clock values
+	clocks := Clocks{}
+	for _, state := range m.StateNames {
+		clocks[state] = m.clock[state]
+	}
+	t.ClocksAfter = clocks
+
 	// AUTO STATES
 	if result == Canceled {
+
+		t.Accepted = false
 		m.emit(EventTransitionCancel, txArgs, nil)
 	} else if hasStateChanged && !t.IsAuto() {
+
 		autoMutation := m.Resolver.GetAutoMutation()
 		if autoMutation != nil {
-			m.log(LogOps, "[auto] %s", j((*autoMutation).CalledStates))
+			m.log(LogOps, "[auto] %s", j(autoMutation.CalledStates))
 			// unshift
-			m.Queue = append([]Mutation{*autoMutation}, m.Queue...)
+			m.queue = append([]*Mutation{autoMutation}, m.queue...)
 		}
 	}
 
@@ -338,15 +408,19 @@ func (t *Transition) emitEvents() Result {
 	m.logEntriesLock.Lock()
 	// TODO struct type
 	txArgs["pre_logs"] = m.logEntries
-	txArgs["queue_len"] = len(m.Queue)
+	txArgs["queue_len"] = len(m.queue)
 	m.logEntries = []string{}
 	m.logEntriesLock.Unlock()
 	m.emit(EventTransitionEnd, txArgs, nil)
 
+	for i := range t.Machine.Tracers {
+		t.Machine.Tracers[i].TransitionEnd(t)
+	}
+
 	if result == Canceled {
 		return Canceled
 	}
-	if t.Type() == MutationTypeRemove {
+	if t.Type() == MutationRemove {
 		if m.Not(t.CalledStates()) {
 			return Executed
 		} else {
@@ -366,7 +440,7 @@ func (t *Transition) emitEvents() Result {
 func (t *Transition) setupAccepted() {
 	m := t.Machine
 	// Dropping states doesn't require an acceptance
-	if t.Type() == MutationTypeRemove {
+	if t.Type() == MutationRemove {
 		return
 	}
 	notAccepted := DiffStates(t.CalledStates(), t.TargetStates)
@@ -384,5 +458,5 @@ func (t *Transition) setupAccepted() {
 	}
 	t.Accepted = false
 	m.log(LogOps, "[cancel:reject] %s", j(notAccepted))
-	t.addSteps(newSteps("", notAccepted, TransitionStepTypeCancel, nil)...)
+	t.addSteps(newSteps("", notAccepted, StepCancel, nil)...)
 }

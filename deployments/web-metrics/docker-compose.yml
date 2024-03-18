@@ -1,0 +1,43 @@
+services:
+
+  prometheus:
+    image: prom/prometheus:v2.37.9
+    container_name: prometheus
+    user: root
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yaml'
+    volumes:
+      - prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+    #password: root123
+
+  pushgateway:
+    image: prom/pushgateway
+    container_name: pushgateway
+    ports:
+      - "9091:9091"
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.26
+    container_name: jaeger
+    environment:
+    - COLLECTOR_OTLP_ENABLED=true
+    ports:
+    - "16686:16686"
+    - "4317:4317"
+    restart: unless-stopped
+
+volumes:
+    grafana_data: {}

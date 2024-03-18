@@ -1,65 +1,64 @@
 // Based on https://github.com/temporalio/samples-go/blob/main/fileprocessing/
 //
-// Go playground: https://play.golang.com/p/Fv92Xpzlzv6
-//
 // This example shows a simple file processing workflow going from
 // DownloadingFile to FileUploaded.
 //
 // Sample output (LogLevel == LogChanges):
 //
-// === RUN   TestFileProcessing
-//     fileprocessing.go:164: [05a4d] [state] +DownloadingFile
-//     fileprocessing.go:164: [05a4d] [external] Downloading file... foo.txt
-//     fileprocessing.go:178: waiting: DownloadingFile to FileUploaded
-//     fileprocessing.go:164: [05a4d] [state] +FileDownloaded -DownloadingFile
-//     fileprocessing.go:164: [05a4d] [state:auto] +ProcessingFile
-//     fileprocessing.go:164: [05a4d] [external] processFileActivity succeed /tmp/temporal_sample1737998348
-//     fileprocessing.go:164: [05a4d] [state] +FileProcessed -ProcessingFile
-//     fileprocessing.go:164: [05a4d] [external] cleanup /tmp/temporal_sample3389363275
-//     fileprocessing.go:164: [05a4d] [state:auto] +UploadingFile
-//     fileprocessing.go:164: [05a4d] [external] uploadFileActivity begin /tmp/temporal_sample1737998348
-//     fileprocessing.go:164: [05a4d] [external] uploadFileActivity succeed /tmp/temporal_sample1737998348
-//     fileprocessing.go:164: [05a4d] [state] +FileUploaded -UploadingFile
-//     fileprocessing.go:164: [05a4d] [external] cleanup /tmp/temporal_sample1737998348
-//     fileprocessing_test.go:19:
-//         (FileUploaded:1 FileProcessed:1 FileDownloaded:1)
-//     fileprocessing_test.go:20:
-//         (FileDownloaded:1 FileProcessed:1 FileUploaded:1)[Exception:0 DownloadingFile:1 ProcessingFile:1 UploadingFile:1]
-//     fileprocessing_test.go:21:
-//         Exception:
-//           State:   false 0
+//=== RUN   TestFileProcessing
+//    fileprocessing.go:156: [dad73] [state] +DownloadingFile
+//    fileprocessing.go:156: [dad73] [extern:DownloadingF...] Downloading file... foo.txt
+//    fileprocessing.go:169: waiting: DownloadingFile to FileUploaded
+//    fileprocessing.go:156: [dad73] [state] +FileDownloaded -DownloadingFile
+//    fileprocessing.go:156: [dad73] [state:auto] +ProcessingFile
+//    fileprocessing.go:156: [dad73] [extern] processFileActivity succeed /tmp/temporal_sample920978545
+//    fileprocessing.go:156: [dad73] [state] +FileProcessed -ProcessingFile
+//    fileprocessing.go:156: [dad73] [extern:ProcessingFi...] cleanup /tmp/temporal_sample699261295
+//    fileprocessing.go:156: [dad73] [state:auto] +UploadingFile
+//    fileprocessing.go:156: [dad73] [extern] uploadFileActivity begin /tmp/temporal_sample920978545
+//    fileprocessing.go:156: [dad73] [extern] uploadFileActivity succeed /tmp/temporal_sample920978545
+//    fileprocessing.go:156: [dad73] [state] +FileUploaded -UploadingFile
+//    fileprocessing.go:156: [dad73] [extern:UploadingFil...] cleanup /tmp/temporal_sample920978545
+//    fileprocessing_test.go:34:
+//        (FileUploaded:1 FileProcessed:1 FileDownloaded:1)
+//    fileprocessing_test.go:35:
+//        (FileDownloaded:1 FileProcessed:1 FileUploaded:1)[DownloadingFile:2 Exception:0 ProcessingFile:2 UploadingFile:2]
+//    fileprocessing_test.go:36:
+//        DownloadingFile:
+//          State:   false 2
+//          Remove:  FileDownloaded
 //
-//         DownloadingFile:
-//           State:   false 1
-//           Remove:  FileDownloaded
+//        Exception:
+//          State:   false 0
+//          Multi:   true
 //
-//         FileDownloaded:
-//           State:   true 1
-//           Remove:  DownloadingFile
+//        FileDownloaded:
+//          State:   true 1
+//          Remove:  DownloadingFile
 //
-//         ProcessingFile:
-//           State:   false 1
-//           Auto:    true
-//           Require: FileDownloaded
-//           Remove:  FileProcessed
+//        FileProcessed:
+//          State:   true 1
+//          Remove:  ProcessingFile
 //
-//         FileProcessed:
-//           State:   true 1
-//           Remove:  ProcessingFile
+//        FileUploaded:
+//          State:   true 1
+//          Remove:  UploadingFile
 //
-//         UploadingFile:
-//           State:   false 1
-//           Auto:    true
-//           Require: FileProcessed
-//           Remove:  FileUploaded
+//        ProcessingFile:
+//          State:   false 2
+//          Auto:    true
+//          Require: FileDownloaded
+//          Remove:  FileProcessed
 //
-//         FileUploaded:
-//           State:   true 1
-//           Remove:  UploadingFile
+//        UploadingFile:
+//          State:   false 2
+//          Auto:    true
+//          Require: FileProcessed
+//          Remove:  FileUploaded
 //
 //
-// --- PASS: TestFileProcessing (0.20s)
-// PASS
+//--- PASS: TestFileProcessing (0.20s)
+//PASS
 
 package temporal_fileprocessing
 
@@ -70,7 +69,9 @@ import (
 	"strings"
 	"time"
 
+	ssf "github.com/pancsta/asyncmachine-go/examples/temporal-fileprocessing/states"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	//"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
 type Logger func(msg string, args ...any)
@@ -79,33 +80,9 @@ type Logger func(msg string, args ...any)
 // FileUploaded flow.
 func NewMachine(ctx context.Context) *am.Machine {
 	// define states
-	return am.New(ctx, am.States{
-		// DownloadFileActivity
-		"DownloadingFile": {
-			Remove: am.S{"FileDownloaded"},
-		},
-		"FileDownloaded": {
-			Remove: am.S{"DownloadingFile"},
-		},
-		// ProcessFileActivity
-		"ProcessingFile": {
-			Auto:    true,
-			Require: am.S{"FileDownloaded"},
-			Remove:  am.S{"FileProcessed"},
-		},
-		"FileProcessed": {
-			Remove: am.S{"ProcessingFile"},
-		},
-		// UploadFileActivity
-		"UploadingFile": {
-			Auto:    true,
-			Require: am.S{"FileProcessed"},
-			Remove:  am.S{"FileUploaded"},
-		},
-		"FileUploaded": {
-			Remove: am.S{"UploadingFile"},
-		},
-	}, nil)
+	return am.New(ctx, ssf.States, &am.Opts{
+		DontLogID: true,
+	})
 }
 
 // MachineHandlers is a struct of handlers & their data for the FileProcessing
@@ -122,7 +99,7 @@ type MachineHandlers struct {
 // DownloadingFileState is a _final_ entry handler for the DownloadingFile
 // state.
 func (h *MachineHandlers) DownloadingFileState(e *am.Event) {
-	// args definition
+	// read args
 	h.Filename = e.Args["filename"].(string)
 
 	e.Machine.Log("Downloading file... %s", h.Filename)
@@ -137,7 +114,7 @@ func (h *MachineHandlers) DownloadingFileState(e *am.Event) {
 		}
 		h.DownloadedName = tmpFile.Name()
 		// done, next step
-		e.Machine.Add(am.S{"FileDownloaded"}, nil)
+		e.Machine.Add1(ssf.FileDownloaded, nil)
 	}()
 }
 
@@ -147,7 +124,7 @@ func (h *MachineHandlers) ProcessingFileState(e *am.Event) {
 	// Never block in a handler, always "go func" it.
 	// State context will confirm that processing should still be happening.
 	// Using machine's context directly will conflict with retry logic (if any).
-	stateCtx := e.Machine.GetStateCtx("ProcessingFile")
+	stateCtx := e.Machine.NewStateCtx("ProcessingFile")
 	go func() {
 		// assert context
 		if stateCtx.Err() != nil {
@@ -174,7 +151,7 @@ func (h *MachineHandlers) ProcessingFileState(e *am.Event) {
 		h.ProcessedFileName = tmpFile.Name()
 		e.Machine.Log("processFileActivity succeed %s", h.ProcessedFileName)
 		// done, next step
-		e.Machine.Add(am.S{"FileProcessed"}, nil)
+		e.Machine.Add1(ssf.FileProcessed, nil)
 	}()
 }
 
@@ -192,7 +169,7 @@ func (h *MachineHandlers) UploadingFileState(e *am.Event) {
 	// Never block in a handler, always "go func" it.
 	// State context will confirm that uploading should still be happening.
 	// Using machine's context directly will conflict with retry logic (if any).
-	stateCtx := e.Machine.GetStateCtx("ProcessingFile")
+	stateCtx := e.Machine.NewStateCtx("ProcessingFile")
 	go func() {
 		e.Machine.Log("uploadFileActivity begin %s", h.ProcessedFileName)
 		err := h.BlobStore.uploadFile(stateCtx, h.ProcessedFileName)
@@ -203,7 +180,7 @@ func (h *MachineHandlers) UploadingFileState(e *am.Event) {
 		}
 		e.Machine.Log("uploadFileActivity succeed %s", h.ProcessedFileName)
 		// done, next step
-		e.Machine.Add(am.S{"FileUploaded"}, nil)
+		e.Machine.Add1(ssf.FileUploaded, nil)
 	}()
 }
 
@@ -219,6 +196,11 @@ func (h *MachineHandlers) UploadingFileEnd(e *am.Event) {
 func FileProcessingFlow(ctx context.Context, log Logger, filename string) (*am.Machine, error) {
 	// init
 	machine := NewMachine(ctx)
+	// debug
+	//err := telemetry.TransitionsToDBG(machine, telemetry.DbgHost)
+	//if err != nil {
+	//	return nil, err
+	//}
 
 	// different log granularity and a custom output
 	machine.SetLogLevel(am.LogChanges)
@@ -236,7 +218,7 @@ func FileProcessingFlow(ctx context.Context, log Logger, filename string) (*am.M
 	}
 
 	// start it up!
-	machine.Add(am.S{"DownloadingFile"}, am.A{"filename": filename})
+	machine.Add1(ssf.DownloadingFile, am.A{"filename": filename})
 
 	// DownloadingFile to FileUploaded
 	log("waiting: DownloadingFile to FileUploaded")
@@ -245,7 +227,7 @@ func FileProcessingFlow(ctx context.Context, log Logger, filename string) (*am.M
 		return machine, errors.New("timeout")
 	case <-machine.WhenErr(nil):
 		return machine, machine.Err
-	case <-machine.When(am.S{"FileUploaded"}, nil):
+	case <-machine.When1(ssf.FileUploaded, nil):
 	}
 
 	return machine, nil

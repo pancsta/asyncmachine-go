@@ -26,23 +26,31 @@ tasks:
       - task: build-debugger
 
   debugger:
+    silent: false
     cmds:
-      - go run tools/am-dbg/main.go {{.CLI_ARGS}}
+      - go run tools/cmd/am-dbg/main.go {{.CLI_ARGS}}
+
+  debugger-assets:
+    silent: false
+    cmds:
+      - |
+        go run tools/cmd/am-dbg/main.go \
+          --import-data assets/am-dbg-dump-sim.gob.bz2 \
+          {{.CLI_ARGS}}
 
   debugger-client:
     cmds:
-      - go run tools/am-dbg/main.go 
-          --log-machine-id false 
+      - go run tools/cmd/am-dbg/main.go 
           --log-level 2
           --am-dbg-url localhost:9913
 
   debugger-debugger:
     cmds:
-      - go run tools/am-dbg/main.go 
+      - go run tools/cmd/am-dbg/main.go 
           --log-file am-dbg-dbg.log 
-          --log-machine-id false 
           --log-level 2
-          --server-url localhost:9913
+          --listen-on localhost:9913
+          --select-connected
 
   test:
     cmds:
@@ -59,10 +67,28 @@ tasks:
 
   cloc:
     cmds:
+      - printf "\n----- pkg/machine\n\n"
       - gocloc pkg/machine --not-match=_test\.go
       - gocloc pkg/machine/*_test.go
-      - gocloc tools/am-dbg/**/* --not-match=_test\.go
+
+      - printf "\n----- pkg/telemetry\n\n"
+      - gocloc pkg/telemetry --not-match=_test\.go
+      - gocloc pkg/telemetry/*_test.go
+
+      - printf "\n----- pkg/history\n\n"
+      - gocloc pkg/history --not-match=_test\.go
+      - gocloc pkg/history/*_test.go
+
+      - printf "\n----- tools/debugger\n\n"
+      - gocloc tools/debugger --not-match=_test\.go
+
+      - printf "\n----- tools/generator\n\n"
+      - gocloc tools/generator --not-match=_test\.go
+
+      - printf "\n----- examples\n\n"
       - gocloc examples
+
+      - printf "\n----- docs\n\n"
       - gocloc --include-lang=md docs
 
   format:
@@ -91,16 +117,16 @@ tasks:
 
   lint-md:
     cmds:
-      - mdl -g -c .mdlrc .
+      - mdl -g -c config/mdlrc .
 
   check-fmt:
     silent: false
     cmds:
-      - test -z $($GOFMT -l examples/**/*.go)
-      - test -z $($GOFMT -l pkg/**/*.go)
-      - test -z $($GOFMT -l tools/am-dbg/*.go)
-      - test -z $(goimports -l -local "github.com/pancsta/asyncmachine-go" pkg/**/*.go)
-      - test -z $(goimports -l -local "github.com/pancsta/asyncmachine-go" tools/**/*.go)
+      - test -z "$($GOFMT -l examples/**/*.go)"
+      - test -z "$($GOFMT -l pkg/**/*.go)"
+      - test -z "$($GOFMT -l tools/**/*.go)"
+      - test -z "$(goimports -l -local "github.com/pancsta/asyncmachine-go" pkg/**/*.go)"
+      - test -z "$(goimports -l -local "github.com/pancsta/asyncmachine-go" tools/**/*.go)"
 
   changelog:
     cmds:
@@ -117,3 +143,59 @@ tasks:
       # TODO switch to nodejs md linter
       - gem install mdl
       - gem install github_changelog_generator
+      - pipx install grafanalib
+
+  install-deps-demo:
+    cmds:
+      - npm install -g terminalizer
+
+  gen-grafana-dashboard:
+    desc: Generate Grafana dashboard for provided machine IDs
+    dir: scripts
+    requires:
+      vars: [IDS]
+    env:
+        IDS: $IDS
+    cmds:
+      - generate-dashboard --output ../assets/grafana-mach-{{.IDS}}.json mach.dashboard.py
+
+  grafana-dashboard-list-panels:
+    desc: List panels and grid positions in a generated dashboard
+    requires:
+      vars: [IDS]
+    cmds:
+      - |
+        jq '.. | objects | select(has("gridPos")) | {title: .title, gridPos: .gridPos}' assets/grafana-mach-{{.IDS}}.json
+
+  gen-states-file:
+    desc: Generate states file for provided state names, eg "task gen-states-file -- Foo,Bar"
+    example: task gen-states-file --state-names "state1,state2,state3"
+    cmds:
+      - go run tools/cmd/am-gen/main.go states-file {{.CLI_ARGS}}
+
+  demo-gif:
+    cmds:
+      - terminalizer render assets/demo.cast.yml -o assets/am-dbg.gif
+      - magick assets/am-dbg.gif -layers optimize assets/am-dbg.gif
+
+  demo-gif-quick:
+    cmds:
+      - terminalizer render assets/demo.cast.yml -o assets/am-dbg.gif -q 30
+
+  demo-record:
+    cmds:
+      - terminalizer record --config config/terminalizer.yml --commnad task demo-run
+
+  demo-run:
+    cmds:
+      - go run tools/cmd/am-dbg-demo/main.go
+
+  demo:
+    desc: Create assets/demo.gif using tools/am-dbg-demo
+    cmds:
+      - task: demo-record
+      - task: demo-gif
+
+  godoc:
+    cmds:
+      - godoc -http=:6060

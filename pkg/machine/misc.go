@@ -2,20 +2,25 @@ package machine
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
 	"reflect"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
-
-	"github.com/samber/lo"
 )
 
 // S (state names) is a string list of state names.
 type S []string
 
-// A (arguments) is a map of named method arguments.
+// A (arguments) is a map of named arguments for a Mutation.
 type A map[string]any
 
 // T is an ordered list of state clocks.
+// TODO use math/big?
 type T []uint64
 
 // Clocks is a map of state names to their clocks.
@@ -31,19 +36,16 @@ type State struct {
 	After   S
 }
 
-// States is a map of state names to state definitions.
-type States = map[string]State
+// Struct is a map of state names to state definitions.
+type Struct = map[string]State
 
-type Event struct {
-	Name    string
-	Machine *Machine
-	Args    A
-	// internal events lack a step
-	step *TransitionStep
-}
+///////////////
+///// options
+///////////////
 
+// Opts struct is used to configure a new Machine.
 type Opts struct {
-	// Unique ID of this machine. Default: random UUID.
+	// Unique ID of this machine. Default: random ID.
 	ID string
 	// Time for a handler to execute. Default: time.Second
 	HandlerTimeout time.Duration
@@ -57,15 +59,88 @@ type Opts struct {
 	Resolver RelationsResolver
 	// Log level of the machine. Default: LogNothing.
 	LogLevel LogLevel
+	// Tracer for the machine. Default: nil.
+	Tracers []Tracer
+	// LogArgs matching function for the machine. Default: nil.
+	LogArgs func(args A) map[string]string
+	// Parent machine, used to inherit certain properties, e.g. tracers.
+	// Overrides ParentID. Default: nil.
+	Parent *Machine
+	// ParentID is the ID of the parent machine. Default: "".
+	ParentID string
+	// Tags is a list of tags for the machine. Default: nil.
+	Tags []string
+	// QueueLimit is the maximum number of mutations that can be queued.
+	// Default: 1000.
+	// TODO per-state QueueLimit
+	QueueLimit int
 }
+
+// OptsWithDebug returns Opts with debug settings (DontPanicToException,
+// long HandlerTimeout).
+func OptsWithDebug(opts *Opts) *Opts {
+	opts.DontPanicToException = true
+	opts.HandlerTimeout = 10 * time.Minute
+
+	return opts
+}
+
+// OptsWithTracers returns Opts with the given tracers. Tracers are inherited
+// by submachines (via Opts.Parent) when env.AM_DEBUG is set.
+func OptsWithTracers(opts *Opts, tracers ...Tracer) *Opts {
+	if tracers != nil {
+		opts.Tracers = tracers
+	}
+
+	return opts
+}
+
+// OptsWithParentTracers returns Opts with the parent's Opts.Tracers and
+// Opts.LogArgs.
+func OptsWithParentTracers(opts *Opts, parent *Machine) *Opts {
+	var tracers []Tracer
+
+	tracers = append(tracers, parent.Tracers...)
+	opts.Tracers = tracers
+	opts.LogArgs = parent.GetLogArgs()
+
+	return opts
+}
+
+///////////////
+///// enums
+///////////////
 
 // Result enum is the result of a state Transition
 type Result int
 
 const (
+	// Executed means that the transition was executed immediately and not
+	// canceled.
 	Executed Result = 1 << iota
+	// Canceled means that the transition was canceled, by either relations or a
+	// handler.
 	Canceled
+	// Queued means that the transition was queued for later execution. The
+	// following methods can be used to wait for the results:
+	// - Machine.When
+	// - Machine.WhenNot
+	// - Machine.WhenArgs
+	// - Machine.WhenTime
 	Queued
+)
+
+var (
+	// ErrStateUnknown indicates that the state is unknown.
+	ErrStateUnknown = errors.New("state unknown")
+	// ErrCanceled can be used to indicate a canceled Transition. Not used ATM.
+	ErrCanceled = errors.New("transition canceled")
+	// ErrQueued can be used to indicate a queued Transition. Not used ATM.
+	ErrQueued = errors.New("transition queued")
+	// ErrInvalidArgs can be used to indicate invalid arguments. Not used ATM.
+	ErrInvalidArgs = errors.New("invalid arguments")
+	// ErrTimeout can be used to indicate timed out mutation. Not used ATM.
+	ErrTimeout = errors.New("timeout")
 )
 
 func (r Result) String() string {
@@ -81,84 +156,116 @@ func (r Result) String() string {
 }
 
 const (
-	EventTransitionEnd    string = "transition-end"
-	EventTransitionStart  string = "transition-start"
-	EventTransitionCancel string = "transition-cancel"
-	EventQueueEnd         string = "queue-end"
-	EventTick             string = "tick"
+	// EventTransitionEnd transition ended
+	EventTransitionEnd = "transition-end"
+	// EventTransitionInit transition being initialized
+	EventTransitionInit = "transition-init"
+	// EventTransitionStart transition started
+	EventTransitionStart = "transition-start"
+	// EventTransitionCancel transition canceled
+	EventTransitionCancel = "transition-cancel"
+	// EventQueueEnd queue fully drained
+	EventQueueEnd = "queue-end"
+	// EventQueueAdd new mutation queued
+	EventQueueAdd = "queue-add"
+	// EventStructChange machine's states structure have changed
+	EventStructChange = "struct-change"
+	// EventTick active states changed, at least one state clock increased
+	EventTick = "tick"
+	// EventException Exception state becomes active
+	EventException = "exception"
 )
 
 // MutationType enum
 type MutationType int
 
 const (
-	MutationTypeAdd MutationType = iota
-	MutationTypeRemove
-	MutationTypeSet
+	MutationAdd MutationType = iota
+	MutationRemove
+	MutationSet
+	MutationEval
 )
 
 func (m MutationType) String() string {
 	switch m {
-	case MutationTypeAdd:
+	case MutationAdd:
 		return "add"
-	case MutationTypeRemove:
+	case MutationRemove:
 		return "remove"
-	case MutationTypeSet:
+	case MutationSet:
 		return "set"
+	case MutationEval:
+		return "eval"
 	}
 	return ""
 }
 
+// Mutation represents an atomic change (or an attempt) of machine's active
+// states. Mutation causes a Transition.
 type Mutation struct {
-	Type         MutationType
+	// add, set, remove
+	Type MutationType
+	// states explicitly passed to the mutation method
 	CalledStates S
-	Args         A
+	// argument map passed to the mutation method (if any).
+	Args A
 	// this mutation has been triggered by an auto state
 	Auto bool
+	// specific context for this mutation (optional)
+	Ctx context.Context
+	// optional eval func, only for MutationEval
+	Eval func()
 }
 
-// TransitionStepType enum
-// TODO rename to StepType
-type TransitionStepType int
+// StateWasCalled returns true if the Mutation was called with the passed
+// state (or does it come from relations).
+func (m Mutation) StateWasCalled(state string) bool {
+	return slices.Contains(m.CalledStates, state)
+}
+
+// StepType enum
+type StepType int
 
 const (
-	TransitionStepTypeRelation TransitionStepType = 1 << iota
-	TransitionStepTypeTransition
-	TransitionStepTypeSet
-	TransitionStepTypeRemove
-	// TODO rename to StepTypeRemoveNotSet
-	TransitionStepTypeNoSet
-	TransitionStepTypeRequested
-	TransitionStepTypeCancel
+	StepRelation StepType = 1 << iota
+	StepHandler
+	StepSet
+	// StepRemove indicates a step where a state goes active->inactive
+	StepRemove
+	// StepRemoveNotActive indicates a step where a state goes inactive->inactive
+	StepRemoveNotActive
+	StepRequested
+	StepCancel
 )
 
-func (tt TransitionStepType) String() string {
+func (tt StepType) String() string {
 	switch tt {
-	case TransitionStepTypeRelation:
+	case StepRelation:
 		return "rel"
-	case TransitionStepTypeTransition:
-		// TODO rename to TransitionStepTypeHandler ?
-		return "transition"
-	case TransitionStepTypeSet:
+	case StepHandler:
+		return "handler"
+	case StepSet:
 		return "set"
-	case TransitionStepTypeRemove:
+	case StepRemove:
 		return "remove"
-	case TransitionStepTypeNoSet:
-		// TODO rename to TransitionStepTypeRemoveTry ?
-		return "no-set"
-	case TransitionStepTypeRequested:
+	case StepRemoveNotActive:
+		return "removenotactive"
+	case StepRequested:
 		return "requested"
-	case TransitionStepTypeCancel:
+	case StepCancel:
 		return "cancel"
 	}
 	return ""
 }
 
-type TransitionStep struct {
-	ID        string
+// Step struct represents a single step within a Transition, either a relation
+// resolving step or a handler call.
+type Step struct {
+	Type StepType
+	// optional, unless no ToState
 	FromState string
-	ToState   string
-	Type      TransitionStepType
+	// optional, unless no FromState
+	ToState string
 	// eg a transition method name, relation type
 	Data any
 	// marks a final handler (FooState, FooEnd)
@@ -193,20 +300,26 @@ func (r Relation) String() string {
 	return ""
 }
 
-type HandlerBinding struct {
-	Ready chan struct{}
-}
+///////////////
+///// logging
+///////////////
 
+// Logger is a logging function for the machine.
 type Logger func(level LogLevel, msg string, args ...any)
 
 // LogLevel enum
 type LogLevel int
 
 const (
+	// LogNothing means no logging, including external msgs.
 	LogNothing LogLevel = iota
+	// LogChanges means logging state changes and external msgs.
 	LogChanges
+	// LogOps means LogChanges + logging all the operations.
 	LogOps
+	// LogDecisions means LogOps + logging all the decisions behind them.
 	LogDecisions
+	// LogEverything means LogDecisions + all event and emitter names, and more.
 	LogEverything
 )
 
@@ -226,20 +339,118 @@ func (l LogLevel) String() string {
 	return "nothing"
 }
 
+// NewArgsMapper returns a matcher function for LogArgs. Useful for debugging
+// untyped argument maps.
+//
+// maxlen: maximum length of the string representation of the argument
+// (default=20).
+func NewArgsMapper(names []string, maxlen int) func(args A) map[string]string {
+	if maxlen == 0 {
+		maxlen = 20
+	}
+	return func(args A) map[string]string {
+		oks := make([]bool, len(names))
+		found := 0
+		for i, name := range names {
+			_, ok := args[name]
+			oks[i] = ok
+			found++
+		}
+		if found == 0 {
+			return nil
+		}
+		ret := make(map[string]string)
+		for i, name := range names {
+			if !oks[i] {
+				continue
+			}
+			ret[name] = truncateStr(fmt.Sprintf("%v", args[name]), maxlen)
+		}
+		return ret
+	}
+}
+
+// Tracer is an interface for logging machine transitions and events, used by
+// Opts.Tracers.
+type Tracer interface {
+	TransitionInit(transition *Transition)
+	TransitionEnd(transition *Transition)
+	HandlerStart(transition *Transition, emitter string, handler string)
+	HandlerEnd(transition *Transition, emitter string, handler string)
+	End()
+	MachineInit(mach *Machine)
+	MachineDispose(machID string)
+	NewSubmachine(parent, mach *Machine)
+	Inheritable() bool
+}
+
+///////////////
+///// events, when, emitters
+///////////////
+
+// Event struct represents a single event of a Mutation withing a Transition.
+// One event can have 0-n handlers.
+type Event struct {
+	// Name of the event / handler
+	Name string
+	// Machine is the machine that the event belongs to, it can be used to access
+	// the current Transition and Mutation.
+	Machine *Machine
+	// Args is a map of named arguments for a Mutation.
+	Args A
+	// internal events lack a step
+	step *Step
+}
+
+// Mutation returns the Mutation of an Event.
+func (e *Event) Mutation() *Mutation {
+	return e.Machine.Transition.Mutation
+}
+
+// Transition returns the Transition of an Event.
+func (e *Event) Transition() *Transition {
+	return e.Machine.Transition
+}
+
 type (
-	// map of (single) state names to a list of bindings
+	// map of (single) state names to a list of activation / de-activation
+	// bindings
 	indexWhen map[string][]*whenBinding
-	// map of (single) state names to a list of bindings
+	// map of (single) state names to a list of time bindings
+	indexWhenTime map[string][]*whenTimeBinding
+	// map of (single) state names to a list of args value bindings
+	indexWhenArgs map[string][]*whenArgsBinding
+	// map of (single) state names to a context cancel function
 	indexStateCtx map[string][]context.CancelFunc
-	indexEventCh  map[string][]chan *Event
+	// map of (single) state names to an event channel
+	indexEventCh map[string][]chan *Event
 )
 
 type whenBinding struct {
-	ch       chan struct{}
+	ch chan struct{}
+	// means states are required to NOT be active
 	negation bool
 	states   stateIsActive
 	matched  int
 	total    int
+}
+
+type whenTimeBinding struct {
+	ch chan struct{}
+	// map of completed to their index positions
+	index map[string]int
+	// number of matches so far
+	matched int
+	// number of total matches needed
+	total int
+	// optional times to match for completed from index
+	times     T
+	completed stateIsActive
+}
+
+type whenArgsBinding struct {
+	ch   chan struct{}
+	args A
 }
 
 type stateIsActive map[string]bool
@@ -251,33 +462,68 @@ type emitter struct {
 	methods  *reflect.Value
 }
 
-// newEmitter creates a new emitter for Machine.
-// Each emitter should be consumed by one receiver only to guarantee the
-// delivery of all events.
-func (m *Machine) newEmitter(name string, methods *reflect.Value) *emitter {
-	e := &emitter{
-		id:      name,
-		methods: methods,
-	}
-	// TODO emitter mutex
-	m.emitters = append(m.emitters, e)
-	return e
-}
-
 func (e *emitter) dispose() {
 	e.disposed = true
 	e.methods = nil
 }
 
+///////////////
+///// exception support
+///////////////
+
+// Exception is the Exception state name
+const Exception = "Exception"
+
+// ExceptionArgsPanic is an optional argument ["panic"] for the Exception state
+// which describes a panic within a Transition handler.
+type ExceptionArgsPanic struct {
+	CalledStates S
+	StatesBefore S
+	Transition   *Transition
+	LastStep     *Step
+	StackTrace   []byte
+}
+
+// ExceptionHandler provide a basic Exception state support, as should be
+// embedded into handler structs in most of the cases.
+type ExceptionHandler struct{}
+
+// ExceptionState is a final entry handler for the Exception state.
+// Args:
+// - err error: The error that caused the Exception state.
+// - panic *ExceptionArgsPanic: Optional details about the panic.
+func (eh *ExceptionHandler) ExceptionState(e *Event) {
+	if e.Machine.PrintExceptions {
+		err := e.Args["err"].(error)
+		_, ok := e.Args["panic"]
+		if !ok {
+			// TODO more mutation info
+			e.Machine.log(LogChanges, "[error] %s", err)
+			return
+		}
+		details := e.Args["panic"].(*ExceptionArgsPanic)
+		mutType := details.Transition.Mutation.Type
+		e.Machine.log(LogChanges, "[error:%s] %s (%s)", mutType,
+			j(details.CalledStates), err)
+		if details.StackTrace != nil {
+			e.Machine.log(LogChanges, "[error:trace] %s", details.StackTrace)
+		}
+	}
+}
+
+///////////////
+///// pub utils
+///////////////
+
 // DiffStates returns the states that are in states1 but not in states2.
 func DiffStates(states1 S, states2 S) S {
-	return lo.Filter(states1, func(name string, i int) bool {
-		return !lo.Contains(states2, name)
+	return slicesFilter(states1, func(name string, i int) bool {
+		return !slices.Contains(states2, name)
 	})
 }
 
-// IsTimeAfter checks if time1 is after time2. Requires ordered results from
-// Machine.Time() (with specified states).
+// IsTimeAfter checks if time1 is after time2. Requires a deterministic states
+// order, e.g. by using Machine.VerifyStates.
 func IsTimeAfter(time1, time2 T) bool {
 	after := false
 	for i, t1 := range time1 {
@@ -291,49 +537,76 @@ func IsTimeAfter(time1, time2 T) bool {
 	return after
 }
 
-// ExceptionHandler provide basic Exception state support.
-type ExceptionHandler struct{}
+// CloneStates deep clones the states struct and returns a copy.
+func CloneStates(states Struct) Struct {
+	ret := make(Struct)
 
-// ExceptionArgsPanic is an optional argument for the Exception state which
-// describes a panic within a transition handler.
-type ExceptionArgsPanic struct {
-	CalledStates S
-	StatesBefore S
-	Transition   *Transition
-	LastStep     *TransitionStep
-	StackTrace   []byte
-}
+	for name, state := range states {
 
-// ExceptionState is a final entry handler for the Exception state.
-// Args:
-// - err error: The error that caused the Exception state.
-// - panic *ExceptionArgsPanic: Optional details about the panic.
-func (eh *ExceptionHandler) ExceptionState(e *Event) {
-	if e.Machine.PrintExceptions {
-		err := e.Args["err"].(error)
-		_, detailsOK := e.Args["panic"]
-		if !detailsOK {
-			e.Machine.log(LogChanges, "[error:%s] %s (%s)", err)
-			return
+		stateCopy := State{
+			Auto:  state.Auto,
+			Multi: state.Multi,
 		}
-		details := e.Args["panic"].(*ExceptionArgsPanic)
-		mutType := details.Transition.Mutation.Type
-		e.Machine.log(LogChanges, "[error:%s] %s (%s)", mutType,
-			j(details.CalledStates), err)
-		if details.StackTrace != nil {
-			e.Machine.log(LogEverything, "[error:trace] %s", details.StackTrace)
+
+		// TODO move to Resolver
+
+		if state.Require != nil {
+			stateCopy.Require = slices.Clone(state.Require)
 		}
+		if state.Add != nil {
+			stateCopy.Add = slices.Clone(state.Add)
+		}
+		if state.Remove != nil {
+			stateCopy.Remove = slices.Clone(state.Remove)
+		}
+		if state.After != nil {
+			stateCopy.After = slices.Clone(state.After)
+		}
+
+		ret[name] = stateCopy
 	}
+
+	return ret
 }
 
-// utils
+// IsActiveTick returns true if the tick represents an active state
+// (odd number).
+func IsActiveTick(tick uint64) bool {
+	return tick%2 == 1
+}
 
-// j joins state names
+// everything else than a-z and _
+var invalidName = regexp.MustCompile("[^a-z_0-9]+")
+
+func NormalizeID(id string) string {
+	return invalidName.ReplaceAllString(id, "_")
+}
+
+// SMerge merges multiple state lists into one, removing duplicates.
+// Especially useful for merging state group with single states.
+func SMerge(states ...S) S {
+	if len(states) == 0 {
+		return S{}
+	}
+
+	s := slices.Clone(states[0])
+	for i := 1; i < len(states); i++ {
+		s = append(s, states[i]...)
+	}
+
+	return slicesUniq(s)
+}
+
+///////////////
+///// utils
+///////////////
+
+// j joins state names into a single string
 func j(states []string) string {
 	return strings.Join(states, " ")
 }
 
-// jw joins state names with `sep`.
+// jw joins state names into a single string with a separator.
 func jw(states []string, sep string) string {
 	return strings.Join(states, sep)
 }
@@ -355,31 +628,127 @@ func padString(str string, length int, pad string) string {
 	}
 }
 
-// cloneStates deep clones the states struct and returns a copy.
-func cloneStates(states States) States {
-	ret := make(States)
+// TODO move to Resolver
+func parseStruct(states Struct) Struct {
+	// TODO capitalize states
+
+	parsedStates := CloneStates(states)
 	for name, state := range states {
-		stateCopy := State{
-			Auto:  state.Auto,
-			Multi: state.Multi,
+
+		// avoid self removal
+		if slices.Contains(state.Remove, name) {
+			state.Remove = slicesWithout(state.Remove, name)
 		}
-		if state.Require != nil {
-			stateCopy.Require = make(S, len(state.Require))
-			copy(stateCopy.Require, state.Require)
+
+		// don't Remove if in Add
+		for _, add := range state.Add {
+			if slices.Contains(state.Remove, add) {
+				state.Remove = slicesWithout(state.Remove, add)
+			}
 		}
-		if state.Add != nil {
-			stateCopy.Add = make(S, len(state.Add))
-			copy(stateCopy.Add, state.Add)
+
+		// avoid being after itself
+		if slices.Contains(state.After, name) {
+			state.After = slicesWithout(state.After, name)
 		}
-		if state.Remove != nil {
-			stateCopy.Remove = make(S, len(state.Remove))
-			copy(stateCopy.Remove, state.Remove)
+
+		parsedStates[name] = state
+	}
+
+	return parsedStates
+}
+
+// compareArgs return true if args2 is a subset of args1.
+func compareArgs(args1, args2 A) bool {
+	match := true
+
+	for k, v := range args2 {
+		// TODO better comparisons
+		if args1[k] != v {
+			match = false
+			break
 		}
-		if state.After != nil {
-			stateCopy.After = make(S, len(state.After))
-			copy(stateCopy.After, state.After)
+	}
+
+	return match
+}
+
+func truncateStr(s string, maxLength int) string {
+	if len(s) <= maxLength {
+		return s
+	}
+	return s[:maxLength-3] + "..."
+}
+
+type handlerCall struct {
+	fn      reflect.Value
+	event   *Event
+	timeout bool
+}
+
+func randID() string {
+	id := make([]byte, 16)
+	_, err := rand.Read(id)
+	if err != nil {
+		return "error"
+	}
+
+	return hex.EncodeToString(id)
+}
+
+func slicesWithout[S ~[]E, E comparable](coll S, el E) S {
+	idx := slices.Index(coll, el)
+	ret := slices.Clone(coll)
+	if idx == -1 {
+		return ret
+	}
+	return slices.Delete(ret, idx, idx+1)
+}
+
+// slicesNone returns true if none of the elements of coll2 are in coll1.
+func slicesNone[S1 ~[]E, S2 ~[]E, E comparable](col1 S1, col2 S2) bool {
+	for _, el := range col2 {
+		if slices.Contains(col1, el) {
+			return false
 		}
-		ret[name] = stateCopy
+	}
+	return true
+}
+
+// slicesEvery returns true if all elements of coll2 are in coll1.
+func slicesEvery[S1 ~[]E, S2 ~[]E, E comparable](col1 S1, col2 S2) bool {
+	for _, el := range col2 {
+		if !slices.Contains(col1, el) {
+			return false
+		}
+	}
+	return true
+}
+
+func slicesFilter[S ~[]E, E any](coll S, fn func(item E, i int) bool) S {
+	var ret S
+	for i, el := range coll {
+		if fn(el, i) {
+			ret = append(ret, el)
+		}
+	}
+	return ret
+}
+
+func slicesReverse[S ~[]E, E any](coll S) S {
+	ret := make(S, len(coll))
+	for i := range coll {
+		ret[i] = coll[len(coll)-1-i]
+	}
+	return ret
+}
+
+func slicesUniq[S ~[]E, E comparable](coll S) S {
+	var ret S
+	for _, el := range coll {
+		if !slices.Contains(ret, el) {
+			ret = append(ret, el)
+		}
 	}
 	return ret
 }
