@@ -1,5 +1,8 @@
 # asyncmachine-go manual
 
+This manual hasn't been updated to `v0.4.0`. Please refer to [Cookbook](/docs/cookbook.md) and [/examples](/examples)
+for now.
+
 - [asyncmachine-go manual](#asyncmachine-go-manual)
    - [States](#states)
       - [Everything is a state](#everything-is-a-state)

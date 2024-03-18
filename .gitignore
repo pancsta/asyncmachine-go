@@ -45,6 +45,10 @@ go.work
 # local dev
 /.dev
 /dist
-/docs/cookbook.md
-/tools/am-dbg/am-dbg
+/tools/cmd/am-dbg/am-dbg
 /*.log
+/*.gob
+/assets/demo.cast.yml
+
+_py
+/.run

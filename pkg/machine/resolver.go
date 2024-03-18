@@ -1,13 +1,14 @@
 package machine
 
 import (
+	"fmt"
+	"slices"
 	"sort"
-
-	"github.com/samber/lo"
 )
 
 // RelationsResolver is an interface for parsing relations between states.
-// TODO support custom relation types
+// Not thread-safe.
+// TODO support custom relation types and additional state properties.
 type RelationsResolver interface {
 	// GetTargetStates returns the target states after parsing the relations.
 	GetTargetStates(t *Transition, calledStates S) S
@@ -17,15 +18,22 @@ type RelationsResolver interface {
 	// SortStates sorts the states in the order their handlers should be
 	// executed.
 	SortStates(states S)
+	// GetRelationsOf returns a list of relation types of the given state.
+	GetRelationsOf(fromState string) ([]Relation, error)
+	// GetRelationsBetween returns a list of relation types between the given
+	// states.
+	GetRelationsBetween(fromState, toState string) ([]Relation, error)
 }
 
 // DefaultRelationsResolver is the default implementation of the
-// RelationsResolver.
+// RelationsResolver with Add, Remove, Require and After. It can be overridden
+// using Opts.Resolver.
 type DefaultRelationsResolver struct {
 	Machine    *Machine
 	Transition *Transition
 }
 
+// GetTargetStates implements RelationsResolver.GetTargetStates.
 func (rr *DefaultRelationsResolver) GetTargetStates(
 	t *Transition, calledStates S,
 ) S {
@@ -34,72 +42,83 @@ func (rr *DefaultRelationsResolver) GetTargetStates(
 	m := t.Machine
 	calledStates = m.MustParseStates(calledStates)
 	calledStates = rr.parseAdd(calledStates)
-	calledStates = lo.Uniq(calledStates)
+	calledStates = slicesUniq(calledStates)
 	calledStates = rr.parseRequire(calledStates)
+
 	// start from the end
-	resolvedS := lo.Reverse(calledStates)
+	resolvedS := slicesReverse(calledStates)
+
 	// collect blocked calledStates
 	alreadyBlocked := S{}
+
 	// remove already blocked calledStates
-	resolvedS = lo.Filter(resolvedS, func(name string, _ int) bool {
+	resolvedS = slicesFilter(resolvedS, func(name string, _ int) bool {
 		blockedBy := rr.stateBlockedBy(calledStates, name)
+
 		// ignore blocking by already blocked states
-		blockedBy = lo.Filter(blockedBy, func(blockerName string, _ int) bool {
-			return !lo.Contains(alreadyBlocked, blockerName)
+		blockedBy = slicesFilter(blockedBy, func(blockerName string, _ int) bool {
+			return !slices.Contains(alreadyBlocked, blockerName)
 		})
 		if len(blockedBy) == 0 {
 			return true
 		}
+
 		alreadyBlocked = append(alreadyBlocked, name)
 		// if state wasn't implied by another state (was one of the active
 		// states) then make it a higher priority log msg
 		var lvl LogLevel
-		if m.Is(S{name}) {
+		if m.is(S{name}) {
 			lvl = LogOps
 		} else {
 			lvl = LogDecisions
 		}
+
 		m.log(lvl, "[rel:remove] %s by %s", name, j(blockedBy))
-		if m.Is(S{name}) {
-			t.addSteps(newStep("", name, TransitionStepTypeRemove, nil))
+		if m.is(S{name}) {
+			t.addSteps(newStep("", name, StepRemove, nil))
 		} else {
-			t.addSteps(newStep("", name, TransitionStepTypeNoSet, nil))
+			t.addSteps(newStep("", name, StepRemoveNotActive, nil))
 		}
+
 		return false
 	})
+
 	// states removed by the states which are about to be set
-	toRemove := lo.Reduce(resolvedS, func(acc S, name string, _ int) S {
-		state := m.States[name]
+	var toRemove S
+	for _, name := range resolvedS {
+		state := m.states[name]
 		if state.Remove != nil {
-			acc = append(acc, state.Remove...)
+			toRemove = append(toRemove, state.Remove...)
 		}
-		return acc
-	}, S{})
-	resolvedS = lo.Filter(rr.parseAdd(resolvedS), func(name string,
+	}
+	resolvedS = slicesFilter(rr.parseAdd(resolvedS), func(name string,
 		_ int,
 	) bool {
-		return !lo.Contains(toRemove, name)
+		return !slices.Contains(toRemove, name)
 	})
-	resolvedS = lo.Uniq(resolvedS)
+	resolvedS = slicesUniq(resolvedS)
+
 	// Parsing required states allows to avoid cross-removal of states
-	targetStates := rr.parseRequire(lo.Reverse(resolvedS))
+	targetStates := rr.parseRequire(slicesReverse(resolvedS))
 	rr.SortStates(targetStates)
+
 	return targetStates
 }
 
+// GetAutoMutation implements RelationsResolver.GetAutoMutation.
 func (rr *DefaultRelationsResolver) GetAutoMutation() *Mutation {
 	t := rr.Transition
 	m := t.Machine
 	var toAdd []string
 	// check all Auto states
-	for s := range m.States {
-		if !m.States[s].Auto {
+	for s := range m.states {
+		if !m.states[s].Auto {
 			continue
 		}
 		// check if the state is blocked by another active state
 		isBlocked := func() bool {
-			for _, active := range m.ActiveStates {
-				if lo.Contains(m.States[active].Remove, s) {
+			for _, active := range m.activeStates {
+				if slices.Contains(m.states[active].Remove, s) {
 					m.log(LogEverything, "[auto:rel:remove] %s by %s", s,
 						active)
 					return true
@@ -107,7 +126,7 @@ func (rr *DefaultRelationsResolver) GetAutoMutation() *Mutation {
 			}
 			return false
 		}
-		if !m.Is(S{s}) && !isBlocked() {
+		if !m.is(S{s}) && !isBlocked() {
 			toAdd = append(toAdd, s)
 		}
 	}
@@ -115,33 +134,35 @@ func (rr *DefaultRelationsResolver) GetAutoMutation() *Mutation {
 		return nil
 	}
 	return &Mutation{
-		Type:         MutationTypeAdd,
+		Type:         MutationAdd,
 		CalledStates: toAdd,
 		Auto:         true,
 	}
 }
 
+// SortStates implements RelationsResolver.SortStates.
 func (rr *DefaultRelationsResolver) SortStates(states S) {
 	t := rr.Transition
-	m := t.Machine
+	m := rr.Machine
 	sort.SliceStable(states, func(i, j int) bool {
 		name1 := states[i]
 		name2 := states[j]
-		state1 := m.States[name1]
-		state2 := m.States[name2]
-		if lo.Contains(state1.After, name2) {
+		state1 := m.states[name1]
+		state2 := m.states[name2]
+		if slices.Contains(state1.After, name2) {
 			t.addSteps(newStep(name2, name1,
-				TransitionStepTypeRelation, RelationAfter))
+				StepRelation, RelationAfter))
 			return false
-		} else if lo.Contains(state2.After, name1) {
+		} else if slices.Contains(state2.After, name1) {
 			t.addSteps(newStep(name1, name2,
-				TransitionStepTypeRelation, RelationAfter))
+				StepRelation, RelationAfter))
 			return true
 		}
 		return false
 	})
 }
 
+// TODO docs
 func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 	t := rr.Transition
 	ret := states
@@ -150,16 +171,18 @@ func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 	for changed {
 		changed = false
 		for _, name := range states {
-			if lo.Contains(t.StatesBefore, name) {
+			state := rr.Machine.states[name]
+
+			if slices.Contains(t.StatesBefore, name) && !state.Multi {
 				continue
 			}
-			state := t.Machine.States[name]
-			if lo.Contains(visited, name) || state.Add == nil {
+			if slices.Contains(visited, name) || state.Add == nil {
 				continue
 			}
-			t.addSteps(newSteps(name, state.Add, TransitionStepTypeRelation,
+
+			t.addSteps(newSteps(name, state.Add, StepRelation,
 				RelationAdd)...)
-			t.addSteps(newSteps("", state.Add, TransitionStepTypeSet, nil)...)
+			t.addSteps(newSteps("", state.Add, StepSet, nil)...)
 			ret = append(ret, state.Add...)
 			visited = append(visited, name)
 			changed = true
@@ -168,33 +191,39 @@ func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 	return ret
 }
 
+// TODO docs
 func (rr *DefaultRelationsResolver) stateBlockedBy(
 	blockingStates S, blocked string,
 ) S {
 	m := rr.Machine
 	t := rr.Transition
 	blockedBy := S{}
+
 	for _, blocking := range blockingStates {
-		state := m.States[blocking]
-		if !lo.Contains(state.Remove, blocked) {
+		state := m.states[blocking]
+		if !slices.Contains(state.Remove, blocked) {
 			continue
 		}
-		t.addSteps(newStep(blocking, blocked, TransitionStepTypeRelation,
+
+		t.addSteps(newStep(blocking, blocked, StepRelation,
 			RelationRemove))
 		blockedBy = append(blockedBy, blocking)
 	}
+
 	return blockedBy
 }
 
+// TODO docs
 func (rr *DefaultRelationsResolver) parseRequire(states S) S {
 	t := rr.Transition
 	lengthBefore := 0
 	// maps of states with their required states missing
 	missingMap := map[string]S{}
+
 	for lengthBefore != len(states) {
 		lengthBefore = len(states)
-		states = lo.Filter(states, func(name string, _ int) bool {
-			state := t.Machine.States[name]
+		states = slicesFilter(states, func(name string, _ int) bool {
+			state := rr.Machine.states[name]
 			missingReqs := rr.getMissingRequires(name, state, states)
 			if len(missingReqs) > 0 {
 				missingMap[name] = missingReqs
@@ -202,6 +231,7 @@ func (rr *DefaultRelationsResolver) parseRequire(states S) S {
 			return len(missingReqs) == 0
 		})
 	}
+
 	if len(missingMap) > 0 {
 		names := S{}
 		for state, notFound := range missingMap {
@@ -213,26 +243,98 @@ func (rr *DefaultRelationsResolver) parseRequire(states S) S {
 			t.Machine.log(LogOps, "[reject] %s", jw(names, " "))
 		}
 	}
+
 	return states
 }
 
+// TODO docs
 func (rr *DefaultRelationsResolver) getMissingRequires(
 	name string, state State, states S,
 ) S {
 	t := rr.Transition
 	ret := S{}
+
 	for _, req := range state.Require {
-		t.addSteps(newStep(name, req, TransitionStepTypeRelation,
+		t.addSteps(newStep(name, req, StepRelation,
 			RelationRequire))
-		if lo.Contains(states, req) {
+		if slices.Contains(states, req) {
 			continue
 		}
 		ret = append(ret, req)
-		t.addSteps(newStep(name, "", TransitionStepTypeNoSet, nil))
-		if lo.Contains(t.Mutation.CalledStates, name) {
+		t.addSteps(newStep(name, "", StepRemoveNotActive, nil))
+		if slices.Contains(t.Mutation.CalledStates, name) {
 			t.addSteps(newStep("", req,
-				TransitionStepTypeCancel, nil))
+				StepCancel, nil))
 		}
 	}
+
 	return ret
+}
+
+// GetRelationsBetween returns a list of relation types between the given
+// states. Not thread safe.
+func (rr *DefaultRelationsResolver) GetRelationsBetween(
+	fromState, toState string,
+) ([]Relation, error) {
+	m := rr.Machine
+
+	if !m.Has1(fromState) {
+		return nil, fmt.Errorf("%w: %s", ErrStateUnknown, fromState)
+	}
+	if !m.Has1(toState) {
+		return nil, fmt.Errorf("%w: %s", ErrStateUnknown, toState)
+	}
+
+	state := m.states[fromState]
+	var relations []Relation
+
+	if state.Add != nil && slices.Contains(state.Add, toState) {
+		relations = append(relations, RelationAdd)
+	}
+
+	if state.Require != nil && slices.Contains(state.Require, toState) {
+		relations = append(relations, RelationRequire)
+	}
+
+	if state.Remove != nil && slices.Contains(state.Remove, toState) {
+		relations = append(relations, RelationRemove)
+	}
+
+	if state.After != nil && slices.Contains(state.After, toState) {
+		relations = append(relations, RelationAfter)
+	}
+
+	return relations, nil
+}
+
+// GetRelationsOf returns a list of relation types of the given state.
+// Not thread safe.
+func (rr *DefaultRelationsResolver) GetRelationsOf(fromState string) (
+	[]Relation, error,
+) {
+	m := rr.Machine
+
+	if !m.Has1(fromState) {
+		return nil, fmt.Errorf("%w: %s", ErrStateUnknown, fromState)
+	}
+	state := m.states[fromState]
+
+	var relations []Relation
+	if state.Add != nil {
+		relations = append(relations, RelationAdd)
+	}
+
+	if state.Require != nil {
+		relations = append(relations, RelationRequire)
+	}
+
+	if state.Remove != nil {
+		relations = append(relations, RelationRemove)
+	}
+
+	if state.After != nil {
+		relations = append(relations, RelationAfter)
+	}
+
+	return relations, nil
 }
