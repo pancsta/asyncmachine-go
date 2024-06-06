@@ -128,7 +128,7 @@ tasks:
       - test -z "$(goimports -l -local "github.com/pancsta/asyncmachine-go" pkg/**/*.go)"
       - test -z "$(goimports -l -local "github.com/pancsta/asyncmachine-go" tools/**/*.go)"
 
-  changelog:
+  gen-changelog:
     cmds:
       - github_changelog_generator
       - head -n -4 CHANGELOG.md > CHANGELOG-tmp.md
