@@ -584,6 +584,17 @@ See [tools/debugger/states](tools/debugger/states) for more info.
 
 See also [issues](https://github.com/pancsta/asyncmachine-go/issues).
 
+## Development
+
+- all PRs welcome
+- before
+  - `./scripts/dep-taskfile.sh`
+  - `task install-deps`
+- after
+  - `task test`
+  - `task format`
+  - `task lint`
+
 ## Changelog
 
 Latest release: `v0.5.0`
