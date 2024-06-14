@@ -2,130 +2,24 @@
 
 ![TUI Debugger](assets/am-dbg.gif)
 
-**asyncmachine-go** is a minimal implementation of [AsyncMachine](https://github.com/TobiaszCudnik/asyncmachine) in
-Golang using **channels and context**. It aims at simplicity and speed.
+**asyncmachine-go** is a minimal implementation of [AsyncMachine](https://github.com/TobiaszCudnik/asyncmachine)
+in Golang using **channels and context**. It aims at simplicity and speed.
 
-It can be used as a lightweight in-memory [Temporal](https://github.com/temporalio/temporal) alternative, worker for
-[Asynq](https://github.com/hibiken/asynq), or to create simple consensus engines, stateful firewalls, telemetry, bots,
-etc.
+It can be used as a lightweight in-memory [Temporal](https://github.com/temporalio/temporal)
+alternative, worker for [Asynq](https://github.com/hibiken/asynq), or to create simple consensus engines, stateful
+firewalls, telemetry, bots, etc.
 
 > **asyncmachine-go** is a general purpose state machine for managing complex asynchronous workflows in a safe and
-> structured way.
-
-<details>
-
-<summary>See am-dbg's states structure and relations</summary>
-
-```go
-var States = am.Struct{
-
-    ///// Input events
-
-    ClientMsg:       {Multi: true},
-    ConnectEvent:    {Multi: true},
-    DisconnectEvent: {Multi: true},
-
-    // user scrolling tx / steps
-    UserFwd: {
-        Add:    S{Fwd},
-        Remove: GroupPlaying,
-    },
-    UserBack: {
-        Add:    S{Back},
-        Remove: GroupPlaying,
-    },
-    UserFwdStep: {
-        Add:     S{FwdStep},
-        Require: S{ClientSelected},
-        Remove:  am.SMerge(GroupPlaying, S{LogUserScrolled}),
-    },
-    UserBackStep: {
-        Add:     S{BackStep},
-        Require: S{ClientSelected},
-        Remove:  am.SMerge(GroupPlaying, S{LogUserScrolled}),
-    },
-
-    ///// External state (eg UI)
-
-    TreeFocused:          {Remove: GroupFocused},
-    LogFocused:           {Remove: GroupFocused},
-    SidebarFocused:       {Remove: GroupFocused},
-    TimelineTxsFocused:   {Remove: GroupFocused},
-    TimelineStepsFocused: {Remove: GroupFocused},
-    MatrixFocused:        {Remove: GroupFocused},
-    DialogFocused:        {Remove: GroupFocused},
-    StateNameSelected:    {Require: S{ClientSelected}},
-    HelpDialog:           {Remove: GroupDialog},
-    ExportDialog: {
-        Require: S{ClientSelected},
-        Remove:  GroupDialog,
-    },
-    LogUserScrolled: {},
-    Ready:           {Require: S{Start}},
-
-    ///// Actions
-
-    Start: {},
-    TreeLogView: {
-        Auto:   true,
-        Remove: GroupViews,
-    },
-    MatrixView:     {Remove: GroupViews},
-    TreeMatrixView: {Remove: GroupViews},
-    TailMode: {
-        Require: S{ClientSelected},
-        Remove:  GroupPlaying,
-    },
-    Playing: {
-        Require: S{ClientSelected},
-        Remove:  am.SMerge(GroupPlaying, S{LogUserScrolled}),
-    },
-    Paused: {
-        Auto:    true,
-        Require: S{ClientSelected},
-        Remove:  GroupPlaying,
-    },
-
-    // tx / steps back / fwd
-    Fwd: {
-        Require: S{ClientSelected},
-        Remove:  S{Playing},
-    },
-    Back: {
-        Require: S{ClientSelected},
-        Remove:  S{Playing},
-    },
-    FwdStep: {
-        Require: S{ClientSelected},
-        Remove:  S{Playing},
-    },
-    BackStep: {
-        Require: S{ClientSelected},
-        Remove:  S{Playing},
-    },
-
-    ScrollToTx: {Require: S{ClientSelected}},
-
-    // client
-    SelectingClient: {Remove: S{ClientSelected}},
-    ClientSelected: {
-        Remove: S{SelectingClient, LogUserScrolled},
-    },
-    RemoveClient: {Require: S{ClientSelected}},
-}
-```
-
-</details>
+> structured way
 
 ## Comparison
 
-Common differences with other state machines:
+Common differences from other state machines:
 
 - many states can be active at the same time
 - transitions between all the states are allowed
-  - unless constrained
 - states are connected by relations
-- every mutation can be rejected
+- every transition can be rejected
 - error is a state
 
 ## Usage
@@ -133,15 +27,15 @@ Common differences with other state machines:
 ### Basics
 
 ```go
+// ProcessingFile -> FileProcessed (1 async and 1 sync state)
 package main
-
 import (
     "context"
-
     am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
 func main() {
+    // init the machine
     ctx := context.Background()
     mach := am.New(ctx, am.Struct{
         "ProcessingFile": {
@@ -175,14 +69,17 @@ type Handlers struct {
 
 // negotiation handler
 func (h *Handlers) ProcessingFileEnter(e *am.Event) bool {
-    // read-only ops (decide if moving fwd is ok)
+    // read-only ops
+    //   (decide if moving fwd is ok)
+    // no blocking
     // lock-free critical zone
     return true
 }
 
 // final handler
 func (h *Handlers) ProcessingFileState(e *am.Event) {
-    // read & write ops (but no blocking)
+    // read & write ops
+    // no blocking
     // lock-free critical zone
     mach := e.Machine
     // tick-based context
@@ -198,7 +95,7 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
             mach.AddErr(err)
             return
         }
-        // re-check the ctx after a blocking call
+        // re-check the tick ctx after a blocking call
         if stateCtx.Err() != nil {
             return // expired
         }
@@ -368,9 +265,10 @@ var States = am.Struct{
 
 </details>
 
-### [Temporal FileProcessing workflow](/examples/temporal-fileprocessing/fileprocessing.go)
+### [Temporal FileProcessing Workflow](/examples/temporal-fileprocessing/fileprocessing.go)
 
 - [origin](https://github.com/temporalio/samples-go/blob/main/fileprocessing/)
+- [Asynq worker version](examples/asynq-fileprocessing/fileprocessing_task.go)
 
 <details>
 
@@ -398,8 +296,6 @@ var States = am.Struct{
 
 </details>
 
-### [AM as an Asynq worker](examples/asynq-fileprocessing/fileprocessing_task.go)
-
 ## Documentation
 
 - [godoc](https://godoc.org/github.com/pancsta/asyncmachine-go/pkg/machine)
@@ -423,7 +319,7 @@ var States = am.Struct{
 
 <details>
 
-<summary>Example template for Foo and Bar</summary>
+<summary>See the result for Foo and Bar</summary>
 
 ```go
 package states
@@ -472,8 +368,8 @@ See [`tools/cmd/am-gen`](tools/cmd/am-gen/README.md) for more info.
 
 ![TUI Debugger](assets/am-dbg.png)
 
-`am-dbg` is a multi-client debugger lightweight enough to be kept open in the background while receiving data from >100
- machines simultaneously (and potentially many more). Some features include:
+`am-dbg` is a lightweight, multi-client debugger for AM. It easily handles >100
+ client machines simultaneously (and potentially many more). Some features include:
 
 - states tree
 - log view
@@ -527,7 +423,7 @@ a lot of inspectable data.
 </picture>
 
 - **pubsub host** - eg `ps-17` (20 states)<br />
-  PubSub machine is a simple event loop with Multi states which get responses via arg channels. Heavy use of `Eval`.
+  PubSub machine is a simple event loop with Multi states which get responses via arg channels. Heavy use of `Machine.Eval()`.
 - **discovery** - eg `ps-17-disc` (10 states)<br />
   Discovery machine is a simple event loop with Multi states and a periodic refresh state.
 - **discovery bootstrap** - eg `ps-17-disc-bf3` (5 states)<br />
@@ -555,8 +451,8 @@ or the [pdf results](https://github.com/pancsta/go-libp2p-pubsub-benchmark/raw/m
   State-only machine (no handlers, no goroutine). States represent correlations with peer machines.
 
 See
-[github.com/pancsta/**go-libp2p-pubsub-benchmark**](https://github.com/pancsta/go-libp2p-pubsub-benchmark/tree/main/internal/sim)
-and the [pubsub machines](https://github.com/pancsta/go-libp2p-pubsub/tree/psmon-states/states) for more info.
+[github.com/pancsta/**go-libp2p-pubsub-benchmark**](https://github.com/pancsta/go-libp2p-pubsub-benchmark?tab=readme-ov-file#libp2p-pubsub-simulator)
+for more info.
 
 ### am-dbg
 
@@ -566,8 +462,118 @@ am-dbg is a [tview](https://github.com/rivo/tview/) TUI app with a single machin
 - external state (11 states)
 - actions (14 states)
 
-This machine features a decent amount of relations within a large number od states and 4 state groups. It's also a good
+This machine features a decent amount of relations within a large number of states and 4 state groups. It's also a good
 example to see how easily an AM-based program can be controller with a script in [tools/cmd/am-dbg-demo](tools/cmd/am-dbg-demo/main.go#L68).
+
+<details>
+
+<summary>See states structure and relations</summary>
+
+```go
+// States map defines relations and properties of states.
+var States = am.Struct{
+    ///// Input events
+
+    ClientMsg:       {Multi: true},
+    ConnectEvent:    {Multi: true},
+    DisconnectEvent: {Multi: true},
+
+    // user scrolling tx / steps
+    UserFwd: {
+        Add:    S{Fwd},
+        Remove: GroupPlaying,
+    },
+    UserBack: {
+        Add:    S{Back},
+        Remove: GroupPlaying,
+    },
+    UserFwdStep: {
+        Add:     S{FwdStep},
+        Require: S{ClientSelected},
+        Remove:  am.SMerge(GroupPlaying, S{LogUserScrolled}),
+    },
+    UserBackStep: {
+        Add:     S{BackStep},
+        Require: S{ClientSelected},
+        Remove:  am.SMerge(GroupPlaying, S{LogUserScrolled}),
+    },
+
+    ///// External state (eg UI)
+
+    // focus group
+
+    TreeFocused:          {Remove: GroupFocused},
+    LogFocused:           {Remove: GroupFocused},
+    SidebarFocused:       {Remove: GroupFocused},
+    TimelineTxsFocused:   {Remove: GroupFocused},
+    TimelineStepsFocused: {Remove: GroupFocused},
+    MatrixFocused:        {Remove: GroupFocused},
+    DialogFocused:        {Remove: GroupFocused},
+
+    StateNameSelected:    {Require: S{ClientSelected}},
+    HelpDialog:           {Remove: GroupDialog},
+    ExportDialog: {
+        Require: S{ClientSelected},
+        Remove:  GroupDialog,
+    },
+    LogUserScrolled: {},
+    Ready:           {Require: S{Start}},
+
+    ///// Actions
+
+    Start: {},
+    TreeLogView: {
+        Auto:   true,
+        Remove: GroupViews,
+    },
+    MatrixView:     {Remove: GroupViews},
+    TreeMatrixView: {Remove: GroupViews},
+    TailMode: {
+        Require: S{ClientSelected},
+        Remove:  GroupPlaying,
+    },
+    Playing: {
+        Require: S{ClientSelected},
+        Remove:  am.SMerge(GroupPlaying, S{LogUserScrolled}),
+    },
+    Paused: {
+        Auto:    true,
+        Require: S{ClientSelected},
+        Remove:  GroupPlaying,
+    },
+
+    // tx / steps back / fwd
+
+    Fwd: {
+        Require: S{ClientSelected},
+        Remove:  S{Playing},
+    },
+    Back: {
+        Require: S{ClientSelected},
+        Remove:  S{Playing},
+    },
+    FwdStep: {
+        Require: S{ClientSelected},
+        Remove:  S{Playing},
+    },
+    BackStep: {
+        Require: S{ClientSelected},
+        Remove:  S{Playing},
+    },
+
+    ScrollToTx: {Require: S{ClientSelected}},
+
+    // client selection
+
+    SelectingClient: {Remove: S{ClientSelected}},
+    ClientSelected: {
+        Remove: S{SelectingClient, LogUserScrolled},
+    },
+    RemoveClient: {Require: S{ClientSelected}},
+}
+```
+
+</details>
 
 See [tools/debugger/states](tools/debugger/states) for more info.
 
@@ -599,8 +605,6 @@ See also [issues](https://github.com/pancsta/asyncmachine-go/issues).
 
 Latest release: `v0.5.0`
 
-## [v0.5.0](https://github.com/pancsta/asyncmachine-go/tree/v0.5.0) (2024-06-06)
-
 - feat: add tools/cmd/am-gen [\#63](https://github.com/pancsta/asyncmachine-go/pull/63) (@pancsta)
 - feat\(am-dbg\): add `--select-connected` and `--clean-on-connect`
   [\#62](https://github.com/pancsta/asyncmachine-go/pull/62) (@pancsta)
@@ -613,7 +617,7 @@ Latest release: `v0.5.0`
 - feat\(machine\): add empty roadmap methods [\#55](https://github.com/pancsta/asyncmachine-go/pull/55) (@pancsta)
 - feat\(machine\): add Eval [\#54](https://github.com/pancsta/asyncmachine-go/pull/54) (@pancsta)
 - refac\(pkg/machine\): rename many identifiers, shorten [\#53](https://github.com/pancsta/asyncmachine-go/pull/53) (@pancsta)
-- feat\(machine\): drop add dependencies \(lo, uuid\) [\#52](https://github.com/pancsta/asyncmachine-go/pull/52) (@pancsta)
+- feat\(machine\): drop all dependencies \(lo, uuid\) [\#52](https://github.com/pancsta/asyncmachine-go/pull/52) (@pancsta)
 - feat\(machine\): alloc handler goroutine on demand [\#51](https://github.com/pancsta/asyncmachine-go/pull/51) (@pancsta)
 - feat\(machine\): add Transition.ClocksAfter [\#50](https://github.com/pancsta/asyncmachine-go/pull/50) (@pancsta)
 - feat\(machine\): add HasStateChangedSince [\#49](https://github.com/pancsta/asyncmachine-go/pull/49) (@pancsta)
