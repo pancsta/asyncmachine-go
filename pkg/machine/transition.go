@@ -26,7 +26,7 @@ func newSteps(from string, toStates S, stepType StepType,
 	return ret
 }
 
-// Transition represents processing of a single mutation withing a machine.
+// Transition represents processing of a single mutation within a machine.
 type Transition struct {
 	ID string
 	// List of steps taken by this transition (so far).
@@ -41,15 +41,15 @@ type Transition struct {
 	// clocks of the states from after the transition
 	// TODO timeAfter, produce Clocks via ClockAfter(), add index diffs
 	ClocksAfter Clocks
-	// Struct with "enter" handlers to execute
+	// State names with "enter" handlers to execute
 	Enters S
-	// Struct with "exit" handlers to executed
+	// State names with "exit" handlers to executed
 	Exits S
 	// target states after parsing the relations
 	TargetStates S
 	// was the transition accepted (during the negotiation phase)
 	Accepted bool
-	// Mutation call which cased this transition
+	// Mutation call which caused this transition
 	Mutation *Mutation
 	// Parent machine
 	Machine *Machine

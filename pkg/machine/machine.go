@@ -1,12 +1,12 @@
-// Package machine is a dependency-free implementation of AsyncMachine in Golang
-// using channels and context. It aims at simplicity and speed.
+// Package machine is a general purpose state machine for managing complex
+// async workflows in a safe and structured way.
 //
 // It can be used as a lightweight in-memory Temporal [1] alternative, worker
 // for Asynq [2], or to write simple consensus engines, stateful firewalls,
 // telemetry, bots, etc.
 //
-// asyncmachine-go is a general purpose state machine for managing complex
-// async workflows in a safe and structured way.
+// The project itself is a minimal implementation of AsyncMachine in Golang
+// using channels and context. It aims at simplicity and speed.
 //
 // [1]: https://github.com/temporalio/temporal
 // [2]: https://github.com/hibiken/asynq

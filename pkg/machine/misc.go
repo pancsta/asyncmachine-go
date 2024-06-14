@@ -217,8 +217,8 @@ type Mutation struct {
 	Eval func()
 }
 
-// StateWasCalled returns true if the Mutation was called with the passed
-// state (or does it come from relations).
+// StateWasCalled returns true if the Mutation was called (directly) with the
+// passed state (in opposite to it coming from an `Add` relation).
 func (m Mutation) StateWasCalled(state string) bool {
 	return slices.Contains(m.CalledStates, state)
 }

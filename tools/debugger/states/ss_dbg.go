@@ -8,7 +8,7 @@ type S = am.S
 // States map defines relations and properties of states.
 var States = am.Struct{
 
-	///// Input events
+	// /// Input events
 
 	ClientMsg:       {Multi: true},
 	ConnectEvent:    {Multi: true},
@@ -34,7 +34,9 @@ var States = am.Struct{
 		Remove:  am.SMerge(GroupPlaying, S{LogUserScrolled}),
 	},
 
-	///// External state (eg UI)
+	// /// External state (eg UI)
+
+	// focus group
 
 	TreeFocused:          {Remove: GroupFocused},
 	LogFocused:           {Remove: GroupFocused},
@@ -43,8 +45,9 @@ var States = am.Struct{
 	TimelineStepsFocused: {Remove: GroupFocused},
 	MatrixFocused:        {Remove: GroupFocused},
 	DialogFocused:        {Remove: GroupFocused},
-	StateNameSelected:    {Require: S{ClientSelected}},
-	HelpDialog:           {Remove: GroupDialog},
+
+	StateNameSelected: {Require: S{ClientSelected}},
+	HelpDialog:        {Remove: GroupDialog},
 	ExportDialog: {
 		Require: S{ClientSelected},
 		Remove:  GroupDialog,
@@ -52,7 +55,7 @@ var States = am.Struct{
 	LogUserScrolled: {},
 	Ready:           {Require: S{Start}},
 
-	///// Actions
+	// /// Actions
 
 	Start: {},
 	TreeLogView: {
@@ -76,6 +79,7 @@ var States = am.Struct{
 	},
 
 	// tx / steps back / fwd
+
 	Fwd: {
 		Require: S{ClientSelected},
 		Remove:  S{Playing},
@@ -95,7 +99,8 @@ var States = am.Struct{
 
 	ScrollToTx: {Require: S{ClientSelected}},
 
-	// client
+	// client selection
+
 	SelectingClient: {Remove: S{ClientSelected}},
 	ClientSelected: {
 		Remove: S{SelectingClient, LogUserScrolled},
@@ -121,7 +126,7 @@ var (
 	}
 )
 
-//#region boilerplate defs
+// #region boilerplate defs
 
 // Names of all the states (pkg enum).
 
@@ -176,7 +181,7 @@ const (
 // Names is an ordered list of all the state names.
 var Names = S{
 
-	///// Input events
+	// /// Input events
 
 	ClientMsg,
 	ConnectEvent,
@@ -188,7 +193,7 @@ var Names = S{
 	UserFwdStep,
 	UserBackStep,
 
-	///// External state (eg UI)
+	// /// External state (eg UI)
 
 	TreeFocused,
 	LogFocused,
@@ -203,7 +208,7 @@ var Names = S{
 	LogUserScrolled,
 	Ready,
 
-	///// Actions
+	// /// Actions
 
 	Start,
 	TreeLogView,
@@ -229,4 +234,4 @@ var Names = S{
 	am.Exception,
 }
 
-//#endregion
+// #endregion

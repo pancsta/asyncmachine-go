@@ -10,25 +10,23 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TODO ExampleNew
 func ExampleNew() {
 	t := &testing.T{} // Replace this with actual *testing.T in real test cases
 	initialState := S{"A"}
 
 	mach := NewNoRels(t, initialState)
 
-	// Use the machine m here
+	// machine mach ready
 	_ = mach
 }
 
-// TODO ExampleNewCommon
 func ExampleNewCommon() {
 	t := &testing.T{} // Replace this with actual *testing.T in real test cases
 	initialState := S{"A"}
 
 	mach := NewNoRels(t, initialState)
 
-	// Use the machine m here
+	// machine mach ready
 	_ = mach
 }
 
