@@ -70,7 +70,7 @@ type Handlers struct {
 // negotiation handler
 func (h *Handlers) ProcessingFileEnter(e *am.Event) bool {
     // read-only ops
-    //   (decide if moving fwd is ok)
+    // decide if moving fwd is ok
     // no blocking
     // lock-free critical zone
     return true
@@ -120,11 +120,11 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 // wait for Foo to have a tick >= 6 and Bar tick >= 10
 <-mach.WhenTime(am.S{"Foo", "Bar"}, am.T{6, 10}, nil)
 
-// wait for DownloadingFile to have a tick >= 6
-<-mach.WhenTickEq("DownloadingFile", 6, nil)
-
 // wait for DownloadingFile to have a tick increased by 2 since now
 <-mach.WhenTick("DownloadingFile", 2, nil)
+
+// wait for an error
+<-mach.WhenErr()
 ```
 
 See [docs/cookbook.md](docs/cookbook.md) for more snippets.
@@ -300,14 +300,25 @@ var States = am.Struct{
 
 - [godoc](https://godoc.org/github.com/pancsta/asyncmachine-go/pkg/machine)
 - [cookbook](/docs/cookbook.md)
-- [manual](/docs/manual.md) (outdated)
-  - [States](/docs/manual.md#states)
-    - [State Clocks](/docs/manual.md#state-clocks)
-    - [Auto States](/docs/manual.md#auto-states)
-  - [Transitions](/docs/manual.md#transitions)
-    - [Negotiation](/docs/manual.md#negotiation-handlers)
-  - [Relations](/docs/manual.md#relations)
-  - [Queue](/docs/manual.md#queue)
+- [manual](/docs/manual.md)
+  - [Machine and States](/docs/manual.md#machine-and-states)
+      - [State Clocks and Context](/docs/manual.md#state-clocks-and-context)
+      - [Auto States](/docs/manual.md#auto-states)
+      - [Categories of States](/docs/manual.md#categories-of-states)
+      - ...
+  - [Changing State](/docs/manual.md#changing-state)
+      - [State Mutations](/docs/manual.md#state-mutations)
+      - [Transition Lifecycle](/docs/manual.md#transition-lifecycle)
+      - [Calculating Target States](/docs/manual.md#calculating-target-states)
+      - [Negotiation Handlers](/docs/manual.md#negotiation-handlers)
+      - [Final Handlers](/docs/manual.md#final-handlers)
+      - ...
+  - [Advanced Topics](/docs/manual.md#advanced-topics)
+      - [State's Relations](/docs/manual.md#states-relations)
+      - [Queue and History](/docs/manual.md#queue-and-history)
+      - [Typesafe States](/docs/manual.md#typesafe-states)
+      - ...
+  - [Cheatsheet](/docs/manual.md#cheatsheet)
 
 ## Tools
 
