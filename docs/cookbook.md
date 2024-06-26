@@ -173,11 +173,11 @@ args := am.A{"id": 123}
 when := mach.WhenArgs("EventConnected", args, nil)
 // wait with err and timeout
 select {
-    case <-time.After(5 * time.Second):
-return am.ErrTimeout
-    case <-mach.WhenErr(nil):
-return mach.Err
-    case <-when:
+case <-time.After(5 * time.Second):
+    return am.ErrTimeout
+case <-mach.WhenErr(nil):
+    return mach.Err
+case <-when:
     // EventConnected activated with (id=1232)
 }
 ```
