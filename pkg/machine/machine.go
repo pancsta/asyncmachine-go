@@ -79,6 +79,7 @@ type Machine struct {
 	queueLock       sync.RWMutex
 	queueProcessing sync.Mutex
 	queueLen        int
+	queueRunning    bool
 
 	emitters    []*emitter
 	once        sync.Once
@@ -96,6 +97,8 @@ type Machine struct {
 	indexStateCtx      indexStateCtx
 	indexEventCh       indexEventCh
 	indexEventChLock   sync.Mutex
+	indexWhenQueue     []whenQueueBinding
+	indexWhenQueueLock sync.Mutex
 	handlerStart       chan *handlerCall
 	handlerEnd         chan bool
 	handlerPanic       chan any
@@ -106,6 +109,7 @@ type Machine struct {
 	logArgs            func(args A) map[string]string
 	currentHandler     string
 	disposeHandlers    []func()
+	timeLast           T
 }
 
 // NewCommon creates a new Machine instance with all the common options set.
@@ -766,6 +770,68 @@ func (m *Machine) WhenTicksEq(
 	return m.WhenTime(S{state}, T{uint64(ticks)}, ctx)
 }
 
+// WhenQueueEnds returns a channel which closes when the queue ends. Optionally
+// accepts a context to close the channel earlier.
+func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan struct{} {
+	ch := make(chan struct{})
+
+	if m.Disposed {
+		close(ch)
+
+		return ch
+	}
+
+	// locks
+	m.indexWhenQueueLock.Lock()
+	defer m.indexWhenQueueLock.Unlock()
+
+	// finish early
+	if !m.queueRunning {
+		close(ch)
+
+		return ch
+	}
+
+	// add the binding to an index of each state
+	binding := whenQueueBinding{
+		ch: ch,
+	}
+
+	// log
+	m.log(LogDecisions, "[when:queue] new wait")
+
+	// dispose with context
+	// TODO extract
+	if ctx != nil {
+		go func() {
+			select {
+			case <-ch:
+				return
+			case <-m.Ctx.Done():
+				return
+			case <-ctx.Done():
+			}
+			// GC only if needed
+			if m.Disposed {
+				return
+			}
+
+			// TODO track
+			closeSafe(ch)
+
+			m.indexWhenQueueLock.Lock()
+			defer m.indexWhenQueueLock.Unlock()
+
+			m.indexWhenQueue = slicesWithout(m.indexWhenQueue, binding)
+		}()
+	}
+
+	// insert the binding
+	m.indexWhenQueue = append(m.indexWhenQueue, binding)
+
+	return ch
+}
+
 // Time returns a list of logical clocks of specified states (or all the states
 // if nil).
 // states: optionally passing a list of states param guarantees a deterministic
@@ -774,6 +840,10 @@ func (m *Machine) Time(states S) T {
 	m.activeStatesLock.RLock()
 	defer m.activeStatesLock.RUnlock()
 
+	return m.time(states)
+}
+
+func (m *Machine) time(states S) T {
 	if states == nil {
 		states = m.StateNames
 	}
@@ -1448,7 +1518,9 @@ func (m *Machine) processQueue() Result {
 	var ret []Result
 
 	// execute the queue
+	m.queueRunning = false
 	for len(m.queue) > 0 {
+		m.queueRunning = true
 
 		if m.Disposed {
 			return Canceled
@@ -1480,6 +1552,8 @@ func (m *Machine) processQueue() Result {
 		// execute the transition
 		ret = append(ret, m.Transition.emitEvents())
 
+		m.timeLast = m.Transition.TAfter
+
 		// process flow methods
 		m.processWhenBindings()
 		m.processWhenTimeBindings()
@@ -1489,7 +1563,9 @@ func (m *Machine) processQueue() Result {
 	// release the atomic lock
 	m.Transition = nil
 	m.queueProcessing.Unlock()
-	m.emit(EventQueueEnd, nil, nil)
+	m.queueRunning = false
+	m.emit(EventQueueEnd, A{"T": m.timeLast}, nil)
+	m.processWhenQueueBindings()
 
 	if len(ret) == 0 {
 		return Canceled
@@ -1661,6 +1737,17 @@ func (m *Machine) processWhenTimeBindings() {
 	// notify outside the critical zone
 	for ch := range toClose {
 		closeSafe(toClose[ch])
+	}
+}
+
+func (m *Machine) processWhenQueueBindings() {
+	m.indexWhenQueueLock.Lock()
+	toClose := slices.Clone(m.indexWhenQueue)
+	m.indexWhenQueue = nil
+	m.indexWhenQueueLock.Unlock()
+
+	for _, binding := range toClose {
+		closeSafe(binding.ch)
 	}
 }
 
@@ -2312,15 +2399,6 @@ func (m *Machine) CanSet(states S) bool {
 // Planned.
 func (m *Machine) CanRemove(states S) bool {
 	panic("CanRemove not implemented; github.com/pancsta/asyncmachine-go/pulls")
-}
-
-// WhenQueueEnds writes every time the queue ends with the times from after
-// the last mutation. The channel will close with ctx or Machine.Ctx.
-// TODO WhenQueueEnds
-// Planned.
-func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan T {
-	panic(
-		"WhenQueueEnds not implemented; github.com/pancsta/asyncmachine-go/pulls")
 }
 
 // Clocks returns the map of specified cloks or all clocks if states is nil.
