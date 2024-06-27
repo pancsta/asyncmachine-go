@@ -1054,9 +1054,9 @@ Foo
 <-mach.WhenTick("DownloadingFile", 2, nil)
 ```
 
-Almost all "when" methods return a share channel which closes when an event happens (or the optionally passed context is
+All "when" methods return a channel, which closes when an event happens (or the optionally passed context gets
 canceled). They are used to wait until a certain moment, when we know the execution can proceed. Using "when" methods
-creates new channels and should be used with caution, possibly making use of the early disposal context. In the future,
+creates new channels and should be used with caution, ideally making use of the early disposal context. In the future,
 these channels will be reused and should scale way better.
 
 "When" methods are:

@@ -1320,3 +1320,43 @@ func TestInspect(t *testing.T) {
 		`
 	assertString(t, m, expected, names)
 }
+
+// TestWhenQueueEnds
+type TestWhenQueueEndsHandlers struct {
+	*ExceptionHandler
+}
+
+func (h *TestWhenQueueEndsHandlers) AState(e *Event) {
+	close(e.Args["readyMut"].(chan struct{}))
+	<-e.Args["readyGo"].(chan struct{})
+	e.Machine.Add1("B", nil)
+}
+
+func TestWhenQueueEnds(t *testing.T) {
+	// init
+	m := NewNoRels(t, nil)
+	defer m.Dispose()
+	// order
+	err := m.VerifyStates(S{"A", "B", "C", "D", "Exception"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// bind handlers
+	err = m.BindHandlers(&TestWhenQueueEndsHandlers{})
+	assert.NoError(t, err)
+
+	// run the test
+	readyGo := make(chan struct{})
+	readyMut := make(chan struct{})
+	var queueEnds <-chan struct{}
+	go func() {
+		<-readyMut
+		assert.True(t, m.DuringTransition(),
+			"Machine should be during a transition")
+		queueEnds = m.WhenQueueEnds(context.TODO())
+		close(readyGo)
+	}()
+	m.Add1("A", A{"readyMut": readyMut, "readyGo": readyGo})
+	// confirm the queue wait is closed
+	<-queueEnds
+}
