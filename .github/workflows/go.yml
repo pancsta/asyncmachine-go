@@ -19,4 +19,8 @@ jobs:
       - name: Install dependencies
         run: go mod tidy
       - name: Test
-        run: go test ./...
+        run: go test -coverprofile=coverage.txt -covermode=atomic ./...
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}

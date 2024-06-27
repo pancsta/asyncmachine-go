@@ -130,7 +130,7 @@ tasks:
 
   gen-changelog:
     cmds:
-      - github_changelog_generator
+      - github_changelog_generator --config-file config/.github_changelog_generator.yml
       - head -n -4 CHANGELOG.md > CHANGELOG-tmp.md
       - mv CHANGELOG-tmp.md CHANGELOG.md
 
