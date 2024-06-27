@@ -39,9 +39,9 @@ type State struct {
 // Struct is a map of state names to state definitions.
 type Struct = map[string]State
 
-///////////////
-///// options
-///////////////
+// ///////////////
+// ///// options
+// ///////////////
 
 // Opts struct is used to configure a new Machine.
 type Opts struct {
@@ -107,9 +107,9 @@ func OptsWithParentTracers(opts *Opts, parent *Machine) *Opts {
 	return opts
 }
 
-///////////////
-///// enums
-///////////////
+// ///////////////
+// ///// enums
+// ///////////////
 
 // Result enum is the result of a state Transition
 type Result int
@@ -300,9 +300,9 @@ func (r Relation) String() string {
 	return ""
 }
 
-///////////////
-///// logging
-///////////////
+// ///////////////
+// ///// logging
+// ///////////////
 
 // Logger is a logging function for the machine.
 type Logger func(level LogLevel, msg string, args ...any)
@@ -384,9 +384,9 @@ type Tracer interface {
 	Inheritable() bool
 }
 
-///////////////
-///// events, when, emitters
-///////////////
+// ///////////////
+// ///// events, when, emitters
+// ///////////////
 
 // Event struct represents a single event of a Mutation withing a Transition.
 // One event can have 0-n handlers.
@@ -453,6 +453,10 @@ type whenArgsBinding struct {
 	args A
 }
 
+type whenQueueBinding struct {
+	ch chan struct{}
+}
+
 type stateIsActive map[string]bool
 
 // emitter represents a single event consumer, synchronized by channels.
@@ -467,9 +471,9 @@ func (e *emitter) dispose() {
 	e.methods = nil
 }
 
-///////////////
-///// exception support
-///////////////
+// ///////////////
+// ///// exception support
+// ///////////////
 
 // Exception is the Exception state name
 const Exception = "Exception"
@@ -511,9 +515,9 @@ func (eh *ExceptionHandler) ExceptionState(e *Event) {
 	}
 }
 
-///////////////
-///// pub utils
-///////////////
+// ///////////////
+// ///// pub utils
+// ///////////////
 
 // DiffStates returns the states that are in states1 but not in states2.
 func DiffStates(states1 S, states2 S) S {
@@ -597,9 +601,9 @@ func SMerge(states ...S) S {
 	return slicesUniq(s)
 }
 
-///////////////
-///// utils
-///////////////
+// ///////////////
+// ///// utils
+// ///////////////
 
 // j joins state names into a single string
 func j(states []string) string {

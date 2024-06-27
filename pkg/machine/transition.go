@@ -41,6 +41,7 @@ type Transition struct {
 	// clocks of the states from after the transition
 	// TODO timeAfter, produce Clocks via ClockAfter(), add index diffs
 	ClocksAfter Clocks
+	TAfter      T
 	// State names with "enter" handlers to execute
 	Enters S
 	// State names with "exit" handlers to executed
@@ -388,6 +389,7 @@ func (t *Transition) emitEvents() Result {
 		clocks[state] = m.clock[state]
 	}
 	t.ClocksAfter = clocks
+	t.TAfter = m.time(nil)
 
 	// AUTO STATES
 	if result == Canceled {

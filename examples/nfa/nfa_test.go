@@ -1,28 +1,29 @@
 // Based on https://en.wikipedia.org/wiki/Nondeterministic_finite_automaton
+// TODO add Input0, Input1, End
 //
-//=== RUN   TestRegexp
-//=== RUN   TestRegexp/test_101010_(OK)
-//[state] +Start +StepX
-//[state] +Input
-//[extern:InputState] input: 1
-//[state] +Input
-//[extern:InputState] input: 0
-//[state] +Input
-//[extern:InputState] input: 1
-//[state] +Step0 -StepX
-//[state] +Input
-//[extern:InputState] input: 0
-//[state] +Step1 -Step0
-//[state] +Input
-//[extern:InputState] input: 1
-//[state] +Step2 -Step1
-//[state] +Input
-//[extern:InputState] input: 0
-//[state] +Step3 -Step2
-//[state] -Start
-//--- PASS: TestRegexp (0.00s)
+// === RUN   TestRegexp
+// === RUN   TestRegexp/test_101010_(OK)
+// [state] +Start +StepX
+// [state] +Input
+// [extern:InputState] input: 1
+// [state] +Input
+// [extern:InputState] input: 0
+// [state] +Input
+// [extern:InputState] input: 1
+// [state] +Step0 -StepX
+// [state] +Input
+// [extern:InputState] input: 0
+// [state] +Step1 -Step0
+// [state] +Input
+// [extern:InputState] input: 1
+// [state] +Step2 -Step1
+// [state] +Input
+// [extern:InputState] input: 0
+// [state] +Step3 -Step2
+// [state] -Start
+// --- PASS: TestRegexp (0.00s)
 //    --- PASS: TestRegexp/test_101010_(OK) (0.00s)
-//PASS
+// PASS
 
 package nfa
 
@@ -81,11 +82,10 @@ func (t *Regexp) StartState(e *am.Event) {
 	mach.Add1(StepX, nil)
 
 	// jump out of the queue
+	queueEnd := mach.WhenQueueEnds(nil)
 	go func() {
-		// TODO use mach.WhenQueueEnds()
-		<-mach.When1(StepX, nil)
-		// needed for the queue lock to release
-		time.Sleep(1 * time.Millisecond)
+		// wait for drained
+		<-queueEnd
 
 		for _, c := range t.input {
 			switch c {
