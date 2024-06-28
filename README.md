@@ -1,4 +1,28 @@
-# asyncmachine-go
+<br>
+<div align="center">
+  <a href="https://glasskube.dev?utm_source=github">
+    <img src="/assets/logo.png" alt="asyncmachine-go logo" height="160">
+  </a>
+
+<h3 align="center">Declarative workflows with relations (state machine)</h3>
+
+  <p align="center">
+    <a href="#usage"><strong>Usage »</strong></a>
+    <br>
+    <a href="#examples"><strong>Examples »</strong></a>
+    <br>
+    <a href="#documentation"><strong>Documentation »</strong></a>
+    <br>
+    <a href="#tools"><strong>Tools »</strong></a>
+    <br>
+    <a href="#integrations"><strong>Integrations »</strong></a>
+    <br>
+    <a href="#case-studies"><strong>Case Studies »</strong></a>
+    <br>
+  </p>
+</div>
+
+<hr>
 
 ![TUI Debugger](assets/am-dbg.gif)
 
@@ -12,7 +36,7 @@ firewalls, telemetry, bots, etc.
 > **asyncmachine-go** is a general purpose state machine for managing complex asynchronous workflows in a safe and
 > structured way
 
-## Comparison
+### Comparison
 
 Common differences from other state machines:
 
@@ -22,6 +46,14 @@ Common differences from other state machines:
 - every transition can be rejected
 - error is a state
 
+### Buzzwords
+
+> **AM technically is:** event emitter, queue, dependency graph, AOP, logical clocks, ~2.5k LoC, no deps
+
+> **AM gives you:** states, events, thread-safety, logging, metrics, traces, debugger, history, flow constraints, scheduler
+
+> **Flow constraints are:** state mutations, negotiation, relations, "when" methods, state contexts, external contexts
+
 ## Usage
 
 ### Basics
@@ -29,15 +61,12 @@ Common differences from other state machines:
 ```go
 // ProcessingFile -> FileProcessed (1 async and 1 sync state)
 package main
-import (
-    "context"
-    am "github.com/pancsta/asyncmachine-go/pkg/machine"
-)
+
+import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
 func main() {
     // init the machine
-    ctx := context.Background()
-    mach := am.New(ctx, am.Struct{
+    mach := am.New(nil, am.Struct{
         "ProcessingFile": {
             Add: am.S{"InProgress"},
             Remove: am.S{"FileProcessed"},
@@ -128,14 +157,6 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 ```
 
 See [docs/cookbook.md](docs/cookbook.md) for more snippets.
-
-## Buzzwords
-
-> **AM technically is:** event emitter, queue, dependency graph, AOP, logical clocks, ~2.5k LoC, no deps
-
-> **AM gives you:** states, events, thread-safety, logging, metrics, traces, debugger, history, flow constraints, scheduler
-
-> **Flow constraints are:** state mutations, negotiation, relations, "when" methods, state contexts, external contexts
 
 ## Examples
 

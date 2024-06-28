@@ -8,5 +8,9 @@ exclude_rule 'MD014'
 exclude_rule 'MD033'
 # block quotes
 exclude_rule 'MD028'
+# first line H1
+exclude_rule 'MD002'
+# first line H1
+exclude_rule 'MD041'
 # ???
 exclude_rule 'MD007'
