@@ -1,53 +1,49 @@
 # asyncmachine-go
 
-## Table of Contents
+<!-- TOC -->
+
+- [Introduction](#introduction)
+  - [Comparison](#comparison)
+  - [Legend](#legend)
+- [Machine and States](#machine-and-states)
+  - [Defining States](#defining-states)
+  - [Asynchronous States](#asynchronous-states)
+  - [Machine Init](#machine-init)
+  - [State Clocks and Context](#state-clocks-and-context)
+  - [Checking Active States](#checking-active-states)
+  - [Inspecting States](#inspecting-states)
+  - [Auto States](#auto-states)
+  - [Multi States](#multi-states)
+  - [Categories of States](#categories-of-states)
+- [Changing State](#changing-state)
+  - [State Mutations](#state-mutations)
+  - [Mutation Arguments](#mutation-arguments)
+  - [Transition Lifecycle](#transition-lifecycle)
+  - [Transition Handlers](#transition-handlers)
+  - [Self handlers](#self-handlers)
+  - [Defining Handlers](#defining-handlers)
+  - [Event Struct](#event-struct)
+  - [Calculating Target States](#calculating-target-states)
+  - [Negotiation Handlers](#negotiation-handlers)
+  - [Final Handlers](#final-handlers)
+  - [Dynamic Handlers](#dynamic-handlers)
+- [Advanced Topics](#advanced-topics)
+  - [State's Relations](#states-relations)
+  - [Waiting](#waiting)
+  - [Error Handling](#error-handling)
+  - [Panics In Handlers](#panics-in-handlers)
+  - [Queue and History](#queue-and-history)
+  - [Logging](#logging)
+  - [Debugging](#debugging)
+  - [Typesafe States](#typesafe-states)
+  - [Tracing and Metrics](#tracing-and-metrics)
+  - [Optimizing Data Input](#optimizing-data-input)
+- [Cheatsheet](#cheatsheet)
+- [Other sources](#other-sources)
 
 <!-- TOC -->
 
-- [asyncmachine-go](#asyncmachine-go)
-  - [Table of Contents](#table-of-contents)
-  - [Overview](#overview)
-    - [Comparison](#comparison)
-    - [Legend](#legend)
-  - [Machine and States](#machine-and-states)
-    - [Defining States](#defining-states)
-    - [Asynchronous States](#asynchronous-states)
-    - [Machine Init](#machine-init)
-    - [State Clocks and Context](#state-clocks-and-context)
-    - [Checking Active States](#checking-active-states)
-    - [Inspecting States](#inspecting-states)
-    - [Auto States](#auto-states)
-    - [Multi States](#multi-states)
-    - [Categories of States](#categories-of-states)
-  - [Changing State](#changing-state)
-    - [State Mutations](#state-mutations)
-    - [Mutation Arguments](#mutation-arguments)
-    - [Transition Lifecycle](#transition-lifecycle)
-    - [Transition Handlers](#transition-handlers)
-    - [Self handlers](#self-handlers)
-    - [Defining Handlers](#defining-handlers)
-    - [Event Struct](#event-struct)
-    - [Calculating Target States](#calculating-target-states)
-    - [Negotiation Handlers](#negotiation-handlers)
-    - [Final Handlers](#final-handlers)
-    - [Dynamic Handlers](#dynamic-handlers)
-  - [Advanced Topics](#advanced-topics)
-    - [State's Relations](#states-relations)
-    - [Waiting](#waiting)
-    - [Error Handling](#error-handling)
-    - [Panics In Handlers](#panics-in-handlers)
-    - [Queue and History](#queue-and-history)
-    - [Logging](#logging)
-    - [Debugging](#debugging)
-    - [Typesafe States](#typesafe-states)
-    - [Tracing and Metrics](#tracing-and-metrics)
-    - [Optimizing Data Input](#optimizing-data-input)
-  - [Cheatsheet](#cheatsheet)
-  - [Other sources](#other-sources)
-
-<!-- TOC -->
-
-## Overview
+## Introduction
 
 > **asyncmachine-go** is a general purpose state machine for managing complex asynchronous workflows in a safe and
 > structured way
@@ -64,7 +60,7 @@ structure to non-determinism, by embracing it.
 
 Common differences from other state machines:
 
-- many states can be active at the same time
+- many [states](#defining-states) can be [active](#checking-active-states) at the same time
 - [transitions](#transition-lifecycle) between all the states are allowed
 - states are connected by [relations](#states-relations)
 - every transition can be [rejected](#transition-lifecycle)
@@ -79,9 +75,9 @@ Examples here use a string representations of machines in the format of [`(Activ
 
 ### Defining States
 
-States are defined using [`am.Struct`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Struct),
+**States** are defined using [`am.Struct`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Struct),
 a string-keyed map of [`am.State` struct](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#State),
-which consists of **properties and [relations](#states-relations)**. List of state names have a readability shorthand
+which consists of **properties and [relations](#states-relations)**. List of **state names** have a readability shorthand
 of [`am.S`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go@v0.5.0/pkg/machine#S)
 and can be combined using [`am.SMerge`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go@v0.5.0/pkg/machine#SMerge).
 
@@ -522,10 +518,10 @@ no return). Order of the handlers depends on currently [active states](#checking
 **Example** - handlers for the state Foo
 
 ```go
-func (h *MachineHandlers) FooEnter(e *am.Event) bool {}
-func (h *MachineHandlers) FooState(e *am.Event) {}
-func (h *MachineHandlers) FooExit(e *am.Event) bool {}
-func (h *MachineHandlers) FooEnd(e *am.Event) {}
+func (h *Handlers) FooEnter(e *am.Event) bool {}
+func (h *Handlers) FooState(e *am.Event) {}
+func (h *Handlers) FooExit(e *am.Event) bool {}
+func (h *Handlers) FooEnd(e *am.Event) {}
 ```
 
 List of handlers during a transition from `Foo` to `Bar`, in the order of execution:
@@ -583,7 +579,7 @@ func (h *Handlers) FooEnter(e *am.Event) bool {
 
 func main() {
     // ...
-    err := mach.BindHandlers(&MachineHandlers{})
+    err := mach.BindHandlers(&Handlers{})
 }
 ```
 
@@ -611,7 +607,7 @@ type Event struct {
 mach.Add(am.S{"Foo"}, A{"test": 123})
 // ...
 // receive args
-func (h *MachineHandlers) FooState(e *am.Event) {
+func (h *Handlers) FooState(e *am.Event) {
   test := e.Args["test"].(string)
 }
 ```
@@ -643,7 +639,7 @@ m := am.New(ctx, am.Struct{
 // ...
 
 // handlers
-func (h *MachineHandlers) FooEnter(e *am.Event) bool {
+func (h *Handlers) FooEnter(e *am.Event) bool {
     e.Transition.StatesBefore // ()
     e.Transition.TargetStates // (Foo Bar)
     e.Machine.Transition.CalledStates() // (Foo)
@@ -651,7 +647,7 @@ func (h *MachineHandlers) FooEnter(e *am.Event) bool {
     e.Machine.Is(am.S{"Foo", "Bar"}) // false
     return true
 }
-func (h *MachineHandlers) FooState(e *am.Event) {
+func (h *Handlers) FooState(e *am.Event) {
     e.Transition.StatesBefore // ()
     e.Transition.TargetStates // (Foo Bar)
     e.Machine.Transition.CalledStates() // (Foo)
@@ -688,13 +684,13 @@ end
 ### Negotiation Handlers
 
 ```go
-func (h *MachineHandlers) FooEnter(e *am.Event) bool {}
-func (h *MachineHandlers) FooExit(e *am.Event) bool {}
+func (h *Handlers) FooEnter(e *am.Event) bool {}
+func (h *Handlers) FooExit(e *am.Event) bool {}
 ```
 
-Negotiation handlers `Enter` and `Exit` are called for every state which is going to be activated or de-activated. They
-are allowed to cancel a transition by optionally returning `false`. Negotiation handlers should only perform read-only
-operations, or at least be side effects free. Their purpose is to make sure that
+**Negotiation handlers** `Enter` and `Exit` are called for every state which is going to be activated or de-activated. They
+are allowed to cancel a transition by optionally returning `false`. **Negotiation handlers** are limited to read-only
+operations, or at least to side effects free ones. Their purpose is to make sure that
 [final transition handlers](#final-handlers) are good to go.
 
 ```go
@@ -722,7 +718,7 @@ m := am.New(ctx, am.Struct{
 // ...
 
 // handlers
-func (h *MachineHandlers) FooEnter(e *am.Event) bool {
+func (h *Handlers) FooEnter(e *am.Event) bool {
     return false
 }
 
@@ -744,12 +740,12 @@ m.Add1("Foo", nil) // ->am.Canceled
 ### Final Handlers
 
 ```go
-func (h *MachineHandlers) FooState(e *am.Event) {}
-func (h *MachineHandlers) FooEnd(e *am.Event) {}
-func (h *MachineHandlers) FooBar(e *am.Event) {}
-func (h *MachineHandlers) BarFoo(e *am.Event) {}
-func (h *MachineHandlers) AnyFoo(e *am.Event) {}
-func (h *MachineHandlers) FooAny(e *am.Event) {}
+func (h *Handlers) FooState(e *am.Event) {}
+func (h *Handlers) FooEnd(e *am.Event) {}
+func (h *Handlers) FooBar(e *am.Event) {}
+func (h *Handlers) BarFoo(e *am.Event) {}
+func (h *Handlers) AnyFoo(e *am.Event) {}
+func (h *Handlers) FooAny(e *am.Event) {}
 ```
 
 Final handlers `State` and `End` are where the main handler logic resides. After the transition gets accepted by
@@ -792,10 +788,10 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 
 ### Dynamic Handlers
 
-[`OnEvent`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.OnEvent) returns a channel that
+[**`OnEvent`**](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.OnEvent) returns a channel that
 will be notified with `*Event`, when any of the passed events happen. It's quick substitute for a predefined transition
-handler, although it does not guarantee a deterministic order of execution (dynamic handlers are triggered in bulk at
-the end of a transition). It also accepts an optional context for an earlier disposal. Usage of dynamic handlers is
+handler, although it does not guarantee a deterministic order of execution (**dynamic handlers** are triggered in bulk at
+the end of a transition). It also accepts an optional context for an earlier disposal. Usage of **dynamic handlers** is
 discouraged and may cause problems. To subscribe to events other than handlers, there's
 [Tracer API](#tracing-and-metrics).
 
@@ -814,22 +810,22 @@ m := am.New(ctx, am.Struct{
 fooEnter := m.OnEvent([]string{"FooEnter"}, nil)
 go func() {
     <-fooEnter
-    println("On(FooEnter)")
+    println("OnEvent(FooEnter)")
 })
 ```
 
 ```text
 [add] Foo
 [state] +Foo
-On(FooEnter)
+OnEvent(FooEnter)
 ```
 
 ## Advanced Topics
 
 ### State's Relations
 
-Each [state](#defining-states) can have 4 types of **relations**. Each relation accepts a list of state names. Relations
-are handled by [RelationsResolver](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#RelationsResolver),
+Each [state](#defining-states) can have 4 types of **relations**. Each relation accepts a list of [state names](https://pkg.go.dev/github.com/pancsta/asyncmachine-go@v0.5.0/pkg/machine#S).
+Relations are handled by [RelationsResolver](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#RelationsResolver),
 which should be extendable and potentially even replaceable.
 
 #### `Add` relation
@@ -1013,10 +1009,10 @@ m := am.New(ctx, am.Struct{
 // ...
 
 // handlers
-func (h *MachineHandlers) FooState(e *am.Event) {
+func (h *Handlers) FooState(e *am.Event) {
     println("Foo")
 }
-func (h *MachineHandlers) BarState(e *am.Event) {
+func (h *Handlers) BarState(e *am.Event) {
     println("Bar")
 }
 
@@ -1054,9 +1050,9 @@ Foo
 <-mach.WhenTick("DownloadingFile", 2, nil)
 ```
 
-All "when" methods return a channel, which closes when an event happens (or the optionally passed context gets
+Almost all "when" methods return a share channel which closes when an event happens (or the optionally passed context is
 canceled). They are used to wait until a certain moment, when we know the execution can proceed. Using "when" methods
-creates new channels and should be used with caution, ideally making use of the early disposal context. In the future,
+creates new channels and should be used with caution, possibly making use of the early disposal context. In the future,
 these channels will be reused and should scale way better.
 
 "When" methods are:
@@ -1196,7 +1192,7 @@ m := am.New(ctx, am.Struct{
 // ...
 
 // handlers
-func (h *MachineHandlers) FooState(e *am.Event) {
+func (h *Handlers) FooState(e *am.Event) {
     e.Machine.Add1("Bar", nil) // ->Queued
 }
 
@@ -1243,10 +1239,10 @@ m.SetLogLevel(am.LogOps)
 // ...
 
 // handlers
-func (h *MachineHandlers) FooState(e *am.Event) {
+func (h *Handlers) FooState(e *am.Event) {
     // empty
 }
-func (h *MachineHandlers) BarEnter(e *am.Event) bool {
+func (h *Handlers) BarEnter(e *am.Event) bool {
     return false
 }
 
@@ -1288,17 +1284,17 @@ m.Add1("Foo", nil) // Executed
 - log level `LogEveryting`
 
 ```text
-[start] handleEmitterLoop MachineHandlers
+[start] handleEmitterLoop Handlers
 [add] Foo
-[emit:MachineHandlers:d7a58] AnyFoo
-[emit:MachineHandlers:d32cd] FooEnter
+[emit:Handlers:d7a58] AnyFoo
+[emit:Handlers:d32cd] FooEnter
 [state] +Foo
-[emit:MachineHandlers:aa38c] FooState
+[emit:Handlers:aa38c] FooState
 [handler] FooState
 [auto] Bar
 [add:auto] Bar
-[emit:MachineHandlers:f353d] AnyBar
-[emit:MachineHandlers:82e34] BarEnter
+[emit:Handlers:f353d] AnyBar
+[emit:Handlers:82e34] BarEnter
 [handler] BarEnter
 [cancel:82e34] (Bar Foo) by BarEnter
 ```
@@ -1448,4 +1444,4 @@ func Msg(msgTx *Msg) {
 
 ## Other sources
 
-Please refer to [cookbook](/docs/cookbook.md) and [examples](/examples).
+Please refer to the [cookbook](/docs/cookbook.md) and [examples](/examples).
