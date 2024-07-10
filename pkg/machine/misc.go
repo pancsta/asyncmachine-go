@@ -387,6 +387,25 @@ type Tracer interface {
 	QueueEnd(machine *Machine)
 }
 
+// NoOpTracer is a no-op implementation of Tracer, used for embedding.
+type NoOpTracer struct{}
+
+func (t *NoOpTracer) TransitionInit(transition *Transition) {}
+func (t *NoOpTracer) TransitionEnd(transition *Transition)  {}
+func (t *NoOpTracer) HandlerStart(
+	transition *Transition, emitter string, handler string) {
+}
+
+func (t *NoOpTracer) HandlerEnd(
+	transition *Transition, emitter string, handler string) {
+}
+func (t *NoOpTracer) End()                                {}
+func (t *NoOpTracer) MachineInit(mach *Machine)           {}
+func (t *NoOpTracer) MachineDispose(machID string)        {}
+func (t *NoOpTracer) NewSubmachine(parent, mach *Machine) {}
+func (t *NoOpTracer) QueueEnd(machine *Machine)           {}
+func (t *NoOpTracer) Inheritable() bool                   { return false }
+
 // ///////////////
 // ///// events, when, emitters
 // ///////////////
