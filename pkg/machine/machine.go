@@ -1111,7 +1111,7 @@ func (m *Machine) queueMutation(mutationType MutationType, states S, args A) {
 // ctx: nil context defaults to machine's context.
 //
 // Note: usage of Eval is discouraged.
-func (m *Machine) Eval(ctx context.Context, fn func(), source string) bool {
+func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	if source == "" {
 		panic("Error: source of eval is required")
 	}
