@@ -498,8 +498,12 @@ func (e *emitter) dispose() {
 // ///// exception support
 // ///////////////
 
-// Exception is the Exception state name
-const Exception = "Exception"
+const (
+	// Exception is a name the Exception state.
+	Exception = "Exception"
+	// Any is a name of a meta state used in catch-all handlers.
+	Any = "Any"
+)
 
 // ExceptionArgsPanic is an optional argument ["panic"] for the Exception state
 // which describes a panic within a Transition handler.

@@ -264,7 +264,7 @@ func (t *Transition) emitEnterEvents() Result {
 		// isCalled := slices.Contains(t.CalledStates(), toState)
 		args := t.Mutation.Args
 
-		ret := t.emitHandler("Any", toState, "Any"+toState, args)
+		ret := t.emitHandler(Any, toState, Any+toState, args)
 		if ret == Canceled {
 			return ret
 		}
@@ -291,7 +291,7 @@ func (t *Transition) emitExitEvents() Result {
 				return ret
 			}
 		}
-		ret = t.emitHandler(from, "Any", from+"Any", nil)
+		ret = t.emitHandler(from, Any, from+Any, nil)
 		if ret == Canceled {
 			return ret
 		}
@@ -354,6 +354,7 @@ func (t *Transition) emitEvents() Result {
 	m.emit(EventTransitionStart, txArgs, nil)
 
 	// NEGOTIATION CALLS PHASE (cancellable)
+
 	// FooFoo handlers
 	if result != Canceled && t.Type() != MutationRemove {
 		result = t.emitSelfEvents()
@@ -367,6 +368,12 @@ func (t *Transition) emitEvents() Result {
 	// FooEnter handlers
 	if result != Canceled {
 		result = t.emitEnterEvents()
+	}
+
+	// global AnyAny handler
+	ret := t.emitHandler(Any, Any, Any+Any, t.Mutation.Args)
+	if ret == Canceled {
+		return ret
 	}
 
 	// FINAL HANDLERS (non cancellable)

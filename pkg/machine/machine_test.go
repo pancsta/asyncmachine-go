@@ -2007,3 +2007,8 @@ func TestOnEventCtxDispose(t *testing.T) {
 	m.Dispose()
 	<-m.WhenDisposed()
 }
+
+// TODO TestAnyAnyHandler
+func TestAnyAnyHandler(t *testing.T) {
+	t.Skip()
+}
