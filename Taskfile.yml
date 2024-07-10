@@ -199,3 +199,7 @@ tasks:
   godoc:
     cmds:
       - godoc -http=:6060
+
+  gen-manual-pdf:
+    cmds:
+      - pandoc -f markdown-implicit_figures docs/manual.md -o assets/manual.pdf
