@@ -271,8 +271,8 @@ func (rr *DefaultRelationsResolver) getMissingRequires(
 	return ret
 }
 
-// GetRelationsBetween returns a list of relation types between the given
-// states. Not thread safe.
+// GetRelationsBetween returns a list of directional relation types between
+// the given states. Not thread safe.
 func (rr *DefaultRelationsResolver) GetRelationsBetween(
 	fromState, toState string,
 ) ([]Relation, error) {

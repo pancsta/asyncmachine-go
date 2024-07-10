@@ -40,11 +40,12 @@ type Transition struct {
 	ClocksBefore Clocks
 	// clocks of the states from after the transition
 	// TODO timeAfter, produce Clocks via ClockAfter(), add index diffs
+	// TODO unify with pkg/telemetry
 	ClocksAfter Clocks
 	TAfter      T
-	// State names with "enter" handlers to execute
+	// Struct with "enter" handlers to execute
 	Enters S
-	// State names with "exit" handlers to executed
+	// Struct with "exit" handlers to executed
 	Exits S
 	// target states after parsing the relations
 	TargetStates S
@@ -258,10 +259,6 @@ func (t *Transition) emitSelfEvents() Result {
 
 func (t *Transition) emitEnterEvents() Result {
 	for _, toState := range t.Enters {
-
-		// TODO double check removal
-		// states implied by Add cant cancel the transition
-		// isCalled := slices.Contains(t.CalledStates(), toState)
 		args := t.Mutation.Args
 
 		ret := t.emitHandler(Any, toState, Any+toState, args)

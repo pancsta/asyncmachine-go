@@ -25,32 +25,33 @@ tasks:
       - task: build-telemetry
       - task: build-debugger
 
-  debugger:
+  am-dbg:
     silent: false
     cmds:
       - go run tools/cmd/am-dbg/main.go {{.CLI_ARGS}}
 
-  debugger-assets:
+  am-dbg-asset:
     silent: false
     cmds:
-      - |
-        go run tools/cmd/am-dbg/main.go \
-          --import-data assets/am-dbg-dump-sim.gob.bz2 \
+      - go run tools/cmd/am-dbg/main.go
+          --import-data assets/am-dbg-sim.gob.bz2
           {{.CLI_ARGS}}
 
-  debugger-client:
+  am-dbg-dump:
+    silent: false
     cmds:
-      - go run tools/cmd/am-dbg/main.go 
-          --log-level 2
-          --am-dbg-url localhost:9913
+      - go run tools/cmd/am-dbg/main.go
+          --import-data am-dbg-dump.gob.bz2
+          {{.CLI_ARGS}}
 
-  debugger-debugger:
+  am-dbg-dbg:
     cmds:
       - go run tools/cmd/am-dbg/main.go 
           --log-file am-dbg-dbg.log 
           --log-level 2
           --listen-on localhost:9913
           --select-connected
+          {{.CLI_ARGS}}
 
   test:
     cmds:
@@ -169,7 +170,6 @@ tasks:
 
   gen-states-file:
     desc: Generate states file for provided state names, eg "task gen-states-file -- Foo,Bar"
-    example: task gen-states-file --state-names "state1,state2,state3"
     cmds:
       - go run tools/cmd/am-gen/main.go states-file {{.CLI_ARGS}}
 

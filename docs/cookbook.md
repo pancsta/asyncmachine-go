@@ -451,7 +451,8 @@ import (
 )
 
 func main() {
-    m := am.New(nil, ss.States, nil)
+    ctx := context.Background()
+    m := am.New(ctx, ss.States, nil)
     err := m.VerifyStates(ss.Names)
     if err != nil {
         print(err)
@@ -549,7 +550,6 @@ func Msg(msgTx *Msg) {
     // enqueue
     queue = append(queue, msgTx)
 }
-
 ```
 
 ### Switch a state group
