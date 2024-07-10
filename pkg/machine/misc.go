@@ -378,10 +378,13 @@ type Tracer interface {
 	HandlerStart(transition *Transition, emitter string, handler string)
 	HandlerEnd(transition *Transition, emitter string, handler string)
 	End()
-	MachineInit(mach *Machine)
+	MachineInit(machine *Machine)
 	MachineDispose(machID string)
-	NewSubmachine(parent, mach *Machine)
+	NewSubmachine(parent, machine *Machine)
 	Inheritable() bool
+	// TODO NewStatesStruct
+	// TODO VerifyStates
+	QueueEnd(machine *Machine)
 }
 
 // ///////////////
