@@ -724,14 +724,17 @@ func (h *TestHandlerStateInfoHandlers) DEnter(e *Event) {
 func TestHandlerStateInfo(t *testing.T) {
 	// init
 	m := NewNoRels(t, S{"A"})
-	m.VerifyStates(S{"A", "B", "C", "D", "Exception"})
+	err := m.VerifyStates(S{"A", "B", "C", "D", "Exception"})
+	if err != nil {
+		assert.NoError(t, err)
+	}
 
 	// bind history
 	events := []string{"DEnter"}
 	history := trackTransitions(m, events)
 
 	// bind handlers
-	err := m.BindHandlers(&TestHandlerStateInfoHandlers{})
+	err = m.BindHandlers(&TestHandlerStateInfoHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -1785,7 +1788,7 @@ func TestInspect(t *testing.T) {
 }
 
 func TestNilCtx(t *testing.T) {
-	m := New(nil, Struct{"A": {}}, nil)
+	m := New(nil, Struct{"A": {}}, nil) //nolint:all
 	assert.Greater(t, len(m.ID), 5)
 
 	// dispose
