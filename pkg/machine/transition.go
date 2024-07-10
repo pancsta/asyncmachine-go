@@ -55,7 +55,7 @@ type Transition struct {
 	// Parent machine
 	Machine *Machine
 	// Log entries produced during the transition
-	LogEntries []string
+	LogEntries []*LogEntry
 	// start time of the transition
 
 	// Latest / current step of the transition
