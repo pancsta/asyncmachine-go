@@ -13,6 +13,7 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 
 	"github.com/spf13/cobra"
 )
@@ -155,6 +156,7 @@ func cliRun(cmd *cobra.Command, _ []string) {
 		CleanOnConnect:  cleanOnConnect,
 		SelectConnected: selectConnected,
 		Clients:         make(map[string]*debugger.Client),
+		LogLevel:        am.LogChanges,
 	}
 	gob.Register(debugger.Exportable{})
 	gob.Register(am.Relation(0))
@@ -180,7 +182,7 @@ func cliRun(cmd *cobra.Command, _ []string) {
 	}
 
 	// rpc server
-	go debugger.StartRCP(dbg.Mach, serverURL)
+	go server.StartRCP(dbg.Mach, serverURL)
 
 	// start and wait till the end
 	dbg.Mach.Add1(ss.Start, am.A{
@@ -189,14 +191,14 @@ func cliRun(cmd *cobra.Command, _ []string) {
 		"dbgView":         startupView,
 	})
 	<-dbg.Mach.WhenNot1(ss.Start, nil)
-	txes := 0
+	txs := 0
 	for _, c := range dbg.Clients {
-		txes += len(c.MsgTxs)
+		txs += len(c.MsgTxs)
 	}
 
 	// TODO format numbers
 	_, _ = dbg.P.Printf("Clients: %d\n", len(dbg.Clients))
-	_, _ = dbg.P.Printf("Transitions: %d\n", txes)
+	_, _ = dbg.P.Printf("Transitions: %d\n", txs)
 }
 
 // TODO extract to tools/debugger

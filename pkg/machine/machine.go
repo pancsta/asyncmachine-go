@@ -1734,7 +1734,7 @@ func (m *Machine) log(level LogLevel, msg string, args ...any) {
 	if t != nil {
 		// append the log msg to the current transition
 		// TODO not thread safe
-		t.LogEntries = append(t.LogEntries, out)
+		t.LogEntries = append(t.LogEntries, &LogEntry{level, out})
 	} else {
 
 		// append the log msg the machine and collect at the end of the next

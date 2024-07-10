@@ -8,7 +8,7 @@ type S = am.S
 // States map defines relations and properties of states.
 var States = am.Struct{
 
-	// /// Input events
+	// ///// Input events
 
 	ClientMsg:       {Multi: true},
 	ConnectEvent:    {Multi: true},
@@ -34,7 +34,7 @@ var States = am.Struct{
 		Remove:  am.SMerge(GroupPlaying, S{LogUserScrolled}),
 	},
 
-	// /// External state (eg UI)
+	// ///// Read-only states (eg UI)
 
 	// focus group
 
@@ -45,6 +45,7 @@ var States = am.Struct{
 	TimelineStepsFocused: {Remove: GroupFocused},
 	MatrixFocused:        {Remove: GroupFocused},
 	DialogFocused:        {Remove: GroupFocused},
+	FiltersFocused:       {Remove: GroupFocused},
 
 	StateNameSelected: {Require: S{ClientSelected}},
 	HelpDialog:        {Remove: GroupDialog},
@@ -52,10 +53,13 @@ var States = am.Struct{
 		Require: S{ClientSelected},
 		Remove:  GroupDialog,
 	},
-	LogUserScrolled: {},
-	Ready:           {Require: S{Start}},
+	LogUserScrolled:  {},
+	Ready:            {Require: S{Start}},
+	FilterAutoTx:     {},
+	FilterCanceledTx: {},
+	FilterEmptyTx:    {},
 
-	// /// Actions
+	// ///// Actions
 
 	Start: {},
 	TreeLogView: {
@@ -77,33 +81,34 @@ var States = am.Struct{
 		Require: S{ClientSelected},
 		Remove:  GroupPlaying,
 	},
+	ToggleFilter: {},
 
 	// tx / steps back / fwd
 
 	Fwd: {
 		Require: S{ClientSelected},
-		Remove:  S{Playing},
 	},
 	Back: {
 		Require: S{ClientSelected},
-		Remove:  S{Playing},
 	},
 	FwdStep: {
 		Require: S{ClientSelected},
-		Remove:  S{Playing},
 	},
 	BackStep: {
 		Require: S{ClientSelected},
-		Remove:  S{Playing},
 	},
 
 	ScrollToTx: {Require: S{ClientSelected}},
 
 	// client selection
 
-	SelectingClient: {Remove: S{ClientSelected}},
+	SelectingClient: {
+		Require: S{Start},
+		Remove:  S{ClientSelected},
+	},
 	ClientSelected: {
-		Remove: S{SelectingClient, LogUserScrolled},
+		Require: S{Start},
+		Remove:  S{SelectingClient, LogUserScrolled},
 	},
 	RemoveClient: {Require: S{ClientSelected}},
 }
@@ -114,6 +119,7 @@ var (
 	GroupFocused = S{
 		TreeFocused, LogFocused, TimelineTxsFocused,
 		TimelineStepsFocused, SidebarFocused, MatrixFocused, DialogFocused,
+		FiltersFocused,
 	}
 	GroupPlaying = S{
 		Playing, Paused, TailMode,
@@ -137,11 +143,13 @@ const (
 	TimelineStepsFocused = "TimelineStepsFocused"
 	MatrixFocused        = "MatrixFocused"
 	DialogFocused        = "DialogFocused"
-	ClientMsg            = "ClientMsg"
-	StateNameSelected    = "StateNameSelected"
-	Start                = "Start"
-	Playing              = "Playing"
-	Paused               = "Paused"
+	FiltersFocused       = "FiltersFocused"
+
+	ClientMsg         = "ClientMsg"
+	StateNameSelected = "StateNameSelected"
+	Start             = "Start"
+	Playing           = "Playing"
+	Paused            = "Paused"
 	// TailMode always shows the latest transition
 	TailMode = "TailMode"
 	// UserFwd is a user generated event
@@ -173,7 +181,14 @@ const (
 	TreeMatrixView  = "TreeMatrixView"
 	LogUserScrolled = "LogUserScrolled"
 	ScrollToTx      = "ScrollToTx"
-	Ready           = "Ready"
+	// Ready is an async result of start
+	Ready            = "Ready"
+	FilterCanceledTx = "FilterCanceledTx"
+	FilterAutoTx     = "FilterAutoTx"
+	// FilterEmptyTx is a filter for txes which didn't change state and didn't
+	// run any self handler either
+	FilterEmptyTx = "FilterEmptyTx"
+	ToggleFilter  = "ToggleFilter"
 )
 
 // Names of all the states (pkg enum).
@@ -200,6 +215,7 @@ var Names = S{
 	SidebarFocused,
 	TimelineTxsFocused,
 	TimelineStepsFocused,
+	FiltersFocused,
 	MatrixFocused,
 	DialogFocused,
 	StateNameSelected,
@@ -217,6 +233,10 @@ var Names = S{
 	TailMode,
 	Playing,
 	Paused,
+	FilterAutoTx,
+	FilterCanceledTx,
+	FilterEmptyTx,
+	ToggleFilter,
 
 	// tx / steps back / fwd
 	Fwd,

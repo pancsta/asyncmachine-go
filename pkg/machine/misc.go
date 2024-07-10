@@ -311,6 +311,11 @@ type Logger func(level LogLevel, msg string, args ...any)
 // LogLevel enum
 type LogLevel int
 
+type LogEntry struct {
+	Level LogLevel
+	Text  string
+}
+
 const (
 	// LogNothing means no logging, including external msgs.
 	LogNothing LogLevel = iota

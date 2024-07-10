@@ -143,18 +143,6 @@ func (d *Debugger) StateNameSelectedEnd(_ *am.Event) {
 	d.updateKeyBars()
 }
 
-func (d *Debugger) LiveViewEnter(_ *am.Event) bool {
-	return d.C != nil
-}
-
-func (d *Debugger) LiveViewState(_ *am.Event) {
-	d.C.CursorTx = len(d.C.MsgTxs)
-	d.C.CursorStep = 0
-	d.updateTxBars()
-	d.updateTimelines()
-	d.draw()
-}
-
 func (d *Debugger) PlayingState(_ *am.Event) {
 	if d.playTimer == nil {
 		d.playTimer = time.NewTicker(playInterval)
@@ -199,13 +187,13 @@ func (d *Debugger) PausedState(_ *am.Event) {
 }
 
 func (d *Debugger) TailModeState(_ *am.Event) {
-	d.C.CursorTx = len(d.C.MsgTxs)
+	d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), true)
 	// needed bc tail mode if carried over via SelectingClient
 	d.updateTxBars()
 	d.draw()
 }
 
-///// FWD / BACK
+// ///// FWD / BACK
 
 func (d *Debugger) UserFwdState(e *am.Event) {
 	d.Mach.Remove1(ss.UserFwd, nil)
@@ -223,9 +211,10 @@ func (d *Debugger) FwdState(e *am.Event) {
 	amount, _ := e.Args["amount"].(int)
 	amount = max(amount, 1)
 
-	d.C.CursorTx += amount
-	d.C.CursorStep = 0
-	if d.Mach.Is1(ss.Playing) && d.C.CursorTx == len(d.C.MsgTxs) {
+	c := d.C
+	c.CursorTx = d.filterTxCursor(c, c.CursorTx+amount, true)
+	c.CursorStep = 0
+	if d.Mach.Is1(ss.Playing) && c.CursorTx == len(c.MsgTxs) {
 		d.Mach.Remove1(ss.Playing, nil)
 	}
 
@@ -248,13 +237,14 @@ func (d *Debugger) BackState(e *am.Event) {
 	amount, _ := e.Args["amount"].(int)
 	amount = max(amount, 1)
 
-	d.C.CursorTx -= amount
-	d.C.CursorStep = 0
+	c := d.C
+	c.CursorTx = d.filterTxCursor(c, c.CursorTx-amount, false)
+	c.CursorStep = 0
 
 	d.RedrawFull(false)
 }
 
-///// STEP BACK / FWD
+// ///// STEP BACK / FWD
 
 func (d *Debugger) UserFwdStepState(e *am.Event) {
 	d.Mach.Remove1(ss.UserFwdStep, nil)
@@ -295,10 +285,11 @@ func (d *Debugger) BackStepState(_ *am.Event) {
 
 	// wrap if there's a prev tx
 	if d.C.CursorStep <= 0 {
-		d.C.CursorTx--
+		d.C.CursorTx = d.filterTxCursor(d.C, d.C.CursorTx-1, false)
 		d.updateLog(false)
 		nextTx := d.NextTx()
 		d.C.CursorStep = len(nextTx.Steps)
+
 	} else {
 		d.C.CursorStep--
 	}
@@ -314,7 +305,17 @@ func (d *Debugger) TimelineStepsFocusedEnd(_ *am.Event) {
 	d.RedrawFull(false)
 }
 
-///// CONNECTION
+func (d *Debugger) FiltersFocusedState(_ *am.Event) {
+	d.filtersBar.SetBackgroundColor(cview.Styles.MoreContrastBackgroundColor)
+	d.updateFiltersBar()
+}
+
+func (d *Debugger) FiltersFocusedEnd(_ *am.Event) {
+	d.filtersBar.SetBackgroundColor(cview.Styles.PrimitiveBackgroundColor)
+	d.updateFiltersBar()
+}
+
+// ///// CONNECTION
 
 func (d *Debugger) ConnectEventEnter(e *am.Event) bool {
 	_, ok1 := e.Args["msg_struct"].(*telemetry.DbgMsgStruct)
@@ -458,7 +459,7 @@ func (d *Debugger) DisconnectEventState(e *am.Event) {
 	d.draw()
 }
 
-///// CLIENTS
+// ///// CLIENTS
 
 func (d *Debugger) ClientMsgEnter(e *am.Event) bool {
 	_, ok := e.Args["msgs_tx"].([]*telemetry.DbgMsgTx)
@@ -473,8 +474,7 @@ func (d *Debugger) ClientMsgEnter(e *am.Event) bool {
 func (d *Debugger) ClientMsgState(e *am.Event) {
 	msgs := e.Args["msgs_tx"].([]*telemetry.DbgMsgTx)
 
-	// add a timestamp
-	updateLive := false
+	updateTailMode := false
 	updateFirstTx := false
 	for _, msg := range msgs {
 
@@ -493,23 +493,24 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 		index := len(c.MsgTxs)
 		c.MsgTxs = append(c.MsgTxs, msg)
 		// parse the msg
-		d.parseClientMsg(c, len(c.MsgTxs)-1)
+		d.parseMsg(c, len(c.MsgTxs)-1)
 
 		// update the UI
 		// TODO debounce UI updates
 
 		if c == d.C {
-			err := d.appendLog(index)
+			err := d.appendLogEntry(index)
 			if err != nil {
 				d.Mach.Log("Error: log append %s\n", err)
 				// d.Mach.AddErr(err)
 				return
 			}
 			if d.Mach.Is1(ss.TailMode) {
-				updateLive = true
-				c.CursorTx = len(c.MsgTxs)
+				updateTailMode = true
+				c.CursorTx = d.filterTxCursor(c, len(c.MsgTxs), true)
 				c.CursorStep = 0
 			}
+
 			// update Tx info on the first Tx
 			if len(c.MsgTxs) == 1 {
 				updateFirstTx = true
@@ -519,13 +520,13 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 
 	d.updateSidebar(false)
 	// UI updates for the selected client
-	if updateLive {
+	if updateTailMode {
 		// force the latest tx
 		d.updateViews(false)
 	}
 
 	// update Tx info on the first Tx
-	if updateLive || updateFirstTx {
+	if updateTailMode || updateFirstTx {
 		d.updateTxBars()
 	}
 
@@ -616,29 +617,19 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 			return // expired
 		}
 
+		// start with prepping the data
+		d.filterClientTxs()
+
 		// scroll to the same place as the prev client
+		// TODO extract
 		match := false
 		if !wasTailMode {
-			for i, tx := range d.C.MsgTxs {
-				if tx.Time.After(d.prevClientTxTime) {
-
-					// pick the closer one
-					if i > 0 && tx.Time.Sub(d.prevClientTxTime) >
-						d.prevClientTxTime.Sub(*d.C.MsgTxs[i-1].Time) {
-						d.C.CursorTx = i
-					} else {
-						d.C.CursorTx = i + 1
-					}
-					match = true
-
-					break
-				}
-			}
+			match = d.scrollToTime(d.prevClientTxTime)
 		}
 
 		// or scroll to the last one
 		if !match {
-			d.C.CursorTx = len(d.C.MsgTxs)
+			d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), false)
 		}
 		d.C.CursorStep = 0
 		d.updateTimelines()
@@ -661,12 +652,9 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 		}
 
 		// rebuild the whole log, keep an eye on the ctx
-		// TODO cache in single []byte
-		for i := 0; i < logRebuildEnd && ctx.Err() == nil; i++ {
-			err := d.appendLog(i)
-			if err != nil {
-				d.Mach.Log("Error: log rebuild %s\n", err)
-			}
+		err := d.rebuildLog(ctx, logRebuildEnd)
+		if err != nil {
+			d.Mach.AddErr(err)
 		}
 		if ctx.Err() != nil {
 			return // expired
@@ -697,7 +685,7 @@ func (d *Debugger) ClientSelectedState(e *am.Event) {
 
 	// catch up with new log msgs
 	for i := d.logRebuildEnd; i < len(d.C.logMsgs); i++ {
-		err := d.appendLog(i)
+		err := d.appendLogEntry(i)
 		if err != nil {
 			d.Mach.Log("Error: log rebuild %s\n", err)
 		}
@@ -795,6 +783,78 @@ func (d *Debugger) ScrollToTxState(e *am.Event) {
 	d.Mach.Remove1(ss.ScrollToTx, nil)
 
 	cursor := e.Args["Client.cursorTx"].(int)
-	d.C.CursorTx = cursor
+	d.C.CursorTx = d.filterTxCursor(d.C, cursor, true)
 	d.RedrawFull(false)
+}
+
+func (d *Debugger) ToggleFilterState(_ *am.Event) {
+	filterTxs := false
+
+	switch d.focusedFilter {
+	// TODO filter enum
+	case "skip-canceled":
+		if d.Mach.Is1(ss.FilterCanceledTx) {
+			d.Mach.Remove1(ss.FilterCanceledTx, nil)
+		} else {
+			d.Mach.Add1(ss.FilterCanceledTx, nil)
+		}
+		filterTxs = true
+	case "skip-auto":
+		if d.Mach.Is1(ss.FilterAutoTx) {
+			d.Mach.Remove1(ss.FilterAutoTx, nil)
+		} else {
+			d.Mach.Add1(ss.FilterAutoTx, nil)
+		}
+		filterTxs = true
+	case "skip-empty":
+		if d.Mach.Is1(ss.FilterEmptyTx) {
+			d.Mach.Remove1(ss.FilterEmptyTx, nil)
+		} else {
+			d.Mach.Add1(ss.FilterEmptyTx, nil)
+		}
+		filterTxs = true
+	case "log-0":
+		d.LogLevel = am.LogNothing
+	case "log-1":
+		d.LogLevel = am.LogChanges
+	case "log-2":
+		d.LogLevel = am.LogOps
+	case "log-3":
+		d.LogLevel = am.LogDecisions
+	case "log-4":
+		d.LogLevel = am.LogEverything
+	}
+
+	stateCtx := d.Mach.NewStateCtx(ss.ToggleFilter)
+
+	go func() {
+		// TODO split the state
+		<-d.Mach.WhenQueueEnds(stateCtx)
+		if stateCtx.Err() != nil {
+			return // expired
+		}
+
+		if filterTxs {
+			d.filterClientTxs()
+		}
+
+		// rebuild the whole log to reflect the UI changes
+		err := d.rebuildLog(stateCtx, len(d.C.MsgTxs)-1)
+		if err != nil {
+			d.Mach.AddErr(err)
+		}
+		d.updateLog(false)
+
+		if stateCtx.Err() != nil {
+			return // expired
+		}
+
+		d.C.CursorTx = d.filterTxCursor(d.C, d.C.CursorTx, false)
+		// queue this removal after filter states, so we can depend on WhenNot
+		d.Mach.Remove1(ss.ToggleFilter, nil)
+
+		d.updateFiltersBar()
+		d.updateTimelines()
+		d.draw()
+	}()
 }
