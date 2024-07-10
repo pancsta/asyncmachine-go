@@ -1566,6 +1566,9 @@ func (m *Machine) processQueue() Result {
 	m.Transition = nil
 	m.queueProcessing.Unlock()
 	m.queueRunning = false
+	for i := range m.Tracers {
+		m.Tracers[i].QueueEnd(m)
+	}
 	m.emit(EventQueueEnd, A{"T": m.timeLast}, nil)
 	m.processWhenQueueBindings()
 

@@ -37,6 +37,7 @@ func (h *History) Inheritable() bool {
 	return false
 }
 func (h *History) MachineDispose(machID string) {}
+func (h *History) QueueEnd(mach *am.Machine) {}
 
 func (h *History) TransitionEnd(tx *am.Transition) {
 	if !tx.Accepted {
