@@ -1,5 +1,31 @@
 # Changelog
 
+## [v0.6.0](https://github.com/pancsta/asyncmachine-go/tree/v0.6.0) (2024-07-10)
+
+- fix: address misc issues [\#84](https://github.com/pancsta/asyncmachine-go/pull/84) (@pancsta)
+- docs: add pdf manual [\#83](https://github.com/pancsta/asyncmachine-go/pull/83) (@pancsta)
+- docs: minor manual updates [\#82](https://github.com/pancsta/asyncmachine-go/pull/82) (@pancsta)
+- refac\(am-dbg\): split and reorg files [\#81](https://github.com/pancsta/asyncmachine-go/pull/81) (@pancsta)
+- feat\(telemetry\): include log level in msgs [\#80](https://github.com/pancsta/asyncmachine-go/pull/80) (@pancsta)
+- feat\(am-dbg\): add tx and log filtering [\#79](https://github.com/pancsta/asyncmachine-go/pull/79) (@pancsta)
+- feat\(machine\): add global AnyAny negotiation handler [\#78](https://github.com/pancsta/asyncmachine-go/pull/78) (@pancsta)
+- refac\(machine\): extract When\* ctx disposal [\#77](https://github.com/pancsta/asyncmachine-go/pull/77) (@pancsta)
+- refac\(machine\): refac to directional channs [\#76](https://github.com/pancsta/asyncmachine-go/pull/76) (@pancsta)
+- refac\(machine\): reorder Eval params [\#75](https://github.com/pancsta/asyncmachine-go/pull/75) (@pancsta)
+- feat\(machine\): add NoOpTracer for embedding [\#74](https://github.com/pancsta/asyncmachine-go/pull/74) (@pancsta)
+- feat\(machine\): add Tracer.QueueEnd [\#73](https://github.com/pancsta/asyncmachine-go/pull/73) (@pancsta)
+- test\(machine\): increase coverage to 85% [\#72](https://github.com/pancsta/asyncmachine-go/pull/72) (@pancsta)
+- refac\(machine\): make WhenDisposed a method [\#71](https://github.com/pancsta/asyncmachine-go/pull/71) (@pancsta)
+
+## [v0.5.1](https://github.com/pancsta/asyncmachine-go/tree/v0.5.1) (2024-07-10)
+
+- fix\(machine\): fix Dispose\(\) deadlock [\#70](https://github.com/pancsta/asyncmachine-go/pull/70) (@pancsta)
+- fix\(machine\): allow for nil ctx [\#69](https://github.com/pancsta/asyncmachine-go/pull/69) (@pancsta)
+- fix\(am-dbg\): fix tail mode delay [\#68](https://github.com/pancsta/asyncmachine-go/pull/68) (@pancsta)
+- fix\(am-dbg\): fix crash for machs with log level 0 [\#67](https://github.com/pancsta/asyncmachine-go/pull/67) (@pancsta)
+- feat\(machine\): add WhenQueueEnds [\#65](https://github.com/pancsta/asyncmachine-go/pull/65) (@pancsta)
+- docs: update manual to v0.5.0 [\#64](https://github.com/pancsta/asyncmachine-go/pull/64) (@pancsta)
+
 ## [v0.5.0](https://github.com/pancsta/asyncmachine-go/tree/v0.5.0) (2024-06-06)
 
 - feat: add tools/cmd/am-gen [\#63](https://github.com/pancsta/asyncmachine-go/pull/63) (@pancsta)
@@ -13,21 +39,19 @@
 - feat\(am-dbg\): add multi client support [\#56](https://github.com/pancsta/asyncmachine-go/pull/56) (@pancsta)
 - feat\(machine\): add empty roadmap methods [\#55](https://github.com/pancsta/asyncmachine-go/pull/55) (@pancsta)
 - feat\(machine\): add Eval [\#54](https://github.com/pancsta/asyncmachine-go/pull/54) (@pancsta)
-- refac\(pkg/machine\): rename many identifiers, shorten [\#53](https://github.com/pancsta/asyncmachine-go/pull/53) (@pancsta)
+- refac\(machine\): rename many identifiers, shorten [\#53](https://github.com/pancsta/asyncmachine-go/pull/53) (@pancsta)
 - feat\(machine\): drop all dependencies \(lo, uuid\) [\#52](https://github.com/pancsta/asyncmachine-go/pull/52) (@pancsta)
 - feat\(machine\): alloc handler goroutine on demand [\#51](https://github.com/pancsta/asyncmachine-go/pull/51) (@pancsta)
 - feat\(machine\): add Transition.ClocksAfter [\#50](https://github.com/pancsta/asyncmachine-go/pull/50) (@pancsta)
 - feat\(machine\): add HasStateChangedSince [\#49](https://github.com/pancsta/asyncmachine-go/pull/49) (@pancsta)
 - feat: add pkg/x/helpers [\#48](https://github.com/pancsta/asyncmachine-go/pull/48) (@pancsta)
-- feat: add pkg/telemetry/prometheus
-  [\#46](https://github.com/pancsta/asyncmachine-go/pull/46) (@pancsta)
+- feat: add pkg/telemetry/prometheus [\#46](https://github.com/pancsta/asyncmachine-go/pull/46) (@pancsta)
 - feat: add pkg/history [\#45](https://github.com/pancsta/asyncmachine-go/pull/45) (@pancsta)
 - fix\(machine\): add funcs SMerge, NormalizeID, IsActiveTick, CloneStates
   [\#44](https://github.com/pancsta/asyncmachine-go/pull/44) (@pancsta)
 - fix\(machine\): fix thread safety [\#43](https://github.com/pancsta/asyncmachine-go/pull/43) (@pancsta)
 - feat\(machine\): add Tracer API and Opts.Tracers [\#42](https://github.com/pancsta/asyncmachine-go/pull/42) (@pancsta)
-- feat\(machine\): add SetStruct, EventStructChange
-  [\#41](https://github.com/pancsta/asyncmachine-go/pull/41) (@pancsta)
+- feat\(machine\): add SetStruct, EventStructChange [\#41](https://github.com/pancsta/asyncmachine-go/pull/41) (@pancsta)
 - feat\(machine\): add getters \(ActiveStates, Queue, Struct\)
   [\#40](https://github.com/pancsta/asyncmachine-go/pull/40) (@pancsta)
 - feat\(machine\): add single-state shorthands \(Add1, Has1, etc\)

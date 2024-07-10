@@ -398,7 +398,11 @@ See [`tools/cmd/am-gen`](tools/cmd/am-gen/README.md) for more info.
 
 ### Debugger
 
-![TUI Debugger](assets/am-dbg.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/am-dbg.dark.png?raw=true">
+  <source media="(prefers-color-scheme: light)" srcset="assets/am-dbg.light.png?raw=true">
+  <img alt="Test duration chart" src="assets/otel-jaeger.dark.png?raw=true">
+</picture>
 
 `am-dbg` is a lightweight, multi-client debugger for AM. It easily handles >100
  client machines simultaneously streaming telemetry data (and potentially many more). Some features include:
@@ -636,44 +640,30 @@ See also [issues](https://github.com/pancsta/asyncmachine-go/issues).
 
 ## Changelog
 
-Latest release: `v0.5.0`
+Latest release: `v0.6.0`
 
-- feat: add tools/cmd/am-gen [\#63](https://github.com/pancsta/asyncmachine-go/pull/63) (@pancsta)
-- feat\(am-dbg\): add `--select-connected` and `--clean-on-connect`
-  [\#62](https://github.com/pancsta/asyncmachine-go/pull/62) (@pancsta)
-- feat\(am-dbg\): add search as you type \(clients, tree\) [\#61](https://github.com/pancsta/asyncmachine-go/pull/61) (@pancsta)
-- feat\(am-dbg\): add matrix view [\#60](https://github.com/pancsta/asyncmachine-go/pull/60) (@pancsta)
-- feat\(am-dbg\): optimize UI processing [\#59](https://github.com/pancsta/asyncmachine-go/pull/59) (@pancsta)
-- feat\(am-dbg\): add tree relations UI [\#58](https://github.com/pancsta/asyncmachine-go/pull/58) (@pancsta)
-- feat\(am-dbg\): add import/export [\#57](https://github.com/pancsta/asyncmachine-go/pull/57) (@pancsta)
-- feat\(am-dbg\): add multi client support [\#56](https://github.com/pancsta/asyncmachine-go/pull/56) (@pancsta)
-- feat\(machine\): add empty roadmap methods [\#55](https://github.com/pancsta/asyncmachine-go/pull/55) (@pancsta)
-- feat\(machine\): add Eval [\#54](https://github.com/pancsta/asyncmachine-go/pull/54) (@pancsta)
-- refac\(pkg/machine\): rename many identifiers, shorten [\#53](https://github.com/pancsta/asyncmachine-go/pull/53) (@pancsta)
-- feat\(machine\): drop all dependencies \(lo, uuid\) [\#52](https://github.com/pancsta/asyncmachine-go/pull/52) (@pancsta)
-- feat\(machine\): alloc handler goroutine on demand [\#51](https://github.com/pancsta/asyncmachine-go/pull/51) (@pancsta)
-- feat\(machine\): add Transition.ClocksAfter [\#50](https://github.com/pancsta/asyncmachine-go/pull/50) (@pancsta)
-- feat\(machine\): add HasStateChangedSince [\#49](https://github.com/pancsta/asyncmachine-go/pull/49) (@pancsta)
-- feat: add pkg/x/helpers [\#48](https://github.com/pancsta/asyncmachine-go/pull/48) (@pancsta)
-- feat: add pkg/telemetry/prometheus
-  [\#46](https://github.com/pancsta/asyncmachine-go/pull/46) (@pancsta)
-- feat: add pkg/history [\#45](https://github.com/pancsta/asyncmachine-go/pull/45) (@pancsta)
-- fix\(machine\): add funcs SMerge, NormalizeID, IsActiveTick, CloneStates
-  [\#44](https://github.com/pancsta/asyncmachine-go/pull/44) (@pancsta)
-- fix\(machine\): fix thread safety [\#43](https://github.com/pancsta/asyncmachine-go/pull/43) (@pancsta)
-- feat\(machine\): add Tracer API and Opts.Tracers [\#42](https://github.com/pancsta/asyncmachine-go/pull/42) (@pancsta)
-- feat\(machine\): add SetStruct, EventStructChange
-  [\#41](https://github.com/pancsta/asyncmachine-go/pull/41) (@pancsta)
-- feat\(machine\): add getters \(ActiveStates, Queue, Struct\)
-  [\#40](https://github.com/pancsta/asyncmachine-go/pull/40) (@pancsta)
-- feat\(machine\): add single-state shorthands \(Add1, Has1, etc\)
-  [\#39](https://github.com/pancsta/asyncmachine-go/pull/39) (@pancsta)
-- feat\(machine\): add Switch\(states...\) [\#38](https://github.com/pancsta/asyncmachine-go/pull/38) (@pancsta)
-- feat\(machine\): add Opts.Parent [\#37](https://github.com/pancsta/asyncmachine-go/pull/37) (@pancsta)
-- feat\(machine\): add Opts.LogArgs, NewArgsMapper [\#36](https://github.com/pancsta/asyncmachine-go/pull/36) (@pancsta)
-- feat\(machine\): add Opts.QueueLimit [\#35](https://github.com/pancsta/asyncmachine-go/pull/35) (@pancsta)
-- feat\(machine\): add WhenDisposed, RegisterDisposalHandler [\#34](https://github.com/pancsta/asyncmachine-go/pull/34) (@pancsta)
-- feat\(machine\): add WhenArgs [\#33](https://github.com/pancsta/asyncmachine-go/pull/33) (@pancsta)
-- feat\(machine\): add WhenTime, WhenTicks [\#32](https://github.com/pancsta/asyncmachine-go/pull/32) (@pancsta)
+- fix: address misc issues [\#84](https://github.com/pancsta/asyncmachine-go/pull/84) (@pancsta)
+- docs: add pdf manual [\#83](https://github.com/pancsta/asyncmachine-go/pull/83) (@pancsta)
+- docs: minor manual updates [\#82](https://github.com/pancsta/asyncmachine-go/pull/82) (@pancsta)
+- refac\(am-dbg\): split and reorg files [\#81](https://github.com/pancsta/asyncmachine-go/pull/81) (@pancsta)
+- feat\(telemetry\): include log level in msgs [\#80](https://github.com/pancsta/asyncmachine-go/pull/80) (@pancsta)
+- feat\(am-dbg\): add tx and log filtering [\#79](https://github.com/pancsta/asyncmachine-go/pull/79) (@pancsta)
+- feat\(machine\): add global AnyAny negotiation handler [\#78](https://github.com/pancsta/asyncmachine-go/pull/78) (@pancsta)
+- refac\(machine\): extract When\* ctx disposal [\#77](https://github.com/pancsta/asyncmachine-go/pull/77) (@pancsta)
+- refac\(machine\): refac to directional channs [\#76](https://github.com/pancsta/asyncmachine-go/pull/76) (@pancsta)
+- refac\(machine\): reorder Eval params [\#75](https://github.com/pancsta/asyncmachine-go/pull/75) (@pancsta)
+- feat\(machine\): add NoOpTracer for embedding [\#74](https://github.com/pancsta/asyncmachine-go/pull/74) (@pancsta)
+- feat\(machine\): add Tracer.QueueEnd [\#73](https://github.com/pancsta/asyncmachine-go/pull/73) (@pancsta)
+- test\(machine\): increase coverage to 85% [\#72](https://github.com/pancsta/asyncmachine-go/pull/72) (@pancsta)
+- refac\(machine\): make WhenDisposed a method [\#71](https://github.com/pancsta/asyncmachine-go/pull/71) (@pancsta)
+
+Maintenance release: `v0.5.1`
+
+- fix\(machine\): fix Dispose\(\) deadlock [\#70](https://github.com/pancsta/asyncmachine-go/pull/70) (@pancsta)
+- fix\(machine\): allow for nil ctx [\#69](https://github.com/pancsta/asyncmachine-go/pull/69) (@pancsta)
+- fix\(am-dbg\): fix tail mode delay [\#68](https://github.com/pancsta/asyncmachine-go/pull/68) (@pancsta)
+- fix\(am-dbg\): fix crash for machs with log level 0 [\#67](https://github.com/pancsta/asyncmachine-go/pull/67) (@pancsta)
+- feat\(machine\): add WhenQueueEnds [\#65](https://github.com/pancsta/asyncmachine-go/pull/65) (@pancsta)
+- docs: update manual to v0.5.0 [\#64](https://github.com/pancsta/asyncmachine-go/pull/64) (@pancsta)
 
 See [CHANELOG.md](/CHANGELOG.md) for the full list.
