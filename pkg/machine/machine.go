@@ -61,8 +61,6 @@ type Machine struct {
 	Tracers []Tracer
 	// If true, the machine has been Disposed and is no-op. Read-only.
 	Disposed bool
-	// Channel closing when the machine finished disposal. Read-only.
-	WhenDisposed chan struct{}
 	// ParentID is the ID of the parent machine (if any).
 	ParentID string
 	// Tags are optional tags for telemetry integrations etc.
@@ -109,6 +107,8 @@ type Machine struct {
 	currentHandler     string
 	disposeHandlers    []func()
 	timeLast           T
+	// Channel closing when the machine finished disposal. Read-only.
+	whenDisposed chan struct{}
 }
 
 // NewCommon creates a new Machine instance with all the common options set.
@@ -175,7 +175,7 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 		handlerEnd:       make(chan bool),
 		handlerPanic:     make(chan any),
 		handlerTimer:     time.NewTimer(24 * time.Hour),
-		WhenDisposed:     make(chan struct{}),
+		whenDisposed:     make(chan struct{}),
 	}
 
 	// parse opts
@@ -384,7 +384,7 @@ func (m *Machine) dispose(force bool) {
 	m.disposeHandlers = nil
 
 	// the end
-	close(m.WhenDisposed)
+	close(m.whenDisposed)
 }
 
 // disposeEmitter detaches the emitter from the machine and disposes it.
