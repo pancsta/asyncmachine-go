@@ -834,6 +834,10 @@ func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan struct{} {
 	return ch
 }
 
+func (m *Machine) WhenDisposed() <-chan struct{} {
+	return m.whenDisposed
+}
+
 // Time returns a list of logical clocks of specified states (or all the states
 // if nil).
 // states: optionally passing a list of states param guarantees a deterministic
