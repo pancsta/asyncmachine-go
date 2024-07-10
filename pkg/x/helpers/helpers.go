@@ -25,7 +25,7 @@ func RaceCtx[T *any](ctx context.Context, ch chan T) (T, error) {
 // TODO test case, solve locking by passing the event to the submachine
 func NestedState(
 	e *am.Event, strIDField string, machGetter func(id string) *am.Machine,
-) (am.Result, chan struct{}, error) {
+) (am.Result, <-chan struct{}, error) {
 	// validate
 	if e.Mutation().Type != am.MutationAdd {
 		return am.Canceled, nil, fmt.Errorf(
