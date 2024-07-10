@@ -240,9 +240,9 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 		m.clock[name] = 0
 	}
 
-	// init context
+	// init context (support nil for examples)
 	if ctx == nil {
-		panic("machine ctx is required")
+		ctx = context.TODO()
 	}
 	if parent != nil {
 		m.ParentID = parent.ID
