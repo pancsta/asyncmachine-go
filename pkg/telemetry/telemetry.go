@@ -20,9 +20,9 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
-// ////////////////
+// ///// ///// /////
 // /// AM-DBG
-// ////////////////
+// ///// ///// /////
 
 const DbgHost = "localhost:6831"
 
@@ -75,7 +75,7 @@ type DbgMsgTx struct {
 	IsAuto bool
 	// queue length at the start of the transition
 	Queue int
-	// dont send this over the wire
+	// don't send this over the wire
 	Time *time.Time
 }
 
@@ -228,7 +228,7 @@ func TransitionsToDBG(mach *am.Machine, url string) error {
 				// TODO retries
 				err := client.sendMsgTx(msg)
 				if err != nil {
-					log.Println("failed to send a msg to am-dbg: " + url + err.Error())
+					log.Printf("failed to send a msg to am-dbg: %s %s", url, err)
 					return
 				}
 			}
@@ -278,9 +278,9 @@ func removeLogPrefix(msg *DbgMsgTx) {
 	}
 }
 
-// ////////////////
+// ///// ///// /////
 // /// OPEN TELEMETRY
-// ////////////////
+// ///// ///// /////
 
 // OtelMachTracer implements machine.Tracer for OpenTelemetry.
 // Support tracing multiple machines
@@ -682,9 +682,11 @@ func (ot *OtelMachTracer) Inheritable() bool {
 	return true
 }
 
-// ////////////////
+func (ot *OtelMachTracer) QueueEnd(*am.Machine) {}
+
+// ///// ///// /////
 // /// UTILS
-// ////////////////
+// ///// ///// /////
 
 // j joins state names
 func j(states []string) string {

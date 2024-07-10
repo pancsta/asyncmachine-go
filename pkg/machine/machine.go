@@ -1,15 +1,8 @@
 // Package machine is a general purpose state machine for managing complex
 // async workflows in a safe and structured way.
 //
-// It can be used as a lightweight in-memory Temporal [1] alternative, worker
-// for Asynq [2], or to write simple consensus engines, stateful firewalls,
-// telemetry, bots, etc.
-//
-// The project itself is a minimal implementation of AsyncMachine in Golang
+// It's a dependency-free implementation of AsyncMachine in Golang
 // using channels and context. It aims at simplicity and speed.
-//
-// [1]: https://github.com/temporalio/temporal
-// [2]: https://github.com/hibiken/asynq
 package machine // import "github.com/pancsta/asyncmachine-go/pkg/machine"
 
 import (
@@ -29,7 +22,7 @@ import (
 // Machine represent states, provides mutation methods, helpers methods and
 // info about the current and scheduled transitions (if any).
 type Machine struct {
-	// Unique ID of this machine. Default: random ID.
+	// Unique ID of this machine. Default: random ID. Read-only.
 	ID string
 	// Time for a handler to execute. Default: time.Second
 	HandlerTimeout time.Duration
@@ -400,7 +393,7 @@ func (m *Machine) disposeEmitter(emitter *emitter) {
 // ctx: optional context defaults to the machine's context.
 func (m *Machine) WhenErr(ctx context.Context) <-chan struct{} {
 	// handle with a shared channel with broadcast via close
-	return m.When([]string{"Exception"}, ctx)
+	return m.When([]string{Exception}, ctx)
 }
 
 // When returns a channel that will be closed when all the passed states
@@ -444,36 +437,7 @@ func (m *Machine) When(states S, ctx context.Context) <-chan struct{} {
 	}
 
 	// dispose with context
-	// TODO extract
-	if ctx != nil {
-		go func() {
-			select {
-			case <-ch:
-				return
-			case <-m.Ctx.Done():
-				return
-			case <-ctx.Done():
-			}
-
-			// GC only if needed
-			if m.Disposed {
-				return
-			}
-
-			m.activeStatesLock.Lock()
-			defer m.activeStatesLock.Unlock()
-
-			for _, s := range states {
-				if _, ok := m.indexWhen[s]; ok {
-					if len(m.indexWhen[s]) == 1 {
-						delete(m.indexWhen, s)
-					} else {
-						m.indexWhen[s] = slicesWithout(m.indexWhen[s], binding)
-					}
-				}
-			}
-		}()
-	}
+	diposeWithCtx(m, ctx, ch, states, binding, &m.activeStatesLock, m.indexWhen)
 
 	// insert the binding
 	for _, s := range states {
@@ -996,7 +960,7 @@ func (m *Machine) queueMutation(mutationType MutationType, states S, args A) {
 	statesParsed := m.MustParseStates(states)
 	// Detect duplicates and avoid queueing them.
 	if len(args) == 0 && m.detectQueueDuplicates(mutationType, statesParsed) {
-		m.log(LogOps, "[queue:skipped] Duplicate detected for [%s] '%s'",
+		m.log(LogOps, "[queue:skipped] Duplicate detected for [%s] %s",
 			mutationType, j(statesParsed))
 		return
 	}
@@ -1158,6 +1122,7 @@ func (m *Machine) BindHandlers(handlers any) error {
 //
 // It's not supported to nest OnEvent() calls, as it would cause a deadlock.
 // Using OnEvent is recommended only in special cases, like test assertions.
+// The Tracer API is a better way to event feeds.
 func (m *Machine) OnEvent(events []string, ctx context.Context) chan *Event {
 	ch := make(chan *Event, 50)
 	if m.Disposed {
@@ -1855,7 +1820,11 @@ func (m *Machine) processEmitters(e *Event) (Result, bool) {
 			timeout: false,
 		}
 		m.handlerTimer.Reset(m.HandlerTimeout)
-		m.handlerStart <- handler
+		select {
+		case <-m.Ctx.Done():
+			break
+		case m.handlerStart <- handler:
+		}
 
 		// wait on the result / timeout / context
 		select {
@@ -1942,7 +1911,13 @@ func (m *Machine) handlerLoop() {
 				continue
 			}
 
-			m.handlerEnd <- ret
+			select {
+			case <-m.Ctx.Done():
+				// dispose with context
+				m.Dispose()
+				return
+			case m.handlerEnd <- ret:
+			}
 		}
 	}
 }
@@ -1994,9 +1969,9 @@ func (m *Machine) processWhenArgs(e *Event) {
 	}
 }
 
-// detectQueueDuplicates checks for duplicated mutations without params.
-// 1. Check if a mutation is scheduled
-// 2. Check if a counter mutation isn't scheduled later
+// detectQueueDuplicates checks for duplicated mutations
+// 1. Check if a mutation is scheduled (without params)
+// 2. Check if a counter mutation isn't scheduled later (any params)
 func (m *Machine) detectQueueDuplicates(mutationType MutationType,
 	parsed S,
 ) bool {
@@ -2332,7 +2307,7 @@ func (m *Machine) CanRemove(states S) bool {
 	panic("CanRemove not implemented; github.com/pancsta/asyncmachine-go/pulls")
 }
 
-// Clocks returns the map of specified cloks or all clocks if states is nil.
+// Clocks returns the map of specified clocks or all clocks if states is nil.
 func (m *Machine) Clocks(states S) Clocks {
 	if states == nil {
 		return maps.Clone(m.clock)

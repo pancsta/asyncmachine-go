@@ -321,7 +321,7 @@ var States = am.Struct{
 
 - [godoc](https://godoc.org/github.com/pancsta/asyncmachine-go/pkg/machine)
 - [cookbook](/docs/cookbook.md)
-- [manual](/docs/manual.md)
+- [manual](/docs/manual.md) ([pdf](/assets/manual.pdf))
   - [Machine and States](/docs/manual.md#machine-and-states)
       - [State Clocks and Context](/docs/manual.md#state-clocks-and-context)
       - [Auto States](/docs/manual.md#auto-states)
@@ -401,13 +401,14 @@ See [`tools/cmd/am-gen`](tools/cmd/am-gen/README.md) for more info.
 ![TUI Debugger](assets/am-dbg.png)
 
 `am-dbg` is a lightweight, multi-client debugger for AM. It easily handles >100
- client machines simultaneously (and potentially many more). Some features include:
+ client machines simultaneously streaming telemetry data (and potentially many more). Some features include:
 
 - states tree
 - log view
 - time travel
 - transition steps
 - import / export
+- filters
 - matrix view
 
 See [`tools/cmd/am-dbg`](tools/cmd/am-dbg/README.md) for more info.
@@ -488,7 +489,7 @@ for more info.
 
 ### am-dbg
 
-am-dbg is a [tview](https://github.com/rivo/tview/) TUI app with a single machine consisting of:
+am-dbg is a [cview](https://code.rocket9labs.com/tslocum/cview) TUI app with a single machine consisting of:
 
 - input events (7 states)
 - external state (11 states)
