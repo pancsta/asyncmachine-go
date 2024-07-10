@@ -82,7 +82,6 @@ type Machine struct {
 	queueRunning    bool
 
 	emitters    []*emitter
-	once        sync.Once
 	clock       Clocks
 	cancel      context.CancelFunc
 	logLevel    LogLevel
@@ -291,36 +290,39 @@ func cloneOptions(opts *Opts) *Opts {
 func (m *Machine) Dispose() {
 	// dispose in a goroutine to avoid a deadlock when called from within a
 	// handler
-	if m.Disposed {
-		return
-	}
 
 	go func() {
+		if m.Disposed {
+			return
+		}
 		m.queueProcessing.Lock()
 		m.unlockDisposed = true
-		m.once.Do(m.dispose)
+		m.dispose(false)
 	}()
 }
 
 // DisposeForce disposes the machine and all its emitters, without waiting for
 // the queue to drain. Will cause panics.
 func (m *Machine) DisposeForce() {
-	m.once.Do(m.dispose)
+	m.dispose(true)
 }
 
-func (m *Machine) dispose() {
+func (m *Machine) dispose(force bool) {
 	m.Disposed = true
 
 	for i := range m.Tracers {
 		m.Tracers[i].MachineDispose(m.ID)
 	}
 
-	m.activeStatesLock.Lock()
-	defer m.activeStatesLock.Unlock()
-	m.indexWhenArgsLock.Lock()
-	defer m.indexWhenArgsLock.Unlock()
-	m.indexEventChLock.Lock()
-	defer m.indexEventChLock.Unlock()
+	// skip the locks when forcing
+	if !force {
+		m.activeStatesLock.Lock()
+		defer m.activeStatesLock.Unlock()
+		m.indexWhenArgsLock.Lock()
+		defer m.indexWhenArgsLock.Unlock()
+		m.indexEventChLock.Lock()
+		defer m.indexEventChLock.Unlock()
+	}
 
 	m.log(LogEverything, "[end] dispose")
 	m.cancel()
