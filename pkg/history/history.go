@@ -12,6 +12,8 @@ import (
 )
 
 type History struct {
+	*am.NoOpTracer
+
 	Entries []Entry
 	// LastActivated is a map of state names to the last time they were activated
 	LastActivated map[string]time.Time
@@ -22,27 +24,15 @@ type History struct {
 	maxEntries int
 }
 
-func (h *History) TransitionInit(transition *am.Transition) {}
-func (h *History) HandlerStart(transition *am.Transition, emitter string,
-	handler string) {
-}
-
-func (h *History) HandlerEnd(transition *am.Transition, emitter string,
-	handler string) {
-}
-func (h *History) End()                                   {}
-func (h *History) MachineInit(mach *am.Machine)           {}
-func (h *History) NewSubmachine(parent, mach *am.Machine) {}
 func (h *History) Inheritable() bool {
 	return false
 }
-func (h *History) MachineDispose(machID string) {}
-func (h *History) QueueEnd(mach *am.Machine)    {}
 
 func (h *History) TransitionEnd(tx *am.Transition) {
 	if !tx.Accepted {
 		return
 	}
+
 	mut := tx.Mutation
 	match := false
 	for _, name := range h.States {
@@ -54,6 +44,7 @@ func (h *History) TransitionEnd(tx *am.Transition) {
 	if !match {
 		return
 	}
+
 	// rotate TODO optimize rotation
 	if len(h.Entries) >= h.maxEntries {
 		cutFrom := len(h.Entries) - h.maxEntries
@@ -169,6 +160,7 @@ func Track(mach *am.Machine, states am.S, maxEntries int) *History {
 		States:        states,
 		maxEntries:    maxEntries,
 	}
+
 	// mark active states as activated to reflect the current state
 	for _, name := range states {
 		if mach.Is1(name) {
@@ -176,5 +168,6 @@ func Track(mach *am.Machine, states am.S, maxEntries int) *History {
 		}
 	}
 	mach.Tracers = append(mach.Tracers, history)
+
 	return history
 }

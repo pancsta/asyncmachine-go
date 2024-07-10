@@ -40,9 +40,9 @@ type State struct {
 // Struct is a map of state names to state definitions.
 type Struct = map[string]State
 
-// ///////////////
-// ///// options
-// ///////////////
+// ///// ///// /////
+// ///// OPTIONS
+// ///// ///// /////
 
 // Opts struct is used to configure a new Machine.
 type Opts struct {
@@ -108,9 +108,9 @@ func OptsWithParentTracers(opts *Opts, parent *Machine) *Opts {
 	return opts
 }
 
-// ///////////////
-// ///// enums
-// ///////////////
+// ///// ///// /////
+// ///// ENUMS
+// ///// ///// /////
 
 // Result enum is the result of a state Transition
 type Result int
@@ -220,6 +220,7 @@ type Mutation struct {
 
 // StateWasCalled returns true if the Mutation was called (directly) with the
 // passed state (in opposite to it coming from an `Add` relation).
+// TODO change to CalledIs(), CalledIs1(), CalledAny(), CalledAny1()
 func (m Mutation) StateWasCalled(state string) bool {
 	return slices.Contains(m.CalledStates, state)
 }
@@ -301,9 +302,9 @@ func (r Relation) String() string {
 	return ""
 }
 
-// ///////////////
-// ///// logging
-// ///////////////
+// ///// ///// /////
+// ///// LOGGING
+// ///// ///// /////
 
 // Logger is a logging function for the machine.
 type Logger func(level LogLevel, msg string, args ...any)
@@ -412,9 +413,9 @@ func (t *NoOpTracer) NewSubmachine(parent, mach *Machine) {}
 func (t *NoOpTracer) QueueEnd(machine *Machine)           {}
 func (t *NoOpTracer) Inheritable() bool                   { return false }
 
-// ///////////////
-// ///// events, when, emitters
-// ///////////////
+// ///// ///// /////
+// ///// EVENTS, WHEN, EMITTERS
+// ///// ///// /////
 
 // Event struct represents a single event of a Mutation withing a Transition.
 // One event can have 0-n handlers.
@@ -499,9 +500,9 @@ func (e *emitter) dispose() {
 	e.methods = nil
 }
 
-// ///////////////
-// ///// exception support
-// ///////////////
+// ///// ///// /////
+// ///// EXCEPTION SUPPORT
+// ///// ///// /////
 
 const (
 	// Exception is a name the Exception state.
@@ -547,9 +548,9 @@ func (eh *ExceptionHandler) ExceptionState(e *Event) {
 	}
 }
 
-// ///////////////
-// ///// pub utils
-// ///////////////
+// ///// ///// /////
+// ///// PUB UTILS
+// ///// ///// /////
 
 // DiffStates returns the states that are in states1 but not in states2.
 func DiffStates(states1 S, states2 S) S {
@@ -633,9 +634,9 @@ func SMerge(states ...S) S {
 	return slicesUniq(s)
 }
 
-// ///////////////
-// ///// utils
-// ///////////////
+// ///// ///// /////
+// ///// UTILS
+// ///// ///// /////
 
 // j joins state names into a single string
 func j(states []string) string {

@@ -155,10 +155,10 @@ func (t *Regexp) input1(mach *am.Machine) {
 
 // example
 
-func TestRegexp(t *testing.T) {
+func TestNFA(t *testing.T) {
 	var err error
 	mach := am.New(context.Background(), states, &am.Opts{
-		ID:                   "regexp",
+		ID:                   "nfa",
 		DontPanicToException: true,
 		DontLogID:            true,
 		LogLevel:             am.LogChanges,
