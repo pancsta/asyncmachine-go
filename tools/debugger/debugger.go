@@ -1276,7 +1276,7 @@ func (d *Debugger) doUpdateLog() {
 	// highlight this tx or the prev if empty
 	if len(tx.LogEntries) == 0 && d.PrevTx() != nil {
 		last := d.PrevTx()
-		for i := d.C.CursorTx - 1; i >= 0; i-- {
+		for i := d.C.CursorTx - 1; i > 0; i-- {
 			if len(last.LogEntries) > 0 {
 				tx = last
 				break
