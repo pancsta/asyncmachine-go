@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -781,4 +782,44 @@ func slicesUniq[S ~[]E, E comparable](coll S) S {
 		}
 	}
 	return ret
+}
+
+// diposeWithCtx handles early binding disposal caused by a canceled context.
+// It's used by most of "when" methods.
+func diposeWithCtx[T comparable](
+	mach *Machine, ctx context.Context, ch chan struct{}, states S, binding T,
+	lock *sync.RWMutex, index map[string][]T,
+) {
+	if ctx == nil {
+		return
+	}
+	go func() {
+		select {
+		case <-ch:
+			return
+		case <-mach.Ctx.Done():
+			return
+		case <-ctx.Done():
+		}
+		// GC only if needed
+		if mach.Disposed {
+			return
+		}
+
+		// TODO track
+		closeSafe(ch)
+
+		lock.Lock()
+		defer lock.Unlock()
+
+		for _, s := range states {
+			if _, ok := index[s]; ok {
+				if len(index[s]) == 1 {
+					delete(index, s)
+				} else {
+					index[s] = slicesWithout(index[s], binding)
+				}
+			}
+		}
+	}()
 }
