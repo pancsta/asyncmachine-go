@@ -20,9 +20,9 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
-//////////////////
-///// AM-DBG
-//////////////////
+// ////////////////
+// /// AM-DBG
+// ////////////////
 
 const DbgHost = "localhost:6831"
 
@@ -42,8 +42,6 @@ type DbgMsgStruct struct {
 	StatesIndex am.S
 	// all the states with relations
 	States am.Struct
-	// log level of the machine
-	LogLevel am.LogLevel
 }
 
 func (d *DbgMsgStruct) Clock(_ am.S, _ string) uint64 {
@@ -70,8 +68,7 @@ type DbgMsgTx struct {
 	// all the transition steps
 	Steps []*am.Step
 	// log entries created during the transition
-	// TODO include log levels
-	LogEntries []string
+	LogEntries []*am.LogEntry
 	// log entries before the transition, which happened after the prev one
 	PreLogEntries []string
 	// transition was triggered by an auto state
@@ -247,7 +244,6 @@ func sendStructMsg(mach *am.Machine, client *dbgClient) error {
 		ID:          mach.ID,
 		StatesIndex: mach.StateNames,
 		States:      mach.GetStruct(),
-		LogLevel:    mach.GetLogLevel(),
 	}
 
 	// TODO retries
@@ -264,11 +260,14 @@ func removeLogPrefix(msg *DbgMsgTx) {
 	addChars := 3 // "[] "
 	prefixLen := min(len(msg.MachineID)+addChars, maxIDlen+addChars)
 
-	for i := range msg.LogEntries {
-		if len(msg.LogEntries[i]) < prefixLen {
+	for i, le := range msg.LogEntries {
+		if len(msg.LogEntries[i].Text) < prefixLen {
 			continue
 		}
-		msg.LogEntries[i] = msg.LogEntries[i][prefixLen:]
+		msg.LogEntries[i] = &am.LogEntry{
+			Level: le.Level,
+			Text:  le.Text[prefixLen:],
+		}
 	}
 
 	for i := range msg.PreLogEntries {
@@ -279,9 +278,9 @@ func removeLogPrefix(msg *DbgMsgTx) {
 	}
 }
 
-//////////////////
-///// OPEN TELEMETRY
-//////////////////
+// ////////////////
+// /// OPEN TELEMETRY
+// ////////////////
 
 // OtelMachTracer implements machine.Tracer for OpenTelemetry.
 // Support tracing multiple machines
@@ -683,9 +682,9 @@ func (ot *OtelMachTracer) Inheritable() bool {
 	return true
 }
 
-//////////////////
-///// UTILS
-//////////////////
+// ////////////////
+// /// UTILS
+// ////////////////
 
 // j joins state names
 func j(states []string) string {

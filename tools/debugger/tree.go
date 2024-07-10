@@ -16,6 +16,30 @@ import (
 	"github.com/pancsta/cview"
 )
 
+type nodeRef struct {
+	// TODO type
+	// type nodeType
+	// node is a state (reference or top level)
+	stateName string
+	// node is a state reference, not a top level state
+	// eg Bar in case of: Foo -> Remove -> Bar
+	// TODO name collision with nodeRef
+	isRef bool
+	// node is a relation (Remove, Add, Require, After)
+	isRel bool
+	// relation type (if isRel)
+	rel am.Relation
+	// top level state name (for both rels and refs)
+	parentState string
+	// node touched by a transition step
+	touched bool
+	// expanded by the user
+	expanded bool
+	// node is a state property (Auto, Multi)
+	isProp    bool
+	propLabel string
+}
+
 func (d *Debugger) initMachineTree() *cview.TreeView {
 	d.treeRoot = cview.NewTreeNode("")
 	d.treeRoot.SetColor(tcell.ColorRed)
@@ -83,11 +107,11 @@ func (d *Debugger) updateTree() {
 	} else {
 		tx := c.MsgTxs[c.CursorTx-1]
 		msg = tx
-		queue = fmt.Sprintf("(Q:%d S:%d) ",
-			tx.Queue, len(c.MsgStruct.StatesIndex))
+		queue = fmt.Sprintf(":%d (Q:%d) ",
+			len(c.MsgStruct.StatesIndex), tx.Queue)
 	}
 
-	d.tree.SetTitle(" Structure " + queue)
+	d.tree.SetTitle(" Structure" + queue)
 
 	var steps []*am.Step
 	if c.CursorTx < len(c.MsgTxs) && c.CursorStep > 0 {
@@ -173,8 +197,8 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 				}
 
 				// TODO K delimiters
-				tick := strconv.FormatUint(msg.Clock(c.MsgStruct.StatesIndex,
-					stateName), 10)
+				tick := d.P.Sprintf("%v", msg.Clock(c.MsgStruct.StatesIndex,
+					stateName))
 				node.SetColor(color)
 				node.SetText(stateName + " (" + tick + ")")
 			}
@@ -448,10 +472,10 @@ func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step) {
 						// d.Mach.Log("close %s", colName)
 						forcedCols = append(forcedCols, colName)
 					}
-					//} else {
+					// } else {
 					// debug
-					//d.Mach.Log("open %s", colName)
-					//}
+					// d.Mach.Log("open %s", colName)
+					// }
 				}
 			}
 		}
