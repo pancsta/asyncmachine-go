@@ -90,7 +90,7 @@ type Machine struct {
 	indexWhen          indexWhen
 	indexWhenTime      indexWhenTime
 	indexWhenArgs      indexWhenArgs
-	indexWhenArgsLock  sync.Mutex
+	indexWhenArgsLock  sync.RWMutex
 	indexStateCtx      indexStateCtx
 	indexEventCh       indexEventCh
 	indexEventChLock   sync.Mutex
@@ -533,35 +533,7 @@ func (m *Machine) WhenNot(states S, ctx context.Context) <-chan struct{} {
 	}
 
 	// dispose with context
-	// TODO extract
-	if ctx != nil {
-		go func() {
-			select {
-			case <-ch:
-				return
-			case <-m.Ctx.Done():
-				return
-			case <-ctx.Done():
-			}
-			// GC only if needed
-			if m.Disposed {
-				return
-			}
-
-			m.activeStatesLock.Lock()
-			defer m.activeStatesLock.Unlock()
-
-			for _, s := range states {
-				if _, ok := m.indexWhen[s]; ok {
-					if len(m.indexWhen[s]) == 1 {
-						delete(m.indexWhen, s)
-					} else {
-						m.indexWhen[s] = slicesWithout(m.indexWhen[s], binding)
-					}
-				}
-			}
-		}()
-	}
+	diposeWithCtx(m, ctx, ch, states, binding, &m.activeStatesLock, m.indexWhen)
 
 	// insert the binding
 	for _, s := range states {
@@ -620,33 +592,8 @@ func (m *Machine) WhenArgs(
 	}
 
 	// dispose with context
-	// TODO extract
-	if ctx != nil {
-		go func() {
-			select {
-			case <-ch:
-				return
-			case <-m.Ctx.Done():
-				return
-			case <-ctx.Done():
-			}
-			// GC only if needed
-			if m.Disposed {
-				return
-			}
-
-			m.indexWhenArgsLock.Lock()
-			defer m.indexWhenArgsLock.Unlock()
-
-			if _, ok := m.indexWhenArgs[name]; ok {
-				if len(m.indexWhenArgs[name]) == 1 {
-					delete(m.indexWhenArgs, name)
-				} else {
-					m.indexWhenArgs[name] = slicesWithout(m.indexWhenArgs[name], binding)
-				}
-			}
-		}()
-	}
+	diposeWithCtx(m, ctx, ch, S{name}, binding, &m.indexWhenArgsLock,
+		m.indexWhenArgs)
 
 	// insert the binding
 	if _, ok := m.indexWhen[name]; !ok {
@@ -715,35 +662,8 @@ func (m *Machine) WhenTime(
 	}
 
 	// dispose with context
-	// TODO extract
-	if ctx != nil {
-		go func() {
-			select {
-			case <-ch:
-				return
-			case <-m.Ctx.Done():
-				return
-			case <-ctx.Done():
-			}
-			// GC only if needed
-			if m.Disposed {
-				return
-			}
-
-			m.activeStatesLock.Lock()
-			defer m.activeStatesLock.Unlock()
-
-			for _, s := range states {
-				if _, ok := indexWhenTime[s]; ok {
-					if len(m.indexWhenTime[s]) == 1 {
-						delete(m.indexWhenTime, s)
-					} else {
-						m.indexWhenTime[s] = slicesWithout(m.indexWhenTime[s], binding)
-					}
-				}
-			}
-		}()
-	}
+	diposeWithCtx(m, ctx, ch, states, binding, &m.activeStatesLock,
+		m.indexWhenTime)
 
 	// insert the binding
 	for _, s := range states {
