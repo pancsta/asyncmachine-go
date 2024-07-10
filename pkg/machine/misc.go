@@ -605,7 +605,7 @@ func IsActiveTick(tick uint64) bool {
 var invalidName = regexp.MustCompile("[^a-z_0-9]+")
 
 func NormalizeID(id string) string {
-	return invalidName.ReplaceAllString(id, "_")
+	return invalidName.ReplaceAllString(strings.ToLower(id), "_")
 }
 
 // SMerge merges multiple state lists into one, removing duplicates.
@@ -703,7 +703,11 @@ func truncateStr(s string, maxLength int) string {
 	if len(s) <= maxLength {
 		return s
 	}
-	return s[:maxLength-3] + "..."
+	if maxLength < 5 {
+		return s[:maxLength]
+	} else {
+		return s[:maxLength-3] + "..."
+	}
 }
 
 type handlerCall struct {
