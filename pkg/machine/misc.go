@@ -395,6 +395,7 @@ func (t *NoOpTracer) TransitionEnd(transition *Transition)  {}
 func (t *NoOpTracer) HandlerStart(
 	transition *Transition, emitter string, handler string) {
 }
+
 func (t *NoOpTracer) HandlerEnd(
 	transition *Transition, emitter string, handler string) {
 }
