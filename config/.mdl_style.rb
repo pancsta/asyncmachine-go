@@ -14,3 +14,5 @@ exclude_rule 'MD002'
 exclude_rule 'MD041'
 # ???
 exclude_rule 'MD007'
+# header question mark
+exclude_rule 'MD026'

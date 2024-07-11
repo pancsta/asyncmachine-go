@@ -1,6 +1,10 @@
 # Telemetry
 
-![AM traces in jaeger via otel](../../assets/otel-jaeger.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../assets/otel-jaeger.dark.png?raw=true">
+  <source media="(prefers-color-scheme: light)" srcset="../../assets/otel-jaeger.light.png?raw=true">
+  <img alt="Test duration chart" src="../../assets/otel-jaeger.dark.png?raw=true">
+</picture>
 
 [`pkg/telemetry`](pkg/telemetry) provides various telemetry exporters.
 
