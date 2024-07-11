@@ -401,7 +401,7 @@ See [`tools/cmd/am-gen`](tools/cmd/am-gen/README.md) for more info.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/am-dbg.dark.png?raw=true">
   <source media="(prefers-color-scheme: light)" srcset="assets/am-dbg.light.png?raw=true">
-  <img alt="Test duration chart" src="assets/otel-jaeger.dark.png?raw=true">
+  <img alt="TUI debugger" src="assets/am-dbg.dark.png?raw=true">
 </picture>
 
 `am-dbg` is a lightweight, multi-client debugger for AM. It easily handles >100

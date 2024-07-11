@@ -4,7 +4,11 @@
 enough to be kept open in the background while receiving data from >100 machines simultaneously (and potentially many
 more).
 
-![TUI Debugger](../../../assets/am-dbg.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../../assets/am-dbg.dark.png?raw=true">
+  <source media="(prefers-color-scheme: light)" srcset="../../../assets/am-dbg.light.png?raw=true">
+  <img alt="TUI debugger" src="../../../assets/am-dbg.dark.png?raw=true">
+</picture>
 
 ## Features
 
@@ -13,6 +17,7 @@ more).
 - time travel
 - transition steps
 - import / export
+- filters
 - matrix view
 
 ```text
@@ -63,14 +68,18 @@ For a quick demo you can browse an exported dump located in `assets/am-dbg-sim.g
 
 ## FAQ
 
-### How to debug steps of a transition
+### How to debug steps of a transition?
 
 Go to the steps timelines (bottom one) using the Tab key, then press left/right like before.
 
-### How to export data
+### How to export data?
 
 Press `alt+s` and Enter.
 
-### How to access the help screen
+### How to filter out canceled transitions?
+
+Press `alt+f` or `Tab` until the bottom filter bar receives focus. Now select "Skip Canceled".
+
+### How to access the help screen?
 
 Press `?` to show the help popup.
