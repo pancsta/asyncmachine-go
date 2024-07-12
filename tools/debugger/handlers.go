@@ -190,6 +190,7 @@ func (d *Debugger) TailModeState(_ *am.Event) {
 	d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), true)
 	// needed bc tail mode if carried over via SelectingClient
 	d.updateTxBars()
+	d.updateTimelines()
 	d.draw()
 }
 
@@ -473,6 +474,7 @@ func (d *Debugger) ClientMsgEnter(e *am.Event) bool {
 
 func (d *Debugger) ClientMsgState(e *am.Event) {
 	msgs := e.Args["msgs_tx"].([]*telemetry.DbgMsgTx)
+	mach := d.Mach
 
 	updateTailMode := false
 	updateFirstTx := false
@@ -490,16 +492,21 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 		}
 
 		// TODO scalable storage
-		index := len(c.MsgTxs)
+		idx := len(c.MsgTxs)
 		c.MsgTxs = append(c.MsgTxs, msg)
 		// parse the msg
-		d.parseMsg(c, len(c.MsgTxs)-1)
+		d.parseMsg(c, idx)
+		filterOK := d.filterTx(c, idx, mach.Is1(ss.FilterCanceledTx),
+			mach.Is1(ss.FilterAutoTx), mach.Is1(ss.FilterEmptyTx))
+		if filterOK {
+			c.msgTxsFiltered = append(c.msgTxsFiltered, idx)
+		}
 
 		// update the UI
 		// TODO debounce UI updates
 
 		if c == d.C {
-			err := d.appendLogEntry(index)
+			err := d.appendLogEntry(idx)
 			if err != nil {
 				d.Mach.Log("Error: log append %s\n", err)
 				// d.Mach.AddErr(err)
@@ -507,7 +514,6 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 			}
 			if d.Mach.Is1(ss.TailMode) {
 				updateTailMode = true
-				c.CursorTx = d.filterTxCursor(c, len(c.MsgTxs), true)
 				c.CursorStep = 0
 			}
 
@@ -521,7 +527,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	d.updateSidebar(false)
 	// UI updates for the selected client
 	if updateTailMode {
-		// force the latest tx
+		d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), true)
 		d.updateViews(false)
 	}
 
