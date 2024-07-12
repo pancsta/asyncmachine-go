@@ -968,7 +968,7 @@ func (d *Debugger) filterClientTxs() {
 
 	d.C.msgTxsFiltered = nil
 	for i := range d.C.MsgTxs {
-		if d.filterTx(i, auto, empty, canceled) {
+		if d.filterTx(d.C, i, auto, empty, canceled) {
 			d.C.msgTxsFiltered = append(d.C.msgTxsFiltered, i)
 		}
 	}
@@ -980,8 +980,10 @@ func (d *Debugger) isFiltered() bool {
 }
 
 // filterTx returns true when a TX passed the passed filters.
-func (d *Debugger) filterTx(idx int, auto, empty, canceled bool) bool {
-	tx := d.C.MsgTxs[idx]
+func (d *Debugger) filterTx(
+	c *Client, idx int, auto, empty, canceled bool,
+) bool {
+	tx := c.MsgTxs[idx]
 
 	if auto && tx.IsAuto {
 		return false
@@ -991,7 +993,7 @@ func (d *Debugger) filterTx(idx int, auto, empty, canceled bool) bool {
 	}
 
 	// empty
-	parsed := d.C.msgTxsParsed[idx]
+	parsed := c.msgTxsParsed[idx]
 	txEmpty := true
 	if empty && len(parsed.StatesAdded) == 0 &&
 		len(parsed.StatesRemoved) == 0 {
