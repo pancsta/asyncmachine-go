@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.6.1](https://github.com/pancsta/asyncmachine-go/tree/v0.6.1) (2024-07-12)
+
+- fix\(am-dbg\): fix tail mode with filters [\#85](https://github.com/pancsta/asyncmachine-go/pull/85) (@pancsta)
+
 ## [v0.6.0](https://github.com/pancsta/asyncmachine-go/tree/v0.6.0) (2024-07-10)
 
 - fix: address misc issues [\#84](https://github.com/pancsta/asyncmachine-go/pull/84) (@pancsta)
