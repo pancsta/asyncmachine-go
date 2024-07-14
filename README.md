@@ -321,7 +321,8 @@ var States = am.Struct{
 
 - [godoc](https://godoc.org/github.com/pancsta/asyncmachine-go/pkg/machine)
 - [cookbook](/docs/cookbook.md)
-- [manual](/docs/manual.md) ([pdf](/assets/manual.pdf))
+- [discussions](https://github.com/pancsta/asyncmachine-go/discussions)
+- [manual.md](/docs/manual.md) \| [manual.pdf](/assets/manual.pdf)
   - [Machine and States](/docs/manual.md#machine-and-states)
       - [State Clocks and Context](/docs/manual.md#state-clocks-and-context)
       - [Auto States](/docs/manual.md#auto-states)
@@ -640,8 +641,9 @@ See also [issues](https://github.com/pancsta/asyncmachine-go/issues).
 
 ## Changelog
 
-Latest release: `v0.6.0`
+Latest release: `v0.6.1`
 
+- fix\(am-dbg\): fix tail mode with filters [\#85](https://github.com/pancsta/asyncmachine-go/pull/85) (@pancsta)
 - fix: address misc issues [\#84](https://github.com/pancsta/asyncmachine-go/pull/84) (@pancsta)
 - docs: add pdf manual [\#83](https://github.com/pancsta/asyncmachine-go/pull/83) (@pancsta)
 - docs: minor manual updates [\#82](https://github.com/pancsta/asyncmachine-go/pull/82) (@pancsta)
