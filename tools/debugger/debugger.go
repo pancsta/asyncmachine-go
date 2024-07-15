@@ -33,7 +33,7 @@ const (
 	// TODO customize
 	playInterval = 500 * time.Millisecond
 	// TODO add param --max-clients
-	maxClients            = 150
+	maxClients            = 500
 	timeFormat            = "15:04:05.000000000"
 	fastJumpAmount        = 50
 	arrowThrottleMs       = 200
@@ -243,14 +243,17 @@ func (d *Debugger) updateFiltersBar() {
 
 	// tx filters
 	for _, item := range filters {
+
+		// checked
 		if item.active {
 			text += f(" [::b]%s[::-]", cview.Escape("[X]"))
 		} else {
 			text += f(" [ ]")
 		}
 
+		// focused
 		if d.focusedFilter == item.id && focused {
-			text += f("[%s][::b]%s[::-]", colorActive, item.label)
+			text += f("[%s][::bu]%s[::-]", colorActive, item.label)
 		} else if !focused {
 			text += f("[%s]%s", colorHighlight2, item.label)
 		} else {
@@ -483,11 +486,6 @@ func (d *Debugger) updateTimelines() {
 		d.timelineSteps.SetFilledColor(tcell.ColorRed)
 	}
 
-	// inactive steps bar when no next tx
-	if nextTx == nil {
-		d.timelineSteps.SetTitleColor(tcell.ColorGrey)
-		d.timelineSteps.SetBorderColor(tcell.ColorGrey)
-	}
 	stepsCount := 0
 	onLastTx := c.CursorTx >= txCount
 	if !onLastTx {
@@ -544,7 +542,7 @@ func (d *Debugger) updateSidebar(immediate bool) {
 
 // TODO sometimes scrolls for no reason
 func (d *Debugger) doUpdateSidebar() {
-	if d.Mach.Disposed {
+	if d.Mach.Disposed.Load() {
 		return
 	}
 

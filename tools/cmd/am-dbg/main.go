@@ -12,8 +12,8 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
+	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 
 	"github.com/spf13/cobra"
 )
