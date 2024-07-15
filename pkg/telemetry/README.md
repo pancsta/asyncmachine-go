@@ -6,12 +6,15 @@
   <img alt="Test duration chart" src="../../assets/otel-jaeger.dark.png?raw=true">
 </picture>
 
-[`pkg/telemetry`](pkg/telemetry) provides various telemetry exporters.
+- Open Telemetry
+- am-dbg
 
 ## [Open Telemetry](https://opentelemetry.io/)
 
-Otel integration exposes machine's states and transitions as Otel traces, compatible with
-[Jaeger](https://www.jaegertracing.io/). Tracers are inherited from parent machines and provide the following tree view:
+**Otel integration** exposes machine's states and transitions as Otel traces, compatible with
+[Jaeger](https://www.jaegertracing.io/). Tracers are inherited from parent machines and form a tree.
+
+Machine tree structure:
 
 ```text
 - mach:ID
@@ -33,7 +36,7 @@ Otel integration exposes machine's states and transitions as Otel traces, compat
     - ...
 ```
 
-See [`pkg/telemetry`](pkg/telemetry) for more info or [import an existing asset](assets/json)
+See [`pkg/telemetry`](pkg/telemetry) for more info or [import an existing asset](../../assets/bench-jaeger-3h-10m.traces.json)
 
 ## am-dbg
 

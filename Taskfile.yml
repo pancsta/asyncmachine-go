@@ -46,8 +46,8 @@ tasks:
 
   am-dbg-dbg:
     cmds:
-      - go run tools/cmd/am-dbg/main.go 
-          --log-file am-dbg-dbg.log 
+      - go run tools/cmd/am-dbg/main.go
+          --log-file am-dbg-dbg.log
           --log-level 2
           --listen-on localhost:9913
           --select-connected
