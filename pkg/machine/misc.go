@@ -812,7 +812,7 @@ func diposeWithCtx[T comparable](
 		case <-ctx.Done():
 		}
 		// GC only if needed
-		if mach.Disposed {
+		if mach.Disposed.Load() {
 			return
 		}
 

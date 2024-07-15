@@ -187,7 +187,7 @@ func (d *Debugger) PausedState(_ *am.Event) {
 }
 
 func (d *Debugger) TailModeState(_ *am.Event) {
-	d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), true)
+	d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), false)
 	// needed bc tail mode if carried over via SelectingClient
 	d.updateTxBars()
 	d.updateTimelines()
@@ -527,7 +527,8 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	d.updateSidebar(false)
 	// UI updates for the selected client
 	if updateTailMode {
-		d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), true)
+		// force the latest tx
+		d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), false)
 		d.updateViews(false)
 	}
 
@@ -580,6 +581,7 @@ func (d *Debugger) RemoveClientState(e *am.Event) {
 	} else {
 		d.buildSidebar(-1)
 	}
+
 	d.draw()
 }
 
@@ -837,6 +839,7 @@ func (d *Debugger) ToggleFilterState(_ *am.Event) {
 		// TODO split the state
 		<-d.Mach.WhenQueueEnds(stateCtx)
 		if stateCtx.Err() != nil {
+			d.Mach.Remove1(ss.ToggleFilter, nil)
 			return // expired
 		}
 
@@ -844,18 +847,22 @@ func (d *Debugger) ToggleFilterState(_ *am.Event) {
 			d.filterClientTxs()
 		}
 
-		// rebuild the whole log to reflect the UI changes
-		err := d.rebuildLog(stateCtx, len(d.C.MsgTxs)-1)
-		if err != nil {
-			d.Mach.AddErr(err)
-		}
-		d.updateLog(false)
+		if d.C != nil {
 
-		if stateCtx.Err() != nil {
-			return // expired
+			// rebuild the whole log to reflect the UI changes
+			err := d.rebuildLog(stateCtx, len(d.C.MsgTxs)-1)
+			if err != nil {
+				d.Mach.AddErr(err)
+			}
+			d.updateLog(false)
+
+			if stateCtx.Err() != nil {
+				return // expired
+			}
+
+			d.C.CursorTx = d.filterTxCursor(d.C, d.C.CursorTx, false)
 		}
 
-		d.C.CursorTx = d.filterTxCursor(d.C, d.C.CursorTx, false)
 		// queue this removal after filter states, so we can depend on WhenNot
 		d.Mach.Remove1(ss.ToggleFilter, nil)
 
