@@ -1,8 +1,7 @@
 # am-dbg
 
-`am-dbg` is a multi-client debugger for [asyncmachine-go](https://github.com/pancsta/asyncmachine-go). It's lightweight
-enough to be kept open in the background while receiving data from >100 machines simultaneously (and potentially many
-more).
+`am-dbg` is a lightweight, multi-client debugger for [asyncmachine-go](https://github.com/pancsta/asyncmachine-go). It
+easily handles >100 client machines simultaneously streaming telemetry data (and potentially many more).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../../assets/am-dbg.dark.png?raw=true">
