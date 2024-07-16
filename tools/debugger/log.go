@@ -139,11 +139,9 @@ func (d *Debugger) rebuildLog(ctx context.Context, endIndex int) error {
 		return err
 	}
 
-	// prevent scrolling when not in tail mode
-	if d.Mach.Not(am.S{ss.TailMode, ss.LogUserScrolled}) {
+	// scroll, but only if not manually scrolled
+	if d.Mach.Not1(ss.LogUserScrolled) {
 		d.log.ScrollToHighlight()
-	} else if d.Mach.Not1(ss.TailMode) {
-		d.log.ScrollToEnd()
 	}
 
 	return nil
@@ -160,11 +158,9 @@ func (d *Debugger) appendLogEntry(index int) error {
 		return err
 	}
 
-	// prevent scrolling when not in tail mode
-	if d.Mach.Not(am.S{ss.TailMode, ss.LogUserScrolled}) {
+	// scroll, but only if not manually scrolled
+	if d.Mach.Not1(ss.LogUserScrolled) {
 		d.log.ScrollToHighlight()
-	} else if d.Mach.Not1(ss.TailMode) {
-		d.log.ScrollToEnd()
 	}
 
 	return nil
