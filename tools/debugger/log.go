@@ -82,37 +82,42 @@ func (d *Debugger) doUpdateLog() {
 	}
 }
 
-func (d *Debugger) parseMsgLog(
-	c *Client, msgTx *telemetry.DbgMsgTx, entries []*am.LogEntry,
-) {
-	// pre-log entries
-	if len(msgTx.PreLogEntries) > 0 {
-		logStr := ""
-		for _, entry := range msgTx.PreLogEntries {
-			logStr += fmtLogEntry(entry, c.MsgStruct.States)
+func (d *Debugger) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx) {
+	parsed := make([]*am.LogEntry, 0)
+
+	// pre-tx log entries
+	for _, entry := range msgTx.PreLogEntries {
+		if pe := d.parseMsgLogEntry(c, msgTx.ID, entry); pe != nil {
+			parsed = append(parsed, pe)
 		}
-		entries = append(entries, &am.LogEntry{
-			Level: am.LogNothing, Text: logStr,
-		})
 	}
 
 	// tx log entries
 	for _, entry := range msgTx.LogEntries {
-		// TODO make [extern] as LogNothing
-		lvl := entry.Level
-		if strings.HasPrefix(entry.Text, "[extern]") {
-			lvl = am.LogNothing
+		if pe := d.parseMsgLogEntry(c, msgTx.ID, entry); pe != nil {
+			parsed = append(parsed, pe)
 		}
-		t := fmtLogEntry(entry.Text, c.MsgStruct.States)
-		// create a highlight region
-		t = `["` + msgTx.ID + `"]` + t + `[""]`
-		entries = append(entries, &am.LogEntry{
-			Level: lvl, Text: t,
-		})
 	}
 
 	// store the parsed log
-	c.logMsgs = append(c.logMsgs, entries)
+	c.logMsgs = append(c.logMsgs, parsed)
+}
+
+func (d *Debugger) parseMsgLogEntry(
+	c *Client, txID string, entry *am.LogEntry,
+) *am.LogEntry {
+	lvl := entry.Level
+
+	// make [extern] as LogNothing
+	if strings.HasPrefix(entry.Text, "[extern]") {
+		lvl = am.LogNothing
+	}
+	t := fmtLogEntry(entry.Text, c.MsgStruct.States)
+
+	// create a highlight region
+	t = `["` + txID + `"]` + t + `[""]`
+
+	return &am.LogEntry{Level: lvl, Text: t}
 }
 
 func (d *Debugger) rebuildLog(ctx context.Context, endIndex int) error {

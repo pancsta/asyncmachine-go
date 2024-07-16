@@ -3,6 +3,7 @@ package machine
 import (
 	"slices"
 	"strings"
+	"sync"
 )
 
 func newStep(from string, to string, stepType StepType,
@@ -56,7 +57,8 @@ type Transition struct {
 	// Parent machine
 	Machine *Machine
 	// Log entries produced during the transition
-	LogEntries []*LogEntry
+	LogEntriesLock sync.Mutex
+	LogEntries     []*LogEntry
 	// start time of the transition
 
 	// Latest / current step of the transition
@@ -412,10 +414,10 @@ func (t *Transition) emitEvents() Result {
 
 	// stop emitting, collect previous log entries
 	m.logEntriesLock.Lock()
-	// TODO struct type
+	// TODO typed txArgs struct
 	txArgs["pre_logs"] = m.logEntries
 	txArgs["queue_len"] = len(m.queue)
-	m.logEntries = []string{}
+	m.logEntries = nil
 	m.logEntriesLock.Unlock()
 	m.emit(EventTransitionEnd, txArgs, nil)
 

@@ -335,7 +335,6 @@ func (d *Debugger) jumpFwd(ev *tcell.EventKey) *tcell.EventKey {
 func (d *Debugger) parseMsg(c *Client, idx int) {
 	msgTxParsed := MsgTxParsed{}
 	msgTx := c.MsgTxs[idx]
-	var entries []*am.LogEntry
 
 	// added / removed
 	if len(c.MsgTxs) > 1 && idx > 0 {
@@ -371,7 +370,7 @@ func (d *Debugger) parseMsg(c *Client, idx int) {
 	// TODO take from msgs
 	c.lastActive = time.Now()
 
-	d.parseMsgLog(c, msgTx, entries)
+	d.parseMsgLog(c, msgTx)
 }
 
 // isTxSkipped checks if the tx at the given index is skipped by filters
