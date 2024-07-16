@@ -21,7 +21,7 @@ import (
 )
 
 // ///// ///// /////
-// /// AM-DBG
+// ///// AM-DBG
 // ///// ///// /////
 
 const DbgHost = "localhost:6831"
@@ -70,7 +70,7 @@ type DbgMsgTx struct {
 	// log entries created during the transition
 	LogEntries []*am.LogEntry
 	// log entries before the transition, which happened after the prev one
-	PreLogEntries []string
+	PreLogEntries []*am.LogEntry
 	// transition was triggered by an auto state
 	IsAuto bool
 	// queue length at the start of the transition
@@ -134,6 +134,7 @@ func (c *dbgClient) sendMsgTx(msg *DbgMsgTx) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -151,6 +152,7 @@ func (c *dbgClient) sendMsgStruct(msg *DbgMsgStruct) error {
 // TransitionsToDBG sends transitions to the am-dbg server.
 // TODO test TransitionsToDBG
 // TODO support changes to mach.StateNames
+// TODO rewrite to Tracer API?
 func TransitionsToDBG(mach *am.Machine, url string) error {
 	gob.Register(am.Relation(0))
 
@@ -176,7 +178,7 @@ func TransitionsToDBG(mach *am.Machine, url string) error {
 			select {
 
 			case <-mach.Ctx.Done():
-				client.client.Close()
+				_ = client.client.Close()
 				return
 
 			// states/relations have changed
@@ -192,7 +194,7 @@ func TransitionsToDBG(mach *am.Machine, url string) error {
 
 				// params
 				tx, ok1 := event.Args["transition"].(*am.Transition)
-				preLogs, ok2 := event.Args["pre_logs"].([]string)
+				preLogs, ok2 := event.Args["pre_logs"].([]*am.LogEntry)
 				queueLen, ok3 := event.Args["queue_len"].(int)
 				if !ok1 || !ok2 || !ok3 {
 					log.Println("invalid transition end event")
@@ -211,6 +213,7 @@ func TransitionsToDBG(mach *am.Machine, url string) error {
 						func(step *am.Step, _ int) *am.Step {
 							return step
 						}),
+					// no locking necessary, as the tx is finalized (read-only)
 					LogEntries:    tx.LogEntries,
 					PreLogEntries: preLogs,
 					IsAuto:        tx.IsAuto(),
@@ -271,15 +274,15 @@ func removeLogPrefix(msg *DbgMsgTx) {
 	}
 
 	for i := range msg.PreLogEntries {
-		if len(msg.PreLogEntries[i]) < prefixLen {
+		if len(msg.PreLogEntries[i].Text) < prefixLen {
 			continue
 		}
-		msg.PreLogEntries[i] = msg.PreLogEntries[i][prefixLen:]
+		msg.PreLogEntries[i].Text = msg.PreLogEntries[i].Text[prefixLen:]
 	}
 }
 
 // ///// ///// /////
-// /// OPEN TELEMETRY
+// ///// OPEN TELEMETRY
 // ///// ///// /////
 
 // OtelMachTracer implements machine.Tracer for OpenTelemetry.
@@ -421,6 +424,7 @@ func (ot *OtelMachTracer) NewSubmachine(parent, mach *am.Machine) {
 			mach.ID)
 		return
 	}
+
 	_, ok := ot.parents[mach.ID]
 	if ok {
 		panic("Submachine already being traced (duplicate ID " + mach.ID + ")")
@@ -501,6 +505,7 @@ func (ot *OtelMachTracer) TransitionInit(tx *am.Transition) {
 		ot.Logf("[otel] TransitionInit: machine %s already ended", tx.Machine.ID)
 		return
 	}
+
 	// if skipping transitions, only create the machine data for states
 	if ot.opts.SkipTransitions {
 		return
@@ -685,7 +690,7 @@ func (ot *OtelMachTracer) Inheritable() bool {
 func (ot *OtelMachTracer) QueueEnd(*am.Machine) {}
 
 // ///// ///// /////
-// /// UTILS
+// ///// UTILS
 // ///// ///// /////
 
 // j joins state names

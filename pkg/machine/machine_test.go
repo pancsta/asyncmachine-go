@@ -444,7 +444,7 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 		{
 			"using Set should de-activate the old one",
 			func(t *testing.T, m *Machine) {
-				// m = (D)
+				// (D:1)[A:0 B:0 C:0]
 				m.Set(S{"C"}, nil)
 				assertStates(t, m, S{"C"})
 			},
@@ -452,7 +452,7 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 		{
 			"using Set should work both ways",
 			func(t *testing.T, m *Machine) {
-				// m = (D)
+				// (D:1)[A:0 B:0 C:0]
 				m.Set(S{"C"}, nil)
 				assertStates(t, m, S{"C"})
 				m.Set(S{"D"}, nil)
@@ -462,7 +462,7 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 		{
 			"using Add should de-activate the old one",
 			func(t *testing.T, m *Machine) {
-				// m = (D)
+				// (D:1)[A:0 B:0 C:0]
 				m.Add(S{"C"}, nil)
 				assertStates(t, m, S{"C"})
 			},
@@ -470,7 +470,7 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 		{
 			"using Add should work both ways",
 			func(t *testing.T, m *Machine) {
-				// m = (D)
+				// (D:1)[A:0 B:0 C:0]
 				m.Add(S{"C"}, nil)
 				assertStates(t, m, S{"C"})
 				m.Add(S{"D"}, nil)

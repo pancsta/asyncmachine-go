@@ -96,7 +96,7 @@ type Machine struct {
 	handlerTimer       *time.Timer
 	handlerLoopRunning bool
 	logEntriesLock     sync.Mutex
-	logEntries         []string
+	logEntries         []*LogEntry
 	logArgs            func(args A) map[string]string
 	currentHandler     string
 	disposeHandlers    []func()
@@ -1706,17 +1706,20 @@ func (m *Machine) log(level LogLevel, msg string, args ...any) {
 	t := m.Transition
 	if t != nil {
 		// append the log msg to the current transition
-		// TODO not thread safe
+		t.LogEntriesLock.Lock()
+		defer t.LogEntriesLock.Unlock()
 		t.LogEntries = append(t.LogEntries, &LogEntry{level, out})
-	} else {
 
+	} else {
 		// append the log msg the machine and collect at the end of the next
 		// transition
 		m.logEntriesLock.Lock()
 		defer m.logEntriesLock.Unlock()
 
-		// TODO include log level for am-dbg filtering
-		m.logEntries = append(m.logEntries, out)
+		m.logEntries = append(m.logEntries, &LogEntry{
+			Level: level,
+			Text:  out,
+		})
 	}
 }
 
