@@ -53,7 +53,7 @@ var States = am.Struct{
 		Require: S{ClientSelected},
 		Remove:  GroupDialog,
 	},
-	LogUserScrolled:  {},
+	LogUserScrolled:  {Remove: S{Playing, TailMode}},
 	Ready:            {Require: S{Start}},
 	FilterAutoTx:     {},
 	FilterCanceledTx: {},
@@ -70,7 +70,7 @@ var States = am.Struct{
 	TreeMatrixView: {Remove: GroupViews},
 	TailMode: {
 		Require: S{ClientSelected},
-		Remove:  GroupPlaying,
+		Remove:  am.SMerge(GroupPlaying, S{LogUserScrolled}),
 	},
 	Playing: {
 		Require: S{ClientSelected},
@@ -108,7 +108,7 @@ var States = am.Struct{
 	},
 	ClientSelected: {
 		Require: S{Start},
-		Remove:  S{SelectingClient, LogUserScrolled},
+		Remove:  S{SelectingClient},
 	},
 	RemoveClient: {Require: S{ClientSelected}},
 }
