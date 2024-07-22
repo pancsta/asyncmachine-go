@@ -48,7 +48,7 @@ Common differences from other state machines:
 
 ### Buzzwords
 
-> **AM technically is:** event emitter, queue, dependency graph, AOP, logical clocks, ~2.5k LoC, no deps
+> **AM technically is:** event emitter, queue, dependency graph, AOP, logical clocks, <3k LoC, stdlib-only
 
 > **AM gives you:** states, events, thread-safety, logging, metrics, traces, debugger, history, flow constraints, scheduler
 
@@ -157,6 +157,13 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 ```
 
 See [docs/cookbook.md](docs/cookbook.md) for more snippets.
+
+## Demos
+
+Demos show data from the [go-libp2p-pubsub simulator](#libp2p-pubsub-simulator).
+
+- [am-dbg web demo](http://188.166.101.108:8080/wetty/ssh/am-dbg?pass=am-dbg)
+- am-dbg ssh demo - `ssh 188.166.101.108 -p 4444`
 
 ## Examples
 
@@ -641,8 +648,10 @@ See also [issues](https://github.com/pancsta/asyncmachine-go/issues).
 
 ## Changelog
 
-Latest release: `v0.6.1`
+Latest release: `v0.6.3`
 
+- fix\(am-dbg\): make LogUserScrolled pause the timeline [\#89](https://github.com/pancsta/asyncmachine-go/pull/89) (@pancsta)
+- feat\(machine\): retain log level for pre-logs [\#88](https://github.com/pancsta/asyncmachine-go/pull/88) (@pancsta)
 - fix\(am-dbg\): fix tail mode with filters [\#85](https://github.com/pancsta/asyncmachine-go/pull/85) (@pancsta)
 - fix: address misc issues [\#84](https://github.com/pancsta/asyncmachine-go/pull/84) (@pancsta)
 - docs: add pdf manual [\#83](https://github.com/pancsta/asyncmachine-go/pull/83) (@pancsta)
