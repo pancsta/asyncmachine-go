@@ -129,6 +129,10 @@ const (
 	// - Machine.WhenArgs
 	// - Machine.WhenTime
 	Queued
+	// ResultNoOp means that the transition was a no-op, i.e. the state was
+	// already active. ResultNoOp is only used by helpers, and never returned by
+	// the machine itself.
+	ResultNoOp
 )
 
 var (

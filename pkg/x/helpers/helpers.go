@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
+	"strconv"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
@@ -117,4 +119,169 @@ func TimeMatrix(machines []*am.Machine) ([]am.T, error) {
 	}
 
 	return matrix, nil
+}
+
+func RelationsMatrix(mach *am.Machine) ([][]int, error) {
+	names := mach.StateNames
+	shiftRow := 2
+	appendRows := 2
+	matrix := make([][]int, shiftRow+len(names)+appendRows)
+
+	for i, s1 := range names {
+		matrix[i+shiftRow] = make([]int, len(names))
+
+		// -1 shiftRows
+		if i < shiftRow {
+			matrix[i] = make([]int, len(names))
+
+			for j := range matrix[i] {
+				matrix[i][j] = -1
+			}
+		}
+
+		for j, s2 := range names {
+
+			rels, err := mach.Resolver.GetRelationsBetween(s1, s2)
+			if err != nil {
+				return nil, err
+			}
+			for _, rel := range rels {
+				matrix[i+shiftRow][j] += int(rel)
+			}
+		}
+	}
+
+	// -1 shiftRows
+	row := len(names) + shiftRow
+	for i := row; i < row+appendRows; i++ {
+		matrix[i] = make([]int, len(names))
+
+		for j := range matrix[i] {
+			matrix[i][j] = -1
+		}
+	}
+
+	return matrix, nil
+}
+
+func TransitionMatrix(tx, prevTx *am.Transition, index am.S) ([][]int, error) {
+
+	shiftRow := 2
+	appendRows := 2
+	matrix := make([][]int, shiftRow+len(index)+appendRows)
+
+	// row 0: currently set
+	matrix[0] = make([]int, len(index))
+	for i, name := range index {
+
+		matrix[0][i] = 0
+		if am.IsActiveTick(tx.ClocksBefore[name]) {
+			matrix[0][i] = 1
+		}
+	}
+
+	// row 1: called states
+	matrix[1] = make([]int, len(index))
+	for i, name := range index {
+		v := 0
+		if slices.Contains(tx.CalledStates(), name) {
+			v = 1
+		}
+
+		matrix[1][i] = v
+	}
+
+	// steps
+	for iRow, name := range index {
+		matrix[shiftRow+iRow] = make([]int, len(index))
+
+		for iCol, source := range index {
+			v := 0
+
+			for _, step := range tx.Steps {
+
+				// TODO style just the cells
+				if step.FromState == source &&
+					((step.ToState == "" && source == name) ||
+						step.ToState == name) {
+					v += int(step.Type)
+				}
+
+				matrix[shiftRow+iRow][iCol] = v
+			}
+		}
+	}
+
+	// ticks
+	row := len(index) + shiftRow
+	matrix[row] = make([]int, len(index))
+	for i, name := range index {
+
+		var pTick uint64
+		if prevTx != nil {
+			pTick = prevTx.ClocksAfter[name]
+		}
+		tick := tx.ClocksAfter[name]
+		v := tick - pTick
+
+		// add row
+		matrix[row][i] = int(v)
+	}
+
+	// active after
+	row = len(index) + shiftRow + 1
+	matrix[row] = make([]int, len(index))
+	for i, name := range index {
+
+		matrix[row][i] = 0
+		if am.IsActiveTick(tx.ClocksAfter[name]) {
+			matrix[row][i] = 1
+		}
+	}
+
+	return matrix, nil
+}
+
+// EnvLogLevel returns a log level from an environment variable.
+// TODO cookbook
+func EnvLogLevel(name string) am.LogLevel {
+	v, _ := strconv.Atoi(os.Getenv(name))
+	return am.LogLevel(v)
+}
+
+// Add1Sync activates a state and waits until its active. Returns early if
+// the state is already active.
+func Add1Sync(mach *am.Machine, state string, args am.A) am.Result {
+	// TODO support args["sync_token"] via WhenArgs
+
+	if mach.Is1(state) {
+		return am.ResultNoOp
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	when := mach.WhenTicks(state, 1, ctx)
+	res := mach.Add1(state, args)
+	if res == am.Canceled {
+		// dispose "when" ch early
+		cancel()
+
+		return res
+	}
+	<-when
+
+	return res
+}
+
+// Add1MultiSync activates a multi state and waits until its becomes
+// de-activated, after an activation.
+func Add1MultiSync(mach *am.Machine, state string, args am.A) am.Result {
+	// TODO support args["sync_token"] via WhenArgs
+
+	when := mach.WhenTicks(state, 2, nil)
+	res := mach.Add1(state, args)
+	<-when
+
+	return res
 }
