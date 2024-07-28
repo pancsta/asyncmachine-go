@@ -2,7 +2,7 @@
 # like `/bin/bash -l`, `ls`, or any other commands
 # the default is bash for Linux
 # or powershell.exe for Windows
-command: task demo-run
+command: task teaser-run
 
 # Specify the current working directory path
 # the default is the current working directory path

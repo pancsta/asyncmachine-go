@@ -1047,7 +1047,7 @@ Foo
 <-mach.WhenTime(am.S{"Foo", "Bar"}, am.T{6, 10}, nil)
 
 // wait for DownloadingFile to have a tick increased by 2 since now
-<-mach.WhenTick("DownloadingFile", 2, nil)
+<-mach.WhenTicks("DownloadingFile", 2, nil)
 ```
 
 Almost all "when" methods return a share channel which closes when an event happens (or the optionally passed context is
@@ -1063,8 +1063,8 @@ these channels will be reused and should scale way better.
 - [`Machine.WhenNot1(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenNot1)
 - [`Machine.WhenArgs(state, args, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenArgs)
 - [`Machine.WhenTime(states, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTime)
-- [`Machine.WhenTick(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTick)
-- [`Machine.WhenTickEq(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTickEq)
+- [`Machine.WhenTicks(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTick)
+- [`Machine.WhenTicksEq(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTickEq)
 - [`Machine.WhenQueueEnds(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenQueueEnds)
 - [`Machine.WhenErr(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenErr)
 
@@ -1211,6 +1211,8 @@ m.Add1("Foo", nil) // ->Executed
 [add] Bar
 [state] +Bar
 ```
+
+TODO describe duplicate detection rules
 
 ### Logging
 

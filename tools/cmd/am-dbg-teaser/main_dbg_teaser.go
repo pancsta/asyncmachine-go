@@ -21,8 +21,8 @@ var (
 	startupTx      = 25
 	initialView    = "matrix"
 	playInterval   = 200 * time.Millisecond
-	// debugAddr			= ""
-	debugAddr = "localhost:9913"
+	debugAddr      = ""
+	// debugAddr = "localhost:9913"
 )
 
 func main() {
