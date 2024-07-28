@@ -28,25 +28,27 @@ tasks:
   am-dbg:
     silent: false
     cmds:
-      - go run tools/cmd/am-dbg/main.go {{.CLI_ARGS}}
+      - go run ./tools/cmd/am-dbg {{.CLI_ARGS}}
 
   am-dbg-asset:
     silent: false
     cmds:
-      - go run tools/cmd/am-dbg/main.go
-          --import-data assets/am-dbg-sim.gob.bz2
+      - go run ./tools/cmd/am-dbg
+          --import-data assets/am-dbg-sim.gob.br
+          --select-machine sim-p0
+          --select-transition 20
           {{.CLI_ARGS}}
 
-  am-dbg-dump:
+  am-dbg-import-dump:
     silent: false
     cmds:
-      - go run tools/cmd/am-dbg/main.go
-          --import-data am-dbg-dump.gob.bz2
+      - go run ./tools/cmd/am-dbg
+          --import-data am-dbg-dump.gob.br
           {{.CLI_ARGS}}
 
   am-dbg-dbg:
     cmds:
-      - go run tools/cmd/am-dbg/main.go
+      - go run ./tools/cmd/am-dbg
           --log-file am-dbg-dbg.log
           --log-level 2
           --listen-on localhost:9913

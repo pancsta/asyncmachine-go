@@ -3,6 +3,7 @@ package debugger
 import (
 	"context"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,7 +41,12 @@ func (d *Debugger) doUpdateLog() {
 	}
 
 	if c.MsgStruct != nil {
-		d.log.SetTitle(" Log:" + d.LogLevel.String() + " ")
+		title := " Log:" + d.Opts.Filters.LogLevel.String() + " "
+		if tx := d.CurrentTx(); tx != nil {
+			t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx-1].Time))
+			title += "T:" + t + " "
+		}
+		d.log.SetTitle(title)
 	}
 
 	// highlight the next tx if scrolling by steps
@@ -196,8 +202,8 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 		if d.isFiltered() && d.isTxSkipped(c, index) {
 			// skip filtered txs
 			continue
-		} else if logLvl > d.LogLevel {
-			// filter higher log level
+		} else if logLvl > d.Opts.Filters.LogLevel {
+			// filter out higher log level
 			continue
 		}
 

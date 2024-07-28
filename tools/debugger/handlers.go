@@ -18,44 +18,24 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
-func (d *Debugger) StartEnd(_ *am.Event) {
-	d.app.Stop()
-}
-
 func (d *Debugger) StartState(e *am.Event) {
 	clientID, _ := e.Args["Client.id"].(string)
 	cursorTx, _ := e.Args["Client.cursorTx"].(int)
 	view, _ := e.Args["dbgView"].(string)
 
-	d.app = cview.NewApplication()
+	d.App = cview.NewApplication()
+	if d.Opts.Screen != nil {
+		d.App.SetScreen(d.Opts.Screen)
+	}
 	d.P = message.NewPrinter(language.English)
 	d.bindKeyboard()
 	d.initUIComponents()
 	d.initLayout()
-	if d.EnableMouse {
-		d.app.EnableMouse(true)
+	if d.Opts.EnableMouse {
+		d.App.EnableMouse(true)
 	}
 
 	stateCtx := d.Mach.NewStateCtx(ss.Start)
-
-	// redraw on auto states
-	go func() {
-		// bind to transitions
-		txEndCh := d.Mach.OnEvent([]string{am.EventTransitionEnd}, nil)
-		for event := range txEndCh {
-
-			if stateCtx.Err() != nil {
-				return // expired
-			}
-
-			// TODO typesafe Args
-			tx := event.Args["transition"].(*am.Transition)
-			if tx.IsAuto() && tx.Accepted {
-				d.updateTxBars()
-				d.draw()
-			}
-		}
-	}()
 
 	// draw in a goroutine
 	go func() {
@@ -63,9 +43,9 @@ func (d *Debugger) StartState(e *am.Event) {
 			return // expired
 		}
 
-		d.app.SetRoot(d.layoutRoot, true)
-		d.app.SetFocus(d.sidebar)
-		err := d.app.Run()
+		d.App.SetRoot(d.LayoutRoot, true)
+		d.App.SetFocus(d.sidebar)
+		err := d.App.Run()
 		if err != nil {
 			d.Mach.AddErr(err)
 		}
@@ -111,6 +91,21 @@ func (d *Debugger) StartState(e *am.Event) {
 
 		d.Mach.Add1(ss.Ready, nil)
 	}()
+}
+
+func (d *Debugger) StartEnd(_ *am.Event) {
+	d.App.Stop()
+}
+
+// AnyAny is a global handler
+func (d *Debugger) AnyAny(e *am.Event) {
+	tx := e.Transition()
+
+	// redraw on auto states
+	if tx.IsAuto() && tx.Accepted {
+		d.updateTxBars()
+		d.draw()
+	}
 }
 
 func (d *Debugger) StateNameSelectedState(e *am.Event) {
@@ -196,7 +191,7 @@ func (d *Debugger) TailModeState(_ *am.Event) {
 
 // ///// FWD / BACK
 
-func (d *Debugger) UserFwdState(e *am.Event) {
+func (d *Debugger) UserFwdState(_ *am.Event) {
 	d.Mach.Remove1(ss.UserFwd, nil)
 }
 
@@ -222,7 +217,7 @@ func (d *Debugger) FwdState(e *am.Event) {
 	d.RedrawFull(false)
 }
 
-func (d *Debugger) UserBackState(e *am.Event) {
+func (d *Debugger) UserBackState(_ *am.Event) {
 	d.Mach.Remove1(ss.UserBack, nil)
 }
 
@@ -247,7 +242,7 @@ func (d *Debugger) BackState(e *am.Event) {
 
 // ///// STEP BACK / FWD
 
-func (d *Debugger) UserFwdStepState(e *am.Event) {
+func (d *Debugger) UserFwdStepState(_ *am.Event) {
 	d.Mach.Remove1(ss.UserFwdStep, nil)
 }
 
@@ -273,7 +268,7 @@ func (d *Debugger) FwdStepState(_ *am.Event) {
 	d.RedrawFull(false)
 }
 
-func (d *Debugger) UserBackStepState(e *am.Event) {
+func (d *Debugger) UserBackStepState(_ *am.Event) {
 	d.Mach.Remove1(ss.UserBackStep, nil)
 }
 
@@ -336,7 +331,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 	// cleanup removes all previous clients, if all are disconnected
 	cleanup := false
-	if d.CleanOnConnect {
+	if d.Opts.CleanOnConnect {
 		// remove old clients
 		cleanup = d.doCleanOnConnect()
 	}
@@ -417,7 +412,9 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 	// if only 1 client connected, select it
 	// if the only client in total, select it
-	if len(d.Clients) == 1 || (d.SelectConnected && d.ConnectedClients() == 1) {
+	if len(d.Clients) == 1 || (d.Opts.SelectConnected &&
+		d.ConnectedClients() == 1) {
+
 		d.Mach.Add1(ss.SelectingClient, am.A{
 			"Client.id": msg.ID,
 			// mark the origin
@@ -737,31 +734,31 @@ func (d *Debugger) ClientSelectedEnd(e *am.Event) {
 	d.RedrawFull(true)
 }
 
-func (d *Debugger) HelpDialogState(e *am.Event) {
+func (d *Debugger) HelpDialogState(_ *am.Event) {
 	// TODO use Visibility instead of SendToFront
-	d.layoutRoot.SendToFront("main")
-	d.layoutRoot.SendToFront("help")
+	d.LayoutRoot.SendToFront("main")
+	d.LayoutRoot.SendToFront("help")
 }
 
 func (d *Debugger) HelpDialogEnd(e *am.Event) {
 	diff := am.DiffStates(ss.GroupDialog, e.Transition().TargetStates)
 	if len(diff) == len(ss.GroupDialog) {
 		// all dialogs closed, show main
-		d.layoutRoot.SendToFront("main")
+		d.LayoutRoot.SendToFront("main")
 	}
 }
 
-func (d *Debugger) ExportDialogState(e *am.Event) {
+func (d *Debugger) ExportDialogState(_ *am.Event) {
 	// TODO use Visibility instead of SendToFront
-	d.layoutRoot.SendToFront("main")
-	d.layoutRoot.SendToFront("export")
+	d.LayoutRoot.SendToFront("main")
+	d.LayoutRoot.SendToFront("export")
 }
 
 func (d *Debugger) ExportDialogEnd(e *am.Event) {
 	diff := am.DiffStates(ss.GroupDialog, e.Transition().TargetStates)
 	if len(diff) == len(ss.GroupDialog) {
 		// all dialogs closed, show main
-		d.layoutRoot.SendToFront("main")
+		d.LayoutRoot.SendToFront("main")
 	}
 }
 
@@ -787,87 +784,99 @@ func (d *Debugger) ScrollToTxEnter(e *am.Event) bool {
 	return ok && c != nil && len(c.MsgTxs) > cursor+1
 }
 
+// ScrollToTxState scrolls to a specific transition.
 func (d *Debugger) ScrollToTxState(e *am.Event) {
 	d.Mach.Remove1(ss.ScrollToTx, nil)
 
 	cursor := e.Args["Client.cursorTx"].(int)
 	d.C.CursorTx = d.filterTxCursor(d.C, cursor, true)
+	// reset the step timeline
+	d.C.CursorStep = 0
 	d.RedrawFull(false)
 }
 
 func (d *Debugger) ToggleFilterState(_ *am.Event) {
+	// TODO split the state into an async one
 	filterTxs := false
 
 	switch d.focusedFilter {
-	// TODO filter enum
-	case "skip-canceled":
+
+	case filterCanceledTx:
 		if d.Mach.Is1(ss.FilterCanceledTx) {
 			d.Mach.Remove1(ss.FilterCanceledTx, nil)
 		} else {
 			d.Mach.Add1(ss.FilterCanceledTx, nil)
 		}
 		filterTxs = true
-	case "skip-auto":
+
+	case filterAutoTx:
 		if d.Mach.Is1(ss.FilterAutoTx) {
 			d.Mach.Remove1(ss.FilterAutoTx, nil)
 		} else {
 			d.Mach.Add1(ss.FilterAutoTx, nil)
 		}
 		filterTxs = true
-	case "skip-empty":
+
+	case filterEmptyTx:
 		if d.Mach.Is1(ss.FilterEmptyTx) {
 			d.Mach.Remove1(ss.FilterEmptyTx, nil)
 		} else {
 			d.Mach.Add1(ss.FilterEmptyTx, nil)
 		}
 		filterTxs = true
-	case "log-0":
-		d.LogLevel = am.LogNothing
-	case "log-1":
-		d.LogLevel = am.LogChanges
-	case "log-2":
-		d.LogLevel = am.LogOps
-	case "log-3":
-		d.LogLevel = am.LogDecisions
-	case "log-4":
-		d.LogLevel = am.LogEverything
+
+	case filterLog0:
+		d.Opts.Filters.LogLevel = am.LogNothing
+	case filterLog1:
+		d.Opts.Filters.LogLevel = am.LogChanges
+	case filterLog2:
+		d.Opts.Filters.LogLevel = am.LogOps
+	case filterLog3:
+		d.Opts.Filters.LogLevel = am.LogDecisions
+	case filterLog4:
+		d.Opts.Filters.LogLevel = am.LogEverything
 	}
 
 	stateCtx := d.Mach.NewStateCtx(ss.ToggleFilter)
 
-	go func() {
-		// TODO split the state
-		<-d.Mach.WhenQueueEnds(stateCtx)
-		if stateCtx.Err() != nil {
-			d.Mach.Remove1(ss.ToggleFilter, nil)
+	// process the filter change
+	go d.processFilterChange(stateCtx, filterTxs)
+}
+
+func (d *Debugger) processFilterChange(ctx context.Context, filterTxs bool) {
+	// TODO refac to FilterToggledState
+	<-d.Mach.WhenQueueEnds(ctx)
+	if ctx.Err() != nil {
+		d.Mach.Remove1(ss.ToggleFilter, nil)
+		return // expired
+	}
+
+	if filterTxs {
+		d.filterClientTxs()
+	}
+
+	if d.C != nil {
+
+		// rebuild the whole log to reflect the UI changes
+		err := d.rebuildLog(ctx, len(d.C.MsgTxs)-1)
+		if err != nil {
+			d.Mach.AddErr(err)
+		}
+		d.updateLog(false)
+
+		if ctx.Err() != nil {
 			return // expired
 		}
 
 		if filterTxs {
-			d.filterClientTxs()
-		}
-
-		if d.C != nil {
-
-			// rebuild the whole log to reflect the UI changes
-			err := d.rebuildLog(stateCtx, len(d.C.MsgTxs)-1)
-			if err != nil {
-				d.Mach.AddErr(err)
-			}
-			d.updateLog(false)
-
-			if stateCtx.Err() != nil {
-				return // expired
-			}
-
 			d.C.CursorTx = d.filterTxCursor(d.C, d.C.CursorTx, false)
 		}
+	}
 
-		// queue this removal after filter states, so we can depend on WhenNot
-		d.Mach.Remove1(ss.ToggleFilter, nil)
+	// queue this removal after filter states, so we can depend on WhenNot
+	d.Mach.Remove1(ss.ToggleFilter, nil)
 
-		d.updateFiltersBar()
-		d.updateTimelines()
-		d.draw()
-	}()
+	d.updateFiltersBar()
+	d.updateTimelines()
+	d.draw()
 }
