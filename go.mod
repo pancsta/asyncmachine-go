@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	code.rocketnine.space/tslocum/cbind v0.1.5
+	github.com/andybalholm/brotli v1.1.0
 	github.com/dsnet/compress v0.0.1
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gdamore/tcell/v2 v2.7.0
