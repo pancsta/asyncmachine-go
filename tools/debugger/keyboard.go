@@ -25,10 +25,10 @@ func normalizeText(text string) string {
 
 func (d *Debugger) bindKeyboard() {
 	// focus manager
-	d.focusManager = cview.NewFocusManager(d.app.SetFocus)
+	d.focusManager = cview.NewFocusManager(d.App.SetFocus)
 	d.focusManager.SetWrapAround(true)
 	inputHandler := cbind.NewConfiguration()
-	d.app.SetAfterFocusFunc(d.afterFocus())
+	d.App.SetAfterFocusFunc(d.afterFocus())
 
 	focusChange := func(f func()) func(ev *tcell.EventKey) *tcell.EventKey {
 		return func(ev *tcell.EventKey) *tcell.EventKey {
@@ -68,7 +68,7 @@ func (d *Debugger) bindKeyboard() {
 	}
 
 	d.searchTreeSidebar(inputHandler)
-	d.app.SetInputCapture(inputHandler.Capture)
+	d.App.SetInputCapture(inputHandler.Capture)
 }
 
 // afterFocus forwards focus events to machine states
@@ -256,23 +256,22 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			// TODO extract
 			if d.Mach.Is1(ss.FiltersFocused) {
 				switch d.focusedFilter {
-				// TODO enum
-				case "skip-canceled":
-					d.focusedFilter = "log-4"
-				case "skip-auto":
-					d.focusedFilter = "skip-canceled"
-				case "skip-empty":
-					d.focusedFilter = "skip-auto"
-				case "log-0":
-					d.focusedFilter = "skip-empty"
-				case "log-1":
-					d.focusedFilter = "log-0"
-				case "log-2":
-					d.focusedFilter = "log-1"
-				case "log-3":
-					d.focusedFilter = "log-2"
-				case "log-4":
-					d.focusedFilter = "log-3"
+				case filterCanceledTx:
+					d.focusedFilter = filterLog4
+				case filterAutoTx:
+					d.focusedFilter = filterCanceledTx
+				case filterEmptyTx:
+					d.focusedFilter = filterAutoTx
+				case filterLog0:
+					d.focusedFilter = filterEmptyTx
+				case filterLog1:
+					d.focusedFilter = filterLog0
+				case filterLog2:
+					d.focusedFilter = filterLog1
+				case filterLog3:
+					d.focusedFilter = filterLog2
+				case filterLog4:
+					d.focusedFilter = filterLog3
 				}
 				d.updateFiltersBar()
 
@@ -308,23 +307,22 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			// TODO extract
 			if d.Mach.Is1(ss.FiltersFocused) {
 				switch d.focusedFilter {
-				// TODO enum
-				case "skip-canceled":
-					d.focusedFilter = "skip-auto"
-				case "skip-auto":
-					d.focusedFilter = "skip-empty"
-				case "skip-empty":
-					d.focusedFilter = "log-0"
-				case "log-0":
-					d.focusedFilter = "log-1"
-				case "log-1":
-					d.focusedFilter = "log-2"
-				case "log-2":
-					d.focusedFilter = "log-3"
-				case "log-3":
-					d.focusedFilter = "log-4"
-				case "log-4":
-					d.focusedFilter = "skip-canceled"
+				case filterCanceledTx:
+					d.focusedFilter = filterAutoTx
+				case filterAutoTx:
+					d.focusedFilter = filterEmptyTx
+				case filterEmptyTx:
+					d.focusedFilter = filterLog0
+				case filterLog0:
+					d.focusedFilter = filterLog1
+				case filterLog1:
+					d.focusedFilter = filterLog2
+				case filterLog2:
+					d.focusedFilter = filterLog3
+				case filterLog3:
+					d.focusedFilter = filterLog4
+				case filterLog4:
+					d.focusedFilter = filterCanceledTx
 				}
 				d.updateFiltersBar()
 

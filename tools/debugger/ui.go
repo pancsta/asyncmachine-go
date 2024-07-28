@@ -1,6 +1,7 @@
 package debugger
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -97,19 +98,17 @@ func (d *Debugger) initFiltersBar() {
 	d.filtersBar = cview.NewTextView()
 	d.filtersBar.SetTextAlign(cview.AlignLeft)
 	d.filtersBar.SetDynamicColors(true)
-	// TODO enum
-	d.focusedFilter = "skip-canceled"
+	d.focusedFilter = filterCanceledTx
 	d.updateFiltersBar()
 }
 
-// TODO tab navigation
 // TODO anon machine with handlers
 func (d *Debugger) initExportDialog() *cview.Modal {
 	exportDialog := cview.NewModal()
 	form := exportDialog.GetForm()
 	form.AddInputField("Filename", "am-dbg-dump", 20, nil, nil)
 
-	exportDialog.SetText("Export all clients data (esc quits)")
+	exportDialog.SetText("Export to a file")
 	// exportDialog.AddButtons([]string{"Save"})
 	exportDialog.AddButtons([]string{"Save", "Cancel"})
 	exportDialog.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
@@ -122,7 +121,7 @@ func (d *Debugger) initExportDialog() *cview.Modal {
 
 		if buttonLabel == "Save" && filename != "" {
 			form.GetButton(0).SetLabel("Saving...")
-			form.Draw(d.app.GetScreen())
+			form.Draw(d.App.GetScreen())
 			d.exportData(filename)
 			d.Mach.Remove1(ss.ExportDialog, nil)
 			form.GetButton(0).SetLabel("Save")
@@ -153,6 +152,9 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[::b]bold[::-]         touched state
 		[::b]underline[::-]    called state
 		[::b]![::-]            state canceled
+		[::b]|[::-]            rel link
+		[green::b]|[-::-]            rel link start
+		[red::b]|[-::-]            rel link end
 	
 		[::b]### [::u]matrix legend[::-]
 	
@@ -176,7 +178,7 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	right.SetTitle(" Keystrokes ")
 	right.SetDynamicColors(true)
 	right.SetPadding(1, 1, 1, 1)
-	right.SetText(dedent.Dedent(strings.Trim(`
+	right.SetText(fmt.Sprintf(dedent.Dedent(strings.Trim(`
 		[::b]### [::u]keystrokes[::-]
 	
 		[::b]tab[::-]                change focus
@@ -198,7 +200,10 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[::b]backspace[::-]          remove machine
 		[::b]ctrl+q[::-]             quit
 		[::b]?[::-]                  show help
-	`, "\n ")))
+	
+		[::b]### [::u]version[::-]
+		%s
+	`, "\n ")), d.Opts.Version))
 
 	grid := cview.NewGrid()
 	grid.SetTitle(" AsyncMachine Debugger ")
@@ -284,7 +289,7 @@ func (d *Debugger) initLayout() {
 	panels.AddPanel("main", mainGrid, true, true)
 
 	d.mainGrid = mainGrid
-	d.layoutRoot = panels
+	d.LayoutRoot = panels
 }
 
 func (d *Debugger) drawViews() {
@@ -310,10 +315,16 @@ func (d *Debugger) draw() {
 	d.repaintScheduled = true
 
 	go func() {
+		select {
+		case <-d.Mach.Ctx.Done():
+			return
+
 		// debounce every 16msec
-		time.Sleep(16 * time.Millisecond)
+		case <-time.After(16 * time.Millisecond):
+		}
+
 		// TODO re-draw only changed components
-		d.app.QueueUpdateDraw(func() {})
+		d.App.QueueUpdateDraw(func() {})
 		d.repaintScheduled = false
 	}()
 }
