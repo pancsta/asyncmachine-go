@@ -48,6 +48,8 @@ type Params struct {
 type RootFn func(cmd *cobra.Command, args []string, params Params)
 
 func RootCmd(fn RootFn) *cobra.Command {
+	// TODO --dark-mode auto|on|off
+	// TODO --rename-duplicates renames disconnected dups as NAME-TIME
 	rootCmd := &cobra.Command{
 		Use: "am-dbg",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -55,38 +57,41 @@ func RootCmd(fn RootFn) *cobra.Command {
 		},
 	}
 
-	// TODO --dark-mode auto|on|off
-	// TODO --rename-duplicates renames disconnected dups as NAME-TIME
-	rootCmd.Flags().String(cliParamLogFile, "am-dbg.log",
+	AddFlags(rootCmd)
+
+	return rootCmd
+}
+
+func AddFlags(rootCmd *cobra.Command) {
+	f := rootCmd.Flags()
+	f.String(cliParamLogFile, "am-dbg.log",
 		"Log file path")
-	rootCmd.Flags().Int(cliParamLogLevel, 0,
+	f.Int(cliParamLogLevel, 0,
 		"Log level, 0-5 (silent-everything)")
-	rootCmd.Flags().StringP(cliParamServerAddr,
+	f.StringP(cliParamServerAddr,
 		cliParamServerAddrShort, telemetry.DbgHost,
 		"Host and port for the debugger to listen on")
-	rootCmd.Flags().String(cliParamAmDbgURL, "",
+	f.String(cliParamAmDbgURL, "",
 		"Debug this instance of am-dbg with another one")
-	rootCmd.Flags().StringP(cliParamView, cliParamViewShort, "tree-log",
+	f.StringP(cliParamView, cliParamViewShort, "tree-log",
 		"Initial view (tree-log, tree-matrix, matrix)")
-	rootCmd.Flags().StringP(cliParamStartupMach,
+	f.StringP(cliParamStartupMach,
 		cliParamStartupMachShort, "",
 		"Select a machine by ID on startup (requires --"+cliParamImport+")")
 	// TODO parse copy-paste commas, eg 1,001
-	rootCmd.Flags().IntP(cliParamStartupTx, cliParamStartupTxShort, 0,
+	f.IntP(cliParamStartupTx, cliParamStartupTxShort, 0,
 		"Select a transaction by _number_ on startup (requires --"+
 			cliParamStartupMach+")")
-	rootCmd.Flags().Bool(cliParamEnableMouse, false,
+	f.Bool(cliParamEnableMouse, false,
 		"Enable mouse support (experimental)")
-	rootCmd.Flags().Bool(cliParamCleanOnConnect, false,
+	f.Bool(cliParamCleanOnConnect, false,
 		"Clean up disconnected clients on the 1st connection")
-	rootCmd.Flags().BoolP(cliParamSelectConn, cliParamSelectConnShort, false,
+	f.BoolP(cliParamSelectConn, cliParamSelectConnShort, false,
 		"Select the newly connected machine, if no other is connected")
-	rootCmd.Flags().StringP(cliParamImport, cliParamImportShort, "",
+	f.StringP(cliParamImport, cliParamImportShort, "",
 		"Import an exported gob.bz2 file")
-	rootCmd.Flags().Bool(cliParamVersion, false,
+	f.Bool(cliParamVersion, false,
 		"Print version and exit")
-
-	return rootCmd
 }
 
 func GetVersion() string {
@@ -119,8 +124,8 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 	}
 
 	logLevel := am.LogLevel(logLevelInt)
-	serverURL := cmd.Flag(cliParamServerAddr).Value.String()
-	debugURL := cmd.Flag(cliParamAmDbgURL).Value.String()
+	serverAddr := cmd.Flag(cliParamServerAddr).Value.String()
+	debugAddr := cmd.Flag(cliParamAmDbgURL).Value.String()
 	importData := cmd.Flag(cliParamImport).Value.String()
 	startupMachine := cmd.Flag(cliParamStartupMach).Value.String()
 	startupView := cmd.Flag(cliParamView).Value.String()
@@ -148,8 +153,8 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 		LogLevel:        logLevel,
 		LogFile:         logFile,
 		Version:         version,
-		ServerURL:       serverURL,
-		DebugAddr:       debugURL,
+		ServerURL:       serverAddr,
+		DebugAddr:       debugAddr,
 		ImportData:      importData,
 		StartupMachine:  startupMachine,
 		StartupView:     startupView,

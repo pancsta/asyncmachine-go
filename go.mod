@@ -5,9 +5,9 @@ go 1.21
 require (
 	code.rocketnine.space/tslocum/cbind v0.1.5
 	github.com/andybalholm/brotli v1.1.0
-	github.com/dsnet/compress v0.0.1
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gdamore/tcell/v2 v2.7.0
+	github.com/gliderlabs/ssh v0.3.7
 	github.com/hibiken/asynq v0.24.1
 	github.com/lithammer/dedent v1.1.0
 	github.com/pancsta/cview v1.5.11
@@ -23,6 +23,7 @@ require (
 )
 
 require (
+	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -42,6 +43,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	golang.org/x/crypto v0.18.0 // indirect
 	golang.org/x/net v0.20.0 // indirect
 	golang.org/x/sys v0.16.0 // indirect
 	golang.org/x/term v0.16.0 // indirect
