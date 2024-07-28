@@ -635,25 +635,17 @@ See also [issues](https://github.com/pancsta/asyncmachine-go/issues).
 
 ## Changelog
 
-Latest release: `v0.6.3`
+Latest release: `v0.6.4`
 
-- fix\(am-dbg\): make LogUserScrolled pause the timeline [\#89](https://github.com/pancsta/asyncmachine-go/pull/89) (@pancsta)
-- feat\(machine\): retain log level for pre-logs [\#88](https://github.com/pancsta/asyncmachine-go/pull/88) (@pancsta)
-- fix\(am-dbg\): fix tail mode with filters [\#85](https://github.com/pancsta/asyncmachine-go/pull/85) (@pancsta)
-- fix: address misc issues [\#84](https://github.com/pancsta/asyncmachine-go/pull/84) (@pancsta)
-- docs: add pdf manual [\#83](https://github.com/pancsta/asyncmachine-go/pull/83) (@pancsta)
-- docs: minor manual updates [\#82](https://github.com/pancsta/asyncmachine-go/pull/82) (@pancsta)
-- refac\(am-dbg\): split and reorg files [\#81](https://github.com/pancsta/asyncmachine-go/pull/81) (@pancsta)
-- feat\(telemetry\): include log level in msgs [\#80](https://github.com/pancsta/asyncmachine-go/pull/80) (@pancsta)
-- feat\(am-dbg\): add tx and log filtering [\#79](https://github.com/pancsta/asyncmachine-go/pull/79) (@pancsta)
-- feat\(machine\): add global AnyAny negotiation handler [\#78](https://github.com/pancsta/asyncmachine-go/pull/78) (@pancsta)
-- refac\(machine\): extract When\* ctx disposal [\#77](https://github.com/pancsta/asyncmachine-go/pull/77) (@pancsta)
-- refac\(machine\): refac to directional channs [\#76](https://github.com/pancsta/asyncmachine-go/pull/76) (@pancsta)
-- refac\(machine\): reorder Eval params [\#75](https://github.com/pancsta/asyncmachine-go/pull/75) (@pancsta)
-- feat\(machine\): add NoOpTracer for embedding [\#74](https://github.com/pancsta/asyncmachine-go/pull/74) (@pancsta)
-- feat\(machine\): add Tracer.QueueEnd [\#73](https://github.com/pancsta/asyncmachine-go/pull/73) (@pancsta)
-- test\(machine\): increase coverage to 85% [\#72](https://github.com/pancsta/asyncmachine-go/pull/72) (@pancsta)
-- refac\(machine\): make WhenDisposed a method [\#71](https://github.com/pancsta/asyncmachine-go/pull/71) (@pancsta)
+- test\(am-dbg\): add TUI integration tests [\#97](https://github.com/pancsta/asyncmachine-go/pull/97) (@pancsta)
+- feat\(machine\): add export / import [\#96](https://github.com/pancsta/asyncmachine-go/pull/96) (@pancsta)
+- feat\(am-dbg\): add ssh server [\#95](https://github.com/pancsta/asyncmachine-go/pull/95) (@pancsta)
+- feat\(am-dbg\): render guidelines in tree relations [\#94](https://github.com/pancsta/asyncmachine-go/pull/94) (@pancsta)
+- refac\(am-dbg\): refac cli apis [\#93](https://github.com/pancsta/asyncmachine-go/pull/93) (@pancsta)
+- feat\(am-dbg\): switch compression to brotli [\#92](https://github.com/pancsta/asyncmachine-go/pull/92) (@pancsta)
+- feat\(am-dbg\): add Start and Dispose methods [\#91](https://github.com/pancsta/asyncmachine-go/pull/91) (@pancsta)
+- feat\(helpers\): add 5 helper funcs, eg Add1Sync, EnvLogLevel [\#90](https://github.com/pancsta/asyncmachine-go/pull/90)
+    (@pancsta)
 
 Maintenance release: `v0.5.1`
 
