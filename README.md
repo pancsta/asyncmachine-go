@@ -9,7 +9,7 @@
   <p align="center">
     <a href="#usage"><strong>Usage »</strong></a>
     <br>
-    <a href="#examples"><strong>Demos »</strong></a>
+    <a href="#demos"><strong>Demos »</strong></a>
     <br>
     <a href="#examples"><strong>Examples »</strong></a>
     <br>
@@ -164,7 +164,7 @@ See [docs/cookbook.md](docs/cookbook.md) for more snippets.
 
 Demos show data from the [go-libp2p-pubsub simulator](#libp2p-pubsub-simulator).
 
-- [am-dbg over web](http://188.166.101.108:8080/)
+- [am-dbg over web](http://188.166.101.108:8080/wetty/ssh/am-dbg?pass=am-dbg:8080/wetty/ssh/am-dbg?pass=am-dbg)
 - am-dbg over ssh - `ssh 188.166.101.108 -p 4444`
 
 ## Examples
