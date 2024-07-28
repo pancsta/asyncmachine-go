@@ -3,17 +3,19 @@
 package debugger
 
 import (
+	"bufio"
 	"encoding/gob"
 	"fmt"
 	"log"
 	"os"
 	"path"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/dsnet/compress/bzip2"
+	"github.com/andybalholm/brotli"
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 	"github.com/samber/lo"
@@ -633,8 +635,8 @@ func (d *Debugger) updateBorderColor() {
 	}
 }
 
-// TODO should be an async state
 func (d *Debugger) exportData(filename string) {
+	// TODO should be an async state
 	// validate the input
 	if filename == "" {
 		log.Printf("Error: export failed no filename")
@@ -651,7 +653,7 @@ func (d *Debugger) exportData(filename string) {
 		log.Printf("Error: export failed %s", err)
 		return
 	}
-	gobPath := path.Join(cwd, filename+".gob.bz2")
+	gobPath := path.Join(cwd, filename+".gob.br")
 	fw, err := os.Create(gobPath)
 	if err != nil {
 		log.Printf("Error: export failed %s", err)
@@ -668,38 +670,31 @@ func (d *Debugger) exportData(filename string) {
 	}
 
 	// create a new bzip2 writer
-	bz2w, err := bzip2.NewWriter(fw, nil)
-	if err != nil {
-		log.Printf("Error: export failed %s", err)
-		return
-	}
-	defer bz2w.Close()
+	brCompress := brotli.NewWriter(bufio.NewWriter(fw))
+	defer brCompress.Close()
 
 	// encode
-	encoder := gob.NewEncoder(bz2w)
+	encoder := gob.NewEncoder(brCompress)
 	err = encoder.Encode(data)
 	if err != nil {
 		log.Printf("Error: export failed %s", err)
 	}
 }
 
-// TODO async state
 func (d *Debugger) ImportData(filename string) {
+	// TODO show error msg (for old dump formats)
 	fr, err := os.Open(filename)
 	if err != nil {
 		log.Printf("Error: import failed %s", err)
 		return
 	}
+	defer fr.Close()
 
 	// decompress bz2
-	bz2r, err := bzip2.NewReader(fr, nil)
-	if err != nil {
-		log.Printf("Error: import failed %s", err)
-		return
-	}
+	brReader := brotli.NewReader(bufio.NewReader(fr))
 
 	// decode gob
-	decoder := gob.NewDecoder(bz2r)
+	decoder := gob.NewDecoder(brReader)
 	var res []*Exportable
 	err = decoder.Decode(&res)
 	if err != nil {
@@ -718,6 +713,9 @@ func (d *Debugger) ImportData(filename string) {
 			d.parseMsg(d.Clients[id], i)
 		}
 	}
+
+	// GC
+	runtime.GC()
 }
 
 func (d *Debugger) getTxInfo(txIndex int,
