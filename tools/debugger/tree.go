@@ -4,16 +4,17 @@ package debugger
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/gdamore/tcell/v2"
+	"github.com/pancsta/cview"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
-
-	"github.com/gdamore/tcell/v2"
-	"github.com/pancsta/cview"
 )
 
 type nodeRef struct {
@@ -39,6 +40,11 @@ type nodeRef struct {
 	isProp    bool
 	propLabel string
 }
+
+const treeIndent = 3
+
+// TODO tree model
+var trailingDots = regexp.MustCompile(`\.+$`)
 
 func (d *Debugger) initMachineTree() *cview.TreeView {
 	d.treeRoot = cview.NewTreeNode("")
@@ -107,7 +113,7 @@ func (d *Debugger) updateTree() {
 	} else {
 		tx := c.MsgTxs[c.CursorTx-1]
 		msg = tx
-		queue = fmt.Sprintf(":%d (Q:%d) ",
+		queue = fmt.Sprintf(":%d Q:%d ",
 			len(c.MsgStruct.StatesIndex), tx.Queue)
 	}
 
@@ -155,7 +161,7 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 		}
 
 		ref.touched = false
-		node.SetBold(false)
+		// node.SetBold(false)
 		node.SetUnderline(false)
 
 		if ref.isRel {
@@ -248,12 +254,6 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 	return maxLen
 }
 
-func maxNodeLen(node *cview.TreeNode, maxLen int, depth int) int {
-	return max(maxLen, node.VisibleLength()+(depth-1)*3)
-}
-
-const treeIndent = 3
-
 func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 	c := d.C
 	if c == nil {
@@ -310,8 +310,9 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 				step := steps[i]
 				textMargin := ""
 				visibleLen := node.VisibleLength()
+				// TODO unified color
 				if maxLen+1-visibleLen > 0 {
-					textMargin = strings.Repeat(" ", maxLen+1-visibleLen)
+					textMargin = strings.Repeat(" ", maxLen+1-visibleLen) + "[white]"
 					// debug
 					// log.Printf("node: %s, textMargin: %d, depth: %d, visibleLen: %d",
 					//	node.GetText(), len(textMargin), depth, visibleLen)
@@ -320,14 +321,14 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 				switch step.Type {
 				case am.StepRemoveNotActive:
 					if step.ToState == stateName && !ref.isRef {
-						node.SetBold(true)
+						nodeSetBold(node)
 						ref.touched = true
 					}
 
 				case am.StepRemove:
 					if step.ToState == stateName && !ref.isRef {
-						node.SetText(node.GetText() + textMargin + "-")
-						node.SetBold(true)
+						node.SetText(node.GetText() + textMargin + "[::b]-[::-]")
+						nodeSetBold(node)
 						ref.touched = true
 					}
 
@@ -335,16 +336,16 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 
 					if step.FromState == stateName && !ref.isRef {
 
-						node.SetBold(true)
+						nodeSetBold(node)
 						ref.touched = true
 					} else if step.ToState == stateName && !ref.isRef {
 
-						node.SetBold(true)
+						nodeSetBold(node)
 						ref.touched = true
 					} else if ref.isRef && step.ToState == stateName &&
 						ref.parentState == step.FromState {
 
-						node.SetBold(true)
+						nodeSetBold(node)
 						ref.touched = true
 					}
 
@@ -354,29 +355,30 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 					}
 					// states handler executed
 					if step.FromState == stateName || step.ToState == stateName {
-						node.SetText(node.GetText() + textMargin + "*")
-						node.SetBold(true)
+						node.SetText(node.GetText() + textMargin + "[::b]*[::-]")
+						nodeSetBold(node)
 						ref.touched = true
 					}
 
 				case am.StepSet:
 					if step.ToState == stateName && !ref.isRef {
-						node.SetText(node.GetText() + textMargin + "+")
-						node.SetBold(true)
+						node.SetText(node.GetText() + textMargin + "[::b]+[::-]")
+						nodeSetBold(node)
 						ref.touched = true
 					}
 
 				case am.StepRequested:
 					if step.ToState == stateName && !ref.isRef {
-						node.SetText("[::u]" + node.GetText() + "[::-]")
-						node.SetBold(true)
+						text := node.GetText()
+						idx := strings.Index(text, " ")
+						node.SetText("[::bu]" + text[:idx] + "[::-]" + text[idx:])
 						ref.touched = true
 					}
 
 				case am.StepCancel:
 					if step.ToState == stateName && !ref.isRef {
 						node.SetText(node.GetText() + textMargin + "!")
-						node.SetBold(true)
+						nodeSetBold(node)
 						ref.touched = true
 					}
 				}
@@ -397,7 +399,7 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 				}
 
 				if step.Data == ref.rel && ref.parentState == step.FromState {
-					node.SetBold(true)
+					nodeSetBold(node)
 					ref.touched = true
 				}
 			}
@@ -480,27 +482,105 @@ func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step) {
 			}
 		}
 
-		// draw columns
-		nodeColStartIdx := colStartIdx - depth*treeIndent + treeIndent
-		nodeCols := strings.Repeat(" ", max(0,
-			nodeColStartIdx-node.VisibleLength()))
+		// check if its some start/end
+		isAnyStart := false
+		isAnyEnd := false
+		for _, col := range relCols {
+			isAnyStart = ref.isRef && ref.stateName != "" &&
+				col.name == getRelColNameFromRef(ref)
+			if isAnyStart {
+				break
+			}
 
-		if len(relCols) > 0 {
-			nodeCols += "[white]"
+			isAnyEnd = !ref.isRef && ref.stateName != "" &&
+				strings.HasSuffix(col.name, ref.stateName)
+			if isAnyEnd {
+				break
+			}
 		}
 
+		// draw columns
+		// TODO REWRITE TO A MODEL
+		nodeColStartIdx := colStartIdx - depth*treeIndent + treeIndent
+		nodeCols := ""
+		spaces := nodeColStartIdx - node.VisibleLength()
+		if isAnyStart || isAnyEnd {
+			dotted := ""
+			firstSpace := false
+			secondSpace := false
+			thirdSpace := false
+			white := false
+
+			for _, t := range node.GetText() {
+				if t == ' ' && !firstSpace {
+					firstSpace = true
+					dotted += " "
+					continue
+				}
+
+				if t == ' ' {
+					if !secondSpace {
+						secondSpace = true
+						dotted += ".[grey]"
+					} else if !thirdSpace {
+						thirdSpace = true
+						dotted += "[grey]"
+					} else {
+						dotted += "."
+					}
+				} else if secondSpace && !white {
+					white = true
+					dotted += "[white]" + string(t)
+				} else {
+					dotted += string(t)
+				}
+			}
+
+			node.SetText(dotted + "[grey]")
+			nodeCols = strings.Repeat(".", max(0, spaces))
+		} else {
+			nodeCols = strings.Repeat(" ", max(0, spaces))
+		}
+
+		if len(relCols) > 0 {
+			nodeCols += "[grey]"
+		}
+
+		// draw columns
 		active := 0
 		for _, col := range relCols {
+
 			forced := false
 			for _, forcedCol := range forcedCols {
 				if forcedCol == col.name {
 					forced = true
 				}
 			}
+
+			isRelStart := ref.isRef && ref.stateName != "" &&
+				col.name == getRelColNameFromRef(ref)
+			isRelEnd := !ref.isRef && ref.stateName != "" &&
+				strings.HasSuffix(col.name, ref.stateName)
+
 			if !col.closed || forced {
-				// TODO color based on the map key
-				nodeCols += "|"
+				// debug
+				// d.Mach.Log("%v | %s | %s", ref.isRef, ref.stateName, col.name)
+				// if ref.isRef {
+				// 	d.Mach.Log("getRelColNameFromRef: %s", getRelColNameFromRef(ref))
+				// }
+
+				if isRelStart {
+					nodeCols += "[green::b]|[grey::-]"
+				} else if isRelEnd {
+					nodeCols += "[red::b]|[grey::-]"
+				} else {
+					nodeCols += "|"
+				}
 				active++
+
+			} else if isAnyStart || isAnyEnd {
+				// link column
+				nodeCols += "."
 			} else {
 				// empty column
 				nodeCols += " "
@@ -510,51 +590,14 @@ func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step) {
 		// d.Mach.Log("cols: %d [%d] | s-idx: %d | len: %d", len(relCols),
 		// active, nodeColStartIdx, nodeVisibleLen(node))
 
-		node.SetText(node.GetText() + nodeCols)
+		// d.Mach.Log("%s", nodeCols)
+		node.SetText(node.GetText() + trailingDots.ReplaceAllString(nodeCols, ""))
 
 		// debug
 		// d.Mach.Log("%s%s", strings.Repeat("---", depth), node.GetText())
 
 		return true
 	})
-}
-
-func parentExpanded(node *cview.TreeNode) bool {
-	for node = node.GetParent(); node != nil; node = node.GetParent() {
-		if !node.IsExpanded() {
-			return false
-		}
-	}
-	return true
-}
-
-func handleTreeCol(source, name string, relCols []RelCol) ([]RelCol, bool) {
-	closed := false
-	for i, col := range relCols {
-		if col.name == name && col.source != source {
-			// close a column
-			relCols[i].closed = true
-			closed = true
-		}
-	}
-
-	if closed {
-		return relCols, true
-	}
-
-	// create a new column
-	relCols = append(relCols, RelCol{
-		colIndex: len(relCols),
-		name:     name,
-		source:   source,
-	})
-
-	return relCols, false
-}
-
-func getRelColName(step *am.Step) string {
-	return step.FromState + "-" + step.Data.(am.Relation).String() +
-		"-" + step.ToState
 }
 
 func (d *Debugger) handleExpanded(
@@ -655,8 +698,51 @@ func (d *Debugger) sortTree() {
 	d.treeRoot.SetChildren(nodes)
 }
 
+func parentExpanded(node *cview.TreeNode) bool {
+	for node = node.GetParent(); node != nil; node = node.GetParent() {
+		if !node.IsExpanded() {
+			return false
+		}
+	}
+	return true
+}
+
+func handleTreeCol(source, name string, relCols []RelCol) ([]RelCol, bool) {
+	closed := false
+	for i, col := range relCols {
+		if col.name == name && col.source != source {
+			// close a column
+			relCols[i].closed = true
+			closed = true
+		}
+	}
+
+	if closed {
+		return relCols, true
+	}
+
+	// create a new column
+	relCols = append(relCols, RelCol{
+		colIndex: len(relCols),
+		name:     name,
+		source:   source,
+	})
+
+	return relCols, false
+}
+
+func getRelColName(step *am.Step) string {
+	return step.FromState + "-" + step.Data.(am.Relation).String() +
+		"-" + step.ToState
+}
+
+func getRelColNameFromRef(ref *nodeRef) string {
+	return ref.parentState + "-" + ref.rel.String() + "-" + ref.stateName
+}
+
 func addRelation(
-	stateNode *cview.TreeNode, name string, rel am.Relation, relations []string,
+	stateNode *cview.TreeNode, parentState string, rel am.Relation,
+	relations []string,
 ) {
 	if len(relations) <= 0 {
 		return
@@ -666,15 +752,17 @@ func addRelation(
 	relNode.SetReference(&nodeRef{
 		isRel:       true,
 		rel:         rel,
-		parentState: name,
+		parentState: parentState,
 	})
 
-	for _, relState := range relations {
+	for i := range relations {
+		relState := relations[i]
 		stateNode := cview.NewTreeNode(relState)
 		stateNode.SetReference(&nodeRef{
 			isRef:       true,
+			rel:         rel,
 			stateName:   relState,
-			parentState: name,
+			parentState: parentState,
 		})
 		relNode.AddChild(stateNode)
 	}
@@ -696,4 +784,21 @@ func capitalizeFirst(s string) string {
 		return s
 	}
 	return strings.ToUpper(string(s[0])) + s[1:]
+}
+
+func maxNodeLen(node *cview.TreeNode, maxLen int, depth int) int {
+	return max(maxLen, node.VisibleLength()+(depth-1)*3)
+}
+
+func nodeSetBold(node *cview.TreeNode) {
+	txt := node.GetText()
+	if strings.Contains(txt, "[::b]") {
+		return
+	}
+	idx := strings.Index(txt, " ")
+	if idx < 0 {
+		node.SetText("[::b]" + txt + "[::-]")
+		return
+	}
+	node.SetText("[::b]" + txt[:idx] + "[::-]" + txt[idx:])
 }
