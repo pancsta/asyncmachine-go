@@ -25,6 +25,7 @@ type A map[string]any
 type T []uint64
 
 // Clocks is a map of state names to their clocks.
+// TODO rename to Clock
 type Clocks map[string]uint64
 
 // State defines a single state of a machine, its properties and relations.
@@ -128,6 +129,8 @@ const (
 	// - Machine.WhenNot
 	// - Machine.WhenArgs
 	// - Machine.WhenTime
+	// - Machine.WhenTicks
+	// - Machine.WhenTicksEq
 	Queued
 	// ResultNoOp means that the transition was a no-op, i.e. the state was
 	// already active. ResultNoOp is only used by helpers, and never returned by
