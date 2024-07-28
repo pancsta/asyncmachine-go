@@ -9,6 +9,8 @@
   <p align="center">
     <a href="#usage"><strong>Usage »</strong></a>
     <br>
+    <a href="#examples"><strong>Demos »</strong></a>
+    <br>
     <a href="#examples"><strong>Examples »</strong></a>
     <br>
     <a href="#documentation"><strong>Documentation »</strong></a>
@@ -24,7 +26,7 @@
 
 <hr>
 
-![TUI Debugger](assets/am-dbg.gif)
+[![TUI Debugger](assets/am-dbg-teaser.gif)](assets/am-dbg-teaser.gif)
 
 **asyncmachine-go** is a minimal implementation of [AsyncMachine](https://github.com/TobiaszCudnik/asyncmachine)
 in Golang using **channels and context**. It aims at simplicity and speed.
@@ -150,7 +152,7 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 <-mach.WhenTime(am.S{"Foo", "Bar"}, am.T{6, 10}, nil)
 
 // wait for DownloadingFile to have a tick increased by 2 since now
-<-mach.WhenTick("DownloadingFile", 2, nil)
+<-mach.WhenTicks("DownloadingFile", 2, nil)
 
 // wait for an error
 <-mach.WhenErr()
@@ -162,8 +164,8 @@ See [docs/cookbook.md](docs/cookbook.md) for more snippets.
 
 Demos show data from the [go-libp2p-pubsub simulator](#libp2p-pubsub-simulator).
 
-- [am-dbg web demo](http://188.166.101.108:8080/wetty/ssh/am-dbg?pass=am-dbg)
-- am-dbg ssh demo - `ssh 188.166.101.108 -p 4444`
+- [am-dbg over web](http://188.166.101.108:8080/)
+- am-dbg over ssh - `ssh 188.166.101.108 -p 4444`
 
 ## Examples
 
@@ -406,13 +408,10 @@ See [`tools/cmd/am-gen`](tools/cmd/am-gen/README.md) for more info.
 
 ### Debugger
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/am-dbg.dark.png?raw=true">
-  <source media="(prefers-color-scheme: light)" srcset="assets/am-dbg.light.png?raw=true">
-  <img alt="TUI debugger" src="assets/am-dbg.dark.png?raw=true">
-</picture>
+![am-dbg](assets/am-dbg.dark.png#gh-dark-mode-only)
+![am-dbg](assets/am-dbg.light.png#gh-light-mode-only)
 
-`am-dbg` is a lightweight, multi-client debugger for AM. It easily handles >100
+`am-dbg` is a lightweight, multi-client debugger for AM. It easily handles hundreds of
  client machines simultaneously streaming telemetry data (and potentially many more). Some features include:
 
 - states tree
@@ -429,11 +428,8 @@ See [`tools/cmd/am-dbg`](tools/cmd/am-dbg/README.md) for more info.
 
 ### Open Telemetry
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/otel-jaeger.dark.png?raw=true">
-  <source media="(prefers-color-scheme: light)" srcset="assets/otel-jaeger.light.png?raw=true">
-  <img alt="Test duration chart" src="assets/otel-jaeger.dark.png?raw=true">
-</picture>
+![Prometheus Grafana](assets/otel-jaeger.dark.png#gh-dark-mode-only)
+![Prometheus Grafana](assets/otel-jaeger.light.png#gh-light-mode-only)
 
 [`pkg/telemetry`](pkg/telemetry/README.md) provides [Open Telemetry](https://opentelemetry.io/) integration which exposes
 machine's states and transitions as Otel traces, compatible with [Jaeger](https://www.jaegertracing.io/).
@@ -442,11 +438,8 @@ See [`pkg/telemetry`](pkg/telemetry/README.md) for more info or [import a sample
 
 ### Prometheus
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/prometheus-grafana.dark.png?raw=true">
-  <source media="(prefers-color-scheme: light)" srcset="assets/prometheus-grafana.light.png?raw=true">
-  <img alt="Test duration chart" src="assets/prometheus-grafana.dark.png?raw=true">
-</picture>
+![Prometheus Grafana](assets/prometheus-grafana.dark.png#gh-dark-mode-only)
+![Prometheus Grafana](assets/prometheus-grafana.light.png#gh-light-mode-only)
 
 [`pkg/telemetry/prometheus`](pkg/telemetry/prometheus/README.md) binds to machine's transactions and averages the
 values withing an interval window and exposes various metrics. Combined with [Grafana](https://grafana.com/), it can be
@@ -461,11 +454,8 @@ a lot of inspectable data.
 
 ### libp2p-pubsub benchmark
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/bench.dark.jpg?raw=true">
-  <source media="(prefers-color-scheme: light)" srcset="assets/bench.light.png?raw=true">
-  <img alt="Test duration chart" src="assets/bench.dark.jpg?raw=true">
-</picture>
+![Test duration chart](assets/bench.dark.jpg#gh-dark-mode-only)
+![Test duration chart](assets/bench.light.png#gh-light-mode-only)
 
 - **pubsub host** - eg `ps-17` (20 states)<br />
   PubSub machine is a simple event loop with Multi states which get responses via arg channels. Heavy use of `Machine.Eval()`.
@@ -480,11 +470,8 @@ or the [pdf results](https://github.com/pancsta/go-libp2p-pubsub-benchmark/raw/m
 
 ### libp2p-pubsub simulator
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/sim-grafana.dark.png?raw=true">
-  <source media="(prefers-color-scheme: light)" srcset="assets/sim-grafana.light.png?raw=true">
-  <img alt="Simulator grafana dashboard" src="assets/sim-grafana.dark.png?raw=true">
-</picture>
+![Simulator grafana dashboard](assets/sim-grafana.dark.png#gh-dark-mode-only)
+![Simulator grafana dashboard](assets/sim-grafana.light.png#gh-light-mode-only)
 
 - **simulator** `sim` (14 states)<br />
   Root simulator machine, initializes the network and manipulates it during heartbeats according to frequency
@@ -508,7 +495,7 @@ am-dbg is a [cview](https://code.rocket9labs.com/tslocum/cview) TUI app with a s
 - actions (14 states)
 
 This machine features a decent amount of relations within a large number of states and 4 state groups. It's also a good
-example to see how easily an AM-based program can be controller with a script in [tools/cmd/am-dbg-demo](tools/cmd/am-dbg-demo/main.go#L68).
+example to see how easily an AM-based program can be controller with a script in [tools/cmd/am-dbg-teaser](tools/cmd/am-dbg-teaser/main_dbg_teaser.go).
 
 <details>
 

@@ -1,10 +1,7 @@
 # Prometheus
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../../../assets/prometheus-grafana.dark.png?raw=true">
-  <source media="(prefers-color-scheme: light)" srcset="../../../assets/prometheus-grafana.light.png?raw=true">
-  <img alt="Test duration chart" src="../../../assets/prometheus-grafana.dark.png?raw=true">
-</picture>
+![Prometheus Grafana](assets/prometheus-grafana.dark.png#gh-dark-mode-only)
+![Prometheus Grafana](assets/prometheus-grafana.light.png#gh-light-mode-only)
 
 [`pkg/telemetry/prometheus`](pkg/telemetry/prometheus) binds to machine's transactions and averages the values withing
 an interval exposing various metrics. Combined with [Grafana](https://grafana.com/), it can be used to monitor the

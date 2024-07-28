@@ -3,11 +3,8 @@
 `am-dbg` is a lightweight, multi-client debugger for [asyncmachine-go](https://github.com/pancsta/asyncmachine-go). It
 easily handles >100 client machines simultaneously streaming telemetry data (and potentially many more).
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../../../assets/am-dbg.dark.png?raw=true">
-  <source media="(prefers-color-scheme: light)" srcset="../../../assets/am-dbg.light.png?raw=true">
-  <img alt="TUI debugger" src="../../../assets/am-dbg.dark.png?raw=true">
-</picture>
+![am-dbg](../../../assets/am-dbg.dark.png#gh-dark-mode-only)
+![am-dbg](../../../assets/am-dbg.light.png#gh-light-mode-only)
 
 ## Features
 

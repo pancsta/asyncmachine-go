@@ -168,7 +168,7 @@ tasks:
       - gem install github_changelog_generator
       - pipx install grafanalib
 
-  install-deps-demo:
+  install-deps-teaser:
     cmds:
       - npm install -g terminalizer
 
@@ -193,30 +193,33 @@ tasks:
   gen-states-file:
     desc: Generate states file for provided state names, eg "task gen-states-file -- Foo,Bar"
     cmds:
-      - go run tools/cmd/am-gen/main.go states-file {{.CLI_ARGS}}
+      - go run ./tools/cmd/am-gen states-file {{.CLI_ARGS}}
 
-  demo-gif:
+  teaser-gif:
     cmds:
-      - terminalizer render assets/demo.cast.yml -o assets/am-dbg.gif
-      - magick assets/am-dbg.gif -layers optimize assets/am-dbg.gif
+      - terminalizer render assets/teaser.cast.yml -o assets/am-dbg-teaser.gif
+      - magick assets/am-dbg-teaser.gif -layers optimize assets/am-dbg-teaser.gif
 
-  demo-gif-quick:
+  teaser-gif-quick:
     cmds:
-      - terminalizer render assets/demo.cast.yml -o assets/am-dbg.gif -q 30
+      - terminalizer render assets/teaser.cast.yml -o assets/am-dbg-teaser.gif -q 15
 
-  demo-record:
+  teaser-record:
     cmds:
-      - terminalizer record --config config/terminalizer.yml --commnad task demo-run
+      - terminalizer record
+          --config config/terminalizer.yml assets/teaser.cast
+          --skip-sharing
+      - sed -i '/^records:/{n;N;d;}' assets/teaser.cast.yml
 
-  demo-run:
+  teaser-run:
     cmds:
-      - go run tools/cmd/am-dbg-ssh/main.go
+      - go run ./tools/cmd/am-dbg-teaser
 
-  demo:
-    desc: Create assets/demo.gif using tools/am-dbg-ssh
+  teaser:
+    desc: Create assets/am-dbg-teaser.gif using tools/cmd/am-dbg-teaser
     cmds:
-      - task: demo-record
-      - task: demo-gif
+      - task: teaser-record
+      - task: teaser-gif
 
   godoc:
     cmds:
