@@ -48,8 +48,11 @@ go.work
 /tools/cmd/am-dbg/am-dbg
 /*.log
 /*.gob
-/assets/demo.cast.yml
+/assets/*.cast.yml
 
 _py
 /.run
 /*.bz2
+/*.br
+/memprofile*
+/.local

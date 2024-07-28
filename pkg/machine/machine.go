@@ -156,7 +156,7 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 		ID:               randID(),
 		HandlerTimeout:   100 * time.Millisecond,
 		states:           parsedStates,
-		clock:            map[string]uint64{},
+		clock:            Clocks{},
 		emitters:         []*emitter{},
 		PrintExceptions:  true,
 		PanicToException: true,
@@ -256,6 +256,7 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 	for i := range m.Tracers {
 		m.Tracers[i].MachineInit(m)
 	}
+
 	return m
 }
 
@@ -651,15 +652,16 @@ func (m *Machine) WhenTime(
 	return ch
 }
 
-// WhenTicks waits N tick for a single state. Uses WhenTime underneath.
+// WhenTicks waits N ticks of a single state (relative to now). Uses WhenTime
+// underneath.
 func (m *Machine) WhenTicks(
 	state string, ticks int, ctx context.Context,
 ) <-chan struct{} {
 	return m.WhenTime(S{state}, T{uint64(ticks) + m.Clock(state)}, ctx)
 }
 
-// WhenTicksEq waits till ticks for a single state equal the given value.
-// Uses WhenTime underneath.
+// WhenTicksEq waits till ticks for a single state equal the given absolute
+// value (or more). Uses WhenTime underneath.
 func (m *Machine) WhenTicksEq(
 	state string, ticks int, ctx context.Context,
 ) <-chan struct{} {
@@ -1076,7 +1078,7 @@ func (m *Machine) NewStateCtx(state string) context.Context {
 	stateCtx, cancel := context.WithCancel(m.Ctx)
 
 	// close early
-	if !m.Is(S{state}) {
+	if !m.Is1(state) {
 		cancel()
 		return stateCtx
 	}
