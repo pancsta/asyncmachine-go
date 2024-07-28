@@ -4,6 +4,7 @@ package debugger
 
 import (
 	"bufio"
+	"context"
 	"encoding/gob"
 	"fmt"
 	"log"
@@ -44,55 +45,6 @@ const (
 	searchAsTypeWindow    = 1500 * time.Millisecond
 )
 
-// TODO NewDebugger
-
-type Debugger struct {
-	am.ExceptionHandler
-	Mach            *am.Machine
-	Clients         map[string]*Client
-	EnableMouse     bool
-	CleanOnConnect  bool
-	SelectConnected bool
-	Disposed        bool
-
-	// current client
-	C             *Client
-	app           *cview.Application
-	tree          *cview.TreeView
-	treeRoot      *cview.TreeNode
-	log           *cview.TextView
-	timelineTxs   *cview.ProgressBar
-	timelineSteps *cview.ProgressBar
-	// TODO take from views
-	focusable              []*cview.Box
-	playTimer              *time.Ticker
-	currTxBarRight         *cview.TextView
-	currTxBarLeft          *cview.TextView
-	nextTxBarLeft          *cview.TextView
-	nextTxBarRight         *cview.TextView
-	helpDialog             *cview.Flex
-	keyBar                 *cview.TextView
-	layoutRoot             *cview.Panels
-	sidebar                *cview.List
-	mainGrid               *cview.Grid
-	URL                    string
-	logRebuildEnd          int
-	prevClientTxTime       time.Time
-	repaintScheduled       bool
-	updateSidebarScheduled bool
-	lastKey                tcell.Key
-	lastKeyTime            time.Time
-	P                      *message.Printer
-	updateLogScheduled     bool
-	matrix                 *cview.Table
-	focusManager           *cview.FocusManager
-	exportDialog           *cview.Modal
-	contentPanels          *cview.Panels
-	filtersBar             *cview.TextView
-	focusedFilter          string
-	LogLevel               am.LogLevel
-}
-
 type Exportable struct {
 	MsgStruct *telemetry.DbgMsgStruct
 	MsgTxs    []*telemetry.DbgMsgTx
@@ -124,6 +76,156 @@ type MsgTxParsed struct {
 	StatesAdded   am.S
 	StatesRemoved am.S
 	StatesTouched am.S
+	Time          uint64
+	Idx           int
+}
+
+type Opts struct {
+	SelectConnected bool
+	CleanOnConnect  bool
+	EnableMouse     bool
+	// Address to listen on
+	ServerAddr string
+	// Log level of the debugger's machine
+	DBGLogLevel am.LogLevel
+	DBGLogger   *log.Logger
+	// Filters for the transitions and logging
+	Filters *OptsFilters
+	// File path to import (brotli)
+	ImportData string
+	// Screen overload for tests & ssh
+	Screen tcell.Screen
+	// Debugger's ID
+	ID string
+	// version of this instance
+	Version string
+}
+
+type OptsFilters struct {
+	SkipCanceledTx bool
+	SkipAutoTx     bool
+	SkipEmptyTx    bool
+	LogLevel       am.LogLevel
+}
+
+type filterName string
+
+const (
+	filterCanceledTx filterName = "skip-canceled"
+	filterAutoTx     filterName = "skip-auto"
+	filterEmptyTx    filterName = "skip-empty"
+	filterLog0       filterName = "log-0"
+	filterLog1       filterName = "log-1"
+	filterLog2       filterName = "log-2"
+	filterLog3       filterName = "log-3"
+	filterLog4       filterName = "log-4"
+)
+
+type Debugger struct {
+	am.ExceptionHandler
+
+	Mach       *am.Machine
+	Clients    map[string]*Client
+	Opts       Opts
+	LayoutRoot *cview.Panels
+	Disposed   bool
+	// selected client
+	C   *Client
+	App *cview.Application
+	// printer for numbers
+	P *message.Printer
+
+	tree                   *cview.TreeView
+	treeRoot               *cview.TreeNode
+	log                    *cview.TextView
+	timelineTxs            *cview.ProgressBar
+	timelineSteps          *cview.ProgressBar
+	focusable              []*cview.Box
+	playTimer              *time.Ticker
+	currTxBarRight         *cview.TextView
+	currTxBarLeft          *cview.TextView
+	nextTxBarLeft          *cview.TextView
+	nextTxBarRight         *cview.TextView
+	helpDialog             *cview.Flex
+	keyBar                 *cview.TextView
+	sidebar                *cview.List
+	mainGrid               *cview.Grid
+	logRebuildEnd          int
+	prevClientTxTime       time.Time
+	repaintScheduled       bool
+	updateSidebarScheduled bool
+	lastKey                tcell.Key
+	lastKeyTime            time.Time
+	updateLogScheduled     bool
+	matrix                 *cview.Table
+	focusManager           *cview.FocusManager
+	exportDialog           *cview.Modal
+	contentPanels          *cview.Panels
+	filtersBar             *cview.TextView
+	focusedFilter          filterName
+}
+
+// New creates a new debugger instance and optionally import a data file.
+func New(ctx context.Context, opts Opts) (*Debugger, error) {
+	// init the debugger
+	d := &Debugger{
+		Clients: make(map[string]*Client),
+	}
+
+	// default filters
+	if opts.Filters == nil {
+		opts.Filters = &OptsFilters{
+			LogLevel: am.LogChanges,
+		}
+	}
+
+	d.Opts = opts
+	gob.Register(Exportable{})
+	gob.Register(am.Relation(0))
+
+	// TODO use NewCommon
+	mach := am.New(ctx, ss.States, &am.Opts{
+		// TODO support Opts.AMDebug
+		HandlerTimeout:       time.Hour,
+		DontPanicToException: true,
+		DontLogID:            true,
+	})
+	id := opts.ID
+	if id == "" {
+		id = mach.ID
+	}
+	mach.ID = "am-dbg-" + id
+
+	err := mach.VerifyStates(ss.Names)
+	if err != nil {
+		return nil, err
+	}
+
+	// logging
+	if opts.DBGLogger != nil {
+		mach.SetTestLogger(opts.DBGLogger.Printf, opts.DBGLogLevel)
+	} else {
+		mach.SetTestLogger(log.Printf, opts.DBGLogLevel)
+	}
+	mach.SetLogArgs(am.NewArgsMapper([]string{
+		"Machine.id", "conn_id", "Client.cursorTx",
+	}, 20))
+
+	// import data
+	if opts.ImportData != "" {
+		start := time.Now()
+		mach.Log("Importing data from %s", opts.ImportData)
+		d.ImportData(opts.ImportData)
+		mach.Log("Imported data in %.2s", time.Since(start))
+	}
+
+	err = mach.BindHandlers(d)
+	if err != nil {
+		return nil, err
+	}
+
+	d.Mach = mach
+	return d, nil
 }
 
 // ScrollToStateTx scrolls to the next transition involving the state being
@@ -174,6 +276,7 @@ func (d *Debugger) CurrentTx() *telemetry.DbgMsgTx {
 	if c.CursorTx == 0 || len(c.MsgTxs) < c.CursorTx {
 		return nil
 	}
+
 	return c.MsgTxs[c.CursorTx-1]
 }
 
@@ -220,27 +323,27 @@ func (d *Debugger) updateFiltersBar() {
 		{
 			id:     "log-0",
 			label:  "L0",
-			active: d.LogLevel == am.LogNothing,
+			active: d.Opts.Filters.LogLevel == am.LogNothing,
 		},
 		{
 			id:     "log-1",
 			label:  "L1",
-			active: d.LogLevel == am.LogChanges,
+			active: d.Opts.Filters.LogLevel == am.LogChanges,
 		},
 		{
 			id:     "log-2",
 			label:  "L2",
-			active: d.LogLevel == am.LogOps,
+			active: d.Opts.Filters.LogLevel == am.LogOps,
 		},
 		{
 			id:     "log-3",
 			label:  "L3",
-			active: d.LogLevel == am.LogDecisions,
+			active: d.Opts.Filters.LogLevel == am.LogDecisions,
 		},
 		{
 			id:     "log-4",
 			label:  "L4",
-			active: d.LogLevel == am.LogEverything,
+			active: d.Opts.Filters.LogLevel == am.LogEverything,
 		},
 	}
 
@@ -255,7 +358,7 @@ func (d *Debugger) updateFiltersBar() {
 		}
 
 		// focused
-		if d.focusedFilter == item.id && focused {
+		if d.focusedFilter == filterName(item.id) && focused {
 			text += f("[%s][::bu]%s[::-]", colorActive, item.label)
 		} else if !focused {
 			text += f("[%s]%s", colorHighlight2, item.label)
@@ -334,10 +437,17 @@ func (d *Debugger) jumpFwd(ev *tcell.EventKey) *tcell.EventKey {
 	return nil
 }
 
-// TODO verify host token, to distinguish 2 hosts with the same ID
+// TODO verify hosts by token, to distinguish 2 hosts with the same ID
 func (d *Debugger) parseMsg(c *Client, idx int) {
-	msgTxParsed := MsgTxParsed{}
 	msgTx := c.MsgTxs[idx]
+	var t uint64
+	for _, v := range msgTx.Clocks {
+		t += v
+	}
+	msgTxParsed := MsgTxParsed{
+		Time: t,
+		Idx:  idx,
+	}
 
 	// added / removed
 	if len(c.MsgTxs) > 1 && idx > 0 {
@@ -424,7 +534,7 @@ func (d *Debugger) updateTxBars() {
 	d.nextTxBarRight.Clear()
 
 	if d.Mach.Not(am.S{ss.SelectingClient, ss.ClientSelected}) {
-		d.currTxBarLeft.SetText("Listening for connections on " + d.URL)
+		d.currTxBarLeft.SetText("Listening for connections on " + d.Opts.ServerAddr)
 		return
 	}
 
@@ -512,6 +622,7 @@ func (d *Debugger) updateTimelines() {
 		title = d.P.Sprintf(" Transition %d / %d ", c.CursorTx, txCount)
 	}
 	d.timelineTxs.SetTitle(title)
+	d.timelineTxs.SetEmptyRune(' ')
 
 	// progressbar cant be max==0
 	d.timelineSteps.SetMax(max(stepsCount, 1))
@@ -519,6 +630,7 @@ func (d *Debugger) updateTimelines() {
 	d.timelineSteps.SetProgress(c.CursorStep)
 	d.timelineSteps.SetTitle(fmt.Sprintf(
 		" Next mutation step %d / %d ", c.CursorStep, stepsCount))
+	d.timelineSteps.SetEmptyRune(' ')
 }
 
 func (d *Debugger) updateSidebar(immediate bool) {
@@ -555,8 +667,13 @@ func (d *Debugger) doUpdateSidebar() {
 		item.SetMainText(label)
 	}
 
-	d.sidebar.SetTitle(" Machines:" + strconv.Itoa(len(d.Clients)) + " ")
+	title := " Machines"
+	if len(d.Clients) > 0 {
+		title += ":" + strconv.Itoa(len(d.Clients))
+	}
+	d.sidebar.SetTitle(title + " ")
 	d.updateSidebarScheduled = false
+
 	d.draw()
 }
 
@@ -635,8 +752,8 @@ func (d *Debugger) updateBorderColor() {
 	}
 }
 
+// TODO should be an async state
 func (d *Debugger) exportData(filename string) {
-	// TODO should be an async state
 	// validate the input
 	if filename == "" {
 		log.Printf("Error: export failed no filename")
@@ -682,7 +799,8 @@ func (d *Debugger) exportData(filename string) {
 }
 
 func (d *Debugger) ImportData(filename string) {
-	// TODO show error msg (for old dump formats)
+	// TODO async state
+	// TODO show error msg (for dump old formats)
 	fr, err := os.Open(filename)
 	if err != nil {
 		log.Printf("Error: import failed %s", err)
@@ -802,7 +920,6 @@ func (d *Debugger) updateMatrix() {
 
 	c := d.C
 	if c == nil || d.C.CursorTx == 0 {
-		d.matrix.Clear()
 		return
 	}
 
@@ -825,6 +942,7 @@ func (d *Debugger) updateMatrix() {
 
 	highlightIndex := -1
 
+	// TODO use pkg/x/helpers
 	// called states
 	var called []int
 	for i, name := range index {
@@ -920,7 +1038,12 @@ func (d *Debugger) updateMatrix() {
 		}
 	}
 
-	d.matrix.SetTitle(" Matrix:" + strconv.Itoa(sum) + " ")
+	title := " Matrix:" + strconv.Itoa(sum) + " "
+	if c.CursorTx > 0 {
+		t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx-1].Time))
+		title += "T:" + t + " "
+	}
+	d.matrix.SetTitle(title)
 }
 
 func (d *Debugger) ConnectedClients() int {
@@ -1028,6 +1151,17 @@ func (d *Debugger) scrollToTime(t time.Time) bool {
 	return false
 }
 
+// ShowClientTx switches to the given client and scrolls to the given tx number.
+func (d *Debugger) ShowClientTx(clientID string, txIndex int) {
+	when := d.Mach.WhenTicks(ss.ClientSelected, 2, nil)
+	d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": "sim"})
+	<-when
+
+	when = d.Mach.WhenTicks(ss.ScrollToTx, 2, nil)
+	d.Mach.Add1(ss.ScrollToTx, am.A{"Client.cursorTx": 20})
+	<-when
+}
+
 func (d *Debugger) Dispose() {
 	d.Disposed = true
 
@@ -1041,10 +1175,10 @@ func (d *Debugger) Dispose() {
 
 	// app, give it some time to stop rendering
 	time.Sleep(100 * time.Millisecond)
-	if d.app.GetScreen() != nil {
-		d.app.Stop()
+	if d.App.GetScreen() != nil {
+		d.App.Stop()
 	}
-	d.app = nil
+	d.App = nil
 
 	// UI
 	d.helpDialog = nil
@@ -1062,14 +1196,14 @@ func (d *Debugger) Dispose() {
 	d.sidebar = nil
 	d.log = nil
 
-	// logger TODO enable
-	// logger := d.Opts.DBGLogger
-	// if logger != nil {
-	// 	// check if the logger is writing to a file
-	// 	if file, ok := logger.Writer().(*os.File); ok {
-	// 		file.Close()
-	// 	}
-	// }
+	// logger
+	logger := d.Opts.DBGLogger
+	if logger != nil {
+		// check if the logger is writing to a file
+		if file, ok := logger.Writer().(*os.File); ok {
+			file.Close()
+		}
+	}
 }
 
 func (d *Debugger) Start(clientID string, txNum int, uiView string) {
@@ -1079,4 +1213,11 @@ func (d *Debugger) Start(clientID string, txNum int, uiView string) {
 		// TODO rename to uiView
 		"dbgView": uiView,
 	})
+}
+
+func (d *Debugger) SetFilterLogLevel(lvl am.LogLevel) {
+	d.Opts.Filters.LogLevel = lvl
+
+	// process the filter change
+	go d.processFilterChange(context.TODO(), false)
 }
