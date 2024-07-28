@@ -1,5 +1,26 @@
 # Changelog
 
+## [v0.6.4](https://github.com/pancsta/asyncmachine-go/tree/v0.6.4) (2024-07-28)
+
+- test\(am-dbg\): add TUI integration tests [\#97](https://github.com/pancsta/asyncmachine-go/pull/97) (@pancsta)
+- feat\(machine\): add export / import [\#96](https://github.com/pancsta/asyncmachine-go/pull/96) (@pancsta)
+- feat\(am-dbg\): add ssh server [\#95](https://github.com/pancsta/asyncmachine-go/pull/95) (@pancsta)
+- feat\(am-dbg\): render guidelines in tree relations [\#94](https://github.com/pancsta/asyncmachine-go/pull/94) (@pancsta)
+- refac\(am-dbg\): refac cli apis [\#93](https://github.com/pancsta/asyncmachine-go/pull/93) (@pancsta)
+- feat\(am-dbg\): switch compression to brotli [\#92](https://github.com/pancsta/asyncmachine-go/pull/92) (@pancsta)
+- feat\(am-dbg\): add Start and Dispose methods [\#91](https://github.com/pancsta/asyncmachine-go/pull/91) (@pancsta)
+- feat\(helpers\): add 5 helper funcs, eg Add1Sync, EnvLogLevel [\#90](https://github.com/pancsta/asyncmachine-go/pull/90)
+    (@pancsta)
+
+## [v0.6.3](https://github.com/pancsta/asyncmachine-go/tree/v0.6.3) (2024-07-16)
+
+- fix\(am-dbg\): make LogUserScrolled pause the timeline [\#89](https://github.com/pancsta/asyncmachine-go/pull/89) (@pancsta)
+- feat\(machine\): retain log level for pre-logs [\#88](https://github.com/pancsta/asyncmachine-go/pull/88) (@pancsta)
+
+## [v0.6.2](https://github.com/pancsta/asyncmachine-go/tree/v0.6.2) (2024-07-15)
+
+- fix: fix dispose crash, misc am-dbg issues [\#87](https://github.com/pancsta/asyncmachine-go/pull/87) (@pancsta)
+
 ## [v0.6.1](https://github.com/pancsta/asyncmachine-go/tree/v0.6.1) (2024-07-12)
 
 - fix\(am-dbg\): fix tail mode with filters [\#85](https://github.com/pancsta/asyncmachine-go/pull/85) (@pancsta)

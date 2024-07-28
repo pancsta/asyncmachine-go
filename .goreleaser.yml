@@ -36,12 +36,20 @@ archives:
     id: "am-dbg"
     format: tar.gz
     name_template: "am-dbg_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    files: ["am-dbg*"]
+    # dont add readmes etc
+    files: [""]
+    builds:
+      - am-dbg
+
   -
     id: "am-dbg-ssh"
     format: tar.gz
     name_template: "am-dbg-ssh_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    files: ["am-dbg-ssh*"]
+    # dont add readmes etc
+    files: [""]
+    builds:
+      - am-dbg
+      - am-dbg-ssh
 
 checksum:
   name_template: 'checksums.txt'
