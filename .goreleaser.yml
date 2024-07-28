@@ -13,15 +13,35 @@ builds:
     goarch:
       - amd64
       - arm64
-    main: ./tools/cmd/am-dbg/main.go
+    main: ./tools/cmd/am-dbg
     binary: am-dbg
+
+  -
+    id: "am-dbg-ssh"
+    env:
+      - CGO_ENABLED=0
+      - GO111MODULE=on
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    main: ./tools/cmd/am-dbg-ssh
+    binary: am-dbg-ssh
 
 archives:
   -
-    id: "archive"
+    id: "am-dbg"
     format: tar.gz
     name_template: "am-dbg_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    files: [""]
+    files: ["am-dbg*"]
+  -
+    id: "am-dbg-ssh"
+    format: tar.gz
+    name_template: "am-dbg-ssh_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: ["am-dbg-ssh*"]
 
 checksum:
   name_template: 'checksums.txt'
