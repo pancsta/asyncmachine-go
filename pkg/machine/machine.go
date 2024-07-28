@@ -7,8 +7,10 @@ package machine // import "github.com/pancsta/asyncmachine-go/pkg/machine"
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"reflect"
@@ -2108,12 +2110,17 @@ func (m *Machine) String() string {
 	defer m.activeStatesLock.RUnlock()
 
 	ret := "("
-	for _, state := range m.activeStates {
+	for _, state := range m.StateNames {
+		if !slices.Contains(m.activeStates, state) {
+			continue
+		}
+
 		if ret != "(" {
 			ret += " "
 		}
 		ret += fmt.Sprintf("%s:%d", state, m.clock[state])
 	}
+
 	return ret + ")"
 }
 
@@ -2139,6 +2146,7 @@ func (m *Machine) StringAll() string {
 		}
 		ret2 += fmt.Sprintf("%s:%d", state, m.clock[state])
 	}
+
 	return ret + ")" + ret2 + "]"
 }
 
@@ -2335,4 +2343,88 @@ func (m *Machine) Clocks(states S) Clocks {
 	}
 
 	return ret
+}
+
+// Export exports the machine clock, ID and state names into a json file.
+func (m *Machine) Export(filepath string) error {
+	m.activeStatesLock.RLock()
+	defer m.activeStatesLock.RUnlock()
+
+	data := Export{
+		ID:         m.ID,
+		Clocks:     m.clock,
+		StateNames: m.StateNames,
+	}
+
+	// save json file
+	file, err := os.Create(filepath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	enc := json.NewEncoder(file)
+
+	var t uint64
+	for _, v := range m.clock {
+		t += v
+	}
+	m.log(LogChanges, "[import] exported ID:%s and Time:%d", data.ID, t)
+
+	return enc.Encode(data)
+}
+
+// Import imports a previously exported file via Machine.Export. Restores clock
+// values and ID. It's not safe to import into a machine which has already
+// produces transitions and/or has telemetry connected.
+func (m *Machine) Import(filepath string) error {
+	m.activeStatesLock.RLock()
+	defer m.activeStatesLock.RUnlock()
+
+	data := Export{}
+
+	// Read the JSON file
+	filePath := filepath
+	file, err := os.Open(filePath)
+	if err != nil {
+		m.log(LogOps, "error opening file: %s", err)
+		return err
+	}
+	defer file.Close()
+
+	// Read the file content
+	bj, err := io.ReadAll(file)
+	if err != nil {
+		m.log(LogOps, "error reading file: %s", err)
+		return err
+	}
+
+	// Unmarshal the JSON data into the struct
+	err = json.Unmarshal(bj, &data)
+	if err != nil {
+		m.log(LogOps, "error unmarshalling file: %s", err)
+		return err
+	}
+
+	// restore active states and clocks
+	var t uint64
+	m.activeStates = nil
+	for state, v := range data.Clocks {
+		t += v
+		if !slices.Contains(m.StateNames, state) {
+			return fmt.Errorf("%w: %s", ErrStateUnknown, state)
+		}
+		if IsActiveTick(v) {
+			m.activeStates = append(m.activeStates, state)
+		}
+
+		m.clock[state] = v
+	}
+
+	// restore ID and state names
+	m.StateNames = data.StateNames
+	m.ID = data.ID
+
+	m.log(LogChanges, "[import] imported ID:%s and Time:%d", data.ID, t)
+	return nil
 }

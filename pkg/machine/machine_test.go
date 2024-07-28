@@ -3,6 +3,7 @@ package machine
 import (
 	"context"
 	"os"
+	"path"
 	"regexp"
 	"testing"
 	"time"
@@ -2011,4 +2012,32 @@ func TestOnEventCtxDispose(t *testing.T) {
 // TODO TestAnyAnyHandler
 func TestAnyAnyHandler(t *testing.T) {
 	t.Skip()
+}
+
+func TestExportImport(t *testing.T) {
+	// init
+	m1 := NewNoRels(t, S{"A"})
+	defer m1.Dispose()
+
+	// change clocks
+	m1.Remove1("B", nil)
+	m1.Add1("A", nil)
+	m1.Add1("B", nil)
+	m1.Add1("C", nil)
+	m1Str := m1.String()
+
+	// export
+	jsonPath := path.Join(os.TempDir(), "am-TestExportImport.json")
+	err := m1.Export(jsonPath)
+	assert.NoError(t, err)
+	assert.Equal(t, fileExists(jsonPath), true, "JSON export should exist")
+
+	// import
+	m2 := NewNoRels(t, nil)
+	assert.NoError(t, err)
+	err = m2.Import(jsonPath)
+	assert.NoError(t, err)
+	assert.Equal(t, m1.ID, m2.ID, "imported machine ID should be the same")
+	assert.Equal(t, m1Str, m2.String(),
+		"imported machine clock should be the same")
 }
