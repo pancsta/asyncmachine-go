@@ -51,6 +51,7 @@ type Debugger struct {
 	EnableMouse     bool
 	CleanOnConnect  bool
 	SelectConnected bool
+	Disposed        bool
 
 	// current client
 	C             *Client
@@ -1027,4 +1028,57 @@ func (d *Debugger) scrollToTime(t time.Time) bool {
 	}
 
 	return false
+}
+
+func (d *Debugger) Dispose() {
+	d.Disposed = true
+
+	// machine
+	d.Mach.Dispose()
+	<-d.Mach.WhenDisposed()
+
+	// data
+	d.Clients = nil
+	d.C = nil
+
+	// app, give it some time to stop rendering
+	time.Sleep(100 * time.Millisecond)
+	if d.app.GetScreen() != nil {
+		d.app.Stop()
+	}
+	d.app = nil
+
+	// UI
+	d.helpDialog = nil
+	d.keyBar = nil
+	d.currTxBarLeft = nil
+	d.currTxBarRight = nil
+	d.nextTxBarLeft = nil
+	d.nextTxBarRight = nil
+	d.matrix = nil
+	d.focusManager = nil
+	d.exportDialog = nil
+	d.contentPanels = nil
+	d.filtersBar = nil
+	d.tree = nil
+	d.sidebar = nil
+	d.log = nil
+
+	// logger TODO enable
+	// logger := d.Opts.DBGLogger
+	// if logger != nil {
+	// 	// check if the logger is writing to a file
+	// 	if file, ok := logger.Writer().(*os.File); ok {
+	// 		file.Close()
+	// 	}
+	// }
+}
+
+func (d *Debugger) Start(clientID string, txNum int, uiView string) {
+	d.Mach.Add1(ss.Start, am.A{
+		"Client.id":       clientID,
+		"Client.cursorTx": txNum,
+		// TODO rename to uiView
+		"dbgView": uiView,
+	})
 }
