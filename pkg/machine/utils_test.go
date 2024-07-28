@@ -17,6 +17,7 @@ type History struct {
 	CounterMx sync.Mutex
 }
 
+// TODO not thread safe
 func trackTransitions(m *Machine, events S) *History {
 	history := &History{
 		Order:   []string{},

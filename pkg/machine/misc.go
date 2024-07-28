@@ -638,6 +638,12 @@ func SMerge(states ...S) S {
 	return slicesUniq(s)
 }
 
+type Export struct {
+	ID         string `json:"id"`
+	Clocks     Clocks `json:"clocks"`
+	StateNames S      `json:"state_names"`
+}
+
 // ///// ///// /////
 // ///// UTILS
 // ///// ///// /////
