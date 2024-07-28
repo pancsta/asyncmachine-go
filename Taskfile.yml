@@ -25,6 +25,10 @@ tasks:
       - task: build-telemetry
       - task: build-debugger
 
+  release:
+    cmds:
+      - goreleaser release --clean --skip-publish --skip-validate
+
   am-dbg:
     silent: false
     cmds:
@@ -38,6 +42,22 @@ tasks:
           --select-machine sim-p0
           --select-transition 20
           {{.CLI_ARGS}}
+
+  am-dbg-ssh:
+    silent: false
+    desc: Run am-dbg-ssh with sample data on localhost:4444
+    cmds:
+      - go run ./tools/cmd/am-dbg-ssh \
+          --import-data assets/am-dbg-sim.gob.br
+          --select-machine sim-p0
+          --select-transition 20
+          {{.CLI_ARGS}}
+
+  am-dbg-ssh-connect:
+    silent: false
+    desc: Connect to a running am-dbg-ssh via the local SSH client
+    cmds:
+      - ssh localhost -p 4444 -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
 
   am-dbg-import-dump:
     silent: false
@@ -190,10 +210,10 @@ tasks:
 
   demo-run:
     cmds:
-      - go run tools/cmd/am-dbg-demo/main.go
+      - go run tools/cmd/am-dbg-ssh/main.go
 
   demo:
-    desc: Create assets/demo.gif using tools/am-dbg-demo
+    desc: Create assets/demo.gif using tools/am-dbg-ssh
     cmds:
       - task: demo-record
       - task: demo-gif
