@@ -164,7 +164,8 @@ See [docs/cookbook.md](docs/cookbook.md) for more snippets.
 
 All the demos have data from the [go-libp2p-pubsub simulator](#libp2p-pubsub-simulator) case study.
 
-- [libp2p-pubsub simulator walkthrough](https://pancsta.github.io/assets/asyncmachine-go/pubsub-sim-demo1.m4v) (text-only screencast)
+- [libp2p-pubsub simulator walkthrough](https://pancsta.github.io/assets/asyncmachine-go/pubsub-sim-demo1.m4v)
+  (text-only screencast)
 - [am-dbg over web](http://188.166.101.108:8080/wetty/ssh/am-dbg?pass=am-dbg:8080/wetty/ssh/am-dbg?pass=am-dbg) (interactive)
 - am-dbg over ssh (interactive) - `ssh 188.166.101.108 -p 4444`
 - [jaeger traces](https://github.com/pancsta/asyncmachine-go/raw/main/assets/bench-jaeger-3h-10m.traces.json)
@@ -424,7 +425,8 @@ See [`tools/cmd/am-gen`](tools/cmd/am-gen/README.md) for more info.
 - filters
 - matrix view
 
-See [`tools/cmd/am-dbg`](tools/cmd/am-dbg/README.md) for more info, or [import a sample asset](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-dbg-sim.gob.br) with `--import-data`.
+See [`tools/cmd/am-dbg`](tools/cmd/am-dbg/README.md) for more info, or [import a sample asset](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-dbg-sim.gob.br)
+with `--import-data`.
 
 ## Integrations
 
@@ -460,7 +462,8 @@ a lot of inspectable data.
 ![Test duration chart](assets/bench.light.png#gh-light-mode-only)
 
 - **pubsub host** - eg `ps-17` (20 states)<br />
-  PubSub machine is a simple event loop with [multi states](/docs/manual.md#multi-states) which get responses via arg channels. Heavy use of [`Machine.Eval()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Eval).
+  PubSub machine is a simple event loop with [multi states](/docs/manual.md#multi-states) which get responses via arg
+  channels. Heavy use of [`Machine.Eval()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Eval).
 - **discovery** - eg `ps-17-disc` (10 states)<br />
   Discovery machine is a simple event loop with [multi states](/docs/manual.md#multi-states) and a periodic refresh state.
 - **discovery bootstrap** - eg `ps-17-disc-bf3` (5 states)<br />
@@ -477,35 +480,35 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
 // States define relations between states
 var States = am.Struct{
-	// peers
-	PeersPending: {},
-	PeersDead:    {},
-	GetPeers:     {Multi: true},
+    // peers
+    PeersPending: {},
+    PeersDead:    {},
+    GetPeers:     {Multi: true},
 
-	// peer
-	PeerNewStream:   {Multi: true},
-	PeerCloseStream: {Multi: true},
-	PeerError:       {Multi: true},
-	PublishMessage:  {Multi: true},
-	BlacklistPeer:   {Multi: true},
+    // peer
+    PeerNewStream:   {Multi: true},
+    PeerCloseStream: {Multi: true},
+    PeerError:       {Multi: true},
+    PublishMessage:  {Multi: true},
+    BlacklistPeer:   {Multi: true},
 
-	// topic
-	GetTopics:       {Multi: true},
-	AddTopic:        {Multi: true},
-	RemoveTopic:     {Multi: true},
-	AnnouncingTopic: {Multi: true},
-	TopicAnnounced:  {Multi: true},
+    // topic
+    GetTopics:       {Multi: true},
+    AddTopic:        {Multi: true},
+    RemoveTopic:     {Multi: true},
+    AnnouncingTopic: {Multi: true},
+    TopicAnnounced:  {Multi: true},
 
-	// subscription
-	RemoveSubscription: {Multi: true},
-	AddSubscription:    {Multi: true},
+    // subscription
+    RemoveSubscription: {Multi: true},
+    AddSubscription:    {Multi: true},
 
-	// misc
-	AddRelay:        {Multi: true},
-	RemoveRelay:     {Multi: true},
-	IncomingRPC:     {Multi: true},
-	AddValidator:    {Multi: true},
-	RemoveValidator: {Multi: true},
+    // misc
+    AddRelay:        {Multi: true},
+    RemoveRelay:     {Multi: true},
+    IncomingRPC:     {Multi: true},
+    AddValidator:    {Multi: true},
+    RemoveValidator: {Multi: true},
 }
 ```
 
@@ -525,64 +528,64 @@ type S = am.S
 
 // States define relations between states.
 var States = am.Struct{
-	Start: {
-		Add: S{PoolTimer},
-	},
-	PoolTimer: {},
-	RefreshingDiscoveries: {
-		Require: S{Start},
-	},
-	DiscoveriesRefreshed: {
-		Require: S{Start},
-	},
+    Start: {
+        Add: S{PoolTimer},
+    },
+    PoolTimer: {},
+    RefreshingDiscoveries: {
+        Require: S{Start},
+    },
+    DiscoveriesRefreshed: {
+        Require: S{Start},
+    },
 
-	// topics
+    // topics
 
-	DiscoveringTopic: {
-		Multi: true,
-	},
-	TopicDiscovered: {
-		Multi: true,
-	},
+    DiscoveringTopic: {
+        Multi: true,
+    },
+    TopicDiscovered: {
+        Multi: true,
+    },
 
-	BootstrappingTopic: {
-		Multi: true,
-	},
-	TopicBootstrapped: {
-		Multi: true,
-	},
+    BootstrappingTopic: {
+        Multi: true,
+    },
+    TopicBootstrapped: {
+        Multi: true,
+    },
 
-	AdvertisingTopic: {
-		Multi: true,
-	},
-	StopAdvertisingTopic: {
-		Multi: true,
-	},
+    AdvertisingTopic: {
+        Multi: true,
+    },
+    StopAdvertisingTopic: {
+        Multi: true,
+    },
 }
 
 // StatesBootstrapFlow define relations between states for the bootstrap flow.
 var StatesBootstrapFlow = am.Struct{
-	Start: {
-		Add: S{BootstrapChecking},
-	},
-	BootstrapChecking: {
-		Remove: BootstrapGroup,
-	},
-	DiscoveringTopic: {
-		Remove: BootstrapGroup,
-	},
-	BootstrapDelay: {
-		Remove: BootstrapGroup,
-	},
-	TopicBootstrapped: {
-		Remove: BootstrapGroup,
-	},
+    Start: {
+        Add: S{BootstrapChecking},
+    },
+    BootstrapChecking: {
+        Remove: BootstrapGroup,
+    },
+    DiscoveringTopic: {
+        Remove: BootstrapGroup,
+    },
+    BootstrapDelay: {
+        Remove: BootstrapGroup,
+    },
+    TopicBootstrapped: {
+        Remove: BootstrapGroup,
+    },
 }
 
 // Groups of mutually exclusive states.
 
 var (
-	BootstrapGroup = S{DiscoveringTopic, BootstrapDelay, BootstrapChecking, TopicBootstrapped}
+    BootstrapGroup = S{DiscoveringTopic, BootstrapDelay, BootstrapChecking, TopicBootstrapped}
 )
 ```
 
@@ -601,8 +604,8 @@ or the [pdf results](https://github.com/pancsta/go-libp2p-pubsub-benchmark/raw/m
   Root simulator machine, initializes the network and manipulates it during heartbeats according to frequency
   definitions. Heavily dependent on [state negotiation](/docs/manual.md#negotiation-handlers).
 - **simulator's peer** - eg `sim-p17` (17 states)<br />
-  Handles peer's connections, topics and messages. This machine has a decent amount of [relations](/docs/manual.md#states-relations). Each sim peer has its
-  own pubsub host.
+  Handles peer's connections, topics and messages. This machine has a decent amount of [relations](/docs/manual.md#states-relations).
+  Each sim peer has its own pubsub host.
 - **topics** - eg `sim-t-se7ev` (5 states)<br />
   State-only machine (no handlers, no goroutine). States represent correlations with peer machines.
 
@@ -614,7 +617,7 @@ or the [pdf results](https://github.com/pancsta/go-libp2p-pubsub-benchmark/raw/m
 package sim
 
 import (
-	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
 // S is a type alias for a list of state names.
@@ -622,30 +625,30 @@ type S = am.S
 
 // States map defines relations and properties of states.
 var States = am.Struct{
-	Start:     {},
-	Heartbeat: {Require: S{Start}},
+    Start:     {},
+    Heartbeat: {Require: S{Start}},
 
-	// simulation
+    // simulation
 
-	AddPeer:       {Require: S{Start}},
-	RemovePeer:    {Require: S{Start}},
-	AddTopic:      {Require: S{Start}},
-	RemoveTopic:   {Require: S{Start}},
-	PeakRandTopic: {Require: S{Start}},
+    AddPeer:       {Require: S{Start}},
+    RemovePeer:    {Require: S{Start}},
+    AddTopic:      {Require: S{Start}},
+    RemoveTopic:   {Require: S{Start}},
+    PeakRandTopic: {Require: S{Start}},
 
-	// peer (nested) states
+    // peer (nested) states
 
-	AddRandomFriend:  {Require: S{Start}},
-	GC:               {Require: S{Start}},
-	JoinRandomTopic:  {Require: S{Start}},
-	JoinFriendsTopic: {Require: S{Start}},
-	MsgRandomTopic:   {Require: S{Start}},
-	VerifyMsgsRecv:   {Require: S{Start}},
+    AddRandomFriend:  {Require: S{Start}},
+    GC:               {Require: S{Start}},
+    JoinRandomTopic:  {Require: S{Start}},
+    JoinFriendsTopic: {Require: S{Start}},
+    MsgRandomTopic:   {Require: S{Start}},
+    VerifyMsgsRecv:   {Require: S{Start}},
 
-	// metrics
+    // metrics
 
-	RefreshMetrics: {Require: S{Start}},
-	// TODO history-based metrics, via pairs of counters, possibly using peer histories as well
+    RefreshMetrics: {Require: S{Start}},
+    // TODO history-based metrics, via pairs of counters, possibly using peer histories as well
 }
 ```
 
@@ -659,7 +662,7 @@ var States = am.Struct{
 package sim
 
 import (
-	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
 // S is a type alias for a list of state names.
@@ -667,137 +670,137 @@ type S = am.S
 
 // States map defines relations and properties of states.
 var States = am.Struct{
-	// Start (sync)
-	Start: {},
+    // Start (sync)
+    Start: {},
 
-	// DHT (sync)
-	IsDHT: {},
+    // DHT (sync)
+    IsDHT: {},
 
-	// Ready (sync auto)
-	Ready: {
-		Auto:    true,
-		Require: S{Start, Connected},
-	},
+    // Ready (sync auto)
+    Ready: {
+        Auto:    true,
+        Require: S{Start, Connected},
+    },
 
-	// IdentityReady (async auto)
-	IdentityReady: {Remove: groupIdentityReady},
-	GenIdentity: {
-		Auto:   true,
-		Remove: groupIdentityReady,
-	},
+    // IdentityReady (async auto)
+    IdentityReady: {Remove: groupIdentityReady},
+    GenIdentity: {
+        Auto:   true,
+        Remove: groupIdentityReady,
+    },
 
-	BootstrapsConnected: {},
+    BootstrapsConnected: {},
 
-	// EventHostConnected (sync, external event)
-	EventHostConnected: {
-		Multi:   true,
-		Require: S{Start},
-		Add:     S{Connected},
-	},
+    // EventHostConnected (sync, external event)
+    EventHostConnected: {
+        Multi:   true,
+        Require: S{Start},
+        Add:     S{Connected},
+    },
 
-	// Connected (async bool auto)
-	Connected: {
-		Require: S{Start},
-		Remove:  groupConnected,
-	},
-	Connecting: {
-		Auto:    true,
-		Require: S{Start, IdentityReady},
-		Remove:  groupConnected,
-	},
-	Disconnecting: {
-		Remove: am.SMerge(groupConnected, S{BootstrapsConnected}),
-	},
+    // Connected (async bool auto)
+    Connected: {
+        Require: S{Start},
+        Remove:  groupConnected,
+    },
+    Connecting: {
+        Auto:    true,
+        Require: S{Start, IdentityReady},
+        Remove:  groupConnected,
+    },
+    Disconnecting: {
+        Remove: am.SMerge(groupConnected, S{BootstrapsConnected}),
+    },
 
-	// TopicJoined (async)
-	JoiningTopic: {
-		Multi:   true,
-		Require: S{Connected},
-	},
-	TopicJoined: {
-		Multi:   true,
-		Require: S{Connected},
-		Add:     S{FwdToSim},
-	},
+    // TopicJoined (async)
+    JoiningTopic: {
+        Multi:   true,
+        Require: S{Connected},
+    },
+    TopicJoined: {
+        Multi:   true,
+        Require: S{Connected},
+        Add:     S{FwdToSim},
+    },
 
-	// TopicLeft (async)
-	LeavingTopic: {
-		Multi:   true,
-		Require: S{Connected},
-	},
-	TopicLeft: {
-		Multi:   true,
-		Require: S{Connected},
-		Add:     S{FwdToSim},
-	},
+    // TopicLeft (async)
+    LeavingTopic: {
+        Multi:   true,
+        Require: S{Connected},
+    },
+    TopicLeft: {
+        Multi:   true,
+        Require: S{Connected},
+        Add:     S{FwdToSim},
+    },
 
-	// MsgsSent (async)
-	SendingMsgs: {
-		Multi:   true,
-		Require: S{Connected},
-	},
-	MsgsSent: {
-		Multi:   true,
-		Require: S{Connected},
-		Add:     S{FwdToSim},
-	},
+    // MsgsSent (async)
+    SendingMsgs: {
+        Multi:   true,
+        Require: S{Connected},
+    },
+    MsgsSent: {
+        Multi:   true,
+        Require: S{Connected},
+        Add:     S{FwdToSim},
+    },
 
-	// call the mirror state in the main Sim machine, prefixed with Peer and peer ID added to Args
-	// TODO
-	FwdToSim: {},
+    // call the mirror state in the main Sim machine, prefixed with Peer and peer ID added to Args
+    // TODO
+    FwdToSim: {},
 }
 
 //#region boilerplate defs
 
 // Groups of mutually exclusive states.
 var (
-	groupConnected = S{Connecting, Connected, Disconnecting}
-	//groupStarted       = S{Starting, Started}
-	groupIdentityReady = S{GenIdentity, IdentityReady}
+    groupConnected = S{Connecting, Connected, Disconnecting}
+    //groupStarted       = S{Starting, Started}
+    groupIdentityReady = S{GenIdentity, IdentityReady}
 )
 
 // Names of all the states (pkg enum).
 
 const (
-	Start               = "Start"
-	Ready               = "Ready"
-	Connected           = "Connected"
-	Connecting          = "Connecting"
-	Disconnecting       = "Disconnecting"
-	JoiningTopic        = "JoiningTopic"
-	TopicJoined         = "TopicJoined"
-	SendingMsgs         = "SendingMsgs"
-	MsgsSent            = "MsgsSent"
-	LeavingTopic        = "LeavingTopic"
-	TopicLeft           = "TopicLeft"
-	IdentityReady       = "IdentityReady"
-	GenIdentity         = "GenIdentity"
-	FwdToSim            = "FwdToSim"
-	IsDHT               = "IsDHT"
-	BootstrapsConnected = "BootstrapsConnected"
-	EventHostConnected  = "EventHostConnected"
+    Start               = "Start"
+    Ready               = "Ready"
+    Connected           = "Connected"
+    Connecting          = "Connecting"
+    Disconnecting       = "Disconnecting"
+    JoiningTopic        = "JoiningTopic"
+    TopicJoined         = "TopicJoined"
+    SendingMsgs         = "SendingMsgs"
+    MsgsSent            = "MsgsSent"
+    LeavingTopic        = "LeavingTopic"
+    TopicLeft           = "TopicLeft"
+    IdentityReady       = "IdentityReady"
+    GenIdentity         = "GenIdentity"
+    FwdToSim            = "FwdToSim"
+    IsDHT               = "IsDHT"
+    BootstrapsConnected = "BootstrapsConnected"
+    EventHostConnected  = "EventHostConnected"
 )
 
 // Names is an ordered list of all the state names.
 var Names = S{
-	Start,
-	IsDHT,
-	Ready,
-	IdentityReady,
-	GenIdentity,
-	BootstrapsConnected,
-	EventHostConnected,
-	Connected,
-	Connecting,
-	Disconnecting,
-	JoiningTopic,
-	TopicJoined,
-	LeavingTopic,
-	TopicLeft,
-	SendingMsgs,
-	MsgsSent,
-	FwdToSim,
-	am.Exception,
+    Start,
+    IsDHT,
+    Ready,
+    IdentityReady,
+    GenIdentity,
+    BootstrapsConnected,
+    EventHostConnected,
+    Connected,
+    Connecting,
+    Disconnecting,
+    JoiningTopic,
+    TopicJoined,
+    LeavingTopic,
+    TopicLeft,
+    SendingMsgs,
+    MsgsSent,
+    FwdToSim,
+    am.Exception,
 }
 
 //#endregion
@@ -819,30 +822,30 @@ type S = am.S
 
 // States map defines relations and properties of states.
 var States = am.Struct{
-	Stale: {
-		Auto: true,
-	},
-	HasPeers: {},
-	Active: {
-		Remove: S{Stale},
-	},
-	Peaking: {
-		Remove:  S{Stale},
-		Require: S{HasPeers},
-	},
+    Stale: {
+        Auto: true,
+    },
+    HasPeers: {},
+    Active: {
+        Remove: S{Stale},
+    },
+    Peaking: {
+        Remove:  S{Stale},
+        Require: S{HasPeers},
+    },
 }
 
 // Names of all the states (pkg enum).
 
 const (
-	// Stale means no recent msgs
-	Stale = "Stale"
-	// HasPeers means there are peers
-	HasPeers = "HasPeers"
-	// Active means there are recent msgs
-	Active = "Active"
-	// Peaking means there are twice more peers than in
-	Peaking = "Peaking"
+    // Stale means no recent msgs
+    Stale = "Stale"
+    // HasPeers means there are peers
+    HasPeers = "HasPeers"
+    // Active means there are recent msgs
+    Active = "Active"
+    // Peaking means there are twice more peers than in
+    Peaking = "Peaking"
 )
 
 // Names is an ordered list of all the state names.
