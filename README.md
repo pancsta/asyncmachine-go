@@ -26,7 +26,7 @@
 
 <hr>
 
-[![TUI Debugger](assets/am-dbg-teaser.gif)](assets/am-dbg-teaser.gif)
+![TUI Debugger](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-teaser.gif)
 
 **asyncmachine-go** is a minimal implementation of [AsyncMachine](https://github.com/TobiaszCudnik/asyncmachine)
 in Golang using **channels and context**. It aims at simplicity and speed.
@@ -162,10 +162,12 @@ See [docs/cookbook.md](docs/cookbook.md) for more snippets.
 
 ## Demos
 
-Demos show data from the [go-libp2p-pubsub simulator](#libp2p-pubsub-simulator).
+All the demos have data from the [go-libp2p-pubsub simulator](#libp2p-pubsub-simulator) case study.
 
-- [am-dbg over web](http://188.166.101.108:8080/wetty/ssh/am-dbg?pass=am-dbg:8080/wetty/ssh/am-dbg?pass=am-dbg)
-- am-dbg over ssh - `ssh 188.166.101.108 -p 4444`
+- [libp2p-pubsub simulator walkthrough](https://pancsta.github.io/assets/asyncmachine-go/pubsub-sim-demo1.m4v) (text-only screencast)
+- [am-dbg over web](http://188.166.101.108:8080/wetty/ssh/am-dbg?pass=am-dbg:8080/wetty/ssh/am-dbg?pass=am-dbg) (interactive)
+- am-dbg over ssh (interactive) - `ssh 188.166.101.108 -p 4444`
+- [jaeger traces](https://github.com/pancsta/asyncmachine-go/raw/main/assets/bench-jaeger-3h-10m.traces.json)
 
 ## Examples
 
@@ -412,7 +414,7 @@ See [`tools/cmd/am-gen`](tools/cmd/am-gen/README.md) for more info.
 ![am-dbg](assets/am-dbg.light.png#gh-light-mode-only)
 
 `am-dbg` is a lightweight, multi-client debugger for AM. It easily handles hundreds of
- client machines simultaneously streaming telemetry data (and potentially many more). Some features include:
+ client machines, which are simultaneously streaming telemetry data. Some features include:
 
 - states tree
 - log view
@@ -422,7 +424,7 @@ See [`tools/cmd/am-gen`](tools/cmd/am-gen/README.md) for more info.
 - filters
 - matrix view
 
-See [`tools/cmd/am-dbg`](tools/cmd/am-dbg/README.md) for more info.
+See [`tools/cmd/am-dbg`](tools/cmd/am-dbg/README.md) for more info, or [import a sample asset](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-dbg-sim.gob.br) with `--import-data`.
 
 ## Integrations
 
@@ -434,7 +436,7 @@ See [`tools/cmd/am-dbg`](tools/cmd/am-dbg/README.md) for more info.
 [`pkg/telemetry`](pkg/telemetry/README.md) provides [Open Telemetry](https://opentelemetry.io/) integration which exposes
 machine's states and transitions as Otel traces, compatible with [Jaeger](https://www.jaegertracing.io/).
 
-See [`pkg/telemetry`](pkg/telemetry/README.md) for more info or [import a sample asset](assets/bench-jaeger-3h-10m.traces.json?raw=true).
+See [`pkg/telemetry`](pkg/telemetry/README.md) for more info, or [import a sample asset](assets/bench-jaeger-3h-10m.traces.json?raw=true).
 
 ### Prometheus
 
@@ -458,11 +460,133 @@ a lot of inspectable data.
 ![Test duration chart](assets/bench.light.png#gh-light-mode-only)
 
 - **pubsub host** - eg `ps-17` (20 states)<br />
-  PubSub machine is a simple event loop with Multi states which get responses via arg channels. Heavy use of `Machine.Eval()`.
+  PubSub machine is a simple event loop with [multi states](/docs/manual.md#multi-states) which get responses via arg channels. Heavy use of [`Machine.Eval()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Eval).
 - **discovery** - eg `ps-17-disc` (10 states)<br />
-  Discovery machine is a simple event loop with Multi states and a periodic refresh state.
+  Discovery machine is a simple event loop with [multi states](/docs/manual.md#multi-states) and a periodic refresh state.
 - **discovery bootstrap** - eg `ps-17-disc-bf3` (5 states)<br />
   `BootstrapFlow` is a non-linear flow for topic bootstrapping with some retry logic.
+
+<details>
+
+<summary>See states structure and relations (pubsub host)</summary>
+
+```go
+package states
+
+import am "github.com/pancsta/asyncmachine-go/pkg/machine"
+
+// States define relations between states
+var States = am.Struct{
+	// peers
+	PeersPending: {},
+	PeersDead:    {},
+	GetPeers:     {Multi: true},
+
+	// peer
+	PeerNewStream:   {Multi: true},
+	PeerCloseStream: {Multi: true},
+	PeerError:       {Multi: true},
+	PublishMessage:  {Multi: true},
+	BlacklistPeer:   {Multi: true},
+
+	// topic
+	GetTopics:       {Multi: true},
+	AddTopic:        {Multi: true},
+	RemoveTopic:     {Multi: true},
+	AnnouncingTopic: {Multi: true},
+	TopicAnnounced:  {Multi: true},
+
+	// subscription
+	RemoveSubscription: {Multi: true},
+	AddSubscription:    {Multi: true},
+
+	// misc
+	AddRelay:        {Multi: true},
+	RemoveRelay:     {Multi: true},
+	IncomingRPC:     {Multi: true},
+	AddValidator:    {Multi: true},
+	RemoveValidator: {Multi: true},
+}
+```
+
+</details>
+
+<details>
+
+<summary>See states structure and relations (discovery & bootstrap)</summary>
+
+```go
+package discovery
+
+import am "github.com/pancsta/asyncmachine-go/pkg/machine"
+
+// S is a type alias for a list of state names.
+type S = am.S
+
+// States define relations between states.
+var States = am.Struct{
+	Start: {
+		Add: S{PoolTimer},
+	},
+	PoolTimer: {},
+	RefreshingDiscoveries: {
+		Require: S{Start},
+	},
+	DiscoveriesRefreshed: {
+		Require: S{Start},
+	},
+
+	// topics
+
+	DiscoveringTopic: {
+		Multi: true,
+	},
+	TopicDiscovered: {
+		Multi: true,
+	},
+
+	BootstrappingTopic: {
+		Multi: true,
+	},
+	TopicBootstrapped: {
+		Multi: true,
+	},
+
+	AdvertisingTopic: {
+		Multi: true,
+	},
+	StopAdvertisingTopic: {
+		Multi: true,
+	},
+}
+
+// StatesBootstrapFlow define relations between states for the bootstrap flow.
+var StatesBootstrapFlow = am.Struct{
+	Start: {
+		Add: S{BootstrapChecking},
+	},
+	BootstrapChecking: {
+		Remove: BootstrapGroup,
+	},
+	DiscoveringTopic: {
+		Remove: BootstrapGroup,
+	},
+	BootstrapDelay: {
+		Remove: BootstrapGroup,
+	},
+	TopicBootstrapped: {
+		Remove: BootstrapGroup,
+	},
+}
+
+// Groups of mutually exclusive states.
+
+var (
+	BootstrapGroup = S{DiscoveringTopic, BootstrapDelay, BootstrapChecking, TopicBootstrapped}
+)
+```
+
+</details>
 
 See
 [github.com/pancsta/**go-libp2p-pubsub-benchmark**](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
@@ -475,12 +599,258 @@ or the [pdf results](https://github.com/pancsta/go-libp2p-pubsub-benchmark/raw/m
 
 - **simulator** `sim` (14 states)<br />
   Root simulator machine, initializes the network and manipulates it during heartbeats according to frequency
-  definitions. Heavily dependent on state negotiation.
+  definitions. Heavily dependent on [state negotiation](/docs/manual.md#negotiation-handlers).
 - **simulator's peer** - eg `sim-p17` (17 states)<br />
-  Handles peer's connections, topics and messages. This machine has a decent amount of relations. Each sim peer has its
+  Handles peer's connections, topics and messages. This machine has a decent amount of [relations](/docs/manual.md#states-relations). Each sim peer has its
   own pubsub host.
 - **topics** - eg `sim-t-se7ev` (5 states)<br />
   State-only machine (no handlers, no goroutine). States represent correlations with peer machines.
+
+<details>
+
+<summary>See states structure and relations (simulator)</summary>
+
+```go
+package sim
+
+import (
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+)
+
+// S is a type alias for a list of state names.
+type S = am.S
+
+// States map defines relations and properties of states.
+var States = am.Struct{
+	Start:     {},
+	Heartbeat: {Require: S{Start}},
+
+	// simulation
+
+	AddPeer:       {Require: S{Start}},
+	RemovePeer:    {Require: S{Start}},
+	AddTopic:      {Require: S{Start}},
+	RemoveTopic:   {Require: S{Start}},
+	PeakRandTopic: {Require: S{Start}},
+
+	// peer (nested) states
+
+	AddRandomFriend:  {Require: S{Start}},
+	GC:               {Require: S{Start}},
+	JoinRandomTopic:  {Require: S{Start}},
+	JoinFriendsTopic: {Require: S{Start}},
+	MsgRandomTopic:   {Require: S{Start}},
+	VerifyMsgsRecv:   {Require: S{Start}},
+
+	// metrics
+
+	RefreshMetrics: {Require: S{Start}},
+	// TODO history-based metrics, via pairs of counters, possibly using peer histories as well
+}
+```
+
+</details>
+
+<details>
+
+<summary>See states structure and relations (simulator's peer)</summary>
+
+```go
+package sim
+
+import (
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+)
+
+// S is a type alias for a list of state names.
+type S = am.S
+
+// States map defines relations and properties of states.
+var States = am.Struct{
+	// Start (sync)
+	Start: {},
+
+	// DHT (sync)
+	IsDHT: {},
+
+	// Ready (sync auto)
+	Ready: {
+		Auto:    true,
+		Require: S{Start, Connected},
+	},
+
+	// IdentityReady (async auto)
+	IdentityReady: {Remove: groupIdentityReady},
+	GenIdentity: {
+		Auto:   true,
+		Remove: groupIdentityReady,
+	},
+
+	BootstrapsConnected: {},
+
+	// EventHostConnected (sync, external event)
+	EventHostConnected: {
+		Multi:   true,
+		Require: S{Start},
+		Add:     S{Connected},
+	},
+
+	// Connected (async bool auto)
+	Connected: {
+		Require: S{Start},
+		Remove:  groupConnected,
+	},
+	Connecting: {
+		Auto:    true,
+		Require: S{Start, IdentityReady},
+		Remove:  groupConnected,
+	},
+	Disconnecting: {
+		Remove: am.SMerge(groupConnected, S{BootstrapsConnected}),
+	},
+
+	// TopicJoined (async)
+	JoiningTopic: {
+		Multi:   true,
+		Require: S{Connected},
+	},
+	TopicJoined: {
+		Multi:   true,
+		Require: S{Connected},
+		Add:     S{FwdToSim},
+	},
+
+	// TopicLeft (async)
+	LeavingTopic: {
+		Multi:   true,
+		Require: S{Connected},
+	},
+	TopicLeft: {
+		Multi:   true,
+		Require: S{Connected},
+		Add:     S{FwdToSim},
+	},
+
+	// MsgsSent (async)
+	SendingMsgs: {
+		Multi:   true,
+		Require: S{Connected},
+	},
+	MsgsSent: {
+		Multi:   true,
+		Require: S{Connected},
+		Add:     S{FwdToSim},
+	},
+
+	// call the mirror state in the main Sim machine, prefixed with Peer and peer ID added to Args
+	// TODO
+	FwdToSim: {},
+}
+
+//#region boilerplate defs
+
+// Groups of mutually exclusive states.
+var (
+	groupConnected = S{Connecting, Connected, Disconnecting}
+	//groupStarted       = S{Starting, Started}
+	groupIdentityReady = S{GenIdentity, IdentityReady}
+)
+
+// Names of all the states (pkg enum).
+
+const (
+	Start               = "Start"
+	Ready               = "Ready"
+	Connected           = "Connected"
+	Connecting          = "Connecting"
+	Disconnecting       = "Disconnecting"
+	JoiningTopic        = "JoiningTopic"
+	TopicJoined         = "TopicJoined"
+	SendingMsgs         = "SendingMsgs"
+	MsgsSent            = "MsgsSent"
+	LeavingTopic        = "LeavingTopic"
+	TopicLeft           = "TopicLeft"
+	IdentityReady       = "IdentityReady"
+	GenIdentity         = "GenIdentity"
+	FwdToSim            = "FwdToSim"
+	IsDHT               = "IsDHT"
+	BootstrapsConnected = "BootstrapsConnected"
+	EventHostConnected  = "EventHostConnected"
+)
+
+// Names is an ordered list of all the state names.
+var Names = S{
+	Start,
+	IsDHT,
+	Ready,
+	IdentityReady,
+	GenIdentity,
+	BootstrapsConnected,
+	EventHostConnected,
+	Connected,
+	Connecting,
+	Disconnecting,
+	JoiningTopic,
+	TopicJoined,
+	LeavingTopic,
+	TopicLeft,
+	SendingMsgs,
+	MsgsSent,
+	FwdToSim,
+	am.Exception,
+}
+
+//#endregion
+
+```
+
+</details>
+
+<details>
+
+<summary>See states structure and relations (topics)</summary>
+
+```go
+package sim
+
+import am "github.com/pancsta/asyncmachine-go/pkg/machine"
+
+type S = am.S
+
+// States map defines relations and properties of states.
+var States = am.Struct{
+	Stale: {
+		Auto: true,
+	},
+	HasPeers: {},
+	Active: {
+		Remove: S{Stale},
+	},
+	Peaking: {
+		Remove:  S{Stale},
+		Require: S{HasPeers},
+	},
+}
+
+// Names of all the states (pkg enum).
+
+const (
+	// Stale means no recent msgs
+	Stale = "Stale"
+	// HasPeers means there are peers
+	HasPeers = "HasPeers"
+	// Active means there are recent msgs
+	Active = "Active"
+	// Peaking means there are twice more peers than in
+	Peaking = "Peaking"
+)
+
+// Names is an ordered list of all the state names.
+var Names = S{Stale, HasPeers, Active, Peaking, am.Exception}
+
+```
+
+</details>
 
 See
 [github.com/pancsta/**go-libp2p-pubsub-benchmark**](https://github.com/pancsta/go-libp2p-pubsub-benchmark?tab=readme-ov-file#libp2p-pubsub-simulator)

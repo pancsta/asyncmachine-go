@@ -42,11 +42,16 @@ Flags:
 
 `go install github.com/pancsta/asyncmachine-go/tools/am-dbg@latest`
 
-## Example Data
+## Demos
 
-For a quick demo you can browse an exported dump located in `assets/am-dbg-sim.gob.bz2` by running:
+For a quick demo you can browse an exported dump located in `assets/am-dbg-sim.gob.br` by running:
 
-`$ am-dbg -i assets/am-dbg-sim.gob.bz2 -m sim-p1 -t 25`
+`$ am-dbg --import-data assets/am-dbg-sim.gob.br --select-machine sim-p1 --select-transition 25`
+
+Interactive debugger instances are available online via web and ssh:
+
+- [am-dbg over web](http://188.166.101.108:8080/wetty/ssh/am-dbg?pass=am-dbg:8080/wetty/ssh/am-dbg?pass=am-dbg)
+- am-dbg over ssh - `ssh 188.166.101.108 -p 4444`
 
 ## Steps To Debug
 
