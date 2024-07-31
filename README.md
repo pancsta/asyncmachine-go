@@ -50,11 +50,11 @@ Common differences from other state machines:
 
 ### Buzzwords
 
-> **AM technically is:** event emitter, queue, dependency graph, AOP, logical clocks, <3k LoC, stdlib-only
+> **AM tech:** event emitter, queue, dependency graph, AOP, logical clocks, <3k LoC, stdlib-only
 
-> **AM gives you:** states, events, thread-safety, logging, metrics, traces, debugger, history, flow constraints, scheduler
+> **AM provides:** states, events, thread-safety, logging, metrics, traces, debugger, history, flow constraints, scheduler
 
-> **Flow constraints are:** state mutations, negotiation, relations, "when" methods, state contexts, external contexts
+> **Flow constraints:** state mutations, negotiation, relations, "when" methods, state contexts, external contexts
 
 ## Usage
 
@@ -162,13 +162,17 @@ See [docs/cookbook.md](docs/cookbook.md) for more snippets.
 
 ## Demos
 
-All the demos have data from the [go-libp2p-pubsub simulator](#libp2p-pubsub-simulator) case study.
+All demos have data produced by the go-libp2p-pubsub simulator [case study](#libp2p-pubsub-simulator).
 
-- [libp2p-pubsub simulator walkthrough](https://pancsta.github.io/assets/asyncmachine-go/pubsub-sim-demo1.m4v)
-  (text-only screencast)
-- [am-dbg over web](http://188.166.101.108:8080/wetty/ssh/am-dbg?pass=am-dbg:8080/wetty/ssh/am-dbg?pass=am-dbg) (interactive)
-- am-dbg over ssh (interactive) - `ssh 188.166.101.108 -p 4444`
-- [jaeger traces](https://github.com/pancsta/asyncmachine-go/raw/main/assets/bench-jaeger-3h-10m.traces.json)
+- [**libp2p-pubsub simulator walkthrough**](https://pancsta.github.io/assets/asyncmachine-go/pubsub-sim-demo1.m4v)
+  \- metrics, debugging, traces (text-only screencast)
+- [**am-dbg over web**](http://188.166.101.108:8080/wetty/ssh/am-dbg?pass=am-dbg:8080/wetty/ssh/am-dbg?pass=am-dbg)
+  \- interactively browse simulator's machines in the browser
+- **am-dbg over ssh** - same as above, but in the terminal
+  - `ssh 188.166.101.108 -p 4444`
+- [**jaeger traces**](https://github.com/pancsta/asyncmachine-go/raw/main/assets/bench-jaeger-3h-10m.traces.json)
+  \- import manually (interactive)
+- [**grafana dashboard**](assets/grafana-mach-sim,sim-p1.json) - import manually
 
 ## Examples
 
@@ -228,7 +232,7 @@ var (
 
 </details>
 
-### [PathWatcher](/examples/watcher/watcher.go)
+### [PATH Watcher](/examples/watcher/watcher.go)
 
 - [origin](https://github.com/pancsta/sway-yast/)
 
@@ -758,55 +762,6 @@ var (
     //groupStarted       = S{Starting, Started}
     groupIdentityReady = S{GenIdentity, IdentityReady}
 )
-
-// Names of all the states (pkg enum).
-
-const (
-    Start               = "Start"
-    Ready               = "Ready"
-    Connected           = "Connected"
-    Connecting          = "Connecting"
-    Disconnecting       = "Disconnecting"
-    JoiningTopic        = "JoiningTopic"
-    TopicJoined         = "TopicJoined"
-    SendingMsgs         = "SendingMsgs"
-    MsgsSent            = "MsgsSent"
-    LeavingTopic        = "LeavingTopic"
-    TopicLeft           = "TopicLeft"
-    IdentityReady       = "IdentityReady"
-    GenIdentity         = "GenIdentity"
-    FwdToSim            = "FwdToSim"
-    IsDHT               = "IsDHT"
-    BootstrapsConnected = "BootstrapsConnected"
-    EventHostConnected  = "EventHostConnected"
-)
-
-// Names is an ordered list of all the state names.
-var Names = S{
-    Start,
-    IsDHT,
-    Ready,
-    IdentityReady,
-    GenIdentity,
-    BootstrapsConnected,
-    EventHostConnected,
-    Connected,
-    Connecting,
-    Disconnecting,
-    JoiningTopic,
-    TopicJoined,
-    LeavingTopic,
-    TopicLeft,
-    SendingMsgs,
-    MsgsSent,
-    FwdToSim,
-    am.Exception,
-}
-
-//#endregion
-
-```
-
 </details>
 
 <details>
@@ -814,6 +769,7 @@ var Names = S{
 <summary>See states structure and relations (topics)</summary>
 
 ```go
+
 package sim
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -834,22 +790,6 @@ var States = am.Struct{
         Require: S{HasPeers},
     },
 }
-
-// Names of all the states (pkg enum).
-
-const (
-    // Stale means no recent msgs
-    Stale = "Stale"
-    // HasPeers means there are peers
-    HasPeers = "HasPeers"
-    // Active means there are recent msgs
-    Active = "Active"
-    // Peaking means there are twice more peers than in
-    Peaking = "Peaking"
-)
-
-// Names is an ordered list of all the state names.
-var Names = S{Stale, HasPeers, Active, Peaking, am.Exception}
 
 ```
 
@@ -875,6 +815,7 @@ example to see how easily an AM-based program can be controller with a script in
 <summary>See states structure and relations</summary>
 
 ```go
+
 // States map defines relations and properties of states.
 var States = am.Struct{
     ///// Input events
@@ -976,6 +917,7 @@ var States = am.Struct{
     },
     RemoveClient: {Require: S{ClientSelected}},
 }
+
 ```
 
 </details>
