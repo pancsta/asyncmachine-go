@@ -28,6 +28,25 @@
 
 ![TUI Debugger](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-teaser.gif)
 
+## TL;DR
+
+Relational state machine for workflows, with negotiation.
+
+```go
+mach := am.New(nil, am.Struct{
+    "Foo": {Requires: "Bar"},
+    "Bar": {},
+}, nil)
+mach.Add1("Foo")
+mach.Is1("Foo") // false
+```
+
+- debugger
+- traces
+- metrics
+
+## Intro
+
 **asyncmachine-go** is a minimal implementation of [AsyncMachine](https://github.com/TobiaszCudnik/asyncmachine)
 in Golang using **channels and context**. It aims at simplicity and speed.
 
@@ -329,6 +348,14 @@ var States = am.Struct{
     },
     FileUploaded: {Remove: GroupFileUploaded},
 }
+
+// Groups of mutually exclusive states.
+
+var (
+    GroupFileDownloaded = S{DownloadingFile, FileDownloaded}
+    GroupFileProcessed  = S{ProcessingFile, FileProcessed}
+    GroupFileUploaded   = S{UploadingFile, FileUploaded}
+)
 ```
 
 </details>
