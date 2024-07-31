@@ -690,7 +690,7 @@ var States = am.Struct{
 <summary>See states structure and relations (simulator's peer)</summary>
 
 ```go
-package sim
+package peer
 
 import (
     am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -789,15 +789,17 @@ var (
     //groupStarted       = S{Starting, Started}
     groupIdentityReady = S{GenIdentity, IdentityReady}
 )
+```
+
 </details>
 
 <details>
 
-<summary>See states structure and relations (topics)</summary>
+<summary>See states structure and relations (topic)</summary>
 
 ```go
 
-package sim
+package topic
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
