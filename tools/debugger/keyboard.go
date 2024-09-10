@@ -189,11 +189,18 @@ func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 
 						if parent != nil && parent.IsExpanded() &&
 							strings.HasPrefix(text, buffer) {
-							d.Mach.Remove1(ss.StateNameSelected, nil)
+							found = true
 							d.tree.SetCurrentNode(node)
+
+							// handle StateNameSelected
+							ref, ok := node.GetReference().(*nodeRef)
+							if ok && ref != nil && ref.stateName != "" {
+								d.Mach.Add1(ss.StateNameSelected, am.A{"state": ref.stateName})
+							} else {
+								d.Mach.Remove1(ss.StateNameSelected, nil)
+							}
 							d.updateTree()
 							d.draw()
-							found = true
 
 							return false
 						}
