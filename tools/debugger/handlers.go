@@ -858,7 +858,7 @@ func (d *Debugger) processFilterChange(ctx context.Context, filterTxs bool) {
 	if d.C != nil {
 
 		// rebuild the whole log to reflect the UI changes
-		err := d.rebuildLog(ctx, len(d.C.MsgTxs)-1)
+		err := d.rebuildLog(ctx, len(d.C.MsgTxs))
 		if err != nil {
 			d.Mach.AddErr(err)
 		}
