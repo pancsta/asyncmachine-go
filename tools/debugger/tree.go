@@ -521,10 +521,10 @@ func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step) {
 				if t == ' ' {
 					if !secondSpace {
 						secondSpace = true
-						dotted += ".[grey]"
+						dotted += "[grey]."
 					} else if !thirdSpace {
 						thirdSpace = true
-						dotted += "[grey]"
+						dotted += "[grey]."
 					} else {
 						dotted += "."
 					}
@@ -532,6 +532,7 @@ func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step) {
 					white = true
 					dotted += "[white]" + string(t)
 				} else {
+					// copy existing rune
 					dotted += string(t)
 				}
 			}
