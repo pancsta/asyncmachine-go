@@ -85,6 +85,9 @@ func (d *Debugger) initMachineTree() *cview.TreeView {
 				if name == normalizeText(strings.Split(child.GetText(), " ")[0]) {
 					d.tree.SetCurrentNode(child)
 
+					// highlight the selected node
+					node.SetHighlighted(true)
+
 					return
 				}
 			}
