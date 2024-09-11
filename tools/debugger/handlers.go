@@ -855,6 +855,11 @@ func (d *Debugger) processFilterChange(ctx context.Context, filterTxs bool) {
 
 	if d.C != nil {
 
+		// stay on the last one
+		if d.Mach.Is1(ss.TailMode) {
+			d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), false)
+		}
+
 		// rebuild the whole log to reflect the UI changes
 		err := d.rebuildLog(ctx, len(d.C.MsgTxs)-1)
 		if err != nil {
