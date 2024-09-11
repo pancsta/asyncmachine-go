@@ -793,6 +793,22 @@ type Serialized struct {
 	StateNames S      `json:"state_names"`
 }
 
+// EnvLogLevel returns a log level from an environment variable, AM_LOG by
+// default.
+func EnvLogLevel(name string) LogLevel {
+	// TODO cookbook
+	if name == "" {
+		name = "AM_LOG"
+	}
+	v, _ := strconv.Atoi(os.Getenv(name))
+	return LogLevel(v)
+}
+
+// MockClock mocks the internal clock of the machine. Only for testing.
+func MockClock(mach *Machine, clock Clock) {
+	mach.clock = clock
+}
+
 // ///// ///// /////
 // ///// UTILS
 // ///// ///// /////
