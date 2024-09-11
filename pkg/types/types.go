@@ -9,7 +9,6 @@ import (
 // MachineApi is a subset of `pkg/machine#Machine` for alternative
 // implementations.
 type MachineApi interface {
-
 	// ///// REMOTE
 
 	// Mutations (remote)

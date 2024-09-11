@@ -1983,7 +1983,6 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 			// returns from State and End handlers are ignored
 		default:
 			if !ret {
-
 				return Canceled, handlerCalled
 			}
 		}

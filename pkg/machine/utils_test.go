@@ -29,7 +29,6 @@ func (h *History) AC(e *Event) {
 
 func (h *History) AExit(e *Event) {
 	h.event("AExit")
-
 }
 
 func (h *History) AA(e *Event) {
@@ -64,7 +63,6 @@ func (h *History) AnyB(e *Event) {
 
 func (h *History) BExit(e *Event) {
 	h.event("BExit")
-
 }
 
 func (h *History) BD(e *Event) {

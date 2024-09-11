@@ -389,7 +389,6 @@ func NewTest(
 	t *testing.T, ctx context.Context, worker *am.Machine,
 	disposeMeter <-chan struct{}, clockInterval *time.Duration,
 ) (<-chan int64, *am.Machine, *Server, *Client) {
-
 	// read env
 	amDbgAddr := os.Getenv("AM_DBG_ADDR")
 	logLvl := am.EnvLogLevel("")

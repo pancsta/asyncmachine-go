@@ -394,7 +394,6 @@ func (t *Transition) emitEvents() Result {
 
 	// AUTO STATES
 	if result == Canceled {
-
 		t.Accepted = false
 	} else if hasStateChanged && !t.IsAuto() {
 

@@ -54,8 +54,10 @@ type Server struct {
 }
 
 // interfaces
-var _ serverRpcMethods = &Server{}
-var _ clientServerMethods = &Server{}
+var (
+	_ serverRpcMethods    = &Server{}
+	_ clientServerMethods = &Server{}
+)
 
 func NewServer(
 	ctx context.Context, addr string, id string, worker *am.Machine,

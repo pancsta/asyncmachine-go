@@ -489,8 +489,6 @@ type (
 	IndexWhenArgs map[string][]*WhenArgsBinding
 	// IndexStateCtx is a map of (single) state names to a context cancel function
 	IndexStateCtx map[string][]context.CancelFunc
-	// map of (single) state names to an event channel
-	indexEventCh map[string][]chan *Event
 )
 
 type WhenBinding struct {

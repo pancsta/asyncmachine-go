@@ -45,9 +45,7 @@ var States = am.Struct{
 
 // Groups of mutually exclusive states.
 
-var (
-	GroupConnected = S{Connecting, Connected, Disconnecting, Disconnected}
-)
+var GroupConnected = S{Connecting, Connected, Disconnecting, Disconnected}
 
 // #region boilerplate defs
 

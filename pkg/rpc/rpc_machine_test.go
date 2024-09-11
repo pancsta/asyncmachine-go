@@ -18,8 +18,10 @@ import (
 type S = am.S
 
 // type A = am.A
-type State = am.State
-type Struct = am.Struct
+type (
+	State  = am.State
+	Struct = am.Struct
+)
 
 func init() {
 	if os.Getenv("AM_TEST_DEBUG") != "" {

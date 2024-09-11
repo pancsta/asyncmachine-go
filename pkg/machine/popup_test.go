@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/stretchr/testify/assert"
+
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
 func NewPopupMachine(ctx context.Context) *am.Machine {

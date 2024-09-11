@@ -871,7 +871,6 @@ func (d *Debugger) ToggleFilterState(_ *am.Event) {
 }
 
 func (d *Debugger) SwitchingClientTxState(e *am.Event) {
-
 	clientID, _ := e.Args["Client.id"].(string)
 	cursorTx, _ := e.Args["Client.cursorTx"].(int)
 	ctx := d.Mach.NewStateCtx(ss.SwitchingClientTx)
