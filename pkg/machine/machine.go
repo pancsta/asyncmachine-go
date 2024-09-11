@@ -1489,6 +1489,13 @@ func (m *Machine) VerifyStates(states S) error {
 	m.stateNames = slices.Clone(states)
 	m.StatesVerified = true
 
+	// tracers
+	m.tracersLock.RLock()
+	for i := 0; !m.Disposed.Load() && i < len(m.Tracers); i++ {
+		m.Tracers[i].VerifyStates(m)
+	}
+	m.tracersLock.RUnlock()
+
 	return nil
 }
 
