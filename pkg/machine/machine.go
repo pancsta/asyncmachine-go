@@ -2667,3 +2667,14 @@ func (m *Machine) Import(filepath string) error {
 	m.log(LogChanges, "[import] imported ID:%s and Time:%d", data.ID, t)
 	return nil
 }
+
+// Index returns the index of a state in the machine's StateNames() list.
+func (m *Machine) Index(state string) int {
+	return slices.Index(m.StateNames(), state)
+}
+
+// Resolver return the relation resolver, used to produce target states of
+// transitions.
+func (m *Machine) Resolver() RelationsResolver {
+	return m.resolver
+}
