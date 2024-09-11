@@ -419,7 +419,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 				return nil
 			}
 			d.C.CursorTx = d.filterTxCursor(d.C, 0, true)
-			d.Mach.Remove1(ss.TailMode, nil)
+			d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
 			d.RedrawFull(true)
 
 			return nil
@@ -431,7 +431,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 				return nil
 			}
 			d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), false)
-			d.Mach.Remove1(ss.TailMode, nil)
+			d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
 			d.RedrawFull(true)
 
 			return nil
@@ -642,7 +642,6 @@ func (d *Debugger) updateKeyBars() {
 		{"space", "play/pause"},
 		{l + " /" + r + " ", "back/fwd"},
 		{"alt+" + l + " /" + r + " /h/l", "fast/state jump"},
-		{"alt+h/l", "fast jump"},
 		{"home/end", "start/end"},
 		{"alt+e/enter", "expand/collapse"},
 		{"tab", "focus"},

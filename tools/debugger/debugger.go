@@ -408,6 +408,7 @@ func (d *Debugger) jumpBack(ev *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
+	d.Mach.Remove1(ss.Playing, nil)
 	if d.Mach.Is1(ss.StateNameSelected) {
 		// state jump
 		d.ScrollToStateTx(d.C.selectedState, false)
@@ -424,6 +425,7 @@ func (d *Debugger) jumpFwd(ev *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
+	d.Mach.Remove1(ss.Playing, nil)
 	if d.Mach.Is1(ss.StateNameSelected) {
 		// state jump
 		d.ScrollToStateTx(d.C.selectedState, true)
