@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -52,7 +53,7 @@ type Opts struct {
 	// Time for a handler to execute. Default: time.Second
 	HandlerTimeout time.Duration
 	// If true, the machine will NOT print all exceptions to stdout.
-	DontPrintExceptions bool
+	DontLogStackTrace bool
 	// If true, the machine will die on panics.
 	DontPanicToException bool
 	// If true, the machine will NOT prefix its logs with its ID.
@@ -531,6 +532,37 @@ type ExceptionArgsPanic struct {
 // ExceptionHandler provide a basic Exception state support, as should be
 // embedded into handler structs in most of the cases.
 type ExceptionHandler struct{}
+
+type recoveryData struct {
+	err   any
+	stack string
+}
+
+func captureStackTrace() string {
+	buf := make([]byte, 4024)
+	n := runtime.Stack(buf, false)
+	stack := string(buf[:n])
+	lines := strings.Split(stack, "\n")
+	isPanic := strings.Contains(stack, "panic")
+	slices.Reverse(lines)
+
+	// trim the head, remove junk
+	for i, line := range lines {
+		if isPanic && strings.HasPrefix(line, "panic(") {
+			lines = lines[:i-1]
+			break
+		} else if strings.Contains(line, "machine.(*Machine).AddErr(") {
+			lines = lines[:i-1]
+			break
+		} else if strings.Contains(line, "machine.(*Machine).AddErrState(") {
+			lines = lines[:i-1]
+		}
+	}
+
+	slices.Reverse(lines)
+
+	return strings.Join(lines, "\n")
+}
 
 // ExceptionState is a final entry handler for the Exception state.
 // Args:
