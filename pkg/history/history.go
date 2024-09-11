@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
+	amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/x/helpers"
 )
 
 type History struct {
@@ -52,7 +52,7 @@ func (h *History) TransitionEnd(tx *am.Transition) {
 	}
 	// remember this mutation, remove Args
 	h.Entries = append(h.Entries, Entry{
-		CalledStates: helpers.StatesToIndexes(tx.Machine, tx.Mutation.CalledStates),
+		CalledStates: amh.StatesToIndexes(tx.Machine, tx.Mutation.CalledStates),
 		Type:         tx.Mutation.Type,
 		Auto:         tx.Mutation.Auto,
 	})
@@ -75,7 +75,7 @@ type Entry struct {
 	// Auto is true if the mutation was triggered by an Auto state
 	Auto bool
 	// T machine time (logical clocks)
-	T am.T
+	T am.Time
 	// Time real time
 	Time time.Time
 }
@@ -91,9 +91,9 @@ type MatcherStates struct {
 
 type MatcherTimes struct {
 	// MinT is the minimum machine time the mutation could have occurred
-	MinT am.T
+	MinT am.Time
 	// MaxT is the maximum machine time the mutation could have occurred
-	MaxT am.T
+	MaxT am.Time
 	// MinReal is the minimum real time the mutation could have occurred
 	MinReal time.Time
 	// MaxReal is the maximum real time the mutation could have occurred

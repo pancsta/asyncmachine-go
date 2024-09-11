@@ -34,8 +34,8 @@ type Worker struct {
 	indexWhen        am.IndexWhen
 	indexWhenTime    am.IndexWhenTime
 	// TODO indexWhenArgs
-	indexWhenArgs am.IndexWhenArgs
-	whenDisposed  chan struct{}
+	// indexWhenArgs am.IndexWhenArgs
+	whenDisposed chan struct{}
 }
 
 // Worker implements MachineApi
@@ -1028,7 +1028,6 @@ func (w *Worker) processWhenTimeBindings(timeBefore am.Time) {
 	// collect all the ticked states
 	all := am.S{}
 	for idx, t := range timeBefore {
-
 		// if changed, collect to check
 		if w.clockTime[idx] != t {
 			all = append(all, w.stateNames[idx])
@@ -1037,7 +1036,6 @@ func (w *Worker) processWhenTimeBindings(timeBefore am.Time) {
 
 	// check all the bindings for all the ticked states
 	for _, s := range all {
-
 		for k, binding := range indexWhenTime[s] {
 
 			// check if the requested time has passed
@@ -1133,11 +1131,6 @@ func j(states []string) string {
 	return strings.Join(states, " ")
 }
 
-// jw joins state names into a single string with a separator.
-func jw(states []string, sep string) string {
-	return strings.Join(states, sep)
-}
-
 // disposeWithCtx handles early binding disposal caused by a canceled context.
 // It's used by most of "when" methods.
 func disposeWithCtx[T comparable](
@@ -1213,24 +1206,6 @@ func slicesEvery[S1 ~[]E, S2 ~[]E, E comparable](col1 S1, col2 S2) bool {
 		}
 	}
 	return true
-}
-
-func slicesFilter[S ~[]E, E any](coll S, fn func(item E, i int) bool) S {
-	var ret S
-	for i, el := range coll {
-		if fn(el, i) {
-			ret = append(ret, el)
-		}
-	}
-	return ret
-}
-
-func slicesReverse[S ~[]E, E any](coll S) S {
-	ret := make(S, len(coll))
-	for i := range coll {
-		ret[i] = coll[len(coll)-1-i]
-	}
-	return ret
 }
 
 func slicesUniq[S ~[]E, E comparable](coll S) S {

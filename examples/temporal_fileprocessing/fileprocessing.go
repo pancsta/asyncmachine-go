@@ -5,7 +5,7 @@
 //
 // Sample output (LogLevel == LogChanges):
 //
-//=== RUN   TestFileProcessing
+// === RUN   TestFileProcessing
 //    fileprocessing.go:156: [dad73] [state] +DownloadingFile
 //    fileprocessing.go:156: [dad73] [extern:DownloadingF...] Downloading file... foo.txt
 //    fileprocessing.go:169: waiting: DownloadingFile to FileUploaded
@@ -57,8 +57,8 @@
 //          Remove:  FileUploaded
 //
 //
-//--- PASS: TestFileProcessing (0.20s)
-//PASS
+// --- PASS: TestFileProcessing (0.20s)
+// PASS
 
 package temporal_fileprocessing
 
@@ -69,9 +69,9 @@ import (
 	"strings"
 	"time"
 
-	ssf "github.com/pancsta/asyncmachine-go/examples/temporal-fileprocessing/states"
+	ssf "github.com/pancsta/asyncmachine-go/examples/temporal_fileprocessing/states"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	//"github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	// "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
 type Logger func(msg string, args ...any)
@@ -109,7 +109,7 @@ func (h *MachineHandlers) DownloadingFileState(e *am.Event) {
 
 		tmpFile, err := saveToTmpFile(data)
 		if err != nil {
-			e.Machine.AddErr(err)
+			e.Machine.AddErr(err, nil)
 			return
 		}
 		h.DownloadedName = tmpFile.Name()
@@ -136,7 +136,7 @@ func (h *MachineHandlers) ProcessingFileState(e *am.Event) {
 		if err != nil {
 			e.Machine.Log("processFileActivity failed to read file %s.",
 				h.DownloadedName)
-			e.Machine.AddErr(err)
+			e.Machine.AddErr(err, nil)
 			return
 		}
 		// process the file
@@ -144,7 +144,7 @@ func (h *MachineHandlers) ProcessingFileState(e *am.Event) {
 		tmpFile, err := saveToTmpFile(transData)
 		if err != nil {
 			e.Machine.Log("processFileActivity failed to save tmp file.")
-			e.Machine.AddErr(err)
+			e.Machine.AddErr(err, nil)
 			return
 		}
 
@@ -175,7 +175,7 @@ func (h *MachineHandlers) UploadingFileState(e *am.Event) {
 		err := h.BlobStore.uploadFile(stateCtx, h.ProcessedFileName)
 		if err != nil {
 			e.Machine.Log("uploadFileActivity uploading failed.")
-			e.Machine.AddErr(err)
+			e.Machine.AddErr(err, nil)
 			return
 		}
 		e.Machine.Log("uploadFileActivity succeed %s", h.ProcessedFileName)
@@ -197,10 +197,10 @@ func FileProcessingFlow(ctx context.Context, log Logger, filename string) (*am.M
 	// init
 	machine := NewMachine(ctx)
 	// debug
-	//err := telemetry.TransitionsToDBG(machine, telemetry.DbgHost)
-	//if err != nil {
+	// err := telemetry.TransitionsToDBG(machine, telemetry.DbgHost)
+	// if err != nil {
 	//	return nil, err
-	//}
+	// }
 
 	// different log granularity and a custom output
 	machine.SetLogLevel(am.LogChanges)
@@ -226,7 +226,7 @@ func FileProcessingFlow(ctx context.Context, log Logger, filename string) (*am.M
 	case <-time.After(5 * time.Second):
 		return machine, errors.New("timeout")
 	case <-machine.WhenErr(nil):
-		return machine, machine.Err
+		return machine, machine.Err()
 	case <-machine.When1(ssf.FileUploaded, nil):
 	}
 

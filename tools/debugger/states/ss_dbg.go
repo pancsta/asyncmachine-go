@@ -5,6 +5,9 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 // S is a type alias for a list of state names.
 type S = am.S
 
+// SAdd is a func alias for merging lists of states.
+var SAdd = am.SAdd
+
 // States map defines relations and properties of states.
 var States = am.Struct{
 
@@ -26,15 +29,15 @@ var States = am.Struct{
 	UserFwdStep: {
 		Add:     S{FwdStep},
 		Require: S{ClientSelected},
-		Remove:  am.SMerge(GroupPlaying, S{LogUserScrolled}),
+		Remove:  SAdd(GroupPlaying, S{LogUserScrolled}),
 	},
 	UserBackStep: {
 		Add:     S{BackStep},
 		Require: S{ClientSelected},
-		Remove:  am.SMerge(GroupPlaying, S{LogUserScrolled}),
+		Remove:  SAdd(GroupPlaying, S{LogUserScrolled}),
 	},
 
-	// ///// Read-only states (eg UI)
+	// ///// Read-only states (e.g. UI)
 
 	// focus group
 
@@ -47,13 +50,19 @@ var States = am.Struct{
 	DialogFocused:        {Remove: GroupFocused},
 	FiltersFocused:       {Remove: GroupFocused},
 
-	StateNameSelected: {Require: S{ClientSelected}},
-	HelpDialog:        {Remove: GroupDialog},
+	StateNameSelected:     {Require: S{ClientSelected}},
+	TimelineStepsScrolled: {Require: S{ClientSelected}},
+	HelpDialog:            {Remove: GroupDialog},
 	ExportDialog: {
 		Require: S{ClientSelected},
 		Remove:  GroupDialog,
 	},
-	LogUserScrolled:  {Remove: S{Playing, TailMode}},
+	LogUserScrolled: {
+		Remove: S{Playing, TailMode},
+		// TODO remove the requirement once its possible to go back
+		//  to timeline-scroll somehow
+		Require: S{LogFocused},
+	},
 	Ready:            {Require: S{Start}},
 	FilterAutoTx:     {},
 	FilterCanceledTx: {},
@@ -64,17 +73,17 @@ var States = am.Struct{
 	Start: {},
 	TreeLogView: {
 		Auto:   true,
-		Remove: GroupViews,
+		Remove: SAdd(GroupViews, S{MatrixRain}),
 	},
 	MatrixView:     {Remove: GroupViews},
 	TreeMatrixView: {Remove: GroupViews},
 	TailMode: {
 		Require: S{ClientSelected},
-		Remove:  am.SMerge(GroupPlaying, S{LogUserScrolled}),
+		Remove:  SAdd(GroupPlaying, S{LogUserScrolled}),
 	},
 	Playing: {
 		Require: S{ClientSelected},
-		Remove:  am.SMerge(GroupPlaying, S{LogUserScrolled}),
+		Remove:  SAdd(GroupPlaying, S{LogUserScrolled}),
 	},
 	Paused: {
 		Auto:    true,
@@ -82,6 +91,16 @@ var States = am.Struct{
 		Remove:  GroupPlaying,
 	},
 	ToggleFilter: {},
+	SwitchingClientTx: {
+		Require: S{Ready},
+		Remove:  GroupSwitchedClientTx,
+	},
+	SwitchedClientTx: {
+		Require: S{Ready},
+		Remove:  GroupSwitchedClientTx,
+	},
+	ScrollToMutTx: {Require: S{ClientSelected}},
+	MatrixRain:    {},
 
 	// tx / steps back / fwd
 
@@ -98,7 +117,10 @@ var States = am.Struct{
 		Require: S{ClientSelected},
 	},
 
-	ScrollToTx: {Require: S{ClientSelected}},
+	ScrollToTx: {
+		Require: S{ClientSelected},
+		Remove:  S{TailMode, Playing},
+	},
 
 	// client selection
 
@@ -130,6 +152,9 @@ var (
 	GroupViews = S{
 		MatrixView, TreeLogView, TreeMatrixView,
 	}
+	GroupSwitchedClientTx = S{
+		SwitchingClientTx, SwitchedClientTx,
+	}
 )
 
 // #region boilerplate defs
@@ -137,15 +162,18 @@ var (
 // Names of all the states (pkg enum).
 
 const (
-	TreeFocused          = "TreeFocused"
-	LogFocused           = "LogFocused"
-	TimelineTxsFocused   = "TimelineTxsFocused"
-	TimelineStepsFocused = "TimelineStepsFocused"
-	MatrixFocused        = "MatrixFocused"
-	DialogFocused        = "DialogFocused"
-	FiltersFocused       = "FiltersFocused"
+	TreeFocused           = "TreeFocused"
+	LogFocused            = "LogFocused"
+	TimelineTxsFocused    = "TimelineTxsFocused"
+	TimelineStepsFocused  = "TimelineStepsFocused"
+	MatrixFocused         = "MatrixFocused"
+	DialogFocused         = "DialogFocused"
+	FiltersFocused        = "FiltersFocused"
+	TimelineStepsScrolled = "TimelineStepsScrolled"
 
-	ClientMsg         = "ClientMsg"
+	ClientMsg = "ClientMsg"
+	// StateNameSelected states that a state name is selected somehwere in the
+	// tree (and possibly other places).
 	StateNameSelected = "StateNameSelected"
 	Start             = "Start"
 	Playing           = "Playing"
@@ -180,7 +208,8 @@ const (
 	TreeLogView     = "TreeLogView"
 	TreeMatrixView  = "TreeMatrixView"
 	LogUserScrolled = "LogUserScrolled"
-	ScrollToTx      = "ScrollToTx"
+	// ScrollToTx scrolls to a specific transition.
+	ScrollToTx = "ScrollToTx"
 	// Ready is an async result of start
 	Ready            = "Ready"
 	FilterCanceledTx = "FilterCanceledTx"
@@ -189,6 +218,15 @@ const (
 	// run any self handler either
 	FilterEmptyTx = "FilterEmptyTx"
 	ToggleFilter  = "ToggleFilter"
+	// SwitchingClientTx switches to the given client and scrolls to the given
+	// transaction (1-based tx index). Accepts Client.id and Client.cursorTx.
+	SwitchingClientTx = "SwitchingClientTx"
+	// SwitchedClientTx is a completed SwitchingClientTx.
+	SwitchedClientTx = "SwitchedClientTx"
+	// ScrollToMutTx scrolls to a transition which mutated the passed state,
+	// If fwd is true, it scrolls forward, otherwise backwards.
+	ScrollToMutTx = "ScrollToMutTx"
+	MatrixRain    = "MatrixRain"
 )
 
 // Names of all the states (pkg enum).
@@ -223,6 +261,7 @@ var Names = S{
 	ExportDialog,
 	LogUserScrolled,
 	Ready,
+	TimelineStepsScrolled,
 
 	// /// Actions
 
@@ -237,6 +276,10 @@ var Names = S{
 	FilterCanceledTx,
 	FilterEmptyTx,
 	ToggleFilter,
+	SwitchingClientTx,
+	SwitchedClientTx,
+	ScrollToMutTx,
+	MatrixRain,
 
 	// tx / steps back / fwd
 	Fwd,

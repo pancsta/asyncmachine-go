@@ -15,7 +15,6 @@ func BenchmarkClientLocal(b *testing.B) {
 	// 2. getter: get a value from the worker
 	// 3. processing: call an operation based on the value
 	worker.Subscribe(func() {
-
 		// loop
 		i++
 		if i > limit {

@@ -156,6 +156,8 @@ func (t *Regexp) input1(mach *am.Machine) {
 // example
 
 func TestNFA(t *testing.T) {
+	// TODO flaky?
+
 	var err error
 	mach := am.New(context.Background(), states, &am.Opts{
 		ID:                   "nfa",
@@ -210,6 +212,7 @@ func TestNFA(t *testing.T) {
 			if tt.expect && mach.Not1(Step3) {
 				t.Fatal("Expected Step3")
 			} else if !tt.expect && mach.Is1(Step3) {
+				// TODO flaky
 				t.Fatal("Didn't expect Step3")
 			}
 		})

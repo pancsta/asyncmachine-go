@@ -6,6 +6,8 @@ import (
 	"strconv"
 
 	"github.com/pancsta/cview"
+
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 )
 
 type Focusable struct {
@@ -20,6 +22,35 @@ type filter struct {
 }
 
 var humanSortRE = regexp.MustCompile(`[0-9]+`)
+
+func RpcGetter(d *Debugger) func(string) any {
+	// TODO make it panic-safe (check states and nils)
+	return func(name string) any {
+		switch name {
+
+		case server.GetCursorTx.Encode():
+			return d.C.CursorTx
+
+		case server.GetCursorStep.Encode():
+			return d.C.CursorStep
+
+		case server.GetMsgCount.Encode():
+			return len(d.C.MsgTxs)
+
+		case server.GetClientCount.Encode():
+			return len(d.Clients)
+
+		case server.GetOpts.Encode():
+			return d.Opts
+
+		case server.GetSelectedState.Encode():
+			return d.C.SelectedState
+
+		}
+
+		return nil
+	}
+}
 
 func formatTxBarTitle(title string) string {
 	return "[::u]" + title + "[::-]"

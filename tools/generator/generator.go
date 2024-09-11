@@ -28,6 +28,8 @@ func GenStatesFile(states []string) string {
 	}
 
 	// TODO linebreaks
+	// TODO SMerge to SAdd
+	//  SSub
 	sNames = strings.Trim(sNames, ",")
 	sStruct = strings.Trim(sStruct, "\n")
 	sDefs = strings.Trim(sDefs, "\n")
@@ -40,7 +42,23 @@ func GenStatesFile(states []string) string {
 		// S is a type alias for a list of state names.
 		type S = am.S
 		
-		// States map defines relations and properties of states.
+		// State is a type alias for a single state definition.
+		type State = am.State
+		
+		// SAdd is a func alias for merging lists of states.
+		var SAdd = am.SAdd
+		
+		// StateAdd is a func alias for adding to an existing state definition.
+		var StateAdd = am.StateAdd
+		
+		// StateSet is a func alias for replacing parts of an existing state
+		// definition.
+		var StateSet = am.StateSet
+		
+		// StructMerge is a func alias for extending an existing state structure.
+		var StructMerge = am.StructMerge
+		
+		// States structure defines relations and properties of states.
 		var States = am.Struct{
 		%s
 		}

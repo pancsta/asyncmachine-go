@@ -7,7 +7,7 @@
 //
 // Sample output (LogLevel == LogChanges):
 //
-//=== RUN   TestExpense
+// === RUN   TestExpense
 //    expense_test.go:145: [state] +CreatingExpense
 //    expense_test.go:145: [state:auto] +WaitingForApproval +PaymentInProgress
 //    expense_test.go:164: waiting: CreatingExpense to WaitingForApproval
@@ -63,8 +63,8 @@
 //          Remove:  ApprovalGranted
 //
 //
-//--- PASS: TestExpense (0.02s)
-//PASS
+// --- PASS: TestExpense (0.02s)
+// PASS
 
 package main
 
@@ -78,9 +78,9 @@ import (
 	"testing"
 	"time"
 
-	sse "github.com/pancsta/asyncmachine-go/examples/temporal-expense/states"
+	sse "github.com/pancsta/asyncmachine-go/examples/temporal_expense/states"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	//"github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	// "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
 var (
@@ -119,18 +119,18 @@ func (h *MachineHandlers) CreatingExpenseState(e *am.Event) {
 	go func() {
 		resp, err := http.Get(expenseBackendURL + "?id=" + h.expenseID)
 		if err != nil {
-			e.Machine.AddErr(err)
+			e.Machine.AddErr(err, nil)
 			return
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if err != nil {
-			e.Machine.AddErr(err)
+			e.Machine.AddErr(err, nil)
 			return
 		}
 		if string(body) != "SUCCEED" {
-			e.Machine.AddErrStr(string(body))
+			e.Machine.AddErr(fmt.Errorf("%s", body), nil)
 			return
 		}
 
@@ -161,18 +161,18 @@ func (h *MachineHandlers) PaymentInProgressState(e *am.Event) {
 		url := paymentBackendURL + "?id=" + h.expenseID
 		resp, err := http.Get(url)
 		if err != nil {
-			e.Machine.AddErr(err)
+			e.Machine.AddErr(err, nil)
 			return
 		}
 		body, err := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if err != nil {
-			e.Machine.AddErr(err)
+			e.Machine.AddErr(err, nil)
 			return
 		}
 
 		if string(body) != "SUCCEED" {
-			e.Machine.AddErrStr(string(body))
+			e.Machine.AddErr(fmt.Errorf("%s", body), nil)
 			return
 		}
 
@@ -223,7 +223,7 @@ func ExpenseFlow(
 	case <-time.After(10 * time.Second):
 		return machine, errors.New("timeout")
 	case <-errCh:
-		return machine, machine.Err
+		return machine, machine.Err()
 	case <-machine.When1(sse.WaitingForApproval, nil):
 		// WaitingForApproval is an automatic state
 	}
@@ -255,7 +255,7 @@ func ExpenseFlow(
 
 		// error or machine disposed
 		case <-errCh:
-			return machine, machine.Err
+			return machine, machine.Err()
 
 		// approval granted
 		case <-machine.When1(sse.ApprovalGranted, nil):
@@ -270,7 +270,7 @@ func ExpenseFlow(
 	log("waiting: PaymentInProgress to PaymentCompleted")
 	select {
 	case <-errCh:
-		return machine, machine.Err
+		return machine, machine.Err()
 	case <-machine.When1(sse.PaymentCompleted, nil):
 	}
 

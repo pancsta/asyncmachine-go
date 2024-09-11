@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"runtime"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -19,8 +21,6 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
-	"os/signal"
-	"syscall"
 )
 
 type Params struct {
@@ -44,7 +44,7 @@ var cliParamServerAddrShort = "s"
 
 func rootCmd(fn rootFn) *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use: "am-dbg -s localhost:4444",
+		Use: "am-dbg-ssh -s localhost:4444",
 		Long: dedent.Dedent(`
 			am-dbg-ssh is an SSH version of asyncmachine-go debugger.
 	
@@ -101,12 +101,12 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 		dbg, err := debugger.New(sess.Context(), debugger.Opts{
 			// ssh screen
 			Screen:      screen,
-			DBGLogLevel: par.LogLevel,
-			DBGLogger:   cli.GetFileLogger(&par.Params),
+			DbgLogLevel: par.LogLevel,
+			DbgLogger:   cli.GetLogger(&par.Params),
 			// TODO cache import data and deep copy for new connections
 			ImportData: par.ImportData,
 			// ServerAddr is disabled
-			ServerAddr:  par.ServerURL,
+			ServerAddr:  par.ServerAddr,
 			EnableMouse: par.EnableMouse,
 			Version:     ver,
 		})
@@ -117,7 +117,7 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 
 		// rpc client
 		if par.DebugAddr != "" {
-			err := telemetry.TransitionsToDBG(dbg.Mach, par.DebugAddr)
+			err := telemetry.TransitionsToDbg(dbg.Mach, par.DebugAddr)
 			// TODO retries
 			if err != nil {
 				panic(err)

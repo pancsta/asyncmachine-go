@@ -11,7 +11,7 @@ import (
 )
 
 type S = am.S
-type T = am.T
+type T = am.Time
 
 func TestTimeMatrix(t *testing.T) {
 	// m1 init
@@ -24,7 +24,7 @@ func TestTimeMatrix(t *testing.T) {
 	// mutate & assert
 	m1.Add(S{"A", "B"}, nil)
 	m1.Add(S{"A", "B"}, nil)
-	assertClocks(t, m1, S{"A", "B", "C", "D"}, T{1, 3, 0, 0},
+	assertTime(t, m1, S{"A", "B", "C", "D"}, T{1, 3, 0, 0},
 		"m1 clocks mismatch")
 
 	// m2 init
@@ -39,7 +39,7 @@ func TestTimeMatrix(t *testing.T) {
 	m2.Add(S{"A", "B"}, nil)
 	m2.Add(S{"A", "B", "C"}, nil)
 	m2.Set(S{"D"}, nil)
-	assertClocks(t, m2, S{"A", "B", "C", "D"}, T{2, 6, 2, 1},
+	assertTime(t, m2, S{"A", "B", "C", "D"}, T{2, 6, 2, 1},
 		"m2 clocks mismatch")
 
 	matrix, err := TimeMatrix([]*am.Machine{m1, m2})
@@ -72,10 +72,8 @@ func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
 	return m
 }
 
-func assertClocks(t *testing.T, m *am.Machine, states S, times T,
+func assertTime(t *testing.T, m *am.Machine, states S, time T,
 	msgAndArgs ...interface{},
 ) {
-	for i, state := range states {
-		assert.True(t, m.IsClock(state, times[i]), msgAndArgs...)
-	}
+	assert.Equal(t, m.Time(states), time, msgAndArgs...)
 }

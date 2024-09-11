@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pancsta/rpc2"
+	"github.com/cenkalti/rpc2"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc/rpcnames"
@@ -36,8 +36,10 @@ type Client struct {
 }
 
 // interfaces
-var _ clientRpcMethods = &Client{}
-var _ clientServerMethods = &Client{}
+var (
+	_ clientRpcMethods    = &Client{}
+	_ clientServerMethods = &Client{}
+)
 
 func NewClient(
 	ctx context.Context, workerAddr string, id string, stateStruct am.Struct,
@@ -182,7 +184,7 @@ func (c *Client) HandshakingState(e *am.Event) {
 
 	go func() {
 		// call rpc
-		var resp = &RespHandshake{}
+		resp := &RespHandshake{}
 		if !c.call(ctx, rpcnames.Handshake.Encode(), Empty{}, resp) {
 			return
 		}

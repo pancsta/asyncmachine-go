@@ -86,11 +86,9 @@ type DbgMsgTx struct {
 func (d *DbgMsgTx) Clock(statesIndex am.S, state string) uint64 {
 	idx := lo.IndexOf(statesIndex, state)
 	return d.Clocks[idx]
-
 }
 
 func (d *DbgMsgTx) Is(statesIndex am.S, states am.S) bool {
-
 	for _, state := range states {
 		idx := lo.IndexOf(statesIndex, state) //nolint:typecheck
 		if idx == -1 {

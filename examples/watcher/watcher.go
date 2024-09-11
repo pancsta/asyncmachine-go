@@ -45,7 +45,7 @@ func New(ctx context.Context) (*PathWatcher, error) {
 		ID: "watcher",
 	}
 
-	if os.Getenv("YAST_DEBUG") != "" {
+	if os.Getenv("YASM_DEBUG") != "" {
 		opts.HandlerTimeout = time.Minute
 		opts.DontPanicToException = true
 	}
@@ -61,9 +61,9 @@ func New(ctx context.Context) (*PathWatcher, error) {
 		return nil, err
 	}
 
-	w.Mach.SetTestLogger(log.Printf, am.LogChanges)
-	if os.Getenv("YAST_DEBUG") != "" {
-		err = telemetry.TransitionsToDBG(w.Mach, "")
+	w.Mach.SetLoggerSimple(log.Printf, am.LogChanges)
+	if os.Getenv("YASM_DEBUG") != "" {
+		err := telemetry.TransitionsToDbg(w.Mach, "")
 		if err != nil {
 			return nil, err
 		}
@@ -78,7 +78,7 @@ func (w *PathWatcher) InitState(e *am.Event) {
 	w.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
 		w.Mach.Remove1(ss.Init, nil)
-		w.Mach.AddErr(err)
+		w.Mach.AddErr(err, nil)
 	}
 }
 
@@ -105,14 +105,14 @@ func (w *PathWatcher) WatchingState(e *am.Event) {
 		// create state per dir
 		err := w.watcher.Add(dirName)
 		if err != nil {
-			e.Machine.AddErr(err)
+			e.Machine.AddErr(err, nil)
 		}
 
 		// create a state for each dir
 		state := am.New(ctx, ss.StatesDir, nil)
 		err = state.VerifyStates(ss.NamesDir)
 		if err != nil {
-			e.Machine.AddErr(err)
+			e.Machine.AddErr(err, nil)
 			continue
 		}
 
@@ -129,7 +129,7 @@ func (w *PathWatcher) WatchingEnd(e *am.Event) {
 	for _, path := range paths {
 		err := w.watcher.Remove(path)
 		if err != nil {
-			e.Machine.AddErr(err)
+			e.Machine.AddErr(err, nil)
 		}
 	}
 }
@@ -152,7 +152,7 @@ func (w *PathWatcher) watchLoop(ctx context.Context) {
 				w.Mach.Remove1(ss.Watching, nil)
 				return
 			}
-			w.Mach.AddErr(err)
+			w.Mach.AddErr(err, nil)
 
 		case <-ctx.Done():
 			// state expired
@@ -241,7 +241,7 @@ func (w *PathWatcher) RefreshingState(e *am.Event) {
 
 		executables, err := listExecutables(dirName)
 		if err != nil {
-			e.Machine.AddErr(err)
+			e.Machine.AddErr(err, nil)
 		}
 
 		w.Mach.Remove1(ss.Refreshing, am.A{
@@ -325,7 +325,7 @@ func (w *PathWatcher) Stop() {
 	w.Mach.Remove1(ss.Init, nil)
 }
 
-///// HELPERS /////
+// /// HELPERS /////
 
 func isExecutable(path string) (bool, error) {
 	info, err := os.Stat(path)

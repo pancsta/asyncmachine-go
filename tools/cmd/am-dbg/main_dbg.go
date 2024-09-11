@@ -2,13 +2,15 @@ package main
 
 import (
 	"context"
+	"os"
+
+	"github.com/spf13/cobra"
+
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
-	"github.com/spf13/cobra"
-	"os"
 )
 
 func main() {
@@ -30,12 +32,20 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		os.Exit(0)
 	}
 
+	// logger and profiler
+	logger := cli.GetLogger(&p)
+	cli.StartCpuProfileSrv(ctx, logger, &p)
+	stopProfile := cli.StartCpuProfile(logger, &p)
+	if stopProfile != nil {
+		defer stopProfile()
+	}
+
 	// init the debugger
 	dbg, err := debugger.New(ctx, debugger.Opts{
-		DBGLogLevel:     p.LogLevel,
-		DBGLogger:       cli.GetFileLogger(&p),
+		DbgLogLevel:     p.LogLevel,
+		DbgLogger:       logger,
 		ImportData:      p.ImportData,
-		ServerAddr:      p.ServerURL,
+		ServerAddr:      p.ServerAddr,
 		EnableMouse:     p.EnableMouse,
 		SelectConnected: p.SelectConnected,
 		CleanOnConnect:  p.CleanOnConnect,
@@ -47,7 +57,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 
 	// rpc client
 	if p.DebugAddr != "" {
-		err := telemetry.TransitionsToDBG(dbg.Mach, p.DebugAddr)
+		err := telemetry.TransitionsToDbg(dbg.Mach, p.DebugAddr)
 		// TODO retries
 		if err != nil {
 			panic(err)
@@ -55,7 +65,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 	}
 
 	// rpc server
-	go server.StartRCP(dbg.Mach, p.ServerURL)
+	go server.StartRpc(dbg.Mach, p.ServerAddr, nil)
 
 	// start and wait till the end
 	dbg.Start(p.StartupMachine, p.StartupTx, p.StartupView)
@@ -71,15 +81,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 	dbg.Dispose()
 
 	// pprof memory profile
-	// f, err := os.Create("memprofile")
-	// if err != nil {
-	// 	log.Fatal("could not create memory profile: ", err)
-	// }
-	// defer f.Close() // error handling omitted for example
-	// runtime.GC()    // get up-to-date statistics
-	// if err := pprof.WriteHeapProfile(f); err != nil {
-	// 	log.Fatal("could not write memory profile: ", err)
-	// }
+	cli.HandleProfMem(logger, &p)
 }
 
 func printStats(dbg *debugger.Debugger) {

@@ -5,7 +5,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	tasks "github.com/pancsta/asyncmachine-go/examples/asynq-fileprocessing"
+	tasks "github.com/pancsta/asyncmachine-go/examples/asynq_fileprocessing"
 )
 
 const redisAddr = "127.0.0.1:6379"

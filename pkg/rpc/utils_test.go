@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	"github.com/lithammer/dedent"
+	"github.com/stretchr/testify/assert"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/types"
-	"github.com/stretchr/testify/assert"
 )
 
 func assertStates(t *testing.T, m types.MachineApi, expected am.S,

@@ -10,11 +10,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	ssCli "github.com/pancsta/asyncmachine-go/pkg/rpc/states/client"
-	"github.com/pancsta/rpc2"
+	"github.com/cenkalti/rpc2"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	ssCli "github.com/pancsta/asyncmachine-go/pkg/rpc/states/client"
 )
 
 // ///// ///// /////
@@ -126,10 +126,6 @@ var (
 
 // wrapping error setters
 
-func errResponse(mach *am.Machine, err error) {
-	mach.AddErr(fmt.Errorf("%w: %w", ErrInvalidResp, err), nil)
-}
-
 func errResponseStr(mach *am.Machine, msg string) {
 	mach.AddErr(fmt.Errorf("%w: %s", ErrInvalidResp, msg), nil)
 }
@@ -144,7 +140,6 @@ func errNetwork(mach *am.Machine, err error) {
 
 // errAuto detects sentinels from error msgs and wraps.
 func errAuto(mach *am.Machine, msg string, err error) {
-
 	// detect group from text
 	var errGroup error
 	if strings.HasPrefix(err.Error(), "gob: ") {

@@ -7,23 +7,13 @@ env:
 
 tasks:
 
-  build-machine:
-    cmds:
-      - go build pkg/machine/*.go
-
-  build-telemetry:
-    cmds:
-      - go build pkg/telemetry/*.go
-
-  build-debugger:
-    cmds:
-      - go build -o build/am-dbg tools/am-dbg/*.go
-
   build:
+    ignore_error: true
     cmds:
-      - task: build-machine
-      - task: build-telemetry
-      - task: build-debugger
+      - go build ./examples/...
+      - go build ./pkg/...
+      - go build ./internal/...
+      - go build ./tools/...
 
   release:
     cmds:
@@ -35,19 +25,22 @@ tasks:
       - go run ./tools/cmd/am-dbg {{.CLI_ARGS}}
 
   am-dbg-asset:
+    desc: Start am-dbg with an asset dump file
     silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
           --import-data assets/am-dbg-sim.gob.br
           --select-machine sim-p0
           --select-transition 20
+          --am-dbg-addr $AM_DBG_ADDR
+          --log-level $AM_LOG
           {{.CLI_ARGS}}
 
   am-dbg-ssh:
     silent: false
     desc: Run am-dbg-ssh with sample data on localhost:4444
     cmds:
-      - go run ./tools/cmd/am-dbg-ssh \
+      - go run ./tools/cmd/am-dbg-ssh
           --import-data assets/am-dbg-sim.gob.br
           --select-machine sim-p0
           --select-transition 20
@@ -55,11 +48,12 @@ tasks:
 
   am-dbg-ssh-connect:
     silent: false
-    desc: Connect to a running am-dbg-ssh via the local SSH client
+    desc: Connect to a running am-dbg-ssh at localhost:4444
     cmds:
       - ssh localhost -p 4444 -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
 
-  am-dbg-import-dump:
+  am-dbg-dump:
+    desc: Start am-dbg with a recent dump file
     silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
@@ -67,22 +61,62 @@ tasks:
           {{.CLI_ARGS}}
 
   am-dbg-dbg:
+    desc: Start am-dbg on port 9913, so it can debug other instances via --am-dbg-addr
     cmds:
       - go run ./tools/cmd/am-dbg
-          --log-file am-dbg-dbg.log
-          --log-level 2
           --listen-on localhost:9913
           --select-connected
           {{.CLI_ARGS}}
+  #          --log-file am-dbg-dbg.log
+  #          --log-level 2
+
+  am-dbg-worker:
+    desc: Run am-dbg as an RPC worker, optionally starting the dbg RPC server via -server-addr
+    silent: false
+    cmds:
+      - go run ./internal/testing/cmd/am-dbg-worker
+          -server-addr=localhost:53470
+          -worker-addr=localhost:53480
 
   test:
+    env:
+      AM_TEST: 1
+    desc: Run all local tests
     cmds:
       - task: clean
-      - go test ./...
+      - go test ./... {{.CLI_ARGS}}
 
-  test-verbose:
+  test-series:
+    env:
+      AM_TEST: 1
+    desc: Run all local tests in a series
     cmds:
-      - go test ./... -v
+      - task: clean
+      - go test -p 1 ./... {{.CLI_ARGS}}
+
+  test-race:
+    env:
+      AM_TEST: 1
+    desc: Run all local tests with -race
+    cmds:
+      - task: clean
+      - go test -race ./... {{.CLI_ARGS}}
+
+  test-debugger:
+    desc: Run local am-dbg integration tests
+    cmds:
+      - task: clean
+      - go test 
+          ./tools/debugger/test {{.CLI_ARGS}}
+
+  test-debugger-remote:
+    dotenv:
+      - config/env/tests-remote.env
+    desc: Run remote am-dbg integration tests against a running worker (see task am-dbg-worker)
+    cmds:
+      - task: clean
+      - go test -tags test_worker
+          ./tools/debugger/test/remote {{.CLI_ARGS}}
 
   clean:
     cmds:
@@ -93,6 +127,10 @@ tasks:
       - printf "\n----- pkg/machine\n\n"
       - gocloc pkg/machine --not-match=_test\.go
       - gocloc pkg/machine/*_test.go
+
+      - printf "\n----- pkg/rpc\n\n"
+      - gocloc pkg/rpc --not-match=_test\.go
+      - gocloc pkg/rpc/*_test.go
 
       - printf "\n----- pkg/telemetry\n\n"
       - gocloc pkg/telemetry --not-match=_test\.go
@@ -190,36 +228,38 @@ tasks:
       - |
         jq '.. | objects | select(has("gridPos")) | {title: .title, gridPos: .gridPos}' assets/grafana-mach-{{.IDS}}.json
 
-  gen-states-file:
-    desc: Generate states file for provided state names, eg "task gen-states-file -- Foo,Bar"
+  am-gen:
+    desc: Generate states file for provided state names, eg "task am-gen -- Foo,Bar"
     cmds:
       - go run ./tools/cmd/am-gen states-file {{.CLI_ARGS}}
 
-  teaser-gif:
+  am-dbg-teaser-gif:
+    env:
+      DISPLAY: :0
     cmds:
       - terminalizer render assets/teaser.cast.yml -o assets/am-dbg-teaser.gif
       - magick assets/am-dbg-teaser.gif -layers optimize assets/am-dbg-teaser.gif
 
-  teaser-gif-quick:
+  am-dbg-teaser-gif-quick:
+    env:
+      DISPLAY: :0
     cmds:
       - terminalizer render assets/teaser.cast.yml -o assets/am-dbg-teaser.gif -q 15
 
-  teaser-record:
+  am-dbg-teaser:
     cmds:
       - terminalizer record
           --config config/terminalizer.yml assets/teaser.cast
           --skip-sharing
+      # delete first 2 records (each has 2 lines)
+      - sed -i '/^records:/{n;N;d;}' assets/teaser.cast.yml
       - sed -i '/^records:/{n;N;d;}' assets/teaser.cast.yml
 
-  teaser-run:
-    cmds:
-      - go run ./tools/cmd/am-dbg-teaser
-
-  teaser:
+  am-dbg-teaser-all:
     desc: Create assets/am-dbg-teaser.gif using tools/cmd/am-dbg-teaser
     cmds:
-      - task: teaser-record
-      - task: teaser-gif
+      - task: am-dbg-teaser
+      - task: am-dbg-teaser-gif
 
   godoc:
     cmds:
@@ -228,3 +268,37 @@ tasks:
   gen-manual-pdf:
     cmds:
       - pandoc -f markdown-implicit_figures docs/manual.md -o assets/manual.pdf
+
+
+  prof-cpu-img:
+    cmds:
+      - go tool pprof -png cpu.prof > cpu.light.png
+      - magick cpu.light.png 
+          -channel RGB -negate cpu.dark.png
+
+  prof-mem-img:
+    cmds:
+      - go tool pprof -png mem.prof > mem.light.png
+      - magick mem.light.png 
+          -channel RGB -negate mem.dark.png
+
+  prof-mem:
+    cmds:
+      - curl -s http://localhost:6060/debug/pprof/heap > mem.prof
+      - task: prof-mem-img
+
+  prof-trace:
+    requires:
+      vars: [SEC]
+    cmds:
+      - curl -s http://localhost:6060/debug/pprof/trace?seconds={{.SEC}} > trace.out
+      - go tool trace -http=:42419 trace.out
+
+  benchmark-grpc:
+    dir: examples/benchmark_grpc
+    cmds:
+      - protoc --go_out=. --go_opt=paths=source_relative
+          --go-grpc_out=. --go-grpc_opt=paths=source_relative
+        worker_proto/worker.proto
+      - echo "Running 10_000 server events"
+      - go test -bench=. -benchtime=10000x -v

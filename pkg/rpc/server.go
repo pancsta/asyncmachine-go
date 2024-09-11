@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pancsta/rpc2"
+	"github.com/cenkalti/rpc2"
 
 	amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -54,8 +54,10 @@ type Server struct {
 }
 
 // interfaces
-var _ serverRpcMethods = &Server{}
-var _ clientServerMethods = &Server{}
+var (
+	_ serverRpcMethods    = &Server{}
+	_ clientServerMethods = &Server{}
+)
 
 func NewServer(
 	ctx context.Context, addr string, id string, worker *am.Machine,

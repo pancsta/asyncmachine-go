@@ -6,9 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
-	"strconv"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
@@ -48,7 +46,7 @@ func NestedState(
 	state := e.Name[0 : len(e.Name)-5]
 
 	// ignore active non-multi nested states
-	tick := submach.Clock(state)
+	tick := submach.Tick(state)
 	isMulti := submach.GetStruct()[state].Multi
 	if am.IsActiveTick(tick) && !isMulti {
 		return am.Canceled, nil, fmt.Errorf("nested state %s is active", state)
@@ -60,7 +58,7 @@ func NestedState(
 	// handle queuing with a timeout
 	if res == am.Queued && isMulti {
 		// wait for the state to be activated again
-		when := submach.WhenTime(am.S{state}, am.T{tick + 2}, nil)
+		when := submach.WhenTime(am.S{state}, am.Time{tick + 2}, nil)
 		return res, when, nil
 	} else if res == am.Queued {
 		when := submach.When1(state, nil)
@@ -81,35 +79,13 @@ func ErrFromCtxs(ctxs ...context.Context) error {
 	return nil
 }
 
-// StatesToIndexes converts a list of state names to a list of state indexes,
-// for a given machine.
-func StatesToIndexes(mach *am.Machine, states am.S) []int {
-	var indexes []int
-	for _, state := range states {
-		indexes = append(indexes, slices.Index(mach.StateNames, state))
-	}
-
-	return indexes
-}
-
-// IndexesToStates converts a list of state indexes to a list of state names,
-// for a given machine.
-func IndexesToStates(mach *am.Machine, indexes []int) am.S {
-	states := am.S{}
-	for _, index := range indexes {
-		states = append(states, mach.StateNames[index])
-	}
-
-	return states
-}
-
 // TimeMatrix returns a matrix of state clocks for the given machines.
-func TimeMatrix(machines []*am.Machine) ([]am.T, error) {
+func TimeMatrix(machines []*am.Machine) ([]am.Time, error) {
 	if len(machines) == 0 {
 		return nil, errors.New("no machines provided")
 	}
 
-	matrix := make([]am.T, len(machines))
+	matrix := make([]am.Time, len(machines))
 	prevLen := len(machines[0].GetStruct())
 	for i, mach := range machines {
 		if len(mach.GetStruct()) != prevLen {
@@ -122,7 +98,7 @@ func TimeMatrix(machines []*am.Machine) ([]am.T, error) {
 }
 
 func RelationsMatrix(mach *am.Machine) ([][]int, error) {
-	names := mach.StateNames
+	names := mach.StateNames()
 	shiftRow := 2
 	appendRows := 2
 	matrix := make([][]int, shiftRow+len(names)+appendRows)
@@ -141,7 +117,7 @@ func RelationsMatrix(mach *am.Machine) ([][]int, error) {
 
 		for j, s2 := range names {
 
-			rels, err := mach.Resolver.GetRelationsBetween(s1, s2)
+			rels, err := mach.Resolver().GetRelationsBetween(s1, s2)
 			if err != nil {
 				return nil, err
 			}
@@ -172,10 +148,10 @@ func TransitionMatrix(tx, prevTx *am.Transition, index am.S) ([][]int, error) {
 
 	// row 0: currently set
 	matrix[0] = make([]int, len(index))
-	for i, name := range index {
+	for i := range index {
 
 		matrix[0][i] = 0
-		if am.IsActiveTick(tx.ClocksBefore[name]) {
+		if am.IsActiveTick(tx.TimeBefore[i]) {
 			matrix[0][i] = 1
 		}
 	}
@@ -215,13 +191,13 @@ func TransitionMatrix(tx, prevTx *am.Transition, index am.S) ([][]int, error) {
 	// ticks
 	row := len(index) + shiftRow
 	matrix[row] = make([]int, len(index))
-	for i, name := range index {
+	for i := range index {
 
 		var pTick uint64
 		if prevTx != nil {
-			pTick = prevTx.ClocksAfter[name]
+			pTick = prevTx.TimeAfter[i]
 		}
-		tick := tx.ClocksAfter[name]
+		tick := tx.TimeAfter[i]
 		v := tick - pTick
 
 		// add row
@@ -231,57 +207,13 @@ func TransitionMatrix(tx, prevTx *am.Transition, index am.S) ([][]int, error) {
 	// active after
 	row = len(index) + shiftRow + 1
 	matrix[row] = make([]int, len(index))
-	for i, name := range index {
+	for i := range index {
 
 		matrix[row][i] = 0
-		if am.IsActiveTick(tx.ClocksAfter[name]) {
+		if am.IsActiveTick(tx.TimeAfter[i]) {
 			matrix[row][i] = 1
 		}
 	}
 
 	return matrix, nil
-}
-
-// EnvLogLevel returns a log level from an environment variable.
-// TODO cookbook
-func EnvLogLevel(name string) am.LogLevel {
-	v, _ := strconv.Atoi(os.Getenv(name))
-	return am.LogLevel(v)
-}
-
-// Add1Sync activates a state and waits until its active. Returns early if
-// the state is already active.
-func Add1Sync(mach *am.Machine, state string, args am.A) am.Result {
-	// TODO support args["sync_token"] via WhenArgs
-
-	if mach.Is1(state) {
-		return am.ResultNoOp
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	when := mach.WhenTicks(state, 1, ctx)
-	res := mach.Add1(state, args)
-	if res == am.Canceled {
-		// dispose "when" ch early
-		cancel()
-
-		return res
-	}
-	<-when
-
-	return res
-}
-
-// Add1MultiSync activates a multi state and waits until its becomes
-// de-activated, after an activation.
-func Add1MultiSync(mach *am.Machine, state string, args am.A) am.Result {
-	// TODO support args["sync_token"] via WhenArgs
-
-	when := mach.WhenTicks(state, 2, nil)
-	res := mach.Add1(state, args)
-	<-when
-
-	return res
 }

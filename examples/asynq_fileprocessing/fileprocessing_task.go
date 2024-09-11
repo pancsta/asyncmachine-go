@@ -48,7 +48,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	processor "github.com/pancsta/asyncmachine-go/examples/temporal-fileprocessing"
+	processor "github.com/pancsta/asyncmachine-go/examples/temporal_fileprocessing"
 )
 
 const (

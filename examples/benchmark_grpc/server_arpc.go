@@ -22,7 +22,6 @@ type WorkerArpcServer struct {
 func NewWorkerArpcServer(
 	ctx context.Context, addr string, worker *Worker,
 ) (*WorkerArpcServer, error) {
-
 	// validate
 	if worker == nil {
 		return nil, errors.New("worker is nil")
