@@ -31,7 +31,7 @@ type Machine struct {
 	HandlerTimeout time.Duration
 	// If true, the machine will print all exceptions to stdout. Default: true.
 	// Requires an ExceptionHandler binding and Machine.PanicToException set.
-	PrintExceptions bool
+	LogStackTrace bool
 	// If true, the machine will catch panic and trigger the Exception state.
 	// Default: true.
 	PanicToException bool
@@ -94,7 +94,7 @@ type Machine struct {
 	indexWhenQueueLock sync.Mutex
 	handlerStart       chan *handlerCall
 	handlerEnd         chan bool
-	handlerPanic       chan any
+	handlerPanic       chan recoveryData
 	handlerTimer       *time.Timer
 	handlerLoopRunning bool
 	logEntriesLock     sync.Mutex
@@ -794,15 +794,57 @@ func (m *Machine) Add1(state string, args A) Result {
 	return m.Add(S{state}, args)
 }
 
-// AddErr is a shorthand method to add the Exception state with the passed
-// error.
+// AddErr is a dedicated method to add the Exception state with the passed
+// error and optional arguments.
 // Like every mutation method, it will resolve relations and trigger handlers.
-func (m *Machine) AddErr(err error) Result {
+// AddErr produces a stack trace of the error, if LogStackTrace is enabled.
+func (m *Machine) AddErr(err error, args A) Result {
+	return m.AddErrState(Exception, err, args)
+}
+
+// AddErrState adds a dedicated error state, along with the build in Exception
+// state.
+// Like every mutation method, it will resolve relations and trigger handlers.
+// AddErrState produces a stack trace of the error, if LogStackTrace is enabled.
+func (m *Machine) AddErrState(state string, err error, args A) Result {
 	if m.Disposed.Load() {
 		return Canceled
 	}
-	// TODO test .Err
-	m.Err = err
+	// TODO test Err()
+	m.err.Store(err)
+
+	var trace string
+	if m.LogStackTrace {
+		trace = captureStackTrace()
+	}
+
+	// build args
+	if args == nil {
+		args = A{}
+	} else {
+		args = maps.Clone(args)
+	}
+	args["err"] = err
+	args["err.trace"] = trace
+
+	// TODO prepend to the queue? what effects / benefits
+	return m.Add(S{state, Exception}, args)
+}
+
+// PanicToErr will catch a panic and add the Exception state. Needs to
+// be called in a defer statement, just like a recover() call.
+func (m *Machine) PanicToErr(args A) {
+	r := recover()
+	if r == nil {
+		return
+	}
+
+	if err, ok := r.(error); ok {
+		m.AddErr(err, args)
+	} else {
+		m.AddErr(fmt.Errorf("%v", err), args)
+	}
+}
 
 	return m.Add(S{"Exception"}, A{"err": err})
 }
@@ -816,7 +858,17 @@ func (m *Machine) AddErrStr(err string) Result {
 
 // IsErr checks if the machine has the Exception state currently active.
 func (m *Machine) IsErr() bool {
-	return m.Is(S{"Exception"})
+	return m.Is(S{Exception})
+}
+
+// Err returns the last error.
+func (m *Machine) Err() error {
+	err := m.err.Load()
+	if err == nil {
+		return nil
+	}
+
+	return err.(error)
 }
 
 // Remove de-activates a list of states in the machine, returning the result of
@@ -1190,7 +1242,7 @@ func (m *Machine) OnEvent(events []string, ctx context.Context) chan *Event {
 }
 
 // recoverToErr recovers to the Exception state by catching panics.
-func (m *Machine) recoverToErr(emitter *emitter, r any) {
+func (m *Machine) recoverToErr(emitter *handler, r recoveryData) {
 	if m.Ctx.Err() != nil {
 		return
 	}
