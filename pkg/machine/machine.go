@@ -38,19 +38,10 @@ type Machine struct {
 	// If true, logs will start with machine's ID (5 chars).
 	// Default: true.
 	LogID bool
-	// Relations resolver, used to produce target states of a transition.
-	// Default: *DefaultRelationsResolver. Read-only.
-	Resolver RelationsResolver
 	// Ctx is the context of the machine. Read-only.
 	Ctx context.Context
-	// Err is the last error that occurred. Read-only.
-	Err error
 	// Maximum number of mutations that can be queued. Default: 1000.
 	QueueLimit int
-	// Currently executing transition (if any). Read-only.
-	Transition *Transition
-	// List of all the registered state names. Read-only.
-	StateNames S
 	// Confirms the states have been ordered using VerifyStates. Read-only.
 	StatesVerified bool
 	// Tracers are optional tracers for telemetry integrations.
@@ -62,6 +53,11 @@ type Machine struct {
 	// Tags are optional tags for telemetry integrations etc.
 	Tags []string
 
+	// Err is the last error that occurred.
+	err atomic.Value
+	// Currently executing transition (if any).
+	t              atomic.Pointer[Transition]
+	transitionLock sync.RWMutex
 	// states is a map of state names to state definitions.
 	states     Struct
 	statesLock sync.RWMutex
@@ -71,27 +67,34 @@ type Machine struct {
 	// queue of mutations to be executed.
 	queue           []*Mutation
 	queueLock       sync.RWMutex
-	queueProcessing sync.Mutex
-	queueLen        int
-	queueRunning    bool
-
-	emitters    []*emitter
-	clock       Clocks
+	queueProcessing atomic.Bool
+	queueLen        atomic.Int32
+	queueRunning    atomic.Bool
+	// Relations resolver, used to produce target states of a transition.
+	// Default: *DefaultRelationsResolver.
+	resolver RelationsResolver
+	// List of all the registered state names.
+	stateNames S
+	// disposeLock is used to lock the disposal process.
+	disposeLock sync.RWMutex
+	handlers    []*handler
+	clock       Clock
 	cancel      context.CancelFunc
 	logLevel    LogLevel
-	logger      Logger
+	logger      atomic.Pointer[Logger]
 	panicCaught bool
 	// unlockDisposed means that disposal is in progress and holding the queueLock
-	unlockDisposed     bool
-	indexWhen          indexWhen
-	indexWhenTime      indexWhenTime
-	indexWhenArgs      indexWhenArgs
+	unlockDisposed     atomic.Bool
+	indexWhen          IndexWhen
+	indexWhenTime      IndexWhenTime
+	indexWhenArgs      IndexWhenArgs
 	indexWhenArgsLock  sync.RWMutex
 	indexStateCtx      indexStateCtx
 	indexEventCh       indexEventCh
 	indexEventChLock   sync.Mutex
 	indexWhenQueue     []whenQueueBinding
 	indexWhenQueueLock sync.Mutex
+	tracersLock        sync.RWMutex
 	handlerStart       chan *handlerCall
 	handlerEnd         chan bool
 	handlerPanic       chan any
@@ -100,9 +103,9 @@ type Machine struct {
 	logEntriesLock     sync.Mutex
 	logEntries         []*LogEntry
 	logArgs            func(args A) map[string]string
-	currentHandler     string
+	currentHandler     atomic.Value
 	disposeHandlers    []func()
-	timeLast           T
+	timeLast           atomic.Pointer[Time]
 	// Channel closing when the machine finished disposal. Read-only.
 	whenDisposed chan struct{}
 }
@@ -174,6 +177,8 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 		whenDisposed:     make(chan struct{}),
 	}
 
+	m.timeLast.Store(&Time{})
+
 	// parse opts
 	// TODO extract
 	opts = cloneOptions(opts)
@@ -195,7 +200,7 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 			m.LogID = false
 		}
 		if opts.Resolver != nil {
-			m.Resolver = opts.Resolver
+			m.resolver = opts.Resolver
 		}
 		if opts.LogLevel != LogNothing {
 			m.SetLogLevel(opts.LogLevel)
@@ -215,8 +220,8 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 	}
 
 	// default resolver
-	if m.Resolver == nil {
-		m.Resolver = &DefaultRelationsResolver{
+	if m.resolver == nil {
+		m.resolver = &DefaultRelationsResolver{
 			Machine: m,
 		}
 	}
@@ -230,8 +235,8 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 
 	// infer and sort states for defaults
 	for name := range m.states {
-		m.StateNames = append(m.StateNames, name)
-		slices.Sort(m.StateNames)
+		m.stateNames = append(m.stateNames, name)
+		slices.Sort(m.stateNames)
 		m.clock[name] = 0
 	}
 
@@ -243,12 +248,14 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 		m.ParentID = parent.ID
 
 		// info the tracers about this being a submachine
+		parent.tracersLock.RLock()
 		for i := range parent.Tracers {
 			if !parent.Tracers[i].Inheritable() {
 				continue
 			}
 			parent.Tracers[i].NewSubmachine(parent, m)
 		}
+		parent.tracersLock.RUnlock()
 	}
 	m.Ctx, m.cancel = context.WithCancel(ctx)
 
@@ -290,10 +297,11 @@ func (m *Machine) Dispose() {
 
 	go func() {
 		if m.Disposed.Load() {
+			m.log(LogDecisions, "[dispose] already disposed")
 			return
 		}
-		m.queueProcessing.Lock()
-		m.unlockDisposed = true
+		m.queueProcessing.Store(false)
+		m.unlockDisposed.Store(true)
 		m.dispose(false)
 	}()
 }
@@ -310,9 +318,11 @@ func (m *Machine) dispose(force bool) {
 		return
 	}
 
+	m.tracersLock.RLock()
 	for i := range m.Tracers {
 		m.Tracers[i].MachineDispose(m.ID)
 	}
+	m.tracersLock.RUnlock()
 
 	// skip the locks when forcing
 	if !force {
@@ -320,19 +330,21 @@ func (m *Machine) dispose(force bool) {
 		defer m.activeStatesLock.Unlock()
 		m.indexWhenArgsLock.Lock()
 		defer m.indexWhenArgsLock.Unlock()
-		m.indexEventChLock.Lock()
-		defer m.indexEventChLock.Unlock()
+		m.tracersLock.Lock()
+		defer m.tracersLock.Unlock()
+		m.disposeLock.Lock()
+		defer m.disposeLock.Unlock()
 	}
 
 	m.log(LogEverything, "[end] dispose")
 	m.cancel()
-	if m.Err == nil && m.Ctx.Err() != nil {
-		m.Err = m.Ctx.Err()
+	if m.Err() == nil && m.Ctx.Err() != nil {
+		m.err.Store(m.Ctx.Err())
 	}
-	for _, e := range m.emitters {
-		m.disposeEmitter(e)
+	for _, e := range m.handlers {
+		m.disposeHandler(e)
 	}
-	m.logger = nil
+	m.logger.Store(nil)
 
 	// state contexts get cancelled automatically
 	m.indexStateCtx = nil
@@ -375,9 +387,9 @@ func (m *Machine) dispose(force bool) {
 	m.clock = nil
 
 	// release the queue lock
-	if m.unlockDisposed {
-		m.unlockDisposed = false
-		m.queueProcessing.Unlock()
+	if m.unlockDisposed.Load() {
+		m.unlockDisposed.Store(false)
+		m.queueProcessing.Store(false)
 	}
 
 	// run dispose handlers
@@ -683,7 +695,7 @@ func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan struct{} {
 	defer m.indexWhenQueueLock.Unlock()
 
 	// finish early
-	if !m.queueRunning {
+	if !m.queueRunning.Load() {
 		close(ch)
 
 		return ch
@@ -746,10 +758,13 @@ func (m *Machine) Time(states S) T {
 
 func (m *Machine) time(states S) T {
 	if states == nil {
-		states = m.StateNames
+		states = m.stateNames
 	}
 
-	ret := make(T, len(states))
+	m.disposeLock.RLock()
+	defer m.disposeLock.RUnlock()
+
+	ret := make(Time, len(states))
 	for i, s := range states {
 		ret[i] = m.clock[s]
 	}
@@ -766,7 +781,7 @@ func (m *Machine) TimeSum(states S) uint64 {
 	defer m.activeStatesLock.RUnlock()
 
 	if states == nil {
-		states = m.StateNames
+		states = m.stateNames
 	}
 
 	ret := uint64(0)
@@ -781,7 +796,7 @@ func (m *Machine) TimeSum(states S) uint64 {
 // transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (m *Machine) Add(states S, args A) Result {
-	if m.Disposed.Load() || m.queueLen >= m.QueueLimit {
+	if m.Disposed.Load() || int(m.queueLen.Load()) >= m.QueueLimit {
 		return Canceled
 	}
 	m.queueMutation(MutationAdd, states, args)
@@ -823,7 +838,7 @@ func (m *Machine) IsErr() bool {
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (m *Machine) Remove(states S, args A) Result {
-	if m.Disposed.Load() || m.queueLen >= m.QueueLimit {
+	if m.Disposed.Load() || int(m.queueLen.Load()) >= m.QueueLimit {
 		return Canceled
 	}
 
@@ -837,7 +852,7 @@ func (m *Machine) Remove(states S, args A) Result {
 		statesAny = append(statesAny, S{name})
 	}
 
-	if lenQueue == 0 && !m.DuringTransition() && !m.Any(statesAny...) {
+	if lenQueue == 0 && m.Transition() != nil && !m.Any(statesAny...) {
 		m.queueLock.RUnlock()
 		return Executed
 	}
@@ -858,7 +873,7 @@ func (m *Machine) Remove1(state string, args A) Result {
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (m *Machine) Set(states S, args A) Result {
-	if m.Disposed.Load() || m.queueLen >= m.QueueLimit {
+	if m.Disposed.Load() || int(m.queueLen.Load()) >= m.QueueLimit {
 		return Canceled
 	}
 	m.queueMutation(MutationSet, states, args)
@@ -977,9 +992,7 @@ func (m *Machine) queueMutation(mutationType MutationType, states S, args A) {
 		return
 	}
 
-	if m.DuringTransition() {
-		m.log(LogOps, "[queue:%s] %s", mutationType, j(statesParsed))
-	}
+	m.log(LogOps, "[queue:%s] %s", mutationType, j(statesParsed))
 
 	// args should always be initialized
 	if args == nil {
@@ -993,7 +1006,7 @@ func (m *Machine) queueMutation(mutationType MutationType, states S, args A) {
 		Args:         args,
 		Auto:         false,
 	})
-	m.queueLen = len(m.queue)
+	m.queueLen.Store(int32(len(m.queue)))
 	m.queueLock.Unlock()
 }
 
@@ -1014,10 +1027,10 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 
 	// wrap the func with a done channel
 	done := make(chan struct{})
-	canceled := false
+	canceled := atomic.Bool{}
 	wrap := func() {
 		defer close(done)
-		if canceled {
+		if canceled.Load() {
 			return
 		}
 		fn()
@@ -1036,7 +1049,7 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 		Eval: wrap,
 		Ctx:  ctx,
 	}}, m.queue...)
-	m.queueLen = len(m.queue)
+	m.queueLen.Store(int32(len(m.queue)))
 	m.queueLock.Unlock()
 
 	// process the queue if needed, but ignore the result
@@ -1046,7 +1059,7 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	select {
 
 	case <-time.After(m.HandlerTimeout / 2):
-		canceled = true
+		canceled.Store(true)
 		m.log(LogOps, "[eval:timeout] %s", source[0])
 		return false
 
@@ -1074,17 +1087,18 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 // often inside goroutines.
 // TODO reuse existing ctxs
 func (m *Machine) NewStateCtx(state string) context.Context {
-	// TODO handle cancellation while parsing the queue
+	m.activeStatesLock.Lock()
+	defer m.activeStatesLock.Unlock()
+
+	// TODO handle cancelation while parsing the queue
+	// TODO include current clocks as context values
 	stateCtx, cancel := context.WithCancel(m.Ctx)
 
 	// close early
-	if !m.Is1(state) {
+	if !m.is(S{state}) {
 		cancel()
 		return stateCtx
 	}
-
-	m.activeStatesLock.Lock()
-	defer m.activeStatesLock.Unlock()
 
 	// add an index
 	if _, ok := m.indexStateCtx[state]; !ok {
@@ -1196,8 +1210,8 @@ func (m *Machine) recoverToErr(emitter *emitter, r any) {
 	}
 
 	m.panicCaught = true
-	m.currentHandler = ""
-	t := m.Transition
+	m.currentHandler.Store("")
+	t := m.t.Load()
 
 	// dont double handle an exception (no nesting)
 	if slices.Contains(t.Mutation.CalledStates, "Exception") {
@@ -1205,11 +1219,8 @@ func (m *Machine) recoverToErr(emitter *emitter, r any) {
 	}
 
 	m.log(LogOps, "[recover] handling panic...")
-	err, ok := r.(error)
-	if !ok {
-		err = fmt.Errorf("%s", r)
-	}
-	m.Err = err
+	err := fmt.Errorf("%s", r.err)
+	m.err.Store(err)
 
 	// final phase, trouble...
 	if t.latestStep != nil && t.latestStep.IsFinal {
@@ -1244,7 +1255,7 @@ func (m *Machine) recoverToErr(emitter *emitter, r any) {
 		m.log(LogOps, "[recover] partial final states as (%s)",
 			j(activeStates))
 		m.setActiveStates(t.CalledStates(), activeStates, t.IsAuto())
-		t.IsCompleted = true
+		t.isCompleted.Store(true)
 	}
 
 	m.log(LogOps, "[cancel] (%s) by recover", j(t.TargetStates))
@@ -1270,7 +1281,10 @@ func (m *Machine) recoverToErr(emitter *emitter, r any) {
 		},
 	}
 
+	// prepend the exception to the queue
 	m.queue = append([]*Mutation{exception}, m.queue...)
+	m.queueLen.Store(int32(len(m.queue)))
+
 	// restart the handler loop
 	go m.handlerLoop()
 }
@@ -1318,13 +1332,13 @@ func (m *Machine) VerifyStates(states S) error {
 		return errs[0]
 	}
 
-	if len(m.StateNames) > len(states) {
-		missing := DiffStates(m.StateNames, checked)
+	if len(m.stateNames) > len(states) {
+		missing := DiffStates(m.stateNames, checked)
 		return fmt.Errorf("undefined states: %s", j(missing))
 	}
 
 	// memorize the state names order
-	m.StateNames = slices.Clone(states)
+	m.stateNames = slices.Clone(states)
 	m.StatesVerified = true
 
 	return nil
@@ -1335,6 +1349,11 @@ func (m *Machine) VerifyStates(states S) error {
 func (m *Machine) setActiveStates(calledStates S, targetStates S,
 	isAuto bool,
 ) S {
+	if m.Disposed.Load() {
+		// no-op
+		return S{}
+	}
+
 	m.activeStatesLock.Lock()
 	defer m.activeStatesLock.Unlock()
 
@@ -1396,13 +1415,12 @@ func (m *Machine) setActiveStates(calledStates S, targetStates S,
 // machine.
 func (m *Machine) processQueue() Result {
 	// empty queue
-	if len(m.queue) == 0 || m.Disposed.Load() {
+	if m.queueLen.Load() == 0 || m.Disposed.Load() {
 		return Canceled
 	}
 
 	// try to acquire the lock
-	acquired := m.queueProcessing.TryLock()
-	if !acquired {
+	if !m.queueProcessing.CompareAndSwap(false, true) {
 
 		m.queueLock.Lock()
 		defer m.queueLock.Unlock()
@@ -1412,7 +1430,6 @@ func (m *Machine) processQueue() Result {
 			label = "item"
 		}
 		m.log(LogOps, "[postpone] queue running (%d %s)", len(m.queue), label)
-		m.emit(EventQueueAdd, A{"queue_len": len(m.queue)}, nil)
 
 		return Queued
 	}
@@ -1420,25 +1437,22 @@ func (m *Machine) processQueue() Result {
 	var ret []Result
 
 	// execute the queue
-	m.queueRunning = false
-	for len(m.queue) > 0 {
-		m.queueRunning = true
+	m.queueRunning.Store(false)
+	for m.queueLen.Load() > 0 {
+		m.queueRunning.Store(true)
 
 		if m.Disposed.Load() {
 			return Canceled
-		}
-		if len(m.queue) == 0 {
-			break
 		}
 
 		// shift the queue
 		m.queueLock.Lock()
 		item := m.queue[0]
 		m.queue = m.queue[1:]
-		m.queueLen = len(m.queue)
+		m.queueLen.Store(int32(len(m.queue)))
 		m.queueLock.Unlock()
 
-		// support for context cancellation
+		// support for context cancelation
 		if item.Ctx != nil && item.Ctx.Err() != nil {
 			ret = append(ret, Executed)
 			continue
@@ -1452,9 +1466,9 @@ func (m *Machine) processQueue() Result {
 		newTransition(m, item)
 
 		// execute the transition
-		ret = append(ret, m.Transition.emitEvents())
+		ret = append(ret, m.t.Load().emitEvents())
 
-		m.timeLast = m.Transition.TAfter
+		m.timeLast.Store(&m.t.Load().TimeAfter)
 
 		// process flow methods
 		m.processWhenBindings()
@@ -1462,14 +1476,19 @@ func (m *Machine) processQueue() Result {
 		m.processStateCtxBindings()
 	}
 
-	// release the atomic lock
-	m.Transition = nil
-	m.queueProcessing.Unlock()
-	m.queueRunning = false
-	for i := range m.Tracers {
+	// release the locks
+	m.transitionLock.Lock()
+	m.t.Store(nil)
+	m.transitionLock.Unlock()
+	m.queueProcessing.Store(false)
+	m.queueRunning.Store(false)
+
+	// tracers
+	m.tracersLock.RLock()
+	for i := 0; !m.Disposed.Load() && i < len(m.Tracers); i++ {
 		m.Tracers[i].QueueEnd(m)
 	}
-	m.emit(EventQueueEnd, A{"T": m.timeLast}, nil)
+	m.tracersLock.RUnlock()
 	m.processWhenQueueBindings()
 
 	if len(ret) == 0 {
@@ -1480,7 +1499,7 @@ func (m *Machine) processQueue() Result {
 
 func (m *Machine) processStateCtxBindings() {
 	m.activeStatesLock.RLock()
-	deactivated := DiffStates(m.Transition.StatesBefore, m.activeStates)
+	deactivated := DiffStates(m.t.Load().StatesBefore, m.activeStates)
 
 	var toCancel []context.CancelFunc
 	for _, s := range deactivated {
@@ -1501,8 +1520,8 @@ func (m *Machine) processWhenBindings() {
 	m.activeStatesLock.Lock()
 
 	// calculate activated and deactivated states
-	activated := DiffStates(m.activeStates, m.Transition.StatesBefore)
-	deactivated := DiffStates(m.Transition.StatesBefore, m.activeStates)
+	activated := DiffStates(m.activeStates, m.t.Load().StatesBefore)
+	deactivated := DiffStates(m.t.Load().StatesBefore, m.activeStates)
 
 	// merge all states
 	all := S{}
@@ -1592,7 +1611,7 @@ func (m *Machine) processWhenTimeBindings() {
 
 	// collect all the ticked states
 	all := S{}
-	for state, t := range m.Transition.ClocksBefore {
+	for state, t := range m.t.Load().ClockBefore() {
 		// if changed, collect to check
 		if m.clock[state] != t {
 			all = append(all, state)
@@ -1668,13 +1687,23 @@ func (m *Machine) GetLogArgs() func(args A) map[string]string {
 	return m.logArgs
 }
 
+func (m *Machine) getCurrentHandler() string {
+	v := m.currentHandler.Load()
+
+	if v == nil {
+		return ""
+	}
+
+	return v.(string)
+}
+
 // Log logs an [extern] message unless LogNothing is set (default).
 // Optionally redirects to a custom logger from SetLogger.
 func (m *Machine) Log(msg string, args ...any) {
 	prefix := "[extern"
 
 	// try to prefix with the current handler, if present
-	handler := m.currentHandler
+	handler := m.getCurrentHandler()
 	if handler != "" {
 		prefix += ":" + truncateStr(handler, 15)
 	}
@@ -1688,7 +1717,7 @@ func (m *Machine) Log(msg string, args ...any) {
 // log logs a message if the log level is high enough.
 // Optionally redirects to a custom logger from SetLogger.
 func (m *Machine) log(level LogLevel, msg string, args ...any) {
-	if level > m.logLevel || m.Ctx.Err() != nil {
+	if level > m.logLevel || m.Disposed.Load() {
 		return
 	}
 
@@ -1701,8 +1730,9 @@ func (m *Machine) log(level LogLevel, msg string, args ...any) {
 	}
 
 	out := fmt.Sprintf(msg, args...)
-	if m.logger != nil {
-		m.logger(level, msg, args...)
+	logger := m.GetLogger()
+	if logger != nil {
+		(*logger)(level, msg, args...)
 	} else {
 		fmt.Println(out)
 	}
@@ -1766,8 +1796,15 @@ func (m *Machine) emit(
 
 	// queue-end lacks a transition
 	targetStates := "---"
-	if m.Transition != nil && m.Transition.TargetStates != nil {
-		targetStates = j(m.Transition.TargetStates)
+	if !locked {
+		m.transitionLock.RLock()
+	}
+	t := m.t.Load()
+	if t != nil && t.TargetStates != nil {
+		targetStates = j(t.TargetStates)
+	}
+	if !locked {
+		m.transitionLock.RUnlock()
 	}
 
 	// call the handlers
@@ -1796,68 +1833,78 @@ func (m *Machine) emit(
 	return Executed, handlerCalled
 }
 
-func (m *Machine) processEmitters(e *Event) (Result, bool) {
-	var emitter *emitter
+func (m *Machine) processHandlers(e *Event) (Result, bool) {
+	m.disposeLock.RLock()
+	defer m.disposeLock.RUnlock()
+
 	handlerCalled := false
-	for _, emitter = range m.emitters {
-		// disposed
-		if m.Disposed.Load() {
-			break
-		}
+	for i := 0; !m.Disposed.Load() && i < len(m.handlers); i++ {
+		h := m.handlers[i]
+
 		// internal event
 		if e.step == nil {
 			break
 		}
 
-		method := e.Name
+		name := e.Name
 
-		// format a log msg
-		emitterID := truncateStr(emitter.id, 15)
-		emitterID = padString(strings.ReplaceAll(emitterID, " ", "_"), 15, "_")
-		// TODO confirm this is useful
-		m.log(LogEverything, "[emit:%-15s] %s", emitterID, method)
+		if m.logLevel >= LogEverything {
 
-		// TODO cache
-		if !emitter.methods.MethodByName(method).IsValid() {
-			continue
+			emitterID := truncateStr(h.name, 15)
+			emitterID = padString(strings.ReplaceAll(emitterID, " ", "_"), 15, "_")
+			m.log(LogEverything, "[handle:%-15s] %s", emitterID, name)
+		}
+
+		// cache
+		method, ok := h.methodCache[name]
+		if !ok {
+			method = h.methods.MethodByName(name)
+			if !method.IsValid() {
+				continue
+			}
+			h.methodCache[name] = method
 		}
 
 		// call the handler
-		m.log(LogOps, "[handler] %s", method)
-		m.currentHandler = method
+		m.log(LogOps, "[handler] %s", name)
+		m.currentHandler.Store(name)
 		var ret bool
+		var timeout bool
 		handlerCalled = true
+
 		// tracers
+		m.tracersLock.RLock()
 		for i := range m.Tracers {
-			m.Tracers[i].HandlerStart(m.Transition, emitter.id, method)
+			m.Tracers[i].HandlerStart(m.t.Load(), h.name, name)
 		}
-		handler := &handlerCall{
-			fn:      emitter.methods.MethodByName(e.Name),
+		m.tracersLock.RUnlock()
+		handlerCall := &handlerCall{
+			fn:      method,
 			event:   e,
 			timeout: false,
 		}
+
+		// reuse the timer each time
 		m.handlerTimer.Reset(m.HandlerTimeout)
 		select {
 		case <-m.Ctx.Done():
 			break
-		case m.handlerStart <- handler:
+		case m.handlerStart <- handlerCall:
 		}
 
 		// wait on the result / timeout / context
 		select {
 
 		case <-m.Ctx.Done():
-			break
 
 		case <-m.handlerTimer.C:
 			m.log(LogOps, "[cancel] (%s) by timeout",
-				j(m.Transition.TargetStates))
-			break
+				j(m.t.Load().TargetStates))
+			timeout = true
 
 		case r := <-m.handlerPanic:
 			// recover partial state
-			m.recoverToErr(emitter, r)
-			ret = false
+			m.recoverToErr(h, r)
 
 		case ret = <-m.handlerEnd:
 			m.log(LogEverything, "[handler:end] %s", e.Name)
@@ -1865,12 +1912,14 @@ func (m *Machine) processEmitters(e *Event) (Result, bool) {
 		}
 
 		m.handlerTimer.Stop()
-		m.currentHandler = ""
+		m.currentHandler.Store("")
 
 		// tracers
+		m.tracersLock.RLock()
 		for i := range m.Tracers {
-			m.Tracers[i].HandlerEnd(m.Transition, emitter.id, method)
+			m.Tracers[i].HandlerEnd(m.t.Load(), h.name, name)
 		}
+		m.tracersLock.RUnlock()
 
 		// handle negotiation
 		switch {
@@ -1896,9 +1945,17 @@ func (m *Machine) handlerLoop() {
 	if m.PanicToException {
 		// catch panics and fwd
 		defer func() {
-			r := recover()
-			if r != nil && !m.Disposed.Load() {
-				m.handlerPanic <- r
+			err := recover()
+			if err == nil {
+				return
+			}
+
+			if !m.Disposed.Load() {
+				// TODO support LogStackTrace
+				m.handlerPanic <- recoveryData{
+					err:   err,
+					stack: captureStackTrace(),
+				}
 			}
 		}()
 	}
@@ -2014,9 +2071,9 @@ func (m *Machine) detectQueueDuplicates(mutationType MutationType,
 	return m.IsQueued(counterMutationType, parsed, false, false, index+1) == -1
 }
 
-// DuringTransition checks if the machine is currently during a transition.
-func (m *Machine) DuringTransition() bool {
-	return m.Transition != nil
+// Transition returns the current transition, if any.
+func (m *Machine) Transition() *Transition {
+	return m.t.Load()
 }
 
 // Clock return the current tick for a state.
@@ -2066,7 +2123,7 @@ func (m *Machine) IsQueued(mutationType MutationType, states S,
 // Has return true is passed states are registered in the machine.
 // TODO test
 func (m *Machine) Has(states S) bool {
-	return slicesEvery(m.StateNames, states)
+	return slicesEvery(m.stateNames, states)
 }
 
 // Has1 is a shorthand for Has. It returns true if the passed state is
@@ -2135,7 +2192,7 @@ func (m *Machine) StringAll() string {
 
 	ret := "("
 	ret2 := "["
-	for _, state := range m.StateNames {
+	for _, state := range m.stateNames {
 		if slices.Contains(m.activeStates, state) {
 			if ret != "(" {
 				ret += " "
@@ -2143,6 +2200,7 @@ func (m *Machine) StringAll() string {
 			ret += fmt.Sprintf("%s:%d", state, m.clock[state])
 			continue
 		}
+
 		if ret2 != "[" {
 			ret2 += " "
 		}
@@ -2160,7 +2218,7 @@ func (m *Machine) Inspect(states S) string {
 	defer m.activeStatesLock.RUnlock()
 
 	if states == nil {
-		states = m.StateNames
+		states = m.stateNames
 	}
 
 	ret := ""
@@ -2237,6 +2295,11 @@ func (m *Machine) ActiveStates() S {
 	return slices.Clone(m.activeStates)
 }
 
+// StateNames returns a copy of all the state names.
+func (m *Machine) StateNames() S {
+	return slices.Clone(m.stateNames)
+}
+
 // Queue returns a copy of the currently active states.
 func (m *Machine) Queue() []*Mutation {
 	m.queueLock.RLock()
@@ -2271,10 +2334,12 @@ func (m *Machine) SetStruct(statesStruct Struct, names S) error {
 		return err
 	}
 
-	m.emit(EventStructChange, A{
-		"states_old": old,
-		"states_new": CloneStates(m.states),
-	}, nil)
+	// tracers
+	m.tracersLock.RLock()
+	for i := 0; !m.Disposed.Load() && i < len(m.Tracers); i++ {
+		m.Tracers[i].StructChange(m, old)
+	}
+	m.tracersLock.RUnlock()
 
 	return nil
 }
@@ -2424,7 +2489,7 @@ func (m *Machine) Import(filepath string) error {
 	}
 
 	// restore ID and state names
-	m.StateNames = data.StateNames
+	m.stateNames = data.StateNames
 	m.ID = data.ID
 
 	m.log(LogChanges, "[import] imported ID:%s and Time:%d", data.ID, t)
