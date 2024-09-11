@@ -209,6 +209,7 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 		if opts.QueueLimit != 0 {
 			m.QueueLimit = opts.QueueLimit
 		}
+		m.detectEval = opts.DetectEval
 		parent = opts.Parent
 		m.ParentID = opts.ParentID
 		m.Tags = opts.Tags
@@ -1005,10 +1006,29 @@ func (m *Machine) queueMutation(mutationType MutationType, states S, args A) {
 //
 // ctx: nil context defaults to machine's context.
 //
-// Note: usage of Eval is discouraged.
+// Note: usage of Eval is discouraged. Consider using AM_DETECT_EVAL in tests.
 func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	if source == "" {
-		panic("Error: source of eval is required")
+		panic("error: source of eval is required")
+	}
+	if m.detectEval {
+		// check every method of every handler against the stack trace
+		trace := captureStackTrace()
+
+		for i := 0; !m.Disposed.Load() && i < len(m.handlers); i++ {
+			handler := m.handlers[i]
+
+			for _, method := range handler.methodNames {
+				match := fmt.Sprintf(".(*%s).%s", handler.name, method)
+
+				for _, line := range strings.Split(trace, "\n") {
+					if strings.Contains(line, match) {
+						panic("error: no Eval() within a handler")
+					}
+				}
+			}
+
+		}
 	}
 	m.log(LogOps, "[eval] %s", source)
 
@@ -1121,7 +1141,52 @@ func (m *Machine) BindHandlers(handlers any) error {
 
 	// register the new emitter
 	name := reflect.TypeOf(handlers).Elem().Name()
-	m.newEmitter(name, &v)
+
+	// detect methods
+	var methodNames []string
+	if m.detectEval {
+		t := reflect.TypeOf(handlers)
+		// TODO prevent using these names as state names
+		suffixes := []string{"Enter", "Exit", "State", "End", "Any"}
+		for i := 0; i < t.NumMethod(); i++ {
+			method := t.Method(i).Name
+			match := false
+
+			// check the format
+			for _, s := range m.stateNames {
+				if strings.HasPrefix(method, s) {
+					for _, ss := range m.stateNames {
+						if s+ss == method {
+							match = true
+							break
+						}
+					}
+
+					for _, suffix := range suffixes {
+						if s+suffix == method {
+							match = true
+							break
+						}
+					}
+
+				} else if "Any"+s == method {
+					match = true
+				}
+			}
+
+			if "AnyAny" == method {
+				match = true
+			}
+
+			if match {
+				methodNames = append(methodNames, method)
+				// TODO verify method signatures early (returns and params)
+			}
+		}
+	}
+
+	// register the handler binding
+	m.newHandler(name, &v, methodNames)
 
 	return nil
 }
