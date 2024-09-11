@@ -1096,10 +1096,10 @@ func (m *Machine) NewStateCtx(state string) context.Context {
 	return stateCtx
 }
 
-// SetLogLevel sets the log level of the machine.
-func (m *Machine) SetLogLevel(level LogLevel) {
-	m.logLevel = level
-}
+// TODO NewTransitionCtx...
+// func (m *Machine) NewTransitionCtx(state string, ev Event) context.Context {
+//
+// }
 
 // BindHandlers binds a struct of handler methods to the machine's states.
 // Returns a HandlerBinding object, which signals when the binding is ready.
@@ -1727,28 +1727,57 @@ func (m *Machine) log(level LogLevel, msg string, args ...any) {
 	}
 }
 
-// SetLogger sets a custom logger function.
-func (m *Machine) SetLogger(fn Logger) {
-	m.logger = fn
-}
-
-// SetTestLogger hooks into the testing.Logf and set the log level in one call.
-// Useful for testing. Requires LogChanges log level to produce any output.
-func (m *Machine) SetTestLogger(
+// SetLoggerSimple takes log.Printf and sets the log level in one
+// call. Useful for testing. Requires LogChanges log level to produce any
+// output.
+func (m *Machine) SetLoggerSimple(
 	logf func(format string, args ...any), level LogLevel,
 ) {
 	if logf == nil {
 		panic("logf cannot be nil")
 	}
-	m.logger = func(_ LogLevel, msg string, args ...any) {
+
+	var logger Logger = func(_ LogLevel, msg string, args ...any) {
 		logf(msg, args...)
 	}
+	m.logger.Store(&logger)
 	m.logLevel = level
 }
 
+// SetLoggerEmpty creates an empty logger that does nothing and sets the log
+// level in one call. Useful when combined with am-dbg. Requires LogChanges log
+// level to produce any output.
+func (m *Machine) SetLoggerEmpty(level LogLevel) {
+	var logger Logger = func(_ LogLevel, msg string, args ...any) {
+		// no-op
+	}
+	m.logger.Store(&logger)
+	m.logLevel = level
+}
+
+// SetLogger sets a custom logger function.
+func (m *Machine) SetLogger(fn Logger) {
+	if fn == nil {
+		m.logger.Store(nil)
+
+		return
+	}
+	m.logger.Store(&fn)
+}
+
 // GetLogger returns the current custom logger function, or nil.
-func (m *Machine) GetLogger() Logger {
-	return m.logger
+func (m *Machine) GetLogger() *Logger {
+	return m.logger.Load()
+}
+
+// SetLogLevel sets the log level of the machine.
+func (m *Machine) SetLogLevel(level LogLevel) {
+	m.logLevel = level
+}
+
+// GetLogLevel returns the log level of the machine.
+func (m *Machine) GetLogLevel() LogLevel {
+	return m.logLevel
 }
 
 // emit is a synchronous (blocking) emit with cancellation via a return channel.
@@ -2216,11 +2245,6 @@ func (m *Machine) Switch(states ...string) string {
 	}
 
 	return ""
-}
-
-// GetLogLevel returns the log level of the machine.
-func (m *Machine) GetLogLevel() LogLevel {
-	return m.logLevel
 }
 
 // RegisterDisposalHandler adds a function to be called when the machine is
