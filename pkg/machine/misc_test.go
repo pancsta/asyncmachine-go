@@ -115,8 +115,8 @@ func TestSMerge(t *testing.T) {
 	s := S{"A", "B", "C"}
 	s2 := S{"C", "D", "E"}
 	ex := S{"A", "B", "C", "D", "E"}
-	assert.Equal(t, ex, SMerge(s, s2))
-	assert.Equal(t, S{}, SMerge())
+	assert.Equal(t, ex, SAdd(s, s2))
+	assert.Equal(t, S{}, SAdd())
 }
 
 func TestNormalizeID(t *testing.T) {

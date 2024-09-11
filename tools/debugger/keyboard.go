@@ -24,6 +24,21 @@ func normalizeText(text string) string {
 }
 
 func (d *Debugger) bindKeyboard() {
+	inputHandler := d.initFocusManager()
+
+	// custom keys
+	for key, fn := range d.getKeystrokes() {
+		err := inputHandler.Set(key, fn)
+		if err != nil {
+			log.Printf("Error: binding keys %s", err)
+		}
+	}
+
+	d.searchTreeSidebar(inputHandler)
+	d.App.SetInputCapture(inputHandler.Capture)
+}
+
+func (d *Debugger) initFocusManager() *cbind.Configuration {
 	// focus manager
 	d.focusManager = cview.NewFocusManager(d.App.SetFocus)
 	d.focusManager.SetWrapAround(true)
@@ -43,6 +58,8 @@ func (d *Debugger) bindKeyboard() {
 		}
 	}
 
+	// TODO stop accepting keys if the actions arent processed in time
+
 	// tab
 	for _, key := range cview.Keys.MovePreviousField {
 		err := inputHandler.Set(key, focusChange(d.focusManager.FocusPrevious))
@@ -59,16 +76,7 @@ func (d *Debugger) bindKeyboard() {
 		}
 	}
 
-	// custom keys
-	for key, fn := range d.getKeystrokes() {
-		err := inputHandler.Set(key, fn)
-		if err != nil {
-			log.Printf("Error: binding keys %s", err)
-		}
-	}
-
-	d.searchTreeSidebar(inputHandler)
-	d.App.SetInputCapture(inputHandler.Capture)
+	return inputHandler
 }
 
 // afterFocus forwards focus events to machine states
@@ -132,8 +140,8 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 	}
 }
 
-// searchTreeSidebar searches for a-z, -, _ in the tree and sidebar, with a
-// searchAsTypeWindow buffer.
+// searchTreeSidebar does search-as-you-type for a-z, -, _ in the tree and
+// sidebar, with a searchAsTypeWindow buffer.
 func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 	var (
 		bufferStart time.Time
@@ -195,8 +203,7 @@ func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 							// handle StateNameSelected
 							ref, ok := node.GetReference().(*nodeRef)
 							if ok && ref != nil && ref.stateName != "" {
-								d.Mach.Add1(ss.StateNameSelected,
-									am.A{"selectedStateName": ref.stateName})
+								d.Mach.Add1(ss.StateNameSelected, am.A{"state": ref.stateName})
 							} else {
 								d.Mach.Remove1(ss.StateNameSelected, nil)
 							}
@@ -294,8 +301,8 @@ func (d *Debugger) getKeystrokes() map[string]func(
 				return nil
 			}
 
-			// scroll matrix
-			if d.Mach.Is1(ss.MatrixFocused) {
+			// skip if scrolling
+			if d.shouldScrollCurrView() {
 				return ev
 			}
 
@@ -345,8 +352,8 @@ func (d *Debugger) getKeystrokes() map[string]func(
 				return nil
 			}
 
-			// scroll matrix
-			if d.Mach.Is1(ss.MatrixFocused) {
+			// skip if scrolling
+			if d.shouldScrollCurrView() {
 				return ev
 			}
 
@@ -413,8 +420,16 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			if d.Mach.Is1(ss.TreeLogView) {
 				d.Mach.Add1(ss.MatrixView, nil)
 			} else if d.Mach.Is1(ss.MatrixView) {
-				d.Mach.Add1(ss.TreeMatrixView, nil)
+				if d.Mach.Is1(ss.MatrixRain) {
+					d.Mach.Remove1(ss.MatrixRain, nil)
+					d.Mach.Add1(ss.TreeMatrixView, nil)
+				} else {
+					d.Mach.Add1(ss.MatrixRain, nil)
+				}
+			} else if d.Mach.Is1(ss.TreeMatrixView) && d.Mach.Not1(ss.MatrixRain) {
+				d.Mach.Add1(ss.MatrixRain, nil)
 			} else {
+				d.Mach.Remove1(ss.MatrixRain, nil)
 				d.Mach.Add1(ss.TreeLogView, nil)
 			}
 
@@ -546,6 +561,13 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			return ev
 		},
 	}
+}
+
+func (d *Debugger) shouldScrollCurrView() bool {
+	// always scroll matrix and log views
+	return d.Mach.Any1(ss.MatrixFocused, ss.LogFocused)
+	// TODO scroll tree when relations expanded (support H scroll)
+	// d.Mach.Is(am.S{ss.TreeFocused, ss.TimelineStepsScrolled})
 }
 
 // TODO optimize usage places

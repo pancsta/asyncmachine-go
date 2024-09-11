@@ -6,13 +6,17 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/exp/maps"
 )
 
 // S (state names) is a string list of state names.
@@ -21,13 +25,14 @@ type S []string
 // A (arguments) is a map of named arguments for a Mutation.
 type A map[string]any
 
-// T is an ordered list of state clocks.
+// Time is an ordered list of state ticks. It's like Clock, but indexed by int,
+// instead of string.
 // TODO use math/big?
-type T []uint64
+type Time []uint64
 
-// Clocks is a map of state names to their clocks.
-// TODO rename to Clock
-type Clocks map[string]uint64
+// Clock is a map of state names to their clock tick values. It's like Time, but
+// indexed by string, instead of int.
+type Clock map[string]uint64
 
 // State defines a single state of a machine, its properties and relations.
 type State struct {
@@ -37,13 +42,16 @@ type State struct {
 	Add     S
 	Remove  S
 	After   S
+	Tags    []string
 }
 
 // Struct is a map of state names to state definitions.
 type Struct = map[string]State
 
 // ///// ///// /////
+
 // ///// OPTIONS
+
 // ///// ///// /////
 
 // Opts struct is used to configure a new Machine.
@@ -115,7 +123,9 @@ func OptsWithParentTracers(opts *Opts, parent *Machine) *Opts {
 }
 
 // ///// ///// /////
+
 // ///// ENUMS
+
 // ///// ///// /////
 
 // Result enum is the result of a state Transition
@@ -152,8 +162,9 @@ var (
 	ErrQueued = errors.New("transition queued")
 	// ErrInvalidArgs can be used to indicate invalid arguments. Not used ATM.
 	ErrInvalidArgs = errors.New("invalid arguments")
-	// ErrTimeout can be used to indicate timed out mutation. Not used ATM.
-	ErrTimeout = errors.New("timeout")
+	// ErrHandlerTimeout can be used to indicate timed out mutation. Not used ATM.
+	// TODO pass to AddErr() when a handler timeout happens
+	ErrHandlerTimeout = errors.New("handler timeout")
 )
 
 func (r Result) String() string {
@@ -167,27 +178,6 @@ func (r Result) String() string {
 	}
 	return ""
 }
-
-const (
-	// EventTransitionEnd transition ended
-	EventTransitionEnd = "transition-end"
-	// EventTransitionInit transition being initialized
-	EventTransitionInit = "transition-init"
-	// EventTransitionStart transition started
-	EventTransitionStart = "transition-start"
-	// EventTransitionCancel transition canceled
-	EventTransitionCancel = "transition-cancel"
-	// EventQueueEnd queue fully drained
-	EventQueueEnd = "queue-end"
-	// EventQueueAdd new mutation queued
-	EventQueueAdd = "queue-add"
-	// EventStructChange machine's states structure have changed
-	EventStructChange = "struct-change"
-	// EventTick active states changed, at least one state clock increased
-	EventTick = "tick"
-	// EventException Exception state becomes active
-	EventException = "exception"
-)
 
 // MutationType enum
 type MutationType int
@@ -290,6 +280,27 @@ type Step struct {
 	IsEnter bool
 }
 
+func newStep(from string, to string, stepType StepType,
+	data any,
+) *Step {
+	return &Step{
+		FromState: from,
+		ToState:   to,
+		Type:      stepType,
+		Data:      data,
+	}
+}
+
+func newSteps(from string, toStates S, stepType StepType,
+	data any,
+) []*Step {
+	var ret []*Step
+	for _, to := range toStates {
+		ret = append(ret, newStep(from, to, stepType, data))
+	}
+	return ret
+}
+
 // Relation enum
 type Relation int
 
@@ -315,7 +326,9 @@ func (r Relation) String() string {
 }
 
 // ///// ///// /////
+
 // ///// LOGGING
+
 // ///// ///// /////
 
 // Logger is a logging function for the machine.
@@ -338,7 +351,7 @@ const (
 	LogOps
 	// LogDecisions means LogOps + logging all the decisions behind them.
 	LogDecisions
-	// LogEverything means LogDecisions + all event and emitter names, and more.
+	// LogEverything means LogDecisions + all event and handler names, and more.
 	LogEverything
 )
 
@@ -432,7 +445,9 @@ func (t *NoOpTracer) Inheritable() bool                         { return false }
 var _ Tracer = &NoOpTracer{}
 
 // ///// ///// /////
+
 // ///// EVENTS, WHEN, EMITTERS
+
 // ///// ///// /////
 
 // Event struct represents a single event of a Mutation withing a Transition.
@@ -451,51 +466,56 @@ type Event struct {
 
 // Mutation returns the Mutation of an Event.
 func (e *Event) Mutation() *Mutation {
-	return e.Machine.Transition.Mutation
+	t := e.Machine.Transition()
+	if t == nil {
+		return nil
+	}
+	return t.Mutation
 }
 
 // Transition returns the Transition of an Event.
 func (e *Event) Transition() *Transition {
-	return e.Machine.Transition
+	return e.Machine.t.Load()
 }
 
 type (
-	// map of (single) state names to a list of activation / de-activation
+	// IndexWhen is a map of (single) state names to a list of activation or
+	// de-activation bindings
+	IndexWhen map[string][]*WhenBinding
+	// IndexWhenTime is a map of (single) state names to a list of time bindings
+	IndexWhenTime map[string][]*WhenTimeBinding
+	// IndexWhenArgs is a map of (single) state names to a list of args value
 	// bindings
-	indexWhen map[string][]*whenBinding
-	// map of (single) state names to a list of time bindings
-	indexWhenTime map[string][]*whenTimeBinding
-	// map of (single) state names to a list of args value bindings
-	indexWhenArgs map[string][]*whenArgsBinding
-	// map of (single) state names to a context cancel function
-	indexStateCtx map[string][]context.CancelFunc
+	IndexWhenArgs map[string][]*WhenArgsBinding
+	// IndexStateCtx is a map of (single) state names to a context cancel function
+	IndexStateCtx map[string][]context.CancelFunc
 	// map of (single) state names to an event channel
 	indexEventCh map[string][]chan *Event
 )
 
-type whenBinding struct {
-	ch chan struct{}
+type WhenBinding struct {
+	Ch chan struct{}
 	// means states are required to NOT be active
-	negation bool
-	states   stateIsActive
-	matched  int
-	total    int
+	Negation bool
+	States   StateIsActive
+	Matched  int
+	Total    int
 }
 
-type whenTimeBinding struct {
-	ch chan struct{}
+type WhenTimeBinding struct {
+	Ch chan struct{}
 	// map of completed to their index positions
-	index map[string]int
+	Index map[string]int
 	// number of matches so far
-	matched int
+	Matched int
 	// number of total matches needed
-	total int
-	// optional times to match for completed from index
-	times     T
-	completed stateIsActive
+	Total int
+	// optional Time to match for completed from Index
+	Times     Time
+	Completed StateIsActive
 }
 
-type whenArgsBinding struct {
+type WhenArgsBinding struct {
 	ch   chan struct{}
 	args A
 }
@@ -504,22 +524,26 @@ type whenQueueBinding struct {
 	ch chan struct{}
 }
 
-type stateIsActive map[string]bool
+type StateIsActive map[string]bool
 
-// emitter represents a single event consumer, synchronized by channels.
-type emitter struct {
-	id       string
-	disposed bool
-	methods  *reflect.Value
+// handler represents a single event consumer, synchronized by channels.
+type handler struct {
+	name        string
+	disposed    bool
+	methods     *reflect.Value
+	methodNames []string
+	methodCache map[string]reflect.Value
 }
 
-func (e *emitter) dispose() {
+func (e *handler) dispose() {
 	e.disposed = true
 	e.methods = nil
 }
 
 // ///// ///// /////
-// ///// EXCEPTION SUPPORT
+
+// ///// ERROR HANDLING
+
 // ///// ///// /////
 
 const (
@@ -536,7 +560,7 @@ type ExceptionArgsPanic struct {
 	StatesBefore S
 	Transition   *Transition
 	LastStep     *Step
-	StackTrace   []byte
+	StackTrace   string
 }
 
 // ExceptionHandler provide a basic Exception state support, as should be
@@ -579,26 +603,36 @@ func captureStackTrace() string {
 // - err error: The error that caused the Exception state.
 // - panic *ExceptionArgsPanic: Optional details about the panic.
 func (eh *ExceptionHandler) ExceptionState(e *Event) {
-	if e.Machine.PrintExceptions {
-		err := e.Args["err"].(error)
-		_, ok := e.Args["panic"]
-		if !ok {
-			// TODO more mutation info
-			e.Machine.log(LogChanges, "[error] %s", err)
-			return
-		}
-		details := e.Args["panic"].(*ExceptionArgsPanic)
-		mutType := details.Transition.Mutation.Type
-		e.Machine.log(LogChanges, "[error:%s] %s (%s)", mutType,
-			j(details.CalledStates), err)
-		if details.StackTrace != nil {
-			e.Machine.log(LogChanges, "[error:trace] %s", details.StackTrace)
-		}
+	err := e.Args["err"].(error)
+	trace, _ := e.Args["err.trace"].(string)
+	_, isPanic := e.Args["panic"]
+	mach := e.Machine
+
+	// err
+	if !isPanic {
+		// TODO more mutation info
+		mach.log(LogChanges, "[error] %s\n%s", err, trace)
+		return
 	}
+
+	// panic
+	details := e.Args["panic"].(*ExceptionArgsPanic)
+	mutType := details.Transition.Mutation.Type
+	// stack trace
+	if details.StackTrace != "" && mach.LogStackTrace {
+		mach.log(LogChanges, "[error:%s] %s (%s)\n%s", mutType,
+			j(details.CalledStates), err, details.StackTrace)
+		return
+	}
+	// no stack trace
+	mach.log(LogChanges, "[error:%s] %s (%s)", mutType,
+		j(details.CalledStates), err)
 }
 
 // ///// ///// /////
+
 // ///// PUB UTILS
+
 // ///// ///// /////
 
 // Is1 checks if a state is active at a given time, via its index. See
@@ -634,7 +668,7 @@ func DiffStates(states1 S, states2 S) S {
 
 // IsTimeAfter checks if time1 is after time2. Requires a deterministic states
 // order, e.g. by using Machine.VerifyStates.
-func IsTimeAfter(time1, time2 T) bool {
+func IsTimeAfter(time1, time2 Time) bool {
 	after := false
 	for i, t1 := range time1 {
 		if t1 < time2[i] {
@@ -648,35 +682,38 @@ func IsTimeAfter(time1, time2 T) bool {
 }
 
 // CloneStates deep clones the states struct and returns a copy.
-func CloneStates(states Struct) Struct {
+func CloneStates(stateStruct Struct) Struct {
 	ret := make(Struct)
 
-	for name, state := range states {
-
-		stateCopy := State{
-			Auto:  state.Auto,
-			Multi: state.Multi,
-		}
-
-		// TODO move to Resolver
-
-		if state.Require != nil {
-			stateCopy.Require = slices.Clone(state.Require)
-		}
-		if state.Add != nil {
-			stateCopy.Add = slices.Clone(state.Add)
-		}
-		if state.Remove != nil {
-			stateCopy.Remove = slices.Clone(state.Remove)
-		}
-		if state.After != nil {
-			stateCopy.After = slices.Clone(state.After)
-		}
-
-		ret[name] = stateCopy
+	for name, state := range stateStruct {
+		ret[name] = cloneState(state)
 	}
 
 	return ret
+}
+
+func cloneState(state State) State {
+	stateCopy := State{
+		Auto:  state.Auto,
+		Multi: state.Multi,
+	}
+
+	// TODO move to Resolver
+
+	if state.Require != nil {
+		stateCopy.Require = slices.Clone(state.Require)
+	}
+	if state.Add != nil {
+		stateCopy.Add = slices.Clone(state.Add)
+	}
+	if state.Remove != nil {
+		stateCopy.Remove = slices.Clone(state.Remove)
+	}
+	if state.After != nil {
+		stateCopy.After = slices.Clone(state.After)
+	}
+
+	return stateCopy
 }
 
 // IsActiveTick returns true if the tick represents an active state
@@ -789,7 +826,7 @@ func StructMerge(stateStructs ...Struct) Struct {
 // Serialized is a machine state serialized to a JSON compatible struct.
 type Serialized struct {
 	ID         string `json:"id"`
-	Clocks     Clocks `json:"clocks"`
+	Time       Time   `json:"time"`
 	StateNames S      `json:"state_names"`
 }
 
@@ -810,7 +847,9 @@ func MockClock(mach *Machine, clock Clock) {
 }
 
 // ///// ///// /////
+
 // ///// UTILS
+
 // ///// ///// /////
 
 // j joins state names into a single string
@@ -840,8 +879,8 @@ func padString(str string, length int, pad string) string {
 	}
 }
 
-// TODO move to Resolver
 func parseStruct(states Struct) Struct {
+	// TODO move to Resolver
 	// TODO capitalize states
 
 	parsedStates := CloneStates(states)
@@ -969,9 +1008,9 @@ func slicesUniq[S ~[]E, E comparable](coll S) S {
 	return ret
 }
 
-// diposeWithCtx handles early binding disposal caused by a canceled context.
+// disposeWithCtx handles early binding disposal caused by a canceled context.
 // It's used by most of "when" methods.
-func diposeWithCtx[T comparable](
+func disposeWithCtx[T comparable](
 	mach *Machine, ctx context.Context, ch chan struct{}, states S, binding T,
 	lock *sync.RWMutex, index map[string][]T,
 ) {
@@ -1007,4 +1046,27 @@ func diposeWithCtx[T comparable](
 			}
 		}
 	}()
+}
+
+func cloneOptions(opts *Opts) *Opts {
+	if opts == nil {
+		return &Opts{}
+	}
+
+	return &Opts{
+		ID:                   opts.ID,
+		HandlerTimeout:       opts.HandlerTimeout,
+		DontPanicToException: opts.DontPanicToException,
+		DontLogStackTrace:    opts.DontLogStackTrace,
+		DontLogID:            opts.DontLogID,
+		Resolver:             opts.Resolver,
+		LogLevel:             opts.LogLevel,
+		Tracers:              opts.Tracers,
+		LogArgs:              opts.LogArgs,
+		QueueLimit:           opts.QueueLimit,
+		Parent:               opts.Parent,
+		ParentID:             opts.ParentID,
+		Tags:                 opts.Tags,
+		DetectEval:           opts.DetectEval,
+	}
 }

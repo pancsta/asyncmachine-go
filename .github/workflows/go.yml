@@ -1,6 +1,6 @@
 name: Go Test
 
-#on: [push]
+on: [push]
 
 jobs:
   build:
@@ -18,9 +18,16 @@ jobs:
           go-version: ${{ matrix.go-version }}
       - name: Install dependencies
         run: go mod tidy
-      - name: Test
+
+      - name: Test serial
+        run: go test -p 1 ./...
+
+      - name: Test parallel
         run: go test -coverprofile=coverage.txt -covermode=atomic ./...
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Test race
+        run: go test -race ./...

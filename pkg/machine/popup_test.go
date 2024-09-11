@@ -1,31 +1,33 @@
-package machine
+package machine_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/stretchr/testify/assert"
 )
 
-func NewPopupMachine(ctx context.Context) *Machine {
-	return New(ctx, Struct{
-		"Enabled":       {},
-		"ButtonClicked": {Require: S{"Enabled"}},
-		"ShowingDialog": {Remove: S{"DialogVisible"}},
+func NewPopupMachine(ctx context.Context) *am.Machine {
+	return am.New(ctx, am.Struct{
+		"Start": {},
+
+		"ButtonClicked": {Require: am.S{"Start"}},
+		"ShowingDialog": {Remove: am.S{"DialogVisible"}},
 		"DownloadingData": {
 			Auto:    true,
-			Require: S{"ShowingDialog"},
-			Remove:  S{"DataDownloaded"},
+			Require: am.S{"ShowingDialog"},
+			Remove:  am.S{"DataDownloaded"},
 		},
 		"PreloaderVisible": {
 			Auto:    true,
-			Require: S{"DownloadingData"},
+			Require: am.S{"DownloadingData"},
 		},
-		"DataDownloaded": {Remove: S{"DownloadingData"}},
+		"DataDownloaded": {Remove: am.S{"DownloadingData"}},
 		"DialogVisible": {
-			Require: S{"DataDownloaded"},
-			Remove:  S{"ShowingDialog"},
+			Require: am.S{"DataDownloaded"},
+			Remove:  am.S{"ShowingDialog"},
 		},
 	}, nil)
 }
@@ -35,26 +37,26 @@ type PopupMachineHandlers struct {
 	name string
 }
 
-func (pm *PopupMachineHandlers) ButtonClickedState(e *Event) {
+func (pm *PopupMachineHandlers) ButtonClickedState(e *am.Event) {
 	// args definition
 	pm.name = e.Args["button"].(string)
 
 	// this will get queued
-	e.Machine.Add(S{"ShowingDialog"}, nil)
+	e.Machine.Add1("ShowingDialog", nil)
 	// this will get queued later
-	e.Machine.Remove(S{"ButtonClicked"}, nil)
+	e.Machine.Remove1("ButtonClicked", nil)
 }
 
-func (pm *PopupMachineHandlers) DialogVisibleState(e *Event) {
+func (pm *PopupMachineHandlers) DialogVisibleState(e *am.Event) {
 	// data is guaranteed by the ButtonClicked state
 	e.Machine.Log("THE END for " + pm.name)
 }
 
-func (pm *PopupMachineHandlers) PreloaderVisibleState(e *Event) {
+func (pm *PopupMachineHandlers) PreloaderVisibleState(e *am.Event) {
 	e.Machine.Log("preloader show")
 }
 
-func (pm *PopupMachineHandlers) DownloadingDataState(e *Event) {
+func (pm *PopupMachineHandlers) DownloadingDataState(e *am.Event) {
 	// get the cancel context
 	stateCtx := e.Machine.NewStateCtx("DownloadingData")
 	// dont block
@@ -70,15 +72,15 @@ func (pm *PopupMachineHandlers) DownloadingDataState(e *Event) {
 		}
 		// data accepted
 		// async action finished successfully, transition to DataDownloaded
-		e.Machine.Add(S{"DataDownloaded"}, nil)
+		e.Machine.Add1("DataDownloaded", nil)
 	}()
 }
 
-func (pm *PopupMachineHandlers) DataDownloadedState(e *Event) {
-	e.Machine.Add(S{"DialogVisible"}, nil)
+func (pm *PopupMachineHandlers) DataDownloadedState(e *am.Event) {
+	e.Machine.Add1("DialogVisible", nil)
 }
 
-func (pm *PopupMachineHandlers) PreloaderVisibleEnd(e *Event) {
+func (pm *PopupMachineHandlers) PreloaderVisibleEnd(e *am.Event) {
 	e.Machine.Log("preloader hide")
 }
 
@@ -86,30 +88,28 @@ func TestPopupMachine(t *testing.T) {
 	// create a new machine (with logging)
 	machine := NewPopupMachine(context.Background())
 	defer machine.Dispose()
-	machine.SetLogLevel(LogChanges)
-	// machine.SetLogLevel(LogOps)
-	// machine.SetLogLevel(LogDecisions)
-	// machine.SetLogLevel(LogEverything)
-	machine.SetLogger(func(_ LogLevel, msg string, args ...any) {
-		t.Logf(msg, args...)
-	})
+	machine.SetLoggerSimple(t.Logf, am.LogChanges)
 	// bind the Transition handlers
 	err := machine.BindHandlers(&PopupMachineHandlers{})
 	assert.NoError(t, err)
 
 	// test
 	// TODO add timing, duplicate input events and assert correct handing of
-	// edge cases
+	//  edge cases
 
 	// start accepting input
-	machine.Add(S{"Enabled"}, nil)
+	machine.Add1("Start", nil)
 	// external action triggers the popup workflow
-	machine.Add(S{"ButtonClicked"}, A{"button": "red"})
+	// only the 1st call will mutate the state
+	machine.Add1("ButtonClicked", am.A{"button": "red"})
+	machine.Add1("ButtonClicked", am.A{"button": "red"})
+	machine.Add1("ButtonClicked", am.A{"button": "red"})
 	// wait for DialogVisible
-	<-machine.When(S{"DialogVisible"}, nil)
+	<-machine.When1("DialogVisible", nil)
 
 	// assert
-	assertStates(t, machine, S{"DialogVisible", "Enabled", "DataDownloaded"})
+	assert.ElementsMatch(t, machine.ActiveStates(),
+		am.S{"DialogVisible", "Start", "DataDownloaded"})
 }
 
 // external call with a delay

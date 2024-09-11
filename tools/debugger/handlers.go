@@ -47,7 +47,7 @@ func (d *Debugger) StartState(e *am.Event) {
 		d.App.SetFocus(d.sidebar)
 		err := d.App.Run()
 		if err != nil {
-			d.Mach.AddErr(err)
+			d.Mach.AddErr(err, nil)
 		}
 
 		d.Mach.Remove1(ss.Start, nil)
@@ -102,6 +102,7 @@ func (d *Debugger) AnyAny(e *am.Event) {
 	tx := e.Transition()
 
 	// redraw on auto states
+	// TODO this should be done better
 	if tx.IsAuto() && tx.Accepted {
 		d.updateTxBars()
 		d.draw()
@@ -109,7 +110,7 @@ func (d *Debugger) AnyAny(e *am.Event) {
 }
 
 func (d *Debugger) StateNameSelectedState(e *am.Event) {
-	d.C.selectedState = e.Args["selectedStateName"].(string)
+	d.C.SelectedState = e.Args["state"].(string)
 	switch d.Mach.Switch(ss.GroupViews...) {
 
 	case ss.TreeLogView:
@@ -133,7 +134,7 @@ func (d *Debugger) StateNameSelectedStateNameSelected(e *am.Event) {
 }
 
 func (d *Debugger) StateNameSelectedEnd(_ *am.Event) {
-	d.C.selectedState = ""
+	d.C.SelectedState = ""
 	d.updateTree()
 	d.updateKeyBars()
 }
@@ -208,6 +209,7 @@ func (d *Debugger) FwdState(e *am.Event) {
 	c := d.C
 	c.CursorTx = d.filterTxCursor(c, c.CursorTx+amount, true)
 	c.CursorStep = 0
+	d.handleTStepsScrolled()
 	if d.Mach.Is1(ss.Playing) && c.CursorTx == len(c.MsgTxs) {
 		d.Mach.Remove1(ss.Playing, nil)
 	}
@@ -235,6 +237,7 @@ func (d *Debugger) BackState(e *am.Event) {
 	c.CursorTx = d.filterTxCursor(c, c.CursorTx-amount, false)
 	c.CursorStep = 0
 
+	d.handleTStepsScrolled()
 	d.RedrawFull(false)
 }
 
@@ -245,7 +248,7 @@ func (d *Debugger) UserFwdStepState(_ *am.Event) {
 }
 
 func (d *Debugger) FwdStepEnter(_ *am.Event) bool {
-	nextTx := d.NextTx()
+	nextTx := d.nextTx()
 	if nextTx == nil {
 		return false
 	}
@@ -256,13 +259,15 @@ func (d *Debugger) FwdStepState(_ *am.Event) {
 	d.Mach.Remove1(ss.FwdStep, nil)
 
 	// next tx
-	nextTx := d.NextTx()
+	nextTx := d.nextTx()
 	// scroll to the next tx
 	if d.C.CursorStep == len(nextTx.Steps) {
 		d.Mach.Add1(ss.Fwd, nil)
 		return
 	}
 	d.C.CursorStep++
+
+	d.handleTStepsScrolled()
 	d.RedrawFull(false)
 }
 
@@ -281,14 +286,26 @@ func (d *Debugger) BackStepState(_ *am.Event) {
 	if d.C.CursorStep <= 0 {
 		d.C.CursorTx = d.filterTxCursor(d.C, d.C.CursorTx-1, false)
 		d.updateLog(false)
-		nextTx := d.NextTx()
+		nextTx := d.nextTx()
 		d.C.CursorStep = len(nextTx.Steps)
 
 	} else {
 		d.C.CursorStep--
 	}
 
+	d.handleTStepsScrolled()
 	d.RedrawFull(false)
+}
+
+func (d *Debugger) handleTStepsScrolled() {
+	// TODO merge with a CursorStep setter
+	tStepsScrolled := d.C.CursorStep != 0
+
+	if tStepsScrolled {
+		d.Mach.Add1(ss.TimelineStepsScrolled, nil)
+	} else {
+		d.Mach.Remove1(ss.TimelineStepsScrolled, nil)
+	}
 }
 
 func (d *Debugger) TimelineStepsFocusedState(_ *am.Event) {
@@ -322,6 +339,8 @@ func (d *Debugger) ConnectEventEnter(e *am.Event) bool {
 }
 
 func (d *Debugger) ConnectEventState(e *am.Event) {
+	d.Mach.Remove1(ss.ConnectEvent, nil)
+
 	// initial structure data
 	msg := e.Args["msg_struct"].(*telemetry.DbgMsgStruct)
 	connID := e.Args["conn_id"].(string)
@@ -337,13 +356,13 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 	if c == nil {
 		// new client
 		c = &Client{
-			id:        msg.ID,
-			connID:    connID,
-			connected: true,
+			id:     msg.ID,
+			connID: connID,
 			Exportable: Exportable{
 				MsgStruct: msg,
 			},
 		}
+		c.connected.Store(true)
 
 		d.Clients[msg.ID] = c
 		if !cleanup {
@@ -353,13 +372,13 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 	} else {
 		// update the existing client
 		c = &Client{
-			id:        msg.ID,
-			connID:    connID,
-			connected: true,
+			id:     msg.ID,
+			connID: connID,
 			Exportable: Exportable{
 				MsgStruct: msg,
 			},
 		}
+		c.connected.Store(true)
 		d.Clients[msg.ID] = c
 
 		// currently selected - refresh the UI
@@ -445,7 +464,7 @@ func (d *Debugger) DisconnectEventState(e *am.Event) {
 	for _, c := range d.Clients {
 		if c.connID != "" && c.connID == connID {
 			// mark as disconnected
-			c.connected = false
+			c.connected.Store(false)
 			break
 		}
 	}
@@ -468,6 +487,11 @@ func (d *Debugger) ClientMsgEnter(e *am.Event) bool {
 }
 
 func (d *Debugger) ClientMsgState(e *am.Event) {
+	d.Mach.Remove1(ss.ClientMsg, nil)
+
+	// TODO make it async via a dedicated goroutine, pushing results to
+	//  async multi state ClientMsgDone
+
 	msgs := e.Args["msgs_tx"].([]*telemetry.DbgMsgTx)
 	mach := d.Mach
 
@@ -475,6 +499,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	updateFirstTx := false
 	for _, msg := range msgs {
 
+		// TODO check tokens
 		c := d.Clients[msg.MachineID]
 		if _, ok := d.Clients[msg.MachineID]; !ok {
 			d.Mach.Log("Error: client not found: %s\n", msg.MachineID)
@@ -486,7 +511,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 			continue
 		}
 
-		// TODO scalable storage
+		// TODO scalable storage (support filtering)
 		idx := len(c.MsgTxs)
 		c.MsgTxs = append(c.MsgTxs, msg)
 		// parse the msg
@@ -580,7 +605,7 @@ func (d *Debugger) RemoveClientState(e *am.Event) {
 	d.draw()
 }
 
-// TODO SelectingClientSelectingClient
+// TODO SelectingClientSelectingClient (for?)
 
 func (d *Debugger) SelectingClientEnter(e *am.Event) bool {
 	cid, ok1 := e.Args["Client.id"].(string)
@@ -609,7 +634,7 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.SelectingClient)
 	// select the new default client
 	d.C = d.Clients[clientID]
-	// re-feed the whole log and pass the context to allow cancellation
+	// re-feed the whole log and pass the context to allow cancelation
 	logRebuildEnd := len(d.C.logMsgs)
 	d.logRebuildEnd = logRebuildEnd
 	// remain in TailMode after the selection
@@ -657,7 +682,7 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 		// rebuild the whole log, keep an eye on the ctx
 		err := d.rebuildLog(ctx, logRebuildEnd)
 		if err != nil {
-			d.Mach.AddErr(err)
+			d.Mach.AddErr(err, nil)
 		}
 		if ctx.Err() != nil {
 			return // expired
@@ -776,6 +801,10 @@ func (d *Debugger) TreeMatrixViewEnd(_ *am.Event) {
 	d.drawViews()
 }
 
+func (d *Debugger) MatrixRainState(_ *am.Event) {
+	d.drawViews()
+}
+
 func (d *Debugger) ScrollToTxEnter(e *am.Event) bool {
 	cursor, ok := e.Args["Client.cursorTx"].(int)
 	c := d.C
@@ -841,45 +870,69 @@ func (d *Debugger) ToggleFilterState(_ *am.Event) {
 	go d.processFilterChange(stateCtx, filterTxs)
 }
 
-func (d *Debugger) processFilterChange(ctx context.Context, filterTxs bool) {
-	// TODO refac to FilterToggledState
-	<-d.Mach.WhenQueueEnds(ctx)
-	if ctx.Err() != nil {
-		d.Mach.Remove1(ss.ToggleFilter, nil)
-		return // expired
-	}
+func (d *Debugger) SwitchingClientTxState(e *am.Event) {
 
-	if filterTxs {
-		d.filterClientTxs()
-	}
+	clientID, _ := e.Args["Client.id"].(string)
+	cursorTx, _ := e.Args["Client.cursorTx"].(int)
+	ctx := d.Mach.NewStateCtx(ss.SwitchingClientTx)
 
-	if d.C != nil {
-
-		// stay on the last one
-		if d.Mach.Is1(ss.TailMode) {
-			d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), false)
-		}
-
-		// rebuild the whole log to reflect the UI changes
-		err := d.rebuildLog(ctx, len(d.C.MsgTxs))
-		if err != nil {
-			d.Mach.AddErr(err)
-		}
-		d.updateLog(false)
-
+	go func() {
 		if ctx.Err() != nil {
 			return // expired
 		}
 
-		if filterTxs {
-			d.C.CursorTx = d.filterTxCursor(d.C, d.C.CursorTx, false)
+		if d.C != nil && d.C.id != clientID {
+			when := d.Mach.WhenTicks(ss.ClientSelected, 2, ctx)
+			d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": clientID})
+			<-when
+			if ctx.Err() != nil {
+				return // expired
+			}
 		}
+
+		when := d.Mach.WhenTicks(ss.ScrollToTx, 2, ctx)
+		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.cursorTx": cursorTx})
+		<-when
+		if ctx.Err() != nil {
+			return // expired
+		}
+
+		d.Mach.Add1(ss.SwitchedClientTx, nil)
+	}()
+}
+
+func (d *Debugger) SwitchedClientTxState(_ *am.Event) {
+	d.Mach.Remove1(ss.SwitchedClientTx, nil)
+}
+
+// ScrollToMutTxState scrolls to a transition which mutated the passed state,
+// If fwd is true, it scrolls forward, otherwise backwards.
+func (d *Debugger) ScrollToMutTxState(e *am.Event) {
+	d.Mach.Remove1(ss.ScrollToMutTx, nil)
+
+	// TODO validate in Enter and add a sentinel error ErrInvalidArgs
+	state, _ := e.Args["state"].(string)
+	fwd, _ := e.Args["fwd"].(bool)
+
+	c := d.C
+	if c == nil {
+		return
+	}
+	step := -1
+	if fwd {
+		step = 1
 	}
 
-	// queue this removal after filter states, so we can depend on WhenNot
-	d.Mach.Remove1(ss.ToggleFilter, nil)
+	for i := c.CursorTx + step; i > 0 && i < len(c.MsgTxs)+1; i = i + step {
 
-	d.updateFiltersBar()
-	d.updateTimelines()
-	d.draw()
+		parsed := c.msgTxsParsed[i-1]
+		if !slices.Contains(parsed.StatesAdded, state) &&
+			!slices.Contains(parsed.StatesRemoved, state) {
+			continue
+		}
+
+		// scroll to this tx
+		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.cursorTx": i})
+		break
+	}
 }

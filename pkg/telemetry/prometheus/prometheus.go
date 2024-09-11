@@ -1,10 +1,5 @@
-// Package prometheus provides Prometheus metrics for asyncam.
-// The metrics are collected from the machine's transitions and states.
-//
-// Exported metrics:
-// - states amount
-// - relations amount
-// - rel referenced states
+// Package prometheus provides Prometheus metrics for asyncamachine.
+// Metrics are collected from machine's transitions and states.
 package prometheus
 
 // import "github.com/pancsta/asyncmachine-go/pkg/telemetry/prometheus"

@@ -10,11 +10,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	ssCli "github.com/pancsta/asyncmachine-go/pkg/rpc/states/client"
-	"github.com/pancsta/rpc2"
+	"github.com/cenkalti/rpc2"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	ssCli "github.com/pancsta/asyncmachine-go/pkg/rpc/states/client"
 )
 
 // ///// ///// /////

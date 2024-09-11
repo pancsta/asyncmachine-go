@@ -43,7 +43,8 @@ func (d *Debugger) initUIComponents() {
 	d.log.SetBorder(true)
 	d.log.SetRegions(true)
 	d.log.SetTextAlign(cview.AlignLeft)
-	d.log.SetWrap(true)
+	// wrapping causes perf issues in cview/reindexBuffer
+	d.log.SetWrap(false)
 	d.log.SetDynamicColors(true)
 	d.log.SetTitle(" Log ")
 	d.log.SetHighlightForegroundColor(tcell.ColorWhite)
@@ -108,7 +109,7 @@ func (d *Debugger) initExportDialog() *cview.Modal {
 	form := exportDialog.GetForm()
 	form.AddInputField("Filename", "am-dbg-dump", 20, nil, nil)
 
-	exportDialog.SetText("Export to a file")
+	exportDialog.SetText("Serialized to a file")
 	// exportDialog.AddButtons([]string{"Save"})
 	exportDialog.AddButtons([]string{"Save", "Cancel"})
 	exportDialog.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
@@ -170,6 +171,12 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		           cartesian product
 		           col == source state index
 		           row == target state index
+		
+		[::b]1[::-]    state active
+		[::b]2[::-]    state active and touched
+		[::b]-[::-]    state touched
+		[::b]|[::-]    state de-activated
+		
 	
 	`, "\n ")))
 
@@ -201,12 +208,13 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[::b]ctrl+q[::-]             quit
 		[::b]?[::-]                  show help
 	
-		[::b]### [::u]version[::-]
-		%s
-	`, "\n ")), d.Opts.Version))
+		[::b]### [::u]info[::-]
+		%-15s        version
+		%-15s        server addr
+	`, "\n ")), d.Opts.Version, d.Opts.ServerAddr))
 
 	grid := cview.NewGrid()
-	grid.SetTitle(" AsyncMachine Debugger ")
+	grid.SetTitle(" asyncmachine-go debugger ")
 	grid.SetColumns(0, 0)
 	grid.SetRows(0)
 	grid.AddItem(left, 0, 0, 1, 1, 0, 0, false)
@@ -309,10 +317,9 @@ func (d *Debugger) RedrawFull(immediate bool) {
 }
 
 func (d *Debugger) draw() {
-	if d.repaintScheduled {
+	if !d.repaintScheduled.CompareAndSwap(false, true) {
 		return
 	}
-	d.repaintScheduled = true
 
 	go func() {
 		select {
@@ -324,7 +331,8 @@ func (d *Debugger) draw() {
 		}
 
 		// TODO re-draw only changed components
+		// TODO re-draw only c.Box.Draw() when simply changing focus
 		d.App.QueueUpdateDraw(func() {})
-		d.repaintScheduled = false
+		d.repaintScheduled.Store(false)
 	}()
 }

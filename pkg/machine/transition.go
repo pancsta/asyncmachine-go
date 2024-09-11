@@ -4,57 +4,33 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
-
-func newStep(from string, to string, stepType StepType,
-	data any,
-) *Step {
-	return &Step{
-		FromState: from,
-		ToState:   to,
-		Type:      stepType,
-		Data:      data,
-	}
-}
-
-func newSteps(from string, toStates S, stepType StepType,
-	data any,
-) []*Step {
-	var ret []*Step
-	for _, to := range toStates {
-		ret = append(ret, newStep(from, to, stepType, data))
-	}
-	return ret
-}
 
 // Transition represents processing of a single mutation within a machine.
 type Transition struct {
+	// ID is a unique identifier of the transition.
 	ID string
-	// List of steps taken by this transition (so far).
+	// Steps is a list of steps taken by this transition (so far).
 	Steps []*Step
-	// When true, execution of the transition has been completed.
-	IsCompleted bool
-	// states before the transition
+	// StatesBefore is a list of states before the transition.
 	StatesBefore S
-	// clocks of the states from before the transition
-	// TODO timeBefore, produce Clocks via ClockBefore(), add index diffs
-	ClocksBefore Clocks
-	// clocks of the states from after the transition
-	// TODO timeAfter, produce Clocks via ClockAfter(), add index diffs
-	// TODO unify with pkg/telemetry
-	ClocksAfter Clocks
-	TAfter      T
-	// Struct with "enter" handlers to execute
+	// TimeBefore is the machine time from before the transition.
+	TimeBefore Time
+	// TimeAfter is the machine time from after the transition. If the transition
+	// has been canceled, this will be the same as TimeBefore.
+	TimeAfter Time
+	// Enters is a list of states with enter handlers in this transition.
 	Enters S
-	// Struct with "exit" handlers to executed
+	// Enters is a list of states with exit handlers in this transition.
 	Exits S
-	// target states after parsing the relations
+	// TargetStates is a list of states after parsing the relations.
 	TargetStates S
-	// was the transition accepted (during the negotiation phase)
+	// Accepted tells if the transition was accepted during the negotiation phase.
 	Accepted bool
 	// Mutation call which caused this transition
 	Mutation *Mutation
-	// Parent machine
+	// Machine is the parent machine of this transition.
 	Machine *Machine
 	// LogEntries are log msgs produced during the transition.
 	LogEntries []*LogEntry
@@ -74,16 +50,11 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	m.activeStatesLock.RLock()
 	defer m.activeStatesLock.RUnlock()
 
-	clocks := Clocks{}
-	for _, state := range m.StateNames {
-		clocks[state] = m.clock[state]
-	}
-
 	t := &Transition{
 		ID:           randID(),
 		Mutation:     item,
 		StatesBefore: m.activeStates,
-		ClocksBefore: clocks,
+		TimeBefore:   m.time(nil),
 		Machine:      m,
 		Accepted:     true,
 	}
@@ -161,6 +132,28 @@ func (t *Transition) CalledStates() S {
 	return t.Mutation.CalledStates
 }
 
+// ClockBefore return the Clock from before the transition.
+func (t *Transition) ClockBefore() Clock {
+	ret := Clock{}
+	states := t.Machine.StateNames()
+	for k, v := range t.TimeBefore {
+		ret[states[k]] = v
+	}
+
+	return ret
+}
+
+// ClockAfter return the Clock from before the transition.
+func (t *Transition) ClockAfter() Clock {
+	ret := Clock{}
+	states := t.Machine.StateNames()
+	for k, v := range t.TimeAfter {
+		ret[states[k]] = v
+	}
+
+	return ret
+}
+
 // Args returns the argument map passed to the mutation method
 // (or an empty one).
 func (t *Transition) Args() A {
@@ -191,12 +184,7 @@ func (t *Transition) LogArgs() string {
 	return " (" + strings.Join(args, " ") + ")"
 }
 
-func (t *Transition) addSteps(steps ...*Step) {
-	t.Steps = append(t.Steps, steps...)
-}
-
 // String representation of the transition and the steps taken so far.
-// TODO: implement, test
 func (t *Transition) String() string {
 	var lines []string
 	for k := range t.Steps {
@@ -219,6 +207,10 @@ func (t *Transition) String() string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func (t *Transition) addSteps(steps ...*Step) {
+	t.Steps = append(t.Steps, steps...)
 }
 
 func (t *Transition) setupExitEnter() {
@@ -315,7 +307,7 @@ func (t *Transition) emitHandler(from, to, event string, args A) Result {
 	return ret
 }
 
-func (t *Transition) emitFinalEvents() {
+func (t *Transition) emitFinalEvents() Result {
 	finals := S{}
 	finals = append(finals, t.Exits...)
 	finals = append(finals, t.Enters...)
@@ -341,10 +333,13 @@ func (t *Transition) emitFinalEvents() {
 			t.addSteps(step)
 		}
 
+		// final handler cancel means timeout
 		if ret == Canceled {
-			break
+			return ret
 		}
 	}
+
+	return Executed
 }
 
 func (t *Transition) emitEvents() Result {
@@ -353,8 +348,6 @@ func (t *Transition) emitEvents() Result {
 	if !t.Accepted {
 		result = Canceled
 	}
-	// TODO struct type
-	txArgs := A{"transition": t}
 	hasStateChanged := false
 
 	// tracers
@@ -393,26 +386,16 @@ func (t *Transition) emitEvents() Result {
 		m.setActiveStates(t.CalledStates(), t.TargetStates, t.IsAuto())
 		result = t.emitFinalEvents()
 
-		hasStateChanged = m.HasStateChangedSince(t.ClocksBefore)
-
-		if hasStateChanged {
-			m.emit(EventTick, A{"before": t.StatesBefore}, nil)
-		}
+		hasStateChanged = !m.IsTime(t.TimeBefore, nil)
 	}
 
 	// gather new clock values
-	clocks := Clocks{}
-	for _, state := range m.StateNames {
-		clocks[state] = m.clock[state]
-	}
-	t.ClocksAfter = clocks
-	t.TAfter = m.time(nil)
+	t.TimeAfter = m.time(nil)
 
 	// AUTO STATES
 	if result == Canceled {
 
 		t.Accepted = false
-		m.emit(EventTransitionCancel, txArgs, nil)
 	} else if hasStateChanged && !t.IsAuto() {
 
 		autoMutation := m.resolver.GetAutoMutation()

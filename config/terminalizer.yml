@@ -2,7 +2,7 @@
 # like `/bin/bash -l`, `ls`, or any other commands
 # the default is bash for Linux
 # or powershell.exe for Windows
-command: task teaser-run
+command: go run ./tools/cmd/am-dbg-teaser
 
 # Specify the current working directory path
 # the default is the current working directory path
@@ -50,7 +50,7 @@ frameBox:
   title: null
   style:
     border: 0px black solid
-    background: black
+    background: #231f20
     # boxShadow: none
     # margin: 0px
 
@@ -77,7 +77,7 @@ cursorStyle: block
 fontFamily: "Liberation Mono, Monaco, Lucida Console, Ubuntu Mono, Monospace"
 
 # The size of the font
-fontSize: 12
+fontSize: 10
 
 # The height of lines
 lineHeight: 1
@@ -87,7 +87,7 @@ letterSpacing: 0
 
 # Theme
 theme:
-  background: "transparent"
+  background: "#231f20"
   foreground: "#afafaf"
   cursor: "#c7c7c7"
   black: "#232628"
