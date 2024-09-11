@@ -56,11 +56,15 @@ type Transition struct {
 	Mutation *Mutation
 	// Parent machine
 	Machine *Machine
-	// Log entries produced during the transition
-	LogEntriesLock sync.Mutex
-	LogEntries     []*LogEntry
-	// start time of the transition
+	// LogEntries are log msgs produced during the transition.
+	LogEntries []*LogEntry
+	// PreLogEntries are log msgs produced before during the transition.
+	PreLogEntries []*LogEntry
+	// QueueLen is the length of the queue after the transition.
+	QueueLen int
 
+	isCompleted    atomic.Bool
+	logEntriesLock sync.Mutex
 	// Latest / current step of the transition
 	latestStep *Step
 }
@@ -85,13 +89,16 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	}
 
 	// assign early to catch the logs
-	m.Transition = t
+	m.transitionLock.Lock()
+	defer m.transitionLock.Unlock()
+	m.t.Store(t)
 
 	// tracers
-	for i := range t.Machine.Tracers {
+	m.tracersLock.RLock()
+	for i := 0; !t.Machine.Disposed.Load() && i < len(t.Machine.Tracers); i++ {
 		t.Machine.Tracers[i].TransitionInit(t)
-		m.emit(EventTransitionInit, nil, nil)
 	}
+	m.tracersLock.RUnlock()
 
 	// log
 	states := t.CalledStates()
@@ -128,7 +135,7 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 			StepRemove, nil)...)
 	}
 
-	t.TargetStates = m.Resolver.GetTargetStates(t, statesToSet)
+	t.TargetStates = m.resolver.GetTargetStates(t, statesToSet)
 
 	impliedStates := DiffStates(t.TargetStates, statesToSet)
 	if len(impliedStates) > 0 {
@@ -219,7 +226,7 @@ func (t *Transition) setupExitEnter() {
 
 	// collect the exit handlers
 	exits := DiffStates(m.activeStates, t.TargetStates)
-	m.Resolver.SortStates(exits)
+	m.resolver.SortStates(exits)
 
 	// collect the enters handlers
 	var enters S
@@ -248,7 +255,7 @@ func (t *Transition) emitSelfEvents() Result {
 		name := s + s
 		step := newStep(s, "", StepHandler, name)
 		step.IsSelf = true
-		ret, handlerCalled = m.emit(name, t.Mutation.Args, step)
+		ret, handlerCalled = m.handle(name, t.Mutation.Args, step, false)
 		if handlerCalled {
 			t.addSteps(step)
 		}
@@ -301,7 +308,7 @@ func (t *Transition) emitExitEvents() Result {
 func (t *Transition) emitHandler(from, to, event string, args A) Result {
 	step := newStep(from, to, StepHandler, event)
 	t.latestStep = step
-	ret, handlerCalled := t.Machine.emit(event, args, step)
+	ret, handlerCalled := t.Machine.handle(event, args, step, false)
 	if handlerCalled {
 		t.addSteps(step)
 	}
@@ -327,7 +334,8 @@ func (t *Transition) emitFinalEvents() {
 		step.IsFinal = true
 		step.IsEnter = isEnter
 		t.latestStep = step
-		ret, handlerCalled := t.Machine.emit(handler, t.Mutation.Args, step)
+		ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args, step,
+			false)
 
 		if handlerCalled {
 			t.addSteps(step)
@@ -379,8 +387,7 @@ func (t *Transition) emitEvents() Result {
 	if result != Canceled {
 
 		m.setActiveStates(t.CalledStates(), t.TargetStates, t.IsAuto())
-		t.emitFinalEvents()
-		t.IsCompleted = true
+		result = t.emitFinalEvents()
 
 		hasStateChanged = m.HasStateChangedSince(t.ClocksBefore)
 
@@ -404,26 +411,31 @@ func (t *Transition) emitEvents() Result {
 		m.emit(EventTransitionCancel, txArgs, nil)
 	} else if hasStateChanged && !t.IsAuto() {
 
-		autoMutation := m.Resolver.GetAutoMutation()
+		autoMutation := m.resolver.GetAutoMutation()
 		if autoMutation != nil {
 			m.log(LogOps, "[auto] %s", j(autoMutation.CalledStates))
 			// unshift
+			m.queueLock.Lock()
 			m.queue = append([]*Mutation{autoMutation}, m.queue...)
+			m.queueLen.Store(int32(len(m.queue)))
+			m.queueLock.Unlock()
 		}
 	}
 
-	// stop emitting, collect previous log entries
+	// handlers done, collect previous log entries
 	m.logEntriesLock.Lock()
-	// TODO typed txArgs struct
-	txArgs["pre_logs"] = m.logEntries
-	txArgs["queue_len"] = len(m.queue)
+	t.PreLogEntries = m.logEntries
+	t.QueueLen = int(m.queueLen.Load())
 	m.logEntries = nil
 	m.logEntriesLock.Unlock()
-	m.emit(EventTransitionEnd, txArgs, nil)
+	t.isCompleted.Store(true)
 
-	for i := range t.Machine.Tracers {
+	// tracers
+	m.tracersLock.RLock()
+	for i := 0; !t.Machine.Disposed.Load() && i < len(t.Machine.Tracers); i++ {
 		t.Machine.Tracers[i].TransitionEnd(t)
 	}
+	m.tracersLock.RUnlock()
 
 	if result == Canceled {
 		return Canceled
@@ -467,4 +479,11 @@ func (t *Transition) setupAccepted() {
 	t.Accepted = false
 	m.log(LogOps, "[cancel:reject] %s", j(notAccepted))
 	t.addSteps(newSteps("", notAccepted, StepCancel, nil)...)
+}
+
+// IsCompleted is true when the execution of the transition has been fully
+// completed.
+
+func (t *Transition) IsCompleted() bool {
+	return t.isCompleted.Load()
 }
