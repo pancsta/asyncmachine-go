@@ -94,14 +94,14 @@ func (d *Debugger) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx) {
 
 	// pre-tx log entries
 	for _, entry := range msgTx.PreLogEntries {
-		if pe := d.parseMsgLogEntry(c, msgTx.ID, entry); pe != nil {
+		if pe := d.parseMsgLogEntry(c, entry); pe != nil {
 			parsed = append(parsed, pe)
 		}
 	}
 
 	// tx log entries
 	for _, entry := range msgTx.LogEntries {
-		if pe := d.parseMsgLogEntry(c, msgTx.ID, entry); pe != nil {
+		if pe := d.parseMsgLogEntry(c, entry); pe != nil {
 			parsed = append(parsed, pe)
 		}
 	}
@@ -111,7 +111,7 @@ func (d *Debugger) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx) {
 }
 
 func (d *Debugger) parseMsgLogEntry(
-	c *Client, txID string, entry *am.LogEntry,
+	c *Client, entry *am.LogEntry,
 ) *am.LogEntry {
 	lvl := entry.Level
 
@@ -120,9 +120,6 @@ func (d *Debugger) parseMsgLogEntry(
 		lvl = am.LogNothing
 	}
 	t := fmtLogEntry(entry.Text, c.MsgStruct.States)
-
-	// create a highlight region
-	t = `["` + txID + `"]` + t + `[""]`
 
 	return &am.LogEntry{Level: lvl, Text: t}
 }
@@ -210,6 +207,10 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 
 		ret += logStr
 	}
+
+	// create a highlight region
+	txId := c.MsgTxs[index].ID
+	ret = `["` + txId + `"]` + ret + `[""]`
 
 	return []byte(ret)
 }

@@ -184,9 +184,7 @@ func (d *Debugger) PausedState(_ *am.Event) {
 func (d *Debugger) TailModeState(_ *am.Event) {
 	d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), false)
 	// needed bc tail mode if carried over via SelectingClient
-	d.updateTxBars()
-	d.updateTimelines()
-	d.draw()
+	d.RedrawFull(true)
 }
 
 // ///// FWD / BACK
