@@ -349,8 +349,12 @@ func (t *Transition) emitEvents() Result {
 	txArgs := A{"transition": t}
 	hasStateChanged := false
 
-	// start emitting
-	m.emit(EventTransitionStart, txArgs, nil)
+	// tracers
+	m.tracersLock.RLock()
+	for i := 0; !t.Machine.Disposed.Load() && i < len(t.Machine.Tracers); i++ {
+		t.Machine.Tracers[i].TransitionStart(t)
+	}
+	m.tracersLock.RUnlock()
 
 	// NEGOTIATION CALLS PHASE (cancellable)
 

@@ -1327,6 +1327,13 @@ func (m *Machine) VerifyStates(states S) error {
 	m.StateNames = slices.Clone(states)
 	m.StatesVerified = true
 
+	// tracers
+	m.tracersLock.RLock()
+	for i := 0; !m.Disposed.Load() && i < len(m.Tracers); i++ {
+		m.Tracers[i].VerifyStates(m)
+	}
+	m.tracersLock.RUnlock()
+
 	return nil
 }
 
@@ -2271,10 +2278,12 @@ func (m *Machine) SetStruct(statesStruct Struct, names S) error {
 		return err
 	}
 
-	m.emit(EventStructChange, A{
-		"states_old": old,
-		"states_new": CloneStates(m.states),
-	}, nil)
+	// tracers
+	m.tracersLock.RLock()
+	for i := 0; !m.Disposed.Load() && i < len(m.Tracers); i++ {
+		m.Tracers[i].StructChange(m, old)
+	}
+	m.tracersLock.RUnlock()
 
 	return nil
 }
