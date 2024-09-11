@@ -626,9 +626,12 @@ func NormalizeID(id string) string {
 	return invalidName.ReplaceAllString(strings.ToLower(id), "_")
 }
 
-// SMerge merges multiple state lists into one, removing duplicates.
-// Especially useful for merging state group with single states.
-func SMerge(states ...S) S {
+// SAdd concatenates multiple state lists into one, removing duplicates.
+// Useful for merging lists of states, eg a state group with other states
+// involved in a relation.
+func SAdd(states ...S) S {
+	// TODO test
+	// TODO move to resolver
 	if len(states) == 0 {
 		return S{}
 	}
@@ -641,7 +644,84 @@ func SMerge(states ...S) S {
 	return slicesUniq(s)
 }
 
-type Export struct {
+// StateAdd adds new states to relations of the source state, without
+// removing existing ones. Useful for adjusting shared stated to a specific
+// machine.
+func StateAdd(source State, overlay State) State {
+	// TODO test
+	// TODO move to resolver
+	s := cloneState(source)
+	o := cloneState(overlay)
+
+	// relations
+	if o.Add != nil {
+		s.Add = SAdd(s.Add, o.Add)
+	}
+	if o.Remove != nil {
+		s.Remove = SAdd(s.Remove, o.Remove)
+	}
+	if o.Require != nil {
+		s.Require = SAdd(s.Require, o.Require)
+	}
+	if o.After != nil {
+		s.After = SAdd(s.After, o.After)
+	}
+
+	return s
+}
+
+// StateSet replaces passed relations and properties of the source state.
+// Only relations in the overlay state are replaced, the rest is preserved.
+func StateSet(source State, auto, multi bool, overlay State) State {
+	// TODO test
+	// TODO move to resolver
+	s := cloneState(source)
+	o := cloneState(overlay)
+
+	// properties
+	s.Auto = auto
+	s.Multi = multi
+
+	// relations
+	if o.Add != nil {
+		s.Add = o.Add
+	}
+	if o.Remove != nil {
+		s.Remove = o.Remove
+	}
+	if o.Require != nil {
+		s.Require = o.Require
+	}
+	if o.After != nil {
+		s.After = o.After
+	}
+
+	return s
+}
+
+// StructMerge merges multiple state structs into one, overriding the previous
+// state definitions. No relation-level merging takes place.
+func StructMerge(stateStructs ...Struct) Struct {
+	// TODO test
+	// TODO move to resolver
+	// defaults
+	l := len(stateStructs)
+	if l == 0 {
+		return Struct{}
+	} else if l == 1 {
+		return stateStructs[0]
+	}
+
+	ret := make(Struct)
+	for i := 0; i < l; i++ {
+		maps.Copy(ret, stateStructs[i])
+	}
+
+	return CloneStates(ret)
+}
+
+// Serialized is a machine state serialized to a JSON compatible struct.
+type Serialized struct {
 	ID         string `json:"id"`
 	Clocks     Clocks `json:"clocks"`
 	StateNames S      `json:"state_names"`
