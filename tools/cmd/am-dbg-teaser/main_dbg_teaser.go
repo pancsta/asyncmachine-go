@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
@@ -50,24 +50,16 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 			LogLevel: filterLogLevel,
 		},
 		ImportData:  p.ImportData,
-		DBGLogLevel: p.LogLevel,
-		DBGLogger:   cli.GetFileLogger(&p),
-		ServerAddr:  p.ServerURL,
+		DbgLogLevel: p.LogLevel,
+		DbgLogger:   cli.GetLogger(&p),
+		ServerAddr:  p.ServerAddr,
 		EnableMouse: p.EnableMouse,
 		Version:     cli.GetVersion(),
 	})
 	if err != nil {
 		panic(err)
 	}
-
-	// rpc client
-	if p.DebugAddr != "" {
-		err := telemetry.TransitionsToDBG(dbg.Mach, p.DebugAddr)
-		// TODO retries
-		if err != nil {
-			panic(err)
-		}
-	}
+	utils.MachDebug(dbg.Mach, debugAddr, logLevel, false)
 
 	dbg.Start(startupMachine, startupTx, initialView)
 	go runTeaser(dbg)
@@ -109,25 +101,30 @@ func runTeaser(dbg *debugger.Debugger) {
 	goFwd(mach, 13)
 
 	// play steps
-	goFwdSteps(mach, 8)
+	tx := dbg.CurrentTx()
+	goFwdSteps(mach, len(tx.Steps)+1)
 
 	// highlight Connected
-	mach.Add1(ss.StateNameSelected, am.A{"selectedStateName": "Connected"})
-	goFwdSteps(mach, 16) // 15 + empty step
+	mach.Add1(ss.StateNameSelected, am.A{"state": "Connected"})
+	tx = dbg.CurrentTx()
+	goFwdSteps(mach, len(tx.Steps)+1)
 
 	// go back with LogOps
 	mach.Add1(ss.TreeLogView, nil)
-	goBackSteps(mach, 16) // 15 + empty step
+	mach.Remove1(ss.StateNameSelected, nil)
+	goBackSteps(mach, len(tx.Steps)+1)
 
-	// go back with LogChanges
-	goBackSteps(mach, 9) // 8 + empty step
+	goBack(mach, 3)
+	mach.Add(am.S{ss.TreeMatrixView, ss.MatrixRain}, nil)
+	goBack(mach, 5)
+	mach.Add1(ss.TreeLogView, nil)
+	goBack(mach, 10)
 
 	// go back with LogChanges
 	dbg.SetFilterLogLevel(am.LogChanges)
-	goBackSteps(mach, 12)
 
 	// end screen
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 	mach.Dispose()
 }
 
@@ -135,6 +132,14 @@ func goFwd(mach *am.Machine, amount int) {
 	for i := 0; i < amount; i++ {
 		<-time.After(playInterval)
 		mach.Add1(ss.Fwd, nil)
+	}
+	waitForRender()
+}
+
+func goBack(mach *am.Machine, amount int) {
+	for i := 0; i < amount; i++ {
+		<-time.After(playInterval)
+		mach.Add1(ss.Back, nil)
 	}
 	waitForRender()
 }

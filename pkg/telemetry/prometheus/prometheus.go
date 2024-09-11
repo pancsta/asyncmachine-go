@@ -1,10 +1,5 @@
-// Package prometheus provides Prometheus metrics for asyncam.
-// The metrics are collected from the machine's transitions and states.
-//
-// Exported metrics:
-// - states amount
-// - relations amount
-// - rel referenced states
+// Package prometheus provides Prometheus metrics for asyncmachine.
+// Metrics are collected from machine's transitions and states.
 package prometheus
 
 // import "github.com/pancsta/asyncmachine-go/pkg/telemetry/prometheus"
@@ -396,7 +391,8 @@ func TransitionsToPrometheus(
 	metrics.RelAmount.Set(float64(relCount))
 	metrics.RefStatesAmount.Set(float64(stateRefCount))
 
-	mach.Tracers = append(mach.Tracers, &promTracer{m: metrics})
+	metrics.tracer = &promTracer{m: metrics}
+	mach.Tracers = append(mach.Tracers, metrics.tracer)
 
 	return metrics
 }

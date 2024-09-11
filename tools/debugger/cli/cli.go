@@ -1,12 +1,19 @@
 package cli
 
 import (
+	"context"
+	"log"
+	"net/http"
+	_ "net/http/pprof"
+	"os"
+	"runtime"
+	"runtime/debug"
+	"runtime/pprof"
+
+	"github.com/spf13/cobra"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
-	"github.com/spf13/cobra"
-	"log"
-	"os"
-	"runtime/debug"
 )
 
 const (
@@ -14,7 +21,7 @@ const (
 	cliParamLogLevel         = "log-level"
 	cliParamServerAddr       = "listen-on"
 	cliParamServerAddrShort  = "l"
-	cliParamAmDbgURL         = "am-dbg-url"
+	cliParamAmDbgAddr        = "am-dbg-addr"
 	cliParamEnableMouse      = "enable-mouse"
 	cliParamCleanOnConnect   = "clean-on-connect"
 	cliParamVersion          = "version"
@@ -28,13 +35,16 @@ const (
 	cliParamStartupTxShort   = "t"
 	cliParamView             = "view"
 	cliParamViewShort        = "v"
+	cliParamProfMem          = "prof-mem"
+	cliParamProfCpu          = "prof-cpu"
+	cliParamProfSrv          = "prof-srv"
 )
 
 type Params struct {
 	LogLevel        am.LogLevel
 	LogFile         string
 	Version         bool
-	ServerURL       string
+	ServerAddr      string
 	DebugAddr       string
 	ImportData      string
 	StartupMachine  string
@@ -43,6 +53,9 @@ type Params struct {
 	EnableMouse     bool
 	CleanOnConnect  bool
 	SelectConnected bool
+	ProfMem         bool
+	ProfCpu         bool
+	ProfSrv         bool
 }
 
 type RootFn func(cmd *cobra.Command, args []string, params Params)
@@ -69,15 +82,16 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.Int(cliParamLogLevel, 0,
 		"Log level, 0-5 (silent-everything)")
 	f.StringP(cliParamServerAddr,
-		cliParamServerAddrShort, telemetry.DbgHost,
+		cliParamServerAddrShort, telemetry.DbgAddr,
 		"Host and port for the debugger to listen on")
-	f.String(cliParamAmDbgURL, "",
+	f.String(cliParamAmDbgAddr, "",
 		"Debug this instance of am-dbg with another one")
 	f.StringP(cliParamView, cliParamViewShort, "tree-log",
 		"Initial view (tree-log, tree-matrix, matrix)")
 	f.StringP(cliParamStartupMach,
 		cliParamStartupMachShort, "",
 		"Select a machine by ID on startup (requires --"+cliParamImport+")")
+
 	// TODO parse copy-paste commas, eg 1,001
 	f.IntP(cliParamStartupTx, cliParamStartupTxShort, 0,
 		"Select a transaction by _number_ on startup (requires --"+
@@ -89,9 +103,14 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.BoolP(cliParamSelectConn, cliParamSelectConnShort, false,
 		"Select the newly connected machine, if no other is connected")
 	f.StringP(cliParamImport, cliParamImportShort, "",
-		"Import an exported gob.bz2 file")
+		"ImportFile an exported gob.bt file")
 	f.Bool(cliParamVersion, false,
 		"Print version and exit")
+
+	// profile
+	f.Bool(cliParamProfMem, false, "Profile memory usage")
+	f.Bool(cliParamProfCpu, false, "Profile CPU usage")
+	f.Bool(cliParamProfSrv, false, "Start pprof server on :6060")
 }
 
 func GetVersion() string {
@@ -125,7 +144,7 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 
 	logLevel := am.LogLevel(logLevelInt)
 	serverAddr := cmd.Flag(cliParamServerAddr).Value.String()
-	debugAddr := cmd.Flag(cliParamAmDbgURL).Value.String()
+	debugAddr := cmd.Flag(cliParamAmDbgAddr).Value.String()
 	importData := cmd.Flag(cliParamImport).Value.String()
 	startupMachine := cmd.Flag(cliParamStartupMach).Value.String()
 	startupView := cmd.Flag(cliParamView).Value.String()
@@ -149,11 +168,26 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 		panic(err)
 	}
 
+	profMem, err := cmd.Flags().GetBool(cliParamProfMem)
+	if err != nil {
+		panic(err)
+	}
+
+	profCpu, err := cmd.Flags().GetBool(cliParamProfCpu)
+	if err != nil {
+		panic(err)
+	}
+
+	profSrv, err := cmd.Flags().GetBool(cliParamProfSrv)
+	if err != nil {
+		panic(err)
+	}
+
 	return Params{
 		LogLevel:        logLevel,
 		LogFile:         logFile,
 		Version:         version,
-		ServerURL:       serverAddr,
+		ServerAddr:      serverAddr,
 		DebugAddr:       debugAddr,
 		ImportData:      importData,
 		StartupMachine:  startupMachine,
@@ -162,16 +196,21 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 		EnableMouse:     enableMouse,
 		CleanOnConnect:  cleanOnConnect,
 		SelectConnected: selectConnected,
+
+		// profiling
+		ProfMem: profMem,
+		ProfCpu: profCpu,
+		ProfSrv: profSrv,
 	}
 }
 
-// GetFileLogger returns a file logger, according to params.
-func GetFileLogger(params *Params) *log.Logger {
+// GetLogger returns a file logger, according to params.
+func GetLogger(params *Params) *log.Logger {
 	// TODO slog
 
 	// file logging
 	if params.LogFile == "" || params.LogLevel < 1 {
-		return nil
+		return log.Default()
 	}
 
 	_ = os.Remove(params.LogFile)
@@ -181,4 +220,52 @@ func GetFileLogger(params *Params) *log.Logger {
 	}
 
 	return log.New(file, "", log.LstdFlags)
+}
+
+func HandleProfMem(logger *log.Logger, p *Params) {
+	if !p.ProfMem {
+		return
+	}
+
+	f, err := os.Create("mem.prof")
+	if err != nil {
+		logger.Fatal("could not create memory profile: ", err)
+	}
+	defer f.Close() // error handling omitted for example
+
+	runtime.GC() // get up-to-date statistics
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		logger.Fatal("could not write memory profile: ", err)
+	}
+}
+
+func StartCpuProfile(logger *log.Logger, p *Params) func() {
+	if !p.ProfCpu {
+		return nil
+	}
+
+	f, err := os.Create("cpu.prof")
+	if err != nil {
+		logger.Fatal("could not create CPU profile: ", err)
+	}
+	if err := pprof.StartCPUProfile(f); err != nil {
+		logger.Fatal("could not start CPU profile: ", err)
+	}
+	return func() {
+		pprof.StopCPUProfile()
+		f.Close()
+	}
+}
+
+func StartCpuProfileSrv(ctx context.Context, logger *log.Logger, p *Params) {
+	if !p.ProfSrv {
+		return
+	}
+	go func() {
+		logger.Println("Starting pprof server on :6060")
+		// TODO support ctx cancel
+		if err := http.ListenAndServe(":6060", nil); err != nil {
+			logger.Fatalf("could not start pprof server: %v", err)
+		}
+	}()
 }

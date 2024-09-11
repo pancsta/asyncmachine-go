@@ -67,7 +67,7 @@ func (d *Debugger) initMachineTree() *cview.TreeView {
 			return
 		}
 		d.Mach.Add1(ss.StateNameSelected, am.A{
-			"selectedStateName": ref.stateName,
+			"state": ref.stateName,
 		})
 	})
 
@@ -124,7 +124,7 @@ func (d *Debugger) updateTree() {
 
 	var steps []*am.Step
 	if c.CursorTx < len(c.MsgTxs) && c.CursorStep > 0 {
-		steps = d.NextTx().Steps
+		steps = d.nextTx().Steps
 	}
 
 	// default decorations plus name highlights
@@ -195,7 +195,7 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 		node.SetText(stateName)
 
 		// reset to defaults
-		if stateName != c.selectedState {
+		if stateName != c.SelectedState {
 			if !ref.isRef {
 				// un-highlight all descendants
 				for _, child := range node.GetChildren() {

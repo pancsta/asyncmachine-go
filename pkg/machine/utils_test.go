@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/lithammer/dedent"
@@ -12,44 +11,116 @@ import (
 )
 
 type History struct {
-	Order     []string
-	Counter   map[string]int
-	CounterMx sync.Mutex
+	NoOpTracer
+
+	Order   []string
+	Counter map[string]int
 }
 
-// TODO not thread safe
-func trackTransitions(m *Machine, events S) *History {
+// A
+
+func (h *History) AD(e *Event) {
+	h.event("AD")
+}
+
+func (h *History) AC(e *Event) {
+	h.event("AC")
+}
+
+func (h *History) AExit(e *Event) {
+	h.event("AExit")
+}
+
+func (h *History) AA(e *Event) {
+	h.event("AA")
+}
+
+func (h *History) AAny(e *Event) {
+	h.event("AAny")
+}
+
+// B
+
+func (h *History) AB(e *Event) {
+	h.event("AB")
+}
+
+func (h *History) BEnter(e *Event) {
+	h.event("BEnter")
+}
+
+func (h *History) BState(e *Event) {
+	h.event("BState")
+}
+
+func (h *History) BB(e *Event) {
+	h.event("BB")
+}
+
+func (h *History) AnyB(e *Event) {
+	h.event("AnyB")
+}
+
+func (h *History) BExit(e *Event) {
+	h.event("BExit")
+}
+
+func (h *History) BD(e *Event) {
+	h.event("BD")
+}
+
+// C
+
+func (h *History) BAny(e *Event) {
+	h.event("BAny")
+}
+
+func (h *History) BC(e *Event) {
+	h.event("BC")
+}
+
+func (h *History) AnyC(e *Event) {
+	h.event("AnyC")
+}
+
+func (h *History) CEnter(e *Event) {
+	h.event("CEnter")
+}
+
+func (h *History) CState(e *Event) {
+	h.event("CState")
+}
+
+// D
+
+func (h *History) AnyD(e *Event) {
+	h.event("AnyD")
+}
+
+func (h *History) DEnter(e *Event) {
+	h.event("DEnter")
+}
+
+func (h *History) event(name string) {
+	h.Order = append(h.Order, name)
+
+	if _, ok := h.Counter[name]; !ok {
+		h.Counter[name] = 0
+	}
+
+	h.Counter[name]++
+}
+
+func trackTransitions(mach *Machine, events S) *History {
 	history := &History{
 		Order:   []string{},
 		Counter: map[string]int{},
 	}
-	isBound := make(chan bool)
+	err := mach.BindHandlers(history)
+	if err != nil {
+		panic(err)
+	}
 
-	ch := m.OnEvent(append(events, EventQueueEnd), nil)
-	go func() {
-		// guaranteed to run after listening starts
-		go func() {
-			// causes a return from trackTransitions
-			close(isBound)
-		}()
-
-		for e := range ch {
-			if e.Name == EventQueueEnd {
-				continue
-			}
-			history.Order = append(history.Order, e.Name)
-
-			history.CounterMx.Lock()
-			if _, ok := history.Counter[e.Name]; !ok {
-				history.Counter[e.Name] = 0
-			}
-			history.Counter[e.Name]++
-
-			history.CounterMx.Unlock()
-		}
-	}()
-
-	<-isBound
 	return history
 }
 
@@ -59,18 +130,10 @@ func assertStates(t *testing.T, m *Machine, expected S,
 	assert.ElementsMatch(t, expected, m.activeStates, msgAndArgs...)
 }
 
-func assertTimes(t *testing.T, m *Machine, states S, times T,
+func assertTime(t *testing.T, m *Machine, states S, times Time,
 	msgAndArgs ...interface{},
 ) {
 	assert.Equal(t, m.Time(states), times, msgAndArgs...)
-}
-
-func assertClocks(t *testing.T, m *Machine, states S, times T,
-	msgAndArgs ...interface{},
-) {
-	for i, state := range states {
-		assert.True(t, m.IsClock(state, times[i]), msgAndArgs...)
-	}
 }
 
 func assertNoException(t *testing.T, m *Machine) {
@@ -78,9 +141,6 @@ func assertNoException(t *testing.T, m *Machine) {
 }
 
 func assertEventCounts(t *testing.T, history *History, expected int) {
-	history.CounterMx.Lock()
-	defer history.CounterMx.Unlock()
-
 	// assert event counts
 	for _, count := range history.Counter {
 		assert.Equal(t, expected, count)
@@ -88,9 +148,6 @@ func assertEventCounts(t *testing.T, history *History, expected int) {
 }
 
 func assertEventCountsMin(t *testing.T, history *History, expected int) {
-	history.CounterMx.Lock()
-	defer history.CounterMx.Unlock()
-
 	// assert event counts
 	for event, count := range history.Counter {
 		assert.GreaterOrEqual(t, expected, count, "event %s call count", event)
@@ -101,9 +158,9 @@ func captureLog(t *testing.T, m *Machine, log *string) {
 	m.SetLogLevel(LogEverything)
 	m.SetLogger(func(i LogLevel, msg string, args ...any) {
 		if os.Getenv("AM_DEBUG") != "" {
-			t.Logf(msg, args...)
+			t.Logf(msg+"\n", args...)
 		}
-		*log += fmt.Sprintf(msg, args...)
+		*log += fmt.Sprintf(msg+"\n", args...)
 	})
 }
 

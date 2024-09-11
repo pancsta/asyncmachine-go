@@ -10,7 +10,7 @@
 .DS_Store
 
 # Environment variable files
-*.env
+/*.env
 
 # PEM files
 *.pem
@@ -46,7 +46,7 @@ go.work
 /.dev
 /dist
 /tools/cmd/am-dbg/am-dbg
-/*.log
+*.log
 /*.gob
 /assets/*.cast.yml
 
@@ -54,5 +54,11 @@ _py
 /.run
 /*.bz2
 /*.br
-/memprofile*
+/mem.*
+/cpu.*
 /.local
+/assets/am-dbg-teaser.gif
+/*.svg
+/assets/*.pdf
+/*.png
+/*.prof

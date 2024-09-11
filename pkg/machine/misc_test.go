@@ -2,7 +2,6 @@ package machine
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -115,8 +114,8 @@ func TestSMerge(t *testing.T) {
 	s := S{"A", "B", "C"}
 	s2 := S{"C", "D", "E"}
 	ex := S{"A", "B", "C", "D", "E"}
-	assert.Equal(t, ex, SMerge(s, s2))
-	assert.Equal(t, S{}, SMerge())
+	assert.Equal(t, ex, SAdd(s, s2))
+	assert.Equal(t, S{}, SAdd())
 }
 
 func TestNormalizeID(t *testing.T) {
@@ -128,12 +127,4 @@ func TestIsActiveTick(t *testing.T) {
 	assert.False(t, IsActiveTick(0))
 	assert.False(t, IsActiveTick(6548734))
 	assert.True(t, IsActiveTick(6548735))
-}
-
-func fileExists(filePath string) bool {
-	_, err := os.Stat(filePath)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return err == nil
 }

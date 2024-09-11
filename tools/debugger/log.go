@@ -17,44 +17,45 @@ import (
 
 func (d *Debugger) updateLog(immediate bool) {
 	if immediate {
-		d.doUpdateLog()
+		go d.doUpdateLog()
 		return
 	}
 
-	if d.updateLogScheduled {
+	if !d.updateLogScheduled.CompareAndSwap(false, true) {
 		return
 	}
-	d.updateLogScheduled = true
 
 	go func() {
 		time.Sleep(logUpdateDebounce)
 		d.doUpdateLog()
 		d.draw()
-		d.updateLogScheduled = false
+		d.updateLogScheduled.Swap(false)
 	}()
 }
 
 func (d *Debugger) doUpdateLog() {
 	// check for a ready client
-	c := d.C
+	c := d.Client()
 	if c == nil {
 		return
 	}
 
+	tx := d.CurrentTx()
+
 	if c.MsgStruct != nil {
 		title := " Log:" + d.Opts.Filters.LogLevel.String() + " "
-		if tx := d.CurrentTx(); tx != nil {
+		if tx != nil {
+			// TODO panic -1
 			t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx-1].Time))
-			title += "T:" + t + " "
+			title += "Time:" + t + " "
 		}
 		d.log.SetTitle(title)
 	}
 
 	// highlight the next tx if scrolling by steps
-	bySteps := d.Mach.Is1(ss.TimelineStepsFocused)
-	tx := d.CurrentTx()
+	bySteps := d.Mach.Is1(ss.TimelineStepsScrolled)
 	if bySteps {
-		tx = d.NextTx()
+		tx = d.nextTx()
 	}
 	if tx == nil {
 		d.log.Highlight("")
@@ -68,8 +69,8 @@ func (d *Debugger) doUpdateLog() {
 	}
 
 	// highlight this tx or the prev if empty
-	if len(tx.LogEntries) == 0 && d.PrevTx() != nil {
-		last := d.PrevTx()
+	if len(tx.LogEntries) == 0 && d.prevTx() != nil {
+		last := d.prevTx()
 		for i := d.C.CursorTx - 1; i > 0; i-- {
 			if len(last.LogEntries) > 0 {
 				tx = last
@@ -176,6 +177,7 @@ func (d *Debugger) appendLogEntry(index int) error {
 }
 
 // getLogEntryTxt prepares a log entry for UI rendering
+// index: 1-based
 func (d *Debugger) getLogEntryTxt(index int) []byte {
 	c := d.C
 	ret := ""
@@ -185,7 +187,6 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 		prevMsgTime := c.MsgTxs[index-1].Time
 		if prevMsgTime.Second() != msgTime.Second() {
 			// grouping labels (per second)
-			// TODO duplicates for empty log entries
 			ret += `[grey]` + msgTime.Format(timeFormat) + "[-]\n"
 		}
 	}
@@ -208,7 +209,7 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 		ret += logStr
 	}
 
-	// create a highlight region
+	// create a highlight region (even for empty txs)
 	txId := c.MsgTxs[index].ID
 	ret = `["` + txId + `"]` + ret + `[""]`
 
@@ -225,6 +226,10 @@ func fmtLogEntry(entry string, machStruct am.Struct) string {
 	ret := ""
 	// format each line
 	for _, s := range strings.Split(entry, "\n") {
+		if !strings.Contains(s, "]") || !strings.Contains(s, "[") {
+			ret += s + "\n"
+			continue
+		}
 
 		// color the first brackets per each line
 		s = strings.Replace(strings.Replace(s,
@@ -241,6 +246,10 @@ func fmtLogEntry(entry string, machStruct am.Struct) string {
 
 	// highlight state names (in the msg body)
 	idx := strings.Index(ret, prefixEnd)
+	// if len(ret) < idx+len(prefixEnd) {
+	//	// TODO reproduce this case?
+	//	return "err:fmtLogEntry"
+	// }
 	prefix := ret[0 : idx+len(prefixEnd)]
 
 	// style state names, start from the longest ones
