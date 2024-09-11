@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pancsta/cview"
 	"golang.org/x/exp/maps"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -220,15 +221,21 @@ func fmtLogEntry(entry string, machStruct am.Struct) string {
 
 	prefixEnd := "[][white]"
 
-	// color the first brackets per each line
 	ret := ""
+	// format each line
 	for _, s := range strings.Split(entry, "\n") {
+
+		// color the first brackets per each line
 		s = strings.Replace(strings.Replace(s,
 			"]", prefixEnd, 1),
 			"[", "[yellow][", 1)
-		ret += s + "\n"
-		// TODO replace further brackets with escape sequences
-		// after indexof yellow
+		start := strings.Index(s, prefixEnd) + len(prefixEnd)
+		left, right := s[:start], s[start:]
+
+		// escape the rest
+		ret += left + strings.ReplaceAll(strings.ReplaceAll(right,
+			"]", cview.Escape("]")),
+			"[", cview.Escape("[")) + "\n"
 	}
 
 	// highlight state names (in the msg body)
