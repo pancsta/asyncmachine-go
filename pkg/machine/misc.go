@@ -559,6 +559,30 @@ func (eh *ExceptionHandler) ExceptionState(e *Event) {
 // ///// PUB UTILS
 // ///// ///// /////
 
+// Is1 checks if a state is active at a given time, via its index. See
+// Machine.Index().
+func (t Time) Is1(idx int) bool {
+	return IsActiveTick(t[idx])
+}
+
+// Is checks if all the passed states were active at a given time, via indexes.
+// See Machine.Index().
+func (t Time) Is(idxs []int) bool {
+	if len(idxs) == 0 {
+		return false
+	}
+
+	for _, idx := range idxs {
+		if !IsActiveTick(t[idx]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// TODO Any, Any1, Not, Not1
+
 // DiffStates returns the states that are in states1 but not in states2.
 func DiffStates(states1 S, states2 S) S {
 	return slicesFilter(states1, func(name string, i int) bool {
