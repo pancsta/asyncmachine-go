@@ -849,6 +849,37 @@ func (m *Machine) PanicToErr(args A) {
 	return m.Add(S{"Exception"}, A{"err": err})
 }
 
+// PanicToErr will catch a panic and add the Exception state. Needs to
+// be called in a defer statement, just like a recover() call.
+func (m *Machine) PanicToErr(args A) {
+	r := recover()
+	if r == nil {
+		return
+	}
+
+	if err, ok := r.(error); ok {
+		m.AddErr(err, args)
+	} else {
+		m.AddErr(fmt.Errorf("%v", err), args)
+	}
+}
+
+// PanicToErrState will catch a panic and add the Exception state, along with
+// the passed state. Needs to be called in a defer statement, just like a
+// recover() call.
+func (m *Machine) PanicToErrState(state string, args A) {
+	r := recover()
+	if r == nil {
+		return
+	}
+
+	if err, ok := r.(error); ok {
+		m.AddErrState(state, err, args)
+	} else {
+		m.AddErrState(state, fmt.Errorf("%v", err), args)
+	}
+}
+
 // AddErrStr is a shorthand method to add the Exception state with the passed
 // error string.
 // Like every mutation method, it will resolve relations and trigger handlers.
