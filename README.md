@@ -184,15 +184,41 @@ To get started, it's recommended to read  [`/pkg/machine`](pkg/machine/README.md
 
 Latest release: `v0.7.0-pre1`
 
-- ...  (@pancsta)
-- ...  (@pancsta)
-- ...  (@pancsta)
+- docs: update readmes, manual, cookbook for v0.7 [\#127](https://github.com/pancsta/asyncmachine-go/pull/127) (@pancsta)
+- feat: release v0.7 [\#126](https://github.com/pancsta/asyncmachine-go/pull/126) (@pancsta)
+- refac\(telemetry\): switch telemetry to Tracer API [\#125](https://github.com/pancsta/asyncmachine-go/pull/125) (@pancsta)
+- fix\(machine\): fix test -race [\#124](https://github.com/pancsta/asyncmachine-go/pull/124) (@pancsta)
+- feat\(machine\): add Index\(\) and Time.Is\(index\) [\#123](https://github.com/pancsta/asyncmachine-go/pull/123) (@pancsta)
+- feat\(machine\): add Eval\(\) detection tool [\#122](https://github.com/pancsta/asyncmachine-go/pull/122) (@pancsta)
+- feat\(machine\): add EnvLogLevel [\#121](https://github.com/pancsta/asyncmachine-go/pull/121) (@pancsta)
+- feat\(rpc\): add grpc benchmark [\#120](https://github.com/pancsta/asyncmachine-go/pull/120) (@pancsta)
+- feat\(machine\): add PanicToErr, PanicToErrState [\#119](https://github.com/pancsta/asyncmachine-go/pull/119) (@pancsta)
+- feat\(helpers\): add pkg/helpers \(Add1Block, Add1AsyncBlock, ...\) [\#118](https://github.com/pancsta/asyncmachine-go/pull/118)
+  (@pancsta)
+- feat\(rpc\): add pkg/rpc [\#117](https://github.com/pancsta/asyncmachine-go/pull/117) (@pancsta)
+- feat\(states\): add pkg/states [\#116](https://github.com/pancsta/asyncmachine-go/pull/116) (@pancsta)
+- feat\(machine\): add state def manipulations \(eg StateAdd\) [\#115](https://github.com/pancsta/asyncmachine-go/pull/115)
+   (@pancsta)
+- feat\(machine\): add new Tracer methods \(eg VerifyStates\) [\#114](https://github.com/pancsta/asyncmachine-go/pull/114)
+   (@pancsta)
+- feat\(rpc\): add rpc tests, including remote machine suite [\#113](https://github.com/pancsta/asyncmachine-go/pull/113)
+   (@pancsta)
+- feat\(machine\): add SetLoggerSimple, SetLoggerEmpty [\#112](https://github.com/pancsta/asyncmachine-go/pull/112) (@pancsta)
+- feat\(machine\): add AddErrState and unified stack traces [\#111](https://github.com/pancsta/asyncmachine-go/pull/111)
+   (@pancsta)
 
 Maintenance release: `v0.6.5`
 
-- fix\(am-dbg\): ... (@pancsta)
-- fix\(am-dbg\): ... (@pancsta)
-- fix\(am-dbg\): ... (@pancsta)
+- fix\(am-dbg\): correct timeline tailing [\#110](https://github.com/pancsta/asyncmachine-go/pull/110) (@pancsta)
+- fix\(am-dbg\): escape secondary logtxt brackets [\#109](https://github.com/pancsta/asyncmachine-go/pull/109) (@pancsta)
+- fix\(am-dbg\): fix filtering in TailMode [\#108](https://github.com/pancsta/asyncmachine-go/pull/108) (@pancsta)
+- fix\(am-dbg\): stop playing on timeline jumps [\#107](https://github.com/pancsta/asyncmachine-go/pull/107) (@pancsta)
+- fix\(am-dbg\): fix changing log level removed trailing tx [\#106](https://github.com/pancsta/asyncmachine-go/pull/106)
+   (@pancsta)
+- fix\(am-dbg\): allow state jump after search as type \#100 [\#105](https://github.com/pancsta/asyncmachine-go/pull/105)
+   (@pancsta)
+- fix\(am-dbg\): align tree rel lines [\#104](https://github.com/pancsta/asyncmachine-go/pull/104) (@pancsta)
+- fix\(am-dbg\): fix tree highlights for ref links [\#103](https://github.com/pancsta/asyncmachine-go/pull/103) (@pancsta)
 
 Changes:
 
