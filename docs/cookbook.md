@@ -1,6 +1,6 @@
 # Cookbook
 
-Cookbook for asyncmachine-go contains numerous snippets of common patterns.
+Cookbook for asyncmachine-go contains numerous copy-pasta snippets of common patterns.
 
 ## ToC
 
@@ -11,6 +11,8 @@ Cookbook for asyncmachine-go contains numerous snippets of common patterns.
   - [Activation handler with negotiation](#activation-handler-with-negotiation)
   - [De-activation handler with negotiation](#de-activation-handler-with-negotiation)
   - [State to state handlers](#state-to-state-handlers)
+  - [Common imports](#common-imports)
+  - [Common env vars](#common-env-vars)
   - [Debugging a machine](#debugging-a-machine)
   - [Simple logging](#simple-logging)
   - [Custom logging](#custom-logging)
@@ -74,6 +76,33 @@ func (h *Handlers) BarAny(e *am.Event) {}
 func (h *Handlers) AnyFoo(e *am.Event) {}
 ```
 
+## Common imports
+
+```go
+import (
+    amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+    arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+    "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+)
+```
+
+## Common env vars
+
+```shell
+# enable a simple debugging mode (eg long timeouts, stack traces)
+AM_DEBUG=1
+
+# address of a running am-dbg instance
+AM_DBG_ADDR=localhost:6831
+
+# set the log level (0-4)
+AM_LOG=2
+
+# detect evals directly in handlers (use in tests)
+AM_DETECT_EVAL=1
+```
+
 ## Debugging a machine
 
 ```bash
@@ -83,7 +112,8 @@ $ am-dbg
 ```go
 import "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 // ...
-err := telemetry.TransitionsToDBG(mach, "")
+ready, err := telemetry.TransitionsToDBG(ctx, mach, "")
+<-ready
 ```
 
 ```bash
@@ -315,10 +345,10 @@ func (h *Handlers) ConnectEventState(e *am.Event) {
 ## Self removal state
 
 ```go
-func (d *Debugger) FwdStepState(_ *am.Event) {
+func (h *Handlers) FwdStepState(_ *am.Event) {
     // removes itself AFTER the end of the handler
     // like defer, but with a queue
-    d.Mach.Remove1("FwdStep", nil)
+    h.Mach.Remove1("FwdStep", nil)
     // ... handler
 }
 ```
@@ -565,11 +595,11 @@ default:
 ### DiffStates to navigate the flow
 
 ```go
-func (d *Debugger) HelpDialogEnd(e *am.Event) {
+func (h *Handlers) HelpDialogEnd(e *am.Event) {
     diff := am.DiffStates(ss.GroupDialog, e.Transition().TargetStates)
     if len(diff) == len(ss.GroupDialog) {
         // all dialogs closed, show main
-        d.layoutRoot.SendToFront("main")
+        h.layoutRoot.SendToFront("main")
     }
 }
 ```
