@@ -109,7 +109,7 @@ func TestTailModeRemote(t *testing.T) {
 
 	// fixture machine
 	mach := utils.NewRels(t, nil)
-	utils.MachDebugT(t, mach, amDbgAddr, logLvl, true)
+	amh.MachDebugT(t, mach, amDbgAddr, logLvl, true)
 
 	// connect to the worker as a new telemetry client
 	mach.SetLogLevel(am.LogOps)

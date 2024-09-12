@@ -2,9 +2,17 @@
 
 [-> go back to monorepo /](/README.md)
 
-Helper functions are a notable mention, as many people may look for synchronous wrappers of async state machine calls.
+Useful functions when working with state machines. Many people may look for synchronous wrappers of async state machine calls.
 These assume a single, blocking scenario which is controller with the passed context. [Multi states](/docs/manual.md#multi-states)
-are handled automatically.
+are handled automatically. Another common one is the debugging function, which integrates with tests and the environment.
+
+## Usage
+
+```go
+import (
+    amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
+)
+```
 
 **Example** - add state `StateNameSelected` and wait until it becomes active
 
@@ -24,6 +32,29 @@ res := amh.Add1AsyncBlock(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
 print(mach.Is1(ss.ScrollToTx)) // true
 print(res) // am.Executed or am.Canceled, never am.Queued
 ```
+
+**Example** - enable telemetry for am-dbg
+
+```go
+// read env
+amDbgAddr := os.Getenv("AM_DBG_ADDR")
+logLvl := am.EnvLogLevel("")
+
+// debug
+amh.MachDebug(mach, amDbgAddr, logLvl, true)
+```
+
+**Example** - enable telemetry for am-dbg using conventional [env vars](/config/env/README.md).
+
+```go
+// debug
+amh.MachDebugEnv(mach, true)
+```
+
+## Documentation
+
+- [godoc /pkg/helpers](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers)
+- [manual.md](/docs/manual.md)
 
 ## monorepo
 

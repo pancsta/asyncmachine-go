@@ -20,7 +20,7 @@ running both versions will be almost identical, thanks to network transparency.
 
 Steps in the video:
 
-1. Start the worker instance with telemetry
+1. Start the worker instance with telemetry<br />
    `env (cat config/env/debug-telemetry.env) task am-dbg-worker`
 2. Worker connects to the debugger instance
 3. Run the whole test suite from the IDE
@@ -118,7 +118,7 @@ func setup(ctx context.Context, addr string, worker *am.Machine) (*Server, *Clie
     // server init
     s, err := NewServer(ctx, addr, t.Name(), worker, nil)
     if err != nil {
-        t.Fatal(err)
+        panic(err)
     }
     utils.MachDebug(s.Mach, amDbgAddr, logLvl, true)
 
@@ -126,20 +126,20 @@ func setup(ctx context.Context, addr string, worker *am.Machine) (*Server, *Clie
     c, err := NewClient(ctx, addr, t.Name(), worker.GetStruct(),
         worker.StateNames())
     if err != nil {
-        t.Fatal(err)
+        panic(err)
     }
     utils.MachDebug(c.Mach, amDbgAddr, logLvl, true)
 
     // server start
     s.Start()
-    <-s.Mach.When1(ssSrv.RpcReady, readyCtx)
+    <-s.Mach.When1(ssSrv.RpcReady, nil)
 
     // client ready
     c.Start()
-    <-c.Mach.When1(ssCli.Ready, readyCtx)
+    <-c.Mach.When1(ssCli.Ready, nil)
 
     // server ready
-    <-s.Mach.When1(ssSrv.Ready, readyCtx)
+    <-s.Mach.When1(ssSrv.Ready, nil)
 
     return s, c
 }

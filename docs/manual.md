@@ -1133,7 +1133,7 @@ which can be embedded into [handler structs](#defining-handlers).
 Creating more detailed error states which have the
 [`Require` relation](#states-relations) to the `Exception` state is one way of handing errors. One can take
 [`pkg/rpc/shared.go`](https://github.com/pancsta/asyncmachine-go/blob/main/pkg/rpc/shared.go#L194) as an example of this
-pattern.
+pattern. It's not possible to use `Machine.AddErr*` methods inside `Exception*` handlers.
 
 - [`Machine.AddErr(error, Args)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.AddErr)
 - [`Machine.AddErrState(string, error, Args)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.AddErrState)
@@ -1176,6 +1176,28 @@ case <-mach.When1("Bar", nil):
 [state] +Exception
 err: fake err
 (Foo:1 Exception:1)[Bar:0]
+```
+
+**Example** - activate error states based on sentinel errors
+
+```go
+func (h *handlers) ExceptionState(e *am.Event) {
+    // call super
+    h.ExceptionHandler.ExceptionState(e)
+    mach := e.Machine
+    err := e.Args["err"].(error)
+
+    // handle sentinel errors to states
+    if errors.Is(err, ErrNetwork) || errors.Is(err, ErrNetworkTimeout) {
+        mach.Add1(ss.ErrNetwork, nil)
+    } else if errors.Is(err, ErrInvalidParams) {
+        mach.Add1(ss.ErrRpc, nil)
+    } else if errors.Is(err, ErrInvalidResp) {
+        mach.Add1(ss.ErrRpc, nil)
+    } else if errors.Is(err, ErrRpc) {
+        mach.Add1(ss.ErrRpc, nil)
+    }
+}
 ```
 
 ### Catching Panics
@@ -1301,7 +1323,7 @@ TODO describe duplicate detection rules
 ### Logging
 
 Besides [inspecting methods](#inspecting-states), **asyncmachine-go** offers a very verbose logging system with 4
-levels of details:
+levels of granularity:
 
 - `LogNothing` (default)
 - `LogChanges` state changes and important messages
@@ -1385,11 +1407,23 @@ mach.Add1("Foo", nil) // Executed
 [cancel:82e34] (Bar Foo) by BarEnter
 ```
 
-#### Arguments logging
+#### Customizing Logging
 
-TODO
+**Example** - binding to a test logger
 
-#### Custom logging
+```go
+// test log with the minimal log level
+mach.SetLoggerSimple(t.Logf, am.LogChanges)
+```
+
+**Example** - logging [mutation arguments](#mutation-arguments)
+
+```go
+// include some args in the log and traces
+mach.SetLogArgs(am.NewArgsMapper([]string{"id", "name"}, 20))
+```
+
+**Example** - custom logger
 
 ```go
 // max out the log level
@@ -1403,20 +1437,29 @@ mach.SetLogger(func(level LogLevel, msg string, args ...any) {
     customLog(msg, args...)
 
 })
-
-// include some args in the log and traces
-mach.SetLogArgs(am.NewArgsMapper([]string{"id", "name"}, 20))
 ```
 
 ### Debugging
 
+**asyncmachine-go** comes with [`am-dbg TUI Debugger`](/tools/cmd/am-dbg), which makes it very easy to hook into any
+state machine on a [transition's](#transition-lifecycle) step-level, and retain [state machine's log](#logging). It
+also combines very well with the Golang debugger when stepping through code.
+
 Environment variables used for debugging can be found in [config/env/README.md](/config/env/README.md).
 
-TODO steps
+#### Steps To Debug
 
-```bash
-$ am-dbg
-```
+1. Install `go install github.com/pancsta/asyncmachine-go/tools/am-dbg@latest`
+2. Run `am-dbg`
+3. [Enable telemetry](#enabling-telemetry)
+4. Run your code with `env AM_DEBUG=1` to increase timeouts and enable stack traces
+
+#### Enabling Telemetry
+
+Telemetry for **am-dbg** can be enabled manually using [`/pkg/telemetry`](/pkg/telemetry/README.md), or with a helper
+from [`/pkg/helpers`](/pkg/helpers/README.md).
+
+**Example** - enable telemetry manually
 
 ```go
 import "github.com/pancsta/asyncmachine-go/pkg/telemetry"
@@ -1424,16 +1467,25 @@ import "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 err := telemetry.TransitionsToDBG(mach, "")
 ```
 
-```bash
-# use AM_DEBUG to increase timeouts of NewCommon machines
-AM_DEBUG=1
+**Example** - enable telemetry using helpers
+
+```go
+// read env
+amDbgAddr := os.Getenv("AM_DBG_ADDR")
+logLvl := am.EnvLogLevel("")
+
+// debug
+amh.MachDebug(mach, amDbgAddr, logLvl, true)
 ```
 
 ### Typesafe States
 
-TODO
+While it's perfectly possible to operate on pure string names for state names (e.g. for prototyping), it's not type
+safe, leads to errors, doesn't support godoc, nor looking for references in IDEs. [`/tools/cmd/am-gen`](/tools/cmd/am-gen)
+will generate a conventional type-safe states file, similar to an enum package. It also aliases common functions to
+manipulates state lists, relations, and structure. After the initial bootstrapping, the file should be edited manually.
 
-**Example** - using am-gen
+**Example** - using am-gen to bootstrap a states file
 
 ```go
 // generate using either
@@ -1498,16 +1550,22 @@ am.Exception,
 
 TODO
 
-- [`pkg/telemetry`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go@v0.7.0-pre1/pkg/telemetry) - Otel and am-dbg
+- [`pkg/telemetry`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go@v0.7.0-pre1/pkg/telemetry) - Open Telemetry
+  and am-dbg
 - [`pkg/telemetry/prometheus`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go@v0.7.0-pre1/pkg/telemetry/prometheus)
+  \- Grafana
 
 ### Optimizing Data Input
 
-TODO
+It's a good practice to batch frequent operations, so the [relation resolution](#states-relations) and
+[transition lifecycle](#transition-lifecycle) doesn't execute for no reason. It's especially true for network packets.
+Below a simple debounce with a queue.
 
-**Example** - batch data into a single transition
+**Example** - batch data into a single transition every 1s
 
 ```go
+var debounce = time.Second
+
 var queue []*Msg
 var queueMx sync.Mutex
 var scheduled bool
@@ -1520,7 +1578,7 @@ func Msg(msgTx *Msg) {
         scheduled = true
         go func() {
             // wait some time
-            time.Sleep(time.Second)
+            time.Sleep(debounce)
 
             queueMx.Lock()
             defer queueMx.Unlock()
@@ -1534,6 +1592,50 @@ func Msg(msgTx *Msg) {
     // enqueue
     queue = append(queue, msgTx)
 }
+```
+
+## Remote Machines
+
+[`/pkg/rpc`](/pkg/rpc/README.md) provides efficient network transparency for any state machine, including local ones.
+Both server and client has to have access to the worker's [state file](#typesafe-states).
+
+```go
+
+import (
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+    arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+    ssCli "github.com/pancsta/asyncmachine-go/pkg/rpc/states/client"
+    ssSrv "github.com/pancsta/asyncmachine-go/pkg/rpc/states/server"
+)
+```
+
+### Server
+
+```go
+// init
+s, err := NewServer(ctx, addr, worker.ID, worker, nil)
+if err != nil {
+    panic(err)
+}
+
+// start and wait
+s.Start()
+<-s.Mach.When1(ssSrv.RpcReady, nil)
+```
+
+### Client
+
+```go
+// init
+c, err := NewClient(ctx, addr, "clientid", worker.GetStruct(),
+    worker.StateNames())
+if err != nil {
+    panic(err)
+}
+
+// start and wait
+c.Start()
+<-c.Mach.When1(ssCli.Ready, nil)
 ```
 
 ## Other packages

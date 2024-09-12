@@ -2,7 +2,7 @@
 # like `/bin/bash -l`, `ls`, or any other commands
 # the default is bash for Linux
 # or powershell.exe for Windows
-command: go run ./tools/cmd/am-dbg-teaser
+command: go run ./internal/cmd/am-dbg-video
 
 # Specify the current working directory path
 # the default is the current working directory path
@@ -10,17 +10,17 @@ cwd: null
 
 # Export additional ENV variables
 env:
-  recording: true
+  RECORDING: true
 
 # Explicitly set the number of columns
 # or use `auto` to take the current
 # number of columns of your shell
-cols: auto
+cols: 160
 
 # Explicitly set the number of rows
 # or use `auto` to take the current
 # number of rows of your shell
-rows: auto
+rows: 40
 
 # Amount of times to repeat GIF
 # If value is -1, play once

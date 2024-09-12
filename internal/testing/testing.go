@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
@@ -55,7 +56,7 @@ func NewRpcTest(
 		t.Fatal(err)
 	}
 	s.Listener = listener
-	utils.MachDebugT(t, s.Mach, amDbgAddr, logLvl, false)
+	helpers.MachDebugT(t, s.Mach, amDbgAddr, logLvl, false)
 	// let it settle
 	time.Sleep(10 * time.Millisecond)
 
@@ -65,7 +66,7 @@ func NewRpcTest(
 	if err != nil {
 		t.Fatal(err)
 	}
-	utils.MachDebugT(t, c.Mach, amDbgAddr, logLvl, false)
+	helpers.MachDebugT(t, c.Mach, amDbgAddr, logLvl, false)
 
 	// tear down
 	t.Cleanup(func() {
@@ -181,7 +182,7 @@ func NewTestWorker(
 	if err != nil {
 		return nil, err
 	}
-	utils.MachDebug(dbg.Mach, amDbgAddr, logLvl, true)
+	helpers.MachDebug(dbg.Mach, amDbgAddr, logLvl, true)
 
 	// start at the same place
 	res := dbg.Mach.Add1(ssDbg.Start, am.A{
@@ -213,7 +214,7 @@ func NewRpcClient(
 	if err != nil {
 		t.Fatal(err)
 	}
-	utils.MachDebugT(t, c.Mach, amDbgAddr, logLvl, true)
+	helpers.MachDebugT(t, c.Mach, amDbgAddr, logLvl, true)
 
 	// tear down
 	t.Cleanup(func() {

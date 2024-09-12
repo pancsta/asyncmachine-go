@@ -1,10 +1,15 @@
+// Package helpers is a set of useful functions when working with state
+// machines.
 package helpers
 
 import (
 	"context"
+	"os"
 	"slices"
+	"testing"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/pkg/types"
 )
 
@@ -102,4 +107,53 @@ func IndexesToStates(mach types.MachineApi, indexes []int) am.S {
 	}
 
 	return states
+}
+
+// MachDebugT sets up a machine for debugging in tests, based on the AM_DEBUG
+// env var, passed am-dbg address, log level and stdout flag.
+func MachDebugT(t *testing.T, mach *am.Machine, amDbgAddr string,
+	logLvl am.LogLevel, stdout bool,
+) {
+	if os.Getenv("AM_DEBUG") == "" {
+		return
+	}
+
+	if stdout {
+		mach.SetLoggerSimple(t.Logf, logLvl)
+	} else if amDbgAddr == "" {
+		mach.SetLoggerSimple(t.Logf, logLvl)
+
+		return
+	}
+
+	MachDebug(mach, amDbgAddr, logLvl, stdout)
+}
+
+// MachDebug sets up a machine for debugging, based on the AM_DEBUG env var,
+// passed am-dbg address, log level and stdout flag.
+func MachDebug(mach *am.Machine, amDbgAddr string, logLvl am.LogLevel,
+	stdout bool,
+) {
+	if amDbgAddr == "" {
+		return
+	}
+
+	if stdout {
+		mach.SetLogLevel(logLvl)
+	} else {
+		mach.SetLoggerEmpty(logLvl)
+	}
+
+	// trace to telemetry
+	err := telemetry.TransitionsToDbg(mach, amDbgAddr)
+	if err != nil {
+		panic(err)
+	}
+}
+
+// MachDebugEnv sets up a machine for debugging, based on env vars only.
+func MachDebugEnv(mach *am.Machine, stdout bool) {
+	amDbgAddr := os.Getenv("AM_DBG_ADDR")
+	logLvl := am.EnvLogLevel("")
+	MachDebug(mach, amDbgAddr, logLvl, stdout)
 }

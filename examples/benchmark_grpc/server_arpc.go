@@ -6,7 +6,7 @@ import (
 	"os"
 
 	ss "github.com/pancsta/asyncmachine-go/examples/benchmark_grpc/worker_states"
-	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
+	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssSrv "github.com/pancsta/asyncmachine-go/pkg/rpc/states/server"
@@ -64,8 +64,8 @@ func NewWorkerArpcServer(
 	w.Mach.SetLoggerSimple(w.log, logLvl)
 
 	// telemetry debug
-	utils.MachDebug(w.RPC.Mach, amDbgAddr, logLvl, false)
-	utils.MachDebug(w.Mach, amDbgAddr, logLvl, false)
+	helpers.MachDebug(w.RPC.Mach, amDbgAddr, logLvl, false)
+	helpers.MachDebug(w.Mach, amDbgAddr, logLvl, false)
 
 	// server start
 	w.RPC.Start()

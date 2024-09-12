@@ -6,8 +6,6 @@ import (
 	"net"
 	"testing"
 
-	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
-	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -15,6 +13,8 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	pb "github.com/pancsta/asyncmachine-go/examples/benchmark_grpc/worker_proto"
+	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 )
 
 func BenchmarkClientGrpc(b *testing.B) {

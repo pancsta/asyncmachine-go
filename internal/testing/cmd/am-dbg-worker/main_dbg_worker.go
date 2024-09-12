@@ -9,7 +9,7 @@ import (
 	"time"
 
 	amtest "github.com/pancsta/asyncmachine-go/internal/testing"
-	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
+	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssSrv "github.com/pancsta/asyncmachine-go/pkg/rpc/states/server"
@@ -48,7 +48,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	utils.MachDebug(s.Mach, amDbgAddr, logLvl, false)
+	helpers.MachDebug(s.Mach, amDbgAddr, logLvl, false)
 
 	// tear down
 	defer func() {

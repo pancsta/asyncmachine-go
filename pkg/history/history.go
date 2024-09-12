@@ -1,5 +1,4 @@
-// Package history provides a basic history tracker for asyncmachine, along with
-// some utilities to query the log.
+// Package history provides mutation history tracking and traversal.
 package history
 
 import (

@@ -3,7 +3,7 @@
 [-> go back to monorepo /](/README.md)
 
 To read about **am-dbg**, go to [/tools/cmd/am-dbg](/tools/cmd/am-dbg/README.md). This package is about the
-implementation, not a usable application.
+implementation, not the end-user application.
 
 `/tools/debugger` is a [cview](https://code.rocket9labs.com/tslocum/cview) TUI app with a single state machine
 consisting of:
@@ -13,7 +13,7 @@ consisting of:
 - actions (18 states)
 
 This state machine features a decent amount of relations within a large number of states and 5 state groups. It's also a
-good example to see how easily an AM-based program can be controller with a script in [/tools/cmd/am-dbg-teaser](/tools/cmd/am-dbg-teaser/main_dbg_teaser.go).
+good example to see how easily an AM-based program can be controller with a script in [/internal/cmd/am-dbg-video](/internal/cmd/am-dbg-video/main_dbg_video.go).
 
 <details>
 
