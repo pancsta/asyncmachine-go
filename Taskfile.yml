@@ -32,8 +32,6 @@ tasks:
           --import-data assets/am-dbg-sim.gob.br
           --select-machine sim-p0
           --select-transition 20
-          --am-dbg-addr $AM_DBG_ADDR
-          --log-level $AM_LOG
           {{.CLI_ARGS}}
 
   am-dbg-ssh:
@@ -206,7 +204,7 @@ tasks:
       - gem install github_changelog_generator
       - pipx install grafanalib
 
-  install-deps-teaser:
+  install-deps-video:
     cmds:
       - npm install -g terminalizer
 
@@ -233,33 +231,36 @@ tasks:
     cmds:
       - go run ./tools/cmd/am-gen states-file {{.CLI_ARGS}}
 
-  am-dbg-teaser-gif:
+  video-gif:
     env:
       DISPLAY: :0
     cmds:
-      - terminalizer render assets/teaser.cast.yml -o assets/am-dbg-teaser.gif
-      - magick assets/am-dbg-teaser.gif -layers optimize assets/am-dbg-teaser.gif
+      - terminalizer render assets/video.cast.yml -o assets/video.gif
+      - magick assets/video.gif -layers optimize assets/video.gif
 
-  am-dbg-teaser-gif-quick:
+  video-gif-quick:
     env:
       DISPLAY: :0
     cmds:
-      - terminalizer render assets/teaser.cast.yml -o assets/am-dbg-teaser.gif -q 15
+      - terminalizer render assets/video.cast.yml -o assets/video.gif -q 15
 
-  am-dbg-teaser:
+  video:
     cmds:
       - terminalizer record
-          --config config/terminalizer.yml assets/teaser.cast
+          --config config/terminalizer.yml assets/video.cast
           --skip-sharing
-      # delete first 2 records (each has 2 lines)
-      - sed -i '/^records:/{n;N;d;}' assets/teaser.cast.yml
-      - sed -i '/^records:/{n;N;d;}' assets/teaser.cast.yml
+      # delete first 1 record (each has 2 lines)
+      - sed -i '/^records:/{n;N;d;}' assets/video.cast.yml
 
-  am-dbg-teaser-all:
-    desc: Create assets/am-dbg-teaser.gif using tools/cmd/am-dbg-teaser
+  video-run:
     cmds:
-      - task: am-dbg-teaser
-      - task: am-dbg-teaser-gif
+      - go run ./internal/cmd/am-dbg-video
+
+  video-all:
+    desc: Create assets/video.gif using internal/cmd/video
+    cmds:
+      - task: video
+      - task: video-gif
 
   godoc:
     cmds:

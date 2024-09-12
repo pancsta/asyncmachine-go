@@ -2,6 +2,8 @@
 
 [-> go back to monorepo /](/README.md)
 
+![results - KiB transferred, number of calls](/assets/arpc-vs-grpc.png)
+
 This is a simple and opinionated benchmark of a subscribe-get-process scenario, implemented in both gRPC and aRPC.
 Source code can be [found in /examples/benchmark_grpc](/examples/benchmark_grpc). It essentially manipulates a worker
 state machine via various transports.
@@ -46,8 +48,6 @@ worker.Start()
 ```
 
 ### Results
-
-![results - KiB transferred, number of calls](/assets/arpc-vs-grpc.png)
 
 ```text
 $ task benchmark-grpc

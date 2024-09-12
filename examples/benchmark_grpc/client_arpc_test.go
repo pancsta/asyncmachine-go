@@ -1,3 +1,4 @@
+// Package benchmark_grpc is a simple and opinionated benchmark of a subscribe-get-process scenario, implemented in both gRPC and aRPC.
 package benchmark_grpc
 
 import (
@@ -7,15 +8,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
-	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
-	ams "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
 	ss "github.com/pancsta/asyncmachine-go/examples/benchmark_grpc/worker_states"
+	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
+	amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+	ams "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
 func BenchmarkClientArpc(b *testing.B) {
@@ -55,7 +57,7 @@ func BenchmarkClientArpc(b *testing.B) {
 	c.Mach.SetLoggerSimple(func(msg string, args ...any) {
 		l("arpc-client", msg, args...)
 	}, logLvl)
-	utils.MachDebug(c.Mach, amDbgAddr, logLvl, false)
+	amh.MachDebug(c.Mach, amDbgAddr, logLvl, false)
 
 	// tear down
 	b.Cleanup(func() {

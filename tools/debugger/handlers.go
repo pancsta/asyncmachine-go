@@ -110,6 +110,7 @@ func (d *Debugger) AnyAny(e *am.Event) {
 }
 
 func (d *Debugger) StateNameSelectedState(e *am.Event) {
+	// TODO guard
 	d.C.SelectedState = e.Args["state"].(string)
 	switch d.Mach.Switch(ss.GroupViews...) {
 

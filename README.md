@@ -13,6 +13,8 @@
 
 # asyncmachine-go
 
+![TUI Debugger](https://pancsta.github.io/assets/asyncmachine-go/video.gif)
+
 This is the monorepo of **asyncmachine-go**, a clock-based state machine for managing complex asynchronous workflows in
 an inspectable, safe, and structured way. It features a TUI debugger, transparent RPC, and telemetry for Otel & Prom.
 
@@ -111,8 +113,6 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 
 </details>
 
-![TUI Debugger](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-teaser.gif)
-
 ## Packages
 
 To get started, it's recommended to read  [`/pkg/machine`](pkg/machine/README.md) first.
@@ -182,7 +182,7 @@ To get started, it's recommended to read  [`/pkg/machine`](pkg/machine/README.md
 
 ## Changelog
 
-Latest release: `v0.7.0-pre1`
+Latest release: `v0.7.0`
 
 - docs: update readmes, manual, cookbook for v0.7 [\#127](https://github.com/pancsta/asyncmachine-go/pull/127) (@pancsta)
 - feat: release v0.7 [\#126](https://github.com/pancsta/asyncmachine-go/pull/126) (@pancsta)

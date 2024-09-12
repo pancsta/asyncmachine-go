@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
+	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
@@ -15,13 +15,35 @@ import (
 var (
 	dataFile       = "assets/am-dbg-sim.gob.br"
 	logLevel       = am.LogOps
-	logFile        = "am-dbg-teaser.log"
+	logFile        = "am-dbg-video.log"
 	filterLogLevel = am.LogOps
 	startupMachine = "sim-p1"
-	startupTx      = 25
+	startupTx      = 27
 	initialView    = "matrix"
 	playInterval   = 200 * time.Millisecond
 	debugAddr      = ""
+	// TODO get from mach
+	stateNames = am.S{
+		"Start",
+		"IsDHT",
+		"Ready",
+		"IdentityReady",
+		"GenIdentity",
+		"BootstrapsConnected",
+		"EventHostConnected",
+		"Connected",
+		"Connecting",
+		"Disconnecting",
+		"JoiningTopic",
+		"TopicJoined",
+		"LeavingTopic",
+		"TopicLeft",
+		"SendingMsgs",
+		"MsgsSent",
+		"FwdToSim",
+		am.Exception,
+	}
+
 	// debugAddr = "localhost:9913"
 )
 
@@ -59,10 +81,10 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 	if err != nil {
 		panic(err)
 	}
-	utils.MachDebug(dbg.Mach, debugAddr, logLevel, false)
+	helpers.MachDebug(dbg.Mach, debugAddr, logLevel, false)
 
 	dbg.Start(startupMachine, startupTx, initialView)
-	go runTeaser(dbg)
+	go render(dbg)
 
 	select {
 	case <-dbg.Mach.WhenDisposed():
@@ -87,7 +109,8 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 // - log filter to changes
 // - step reverse to 59
 // - tx: 58
-func runTeaser(dbg *debugger.Debugger) {
+func render(dbg *debugger.Debugger) {
+	// playInterval = 1 * time.Millisecond // TODO
 	mach := dbg.Mach
 	// ctx := mach.Ctx
 	<-mach.When1(ss.Ready, nil)
@@ -98,30 +121,34 @@ func runTeaser(dbg *debugger.Debugger) {
 
 	// goFwd(mach, 1)
 	mach.Add1(ss.TreeMatrixView, nil)
-	goFwd(mach, 13)
+	goFwd(mach, 14)
 
 	// play steps
-	tx := dbg.CurrentTx()
+	tx := dbg.NextTx()
 	goFwdSteps(mach, len(tx.Steps)+1)
 
-	// highlight Connected
-	mach.Add1(ss.StateNameSelected, am.A{"state": "Connected"})
-	tx = dbg.CurrentTx()
-	goFwdSteps(mach, len(tx.Steps)+1)
+	// play steps with moving selection
+	tx = dbg.NextTx()
+	ii := 0
+	for i := 0; i < len(tx.Steps)+1; i++ {
+		mach.Add1(ss.StateNameSelected, am.A{"state": stateNames[ii]})
+		goFwdSteps(mach, 1)
+		ii = (ii + 1) % len(stateNames)
+	}
 
-	// go back with LogOps
-	mach.Add1(ss.TreeLogView, nil)
-	mach.Remove1(ss.StateNameSelected, nil)
 	goBackSteps(mach, len(tx.Steps)+1)
 
-	goBack(mach, 3)
-	mach.Add(am.S{ss.TreeMatrixView, ss.MatrixRain}, nil)
-	goBack(mach, 5)
 	mach.Add1(ss.TreeLogView, nil)
-	goBack(mach, 10)
-
-	// go back with LogChanges
+	goBack(mach, 6)
+	mach.Remove1(ss.StateNameSelected, nil)
+	mach.Add(am.S{ss.TreeMatrixView, ss.MatrixRain}, nil)
+	goBack(mach, 4)
+	// go back with clean UI
 	dbg.SetFilterLogLevel(am.LogChanges)
+	mach.Add1(ss.TreeLogView, nil)
+	goBack(mach, 7)
+
+	goBack(mach, 1)
 
 	// end screen
 	time.Sleep(3 * time.Second)
@@ -133,7 +160,6 @@ func goFwd(mach *am.Machine, amount int) {
 		<-time.After(playInterval)
 		mach.Add1(ss.Fwd, nil)
 	}
-	waitForRender()
 }
 
 func goBack(mach *am.Machine, amount int) {
@@ -141,7 +167,6 @@ func goBack(mach *am.Machine, amount int) {
 		<-time.After(playInterval)
 		mach.Add1(ss.Back, nil)
 	}
-	waitForRender()
 }
 
 func goFwdSteps(mach *am.Machine, amount int) {
@@ -149,7 +174,6 @@ func goFwdSteps(mach *am.Machine, amount int) {
 		<-time.After(playInterval)
 		mach.Add1(ss.FwdStep, nil)
 	}
-	waitForRender()
 }
 
 func goBackSteps(mach *am.Machine, amount int) {
@@ -157,9 +181,4 @@ func goBackSteps(mach *am.Machine, amount int) {
 		<-time.After(playInterval)
 		mach.Add1(ss.BackStep, nil)
 	}
-	waitForRender()
-}
-
-func waitForRender() {
-	time.Sleep(100 * time.Millisecond)
 }

@@ -1,3 +1,4 @@
+// am-gen will quickly bootstrap a typesafe states file for you.
 package main
 
 import (

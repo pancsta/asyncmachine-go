@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/pancsta/asyncmachine-go/pkg/helpers"
+
 	ss "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -43,7 +45,7 @@ func TestBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	utils.MachDebugT(t, worker, amDbgAddr, logLvl, true)
+	helpers.MachDebugT(t, worker, amDbgAddr, logLvl, true)
 
 	// init server and client
 	_, _, s, c := NewTest(t, ctx, worker, nil, nil)
@@ -80,7 +82,7 @@ func TestTypeSafe(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	worker := utils.NewRels(t, nil)
-	utils.MachDebugT(t, worker, amDbgAddr, logLvl, true)
+	helpers.MachDebugT(t, worker, amDbgAddr, logLvl, true)
 
 	// init server and client
 	_, _, s, c := NewTest(t, ctx, worker, nil, nil)
@@ -404,7 +406,7 @@ func NewTest(
 	if worker == nil {
 		worker = utils.NewRels(t, nil)
 	}
-	utils.MachDebugT(t, worker, amDbgAddr, logLvl, true)
+	helpers.MachDebugT(t, worker, amDbgAddr, logLvl, true)
 
 	connAddr := serverAddr
 
@@ -429,7 +431,7 @@ func NewTest(
 	}
 	// set the test listener to avoid port conflicts
 	s.Listener = listener
-	utils.MachDebugT(t, s.Mach, amDbgAddr, logLvl, true)
+	helpers.MachDebugT(t, s.Mach, amDbgAddr, logLvl, true)
 	if clockInterval != nil {
 		s.ClockInterval = *clockInterval
 	}
@@ -442,7 +444,7 @@ func NewTest(
 	if err != nil {
 		t.Fatal(err)
 	}
-	utils.MachDebugT(t, c.Mach, amDbgAddr, logLvl, true)
+	helpers.MachDebugT(t, c.Mach, amDbgAddr, logLvl, true)
 
 	// tear down
 	t.Cleanup(func() {

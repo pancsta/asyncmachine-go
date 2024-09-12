@@ -1,3 +1,4 @@
+// Package rpc is a transparent RPC for state machines.
 package rpc
 
 import (

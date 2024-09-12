@@ -2,7 +2,7 @@
 
 [-> go back to monorepo /](/README.md)
 
-**asyncmachine RPC** (_aRPC_) is a transparent RPC for state machines implemented using [asyncmachine-go](). It's
+**aRPC** is a transparent RPC for state machines implemented using [asyncmachine-go](/). It's
 clock-based and features many optimizations, e.g. having most of the API methods executed locally (as the state
 information is encoded as clock values). It's build on top of [cenkalti/rpc2](https://github.com/cenkalti/rpc2) and
 `net/rpc`. There's a [benchmark](/examples/benchmark_grpc/README.md) and [how-to](/pkg/rpc/HOWTO.md) available.
@@ -15,12 +15,58 @@ Implemented:
 
 Not implemented (yet):
 
-- `WhenArgs`
+- `WhenArgs`, `Err()`
 - client getters
 - chunked encoding
 - TLS
 - reconnect
 - compression
+- multiplexing
+
+## Usage
+
+```go
+import (
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+    arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+    ssCli "github.com/pancsta/asyncmachine-go/pkg/rpc/states/client"
+    ssSrv "github.com/pancsta/asyncmachine-go/pkg/rpc/states/server"
+)
+```
+
+### Server
+
+```go
+// init
+s, err := NewServer(ctx, addr, worker.ID, worker, nil)
+if err != nil {
+    panic(err)
+}
+
+// start and wait
+s.Start()
+<-s.Mach.When1(ssSrv.RpcReady, nil)
+```
+
+### Client
+
+```go
+// init
+c, err := NewClient(ctx, addr, "clientid", worker.GetStruct(),
+    worker.StateNames())
+if err != nil {
+    panic(err)
+}
+
+// start and wait
+c.Start()
+<-c.Mach.When1(ssCli.Ready, nil)
+```
+
+## Documentation
+
+- [godoc /pkg/rpc](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc)
+- [manual.md](/docs/manual.md)
 
 ## Benchmark: aRPC vs gRPC
 
@@ -147,9 +193,23 @@ type MachineApi interface {
 
 ## Tests
 
-**aRPC** implements the [whole test suite](/pkg/rpc/rpc_machine_test.go) of [`/pkg/machine`](/pkg/machine/machine_test.go)
+**aRPC** passes the [whole test suite](/pkg/rpc/rpc_machine_test.go) of [`/pkg/machine`](/pkg/machine/machine_test.go)
 for the exposed methods and provides a couple of [optimization-focused tests](/pkg/rpc/rpc_test.go), on top of tests for
 basic RPC.
+
+## Optimizations
+
+**aRPC** implements several optimization strategies to achieve the results.
+
+- binary format of `encoding/gob`
+- index-based clock
+  - `[0, 100, 0, 120]`
+- diff-based clock updates
+  - `[0, 1, 0, 1]`
+- debounced server-mutation clock pushes
+  - `[0, 5, 2, 1]`
+- partial clock updates
+  - `[[1, 1], [3, 1]]`
 
 ## monorepo
 

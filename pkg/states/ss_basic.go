@@ -1,3 +1,5 @@
+// Package states is repository of common state definitions, used to make
+// state-based API easier to compose and exchange.
 package states
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"

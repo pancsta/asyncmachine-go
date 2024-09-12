@@ -1,6 +1,6 @@
 # Breaking API changes
 
-Only `pkg/machine` adheres to semver. Semver of other packages are not guaranteed (at the moment).
+Only `pkg/machine` adheres to semver. Semver of other packages is not guaranteed at the moment.
 
 ## v0.7
 

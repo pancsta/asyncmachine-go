@@ -57,7 +57,7 @@ _py
 /mem.*
 /cpu.*
 /.local
-/assets/am-dbg-teaser.gif
+/assets/video.gif
 /*.svg
 /assets/*.pdf
 /*.png

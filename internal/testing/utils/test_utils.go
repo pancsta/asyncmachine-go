@@ -15,7 +15,6 @@ import (
 
 	ss "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
 var (
@@ -128,40 +127,4 @@ func EnableTestDebug() {
 	os.Setenv("AM_LOG", "2")
 	os.Setenv("AM_RPC_LOG_CLIENT", "1")
 	os.Setenv("AM_RPC_LOG_SERVER", "1")
-}
-
-func MachDebugT(t *testing.T, mach *am.Machine, amDbgAddr string,
-	logLvl am.LogLevel, stdout bool) {
-	if os.Getenv("AM_DEBUG") == "" {
-		return
-	}
-
-	if stdout {
-		mach.SetLoggerSimple(t.Logf, logLvl)
-	} else if amDbgAddr == "" {
-		mach.SetLoggerSimple(t.Logf, logLvl)
-
-		return
-	}
-
-	MachDebug(mach, amDbgAddr, logLvl, stdout)
-}
-
-func MachDebug(mach *am.Machine, amDbgAddr string, logLvl am.LogLevel,
-	stdout bool) {
-	if amDbgAddr == "" {
-		return
-	}
-
-	if stdout {
-		mach.SetLogLevel(logLvl)
-	} else {
-		mach.SetLoggerEmpty(logLvl)
-	}
-
-	// trace to telemetry
-	err := telemetry.TransitionsToDbg(mach, amDbgAddr)
-	if err != nil {
-		panic(err)
-	}
 }

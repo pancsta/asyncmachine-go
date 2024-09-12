@@ -1,3 +1,4 @@
+// am-dbg-ssh is an SSH version of asyncmachine-go debugger.
 package main
 
 import (
