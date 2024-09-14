@@ -24,7 +24,7 @@ Unlike both mentioned frameworks, it's lightweight (3k LoC, stdlib-only) and add
 
 ```go
 mach := am.New(nil, am.Struct{
-    "Foo": {Requires: "Bar"},
+    "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
 }, nil)
 mach.Add1("Foo", nil)
@@ -63,7 +63,7 @@ func main() {
     case <-time.After(5 * time.Second):
         println("timeout")
     case <-mach.WhenErr(nil):
-        println("err:", mach.Err)
+        println("err:", mach.Err())
     case <-mach.When1("FileProcessed", nil):
         println("done")
     }

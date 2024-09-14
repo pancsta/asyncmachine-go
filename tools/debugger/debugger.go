@@ -241,9 +241,26 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 
 // ///// ///// /////
 
+// Client returns the current Client. Thread safe via Eval().
+func (d *Debugger) Client() *Client {
+	var c *Client
+
+	// SelectingClient locks d.C
+	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
+
+	d.Mach.Eval("Client", func() {
+		c = d.C
+	}, nil)
+
+	return c
+}
+
 // NextTx returns the next transition. Thread safe via Eval().
 func (d *Debugger) NextTx() *telemetry.DbgMsgTx {
 	var tx *telemetry.DbgMsgTx
+
+	// SelectingClient locks d.C
+	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
 
 	d.Mach.Eval("NextTx", func() {
 		tx = d.nextTx()
@@ -269,22 +286,14 @@ func (d *Debugger) nextTx() *telemetry.DbgMsgTx {
 func (d *Debugger) CurrentTx() *telemetry.DbgMsgTx {
 	var tx *telemetry.DbgMsgTx
 
+	// SelectingClient locks d.C
+	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
+
 	d.Mach.Eval("CurrentTx", func() {
 		tx = d.currentTx()
 	}, nil)
 
 	return tx
-}
-
-// Client returns the current Client. Thread safe via Eval().
-func (d *Debugger) Client() *Client {
-	var c *Client
-
-	d.Mach.Eval("Client", func() {
-		c = d.C
-	}, nil)
-
-	return c
 }
 
 func (d *Debugger) currentTx() *telemetry.DbgMsgTx {
@@ -303,6 +312,9 @@ func (d *Debugger) currentTx() *telemetry.DbgMsgTx {
 // PrevTx returns the previous transition. Thread safe via Eval().
 func (d *Debugger) PrevTx() *telemetry.DbgMsgTx {
 	var tx *telemetry.DbgMsgTx
+
+	// SelectingClient locks d.C
+	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
 
 	d.Mach.Eval("PrevTx", func() {
 		tx = d.prevTx()
