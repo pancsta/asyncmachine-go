@@ -5,13 +5,13 @@ go 1.21
 require (
 	code.rocketnine.space/tslocum/cbind v0.1.5
 	github.com/andybalholm/brotli v1.1.0
-	github.com/cenkalti/rpc2 v1.0.3
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gdamore/tcell/v2 v2.7.0
 	github.com/gliderlabs/ssh v0.3.7
 	github.com/hibiken/asynq v0.24.1
 	github.com/lithammer/dedent v1.1.0
 	github.com/pancsta/cview v1.5.11
+	github.com/pancsta/rpc2 v1.0.4
 	github.com/prometheus/client_golang v1.19.0
 	github.com/samber/lo v1.39.0
 	github.com/soheilhy/cmux v0.1.5

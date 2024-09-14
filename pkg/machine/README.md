@@ -2,9 +2,10 @@
 
 [-> go back to monorepo /](/README.md)
 
-**asyncmachine-go** is a minimal implementation of [AsyncMachine](https://github.com/TobiaszCudnik/asyncmachine) (2012-2019)
-in Golang using **channels and context**. It aims at simplicity and speed, while maintaining and extending ideas of the
-original. It delivers a solid toolset and conventions for reliable state machines.
+**asyncmachine-go** is a minimal implementation of [AsyncMachine](https://github.com/TobiaszCudnik/asyncmachine)
+(2012-2019; [video](http://tobiaszcudnik.github.io/asyncmachine-inspector/sample.mp4)) in Golang using
+**channels and context**. It aims at simplicity and speed, while maintaining and extending ideas of the original. It
+delivers a solid toolset and conventions for reliable state machines.
 
 **asyncmachine** can transform blocking APIs into controllable state machines with ease. It shares similarities with
 [Ergo's]() actor model, but focuses on workflows like [Temporal](). Unlike both mentioned frameworks, it's lightweight
@@ -59,7 +60,7 @@ func main() {
     case <-time.After(5 * time.Second):
         println("timeout")
     case <-mach.WhenErr(nil):
-        println("err:", mach.Err)
+        println("err:", mach.Err())
     case <-mach.When1("FileProcessed", nil):
         println("done")
     }

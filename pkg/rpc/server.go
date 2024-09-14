@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cenkalti/rpc2"
+	"github.com/pancsta/rpc2"
 
 	amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -193,8 +193,10 @@ func (s *Server) RpcReadyEnd(e *am.Event) {
 }
 
 func (s *Server) HandshakeDoneEnd(e *am.Event) {
-	_ = s.rpcClient.Close()
-	s.rpcClient = nil
+	if s.rpcClient != nil {
+		_ = s.rpcClient.Close()
+		s.rpcClient = nil
+	}
 }
 
 // ///// ///// /////
@@ -286,9 +288,14 @@ func (s *Server) bindRpcHandlers() {
 }
 
 func (s *Server) pushClockUpdate() {
-	if s.skipClockPush.Load() || s.Mach.Not1(ss.ClientConn) ||
-		s.Mach.Not1(ss.HandshakeDone) {
+	if s.skipClockPush.Load() {
 		s.log("force-skip clock push")
+		return
+	}
+
+	if s.Mach.Not1(ss.ClientConn) ||
+		s.Mach.Not1(ss.HandshakeDone) {
+		s.log("skip clock push")
 		return
 	}
 
@@ -523,7 +530,6 @@ func (s *Server) RemoteBye(
 ) error {
 	s.log("RemoteBye")
 
-	// TODO ClientBye to keep it in sync
 	s.Mach.Add1(ss.ClientDisconn, nil)
 	go func() {
 		time.Sleep(100 * time.Millisecond)
