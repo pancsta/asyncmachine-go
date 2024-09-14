@@ -43,24 +43,33 @@ if err != nil {
     panic(err)
 }
 
-// start and wait
+// start
 s.Start()
-<-s.Mach.When1(ssSrv.RpcReady, nil)
+<-s.Mach.When1("RpcReady", nil)
+
+// react to the client
+<-worker.When1("Foo", nil)
+print("Client added Foo")
+worker.Add1("Bar", nil)
 ```
 
 ### Client
 
 ```go
 // init
-c, err := NewClient(ctx, addr, "clientid", worker.GetStruct(),
-    worker.StateNames())
+c, err := NewClient(ctx, addr, "clientid", ss.States, ss.Names)
 if err != nil {
     panic(err)
 }
 
-// start and wait
+// start
 c.Start()
-<-c.Mach.When1(ssCli.Ready, nil)
+<-c.Mach.When1("Ready", nil)
+
+// use the remote worker
+c.Worker.Add1("Foo", nil)
+<-c.Worker.When1("Bar", nil)
+print("Server added Bar")
 ```
 
 ## Documentation
@@ -212,5 +221,8 @@ basic RPC.
   - `[[1, 1], [3, 1]]`
 
 ## monorepo
+
+- [`/pkg/rpc/HOWTO.md`](/pkg/rpc/HOWTO.md)
+- [`/examples/benchmark_grpc/README.md`](/examples/benchmark_grpc/README.md)
 
 [Go back to the monorepo root](/README.md) to continue reading.

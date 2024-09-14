@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -16,14 +17,13 @@ var (
 	dataFile       = "assets/am-dbg-sim.gob.br"
 	logLevel       = am.LogOps
 	logFile        = "am-dbg-video.log"
-	filterLogLevel = am.LogOps
+	filterLogLevel = am.LogChanges
 	startupMachine = "sim-p1"
 	startupTx      = 27
 	initialView    = "matrix"
 	playInterval   = 200 * time.Millisecond
 	debugAddr      = ""
-	// TODO get from mach
-	stateNames = am.S{
+	stateNames     = am.S{
 		"Start",
 		"IsDHT",
 		"Ready",
@@ -94,23 +94,9 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 	dbg.Dispose()
 }
 
-// demo:
-// - p1, tx: 25, matrix view
-// - tx: 45
-// - tree matrix view
-// - tx: 58
-// - step to 59
-// - tx: 59
-// - highlight Connected
-// - tx: 60
-// - tree log view
-// - step reverse to 59
-// - tx: 59
-// - log filter to changes
-// - step reverse to 59
-// - tx: 58
 func render(dbg *debugger.Debugger) {
-	// playInterval = 1 * time.Millisecond // TODO
+	// skipStart() // TODO
+
 	mach := dbg.Mach
 	// ctx := mach.Ctx
 	<-mach.When1(ss.Ready, nil)
@@ -127,58 +113,79 @@ func render(dbg *debugger.Debugger) {
 	tx := dbg.NextTx()
 	goFwdSteps(mach, len(tx.Steps)+1)
 
+	SkipEnd() // TODO
+
 	// play steps with moving selection
 	tx = dbg.NextTx()
-	ii := 0
-	for i := 0; i < len(tx.Steps)+1; i++ {
-		mach.Add1(ss.StateNameSelected, am.A{"state": stateNames[ii]})
-		goFwdSteps(mach, 1)
+	ii := -1
+	for i := 0; i < len(tx.Steps); i++ {
 		ii = (ii + 1) % len(stateNames)
+		mach.Add1(ss.StateNameSelected, am.A{"state": stateNames[ii]})
+
+		goFwdSteps(mach, 1)
 	}
 
-	goBackSteps(mach, len(tx.Steps)+1)
+	// keep the highlight 1 frame longer
+	ii++
 
-	mach.Add1(ss.TreeLogView, nil)
-	goBack(mach, 6)
+	// play steps back with moving selection
+	for i := 0; i < len(tx.Steps); i++ {
+		ii = (ii - 1) % len(stateNames)
+		ii = int(math.Max(0, float64(ii)))
+		if ii > -1 {
+			mach.Add1(ss.StateNameSelected, am.A{"state": stateNames[ii]})
+		} else {
+			mach.Remove1(ss.StateNameSelected, nil)
+		}
+
+		goBackSteps(mach, 1)
+	}
+
 	mach.Remove1(ss.StateNameSelected, nil)
 	mach.Add(am.S{ss.TreeMatrixView, ss.MatrixRain}, nil)
-	goBack(mach, 4)
-	// go back with clean UI
-	dbg.SetFilterLogLevel(am.LogChanges)
-	mach.Add1(ss.TreeLogView, nil)
-	goBack(mach, 7)
+	goBack(mach, 14)
 
-	goBack(mach, 1)
+	// go back with clean UI
+	mach.Add1(ss.TreeLogView, nil)
+	goBack(mach, 15)
 
 	// end screen
 	time.Sleep(3 * time.Second)
 	mach.Dispose()
 }
 
+func SkipEnd() {
+	playInterval = 200 * time.Millisecond
+}
+
+func SkipStart() {
+	playInterval = 10 * time.Millisecond
+}
+
 func goFwd(mach *am.Machine, amount int) {
 	for i := 0; i < amount; i++ {
-		<-time.After(playInterval)
 		mach.Add1(ss.Fwd, nil)
+		time.Sleep(playInterval)
 	}
 }
 
 func goBack(mach *am.Machine, amount int) {
 	for i := 0; i < amount; i++ {
-		<-time.After(playInterval)
 		mach.Add1(ss.Back, nil)
+		time.Sleep(playInterval)
 	}
 }
 
 func goFwdSteps(mach *am.Machine, amount int) {
 	for i := 0; i < amount; i++ {
-		<-time.After(playInterval)
 		mach.Add1(ss.FwdStep, nil)
+		time.Sleep(playInterval)
 	}
 }
 
 func goBackSteps(mach *am.Machine, amount int) {
 	for i := 0; i < amount; i++ {
-		<-time.After(playInterval)
 		mach.Add1(ss.BackStep, nil)
+		time.Sleep(playInterval)
 	}
 }

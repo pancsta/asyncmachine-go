@@ -111,4 +111,7 @@ var (
 
 ## monorepo
 
+- [`/pkg/rpc/README.md`](/pkg/rpc/README.md)
+- [`/pkg/rpc/HOWTO.md`](/pkg/rpc/HOWTO.md)
+
 [Go back to the monorepo root](/README.md) to continue reading.

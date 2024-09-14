@@ -1,6 +1,6 @@
 # asyncmachine-go
 
-Version: `v0.7.0-pre1`
+Version: `v0.7.0`
 
 <!-- TOC -->
 
@@ -12,7 +12,7 @@ Version: `v0.7.0-pre1`
     - [Defining States](#defining-states)
     - [Asynchronous States](#asynchronous-states)
     - [Machine Init](#machine-init)
-    - [Machine Clock and Context](#machine-clock-and-context)
+    - [Clock and Context](#clock-and-context)
     - [Checking Active States](#checking-active-states)
     - [Inspecting States](#inspecting-states)
     - [Auto States](#auto-states)
@@ -44,16 +44,20 @@ Version: `v0.7.0-pre1`
       - [Panic anywhere else](#panic-anywhere-else)
     - [Queue and History](#queue-and-history)
     - [Logging](#logging)
-      - [Arguments logging](#arguments-logging)
-      - [Custom logging](#custom-logging)
+      - [Customizing Logging](#customizing-logging)
     - [Debugging](#debugging)
+      - [Steps To Debug](#steps-to-debug)
+      - [Enabling Telemetry](#enabling-telemetry)
     - [Typesafe States](#typesafe-states)
     - [Tracing and Metrics](#tracing-and-metrics)
     - [Optimizing Data Input](#optimizing-data-input)
+  - [Remote Machines](#remote-machines)
+    - [Server](#server)
+    - [Client](#client)
   - [Other packages](#other-packages)
     - [Helpers](#helpers)
   - [Cheatsheet](#cheatsheet)
-- [Other sources](#other-sources)
+  - [Other sources](#other-sources)
 
 <!-- TOC -->
 
@@ -86,10 +90,9 @@ Common differences from other state machines:
 These considerations will help to better understand how **asyncmachine** works:
 
 - it doesn't hold any data other than
-  - state names
-  - state clock
-  - state relations
+  - machine time
   - the last error
+  - given state structure
 - only **state** can be trusted (e.g. [`Is()`], [`Not()`], [`Any()`])
 - mutations resulting in async states need to be waited on (eg [`When()`], [`WhenTime()`])
 - flow can be redirected or constrained by checking the current and previous **state** within handlers
@@ -211,7 +214,7 @@ mach := am.New(ctx, states, &am.Opts{
 Each machine has an [ID](https://pkg.go.dev/github.com/pancsta/asyncmachine-go@v0.7.0-pre1/pkg/machine#Machine.ID) (via [`Opts.ID`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go@v0.7.0-pre1/pkg/machine#Opts.ID)
 or a random one) and the build-in [Exception](#error-handling) state.
 
-### Machine Clock and Context
+### Clock and Context
 
 **Every state has a tick value**, which
 increments ("ticks") every time a state gets activated or de-activated. **Odd ticks mean active, while even ticks mean
@@ -1484,6 +1487,8 @@ While it's perfectly possible to operate on pure string names for state names (e
 safe, leads to errors, doesn't support godoc, nor looking for references in IDEs. [`/tools/cmd/am-gen`](/tools/cmd/am-gen)
 will generate a conventional type-safe states file, similar to an enum package. It also aliases common functions to
 manipulates state lists, relations, and structure. After the initial bootstrapping, the file should be edited manually.
+Imports of states files are commonly aliased as `ss` (first-last rune). `ss.Names` is used to ["verify" states](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.VerifyStates),
+as map keys have a random order.
 
 **Example** - using am-gen to bootstrap a states file
 
@@ -1537,13 +1542,26 @@ const (
 
 // Names is an ordered list of all the state names.
 var Names = S{
-am.Exception,
+    am.Exception,
     Start,
     Heartbeat,
 
 }
 
 //#endregion
+```
+
+**Example** - using a states file
+
+```go
+import (
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+
+    ss "github.com/owner/repo/states"
+)
+
+mach := am.New(ctx, ss.States, nil)
+err := mach.VerifyStates(ss.Names)
 ```
 
 ### Tracing and Metrics

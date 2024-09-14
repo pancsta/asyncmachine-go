@@ -109,7 +109,7 @@ func (d *Debugger) initExportDialog() *cview.Modal {
 	form := exportDialog.GetForm()
 	form.AddInputField("Filename", "am-dbg-dump", 20, nil, nil)
 
-	exportDialog.SetText("Serialized to a file")
+	exportDialog.SetText("Export to a file")
 	// exportDialog.AddButtons([]string{"Save"})
 	exportDialog.AddButtons([]string{"Save", "Cancel"})
 	exportDialog.SetDoneFunc(func(buttonIndex int, buttonLabel string) {

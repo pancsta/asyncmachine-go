@@ -3,8 +3,8 @@
     <br />
     <br />
     <a href="#packages">Packages</a> |
-    <a href="#documentatin">Docs</a> |
     <a href="#case-studies">Case Studies</a> |
+    <a href="#documentation">Docs</a> |
     <a href="#development">Dev</a> |
     <a href="#changelog">Changelog</a>
     <br />
@@ -27,7 +27,7 @@ mach := am.New(nil, am.Struct{
     "Foo": {Requires: "Bar"},
     "Bar": {},
 }, nil)
-mach.Add1("Foo")
+mach.Add1("Foo", nil)
 mach.Is1("Foo") // false
 ```
 
@@ -151,7 +151,7 @@ To get started, it's recommended to read  [`/pkg/machine`](pkg/machine/README.md
 - [discussions](https://github.com/pancsta/asyncmachine-go/discussions)
 - [manual.md](/docs/manual.md) \| [manual.pdf](https://pancsta.github.io/assets/asyncmachine-go/manual.pdf)
   - [Machine and States](/docs/manual.md#machine-and-states)
-      - [State Clocks and Context](/docs/manual.md#state-clocks-and-context)
+      - [Clock and Context](/docs/manual.md#clock-and-context)
       - [Auto States](/docs/manual.md#auto-states)
       - [Categories of States](/docs/manual.md#categories-of-states)
       - ...
@@ -166,6 +166,8 @@ To get started, it's recommended to read  [`/pkg/machine`](pkg/machine/README.md
       - [State's Relations](/docs/manual.md#states-relations)
       - [Queue and History](/docs/manual.md#queue-and-history)
       - [Typesafe States](/docs/manual.md#typesafe-states)
+      - ...
+  - [Remote Machines](/docs/manual.md#remote-machines)
       - ...
   - [Cheatsheet](/docs/manual.md#cheatsheet)
 

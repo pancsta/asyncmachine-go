@@ -85,9 +85,9 @@ type Opts struct {
 	// Default: 1000.
 	// TODO per-state QueueLimit
 	QueueLimit int
-	// DetectEval will detect Eval call from handlers, which causes a deadlock.
-	// It works in similar way as -race flag in Go and can also be triggered by
-	// setting env var AM_DETECT_EVAL to "1". Default: false.
+	// DetectEval will detect Eval calls directly in handlers, which causes a
+	// deadlock. It works in similar way as -race flag in Go and can also be
+	// triggered by setting env var AM_DETECT_EVAL to "1". Default: false.
 	DetectEval bool
 }
 
