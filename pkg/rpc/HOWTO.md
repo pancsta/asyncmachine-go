@@ -147,4 +147,7 @@ func setup(ctx context.Context, addr string, worker *am.Machine) (*Server, *Clie
 
 ## monorepo
 
+- [`/pkg/rpc/README.md`](/pkg/rpc/README.md)
+- [`/examples/benchmark_grpc/README.md`](/examples/benchmark_grpc/README.md)
+
 [Go back to the monorepo root](/README.md) to continue reading.

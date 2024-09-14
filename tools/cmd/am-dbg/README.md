@@ -102,3 +102,9 @@ Press `alt+f` or `Tab` until the bottom filter bar receives focus. Now select "S
 ### How to access the help screen?
 
 Press `?` to show the help popup.
+
+## monorepo
+
+- [`/tools/debugger`](/tools/debugger/README.md)
+
+[Go back to the monorepo root](/README.md) to continue reading.

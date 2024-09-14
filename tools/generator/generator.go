@@ -79,7 +79,7 @@ func GenStatesFile(states []string) string {
 		
 		// Names is an ordered list of all the state names.
 		var Names = S{
-		am.Exception,
+			am.Exception,
 		%s
 		}
 		

@@ -39,7 +39,7 @@ type Machine struct {
 	Ctx context.Context
 	// Maximum number of mutations that can be queued. Default: 1000.
 	QueueLimit int
-	// Confirms the states have been ordered using VerifyStates. Read-only.
+	// Confirms the state names have been ordered using VerifyStates. Read-only.
 	StatesVerified bool
 	// Tracers are optional tracers for telemetry integrations.
 	Tracers []Tracer
@@ -2462,6 +2462,10 @@ func (m *Machine) Export() *Serialized {
 	m.activeStatesLock.RLock()
 	defer m.activeStatesLock.RUnlock()
 
+	if !m.StatesVerified {
+		panic("can't export - call VerifyStates first")
+	}
+
 	m.log(LogChanges, "[import] exported at %d ticks", m.time(nil))
 
 	return &Serialized{
@@ -2498,6 +2502,7 @@ func (m *Machine) Import(data *Serialized) error {
 	// restore ID and state names
 	m.stateNames = data.StateNames
 	m.ID = data.ID
+	m.StatesVerified = true
 
 	m.log(LogChanges, "[import] imported to %d ticks", t)
 	return nil

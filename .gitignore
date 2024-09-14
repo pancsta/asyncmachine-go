@@ -62,3 +62,4 @@ _py
 /assets/*.pdf
 /*.png
 /*.prof
+/am-dbg-ssh

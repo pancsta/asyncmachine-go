@@ -2006,6 +2006,10 @@ func TestExportImport(t *testing.T) {
 	// init
 	m1 := NewNoRels(t, S{"A"})
 	defer m1.Dispose()
+	err := m1.VerifyStates(m1.StateNames())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// change clocks
 	m1.Remove1("B", nil)
@@ -2019,10 +2023,13 @@ func TestExportImport(t *testing.T) {
 
 	// import
 	m2 := NewNoRels(t, nil)
-	err := m2.Import(serial)
+	err = m2.Import(serial)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// assert
-	assert.NoError(t, err)
+	assert.True(t, m2.StatesVerified, "imported states have deterministic order")
 	assert.Equal(t, m1.ID, m2.ID, "imported machine ID should be the same")
 	assert.Equal(t, m1Str, m2.String(),
 		"imported machine clock should be the same")

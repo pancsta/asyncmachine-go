@@ -148,12 +148,12 @@ All examples and benchmarks can be found in [/examples](), including ports of Te
 ![am-dbg](../../assets/am-dbg.dark.png#gh-dark-mode-only)
 ![am-dbg](../../assets/am-dbg.light.png#gh-light-mode-only)
 
-- [`/tools/cmd/am-gen`]()<br>
-  am-gen is useful for bootstrapping states files.
-- **[`/tools/cmd/am-dbg`]()**<br>
+- **[`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md)**<br>
   am-dbg is a multi-client TUI debugger.
-- **[`/pkg/telemetry`]()**<br>
-  Telemetry exporters for am-dbg, Open Telemetry and Prometheus.
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md)<br>
+  am-gen is useful for bootstrapping states files.
+- `AM_DETECT_EVAL=1`<br>
+  Detect Eval calls directly in handlers.
 
 ## Case Studies
 
@@ -171,7 +171,7 @@ a lot of inspectable data.
 - [discussions](https://github.com/pancsta/asyncmachine-go/discussions)
 - [manual.md](/docs/manual.md) \| [manual.pdf](https://pancsta.github.io/assets/asyncmachine-go/manual.pdf)
   - [Machine and States](/docs/manual.md#machine-and-states)
-      - [State Clocks and Context](/docs/manual.md#state-clocks-and-context)
+      - [Clock and Context](/docs/manual.md#clock-and-context)
       - [Auto States](/docs/manual.md#auto-states)
       - [Categories of States](/docs/manual.md#categories-of-states)
       - ...
@@ -186,6 +186,8 @@ a lot of inspectable data.
       - [State's Relations](/docs/manual.md#states-relations)
       - [Queue and History](/docs/manual.md#queue-and-history)
       - [Typesafe States](/docs/manual.md#typesafe-states)
+      - ...
+  - [Remote Machines](/docs/manual.md#remote-machines)
       - ...
   - [Cheatsheet](/docs/manual.md#cheatsheet)
 
