@@ -3,6 +3,7 @@
     <br />
     <br />
     <a href="#packages">Packages</a> |
+    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/examples/README.md">Examples</a> |
     <a href="#case-studies">Case Studies</a> |
     <a href="#documentation">Docs</a> |
     <a href="#development">Dev</a> |
@@ -98,7 +99,7 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
         // blocking call
         err := processFile(h.Filename, stateCtx)
         if err != nil {
-            mach.AddErr(err)
+            mach.AddErr(err, nil)
             return
         }
         // re-check the tick ctx after a blocking call

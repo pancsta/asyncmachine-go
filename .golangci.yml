@@ -10,3 +10,10 @@ linters-settings:
   lll:
     line-length: 80
     tab-width: 2
+
+# https://github.com/golangci/golangci-lint/issues/2912
+issues:
+  exclude-rules:
+  - path: /
+    linters:
+    - typecheck
