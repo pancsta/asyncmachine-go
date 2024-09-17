@@ -95,7 +95,7 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
         // blocking call
         err := processFile(h.Filename, stateCtx)
         if err != nil {
-            mach.AddErr(err)
+            mach.AddErr(err, nil)
             return
         }
         // re-check the tick ctx after a blocking call

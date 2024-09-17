@@ -530,7 +530,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 			err := d.appendLogEntry(idx)
 			if err != nil {
 				d.Mach.Log("Error: log append %s\n", err)
-				// d.Mach.AddErr(err)
+				// d.Mach.AddErr(err, nil)
 				return
 			}
 			if d.Mach.Is1(ss.TailMode) {
