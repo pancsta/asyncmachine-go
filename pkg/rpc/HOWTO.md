@@ -10,12 +10,18 @@ running both versions will be almost identical, thanks to network transparency.
 
 - top left: worker instance
   - manipulated by the test suite
-  - exports telemetry to the debugger instance
+  - exports telemetry to the debugger instance (bottom left)
+  - has fixtures from libp2p-pubsub-simulator
+  - receives telemetry from the fixture state machine (`t-TestTailMode`)
+  - live view: [wetty](http://188.166.101.108:8080/wetty/ssh/am-dbg?pass=am-dbg:8080/wetty/ssh/am-dbg?pass=am-dbg) or
+    `ssh 188.166.101.108 -p 4444`
 - bottom left: debugger instance
   - receives telemetry from the worker (`d-rem-worker`)
-  - receives telemetry from RPC clients (`c-TestUserFwd`)
+  - receives telemetry from RPC clients (`c-TestUserFwd` etc)
   - receives telemetry from the RPC server (`s-worker`)
   - receives telemetry from the fixture state machine (`t-TestTailMode`)
+  - live view: [wetty](http://188.166.101.108:8081/wetty/ssh/am-dbg?pass=am-dbg:8081/wetty/ssh/am-dbg?pass=am-dbg) or
+    `ssh 188.166.101.108 -p 4445`
 - right: IDE with the remote test suite from [/tools/debugger/test/remote](/tools/debugger/test/remote/integration_remote_test.go)
 
 Steps in the video:
