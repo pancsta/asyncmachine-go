@@ -5,11 +5,15 @@
 **aRPC** is a transparent RPC for state machines implemented using [asyncmachine-go](/). It's
 clock-based and features many optimizations, e.g. having most of the API methods executed locally (as the state
 information is encoded as clock values). It's build on top of [cenkalti/rpc2](https://github.com/cenkalti/rpc2) and
-`net/rpc`. There's a [benchmark](/examples/benchmark_grpc/README.md) and [how-to](/pkg/rpc/HOWTO.md) available.
+`net/rpc`. There are [gRPC benchmark](/examples/benchmark_grpc/README.md) and [video demo tutorial](/pkg/rpc/HOWTO.md) available.
 
 Implemented:
 
-- mutation and wait methods
+- mutations
+- wait methods
+- clock pushes (from worker-side mutations)
+- remote contexts
+- initial optimizations
 - payload file upload
 - server getters
 
@@ -19,7 +23,7 @@ Not implemented (yet):
 - client getters
 - chunked encoding
 - TLS
-- reconnect
+- reconnect / failsafe
 - compression
 - multiplexing
 
