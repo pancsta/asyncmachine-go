@@ -42,7 +42,7 @@ Steps in the video:
 ```go
 import (
     amtest "github.com/pancsta/asyncmachine-go/internal/testing"
-    amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
+    amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
     am "github.com/pancsta/asyncmachine-go/pkg/machine"
     "github.com/pancsta/asyncmachine-go/tools/debugger/server"
     ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
@@ -56,11 +56,11 @@ func TestUserFwd(t *testing.T) {
 
     // fixtures
     cursorTx := 20
-    amh.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+    amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
         am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
 
     // test
-    res := amh.Add1Block(ctx, mach, ss.UserFwd, nil)
+    res := amhelp.Add1Block(ctx, mach, ss.UserFwd, nil)
 
     // assert
     assert.NotEqual(t, res, am.Canceled)
@@ -80,11 +80,11 @@ func TestUserFwdRemote(t *testing.T) {
 
     // fixtures
     cursorTx := 20
-    amh.Add1AsyncBlock(ctx, c.Worker, ss.SwitchedClientTx, ss.SwitchingClientTx,
+    amhelp.Add1AsyncBlock(ctx, c.Worker, ss.SwitchedClientTx, ss.SwitchingClientTx,
         am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
 
     // test
-    res := amh.Add1Block(ctx, c.Worker, ss.UserFwd, nil)
+    res := amhelp.Add1Block(ctx, c.Worker, ss.UserFwd, nil)
 
     // assert
     assert.NotEqual(t, res, am.Canceled)

@@ -2,12 +2,17 @@
 
 [-> go back to monorepo /](/README.md)
 
+> [!NOTE]
+> **asyncmachine** can transform blocking APIs into controllable state machines with ease. It shares similarities with
+> [Ergo's](https://github.com/ergo-services/ergo) actor model, and focuses on distributed workflows like [Temporal](https://github.com/temporalio/temporal).
+> It's lightweight and most features are optional.
+
 **aRPC** is a transparent RPC for state machines implemented using [asyncmachine-go](/). It's
 clock-based and features many optimizations, e.g. having most of the API methods executed locally (as the state
 information is encoded as clock values). It's build on top of [cenkalti/rpc2](https://github.com/cenkalti/rpc2) and
 `net/rpc`. There are [gRPC benchmark](/examples/benchmark_grpc/README.md) and [video demo tutorial](/pkg/rpc/HOWTO.md) available.
 
-Implemented:
+## Features
 
 - mutations
 - wait methods
@@ -26,6 +31,7 @@ Not implemented (yet):
 - reconnect / failsafe
 - compression
 - multiplexing
+- msgpack encoding
 
 ## Usage
 
@@ -120,7 +126,7 @@ which methods happen where (locally or on remote).
 
 <details>
 
-<summary>Expand MachineApi</summary>
+<summary>Expand pkg/types#MachineApi</summary>
 
 ```go
 // MachineApi is a subset of `pkg/machine#Machine` for alternative
@@ -214,6 +220,7 @@ basic RPC.
 
 **aRPC** implements several optimization strategies to achieve the results.
 
+- `net/rpc` method names as runes
 - binary format of `encoding/gob`
 - index-based clock
   - `[0, 100, 0, 120]`

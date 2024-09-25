@@ -1,63 +1,62 @@
 # asyncmachine-go
 
-Version: `v0.7.0`
-
 <!-- TOC -->
 
+- version `v0.7.0`
 - [Introduction](#introduction)
   - [Comparison](#comparison)
   - [Considerations](#considerations)
   - [Legend](#legend)
-  - [Machine and States](#machine-and-states)
-    - [Defining States](#defining-states)
-    - [Asynchronous States](#asynchronous-states)
-    - [Machine Init](#machine-init)
-    - [Clock and Context](#clock-and-context)
-    - [Checking Active States](#checking-active-states)
-    - [Inspecting States](#inspecting-states)
-    - [Auto States](#auto-states)
-    - [Multi States](#multi-states)
-    - [Categories of States](#categories-of-states)
-  - [Changing State](#changing-state)
-    - [State Mutations](#state-mutations)
-    - [Mutation Arguments](#mutation-arguments)
-    - [Transition Lifecycle](#transition-lifecycle)
-    - [Transition Handlers](#transition-handlers)
-    - [Self handlers](#self-handlers)
-    - [Defining Handlers](#defining-handlers)
-    - [Event Struct](#event-struct)
-    - [Calculating Target States](#calculating-target-states)
-    - [Negotiation Handlers](#negotiation-handlers)
-    - [Final Handlers](#final-handlers)
-    - [AnyAny global handlers](#anyany-global-handlers)
-  - [Advanced Topics](#advanced-topics)
-    - [State's Relations](#states-relations)
-      - [`Add` relation](#add-relation)
-      - [`Remove` relation](#remove-relation)
-      - [`Require` relation](#require-relation)
-      - [`After` relation](#after-relation)
-    - [Waiting](#waiting)
-    - [Error Handling](#error-handling)
-    - [Catching Panics](#catching-panics)
-      - [Panic in a negotiation handler](#panic-in-a-negotiation-handler)
-      - [Panic in a final handler](#panic-in-a-final-handler)
-      - [Panic anywhere else](#panic-anywhere-else)
-    - [Queue and History](#queue-and-history)
-    - [Logging](#logging)
-      - [Customizing Logging](#customizing-logging)
-    - [Debugging](#debugging)
-      - [Steps To Debug](#steps-to-debug)
-      - [Enabling Telemetry](#enabling-telemetry)
-    - [Typesafe States](#typesafe-states)
-    - [Tracing and Metrics](#tracing-and-metrics)
-    - [Optimizing Data Input](#optimizing-data-input)
-  - [Remote Machines](#remote-machines)
-    - [Server](#server)
-    - [Client](#client)
-  - [Other packages](#other-packages)
-    - [Helpers](#helpers)
-  - [Cheatsheet](#cheatsheet)
-  - [Other sources](#other-sources)
+- [Machine and States](#machine-and-states)
+  - [Defining States](#defining-states)
+  - [Asynchronous States](#asynchronous-states)
+  - [Machine Init](#machine-init)
+  - [Clock and Context](#clock-and-context)
+  - [Active States](#active-states)
+  - [Inspecting States](#inspecting-states)
+  - [Auto States](#auto-states)
+  - [Multi States](#multi-states)
+  - [Categories of States](#categories-of-states)
+- [Changing State](#changing-state)
+  - [State Mutations](#state-mutations)
+  - [Mutation Arguments](#mutation-arguments)
+  - [Transition Lifecycle](#transition-lifecycle)
+  - [Transition Handlers](#transition-handlers)
+  - [Self Handlers](#self-handlers)
+  - [Defining Handlers](#defining-handlers)
+  - [Event Struct](#event-struct)
+  - [Calculating Target States](#calculating-target-states)
+  - [Negotiation Handlers](#negotiation-handlers)
+  - [Final Handlers](#final-handlers)
+  - [Global Handlers](#global-handler)
+- [Advanced Topics](#advanced-topics)
+  - [State's Relations](#states-relations)
+    - [`Add` relation](#add-relation)
+    - [`Remove` relation](#remove-relation)
+    - [`Require` relation](#require-relation)
+    - [`After` relation](#after-relation)
+  - [Waiting](#waiting)
+  - [Error Handling](#error-handling)
+  - [Catching Panics](#catching-panics)
+    - [Panic in a negotiation handler](#panic-in-a-negotiation-handler)
+    - [Panic in a final handler](#panic-in-a-final-handler)
+    - [Panic anywhere else](#panic-anywhere-else)
+  - [Queue and History](#queue-and-history)
+  - [Logging](#logging)
+    - [Customizing Logging](#customizing-logging)
+  - [Debugging](#debugging)
+    - [Steps To Debug](#steps-to-debug)
+    - [Enabling Telemetry](#enabling-telemetry)
+  - [Typesafe States](#typesafe-states)
+  - [Tracing and Metrics](#tracing-and-metrics)
+  - [Optimizing Data Input](#optimizing-data-input)
+- [Remote Machines](#remote-machines)
+  - [Server](#server)
+  - [Client](#client)
+- [Other packages](#other-packages)
+  - [Helpers](#helpers)
+- [Cheatsheet](#cheatsheet)
+- [Other sources](#other-sources)
 
 <!-- TOC -->
 
@@ -79,11 +78,12 @@ structure to non-determinism, by embracing it.
 Common differences from other state machines:
 
 - many [states](#defining-states) can be [active](#checking-active-states) at the same time
+- [events](#categories-of-states) are just states
 - [transitions](#transition-lifecycle) between all the states are allowed
 - states are connected by [relations](#states-relations)
 - every transition can be [rejected](#transition-lifecycle)
-- every state has a [clock](#state-clocks-and-context)
-- [error is a state](#error-handling)
+- every state has a [clock value](#state-clocks-and-context)
+- [error](#error-handling) is a state
 
 ### Considerations
 
@@ -91,8 +91,9 @@ These considerations will help to better understand how **asyncmachine** works:
 
 - it doesn't hold any data other than
   - machine time
-  - the last error
-  - given state structure
+  - last error
+  - queued mutations
+  - state structure (given)
 - only **state** can be trusted (e.g. [`Is()`], [`Not()`], [`Any()`])
 - mutations resulting in async states need to be waited on (eg [`When()`], [`WhenTime()`])
 - flow can be redirected or constrained by checking the current and previous **state** within handlers
@@ -271,7 +272,7 @@ func (h *Handlers) DownloadingFileState(e *am.Event) {
 }
 ```
 
-### Checking Active States
+### Active States
 
 Each state can be **active** or **inactive**, determined by its [state clock](#state-clocks-and-context). You can check
 the current state at any time, [without a long delay](#transition-handlers), which makes it a dependable source of
@@ -579,7 +580,7 @@ resources. This reduces the number of locks needed. No blocking is allowed in th
 a goroutine. Additionally, each handler has a limited time to complete (**100ms** with the default handler timeout),
 which can be set via [`am.Opts`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Opts).
 
-### Self handlers
+### Self Handlers
 
 Self handler is a final handler for states which were active **before and after** a transition (all no-change active
 states). The name is a doubled name of the state (eg `FooFoo`).
@@ -826,9 +827,9 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 }
 ```
 
-### AnyAny global handlers
+### Global Handler
 
-`AnyAny` is the first final handler and always gets executed. Because of that it's considered a global/catch-all
+`AnyAny` is the first final handler and always gets executed. This makes it a global/catch-all
 handler. Using a global handler make the "Empty" filter useless, as every transition always triggers a handler.
 
 ```go
@@ -1290,6 +1291,7 @@ Both sources can help to make informed decisions based on scheduled and past act
 - [`Machine.Transition()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.DuringTransition)
 - [`History.ActivatedRecently(state, duration)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/history#History.ActivatedRecently)
 - [`Machine.WhenQueueEnds()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenQueueEnds)
+- // TODO WillBe
 
 ```go
 // machine
@@ -1462,6 +1464,9 @@ Environment variables used for debugging can be found in [config/env/README.md](
 Telemetry for **am-dbg** can be enabled manually using [`/pkg/telemetry`](/pkg/telemetry/README.md), or with a helper
 from [`/pkg/helpers`](/pkg/helpers/README.md).
 
+- [`MachDebug(*am.Machine, string, am.LogLevel, bool)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#MachDebug)
+- [`MachDebugt(*am.Machine, bool)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#MachDebugT)
+
 **Example** - enable telemetry manually
 
 ```go
@@ -1478,7 +1483,7 @@ amDbgAddr := os.Getenv("AM_DBG_ADDR")
 logLvl := am.EnvLogLevel("")
 
 // debug
-amh.MachDebug(mach, amDbgAddr, logLvl, true)
+amhelp.MachDebug(mach, amDbgAddr, logLvl, true)
 ```
 
 ### Typesafe States
@@ -1615,7 +1620,7 @@ func Msg(msgTx *Msg) {
 ## Remote Machines
 
 [`/pkg/rpc`](/pkg/rpc/README.md) provides efficient network transparency for any state machine, including local ones.
-Both server and client has to have access to the worker's [state file](#typesafe-states).
+Both the server and client has to have access to worker's [state file](#typesafe-states).
 
 ```go
 
@@ -1691,7 +1696,7 @@ automatically.
 **Example** - add state `StateNameSelected` and wait until it becomes active
 
 ```go
-res := amh.Add1Block(ctx, mach, ss.StateNameSelected, am.A{"state": state})
+res := amhelp.Add1Block(ctx, mach, ss.StateNameSelected, am.A{"state": state})
 print(mach.Is1(ss.StateNameSelected)) // true
 print(res) // am.Executed or am.Canceled, never am.Queued
 ```
@@ -1699,7 +1704,7 @@ print(res) // am.Executed or am.Canceled, never am.Queued
 **Example** - wait for `ScrollToTx`, triggered by `ScrollToMutTx`
 
 ```go
-res := amh.Add1AsyncBlock(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
+res := amhelp.Add1AsyncBlock(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
     "state": state,
     "fwd":   true,
 })

@@ -2,6 +2,11 @@
 
 [-> go back to monorepo /](/README.md)
 
+> [!NOTE]
+> **asyncmachine** can transform blocking APIs into controllable state machines with ease. It shares similarities with
+> [Ergo's](https://github.com/ergo-services/ergo) actor model, and focuses on distributed workflows like [Temporal](https://github.com/temporalio/temporal).
+> It's lightweight and most features are optional.
+
 To read about **am-dbg**, go to [/tools/cmd/am-dbg](/tools/cmd/am-dbg/README.md). This package is about the
 implementation, not the end-user application.
 
