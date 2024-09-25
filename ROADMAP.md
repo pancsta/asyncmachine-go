@@ -8,7 +8,7 @@
 - pubsub
 - rpc mirror machines
 - go1.22 traces
-- tinygo compatibility
+- tinygo compatibility, bt sync
 - inference
 - optimizations
 - manual updated to a spec

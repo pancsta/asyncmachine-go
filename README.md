@@ -1,14 +1,11 @@
 <div align="center">
-  <img src="assets/logo.png" alt="asyncmachine-go logo" height="160">
-    <br />
-    <br />
     <a href="#packages">Packages</a> |
     <a href="https://github.com/pancsta/asyncmachine-go/blob/main/examples/README.md">Examples</a> |
+    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/pkg/machine/README.md">Machine</a> |
     <a href="#case-studies">Case Studies</a> |
     <a href="#documentation">Docs</a> |
     <a href="#development">Dev</a> |
     <a href="#changelog">Changelog</a>
-    <br />
     <br />
 </div>
 
@@ -16,14 +13,17 @@
 
 ![TUI Debugger](https://pancsta.github.io/assets/asyncmachine-go/video.gif)
 
-This is the monorepo of **asyncmachine-go**, a clock-based state machine for managing complex asynchronous workflows in
-an inspectable, safe, and structured way. It features a TUI debugger, transparent RPC, and telemetry for Otel & Prom.
+> [!NOTE]
+> This is the **monorepo** of asyncmachine-go, a clock-based state machine for orchestrating complex workflows in
+> a safe, structured, and inspectable way. It features a TUI **debugger**, transparent **RPC**, and telemetry for
+> **Otel** & **Prom**.
 
 **asyncmachine** can transform blocking APIs into controllable state machines with ease. It shares similarities with
-[Ergo's](https://github.com/ergo-services/ergo) actor model, but focuses on workflows like [Temporal](https://github.com/temporalio/temporal).
-Unlike both mentioned frameworks, it's lightweight (3k LoC, stdlib-only) and adds features progressively.
+[Ergo's](https://github.com/ergo-services/ergo) actor model, and focuses on distributed workflows like [Temporal](https://github.com/temporalio/temporal).
+It's lightweight and most features are optional.
 
 ```go
+import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 mach := am.New(nil, am.Struct{
     "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
@@ -37,7 +37,8 @@ mach.Is1("Foo") // false
 <summary>Expand the full example</summary>
 
 ```go
-// ProcessingFile -> FileProcessed (1 async and 1 sync state)
+// ProcessingFile to FileProcessed
+// 1 async and 1 sync state
 package main
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"

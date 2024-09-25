@@ -2,24 +2,26 @@
 
 [-> go back to monorepo /](/README.md)
 
-**asyncmachine-go** is a minimal implementation of [AsyncMachine](https://github.com/TobiaszCudnik/asyncmachine)
+> [!NOTE]
+> **asyncmachine** can transform blocking APIs into controllable state machines with ease. It shares similarities with
+> [Ergo's](https://github.com/ergo-services/ergo) actor model, and focuses on distributed workflows like [Temporal](https://github.com/temporalio/temporal).
+> It's lightweight and most features are optional.
+
+**/pkg/machine** is a minimal implementation of [AsyncMachine](https://github.com/TobiaszCudnik/asyncmachine)
 (2012-2019; [video](http://tobiaszcudnik.github.io/asyncmachine-inspector/sample.mp4)) in Golang using
 **channels and context**. It aims at simplicity and speed, while maintaining and extending ideas of the original. It
-delivers a solid toolset and conventions for reliable state machines.
-
-**asyncmachine** can transform blocking APIs into controllable state machines with ease. It shares similarities with
-[Ergo's]() actor model, but focuses on workflows like [Temporal](). Unlike both mentioned frameworks, it's lightweight
-and adds features progressively.
+delivers a solid toolset and conventions for reliable, clock-based state machines.
 
 ## Comparison
 
 Common differences between asyncmachine and other state machines:
 
 - many states can be active at the same time
+- events are just states
 - transitions between all the states are allowed
 - states are connected by relations
 - every transition can be rejected
-- every state has a clock
+- every state has a clock value
 - error is a state
 
 ## Buzzwords
@@ -142,7 +144,7 @@ libp2p-pubsub-simulator in:
 
 ## Examples
 
-All examples and benchmarks can be found in [/examples](), including ports of Temporal workflows.
+All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 ## Tools
 
@@ -194,12 +196,12 @@ a lot of inspectable data.
 
 ## API
 
-Most common API methods are listed below. There's more for local state machines, but all of these are also implemented
-in the [transparent RPC layer](/pkg/rpc).
+Most common API methods are listed below. There's more for [local state machines](https://godoc.org/github.com/pancsta/asyncmachine-go/pkg/machine),
+but all of these are also implemented in the [transparent RPC layer](/pkg/rpc).
 
 <details>
 
-<summary>Expand MachineApi</summary>
+<summary>Expand pkg/types#MachineApi</summary>
 
 ```go
 // MachineApi is a subset of `pkg/machine#Machine` for alternative
@@ -285,8 +287,8 @@ type MachineApi interface {
 
 ## Tests
 
-It's very easy to get a grasp of how asyncmachine works by reading the [idiomatic test suite](). Consider the example
-below of a method used to wait for certain arguments passing via a state activation:
+It's very easy to get a grasp of how asyncmachine works by reading the [idiomatic test suite](/pkg/machine/machine_test.go).
+Consider the example below of a method used to wait for certain arguments passing via a state activation:
 
 ```go
 func TestWhenArgs(t *testing.T) {

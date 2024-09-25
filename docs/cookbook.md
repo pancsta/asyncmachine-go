@@ -76,30 +76,41 @@ func (h *Handlers) BarAny(e *am.Event) {}
 func (h *Handlers) AnyFoo(e *am.Event) {}
 ```
 
+## Global handler
+
+```go
+// final global handler
+// always called as a transition from Any state to Any state
+func (h *Handlers) AnyAny(e *am.Event) {}
+```
+
 ## Common imports
 
 ```go
 import (
-    amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
+    amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
     am "github.com/pancsta/asyncmachine-go/pkg/machine"
     arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
-    "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+    amt "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 ```
 
 ## Common env vars
 
 ```shell
-# enable a simple debugging mode (eg long timeouts, stack traces)
+# enable simple debugging
+# eg long timeouts, stack traces
 AM_DEBUG=1
 
+# export telemetry to a real debugger
 # address of a running am-dbg instance
 AM_DBG_ADDR=localhost:6831
 
 # set the log level (0-4)
 AM_LOG=2
 
-# detect evals directly in handlers (use in tests)
+# detect evals directly in handlers
+# use in tests
 AM_DETECT_EVAL=1
 ```
 
@@ -110,9 +121,9 @@ $ am-dbg
 ```
 
 ```go
-import "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+import amt "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 // ...
-ready, err := telemetry.TransitionsToDBG(ctx, mach, "")
+ready, err := amt.TransitionsToDBG(ctx, mach, "")
 <-ready
 ```
 
@@ -150,10 +161,11 @@ mach.SetLogArgs(am.NewArgsMapper([]string{"id", "name"}, 20))
 ```go
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 // ...
-ctx := context.Background()
-states := am.Struct{"Foo":{}, "Bar":{}}
+ctx := context.TODO()
+states := am.Struct{"Foo":{}, "Bar":{Require: am.S{"Foo"}}}
+// state machine
 mach := am.New(ctx, states, &am.Opts{
-    ID: "foo1",
+    ID: "mach1",
 })
 ```
 
@@ -167,7 +179,7 @@ import (
 )
 // ...
 ctx := context.Background()
-mach, err := am.NewCommon(ctx, "foo1", ss.States, ss.Names, nil, nil, &am.Opts{
+mach, err := am.NewCommon(ctx, "mach1", ss.States, ss.Names, nil, nil, &am.Opts{
     LogLevel: am.LogChanges,
 })
 ```
@@ -629,11 +641,44 @@ func (s *Sim) MsgRandomTopicEnter(e *am.Event) bool {
 }
 ```
 
-### Check if a group od states is active
+### Check if a group of states is active
 
 ```go
 if d.Mach.Any1(ss.GroupDialog...) {
     d.Mach.Remove(ss.GroupDialog, nil)
     return nil
+}
+```
+
+### Open Telemetry
+
+```go
+import "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+
+// ...
+
+opts := &am.Opts{}
+initTracing(ctx)
+traceMach(opts, true)
+mach, err := am.NewCommon(ctx, "mymach", ss.States, ss.Names, nil, nil, opts)
+
+// ...
+
+func initTracing(ctx context.Context) {
+    // TODO NewOtelProvider
+    tracer, provider, err := NewOtelProvider(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    _, rootSpan = tracer.Start(ctx, "sim")
+    // TODO persist tracer, provider, and rootSpan
+}
+
+func traceMach(opts *am.Opts, traceTransitions bool) {
+    machTracer := telemetry.NewOtelMachTracer(s.OtelTracer, &telemetry.OtelMachTracerOpts{
+        SkipTransitions: !traceTransitions,
+        Logf:            logNoop,
+    })
+    opts.Tracers = []am.Tracer{machTracer}
 }
 ```

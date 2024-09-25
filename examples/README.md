@@ -2,10 +2,10 @@
 
 [-> go back to monorepo /](/README.md)
 
-## ProcessingFile -> FileProcessed
+## ProcessingFile to FileProcessed
 
 - 1 async and 1 sync state
-- [playground](https://play.golang.com/p/MlTvCNk945O)
+- [live playground](https://play.golang.com/p/MlTvCNk945O)
 
 ```go
 package main
