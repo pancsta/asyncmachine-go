@@ -14,9 +14,8 @@
 ![TUI Debugger](https://pancsta.github.io/assets/asyncmachine-go/video.gif)
 
 > [!NOTE]
-> This is the **monorepo** of asyncmachine-go, a clock-based state machine for orchestrating complex workflows in
-> a safe, structured, and inspectable way. It features a TUI **debugger**, transparent **RPC**, and telemetry for
-> **Otel** & **Prom**.
+> **monorepo** of asyncmachine-go, a clock-based state machine with a TUI **debugger**, transparent **RPC**, and
+> **telemetry** for Otel & Prom.
 
 **asyncmachine** can transform blocking APIs into controllable state machines with ease. It shares similarities with
 [Ergo's](https://github.com/ergo-services/ergo) actor model, and focuses on distributed workflows like [Temporal](https://github.com/temporalio/temporal).
@@ -32,123 +31,38 @@ mach.Add1("Foo", nil)
 mach.Is1("Foo") // false
 ```
 
-<details>
-
-<summary>Expand the full example</summary>
-
-```go
-// ProcessingFile to FileProcessed
-// 1 async and 1 sync state
-package main
-
-import am "github.com/pancsta/asyncmachine-go/pkg/machine"
-
-func main() {
-    // init the state machine
-    mach := am.New(nil, am.Struct{
-        "ProcessingFile": {
-            Add: am.S{"InProgress"},
-            Remove: am.S{"FileProcessed"},
-        },
-        "FileProcessed": {
-            Remove: am.S{"ProcessingFile", "InProgress"},
-        },
-        "InProgress": {},
-    }, nil)
-    mach.BindHandlers(&Handlers{
-        Filename: "README.md",
-    })
-    // change the state
-    mach.Add1("ProcessingFile", nil)
-    // wait for completed
-    select {
-    case <-time.After(5 * time.Second):
-        println("timeout")
-    case <-mach.WhenErr(nil):
-        println("err:", mach.Err())
-    case <-mach.When1("FileProcessed", nil):
-        println("done")
-    }
-}
-
-type Handlers struct {
-    Filename string
-}
-
-// negotiation handler
-func (h *Handlers) ProcessingFileEnter(e *am.Event) bool {
-    // read-only ops
-    // decide if moving fwd is ok
-    // no blocking
-    // lock-free critical zone
-    return true
-}
-
-// final handler
-func (h *Handlers) ProcessingFileState(e *am.Event) {
-    // read & write ops
-    // no blocking
-    // lock-free critical zone
-    mach := e.Machine
-    // tick-based context
-    stateCtx := mach.NewStateCtx("ProcessingFile")
-    go func() {
-        // block in the background, locks needed
-        if stateCtx.Err() != nil {
-            return // expired
-        }
-        // blocking call
-        err := processFile(h.Filename, stateCtx)
-        if err != nil {
-            mach.AddErr(err, nil)
-            return
-        }
-        // re-check the tick ctx after a blocking call
-        if stateCtx.Err() != nil {
-            return // expired
-        }
-        // move to the next state in the flow
-        mach.Add1("FileProcessed", nil)
-    }()
-}
-```
-
-</details>
-
-## Packages
+## Getting Started
 
 To get started, it's recommended to read  [`/pkg/machine`](pkg/machine/README.md) first.
 
-- **[`/pkg/helpers`](/pkg/helpers/README.md)**<br>
-  Useful functions when working with state machines.
-- [`/pkg/history`](/pkg/history/README.md)<br>
-  History tracking and traversal.
-- **[`/pkg/machine`](/pkg/machine/README.md)**<br>
-  State machine, this package always gets shipped to production, and is semver compatible.
-- **[`/pkg/rpc`](/pkg/rpc/README.md)**<br>
-  Clock-based remote state machines, with the same API as local ones.
-- [`/pkg/states`](/pkg/states/README.md)<br>
-  Repository of common state definitions, so APIs can be more unifed.
-- **[`/pkg/telemetry`](/pkg/telemetry/README.md)**<br>
-  Telemetry exporters for am-dbg, Open Telemetry and Prometheus.
-- `/pkg/pubsub`<br>
-  Planned.
-- [`/pkg/x/helpers`](/pkg/x/helpers)<br>
-  Not-so useful functions when working with state machines.
-- **[`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md)**<br>
-  am-dbg is a multi-client TUI debugger.
-- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md)<br>
-  am-gen is useful for bootstrapping states files.
+## Packages
+
+- [`/pkg/helpers`](/pkg/helpers/README.md) Useful functions when working with async state machines.
+- [`/pkg/history`](/pkg/history/README.md) History tracking and traversal.
+- **[`/pkg/machine`](/pkg/machine/README.md)** State machine, the main package. Dependency free and semver compatible.
+- **[`/pkg/node`](/pkg/node/README.md)** Work in progress.
+- **[`/pkg/rpc`](/pkg/rpc/README.md)** Remote state machine, with the same API as a local one.
+- [`/pkg/states`](/pkg/states/README.md) Reusable state definitions.
+- **[`/pkg/telemetry`](/pkg/telemetry/README.md)** Telemetry exporters for am-dbg, OpenTelemetry and Prometheus.
+- `/pkg/pubsub` Planned.
+- **[`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md)** am-dbg is a multi-client TUI debugger.
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) am-gen generates states files.
+- `/tools/cmd/am-vis` Planned.
 
 ## Case Studies
 
-- [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator)
-- [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
-- [am-dbg TUI Debugger](/tools/debugger)
+- [scraphouse]() - decentralized web scraping using [/pkg/node]()
+- [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) - sandbox
+  simulator for libp2p-pubsub
+- [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark) -
+  benchmark of libp2p-pubsub ported to asyncmachine-go
+- [am-dbg TUI Debugger](/tools/debugger) - single state machine TUI app
 
 ## Documentation
 
-- [godoc](https://godoc.org/github.com/pancsta/asyncmachine-go/pkg/machine)
+- [FAQ](/FAQ.md)
+- [API](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine)
+- [diagrams](/docs/diagrams.md)
 - [cookbook](/docs/cookbook.md)
 - [discussions](https://github.com/pancsta/asyncmachine-go/discussions)
 - [manual.md](/docs/manual.md) \| [manual.pdf](https://pancsta.github.io/assets/asyncmachine-go/manual.pdf)
@@ -160,12 +74,12 @@ To get started, it's recommended to read  [`/pkg/machine`](pkg/machine/README.md
   - [Changing State](/docs/manual.md#changing-state)
       - [State Mutations](/docs/manual.md#state-mutations)
       - [Transition Lifecycle](/docs/manual.md#transition-lifecycle)
-      - [Calculating Target States](/docs/manual.md#calculating-target-states)
+      - [Target States](/docs/manual.md#calculating-target-states)
       - [Negotiation Handlers](/docs/manual.md#negotiation-handlers)
       - [Final Handlers](/docs/manual.md#final-handlers)
       - ...
   - [Advanced Topics](/docs/manual.md#advanced-topics)
-      - [State's Relations](/docs/manual.md#states-relations)
+      - [Relations](/docs/manual.md#states-relations)
       - [Queue and History](/docs/manual.md#queue-and-history)
       - [Typesafe States](/docs/manual.md#typesafe-states)
       - ...
@@ -224,7 +138,7 @@ Maintenance release: `v0.6.5`
 - fix\(am-dbg\): align tree rel lines [\#104](https://github.com/pancsta/asyncmachine-go/pull/104) (@pancsta)
 - fix\(am-dbg\): fix tree highlights for ref links [\#103](https://github.com/pancsta/asyncmachine-go/pull/103) (@pancsta)
 
-Changes:
+### Changes
 
 - [Full Changelog](CHANGELOG.md)
 - [Breaking Changes](BREAKING.md)

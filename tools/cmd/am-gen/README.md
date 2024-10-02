@@ -20,7 +20,7 @@
 ```go
 // generate using either
 // $ am-gen states-file Foo,Bar
-// $ task am-gen -- Foo,Bar
+// $ task am-gen-states -- Foo,Bar
 package states
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"

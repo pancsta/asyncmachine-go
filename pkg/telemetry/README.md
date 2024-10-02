@@ -105,8 +105,12 @@ metrics of you machines.
 
 ### Grafana Dashboards
 
-- generated using `task gen-grafana-dashboard IDS=mach1,mach2`
-- or imported from [assets](/assets/grafana-mach-sim,sim-p1.json)
+- generate using `task gen-grafana-dashboard IDS=mach1,mach2`
+- or import from [assets](/assets/grafana-mach-sim,sim-p1.json)
+
+### Perses Dashboards
+
+Work in progress...
 
 ### Prom Usage
 
