@@ -91,7 +91,7 @@ import (
     amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
     am "github.com/pancsta/asyncmachine-go/pkg/machine"
     arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
-    amt "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+    amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 ```
 
@@ -121,9 +121,9 @@ $ am-dbg
 ```
 
 ```go
-import amt "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+import amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 // ...
-ready, err := amt.TransitionsToDBG(ctx, mach, "")
+ready, err := amtele.TransitionsToDBG(ctx, mach, "")
 <-ready
 ```
 
@@ -243,8 +243,8 @@ case <-when:
 ## Wait for a specific machine time
 
 ```go
-// crate a wait channel
-when := mach.WhenTime(am.S{"DownloadingFile"}, am.T{6}, nil)
+// create a wait channel
+when := mach.WhenTime(am.S{"DownloadingFile"}, am.Time{6}, nil)
 // wait with err and timeout
 select {
 case <-time.After(5 * time.Second):
@@ -259,11 +259,11 @@ case <-when:
 ## Wait for a relative state tick
 
 ```go
-// crate a wait channel
+// create a wait channel
 when := mach.WhenTick("DownloadingFile", 2, nil)
 // wait with err and timeout
 select {
-case <-time.After(5 * time.Second):
+case <-time.After(5 * time.Second):z
     return am.ErrTimeout
 case <-mach.WhenErr(nil):
     return mach.Err
@@ -275,7 +275,7 @@ case <-when:
 ## Wait for a specific state tick
 
 ```go
-// crate a wait channel
+// create a wait channel
 when := mach.WhenTickEq("DownloadingFile", 6, nil)
 // wait with err and timeout
 select {
@@ -665,13 +665,11 @@ mach, err := am.NewCommon(ctx, "mymach", ss.States, ss.Names, nil, nil, opts)
 // ...
 
 func initTracing(ctx context.Context) {
-    // TODO NewOtelProvider
     tracer, provider, err := NewOtelProvider(ctx)
     if err != nil {
         log.Fatal(err)
     }
     _, rootSpan = tracer.Start(ctx, "sim")
-    // TODO persist tracer, provider, and rootSpan
 }
 
 func traceMach(opts *am.Opts, traceTransitions bool) {

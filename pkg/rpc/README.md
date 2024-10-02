@@ -124,10 +124,6 @@ ok      github.com/pancsta/asyncmachine-go/examples/benchmark_grpc      5.187s
 **aRPC** implements `MachineApi`, which is a large subset of `Machine` methods. Below the full list, with distinction
 which methods happen where (locally or on remote).
 
-<details>
-
-<summary>Expand pkg/types#MachineApi</summary>
-
 ```go
 // MachineApi is a subset of `pkg/machine#Machine` for alternative
 // implementations.
@@ -207,8 +203,6 @@ type MachineApi interface {
     WhenDisposed() <-chan struct{}
 }
 ```
-
-</details>
 
 ## Tests
 

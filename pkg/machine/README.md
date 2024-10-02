@@ -35,7 +35,8 @@ Common differences between asyncmachine and other state machines:
 ## Basic Usage
 
 ```go
-// ProcessingFile -> FileProcessed (1 async and 1 sync state)
+// ProcessingFile to FileProcessed
+// 1 async and 1 sync state
 package main
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -160,16 +161,17 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 ## Case Studies
 
-Several case studies are available to show how to implement various types of state machines, measure performance and produce
-a lot of inspectable data.
-
-- [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator)
-- [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
-- [am-dbg TUI Debugger](/tools/debugger)
+- [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) - sandbox
+  simulator for libp2p-pubsub
+- [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark) - benchmark
+  of libp2p-pubsub ported to asyncmachine-go
+- [am-dbg TUI Debugger](/tools/debugger) - single state machine TUI app
 
 ## Documentation
 
-- [godoc](https://godoc.org/github.com/pancsta/asyncmachine-go/pkg/machine)
+- [FAQ](/FAQ.md)
+- [API](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine)
+- [diagrams](/docs/diagrams.md)
 - [cookbook](/docs/cookbook.md)
 - [discussions](https://github.com/pancsta/asyncmachine-go/discussions)
 - [manual.md](/docs/manual.md) \| [manual.pdf](https://pancsta.github.io/assets/asyncmachine-go/manual.pdf)
@@ -181,12 +183,12 @@ a lot of inspectable data.
   - [Changing State](/docs/manual.md#changing-state)
       - [State Mutations](/docs/manual.md#state-mutations)
       - [Transition Lifecycle](/docs/manual.md#transition-lifecycle)
-      - [Calculating Target States](/docs/manual.md#calculating-target-states)
+      - [Target States](/docs/manual.md#calculating-target-states)
       - [Negotiation Handlers](/docs/manual.md#negotiation-handlers)
       - [Final Handlers](/docs/manual.md#final-handlers)
       - ...
   - [Advanced Topics](/docs/manual.md#advanced-topics)
-      - [State's Relations](/docs/manual.md#states-relations)
+      - [Relations](/docs/manual.md#states-relations)
       - [Queue and History](/docs/manual.md#queue-and-history)
       - [Typesafe States](/docs/manual.md#typesafe-states)
       - ...
@@ -199,12 +201,8 @@ a lot of inspectable data.
 Most common API methods are listed below. There's more for [local state machines](https://godoc.org/github.com/pancsta/asyncmachine-go/pkg/machine),
 but all of these are also implemented in the [transparent RPC layer](/pkg/rpc).
 
-<details>
-
-<summary>Expand pkg/types#MachineApi</summary>
-
 ```go
-// MachineApi is a subset of `pkg/machine#Machine` for alternative
+// MachineApi is a subset of `pkg/machine/Machine` for alternative
 // implementations.
 type MachineApi interface {
 
@@ -282,8 +280,6 @@ type MachineApi interface {
     WhenDisposed() <-chan struct{}
 }
 ```
-
-</details>
 
 ## Tests
 

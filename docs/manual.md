@@ -30,7 +30,7 @@
   - [Final Handlers](#final-handlers)
   - [Global Handlers](#global-handler)
 - [Advanced Topics](#advanced-topics)
-  - [State's Relations](#states-relations)
+  - [Relations](#states-relations)
     - [`Add` relation](#add-relation)
     - [`Remove` relation](#remove-relation)
     - [`Require` relation](#require-relation)
@@ -846,7 +846,7 @@ func (d *Debugger) AnyAny(e *am.Event) {
 
 ## Advanced Topics
 
-### State's Relations
+### Relations
 
 Each [state](#defining-states) can have 4 types of **relations**. Each relation accepts a list of [state names](https://pkg.go.dev/github.com/pancsta/asyncmachine-go@v0.7.0-pre1/pkg/machine#S).
 Relations are handled by [RelationsResolver](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#RelationsResolver),
