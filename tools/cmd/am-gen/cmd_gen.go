@@ -54,14 +54,6 @@ func main() {
 		},
 	}
 
-	// grafana
-	grafanaCmd := &cobra.Command{
-		Use: "grafana --name MyDash --ids my-mach-1,my-mach-2 --source my-service",
-		Run: genGrafana(ctx),
-	}
-	cli.AddGrafanaFlags(grafanaCmd)
-	rootCmd.AddCommand(grafanaCmd)
-
 	// states-file
 	statesCmd := &cobra.Command{
 		Use: "states-file --name MyMach --states State1,State2:multi",
@@ -69,6 +61,14 @@ func main() {
 	}
 	cli.AddStatesFlags(statesCmd)
 	rootCmd.AddCommand(statesCmd)
+
+	// grafana
+	grafanaCmd := &cobra.Command{
+		Use: "grafana --name MyDash --ids my-mach-1,my-mach-2 --source my-service",
+		Run: genGrafana(ctx),
+	}
+	cli.AddGrafanaFlags(grafanaCmd)
+	rootCmd.AddCommand(grafanaCmd)
 
 	err := rootCmd.Execute()
 	if err != nil {

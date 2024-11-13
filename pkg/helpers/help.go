@@ -1,24 +1,38 @@
-// Package helpers is a set of useful functions when working with state
+// Package helpers is a set of useful functions when working with async state
 // machines.
 package helpers
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
+	"reflect"
 	"slices"
-	"testing"
+	"strconv"
 	"time"
 
+	"github.com/failsafe-go/failsafe-go"
+	"github.com/failsafe-go/failsafe-go/retrypolicy"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	ss "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
-	"github.com/pancsta/asyncmachine-go/pkg/types"
+)
+
+const (
+	// EnvAmHealthcheck enables a healthcheck ticker for every debugged machine.
+	EnvAmHealthcheck = "AM_HEALTHCHECK"
+	// EnvAmTestRunner indicates the main test tunner, disables any telemetry.
+	EnvAmTestRunner     = "AM_TEST_RUNNER"
+	healthcheckInterval = 5 * time.Second
 )
 
 // Add1Block activates a state and waits until it becomes active. If it's a
 // multi state, it also waits for it te de-activate. Returns early if a
 // non-multi state is already active. Useful to avoid the queue.
 func Add1Block(
-	ctx context.Context, mach types.MachineApi, state string, args am.A,
+	ctx context.Context, mach am.Api, state string, args am.A,
 ) am.Result {
 	// TODO support args["sync_token"] via WhenArgs
 
@@ -52,15 +66,50 @@ func Add1Block(
 	return res
 }
 
+// Add1BlockCh is like Add1Block, but returns a channel to compose with other
+// "when" methods.
+func Add1BlockCh(
+	ctx context.Context, mach am.Api, state string, args am.A,
+) <-chan struct{} {
+	// TODO support args["sync_token"] via WhenArgs
+
+	// support for multi states
+
+	if IsMulti(mach, state) {
+		when := mach.WhenTicks(state, 2, ctx)
+		_ = mach.Add1(state, args)
+
+		return when
+	}
+
+	if mach.Is1(state) {
+		return nil
+	}
+
+	ctxWhen, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	when := mach.WhenTicks(state, 1, ctxWhen)
+	res := mach.Add1(state, args)
+	if res == am.Canceled {
+		// dispose "when" ch early
+		cancel()
+
+		return nil
+	}
+
+	return when
+}
+
 // Add1AsyncBlock adds a state from an async op and waits for another one
 // from the op to become active. Theoretically, it should work with any state
-// pair, including Multi states.
+// pair, including Multi states (assuming they remove themselves).
 func Add1AsyncBlock(
-	ctx context.Context, mach types.MachineApi, waitState string,
+	ctx context.Context, mach am.Api, waitState string,
 	addState string, args am.A,
 ) am.Result {
 	ticks := 1
-	// wait 2 ticks for multi states (assuming they remove themselves)
+	// wait 2 ticks for multi states
 	if IsMulti(mach, waitState) {
 		ticks = 2
 	}
@@ -81,19 +130,19 @@ func Add1AsyncBlock(
 	return res
 }
 
-// TODO AddSync, Add1AsyncBlock
+// TODO AddSync
 
 // IsMulti returns true if a state is a multi state.
-func IsMulti(mach types.MachineApi, state string) bool {
+func IsMulti(mach am.Api, state string) bool {
 	return mach.GetStruct()[state].Multi
 }
 
 // StatesToIndexes converts a list of state names to a list of state indexes,
 // for a given machine.
-func StatesToIndexes(mach types.MachineApi, states am.S) []int {
-	var indexes []int
-	for _, state := range states {
-		indexes = append(indexes, slices.Index(mach.StateNames(), state))
+func StatesToIndexes(allStates am.S, states am.S) []int {
+	indexes := make([]int, len(states))
+	for i, state := range states {
+		indexes[i] = slices.Index(allStates, state)
 	}
 
 	return indexes
@@ -101,41 +150,21 @@ func StatesToIndexes(mach types.MachineApi, states am.S) []int {
 
 // IndexesToStates converts a list of state indexes to a list of state names,
 // for a given machine.
-func IndexesToStates(mach types.MachineApi, indexes []int) am.S {
-	states := am.S{}
-	for _, index := range indexes {
-		states = append(states, mach.StateNames()[index])
+func IndexesToStates(allStates am.S, indexes []int) am.S {
+	states := make(am.S, len(indexes))
+	for i, idx := range indexes {
+		states[i] = allStates[idx]
 	}
 
 	return states
 }
 
-// MachDebugT sets up a machine for debugging in tests, based on the AM_DEBUG
-// env var, passed am-dbg address, log level and stdout flag.
-func MachDebugT(t *testing.T, mach *am.Machine, amDbgAddr string,
-	logLvl am.LogLevel, stdout bool,
-) {
-	if os.Getenv("AM_DEBUG") == "" {
-		return
-	}
-
-	if stdout {
-		mach.SetLoggerSimple(t.Logf, logLvl)
-	} else if amDbgAddr == "" {
-		mach.SetLoggerSimple(t.Logf, logLvl)
-
-		return
-	}
-
-	MachDebug(mach, amDbgAddr, logLvl, stdout)
-}
-
 // MachDebug sets up a machine for debugging, based on the AM_DEBUG env var,
 // passed am-dbg address, log level and stdout flag.
-func MachDebug(mach *am.Machine, amDbgAddr string, logLvl am.LogLevel,
-	stdout bool,
+func MachDebug(
+	mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout bool,
 ) {
-	if amDbgAddr == "" {
+	if IsTestRunner() {
 		return
 	}
 
@@ -145,19 +174,54 @@ func MachDebug(mach *am.Machine, amDbgAddr string, logLvl am.LogLevel,
 		mach.SetLoggerEmpty(logLvl)
 	}
 
+	if amDbgAddr == "" {
+		return
+	}
+
 	// trace to telemetry
 	err := telemetry.TransitionsToDbg(mach, amDbgAddr)
 	if err != nil {
 		panic(err)
 	}
+
+	if os.Getenv(EnvAmHealthcheck) != "" {
+		Healthcheck(mach)
+	}
 }
 
-// MachDebugEnv sets up a machine for debugging, based on env vars only.
-func MachDebugEnv(mach *am.Machine, stdout bool) {
-	amDbgAddr := os.Getenv("AM_DBG_ADDR")
+// Healthcheck adds a state to a machine every 5 seconds, until the context is
+// done. This makes sure all the logs are pushed to the telemetry server.
+func Healthcheck(mach am.Api) {
+	if !mach.Has1("Healthcheck") {
+		return
+	}
+
+	go func() {
+		t := time.NewTicker(healthcheckInterval)
+		for {
+			select {
+			case <-t.C:
+				mach.Add1(ss.BasicStates.Healthcheck, nil)
+			case <-mach.Ctx().Done():
+				t.Stop()
+			}
+		}
+	}()
+}
+
+// MachDebugEnv sets up a machine for debugging, based on env vars only:
+// AM_DBG_ADDR, AM_LOG, and AM_DEBUG. This function should be called right
+// after the machine is created, to catch all the log entries.
+func MachDebugEnv(mach am.Api) {
+	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
 	logLvl := am.EnvLogLevel("")
+	stdout := os.Getenv(am.EnvAmDebug) == "2"
+
 	MachDebug(mach, amDbgAddr, logLvl, stdout)
 }
+
+// TODO StableWhen(dur, states, ctx) - like When, but makes sure the state is
+// stable for the duration.
 
 // NewReqAdd creates a new failsafe request to add states to a machine. See
 // MutRequest and NewMutRequest for more info.
@@ -541,3 +605,172 @@ func ExecAndClose(fn func()) <-chan struct{} {
 
 	return ch
 }
+
+// EnableDebugging sets env vars for debugging tested machines with am-dbg on
+// port 6831.
+func EnableDebugging(stdout bool) {
+	if stdout {
+		_ = os.Setenv(am.EnvAmDebug, "2")
+	} else {
+		_ = os.Setenv(am.EnvAmDebug, "1")
+	}
+	_ = os.Setenv(telemetry.EnvAmDbgAddr, "localhost:6831")
+	_ = os.Setenv(am.EnvAmLog, "2")
+	// _ = os.Setenv(EnvAmHealthcheck, "1")
+}
+
+// SetLogLevel sets AM_LOG env var to the passed log level. It will affect all
+// future state machines using MachDebugEnv.
+func SetLogLevel(level am.LogLevel) {
+	_ = os.Setenv(am.EnvAmLog, strconv.Itoa(int(level)))
+}
+
+// Implements checks is statesChecked implement statesNeeded. It's an equivalent
+// of Machine.Has(), but for slices of state names, and with better error msgs.
+func Implements(statesChecked, statesNeeded am.S) error {
+	for _, state := range statesNeeded {
+		if !slices.Contains(statesChecked, state) {
+			return errors.New("missing state: " + state)
+		}
+	}
+
+	return nil
+}
+
+// ArgsToLogMap converts an [A] (arguments) struct to a map of strings using
+// `log` tags as keys, and their cased string values.
+func ArgsToLogMap(s interface{}) map[string]string {
+	result := make(map[string]string)
+	val := reflect.ValueOf(s).Elem()
+	typ := reflect.TypeOf(s).Elem()
+
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		tag := typ.Field(i).Tag.Get("log")
+
+		if tag != "" {
+			v, _ := field.Interface().(string)
+			if v == "" {
+				continue
+			}
+			result[tag] = field.Interface().(string)
+		}
+	}
+
+	return result
+}
+
+// ArgsToArgs converts [A] (arguments) into an overlapping [A]. Useful for
+// removing fields which can't be passed over RPC, and back. Both params should
+// be pointers to struct and share at least one field.
+func ArgsToArgs[T any](src interface{}, dest T) T {
+	srcVal := reflect.ValueOf(src).Elem()
+	destVal := reflect.ValueOf(dest).Elem()
+
+	for i := 0; i < srcVal.NumField(); i++ {
+		srcField := srcVal.Field(i)
+		destField := destVal.FieldByName(srcVal.Type().Field(i).Name)
+
+		if destField.IsValid() && destField.CanSet() {
+			destField.Set(srcField)
+		}
+	}
+
+	return dest
+}
+
+// IsDebug returns true if the process is in simple debug mode.
+func IsDebug() bool {
+	return os.Getenv(am.EnvAmDebug) != "" && !IsTestRunner()
+}
+
+// IsTelemetry returns true if the process is in telemetry debug mode.
+func IsTelemetry() bool {
+	return os.Getenv(telemetry.EnvAmDbgAddr) != "" && !IsTestRunner()
+}
+
+func IsTestRunner() bool {
+	return os.Getenv(EnvAmTestRunner) != ""
+}
+
+// GroupWhen1 will create wait channels for the same state in a group of
+// machines, or return a [am.ErrStateMissing].
+func GroupWhen1(
+	machs []am.Api, state string, ctx context.Context,
+) ([]<-chan struct{}, error) {
+	// validate states
+	for _, mach := range machs {
+		if !mach.Has1(state) {
+			return nil, fmt.Errorf(
+				"%w: %s in machine %s", am.ErrStateMissing, state, mach.Id())
+		}
+	}
+
+	// create chans
+	var chans []<-chan struct{}
+	for _, mach := range machs {
+		chans = append(chans, mach.When1(state, ctx))
+	}
+
+	return chans, nil
+}
+
+// RemoveMulti creates a final handler which removes a multi state from a
+// machine. Useful to avoid FooState-Remove1-Foo repetition.
+func RemoveMulti(mach am.Api, state string) am.HandlerFinal {
+	return func(_ *am.Event) {
+		mach.Remove1(state, nil)
+	}
+}
+
+// Toggle adds or removes a state based on its current state.
+func Toggle(mach am.Api, state string, args am.A) am.Result {
+	if mach.Is1(state) {
+		return mach.Remove1(state, args)
+	}
+
+	return mach.Add1(state, args)
+}
+
+// GetTransitionStates will extract added, removed, and touched states from
+// transition's clock values and steps. Requires a state names index.
+func GetTransitionStates(
+	tx *am.Transition, index am.S,
+) (added am.S, removed am.S, touched am.S) {
+	before := tx.TimeBefore
+	after := tx.TimeAfter
+
+	is := func(time am.Time, i int) bool {
+		return time != nil && am.IsActiveTick(time[i])
+	}
+
+	for i, name := range index {
+		if is(before, i) && !is(after, i) {
+			removed = append(removed, name)
+		} else if !is(before, i) && is(after, i) {
+			added = append(added, name)
+		} else if before != nil && before[i] != after[i] {
+			// treat multi states as added
+			added = append(added, name)
+		}
+	}
+
+	// touched
+	touched = am.S{}
+	for _, step := range tx.Steps {
+		if step.FromState != "" {
+			touched = append(touched, step.FromState)
+		}
+		if step.ToState != "" {
+			touched = append(touched, step.ToState)
+		}
+	}
+
+	return added, removed, touched
+}
+
+// TODO
+// func Batch(input <-chan any, state string, arg string, window time.Duration,
+//   maxElement int) {
+//
+// }

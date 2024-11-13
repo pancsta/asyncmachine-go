@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
@@ -51,13 +51,14 @@ func (h *History) TransitionEnd(tx *am.Transition) {
 	}
 	// remember this mutation, remove Args
 	h.Entries = append(h.Entries, Entry{
-		CalledStates: amh.StatesToIndexes(tx.Machine, tx.Mutation.CalledStates),
-		Type:         tx.Mutation.Type,
-		Auto:         tx.Mutation.Auto,
+		CalledStates: amhelp.StatesToIndexes(tx.Machine.StateNames(),
+			tx.Mutation.CalledStates),
+		Type: tx.Mutation.Type,
+		Auto: tx.Mutation.Auto,
 	})
 	h.mx.Lock()
 	// update last seen time
-	for _, name := range tx.TargetStates {
+	for _, name := range tx.TargetStates() {
 		if !slices.Contains(h.States, name) {
 			continue
 		}
@@ -166,7 +167,7 @@ func Track(mach *am.Machine, states am.S, maxEntries int) *History {
 			history.LastActivated[name] = time.Now()
 		}
 	}
-	mach.Tracers = append(mach.Tracers, history)
+	mach.BindTracer(history)
 
 	return history
 }

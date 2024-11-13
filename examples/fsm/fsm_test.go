@@ -25,10 +25,21 @@ import (
 	"testing"
 	"time"
 
-	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-
 	"github.com/stretchr/testify/assert"
+
+	"github.com/joho/godotenv"
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
+
+func init() {
+	// load .env
+	_ = godotenv.Load()
+
+	// am-dbg is required for debugging, go run it
+	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
+	// amhelp.EnableDebugging(false)
+	// amhelp.SetLogLevel(am.LogChanges)
+}
 
 // state enum pkg
 

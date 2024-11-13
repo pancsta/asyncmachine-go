@@ -1,0 +1,34 @@
+assets*
+
+# Ignore the .git directory
+.git
+
+# Ignore the node_modules directory
+node_modules
+
+# Ignore temporary files
+*.log
+*.tmp
+
+# Ignore build output directories
+dist
+build
+
+# Ignore Dockerfile and docker-compose.yml
+Dockerfile
+docker-compose.yml
+
+# Ignore Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Ignore IDE/editor specific files
+.vscode
+.idea
+*.swp
+*~

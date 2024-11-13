@@ -1,18 +1,19 @@
+// TODO handle-bound tests
+
 package rpc
 
 import (
 	"context"
 	"os"
-	"regexp"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 
-	ss "github.com/pancsta/asyncmachine-go/internal/testing/states"
+	sstest "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
+	"github.com/pancsta/asyncmachine-go/pkg/helpers"
+	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/types"
 )
 
 type S = am.S
@@ -24,20 +25,20 @@ type (
 )
 
 func init() {
-	if os.Getenv("AM_TEST_DEBUG") != "" {
-		utils.EnableTestDebug()
+	if os.Getenv(am.EnvAmTestDebug) != "" {
+		helpers.EnableDebugging(true)
 	}
 }
 
 func TestSingleStateActive(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRels(t, nil)
-	_, _, s, c := NewTest(t, ctx, m, nil, nil)
+	m := utils.NewNoRelsRpcWorker(t, nil)
+	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -46,18 +47,18 @@ func TestSingleStateActive(t *testing.T) {
 	// assert
 	assertStates(t, c.Worker, S{"A"})
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestMultipleStatesActive(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRels(t, nil)
-	_, _, s, c := NewTest(t, ctx, m, nil, nil)
+	m := utils.NewNoRelsRpcWorker(t, nil)
+	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -67,36 +68,35 @@ func TestMultipleStatesActive(t *testing.T) {
 	// assert
 	assertStates(t, c.Worker, S{"A", "B"})
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestExposeAllStateNames(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRels(t, S{"A"})
-	_, _, s, c := NewTest(t, ctx, m, nil, nil)
+	m := utils.NewNoRelsRpcWorker(t, S{"A"})
+	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
 	// assert
-	assert.ElementsMatch(t, S{"A", "B", "C", "D", "Exception"},
-		w.StateNames())
+	assert.Subset(t, w.StateNames(), S{"A", "B", "C", "D"})
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestStateSet(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRels(t, S{"A"})
-	_, _, s, c := NewTest(t, ctx, m, nil, nil)
+	m := utils.NewNoRelsRpcWorker(t, S{"A"})
+	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -105,18 +105,18 @@ func TestStateSet(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"B"})
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestStateAdd(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRels(t, S{"A"})
-	_, _, s, c := NewTest(t, ctx, m, nil, nil)
+	m := utils.NewNoRelsRpcWorker(t, S{"A"})
+	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -125,18 +125,18 @@ func TestStateAdd(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"A", "B"})
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestStateRemove(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRels(t, S{"B", "C"})
-	_, _, s, c := NewTest(t, ctx, m, nil, nil)
+	m := utils.NewNoRelsRpcWorker(t, S{"B", "C"})
+	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 
 	// test
 	c.Worker.Remove(S{"C"}, nil)
@@ -145,45 +145,45 @@ func TestStateRemove(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"B"})
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestRemoveRelation(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// relations
-	m := utils.NewNoRels(t, S{"D"})
+	m := utils.NewNoRelsRpcWorker(t, S{"D"})
 	rels := m.GetStruct()
 	rels["C"] = State{Remove: S{"D"}}
-	_ = m.SetStruct(rels, ss.Names)
-	_, _, s, c := NewTest(t, ctx, m, nil, nil)
+	_ = m.SetStruct(rels, sstest.Names)
+	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
 	// C deactivates D
 	w.Add(S{"C"}, nil)
 	assertStates(t, w, S{"C"})
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestRemoveRelationSimultaneous(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRels(t, S{"D"})
+	m := utils.NewNoRelsRpcWorker(t, S{"D"})
 
 	// relations
 	rels := m.GetStruct()
 	rels["C"] = State{Remove: S{"D"}}
-	_ = m.SetStruct(rels, ss.Names)
-	_, _, s, c := NewTest(t, ctx, m, nil, nil)
+	_ = m.SetStruct(rels, sstest.Names)
+	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -193,7 +193,7 @@ func TestRemoveRelationSimultaneous(t *testing.T) {
 	assert.Equal(t, am.Canceled, r)
 	assertStates(t, w, S{"D"})
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestRemoveRelationCrossBlocking(t *testing.T) {
@@ -243,52 +243,56 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 		test := tests[i]
 
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+			// t.Parallel()
 
 			// init
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			m := utils.NewNoRels(t, S{"D"})
+			m := utils.NewNoRelsRpcWorker(t, S{"D"})
 			rels := m.GetStruct()
 			// C and D are cross blocking each other via Remove
 			rels["C"] = State{Remove: S{"D"}}
 			rels["D"] = State{Remove: S{"C"}}
-			_ = m.SetStruct(rels, ss.Names)
-			_, _, s, c := NewTest(t, ctx, m, nil, nil)
+			_ = m.SetStruct(rels, sstest.Names)
+			_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 			w := c.Worker
 
 			// test
 			test.fn(t, w)
 
 			// dispose
-			disposeTest(c, s)
+			disposeTest(t, c, s, true)
 		})
 	}
 }
 
-func disposeTest(c *Client, s *Server) {
+func disposeTest(t *testing.T, c *Client, s *Server, checkErrs bool) {
+	if checkErrs {
+		amhelpt.AssertNoErrEver(t, c.Mach)
+		amhelpt.AssertNoErrEver(t, s.Mach)
+	}
 	c.Stop(context.TODO(), true)
 	<-c.Mach.WhenDisposed()
 	s.Stop(true)
 }
 
 func TestAddRelation(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	m := utils.NewNoRels(t, nil)
+	m := utils.NewNoRelsRpcWorker(t, nil)
 	rels := m.GetStruct()
 	rels["A"] = State{Remove: S{"D"}}
 	rels["C"] = State{Add: S{"D"}}
-	_ = m.SetStruct(rels, ss.Names)
+	_ = m.SetStruct(rels, sstest.Names)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, m, nil, nil)
+	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -300,24 +304,24 @@ func TestAddRelation(t *testing.T) {
 	assertStates(t, w, S{"A", "C"}, "state should be skipped if "+
 		"blocked at the same time")
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestRequireRelation(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, nil)
+	mach := utils.NewNoRelsRpcWorker(t, nil)
 	rels := mach.GetStruct()
 	rels["A"] = State{Require: S{"D"}}
-	_ = mach.SetStruct(rels, ss.Names)
+	_ = mach.SetStruct(rels, sstest.Names)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -326,24 +330,24 @@ func TestRequireRelation(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"C", "D"})
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, S{"A"})
+	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
 	rels := mach.GetStruct()
 	rels["C"] = State{Require: S{"D"}}
-	_ = mach.SetStruct(rels, ss.Names)
+	_ = mach.SetStruct(rels, sstest.Names)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -352,105 +356,27 @@ func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"A"}, "target state shouldnt be activated")
 
-	disposeTest(c, s)
-}
-
-// TestQueue
-type TestQueueHandlers struct{}
-
-func (h *TestQueueHandlers) BEnter(e *am.Event) bool {
-	e.Machine.Add(S{"C"}, nil)
-	return true
-}
-
-// TestNegotiationCancel
-type TestNegotiationCancelHandlers struct{}
-
-func (h *TestNegotiationCancelHandlers) DEnter(_ *am.Event) bool {
-	return false
-}
-
-func TestNegotiationCancel(t *testing.T) {
-	tests := []struct {
-		name string
-		fn   func(t *testing.T, m types.MachineApi) am.Result
-		log  *regexp.Regexp
-	}{
-		{
-			"using set",
-			func(t *testing.T, m types.MachineApi) am.Result {
-				// m = (A)
-				// DEnter will cancel the transition
-				return m.Set(S{"D"}, nil)
-			},
-			regexp.MustCompile(`\[cancel] \(D\) by DEnter`),
-		},
-		{
-			"using add",
-			func(t *testing.T, m types.MachineApi) am.Result {
-				// m = (A)
-				// DEnter will cancel the transition
-				return m.Add(S{"D"}, nil)
-			},
-			regexp.MustCompile(`\[cancel] \(D A\) by DEnter`),
-		},
-	}
-
-	for i := range tests {
-		test := tests[i]
-
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			// init
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
-			// machine
-			mach := utils.NewNoRels(t, S{"A"})
-			rels := mach.GetStruct()
-			rels["C"] = State{Require: S{"D"}}
-			_ = mach.SetStruct(rels, ss.Names)
-
-			// bind handlers
-			err := mach.BindHandlers(&TestNegotiationCancelHandlers{})
-			assert.NoError(t, err)
-
-			// worker
-			_, _, s, c := NewTest(t, ctx, mach, nil, nil)
-			w := c.Worker
-
-			// test
-			result := test.fn(t, w)
-
-			// assert
-			assert.Equal(t, am.Canceled, result, "transition should be canceled")
-			assertStates(t, w, S{"A"}, "state shouldnt be changed")
-
-			// dispose
-			disposeTest(c, s)
-		})
-	}
+	disposeTest(t, c, s, true)
 }
 
 func TestAutoStates(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, nil)
+	mach := utils.NewNoRelsRpcWorker(t, nil)
 	rels := mach.GetStruct()
 	rels["B"] = State{
 		Auto:    true,
 		Require: S{"A"},
 	}
-	_ = mach.SetStruct(rels, ss.Names)
+	_ = mach.SetStruct(rels, sstest.Names)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -460,78 +386,28 @@ func TestAutoStates(t *testing.T) {
 	assert.Equal(t, am.Executed, result, "transition should be executed")
 	assertStates(t, w, S{"A", "B"}, "dependant auto state should be set")
 
-	disposeTest(c, s)
-}
-
-// TestNegotiationRemove
-type TestNegotiationRemoveHandlers struct{}
-
-func (h *TestNegotiationRemoveHandlers) AExit(_ *am.Event) bool {
-	return false
-}
-
-func TestNegotiationRemove(t *testing.T) {
-	t.Parallel()
-
-	// init
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// machine
-	mach := utils.NewNoRels(t, S{"A"})
-	err := mach.BindHandlers(&TestNegotiationRemoveHandlers{})
-	assert.NoError(t, err)
-
-	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
-	w := c.Worker
-
-	// test
-	// AExit will cancel the transition
-	result := w.Remove(S{"A"}, nil)
-
-	// assert
-	assert.Equal(t, am.Canceled, result, "transition should be canceled")
-	assertStates(t, w, S{"A"}, "state shouldnt be changed")
-
-	disposeTest(c, s)
-}
-
-// TestHandlerStateInfo
-type TestHandlerStateInfoHandlers struct{}
-
-func (h *TestHandlerStateInfoHandlers) DEnter(e *am.Event) {
-	t := e.Args["t"].(*testing.T)
-	assert.ElementsMatch(t, S{"A"}, e.Machine.ActiveStates(),
-		"provide the previous states of the transition")
-	assert.ElementsMatch(t, S{"D"}, e.Transition().TargetStates,
-		"provide the target states of the transition")
-	assert.True(t, e.Mutation().StateWasCalled("D"),
-		"provide the called states of the transition")
-	tStr := "D -> requested\nD -> set\nA -> remove"
-	assert.Equal(t, tStr, e.Transition().String(),
-		"provide a string version of the transition")
+	disposeTest(t, c, s, true)
 }
 
 func TestSwitch(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, S{"A"})
+	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
 	rels := mach.GetStruct()
 	rels["C"] = State{Require: S{"D"}}
-	_ = mach.SetStruct(rels, ss.Names)
+	_ = mach.SetStruct(rels, sstest.Names)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	caseA := false
-	switch w.Switch("A", "B") {
+	switch w.Switch(S{"A", "B"}) {
 	case "A":
 		caseA = true
 	case "B":
@@ -539,119 +415,32 @@ func TestSwitch(t *testing.T) {
 	assert.Equal(t, true, caseA)
 
 	caseDef := false
-	switch w.Switch("C", "B") {
+	switch w.Switch(S{"C", "B"}) {
 	case "B":
 	default:
 		caseDef = true
 	}
 	assert.Equal(t, true, caseDef)
 
-	disposeTest(c, s)
-}
-
-// TestHandlerArgs
-type TestHandlerArgsHandlers struct{}
-
-func (h *TestHandlerArgsHandlers) BEnter(e *am.Event) {
-	t := e.Args["t"].(*testing.T)
-	foo := e.Args["foo"].(string)
-	assert.Equal(t, "bar", foo)
-}
-
-func (h *TestHandlerArgsHandlers) AExit(e *am.Event) {
-	t := e.Args["t"].(*testing.T)
-	foo := e.Args["foo"].(string)
-	assert.Equal(t, "bar", foo)
-}
-
-func (h *TestHandlerArgsHandlers) CState(e *am.Event) {
-	t := e.Args["t"].(*testing.T)
-	foo := e.Args["foo"].(string)
-	assert.Equal(t, "bar", foo)
-}
-
-func TestHandlerArgs(t *testing.T) {
-	t.Parallel()
-
-	// init
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// machine
-	mach := utils.NewNoRels(t, S{"A"})
-	err := mach.BindHandlers(&TestHandlerArgsHandlers{})
-	assert.NoError(t, err)
-
-	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
-	w := c.Worker
-
-	// test
-	// handlers will assert
-	w.Add(S{"B"}, am.A{"t": t, "foo": "bar"})
-	w.Remove(S{"A"}, am.A{"t": t, "foo": "bar"})
-	w.Set(S{"C"}, am.A{"t": t, "foo": "bar"})
-
-	disposeTest(c, s)
-}
-
-// TestSelfHandlersCancellable
-type TestSelfHandlersCancellableHandlers struct {
-	result int
-}
-
-func (h *TestSelfHandlersCancellableHandlers) AA(e *am.Event) bool {
-	AACounter := e.Args["AACounter"].(int)
-	h.result = AACounter + 1
-	return false
-}
-
-func TestSelfHandlersCancellable(t *testing.T) {
-	t.Parallel()
-
-	// init
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// machine
-	mach := utils.NewNoRels(t, S{"A"})
-	handlers := &TestSelfHandlersCancellableHandlers{}
-	err := mach.BindHandlers(handlers)
-	assert.NoError(t, err)
-
-	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
-	w := c.Worker
-
-	// bind handlers
-
-	// test
-	// handlers will assert
-	AACounter := 1
-	w.Set(S{"A", "B"}, am.A{"AACounter": &AACounter})
-
-	// assert
-	assert.Equal(t, 2, handlers.result, "AA call count")
-
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestRegressionRemoveCrossBlockedByImplied(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomStates(t, Struct{
+	mach := utils.NewCustomRpcWorker(t, Struct{
 		"A": {Remove: S{"B"}},
 		"B": {Remove: S{"A"}},
 		"Z": {Add: S{"B"}},
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -660,25 +449,25 @@ func TestRegressionRemoveCrossBlockedByImplied(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"Z", "B"})
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestRegressionImpliedBlockByBeingRemoved(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomStates(t, Struct{
+	mach := utils.NewCustomRpcWorker(t, Struct{
 		"Wet":   {Require: S{"Water"}},
 		"Dry":   {Remove: S{"Wet"}},
 		"Water": {Add: S{"Wet"}, Remove: S{"Dry"}},
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -688,64 +477,21 @@ func TestRegressionImpliedBlockByBeingRemoved(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"Water", "Wet"})
 
-	disposeTest(c, s)
-}
-
-// TestWhen
-type TestWhenHandlers struct{}
-
-func (h *TestWhenHandlers) AState(e *am.Event) {
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		e.Machine.Add(S{"B"}, nil)
-		time.Sleep(10 * time.Millisecond)
-		// this triggers When
-		e.Machine.Add(S{"C"}, nil)
-	}()
-}
-
-func TestWhen(t *testing.T) {
-	t.Parallel()
-
-	// init
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// machine
-	mach := utils.NewNoRels(t, nil)
-	// bind handlers
-	err := mach.BindHandlers(&TestWhenHandlers{})
-	assert.NoError(t, err)
-
-	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
-	w := c.Worker
-
-	// test
-	w.Set(S{"A"}, nil)
-	<-w.When(S{"B", "C"}, nil)
-
-	// assert
-	assertStates(t, w, S{"A", "B", "C"})
-
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestWhen2(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, nil)
-	// bind handlers
-	err := mach.BindHandlers(&TestWhenHandlers{})
-	assert.NoError(t, err)
+	mach := utils.NewNoRelsRpcWorker(t, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -774,20 +520,20 @@ func TestWhen2(t *testing.T) {
 	<-pass1
 	<-pass2
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestWhenActive(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, S{"A"})
+	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -796,60 +542,20 @@ func TestWhenActive(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"A"})
 
-	disposeTest(c, s)
-}
-
-// TestWhenNot
-type TestWhenNotHandlers struct{}
-
-func (h *TestWhenNotHandlers) AState(e *am.Event) {
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		e.Machine.Remove1("B", nil)
-		time.Sleep(10 * time.Millisecond)
-		e.Machine.Remove1("C", nil)
-	}()
-}
-
-func TestWhenNot(t *testing.T) {
-	t.Parallel()
-
-	// init
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// machine
-	mach := utils.NewNoRels(t, nil)
-	// bind handlers
-	err := mach.BindHandlers(&TestWhenNotHandlers{})
-	assert.NoError(t, err)
-
-	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
-	w := c.Worker
-
-	// test
-	w.Add(S{"A"}, nil)
-	<-w.WhenNot(S{"B", "C"}, nil)
-
-	// assert
-	assertStates(t, w, S{"A"})
-	assertNoException(t, w)
-
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestWhenNot2(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, S{"A", "B"})
+	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -878,20 +584,20 @@ func TestWhenNot2(t *testing.T) {
 	<-pass1
 	<-pass2
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestWhenNotActive(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, S{"A"})
+	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -900,137 +606,18 @@ func TestWhenNotActive(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"A"})
 
-	disposeTest(c, s)
-}
-
-// TestPartialNegotiationPanic
-type TestPartialNegotiationPanicHandlers struct {
-	*ExceptionHandler
-}
-
-func (h *TestPartialNegotiationPanicHandlers) BEnter(_ *am.Event) {
-	panic("BEnter panic")
-}
-
-func TestPartialNegotiationPanic(t *testing.T) {
-	t.Parallel()
-
-	// init
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// machine
-	mach := utils.NewNoRels(t, S{"A"})
-	err := mach.BindHandlers(&TestPartialNegotiationPanicHandlers{})
-	assert.NoError(t, err)
-
-	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
-	w := c.Worker
-
-	// test
-	assert.Equal(t, am.Canceled, w.Add(S{"B"}, nil))
-	// assert
-	assertStates(t, w, S{"A", "Exception"})
-
-	disposeTest(c, s)
-}
-
-// TestPartialFinalPanic
-type TestPartialFinalPanicHandlers struct {
-	*ExceptionHandler
-}
-
-func (h *TestPartialFinalPanicHandlers) BState(_ *am.Event) {
-	panic("BState panic")
-}
-
-func TestPartialFinalPanic(t *testing.T) {
-	t.Parallel()
-
-	// init
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// machine
-	mach := utils.NewNoRels(t, S{"A"})
-	err := mach.BindHandlers(&TestPartialFinalPanicHandlers{})
-	assert.NoError(t, err)
-
-	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
-	w := c.Worker
-
-	// test
-	w.Add(S{"A", "B", "C"}, nil)
-
-	// assert
-	assertStates(t, w, S{"A", "Exception"})
-
-	disposeTest(c, s)
-}
-
-// TestStateCtx
-type TestStateCtxHandlers struct {
-	*ExceptionHandler
-	t          *testing.T
-	stepCh     chan struct{}
-	callbackCh chan struct{}
-}
-
-func (h *TestStateCtxHandlers) AState(e *am.Event) {
-	stateCtx := e.Machine.NewStateCtx("A")
-	h.callbackCh = make(chan struct{})
-	go func() {
-		<-h.stepCh
-		assertStates(h.t, e.Machine, S{})
-		assert.Error(h.t, stateCtx.Err(), "state context should be canceled")
-		close(h.callbackCh)
-	}()
-}
-
-func TestStateCtx(t *testing.T) {
-	t.Parallel()
-
-	// init
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// machine
-	mach := utils.NewNoRels(t, nil)
-	handlers := &TestStateCtxHandlers{
-		stepCh: make(chan struct{}),
-		t:      t,
-	}
-	err := mach.BindHandlers(handlers)
-	assert.NoError(t, err)
-
-	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
-	w := c.Worker
-
-	// test
-	// BState will assert
-	w.Add(S{"A"}, nil)
-	w.Remove(S{"A"}, nil)
-	close(handlers.stepCh)
-	<-handlers.callbackCh
-
-	// assert
-	assertStates(t, w, S{})
-
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestPartialAuto(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, S{"A"})
+	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
 	rels := mach.GetStruct()
 	// relations
 	rels["C"] = State{
@@ -1041,10 +628,10 @@ func TestPartialAuto(t *testing.T) {
 		Auto:    true,
 		Require: S{"B"},
 	}
-	_ = mach.SetStruct(rels, ss.Names)
+	_ = mach.SetStruct(rels, sstest.Names)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -1053,24 +640,24 @@ func TestPartialAuto(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"A"})
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestTime(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, S{"A"})
+	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
 	rels := mach.GetStruct()
 	rels["B"] = State{Multi: true}
-	_ = mach.SetStruct(rels, ss.Names)
+	_ = mach.SetStruct(rels, sstest.Names)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test 1
@@ -1115,12 +702,12 @@ func TestTime(t *testing.T) {
 	assert.True(t, am.IsTimeAfter(now, before))
 	assert.False(t, am.IsTimeAfter(before, now))
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 // TODO WhenArgs
 // func TestWhenCtx(t *testing.T) {
-//	t.Parallel()
+//	// t.Parallel()
 
 // init
 //	ctx, cancel := context.WithCancel(context.Background())
@@ -1129,9 +716,9 @@ func TestTime(t *testing.T) {
 //	// machine
 //	mach := amtest.NewNoRels(t, S{"A", "B"})
 //	// worker
-//	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+//	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 //	w := c.Worker
-//	disposeTest(c, s)
+//	disposeTest(t, c, s, true)
 //
 //	// wait on 2 Whens with a step context
 //	ctxWhen, cancelWhen := context.WithCancel(context.Background())
@@ -1165,11 +752,11 @@ func TestTime(t *testing.T) {
 //	assert.Equal(t, len(w.indexWhenArgs), 0)
 //
 //	// dispose
-//	disposeTest(c, s)
+//	disposeTest(t, c, s, true)
 // }
 //
 // func TestWhenArgs(t *testing.T) {
-//	t.Parallel()
+//	// t.Parallel()
 
 // init
 //	m := NewRels(t, nil)
@@ -1202,16 +789,16 @@ func TestTime(t *testing.T) {
 // }
 
 func TestWhenTime(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, S{"A", "B"})
+	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// bind
@@ -1240,54 +827,54 @@ func TestWhenTime(t *testing.T) {
 		// pass
 	}
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestIs(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, S{"A", "B"})
+	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
 	rels := mach.GetStruct()
 	rels["B"] = State{
 		Auto:    true,
 		Require: S{"A"},
 	}
-	_ = mach.SetStruct(rels, ss.Names)
+	_ = mach.SetStruct(rels, sstest.Names)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
 	assert.True(t, w.Is(S{"A", "B"}), "A B should be active")
 	assert.False(t, w.Is(S{"A", "B", "C"}), "A B C shouldnt be active")
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestNot(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, S{"A", "B"})
+	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
 	rels := mach.GetStruct()
 	rels["B"] = State{
 		Auto:    true,
 		Require: S{"A"},
 	}
-	_ = mach.SetStruct(rels, ss.Names)
+	_ = mach.SetStruct(rels, sstest.Names)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -1295,27 +882,27 @@ func TestNot(t *testing.T) {
 	assert.False(t, w.Not(S{"A", "B", "C"}), "A B C is partially active")
 	assert.True(t, w.Not1("D"), "D is inactive")
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestAny(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, S{"A", "B"})
+	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
 	rels := mach.GetStruct()
 	rels["B"] = State{
 		Auto:    true,
 		Require: S{"A"},
 	}
-	_ = mach.SetStruct(rels, ss.Names)
+	_ = mach.SetStruct(rels, sstest.Names)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -1323,25 +910,25 @@ func TestAny(t *testing.T) {
 	assert.True(t, w.Any(S{"A", "B", "C"}, S{"A"}),
 		"A B C is partially active")
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestClock(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, nil)
+	mach := utils.NewNoRelsRpcWorker(t, nil)
 	rels := mach.GetStruct()
 	// relations
 	rels["B"] = State{Multi: true}
-	_ = mach.SetStruct(rels, ss.Names)
+	_ = mach.SetStruct(rels, sstest.Names)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test 1
@@ -1374,9 +961,9 @@ func TestClock(t *testing.T) {
 	assertStates(t, w, S{"D", "A", "B"})
 	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{3, 7, 4, 1})
 
-	assert.Equal(t, am.Clock{
+	assert.Subset(t, w.Clock(nil), am.Clock{
 		"A": 3, "B": 7, "C": 4, "D": 1, "Exception": 0,
-	}, w.Clock(nil))
+	})
 
 	assert.Equal(t, am.Clock{
 		"A": 3, "B": 7,
@@ -1384,21 +971,21 @@ func TestClock(t *testing.T) {
 
 	assert.Equal(t, uint64(3), w.Tick("A"))
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestInspect(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewRels(t, S{"A", "C"})
+	mach := utils.NewRelsRpcWorker(t, S{"A", "C"})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// (A:1 C:1)[B:0 D:0 Exception:0]
@@ -1438,7 +1025,7 @@ func TestInspect(t *testing.T) {
 		Exception:
 		  State:   false 0
 		  Multi:   true
-	
+		
 		A:
 		  State:   true 3
 		  Auto:    true
@@ -1456,31 +1043,63 @@ func TestInspect(t *testing.T) {
 		D:
 		  State:   true 1
 		  Add:     C B
-		`
+		
+		ErrProviding:
+		  State:   false 0
+		  Require: Exception
+		
+		ErrSendPayload:
+		  State:   false 0
+		  Require: Exception
+		
+		SendPayload:
+		  State:   false 0
+		  Multi:   true
+		
+		ErrNetwork:
+		  State:   false 0
+		  Require: Exception
+		
+		ErrHandlerTimeout:
+		  State:   false 0
+		  Require: Exception
+		
+		Start:
+		  State:   false 0
+		
+		Ready:
+		  State:   false 0
+		  Require: Start
+		
+		Healthcheck:
+		  State:   false 0
+	`
 	assertString(t, w, expected, nil)
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestString(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, S{"A", "B"})
+	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
 	assert.Equal(t, "(A:1 B:1)", w.String())
-	assert.Equal(t, "(A:1 B:1)[Exception:0 C:0 D:0]", w.StringAll())
+	assert.Equal(t, "(A:1 B:1) [Exception:0 C:0 D:0 ErrProviding:0"+
+		" ErrSendPayload:0 SendPayload:0 ErrNetwork:0"+
+		" ErrHandlerTimeout:0 Start:0 Ready:0 Healthcheck:0]", w.StringAll())
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 // TestNestedMutation
@@ -1498,20 +1117,20 @@ func (h *TestNestedMutationHandlers) AState(e *am.Event) {
 }
 
 func TestNestedMutation(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRels(t, nil)
+	mach := utils.NewNoRelsRpcWorker(t, nil)
 	// bind handlers
 	err := mach.BindHandlers(&TestNestedMutationHandlers{})
 	assert.NoError(t, err)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil)
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -1520,18 +1139,18 @@ func TestNestedMutation(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"A"})
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestIsClock(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRels(t, nil)
-	_, _, s, c := NewTest(t, ctx, m, nil, nil)
+	m := utils.NewNoRelsRpcWorker(t, nil)
+	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -1543,18 +1162,18 @@ func TestIsClock(t *testing.T) {
 	assert.False(t, w.IsClock(cAll))
 	assert.False(t, w.IsClock(cA))
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 func TestIsTime(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRels(t, nil)
-	_, _, s, c := NewTest(t, ctx, m, nil, nil)
+	m := utils.NewNoRelsRpcWorker(t, nil)
+	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
 	// test
@@ -1566,12 +1185,12 @@ func TestIsTime(t *testing.T) {
 	assert.False(t, w.IsTime(tA, S{"A"}))
 	assert.False(t, w.IsTime(tAll, nil))
 
-	disposeTest(c, s)
+	disposeTest(t, c, s, true)
 }
 
 // TODO
 // func TestExport(t *testing.T) {
-//	t.Parallel()
+//	// t.Parallel()
 
 // init
 //	m1 := NewNoRels(t, S{"A"})

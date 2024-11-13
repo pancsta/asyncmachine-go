@@ -1,3 +1,5 @@
+// TODO rewrite to v2
+
 package states
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -25,11 +27,11 @@ var States = am.Struct{
 
 // Groups of mutually exclusive states.
 
-//var (
+// var (
 //	GroupPlaying = S{Playing, Paused}
-//)
+// )
 
-//#region boilerplate defs
+// #region boilerplate defs
 
 // Names of all the states (pkg enum).
 
@@ -49,4 +51,4 @@ var Names = S{
 	D,
 }
 
-//#endregion
+// #endregion

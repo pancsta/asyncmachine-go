@@ -5,6 +5,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
@@ -14,7 +15,7 @@ import (
 )
 
 var (
-	dataFile       = "assets/am-dbg-sim.gob.br"
+	dataFile       = "assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br"
 	logLevel       = am.LogOps
 	logFile        = "am-dbg-video.log"
 	filterLogLevel = am.LogChanges
@@ -22,8 +23,9 @@ var (
 	startupTx      = 27
 	initialView    = "matrix"
 	playInterval   = 200 * time.Millisecond
-	debugAddr      = ""
-	stateNames     = am.S{
+	// debugAddr      = ""
+	debugAddr  = "localhost:6831"
+	stateNames = am.S{
 		"Start",
 		"IsDHT",
 		"Ready",
@@ -43,8 +45,6 @@ var (
 		"FwdToSim",
 		am.Exception,
 	}
-
-	// debugAddr = "localhost:9913"
 )
 
 func main() {
@@ -76,7 +76,9 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		DbgLogger:   cli.GetLogger(&p),
 		ServerAddr:  p.ServerAddr,
 		EnableMouse: p.EnableMouse,
-		Version:     cli.GetVersion(),
+		Version:     utils.GetVersion(),
+		ID:          "video",
+		NoGc:        true,
 	})
 	if err != nil {
 		panic(err)
@@ -95,7 +97,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 }
 
 func render(dbg *debugger.Debugger) {
-	// skipStart() // TODO
+	// SkipStart() // TODO
 
 	mach := dbg.Mach
 	// ctx := mach.Ctx
@@ -110,10 +112,9 @@ func render(dbg *debugger.Debugger) {
 	goFwd(mach, 14)
 
 	// play steps
+	mach.Add1(ss.TimelineStepsFocused, nil)
 	tx := dbg.NextTx()
 	goFwdSteps(mach, len(tx.Steps)+1)
-
-	SkipEnd() // TODO
 
 	// play steps with moving selection
 	tx = dbg.NextTx()
@@ -143,11 +144,21 @@ func render(dbg *debugger.Debugger) {
 
 	mach.Remove1(ss.StateNameSelected, nil)
 	mach.Add(am.S{ss.TreeMatrixView, ss.MatrixRain}, nil)
+	mach.Add1(ss.SidebarFocused, nil)
 	goBack(mach, 14)
 
 	// go back with clean UI
+	dbg.SetFilterLogLevel(am.LogOps)
 	mach.Add1(ss.TreeLogView, nil)
-	goBack(mach, 15)
+	goBack(mach, 14)
+
+	SkipEnd() // TODO
+	mach.Add1(ss.FilterSummaries, nil)
+	dbg.SetFilterLogLevel(am.LogChanges)
+	// TODO via state handlers, pass focused filter
+	mach.Add1(ss.FiltersFocused, am.A{"filter": debugger.FilterSummaries})
+	dbg.ProcessFilterChange(context.TODO(), false)
+	goBack(mach, 1)
 
 	// end screen
 	time.Sleep(3 * time.Second)

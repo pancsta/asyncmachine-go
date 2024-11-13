@@ -3,14 +3,15 @@ package benchmark_grpc
 import (
 	"context"
 	"errors"
-	"os"
 
-	ss "github.com/pancsta/asyncmachine-go/examples/benchmark_grpc/worker_states"
+	"github.com/pancsta/asyncmachine-go/examples/benchmark_grpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
-	ssSrv "github.com/pancsta/asyncmachine-go/pkg/rpc/states/server"
+	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 )
+
+var ss = states.WorkerStates
 
 type WorkerArpcServer struct {
 	Worker *Worker
@@ -27,18 +28,14 @@ func NewWorkerArpcServer(
 		return nil, errors.New("worker is nil")
 	}
 
-	// read env
-	amDbgAddr := os.Getenv("AM_DBG_ADDR")
-	logLvl := am.EnvLogLevel("")
-
 	// init
 	w := &WorkerArpcServer{
 		Worker: worker,
-		Mach:   am.New(ctx, ss.States, &am.Opts{ID: "worker"}),
+		Mach:   am.New(ctx, states.WorkerStruct, &am.Opts{ID: "worker"}),
 	}
 
 	// verify states and bind to methods
-	err := w.Mach.VerifyStates(ss.Names)
+	err := w.Mach.VerifyStates(ss.Names())
 	if err != nil {
 		return nil, err
 	}
@@ -60,16 +57,17 @@ func NewWorkerArpcServer(
 	w.RPC = s
 
 	// logging
+	logLvl := am.EnvLogLevel("")
 	w.RPC.Mach.SetLoggerSimple(w.log, logLvl)
 	w.Mach.SetLoggerSimple(w.log, logLvl)
 
 	// telemetry debug
-	helpers.MachDebug(w.RPC.Mach, amDbgAddr, logLvl, false)
-	helpers.MachDebug(w.Mach, amDbgAddr, logLvl, false)
+	helpers.MachDebugEnv(w.RPC.Mach)
+	helpers.MachDebugEnv(w.Mach)
 
 	// server start
 	w.RPC.Start()
-	<-w.RPC.Mach.When1(ssSrv.RpcReady, nil)
+	<-w.RPC.Mach.When1(ssrpc.ServerStates.RpcReady, nil)
 
 	return w, nil
 }

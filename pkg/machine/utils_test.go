@@ -3,6 +3,7 @@ package machine
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -11,8 +12,6 @@ import (
 )
 
 type History struct {
-	NoOpTracer
-
 	Order   []string
 	Counter map[string]int
 }
@@ -37,6 +36,10 @@ func (h *History) AA(e *Event) {
 
 func (h *History) AAny(e *Event) {
 	h.event("AAny")
+}
+
+func (h *History) AState(e *Event) {
+	h.event("AState")
 }
 
 // B
@@ -101,6 +104,10 @@ func (h *History) DEnter(e *Event) {
 	h.event("DEnter")
 }
 
+func (h *History) DState(e *Event) {
+	h.event("DState")
+}
+
 func (h *History) event(name string) {
 	h.Order = append(h.Order, name)
 
@@ -111,7 +118,7 @@ func (h *History) event(name string) {
 	h.Counter[name]++
 }
 
-func trackTransitions(mach *Machine, events S) *History {
+func trackTransitions(mach *Machine) *History {
 	history := &History{
 		Order:   []string{},
 		Counter: map[string]int{},
@@ -147,6 +154,19 @@ func assertEventCounts(t *testing.T, history *History, expected int) {
 	}
 }
 
+func assertOrder(t *testing.T, history *History, handlers []string) {
+	for i, name := range handlers {
+		if i == len(handlers)-1 {
+			break
+		}
+		next := handlers[i+1]
+		idx := slices.Index(history.Order, name)
+		nextIdx := slices.Index(history.Order, next)
+
+		assert.Greater(t, nextIdx, idx, "expected %s before %s", name, next)
+	}
+}
+
 func assertEventCountsMin(t *testing.T, history *History, expected int) {
 	// assert event counts
 	for event, count := range history.Counter {
@@ -157,7 +177,7 @@ func assertEventCountsMin(t *testing.T, history *History, expected int) {
 func captureLog(t *testing.T, m *Machine, log *string) {
 	m.SetLogLevel(LogEverything)
 	m.SetLogger(func(i LogLevel, msg string, args ...any) {
-		if os.Getenv("AM_DEBUG") != "" {
+		if os.Getenv(EnvAmDebug) != "" {
 			t.Logf(msg+"\n", args...)
 		}
 		*log += fmt.Sprintf(msg+"\n", args...)

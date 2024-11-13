@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	pb "github.com/pancsta/asyncmachine-go/examples/benchmark_grpc/worker_proto"
+	pb "github.com/pancsta/asyncmachine-go/examples/benchmark_grpc/proto"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 )
