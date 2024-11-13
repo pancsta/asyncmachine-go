@@ -15,7 +15,7 @@
     <a href="#development">Status</a> |
     <a href="#development">Dev</a> |
     <a href="#development">FAQ</a> |
-    <a href="#changelog">Changes</a>
+    <a href="#changes">Changes</a>
     <br />
 </div>
 
@@ -228,13 +228,14 @@ type WorkerStatesDef struct {
 }
 ```
 
-All examples and benchmarks can be found in [/examples](/examples/README.md).
+All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 
 ## Getting Started
 
 [`/pkg/machine`](pkg/machine/README.md) is a mandatory ready, while [`/pkg/node`](pkg/node/README.md) is the most
-interesting one. [/examples](/examples/README.md) and the [/docs/manual.md](/docs/manual.md) are good for a general grasp, while
-[/docs/diagrams.md](/docs/diagrams.md) go deeper into implementation details. Reading tests is always a good idea.
+interesting one. Examples in [`/examples`](/examples/README.md) and [`/docs/manual.md`](/docs/manual.md) are good
+for a general grasp, while [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details. Reading tests
+is always a good idea.
 
 ## Packages
 

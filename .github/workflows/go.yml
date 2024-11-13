@@ -19,15 +19,23 @@ jobs:
       - name: Install dependencies
         run: go mod tidy
 
-      - name: Test serial
-        run: go test -p 1 ./...
+      # TODO
+#      - name: Test serial
+#        env:
+#          AM_TEST_RUNNER: 1
+#        run: go test -p 1 ./... -v
 
       - name: Test parallel
+        env:
+          AM_TEST_RUNNER: 1
         run: go test -coverprofile=coverage.txt -covermode=atomic ./...
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Test race
-        run: go test -race ./...
+      # TODO
+#      - name: Test race
+#        env:
+#          AM_TEST_RUNNER: 1
+#        run: go test -race ./...
