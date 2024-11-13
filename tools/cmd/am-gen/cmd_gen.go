@@ -62,6 +62,14 @@ func main() {
 	cli.AddGrafanaFlags(grafanaCmd)
 	rootCmd.AddCommand(grafanaCmd)
 
+	// states-file
+	statesCmd := &cobra.Command{
+		Use: "states-file --name MyMach --states State1,State2:multi",
+		Run: genStatesFile(ctx),
+	}
+	cli.AddStatesFlags(statesCmd)
+	rootCmd.AddCommand(statesCmd)
+
 	err := rootCmd.Execute()
 	if err != nil {
 		fmt.Println(err)
@@ -88,6 +96,45 @@ func genGrafana(ctx context.Context) func(cmd *cobra.Command, args []string) {
 			}
 		} else {
 			fmt.Println(builder.MarshalIndentJSON())
+		}
+	}
+}
+
+func genStatesFile(ctx context.Context) func(
+	cmd *cobra.Command, args []string,
+) {
+	return func(cmd *cobra.Command, args []string) {
+		params := cli.ParseSFParams(cmd, args)
+		name := fmt.Sprintf("ss_%s.go", camelToSnake(params.Name))
+
+		if !fileExists(name) || params.Force {
+
+			// generate
+			gen, err := generator.NewSFGenerator(ctx, params)
+			if err != nil {
+				panic(err)
+			}
+
+			// save ss_
+			content := []byte(gen.Output())
+			err = os.WriteFile(name, content, 0666)
+			if err != nil {
+				panic(err)
+			}
+			fmt.Printf("Generated %s\n", name)
+
+			// save utils
+			content = []byte(generator.GenUtilsFile())
+			err = os.WriteFile("states_utils.go", content, 0666)
+			if err != nil {
+				panic(err)
+			}
+			fmt.Println("Generated states_utils.go")
+
+		} else {
+			fmt.Printf("Error: file %s already exists, delete it or use --force\n",
+				name)
+			os.Exit(1)
 		}
 	}
 }
