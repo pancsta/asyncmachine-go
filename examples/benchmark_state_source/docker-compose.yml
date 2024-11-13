@@ -1,0 +1,207 @@
+services:
+
+  # LEVEL 0
+
+  root:
+    build:
+      # TODO remove go.mod rewrite
+#      context: ../..
+      context: ../../..
+      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64MB
+        reservations:
+          cpus: '0.1'
+          memory: 64MB
+    environment:
+      - TST_ADDR=:19700
+      - TST_HTTP_ADDR=:18700
+
+  # LEVEL 1
+
+  rep-1:
+    build:
+      # TODO remove go.mod rewrite
+      context: ../../..
+      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64MB
+        reservations:
+          cpus: '0.1'
+          memory: 64MB
+    environment:
+      - TST_ADDR=:19700
+      - TST_HTTP_ADDR=:18700
+    depends_on:
+      - root
+
+  rep-2:
+    build:
+      # TODO remove go.mod rewrite
+      context: ../../..
+      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64MB
+        reservations:
+          cpus: '0.1'
+          memory: 64MB
+    environment:
+      - TST_ADDR=:19700
+      - TST_HTTP_ADDR=:18700
+    depends_on:
+      - root
+
+  # LEVEL 2
+
+  rep-1-1:
+    build:
+      # TODO remove go.mod rewrite
+      context: ../../..
+      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64MB
+        reservations:
+          cpus: '0.1'
+          memory: 64MB
+    environment:
+      - TST_ADDR=:19700
+      - TST_HTTP_ADDR=:18700
+    depends_on:
+      - rep-1
+
+  rep-1-2:
+    build:
+      # TODO remove go.mod rewrite
+      context: ../../..
+      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64MB
+        reservations:
+          cpus: '0.1'
+          memory: 64MB
+    environment:
+      - TST_ADDR=:19700
+      - TST_HTTP_ADDR=:18700
+    depends_on:
+      - rep-1
+
+  rep-1-3:
+    build:
+      # TODO remove go.mod rewrite
+      context: ../../..
+      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64MB
+        reservations:
+          cpus: '0.1'
+          memory: 64MB
+    environment:
+      - TST_ADDR=:19700
+      - TST_HTTP_ADDR=:18700
+    depends_on:
+      - rep-1
+
+  rep-2-1:
+    build:
+      # TODO remove go.mod rewrite
+      context: ../../..
+      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64MB
+        reservations:
+          cpus: '0.1'
+          memory: 64MB
+    environment:
+      - TST_ADDR=:19700
+      - TST_HTTP_ADDR=:18700
+    depends_on:
+      - rep-2
+
+  rep-2-2:
+    build:
+      # TODO remove go.mod rewrite
+      context: ../../..
+      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64MB
+        reservations:
+          cpus: '0.1'
+          memory: 64MB
+    environment:
+      - TST_ADDR=:19700
+      - TST_HTTP_ADDR=:18700
+    depends_on:
+      - rep-2
+
+  rep-2-3:
+    build:
+      # TODO remove go.mod rewrite
+      context: ../../..
+      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64MB
+        reservations:
+          cpus: '0.1'
+          memory: 64MB
+    environment:
+      - TST_ADDR=:19700
+      - TST_HTTP_ADDR=:18700
+    depends_on:
+      - rep-2
+
+  # BENCHMARK
+
+  caddy:
+    image: caddy:latest
+    depends_on:
+      - root
+
+      - rep-1
+      - rep-2
+
+      - rep-1-1
+      - rep-1-2
+      - rep-1-3
+
+      - rep-2-1
+      - rep-2-2
+      - rep-2-3
+    ports:
+      - "18700:80"
+    volumes:
+      - ./bench/Caddyfile:/etc/caddy/Caddyfile
+
+  bench:
+    build:
+      context: ./bench
+    volumes:
+      - ./bench/go-wrk.sh:/app/go-wrk.sh
+    depends_on:
+      - caddy

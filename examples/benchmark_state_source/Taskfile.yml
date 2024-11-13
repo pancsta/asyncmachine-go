@@ -1,0 +1,37 @@
+version: '3'
+
+tasks:
+
+  start:
+    cmds:
+      - cd bench && ln -sfn Caddyfile-root Caddyfile
+      - docker-compose up --detach --force-recreate --build
+      - docker-compose stop bench
+
+  stop:
+    cmd: docker-compose down
+
+  bench:
+    cmds:
+      - cd bench && ln -sfn Caddyfile-root Caddyfile
+      - docker-compose restart caddy bench
+      - sleep 25
+      - task: logs
+
+      - cd bench && ln -sfn Caddyfile-root-2 Caddyfile
+      - docker-compose restart caddy bench
+      - sleep 25
+      - task: logs
+
+      - cd bench && ln -sfn Caddyfile-root-2-4 Caddyfile
+      - docker-compose restart caddy bench
+      - sleep 25
+      - task: logs
+
+      - cd bench && ln -sfn Caddyfile-root-2-6 Caddyfile
+      - docker-compose restart caddy bench
+      - sleep 25
+      - task: logs
+
+  logs:
+    cmd: docker-compose logs --tail 22 bench
