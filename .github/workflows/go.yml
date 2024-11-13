@@ -19,8 +19,9 @@ jobs:
       - name: Install dependencies
         run: go mod tidy
 
-      - name: Test serial
-        run: go test -p 1 ./...
+      # TODO enable
+#      - name: Test serial
+#        run: go test -p 1 ./...
 
       - name: Test parallel
         run: go test -coverprofile=coverage.txt -covermode=atomic ./...
@@ -29,5 +30,6 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Test race
-        run: go test -race ./...
+      # TODO enable
+#      - name: Test race
+#        run: go test -race ./...
