@@ -1125,7 +1125,13 @@ func (m *Machine) NewStateCtx(state string) context.Context {
 
 	// TODO handle cancelation while parsing the queue
 	// TODO include current clocks as context values
-	stateCtx, cancel := context.WithCancel(m.Ctx)
+
+	v := CtxValue{
+		Id:    m.id,
+		State: state,
+		Tick:  m.clock[state],
+	}
+	stateCtx, cancel := context.WithCancel(context.WithValue(m.ctx, CtxKey, v))
 
 	// close early
 	if !m.is(S{state}) {
