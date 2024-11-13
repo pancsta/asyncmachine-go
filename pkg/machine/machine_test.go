@@ -2042,13 +2042,15 @@ type TestHandlerTimeoutHandlers struct {
 
 func (h *TestHandlerTimeoutHandlers) AState(e *Event) {
 	// wait longer then the timeout
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 }
 
 func TestHandlerTimeout(t *testing.T) {
+	os.Setenv("AM_DEBUG", "1")
+
 	// init
 	m := NewNoRels(t, nil)
-	m.HandlerTimeout = 1 * time.Millisecond
+	m.HandlerTimeout = 450 * time.Millisecond
 
 	// bind handlers
 	err := m.BindHandlers(&TestHandlerTimeoutHandlers{})

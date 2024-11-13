@@ -48,6 +48,19 @@ type State struct {
 // Struct is a map of state names to state definitions.
 type Struct = map[string]State
 
+// Context
+
+type (
+	CtxKeyName struct{}
+	CtxValue   struct {
+		Id    string
+		State string
+		Tick  uint64
+	}
+)
+
+var CtxKey = &CtxKeyName{}
+
 // ///// ///// /////
 
 // ///// OPTIONS
@@ -491,8 +504,13 @@ type (
 	// bindings
 	IndexWhenArgs map[string][]*WhenArgsBinding
 	// IndexStateCtx is a map of (single) state names to a context cancel function
-	IndexStateCtx map[string][]context.CancelFunc
+	IndexStateCtx map[string]*CtxBinding
 )
+
+type CtxBinding struct {
+	Ctx    context.Context
+	Cancel context.CancelFunc
+}
 
 type WhenBinding struct {
 	Ch chan struct{}
