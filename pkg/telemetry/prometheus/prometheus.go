@@ -2,42 +2,49 @@
 // Metrics are collected from machine's transitions and states.
 package prometheus
 
-// import "github.com/pancsta/asyncmachine-go/pkg/telemetry/prometheus"
+// TODO measure auto added states
+// TODO collect also total numbers?
 
 import (
+	"slices"
 	"sync"
 	"time"
 
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/push"
 
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
-type promTracer struct {
-	am.NoOpTracer
+// PromTracer is [am.Tracer] for tracing state machines.
+type PromTracer struct {
+	*am.NoOpTracer
 
 	m           *Metrics
 	txStartTime time.Time
 	prevTime    uint64
 }
 
-func (t *promTracer) StructChange(machine *am.Machine, old am.Struct) {
+func (t *PromTracer) StructChange(machine am.Api, old am.Struct) {
 	// TODO refresh state and relation metrics
 }
 
-func (t *promTracer) TransitionInit(tx *am.Transition) {
+func (t *PromTracer) MachineDispose(machId string) {
+	t.m.Close()
+}
+
+func (t *PromTracer) TransitionInit(tx *am.Transition) {
 	t.txStartTime = time.Now()
 }
 
-func (t *promTracer) TransitionEnd(tx *am.Transition) {
+func (t *PromTracer) TransitionEnd(tx *am.Transition) {
 	if t.m.closed || !tx.Accepted {
 		return
 	}
 
-	statesIndex := tx.Machine.StateNames()
-
-	// try to refresh, then lock
-	t.m.Refresh()
+	statesIndex := tx.Api.StateNames()
 	t.m.mx.Lock()
 	defer t.m.mx.Unlock()
 
@@ -47,7 +54,7 @@ func (t *promTracer) TransitionEnd(tx *am.Transition) {
 	t.m.stepsAmount += uint64(len(tx.Steps))
 	t.m.stepsAmountLen++
 	// TODO log slow txs (Opts and default to 1ms)
-	t.m.txTime += uint64(time.Since(t.txStartTime).Milliseconds())
+	t.m.txTime += uint64(time.Since(t.txStartTime).Microseconds())
 	t.m.txTimeLen++
 
 	// executed handlers
@@ -61,15 +68,25 @@ func (t *promTracer) TransitionEnd(tx *am.Transition) {
 	t.m.handlersAmountLen++
 
 	// tx states
-	added, removed, touched := getTxStates(tx, statesIndex)
-	t.m.statesAdded += uint64(len(added))
-	t.m.statesAddedLen++
-	t.m.statesRemoved += uint64(len(removed))
-	t.m.statesRemovedLen++
+	added, removed, touched := amhelp.GetTransitionStates(tx, statesIndex)
+	switch tx.Mutation.Type {
+	case am.MutationAdd:
+		t.m.statesAdded += uint64(len(added))
+		t.m.statesAddedLen++
+	case am.MutationRemove:
+		t.m.statesRemoved += uint64(len(removed))
+		t.m.statesRemovedLen++
+	case am.MutationSet:
+		t.m.statesAdded += uint64(len(added))
+		t.m.statesAddedLen++
+		t.m.statesRemoved += uint64(len(removed))
+		t.m.statesRemovedLen++
+	}
 	t.m.statesTouched += uint64(len(touched))
+	t.m.statesTouchedLen++
 
 	// time sum
-	currTime := tx.Machine.TimeSum(nil)
+	currTime := tx.Api.TimeSum(nil)
 	t.m.txTick += currTime - t.prevTime
 	t.m.txTickLen++
 	t.prevTime = currTime
@@ -87,21 +104,26 @@ func (t *promTracer) TransitionEnd(tx *am.Transition) {
 	t.m.statesActiveAmount += uint64(active)
 	t.m.statesActiveAmountLen++
 	t.m.statesInactiveAmount += uint64(inactive)
+	t.m.statesInactiveAmountLen++
+
+	// Exception
+	if slices.Contains(tx.TargetStates(), am.Exception) {
+		t.m.exceptionsCount++
+	}
+
+	t.m.transitionsCount++
 }
 
-func (t *promTracer) ExceptionState(err error) {
-	t.m.ExceptionsCount.Inc()
-}
-
-// Metrics is a set of Prometheus metrics for a am.
+// Metrics is a set of Prometheus metrics for asyncmachine.
 type Metrics struct {
+	// Tracer is a Prometheus tracer for the machine. You can detach it any time
+	// using Machine.DetachTracer.
+	Tracer am.Tracer
+
 	mx         sync.Mutex
 	closed     bool
-	lastUpdate time.Time
-	interval   time.Duration
-	tracer     am.Tracer
 
-	// //// mach definition
+	// mach definition
 
 	// number of registered states
 	StatesAmount prometheus.Gauge
@@ -112,7 +134,7 @@ type Metrics struct {
 	// number of state referenced by relations for all registered states
 	RefStatesAmount prometheus.Gauge
 
-	// //// tx data
+	// tx data
 
 	// current number of queued transitions (per transition)
 	QueueSize    prometheus.Gauge
@@ -152,9 +174,12 @@ type Metrics struct {
 	// number of errors
 	ExceptionsCount    prometheus.Gauge
 	exceptionsCount    uint64
-	exceptionsCountLen uint
 
-	// //// stats
+	// number of transitions
+	TransitionsCount    prometheus.Gauge
+	transitionsCount    uint64
+
+	// stats
 
 	// steps per transition
 	StepsAmount    prometheus.Gauge
@@ -172,109 +197,100 @@ type Metrics struct {
 	txTimeLen uint
 }
 
-func newMetrics(mach *am.Machine, interval time.Duration) *Metrics {
-	machID := am.NormalizeID(mach.ID)
+func newMetrics(mach am.Api) *Metrics {
+	machId := telemetry.NormalizeId(mach.Id())
 
 	return &Metrics{
-		interval:   interval,
-		lastUpdate: time.Now(),
 
-		// /// mach definition
+		// mach definition
 
 		StatesAmount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:      "states_amount",
+			Name:      "states_" + machId,
 			Help:      "Number of registered states",
-			Subsystem: machID,
-			Namespace: "mach",
+			Namespace: "am",
 		}),
 		RelAmount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:      "relations_amount",
-			Help:      "Number of relations for all registered states",
-			Subsystem: machID,
-			Namespace: "mach",
+			Name:      "relations_" + machId,
+			Help:      "Number of relations for all states",
+			Namespace: "am",
 		}),
 		RefStatesAmount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "ref_states_amount",
-			Help: "Number of states referenced by relations for all" +
-				" registered states",
-			Subsystem: machID,
-			Namespace: "mach",
+			Name: "ref_states_" + machId,
+			Help: "Number of states referenced by relations",
+			Namespace: "am",
 		}),
 
-		// /// tx data
+		// tx data
 
 		QueueSize: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:      "queue_size",
-			Help:      "Current number of queued transitions",
-			Subsystem: machID,
-			Namespace: "mach",
+			Name:      "queue_size_" + machId,
+			Help:      "Average queue size",
+			Namespace: "am",
 		}),
 		TxTick: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:      "tx_tick",
-			Help:      "Tick size of this tx (sum of all changed clocks)",
-			Subsystem: machID,
-			Namespace: "mach",
+			Name:      "tx_ticks_" + machId,
+			Help:      "Average transition machine time taken (ticks)",
+			Namespace: "am",
 		}),
 		ExceptionsCount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:      "exceptions_count",
-			Help:      "Number of errors",
-			Subsystem: machID,
-			Namespace: "mach",
+			Name:      "exceptions_" + machId,
+			Help:      "Number of transitions with Exception active",
+			Namespace: "am",
+		}),
+		TransitionsCount: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name:      "transitions_" + machId,
+			Help:      "Number of transitions",
+			Namespace: "am",
 		}),
 		StatesAdded: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:      "states_added",
-			Help:      "Struct added",
-			Subsystem: machID,
-			Namespace: "mach",
+			Name:      "states_added_" + machId,
+			Help:      "Average amount of states added",
+			Namespace: "am",
 		}),
 		StatesRemoved: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:      "states_removed",
-			Help:      "Struct removed",
-			Subsystem: machID,
-			Namespace: "mach",
+			Name:      "states_removed_" + machId,
+			Help:      "Average amount of states removed",
+			Namespace: "am",
 		}),
 		StatesTouched: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:      "states_touched",
-			Help:      "Struct touched",
-			Subsystem: machID,
-			Namespace: "mach",
+			Name:      "states_touched_" + machId,
+			Help:      "Average amount of states touched",
+			Namespace: "am",
 		}),
 		StepsAmount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:      "steps_amount",
-			Help:      "Steps per transition",
-			Subsystem: machID,
-			Namespace: "mach",
+			Name:      "steps_" + machId,
+			Help:      "Average amount of steps per transition",
+			Namespace: "am",
 		}),
 		HandlersAmount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:      "handlers_amount",
-			Help:      "Amount of executed handlers per tx",
-			Subsystem: machID,
-			Namespace: "mach",
+			Name:      "handlers_" + machId,
+			Help:      "Average amount of executed handlers per tx",
+			Namespace: "am",
 		}),
 		TxTime: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:      "tx_time",
-			Help:      "Transition time",
-			Subsystem: machID,
-			Namespace: "mach",
+			Name:      "tx_time_" + machId,
+			Help:      "Average transition human time taken (μs)",
+			Namespace: "am",
 		}),
 		StatesActiveAmount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:      "states_active_amount",
-			Help:      "Active states amount",
-			Subsystem: machID,
-			Namespace: "mach",
+			Name:      "states_active_" + machId,
+			Help:      "Average amount of active states",
+			Namespace: "am",
 		}),
 		StatesInactiveAmount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name:      "states_inactive_amount",
-			Help:      "Inactive states amount",
-			Subsystem: machID,
-			Namespace: "mach",
+			Name:      "states_inactive_" + machId,
+			Help:      "Average amount of inactive states",
+			Namespace: "am",
 		}),
 	}
 }
 
-// Refresh updates averages values from the interval and updates the gauges.
-func (m *Metrics) Refresh() {
-	if m.closed || m.lastUpdate.Add(m.interval).After(time.Now()) {
+// Sync synchronizes the metrics with the current counters, averaging certain
+// values and using totals of others. After that the counters are reset to 0.
+//
+// Sync should be called right before pushing or scraping.
+func (m *Metrics) Sync() {
+	if m.closed {
 		return
 	}
 
@@ -291,7 +307,8 @@ func (m *Metrics) Refresh() {
 	m.StatesAdded.Set(average(m.statesAdded, m.statesAddedLen))
 	m.StatesRemoved.Set(average(m.statesRemoved, m.statesRemovedLen))
 	m.StatesTouched.Set(average(m.statesTouched, m.statesTouchedLen))
-	m.ExceptionsCount.Set(average(m.exceptionsCount, m.exceptionsCountLen))
+	m.ExceptionsCount.Set(float64(m.exceptionsCount))
+	m.TransitionsCount.Set(float64(m.transitionsCount))
 	m.StepsAmount.Set(average(m.stepsAmount, m.stepsAmountLen))
 	m.HandlersAmount.Set(average(m.handlersAmount, m.handlersAmountLen))
 	m.TxTime.Set(average(m.txTime, m.txTimeLen))
@@ -312,16 +329,13 @@ func (m *Metrics) Refresh() {
 	m.statesTouched = 0
 	m.statesTouchedLen = 0
 	m.exceptionsCount = 0
-	m.exceptionsCountLen = 0
 	m.stepsAmount = 0
 	m.stepsAmountLen = 0
 	m.handlersAmount = 0
 	m.handlersAmountLen = 0
 	m.txTime = 0
 	m.txTimeLen = 0
-
-	// tag it
-	m.lastUpdate = time.Now()
+	m.transitionsCount = 0
 }
 
 // Close sets all gauges to 0.
@@ -345,27 +359,18 @@ func (m *Metrics) Close() {
 	m.StatesRemoved.Set(0)
 	m.StatesTouched.Set(0)
 	m.ExceptionsCount.Set(0)
+	m.TransitionsCount.Set(0)
 	m.StepsAmount.Set(0)
 	m.HandlersAmount.Set(0)
 	m.TxTime.Set(0)
 }
 
-func average(sum uint64, sampleLen uint) float64 {
-	if sampleLen == 0 {
-		return 0
-	}
-
-	return float64(sum / uint64(sampleLen))
-}
-
-// TransitionsToPrometheus bind transitions to Prometheus metrics.
-func TransitionsToPrometheus(
-	mach *am.Machine, interval time.Duration,
-) *Metrics {
-	metrics := newMetrics(mach, interval)
+// BindMach bind transitions to Prometheus metrics.
+func BindMach(mach am.Api) *Metrics {
+	metrics := newMetrics(mach)
 
 	// state & relations
-	// TODO bind to EventStatesChange
+	// TODO bind in StructChange
 	metrics.StatesAmount.Set(float64(len(mach.StateNames())))
 	relCount := 0
 	stateRefCount := 0
@@ -388,48 +393,73 @@ func TransitionsToPrometheus(
 			stateRefCount += len(state.After)
 		}
 	}
+
 	metrics.RelAmount.Set(float64(relCount))
 	metrics.RefStatesAmount.Set(float64(stateRefCount))
+	metrics.Tracer = &PromTracer{m: metrics}
 
-	metrics.tracer = &promTracer{m: metrics}
-	mach.Tracers = append(mach.Tracers, metrics.tracer)
+	mach.BindTracer(metrics.Tracer)
 
 	return metrics
 }
 
-// TODO move to helpers
-func getTxStates(
-	tx *am.Transition, index am.S,
-) (added am.S, removed am.S, touched am.S) {
+func BindToPusher(metrics *Metrics, pusher *push.Pusher) {
 
-	before := tx.TimeBefore
-	after := tx.TimeAfter
+	// transition
+	pusher.Collector(metrics.TransitionsCount)
+	pusher.Collector(metrics.QueueSize)
+	pusher.Collector(metrics.TxTick)
+	pusher.Collector(metrics.StepsAmount)
+	pusher.Collector(metrics.HandlersAmount)
+	pusher.Collector(metrics.StatesAdded)
+	pusher.Collector(metrics.StatesRemoved)
+	pusher.Collector(metrics.StatesTouched)
 
-	is := func(time am.Time, i int) bool {
-		return am.IsActiveTick(time[i])
-	}
+	// machine states
+	pusher.Collector(metrics.StatesAmount)
+	pusher.Collector(metrics.RelAmount)
+	pusher.Collector(metrics.RefStatesAmount)
+	pusher.Collector(metrics.StatesActiveAmount)
+	pusher.Collector(metrics.StatesInactiveAmount)
 
-	for i, name := range index {
-		if is(before, i) && !is(after, i) {
-			removed = append(removed, name)
-		} else if !is(before, i) && is(after, i) {
-			added = append(added, name)
-		} else if before[i] != after[i] {
-			// treat multi states as added
-			added = append(added, name)
-		}
-	}
+	// tx time
+	pusher.Collector(metrics.TxTime)
 
-	// touched
-	touched = am.S{}
-	for _, step := range tx.Steps {
-		if step.FromState != "" {
-			touched = append(touched, step.FromState)
-		}
-		if step.ToState != "" {
-			touched = append(touched, step.ToState)
-		}
-	}
-
-	return added, removed, touched
+	// errors
+	pusher.Collector(metrics.ExceptionsCount)
 }
+
+func BindToRegistry(metrics *Metrics, registry *prometheus.Registry) {
+
+	// transition
+	registry.MustRegister(metrics.TransitionsCount)
+	registry.MustRegister(metrics.QueueSize)
+	registry.MustRegister(metrics.TxTick)
+	registry.MustRegister(metrics.StepsAmount)
+	registry.MustRegister(metrics.HandlersAmount)
+	registry.MustRegister(metrics.StatesAdded)
+	registry.MustRegister(metrics.StatesRemoved)
+	registry.MustRegister(metrics.StatesTouched)
+
+	// machine states
+	registry.MustRegister(metrics.StatesAmount)
+	registry.MustRegister(metrics.RelAmount)
+	registry.MustRegister(metrics.RefStatesAmount)
+	registry.MustRegister(metrics.StatesActiveAmount)
+	registry.MustRegister(metrics.StatesInactiveAmount)
+
+	// tx time
+	registry.MustRegister(metrics.TxTime)
+
+	// errors
+	registry.MustRegister(metrics.ExceptionsCount)
+}
+
+func average(sum uint64, sampleLen uint) float64 {
+	if sampleLen == 0 {
+		return 0
+	}
+
+	return float64(sum / uint64(sampleLen))
+}
+
