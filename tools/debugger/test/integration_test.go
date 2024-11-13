@@ -6,17 +6,18 @@ import (
 	"os"
 	"testing"
 
-	ssTest "github.com/pancsta/asyncmachine-go/internal/testing/states"
-	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
+	"github.com/joho/godotenv"
 	"github.com/soheilhy/cmux"
 	"github.com/stretchr/testify/assert"
 
 	amtest "github.com/pancsta/asyncmachine-go/internal/testing"
-	amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	ssTest "github.com/pancsta/asyncmachine-go/internal/testing/states"
+	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
@@ -28,18 +29,18 @@ var worker *debugger.Debugger
 var workerAddr = "localhost:" + utils.RandPort(52001, 53000)
 
 func init() {
+	_ = godotenv.Load()
+
+	if os.Getenv(am.EnvAmTestDebug) != "" {
+		amhelp.EnableDebugging(false)
+		os.Setenv(am.EnvAmLogFile, "1")
+	}
+
 	var err error
 	gob.Register(server.GetField(0))
 
-	// DEBUG
-	if os.Getenv("AM_TEST_DEBUG") != "" {
-		enableTestDebug()
-		// enable file logging
-		os.Setenv("AM_LOG_FILE", "1")
-	}
-
 	// worker
-	worker, err = amtest.NewTestWorker(false, debugger.Opts{
+	worker, err = amtest.NewDbgWorker(false, debugger.Opts{
 		ID: "loc-worker"})
 	if err != nil {
 		panic(err)
@@ -61,11 +62,11 @@ func TestUserFwd(t *testing.T) {
 
 	// fixtures
 	cursorTx := 20
-	amh.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
 		am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
 
 	// test
-	res := amh.Add1Block(ctx, mach, ss.UserFwd, nil)
+	res := amhelp.Add1Block(ctx, mach, ss.UserFwd, nil)
 
 	// assert
 	assert.NotEqual(t, res, am.Canceled)
@@ -80,7 +81,7 @@ func TestUserFwd100(t *testing.T) {
 
 	// fixtures
 	cursorTx := 20
-	amh.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
 		am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
 
 	// test
@@ -99,7 +100,8 @@ func TestUserFwd100(t *testing.T) {
 	assert.Equal(t, cursorTx+100, worker.C.CursorTx)
 }
 
-func TestTailMode(t *testing.T) {
+// TODO this can be flaky
+func TestTailModeFLAKY(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -161,11 +163,11 @@ func TestUserBack(t *testing.T) {
 
 	// fixtures
 	cursorTx := 20
-	amh.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
 		am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
 
 	// test
-	res := amh.Add1Block(ctx, mach, ss.UserBack, nil)
+	res := amhelp.Add1Block(ctx, mach, ss.UserBack, nil)
 
 	// assert
 	assert.NotEqual(t, res, am.Canceled)
@@ -181,16 +183,16 @@ func TestStepsResetAfterStateJump(t *testing.T) {
 	// fixtures
 	state := "PublishMessage"
 	cursorTx := 20
-	amh.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
 		am.A{"Client.id": "ps-2", "Client.cursorTx": cursorTx})
 
 	// test
-	amh.Add1Block(ctx, mach, ss.StateNameSelected, am.A{"state": state})
-	amh.Add1Block(ctx, mach, ss.UserFwdStep, nil)
-	amh.Add1Block(ctx, mach, ss.UserFwdStep, nil)
+	amhelp.Add1Block(ctx, mach, ss.StateNameSelected, am.A{"state": state})
+	amhelp.Add1Block(ctx, mach, ss.UserFwdStep, nil)
+	amhelp.Add1Block(ctx, mach, ss.UserFwdStep, nil)
 
 	// trigger a state jump and wait for the next scroll
-	amh.Add1AsyncBlock(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
+	amhelp.Add1AsyncBlock(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
 		"state": state,
 		"fwd":   true,
 	})
@@ -198,19 +200,4 @@ func TestStepsResetAfterStateJump(t *testing.T) {
 	// assert
 	assert.Equal(t, 0, worker.C.CursorStep, "Steps timeline should reset")
 	// TODO assert not playing
-}
-
-// ///// ///// /////
-
-// ///// UTILS
-
-// ///// ///// /////
-
-// enableTestDebug sets the env vars for debugging local workers, should be run
-// in init().
-func enableTestDebug() {
-	os.Setenv("AM_DEBUG", "1")
-	os.Setenv("AM_DBG_ADDR", "localhost:9913")
-	os.Setenv("AM_LOG", "2")
-	os.Setenv("AM_DETECT_EVAL", "1")
 }

@@ -9,12 +9,13 @@ import (
 	"os"
 	"testing"
 
+	testing2 "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	"github.com/stretchr/testify/assert"
 
 	amtest "github.com/pancsta/asyncmachine-go/internal/testing"
 	ssTest "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
-	amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
@@ -29,14 +30,14 @@ var workerTelemetryAddr = amtest.WorkerTelemetryAddr
 func init() {
 	gob.Register(server.GetField(0))
 
-	if addr := os.Getenv("AM_DBG_WORKER_RPC_ADDR"); addr != "" {
+	if addr := os.Getenv(amtest.EnvAmDbgWorkerRpcAddr); addr != "" {
 		workerRpcAddr = addr
 	}
-	if addr := os.Getenv("AM_DBG_WORKER_TELEMETRY_ADDR"); addr != "" {
+	if addr := os.Getenv(amtest.EnvAmDbgWorkerTelemetryAddr); addr != "" {
 		workerTelemetryAddr = addr
 	}
 
-	if os.Getenv("AM_TEST_DEBUG") != "" {
+	if os.Getenv(types.EnvAmTestDebug) != "" {
 		// DEBUG
 		enableTestDebugRemote()
 	}
@@ -51,11 +52,11 @@ func TestUserFwdRemote(t *testing.T) {
 
 	// fixtures
 	cursorTx := 20
-	amh.Add1AsyncBlock(ctx, c.Worker, ss.SwitchedClientTx, ss.SwitchingClientTx,
+	amhelp.Add1AsyncBlock(ctx, c.Worker, ss.SwitchedClientTx, ss.SwitchingClientTx,
 		am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
 
 	// test
-	res := amh.Add1Block(ctx, c.Worker, ss.UserFwd, nil)
+	res := amhelp.Add1Block(ctx, c.Worker, ss.UserFwd, nil)
 
 	// assert
 	assert.NotEqual(t, res, am.Canceled)
@@ -73,13 +74,13 @@ func TestUserFwd100Remote(t *testing.T) {
 
 	// fixtures
 	cursorTx := 20
-	amh.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
 		am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
 
 	// test
 	// add ss.UserFwd 100 times in a series
 	for i := 0; i < 100; i++ {
-		res := amh.Add1Block(ctx, mach, ss.UserFwd, nil)
+		res := amhelp.Add1Block(ctx, mach, ss.UserFwd, nil)
 		if res == am.Canceled {
 			t.Fatal(res)
 		}
@@ -96,7 +97,7 @@ func TestUserFwd100Remote(t *testing.T) {
 func TestTailModeRemote(t *testing.T) {
 
 	// read env
-	amDbgAddr := os.Getenv("AM_DBG_ADDR")
+	amDbgAddr := os.Getenv(types.EnvAmDbgAddr)
 	logLvl := am.EnvLogLevel("")
 
 	// init rpc
@@ -109,7 +110,7 @@ func TestTailModeRemote(t *testing.T) {
 
 	// fixture machine
 	mach := utils.NewRels(t, nil)
-	amh.MachDebugT(t, mach, amDbgAddr, logLvl, true)
+	testing2.MachDebug(t, mach, amDbgAddr, logLvl, true)
 
 	// connect to the worker as a new telemetry client
 	mach.SetLogLevel(am.LogOps)
@@ -155,11 +156,11 @@ func TestUserBackRemote(t *testing.T) {
 
 	// fixtures
 	cursorTx := 20
-	amh.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
 		am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
 
 	// test
-	res := amh.Add1Block(ctx, mach, ss.UserBack, nil)
+	res := amhelp.Add1Block(ctx, mach, ss.UserBack, nil)
 
 	// assert
 	assert.NotEqual(t, res, am.Canceled)
@@ -178,16 +179,16 @@ func TestStepsResetAfterStateJumpRemote(t *testing.T) {
 
 	// fixtures
 	state := "PublishMessage"
-	amh.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
 		am.A{"Client.id": "ps-2", "Client.cursorTx": 20})
 
 	// test
-	amh.Add1Block(ctx, mach, ss.StateNameSelected, am.A{"state": state})
-	amh.Add1Block(ctx, mach, ss.UserFwdStep, nil)
-	amh.Add1Block(ctx, mach, ss.UserFwdStep, nil)
+	amhelp.Add1Block(ctx, mach, ss.StateNameSelected, am.A{"state": state})
+	amhelp.Add1Block(ctx, mach, ss.UserFwdStep, nil)
+	amhelp.Add1Block(ctx, mach, ss.UserFwdStep, nil)
 
 	// trigger a state jump and wait for the next scroll
-	amh.Add1AsyncBlock(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
+	amhelp.Add1AsyncBlock(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
 		"state": state,
 		"fwd":   true,
 	})
@@ -209,7 +210,7 @@ func TestUserFwdRemoteLoopback(t *testing.T) {
 	t.Skip("Debug only")
 
 	// init debugger
-	d, err := amtest.NewTestWorker(false, debugger.Opts{ID: t.Name()})
+	d, err := amtest.NewDbgWorker(false, debugger.Opts{ID: t.Name()})
 	assert.NoError(t, err)
 
 	// init rpc (full client-server setup)

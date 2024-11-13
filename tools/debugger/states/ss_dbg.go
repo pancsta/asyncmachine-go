@@ -49,6 +49,10 @@ var States = am.Struct{
 	MatrixFocused:        {Remove: GroupFocused},
 	DialogFocused:        {Remove: GroupFocused},
 	FiltersFocused:       {Remove: GroupFocused},
+	LogReaderFocused: {
+		Require: S{LogReaderVisible},
+		Remove:  GroupFocused,
+	},
 
 	StateNameSelected:     {Require: S{ClientSelected}},
 	TimelineStepsScrolled: {Require: S{ClientSelected}},
@@ -63,17 +67,25 @@ var States = am.Struct{
 		//  to timeline-scroll somehow
 		Require: S{LogFocused},
 	},
-	Ready:            {Require: S{Start}},
+	Ready: {Require: S{Start}},
+	// TODO should activate FiltersFocused
 	FilterAutoTx:     {},
 	FilterCanceledTx: {},
 	FilterEmptyTx:    {},
+	FilterSummaries:  {},
 
 	// ///// Actions
 
-	Start: {},
+	Start: {Add: S{FilterSummaries}},
+	Healthcheck: {
+		Multi:   true,
+		Require: S{Start},
+	},
+	GcMsgs: {},
 	TreeLogView: {
 		Auto:   true,
-		Remove: SAdd(GroupViews, S{MatrixRain}),
+		Require: S{Start},
+		Remove: SAdd(GroupViews, S{TreeMatrixView, MatrixView, MatrixRain}),
 	},
 	MatrixView:     {Remove: GroupViews},
 	TreeMatrixView: {Remove: GroupViews},
@@ -93,14 +105,16 @@ var States = am.Struct{
 	ToggleFilter: {},
 	SwitchingClientTx: {
 		Require: S{Ready},
-		Remove:  GroupSwitchedClientTx,
+		Remove:  SAdd(GroupSwitchedClientTx, S{GcMsgs}),
 	},
 	SwitchedClientTx: {
 		Require: S{Ready},
 		Remove:  GroupSwitchedClientTx,
 	},
 	ScrollToMutTx: {Require: S{ClientSelected}},
-	MatrixRain:    {},
+	// TODO depend on a common Matrix view
+	MatrixRain:       {},
+	LogReaderVisible: {Require: S{TreeLogView}},
 
 	// tx / steps back / fwd
 
@@ -135,13 +149,13 @@ var States = am.Struct{
 	RemoveClient: {Require: S{ClientSelected}},
 }
 
-// Groups of mutually exclusive states.
+// Groups of states.
 
 var (
 	GroupFocused = S{
 		TreeFocused, LogFocused, TimelineTxsFocused,
 		TimelineStepsFocused, SidebarFocused, MatrixFocused, DialogFocused,
-		FiltersFocused,
+		FiltersFocused, LogReaderFocused,
 	}
 	GroupPlaying = S{
 		Playing, Paused, TailMode,
@@ -154,6 +168,9 @@ var (
 	}
 	GroupSwitchedClientTx = S{
 		SwitchingClientTx, SwitchedClientTx,
+	}
+	GroupFilters = S{
+		FilterAutoTx, FilterCanceledTx, FilterEmptyTx,
 	}
 )
 
@@ -169,13 +186,17 @@ const (
 	MatrixFocused         = "MatrixFocused"
 	DialogFocused         = "DialogFocused"
 	FiltersFocused        = "FiltersFocused"
+	LogReaderFocused      = "LogReaderFocused"
 	TimelineStepsScrolled = "TimelineStepsScrolled"
 
 	ClientMsg = "ClientMsg"
 	// StateNameSelected states that a state name is selected somehwere in the
 	// tree (and possibly other places).
+	// TODO support a list of states
 	StateNameSelected = "StateNameSelected"
 	Start             = "Start"
+	Healthcheck       = "Healthcheck"
+	GcMsgs            = "GcMsgs"
 	Playing           = "Playing"
 	Paused            = "Paused"
 	// TailMode always shows the latest transition
@@ -198,16 +219,18 @@ const (
 	BackStep        = "BackStep"
 	ConnectEvent    = "ConnectEvent"
 	DisconnectEvent = "DisconnectEvent"
-	SidebarFocused  = "SidebarFocused"
-	RemoveClient    = "RemoveClient"
-	ClientSelected  = "ClientSelected"
-	SelectingClient = "SelectingClient"
-	HelpDialog      = "HelpDialog"
-	ExportDialog    = "ExportDialog"
-	MatrixView      = "MatrixView"
-	TreeLogView     = "TreeLogView"
-	TreeMatrixView  = "TreeMatrixView"
-	LogUserScrolled = "LogUserScrolled"
+	// SidebarFocused is client list focused.
+	SidebarFocused   = "SidebarFocused"
+	RemoveClient     = "RemoveClient"
+	ClientSelected   = "ClientSelected"
+	SelectingClient  = "SelectingClient"
+	HelpDialog       = "HelpDialog"
+	ExportDialog     = "ExportDialog"
+	MatrixView       = "MatrixView"
+	TreeLogView      = "TreeLogView"
+	TreeMatrixView   = "TreeMatrixView"
+	LogReaderVisible = "LogReaderVisible"
+	LogUserScrolled  = "LogUserScrolled"
 	// ScrollToTx scrolls to a specific transition.
 	ScrollToTx = "ScrollToTx"
 	// Ready is an async result of start
@@ -216,14 +239,16 @@ const (
 	FilterAutoTx     = "FilterAutoTx"
 	// FilterEmptyTx is a filter for txes which didn't change state and didn't
 	// run any self handler either
-	FilterEmptyTx = "FilterEmptyTx"
-	ToggleFilter  = "ToggleFilter"
+	FilterEmptyTx   = "FilterEmptyTx"
+	FilterSummaries = "FilterSummaries"
+	ToggleFilter    = "ToggleFilter"
 	// SwitchingClientTx switches to the given client and scrolls to the given
 	// transaction (1-based tx index). Accepts Client.id and Client.cursorTx.
 	SwitchingClientTx = "SwitchingClientTx"
 	// SwitchedClientTx is a completed SwitchingClientTx.
 	SwitchedClientTx = "SwitchedClientTx"
-	// ScrollToMutTx scrolls to a transition which mutated the passed state,
+	// ScrollToMutTx scrolls to a transition which mutated or called the
+	// passed state,
 	// If fwd is true, it scrolls forward, otherwise backwards.
 	ScrollToMutTx = "ScrollToMutTx"
 	MatrixRain    = "MatrixRain"
@@ -250,6 +275,7 @@ var Names = S{
 
 	TreeFocused,
 	LogFocused,
+	LogReaderFocused,
 	SidebarFocused,
 	TimelineTxsFocused,
 	TimelineStepsFocused,
@@ -266,6 +292,8 @@ var Names = S{
 	// /// Actions
 
 	Start,
+	Healthcheck,
+	GcMsgs,
 	TreeLogView,
 	MatrixView,
 	TreeMatrixView,
@@ -275,11 +303,13 @@ var Names = S{
 	FilterAutoTx,
 	FilterCanceledTx,
 	FilterEmptyTx,
+	FilterSummaries,
 	ToggleFilter,
 	SwitchingClientTx,
 	SwitchedClientTx,
 	ScrollToMutTx,
 	MatrixRain,
+	LogReaderVisible,
 
 	// tx / steps back / fwd
 	Fwd,

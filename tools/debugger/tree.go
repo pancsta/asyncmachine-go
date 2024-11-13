@@ -145,6 +145,11 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 		return 0
 	}
 
+	maxNameLen := 0
+	for _, name := range c.MsgStruct.StatesIndex {
+		maxNameLen = max(maxNameLen, len(name))
+	}
+
 	maxLen := 0
 
 	d.tree.GetRoot().WalkUnsafe(func(
@@ -152,8 +157,6 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 	) bool {
 		// skip the root
 		if parent == nil {
-			// get node text length
-			maxLen = maxNodeLen(node, maxLen, depth)
 			return true
 		}
 		ref, ok := node.GetReference().(*nodeRef)
@@ -185,14 +188,19 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 		}
 
 		stateName := ref.stateName
+		stateNamePad := stateName + strings.Repeat(" ", maxNameLen-len(stateName))
 		color := colorInactive
 
 		if msg.Is(c.MsgStruct.StatesIndex, am.S{stateName}) {
-			color = colorActive
+			if stateName == am.Exception || strings.HasPrefix(stateName, "Err") {
+				color = colorErr
+			} else {
+				color = colorActive
+			}
 		}
 
 		// reset to defaults
-		node.SetText(stateName)
+		node.SetText(stateNamePad)
 
 		// reset to defaults
 		if stateName != c.SelectedState {
@@ -205,11 +213,10 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 					}
 				}
 
-				// TODO K delimiters
-				tick := d.P.Sprintf("%v", msg.Clock(c.MsgStruct.StatesIndex,
+				tick := d.P.Sprintf("%d", msg.Clock(c.MsgStruct.StatesIndex,
 					stateName))
 				node.SetColor(color)
-				node.SetText(stateName + " (" + tick + ")")
+				node.SetText(stateNamePad + " |" + tick)
 			}
 
 			// get node text length
@@ -234,7 +241,7 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 		tick := strconv.FormatUint(msg.Clock(c.MsgStruct.StatesIndex,
 			stateName), 10)
 		node.SetColor(color)
-		node.SetText(stateName + " (" + tick + ")")
+		node.SetText(stateNamePad + " |" + tick)
 
 		// get node text length
 		maxLen = maxNodeLen(node, maxLen, depth)
@@ -281,7 +288,9 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 	d.tree.GetRoot().WalkUnsafe(func(
 		node, parent *cview.TreeNode, depth int,
 	) bool {
-		maxLen = maxNodeLen(node, maxLen, depth)
+		if parent != nil {
+			maxLen = maxNodeLen(node, maxLen, depth)
+		}
 		return true
 	})
 
@@ -564,7 +573,7 @@ func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step) {
 			isRelStart := ref.isRef && ref.stateName != "" &&
 				col.name == getRelColNameFromRef(ref)
 			isRelEnd := !ref.isRef && ref.stateName != "" &&
-				strings.HasSuffix(col.name, ref.stateName)
+				strings.HasSuffix(col.name, "-"+ref.stateName)
 
 			if !col.closed || forced {
 				// debug
@@ -630,6 +639,24 @@ func (d *Debugger) buildStatesTree() {
 	d.treeRoot.Expand()
 }
 
+func (d *Debugger) selectTreeState(name string) {
+	if d.tree == nil {
+		return
+	}
+	d.tree.GetRoot().Walk(func(node, p *cview.TreeNode, depth int) bool {
+		if p == nil {
+			return true
+		}
+		ref := node.GetReference().(*nodeRef)
+		if ref.stateName == name && depth == 1 {
+			d.tree.SetCurrentNode(node)
+			return false
+		}
+
+		return true
+	})
+}
+
 func (d *Debugger) addState(name string) {
 	c := d.C
 	if c == nil {
@@ -637,7 +664,7 @@ func (d *Debugger) addState(name string) {
 	}
 
 	state := c.MsgStruct.States[name]
-	stateNode := cview.NewTreeNode(name + " (0)")
+	stateNode := cview.NewTreeNode(name + " |0")
 	stateNode.SetSelectable(true)
 	stateNode.SetReference(&nodeRef{stateName: name})
 	d.treeRoot.AddChild(stateNode)

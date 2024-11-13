@@ -8,10 +8,14 @@ import (
 	"encoding/gob"
 	"fmt"
 	"log"
+	"math"
+	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"runtime"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -20,10 +24,11 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
-	"github.com/samber/lo"
 	"golang.org/x/text/message"
 
-	amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	"github.com/pancsta/asyncmachine-go/internal/utils"
+
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
@@ -35,6 +40,8 @@ const (
 	colorInactive   = tcell.ColorLimeGreen
 	colorHighlight  = tcell.ColorDarkSlateGray
 	colorHighlight2 = tcell.ColorDimGray
+	colorHighlight3 = tcell.Color233
+	colorErr        = tcell.ColorRed
 	// TODO customize
 	playInterval = 500 * time.Millisecond
 	// TODO add param --max-clients
@@ -45,6 +52,13 @@ const (
 	logUpdateDebounce     = 300 * time.Millisecond
 	sidebarUpdateDebounce = time.Second
 	searchAsTypeWindow    = 1500 * time.Millisecond
+	healthcheckInterval   = 5 * time.Second
+	// msgMaxAge             = 0
+
+	msgMaxAmount = 30_000
+	// msgMaxAmount = 100
+	msgMaxThreshold = 300
+	// msgMaxThreshold = 30
 )
 
 type Exportable struct {
@@ -58,28 +72,114 @@ type Client struct {
 	// current transition, 1-based, mirrors the slider
 	CursorTx int
 	// current step, 1-based, mirrors the slider
-	CursorStep    int
-	SelectedState string
+	CursorStep          int
+	SelectedState       string
+	SelectedReaderEntry *logReaderEntryPtr
+	ReaderCollapsed     bool
 
-	id     string
-	connID string
-	// TODO extract from msgs
-	lastActive time.Time
-	connected  atomic.Bool
+	id        string
+	connID    string
+	connected atomic.Bool
 	// processed
-	msgTxsParsed []MsgTxParsed
+	msgTxsParsed []*MsgTxParsed
 	// processed list of filtered tx indexes
 	msgTxsFiltered []int
-	// processed
+	// cache of processed log entries
 	logMsgs [][]*am.LogEntry
+	// extracted log entries per tx ID
+	// TODO GC when all entries are closedAt and the first client's tx is later
+	//  than the latest closedAt; whole tx needs to be disposed at the same time
+	logReader map[string][]*logReaderEntry
+	// indexes of txs with errors, desc order for bisects
+	errors   []int
+	mTimeSum uint64
+}
+
+func (c *Client) lastActive() time.Time {
+	if len(c.MsgTxs) == 0 {
+		return time.Time{}
+	}
+
+	return *c.MsgTxs[len(c.MsgTxs)-1].Time
+}
+
+func (c *Client) hadErrSinceTx(tx, distance int) bool {
+	if slices.Contains(c.errors, tx) {
+		return true
+	}
+
+	// see TestHadErrSince
+	index := sort.Search(len(c.errors), func(i int) bool {
+		return c.errors[i] < tx
+	})
+
+	if index >= len(c.errors) {
+		return false
+	}
+
+	return tx-c.errors[index] < distance
+}
+
+func (c *Client) lastTxTill(hTime time.Time) int {
+	l := len(c.MsgTxs)
+	if l == 0 {
+		return -1
+	}
+
+	i := sort.Search(l, func(i int) bool {
+		t := c.MsgTxs[i].Time
+		return t.After(hTime) || t.Equal(hTime)
+	})
+
+	if i == l {
+		i = l - 1
+	}
+	tx := c.MsgTxs[i]
+
+	// pick the closer one
+	if i > 0 && tx.Time.Sub(hTime) > hTime.Sub(*c.MsgTxs[i-1].Time) {
+		return i
+	} else {
+		return i
+	}
+}
+
+func (c *Client) addReaderEntry(txId string, entry *logReaderEntry) int {
+	if c.logReader == nil {
+		c.logReader = make(map[string][]*logReaderEntry)
+	}
+	c.logReader[txId] = append(c.logReader[txId], entry)
+
+	return len(c.logReader[txId]) - 1
+}
+
+func (c *Client) getReaderEntry(txId string, idx int) *logReaderEntry {
+	if c.logReader == nil {
+		c.logReader = make(map[string][]*logReaderEntry)
+	}
+	ptrTx, ok := c.logReader[txId]
+	if !ok || idx >= len(ptrTx) {
+		return nil
+	}
+
+	return ptrTx[idx]
+}
+
+func (c *Client) statesToIndexes(states am.S) []int {
+	return amhelp.StatesToIndexes(c.MsgStruct.StatesIndex, states)
+}
+
+func (c *Client) indexesToStates(indexes []int) am.S {
+	return amhelp.IndexesToStates(c.MsgStruct.StatesIndex, indexes)
 }
 
 type MsgTxParsed struct {
-	StatesAdded   am.S
-	StatesRemoved am.S
-	StatesTouched am.S
-	Time          uint64
-	Idx           int
+	StatesAdded   []int
+	StatesRemoved []int
+	StatesTouched []int
+	// TimeSum is machine time.
+	TimeSum       uint64
+	ReaderEntries []*logReaderEntryPtr
 }
 
 type Opts struct {
@@ -101,6 +201,11 @@ type Opts struct {
 	ID string
 	// version of this instance
 	Version string
+	// TODO
+	MsgMaxAmount int
+	// TODO
+	MsgMaxAge time.Duration
+	NoGc      bool
 }
 
 type OptsFilters struct {
@@ -110,28 +215,30 @@ type OptsFilters struct {
 	LogLevel       am.LogLevel
 }
 
-type filterName string
+type FilterName string
 
 const (
-	filterCanceledTx filterName = "skip-canceled"
-	filterAutoTx     filterName = "skip-auto"
-	filterEmptyTx    filterName = "skip-empty"
-	filterLog0       filterName = "log-0"
-	filterLog1       filterName = "log-1"
-	filterLog2       filterName = "log-2"
-	filterLog3       filterName = "log-3"
-	filterLog4       filterName = "log-4"
+	filterCanceledTx FilterName = "skip-canceled"
+	filterAutoTx     FilterName = "skip-auto"
+	filterEmptyTx    FilterName = "skip-empty"
+	FilterSummaries  FilterName = "hide-summaries"
+	filterLog0       FilterName = "log-0"
+	filterLog1       FilterName = "log-1"
+	filterLog2       FilterName = "log-2"
+	filterLog3       FilterName = "log-3"
+	filterLog4       FilterName = "log-4"
 )
 
 type Debugger struct {
-	am.ExceptionHandler
+	*am.ExceptionHandler
+	Mach *am.Machine
 
-	Mach       *am.Machine
 	Clients    map[string]*Client
 	Opts       Opts
 	LayoutRoot *cview.Panels
 	Disposed   bool
 	// selected client
+	// TODO atomic, drop eval
 	C   *Client
 	App *cview.Application
 	// printer for numbers
@@ -150,21 +257,28 @@ type Debugger struct {
 	nextTxBarRight         *cview.TextView
 	helpDialog             *cview.Flex
 	keyBar                 *cview.TextView
-	sidebar                *cview.List
+	clientList             *cview.List
 	mainGrid               *cview.Grid
 	logRebuildEnd          int
-	prevClientTxTime       time.Time
+	lastScrolledTxTime     time.Time
 	repaintScheduled       atomic.Bool
 	updateSidebarScheduled atomic.Bool
-	lastKey                tcell.Key
-	lastKeyTime            time.Time
+	lastKeystroke          tcell.Key
+	lastKeystrokeTime      time.Time
 	updateLogScheduled     atomic.Bool
 	matrix                 *cview.Table
 	focusManager           *cview.FocusManager
 	exportDialog           *cview.Modal
 	contentPanels          *cview.Panels
 	filtersBar             *cview.TextView
-	focusedFilter          filterName
+	focusedFilter          FilterName
+	treeLogGrid            *cview.Grid
+	treeMatrixGrid         *cview.Grid
+	lastSelectedState      string
+	// TODO should be a redraw, not before
+	redrawCallback func()
+	healthcheck    *time.Ticker
+	logReader      *cview.TreeView
 }
 
 // New creates a new debugger instance and optionally import a data file.
@@ -176,35 +290,39 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 
 	d.Opts = opts
 
-	// default filters
+	// default opts
 	if d.Opts.Filters == nil {
 		d.Opts.Filters = &OptsFilters{
 			LogLevel: am.LogChanges,
 		}
 	}
+	if d.Opts.MsgMaxAmount == 0 {
+		d.Opts.MsgMaxAmount = msgMaxAmount
+	}
+	// TODO
+	// if d.Opts.MsgMaxAge == 0 {
+	// 	d.Opts.MsgMaxAge = msgMaxAge
+	// }
 
 	gob.Register(Exportable{})
 	gob.Register(am.Relation(0))
 
-	// TODO use NewCommon
-	mach := am.New(ctx, ss.States, &am.Opts{
-		// TODO support Opts.AMDebug
-		HandlerTimeout: time.Hour,
-		DontLogID:      true,
-	})
-	id := mach.ID
+	id := utils.RandID(0)
 	if opts.ID != "" {
 		id = opts.ID
 	}
-	mach.ID = "d-" + id
+	mach, err := am.NewCommon(ctx, "", ss.States, ss.Names, d, nil, &am.Opts{
+		DontLogID:      true,
+		HandlerTimeout: 1 * time.Second,
+		ID:             "td-" + id,
+	})
+	if err != nil {
+		return nil, err
+	}
+	d.Mach = mach
 
 	if d.Opts.Version == "" {
 		d.Opts.Version = "(devel)"
-	}
-
-	err := mach.VerifyStates(ss.Names)
-	if err != nil {
-		return nil, err
 	}
 
 	// logging
@@ -215,7 +333,7 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	}
 	mach.SetLogArgs(am.NewArgsMapper([]string{
 		"Machine.id", "conn_id", "Client.cursorTx", "amount", "Client.id",
-		"state", "fwd",
+		"state", "fwd", "filter",
 	}, 20))
 
 	// import data
@@ -226,12 +344,6 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		mach.Log("Imported data in %s", time.Since(start))
 	}
 
-	err = mach.BindHandlers(d)
-	if err != nil {
-		return nil, err
-	}
-
-	d.Mach = mach
 	return d, nil
 }
 
@@ -245,7 +357,7 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 func (d *Debugger) Client() *Client {
 	var c *Client
 
-	// SelectingClient locks d.C
+	// SelectingClient locks d.C TODO timeout?
 	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
 
 	d.Mach.Eval("Client", func() {
@@ -350,6 +462,7 @@ func (d *Debugger) Dispose() {
 	d.Disposed = true
 
 	// machine
+
 	d.Mach.Dispose()
 	<-d.Mach.WhenDisposed()
 
@@ -377,7 +490,7 @@ func (d *Debugger) Dispose() {
 	d.contentPanels = nil
 	d.filtersBar = nil
 	d.tree = nil
-	d.sidebar = nil
+	d.clientList = nil
 	d.log = nil
 
 	// logger
@@ -403,21 +516,39 @@ func (d *Debugger) SetFilterLogLevel(lvl am.LogLevel) {
 	d.Opts.Filters.LogLevel = lvl
 
 	// process the filter change
-	go d.processFilterChange(context.TODO(), false)
+	go d.ProcessFilterChange(context.TODO(), false)
 }
 
 func (d *Debugger) ImportData(filename string) {
 	// TODO async state
 	// TODO show error msg (for dump old formats)
-	fr, err := os.Open(filename)
-	if err != nil {
-		log.Printf("Error: import failed %s", err)
-		return
-	}
-	defer fr.Close()
 
-	// decompress bz2
-	brReader := brotli.NewReader(bufio.NewReader(fr))
+	// support URLs
+	var reader *bufio.Reader
+	u, err := url.Parse(filename)
+	if err == nil && u.Host != "" {
+
+		// download
+		resp, err := http.Get(filename)
+		if err != nil {
+			d.Mach.AddErr(err, nil)
+			return
+		}
+		reader = bufio.NewReader(resp.Body)
+	} else {
+
+		// read from fs
+		fr, err := os.Open(filename)
+		if err != nil {
+			d.Mach.AddErr(err, nil)
+			return
+		}
+		defer fr.Close()
+		reader = bufio.NewReader(fr)
+	}
+
+	// decompress brotli
+	brReader := brotli.NewReader(reader)
 
 	// decode gob
 	decoder := gob.NewDecoder(brReader)
@@ -480,6 +611,11 @@ func (d *Debugger) updateFiltersBar() {
 			active: d.Mach.Is1(ss.FilterEmptyTx),
 		},
 		{
+			id:     "hide-summaries",
+			label:  "Hide Summaries",
+			active: d.Mach.Is1(ss.FilterSummaries),
+		},
+		{
 			id:     "log-0",
 			label:  "L0",
 			active: d.Opts.Filters.LogLevel == am.LogNothing,
@@ -517,7 +653,7 @@ func (d *Debugger) updateFiltersBar() {
 		}
 
 		// focused
-		if d.focusedFilter == filterName(item.id) && focused {
+		if d.focusedFilter == FilterName(item.id) && focused {
 			text += f("[%s][::bu]%s[::-]", colorActive, item.label)
 		} else if !focused {
 			text += f("[%s]%s", colorHighlight2, item.label)
@@ -533,7 +669,7 @@ func (d *Debugger) updateFiltersBar() {
 }
 
 func (d *Debugger) updateViews(immediate bool) {
-	switch d.Mach.Switch(ss.GroupViews...) {
+	switch d.Mach.Switch(ss.GroupViews) {
 
 	case ss.MatrixView:
 		d.updateMatrix()
@@ -568,17 +704,19 @@ func (d *Debugger) jumpBack(ev *tcell.EventKey) *tcell.EventKey {
 	}
 
 	ctx := context.TODO()
-	d.Mach.Remove1(ss.Playing, nil)
+	d.Mach.Remove(am.S{ss.Playing, ss.TailMode}, nil)
 
 	if d.Mach.Is1(ss.StateNameSelected) {
 		// state jump
-		amh.Add1Block(ctx, d.Mach, ss.ScrollToMutTx, am.A{
+		amhelp.Add1Block(ctx, d.Mach, ss.ScrollToMutTx, am.A{
 			"state": d.C.SelectedState,
 			"fwd":   false,
 		})
+		// sidebar for errs
+		d.updateClientList(true)
 	} else {
 		// fast jump
-		amh.Add1Block(ctx, d.Mach, ss.Back, am.A{
+		amhelp.Add1Block(ctx, d.Mach, ss.Back, am.A{
 			"amount": min(fastJumpAmount, d.C.CursorTx),
 		})
 	}
@@ -592,22 +730,31 @@ func (d *Debugger) jumpFwd(ev *tcell.EventKey) *tcell.EventKey {
 	}
 
 	ctx := context.TODO()
-	d.Mach.Remove1(ss.Playing, nil)
+	d.Mach.Remove(am.S{ss.Playing, ss.TailMode}, nil)
 
 	if d.Mach.Is1(ss.StateNameSelected) {
 		// state jump
-		amh.Add1Block(ctx, d.Mach, ss.ScrollToMutTx, am.A{
+		amhelp.Add1Block(ctx, d.Mach, ss.ScrollToMutTx, am.A{
 			"state": d.C.SelectedState,
 			"fwd":   true,
 		})
+		// sidebar for errs
+		d.updateClientList(true)
 	} else {
 		// fast jump
-		amh.Add1Block(ctx, d.Mach, ss.Fwd, am.A{
+		amhelp.Add1Block(ctx, d.Mach, ss.Fwd, am.A{
 			"amount": min(fastJumpAmount, len(d.C.MsgTxs)-d.C.CursorTx),
 		})
 	}
 
 	return nil
+}
+
+// memorizeTxTime will memorize the current tx time
+func (d *Debugger) memorizeTxTime(c *Client) {
+	if c.CursorTx > 0 && c.CursorTx <= len(c.MsgTxs) {
+		d.lastScrolledTxTime = *c.MsgTxs[c.CursorTx-1].Time
+	}
 }
 
 func (d *Debugger) parseMsg(c *Client, idx int) {
@@ -616,50 +763,46 @@ func (d *Debugger) parseMsg(c *Client, idx int) {
 
 	// TODO verify hosts by token, to distinguish 2 hosts with the same ID
 	msgTx := c.MsgTxs[idx]
-	var t uint64
+	var sum uint64
 	for _, v := range msgTx.Clocks {
-		t += v
+		sum += v
 	}
-	msgTxParsed := MsgTxParsed{
-		Time: t,
-		Idx:  idx,
-	}
-
-	// added / removed
+	index := c.MsgStruct.StatesIndex
+	prevTx := &telemetry.DbgMsgTx{}
 	if len(c.MsgTxs) > 1 && idx > 0 {
-		prevTx := c.MsgTxs[idx-1]
-		index := c.MsgStruct.StatesIndex
-
-		for i, name := range index {
-			if prevTx.Is1(index, name) && !msgTx.Is1(index, name) {
-				msgTxParsed.StatesRemoved = append(msgTxParsed.StatesRemoved, name)
-			} else if !prevTx.Is1(index, name) && msgTx.Is1(index, name) {
-				msgTxParsed.StatesAdded = append(msgTxParsed.StatesAdded, name)
-			} else if prevTx.Clocks[i] != msgTx.Clocks[i] {
-				// treat multi states as added
-				msgTxParsed.StatesAdded = append(msgTxParsed.StatesAdded, name)
-			}
-		}
+		prevTx = c.MsgTxs[idx-1]
 	}
 
-	// touched
-	touched := am.S{}
-	for _, step := range msgTx.Steps {
-		if step.FromState != "" {
-			touched = append(touched, step.FromState)
-		}
-		if step.ToState != "" {
-			touched = append(touched, step.ToState)
+	fakeTx := &am.Transition{
+		TimeBefore: prevTx.Clocks,
+		TimeAfter:  msgTx.Clocks,
+	}
+	added, removed, touched := amhelp.GetTransitionStates(fakeTx, index)
+	msgTxParsed := &MsgTxParsed{
+		TimeSum:       sum,
+		StatesAdded:   c.statesToIndexes(added),
+		StatesRemoved: c.statesToIndexes(removed),
+		StatesTouched: c.statesToIndexes(touched),
+	}
+
+	// errors
+	var isErr bool
+	for _, name := range index {
+		if strings.HasPrefix(name, "Err") && msgTx.Is1(index, name) {
+			isErr = true
+			break
 		}
 	}
-	msgTxParsed.StatesTouched = lo.Uniq(touched)
+	if isErr || msgTx.Is1(index, am.Exception) {
+		// prepend to errors
+		c.errors = append([]int{idx}, c.errors...)
+	}
 
 	// store the parsed msg
 	c.msgTxsParsed = append(c.msgTxsParsed, msgTxParsed)
-	// TODO take from msgs
-	c.lastActive = time.Now()
+	c.mTimeSum = sum
 
-	d.parseMsgLog(c, msgTx)
+	d.parseMsgLog(c, msgTx, idx)
 }
 
 // isTxSkipped checks if the tx at the given index is skipped by filters
@@ -726,7 +869,7 @@ func (d *Debugger) updateTxBars() {
 	} else {
 
 		var title string
-		switch d.Mach.Switch(ss.GroupPlaying...) {
+		switch d.Mach.Switch(ss.GroupPlaying) {
 		case ss.Playing:
 			title = formatTxBarTitle("Playing")
 		case ss.TailMode:
@@ -735,7 +878,7 @@ func (d *Debugger) updateTxBars() {
 			title = formatTxBarTitle("Paused") + " "
 		}
 
-		left, right := d.getTxInfo(c.CursorTx, tx, &c.msgTxsParsed[c.CursorTx-1],
+		left, right := d.getTxInfo(c.CursorTx, tx, c.msgTxsParsed[c.CursorTx-1],
 			title)
 		d.currTxBarLeft.SetText(left)
 		d.currTxBarRight.SetText(right)
@@ -745,7 +888,7 @@ func (d *Debugger) updateTxBars() {
 	if nextTx != nil && c != nil {
 		title := "Next   "
 		left, right := d.getTxInfo(c.CursorTx+1, nextTx,
-			&c.msgTxsParsed[c.CursorTx], title)
+			c.msgTxsParsed[c.CursorTx], title)
 		d.nextTxBarLeft.SetText(left)
 		d.nextTxBarRight.SetText(right)
 	}
@@ -809,9 +952,9 @@ func (d *Debugger) updateTimelines() {
 	d.timelineSteps.SetEmptyRune(' ')
 }
 
-func (d *Debugger) updateSidebar(immediate bool) {
+func (d *Debugger) updateClientList(immediate bool) {
 	if immediate {
-		d.doUpdateSidebar()
+		d.doUpdateClientList(true)
 		return
 	}
 
@@ -822,46 +965,84 @@ func (d *Debugger) updateSidebar(immediate bool) {
 
 	go func() {
 		time.Sleep(sidebarUpdateDebounce)
-		d.doUpdateSidebar()
+		d.doUpdateClientList(false)
 	}()
 }
 
-func (d *Debugger) doUpdateSidebar() {
+func (d *Debugger) doUpdateClientList(immediate bool) {
 	if d.Mach.Disposed.Load() {
 		return
 	}
 
-	for i, item := range d.sidebar.GetItems() {
-		name := item.GetReference().(string)
-		c := d.Clients[name]
-		label := d.getSidebarLabel(name, c, i)
-		item.SetMainText(label)
+	update := func() {
+		// count
+		longestName := 0
+		for _, item := range d.clientList.GetItems() {
+			ref := item.GetReference().(*sidebarRef)
+			l := len(ref.name) + ref.lvl
+			if l > longestName {
+				longestName = l
+			}
+		}
+
+		// update
+		for i, item := range d.clientList.GetItems() {
+			ref := item.GetReference().(*sidebarRef)
+			c := d.Clients[ref.name]
+			count := int(math.Max(0, float64(longestName+1-len(ref.name)-ref.lvl)))
+			spacePre := ""
+			spacePost := " "
+			if d.clientHasParent(c.id) {
+				spacePre = " "
+				spacePost = ""
+			}
+			namePad := strings.Repeat("-", ref.lvl) + spacePre + ref.name +
+				strings.Repeat(" ", count) + spacePost
+			label := d.getSidebarLabel(namePad, c, i)
+			item.SetMainText(label)
+		}
+
+		if len(d.Clients) > 0 {
+			var totalSum uint64
+			for _, c := range d.Clients {
+				totalSum += c.mTimeSum
+			}
+
+			d.clientList.SetTitle(d.P.Sprintf(
+				" Machines:%d T:%v ", len(d.Clients), totalSum))
+		} else {
+			d.clientList.SetTitle(" Machines ")
+		}
 	}
 
-	title := " Machines"
-	if len(d.Clients) > 0 {
-		title += ":" + strconv.Itoa(len(d.Clients))
+	// avoid eval in handlers
+	if immediate {
+		update()
+	} else {
+		d.Mach.Eval("doUpdateClientList", update, nil)
 	}
-	d.sidebar.SetTitle(title + " ")
+
 	d.updateSidebarScheduled.Store(false)
-
 	d.draw()
 }
 
-// buildSidebar builds the sidebar with the list of clients.
+// buildClientList builds the clientList with the list of clients.
 // selectedIndex: index of the selected item, -1 for the current one.
-func (d *Debugger) buildSidebar(selectedIndex int) {
+func (d *Debugger) buildClientList(selectedIndex int) {
+	// prev state
 	selected := ""
 	var item *cview.ListItem
 	if selectedIndex == -1 {
-		item = d.sidebar.GetCurrentItem()
+		item = d.clientList.GetCurrentItem()
 	} else if selectedIndex > -1 {
-		item = d.sidebar.GetItem(selectedIndex)
+		item = d.clientList.GetItem(selectedIndex)
 	}
 	if item != nil {
-		selected = item.GetReference().(string)
+		selected = item.GetReference().(*sidebarRef).name
 	}
-	d.sidebar.Clear()
+
+	// re-gen all
+	d.clientList.Clear()
 	var list []string
 	for _, c := range d.Clients {
 		list = append(list, c.id)
@@ -870,39 +1051,139 @@ func (d *Debugger) buildSidebar(selectedIndex int) {
 	// sort a-z, with value numbers
 	humanSort(list)
 
-	for i, name := range list {
-		c := d.Clients[name]
-		label := d.getSidebarLabel(name, c, i)
+	pos := 0
+	// TODO REWRITE
+	for _, parent := range list {
+		if d.clientHasParent(parent) {
+			continue
+		}
 
 		// create list item
-		item := cview.NewListItem(label)
-		item.SetReference(name)
-		d.sidebar.AddItem(item)
+		item := cview.NewListItem(parent)
+		item.SetReference(&sidebarRef{name: parent, lvl: 0})
+		d.clientList.AddItem(item)
 
-		if selected == "" && d.C != nil && d.C.id == name {
+		if selected == "" && d.C != nil && d.C.id == parent {
 			// pre-select the current machine
-			d.sidebar.SetCurrentItem(i)
-		} else if selected == name {
+			d.clientList.SetCurrentItem(pos)
+		} else if selected == parent {
 			// select the previously selected one
-			d.sidebar.SetCurrentItem(i)
+			d.clientList.SetCurrentItem(pos)
+		}
+
+		pos = d.clientListChild(list, parent, pos, selected, 1)
+
+		pos++
+	}
+
+	var totalSum uint64
+	for _, c := range d.Clients {
+		totalSum += c.mTimeSum
+	}
+
+	d.clientList.SetTitle(d.P.Sprintf(
+		" Machines:%d T:%v ", len(d.Clients), totalSum))
+
+	// sort TODO blinks anyway
+	// d.doUpdateClientList(true)
+}
+
+type sidebarRef struct {
+	name string
+	lvl  int
+}
+
+func (d *Debugger) clientListChild(
+	list []string, parent string, pos int, selected string,
+	lvl int,
+) int {
+	for _, child := range list {
+		cc := d.Clients[child]
+
+		if !d.clientHasParent(child) || cc.MsgStruct.Parent != parent {
+			continue
+		}
+
+		// create list item
+		item := cview.NewListItem(child)
+		item.SetReference(&sidebarRef{name: child, lvl: lvl})
+		d.clientList.AddItem(item)
+
+		if selected == "" && d.C != nil && d.C.id == child {
+			// pre-select the current machine
+			d.clientList.SetCurrentItem(pos)
+		} else if selected == child {
+			// select the previously selected one
+			d.clientList.SetCurrentItem(pos)
+		}
+
+		pos = d.clientListChild(list, child, pos, selected, lvl+1)
+
+		pos++
+	}
+	return pos
+}
+
+func (d *Debugger) clientHasParent(cid string) bool {
+	c, ok := d.Clients[cid]
+	if !ok || c.MsgStruct.Parent == "" {
+		return false
+	}
+	_, ok = d.Clients[c.MsgStruct.Parent]
+
+	return ok
+}
+
+func (d *Debugger) getSidebarLabel(
+	name string, c *Client, index int,
+) string {
+	isHovered := d.clientList.GetCurrentItemIndex() == index
+	hasFocus := d.Mach.Is1(ss.SidebarFocused)
+
+	var currCTxIdx int
+	var currCTx *telemetry.DbgMsgTx
+	// current tx of the selected client
+	currSelTx := d.currentTx()
+	if currSelTx != nil {
+		currTime := d.lastScrolledTxTime
+		if currTime.IsZero() {
+			currTime = *currSelTx.Time
+		}
+		currCTxIdx = c.lastTxTill(currTime)
+		if currCTxIdx != -1 {
+			currCTx = c.MsgTxs[currCTxIdx]
 		}
 	}
 
-	d.sidebar.SetTitle(" Machines:" + strconv.Itoa(len(d.Clients)) + " ")
-}
+	// Ready, Start states indicators
+	state := " "
 
-func (d *Debugger) getSidebarLabel(name string, c *Client, index int) string {
-	label := d.P.Sprintf("%s (%d)", name, len(c.MsgTxs))
-	if d.C != nil && name == d.C.id {
+	if currCTx != nil {
+		readyIdx := slices.Index(c.MsgStruct.StatesIndex, "Ready")
+		startIdx := slices.Index(c.MsgStruct.StatesIndex, "Start")
+		if readyIdx != -1 && am.IsActiveTick(currCTx.Clocks[readyIdx]) {
+			state = "R"
+		} else if startIdx != -1 && am.IsActiveTick(currCTx.Clocks[startIdx]) {
+			state = "S"
+		}
+	}
+
+	label := d.P.Sprintf("%s %s|%d", name, state, currCTxIdx+1)
+	if currCTxIdx+1 < len(c.MsgTxs) {
+		label += "+"
+	}
+
+	// mark selected
+	if d.C != nil && c.id == d.C.id {
 		label = "[::bu]" + label
 	}
 
-	isSel := d.sidebar.GetCurrentItemIndex() == index
-	hasFocus := d.Mach.Is1(ss.SidebarFocused)
-	if !c.connected.Load() {
-		if isSel && !hasFocus {
+	if c.hadErrSinceTx(currCTxIdx, 100) {
+		label = "[red]" + label
+	} else if !c.connected.Load() {
+		if isHovered && !hasFocus {
 			label = "[grey]" + label
-		} else if !isSel {
+		} else if !isHovered {
 			label = "[grey]" + label
 		} else {
 			label = "[black]" + label
@@ -916,6 +1197,10 @@ func (d *Debugger) updateBorderColor() {
 	color := cview.ColorUnset
 	if d.C != nil && d.C.connected.Load() {
 		color = colorActive
+	}
+
+	if d.Mach.IsErr() {
+		color = tcell.ColorRed
 	}
 
 	for _, box := range d.focusable {
@@ -957,8 +1242,8 @@ func (d *Debugger) exportData(filename string) {
 		i++
 	}
 
-	// create a new bzip2 writer
-	brCompress := brotli.NewWriter(bufio.NewWriter(fw))
+	// create a new brotli writer
+	brCompress := brotli.NewWriter(fw)
 	defer brCompress.Close()
 
 	// encode
@@ -984,14 +1269,15 @@ func (d *Debugger) getTxInfo(txIndex int,
 	if txIndex > 1 {
 		prevT = d.C.MsgTxs[txIndex-2].TimeSum()
 	}
+	calledStates := tx.CalledStateNames(d.C.MsgStruct.StatesIndex)
 
-	left += d.P.Sprintf(" | tx: %v", txIndex)
-	left += d.P.Sprintf(" | Time: +%v", tx.TimeSum()-prevT)
+	left += d.P.Sprintf(" | tx: %d", txIndex)
+	left += d.P.Sprintf(" | Time: +%d", tx.TimeSum()-prevT)
 	left += " |"
 
 	multi := ""
-	if len(tx.CalledStates) == 1 &&
-		d.C.MsgStruct.States[tx.CalledStates[0]].Multi {
+	if len(calledStates) == 1 &&
+		d.C.MsgStruct.States[calledStates[0]].Multi {
 		multi += " multi"
 	}
 
@@ -999,7 +1285,7 @@ func (d *Debugger) getTxInfo(txIndex int,
 		left += "[grey]"
 	}
 	left += fmt.Sprintf(" %s%s: [::b]%s[::-]", tx.Type, multi,
-		strings.Join(tx.CalledStates, ", "))
+		strings.Join(calledStates, ", "))
 
 	if !tx.Accepted {
 		left += "[-]"
@@ -1031,16 +1317,17 @@ func (d *Debugger) doCleanOnConnect() bool {
 			disconns = append(disconns, c)
 		}
 	}
+
 	// if all disconnected, clean up
 	if len(disconns) == len(d.Clients) {
 		for _, c := range d.Clients {
 			// TODO cant be scheduled, as the client can connect in the meantime
 			// d.Add1(ss.RemoveClient, am.A{"Client.id": c.id})
 			delete(d.Clients, c.id)
-			c.msgTxsParsed = nil
-			c.logMsgs = nil
-			c.MsgTxs = nil
-			c.MsgStruct = nil
+			// c.msgTxsParsed = nil
+			// c.logMsgs = nil
+			// c.MsgTxs = nil
+			// c.MsgStruct = nil
 		}
 		return true
 	}
@@ -1056,6 +1343,7 @@ func (d *Debugger) updateMatrix() {
 }
 
 func (d *Debugger) updateMatrixRelations() {
+	// TODO optimize: re-use existing cells or gen txt
 	d.matrix.Clear()
 	d.matrix.SetTitle(" Matrix ")
 
@@ -1075,6 +1363,7 @@ func (d *Debugger) updateMatrixRelations() {
 		prevTx = d.currentTx()
 	}
 	steps := tx.Steps
+	calledStates := tx.CalledStateNames(c.MsgStruct.StatesIndex)
 
 	// show the current tx summary on step 0, and partial if cursor > 0
 	if c.CursorStep > 0 {
@@ -1089,20 +1378,20 @@ func (d *Debugger) updateMatrixRelations() {
 	for i, name := range index {
 
 		v := "0"
-		if slices.Contains(tx.CalledStates, name) {
+		if slices.Contains(calledStates, name) {
 			v = "1"
 			called = append(called, i)
 		}
 		d.matrix.SetCellSimple(0, i, matrixCellVal(v))
 
 		// mark called states
-		if slices.Contains(tx.CalledStates, name) {
+		if slices.Contains(calledStates, name) {
 			d.matrix.GetCell(0, i).SetAttributes(tcell.AttrBold | tcell.AttrUnderline)
 		}
 
 		// mark selected state
 		if d.C.SelectedState == name {
-			d.matrix.GetCell(0, i).SetBackgroundColor(colorHighlight)
+			d.matrix.GetCell(0, i).SetBackgroundColor(colorHighlight3)
 			highlightIndex = i
 		}
 	}
@@ -1135,7 +1424,7 @@ func (d *Debugger) updateMatrixRelations() {
 
 		// mark selected state
 		if d.C.SelectedState == name {
-			cell.SetBackgroundColor(colorHighlight)
+			cell.SetBackgroundColor(colorHighlight3)
 		}
 	}
 	matrixEmptyRow(d, 3, len(index), highlightIndex)
@@ -1161,7 +1450,7 @@ func (d *Debugger) updateMatrixRelations() {
 
 				// mark selected state
 				if d.C.SelectedState == target || d.C.SelectedState == source {
-					cell.SetBackgroundColor(colorHighlight)
+					cell.SetBackgroundColor(colorHighlight3)
 				}
 
 				if v == 0 {
@@ -1181,90 +1470,147 @@ func (d *Debugger) updateMatrixRelations() {
 
 	title := " Matrix:" + strconv.Itoa(sum) + " "
 	if c.CursorTx > 0 {
-		t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx-1].Time))
+		t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx-1].TimeSum))
 		title += "Time:" + t + " "
 	}
 	d.matrix.SetTitle(title)
 }
 
 func (d *Debugger) updateMatrixRain() {
+	if d.Mach.Not1(ss.MatrixRain) {
+		return
+	}
+
+	// TODO optimize: re-use existing cells or gen txt
 	d.matrix.Clear()
 	d.matrix.SetTitle(" Matrix ")
 
 	c := d.C
-	if c == nil || c.CursorTx == 0 {
+	if c == nil {
 		return
 	}
 
 	index := c.MsgStruct.StatesIndex
 	tx := d.currentTx()
 	prevTx := d.prevTx()
-	rows := 60
+	_, _, _, rows := d.matrix.GetRect()
 
-	for i := 0; i < rows; i++ {
+	i := 0
+	for iShown := 0; iShown < rows; i++ {
 
-		if c.CursorTx-i < 1 {
+		idx := c.CursorTx - i
+		if d.Mach.Not1(ss.TailMode) {
+			idx += rows / 2
+		}
+		if idx < 1 || idx > len(c.MsgTxs) {
 			break
+		}
+
+		// filters
+		if d.isFiltered() && d.isTxSkipped(c, idx-1) {
+			continue
 		}
 
 		row := ""
 
-		tx := c.MsgTxs[c.CursorTx-i-1]
-		txParsed := c.msgTxsParsed[c.CursorTx-i-1]
+		tx := c.MsgTxs[idx-1]
+		txParsed := c.msgTxsParsed[idx-1]
+		calledStates := tx.CalledStateNames(c.MsgStruct.StatesIndex)
 
 		for ii, name := range index {
 
 			v := "."
+			sIsErr := strings.HasPrefix(name, "Err")
 
 			if tx.Is1(index, name) {
 				v = "1"
-				if slices.Contains(txParsed.StatesTouched, index[ii]) {
+				if slices.Contains(txParsed.StatesTouched, ii) {
 					v = "2"
 				}
-			} else if slices.Contains(txParsed.StatesRemoved, index[ii]) {
+			} else if slices.Contains(txParsed.StatesRemoved, ii) {
 				v = "|"
-			} else if slices.Contains(txParsed.StatesTouched, index[ii]) {
-				v = "-"
+			} else if !tx.Accepted && slices.Contains(calledStates, index[ii]) {
+				// called but canceled
+				v = "c"
+			} else if slices.Contains(txParsed.StatesTouched, ii) {
+				v = "*"
 			}
 
 			row += v
 
-			d.matrix.SetCellSimple(i, ii, v)
+			d.matrix.SetCellSimple(iShown, ii, v)
 
-			if v == "." || v == "|" {
-				d.matrix.GetCell(i, ii).SetTextColor(colorHighlight)
+			// gray out some
+			if !tx.Accepted || v == "." || v == "|" || v == "c" || v == "*" {
+				d.matrix.GetCell(iShown, ii).SetTextColor(colorHighlight)
 			}
 
 			// mark called states
-			if slices.Contains(tx.CalledStates, name) {
-				d.matrix.GetCell(i, ii).SetAttributes(tcell.AttrBold)
+			if slices.Contains(calledStates, name) {
+				d.matrix.GetCell(iShown, ii).SetAttributes(tcell.AttrUnderline)
 			}
 
-			// mark selected state
-			if d.C.SelectedState == name {
-				d.matrix.GetCell(i, ii).SetBackgroundColor(colorHighlight)
+			if idx == c.CursorTx {
+				// current tx
+				d.matrix.GetCell(iShown, ii).SetBackgroundColor(colorHighlight3)
+			} else if d.C.SelectedState == name {
+				// mark selected state
+				d.matrix.GetCell(iShown, ii).SetBackgroundColor(colorHighlight3)
+			}
+
+			if (sIsErr || name == am.Exception) && tx.Is1(index, name) {
+				// mark exceptions
+				if tx.Accepted {
+					d.matrix.GetCell(iShown, ii).SetBackgroundColor(tcell.ColorIndianRed)
+				} else {
+					d.matrix.GetCell(iShown, ii).SetBackgroundColor(colorHighlight3)
+				}
 			}
 		}
 
-		d.Mach.Log("%d: %s", i, row)
+		// timestamp
+		tStamp := tx.Time.Format(timeFormat)
+		tStampFmt := tStamp
+		// highlight first diff number since prev timestamp
+		if idx > 1 {
+			prevTStamp := c.MsgTxs[idx-2].Time.Format(timeFormat)
+			if idx := findFirstDiff(prevTStamp, tStamp); idx != -1 {
+				tStampFmt = tStamp[:idx] + "[white]" + tStamp[idx:idx+1] + "[gray]" +
+					tStamp[idx+1:]
+			}
+		}
+
+		// tail cell
+		d.matrix.SetCellSimple(iShown, len(index), fmt.Sprintf(
+			"  [gray]%d | %s[-]", idx, tStampFmt))
+
+		// current tx
+		if idx == c.CursorTx {
+			d.matrix.GetCell(iShown, len(index)).SetBackgroundColor(colorHighlight3)
+		}
+
+		// inc the shown counter
+		iShown++
 	}
 
 	diffT := 0
-	for _, name := range index {
+	if c.CursorTx > 0 {
+		for _, name := range index {
 
-		var pTick uint64
-		if prevTx != nil {
-			pTick = prevTx.Clock(index, name)
+			var pTick uint64
+			if prevTx != nil {
+				pTick = prevTx.Clock(index, name)
+			}
+			tick := tx.Clock(index, name)
+
+			v := tick - pTick
+			diffT += int(v)
 		}
-		tick := tx.Clock(index, name)
-
-		v := tick - pTick
-		diffT += int(v)
 	}
 
 	title := " Matrix:" + strconv.Itoa(diffT) + " "
 	if c.CursorTx > 0 {
-		t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx-1].Time))
+		t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx-1].TimeSum))
 		title += "Time:" + t + " "
 	}
 	d.matrix.SetTitle(title)
@@ -1277,8 +1623,9 @@ func (d *Debugger) getSidebarCurrClientIdx() int {
 	}
 
 	i := 0
-	for _, item := range d.sidebar.GetItems() {
-		if item.GetReference().(string) == d.C.id {
+	for _, item := range d.clientList.GetItems() {
+		ref := item.GetReference().(*sidebarRef)
+		if ref.name == d.C.id {
 			return i
 		}
 		i++
@@ -1308,7 +1655,7 @@ func (d *Debugger) filterClientTxs() {
 
 // isFiltered checks if any filter is active.
 func (d *Debugger) isFiltered() bool {
-	return d.Mach.Any1(ss.FilterCanceledTx, ss.FilterAutoTx, ss.FilterEmptyTx)
+	return d.Mach.Any1(ss.GroupFilters...)
 }
 
 // filterTx returns true when a TX passed the passed filters.
@@ -1345,27 +1692,21 @@ func (d *Debugger) filterTx(
 	return true
 }
 
-func (d *Debugger) scrollToTime(t time.Time) bool {
-	for i, tx := range d.C.MsgTxs {
-		if !tx.Time.After(t) {
-			continue
-		}
-
-		// pick the closer one
-		if i > 0 && tx.Time.Sub(t) >
-			t.Sub(*d.C.MsgTxs[i-1].Time) {
-			d.C.CursorTx = d.filterTxCursor(d.C, i, true)
-		} else {
-			d.C.CursorTx = d.filterTxCursor(d.C, i+1, true)
-		}
-
-		return true
+func (d *Debugger) scrollToTime(hT time.Time, filter bool) bool {
+	latestTx := d.C.lastTxTill(hT)
+	if latestTx == -1 {
+		return false
 	}
 
-	return false
+	if filter {
+		latestTx = d.filterTxCursor(d.C, latestTx, true)
+	}
+	d.SetCursor(latestTx)
+
+	return true
 }
 
-func (d *Debugger) processFilterChange(ctx context.Context, filterTxs bool) {
+func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
 	// TODO refac to FilterToggledState
 	<-d.Mach.WhenQueueEnds(ctx)
 	if ctx.Err() != nil {
@@ -1381,7 +1722,7 @@ func (d *Debugger) processFilterChange(ctx context.Context, filterTxs bool) {
 
 		// stay on the last one
 		if d.Mach.Is1(ss.TailMode) {
-			d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), false)
+			d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false))
 		}
 
 		// rebuild the whole log to reflect the UI changes
@@ -1396,15 +1737,40 @@ func (d *Debugger) processFilterChange(ctx context.Context, filterTxs bool) {
 		}
 
 		if filterTxs {
-			d.C.CursorTx = d.filterTxCursor(d.C, d.C.CursorTx, false)
+			d.SetCursor(d.filterTxCursor(d.C, d.C.CursorTx, false))
 		}
 	}
 
 	// queue this removal after filter states, so we can depend on WhenNot
 	d.Mach.Remove1(ss.ToggleFilter, nil)
 
+	d.updateClientList(false)
 	d.updateFiltersBar()
 	d.updateTimelines()
+	d.updateMatrixRain()
 	d.updateLog(false)
 	d.draw()
+}
+
+func (d *Debugger) checkGcMsgs() am.Result {
+	if d.Opts.NoGc {
+		return am.Canceled
+	}
+
+	// get clients and check
+	var clients []*Client
+	msgs := 0
+	for _, c := range d.Clients {
+		clients = append(clients, c)
+		msgs += len(c.MsgTxs)
+	}
+	if msgs < d.Opts.MsgMaxAmount {
+		return am.ResultNoOp
+	}
+
+	// TODO Pass()
+	return d.Mach.Add1(ss.GcMsgs, am.A{
+		"msgCount":   msgs,
+		"[]*Clients": clients,
+	})
 }

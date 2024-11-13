@@ -9,6 +9,8 @@ import (
 
 	"code.rocketnine.space/tslocum/cbind"
 
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 
@@ -94,6 +96,11 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 		case d.log.Box:
 			d.Mach.Add1(ss.LogFocused, nil)
 
+		case d.logReader:
+			fallthrough
+		case d.logReader.Box:
+			d.Mach.Add1(ss.LogReaderFocused, nil)
+
 		case d.timelineTxs:
 			fallthrough
 		case d.timelineTxs.Box:
@@ -109,9 +116,9 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 		case d.filtersBar.Box:
 			d.Mach.Add1(ss.FiltersFocused, nil)
 
-		case d.sidebar:
+		case d.clientList:
 			fallthrough
-		case d.sidebar.Box:
+		case d.clientList.Box:
 			d.Mach.Add1(ss.SidebarFocused, nil)
 
 		case d.matrix:
@@ -136,12 +143,12 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 			d.updateLog(true)
 		}
 
-		d.updateSidebar(true)
+		d.updateClientList(true)
 	}
 }
 
 // searchTreeSidebar does search-as-you-type for a-z, -, _ in the tree and
-// sidebar, with a searchAsTypeWindow buffer.
+// clientList, with a searchAsTypeWindow buffer.
 func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 	var (
 		bufferStart time.Time
@@ -173,32 +180,53 @@ func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 
 			// sidebar
 			if d.Mach.Is1(ss.SidebarFocused) {
-				for i, item := range d.sidebar.GetItems() {
+				currIdx := d.clientList.GetCurrentItemIndex()
+
+				for i, item := range d.clientList.GetItems() {
+					if i <= currIdx {
+						continue
+					}
+
 					text := normalizeText(item.GetMainText())
 					if strings.HasPrefix(text, buffer) {
-						d.sidebar.SetCurrentItem(i)
-						d.updateSidebar(true)
+						d.clientList.SetCurrentItem(i)
+						d.updateClientList(true)
 
 						d.draw()
 						break
 					}
 				}
+
+				// TODO wrap search
 			} else if d.Mach.Is1(ss.TreeFocused) {
 
 				// tree
 				found := false
+				currNodePassed := false
+				currNode := d.tree.GetCurrentNode()
 				d.treeRoot.WalkUnsafe(
 					func(node, parent *cview.TreeNode, depth int) bool {
 						if found {
 							return false
 						}
+						if !currNodePassed && node != currNode {
+							return true
+						}
+						currNodePassed = true
 
 						text := normalizeText(node.GetText())
 
-						if parent != nil && parent.IsExpanded() &&
-							strings.HasPrefix(text, buffer) {
+						// check if branch is expanded
+						p := node.GetParent()
+						for p != nil {
+							if !p.IsExpanded() {
+								return true
+							}
+							p = p.GetParent()
+						}
+
+						if strings.HasPrefix(text, buffer) {
 							found = true
-							d.tree.SetCurrentNode(node)
 
 							// handle StateNameSelected
 							ref, ok := node.GetReference().(*nodeRef)
@@ -209,12 +237,15 @@ func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 							}
 							d.updateTree()
 							d.draw()
+							d.tree.SetCurrentNode(node)
 
 							return false
 						}
 
 						return true
 					})
+
+				// TODO wrap search
 			}
 
 			return nil
@@ -276,9 +307,11 @@ func (d *Debugger) getKeystrokes() map[string]func(
 				case filterAutoTx:
 					d.focusedFilter = filterCanceledTx
 				case filterEmptyTx:
-					d.focusedFilter = filterAutoTx
-				case filterLog0:
+					d.focusedFilter = filterCanceledTx
+				case FilterSummaries:
 					d.focusedFilter = filterEmptyTx
+				case filterLog0:
+					d.focusedFilter = FilterSummaries
 				case filterLog1:
 					d.focusedFilter = filterLog0
 				case filterLog2:
@@ -327,6 +360,8 @@ func (d *Debugger) getKeystrokes() map[string]func(
 				case filterAutoTx:
 					d.focusedFilter = filterEmptyTx
 				case filterEmptyTx:
+					d.focusedFilter = FilterSummaries
+				case FilterSummaries:
 					d.focusedFilter = filterLog0
 				case filterLog0:
 					d.focusedFilter = filterLog1
@@ -382,8 +417,40 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			return tcell.NewEventKey(tcell.KeyPgUp, ' ', tcell.ModNone)
 		},
 
-		// expand / collapse the tree root
+		// expand / collapse trees
 		"alt+e": func(ev *tcell.EventKey) *tcell.EventKey {
+			// TODO unify
+
+			// log reader tree
+			if d.Mach.Is1(ss.LogReaderFocused) {
+				root := d.logReader.GetRoot()
+				children := root.GetChildren()
+				expanded := false
+
+				for _, child := range children {
+					if child.IsExpanded() {
+						expanded = true
+						break
+					}
+					child.Collapse()
+				}
+
+				// memorize
+				d.C.ReaderCollapsed = expanded
+				for _, child := range children {
+					if expanded {
+						child.Collapse()
+						child.GetReference().(*logReaderTreeRef).expanded = false
+					} else {
+						child.Expand()
+						child.GetReference().(*logReaderTreeRef).expanded = true
+					}
+				}
+
+				return nil
+			}
+
+			// struct tree
 			expanded := false
 			children := d.tree.GetRoot().GetChildren()
 
@@ -408,9 +475,16 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			return nil
 		},
 
+		// log reader
+		"alt+o": func(ev *tcell.EventKey) *tcell.EventKey {
+			amhelp.Toggle(d.Mach, ss.LogReaderVisible, nil)
+
+			return nil
+		},
+
 		// tail mode
 		"alt+v": func(ev *tcell.EventKey) *tcell.EventKey {
-			d.Mach.Add1(ss.TailMode, nil)
+			amhelp.Toggle(d.Mach, ss.TailMode, nil)
 
 			return nil
 		},
@@ -436,13 +510,30 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			return nil
 		},
 
+		"alt+r": func(ev *tcell.EventKey) *tcell.EventKey {
+			if d.Mach.Is1(ss.MatrixRain) {
+				d.Mach.Add1(ss.TreeLogView, nil)
+			} else {
+				d.Mach.Add(am.S{ss.MatrixRain, ss.TreeMatrixView}, nil)
+				// TODO force redraw to get rect size, not ideal
+				d.redrawCallback = func() {
+					time.Sleep(1 * 16 * time.Millisecond)
+					d.drawViews()
+				}
+			}
+
+			return nil
+		},
+
 		// scroll to the first tx
 		"home": func(ev *tcell.EventKey) *tcell.EventKey {
 			if d.Mach.Not1(ss.ClientSelected) {
 				return nil
 			}
-			d.C.CursorTx = d.filterTxCursor(d.C, 0, true)
+			d.SetCursor(d.filterTxCursor(d.C, 0, true))
 			d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
+			// sidebar for errs
+			d.updateClientList(true)
 			d.RedrawFull(true)
 
 			return nil
@@ -453,8 +544,10 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			if d.Mach.Not1(ss.ClientSelected) {
 				return nil
 			}
-			d.C.CursorTx = d.filterTxCursor(d.C, len(d.C.MsgTxs), false)
+			d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false))
 			d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
+			// sidebar for errs
+			d.updateClientList(true)
 			d.RedrawFull(true)
 
 			return nil
@@ -483,7 +576,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			if d.Mach.Not1(ss.FiltersFocused) {
 				d.focusManager.Focus(d.filtersBar)
 			} else {
-				d.focusManager.Focus(d.sidebar)
+				d.focusManager.Focus(d.clientList)
 			}
 			d.draw()
 
@@ -509,7 +602,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			}
 
 			if d.Mach.Is1(ss.FiltersFocused) {
-				d.focusManager.Focus(d.sidebar)
+				d.focusManager.Focus(d.clientList)
 			}
 
 			return ev
@@ -521,12 +614,12 @@ func (d *Debugger) getKeystrokes() map[string]func(
 				return ev
 			}
 
-			sel := d.sidebar.GetCurrentItem()
+			sel := d.clientList.GetCurrentItem()
 			if sel == nil || d.Mach.Not1(ss.SidebarFocused) {
 				return nil
 			}
 
-			cid := sel.GetReference().(string)
+			cid := sel.GetReference().(*sidebarRef)
 			d.Mach.Add1(ss.RemoveClient, am.A{"Client.id": cid})
 
 			return nil
@@ -538,7 +631,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			if d.Mach.Is1(ss.SidebarFocused) {
 				// TODO state?
 				go func() {
-					d.updateSidebar(true)
+					d.updateClientList(true)
 					d.draw()
 				}()
 			} else if d.Mach.Is1(ss.LogFocused) {
@@ -551,7 +644,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			if d.Mach.Is1(ss.SidebarFocused) {
 				// TODO state?
 				go func() {
-					d.updateSidebar(true)
+					d.updateClientList(true)
 					d.draw()
 				}()
 			} else if d.Mach.Is1(ss.LogFocused) {
@@ -573,14 +666,14 @@ func (d *Debugger) shouldScrollCurrView() bool {
 // TODO optimize usage places
 func (d *Debugger) throttleKey(ev *tcell.EventKey, ms int) bool {
 	// throttle
-	sameKey := d.lastKey == ev.Key()
-	elapsed := time.Since(d.lastKeyTime)
+	sameKey := d.lastKeystroke == ev.Key()
+	elapsed := time.Since(d.lastKeystrokeTime)
 	if sameKey && elapsed < time.Duration(ms)*time.Millisecond {
 		return true
 	}
 
-	d.lastKey = ev.Key()
-	d.lastKeyTime = time.Now()
+	d.lastKeystroke = ev.Key()
+	d.lastKeystrokeTime = time.Now()
 
 	return false
 }
@@ -592,65 +685,86 @@ func (d *Debugger) updateFocusable() {
 	}
 
 	var prims []cview.Primitive
-	switch d.Mach.Switch(ss.GroupViews...) {
+	switch d.Mach.Switch(ss.GroupViews) {
 
 	case ss.MatrixView:
 		d.focusable = []*cview.Box{
-			d.sidebar.Box, d.matrix.Box, d.timelineTxs.Box, d.timelineSteps.Box,
+			d.clientList.Box, d.matrix.Box, d.timelineTxs.Box, d.timelineSteps.Box,
 			d.filtersBar.Box,
 		}
 		prims = []cview.Primitive{
-			d.sidebar, d.matrix, d.timelineTxs,
+			d.clientList, d.matrix, d.timelineTxs,
 			d.timelineSteps, d.filtersBar,
 		}
 
 	case ss.TreeMatrixView:
 		d.focusable = []*cview.Box{
-			d.sidebar.Box, d.tree.Box, d.matrix.Box, d.timelineTxs.Box,
+			d.clientList.Box, d.tree.Box, d.matrix.Box, d.timelineTxs.Box,
 			d.timelineSteps.Box, d.filtersBar.Box,
 		}
 		prims = []cview.Primitive{
-			d.sidebar, d.tree, d.matrix, d.timelineTxs,
+			d.clientList, d.tree, d.matrix, d.timelineTxs,
 			d.timelineSteps, d.filtersBar,
 		}
 
 	case ss.TreeLogView:
 		fallthrough
 	default:
-		d.focusable = []*cview.Box{
-			d.sidebar.Box, d.tree.Box, d.log.Box, d.timelineTxs.Box,
-			d.timelineSteps.Box, d.filtersBar.Box,
-		}
-		prims = []cview.Primitive{
-			d.sidebar, d.tree, d.log, d.timelineTxs,
-			d.timelineSteps, d.filtersBar,
+		if d.Mach.Is1(ss.LogReaderVisible) {
+
+			d.focusable = []*cview.Box{
+				d.clientList.Box, d.tree.Box, d.log.Box, d.logReader.Box,
+				d.timelineTxs.Box, d.timelineSteps.Box, d.filtersBar.Box,
+			}
+			prims = []cview.Primitive{
+				d.clientList, d.tree, d.log, d.logReader, d.timelineTxs,
+				d.timelineSteps, d.filtersBar,
+			}
+		} else {
+
+			d.focusable = []*cview.Box{
+				d.clientList.Box, d.tree.Box, d.log.Box, d.timelineTxs.Box,
+				d.timelineSteps.Box, d.filtersBar.Box,
+			}
+			prims = []cview.Primitive{
+				d.clientList, d.tree, d.log, d.timelineTxs,
+				d.timelineSteps, d.filtersBar,
+			}
 		}
 	}
 
 	d.focusManager.Reset()
 	d.focusManager.Add(prims...)
 
-	switch d.Mach.Switch(ss.GroupFocused...) {
+	// change focus (or not) when changing view types
+	switch d.Mach.Switch(ss.GroupFocused) {
 	case ss.SidebarFocused:
-		d.focusManager.Focus(d.sidebar)
+		d.focusManager.Focus(d.clientList)
 	case ss.TreeFocused:
 		if d.Mach.Any1(ss.TreeMatrixView, ss.TreeLogView) {
 			d.focusManager.Focus(d.tree)
 		} else {
-			d.focusManager.Focus(d.sidebar)
+			d.focusManager.Focus(d.clientList)
 		}
 	case ss.LogFocused:
 		if d.Mach.Is1(ss.TreeLogView) {
-			d.focusManager.Focus(d.tree)
+			d.focusManager.Focus(d.log)
 		} else {
-			d.focusManager.Focus(d.sidebar)
+			d.focusManager.Focus(d.clientList)
 		}
-		d.focusManager.Focus(d.log)
+	case ss.LogReaderFocused:
+		if d.Mach.Is(am.S{ss.TreeLogView, ss.LogReaderVisible}) {
+			d.focusManager.Focus(d.logReader)
+		} else if d.Mach.Is1(ss.TreeLogView) && d.Mach.Not1(ss.LogReaderVisible) {
+			d.focusManager.Focus(d.log)
+		} else {
+			d.focusManager.Focus(d.clientList)
+		}
 	case ss.MatrixFocused:
 		if d.Mach.Any1(ss.TreeMatrixView, ss.MatrixView) {
 			d.focusManager.Focus(d.matrix)
 		} else {
-			d.focusManager.Focus(d.sidebar)
+			d.focusManager.Focus(d.clientList)
 		}
 	case ss.TimelineTxsFocused:
 		d.focusManager.Focus(d.timelineTxs)
@@ -659,31 +773,31 @@ func (d *Debugger) updateFocusable() {
 	case ss.FiltersFocused:
 		d.focusManager.Focus(d.filtersBar)
 	default:
-		d.focusManager.Focus(d.sidebar)
+		d.focusManager.Focus(d.clientList)
 	}
 }
 
 // updateKeyBars TODO light mode
 func (d *Debugger) updateKeyBars() {
-	l := string(cview.Styles.DropDownSymbol)
-	r := string(cview.Styles.DropDownSelectedSymbol)
-
 	keys := []struct{ key, desc string }{
-		{"space", "play/pause"},
-		{l + " /" + r + " ", "back/fwd"},
-		{"alt+" + l + " /" + r + " /h/l", "fast/state jump"},
-		{"home/end", "start/end"},
+		{"space", "play"},
+		{"▲ ▼", "nav"},
+		{"◀ ▶", "prev/next"},
+		{"alt+◀ ▶ h l", "fast/state jump"},
+		{"home/end", "first/last"},
 		{"alt+e/enter", "expand/collapse"},
 		{"tab", "focus"},
-		{"alt+v", "tail mode"},
-		{"alt+m", "matrix view"},
+		{"alt+v", "tail"},
+		{"alt+r", "rain"},
+		{"alt+m", "matrix"},
+		{"alt+o", "reader"},
 		{"alt+s", "export"},
 		{"?", "help"},
 	}
 
 	txt := "[" + colorActive.String() + "]"
 	for i, key := range keys {
-		txt += fmt.Sprintf("%s[%s]: %s", key.key, colorHighlight2, key.desc)
+		txt += fmt.Sprintf("%s[%s] %s", key.key, colorHighlight2, key.desc)
 		// suffix
 		if i != len(keys)-1 {
 			txt += fmt.Sprintf(" |[%s] ", colorActive)
