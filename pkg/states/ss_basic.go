@@ -1,83 +1,49 @@
-// Package states is repository of common state definitions, used to make
-// state-based API easier to compose and exchange.
+// Package states provides reusable state definitions.
+//
+// - basic
+// - connected
 package states
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
-// S is a type alias for a list of state names.
-type S = am.S
+// BasicStatesDef contains all the states of the Basic state machine.
+type BasicStatesDef struct {
+	*am.StatesBase
 
-// State is a type alias for a single state definition.
-type State = am.State
+	// ErrNetwork indicates a generic network error.
+	ErrNetwork string
+	// ErrHandlerTimeout indicates one of state machine handlers has timed out.
+	ErrHandlerTimeout string
 
-// SAdd is a func alias for adding lists of states to a list of states.
-var SAdd = am.SAdd
+	// Start indicates the machine should be working. Removing start can force
+	// stop the machine.
+	Start string
+	// Ready indicates the machine meets criteria to perform work.
+	Ready string
+	// Healthcheck is a periodic request making sure that the machine is still
+	// alive.
+	Healthcheck string
+}
 
-// SExtend is a func alias for extending an existing state definition.
-var SExtend = am.StateAdd
-
-// StructMerge is a func alias for extending an existing state structure.
-var StructMerge = am.StructMerge
-
-// States map defines relations and properties of states.
-var States = am.Struct{
+var BasicStruct = am.Struct{
 	// Errors
 
-	ErrNetwork: {Require: S{am.Exception}},
+	ssB.Exception:         {Multi: true},
+	ssB.ErrNetwork:        {Require: S{am.Exception}},
+	ssB.ErrHandlerTimeout: {Require: S{am.Exception}},
 
-	Start: {},
-	Ready: {},
+	// Basics
 
-	// Disconnected -> Connected
-
-	Connecting: {
-		Require: S{Start},
-		Remove:  GroupConnected,
-	},
-	Connected: {
-		Require: S{Start},
-		Remove:  GroupConnected,
-	},
-	Disconnecting: {Remove: GroupConnected},
-	Disconnected: {
-		Auto:   true,
-		Remove: GroupConnected,
-	},
+	ssB.Start:       {},
+	ssB.Ready:       {Require: S{ssB.Start}},
+	ssB.Healthcheck: {},
 }
 
-// Groups of mutually exclusive states.
+// EXPORTS AND GROUPS
 
-var GroupConnected = S{Connecting, Connected, Disconnecting, Disconnected}
+var (
+	ssB = am.NewStates(BasicStatesDef{})
 
-// #region boilerplate defs
-
-// Names of all the states (pkg enum).
-
-const (
-	ErrNetwork = "ErrNetwork"
-
-	Start = "Start"
-	Ready = "Ready"
-
-	Connecting    = "Connecting"
-	Connected     = "Connected"
-	Disconnecting = "Disconnecting"
-	Disconnected  = "Disconnected"
+	// BasicStates contains all the states for the Basic machine.
+	BasicStates = ssB
 )
-
-// Names is an ordered list of all the state names.
-var Names = S{
-	am.Exception,
-
-	ErrNetwork,
-
-	Start,
-	Ready,
-
-	Connecting,
-	Connected,
-	Disconnecting,
-	Disconnected,
-}
-
-// #endregion
