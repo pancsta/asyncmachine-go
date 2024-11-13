@@ -1550,7 +1550,7 @@ func (m *Machine) processWhenBindings() {
 
 	var toClose []chan struct{}
 	for _, s := range all {
-		for k, binding := range m.indexWhen[s] {
+		for _, binding := range m.indexWhen[s] {
 
 			if slices.Contains(activated, s) {
 
@@ -1603,12 +1603,8 @@ func (m *Machine) processWhenBindings() {
 					continue
 				}
 
-				if state == s {
-					m.indexWhen[s] = append(m.indexWhen[s][:k], m.indexWhen[s][k+1:]...)
-					continue
-				}
-
-				m.indexWhen[state] = slices.Delete(m.indexWhen[state], k, k+1)
+				// delete with a lookup TODO optimize
+				m.indexWhen[state] = slicesWithout(m.indexWhen[state], binding)
 			}
 
 			m.log(LogDecisions, "[when] match for (%s)", j(names))
@@ -1640,7 +1636,7 @@ func (m *Machine) processWhenTimeBindings() {
 
 	// check all the bindings for all the ticked states
 	for _, s := range all {
-		for k, binding := range indexWhenTime[s] {
+		for _, binding := range indexWhenTime[s] {
 
 			// check if the requested time has passed
 			if !binding.Completed[s] &&
@@ -1663,13 +1659,9 @@ func (m *Machine) processWhenTimeBindings() {
 					delete(indexWhenTime, state)
 					continue
 				}
-				if state == s {
-					indexWhenTime[s] = append(indexWhenTime[s][:k],
-						indexWhenTime[s][k+1:]...)
-					continue
-				}
 
-				indexWhenTime[state] = slices.Delete(indexWhenTime[state], k, k+1)
+				// delete with a lookup TODO optimizes
+				m.indexWhenTime[state] = slicesWithout(m.indexWhenTime[state], binding)
 			}
 
 			m.log(LogDecisions, "[when:time] match for (%s)", j(names))
