@@ -1,0 +1,10 @@
+:80 {
+    #
+    # root only
+    #
+    reverse_proxy /* root:18700
+
+    log {
+        output discard
+    }
+}
