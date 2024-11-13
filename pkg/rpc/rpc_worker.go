@@ -40,6 +40,10 @@ type Worker struct {
 	tracers        []am.Tracer
 	handlers       []remoteHandler
 	parentId       string
+	logLevel       atomic.Pointer[am.LogLevel]
+	logger         atomic.Pointer[am.Logger]
+	logEntriesLock sync.Mutex
+	logEntries     []*am.LogEntry
 }
 
 // Worker implements MachineApi
@@ -780,6 +784,91 @@ func (w *Worker) NewStateCtx(state string) context.Context {
 
 // ///// MISC
 
+// Log logs to a remote logger.
+func (w *Worker) Log(msg string, args ...any) {
+	// call rpc
+	resp := &RespResult{}
+	rpcArgs := &ArgsLog{Msg: msg, Args: args}
+	if !w.c.callFailsafe(w.Ctx(), rpcnames.Log.Encode(), rpcArgs, resp) {
+		return
+	}
+	// TODO local log?
+}
+
+func (w *Worker) SetLogId(val bool) {}
+
+func (w *Worker) GetLogId() bool {
+	// TODO
+	return false
+}
+
+// SetLoggerSimple takes log.Printf and sets the log level in one
+// call. Useful for testing. Requires LogChanges log level to produce any
+// output.
+func (w *Worker) SetLoggerSimple(
+	logf func(format string, args ...any), level am.LogLevel,
+) {
+	if logf == nil {
+		panic("logf cannot be nil")
+	}
+
+	var logger am.Logger = func(_ am.LogLevel, msg string, args ...any) {
+		logf(msg, args...)
+	}
+	w.logger.Store(&logger)
+	w.logLevel.Store(&level)
+}
+
+// SetLoggerEmpty creates an empty logger that does nothing and sets the log
+// level in one call. Useful when combined with am-dbg. Requires LogChanges log
+// level to produce any output.
+func (w *Worker) SetLoggerEmpty(level am.LogLevel) {
+	var logger am.Logger = func(_ am.LogLevel, msg string, args ...any) {
+		// no-op
+	}
+	w.logger.Store(&logger)
+	w.logLevel.Store(&level)
+}
+
+// SetLogger sets a custom logger function.
+func (w *Worker) SetLogger(fn am.Logger) {
+	if fn == nil {
+		w.logger.Store(nil)
+
+		return
+	}
+	w.logger.Store(&fn)
+}
+
+// GetLogger returns the current custom logger function, or nil.
+func (w *Worker) GetLogger() *am.Logger {
+	// TODO should return `Logger` not `*Logger`?
+	return w.logger.Load()
+}
+
+// SetLogLevel sets the log level of the machine.
+func (w *Worker) SetLogLevel(level am.LogLevel) {
+	w.logLevel.Store(&level)
+}
+
+// GetLogLevel returns the log level of the machine.
+func (w *Worker) GetLogLevel() am.LogLevel {
+	return *w.logLevel.Load()
+}
+
+// LogLvl adds an internal log entry from the outside. It should be used only
+// by packages extending pkg/machine. Use Log instead.
+func (w *Worker) LogLvl(lvl am.LogLevel, msg string, args ...any) {
+	if w.Disposed.Load() {
+		return
+	}
+
+	// single lines only
+	msg = strings.ReplaceAll(msg, "\n", " ")
+
+	w.log(lvl, msg, args...)
+}
+
 // StatesVerified returns true if the state names have been ordered
 // using VerifyStates.
 func (w *Worker) StatesVerified() bool {
@@ -902,7 +991,6 @@ func (w *Worker) Inspect(states am.S) string {
 	return ret
 }
 
-// log forwards a log msg to the Clients machine, respecting its log level.
 func (w *Worker) log(level am.LogLevel, msg string, args ...any) {
 	if w.GetLogLevel() < level {
 		return
