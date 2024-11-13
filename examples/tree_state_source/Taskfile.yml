@@ -1,0 +1,115 @@
+version: '3'
+
+dotenv: [ '.env' ]
+
+tasks:
+  root:
+    env:
+      TST_ADDR: :19700
+      TST_HTTP_ADDR: :18700
+    cmd: go run ./
+
+  # :19700
+  rep-1:
+    env:
+      TST_PARENT_ADDR: :19700
+      TST_NAME: rep-1
+      TST_ADDR: :19701
+      TST_HTTP_ADDR: :18701
+    cmd: go run ./
+
+  rep-2:
+    env:
+      TST_PARENT_ADDR: :19700
+      TST_NAME: rep-2
+      TST_ADDR: :19702
+      TST_HTTP_ADDR: :18702
+    cmd: go run ./
+
+  # :19701
+  rep-1-1:
+    env:
+      TST_PARENT_ADDR: :19701
+      TST_NAME: rep-1-1
+      TST_ADDR: :19703
+      TST_HTTP_ADDR: :18703
+    cmd: go run ./
+
+  rep-1-2:
+    env:
+      TST_PARENT_ADDR: :19701
+      TST_NAME: rep-1-2
+      TST_ADDR: :19704
+      TST_HTTP_ADDR: :18704
+    cmd: go run ./
+
+  # :19702
+  rep-2-1:
+    env:
+      TST_PARENT_ADDR: :19702
+      TST_NAME: rep-2-1
+      TST_ADDR: :19705
+      TST_HTTP_ADDR: :18705
+    cmd: go run ./
+
+  rep-2-2:
+    env:
+      TST_PARENT_ADDR: :19702
+      TST_NAME: rep-2-2
+      TST_ADDR: :19706
+      TST_HTTP_ADDR: :18706
+    cmd: go run ./
+
+  start:
+    desc: Start the example
+    cmd: goreman start
+
+  web-metrics:
+    dir: ../..
+    cmd: task web-metrics
+
+  gen-grafanas:
+    cmds:
+      - task: gen-grafana-root
+      - task: gen-grafana-rep
+        vars:
+          NAME: rep_1
+          PARENT: root
+      - task: gen-grafana-rep
+        vars:
+          NAME: rep_2
+          PARENT: root
+      - task: gen-grafana-rep
+        vars:
+          NAME: rep_1_1
+          PARENT: rep_1_root
+      - task: gen-grafana-rep
+        vars:
+          NAME: rep_1_2
+          PARENT: rep_1_root
+      - task: gen-grafana-rep
+        vars:
+          NAME: rep_2_1
+          PARENT: rep_2_root
+      - task: gen-grafana-rep
+        vars:
+          NAME: rep_2_2
+          PARENT: rep_2_root
+
+  gen-grafana-root:
+    internal: true
+    cmd: go run ../../tools/cmd/am-gen grafana
+      --name root
+      --folder tree_state_source
+      --ids root,rm-root,rs-root-0,rs-root-1,rs-root-2
+      --grafana-url {{.GRAFANA_URL}}
+      --source tree_state_source_root
+
+  gen-grafana-rep:
+    internal: true
+    cmd: go run ../../tools/cmd/am-gen grafana
+      --name {{.NAME}}
+      --folder tree_state_source
+      --ids {{.NAME}}_{{.PARENT}},rc_{{.NAME}},rm_{{.NAME}},rs_{{.NAME}}_0,rs_{{.NAME}}_1,rs_{{.NAME}}_2
+      --grafana-url {{.GRAFANA_URL}}
+      --source tree_state_source_{{.NAME}}
