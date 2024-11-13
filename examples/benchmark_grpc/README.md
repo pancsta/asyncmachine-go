@@ -1,8 +1,13 @@
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /examples/benchmark_grpc _ [cd /](/)
+
+> [!NOTE]
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
+> machine (nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking). It has
+> atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+
 ## Benchmark: aRPC vs gRPC
 
-[-> go back to monorepo /](/README.md)
-
-![results - KiB transferred, number of calls](/assets/arpc-vs-grpc.png)
+![results - KiB transferred, number of calls](https://pancsta.github.io/assets/asyncmachine-go/arpc-vs-grpc.png)
 
 This is a simple and opinionated benchmark of a subscribe-get-process scenario, implemented in both gRPC and aRPC.
 Source code can be [found in /examples/benchmark_grpc](/examples/benchmark_grpc). It essentially manipulates a worker

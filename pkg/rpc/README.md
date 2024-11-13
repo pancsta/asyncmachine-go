@@ -1,61 +1,152 @@
-# asyncmachine RPC
+[![go report](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
+[![coverage](https://codecov.io/gh/pancsta/asyncmachine-go/graph/badge.svg?token=B8553BI98P)](https://codecov.io/gh/pancsta/asyncmachine-go)
+[![go reference](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
+[![last commit](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
+![release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
+[![matrix chat](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
 
-[-> go back to monorepo /](/README.md)
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /pkg/rpc _ [cd /](/)
 
 > [!NOTE]
-> **asyncmachine** can transform blocking APIs into controllable state machines with ease. It shares similarities with
-> [Ergo's](https://github.com/ergo-services/ergo) actor model, and focuses on distributed workflows like [Temporal](https://github.com/temporalio/temporal).
-> It's lightweight and most features are optional.
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
+> machine (nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking). It has
+> atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
 **aRPC** is a transparent RPC for state machines implemented using [asyncmachine-go](/). It's
-clock-based and features many optimizations, e.g. having most of the API methods executed locally (as the state
-information is encoded as clock values). It's build on top of [cenkalti/rpc2](https://github.com/cenkalti/rpc2) and
-`net/rpc`. There are [gRPC benchmark](/examples/benchmark_grpc/README.md) and [video demo tutorial](/pkg/rpc/HOWTO.md) available.
+clock-based and features many optimizations, e.g. having most of the API methods executed locally (as state changes are
+regularly pushed to the client). It's built on top of [cenkalti/rpc2](https://github.com/cenkalti/rpc2), `net/rpc`,
+and [soheilhy/cmux](https://github.com/soheilhy/cmux). Check out a [dedicated example](/examples/arpc/), [gRPC benchmark](/examples/benchmark_grpc/README.md),
+and [integration tests tutorial](/pkg/rpc/HOWTO.md).
 
 ## Features
 
-- mutations
+- mutation methods
 - wait methods
 - clock pushes (from worker-side mutations)
 - remote contexts
+- multiplexing
+- reconnect / fail-safety
+- worker sending payloads to the client
 - initial optimizations
-- payload file upload
-- server getters
 
 Not implemented (yet):
 
 - `WhenArgs`, `Err()`
-- client getters
-- chunked encoding
+- `PushAllTicks`
+- chunked payloads
 - TLS
-- reconnect / failsafe
 - compression
-- multiplexing
 - msgpack encoding
 
-## Usage
+Each server can handle 1 client at a time, but 1 worker can have many servers attached to itself (via [Tracer API](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Tracer)).
+Additionally, remote workers can also have servers attached to themselves, creating a tree structure (see [/examples/benchmark_state_source](/examples/benchmark_state_source/README.md)).
+
+```mermaid
+flowchart TB
+
+    subgraph s [Server Host]
+        direction TB
+        Server[aRPC Server]
+        Worker[Worker Mach]
+    end
+    subgraph c [Client Host]
+        direction TB
+        Consumer[Consumer]
+        Client[aRPC Client]
+        RemoteWorker[Remote Worker Mach]
+    end
+
+    Client -- WorkerPayload state --> Consumer
+    Client --> RemoteWorker
+    Worker --> Server
+    Client -- Mutations --> Server
+    Server -. Clock Updates .-> Client
+```
+
+## Components
+
+### Worker
+
+Any state machine can be exposed as an RPC worker, as long as it implements [`/pkg/rpc/states/WorkerStructDef`](/pkg/rpc/states/ss_rpc_worker.go).
+This can be done either manually, or by using state helpers ([StructMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
+[SAdd](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SAdd)), or by generating a states file with
+[am-gen](/tools/cmd/am-gen/README.md). It's also required to have the states verified by [Machine.VerifyStates](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.VerifyStates).
+Worker can send data to the client via the `SendPayload` state.
+
+- [states file](/pkg/rpc/states/ss_rpc_worker.go)
 
 ```go
 import (
     am "github.com/pancsta/asyncmachine-go/pkg/machine"
     arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
-    ssCli "github.com/pancsta/asyncmachine-go/pkg/rpc/states/client"
-    ssSrv "github.com/pancsta/asyncmachine-go/pkg/rpc/states/server"
+    ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 )
+
+// ...
+
+// inherit from RPC worker
+ssStruct := am.StructMerge(ssrpc.WorkerStruct, am.Struct{
+    "Foo": {Require: am.S{"Bar"}},
+    "Bar": {},
+})
+ssNames := am.SAdd(ssrpc.WorkerStates.Names(), am.S{"Foo", "Bar"})
+
+// init
+worker := am.New(ctx, ssStruct, nil)
+worker.VerifyStates(ssNames)
+
+// ...
+
+// send data to the client
+worker.Add1(ssrpc.WorkerStates.SendPayload, arpc.Pass(&arpc.A{
+    Name: "mypayload",
+    Payload: &arpc.ArgsPayload{
+        Name: "mypayload",
+        Source: "worker1",
+        Data: []byte{1,2,3},
+    },
+}))
 ```
 
 ### Server
 
+Each RPC server can handle 1 client at a time. Both client and server need the same worker states definition (structure
+map and ordered list of states). After the initial handshake, server will be pushing local state changes every [PushInterval](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server),
+while state changes made by an RPC client are delivered synchronously. Server starts listening on either
+[Addr](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server), [Listener](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server),
+or [Conn](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server). Basic ACL is possible via [AllowId](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server).
+
+- [states file](/pkg/rpc/states/ss_rpc_server.go)
+
 ```go
+import (
+    amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+    arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+    ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+)
+
+// ...
+
+var addr string
+var worker *am.Machine
+
 // init
-s, err := NewServer(ctx, addr, worker.ID, worker, nil)
+s, err := arpc.NewServer(ctx, addr, worker.ID, worker, nil)
 if err != nil {
     panic(err)
 }
 
 // start
 s.Start()
-<-s.Mach.When1("RpcReady", nil)
+err = amhelp.WaitForAll(ctx, 2*time.Second,
+    s.Mach.When1(ssrpc.ServerStates.RpcReady, ctx))
+if ctx.Err() != nil {
+    return
+}
+if err != nil {
+    return err
+}
 
 // react to the client
 <-worker.When1("Foo", nil)
@@ -65,16 +156,59 @@ worker.Add1("Bar", nil)
 
 ### Client
 
+Each RPC client can connect to 1 server and needs to know worker's states structure and order. Data send by a worker via
+`SendPayload` will be received by a [Consumer machine](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc/states#ConsumerStatesDef)
+(passed via [ClientOpts.Consumer](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#ClientOpts)) as an Add
+mutation of the `WorkerPayload` state (see a [detailed diagram](/docs/diagrams.md#rpc-getter-flow)). Client supports
+fail-safety for both connection (eg [ConnRetries](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Client),
+[ConnRetryBackoff](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Client)) and calls (eg [CallRetries](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Client),
+[CallRetryBackoff](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Client)).
+
+After the client's `Ready` state becomes active, it exposes a remote worker at `client.Worker`. Remote worker implements
+most of [Machine](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine)'s methods, many of which
+are evaluated locally (like [Is](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Worker.Is), [When](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Worker.When),
+[NewStateCtx](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Worker.NewStateCtx)). See [machine.Api](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Api)
+for a full list.
+
+- [states file](/pkg/rpc/states/ss_rpc_client.go)
+
 ```go
+import (
+    amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+    arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+    ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+)
+
+// ...
+
+var addr string
+// worker state structure
+var ssStruct am.Struct
+// worker state names
+var ssNames am.S
+
+// consumer
+consumer := am.New(ctx, ssrpc.ConsumerStruct, nil)
+
 // init
-c, err := NewClient(ctx, addr, "clientid", ss.States, ss.Names)
+c, err := arpc.NewClient(ctx, addr, "clientid", ssStruct, ssNames, &arpc.ClientOpts{
+    Consumer: consumer,
+})
 if err != nil {
     panic(err)
 }
 
 // start
 c.Start()
-<-c.Mach.When1("Ready", nil)
+err := amhelp.WaitForAll(ctx, 2*time.Second,
+    c.Mach.When1(ssrpc.ClientStates.Ready, ctx))
+if ctx.Err() != nil {
+    return
+}
+if err != nil {
+    return err
+}
 
 // use the remote worker
 c.Worker.Add1("Foo", nil)
@@ -82,17 +216,64 @@ c.Worker.Add1("Foo", nil)
 print("Server added Bar")
 ```
 
+### Multiplexer
+
+Because 1 server can serve only 1 client (for simplicity), it's often required to use a port multiplexer. It's very
+simple to create one using [NewMux](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#NewMux) and a callback
+function, which returns a new server instance.
+
+- [states file](/pkg/rpc/states/ss_mux.go)
+
+```go
+import (
+    amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+    arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+    ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+)
+
+// ...
+
+// new server per each new client (optional)
+var newServer arpc.MuxNewServer = func(num int64, _ net.Conn) (*Server, error) {
+    name := fmt.Sprintf("%s-%d", t.Name(), num)
+    s, err := NewServer(ctx, "", name, w, nil)
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    return s, nil
+}
+
+// start cmux
+mux, err := arpc.NewMux(ctx, t.Name(), newServer, nil)
+if err != nil {
+    t.Fatal(err)
+}
+mux.Listener = listener // or mux.Addr := ":1234"
+mux.Start()
+err := amhelp.WaitForAll(ctx, 2*time.Second,
+    mux.Mach.When1(ssrpc.MuxStates.Ready, ctx))
+if ctx.Err() != nil {
+    return
+}
+if err != nil {
+    return err
+}
+```
+
 ## Documentation
 
 - [godoc /pkg/rpc](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc)
-- [manual.md](/docs/manual.md)
+- [Example - Setup](/examples/arpc)
+- [Example - Tree State Source](/examples/tree_state_source/README.md)
+- [manual.md](/docs/manual.md#remote-machines)
 
 ## Benchmark: aRPC vs gRPC
 
 A simple and opinionated benchmark showing a `subscribe-get-process` scenario, implemented in both gRPC and aRPC. See
-[/examples/benchmark_grpc/README.md](/examples/benchmark_grpc/README.md) for details and source code.
+[/examples/benchmark_grpc](/examples/benchmark_grpc/README.md) for details and source code.
 
-![results - KiB transferred, number of calls](/assets/arpc-vs-grpc.png)
+![results - KiB transferred, number of calls](https://pancsta.github.io/assets/asyncmachine-go/arpc-vs-grpc.png)
 
 ```text
 > task benchmark-grpc
@@ -121,94 +302,105 @@ ok      github.com/pancsta/asyncmachine-go/examples/benchmark_grpc      5.187s
 
 ## API
 
-**aRPC** implements `MachineApi`, which is a large subset of `Machine` methods. Below the full list, with distinction
-which methods happen where (locally or on remote).
+**aRPC** implements `/pkg/machine#Api`, which is a large subset of `/pkg/machine#Machine` methods. Below the full list,
+with distinction which methods happen where (locally or on remote).
 
 ```go
-// MachineApi is a subset of `pkg/machine#Machine` for alternative
-// implementations.
-type MachineApi interface {
-
+// Api is a subset of Machine for alternative implementations.
+type Api interface {
     // ///// REMOTE
 
     // Mutations (remote)
 
-    Add1(state string, args am.A) am.Result
-    Add(states am.S, args am.A) am.Result
-    Remove1(state string, args am.A) am.Result
-    Remove(states am.S, args am.A) am.Result
-    Set(states am.S, args am.A) am.Result
-    AddErr(err error, args am.A) am.Result
-    AddErrState(state string, err error, args am.A) am.Result
+    Add1(state string, args A) Result
+    Add(states S, args A) Result
+    Remove1(state string, args A) Result
+    Remove(states S, args A) Result
+    Set(states S, args A) Result
+    AddErr(err error, args A) Result
+    AddErrState(state string, err error, args A) Result
 
     // Waiting (remote)
 
-    WhenArgs(state string, args am.A, ctx context.Context) <-chan struct{}
+    WhenArgs(state string, args A, ctx context.Context) <-chan struct{}
 
     // Getters (remote)
 
     Err() error
-
-    // Misc (remote)
-
-    Log(msg string, args ...any)
 
     // ///// LOCAL
 
     // Checking (local)
 
     IsErr() bool
-    Is(states am.S) bool
+    Is(states S) bool
     Is1(state string) bool
-    Not(states am.S) bool
+    Not(states S) bool
     Not1(state string) bool
-    Any(states ...am.S) bool
+    Any(states ...S) bool
     Any1(state ...string) bool
-    Has(states am.S) bool
+    Has(states S) bool
     Has1(state string) bool
-    IsTime(time am.Time, states am.S) bool
-    IsClock(clock am.Clock) bool
+    IsTime(time Time, states S) bool
+    IsClock(clock Clock) bool
 
     // Waiting (local)
 
-    When(states am.S, ctx context.Context) <-chan struct{}
+    When(states S, ctx context.Context) <-chan struct{}
     When1(state string, ctx context.Context) <-chan struct{}
-    WhenNot(states am.S, ctx context.Context) <-chan struct{}
+    WhenNot(states S, ctx context.Context) <-chan struct{}
     WhenNot1(state string, ctx context.Context) <-chan struct{}
     WhenTime(
-        states am.S, times am.Time, ctx context.Context) <-chan struct{}
+        states S, times Time, ctx context.Context) <-chan struct{}
     WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
     WhenTicksEq(state string, tick uint64, ctx context.Context) <-chan struct{}
     WhenErr(ctx context.Context) <-chan struct{}
 
     // Getters (local)
 
-    StateNames() am.S
-    ActiveStates() am.S
+    StateNames() S
+    ActiveStates() S
     Tick(state string) uint64
-    Clock(states am.S) am.Clock
-    Time(states am.S) am.Time
-    TimeSum(states am.S) uint64
+    Clock(states S) Clock
+    Time(states S) Time
+    TimeSum(states S) uint64
     NewStateCtx(state string) context.Context
-    Export() *am.Serialized
-    GetStruct() am.Struct
+    Export() *Serialized
+    GetStruct() Struct
+    Switch(groups ...S) string
 
     // Misc (local)
 
+    Log(msg string, args ...any)
+    Id() string
+    ParentId() string
+    SetLogId(val bool)
+    GetLogId() bool
+    SetLogger(logger Logger)
+    SetLogLevel(lvl LogLevel)
+    SetLoggerEmpty(lvl LogLevel)
+    SetLoggerSimple(logf func(format string, args ...any), level LogLevel)
+    Ctx() context.Context
     String() string
     StringAll() string
-    Inspect(states am.S) string
+    Inspect(states S) string
     Index(state string) int
+    BindHandlers(handlers any) error
+    StatesVerified() bool
+    Tracers() []Tracer
+    DetachTracer(tracer Tracer) bool
+    BindTracer(tracer Tracer)
     Dispose()
     WhenDisposed() <-chan struct{}
+    IsDisposed() bool
 }
 ```
 
 ## Tests
 
 **aRPC** passes the [whole test suite](/pkg/rpc/rpc_machine_test.go) of [`/pkg/machine`](/pkg/machine/machine_test.go)
-for the exposed methods and provides a couple of [optimization-focused tests](/pkg/rpc/rpc_test.go), on top of tests for
-basic RPC.
+for the exposed methods and provides a couple of [optimization-focused tests](/pkg/rpc/rpc_test.go) (on top of tests for
+basic RPC).
 
 ## Optimizations
 
@@ -225,8 +417,14 @@ basic RPC.
 - partial clock updates
   - `[[1, 1], [3, 1]]`
 
+## Status
+
+Testing, not semantically versioned.
+
 ## monorepo
 
+- [`/examples/arpc`](/examples/arpc)
+- [`/examples/tree_state_source`](/examples/tree_state_source/README.md)
 - [`/pkg/rpc/HOWTO.md`](/pkg/rpc/HOWTO.md)
 - [`/examples/benchmark_grpc/README.md`](/examples/benchmark_grpc/README.md)
 

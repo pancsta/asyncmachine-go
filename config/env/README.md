@@ -1,4 +1,18 @@
-# Environment Variables
+[![go report](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
+[![coverage](https://codecov.io/gh/pancsta/asyncmachine-go/graph/badge.svg?token=B8553BI98P)](https://codecov.io/gh/pancsta/asyncmachine-go)
+[![go reference](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
+[![last commit](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
+![release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
+[![matrix chat](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
+
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /config/env _ [cd /](/)
+
+> [!NOTE]
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
+> machine (nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking). It has
+> atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+
+**/config/env** contains all environment variables for asyncmachine, organized in files, most of which are aimed at debugging.
 
 ## Example Usage
 
@@ -6,7 +20,10 @@ This will start both the test worker and tests in the debug mode via per-command
 `task am-dbg-dbg` to receive telemetry.
 
 ```shell
+# tty1
 env (cat config/env/debug-telemetry.env) task am-dbg-worker
+
+## tty2
 env (cat config/env/debug-tests.env) task test-debugger-remote
 ```
 
@@ -16,23 +33,27 @@ It's not possible to keep comments in the .evn file for fishshell. Meanings belo
 
 ```shell
 # enable a simple debugging mode (eg long timeouts)
-# defaults to 0
+# "1", "2", "" (default)
 AM_DEBUG=1
 
 # address of a running am-dbg instance
-# defaults to localhost:6831
-AM_DBG_ADDR=localhost:9913
+# defaults to ""
+AM_DBG_ADDR=localhost:6831
 
-# set the log level (0-4)
-# defaults to 0
+# enables a healthcheck ticker for every debugged machine
+AM_HEALTHCHECK=1
+
+# set the log level
+# "1", "2", "3", "4", "0" (default)
 AM_LOG=2
+
+# enable file logging (use machine ID as name)
+# defaults to ""
+AM_LOG_FILE=1
 
 # detect evals directly in handlers (use in tests)
 # defaults to ""
 AM_DETECT_EVAL=1
-
-# indicates multi-test runner, increases timeouts
-AM_TEST=1
 
 # single flag to activate debugging in tests
 # defaults to ""
@@ -51,4 +72,24 @@ AM_RPC_LOG_SERVER=1
 # print log msgs from the RPC client
 # defaults to ""
 AM_RPC_LOG_CLIENT=1
+
+# print log msgs from the RPC muxer
+# defaults to ""
+AM_RPC_LOG_MUX=1
+
+# print log msgs from the Node supervisor
+# defaults to ""
+AM_NODE_LOG_SUPERVISOR=1
+
+# print log msgs from the Node client
+# defaults to ""
+AM_NODE_LOG_CLIENT=1
+
+# print log msgs from the Node worker
+# defaults to ""
+AM_NODE_LOG_WORKER=1
 ```
+
+## monorepo
+
+[Go back to the monorepo root](/README.md) to continue reading.

@@ -1,30 +1,37 @@
-# /pkg/telemetry
+[![go report](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
+[![coverage](https://codecov.io/gh/pancsta/asyncmachine-go/graph/badge.svg?token=B8553BI98P)](https://codecov.io/gh/pancsta/asyncmachine-go)
+[![go reference](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
+[![last commit](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
+![release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
+[![matrix chat](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
 
-[-> go back to monorepo /](/README.md)
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /pkg/telemetry _ [cd /](/)
 
 > [!NOTE]
-> **asyncmachine** can transform blocking APIs into controllable state machines with ease. It shares similarities with
-> [Ergo's](https://github.com/ergo-services/ergo) actor model, and focuses on distributed workflows like [Temporal](https://github.com/temporalio/temporal).
-> It's lightweight and most features are optional.
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
+> machine (nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking). It has
+> atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
-**/pkg/telemetry** provides several telemetry exporters:
+**/pkg/telemetry** provides several telemetry exporters and a [Grafana dashboard](#grafana-dashboard):
 
 - [dbg](#dbg)
-- [Open Telemetry](#open-telemetry)
-- [Prometheus](#prometheus)
+- [OpenTelemetry Traces](#open-telemetry-traces)
+- [OpenTelemetry Logger](#open-telemetry)
+- [Prometheus Metrics](#prometheus)
+- [Loki Logger](#loki-logger)
 
 ## dbg
 
 `dbg` is a simple telemetry used by [am-dbg TUI Debugger](/tools/cmd/am-dbg).
 It delivers `DbgMsg` and `DbgMsgStruct` via standard `net/rpc`. It can also be consumed by a custom client.
 
-## Open Telemetry
+## OpenTelemetry Traces
 
-[Open Telemetry](https://opentelemetry.io/) integration exposes machine's states and transitions as Otel traces,
+[Open Telemetry traces](https://opentelemetry.io/) integration exposes machine's states and transitions as Otel traces,
 compatible with [Jaeger](https://www.jaegertracing.io/). Tracers are inherited from parent machines and form a tree.
 
-![Prometheus Grafana](/assets/otel-jaeger.dark.png#gh-dark-mode-only)
-![Prometheus Grafana](/assets/otel-jaeger.light.png#gh-light-mode-only)
+![Prometheus Grafana](https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.dark.png#gh-dark-mode-only)
+![Prometheus Grafana](https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.light.png#gh-light-mode-only)
 
 ### Tree Structure
 
@@ -48,99 +55,166 @@ compatible with [Jaeger](https://www.jaegertracing.io/). Tracers are inherited f
     - ...
 ```
 
-You can [import an existing asset](/assets/bench-jaeger-3h-10m.traces.json) into your Jaeger instance for an interactive
-demo.
+You can [import an existing asset](https://pancsta.github.io/assets/asyncmachine-go/bench-jaeger-3h-10m.traces.json)
+into your Jaeger instance for an interactive demo.
 
-### Otel Usage
-
-```go
-import "github.com/pancsta/asyncmachine-go/pkg/telemetry"
-
-// ...
-
-opts := &am.Opts{}
-initTracing(ctx)
-traceMach(opts, true)
-mach, err := am.NewCommon(ctx, "mymach", ss.States, ss.Names, nil, nil, opts)
-
-// ...
-
-func initTracing(ctx context.Context) {
-    // TODO NewOtelProvider
-    tracer, provider, err := NewOtelProvider(ctx)
-    if err != nil {
-        log.Fatal(err)
-    }
-    _, rootSpan = tracer.Start(ctx, "sim")
-    // TODO persist tracer, provider, and rootSpan
-}
-
-func traceMach(opts *am.Opts, traceTransitions bool) {
-    machTracer := telemetry.NewOtelMachTracer(s.OtelTracer, &telemetry.OtelMachTracerOpts{
-        SkipTransitions: !traceTransitions,
-        Logf:            logNoop,
-    })
-    opts.Tracers = []am.Tracer{machTracer}
-}
-```
-
-## Prometheus
-
-[`pkg/telemetry/prometheus`](/pkg/telemetry/prometheus) binds to machine's transactions and averages the values within
-an interval exposing various metrics. Combined with [Grafana](https://grafana.com/), it can be used to monitor the
-metrics of you machines.
-
-![Prometheus Grafana](/assets/prometheus-grafana.dark.png#gh-dark-mode-only)
-![Prometheus Grafana](/assets/prometheus-grafana.light.png#gh-light-mode-only)
-
-### Metrics
-
-- queue size
-- states: active, inactive, added, removed
-- transition duration (machine time)
-- transition duration (normal time)
-- transition's steps amount
-- exceptions count
-- registered states
-
-### Grafana Dashboards
-
-- generate using `task gen-grafana-dashboard IDS=mach1,mach2`
-- or import from [assets](/assets/grafana-mach-sim,sim-p1.json)
-
-### Perses Dashboards
-
-Work in progress...
-
-### Prom Usage
+### Otel tracing Setup
 
 ```go
-import "github.com/pancsta/asyncmachine-go/pkg/telemetry/prometheus"
+import (
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+    amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+    "go.opentelemetry.io/otel/trace"
+)
 
 // ...
 
-mach := am.New(nil, am.Struct{
-    "Foo": {Require: am.S{"Bar"}},
-    "Bar": {},
-}, nil)
+var mach *am.Machine
+var tracer trace.Tracer
 
-metrics := TransitionsToPrometheus(mach, 5 * time.Minute)
-
-promPusher.Collector(metrics.StatesAmount)
-promPusher.Collector(metrics.RelAmount)
-promPusher.Collector(metrics.RefStatesAmount)
-promPusher.Collector(metrics.QueueSize)
-promPusher.Collector(metrics.StepsAmount)
-promPusher.Collector(metrics.HandlersAmount)
-promPusher.Collector(metrics.TxTime)
-promPusher.Collector(metrics.StatesActiveAmount)
-promPusher.Collector(metrics.StatesInactiveAmount)
-promPusher.Collector(metrics.TxTick)
-promPusher.Collector(metrics.ExceptionsCount)
-promPusher.Collector(metrics.StatesAdded)
-promPusher.Collector(metrics.StatesRemoved)
-promPusher.Collector(metrics.StatesTouched)
+machTracer := amtele.NewOtelMachTracer(tracer, &amtele.OtelMachTracerOpts{
+    SkipTransitions: false,
+})
+mach.BindTracer(machTracer)
 ```
+
+## OpenTelemetry Logger
+
+[Open Telemetry logger](https://opentelemetry.io/) integration exposes machine's logs (any level) as structured Otlp
+format. It can be very handy for stdout logging.
+
+```go
+import (
+    "go.opentelemetry.io/otel/sdk/log"
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+    amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+)
+
+// ...
+
+var mach *am.Machine
+var logExporter log.Exporter
+
+// activate logs
+mach.SetLogLevel(am.LogLevelOps)
+
+// create a log provider
+logProvider := amtele.NewOtelLoggerProvider(logExporter)
+// bind provider to a machine
+amtele.BindOtelLogger(mach, logProvider, "myserviceid")
+```
+
+## Prometheus Metrics
+
+[`pkg/telemetry/prometheus`](/pkg/telemetry/prometheus) binds to machine's transactions, collects values within
+a defined interval, and exposes averaged metrics. Use it with the provided [Grafana dashboard](#grafana-dashboard).
+Tracers are inherited from parent machines.
+
+### Prometheus Setup
+
+```go
+import (
+    "time"
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+    amprom "github.com/pancsta/asyncmachine-go/pkg/telemetry/prometheus"
+    "github.com/prometheus/client_golang/prometheus/push"
+
+// ...
+
+var mach *am.Machine
+var promRegistry *prometheus.Registry
+var promPusher *push.Pusher
+
+// bind transition to metrics
+metrics := amprom.TransitionsToPrometheus(mach, 5 * time.Minute)
+
+// bind metrics either a registry or a pusher
+amprom.BindToRegistry(promRegistry)
+amprom.BindToPusher(promPusher)
+```
+
+## Loki Logger
+
+Loki is the easiest way to persist distributed logs from asyncmachine. You'll need a [promtail client](https://github.com/ic2hrmk/promtail).
+
+```go
+import (
+    "github.com/ic2hrmk/promtail"
+
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+    amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+)
+
+// ...
+
+var mach *am.Machine
+var service string
+
+// init promtail and bind AM logger
+identifiers := map[string]string{
+    "service_name": service,
+}
+promtailClient, err := promtail.NewJSONv1Client("localhost:3100", identifiers)
+if err != nil {
+    panic(err)
+}
+defer promtailClient.Close()
+amtele.BindLokiLogger(mach, promtailClient)
+```
+
+## Grafana Dashboard
+
+![grafana](https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png)
+
+Grafana dashboards need to be generated per "source" (e.g. process), by passing all monitored machine IDs and the source
+name (`service_name` for Loki, `job` for Prometheus). See [am-gen grafana](/tools/cmd/am-gen/README.md). It will
+optionally auto-sync the dashboard using [K-Phoen/grabana](https://github.com/K-Phoen/grabana) (requires
+`GRAFANA_TOKEN`).
+
+```bash
+am-gen grafana \
+  --name "My Dashboard" \
+  --ids MyMach1,MyMach2 \
+  --source service_name_or_job \
+  --grafana-url http://localhost:3000
+```
+
+Panels:
+
+- Number of transitions
+- Transition Mutations
+  - Queue size
+  - States added
+  - States removed
+  - States touched
+- Transition Details
+  - Transition ticks
+  - Number of steps
+  - Number of handlers
+- States & Relations
+  - Number of states
+  - Number of relations
+  - Referenced states
+  - Active states
+  - Inactive states
+- Average Transition Time
+- Errors
+- Log view
+
+## Inheritance
+
+Most of the exporters are automatically inherited from parent machines, so the results come in automatically. To define
+a sub-parent relationship, use [`am.Opts.Parent`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Opts.Parent)
+while initializing a machine. Alternatively, tracers can be copied using `OptsWithParentTracers`, or manually via
+`Machine.Tracers`.
+
+## Documentation
+
+- [godoc /pkg/telemetry](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/telemetry)
+
+## Status
+
+Testing, not semantically versioned.
 
 ## monorepo
 

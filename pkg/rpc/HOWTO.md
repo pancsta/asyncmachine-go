@@ -1,10 +1,24 @@
-# aRPC Tutorial
+[![go report](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
+[![coverage](https://codecov.io/gh/pancsta/asyncmachine-go/graph/badge.svg?token=B8553BI98P)](https://codecov.io/gh/pancsta/asyncmachine-go)
+[![go reference](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
+[![last commit](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
+![release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
+[![matrix chat](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
 
-[-> go back to monorepo /](/README.md)
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /pkg/rpc/HOWTO.md _ [cd /](/)
 
-This tutorial will present how to set up, work, and debug asyncmachine RPC (aRPC) servers and clients. The example used
-will be integration tests having, both an in-memory instance (no UI), and an RPC worker showing a regular TUI. Code for
-running both versions will be almost identical, thanks to network transparency.
+> [!NOTE]
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
+> machine (nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking). It has
+> atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+
+## aRPC Integration Tests Tutorial
+
+Target version: `v0.7.0`. For an up-to-date version, check [the package readme](/pkg/rpc/README.md).
+
+This tutorial will present how to set up, work, and debug asyncmachine RPC (aRPC) servers and clients for integration
+tests. It will use [am-dbg](/tools/debugger/README.md) as an example - both an in-memory instance (no UI), and an RPC
+worker showing a regular TUI. Code for running both versions will be almost identical, thanks to network transparency.
 
 [![Video Walkthrough](https://pancsta.github.io/assets/asyncmachine-go/rpc-demo1.png)](https://pancsta.github.io/assets/asyncmachine-go/rpc-demo1.m4v)
 
@@ -108,51 +122,71 @@ getter function.
 
 ```go
 import (
-    ss "github.com/pancsta/asyncmachine-go/internal/testing/states"
     "github.com/pancsta/asyncmachine-go/internal/testing/utils"
     am "github.com/pancsta/asyncmachine-go/pkg/machine"
-    ssCli "github.com/pancsta/asyncmachine-go/pkg/rpc/states/client"
-    ssSrv "github.com/pancsta/asyncmachine-go/pkg/rpc/states/server"
+    arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+    arpcstates "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+
+    "owner/project/states"
 )
 
-func setup(ctx context.Context, addr string, worker *am.Machine) (*Server, *Client) {
 
-    // read env
-    amDbgAddr := os.Getenv("AM_DBG_ADDR")
-    logLvl := am.EnvLogLevel("")
+var ssC = arpcstates.ClientStates
+var ssS = arpcstates.ServerStates
+var ssW = workerstates.WorkerStates
+
+func main() {
+    ctx := context.TODO()
+    id := "example"
+    worker := am.New(ctx, states.WorkerStruct, nil)
+    s := startServer(ctx, ":1234", worker)
+    c := startClient(ctx, ":1234", worker)
+    <-s.Mach.When1(ssS.Ready, nil)
+
+    // ready, test it
+
+    worker.Add1(ssW.Foo, nil)
+    if c.Worker.Is1(ssW.Foo) {
+        log.Println("OK")
+    }
+}
+
+func startServer(ctx context.Context, addr string, worker *am.Machine) (*Server) {
 
     // server init
-    s, err := NewServer(ctx, addr, t.Name(), worker, nil)
+    s, err := arpc.NewServer(ctx, addr, id, worker, nil)
     if err != nil {
         panic(err)
     }
-    utils.MachDebug(s.Mach, amDbgAddr, logLvl, true)
-
-    // client init
-    c, err := NewClient(ctx, addr, t.Name(), worker.GetStruct(),
-        worker.StateNames())
-    if err != nil {
-        panic(err)
-    }
-    utils.MachDebug(c.Mach, amDbgAddr, logLvl, true)
+    utils.MachDebugEnv(s.Mach)
 
     // server start
     s.Start()
-    <-s.Mach.When1(ssSrv.RpcReady, nil)
+    <-s.Mach.When1(ssS.RpcReady, nil)
+
+    return s
+}
+
+func startClient(ctx context.Context, addr string) (*Client) {
+
+    // client init
+    c, err := arpc.NewClient(ctx, addr, id, states.WorkerStruct, ssW.Names())
+    if err != nil {
+        panic(err)
+    }
+    utils.MachDebugEnv(c.Mach)
 
     // client ready
     c.Start()
-    <-c.Mach.When1(ssCli.Ready, nil)
+    <-c.Mach.When1(ssC.Ready, nil)
 
-    // server ready
-    <-s.Mach.When1(ssSrv.Ready, nil)
-
-    return s, c
+    return c
 }
 ```
 
 ## monorepo
 
+- [`/examples/arpc`](/examples/arpc)
 - [`/pkg/rpc/README.md`](/pkg/rpc/README.md)
 - [`/examples/benchmark_grpc/README.md`](/examples/benchmark_grpc/README.md)
 

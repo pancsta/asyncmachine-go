@@ -1,6 +1,19 @@
 # Breaking API changes
 
-Only `pkg/machine` adheres to semver. Semver of other packages is not guaranteed at the moment.
+Only `pkg/machine` and `pkg/states` adhere to semver. Semver of other packages is not guaranteed at the moment.
+
+## v0.8
+
+- `Machine.ID` is now `Id()`
+- `Machine.Tracers` is now `Tracers() Tracers`
+- `Machine.LogID` is now `GetLogId() bool`
+- `Machine.Switch(ss... string)` is now `Switch(states S)`
+- `Machine.StatesVerified` is now `StatesVerified()`
+- `Machine.ParentID` is now `ParentId()`
+- `Transition.StatesBefore` is now `StatesBefore()`
+- `Transition.TargetStates` is now `TargetStates()`
+- `Tracer.TransitionInit` now returns an optional `Context`
+- `Machine.Ctx` is now `Ctx()`
 
 ## v0.7
 
@@ -14,7 +27,6 @@ Only `pkg/machine` adheres to semver. Semver of other packages is not guaranteed
 - `Machine.AddErrState(string, error)` is now `Machine.AddErrState(state, error, Args)`
 - `Machine.WhenTicksEq()` now accepts `uint64`
 - `Machine.IsClock()` and `Machine.Clock()` are now `Machine.Time()`
-- `Machine.IsClock()` is now `Machine.Time()`
 - `Machine.OnEvent()` is now removed
 - `Machine.DuringTransition()` is now `Machine.Transition()`
 - `Machine.SetTestLogger()` is now `Machine.SetLoggerSimple()`

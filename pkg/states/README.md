@@ -1,20 +1,161 @@
-# /pkg/states
+[![go report](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
+[![coverage](https://codecov.io/gh/pancsta/asyncmachine-go/graph/badge.svg?token=B8553BI98P)](https://codecov.io/gh/pancsta/asyncmachine-go)
+[![go reference](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
+[![last commit](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
+![release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
+[![matrix chat](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
 
-[-> go back to monorepo /](/README.md)
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /pkg/states _ [cd /](/)
 
 > [!NOTE]
-> **asyncmachine** can transform blocking APIs into controllable state machines with ease. It shares similarities with
-> [Ergo's](https://github.com/ergo-services/ergo) actor model, and focuses on distributed workflows like [Temporal](https://github.com/temporalio/temporal).
-> It's lightweight and most features are optional.
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
+> machine (nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking). It has
+> atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
-Repository of common state definitions, used to make state-based API easier to compose and exchange. It's in a very
-early stage right now.
+**/pkg/states** contains common state definitions to make state-based API easier to compose and exchange. Additionally it
+offers tooling for "piping" states between state machines.
 
-## State Sets
+## Available State Definitions
 
-- [basic](/pkg/states/ss_basic.go) - absolute basics with some network states
+- [BasicStatesDef](/pkg/states/ss_basic.go): Start, Ready, Healthcheck
+- [ConnectedStatesDef](/pkg/states/ss_connected.go): Client connection in 4 states
 
-In the future, this package may also provide reusable handlers.
+## Examples
+
+### Inherit from BasicStatesDef manually
+
+```go
+import (
+    "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+)
+
+// inherit from RPC worker
+ssStruct := am.StructMerge(states.BasicStruct, am.Struct{
+    "Foo": {Require: am.S{"Bar"}},
+    "Bar": {},
+})
+ssNames := am.SAdd(states.BasicStates.Names(), am.S{"Foo", "Bar"})
+```
+
+### Inherit from BasicStatesDef via a definition
+
+```go
+import (
+    ss "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+)
+
+// MyMachStatesDef contains all the states of the MyMach state machine.
+type MyMachStatesDef struct {
+    *am.StatesBase
+
+    State1 string
+    State2 string
+
+    // inherit from BasicStatesDef
+    *ss.BasicStatesDef
+}
+
+// MyMachStruct represents all relations and properties of MyMachStates.
+var MyMachStruct = StructMerge(
+    // inherit from BasicStruct
+    ss.BasicStruct,
+    am.Struct{
+
+        ssM.State1: {},
+        ssM.State2: {
+            Multi: true,
+        },
+})
+```
+
+### Inherit from BasicStatesDef via the [generator](/tools/cmd/am-gen/README.md)
+
+```bash
+$ am-gen --name MyMach \
+  --states State1,State2 \
+  --inherit basic
+```
+
+## Piping
+
+A "pipe" binds a handler of a source machine, to a mutation in a target machine. Currently, only [final handlers](/docs/manual.md#final-handlers)
+are supported.
+
+Each module can export their own pipes, like [`/pkg/rpc`](/pkg/rpc) and [`/pkg/node`](/pkg/node).
+
+### Available Pipes
+
+- BindConnected
+- BindErr
+- BindReady
+
+### Using Pipes
+
+```go
+import ampipe "github.com/pancsta/asyncmachine-go/pkg/rpc/states/pipes"
+
+// ...
+
+ampipe.BindReady(rpcClient.Mach, myMach, "RpcReady", "")
+```
+
+### Piping Manually
+
+```go
+import (
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+    ampipe "github.com/pancsta/asyncmachine-go/pkg/rpc/states/pipes"
+)
+
+// ...
+
+var source *am.Machine
+var target *am.Machine
+
+h := &struct {
+    ReadyState am.HandlerFinal
+    ReadyEnd   am.HandlerFinal
+}{
+    ReadyState: Add1(source, target, "Ready", "RpcReady"),
+    ReadyEnd:   Remove1(source, target, "Ready", "RpcReady"),
+}
+
+source.BindHandlers(h)
+```
+
+## Extending States
+
+The purpose of this package is to share reusable states, but inheriting a definition isn't enough. States can also be
+extended on relations-level using helpers from `states_utils.go` (generated), although sometimes it's better to override
+a state (eg Ready).
+
+```go
+import (
+    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+    ampipe "github.com/pancsta/asyncmachine-go/pkg/rpc/states/pipes"
+)
+
+// ...
+
+MyMychStruct = am.Struct{
+
+    // inject Client states into Connected
+    "Connected": StateAdd(
+        states.ConnectedStruct[states.ConnectedStates.Connected],
+        am.State{
+            Remove: S{"RetryingConn"},
+            Add:    S{"Handshaking"},
+    }),
+}
+```
+
+## Documentation
+
+- [godoc /pkg/states](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/states)
+
+## Status
+
+Testing, semantically versioned.
 
 ## monorepo
 

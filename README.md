@@ -1,25 +1,101 @@
+[![go report](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
+[![coverage](https://codecov.io/gh/pancsta/asyncmachine-go/graph/badge.svg?token=B8553BI98P)](https://codecov.io/gh/pancsta/asyncmachine-go)
+[![go reference](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
+[![last commit](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
+![release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
+[![matrix chat](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
+
 <div align="center">
+    <a href="#samples">Samples</a> |
+    <a href="#getting-started">Getting Started</a> |
     <a href="#packages">Packages</a> |
-    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/examples/README.md">Examples</a> |
-    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/pkg/machine/README.md">Machine</a> |
     <a href="#case-studies">Case Studies</a> |
     <a href="#documentation">Docs</a> |
+    <a href="#community">Community</a> |
+    <a href="#development">Status</a> |
     <a href="#development">Dev</a> |
-    <a href="#changelog">Changelog</a>
+    <a href="#development">FAQ</a> |
+    <a href="#changelog">Changes</a>
     <br />
 </div>
 
-# asyncmachine-go
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> asyncmachine-go
 
-![TUI Debugger](https://pancsta.github.io/assets/asyncmachine-go/video.gif)
+<div align="center">
+    <img src="https://pancsta.github.io/assets/asyncmachine-go/video.gif" alt="TUI Debugger" />
+</div>
+
+```mermaid
+flowchart LR
+    c1-RemoteWorker -- aRPC --> w1-rpcPub
+    c1-RemoteSupervisor -- aRPC --> s1-rpcPub
+
+    subgraph Client 1
+        c1-Client[Client]
+        c1-RemoteWorker[RemoteWorker]
+        c1-RemoteSupervisor[RemoteSupervisor]
+        c1-Client --> c1-RemoteWorker
+        c1-Client --> c1-RemoteSupervisor
+    end
+
+    subgraph Client 2
+        c2-Client[Client]
+        c2-RemoteWorker[RemoteWorker]
+        c2-RemoteSupervisor[RemoteSupervisor]
+        c2-Client --> c2-RemoteWorker
+        c2-Client --> c2-RemoteSupervisor
+    end
+
+    subgraph Node Host
+
+        subgraph Worker Pool
+            w1-rpcPub --> Worker1
+            w1-rpcPub([Public aRPC])
+            w1-rpcPriv --> Worker1
+            w1-rpcPriv([Private aRPC])
+            w2-rpcPub --> Worker2
+            w2-rpcPub([Public aRPC])
+            w2-rpcPriv --> Worker2
+            w2-rpcPriv([Private aRPC])
+            w3-rpcPub --> Worker3
+            w3-rpcPub([Public aRPC])
+            w3-rpcPriv --> Worker3
+            w3-rpcPriv([Private aRPC])
+        end
+
+        s1-rpcPub([Public aRPC])
+        s1-rpcPub --> Supervisor1
+        Supervisor1 --> RemoteWorker1
+        Supervisor1[Supervisor]
+        RemoteWorker1 -- aRPC --> w1-rpcPriv
+        Supervisor1 -- fork --> Worker1
+        Supervisor1 --> RemoteWorker2
+        RemoteWorker2 -- aRPC --> w2-rpcPriv
+        Supervisor1 -- fork --> Worker2
+        Supervisor1 --> RemoteWorker3
+        RemoteWorker3 -- aRPC --> w3-rpcPriv
+        Supervisor1 -- fork --> Worker3
+    end
+
+    c2-RemoteWorker -- aRPC --> w2-rpcPub
+    c2-RemoteSupervisor -- aRPC --> s1-rpcPub
+```
 
 > [!NOTE]
-> **monorepo** of asyncmachine-go, a clock-based state machine with a TUI **debugger**, transparent **RPC**, and
-> **telemetry** for Otel & Prom.
+> State machines communicate through states (mutations, checking and waiting).
 
-**asyncmachine** can transform blocking APIs into controllable state machines with ease. It shares similarities with
-[Ergo's](https://github.com/ergo-services/ergo) actor model, and focuses on distributed workflows like [Temporal](https://github.com/temporalio/temporal).
-It's lightweight and most features are optional.
+**Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state machine
+(nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking). It has atomic
+transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+
+Use cases depend on the layer of the stack used, and range from [goroutine synchronization](/pkg/machine/README.md) and
+[state synchronization](/pkg/rpc/README.md) to [worker synchronization](/pkg/node/README.md), bots, consensus algos,
+etc. **Asyncmachine-go** can precisely target a specific scenario and bring order, structure, and resiliency to
+event-based systems.
+
+## Samples
+
+Minimal - an untyped definition of 2 states and 1 relation, then 1 mutation and a check.
 
 ```go
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -31,61 +107,176 @@ mach.Add1("Foo", nil)
 mach.Is1("Foo") // false
 ```
 
+Complicated - wait on a multi state (event) with 1s timeout, and mutate with typed args, on top of a state context.
+
+```go
+// state ctx is a non-err ctx
+ctx := client.Mach.NewStateCtx(ssC.WorkerReady)
+// time-based subscription
+whenPayload := client.Mach.WhenTicks(ssC.WorkerPayload, 1, ctx)
+// mutation
+client.WorkerRpc.Worker.Add1(ssW.WorkRequested, Pass(&A{
+    Input: 2}))
+// WaitFor replaces select statements
+err := amhelp.WaitForAll(ctx, 1*time.Second, whenPayload)
+if ctx.Err() != nil {
+    // no err
+    return // expired
+}
+if err != nil {
+    // mutation
+    client.Mach.AddErr(err, nil)
+    return
+}
+// WorkerPayload activated
+```
+
+Schema - states of a node worker.
+
+```go
+type WorkerStatesDef struct {
+    ErrWork        string
+    ErrWorkTimeout string
+    ErrClient      string
+    ErrSupervisor  string
+
+    LocalRpcReady     string
+    PublicRpcReady    string
+    RpcReady          string
+    SuperConnected    string
+    ServeClient       string
+    ClientConnected   string
+    ClientSendPayload string
+    SuperSendPayload  string
+
+    Idle          string
+    WorkRequested string
+    Working       string
+    WorkReady     string
+
+    // inherit from rpc worker
+    *ssrpc.WorkerStatesDef
+}
+```
+
+All examples and benchmarks can be found in [/examples](/examples/README.md).
+
+## Stack
+
+<table>
+  <tr>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>PubSub</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+  </tr>
+  <tr>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td colspan="3" align=center>Workers</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+  </tr>
+  <tr>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td colspan="5" align=center>RPC</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+  </tr>
+  <tr>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td colspan="7" align=center>Handlers</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+  </tr>
+  <tr>
+    <td>.</td>
+    <td>.</td>
+    <td colspan="9" align=center>Machine API</td>
+    <td>.</td>
+    <td>.</td>
+  </tr>
+  <tr>
+    <td>.</td>
+    <td colspan="11" align=center>Relations</td>
+    <td>.</td>
+  </tr>
+  <tr>
+    <td colspan="13" align=center><b><u>States</u></b></td>
+  </tr>
+</table>
+
 ## Getting Started
 
-To get started, it's recommended to read  [`/pkg/machine`](pkg/machine/README.md) first.
+[`/pkg/machine`](pkg/machine/README.md) is a mandatory ready, while [`/pkg/node`](pkg/node/README.md) is the most
+interesting one. [Examples](/examples/README.md) and the [manual](/docs/manual.md) are good for a general grasp, while
+[diagrams](/docs/diagrams.md) go deeper into implementation details. Reading tests is always a good idea.
 
 ## Packages
 
 - [`/pkg/helpers`](/pkg/helpers/README.md) Useful functions when working with async state machines.
 - [`/pkg/history`](/pkg/history/README.md) History tracking and traversal.
-- **[`/pkg/machine`](/pkg/machine/README.md)** State machine, the main package. Dependency free and semver compatible.
-- **[`/pkg/node`](/pkg/node/README.md)** Work in progress.
-- **[`/pkg/rpc`](/pkg/rpc/README.md)** Remote state machine, with the same API as a local one.
-- [`/pkg/states`](/pkg/states/README.md) Reusable state definitions.
-- **[`/pkg/telemetry`](/pkg/telemetry/README.md)** Telemetry exporters for am-dbg, OpenTelemetry and Prometheus.
+- **[`/pkg/machine`](/pkg/machine/README.md) State machine, the main package. Dependency free and semver compatible.**
+- [`/pkg/node`](/pkg/node/README.md) Distributed worker pools with supervisors.
+- [`/pkg/rpc`](/pkg/rpc/README.md) Remote state machines, with the same API as local ones.
+- [`/pkg/states`](/pkg/states/README.md) Reusable state definitions and piping.
+- [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for metrics, traces, and logs.
 - `/pkg/pubsub` Planned.
-- **[`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md)** am-dbg is a multi-client TUI debugger.
+- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) am-dbg is a multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) am-gen generates states files.
 - `/tools/cmd/am-vis` Planned.
 
 ## Case Studies
 
-- [scraphouse]() - decentralized web scraping using [/pkg/node]()
-- [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) - sandbox
-  simulator for libp2p-pubsub
-- [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark) -
-  benchmark of libp2p-pubsub ported to asyncmachine-go
-- [am-dbg TUI Debugger](/tools/debugger) - single state machine TUI app
+Bigger implementations worth reading:
+
+- [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
+  simulator for libp2p-pubsub.
+- [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
+  Benchmark of libp2p-pubsub ported to asyncmachine-go.
+- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
 
 ## Documentation
 
-- [FAQ](/FAQ.md)
 - [API](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine)
-- [diagrams](/docs/diagrams.md)
-- [cookbook](/docs/cookbook.md)
-- [discussions](https://github.com/pancsta/asyncmachine-go/discussions)
+- [diagrams](/docs/diagrams.md) \| [cookbook](/docs/cookbook.md)
 - [manual.md](/docs/manual.md) \| [manual.pdf](https://pancsta.github.io/assets/asyncmachine-go/manual.pdf)
   - [Machine and States](/docs/manual.md#machine-and-states)
-      - [Clock and Context](/docs/manual.md#clock-and-context)
-      - [Auto States](/docs/manual.md#auto-states)
-      - [Categories of States](/docs/manual.md#categories-of-states)
-      - ...
   - [Changing State](/docs/manual.md#changing-state)
-      - [State Mutations](/docs/manual.md#state-mutations)
-      - [Transition Lifecycle](/docs/manual.md#transition-lifecycle)
-      - [Target States](/docs/manual.md#calculating-target-states)
-      - [Negotiation Handlers](/docs/manual.md#negotiation-handlers)
-      - [Final Handlers](/docs/manual.md#final-handlers)
-      - ...
   - [Advanced Topics](/docs/manual.md#advanced-topics)
-      - [Relations](/docs/manual.md#states-relations)
-      - [Queue and History](/docs/manual.md#queue-and-history)
-      - [Typesafe States](/docs/manual.md#typesafe-states)
-      - ...
-  - [Remote Machines](/docs/manual.md#remote-machines)
-      - ...
   - [Cheatsheet](/docs/manual.md#cheatsheet)
+
+## Community
+
+- [GH discussions](https://github.com/pancsta/asyncmachine-go/discussions)
+- [Matrix chat](https://matrix.to/#/#room:asyncmachine)
+
+## Status
+
+Under heavy development, status depends on each package. The bottom layers seem prod grade, the top ones are alpha or testing.
 
 ## Development
 
@@ -98,48 +289,66 @@ To get started, it's recommended to read  [`/pkg/machine`](pkg/machine/README.md
   - `task format`
   - `task lint`
 
-## Changelog
+## FAQ
 
-Latest release: `v0.7.0`
+### How does asyncmachine work?
 
-- docs: update readmes, manual, cookbook for v0.7 [\#127](https://github.com/pancsta/asyncmachine-go/pull/127) (@pancsta)
-- feat: release v0.7 [\#126](https://github.com/pancsta/asyncmachine-go/pull/126) (@pancsta)
-- refac\(telemetry\): switch telemetry to Tracer API [\#125](https://github.com/pancsta/asyncmachine-go/pull/125) (@pancsta)
-- fix\(machine\): fix test -race [\#124](https://github.com/pancsta/asyncmachine-go/pull/124) (@pancsta)
-- feat\(machine\): add Index\(\) and Time.Is\(index\) [\#123](https://github.com/pancsta/asyncmachine-go/pull/123) (@pancsta)
-- feat\(machine\): add Eval\(\) detection tool [\#122](https://github.com/pancsta/asyncmachine-go/pull/122) (@pancsta)
-- feat\(machine\): add EnvLogLevel [\#121](https://github.com/pancsta/asyncmachine-go/pull/121) (@pancsta)
-- feat\(rpc\): add grpc benchmark [\#120](https://github.com/pancsta/asyncmachine-go/pull/120) (@pancsta)
-- feat\(machine\): add PanicToErr, PanicToErrState [\#119](https://github.com/pancsta/asyncmachine-go/pull/119) (@pancsta)
-- feat\(helpers\): add pkg/helpers \(Add1Block, Add1AsyncBlock, ...\) [\#118](https://github.com/pancsta/asyncmachine-go/pull/118)
-  (@pancsta)
-- feat\(rpc\): add pkg/rpc [\#117](https://github.com/pancsta/asyncmachine-go/pull/117) (@pancsta)
-- feat\(states\): add pkg/states [\#116](https://github.com/pancsta/asyncmachine-go/pull/116) (@pancsta)
-- feat\(machine\): add state def manipulations \(eg StateAdd\) [\#115](https://github.com/pancsta/asyncmachine-go/pull/115)
-   (@pancsta)
-- feat\(machine\): add new Tracer methods \(eg VerifyStates\) [\#114](https://github.com/pancsta/asyncmachine-go/pull/114)
-   (@pancsta)
-- feat\(rpc\): add rpc tests, including remote machine suite [\#113](https://github.com/pancsta/asyncmachine-go/pull/113)
-   (@pancsta)
-- feat\(machine\): add SetLoggerSimple, SetLoggerEmpty [\#112](https://github.com/pancsta/asyncmachine-go/pull/112) (@pancsta)
-- feat\(machine\): add AddErrState and unified stack traces [\#111](https://github.com/pancsta/asyncmachine-go/pull/111)
-   (@pancsta)
+It calls certain methods on a struct in a certain order (eg BarEnter, FooFoo, FooBar, BarState).
 
-Maintenance release: `v0.6.5`
+### What is a "state" in asyncmachine?
 
-- fix\(am-dbg\): correct timeline tailing [\#110](https://github.com/pancsta/asyncmachine-go/pull/110) (@pancsta)
-- fix\(am-dbg\): escape secondary logtxt brackets [\#109](https://github.com/pancsta/asyncmachine-go/pull/109) (@pancsta)
-- fix\(am-dbg\): fix filtering in TailMode [\#108](https://github.com/pancsta/asyncmachine-go/pull/108) (@pancsta)
-- fix\(am-dbg\): stop playing on timeline jumps [\#107](https://github.com/pancsta/asyncmachine-go/pull/107) (@pancsta)
-- fix\(am-dbg\): fix changing log level removed trailing tx [\#106](https://github.com/pancsta/asyncmachine-go/pull/106)
-   (@pancsta)
-- fix\(am-dbg\): allow state jump after search as type \#100 [\#105](https://github.com/pancsta/asyncmachine-go/pull/105)
-   (@pancsta)
-- fix\(am-dbg\): align tree rel lines [\#104](https://github.com/pancsta/asyncmachine-go/pull/104) (@pancsta)
-- fix\(am-dbg\): fix tree highlights for ref links [\#103](https://github.com/pancsta/asyncmachine-go/pull/103) (@pancsta)
+State as in "status", not state as in "data". For example, not a JSON string, but "process RUNNING", or "car BROKEN".
 
-### Changes
+### Can asyncmachine be integrated with other frameworks?
 
-- [Full Changelog](CHANGELOG.md)
+Yes, because asyncmachine is more of a set of libraries following the same conventions, than an actual framework. It can
+integrate
+with anything via states-based APIs.
+
+### How does asyncmachine compare to [Temporal](https://github.com/temporalio/temporal)?
+
+Temporal is an all-in-one solution with data persistence, which is its limitation. Asyncmachine doesn't hold any data by
+itself
+and has progressive layers, making it usable in a wide variety of use cases (e.g. asyncmachine could do workflows for a
+desktop app).
+
+### How does asyncmachine compare to [Ergo](https://github.com/ergo-services/ergo)?
+
+Ergo is a great framework, but leans on old ideas and has web-based tooling. It also isn't natively based on state
+machines. Asyncmachine provides productivity-focused TUI tooling and rich integrations, while having every component
+natively state-based (even the [code generator](/tools/generator/states/ss_generator.go)).
+
+### Does aRPC auto sync data?
+
+aRPC auto syncs only states (clock values). Mutations carry data in arguments, from client to server, while the
+SendPayload state passes payloads back to the client.
+
+### Does asyncmachine return data?
+
+No, just yes/no/later (Executed, Canceled, Queued).
+
+### Does asyncmachine return errors?
+
+No, but there's an error state (Exception). Optionally, there are also detailed error states (e.g. ErrNetwork).
+
+### Why asyncmachine avoids blocking?
+
+The lack of blocking allows for immediate adjustment to incoming changes and is backed by solid cancellation support.
+
+### What does "clock-based" mean?
+
+Each state has a counter of activations, and all state counters create "machine time".
+
+### What's the difference between states and events?
+
+Same event happening in a series will cause 1 state activation, until the state becomes inactive.
+
+### How do I do X/Y/Z in asyncmachine?
+
+Usually the answer is "make it a state".
+
+## Changes
+
+- [Changelog](CHANGELOG.md)
 - [Breaking Changes](BREAKING.md)
 - [Roadmap](ROADMAP.md)

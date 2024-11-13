@@ -2,6 +2,8 @@
 
 Cookbook for asyncmachine-go contains numerous copy-pasta snippets of common patterns.
 
+// TODO update to v0.8.0
+
 ## ToC
 
 <!-- TOC -->

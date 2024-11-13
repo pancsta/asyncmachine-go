@@ -1,38 +1,68 @@
-# /tools/cmd/am-dbg
+[![go report](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
+[![coverage](https://codecov.io/gh/pancsta/asyncmachine-go/graph/badge.svg?token=B8553BI98P)](https://codecov.io/gh/pancsta/asyncmachine-go)
+[![go reference](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
+[![last commit](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
+![release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
+[![matrix chat](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
 
-[-> go back to monorepo /](/README.md)
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /tools/cmd/am-dbg _ [cd /](/)
+
+> [!NOTE]
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
+> machine (nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking). It has
+> atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+
+![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png)
 
 ## am-dbg TUI Debugger
 
-`am-dbg` is a lightweight, multi-client debugger for [asyncmachine-go](https://github.com/pancsta/asyncmachine-go). It
-easily handles >100 client machines simultaneously streaming telemetry data (and potentially many more).
+`am-dbg` is a lightweight, multi-client debugger which can handle hundreds of simultaneous streams from asyncmachines.
+It's built around a timeline of transitions and allows for precise searches and drill-downs of state mutations.
 
-![am-dbg](../../../assets/am-dbg.dark.png#gh-dark-mode-only)
-![am-dbg](../../../assets/am-dbg.light.png#gh-light-mode-only)
+<table>
+  <tr>
+    <td>
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-reader.png" />
+    </td>
+    <td>
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-rain.png" />
+    </td>
+  </tr>
+</table>
 
 ## Features
 
-- states tree
-- log view
-- time travel
-- transition steps
-- import / export
-- filters
-- matrix view
+- **states tree**: list of all states and relations of the selected state machine, with their clock ticks,
+  search-as-you-type, and error highlighting.
+- **log view**: highlighted log view with the current transition being selected.
+- **stepping through transitions**: draws relations graph lines of the resolutions process in the states tree.
+- **time travel**: transition and steps timelines allow to navigate in time, even between different state machines.
+- **transition info**: show number, machine time, type, states, states, and human time of each transition.
+- **import / export**: using Brotli and `encoding/gob`, it's easy to save and share dump files.
+- **filters**: filters narrow down both the number of transitions, and log messages.
+- **rain view**: high-level view of transitions with error highlighting and human time, one per line.
+- **client list**: all the currently nad previously connected state machines, with search-as-you-type, error
+  highlighting, and remaining transitions marker.
+- **fast jumps**: jump by 100 transitions, or select a state from the tree and jump to its next occurrence.
+- **keyboard navigation**: the UI is keyboard based, just press **?**.
+- **SSH access**: an instance of the debugger can be shared directly from an edge server via a built-in SSH server.
+- **log rotation**: older entries will be automatically discarded in order.
+- **log reader**: extract entries from **LogOps** into a dedicated pane.
 
 ```text
 Usage:
   am-dbg [flags]
 
 Flags:
-      --am-dbg-url string       Debug this instance of am-dbg with another one
+      --am-dbg-addr string      Debug this instance of am-dbg with another one
       --clean-on-connect        Clean up disconnected clients on the 1st connection
       --enable-mouse            Enable mouse support (experimental)
   -h, --help                    help for am-dbg
-  -i, --import-data string      Import an exported gob.bz2 file
+  -i, --import-data string      ImportFile an exported gob.bt file
   -l, --listen-on string        Host and port for the debugger to listen on (default "localhost:6831")
       --log-file string         Log file path (default "am-dbg.log")
       --log-level int           Log level, 0-5 (silent-everything)
+      --prof-srv                Start pprof server on :6060
   -c, --select-connected        Select the newly connected machine, if no other is connected
   -m, --select-machine string   Select a machine by ID on startup (requires --import-data)
   -t, --select-transition int   Select a transaction by _number_ on startup (requires --select-machine)
@@ -40,45 +70,72 @@ Flags:
   -v, --view string             Initial view (tree-log, tree-matrix, matrix) (default "tree-log")
 ```
 
+![legend](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-legend.png)
+
 ## Installation
 
-[Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest) or use `go install`:
-
-`go install github.com/pancsta/asyncmachine-go/tools/am-dbg@latest`
+- [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
+- Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
+- Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
 
 ## Demos
 
-For a quick demo, you can browse an exported dump located in `assets/am-dbg-sim.gob.br` by running:
+Interactively use the TUI debugger with data pre-generated by **libp2p-pubsub-simulator** or **remote integration tests**
+in one of the available ways below.
 
-`$ am-dbg --import-data assets/am-dbg-sim.gob.br --select-machine sim-p1 --select-transition 25`
+### Local no install
 
-### Live Debugging Sessions
+PubSub:
 
-Interactively use the TUI debugger with data pre-generated by **libp2p-pubsub-simulator** in:
+```bash
+go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
+  --select-machine sim-p1 \
+  --select-transition 25 \
+  --import-data https://pancsta.github.io/assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
+````
+
+Tests:
+
+```bash
+go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
+  --select-machine d-rem-worker \
+  --select-transition 1100 \
+  --import-data https://pancsta.github.io/assets/asyncmachine-go/am-dbg-exports/remote-tests.gob.br
+````
+
+### Remote no install
+
+PubSub:
 
 - web browser: [http://188.166.101.108:8080/wetty/ssh](http://188.166.101.108:8080/wetty/ssh/am-dbg?pass=am-dbg:8080/wetty/ssh/am-dbg?pass=am-dbg)
 - terminal: `ssh 188.166.101.108 -p 4444`
 
-Interactively use the TUI debugger with data pre-generated by **remote integration tests** in:
+Tests:
 
 - web browser: [http://188.166.101.108:8081/wetty/ssh](http://188.166.101.108:8081/wetty/ssh/am-dbg?pass=am-dbg:8081/wetty/ssh/am-dbg?pass=am-dbg)
 - terminal: `ssh 188.166.101.108 -p 4445`
 
-## Steps To Debug
+## Steps to Debug
 
 1. Set up telemetry:
 
     ```go
-    import amt "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+    import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
     // ...
-    err := amt.MonitorTransitions(ctx, mach, "")
+    amhelp.MachDebugEnv(myMach)
     ```
 
 2. Run `am-dbg`
-3. Run your code
+3. Run your code with
+
+    ```bash
+    AM_DBG_ADDR=localhost:9913
+    AM_LOG=2
+    ```
+
 4. Your machine should show up in the debugger
 
-## Steps For SSH Server
+## Steps for SSH Server
 
 [Download an SSH release binary](https://github.com/pancsta/asyncmachine-go/releases/latest) or use `go install`:
 
