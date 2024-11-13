@@ -416,21 +416,22 @@ func NewArgsMapper(names []string, maxlen int) func(args A) map[string]string {
 }
 
 // Tracer is an interface for logging machine transitions and events, used by
-// Opts.Tracers.
+// Opts.Tracers and Machine.BindTracer.
 type Tracer interface {
 	TransitionInit(transition *Transition)
 	TransitionStart(transition *Transition)
 	TransitionEnd(transition *Transition)
 	HandlerStart(transition *Transition, emitter string, handler string)
 	HandlerEnd(transition *Transition, emitter string, handler string)
-	End()
-	MachineInit(machine *Machine)
+	// MachineInit is called only for machines with tracers added via
+	// Opts.Tracers.
+	MachineInit(machine Api) context.Context
 	MachineDispose(machID string)
-	NewSubmachine(parent, machine *Machine)
+	NewSubmachine(parent, machine Api)
 	Inheritable() bool
-	QueueEnd(machine *Machine)
-	StructChange(machine *Machine, old Struct)
-	VerifyStates(machine *Machine)
+	QueueEnd(machine Api)
+	StructChange(machine Api, old Struct)
+	VerifyStates(machine Api)
 }
 
 // NoOpTracer is a no-op implementation of Tracer, used for embedding.
@@ -446,14 +447,16 @@ func (t *NoOpTracer) HandlerStart(
 func (t *NoOpTracer) HandlerEnd(
 	transition *Transition, emitter string, handler string) {
 }
-func (t *NoOpTracer) End()                                      {}
-func (t *NoOpTracer) MachineInit(machine *Machine)              {}
-func (t *NoOpTracer) MachineDispose(machID string)              {}
-func (t *NoOpTracer) NewSubmachine(parent, machine *Machine)    {}
-func (t *NoOpTracer) QueueEnd(machine *Machine)                 {}
-func (t *NoOpTracer) StructChange(machine *Machine, old Struct) {}
-func (t *NoOpTracer) VerifyStates(machine *Machine)             {}
-func (t *NoOpTracer) Inheritable() bool                         { return false }
+
+func (t *NoOpTracer) MachineInit(machine Api) context.Context {
+	return nil
+}
+func (t *NoOpTracer) MachineDispose(machID string)         {}
+func (t *NoOpTracer) NewSubmachine(parent, machine Api)    {}
+func (t *NoOpTracer) QueueEnd(machine Api)                 {}
+func (t *NoOpTracer) StructChange(machine Api, old Struct) {}
+func (t *NoOpTracer) VerifyStates(machine Api)             {}
+func (t *NoOpTracer) Inheritable() bool                    { return false }
 
 var _ Tracer = &NoOpTracer{}
 
