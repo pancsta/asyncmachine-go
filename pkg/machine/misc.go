@@ -488,8 +488,13 @@ type (
 	// bindings
 	IndexWhenArgs map[string][]*WhenArgsBinding
 	// IndexStateCtx is a map of (single) state names to a context cancel function
-	IndexStateCtx map[string][]context.CancelFunc
+	IndexStateCtx map[string]*CtxBinding
 )
+
+type CtxBinding struct {
+	Ctx    context.Context
+	Cancel context.CancelFunc
+}
 
 type WhenBinding struct {
 	Ch chan struct{}

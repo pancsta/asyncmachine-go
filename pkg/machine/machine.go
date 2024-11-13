@@ -1123,6 +1123,10 @@ func (m *Machine) NewStateCtx(state string) context.Context {
 	m.activeStatesLock.Lock()
 	defer m.activeStatesLock.Unlock()
 
+	if _, ok := m.indexStateCtx[state]; ok {
+		return m.indexStateCtx[state].Ctx
+	}
+
 	// TODO handle cancelation while parsing the queue
 	// TODO include current clocks as context values
 	stateCtx, cancel := context.WithCancel(m.Ctx)
@@ -1133,11 +1137,9 @@ func (m *Machine) NewStateCtx(state string) context.Context {
 		return stateCtx
 	}
 
-	// add an index
-	if _, ok := m.indexStateCtx[state]; !ok {
-		m.indexStateCtx[state] = []context.CancelFunc{cancel}
-	} else {
-		m.indexStateCtx[state] = append(m.indexStateCtx[state], cancel)
+	binding := &CtxBinding{
+		Ctx:    stateCtx,
+		Cancel: cancel,
 	}
 
 	return stateCtx
