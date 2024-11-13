@@ -92,6 +92,7 @@ type Machine struct {
 	tracersLock        sync.RWMutex
 	handlerStart       chan *handlerCall
 	handlerEnd         chan bool
+	handlerTimeout     chan struct{}
 	handlerPanic       chan recoveryData
 	handlerTimer       *time.Timer
 	handlerLoopRunning bool
@@ -167,6 +168,7 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 		indexStateCtx:    IndexStateCtx{},
 		handlerStart:     make(chan *handlerCall),
 		handlerEnd:       make(chan bool),
+		handlerTimeout:   make(chan struct{}),
 		handlerPanic:     make(chan recoveryData),
 		handlerTimer:     time.NewTimer(24 * time.Hour),
 		whenDisposed:     make(chan struct{}),
@@ -1950,6 +1952,8 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		case <-m.Ctx.Done():
 
 		case <-m.handlerTimer.C:
+			// notify the handler loop
+			m.handlerTimeout <- struct{}{}
 			m.log(LogOps, "[cancel] (%s) by timeout",
 				j(m.t.Load().TargetStates))
 			timeout = true
@@ -1995,24 +1999,6 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 }
 
 func (m *Machine) handlerLoop() {
-	if m.PanicToException {
-		// catch panics and fwd
-		defer func() {
-			err := recover()
-			if err == nil {
-				return
-			}
-
-			if !m.Disposed.Load() {
-				// TODO support LogStackTrace
-				m.handlerPanic <- recoveryData{
-					err:   err,
-					stack: captureStackTrace(),
-				}
-			}
-		}()
-	}
-
 	// wait on the result / timeout / context
 	for {
 		select {
@@ -2027,15 +2013,45 @@ func (m *Machine) handlerLoop() {
 				return
 			}
 			ret := true
+			retCh := make(chan struct{})
 
-			// handler signature: FooState(e *am.Event)
-			callRet := call.fn.Call([]reflect.Value{reflect.ValueOf(call.event)})
-			if len(callRet) > 0 {
-				ret = callRet[0].Interface().(bool)
-			}
+			// fork for timeout
+			go func() {
+				// catch panics and fwd
+				if m.PanicToException {
+					defer func() {
+						err := recover()
+						if err == nil {
+							return
+						}
 
-			if call.timeout || m.Disposed.Load() {
+						if !m.Disposed.Load() {
+							// TODO support LogStackTrace
+							m.handlerPanic <- recoveryData{
+								err:   err,
+								stack: captureStackTrace(),
+							}
+						}
+					}()
+				}
+
+				// handler signature: FooState(e *am.Event)
+				callRet := call.fn.Call([]reflect.Value{reflect.ValueOf(call.event)})
+				if len(callRet) > 0 {
+					ret = callRet[0].Interface().(bool)
+				}
+				close(retCh)
+			}()
+
+			select {
+			case <-m.Ctx.Done():
+				// dispose with context
+				m.Dispose()
 				continue
+			case <-m.handlerTimeout:
+				continue
+			case <-retCh:
+				// pass
 			}
 
 			select {
