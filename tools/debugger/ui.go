@@ -23,20 +23,20 @@ func (d *Debugger) initUIComponents() {
 	d.tree.SetBorder(true)
 
 	// sidebar
-	d.sidebar = cview.NewList()
-	d.sidebar.SetTitle(" Machines ")
-	d.sidebar.SetBorder(true)
-	d.sidebar.ShowSecondaryText(false)
-	d.sidebar.SetSelectedFocusOnly(true)
-	d.sidebar.SetMainTextColor(colorActive)
-	d.sidebar.SetSelectedTextColor(tcell.ColorWhite)
-	d.sidebar.SetSelectedBackgroundColor(colorHighlight2)
-	d.sidebar.SetHighlightFullLine(true)
-	d.sidebar.SetSelectedFunc(func(i int, listItem *cview.ListItem) {
-		cid := listItem.GetReference().(string)
-		d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": cid})
+	d.clientList = cview.NewList()
+	d.clientList.SetTitle(" Machines ")
+	d.clientList.SetBorder(true)
+	d.clientList.ShowSecondaryText(false)
+	d.clientList.SetSelectedFocusOnly(true)
+	d.clientList.SetMainTextColor(colorActive)
+	d.clientList.SetSelectedTextColor(tcell.ColorWhite)
+	d.clientList.SetSelectedBackgroundColor(colorHighlight2)
+	d.clientList.SetHighlightFullLine(true)
+	d.clientList.SetSelectedFunc(func(i int, listItem *cview.ListItem) {
+		client := listItem.GetReference().(*sidebarRef)
+		d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": client.name})
 	})
-	d.sidebar.SetSelectedAlwaysVisible(true)
+	d.clientList.SetSelectedAlwaysVisible(true)
 
 	// log view
 	d.log = cview.NewTextView()
@@ -49,6 +49,11 @@ func (d *Debugger) initUIComponents() {
 	d.log.SetTitle(" Log ")
 	d.log.SetHighlightForegroundColor(tcell.ColorWhite)
 	d.log.SetHighlightBackgroundColor(colorHighlight2)
+
+	// hood view
+	d.logReader = d.initLogReader()
+	d.logReader.SetTitle(" Log Reader ")
+	d.logReader.SetBorder(true)
 
 	// matrix
 	d.matrix = cview.NewTable()
@@ -144,12 +149,14 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	left.SetTitle(" Legend ")
 	left.SetDynamicColors(true)
 	left.SetPadding(1, 1, 1, 1)
-	left.SetText(dedent.Dedent(strings.Trim(`
+	left.SetText(fmt.Sprintf(dedent.Dedent(strings.Trim(`
 		[::b]### [::u]tree legend[::-]
-	
+		[%s]state[-]        active
+		[%s]state[-]        not active
+		[red]state[-]        active error
 		[::b]*[::-]            handler ran
-		[::b]+[::-]            to be added
-		[::b]-[::-]            to be removed
+		[::b]+[::-]            to be activated
+		[::b]-[::-]            to be de-activated
 		[::b]bold[::-]         touched state
 		[::b]underline[::-]    called state
 		[::b]![::-]            state canceled
@@ -158,27 +165,26 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[red::b]|[-::-]            rel link end
 	
 		[::b]### [::u]matrix legend[::-]
-	
 		[::b]underline[::-]  called state
-	
 		[::b]1st row[::-]    called states
 		           col == state index
-	
 		[::b]2nd row[::-]    state tick changes
 		           col == state index
-	
 		[::b]>=3 row[::-]    state relations
 		           cartesian product
 		           col == source state index
 		           row == target state index
-		
-		[::b]1[::-]    state active
-		[::b]2[::-]    state active and touched
-		[::b]-[::-]    state touched
-		[::b]|[::-]    state de-activated
+	
+		[::b]### [::u]matrix rain legend[::-]
+		[::b]1[::-]          state active
+		[::b]2[::-]          state active and touched
+		[::b]-[::-]          state touched
+		[::b]|[::-]          state de-activated
+		[::b]c[::-]          state canceled
+		underline  state called
 		
 	
-	`, "\n ")))
+	`, "\n ")), colorActive, colorInactive))
 
 	right := cview.NewTextView()
 	right.SetBackgroundColor(colorHighlight)
@@ -187,31 +193,43 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	right.SetPadding(1, 1, 1, 1)
 	right.SetText(fmt.Sprintf(dedent.Dedent(strings.Trim(`
 		[::b]### [::u]keystrokes[::-]
-	
 		[::b]tab[::-]                change focus
 		[::b]shift+tab[::-]          change focus
 		[::b]space[::-]              play/pause
-		[::b]left/right[::-]         back/fwd
+		[::b]left/right[::-]         prev/next
 		[::b]alt+left/right[::-]     fast jump
 		[::b]alt+h/l[::-]            fast jump
-		[::b]alt+h/l[::-]            state jump (if selected)
+		[::b]alt+h/l[::-]            state jump (when selected)
 		[::b]up/down[::-]            scroll / navigate
 		[::b]j/k[::-]                scroll / navigate
 		[::b]alt+j/k[::-]            page up/down
 		[::b]alt+e[::-]              expand/collapse tree
 		[::b]enter[::-]              expand/collapse node
 		[::b]alt+v[::-]              tail mode
-		[::b]alt+m[::-]              matrix view
+		[::b]alt+r[::-]              rain view
+		[::b]alt+m[::-]              matrix views
+		[::b]alt+o[::-]              log reader
 		[::b]home/end[::-]           struct / last tx
 		[::b]alt+s[::-]              export data
 		[::b]backspace[::-]          remove machine
 		[::b]ctrl+q[::-]             quit
 		[::b]?[::-]                  show help
 	
-		[::b]### [::u]info[::-]
-		%-15s        version
-		%-15s        server addr
-	`, "\n ")), d.Opts.Version, d.Opts.ServerAddr))
+		[::b]### [::u]client list legend[::-]
+		T                  whole machine time
+		[%s]client-id[-]          connected
+		[grey]client-id[-]          disconnected
+		[red]client-id[-]          recent error
+		[::u]client-id[::-]          selected one
+		|123               transitions till now
+		|123+              more transitions left
+		S|                 Start active
+		R|                 Ready active
+	
+		[::b]### [::u]about am-dbg[::-]
+		%-15s    version
+		%-15s    server addr
+	`, "\n ")), colorActive, d.Opts.Version, d.Opts.ServerAddr))
 
 	grid := cview.NewGrid()
 	grid.SetTitle(" asyncmachine-go debugger ")
@@ -231,13 +249,13 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 
 	flexHor := cview.NewFlex()
 	flexHor.AddItem(box1, 0, 1, false)
-	flexHor.AddItem(grid, 0, 2, false)
+	flexHor.AddItem(grid, 0, 4, false)
 	flexHor.AddItem(box2, 0, 1, false)
 
 	flexVer := cview.NewFlex()
 	flexVer.SetDirection(cview.FlexRow)
 	flexVer.AddItem(box3, 0, 1, false)
-	flexVer.AddItem(flexHor, 0, 2, false)
+	flexVer.AddItem(flexHor, 0, 4, false)
 	flexVer.AddItem(box4, 0, 1, false)
 
 	return flexVer
@@ -254,35 +272,35 @@ func (d *Debugger) initLayout() {
 	nextTxBar.AddItem(d.nextTxBarLeft, 0, 0, 1, 1, 0, 0, false)
 	nextTxBar.AddItem(d.nextTxBarRight, 0, 1, 1, 1, 0, 0, false)
 
-	// content grid
-	treeLogGrid := cview.NewGrid()
-	treeLogGrid.SetRows(-1)
-	treeLogGrid.SetColumns( /*tree*/ -1 /*log*/, -1, -1)
-	treeLogGrid.AddItem(d.tree, 0, 0, 1, 1, 0, 0, false)
-	treeLogGrid.AddItem(d.log, 0, 1, 1, 2, 0, 0, false)
+	// content grid TODO bind to HoodView state
+	d.treeLogGrid = cview.NewGrid()
+	d.treeLogGrid.SetRows(-1)
+	d.treeLogGrid.SetColumns( /*tree*/ -1, -1 /*log*/, -1, -1, -1, -1)
+	d.treeLogGrid.AddItem(d.tree, 0, 0, 1, 2, 0, 0, false)
+	d.treeLogGrid.AddItem(d.log, 0, 2, 1, 4, 0, 0, false)
 
-	treeMatrixGrid := cview.NewGrid()
-	treeMatrixGrid.SetRows(-1)
-	treeMatrixGrid.SetColumns( /*tree*/ -1 /*log*/, -1, -1)
-	treeMatrixGrid.AddItem(d.tree, 0, 0, 1, 1, 0, 0, false)
-	treeMatrixGrid.AddItem(d.matrix, 0, 1, 1, 2, 0, 0, false)
+	d.treeMatrixGrid = cview.NewGrid()
+	d.treeMatrixGrid.SetRows(-1)
+	d.treeMatrixGrid.SetColumns( /*tree*/ -1, -1 /*log*/, -1, -1, -1, -1)
+	d.treeMatrixGrid.AddItem(d.tree, 0, 0, 1, 2, 0, 0, false)
+	d.treeMatrixGrid.AddItem(d.matrix, 0, 2, 1, 4, 0, 0, false)
 
 	// content panels
 	d.contentPanels = cview.NewPanels()
-	d.contentPanels.AddPanel("tree-log", treeLogGrid, true, true)
-	d.contentPanels.AddPanel("tree-matrix", treeMatrixGrid, true, false)
+	d.contentPanels.AddPanel("tree-log", d.treeLogGrid, true, true)
+	d.contentPanels.AddPanel("tree-matrix", d.treeMatrixGrid, true, false)
 	d.contentPanels.AddPanel("matrix", d.matrix, true, false)
 	d.contentPanels.SetBackgroundColor(colorHighlight)
 
 	// main grid
 	mainGrid := cview.NewGrid()
 	mainGrid.SetRows(-1, 2, 3, 2, 3, 1, 2)
-	cols := []int{ /*sidebar*/ -1 /*content*/, -1, -1, -1, -1, -1, -1}
+	cols := []int{ /*sidebar*/ -1 /*content*/, -1, -1, -1, -1, -1, -1, -1, -1}
 	mainGrid.SetColumns(cols...)
 	// row 1 left
-	mainGrid.AddItem(d.sidebar, 0, 0, 1, 1, 0, 0, false)
+	mainGrid.AddItem(d.clientList, 0, 0, 1, 2, 0, 0, false)
 	// row 1 mid, right
-	mainGrid.AddItem(d.contentPanels, 0, 1, 1, 6, 0, 0, false)
+	mainGrid.AddItem(d.contentPanels, 0, 2, 1, 7, 0, 0, false)
 	// row 2...5
 	mainGrid.AddItem(currTxBar, 1, 0, 1, len(cols), 0, 0, false)
 	mainGrid.AddItem(d.timelineTxs, 2, 0, 1, len(cols), 0, 0, false)
@@ -323,7 +341,7 @@ func (d *Debugger) draw() {
 
 	go func() {
 		select {
-		case <-d.Mach.Ctx.Done():
+		case <-d.Mach.Ctx().Done():
 			return
 
 		// debounce every 16msec
@@ -332,7 +350,13 @@ func (d *Debugger) draw() {
 
 		// TODO re-draw only changed components
 		// TODO re-draw only c.Box.Draw() when simply changing focus
-		d.App.QueueUpdateDraw(func() {})
+		d.App.QueueUpdateDraw(func() {
+			// run and dispose a registered callback
+			if d.redrawCallback != nil {
+				d.redrawCallback()
+				d.redrawCallback = nil
+			}
+		})
 		d.repaintScheduled.Store(false)
 	}()
 }

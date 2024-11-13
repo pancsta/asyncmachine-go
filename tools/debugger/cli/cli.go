@@ -7,7 +7,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"runtime"
-	"runtime/debug"
 	"runtime/pprof"
 
 	"github.com/spf13/cobra"
@@ -17,27 +16,41 @@ import (
 )
 
 const (
-	cliParamLogFile          = "log-file"
-	cliParamLogLevel         = "log-level"
-	cliParamServerAddr       = "listen-on"
-	cliParamServerAddrShort  = "l"
-	cliParamAmDbgAddr        = "am-dbg-addr"
-	cliParamEnableMouse      = "enable-mouse"
-	cliParamCleanOnConnect   = "clean-on-connect"
-	cliParamVersion          = "version"
-	cliParamImport           = "import-data"
-	cliParamImportShort      = "i"
-	cliParamSelectConn       = "select-connected"
-	cliParamSelectConnShort  = "c"
-	cliParamStartupMach      = "select-machine"
-	cliParamStartupMachShort = "m"
-	cliParamStartupTx        = "select-transition"
-	cliParamStartupTxShort   = "t"
-	cliParamView             = "view"
-	cliParamViewShort        = "v"
-	cliParamProfMem          = "prof-mem"
-	cliParamProfCpu          = "prof-cpu"
-	cliParamProfSrv          = "prof-srv"
+	// TODO remove
+	pLogFile          = "log-file"
+	// TODO remove
+	pLogLevel         = "log-level"
+	// TODO refac: --addr
+	pServerAddr       = "listen-on"
+	pServerAddrShort  = "l"
+	// TODO remove
+	pAmDbgAddr        = "am-dbg-addr"
+	pEnableMouse      = "enable-mouse"
+	pCleanOnConnect   = "clean-on-connect"
+	pVersion          = "version"
+	pImport           = "import-data"
+	pImportShort      = "i"
+	pSelectConn       = "select-connected"
+	pSelectConnShort  = "c"
+	pStartupMach      = "select-machine"
+	pStartupMachShort = "m"
+	pStartupTx        = "select-transition"
+	pStartupTxShort   = "t"
+	pView             = "view"
+	pViewShort        = "v"
+	// TODO remove
+	pProfMem          = "prof-mem"
+	// TODO remove
+	pProfCpu          = "prof-cpu"
+	// TODO AM_DBG_PROF
+	pProfSrv          = "prof-srv"
+	// TODO --filters
+	// TODO --view
+	// TODO --rain
+	// TODO --reader
+	// TODO --gc-log 1h|1d
+	// TODO --gc-log-ops 1h|1d
+	// TODO --max-mem
 )
 
 type Params struct {
@@ -77,108 +90,94 @@ func RootCmd(fn RootFn) *cobra.Command {
 
 func AddFlags(rootCmd *cobra.Command) {
 	f := rootCmd.Flags()
-	f.String(cliParamLogFile, "am-dbg.log",
+	f.String(pLogFile, "am-dbg.log",
 		"Log file path")
-	f.Int(cliParamLogLevel, 0,
+	f.Int(pLogLevel, 0,
 		"Log level, 0-5 (silent-everything)")
-	f.StringP(cliParamServerAddr,
-		cliParamServerAddrShort, telemetry.DbgAddr,
+	f.StringP(pServerAddr,
+		pServerAddrShort, telemetry.DbgAddr,
 		"Host and port for the debugger to listen on")
-	f.String(cliParamAmDbgAddr, "",
+	f.String(pAmDbgAddr, "",
 		"Debug this instance of am-dbg with another one")
-	f.StringP(cliParamView, cliParamViewShort, "tree-log",
+	f.StringP(pView, pViewShort, "tree-log",
 		"Initial view (tree-log, tree-matrix, matrix)")
-	f.StringP(cliParamStartupMach,
-		cliParamStartupMachShort, "",
-		"Select a machine by ID on startup (requires --"+cliParamImport+")")
+	f.StringP(pStartupMach,
+		pStartupMachShort, "",
+		"Select a machine by ID on startup (requires --"+pImport+")")
 
 	// TODO parse copy-paste commas, eg 1,001
-	f.IntP(cliParamStartupTx, cliParamStartupTxShort, 0,
+	f.IntP(pStartupTx, pStartupTxShort, 0,
 		"Select a transaction by _number_ on startup (requires --"+
-			cliParamStartupMach+")")
-	f.Bool(cliParamEnableMouse, false,
+			pStartupMach+")")
+	f.Bool(pEnableMouse, false,
 		"Enable mouse support (experimental)")
-	f.Bool(cliParamCleanOnConnect, false,
+	f.Bool(pCleanOnConnect, false,
 		"Clean up disconnected clients on the 1st connection")
-	f.BoolP(cliParamSelectConn, cliParamSelectConnShort, false,
+	f.BoolP(pSelectConn, pSelectConnShort, false,
 		"Select the newly connected machine, if no other is connected")
-	f.StringP(cliParamImport, cliParamImportShort, "",
+	f.StringP(pImport, pImportShort, "",
 		"ImportFile an exported gob.bt file")
-	f.Bool(cliParamVersion, false,
+	f.Bool(pVersion, false,
 		"Print version and exit")
 
 	// profile
-	f.Bool(cliParamProfMem, false, "Profile memory usage")
-	f.Bool(cliParamProfCpu, false, "Profile CPU usage")
-	f.Bool(cliParamProfSrv, false, "Start pprof server on :6060")
-}
-
-func GetVersion() string {
-	build, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "(devel)"
-	}
-
-	ver := build.Main.Version
-	if ver == "" {
-		return "(devel)"
-	}
-
-	return ver
+	f.Bool(pProfMem, false, "Profile memory usage")
+	f.Bool(pProfCpu, false, "Profile CPU usage")
+	f.Bool(pProfSrv, false, "Start pprof server on :6060")
 }
 
 func ParseParams(cmd *cobra.Command, _ []string) Params {
 	// TODO dont panic
 
 	// params
-	version, err := cmd.Flags().GetBool(cliParamVersion)
+	version, err := cmd.Flags().GetBool(pVersion)
 	if err != nil {
 		panic(err)
 	}
 
-	logFile := cmd.Flag(cliParamLogFile).Value.String()
-	logLevelInt, err := cmd.Flags().GetInt(cliParamLogLevel)
+	logFile := cmd.Flag(pLogFile).Value.String()
+	logLevelInt, err := cmd.Flags().GetInt(pLogLevel)
 	if err != nil {
 		panic(err)
 	}
 
 	logLevel := am.LogLevel(logLevelInt)
-	serverAddr := cmd.Flag(cliParamServerAddr).Value.String()
-	debugAddr := cmd.Flag(cliParamAmDbgAddr).Value.String()
-	importData := cmd.Flag(cliParamImport).Value.String()
-	startupMachine := cmd.Flag(cliParamStartupMach).Value.String()
-	startupView := cmd.Flag(cliParamView).Value.String()
-	startupTx, err := cmd.Flags().GetInt(cliParamStartupTx)
+	serverAddr := cmd.Flag(pServerAddr).Value.String()
+	debugAddr := cmd.Flag(pAmDbgAddr).Value.String()
+	importData := cmd.Flag(pImport).Value.String()
+	startupMachine := cmd.Flag(pStartupMach).Value.String()
+	startupView := cmd.Flag(pView).Value.String()
+	startupTx, err := cmd.Flags().GetInt(pStartupTx)
 	if err != nil {
 		panic(err)
 	}
 
-	enableMouse, err := cmd.Flags().GetBool(cliParamEnableMouse)
+	enableMouse, err := cmd.Flags().GetBool(pEnableMouse)
 	if err != nil {
 		panic(err)
 	}
 
-	cleanOnConnect, err := cmd.Flags().GetBool(cliParamCleanOnConnect)
+	cleanOnConnect, err := cmd.Flags().GetBool(pCleanOnConnect)
 	if err != nil {
 		panic(err)
 	}
 
-	selectConnected, err := cmd.Flags().GetBool(cliParamSelectConn)
+	selectConnected, err := cmd.Flags().GetBool(pSelectConn)
 	if err != nil {
 		panic(err)
 	}
 
-	profMem, err := cmd.Flags().GetBool(cliParamProfMem)
+	profMem, err := cmd.Flags().GetBool(pProfMem)
 	if err != nil {
 		panic(err)
 	}
 
-	profCpu, err := cmd.Flags().GetBool(cliParamProfCpu)
+	profCpu, err := cmd.Flags().GetBool(pProfCpu)
 	if err != nil {
 		panic(err)
 	}
 
-	profSrv, err := cmd.Flags().GetBool(cliParamProfSrv)
+	profSrv, err := cmd.Flags().GetBool(pProfSrv)
 	if err != nil {
 		panic(err)
 	}
