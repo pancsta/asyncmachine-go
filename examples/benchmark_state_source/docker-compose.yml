@@ -4,10 +4,8 @@ services:
 
   root:
     build:
-      # TODO remove go.mod rewrite
-#      context: ../..
-      context: ../../..
-      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+      context: ../..
+      dockerfile: ./examples/benchmark_state_source/Dockerfile
     deploy:
       resources:
         limits:
@@ -24,9 +22,8 @@ services:
 
   rep-1:
     build:
-      # TODO remove go.mod rewrite
-      context: ../../..
-      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+      context: ../..
+      dockerfile: ./examples/benchmark_state_source/Dockerfile
     deploy:
       resources:
         limits:
@@ -43,9 +40,8 @@ services:
 
   rep-2:
     build:
-      # TODO remove go.mod rewrite
-      context: ../../..
-      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+      context: ../..
+      dockerfile: ./examples/benchmark_state_source/Dockerfile
     deploy:
       resources:
         limits:
@@ -64,9 +60,8 @@ services:
 
   rep-1-1:
     build:
-      # TODO remove go.mod rewrite
-      context: ../../..
-      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+      context: ../..
+      dockerfile: ./examples/benchmark_state_source/Dockerfile
     deploy:
       resources:
         limits:
@@ -83,9 +78,8 @@ services:
 
   rep-1-2:
     build:
-      # TODO remove go.mod rewrite
-      context: ../../..
-      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+      context: ../..
+      dockerfile: ./examples/benchmark_state_source/Dockerfile
     deploy:
       resources:
         limits:
@@ -102,9 +96,8 @@ services:
 
   rep-1-3:
     build:
-      # TODO remove go.mod rewrite
-      context: ../../..
-      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+      context: ../..
+      dockerfile: ./examples/benchmark_state_source/Dockerfile
     deploy:
       resources:
         limits:
@@ -121,9 +114,8 @@ services:
 
   rep-2-1:
     build:
-      # TODO remove go.mod rewrite
-      context: ../../..
-      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+      context: ../..
+      dockerfile: ./examples/benchmark_state_source/Dockerfile
     deploy:
       resources:
         limits:
@@ -140,9 +132,8 @@ services:
 
   rep-2-2:
     build:
-      # TODO remove go.mod rewrite
-      context: ../../..
-      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+      context: ../..
+      dockerfile: ./examples/benchmark_state_source/Dockerfile
     deploy:
       resources:
         limits:
@@ -159,9 +150,8 @@ services:
 
   rep-2-3:
     build:
-      # TODO remove go.mod rewrite
-      context: ../../..
-      dockerfile: ./asyncmachine-go/examples/benchmark_state_source/Dockerfile
+      context: ../..
+      dockerfile: ./examples/benchmark_state_source/Dockerfile
     deploy:
       resources:
         limits:

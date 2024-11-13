@@ -3,13 +3,12 @@ FROM golang:1.23-alpine AS builder
 
 # deps
 WORKDIR /app
-COPY asyncmachine-go/go.mod .
+COPY go.mod .
 RUN go mod tidy
 
 # code
 COPY . .
-WORKDIR /app/asyncmachine-go
-RUN go build -o ../main ./examples/tree_state_source
+RUN go build -o main ./examples/tree_state_source
 
 # Start a new stage from scratch
 FROM alpine:latest

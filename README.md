@@ -163,10 +163,11 @@ event-based systems.
 
 ## Samples
 
-Minimal - an untyped definition of 2 states and 1 relation, then 1 mutation and a check.
+**Minimal** - an untyped definition of 2 states and 1 relation, then 1 mutation and a check.
 
 ```go
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
+// ...
 mach := am.New(nil, am.Struct{
     "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
@@ -175,7 +176,7 @@ mach.Add1("Foo", nil)
 mach.Is1("Foo") // false
 ```
 
-Complicated - wait on a multi state (event) with 1s timeout, and mutate with typed args, on top of a state context.
+**Complicated** - wait on a multi state (event) with 1s timeout, and mutate with typed args, on top of a state context.
 
 ```go
 // state ctx is a non-err ctx
@@ -188,8 +189,8 @@ client.WorkerRpc.Worker.Add1(ssW.WorkRequested, Pass(&A{
 // WaitFor replaces select statements
 err := amhelp.WaitForAll(ctx, 1*time.Second, whenPayload)
 if ctx.Err() != nil {
-    // no err
-    return // expired
+    // state ctx expired
+    return
 }
 if err != nil {
     // mutation
@@ -199,7 +200,7 @@ if err != nil {
 // WorkerPayload activated
 ```
 
-Schema - states of a node worker.
+**Schema** - states of a node worker.
 
 ```go
 type WorkerStatesDef struct {
@@ -232,8 +233,8 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 ## Getting Started
 
 [`/pkg/machine`](pkg/machine/README.md) is a mandatory ready, while [`/pkg/node`](pkg/node/README.md) is the most
-interesting one. [Examples](/examples/README.md) and the [manual](/docs/manual.md) are good for a general grasp, while
-[diagrams](/docs/diagrams.md) go deeper into implementation details. Reading tests is always a good idea.
+interesting one. [/examples](/examples/README.md) and the [/docs/manual.md](/docs/manual.md) are good for a general grasp, while
+[/docs/diagrams.md](/docs/diagrams.md) go deeper into implementation details. Reading tests is always a good idea.
 
 ## Packages
 
@@ -246,7 +247,7 @@ interesting one. [Examples](/examples/README.md) and the [manual](/docs/manual.m
 - [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for metrics, traces, and logs.
 - `/pkg/pubsub` Planned.
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) am-dbg is a multi-client TUI debugger.
-- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) am-gen generates states files.
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) am-gen generates states files and Grafana dashboards.
 - `/tools/cmd/am-vis` Planned.
 
 ## Case Studies

@@ -5,7 +5,9 @@
 ![release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
 [![matrix chat](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
 
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /pkg/machine _ [cd /](/)
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /pkg/machine
+
+[cd /](/README.md)
 
 > [!NOTE]
 > **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
@@ -368,8 +370,6 @@ mach.Add1(ssS.KillingWorker, Pass(&A{
     WorkerAddr: ":5556",
 }))
 ```
-
-See [docs/cookbook.md](/docs/cookbook.md) for more snippets.
 
 ### Mutations and Relations
 

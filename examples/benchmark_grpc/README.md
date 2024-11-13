@@ -1,4 +1,6 @@
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /examples/benchmark_grpc _ [cd /](/)
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /examples/benchmark_grpc
+
+[cd /](/README.md)
 
 > [!NOTE]
 > **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state

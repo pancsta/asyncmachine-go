@@ -1819,4 +1819,4 @@ Each of them has a readme with examples:
 - [`/pkg/states`](/pkg/states/README.md) Reusable state definitions and piping.
 - [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for metrics, traces, and logs.
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) am-dbg is a multi-client TUI debugger.
-- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) am-gen generates states files.
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) am-gen generates states files and Grafana dashboards.

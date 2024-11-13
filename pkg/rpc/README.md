@@ -5,7 +5,9 @@
 ![release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
 [![matrix chat](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
 
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /pkg/rpc _ [cd /](/)
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /pkg/rpc
+
+[cd /](/README.md)
 
 > [!NOTE]
 > **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
@@ -426,6 +428,6 @@ Testing, not semantically versioned.
 - [`/examples/arpc`](/examples/arpc)
 - [`/examples/tree_state_source`](/examples/tree_state_source/README.md)
 - [`/pkg/rpc/HOWTO.md`](/pkg/rpc/HOWTO.md)
-- [`/examples/benchmark_grpc/README.md`](/examples/benchmark_grpc/README.md)
+- [`/examples/benchmark_grpc`](/examples/benchmark_grpc/README.md)
 
 [Go back to the monorepo root](/README.md) to continue reading.

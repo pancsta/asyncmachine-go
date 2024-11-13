@@ -16,22 +16,26 @@ tasks:
       - cd bench && ln -sfn Caddyfile-root Caddyfile
       - docker-compose restart caddy bench
       - sleep 25
-      - task: logs
+      - task: logs-bench
 
       - cd bench && ln -sfn Caddyfile-root-2 Caddyfile
       - docker-compose restart caddy bench
       - sleep 25
-      - task: logs
+      - task: logs-bench
 
       - cd bench && ln -sfn Caddyfile-root-2-4 Caddyfile
       - docker-compose restart caddy bench
       - sleep 25
-      - task: logs
+      - task: logs-bench
 
       - cd bench && ln -sfn Caddyfile-root-2-6 Caddyfile
       - docker-compose restart caddy bench
       - sleep 25
-      - task: logs
+      - task: logs-bench
 
   logs:
+    interactive: true
+    cmd: docker-compose logs --follow
+
+  logs-bench:
     cmd: docker-compose logs --tail 22 bench

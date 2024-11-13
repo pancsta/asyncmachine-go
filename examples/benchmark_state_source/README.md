@@ -8,7 +8,7 @@
 > atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
 Benchmark of [`/examples/tree_state_source`](/examples/tree_state_source/README.md) using [go-wrk](https://github.com/tsliwowicz/go-wrk)
-and [Caddy](https://caddyserver.com/) in various tree configurations. Every node is a resource limiter container
+and [Caddy](https://caddyserver.com/) in various tree configurations. Every node is a resource limited container
 (0.1cpu, 64mb). Each run starts with a restart of the load balancer and a 1s warmup.
 
 ```mermaid

@@ -1,9 +1,34 @@
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /examples _ [cd /](/)
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /examples
+
+[cd /](/README.md)
 
 > [!NOTE]
 > **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
 > machine (nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking). It has
 > atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+
+Table of contents:
+
+* [Examples](#examples)
+  * [aRPC Setup](#arpc-setup)
+  * [DAG Dependency Graph](#dag-dependency-graph)
+  * [FSM - Finite State Machine](#fsm---finite-state-machine)
+  * [NFA - Nondeterministic Finite Automaton](#nfa---nondeterministic-finite-automaton)
+  * [PATH Watcher](#path-watcher)
+  * [Pipes](#pipes)
+  * [Raw Strings](#raw-strings)
+  * [Relations Playground](#relations-playground)
+  * [Subscriptions](#subscriptions)
+  * [Temporal Expense Workflow](#temporal-expense-workflow)
+  * [Temporal FileProcessing Workflow](#temporal-fileprocessing-workflow)
+  * [Tree State Source](#tree-state-source)
+* [Benchmarks](#benchmarks)
+  * [Benchmark gRPC](#benchmark-grpc)
+  * [Benchmark libp2p PubSub](#benchmark-libp2p-pubsub)
+  * [Benchmark State Source](#benchmark-state-source)
+* [Demos](#demos)
+* [Debugging Sessions](#debugging-sessions)
+* [Case Studies](#case-studies)
 
 ## Examples
 
@@ -86,7 +111,7 @@
 ## Demos
 
 - [RPC integration tests tutorial](/pkg/rpc/HOWTO.md)
-- [Jaeger traces JSON file](/assets/asyncmachine-go/bench-jaeger-3h-10m.traces.json)
+- [Jaeger traces JSON file](https://pancsta.github.io/assets/asyncmachine-go/bench-jaeger-3h-10m.traces.json)
 
 ## Debugging Sessions
 
