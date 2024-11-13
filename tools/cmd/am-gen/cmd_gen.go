@@ -17,6 +17,8 @@ import (
 	"github.com/pancsta/asyncmachine-go/tools/generator/cli"
 )
 
+const EnvGrafanaToken = "GRAFANA_TOKEN"
+
 func init() {
 	// read .env
 	_ = godotenv.Load()
@@ -52,6 +54,14 @@ func main() {
 		},
 	}
 
+	// grafana
+	grafanaCmd := &cobra.Command{
+		Use: "grafana --name MyDash --ids my-mach-1,my-mach-2 --source my-service",
+		Run: genGrafana(ctx),
+	}
+	cli.AddGrafanaFlags(grafanaCmd)
+	rootCmd.AddCommand(grafanaCmd)
+
 	// states-file
 	statesCmd := &cobra.Command{
 		Use: "states-file --name MyMach --states State1,State2:multi",
@@ -64,6 +74,29 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
+	}
+}
+
+func genGrafana(ctx context.Context) func(cmd *cobra.Command, args []string) {
+	return func(cmd *cobra.Command, args []string) {
+		params := cli.ParseGrafanaParams(cmd, args)
+		params.Token = os.Getenv(EnvGrafanaToken)
+
+		builder, err := generator.GenDashboard(params)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		if params.GrafanaUrl != "" {
+			err := generator.SyncDashboard(ctx, params, builder)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+		} else {
+			fmt.Println(builder.MarshalIndentJSON())
+		}
 	}
 }
 
