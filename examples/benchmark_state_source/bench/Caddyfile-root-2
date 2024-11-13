@@ -1,0 +1,12 @@
+:80 {
+    #
+    # 2 direct replicants
+    #
+    reverse_proxy /* rep-1:18700 rep-2:18700 {
+        lb_policy least_conn
+    }
+
+    log {
+        output discard
+    }
+}
