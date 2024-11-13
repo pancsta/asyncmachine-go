@@ -23,6 +23,8 @@ type RelationsResolver interface {
 	// GetRelationsBetween returns a list of relation types between the given
 	// states.
 	GetRelationsBetween(fromState, toState string) ([]Relation, error)
+	// NewStruct runs when Machine receives a new struct.
+	NewStruct()
 }
 
 // DefaultRelationsResolver is the default implementation of the
@@ -31,6 +33,26 @@ type RelationsResolver interface {
 type DefaultRelationsResolver struct {
 	Machine    *Machine
 	Transition *Transition
+	topology   S
+}
+
+var _ RelationsResolver = &DefaultRelationsResolver{}
+
+func (rr *DefaultRelationsResolver) NewStruct() {
+	g := newGraph()
+	for _, name := range rr.Machine.StateNames() {
+		state := rr.Machine.states[name]
+		for _, req := range state.Require {
+			g.AddEdge(name, req)
+		}
+	}
+
+	sorted, err := g.TopologicalSort()
+	if err != nil {
+		panic(fmt.Errorf("%w: %w for %s", ErrRelation, err, rr.Machine.id))
+	} else {
+		rr.topology = sorted
+	}
 }
 
 // GetTargetStates implements RelationsResolver.GetTargetStates.
@@ -144,21 +166,35 @@ func (rr *DefaultRelationsResolver) GetAutoMutation() *Mutation {
 func (rr *DefaultRelationsResolver) SortStates(states S) {
 	t := rr.Transition
 	m := rr.Machine
+
+	rr.sortRequire(states)
+
+	// sort by After
 	sort.SliceStable(states, func(i, j int) bool {
 		name1 := states[i]
 		name2 := states[j]
 		state1 := m.states[name1]
 		state2 := m.states[name2]
+
+		// forward relations
 		if slices.Contains(state1.After, name2) {
-			t.addSteps(newStep(name2, name1,
-				StepRelation, RelationAfter))
+			t.addSteps(newStep(name2, name1, StepRelation, RelationAfter))
 			return false
 		} else if slices.Contains(state2.After, name1) {
-			t.addSteps(newStep(name1, name2,
-				StepRelation, RelationAfter))
+			t.addSteps(newStep(name1, name2, StepRelation, RelationAfter))
 			return true
 		}
+
 		return false
+	})
+}
+
+// sortRequire sorts the states by Require relations.
+func (rr *DefaultRelationsResolver) sortRequire(states S) {
+	// TODO optimize with an index
+	sort.SliceStable(states, func(i, j int) bool {
+		return slices.Index(rr.topology, states[i]) <
+			slices.Index(rr.topology, states[j])
 	})
 }
 
@@ -173,7 +209,7 @@ func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 		for _, name := range states {
 			state := rr.Machine.states[name]
 
-			if slices.Contains(t.StatesBefore, name) && !state.Multi {
+			if slices.Contains(t.StatesBefore(), name) && !state.Multi {
 				continue
 			}
 			if slices.Contains(visited, name) || state.Add == nil {
@@ -337,4 +373,55 @@ func (rr *DefaultRelationsResolver) GetRelationsOf(fromState string) (
 	}
 
 	return relations, nil
+}
+
+// graph represents a directed graph using an adjacency list.
+type graph struct {
+	vertices map[string][]string
+}
+
+// newGraph creates a new graph.
+func newGraph() *graph {
+	return &graph{vertices: make(map[string][]string)}
+}
+
+// AddEdge adds a directed edge from src to dest.
+func (g *graph) AddEdge(src, dest string) {
+	g.vertices[src] = append(g.vertices[src], dest)
+}
+
+// TopologicalSort performs a topological sort on the graph.
+func (g *graph) TopologicalSort() ([]string, error) {
+	visited := make(map[string]bool)
+	var stack []string
+	tempMarked := make(map[string]bool)
+
+	var visit func(string) error
+	visit = func(node string) error {
+		if tempMarked[node] {
+			return fmt.Errorf("state %s has a Require cycle", node)
+		}
+		if !visited[node] {
+			tempMarked[node] = true
+			for _, neighbor := range g.vertices[node] {
+				if err := visit(neighbor); err != nil {
+					return err
+				}
+			}
+			tempMarked[node] = false
+			visited[node] = true
+			stack = append(stack, node)
+		}
+		return nil
+	}
+
+	for node := range g.vertices {
+		if !visited[node] {
+			if err := visit(node); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return stack, nil
 }

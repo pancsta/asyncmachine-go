@@ -236,6 +236,9 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 		m.clock[name] = 0
 	}
 
+	// notify the resolver
+	m.resolver.NewStruct()
+
 	// init context (support nil for examples)
 	if ctx == nil {
 		ctx = context.TODO()
@@ -2390,6 +2393,8 @@ func (m *Machine) SetStruct(statesStruct Struct, names S) error {
 	if err != nil {
 		return err
 	}
+	// notify the resolver
+	m.resolver.NewStruct()
 
 	// tracers
 	m.tracersLock.RLock()
