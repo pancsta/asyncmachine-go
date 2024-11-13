@@ -381,6 +381,93 @@ func TestClockPush(t *testing.T) {
 	t.Skip("TODO")
 }
 
+func TestMux(t *testing.T) {
+	// t.Parallel()
+	// amhelp.EnableDebugging(false)
+	ctx := context.Background()
+
+	// bind to an open port
+	listener := utils.RandListener("localhost")
+	serverAddr := listener.Addr().String()
+	connAddr := serverAddr
+
+	// worker init
+	w := utils.NewRelsRpcWorker(t, nil)
+	amhelpt.MachDebugEnv(t, w)
+
+	// client fac
+	newC := func(num int) *Client {
+		name := fmt.Sprintf("%s-%d", t.Name(), num)
+		c, err := NewClient(ctx, connAddr, name, w.GetStruct(),
+			w.StateNames(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		amhelpt.MachDebugEnv(t, c.Mach)
+
+		return c
+	}
+
+	mux, err := NewMux(ctx, t.Name(), nil, nil)
+	// server fac
+	mux.NewServerFn = func(num int, _ net.Conn) (*Server, error) {
+		name := fmt.Sprintf("%s-%d", t.Name(), num)
+		s, err := NewServer(ctx, serverAddr, name, w, &ServerOpts{
+			Parent: mux.Mach,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		amhelpt.MachDebugEnv(t, s.Mach)
+
+		return s, nil
+	}
+
+	// start cmux
+	if err != nil {
+		t.Fatal(err)
+	}
+	amhelpt.MachDebugEnv(t, mux.Mach)
+	mux.Listener = listener
+	mux.Start()
+	amhelpt.WaitForAll(t, ctx, 2*time.Second,
+		mux.Mach.When1(ssM.Ready, nil))
+
+	var clients []*Client
+	var clientsApi []am.Api
+	var cWorkers []am.Api
+
+	// connect 10 clients to the worker
+	for i := 0; i < 10; i++ {
+		c := newC(i)
+		c.Start()
+		clients = append(clients, c)
+		cWorkers = append(cWorkers, c.Worker)
+		clientsApi = append(clientsApi, c.Mach)
+	}
+
+	// wait for all clients to be ready
+	amhelpt.WaitForAll(t, ctx, 2*time.Second,
+		amhelpt.GroupWhen1(t, clientsApi, ssC.Ready, nil)...)
+
+	for _, w := range cWorkers {
+		amhelpt.MachDebugEnv(t, w)
+	}
+
+	// start mutating (C adds auto A)
+	// TODO use v2 state def
+	clients[0].Worker.Add1(sstest.C, nil)
+
+	// wait for all clients to get the new state
+	amhelpt.WaitForAll(t, ctx, 2*time.Second,
+		// TODO use v2 state def
+		amhelpt.GroupWhen1(t, cWorkers, sstest.A, nil)...)
+
+	if amhelp.IsTelemetry() {
+		time.Sleep(1 * time.Second)
+	}
+}
+
 // ///// ///// /////
 
 // ///// UTILS
