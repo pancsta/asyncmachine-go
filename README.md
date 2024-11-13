@@ -93,74 +93,6 @@ Use cases depend on the layer of the stack used, and range from [goroutine synch
 etc. **Asyncmachine-go** can precisely target a specific scenario and bring order, structure, and resiliency to
 event-based systems.
 
-## Samples
-
-Minimal - an untyped definition of 2 states and 1 relation, then 1 mutation and a check.
-
-```go
-import am "github.com/pancsta/asyncmachine-go/pkg/machine"
-mach := am.New(nil, am.Struct{
-    "Foo": {Require: am.S{"Bar"}},
-    "Bar": {},
-}, nil)
-mach.Add1("Foo", nil)
-mach.Is1("Foo") // false
-```
-
-Complicated - wait on a multi state (event) with 1s timeout, and mutate with typed args, on top of a state context.
-
-```go
-// state ctx is a non-err ctx
-ctx := client.Mach.NewStateCtx(ssC.WorkerReady)
-// time-based subscription
-whenPayload := client.Mach.WhenTicks(ssC.WorkerPayload, 1, ctx)
-// mutation
-client.WorkerRpc.Worker.Add1(ssW.WorkRequested, Pass(&A{
-    Input: 2}))
-// WaitFor replaces select statements
-err := amhelp.WaitForAll(ctx, 1*time.Second, whenPayload)
-if ctx.Err() != nil {
-    // no err
-    return // expired
-}
-if err != nil {
-    // mutation
-    client.Mach.AddErr(err, nil)
-    return
-}
-// WorkerPayload activated
-```
-
-Schema - states of a node worker.
-
-```go
-type WorkerStatesDef struct {
-    ErrWork        string
-    ErrWorkTimeout string
-    ErrClient      string
-    ErrSupervisor  string
-
-    LocalRpcReady     string
-    PublicRpcReady    string
-    RpcReady          string
-    SuperConnected    string
-    ServeClient       string
-    ClientConnected   string
-    ClientSendPayload string
-    SuperSendPayload  string
-
-    Idle          string
-    WorkRequested string
-    Working       string
-    WorkReady     string
-
-    // inherit from rpc worker
-    *ssrpc.WorkerStatesDef
-}
-```
-
-All examples and benchmarks can be found in [/examples](/examples/README.md).
-
 ## Stack
 
 <table>
@@ -228,6 +160,74 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
     <td colspan="13" align=center><b><u>States</u></b></td>
   </tr>
 </table>
+
+## Samples
+
+Minimal - an untyped definition of 2 states and 1 relation, then 1 mutation and a check.
+
+```go
+import am "github.com/pancsta/asyncmachine-go/pkg/machine"
+mach := am.New(nil, am.Struct{
+    "Foo": {Require: am.S{"Bar"}},
+    "Bar": {},
+}, nil)
+mach.Add1("Foo", nil)
+mach.Is1("Foo") // false
+```
+
+Complicated - wait on a multi state (event) with 1s timeout, and mutate with typed args, on top of a state context.
+
+```go
+// state ctx is a non-err ctx
+ctx := client.Mach.NewStateCtx(ssC.WorkerReady)
+// time-based subscription
+whenPayload := client.Mach.WhenTicks(ssC.WorkerPayload, 1, ctx)
+// mutation
+client.WorkerRpc.Worker.Add1(ssW.WorkRequested, Pass(&A{
+    Input: 2}))
+// WaitFor replaces select statements
+err := amhelp.WaitForAll(ctx, 1*time.Second, whenPayload)
+if ctx.Err() != nil {
+    // no err
+    return // expired
+}
+if err != nil {
+    // mutation
+    client.Mach.AddErr(err, nil)
+    return
+}
+// WorkerPayload activated
+```
+
+Schema - states of a node worker.
+
+```go
+type WorkerStatesDef struct {
+    ErrWork        string
+    ErrWorkTimeout string
+    ErrClient      string
+    ErrSupervisor  string
+
+    LocalRpcReady     string
+    PublicRpcReady    string
+    RpcReady          string
+    SuperConnected    string
+    ServeClient       string
+    ClientConnected   string
+    ClientSendPayload string
+    SuperSendPayload  string
+
+    Idle          string
+    WorkRequested string
+    Working       string
+    WorkReady     string
+
+    // inherit from rpc worker
+    *ssrpc.WorkerStatesDef
+}
+```
+
+All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 ## Getting Started
 
