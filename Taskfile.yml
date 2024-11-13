@@ -1,6 +1,6 @@
 version: '3'
 
-dotenv: ['.env']
+dotenv: [ '.env' ]
 
 env:
   GOFMT: gofumpt
@@ -16,8 +16,10 @@ tasks:
       - go build ./tools/...
 
   release:
-    cmds:
-      - goreleaser release --clean --skip-publish --skip-validate
+    cmd: goreleaser release --clean --skip-publish --skip-validate
+
+  assets:
+    cmd: git submodule update --init --recursive
 
   am-dbg:
     silent: false
@@ -29,20 +31,21 @@ tasks:
     silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
-          --import-data assets/am-dbg-sim.gob.br
-          --select-machine sim-p0
-          --select-transition 20
-          {{.CLI_ARGS}}
+        --import-data assets2/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
+        --select-machine sim-p0
+        --select-transition 20
+        -l -1
+        {{.CLI_ARGS}}
 
   am-dbg-ssh:
     silent: false
     desc: Run am-dbg-ssh with sample data on localhost:4444
     cmds:
       - go run ./tools/cmd/am-dbg-ssh
-          --import-data assets/am-dbg-sim.gob.br
-          --select-machine sim-p0
-          --select-transition 20
-          {{.CLI_ARGS}}
+        --import-data assets2/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
+        --select-machine sim-p0
+        --select-transition 20
+        {{.CLI_ARGS}}
 
   am-dbg-ssh-connect:
     silent: false
@@ -55,16 +58,16 @@ tasks:
     silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
-          --import-data am-dbg-dump.gob.br
-          {{.CLI_ARGS}}
+        --import-data am-dbg-dump.gob.br
+        {{.CLI_ARGS}}
 
   am-dbg-dbg:
     desc: Start am-dbg on port 9913, so it can debug other instances via --am-dbg-addr
     cmds:
       - go run ./tools/cmd/am-dbg
-          --listen-on localhost:9913
-          --select-connected
-          {{.CLI_ARGS}}
+        --listen-on localhost:9913
+        --select-connected
+        {{.CLI_ARGS}}
   #          --log-file am-dbg-dbg.log
   #          --log-level 2
 
@@ -73,12 +76,12 @@ tasks:
     silent: false
     cmds:
       - go run ./internal/testing/cmd/am-dbg-worker
-          -server-addr=localhost:53470
-          -worker-addr=localhost:53480
+        -server-addr=localhost:53470
+        -worker-addr=localhost:53480
 
   test:
     env:
-      AM_TEST: 1
+      AM_TEST_RUNNER: 1
     desc: Run all local tests
     cmds:
       - task: clean
@@ -86,7 +89,7 @@ tasks:
 
   test-series:
     env:
-      AM_TEST: 1
+      AM_TEST_RUNNER: 1
     desc: Run all local tests in a series
     cmds:
       - task: clean
@@ -94,18 +97,19 @@ tasks:
 
   test-race:
     env:
-      AM_TEST: 1
+      AM_TEST_RUNNER: 1
+      AM_DETECT_EVAL: 1
     desc: Run all local tests with -race
     cmds:
       - task: clean
-      - go test -race ./... {{.CLI_ARGS}}
+      - go test -v -race ./... {{.CLI_ARGS}}
 
   test-debugger:
     desc: Run local am-dbg integration tests
     cmds:
       - task: clean
-      - go test 
-          ./tools/debugger/test {{.CLI_ARGS}}
+      - go test
+        ./tools/debugger/test {{.CLI_ARGS}}
 
   test-debugger-remote:
     dotenv:
@@ -114,7 +118,7 @@ tasks:
     cmds:
       - task: clean
       - go test -tags test_worker
-          ./tools/debugger/test/remote {{.CLI_ARGS}}
+        ./tools/debugger/test/remote {{.CLI_ARGS}}
 
   clean:
     cmds:
@@ -124,22 +128,27 @@ tasks:
     cmds:
       - printf "\n----- pkg/machine\n\n"
       - gocloc pkg/machine --not-match=_test\.go
-      - gocloc pkg/machine/*_test.go
+      - gocloc pkg/machine --match=_test\.go
 
       - printf "\n----- pkg/rpc\n\n"
       - gocloc pkg/rpc --not-match=_test\.go
-      - gocloc pkg/rpc/*_test.go
+      - gocloc pkg/rpc --match=_test\.go
+
+      - printf "\n----- pkg/node\n\n"
+      - gocloc pkg/node --not-match=_test\.go
+      - gocloc pkg/node --match=_test\.go
 
       - printf "\n----- pkg/telemetry\n\n"
       - gocloc pkg/telemetry --not-match=_test\.go
-      - gocloc pkg/telemetry/*_test.go
+      - gocloc pkg/telemetry --match=_test\.go
 
       - printf "\n----- pkg/history\n\n"
       - gocloc pkg/history --not-match=_test\.go
-      - gocloc pkg/history/*_test.go
+      - gocloc pkg/history --match=_test\.go
 
       - printf "\n----- tools/debugger\n\n"
       - gocloc tools/debugger --not-match=_test\.go
+      - gocloc tools/debugger --match=_test\.go
 
       - printf "\n----- tools/generator\n\n"
       - gocloc tools/generator --not-match=_test\.go
@@ -172,7 +181,7 @@ tasks:
 
   lint-go:
     cmds:
-      - golangci-lint run --fix
+      - $(go env GOPATH)/bin/golangci-lint run --fix
 
   lint-md:
     cmds:
@@ -196,9 +205,10 @@ tasks:
   install-deps:
     cmds:
       - go mod tidy
-      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.62.0
       - go install mvdan.cc/gofumpt@latest
       - go install golang.org/x/tools/cmd/goimports@latest
+      - go install github.com/mattn/goreman@latest
       # TODO switch to nodejs md linter
       - gem install mdl
       - gem install github_changelog_generator
@@ -208,56 +218,47 @@ tasks:
     cmds:
       - npm install -g terminalizer
 
-  gen-grafana-dashboard:
-    desc: Generate Grafana dashboard for provided machine IDs
-    dir: scripts
-    requires:
-      vars: [IDS]
-    env:
-        IDS: $IDS
-    cmds:
-      - generate-dashboard --output ../assets/grafana-mach-{{.IDS}}.json mach.dashboard.py
-
-  grafana-dashboard-list-panels:
-    desc: List panels and grid positions in a generated dashboard
-    requires:
-      vars: [IDS]
-    cmds:
-      - |
-        jq '.. | objects | select(has("gridPos")) | {title: .title, gridPos: .gridPos}' assets/grafana-mach-{{.IDS}}.json
-
-  am-gen:
-    desc: Generate states file for provided state names, eg "task am-gen -- Foo,Bar"
+  am-gen-states:
+    desc: Generate a states file in ROOT DIR for provided state names, eg "task am-gen-states -- -s Foo,Bar -n MyMach"
     cmds:
       - go run ./tools/cmd/am-gen states-file {{.CLI_ARGS}}
+
+  am-gen-grafana:
+    desc: Generate a Grafana dashboard, eg "task am-gen-grafana -- --ids mymach,rm-mymach --name mymach --source my-service"
+    cmds:
+      - go run ./tools/cmd/am-gen grafana {{.CLI_ARGS}}
 
   video-gif:
     env:
       DISPLAY: :0
     cmds:
-      - terminalizer render assets/video.cast.yml -o assets/video.gif
-      - magick assets/video.gif -layers optimize assets/video.gif
+      - terminalizer render assets/asyncmachine-go/video.cast.yml -o assets/asyncmachine-go/video.gif
+      - convert assets/asyncmachine-go/video.gif -delete 0 assets/asyncmachine-go/video.gif
+      - magick assets/asyncmachine-go/video.gif -layers optimize assets/asyncmachine-go/video.gif
 
   video-gif-quick:
+    desc: Render a low quality video gif
     env:
       DISPLAY: :0
     cmds:
-      - terminalizer render assets/video.cast.yml -o assets/video.gif -q 15
+      - terminalizer render assets/asyncmachine-go/video.cast.yml -o assets/asyncmachine-go/video.gif -q 15
+      - convert assets/asyncmachine-go/video.gif -delete 0 assets/asyncmachine-go/video.gif
 
   video:
+    desc: Record a video
     cmds:
       - terminalizer record
-          --config config/terminalizer.yml assets/video.cast
-          --skip-sharing
+        --config config/terminalizer.yml assets/asyncmachine-go/video.cast
+        --skip-sharing
       # delete first 1 record (each has 2 lines)
-      - sed -i '/^records:/{n;N;d;}' assets/video.cast.yml
+      - sed -i '/^records:/{n;N;d;}' assets/asyncmachine-go/video.cast.yml
 
   video-run:
     cmds:
       - go run ./internal/cmd/am-dbg-video
 
   video-all:
-    desc: Create assets/video.gif using internal/cmd/video
+    desc: Create assets/asyncmachine-go/video.gif using internal/cmd/video
     cmds:
       - task: video
       - task: video-gif
@@ -268,20 +269,20 @@ tasks:
 
   gen-manual-pdf:
     cmds:
-      - pandoc -f markdown-implicit_figures docs/manual.md -o assets/manual.pdf
+      - pandoc -f markdown-implicit_figures docs/manual.md -o assets/asyncmachine-go/manual.pdf
 
 
   prof-cpu-img:
     cmds:
       - go tool pprof -png cpu.prof > cpu.light.png
-      - magick cpu.light.png 
-          -channel RGB -negate cpu.dark.png
+      - magick cpu.light.png
+        -channel RGB -negate cpu.dark.png
 
   prof-mem-img:
     cmds:
       - go tool pprof -png mem.prof > mem.light.png
-      - magick mem.light.png 
-          -channel RGB -negate mem.dark.png
+      - magick mem.light.png
+        -channel RGB -negate mem.dark.png
 
   prof-mem:
     cmds:
@@ -290,16 +291,46 @@ tasks:
 
   prof-trace:
     requires:
-      vars: [SEC]
+      vars: [ SEC ]
     cmds:
       - curl -s http://localhost:6060/debug/pprof/trace?seconds={{.SEC}} > trace.out
       - go tool trace -http=:42419 trace.out
 
+  benchmark-grpc-build:
+    dir: examples/benchmark_grpc
+    cmd: protoc --go_out=. --go_opt=paths=source_relative
+      --go-grpc_out=. --go-grpc_opt=paths=source_relative
+      proto/worker.proto
+
   benchmark-grpc:
     dir: examples/benchmark_grpc
     cmds:
-      - protoc --go_out=. --go_opt=paths=source_relative
-          --go-grpc_out=. --go-grpc_opt=paths=source_relative
-        worker_proto/worker.proto
       - echo "Running 10_000 server events"
       - go test -bench=. -benchtime=10000x -v
+
+  website:
+    dir: website
+    cmd: npm run preview
+
+  website-build:
+    dir: website
+    cmd: npm run build
+
+  website-serve:
+    dir: website
+    cmds:
+      - task: website-build
+      - cd build && simple-http-server -p 5000 -i
+
+  web-metrics:
+    cmds:
+      - docker-compose -f deploy/web-metrics/docker-compose.yml up -d --force-recreate
+      - |
+        echo Grafana: http://localhost:3000
+        echo Jaeger: http://localhost:16686
+
+  web-metrics-clean:
+    cmd: docker-compose -f deploy/web-metrics/docker-compose.yml down -v
+
+  gen-grafana-tree-state-source:
+    cmd: ./examples/tree_state_source/gen-grafana.sh

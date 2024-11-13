@@ -1,5 +1,4 @@
 // Based on https://en.wikipedia.org/wiki/Nondeterministic_finite_automaton
-// TODO add Input0, Input1, End
 //
 // === RUN   TestRegexp
 // === RUN   TestRegexp/test_101010_(OK)
@@ -32,8 +31,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
+
+func init() {
+	// load .env
+	_ = godotenv.Load()
+
+	// am-dbg is required for debugging, go run it
+	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
+	// amhelp.EnableDebugging(false)
+	// amhelp.SetLogLevel(am.LogChanges)
+}
 
 // state enum pkg
 
@@ -117,7 +128,7 @@ func (t *Regexp) InputState(e *am.Event) {
 }
 
 func (t *Regexp) input0(mach *am.Machine) {
-	switch mach.Switch(groupSteps...) {
+	switch mach.Switch(groupSteps) {
 	case StepX:
 		mach.Add1(StepX, nil)
 
@@ -133,7 +144,7 @@ func (t *Regexp) input0(mach *am.Machine) {
 }
 
 func (t *Regexp) input1(mach *am.Machine) {
-	switch mach.Switch(groupSteps...) {
+	switch mach.Switch(groupSteps) {
 	case StepX:
 		// TODO should use CanAdd and State0Enter
 		if t.cursor+3 == len(t.input)-1 {
@@ -155,8 +166,8 @@ func (t *Regexp) input1(mach *am.Machine) {
 
 // example
 
-func TestNFA(t *testing.T) {
-	// TODO flaky?
+func TestNfaFLAKY(t *testing.T) {
+	// TODO flaky
 
 	var err error
 	mach := am.New(context.Background(), states, &am.Opts{
@@ -212,7 +223,8 @@ func TestNFA(t *testing.T) {
 			if tt.expect && mach.Not1(Step3) {
 				t.Fatal("Expected Step3")
 			} else if !tt.expect && mach.Is1(Step3) {
-				// TODO flaky
+				// TODO flaky 0.001%
+				time.Sleep(100 * time.Millisecond)
 				t.Fatal("Didn't expect Step3")
 			}
 		})

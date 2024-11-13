@@ -11,11 +11,12 @@ import (
 	amtest "github.com/pancsta/asyncmachine-go/internal/testing"
 	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
-	ssSrv "github.com/pancsta/asyncmachine-go/pkg/rpc/states/server"
+	"github.com/pancsta/asyncmachine-go/pkg/rpc"
+	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
-	ssDbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
 func main() {
@@ -23,7 +24,7 @@ func main() {
 	defer cancel()
 
 	// read env
-	amDbgAddr := os.Getenv("AM_DBG_ADDR")
+	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
 	logLvl := am.EnvLogLevel("")
 
 	// test worker has its own flags
@@ -34,8 +35,8 @@ func main() {
 	flag.Parse()
 
 	// worker init
-	os.Setenv("AM_LOG_FILE", "am-dbg-worker-remote.log")
-	dbg, err := amtest.NewTestWorker(true, debugger.Opts{
+	os.Setenv(am.EnvAmLogFile, "1")
+	dbg, err := amtest.NewDbgWorker(true, debugger.Opts{
 		ServerAddr: *serverAddr,
 	})
 	if err != nil {
@@ -43,8 +44,7 @@ func main() {
 	}
 
 	// server init
-	s, err := arpc.NewServer(ctx, *workerAddr, "worker", dbg.Mach,
-		debugger.RpcGetter(dbg))
+	s, err := rpc.NewServer(ctx, *workerAddr, "worker", dbg.Mach, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -76,14 +76,14 @@ func main() {
 			err = readyCtx.Err()
 		}
 		panic(err)
-	case <-s.Mach.When1(ssSrv.RpcReady, readyCtx):
+	case <-s.Mach.When1(ssrpc.ServerStates.RpcReady, readyCtx):
 	}
 
 	// wait till the end
 	select {
 	case <-dbg.Mach.WhenDisposed():
 		// user exit
-	case <-dbg.Mach.WhenNot1(ssDbg.Start, nil):
+	case <-dbg.Mach.WhenNot1(ssdbg.Start, nil):
 		dbg.Dispose()
 	}
 }

@@ -47,6 +47,7 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/joho/godotenv"
 
 	processor "github.com/pancsta/asyncmachine-go/examples/temporal_fileprocessing"
 )
@@ -57,6 +58,16 @@ const (
 
 type FileProcessingPayload struct {
 	Filename string
+}
+
+func init() {
+	// load .env
+	_ = godotenv.Load()
+
+	// am-dbg is required for debugging, go run it
+	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
+	// amhelp.EnableDebugging(false)
+	// amhelp.SetLogLevel(am.LogChanges)
 }
 
 func NewFileProcessingTask(filename string) (*asynq.Task, error) {

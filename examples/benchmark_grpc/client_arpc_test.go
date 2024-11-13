@@ -12,12 +12,11 @@ import (
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
-	ss "github.com/pancsta/asyncmachine-go/examples/benchmark_grpc/worker_states"
+	"github.com/pancsta/asyncmachine-go/examples/benchmark_grpc/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
-	amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
-	ams "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
 func BenchmarkClientArpc(b *testing.B) {
@@ -50,14 +49,14 @@ func BenchmarkClientArpc(b *testing.B) {
 	go arpc.TrafficMeter(counterListener, serverAddr, counter, end)
 
 	// init client
-	c, err := arpc.NewClient(ctx, connAddr, "worker", ss.States, ss.Names)
+	c, err := arpc.NewClient(ctx, connAddr, "worker", states.WorkerStruct, ss.Names(), nil)
 	if err != nil {
 		b.Fatal(err)
 	}
 	c.Mach.SetLoggerSimple(func(msg string, args ...any) {
 		l("arpc-client", msg, args...)
 	}, logLvl)
-	amh.MachDebug(c.Mach, amDbgAddr, logLvl, false)
+	amhelp.MachDebug(c.Mach, amDbgAddr, logLvl, false)
 
 	// tear down
 	b.Cleanup(func() {
@@ -75,8 +74,8 @@ func BenchmarkClientArpc(b *testing.B) {
 
 	// start client
 	c.Start()
-	<-c.Mach.When1(ams.Ready, nil)
-	<-s.RPC.Mach.When1(ams.Ready, nil)
+	<-c.Mach.When1(ss.Ready, nil)
+	<-s.RPC.Mach.When1(ss.Ready, nil)
 
 	// test subscribe-get-process
 	//
@@ -98,7 +97,7 @@ func BenchmarkClientArpc(b *testing.B) {
 			}
 
 			// value (getter)
-			value := c.Worker.Switch(ss.GroupValues...)
+			value := c.Worker.Switch(states.WorkerGroups.Values)
 
 			// call op from value (processing)
 

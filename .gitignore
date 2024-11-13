@@ -10,7 +10,7 @@
 .DS_Store
 
 # Environment variable files
-/*.env
+.env
 
 # PEM files
 *.pem
@@ -63,3 +63,5 @@ _py
 /*.png
 /*.prof
 /am-dbg-ssh
+/built
+/log.md

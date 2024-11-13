@@ -16,3 +16,8 @@ exclude_rule 'MD041'
 exclude_rule 'MD007'
 # header question mark
 exclude_rule 'MD026'
+# Header levels should only increment by one level at a time
+# not compatible with hashtags
+exclude_rule 'MD001'
+# Spaces inside emphasis markers (buggy)
+exclude_rule 'MD037'

@@ -27,9 +27,6 @@ func TestWithOpts(t *testing.T) {
 	// OptsWithParentTracers
 	mach := New(context.TODO(), nil, opts)
 	mach.SetLogArgs(NewArgsMapper([]string{"arg"}, 10))
-	OptsWithParentTracers(opts, mach)
-	assert.Equal(t, mach.Tracers[0], opts.Tracers[0])
-	assert.NotNil(t, opts.LogArgs)
 }
 
 func TestResultString(t *testing.T) {
@@ -42,7 +39,7 @@ func TestMutationTypeString(t *testing.T) {
 	assert.Equal(t, "add", MutationAdd.String())
 	assert.Equal(t, "remove", MutationRemove.String())
 	assert.Equal(t, "set", MutationSet.String())
-	assert.Equal(t, "eval", MutationEval.String())
+	assert.Equal(t, "eval", mutationEval.String())
 }
 
 func TestStepTypeString(t *testing.T) {
@@ -118,13 +115,72 @@ func TestSMerge(t *testing.T) {
 	assert.Equal(t, S{}, SAdd())
 }
 
-func TestNormalizeID(t *testing.T) {
-	assert.Equal(t, "foo_bar_baz", NormalizeID("Foo Bar-Baz"))
-}
-
 func TestIsActiveTick(t *testing.T) {
 	assert.True(t, IsActiveTick(1))
 	assert.False(t, IsActiveTick(0))
 	assert.False(t, IsActiveTick(6548734))
 	assert.True(t, IsActiveTick(6548735))
+}
+
+// TestStatesFile
+
+// super states
+type TestStatesFileStatesSuperDef struct {
+	*StatesBase
+
+	Foo string
+	Baz string
+}
+
+type TestStatesFileGroupsSuperDef struct {
+	FooBaz S
+}
+
+var TestStatesFileSuperStruct = Struct{
+	testSuperStates.Foo: {},
+	testSuperStates.Baz: {},
+}
+
+// exports and groups
+var (
+	testSuperStates = NewStates(TestStatesFileStatesSuperDef{})
+	testSuperGroups = NewStateGroups(TestStatesFileGroupsSuperDef{
+		FooBaz: S{testSuperStates.Foo, testSuperStates.Baz},
+	})
+)
+
+// child states
+type TestStatesFileStatesDef struct {
+	Bar string
+
+	// inherit from TestStatesFileStatesSuperDef
+	*TestStatesFileStatesSuperDef
+}
+
+type TestStatesFileGroupsDef struct {
+	*TestStatesFileGroupsSuperDef
+
+	FooBar S
+}
+
+var TestStatesFileStruct = StructMerge(
+	TestStatesFileSuperStruct,
+	Struct{
+		testStates.Bar: {},
+	})
+
+// exports and groups
+var (
+	testStates = NewStates(TestStatesFileStatesDef{})
+	testGroups = NewStateGroups(TestStatesFileGroupsDef{
+		FooBar: S{testStates.Foo, testStates.Bar},
+	}, testSuperGroups)
+)
+
+func TestStatesFile(t *testing.T) {
+	assert.Equal(t, testStates.Foo, "Foo")
+	assert.Equal(t, testStates.Bar, "Bar")
+	assert.Equal(t, testGroups.FooBar, S{"Foo", "Bar"})
+	assert.Equal(t, testGroups.FooBaz, S{"Foo", "Baz"})
+	assert.NotNil(t, TestStatesFileStruct["Foo"])
 }

@@ -3,11 +3,12 @@ package history
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
@@ -73,7 +74,7 @@ func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
 	m.SetLogger(func(i am.LogLevel, msg string, args ...any) {
 		t.Logf(msg, args...)
 	})
-	if os.Getenv("AM_DEBUG") != "" {
+	if amhelp.IsDebug() {
 		m.SetLogLevel(am.LogEverything)
 		m.HandlerTimeout = 2 * time.Minute
 	}

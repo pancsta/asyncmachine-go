@@ -69,21 +69,13 @@ import (
 	"strings"
 	"time"
 
-	ssf "github.com/pancsta/asyncmachine-go/examples/temporal_fileprocessing/states"
+	ss "github.com/pancsta/asyncmachine-go/examples/temporal_fileprocessing/states"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	// "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
 type Logger func(msg string, args ...any)
-
-// NewMachine creates a new FileProcessing machine with a DownloadingFile to
-// FileUploaded flow.
-func NewMachine(ctx context.Context) *am.Machine {
-	// define states
-	return am.New(ctx, ssf.States, &am.Opts{
-		DontLogID: true,
-	})
-}
 
 // MachineHandlers is a struct of handlers & their data for the FileProcessing
 // machine. None of the handlers can block.
@@ -99,12 +91,17 @@ type MachineHandlers struct {
 // DownloadingFileState is a _final_ entry handler for the DownloadingFile
 // state.
 func (h *MachineHandlers) DownloadingFileState(e *am.Event) {
+	e.Machine.Log("Downloading file... %s", h.Filename)
 	// read args
 	h.Filename = e.Args["filename"].(string)
+	// tick-based ctx
+	stateCtx := e.Machine.NewStateCtx(ss.DownloadingFile)
 
-	e.Machine.Log("Downloading file... %s", h.Filename)
-	// never block in a handler, always "go func" it
+	// unblock
 	go func() {
+		if stateCtx.Err() != nil {
+			return // expired
+		}
 		data := h.BlobStore.downloadFile(h.Filename)
 
 		tmpFile, err := saveToTmpFile(data)
@@ -114,22 +111,20 @@ func (h *MachineHandlers) DownloadingFileState(e *am.Event) {
 		}
 		h.DownloadedName = tmpFile.Name()
 		// done, next step
-		e.Machine.Add1(ssf.FileDownloaded, nil)
+		e.Machine.Add1(ss.FileDownloaded, nil)
 	}()
 }
 
 // ProcessingFileState is a _final_ entry handler for the ProcessingFile
 // state.
 func (h *MachineHandlers) ProcessingFileState(e *am.Event) {
-	// Never block in a handler, always "go func" it.
-	// State context will confirm that processing should still be happening.
-	// Using machine's context directly will conflict with retry logic (if any).
-	stateCtx := e.Machine.NewStateCtx("ProcessingFile")
+	// tick-based ctx
+	stateCtx := e.Machine.NewStateCtx(ss.ProcessingFile)
+
+	// unblock
 	go func() {
-		// assert context
 		if stateCtx.Err() != nil {
-			e.Machine.Log("processFileActivity canceled.")
-			return
+			return // expired
 		}
 		// read downloaded file
 		data, err := os.ReadFile(h.DownloadedName)
@@ -151,7 +146,7 @@ func (h *MachineHandlers) ProcessingFileState(e *am.Event) {
 		h.ProcessedFileName = tmpFile.Name()
 		e.Machine.Log("processFileActivity succeed %s", h.ProcessedFileName)
 		// done, next step
-		e.Machine.Add1(ssf.FileProcessed, nil)
+		e.Machine.Add1(ss.FileProcessed, nil)
 	}()
 }
 
@@ -166,11 +161,14 @@ func (h *MachineHandlers) ProcessingFileEnd(e *am.Event) {
 // UploadingFileState is a _final_ transition handler for the
 // UploadingFile state.
 func (h *MachineHandlers) UploadingFileState(e *am.Event) {
-	// Never block in a handler, always "go func" it.
-	// State context will confirm that uploading should still be happening.
-	// Using machine's context directly will conflict with retry logic (if any).
-	stateCtx := e.Machine.NewStateCtx("ProcessingFile")
+	// tick-based ctx
+	stateCtx := e.Machine.NewStateCtx(ss.UploadingFile)
+
+	// unblock
 	go func() {
+		if stateCtx.Err() != nil {
+			return // expired
+		}
 		e.Machine.Log("uploadFileActivity begin %s", h.ProcessedFileName)
 		err := h.BlobStore.uploadFile(stateCtx, h.ProcessedFileName)
 		if err != nil {
@@ -180,7 +178,7 @@ func (h *MachineHandlers) UploadingFileState(e *am.Event) {
 		}
 		e.Machine.Log("uploadFileActivity succeed %s", h.ProcessedFileName)
 		// done, next step
-		e.Machine.Add1(ssf.FileUploaded, nil)
+		e.Machine.Add1(ss.FileUploaded, nil)
 	}()
 }
 
@@ -195,42 +193,40 @@ func (h *MachineHandlers) UploadingFileEnd(e *am.Event) {
 // FileProcessingFlow is an example of how to use the FileProcessing machine.
 func FileProcessingFlow(ctx context.Context, log Logger, filename string) (*am.Machine, error) {
 	// init
-	machine := NewMachine(ctx)
-	// debug
-	// err := telemetry.TransitionsToDBG(machine, telemetry.DbgHost)
-	// if err != nil {
-	//	return nil, err
-	// }
+	mach := am.New(ctx, ss.States, &am.Opts{
+		DontLogID: true,
+	})
+	amhelp.MachDebugEnv(mach)
 
 	// different log granularity and a custom output
-	machine.SetLogLevel(am.LogChanges)
+	mach.SetLogLevel(am.LogChanges)
 	// machine.SetLogLevel(am.LogOps)
 	// machine.SetLogLevel(am.LogDecisions)
 	// machine.SetLogLevel(am.LogEverything)
-	machine.SetLogger(func(l am.LogLevel, msg string, args ...any) {
+	mach.SetLogger(func(l am.LogLevel, msg string, args ...any) {
 		log(msg, args...)
 	})
 
 	// bind handlers
-	err := machine.BindHandlers(&MachineHandlers{})
+	err := mach.BindHandlers(&MachineHandlers{})
 	if err != nil {
-		return machine, err
+		return mach, err
 	}
 
 	// start it up!
-	machine.Add1(ssf.DownloadingFile, am.A{"filename": filename})
+	mach.Add1(ss.DownloadingFile, am.A{"filename": filename})
 
 	// DownloadingFile to FileUploaded
 	log("waiting: DownloadingFile to FileUploaded")
 	select {
 	case <-time.After(5 * time.Second):
-		return machine, errors.New("timeout")
-	case <-machine.WhenErr(nil):
-		return machine, machine.Err()
-	case <-machine.When1(ssf.FileUploaded, nil):
+		return mach, errors.New("timeout")
+	case <-mach.WhenErr(nil):
+		return mach, mach.Err()
+	case <-mach.When1(ss.FileUploaded, nil):
 	}
 
-	return machine, nil
+	return mach, nil
 }
 
 // Helpers (taken from the Temporal sample)

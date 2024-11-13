@@ -1,20 +1,30 @@
-package watcher
+package path_watcher
 
 import (
 	"context"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	ss "github.com/pancsta/asyncmachine-go/examples/watcher/states"
-	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
-
 	"github.com/fsnotify/fsnotify"
+
+	"github.com/joho/godotenv"
+	ss "github.com/pancsta/asyncmachine-go/examples/path_watcher/states"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
+
+func init() {
+	// load .env
+	_ = godotenv.Load()
+
+	// am-dbg is required for debugging, go run it
+	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
+	// amhelp.EnableDebugging(false)
+	// amhelp.SetLogLevel(am.LogChanges)
+}
 
 // PathWatcher watches all dirs in PATH for changes and returns a list
 // of executables.
@@ -61,13 +71,7 @@ func New(ctx context.Context) (*PathWatcher, error) {
 		return nil, err
 	}
 
-	w.Mach.SetLoggerSimple(log.Printf, am.LogChanges)
-	if os.Getenv("YASM_DEBUG") != "" {
-		err := telemetry.TransitionsToDbg(w.Mach, "")
-		if err != nil {
-			return nil, err
-		}
-	}
+	amhelp.MachDebugEnv(w.Mach)
 
 	return w, nil
 }

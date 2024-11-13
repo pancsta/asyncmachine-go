@@ -13,34 +13,36 @@ type Transition struct {
 	ID string
 	// Steps is a list of steps taken by this transition (so far).
 	Steps []*Step
-	// StatesBefore is a list of states before the transition.
-	StatesBefore S
 	// TimeBefore is the machine time from before the transition.
 	TimeBefore Time
 	// TimeAfter is the machine time from after the transition. If the transition
 	// has been canceled, this will be the same as TimeBefore.
 	TimeAfter Time
+	// TargetIndexes is a list of indexes of the target states.
+	TargetIndexes []int
 	// Enters is a list of states with enter handlers in this transition.
 	Enters S
 	// Enters is a list of states with exit handlers in this transition.
 	Exits S
-	// TargetStates is a list of states after parsing the relations.
-	TargetStates S
 	// Accepted tells if the transition was accepted during the negotiation phase.
 	Accepted bool
 	// Mutation call which caused this transition
 	Mutation *Mutation
 	// Machine is the parent machine of this transition.
 	Machine *Machine
+	// Api is a subset of Machine.
+	// TODO call when applicable instead of calling Machine
+	Api Api
 	// LogEntries are log msgs produced during the transition.
 	LogEntries []*LogEntry
 	// PreLogEntries are log msgs produced before during the transition.
 	PreLogEntries []*LogEntry
 	// QueueLen is the length of the queue after the transition.
 	QueueLen int
+	// LogEntriesLock is used to lock the logs to be collected by a Tracer.
+	LogEntriesLock sync.Mutex
 
-	isCompleted    atomic.Bool
-	logEntriesLock sync.Mutex
+	isCompleted atomic.Bool
 	// Latest / current step of the transition
 	latestStep *Step
 }
@@ -51,12 +53,12 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	defer m.activeStatesLock.RUnlock()
 
 	t := &Transition{
-		ID:           randID(),
-		Mutation:     item,
-		StatesBefore: m.activeStates,
-		TimeBefore:   m.time(nil),
-		Machine:      m,
-		Accepted:     true,
+		ID:         randID(),
+		Mutation:   item,
+		TimeBefore: m.time(nil),
+		Machine:    m,
+		Api:        m,
+		Accepted:   true,
 	}
 
 	// assign early to catch the logs
@@ -66,8 +68,11 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 
 	// tracers
 	m.tracersLock.RLock()
-	for i := 0; !t.Machine.Disposed.Load() && i < len(t.Machine.Tracers); i++ {
-		t.Machine.Tracers[i].TransitionInit(t)
+	for _, tracer := range m.tracers {
+		if t.Machine.IsDisposed() {
+			break
+		}
+		tracer.TransitionInit(t)
 	}
 	m.tracersLock.RUnlock()
 
@@ -106,9 +111,14 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 			StepRemove, nil)...)
 	}
 
-	t.TargetStates = m.resolver.GetTargetStates(t, statesToSet)
+	// simulate TimeAfter (temporarily)
+	targetStates := m.resolver.GetTargetStates(t, statesToSet)
+	t.TargetIndexes = make([]int, len(targetStates))
+	for i, name := range targetStates {
+		t.TargetIndexes[i] = m.Index(name)
+	}
 
-	impliedStates := DiffStates(t.TargetStates, statesToSet)
+	impliedStates := DiffStates(targetStates, statesToSet)
 	if len(impliedStates) > 0 {
 		m.log(LogOps, "[implied] %s", j(impliedStates))
 	}
@@ -119,6 +129,37 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	}
 
 	return t
+}
+
+// StatesBefore is a list of states before the transition.
+func (t *Transition) StatesBefore() S {
+	// TODO support SetStruct (keep a pointer to an old index)
+	// TODO should preserve order?
+	var ret S
+	states := t.Machine.StateNames()
+	for i := range t.TimeBefore {
+		if IsActiveTick(t.TimeBefore[i]) {
+			ret = append(ret, states[i])
+		}
+	}
+
+	return ret
+}
+
+// TargetStates is a list of states after parsing the relations.
+func (t *Transition) TargetStates() S {
+	// TODO support SetStruct (keep a pointer to an old index)
+	ret := make(S, len(t.TargetIndexes))
+	states := t.Machine.StateNames()
+	for i, idx := range t.TargetIndexes {
+		if idx == -1 {
+			// disposed
+			return S{}
+		}
+		ret[i] = states[idx]
+	}
+
+	return ret
 }
 
 // IsAuto returns true if the transition was triggered by an auto state.
@@ -217,12 +258,13 @@ func (t *Transition) setupExitEnter() {
 	m := t.Machine
 
 	// collect the exit handlers
-	exits := DiffStates(m.activeStates, t.TargetStates)
+	targetStates := t.TargetStates()
+	exits := DiffStates(m.activeStates, targetStates)
 	m.resolver.SortStates(exits)
 
 	// collect the enters handlers
 	var enters S
-	for _, s := range t.TargetStates {
+	for _, s := range targetStates {
 		// enter activate state only for multi states called directly
 		state := m.states[s]
 		if !m.is(S{s}) || (state.Multi && slices.Contains(t.CalledStates(), s)) {
@@ -282,7 +324,7 @@ func (t *Transition) emitExitEvents() Result {
 		if ret == Canceled {
 			return ret
 		}
-		for _, state := range t.TargetStates {
+		for _, state := range t.TargetStates() {
 			handler := from + state
 			ret = t.emitHandler(from, state, handler, t.Mutation.Args)
 			if ret == Canceled {
@@ -352,8 +394,8 @@ func (t *Transition) emitEvents() Result {
 
 	// tracers
 	m.tracersLock.RLock()
-	for i := 0; !t.Machine.Disposed.Load() && i < len(t.Machine.Tracers); i++ {
-		t.Machine.Tracers[i].TransitionStart(t)
+	for i := 0; !t.Machine.IsDisposed() && i < len(t.Machine.tracers); i++ {
+		t.Machine.tracers[i].TransitionStart(t)
 	}
 	m.tracersLock.RUnlock()
 
@@ -383,13 +425,13 @@ func (t *Transition) emitEvents() Result {
 	// FINAL HANDLERS (non cancellable)
 	if result != Canceled {
 
-		m.setActiveStates(t.CalledStates(), t.TargetStates, t.IsAuto())
+		m.setActiveStates(t.CalledStates(), t.TargetStates(), t.IsAuto())
 		result = t.emitFinalEvents()
 
 		hasStateChanged = !m.IsTime(t.TimeBefore, nil)
 	}
 
-	// gather new clock values
+	// gather new clock values, overwrite fake TimeAfter
 	t.TimeAfter = m.time(nil)
 
 	// AUTO STATES
@@ -418,8 +460,8 @@ func (t *Transition) emitEvents() Result {
 
 	// tracers
 	m.tracersLock.RLock()
-	for i := 0; !t.Machine.Disposed.Load() && i < len(t.Machine.Tracers); i++ {
-		t.Machine.Tracers[i].TransitionEnd(t)
+	for i := 0; !t.Machine.IsDisposed() && i < len(t.Machine.tracers); i++ {
+		t.Machine.tracers[i].TransitionEnd(t)
 	}
 	m.tracersLock.RUnlock()
 
@@ -434,7 +476,7 @@ func (t *Transition) emitEvents() Result {
 			return Canceled
 		}
 	} else {
-		if m.Is(t.TargetStates) {
+		if m.Is(t.TargetStates()) {
 			return Executed
 		} else {
 			// TODO error?
@@ -449,7 +491,7 @@ func (t *Transition) setupAccepted() {
 	if t.Type() == MutationRemove {
 		return
 	}
-	notAccepted := DiffStates(t.CalledStates(), t.TargetStates)
+	notAccepted := DiffStates(t.CalledStates(), t.TargetStates())
 	// Auto-states can be set partially
 	if t.IsAuto() {
 		// partially accepted

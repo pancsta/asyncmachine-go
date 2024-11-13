@@ -7,10 +7,22 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/joho/godotenv"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
-func TestFileProcessing(t *testing.T) { // Create a channel to receive OS signals
+func init() {
+	// load .env
+	_ = godotenv.Load()
+
+	// am-dbg is required for debugging, go run it
+	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
+	// amhelp.EnableDebugging(false)
+	// amhelp.SetLogLevel(am.LogChanges)
+}
+
+func TestFileProcessing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// handle OS exit signals
@@ -22,16 +34,15 @@ func TestFileProcessing(t *testing.T) { // Create a channel to receive OS signal
 	}()
 
 	// start the flow and wait for the result
-	machine, err := FileProcessingFlow(ctx, t.Logf, "foo.txt")
+	mach, err := FileProcessingFlow(ctx, t.Logf, "foo.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !machine.Is(am.S{"FileUploaded"}) {
+	if !mach.Is(am.S{"FileUploaded"}) {
 		t.Fatal("not FileUploaded")
 	}
 
-	// how it looks at the end
-	t.Log("\n" + machine.String())
-	t.Log("\n" + machine.StringAll())
-	t.Log("\n" + machine.Inspect(nil))
+	t.Log(mach.String())
+	t.Log(mach.StringAll())
+	t.Log(mach.Inspect(nil))
 }

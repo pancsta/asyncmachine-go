@@ -1,3 +1,5 @@
+// TODO update to v2 states file
+
 package states
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"

@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package proto;
+option  go_package = "github.com/pancsta/asyncmachine-go/examples/grpc-benchmark/proto";
+
+service WorkerService {
+  rpc Start (Empty) returns (Empty);
+  rpc CallOp (CallOpRequest) returns (CallOpResponse);
+  rpc Subscribe (Empty) returns (stream Empty);
+  rpc GetValue (Empty) returns (GetValueResponse);
+}
+
+message CallOpRequest {
+  int32 op = 1;
+}
+
+message CallOpResponse {
+  bool success = 1;
+}
+
+message Empty {
+}
+
+message GetValueResponse {
+  int32 value = 1;
+}

@@ -1,0 +1,14 @@
+version: '3'
+
+dotenv: [ '.env' ]
+
+tasks:
+  client:
+    cmd: go run ./client
+
+  server:
+    cmd: go run ./server
+
+  start:
+    desc: Start the example
+    cmd: goreman start

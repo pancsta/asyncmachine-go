@@ -784,7 +784,7 @@ func (w *Worker) NewStateCtx(state string) context.Context {
 
 // ///// MISC
 
-// Log logs to a remote logger.
+// Log logs is a remote logger.
 func (w *Worker) Log(msg string, args ...any) {
 	// call rpc
 	resp := &RespResult{}

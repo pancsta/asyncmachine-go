@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	pb "github.com/pancsta/asyncmachine-go/examples/benchmark_grpc/worker_proto"
+	pb "github.com/pancsta/asyncmachine-go/examples/benchmark_grpc/proto"
 )
 
 type WorkerServiceServer struct {
