@@ -121,9 +121,6 @@ func NewCommon(
 
 	if os.ExpandEnv("AM_DEBUG") != "" {
 		machOpts = OptsWithDebug(machOpts)
-		if parent != nil {
-			machOpts = OptsWithParentTracers(machOpts, parent)
-		}
 	}
 
 	if parent != nil {
