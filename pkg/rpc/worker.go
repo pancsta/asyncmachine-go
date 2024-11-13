@@ -12,7 +12,7 @@ import (
 	amh "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc/rpcnames"
-	ss "github.com/pancsta/asyncmachine-go/pkg/rpc/states/client"
+	"github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/types"
 )
 
@@ -206,7 +206,7 @@ func (w *Worker) AddErrState(state string, err error, args am.A) am.Result {
 	// args["err.trace"] = trace
 
 	// mark errors added locally with ErrOnClient
-	return w.Add(am.S{ss.ErrOnClient, state, am.Exception}, args)
+	return w.Add(am.S{states.ErrOnClient, state, am.Exception}, args)
 }
 
 // ///// Checking (local)
