@@ -2176,6 +2176,34 @@ func (m *Machine) IsQueued(mutationType MutationType, states S,
 	return -1
 }
 
+// WillBe returns true if the passed states are scheduled to be activated.
+// See IsQueued to perform more detailed queries.
+func (m *Machine) WillBe(states S) bool {
+	// TODO test
+	return -1 != m.IsQueued(MutationAdd, states, false, false, 0)
+}
+
+// WillBe1 returns true if the passed state is scheduled to be activated.
+// See IsQueued to perform more detailed queries.
+func (m *Machine) WillBe1(state string) bool {
+	// TODO test
+	return m.WillBe(S{state})
+}
+
+// WillBeRemoved returns true if the passed states are scheduled to be
+// de-activated.  See IsQueued to perform more detailed queries.
+func (m *Machine) WillBeRemoved(states S) bool {
+	// TODO test
+	return -1 != m.IsQueued(MutationRemove, states, false, false, 0)
+}
+
+// WillBeRemoved1 returns true if the passed state is scheduled to be
+// de-activated. See IsQueued to perform more detailed queries.
+func (m *Machine) WillBeRemoved1(state string) bool {
+	// TODO test
+	return m.WillBeRemoved(S{state})
+}
+
 // Has return true is passed states are registered in the machine.
 // TODO test
 func (m *Machine) Has(states S) bool {
