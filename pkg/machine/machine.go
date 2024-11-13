@@ -1281,16 +1281,16 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 	exception := &Mutation{
 		Type:         MutationAdd,
 		CalledStates: S{Exception},
-		Args: A{
-			"err": err,
-			"panic": &ExceptionArgsPanic{
+		Args: Pass(&AT{
+			Err:      err,
+			ErrTrace: r.stack,
+			Panic: &ExceptionArgsPanic{
 				CalledStates: t.Mutation.CalledStates,
-				StatesBefore: t.StatesBefore,
+				StatesBefore: t.StatesBefore(),
 				Transition:   t,
 				LastStep:     t.latestStep,
-				StackTrace:   r.stack,
 			},
-		},
+		}),
 	}
 
 	// prepend the exception to the queue
