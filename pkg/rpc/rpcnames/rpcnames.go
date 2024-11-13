@@ -11,8 +11,8 @@ const (
 	AddNS Name = iota + 1
 	Remove
 	Set
+	Hello
 	Handshake
-	HandshakeAck
 	Log
 	Sync
 	Get
@@ -21,6 +21,7 @@ const (
 	// Client
 
 	ClientSetClock
+	ClientPushAllTicks
 	ClientSendPayload
 )
 
@@ -38,10 +39,10 @@ func (n Name) String() string {
 		return "Remove"
 	case Set:
 		return "Set"
+	case Hello:
+		return "Hello"
 	case Handshake:
 		return "Handshake"
-	case HandshakeAck:
-		return "HandshakeAck"
 	case Log:
 		return "Log"
 	case Sync:
@@ -50,6 +51,8 @@ func (n Name) String() string {
 		return "Get"
 	case ClientSetClock:
 		return "ClientSetClock"
+	case ClientPushAllTicks:
+		return "ClientPushAllTicks"
 	case ClientSendPayload:
 		return "ClientSendPayload"
 	case Bye:
