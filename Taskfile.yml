@@ -31,7 +31,7 @@ tasks:
     silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
-        --import-data assets2/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
+        --import-data assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
         --select-machine sim-p0
         --select-transition 20
         -l -1
@@ -42,7 +42,7 @@ tasks:
     desc: Run am-dbg-ssh with sample data on localhost:4444
     cmds:
       - go run ./tools/cmd/am-dbg-ssh
-        --import-data assets2/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
+        --import-data assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
         --select-machine sim-p0
         --select-transition 20
         {{.CLI_ARGS}}
@@ -87,6 +87,10 @@ tasks:
       - task: clean
       - go test ./... {{.CLI_ARGS}}
 
+  test-count:
+    cmd: task test -- -v | 
+      grep -o "PASS:" | wc -l
+
   test-series:
     env:
       AM_TEST_RUNNER: 1
@@ -123,6 +127,10 @@ tasks:
   clean:
     cmds:
       - go clean -testcache
+
+  cloc-all:
+    cmd: gocloc --output-type json . |
+      jq '.languages[] | select(.name == "Go").code'
 
   cloc:
     cmds:
@@ -209,6 +217,7 @@ tasks:
       - go install mvdan.cc/gofumpt@latest
       - go install golang.org/x/tools/cmd/goimports@latest
       - go install github.com/mattn/goreman@latest
+      - go install github.com/itchyny/gojq/cmd/gojq@latest
       # TODO switch to nodejs md linter
       - gem install mdl
       - gem install github_changelog_generator

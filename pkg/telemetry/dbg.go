@@ -136,6 +136,11 @@ func (d *DbgMsgTx) ActiveStates(statesIndex am.S) am.S {
 }
 
 func (d *DbgMsgTx) CalledStateNames(statesIndex am.S) am.S {
+	// old compat
+	if d.CalledStates != nil {
+		return d.CalledStates
+	}
+
 	ret := make(am.S, len(d.CalledStatesIdxs))
 
 	for i, idx := range d.CalledStatesIdxs {

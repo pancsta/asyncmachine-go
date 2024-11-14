@@ -1,5 +1,4 @@
 [![go report](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
-[![coverage](https://codecov.io/gh/pancsta/asyncmachine-go/graph/badge.svg?token=B8553BI98P)](https://codecov.io/gh/pancsta/asyncmachine-go)
 [![go reference](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
 [![last commit](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
 ![release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
@@ -7,7 +6,7 @@
 
 # <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /pkg/machine
 
-[cd /](/README.md)
+[`cd /`](/README.md)
 
 > [!NOTE]
 > **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
@@ -15,8 +14,8 @@
 > atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
 **/pkg/machine** is a minimal implementation of [AsyncMachine](https://github.com/TobiaszCudnik/asyncmachine)
-(2012-2019; [video](http://tobiaszcudnik.github.io/asyncmachine-inspector/sample.mp4)) in Golang. It can transform
-blocking APIs into fully-controllable, clock-based state machines with ease.
+(2012-2019; [video](http://tobiaszcudnik.github.io/asyncmachine-inspector/sample.mp4)) in Golang using channels and
+context. It can transform blocking APIs into fully-controllable, clock-based state machines with ease.
 
 ## Features
 
@@ -25,15 +24,15 @@ blocking APIs into fully-controllable, clock-based state machines with ease.
 ```mermaid
 flowchart LR
     subgraph ActiveBefore[Before]
-        A1([A])
-        B1[B]
-        C1[C]
+        A1([A:1])
+        B1[B:0]
+        C1[C:0]
     end
-    ActiveMutation[add B]
+    ActiveMutation([add B])
     subgraph ActiveAfter[After]
-        A2([A])
-        B2([B])
-        C2[C]
+        A2([A:1])
+        B2([B:1])
+        C2[C:0]
     end
     ActiveBefore --> ActiveMutation
     ActiveMutation --> ActiveAfter
@@ -44,21 +43,21 @@ flowchart LR
 ```mermaid
 flowchart LR
     subgraph ClockStep1[ ]
-            A1([A])
+            A1([A:1])
             B1([B:1])
-            C1[C]
+            C1[C:0]
         end
         ClockMutation1[remove B]
         subgraph ClockStep2[ ]
-            A2([A])
+            A2([A:1])
             B2[B:2]
-          C2[C]
+            C2[C:0]
         end
-        ClockMutation2[add B]
+        ClockMutation2([add B])
         subgraph ClockStep3[ ]
-          A3([A])
+          A3([A:1])
           B3([B:3])
-          C3[C]
+          C3[C:0]
         end
         subgraph ClockCtxs[State contexts of B]
           CtxB1([B:1])
@@ -75,17 +74,18 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    Add1[add A]
-    Add2[add A]
-    Add3[add B]
+    Machine[[Machine]]
+    Add1([add A])
+    Add2([add A])
+    Add3([add B])
     Add1 -- 1 --> Machine
     Add2 -- 2 --> Machine
     Add3 -- 3 --> Machine
     subgraph Queue
         direction LR
-        QAdd1[add A]
-        QAdd2[add A]
-        QAdd3[add B]
+        QAdd1([add A])
+        QAdd2([add A])
+        QAdd3([add B])
         QAdd1 --> QAdd2 --> QAdd3
     end
     Machine --> Queue
@@ -105,7 +105,7 @@ flowchart LR
         B2([B:1])
         C2[C:0]
     end
-    HandlersMutation[add B]
+    HandlersMutation([add B])
     HandlersBefore --> HandlersMutation
     HandlersMutation --> HandlersAfter
     HandlersMutation --> AB
@@ -134,7 +134,7 @@ flowchart LR
         B2[B:0]
         C2[C:0]
     end
-    NegotiationMutation[add B]
+    NegotiationMutation([add B])
     NegotiationBefore --> NegotiationMutation
     NegotiationMutation --> NegotiationAfter
     NegotiationMutation --> AB
@@ -182,7 +182,7 @@ flowchart LR
             B2[B:2]
             C2[C:0]
         end
-        SubMutation2[add B]
+        SubMutation2([add B])
         subgraph SubStep3[ ]
           A3([A:1])
           B3([B:3])
@@ -350,8 +350,8 @@ var BasicStruct = am.Struct{
 
     // Errors
 
-    ssB.ErrNetwork:        {Require: S{am.Exception}},
-    ssB.ErrHandlerTimeout: {Require: S{am.Exception}},
+    ssB.ErrNetwork:        {Require: S{Exception}},
+    ssB.ErrHandlerTimeout: {Require: S{Exception}},
 
     // Basics
 
@@ -414,7 +414,7 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 ## Tools
 
-![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png)
+[![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png)](/tools/cmd/am-dbg/README.md)
 
 - **[`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md)** am-dbg is a multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) am-gen generates states files and Grafana dashboards.

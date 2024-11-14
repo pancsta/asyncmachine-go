@@ -1641,8 +1641,7 @@ type A struct {
 
 // ParseArgs extracts A from [am.Event.Args]["am_node"].
 func ParseArgs(args am.A) *A {
-    r, _ := args["am_node"].(*ARpc)
-    if r != nil {
+    if r, _ := args["am_node"].(*ARpc); r != nil {
         return amhelp.ArgsToArgs(r, &A{})
     }
     a, _ := args["am_node"].(*A)
@@ -1785,7 +1784,7 @@ func Msg(msgTx *Msg) {
 - **Target states**: [states](#defining-states) after resolving [relations](#relations), based on previously
   [active states](#active-states), about to become new [active states](#transition-lifecycle)
 - **Mutation**: change to currently [active states](#active-states), created by [mutation methods](#mutations)
-- **Transition**: container struct for a [mutation](#mutations), handles [relations](#relations) and [events](#dynamic-handlers)
+- **Transition**: container struct for a [mutation](#mutations), handles [relations](#relations)
 - **Accepted transition**: [transition](#transition-lifecycle) which [mutation](#mutations) has passed
   [negotiation](#negotiation-handlers) and [relations](#relations)
 - **Canceled transition**: transition which [mutation](#mutations) has NOT passed [negotiation](#negotiation-handlers)

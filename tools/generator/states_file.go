@@ -1,6 +1,7 @@
 // TODO rewrite:
 //  - repeated cli params
 //  - AST
+//  - embed pkg/states/states_utils.go
 
 package generator
 
@@ -378,6 +379,9 @@ func GenUtilsFile() string {
 		
 		// StructMerge is a func alias for extending an existing state structure.
 		var StructMerge = am.StructMerge
+
+		// Exception is a type alias for the exception state.
+		var Exception = am.Exception
 	`)
 }
 

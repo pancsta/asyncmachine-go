@@ -112,8 +112,7 @@ type ARpc struct {
 
 // ParseArgs extracts A from [am.Event.Args]["am_node"].
 func ParseArgs(args am.A) *A {
-	r, _ := args["am_node"].(*ARpc)
-	if r != nil {
+	if r, _ := args["am_node"].(*ARpc); r != nil {
 		return amhelp.ArgsToArgs(r, &A{})
 	}
 	a, _ := args["am_node"].(*A)

@@ -1,6 +1,6 @@
 # <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /examples/benchmark_grpc
 
-[cd /](/README.md)
+[`cd /`](/README.md)
 
 > [!NOTE]
 > **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
@@ -119,6 +119,7 @@ var (
 ## monorepo
 
 - [`/pkg/rpc/README.md`](/pkg/rpc/README.md)
+- [`/examples/arpc`](/examples/arpc)
 - [`/pkg/rpc/HOWTO.md`](/pkg/rpc/HOWTO.md)
 
 [Go back to the monorepo root](/README.md) to continue reading.

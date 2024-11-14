@@ -1,6 +1,6 @@
 # <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /example/tree_state_source
 
-[cd /](/README.md)
+[`cd /`](/README.md)
 
 > [!NOTE]
 > **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state

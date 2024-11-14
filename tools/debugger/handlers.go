@@ -15,8 +15,6 @@ import (
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
-
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -581,12 +579,6 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 			d.Mach.Log("Error: struct missing for %s, ignoring tx\n", machId)
 			continue
 		}
-
-		// optimize space
-		msg.CalledStatesIdxs = amhelp.StatesToIndexes(c.MsgStruct.StatesIndex,
-			msg.CalledStates)
-		msg.MachineID = ""
-		msg.CalledStates = nil
 
 		// TODO scalable storage (support filtering)
 		idx := len(c.MsgTxs)

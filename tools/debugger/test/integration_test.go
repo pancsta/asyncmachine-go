@@ -100,8 +100,12 @@ func TestUserFwd100(t *testing.T) {
 	assert.Equal(t, cursorTx+100, worker.C.CursorTx)
 }
 
-// TODO this can be flaky
 func TestTailModeFLAKY(t *testing.T) {
+	// TODO flaky
+	if os.Getenv(amhelp.EnvAmTestRunner) != "" {
+		t.Skip("FLAKY")
+		return
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

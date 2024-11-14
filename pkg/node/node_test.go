@@ -201,6 +201,7 @@ func TestClientSupervisorFallback(t *testing.T) {
 	// TODO flaky
 	if os.Getenv(amhelp.EnvAmTestRunner) != "" {
 		t.Skip("FLAKY")
+		return
 	}
 
 	// t.Parallel()
@@ -267,6 +268,7 @@ func TestClientWorkerPayload(t *testing.T) {
 	// TODO flaky
 	if os.Getenv(amhelp.EnvAmTestRunner) != "" {
 		t.Skip("FLAKY")
+		return
 	}
 
 	// // t.Parallel()

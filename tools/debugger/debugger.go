@@ -763,6 +763,13 @@ func (d *Debugger) parseMsg(c *Client, idx int) {
 
 	// TODO verify hosts by token, to distinguish 2 hosts with the same ID
 	msgTx := c.MsgTxs[idx]
+
+	// optimize space
+	msgTx.CalledStatesIdxs = amhelp.StatesToIndexes(c.MsgStruct.StatesIndex,
+		msgTx.CalledStates)
+	msgTx.MachineID = ""
+	msgTx.CalledStates = nil
+
 	var sum uint64
 	for _, v := range msgTx.Clocks {
 		sum += v

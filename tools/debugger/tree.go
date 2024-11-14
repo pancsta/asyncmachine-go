@@ -53,6 +53,8 @@ func (d *Debugger) initMachineTree() *cview.TreeView {
 	tree := cview.NewTreeView()
 	tree.SetRoot(d.treeRoot)
 	tree.SetCurrentNode(d.treeRoot)
+	tree.SetSelectedBackgroundColor(colorHighlight3)
+	tree.SetSelectedTextColor(tcell.ColorWhite)
 	tree.SetHighlightColor(colorHighlight)
 
 	tree.SetChangedFunc(func(node *cview.TreeNode) {
