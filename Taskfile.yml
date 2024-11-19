@@ -31,21 +31,21 @@ tasks:
     silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
-        --import-data assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
-        --select-machine sim-p0
-        --select-transition 20
-        -l -1
-        {{.CLI_ARGS}}
+          --import-data assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
+          --select-machine sim-p0
+          --select-transition 20
+          -l -1
+          {{.CLI_ARGS}}
 
   am-dbg-ssh:
     silent: false
     desc: Run am-dbg-ssh with sample data on localhost:4444
     cmds:
       - go run ./tools/cmd/am-dbg-ssh
-        --import-data assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
-        --select-machine sim-p0
-        --select-transition 20
-        {{.CLI_ARGS}}
+          --import-data assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
+          --select-machine sim-p0
+          --select-transition 20
+          {{.CLI_ARGS}}
 
   am-dbg-ssh-connect:
     silent: false
@@ -58,16 +58,16 @@ tasks:
     silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
-        --import-data am-dbg-dump.gob.br
-        {{.CLI_ARGS}}
+          --import-data am-dbg-dump.gob.br
+          {{.CLI_ARGS}}
 
   am-dbg-dbg:
     desc: Start am-dbg on port 9913, so it can debug other instances via --am-dbg-addr
     cmds:
       - go run ./tools/cmd/am-dbg
-        --listen-on localhost:9913
-        --select-connected
-        {{.CLI_ARGS}}
+          --listen-on localhost:9913
+          --select-connected
+          {{.CLI_ARGS}}
   #          --log-file am-dbg-dbg.log
   #          --log-level 2
 
@@ -76,8 +76,8 @@ tasks:
     silent: false
     cmds:
       - go run ./internal/testing/cmd/am-dbg-worker
-        -server-addr=localhost:53470
-        -worker-addr=localhost:53480
+          -server-addr=localhost:53470
+          -worker-addr=localhost:53480
 
   test:
     env:
@@ -88,8 +88,32 @@ tasks:
       - go test ./... {{.CLI_ARGS}}
 
   test-count:
-    cmd: task test -- -v | 
-      grep -o "PASS:" | wc -l
+    env:
+      AM_TEST_RUNNER: 1
+    cmd: task --silent test -- -v | grep -o "PASS:" | wc -l > tests.txt
+
+  test-count-pkg:
+    env:
+      AM_TEST_RUNNER: 1
+    cmds:
+      - task: clean
+      - go test ./pkg/... -v | grep -o "PASS:" | wc -l > tests-pkg.txt
+
+  test-coverage:
+    cmds:
+      - task test -- -coverprofile=coverage.txt -covermode=atomic >
+          coverage.sum.txt
+      - go tool cover -func=coverage.txt | grep total | awk '{print $3}' >
+          coverage.sum.txt
+
+  test-coverage-pkg:
+    env:
+      AM_TEST_RUNNER: 1
+    cmds:
+      - task: clean
+      - go test ./pkg/... -coverprofile=coverage-pkg.txt -covermode=atomic
+      - go tool cover -func=coverage-pkg.txt | grep total | awk '{print $3}' >
+          coverage-pkg.sum.txt
 
   test-series:
     env:
@@ -122,15 +146,21 @@ tasks:
     cmds:
       - task: clean
       - go test -tags test_worker
-        ./tools/debugger/test/remote {{.CLI_ARGS}}
+          ./tools/debugger/test/remote {{.CLI_ARGS}}
 
   clean:
     cmds:
       - go clean -testcache
 
-  cloc-all:
+  cloc-go:
     cmd: gocloc --output-type json . |
-      jq '.languages[] | select(.name == "Go").code'
+      jq '.languages[] | select(.name == "Go").code' |
+      go run ./scripts/compact_number
+
+  cloc-go-pkg:
+    cmd: gocloc --output-type json pkg |
+      jq '.languages[] | select(.name == "Go").code' |
+      go run ./scripts/compact_number
 
   cloc:
     cmds:
@@ -206,6 +236,7 @@ tasks:
 
   gen-changelog:
     cmds:
+      - gem install github_changelog_generator
       - github_changelog_generator --token $GITHUB_TOKEN
       - head -n -4 CHANGELOG.md > CHANGELOG-tmp.md
       - mv CHANGELOG-tmp.md CHANGELOG.md
@@ -220,8 +251,7 @@ tasks:
       - go install github.com/itchyny/gojq/cmd/gojq@latest
       # TODO switch to nodejs md linter
       - gem install mdl
-      - gem install github_changelog_generator
-      - pipx install grafanalib
+      - go install github.com/hhatto/gocloc/cmd/gocloc@latest
 
   install-deps-video:
     cmds:
