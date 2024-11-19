@@ -35,6 +35,7 @@ type Machine struct {
 	// Maximum number of mutations that can be queued. Default: 1000.
 	QueueLimit int
 	// If true, the machine has been Disposed and is no-op. Read-only.
+	// TODO refac: priv
 	Disposed atomic.Bool
 
 	// Unique ID of this machine. Default: random. Read-only.
@@ -369,6 +370,7 @@ func (m *Machine) dispose(force bool) {
 	m.tracers = nil
 	go func() {
 		time.Sleep(100 * time.Millisecond)
+		// TODO races with handlerLoop
 		closeSafe(m.handlerEnd)
 		closeSafe(m.handlerPanic)
 		closeSafe(m.handlerStart)
@@ -1306,7 +1308,7 @@ func (m *Machine) BindHandlers(handlers any) error {
 		var err error
 		methodNames, err = ListHandlers(handlers, m.stateNames)
 		if err != nil {
-			return err
+			return fmt.Errorf("error listing handlers: %w", err)
 		}
 	}
 

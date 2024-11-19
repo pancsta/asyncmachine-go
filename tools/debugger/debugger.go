@@ -244,37 +244,38 @@ type Debugger struct {
 	// printer for numbers
 	P *message.Printer
 
-	tree                   *cview.TreeView
-	treeRoot               *cview.TreeNode
-	log                    *cview.TextView
-	timelineTxs            *cview.ProgressBar
-	timelineSteps          *cview.ProgressBar
-	focusable              []*cview.Box
-	playTimer              *time.Ticker
-	currTxBarRight         *cview.TextView
-	currTxBarLeft          *cview.TextView
-	nextTxBarLeft          *cview.TextView
-	nextTxBarRight         *cview.TextView
-	helpDialog             *cview.Flex
-	keyBar                 *cview.TextView
-	clientList             *cview.List
-	mainGrid               *cview.Grid
-	logRebuildEnd          int
-	lastScrolledTxTime     time.Time
-	repaintScheduled       atomic.Bool
-	updateSidebarScheduled atomic.Bool
-	lastKeystroke          tcell.Key
-	lastKeystrokeTime      time.Time
-	updateLogScheduled     atomic.Bool
-	matrix                 *cview.Table
-	focusManager           *cview.FocusManager
-	exportDialog           *cview.Modal
-	contentPanels          *cview.Panels
-	filtersBar             *cview.TextView
-	focusedFilter          FilterName
-	treeLogGrid            *cview.Grid
-	treeMatrixGrid         *cview.Grid
-	lastSelectedState      string
+	tree               *cview.TreeView
+	treeRoot           *cview.TreeNode
+	log                *cview.TextView
+	timelineTxs        *cview.ProgressBar
+	timelineSteps      *cview.ProgressBar
+	focusable          []*cview.Box
+	playTimer          *time.Ticker
+	currTxBarRight     *cview.TextView
+	currTxBarLeft      *cview.TextView
+	nextTxBarLeft      *cview.TextView
+	nextTxBarRight     *cview.TextView
+	helpDialog         *cview.Flex
+	keyBar             *cview.TextView
+	clientList         *cview.List
+	mainGrid           *cview.Grid
+	logRebuildEnd      int
+	lastScrolledTxTime time.Time
+	repaintScheduled   atomic.Bool
+	// update client list scheduled
+	updateCLScheduled  atomic.Bool
+	lastKeystroke      tcell.Key
+	lastKeystrokeTime  time.Time
+	updateLogScheduled atomic.Bool
+	matrix             *cview.Table
+	focusManager       *cview.FocusManager
+	exportDialog       *cview.Modal
+	contentPanels      *cview.Panels
+	filtersBar         *cview.TextView
+	focusedFilter      FilterName
+	treeLogGrid        *cview.Grid
+	treeMatrixGrid     *cview.Grid
+	lastSelectedState  string
 	// TODO should be a redraw, not before
 	redrawCallback func()
 	healthcheck    *time.Ticker
@@ -965,7 +966,7 @@ func (d *Debugger) updateClientList(immediate bool) {
 		return
 	}
 
-	if !d.updateSidebarScheduled.CompareAndSwap(false, true) {
+	if !d.updateCLScheduled.CompareAndSwap(false, true) {
 		// debounce non-forced updates
 		return
 	}
@@ -1029,7 +1030,7 @@ func (d *Debugger) doUpdateClientList(immediate bool) {
 		d.Mach.Eval("doUpdateClientList", update, nil)
 	}
 
-	d.updateSidebarScheduled.Store(false)
+	d.updateCLScheduled.Store(false)
 	d.draw()
 }
 
@@ -1092,7 +1093,7 @@ func (d *Debugger) buildClientList(selectedIndex int) {
 		" Machines:%d T:%v ", len(d.Clients), totalSum))
 
 	// sort TODO blinks anyway
-	// d.doUpdateClientList(true)
+	d.doUpdateClientList(true)
 }
 
 type sidebarRef struct {

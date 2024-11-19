@@ -45,6 +45,7 @@ func (d *Debugger) StartState(e *am.Event) {
 		if stateCtx.Err() != nil {
 			return // expired
 		}
+		d.Mach.PanicToErr(nil)
 
 		d.App.SetRoot(d.LayoutRoot, true)
 		d.App.SetFocus(d.clientList)

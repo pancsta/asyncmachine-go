@@ -413,19 +413,23 @@ func (d *Debugger) updateLogReader() {
 		return
 	}
 
-	tx := c.msgTxsParsed[c.CursorTx-1]
+	tx := c.MsgTxs[c.CursorTx-1]
+	txParsed := c.msgTxsParsed[c.CursorTx-1]
 	allStates := c.MsgStruct.StatesIndex
 
-	// parents
-	var parentCtx *cview.TreeNode
-	var parentWhen *cview.TreeNode
-	var parentWhenNot *cview.TreeNode
-	var parentWhenTime *cview.TreeNode
-	var parentWhenArgs *cview.TreeNode
-	var parentPipeIn *cview.TreeNode
-	var parentPipeOut *cview.TreeNode
+	var (
+		// parents
+		parentCtx      *cview.TreeNode
+		parentWhen     *cview.TreeNode
+		parentWhenNot  *cview.TreeNode
+		parentWhenTime *cview.TreeNode
+		parentWhenArgs *cview.TreeNode
+		parentPipeIn   *cview.TreeNode
+		parentPipeOut  *cview.TreeNode
+		parentHandlers *cview.TreeNode
+	)
 
-	for _, ptr := range tx.ReaderEntries {
+	for _, ptr := range txParsed.ReaderEntries {
 		entries, ok := c.logReader[ptr.txId]
 		var node *cview.TreeNode
 		if !ok || ptr.entryIdx >= len(entries) {
@@ -545,6 +549,26 @@ func (d *Debugger) updateLogReader() {
 		}
 	}
 
+	for _, entry := range tx.LogEntries {
+		if !strings.HasPrefix(entry.Text, "[handler:") {
+			continue
+		}
+		// get name from after first "]"
+		idx := strings.Index(entry.Text, "]")
+		if idx == -1 {
+			continue
+		}
+		handlerIdx := entry.Text[len("[handler:"):idx]
+		name := entry.Text[idx+1:]
+		if parentHandlers == nil {
+			parentHandlers = cview.NewTreeNode("Handlers")
+		}
+		node := cview.NewTreeNode(d.P.Sprintf("%s[grey]:%s[-]", name,
+			handlerIdx))
+		node.SetIndent(1)
+		parentHandlers.AddChild(node)
+	}
+
 	addParent := func(parent *cview.TreeNode) {
 		count := len(parent.GetChildren())
 		parent.SetText(fmt.Sprintf("[%s]%s[-] (%d)", colorActive, parent.GetText(),
@@ -558,6 +582,9 @@ func (d *Debugger) updateLogReader() {
 	}
 
 	// append parents
+	if parentHandlers != nil {
+		addParent(parentHandlers)
+	}
 	if parentCtx != nil {
 		addParent(parentCtx)
 	}
