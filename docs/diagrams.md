@@ -89,15 +89,15 @@ flowchart LR
 ```mermaid
 flowchart LR
     subgraph ActiveBefore[Before]
-        A1([A])
-        B1[B]
-        C1[C]
+        A1([A:1])
+        B1[B:0]
+        C1[C:0]
     end
-    ActiveMutation[add B]
+    ActiveMutation([add B])
     subgraph ActiveAfter[After]
-        A2([A])
-        B2([B])
-        C2[C]
+        A2([A:1])
+        B2([B:1])
+        C2[C:0]
     end
     ActiveBefore --> ActiveMutation
     ActiveMutation --> ActiveAfter
@@ -108,21 +108,21 @@ flowchart LR
 ```mermaid
 flowchart LR
     subgraph ClockStep1[ ]
-            A1([A])
+            A1([A:1])
             B1([B:1])
-            C1[C]
+            C1[C:0]
         end
         ClockMutation1[remove B]
         subgraph ClockStep2[ ]
-            A2([A])
+            A2([A:1])
             B2[B:2]
-          C2[C]
+            C2[C:0]
         end
-        ClockMutation2[add B]
+        ClockMutation2([add B])
         subgraph ClockStep3[ ]
-          A3([A])
+          A3([A:1])
           B3([B:3])
-          C3[C]
+          C3[C:0]
         end
         subgraph ClockCtxs[State contexts of B]
           CtxB1([B:1])
@@ -139,17 +139,18 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    Add1[add A]
-    Add2[add A]
-    Add3[add B]
+    Machine[[Machine]]
+    Add1([add A])
+    Add2([add A])
+    Add3([add B])
     Add1 -- 1 --> Machine
     Add2 -- 2 --> Machine
     Add3 -- 3 --> Machine
     subgraph Queue
         direction LR
-        QAdd1[add A]
-        QAdd2[add A]
-        QAdd3[add B]
+        QAdd1([add A])
+        QAdd2([add A])
+        QAdd3([add B])
         QAdd1 --> QAdd2 --> QAdd3
     end
     Machine --> Queue
@@ -169,7 +170,7 @@ flowchart LR
         B2([B:1])
         C2[C:0]
     end
-    HandlersMutation[add B]
+    HandlersMutation([add B])
     HandlersBefore --> HandlersMutation
     HandlersMutation --> HandlersAfter
     HandlersMutation --> AB
@@ -198,7 +199,7 @@ flowchart LR
         B2[B:0]
         C2[C:0]
     end
-    NegotiationMutation[add B]
+    NegotiationMutation([add B])
     NegotiationBefore --> NegotiationMutation
     NegotiationMutation --> NegotiationAfter
     NegotiationMutation --> AB
@@ -219,9 +220,9 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    Wet([Wet])
-    Dry([Dry])
-    Water([Water])
+    Wet(Wet)
+    Dry(Dry)
+    Water(Water)
     Wet -- Require --> Water
     Dry -- Remove --> Wet
     Water -- Add --> Wet
@@ -246,7 +247,7 @@ flowchart LR
             B2[B:2]
             C2[C:0]
         end
-        SubMutation2[add B]
+        SubMutation2([add B])
         subgraph SubStep3[ ]
           A3([A:1])
           B3([B:3])
@@ -259,8 +260,8 @@ flowchart LR
     A3 .-> WhenTimeB3
     B3 .-> WhenTimeB3
     subgraph Subs[ ]
-        WhenNotB[["WhenNot B"]]
-        WhenTimeB3[["WhenTime A:1 B:3"]]
+        WhenNotB>"WhenNot B"]
+        WhenTimeB3>"WhenTime A:1 B:3"]
     end
 ```
 

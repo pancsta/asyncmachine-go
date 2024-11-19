@@ -1,8 +1,12 @@
-[![go report](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
-[![go reference](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
-[![last commit](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
-![release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
-[![matrix chat](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
+[![](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
+[![](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
+![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc.json)
+![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc-pkg.json)
+![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/tests.json)
+![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/tests-pkg.json)
+![](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
+[![](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
+[![](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
 
 # <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /pkg/telemetry
 
@@ -10,8 +14,7 @@
 
 > [!NOTE]
 > **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
-> machine (nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking). It has
-> atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+> machine. It has atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
 **/pkg/telemetry** provides several telemetry exporters and a [Grafana dashboard](#grafana-dashboard):
 
@@ -31,8 +34,7 @@ It delivers `DbgMsg` and `DbgMsgStruct` via standard `net/rpc`. It can also be c
 [Open Telemetry traces](https://opentelemetry.io/) integration exposes machine's states and transitions as Otel traces,
 compatible with [Jaeger](https://www.jaegertracing.io/). Tracers are inherited from parent machines and form a tree.
 
-![Prometheus Grafana](https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.dark.png#gh-dark-mode-only)
-![Prometheus Grafana](https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.light.png#gh-light-mode-only)
+![Prometheus Grafana](https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.dark.png)
 
 ### Tree Structure
 

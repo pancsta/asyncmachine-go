@@ -1,8 +1,12 @@
-[![go report](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
-[![go reference](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
-[![last commit](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
-![release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
-[![matrix chat](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
+[![](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
+[![](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
+![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc.json)
+![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc-pkg.json)
+![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/tests.json)
+![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/tests-pkg.json)
+![](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
+[![](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
+[![](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
 
 <div align="center">
     <a href="#samples">Samples</a> |
@@ -21,139 +25,87 @@
 # <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> asyncmachine-go
 
 <div align="center">
-    <img src="https://pancsta.github.io/assets/asyncmachine-go/video.gif" alt="TUI Debugger" />
+    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/am-gen/README.md">
+    <img src="https://pancsta.github.io/assets/asyncmachine-go/video.gif" alt="TUI Debugger" /></a>
+    <br />
+    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/pkg/node/README.md">
+    <img width="810" src="https://pancsta.github.io/assets/asyncmachine-go/node.png" alt="node diagram" /></a>
 </div>
-
-```mermaid
-flowchart LR
-    c1-RemoteWorker -- aRPC --> w1-rpcPub
-    c1-RemoteSupervisor -- aRPC --> s1-rpcPub
-
-    subgraph Client 1
-        c1-Client[Client]
-        c1-RemoteWorker[RemoteWorker]
-        c1-RemoteSupervisor[RemoteSupervisor]
-        c1-Client --> c1-RemoteWorker
-        c1-Client --> c1-RemoteSupervisor
-    end
-
-    subgraph Client 2
-        c2-Client[Client]
-        c2-RemoteWorker[RemoteWorker]
-        c2-RemoteSupervisor[RemoteSupervisor]
-        c2-Client --> c2-RemoteWorker
-        c2-Client --> c2-RemoteSupervisor
-    end
-
-    subgraph Node Host
-
-        subgraph Worker Pool
-            w1-rpcPub --> Worker1
-            w1-rpcPub([Public aRPC])
-            w1-rpcPriv --> Worker1
-            w1-rpcPriv([Private aRPC])
-            w2-rpcPub --> Worker2
-            w2-rpcPub([Public aRPC])
-            w2-rpcPriv --> Worker2
-            w2-rpcPriv([Private aRPC])
-            w3-rpcPub --> Worker3
-            w3-rpcPub([Public aRPC])
-            w3-rpcPriv --> Worker3
-            w3-rpcPriv([Private aRPC])
-        end
-
-        s1-rpcPub([Public aRPC])
-        s1-rpcPub --> Supervisor1
-        Supervisor1 --> RemoteWorker1
-        Supervisor1[Supervisor]
-        RemoteWorker1 -- aRPC --> w1-rpcPriv
-        Supervisor1 -- fork --> Worker1
-        Supervisor1 --> RemoteWorker2
-        RemoteWorker2 -- aRPC --> w2-rpcPriv
-        Supervisor1 -- fork --> Worker2
-        Supervisor1 --> RemoteWorker3
-        RemoteWorker3 -- aRPC --> w3-rpcPriv
-        Supervisor1 -- fork --> Worker3
-    end
-
-    c2-RemoteWorker -- aRPC --> w2-rpcPub
-    c2-RemoteSupervisor -- aRPC --> s1-rpcPub
-```
 
 > [!NOTE]
 > State machines communicate through states (mutations, checking and waiting).
 
-**Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state machine
-(nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking). It has atomic
-transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+**Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight [state machine](/pkg/machine/README.md).
+It has atomic transitions, [RPC](/pkg/rpc/README.md), logging, [TUI debugger](/tools/cmd/am-dbg/README.md), [metrics](/pkg/telemetry/README.md#prometheus-metrics),
+[tracing](/pkg/telemetry/README.md#opentelemetry-traces), and soon diagrams.
 
 Use cases depend on the layer of the stack used, and range from [goroutine synchronization](/pkg/machine/README.md) and
-[state synchronization](/pkg/rpc/README.md) to [worker synchronization](/pkg/node/README.md), bots, consensus algos,
-etc. **Asyncmachine-go** can precisely target a specific scenario and bring order, structure, and resiliency to
-event-based systems.
+[state synchronization](/pkg/rpc/README.md) to [worker synchronization](/pkg/node/README.md), bots, LLM agents,
+consensus algos, etc. **Asyncmachine-go** can precisely target a specific scenario and bring structure to event-based
+systems. It takes care of most contexts, `select` statements, and panics.
 
 ## Stack
 
 <table>
   <tr>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
     <td>PubSub</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
   </tr>
   <tr>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
     <td colspan="3" align=center>Workers</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
   </tr>
   <tr>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
     <td colspan="5" align=center>RPC</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
   </tr>
   <tr>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
     <td colspan="7" align=center>Handlers</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
   </tr>
   <tr>
-    <td>.</td>
-    <td>.</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
     <td colspan="9" align=center>Machine API</td>
-    <td>.</td>
-    <td>.</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
   </tr>
   <tr>
-    <td>.</td>
+    <td>&nbsp;</td>
     <td colspan="11" align=center>Relations</td>
-    <td>.</td>
+    <td>&nbsp;</td>
   </tr>
   <tr>
     <td colspan="13" align=center><b><u>States</u></b></td>
@@ -180,23 +132,44 @@ mach.Is1("Foo") // false
 ```go
 // state ctx is a non-err ctx
 ctx := client.Mach.NewStateCtx(ssC.WorkerReady)
-// time-based subscription
+// clock-based subscription
 whenPayload := client.Mach.WhenTicks(ssC.WorkerPayload, 1, ctx)
 // mutation
 client.WorkerRpc.Worker.Add1(ssW.WorkRequested, Pass(&A{
     Input: 2}))
 // WaitFor replaces select statements
-err := amhelp.WaitForAll(ctx, 1*time.Second, whenPayload)
+err := amhelp.WaitForAll(ctx, time.Second,
+    mach2.When1("Ready", nil),
+    whenPayload)
+// check cancellation
 if ctx.Err() != nil {
     // state ctx expired
     return
 }
+// check error
 if err != nil {
     // mutation
     client.Mach.AddErr(err, nil)
     return
 }
-// WorkerPayload activated
+// client/WorkerPayload and mach2/Ready activated
+```
+
+**Handlers** - AOP transition handlers.
+
+```go
+func (h *Handlers) FooEnter(e *am.Event) bool {
+    return true
+}
+func (h *Handlers) FooBar(e *am.Event) bool {
+    return true
+}
+func (h *Handlers) FooState(e *am.Event) {
+    h.foo = NewConn()
+}
+func (h *Handlers) FooEnd(e *am.Event) {
+    h.foo.Close()
+}
 ```
 
 **Schema** - states of a node worker.

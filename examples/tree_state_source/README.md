@@ -4,8 +4,7 @@
 
 > [!NOTE]
 > **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
-> machine (nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking). It has
-> atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+> machine. It has atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
 State source of flight statuses - in the real world this data-oriented problem should be modelled using composition and
 handler delegation, but it's flat in this example for simplicity and research purposes.

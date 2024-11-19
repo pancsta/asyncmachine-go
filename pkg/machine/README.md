@@ -1,8 +1,12 @@
-[![go report](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
-[![go reference](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
-[![last commit](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
-![release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
-[![matrix chat](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
+[![](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
+[![](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
+![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc.json)
+![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc-pkg.json)
+![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/tests.json)
+![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/tests-pkg.json)
+![](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
+[![](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
+[![](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
 
 # <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /pkg/machine
 
@@ -10,12 +14,11 @@
 
 > [!NOTE]
 > **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
-> machine (nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking). It has
-> atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+> machine. It has atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
-**/pkg/machine** is a minimal implementation of [AsyncMachine](https://github.com/TobiaszCudnik/asyncmachine)
-(2012-2019; [video](http://tobiaszcudnik.github.io/asyncmachine-inspector/sample.mp4)) in Golang using channels and
-context. It can transform blocking APIs into fully-controllable, clock-based state machines with ease.
+**/pkg/machine** is a nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking
+state machine. It can orchestrate blocking APIs into fully-controllable async state machines with ease. Write ops are
+[state mutations](/docs/manual.md#mutations) and read ops are [state checking](/docs/manual.md#active-states).
 
 ## Features
 
@@ -155,9 +158,9 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    Wet([Wet])
-    Dry([Dry])
-    Water([Water])
+    Wet(Wet)
+    Dry(Dry)
+    Water(Water)
     Wet -- Require --> Water
     Dry -- Remove --> Wet
     Water -- Add --> Wet
@@ -195,8 +198,8 @@ flowchart LR
     A3 .-> WhenTimeB3
     B3 .-> WhenTimeB3
     subgraph Subs[ ]
-        WhenNotB[["WhenNot B"]]
-        WhenTimeB3[["WhenTime A:1 B:3"]]
+        WhenNotB>"WhenNot B"]
+        WhenTimeB3>"WhenTime A:1 B:3"]
     end
 ```
 
@@ -204,7 +207,7 @@ flowchart LR
 
 ```go
 val, err := someOp()
-if err {
+if err != nil {
     mach.AddErr(err, nil)
     return
 }
@@ -416,8 +419,8 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 [![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png)](/tools/cmd/am-dbg/README.md)
 
-- **[`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md)** am-dbg is a multi-client TUI debugger.
-- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) am-gen generates states files and Grafana dashboards.
+- **[`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md)** Multi-client TUI debugger.
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates states files and Grafana dashboards.
 - `/tools/cmd/am-vis` Planned.
 
 ## Case Studies
