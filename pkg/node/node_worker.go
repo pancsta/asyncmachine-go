@@ -52,6 +52,8 @@ type Worker struct {
 	PublicRpc *rpc.Server
 }
 
+// NewWorker initializes a new Worker instance and returns it, or an error if
+// validation fails.
 func NewWorker(ctx context.Context, kind string, workerStruct am.Struct,
 	stateNames am.S, opts *WorkerOpts,
 ) (*Worker, error) {
@@ -284,10 +286,13 @@ func (w *Worker) SendPayloadEnter(e *am.Event) bool {
 
 // ///// ///// /////
 
+// Start initiates the worker state machine with the given local address.
 func (w *Worker) Start(localAddr string) am.Result {
 	return w.Mach.Add1(ssW.Start, Pass(&A{LocalAddr: localAddr}))
 }
 
+// Stop halts the worker's state machine and optionally disposes of its
+// resources based on the dispose flag.
 func (w *Worker) Stop(dispose bool) {
 	w.Mach.Remove1(ssW.Start, Pass(&A{Dispose: dispose}))
 }

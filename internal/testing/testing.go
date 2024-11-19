@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
@@ -18,10 +17,11 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
-	ssDbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
 var (
@@ -43,8 +43,8 @@ func NewRpcTest(
 	defer utils.ConnInit.Unlock()
 
 	// read env
-	amDbgAddr := os.Getenv("AM_DBG_ADDR")
-	stdout := os.Getenv("AM_DEBUG") == "2"
+	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
+	stdout := os.Getenv(am.EnvAmDebug) == "2"
 	logLvl := am.EnvLogLevel("")
 
 	// bind to an open port
@@ -92,11 +92,11 @@ func NewRpcTest(
 
 	// server start
 	s.Start()
-	amhelpt.WaitForErrAll(t, ctx, s.Mach, timeout,
+	amhelpt.WaitForErrAll(t, "server RpcReady", ctx, s.Mach, timeout,
 		s.Mach.When1(ssrpc.ServerStates.RpcReady, nil))
-	amhelpt.WaitForErrAll(t, ctx, s.Mach, timeout,
+	amhelpt.WaitForErrAll(t, "client Ready", ctx, s.Mach, timeout,
 		c.Mach.When1(ssrpc.ClientStates.Ready, nil))
-	amhelpt.WaitForErrAll(t, ctx, s.Mach, timeout,
+	amhelpt.WaitForErrAll(t, "server Ready", ctx, s.Mach, timeout,
 		s.Mach.When1(ssrpc.ServerStates.Ready, nil))
 
 	return worker, s, c
@@ -156,15 +156,15 @@ func NewDbgWorker(
 	amhelp.MachDebugEnv(dbg.Mach)
 
 	// start at the same place
-	res := dbg.Mach.Add1(ssDbg.Start, am.A{
+	res := dbg.Mach.Add1(ssdbg.Start, am.A{
 		"Client.id":       "ps-2",
 		"Client.cursorTx": 20,
 	})
 	if res == am.Canceled {
 		return nil, errors.New("failed to start am-dbg")
 	}
-	<-dbg.Mach.When1(ssDbg.Ready, nil)
-	<-dbg.Mach.WhenNot1(ssDbg.ScrollToTx, nil)
+	<-dbg.Mach.When1(ssdbg.Ready, nil)
+	<-dbg.Mach.WhenNot1(ssdbg.ScrollToTx, nil)
 
 	dbg.Mach.Log("NewDbgWorker ready")
 

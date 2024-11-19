@@ -113,6 +113,8 @@ type Supervisor struct {
 	SuperSendPayloadState  am.HandlerFinal
 }
 
+// NewSupervisor initializes and returns a new Supervisor instance with
+// specified context, worker attributes, and options.
 func NewSupervisor(
 	ctx context.Context, workerKind string, workerBin []string,
 	workerStruct am.Struct, workerSNames am.S, opts *SupervisorOpts,

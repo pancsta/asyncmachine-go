@@ -53,7 +53,7 @@ func TestFork1(t *testing.T) {
 
 	whenForked := s.Mach.WhenTicks(states.SupervisorStates.WorkerForked, 1, nil)
 	s.Start(":0")
-	amhelpt.WaitForAll(t, ctx, defTimeout, whenForked)
+	amhelpt.WaitForAll(t, "WorkerForked", ctx, defTimeout, whenForked)
 
 	// assert
 	assert.Equal(t, 1, s.workers.Count())
@@ -88,7 +88,7 @@ func TestFork1Process(t *testing.T) {
 
 	whenForked := s.Mach.WhenTicks(states.SupervisorStates.WorkerForked, 1, nil)
 	s.Start(":0")
-	amhelpt.WaitForAll(t, ctx, defTimeout, whenForked)
+	amhelpt.WaitForAll(t, "WorkerForked", ctx, defTimeout, whenForked)
 
 	// assert
 	assert.Equal(t, 1, s.workers.Count())
@@ -117,11 +117,11 @@ func TestFork5Warm2Min2(t *testing.T) {
 	s.testFork = newTestFork(ctx, t, "test")
 
 	s.Start(":0")
-	amhelpt.WaitForAll(t, ctx, defTimeout,
+	amhelpt.WaitForAll(t, "PoolReady", ctx, defTimeout,
 		s.Mach.When1(ssS.PoolReady, nil))
 
 	// wait for the warm workers TODO depend on a state, not human time
-	amhelpt.Wait(t, ctx, defTimeout)
+	amhelpt.Wait(t, "warm workers", ctx, defTimeout)
 
 	// assert
 	assert.Equal(t, 4, s.workers.Count())
@@ -154,7 +154,7 @@ func TestFork15Warm0Min7(t *testing.T) {
 	s.testFork = newTestFork(ctx, t, "test")
 
 	s.Start(":0")
-	amhelpt.WaitForAll(t, ctx, defTimeout,
+	amhelpt.WaitForAll(t, "PoolReady", ctx, defTimeout,
 		s.Mach.When1(ssS.PoolReady, nil))
 
 	// assert
@@ -190,7 +190,7 @@ func TestClientSupervisor(t *testing.T) {
 	}
 
 	c.Start([]string{s.PublicMux.Addr})
-	amhelpt.WaitForAll(t, ctx, defTimeout,
+	amhelpt.WaitForAll(t, "SuperReady", ctx, defTimeout,
 		c.Mach.When1(ssC.SuperReady, nil))
 
 	s.Stop()
@@ -216,7 +216,7 @@ func TestClientSupervisorFallback(t *testing.T) {
 	// provide a wrong address as the 1st one
 	c.Start([]string{"localhost:666", s.PublicMux.Addr})
 	// TODO inject a short-timeout retry policy to node client
-	amhelpt.WaitForAll(t, ctx, defTimeout*2,
+	amhelpt.WaitForAll(t, "SuperReady", ctx, defTimeout*2,
 		c.Mach.When1(ssC.SuperReady, nil))
 
 	s.Stop()
@@ -238,17 +238,17 @@ func TestClientWorker(t *testing.T) {
 	c, s := newConnectedClient(t, ctx)
 
 	// get worker
-	amhelpt.WaitForAll(t, ctx, defTimeout,
+	amhelpt.WaitForAll(t, "WorkersAvailable", ctx, defTimeout,
 		c.SuperRpc.Worker.When1(ssS.WorkersAvailable, nil))
 	err := c.ReqWorker(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	amhelpt.WaitForAll(t, ctx, defTimeout,
+	amhelpt.WaitForAll(t, "WorkerReady", ctx, defTimeout,
 		c.Mach.When1(ssC.WorkerReady, nil))
 	w := getWorker(t, c.WorkerRpc.Addr)
 
-	amhelpt.WaitForAll(t, ctx, defTimeout,
+	amhelpt.WaitForAll(t, "ClientConnected", ctx, defTimeout,
 		w.Mach.When1(ssW.ClientConnected, nil))
 
 	// assert
@@ -271,23 +271,22 @@ func TestClientWorkerPayload(t *testing.T) {
 		return
 	}
 
-	// // t.Parallel()
+	// t.Parallel()
 	// amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// client
-
 	c, s := newConnectedClient(t, ctx)
 
 	// get worker
-	amhelpt.WaitForAll(t, ctx, defTimeout,
+	amhelpt.WaitForAll(t, "WorkersAvailable", ctx, defTimeout,
 		c.SuperRpc.Worker.When1(ssS.WorkersAvailable, nil))
 	err := c.ReqWorker(ctx)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal(err, "error requesting worker")
 	}
-	amhelpt.WaitForAll(t, ctx, defTimeout,
+	amhelpt.WaitForAll(t, "WorkerReady", ctx, defTimeout,
 		c.Mach.When1(ssC.WorkerReady, nil))
 	w := getWorker(t, c.WorkerRpc.Addr)
 
@@ -300,11 +299,11 @@ func TestClientWorkerPayload(t *testing.T) {
 
 	whenPayload := c.Mach.WhenTicks(ssC.WorkerPayload, 1, nil)
 	c.WorkerRpc.Worker.Add1(ssW.WorkRequested, am.A{"input": 2})
-	amhelpt.WaitForAll(t, ctx, defTimeout,
-		whenPayload, w.Mach.When1(ssW.ClientConnected, nil))
+	amhelpt.WaitForAll(t, "ClientConnected", ctx, defTimeout,
+		whenPayload,
+		w.Mach.When1(ssW.ClientConnected, nil))
 
 	// assert
-
 	assert.Equal(t, 4, h.payload.Data.(int))
 
 	s.Stop()
@@ -325,8 +324,7 @@ func newConnectedClient(t *testing.T, ctx context.Context) (
 	c := newClient(t, ctx)
 
 	c.Start([]string{sup.PublicMux.Addr})
-	amhelpt.WaitForAll(t, ctx, defTimeout,
-
+	amhelpt.WaitForAll(t, "SuperReady", ctx, defTimeout,
 		c.Mach.When1(ssC.SuperReady, nil))
 
 	return c, sup
@@ -366,7 +364,7 @@ func newSupervisor(
 	sup.testKill = newTestKill(ctx, t, workerKind)
 
 	sup.Start(":0")
-	amhelpt.WaitForAll(t, ctx, defTimeout,
+	amhelpt.WaitForAll(t, "PoolReady", ctx, defTimeout,
 		sup.Mach.When1(ssS.PoolReady, nil))
 
 	return sup
