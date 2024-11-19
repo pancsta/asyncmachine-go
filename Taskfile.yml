@@ -148,9 +148,11 @@ tasks:
       - go test -tags test_worker
           ./tools/debugger/test/remote {{.CLI_ARGS}}
 
+  precommit:
+    cmd: .git/hooks/pre-commit
+
   clean:
-    cmds:
-      - go clean -testcache
+    cmd: go clean -testcache
 
   cloc-go:
     cmd: gocloc --output-type json . |

@@ -42,7 +42,9 @@ func MachDebugEnv(t *stdtest.T, mach am.Api) {
 
 // Wait is a test version of [amhelp.Wait], which errors instead of returning
 // false.
-func Wait(t *stdtest.T, ctx context.Context, length time.Duration) {
+func Wait(
+	t *stdtest.T, errMsg string, ctx context.Context, length time.Duration,
+) {
 	if !amhelp.Wait(ctx, length) {
 		t.Fatal("ctx expired")
 	}
@@ -51,31 +53,33 @@ func Wait(t *stdtest.T, ctx context.Context, length time.Duration) {
 // WaitForAll is a test version of [amhelp.WaitForAll], which errors instead of
 // returning an error.
 func WaitForAll(
-	t *stdtest.T, ctx context.Context, timeout time.Duration,
+	t *stdtest.T, source string, ctx context.Context, timeout time.Duration,
 	chans ...<-chan struct{},
 ) {
 	if err := amhelp.WaitForAll(ctx, timeout, chans...); err != nil {
-		t.Fatal(err)
+		t.Fatal("error for " + source + ": " + err.Error())
 	}
 }
 
 // WaitForErrAll is a test version of [amhelp.WaitForErrAll], which errors
 // instead of returning an error.
 func WaitForErrAll(
-	t *stdtest.T, ctx context.Context, mach *am.Machine, timeout time.Duration,
-	chans ...<-chan struct{},
+	t *stdtest.T, source string, ctx context.Context, mach *am.Machine,
+	timeout time.Duration, chans ...<-chan struct{},
 ) {
 	if err := amhelp.WaitForErrAll(ctx, timeout, mach, chans...); err != nil {
-		t.Fatal(err)
+		t.Fatal("error for " + source + ": " + err.Error())
 	}
 }
 
 // WaitForAny is a test version of [amhelp.WaitForAny], which errors instead of
 // returning an error.
-func WaitForAny(t *stdtest.T, ctx context.Context, timeout time.Duration,
-	chans ...<-chan struct{}) {
+func WaitForAny(
+	t *stdtest.T, source string, ctx context.Context, timeout time.Duration,
+	chans ...<-chan struct{},
+) {
 	if err := amhelp.WaitForAny(ctx, timeout, chans...); err != nil {
-		t.Fatal(err)
+		t.Fatal("error for " + source + ": " + err.Error())
 	}
 }
 

@@ -417,7 +417,7 @@ func TestRetryCall(t *testing.T) {
 	c.tmpTestErr = fmt.Errorf("IGNORE MOCK ERR")
 	whenRetrying := c.Mach.When1(ssrpc.ClientStates.RetryingCall, nil)
 	c.Worker.Add1(sstest.A, nil)
-	amhelpt.WaitForAll(t, ctx, 2*time.Second, whenRetrying)
+	amhelpt.WaitForAll(t, "RetryingCall", ctx, 2*time.Second, whenRetrying)
 
 	assert.True(t, s.Mach.Is1(ssrpc.ServerStates.Ready), "Server ready")
 	assert.True(t, s.Mach.Is1(ssrpc.ClientStates.Ready), "Client ready")
@@ -473,7 +473,7 @@ func TestRetryConn(t *testing.T) {
 
 	// client ready
 	c.Start()
-	amhelpt.WaitForAll(t, ctx, 3*time.Second,
+	amhelpt.WaitForAll(t, "client-server Ready", ctx, 3*time.Second,
 		c.Mach.When1(ssC.Ready, ctx),
 		s.Mach.When1(ssS.Ready, ctx))
 
@@ -710,7 +710,7 @@ func TestMux(t *testing.T) {
 	amhelpt.MachDebugEnv(t, mux.Mach)
 	mux.Listener = listener
 	mux.Start()
-	amhelpt.WaitForAll(t, ctx, 2*time.Second,
+	amhelpt.WaitForAll(t, "mux Ready", ctx, 2*time.Second,
 		mux.Mach.When1(ssM.Ready, nil))
 
 	var clients []*Client
@@ -727,7 +727,7 @@ func TestMux(t *testing.T) {
 	}
 
 	// wait for all clients to be ready
-	amhelpt.WaitForAll(t, ctx, 2*time.Second,
+	amhelpt.WaitForAll(t, "group Ready", ctx, 2*time.Second,
 		amhelpt.GroupWhen1(t, clientsApi, ssC.Ready, nil)...)
 
 	for _, w := range cWorkers {
@@ -739,7 +739,7 @@ func TestMux(t *testing.T) {
 	clients[0].Worker.Add1(sstest.C, nil)
 
 	// wait for all clients to get the new state
-	amhelpt.WaitForAll(t, ctx, 2*time.Second,
+	amhelpt.WaitForAll(t, "cWorkers A", ctx, 2*time.Second,
 		// TODO use v2 state def
 		amhelpt.GroupWhen1(t, cWorkers, sstest.A, nil)...)
 
@@ -829,11 +829,12 @@ func NewTest(
 
 	// server start
 	s.Start()
-	amhelpt.WaitForAll(t, ctx, 3*time.Second, s.Mach.When1(ssS.RpcReady, ctx))
+	amhelpt.WaitForAll(t, "RpcReady", ctx, 3*time.Second,
+		s.Mach.When1(ssS.RpcReady, ctx))
 
 	// client ready
 	c.Start()
-	amhelpt.WaitForAll(t, ctx, 3*time.Second,
+	amhelpt.WaitForAll(t, "client-server Ready", ctx, 3*time.Second,
 		c.Mach.When1(ssC.Ready, ctx),
 		s.Mach.When1(ssS.Ready, ctx))
 

@@ -40,13 +40,16 @@ type Client struct {
 	// internal
 
 	// current nodes list (set by Start)
-	nodesList []string
+	nodeList  []string
 	stateDeps *ClientStateDeps
 }
 
 // implement ConsumerHandlers
 var _ ssrpc.ConsumerHandlers = &Client{}
 
+// NewClient creates a new Client instance with the provided context, id,
+// workerKind, state dependencies, and options. Returns a pointer to the Client
+// instance and an error if any validation or initialization fails.
 func NewClient(ctx context.Context, id string, workerKind string,
 	stateDeps *ClientStateDeps, opts *ClientOpts,
 ) (*Client, error) {
@@ -92,6 +95,9 @@ func NewClient(ctx context.Context, id string, workerKind string,
 		LogEnabled:  os.Getenv(EnvAmNodeLogClient) != "",
 		stateDeps:   stateDeps,
 	}
+	if amhelp.IsDebug() {
+		c.ConnTimeout = 10 * c.ConnTimeout
+	}
 	mach, err := am.NewCommon(ctx, "nc-"+name, stateDeps.ClientSStruct,
 		stateDeps.ClientSNames, c, opts.Parent, nil)
 	if err != nil {
@@ -129,7 +135,7 @@ func (c *Client) StartState(e *am.Event) {
 	ctx := c.Mach.NewStateCtx(ssC.Start)
 	args := ParseArgs(e.Args)
 	addr := args.NodesList[0]
-	c.nodesList = args.NodesList
+	c.nodeList = args.NodesList
 
 	// init super rpc (but dont connect just yet)
 	c.SuperRpc, err = rpc.NewClient(ctx, addr, "nc-super-"+c.Name,
@@ -224,7 +230,7 @@ func (c *Client) WorkerPayloadEnter(e *am.Event) bool {
 	return a != nil && a.Name != "" && a.Payload != nil
 }
 
-// WorkerPayloadState handles both Supervisor and Worker passing payloads.
+// WorkerPayloadState handles both Supervisor and Worker inbound payloads.
 func (c *Client) WorkerPayloadState(e *am.Event) {
 	c.Mach.Remove1(ssC.WorkerPayload, nil)
 	args := rpc.ParseArgs(e.Args)
@@ -300,12 +306,15 @@ func (c *Client) WorkerPayloadState(e *am.Event) {
 
 // ///// ///// /////
 
+// Start initializes the client with a list of node addresses to connect to.
 func (c *Client) Start(nodesList []string) {
 	c.Mach.Add1(ssC.Start, Pass(&A{
 		NodesList: nodesList,
 	}))
 }
 
+// Stop halts the client's connection to both the supervisor and worker RPCs,
+// and removes the client state from the state machine.
 func (c *Client) Stop(ctx context.Context) {
 	if c.SuperRpc != nil {
 		c.SuperRpc.Stop(ctx, false)
@@ -316,6 +325,8 @@ func (c *Client) Stop(ctx context.Context) {
 	c.Mach.Remove1(ssC.Start, nil)
 }
 
+// ReqWorker sends a request to add a "WorkerRequested" state to the client's
+// state machine and waits for "WorkerReady" state.
 func (c *Client) ReqWorker(ctx context.Context) error {
 	// failsafe worker request
 	_, err := amhelp.NewReqAdd1(c.Mach, ssC.WorkerRequested, nil).Run(ctx)
@@ -333,6 +344,7 @@ func (c *Client) ReqWorker(ctx context.Context) error {
 	return nil
 }
 
+// Dispose deallocates resources and stops the client's RPC connections.
 func (c *Client) Dispose(ctx context.Context) {
 	c.Stop(ctx)
 	c.SuperRpc = nil
@@ -362,6 +374,8 @@ type ClientStateDeps struct {
 	WorkerSNames  am.S
 }
 
+// ClientOpts provides configuration options for creating a new client state
+// machine.
 type ClientOpts struct {
 	// Parent is a parent state machine for a new client state machine. See
 	// [am.Opts].
