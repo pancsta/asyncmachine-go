@@ -65,3 +65,5 @@ _py
 /am-dbg-ssh
 /built
 /log.md
+/coverage*.txt
+/tests*.txt

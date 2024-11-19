@@ -1,6 +1,7 @@
 run:
   exclude-files:
     - "examples/.*"
+    - "scripts/.*"
 
 linters:
   enable:

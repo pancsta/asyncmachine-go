@@ -17,6 +17,7 @@ require (
 	github.com/ic2hrmk/promtail v0.0.5
 	github.com/joho/godotenv v1.5.1
 	github.com/lithammer/dedent v1.1.0
+	github.com/nkall/compactnumber v1.1.1
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pancsta/cview v1.5.12
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -52,6 +53,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gosimple/slug v1.13.1 // indirect
 	github.com/gosimple/unidecode v1.0.1 // indirect
+	github.com/gotnospirit/makeplural v0.0.0-20180622080156-a5f48d94d976 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect

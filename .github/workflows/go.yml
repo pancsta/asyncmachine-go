@@ -8,34 +8,118 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: [ '1.21' ]
+        go-version: [ '1.23' ]
 
     steps:
+      # Get values for cache paths to be used in later steps
+      - id: go-cache-paths
+        run: |
+          echo "::set-output name=go-build::$(go env GOCACHE)"
+          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+
+      # set up
       - uses: actions/checkout@v4
-      - name: Setup Go ${{ matrix.go-version }}
-        uses: actions/setup-go@v4
+      - uses: ruby/setup-ruby@ec02537da5712d66d4d50a0f33b7eb52773b5ed1
+        with:
+          ruby-version: '3.1'
+      - uses: actions/setup-go@v4
         with:
           go-version: ${{ matrix.go-version }}
-      - name: Install dependencies
-        run: go mod tidy
 
-      # TODO
-#      - name: Test serial
-#        env:
-#          AM_TEST_RUNNER: 1
-#        run: go test -p 1 ./... -v
+      # Cache
+      - name: Clear cache directory first before trying to restore from cache
+        run: sudo rm -rf $(go env GOMODCACHE) && sudo rm -rf $(go env GOCACHE)
+        shell: bash
+      - name: Go Build Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-build }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
+      - name: Go Mod Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-mod }}
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+      - name: Task Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/task
+          key: ${{ runner.os }}
+
+      # deps
+      - name: Install Task
+        run: ./scripts/dep-taskfile.sh
+      - name: Install dependencies
+        run: task install-deps
+
+      # run
+
+      - name: Test serial
+        run: task test-series
 
       - name: Test parallel
-        env:
-          AM_TEST_RUNNER: 1
-        run: go test -coverprofile=coverage.txt -covermode=atomic ./...
+        run: task test-coverage
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
-      # TODO
+      # TODO enable
 #      - name: Test race
-#        env:
-#          AM_TEST_RUNNER: 1
-#        run: go test -race ./...
+#        run: task test-race
+
+      - name: Test coverage pkg
+        run: task test-coverage-pkg
+      - name: Test count
+        run: task test-count
+      - name: Test count pkg
+        run: task test-count-pkg
+
+      - name: Numbers to env
+        run: |
+          echo "LOC=$(task cloc-go)" >> $GITHUB_ENV
+          echo "LOC_PKG=$(task cloc-go-pkg)" >> $GITHUB_ENV
+          echo "COVERAGE=$(cat coverage.sum.txt)" >> $GITHUB_ENV
+          echo "COVERAGE_PKG=$(cat coverage-pkg.sum.txt)" >> $GITHUB_ENV
+          echo "TESTS=$(cat tests.txt)" >> $GITHUB_ENV
+          echo "TESTS_PKG=$(cat tests-pkg.txt)" >> $GITHUB_ENV
+
+      - name: Badge - LoC
+        uses: schneegans/dynamic-badges-action@v1.3.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: c6032233dc1d632732ecdc1a4c119850
+          filename: loc.json
+          label: LoC
+          message: ${{ env.LOC }}
+          color: orange
+
+      - name: Badge - LoC /pkg
+        uses: schneegans/dynamic-badges-action@v1.3.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: c6032233dc1d632732ecdc1a4c119850
+          filename: loc-pkg.json
+          label: LoC /pkg
+          message: ${{ env.LOC_PKG }}
+          color: orange
+
+      - name: Badge - tests
+        uses: schneegans/dynamic-badges-action@v1.3.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: c6032233dc1d632732ecdc1a4c119850
+          filename: tests.json
+          label: tests
+          message: ${{ env.TESTS }}
+          color: blue
+
+      - name: Badge - tests /pkg
+        uses: schneegans/dynamic-badges-action@v1.3.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: c6032233dc1d632732ecdc1a4c119850
+          filename: tests-pkg.json
+          label: tests /pkg
+          message: ${{ env.TESTS_PKG }}
+          color: blue
