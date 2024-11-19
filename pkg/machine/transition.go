@@ -227,23 +227,22 @@ func (t *Transition) LogArgs() string {
 
 // String representation of the transition and the steps taken so far.
 func (t *Transition) String() string {
+	// TODO infer handler names
 	var lines []string
-	for k := range t.Steps {
+	for _, step := range t.Steps {
 
-		touch := t.Steps[k]
-		line := ""
-		if touch.ToState != "" {
-			line += touch.ToState + " -> "
+		var line string
+		if step.FromState != "" && step.ToState != "" {
+			line += step.FromState + " -> " + step.ToState
+		} else {
+			name := step.FromState
+			if name == "" {
+				name = step.ToState
+			}
+			line = name
 		}
 
-		line += touch.FromState
-		if touch.Type > 0 {
-			line += touch.Type.String()
-		}
-		if touch.Data != nil {
-			line += "   (" + touch.Data.(string) + ")"
-		}
-
+		line += " (" + step.Type.String() + ")"
 		lines = append(lines, line)
 	}
 
@@ -287,7 +286,7 @@ func (t *Transition) emitSelfEvents() Result {
 			continue
 		}
 		name := s + s
-		step := newStep(s, "", StepHandler, name)
+		step := newStep(s, "", StepHandler, nil)
 		step.IsSelf = true
 		ret, handlerCalled = m.handle(name, t.Mutation.Args, step, false)
 		if handlerCalled {
@@ -340,7 +339,7 @@ func (t *Transition) emitExitEvents() Result {
 }
 
 func (t *Transition) emitHandler(from, to, event string, args A) Result {
-	step := newStep(from, to, StepHandler, event)
+	step := newStep(from, to, StepHandler, nil)
 	t.latestStep = step
 	ret, handlerCalled := t.Machine.handle(event, args, step, false)
 	if handlerCalled {
@@ -364,7 +363,7 @@ func (t *Transition) emitFinalEvents() Result {
 			handler = s + "End"
 		}
 
-		step := newStep(s, "", StepHandler, handler)
+		step := newStep(s, "", StepHandler, nil)
 		step.IsFinal = true
 		step.IsEnter = isEnter
 		t.latestStep = step

@@ -355,19 +355,19 @@ type Step struct {
 	IsEnter bool
 }
 
-// TODO optimize make optional
 func newStep(from string, to string, stepType StepType,
 	data any,
 ) *Step {
+	// TODO optimize with state indexes
 	return &Step{
 		FromState: from,
 		ToState:   to,
 		Type:      stepType,
-		Data:      data,
+		// TODO refac to RelType
+		Data: data,
 	}
 }
 
-// TODO optimize make optional
 func newSteps(from string, toStates S, stepType StepType,
 	data any,
 ) []*Step {
