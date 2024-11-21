@@ -346,6 +346,7 @@ type Step struct {
 	// TODO optimize as index-based ToState() S
 	ToState string
 	// eg a transition method name, relation type
+	// TODO refac to RelType
 	Data any
 	// marks a final handler (FooState, FooEnd)
 	IsFinal bool

@@ -28,7 +28,7 @@
   - [Calculating Target States](#calculating-target-states)
   - [Negotiation Handlers](#negotiation-handlers)
   - [Final Handlers](#final-handlers)
-  - [Global Handlers](#global-handler)
+  - [Global Handlers](#global-handlers)
 - [Advanced Topics](#advanced-topics)
   - [Relations](#relations)
     - [`Add` relation](#add-relation)
@@ -763,7 +763,7 @@ func (h *Handlers) ProcessingFileEnter(e *am.Event) bool {
     // read-only ops
     // decide if moving fwd is ok
     // no blocking
-    // lock-free critical zone
+    // lock-free critical section
     return true
 }
 ```
@@ -825,7 +825,7 @@ execution within it, while asserting the [state context](#clock-and-context) is 
 func (h *Handlers) ProcessingFileState(e *am.Event) {
     // read & write ops
     // no blocking
-    // lock-free critical zone
+    // lock-free critical section
     mach := e.Machine
     // tick-based context
     stateCtx := mach.NewStateCtx("ProcessingFile")
@@ -850,13 +850,24 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 }
 ```
 
-### Global Handler
+### Global Handlers
 
-`AnyAny` is the first final handler and always gets executed. This makes it a global/catch-all
-handler. Using a global handler make the "Empty" filter useless, as every transition always triggers a handler.
+`AnyAny` is the first negotiation handler and always gets executed.
 
 ```go
-func (d *Debugger) AnyAny(e *am.Event) {
+func (d *Debugger) AnyAny(e *am.Event) bool {
+    tx := e.Transition()
+
+    // ...
+
+    return true
+}
+```
+
+`AnyState` is the last final handler and always gets executed for accepted transitions.
+
+```go
+func (d *Debugger) AnyState(e *am.Event) {
     tx := e.Transition()
 
     // redraw on auto states
@@ -866,6 +877,10 @@ func (d *Debugger) AnyAny(e *am.Event) {
     }
 }
 ```
+
+Side effects:
+
+- using a global handler make the "Empty" filter useless in am-dbg, as every transition always triggers a handler.
 
 ## Advanced Topics
 

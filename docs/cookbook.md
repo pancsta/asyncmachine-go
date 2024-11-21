@@ -78,12 +78,18 @@ func (h *Handlers) BarAny(e *am.Event) {}
 func (h *Handlers) AnyFoo(e *am.Event) {}
 ```
 
-## Global handler
+## Global negotiation handler
 
 ```go
-// final global handler
 // always called as a transition from Any state to Any state
-func (h *Handlers) AnyAny(e *am.Event) {}
+func (h *Handlers) AnyAny(e *am.Event) bool {}
+```
+
+## Global final handler
+
+```go
+// always called for accepted transitions
+func (h *Handlers) AnyState(e *am.Event) {}
 ```
 
 ## Common imports
