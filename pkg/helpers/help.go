@@ -6,10 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/failsafe-go/failsafe-go"
@@ -774,3 +776,140 @@ func GetTransitionStates(
 //   maxElement int) {
 //
 // }
+
+type FanFn func(num int, state, stateDone string)
+
+type FanHandlers struct {
+	Concurrency int
+	AnyState    am.HandlerFinal
+	GroupTasks  am.S
+	GroupDone   am.S
+}
+
+// FanOutIn creates [total] numer of state pairs of "Name1" and "Name1Done", as
+// well as init and merge states ("Name", "NameDone"). [name] is treated as a
+// namespace and can't have other states within. Retry can be achieved by adding
+// the init state repetively. FanOutIn can be chained, but it should be called
+// before any mutations or telemetry (as it changes the state struct). The
+// returned handlers struct can be used to adjust concurrency level.
+func FanOutIn(
+	mach *am.Machine, name string, total, concurrency int,
+	fn FanFn,
+) (any, error) {
+	states := mach.GetStruct()
+	suffixDone := "Done"
+
+	if !mach.Has(am.S{name, name + suffixDone}) {
+		return nil, fmt.Errorf("%w: %s", am.ErrStateMissing, name)
+	}
+	base := states[name]
+
+	// create task states
+	groupTasks := make(am.S, total)
+	groupDone := make(am.S, total)
+	for i := range total {
+		num := strconv.Itoa(i)
+		groupTasks[i] = name + num
+		groupDone[i] = name + num + suffixDone
+	}
+	for i := range total {
+		num := strconv.Itoa(i)
+		// task state
+		states[name+num] = base
+		// task completed state, removes task state
+		states[name+num+suffixDone] = am.State{Remove: am.S{name + num}}
+	}
+
+	// inject into a fan-in state
+	done := am.StateAdd(states[name+suffixDone], am.State{
+		Require: groupDone,
+		Remove:  am.S{name},
+	})
+	done.Auto = true
+	states[name+suffixDone] = done
+
+	names := slices.Concat(mach.StateNames(), groupTasks, groupDone)
+	err := mach.SetStruct(states, names)
+	if err != nil {
+		return nil, err
+	}
+
+	// handlers
+	h := FanHandlers{
+		Concurrency: concurrency,
+		GroupTasks:  groupTasks,
+		GroupDone:   groupDone,
+	}
+
+	// simulate fanout states and the init state
+	// Task(e)
+	// Task1(e)
+	// Task2(e)
+	h.AnyState = func(e *am.Event) {
+		// get tx info
+		called := e.Transition().CalledStates()
+		if len(called) < 1 {
+			return
+		}
+
+		for _, state := range called {
+
+			// fan-out state handler, eg Task1
+			// TODO extract to IsFanOutHandler(called am.S, false) bool
+			if strings.HasPrefix(state, name) && len(state) > len(name) &&
+				!strings.HasSuffix(state, suffixDone) {
+
+				iStr, _ := strings.CutPrefix(state, name)
+				num, err := strconv.Atoi(iStr)
+				if err != nil {
+					// TODO
+					panic(err)
+				}
+
+				// call the function and mark as done
+				fn(num, state, state+suffixDone)
+			}
+
+			// fan-out done handler, eg Task1Done
+			// TODO extract to IsFanOutHandler(called am.S, true) bool
+			if strings.HasPrefix(state, name) && len(state) > len(name) &&
+				strings.HasSuffix(state, suffixDone) {
+
+				// call the init state
+				mach.Add1(name, nil)
+			}
+
+			// fan-out init handler, eg Task
+			if state == name {
+
+				// gather remaining ones
+				var remaining am.S
+				for _, name := range groupTasks {
+					// check if done or in progress
+					if mach.Any1(name+suffixDone, name) {
+						continue
+					}
+					remaining = append(remaining, name)
+				}
+
+				// start N threads
+				running := mach.CountActive(groupTasks)
+				// TODO check against running via mach.CountActive
+				for i := running; i < h.Concurrency && len(remaining) > 0; i++ {
+
+					// add a random one
+					idx := rand.Intn(len(remaining))
+					mach.Add1(remaining[idx], nil)
+					remaining = slices.Delete(remaining, idx, idx+1)
+				}
+			}
+		}
+	}
+
+	err = mach.BindHandlers(&h)
+	if err != nil {
+		return nil, err
+	}
+
+	return h, nil
+}

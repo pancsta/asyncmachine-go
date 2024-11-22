@@ -1722,7 +1722,7 @@ func (m *Machine) processStateCtxBindings() {
 
 	m.activeStatesLock.RUnlock()
 
-	// cancel all the state contexts outside the critical zone
+	// cancel all the state contexts outside the critical section
 	for _, cancel := range toCancel {
 		cancel()
 	}
@@ -1806,13 +1806,13 @@ func (m *Machine) processWhenBindings() {
 			} else {
 				m.log(LogOps, "[when:match] %s", j(names))
 			}
-			// close outside the critical zone
+			// close outside the critical section
 			toClose = append(toClose, binding.Ch)
 		}
 	}
 	m.activeStatesLock.Unlock()
 
-	// notify outside the critical zone
+	// notify outside the critical section
 	for ch := range toClose {
 		closeSafe(toClose[ch])
 	}
@@ -1865,13 +1865,13 @@ func (m *Machine) processWhenTimeBindings() {
 			}
 
 			m.log(LogOps, "[whenTime:match] %s %d", j(names), binding.Times)
-			// close outside the critical zone
+			// close outside the critical section
 			toClose = append(toClose, binding.Ch)
 		}
 	}
 	m.activeStatesLock.Unlock()
 
-	// notify outside the critical zone
+	// notify outside the critical section
 	for ch := range toClose {
 		closeSafe(toClose[ch])
 	}
@@ -2498,7 +2498,7 @@ func (m *Machine) WillBeRemoved1(state string) bool {
 }
 
 // Has return true is passed states are registered in the machine. Useful for
-// checking if a machine implements specific state set.
+// checking if a machine implements a specific state set.
 func (m *Machine) Has(states S) bool {
 	if m.Disposed.Load() {
 		return false

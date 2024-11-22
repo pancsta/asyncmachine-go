@@ -250,7 +250,7 @@ func ListHandlers(handlers any, states S) ([]string, error) {
 }
 
 // TODO prevent using these names as state names
-var handlerSuffixes = []string{"Enter", "Exit", "State", "End", "Any"}
+var handlerSuffixes = []string{"Enter", "Exit", "State", "End", Any}
 
 // IsHandler checks if a method name is a handler method, by returning a state
 // name.
@@ -261,14 +261,16 @@ func IsHandler(states S, method string) (string, string) {
 
 	// suffixes
 	for _, suffix := range handlerSuffixes {
-		if strings.HasSuffix(method, suffix) && len(method) != len(suffix) {
+		if strings.HasSuffix(method, suffix) && len(method) != len(suffix) &&
+			method != Any+suffix {
 			return method[0 : len(method)-len(suffix)], ""
 		}
 	}
 
 	// AnyFoo
-	if strings.HasPrefix(method, "Any") && len(method) != len("Any") {
-		return method[len("Any"):], ""
+	if strings.HasPrefix(method, Any) && len(method) != len(Any) &&
+		method != Any+"State" {
+		return method[len(Any):], ""
 	}
 
 	// FooBar

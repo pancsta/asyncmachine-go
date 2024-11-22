@@ -127,8 +127,8 @@ func (d *Debugger) HealthcheckState(_ *am.Event) {
 	d.checkGcMsgs()
 }
 
-// AnyAny is a global handler
-func (d *Debugger) AnyAny(e *am.Event) {
+// AnyState is a global final handler
+func (d *Debugger) AnyState(e *am.Event) {
 	tx := e.Transition()
 
 	// redraw on auto states

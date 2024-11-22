@@ -40,6 +40,10 @@ Table of contents:
 
 - #relations #handlers #async #auto #dependency-graph
 
+### [Fan Out Fan In](/examples/fan_out_in/example_fan_out_in.go)
+
+- #relations #handlers #async #auto #concurrency
+
 ### [FSM - Finite State Machine](/examples/fsm/fsm_test.go)
 
 - #relations #handlers #negotiation #auto

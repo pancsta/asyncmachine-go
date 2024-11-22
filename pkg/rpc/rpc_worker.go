@@ -1046,7 +1046,7 @@ func (w *Worker) processStateCtxBindings(statesBefore am.S) {
 
 	w.clockMx.RUnlock()
 
-	// cancel all the state contexts outside the critical zone
+	// cancel all the state contexts outside the critical section
 	for _, cancel := range toCancel {
 		cancel()
 	}
@@ -1130,13 +1130,13 @@ func (w *Worker) processWhenBindings(statesBefore am.S) {
 			} else {
 				w.log(am.LogOps, "[when:match] %s", j(names))
 			}
-			// close outside the critical zone
+			// close outside the critical section
 			toClose = append(toClose, binding.Ch)
 		}
 	}
 	w.clockMx.Unlock()
 
-	// notifyFailsafe outside the critical zone
+	// notifyFailsafe outside the critical section
 	for ch := range toClose {
 		closeSafe(toClose[ch])
 	}
@@ -1187,13 +1187,13 @@ func (w *Worker) processWhenTimeBindings(timeBefore am.Time) {
 			}
 
 			w.log(am.LogOps, "[whenTime:match] %s %d", j(names), binding.Times)
-			// close outside the critical zone
+			// close outside the critical section
 			toClose = append(toClose, binding.Ch)
 		}
 	}
 	w.clockMx.Unlock()
 
-	// notifyFailsafe outside the critical zone
+	// notifyFailsafe outside the critical section
 	for ch := range toClose {
 		closeSafe(toClose[ch])
 	}

@@ -416,9 +416,8 @@ func (t *Transition) emitEvents() Result {
 	}
 
 	// global AnyAny handler
-	ret := t.emitHandler(Any, Any, Any+Any, t.Mutation.Args)
-	if ret == Canceled {
-		return ret
+	if result != Canceled {
+		result = t.emitHandler(Any, Any, Any+Any, t.Mutation.Args)
 	}
 
 	// FINAL HANDLERS (non cancellable)
@@ -428,6 +427,11 @@ func (t *Transition) emitEvents() Result {
 		result = t.emitFinalEvents()
 
 		hasStateChanged = !m.IsTime(t.TimeBefore, nil)
+	}
+
+	// global AnyState handler
+	if result != Canceled {
+		result = t.emitHandler(Any, Any, Any+"State", t.Mutation.Args)
 	}
 
 	// gather new clock values, overwrite fake TimeAfter
