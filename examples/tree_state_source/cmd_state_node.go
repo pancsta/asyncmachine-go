@@ -189,7 +189,17 @@ func exportTelemetry(node *Node, mach am.Api) {
 
 	// prom metrics
 	if node.Prom != nil {
-		metrics := amprom.BindMach(mach)
+
+		// monitor specific states only for state sources
+		var states am.S
+		if mach.Id() == "root" {
+			states = am.S{
+				ss.Ready, ss.Flight1Departed, ss.Flight2Departed, ss.Flight3Departed,
+				ss.Flight4Departed, ss.Flight5Departed,
+			}
+		}
+
+		metrics := amprom.BindMach(mach, states)
 		amprom.BindToPusher(metrics, node.Prom)
 		node.Metrics = append(node.Metrics, metrics)
 	}
