@@ -625,6 +625,27 @@ func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
 	<-m.WhenDisposed()
 }
 
+func TestRemoveMultiImplied(t *testing.T) {
+	t.Parallel()
+	m := NewNoRels(t, S{"A", "B", "C"})
+
+	// relations
+	m.states["A"] = State{
+		Multi:   true,
+		Add:     S{"B"},
+		Require: S{"C"},
+	}
+	m.states["B"] = State{Require: S{"C"}}
+
+	// remove implied state
+	m.Remove1("B", nil)
+	assertStates(t, m, S{"A", "C"})
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
 // TestQueue
 type TestQueueHandlers struct{}
 

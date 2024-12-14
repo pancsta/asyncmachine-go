@@ -57,25 +57,25 @@ func (rr *DefaultRelationsResolver) NewStruct() {
 
 // GetTargetStates implements RelationsResolver.GetTargetStates.
 func (rr *DefaultRelationsResolver) GetTargetStates(
-	t *Transition, calledStates S,
+	t *Transition, statesToSet S,
 ) S {
 	rr.Transition = t
 	rr.Machine = t.Machine
 	m := t.Machine
-	calledStates = m.MustParseStates(calledStates)
-	calledStates = rr.parseAdd(calledStates)
-	calledStates = slicesUniq(calledStates)
-	calledStates = rr.parseRequire(calledStates)
+	statesToSet = m.MustParseStates(statesToSet)
+	statesToSet = rr.parseAdd(statesToSet)
+	statesToSet = slicesUniq(statesToSet)
+	statesToSet = rr.parseRequire(statesToSet)
 
 	// start from the end
-	resolvedS := slicesReverse(calledStates)
+	resolvedS := slicesReverse(statesToSet)
 
 	// collect blocked calledStates
 	alreadyBlocked := S{}
 
 	// remove already blocked calledStates
 	resolvedS = slicesFilter(resolvedS, func(name string, _ int) bool {
-		blockedBy := rr.stateBlockedBy(calledStates, name)
+		blockedBy := rr.stateBlockedBy(statesToSet, name)
 
 		// ignore blocking by already blocked states
 		blockedBy = slicesFilter(blockedBy, func(blockerName string, _ int) bool {
@@ -212,14 +212,27 @@ func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 			if slices.Contains(t.StatesBefore(), name) && !state.Multi {
 				continue
 			}
-			if slices.Contains(visited, name) || state.Add == nil {
+			if slices.Contains(visited, name) {
 				continue
 			}
 
-			t.addSteps(newSteps(name, state.Add, StepRelation,
+			// filter the Add relation from states called for removal
+			var addStates S
+			for _, add := range state.Add {
+				if t.Type() == MutationRemove &&
+					slices.Contains(t.Mutation.CalledStates, add) {
+					continue
+				}
+				addStates = append(addStates, add)
+			}
+			if addStates == nil {
+				continue
+			}
+
+			t.addSteps(newSteps(name, addStates, StepRelation,
 				RelationAdd)...)
-			t.addSteps(newSteps("", state.Add, StepSet, nil)...)
-			ret = append(ret, state.Add...)
+			t.addSteps(newSteps("", addStates, StepSet, nil)...)
+			ret = append(ret, addStates...)
 			visited = append(visited, name)
 			changed = true
 		}

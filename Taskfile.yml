@@ -149,7 +149,9 @@ tasks:
           ./tools/debugger/test/remote {{.CLI_ARGS}}
 
   precommit:
-    cmd: .git/hooks/pre-commit
+    cmds:
+      - task: format
+      - .git/hooks/pre-commit
 
   clean:
     cmd: go clean -testcache
