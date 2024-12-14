@@ -306,10 +306,13 @@ type StepType int
 const (
 	StepRelation StepType = 1 << iota
 	StepHandler
+	// TODO rename to StepActivate
 	StepSet
 	// StepRemove indicates a step where a state goes active->inactive
+	// TODO rename to StepDeactivate
 	StepRemove
 	// StepRemoveNotActive indicates a step where a state goes inactive->inactive
+	// TODO rename to StepDeactivatePassive
 	StepRemoveNotActive
 	StepRequested
 	StepCancel
@@ -339,48 +342,74 @@ func (tt StepType) String() string {
 // resolving step or a handler call.
 type Step struct {
 	Type StepType
-	// optional, unless no ToState
-	// TODO optimize as index-based FromState() S
-	FromState string
-	// optional, unless no FromState
-	// TODO optimize as index-based ToState() S
-	ToState string
-	// eg a transition method name, relation type
-	// TODO refac to RelType
-	Data any
+	// Only for Type == StepRelation.
+	RelType Relation
 	// marks a final handler (FooState, FooEnd)
 	IsFinal bool
 	// marks a self handler (FooFoo)
 	IsSelf bool
 	// marks an enter handler (FooEnter). Requires IsFinal.
 	IsEnter bool
+	// Deprecated, use GetToState(). TODO remove
+	FromState    string
+	FromStateIdx int
+	// Deprecated, use GetFromState(). TODO remove
+	ToState    string
+	ToStateIdx int
+	// Deprecated, use RelType. TODO remove
+	Data    any
+}
+
+// FromState returns the source state of a step. Optional, unless no ToState().
+func (s *Step) GetFromState(index S) string {
+	// TODO rename to FromState
+	if s.FromStateIdx == -1 {
+		return ""
+	}
+	if s.FromStateIdx < len(index) {
+		return index[s.FromStateIdx]
+	}
+
+	return ""
+}
+
+// ToState returns the target state of a step. Optional, unless no FromState().
+func (s *Step) GetToState(index S) string {
+	// TODO rename to ToState
+	if s.ToStateIdx == -1 {
+		return ""
+	}
+	if s.ToStateIdx < len(index) {
+		return index[s.ToStateIdx]
+	}
+
+	return ""
 }
 
 func newStep(from string, to string, stepType StepType,
-	data any,
+	relType Relation,
 ) *Step {
 	// TODO optimize with state indexes
 	return &Step{
 		FromState: from,
 		ToState:   to,
 		Type:      stepType,
-		// TODO refac to RelType
-		Data: data,
+		RelType:   relType,
 	}
 }
 
 func newSteps(from string, toStates S, stepType StepType,
-	data any,
+	relType Relation,
 ) []*Step {
 	var ret []*Step
 	for _, to := range toStates {
-		ret = append(ret, newStep(from, to, stepType, data))
+		ret = append(ret, newStep(from, to, stepType, relType))
 	}
 	return ret
 }
 
 // Relation enum
-type Relation int
+type Relation int8
 
 const (
 	RelationAfter Relation = iota
