@@ -3,7 +3,7 @@
 package prometheus
 
 // TODO measure auto added states
-// TODO collect also total numbers?
+// TODO export getters for IDs
 
 import (
 	"slices"
@@ -85,6 +85,15 @@ func (t *PromTracer) TransitionEnd(tx *am.Transition) {
 	t.m.statesTouched += uint64(len(touched))
 	t.m.statesTouchedLen++
 
+	// state activations
+	for _, name := range added {
+		_, ok := t.m.stateActivations[name]
+		if !ok {
+			continue
+		}
+		t.m.stateActivations[name]++
+	}
+
 	// time sum
 	currTime := tx.Api.TimeSum(nil)
 	t.m.txTick += currTime - t.prevTime
@@ -117,13 +126,13 @@ func (t *PromTracer) TransitionEnd(tx *am.Transition) {
 // Metrics is a set of Prometheus metrics for asyncmachine.
 type Metrics struct {
 	// Tracer is a Prometheus tracer for the machine. You can detach it any time
-	// using Machine.DetachTracer.
+	// using [am.Machine.DetachTracer].
 	Tracer am.Tracer
 
-	mx         sync.Mutex
-	closed     bool
-
-	// mach definition
+	// StateActivations is a mapping of state names to Prometheus Gauge metrics,
+	// measuring the activation status of each state.
+	StateActivations map[string]prometheus.Gauge
+	stateActivations map[string]int
 
 	// number of registered states
 	StatesAmount prometheus.Gauge
@@ -172,12 +181,12 @@ type Metrics struct {
 	statesTouchedLen uint
 
 	// number of errors
-	ExceptionsCount    prometheus.Gauge
-	exceptionsCount    uint64
+	ExceptionsCount prometheus.Gauge
+	exceptionsCount uint64
 
 	// number of transitions
-	TransitionsCount    prometheus.Gauge
-	transitionsCount    uint64
+	TransitionsCount prometheus.Gauge
+	transitionsCount uint64
 
 	// stats
 
@@ -195,12 +204,18 @@ type Metrics struct {
 	TxTime    prometheus.Gauge
 	txTime    uint64
 	txTimeLen uint
+
+	mx     sync.Mutex
+	closed bool
 }
 
-func newMetrics(mach am.Api) *Metrics {
+func newMetrics(mach am.Api, states am.S) *Metrics {
 	machId := telemetry.NormalizeId(mach.Id())
 
-	return &Metrics{
+	m := &Metrics{
+
+		StateActivations: make(map[string]prometheus.Gauge),
+		stateActivations: make(map[string]int),
 
 		// mach definition
 
@@ -215,8 +230,8 @@ func newMetrics(mach am.Api) *Metrics {
 			Namespace: "am",
 		}),
 		RefStatesAmount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "ref_states_" + machId,
-			Help: "Number of states referenced by relations",
+			Name:      "ref_states_" + machId,
+			Help:      "Number of states referenced by relations",
 			Namespace: "am",
 		}),
 
@@ -283,6 +298,20 @@ func newMetrics(mach am.Api) *Metrics {
 			Namespace: "am",
 		}),
 	}
+
+	// init gauges for each monitored state
+	for _, name := range states {
+		// Assuming `s` has an Id() method returning its ID
+		gauge := prometheus.NewGauge(prometheus.GaugeOpts{
+			Name:      "state_added_" + name + "_" + machId,
+			Help:      "Number of activations for state " + name,
+			Namespace: "am",
+		})
+		m.StateActivations[name] = gauge
+		m.stateActivations[name] = 0
+	}
+	
+	return m
 }
 
 // Sync synchronizes the metrics with the current counters, averaging certain
@@ -312,6 +341,12 @@ func (m *Metrics) Sync() {
 	m.StepsAmount.Set(average(m.stepsAmount, m.stepsAmountLen))
 	m.HandlersAmount.Set(average(m.handlersAmount, m.handlersAmountLen))
 	m.TxTime.Set(average(m.txTime, m.txTimeLen))
+
+	// sync state activations
+	for name, val := range m.stateActivations {
+		m.StateActivations[name].Set(float64(val))
+		m.stateActivations[name] = 0
+	}
 
 	// reset buffers
 	m.queueSize = 0
@@ -363,11 +398,17 @@ func (m *Metrics) Close() {
 	m.StepsAmount.Set(0)
 	m.HandlersAmount.Set(0)
 	m.TxTime.Set(0)
+
+	for _, gauge := range m.StateActivations {
+		gauge.Set(0)
+	}
 }
 
-// BindMach bind transitions to Prometheus metrics.
-func BindMach(mach am.Api) *Metrics {
-	metrics := newMetrics(mach)
+// BindMach bind transitions to Prometheus metrics. Optionally monitors
+// activations of passed states.
+func BindMach(mach am.Api, states am.S) *Metrics {
+	// TODO states param, create a gauge for each, support in tools/generator
+	metrics := newMetrics(mach, states)
 
 	// state & relations
 	// TODO bind in StructChange
@@ -427,6 +468,11 @@ func BindToPusher(metrics *Metrics, pusher *push.Pusher) {
 
 	// errors
 	pusher.Collector(metrics.ExceptionsCount)
+
+	// state activations
+	for _, gauge := range metrics.StateActivations {
+		pusher.Collector(gauge)
+	}
 }
 
 func BindToRegistry(metrics *Metrics, registry *prometheus.Registry) {
@@ -453,6 +499,11 @@ func BindToRegistry(metrics *Metrics, registry *prometheus.Registry) {
 
 	// errors
 	registry.MustRegister(metrics.ExceptionsCount)
+
+	// state activations
+	for _, gauge := range metrics.StateActivations {
+		registry.MustRegister(gauge)
+	}
 }
 
 func average(sum uint64, sampleLen uint) float64 {
@@ -462,4 +513,3 @@ func average(sum uint64, sampleLen uint) float64 {
 
 	return float64(sum / uint64(sampleLen))
 }
-
