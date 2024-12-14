@@ -592,7 +592,7 @@ func (c *Client) GetKind() Kind {
 // is active.
 func (c *Client) ensureGroupConnected() {
 	groupConn := states.ClientGroups.Connected
-	if !c.Mach.Any(groupConn) && !c.Mach.WillBe(groupConn) {
+	if !c.Mach.Any1(groupConn...) && !c.Mach.WillBe(groupConn) {
 		c.Mach.Add1(ssC.Disconnected, nil)
 	}
 }
