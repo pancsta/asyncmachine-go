@@ -882,6 +882,7 @@ func (d *Debugger) HelpDialogEnd(e *am.Event) {
 	if len(diff) == len(ss.GroupDialog) {
 		// all dialogs closed, show main
 		d.LayoutRoot.SendToFront("main")
+		d.updateFocusable()
 	}
 }
 
@@ -896,6 +897,7 @@ func (d *Debugger) ExportDialogEnd(e *am.Event) {
 	if len(diff) == len(ss.GroupDialog) {
 		// all dialogs closed, show main
 		d.LayoutRoot.SendToFront("main")
+		d.updateFocusable()
 	}
 }
 

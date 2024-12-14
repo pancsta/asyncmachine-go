@@ -110,7 +110,7 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.IntP(pStartupTx, pStartupTxShort, 0,
 		"Select a transaction by _number_ on startup (requires --"+
 			pStartupMach+")")
-	f.Bool(pEnableMouse, false,
+	f.Bool(pEnableMouse, true,
 		"Enable mouse support (experimental)")
 	f.Bool(pCleanOnConnect, false,
 		"Clean up disconnected clients on the 1st connection")
