@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/soheilhy/cmux"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -20,6 +21,7 @@ import (
 type RPCServer struct {
 	Mach   *am.Machine
 	ConnID string
+	FwdTo  []*rpc.Client
 }
 
 func (r *RPCServer) DbgMsgStruct(
@@ -30,6 +32,14 @@ func (r *RPCServer) DbgMsgStruct(
 		"conn_id":    r.ConnID,
 		"Client.id":  msgStruct.ID,
 	})
+
+	// fwd to other instances
+	for _, fwd := range r.FwdTo {
+		err := fwd.Call("RPCServer.DbgMsgStruct", msgStruct, nil)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -65,10 +75,20 @@ func (r *RPCServer) DbgMsgTx(msgTx *telemetry.DbgMsgTx, _ *string) error {
 	msgTx.Time = &now
 	queue = append(queue, msgTx)
 
+	// fwd to other instances
+	for _, fwd := range r.FwdTo {
+		err := fwd.Call("RPCServer.DbgMsgTx", msgTx, nil)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
-func StartRpc(mach *am.Machine, addr string, mux chan<- cmux.CMux) {
+func StartRpc(
+	mach *am.Machine, addr string, mux chan<- cmux.CMux, fwdAdds []string,
+) {
 	var err error
 	gob.Register(am.Relation(0))
 	if addr == "" {
@@ -83,6 +103,16 @@ func StartRpc(mach *am.Machine, addr string, mux chan<- cmux.CMux) {
 	}
 	mach.Log("dbg server started at %s", addr)
 
+	// conenct to other instances
+	fwdTo := make([]*rpc.Client, len(fwdAdds))
+	for i, a := range fwdAdds {
+		fwdTo[i], err = rpc.Dial("tcp", a)
+		if err != nil {
+			fmt.Errorf("Cant fwd to %s: %s\n", a, err)
+			os.Exit(1)
+		}
+	}
+
 	// cmux
 	m := cmux.New(lis)
 	// push out for IoC
@@ -91,7 +121,7 @@ func StartRpc(mach *am.Machine, addr string, mux chan<- cmux.CMux) {
 	}
 
 	rpcL := m.Match(cmux.Any())
-	go rpcAccept(rpcL, mach)
+	go rpcAccept(rpcL, mach, fwdTo)
 
 	// start cmux
 	if err := m.Serve(); err != nil {
@@ -100,7 +130,7 @@ func StartRpc(mach *am.Machine, addr string, mux chan<- cmux.CMux) {
 	}
 }
 
-func rpcAccept(l net.Listener, mach *am.Machine) {
+func rpcAccept(l net.Listener, mach *am.Machine, fwdTo []*rpc.Client) {
 	// TODO restart on error
 	defer mach.PanicToErr(nil)
 
@@ -119,6 +149,7 @@ func rpcAccept(l net.Listener, mach *am.Machine) {
 			rcvr := &RPCServer{
 				Mach:   mach,
 				ConnID: connID,
+				FwdTo:  fwdTo,
 			}
 
 			err = server.Register(rcvr)
@@ -130,6 +161,8 @@ func rpcAccept(l net.Listener, mach *am.Machine) {
 				os.Exit(1)
 			}
 			server.ServeConn(conn)
+
+			// TODO pass to range fwdTo (dedicated RPC method)
 			rcvr.Mach.Add1(ss.DisconnectEvent, am.A{"conn_id": connID})
 		}()
 	}
