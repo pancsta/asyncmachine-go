@@ -17,8 +17,8 @@
 > machine. It has atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
 **/pkg/node** provides distributed workflows via state-based orchestration of worker pools. Features a failsafe
-supervision, and state machines for workers and clients. All the components communicate via [aRPC](/pkg/rpc/README.md),
-and each worker is started in a separate OS process.
+supervision, as well as state machines for workers and clients. All actors communicate via [aRPC](/pkg/rpc/README.md),
+as each worker is started in a separate OS process.
 
 ## Workflow Rules
 
@@ -244,6 +244,11 @@ err := amhelp.WaitForAll(ctx, 2*time.Second,
 worker := client.WorkerRpc.Worker
 worker.Add1(ssnode.WorkerStates.WorkRequested, am.A{"input": 2})
 ```
+
+## TODO
+
+- supervisor redundancy
+- connecting to a pool of supervisors +rotation
 
 ## Documentation
 

@@ -270,7 +270,7 @@ func (h *Handlers) ProcessingFileEnter(e *am.Event) bool {
     // read-only ops
     // decide if moving fwd is ok
     // no blocking
-    // lock-free critical zone
+    // lock-free critical section
     return true
 }
 
@@ -278,7 +278,7 @@ func (h *Handlers) ProcessingFileEnter(e *am.Event) bool {
 func (h *Handlers) ProcessingFileState(e *am.Event) {
     // read & write ops
     // no blocking
-    // lock-free critical zone
+    // lock-free critical section
     mach := e.Machine
     // tick-based context
     stateCtx := mach.NewStateCtx("ProcessingFile")

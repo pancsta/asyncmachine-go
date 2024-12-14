@@ -41,8 +41,8 @@ It has atomic transitions, [RPC](/pkg/rpc/README.md), logging, [TUI debugger](/t
 
 Use cases depend on the layer of the stack used, and range from [goroutine synchronization](/pkg/machine/README.md) and
 [state synchronization](/pkg/rpc/README.md) to [worker synchronization](/pkg/node/README.md), bots, LLM agents,
-consensus algos, etc. **Asyncmachine-go** can precisely target a specific scenario and bring structure to event-based
-systems. It takes care of most contexts, `select` statements, and panics.
+consensus algos, etc. **Asyncmachine-go** can precisely target a specific scenario in a non-opaque way, and bring
+structure to event-based systems. It takes care of most contexts, `select` statements, and panics.
 
 ## Stack
 
@@ -315,7 +315,7 @@ Each state has a counter of activations, and all state counters create "machine 
 
 ### What's the difference between states and events?
 
-Same event happening in a series will cause 1 state activation, until the state becomes inactive.
+Same event happening many times will cause only 1 state activation, until the state becomes inactive.
 
 ### How do I do X/Y/Z in asyncmachine?
 
