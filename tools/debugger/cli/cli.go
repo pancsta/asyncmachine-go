@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -17,12 +18,12 @@ import (
 
 const (
 	// TODO remove
-	pLogFile          = "log-file"
+	pLogFile = "log-file"
 	// TODO remove
-	pLogLevel         = "log-level"
+	pLogLevel = "log-level"
 	// TODO refac: --addr
-	pServerAddr       = "listen-on"
-	pServerAddrShort  = "l"
+	pServerAddr      = "listen-on"
+	pServerAddrShort = "l"
 	// TODO remove
 	pAmDbgAddr        = "am-dbg-addr"
 	pEnableMouse      = "enable-mouse"
@@ -38,12 +39,10 @@ const (
 	pStartupTxShort   = "t"
 	pView             = "view"
 	pViewShort        = "v"
-	// TODO remove
-	pProfMem          = "prof-mem"
-	// TODO remove
-	pProfCpu          = "prof-cpu"
 	// TODO AM_DBG_PROF
-	pProfSrv          = "prof-srv"
+	pProfSrv = "prof-srv"
+	pMaxMem  = "max-mem"
+	pLog2Ttl = "log-2-ttl"
 	// TODO --filters
 	// TODO --view
 	// TODO --rain
@@ -68,7 +67,9 @@ type Params struct {
 	SelectConnected bool
 	ProfMem         bool
 	ProfCpu         bool
-	ProfSrv         bool
+	ProfSrv  bool
+	MaxMemMb int
+	Log2Ttl  time.Duration
 }
 
 type RootFn func(cmd *cobra.Command, args []string, params Params)
@@ -116,14 +117,14 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.BoolP(pSelectConn, pSelectConnShort, false,
 		"Select the newly connected machine, if no other is connected")
 	f.StringP(pImport, pImportShort, "",
-		"ImportFile an exported gob.bt file")
+		"Import an exported gob.bt file")
 	f.Bool(pVersion, false,
 		"Print version and exit")
 
-	// profile
-	f.Bool(pProfMem, false, "Profile memory usage")
-	f.Bool(pProfCpu, false, "Profile CPU usage")
+	// profile & mem
 	f.Bool(pProfSrv, false, "Start pprof server on :6060")
+	f.Int(pMaxMem, 100, "Max memory usage (in MB) to flush old transitions")
+	f.String(pLog2Ttl, "24h", "Max time to live for logs level 2")
 }
 
 func ParseParams(cmd *cobra.Command, _ []string) Params {
@@ -151,6 +152,14 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 	if err != nil {
 		panic(err)
 	}
+	maxMem, err := cmd.Flags().GetInt(pMaxMem)
+	if err != nil {
+		panic(err)
+	}
+	log2Ttl, err := time.ParseDuration(cmd.Flag(pLog2Ttl).Value.String())
+	if err != nil {
+		panic(err)
+	}
 
 	enableMouse, err := cmd.Flags().GetBool(pEnableMouse)
 	if err != nil {
@@ -163,16 +172,6 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 	}
 
 	selectConnected, err := cmd.Flags().GetBool(pSelectConn)
-	if err != nil {
-		panic(err)
-	}
-
-	profMem, err := cmd.Flags().GetBool(pProfMem)
-	if err != nil {
-		panic(err)
-	}
-
-	profCpu, err := cmd.Flags().GetBool(pProfCpu)
 	if err != nil {
 		panic(err)
 	}
@@ -197,9 +196,9 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 		SelectConnected: selectConnected,
 
 		// profiling
-		ProfMem: profMem,
-		ProfCpu: profCpu,
-		ProfSrv: profSrv,
+		ProfSrv:  profSrv,
+		MaxMemMb: maxMem,
+		Log2Ttl:  log2Ttl,
 	}
 }
 

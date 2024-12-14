@@ -45,7 +45,7 @@ const (
 	// TODO customize
 	playInterval = 500 * time.Millisecond
 	// TODO add param --max-clients
-	maxClients            = 500
+	maxClients            = 1000
 	timeFormat            = "15:04:05.000000000"
 	fastJumpAmount        = 50
 	arrowThrottleMs       = 200
@@ -55,10 +55,9 @@ const (
 	healthcheckInterval   = 5 * time.Second
 	// msgMaxAge             = 0
 
-	msgMaxAmount = 30_000
-	// msgMaxAmount = 100
+	// maxMemMb = 100
+	maxMemMb = 50
 	msgMaxThreshold = 300
-	// msgMaxThreshold = 30
 )
 
 type Exportable struct {
@@ -201,11 +200,8 @@ type Opts struct {
 	ID string
 	// version of this instance
 	Version string
-	// TODO
-	MsgMaxAmount int
-	// TODO
-	MsgMaxAge time.Duration
-	NoGc      bool
+	MaxMemMb int
+	Log2Ttl  time.Duration
 }
 
 type OptsFilters struct {
@@ -297,13 +293,12 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 			LogLevel: am.LogChanges,
 		}
 	}
-	if d.Opts.MsgMaxAmount == 0 {
-		d.Opts.MsgMaxAmount = msgMaxAmount
+	if d.Opts.MaxMemMb == 0 {
+		d.Opts.MaxMemMb = maxMemMb
 	}
-	// TODO
-	// if d.Opts.MsgMaxAge == 0 {
-	// 	d.Opts.MsgMaxAge = msgMaxAge
-	// }
+	if d.Opts.Log2Ttl == 0 {
+		d.Opts.Log2Ttl = time.Hour
+	}
 
 	gob.Register(Exportable{})
 	gob.Register(am.Relation(0))
@@ -765,12 +760,6 @@ func (d *Debugger) parseMsg(c *Client, idx int) {
 	// TODO verify hosts by token, to distinguish 2 hosts with the same ID
 	msgTx := c.MsgTxs[idx]
 
-	// optimize space
-	msgTx.CalledStatesIdxs = amhelp.StatesToIndexes(c.MsgStruct.StatesIndex,
-		msgTx.CalledStates)
-	msgTx.MachineID = ""
-	msgTx.CalledStates = nil
-
 	var sum uint64
 	for _, v := range msgTx.Clocks {
 		sum += v
@@ -791,6 +780,18 @@ func (d *Debugger) parseMsg(c *Client, idx int) {
 		StatesAdded:   c.statesToIndexes(added),
 		StatesRemoved: c.statesToIndexes(removed),
 		StatesTouched: c.statesToIndexes(touched),
+	}
+
+	// optimize space
+	msgTx.CalledStatesIdxs = amhelp.StatesToIndexes(index,
+		msgTx.CalledStates)
+	msgTx.MachineID = ""
+	msgTx.CalledStates = nil
+	for _, step := range msgTx.Steps {
+		step.FromStateIdx = slices.Index(index, step.FromState)
+		step.ToStateIdx = slices.Index(index, step.ToState)
+		step.FromState = ""
+		step.ToState = ""
 	}
 
 	// errors
@@ -1445,9 +1446,9 @@ func (d *Debugger) updateMatrixRelations() {
 			for _, step := range steps {
 
 				// TODO style just the cells
-				if step.FromState == source &&
-					((step.ToState == "" && source == target) ||
-						step.ToState == target) {
+				if step.GetFromState(c.MsgStruct.StatesIndex) == source &&
+					((step.ToStateIdx == -1 && source == target) ||
+						step.GetToState(c.MsgStruct.StatesIndex) == target) {
 					v += int(step.Type)
 				}
 
@@ -1760,25 +1761,8 @@ func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
 	d.draw()
 }
 
-func (d *Debugger) checkGcMsgs() am.Result {
-	if d.Opts.NoGc {
-		return am.Canceled
-	}
-
-	// get clients and check
-	var clients []*Client
-	msgs := 0
-	for _, c := range d.Clients {
-		clients = append(clients, c)
-		msgs += len(c.MsgTxs)
-	}
-	if msgs < d.Opts.MsgMaxAmount {
-		return am.ResultNoOp
-	}
-
-	// TODO Pass()
-	return d.Mach.Add1(ss.GcMsgs, am.A{
-		"msgCount":   msgs,
-		"[]*Clients": clients,
-	})
+func allocMem() uint64 {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.Alloc
 }
