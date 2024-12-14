@@ -19,9 +19,9 @@ type Focusable struct {
 }
 
 type filter struct {
-	id     string
+	id     FilterName
 	label  string
-	active bool
+	active func() bool
 }
 
 // TODO migrate to Provide-Delivered

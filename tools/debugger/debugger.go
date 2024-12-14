@@ -23,7 +23,9 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/gdamore/tcell/v2"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/cview"
+	"github.com/zyedidia/clipper"
 	"golang.org/x/text/message"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
@@ -64,6 +66,30 @@ const (
 type Exportable struct {
 	MsgStruct *telemetry.DbgMsgStruct
 	MsgTxs    []*telemetry.DbgMsgTx
+}
+
+type MachAddress struct {
+	MachId   string
+	TxId     string
+	Step     int
+	MachTime uint64
+}
+
+func (ma *MachAddress) Clone() *MachAddress {
+	return &MachAddress{
+		MachId:   ma.MachId,
+		TxId:     ma.TxId,
+		Step:     ma.Step,
+		MachTime: ma.MachTime,
+	}
+}
+
+func (a *MachAddress) String() string {
+	if a.TxId != "" {
+		return fmt.Sprintf("mach://%s/%s", a.MachId, a.TxId)
+	}
+
+	return fmt.Sprintf("mach://%s", a.MachId)
 }
 
 type Client struct {
@@ -209,24 +235,26 @@ type Opts struct {
 }
 
 type OptsFilters struct {
-	SkipCanceledTx bool
-	SkipAutoTx     bool
-	SkipEmptyTx    bool
-	LogLevel       am.LogLevel
+	SkipCanceledTx  bool
+	SkipAutoTx      bool
+	SkipEmptyTx     bool
+	SkipHealthcheck bool
+	LogLevel        am.LogLevel
 }
 
 type FilterName string
 
 const (
-	filterCanceledTx FilterName = "skip-canceled"
-	filterAutoTx     FilterName = "skip-auto"
-	filterEmptyTx    FilterName = "skip-empty"
-	FilterSummaries  FilterName = "hide-summaries"
-	filterLog0       FilterName = "log-0"
-	filterLog1       FilterName = "log-1"
-	filterLog2       FilterName = "log-2"
-	filterLog3       FilterName = "log-3"
-	filterLog4       FilterName = "log-4"
+	filterCanceledTx  FilterName = "skip-canceled"
+	filterAutoTx      FilterName = "skip-auto"
+	filterEmptyTx     FilterName = "skip-empty"
+	filterHealthcheck FilterName = "skip-healthcheck"
+	FilterSummaries   FilterName = "hide-summaries"
+	filterLog0        FilterName = "log-0"
+	filterLog1        FilterName = "log-1"
+	filterLog2        FilterName = "log-2"
+	filterLog3        FilterName = "log-3"
+	filterLog4        FilterName = "log-4"
 )
 
 type Debugger struct {
@@ -243,6 +271,9 @@ type Debugger struct {
 	App *cview.Application
 	// printer for numbers
 	P *message.Printer
+	// TODO GC removed machines
+	History       []*MachAddress
+	HistoryCursor int
 
 	tree               *cview.TreeView
 	treeRoot           *cview.TreeNode
@@ -271,15 +302,19 @@ type Debugger struct {
 	focusManager       *cview.FocusManager
 	exportDialog       *cview.Modal
 	contentPanels      *cview.Panels
-	filtersBar         *cview.TextView
-	focusedFilter      FilterName
+	filtersBar         *cview.Table
 	treeLogGrid        *cview.Grid
 	treeMatrixGrid     *cview.Grid
 	lastSelectedState  string
 	// TODO should be a redraw, not before
-	redrawCallback func()
-	healthcheck    *time.Ticker
-	logReader      *cview.TreeView
+	redrawCallback  func()
+	healthcheck     *time.Ticker
+	logReader       *cview.TreeView
+	helpDialogRight *cview.TextView
+	addressBar      *cview.Table
+	tagsBar         *cview.TextView
+	clip            clipper.Clipboard
+	filters         []filter
 }
 
 // New creates a new debugger instance and optionally import a data file.
@@ -345,6 +380,13 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		mach.Log("Imported data in %s", time.Since(start))
 	}
 
+	// clipboard
+	clip, err := clipper.GetClipboard(clipper.Clipboards...)
+	if err != nil {
+		mach.AddErr(fmt.Errorf("clipboard init: %w", err), nil)
+	}
+	d.clip = clip
+
 	return d, nil
 }
 
@@ -353,6 +395,126 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 // ///// PUB
 
 // ///// ///// /////
+
+// GetMachAddress returns the address of the currently visible view (mach, tx).
+func (d *Debugger) GetMachAddress() *MachAddress {
+	if d.C == nil {
+		return nil
+	}
+	a := &MachAddress{
+		MachId: d.C.id,
+	}
+	if d.C.CursorTx > 0 {
+		a.TxId = d.C.MsgTxs[d.C.CursorTx-1].ID
+	}
+	// TODO mach time
+
+	return a
+}
+
+// GoToMachAddress tries to render a view of the provided address (mach, tx).
+func (d *Debugger) GoToMachAddress(addr *MachAddress, skipHistory bool) bool {
+	// TODO support machTime
+
+	if addr.MachId == "" {
+		return false
+	}
+
+	// select mach, if not selected
+	if d.C == nil || d.C.id != addr.MachId {
+		res := d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": addr.MachId})
+		if res == am.Canceled {
+			return false
+		}
+	}
+
+	// TODO ctx
+	<-d.Mach.When1(ss.ClientSelected, nil)
+	if addr.TxId != "" {
+		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": addr.TxId})
+	} else if addr.MachTime != 0 {
+		tx := d.C.tx(d.C.txByMachTime(addr.MachTime))
+		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
+	}
+	if !skipHistory {
+		d.prependHistory(addr)
+		d.updateAddressBar()
+		d.draw(d.addressBar)
+	}
+
+	return true
+}
+
+func (d *Debugger) removeHistory(clientId string) {
+	hist := make([]*MachAddress, 0)
+	for i, item := range d.History {
+		if i <= d.HistoryCursor && d.HistoryCursor > 0 {
+			d.HistoryCursor--
+		}
+		if item.MachId == clientId {
+			continue
+		}
+
+		hist = append(hist, item)
+	}
+
+	d.History = hist
+}
+
+func (d *Debugger) prependHistory(addr *MachAddress) {
+	d.trimHistory()
+	d.History = slices.Concat([]*MachAddress{addr}, d.History)
+}
+
+// trimHistory will trim the head to the current position, making it the newest
+// entry
+func (d *Debugger) trimHistory() {
+	// remove head
+	if d.HistoryCursor > 0 {
+		rm := d.HistoryCursor
+		if rm >= len(d.History) {
+			rm = len(d.History)
+		}
+		d.History = d.History[rm:]
+	}
+
+	// prepend
+	d.HistoryCursor = 0
+	if len(d.History) > 100 {
+		d.History = d.History[100:]
+	}
+}
+
+func (d *Debugger) getClient(machId string) *Client {
+	if d.Clients == nil {
+		return nil
+	}
+	c, ok := d.Clients[machId]
+	if !ok {
+		return nil
+	}
+
+	return c
+}
+
+func (d *Debugger) getClientTx(
+	machId, txId string,
+) (*Client, *telemetry.DbgMsgTx) {
+	c := d.getClient(machId)
+	if c == nil {
+		return nil, nil
+	}
+	idx := c.txIndex(txId)
+	if idx < 0 {
+		return nil, nil
+	}
+	tx := c.tx(idx)
+	if tx == nil {
+		return nil, nil
+	}
+
+	return c, tx
+}
 
 // Client returns the current Client. Thread safe via Eval().
 func (d *Debugger) Client() *Client {
@@ -583,90 +745,116 @@ func (d *Debugger) ImportData(filename string) {
 // ///// ///// /////
 
 func (d *Debugger) updateFiltersBar() {
+	// TODO save filters per machine checkbox
+
 	focused := d.Mach.Is1(ss.FiltersFocused)
 	f := fmt.Sprintf
-	text := ""
-
-	// title
-	if focused {
-		text += "[::bu]F[::-][::b]ilters:[::-]"
-	} else {
-		text += "[::u]F[::-]ilters:"
-	}
-
-	// TODO extract
-	filters := []filter{
-		{
-			id:     "skip-canceled",
-			label:  "Skip Canceled",
-			active: d.Mach.Is1(ss.FilterCanceledTx),
-		},
-		{
-			id:     "skip-auto",
-			label:  "Skip Auto",
-			active: d.Mach.Is1(ss.FilterAutoTx),
-		},
-		{
-			id:     "skip-empty",
-			label:  "Skip Empty",
-			active: d.Mach.Is1(ss.FilterEmptyTx),
-		},
-		{
-			id:     "hide-summaries",
-			label:  "Hide Summaries",
-			active: d.Mach.Is1(ss.FilterSummaries),
-		},
-		{
-			id:     "log-0",
-			label:  "L0",
-			active: d.Opts.Filters.LogLevel == am.LogNothing,
-		},
-		{
-			id:     "log-1",
-			label:  "L1",
-			active: d.Opts.Filters.LogLevel == am.LogChanges,
-		},
-		{
-			id:     "log-2",
-			label:  "L2",
-			active: d.Opts.Filters.LogLevel == am.LogOps,
-		},
-		{
-			id:     "log-3",
-			label:  "L3",
-			active: d.Opts.Filters.LogLevel == am.LogDecisions,
-		},
-		{
-			id:     "log-4",
-			label:  "L4",
-			active: d.Opts.Filters.LogLevel == am.LogEverything,
-		},
-	}
+	_, sel := d.filtersBar.GetSelection()
 
 	// tx filters
-	for _, item := range filters {
+	for i, item := range d.filters {
+		text := ""
 
 		// checked
-		if item.active {
+		if item.active() {
 			text += f(" [::b]%s[::-]", cview.Escape("[X]"))
 		} else {
 			text += f(" [ ]")
 		}
 
 		// focused
-		if d.focusedFilter == FilterName(item.id) && focused {
-			text += f("[%s][::bu]%s[::-]", colorActive, item.label)
+		if d.filters[sel].id == FilterName(item.id) && focused {
+			text += "[white]" + item.label
 		} else if !focused {
 			text += f("[%s]%s", colorHighlight2, item.label)
 		} else {
 			text += f("%s", item.label)
 		}
 
-		text += "[-]"
+		cell := d.filtersBar.GetCell(0, i)
+		cell.SetText(text)
+		d.filtersBar.SetCell(0, i, cell)
+	}
+}
+
+func (d *Debugger) updateAddressBar() {
+	machId := ""
+	machConn := false
+	txId := ""
+	if d.C != nil {
+		machId = d.C.id
+		if d.C.CursorTx > 0 {
+			txId = d.C.MsgTxs[d.C.CursorTx-1].ID
+		}
+		machConn = d.C.connected.Load()
 	}
 
-	// TODO save filters per machine checkbox
-	d.filtersBar.SetText(text)
+	// copy
+	copyCell := d.addressBar.GetCell(0, 6)
+	copyCell.SetBackgroundColor(tcell.ColorLightGray)
+	copyCell.SetTextColor(tcell.ColorBlack)
+	if machId == "" {
+		copyCell.SetSelectable(false)
+		copyCell.SetBackgroundColor(tcell.ColorDefault)
+	} else {
+		copyCell.SetSelectable(true)
+	}
+	pasteCell := d.addressBar.GetCell(0, 8)
+	pasteCell.SetTextColor(tcell.ColorBlack)
+	pasteCell.SetBackgroundColor(tcell.ColorLightGray)
+
+	// history
+	fwdCell := d.addressBar.GetCell(0, 2)
+	fwdCell.SetBackgroundColor(tcell.ColorLightGray)
+	fwdCell.SetTextColor(tcell.ColorBlack)
+	if d.HistoryCursor > 0 {
+		fwdCell.SetSelectable(true)
+	} else {
+		fwdCell.SetSelectable(false)
+		fwdCell.SetTextColor(tcell.ColorGray)
+		fwdCell.SetBackgroundColor(tcell.ColorDefault)
+	}
+	backCell := d.addressBar.GetCell(0, 0)
+	backCell.SetBackgroundColor(tcell.ColorLightGray)
+	backCell.SetTextColor(tcell.ColorBlack)
+	if d.HistoryCursor < len(d.History)-1 {
+		backCell.SetSelectable(true)
+	} else {
+		backCell.SetSelectable(false)
+		backCell.SetTextColor(tcell.ColorGray)
+		backCell.SetBackgroundColor(tcell.ColorDefault)
+	}
+
+	// detect clipboard
+	if d.clip == nil {
+		copyCell.SetTextColor(tcell.ColorGrey)
+		copyCell.SetSelectable(false)
+		copyCell.SetBackgroundColor(tcell.ColorDefault)
+		pasteCell.SetTextColor(tcell.ColorGrey)
+		pasteCell.SetSelectable(false)
+		pasteCell.SetBackgroundColor(tcell.ColorDefault)
+	}
+
+	// address
+	machColor := "[grey]"
+	if machConn {
+		machColor = "[" + colorActive.String() + "]"
+	}
+	addrCell := d.addressBar.GetCell(0, 4)
+	if machId != "" && txId != "" {
+		addrCell.SetText(machColor + "mach://[-][::u]" + machId +
+			"[::-][grey]/[-]" + txId)
+	} else if machId != "" {
+		addrCell.SetText(machColor + "mach://[-][::u]" + machId)
+	} else {
+		addrCell.SetText("[grey]mach://[-]")
+	}
+
+	// tags
+	d.tagsBar.SetText("")
+	if machId != "" && len(d.C.MsgStruct.Tags) > 0 {
+		d.tagsBar.SetText("Tags: #" + strings.Join(d.C.MsgStruct.Tags, " #"))
+	}
 }
 
 func (d *Debugger) updateViews(immediate bool) {
@@ -1332,6 +1520,7 @@ func (d *Debugger) doCleanOnConnect() bool {
 			// TODO cant be scheduled, as the client can connect in the meantime
 			// d.Add1(ss.RemoveClient, am.A{"Client.id": c.id})
 			delete(d.Clients, c.id)
+			d.removeHistory(c.id)
 			// c.msgTxsParsed = nil
 			// c.logMsgs = nil
 			// c.MsgTxs = nil
@@ -1652,10 +1841,11 @@ func (d *Debugger) filterClientTxs() {
 	auto := d.Mach.Is1(ss.FilterAutoTx)
 	empty := d.Mach.Is1(ss.FilterEmptyTx)
 	canceled := d.Mach.Is1(ss.FilterCanceledTx)
+	healthcheck := d.Mach.Is1(ss.FilterHealthcheck)
 
 	d.C.msgTxsFiltered = nil
 	for i := range d.C.MsgTxs {
-		if d.filterTx(d.C, i, auto, empty, canceled) {
+		if d.filterTx(d.C, i, auto, empty, canceled, healthcheck) {
 			d.C.msgTxsFiltered = append(d.C.msgTxsFiltered, i)
 		}
 	}
@@ -1668,7 +1858,7 @@ func (d *Debugger) isFiltered() bool {
 
 // filterTx returns true when a TX passed the passed filters.
 func (d *Debugger) filterTx(
-	c *Client, idx int, auto, empty, canceled bool,
+	c *Client, idx int, auto, empty, canceled, healthcheck bool,
 ) bool {
 	tx := c.MsgTxs[idx]
 
@@ -1697,6 +1887,24 @@ func (d *Debugger) filterTx(
 		}
 	}
 
+	// healthcheck
+	hCheck := ssam.BasicStates.Healthcheck
+	hBeat := ssam.BasicStates.Heartbeat
+	if healthcheck && len(parsed.StatesAdded) == 1 &&
+		len(parsed.StatesRemoved) == 0 {
+		if c.indexesToStates(parsed.StatesAdded)[0] == hCheck ||
+			c.indexesToStates(parsed.StatesAdded)[0] == hBeat {
+			return false
+		}
+	}
+	if healthcheck && len(parsed.StatesRemoved) == 1 &&
+		len(parsed.StatesAdded) == 0 {
+		if c.indexesToStates(parsed.StatesRemoved)[0] == hCheck ||
+			c.indexesToStates(parsed.StatesRemoved)[0] == hBeat {
+			return false
+		}
+	}
+
 	return true
 }
 
@@ -1709,7 +1917,7 @@ func (d *Debugger) scrollToTime(hT time.Time, filter bool) bool {
 	if filter {
 		latestTx = d.filterTxCursor(d.C, latestTx, true)
 	}
-	d.SetCursor(latestTx)
+	d.SetCursor(latestTx, true)
 
 	return true
 }
@@ -1730,7 +1938,7 @@ func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
 
 		// stay on the last one
 		if d.Mach.Is1(ss.TailMode) {
-			d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false))
+			d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
 		}
 
 		// rebuild the whole log to reflect the UI changes
@@ -1745,7 +1953,7 @@ func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
 		}
 
 		if filterTxs {
-			d.SetCursor(d.filterTxCursor(d.C, d.C.CursorTx, false))
+			d.SetCursor(d.filterTxCursor(d.C, d.C.CursorTx, false), false)
 		}
 	}
 

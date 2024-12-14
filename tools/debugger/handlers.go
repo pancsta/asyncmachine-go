@@ -32,7 +32,7 @@ func (d *Debugger) StartState(e *am.Event) {
 	}
 	d.P = message.NewPrinter(language.English)
 	d.bindKeyboard()
-	d.initUIComponents()
+	d.initUiComponents()
 	d.initLayout()
 	if d.Opts.EnableMouse {
 		d.App.EnableMouse(true)
@@ -83,6 +83,7 @@ func (d *Debugger) StartState(e *am.Event) {
 			clientID = ids[0]
 		}
 		d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": clientID})
+		d.prependHistory(&MachAddress{MachId: clientID})
 		<-d.Mach.When1(ss.ClientSelected, nil)
 
 		if stateCtx.Err() != nil {
@@ -216,7 +217,7 @@ func (d *Debugger) PausedState(_ *am.Event) {
 }
 
 func (d *Debugger) TailModeState(_ *am.Event) {
-	d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false))
+	d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
 	d.updateMatrixRain()
 	d.updateClientList(true)
 	// needed bc tail mode if carried over via SelectingClient
@@ -247,7 +248,7 @@ func (d *Debugger) FwdState(e *am.Event) {
 	amount = max(amount, 1)
 
 	c := d.C
-	d.SetCursor(d.filterTxCursor(c, c.CursorTx+amount, true))
+	d.SetCursor(d.filterTxCursor(c, c.CursorTx+amount, true), false)
 	c.CursorStep = 0
 	d.handleTStepsScrolled()
 	if d.Mach.Is1(ss.Playing) && c.CursorTx == len(c.MsgTxs) {
@@ -278,7 +279,7 @@ func (d *Debugger) BackState(e *am.Event) {
 	amount = max(amount, 1)
 
 	c := d.C
-	d.SetCursor(d.filterTxCursor(d.C, c.CursorTx-amount, false))
+	d.SetCursor(d.filterTxCursor(d.C, c.CursorTx-amount, false), false)
 	c.CursorStep = 0
 	d.handleTStepsScrolled()
 
@@ -332,7 +333,7 @@ func (d *Debugger) BackStepState(_ *am.Event) {
 
 	// wrap if there's a prev tx
 	if d.C.CursorStep <= 0 {
-		d.SetCursor(d.filterTxCursor(d.C, d.C.CursorTx-1, false))
+		d.SetCursor(d.filterTxCursor(d.C, d.C.CursorTx-1, false), false)
 		d.updateLog(false)
 		nextTx := d.nextTx()
 		d.C.CursorStep = len(nextTx.Steps)
@@ -402,15 +403,22 @@ func (d *Debugger) FiltersFocusedEnter(e *am.Event) bool {
 }
 
 func (d *Debugger) FiltersFocusedState(e *am.Event) {
-	if filter, ok := e.Args["filter"].(FilterName); ok {
-		d.focusedFilter = filter
-	}
 	d.filtersBar.SetBackgroundColor(cview.Styles.MoreContrastBackgroundColor)
 	d.updateFiltersBar()
 }
 
 func (d *Debugger) FiltersFocusedEnd(_ *am.Event) {
 	d.filtersBar.SetBackgroundColor(cview.Styles.PrimitiveBackgroundColor)
+	d.updateFiltersBar()
+}
+
+func (d *Debugger) AddressFocusedState(e *am.Event) {
+	d.addressBar.SetBackgroundColor(cview.Styles.MoreContrastBackgroundColor)
+	d.updateFiltersBar()
+}
+
+func (d *Debugger) AddressFocusedEnd(_ *am.Event) {
+	d.addressBar.SetBackgroundColor(cview.Styles.PrimitiveBackgroundColor)
 	d.updateFiltersBar()
 }
 
@@ -499,6 +507,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 			// mark the origin
 			"from_connected": true,
 		})
+		d.prependHistory(&MachAddress{MachId: msg.ID})
 
 		// re-select the state
 		if d.lastSelectedState != "" {
@@ -539,6 +548,7 @@ func (d *Debugger) DisconnectEventState(e *am.Event) {
 	}
 
 	d.updateBorderColor()
+	d.updateAddressBar()
 	d.updateClientList(true)
 	d.draw()
 }
@@ -587,7 +597,8 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 		// parse the msg
 		d.parseMsg(c, idx)
 		filterOK := d.filterTx(c, idx, mach.Is1(ss.FilterCanceledTx),
-			mach.Is1(ss.FilterAutoTx), mach.Is1(ss.FilterEmptyTx))
+			mach.Is1(ss.FilterAutoTx), mach.Is1(ss.FilterEmptyTx),
+			mach.Is1(ss.FilterHealthcheck))
 		if filterOK {
 			c.msgTxsFiltered = append(c.msgTxsFiltered, idx)
 		}
@@ -617,7 +628,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	// UI updates for the selected client
 	if updateTailMode {
 		// force the latest tx
-		d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false))
+		d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
 		// sidebar for errs
 		d.updateViews(false)
 	}
@@ -634,9 +645,29 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	d.draw()
 }
 
-func (d *Debugger) SetCursor(cursor int) {
+func (d *Debugger) SetCursor(cursor int, skipHistory bool) {
 	// TODO validate
 	d.C.CursorTx = cursor
+
+	if d.HistoryCursor == 0 && !skipHistory {
+		// add current mach if needed
+		if len(d.History) > 0 && d.History[0].MachId != d.C.id {
+			d.prependHistory(d.GetMachAddress())
+		}
+		// keeping the curent tx as history head
+		if tx := d.C.tx(d.C.CursorTx - 1); tx != nil {
+			// dup the current machine if tx differs
+			if len(d.History) > 1 && d.History[1].MachId == d.C.id &&
+				d.History[1].TxId != tx.ID {
+
+				d.prependHistory(d.History[0].Clone())
+			}
+			if len(d.History) > 0 {
+				d.History[0].TxId = tx.ID
+			}
+		}
+	}
+
 	if cursor == 0 {
 		d.lastScrolledTxTime = time.Time{}
 	} else {
@@ -661,12 +692,7 @@ func (d *Debugger) RemoveClientState(e *am.Event) {
 
 	// clean up
 	delete(d.Clients, cid)
-	// c.MsgStruct = nil
-	// c.MsgTxs = nil
-	// c.logMsgs = nil
-	// c.msgTxsParsed = nil
-	// d.SetCursor(0)
-	// c.CursorStep = 0
+	d.removeHistory(c.id)
 
 	// if currently selected, switch to the first one
 	if c == d.C {
@@ -701,6 +727,7 @@ func (d *Debugger) SelectingClientEnter(e *am.Event) bool {
 }
 
 func (d *Debugger) SelectingClientState(e *am.Event) {
+	// TODO support tx ID
 	clientID := e.Args["Client.id"].(string)
 	fromConnected, _ := e.Args["from_connected"].(bool)
 	fromPlaying := slices.Contains(e.Transition().StatesBefore(), ss.Playing)
@@ -738,7 +765,7 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 
 		// or scroll to the last one
 		if !match {
-			d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false))
+			d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
 		}
 		d.C.CursorStep = 0
 		d.updateTimelines()
@@ -887,28 +914,60 @@ func (d *Debugger) MatrixRainState(_ *am.Event) {
 }
 
 func (d *Debugger) ScrollToTxEnter(e *am.Event) bool {
-	cursor, ok := e.Args["Client.cursorTx"].(int)
+	cursor, ok1 := e.Args["Client.cursorTx"].(int)
+	id, ok2 := e.Args["Client.txId"].(string)
 	c := d.C
-	return ok && c != nil && len(c.MsgTxs) > cursor+1
+
+	return c != nil && (ok2 && c.txIndex(id) > -1 ||
+		ok1 && len(c.MsgTxs) > cursor+1)
 }
 
-// ScrollToTxState scrolls to a specific transition.
+// ScrollToTxState scrolls to a specific transition (cursor position 1-based).
 func (d *Debugger) ScrollToTxState(e *am.Event) {
 	d.Mach.Remove1(ss.ScrollToTx, nil)
 
-	cursor := e.Args["Client.cursorTx"].(int)
-	d.SetCursor(d.filterTxCursor(d.C, cursor, true))
+	cursor, _ := e.Args["Client.cursorTx"].(int)
+	id, ok2 := e.Args["Client.txId"].(string)
+	if ok2 {
+		// TODO lowers the index each time
+		cursor = d.C.txIndex(id) + 1
+	}
+	d.SetCursor(d.filterTxCursor(d.C, cursor, true), false)
 	// reset the step timeline
 	d.C.CursorStep = 0
 	d.updateClientList(false)
 	d.RedrawFull(false)
 }
 
-func (d *Debugger) ToggleFilterState(_ *am.Event) {
+func (d *Debugger) ScrollToStepEnter(e *am.Event) bool {
+	cursor, _ := e.Args["Client.cursorStep"].(int)
+	c := d.C
+	return c != nil && cursor > 0 && d.nextTx() != nil
+}
+
+// ScrollToTxState scrolls to a specific transition (cursor position 1-based).
+func (d *Debugger) ScrollToStepState(e *am.Event) {
+	d.Mach.Remove1(ss.ScrollToStep, nil)
+
+	cursor := e.Args["Client.cursorStep"].(int)
+	nextTx := d.nextTx()
+
+	if cursor > len(nextTx.Steps) {
+		cursor = len(nextTx.Steps)
+	}
+	d.C.CursorStep = cursor
+
+	d.handleTStepsScrolled()
+	d.RedrawFull(false)
+}
+
+// TODO enter, valid params
+func (d *Debugger) ToggleFilterState(e *am.Event) {
 	// TODO split the state into an async one
 	filterTxs := false
+	filter := e.Args["FilterName"].(FilterName)
 
-	switch d.focusedFilter {
+	switch filter {
 	// TODO move logic after toggle to handlers
 
 	case filterCanceledTx:
@@ -921,6 +980,10 @@ func (d *Debugger) ToggleFilterState(_ *am.Event) {
 
 	case filterEmptyTx:
 		d.Mach.Toggle1(ss.FilterEmptyTx)
+		filterTxs = true
+
+	case filterHealthcheck:
+		d.Mach.Toggle1(ss.FilterHealthcheck)
 		filterTxs = true
 
 	case FilterSummaries:

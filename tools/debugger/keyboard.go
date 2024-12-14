@@ -298,32 +298,8 @@ func (d *Debugger) getKeystrokes() map[string]func(
 
 		// prev tx
 		"left": func(ev *tcell.EventKey) *tcell.EventKey {
-			// filters - switch inner focus
-			// TODO extract
-			if d.Mach.Is1(ss.FiltersFocused) {
-				switch d.focusedFilter {
-				case filterCanceledTx:
-					d.focusedFilter = filterLog4
-				case filterAutoTx:
-					d.focusedFilter = filterCanceledTx
-				case filterEmptyTx:
-					d.focusedFilter = filterCanceledTx
-				case FilterSummaries:
-					d.focusedFilter = filterEmptyTx
-				case filterLog0:
-					d.focusedFilter = FilterSummaries
-				case filterLog1:
-					d.focusedFilter = filterLog0
-				case filterLog2:
-					d.focusedFilter = filterLog1
-				case filterLog3:
-					d.focusedFilter = filterLog2
-				case filterLog4:
-					d.focusedFilter = filterLog3
-				}
-				d.updateFiltersBar()
-
-				return nil
+			if d.Mach.Any1(ss.AddressFocused, ss.FiltersFocused) {
+				return ev
 			}
 
 			if d.Mach.Not1(ss.ClientSelected) {
@@ -351,32 +327,8 @@ func (d *Debugger) getKeystrokes() map[string]func(
 
 		// next tx
 		"right": func(ev *tcell.EventKey) *tcell.EventKey {
-			// filters - switch inner focus
-			// TODO extract
-			if d.Mach.Is1(ss.FiltersFocused) {
-				switch d.focusedFilter {
-				case filterCanceledTx:
-					d.focusedFilter = filterAutoTx
-				case filterAutoTx:
-					d.focusedFilter = filterEmptyTx
-				case filterEmptyTx:
-					d.focusedFilter = FilterSummaries
-				case FilterSummaries:
-					d.focusedFilter = filterLog0
-				case filterLog0:
-					d.focusedFilter = filterLog1
-				case filterLog1:
-					d.focusedFilter = filterLog2
-				case filterLog2:
-					d.focusedFilter = filterLog3
-				case filterLog3:
-					d.focusedFilter = filterLog4
-				case filterLog4:
-					d.focusedFilter = filterCanceledTx
-				}
-				d.updateFiltersBar()
-
-				return nil
+			if d.Mach.Any1(ss.AddressFocused, ss.FiltersFocused) {
+				return ev
 			}
 
 			if d.Mach.Not1(ss.ClientSelected) {
@@ -530,7 +482,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			if d.Mach.Not1(ss.ClientSelected) {
 				return nil
 			}
-			d.SetCursor(d.filterTxCursor(d.C, 0, true))
+			d.SetCursor(d.filterTxCursor(d.C, 0, true), false)
 			d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
 			// sidebar for errs
 			d.updateClientList(true)
@@ -544,7 +496,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			if d.Mach.Not1(ss.ClientSelected) {
 				return nil
 			}
-			d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false))
+			d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
 			d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
 			// sidebar for errs
 			d.updateClientList(true)
@@ -689,21 +641,21 @@ func (d *Debugger) updateFocusable() {
 
 	case ss.MatrixView:
 		d.focusable = []*cview.Box{
-			d.clientList.Box, d.matrix.Box, d.timelineTxs.Box, d.timelineSteps.Box,
+			d.addressBar.Box, d.clientList.Box, d.matrix.Box, d.timelineTxs.Box, d.timelineSteps.Box,
 			d.filtersBar.Box,
 		}
 		prims = []cview.Primitive{
-			d.clientList, d.matrix, d.timelineTxs,
+			d.addressBar, d.clientList, d.matrix, d.timelineTxs,
 			d.timelineSteps, d.filtersBar,
 		}
 
 	case ss.TreeMatrixView:
 		d.focusable = []*cview.Box{
-			d.clientList.Box, d.tree.Box, d.matrix.Box, d.timelineTxs.Box,
+			d.addressBar.Box, d.clientList.Box, d.tree.Box, d.matrix.Box, d.timelineTxs.Box,
 			d.timelineSteps.Box, d.filtersBar.Box,
 		}
 		prims = []cview.Primitive{
-			d.clientList, d.tree, d.matrix, d.timelineTxs,
+			d.addressBar, d.clientList, d.tree, d.matrix, d.timelineTxs,
 			d.timelineSteps, d.filtersBar,
 		}
 
@@ -713,21 +665,21 @@ func (d *Debugger) updateFocusable() {
 		if d.Mach.Is1(ss.LogReaderVisible) {
 
 			d.focusable = []*cview.Box{
-				d.clientList.Box, d.tree.Box, d.log.Box, d.logReader.Box,
+				d.addressBar.Box, d.clientList.Box, d.tree.Box, d.log.Box, d.logReader.Box,
 				d.timelineTxs.Box, d.timelineSteps.Box, d.filtersBar.Box,
 			}
 			prims = []cview.Primitive{
-				d.clientList, d.tree, d.log, d.logReader, d.timelineTxs,
+				d.addressBar, d.clientList, d.tree, d.log, d.logReader, d.timelineTxs,
 				d.timelineSteps, d.filtersBar,
 			}
 		} else {
 
 			d.focusable = []*cview.Box{
-				d.clientList.Box, d.tree.Box, d.log.Box, d.timelineTxs.Box,
+				d.addressBar.Box, d.clientList.Box, d.tree.Box, d.log.Box, d.timelineTxs.Box,
 				d.timelineSteps.Box, d.filtersBar.Box,
 			}
 			prims = []cview.Primitive{
-				d.clientList, d.tree, d.log, d.timelineTxs,
+				d.addressBar, d.clientList, d.tree, d.log, d.timelineTxs,
 				d.timelineSteps, d.filtersBar,
 			}
 		}
@@ -772,6 +724,8 @@ func (d *Debugger) updateFocusable() {
 		d.focusManager.Focus(d.timelineSteps)
 	case ss.FiltersFocused:
 		d.focusManager.Focus(d.filtersBar)
+	case ss.AddressFocused:
+		d.focusManager.Focus(d.addressBar)
 	default:
 		d.focusManager.Focus(d.clientList)
 	}
