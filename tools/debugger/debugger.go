@@ -77,6 +77,7 @@ type Client struct {
 	SelectedReaderEntry *logReaderEntryPtr
 	ReaderCollapsed     bool
 
+	txCache   map[string]int
 	id        string
 	connID    string
 	connected atomic.Bool
@@ -91,6 +92,7 @@ type Client struct {
 	//  than the latest closedAt; whole tx needs to be disposed at the same time
 	logReader map[string][]*logReaderEntry
 	// indexes of txs with errors, desc order for bisects
+	// TOOD refresh on GC
 	errors   []int
 	mTimeSum uint64
 }
@@ -172,6 +174,53 @@ func (c *Client) statesToIndexes(states am.S) []int {
 func (c *Client) indexesToStates(indexes []int) am.S {
 	return amhelp.IndexesToStates(c.MsgStruct.StatesIndex, indexes)
 }
+
+func (c *Client) txIndex(id string) int {
+	if c.txCache == nil {
+		c.txCache = make(map[string]int)
+	}
+	if idx, ok := c.txCache[id]; ok {
+		return idx
+	}
+
+	for i, tx := range c.MsgTxs {
+		if tx.ID == id {
+			c.txCache[id] = i
+			return i
+		}
+	}
+
+	return -1
+}
+
+func (c *Client) tx(idx int) *telemetry.DbgMsgTx {
+	if idx < 0 || idx >= len(c.MsgTxs) {
+		return nil
+	}
+
+	return c.MsgTxs[idx]
+}
+
+func (c *Client) txByMachTime(sum uint64) int {
+	idx, ok := slices.BinarySearchFunc(c.msgTxsParsed, &MsgTxParsed{TimeSum: sum}, func(i, j *MsgTxParsed) int {
+		if i.TimeSum < j.TimeSum {
+			return -1
+		} else if i.TimeSum > j.TimeSum {
+			return 1
+		}
+
+		return 0
+	})
+
+	if !ok {
+		return 0
+	}
+
+	return idx
+}
+
+// TODO
+// func NewClient()
 
 type MsgTxParsed struct {
 	StatesAdded   []int
