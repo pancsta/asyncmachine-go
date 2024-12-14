@@ -2,7 +2,7 @@
 package pipes
 
 import (
-	"maps"
+	"context"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
@@ -13,8 +13,8 @@ import (
 // targetState: default to sourceState
 func Add(
 	source, target *am.Machine, sourceState string, targetState string,
-	) am.HandlerFinal {
-	if sourceState == ""  {
+) am.HandlerFinal {
+	if sourceState == "" {
 		panic(am.ErrStateMissing)
 	}
 	if targetState == "" {
@@ -23,20 +23,19 @@ func Add(
 	source.LogLvl(am.LogOps, "[pipe-out:add] %s to %s", sourceState, target.Id())
 	target.LogLvl(am.LogOps, "[pipe-in:add] %s from %s", targetState, source.Id())
 
-	return func(e *am.Event) {
-		id := e.Machine.Id()
-		target.LogLvl(am.LogOps, "[pipe:add] (%s) from %s", targetState, id)
-		args := maps.Clone(e.Args)
-		args["_pipe"] = id
+	// TODO optimize
+	source.HandleDispose(gcHandler(target))
+	target.HandleDispose(gcHandler(source))
 
-		target.Add1(targetState, e.Args)
+	return func(e *am.Event) {
+		target.EvAdd1(e, targetState, e.Args)
 	}
 }
 
 func Remove(
 	source, target *am.Machine, sourceState string, targetState string,
-	) am.HandlerFinal {
-	if sourceState == ""  {
+) am.HandlerFinal {
+	if sourceState == "" {
 		panic(am.ErrStateMissing)
 	}
 	if targetState == "" {
@@ -47,13 +46,12 @@ func Remove(
 	target.LogLvl(am.LogOps, "[pipe-in:remove] %s from %s", targetState,
 		source.Id())
 
-	return func(e *am.Event) {
-		id := e.Machine.Id()
-		target.LogLvl(am.LogOps, "[pipe:remove] (%s) from %s", targetState, id)
-		args := maps.Clone(e.Args)
-		args["_pipe"] = id
+	// TODO optimize
+	source.HandleDispose(gcHandler(target))
+	target.HandleDispose(gcHandler(source))
 
-		target.Remove1(targetState, e.Args)
+	return func(e *am.Event) {
+		target.EvRemove1(e, targetState, e.Args)
 	}
 }
 
@@ -138,4 +136,10 @@ func BindReady(
 	}
 
 	return source.BindHandlers(h)
+}
+
+func gcHandler(mach *am.Machine) am.HandlerDispose {
+	return func(id string, ctx context.Context) {
+		mach.LogLvl(am.LogOps, "[pipe:gc] %s", id)
+	}
 }

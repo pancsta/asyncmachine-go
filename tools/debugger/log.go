@@ -723,6 +723,23 @@ func (d *Debugger) parseMsgReader(
 		})
 		txEntries = append(txEntries, &logReaderEntryPtr{tx.ID, idx})
 
+		// remove GCed machines
+	} else if strings.HasPrefix(log.Text, "[pipe:gc] ") {
+		l := strings.Split(log.Text, " ")
+		id := l[1]
+		var entries2 []*logReaderEntryPtr
+
+		for _, ptr := range txEntries {
+			e := c.getReaderEntry(ptr.txId, ptr.entryIdx)
+			if (e.kind == logReaderPipeIn || e.kind == logReaderPipeOut) &&
+				e.mach == id {
+				continue
+			}
+
+			entries2 = append(entries2, ptr)
+		}
+		txEntries = entries2
+
 	} else
 
 	//
