@@ -67,10 +67,10 @@ var WorkerStruct = StructMerge(
 
 		// errors
 
-		ssW.ErrWork:        {Require: S{am.Exception}},
-		ssW.ErrWorkTimeout: {Require: S{am.Exception}},
-		ssW.ErrClient:      {Require: S{am.Exception}},
-		ssW.ErrSupervisor:  {Require: S{am.Exception}},
+		ssW.ErrWork:        {Require: S{Exception}},
+		ssW.ErrWorkTimeout: {Require: S{Exception}},
+		ssW.ErrClient:      {Require: S{Exception}},
+		ssW.ErrSupervisor:  {Require: S{Exception}},
 
 		// piped
 

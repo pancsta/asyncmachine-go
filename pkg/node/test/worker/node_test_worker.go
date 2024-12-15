@@ -80,10 +80,10 @@ func (w *workerHandlers) WorkRequestedState(e *am.Event) {
 	payload := &rpc.ArgsPayload{
 		Name:   w.Mach.Id(),
 		Data:   input * input,
-		Source: e.Machine.Id(),
+		Source: e.Machine().Id(),
 	}
 
-	e.Machine.Add1(ssW.ClientSendPayload, rpc.Pass(&rpc.A{
+	e.Machine().Add1(ssW.ClientSendPayload, rpc.PassRpc(&rpc.A{
 		Name:    w.Mach.Id(),
 		Payload: payload,
 	}))

@@ -82,6 +82,8 @@ type Client struct {
 	// CallRetryBackoff is the maximum time to wait between retries. Default 3s.
 	CallRetryBackoff time.Duration
 
+	DisconnTimeout time.Duration
+
 	// internal
 
 	callLock    sync.Mutex
@@ -137,6 +139,7 @@ func NewClient(
 		Addr:             workerAddr,
 		CallTimeout:      3 * time.Second,
 		ConnTimeout:      3 * time.Second,
+		DisconnTimeout:   3 * time.Second,
 		DisconnCooldown:  10 * time.Millisecond,
 		ReconnectOn:      true,
 
@@ -160,12 +163,18 @@ func NewClient(
 
 	// state machine
 	mach, err := am.NewCommon(ctx, GetClientId(name), states.ClientStruct,
-		ssC.Names(), c, opts.Parent, nil)
+		ssC.Names(), c, opts.Parent, &am.Opts{Tags: []string{
+			"rpc-client",
+			"addr:" + workerAddr,
+		}})
 	if err != nil {
 		return nil, err
 	}
 	mach.SetLogArgs(LogArgs)
 	c.Mach = mach
+
+	// TODO debug
+	mach.AddBreakpoint(nil, am.S{ssC.Disconnected})
 
 	if opts.Consumer != nil {
 
@@ -201,11 +210,12 @@ func (c *Client) StartState(e *am.Event) {
 		whenDisposed:  make(chan struct{}),
 		machTime:      make(am.Time, len(c.stateNames)),
 		parentId:      c.Mach.Id(),
+		tags:          []string{"rpc-worker", "id:"},
 	}
 	lvl := am.LogNothing
 	c.Worker.logLevel.Store(&lvl)
 	c.Worker.activeState.Store(&am.S{})
-	c.Mach.RegisterDisposalHandler(func() {
+	c.Mach.HandleDispose(func(id string, ctx context.Context) {
 		c.Worker.Dispose()
 	})
 }
@@ -213,7 +223,7 @@ func (c *Client) StartState(e *am.Event) {
 func (c *Client) StartEnd(e *am.Event) {
 	// gather state from before the transition
 	before := e.Transition().TimeBefore
-	idx := e.Machine.Index
+	idx := e.Machine().Index
 
 	// if never connected, stop here
 	if before.Is([]int{idx(ssC.Connecting), idx(ssC.Exception)}) {
@@ -223,7 +233,7 @@ func (c *Client) StartEnd(e *am.Event) {
 	// graceful disconnect
 	wasConn := before.Is1(idx(ssC.Connecting)) || before.Is1(idx(ssC.Connected))
 	if wasConn {
-		c.Mach.Add1(ssC.Disconnecting, nil)
+		c.Mach.EvAdd1(e, ssC.Disconnecting, nil)
 	}
 }
 
@@ -251,8 +261,8 @@ func (c *Client) ConnectingState(e *am.Event) {
 			return // expired
 		}
 		if err != nil {
-			c.Mach.Add1(ssC.Disconnected, nil)
-			AddErrNetwork(c.Mach, err)
+			c.Mach.EvAdd1(e, ssC.Disconnected, nil)
+			AddErrNetwork(e, c.Mach, err)
 			return
 		}
 		c.conn = conn
@@ -261,7 +271,7 @@ func (c *Client) ConnectingState(e *am.Event) {
 		c.bindRpcHandlers(conn)
 		go c.rpc.Run()
 
-		c.Mach.Add1(ssC.Connected, nil)
+		c.Mach.EvAdd1(e, ssC.Connected, nil)
 	}()
 }
 
@@ -280,7 +290,7 @@ func (c *Client) DisconnectingState(e *am.Event) {
 		// notify the server and wait a bit
 		c.notify(ctx, rpcnames.Bye.Encode(), &Empty{})
 		if !amhelp.Wait(ctx, c.DisconnCooldown) {
-			c.ensureGroupConnected()
+			c.ensureGroupConnected(e)
 
 			return // expired
 		}
@@ -288,21 +298,23 @@ func (c *Client) DisconnectingState(e *am.Event) {
 		// close with timeout
 		if c.rpc != nil {
 			select {
-			case <-time.After(c.CallTimeout):
+			case <-time.After(c.DisconnTimeout):
 				c.log("rpc.Close timeout")
 			case <-amhelp.ExecAndClose(func() {
 				_ = c.rpc.Close()
 			}):
 				c.log("rpc.Close")
+			case <-ctx.Done():
+				// expired
 			}
 		}
 		if ctx.Err() != nil {
-			c.ensureGroupConnected()
+			c.ensureGroupConnected(e)
 
 			return // expired
 		}
 
-		c.Mach.Add1(ssC.Disconnected, nil)
+		c.Mach.EvAdd1(e, ssC.Disconnected, nil)
 	}()
 }
 
@@ -320,7 +332,7 @@ func (c *Client) ConnectedState(e *am.Event) {
 
 		case <-disconnCh:
 			c.log("rpc.DisconnectNotify")
-			c.Mach.Add1(ssC.Disconnected, nil)
+			c.Mach.EvAdd1(e, ssC.Disconnected, nil)
 		}
 	}()
 }
@@ -336,7 +348,7 @@ func (c *Client) DisconnectedState(e *am.Event) {
 	if wasAny(c.Mach.Index(ssC.Connected), c.Mach.Index(ssC.Connecting)) &&
 		c.ReconnectOn {
 
-		c.Mach.Add1(ssC.RetryingConn, nil)
+		c.Mach.EvAdd1(e, ssC.RetryingConn, nil)
 		return
 	}
 
@@ -385,36 +397,39 @@ func (c *Client) HandshakingState(e *am.Event) {
 			}
 		}
 		if !ok {
-			c.Mach.Add1(ssC.RetryingConn, nil)
+			c.Mach.EvAdd1(e, ssC.RetryingConn, nil)
 			return
 		}
 
 		// validate
 		if len(resp.StateNames) == 0 {
-			AddErrRpcStr(c.Mach, "states missing")
+			AddErrRpcStr(e, c.Mach, "states missing")
 			return
 		}
 		if resp.ID == "" {
-			AddErrRpcStr(c.Mach, "ID missing")
+			AddErrRpcStr(e, c.Mach, "ID missing")
 			return
 		}
+
+		// ID as tag TODO look-n-replace
+		c.Worker.tags[1] = "id:" + resp.ID
 
 		// compare states
 		diff := am.DiffStates(c.stateNames, resp.StateNames)
 		if len(diff) > 0 || len(resp.StateNames) != len(c.stateNames) {
-			AddErrRpcStr(c.Mach, "States differ on client/server")
+			AddErrRpcStr(e, c.Mach, "States differ on client/server")
 			return
 		}
 
 		// confirm the handshake or retry conn
 		// TODO pass ID and key here
 		if !c.call(ctx, rpcnames.Handshake.Encode(), c.Mach.Id(), &Empty{}, 0) {
-			c.Mach.Add1(ssC.RetryingConn, nil)
+			c.Mach.EvAdd1(e, ssC.RetryingConn, nil)
 			return
 		}
 
 		// finalize
-		c.Mach.Add1(ssC.HandshakeDone, Pass(&A{
+		c.Mach.EvAdd1(e, ssC.HandshakeDone, Pass(&A{
 			Id:       resp.ID,
 			MachTime: resp.Time,
 		}))
@@ -431,7 +446,7 @@ func (c *Client) HandshakeDoneState(e *am.Event) {
 
 	// finalize the worker init
 	w := c.Worker
-	w.ID = c.Name + "-" + args.Id
+	w.ID = "rw-" + c.Name
 	w.machTime = args.MachTime
 
 	c.updateClock(nil, args.MachTime)
@@ -441,7 +456,7 @@ func (c *Client) HandshakeDoneState(e *am.Event) {
 }
 
 func (c *Client) CallRetryFailedState(e *am.Event) {
-	c.Mach.Remove1(ssC.CallRetryFailed, nil)
+	c.Mach.EvRemove1(e, ssC.CallRetryFailed, nil)
 
 	// TODO disconnect after N failed retries
 	// TODO backoff and reconnect (retry the whole connection)
@@ -455,7 +470,7 @@ func (c *Client) RetryingCallEnter(e *am.Event) bool {
 func (c *Client) ExceptionState(e *am.Event) {
 	// call super
 	c.ExceptionHandler.ExceptionState(e)
-	c.Mach.Remove1(am.Exception, nil)
+	c.Mach.EvRemove1(e, am.Exception, nil)
 }
 
 // RetryingConnState should be set without Connecting in the same tx
@@ -487,7 +502,7 @@ func (c *Client) RetryingConnState(e *am.Event) {
 				return // expired
 			}
 			// remover err
-			c.Mach.Remove1(ssC.Exception, nil)
+			c.Mach.EvRemove1(e, ssC.Exception, nil)
 
 			// double the delay when backoff set
 			if c.ConnRetryBackoff > 0 {
@@ -506,8 +521,8 @@ func (c *Client) RetryingConnState(e *am.Event) {
 		if ctx.Err() != nil {
 			return // expired
 		}
-		c.Mach.Remove1(ssC.RetryingConn, nil)
-		c.Mach.Add1(ssC.ConnRetryFailed, nil)
+		c.Mach.EvRemove1(e, ssC.RetryingConn, nil)
+		c.Mach.EvAdd1(e, ssC.ConnRetryFailed, nil)
 	}()
 }
 
@@ -535,7 +550,12 @@ func (c *Client) WorkerPayloadState(e *am.Event) {
 		Payload: args.Payload,
 	}
 
-	c.Consumer.Add1(ssCo.WorkerPayload, Pass(argsOut))
+	c.Consumer.EvAdd1(e, ssCo.WorkerPayload, Pass(argsOut))
+}
+
+func (c *Client) HealthcheckState(e *am.Event) {
+	c.Mach.EvRemove1(e, ssC.Healthcheck, nil)
+	c.ensureGroupConnected(e)
 }
 
 // ///// ///// /////
@@ -572,17 +592,6 @@ func (c *Client) Stop(waitTillExit context.Context, dispose bool) am.Result {
 	return res
 }
 
-// Get requests predefined data from the server's getter function.
-func (c *Client) Get(ctx context.Context, name string) (*RespGet, error) {
-	// callFailsafe rpc
-	resp := RespGet{}
-	if !c.callFailsafe(ctx, rpcnames.Get.Encode(), name, &resp) {
-		return nil, c.Mach.Err()
-	}
-
-	return &resp, nil
-}
-
 // GetKind returns a kind of RPC component (server / client).
 func (c *Client) GetKind() Kind {
 	return KindClient
@@ -590,10 +599,10 @@ func (c *Client) GetKind() Kind {
 
 // ensureGroupConnected ensures that at least one state from  GroupConnected
 // is active.
-func (c *Client) ensureGroupConnected() {
+func (c *Client) ensureGroupConnected(e *am.Event) {
 	groupConn := states.ClientGroups.Connected
-	if !c.Mach.Any(groupConn) && !c.Mach.WillBe(groupConn) {
-		c.Mach.Add1(ssC.Disconnected, nil)
+	if !c.Mach.Any1(groupConn...) && !c.Mach.WillBe(groupConn) {
+		c.Mach.EvAdd1(e, ssC.Disconnected, nil)
 	}
 }
 
@@ -667,7 +676,7 @@ func (c *Client) callFailsafe(
 
 	// validate
 	if c.rpc == nil {
-		AddErrNoConn(c.Mach, errors.New(mName))
+		AddErrNoConn(nil, c.Mach, errors.New(mName))
 		return false
 	}
 
@@ -759,18 +768,18 @@ func (c *Client) call(
 	}
 	// err test
 	if c.tmpTestErr != nil {
-		AddErrNetwork(c.Mach, fmt.Errorf("%w: %s", c.tmpTestErr, mName))
+		AddErrNetwork(nil, c.Mach, fmt.Errorf("%w: %s", c.tmpTestErr, mName))
 		c.tmpTestErr = nil
 		return false
 	}
 	// err test
 	if c.permTestErr != nil {
-		AddErrNetwork(c.Mach, fmt.Errorf("%w: %s", c.tmpTestErr, mName))
+		AddErrNetwork(nil, c.Mach, fmt.Errorf("%w: %s", c.tmpTestErr, mName))
 		return false
 	}
 	// err
 	if err != nil {
-		AddErr(c.Mach, mName, err)
+		AddErr(nil, c.Mach, mName, err)
 		return false
 	}
 
@@ -784,7 +793,7 @@ func (c *Client) notifyFailsafe(
 
 	// validate
 	if c.rpc == nil {
-		AddErrNoConn(c.Mach, errors.New(mName))
+		AddErrNoConn(nil, c.Mach, errors.New(mName))
 		return false
 	}
 
@@ -850,7 +859,7 @@ func (c *Client) notify(
 	// timeout
 	err := c.conn.SetDeadline(time.Now().Add(c.CallTimeout))
 	if err != nil {
-		AddErr(c.Mach, mName, err)
+		AddErr(nil, c.Mach, mName, err)
 		return false
 	}
 
@@ -863,14 +872,14 @@ func (c *Client) notify(
 
 	// err
 	if err != nil {
-		AddErr(c.Mach, method, err)
+		AddErr(nil, c.Mach, method, err)
 		return false
 	}
 
 	// remove timeout
 	err = c.conn.SetDeadline(time.Time{})
 	if err != nil {
-		AddErr(c.Mach, mName, err)
+		AddErr(nil, c.Mach, mName, err)
 		return false
 	}
 
@@ -889,7 +898,7 @@ func (c *Client) RemoteSetClock(
 ) error {
 	// validate
 	if clock == nil {
-		AddErrParams(c.Mach, nil)
+		AddErrParams(nil, c.Mach, nil)
 		return nil
 	}
 
@@ -909,7 +918,7 @@ func (c *Client) RemotePushAllTicks(
 	for _, push := range clocks {
 		// validate
 		if push.ClockMsg == nil || push.Mutation == nil {
-			AddErrParams(c.Mach, nil)
+			AddErrParams(nil, c.Mach, nil)
 			return nil
 		}
 
@@ -938,7 +947,7 @@ func (c *Client) RemoteSendingPayload(
 }
 
 // RemoteSendPayload receives a payload from the server and triggers
-// WorkDelivered. The Consumer should bind his handlers and handle this state to
+// WorkerPayload. The Consumer should bind his handlers and handle this state to
 // receive the data.
 func (c *Client) RemoteSendPayload(
 	_ *rpc2.Client, payload *ArgsPayload, _ *Empty,
@@ -968,8 +977,8 @@ type ClientOpts struct {
 	Parent am.Api
 }
 
-// GetClientId returns a machine ID from a name. This ID will be used to
-// handshake the server.
+// GetClientId returns an RPC Client machine ID from a name. This ID will be
+// used to handshake the server.
 func GetClientId(name string) string {
 	return "rc-" + name
 }

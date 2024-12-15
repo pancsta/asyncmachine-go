@@ -9,7 +9,7 @@ type ServerStatesDef struct {
 
 	// errors
 
-	// ErrOnClient indicates an error added on the RPC worker, not the server
+	// ErrOnClient indicates an error added on the RPC worker, not the source
 	// worker.
 	ErrOnClient string
 
@@ -47,18 +47,18 @@ var ServerStruct = StructMerge(
 	SharedStruct,
 	am.Struct{
 
-		ssS.ErrOnClient: {Require: S{ssS.Exception}},
+		ssS.ErrOnClient: {Require: S{Exception}},
 		ssS.ErrNetwork: {
 			Require: S{am.Exception},
 			Remove:  S{ssS.ClientConnected},
 		},
 
 		// inject Server states into HandshakeDone
-		// ssS.HandshakeDone: StateAdd(
-		// 	states.ConnectedStruct[ssS.HandshakeDone],
-		// 	am.State{
-		// 		Require: S{ssS.ClientConnected},
-		// 	}),
+		ssS.HandshakeDone: StateAdd(
+			SharedStruct[ssS.HandshakeDone],
+			am.State{
+				Remove: S{Exception},
+			}),
 
 		// Server
 

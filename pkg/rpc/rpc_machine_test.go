@@ -1073,6 +1073,10 @@ func TestInspect(t *testing.T) {
 		
 		Healthcheck:
 		  State:   false 0
+		  Multi:   true
+		
+		Heartbeat:
+		  State:   false 0
 	`
 	assertString(t, w, expected, nil)
 
@@ -1097,7 +1101,8 @@ func TestString(t *testing.T) {
 	assert.Equal(t, "(A:1 B:1)", w.String())
 	assert.Equal(t, "(A:1 B:1) [Exception:0 C:0 D:0 ErrProviding:0"+
 		" ErrSendPayload:0 SendPayload:0 ErrNetwork:0"+
-		" ErrHandlerTimeout:0 Start:0 Ready:0 Healthcheck:0]", w.StringAll())
+		" ErrHandlerTimeout:0 Start:0 Ready:0 Healthcheck:0 Heartbeat:0]",
+		w.StringAll())
 
 	disposeTest(t, c, s, true)
 }
@@ -1108,12 +1113,12 @@ type TestNestedMutationHandlers struct {
 }
 
 func (h *TestNestedMutationHandlers) AState(e *am.Event) {
-	e.Machine.Add1("B", nil)
-	e.Machine.Add1("B", nil)
-	e.Machine.Add1("B", nil)
+	e.Machine().Add1("B", nil)
+	e.Machine().Add1("B", nil)
+	e.Machine().Add1("B", nil)
 
-	e.Machine.Remove1("B", nil)
-	e.Machine.Remove1("B", nil)
+	e.Machine().Remove1("B", nil)
+	e.Machine().Remove1("B", nil)
 }
 
 func TestNestedMutation(t *testing.T) {
