@@ -53,6 +53,7 @@ var States = am.Struct{
 		Require: S{LogReaderVisible},
 		Remove:  GroupFocused,
 	},
+	AddressFocused: {Remove: GroupFocused},
 
 	StateNameSelected:     {Require: S{ClientSelected}},
 	TimelineStepsScrolled: {Require: S{ClientSelected}},
@@ -73,10 +74,11 @@ var States = am.Struct{
 	FilterCanceledTx: {},
 	FilterEmptyTx:    {},
 	FilterSummaries:  {},
+	FilterHealthcheck:  {},
 
 	// ///// Actions
 
-	Start: {Add: S{FilterSummaries}},
+	Start: {Add: S{FilterSummaries, FilterHealthcheck, FilterEmptyTx}},
 	Healthcheck: {
 		Multi:   true,
 		Require: S{Start},
@@ -155,7 +157,7 @@ var (
 	GroupFocused = S{
 		TreeFocused, LogFocused, TimelineTxsFocused,
 		TimelineStepsFocused, SidebarFocused, MatrixFocused, DialogFocused,
-		FiltersFocused, LogReaderFocused,
+		FiltersFocused, LogReaderFocused, AddressFocused,
 	}
 	GroupPlaying = S{
 		Playing, Paused, TailMode,
@@ -170,7 +172,7 @@ var (
 		SwitchingClientTx, SwitchedClientTx,
 	}
 	GroupFilters = S{
-		FilterAutoTx, FilterCanceledTx, FilterEmptyTx,
+		FilterAutoTx, FilterCanceledTx, FilterEmptyTx, FilterHealthcheck,
 	}
 )
 
@@ -187,6 +189,11 @@ const (
 	DialogFocused         = "DialogFocused"
 	FiltersFocused        = "FiltersFocused"
 	LogReaderFocused      = "LogReaderFocused"
+	AddressFocused      = "AddressFocused"
+	// SidebarFocused is client list focused.
+	// TODO rename to ClientListFocused
+	SidebarFocused   = "SidebarFocused"
+
 	TimelineStepsScrolled = "TimelineStepsScrolled"
 
 	ClientMsg = "ClientMsg"
@@ -219,8 +226,6 @@ const (
 	BackStep        = "BackStep"
 	ConnectEvent    = "ConnectEvent"
 	DisconnectEvent = "DisconnectEvent"
-	// SidebarFocused is client list focused.
-	SidebarFocused   = "SidebarFocused"
 	RemoveClient     = "RemoveClient"
 	ClientSelected   = "ClientSelected"
 	SelectingClient  = "SelectingClient"
@@ -237,6 +242,7 @@ const (
 	Ready            = "Ready"
 	FilterCanceledTx = "FilterCanceledTx"
 	FilterAutoTx     = "FilterAutoTx"
+	FilterHealthcheck     = "FilterHealthcheck"
 	// FilterEmptyTx is a filter for txes which didn't change state and didn't
 	// run any self handler either
 	FilterEmptyTx   = "FilterEmptyTx"

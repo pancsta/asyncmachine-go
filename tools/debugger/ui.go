@@ -2,18 +2,22 @@ package debugger
 
 import (
 	"fmt"
+	"math"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/lithammer/dedent"
 	"github.com/pancsta/cview"
+	"github.com/zyedidia/clipper"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
-func (d *Debugger) initUIComponents() {
+func (d *Debugger) initUiComponents() {
 	d.helpDialog = d.initHelpDialog()
 	d.exportDialog = d.initExportDialog()
 
@@ -32,9 +36,14 @@ func (d *Debugger) initUIComponents() {
 	d.clientList.SetSelectedTextColor(tcell.ColorWhite)
 	d.clientList.SetSelectedBackgroundColor(colorHighlight2)
 	d.clientList.SetHighlightFullLine(true)
+	// switch clients and handle history
 	d.clientList.SetSelectedFunc(func(i int, listItem *cview.ListItem) {
 		client := listItem.GetReference().(*sidebarRef)
+		if client.name == d.C.id {
+			return
+		}
 		d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": client.name})
+		d.trimHistory()
 	})
 	d.clientList.SetSelectedAlwaysVisible(true)
 
@@ -76,6 +85,7 @@ func (d *Debugger) initUIComponents() {
 	d.nextTxBarRight.SetTextAlign(cview.AlignRight)
 
 	// TODO step info bar: type, from, to, data
+
 	// timeline tx
 	d.timelineTxs = cview.NewProgressBar()
 	d.timelineTxs.SetBorder(true)
@@ -89,6 +99,9 @@ func (d *Debugger) initUIComponents() {
 	d.keyBar.SetTextAlign(cview.AlignCenter)
 	d.keyBar.SetDynamicColors(true)
 
+	// address bar
+	d.initAddressBar()
+
 	// filters bar
 
 	d.initFiltersBar()
@@ -100,11 +113,179 @@ func (d *Debugger) initUIComponents() {
 	d.updateFocusable()
 }
 
+
+func (d *Debugger) initAddressBar() {
+	// TODO enum for col indexes
+
+	d.addressBar = cview.NewTable()
+	d.addressBar.SetSelectedStyle(colorActive,
+		cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
+	d.addressBar.SetCellSimple(0, 0, "◀ prev mach")
+	d.addressBar.SetCellSimple(0, 1, "")
+	d.addressBar.SetCellSimple(0, 2, " next mach▶ ")
+	d.addressBar.SetCellSimple(0, 3, "")
+	// addr
+	d.addressBar.SetCellSimple(0, 4, "")
+	d.addressBar.SetCellSimple(0, 5, "")
+	d.addressBar.SetCellSimple(0, 6, " copy")
+	d.addressBar.SetCellSimple(0, 7, "")
+	d.addressBar.SetCellSimple(0, 8, " paste")
+	d.addressBar.SetSelectable(true, true)
+	d.addressBar.GetCell(0, 1).SetSelectable(false)
+	d.addressBar.GetCell(0, 3).SetSelectable(false)
+	d.addressBar.GetCell(0, 5).SetSelectable(false)
+	d.addressBar.GetCell(0, 7).SetSelectable(false)
+	d.addressBar.SetSelectedFunc(func(row, column int) {
+		switch column {
+		case 0: // prev mach
+			if d.HistoryCursor >= len(d.History)-1 {
+				return
+			}
+			d.HistoryCursor++
+			d.GoToMachAddress(d.History[d.HistoryCursor], true)
+
+		case 2: // next mach
+			if d.HistoryCursor <= 0 {
+				return
+			}
+			d.HistoryCursor--
+			d.GoToMachAddress(d.History[d.HistoryCursor], true)
+
+		case 6: // copy
+			if d.clip == nil {
+				return
+			}
+			addr := d.GetMachAddress().String()
+			_ = d.clip.WriteAll(clipper.RegClipboard, []byte(addr))
+
+		case 8: // paste
+			if d.clip == nil {
+				return
+			}
+			txt, _ := d.clip.ReadAll(clipper.RegClipboard)
+			if u, err := url.Parse(string(txt)); err == nil && u.Scheme == "mach" {
+				addr := &MachAddress{MachId: u.Host}
+				if u.Path != "" {
+					addr.TxId = strings.TrimLeft(u.Path, "/")
+				}
+				d.GoToMachAddress(addr, false)
+			}
+		}
+
+		// TODO state for button down
+		d.addressBar.SetSelectedStyle(colorActive,
+			cview.Styles.PrimitiveBackgroundColor, tcell.AttrUnderline)
+		go func() {
+			time.Sleep(time.Millisecond * 200)
+			d.addressBar.SetSelectedStyle(colorActive,
+				cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
+			d.draw(d.addressBar)
+		}()
+	})
+
+	addr := d.addressBar.GetCell(0, 4)
+	addr.SetExpansion(1)
+	addr.SetSelectable(false)
+	addr.SetAlign(cview.AlignCenter)
+
+	d.tagsBar = cview.NewTextView()
+	d.tagsBar.SetTextColor(tcell.ColorGrey)
+	d.updateAddressBar()
+}
+
 func (d *Debugger) initFiltersBar() {
-	d.filtersBar = cview.NewTextView()
-	d.filtersBar.SetTextAlign(cview.AlignLeft)
-	d.filtersBar.SetDynamicColors(true)
-	d.focusedFilter = filterCanceledTx
+	d.filtersBar = cview.NewTable()
+	d.filtersBar.SetSelectedStyle(colorActive,
+		cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
+	d.filtersBar.SetSelectable(true, true)
+	d.filtersBar.SetSelectedFunc(func(row, column int) {
+		if column >= len(d.filters) {
+			return
+		}
+		// TODO state for button down
+		d.filtersBar.SetSelectedStyle(colorActive,
+			cview.Styles.PrimitiveBackgroundColor, tcell.AttrUnderline)
+		d.Mach.Add1(ss.ToggleFilter, am.A{"FilterName": d.filters[column].id})
+		go func() {
+			time.Sleep(time.Millisecond * 200)
+			d.filtersBar.SetSelectedStyle(colorActive,
+				cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
+			d.draw(d.filtersBar)
+		}()
+	})
+	d.filters = []filter{
+		{
+			id:    filterCanceledTx,
+			label: "No Canceled",
+			active: func() bool {
+				return d.Mach.Is1(ss.FilterCanceledTx)
+			},
+		},
+		{
+			id:    filterAutoTx,
+			label: "No Auto",
+			active: func() bool {
+				return d.Mach.Is1(ss.FilterAutoTx)
+			},
+		},
+		{
+			id:    filterEmptyTx,
+			label: "No Empty",
+			active: func() bool {
+				return d.Mach.Is1(ss.FilterEmptyTx)
+			},
+		},
+		{
+			id:    filterHealthcheck,
+			label: "No Healthcheck",
+			active: func() bool {
+				return d.Mach.Is1(ss.FilterHealthcheck)
+			},
+		},
+		{
+			id:    FilterSummaries,
+			label: "No Summaries",
+			active: func() bool {
+				return d.Mach.Is1(ss.FilterSummaries)
+			},
+		},
+		{
+			id:    filterLog0,
+			label: "L0",
+			active: func() bool {
+				return d.Opts.Filters.LogLevel == am.LogNothing
+			},
+		},
+		{
+			id:    filterLog1,
+			label: "L1",
+			active: func() bool {
+				return d.Opts.Filters.LogLevel == am.LogChanges
+			},
+		},
+		{
+			id:    filterLog2,
+			label: "L2",
+			active: func() bool {
+				return d.Opts.Filters.LogLevel == am.LogOps
+			},
+		},
+		{
+			id:    filterLog3,
+			label: "L3",
+			active: func() bool {
+				return d.Opts.Filters.LogLevel == am.LogDecisions
+			},
+		},
+		{
+			id:    filterLog4,
+			label: "L4",
+			active: func() bool {
+				return d.Opts.Filters.LogLevel == am.LogEverything
+			},
+		},
+	}
+
 	d.updateFiltersBar()
 }
 
@@ -331,6 +512,7 @@ func (d *Debugger) RedrawFull(immediate bool) {
 	d.updateTxBars()
 	d.updateKeyBars()
 	d.updateBorderColor()
+	d.updateAddressBar()
 	d.draw()
 }
 
