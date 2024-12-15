@@ -2,7 +2,7 @@
 
 ## [v0.9.0](https://github.com/pancsta/asyncmachine-go/tree/v0.9.0) (2024-12-15)
 
-- feat\(node\): release v0.9 [\#194](https://github.com/pancsta/asyncmachine-go/pull/194) (@pancsta)
+- feat: add v0.9 release [\#194](https://github.com/pancsta/asyncmachine-go/pull/194) (@pancsta)
 - feat\(node\): release v0.9 [\#193](https://github.com/pancsta/asyncmachine-go/pull/193) (@pancsta)
 - fix\(am-dbg\): add various fixes v0.9 [\#192](https://github.com/pancsta/asyncmachine-go/pull/192) (@pancsta)
 - feat\(am-dbg\): add --fwd-data flag [\#191](https://github.com/pancsta/asyncmachine-go/pull/191) (@pancsta)

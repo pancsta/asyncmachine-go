@@ -223,7 +223,7 @@ is always a good idea.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates states files and Grafana dashboards.
 - `/tools/cmd/am-vis` Planned.
 
-![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)
+[![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)](/tools/cmd/am-dbg/README.md)
 
 ## Case Studies
 

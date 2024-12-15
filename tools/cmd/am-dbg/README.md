@@ -18,6 +18,12 @@
 
 [![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-reader.png)](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-large.png)
 
+## Installation
+
+- [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
+- Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
+- Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
+
 ## am-dbg TUI Debugger
 
 `am-dbg` is a lightweight, multi-client debugger which can handle hundreds of simultaneous streams from asyncmachines.
@@ -86,12 +92,6 @@ Flags:
 ```
 
 ![legend](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-legend.png)
-
-## Installation
-
-- [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
-- Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
-- Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
 
 ## Steps to Debug
 
