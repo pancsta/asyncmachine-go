@@ -28,6 +28,7 @@ func (r *RPCServer) DbgMsgStruct(
 	msgStruct *telemetry.DbgMsgStruct, _ *string,
 ) error {
 	r.Mach.Add1(ss.ConnectEvent, am.A{
+		// TODO typed args
 		"msg_struct": msgStruct,
 		"conn_id":    r.ConnID,
 		"Client.id":  msgStruct.ID,
@@ -45,9 +46,10 @@ func (r *RPCServer) DbgMsgStruct(
 }
 
 var (
-	queue     []*telemetry.DbgMsgTx
-	queueMx   sync.Mutex
-	scheduled bool
+	queue       []*telemetry.DbgMsgTx
+	queueConnId []string
+	queueMx     sync.Mutex
+	scheduled   bool
 )
 
 func (r *RPCServer) DbgMsgTx(msgTx *telemetry.DbgMsgTx, _ *string) error {
@@ -63,17 +65,23 @@ func (r *RPCServer) DbgMsgTx(msgTx *telemetry.DbgMsgTx, _ *string) error {
 			queueMx.Lock()
 			defer queueMx.Unlock()
 
-			r.Mach.Add1(ss.ClientMsg, am.A{"msgs_tx": queue})
+			r.Mach.Add1(ss.ClientMsg, am.A{
+				"msgs_tx":  queue,
+				"conn_ids": queueConnId,
+			})
 			// DEBUG
 			// println("sent", len(queue), "msgs")
 			queue = nil
+			queueConnId = nil
 			scheduled = false
 		}()
 	}
 
 	now := time.Now()
+	// TODO remove
 	msgTx.Time = &now
 	queue = append(queue, msgTx)
+	queueConnId = append(queueConnId, r.ConnID)
 
 	// fwd to other instances
 	for _, fwd := range r.FwdTo {
@@ -145,7 +153,7 @@ func rpcAccept(l net.Listener, mach *am.Machine, fwdTo []*rpc.Client) {
 		// handle the client
 		go func() {
 			server := rpc.NewServer()
-			connID := conn.RemoteAddr().String()
+			connID := utils.RandID(8)
 			rcvr := &RPCServer{
 				Mach:   mach,
 				ConnID: connID,

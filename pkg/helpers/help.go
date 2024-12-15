@@ -219,6 +219,11 @@ func MachDebugEnv(mach am.Api) {
 	logLvl := am.EnvLogLevel("")
 	stdout := os.Getenv(am.EnvAmDebug) == "2"
 
+	// inherit default
+	if amDbgAddr == "1" {
+		amDbgAddr = telemetry.DbgAddr
+	}
+
 	MachDebug(mach, amDbgAddr, logLvl, stdout)
 }
 

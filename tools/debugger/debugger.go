@@ -23,15 +23,14 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/gdamore/tcell/v2"
-	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/cview"
 	"github.com/zyedidia/clipper"
 	"golang.org/x/text/message"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
-
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
@@ -54,11 +53,11 @@ const (
 	logUpdateDebounce     = 300 * time.Millisecond
 	sidebarUpdateDebounce = time.Second
 	searchAsTypeWindow    = 1500 * time.Millisecond
-	healthcheckInterval   = 5 * time.Second
+	healthcheckInterval   = 1 * time.Minute
 	// msgMaxAge             = 0
 
 	// maxMemMb = 100
-	maxMemMb = 50
+	maxMemMb        = 50
 	msgMaxThreshold = 300
 )
 
@@ -260,7 +259,8 @@ type Opts struct {
 	SelectConnected bool
 	CleanOnConnect  bool
 	EnableMouse     bool
-	// Address to listen on
+	ShowReader      bool
+	// MachAddress to listen on
 	ServerAddr string
 	// Log level of the debugger's machine
 	DbgLogLevel am.LogLevel
@@ -274,7 +274,7 @@ type Opts struct {
 	// Debugger's ID
 	ID string
 	// version of this instance
-	Version string
+	Version  string
 	MaxMemMb int
 	Log2Ttl  time.Duration
 }
@@ -339,7 +339,7 @@ type Debugger struct {
 	lastScrolledTxTime time.Time
 	repaintScheduled   atomic.Bool
 	// update client list scheduled
-	updateCLScheduled  atomic.Bool
+	updateMLScheduled  atomic.Bool
 	lastKeystroke      tcell.Key
 	lastKeystrokeTime  time.Time
 	updateLogScheduled atomic.Bool
@@ -1019,16 +1019,25 @@ func (d *Debugger) parseMsg(c *Client, idx int) {
 		StatesTouched: c.statesToIndexes(touched),
 	}
 
-	// optimize space
-	msgTx.CalledStatesIdxs = amhelp.StatesToIndexes(index,
-		msgTx.CalledStates)
-	msgTx.MachineID = ""
-	msgTx.CalledStates = nil
+	// optimize space TODO remove with SQL
+	if len(msgTx.CalledStates) > 0 {
+		msgTx.CalledStatesIdxs = amhelp.StatesToIndexes(index,
+			msgTx.CalledStates)
+		msgTx.MachineID = ""
+		msgTx.CalledStates = nil
+	}
 	for _, step := range msgTx.Steps {
-		step.FromStateIdx = slices.Index(index, step.FromState)
-		step.ToStateIdx = slices.Index(index, step.ToState)
-		step.FromState = ""
-		step.ToState = ""
+		if step.FromState != "" || step.ToState != "" {
+			step.FromStateIdx = slices.Index(index, step.FromState)
+			step.ToStateIdx = slices.Index(index, step.ToState)
+			step.FromState = ""
+			step.ToState = ""
+		}
+
+		// back compat
+		if step.Data != nil {
+			step.RelType, _ = step.Data.(am.Relation)
+		}
 	}
 
 	// errors
@@ -1054,6 +1063,9 @@ func (d *Debugger) parseMsg(c *Client, idx int) {
 // isTxSkipped checks if the tx at the given index is skipped by filters
 // idx is 0-based
 func (d *Debugger) isTxSkipped(c *Client, idx int) bool {
+	if !d.isFiltered() {
+		return false
+	}
 	return slices.Index(c.msgTxsFiltered, idx) == -1
 }
 
@@ -1181,7 +1193,7 @@ func (d *Debugger) updateTimelines() {
 		if c.CursorTx == 0 {
 			pos = 0
 		}
-		title = d.P.Sprintf(" Transition %d / %d [%s]| %d / %d[-] ",
+		title = d.P.Sprintf(" Transition %d / %d [%s]%d / %d[-] ",
 			pos, len(c.msgTxsFiltered), colorHighlight2, c.CursorTx, txCount)
 	} else {
 		title = d.P.Sprintf(" Transition %d / %d ", c.CursorTx, txCount)
@@ -1204,7 +1216,7 @@ func (d *Debugger) updateClientList(immediate bool) {
 		return
 	}
 
-	if !d.updateCLScheduled.CompareAndSwap(false, true) {
+	if !d.updateMLScheduled.CompareAndSwap(false, true) {
 		// debounce non-forced updates
 		return
 	}
@@ -1215,12 +1227,19 @@ func (d *Debugger) updateClientList(immediate bool) {
 	}()
 }
 
+// TODO rewrite
 func (d *Debugger) doUpdateClientList(immediate bool) {
-	if d.Mach.Disposed.Load() {
+	if d.Mach.IsDisposed() {
 		return
 	}
 
 	update := func() {
+		_, _, width, _ := d.clientList.GetRect()
+		maxLen := width - 13
+		if maxLen < 5 {
+			maxLen = 15
+		}
+
 		// count
 		longestName := 0
 		for _, item := range d.clientList.GetItems() {
@@ -1230,21 +1249,30 @@ func (d *Debugger) doUpdateClientList(immediate bool) {
 				longestName = l
 			}
 		}
+		if longestName > maxLen {
+			longestName = maxLen
+		}
 
 		// update
 		for i, item := range d.clientList.GetItems() {
 			ref := item.GetReference().(*sidebarRef)
 			c := d.Clients[ref.name]
-			count := int(math.Max(0, float64(longestName+1-len(ref.name)-ref.lvl)))
+
 			spacePre := ""
 			spacePost := " "
 			if d.clientHasParent(c.id) {
 				spacePre = " "
-				spacePost = ""
 			}
-			namePad := strings.Repeat("-", ref.lvl) + spacePre + ref.name +
-				strings.Repeat(" ", count) + spacePost
-			label := d.getSidebarLabel(namePad, c, i)
+
+			name := strings.Repeat("-", ref.lvl) + spacePre + ref.name
+			if len(name) > maxLen {
+				name = name[:maxLen-2] + ".."
+			}
+
+			spaceCount := int(math.Max(0, float64(longestName+1-len(name))))
+			namePad := name +
+				strings.Repeat(" ", spaceCount) + spacePost
+			label := d.getClientListLabel(namePad, c, i)
 			item.SetMainText(label)
 		}
 
@@ -1259,6 +1287,11 @@ func (d *Debugger) doUpdateClientList(immediate bool) {
 		} else {
 			d.clientList.SetTitle(" Machines ")
 		}
+
+		// render if delayed
+		if !immediate {
+			d.draw(d.clientList)
+		}
 	}
 
 	// avoid eval in handlers
@@ -1268,8 +1301,7 @@ func (d *Debugger) doUpdateClientList(immediate bool) {
 		d.Mach.Eval("doUpdateClientList", update, nil)
 	}
 
-	d.updateCLScheduled.Store(false)
-	d.draw()
+	d.updateMLScheduled.Store(false)
 }
 
 // buildClientList builds the clientList with the list of clients.
@@ -1380,7 +1412,7 @@ func (d *Debugger) clientHasParent(cid string) bool {
 	return ok
 }
 
-func (d *Debugger) getSidebarLabel(
+func (d *Debugger) getClientListLabel(
 	name string, c *Client, index int,
 ) string {
 	isHovered := d.clientList.GetCurrentItemIndex() == index
@@ -1401,17 +1433,26 @@ func (d *Debugger) getSidebarLabel(
 		}
 	}
 
-	// Ready, Start states indicators
-	state := " "
-
+	// Ready, Start, Error states indicators
+	var state string
+	isErrNow := false
 	if currCTx != nil {
-		readyIdx := slices.Index(c.MsgStruct.StatesIndex, "Ready")
-		startIdx := slices.Index(c.MsgStruct.StatesIndex, "Start")
+		readyIdx := slices.Index(c.MsgStruct.StatesIndex, ssam.BasicStates.Ready)
+		startIdx := slices.Index(c.MsgStruct.StatesIndex, ssam.BasicStates.Start)
+		errIdx := slices.Index(c.MsgStruct.StatesIndex, am.Exception)
+		isErrNow = errIdx != -1 && am.IsActiveTick(currCTx.Clocks[errIdx])
 		if readyIdx != -1 && am.IsActiveTick(currCTx.Clocks[readyIdx]) {
 			state = "R"
 		} else if startIdx != -1 && am.IsActiveTick(currCTx.Clocks[startIdx]) {
 			state = "S"
 		}
+		// push to the front
+		if isErrNow {
+			state = "E" + state
+		}
+	}
+	if state == "" {
+		state = " "
 	}
 
 	label := d.P.Sprintf("%s %s|%d", name, state, currCTxIdx+1)
@@ -1424,8 +1465,10 @@ func (d *Debugger) getSidebarLabel(
 		label = "[::bu]" + label
 	}
 
-	if c.hadErrSinceTx(currCTxIdx, 100) {
+	if isErrNow {
 		label = "[red]" + label
+	} else if c.hadErrSinceTx(currCTxIdx, 100) {
+		label = "[orangered]" + label
 	} else if !c.connected.Load() {
 		if isHovered && !hasFocus {
 			label = "[grey]" + label
@@ -1440,15 +1483,10 @@ func (d *Debugger) getSidebarLabel(
 }
 
 func (d *Debugger) updateBorderColor() {
-	color := cview.ColorUnset
-	if d.C != nil && d.C.connected.Load() {
-		color = colorActive
-	}
-
+	color := colorInactive
 	if d.Mach.IsErr() {
 		color = tcell.ColorRed
 	}
-
 	for _, box := range d.focusable {
 		box.SetBorderColorFocused(color)
 	}
@@ -1730,36 +1768,85 @@ func (d *Debugger) updateMatrixRain() {
 
 	// TODO optimize: re-use existing cells or gen txt
 	d.matrix.Clear()
-	d.matrix.SetTitle(" Matrix ")
+	d.matrix.SetTitle(" Rain ")
 
 	c := d.C
 	if c == nil {
 		return
 	}
 
+	// TODO extract, mind currTxRow
+	currTxRow := -1
+	d.matrix.SetSelectionChangedFunc(func(row, column int) {
+		if d.Mach.Not1(ss.MatrixRain) {
+			return
+		}
+
+		if currTxRow == -1 {
+			d.Mach.Add1(ss.ScrollToTx, am.A{"Client.cursorTx": row})
+		} else if row != currTxRow {
+			diff := row - currTxRow + 1
+			d.Mach.Log("diff %s", diff)
+			d.Mach.Add1(ss.ScrollToTx, am.A{"Client.cursorTx": c.CursorTx + diff})
+		}
+		if column >= 0 && column < len(c.MsgStruct.StatesIndex) {
+			d.Mach.Add1(ss.StateNameSelected, am.A{
+				"state": c.MsgStruct.StatesIndex[column],
+			})
+		}
+	})
+	d.matrix.SetSelectable(true, true)
+
 	index := c.MsgStruct.StatesIndex
 	tx := d.currentTx()
 	prevTx := d.prevTx()
 	_, _, _, rows := d.matrix.GetRect()
 
-	i := 0
-	for iShown := 0; iShown < rows; i++ {
+	// collect tx to show, starting from the end (timeline 1-based index)
+	toShow := []int{}
+	ahead := rows / 2
+	if d.Mach.Is1(ss.TailMode) {
+		ahead = 0
+	} else if c.CursorTx < ahead {
+		ahead += ahead - c.CursorTx - 1
+	}
 
-		idx := c.CursorTx - i
-		if d.Mach.Not1(ss.TailMode) {
-			idx += rows / 2
-		}
-		if idx < 1 || idx > len(c.MsgTxs) {
+	// TODO collect rows-amount before and after (always) and display, then fill
+	//  the missing rows from previously collected
+
+	// ahead
+	idx := c.CursorTx + 1
+	for ; ahead > 0 && idx > 0; idx++ {
+		// limit
+		if idx > len(c.MsgTxs) {
 			break
 		}
-
 		// filters
-		if d.isFiltered() && d.isTxSkipped(c, idx-1) {
+		if d.isTxSkipped(c, idx-1) {
 			continue
 		}
+		// show
+		toShow = append(toShow, idx)
+		ahead--
+	}
+
+	// behind
+	idx = c.CursorTx
+	for i := idx; i > 0 && len(toShow) <= rows-3; i-- {
+		// filters
+		if d.isTxSkipped(c, i-1) {
+			continue
+		}
+		toShow = slices.Concat([]int{i}, toShow)
+	}
+
+	for i, idx := range toShow {
 
 		row := ""
-
+		if idx == c.CursorTx {
+			// TODO keep idx using cell.SetReference(...) for the 1st cell in each row
+			currTxRow = idx - 1
+		}
 		tx := c.MsgTxs[idx-1]
 		txParsed := c.msgTxsParsed[idx-1]
 		calledStates := tx.CalledStateNames(c.MsgStruct.StatesIndex)
@@ -1785,32 +1872,35 @@ func (d *Debugger) updateMatrixRain() {
 
 			row += v
 
-			d.matrix.SetCellSimple(iShown, ii, v)
+			// init table
+			d.matrix.SetCellSimple(i, ii, v)
+			cell := d.matrix.GetCell(i, ii)
+			cell.SetSelectable(true)
 
 			// gray out some
 			if !tx.Accepted || v == "." || v == "|" || v == "c" || v == "*" {
-				d.matrix.GetCell(iShown, ii).SetTextColor(colorHighlight)
+				cell.SetTextColor(colorHighlight)
 			}
 
 			// mark called states
 			if slices.Contains(calledStates, name) {
-				d.matrix.GetCell(iShown, ii).SetAttributes(tcell.AttrUnderline)
+				cell.SetAttributes(tcell.AttrUnderline)
 			}
 
 			if idx == c.CursorTx {
 				// current tx
-				d.matrix.GetCell(iShown, ii).SetBackgroundColor(colorHighlight3)
+				cell.SetBackgroundColor(colorHighlight3)
 			} else if d.C.SelectedState == name {
 				// mark selected state
-				d.matrix.GetCell(iShown, ii).SetBackgroundColor(colorHighlight3)
+				cell.SetBackgroundColor(colorHighlight3)
 			}
 
 			if (sIsErr || name == am.Exception) && tx.Is1(index, name) {
 				// mark exceptions
 				if tx.Accepted {
-					d.matrix.GetCell(iShown, ii).SetBackgroundColor(tcell.ColorIndianRed)
+					cell.SetBackgroundColor(tcell.ColorIndianRed)
 				} else {
-					d.matrix.GetCell(iShown, ii).SetBackgroundColor(colorHighlight3)
+					cell.SetBackgroundColor(colorHighlight3)
 				}
 			}
 		}
@@ -1828,16 +1918,13 @@ func (d *Debugger) updateMatrixRain() {
 		}
 
 		// tail cell
-		d.matrix.SetCellSimple(iShown, len(index), fmt.Sprintf(
+		d.matrix.SetCellSimple(i, len(index), fmt.Sprintf(
 			"  [gray]%d | %s[-]", idx, tStampFmt))
 
 		// current tx
 		if idx == c.CursorTx {
-			d.matrix.GetCell(iShown, len(index)).SetBackgroundColor(colorHighlight3)
+			d.matrix.GetCell(i, len(index)).SetBackgroundColor(colorHighlight3)
 		}
-
-		// inc the shown counter
-		iShown++
 	}
 
 	diffT := 0
@@ -2016,10 +2103,4 @@ func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
 	d.updateMatrixRain()
 	d.updateLog(false)
 	d.draw()
-}
-
-func allocMem() uint64 {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	return m.Alloc
 }

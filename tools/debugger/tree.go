@@ -47,30 +47,30 @@ const treeIndent = 3
 var trailingDots = regexp.MustCompile(`\.+$`)
 
 func (d *Debugger) initMachineTree() *cview.TreeView {
-	d.treeRoot = cview.NewTreeNode("")
-	d.treeRoot.SetColor(tcell.ColorRed)
+	d.treeRoot = cview.NewTreeNode("States")
+	// d.treeRoot.SetColor(tcell.ColorRed)
 
 	tree := cview.NewTreeView()
 	tree.SetRoot(d.treeRoot)
 	tree.SetCurrentNode(d.treeRoot)
-	tree.SetSelectedBackgroundColor(colorHighlight3)
+	tree.SetSelectedBackgroundColor(colorHighlight2)
 	tree.SetSelectedTextColor(tcell.ColorWhite)
 	tree.SetHighlightColor(colorHighlight)
 
+	// focus change within the tree
 	tree.SetChangedFunc(func(node *cview.TreeNode) {
 		ref, ok := node.GetReference().(*nodeRef)
-		if !ok {
+		if !ok || ref.stateName == "" {
 			d.Mach.Remove1(ss.StateNameSelected, nil)
+			d.lastSelectedState = ""
 			return
 		}
 
-		if ref.stateName == "" {
-			d.Mach.Remove1(ss.StateNameSelected, nil)
-			return
-		}
 		d.Mach.Add1(ss.StateNameSelected, am.A{
 			"state": ref.stateName,
 		})
+		d.updateLogReader()
+		d.updateMatrix()
 	})
 
 	tree.SetSelectedFunc(func(node *cview.TreeNode) {
@@ -312,6 +312,7 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 			return true
 		}
 
+		states := c.MsgStruct.StatesIndex
 		if ref.stateName != "" {
 
 			// STATE NAME NODES
@@ -334,13 +335,13 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 
 				switch step.Type {
 				case am.StepRemoveNotActive:
-					if step.ToState == stateName && !ref.isRef {
+					if step.GetToState(states) == stateName && !ref.isRef {
 						nodeSetBold(node)
 						ref.touched = true
 					}
 
 				case am.StepRemove:
-					if step.ToState == stateName && !ref.isRef {
+					if step.GetToState(states) == stateName && !ref.isRef {
 						node.SetText(node.GetText() + textMargin + "[::b]-[::-]")
 						nodeSetBold(node)
 						ref.touched = true
@@ -348,16 +349,16 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 
 				case am.StepRelation:
 
-					if step.FromState == stateName && !ref.isRef {
+					if step.GetFromState(states) == stateName && !ref.isRef {
 
 						nodeSetBold(node)
 						ref.touched = true
-					} else if step.ToState == stateName && !ref.isRef {
+					} else if step.GetToState(states) == stateName && !ref.isRef {
 
 						nodeSetBold(node)
 						ref.touched = true
-					} else if ref.isRef && step.ToState == stateName &&
-						ref.parentState == step.FromState {
+					} else if ref.isRef && step.GetToState(states) == stateName &&
+						ref.parentState == step.GetFromState(states) {
 
 						nodeSetBold(node)
 						ref.touched = true
@@ -368,21 +369,22 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 						continue
 					}
 					// states handler executed
-					if step.FromState == stateName || step.ToState == stateName {
+					if step.GetFromState(states) == stateName ||
+						step.GetToState(states) == stateName {
 						node.SetText(node.GetText() + textMargin + "[::b]*[::-]")
 						nodeSetBold(node)
 						ref.touched = true
 					}
 
 				case am.StepSet:
-					if step.ToState == stateName && !ref.isRef {
+					if step.GetToState(states) == stateName && !ref.isRef {
 						node.SetText(node.GetText() + textMargin + "[::b]+[::-]")
 						nodeSetBold(node)
 						ref.touched = true
 					}
 
 				case am.StepRequested:
-					if step.ToState == stateName && !ref.isRef {
+					if step.GetToState(states) == stateName && !ref.isRef {
 						text := node.GetText()
 						idx := strings.Index(text, " ")
 						node.SetText("[::bu]" + text[:idx] + "[::-]" + text[idx:])
@@ -390,7 +392,7 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 					}
 
 				case am.StepCancel:
-					if step.ToState == stateName && !ref.isRef {
+					if step.GetToState(states) == stateName && !ref.isRef {
 						node.SetText(node.GetText() + textMargin + "!")
 						nodeSetBold(node)
 						ref.touched = true
@@ -412,7 +414,7 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 					continue
 				}
 
-				if step.Data == ref.rel && ref.parentState == step.FromState {
+				if step.RelType == ref.rel && ref.parentState == step.GetFromState(states) {
 					nodeSetBold(node)
 					ref.touched = true
 				}
@@ -474,13 +476,14 @@ func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step) {
 					continue
 				}
 
-				isTarget := step.ToState == stateName && !ref.isRef
-				isSource := ref.isRef && step.ToState == stateName &&
-					ref.parentState == step.FromState
+				index := c.MsgStruct.StatesIndex
+				isTarget := step.GetToState(index) == stateName && !ref.isRef
+				isSource := ref.isRef && step.GetToState(index) == stateName &&
+					ref.parentState == step.GetFromState(index)
 
 				if isTarget || isSource {
 
-					colName := getRelColName(step)
+					colName := getRelColName(index, step)
 					relCols, closed = handleTreeCol(strconv.Itoa(depth), colName, relCols)
 
 					if closed {
@@ -632,7 +635,6 @@ func (d *Debugger) handleExpanded(
 
 func (d *Debugger) buildStatesTree() {
 	msg := d.C.MsgStruct
-	d.treeRoot.SetText(msg.ID)
 	d.treeRoot.ClearChildren()
 	for _, name := range msg.StatesIndex {
 		d.addState(name)
@@ -764,9 +766,9 @@ func handleTreeCol(source, name string, relCols []RelCol) ([]RelCol, bool) {
 	return relCols, false
 }
 
-func getRelColName(step *am.Step) string {
-	return step.FromState + "-" + step.Data.(am.Relation).String() +
-		"-" + step.ToState
+func getRelColName(stateNames am.S, step *am.Step) string {
+	return step.GetFromState(stateNames) + "-" +
+		step.RelType.String() + "-" + step.GetToState(stateNames)
 }
 
 func getRelColNameFromRef(ref *nodeRef) string {

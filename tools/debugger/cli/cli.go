@@ -2,12 +2,14 @@ package cli
 
 import (
 	"context"
+	"io"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -20,8 +22,7 @@ const (
 	// TODO remove
 	pLogFile = "log-file"
 	// TODO remove
-	pLogLevel = "log-level"
-	// TODO refac: --addr
+	pLogLevel        = "log-level"
 	pServerAddr      = "listen-on"
 	pServerAddrShort = "l"
 	// TODO remove
@@ -50,10 +51,6 @@ const (
 	// TODO --filters
 	// TODO --view
 	// TODO --rain
-	// TODO --reader
-	// TODO --gc-log 1h|1d
-	// TODO --gc-log-ops 1h|1d
-	// TODO --max-mem
 )
 
 type Params struct {
@@ -96,16 +93,15 @@ func RootCmd(fn RootFn) *cobra.Command {
 }
 
 func AddFlags(rootCmd *cobra.Command) {
+	// TODO bind param here, remove ParseParams, support StringArrayP
+	// p := &Params{}
+
 	f := rootCmd.Flags()
-	f.String(pLogFile, "am-dbg.log",
-		"Log file path")
-	f.Int(pLogLevel, 0,
-		"Log level, 0-5 (silent-everything)")
-	f.StringP(pServerAddr,
-		pServerAddrShort, telemetry.DbgAddr,
+	f.String(pLogFile, "", "Log file path")
+	f.Int(pLogLevel, 0, "Log level, 0-5 (silent-everything)")
+	f.StringP(pServerAddr, pServerAddrShort, telemetry.DbgAddr,
 		"Host and port for the debugger to listen on")
-	f.String(pAmDbgAddr, "",
-		"Debug this instance of am-dbg with another one")
+	f.String(pAmDbgAddr, "", "Debug this instance of am-dbg with another one")
 	f.StringP(pView, pViewShort, "tree-log",
 		"Initial view (tree-log, tree-matrix, matrix)")
 	f.StringP(pStartupMach,
@@ -129,9 +125,11 @@ func AddFlags(rootCmd *cobra.Command) {
 		"Fordward incoming data to other instances (eg addr1,addr2)")
 
 	// profile & mem
-	f.Bool(pProfSrv, false, "Start pprof server on :6060")
+	f.String(pProfSrv, "", "Start pprof server")
 	f.Int(pMaxMem, 100, "Max memory usage (in MB) to flush old transitions")
 	f.String(pLog2Ttl, "24h", "Max time to live for logs level 2")
+
+	f.Bool(pVersion, false, "Print version and exit")
 }
 
 func ParseParams(cmd *cobra.Command, _ []string) Params {
@@ -185,7 +183,7 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 		panic(err)
 	}
 
-	profSrv, err := cmd.Flags().GetBool(pProfSrv)
+	reader, err := cmd.Flags().GetBool(pReader)
 	if err != nil {
 		panic(err)
 	}
@@ -223,11 +221,14 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 func GetLogger(params *Params) *log.Logger {
 	// TODO slog
 
-	// file logging
-	if params.LogFile == "" || params.LogLevel < 1 {
+	if params.LogLevel < am.LogNothing {
 		return log.Default()
 	}
 
+	// file logging
+	if params.LogFile == "" {
+		return log.New(io.Discard, "", log.LstdFlags)
+	}
 	_ = os.Remove(params.LogFile)
 	file, err := os.OpenFile(params.LogFile, os.O_CREATE|os.O_WRONLY, 0o666)
 	if err != nil {
@@ -273,13 +274,13 @@ func StartCpuProfile(logger *log.Logger, p *Params) func() {
 }
 
 func StartCpuProfileSrv(ctx context.Context, logger *log.Logger, p *Params) {
-	if !p.ProfSrv {
+	if p.ProfSrv == "" {
 		return
 	}
 	go func() {
-		logger.Println("Starting pprof server on :6060")
+		logger.Println("Starting pprof server on "+p.ProfSrv)
 		// TODO support ctx cancel
-		if err := http.ListenAndServe(":6060", nil); err != nil {
+		if err := http.ListenAndServe(p.ProfSrv, nil); err != nil {
 			logger.Fatalf("could not start pprof server: %v", err)
 		}
 	}()

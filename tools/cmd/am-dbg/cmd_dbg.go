@@ -50,7 +50,10 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		ServerAddr:      p.ServerAddr,
 		EnableMouse:     p.EnableMouse,
 		SelectConnected: p.SelectConnected,
+		ShowReader:      p.Reader,
 		CleanOnConnect:  p.CleanOnConnect,
+		MaxMemMb:        p.MaxMemMb,
+		Log2Ttl:         p.Log2Ttl,
 		Version:         ver,
 	})
 	if err != nil {
@@ -96,4 +99,5 @@ func printStats(dbg *debugger.Debugger) {
 
 	_, _ = dbg.P.Printf("Clients: %d\n", len(dbg.Clients))
 	_, _ = dbg.P.Printf("Transitions: %d\n", txs)
+	_, _ = dbg.P.Printf("Memory: %dmb\n", debugger.AllocMem()/1024/1024)
 }

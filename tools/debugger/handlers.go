@@ -17,10 +17,9 @@ import (
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
-
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
 func (d *Debugger) StartState(e *am.Event) {
@@ -38,6 +37,9 @@ func (d *Debugger) StartState(e *am.Event) {
 	d.initLayout()
 	if d.Opts.EnableMouse {
 		d.App.EnableMouse(true)
+	}
+	if d.Opts.ShowReader {
+		d.Mach.Add1(ss.LogReaderEnabled, nil)
 	}
 
 	stateCtx := d.Mach.NewStateCtx(ss.Start)
@@ -130,8 +132,8 @@ func (d *Debugger) HealthcheckState(_ *am.Event) {
 	d.Mach.Add1(ss.GcMsgs, nil)
 }
 
-// AnyState is a global final handler
-func (d *Debugger) AnyState(e *am.Event) {
+// AnyAny is a global handler
+func (d *Debugger) AnyAny(e *am.Event) {
 	tx := e.Transition()
 
 	// redraw on auto states
@@ -260,7 +262,6 @@ func (d *Debugger) FwdState(e *am.Event) {
 	d.memorizeTxTime(c)
 	// sidebar for errs
 	d.updateClientList(true)
-
 	d.RedrawFull(false)
 }
 
@@ -360,40 +361,20 @@ func (d *Debugger) handleTStepsScrolled() {
 	}
 }
 
+func (d *Debugger) TimelineStepsScrolledState(_ *am.Event) {
+	d.expandStructPane()
+}
+
+func (d *Debugger) TimelineStepsScrolledEnd(_ *am.Event) {
+	d.shinkStructPane()
+}
+
 func (d *Debugger) TimelineStepsFocusedState(_ *am.Event) {
-	// keep in sync with initLayout()
-	// TODO support no reader
-	d.treeLogGrid.UpdateItem(d.tree, 0, 0, 1, 3, 0, 0, false)
-
-	if d.Mach.Is1(ss.LogReaderVisible) {
-		d.treeLogGrid.UpdateItem(d.log, 0, 3, 1, 2, 0, 0, false)
-		d.treeLogGrid.UpdateItem(d.logReader, 0, 5, 1, 1, 0, 0, false)
-	} else {
-		d.treeLogGrid.UpdateItem(d.log, 0, 3, 1, 3, 0, 0, false)
-	}
-
-	d.treeMatrixGrid.UpdateItem(d.tree, 0, 0, 1, 3, 0, 0, false)
-	d.treeMatrixGrid.UpdateItem(d.matrix, 0, 3, 1, 3, 0, 0, false)
-
-	d.RedrawFull(false)
+	d.expandStructPane()
 }
 
 func (d *Debugger) TimelineStepsFocusedEnd(_ *am.Event) {
-	// keep in sync with initLayout()
-	// TODO support no reader
-	d.treeLogGrid.UpdateItem(d.tree, 0, 0, 1, 2, 0, 0, false)
-
-	if d.Mach.Is1(ss.LogReaderVisible) {
-		d.treeLogGrid.UpdateItem(d.log, 0, 2, 1, 2, 0, 0, false)
-		d.treeLogGrid.UpdateItem(d.logReader, 0, 4, 1, 2, 0, 0, false)
-	} else {
-		d.treeLogGrid.UpdateItem(d.log, 0, 2, 1, 4, 0, 0, false)
-	}
-
-	d.treeMatrixGrid.UpdateItem(d.tree, 0, 0, 1, 2, 0, 0, false)
-	d.treeMatrixGrid.UpdateItem(d.matrix, 0, 2, 1, 4, 0, 0, false)
-
-	d.RedrawFull(false)
+	d.shinkStructPane()
 }
 
 func (d *Debugger) FiltersFocusedEnter(e *am.Event) bool {
@@ -449,6 +430,10 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 	if d.Opts.CleanOnConnect {
 		// remove old clients
 		cleanup = d.doCleanOnConnect()
+	}
+
+	if _, exists := d.Clients[msg.ID]; exists {
+		d.Mach.Log("client %s already exists", msg.ID)
 	}
 
 	// always create a new client on struct msgs
@@ -574,6 +559,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	//  async multi state ClientMsgDone
 
 	msgs := e.Args["msgs_tx"].([]*telemetry.DbgMsgTx)
+	connIds := e.Args["conn_ids"].([]string)
 	mach := d.Mach
 
 	updateTailMode := false
@@ -591,6 +577,12 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 
 		if c.MsgStruct == nil {
 			d.Mach.Log("Error: struct missing for %s, ignoring tx\n", machId)
+			continue
+		}
+
+		// verify it's from the same client
+		if c.connID != connIds[i] {
+			d.Mach.Log("Error: conn_id mismatch for %s, ignoring tx\n", machId)
 			continue
 		}
 
@@ -645,6 +637,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	// timelines always change
 	d.updateClientList(false)
 	d.updateTimelines()
+	d.updateMatrix()
 
 	if selectedUpdated {
 		d.draw()
@@ -712,7 +705,7 @@ func (d *Debugger) RemoveClientState(e *am.Event) {
 		}
 		d.buildClientList(-1)
 	} else {
-		d.buildClientList(-1)
+		d.buildClientList(d.clientList.GetCurrentItemIndex() - 1)
 	}
 
 	d.draw()
@@ -855,8 +848,8 @@ func (d *Debugger) ClientSelectedState(e *am.Event) {
 		d.selectTreeState(d.lastSelectedState)
 	}
 
-	go d.focusManager.Focus(d.clientList)
 	d.updateBorderColor()
+	d.updateAddressBar()
 	d.draw()
 }
 
@@ -872,6 +865,8 @@ func (d *Debugger) ClientSelectedEnd(e *am.Event) {
 }
 
 func (d *Debugger) HelpDialogState(_ *am.Event) {
+	// re-render for mem stats
+	d.updateHelpDialog()
 	// TODO use Visibility instead of SendToFront
 	d.LayoutRoot.SendToFront("main")
 	d.LayoutRoot.SendToFront("help")
@@ -1116,11 +1111,12 @@ func (d *Debugger) ExceptionState(e *am.Event) {
 
 func (d *Debugger) GcMsgsEnter(e *am.Event) bool {
 	runtime.GC()
-	return allocMem() > uint64(d.Opts.MaxMemMb)*1024*1024
+	return AllocMem() > uint64(d.Opts.MaxMemMb)*1024*1024
 }
 
 func (d *Debugger) GcMsgsState(e *am.Event) {
 	// TODO GC log reader entries
+	// TODO GC tx steps before GCing transitions
 	ctx := d.Mach.NewStateCtx(ss.GcMsgs)
 
 	// unblock
@@ -1140,11 +1136,12 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 			}
 		})
 
-		mem1 := allocMem()
+		mem1 := AllocMem()
 		d.Mach.Log(d.P.Sprintf("GC mem: %d bytes\n", mem1))
 
 		// check TTL of client log msgs >lvl 2
-		// TODO remember the tip of cleaning (date) and binary find it, then continue
+		// TODO remember the tip of cleaning (date) and binary find it, then
+		//  continue
 		for _, c := range clients {
 			for i, logMsg := range c.logMsgs {
 				htime := c.MsgTxs[i].Time
@@ -1169,12 +1166,13 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 		}
 
 		runtime.GC()
-		mem2 := allocMem()
-		d.Mach.Log(d.P.Sprintf("GC logs shaved %d bytes",
-			math.Max(0, float64(mem1-mem2))))
+		mem2 := AllocMem()
+		if mem1 > mem2 {
+			d.Mach.Log(d.P.Sprintf("GC logs shaved %d bytes\n", mem1-mem2))
+		}
 
 		round := 0
-		for allocMem() > uint64(d.Opts.MaxMemMb)*1024*1024 {
+		for AllocMem() > uint64(d.Opts.MaxMemMb)*1024*1024 {
 			if ctx.Err() != nil {
 				d.Mach.Log("GC: context expired")
 				break
@@ -1196,6 +1194,11 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 				c.MsgTxs = c.MsgTxs[idx:]
 				c.msgTxsParsed = c.msgTxsParsed[idx:]
 				c.logMsgs = c.logMsgs[idx:]
+
+				// empty cache
+				c.txCache = nil
+				// TODO GC c.logReader
+				// TODO refresh c.errors (extract from parseMsg)
 
 				// adjust the current client
 				if d.C == c {
@@ -1223,16 +1226,17 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 
 			runtime.GC()
 		}
-		mem3 := allocMem()
-		d.Mach.Log(d.P.Sprintf("GC in total shaved %d bytes",
-			math.Max(0, float64(mem1-mem3))))
+		mem3 := AllocMem()
+		if mem1 > mem3 {
+			d.Mach.Log(d.P.Sprintf("GC in total shaved %d bytes", mem1-mem3))
+		}
 
 		d.RedrawFull(false)
 	}()
 }
 
 func (d *Debugger) LogReaderVisibleState(e *am.Event) {
-	if d.Mach.Not1(ss.TimelineStepsFocused) {
+	if d.Mach.Not1(ss.TimelineStepsScrolled) {
 		d.treeLogGrid.UpdateItem(d.log, 0, 2, 1, 2, 0, 0, false)
 		d.treeLogGrid.AddItem(d.logReader, 0, 4, 1, 2, 0, 0, false)
 	} else {
@@ -1240,10 +1244,11 @@ func (d *Debugger) LogReaderVisibleState(e *am.Event) {
 		d.treeLogGrid.AddItem(d.logReader, 0, 5, 1, 1, 0, 0, false)
 	}
 	d.updateFocusable()
+	d.updateBorderColor()
 }
 
 func (d *Debugger) LogReaderVisibleEnd(e *am.Event) {
-	if d.Mach.Not1(ss.TimelineStepsFocused) {
+	if d.Mach.Not1(ss.TimelineStepsScrolled) {
 		d.treeLogGrid.UpdateItem(d.log, 0, 2, 1, 4, 0, 0, false)
 	} else {
 		d.treeLogGrid.UpdateItem(d.log, 0, 3, 1, 3, 0, 0, false)

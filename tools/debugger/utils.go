@@ -2,6 +2,7 @@ package debugger
 
 import (
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"unicode"
@@ -154,4 +155,10 @@ func tickStrToTime(mach *machine.Machine, ticksStr []string) machine.Time {
 	}
 
 	return ticks
+}
+
+func AllocMem() uint64 {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.Alloc
 }
