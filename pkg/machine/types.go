@@ -60,6 +60,9 @@ type HandlerFinal func(*Event)
 // HandlerNegotiation TODO support in BindHandlers
 type HandlerNegotiation func(*Event) bool
 
+// HandlerDispose is a machine disposal handler func signature.
+type HandlerDispose func(id string, ctx context.Context)
+
 // Opts struct is used to configure a new Machine.
 type Opts struct {
 	// Unique ID of this machine. Default: random ID.

@@ -101,7 +101,7 @@ type Machine struct {
 	logEntries         []*LogEntry
 	logArgs            func(args A) map[string]string
 	currentHandler     atomic.Value
-	disposeHandlers    []func()
+	disposeHandlers    []HandlerDispose
 	timeLast           atomic.Pointer[Time]
 	// Channel closing when the machine finished disposal. Read-only.
 	whenDisposed chan struct{}
@@ -392,8 +392,9 @@ func (m *Machine) dispose(force bool) {
 	// run dispose handlers
 	// TODO timeouts?
 	for _, fn := range m.disposeHandlers {
-		fn()
+		fn(m.id, m.ctx)
 	}
+	// TODO dispose refs to other machines
 	// m.disposeHandlers = nil
 
 	// the end
@@ -2693,9 +2694,9 @@ func (m *Machine) CountActive(states S) int {
 	return c
 }
 
-// RegisterDisposalHandler adds a function to be called when the machine is
+// HandleDispose adds a function to be called when the machine is
 // disposed. This function will block before mach.WhenDispose is closed.
-func (m *Machine) RegisterDisposalHandler(fn func()) {
+func (m *Machine) HandleDispose(fn HandlerDispose) {
 	m.disposeHandlers = append(m.disposeHandlers, fn)
 }
 
