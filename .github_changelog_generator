@@ -6,4 +6,4 @@ pr-label=
 since-tag=v0.1.0
 user=pancsta
 project=asyncmachine-go
-unreleased=false
+unreleased=true
