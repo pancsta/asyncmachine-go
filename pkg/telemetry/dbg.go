@@ -52,6 +52,8 @@ type DbgMsgStruct struct {
 	States am.Struct
 	// parent machine ID
 	Parent string
+	// machine tags
+	Tags []string
 }
 
 func (d *DbgMsgStruct) Clock(_ am.S, _ string) uint64 {
@@ -352,14 +354,21 @@ func (t *DbgTracer) MachineDispose(id string) {
 
 // TransitionsToDbg sends transitions to the am-dbg server.
 func TransitionsToDbg(mach am.Api, addr string) error {
-	// TODO prevent double debugging (on client and server)
 	if addr == "" {
 		addr = DbgAddr
 	}
 
+	// prevent double debugging
+	tracers := mach.Tracers()
+	for _, tracer := range tracers {
+		if t, ok := tracer.(*DbgTracer); ok && t.Addr == addr {
+			return nil
+		}
+	}
+
 	// add the tracer
 	tracer := NewDbgTracer(mach, addr)
-	mach.BindTracer(tracer)
+	_ = mach.BindTracer(tracer)
 	// call manually for existing machines
 	tracer.MachineInit(mach)
 
@@ -373,6 +382,7 @@ func sendStructMsg(mach am.Api, client *dbgClient) error {
 		StatesIndex: mach.StateNames(),
 		States:      mach.GetStruct(),
 		Parent:      mach.ParentId(),
+		Tags:        mach.Tags(),
 	}
 
 	// TODO retries

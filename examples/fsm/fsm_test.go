@@ -72,17 +72,17 @@ var (
 type Turnstile struct{}
 
 func (t *Turnstile) InputPushEnter(e *am.Event) bool {
-	return e.Machine.Is1(Unlocked)
+	return e.Machine().Is1(Unlocked)
 }
 
 func (t *Turnstile) InputPushState(e *am.Event) {
-	e.Machine.Remove1(InputPush, nil)
-	e.Machine.Add1(Locked, nil)
+	e.Machine().Remove1(InputPush, nil)
+	e.Machine().Add1(Locked, nil)
 }
 
 func (t *Turnstile) InputCoinState(e *am.Event) {
-	e.Machine.Remove1(InputCoin, nil)
-	e.Machine.Add1(Unlocked, nil)
+	e.Machine().Remove1(InputCoin, nil)
+	e.Machine().Add1(Unlocked, nil)
 }
 
 // example

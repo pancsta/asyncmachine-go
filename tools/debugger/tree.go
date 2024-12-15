@@ -414,7 +414,9 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 					continue
 				}
 
-				if step.RelType == ref.rel && ref.parentState == step.GetFromState(states) {
+				if step.RelType == ref.rel &&
+					ref.parentState == step.GetFromState(states) {
+
 					nodeSetBold(node)
 					ref.touched = true
 				}

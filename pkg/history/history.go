@@ -167,7 +167,7 @@ func Track(mach *am.Machine, states am.S, maxEntries int) *History {
 			history.LastActivated[name] = time.Now()
 		}
 	}
-	mach.BindTracer(history)
+	_ = mach.BindTracer(history)
 
 	return history
 }

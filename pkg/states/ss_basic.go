@@ -23,20 +23,23 @@ type BasicStatesDef struct {
 	// Healthcheck is a periodic request making sure that the machine is still
 	// alive.
 	Healthcheck string
+	// Heartbeat is a periodic state which ensures integrity of the machine.
+	Heartbeat string
 }
 
 var BasicStruct = am.Struct{
 	// Errors
 
 	ssB.Exception:         {Multi: true},
-	ssB.ErrNetwork:        {Require: S{am.Exception}},
-	ssB.ErrHandlerTimeout: {Require: S{am.Exception}},
+	ssB.ErrNetwork:        {Require: S{Exception}},
+	ssB.ErrHandlerTimeout: {Require: S{Exception}},
 
 	// Basics
 
 	ssB.Start:       {},
 	ssB.Ready:       {Require: S{ssB.Start}},
-	ssB.Healthcheck: {},
+	ssB.Healthcheck: {Multi: true},
+	ssB.Heartbeat:   {},
 }
 
 // EXPORTS AND GROUPS

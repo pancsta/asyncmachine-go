@@ -58,8 +58,9 @@ func main() {
 		CustomState: ampipe.Add(mach1, mach2, "Custom", ""),
 		CustomEnd:   ampipe.Remove(mach1, mach2, "Custom", ""),
 	}
-	err = mach1.BindHandlers(pipeCustom)
-	if err != nil {
+
+	// bind and handle dispose
+	if err := mach1.BindHandlers(pipeCustom); err != nil {
 		panic(err)
 	}
 

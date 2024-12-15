@@ -5,6 +5,9 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 // S is a type alias for a list of state names.
 type S = am.S
 
+// State is a type alias for a state definition.
+type State = am.State
+
 // SAdd is a func alias for merging lists of states.
 var SAdd = am.SAdd
 
@@ -17,3 +20,6 @@ var StateSet = am.StateSet
 
 // StructMerge is a func alias for extending an existing state structure.
 var StructMerge = am.StructMerge
+
+// Exception is a type alias for the exception state.
+var Exception = am.Exception

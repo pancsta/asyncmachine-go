@@ -97,9 +97,9 @@ func (rr *DefaultRelationsResolver) GetTargetStates(
 
 		m.log(lvl, "[rel:remove] %s by %s", name, j(blockedBy))
 		if m.is(S{name}) {
-			t.addSteps(newStep("", name, StepRemove, nil))
+			t.addSteps(newStep("", name, StepRemove, 0))
 		} else {
-			t.addSteps(newStep("", name, StepRemoveNotActive, nil))
+			t.addSteps(newStep("", name, StepRemoveNotActive, 0))
 		}
 
 		return false
@@ -231,7 +231,7 @@ func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 
 			t.addSteps(newSteps(name, addStates, StepRelation,
 				RelationAdd)...)
-			t.addSteps(newSteps("", addStates, StepSet, nil)...)
+			t.addSteps(newSteps("", addStates, StepSet, 0)...)
 			ret = append(ret, addStates...)
 			visited = append(visited, name)
 			changed = true
@@ -310,10 +310,10 @@ func (rr *DefaultRelationsResolver) getMissingRequires(
 			continue
 		}
 		ret = append(ret, req)
-		t.addSteps(newStep(name, "", StepRemoveNotActive, nil))
+		t.addSteps(newStep(name, "", StepRemoveNotActive, 0))
 		if slices.Contains(t.Mutation.CalledStates, name) {
 			t.addSteps(newStep("", req,
-				StepCancel, nil))
+				StepCancel, 0))
 		}
 	}
 

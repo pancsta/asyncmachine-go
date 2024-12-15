@@ -70,7 +70,7 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 	// read & write ops
 	// no blocking
 	// lock-free critical section
-	mach := e.Machine
+	mach := e.Machine()
 	// tick-based context
 	stateCtx := mach.NewStateCtx("ProcessingFile")
 	go func() {

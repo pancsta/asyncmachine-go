@@ -23,8 +23,8 @@ var (
 	startupTx      = 27
 	initialView    = "matrix"
 	playInterval   = 200 * time.Millisecond
-	// debugAddr      = ""
-	debugAddr  = "localhost:6831"
+	debugAddr      = ""
+	// debugAddr  = "localhost:6831"
 	stateNames = am.S{
 		"Start",
 		"IsDHT",
@@ -78,7 +78,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		EnableMouse: p.EnableMouse,
 		Version:     utils.GetVersion(),
 		ID:          "video",
-		NoGc:        true,
+		MaxMemMb:    1000,
 	})
 	if err != nil {
 		panic(err)

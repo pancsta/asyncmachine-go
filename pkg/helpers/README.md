@@ -13,8 +13,8 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
-> machine. It has atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a clock-based state
+> machine. It has atomic transitions, subscriptions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
 **/pkg/helpers** is the swiss army knife for async state machines. It encapsulates many low-level details of
 [`/pkg/machine`](/pkg/machine/README.md) and provide easy to reason about functions. It specifically deals with

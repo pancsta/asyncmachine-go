@@ -13,8 +13,8 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
-> machine. It has atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a clock-based state
+> machine. It has atomic transitions, subscriptions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
 **/pkg/history** provides mutation history tracking and traversal. It's in an early stage, but it has a very important
 role in making informed decision about state flow. Besides providing a log of changes, it also binds human time to

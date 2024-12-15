@@ -17,7 +17,7 @@ func init() {
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	amhelp.EnableDebugging(false)
-	// amhelp.SetLogLevel(am.LogChanges)
+	amhelp.SetLogLevel(am.LogChanges)
 }
 
 func main() {
@@ -74,6 +74,9 @@ func main() {
 	// start and wait
 	mach.Add(am.S{"Start", "Task"}, nil)
 	<-mach.When1("Ready", nil)
+
+	// end
+	println("done")
 
 	// debug
 	time.Sleep(time.Second)

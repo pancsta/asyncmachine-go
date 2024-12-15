@@ -104,7 +104,7 @@ type clientHandlers struct {
 }
 
 func (h *clientHandlers) WorkerPayloadState(e *am.Event) {
-	e.Machine.Remove1(ssrpc.ConsumerStates.WorkerPayload, nil)
+	e.Machine().Remove1(ssrpc.ConsumerStates.WorkerPayload, nil)
 
 	args := arpc.ParseArgs(e.Args)
 	println("Payload: " + args.Payload.Data.(string))

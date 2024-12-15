@@ -91,11 +91,11 @@ type MachineHandlers struct {
 // DownloadingFileState is a _final_ entry handler for the DownloadingFile
 // state.
 func (h *MachineHandlers) DownloadingFileState(e *am.Event) {
-	e.Machine.Log("Downloading file... %s", h.Filename)
+	e.Machine().Log("Downloading file... %s", h.Filename)
 	// read args
 	h.Filename = e.Args["filename"].(string)
 	// tick-based ctx
-	stateCtx := e.Machine.NewStateCtx(ss.DownloadingFile)
+	stateCtx := e.Machine().NewStateCtx(ss.DownloadingFile)
 
 	// unblock
 	go func() {
@@ -106,12 +106,12 @@ func (h *MachineHandlers) DownloadingFileState(e *am.Event) {
 
 		tmpFile, err := saveToTmpFile(data)
 		if err != nil {
-			e.Machine.AddErr(err, nil)
+			e.Machine().AddErr(err, nil)
 			return
 		}
 		h.DownloadedName = tmpFile.Name()
 		// done, next step
-		e.Machine.Add1(ss.FileDownloaded, nil)
+		e.Machine().Add1(ss.FileDownloaded, nil)
 	}()
 }
 
@@ -119,7 +119,7 @@ func (h *MachineHandlers) DownloadingFileState(e *am.Event) {
 // state.
 func (h *MachineHandlers) ProcessingFileState(e *am.Event) {
 	// tick-based ctx
-	stateCtx := e.Machine.NewStateCtx(ss.ProcessingFile)
+	stateCtx := e.Machine().NewStateCtx(ss.ProcessingFile)
 
 	// unblock
 	go func() {
@@ -129,24 +129,24 @@ func (h *MachineHandlers) ProcessingFileState(e *am.Event) {
 		// read downloaded file
 		data, err := os.ReadFile(h.DownloadedName)
 		if err != nil {
-			e.Machine.Log("processFileActivity failed to read file %s.",
+			e.Machine().Log("processFileActivity failed to read file %s.",
 				h.DownloadedName)
-			e.Machine.AddErr(err, nil)
+			e.Machine().AddErr(err, nil)
 			return
 		}
 		// process the file
 		transData := transcodeData(stateCtx, data)
 		tmpFile, err := saveToTmpFile(transData)
 		if err != nil {
-			e.Machine.Log("processFileActivity failed to save tmp file.")
-			e.Machine.AddErr(err, nil)
+			e.Machine().Log("processFileActivity failed to save tmp file.")
+			e.Machine().AddErr(err, nil)
 			return
 		}
 
 		h.ProcessedFileName = tmpFile.Name()
-		e.Machine.Log("processFileActivity succeed %s", h.ProcessedFileName)
+		e.Machine().Log("processFileActivity succeed %s", h.ProcessedFileName)
 		// done, next step
-		e.Machine.Add1(ss.FileProcessed, nil)
+		e.Machine().Add1(ss.FileProcessed, nil)
 	}()
 }
 
@@ -154,7 +154,7 @@ func (h *MachineHandlers) ProcessingFileState(e *am.Event) {
 // state.
 func (h *MachineHandlers) ProcessingFileEnd(e *am.Event) {
 	// clean up temp the file
-	e.Machine.Log("cleanup %s", h.DownloadedName)
+	e.Machine().Log("cleanup %s", h.DownloadedName)
 	_ = os.Remove(h.DownloadedName)
 }
 
@@ -162,23 +162,23 @@ func (h *MachineHandlers) ProcessingFileEnd(e *am.Event) {
 // UploadingFile state.
 func (h *MachineHandlers) UploadingFileState(e *am.Event) {
 	// tick-based ctx
-	stateCtx := e.Machine.NewStateCtx(ss.UploadingFile)
+	stateCtx := e.Machine().NewStateCtx(ss.UploadingFile)
 
 	// unblock
 	go func() {
 		if stateCtx.Err() != nil {
 			return // expired
 		}
-		e.Machine.Log("uploadFileActivity begin %s", h.ProcessedFileName)
+		e.Machine().Log("uploadFileActivity begin %s", h.ProcessedFileName)
 		err := h.BlobStore.uploadFile(stateCtx, h.ProcessedFileName)
 		if err != nil {
-			e.Machine.Log("uploadFileActivity uploading failed.")
-			e.Machine.AddErr(err, nil)
+			e.Machine().Log("uploadFileActivity uploading failed.")
+			e.Machine().AddErr(err, nil)
 			return
 		}
-		e.Machine.Log("uploadFileActivity succeed %s", h.ProcessedFileName)
+		e.Machine().Log("uploadFileActivity succeed %s", h.ProcessedFileName)
 		// done, next step
-		e.Machine.Add1(ss.FileUploaded, nil)
+		e.Machine().Add1(ss.FileUploaded, nil)
 	}()
 }
 
@@ -186,7 +186,7 @@ func (h *MachineHandlers) UploadingFileState(e *am.Event) {
 // state.
 func (h *MachineHandlers) UploadingFileEnd(e *am.Event) {
 	// clean up temp the file
-	e.Machine.Log("cleanup %s", h.ProcessedFileName)
+	e.Machine().Log("cleanup %s", h.ProcessedFileName)
 	_ = os.Remove(h.ProcessedFileName)
 }
 

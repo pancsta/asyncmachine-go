@@ -67,3 +67,6 @@ _py
 /log.md
 /coverage*.txt
 /tests*.txt
+/assets
+/__*
+/trace*

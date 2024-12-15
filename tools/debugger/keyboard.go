@@ -90,55 +90,62 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 		case d.tree:
 			fallthrough
 		case d.tree.Box:
-			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.tree.Box))
+			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.tree.Box))
 			d.Mach.Add1(ss.TreeFocused, nil)
 
 		case d.log:
 			fallthrough
 		case d.log.Box:
-			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.log.Box))
+			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.log.Box))
 			d.Mach.Add1(ss.LogFocused, nil)
 
 		case d.logReader:
 			fallthrough
 		case d.logReader.Box:
-			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.logReader.Box))
+			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+				d.logReader.Box))
 			d.Mach.Add1(ss.LogReaderFocused, nil)
 
 		case d.timelineTxs:
 			fallthrough
 		case d.timelineTxs.Box:
-			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.timelineTxs.Box))
+			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+				d.timelineTxs.Box))
 			d.Mach.Add1(ss.TimelineTxsFocused, nil)
 
 		case d.timelineSteps:
 			fallthrough
 		case d.timelineSteps.Box:
-			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.timelineSteps.Box))
+			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+				d.timelineSteps.Box))
 			d.Mach.Add1(ss.TimelineStepsFocused, nil)
 
 		case d.filtersBar:
 			fallthrough
 		case d.filtersBar.Box:
-			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.filtersBar.Box))
+			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+				d.filtersBar.Box))
 			d.Mach.Add1(ss.FiltersFocused, nil)
 
 		case d.addressBar:
 			fallthrough
 		case d.addressBar.Box:
-			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.addressBar.Box))
+			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+				d.addressBar.Box))
 			d.Mach.Add1(ss.AddressFocused, nil)
 
 		case d.clientList:
 			fallthrough
 		case d.clientList.Box:
-			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.clientList.Box))
+			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+				d.clientList.Box))
 			d.Mach.Add1(ss.SidebarFocused, nil)
 
 		case d.matrix:
 			fallthrough
 		case d.matrix.Box:
-			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.matrix.Box))
+			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+				d.matrix.Box))
 			d.Mach.Add1(ss.MatrixFocused, nil)
 
 		// DIALOGS
@@ -146,13 +153,15 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 		case d.helpDialog:
 			fallthrough
 		case d.helpDialog.Box:
-			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.helpDialog.Box))
+			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+				d.helpDialog.Box))
 			d.Mach.Add1(ss.DialogFocused, nil)
 
 		case d.exportDialog:
 			fallthrough
 		case d.exportDialog.Box:
-			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.exportDialog.Box))
+			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+				d.exportDialog.Box))
 			d.Mach.Add1(ss.DialogFocused, nil)
 		}
 
@@ -640,8 +649,8 @@ func (d *Debugger) updateFocusable() {
 
 	case ss.MatrixView:
 		d.focusable = []*cview.Box{
-			d.addressBar.Box, d.clientList.Box, d.matrix.Box, d.timelineTxs.Box, d.timelineSteps.Box,
-			d.filtersBar.Box,
+			d.addressBar.Box, d.clientList.Box, d.matrix.Box, d.timelineTxs.Box,
+			d.timelineSteps.Box, d.filtersBar.Box,
 		}
 		prims = []cview.Primitive{
 			d.addressBar, d.clientList, d.matrix, d.timelineTxs,
@@ -650,8 +659,8 @@ func (d *Debugger) updateFocusable() {
 
 	case ss.TreeMatrixView:
 		d.focusable = []*cview.Box{
-			d.addressBar.Box, d.clientList.Box, d.tree.Box, d.matrix.Box, d.timelineTxs.Box,
-			d.timelineSteps.Box, d.filtersBar.Box,
+			d.addressBar.Box, d.clientList.Box, d.tree.Box, d.matrix.Box,
+			d.timelineTxs.Box, d.timelineSteps.Box, d.filtersBar.Box,
 		}
 		prims = []cview.Primitive{
 			d.addressBar, d.clientList, d.tree, d.matrix, d.timelineTxs,
@@ -664,8 +673,9 @@ func (d *Debugger) updateFocusable() {
 		if d.Mach.Is1(ss.LogReaderVisible) {
 
 			d.focusable = []*cview.Box{
-				d.addressBar.Box, d.clientList.Box, d.tree.Box, d.log.Box, d.logReader.Box,
-				d.timelineTxs.Box, d.timelineSteps.Box, d.filtersBar.Box,
+				d.addressBar.Box, d.clientList.Box, d.tree.Box, d.log.Box,
+				d.logReader.Box, d.timelineTxs.Box, d.timelineSteps.Box,
+				d.filtersBar.Box,
 			}
 			prims = []cview.Primitive{
 				d.addressBar, d.clientList, d.tree, d.log, d.logReader, d.timelineTxs,
@@ -674,8 +684,8 @@ func (d *Debugger) updateFocusable() {
 		} else {
 
 			d.focusable = []*cview.Box{
-				d.addressBar.Box, d.clientList.Box, d.tree.Box, d.log.Box, d.timelineTxs.Box,
-				d.timelineSteps.Box, d.filtersBar.Box,
+				d.addressBar.Box, d.clientList.Box, d.tree.Box, d.log.Box,
+				d.timelineTxs.Box, d.timelineSteps.Box, d.filtersBar.Box,
 			}
 			prims = []cview.Primitive{
 				d.addressBar, d.clientList, d.tree, d.log, d.timelineTxs,

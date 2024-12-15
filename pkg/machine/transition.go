@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -24,8 +25,6 @@ type Transition struct {
 	Enters S
 	// Enters is a list of states with exit handlers in this transition.
 	Exits S
-	// Accepted tells if the transition was accepted during the negotiation phase.
-	Accepted bool
 	// Mutation call which caused this transition
 	Mutation *Mutation
 	// Machine is the parent machine of this transition.
@@ -41,6 +40,8 @@ type Transition struct {
 	QueueLen int
 	// LogEntriesLock is used to lock the logs to be collected by a Tracer.
 	LogEntriesLock sync.Mutex
+	// Accepted tells if the transition was accepted during the negotiation phase.
+	Accepted bool
 
 	isCompleted atomic.Bool
 	// Latest / current step of the transition
@@ -76,12 +77,11 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	}
 	m.tracersLock.RUnlock()
 
-	// log
+	// log stuff
 	states := t.CalledStates()
 	mutType := t.Type()
 	logArgs := t.LogArgs()
-	t.addSteps(newSteps("", states, StepRequested, nil)...)
-
+	t.addSteps(newSteps("", states, StepRequested, 0)...)
 	if item.Auto {
 		m.log(LogDecisions, "[%s:auto] %s%s", mutType, j(states), logArgs)
 	} else {
@@ -92,6 +92,7 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 		m.log(LogOps, "[source] %s/%s/%d", src.MachId, src.TxId, src.MachTime)
 	}
 
+	// set up the mutation
 	statesToSet := S{}
 	switch mutType {
 
@@ -99,20 +100,20 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 		statesToSet = slicesFilter(m.activeStates, func(state string, _ int) bool {
 			return !slices.Contains(states, state)
 		})
-		t.addSteps(newSteps("", states, StepRemove, nil)...)
+		t.addSteps(newSteps("", states, StepRemove, 0)...)
 
 	case MutationAdd:
 		statesToSet = append(statesToSet, states...)
 		statesToSet = append(statesToSet, m.activeStates...)
 		t.addSteps(newSteps("", DiffStates(statesToSet, m.activeStates),
-			StepSet, nil)...)
+			StepSet, 0)...)
 
 	case MutationSet:
 		statesToSet = states
 		t.addSteps(newSteps("", DiffStates(statesToSet, m.activeStates),
-			StepSet, nil)...)
+			StepSet, 0)...)
 		t.addSteps(newSteps("", DiffStates(m.activeStates, statesToSet),
-			StepRemove, nil)...)
+			StepRemove, 0)...)
 	}
 
 	// simulate TimeAfter (temporarily)
@@ -219,11 +220,17 @@ func (t *Transition) LogArgs() string {
 	}
 
 	var args []string
-	for k, v := range matcher(t.Mutation.Args) {
-		args = append(args, k+"="+v)
-	}
-	if len(args) == 0 {
+	matched := matcher(t.Mutation.Args)
+	if len(matched) == 0 {
 		return ""
+	}
+
+	// sort by name and print
+	names := slices.AppendSeq([]string{}, maps.Keys(matched))
+	slices.Sort(names)
+	for _, k := range names {
+		v := matched[k]
+		args = append(args, k+"="+v)
 	}
 
 	return " (" + strings.Join(args, " ") + ")"
@@ -290,7 +297,7 @@ func (t *Transition) emitSelfEvents() Result {
 			continue
 		}
 		name := s + s
-		step := newStep(s, "", StepHandler, nil)
+		step := newStep(s, "", StepHandler, 0)
 		step.IsSelf = true
 		ret, handlerCalled = m.handle(name, t.Mutation.Args, step, false)
 		if handlerCalled {
@@ -343,7 +350,7 @@ func (t *Transition) emitExitEvents() Result {
 }
 
 func (t *Transition) emitHandler(from, to, event string, args A) Result {
-	step := newStep(from, to, StepHandler, nil)
+	step := newStep(from, to, StepHandler, 0)
 	t.latestStep = step
 	ret, handlerCalled := t.Machine.handle(event, args, step, false)
 	if handlerCalled {
@@ -367,7 +374,7 @@ func (t *Transition) emitFinalEvents() Result {
 			handler = s + "End"
 		}
 
-		step := newStep(s, "", StepHandler, nil)
+		step := newStep(s, "", StepHandler, 0)
 		step.IsFinal = true
 		step.IsEnter = isEnter
 		t.latestStep = step
@@ -513,7 +520,7 @@ func (t *Transition) setupAccepted() {
 	}
 	t.Accepted = false
 	m.log(LogOps, "[cancel:reject] %s", j(notAccepted))
-	t.addSteps(newSteps("", notAccepted, StepCancel, nil)...)
+	t.addSteps(newSteps("", notAccepted, StepCancel, 0)...)
 }
 
 // IsCompleted is true when the execution of the transition has been fully
