@@ -2764,24 +2764,84 @@ func (m *Machine) SetStruct(statesStruct Struct, names S) error {
 	return nil
 }
 
-// AddFromEv - planned.
-// TODO AddFromEv
-// TODO AddFromCtx using state ctx?
-func (m *Machine) AddFromEv(states S, event *Event, args A) Result {
-	panic("AddFromEv not implemented; github.com/pancsta/asyncmachine-go/pulls")
+// TODO doc
+func (m *Machine) EvAdd(event *Event, states S, args A) Result {
+	if m.disposed.Load() || int(m.queueLen.Load()) >= m.QueueLimit {
+		return Canceled
+	}
+	m.queueMutation(MutationAdd, states, args, event)
+	m.breakpoint(states, nil)
+
+	return m.processQueue()
 }
 
-// RemoveFromEv TODO RemoveFromEv
-// Planned.
-func (m *Machine) RemoveFromEv(states S, event *Event, args A) Result {
-	panic(
-		"RemoveFromEv not implemented; github.com/pancsta/asyncmachine-go/pulls")
+// TODO doc
+func (m *Machine) EvAdd1(event *Event, states string, args A) Result {
+	return m.EvAdd(event, S{states}, args)
 }
 
-// SetFromEv TODO SetFromEv
-// Planned.
-func (m *Machine) SetFromEv(states S, event *Event, args A) Result {
-	panic("SetFromEv not implemented; github.com/pancsta/asyncmachine-go/pulls")
+// TODO doc
+func (m *Machine) EvRemove(event *Event, states S, args A) Result {
+	if m.disposed.Load() || int(m.queueLen.Load()) >= m.QueueLimit {
+		return Canceled
+	}
+
+	// return early if none of the states is active
+	m.queueLock.RLock()
+	lenQueue := len(m.queue)
+
+	// try ignoring this mutation, if none of the states is currently active
+	var statesAny []S
+	for _, name := range states {
+		statesAny = append(statesAny, S{name})
+	}
+
+	if lenQueue == 0 && m.Transition() != nil && !m.Any(statesAny...) {
+		m.queueLock.RUnlock()
+		return Executed
+	}
+
+	m.queueLock.RUnlock()
+	m.queueMutation(MutationRemove, states, args, event)
+	m.breakpoint(nil, states)
+
+	return m.processQueue()
+}
+
+// TODO doc
+func (m *Machine) EvRemove1(event *Event, states string, args A) Result {
+	return m.EvRemove(event, S{states}, args)
+}
+
+// TODO doc
+func (m *Machine) EvAddErr(event *Event, err error, args A) Result {
+	return m.EvAddErrState(event, Exception, err, args)
+}
+
+// TODO doc
+func (m *Machine) EvAddErrState(
+	event *Event, state string, err error, args A,
+) Result {
+	// TODO AddErrStates
+	if m.disposed.Load() {
+		return Canceled
+	}
+	// TODO test Err()
+	m.err.Store(&err)
+
+	var trace string
+	if m.LogStackTrace {
+		trace = captureStackTrace()
+	}
+
+	// build args
+	argsT := &AT{
+		Err:      err,
+		ErrTrace: trace,
+	}
+
+	// TODO prepend to the queue? what effects / benefits
+	return m.EvAdd(event, S{state, Exception}, PassMerge(args, argsT))
 }
 
 // CanAdd TODO CanAdd

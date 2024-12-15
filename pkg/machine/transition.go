@@ -87,6 +87,10 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	} else {
 		m.log(LogOps, "[%s] %s%s", mutType, j(states), logArgs)
 	}
+	src := item.Source
+	if src != nil {
+		m.log(LogOps, "[source] %s/%s/%d", src.MachId, src.TxId, src.MachTime)
+	}
 
 	statesToSet := S{}
 	switch mutType {

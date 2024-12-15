@@ -112,6 +112,13 @@ type Api interface {
 	AddErr(err error, args A) Result
 	AddErrState(state string, err error, args A) Result
 
+	EvAdd1(event *Event, state string, args A) Result
+	EvAdd(event *Event, states S, args A) Result
+	EvRemove1(event *Event, state string, args A) Result
+	EvRemove(event *Event, states S, args A) Result
+	EvAddErr(event *Event, err error, args A) Result
+	EvAddErrState(event *Event, state string, err error, args A) Result
+
 	// Waiting (remote)
 
 	WhenArgs(state string, args A, ctx context.Context) <-chan struct{}
@@ -251,6 +258,13 @@ func (r Result) String() string {
 	return ""
 }
 
+type MutSource struct {
+	MachId string
+	TxId   string
+	// Machine time of the source machine BEFORE the event.
+	MachTime uint64
+}
+
 // MutationType enum
 type MutationType int
 
@@ -287,6 +301,8 @@ type Mutation struct {
 	Args A
 	// this mutation has been triggered by an auto state
 	Auto bool
+	// Source is the source event for this mutation.
+	Source *MutSource
 	// specific context for this mutation (optional)
 	ctx context.Context
 	// optional eval func, only for mutationEval
