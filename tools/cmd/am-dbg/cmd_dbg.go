@@ -68,7 +68,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 
 	// rpc server
 	if p.ServerAddr != "-1" {
-		go server.StartRpc(dbg.Mach, p.ServerAddr, nil)
+		go server.StartRpc(dbg.Mach, p.ServerAddr, nil, p.FwdData)
 	}
 
 	// start and wait till the end

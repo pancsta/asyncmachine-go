@@ -40,9 +40,13 @@ const (
 	pView             = "view"
 	pViewShort        = "v"
 	// TODO AM_DBG_PROF
-	pProfSrv = "prof-srv"
-	pMaxMem  = "max-mem"
-	pLog2Ttl = "log-2-ttl"
+	pProfSrv      = "prof-srv"
+	pMaxMem       = "max-mem"
+	pLog2Ttl      = "log-2-ttl"
+	pReader       = "reader"
+	pReaderShort  = "r"
+	pFwdData      = "fwd-data"
+	pFwdDataShort = "f"
 	// TODO --filters
 	// TODO --view
 	// TODO --rain
@@ -67,9 +71,11 @@ type Params struct {
 	SelectConnected bool
 	ProfMem         bool
 	ProfCpu         bool
-	ProfSrv  bool
-	MaxMemMb int
-	Log2Ttl  time.Duration
+	ProfSrv         string
+	MaxMemMb        int
+	Log2Ttl         time.Duration
+	Reader          bool
+	FwdData         []string
 }
 
 type RootFn func(cmd *cobra.Command, args []string, params Params)
@@ -118,8 +124,9 @@ func AddFlags(rootCmd *cobra.Command) {
 		"Select the newly connected machine, if no other is connected")
 	f.StringP(pImport, pImportShort, "",
 		"Import an exported gob.bt file")
-	f.Bool(pVersion, false,
-		"Print version and exit")
+	f.BoolP(pReader, pReaderShort, false, "Enable Log Reader")
+	f.StringP(pFwdData, pFwdDataShort, "",
+		"Fordward incoming data to other instances (eg addr1,addr2)")
 
 	// profile & mem
 	f.Bool(pProfSrv, false, "Start pprof server on :6060")
@@ -146,6 +153,8 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 	serverAddr := cmd.Flag(pServerAddr).Value.String()
 	debugAddr := cmd.Flag(pAmDbgAddr).Value.String()
 	importData := cmd.Flag(pImport).Value.String()
+	fwdDataRaw := cmd.Flag(pFwdData).Value.String()
+	profSrv := cmd.Flag(pProfSrv).Value.String()
 	startupMachine := cmd.Flag(pStartupMach).Value.String()
 	startupView := cmd.Flag(pView).Value.String()
 	startupTx, err := cmd.Flags().GetInt(pStartupTx)
@@ -181,6 +190,12 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 		panic(err)
 	}
 
+	// TODO suppose multiple instances
+	var fwdData []string
+	if fwdDataRaw != "" {
+		fwdData = strings.Split(fwdDataRaw, ",")
+	}
+
 	return Params{
 		LogLevel:        logLevel,
 		LogFile:         logFile,
@@ -194,6 +209,8 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 		EnableMouse:     enableMouse,
 		CleanOnConnect:  cleanOnConnect,
 		SelectConnected: selectConnected,
+		Reader:          reader,
+		FwdData:         fwdData,
 
 		// profiling
 		ProfSrv:  profSrv,
