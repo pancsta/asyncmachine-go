@@ -2,12 +2,6 @@ package states
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
-// S is a type alias for a list of state names.
-type S = am.S
-
-// SAdd is a func alias for merging lists of states.
-var SAdd = am.SAdd
-
 // States map defines relations and properties of states.
 var States = am.Struct{
 
@@ -116,7 +110,11 @@ var States = am.Struct{
 	ScrollToMutTx: {Require: S{ClientSelected}},
 	// TODO depend on a common Matrix view
 	MatrixRain:       {},
-	LogReaderVisible: {Require: S{TreeLogView}},
+	LogReaderVisible: {
+		Auto: true,
+		Require: S{TreeLogView, LogReaderEnabled},
+	},
+	LogReaderEnabled: {},
 
 	// tx / steps back / fwd
 
@@ -134,6 +132,10 @@ var States = am.Struct{
 	},
 
 	ScrollToTx: {
+		Require: S{ClientSelected},
+		Remove:  S{TailMode, Playing, TimelineStepsScrolled},
+	},
+	ScrollToStep: {
 		Require: S{ClientSelected},
 		Remove:  S{TailMode, Playing},
 	},
@@ -181,6 +183,7 @@ var (
 // Names of all the states (pkg enum).
 
 const (
+	// TODO rename to StructureFocused
 	TreeFocused           = "TreeFocused"
 	LogFocused            = "LogFocused"
 	TimelineTxsFocused    = "TimelineTxsFocused"
@@ -195,7 +198,6 @@ const (
 	SidebarFocused   = "SidebarFocused"
 
 	TimelineStepsScrolled = "TimelineStepsScrolled"
-
 	ClientMsg = "ClientMsg"
 	// StateNameSelected states that a state name is selected somehwere in the
 	// tree (and possibly other places).
@@ -235,9 +237,11 @@ const (
 	TreeLogView      = "TreeLogView"
 	TreeMatrixView   = "TreeMatrixView"
 	LogReaderVisible = "LogReaderVisible"
+	LogReaderEnabled	= "LogReaderEnabled"
 	LogUserScrolled  = "LogUserScrolled"
 	// ScrollToTx scrolls to a specific transition.
 	ScrollToTx = "ScrollToTx"
+	ScrollToStep = "ScrollToStep"
 	// Ready is an async result of start
 	Ready            = "Ready"
 	FilterCanceledTx = "FilterCanceledTx"
@@ -282,6 +286,7 @@ var Names = S{
 	TreeFocused,
 	LogFocused,
 	LogReaderFocused,
+	AddressFocused,
 	SidebarFocused,
 	TimelineTxsFocused,
 	TimelineStepsFocused,
@@ -310,12 +315,14 @@ var Names = S{
 	FilterCanceledTx,
 	FilterEmptyTx,
 	FilterSummaries,
+	FilterHealthcheck,
 	ToggleFilter,
 	SwitchingClientTx,
 	SwitchedClientTx,
 	ScrollToMutTx,
 	MatrixRain,
 	LogReaderVisible,
+	LogReaderEnabled,
 
 	// tx / steps back / fwd
 	Fwd,
@@ -324,6 +331,7 @@ var Names = S{
 	BackStep,
 
 	ScrollToTx,
+	ScrollToStep,
 
 	// client
 	ClientSelected,

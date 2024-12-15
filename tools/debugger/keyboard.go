@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -122,6 +123,12 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.filtersBar.Box))
 			d.Mach.Add1(ss.FiltersFocused, nil)
 
+		case d.addressBar:
+			fallthrough
+		case d.addressBar.Box:
+			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.addressBar.Box))
+			d.Mach.Add1(ss.AddressFocused, nil)
+
 		case d.clientList:
 			fallthrough
 		case d.clientList.Box:
@@ -195,16 +202,16 @@ func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 				currIdx := d.clientList.GetCurrentItemIndex()
 
 				for i, item := range d.clientList.GetItems() {
-					if i <= currIdx {
+					if i+1 <= currIdx {
 						continue
 					}
 
+					// TODO trim left and preserve position for multiple matches
 					text := normalizeText(item.GetMainText())
 					if strings.HasPrefix(text, buffer) {
 						d.clientList.SetCurrentItem(i)
 						d.updateClientList(true)
-
-						d.draw()
+						d.draw(d.clientList)
 						break
 					}
 				}
@@ -248,6 +255,7 @@ func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 								d.Mach.Remove1(ss.StateNameSelected, nil)
 							}
 							d.updateTree()
+							d.updateLogReader()
 							d.draw()
 							d.tree.SetCurrentNode(node)
 
@@ -274,27 +282,8 @@ func (d *Debugger) getKeystrokes() map[string]func(
 	// TODO use tcell.KeyNames instead of strings as keys
 	// TODO rate limit
 	return map[string]func(ev *tcell.EventKey) *tcell.EventKey{
-		// filters - toggle select
-		"enter": func(ev *tcell.EventKey) *tcell.EventKey {
-			// filters - toggle select
-			if d.Mach.Is1(ss.FiltersFocused) {
-				d.Mach.Add1(ss.ToggleFilter, nil)
-
-				return nil
-			}
-
-			return ev
-		},
-
 		// play/pause
 		"space": func(ev *tcell.EventKey) *tcell.EventKey {
-			// filters - toggle select
-			if d.Mach.Is1(ss.FiltersFocused) {
-				d.Mach.Add1(ss.ToggleFilter, nil)
-
-				return nil
-			}
-
 			if d.Mach.Not1(ss.ClientSelected) {
 				return nil
 			}
@@ -441,7 +430,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 
 		// log reader
 		"alt+o": func(ev *tcell.EventKey) *tcell.EventKey {
-			amhelp.Toggle(d.Mach, ss.LogReaderVisible, nil)
+			amhelp.Toggle(d.Mach, ss.LogReaderEnabled, nil)
 
 			return nil
 		},
@@ -565,9 +554,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 				return nil
 			}
 
-			if d.Mach.Is1(ss.FiltersFocused) {
-				d.focusManager.Focus(d.clientList)
-			}
+			d.focusManager.Focus(d.clientList)
 
 			return ev
 		},
@@ -583,8 +570,8 @@ func (d *Debugger) getKeystrokes() map[string]func(
 				return nil
 			}
 
-			cid := sel.GetReference().(*sidebarRef)
-			d.Mach.Add1(ss.RemoveClient, am.A{"Client.id": cid})
+			ref := sel.GetReference().(*sidebarRef)
+			d.Mach.Add1(ss.RemoveClient, am.A{"Client.id": ref.name})
 
 			return nil
 		},
@@ -596,7 +583,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 				// TODO state?
 				go func() {
 					d.updateClientList(true)
-					d.draw()
+					d.draw(d.clientList)
 				}()
 			} else if d.Mach.Is1(ss.LogFocused) {
 				d.Mach.Add1(ss.LogUserScrolled, nil)
@@ -609,7 +596,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 				// TODO state?
 				go func() {
 					d.updateClientList(true)
-					d.draw()
+					d.draw(d.clientList)
 				}()
 			} else if d.Mach.Is1(ss.LogFocused) {
 				d.Mach.Add1(ss.LogUserScrolled, nil)

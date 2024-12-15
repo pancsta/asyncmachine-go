@@ -3,17 +3,18 @@ package debugger
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 	"golang.org/x/exp/maps"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
-
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"

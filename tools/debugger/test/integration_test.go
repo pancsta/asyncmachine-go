@@ -49,7 +49,7 @@ func init() {
 	// init am-dbg telemetry server
 	muxCh := make(chan cmux.CMux, 1)
 	defer close(muxCh)
-	go server.StartRpc(worker.Mach, workerAddr, muxCh)
+	go server.StartRpc(worker.Mach, workerAddr, muxCh, nil)
 	// wait for mux
 	<-muxCh
 }
@@ -96,8 +96,8 @@ func TestUserFwd100(t *testing.T) {
 		<-when
 	}
 
-	// assert
-	assert.Equal(t, cursorTx+100, worker.C.CursorTx)
+	// assert that at least 100 txs got scrolled (more bc of def filters)
+	assert.GreaterOrEqual(t, worker.C.CursorTx, cursorTx+100)
 }
 
 func TestTailModeFLAKY(t *testing.T) {

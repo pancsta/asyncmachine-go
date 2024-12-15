@@ -101,7 +101,6 @@ func (d *Debugger) initUiComponents() {
 	d.initAddressBar()
 
 	// filters bar
-
 	d.initFiltersBar()
 
 	// update models
@@ -171,7 +170,6 @@ func (d *Debugger) initTimelineTx() {
 		return action, event
 	})
 }
-
 
 func (d *Debugger) initAddressBar() {
 	// TODO enum for col indexes
@@ -426,57 +424,15 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	
 	`, "\n ")), colorActive, colorInactive))
 
-	right := cview.NewTextView()
-	right.SetBackgroundColor(colorHighlight)
-	right.SetTitle(" Keystrokes ")
-	right.SetDynamicColors(true)
-	right.SetPadding(1, 1, 1, 1)
-	right.SetText(fmt.Sprintf(dedent.Dedent(strings.Trim(`
-		[::b]### [::u]keystrokes[::-]
-		[::b]tab[::-]                change focus
-		[::b]shift+tab[::-]          change focus
-		[::b]space[::-]              play/pause
-		[::b]left/right[::-]         prev/next
-		[::b]alt+left/right[::-]     fast jump
-		[::b]alt+h/l[::-]            fast jump
-		[::b]alt+h/l[::-]            state jump (when selected)
-		[::b]up/down[::-]            scroll / navigate
-		[::b]j/k[::-]                scroll / navigate
-		[::b]alt+j/k[::-]            page up/down
-		[::b]alt+e[::-]              expand/collapse tree
-		[::b]enter[::-]              expand/collapse node
-		[::b]alt+v[::-]              tail mode
-		[::b]alt+r[::-]              rain view
-		[::b]alt+m[::-]              matrix views
-		[::b]alt+o[::-]              log reader
-		[::b]home/end[::-]           struct / last tx
-		[::b]alt+s[::-]              export data
-		[::b]backspace[::-]          remove machine
-		[::b]ctrl+q[::-]             quit
-		[::b]?[::-]                  show help
-	
-		[::b]### [::u]client list legend[::-]
-		T                  whole machine time
-		[%s]client-id[-]          connected
-		[grey]client-id[-]          disconnected
-		[red]client-id[-]          recent error
-		[::u]client-id[::-]          selected one
-		|123               transitions till now
-		|123+              more transitions left
-		S|                 Start active
-		R|                 Ready active
-	
-		[::b]### [::u]about am-dbg[::-]
-		%-15s    version
-		%-15s    server addr
-	`, "\n ")), colorActive, d.Opts.Version, d.Opts.ServerAddr))
+	// render the right side separately
+	d.updateHelpDialog()
 
 	grid := cview.NewGrid()
 	grid.SetTitle(" asyncmachine-go debugger ")
 	grid.SetColumns(0, 0)
 	grid.SetRows(0)
 	grid.AddItem(left, 0, 0, 1, 1, 0, 0, false)
-	grid.AddItem(right, 0, 1, 1, 1, 0, 0, false)
+	grid.AddItem(d.helpDialogRight, 0, 1, 1, 1, 0, 0, false)
 
 	box1 := cview.NewBox()
 	box1.SetBackgroundTransparent(true)
@@ -499,6 +455,60 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	flexVer.AddItem(box4, 0, 1, false)
 
 	return flexVer
+}
+
+func (d *Debugger) updateHelpDialog() {
+	mem := int(AllocMem() / 1024 / 1024)
+	if d.helpDialogRight == nil {
+		d.helpDialogRight = cview.NewTextView()
+	}
+	d.helpDialogRight.SetBackgroundColor(colorHighlight)
+	d.helpDialogRight.SetTitle(" Keystrokes ")
+	d.helpDialogRight.SetDynamicColors(true)
+	d.helpDialogRight.SetPadding(1, 1, 1, 1)
+	d.helpDialogRight.SetText(fmt.Sprintf(dedent.Dedent(strings.Trim(`
+		[::b]### [::u]keystrokes[::-]
+		[::b]tab[::-]                change focus
+		[::b]shift+tab[::-]          change focus
+		[::b]space[::-]              play/pause
+		[::b]left/right[::-]         prev/next / navigate
+		[::b]alt+left/right[::-]     fast jump
+		[::b]alt+h/l[::-]            fast jump
+		[::b]alt+h/l[::-]            state jump (when selected)
+		[::b]up/down[::-]            scroll / navigate
+		[::b]j/k[::-]                scroll / navigate
+		[::b]alt+j/k[::-]            page up/down
+		[::b]alt+e[::-]              expand/collapse tree
+		[::b]enter[::-]              expand/collapse node
+		[::b]alt+v[::-]              tail mode
+		[::b]alt+r[::-]              rain view
+		[::b]alt+m[::-]              matrix views
+		[::b]alt+o[::-]              log reader
+		[::b]home/end[::-]           struct / last tx
+		[::b]alt+s[::-]              export data
+		[::b]backspace[::-]          remove machine
+		[::b]esc[::-]                focus mach list
+		[::b]ctrl+q[::-]             quit
+		[::b]?[::-]                  show help
+	
+		[::b]### [::u]machine list legend[::-]
+		T:123              total received machine time
+		[%s]client-id[-]          connected
+		[grey]client-id[-]          disconnected
+		[red]client-id[-]          current error
+		[orangered]client-id[-]          recent error
+		[::u]client-id[::-]          selected machine
+		|123               transitions till now
+		|123+              more transitions left
+		S|                 Start active
+		R|                 Ready active
+	
+		[::b]### [::u]about am-dbg[::-]
+		%-15s    version
+		%-15s    server addr
+		%-15s    mem usage
+	`, "\n ")), colorActive, d.Opts.Version, d.Opts.ServerAddr,
+		strconv.Itoa(mem)+"mb"))
 }
 
 func (d *Debugger) initLayout() {
@@ -534,20 +544,22 @@ func (d *Debugger) initLayout() {
 
 	// main grid
 	mainGrid := cview.NewGrid()
-	mainGrid.SetRows(-1, 2, 3, 2, 3, 1, 2)
+	mainGrid.SetRows(1, 1, -1, 2, 3, 2, 3, 1, 2)
 	cols := []int{ /*sidebar*/ -1 /*content*/, -1, -1, -1, -1, -1, -1, -1, -1}
 	mainGrid.SetColumns(cols...)
 	// row 1 left
-	mainGrid.AddItem(d.clientList, 0, 0, 1, 2, 0, 0, false)
+	mainGrid.AddItem(d.addressBar, 0, 0, 1, len(cols), 0, 0, false)
+	mainGrid.AddItem(d.tagsBar, 1, 0, 1, len(cols), 0, 0, false)
+	mainGrid.AddItem(d.clientList, 2, 0, 1, 2, 0, 0, false)
 	// row 1 mid, right
-	mainGrid.AddItem(d.contentPanels, 0, 2, 1, 7, 0, 0, false)
+	mainGrid.AddItem(d.contentPanels, 2, 2, 1, 7, 0, 0, false)
 	// row 2...5
-	mainGrid.AddItem(currTxBar, 1, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(d.timelineTxs, 2, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(nextTxBar, 3, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(d.timelineSteps, 4, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(d.filtersBar, 5, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(d.keyBar, 6, 0, 1, len(cols), 0, 0, false)
+	mainGrid.AddItem(currTxBar, 3, 0, 1, len(cols), 0, 0, false)
+	mainGrid.AddItem(d.timelineTxs, 4, 0, 1, len(cols), 0, 0, false)
+	mainGrid.AddItem(nextTxBar, 5, 0, 1, len(cols), 0, 0, false)
+	mainGrid.AddItem(d.timelineSteps, 6, 0, 1, len(cols), 0, 0, false)
+	mainGrid.AddItem(d.filtersBar, 7, 0, 1, len(cols), 0, 0, false)
+	mainGrid.AddItem(d.keyBar, 8, 0, 1, len(cols), 0, 0, false)
 
 	panels := cview.NewPanels()
 	panels.AddPanel("export", d.exportDialog, false, true)
@@ -576,7 +588,7 @@ func (d *Debugger) RedrawFull(immediate bool) {
 	d.draw()
 }
 
-func (d *Debugger) draw() {
+func (d *Debugger) draw(components ...cview.Primitive) {
 	if !d.repaintScheduled.CompareAndSwap(false, true) {
 		return
 	}
@@ -598,7 +610,46 @@ func (d *Debugger) draw() {
 				d.redrawCallback()
 				d.redrawCallback = nil
 			}
-		})
+		}, components...)
 		d.repaintScheduled.Store(false)
 	}()
+}
+
+func (d *Debugger) expandStructPane() {
+	// keep in sync with initLayout()
+	d.treeLogGrid.UpdateItem(d.tree, 0, 0, 1, 3, 0, 0, false)
+
+	if d.Mach.Is1(ss.LogReaderVisible) {
+		d.treeLogGrid.UpdateItem(d.log, 0, 3, 1, 2, 0, 0, false)
+		d.treeLogGrid.UpdateItem(d.logReader, 0, 5, 1, 1, 0, 0, false)
+	} else {
+		d.treeLogGrid.UpdateItem(d.log, 0, 3, 1, 3, 0, 0, false)
+	}
+
+	d.treeMatrixGrid.UpdateItem(d.tree, 0, 0, 1, 3, 0, 0, false)
+	d.treeMatrixGrid.UpdateItem(d.matrix, 0, 3, 1, 3, 0, 0, false)
+
+	d.RedrawFull(false)
+}
+
+func (d *Debugger) shinkStructPane() {
+	// keep expanded on any of these
+	if d.Mach.Any1(ss.TimelineStepsScrolled, ss.TimelineStepsFocused) {
+		return
+	}
+
+	// keep in sync with initLayout()
+	d.treeLogGrid.UpdateItem(d.tree, 0, 0, 1, 2, 0, 0, false)
+
+	if d.Mach.Is1(ss.LogReaderVisible) {
+		d.treeLogGrid.UpdateItem(d.log, 0, 2, 1, 2, 0, 0, false)
+		d.treeLogGrid.UpdateItem(d.logReader, 0, 4, 1, 2, 0, 0, false)
+	} else {
+		d.treeLogGrid.UpdateItem(d.log, 0, 2, 1, 4, 0, 0, false)
+	}
+
+	d.treeMatrixGrid.UpdateItem(d.tree, 0, 0, 1, 2, 0, 0, false)
+	d.treeMatrixGrid.UpdateItem(d.matrix, 0, 2, 1, 4, 0, 0, false)
+
+	d.RedrawFull(false)
 }
