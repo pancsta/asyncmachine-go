@@ -27,7 +27,7 @@ const (
 	EnvAmHealthcheck = "AM_HEALTHCHECK"
 	// EnvAmTestRunner indicates the main test tunner, disables any telemetry.
 	EnvAmTestRunner     = "AM_TEST_RUNNER"
-	healthcheckInterval = 5 * time.Second
+	healthcheckInterval = 30 * time.Second
 )
 
 // Add1Block activates a state and waits until it becomes active. If it's a
@@ -175,6 +175,8 @@ func MachDebug(
 	} else {
 		mach.SetLoggerEmpty(logLvl)
 	}
+
+	// TODO increate timeouts on AM_DEBUG
 
 	if amDbgAddr == "" {
 		return
@@ -649,6 +651,9 @@ func Implements(statesChecked, statesNeeded am.S) error {
 func ArgsToLogMap(s interface{}) map[string]string {
 	result := make(map[string]string)
 	val := reflect.ValueOf(s).Elem()
+	if !val.IsValid() {
+		return result
+	}
 	typ := reflect.TypeOf(s).Elem()
 
 	for i := 0; i < val.NumField(); i++ {

@@ -85,7 +85,7 @@ type Regexp struct {
 }
 
 func (t *Regexp) StartState(e *am.Event) {
-	mach := e.Machine
+	mach := e.Machine()
 
 	// reset
 	t.input = e.Args["input"].(string)
@@ -116,7 +116,7 @@ func (t *Regexp) StartState(e *am.Event) {
 }
 
 func (t *Regexp) InputState(e *am.Event) {
-	mach := e.Machine
+	mach := e.Machine()
 	input := e.Args["input"].(string)
 	mach.Log("input: %s", input)
 

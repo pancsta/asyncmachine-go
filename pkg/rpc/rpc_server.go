@@ -582,8 +582,8 @@ func (s *Server) RemoteAdd(
 	var val am.Result
 	s.skipClockPush.Store(true)
 	if args.Event != nil {
-		val = s.source.EvAdd(args.Event, amhelp.IndexesToStates(s.source.StateNames(),
-			args.States), args.Args)
+		val = s.source.EvAdd(args.Event, amhelp.IndexesToStates(
+			s.source.StateNames(), args.States), args.Args)
 	} else {
 		// TODO eval
 		val = s.source.Add(amhelp.IndexesToStates(s.source.StateNames(),
@@ -616,7 +616,8 @@ func (s *Server) RemoteAddNS(
 
 	// execute
 	s.skipClockPush.Store(true)
-	_ = s.source.Add(amhelp.IndexesToStates(s.source.StateNames(), args.States), args.Args)
+	_ = s.source.Add(amhelp.IndexesToStates(s.source.StateNames(), args.States),
+		args.Args)
 	s.skipClockPush.Store(false)
 
 	return nil
@@ -638,8 +639,8 @@ func (s *Server) RemoteRemove(
 
 	// execute
 	s.skipClockPush.Store(true)
-	val := s.source.Remove(amhelp.IndexesToStates(s.source.StateNames(), args.States),
-		args.Args)
+	val := s.source.Remove(amhelp.IndexesToStates(s.source.StateNames(),
+		args.States), args.Args)
 	s.skipClockPush.Store(false)
 
 	// return
@@ -666,8 +667,8 @@ func (s *Server) RemoteSet(
 
 	// execute
 	s.skipClockPush.Store(true)
-	val := s.source.Set(amhelp.IndexesToStates(s.source.StateNames(), args.States),
-		args.Args)
+	val := s.source.Set(amhelp.IndexesToStates(s.source.StateNames(),
+		args.States), args.Args)
 	s.skipClockPush.Store(false)
 
 	// return

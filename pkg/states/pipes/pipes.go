@@ -1,6 +1,8 @@
 // Package pipe provide helpers to pipe states from one machine to another.
 package pipes
 
+// TODO register disposal handlers, detach from source machines
+
 import (
 	"context"
 

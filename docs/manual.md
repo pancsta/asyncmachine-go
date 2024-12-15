@@ -104,7 +104,7 @@ Other things to consider:
   [`WhenTime()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTime))
 - flow can be redirected or constrained by checking the current and previous **state** within handlers (eg
   [`TimeBefore`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.TimeBefore), [`TimeAfter`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.TimeAfter))
-- **active states** are just an uint64 slice (eg `am.Time{0,1,0,2}`)
+- **active states** are just an `uint64` slice (eg `am.Time{0,1,0,2}`)
 - almost everything is optional
 
 ### Legend
@@ -1658,6 +1658,8 @@ type A struct {
 func ParseArgs(args am.A) *A {
     if r, _ := args["am_node"].(*ARpc); r != nil {
         return amhelp.ArgsToArgs(r, &A{})
+    } else if r, ok := args["am_node"].(ARpc); ok {
+        return amhelp.ArgsToArgs(&r, &A{})
     }
     a, _ := args["am_node"].(*A)
     return a
@@ -1736,13 +1738,13 @@ type A struct {
 
 ```go
 func LogArgs(args am.A) map[string]string {
-	a1 := amnode.ParseArgs(args)
-	a2 := ParseArgs(args)
-	if a1 == nil && a2 == nil {
-		return nil
-	}
+    a1 := amnode.ParseArgs(args)
+    a2 := ParseArgs(args)
+    if a1 == nil && a2 == nil {
+        return nil
+    }
 
-	return am.AMerge(amhelp.ArgsToLogMap(a1), amhelp.ArgsToLogMap(a2))
+    return am.AMerge(amhelp.ArgsToLogMap(a1), amhelp.ArgsToLogMap(a2))
 }
 ```
 

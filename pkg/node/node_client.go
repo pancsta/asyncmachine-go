@@ -149,7 +149,7 @@ func (c *Client) StartState(e *am.Event) {
 		})
 	if err != nil {
 		err := fmt.Errorf("failed to connect to the Supervisor: %w", err)
-		AddErrRpc(c.Mach, err, nil)
+		_ = AddErrRpc(c.Mach, err, nil)
 		return
 	}
 	amhelp.MachDebugEnv(c.SuperRpc.Mach)
@@ -202,7 +202,7 @@ func (c *Client) StartState(e *am.Event) {
 
 			if err != nil {
 				err := errors.Join(err, c.SuperRpc.Mach.Err())
-				AddErrRpc(c.Mach, err, nil)
+				_ = AddErrRpc(c.Mach, err, nil)
 
 				return
 			}
@@ -276,7 +276,7 @@ func (c *Client) WorkerPayloadState(e *am.Event) {
 			})
 		if err != nil {
 			err := fmt.Errorf("failed to connect to the Worker: %w", err)
-			AddErrRpc(c.Mach, err, nil)
+			_ = AddErrRpc(c.Mach, err, nil)
 			return
 		}
 		// delay for rpc/Mux

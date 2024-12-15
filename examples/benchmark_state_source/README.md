@@ -3,8 +3,8 @@
 - [cd /](/)
 
 > [!NOTE]
-> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
-> machine. It has atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a clock-based state
+> machine. It has atomic transitions, subscriptions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
 Benchmark of [`/examples/tree_state_source`](/examples/tree_state_source/README.md) using [go-wrk](https://github.com/tsliwowicz/go-wrk)
 and [Caddy](https://caddyserver.com/) in various tree configurations. Every node is a resource limited container

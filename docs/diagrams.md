@@ -298,51 +298,44 @@ flowchart TB
     subgraph ClientHost [Client Host]
         subgraph Consumer
             con-MethodOrHandler["MethodOrHandler()"]
-            con-WorkerDelibered["WorkerDelivered(payload)"]
+            con-WorkerPayload(["WorkerPayload"])
         end
 
         subgraph RemoteWorkerMach [Remote Worker Mach]
         %% Provide Worker is requested to provide some (named) data.
-            rw-Provide([Provide])
+            rw-Provide([ProvideABC])
         end
 
         subgraph RPCClientMach [RPC Client Mach]
-            c-WorkerDelivered([WorkerDelivered])
+            c-WorkerPayload([WorkerPayload])
             c-RemoteSendPayload["RemoteSendPayload()"]
-            c-WorkerDeliveredState["WorkerDeliveredState()"]
+            c-WorkerPayloadState["WorkerPayloadState()"]
         end
     end
 
     subgraph ServerHost [Server Host]
         subgraph RPCServer [RPC Server]
-            s-SendPayload["SendPayload()"]
-            s-DeliveredState["DeliveredState()"]
+            srv-SendPayloadState["SendPayloadState()"]
         end
 
-        subgraph WorkerMach [Worker Mach]
+        subgraph SourceWorkerMach [Source Worker Mach]
         %% Provide Worker is requested to provide some (named) data.
-            w-Provide([Provide])
-        %% Delivering Worker has started send data to the client.
-            w-Delivering([Delivering])
-            w-Delivered([Delivered])
-        %% Delivered Worker has completed sending data to the client.
-            w-ProvideState["ProvideState()"]
-            w-DeliveringState["DeliveringState()"]
+            sw-Provide([ProvideABC])
+            sw-ProvideState["ProvideABCState()"]
+            sw-SendPayload(["SendPayload"])
         end
     end
 
     %% steps
     con-MethodOrHandler -- Add --> rw-Provide
-    rw-Provide -- Add --> w-Provide
-    w-Provide == handle ==> w-ProvideState
-    w-ProvideState -- Add --> w-Delivering
-    w-Delivering == handle ==> w-DeliveringState
-    w-DeliveringState -- Add --> w-Delivered
-    w-Delivered == handle ==> s-DeliveredState
-    s-DeliveredState -. call .-> s-SendPayload -. call .-> c-RemoteSendPayload
-    c-RemoteSendPayload -- Add --> c-WorkerDelivered
-    c-WorkerDelivered == handle ==> c-WorkerDeliveredState
-    c-WorkerDeliveredState -. call .-> con-WorkerDelibered
+    rw-Provide -- Add --> sw-Provide
+    sw-Provide == handle ==> sw-ProvideState
+    sw-ProvideState -- Add --> sw-SendPayload
+    sw-SendPayload == handle ==> srv-SendPayloadState
+    srv-SendPayloadState -. call .-> c-RemoteSendPayload
+    c-RemoteSendPayload -- Add --> c-WorkerPayload
+    c-WorkerPayload == handle ==> c-WorkerPayloadState
+    c-WorkerPayloadState -- Add --> con-WorkerPayload
 ```
 
 ### Worker Bootstrap

@@ -116,7 +116,7 @@ func StartRpc(
 	for i, a := range fwdAdds {
 		fwdTo[i], err = rpc.Dial("tcp", a)
 		if err != nil {
-			fmt.Errorf("Cant fwd to %s: %s\n", a, err)
+			fmt.Printf("Cant fwd to %s: %s\n", a, err)
 			os.Exit(1)
 		}
 	}

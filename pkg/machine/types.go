@@ -45,19 +45,14 @@ type State struct {
 // A (arguments) is a map of named arguments for a Mutation.
 type A map[string]any
 
-// Time is machine time, an ordered list of state ticks. It's like Clock, but
-// indexed by int, instead of string.
-// TODO use math/big?
-type Time []uint64
-
 // Clock is a map of state names to their clock tick values. It's like Time, but
 // indexed by string, instead of int.
 type Clock map[string]uint64
 
-// HandlerFinal TODO support in BindHandlers
+// HandlerFinal is a final transition handler func signature.
 type HandlerFinal func(*Event)
 
-// HandlerNegotiation TODO support in BindHandlers
+// HandlerNegotiation is a negotiation transition handler func signature.
 type HandlerNegotiation func(*Event) bool
 
 // HandlerDispose is a machine disposal handler func signature.
@@ -176,6 +171,7 @@ type Api interface {
 	Log(msg string, args ...any)
 	Id() string
 	ParentId() string
+	Tags() []string
 	SetLogId(val bool)
 	GetLogId() bool
 	SetLogger(logger Logger)
@@ -188,10 +184,11 @@ type Api interface {
 	Inspect(states S) string
 	Index(state string) int
 	BindHandlers(handlers any) error
+	DetachHandlers(handlers any) error
 	StatesVerified() bool
 	Tracers() []Tracer
 	DetachTracer(tracer Tracer) bool
-	BindTracer(tracer Tracer)
+	BindTracer(tracer Tracer) error
 	Dispose()
 	WhenDisposed() <-chan struct{}
 	IsDisposed() bool
@@ -204,7 +201,7 @@ type Api interface {
 // ///// ///// /////
 
 // Result enum is the result of a state Transition.
-type Result int
+type Result int8
 
 const (
 	// Executed means that the transition was executed immediately and not
@@ -320,7 +317,7 @@ func (m Mutation) StateWasCalled(state string) bool {
 }
 
 // StepType enum
-type StepType int
+type StepType int8
 
 const (
 	StepRelation StepType = 1 << iota
@@ -376,7 +373,7 @@ type Step struct {
 	ToState    string
 	ToStateIdx int
 	// Deprecated, use RelType. TODO remove
-	Data    any
+	Data any
 }
 
 // FromState returns the source state of a step. Optional, unless no ToState().

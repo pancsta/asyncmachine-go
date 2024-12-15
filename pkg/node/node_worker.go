@@ -135,7 +135,7 @@ func (w *Worker) StartState(e *am.Event) {
 	w.LocalRpc, err = rpc.NewServer(ctx, "localhost:0", "nw-loc-"+w.Name, w.Mach,
 		opts)
 	if err != nil {
-		AddErrRpc(w.Mach, err, nil)
+		_ = AddErrRpc(w.Mach, err, nil)
 		return
 	}
 	amhelp.MachDebugEnv(w.LocalRpc.Mach)
@@ -156,7 +156,7 @@ func (w *Worker) StartState(e *am.Event) {
 	}
 	w.PublicRpc, err = rpc.NewServer(ctx, ":0", "nw-pub-"+w.Name, w.Mach, opts)
 	if err != nil {
-		AddErrRpc(w.Mach, err, nil)
+		_ = AddErrRpc(w.Mach, err, nil)
 		return
 	}
 	amhelp.MachDebugEnv(w.PublicRpc.Mach)
@@ -172,11 +172,11 @@ func (w *Worker) StartState(e *am.Event) {
 
 	// start
 	if w.LocalRpc.Start() != am.Executed {
-		AddErrRpc(w.Mach, nil, nil)
+		_ = AddErrRpc(w.Mach, nil, nil)
 		return
 	}
 	if w.PublicRpc.Start() != am.Executed {
-		AddErrRpc(w.Mach, nil, nil)
+		_ = AddErrRpc(w.Mach, nil, nil)
 		return
 	}
 }
@@ -217,12 +217,12 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 	w.BootRpc, err = rpc.NewClient(ctx, w.BootAddr, "nw-"+w.Name,
 		states.BootstrapStruct, states.BootstrapStates.Names(), opts)
 	if err != nil {
-		AddErrRpc(w.Mach, err, nil)
+		_ = AddErrRpc(w.Mach, err, nil)
 		return
 	}
 	err = ampipe.BindErr(w.BootRpc.Mach, w.Mach, "")
 	if err != nil {
-		AddErrRpc(w.Mach, err, nil)
+		_ = AddErrRpc(w.Mach, err, nil)
 		return
 	}
 	amhelp.MachDebugEnv(w.BootRpc.Mach)
@@ -237,7 +237,7 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 			return // expired
 		}
 		if err != nil {
-			AddErrRpc(w.Mach, err, nil)
+			_ = AddErrRpc(w.Mach, err, nil)
 			return
 		}
 

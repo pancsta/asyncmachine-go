@@ -301,7 +301,7 @@ func (s *Supervisor) StartState(e *am.Event) {
 		&rpc.MuxOpts{Parent: s.Mach})
 	s.PublicMux.Addr = s.PublicAddr
 	if err != nil {
-		AddErrRpc(s.Mach, err, nil)
+		_ = AddErrRpc(s.Mach, err, nil)
 		return
 	}
 	amhelp.MachDebugEnv(s.PublicMux.Mach)
@@ -314,7 +314,7 @@ func (s *Supervisor) StartState(e *am.Event) {
 	s.LocalRpc, err = rpc.NewServer(ctx, s.LocalAddr, "ns-loc-"+s.Name, s.Mach,
 		opts)
 	if err != nil {
-		AddErrRpc(s.Mach, err, nil)
+		_ = AddErrRpc(s.Mach, err, nil)
 		return
 	}
 	amhelp.MachDebugEnv(s.LocalRpc.Mach)
@@ -322,7 +322,7 @@ func (s *Supervisor) StartState(e *am.Event) {
 	err = rpc.BindServerMulti(s.LocalRpc.Mach, s.Mach, ssS.LocalRpcReady,
 		ssS.SuperConnected, ssS.SuperDisconnected)
 	if err != nil {
-		AddErrRpc(s.Mach, err, nil)
+		_ = AddErrRpc(s.Mach, err, nil)
 		return
 	}
 
@@ -341,7 +341,7 @@ func (s *Supervisor) StartState(e *am.Event) {
 		}
 		if err != nil {
 			err := errors.Join(err, s.PublicMux.Mach.Err(), s.LocalRpc.Mach.Err())
-			AddErrRpc(s.Mach, err, nil)
+			_ = AddErrRpc(s.Mach, err, nil)
 			return
 		}
 
@@ -388,7 +388,7 @@ func (s *Supervisor) ForkWorkerState(e *am.Event) {
 	// init bootstrap machine
 	boot, err := newBootstrap(ctx, s)
 	if err != nil {
-		AddErrWorker(nil, s.Mach, err, nil)
+		_ = AddErrWorker(nil, s.Mach, err, nil)
 		return
 	}
 	argsOut := &A{Bootstrap: boot}
@@ -396,7 +396,7 @@ func (s *Supervisor) ForkWorkerState(e *am.Event) {
 	// start connection-bootstrap machine
 	res := boot.Mach.Add1(states.BootstrapStates.Start, nil)
 	if res != am.Executed || boot.Mach.IsErr() {
-		AddErrWorker(e, s.Mach, ErrWorkerConn, Pass(argsOut))
+		_ = AddErrWorker(e, s.Mach, ErrWorkerConn, Pass(argsOut))
 		return
 	}
 
@@ -409,7 +409,7 @@ func (s *Supervisor) ForkWorkerState(e *am.Event) {
 			return // expired
 		}
 		if err != nil {
-			AddErrWorker(e, s.Mach, err, Pass(argsOut))
+			_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
 			return
 		}
 
@@ -439,7 +439,7 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 				return // expired
 			}
 			if err := s.TestFork(args.Bootstrap.Addr()); err != nil {
-				AddErrWorker(e, s.Mach, err, Pass(argsOut))
+				_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
 				return
 			}
 			// fake entry
@@ -465,7 +465,7 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 	// read errors
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		AddErrWorker(e, s.Mach, err, Pass(argsOut))
+		_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
 		return
 	}
 	scanner := bufio.NewScanner(stderr)
@@ -473,7 +473,7 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 	// fork the worker
 	err = cmd.Start()
 	if err != nil {
-		AddErrWorker(e, s.Mach, err, Pass(argsOut))
+		_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
 		return
 	}
 
@@ -490,7 +490,7 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 			if out != "" {
 				s.log("fork error: %s", out)
 			}
-			AddErrWorker(e, s.Mach, err, Pass(argsOut))
+			_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
 
 			return
 		}
@@ -521,13 +521,13 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 		workerAddr := args.LocalAddr
 		_, port, err := net.SplitHostPort(workerAddr)
 		if err != nil {
-			AddErrWorker(e, s.Mach, err, Pass(&argsOut))
+			_ = AddErrWorker(e, s.Mach, err, Pass(&argsOut))
 			return
 		}
 		wrpc, err := rpc.NewClient(ctx, workerAddr, s.Name+"-"+port,
 			s.workerStruct, s.workerSNames, &rpc.ClientOpts{Parent: s.Mach})
 		if err != nil {
-			AddErrWorker(e, s.Mach, err, Pass(&argsOut))
+			_ = AddErrWorker(e, s.Mach, err, Pass(&argsOut))
 			return
 		}
 		amhelp.MachDebugEnv(wrpc.Mach)
@@ -540,7 +540,7 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 			return // expired
 		}
 		if err != nil {
-			AddErrWorker(e, s.Mach, wrpc.Mach.Err(), Pass(&argsOut))
+			_ = AddErrWorker(e, s.Mach, wrpc.Mach.Err(), Pass(&argsOut))
 			return
 		}
 
@@ -573,7 +573,7 @@ func (s *Supervisor) WorkerForkedState(e *am.Event) {
 	info, ok := s.workers.Get(bootAddr)
 	s.workers.Remove(bootAddr)
 	if !ok {
-		AddErrWorker(e, s.Mach, ErrWorkerMissing, Pass(argsOut))
+		_ = AddErrWorker(e, s.Mach, ErrWorkerMissing, Pass(argsOut))
 		return
 	}
 
@@ -604,7 +604,7 @@ func (s *Supervisor) WorkerForkedState(e *am.Event) {
 				ReadyEnd       am.HandlerFinal
 			}{
 				ExceptionState: func(e *am.Event) {
-					AddErrWorker(e, s.Mach, wrpc.Mach.Err(), Pass(argsOut))
+					_ = AddErrWorker(e, s.Mach, wrpc.Mach.Err(), Pass(argsOut))
 				},
 				ReadyEnd: func(e *am.Event) {
 					// TODO why this kills the workers? which Ready ends?
@@ -613,7 +613,7 @@ func (s *Supervisor) WorkerForkedState(e *am.Event) {
 			}),
 		)
 		if err != nil {
-			AddErrWorker(e, s.Mach, err, Pass(argsOut))
+			_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
 			return
 		}
 
@@ -749,11 +749,11 @@ func (s *Supervisor) HeartbeatState(e *am.Event) {
 		}
 
 		// dont wait here...
-		go eg.Wait()
+		go eg.Wait() //nolint:errcheck
 		// ...wait with a timeout instead
 		err := amhelp.WaitForAll(ctx, s.ConnTimeout, parCtx.Done())
 		if err != nil {
-			AddErrPool(s.Mach, fmt.Errorf("%w: %w", ErrHeartbeat, err), nil)
+			_ = AddErrPool(s.Mach, fmt.Errorf("%w: %w", ErrHeartbeat, err), nil)
 			return
 		}
 
@@ -816,7 +816,7 @@ func (s *Supervisor) NormalizingPoolState(e *am.Event) {
 		}
 
 		if !ready {
-			AddErrPoolStr(s.Mach, "failed to normalize pool", nil)
+			_ = AddErrPoolStr(s.Mach, "failed to normalize pool", nil)
 		}
 
 		s.normalizeStart = time.Time{}

@@ -4,6 +4,8 @@ go 1.23
 
 toolchain go1.23.1
 
+//replace github.com/pancsta/cview => ../cview
+
 require (
 	code.rocketnine.space/tslocum/cbind v0.1.5
 	github.com/K-Phoen/grabana v0.22.2
@@ -27,12 +29,14 @@ require (
 	github.com/soheilhy/cmux v0.1.5
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0
+	github.com/zyedidia/clipper v0.1.1
 	go.opentelemetry.io/otel v1.31.0
 	go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.7.0
 	go.opentelemetry.io/otel/log v0.7.0
 	go.opentelemetry.io/otel/sdk/log v0.7.0
 	go.opentelemetry.io/otel/trace v1.31.0
 	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f
+	golang.org/x/sync v0.8.0
 	golang.org/x/text v0.19.0
 	google.golang.org/grpc v1.67.1
 	google.golang.org/protobuf v1.35.1

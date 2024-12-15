@@ -104,7 +104,6 @@ tasks:
       --ids root,rm-root,rs-root-0,rs-root-1,rs-root-2
       --grafana-url {{.GRAFANA_URL}}
       --source tree_state_source_root
-      --added-states root:Flight1Departed,root:Flight2Departed,root:Flight3Departed,root:Flight4Departed,root:Flight5Departed
 
   gen-grafana-rep:
     internal: true

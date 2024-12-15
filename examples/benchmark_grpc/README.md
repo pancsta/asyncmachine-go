@@ -3,8 +3,8 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
-> machine. It has atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a clock-based state
+> machine. It has atomic transitions, subscriptions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
 ## Benchmark: aRPC vs gRPC
 

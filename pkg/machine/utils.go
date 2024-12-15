@@ -511,7 +511,7 @@ func disposeWithCtx[T comparable](
 		closeSafe(ch)
 
 		// GC only if needed
-		if mach.Disposed.Load() {
+		if mach.disposed.Load() {
 			return
 		}
 		lock.Lock()

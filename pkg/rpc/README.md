@@ -13,8 +13,8 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
-> machine. It has atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a clock-based state
+> machine. It has atomic transitions, subscriptions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
 **aRPC** is a transparent RPC for state machines implemented using [asyncmachine-go](/). It's
 clock-based and features many optimizations, e.g. having most of the API methods executed locally (as state changes are
@@ -324,6 +324,13 @@ type Api interface {
     AddErr(err error, args A) Result
     AddErrState(state string, err error, args A) Result
 
+    EvAdd1(event *Event, state string, args A) Result
+    EvAdd(event *Event, states S, args A) Result
+    EvRemove1(event *Event, state string, args A) Result
+    EvRemove(event *Event, states S, args A) Result
+    EvAddErr(event *Event, err error, args A) Result
+    EvAddErrState(event *Event, state string, err error, args A) Result
+
     // Waiting (remote)
 
     WhenArgs(state string, args A, ctx context.Context) <-chan struct{}
@@ -378,6 +385,7 @@ type Api interface {
     Log(msg string, args ...any)
     Id() string
     ParentId() string
+    Tags() []string
     SetLogId(val bool)
     GetLogId() bool
     SetLogger(logger Logger)
@@ -390,10 +398,11 @@ type Api interface {
     Inspect(states S) string
     Index(state string) int
     BindHandlers(handlers any) error
+    DetachHandlers(handlers any) error
     StatesVerified() bool
     Tracers() []Tracer
     DetachTracer(tracer Tracer) bool
-    BindTracer(tracer Tracer)
+    BindTracer(tracer Tracer) error
     Dispose()
     WhenDisposed() <-chan struct{}
     IsDisposed() bool

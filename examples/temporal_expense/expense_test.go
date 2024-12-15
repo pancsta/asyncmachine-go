@@ -116,7 +116,7 @@ func (h *MachineHandlers) CreatingExpenseState(e *am.Event) {
 	// args definition
 	h.expenseID = e.Args["expenseID"].(string)
 	// tick-based ctx
-	stateCtx := e.Machine.NewStateCtx(ss.CreatingExpense)
+	stateCtx := e.Machine().NewStateCtx(ss.CreatingExpense)
 
 	// unblock
 	go func() {
@@ -125,18 +125,18 @@ func (h *MachineHandlers) CreatingExpenseState(e *am.Event) {
 		}
 		resp, err := http.Get(expenseBackendURL + "?id=" + h.expenseID)
 		if err != nil {
-			e.Machine.AddErr(err, nil)
+			e.Machine().AddErr(err, nil)
 			return
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if err != nil {
-			e.Machine.AddErr(err, nil)
+			e.Machine().AddErr(err, nil)
 			return
 		}
 		if string(body) != "SUCCEED" {
-			e.Machine.AddErr(fmt.Errorf("%s", body), nil)
+			e.Machine().AddErr(fmt.Errorf("%s", body), nil)
 			return
 		}
 
@@ -144,7 +144,7 @@ func (h *MachineHandlers) CreatingExpenseState(e *am.Event) {
 		if stateCtx.Err() != nil {
 			return // expired
 		}
-		e.Machine.Add1(ss.ExpenseCreated, nil)
+		e.Machine().Add1(ss.ExpenseCreated, nil)
 	}()
 }
 
@@ -163,7 +163,7 @@ func (h *MachineHandlers) ApprovalGrantedEnter(e *am.Event) bool {
 // state.
 func (h *MachineHandlers) PaymentInProgressState(e *am.Event) {
 	// tick-based ctx
-	stateCtx := e.Machine.NewStateCtx(ss.PaymentInProgress)
+	stateCtx := e.Machine().NewStateCtx(ss.PaymentInProgress)
 
 	// unblock
 	go func() {
@@ -173,22 +173,22 @@ func (h *MachineHandlers) PaymentInProgressState(e *am.Event) {
 		url := paymentBackendURL + "?id=" + h.expenseID
 		resp, err := http.Get(url)
 		if err != nil {
-			e.Machine.AddErr(err, nil)
+			e.Machine().AddErr(err, nil)
 			return
 		}
 		body, err := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if err != nil {
-			e.Machine.AddErr(err, nil)
+			e.Machine().AddErr(err, nil)
 			return
 		}
 
 		if string(body) != "SUCCEED" {
-			e.Machine.AddErr(fmt.Errorf("%s", body), nil)
+			e.Machine().AddErr(fmt.Errorf("%s", body), nil)
 			return
 		}
 
-		e.Machine.Add1(ss.PaymentCompleted, nil)
+		e.Machine().Add1(ss.PaymentCompleted, nil)
 	}()
 }
 

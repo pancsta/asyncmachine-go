@@ -95,7 +95,7 @@ func (w *PathWatcher) WatchingState(e *am.Event) {
 	dirs := strings.Split(path, string(os.PathListSeparator))
 
 	// start the loop (bound to this instance)
-	ctx := e.Machine.NewStateCtx(ss.Watching)
+	ctx := e.Machine().NewStateCtx(ss.Watching)
 	go w.watchLoop(ctx)
 
 	// subscribe
@@ -109,14 +109,14 @@ func (w *PathWatcher) WatchingState(e *am.Event) {
 		// create state per dir
 		err := w.watcher.Add(dirName)
 		if err != nil {
-			e.Machine.AddErr(err, nil)
+			e.Machine().AddErr(err, nil)
 		}
 
 		// create a state for each dir
 		state := am.New(ctx, ss.StatesDir, nil)
 		err = state.VerifyStates(ss.NamesDir)
 		if err != nil {
-			e.Machine.AddErr(err, nil)
+			e.Machine().AddErr(err, nil)
 			continue
 		}
 
@@ -133,7 +133,7 @@ func (w *PathWatcher) WatchingEnd(e *am.Event) {
 	for _, path := range paths {
 		err := w.watcher.Remove(path)
 		if err != nil {
-			e.Machine.AddErr(err, nil)
+			e.Machine().AddErr(err, nil)
 		}
 	}
 }
@@ -166,7 +166,7 @@ func (w *PathWatcher) watchLoop(ctx context.Context) {
 }
 
 func (w *PathWatcher) ChangeEventState(e *am.Event) {
-	defer e.Machine.Remove1(ss.ChangeEvent, nil)
+	defer e.Machine().Remove1(ss.ChangeEvent, nil)
 	event := e.Args["fsnotify.Event"].(fsnotify.Event)
 
 	// exe
@@ -245,7 +245,7 @@ func (w *PathWatcher) RefreshingState(e *am.Event) {
 
 		executables, err := listExecutables(dirName)
 		if err != nil {
-			e.Machine.AddErr(err, nil)
+			e.Machine().AddErr(err, nil)
 		}
 
 		w.Mach.Remove1(ss.Refreshing, am.A{

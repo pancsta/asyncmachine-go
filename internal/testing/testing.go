@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/stretchr/testify/assert"
-
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
@@ -232,15 +230,17 @@ func RpcShutdown(ctx context.Context, c *rpc.Client, s *rpc.Server) {
 func RpcGet[G any](
 	t *testing.T, c *rpc.Client, name server.GetField, defVal G,
 ) G {
-	// TODO make it universal (not dbg server only)
-	resp, err := c.Get(context.TODO(), name.Encode())
-	assert.NoError(t, err)
+	// TODO rewrite to SendPayload-WorkerPayload state flow
+	// resp, err := c.Get(context.TODO(), name.Encode())
+	// assert.NoError(t, err)
+	//
+	// // default values
+	// if resp.Value == nil {
+	// 	t.Fatal("nil response")
+	// 	return defVal
+	// }
+	//
+	// return resp.Value.(G)
 
-	// default values
-	if resp.Value == nil {
-		t.Fatal("nil response")
-		return defVal
-	}
-
-	return resp.Value.(G)
+	panic("not implemented")
 }

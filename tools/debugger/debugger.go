@@ -226,15 +226,16 @@ func (c *Client) tx(idx int) *telemetry.DbgMsgTx {
 }
 
 func (c *Client) txByMachTime(sum uint64) int {
-	idx, ok := slices.BinarySearchFunc(c.msgTxsParsed, &MsgTxParsed{TimeSum: sum}, func(i, j *MsgTxParsed) int {
-		if i.TimeSum < j.TimeSum {
-			return -1
-		} else if i.TimeSum > j.TimeSum {
-			return 1
-		}
+	idx, ok := slices.BinarySearchFunc(c.msgTxsParsed,
+		&MsgTxParsed{TimeSum: sum}, func(i, j *MsgTxParsed) int {
+			if i.TimeSum < j.TimeSum {
+				return -1
+			} else if i.TimeSum > j.TimeSum {
+				return 1
+			}
 
-		return 0
-	})
+			return 0
+		})
 
 	if !ok {
 		return 0

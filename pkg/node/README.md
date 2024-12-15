@@ -13,8 +13,8 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
-> machine. It has atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a clock-based state
+> machine. It has atomic transitions, subscriptions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
 **/pkg/node** provides distributed workflows via state-based orchestration of worker pools. Features a failsafe
 supervision, as well as state machines for workers and clients. All actors communicate via [aRPC](/pkg/rpc/README.md),
@@ -105,7 +105,7 @@ flowchart LR
 
 ### Worker
 
-Any state machine can be exposed as a Node Worker, as long as it implements `/pkg/node/states/WorkerStructDef`. This can
+Any state machine can be exposed as a Node Worker, as long as it implements `/pkg/node/states.WorkerStructDef`. This can
 be done either manually, or by using state helpers ([StructMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
 [SAdd](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SAdd)), or by generating a states file with [am-gen](/tools/cmd/am-gen/README.md).
 It's also required to have the states verified by [Machine.VerifyStates](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.VerifyStates).
@@ -191,7 +191,7 @@ err := amhelp.WaitForAll(ctx, 2*time.Second,
 
 ## Client
 
-Any state machine can a Node Client, as long as it implements `/pkg/node/states/ClientStructDef`. This can be done
+Any state machine can a Node Client, as long as it implements `/pkg/node/states.ClientStructDef`. This can be done
 either manually, or by using state helpers ([StructMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
 [SAdd](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SAdd)), or by generating a states file with [am-gen](/tools/cmd/am-gen/README.md).
 Client also needs to know his worker's states structure and order. To connect to the worker pool, client accepts a list

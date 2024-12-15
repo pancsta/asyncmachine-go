@@ -2,6 +2,7 @@ package machine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -11,11 +12,19 @@ import (
 	"time"
 )
 
+// Time is machine time, an ordered list of state ticks. It's like Clock, but
+// indexed by int, instead of string.
+// TODO use math/big?
+type Time []uint64
+
 // Time TODO Any, Any1, Not, Not1
 
 // Is1 checks if a state is active at a given time, via its index. See
 // Machine.Index().
 func (t Time) Is1(idx int) bool {
+	if idx == -1 {
+		return false
+	}
 	return IsActiveTick(t[idx])
 }
 
@@ -27,6 +36,10 @@ func (t Time) Is(idxs []int) bool {
 	}
 
 	for _, idx := range idxs {
+		// -1 is not found or mach disposed
+		if idx == -1 {
+			return false
+		}
 		if !IsActiveTick(t[idx]) {
 			return false
 		}
@@ -60,6 +73,14 @@ func (t Time) String() string {
 	}
 
 	return ret
+}
+
+func (t Time) Sum() uint64 {
+	var sum uint64
+	for _, idx := range t {
+		sum += idx
+	}
+	return sum
 }
 
 // Context
@@ -160,6 +181,7 @@ func NewArgsMapper(names []string, maxlen int) func(args A) map[string]string {
 	if maxlen == 0 {
 		maxlen = 20
 	}
+
 	return func(args A) map[string]string {
 		oks := make([]bool, len(names))
 		found := 0
@@ -178,6 +200,7 @@ func NewArgsMapper(names []string, maxlen int) func(args A) map[string]string {
 			}
 			ret[name] = truncateStr(fmt.Sprintf("%v", args[name]), maxlen)
 		}
+
 		return ret
 	}
 }
@@ -240,7 +263,11 @@ type Event struct {
 	Name string
 	// Machine is the machine that the event belongs to, it can be used to access
 	// the current Transition and Mutation.
-	Machine *Machine
+	machine *Machine
+	// MachineId is the ID of the parent machine.
+	MachineId string
+	// TransitionId is the ID of the parent transition.
+	TransitionId string
 	// Args is a map of named arguments for a Mutation.
 	Args A
 	// internal events lack a step
@@ -249,16 +276,36 @@ type Event struct {
 
 // Mutation returns the Mutation of an Event.
 func (e *Event) Mutation() *Mutation {
-	t := e.Machine.Transition()
+	t := e.Machine().Transition()
 	if t == nil {
 		return nil
 	}
 	return t.Mutation
 }
 
+func (e *Event) Machine() *Machine {
+	return e.machine
+}
+
 // Transition returns the Transition of an Event.
 func (e *Event) Transition() *Transition {
-	return e.Machine.t.Load()
+	if e.machine == nil {
+		return nil
+	}
+	return e.Machine().t.Load()
+}
+
+func (e *Event) Clone() *Event {
+	id := e.MachineId
+	if e.Machine() == nil {
+		id = e.Machine().Id()
+	}
+
+	return &Event{
+		Name:         e.Name,
+		MachineId:    id,
+		TransitionId: e.TransitionId,
+	}
 }
 
 type (
@@ -418,14 +465,13 @@ func (eh *ExceptionHandler) ExceptionState(e *Event) {
 	args := ParseArgs(e.Args)
 	err := args.Err
 	trace := args.ErrTrace
-	mach := e.Machine
+	mach := e.Machine()
 
 	// err
-	if args.Panic == nil && err == nil {
-		mach.log(LogChanges, "[error] missing error in ExceptionState")
-
-		return
-	} else if args.Panic == nil {
+	if err == nil {
+		err = errors.New("missing error in ExceptionState")
+	}
+	if args.Panic == nil {
 		// TODO more mutation info
 		if mach.LogStackTrace && trace != "" {
 			mach.log(LogChanges, "[error] %s\n%s", err, trace)

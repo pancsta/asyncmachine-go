@@ -13,10 +13,10 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight state
-> machine. It has atomic transitions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a clock-based state
+> machine. It has atomic transitions, subscriptions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
-![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png)
+[![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-reader.png)](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-large.png)
 
 ## am-dbg TUI Debugger
 
@@ -26,7 +26,7 @@ It's built around a timeline of transitions and allows for precise searches and 
 <table>
   <tr>
     <td>
-        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-reader.png" />
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png" />
     </td>
     <td>
         <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-rain.png" />
@@ -39,6 +39,7 @@ It's built around a timeline of transitions and allows for precise searches and 
 - **states tree**: list of all states and relations of the selected state machine, with their clock ticks,
   search-as-you-type, and error highlighting.
 - **log view**: highlighted log view with the current transition being selected.
+- **address bar**: navigate the hitory with 2 entries per machine.
 - **stepping through transitions**: draws relations graph lines of the resolutions process in the states tree.
 - **time travel**: transition and steps timelines allow to navigate in time, even between different state machines.
 - **transition info**: show number, machine time, type, states, states, and human time of each transition.
@@ -48,10 +49,16 @@ It's built around a timeline of transitions and allows for precise searches and 
 - **client list**: all the currently nad previously connected state machines, with search-as-you-type, error
   highlighting, and remaining transitions marker.
 - **fast jumps**: jump by 100 transitions, or select a state from the tree and jump to its next occurrence.
-- **keyboard navigation**: the UI is keyboard based, just press **?**.
+- **keyboard navigation**: the UI is keyboard accessible, just press the **? key**.
+- **mouse support**: most elements can be clicked and some scrolled.
 - **SSH access**: an instance of the debugger can be shared directly from an edge server via a built-in SSH server.
 - **log rotation**: older entries will be automatically discarded in order.
 - **log reader**: extract entries from **LogOps** into a dedicated pane.
+  - **source event**: navigate to source events, internal or external.
+  - **handlers**: list executed handlers.
+  - **contexts**: list state contexts and mach time.
+  - **subscriptions**: list awaited clocks.
+  - **piped states**: list all inbound and outbound pipes.
 
 ```text
 Usage:
@@ -60,13 +67,17 @@ Usage:
 Flags:
       --am-dbg-addr string      Debug this instance of am-dbg with another one
       --clean-on-connect        Clean up disconnected clients on the 1st connection
-      --enable-mouse            Enable mouse support (experimental)
+      --enable-mouse            Enable mouse support (experimental) (default true)
+  -f, --fwd-data string         Fordward incoming data to other instances (eg addr1,addr2)
   -h, --help                    help for am-dbg
-  -i, --import-data string      ImportFile an exported gob.bt file
+  -i, --import-data string      Import an exported gob.bt file
   -l, --listen-on string        Host and port for the debugger to listen on (default "localhost:6831")
-      --log-file string         Log file path (default "am-dbg.log")
+      --log-2-ttl string        Max time to live for logs level 2 (default "24h")
+      --log-file string         Log file path
       --log-level int           Log level, 0-5 (silent-everything)
-      --prof-srv                Start pprof server on :6060
+      --max-mem int             Max memory usage (in MB) to flush old transitions (default 100)
+      --prof-srv string         Start pprof server
+  -r, --reader                  Enable Log Reader
   -c, --select-connected        Select the newly connected machine, if no other is connected
   -m, --select-machine string   Select a machine by ID on startup (requires --import-data)
   -t, --select-transition int   Select a transaction by _number_ on startup (requires --select-machine)
@@ -81,6 +92,26 @@ Flags:
 - [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
 - Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
 - Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
+
+## Steps to Debug
+
+1. Set up telemetry:
+
+    ```go
+    import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+    // ...
+    amhelp.MachDebugEnv(myMach)
+    ```
+
+2. Run `am-dbg`
+3. Run your code with
+
+    ```bash
+    AM_DBG_ADDR=localhost:6831
+    AM_LOG=2
+    ```
+
+4. Your machine should show up in the debugger
 
 ## Demos
 
@@ -119,25 +150,12 @@ Tests:
 - web browser: [http://188.166.101.108:8081/wetty/ssh](http://188.166.101.108:8081/wetty/ssh/am-dbg?pass=am-dbg:8081/wetty/ssh/am-dbg?pass=am-dbg)
 - terminal: `ssh 188.166.101.108 -p 4445`
 
-## Steps to Debug
+## Dashbaboard
 
-1. Set up telemetry:
+![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)
 
-    ```go
-    import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
-    // ...
-    amhelp.MachDebugEnv(myMach)
-    ```
-
-2. Run `am-dbg`
-3. Run your code with
-
-    ```bash
-    AM_DBG_ADDR=localhost:6831
-    AM_LOG=2
-    ```
-
-4. Your machine should show up in the debugger
+Small-scale dashboards can be achieved by using the `--fwd-data` param, with multiple instances **am-dbg** as
+destinations. It will duplicate all the memory allocations and won't scale far.
 
 ## Steps for SSH Server
 

@@ -650,7 +650,7 @@ func TestRemoveMultiImplied(t *testing.T) {
 type TestQueueHandlers struct{}
 
 func (h *TestQueueHandlers) BEnter(e *Event) bool {
-	e.Machine.Add(S{"C"}, nil)
+	e.Machine().Add(S{"C"}, nil)
 	return true
 }
 
@@ -837,7 +837,7 @@ type TestHandlerStateInfoHandlers struct{}
 
 func (h *TestHandlerStateInfoHandlers) DEnter(e *Event) {
 	t := e.Args["t"].(*testing.T)
-	assert.ElementsMatch(t, S{"A"}, e.Machine.ActiveStates(),
+	assert.ElementsMatch(t, S{"A"}, e.Machine().ActiveStates(),
 		"provide the previous states of the transition")
 	assert.ElementsMatch(t, S{"D"}, e.Transition().TargetStates(),
 		"provide the target states of the transition")
@@ -928,7 +928,7 @@ func TestDispose(t *testing.T) {
 	// init
 	m := NewNoRels(t, S{"A"})
 	ran := false
-	m.RegisterDisposalHandler(func() {
+	m.HandleDispose(func(id string, ctx context.Context) {
 		ran = true
 	})
 
@@ -944,7 +944,7 @@ func TestDisposeForce(t *testing.T) {
 	// init
 	m := NewNoRels(t, S{"A"})
 	ran := false
-	m.RegisterDisposalHandler(func() {
+	m.HandleDispose(func(id string, ctx context.Context) {
 		ran = true
 	})
 
@@ -1198,9 +1198,9 @@ type TestWhenHandlers struct{}
 func (h *TestWhenHandlers) AState(e *Event) {
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		e.Machine.Add(S{"B"}, nil)
+		e.Machine().Add(S{"B"}, nil)
 		time.Sleep(10 * time.Millisecond)
-		e.Machine.Add(S{"C"}, nil)
+		e.Machine().Add(S{"C"}, nil)
 	}()
 }
 
@@ -1299,9 +1299,9 @@ type TestWhenNotHandlers struct{}
 func (h *TestWhenNotHandlers) AState(e *Event) {
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		e.Machine.Remove1("B", nil)
+		e.Machine().Remove1("B", nil)
 		time.Sleep(10 * time.Millisecond)
-		e.Machine.Remove1("C", nil)
+		e.Machine().Remove1("C", nil)
 	}()
 }
 
@@ -1462,11 +1462,11 @@ type TestStateCtxHandlers struct {
 func (h *TestStateCtxHandlers) AState(e *Event) {
 	t := e.Args["t"].(*testing.T)
 	stepCh := e.Args["stepCh"].(chan bool)
-	stateCtx := e.Machine.NewStateCtx("A")
+	stateCtx := e.Machine().NewStateCtx("A")
 	h.callbackCh = make(chan struct{})
 	go func() {
 		<-stepCh
-		assertStates(t, e.Machine, S{})
+		assertStates(t, e.Machine(), S{})
 		assert.Error(t, stateCtx.Err(), "state context should be canceled")
 		close(h.callbackCh)
 	}()
@@ -1509,17 +1509,17 @@ type TestQueueCheckableHandlers struct {
 
 func (h *TestQueueCheckableHandlers) AState(e *Event) {
 	t := e.Args["t"].(*testing.T)
-	e.Machine.Add(S{"B"}, nil)
-	e.Machine.Add(S{"C"}, nil)
-	e.Machine.Add(S{"D"}, nil)
-	assert.Len(t, e.Machine.queue, 3, "queue should have 3 mutations scheduled")
+	e.Machine().Add(S{"B"}, nil)
+	e.Machine().Add(S{"C"}, nil)
+	e.Machine().Add(S{"D"}, nil)
+	assert.Len(t, e.Machine().queue, 3, "queue should have 3 mutations scheduled")
 	h.assertsCount++
 	assert.Equal(t, 1,
-		e.Machine.IsQueued(MutationAdd, S{"C"}, false, false, 0),
+		e.Machine().IsQueued(MutationAdd, S{"C"}, false, false, 0),
 		"C should be queued")
 	h.assertsCount++
 	assert.Equal(t, -1,
-		e.Machine.IsQueued(MutationAdd, S{"A"}, false, false, 0),
+		e.Machine().IsQueued(MutationAdd, S{"A"}, false, false, 0),
 		"A should NOT be queued")
 	h.assertsCount++
 }
@@ -2028,7 +2028,7 @@ type TestWhenQueueEndsHandlers struct {
 func (h *TestWhenQueueEndsHandlers) AState(e *Event) {
 	close(e.Args["readyMut"].(chan struct{}))
 	<-e.Args["readyGo"].(chan struct{})
-	e.Machine.Add1("B", nil)
+	e.Machine().Add1("B", nil)
 }
 
 func TestWhenQueueEnds(t *testing.T) {
@@ -2134,15 +2134,15 @@ type TestNestedMutationHandlers struct {
 func (h *TestNestedMutationHandlers) AState(e *Event) {
 	t := e.Args["t"].(*testing.T)
 
-	e.Machine.Add1("B", nil)
-	e.Machine.Add1("B", nil)
-	e.Machine.Add1("B", nil)
-	assert.Equal(t, 1, len(e.Machine.queue))
+	e.Machine().Add1("B", nil)
+	e.Machine().Add1("B", nil)
+	e.Machine().Add1("B", nil)
+	assert.Equal(t, 1, len(e.Machine().queue))
 
-	e.Machine.Remove1("B", nil)
-	assert.Equal(t, 2, len(e.Machine.queue))
-	e.Machine.Remove1("B", nil)
-	assert.Equal(t, 2, len(e.Machine.queue))
+	e.Machine().Remove1("B", nil)
+	assert.Equal(t, 2, len(e.Machine().queue))
+	e.Machine().Remove1("B", nil)
+	assert.Equal(t, 2, len(e.Machine().queue))
 }
 
 func TestNestedMutation(t *testing.T) {
@@ -2345,7 +2345,7 @@ func TestBindTracer(t *testing.T) {
 	trace := &TestBindTracerTracer{}
 
 	// test
-	m.BindTracer(trace)
+	_ = m.BindTracer(trace)
 	removed := m.DetachTracer(trace)
 
 	// assert

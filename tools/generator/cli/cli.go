@@ -50,18 +50,16 @@ const (
 
 	// grafana
 
-	pGIds              = "ids"
-	pGIdsShort         = "i"
-	pGGrafanaUrl       = "grafana-url"
-	pGGrafanaUrlShort  = "g"
-	pGName             = "name"
-	pGNameShort        = "n"
-	pGFolder           = "folder"
-	pGFolderShort      = "f"
-	pGSource           = "source"
-	pGSourceShort      = "s"
-	pGAddedStates      = "added-states"
-	pGAddedStatesShort = "a"
+	pGIds             = "ids"
+	pGIdsShort        = "i"
+	pGGrafanaUrl      = "grafana-url"
+	pGGrafanaUrlShort = "g"
+	pGName            = "name"
+	pGNameShort       = "n"
+	pGFolder          = "folder"
+	pGFolderShort     = "f"
+	pGSource          = "source"
+	pGSourceShort     = "s"
 )
 
 func AddGrafanaFlags(cmd *cobra.Command) {
@@ -76,59 +74,54 @@ func AddGrafanaFlags(cmd *cobra.Command) {
 		"Dashboard name. Required.")
 	f.StringP(pGSource, pGSourceShort, "",
 		"$source variable (service_name or job). Required.")
-	f.StringP(pGAddedStates, pGAddedStatesShort, "",
-		"Count activations of these states (eg mach-id:StateName," +
-		"mach-id2:StateName2). Optional.")
+
 }
 
 // GrafanaParams are params for the grafana command.
 type GrafanaParams struct {
-	Ids         string
-	GrafanaUrl  string
-	Folder      string
-	Name        string
-	Token       string
-	Source      string
-	AddedStates string
+	Ids        string
+	GrafanaUrl string
+	Folder     string
+	Name       string
+	Token      string
+	Source     string
 	// TODO interval
 	// Interval   string
 }
 
 func ParseGrafanaParams(cmd *cobra.Command, _ []string) GrafanaParams {
 	ids := strings.Trim(cmd.Flag(pGIds).Value.String(), "\n ")
-	grafanaUrl := strings.Trim(cmd.Flag(pGGrafanaUrl).Value.String(), "\n ")
+	sync := strings.Trim(cmd.Flag(pGGrafanaUrl).Value.String(), "\n ")
 	folder := strings.Trim(cmd.Flag(pGFolder).Value.String(), "\n ")
 	name := strings.Trim(cmd.Flag(pGName).Value.String(), "\n ")
 	source := strings.Trim(cmd.Flag(pGSource).Value.String(), "\n ")
-	addStates := strings.Trim(cmd.Flag(pGAddedStates).Value.String(), "\n ")
 
 	if ids == "" || strings.Contains(ids, " ") || strings.Contains(ids, ",,") {
-		fmt.Println("Error: ids invalid: "+ ids)
+		fmt.Println("Error: ids invalid")
 		os.Exit(1)
 	}
 
-	if grafanaUrl == "" || strings.Contains(grafanaUrl, " ") {
-		fmt.Println("Error: grafana url invalid: "+" "+ grafanaUrl)
+	if sync == "" || strings.Contains(sync, " ") {
+		fmt.Println("Error: sync invalid")
 		os.Exit(1)
 	}
 
 	if name == "" || strings.Contains(name, " ") {
-		fmt.Println("Error: name invalid: " + name)
+		fmt.Println("Error: name invalid")
 		os.Exit(1)
 	}
 
 	if source == "" || strings.Contains(source, " ") {
-		fmt.Println("Error: source invalid: "+source)
+		fmt.Println("Error: source invalid")
 		os.Exit(1)
 	}
 
 	return GrafanaParams{
-		Ids:         ids,
-		GrafanaUrl:  grafanaUrl,
-		Folder:      folder,
-		Name:        name,
-		Source:      source,
-		AddedStates: addStates,
+		Ids:        ids,
+		GrafanaUrl: sync,
+		Folder:     folder,
+		Name:       name,
+		Source:     source,
 	}
 }
 
@@ -185,8 +178,8 @@ func AddStatesFlags(cmd *cobra.Command) {
 	f.StringP(pSFStates, pSFStatesShort, "",
 		"State names to generate. Eg: State1,State2")
 	f.StringP(pSFInherit, pSFInheritShort, "",
-		"Inherit from a built-in states machine: "+
-			"basic,connected,rpc/worker,node/worker")
+		"Inherit from a built-in states machine: " +
+		"basic,connected,rpc/worker,node/worker")
 	f.StringP(pSFGroups, pSFGroupsShort, "",
 		"Groups to generate. Eg: Group1,Group2")
 	f.StringP(pSFName, pSFNameShort, "",

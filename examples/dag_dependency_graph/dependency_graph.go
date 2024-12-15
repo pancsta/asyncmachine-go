@@ -109,7 +109,7 @@ func (h *asyncHandlers) AInitState(e *am.Event) {
 		// block
 		time.Sleep(100 * time.Millisecond)
 		// next
-		e.Machine.Add1("A", nil)
+		e.Machine().Add1("A", nil)
 	}()
 }
 
@@ -119,7 +119,7 @@ func (h *asyncHandlers) BInitState(e *am.Event) {
 		// block
 		time.Sleep(100 * time.Millisecond)
 		// next
-		e.Machine.Add1("B", nil)
+		e.Machine().Add1("B", nil)
 	}()
 }
 
@@ -129,7 +129,7 @@ func (h *asyncHandlers) CInitState(e *am.Event) {
 		// block
 		time.Sleep(100 * time.Millisecond)
 		// next
-		e.Machine.Add1("C", nil)
+		e.Machine().Add1("C", nil)
 	}()
 }
 
@@ -139,7 +139,7 @@ func (h *asyncHandlers) DInitState(e *am.Event) {
 		// block
 		time.Sleep(100 * time.Millisecond)
 		// next
-		e.Machine.Add1("D", nil)
+		e.Machine().Add1("D", nil)
 	}()
 }
 

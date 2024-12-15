@@ -24,7 +24,26 @@ tasks:
   am-dbg:
     silent: false
     cmds:
-      - go run ./tools/cmd/am-dbg {{.CLI_ARGS}}
+      - go run ./tools/cmd/am-dbg --clean-on-connect --max-mem 1000 {{.CLI_ARGS}}
+
+  am-dbg-prof:
+    desc: Profile am-dbg
+    silent: false
+    cmds:
+      - go run ./tools/cmd/am-dbg
+        --clean-on-connect
+        --prof-srv :6060
+        {{.CLI_ARGS}}
+
+  am-dbg-prof2:
+    desc: Profile and debug am-dbg
+    silent: false
+    cmds:
+      - go run ./tools/cmd/am-dbg
+        --clean-on-connect
+        --prof-srv :6060
+        --am-dbg-addr localhost:9913
+        {{.CLI_ARGS}}
 
   am-dbg-asset:
     desc: Start am-dbg with an asset dump file
@@ -63,10 +82,22 @@ tasks:
 
   am-dbg-dbg:
     desc: Start am-dbg on port 9913, so it can debug other instances via --am-dbg-addr
+    silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
           --listen-on localhost:9913
           --select-connected
+          --log-2-ttl 5m
+          {{.CLI_ARGS}}
+
+  am-dbg-dbg-prof:
+    desc: Profile am-dbg-dbg
+    cmds:
+      - go run ./tools/cmd/am-dbg
+          --listen-on localhost:9913
+          --select-connected
+          --log-2-ttl 5m
+          --prof-srv :6050
           {{.CLI_ARGS}}
   #          --log-file am-dbg-dbg.log
   #          --log-level 2
@@ -78,6 +109,18 @@ tasks:
       - go run ./internal/testing/cmd/am-dbg-worker
           -server-addr=localhost:53470
           -worker-addr=localhost:53480
+
+  am-dbg-delve:
+    silent: false
+    env:
+      AM_DEBUG: 1
+    cmds:
+      - dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient
+        ./tools/cmd/am-dbg -- 
+          --clean-on-connect 
+          {{.CLI_ARGS}}
+#          --log-level 2
+#          --log-file am-dbg.log
 
   test:
     env:
@@ -327,10 +370,22 @@ tasks:
       - magick mem.light.png
         -channel RGB -negate mem.dark.png
 
+  prof-cpu:
+    requires:
+      vars: [ SEC ]
+    cmds:
+      - curl -s http://localhost:6060/debug/pprof/profile?seconds={{.SEC}} > cpu.prof
+      - task: prof-cpu-img
+
   prof-mem:
     cmds:
       - curl -s http://localhost:6060/debug/pprof/heap > mem.prof
       - task: prof-mem-img
+
+  prof-mem-srv:
+    cmds:
+      - task: prof-mem
+      - go tool pprof -http :9999 -edgefraction 0 -nodefraction 0 -nodecount 100000 mem.prof
 
   prof-trace:
     requires:

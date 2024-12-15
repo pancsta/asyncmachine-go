@@ -1,5 +1,6 @@
 code.rocketnine.space/tslocum/cbind v0.1.5 h1:i6NkeLLNPNMS4NWNi3302Ay3zSU6MrqOT+yJskiodxE=
 code.rocketnine.space/tslocum/cbind v0.1.5/go.mod h1:LtfqJTzM7qhg88nAvNhx+VnTjZ0SXBJtxBObbfBWo/M=
+code.rocketnine.space/tslocum/cview v1.5.9/go.mod h1:nraCJ41xU9AOAP/pJDV5t2fOelYp8CRGBZr8ZbEzw0w=
 github.com/K-Phoen/grabana v0.22.2 h1:tMiSvcKHnDbXi3IgBCax2+sg5qL6x0G6wMURHgjGDag=
 github.com/K-Phoen/grabana v0.22.2/go.mod h1:TbgU7jM55UlExzQyzu6AMiSUXr9jiaXmCu9AN28WXHk=
 github.com/K-Phoen/sdk v0.12.4 h1:j2EYuBJm3zDTD0fGKACVFWxAXtkR0q5QzfVqxmHSeGQ=
@@ -95,8 +96,8 @@ github.com/nkall/compactnumber v1.1.1 h1:5mTobZOsK+kOiS4WEdmFi4URnaV6vYb9dfS1uvv
 github.com/nkall/compactnumber v1.1.1/go.mod h1:NLxufZ+8QKDIlqCwLE3WAnJRLNelv4/1PypZzQ6qnBg=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
 github.com/orcaman/concurrent-map/v2 v2.0.1/go.mod h1:9Eq3TG2oBe5FirmYWQfYO5iH1q0Jv47PLaNK++uCdOM=
-github.com/pancsta/cview v1.5.12 h1:zPFVqS4bXLRES9Cl9pQBOr5zcm7RjgoZdFCYHNZB2DE=
-github.com/pancsta/cview v1.5.12/go.mod h1:BkP0JtxfBHYZuc4CmK/O5H5fNCEdGAgndVeJlGiS3TQ=
+github.com/pancsta/cview v1.5.13 h1:xwQFEEVnqvytlo+KhU5xDrhimdRnjy7rpLCe0td8T6A=
+github.com/pancsta/cview v1.5.13/go.mod h1:6Xo6uy1zKPeKOiOclgL4wpO5B6qBG6K2ola50vVKGYw=
 github.com/patrickmn/go-cache v2.1.0+incompatible h1:HRMgzkcYKYpi3C8ajMPV8OFXaaRUnok+kx1WdO15EQc=
 github.com/patrickmn/go-cache v2.1.0+incompatible/go.mod h1:3Qf8kWWT7OJRJbdiICTKqZju1ZixQ/KpMGzzAfe6+WQ=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
@@ -145,6 +146,8 @@ github.com/xyproto/randomstring v1.0.5 h1:YtlWPoRdgMu3NZtP45drfy1GKoojuR7hmRcnhZ
 github.com/xyproto/randomstring v1.0.5/go.mod h1:rgmS5DeNXLivK7YprL0pY+lTuhNQW3iGxZ18UQApw/E=
 github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
+github.com/zyedidia/clipper v0.1.1 h1:HBgguFNDq/QmSQKBnhy4sMKzILINr139VEgAhftOUTw=
+github.com/zyedidia/clipper v0.1.1/go.mod h1:7YApPNiiTZTXdKKZG92G50qj6mnWEX975Sdu65J7YpQ=
 go.opentelemetry.io/otel v1.31.0 h1:NsJcKPIW0D0H3NgzPDHmo0WW6SptzPdqg/L1zsIm2hY=
 go.opentelemetry.io/otel v1.31.0/go.mod h1:O0C14Yl9FgkjqcCZAsE053C13OaddMYr/hz6clDkEJE=
 go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.7.0 h1:TwmL3O3fRR80m8EshBrd8YydEZMcUCsZXzOUlnFohwM=
@@ -188,6 +191,8 @@ golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJ
 golang.org/x/sync v0.0.0-20210220032951-036812b2e83c/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.1.0/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+golang.org/x/sync v0.8.0 h1:3NFvSEYkUoMifnESzZl15y791HH1qU2xm6eCJU5ZPXQ=
+golang.org/x/sync v0.8.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=
 golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20190412213103-97732733099d/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
