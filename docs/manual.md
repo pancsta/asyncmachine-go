@@ -1732,6 +1732,20 @@ type A struct {
 }
 ```
 
+// TODO merging log args
+
+```go
+func LogArgs(args am.A) map[string]string {
+	a1 := amnode.ParseArgs(args)
+	a2 := ParseArgs(args)
+	if a1 == nil && a2 == nil {
+		return nil
+	}
+
+	return am.AMerge(amhelp.ArgsToLogMap(a1), amhelp.ArgsToLogMap(a2))
+}
+```
+
 ### Tracing and Metrics
 
 Asyncmachine offers several telemetry exporters for logging, tracing, and metrics. Please refer to [`pkg/telemetry`](/pkg/telemetry/README.md)

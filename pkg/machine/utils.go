@@ -294,6 +294,20 @@ func MockClock(mach *Machine, clock Clock) {
 	mach.clock = clock
 }
 
+// AMerge merges 2 or more maps into 1. Useful for passing args from many
+// packages.
+func AMerge[K comparable, V any](maps ...map[K]V) map[K]V {
+	out := map[K]V{}
+
+	for _, m := range maps {
+		for k, v := range m {
+			out[k] = v
+		}
+	}
+
+	return out
+}
+
 // ///// ///// /////
 
 // ///// UTILS

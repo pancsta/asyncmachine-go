@@ -129,12 +129,13 @@ func PassRpc(args *A) am.A {
 	return am.A{"am_node": amhelp.ArgsToArgs(args, &ARpc{})}
 }
 
-// LogArgs is an args logger for A.
+// LogArgs is an args logger for A and rpc.A.
 func LogArgs(args am.A) map[string]string {
-	a := ParseArgs(args)
-	if a == nil {
+	a1 := rpc.ParseArgs(args)
+	a2 := ParseArgs(args)
+	if a1 == nil && a2 == nil {
 		return nil
 	}
 
-	return amhelp.ArgsToLogMap(a)
+	return am.AMerge(amhelp.ArgsToLogMap(a1), amhelp.ArgsToLogMap(a2))
 }
