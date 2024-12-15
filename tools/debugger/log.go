@@ -196,6 +196,10 @@ func (d *Debugger) appendLogEntry(index int) error {
 // getLogEntryTxt prepares a log entry for UI rendering
 // index: 1-based
 func (d *Debugger) getLogEntryTxt(index int) []byte {
+	if index < 1 || index > len(d.C.MsgTxs) {
+		return nil
+	}
+
 	c := d.C
 	ret := ""
 	tx := c.MsgTxs[index]
@@ -252,6 +256,14 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 	return []byte(ret)
 }
 
+var stateChangPrefix = regexp.MustCompile(
+	`^\[yellow\]\[state\[\]\[white\] .+\)\n$`)
+
+var (
+	filenamePattern = regexp.MustCompile(`/[a-z_]+\.go:\d+ \+(?i)`)
+	methodPattern   = regexp.MustCompile(`\.[^.]+?$`)
+)
+
 func fmtLogEntry(entry string, machStruct am.Struct) string {
 	if entry == "" {
 		return entry
@@ -261,32 +273,40 @@ func fmtLogEntry(entry string, machStruct am.Struct) string {
 
 	ret := ""
 	// format each line
-	for _, s := range strings.Split(entry, "\n") {
-		if !strings.Contains(s, "]") || !strings.Contains(s, "[") {
-			ret += s + "\n"
-			continue
+	for i, s := range strings.Split(entry, "\n") {
+		// color 1st brackets in the 1st line only
+		if i == 0 {
+			s = strings.Replace(strings.Replace(s,
+				"]", prefixEnd, 1),
+				"[", "[yellow][", 1)
+			start := strings.Index(s, prefixEnd) + len(prefixEnd)
+			left, right := s[:start], s[start:]
+			// escape the rest
+			ret += left + cview.Escape(right) + "\n"
+		} else {
+			ret += cview.Escape(s) + "\n"
+		}
+	}
+
+	// log args highlight
+	ret = stateChangPrefix.ReplaceAllStringFunc(ret, func(m string) string {
+		line := strings.Split(strings.TrimRight(m, ")\n"), "(")
+		args := ""
+		for _, arg := range strings.Split(line[1], " ") {
+			a := strings.Split(arg, "=")
+			if len(a) == 1 {
+				args += a[0] + " "
+			} else {
+				args += "[grey]" + a[0] + "=[" + colorInactive.String() + "]" + a[1] +
+					"[:] "
+			}
 		}
 
-		// color the first brackets per each line
-		// TODO color only the first line
-		s = strings.Replace(strings.Replace(s,
-			"]", prefixEnd, 1),
-			"[", "[yellow][", 1)
-		start := strings.Index(s, prefixEnd) + len(prefixEnd)
-		left, right := s[:start], s[start:]
-		if strings.Contains(s, "[test]") {
-			print("")
-		}
-		// escape the rest
-		ret += left + cview.Escape(right) + "\n"
-	}
+		return line[0] + args + "\n"
+	})
 
 	// highlight state names (in the msg body)
 	idx := strings.Index(ret, prefixEnd)
-	// if len(ret) < idx+len(prefixEnd) {
-	//	// TODO reproduce this case?
-	//	return "err:fmtLogEntry"
-	// }
 	prefix := ret[0 : idx+len(prefixEnd)]
 
 	// style state names, start from the longest ones
@@ -303,7 +323,39 @@ func fmtLogEntry(entry string, machStruct am.Struct) string {
 		ret = prefix + strings.ReplaceAll(body, "("+name, "([::b]"+name+"[::-]")
 	}
 
-	return strings.Trim(ret, " \n	") + "\n"
+	ret = strings.Trim(ret, " \n	")
+
+	// stack traces highlight
+	if strings.HasPrefix(ret, `[yellow][error[]`) &&
+		strings.Contains(ret, "\n") {
+		lines := strings.Split(ret, "\n")
+		lines[0] += "[grey]"
+		for i, line := range lines {
+			if i == 0 {
+				continue
+			}
+
+			// method line
+			if i%2 == 1 {
+				lines[i] = methodPattern.ReplaceAllStringFunc(line,
+					func(m string) string {
+						m = strings.TrimLeft(m, ".")
+						return ".[white]" + m + "[grey]"
+					})
+			} else {
+				// file line
+				lines[i] = filenamePattern.ReplaceAllStringFunc(line,
+					func(m string) string {
+						m = strings.Trim(m, "/ +")
+						return "/[white]" + m + "[grey] +"
+					})
+			}
+		}
+
+		ret = strings.Join(lines, "\n")
+	}
+
+	return ret + "\n"
 }
 
 // ///// LOG READER
