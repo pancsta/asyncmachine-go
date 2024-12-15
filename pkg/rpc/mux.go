@@ -101,9 +101,9 @@ func (m *Mux) StartState(e *am.Event) {
 			lis, err := cfg.Listen(ctx, "tcp4", addr)
 			if err != nil {
 				// add err to mach
-				AddErrNetwork(mach, err)
+				AddErrNetwork(e, mach, err)
 				// add outcome to mach
-				mach.Remove1(ssM.Start, nil)
+				mach.EvRemove1(e, ssM.Start, nil)
 
 				return
 			}
@@ -127,7 +127,7 @@ func (m *Mux) StartState(e *am.Event) {
 		// start cmux
 		if err := m.cmux.Serve(); err != nil {
 			mach.AddErr(err, nil)
-			mach.Remove1(ssM.Start, nil)
+			mach.EvRemove1(e, ssM.Start, nil)
 		}
 	}()
 }
@@ -140,7 +140,7 @@ func (m *Mux) StartEnd(e *am.Event) {
 }
 
 func (m *Mux) ClientConnectedState(e *am.Event) {
-	m.Mach.Remove1(ssM.ClientConnected, nil)
+	m.Mach.EvRemove1(e, ssM.ClientConnected, nil)
 }
 
 func (m *Mux) HasClientsEnd(e *am.Event) bool {
@@ -161,7 +161,9 @@ func (m *Mux) accept(l net.Listener) {
 	mach := m.Mach
 	defer mach.PanicToErr(nil)
 
-	go m.Mach.Add1(ssM.Ready, nil)
+	go m.Mach.Add1(ssM.Ready, Pass(&A{
+		Addr: l.Addr().String(),
+	}))
 
 	for {
 		conn, err := l.Accept()
@@ -204,6 +206,7 @@ func (m *Mux) accept(l net.Listener) {
 		server.Start()
 
 		// TODO re-use old instances
+		// TODO handle with a state, not a goroutine
 		go func() {
 			// dispose on disconnect
 			muxCtx := m.Mach.NewStateCtx(ssM.Start)

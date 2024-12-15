@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"net"
@@ -57,10 +56,8 @@ type Server struct {
 	// AllowId will limit clients to a specific ID, if set.
 	AllowId string
 
-	// w is a common interface for both local and remote workers.
-	w am.Api
-	// worker is the local worker machine to expose over RPC.
-	worker    *am.Machine
+	// source is a state source, either a local or remote RPC worker.
+	source    am.Api
 	rpcServer *rpc2.Server
 	rpcClient atomic.Pointer[rpc2.Client]
 	// lastClockHTime is the last (human) time a clock update was sent to the
@@ -70,11 +67,12 @@ type Server struct {
 	ticker         *time.Ticker
 	clockMx        sync.Mutex
 	// mutMx is a lock preventing mutation methods from racing each other.
-	mutMx            sync.Mutex
-	lastClockSum     atomic.Pointer[uint64]
-	skipClockPush    atomic.Bool
-	lastClockMsg     ClockMsg
-	tracer           *WorkerTracer
+	mutMx         sync.Mutex
+	lastClockSum  atomic.Pointer[uint64]
+	skipClockPush atomic.Bool
+	lastClockMsg  ClockMsg
+	tracer        *WorkerTracer
+	// ID of the currently connected client.
 	clientId         atomic.Pointer[string]
 	deliveryHandlers any
 }
@@ -86,12 +84,11 @@ var (
 )
 
 // NewServer creates a new RPC server, bound to a worker machine.
-// The worker machine has to implement am/rpc/states/WorkerStatesDef interface.
+// The source machine has to implement am/rpc/states/WorkerStatesDef interface.
 func NewServer(
-	ctx context.Context, addr string, name string, worker am.Api,
+	ctx context.Context, addr string, name string, sourceMach am.Api,
 	opts *ServerOpts,
 ) (*Server, error) {
-	gob.Register(am.Relation(0))
 	if name == "" {
 		name = "rpc"
 	}
@@ -100,10 +97,10 @@ func NewServer(
 	}
 
 	// check the worker
-	if !worker.StatesVerified() {
+	if !sourceMach.StatesVerified() {
 		return nil, fmt.Errorf("worker states not verified, call VerifyStates()")
 	}
-	if !worker.Has(ssW.Names()) {
+	if !sourceMach.Has(ssW.Names()) {
 		err := errors.New(
 			"worker has to implement pkg/rpc/states/WorkerStatesDef")
 
@@ -116,14 +113,14 @@ func NewServer(
 		PushInterval:     250 * time.Millisecond,
 		DeliveryTimeout:  5 * time.Second,
 		LogEnabled:       os.Getenv(EnvAmRpcLogServer) != "",
-		w:                worker,
+		source:           sourceMach,
 	}
 	var sum uint64
 	s.lastClockSum.Store(&sum)
 
 	// state machine
 	mach, err := am.NewCommon(ctx, "rs-"+name, states.ServerStruct, ssS.Names(),
-		s, opts.Parent, nil)
+		s, opts.Parent, &am.Opts{Tags: []string{"rpc-server"}})
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +129,7 @@ func NewServer(
 
 	// bind to worker via Tracer API
 	s.tracer = &WorkerTracer{s: s}
-	worker.BindTracer(s.tracer)
+	_ = sourceMach.BindTracer(s.tracer)
 
 	// payload state
 
@@ -153,10 +150,13 @@ func NewServer(
 		// dynamic handlers
 		h = createSendPayloadHandlers(s, payloadState)
 	}
-	err = worker.BindHandlers(h)
+	err = sourceMach.BindHandlers(h)
 	if err != nil {
 		return nil, err
 	}
+	mach.HandleDispose(func(id string, ctx context.Context) {
+		_ = sourceMach.DetachHandlers(h)
+	})
 
 	return s, nil
 }
@@ -175,8 +175,8 @@ func (s *Server) StartEnd(e *am.Event) {
 		s.Mach.Dispose()
 		s.Listener = nil
 		s.rpcServer = nil
-		s.worker.DetachTracer(s.tracer)
-		_ = s.worker.DetachHandlers(s.deliveryHandlers)
+		s.source.DetachTracer(s.tracer)
+		_ = s.source.DetachHandlers(s.deliveryHandlers)
 	}
 }
 
@@ -217,7 +217,7 @@ func (s *Server) RpcStartingState(e *am.Event) {
 			lis, err := cfg.Listen(ctxStart, "tcp4", s.Addr)
 			if err != nil {
 				// add err to mach
-				AddErrNetwork(s.Mach, err)
+				AddErrNetwork(e, s.Mach, err)
 				// add outcome to mach
 				s.Mach.Remove1(ssS.RpcStarting, nil)
 
@@ -231,12 +231,11 @@ func (s *Server) RpcStartingState(e *am.Event) {
 
 		s.log("RPC started on %s", s.Addr)
 
-		// accept conn TODO >1
 		go func() {
 			if ctxRpcStarting.Err() != nil {
 				return // expired
 			}
-			s.Mach.Add1(ssS.RpcReady, nil)
+			s.Mach.EvAdd1(e, ssS.RpcReady, Pass(&A{Addr: s.Addr}))
 
 			if s.Conn != nil {
 				srv.ServeConn(s.Conn)
@@ -246,17 +245,17 @@ func (s *Server) RpcStartingState(e *am.Event) {
 
 			// restart on failed listener
 			if s.Mach.Is1(ssS.Start) {
-				s.Mach.Remove1(ssS.RpcReady, nil)
-				s.Mach.Add1(ssS.RpcStarting, nil)
+				s.Mach.EvRemove1(e, ssS.RpcReady, nil)
+				s.Mach.EvAdd1(e, ssS.RpcStarting, nil)
 			}
 		}()
 
 		// bind to client events
 		srv.OnDisconnect(func(client *rpc2.Client) {
-			s.Mach.Remove1(ssS.ClientConnected, Pass(&A{Client: client}))
+			s.Mach.EvRemove1(e, ssS.ClientConnected, Pass(&A{Client: client}))
 		})
 		srv.OnConnect(func(client *rpc2.Client) {
-			s.Mach.Add1(ssS.ClientConnected, Pass(&A{Client: client}))
+			s.Mach.EvAdd1(e, ssS.ClientConnected, Pass(&A{Client: client}))
 		})
 	}()
 }
@@ -274,9 +273,7 @@ func (s *Server) RpcReadyState(e *am.Event) {
 	}
 
 	ctx := s.Mach.NewStateCtx(ssS.RpcReady)
-	if s.ticker == nil {
-		s.ticker = time.NewTicker(s.PushInterval)
-	}
+	s.ticker = time.NewTicker(s.PushInterval)
 
 	// avoid dispose
 	t := s.ticker
@@ -340,23 +337,45 @@ func (s *Server) Stop(dispose bool) am.Result {
 	return res
 }
 
-// SendPayload sends a payload to the client.
-func (s *Server) SendPayload(ctx context.Context, payload *ArgsPayload) error {
+// SendPayload sends a payload to the client. It's usually called by a handler
+// for SendPayload.
+func (s *Server) SendPayload(
+	event *am.Event, ctx context.Context, payload *ArgsPayload,
+) error {
 	// TODO add SendPayloadAsync calling RemoteSendingPayload first
 	// TODO bind to an async state
 
-	if s.Mach.Not1(ssS.ClientConnected) ||
-		s.Mach.Not1(ssS.HandshakeDone) {
+	if s.Mach.Not1(ssS.ClientConnected) || s.Mach.Not1(ssS.HandshakeDone) {
 		return ErrNoConn
 	}
+
+	// check destination
+	id := s.ClientId()
+	if payload.Destination != "" && id != payload.Destination {
+		return fmt.Errorf("%w: %s != %s", ErrDestination, payload.Destination, id)
+	}
+
 	defer s.Mach.PanicToErr(nil)
 
 	payload.Token = utils.RandID(0)
+	if event != nil {
+		payload.Source = event.MachineId
+		payload.SourceTx = event.TransitionId
+	}
 	s.log("sending payload %s", payload.Name)
 
 	// TODO failsafe
 	return s.rpcClient.Load().CallWithContext(ctx,
 		rpcnames.ClientSendPayload.Encode(), payload, &Empty{})
+}
+
+func (s *Server) ClientId() string {
+	id := s.clientId.Load()
+	if id == nil {
+		return ""
+	}
+
+	return *id
 }
 
 // GetKind returns a kind of RPC component (server / client).
@@ -434,7 +453,7 @@ func (s *Server) pushClockUpdate(force bool) {
 	err := c.Notify(rpcnames.ClientSetClock.Encode(), clock)
 	if err != nil {
 		s.Mach.Remove1(ssS.ClientConnected, nil)
-		AddErr(s.Mach, "pushClockUpdate", err)
+		AddErr(nil, s.Mach, "pushClockUpdate", err)
 	}
 }
 
@@ -448,7 +467,7 @@ func (s *Server) genClockUpdate(skipTimeCheck bool) ClockMsg {
 		return nil
 	}
 	hTime := time.Now()
-	mTime := s.w.Time(nil)
+	mTime := s.source.Time(nil)
 
 	// exit if no change since the last sync
 	var sum uint64
@@ -485,10 +504,10 @@ func (s *Server) RemoteHello(
 	// TODO GetStruct and Time inside Eval
 	// TODO check if client here is the same as RespHandshakeAck
 
-	mTime := s.w.Time(nil)
+	mTime := s.source.Time(nil)
 	*resp = RespHandshake{
-		ID:         s.w.Id(),
-		StateNames: s.w.StateNames(),
+		ID:         s.source.Id(),
+		StateNames: s.source.StateNames(),
 		Time:       mTime,
 	}
 
@@ -517,7 +536,7 @@ func (s *Server) RemoteHandshake(
 	// TODO pass ID and key here
 	if id == nil || *id == "" {
 		s.Mach.Remove1(ssS.Handshaking, nil)
-		AddErrRpcStr(s.Mach, "handshake failed: ID missing")
+		AddErrRpcStr(nil, s.Mach, "handshake failed: ID missing")
 
 		return ErrInvalidParams
 	}
@@ -529,7 +548,7 @@ func (s *Server) RemoteHandshake(
 		return fmt.Errorf("%w: %s != %s", ErrNoAccess, *id, s.AllowId)
 	}
 
-	sum := s.w.TimeSum(nil)
+	sum := s.source.TimeSum(nil)
 	s.log("RemoteHandshake: t%v", sum)
 
 	// accept the client
@@ -560,10 +579,16 @@ func (s *Server) RemoteAdd(
 	}
 
 	// execute
+	var val am.Result
 	s.skipClockPush.Store(true)
-	// TODO eval
-	val := s.w.Add(amhelp.IndexesToStates(s.w.StateNames(), args.States),
-		args.Args)
+	if args.Event != nil {
+		val = s.source.EvAdd(args.Event, amhelp.IndexesToStates(s.source.StateNames(),
+			args.States), args.Args)
+	} else {
+		// TODO eval
+		val = s.source.Add(amhelp.IndexesToStates(s.source.StateNames(),
+			args.States), args.Args)
+	}
 
 	// return
 	*resp = RespResult{
@@ -571,6 +596,7 @@ func (s *Server) RemoteAdd(
 		Clock:  s.genClockUpdate(true),
 	}
 	s.skipClockPush.Store(false)
+
 	return nil
 }
 
@@ -590,7 +616,7 @@ func (s *Server) RemoteAddNS(
 
 	// execute
 	s.skipClockPush.Store(true)
-	_ = s.w.Add(amhelp.IndexesToStates(s.w.StateNames(), args.States), args.Args)
+	_ = s.source.Add(amhelp.IndexesToStates(s.source.StateNames(), args.States), args.Args)
 	s.skipClockPush.Store(false)
 
 	return nil
@@ -612,7 +638,7 @@ func (s *Server) RemoteRemove(
 
 	// execute
 	s.skipClockPush.Store(true)
-	val := s.w.Remove(amhelp.IndexesToStates(s.w.StateNames(), args.States),
+	val := s.source.Remove(amhelp.IndexesToStates(s.source.StateNames(), args.States),
 		args.Args)
 	s.skipClockPush.Store(false)
 
@@ -640,7 +666,7 @@ func (s *Server) RemoteSet(
 
 	// execute
 	s.skipClockPush.Store(true)
-	val := s.w.Set(amhelp.IndexesToStates(s.w.StateNames(), args.States),
+	val := s.source.Set(amhelp.IndexesToStates(s.source.StateNames(), args.States),
 		args.Args)
 	s.skipClockPush.Store(false)
 
@@ -660,9 +686,9 @@ func (s *Server) RemoteSync(
 	}
 	s.log("RemoteSync")
 
-	if s.w.TimeSum(nil) > sum {
+	if s.source.TimeSum(nil) > sum {
 		*resp = RespSync{
-			Time: s.w.Time(nil),
+			Time: s.source.Time(nil),
 		}
 	} else {
 		*resp = RespSync{}
@@ -701,6 +727,10 @@ func (s *Server) RemoteBye(
 		s.Mach.Remove1(ssS.HandshakeDone, nil)
 	}()
 
+	// forget client
+	s.rpcClient.Store(nil)
+	s.clientId.Store(nil)
+
 	return nil
 }
 
@@ -730,15 +760,15 @@ func BindServer(source, target *am.Machine, rpcReady, clientConn string) error {
 		RpcReadyState am.HandlerFinal
 		RpcReadyEnd   am.HandlerFinal
 
-		ClientConnectedState am.HandlerFinal
-		ClientConnectedEnd   am.HandlerFinal
+		HandshakeDoneState am.HandlerFinal
+		HandshakeDoneEnd   am.HandlerFinal
 	}{
 		RpcReadyState: ampipe.Add(source, target, ssS.RpcReady, rpcReady),
 		RpcReadyEnd:   ampipe.Remove(source, target, ssS.RpcReady, rpcReady),
 
-		ClientConnectedState: ampipe.Add(source, target, ssS.ClientConnected,
+		HandshakeDoneState: ampipe.Add(source, target, ssS.ClientConnected,
 			clientConn),
-		ClientConnectedEnd: ampipe.Remove(source, target, ssS.ClientConnected,
+		HandshakeDoneEnd: ampipe.Remove(source, target, ssS.ClientConnected,
 			clientConn),
 	}
 
@@ -754,15 +784,15 @@ func BindServerMulti(
 		RpcReadyState am.HandlerFinal
 		RpcReadyEnd   am.HandlerFinal
 
-		ClientConnectedState am.HandlerFinal
-		ClientConnectedEnd   am.HandlerFinal
+		HandshakeDoneState am.HandlerFinal
+		HandshakeDoneEnd   am.HandlerFinal
 	}{
 		RpcReadyState: ampipe.Add(source, target, ssS.RpcReady, rpcReady),
 		RpcReadyEnd:   ampipe.Remove(source, target, ssS.RpcReady, rpcReady),
 
-		ClientConnectedState: ampipe.Add(source, target,
+		HandshakeDoneState: ampipe.Add(source, target,
 			ssS.ClientConnected, clientConn),
-		ClientConnectedEnd: ampipe.Add(source, target,
+		HandshakeDoneEnd: ampipe.Add(source, target,
 			ssS.ClientConnected, clientDisconn),
 	}
 
@@ -788,8 +818,8 @@ func BindServerRpcReady(source, target *am.Machine, rpcReady string) error {
 
 type ServerOpts struct {
 	// PayloadState is a state for the server to listen on, to deliver payloads
-	// to the client. The client adds this state to request a payload from the
-	// worker. Default: am/rpc/states/WorkerStates.SendPayload.
+	// to the client. The client activates this state to request a payload from
+	// the worker. Default: am/rpc/states/WorkerStates.SendPayload.
 	PayloadState string
 	// Parent is a parent state machine for a new Server state machine. See
 	// [am.Opts].
@@ -800,11 +830,12 @@ type SendPayloadHandlers struct {
 	SendPayloadState am.HandlerFinal
 }
 
-// getSendPayloadState returns a handler that will deliver a payload to the RPC
-// client. The resulting function can be bound in anon handlers.
+// getSendPayloadState returns a handler (usually SendPayloadState), that will
+// deliver a payload to the RPC client. The resulting function can be bound in
+// anon handlers.
 func getSendPayloadState(s *Server) am.HandlerFinal {
 	return func(e *am.Event) {
-		e.Machine.Remove1(ssW.SendPayload, nil)
+		e.Machine().EvRemove1(e, ssW.SendPayload, nil)
 		ctx := s.Mach.NewStateCtx(ssW.Start)
 		args := ParseArgs(e.Args)
 		argsOut := &A{Name: args.Name}
@@ -812,20 +843,20 @@ func getSendPayloadState(s *Server) am.HandlerFinal {
 		// side-effect error handling
 		if args.Payload == nil || args.Name == "" {
 			err := fmt.Errorf("invalid payload args [name, payload]")
-			e.Machine.AddErrState(ssW.ErrSendPayload, err, Pass(argsOut))
+			e.Machine().EvAddErrState(e, ssW.ErrSendPayload, err, Pass(argsOut))
 
 			return
 		}
 
-		// unblock and forward to the server
+		// unblock and forward to the client
 		go func() {
 			// timeout context
 			ctx, cancel := context.WithTimeout(ctx, s.DeliveryTimeout)
 			defer cancel()
 
-			err := s.SendPayload(ctx, args.Payload)
+			err := s.SendPayload(e, ctx, args.Payload)
 			if err != nil {
-				e.Machine.AddErrState(ssW.ErrSendPayload, err, Pass(argsOut))
+				e.Machine().EvAddErrState(e, ssW.ErrSendPayload, err, Pass(argsOut))
 			}
 		}()
 	}

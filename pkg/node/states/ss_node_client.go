@@ -10,7 +10,7 @@ import (
 type ClientStatesDef struct {
 	*am.StatesBase
 
-	Exception string
+	Exception     string
 	ErrWorker     string
 	ErrSupervisor string
 
@@ -58,8 +58,8 @@ var ClientStruct = StructMerge(
 
 		// errors
 
-		ssC.ErrWorker:     {Require: S{am.Exception}},
-		ssC.ErrSupervisor: {Require: S{am.Exception}},
+		ssC.ErrWorker:     {Require: S{Exception}},
+		ssC.ErrSupervisor: {Require: S{Exception}},
 
 		// piped
 
@@ -78,7 +78,10 @@ var ClientStruct = StructMerge(
 		// client
 
 		ssC.WorkerRequested: {Require: S{ssC.SuperReady}},
-		ssC.Ready:           {Require: S{ssC.WorkerReady}},
+		ssC.Ready: {
+			Auto:    true,
+			Require: S{ssC.WorkerReady},
+		},
 	})
 
 // TODO handlers iface

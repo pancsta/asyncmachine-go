@@ -66,9 +66,11 @@ func NewClient(ctx context.Context, id string, workerKind string,
 	if stateDeps.WorkerSNames == nil {
 		return nil, errors.New("client: stateNames required")
 	}
+	// TODO defaults
 	if stateDeps.ClientSStruct == nil {
 		return nil, errors.New("client: workerStruct required")
 	}
+	// TODO defaults
 	if stateDeps.ClientSNames == nil {
 		return nil, errors.New("client: stateNames required")
 	}
@@ -99,7 +101,9 @@ func NewClient(ctx context.Context, id string, workerKind string,
 		c.ConnTimeout = 10 * c.ConnTimeout
 	}
 	mach, err := am.NewCommon(ctx, "nc-"+name, stateDeps.ClientSStruct,
-		stateDeps.ClientSNames, c, opts.Parent, nil)
+		stateDeps.ClientSNames, c, opts.Parent, &am.Opts{
+			Tags: []string{"node-client"},
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +142,7 @@ func (c *Client) StartState(e *am.Event) {
 	c.nodeList = args.NodesList
 
 	// init super rpc (but dont connect just yet)
-	c.SuperRpc, err = rpc.NewClient(ctx, addr, "nc-super-"+c.Name,
+	c.SuperRpc, err = rpc.NewClient(ctx, addr, GetSuperClientId(c.Name),
 		states.SupervisorStruct, ssS.Names(), &rpc.ClientOpts{
 			Parent:   c.Mach,
 			Consumer: c.Mach,
@@ -202,6 +206,8 @@ func (c *Client) StartState(e *am.Event) {
 
 				return
 			}
+
+			amhelp.MachDebugEnv(c.SuperRpc.Worker)
 		}
 	}()
 }
@@ -220,8 +226,10 @@ func (c *Client) WorkerRequestedEnter(e *am.Event) bool {
 }
 
 func (c *Client) WorkerRequestedState(e *am.Event) {
+	// supervisor needs IDs of RPC clients for routing and ACL
 	c.SuperRpc.Worker.Add1(ssS.ProvideWorker, PassRpc(&A{
-		Id: GetRpcClientId(c.Name),
+		SuperRpcId:  c.SuperRpc.Mach.Id(),
+		WorkerRpcId: rpc.GetClientId(GetWorkerClientId(c.Name)),
 	}))
 }
 
@@ -261,7 +269,7 @@ func (c *Client) WorkerPayloadState(e *am.Event) {
 	go func() {
 		// connect to the worker
 		var err error
-		c.WorkerRpc, err = rpc.NewClient(ctxStart, addr, GetClientId(c.Name),
+		c.WorkerRpc, err = rpc.NewClient(ctxStart, addr, GetWorkerClientId(c.Name),
 			c.stateDeps.WorkerSStruct, c.stateDeps.WorkerSNames, &rpc.ClientOpts{
 				Parent:   c.Mach,
 				Consumer: c.Mach,
@@ -291,13 +299,18 @@ func (c *Client) WorkerPayloadState(e *am.Event) {
 		c.WorkerRpc.Start()
 		err = amhelp.WaitForAny(ctx, c.ConnTimeout,
 			c.Mach.When1(ssC.WorkerReady, nil),
-			c.WorkerRpc.Mach.WhenErr(context.TODO()),
+			c.WorkerRpc.Mach.WhenErr(ctxStart),
 		)
 		// TODO retry
 		if err != nil {
 			c.Mach.Remove1(ssC.WorkerRequested, nil)
+			return
 		}
 	}()
+}
+
+func (c *Client) WorkerReadyState(e *am.Event) {
+	amhelp.MachDebugEnv(c.WorkerRpc.Worker)
 }
 
 // ///// ///// /////
@@ -380,14 +393,16 @@ type ClientOpts struct {
 	// Parent is a parent state machine for a new client state machine. See
 	// [am.Opts].
 	Parent am.Api
+	// TODO
+	Tags []string
 }
 
-// GetClientId returns a machine ID from a name.
-func GetClientId(name string) string {
+// GetWorkerClientId returns a Node Client machine ID from a name.
+func GetWorkerClientId(name string) string {
 	return "nc-worker-" + name
 }
 
-// GetRpcClientId returns a machine ID from a name.
-func GetRpcClientId(name string) string {
-	return rpc.GetClientId("nc-worker-" + name)
+// GetClientId returns a Node Client machine ID from a name.
+func GetSuperClientId(name string) string {
+	return "nc-super-" + name
 }

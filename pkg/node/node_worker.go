@@ -59,10 +59,10 @@ func NewWorker(ctx context.Context, kind string, workerStruct am.Struct,
 ) (*Worker, error) {
 	// validate
 	if kind == "" {
-		return nil, errors.New("worker: workerSNames required")
+		return nil, errors.New("worker: kind required")
 	}
 	if stateNames == nil {
-		return nil, errors.New("worker: workerSNames required")
+		return nil, errors.New("worker: stateNames required")
 	}
 	if workerStruct == nil {
 		return nil, errors.New("worker: workerStruct required")
@@ -86,7 +86,7 @@ func NewWorker(ctx context.Context, kind string, workerStruct am.Struct,
 	}
 
 	mach, err := am.NewCommon(ctx, "nw-"+w.Name, workerStruct, stateNames, w,
-		opts.Parent, nil)
+		opts.Parent, &am.Opts{Tags: []string{"node-worker"}})
 	if err != nil {
 		return nil, err
 	}
@@ -187,37 +187,30 @@ func (w *Worker) StartEnd(e *am.Event) {
 	if w.PublicRpc != nil {
 		w.PublicRpc.Stop(true)
 	}
-	w.PublicRpc = nil
-
 	if w.LocalRpc != nil {
 		w.LocalRpc.Stop(true)
 	}
-	w.LocalRpc = nil
-
 	if w.BootRpc != nil {
-		w.BootRpc.Stop(context.TODO(), true)
+		// TODO ctx
+		go w.BootRpc.Stop(context.TODO(), true)
 	}
-	w.BootRpc = nil
-
 	if args.Dispose {
 		w.Mach.Dispose()
 	}
 }
 
 func (w *Worker) LocalRpcReadyState(e *am.Event) {
-	// get the local addr
 	w.LocalAddr = w.LocalRpc.Addr
 }
 
 func (w *Worker) PublicRpcReadyState(e *am.Event) {
-	// get the local addr
 	w.PublicAddr = w.PublicRpc.Addr
 }
 
 func (w *Worker) RpcReadyState(e *am.Event) {
 	var err error
-	ctx := w.Mach.NewStateCtx(ssW.LocalRpcReady)
-	w.Mach.Add1(ssW.Ready, nil)
+	ctx := w.Mach.NewStateCtx(ssW.RpcReady)
+	w.Mach.EvAdd1(e, ssW.Ready, nil)
 
 	// connect to the bootstrap machine
 	opts := &rpc.ClientOpts{Parent: w.Mach}
@@ -249,14 +242,14 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 		}
 
 		// pass the local port to [bootstrap.WorkerAddState] via RPC
-		w.BootRpc.Worker.Add1(ssB.WorkerAddr, PassRpc(&A{
+		w.BootRpc.Worker.EvAdd1(e, ssB.WorkerAddr, PassRpc(&A{
 			LocalAddr:  w.LocalAddr,
 			PublicAddr: w.PublicAddr,
 			Id:         w.Mach.Id(),
 		}))
+		w.Mach.Log("Passed the local port to the bootstrap machine")
 		// dispose
-		w.BootRpc.Stop(context.TODO(), true)
-		w.BootRpc = nil
+		go w.BootRpc.Stop(w.Mach.Ctx(), true)
 	}()
 }
 
@@ -270,6 +263,8 @@ func (w *Worker) ServeClientEnter(e *am.Event) bool {
 }
 
 func (w *Worker) ServeClientState(e *am.Event) {
+	w.Mach.Remove1(ssW.ServeClient, nil)
+
 	args := ParseArgs(e.Args)
 	w.AcceptClient = args.Id
 	w.PublicRpc.AllowId = w.AcceptClient
@@ -286,9 +281,9 @@ func (w *Worker) SendPayloadEnter(e *am.Event) bool {
 
 // ///// ///// /////
 
-// Start initiates the worker state machine with the given local address.
-func (w *Worker) Start(localAddr string) am.Result {
-	return w.Mach.Add1(ssW.Start, Pass(&A{LocalAddr: localAddr}))
+// Start connects the worker to the bootstrap RPC.
+func (w *Worker) Start(bootAddr string) am.Result {
+	return w.Mach.Add1(ssW.Start, Pass(&A{LocalAddr: bootAddr}))
 }
 
 // Stop halts the worker's state machine and optionally disposes of its
@@ -307,4 +302,6 @@ type WorkerOpts struct {
 	// Parent is a parent state machine for a new Worker state machine. See
 	// [am.Opts].
 	Parent am.Api
+	// TODO
+	Tags []string
 }

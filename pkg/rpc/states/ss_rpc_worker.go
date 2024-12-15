@@ -18,8 +18,8 @@ type WorkerStatesDef struct {
 
 	// rpc getter
 
-	// SendPayload - Worker delivered requested payload to the RPC server as
-	// A{"payload": ArgsPayload, "name": "name"}. TODO use rpc.Pass
+	// SendPayload - Worker delivered requested payload to the RPC server using
+	// rpc.Pass, rpc.A, and rpc.ArgsPayload.
 	SendPayload string
 
 	// inherit from BasicStatesDef

@@ -144,9 +144,9 @@ func TestWaiting(t *testing.T) {
 	assert.Equal(t, 3, int(c.CallCount),
 		"Client called RemoteHello, RemoteHandshake, RemoteAdd")
 	bytesCount := <-counter
-	assert.LessOrEqual(t, 550, int(bytesCount),
+	assert.LessOrEqual(t, 650, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 650, int(bytesCount),
+	assert.GreaterOrEqual(t, 750, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
@@ -230,9 +230,9 @@ func TestAddManyNoSync(t *testing.T) {
 
 	// assert
 	bytesCount := <-counter
-	assert.LessOrEqual(t, 7_950, int(bytesCount),
+	assert.LessOrEqual(t, 8_050, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
-	assert.GreaterOrEqual(t, 8_150, int(bytesCount),
+	assert.GreaterOrEqual(t, 8_250, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
 
 	disposeTest(t, c, s, true)
@@ -323,9 +323,9 @@ func TestManyStates(t *testing.T) {
 	assert.Equal(t, 183, int(c.CallCount),
 		"Client called handshake (2) and mutations (181)")
 	bytesCount := <-counter
-	assert.LessOrEqual(t, 7_400, int(bytesCount),
+	assert.LessOrEqual(t, 7_500, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 7_750, int(bytesCount),
+	assert.GreaterOrEqual(t, 7_850, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
@@ -397,7 +397,7 @@ func (h *TestRetryCallHandlers) DState(e *am.Event) {
 		return
 	}
 
-	e.Machine.Log("Blocking for 1s")
+	e.Machine().Log("Blocking for 1s")
 	time.Sleep(1 * time.Second)
 	h.blocked = true
 }
@@ -502,7 +502,7 @@ func (h *TestRetryErrNetworkTimeoutHandlers) DState(e *am.Event) {
 	if !h.shouldBlock {
 		return
 	}
-	e.Machine.Log("Blocking for 1s")
+	e.Machine().Log("Blocking for 1s")
 	time.Sleep(1 * time.Second)
 	h.blocked = true
 }
@@ -588,14 +588,14 @@ type TestPayloadWorker struct{}
 // CState will trigger SendPayload
 func (w *TestPayloadWorker) CState(e *am.Event) {
 	// TODO use v2 state def
-	e.Machine.Remove1(sstest.C, nil)
+	e.Machine().Remove1(sstest.C, nil)
 	args := ParseArgs(e.Args)
 	argsOut := &A{
 		Name:    args.Name,
 		Payload: &ArgsPayload{Data: "Hello", Name: args.Name},
 	}
 
-	e.Machine.Add1(ssW.SendPayload, Pass(argsOut))
+	e.Machine().Add1(ssW.SendPayload, Pass(argsOut))
 }
 
 type TestPayloadConsumer struct {
@@ -604,7 +604,7 @@ type TestPayloadConsumer struct {
 }
 
 func (c *TestPayloadConsumer) WorkerPayloadState(e *am.Event) {
-	e.Machine.Remove1(ssCo.WorkerPayload, nil)
+	e.Machine().Remove1(ssCo.WorkerPayload, nil)
 
 	args := ParseArgs(e.Args)
 	assert.Equal(c.t, "TestPayload", args.Name)
@@ -615,7 +615,7 @@ func (c *TestPayloadConsumer) WorkerPayloadState(e *am.Event) {
 
 func TestPayload(t *testing.T) {
 	// t.Parallel()
-	// amhelp.EnableDebugging(false)
+	amhelp.EnableDebugging(false)
 
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
@@ -642,8 +642,7 @@ func TestPayload(t *testing.T) {
 
 	whenDelivered := consMach.When1(ssCo.WorkerPayload, nil)
 	// Consumer requests a payload from the remote worker
-	// TODO use v2 state def
-	c.Worker.Add1(sstest.C, Pass(&A{Name: "TestPayload"}))
+	c.Worker.Add1(sstest.C, PassRpc(&A{Name: "TestPayload"}))
 	// Consumer waits for WorkerDelivered
 	err = amhelp.WaitForAll(ctx, 2*time.Second, whenDelivered)
 

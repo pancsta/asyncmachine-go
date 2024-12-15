@@ -47,8 +47,8 @@ type SupervisorStatesDef struct {
 	ForkWorker string
 	// ForkingWorker - Supervisor is forking a new worker.
 	ForkingWorker string
-	// AwaitingWorker - Supervisor is waiting for a worker to connect.
-	AwaitingWorker string
+	// WorkerForked - New worker connected to bootstrap.
+	WorkerConnected string
 	// WorkerForked - Supervisor has successfully forked a new worker.
 	WorkerForked  string
 	KillWorker    string
@@ -69,12 +69,16 @@ type SupervisorStatesDef struct {
 	ProvideWorker string
 	// WorkerIssues - Client complains about the worker.
 	WorkerIssues      string
+	// ClientSendPayload - payload delivered to the RPC server with for clients
+	// as mutation args.
 	ClientSendPayload string
 
 	// supervisor
 
 	SuperConnected    string
 	SuperDisconnected string
+	// SuperSendPayload - payload delivered to the RPC server for supervisors
+	// as mutation args.
 	SuperSendPayload  string
 
 	// inherit from WorkerStatesDef
@@ -109,7 +113,7 @@ var SupervisorStruct = StructMerge(
 		ssS.ErrPool: {
 			Require: S{ssS.Exception},
 			Remove:  S{ssS.PoolNormalized},
-			Add:     S{ssS.Heartbeat},
+			Add:     S{ssS.NormalizingPool},
 		},
 
 		// piped
@@ -177,7 +181,7 @@ var SupervisorStruct = StructMerge(
 			Multi:   true,
 			Require: S{ssS.Start},
 		},
-		ssS.AwaitingWorker: {
+		ssS.WorkerConnected: {
 			Multi:   true,
 			Require: S{ssS.Start},
 		},

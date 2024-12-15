@@ -9,7 +9,6 @@ import (
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc"
-	"github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
 func init() {
@@ -38,38 +37,49 @@ var (
 	ErrWorkerConn    = errors.New("error starting connection")
 	ErrWorkerKill    = errors.New("error killing worker")
 	ErrPool          = errors.New("pool error")
+	ErrHeartbeat     = errors.New("heartbeat failed")
 	ErrRpc           = errors.New("rpc error")
 )
 
 // error mutations
+// TODO add event param
 
 // AddErrWorker wraps an error in the ErrWorker sentinel and adds to a machine.
-func AddErrWorker(mach *am.Machine, err error, args am.A) {
-	mach.AddErrState(ssS.ErrWorker, fmt.Errorf("%w: %w", ErrWorker, err), args)
+func AddErrWorker(
+	event *am.Event, mach *am.Machine, err error, args am.A,
+) error {
+	err = fmt.Errorf("%w: %w", ErrWorker, err)
+	mach.EvAddErrState(event, ssS.ErrWorker, err, args)
+	return err
 }
 
 // AddErrWorkerStr wraps a msg in the ErrWorker sentinel and adds to a machine.
-func AddErrWorkerStr(mach *am.Machine, msg string, args am.A) {
-	mach.AddErrState(ssS.ErrWorker, fmt.Errorf("%w: %s", ErrWorker, msg), args)
+func AddErrWorkerStr(mach *am.Machine, msg string, args am.A) error {
+	err := fmt.Errorf("%w: %s", ErrWorker, msg)
+	mach.AddErrState(ssS.ErrWorker, err, args)
+	return err
 }
 
 // AddErrPool wraps an error in the ErrPool sentinel and adds to a machine.
-func AddErrPool(mach *am.Machine, err error, args am.A) {
-	mach.AddErrState(ssS.ErrPool, fmt.Errorf("%w: %w", ErrPool, err), args)
+func AddErrPool(mach *am.Machine, err error, args am.A) error {
+	wrappedErr := fmt.Errorf("%w: %w", ErrPool, err)
+	mach.AddErrState(ssS.ErrPool, wrappedErr, args)
+	return wrappedErr
 }
 
 // AddErrPoolStr wraps a msg in the ErrPool sentinel and adds to a machine.
-func AddErrPoolStr(mach *am.Machine, msg string, args am.A) {
-	mach.AddErrState(ssS.ErrPool, fmt.Errorf("%w: %s", ErrPool, msg), args)
+func AddErrPoolStr(mach *am.Machine, msg string, args am.A) error {
+	err := fmt.Errorf("%w: %s", ErrPool, msg)
+	mach.AddErrState(ssS.ErrPool, err, args)
+	return err
 }
 
 // AddErrRpc wraps an error in the ErrRpc sentinel and adds to a machine.
-func AddErrRpc(mach *am.Machine, err error, args am.A) {
-	err = fmt.Errorf("%w: %w", ErrRpc, err)
-	mach.AddErrState(states.BasicStates.ErrNetwork, err, args)
+func AddErrRpc(mach *am.Machine, err error, args am.A) error {
+	wrappedErr := fmt.Errorf("%w: %w", ErrRpc, err)
+	mach.AddErrState(ssS.ErrNetwork, wrappedErr, args)
+	return wrappedErr
 }
-
-// ///// ///// /////
 
 // ///// ARGS
 
@@ -83,9 +93,14 @@ type A struct {
 	PublicAddr string `log:"public_addr"`
 	// LocalAddr is the public address of a Supervisor or Worker.
 	LocalAddr string `log:"local_addr"`
+	// BootAddr is the local address of the Bootstrap machine.
+	BootAddr string `log:"boot_addr"`
 	// NodesList is a list of available nodes (supervisors' public RPC addresses).
-	NodesList  []string
-	ClientAddr string
+	NodesList []string
+	// WorkerRpcId is a machine ID of the worker RPC client.
+	WorkerRpcId string `log:"id"`
+	// SuperRpcId is a machine ID of the super RPC client.
+	SuperRpcId string `log:"id"`
 
 	// non-rpc fields
 
@@ -105,18 +120,27 @@ type ARpc struct {
 	PublicAddr string `log:"public_addr"`
 	// LocalAddr is the public address of a Supervisor, Worker, or [bootstrap].
 	LocalAddr string `log:"local_addr"`
+	// BootAddr is the local address of the Bootstrap machine.
+	BootAddr string `log:"boot_addr"`
 	// NodesList is a list of available nodes (supervisors' public RPC addresses).
-	NodesList  []string
-	ClientAddr string
+	NodesList []string
+	// WorkerRpcId is a machine ID of the worker RPC client.
+	WorkerRpcId string `log:"worker_rpc_id"`
+	// SuperRpcId is a machine ID of the super RPC client.
+	SuperRpcId string `log:"super_rpc_id"`
 }
 
 // ParseArgs extracts A from [am.Event.Args]["am_node"].
 func ParseArgs(args am.A) *A {
-	if r, _ := args["am_node"].(*ARpc); r != nil {
+	if r, ok := args["am_node"].(*ARpc); ok {
 		return amhelp.ArgsToArgs(r, &A{})
+	} else if r, ok := args["am_node"].(ARpc); ok {
+		return amhelp.ArgsToArgs(&r, &A{})
 	}
-	a, _ := args["am_node"].(*A)
-	return a
+	if a, _ := args["am_node"].(*A); a != nil {
+		return a
+	}
+	return &A{}
 }
 
 // Pass prepares [am.A] from A to pass to further mutations.

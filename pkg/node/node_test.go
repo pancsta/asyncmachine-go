@@ -48,8 +48,8 @@ func TestFork1(t *testing.T) {
 	s.SetPool(1, 1, 0, 1)
 
 	// fork func
-	s.testFork = newTestFork(ctx, t, "test")
-	s.testKill = newTestKill(ctx, t, "test")
+	s.TestFork = newTestFork(ctx, t, "test")
+	s.TestKill = newTestKill(ctx, t, "test")
 
 	whenForked := s.Mach.WhenTicks(states.SupervisorStates.WorkerForked, 1, nil)
 	s.Start(":0")
@@ -114,7 +114,7 @@ func TestFork5Warm2Min2(t *testing.T) {
 	s.SetPool(2, 5, 2, 0)
 
 	// fork func
-	s.testFork = newTestFork(ctx, t, "test")
+	s.TestFork = newTestFork(ctx, t, "test")
 
 	s.Start(":0")
 	amhelpt.WaitForAll(t, "PoolReady", ctx, defTimeout,
@@ -151,7 +151,7 @@ func TestFork15Warm0Min7(t *testing.T) {
 	s.SetPool(7, 15, 0, 0)
 
 	// fork func
-	s.testFork = newTestFork(ctx, t, "test")
+	s.TestFork = newTestFork(ctx, t, "test")
 
 	s.Start(":0")
 	amhelpt.WaitForAll(t, "PoolReady", ctx, defTimeout,
@@ -272,7 +272,7 @@ func TestClientWorkerPayload(t *testing.T) {
 	}
 
 	// t.Parallel()
-	// amhelp.EnableDebugging(false)
+	amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -360,8 +360,8 @@ func newSupervisor(
 	}
 
 	// fork func
-	sup.testFork = newTestFork(ctx, t, workerKind)
-	sup.testKill = newTestKill(ctx, t, workerKind)
+	sup.TestFork = newTestFork(ctx, t, workerKind)
+	sup.TestKill = newTestKill(ctx, t, workerKind)
 
 	sup.Start(":0")
 	amhelpt.WaitForAll(t, "PoolReady", ctx, defTimeout,
@@ -462,10 +462,10 @@ func (w *workerHandlers) WorkRequestedState(e *am.Event) {
 	payload := &rpc.ArgsPayload{
 		Name:   w.t.Name(),
 		Data:   input * input,
-		Source: e.Machine.Id(),
+		Source: e.Machine().Id(),
 	}
 
-	e.Machine.Add1(ssW.ClientSendPayload, rpc.Pass(&rpc.A{
+	e.Machine().Add1(ssW.ClientSendPayload, rpc.PassRpc(&rpc.A{
 		Name:    w.t.Name(),
 		Payload: payload,
 	}))

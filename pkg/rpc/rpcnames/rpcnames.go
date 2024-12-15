@@ -15,7 +15,6 @@ const (
 	Handshake
 	Log
 	Sync
-	Get
 	Bye
 
 	// Client
@@ -47,8 +46,6 @@ func (n Name) String() string {
 		return "Log"
 	case Sync:
 		return "Sync"
-	case Get:
-		return "Get"
 	case ClientSetClock:
 		return "ClientSetClock"
 	case ClientPushAllTicks:

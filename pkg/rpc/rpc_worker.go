@@ -2,8 +2,10 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -38,8 +40,9 @@ type Worker struct {
 	whenDisposed chan struct{}
 	// TODO bind
 	tracers        []am.Tracer
-	handlers       []remoteHandler
+	handlers       []*remoteHandler
 	parentId       string
+	tags           []string
 	logLevel       atomic.Pointer[am.LogLevel]
 	logger         atomic.Pointer[am.Logger]
 	logEntriesLock sync.Mutex
@@ -66,7 +69,7 @@ func (w *Worker) Sync() am.Time {
 
 	// validate
 	if len(resp.Time) > 0 && len(resp.Time) != len(w.stateNames) {
-		AddErrRpcStr(w.c.Mach, "wrong clock len")
+		AddErrRpcStr(nil, w.c.Mach, "wrong clock len")
 		return nil
 	}
 
@@ -98,7 +101,7 @@ func (w *Worker) Add(states am.S, args am.A) am.Result {
 
 	// validate
 	if resp.Result == 0 {
-		AddErrRpcStr(w.c.Mach, "no Result")
+		AddErrRpcStr(nil, w.c.Mach, "no Result")
 		return am.ResultNoOp
 	}
 
@@ -156,7 +159,7 @@ func (w *Worker) Remove(states am.S, args am.A) am.Result {
 
 	// validate
 	if resp.Result == 0 {
-		AddErrRpcStr(w.c.Mach, "no Result")
+		AddErrRpcStr(nil, w.c.Mach, "no Result")
 		return am.ResultNoOp
 	}
 
@@ -190,7 +193,7 @@ func (w *Worker) Set(states am.S, args am.A) am.Result {
 
 	// validate
 	if resp.Result == 0 {
-		AddErrRpcStr(w.c.Mach, "no Result")
+		AddErrRpcStr(nil, w.c.Mach, "no Result")
 		return am.ResultNoOp
 	}
 
@@ -237,6 +240,53 @@ func (w *Worker) AddErrState(state string, err error, args am.A) am.Result {
 
 	// mark errors added locally with ErrOnClient
 	return w.Add(am.S{ssS.ErrOnClient, state, am.Exception}, args)
+}
+
+func (w *Worker) EvAdd(event *am.Event, states am.S, args am.A) am.Result {
+	w.MustParseStates(states)
+
+	// call rpc
+	resp := &RespResult{}
+	rpcArgs := &ArgsMut{
+		States: amhelp.StatesToIndexes(w.StateNames(), states),
+		Args:   args,
+		Event:  event.Clone(),
+	}
+	if !w.c.callFailsafe(w.Ctx(), rpcnames.Add.Encode(), rpcArgs, resp) {
+		return am.ResultNoOp
+	}
+
+	// validate
+	if resp.Result == 0 {
+		AddErrRpcStr(nil, w.c.Mach, "no Result")
+		return am.ResultNoOp
+	}
+
+	// process
+	w.c.updateClock(resp.Clock, nil)
+
+	return resp.Result
+}
+
+// Add1 is a shorthand method to add a single state with the passed args.
+func (w *Worker) EvAdd1(event *am.Event, state string, args am.A) am.Result {
+	return w.EvAdd(event, am.S{state}, args)
+}
+
+func (w *Worker) EvRemove1(event *am.Event, state string, args am.A) am.Result {
+	return w.EvRemove(event, am.S{state}, args)
+}
+
+func (w *Worker) EvRemove(event *am.Event, states am.S, args am.A) am.Result {
+	return am.Canceled // TODO
+}
+
+func (w *Worker) EvAddErr(event *am.Event, err error, args am.A) am.Result {
+	return am.Canceled // TODO
+}
+
+func (w *Worker) EvAddErrState(event *am.Event, state string, err error, args am.A) am.Result {
+	return am.Canceled // TODO
 }
 
 // ///// Checking (local)
@@ -401,8 +451,7 @@ func (w *Worker) Switch(groups ...am.S) string {
 // When returns a channel that will be closed when all the passed states
 // become active or the machine gets disposed.
 //
-// ctx: optional context that will close the channel when done. Useful when
-// listening on 2 When() channels within the same `select` to GC the 2nd one.
+// ctx: optional context that will close the channel when done.
 func (w *Worker) When(states am.S, ctx context.Context) <-chan struct{} {
 	// TODO mixin from am.Subscription
 	// TODO re-use channels with the same state set and context
@@ -465,8 +514,7 @@ func (w *Worker) When1(state string, ctx context.Context) <-chan struct{} {
 // WhenNot returns a channel that will be closed when all the passed states
 // become inactive or the machine gets disposed.
 //
-// ctx: optional context that will close the channel when done. Useful when
-// listening on 2 WhenNot() channels within the same `select` to GC the 2nd one.
+// ctx: optional context that will close the channel when done.
 func (w *Worker) WhenNot(states am.S, ctx context.Context) <-chan struct{} {
 	ch := make(chan struct{})
 	if w.Disposed.Load() {
@@ -526,9 +574,9 @@ func (w *Worker) WhenNot1(state string, ctx context.Context) <-chan struct{} {
 
 // WhenTime returns a channel that will be closed when all the passed states
 // have passed the specified time. The time is a logical clock of the state.
-// Machine time can be sourced from the Time() method, or Clock() for a specific
-// state.
-// TODO log reader
+// Machine time can be sourced from [Machine.Time](), or [Machine.Clock]().
+//
+// ctx: optional context that will close the channel when done.
 func (w *Worker) WhenTime(
 	states am.S, times am.Time, ctx context.Context,
 ) <-chan struct{} {
@@ -600,6 +648,8 @@ func (w *Worker) WhenTime(
 
 // WhenTicks waits N ticks of a single state (relative to now). Uses WhenTime
 // underneath.
+//
+// ctx: optional context that will close the channel when done.
 func (w *Worker) WhenTicks(
 	state string, ticks int, ctx context.Context,
 ) <-chan struct{} {
@@ -608,6 +658,8 @@ func (w *Worker) WhenTicks(
 
 // WhenTicksEq waits till ticks for a single state equal the given absolute
 // value (or more). Uses WhenTime underneath.
+//
+// ctx: optional context that will close the channel when done.
 func (w *Worker) WhenTicksEq(
 	state string, ticks uint64, ctx context.Context,
 ) <-chan struct{} {
@@ -617,7 +669,7 @@ func (w *Worker) WhenTicksEq(
 // WhenErr returns a channel that will be closed when the machine is in the
 // Exception state.
 //
-// ctx: optional context defaults to the machine's context.
+// ctx: optional context that will close the channel when done.
 func (w *Worker) WhenErr(ctx context.Context) <-chan struct{} {
 	return w.When([]string{am.Exception}, ctx)
 }
@@ -628,6 +680,8 @@ func (w *Worker) WhenErr(ctx context.Context) <-chan struct{} {
 // becomes active with all the passed args. Args are compared using the native
 // '=='. It's meant to be used with async Multi states, to filter out
 // a specific completion.
+//
+// ctx: optional context that will close the channel when done.
 func (w *Worker) WhenArgs(
 	state string, args am.A, ctx context.Context,
 ) <-chan struct{} {
@@ -795,8 +849,10 @@ func (w *Worker) Log(msg string, args ...any) {
 	// TODO local log?
 }
 
+// SetLogId enables or disables the logging of the machine's ID in log messages.
 func (w *Worker) SetLogId(val bool) {}
 
+// GetLogId returns the current state of the log id setting.
 func (w *Worker) GetLogId() bool {
 	// TODO
 	return false
@@ -875,6 +931,7 @@ func (w *Worker) StatesVerified() bool {
 	return true
 }
 
+// Ctx return worker's root context.
 func (w *Worker) Ctx() context.Context {
 	return w.ctx
 }
@@ -884,9 +941,14 @@ func (w *Worker) Id() string {
 	return w.ID
 }
 
-// TODO
+// ParentId returns the ID of the parent machine (if any).
 func (w *Worker) ParentId() string {
 	return w.parentId
+}
+
+// Tags returns machine's tags, a list of unstructured strings without spaces.
+func (w *Worker) Tags() []string {
+	return w.tags
 }
 
 // String returns a one line representation of the currently active states,
@@ -1046,7 +1108,7 @@ func (w *Worker) processStateCtxBindings(statesBefore am.S) {
 
 	w.clockMx.RUnlock()
 
-	// cancel all the state contexts outside the critical section
+	// cancel all the state contexts outside the critical zone
 	for _, cancel := range toCancel {
 		cancel()
 	}
@@ -1130,13 +1192,13 @@ func (w *Worker) processWhenBindings(statesBefore am.S) {
 			} else {
 				w.log(am.LogOps, "[when:match] %s", j(names))
 			}
-			// close outside the critical section
+			// close outside the critical zone
 			toClose = append(toClose, binding.Ch)
 		}
 	}
 	w.clockMx.Unlock()
 
-	// notifyFailsafe outside the critical section
+	// notifyFailsafe outside the critical zone
 	for ch := range toClose {
 		closeSafe(toClose[ch])
 	}
@@ -1187,13 +1249,13 @@ func (w *Worker) processWhenTimeBindings(timeBefore am.Time) {
 			}
 
 			w.log(am.LogOps, "[whenTime:match] %s %d", j(names), binding.Times)
-			// close outside the critical section
+			// close outside the critical zone
 			toClose = append(toClose, binding.Ch)
 		}
 	}
 	w.clockMx.Unlock()
 
-	// notifyFailsafe outside the critical section
+	// notifyFailsafe outside the critical zone
 	for ch := range toClose {
 		closeSafe(toClose[ch])
 	}
@@ -1243,42 +1305,92 @@ func (w *Worker) Export() *am.Serialized {
 	}
 }
 
+// GetStruct returns a copy of machine's state structure.
 func (w *Worker) GetStruct() am.Struct {
 	return w.states
 }
 
+// BindHandlers binds a struct of handler methods to machine's states, based on
+// the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
+// optionall return bool.
+//
+// RPC worker will bind handelrs locally, not to the remote machine.
 func (w *Worker) BindHandlers(handlers any) error {
 	names, err := am.ListHandlers(handlers, w.stateNames)
 	if err != nil {
 		return err
 	}
-	w.handlers = append(w.handlers, newRemoteHandler(handlers, names))
 
 	// TODO start a handler loop
 	// TODO cal RemotePushAllTicks to tell the remote worker to send all the
 	//  clock changes
 	//  trigger a similar handler logic as a local machine, besides negotiation
 	//  support relation based negotiation, to locally reject mutations
-
 	// call RemotePushAllTicks
+
+	v := reflect.ValueOf(handlers)
+	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+		return errors.New("BindTracer expects a pointer to a struct")
+	}
+	name := reflect.TypeOf(handlers).Elem().Name()
+	// TODO lock
+	w.handlers = append(w.handlers, newRemoteHandler(handlers, names))
+	w.log(am.LogOps, "[handlers] bind %s", name)
 
 	return nil
 }
 
-func (w *Worker) BindTracer(tracer am.Tracer) {
+// DetachHandlers detaches previously bound machine handlers.
+func (w *Worker) DetachHandlers(handlers any) error {
+	old := w.handlers
+
+	for _, h := range old {
+		if h.h == handlers {
+			w.handlers = slicesWithout(old, h)
+			// TODO
+			// h.dispose()
+
+			return nil
+		}
+	}
+
+	return errors.New("handlers not bound")
+}
+
+// BindTracer binds a Tracer to the machine.
+func (w *Worker) BindTracer(tracer am.Tracer) error {
 	w.clockMx.Lock()
 	defer w.clockMx.Unlock()
 
+	v := reflect.ValueOf(tracer)
+	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+		return errors.New("BindTracer expects a pointer to a struct")
+	}
+	name := reflect.TypeOf(tracer).Elem().Name()
+
 	w.tracers = append(w.tracers, tracer)
+	w.log(am.LogOps, "[tracers] bind %s", name)
+
+	return nil
 }
 
+// DetachTracer tries to remove a tracer from the machine. Returns true if the
+// tracer was found and removed.
 func (w *Worker) DetachTracer(tracer am.Tracer) bool {
 	w.clockMx.Lock()
 	defer w.clockMx.Unlock()
 
+	v := reflect.ValueOf(tracer)
+	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+		return false
+	}
+	name := reflect.TypeOf(tracer).Elem().Name()
+
 	for i, t := range w.tracers {
 		if t == tracer {
 			w.tracers = append(w.tracers[:i], w.tracers[i+1:]...)
+			w.log(am.LogOps, "[tracers] detach %s", name)
+
 			return true
 		}
 	}
@@ -1286,6 +1398,7 @@ func (w *Worker) DetachTracer(tracer am.Tracer) bool {
 	return false
 }
 
+// Tracers return a copy of currenty attached tracers.
 func (w *Worker) Tracers() []am.Tracer {
 	w.clockMx.Lock()
 	defer w.clockMx.Unlock()
@@ -1314,9 +1427,8 @@ func (w *Worker) updateClock(now am.Time) {
 		TimeBefore: before,
 		TimeAfter:  now,
 		Mutation: &am.Mutation{
-			Type: am.MutationSet,
-			// TODO this can cause issues
-			CalledStates: nil,
+			Type:         am.MutationSet,
+			CalledStates: active,
 			Args:         nil,
 			Auto:         false,
 		},

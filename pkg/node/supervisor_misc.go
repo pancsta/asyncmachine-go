@@ -2,9 +2,9 @@ package node
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/patrickmn/go-cache"
@@ -24,6 +24,8 @@ type SupervisorOpts struct {
 	// Parent is a parent state machine for a new Supervisor state machine. See
 	// [am.Opts].
 	Parent am.Api
+	// TODO
+	Tags []string
 }
 
 // bootstrap is a bootstrap machine for a worker to connect to the supervisor,
@@ -32,35 +34,33 @@ type SupervisorOpts struct {
 // Flow: Start to WorkerLocalAddr.
 type bootstrap struct {
 	*am.ExceptionHandler
-	Mach *am.Machine
+	Mach  *am.Machine
+	Super *Supervisor
 
 	// Name is the name of this bootstrap.
 	Name       string
 	LogEnabled bool
-	// WorkerArgs contains connection info sent by the Worker.
-	WorkerArgs atomic.Pointer[A]
 
 	server *rpc.Server
 }
 
-func newBootstrap(
-	ctx context.Context, superMach *am.Machine, supName string,
-) (*bootstrap, error) {
-	c := &bootstrap{
-		Name:       supName + utils.RandID(6),
+func newBootstrap(ctx context.Context, super *Supervisor) (*bootstrap, error) {
+	b := &bootstrap{
+		Super:      super,
+		Name:       super.Name + utils.RandID(6),
 		LogEnabled: os.Getenv(EnvAmNodeLogSupervisor) != "",
 	}
-	mach, err := am.NewCommon(ctx, "nb-"+c.Name, states.BootstrapStruct,
-		ssB.Names(), c, superMach, nil)
+	mach, err := am.NewCommon(ctx, "nb-"+b.Name, states.BootstrapStruct,
+		ssB.Names(), b, super.Mach, &am.Opts{Tags: []string{"node-bootstrap"}})
 	if err != nil {
 		return nil, err
 	}
 
 	// prefix the random ID
-	c.Mach = mach
+	b.Mach = mach
 	amhelp.MachDebugEnv(mach)
 
-	return c, nil
+	return b, nil
 }
 
 func (b *bootstrap) StartState(e *am.Event) {
@@ -83,6 +83,18 @@ func (b *bootstrap) StartState(e *am.Event) {
 
 	// start
 	b.server.Start()
+
+	// timeout
+	go func() {
+		amhelp.Wait(ctx, b.Super.ConnTimeout)
+		if !b.Mach.IsDisposed() && b.Mach.Not1(ssB.WorkerAddr) {
+			err := fmt.Errorf("worker bootstrap: %w", am.ErrTimeout)
+			b.Super.Mach.AddErrState(ssS.ErrWorker, err, Pass(&A{
+				Bootstrap: b,
+				Id:        b.Mach.Id(),
+			}))
+		}
+	}()
 }
 
 func (b *bootstrap) StartEnd(e *am.Event) {
@@ -99,9 +111,18 @@ func (b *bootstrap) WorkerAddrEnter(e *am.Event) bool {
 
 func (b *bootstrap) WorkerAddrState(e *am.Event) {
 	args := ParseArgs(e.Args)
+	// copy
+	argsOut := *args
+	argsOut.BootAddr = b.Addr()
 	b.log("worker addr %s: %s / %s", args.Id, args.PublicAddr, args.LocalAddr)
-	cp := *args
-	b.WorkerArgs.Store(&cp)
+	// pass the conn info to the supervisor, and self destruct
+	b.Super.Mach.Add1(ssS.WorkerConnected, Pass(&argsOut))
+
+	// dispose after a while
+	go func() {
+		time.Sleep(1 * time.Second)
+		b.Mach.Remove1(ssB.Start, nil)
+	}()
 }
 
 func (b *bootstrap) Dispose() {
@@ -126,11 +147,15 @@ func (b *bootstrap) log(msg string, args ...any) {
 	b.Mach.Log(msg, args...)
 }
 
-// workerInfo is supervisor's data for a worker.
+// workerInfo is supervisor's data for a remote node worker.
 type workerInfo struct {
-	b          *bootstrap
-	proc       *os.Process
-	rpc        *rpc.Client
+	// proc is the OS process of this node worker
+	proc *os.Process
+	// rpc is the RPC client for this node worker
+	rpc *rpc.Client
+	// w is the RPC worker of this node worker. It locally represents the remote
+	// node worker.
+	w          *rpc.Worker
 	publicAddr string
 	localAddr  string
 	errs       *cache.Cache
@@ -138,13 +163,10 @@ type workerInfo struct {
 	mx         sync.RWMutex
 }
 
-func newWorkerInfo(
-	s *Supervisor, boot *bootstrap, proc *os.Process,
-) *workerInfo {
+func newWorkerInfo(s *Supervisor, proc *os.Process) *workerInfo {
 	return &workerInfo{
 		errs:       cache.New(s.WorkerErrTtl, time.Minute),
 		errsRecent: cache.New(s.WorkerErrRecent, time.Minute),
-		b:          boot,
 		proc:       proc,
 	}
 }

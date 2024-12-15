@@ -2,6 +2,7 @@
 package rpc
 
 import (
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"io"
@@ -16,10 +17,14 @@ import (
 	"github.com/cenkalti/rpc2"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
-
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 )
+
+func init() {
+	gob.Register(&ARpc{})
+	gob.Register(am.Relation(0))
+}
 
 const (
 	// EnvAmRpcLogServer enables machine logging for RPC server.
@@ -40,6 +45,7 @@ var ss = states.SharedStates
 type ArgsMut struct {
 	States []int
 	Args   am.A
+	Event  *am.Event
 }
 
 type ArgsGet struct {
@@ -55,8 +61,14 @@ type ArgsPayload struct {
 	Name string
 	// Source is the machine ID that sent the payload.
 	Source string
+	// SourceTx is transition ID.
+	SourceTx string
+	// Destination is an optional machine ID that is supposed to receive the
+	// payload. Useful when using rpc.Mux.
+	Destination string
 	// Data is the payload data. The Consumer has to know the type.
 	Data any
+
 	// Token is a unique random ID for the payload. Autofilled by the server.
 	Token string
 }
@@ -114,79 +126,45 @@ type A struct {
 	Err       error
 	Method    string `log:"addr"`
 	StartedAt time.Time
-	Client    *rpc2.Client
+	Dispose   bool
+
+	// non-rpc fields
+
+	Client *rpc2.Client
+}
+
+// ARpc is a subset of A, that can be passed over RPC.
+type ARpc struct {
+	Id        string `log:"id"`
+	Name      string `log:"name"`
+	MachTime  am.Time
+	Payload   *ArgsPayload
+	Addr      string `log:"addr"`
+	Err       error
+	Method    string `log:"addr"`
+	StartedAt time.Time
 	Dispose   bool
 }
 
-// ParseArgs extracts A from [am.Event.Args].
+// ParseArgs extracts A from [am.Event.Args]["am_rpc"].
 func ParseArgs(args am.A) *A {
-	ret := &A{}
-
-	// TODO needed?
-	if machTime, ok := args["mach_time"].(am.Time); ok {
-		ret.MachTime = machTime
+	if r, _ := args["am_rpc"].(*ARpc); r != nil {
+		return amhelp.ArgsToArgs(r, &A{})
 	}
-	if payload, ok := args["payload"].(*ArgsPayload); ok {
-		ret.Payload = payload
+	if a, _ := args["am_rpc"].(*A); a != nil {
+		return a
 	}
-	if name, ok := args["name"].(string); ok {
-		ret.Name = name
-	}
-	if id, ok := args["id"].(string); ok {
-		ret.Id = id
-	}
-	if addr, ok := args["addr"].(string); ok {
-		ret.Addr = addr
-	}
-	if err, ok := args["err"].(error); ok {
-		ret.Err = err
-	}
-	if method, ok := args["method"].(string); ok {
-		ret.Method = method
-	}
-	if startedAt, ok := args["started_at"].(time.Time); ok {
-		ret.StartedAt = startedAt
-	}
-	if client, ok := args["client"].(*rpc2.Client); ok {
-		ret.Client = client
-	}
-
-	return ret
+	return &A{}
 }
 
 // Pass prepares [am.A] from A to pass to further mutations.
 func Pass(args *A) am.A {
-	a := am.A{}
+	return am.A{"am_rpc": args}
+}
 
-	if args.Payload != nil {
-		a["payload"] = args.Payload
-	}
-	if args.Name != "" {
-		a["name"] = args.Name
-	}
-	if args.Id != "" {
-		a["id"] = args.Id
-	}
-	if args.MachTime != nil {
-		a["mach_time"] = args.MachTime
-	}
-	if args.Addr != "" {
-		a["addr"] = args.Addr
-	}
-	if args.Err != nil {
-		a["err"] = args.Err
-	}
-	if args.Method != "" {
-		a["method"] = args.Method
-	}
-	if !args.StartedAt.IsZero() {
-		a["started_at"] = args.StartedAt
-	}
-	if args.Client != nil {
-		a["client"] = args.Client
-	}
-
-	return a
+// PassRpc prepares [am.A] from A to pass over RPC.
+func PassRpc(args *A) am.A {
+	return am.A{"am_rpc": amhelp.ArgsToArgs(args, &ARpc{})}
 }
 
 // LogArgs is an args logger for A.
@@ -246,6 +224,7 @@ var (
 	ErrRpc           = errors.New("rpc")
 	ErrNoAccess      = errors.New("no access")
 	ErrNoConn        = errors.New("not connected")
+	ErrDestination   = errors.New("wrong destination")
 
 	// ErrNetwork group
 
@@ -257,49 +236,49 @@ var (
 
 // wrapping error setters
 
-func AddErrRpcStr(mach *am.Machine, msg string) {
+func AddErrRpcStr(e *am.Event, mach *am.Machine, msg string) {
 	err := fmt.Errorf("%w: %s", ErrRpc, msg)
-	mach.AddErrState(ss.ErrRpc, err, nil)
+	mach.EvAddErrState(e, ss.ErrRpc, err, nil)
 }
 
-func AddErrParams(mach *am.Machine, err error) {
+func AddErrParams(e *am.Event, mach *am.Machine, err error) {
 	err = fmt.Errorf("%w: %w", ErrInvalidParams, err)
 	mach.AddErrState(ss.ErrRpc, err, nil)
 }
 
-func AddErrResp(mach *am.Machine, err error) {
+func AddErrResp(e *am.Event, mach *am.Machine, err error) {
 	err = fmt.Errorf("%w: %w", ErrInvalidResp, err)
 	mach.AddErrState(ss.ErrRpc, err, nil)
 }
 
-func AddErrNetwork(mach *am.Machine, err error) {
+func AddErrNetwork(e *am.Event, mach *am.Machine, err error) {
 	mach.AddErrState(ss.ErrNetwork, err, nil)
 }
 
-func AddErrNoConn(mach *am.Machine, err error) {
+func AddErrNoConn(e *am.Event, mach *am.Machine, err error) {
 	err = fmt.Errorf("%w: %w", ErrNoConn, err)
 	mach.AddErrState(ss.ErrNetwork, err, nil)
 }
 
 // AddErr detects sentinels from error msgs and calls the proper error setter.
-func AddErr(mach *am.Machine, msg string, err error) {
+func AddErr(e *am.Event, mach *am.Machine, msg string, err error) {
 	if msg == "" {
 		err = fmt.Errorf("%w: %s", err, msg)
 	}
 
 	if strings.HasPrefix(err.Error(), "gob: ") {
-		AddErrResp(mach, err)
+		AddErrResp(e, mach, err)
 	} else if strings.Contains(err.Error(), "rpc2: can't find method") {
-		AddErrRpcStr(mach, err.Error())
+		AddErrRpcStr(e, mach, err.Error())
 	} else if strings.Contains(err.Error(), "connection is shut down") ||
 		strings.Contains(err.Error(), "unexpected EOF") {
 
 		// TODO bind to sentinels io.ErrUnexpectedEOF, rpc2.ErrShutdown
 		mach.AddErrState(ss.ErrRpc, err, nil)
 	} else if strings.Contains(err.Error(), "timeout") {
-		AddErrNetwork(mach, errors.Join(err, ErrNetworkTimeout))
+		AddErrNetwork(e, mach, errors.Join(err, ErrNetworkTimeout))
 	} else if _, ok := err.(*net.OpError); ok {
-		AddErrNetwork(mach, err)
+		AddErrNetwork(e, mach, err)
 	} else {
 		mach.AddErr(err, nil)
 	}
@@ -313,14 +292,14 @@ type ExceptionHandler struct {
 
 func (h *ExceptionHandler) ExceptionEnter(e *am.Event) bool {
 	args := ParseArgs(e.Args)
-	mach := e.Machine
+	mach := e.Machine()
 
 	isRpcClient := mach.Has(am.S{ssC.Disconnecting, ssC.Disconnected})
 	if errors.Is(args.Err, ErrNetwork) && isRpcClient &&
 		mach.Any1(ssC.Disconnecting, ssC.Disconnected) {
 
 		// skip network errors on client disconnect
-		e.Machine.Log("ignoring ErrNetwork on Disconnecting/Disconnected")
+		e.Machine().Log("ignoring ErrNetwork on Disconnecting/Disconnected")
 		return false
 	}
 
@@ -334,7 +313,7 @@ func (h *ExceptionHandler) ExceptionEnter(e *am.Event) bool {
 // ///// ///// /////
 
 // Event struct represents a single event of a Mutation within a Transition.
-// One event can have 0-n handlers.
+// One event can have 0-n handlers. TODO remove?
 type Event struct {
 	// Name of the event / handler
 	Name string
@@ -365,8 +344,8 @@ type remoteHandler struct {
 func newRemoteHandler(
 	h any,
 	funcNames []string,
-) remoteHandler {
-	return remoteHandler{
+) *remoteHandler {
+	return &remoteHandler{
 		h:            h,
 		funcNames:    funcNames,
 		funcCache:    make(map[string]reflect.Value),
