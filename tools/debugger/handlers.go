@@ -4,9 +4,11 @@ package debugger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"slices"
 	"time"
 
@@ -124,7 +126,7 @@ func (d *Debugger) ReadyEnd(_ *am.Event) {
 
 func (d *Debugger) HealthcheckState(_ *am.Event) {
 	d.Mach.Remove1(ss.Healthcheck, nil)
-	d.checkGcMsgs()
+	d.Mach.Add1(ss.GcMsgs, nil)
 }
 
 // AnyState is a global final handler
@@ -566,7 +568,8 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 
 	updateTailMode := false
 	updateFirstTx := false
-	for _, msg := range msgs {
+	selectedUpdated := false
+	for i, msg := range msgs {
 
 		// TODO check tokens
 		machId := msg.MachineID
@@ -596,6 +599,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 		// TODO debounce UI updates
 
 		if c == d.C {
+			selectedUpdated = true
 			err := d.appendLogEntry(idx)
 			if err != nil {
 				d.Mach.Log("Error: log append %s\n", err)
@@ -631,7 +635,9 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	d.updateClientList(false)
 	d.updateTimelines()
 
-	d.draw()
+	if selectedUpdated {
+		d.draw()
+	}
 }
 
 func (d *Debugger) SetCursor(cursor int) {
@@ -678,7 +684,7 @@ func (d *Debugger) RemoveClientState(e *am.Event) {
 		if len(d.Clients) == 0 {
 			d.Mach.Remove1(ss.ClientSelected, nil)
 		}
-		d.buildClientList(d.clientList.GetCurrentItemIndex() - 1)
+		d.buildClientList(-1)
 	} else {
 		d.buildClientList(-1)
 	}
@@ -1043,77 +1049,121 @@ func (d *Debugger) ExceptionState(e *am.Event) {
 	}
 }
 
-// TODO Enter with ParseArgs
+func (d *Debugger) GcMsgsEnter(e *am.Event) bool {
+	runtime.GC()
+	return allocMem() > uint64(d.Opts.MaxMemMb)*1024*1024
+}
 
 func (d *Debugger) GcMsgsState(e *am.Event) {
-	// TODO log reader entries
-	d.Mach.Remove1(ss.GcMsgs, nil)
-	// TODO ParseArgs
-	clients := e.Args["[]*Clients"].([]*Client)
-	msgs := e.Args["msgCount"].(int)
+	// TODO GC log reader entries
 	ctx := d.Mach.NewStateCtx(ss.GcMsgs)
 
-	// get oldest clients
-	slices.SortFunc(clients, func(c1, c2 *Client) int {
-		if len(c1.MsgTxs) == 0 || len(c2.MsgTxs) == 0 {
-			return 0
-		}
-		if (*c1.MsgTxs[0].Time).After(*c2.MsgTxs[0].Time) {
-			return 1
-		} else {
-			return -1
-		}
-	})
+	// unblock
+	go func() {
+		defer d.Mach.Remove1(ss.GcMsgs, nil)
 
-	round := 0
-	for msgs > d.Opts.MsgMaxAmount {
-		if round > 100 {
-			d.Mach.Log("Too many GC rounds")
+		// get oldest clients
+		clients := maps.Values(d.Clients)
+		slices.SortFunc(clients, func(c1, c2 *Client) int {
+			if len(c1.MsgTxs) == 0 || len(c2.MsgTxs) == 0 {
+				return 0
+			}
+			if (*c1.MsgTxs[0].Time).After(*c2.MsgTxs[0].Time) {
+				return 1
+			} else {
+				return -1
+			}
+		})
 
-			break
-		}
-		round++
+		mem1 := allocMem()
+		d.Mach.Log(d.P.Sprintf("GC mem: %d bytes\n", mem1))
 
-		// delete a half per client
+		// check TTL of client log msgs >lvl 2
+		// TODO remember the tip of cleaning (date) and binary find it, then continue
 		for _, c := range clients {
-			if ctx.Err() != nil {
-				d.Mach.Log("Context expired")
+			for i, logMsg := range c.logMsgs {
+				htime := c.MsgTxs[i].Time
+				if htime.Add(d.Opts.Log2Ttl).After(time.Now()) {
+					continue
+				}
 
+				// TODO optimize
+				var repl []*am.LogEntry
+				for _, log := range logMsg {
+					if log == nil {
+						continue
+					}
+					if log.Level == am.LogChanges {
+						repl = append(repl, log)
+					}
+				}
+
+				// override
+				c.logMsgs[i] = repl
+			}
+		}
+
+		runtime.GC()
+		mem2 := allocMem()
+		d.Mach.Log(d.P.Sprintf("GC logs shaved %d bytes",
+			math.Max(0, float64(mem1-mem2))))
+
+		round := 0
+		for allocMem() > uint64(d.Opts.MaxMemMb)*1024*1024 {
+			if ctx.Err() != nil {
+				d.Mach.Log("GC: context expired")
 				break
 			}
-			idx := len(c.MsgTxs) / 2
-			c.MsgTxs = c.MsgTxs[idx:]
-			c.msgTxsParsed = c.msgTxsParsed[idx:]
-			c.logMsgs = c.logMsgs[idx:]
+			if round > 100 {
+				d.Mach.AddErr(errors.New("Too many GC rounds"), nil)
+				break
+			}
+			d.Mach.Log("GC tx round %d", round)
+			round++
 
-			// adjust the current client
-			if d.C == c {
-				err := d.rebuildLog(ctx, len(c.MsgTxs)-1)
-				if err != nil {
-					d.Mach.AddErr(err, nil)
+			// delete a half per client
+			for _, c := range clients {
+				if ctx.Err() != nil {
+					d.Mach.Log("GC: context expired")
+					break
 				}
-				c.CursorTx = int(math.Max(0, float64(c.CursorTx-idx)))
-				// re-filter
-				if d.isFiltered() {
-					d.filterClientTxs()
+				idx := len(c.MsgTxs) / 2
+				c.MsgTxs = c.MsgTxs[idx:]
+				c.msgTxsParsed = c.msgTxsParsed[idx:]
+				c.logMsgs = c.logMsgs[idx:]
+
+				// adjust the current client
+				if d.C == c {
+					err := d.rebuildLog(ctx, len(c.MsgTxs)-1)
+					if err != nil {
+						d.Mach.AddErr(err, nil)
+					}
+					c.CursorTx = int(math.Max(0, float64(c.CursorTx-idx)))
+					// re-filter
+					if d.isFiltered() {
+						d.filterClientTxs()
+					}
+				}
+
+				// delete small clients
+				if len(c.MsgTxs) < msgMaxThreshold {
+					d.Mach.Add1(ss.RemoveClient, am.A{"Client.id": c.id})
+				} else {
+					c.mTimeSum = 0
+					for _, m := range c.msgTxsParsed {
+						c.mTimeSum += m.TimeSum
+					}
 				}
 			}
 
-			// delete small clients
-			if len(c.MsgTxs) < msgMaxThreshold {
-				d.Mach.Add1(ss.RemoveClient, am.A{"Client.id": c.id})
-				msgs -= len(c.MsgTxs)
-			} else {
-				msgs -= idx
-				c.mTimeSum = 0
-				for _, m := range c.msgTxsParsed {
-					c.mTimeSum += m.TimeSum
-				}
-			}
+			runtime.GC()
 		}
-	}
+		mem3 := allocMem()
+		d.Mach.Log(d.P.Sprintf("GC in total shaved %d bytes",
+			math.Max(0, float64(mem1-mem3))))
 
-	d.RedrawFull(false)
+		d.RedrawFull(false)
+	}()
 }
 
 func (d *Debugger) LogReaderVisibleState(e *am.Event) {
