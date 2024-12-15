@@ -19,7 +19,7 @@ require (
 	github.com/lithammer/dedent v1.1.0
 	github.com/nkall/compactnumber v1.1.1
 	github.com/orcaman/concurrent-map/v2 v2.0.1
-	github.com/pancsta/cview v1.5.12
+	github.com/pancsta/cview v1.5.13
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/prometheus/client_golang v1.20.0
 	github.com/samber/lo v1.39.0

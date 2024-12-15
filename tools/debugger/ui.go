@@ -87,12 +87,10 @@ func (d *Debugger) initUiComponents() {
 	// TODO step info bar: type, from, to, data
 
 	// timeline tx
-	d.timelineTxs = cview.NewProgressBar()
-	d.timelineTxs.SetBorder(true)
+	d.initTimelineTx()
 
 	// timeline steps
-	d.timelineSteps = cview.NewProgressBar()
-	d.timelineSteps.SetBorder(true)
+	d.initTimelineSteps()
 
 	// keystrokes bar
 	d.keyBar = cview.NewTextView()
@@ -111,6 +109,67 @@ func (d *Debugger) initUiComponents() {
 	d.updateTxBars()
 	d.updateKeyBars()
 	d.updateFocusable()
+}
+
+func (d *Debugger) initTimelineSteps() {
+	d.timelineSteps = cview.NewProgressBar()
+	d.timelineSteps.SetBorder(true)
+	d.timelineSteps.SetFilledColor(tcell.ColorLightGray)
+	// support mouse
+	d.timelineSteps.SetMouseCapture(func(
+		action cview.MouseAction, event *tcell.EventMouse,
+	) (cview.MouseAction, *tcell.EventMouse) {
+		if action == cview.MouseScrollUp || action == cview.MouseScrollLeft {
+
+			d.Mach.Add1(ss.BackStep, am.A{"amount": 1})
+			return action, event
+		} else if action == cview.MouseScrollDown ||
+			action == cview.MouseScrollRight {
+
+			d.Mach.Add1(ss.FwdStep, am.A{"amount": 1})
+			return action, event
+		} else if action != cview.MouseLeftClick {
+			// TODO support wheel scrolling
+			return action, event
+		}
+		_, _, width, _ := d.timelineSteps.GetRect()
+		x, _ := event.Position()
+		pos := float64(x) / float64(width)
+		txNum := math.Round(float64(d.timelineSteps.GetMax()) * pos)
+		d.Mach.Add1(ss.ScrollToStep, am.A{"Client.cursorStep": int(txNum)})
+
+		return action, event
+	})
+}
+
+func (d *Debugger) initTimelineTx() {
+	d.timelineTxs = cview.NewProgressBar()
+	d.timelineTxs.SetBorder(true)
+	d.timelineTxs.SetFilledColor(tcell.ColorLightGray)
+	// support mouse
+	d.timelineTxs.SetMouseCapture(func(
+		action cview.MouseAction, event *tcell.EventMouse,
+	) (cview.MouseAction, *tcell.EventMouse) {
+		if action == cview.MouseScrollUp || action == cview.MouseScrollLeft {
+			d.Mach.Add1(ss.Back, am.A{"amount": 5})
+
+			return action, event
+		} else if action == cview.MouseScrollDown ||
+			action == cview.MouseScrollRight {
+			d.Mach.Add1(ss.Fwd, am.A{"amount": 5})
+
+			return action, event
+		} else if action != cview.MouseLeftClick {
+			return action, event
+		}
+		_, _, width, _ := d.timelineTxs.GetRect()
+		x, _ := event.Position()
+		pos := float64(x) / float64(width)
+		txNum := math.Round(float64(len(d.C.MsgTxs)) * pos)
+		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.cursorTx": int(txNum)})
+
+		return action, event
+	})
 }
 
 
@@ -497,6 +556,7 @@ func (d *Debugger) initLayout() {
 
 	d.mainGrid = mainGrid
 	d.LayoutRoot = panels
+	d.updateBorderColor()
 }
 
 func (d *Debugger) drawViews() {

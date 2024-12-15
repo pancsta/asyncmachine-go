@@ -89,41 +89,49 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 		case d.tree:
 			fallthrough
 		case d.tree.Box:
+			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.tree.Box))
 			d.Mach.Add1(ss.TreeFocused, nil)
 
 		case d.log:
 			fallthrough
 		case d.log.Box:
+			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.log.Box))
 			d.Mach.Add1(ss.LogFocused, nil)
 
 		case d.logReader:
 			fallthrough
 		case d.logReader.Box:
+			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.logReader.Box))
 			d.Mach.Add1(ss.LogReaderFocused, nil)
 
 		case d.timelineTxs:
 			fallthrough
 		case d.timelineTxs.Box:
+			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.timelineTxs.Box))
 			d.Mach.Add1(ss.TimelineTxsFocused, nil)
 
 		case d.timelineSteps:
 			fallthrough
 		case d.timelineSteps.Box:
+			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.timelineSteps.Box))
 			d.Mach.Add1(ss.TimelineStepsFocused, nil)
 
 		case d.filtersBar:
 			fallthrough
 		case d.filtersBar.Box:
+			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.filtersBar.Box))
 			d.Mach.Add1(ss.FiltersFocused, nil)
 
 		case d.clientList:
 			fallthrough
 		case d.clientList.Box:
+			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.clientList.Box))
 			d.Mach.Add1(ss.SidebarFocused, nil)
 
 		case d.matrix:
 			fallthrough
 		case d.matrix.Box:
+			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.matrix.Box))
 			d.Mach.Add1(ss.MatrixFocused, nil)
 
 		// DIALOGS
@@ -131,10 +139,13 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 		case d.helpDialog:
 			fallthrough
 		case d.helpDialog.Box:
-			fallthrough
+			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.helpDialog.Box))
+			d.Mach.Add1(ss.DialogFocused, nil)
+
 		case d.exportDialog:
 			fallthrough
 		case d.exportDialog.Box:
+			d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.exportDialog.Box))
 			d.Mach.Add1(ss.DialogFocused, nil)
 		}
 
@@ -144,6 +155,7 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 		}
 
 		d.updateClientList(true)
+		d.updateKeyBars()
 	}
 }
 
@@ -733,6 +745,7 @@ func (d *Debugger) updateFocusable() {
 
 // updateKeyBars TODO light mode
 func (d *Debugger) updateKeyBars() {
+	// TODO arrow keys for filters and address
 	keys := []struct{ key, desc string }{
 		{"space", "play"},
 		{"▲ ▼", "nav"},
@@ -749,12 +762,16 @@ func (d *Debugger) updateKeyBars() {
 		{"?", "help"},
 	}
 
+	if d.Mach.Any1(ss.AddressFocused, ss.FiltersFocused, ss.LogFocused) {
+		keys[2].desc = "nav      "
+	}
+
 	txt := "[" + colorActive.String() + "]"
 	for i, key := range keys {
 		txt += fmt.Sprintf("%s[%s] %s", key.key, colorHighlight2, key.desc)
 		// suffix
 		if i != len(keys)-1 {
-			txt += fmt.Sprintf(" |[%s] ", colorActive)
+			txt += fmt.Sprintf(" [%s] ", colorActive)
 		}
 	}
 
