@@ -2,7 +2,6 @@
 
 - negotiation testers (eg `CanAdd`)
 - more helpers for queue and history traversal
-- "state-trace" navbar in am-dbg (via `AddFromEv`)
 - pubsub
 - rpc handlers
 - go1.22 traces

@@ -25,8 +25,8 @@
 # <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> asyncmachine-go
 
 <div align="center">
-    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/am-gen/README.md">
-    <img src="https://pancsta.github.io/assets/asyncmachine-go/video.gif" alt="TUI Debugger" /></a>
+    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/am-dbg/README.md">
+    <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video-mouse.gif?raw=true" alt="TUI Debugger" /></a>
     <br />
     <a href="https://github.com/pancsta/asyncmachine-go/blob/main/pkg/node/README.md">
     <img width="810" src="https://pancsta.github.io/assets/asyncmachine-go/node.png" alt="node diagram" /></a>
@@ -240,10 +240,10 @@ Bigger implementations worth reading:
 - [API](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine)
 - [diagrams](/docs/diagrams.md) \| [cookbook](/docs/cookbook.md)
 - [manual.md](/docs/manual.md) \| [manual.pdf](https://pancsta.github.io/assets/asyncmachine-go/manual.pdf)
-  - [Machine and States](/docs/manual.md#machine-and-states)
-  - [Changing State](/docs/manual.md#changing-state)
-  - [Advanced Topics](/docs/manual.md#advanced-topics)
-  - [Cheatsheet](/docs/manual.md#cheatsheet)
+    - [Machine and States](/docs/manual.md#machine-and-states)
+    - [Changing State](/docs/manual.md#changing-state)
+    - [Advanced Topics](/docs/manual.md#advanced-topics)
+    - [Cheatsheet](/docs/manual.md#cheatsheet)
 
 ## Community
 
@@ -258,12 +258,16 @@ Under heavy development, status depends on each package. The bottom layers seem 
 
 - all PRs welcome
 - before
-  - `./scripts/dep-taskfile.sh`
-  - `task install-deps`
+    - `./scripts/dep-taskfile.sh`
+    - `task install-deps`
 - after
-  - `task test`
-  - `task format`
-  - `task lint`
+    - `task test`
+    - `task format`
+    - `task lint`
+
+<div align="center">
+    <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video.gif?raw=true" alt="TUI Debugger" />
+</div>
 
 ## FAQ
 
