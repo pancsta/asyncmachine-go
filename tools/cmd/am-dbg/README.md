@@ -1,30 +1,10 @@
-[![](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
-[![](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
-![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc.json)
-![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc-pkg.json)
-![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/tests.json)
-![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/tests-pkg.json)
-![](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
-[![](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
-[![](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
-
 # <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /tools/cmd/am-dbg
 
 [`cd /`](/README.md)
 
-> [!NOTE]
-> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a clock-based state
-> machine. It has atomic transitions, subscriptions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+## am-dbg TUI Debugger
 
 [![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-reader.png)](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-large.png)
-
-## Installation
-
-- [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
-- Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
-- Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
-
-## am-dbg TUI Debugger
 
 `am-dbg` is a lightweight, multi-client debugger which can handle hundreds of simultaneous streams from asyncmachines.
 It's built around a timeline of transitions and allows for precise searches and drill-downs of state mutations.
@@ -39,6 +19,16 @@ It's built around a timeline of transitions and allows for precise searches and 
     </td>
   </tr>
 </table>
+
+## Installation
+
+- [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
+- Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
+- Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
+
+> [!NOTE]
+> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a clock-based state
+> machine. It has atomic transitions, subscriptions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
 
 ## Features
 

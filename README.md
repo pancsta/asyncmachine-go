@@ -33,16 +33,16 @@
 </div>
 
 > [!NOTE]
-> State machines communicate through states (mutations, checking and waiting).
+> State machines communicate through states (mutations, checking, and waiting).
 
-**Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a lightweight [state machine](/pkg/machine/README.md).
+**Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a [clock-based state machine](/pkg/machine/README.md).
 It has atomic transitions, [RPC](/pkg/rpc/README.md), logging, [TUI debugger](/tools/cmd/am-dbg/README.md), [metrics](/pkg/telemetry/README.md#prometheus-metrics),
-[tracing](/pkg/telemetry/README.md#opentelemetry-traces), and soon diagrams.
+[tracing](/pkg/telemetry/README.md#opentelemetry-traces) and soon diagrams.
 
 Use cases depend on the layer of the stack used, and range from [goroutine synchronization](/pkg/machine/README.md) and
 [state synchronization](/pkg/rpc/README.md) to [worker synchronization](/pkg/node/README.md), bots, LLM agents,
-consensus algos, etc. **Asyncmachine-go** can precisely target a specific scenario in a non-opaque way, and bring
-structure to event-based systems. It takes care of most contexts, `select` statements, and panics.
+stateful firewalls, consensus algos, etc. **Asyncmachine-go** can precisely target a specific scenario in a non-opaque
+way, and bring structure to event-based systems. It takes care of most contexts, `select` statements, and panics.
 
 ## Stack
 
