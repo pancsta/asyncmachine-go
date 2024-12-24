@@ -254,6 +254,13 @@ func (c *Client) txByMachTime(sum uint64) int {
 	return idx
 }
 
+func (c *Client) filterIndexByCursor1(cursor1 int) int {
+	if cursor1 == 0 {
+		return 0
+	}
+	return slices.Index(c.msgTxsFiltered, cursor1-1)
+}
+
 // TODO
 // func NewClient()
 
@@ -1833,7 +1840,7 @@ func (d *Debugger) updateMatrixRain() {
 		return
 	}
 
-	// TODO optimize: re-use existing cells or gen txt
+	// TODO optimize: re-use existing cells?
 	d.matrix.Clear()
 	d.matrix.SetTitle(" Rain ")
 
@@ -1850,12 +1857,22 @@ func (d *Debugger) updateMatrixRain() {
 		}
 
 		if currTxRow == -1 {
-			d.Mach.Add1(ss.ScrollToTx, am.A{"Client.cursorTx": row})
+			d.Mach.Add1(ss.ScrollToTx, am.A{
+				"Client.cursorTx": row,
+				"trimHistory":     true,
+			})
 		} else if row != currTxRow {
-			diff := row - currTxRow + 1
+			diff := row - currTxRow
+			idx := c.filterIndexByCursor1(c.CursorTx1) + diff
+			cur1 := c.msgTxsFiltered[idx] + 1
 			d.Mach.Log("diff %s", diff)
-			d.Mach.Add1(ss.ScrollToTx, am.A{"Client.cursorTx": c.CursorTx1 + diff})
+			d.Mach.Add1(ss.ScrollToTx, am.A{
+				"Client.cursorTx": cur1,
+				"trimHistory":     true,
+			})
 		}
+
+		// select state name
 		if column >= 0 && column < len(c.MsgStruct.StatesIndex) {
 			d.Mach.Add1(ss.StateNameSelected, am.A{
 				"state": c.MsgStruct.StatesIndex[column],
@@ -1874,45 +1891,43 @@ func (d *Debugger) updateMatrixRain() {
 	ahead := rows / 2
 	if d.Mach.Is1(ss.TailMode) {
 		ahead = 0
-	} else if c.CursorTx1 < ahead {
-		ahead += ahead - c.CursorTx1 - 1
 	}
 
 	// TODO collect rows-amount before and after (always) and display, then fill
 	//  the missing rows from previously collected
 
+	cur := c.filterIndexByCursor1(c.CursorTx1)
+	var curLast int
+
 	// ahead
-	idx := c.CursorTx1 + 1
-	for ; ahead > 0 && idx > 0; idx++ {
-		// limit
-		if idx > len(c.MsgTxs) {
-			break
-		}
-		// filters
-		if d.isTxSkipped(c, idx-1) {
-			continue
-		}
-		// show
-		toShow = append(toShow, idx)
-		ahead--
+	aheadOk := func(i int, max int) bool {
+		return i < len(c.msgTxsFiltered) && len(toShow) <= max
+	}
+	for i := cur; aheadOk(i, ahead); i++ {
+		toShow = append(toShow, c.msgTxsFiltered[i])
+		curLast = i
 	}
 
 	// behind
-	idx = c.CursorTx1
-	for i := idx; i > 0 && len(toShow) <= rows-3; i-- {
-		// filters
-		if d.isTxSkipped(c, i-1) {
-			continue
-		}
-		toShow = slices.Concat([]int{i}, toShow)
+	behindOk := func(i int) bool {
+		return i >= 0 && i < len(c.msgTxsFiltered) && len(toShow) <= rows
+	}
+	for i := cur - 1; behindOk(i); i-- {
+		toShow = slices.Concat([]int{c.msgTxsFiltered[i]}, toShow)
+	}
+
+	// ahead again
+	for i := curLast + 1; aheadOk(i, rows); i++ {
+		toShow = append(toShow, c.msgTxsFiltered[i])
 	}
 
 	for i, idx := range toShow {
 
 		row := ""
+		idx = idx + 1
 		if idx == c.CursorTx1 {
 			// TODO keep idx using cell.SetReference(...) for the 1st cell in each row
-			currTxRow = idx - 1
+			currTxRow = i
 		}
 		tx := c.MsgTxs[idx-1]
 		txParsed := c.msgTxsParsed[idx-1]
