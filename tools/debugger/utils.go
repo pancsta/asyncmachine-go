@@ -32,7 +32,7 @@ func RpcGetter(d *Debugger) func(string) any {
 		switch name {
 
 		case server.GetCursorTx.Encode():
-			return d.C.CursorTx
+			return d.C.CursorTx1
 
 		case server.GetCursorStep.Encode():
 			return d.C.CursorStep

@@ -38,12 +38,18 @@ func (d *Debugger) initUiComponents() {
 	d.clientList.SetHighlightFullLine(true)
 	// switch clients and handle history
 	d.clientList.SetSelectedFunc(func(i int, listItem *cview.ListItem) {
+		if d.C == nil {
+			return
+		}
 		client := listItem.GetReference().(*sidebarRef)
 		if client.name == d.C.id {
 			return
 		}
 		d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": client.name})
-		d.trimHistory()
+		<-d.Mach.When1(ss.ClientSelected, nil)
+		d.prependHistory(&MachAddress{MachId: client.name})
+		d.updateAddressBar()
+		d.draw(d.addressBar)
 	})
 	d.clientList.SetSelectedAlwaysVisible(true)
 
@@ -165,7 +171,10 @@ func (d *Debugger) initTimelineTx() {
 		x, _ := event.Position()
 		pos := float64(x) / float64(width)
 		txNum := math.Round(float64(len(d.C.MsgTxs)) * pos)
-		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.cursorTx": int(txNum)})
+		d.Mach.Add1(ss.ScrollToTx, am.A{
+			"Client.cursorTx": int(txNum),
+			"trimHistory":     true,
+		})
 
 		return action, event
 	})
@@ -271,6 +280,7 @@ func (d *Debugger) initFiltersBar() {
 			d.draw(d.filtersBar)
 		}()
 	})
+
 	d.filters = []filter{
 		{
 			id:    filterCanceledTx,
@@ -341,6 +351,11 @@ func (d *Debugger) initFiltersBar() {
 			active: func() bool {
 				return d.Opts.Filters.LogLevel == am.LogEverything
 			},
+		},
+		{
+			id:     filterReader,
+			label:  "Reader",
+			active: func() bool { return d.Mach.Is1(ss.LogReaderEnabled) },
 		},
 	}
 
@@ -611,6 +626,7 @@ func (d *Debugger) draw(components ...cview.Primitive) {
 				d.redrawCallback()
 				d.redrawCallback = nil
 			}
+			// TODO race condition, collect all components passed before a render
 		}, components...)
 		d.repaintScheduled.Store(false)
 	}()

@@ -166,7 +166,7 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 		}
 
 		// update the log highlight on focus change
-		if d.Mach.Is1(ss.TreeLogView) {
+		if d.Mach.Is1(ss.TreeLogView) && d.Mach.Not1(ss.LogReaderFocused) {
 			d.updateLog(true)
 		}
 
@@ -492,7 +492,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			if d.Mach.Not1(ss.ClientSelected) {
 				return nil
 			}
-			d.SetCursor(d.filterTxCursor(d.C, 0, true), false)
+			d.SetCursor1(d.filterTxCursor(d.C, 0, true), false)
 			d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
 			// sidebar for errs
 			d.updateClientList(true)
@@ -506,7 +506,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			if d.Mach.Not1(ss.ClientSelected) {
 				return nil
 			}
-			d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
+			d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
 			d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
 			// sidebar for errs
 			d.updateClientList(true)

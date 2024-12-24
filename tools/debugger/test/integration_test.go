@@ -70,7 +70,7 @@ func TestUserFwd(t *testing.T) {
 
 	// assert
 	assert.NotEqual(t, res, am.Canceled)
-	assert.Equal(t, cursorTx+1, worker.C.CursorTx)
+	assert.Equal(t, cursorTx+1, worker.C.CursorTx1)
 }
 
 func TestUserFwd100(t *testing.T) {
@@ -97,7 +97,7 @@ func TestUserFwd100(t *testing.T) {
 	}
 
 	// assert that at least 100 txs got scrolled (more bc of def filters)
-	assert.GreaterOrEqual(t, worker.C.CursorTx, cursorTx+100)
+	assert.GreaterOrEqual(t, worker.C.CursorTx1, cursorTx+100)
 }
 
 func TestTailModeFLAKY(t *testing.T) {
@@ -154,7 +154,7 @@ func TestTailModeFLAKY(t *testing.T) {
 
 	// assert.NotEqual(t, res, am.Canceled)
 	assert.Equal(t, 4, len(worker.C.MsgTxs), "tx count")
-	assert.Equal(t, 4, worker.C.CursorTx, "cursorTx")
+	assert.Equal(t, 4, worker.C.CursorTx1, "cursorTx")
 	// TODO assert tree clocks
 	// TODO assert log highlight
 }
@@ -175,7 +175,7 @@ func TestUserBack(t *testing.T) {
 
 	// assert
 	assert.NotEqual(t, res, am.Canceled)
-	assert.Equal(t, cursorTx-1, worker.C.CursorTx)
+	assert.Equal(t, cursorTx-1, worker.C.CursorTx1)
 }
 
 func TestStepsResetAfterStateJump(t *testing.T) {

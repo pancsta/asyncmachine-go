@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 	"golang.org/x/exp/maps"
 
@@ -54,7 +53,7 @@ func (d *Debugger) doUpdateLog() {
 		title := " Log:" + d.Opts.Filters.LogLevel.String() + " "
 		if tx != nil {
 			// TODO panic -1
-			t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx-1].TimeSum))
+			t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx1-1].TimeSum))
 			title += "Time:" + t + " "
 		}
 		d.log.SetTitle(title)
@@ -79,7 +78,7 @@ func (d *Debugger) doUpdateLog() {
 	// highlight this tx or the prev if empty
 	if len(tx.LogEntries) == 0 && d.prevTx() != nil {
 		last := d.prevTx()
-		for i := d.C.CursorTx - 1; i > 0; i-- {
+		for i := d.C.CursorTx1 - 1; i > 0; i-- {
 			if len(last.LogEntries) > 0 {
 				tx = last
 				break
@@ -412,11 +411,13 @@ type logReaderTreeRef struct {
 	machTime uint64
 
 	// position
-	entry       *logReaderEntryPtr
-	extMachTime *MachTime
+	entry *logReaderEntryPtr
+	addr  *MachAddress
 
 	// child int // TODO
 }
+
+var removeBracketsRe = regexp.MustCompile(`\[[^\]]*\]`)
 
 func (d *Debugger) initLogReader() *cview.TreeView {
 	root := cview.NewTreeNode("Extracted")
@@ -427,10 +428,11 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 	tree.SetRoot(root)
 	tree.SetCurrentNode(root)
 	tree.SetSelectedBackgroundColor(colorHighlight2)
-	tree.SetSelectedTextColor(tcell.ColorWhite)
+	tree.SetSelectedTextColor(colorDefault)
 	tree.SetHighlightColor(colorHighlight)
 	tree.SetTopLevel(1)
 
+	// focus change
 	tree.SetChangedFunc(func(node *cview.TreeNode) {
 		ref, ok := node.GetReference().(*logReaderTreeRef)
 		if !ok {
@@ -451,21 +453,46 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 		}
 	})
 
+	// click / enter
 	tree.SetSelectedFunc(func(node *cview.TreeNode) {
+		// TODO support extMachTime
+
 		ref, ok := node.GetReference().(*logReaderTreeRef)
 		if !ok {
 			return
 		}
 
-		// TODO support extMachTime
-
-		d.GoToMachAddress(&MachAddress{
-			MachId:   ref.machId,
-			TxId:     ref.txId,
-			MachTime: ref.machTime,
-		}, false)
-
+		// expand
 		node.SetExpanded(!node.IsExpanded())
+
+		addr := ref.addr
+		if addr == nil {
+			addr = &MachAddress{
+				MachId:   ref.machId,
+				TxId:     ref.txId,
+				MachTime: ref.machTime,
+			}
+		}
+
+		// click effect
+		tick := d.Mach.Tick(ss.UpdateLogReader)
+		text := node.GetText()
+		node.SetText("[" + colorActive.String() + "::u]" +
+			removeBracketsRe.ReplaceAllString(text, ""))
+		d.draw(d.logReader)
+
+		go func() {
+			time.Sleep(time.Millisecond * 200)
+			d.GoToMachAddress(addr, false)
+
+			// restore in case no redir
+			time.Sleep(time.Millisecond * 50)
+			if tick != d.Mach.Tick(ss.UpdateLogReader) {
+				return // expired
+			}
+			node.SetText(text)
+			d.draw(d.logReader)
+		}()
 	})
 
 	return tree
@@ -477,20 +504,25 @@ type MachTime struct {
 }
 
 func (d *Debugger) updateLogReader() {
+	// TODO split
 	if d.Mach.Not1(ss.LogReaderVisible) {
 		return
 	}
+
+	// TODO migrate to a state handler
+	d.Mach.Add1(ss.UpdateLogReader, nil)
+	d.Mach.Remove1(ss.UpdateLogReader, nil)
 
 	root := d.logReader.GetRoot()
 	root.ClearChildren()
 
 	c := d.C
-	if c == nil || c.CursorTx < 1 {
+	if c == nil || c.CursorTx1 < 1 {
 		return
 	}
 
-	tx := c.MsgTxs[c.CursorTx-1]
-	txParsed := c.msgTxsParsed[c.CursorTx-1]
+	tx := c.MsgTxs[c.CursorTx1-1]
+	txParsed := c.msgTxsParsed[c.CursorTx1-1]
 	allStates := c.MsgStruct.StatesIndex
 
 	var (
@@ -512,11 +544,19 @@ func (d *Debugger) updateLogReader() {
 	for _, ptr := range txParsed.ReaderEntries {
 		entries, ok := c.logReader[ptr.txId]
 		var node *cview.TreeNode
+		// gc
 		if !ok || ptr.entryIdx >= len(entries) {
 			node = cview.NewTreeNode("err:GCed entry")
 			node.SetIndent(1)
 		} else {
+
 			entry := entries[ptr.entryIdx]
+			nodeRef := &logReaderTreeRef{
+				stateNames: c.indexesToStates(entry.states),
+				machId:     entry.mach,
+				entry:      ptr,
+			}
+
 			// create nodes and parents
 			switch entry.kind {
 
@@ -598,8 +638,12 @@ func (d *Debugger) updateLogReader() {
 					states[0],
 					entry.createdAt)
 
+				// state name redirs to the moment of piping
+				nodeRef.machId = c.id
+				nodeRef.machTime = entry.createdAt
+
 				// create parent or group with previous if same state and time
-				// TODO group all, not just simblings
+				// TODO group all, not just siblings
 				if parentPipeIn == nil {
 					parentPipeIn = cview.NewTreeNode("Pipe-in")
 				} else {
@@ -609,6 +653,10 @@ func (d *Debugger) updateLogReader() {
 					}
 				}
 
+				// convert entry.createdAt to human time
+				txIdx := c.txByMachTime(entry.createdAt)
+				pipeTime := *c.tx(txIdx).Time
+
 				if node == nil {
 					node = cview.NewTreeNode(stateTitle)
 					parentPipeIn.AddChild(node)
@@ -617,10 +665,13 @@ func (d *Debugger) updateLogReader() {
 					capitalizeFirst(entry.pipe.String()), entry.mach))
 				node2.SetIndent(1)
 				node2.SetReference(&logReaderTreeRef{
-					stateNames:  c.indexesToStates(entry.states),
-					entry:       ptr,
-					machId:      entry.mach,
-					extMachTime: &MachTime{c.id, entry.createdAt},
+					stateNames: c.indexesToStates(entry.states),
+					entry:      ptr,
+					machId:     entry.mach,
+					addr: &MachAddress{
+						MachId:    entry.mach,
+						HumanTime: pipeTime,
+					},
 				})
 				node.AddChild(node2)
 				if slices.Contains(states, selState) {
@@ -633,8 +684,12 @@ func (d *Debugger) updateLogReader() {
 				stateTitle := d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
 					states[0], entry.createdAt)
 
+				// state name redirs to the moment of piping
+				nodeRef.machId = c.id
+				nodeRef.machTime = entry.createdAt
+
 				// create parent or group with previous if same state and time
-				// TODO group all, not just simblings
+				// TODO group all, not just siblings
 				if parentPipeOut == nil {
 					parentPipeOut = cview.NewTreeNode("Pipe-out")
 				} else {
@@ -645,18 +700,28 @@ func (d *Debugger) updateLogReader() {
 					}
 				}
 
+				// parent
 				if node == nil {
 					node = cview.NewTreeNode(stateTitle)
 					parentPipeOut.AddChild(node)
 				}
+
+				// convert entry.createdAt to human time
+				txIdx := c.txByMachTime(entry.createdAt)
+				pipeTime := *c.tx(txIdx).Time
+
+				// pipe-out node
 				node2 := cview.NewTreeNode(d.P.Sprintf("%-6s | %s",
 					capitalizeFirst(entry.pipe.String()), entry.mach))
 				node2.SetIndent(1)
 				node2.SetReference(&logReaderTreeRef{
-					stateNames:  c.indexesToStates(entry.states),
-					entry:       ptr,
-					machId:      entry.mach,
-					extMachTime: &MachTime{c.id, entry.createdAt},
+					stateNames: c.indexesToStates(entry.states),
+					entry:      ptr,
+					machId:     entry.mach,
+					addr: &MachAddress{
+						MachId:    entry.mach,
+						HumanTime: pipeTime,
+					},
 				})
 				node.AddChild(node2)
 				if slices.Contains(states, selState) {
@@ -670,11 +735,7 @@ func (d *Debugger) updateLogReader() {
 
 			node.SetIndent(1)
 			node.SetSelectable(true)
-			node.SetReference(&logReaderTreeRef{
-				stateNames: c.indexesToStates(entry.states),
-				machId:     entry.mach,
-				entry:      ptr,
-			})
+			node.SetReference(nodeRef)
 
 			sel := c.SelectedReaderEntry
 			if sel != nil && ptr.txId == sel.txId && ptr.entryIdx == sel.entryIdx {
