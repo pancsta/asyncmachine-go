@@ -96,8 +96,8 @@ github.com/nkall/compactnumber v1.1.1 h1:5mTobZOsK+kOiS4WEdmFi4URnaV6vYb9dfS1uvv
 github.com/nkall/compactnumber v1.1.1/go.mod h1:NLxufZ+8QKDIlqCwLE3WAnJRLNelv4/1PypZzQ6qnBg=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
 github.com/orcaman/concurrent-map/v2 v2.0.1/go.mod h1:9Eq3TG2oBe5FirmYWQfYO5iH1q0Jv47PLaNK++uCdOM=
-github.com/pancsta/cview v1.5.13 h1:xwQFEEVnqvytlo+KhU5xDrhimdRnjy7rpLCe0td8T6A=
-github.com/pancsta/cview v1.5.13/go.mod h1:6Xo6uy1zKPeKOiOclgL4wpO5B6qBG6K2ola50vVKGYw=
+github.com/pancsta/cview v1.5.14 h1:IkAAqNgW69eUIQnbkyqoy/PcSWoZDu8y42ebedsXVIw=
+github.com/pancsta/cview v1.5.14/go.mod h1:6Xo6uy1zKPeKOiOclgL4wpO5B6qBG6K2ola50vVKGYw=
 github.com/patrickmn/go-cache v2.1.0+incompatible h1:HRMgzkcYKYpi3C8ajMPV8OFXaaRUnok+kx1WdO15EQc=
 github.com/patrickmn/go-cache v2.1.0+incompatible/go.mod h1:3Qf8kWWT7OJRJbdiICTKqZju1ZixQ/KpMGzzAfe6+WQ=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

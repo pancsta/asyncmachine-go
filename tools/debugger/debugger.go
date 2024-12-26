@@ -881,6 +881,7 @@ func (d *Debugger) updateFiltersBar() {
 
 		cell := d.filtersBar.GetCell(0, i)
 		cell.SetText(text)
+		cell.SetTextColor(tcell.ColorWhite)
 		d.filtersBar.SetCell(0, i, cell)
 	}
 }
