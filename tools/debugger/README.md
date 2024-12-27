@@ -3,8 +3,8 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a clock-based state
-> machine. It has atomic transitions, subscriptions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
+> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a [clock-based state machine](/pkg/machine/README.md).
 
 To read about **am-dbg**, go to [/tools/cmd/am-dbg](/tools/cmd/am-dbg/README.md). This package is about the
 implementation, not the end-user application.

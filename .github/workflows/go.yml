@@ -64,9 +64,8 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
-      # TODO enable
-#      - name: Test race
-#        run: task test-race
+      - name: Test race
+        run: task test-race
 
       - name: Test coverage pkg
         run: task test-coverage-pkg

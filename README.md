@@ -27,22 +27,22 @@
 <div align="center">
     <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/am-dbg/README.md">
     <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video-mouse.gif?raw=true" alt="TUI Debugger" /></a>
-    <br />
-    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/pkg/node/README.md">
-    <img width="810" src="https://pancsta.github.io/assets/asyncmachine-go/node.png" alt="node diagram" /></a>
 </div>
 
 > [!NOTE]
 > State machines communicate through states (mutations, checking, and waiting).
 
-**Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a [clock-based state machine](/pkg/machine/README.md).
-It has atomic transitions, [RPC](/pkg/rpc/README.md), logging, [TUI debugger](/tools/cmd/am-dbg/README.md), [metrics](/pkg/telemetry/README.md#prometheus-metrics),
-[tracing](/pkg/telemetry/README.md#opentelemetry-traces) and soon diagrams.
+**asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
+and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a [clock-based state machine](/pkg/machine/README.md).
+It has atomic transitions, relations, [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
+[telemetry](/pkg/telemetry/README.md), [workers](/pkg/node/README.md), and soon diagrams.
 
-Use cases depend on the layer of the stack used, and range from [goroutine synchronization](/pkg/machine/README.md) and
-[state synchronization](/pkg/rpc/README.md) to [worker synchronization](/pkg/node/README.md), bots, LLM agents,
-stateful firewalls, consensus algos, etc. **Asyncmachine-go** can precisely target a specific scenario in a non-opaque
-way, and bring structure to event-based systems. It takes care of most contexts, `select` statements, and panics.
+Its main purpose is workflows (both in-process and distributed), although it can be used for a wide range of
+applications - UIs, bots, agents, stateful firewalls, consensus algos, etc. **asyncmachine** can precisely (and
+transparently) target a specific point in a scenario and easily bring structure to event-based systems. It takes care of
+most contexts, `select` statements, and panics.
+
+It will enable you to create autonomous workflows with organic control flow and stateful APIs.
 
 ## Stack
 
@@ -120,8 +120,8 @@ way, and bring structure to event-based systems. It takes care of most contexts,
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 // ...
 mach := am.New(nil, am.Struct{
-    "Foo": {Require: am.S{"Bar"}},
-    "Bar": {},
+"Foo": {Require: am.S{"Bar"}},
+"Bar": {},
 }, nil)
 mach.Add1("Foo", nil)
 mach.Is1("Foo") // false
@@ -136,43 +136,47 @@ ctx := client.Mach.NewStateCtx(ssC.WorkerReady)
 whenPayload := client.Mach.WhenTicks(ssC.WorkerPayload, 1, ctx)
 // mutation
 client.WorkerRpc.Worker.Add1(ssW.WorkRequested, Pass(&A{
-    Input: 2}))
-// WaitFor replaces select statements
+Input: 2}))
+// WaitFor* wraps select statements
 err := amhelp.WaitForAll(ctx, time.Second,
-    mach2.When1("Ready", nil),
-    whenPayload)
+mach2.When1("Ready", nil),
+whenPayload)
 // check cancellation
 if ctx.Err() != nil {
-    // state ctx expired
-    return
+// state ctx expired
+return
 }
 // check error
 if err != nil {
-    // mutation
-    client.Mach.AddErr(err, nil)
-    return
+// mutation
+client.Mach.AddErr(err, nil)
+return
 }
 // client/WorkerPayload and mach2/Ready activated
 ```
 
-**Handlers** - AOP transition handlers.
+**Handlers** - [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming) transition handlers.
 
 ```go
+// can Foo activate?
 func (h *Handlers) FooEnter(e *am.Event) bool {
-    return true
+return true
 }
+// can Foo activate while Bar de-activates?
 func (h *Handlers) FooBar(e *am.Event) bool {
-    return true
+return true
 }
+// Foo activates
 func (h *Handlers) FooState(e *am.Event) {
-    h.foo = NewConn()
+h.foo = NewConn()
 }
+// Foo de-activates
 func (h *Handlers) FooEnd(e *am.Event) {
-    h.foo.Close()
+h.foo.Close()
 }
 ```
 
-**Schema** - states of a node worker.
+**Schema** - states of a [node worker](/pkg/node/README.md).
 
 ```go
 type WorkerStatesDef struct {
@@ -204,12 +208,14 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 
 ## Getting Started
 
-[`/pkg/machine`](pkg/machine/README.md) is a mandatory ready, while [`/pkg/node`](pkg/node/README.md) is the most
-interesting one. Examples in [`/examples`](/examples/README.md) and [`/docs/manual.md`](/docs/manual.md) are good
-for a general grasp, while [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details. Reading tests
-is always a good idea.
+[`/pkg/machine`](pkg/machine/README.md) is a mandatory ready, while the code of [`/pkg/node`](pkg/node/supervisor.go) is
+the most interesting one. Examples in [`/examples`](/examples/README.md) and [`/docs/manual.md`](/docs/manual.md) are
+good for a general grasp, while [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details. Reading
+tests is always a good idea.
 
 ## Packages
+
+This monorepo offer the following importable packages and runnable tools:
 
 - [`/pkg/helpers`](/pkg/helpers/README.md) Useful functions when working with async state machines.
 - [`/pkg/history`](/pkg/history/README.md) History tracking and traversal.
@@ -227,13 +233,11 @@ is always a good idea.
 
 ## Case Studies
 
-Bigger implementations worth reading:
-
+- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
   simulator for libp2p-pubsub.
 - [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
   Benchmark of libp2p-pubsub ported to asyncmachine-go.
-- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
 
 ## Documentation
 
@@ -252,7 +256,7 @@ Bigger implementations worth reading:
 
 ## Status
 
-Under heavy development, status depends on each package. The bottom layers seem prod grade, the top ones are alpha or testing.
+Under development, status depends on each package. The bottom layers seem prod grade, the top ones are alpha or testing.
 
 ## Development
 
@@ -269,63 +273,23 @@ Under heavy development, status depends on each package. The bottom layers seem 
     <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video.gif?raw=true" alt="TUI Debugger" />
 </div>
 
-## FAQ
+## [FAQ](./FAQ.md)
 
 ### How does asyncmachine work?
 
-It calls certain methods on a struct in a certain order (eg BarEnter, FooFoo, FooBar, BarState).
+It calls struct methods according to conventions and currently active states.
 
 ### What is a "state" in asyncmachine?
 
-State as in "status", not state as in "data". For example, not a JSON string, but "process RUNNING", or "car BROKEN".
-
-### Can asyncmachine be integrated with other frameworks?
-
-Yes, because asyncmachine is more of a set of libraries following the same conventions, than an actual framework. It can
-integrate
-with anything via states-based APIs.
-
-### How does asyncmachine compare to [Temporal](https://github.com/temporalio/temporal)?
-
-Temporal is an all-in-one solution with data persistence, which is its limitation. Asyncmachine doesn't hold any data by
-itself
-and has progressive layers, making it usable in a wide variety of use cases (e.g. asyncmachine could do workflows for a
-desktop app).
-
-### How does asyncmachine compare to [Ergo](https://github.com/ergo-services/ergo)?
-
-Ergo is a great framework, but leans on old ideas and has web-based tooling. It also isn't natively based on state
-machines. Asyncmachine provides productivity-focused TUI tooling and rich integrations, while having every component
-natively state-based (even the [code generator](/tools/generator/states/ss_generator.go)).
-
-### Does aRPC auto sync data?
-
-aRPC auto syncs only states (clock values). Mutations carry data in arguments, from client to server, while the
-SendPayload state passes payloads back to the client.
-
-### Does asyncmachine return data?
-
-No, just yes/no/later (Executed, Canceled, Queued).
-
-### Does asyncmachine return errors?
-
-No, but there's an error state (Exception). Optionally, there are also detailed error states (e.g. ErrNetwork).
-
-### Why asyncmachine avoids blocking?
-
-The lack of blocking allows for immediate adjustment to incoming changes and is backed by solid cancellation support.
+State as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
 
 ### What does "clock-based" mean?
 
-Each state has a counter of activations, and all state counters create "machine time".
+Each state has a counter of activations & de-activations, and all state counters create "machine time".
 
 ### What's the difference between states and events?
 
 Same event happening many times will cause only 1 state activation, until the state becomes inactive.
-
-### How do I do X/Y/Z in asyncmachine?
-
-Usually the answer is "make it a state".
 
 ## Changes
 

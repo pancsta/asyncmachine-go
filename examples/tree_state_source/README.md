@@ -3,8 +3,8 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a clock-based state
-> machine. It has atomic transitions, subscriptions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
+> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a [clock-based state machine](/pkg/machine/README.md).
 
 State source of flight statuses - in the real world this data-oriented problem should be modelled using composition and
 handler delegation, but it's flat in this example for simplicity and research purposes.

@@ -27,8 +27,8 @@ It's built around a timeline of transitions and allows for precise searches and 
 - Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
 
 > [!NOTE]
-> **Asyncmachine-go** is an AOP Actor Model library for distributed workflows, built on top of a clock-based state
-> machine. It has atomic transitions, subscriptions, RPC, logging, TUI debugger, metrics, tracing, and soon diagrams.
+> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
+> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a [clock-based state machine](/pkg/machine/README.md).
 
 ## Features
 
@@ -167,6 +167,11 @@ Usage:
 ### How to debug steps of a transition?
 
 Go to the steps timelines (bottom one) using the Tab key, then press left/right like before.
+
+### How to find transitions affecting a specific state?
+
+Select the state from the Structure pane and press `alt+h` to **state-jump**
+to previous transitons, or `alt+l` to further ones.
 
 ### How to export data?
 
