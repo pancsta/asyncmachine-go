@@ -61,16 +61,20 @@ const (
 	msgMaxThreshold = 300
 )
 
+var colorDefault = cview.Styles.PrimaryTextColor
+
 type Exportable struct {
 	MsgStruct *telemetry.DbgMsgStruct
 	MsgTxs    []*telemetry.DbgMsgTx
 }
 
 type MachAddress struct {
-	MachId   string
-	TxId     string
-	Step     int
-	MachTime uint64
+	MachId    string
+	TxId      string
+	MachTime  uint64
+	HumanTime time.Time
+	// TODO support step
+	Step int
 }
 
 func (ma *MachAddress) Clone() *MachAddress {
@@ -86,6 +90,12 @@ func (a *MachAddress) String() string {
 	if a.TxId != "" {
 		return fmt.Sprintf("mach://%s/%s", a.MachId, a.TxId)
 	}
+	if a.MachTime != 0 {
+		return fmt.Sprintf("mach://%s/t%d", a.MachId, a.MachTime)
+	}
+	if !a.HumanTime.IsZero() {
+		return fmt.Sprintf("mach://%s/%s", a.MachId, a.HumanTime)
+	}
 
 	return fmt.Sprintf("mach://%s", a.MachId)
 }
@@ -94,7 +104,7 @@ type Client struct {
 	// bits which get saved into the go file
 	Exportable
 	// current transition, 1-based, mirrors the slider
-	CursorTx int
+	CursorTx1 int
 	// current step, 1-based, mirrors the slider
 	CursorStep          int
 	SelectedState       string
@@ -288,6 +298,7 @@ type OptsFilters struct {
 	LogLevel        am.LogLevel
 }
 
+// TODO refac: ToolbarButton
 type FilterName string
 
 const (
@@ -301,6 +312,7 @@ const (
 	filterLog2        FilterName = "log-2"
 	filterLog3        FilterName = "log-3"
 	filterLog4        FilterName = "log-4"
+	filterReader      FilterName = "reader"
 )
 
 type Debugger struct {
@@ -449,8 +461,8 @@ func (d *Debugger) GetMachAddress() *MachAddress {
 	a := &MachAddress{
 		MachId: d.C.id,
 	}
-	if d.C.CursorTx > 0 {
-		a.TxId = d.C.MsgTxs[d.C.CursorTx-1].ID
+	if d.C.CursorTx1 > 0 {
+		a.TxId = d.C.MsgTxs[d.C.CursorTx1-1].ID
 	}
 	// TODO mach time
 
@@ -459,7 +471,7 @@ func (d *Debugger) GetMachAddress() *MachAddress {
 
 // GoToMachAddress tries to render a view of the provided address (mach, tx).
 func (d *Debugger) GoToMachAddress(addr *MachAddress, skipHistory bool) bool {
-	// TODO support machTime
+	// TODO should be ana async state, always change the view via this state
 
 	if addr.MachId == "" {
 		return false
@@ -480,6 +492,9 @@ func (d *Debugger) GoToMachAddress(addr *MachAddress, skipHistory bool) bool {
 	} else if addr.MachTime != 0 {
 		tx := d.C.tx(d.C.txByMachTime(addr.MachTime))
 		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
+	} else if !addr.HumanTime.IsZero() {
+		tx := d.C.tx(d.C.lastTxTill(addr.HumanTime))
+		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
 	}
 	if !skipHistory {
 		d.prependHistory(addr)
@@ -488,6 +503,43 @@ func (d *Debugger) GoToMachAddress(addr *MachAddress, skipHistory bool) bool {
 	}
 
 	return true
+}
+
+func (d *Debugger) SetCursor1(cursor int, skipHistory bool) {
+	// TODO validate
+	d.C.CursorTx1 = cursor
+
+	if d.HistoryCursor == 0 && !skipHistory {
+		// add current mach if needed
+		if len(d.History) > 0 && d.History[0].MachId != d.C.id {
+			d.prependHistory(d.GetMachAddress())
+		}
+		// keeping the curent tx as history head
+		if tx := d.C.tx(d.C.CursorTx1 - 1); tx != nil {
+			// dup the current machine if tx differs
+			if len(d.History) > 1 && d.History[1].MachId == d.C.id &&
+				d.History[1].TxId != tx.ID {
+
+				d.prependHistory(d.History[0].Clone())
+			}
+			if len(d.History) > 0 {
+				d.History[0].TxId = tx.ID
+			}
+		}
+	}
+
+	// debug
+	// d.Opts.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
+	// d.Opts.DbgLogger.Printf("History: %v\n", d.History)
+
+	if cursor == 0 {
+		d.lastScrolledTxTime = time.Time{}
+	} else {
+		d.lastScrolledTxTime = *d.currentTx().Time
+	}
+
+	// reset the step timeline
+	d.C.CursorStep = 0
 }
 
 func (d *Debugger) removeHistory(clientId string) {
@@ -507,8 +559,8 @@ func (d *Debugger) removeHistory(clientId string) {
 }
 
 func (d *Debugger) prependHistory(addr *MachAddress) {
-	d.trimHistory()
 	d.History = slices.Concat([]*MachAddress{addr}, d.History)
+	d.trimHistory()
 }
 
 // trimHistory will trim the head to the current position, making it the newest
@@ -528,6 +580,10 @@ func (d *Debugger) trimHistory() {
 	if len(d.History) > 100 {
 		d.History = d.History[100:]
 	}
+
+	// debug
+	// d.Opts.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
+	// d.Opts.DbgLogger.Printf("History: %v\n", d.History)
 }
 
 func (d *Debugger) getClient(machId string) *Client {
@@ -594,12 +650,12 @@ func (d *Debugger) nextTx() *telemetry.DbgMsgTx {
 	if c == nil {
 		return nil
 	}
-	onLastTx := c.CursorTx >= len(c.MsgTxs)
+	onLastTx := c.CursorTx1 >= len(c.MsgTxs)
 	if onLastTx {
 		return nil
 	}
 
-	return c.MsgTxs[c.CursorTx]
+	return c.MsgTxs[c.CursorTx1]
 }
 
 // CurrentTx returns the current transition. Thread safe via Eval().
@@ -622,11 +678,11 @@ func (d *Debugger) currentTx() *telemetry.DbgMsgTx {
 		return nil
 	}
 
-	if c.CursorTx == 0 || len(c.MsgTxs) < c.CursorTx {
+	if c.CursorTx1 == 0 || len(c.MsgTxs) < c.CursorTx1 {
 		return nil
 	}
 
-	return c.MsgTxs[c.CursorTx-1]
+	return c.MsgTxs[c.CursorTx1-1]
 }
 
 // PrevTx returns the previous transition. Thread safe via Eval().
@@ -648,10 +704,10 @@ func (d *Debugger) prevTx() *telemetry.DbgMsgTx {
 	if c == nil {
 		return nil
 	}
-	if c.CursorTx < 2 {
+	if c.CursorTx1 < 2 {
 		return nil
 	}
-	return c.MsgTxs[c.CursorTx-2]
+	return c.MsgTxs[c.CursorTx1-2]
 }
 
 func (d *Debugger) ConnectedClients() int {
@@ -828,8 +884,8 @@ func (d *Debugger) updateAddressBar() {
 	txId := ""
 	if d.C != nil {
 		machId = d.C.id
-		if d.C.CursorTx > 0 {
-			txId = d.C.MsgTxs[d.C.CursorTx-1].ID
+		if d.C.CursorTx1 > 0 {
+			txId = d.C.MsgTxs[d.C.CursorTx1-1].ID
 		}
 		machConn = d.C.connected.Load()
 	}
@@ -961,7 +1017,7 @@ func (d *Debugger) jumpBack(ev *tcell.EventKey) *tcell.EventKey {
 	} else {
 		// fast jump
 		amhelp.Add1Block(ctx, d.Mach, ss.Back, am.A{
-			"amount": min(fastJumpAmount, d.C.CursorTx),
+			"amount": min(fastJumpAmount, d.C.CursorTx1),
 		})
 	}
 
@@ -987,7 +1043,7 @@ func (d *Debugger) jumpFwd(ev *tcell.EventKey) *tcell.EventKey {
 	} else {
 		// fast jump
 		amhelp.Add1Block(ctx, d.Mach, ss.Fwd, am.A{
-			"amount": min(fastJumpAmount, len(d.C.MsgTxs)-d.C.CursorTx),
+			"amount": min(fastJumpAmount, len(d.C.MsgTxs)-d.C.CursorTx1),
 		})
 	}
 
@@ -996,8 +1052,8 @@ func (d *Debugger) jumpFwd(ev *tcell.EventKey) *tcell.EventKey {
 
 // memorizeTxTime will memorize the current tx time
 func (d *Debugger) memorizeTxTime(c *Client) {
-	if c.CursorTx > 0 && c.CursorTx <= len(c.MsgTxs) {
-		d.lastScrolledTxTime = *c.MsgTxs[c.CursorTx-1].Time
+	if c.CursorTx1 > 0 && c.CursorTx1 <= len(c.MsgTxs) {
+		d.lastScrolledTxTime = *c.MsgTxs[c.CursorTx1-1].Time
 	}
 }
 
@@ -1093,8 +1149,8 @@ func (d *Debugger) filterTxCursor(c *Client, newCursor int, fwd bool) int {
 			return 0
 		} else if newCursor > len(c.MsgTxs) {
 			// not found
-			if !d.isTxSkipped(c, c.CursorTx-1) {
-				return c.CursorTx
+			if !d.isTxSkipped(c, c.CursorTx1-1) {
+				return c.CursorTx1
 			} else {
 				return 0
 			}
@@ -1147,7 +1203,7 @@ func (d *Debugger) updateTxBars() {
 			title = formatTxBarTitle("Paused") + " "
 		}
 
-		left, right := d.getTxInfo(c.CursorTx, tx, c.msgTxsParsed[c.CursorTx-1],
+		left, right := d.getTxInfo(c.CursorTx1, tx, c.msgTxsParsed[c.CursorTx1-1],
 			title)
 		d.currTxBarLeft.SetText(left)
 		d.currTxBarRight.SetText(right)
@@ -1156,8 +1212,8 @@ func (d *Debugger) updateTxBars() {
 	nextTx := d.nextTx()
 	if nextTx != nil && c != nil {
 		title := "Next   "
-		left, right := d.getTxInfo(c.CursorTx+1, nextTx,
-			c.msgTxsParsed[c.CursorTx], title)
+		left, right := d.getTxInfo(c.CursorTx1+1, nextTx,
+			c.msgTxsParsed[c.CursorTx1], title)
 		d.nextTxBarLeft.SetText(left)
 		d.nextTxBarRight.SetText(right)
 	}
@@ -1187,27 +1243,27 @@ func (d *Debugger) updateTimelines() {
 	}
 
 	stepsCount := 0
-	onLastTx := c.CursorTx >= txCount
+	onLastTx := c.CursorTx1 >= txCount
 	if !onLastTx {
-		stepsCount = len(c.MsgTxs[c.CursorTx].Steps)
+		stepsCount = len(c.MsgTxs[c.CursorTx1].Steps)
 	}
 
 	// progressbar cant be max==0
 	d.timelineTxs.SetMax(max(txCount, 1))
 	// progress <= max
-	d.timelineTxs.SetProgress(c.CursorTx)
+	d.timelineTxs.SetProgress(c.CursorTx1)
 
 	// title
 	var title string
 	if d.isFiltered() {
-		pos := slices.Index(c.msgTxsFiltered, c.CursorTx-1) + 1
-		if c.CursorTx == 0 {
+		pos := slices.Index(c.msgTxsFiltered, c.CursorTx1-1) + 1
+		if c.CursorTx1 == 0 {
 			pos = 0
 		}
 		title = d.P.Sprintf(" Transition %d / %d [%s]%d / %d[-] ",
-			pos, len(c.msgTxsFiltered), colorHighlight2, c.CursorTx, txCount)
+			pos, len(c.msgTxsFiltered), colorHighlight2, c.CursorTx1, txCount)
 	} else {
-		title = d.P.Sprintf(" Transition %d / %d ", c.CursorTx, txCount)
+		title = d.P.Sprintf(" Transition %d / %d ", c.CursorTx1, txCount)
 	}
 	d.timelineTxs.SetTitle(title)
 	d.timelineTxs.SetEmptyRune(' ')
@@ -1644,7 +1700,7 @@ func (d *Debugger) updateMatrixRelations() {
 	d.matrix.SetTitle(" Matrix ")
 
 	c := d.C
-	if c == nil || d.C.CursorTx == 0 {
+	if c == nil || d.C.CursorTx1 == 0 {
 		return
 	}
 
@@ -1765,8 +1821,8 @@ func (d *Debugger) updateMatrixRelations() {
 	}
 
 	title := " Matrix:" + strconv.Itoa(sum) + " "
-	if c.CursorTx > 0 {
-		t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx-1].TimeSum))
+	if c.CursorTx1 > 0 {
+		t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx1-1].TimeSum))
 		title += "Time:" + t + " "
 	}
 	d.matrix.SetTitle(title)
@@ -1798,7 +1854,7 @@ func (d *Debugger) updateMatrixRain() {
 		} else if row != currTxRow {
 			diff := row - currTxRow + 1
 			d.Mach.Log("diff %s", diff)
-			d.Mach.Add1(ss.ScrollToTx, am.A{"Client.cursorTx": c.CursorTx + diff})
+			d.Mach.Add1(ss.ScrollToTx, am.A{"Client.cursorTx": c.CursorTx1 + diff})
 		}
 		if column >= 0 && column < len(c.MsgStruct.StatesIndex) {
 			d.Mach.Add1(ss.StateNameSelected, am.A{
@@ -1818,15 +1874,15 @@ func (d *Debugger) updateMatrixRain() {
 	ahead := rows / 2
 	if d.Mach.Is1(ss.TailMode) {
 		ahead = 0
-	} else if c.CursorTx < ahead {
-		ahead += ahead - c.CursorTx - 1
+	} else if c.CursorTx1 < ahead {
+		ahead += ahead - c.CursorTx1 - 1
 	}
 
 	// TODO collect rows-amount before and after (always) and display, then fill
 	//  the missing rows from previously collected
 
 	// ahead
-	idx := c.CursorTx + 1
+	idx := c.CursorTx1 + 1
 	for ; ahead > 0 && idx > 0; idx++ {
 		// limit
 		if idx > len(c.MsgTxs) {
@@ -1842,7 +1898,7 @@ func (d *Debugger) updateMatrixRain() {
 	}
 
 	// behind
-	idx = c.CursorTx
+	idx = c.CursorTx1
 	for i := idx; i > 0 && len(toShow) <= rows-3; i-- {
 		// filters
 		if d.isTxSkipped(c, i-1) {
@@ -1854,7 +1910,7 @@ func (d *Debugger) updateMatrixRain() {
 	for i, idx := range toShow {
 
 		row := ""
-		if idx == c.CursorTx {
+		if idx == c.CursorTx1 {
 			// TODO keep idx using cell.SetReference(...) for the 1st cell in each row
 			currTxRow = idx - 1
 		}
@@ -1898,7 +1954,7 @@ func (d *Debugger) updateMatrixRain() {
 				cell.SetAttributes(tcell.AttrUnderline)
 			}
 
-			if idx == c.CursorTx {
+			if idx == c.CursorTx1 {
 				// current tx
 				cell.SetBackgroundColor(colorHighlight3)
 			} else if d.C.SelectedState == name {
@@ -1933,13 +1989,13 @@ func (d *Debugger) updateMatrixRain() {
 			"  [gray]%d | %s[-]", idx, tStampFmt))
 
 		// current tx
-		if idx == c.CursorTx {
+		if idx == c.CursorTx1 {
 			d.matrix.GetCell(i, len(index)).SetBackgroundColor(colorHighlight3)
 		}
 	}
 
 	diffT := 0
-	if c.CursorTx > 0 {
+	if c.CursorTx1 > 0 {
 		for _, name := range index {
 
 			var pTick uint64
@@ -1954,8 +2010,8 @@ func (d *Debugger) updateMatrixRain() {
 	}
 
 	title := " Matrix:" + strconv.Itoa(diffT) + " "
-	if c.CursorTx > 0 {
-		t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx-1].TimeSum))
+	if c.CursorTx1 > 0 {
+		t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx1-1].TimeSum))
 		title += "Time:" + t + " "
 	}
 	d.matrix.SetTitle(title)
@@ -2065,7 +2121,7 @@ func (d *Debugger) scrollToTime(hT time.Time, filter bool) bool {
 	if filter {
 		latestTx = d.filterTxCursor(d.C, latestTx, true)
 	}
-	d.SetCursor(latestTx, true)
+	d.SetCursor1(latestTx, true)
 
 	return true
 }
@@ -2086,7 +2142,7 @@ func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
 
 		// stay on the last one
 		if d.Mach.Is1(ss.TailMode) {
-			d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
+			d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
 		}
 
 		// rebuild the whole log to reflect the UI changes
@@ -2101,7 +2157,7 @@ func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
 		}
 
 		if filterTxs {
-			d.SetCursor(d.filterTxCursor(d.C, d.C.CursorTx, false), false)
+			d.SetCursor1(d.filterTxCursor(d.C, d.C.CursorTx1, false), false)
 		}
 	}
 

@@ -115,6 +115,7 @@ var States = am.Struct{
 		Require: S{TreeLogView, LogReaderEnabled},
 	},
 	LogReaderEnabled: {},
+	UpdateLogReader:  {Require: S{LogReaderEnabled}},
 
 	// tx / steps back / fwd
 
@@ -238,6 +239,7 @@ const (
 	TreeMatrixView   = "TreeMatrixView"
 	LogReaderVisible = "LogReaderVisible"
 	LogReaderEnabled	= "LogReaderEnabled"
+	UpdateLogReader	= "UpdateLogReader"
 	LogUserScrolled  = "LogUserScrolled"
 	// ScrollToTx scrolls to a specific transition.
 	ScrollToTx = "ScrollToTx"
@@ -323,6 +325,7 @@ var Names = S{
 	MatrixRain,
 	LogReaderVisible,
 	LogReaderEnabled,
+	UpdateLogReader,
 
 	// tx / steps back / fwd
 	Fwd,

@@ -1995,6 +1995,7 @@ func (m *Machine) Log(msg string, args ...any) {
 // LogLvl adds an internal log entry from the outside. It should be used only
 // by packages extending pkg/machine. Use Log instead.
 func (m *Machine) LogLvl(lvl LogLevel, msg string, args ...any) {
+	// refac: LvlMsg
 	if m.disposed.Load() {
 		return
 	}

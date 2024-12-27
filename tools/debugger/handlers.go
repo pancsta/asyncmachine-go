@@ -231,7 +231,7 @@ func (d *Debugger) PausedState(_ *am.Event) {
 }
 
 func (d *Debugger) TailModeState(_ *am.Event) {
-	d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
+	d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
 	d.updateMatrixRain()
 	d.updateClientList(true)
 	// needed bc tail mode if carried over via SelectingClient
@@ -252,7 +252,7 @@ func (d *Debugger) UserFwdState(_ *am.Event) {
 func (d *Debugger) FwdEnter(e *am.Event) bool {
 	amount, _ := e.Args["amount"].(int)
 	amount = max(amount, 1)
-	return d.C.CursorTx+amount <= len(d.C.MsgTxs)
+	return d.C.CursorTx1+amount <= len(d.C.MsgTxs)
 }
 
 func (d *Debugger) FwdState(e *am.Event) {
@@ -262,10 +262,10 @@ func (d *Debugger) FwdState(e *am.Event) {
 	amount = max(amount, 1)
 
 	c := d.C
-	d.SetCursor(d.filterTxCursor(c, c.CursorTx+amount, true), false)
-	c.CursorStep = 0
+	d.SetCursor1(d.filterTxCursor(c, c.CursorTx1+amount, true), false)
+	d.trimHistory()
 	d.handleTStepsScrolled()
-	if d.Mach.Is1(ss.Playing) && c.CursorTx == len(c.MsgTxs) {
+	if d.Mach.Is1(ss.Playing) && c.CursorTx1 == len(c.MsgTxs) {
 		d.Mach.Remove1(ss.Playing, nil)
 	}
 
@@ -282,7 +282,7 @@ func (d *Debugger) UserBackState(_ *am.Event) {
 func (d *Debugger) BackEnter(e *am.Event) bool {
 	amount, _ := e.Args["amount"].(int)
 	amount = max(amount, 1)
-	return d.C.CursorTx-amount >= 0
+	return d.C.CursorTx1-amount >= 0
 }
 
 func (d *Debugger) BackState(e *am.Event) {
@@ -292,8 +292,8 @@ func (d *Debugger) BackState(e *am.Event) {
 	amount = max(amount, 1)
 
 	c := d.C
-	d.SetCursor(d.filterTxCursor(d.C, c.CursorTx-amount, false), false)
-	c.CursorStep = 0
+	d.SetCursor1(d.filterTxCursor(d.C, c.CursorTx1-amount, false), false)
+	d.trimHistory()
 	d.handleTStepsScrolled()
 
 	d.memorizeTxTime(c)
@@ -338,7 +338,7 @@ func (d *Debugger) UserBackStepState(_ *am.Event) {
 }
 
 func (d *Debugger) BackStepEnter(_ *am.Event) bool {
-	return d.C.CursorStep > 0 || d.C.CursorTx > 0
+	return d.C.CursorStep > 0 || d.C.CursorTx1 > 0
 }
 
 func (d *Debugger) BackStepState(_ *am.Event) {
@@ -346,7 +346,7 @@ func (d *Debugger) BackStepState(_ *am.Event) {
 
 	// wrap if there's a prev tx
 	if d.C.CursorStep <= 0 {
-		d.SetCursor(d.filterTxCursor(d.C, d.C.CursorTx-1, false), false)
+		d.SetCursor1(d.filterTxCursor(d.C, d.C.CursorTx1-1, false), false)
 		d.updateLog(false)
 		nextTx := d.nextTx()
 		d.C.CursorStep = len(nextTx.Steps)
@@ -634,7 +634,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	// UI updates for the selected client
 	if updateTailMode {
 		// force the latest tx
-		d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
+		d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
 		// sidebar for errs
 		d.updateViews(false)
 	}
@@ -651,36 +651,6 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 
 	if selectedUpdated {
 		d.draw()
-	}
-}
-
-func (d *Debugger) SetCursor(cursor int, skipHistory bool) {
-	// TODO validate
-	d.C.CursorTx = cursor
-
-	if d.HistoryCursor == 0 && !skipHistory {
-		// add current mach if needed
-		if len(d.History) > 0 && d.History[0].MachId != d.C.id {
-			d.prependHistory(d.GetMachAddress())
-		}
-		// keeping the curent tx as history head
-		if tx := d.C.tx(d.C.CursorTx - 1); tx != nil {
-			// dup the current machine if tx differs
-			if len(d.History) > 1 && d.History[1].MachId == d.C.id &&
-				d.History[1].TxId != tx.ID {
-
-				d.prependHistory(d.History[0].Clone())
-			}
-			if len(d.History) > 0 {
-				d.History[0].TxId = tx.ID
-			}
-		}
-	}
-
-	if cursor == 0 {
-		d.lastScrolledTxTime = time.Time{}
-	} else {
-		d.lastScrolledTxTime = *d.currentTx().Time
 	}
 }
 
@@ -774,9 +744,8 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 
 		// or scroll to the last one
 		if !match {
-			d.SetCursor(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
+			d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), true)
 		}
-		d.C.CursorStep = 0
 		d.updateTimelines()
 		d.updateTxBars()
 		d.updateClientList(true)
@@ -940,14 +909,16 @@ func (d *Debugger) ScrollToTxState(e *am.Event) {
 	d.Mach.Remove1(ss.ScrollToTx, nil)
 
 	cursor, _ := e.Args["Client.cursorTx"].(int)
+	trim, _ := e.Args["trimHistory"].(bool)
 	id, ok2 := e.Args["Client.txId"].(string)
 	if ok2 {
 		// TODO lowers the index each time
 		cursor = d.C.txIndex(id) + 1
 	}
-	d.SetCursor(d.filterTxCursor(d.C, cursor, true), false)
-	// reset the step timeline
-	d.C.CursorStep = 0
+	d.SetCursor1(d.filterTxCursor(d.C, cursor, true), false)
+	if trim {
+		d.trimHistory()
+	}
 	d.updateClientList(false)
 	d.RedrawFull(false)
 }
@@ -1012,6 +983,9 @@ func (d *Debugger) ToggleFilterState(e *am.Event) {
 		d.Opts.Filters.LogLevel = am.LogDecisions
 	case filterLog4:
 		d.Opts.Filters.LogLevel = am.LogEverything
+
+	case filterReader:
+		d.Mach.Toggle1(ss.LogReaderEnabled)
 	}
 
 	stateCtx := d.Mach.NewStateCtx(ss.ToggleFilter)
@@ -1040,7 +1014,10 @@ func (d *Debugger) SwitchingClientTxState(e *am.Event) {
 		}
 
 		when := d.Mach.WhenTicks(ss.ScrollToTx, 2, ctx)
-		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.cursorTx": cursorTx})
+		d.Mach.Add1(ss.ScrollToTx, am.A{
+			"Client.cursorTx": cursorTx,
+			"trimHistory":     true,
+		})
 		<-when
 		if ctx.Err() != nil {
 			return // expired
@@ -1072,7 +1049,7 @@ func (d *Debugger) ScrollToMutTxState(e *am.Event) {
 		step = 1
 	}
 
-	for i := c.CursorTx + step; i > 0 && i < len(c.MsgTxs)+1; i = i + step {
+	for i := c.CursorTx1 + step; i > 0 && i < len(c.MsgTxs)+1; i = i + step {
 
 		msgIdx := i - 1
 		parsed := c.msgTxsParsed[msgIdx]
@@ -1092,7 +1069,10 @@ func (d *Debugger) ScrollToMutTxState(e *am.Event) {
 		}
 
 		// scroll to this tx
-		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.cursorTx": i})
+		d.Mach.Add1(ss.ScrollToTx, am.A{
+			"Client.cursorTx": i,
+			"trimHistory":     true,
+		})
 		break
 	}
 
@@ -1216,7 +1196,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 					if err != nil {
 						d.Mach.AddErr(err, nil)
 					}
-					c.CursorTx = int(math.Max(0, float64(c.CursorTx-idx)))
+					c.CursorTx1 = int(math.Max(0, float64(c.CursorTx1-idx)))
 					// re-filter
 					if d.isFiltered() {
 						d.filterClientTxs()
