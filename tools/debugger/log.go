@@ -634,22 +634,20 @@ func (d *Debugger) updateLogReader() {
 
 			case logReaderPipeIn:
 				states := amhelp.IndexesToStates(allStates, entry.states)
-				stateTitle := d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
-					states[0],
-					entry.createdAt)
 
 				// state name redirs to the moment of piping
 				nodeRef.machId = c.id
 				nodeRef.machTime = entry.createdAt
 
-				// create parent or group with previous if same state and time
-				// TODO group all, not just siblings
+				// find the piped state parent or create a new one
 				if parentPipeIn == nil {
 					parentPipeIn = cview.NewTreeNode("Pipe-in")
 				} else {
-					last := parentPipeIn.GetChildren()[len(parentPipeIn.GetChildren())-1]
-					if last.GetText() == stateTitle {
-						node = last
+					for _, child := range parentPipeIn.GetChildren() {
+						if child.GetText() == states[0] {
+							node = child
+							break
+						}
 					}
 				}
 
@@ -658,11 +656,12 @@ func (d *Debugger) updateLogReader() {
 				pipeTime := *c.tx(txIdx).Time
 
 				if node == nil {
-					node = cview.NewTreeNode(stateTitle)
+					node = cview.NewTreeNode(states[0])
+					node.SetBold(true)
 					parentPipeIn.AddChild(node)
 				}
-				node2 := cview.NewTreeNode(d.P.Sprintf("%-6s | %s",
-					capitalizeFirst(entry.pipe.String()), entry.mach))
+				node2 := cview.NewTreeNode(d.P.Sprintf("%-6s | [grey]t%d[-] %s",
+					capitalizeFirst(entry.pipe.String()), entry.createdAt, entry.mach))
 				node2.SetIndent(1)
 				node2.SetReference(&logReaderTreeRef{
 					stateNames: c.indexesToStates(entry.states),
@@ -681,28 +680,27 @@ func (d *Debugger) updateLogReader() {
 
 			case logReaderPipeOut:
 				states := amhelp.IndexesToStates(allStates, entry.states)
-				stateTitle := d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
-					states[0], entry.createdAt)
 
 				// state name redirs to the moment of piping
 				nodeRef.machId = c.id
 				nodeRef.machTime = entry.createdAt
 
-				// create parent or group with previous if same state and time
-				// TODO group all, not just siblings
+				// find the piped state parent or create a new one
 				if parentPipeOut == nil {
 					parentPipeOut = cview.NewTreeNode("Pipe-out")
 				} else {
-					l := len(parentPipeOut.GetChildren())
-					last := parentPipeOut.GetChildren()[l-1]
-					if last.GetText() == stateTitle {
-						node = last
+					for _, child := range parentPipeOut.GetChildren() {
+						if child.GetText() == states[0] {
+							node = child
+							break
+						}
 					}
 				}
 
 				// parent
 				if node == nil {
-					node = cview.NewTreeNode(stateTitle)
+					node = cview.NewTreeNode(states[0])
+					node.SetBold(true)
 					parentPipeOut.AddChild(node)
 				}
 
@@ -711,8 +709,8 @@ func (d *Debugger) updateLogReader() {
 				pipeTime := *c.tx(txIdx).Time
 
 				// pipe-out node
-				node2 := cview.NewTreeNode(d.P.Sprintf("%-6s | %s",
-					capitalizeFirst(entry.pipe.String()), entry.mach))
+				node2 := cview.NewTreeNode(d.P.Sprintf("%-6s | [grey]t%d[-] %s",
+					capitalizeFirst(entry.pipe.String()), entry.createdAt, entry.mach))
 				node2.SetIndent(1)
 				node2.SetReference(&logReaderTreeRef{
 					stateNames: c.indexesToStates(entry.states),
