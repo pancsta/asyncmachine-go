@@ -120,8 +120,8 @@ It will enable you to create autonomous workflows with organic control flow and 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 // ...
 mach := am.New(nil, am.Struct{
-"Foo": {Require: am.S{"Bar"}},
-"Bar": {},
+    "Foo": {Require: am.S{"Bar"}},
+    "Bar": {},
 }, nil)
 mach.Add1("Foo", nil)
 mach.Is1("Foo") // false
@@ -136,21 +136,21 @@ ctx := client.Mach.NewStateCtx(ssC.WorkerReady)
 whenPayload := client.Mach.WhenTicks(ssC.WorkerPayload, 1, ctx)
 // mutation
 client.WorkerRpc.Worker.Add1(ssW.WorkRequested, Pass(&A{
-Input: 2}))
+    Input: 2}))
 // WaitFor* wraps select statements
 err := amhelp.WaitForAll(ctx, time.Second,
-mach2.When1("Ready", nil),
-whenPayload)
+    mach2.When1("Ready", nil),
+    whenPayload)
 // check cancellation
 if ctx.Err() != nil {
-// state ctx expired
-return
+    // state ctx expired
+    return
 }
 // check error
 if err != nil {
-// mutation
-client.Mach.AddErr(err, nil)
-return
+    // mutation
+    client.Mach.AddErr(err, nil)
+    return
 }
 // client/WorkerPayload and mach2/Ready activated
 ```
@@ -160,19 +160,19 @@ return
 ```go
 // can Foo activate?
 func (h *Handlers) FooEnter(e *am.Event) bool {
-return true
+    return true
 }
 // can Foo activate while Bar de-activates?
 func (h *Handlers) FooBar(e *am.Event) bool {
-return true
+    return true
 }
 // Foo activates
 func (h *Handlers) FooState(e *am.Event) {
-h.foo = NewConn()
+    h.foo = NewConn()
 }
 // Foo de-activates
 func (h *Handlers) FooEnd(e *am.Event) {
-h.foo.Close()
+    h.foo.Close()
 }
 ```
 

@@ -173,12 +173,10 @@ flowchart LR
     HandlersMutation([add B])
     HandlersBefore --> HandlersMutation
     HandlersMutation --> HandlersAfter
-    HandlersMutation --> AB
     HandlersMutation --> AnyB
     HandlersMutation --> BEnter
     HandlersMutation --> BState
     subgraph Handlers
-        AB[["AB()"]]
         AnyB[["AnyB()"]]
         BEnter[["BEnter()"]]
         BState[["BState()"]]
@@ -202,14 +200,12 @@ flowchart LR
     NegotiationMutation([add B])
     NegotiationBefore --> NegotiationMutation
     NegotiationMutation --> NegotiationAfter
-    NegotiationMutation --> AB
     NegotiationMutation --> AnyB
     NegotiationMutation --> BEnter
     BEnter == return ==> false
     NegotiationMutation -. canceled .-x BState
     subgraph Negotiation
         false[[false]]
-        AB[["AB()"]]
         AnyB[["AnyB()"]]
         BEnter[["BEnter()"]]
         BState[["BState()"]]
