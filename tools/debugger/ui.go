@@ -52,6 +52,7 @@ func (d *Debugger) initUiComponents() {
 		d.draw(d.addressBar)
 	})
 	d.clientList.SetSelectedAlwaysVisible(true)
+	d.clientList.SetScrollBarColor(colorHighlight2)
 
 	// log view
 	d.log = cview.NewTextView()
@@ -64,11 +65,16 @@ func (d *Debugger) initUiComponents() {
 	d.log.SetTitle(" Log ")
 	d.log.SetHighlightForegroundColor(tcell.ColorWhite)
 	d.log.SetHighlightBackgroundColor(colorHighlight2)
+	d.log.SetScrollBarColor(colorHighlight2)
+	d.log.SetClickedFunc(func(txId string) {
+		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": txId})
+	})
 
 	// hood view
 	d.logReader = d.initLogReader()
 	d.logReader.SetTitle(" Log Reader ")
 	d.logReader.SetBorder(true)
+	d.logReader.SetScrollBarColor(colorHighlight2)
 
 	// matrix
 	d.matrix = cview.NewTable()
@@ -77,6 +83,7 @@ func (d *Debugger) initUiComponents() {
 	// TODO draw scrollbar at the right edge
 	d.matrix.SetScrollBarVisibility(cview.ScrollBarNever)
 	d.matrix.SetPadding(0, 0, 1, 0)
+	d.matrix.SetScrollBarColor(colorHighlight2)
 
 	// current tx bar
 	d.currTxBarLeft = cview.NewTextView()
@@ -265,6 +272,9 @@ func (d *Debugger) initFiltersBar() {
 	d.filtersBar.SetSelectedStyle(colorActive,
 		cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
 	d.filtersBar.SetSelectable(true, true)
+	d.filtersBar.SetBorders(false)
+
+	// click effect
 	d.filtersBar.SetSelectedFunc(func(row, column int) {
 		if column >= len(d.filters) {
 			return
@@ -400,6 +410,7 @@ func (d *Debugger) initExportDialog() *cview.Modal {
 func (d *Debugger) initHelpDialog() *cview.Flex {
 	left := cview.NewTextView()
 	left.SetBackgroundColor(colorHighlight)
+	left.SetScrollBarColor(colorHighlight2)
 	left.SetTitle(" Legend ")
 	left.SetDynamicColors(true)
 	left.SetPadding(1, 1, 1, 1)
@@ -479,6 +490,7 @@ func (d *Debugger) updateHelpDialog() {
 		d.helpDialogRight = cview.NewTextView()
 	}
 	d.helpDialogRight.SetBackgroundColor(colorHighlight)
+	d.helpDialogRight.SetScrollBarColor(colorHighlight2)
 	d.helpDialogRight.SetTitle(" Keystrokes ")
 	d.helpDialogRight.SetDynamicColors(true)
 	d.helpDialogRight.SetPadding(1, 1, 1, 1)

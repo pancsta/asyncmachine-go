@@ -56,6 +56,7 @@ func (d *Debugger) initMachineTree() *cview.TreeView {
 	tree.SetSelectedBackgroundColor(colorHighlight2)
 	tree.SetSelectedTextColor(tcell.ColorWhite)
 	tree.SetHighlightColor(colorHighlight)
+	tree.SetScrollBarColor(colorHighlight2)
 
 	// focus change within the tree
 	tree.SetChangedFunc(func(node *cview.TreeNode) {
