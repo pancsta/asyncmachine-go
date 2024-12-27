@@ -247,6 +247,7 @@ func (d *Debugger) initAddressBar() {
 
 	d.tagsBar = cview.NewTextView()
 	d.tagsBar.SetTextColor(tcell.ColorGrey)
+	d.tagsBar.SetDynamicColors(true)
 	d.updateAddressBar()
 }
 

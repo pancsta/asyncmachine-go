@@ -106,7 +106,7 @@ func AddFlags(rootCmd *cobra.Command) {
 		"Initial view (tree-log, tree-matrix, matrix)")
 	f.StringP(pStartupMach,
 		pStartupMachShort, "",
-		"Select a machine by ID on startup (requires --"+pImport+")")
+		"Select a machine by (partial) ID on startup (requires --"+pImport+")")
 
 	// TODO parse copy-paste commas, eg 1,001
 	f.IntP(pStartupTx, pStartupTxShort, 0,

@@ -896,10 +896,20 @@ func (d *Debugger) updateAddressBar() {
 	}
 
 	// tags
-	d.tagsBar.SetText("")
-	if machId != "" && len(d.C.MsgStruct.Tags) > 0 {
-		d.tagsBar.SetText("Tags: #" + strings.Join(d.C.MsgStruct.Tags, " #"))
+	tags := ""
+	if machId != "" {
+		if len(d.C.MsgStruct.Tags) > 0 {
+			tags += "[::b]#[::-]" + strings.Join(d.C.MsgStruct.Tags, " [::b]#[::-]")
+		}
+		parentTags := d.GetParentTags(d.C, nil)
+		if len(parentTags) > 0 {
+			if tags != "" {
+				tags += " ... "
+			}
+			tags += "[::b]#[::-]" + strings.Join(parentTags, " [::b]#[::-]")
+		}
 	}
+	d.tagsBar.SetText(tags)
 }
 
 func (d *Debugger) updateViews(immediate bool) {
@@ -2104,4 +2114,14 @@ func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
 	d.updateMatrixRain()
 	d.updateLog(false)
 	d.draw()
+}
+
+func (d *Debugger) GetParentTags(c *Client, tags []string) []string {
+	parent, ok := d.Clients[c.MsgStruct.Parent]
+	if !ok {
+		return tags
+	}
+	tags = slices.Concat(tags, parent.MsgStruct.Tags)
+
+	return d.GetParentTags(parent, tags)
 }
