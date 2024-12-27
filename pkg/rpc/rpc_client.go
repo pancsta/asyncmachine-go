@@ -210,7 +210,7 @@ func (c *Client) StartState(e *am.Event) {
 		whenDisposed:  make(chan struct{}),
 		machTime:      make(am.Time, len(c.stateNames)),
 		parentId:      c.Mach.Id(),
-		tags:          []string{"rpc-worker", "id:"},
+		tags:          []string{"rpc-worker", "src-id:"},
 	}
 	lvl := am.LogNothing
 	c.Worker.logLevel.Store(&lvl)
@@ -411,8 +411,8 @@ func (c *Client) HandshakingState(e *am.Event) {
 			return
 		}
 
-		// ID as tag TODO look-n-replace
-		c.Worker.tags[1] = "id:" + resp.ID
+		// ID as tag TODO find-n-replace, not via index
+		c.Worker.tags[1] = "src-id:" + resp.ID
 
 		// compare states
 		diff := am.DiffStates(c.stateNames, resp.StateNames)

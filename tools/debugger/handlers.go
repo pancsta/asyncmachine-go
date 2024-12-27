@@ -10,6 +10,7 @@ import (
 	"os"
 	"runtime"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/pancsta/cview"
@@ -23,7 +24,7 @@ import (
 )
 
 func (d *Debugger) StartState(e *am.Event) {
-	clientID, _ := e.Args["Client.id"].(string)
+	clientId, _ := e.Args["Client.id"].(string)
 	cursorTx, _ := e.Args["Client.cursorTx"].(int)
 	view, _ := e.Args["dbgView"].(string)
 
@@ -82,12 +83,21 @@ func (d *Debugger) StartState(e *am.Event) {
 		}
 
 		d.buildClientList(-1)
-		if clientID == "" {
-			ids := maps.Keys(d.Clients)
-			clientID = ids[0]
+		ids := maps.Keys(d.Clients)
+		if clientId == "" {
+			clientId = ids[0]
+		} else {
+			// partial match available client IDs
+			for _, id := range ids {
+				if strings.Contains(id, clientId) {
+					clientId = id
+					break
+				}
+			}
 		}
-		d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": clientID})
-		d.prependHistory(&MachAddress{MachId: clientID})
+		d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": clientId})
+		d.prependHistory(&MachAddress{MachId: clientId})
+		// TODO dimeout
 		<-d.Mach.When1(ss.ClientSelected, nil)
 
 		if stateCtx.Err() != nil {
