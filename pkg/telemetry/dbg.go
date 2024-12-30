@@ -262,6 +262,9 @@ func (t *DbgTracer) MachineInit(mach am.Api) context.Context {
 
 	// add to the queue
 	t.queue <- func() {
+		if mach.IsDisposed() {
+			return
+		}
 		t.c, err = newDbgClient(t.Addr)
 		if err != nil {
 			log.Printf("failed to connect to am-dbg: %s\n", err)

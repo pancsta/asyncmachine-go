@@ -31,6 +31,9 @@ type Machine struct {
 	// If true, the machine will catch panic and trigger the Exception state.
 	// Default: true.
 	PanicToException bool
+	// DisposeTimeout specifies the duration to wait for the queue do drain during
+	// disposal. Default 1s.
+	DisposeTimeout time.Duration
 
 	panicCaught bool
 	// If true, logs will start with machine's id (5 chars).
@@ -44,6 +47,8 @@ type Machine struct {
 	ctx context.Context
 	// parentId is the id of the parent machine (if any).
 	parentId string
+	// disposing disabled auto states
+	disposing atomic.Bool
 	// disposed tells if machine has been disposed and is no-op.
 	disposed     atomic.Bool
 	queueRunning atomic.Bool
@@ -122,6 +127,8 @@ func NewCommon(
 
 	if os.Getenv(EnvAmDebug) != "" {
 		machOpts = OptsWithDebug(machOpts)
+	} else if os.Getenv("AM_TEST_RUNNER") != "" {
+		machOpts.HandlerTimeout = 1 * time.Second
 	}
 
 	if parent != nil {
@@ -155,25 +162,27 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 	parsedStates := parseStruct(statesStruct)
 
 	m := &Machine{
-		id:               randID(),
 		HandlerTimeout:   100 * time.Millisecond,
-		states:           parsedStates,
-		clock:            Clock{},
-		handlers:         []*handler{},
 		LogStackTrace:    true,
 		PanicToException: true,
-		logID:            true,
 		QueueLimit:       1000,
-		indexWhen:        IndexWhen{},
-		indexWhenTime:    IndexWhenTime{},
-		indexWhenArgs:    IndexWhenArgs{},
-		indexStateCtx:    IndexStateCtx{},
-		handlerStart:     make(chan *handlerCall),
-		handlerEnd:       make(chan bool),
-		handlerTimeout:   make(chan struct{}),
-		handlerPanic:     make(chan recoveryData),
-		handlerTimer:     time.NewTimer(24 * time.Hour),
-		whenDisposed:     make(chan struct{}),
+		DisposeTimeout:   time.Second,
+
+		id:             randID(),
+		states:         parsedStates,
+		clock:          Clock{},
+		handlers:       []*handler{},
+		logID:          true,
+		indexWhen:      IndexWhen{},
+		indexWhenTime:  IndexWhenTime{},
+		indexWhenArgs:  IndexWhenArgs{},
+		indexStateCtx:  IndexStateCtx{},
+		handlerStart:   make(chan *handlerCall),
+		handlerEnd:     make(chan bool),
+		handlerTimeout: make(chan struct{}),
+		handlerPanic:   make(chan recoveryData),
+		handlerTimer:   time.NewTimer(24 * time.Hour),
+		whenDisposed:   make(chan struct{}),
 	}
 
 	m.timeLast.Store(&Time{})
@@ -285,17 +294,17 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 // Dispose disposes the machine and all its emitters. You can wait for the
 // completion of the disposal with `<-mach.WhenDisposed`.
 func (m *Machine) Dispose() {
-	// dispose in a goroutine to avoid a deadlock when called from within a
+	// doDispose in a goroutine to avoid a deadlock when called from within a
 	// handler
 
 	go func() {
 		if m.disposed.Load() {
-			m.log(LogDecisions, "[dispose] already disposed")
+			m.log(LogDecisions, "[doDispose] already disposed")
 			return
 		}
 		m.queueProcessing.Store(false)
 		m.unlockDisposed.Store(true)
-		m.dispose(false)
+		m.doDispose(false)
 	}()
 }
 
@@ -307,18 +316,31 @@ func (m *Machine) IsDisposed() bool {
 // DisposeForce disposes the machine and all its emitters, without waiting for
 // the queue to drain. Will cause panics.
 func (m *Machine) DisposeForce() {
-	m.dispose(true)
+	m.doDispose(true)
 }
 
-func (m *Machine) dispose(force bool) {
+func (m *Machine) doDispose(force bool) {
+	if m.disposed.Load() {
+		// already disposed
+		return
+	}
+	m.disposing.Store(true)
+	m.cancel()
+	if !force {
+		whenIdle := m.WhenQueueEnds(context.Background())
+		select {
+		case <-time.After(m.DisposeTimeout):
+			m.log(LogDecisions, "[doDispose] timeout waiting for queue to drain")
+		case <-whenIdle:
+		}
+	}
 	if !m.disposed.CompareAndSwap(false, true) {
 		// already disposed
 		return
 	}
-	m.cancel()
 
 	// TODO needed?
-	time.Sleep(100 * time.Millisecond)
+	// time.Sleep(100 * time.Millisecond)
 
 	m.tracersLock.RLock()
 	for i := range m.tracers {
@@ -336,18 +358,17 @@ func (m *Machine) dispose(force bool) {
 		defer m.tracersLock.Unlock()
 	}
 
-	m.log(LogEverything, "[end] dispose")
+	m.log(LogEverything, "[end] doDispose")
 	if m.Err() == nil && m.ctx.Err() != nil {
 		err := m.ctx.Err()
 		m.err.Store(&err)
 	}
-	// TODO dispose refs to other machines
+	// TODO handlers refs to other machines
 	// m.handlers = nil
 
 	m.tracers = nil
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		// TODO races with handlerLoop
 		closeSafe(m.handlerEnd)
 		closeSafe(m.handlerPanic)
 		closeSafe(m.handlerStart)
@@ -364,28 +385,32 @@ func (m *Machine) dispose(force bool) {
 		m.queueProcessing.Store(false)
 	}
 
-	// run dispose handlers
+	// run doDispose handlers
 	// TODO timeouts?
 	for _, fn := range m.disposeHandlers {
 		fn(m.id, m.ctx)
 	}
-	// TODO dispose refs to other machines
+	// TODO disposeHandlers refs to other machines
 	// m.disposeHandlers = nil
 
 	// the end
 	closeSafe(m.whenDisposed)
 }
 
-func (m *Machine) getHandlers() []*handler {
-	m.handlersLock.Lock()
-	defer m.handlersLock.Unlock()
+func (m *Machine) getHandlers(unsafe bool) []*handler {
+	if !unsafe {
+		m.handlersLock.Lock()
+		defer m.handlersLock.Unlock()
+	}
 
 	return slices.Clone(m.handlers)
 }
 
-func (m *Machine) setHandlers(handlers []*handler) {
-	m.handlersLock.Lock()
-	defer m.handlersLock.Unlock()
+func (m *Machine) setHandlers(unsafe bool, handlers []*handler) {
+	if !unsafe {
+		m.handlersLock.Lock()
+		defer m.handlersLock.Unlock()
+	}
 
 	m.handlers = handlers
 }
@@ -393,7 +418,7 @@ func (m *Machine) setHandlers(handlers []*handler) {
 // WhenErr returns a channel that will be closed when the machine is in the
 // Exception state.
 //
-// ctx: optional context that will close the channel when done.
+// ctx: optional context that will close the channel when handlerLoopDone.
 func (m *Machine) WhenErr(disposeCtx context.Context) <-chan struct{} {
 	return m.When([]string{Exception}, disposeCtx)
 }
@@ -401,7 +426,7 @@ func (m *Machine) WhenErr(disposeCtx context.Context) <-chan struct{} {
 // When returns a channel that will be closed when all the passed states
 // become active or the machine gets disposed.
 //
-// ctx: optional context that will close the channel when done.
+// ctx: optional context that will close the channel when handlerLoopDone.
 func (m *Machine) When(states S, ctx context.Context) <-chan struct{} {
 	if m.disposed.Load() {
 		return nil
@@ -439,7 +464,7 @@ func (m *Machine) When(states S, ctx context.Context) <-chan struct{} {
 	}
 	m.log(LogOps, "[when:new] %s", j(states))
 
-	// dispose with context
+	// doDispose with context
 	disposeWithCtx(m, ctx, ch, states, binding, &m.activeStatesLock, m.indexWhen,
 		fmt.Sprintf("[when:match] %s", j(states)))
 
@@ -464,7 +489,7 @@ func (m *Machine) When1(state string, ctx context.Context) <-chan struct{} {
 // WhenNot returns a channel that will be closed when all the passed states
 // become inactive or the machine gets disposed.
 //
-// ctx: optional context that will close the channel when done.
+// ctx: optional context that will close the channel when handlerLoopDone.
 func (m *Machine) WhenNot(states S, ctx context.Context) <-chan struct{} {
 	if m.disposed.Load() {
 		return nil
@@ -503,7 +528,7 @@ func (m *Machine) WhenNot(states S, ctx context.Context) <-chan struct{} {
 	}
 	m.log(LogOps, "[whenNot:new] %s", j(states))
 
-	// dispose with context
+	// doDispose with context
 	disposeWithCtx(m, ctx, ch, states, binding, &m.activeStatesLock, m.indexWhen,
 		fmt.Sprintf("[whenNot:match] %s", j(states)))
 
@@ -530,7 +555,7 @@ func (m *Machine) WhenNot1(state string, ctx context.Context) <-chan struct{} {
 // '=='. It's meant to be used with async Multi states, to filter out
 // a specific completion.
 //
-// ctx: optional context that will close the channel when done.
+// ctx: optional context that will close the channel when handlerLoopDone.
 func (m *Machine) WhenArgs(
 	state string, args A, ctx context.Context,
 ) <-chan struct{} {
@@ -564,7 +589,7 @@ func (m *Machine) WhenArgs(
 		args: args,
 	}
 
-	// dispose with context
+	// doDispose with context
 	disposeWithCtx(m, ctx, ch, S{name}, binding, &m.indexWhenArgsLock,
 		m.indexWhenArgs, fmt.Sprintf("[whenArgs:match] %s (%s)", state, argNames))
 
@@ -582,7 +607,7 @@ func (m *Machine) WhenArgs(
 // have passed the specified time. The time is a logical clock of the state.
 // Machine time can be sourced from [Machine.Time](), or [Machine.Clock]().
 //
-// ctx: optional context that will close the channel when done.
+// ctx: optional context that will close the channel when handlerLoopDone.
 func (m *Machine) WhenTime(
 	states S, times Time, ctx context.Context,
 ) <-chan struct{} {
@@ -644,7 +669,7 @@ func (m *Machine) WhenTime(
 	}
 	m.log(LogOps, "[whenTime:new] %s %s", jw(states, ","), times)
 
-	// dispose with context
+	// doDispose with context
 	logMsg := fmt.Sprintf("[whenTime:match] %s %s", jw(states, ","), times)
 	disposeWithCtx(m, ctx, ch, states, binding, &m.activeStatesLock,
 		m.indexWhenTime, logMsg)
@@ -660,7 +685,7 @@ func (m *Machine) WhenTime(
 // WhenTicks waits N ticks of a single state (relative to now). Uses WhenTime
 // underneath.
 //
-// ctx: optional context that will close the channel when done.
+// ctx: optional context that will close the channel when handlerLoopDone.
 func (m *Machine) WhenTicks(
 	state string, ticks int, ctx context.Context,
 ) <-chan struct{} {
@@ -670,7 +695,7 @@ func (m *Machine) WhenTicks(
 // WhenTicksEq waits till ticks for a single state equal the given value (or
 // more). Uses WhenTime underneath.
 //
-// ctx: optional context that will close the channel when done.
+// ctx: optional context that will close the channel when handlerLoopDone.
 func (m *Machine) WhenTicksEq(
 	state string, ticks uint64, ctx context.Context,
 ) <-chan struct{} {
@@ -679,7 +704,7 @@ func (m *Machine) WhenTicksEq(
 
 // WhenQueueEnds closes every time the queue ends, or the optional ctx expires.
 //
-// ctx: optional context that will close the channel when done.
+// ctx: optional context that will close the channel when handlerLoopDone.
 func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan struct{} {
 	if m.disposed.Load() {
 		return nil
@@ -702,7 +727,7 @@ func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan struct{} {
 		ch: ch,
 	}
 
-	// dispose with context
+	// doDispose with context
 	// TODO extract
 	if ctx != nil {
 		go func() {
@@ -798,7 +823,9 @@ func (m *Machine) TimeSum(states S) uint64 {
 // transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (m *Machine) Add(states S, args A) Result {
-	if m.disposed.Load() || int(m.queueLen.Load()) >= m.QueueLimit {
+	if m.disposed.Load() || m.disposing.Load() ||
+		int(m.queueLen.Load()) >= m.QueueLimit {
+
 		return Canceled
 	}
 	m.queueMutation(MutationAdd, states, args, nil)
@@ -838,8 +865,9 @@ func (m *Machine) AddErr(err error, args A) Result {
 // Like every mutation method, it will resolve relations and trigger handlers.
 // AddErrState produces a stack trace of the error, if LogStackTrace is enabled.
 func (m *Machine) AddErrState(state string, err error, args A) Result {
-	// TODO AddErrStates
-	if m.disposed.Load() {
+	if m.disposed.Load() || m.disposing.Load() ||
+		int(m.queueLen.Load()) >= m.QueueLimit {
+
 		return Canceled
 	}
 	// TODO test Err()
@@ -883,7 +911,7 @@ func (m *Machine) PanicToErr(args A) {
 // the passed state. Needs to be called in a defer statement, just like a
 // recover() call.
 func (m *Machine) PanicToErrState(state string, args A) {
-	if !m.PanicToException || m.disposed.Load() {
+	if !m.PanicToException || m.disposed.Load() || m.disposing.Load() {
 		return
 	}
 	r := recover()
@@ -917,7 +945,9 @@ func (m *Machine) Err() error {
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (m *Machine) Remove(states S, args A) Result {
-	if m.disposed.Load() || int(m.queueLen.Load()) >= m.QueueLimit {
+	if m.disposed.Load() || m.disposing.Load() ||
+		int(m.queueLen.Load()) >= m.QueueLimit {
+
 		return Canceled
 	}
 
@@ -1173,7 +1203,7 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	}
 	m.log(LogOps, "[eval] %s", source)
 
-	// wrap the func with a done channel
+	// wrap the func with a handlerLoopDone channel
 	done := make(chan struct{})
 	canceled := atomic.Bool{}
 	wrap := func() {
@@ -1315,8 +1345,8 @@ func (m *Machine) BindHandlers(handlers any) error {
 	}
 
 	h := m.newHandler(handlers, name, &v, methodNames)
-	old := m.getHandlers()
-	m.setHandlers(append(old, h))
+	old := m.getHandlers(false)
+	m.setHandlers(false, append(old, h))
 	m.log(LogOps, "[handlers] bind %s", name)
 
 	return nil
@@ -1324,21 +1354,29 @@ func (m *Machine) BindHandlers(handlers any) error {
 
 // DetachHandlers detaches previously bound machine handlers.
 func (m *Machine) DetachHandlers(handlers any) error {
-	old := m.getHandlers()
+	m.handlersLock.Lock()
+	defer m.handlersLock.Unlock()
 
+	old := m.getHandlers(true)
+	var match *handler
+	var matchIndex int
 	for i, h := range old {
 		if h.h == handlers {
-			m.setHandlers(slices.Delete(old, i, i+1))
-			m.Eval("DetachHandlers", func() {
-				h.dispose()
-			}, nil)
-			m.log(LogOps, "[handlers] detach %s", h.name)
-
-			return nil
+			match = h
+			matchIndex = i
+			break
 		}
 	}
 
-	return errors.New("handlers not bound")
+	if match == nil {
+		return errors.New("handlers not bound")
+	}
+
+	m.setHandlers(true, slices.Delete(old, matchIndex, matchIndex+1))
+	match.dispose()
+	m.log(LogOps, "[handlers] detach %s", match.name)
+
+	return nil
 }
 
 // newHandler creates a new handler for Machine.
@@ -1674,12 +1712,11 @@ func (m *Machine) processQueue() Result {
 			item.eval()
 			continue
 		}
-		newTransition(m, item)
+		t := newTransition(m, item)
 
 		// execute the transition
-		ret = append(ret, m.t.Load().emitEvents())
-
-		m.timeLast.Store(&m.t.Load().TimeAfter)
+		ret = append(ret, t.emitEvents())
+		m.timeLast.Store(&t.TimeAfter)
 
 		// process flow methods
 		m.processWhenBindings()
@@ -1918,7 +1955,7 @@ func (m *Machine) processWhenArgs(e *Event) {
 		// FooState -> Foo
 		name := e.Name[0 : len(e.Name)-len("State")]
 		m.log(LogOps, "[whenArgs:match] %s (%s)", name, argNames)
-		// args match - dispose and close outside the mutex
+		// args match - doDispose and close outside the mutex
 		chToClose = append(chToClose, binding.ch)
 
 		// GC
@@ -2114,7 +2151,7 @@ func (m *Machine) GetLogLevel() LogLevel {
 func (m *Machine) handle(
 	name string, args A, step *Step, locked bool,
 ) (Result, bool) {
-	if m.disposed.Load() {
+	if m.disposing.Load() {
 		return Canceled, false
 	}
 	e := &Event{
@@ -2173,13 +2210,13 @@ func (m *Machine) handle(
 }
 
 func (m *Machine) processHandlers(e *Event) (Result, bool) {
-	if m.disposed.Load() {
+	if m.disposing.Load() {
 		return Canceled, false
 	}
 
 	handlerCalled := false
-	handlers := m.getHandlers()
-	for i := 0; !m.disposed.Load() && i < len(handlers); i++ {
+	handlers := m.getHandlers(false)
+	for i := 0; !m.disposing.Load() && i < len(handlers); i++ {
 		h := handlers[i]
 
 		// internal event
@@ -2322,10 +2359,7 @@ func (m *Machine) handlerLoop() {
 		select {
 
 		case <-m.ctx.Done():
-			// dispose with context
-			v, _ := m.ctx.Value(CtxKey).(CtxValue)
-			m.log(LogOps, "[dispose] ctx done %v", v)
-			m.Dispose()
+			m.handlerLoopDone()
 			return
 
 		case call, ok := <-m.handlerStart:
@@ -2353,10 +2387,7 @@ func (m *Machine) handlerLoop() {
 			// wait for result / timeout / context
 			select {
 			case <-m.ctx.Done():
-				// dispose with context
-				v, _ := m.ctx.Value(CtxKey).(CtxValue)
-				m.log(LogOps, "[dispose] ctx done %v", v)
-				m.Dispose()
+				m.handlerLoopDone()
 				return
 			case <-m.handlerTimeout:
 				continue
@@ -2364,18 +2395,29 @@ func (m *Machine) handlerLoop() {
 				// pass
 			}
 
+			// needed to avoid racing
+			if m.ctx.Err() != nil {
+				m.handlerLoopDone()
+				return
+			}
+
+			// pass the result to handlerLoop
 			select {
 			case <-m.ctx.Done():
-				// dispose with context
-				v, _ := m.ctx.Value(CtxKey).(CtxValue)
-				m.log(LogOps, "[dispose] ctx done %v", v)
-				m.Dispose()
+				m.handlerLoopDone()
 				return
 
 			case m.handlerEnd <- ret:
 			}
 		}
 	}
+}
+
+func (m *Machine) handlerLoopDone() {
+	// doDispose with context
+	v, _ := m.ctx.Value(CtxKey).(CtxValue)
+	m.log(LogOps, "[doDispose] ctx handlerLoopDone %v", v)
+	m.Dispose()
 }
 
 // detectQueueDuplicates checks for duplicated mutations
@@ -2713,6 +2755,9 @@ func (m *Machine) CountActive(states S) int {
 // HandleDispose adds a function to be called when the machine is
 // disposed. This function will block before mach.WhenDispose is closed.
 func (m *Machine) HandleDispose(fn HandlerDispose) {
+	m.handlersLock.Lock()
+	defer m.handlersLock.Unlock()
+
 	m.disposeHandlers = append(m.disposeHandlers, fn)
 }
 
@@ -2783,7 +2828,9 @@ func (m *Machine) SetStruct(statesStruct Struct, names S) error {
 
 // TODO doc
 func (m *Machine) EvAdd(event *Event, states S, args A) Result {
-	if m.disposed.Load() || int(m.queueLen.Load()) >= m.QueueLimit {
+	if m.disposed.Load() || m.disposing.Load() ||
+		int(m.queueLen.Load()) >= m.QueueLimit {
+
 		return Canceled
 	}
 	m.queueMutation(MutationAdd, states, args, event)
@@ -2799,7 +2846,9 @@ func (m *Machine) EvAdd1(event *Event, states string, args A) Result {
 
 // TODO doc
 func (m *Machine) EvRemove(event *Event, states S, args A) Result {
-	if m.disposed.Load() || int(m.queueLen.Load()) >= m.QueueLimit {
+	if m.disposed.Load() || m.disposing.Load() ||
+		int(m.queueLen.Load()) >= m.QueueLimit {
+
 		return Canceled
 	}
 
@@ -2839,8 +2888,9 @@ func (m *Machine) EvAddErr(event *Event, err error, args A) Result {
 func (m *Machine) EvAddErrState(
 	event *Event, state string, err error, args A,
 ) Result {
-	// TODO AddErrStates
-	if m.disposed.Load() {
+	if m.disposed.Load() || m.disposing.Load() ||
+		int(m.queueLen.Load()) >= m.QueueLimit {
+
 		return Canceled
 	}
 	// TODO test Err()

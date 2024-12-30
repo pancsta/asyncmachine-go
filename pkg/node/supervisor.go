@@ -584,8 +584,8 @@ func (s *Supervisor) WorkerForkedState(e *am.Event) {
 			return // expired
 		}
 		info.mx.Lock()
-		defer info.mx.Unlock()
 		if ctx.Err() != nil {
+			info.mx.Unlock()
 			return // expired
 		}
 
@@ -594,6 +594,7 @@ func (s *Supervisor) WorkerForkedState(e *am.Event) {
 		info.w = wrpc.Worker
 		info.publicAddr = args.PublicAddr
 		info.localAddr = addr
+		info.mx.Unlock()
 		s.workers.Set(addr, info)
 
 		// custom pipe worker states
@@ -923,11 +924,11 @@ func (s *Supervisor) AllWorkers() []*workerInfo {
 func (s *Supervisor) InitingWorkers() []*workerInfo {
 	var ret []*workerInfo
 	for _, info := range s.AllWorkers() {
-		// info.mx.RLock()
+		info.mx.RLock()
 		if info.rpc == nil {
 			ret = append(ret, info)
 		}
-		// info.mx.RUnlock()
+		info.mx.RUnlock()
 	}
 
 	return ret
@@ -937,11 +938,11 @@ func (s *Supervisor) InitingWorkers() []*workerInfo {
 func (s *Supervisor) RpcWorkers() []*workerInfo {
 	var ret []*workerInfo
 	for _, info := range s.AllWorkers() {
-		// info.mx.RLock()
+		info.mx.RLock()
 		if info.rpc != nil && info.rpc.Worker != nil {
 			ret = append(ret, info)
 		}
-		// info.mx.RUnlock()
+		info.mx.RUnlock()
 	}
 
 	return ret
@@ -951,12 +952,12 @@ func (s *Supervisor) RpcWorkers() []*workerInfo {
 func (s *Supervisor) IdleWorkers() []*workerInfo {
 	var ret []*workerInfo
 	for _, info := range s.RpcWorkers() {
-		// info.mx.RLock()
+		info.mx.RLock()
 		w := info.rpc.Worker
 		if !info.hasErrs() && w.Is1(ssW.Idle) {
 			ret = append(ret, info)
 		}
-		// info.mx.RUnlock()
+		info.mx.RUnlock()
 	}
 
 	return ret
@@ -966,13 +967,13 @@ func (s *Supervisor) IdleWorkers() []*workerInfo {
 func (s *Supervisor) BusyWorkers() []*workerInfo {
 	var ret []*workerInfo
 	for _, info := range s.RpcWorkers() {
-		// info.mx.RLock()
+		info.mx.RLock()
 		w := info.rpc.Worker
 		if !info.hasErrs() && info.rpc != nil &&
 			w.Any1(sgW.WorkStatus...) && !w.Is1(ssW.Idle) {
 			ret = append(ret, info)
 		}
-		// info.mx.RUnlock()
+		info.mx.RUnlock()
 	}
 
 	return ret
@@ -982,12 +983,12 @@ func (s *Supervisor) BusyWorkers() []*workerInfo {
 func (s *Supervisor) ReadyWorkers() []*workerInfo {
 	var ret []*workerInfo
 	for _, info := range s.RpcWorkers() {
-		// info.mx.RLock()
+		info.mx.RLock()
 		w := info.rpc.Worker
 		if !info.hasErrs() && info.rpc != nil && w.Is1(ssW.Ready) {
 			ret = append(ret, info)
 		}
-		// info.mx.RUnlock()
+		info.mx.RUnlock()
 	}
 
 	return ret

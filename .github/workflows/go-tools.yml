@@ -1,4 +1,4 @@
-name: Go Test /pkg/tools
+name: Go Test /tools
 
 on: [push]
 

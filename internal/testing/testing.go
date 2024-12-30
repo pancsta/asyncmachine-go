@@ -55,18 +55,23 @@ func NewRpcTest(
 	}
 
 	// Server init
-	s, err := rpc.NewServer(ctx, addr, t.Name(), worker, nil)
+	s, err := rpc.NewServer(ctx, addr, t.Name(), worker, &rpc.ServerOpts{
+		Parent: worker,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Listener = listener
+	s.Listener.Store(&listener)
 	amhelpt.MachDebug(t, s.Mach, amDbgAddr, logLvl, stdout)
 	// let it settle
 	time.Sleep(10 * time.Millisecond)
 
 	// Client init
 	c, err := rpc.NewClient(ctx, addr, t.Name(), worker.GetStruct(),
-		worker.StateNames(), &rpc.ClientOpts{Consumer: consumer})
+		worker.StateNames(), &rpc.ClientOpts{
+			Consumer: consumer,
+			Parent:   worker,
+		})
 	if err != nil {
 		t.Fatal(err)
 	}

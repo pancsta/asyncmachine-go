@@ -451,7 +451,7 @@ func (t *Transition) emitEvents() Result {
 	// AUTO STATES
 	if result == Canceled {
 		t.Accepted = false
-	} else if hasStateChanged && !t.IsAuto() {
+	} else if !m.disposing.Load() && hasStateChanged && !t.IsAuto() {
 
 		autoMutation := m.resolver.GetAutoMutation()
 		if autoMutation != nil {
@@ -464,7 +464,7 @@ func (t *Transition) emitEvents() Result {
 		}
 	}
 
-	// handlers done, collect previous log entries
+	// handlers handlerLoopDone, collect previous log entries
 	m.logEntriesLock.Lock()
 	t.PreLogEntries = m.logEntries
 	t.QueueLen = int(m.queueLen.Load())

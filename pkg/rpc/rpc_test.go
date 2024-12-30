@@ -461,8 +461,9 @@ func TestRetryConn(t *testing.T) {
 
 	// test
 	_, _, s, c := NewTest(t, ctx, nil, nil, nil, nil, true)
-	addr := s.Listener.Addr()
-	s.Listener.Close()
+	lis := *s.Listener.Load()
+	addr := lis.Addr()
+	lis.Close()
 	s.Addr = addr.String()
 
 	go func() {
@@ -564,7 +565,8 @@ func TestRetryClosedListener(t *testing.T) {
 	_, _, s, c := NewTest(t, ctx, nil, nil, nil, nil, false)
 
 	// close the listener and try a mutation
-	_ = s.Listener.Close()
+	lis := *s.Listener.Load()
+	_ = lis.Close()
 	time.Sleep(100 * time.Millisecond)
 	c.Worker.Add1(sstest.D, nil)
 
@@ -615,7 +617,7 @@ func (c *TestPayloadConsumer) WorkerPayloadState(e *am.Event) {
 
 func TestPayload(t *testing.T) {
 	// t.Parallel()
-	amhelp.EnableDebugging(false)
+	// amhelp.EnableDebugging(false)
 
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
@@ -670,15 +672,18 @@ func TestMux(t *testing.T) {
 	serverAddr := listener.Addr().String()
 	connAddr := serverAddr
 
-	// worker init
+	// init source & mux
 	w := utils.NewRelsRpcWorker(t, nil)
 	amhelpt.MachDebugEnv(t, w)
+	mux, err := NewMux(ctx, t.Name(), nil, &MuxOpts{
+		Parent: w,
+	})
 
 	// client fac
 	newC := func(num int) *Client {
 		name := fmt.Sprintf("%s-%d", t.Name(), num)
-		c, err := NewClient(ctx, connAddr, name, w.GetStruct(),
-			w.StateNames(), nil)
+		c, err := NewClient(ctx, connAddr, name, w.GetStruct(), w.StateNames(),
+			&ClientOpts{Parent: mux.Mach})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -687,7 +692,6 @@ func TestMux(t *testing.T) {
 		return c
 	}
 
-	mux, err := NewMux(ctx, t.Name(), nil, nil)
 	// server fac
 	mux.NewServerFn = func(num int, _ net.Conn) (*Server, error) {
 		name := fmt.Sprintf("%s-%d", t.Name(), num)
@@ -788,12 +792,14 @@ func NewTest(
 	}
 
 	// server init
-	s, err := NewServer(ctx, serverAddr, t.Name(), worker, nil)
+	s, err := NewServer(ctx, serverAddr, t.Name(), worker, &ServerOpts{
+		Parent: worker,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// set the test listener to avoid port conflicts
-	s.Listener = listener
+	s.Listener.Store(&listener)
 	amhelpt.MachDebugEnv(t, s.Mach)
 	if clockInterval != nil {
 		s.PushInterval = *clockInterval
@@ -803,7 +809,10 @@ func NewTest(
 
 	// client init
 	c, err := NewClient(ctx, connAddr, t.Name(), worker.GetStruct(),
-		worker.StateNames(), &ClientOpts{Consumer: consumer})
+		worker.StateNames(), &ClientOpts{
+			Consumer: consumer,
+			Parent:   worker,
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
