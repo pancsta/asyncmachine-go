@@ -4,7 +4,7 @@
 
 > [!NOTE]
 > **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a [clock-based state machine](/pkg/machine/README.md).
+> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
 
 Table of contents:
 
@@ -131,13 +131,11 @@ Interactively use the [TUI debugger](/tools/cmd/am-dbg) with data pre-generated 
 
 ## Case Studies
 
-Bigger implementations worth reading:
-
+- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
   simulator for libp2p-pubsub.
 - [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
   Benchmark of libp2p-pubsub ported to asyncmachine-go.
-- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
 
 ## monorepo
 

@@ -4,15 +4,23 @@
 
 > [!NOTE]
 > **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a [clock-based state machine](/pkg/machine/README.md).
+> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
 
-**/pkg/machine** is a nondeterministic, multi-state, clock-based, relational, optionally-accepting, and non-blocking
-state machine. It can orchestrate blocking APIs into fully-controllable async state machines with ease. Write ops are
-[state mutations](/docs/manual.md#mutations) and read ops are [state checking](/docs/manual.md#active-states).
+**/pkg/machine** is a nondeterministic, multi-state, clock-based, relational, optionally accepting, and non-blocking
+state machine. It's a form of a rules engine that can orchestrate blocking APIs into fully controllable async state
+machines. Write ops are [state mutations](/docs/manual.md#mutations) and read ops are [state checking](/docs/manual.md#active-states).
+
+## Installation
+
+`import am "github.com/pancsta/asyncmachine-go/pkg/machine"`
 
 ## Features
 
-### [Many active states](/docs/manual.md#introduction)
+Features are explained using Mermaid flow diagrams, and headers link to relevant sections of the [manual](/docs/manual.md).
+
+### [Multi-state](/docs/manual.md#introduction)
+
+Many states can be active at the same time.
 
 ```mermaid
 flowchart LR
@@ -32,6 +40,8 @@ flowchart LR
 ```
 
 ### [Clock and state contexts](/docs/manual.md#clock-and-context)
+
+States have clocks that produce contexts (odd = active; even = inactive).
 
 ```mermaid
 flowchart LR
@@ -65,6 +75,8 @@ flowchart LR
 
 ### [Queue](/docs/manual.md#queue-and-history)
 
+Queue of mutations enable lock-free [Actor Model](https://en.wikipedia.org/wiki/Actor_model).
+
 ```mermaid
 flowchart LR
     Machine[[Machine]]
@@ -85,6 +97,8 @@ flowchart LR
 ```
 
 ### [AOP handlers](/docs/manual.md#transition-handlers)
+
+States are [Aspects](https://en.wikipedia.org/wiki/Aspect-oriented_programming) with Enter, State, Exit, and End handlers.
 
 ```mermaid
 flowchart LR
@@ -112,6 +126,8 @@ flowchart LR
 ```
 
 ### [Negotiation](/docs/manual.md#transition-lifecycle)
+
+Transitions are cancellable (during the negotiation phase).
 
 ```mermaid
 flowchart LR
@@ -142,6 +158,8 @@ flowchart LR
 
 ### [Relations](/docs/manual.md#relations)
 
+States are connected via Require, Remove, and Add relations.
+
 ```mermaid
 flowchart LR
     Wet(Wet)
@@ -154,6 +172,8 @@ flowchart LR
 ```
 
 ### [Subscriptions](/docs/manual.md#waiting)
+
+Goroutine-free waiting on clock values.
 
 ```mermaid
 flowchart LR
@@ -191,6 +211,8 @@ flowchart LR
 
 ### [Error handling](/docs/manual.md#error-handling)
 
+Error is a state, handled just like any other mutation.
+
 ```go
 val, err := someOp()
 if err != nil {
@@ -200,6 +222,8 @@ if err != nil {
 ```
 
 ### [Tracers](/docs/manual.md#tracing-and-metrics)
+
+Synchronouse tracers for internal events.
 
 ```text
 TransitionInit TransitionStart TransitionEnd HandlerStart HandlerEnd
@@ -411,13 +435,11 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 ## Case Studies
 
-Bigger implementations worth reading:
-
+- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
   simulator for libp2p-pubsub.
 - [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
   Benchmark of libp2p-pubsub ported to asyncmachine-go.
-- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
 
 ## Documentation
 

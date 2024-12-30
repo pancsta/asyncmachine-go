@@ -33,7 +33,7 @@
 > State machines communicate through states (mutations, checking, and waiting).
 
 **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a [clock-based state machine](/pkg/machine/README.md).
+and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
 It has atomic transitions, relations, [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
 [telemetry](/pkg/telemetry/README.md), [workers](/pkg/node/README.md), and soon diagrams.
 
@@ -139,7 +139,7 @@ client.WorkerRpc.Worker.Add1(ssW.WorkRequested, Pass(&A{
     Input: 2}))
 // WaitFor* wraps select statements
 err := amhelp.WaitForAll(ctx, time.Second,
-    mach2.When1("Ready", nil),
+    mach2.When1(ss.BasicStatesDef.Ready, nil),
     whenPayload)
 // check cancellation
 if ctx.Err() != nil {
@@ -209,13 +209,12 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 ## Getting Started
 
 [`/pkg/machine`](pkg/machine/README.md) is a mandatory ready, while the code of [`/pkg/node`](pkg/node/supervisor.go) is
-the most interesting one. Examples in [`/examples`](/examples/README.md) and [`/docs/manual.md`](/docs/manual.md) are
-good for a general grasp, while [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details. Reading
-tests is always a good idea.
+the most interesting one. Examples in [`/examples`](/examples/README.md) are good for a general grasp, while [`/docs/manual.md`](/docs/manual.md)
+and [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details. Reading tests is always a good idea.
 
 ## Packages
 
-This monorepo offer the following importable packages and runnable tools:
+This monorepo offers the following importable packages and runnable tools:
 
 - [`/pkg/helpers`](/pkg/helpers/README.md) Useful functions when working with async state machines.
 - [`/pkg/history`](/pkg/history/README.md) History tracking and traversal.
