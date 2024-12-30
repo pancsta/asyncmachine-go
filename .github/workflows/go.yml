@@ -1,4 +1,4 @@
-name: Go Test
+name: Go Test (basic)
 
 on: [push]
 
@@ -54,18 +54,12 @@ jobs:
 
       # run
 
-      - name: Test serial
-        run: task test-series
-
-      - name: Test parallel
+      - name: Test
         run: task test-coverage
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Test race
-        run: task test-race
 
       - name: Test coverage pkg
         run: task test-coverage-pkg

@@ -99,8 +99,6 @@ tasks:
           --log-2-ttl 5m
           --prof-srv :6050
           {{.CLI_ARGS}}
-  #          --log-file am-dbg-dbg.log
-  #          --log-level 2
 
   am-dbg-worker:
     desc: Run am-dbg as an RPC worker, optionally starting the dbg RPC server via -server-addr
@@ -119,8 +117,6 @@ tasks:
         ./tools/cmd/am-dbg -- 
           --clean-on-connect 
           {{.CLI_ARGS}}
-#          --log-level 2
-#          --log-file am-dbg.log
 
   test:
     env:
@@ -130,19 +126,24 @@ tasks:
       - task: clean
       - go test ./... {{.CLI_ARGS}}
 
-  test-count:
+  test-path:
     env:
       AM_TEST_RUNNER: 1
-    cmd: task --silent test -- -v | grep -o "PASS:" | wc -l > tests.txt
-
-  test-count-pkg:
-    env:
-      AM_TEST_RUNNER: 1
+    desc: Run tests for a provided path
     cmds:
       - task: clean
-      - go test ./pkg/... -v | grep -o "PASS:" | wc -l > tests-pkg.txt
+      - go test {{.CLI_ARGS}}
+      - go test -race {{.CLI_ARGS}}
+
+  test-count:
+    cmd: grep -r --include="*_test.go"  "^func Test" ./ | wc -l > tests.txt
+
+  test-count-pkg:
+    cmd: grep -r --include="*_test.go"  "^func Test" ./pkg | wc -l > tests-pkg.txt
 
   test-coverage:
+    env:
+      AM_TEST_RUNNER: 1
     cmds:
       - task test -- -coverprofile=coverage.txt -covermode=atomic >
           coverage.sum.txt
@@ -154,7 +155,7 @@ tasks:
       AM_TEST_RUNNER: 1
     cmds:
       - task: clean
-      - go test ./pkg/... -coverprofile=coverage-pkg.txt -covermode=atomic
+      - go test -p 1 ./pkg/... -coverprofile=coverage-pkg.txt -covermode=atomic
       - go tool cover -func=coverage-pkg.txt | grep total | awk '{print $3}' >
           coverage-pkg.sum.txt
 
