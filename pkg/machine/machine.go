@@ -356,6 +356,8 @@ func (m *Machine) doDispose(force bool) {
 		defer m.indexWhenArgsLock.Unlock()
 		m.tracersLock.Lock()
 		defer m.tracersLock.Unlock()
+		m.handlersLock.Lock()
+		defer m.handlersLock.Unlock()
 	}
 
 	m.log(LogEverything, "[end] doDispose")
@@ -363,8 +365,7 @@ func (m *Machine) doDispose(force bool) {
 		err := m.ctx.Err()
 		m.err.Store(&err)
 	}
-	// TODO handlers refs to other machines
-	// m.handlers = nil
+	m.handlers = nil
 
 	m.tracers = nil
 	go func() {
@@ -1354,6 +1355,10 @@ func (m *Machine) BindHandlers(handlers any) error {
 
 // DetachHandlers detaches previously bound machine handlers.
 func (m *Machine) DetachHandlers(handlers any) error {
+	if m.disposing.Load() {
+		return nil
+	}
+
 	m.handlersLock.Lock()
 	defer m.handlersLock.Unlock()
 
@@ -2217,45 +2222,48 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 	handlerCalled := false
 	handlers := m.getHandlers(false)
 	for i := 0; !m.disposing.Load() && i < len(handlers); i++ {
-		h := handlers[i]
-
 		// internal event
 		if e.step == nil {
 			break
 		}
 
-		name := e.Name
+		h := handlers[i]
+		h.mx.Lock()
+		methodName := e.Name
+		handlerName := h.name
 
 		if m.GetLogLevel() >= LogEverything {
-
-			emitterID := truncateStr(h.name, 15)
+			emitterID := truncateStr(handlerName, 15)
 			emitterID = padString(strings.ReplaceAll(emitterID, " ", "_"), 15, "_")
-			m.log(LogEverything, "[handle:%-15s] %s", emitterID, name)
+			m.log(LogEverything, "[handle:%-15s] %s", emitterID, methodName)
 		}
 
 		// cache
-		_, ok := h.missingCache[name]
+		_, ok := h.missingCache[methodName]
 		if ok {
+			h.mx.Unlock()
 			continue
 		}
-		method, ok := h.methodCache[name]
+		method, ok := h.methodCache[methodName]
 		if !ok {
-			method = h.methods.MethodByName(name)
+			method = h.methods.MethodByName(methodName)
 
 			// support field handlers
 			if !method.IsValid() {
-				method = h.methods.Elem().FieldByName(name)
+				method = h.methods.Elem().FieldByName(methodName)
 			}
 			if !method.IsValid() {
-				h.missingCache[name] = struct{}{}
+				h.missingCache[methodName] = struct{}{}
+				h.mx.Unlock()
 				continue
 			}
-			h.methodCache[name] = method
+			h.methodCache[methodName] = method
 		}
+		h.mx.Unlock()
 
 		// call the handler
-		m.log(LogOps, "[handler:%d] %s", i, name)
-		m.currentHandler.Store(name)
+		m.log(LogOps, "[handler:%d] %s", i, methodName)
+		m.currentHandler.Store(methodName)
 		var ret bool
 		var timeout bool
 		handlerCalled = true
@@ -2263,12 +2271,12 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		// tracers
 		m.tracersLock.RLock()
 		for i := range m.tracers {
-			m.tracers[i].HandlerStart(m.t.Load(), h.name, name)
+			m.tracers[i].HandlerStart(m.t.Load(), handlerName, methodName)
 		}
 		m.tracersLock.RUnlock()
 		handlerCall := &handlerCall{
 			fn:      method,
-			name:    name,
+			name:    methodName,
 			event:   e,
 			timeout: false,
 		}
@@ -2291,7 +2299,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 			m.handlerTimeout <- struct{}{}
 			m.log(LogOps, "[cancel] (%s) by timeout",
 				j(m.t.Load().TargetStates()))
-			m.AddErr(fmt.Errorf("%w: %s", ErrHandlerTimeout, name), nil)
+			m.AddErr(fmt.Errorf("%w: %s", ErrHandlerTimeout, methodName), nil)
 			timeout = true
 
 		case r := <-m.handlerPanic:
@@ -2309,7 +2317,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		// tracers
 		m.tracersLock.RLock()
 		for i := range m.tracers {
-			m.tracers[i].HandlerEnd(m.t.Load(), h.name, name)
+			m.tracers[i].HandlerEnd(m.t.Load(), handlerName, methodName)
 		}
 		m.tracersLock.RUnlock()
 
@@ -3017,7 +3025,10 @@ func (m *Machine) BindTracer(tracer Tracer) error {
 // DetachTracer tries to remove a tracer from the machine. Returns true if the
 // tracer was found and removed.
 func (m *Machine) DetachTracer(tracer Tracer) bool {
-	// TODO error
+	// TODO refac: return error
+	if m.disposing.Load() {
+		return true
+	}
 	m.tracersLock.Lock()
 	defer m.tracersLock.Unlock()
 
