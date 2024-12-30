@@ -32,6 +32,8 @@ type Server struct {
 	*ExceptionHandler
 	Mach *am.Machine
 
+	// Source is a state Source, either a local or remote RPC worker.
+	Source am.Api
 	// Addr is the address of the server on the network.
 	Addr            string
 	DeliveryTimeout time.Duration
@@ -44,7 +46,7 @@ type Server struct {
 	// handlers. TODO implement
 	PushAllTicks bool
 	// Listener can be set manually before starting the server.
-	Listener net.Listener
+	Listener atomic.Pointer[net.Listener]
 	// Conn can be set manually before starting the server.
 	Conn net.Conn
 	// NoNewListener will prevent the server from creating a new listener if
@@ -56,8 +58,6 @@ type Server struct {
 	// AllowId will limit clients to a specific ID, if set.
 	AllowId string
 
-	// source is a state source, either a local or remote RPC worker.
-	source    am.Api
 	rpcServer *rpc2.Server
 	rpcClient atomic.Pointer[rpc2.Client]
 	// lastClockHTime is the last (human) time a clock update was sent to the
@@ -113,7 +113,7 @@ func NewServer(
 		PushInterval:     250 * time.Millisecond,
 		DeliveryTimeout:  5 * time.Second,
 		LogEnabled:       os.Getenv(EnvAmRpcLogServer) != "",
-		source:           sourceMach,
+		Source:           sourceMach,
 	}
 	var sum uint64
 	s.lastClockSum.Store(&sum)
@@ -125,6 +125,15 @@ func NewServer(
 		return nil, err
 	}
 	mach.SetLogArgs(LogArgs)
+	mach.HandleDispose(func(id string, ctx context.Context) {
+		if l := s.Listener.Load(); l != nil {
+			_ = (*l).Close()
+			s.Listener.Store(nil)
+		}
+		s.rpcServer = nil
+		s.Source.DetachTracer(s.tracer)
+		_ = s.Source.DetachHandlers(s.deliveryHandlers)
+	})
 	s.Mach = mach
 
 	// bind to worker via Tracer API
@@ -168,20 +177,13 @@ func NewServer(
 // ///// ///// /////
 
 func (s *Server) StartEnd(e *am.Event) {
-	args := ParseArgs(e.Args)
-
-	if args.Dispose {
-		s.log("disposing")
+	if ParseArgs(e.Args).Dispose {
 		s.Mach.Dispose()
-		s.Listener = nil
-		s.rpcServer = nil
-		s.source.DetachTracer(s.tracer)
-		_ = s.source.DetachHandlers(s.deliveryHandlers)
 	}
 }
 
 func (s *Server) RpcStartingEnter(e *am.Event) bool {
-	if s.Listener == nil && s.NoNewListener {
+	if s.Listener.Load() == nil && s.NoNewListener {
 		return false
 	}
 	if s.Addr == "" {
@@ -207,9 +209,9 @@ func (s *Server) RpcStartingState(e *am.Event) {
 
 		if s.Conn != nil {
 			s.Addr = s.Conn.LocalAddr().String()
-		} else if s.Listener != nil {
+		} else if l := s.Listener.Load(); l != nil {
 			// update Addr from listener (support for external and :0)
-			s.Addr = s.Listener.Addr().String()
+			s.Addr = (*l).Addr().String()
 		} else {
 			// create a listener if not provided
 			// use Start as the context
@@ -224,23 +226,38 @@ func (s *Server) RpcStartingState(e *am.Event) {
 				return
 			}
 
-			s.Listener = lis
+			s.Listener.Store(&lis)
 			// update Addr from listener (support for external and :0)
-			s.Addr = s.Listener.Addr().String()
+			s.Addr = lis.Addr().String()
 		}
 
 		s.log("RPC started on %s", s.Addr)
 
+		// fork to accept
 		go func() {
 			if ctxRpcStarting.Err() != nil {
 				return // expired
 			}
 			s.Mach.EvAdd1(e, ssS.RpcReady, Pass(&A{Addr: s.Addr}))
 
+			// accept (block)
+			lisP := s.Listener.Load()
 			if s.Conn != nil {
 				srv.ServeConn(s.Conn)
 			} else {
-				srv.Accept(s.Listener)
+				srv.Accept(*lisP)
+			}
+			if ctxStart.Err() != nil {
+				return // expired
+			}
+
+			// clean up
+			if lisP != nil {
+				(*lisP).Close()
+				s.Listener.Store(nil)
+			}
+			if ctxRpcStarting.Err() != nil {
+				return // expired
 			}
 
 			// restart on failed listener
@@ -273,7 +290,9 @@ func (s *Server) RpcReadyState(e *am.Event) {
 	}
 
 	ctx := s.Mach.NewStateCtx(ssS.RpcReady)
-	s.ticker = time.NewTicker(s.PushInterval)
+	if s.ticker == nil {
+		s.ticker = time.NewTicker(s.PushInterval)
+	}
 
 	// avoid dispose
 	t := s.ticker
@@ -297,14 +316,7 @@ func (s *Server) RpcReadyState(e *am.Event) {
 	}()
 }
 
-func (s *Server) RpcReadyEnd(e *am.Event) {
-	// TODO tell the client Bye to gracefully disconn
-	if s.Listener != nil {
-		_ = s.Listener.Close()
-		s.Listener = nil
-	}
-	// s.rpcServer = nil
-}
+// TODO tell the client Bye to gracefully disconn
 
 func (s *Server) HandshakeDoneEnd(e *am.Event) {
 	if c := s.rpcClient.Load(); c != nil {
@@ -467,7 +479,7 @@ func (s *Server) genClockUpdate(skipTimeCheck bool) ClockMsg {
 		return nil
 	}
 	hTime := time.Now()
-	mTime := s.source.Time(nil)
+	mTime := s.Source.Time(nil)
 
 	// exit if no change since the last sync
 	var sum uint64
@@ -504,10 +516,10 @@ func (s *Server) RemoteHello(
 	// TODO GetStruct and Time inside Eval
 	// TODO check if client here is the same as RespHandshakeAck
 
-	mTime := s.source.Time(nil)
+	mTime := s.Source.Time(nil)
 	*resp = RespHandshake{
-		ID:         s.source.Id(),
-		StateNames: s.source.StateNames(),
+		ID:         s.Source.Id(),
+		StateNames: s.Source.StateNames(),
 		Time:       mTime,
 	}
 
@@ -548,7 +560,7 @@ func (s *Server) RemoteHandshake(
 		return fmt.Errorf("%w: %s != %s", ErrNoAccess, *id, s.AllowId)
 	}
 
-	sum := s.source.TimeSum(nil)
+	sum := s.Source.TimeSum(nil)
 	s.log("RemoteHandshake: t%v", sum)
 
 	// accept the client
@@ -582,11 +594,11 @@ func (s *Server) RemoteAdd(
 	var val am.Result
 	s.skipClockPush.Store(true)
 	if args.Event != nil {
-		val = s.source.EvAdd(args.Event, amhelp.IndexesToStates(
-			s.source.StateNames(), args.States), args.Args)
+		val = s.Source.EvAdd(args.Event, amhelp.IndexesToStates(
+			s.Source.StateNames(), args.States), args.Args)
 	} else {
 		// TODO eval
-		val = s.source.Add(amhelp.IndexesToStates(s.source.StateNames(),
+		val = s.Source.Add(amhelp.IndexesToStates(s.Source.StateNames(),
 			args.States), args.Args)
 	}
 
@@ -616,7 +628,7 @@ func (s *Server) RemoteAddNS(
 
 	// execute
 	s.skipClockPush.Store(true)
-	_ = s.source.Add(amhelp.IndexesToStates(s.source.StateNames(), args.States),
+	_ = s.Source.Add(amhelp.IndexesToStates(s.Source.StateNames(), args.States),
 		args.Args)
 	s.skipClockPush.Store(false)
 
@@ -639,7 +651,7 @@ func (s *Server) RemoteRemove(
 
 	// execute
 	s.skipClockPush.Store(true)
-	val := s.source.Remove(amhelp.IndexesToStates(s.source.StateNames(),
+	val := s.Source.Remove(amhelp.IndexesToStates(s.Source.StateNames(),
 		args.States), args.Args)
 	s.skipClockPush.Store(false)
 
@@ -667,7 +679,7 @@ func (s *Server) RemoteSet(
 
 	// execute
 	s.skipClockPush.Store(true)
-	val := s.source.Set(amhelp.IndexesToStates(s.source.StateNames(),
+	val := s.Source.Set(amhelp.IndexesToStates(s.Source.StateNames(),
 		args.States), args.Args)
 	s.skipClockPush.Store(false)
 
@@ -687,9 +699,9 @@ func (s *Server) RemoteSync(
 	}
 	s.log("RemoteSync")
 
-	if s.source.TimeSum(nil) > sum {
+	if s.Source.TimeSum(nil) > sum {
 		*resp = RespSync{
-			Time: s.source.Time(nil),
+			Time: s.Source.Time(nil),
 		}
 	} else {
 		*resp = RespSync{}

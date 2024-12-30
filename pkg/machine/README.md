@@ -12,7 +12,9 @@ machines. Write ops are [state mutations](/docs/manual.md#mutations) and read op
 
 ## Installation
 
-`import am "github.com/pancsta/asyncmachine-go/pkg/machine"`
+```go
+import am "github.com/pancsta/asyncmachine-go/pkg/machine"
+```
 
 ## Features
 

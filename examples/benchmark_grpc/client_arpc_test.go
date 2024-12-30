@@ -40,7 +40,7 @@ func BenchmarkClientArpc(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	serverAddr := s.RPC.Listener.Addr().String()
+	serverAddr := s.RPC.Addr
 
 	// monitor traffic
 	counterListener := utils.RandListener("localhost")
@@ -49,7 +49,8 @@ func BenchmarkClientArpc(b *testing.B) {
 	go arpc.TrafficMeter(counterListener, serverAddr, counter, end)
 
 	// init client
-	c, err := arpc.NewClient(ctx, connAddr, "worker", states.WorkerStruct, ss.Names(), nil)
+	c, err := arpc.NewClient(ctx, connAddr, "worker", states.WorkerStruct,
+		ss.Names(), nil)
 	if err != nil {
 		b.Fatal(err)
 	}
