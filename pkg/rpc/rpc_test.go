@@ -419,6 +419,7 @@ func TestRetryCall(t *testing.T) {
 	c.Worker.Add1(sstest.A, nil)
 	amhelpt.WaitForAll(t, "RetryingCall", ctx, 2*time.Second, whenRetrying)
 
+	//.TODO amtest
 	assert.True(t, s.Mach.Is1(ssrpc.ServerStates.Ready), "Server ready")
 	assert.True(t, s.Mach.Is1(ssrpc.ClientStates.Ready), "Client ready")
 
@@ -443,6 +444,7 @@ func TestRetryCall(t *testing.T) {
 
 	wg.Wait()
 
+	// TODO amtest asserts
 	assert.True(t, w.Is1(sstest.D), "Worker state set")
 	assert.True(t, s.Mach.Is1(ssrpc.ServerStates.Ready), "Server ready")
 	assert.True(t, s.Mach.Is1(ssrpc.ClientStates.Ready), "Client ready")

@@ -37,14 +37,16 @@ and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-
 It has atomic transitions, relations, [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
 [telemetry](/pkg/telemetry/README.md), [workers](/pkg/node/README.md), and soon diagrams.
 
-Its main purpose is workflows (both in-process and distributed), although it can be used for a wide range of
-applications - UIs, bots, agents, stateful firewalls, consensus algos, etc. **asyncmachine** can precisely (and
+Its main purpose is workflows (in-process or distributed), although it can be used for a wide range of
+stateful applications - daemons, UIs, bots, agents, firewalls, consensus algos, etc. **asyncmachine** can precisely (and
 transparently) target a specific point in a scenario and easily bring structure to event-based systems. It takes care of
 most contexts, `select` statements, and panics.
 
-It will enable you to create autonomous workflows with organic control flow and stateful APIs.
+It aims at creating **autonomous** workflows with **organic** control flow and **stateful** APIs.
 
 ## Stack
+
+Top layers depend on the bottom ones.
 
 <table>
   <tr>
@@ -139,18 +141,19 @@ client.WorkerRpc.Worker.Add1(ssW.WorkRequested, Pass(&A{
     Input: 2}))
 // WaitFor* wraps select statements
 err := amhelp.WaitForAll(ctx, time.Second,
+    // post-mutation subscription
     mach2.When1(ss.BasicStatesDef.Ready, nil),
+    // pre-mutation subscription
     whenPayload)
 // check cancellation
 if ctx.Err() != nil {
-    // state ctx expired
-    return
+    return // state ctx expired
 }
 // check error
 if err != nil {
     // mutation
     client.Mach.AddErr(err, nil)
-    return
+    return // no err required
 }
 // client/WorkerPayload and mach2/Ready activated
 ```
@@ -162,7 +165,7 @@ if err != nil {
 func (h *Handlers) FooEnter(e *am.Event) bool {
     return true
 }
-// can Foo activate while Bar de-activates?
+// when Foo active, can Bar activate?
 func (h *Handlers) FooBar(e *am.Event) bool {
     return true
 }

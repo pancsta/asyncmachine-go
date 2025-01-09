@@ -41,16 +41,21 @@ type Generator struct {
 
 // TODO return err
 func (g *Generator) parseParams(p cli.SFParams) {
-	for _, inherit := range strings.Split(p.Inherit, ",") {
-		switch inherit {
-		case "basic":
-			g.Mach.Add1(ssG.InheritBasic, nil)
-		case "connected":
-			g.Mach.Add1(ssG.InheritConnected, nil)
-		case "rpc/worker":
-			g.Mach.Add1(ssG.InheritRpcWorker, nil)
-		case "node/worker":
-			g.Mach.Add1(ssG.InheritNodeWorker, nil)
+	if p.Inherit != "" {
+		for _, inherit := range strings.Split(p.Inherit, ",") {
+			switch inherit {
+			case "basic":
+				g.Mach.Add1(ssG.InheritBasic, nil)
+			case "connected":
+				g.Mach.Add1(ssG.InheritConnected, nil)
+			case "rpc/worker":
+				g.Mach.Add1(ssG.InheritRpcWorker, nil)
+			case "node/worker":
+				g.Mach.Add1(ssG.InheritNodeWorker, nil)
+			default:
+				// TODO err
+				panic(fmt.Sprintf("unknown inherit: %s", inherit))
+			}
 		}
 	}
 

@@ -12,10 +12,10 @@ role in making informed decision about state flow. Besides providing a log of ch
 
 - [`History.ActivatedRecently(state, duration)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/history#History.ActivatedRecently)
 
-## Import
+### Installation
 
 ```go
-import "github.com/pancsta/asyncmachine-go/pkg/history"
+import amhist "github.com/pancsta/asyncmachine-go/pkg/states/history"
 ```
 
 ## Usage

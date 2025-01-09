@@ -20,11 +20,12 @@ Highlights:
 - [test helpers](#test-helpers)
 - [miscellaneous utils](#miscellaneous-utils)
 
-## Import
+## Installation
 
 ```go
+// prod
 import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
-// for tests
+// tests
 import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 ```
 

@@ -170,7 +170,7 @@ func assertOrder(t *testing.T, history *History, handlers []string) {
 func assertEventCountsMin(t *testing.T, history *History, expected int) {
 	// assert event counts
 	for event, count := range history.Counter {
-		assert.GreaterOrEqual(t, expected, count, "event %s call count", event)
+		assert.GreaterOrEqual(t, count, expected, "event %s call count", event)
 	}
 }
 

@@ -10,6 +10,12 @@
 supervision, as well as state machines for workers and clients. All actors communicate via [aRPC](/pkg/rpc/README.md),
 as each worker is started in a separate OS process.
 
+### Installation
+
+```go
+import amnode "github.com/pancsta/asyncmachine-go/pkg/node"
+```
+
 ## Workflow Rules
 
 - worker can serve only **1 client**
