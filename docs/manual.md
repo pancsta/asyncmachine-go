@@ -582,19 +582,25 @@ goroutine, with a timeout of [`Machine.HandlerTimeout`](https://pkg.go.dev/githu
 **Example** - handlers for the state Foo
 
 ```go
+// can Foo activate?
 func (h *Handlers) FooEnter(e *am.Event) bool {}
+// when Foo active, can Bar activate?
+func (h *Handlers) FooBar(e *am.Event) {}
+// Foo activates
 func (h *Handlers) FooState(e *am.Event) {}
+// can Foo de-activate?
 func (h *Handlers) FooExit(e *am.Event) bool {}
+// Foo de-activates
 func (h *Handlers) FooEnd(e *am.Event) {}
 ```
 
 List of handlers during a transition from `Foo` to `Bar`, in the order of execution:
 
 - `FooExit` - [negotiation handler](#negotiation-handlers)
-- `FooBar` - [negotiation handler](#negotiation-handlers)
 - `FooAny` - [negotiation handler](#negotiation-handlers)
 - `AnyBar` - [negotiation handler](#negotiation-handlers)
 - `BarEnter` - [negotiation handler](#negotiation-handlers)
+- `FooBar` - [negotiation handler](#negotiation-handlers)
 - `FooEnd` - [final handler](#final-handlers)
 - `BarState` - [final handler](#final-handlers)
 

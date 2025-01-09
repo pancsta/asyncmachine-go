@@ -145,8 +145,9 @@ tasks:
     env:
       AM_TEST_RUNNER: 1
     cmds:
-      - task test -- -coverprofile=coverage.txt -covermode=atomic >
-          coverage.sum.txt
+      - task test -p 1 --parallel 1 -- 
+          -coverprofile=coverage.txt -covermode=atomic >
+            coverage.sum.txt
       - go tool cover -func=coverage.txt | grep total | awk '{print $3}' >
           coverage.sum.txt
 
@@ -155,7 +156,8 @@ tasks:
       AM_TEST_RUNNER: 1
     cmds:
       - task: clean
-      - go test -p 1 ./pkg/... -coverprofile=coverage-pkg.txt -covermode=atomic
+      - go test -p 1 --parallel 1 ./pkg/... 
+          -coverprofile=coverage-pkg.txt -covermode=atomic
       - go tool cover -func=coverage-pkg.txt | grep total | awk '{print $3}' >
           coverage-pkg.sum.txt
 
@@ -165,7 +167,7 @@ tasks:
     desc: Run all local tests in a series
     cmds:
       - task: clean
-      - go test -p 1 ./... {{.CLI_ARGS}}
+      - go test -p 1 --parallel 1 ./... {{.CLI_ARGS}}
 
   test-race:
     env:

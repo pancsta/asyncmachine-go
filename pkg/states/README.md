@@ -14,30 +14,28 @@ offers tooling for "piping" states between state machines.
 - [BasicStatesDef](/pkg/states/ss_basic.go): Start, Ready, Healthcheck
 - [ConnectedStatesDef](/pkg/states/ss_connected.go): Client connection in 4 states
 
+## Installation States
+
+```go
+import ssam "github.com/pancsta/asyncmachine-go/pkg/states"
+```
+
 ## Examples
 
 ### Inherit from BasicStatesDef manually
 
 ```go
-import (
-    "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
-)
-
 // inherit from RPC worker
-ssStruct := am.StructMerge(states.BasicStruct, am.Struct{
+ssStruct := am.StructMerge(ssam.BasicStruct, am.Struct{
     "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
 })
-ssNames := am.SAdd(states.BasicStates.Names(), am.S{"Foo", "Bar"})
+ssNames := am.SAdd(ssam.BasicStates.Names(), am.S{"Foo", "Bar"})
 ```
 
 ### Inherit from BasicStatesDef via a definition
 
 ```go
-import (
-    ss "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
-)
-
 // MyMachStatesDef contains all the states of the MyMach state machine.
 type MyMachStatesDef struct {
     *am.StatesBase
@@ -83,26 +81,21 @@ Each module can export their own pipes, like [`/pkg/rpc`](/pkg/rpc) and [`/pkg/n
 - `BindErr`
 - `BindReady`
 
-### Using Pipes
+### Installation Pipes
 
 ```go
 import ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
+```
 
-// ...
+### Using Pipes
 
+```go
 ampipe.BindReady(rpcClient.Mach, myMach, "RpcReady", "")
 ```
 
 ### Piping Manually
 
 ```go
-import (
-    am "github.com/pancsta/asyncmachine-go/pkg/machine"
-    ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
-)
-
-// ...
-
 var source *am.Machine
 var target *am.Machine
 

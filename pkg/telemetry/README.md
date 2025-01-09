@@ -133,7 +133,6 @@ Loki is the easiest way to persist distributed logs from asyncmachine. You'll ne
 ```go
 import (
     "github.com/ic2hrmk/promtail"
-
     am "github.com/pancsta/asyncmachine-go/pkg/machine"
     amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )

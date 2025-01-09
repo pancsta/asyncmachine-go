@@ -31,6 +31,7 @@ type Transition struct {
 	Machine *Machine
 	// Api is a subset of Machine.
 	// TODO call when applicable instead of calling Machine
+	// TODO rename to MachApi
 	Api Api
 	// LogEntries are log msgs produced during the transition.
 	LogEntries []*LogEntry
@@ -296,6 +297,7 @@ func (t *Transition) emitSelfEvents() Result {
 		if !t.Machine.Is(S{s}) {
 			continue
 		}
+
 		name := s + s
 		step := newStep(s, "", StepHandler, 0)
 		step.IsSelf = true
@@ -307,6 +309,7 @@ func (t *Transition) emitSelfEvents() Result {
 			break
 		}
 	}
+
 	return ret
 }
 
@@ -314,11 +317,13 @@ func (t *Transition) emitEnterEvents() Result {
 	for _, toState := range t.Enters {
 		args := t.Mutation.Args
 
+		// AnyFoo
 		ret := t.emitHandler(Any, toState, Any+toState, args)
 		if ret == Canceled {
 			return ret
 		}
 
+		// FooEnter
 		ret = t.emitHandler("", toState, toState+"Enter", args)
 		if ret == Canceled {
 			return ret
@@ -330,22 +335,19 @@ func (t *Transition) emitEnterEvents() Result {
 
 func (t *Transition) emitExitEvents() Result {
 	for _, from := range t.Exits {
+		// FooEnter
 		ret := t.emitHandler(from, "", from+"Exit", t.Mutation.Args)
 		if ret == Canceled {
 			return ret
 		}
-		for _, state := range t.TargetStates() {
-			handler := from + state
-			ret = t.emitHandler(from, state, handler, t.Mutation.Args)
-			if ret == Canceled {
-				return ret
-			}
-		}
+
+		// FooAny
 		ret = t.emitHandler(from, Any, from+Any, nil)
 		if ret == Canceled {
 			return ret
 		}
 	}
+
 	return Executed
 }
 
@@ -394,6 +396,33 @@ func (t *Transition) emitFinalEvents() Result {
 	return Executed
 }
 
+func (t *Transition) emitStateStateEvents() Result {
+	for _, sb := range t.StatesBefore() {
+		for _, sa := range t.TargetStates() {
+			if sb == sa {
+				continue
+			}
+
+			handler := sb + sa
+			step := newStep(sb, sa, StepHandler, 0)
+			t.latestStep = step
+			ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args, step,
+				false)
+
+			if handlerCalled {
+				t.addSteps(step)
+			}
+
+			// final handler cancel means timeout
+			if ret == Canceled {
+				return ret
+			}
+		}
+	}
+
+	return Executed
+}
+
 func (t *Transition) emitEvents() Result {
 	m := t.Machine
 	result := Executed
@@ -426,6 +455,11 @@ func (t *Transition) emitEvents() Result {
 		result = t.emitEnterEvents()
 	}
 
+	// BarFoo
+	if result != Canceled {
+		result = t.emitStateStateEvents()
+	}
+
 	// global AnyAny handler
 	if result != Canceled {
 		result = t.emitHandler(Any, Any, Any+Any, t.Mutation.Args)
@@ -435,8 +469,9 @@ func (t *Transition) emitEvents() Result {
 	if result != Canceled {
 
 		m.setActiveStates(t.CalledStates(), t.TargetStates(), t.IsAuto())
+		// FooState
+		// FooEnd
 		result = t.emitFinalEvents()
-
 		hasStateChanged = !m.IsTime(t.TimeBefore, nil)
 	}
 

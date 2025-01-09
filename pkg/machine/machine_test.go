@@ -228,7 +228,7 @@ func TestSingleToSingleStateTransition(t *testing.T) {
 
 	// expectations
 	events := []string{
-		"AExit", "AC", "AAny", "BExit", "BC", "BAny", "AnyC", "CEnter", "CState",
+		"AExit", "AAny", "BExit", "BAny", "AnyC", "CEnter", "AC", "BC", "CState",
 	}
 	history := trackTransitions(m)
 
@@ -255,7 +255,7 @@ func TestSingleToMultiStateTransition(t *testing.T) {
 	t.Parallel()
 	m := NewNoRels(t, S{"A"})
 	events := []string{
-		"AExit", "AB", "AC", "AAny", "AnyB", "BEnter", "AnyC", "CEnter",
+		"AExit", "AAny", "AnyB", "BEnter", "AnyC", "CEnter", "AB", "AC",
 		"BState", "CState",
 	}
 	history := trackTransitions(m)
@@ -281,8 +281,8 @@ func TestMultiToMultiStateTransition(t *testing.T) {
 	t.Parallel()
 	m := NewNoRels(t, S{"A", "B"})
 	events := []string{
-		"AExit", "AD", "AC", "AAny", "BExit", "BD", "BC", "BAny",
-		"AnyD", "DEnter", "AnyC", "CEnter", "CState",
+		"AExit", "AAny", "BExit", "BAny", "AnyD", "DEnter", "AnyC", "CEnter", "AD",
+		"AC", "BD", "BC", "CState",
 	}
 	history := trackTransitions(m)
 	// transition
@@ -307,8 +307,7 @@ func TestMultiToSingleStateTransition(t *testing.T) {
 	t.Parallel()
 	m := NewNoRels(t, S{"A", "B"})
 	events := []string{
-		"AExit", "AC", "AAny", "BExit", "BC", "BAny", "AnyC",
-		"CEnter", "CState",
+		"AExit", "AAny", "BExit", "BAny", "AnyC", "CEnter", "AC", "BC", "CState",
 	}
 	history := trackTransitions(m)
 	// transition
@@ -360,7 +359,7 @@ func TestAfterRelationWhenEntering(t *testing.T) {
 	m.states["A"] = State{After: S{"B"}}
 
 	// history
-	events := []string{"AD", "AC", "AnyD", "DEnter", "AnyC", "CEnter"}
+	events := []string{"AnyD", "DEnter", "AnyC", "CEnter", "AD", "AC"}
 	history := trackTransitions(m)
 
 	// test
@@ -388,7 +387,7 @@ func TestAfterRelationWhenExiting(t *testing.T) {
 	m.states["A"] = State{After: S{"B"}}
 
 	// history
-	events := []string{"BExit", "BD", "BC", "BAny", "AExit", "AD", "AC", "AAny"}
+	events := []string{"BExit", "BAny", "AExit", "AAny", "AD", "AC", "BD", "BC"}
 	history := trackTransitions(m)
 
 	// test
@@ -844,7 +843,7 @@ func (h *TestHandlerStateInfoHandlers) DEnter(e *Event) {
 	assert.True(t, e.Mutation().StateWasCalled("D"),
 		"provide the called states of the transition")
 	txStrExp := "D (requested)\nD (set)\nA (remove)\nA (handler)\n" +
-		"A -> D (handler)\nA -> Any (handler)\nAny -> D (handler)"
+		"A -> Any (handler)\nAny -> D (handler)"
 	txStr := e.Transition().String()
 	assert.Equal(t, txStrExp, txStr,
 		"provide a string version of the transition")
@@ -1027,6 +1026,69 @@ func TestHandlerArgs(t *testing.T) {
 	<-m.WhenDisposed()
 }
 
+func TestHandlerStateState(t *testing.T) {
+	t.Parallel()
+
+	// spies
+	ab := false
+	ba := false
+
+	// init
+	m := NewNoRels(t, S{"A"})
+	_ = m.BindHandlers(&struct {
+		AB HandlerNegotiation
+		BA HandlerNegotiation
+	}{
+		AB: func(e *Event) bool {
+			ab = true
+			return true
+		},
+		BA: func(e *Event) bool {
+			ba = true
+			return true
+		},
+	})
+
+	// test
+	m.Add1("B", nil)
+
+	// assert
+	assert.True(t, ab)
+	assert.False(t, ba)
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+func TestHandlerNegotiationStateState(t *testing.T) {
+	t.Parallel()
+
+	// init
+	m := NewNoRels(t, S{"A"})
+	_ = m.BindHandlers(&struct {
+		AB HandlerNegotiation
+		BA HandlerNegotiation
+	}{
+		AB: func(e *Event) bool {
+			return false
+		},
+		BA: func(e *Event) bool {
+			return true
+		},
+	})
+
+	// test
+	res := m.Add1("B", nil)
+
+	// assert
+	assert.Equal(t, Canceled, res)
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
 func TestHandlersAsFields(t *testing.T) {
 	t.Parallel()
 	// init
@@ -1102,7 +1164,7 @@ func TestSelfHandlersOrder(t *testing.T) {
 	m := NewNoRels(t, S{"A"})
 
 	// bind history
-	events := []string{"AA", "AnyB", "BEnter", "BState"}
+	events := []string{"AA", "AnyB", "BEnter", "AB", "BState"}
 	history := trackTransitions(m)
 
 	// test

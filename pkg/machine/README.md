@@ -119,10 +119,12 @@ flowchart LR
     HandlersMutation --> HandlersAfter
     HandlersMutation --> AnyB
     HandlersMutation --> BEnter
+    HandlersMutation --> AB
     HandlersMutation --> BState
     subgraph Handlers
         AnyB[["AnyB()"]]
         BEnter[["BEnter()"]]
+        AB[["AB()"]]
         BState[["BState()"]]
     end
 ```
@@ -149,11 +151,13 @@ flowchart LR
     NegotiationMutation --> AnyB
     NegotiationMutation --> BEnter
     BEnter == return ==> false
+    NegotiationMutation  -. canceled .-x  AB
     NegotiationMutation -. canceled .-x BState
     subgraph Negotiation
         false[[false]]
         AnyB[["AnyB()"]]
         BEnter[["BEnter()"]]
+        AB[["AB()"]]
         BState[["BState()"]]
     end
 ```
@@ -175,7 +179,7 @@ flowchart LR
 
 ### [Subscriptions](/docs/manual.md#waiting)
 
-Goroutine-free waiting on clock values.
+Channel-broadcast waiting on clock values.
 
 ```mermaid
 flowchart LR
@@ -607,6 +611,23 @@ func TestWhenArgs(t *testing.T) {
 ## Status
 
 Release Candidate, semantically versioned, not optimized yet.
+
+## Concepts
+
+**asyncmachine** is loosely based on the following concepts:
+
+- [NFA nondeterministic state machines](https://en.wikipedia.org/wiki/Nondeterministic_finite_automaton)
+- [EDA event emitters](https://en.wikipedia.org/wiki/Event-driven_architecture)
+- [queue](https://en.wikipedia.org/wiki/Queue_(abstract_data_type))
+- [AOP aspect oriented programming](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
+- [SQL relations](https://en.wikipedia.org/wiki/SQL)
+- [Paxos negotiation](https://en.wikipedia.org/wiki/Paxos_(computer_science))
+- [Non-blocking](https://en.wikipedia.org/wiki/Non-blocking_algorithm)
+- [Actor Model](https://en.wikipedia.org/wiki/Actor_model)
+- [DAG dependency graph](https://en.wikipedia.org/wiki/Dependency_graph)
+- [logical clock](https://en.wikipedia.org/wiki/Logical_clock)
+- [causal inference](https://en.wikipedia.org/wiki/Causal_inference)
+- [declarative logic](https://en.wikipedia.org/wiki/Declarative_programming)
 
 ## monorepo
 

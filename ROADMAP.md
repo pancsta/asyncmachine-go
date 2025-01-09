@@ -6,6 +6,7 @@
 - rpc handlers
 - go1.22 traces
 - inference
+- better support for updating states struct
 - optimizations
 - manual updated to a spec
 
