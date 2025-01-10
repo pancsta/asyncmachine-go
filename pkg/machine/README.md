@@ -8,7 +8,8 @@
 
 **/pkg/machine** is a nondeterministic, multi-state, clock-based, relational, optionally accepting, and non-blocking
 state machine. It's a form of a rules engine that can orchestrate blocking APIs into fully controllable async state
-machines. Write ops are [state mutations](/docs/manual.md#mutations) and read ops are [state checking](/docs/manual.md#active-states).
+machines. Write ops are [state mutations](/docs/manual.md#mutations), read ops are [state checking](/docs/manual.md#active-states),
+and subscriptions are [state waiting](/docs/manual.md#waiting).
 
 ## Installation
 

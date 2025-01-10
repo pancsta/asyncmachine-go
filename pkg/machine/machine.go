@@ -63,6 +63,7 @@ type Machine struct {
 	t              atomic.Pointer[Transition]
 	transitionLock sync.RWMutex
 	// states is a map of state names to state definitions.
+	// TODO refac: schema
 	states     Struct
 	statesLock sync.RWMutex
 	// activeStates is list of currently active states.
@@ -2798,6 +2799,7 @@ func (m *Machine) Queue() []*Mutation {
 
 // GetStruct returns a copy of machine's state structure.
 func (m *Machine) GetStruct() Struct {
+	// TODO refac: Schema
 	m.statesLock.RLock()
 	defer m.statesLock.RUnlock()
 
@@ -2809,6 +2811,7 @@ func (m *Machine) GetStruct() Struct {
 // Note: it's not recommended to change the states structure of a machine which
 // has already produced transitions.
 func (m *Machine) SetStruct(statesStruct Struct, names S) error {
+	// TODO refac: SetSchema
 	m.statesLock.RLock()
 	defer m.statesLock.RUnlock()
 	m.queueLock.RLock()
