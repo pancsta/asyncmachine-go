@@ -5,6 +5,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/lithammer/dedent"
@@ -175,11 +176,15 @@ func assertEventCountsMin(t *testing.T, history *History, expected int) {
 }
 
 func captureLog(t *testing.T, m *Machine, log *string) {
+	mx := sync.Mutex{}
 	m.SetLogLevel(LogEverything)
 	m.SetLogger(func(i LogLevel, msg string, args ...any) {
 		if os.Getenv(EnvAmDebug) != "" {
 			t.Logf(msg+"\n", args...)
 		}
+		mx.Lock()
+		defer mx.Unlock()
+
 		*log += fmt.Sprintf(msg+"\n", args...)
 	})
 }

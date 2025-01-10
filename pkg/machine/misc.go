@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -363,9 +364,10 @@ type StateIsActive map[string]bool
 
 // handler represents a single event consumer, synchronized by channels.
 type handler struct {
-	h            any
-	name         string
-	disposed     bool
+	h    any
+	name string
+	mx   sync.Mutex
+	// disposed     bool
 	methods      *reflect.Value
 	methodNames  []string
 	methodCache  map[string]reflect.Value
@@ -373,11 +375,12 @@ type handler struct {
 }
 
 func (e *handler) dispose() {
-	e.disposed = true
-	e.methods = nil
-	e.methodCache = nil
-	e.methodNames = nil
-	e.h = nil
+	// TODO check if this leaks
+	// e.disposed = true
+	// e.methods = nil
+	// e.methodCache = nil
+	// e.methodNames = nil
+	// e.h = nil
 }
 
 // ///// ///// /////

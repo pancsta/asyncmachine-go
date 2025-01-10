@@ -12,6 +12,7 @@ import (
 // ///// ///// /////
 
 // Struct is a map of state names to state definitions.
+// TODO refac: Schema
 type Struct = map[string]State
 
 type StatesBase struct {
