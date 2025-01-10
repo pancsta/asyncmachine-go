@@ -95,8 +95,8 @@ func (d *Debugger) StartState(e *am.Event) {
 				}
 			}
 		}
-		d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": clientId})
 		d.prependHistory(&MachAddress{MachId: clientId})
+		d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": clientId})
 		// TODO dimeout
 		<-d.Mach.When1(ss.ClientSelected, nil)
 

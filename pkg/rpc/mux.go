@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"log"
 	"net"
 	"os"
 	"strconv"
@@ -27,8 +26,9 @@ type Mux struct {
 	*am.ExceptionHandler
 	Mach *am.Machine
 
-	Name        string
-	Addr        string
+	Name string
+	Addr string
+	// The listener used by this Mux, can be set manually before Start().
 	Listener    net.Listener
 	LogEnabled  bool
 	NewServerFn MuxNewServer
@@ -71,7 +71,9 @@ func NewMux(
 
 func (m *Mux) ExceptionState(e *am.Event) {
 	m.ExceptionHandler.ExceptionState(e)
-	// TODO restart
+	// TODO restart depending on Start, err, and backoff
+	// errors.Is(err, cmux.ErrListenerClosed)
+	// errors.Is(err, cmux.ErrServerClosed)
 }
 
 func (m *Mux) NewServerErrEnter(e *am.Event) bool {
@@ -166,9 +168,10 @@ func (m *Mux) accept(l net.Listener) {
 	}))
 
 	for {
+		// TODO handle ErrListenerClosed and ErrServerClosed
 		conn, err := l.Accept()
 		if err != nil {
-			log.Println(err)
+
 			mach.AddErr(err, nil)
 			continue
 		}
@@ -195,13 +198,13 @@ func (m *Mux) accept(l net.Listener) {
 		} else {
 			server, err = m.NewServerFn(int(num), conn)
 		}
-
-		// inject net.Conn
 		if err != nil {
 			_ = conn.Close()
 			mach.Log("failed to create a new server: %s", err)
 			continue
 		}
+
+		// inject net.Conn
 		server.Conn = conn
 		server.Start()
 

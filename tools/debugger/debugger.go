@@ -1302,9 +1302,9 @@ func (d *Debugger) updateClientList(immediate bool) {
 	}()
 }
 
-// TODO rewrite
+// TODO rewrite, update via a state
 func (d *Debugger) doUpdateClientList(immediate bool) {
-	if d.Mach.IsDisposed() {
+	if d.Mach.IsDisposed() || d.Mach.Is1(ss.SelectingClient) {
 		return
 	}
 

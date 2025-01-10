@@ -453,6 +453,7 @@ func TestRetryCall(t *testing.T) {
 	disposeTest(t, c, s, false)
 }
 
+// TODO flaky (timeout)
 func TestRetryConn(t *testing.T) {
 	// t.Parallel()
 	// amhelp.EnableDebugging(false)
