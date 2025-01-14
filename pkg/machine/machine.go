@@ -2761,8 +2761,10 @@ func (m *Machine) CountActive(states S) int {
 	return c
 }
 
-// HandleDispose adds a function to be called when the machine is
-// disposed. This function will block before mach.WhenDispose is closed.
+// HandleDispose adds a function to be called after the machine gets disposed.
+// These functions will run synchronously just before WhenDisposed() channel
+// gets closed. Considering it's a low-level feature, its advaised to handle
+// disposal via dedicated states.
 func (m *Machine) HandleDispose(fn HandlerDispose) {
 	m.handlersLock.Lock()
 	defer m.handlersLock.Unlock()
@@ -3020,7 +3022,7 @@ func (m *Machine) BindTracer(tracer Tracer) error {
 	name := reflect.TypeOf(tracer).Elem().Name()
 
 	m.tracers = append(m.tracers, tracer)
-	m.log(LogOps, "[tracers] detach %s", name)
+	m.log(LogOps, "[tracers] bind %s", name)
 
 	return nil
 }

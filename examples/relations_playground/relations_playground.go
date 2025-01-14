@@ -7,7 +7,7 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
-const log = am.LogDecisions
+const log = am.LogOps
 
 func init() {
 	// load .env
@@ -62,7 +62,7 @@ func DryWaterWet() {
 			Require: am.S{"Water"},
 		},
 		"Dry": {
-			Remove: am.S{"Wet"},
+			Remove: am.S{"Water"},
 		},
 		"Water": {
 			Add:    am.S{"Wet"},
@@ -71,6 +71,7 @@ func DryWaterWet() {
 	})
 	mach.Add1("Dry", nil)
 	mach.Add1("Water", nil)
+	mach.Add1("Dry", nil)
 	// TODO quiz: is Wet active?
 }
 
@@ -114,7 +115,7 @@ func Quiz() {
 			Require: am.S{"D"},
 			Add:     am.S{"C"},
 		},
-		"C": {Require: am.S{"C"}},
+		"C": {},
 		"D": {Remove: am.S{"C"}},
 		"E": {Add: am.S{"D"}},
 	})
@@ -125,13 +126,16 @@ func Quiz() {
 // playground helpers
 
 func newMach(id string, machStruct am.Struct) *am.Machine {
-	mach := am.New(nil, machStruct, &am.Opts{ID: id, DontLogID: true})
+	mach := am.New(nil, machStruct, &am.Opts{
+		ID:        id,
+		DontLogID: true,
+		Tracers:   []am.Tracer{&Tracer{}},
+		LogLevel:  log,
+	})
 	println("\n")
 	println("-----")
 	println("mach: " + mach.Id())
 	println("-----")
-	mach.SetLogLevel(log)
-	mach.BindTracer(&Tracer{})
 	amhelp.MachDebugEnv(mach)
 
 	return mach

@@ -104,7 +104,7 @@ Top layers depend on the bottom ones.
   <tr>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
-    <td colspan="9" align=center><a href="pkg/machine/README.md#api">Machine API</a></td>
+    <td colspan="9" align=center><a href="pkg/machine/README.md">Machine API</a></td>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
   </tr>
