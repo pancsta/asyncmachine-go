@@ -49,7 +49,9 @@ func (rr *DefaultRelationsResolver) NewStruct() {
 
 	sorted, err := g.TopologicalSort()
 	if err != nil {
-		panic(fmt.Errorf("%w: %w for %s", ErrRelation, err, rr.Machine.id))
+		// cycle, keep unsorted
+		rr.Machine.log(LogChanges, "[resolver] %s: %s for %s",
+			ErrRelation, err, rr.Machine.id)
 	} else {
 		rr.topology = sorted
 	}
