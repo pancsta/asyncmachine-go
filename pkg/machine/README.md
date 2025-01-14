@@ -26,43 +26,43 @@ the [manual](/docs/manual.md).
 
 Many states can be active at the same time.
 
-![](../../assets/asyncmachine-go/diagrams/diagram_1.svg)
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_1.svg)
 
 ### [Clock and state contexts](/docs/manual.md#clock-and-context)
 
 States have clocks that produce contexts (odd = active; even = inactive).
 
-![](../../assets/asyncmachine-go/diagrams/diagram_2.svg)
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_2.svg)
 
 ### [Queue](/docs/manual.md#queue-and-history)
 
 Queue of mutations enable lock-free [Actor Model](https://en.wikipedia.org/wiki/Actor_model).
 
-![](../../assets/asyncmachine-go/diagrams/diagram_3.svg)
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_3.svg)
 
 ### [AOP handlers](/docs/manual.md#transition-handlers)
 
 States are [Aspects](https://en.wikipedia.org/wiki/Aspect-oriented_programming) with Enter, State, Exit, and End handlers.
 
-![](../../assets/asyncmachine-go/diagrams/diagram_4.svg)
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_4.svg)
 
 ### [Negotiation](/docs/manual.md#transition-lifecycle)
 
 Transitions are cancellable (during the negotiation phase).
 
-![](../../assets/asyncmachine-go/diagrams/diagram_5.svg)
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_5.svg)
 
 ### [Relations](/docs/manual.md#relations)
 
 States are connected via Require, Remove, and Add relations.
 
-![](../../assets/asyncmachine-go/diagrams/diagram_6.svg)
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_6.svg)
 
 ### [Subscriptions](/docs/manual.md#waiting)
 
 Channel-broadcast waiting on clock values.
 
-![](../../assets/asyncmachine-go/diagrams/diagram_7.svg)
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_7.svg)
 
 ### [Error handling](/docs/manual.md#error-handling)
 
