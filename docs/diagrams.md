@@ -1,5 +1,204 @@
 # Diagrams
 
+## Machine Basics## Features
+
+Features are explained using Mermaid flow diagrams, and headers link to relevant sections of the [manual](/docs/manual.md).
+
+### [Multi-state](/docs/manual.md#introduction)
+
+Many states can be active at the same time.
+
+```mermaid
+flowchart LR
+    subgraph ActiveBefore[Before]
+        A1([A:1])
+        B1[B:0]
+        C1[C:0]
+    end
+    ActiveMutation([add B])
+    subgraph ActiveAfter[After]
+        A2([A:1])
+        B2([B:1])
+        C2[C:0]
+    end
+    ActiveBefore --> ActiveMutation
+    ActiveMutation --> ActiveAfter
+```
+
+### [Clock and state contexts](/docs/manual.md#clock-and-context)
+
+States have clocks that produce contexts (odd = active; even = inactive).
+
+```mermaid
+flowchart LR
+    subgraph ClockStep1[ ]
+            A1([A:1])
+            B1([B:1])
+            C1[C:0]
+        end
+        ClockMutation1[remove B]
+        subgraph ClockStep2[ ]
+            A2([A:1])
+            B2[B:2]
+            C2[C:0]
+        end
+        ClockMutation2([add B])
+        subgraph ClockStep3[ ]
+          A3([A:1])
+          B3([B:3])
+          C3[C:0]
+        end
+        subgraph ClockCtxs[State contexts of B]
+          CtxB1([B:1])
+          CtxB3([B:3])
+        end
+    ClockStep1 --> ClockMutation1 --> ClockStep2
+    ClockStep2 --> ClockMutation2 --> ClockStep3
+%%    B1 --> CtxB1
+%%    B2 --> CtxB2
+%%    B3 --> CtxB3
+```
+
+### [Queue](/docs/manual.md#queue-and-history)
+
+Queue of mutations enable lock-free [Actor Model](https://en.wikipedia.org/wiki/Actor_model).
+
+```mermaid
+flowchart LR
+    Machine[[Machine]]
+    Add1([add A])
+    Add2([add A])
+    Add3([add B])
+    Add1 -- 1 --> Machine
+    Add2 -- 2 --> Machine
+    Add3 -- 3 --> Machine
+    subgraph Queue
+        direction LR
+        QAdd1([add A])
+        QAdd2([add A])
+        QAdd3([add B])
+        QAdd1 --> QAdd2 --> QAdd3
+    end
+    Machine --> Queue
+```
+
+### [AOP handlers](/docs/manual.md#transition-handlers)
+
+States are [Aspects](https://en.wikipedia.org/wiki/Aspect-oriented_programming) with Enter, State, Exit, and End handlers.
+
+```mermaid
+flowchart LR
+    subgraph HandlersBefore[ ]
+        A1([A:1])
+        B1[B:0]
+        C1[C:0]
+    end
+    subgraph HandlersAfter[ ]
+        A2([A:1])
+        B2([B:1])
+        C2[C:0]
+    end
+    HandlersMutation([add B])
+    HandlersBefore --> HandlersMutation
+    HandlersMutation --> HandlersAfter
+    HandlersMutation --> AnyB
+    HandlersMutation --> BEnter
+    HandlersMutation --> AB
+    HandlersMutation --> BState
+    subgraph Handlers
+        AnyB[["AnyB()"]]
+        BEnter[["BEnter()"]]
+        AB[["AB()"]]
+        BState[["BState()"]]
+    end
+```
+
+### [Negotiation](/docs/manual.md#transition-lifecycle)
+
+Transitions are cancellable (during the negotiation phase).
+
+```mermaid
+flowchart LR
+    subgraph NegotiationBefore[ ]
+        A1([A:1])
+        B1[B:0]
+        C1[C:0]
+    end
+    subgraph NegotiationAfter[ ]
+        A2([A:1])
+        B2[B:0]
+        C2[C:0]
+    end
+    NegotiationMutation([add B])
+    NegotiationBefore --> NegotiationMutation
+    NegotiationMutation --> NegotiationAfter
+    NegotiationMutation --> AnyB
+    NegotiationMutation --> BEnter
+    BEnter == return ==> false
+    NegotiationMutation  -. canceled .-x  AB
+    NegotiationMutation -. canceled .-x BState
+    subgraph Negotiation
+        false[[false]]
+        AnyB[["AnyB()"]]
+        BEnter[["BEnter()"]]
+        AB[["AB()"]]
+        BState[["BState()"]]
+    end
+```
+
+### [Relations](/docs/manual.md#relations)
+
+States are connected via Require, Remove, and Add relations.
+
+```mermaid
+flowchart LR
+    Wet(Wet)
+    Dry(Dry)
+    Water(Water)
+    Wet -- Require --> Water
+    Water -- Add --> Wet
+    Water -- Remove --> Dry
+    Dry -- Remove --> Water
+```
+
+### [Subscriptions](/docs/manual.md#waiting)
+
+Channel-broadcast waiting on clock values.
+
+```mermaid
+flowchart LR
+    subgraph SubStates[ ]
+      direction LR
+        subgraph SubStep1[ ]
+      direction BT
+            A1([A:1])
+            B1([B:1])
+            C1[C:0]
+        end
+        SubMutation1[remove B]
+        subgraph SubStep2[ ]
+            A2([A:1])
+            B2[B:2]
+            C2[C:0]
+        end
+        SubMutation2([add B])
+        subgraph SubStep3[ ]
+          A3([A:1])
+          B3([B:3])
+          C3[C:0]
+        end
+    end
+    SubStep1 --> SubMutation1 --> SubStep2
+    SubStep2 --> SubMutation2 --> SubStep3
+    B2 .-> WhenNotB
+    A3 .-> WhenTimeB3
+    B3 .-> WhenTimeB3
+    subgraph Subs[ ]
+        WhenNotB>"WhenNot B"]
+        WhenTimeB3>"WhenTime A:1 B:3"]
+    end
+```
+
 ## aRPC Architecture
 
 ```mermaid
@@ -80,185 +279,6 @@ flowchart LR
 
     c2-RemoteWorker -- aRPC --> w2-rpcPub
     c2-RemoteSupervisor -- aRPC --> s1-rpcPub
-```
-
-## Machine Basics
-
-### [Many active states](/docs/manual.md#introduction)
-
-```mermaid
-flowchart LR
-    subgraph ActiveBefore[Before]
-        A1([A:1])
-        B1[B:0]
-        C1[C:0]
-    end
-    ActiveMutation([add B])
-    subgraph ActiveAfter[After]
-        A2([A:1])
-        B2([B:1])
-        C2[C:0]
-    end
-    ActiveBefore --> ActiveMutation
-    ActiveMutation --> ActiveAfter
-```
-
-### [Clock and state contexts](/docs/manual.md#clock-and-context)
-
-```mermaid
-flowchart LR
-    subgraph ClockStep1[ ]
-            A1([A:1])
-            B1([B:1])
-            C1[C:0]
-        end
-        ClockMutation1[remove B]
-        subgraph ClockStep2[ ]
-            A2([A:1])
-            B2[B:2]
-            C2[C:0]
-        end
-        ClockMutation2([add B])
-        subgraph ClockStep3[ ]
-          A3([A:1])
-          B3([B:3])
-          C3[C:0]
-        end
-        subgraph ClockCtxs[State contexts of B]
-          CtxB1([B:1])
-          CtxB3([B:3])
-        end
-    ClockStep1 --> ClockMutation1 --> ClockStep2
-    ClockStep2 --> ClockMutation2 --> ClockStep3
-%%    B1 --> CtxB1
-%%    B2 --> CtxB2
-%%    B3 --> CtxB3
-```
-
-### [Queue](/docs/manual.md#queue-and-history)
-
-```mermaid
-flowchart LR
-    Machine[[Machine]]
-    Add1([add A])
-    Add2([add A])
-    Add3([add B])
-    Add1 -- 1 --> Machine
-    Add2 -- 2 --> Machine
-    Add3 -- 3 --> Machine
-    subgraph Queue
-        direction LR
-        QAdd1([add A])
-        QAdd2([add A])
-        QAdd3([add B])
-        QAdd1 --> QAdd2 --> QAdd3
-    end
-    Machine --> Queue
-```
-
-### [AOP handlers](/docs/manual.md#transition-handlers)
-
-```mermaid
-flowchart LR
-    subgraph HandlersBefore[ ]
-        A1([A:1])
-        B1[B:0]
-        C1[C:0]
-    end
-    subgraph HandlersAfter[ ]
-        A2([A:1])
-        B2([B:1])
-        C2[C:0]
-    end
-    HandlersMutation([add B])
-    HandlersBefore --> HandlersMutation
-    HandlersMutation --> HandlersAfter
-    HandlersMutation --> AnyB
-    HandlersMutation --> BEnter
-    HandlersMutation --> BState
-    subgraph Handlers
-        AnyB[["AnyB()"]]
-        BEnter[["BEnter()"]]
-        BState[["BState()"]]
-    end
-```
-
-### [Negotiation](/docs/manual.md#transition-lifecycle)
-
-```mermaid
-flowchart LR
-    subgraph NegotiationBefore[ ]
-        A1([A:1])
-        B1[B:0]
-        C1[C:0]
-    end
-    subgraph NegotiationAfter[ ]
-        A2([A:1])
-        B2[B:0]
-        C2[C:0]
-    end
-    NegotiationMutation([add B])
-    NegotiationBefore --> NegotiationMutation
-    NegotiationMutation --> NegotiationAfter
-    NegotiationMutation --> AnyB
-    NegotiationMutation --> BEnter
-    BEnter == return ==> false
-    NegotiationMutation -. canceled .-x BState
-    subgraph Negotiation
-        false[[false]]
-        AnyB[["AnyB()"]]
-        BEnter[["BEnter()"]]
-        BState[["BState()"]]
-    end
-```
-
-### [Relations](/docs/manual.md#relations)
-
-```mermaid
-flowchart LR
-    Wet(Wet)
-    Dry(Dry)
-    Water(Water)
-    Wet -- Require --> Water
-    Dry -- Remove --> Wet
-    Water -- Add --> Wet
-    Water -- Remove --> Dry
-```
-
-### [Subscriptions](/docs/manual.md#waiting)
-
-```mermaid
-flowchart LR
-    subgraph SubStates[ ]
-      direction LR
-        subgraph SubStep1[ ]
-      direction BT
-            A1([A:1])
-            B1([B:1])
-            C1[C:0]
-        end
-        SubMutation1[remove B]
-        subgraph SubStep2[ ]
-            A2([A:1])
-            B2[B:2]
-            C2[C:0]
-        end
-        SubMutation2([add B])
-        subgraph SubStep3[ ]
-          A3([A:1])
-          B3([B:3])
-          C3[C:0]
-        end
-    end
-    SubStep1 --> SubMutation1 --> SubStep2
-    SubStep2 --> SubMutation2 --> SubStep3
-    B2 .-> WhenNotB
-    A3 .-> WhenTimeB3
-    B3 .-> WhenTimeB3
-    subgraph Subs[ ]
-        WhenNotB>"WhenNot B"]
-        WhenTimeB3>"WhenTime A:1 B:3"]
-    end
 ```
 
 ## Flows

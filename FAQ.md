@@ -16,6 +16,11 @@ Each state has a counter of activations & de-activations, and all state counters
 
 The same event happening many times will cause only 1 state activation until the state becomes inactive.
 
+## What's the difference between subscribing to events and waiting on states?
+
+Event subscription will tigger as many times as the event, while waiting followed by a new waiting can miss some
+"state instances" (those can be infered from the state's clock).
+
 ## How does asyncmachine compare to [Temporal](https://github.com/temporalio/temporal)?
 
 Temporal is an all-in-one solution with data persistence, which is its limitation. Asyncmachine doesn't hold any data by

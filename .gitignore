@@ -70,3 +70,4 @@ _py
 /assets
 /__*
 /trace*
+*.mmd

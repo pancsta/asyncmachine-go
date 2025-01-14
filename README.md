@@ -42,7 +42,11 @@ stateful applications - daemons, UIs, bots, agents, firewalls, consensus algos, 
 transparently) target a specific point in a scenario and easily bring structure to event-based systems. It takes care of
 most contexts, `select` statements, and panics.
 
-It aims at creating **autonomous** workflows with **organic** control flow and **stateful** APIs.
+It aims at creating **autonomous** workflows with **organic** control flow and **stateful** APIs:
+
+- **autonomous** - automatic states, relations, context-based decisions
+- **organic** - relations, negotiation, cancellation
+- **stateful** - maintaing context, responsive, atomic
 
 ## Stack
 
@@ -70,7 +74,7 @@ Top layers depend on the bottom ones.
     <td>&nbsp;</td>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
-    <td colspan="3" align=center>Workers</td>
+    <td colspan="3" align=center><a href="pkg/node/README.md">Workers</a></td>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
@@ -82,7 +86,7 @@ Top layers depend on the bottom ones.
     <td>&nbsp;</td>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
-    <td colspan="5" align=center>RPC</td>
+    <td colspan="5" align=center><a href="pkg/rpc/README.md">RPC</a></td>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
@@ -92,7 +96,7 @@ Top layers depend on the bottom ones.
     <td>&nbsp;</td>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
-    <td colspan="7" align=center>Handlers</td>
+    <td colspan="7" align=center><a href="pkg/machine/README.md#aop-handlers">Handlers</a></td>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
@@ -100,17 +104,19 @@ Top layers depend on the bottom ones.
   <tr>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
-    <td colspan="9" align=center>Machine API</td>
+    <td colspan="9" align=center><a href="pkg/machine/README.md#api">Machine API</a></td>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
   </tr>
   <tr>
     <td>&nbsp;</td>
-    <td colspan="11" align=center>Relations</td>
+    <td colspan="11" align=center><a href="pkg/machine/README.md#relations">Relations</a></td>
     <td>&nbsp;</td>
   </tr>
   <tr>
-    <td colspan="13" align=center><b><u>States</u></b></td>
+    <td colspan="13" align=center><a href="pkg/machine/README.md#multi-state"><b><u>
+        States
+    </u></b></a></td>
   </tr>
 </table>
 

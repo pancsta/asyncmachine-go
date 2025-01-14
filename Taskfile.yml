@@ -361,7 +361,6 @@ tasks:
     cmds:
       - pandoc -f markdown-implicit_figures docs/manual.md -o assets/asyncmachine-go/manual.pdf
 
-
   prof-cpu-img:
     cmds:
       - go tool pprof -png cpu.prof > cpu.light.png
@@ -372,7 +371,7 @@ tasks:
     cmds:
       - go tool pprof -png mem.prof > mem.light.png
       - magick mem.light.png
-        -channel RGB -negate mem.dark.png
+          -channel RGB -negate mem.dark.png
 
   prof-cpu:
     requires:
@@ -401,8 +400,8 @@ tasks:
   benchmark-grpc-build:
     dir: examples/benchmark_grpc
     cmd: protoc --go_out=. --go_opt=paths=source_relative
-      --go-grpc_out=. --go-grpc_opt=paths=source_relative
-      proto/worker.proto
+           --go-grpc_out=. --go-grpc_opt=paths=source_relative
+           proto/worker.proto
 
   benchmark-grpc:
     dir: examples/benchmark_grpc
@@ -431,8 +430,25 @@ tasks:
         echo Grafana: http://localhost:3000
         echo Jaeger: http://localhost:16686
 
+
   web-metrics-clean:
     cmd: docker-compose -f deploy/web-metrics/docker-compose.yml down -v
 
   gen-grafana-tree-state-source:
     cmd: ./examples/tree_state_source/gen-grafana.sh
+
+  gen-diagram-svgs-deps:
+    cmd: npm install -g @mermaid-js/mermaid-cli
+
+  gen-diagram-svgs:
+    env:
+      # 1-based indexes of diagrams to make SVGs of
+      NUMS: 1 2 3 4 5 6 7
+      DIR: assets/asyncmachine-go/diagrams
+    cmds:
+      - go run ./scripts/extract_mermaid docs/diagrams.md "$NUMS"
+      - | 
+        for N in $NUMS; do
+          mmdc -i diagram_$N.mmd -o $DIR/diagram_$N.svg -w 800 -b transparent -t dark
+          rm diagram_$N.mmd
+        done
