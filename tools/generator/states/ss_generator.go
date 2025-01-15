@@ -8,14 +8,20 @@ import (
 type GeneratorStatesDef struct {
 	*am.StatesBase
 
-	InheritBasic      string
-	InheritConnected  string
+	// pkg/states
+	InheritBasic     string
+	InheritConnected string
+	InheritDisposed  string
+
+	// pkg/*
 	InheritRpcWorker  string
 	InheritNodeWorker string
-	Inherit           string
-	GroupsLocal       string
-	GroupsInherited   string
-	Groups            string
+
+	// rest
+	Inherit         string
+	GroupsLocal     string
+	GroupsInherited string
+	Groups          string
 }
 
 // GeneratorGroupsDef contains all the state groups %s state machine.
@@ -25,17 +31,20 @@ type GeneratorGroupsDef struct {
 
 // GeneratorStruct represents all relations and properties of GeneratorStates.
 var GeneratorStruct = am.Struct{
-	ssG.InheritBasic:      {},
-	ssG.InheritConnected:  {Add: S{ssG.GroupsInherited}},
-	ssG.InheritRpcWorker:  {},
+	ssG.InheritBasic:     {},
+	ssG.InheritConnected: {Add: S{ssG.GroupsInherited}},
+	ssG.InheritDisposed:  {},
+
+	ssG.InheritRpcWorker: {},
 	ssG.InheritNodeWorker: {
-		Add: S{ssG.GroupsInherited},
+		Add:    S{ssG.GroupsInherited},
 		Remove: S{ssG.InheritRpcWorker},
 	},
-	ssG.Inherit:           {Auto: true},
-	ssG.GroupsLocal:       {},
-	ssG.GroupsInherited:   {},
-	ssG.Groups:            {Auto: true},
+
+	ssG.Inherit:         {Auto: true},
+	ssG.GroupsLocal:     {},
+	ssG.GroupsInherited: {},
+	ssG.Groups:          {Auto: true},
 }
 
 // EXPORTS AND GROUPS
@@ -44,7 +53,7 @@ var (
 	ssG = am.NewStates(GeneratorStatesDef{})
 	sgG = am.NewStateGroups(GeneratorGroupsDef{
 		Inherit: S{ssG.InheritBasic, ssG.InheritConnected, ssG.InheritRpcWorker,
-			ssG.InheritNodeWorker},
+			ssG.InheritNodeWorker, ssG.InheritDisposed},
 	})
 
 	// GeneratorStates contains all the states for the Generator machine.

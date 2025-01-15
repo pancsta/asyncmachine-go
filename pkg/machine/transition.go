@@ -139,7 +139,7 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 
 // StatesBefore is a list of states before the transition.
 func (t *Transition) StatesBefore() S {
-	// TODO support SetStruct (keep a pointer to an old index)
+	// TODO support SetSchema (index for schema and index for the state)
 	// TODO should preserve order?
 	var ret S
 	states := t.Machine.StateNames()
@@ -154,7 +154,7 @@ func (t *Transition) StatesBefore() S {
 
 // TargetStates is a list of states after parsing the relations.
 func (t *Transition) TargetStates() S {
-	// TODO support SetStruct (keep a pointer to an old index)
+	// TODO support SetSchema (index for schema and index for the state)
 	ret := make(S, len(t.TargetIndexes))
 	states := t.Machine.StateNames()
 	for i, idx := range t.TargetIndexes {
@@ -314,19 +314,18 @@ func (t *Transition) emitSelfEvents() Result {
 }
 
 func (t *Transition) emitEnterEvents() Result {
-	for _, toState := range t.Enters {
+	for i, toState := range t.Enters {
 		args := t.Mutation.Args
 
-		// AnyFoo
-		ret := t.emitHandler(Any, toState, Any+toState, args)
-		if ret == Canceled {
-			return ret
-		}
-
 		// FooEnter
-		ret = t.emitHandler("", toState, toState+"Enter", args)
+		ret := t.emitHandler("", toState, toState+SuffixEnter, args)
 		if ret == Canceled {
-			return ret
+			if t.IsAuto() {
+				// partial auto state acceptance
+				t.TargetIndexes = slices.Delete(t.TargetIndexes, i, i+1)
+			} else {
+				return ret
+			}
 		}
 	}
 
@@ -334,17 +333,16 @@ func (t *Transition) emitEnterEvents() Result {
 }
 
 func (t *Transition) emitExitEvents() Result {
-	for _, from := range t.Exits {
-		// FooEnter
-		ret := t.emitHandler(from, "", from+"Exit", t.Mutation.Args)
+	for i, fromState := range t.Exits {
+		// FooExit
+		ret := t.emitHandler(fromState, "", fromState+SuffixExit, t.Mutation.Args)
 		if ret == Canceled {
-			return ret
-		}
-
-		// FooAny
-		ret = t.emitHandler(from, Any, from+Any, nil)
-		if ret == Canceled {
-			return ret
+			if t.IsAuto() {
+				// partial auto state acceptance
+				t.TargetIndexes = slices.Delete(t.TargetIndexes, i, i+1)
+			} else {
+				return ret
+			}
 		}
 	}
 
@@ -371,9 +369,9 @@ func (t *Transition) emitFinalEvents() Result {
 
 		var handler string
 		if isEnter {
-			handler = s + "State"
+			handler = s + SuffixState
 		} else {
-			handler = s + "End"
+			handler = s + SuffixEnd
 		}
 
 		step := newStep(s, "", StepHandler, 0)
@@ -397,14 +395,14 @@ func (t *Transition) emitFinalEvents() Result {
 }
 
 func (t *Transition) emitStateStateEvents() Result {
-	for _, sb := range t.StatesBefore() {
-		for _, sa := range t.TargetStates() {
-			if sb == sa {
+	for _, before := range t.StatesBefore() {
+		for i, after := range t.TargetStates() {
+			if before == after {
 				continue
 			}
 
-			handler := sb + sa
-			step := newStep(sb, sa, StepHandler, 0)
+			handler := before + after
+			step := newStep(before, after, StepHandler, 0)
 			t.latestStep = step
 			ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args, step,
 				false)
@@ -415,7 +413,12 @@ func (t *Transition) emitStateStateEvents() Result {
 
 			// final handler cancel means timeout
 			if ret == Canceled {
-				return ret
+				if t.IsAuto() {
+					// partial auto state acceptance
+					t.TargetIndexes = slices.Delete(t.TargetIndexes, i, i+1)
+				} else {
+					return ret
+				}
 			}
 		}
 	}
@@ -440,11 +443,6 @@ func (t *Transition) emitEvents() Result {
 
 	// NEGOTIATION CALLS PHASE (cancellable)
 
-	// FooFoo handlers
-	if result != Canceled && t.Type() != MutationRemove {
-		result = t.emitSelfEvents()
-	}
-
 	// FooExit handlers
 	if result != Canceled {
 		result = t.emitExitEvents()
@@ -455,14 +453,24 @@ func (t *Transition) emitEvents() Result {
 		result = t.emitEnterEvents()
 	}
 
+	// FooFoo handlers
+	if result != Canceled && t.Type() != MutationRemove {
+		result = t.emitSelfEvents()
+	}
+
 	// BarFoo
 	if result != Canceled {
 		result = t.emitStateStateEvents()
 	}
 
-	// global AnyAny handler
+	// none of the auto states has been accepted, so cancel
+	if t.IsAuto() && len(t.TargetIndexes) == 0 {
+		result = Canceled
+	}
+
+	// global AnyEnter handler
 	if result != Canceled {
-		result = t.emitHandler(Any, Any, Any+Any, t.Mutation.Args)
+		result = t.emitHandler(Any, Any, Any+SuffixEnter, t.Mutation.Args)
 	}
 
 	// FINAL HANDLERS (non cancellable)
@@ -477,7 +485,7 @@ func (t *Transition) emitEvents() Result {
 
 	// global AnyState handler
 	if result != Canceled {
-		result = t.emitHandler(Any, Any, Any+"State", t.Mutation.Args)
+		result = t.emitHandler(Any, Any, Any+SuffixState, t.Mutation.Args)
 	}
 
 	// gather new clock values, overwrite fake TimeAfter

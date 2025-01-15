@@ -25,7 +25,13 @@ const (
 	// EnvAmTestDebug activates debugging in tests.
 	EnvAmTestDebug = "AM_TEST_DEBUG"
 	// HandlerGlobal is the name of a global transition handler.
-	HandlerGlobal = "AnyAny"
+	HandlerGlobal = "AnyEnter"
+	// Any is a name of a meta state used in catch-all handlers.
+	Any         = "Any"
+	SuffixEnter = "Enter"
+	SuffixExit  = "Exit"
+	SuffixState = "State"
+	SuffixEnd   = "End"
 )
 
 // S (state names) is a string list of state names.

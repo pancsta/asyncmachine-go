@@ -569,7 +569,7 @@ func (m *Machine) WhenArgs(
 	ch := make(chan struct{})
 
 	m.MustParseStates(S{state})
-	name := state + "State"
+	name := state + SuffixState
 
 	// locks
 	m.indexWhenArgsLock.Lock()
@@ -1173,7 +1173,7 @@ func (m *Machine) queueMutation(
 //
 // Note: usage of Eval is discouraged. But if you have to, use AM_DETECT_EVAL in
 // tests for deadlock detection. Most usages of eval can be replaced with
-// atomics.
+// atomics or returning from mutation via channels.
 func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	if m.disposed.Load() {
 		return false
@@ -1349,7 +1349,12 @@ func (m *Machine) BindHandlers(handlers any) error {
 	h := m.newHandler(handlers, name, &v, methodNames)
 	old := m.getHandlers(false)
 	m.setHandlers(false, append(old, h))
-	m.log(LogOps, "[handlers] bind %s", name)
+	if name != "" {
+		m.log(LogOps, "[handlers] bind %s", name)
+	} else {
+		// index for anon handlers
+		m.log(LogOps, "[handlers] bind %d", len(old))
+	}
 
 	return nil
 }
@@ -1959,7 +1964,7 @@ func (m *Machine) processWhenArgs(e *Event) {
 
 		argNames := jw(slices.AppendSeq(S{}, maps.Keys(binding.args)), ",")
 		// FooState -> Foo
-		name := e.Name[0 : len(e.Name)-len("State")]
+		name := e.Name[0 : len(e.Name)-len(SuffixState)]
 		m.log(LogOps, "[whenArgs:match] %s (%s)", name, argNames)
 		// args match - doDispose and close outside the mutex
 		chToClose = append(chToClose, binding.ch)
@@ -2327,8 +2332,8 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		case timeout:
 
 			return Canceled, handlerCalled
-		case strings.HasSuffix(e.Name, "State"):
-		case strings.HasSuffix(e.Name, "End"):
+		case strings.HasSuffix(e.Name, SuffixState):
+		case strings.HasSuffix(e.Name, SuffixEnd):
 			// returns from State and End handlers are ignored
 		default:
 			if !ret {

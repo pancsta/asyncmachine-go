@@ -392,8 +392,6 @@ func (e *handler) dispose() {
 const (
 	// Exception is a name the Exception state.
 	Exception = "Exception"
-	// Any is a name of a meta state used in catch-all handlers.
-	Any = "Any"
 )
 
 // ExceptionArgsPanic is an optional argument ["panic"] for the Exception state

@@ -82,7 +82,7 @@ func (h *Handlers) AnyFoo(e *am.Event) {}
 
 ```go
 // always called as a transition from Any state to Any state
-func (h *Handlers) AnyAny(e *am.Event) bool {}
+func (h *Handlers) AnyEnter(e *am.Event) bool {}
 ```
 
 ## Global final handler

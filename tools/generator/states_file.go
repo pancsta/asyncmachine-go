@@ -15,6 +15,8 @@ import (
 
 	"github.com/lithammer/dedent"
 
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/generator/cli"
 	"github.com/pancsta/asyncmachine-go/tools/generator/states"
@@ -48,6 +50,8 @@ func (g *Generator) parseParams(p cli.SFParams) {
 				g.Mach.Add1(ssG.InheritBasic, nil)
 			case "connected":
 				g.Mach.Add1(ssG.InheritConnected, nil)
+			case "disposed":
+				g.Mach.Add1(ssG.InheritDisposed, nil)
 			case "rpc/worker":
 				g.Mach.Add1(ssG.InheritRpcWorker, nil)
 			case "node/worker":
@@ -353,6 +357,7 @@ func NewSFGenerator(
 	if err != nil {
 		return nil, err
 	}
+	amhelp.MachDebugEnv(mach)
 
 	g.Mach = mach
 	g.parseParams(param)
@@ -361,7 +366,7 @@ func NewSFGenerator(
 }
 
 func GenUtilsFile() string {
-	return dedent.Dedent(`
+	return strings.Trim(dedent.Dedent(`
 		package states
 		
 		import am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -387,7 +392,7 @@ func GenUtilsFile() string {
 
 		// Exception is a type alias for the exception state.
 		var Exception = am.Exception
-	`)
+	`), "\n")
 }
 
 func capitalizeFirstLetter(s string) string {
