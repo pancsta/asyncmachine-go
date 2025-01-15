@@ -22,6 +22,17 @@ const (
 	EnvAmNodeLogClient = "AM_NODE_LOG_CLIENT"
 )
 
+// states of a worker
+type WorkerState string
+
+const (
+	StateIniting WorkerState = "initing"
+	StateRpc     WorkerState = "rpc"
+	StateIdle    WorkerState = "idle"
+	StateBusy    WorkerState = "busy"
+	StateReady   WorkerState = "ready"
+)
+
 // ///// ///// /////
 
 // ///// ERRORS
@@ -81,6 +92,8 @@ func AddErrRpc(mach *am.Machine, err error, args am.A) error {
 	return wrappedErr
 }
 
+// ///// ///// /////
+
 // ///// ARGS
 
 // ///// ///// /////
@@ -89,9 +102,9 @@ func AddErrRpc(mach *am.Machine, err error, args am.A) error {
 type A struct {
 	// Id is a machine ID.
 	Id string `log:"id"`
-	// PublicAddr is the public address of a Supervisor or Worker.
+	// PublicAddr is the public address of a Supervisor or WorkerRpc.
 	PublicAddr string `log:"public_addr"`
-	// LocalAddr is the public address of a Supervisor or Worker.
+	// LocalAddr is the public address of a Supervisor or WorkerRpc.
 	LocalAddr string `log:"local_addr"`
 	// BootAddr is the local address of the Bootstrap machine.
 	BootAddr string `log:"boot_addr"`
@@ -104,12 +117,20 @@ type A struct {
 
 	// non-rpc fields
 
-	// Worker is the RPC client connected to a Worker.
-	Worker *rpc.Client
-	// Bootstrap is the RPC machine used to connect Worker to the Supervisor.
+	// WorkerRpc is the RPC client connected to a WorkerRpc.
+	WorkerRpc *rpc.Client
+	// Bootstrap is the RPC machine used to connect WorkerRpc to the Supervisor.
 	Bootstrap *bootstrap
-	// Dispose the worker
+	// Dispose the worker.
 	Dispose bool
+	// WorkerAddr is an index for WorkerInfo.
+	WorkerAddr string
+	// WorkerInfo describes a worker.
+	WorkerInfo *workerInfo
+	// WorkersCh returns a list of workers. This channel has to be buffered.
+	WorkersCh chan<- []*workerInfo
+	// WorkerState is a requested state of workers, eg for listings.
+	WorkerState WorkerState
 }
 
 // ARpc is a subset of A, that can be passed over RPC.

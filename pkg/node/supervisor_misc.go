@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/patrickmn/go-cache"
@@ -160,7 +159,6 @@ type workerInfo struct {
 	localAddr  string
 	errs       *cache.Cache
 	errsRecent *cache.Cache
-	mx         sync.RWMutex
 }
 
 func newWorkerInfo(s *Supervisor, proc *os.Process) *workerInfo {

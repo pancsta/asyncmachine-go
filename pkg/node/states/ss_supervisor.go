@@ -42,6 +42,11 @@ type SupervisorStatesDef struct {
 
 	// worker
 
+	// ListWorkers is a getter returning a list of workers via a channel, with
+	// filters.
+	ListWorkers string
+	// SetWorker is a setter for a worker, which can also delete worker entries.
+	SetWorker string
 	// ForkWorker - Supervisor starts forking a new worker by creating a new aRPC
 	// server.
 	ForkWorker string
@@ -68,7 +73,7 @@ type SupervisorStatesDef struct {
 	// ProvideWorker - Client requests a new worker.
 	ProvideWorker string
 	// WorkerIssues - Client complains about the worker.
-	WorkerIssues      string
+	WorkerIssues string
 	// ClientSendPayload - payload delivered to the RPC server with for clients
 	// as mutation args.
 	ClientSendPayload string
@@ -79,7 +84,7 @@ type SupervisorStatesDef struct {
 	SuperDisconnected string
 	// SuperSendPayload - payload delivered to the RPC server for supervisors
 	// as mutation args.
-	SuperSendPayload  string
+	SuperSendPayload string
 
 	// inherit from WorkerStatesDef
 	*ssrpc.WorkerStatesDef
@@ -172,6 +177,15 @@ var SupervisorStruct = StructMerge(
 		ssS.WorkersAvailable: {Require: S{ssS.PoolReady}},
 
 		// worker
+
+		ssS.ListWorkers: {
+			Multi:   true,
+			Require: S{ssS.Start},
+		},
+		ssS.SetWorker: {
+			Multi:   true,
+			Require: S{ssS.Start},
+		},
 
 		ssS.ForkWorker: {
 			Multi:   true,
