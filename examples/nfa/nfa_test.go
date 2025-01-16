@@ -1,190 +1,136 @@
 // Based on https://en.wikipedia.org/wiki/Nondeterministic_finite_automaton
 //
-// === RUN   TestRegexp
-// === RUN   TestRegexp/test_101010_(OK)
-// [state] +Start +StepX
-// [state] +Input
-// [extern:InputState] input: 1
-// [state] +Input
-// [extern:InputState] input: 0
-// [state] +Input
-// [extern:InputState] input: 1
+// === RUN   TestNfa
+// === RUN   TestNfa/test_101010_(OK)
+// [state] +StepX +Start
+// [state] +Input1
+// [state] +Input1Done
+// [state] +Input0
+// [state] +Input0Done
+// [state] +Input1
 // [state] +Step0 -StepX
-// [state] +Input
-// [extern:InputState] input: 0
+// [state] +Input1Done
+// [state] +Input0
 // [state] +Step1 -Step0
-// [state] +Input
-// [extern:InputState] input: 1
+// [state] +Input0Done
+// [state] +Input1
 // [state] +Step2 -Step1
-// [state] +Input
-// [extern:InputState] input: 0
+// [state] +Input1Done
+// [state] +Input0
 // [state] +Step3 -Step2
-// [state] -Start
-// --- PASS: TestRegexp (0.00s)
-//    --- PASS: TestRegexp/test_101010_(OK) (0.00s)
+// [state] +Input0Done
+// [state] +Ready
+// [state] -Start -Input0 -Input0Done -Input1 -Input1Done -Ready
+// --- PASS: TestNfa/test_101010_(OK) (0.00s)
+// --- PASS: TestNfa (1.01s)
 // PASS
 
 package nfa
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/joho/godotenv"
-
+	"github.com/pancsta/asyncmachine-go/examples/nfa/states"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
-func init() {
-	// load .env
-	_ = godotenv.Load()
-
-	// am-dbg is required for debugging, go run it
-	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
-	// amhelp.EnableDebugging(false)
-	// amhelp.SetLogLevel(am.LogChanges)
-}
-
-// state enum pkg
-
 var (
-	states = am.Struct{
-		// input states
-		Input: {Multi: true},
-
-		// action states
-		Start: {Add: am.S{StepX}},
-
-		// "state" states
-		StepX: {Remove: groupSteps},
-		Step0: {Remove: groupSteps},
-		Step1: {Remove: groupSteps},
-		Step2: {Remove: groupSteps},
-		Step3: {Remove: groupSteps},
-	}
-
-	groupSteps = am.S{StepX, Step0, Step1, Step2, Step3}
-
-	Start = "Start"
-	Input = "Input"
-	StepX = "StepX"
-	Step0 = "Step0"
-	Step1 = "Step1"
-	Step2 = "Step2"
-	Step3 = "Step3"
-
-	Names = am.S{Start, Input, StepX, Step0, Step1, Step2, Step3, am.Exception}
+	ss = states.NfaStates
+	sg = states.NfaGroups
 )
+
+func init() {
+	// DEBUG
+	//
+	// - am-dbg is required for TUI debugging, you can go run it
+	// - go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
+	// - enable stdout logging
+	//
+	// amhelp.EnableDebugging(true)
+	// amhelp.SetLogLevel(am.LogOps)
+}
 
 // handlers
 
 type Regexp struct {
+	*am.ExceptionHandler
+
 	input  string
 	cursor int
 }
 
-func (t *Regexp) StartState(e *am.Event) {
+func (r *Regexp) StartState(e *am.Event) {
+	r.input = e.Args["input"].(string)
 	mach := e.Machine()
 
-	// reset
-	t.input = e.Args["input"].(string)
-	t.cursor = 0
-	mach.Add1(StepX, nil)
-
-	// jump out of the queue
-	queueEnd := mach.WhenQueueEnds(nil)
 	go func() {
-		// wait for drained
-		<-queueEnd
-
-		for _, c := range t.input {
-			switch c {
-
-			case '0':
-				mach.Add1(Input, am.A{"input": "0"})
-
-			case '1':
-				mach.Add1(Input, am.A{"input": "1"})
+		for _, c := range strings.Split(r.input, "") {
+			if c == "0" {
+				mach.Add1(ss.Input0, nil)
+				<-mach.When1(ss.Input0Done, nil)
+			} else if c == "1" {
+				mach.Add1(ss.Input1, nil)
+				<-mach.When1(ss.Input1Done, nil)
 			}
-
-			t.cursor++
 		}
 
-		mach.Remove1(Start, nil)
+		mach.Add1(ss.Ready, nil)
 	}()
 }
 
-func (t *Regexp) InputState(e *am.Event) {
+func (r *Regexp) Input0State(e *am.Event) {
 	mach := e.Machine()
-	input := e.Args["input"].(string)
-	mach.Log("input: %s", input)
+	defer func() { r.cursor++ }()
+	defer mach.Add1(ss.Input0Done, nil)
 
-	if input == "0" {
-		t.input0(mach)
-	} else {
-		t.input1(mach)
+	switch mach.Switch(sg.Steps) {
+	case ss.StepX:
+		mach.Add1(ss.StepX, nil)
+
+	case ss.Step0:
+		mach.Add1(ss.Step1, nil)
+
+	case ss.Step1:
+		mach.Add1(ss.Step2, nil)
+
+	case ss.Step2:
+		mach.Add1(ss.Step3, nil)
 	}
 }
 
-func (t *Regexp) input0(mach *am.Machine) {
-	switch mach.Switch(groupSteps) {
-	case StepX:
-		mach.Add1(StepX, nil)
+func (r *Regexp) Input1State(e *am.Event) {
+	mach := e.Machine()
+	defer func() { r.cursor++ }()
+	defer mach.Add1(ss.Input1Done, nil)
 
-	case Step0:
-		mach.Add1(Step1, nil)
-
-	case Step1:
-		mach.Add1(Step2, nil)
-
-	case Step2:
-		mach.Add1(Step3, nil)
-	}
-}
-
-func (t *Regexp) input1(mach *am.Machine) {
-	switch mach.Switch(groupSteps) {
-	case StepX:
-		// TODO should use CanAdd and State0Enter
-		if t.cursor+3 == len(t.input)-1 {
-			mach.Add1(Step0, nil)
+	switch mach.Switch(sg.Steps) {
+	case ss.StepX:
+		// TODO should use CanAdd and Step0Enter
+		if r.cursor+3 == len(r.input)-1 {
+			mach.Add1(ss.Step0, nil)
 		} else {
-			mach.Add1(StepX, nil)
+			mach.Add1(ss.StepX, nil)
 		}
 
-	case Step0:
-		mach.Add1(Step1, nil)
+	case ss.Step0:
+		mach.Add1(ss.Step1, nil)
 
-	case Step1:
-		mach.Add1(Step2, nil)
+	case ss.Step1:
+		mach.Add1(ss.Step2, nil)
 
-	case Step2:
-		mach.Add1(Step3, nil)
+	case ss.Step2:
+		mach.Add1(ss.Step3, nil)
 	}
 }
 
 // example
 
-func TestNfaFLAKY(t *testing.T) {
-	// TODO flaky
-
-	var err error
-	mach := am.New(context.Background(), states, &am.Opts{
-		ID:                   "nfa",
-		DontPanicToException: true,
-		DontLogID:            true,
-		LogLevel:             am.LogChanges,
-		// LogLevel:       am.LogOps,
-		// LogLevel:       am.LogDecisions,
-		HandlerTimeout: time.Minute,
-	})
-
-	_ = mach.BindHandlers(&Regexp{})
-	err = mach.VerifyStates(Names)
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestNfa(t *testing.T) {
+	ctx := context.Background()
 
 	// tests
 	tests := []struct {
@@ -212,21 +158,26 @@ func TestNfaFLAKY(t *testing.T) {
 	// code
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mach.Add1(Start, am.A{
-				"input": tt.input,
-			})
-
-			// wait for Start to finish
-			<-mach.WhenNot1(Start, nil)
+			mach, err := am.NewCommon(ctx, "nfa-"+tt.name, states.NfaStruct, ss.Names(), &Regexp{}, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mach.SetLogId(false)
+			amhelp.MachDebugEnv(mach)
+			mach.Add1(ss.Start, am.A{"input": tt.input})
+			<-mach.When1(ss.Ready, nil)
 
 			// assert
-			if tt.expect && mach.Not1(Step3) {
+			if tt.expect && mach.Not1(ss.Step3) {
 				t.Fatal("Expected Step3")
-			} else if !tt.expect && mach.Is1(Step3) {
-				// TODO flaky 0.001%
-				time.Sleep(100 * time.Millisecond)
+			} else if !tt.expect && mach.Is1(ss.Step3) {
 				t.Fatal("Didn't expect Step3")
 			}
+
+			mach.Remove1(ss.Start, nil)
 		})
 	}
+
+	// am-dbg
+	time.Sleep(time.Second)
 }
