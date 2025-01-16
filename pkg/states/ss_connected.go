@@ -4,7 +4,7 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
-// ConnectedStatesDef contains all the states of the Connected state machine.
+// ConnectedStatesDef contains states for a connection status.
 type ConnectedStatesDef struct {
 	Connecting    string
 	Connected     string

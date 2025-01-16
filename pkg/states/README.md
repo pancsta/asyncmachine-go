@@ -13,6 +13,7 @@ offers tooling for "piping" states between state machines.
 
 - [BasicStatesDef](/pkg/states/ss_basic.go): Start, Ready, Healthcheck
 - [ConnectedStatesDef](/pkg/states/ss_connected.go): Client connection in 4 states
+- [DisposedStatesDef](/pkg/states/ss_disposed.go): Async disposal
 
 ## Installation States
 

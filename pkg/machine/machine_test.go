@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,24 +12,17 @@ import (
 	"golang.org/x/exp/maps"
 )
 
+func init() {
+	// debug
+	os.Setenv(EnvAmDebug, "1")
+}
+
 func ExampleNew() {
-	t := &testing.T{} // Replace this with actual *testing.Time in real test cases
-	initialState := S{"A"}
-
-	mach := NewNoRels(t, initialState)
-
-	// machine mach ready
-	_ = mach
+	// TODO
 }
 
 func ExampleNewCommon() {
-	t := &testing.T{} // Replace this with actual *testing.Time in real test cases
-	initialState := S{"A"}
-
-	mach := NewNoRels(t, initialState)
-
-	// machine mach ready
-	_ = mach
+	// TODO
 }
 
 // NewNoRels creates a new machine with no relations between states.
@@ -228,7 +222,7 @@ func TestSingleToSingleStateTransition(t *testing.T) {
 
 	// expectations
 	events := []string{
-		"AExit", "AAny", "BExit", "BAny", "AnyC", "CEnter", "AC", "BC", "CState",
+		"AExit", "BExit", "CEnter", "AC", "BC", "CState",
 	}
 	history := trackTransitions(m)
 
@@ -255,8 +249,7 @@ func TestSingleToMultiStateTransition(t *testing.T) {
 	t.Parallel()
 	m := NewNoRels(t, S{"A"})
 	events := []string{
-		"AExit", "AAny", "AnyB", "BEnter", "AnyC", "CEnter", "AB", "AC",
-		"BState", "CState",
+		"AExit", "BEnter", "CEnter", "AB", "AC", "BState", "CState",
 	}
 	history := trackTransitions(m)
 	// transition
@@ -281,8 +274,7 @@ func TestMultiToMultiStateTransition(t *testing.T) {
 	t.Parallel()
 	m := NewNoRels(t, S{"A", "B"})
 	events := []string{
-		"AExit", "AAny", "BExit", "BAny", "AnyD", "DEnter", "AnyC", "CEnter", "AD",
-		"AC", "BD", "BC", "CState",
+		"AExit", "BExit", "DEnter", "CEnter", "AD", "AC", "BD", "BC", "CState",
 	}
 	history := trackTransitions(m)
 	// transition
@@ -307,7 +299,8 @@ func TestMultiToSingleStateTransition(t *testing.T) {
 	t.Parallel()
 	m := NewNoRels(t, S{"A", "B"})
 	events := []string{
-		"AExit", "AAny", "BExit", "BAny", "AnyC", "CEnter", "AC", "BC", "CState",
+		"AExit", "BExit", "CEnter", "AC", "BC", "AnyEnter", "AEnd", "BEnd",
+		"CState", "AnyState",
 	}
 	history := trackTransitions(m)
 	// transition
@@ -359,7 +352,7 @@ func TestAfterRelationWhenEntering(t *testing.T) {
 	m.states["A"] = State{After: S{"B"}}
 
 	// history
-	events := []string{"AnyD", "DEnter", "AnyC", "CEnter", "AD", "AC"}
+	events := []string{"DEnter", "CEnter", "AD", "AC"}
 	history := trackTransitions(m)
 
 	// test
@@ -387,7 +380,7 @@ func TestAfterRelationWhenExiting(t *testing.T) {
 	m.states["A"] = State{After: S{"B"}}
 
 	// history
-	events := []string{"BExit", "BAny", "AExit", "AAny", "AD", "AC", "BD", "BC"}
+	events := []string{"BExit", "AExit", "AD", "AC", "BD", "BC"}
 	history := trackTransitions(m)
 
 	// test
@@ -437,8 +430,13 @@ func TestRequireOrder(t *testing.T) {
 	assertOrder(t, history, []string{"CState", "AState"})
 	assertStates(t, m, S{"A", "B", "C", "D", "Start"})
 	// assert event counts
-	for _, count := range history.Counter {
-		assert.Equal(t, 1, count)
+	for s, count := range history.Counter {
+		if strings.HasPrefix(s, Any) {
+			// global handelrs run for auto transitions
+			assert.Equal(t, 2, count)
+		} else {
+			assert.Equal(t, 1, count)
+		}
 	}
 
 	// test the resolver directly
@@ -668,8 +666,15 @@ func TestQueue(t *testing.T) {
 	// triggers Add(C) from BEnter
 	m.Set(S{"B"}, nil)
 
-	// assert
-	assertEventCounts(t, history, 1)
+	// assert event counts
+	for s, count := range history.Counter {
+		if strings.HasPrefix(s, Any) {
+			// global handelrs run for auto transitions
+			assert.Equal(t, 2, count)
+		} else {
+			assert.Equal(t, 1, count)
+		}
+	}
 	assertStates(t, m, S{"C", "B"})
 
 	// dispose
@@ -796,6 +801,50 @@ func TestPartialAutoStates(t *testing.T) {
 		"log should mention the auto state")
 }
 
+func TestPartialAutoStatesByStateState(t *testing.T) {
+	t.Parallel()
+
+	// init
+	m := NewCustomStates(t, Struct{
+		"A": {Auto: true},
+		"B": {Auto: true},
+		"C": {},
+	})
+
+	// CB cancels
+	_ = m.BindHandlers(&struct {
+		CB HandlerNegotiation
+	}{
+		CB: func(e *Event) bool { return false },
+	})
+
+	// trigger auto
+	m.Add1("C", nil)
+	assertStates(t, m, S{"C", "A"}, "only A auto state should be active")
+}
+
+func TestPartialAutoStatesByEnter(t *testing.T) {
+	t.Parallel()
+
+	// init
+	m := NewCustomStates(t, Struct{
+		"A": {Auto: true},
+		"B": {Auto: true},
+		"C": {},
+	})
+
+	// BEnter cancels
+	_ = m.BindHandlers(&struct {
+		BEnter HandlerNegotiation
+	}{
+		BEnter: func(e *Event) bool { return false },
+	})
+
+	// trigger auto
+	m.Add1("C", nil)
+	assertStates(t, m, S{"C", "A"}, "only A auto state should be active")
+}
+
 // TestNegotiationRemove
 type TestNegotiationRemoveHandlers struct{}
 
@@ -842,8 +891,7 @@ func (h *TestHandlerStateInfoHandlers) DEnter(e *Event) {
 		"provide the target states of the transition")
 	assert.True(t, e.Mutation().StateWasCalled("D"),
 		"provide the called states of the transition")
-	txStrExp := "D (requested)\nD (set)\nA (remove)\nA (handler)\n" +
-		"A -> Any (handler)\nAny -> D (handler)"
+	txStrExp := "D (requested)\nD (set)\nA (remove)\nA (handler)"
 	txStr := e.Transition().String()
 	assert.Equal(t, txStrExp, txStr,
 		"provide a string version of the transition")
@@ -1089,7 +1137,7 @@ func TestHandlerNegotiationStateState(t *testing.T) {
 	<-m.WhenDisposed()
 }
 
-func TestHandlersAsFields(t *testing.T) {
+func TestAnonHandlers(t *testing.T) {
 	t.Parallel()
 	// init
 	m := NewNoRels(t, S{"A"})
@@ -1164,7 +1212,7 @@ func TestSelfHandlersOrder(t *testing.T) {
 	m := NewNoRels(t, S{"A"})
 
 	// bind history
-	events := []string{"AA", "AnyB", "BEnter", "AB", "BState"}
+	events := []string{"BEnter", "AA", "AB", "AnyEnter", "BState", "AnyState"}
 	history := trackTransitions(m)
 
 	// test
@@ -2320,8 +2368,8 @@ func TestIsTime(t *testing.T) {
 	<-m.WhenDisposed()
 }
 
-// TODO TestAnyAnyHandler
-func TestAnyAnyHandler(t *testing.T) {
+// TODO TestAnyEnterHandler
+func TestAnyEnterHandler(t *testing.T) {
 	t.Parallel()
 	t.Skip()
 }
@@ -2457,7 +2505,7 @@ type TestListHandlersHandlers struct{}
 func (h *TestListHandlersHandlers) AEnter(e *Event) bool {
 	return false
 }
-func (h *TestListHandlersHandlers) AnyAny(e *Event)    {}
+func (h *TestListHandlersHandlers) AnyEnter(e *Event)  {}
 func (h *TestListHandlersHandlers) AState(e *Event)    {}
 func (h *TestListHandlersHandlers) AnyB(e *Event)      {}
 func (h *TestListHandlersHandlers) Unrelated(e *Event) {}
@@ -2481,13 +2529,13 @@ func TestListHandlers(t *testing.T) {
 	h2 := &struct {
 		AEnter    HandlerNegotiation
 		AState    HandlerFinal
-		AnyAny    HandlerFinal
+		AnyEnter  HandlerFinal
 		AnyB      HandlerFinal
 		Unrelated func()
 	}{
 		AEnter:    func(e *Event) bool { return false },
 		AState:    func(e *Event) {},
-		AnyAny:    func(e *Event) {},
+		AnyEnter:  func(e *Event) {},
 		AnyB:      func(e *Event) {},
 		Unrelated: func() {},
 	}
@@ -2505,13 +2553,13 @@ func TestListHandlers(t *testing.T) {
 	h3 := &struct {
 		ZEnter    HandlerNegotiation
 		ZState    HandlerFinal
-		AnyAny    HandlerFinal
+		AnyEnter  HandlerFinal
 		AnyY      HandlerFinal
 		Unrelated func()
 	}{
 		ZEnter:    func(e *Event) bool { return false },
 		ZState:    func(e *Event) {},
-		AnyAny:    func(e *Event) {},
+		AnyEnter:  func(e *Event) {},
 		AnyY:      func(e *Event) {},
 		Unrelated: func() {},
 	}

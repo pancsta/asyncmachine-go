@@ -135,6 +135,7 @@ func StateAdd(source State, overlay State) State {
 
 // StateSet replaces passed relations and properties of the source state.
 // Only relations in the overlay state are replaced, the rest is preserved.
+// If [overlay] has all fields `nil`, then only [auto] and [multi] get applied.
 func StateSet(source State, auto, multi bool, overlay State) State {
 	// TODO example
 	// TODO test
@@ -250,7 +251,9 @@ func ListHandlers(handlers any, states S) ([]string, error) {
 }
 
 // TODO prevent using these names as state names
-var handlerSuffixes = []string{"Enter", "Exit", "State", "End", Any}
+var handlerSuffixes = []string{
+	SuffixEnter, SuffixExit, SuffixState, SuffixEnd, Any,
+}
 
 // IsHandler checks if a method name is a handler method, by returning a state
 // name.
@@ -269,7 +272,7 @@ func IsHandler(states S, method string) (string, string) {
 
 	// AnyFoo
 	if strings.HasPrefix(method, Any) && len(method) != len(Any) &&
-		method != Any+"State" {
+		method != Any+SuffixState {
 		return method[len(Any):], ""
 	}
 

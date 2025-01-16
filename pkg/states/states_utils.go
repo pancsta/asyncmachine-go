@@ -5,7 +5,7 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 // S is a type alias for a list of state names.
 type S = am.S
 
-// State is a type alias for a state definition.
+// State is a type alias for a state definition. See [am.State].
 type State = am.State
 
 // SAdd is a func alias for merging lists of states.

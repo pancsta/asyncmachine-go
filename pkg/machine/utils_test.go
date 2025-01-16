@@ -12,9 +12,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TODO bind via Tracer, not handlers
 type History struct {
 	Order   []string
 	Counter map[string]int
+}
+
+// Global
+
+func (h *History) AnyEnter(e *Event) {
+	h.event("AnyEnter")
+}
+
+func (h *History) AnyState(e *Event) {
+	h.event("AnyState")
 }
 
 // A
@@ -31,12 +42,12 @@ func (h *History) AExit(e *Event) {
 	h.event("AExit")
 }
 
-func (h *History) AA(e *Event) {
-	h.event("AA")
+func (h *History) AEnd(e *Event) {
+	h.event("AEnd")
 }
 
-func (h *History) AAny(e *Event) {
-	h.event("AAny")
+func (h *History) AA(e *Event) {
+	h.event("AA")
 }
 
 func (h *History) AState(e *Event) {
@@ -53,16 +64,16 @@ func (h *History) BEnter(e *Event) {
 	h.event("BEnter")
 }
 
+func (h *History) BEnd(e *Event) {
+	h.event("BEnd")
+}
+
 func (h *History) BState(e *Event) {
 	h.event("BState")
 }
 
 func (h *History) BB(e *Event) {
 	h.event("BB")
-}
-
-func (h *History) AnyB(e *Event) {
-	h.event("AnyB")
 }
 
 func (h *History) BExit(e *Event) {
@@ -83,10 +94,6 @@ func (h *History) BC(e *Event) {
 	h.event("BC")
 }
 
-func (h *History) AnyC(e *Event) {
-	h.event("AnyC")
-}
-
 func (h *History) CEnter(e *Event) {
 	h.event("CEnter")
 }
@@ -96,10 +103,6 @@ func (h *History) CState(e *Event) {
 }
 
 // D
-
-func (h *History) AnyD(e *Event) {
-	h.event("AnyD")
-}
 
 func (h *History) DEnter(e *Event) {
 	h.event("DEnter")
@@ -119,6 +122,7 @@ func (h *History) event(name string) {
 	h.Counter[name]++
 }
 
+// TODO bind via Tracer, not handlers
 func trackTransitions(mach *Machine) *History {
 	history := &History{
 		Order:   []string{},

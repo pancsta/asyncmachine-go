@@ -584,7 +584,7 @@ goroutine, with a timeout of [`Machine.HandlerTimeout`](https://pkg.go.dev/githu
 ```go
 // can Foo activate?
 func (h *Handlers) FooEnter(e *am.Event) bool {}
-// when Foo active, can Bar activate?
+// with Foo active, can Bar activate?
 func (h *Handlers) FooBar(e *am.Event) {}
 // Foo activates
 func (h *Handlers) FooState(e *am.Event) {}
@@ -597,8 +597,6 @@ func (h *Handlers) FooEnd(e *am.Event) {}
 List of handlers during a transition from `Foo` to `Bar`, in the order of execution:
 
 - `FooExit` - [negotiation handler](#negotiation-handlers)
-- `FooAny` - [negotiation handler](#negotiation-handlers)
-- `AnyBar` - [negotiation handler](#negotiation-handlers)
 - `BarEnter` - [negotiation handler](#negotiation-handlers)
 - `FooBar` - [negotiation handler](#negotiation-handlers)
 - `FooEnd` - [final handler](#final-handlers)
@@ -611,14 +609,13 @@ which can be set via [`am.Opts`](https://pkg.go.dev/github.com/pancsta/asyncmach
 
 ### Self Handlers
 
-Self handler is a final handler for states which were active **before and after** a transition (all no-change active
-states). The name is a doubled name of the state (eg `FooFoo`).
+Self handler is a negotiation handler for states which were active **before and after** a transition (all no-change
+active states). The name is a doubled name of the state (eg `FooFoo`).
 
 List of handlers during a transition from `Foo` to `Foo Bar`, in the order of execution:
 
-- `AnyBar` - [negotiation handler](#negotiation-handlers)
 - `BarEnter` - [negotiation handler](#negotiation-handlers)
-- `FooFoo` - [final handler](#final-handlers) and **self handler**
+- `FooFoo` - [negotiation handler](#negotiation-handlers) and **self handler**
 - `BarState` - [final handler](#final-handlers)
 
 Self handlers provide a simple alternative to [`Multi` states](#multi-states), while fully maintaining [state clocks](#clock-and-context).
@@ -754,13 +751,18 @@ end
 ### Negotiation Handlers
 
 ```go
+// can Foo activate?
 func (h *Handlers) FooEnter(e *am.Event) bool {}
+// can Foo de-activate?
 func (h *Handlers) FooExit(e *am.Event) bool {}
+// with Bar active, can Foo activate?
+func (h *Handlers) BarFoo(e *am.Event) bool {}
 ```
 
-**Negotiation handlers** `Enter` and `Exit` are called for every state which is going to be activated or de-activated. They
-are allowed to cancel a transition by optionally returning `false`. **Negotiation handlers** are limited to read-only
-operations, or at least to side effects free ones. Their purpose is to make sure that
+**Negotiation handlers** `Enter` and `Exit` are called for every state which is going to be activated or de-activated.
+State-state handler (eg `FooBar`) are `Foo` is active and `Bar` wants to activate. They are allowed to cancel a
+transition by optionally returning `false`. **Negotiation handlers** are limited to read-only operations, or at least to
+side effects free ones. Their purpose is to make sure that
 [final transition handlers](#final-handlers) are good to go.
 
 ```go
@@ -812,10 +814,6 @@ mach.Add1("Foo", nil) // ->am.Canceled
 ```go
 func (h *Handlers) FooState(e *am.Event) {}
 func (h *Handlers) FooEnd(e *am.Event) {}
-func (h *Handlers) FooBar(e *am.Event) {}
-func (h *Handlers) BarFoo(e *am.Event) {}
-func (h *Handlers) AnyFoo(e *am.Event) {}
-func (h *Handlers) FooAny(e *am.Event) {}
 ```
 
 Final handlers `State` and `End` are where the main handler logic resides. After the transition gets accepted by
@@ -858,10 +856,10 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 
 ### Global Handlers
 
-`AnyAny` is the first negotiation handler and always gets executed.
+`AnyEnter` is the first negotiation handler and always gets executed.
 
 ```go
-func (d *Debugger) AnyAny(e *am.Event) bool {
+func (d *Debugger) AnyEnter(e *am.Event) bool {
     tx := e.Transition()
 
     // ...

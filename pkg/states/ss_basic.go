@@ -2,11 +2,12 @@
 //
 // - basic
 // - connected
+// - disposed
 package states
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
-// BasicStatesDef contains all the states of the Basic state machine.
+// BasicStatesDef contains all the basic states.
 type BasicStatesDef struct {
 	*am.StatesBase
 
