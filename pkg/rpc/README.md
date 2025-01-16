@@ -32,30 +32,11 @@ Not implemented (yet):
 - compression
 - msgpack encoding
 
-Each server can handle 1 client at a time, but 1 worker can have many servers attached to itself (via [Tracer API](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Tracer)).
-Additionally, remote workers can also have servers attached to themselves, creating a tree structure (see [/examples/benchmark_state_source](/examples/benchmark_state_source/README.md)).
+Each RPC server can handle 1 RPC client at a time, but 1 state source (asyncmachine) can have many RPC servers attached
+to itself (via [Tracer API](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Tracer)).
+Additionally, remote RPC workers can also have RPC servers attached to themselves, creating a tree structure (see [/examples/benchmark_state_source](/examples/benchmark_state_source/README.md)).
 
-```mermaid
-flowchart TB
-
-    subgraph s [Server Host]
-        direction TB
-        Server[aRPC Server]
-        Worker[Worker Mach]
-    end
-    subgraph c [Client Host]
-        direction TB
-        Consumer[Consumer]
-        Client[aRPC Client]
-        RemoteWorker[Remote Worker Mach]
-    end
-
-    Client -- WorkerPayload state --> Consumer
-    Client --> RemoteWorker
-    Worker --> Server
-    Client -- Mutations --> Server
-    Server -. Clock Updates .-> Client
-```
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_8.svg)
 
 ## Components
 

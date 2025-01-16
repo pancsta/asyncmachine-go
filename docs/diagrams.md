@@ -1,6 +1,6 @@
 # Diagrams
 
-## Machine Basics## Features
+## Machine Basics
 
 Features are explained using Mermaid flow diagrams, and headers link to relevant sections of the [manual](/docs/manual.md).
 
@@ -199,7 +199,33 @@ flowchart LR
     end
 ```
 
-## aRPC Architecture
+## aRPC
+
+### aRPC Client Server
+
+```mermaid
+flowchart TB
+
+    subgraph s [Server Host]
+        direction TB
+        Server[aRPC Server]
+        Worker[Worker Mach]
+    end
+    subgraph c [Client Host]
+        direction TB
+        Consumer[Consumer]
+        Client[aRPC Client]
+        RemoteWorker[Remote Worker Mach]
+    end
+
+    Client -- WorkerPayload state --> Consumer
+    Client --> RemoteWorker
+    Worker --> Server
+    Client -- Mutations --> Server
+    Server -. Clock Updates .-> Client
+```
+
+### aRPC Architecture
 
 ```mermaid
 flowchart TB

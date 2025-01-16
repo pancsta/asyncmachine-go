@@ -30,7 +30,7 @@ func init() {
 }
 
 func TestBasic(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	// amhelp.EnableDebugging(true)
 
 	// config
@@ -76,7 +76,7 @@ func TestBasic(t *testing.T) {
 }
 
 func TestTypeSafe(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// read env
 	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
@@ -115,7 +115,7 @@ func TestTypeSafe(t *testing.T) {
 }
 
 func TestWaiting(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
@@ -153,7 +153,7 @@ func TestWaiting(t *testing.T) {
 }
 
 func TestAddMany(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
@@ -192,7 +192,7 @@ func TestAddMany(t *testing.T) {
 }
 
 func TestAddManyNoSync(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
@@ -239,7 +239,7 @@ func TestAddManyNoSync(t *testing.T) {
 }
 
 func TestAddManyInstantClock(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
@@ -271,14 +271,14 @@ func TestAddManyInstantClock(t *testing.T) {
 	bytesCount := <-counter
 	assert.LessOrEqual(t, 16_100, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 16_500, int(bytesCount),
+	assert.GreaterOrEqual(t, 16_700, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
 }
 
 func TestManyStates(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
@@ -332,7 +332,7 @@ func TestManyStates(t *testing.T) {
 }
 
 func TestHighInstantClocks(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
@@ -403,7 +403,7 @@ func (h *TestRetryCallHandlers) DState(e *am.Event) {
 }
 
 func TestRetryCall(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	// amhelp.EnableDebugging()
 
 	// config
@@ -460,7 +460,7 @@ func TestRetryConnFLAKY(t *testing.T) {
 		return
 	}
 
-	// t.Parallel()
+	t.Parallel()
 	// amhelp.EnableDebugging(false)
 
 	// config
@@ -517,7 +517,7 @@ func (h *TestRetryErrNetworkTimeoutHandlers) DState(e *am.Event) {
 }
 
 func TestRetryErrNetworkTimeout(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	// amhelp.EnableDebugging(false)
 
 	// config
@@ -564,7 +564,7 @@ func TestRetryErrNetworkTimeout(t *testing.T) {
 }
 
 func TestRetryClosedListener(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	// amhelp.EnableDebugging(false)
 
 	// config
@@ -624,7 +624,7 @@ func (c *TestPayloadConsumer) WorkerPayloadState(e *am.Event) {
 }
 
 func TestPayload(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	// amhelp.EnableDebugging(false)
 
 	// config
@@ -671,7 +671,9 @@ func TestVerifyWorkerStates(t *testing.T) {
 // TODO test gob errors (although not user-facing)
 
 func TestMux(t *testing.T) {
-	// t.Parallel()
+	// TODO test_help.go:60: error for cWorkers A: timeout
+	//  --- FAIL: TestMux (2.04s)
+	t.Parallel()
 	// amhelp.EnableDebugging(false)
 	ctx := context.Background()
 

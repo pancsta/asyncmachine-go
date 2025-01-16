@@ -10,31 +10,7 @@ Benchmark of [`/examples/tree_state_source`](/examples/tree_state_source/README.
 and [Caddy](https://caddyserver.com/) in various tree configurations. Every node is a resource limited container
 (0.1cpu, 64mb). Each run starts with a restart of the load balancer and a 1s warmup.
 
-```mermaid
-flowchart BT
-    Root
-    Replicant-1 -- aRPC --> Root
-    Replicant-2 -- aRPC --> Root
-
-    Replicant-1-1 -- aRPC --> Replicant-1
-    Replicant-1-2 -- aRPC --> Replicant-1
-    Replicant-1-3 -- aRPC --> Replicant-1
-
-    Replicant-2-1 -- aRPC --> Replicant-2
-    Replicant-2-2 -- aRPC --> Replicant-2
-    Replicant-2-3 -- aRPC --> Replicant-2
-
-    Caddy[Caddy Load Balancer]
-    Caddy -- HTTP --> Replicant-1-1
-    Caddy -- HTTP --> Replicant-1-2
-    Caddy -- HTTP --> Replicant-1-3
-    Caddy -- HTTP --> Replicant-2-1
-    Caddy -- HTTP --> Replicant-2-2
-    Caddy -- HTTP --> Replicant-2-3
-
-    Benchmark[Benchmark go-wrt]
-    Benchmark -- HTTP --> Caddy
-```
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_ex_2.svg)
 
 ## Results
 

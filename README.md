@@ -104,7 +104,7 @@ Top layers depend on the bottom ones.
   <tr>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
-    <td colspan="9" align=center><a href="pkg/machine/README.md">Machine API</a></td>
+    <td colspan="9" align=center>🦾 <a href="pkg/machine/README.md">Machine API</a></td>
     <td>&nbsp;</td>
     <td>&nbsp;</td>
   </tr>
@@ -171,7 +171,7 @@ if err != nil {
 func (h *Handlers) FooEnter(e *am.Event) bool {
     return true
 }
-// when Foo active, can Bar activate?
+// with Foo active, can Bar activate?
 func (h *Handlers) FooBar(e *am.Event) bool {
     return true
 }
@@ -217,8 +217,8 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 
 ## Getting Started
 
-[`/pkg/machine`](pkg/machine/README.md) is a mandatory ready, while the code of [`/pkg/node`](pkg/node/supervisor.go) is
-the most interesting one. Examples in [`/examples`](/examples/README.md) are good for a general grasp, while [`/docs/manual.md`](/docs/manual.md)
+🦾 [`/pkg/machine`](pkg/machine/README.md) is the main package, while [`/pkg/node`](pkg/node) is
+the high-level usage. Examples in [`/examples`](/examples/README.md) are good for a general grasp, while [`/docs/manual.md`](/docs/manual.md)
 and [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details. Reading tests is always a good idea.
 
 ## Packages
@@ -227,10 +227,10 @@ This monorepo offers the following importable packages and runnable tools:
 
 - [`/pkg/helpers`](/pkg/helpers/README.md) Useful functions when working with async state machines.
 - [`/pkg/history`](/pkg/history/README.md) History tracking and traversal.
-- **[`/pkg/machine`](/pkg/machine/README.md) State machine, the main package. Dependency free and semver compatible.**
+- 🦾 **[`/pkg/machine`](/pkg/machine/README.md) State machine, dependency free, semver compatible.**
 - [`/pkg/node`](/pkg/node/README.md) Distributed worker pools with supervisors.
 - [`/pkg/rpc`](/pkg/rpc/README.md) Remote state machines, with the same API as local ones.
-- [`/pkg/states`](/pkg/states/README.md) Reusable state definitions and piping.
+- [`/pkg/states`](/pkg/states/README.md) Reusable state definitions, handlers, and piping.
 - [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for metrics, traces, and logs.
 - `/pkg/pubsub` Planned.
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.

@@ -2,6 +2,20 @@
 
 Only `pkg/machine` and `pkg/states` adhere to semver. Semver of other packages is not guaranteed at the moment.
 
+## v0.10
+
+- `FooBar` handlers execute later and more often
+- `FooAny`, `AnyFoo` handlers has been removed
+- `AnyAny` is now `AnyEnter`
+
+## v0.9
+
+- `Event.Machine` is now `Event.Machine()`
+- `Machine.RegisterDisposalHandler(func())` is now `HandleDispose(func(id, ctx))`
+- `Step.FromState` is now `Step.GetFromState()`
+- `Step.ToState` is now `Step.GetToState()`
+- `Step.Data` is now `Step.RelType`
+
 ## v0.8
 
 - `Machine.ID` is now `Id()`
