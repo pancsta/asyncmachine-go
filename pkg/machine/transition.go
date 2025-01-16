@@ -314,7 +314,7 @@ func (t *Transition) emitSelfEvents() Result {
 }
 
 func (t *Transition) emitEnterEvents() Result {
-	for i, toState := range t.Enters {
+	for _, toState := range t.Enters {
 		args := t.Mutation.Args
 
 		// FooEnter
@@ -322,7 +322,8 @@ func (t *Transition) emitEnterEvents() Result {
 		if ret == Canceled {
 			if t.IsAuto() {
 				// partial auto state acceptance
-				t.TargetIndexes = slices.Delete(t.TargetIndexes, i, i+1)
+				idx := slices.Index(t.TargetStates(), toState)
+				t.TargetIndexes = slices.Delete(t.TargetIndexes, idx, idx+1)
 			} else {
 				return ret
 			}
@@ -333,13 +334,14 @@ func (t *Transition) emitEnterEvents() Result {
 }
 
 func (t *Transition) emitExitEvents() Result {
-	for i, fromState := range t.Exits {
+	for _, fromState := range t.Exits {
 		// FooExit
 		ret := t.emitHandler(fromState, "", fromState+SuffixExit, t.Mutation.Args)
 		if ret == Canceled {
 			if t.IsAuto() {
 				// partial auto state acceptance
-				t.TargetIndexes = slices.Delete(t.TargetIndexes, i, i+1)
+				idx := slices.Index(t.TargetStates(), fromState)
+				t.TargetIndexes = slices.Delete(t.TargetIndexes, idx, idx+1)
 			} else {
 				return ret
 			}
@@ -396,7 +398,7 @@ func (t *Transition) emitFinalEvents() Result {
 
 func (t *Transition) emitStateStateEvents() Result {
 	for _, before := range t.StatesBefore() {
-		for i, after := range t.TargetStates() {
+		for _, after := range t.TargetStates() {
 			if before == after {
 				continue
 			}
@@ -415,7 +417,8 @@ func (t *Transition) emitStateStateEvents() Result {
 			if ret == Canceled {
 				if t.IsAuto() {
 					// partial auto state acceptance
-					t.TargetIndexes = slices.Delete(t.TargetIndexes, i, i+1)
+					idx := slices.Index(t.TargetStates(), after)
+					t.TargetIndexes = slices.Delete(t.TargetIndexes, idx, idx+1)
 				} else {
 					return ret
 				}

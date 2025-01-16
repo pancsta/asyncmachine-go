@@ -183,6 +183,9 @@ func captureLog(t *testing.T, m *Machine, log *string) {
 	mx := sync.Mutex{}
 	m.SetLogLevel(LogEverything)
 	m.SetLogger(func(i LogLevel, msg string, args ...any) {
+		if m.IsDisposed() {
+			return
+		}
 		if os.Getenv(EnvAmDebug) != "" {
 			t.Logf(msg+"\n", args...)
 		}

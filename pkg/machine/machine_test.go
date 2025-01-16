@@ -18,11 +18,54 @@ func init() {
 }
 
 func ExampleNew() {
-	// TODO
+	ctx := context.TODO()
+	mach := New(ctx, Struct{
+		"Foo": {Require: S{"Bar"}},
+		"Bar": {},
+	}, nil)
+	mach.Add1("Foo", nil)
+	mach.Is1("Foo") // false
 }
 
 func ExampleNewCommon() {
-	// TODO
+	// define (tip: use am-gen instead)
+	stateStruct := Struct{
+		"Foo": {Require: S{"Bar"}},
+		"Bar": {},
+	}
+	stateNames := []string{"Foo", "Bar"}
+	type Handlers struct{}
+	// func (h *Handlers) FooState(e *Event) {
+	// 	args := e.Args
+	// 	mach := e.Machine()
+	// 	ctx := mach.NewStateCtx("Foo")
+	// 	// unblock
+	// 	go func() {
+	// 		if ctx.Err() != nil {
+	// 			return // expired
+	// 		}
+	// 		// blocking calls...
+	// 		if ctx.Err() != nil {
+	// 			return // expired
+	// 		}
+	// 		mach.Add1("Bar", nil)
+	// 	}()
+	// }
+
+	// init
+	ctx := context.TODO()
+	mach, err := NewCommon(ctx, "mach-id",
+		stateStruct, stateNames,
+		&Handlers{}, nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	mach.SetLogLevel(LogOps)
+
+	// debug
+	// import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	// amhelp.EnableDebugging(false)
+	// amhelp.MachDebugEnv(mach)
 }
 
 // NewNoRels creates a new machine with no relations between states.

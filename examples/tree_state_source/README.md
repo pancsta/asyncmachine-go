@@ -9,20 +9,7 @@
 State source of flight statuses - in the real world this data-oriented problem should be modelled using composition and
 handler delegation, but it's flat in this example for simplicity and research purposes.
 
-```mermaid
-flowchart BT
-    Root
-    Replicant-1 -- aRPC --> Root
-    Replicant-2 -- aRPC --> Root
-
-    Replicant-1-1 -- aRPC --> Replicant-1
-    Replicant-1-2 -- aRPC --> Replicant-1
-    Replicant-1-3 -- aRPC --> Replicant-1
-
-    Replicant-2-1 -- aRPC --> Replicant-2
-    Replicant-2-2 -- aRPC --> Replicant-2
-    Replicant-2-3 -- aRPC --> Replicant-2
-```
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_ex_1.svg)
 
 ## States
 

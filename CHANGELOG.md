@@ -1,5 +1,28 @@
 # Changelog
 
+## [v0.10.0](https://github.com/pancsta/asyncmachine-go/tree/v0.10.0) (2025-01-14)
+
+- feat\(states\): add Disposed state def [\#210](https://github.com/pancsta/asyncmachine-go/pull/210) (@pancsta)
+- docs\(examples\): refac NFA example [\#209](https://github.com/pancsta/asyncmachine-go/pull/209) (@pancsta)
+- feat\(machine\): allow for partial auto states via handlers [\#208](https://github.com/pancsta/asyncmachine-go/pull/208)
+  (@pancsta)
+- fix\(node\): migrate to lock-less workers map [\#207](https://github.com/pancsta/asyncmachine-go/pull/207) (@pancsta)
+
+## [v0.9.1](https://github.com/pancsta/asyncmachine-go/tree/v0.9.1) (2025-01-14)
+
+- fix\(machine\): dont panic on topo sort with cycles [\#206](https://github.com/pancsta/asyncmachine-go/pull/206)
+  (@pancsta)
+- feat\(machine\): improve state-state handlers \(eg FooBar\) [\#205](https://github.com/pancsta/asyncmachine-go/pull/205)
+  (@pancsta)
+- fix: fix `test -race` for handler.Dispose [\#204](https://github.com/pancsta/asyncmachine-go/pull/204) (@pancsta)
+- fix: fix `test -race` for handleDispose [\#203](https://github.com/pancsta/asyncmachine-go/pull/203) (@pancsta)
+- ci: split go pipelines [\#202](https://github.com/pancsta/asyncmachine-go/pull/202) (@pancsta)
+- fix\(dbg\): fix mouse scroll [\#201](https://github.com/pancsta/asyncmachine-go/pull/201) (@pancsta)
+- feat\(dbg\): group piped states [\#200](https://github.com/pancsta/asyncmachine-go/pull/200) (@pancsta)
+- fix\(dbg\): fix rain with filters [\#199](https://github.com/pancsta/asyncmachine-go/pull/199) (@pancsta)
+- fix\(dbg\): improve reader links and history [\#198](https://github.com/pancsta/asyncmachine-go/pull/198) (@pancsta)
+- feat\(dbg\): show tags from parent machines [\#197](https://github.com/pancsta/asyncmachine-go/pull/197) (@pancsta)
+
 ## [v0.9.0](https://github.com/pancsta/asyncmachine-go/tree/v0.9.0) (2024-12-15)
 
 - feat: add v0.9 release [\#194](https://github.com/pancsta/asyncmachine-go/pull/194) (@pancsta)
