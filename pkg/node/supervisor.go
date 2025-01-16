@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"os/exec"
@@ -12,7 +13,6 @@ import (
 	"strconv"
 	"time"
 
-	cmap "github.com/orcaman/concurrent-map/v2"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
@@ -60,17 +60,25 @@ type Supervisor struct {
 	WorkerErrKill int
 
 	// network
+	// TODO group under Supervisor.Times struct
 
 	// ConnTimeout is the time to wait for an outbound connection to be
 	// established. Default is 5s.
-	ConnTimeout     time.Duration
+	ConnTimeout time.Duration
+	// DeliveryTimeout is a timeout for RPC delivery.
 	DeliveryTimeout time.Duration
+	// OpTimeout is the default timeout for operations (eg getters).
+	OpTimeout time.Duration
 	// PoolPause is the time to wait between normalizing the pool. Default is 5s.
 	PoolPause time.Duration
 	// HealthcheckPause is the time between trying to get a Healtcheck response
 	// from a worker.
 	HealthcheckPause time.Duration
-	Heartbeat        time.Duration
+	// Heartbeat is the frequency of the Heartbeat state, which normalized the
+	// pool and checks workers. Default 1m.
+	Heartbeat time.Duration
+	// WorkerCheckInterval defines how often to pull a worker's state. Default 1s.
+	WorkerCheckInterval time.Duration
 
 	// PublicAddr is the address for the public RPC server to listen on. The
 	// effective address is at [PublicMux.Addr].
@@ -91,8 +99,8 @@ type Supervisor struct {
 	// TODO healthcheck endpoint
 	// HttpAddr string
 
-	// workerPids is a map of local RPC addresses to workerInfo data.
-	workers cmap.ConcurrentMap[string, *workerInfo]
+	// workers is a map of local RPC addresses to workerInfo data.
+	workers map[string]*workerInfo
 
 	// workerSNames is a list of states for the worker.
 	workerSNames am.S
@@ -158,18 +166,20 @@ func NewSupervisor(
 
 		// defaults
 
-		Max:              10,
-		Min:              2,
-		Warm:             5,
-		MaxClientWorkers: 10,
-		ConnTimeout:      5 * time.Second,
-		DeliveryTimeout:  5 * time.Second,
-		Heartbeat:        1 * time.Minute,
-		PoolPause:        5 * time.Second,
-		HealthcheckPause: 500 * time.Millisecond,
-		WorkerErrTtl:     10 * time.Minute,
-		WorkerErrRecent:  1 * time.Minute,
-		WorkerErrKill:    3,
+		Max:                 10,
+		Min:                 2,
+		Warm:                5,
+		MaxClientWorkers:    10,
+		ConnTimeout:         5 * time.Second,
+		DeliveryTimeout:     5 * time.Second,
+		OpTimeout:           time.Second,
+		Heartbeat:           1 * time.Minute,
+		WorkerCheckInterval: 1 * time.Second,
+		PoolPause:           5 * time.Second,
+		HealthcheckPause:    500 * time.Millisecond,
+		WorkerErrTtl:        10 * time.Minute,
+		WorkerErrRecent:     1 * time.Minute,
+		WorkerErrKill:       3,
 
 		// rpc
 
@@ -179,12 +189,14 @@ func NewSupervisor(
 
 		workerSNames: workerSNames,
 		workerStruct: workerStruct,
-		workers:      cmap.New[*workerInfo](),
+		workers:      map[string]*workerInfo{},
 	}
 
 	if amhelp.IsDebug() {
-		// increase only the timeouts using [context.WithTimeout] directly
+		// increase only the timeouts used by [context.WithTimeout] or [time.Sleep]
+		// directly
 		s.DeliveryTimeout = 10 * s.DeliveryTimeout
+		s.OpTimeout = 10 * s.OpTimeout
 	}
 
 	mach, err := am.NewCommon(ctx, "ns-"+s.Name, states.SupervisorStruct,
@@ -234,7 +246,7 @@ func (s *Supervisor) ErrWorkerState(e *am.Event) {
 	}
 	err := am.ParseArgs(e.Args).Err
 	args := ParseArgs(e.Args)
-	w, _ := s.workers.Get(args.LocalAddr)
+	w := s.workers[args.LocalAddr]
 
 	// possibly kill the worker
 	if !errors.Is(err, ErrWorkerKill) && w != nil {
@@ -378,7 +390,7 @@ func (s *Supervisor) StartEnd(e *am.Event) {
 }
 
 func (s *Supervisor) ForkWorkerEnter(e *am.Event) bool {
-	return s.workers.Count() < s.Max
+	return len(s.workers) < s.Max
 }
 
 func (s *Supervisor) ForkWorkerState(e *am.Event) {
@@ -420,16 +432,17 @@ func (s *Supervisor) ForkWorkerState(e *am.Event) {
 
 func (s *Supervisor) ForkingWorkerEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
-	return a != nil && a.Bootstrap != nil && a.Bootstrap.Addr() != "" &&
-		s.workers.Count() < s.Max
+	return a.Bootstrap != nil && a.Bootstrap.Addr() != "" &&
+		len(s.workers) < s.Max
 }
 
 func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 	s.Mach.Remove1(ssS.ForkingWorker, nil)
 	ctx := s.Mach.NewStateCtx(ssS.Start)
 	args := ParseArgs(e.Args)
-	b := args.Bootstrap
-	argsOut := &A{Bootstrap: b}
+	boot := args.Bootstrap
+	bootAddr := boot.Addr()
+	argsOut := &A{Bootstrap: boot}
 
 	// test forking, if provided
 	if s.TestFork != nil {
@@ -438,12 +451,15 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 			if ctx.Err() != nil {
 				return // expired
 			}
-			if err := s.TestFork(args.Bootstrap.Addr()); err != nil {
+			if err := s.TestFork(bootAddr); err != nil {
 				_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
 				return
 			}
 			// fake entry
-			s.workers.Set(b.Addr(), newWorkerInfo(s, nil))
+			s.Mach.Add1(ssS.SetWorker, Pass(&A{
+				WorkerAddr: bootAddr,
+				WorkerInfo: newWorkerInfo(s, nil),
+			}))
 		}()
 
 		// tests end here
@@ -455,12 +471,15 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 	if len(s.WorkerBin) > 1 {
 		cmdArgs = s.WorkerBin[1:]
 	}
-	// TODO custom param
-	cmdArgs = slices.Concat(cmdArgs, []string{"-a", b.Addr()})
+	// TODO custom param name -a
+	cmdArgs = slices.Concat(cmdArgs, []string{"-a", bootAddr})
 	s.log("forking worker %s %s", s.WorkerBin[0], cmdArgs)
 	cmd := exec.CommandContext(ctx, s.WorkerBin[0], cmdArgs...)
 	cmd.Env = os.Environ()
-	s.workers.Set(b.Addr(), newWorkerInfo(s, cmd.Process))
+	s.Mach.Add1(ssS.SetWorker, Pass(&A{
+		WorkerAddr: bootAddr,
+		WorkerInfo: newWorkerInfo(s, cmd.Process),
+	}))
 
 	// read errors
 	stderr, err := cmd.StderrPipe()
@@ -548,80 +567,67 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 		amhelp.MachDebugEnv(wrpc.Worker)
 
 		// next
-		argsOut.Worker = wrpc
+		argsOut.WorkerRpc = wrpc
 		s.Mach.Add1(ssS.WorkerForked, Pass(&argsOut))
 	}()
 }
 
 func (s *Supervisor) WorkerForkedEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
-	return a != nil && a.LocalAddr != "" && a.Worker != nil
+	return a != nil && a.LocalAddr != "" && a.WorkerRpc != nil
 }
 
 func (s *Supervisor) WorkerForkedState(e *am.Event) {
 	s.Mach.Remove1(ssS.WorkerForked, nil)
+
 	args := ParseArgs(e.Args)
 	addr := args.LocalAddr
 	bootAddr := args.BootAddr
-	wrpc := args.Worker
+	wrpc := args.WorkerRpc
 	argsOut := &A{
 		LocalAddr: addr,
 		Id:        wrpc.Mach.Id(),
 	}
 
 	// switch addresses (boot -> local) and update the worker map
-	info, ok := s.workers.Get(bootAddr)
-	s.workers.Remove(bootAddr)
+	info, ok := s.workers[bootAddr]
 	if !ok {
 		_ = AddErrWorker(e, s.Mach, ErrWorkerMissing, Pass(argsOut))
 		return
 	}
+	delete(s.workers, bootAddr)
 
-	// unblock
-	ctx := s.Mach.NewStateCtx(ssS.Start)
-	go func() {
-		if ctx.Err() != nil {
-			return // expired
-		}
-		info.mx.Lock()
-		if ctx.Err() != nil {
-			info.mx.Unlock()
-			return // expired
-		}
+	// update worker info
+	info.rpc = wrpc
+	info.w = wrpc.Worker
+	info.publicAddr = args.PublicAddr
+	info.localAddr = addr
+	s.workers[addr] = info
 
-		// update the worker info
-		info.rpc = wrpc
-		info.w = wrpc.Worker
-		info.publicAddr = args.PublicAddr
-		info.localAddr = addr
-		info.mx.Unlock()
-		s.workers.Set(addr, info)
+	// custom pipe worker states
+	err := errors.Join(
+		ampipe.BindReady(wrpc.Mach, s.Mach, ssS.WorkerReady, ""),
+		wrpc.Mach.BindHandlers(&struct {
+			ExceptionState am.HandlerFinal
+			ReadyEnd       am.HandlerFinal
+		}{
+			ExceptionState: func(e *am.Event) {
+				_ = AddErrWorker(e, s.Mach, wrpc.Mach.Err(), Pass(argsOut))
+			},
+			ReadyEnd: func(e *am.Event) {
+				// TODO why this kills the workers? which Ready ends?
+				s.Mach.EvAdd1(e, ssS.KillWorker, Pass(argsOut))
+			},
+		}),
+	)
+	if err != nil {
+		_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
+		return
+	}
 
-		// custom pipe worker states
-		err := errors.Join(
-			ampipe.BindReady(wrpc.Mach, s.Mach, ssS.WorkerReady, ""),
-			wrpc.Mach.BindHandlers(&struct {
-				ExceptionState am.HandlerFinal
-				ReadyEnd       am.HandlerFinal
-			}{
-				ExceptionState: func(e *am.Event) {
-					_ = AddErrWorker(e, s.Mach, wrpc.Mach.Err(), Pass(argsOut))
-				},
-				ReadyEnd: func(e *am.Event) {
-					// TODO why this kills the workers? which Ready ends?
-					s.Mach.EvAdd1(e, ssS.KillWorker, Pass(argsOut))
-				},
-			}),
-		)
-		if err != nil {
-			_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
-			return
-		}
-
-		// ping and re-check the pool status
-		wrpc.Worker.Add1(ssW.Healthcheck, nil)
-		s.Mach.Add1(ssS.PoolReady, nil)
-	}()
+	// ping and re-check the pool status
+	wrpc.Worker.Add1(ssW.Healthcheck, nil)
+	s.Mach.Add1(ssS.PoolReady, nil)
 }
 
 func (s *Supervisor) KillingWorkerEnter(e *am.Event) bool {
@@ -631,6 +637,7 @@ func (s *Supervisor) KillingWorkerEnter(e *am.Event) bool {
 
 func (s *Supervisor) KillingWorkerState(e *am.Event) {
 	s.Mach.Remove1(ssS.KillingWorker, nil)
+
 	addr := ParseArgs(e.Args).LocalAddr
 	argsOut := &A{LocalAddr: addr}
 
@@ -644,13 +651,15 @@ func (s *Supervisor) KillingWorkerState(e *am.Event) {
 		return
 	}
 
-	w, ok := s.workers.Get(addr)
+	w, ok := s.workers[addr]
 	if !ok {
-		s.log("worker %s not found", addr)
+		_ = AddErrWorker(e, s.Mach, ErrWorkerMissing, Pass(argsOut))
+		return
 	}
 	err := w.proc.Kill()
 	if err != nil {
-		s.Mach.AddErr(err, Pass(argsOut))
+		_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
+		return
 	}
 
 	// TODO confirm port disconnect
@@ -667,25 +676,19 @@ func (s *Supervisor) WorkerKilledState(e *am.Event) {
 	s.Mach.Remove1(ssS.WorkerKilled, nil)
 
 	args := ParseArgs(e.Args)
-	s.workers.Remove(args.LocalAddr)
+	delete(s.workers, args.LocalAddr)
 
 	// re-check the pool status
 	s.Mach.Remove1(ssS.PoolReady, nil)
 }
 
 func (s *Supervisor) PoolReadyEnter(e *am.Event) bool {
-	return len(s.ReadyWorkers()) >= s.min()
+	// TODO timeouts in tests
+	return len(s.readyWorkers()) >= s.min()
 }
 
 func (s *Supervisor) PoolReadyExit(e *am.Event) bool {
-	return len(s.ReadyWorkers()) < s.min()
-}
-
-func (s *Supervisor) min() int {
-	if s.Min > s.Max {
-		return s.Max
-	}
-	return s.Min
+	return len(s.readyWorkers()) < s.min()
 }
 
 func (s *Supervisor) HeartbeatState(e *am.Event) {
@@ -707,7 +710,7 @@ func (s *Supervisor) HeartbeatState(e *am.Event) {
 	// }
 
 	// get ready workers, or abort
-	ready := s.ReadyWorkers()
+	ready := s.readyWorkers()
 	if ready == nil {
 		s.Mach.Remove1(ssS.Heartbeat, nil)
 		return
@@ -758,10 +761,20 @@ func (s *Supervisor) HeartbeatState(e *am.Event) {
 			return
 		}
 
-		// update states (negotiation lets the right one in)
+		// update states PoolReady (negotiation lets the right one in)
 		s.Mach.Add1(ssS.PoolReady, nil)
 		s.Mach.Remove1(ssS.PoolReady, nil)
-		if len(s.IdleWorkers()) > 0 {
+
+		// update WorkersAvailable
+		idle, err := s.Workers(ctx, StateIdle)
+		if ctx.Err() != nil {
+			return // expired
+		}
+		if err != nil {
+			_ = AddErrWorker(e, s.Mach, err, nil)
+			return
+		}
+		if len(idle) > 0 {
 			s.Mach.Add1(ssS.WorkersAvailable, nil)
 		} else {
 			s.Mach.Remove1(ssS.WorkersAvailable, nil)
@@ -775,30 +788,49 @@ func (s *Supervisor) NormalizingPoolState(e *am.Event) {
 
 	// unblock
 	go func() {
+		if ctx.Err() != nil {
+			return // expired
+		}
+
 		defer s.Mach.Add1(ssS.PoolNormalized, nil)
 		ready := false
 
 		// 5 rounds
 		for i := 0; i < 5; i++ {
 
-			// include warm workers, [i] is 0-based
-			existing := s.workers.Count()
-			for ii := existing; ii < s.min()+s.Warm && ii < s.Max; ii++ {
+			// list workers
+			existing, err := s.Workers(ctx, "")
+			if ctx.Err() != nil {
+				return // expired
+			}
+			if err != nil {
+				continue
+			}
+			// fork missing ones (include warm workers)
+			for ii := len(existing); ii < s.min()+s.Warm && ii < s.Max; ii++ {
 				s.Mach.Add1(ssS.ForkWorker, nil)
 			}
 
 			// wait and keep checking
 			check := func() bool {
-				// TODO dont flood the log
-				ready = len(s.ReadyWorkers()) >= s.min()
-				if ready {
-					s.Mach.Add1(ssS.PoolReady, nil)
+				if ctx.Err() != nil {
+					return false // expired
 				}
 
-				return !ready
+				ready, _ := s.Workers(ctx, StateReady)
+				if ctx.Err() != nil {
+					return false // expired
+				}
+				if len(ready) >= s.min() {
+					s.Mach.Add1(ssS.PoolReady, nil)
+					return false
+				}
+
+				// continue
+				return true
 			}
 			// blocking call
-			_ = amhelp.Interval(ctx, s.ConnTimeout, 50*time.Millisecond, check)
+			_ = amhelp.Interval(ctx, s.ConnTimeout, s.WorkerCheckInterval, check)
 			if ready {
 				break
 			}
@@ -826,18 +858,23 @@ func (s *Supervisor) NormalizingPoolState(e *am.Event) {
 
 func (s *Supervisor) ProvideWorkerEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
-	return a != nil && a.WorkerRpcId != "" && a.SuperRpcId != ""
+	return a.WorkerRpcId != "" && a.SuperRpcId != ""
 }
 
 func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 	s.Mach.Remove1(ssS.ProvideWorker, nil)
 	args := ParseArgs(e.Args)
 	ctx := s.Mach.NewStateCtx(ssS.Start)
+	idle := s.idleWorkers()
 
 	// unblock
 	go func() {
+		if ctx.Err() != nil {
+			return // expired
+		}
+
 		// find an idle worker
-		for _, info := range s.IdleWorkers() {
+		for _, info := range idle {
 
 			// confirm with the worker
 			res := amhelp.Add1Block(ctx, info.rpc.Worker, ssW.ServeClient, PassRpc(&A{
@@ -866,6 +903,44 @@ func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 			break
 		}
 	}()
+}
+
+func (s *Supervisor) ListWorkersEnter(e *am.Event) bool {
+	return ParseArgs(e.Args).WorkersCh != nil
+}
+
+func (s *Supervisor) ListWorkersState(e *am.Event) {
+	s.Mach.Remove1(ssS.ListWorkers, nil)
+	args := ParseArgs(e.Args)
+
+	switch args.WorkerState {
+	case StateReady:
+		args.WorkersCh <- s.readyWorkers()
+	case StateIniting:
+		args.WorkersCh <- s.initingWorkers()
+	case StateBusy:
+		args.WorkersCh <- s.busyWorkers()
+	case StateIdle:
+		args.WorkersCh <- s.idleWorkers()
+	default:
+		args.WorkersCh <- slices.Collect(maps.Values(s.workers))
+	}
+}
+
+func (s *Supervisor) SetWorkerEnter(e *am.Event) bool {
+	return ParseArgs(e.Args).WorkerAddr != ""
+}
+
+func (s *Supervisor) SetWorkerState(e *am.Event) {
+	s.Mach.Remove1(ssS.SetWorker, nil)
+	args := ParseArgs(e.Args)
+	addr := args.WorkerAddr
+
+	if args.WorkerInfo != nil {
+		s.workers[addr] = args.WorkerInfo
+	} else {
+		delete(s.workers, addr)
+	}
 }
 
 // ///// ///// /////
@@ -910,92 +985,101 @@ func (s *Supervisor) CheckPool() bool {
 	return s.Mach.Is1(ssS.PoolReady)
 }
 
-// AllWorkers returns workers (in any state).
-func (s *Supervisor) AllWorkers() []*workerInfo {
-	var ret []*workerInfo
-	for item := range s.workers.IterBuffered() {
-		ret = append(ret, item.Val)
+// Workers returns a list of workers in a desired state. If [ctx] expires, it
+// will reutrn nil, nil.
+func (s *Supervisor) Workers(
+	ctx context.Context, state WorkerState,
+) ([]*workerInfo, error) {
+	wCh := make(chan []*workerInfo, 1)
+	res := s.Mach.Add1(ssS.ListWorkers, Pass(&A{
+		WorkersCh:   wCh,
+		WorkerState: state,
+	}))
+	if res == am.Canceled {
+		return nil, fmt.Errorf("listing workers: %w", am.ErrCanceled)
 	}
 
-	return ret
+	select {
+	case <-ctx.Done():
+		return nil, nil // expired
+	case <-time.After(s.OpTimeout):
+		return nil, fmt.Errorf("listing workers: %w", am.ErrTimeout)
+	case workers := <-wCh:
+		return workers, nil
+	}
 }
 
-// InitingWorkers returns workers being currently initialized.
-func (s *Supervisor) InitingWorkers() []*workerInfo {
+func (s *Supervisor) Dispose() {
+	s.Mach.Dispose()
+}
+
+// InitingWorkers returns workers being currently initialized. Only call in
+// handlers or use the [ListWorkers] state.
+func (s *Supervisor) initingWorkers() []*workerInfo {
 	var ret []*workerInfo
-	for _, info := range s.AllWorkers() {
-		info.mx.RLock()
+	for _, info := range s.workers {
 		if info.rpc == nil {
 			ret = append(ret, info)
 		}
-		info.mx.RUnlock()
 	}
 
 	return ret
 }
 
-// RpcWorkers returns workers with an RPC connection.
-func (s *Supervisor) RpcWorkers() []*workerInfo {
+// RpcWorkers returns workers with an RPC connection. Only call in handlers or
+// use the [ListWorkers] state.
+func (s *Supervisor) rpcWorkers() []*workerInfo {
 	var ret []*workerInfo
-	for _, info := range s.AllWorkers() {
-		info.mx.RLock()
+	for _, info := range s.workers {
 		if info.rpc != nil && info.rpc.Worker != nil {
 			ret = append(ret, info)
 		}
-		info.mx.RUnlock()
 	}
 
 	return ret
 }
 
-// IdleWorkers returns Idle workers.
-func (s *Supervisor) IdleWorkers() []*workerInfo {
+// IdleWorkers returns Idle workers. Only call in handlers or use the
+// [ListWorkers] state.
+func (s *Supervisor) idleWorkers() []*workerInfo {
 	var ret []*workerInfo
-	for _, info := range s.RpcWorkers() {
-		info.mx.RLock()
+	for _, info := range s.rpcWorkers() {
 		w := info.rpc.Worker
 		if !info.hasErrs() && w.Is1(ssW.Idle) {
 			ret = append(ret, info)
 		}
-		info.mx.RUnlock()
 	}
 
 	return ret
 }
 
-// BusyWorkers returns Busy workers.
-func (s *Supervisor) BusyWorkers() []*workerInfo {
+// BusyWorkers returns Busy workers. Only call in handlers or use the
+// [ListWorkers] state.
+func (s *Supervisor) busyWorkers() []*workerInfo {
 	var ret []*workerInfo
-	for _, info := range s.RpcWorkers() {
-		info.mx.RLock()
+	for _, info := range s.rpcWorkers() {
 		w := info.rpc.Worker
 		if !info.hasErrs() && info.rpc != nil &&
 			w.Any1(sgW.WorkStatus...) && !w.Is1(ssW.Idle) {
 			ret = append(ret, info)
 		}
-		info.mx.RUnlock()
 	}
 
 	return ret
 }
 
-// ReadyWorkers returns Ready workers.
-func (s *Supervisor) ReadyWorkers() []*workerInfo {
+// ReadyWorkers returns Ready workers. Only call in handlers or use the
+// [ListWorkers] state.
+func (s *Supervisor) readyWorkers() []*workerInfo {
 	var ret []*workerInfo
-	for _, info := range s.RpcWorkers() {
-		info.mx.RLock()
+	for _, info := range s.rpcWorkers() {
 		w := info.rpc.Worker
 		if !info.hasErrs() && info.rpc != nil && w.Is1(ssW.Ready) {
 			ret = append(ret, info)
 		}
-		info.mx.RUnlock()
 	}
 
 	return ret
-}
-
-func (s *Supervisor) Dispose() {
-	s.Mach.Dispose()
 }
 
 func (s *Supervisor) log(msg string, args ...any) {
@@ -1003,6 +1087,13 @@ func (s *Supervisor) log(msg string, args ...any) {
 		return
 	}
 	s.Mach.Log(msg, args...)
+}
+
+func (s *Supervisor) min() int {
+	if s.Min > s.Max {
+		return s.Max
+	}
+	return s.Min
 }
 
 // newClientConn creates a new RPC server for a client.

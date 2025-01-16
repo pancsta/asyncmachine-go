@@ -185,7 +185,7 @@ func TestAddMany(t *testing.T) {
 	bytesCount := <-counter
 	assert.LessOrEqual(t, 16_300, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
-	assert.GreaterOrEqual(t, 16_500, int(bytesCount),
+	assert.GreaterOrEqual(t, 16_700, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
 
 	disposeTest(t, c, s, true)

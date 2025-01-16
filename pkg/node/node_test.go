@@ -56,8 +56,11 @@ func TestFork1(t *testing.T) {
 	amhelpt.WaitForAll(t, "WorkerForked", ctx, defTimeout, whenForked)
 
 	// assert
-	assert.Equal(t, 1, s.workers.Count())
+	assert.Equal(t, 1, len(s.workers))
 	amhelpt.AssertNoErrNow(t, s.Mach)
+
+	s.Stop()
+	<-s.Mach.WhenDisposed()
 }
 
 func TestFork1Process(t *testing.T) {
@@ -91,7 +94,7 @@ func TestFork1Process(t *testing.T) {
 	amhelpt.WaitForAll(t, "WorkerForked", ctx, defTimeout, whenForked)
 
 	// assert
-	assert.Equal(t, 1, s.workers.Count())
+	assert.Equal(t, 1, len(s.workers))
 	amhelpt.AssertNoErrNow(t, s.Mach)
 
 	s.Stop()
@@ -100,6 +103,7 @@ func TestFork1Process(t *testing.T) {
 
 // TestFork5With2 tests a pool of 5 with 2 warm workers and 2 min workers.
 func TestFork5Warm2Min2(t *testing.T) {
+	// TODO flaky?
 	// t.Parallel()
 	// amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -124,11 +128,16 @@ func TestFork5Warm2Min2(t *testing.T) {
 	amhelpt.Wait(t, "warm workers", ctx, defTimeout)
 
 	// assert
-	assert.Equal(t, 4, s.workers.Count())
-	assert.Len(t, s.AllWorkers(), 4)
-	assert.GreaterOrEqual(t, len(s.ReadyWorkers()), s.Min) // TODO flaky (3)
-	assert.GreaterOrEqual(t, len(s.IdleWorkers()), s.Min)  // TODO flaky (3)
-	assert.Len(t, s.BusyWorkers(), 0)
+	assert.Len(t, s.workers, 4)
+	workers, err := s.Workers(ctx, StateReady)
+	assert.NoError(t, err)
+	assert.GreaterOrEqual(t, len(workers), s.Min) // TODO flaky (3)
+	workers, err = s.Workers(ctx, StateIdle)
+	assert.NoError(t, err)
+	assert.GreaterOrEqual(t, len(workers), s.Min) // TODO flaky (3)
+	workers, err = s.Workers(ctx, StateBusy)
+	assert.NoError(t, err)
+	assert.Len(t, workers, 0)
 	amhelpt.AssertNoErrNow(t, s.Mach)
 
 	s.Stop()
@@ -158,11 +167,16 @@ func TestFork15Warm0Min7(t *testing.T) {
 		s.Mach.When1(ssS.PoolReady, nil))
 
 	// assert
-	assert.Equal(t, 7, s.workers.Count())
-	assert.Len(t, s.AllWorkers(), 7)
-	assert.GreaterOrEqual(t, len(s.ReadyWorkers()), s.Min)
-	assert.GreaterOrEqual(t, len(s.IdleWorkers()), s.Min)
-	assert.Len(t, s.BusyWorkers(), 0)
+	assert.Len(t, s.workers, 7)
+	workers, err := s.Workers(ctx, StateReady)
+	assert.NoError(t, err)
+	assert.GreaterOrEqual(t, len(workers), s.Min)
+	workers, err = s.Workers(ctx, StateIdle)
+	assert.NoError(t, err)
+	assert.GreaterOrEqual(t, len(workers), s.Min)
+	workers, err = s.Workers(ctx, StateBusy)
+	assert.NoError(t, err)
+	assert.Len(t, workers, 0)
 	amhelpt.AssertNoErrNow(t, s.Mach)
 
 	s.Stop()
