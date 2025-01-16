@@ -164,7 +164,7 @@ if err != nil {
 // client/WorkerPayload and mach2/Ready activated
 ```
 
-**Handlers** - [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming) transition handlers.
+**Handlers** - [Aspect Oriented](https://en.wikipedia.org/wiki/Aspect-oriented_programming) transition handlers.
 
 ```go
 // can Foo activate?
@@ -221,7 +221,7 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 the high-level usage. Examples in [`/examples`](/examples/README.md) are good for a general grasp, while [`/docs/manual.md`](/docs/manual.md)
 and [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details. Reading tests is always a good idea.
 
-## Packages
+## [Packages](/pkg)
 
 This monorepo offers the following importable packages and runnable tools:
 

@@ -1,19 +1,12 @@
 package main
 
-import (
-	"github.com/joho/godotenv"
-
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
-	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-)
+import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
 const log = am.LogOps
 
 func init() {
-	// load .env
-	_ = godotenv.Load()
-
 	// am-dbg is required for debugging, go run it
+	// import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(false)
 	// amhelp.SetLogLevel(am.LogChanges)
@@ -136,7 +129,9 @@ func newMach(id string, machStruct am.Struct) *am.Machine {
 	println("-----")
 	println("mach: " + mach.Id())
 	println("-----")
-	amhelp.MachDebugEnv(mach)
+
+	// DEBUG
+	// amhelp.MachDebugEnv(mach)
 
 	return mach
 }

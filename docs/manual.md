@@ -2,11 +2,8 @@
 
 <!-- TOC -->
 
-- version `v0.8.0`
-- [Introduction](#introduction)
-  - [Comparison](#comparison)
-  - [Considerations](#considerations)
-  - [Legend](#legend)
+- version `v0.10.0`
+- [Legend](#legend)
 - [Machine and States](#machine-and-states)
   - [Defining States](#defining-states)
   - [Asynchronous States](#asynchronous-states)
@@ -62,52 +59,7 @@
 
 <!-- TOC -->
 
-## Introduction
-
-> **Asyncmachine** is a unique state machine - nondeterministic, multi-state, relational, optionally-accepting, and non-blocking.
-
-**Asyncmachine** abstracts everything and all as a state (but only if necessary). Many states can be active at the same
-time, some of them can mutually exclude each other, some can be divided into several smaller states, some states can be
-nested sub-machines, and finally, some states can aggregate groups of nested sub-machines.
-
-The purpose of **asyncmachine** is to never block (always return either synchronously, or right away), which is achieved
-by splitting long-running actions into steps and orchestrating blocking calls according to a predefined convention.
-Another goal is to give structure to chaos of nondeterminism, by embracing it.
-
-### Comparison
-
-Common differences from other state machines:
-
-- many [states](#defining-states) can be [active](#active-states) at the same time
-- [transitions](#transition-lifecycle) between all the states are allowed
-- states are connected by [relations](#relations)
-- [input events](#categories-of-states) are [special states](#multi-states)
-- every transition can be [rejected](#transition-lifecycle)
-- every state has a [clock value](#clock-and-context)
-- [error](#error-handling) is a state
-
-### Considerations
-
-It's important to define what "state" means. State as in "status", not state as in "data". For example, not a JSON
-string, but "process RUNNING", or "car BROKEN". **Asyncmachine** hold only this kind of state - current machine time,
-a queue of scheduled mutations, the last error, the given state structure, and subscriptions. It does not hold any data
-or payloads.
-
-Other things to consider:
-
-- only **state** can be trusted (eg [`Is()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Is),
-  [`Not()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Not),
-  [`Any()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Any))
-- only synchronous handlers guarantee race-free environment, but one can use [`Eval()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Eval)
-  from the outside
-- mutations resulting in [async states](#asynchronous-states) need to be waited on (eg [`When()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.When),
-  [`WhenTime()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTime))
-- flow can be redirected or constrained by checking the current and previous **state** within handlers (eg
-  [`TimeBefore`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.TimeBefore), [`TimeAfter`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.TimeAfter))
-- **active states** are just an `uint64` slice (eg `am.Time{0,1,0,2}`)
-- almost everything is optional
-
-### Legend
+## Legend
 
 Examples here use a string representations of state machines in the format of [`(ActiveState:\d) [InactiveState:\d]`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.StringAll)
 , eg `(Foo:1) [Bar:0 Baz:0]`. Variables with state machines are called `mach` and [pkg/machine](/pkg/machine) is
