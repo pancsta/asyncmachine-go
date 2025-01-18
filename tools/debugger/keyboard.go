@@ -118,12 +118,19 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 				d.timelineSteps.Box))
 			d.Mach.Add1(ss.TimelineStepsFocused, nil)
 
-		case d.filtersBar:
+		case d.toolbars[0]:
 			fallthrough
-		case d.filtersBar.Box:
+		case d.toolbars[0].Box:
 			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
-				d.filtersBar.Box))
-			d.Mach.Add1(ss.FiltersFocused, nil)
+				d.toolbars[0].Box))
+			d.Mach.Add1(ss.Toolbar1Focused, nil)
+
+		case d.toolbars[1]:
+			fallthrough
+		case d.toolbars[1].Box:
+			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+				d.toolbars[1].Box))
+			d.Mach.Add1(ss.Toolbar2Focused, nil)
 
 		case d.addressBar:
 			fallthrough
@@ -169,7 +176,7 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 		}
 
 		d.updateClientList(true)
-		d.updateKeyBars()
+		d.updateStatusBars()
 	}
 }
 
@@ -291,10 +298,6 @@ func (d *Debugger) getKeystrokes() map[string]func(
 	return map[string]func(ev *tcell.EventKey) *tcell.EventKey{
 		// play/pause
 		"space": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Not1(ss.ClientSelected) {
-				return nil
-			}
-
 			if d.Mach.Is1(ss.Paused) {
 				d.Mach.Add1(ss.Playing, nil)
 			} else {
@@ -306,7 +309,9 @@ func (d *Debugger) getKeystrokes() map[string]func(
 
 		// prev tx
 		"left": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Any1(ss.AddressFocused, ss.FiltersFocused) {
+			if d.Mach.Any1(
+				ss.AddressFocused, ss.Toolbar1Focused, ss.Toolbar2Focused) {
+
 				return ev
 			}
 
@@ -335,7 +340,9 @@ func (d *Debugger) getKeystrokes() map[string]func(
 
 		// next tx
 		"right": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Any1(ss.AddressFocused, ss.FiltersFocused) {
+			if d.Mach.Any1(
+				ss.AddressFocused, ss.Toolbar1Focused, ss.Toolbar2Focused) {
+
 				return ev
 			}
 
@@ -380,57 +387,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 		// expand / collapse trees
 		"alt+e": func(ev *tcell.EventKey) *tcell.EventKey {
 			// TODO unify
-
-			// log reader tree
-			if d.Mach.Is1(ss.LogReaderFocused) {
-				root := d.logReader.GetRoot()
-				children := root.GetChildren()
-				expanded := false
-
-				for _, child := range children {
-					if child.IsExpanded() {
-						expanded = true
-						break
-					}
-					child.Collapse()
-				}
-
-				// memorize
-				d.C.ReaderCollapsed = expanded
-				for _, child := range children {
-					if expanded {
-						child.Collapse()
-						child.GetReference().(*logReaderTreeRef).expanded = false
-					} else {
-						child.Expand()
-						child.GetReference().(*logReaderTreeRef).expanded = true
-					}
-				}
-
-				return nil
-			}
-
-			// struct tree
-			expanded := false
-			children := d.tree.GetRoot().GetChildren()
-
-			for _, child := range children {
-				if child.IsExpanded() {
-					expanded = true
-					break
-				}
-				child.Collapse()
-			}
-
-			for _, child := range children {
-				if expanded {
-					child.Collapse()
-					child.GetReference().(*nodeRef).expanded = false
-				} else {
-					child.Expand()
-					child.GetReference().(*nodeRef).expanded = true
-				}
-			}
+			d.toolExpand()
 
 			return nil
 		},
@@ -451,64 +408,27 @@ func (d *Debugger) getKeystrokes() map[string]func(
 
 		// matrix view
 		"alt+m": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Is1(ss.TreeLogView) {
-				d.Mach.Add1(ss.MatrixView, nil)
-			} else if d.Mach.Is1(ss.MatrixView) {
-				if d.Mach.Is1(ss.MatrixRain) {
-					d.Mach.Remove1(ss.MatrixRain, nil)
-					d.Mach.Add1(ss.TreeMatrixView, nil)
-				} else {
-					d.Mach.Add1(ss.MatrixRain, nil)
-				}
-			} else if d.Mach.Is1(ss.TreeMatrixView) && d.Mach.Not1(ss.MatrixRain) {
-				d.Mach.Add1(ss.MatrixRain, nil)
-			} else {
-				d.Mach.Remove1(ss.MatrixRain, nil)
-				d.Mach.Add1(ss.TreeLogView, nil)
-			}
+			d.toolMatrix()
 
 			return nil
 		},
 
 		"alt+r": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Is1(ss.MatrixRain) {
-				d.Mach.Add1(ss.TreeLogView, nil)
-			} else {
-				d.Mach.Add(am.S{ss.MatrixRain, ss.TreeMatrixView}, nil)
-				// TODO force redraw to get rect size, not ideal
-				d.redrawCallback = func() {
-					time.Sleep(1 * 16 * time.Millisecond)
-					d.drawViews()
-				}
-			}
+			d.toolRain()
 
 			return nil
 		},
 
 		// scroll to the first tx
 		"home": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Not1(ss.ClientSelected) {
-				return nil
-			}
-			d.SetCursor1(d.filterTxCursor(d.C, 0, true), false)
-			d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
-			// sidebar for errs
-			d.updateClientList(true)
-			d.RedrawFull(true)
+			d.toolFirstTx()
 
 			return nil
 		},
 
 		// scroll to the last tx
 		"end": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Not1(ss.ClientSelected) {
-				return nil
-			}
-			d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
-			d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
-			// sidebar for errs
-			d.updateClientList(true)
-			d.RedrawFull(true)
+			d.toolLastTx()
 
 			return nil
 		},
@@ -531,10 +451,10 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			return ev
 		},
 
-		// focus filter bar
+		// focus filters bar
 		"alt+f": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Not1(ss.FiltersFocused) {
-				d.focusManager.Focus(d.filtersBar)
+			if d.Mach.Not1(ss.Toolbar1Focused) {
+				d.focusManager.Focus(d.toolbars[0])
 			} else {
 				d.focusManager.Focus(d.clientList)
 			}
@@ -614,6 +534,112 @@ func (d *Debugger) getKeystrokes() map[string]func(
 	}
 }
 
+func (d *Debugger) toolMatrix() {
+	if d.Mach.Is1(ss.TreeLogView) {
+		d.Mach.Add1(ss.MatrixView, nil)
+	} else if d.Mach.Is1(ss.MatrixView) {
+		if d.Mach.Is1(ss.MatrixRain) {
+			d.Mach.Remove1(ss.MatrixRain, nil)
+			d.Mach.Add1(ss.TreeMatrixView, nil)
+		} else {
+			d.Mach.Add1(ss.MatrixRain, nil)
+		}
+	} else if d.Mach.Is1(ss.TreeMatrixView) && d.Mach.Not1(ss.MatrixRain) {
+		d.Mach.Add1(ss.MatrixRain, nil)
+	} else {
+		d.Mach.Remove1(ss.MatrixRain, nil)
+		d.Mach.Add1(ss.TreeLogView, nil)
+	}
+}
+
+func (d *Debugger) toolLastTx() {
+	if d.Mach.Not1(ss.ClientSelected) {
+		return
+	}
+	d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
+	d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
+	// sidebar for errs
+	d.updateClientList(true)
+	d.RedrawFull(true)
+}
+
+func (d *Debugger) toolFirstTx() {
+	if d.Mach.Not1(ss.ClientSelected) {
+		return
+	}
+	d.SetCursor1(d.filterTxCursor(d.C, 0, true), false)
+	d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
+	// sidebar for errs
+	d.updateClientList(true)
+	d.RedrawFull(true)
+}
+
+func (d *Debugger) toolExpand() {
+	// log reader tree
+	if d.Mach.Is1(ss.LogReaderFocused) {
+		root := d.logReader.GetRoot()
+		children := root.GetChildren()
+		expanded := false
+
+		for _, child := range children {
+			if child.IsExpanded() {
+				expanded = true
+				break
+			}
+			child.Collapse()
+		}
+
+		// memorize
+		d.C.ReaderCollapsed = expanded
+		for _, child := range children {
+			if expanded {
+				child.Collapse()
+				child.GetReference().(*logReaderTreeRef).expanded = false
+			} else {
+				child.Expand()
+				child.GetReference().(*logReaderTreeRef).expanded = true
+			}
+		}
+
+		return
+	}
+
+	// struct tree
+	expanded := false
+	children := d.tree.GetRoot().GetChildren()
+
+	for _, child := range children {
+		if child.IsExpanded() {
+			expanded = true
+			break
+		}
+		child.Collapse()
+	}
+
+	for _, child := range children {
+		if expanded {
+			child.Collapse()
+			child.GetReference().(*nodeRef).expanded = false
+		} else {
+			child.Expand()
+			child.GetReference().(*nodeRef).expanded = true
+		}
+	}
+}
+
+func (d *Debugger) toolRain() {
+	if d.Mach.Is1(ss.MatrixRain) {
+		d.Mach.Add1(ss.TreeLogView, nil)
+	} else {
+		d.Mach.Add(am.S{ss.MatrixRain, ss.TreeMatrixView}, nil)
+		// TODO force redraw to get rect size, not ideal
+		d.redrawCallback = func() {
+			time.Sleep(1 * 16 * time.Millisecond)
+			d.drawViews()
+		}
+	}
+}
+
 func (d *Debugger) shouldScrollCurrView() bool {
 	// always scroll matrix and log views
 	return d.Mach.Any1(ss.MatrixFocused, ss.LogFocused)
@@ -648,21 +674,22 @@ func (d *Debugger) updateFocusable() {
 	case ss.MatrixView:
 		d.focusable = []*cview.Box{
 			d.addressBar.Box, d.clientList.Box, d.matrix.Box, d.timelineTxs.Box,
-			d.timelineSteps.Box, d.filtersBar.Box,
+			d.timelineSteps.Box, d.toolbars[0].Box, d.toolbars[1].Box,
 		}
 		prims = []cview.Primitive{
 			d.addressBar, d.clientList, d.matrix, d.timelineTxs,
-			d.timelineSteps, d.filtersBar,
+			d.timelineSteps, d.toolbars[0], d.toolbars[1],
 		}
 
 	case ss.TreeMatrixView:
 		d.focusable = []*cview.Box{
 			d.addressBar.Box, d.clientList.Box, d.tree.Box, d.matrix.Box,
-			d.timelineTxs.Box, d.timelineSteps.Box, d.filtersBar.Box,
+			d.timelineTxs.Box, d.timelineSteps.Box, d.toolbars[0].Box,
+			d.toolbars[1].Box,
 		}
 		prims = []cview.Primitive{
 			d.addressBar, d.clientList, d.tree, d.matrix, d.timelineTxs,
-			d.timelineSteps, d.filtersBar,
+			d.timelineSteps, d.toolbars[0], d.toolbars[1],
 		}
 
 	case ss.TreeLogView:
@@ -673,21 +700,22 @@ func (d *Debugger) updateFocusable() {
 			d.focusable = []*cview.Box{
 				d.addressBar.Box, d.clientList.Box, d.tree.Box, d.log.Box,
 				d.logReader.Box, d.timelineTxs.Box, d.timelineSteps.Box,
-				d.filtersBar.Box,
+				d.toolbars[0].Box, d.toolbars[1].Box,
 			}
 			prims = []cview.Primitive{
 				d.addressBar, d.clientList, d.tree, d.log, d.logReader, d.timelineTxs,
-				d.timelineSteps, d.filtersBar,
+				d.timelineSteps, d.toolbars[0], d.toolbars[1],
 			}
 		} else {
 
 			d.focusable = []*cview.Box{
 				d.addressBar.Box, d.clientList.Box, d.tree.Box, d.log.Box,
-				d.timelineTxs.Box, d.timelineSteps.Box, d.filtersBar.Box,
+				d.timelineTxs.Box, d.timelineSteps.Box, d.toolbars[0].Box,
+				d.toolbars[1].Box,
 			}
 			prims = []cview.Primitive{
 				d.addressBar, d.clientList, d.tree, d.log, d.timelineTxs,
-				d.timelineSteps, d.filtersBar,
+				d.timelineSteps, d.toolbars[0], d.toolbars[1],
 			}
 		}
 	}
@@ -729,8 +757,10 @@ func (d *Debugger) updateFocusable() {
 		d.focusManager.Focus(d.timelineTxs)
 	case ss.TimelineStepsFocused:
 		d.focusManager.Focus(d.timelineSteps)
-	case ss.FiltersFocused:
-		d.focusManager.Focus(d.filtersBar)
+	case ss.Toolbar1Focused:
+		d.focusManager.Focus(d.toolbars[0])
+	case ss.Toolbar2Focused:
+		d.focusManager.Focus(d.toolbars[1])
 	case ss.AddressFocused:
 		d.focusManager.Focus(d.addressBar)
 	default:
@@ -738,37 +768,7 @@ func (d *Debugger) updateFocusable() {
 	}
 }
 
-// updateKeyBars TODO light mode
-func (d *Debugger) updateKeyBars() {
-	// TODO arrow keys for filters and address
-	keys := []struct{ key, desc string }{
-		{"space", "play"},
-		{"▲ ▼", "nav"},
-		{"◀ ▶", "prev/next"},
-		{"alt+◀ ▶ h l", "fast/state jump"},
-		{"home/end", "first/last"},
-		{"alt+e/enter", "expand/collapse"},
-		{"tab", "focus"},
-		{"alt+v", "tail"},
-		{"alt+r", "rain"},
-		{"alt+m", "matrix"},
-		{"alt+o", "reader"},
-		{"alt+s", "export"},
-		{"?", "help"},
-	}
-
-	if d.Mach.Any1(ss.AddressFocused, ss.FiltersFocused, ss.LogFocused) {
-		keys[2].desc = "nav      "
-	}
-
-	txt := "[" + colorActive.String() + "]"
-	for i, key := range keys {
-		txt += fmt.Sprintf("%s[%s] %s", key.key, colorHighlight2, key.desc)
-		// suffix
-		if i != len(keys)-1 {
-			txt += fmt.Sprintf(" [%s] ", colorActive)
-		}
-	}
-
-	d.keyBar.SetText(txt)
+func (d *Debugger) updateStatusBars() {
+	txt := ""
+	d.statusBar.SetText(txt)
 }

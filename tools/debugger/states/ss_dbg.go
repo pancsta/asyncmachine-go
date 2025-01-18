@@ -42,7 +42,8 @@ var States = am.Struct{
 	TimelineStepsFocused: {Remove: GroupFocused},
 	MatrixFocused:        {Remove: GroupFocused},
 	DialogFocused:        {Remove: GroupFocused},
-	FiltersFocused:       {Remove: GroupFocused},
+	Toolbar1Focused:      {Remove: GroupFocused},
+	Toolbar2Focused:      {Remove: GroupFocused},
 	LogReaderFocused: {
 		Require: S{LogReaderVisible},
 		Remove:  GroupFocused,
@@ -98,7 +99,7 @@ var States = am.Struct{
 		Require: S{ClientSelected},
 		Remove:  GroupPlaying,
 	},
-	ToggleFilter: {},
+	ToggleTool: {},
 	SwitchingClientTx: {
 		Require: S{Ready},
 		Remove:  SAdd(GroupSwitchedClientTx, S{GcMsgs}),
@@ -160,7 +161,7 @@ var (
 	GroupFocused = S{
 		TreeFocused, LogFocused, TimelineTxsFocused,
 		TimelineStepsFocused, SidebarFocused, MatrixFocused, DialogFocused,
-		FiltersFocused, LogReaderFocused, AddressFocused,
+		Toolbar1Focused, Toolbar2Focused, LogReaderFocused, AddressFocused,
 	}
 	GroupPlaying = S{
 		Playing, Paused, TailMode,
@@ -190,9 +191,10 @@ const (
 	TimelineTxsFocused    = "TimelineTxsFocused"
 	TimelineStepsFocused  = "TimelineStepsFocused"
 	MatrixFocused         = "MatrixFocused"
-	DialogFocused         = "DialogFocused"
-	FiltersFocused        = "FiltersFocused"
-	LogReaderFocused      = "LogReaderFocused"
+	DialogFocused    = "DialogFocused"
+	Toolbar1Focused  = "Toolbar1Focused"
+	Toolbar2Focused  = "Toolbar2Focused"
+	LogReaderFocused = "LogReaderFocused"
 	AddressFocused      = "AddressFocused"
 	// SidebarFocused is client list focused.
 	// TODO rename to ClientListFocused
@@ -253,7 +255,7 @@ const (
 	// run any self handler either
 	FilterEmptyTx   = "FilterEmptyTx"
 	FilterSummaries = "FilterSummaries"
-	ToggleFilter    = "ToggleFilter"
+	ToggleTool      = "ToggleTool"
 	// SwitchingClientTx switches to the given client and scrolls to the given
 	// transaction (1-based tx index). Accepts Client.id and Client.cursorTx.
 	SwitchingClientTx = "SwitchingClientTx"
@@ -292,7 +294,8 @@ var Names = S{
 	SidebarFocused,
 	TimelineTxsFocused,
 	TimelineStepsFocused,
-	FiltersFocused,
+	Toolbar1Focused,
+	Toolbar2Focused,
 	MatrixFocused,
 	DialogFocused,
 	StateNameSelected,
@@ -318,7 +321,7 @@ var Names = S{
 	FilterEmptyTx,
 	FilterSummaries,
 	FilterHealthcheck,
-	ToggleFilter,
+	ToggleTool,
 	SwitchingClientTx,
 	SwitchedClientTx,
 	ScrollToMutTx,

@@ -19,9 +19,10 @@ type Focusable struct {
 	*cview.Box
 }
 
-type filter struct {
-	id     FilterName
+type toolbarItem struct {
+	id     ToolName
 	label  string
+	icon   string
 	active func() bool
 }
 

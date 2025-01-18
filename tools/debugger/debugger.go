@@ -305,21 +305,37 @@ type OptsFilters struct {
 	LogLevel        am.LogLevel
 }
 
-// TODO refac: ToolbarButton
-type FilterName string
+type ToolName string
 
 const (
-	filterCanceledTx  FilterName = "skip-canceled"
-	filterAutoTx      FilterName = "skip-auto"
-	filterEmptyTx     FilterName = "skip-empty"
-	filterHealthcheck FilterName = "skip-healthcheck"
-	FilterSummaries   FilterName = "hide-summaries"
-	filterLog0        FilterName = "log-0"
-	filterLog1        FilterName = "log-1"
-	filterLog2        FilterName = "log-2"
-	filterLog3        FilterName = "log-3"
-	filterLog4        FilterName = "log-4"
-	filterReader      FilterName = "reader"
+	// row 1
+	toolFilterCanceledTx  ToolName = "skip-canceled"
+	toolFilterAutoTx      ToolName = "skip-auto"
+	toolFilterEmptyTx     ToolName = "skip-empty"
+	toolFilterHealthcheck ToolName = "skip-healthcheck"
+	ToolFilterSummaries   ToolName = "hide-summaries"
+	toolLog0              ToolName = "log-0"
+	toolLog1              ToolName = "log-1"
+	toolLog2              ToolName = "log-2"
+	toolLog3              ToolName = "log-3"
+	toolLog4              ToolName = "log-4"
+	toolReader            ToolName = "reader"
+	toolRain              ToolName = "rain"
+
+	// row 2
+
+	toolHelp     ToolName = "help"
+	toolPlay     ToolName = "play"
+	toolTail     ToolName = "tail"
+	toolPrev     ToolName = "prev"
+	toolNext     ToolName = "next"
+	toolJumpNext ToolName = "jump-next"
+	toolJumpPrev ToolName = "jump-prev"
+	toolFirst    ToolName = "first"
+	toolLast     ToolName = "last"
+	toolExpand   ToolName = "expand"
+	toolMatrix   ToolName = "matrix"
+	toolExport   ToolName = "export"
 )
 
 type Debugger struct {
@@ -352,7 +368,7 @@ type Debugger struct {
 	nextTxBarLeft      *cview.TextView
 	nextTxBarRight     *cview.TextView
 	helpDialog         *cview.Flex
-	keyBar             *cview.TextView
+	statusBar          *cview.TextView
 	clientList         *cview.List
 	mainGrid           *cview.Grid
 	logRebuildEnd      int
@@ -367,11 +383,12 @@ type Debugger struct {
 	focusManager       *cview.FocusManager
 	exportDialog       *cview.Modal
 	contentPanels      *cview.Panels
-	filtersBar         *cview.Table
+	toolbars           [2]*cview.Table
 	treeLogGrid        *cview.Grid
 	treeMatrixGrid     *cview.Grid
 	lastSelectedState  string
-	// TODO should be a redraw, not before
+	// TODO should be after a redraw, not before
+	// redrawCallback is auto-disposed in draw()
 	redrawCallback  func()
 	healthcheck     *time.Ticker
 	logReader       *cview.TreeView
@@ -379,7 +396,8 @@ type Debugger struct {
 	addressBar      *cview.Table
 	tagsBar         *cview.TextView
 	clip            clipper.Clipboard
-	filters         []filter
+	// toolbarItems is a list of row of toolbars items
+	toolbarItems [][]toolbarItem
 }
 
 // New creates a new debugger instance and optionally import a data file.
@@ -750,7 +768,7 @@ func (d *Debugger) Dispose() {
 
 	// UI
 	d.helpDialog = nil
-	d.keyBar = nil
+	d.statusBar = nil
 	d.currTxBarLeft = nil
 	d.currTxBarRight = nil
 	d.nextTxBarLeft = nil
@@ -759,7 +777,9 @@ func (d *Debugger) Dispose() {
 	d.focusManager = nil
 	d.exportDialog = nil
 	d.contentPanels = nil
-	d.filtersBar = nil
+	for i := range d.toolbars {
+		d.toolbars[i] = nil
+	}
 	d.tree = nil
 	d.clientList = nil
 	d.log = nil
@@ -786,7 +806,7 @@ func (d *Debugger) Start(clientID string, txNum int, uiView string) {
 func (d *Debugger) SetFilterLogLevel(lvl am.LogLevel) {
 	d.Opts.Filters.LogLevel = lvl
 
-	// process the filter change
+	// process the toolbarItem change
 	go d.ProcessFilterChange(context.TODO(), false)
 }
 
@@ -852,37 +872,45 @@ func (d *Debugger) ImportData(filename string) {
 
 // ///// ///// /////
 
-func (d *Debugger) updateFiltersBar() {
-	// TODO save filters per machine checkbox
-
-	focused := d.Mach.Is1(ss.FiltersFocused)
+func (d *Debugger) updateToolbar() {
 	f := fmt.Sprintf
-	_, sel := d.filtersBar.GetSelection()
 
 	// tx filters
-	for i, item := range d.filters {
-		text := ""
-
-		// checked
-		if item.active() {
-			text += f(" [::b]%s[::-]", cview.Escape("[X]"))
-		} else {
-			text += f(" [ ]")
+	for i, row := range d.toolbarItems {
+		focused := d.Mach.Is1(ss.Toolbar1Focused)
+		if i == 1 {
+			focused = d.Mach.Is1(ss.Toolbar2Focused)
 		}
 
-		// focused
-		if d.filters[sel].id == FilterName(item.id) && focused {
-			text += "[white]" + item.label
-		} else if !focused {
-			text += f("[%s]%s", colorHighlight2, item.label)
-		} else {
-			text += f("%s", item.label)
-		}
+		for ii, item := range row {
+			text := ""
+			_, sel := d.toolbars[i].GetSelection()
 
-		cell := d.filtersBar.GetCell(0, i)
-		cell.SetText(text)
-		cell.SetTextColor(tcell.ColorWhite)
-		d.filtersBar.SetCell(0, i, cell)
+			// checked
+			if item.active != nil && item.active() {
+				text += f(" [::b]%s[::-]", cview.Escape("[X]"))
+			} else if item.active == nil && item.icon != "" {
+				text += f(" [grey]%s[-]", cview.Escape("["+item.icon+"]"))
+			} else if item.active == nil {
+				text += f(" [grey][ ][-]")
+			} else {
+				text += f(" [ ]")
+			}
+
+			// focused
+			if d.toolbarItems[i][sel].id == ToolName(item.id) && focused {
+				text += "[white]" + item.label
+			} else if !focused {
+				text += f("[%s]%s", colorHighlight2, item.label)
+			} else {
+				text += f("%s", item.label)
+			}
+
+			cell := d.toolbars[i].GetCell(0, ii)
+			cell.SetText(text)
+			cell.SetTextColor(tcell.ColorWhite)
+			d.toolbars[i].SetCell(0, ii, cell)
+		}
 	}
 }
 
@@ -1006,8 +1034,9 @@ func (d *Debugger) updateViews(immediate bool) {
 	}
 }
 
+// TODO state
 func (d *Debugger) jumpBack(ev *tcell.EventKey) *tcell.EventKey {
-	if d.throttleKey(ev, arrowThrottleMs) {
+	if ev != nil && d.throttleKey(ev, arrowThrottleMs) {
 		return nil
 	}
 
@@ -1032,8 +1061,9 @@ func (d *Debugger) jumpBack(ev *tcell.EventKey) *tcell.EventKey {
 	return nil
 }
 
+// TODO state
 func (d *Debugger) jumpFwd(ev *tcell.EventKey) *tcell.EventKey {
-	if d.throttleKey(ev, arrowThrottleMs) {
+	if ev != nil && d.throttleKey(ev, arrowThrottleMs) {
 		return nil
 	}
 
@@ -1135,7 +1165,7 @@ func (d *Debugger) parseMsg(c *Client, idx int) {
 	d.parseMsgLog(c, msgTx, idx)
 }
 
-// isTxSkipped checks if the tx at the given index is skipped by filters
+// isTxSkipped checks if the tx at the given index is skipped by toolbarItems
 // idx is 0-based
 func (d *Debugger) isTxSkipped(c *Client, idx int) bool {
 	if !d.isFiltered() {
@@ -1144,7 +1174,7 @@ func (d *Debugger) isTxSkipped(c *Client, idx int) bool {
 	return slices.Index(c.msgTxsFiltered, idx) == -1
 }
 
-// filterTxCursor fixes the current cursor according to filters
+// filterTxCursor fixes the current cursor according to toolbarItems
 // by skipping filtered out txs. If none found, returns the current cursor.
 func (d *Debugger) filterTxCursor(c *Client, newCursor int, fwd bool) int {
 	if !d.isFiltered() {
@@ -1304,7 +1334,8 @@ func (d *Debugger) updateClientList(immediate bool) {
 
 // TODO rewrite, update via a state
 func (d *Debugger) doUpdateClientList(immediate bool) {
-	if d.Mach.IsDisposed() || d.Mach.Is1(ss.SelectingClient) {
+	if d.Mach.IsDisposed() || d.Mach.Is1(ss.SelectingClient) ||
+		d.Mach.Is1(ss.HelpDialog) {
 		return
 	}
 
@@ -2051,8 +2082,8 @@ func (d *Debugger) getSidebarCurrClientIdx() int {
 	return -1
 }
 
-// filterClientTxs filters client's txs according the selected filters.
-// Called by filter states, not directly.
+// filterClientTxs toolbarItems client's txs according the selected
+// toolbarItems. Called by toolbarItem states, not directly.
 func (d *Debugger) filterClientTxs() {
 	if d.C == nil || !d.isFiltered() {
 		return
@@ -2071,12 +2102,12 @@ func (d *Debugger) filterClientTxs() {
 	}
 }
 
-// isFiltered checks if any filter is active.
+// isFiltered checks if any toolbarItem is active.
 func (d *Debugger) isFiltered() bool {
 	return d.Mach.Any1(ss.GroupFilters...)
 }
 
-// filterTx returns true when a TX passed the passed filters.
+// filterTx returns true when a TX passed the passed toolbarItems.
 func (d *Debugger) filterTx(
 	c *Client, idx int, auto, empty, canceled, healthcheck bool,
 ) bool {
@@ -2146,7 +2177,7 @@ func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
 	// TODO refac to FilterToggledState
 	<-d.Mach.WhenQueueEnds(ctx)
 	if ctx.Err() != nil {
-		d.Mach.Remove1(ss.ToggleFilter, nil)
+		d.Mach.Remove1(ss.ToggleTool, nil)
 		return // expired
 	}
 
@@ -2177,11 +2208,11 @@ func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
 		}
 	}
 
-	// queue this removal after filter states, so we can depend on WhenNot
-	d.Mach.Remove1(ss.ToggleFilter, nil)
+	// queue this removal after toolbarItem states, so we can depend on WhenNot
+	d.Mach.Remove1(ss.ToggleTool, nil)
 
 	d.updateClientList(false)
-	d.updateFiltersBar()
+	d.updateToolbar()
 	d.updateTimelines()
 	d.updateMatrixRain()
 	d.updateLog(false)

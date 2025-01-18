@@ -110,7 +110,7 @@ func (d *Debugger) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
 	// pre-tx log entries
 	for _, entry := range msgTx.PreLogEntries {
 		readerEntries = d.parseMsgReader(c, entry, readerEntries, tx)
-		if pe := d.parseMsgLogEntry(c, entry); pe != nil {
+		if pe := d.parseMsgLogEntry(c, tx, entry); pe != nil {
 			logEntries = append(logEntries, pe)
 		}
 	}
@@ -118,7 +118,7 @@ func (d *Debugger) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
 	// tx log entries
 	for _, entry := range msgTx.LogEntries {
 		readerEntries = d.parseMsgReader(c, entry, readerEntries, tx)
-		if pe := d.parseMsgLogEntry(c, entry); pe != nil {
+		if pe := d.parseMsgLogEntry(c, tx, entry); pe != nil {
 			logEntries = append(logEntries, pe)
 		}
 	}
@@ -129,7 +129,7 @@ func (d *Debugger) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
 }
 
 func (d *Debugger) parseMsgLogEntry(
-	c *Client, entry *am.LogEntry,
+	c *Client, tx *telemetry.DbgMsgTx, entry *am.LogEntry,
 ) *am.LogEntry {
 	lvl := entry.Level
 
@@ -137,7 +137,8 @@ func (d *Debugger) parseMsgLogEntry(
 	if strings.HasPrefix(entry.Text, "[extern]") {
 		lvl = am.LogNothing
 	}
-	t := fmtLogEntry(entry.Text, c.MsgStruct.States)
+	t := fmtLogEntry(entry.Text, tx.CalledStateNames(c.MsgStruct.StatesIndex),
+		c.MsgStruct.States)
 
 	return &am.LogEntry{Level: lvl, Text: t}
 }
@@ -226,7 +227,7 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 			// skip filtered txs
 			continue
 		} else if logLvl > d.Opts.Filters.LogLevel {
-			// filter out higher log level
+			// toolbarItem out higher log level
 			continue
 		}
 
@@ -237,22 +238,22 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 	txId := tx.ID
 	ret = `["` + txId + `"]` + ret + `[""]`
 
-	// state string
-	if d.Mach.Not1(ss.FilterSummaries) {
-		parsed := c.msgTxsParsed[index]
-		if len(parsed.StatesAdded) > 0 || len(parsed.StatesRemoved) > 0 {
-			str := tx.String(c.MsgStruct.StatesIndex)
-
-			// highlight new states
-			for _, name := range c.indexesToStates(parsed.StatesAdded) {
-				str = strings.ReplaceAll(
-					strings.ReplaceAll(str,
-						"("+name, "([::b]"+name+"[::-]"),
-					" "+name, " [::b]"+name+"[::-]")
-			}
-			ret += `[grey]` + str + "[-]\n"
-		}
-	}
+	// state string TODO remove?
+	// if d.Mach.Not1(ss.FilterSummaries) {
+	// 	parsed := c.msgTxsParsed[index]
+	// 	if len(parsed.StatesAdded) > 0 || len(parsed.StatesRemoved) > 0 {
+	// 		str := tx.String(c.MsgStruct.StatesIndex)
+	//
+	// 		// highlight new states
+	// 		for _, name := range c.indexesToStates(parsed.StatesAdded) {
+	// 			str = strings.ReplaceAll(
+	// 				strings.ReplaceAll(str,
+	// 					"("+name, "([::b]"+name+"[::-]"),
+	// 				" "+name, " [::b]"+name+"[::-]")
+	// 		}
+	// 		ret += `[grey]` + str + "[-]\n"
+	// 	}
+	// }
 
 	return []byte(ret)
 }
@@ -265,7 +266,9 @@ var (
 	methodPattern   = regexp.MustCompile(`\.[^.]+?$`)
 )
 
-func fmtLogEntry(entry string, machStruct am.Struct) string {
+func fmtLogEntry(
+	entry string, calledStates []string, machStruct am.Struct,
+) string {
 	if entry == "" {
 		return entry
 	}
@@ -316,12 +319,24 @@ func fmtLogEntry(entry string, machStruct am.Struct) string {
 	slices.Sort(toReplace)
 	slices.Reverse(toReplace)
 	for _, name := range toReplace {
+		// start after the prefix
 		body := ret[idx+len(prefixEnd):]
-		body = strings.ReplaceAll(body, " "+name, " [::b]"+name+"[::-]")
-		body = strings.ReplaceAll(body, "+"+name, "+[::b]"+name+"[::-]")
-		body = strings.ReplaceAll(body, "-"+name, "-[::b]"+name+"[::-]")
-		body = strings.ReplaceAll(body, ","+name, ",[::b]"+name+"[::-]")
-		ret = prefix + strings.ReplaceAll(body, "("+name, "([::b]"+name+"[::-]")
+
+		// underline called state names
+		if slices.Contains(calledStates, name) {
+			body = strings.ReplaceAll(body, " "+name, " [::bu]"+name+"[::-]")
+			body = strings.ReplaceAll(body, "+"+name, "+[::bu]"+name+"[::-]")
+			body = strings.ReplaceAll(body, "-"+name, "-[darkgrey::u]"+name+"[::-]")
+			body = strings.ReplaceAll(body, ","+name, ",[::bu]"+name+"[::-]")
+			ret = prefix + strings.ReplaceAll(body, "("+name, "([::b]"+name+"[::-]")
+		} else {
+			// style all state names
+			body = strings.ReplaceAll(body, " "+name, " [::b]"+name+"[::-]")
+			body = strings.ReplaceAll(body, "+"+name, "+[::b]"+name+"[::-]")
+			body = strings.ReplaceAll(body, "-"+name, "-[darkgrey]"+name+"[::-]")
+			body = strings.ReplaceAll(body, ","+name, ",[::b]"+name+"[::-]")
+			ret = prefix + strings.ReplaceAll(body, "("+name, "([::b]"+name+"[::-]")
+		}
 	}
 
 	ret = strings.Trim(ret, " \n	")
