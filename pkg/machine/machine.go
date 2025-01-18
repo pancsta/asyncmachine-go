@@ -841,16 +841,30 @@ func (m *Machine) Add1(state string, args A) Result {
 	return m.Add(S{state}, args)
 }
 
+// Toggle de-activates a list of states in case all are active, or activates
+// all otherwise. Returns the result of the transition (Executed, Queued,
+// Canceled).
+func (m *Machine) Toggle(states S, args A) Result {
+	if m.disposed.Load() {
+		return Canceled
+	}
+	if m.Is(states) {
+		return m.Remove(states, args)
+	} else {
+		return m.Add(states, args)
+	}
+}
+
 // Toggle1 activates or de-activates a single state, depending on its current
 // state. Returns the result of the transition (Executed, Queued, Canceled).
-func (m *Machine) Toggle1(state string) Result {
+func (m *Machine) Toggle1(state string, args A) Result {
 	if m.disposed.Load() {
 		return Canceled
 	}
 	if m.Is1(state) {
-		return m.Remove1(state, nil)
+		return m.Remove1(state, args)
 	} else {
-		return m.Add1(state, nil)
+		return m.Add1(state, args)
 	}
 }
 
@@ -2844,7 +2858,8 @@ func (m *Machine) SetStruct(statesStruct Struct, names S) error {
 	return nil
 }
 
-// TODO doc
+// EvAdd is like Add, but passed the source event as the 1st param, which
+// results in traceable transitions.
 func (m *Machine) EvAdd(event *Event, states S, args A) Result {
 	if m.disposed.Load() || m.disposing.Load() ||
 		int(m.queueLen.Load()) >= m.QueueLimit {
@@ -2857,12 +2872,14 @@ func (m *Machine) EvAdd(event *Event, states S, args A) Result {
 	return m.processQueue()
 }
 
-// TODO doc
+// EvAdd1 is like Add1, but passed the source event as the 1st param, which
+// results in traceable transitions.
 func (m *Machine) EvAdd1(event *Event, states string, args A) Result {
 	return m.EvAdd(event, S{states}, args)
 }
 
-// TODO doc
+// EvRemove is like Remove, but passed the source event as the 1st param, which
+// results in traceable transitions.
 func (m *Machine) EvRemove(event *Event, states S, args A) Result {
 	if m.disposed.Load() || m.disposing.Load() ||
 		int(m.queueLen.Load()) >= m.QueueLimit {
@@ -2892,17 +2909,20 @@ func (m *Machine) EvRemove(event *Event, states S, args A) Result {
 	return m.processQueue()
 }
 
-// TODO doc
+// EvRemove1 is like Remove1, but passed the source event as the 1st param,
+// which results in traceable transitions.
 func (m *Machine) EvRemove1(event *Event, states string, args A) Result {
 	return m.EvRemove(event, S{states}, args)
 }
 
-// TODO doc
+// EvAddErr is like AddErr, but passed the source event as the 1st param, which
+// results in traceable transitions.
 func (m *Machine) EvAddErr(event *Event, err error, args A) Result {
 	return m.EvAddErrState(event, Exception, err, args)
 }
 
-// TODO doc
+// EvAddErrState is like AddErrState, but passed the source event as the 1st
+// param, which results in traceable transitions.
 func (m *Machine) EvAddErrState(
 	event *Event, state string, err error, args A,
 ) Result {
@@ -2947,7 +2967,8 @@ func (m *Machine) CanRemove(states S) bool {
 	panic("CanRemove not implemented; github.com/pancsta/asyncmachine-go/pulls")
 }
 
-// Export exports the machine state: id, machine time and state names.
+// Export exports the machine state as Serialized: ID, machine time, and
+// state names.
 func (m *Machine) Export() *Serialized {
 	m.activeStatesLock.RLock()
 	defer m.activeStatesLock.RUnlock()
@@ -2965,8 +2986,8 @@ func (m *Machine) Export() *Serialized {
 	}
 }
 
-// Import imports the machine state: id, machine time and state names. It's not
-// safe to import into a machine which has already produces transitions and/or
+// Import imports the machine state from Serialized. It's not safe to import
+// into a machine which has already produces transitions and/or
 // has telemetry connected.
 func (m *Machine) Import(data *Serialized) error {
 	m.activeStatesLock.RLock()

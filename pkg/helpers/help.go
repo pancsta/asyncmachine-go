@@ -735,15 +735,6 @@ func RemoveMulti(mach am.Api, state string) am.HandlerFinal {
 	}
 }
 
-// Toggle adds or removes a state based on its current state.
-func Toggle(mach am.Api, state string, args am.A) am.Result {
-	if mach.Is1(state) {
-		return mach.Remove1(state, args)
-	}
-
-	return mach.Add1(state, args)
-}
-
 // GetTransitionStates will extract added, removed, and touched states from
 // transition's clock values and steps. Requires a state names index.
 func GetTransitionStates(

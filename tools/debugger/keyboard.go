@@ -10,8 +10,6 @@ import (
 
 	"code.rocketnine.space/tslocum/cbind"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 
@@ -439,14 +437,14 @@ func (d *Debugger) getKeystrokes() map[string]func(
 
 		// log reader
 		"alt+o": func(ev *tcell.EventKey) *tcell.EventKey {
-			amhelp.Toggle(d.Mach, ss.LogReaderEnabled, nil)
+			d.Mach.Toggle1(ss.LogReaderEnabled, nil)
 
 			return nil
 		},
 
 		// tail mode
 		"alt+v": func(ev *tcell.EventKey) *tcell.EventKey {
-			amhelp.Toggle(d.Mach, ss.TailMode, nil)
+			d.Mach.Toggle1(ss.TailMode, nil)
 
 			return nil
 		},
