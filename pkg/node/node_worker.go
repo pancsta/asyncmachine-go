@@ -141,8 +141,10 @@ func (w *Worker) StartState(e *am.Event) {
 	amhelp.MachDebugEnv(w.LocalRpc.Mach)
 	w.LocalRpc.DeliveryTimeout = w.DeliveryTimeout
 	err = errors.Join(
+		// bind to Ready state
 		rpc.BindServer(w.LocalRpc.Mach, w.Mach, ssW.LocalRpcReady,
 			ssW.SuperConnected),
+		// bind to err
 		ampipe.BindErr(w.LocalRpc.Mach, w.Mach, ssW.ErrSupervisor))
 	if err != nil {
 		w.Mach.AddErr(err, nil)
@@ -154,7 +156,8 @@ func (w *Worker) StartState(e *am.Event) {
 		PayloadState: ssW.ClientSendPayload,
 		Parent:       w.Mach,
 	}
-	w.PublicRpc, err = rpc.NewServer(ctx, ":0", "nw-pub-"+w.Name, w.Mach, opts)
+	w.PublicRpc, err = rpc.NewServer(ctx, "0.0.0.0:0", "nw-pub-"+w.Name,
+		w.Mach, opts)
 	if err != nil {
 		_ = AddErrRpc(w.Mach, err, nil)
 		return
@@ -162,8 +165,10 @@ func (w *Worker) StartState(e *am.Event) {
 	amhelp.MachDebugEnv(w.PublicRpc.Mach)
 	w.PublicRpc.DeliveryTimeout = w.DeliveryTimeout
 	err = errors.Join(
+		// bind to Ready state
 		rpc.BindServer(w.PublicRpc.Mach, w.Mach, ssW.PublicRpcReady,
 			ssW.ClientConnected),
+		// bind to err
 		ampipe.BindErr(w.PublicRpc.Mach, w.Mach, ssW.ErrClient))
 	if err != nil {
 		w.Mach.AddErr(err, nil)

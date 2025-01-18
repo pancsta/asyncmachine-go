@@ -906,7 +906,9 @@ func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 }
 
 func (s *Supervisor) ListWorkersEnter(e *am.Event) bool {
-	return ParseArgs(e.Args).WorkersCh != nil
+	ch := ParseArgs(e.Args).WorkersCh
+	// require a buffered channel
+	return ch != nil && cap(ch) > 0
 }
 
 func (s *Supervisor) ListWorkersState(e *am.Event) {

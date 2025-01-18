@@ -626,6 +626,7 @@ func (c *Client) bindRpcHandlers(conn net.Conn) {
 	c.rpc.Handle(rpcnames.ClientSetClock.Encode(), c.RemoteSetClock)
 	c.rpc.Handle(rpcnames.ClientPushAllTicks.Encode(), c.RemotePushAllTicks)
 	c.rpc.Handle(rpcnames.ClientSendPayload.Encode(), c.RemoteSendPayload)
+	c.rpc.Handle(rpcnames.ClientBye.Encode(), c.RemoteBye)
 
 	// wait for reply on each req
 	c.rpc.SetBlocking(true)
@@ -958,6 +959,14 @@ func (c *Client) RemoteSendPayload(
 		Name:    payload.Name,
 	}))
 
+	return nil
+}
+
+// RemoteBye is called by the server on a planned disconnect.
+// TODO take a reason / source state.
+func (c *Client) RemoteBye(
+	_ *rpc2.Client, _ *Empty, _ *Empty,
+) error {
 	return nil
 }
 

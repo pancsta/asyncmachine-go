@@ -238,7 +238,8 @@ func (c *Client) WorkerPayloadEnter(e *am.Event) bool {
 	return a != nil && a.Name != "" && a.Payload != nil
 }
 
-// WorkerPayloadState handles both Supervisor and Worker inbound payloads.
+// WorkerPayloadState handles both Supervisor and Worker inbound payloads, but
+// this shared code only deals with [states.ClientStatesDef.WorkerRequested].
 func (c *Client) WorkerPayloadState(e *am.Event) {
 	c.Mach.Remove1(ssC.WorkerPayload, nil)
 	args := rpc.ParseArgs(e.Args)

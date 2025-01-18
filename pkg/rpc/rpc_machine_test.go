@@ -31,7 +31,7 @@ func init() {
 }
 
 func TestSingleStateActive(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -51,7 +51,7 @@ func TestSingleStateActive(t *testing.T) {
 }
 
 func TestMultipleStatesActive(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -72,7 +72,7 @@ func TestMultipleStatesActive(t *testing.T) {
 }
 
 func TestExposeAllStateNames(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -89,7 +89,7 @@ func TestExposeAllStateNames(t *testing.T) {
 }
 
 func TestStateSet(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -109,7 +109,7 @@ func TestStateSet(t *testing.T) {
 }
 
 func TestStateAdd(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -129,7 +129,7 @@ func TestStateAdd(t *testing.T) {
 }
 
 func TestStateRemove(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -149,7 +149,7 @@ func TestStateRemove(t *testing.T) {
 }
 
 func TestRemoveRelation(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -171,7 +171,7 @@ func TestRemoveRelation(t *testing.T) {
 }
 
 func TestRemoveRelationSimultaneous(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -243,7 +243,7 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 		test := tests[i]
 
 		t.Run(test.name, func(t *testing.T) {
-			// t.Parallel()
+			t.Parallel()
 
 			// init
 			ctx, cancel := context.WithCancel(context.Background())
@@ -278,7 +278,7 @@ func disposeTest(t *testing.T, c *Client, s *Server, checkErrs bool) {
 }
 
 func TestAddRelation(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -308,7 +308,7 @@ func TestAddRelation(t *testing.T) {
 }
 
 func TestRequireRelation(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -334,7 +334,7 @@ func TestRequireRelation(t *testing.T) {
 }
 
 func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -360,7 +360,7 @@ func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
 }
 
 func TestAutoStates(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -390,7 +390,7 @@ func TestAutoStates(t *testing.T) {
 }
 
 func TestSwitch(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -426,7 +426,7 @@ func TestSwitch(t *testing.T) {
 }
 
 func TestRegressionRemoveCrossBlockedByImplied(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -453,7 +453,7 @@ func TestRegressionRemoveCrossBlockedByImplied(t *testing.T) {
 }
 
 func TestRegressionImpliedBlockByBeingRemoved(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -481,7 +481,7 @@ func TestRegressionImpliedBlockByBeingRemoved(t *testing.T) {
 }
 
 func TestWhen2(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -524,7 +524,7 @@ func TestWhen2(t *testing.T) {
 }
 
 func TestWhenActive(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -546,7 +546,7 @@ func TestWhenActive(t *testing.T) {
 }
 
 func TestWhenNot2(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -588,7 +588,7 @@ func TestWhenNot2(t *testing.T) {
 }
 
 func TestWhenNotActive(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -610,7 +610,7 @@ func TestWhenNotActive(t *testing.T) {
 }
 
 func TestPartialAuto(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -644,7 +644,7 @@ func TestPartialAuto(t *testing.T) {
 }
 
 func TestTime(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -707,7 +707,7 @@ func TestTime(t *testing.T) {
 
 // TODO WhenArgs
 // func TestWhenCtx(t *testing.T) {
-//	// t.Parallel()
+//	t.Parallel()
 
 // init
 //	ctx, cancel := context.WithCancel(context.Background())
@@ -756,7 +756,7 @@ func TestTime(t *testing.T) {
 // }
 //
 // func TestWhenArgs(t *testing.T) {
-//	// t.Parallel()
+//	t.Parallel()
 
 // init
 //	m := NewRels(t, nil)
@@ -789,7 +789,7 @@ func TestTime(t *testing.T) {
 // }
 
 func TestWhenTime(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -831,7 +831,7 @@ func TestWhenTime(t *testing.T) {
 }
 
 func TestIs(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -858,7 +858,7 @@ func TestIs(t *testing.T) {
 }
 
 func TestNot(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -886,7 +886,7 @@ func TestNot(t *testing.T) {
 }
 
 func TestAny(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -914,7 +914,7 @@ func TestAny(t *testing.T) {
 }
 
 func TestClock(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -975,7 +975,7 @@ func TestClock(t *testing.T) {
 }
 
 func TestInspect(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1084,7 +1084,7 @@ func TestInspect(t *testing.T) {
 }
 
 func TestString(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1122,7 +1122,7 @@ func (h *TestNestedMutationHandlers) AState(e *am.Event) {
 }
 
 func TestNestedMutation(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1148,7 +1148,7 @@ func TestNestedMutation(t *testing.T) {
 }
 
 func TestIsClock(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1171,7 +1171,7 @@ func TestIsClock(t *testing.T) {
 }
 
 func TestIsTime(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1195,7 +1195,7 @@ func TestIsTime(t *testing.T) {
 
 // TODO
 // func TestExport(t *testing.T) {
-//	// t.Parallel()
+//	t.Parallel()
 
 // init
 //	m1 := NewNoRels(t, S{"A"})
