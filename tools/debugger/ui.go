@@ -23,7 +23,7 @@ func (d *Debugger) initUiComponents() {
 
 	// tree view
 	d.tree = d.initMachineTree()
-	d.tree.SetTitle(" Structure ")
+	d.tree.SetTitle(" Schema ")
 	d.tree.SetBorder(true)
 
 	// sidebar
@@ -70,9 +70,9 @@ func (d *Debugger) initUiComponents() {
 		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": txId})
 	})
 
-	// hood view
+	// reader view
 	d.logReader = d.initLogReader()
-	d.logReader.SetTitle(" Log Reader ")
+	d.logReader.SetTitle(" Reader ")
 	d.logReader.SetBorder(true)
 	d.logReader.SetScrollBarColor(colorHighlight2)
 
@@ -88,16 +88,18 @@ func (d *Debugger) initUiComponents() {
 	// current tx bar
 	d.currTxBarLeft = cview.NewTextView()
 	d.currTxBarLeft.SetDynamicColors(true)
+	d.currTxBarLeft.SetScrollBarColor(colorHighlight2)
 	d.currTxBarRight = cview.NewTextView()
 	d.currTxBarRight.SetTextAlign(cview.AlignRight)
+	d.currTxBarRight.SetScrollBarColor(colorHighlight2)
 
 	// next tx bar
 	d.nextTxBarLeft = cview.NewTextView()
 	d.nextTxBarLeft.SetDynamicColors(true)
+	d.nextTxBarLeft.SetScrollBarColor(colorHighlight2)
 	d.nextTxBarRight = cview.NewTextView()
 	d.nextTxBarRight.SetTextAlign(cview.AlignRight)
-
-	// TODO step info bar: type, from, to, data
+	d.nextTxBarRight.SetScrollBarColor(colorHighlight2)
 
 	// timeline tx
 	d.initTimelineTx()
@@ -105,21 +107,21 @@ func (d *Debugger) initUiComponents() {
 	// timeline steps
 	d.initTimelineSteps()
 
-	// keystrokes bar
-	d.keyBar = cview.NewTextView()
-	d.keyBar.SetTextAlign(cview.AlignCenter)
-	d.keyBar.SetDynamicColors(true)
-
 	// address bar
 	d.initAddressBar()
 
-	// filters bar
-	d.initFiltersBar()
+	// toolbar
+	d.initToolbar()
+
+	// TODO status bar (keystrokes, msgs), step info bar (type, from, to, data)
+	d.statusBar = cview.NewTextView()
+	d.statusBar.SetTextAlign(cview.AlignCenter)
+	d.statusBar.SetDynamicColors(true)
 
 	// update models
 	d.updateTimelines()
 	d.updateTxBars()
-	d.updateKeyBars()
+	d.updateStatusBars()
 	d.updateFocusable()
 }
 
@@ -267,109 +269,111 @@ func (d *Debugger) initAddressBar() {
 	d.updateAddressBar()
 }
 
-func (d *Debugger) initFiltersBar() {
-	d.filtersBar = cview.NewTable()
-	d.filtersBar.SetSelectedStyle(colorActive,
-		cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
-	d.filtersBar.SetSelectable(true, true)
-	d.filtersBar.SetBorders(false)
+func (d *Debugger) initToolbar() {
+	for i := range d.toolbars {
 
-	// click effect
-	d.filtersBar.SetSelectedFunc(func(row, column int) {
-		if column >= len(d.filters) {
-			return
-		}
-		// TODO state for button down
-		d.filtersBar.SetSelectedStyle(colorActive,
-			cview.Styles.PrimitiveBackgroundColor, tcell.AttrUnderline)
-		d.Mach.Add1(ss.ToggleFilter, am.A{"FilterName": d.filters[column].id})
-		go func() {
-			time.Sleep(time.Millisecond * 200)
-			d.filtersBar.SetSelectedStyle(colorActive,
-				cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
-			d.draw(d.filtersBar)
-		}()
-	})
+		d.toolbars[i] = cview.NewTable()
+		d.toolbars[i].SetSelectedStyle(colorActive,
+			cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
+		d.toolbars[i].SetSelectable(true, true)
+		d.toolbars[i].SetBorders(false)
 
-	d.filters = []filter{
+		// click effect
+		d.toolbars[i].SetSelectedFunc(func(row, column int) {
+			if column >= len(d.toolbarItems[i]) {
+				return
+			}
+			// TODO state for button down
+			d.toolbars[i].SetSelectedStyle(colorActive,
+				cview.Styles.PrimitiveBackgroundColor, tcell.AttrUnderline)
+			d.Mach.Add1(ss.ToggleTool, am.A{"ToolName": d.toolbarItems[i][column].id})
+			go func() {
+				time.Sleep(time.Millisecond * 200)
+				d.toolbars[i].SetSelectedStyle(colorActive,
+					cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
+				d.draw(d.toolbars[i])
+			}()
+		})
+	}
+
+	// TODO light mode button
+	// TODO save filters per machine checkbox
+	// TODO next error
+	d.toolbarItems = [][]toolbarItem{
+		// row 1
 		{
-			id:    filterCanceledTx,
-			label: "No Canceled",
-			active: func() bool {
-				return d.Mach.Is1(ss.FilterCanceledTx)
-			},
-		},
-		{
-			id:    filterAutoTx,
-			label: "No Auto",
-			active: func() bool {
-				return d.Mach.Is1(ss.FilterAutoTx)
-			},
-		},
-		{
-			id:    filterEmptyTx,
-			label: "No Empty",
-			active: func() bool {
-				return d.Mach.Is1(ss.FilterEmptyTx)
-			},
-		},
-		{
-			id:    filterHealthcheck,
-			label: "No Healthcheck",
-			active: func() bool {
-				return d.Mach.Is1(ss.FilterHealthcheck)
-			},
-		},
-		{
-			id:    FilterSummaries,
-			label: "No Summaries",
-			active: func() bool {
-				return d.Mach.Is1(ss.FilterSummaries)
-			},
-		},
-		{
-			id:    filterLog0,
-			label: "L0",
-			active: func() bool {
+			{id: toolFilterCanceledTx, label: "canceled tx", active: func() bool {
+				return d.Mach.Not1(ss.FilterCanceledTx)
+			}},
+			{id: toolFilterAutoTx, label: "auto tx", active: func() bool {
+				return d.Mach.Not1(ss.FilterAutoTx)
+			}},
+			{id: toolFilterEmptyTx, label: "empty tx", active: func() bool {
+				return d.Mach.Not1(ss.FilterEmptyTx)
+			}},
+			{id: toolFilterHealthcheck, label: "health tx", active: func() bool {
+				return d.Mach.Not1(ss.FilterHealthcheck)
+			}},
+			{id: ToolFilterSummaries, label: "timestamps", active: func() bool {
+				return d.Mach.Not1(ss.FilterSummaries)
+			}},
+			{id: toolLog0, label: "L0", active: func() bool {
 				return d.Opts.Filters.LogLevel == am.LogNothing
-			},
-		},
-		{
-			id:    filterLog1,
-			label: "L1",
-			active: func() bool {
+			}},
+			{id: toolLog1, label: "L1", active: func() bool {
 				return d.Opts.Filters.LogLevel == am.LogChanges
-			},
-		},
-		{
-			id:    filterLog2,
-			label: "L2",
-			active: func() bool {
+			}},
+			{id: toolLog2, label: "L2", active: func() bool {
 				return d.Opts.Filters.LogLevel == am.LogOps
-			},
-		},
-		{
-			id:    filterLog3,
-			label: "L3",
-			active: func() bool {
+			}},
+			{id: toolLog3, label: "L3", active: func() bool {
 				return d.Opts.Filters.LogLevel == am.LogDecisions
-			},
-		},
-		{
-			id:    filterLog4,
-			label: "L4",
-			active: func() bool {
+			}},
+			{id: toolLog4, label: "L4", active: func() bool {
 				return d.Opts.Filters.LogLevel == am.LogEverything
-			},
+			}},
+			{id: toolReader, label: "reader", active: func() bool {
+				return d.Mach.Is1(ss.LogReaderEnabled)
+			}},
+			{id: toolRain, label: "rain", active: func() bool {
+				return d.Mach.Is1(ss.MatrixRain)
+			}},
 		},
+
+		// row 2
 		{
-			id:     filterReader,
-			label:  "Reader",
-			active: func() bool { return d.Mach.Is1(ss.LogReaderEnabled) },
+			{id: toolHelp, label: "[yellow]help[-]", active: func() bool {
+				return d.Mach.Is1(ss.HelpDialog)
+			}},
+			{id: toolPlay, label: "play", active: func() bool {
+				return d.Mach.Is1(ss.Playing)
+			}},
+			{id: toolTail, label: "tail", active: func() bool {
+				return d.Mach.Is1(ss.TailMode)
+			}},
+			{id: toolPrev, label: "prev", icon: "◀ "},
+			{id: toolNext, label: "next", icon: "▶ "},
+			{id: toolJumpPrev, label: "jump prev", icon: "◀ "},
+			{id: toolJumpNext, label: "jump next", icon: "▶ "},
+			{id: toolFirst, label: "first", icon: "1"},
+			{id: toolLast, label: "last", icon: "N"},
+			{
+				id:    toolExpand,
+				label: "expand", active: func() bool {
+					ch := d.treeRoot.GetChildren()
+					return len(ch) > 0 && ch[0].IsExpanded()
+				},
+			},
+			{id: toolMatrix, label: "matrix", active: func() bool {
+				return d.Mach.Any1(ss.MatrixView, ss.TreeMatrixView)
+			}},
+			{id: toolExport, label: "export", active: func() bool {
+				return d.Mach.Is1(ss.ExportDialog)
+			}},
 		},
 	}
 
-	d.updateFiltersBar()
+	d.updateToolbar()
 }
 
 // TODO anon machine with handlers
@@ -481,6 +485,16 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	flexVer.AddItem(flexHor, 0, 4, false)
 	flexVer.AddItem(box4, 0, 1, false)
 
+	// close on click
+	flexVer.SetMouseCapture(func(
+		action cview.MouseAction, event *tcell.EventMouse,
+	) (cview.MouseAction, *tcell.EventMouse) {
+		if action == cview.MouseLeftClick {
+			d.Mach.Remove1(ss.HelpDialog, nil)
+		}
+		return action, nil
+	})
+
 	return flexVer
 }
 
@@ -540,17 +554,16 @@ func (d *Debugger) updateHelpDialog() {
 }
 
 func (d *Debugger) initLayout() {
-	// TODO flexbox
-	currTxBar := cview.NewGrid()
-	currTxBar.AddItem(d.currTxBarLeft, 0, 0, 1, 1, 0, 0, false)
-	currTxBar.AddItem(d.currTxBarRight, 0, 1, 1, 1, 0, 0, false)
+	// transition rows
+	currTxBar := cview.NewFlex()
+	currTxBar.AddItem(d.currTxBarLeft, 0, 1, false)
+	currTxBar.AddItem(d.currTxBarRight, 0, 1, false)
 
-	// TODO flexbox
-	nextTxBar := cview.NewGrid()
-	nextTxBar.AddItem(d.nextTxBarLeft, 0, 0, 1, 1, 0, 0, false)
-	nextTxBar.AddItem(d.nextTxBarRight, 0, 1, 1, 1, 0, 0, false)
+	nextTxBar := cview.NewFlex()
+	nextTxBar.AddItem(d.nextTxBarLeft, 0, 1, false)
+	nextTxBar.AddItem(d.nextTxBarRight, 0, 1, false)
 
-	// content grid TODO bind to HoodView state
+	// content grid
 	d.treeLogGrid = cview.NewGrid()
 	d.treeLogGrid.SetRows(-1)
 	d.treeLogGrid.SetColumns( /*tree*/ -1, -1 /*log*/, -1, -1, -1, -1)
@@ -572,7 +585,7 @@ func (d *Debugger) initLayout() {
 
 	// main grid
 	mainGrid := cview.NewGrid()
-	mainGrid.SetRows(1, 1, -1, 2, 3, 2, 3, 1, 2)
+	mainGrid.SetRows(1, 1, -1, 2, 3, 2, 3, 1, 1, 1)
 	cols := []int{ /*sidebar*/ -1 /*content*/, -1, -1, -1, -1, -1, -1, -1, -1}
 	mainGrid.SetColumns(cols...)
 	// row 1 left
@@ -586,8 +599,9 @@ func (d *Debugger) initLayout() {
 	mainGrid.AddItem(d.timelineTxs, 4, 0, 1, len(cols), 0, 0, false)
 	mainGrid.AddItem(nextTxBar, 5, 0, 1, len(cols), 0, 0, false)
 	mainGrid.AddItem(d.timelineSteps, 6, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(d.filtersBar, 7, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(d.keyBar, 8, 0, 1, len(cols), 0, 0, false)
+	mainGrid.AddItem(d.toolbars[0], 7, 0, 1, len(cols), 0, 0, false)
+	mainGrid.AddItem(d.toolbars[1], 8, 0, 1, len(cols), 0, 0, false)
+	mainGrid.AddItem(d.statusBar, 9, 0, 1, len(cols), 0, 0, false)
 
 	panels := cview.NewPanels()
 	panels.AddPanel("export", d.exportDialog, false, true)
@@ -610,7 +624,7 @@ func (d *Debugger) RedrawFull(immediate bool) {
 	d.updateViews(immediate)
 	d.updateTimelines()
 	d.updateTxBars()
-	d.updateKeyBars()
+	d.updateStatusBars()
 	d.updateBorderColor()
 	d.updateAddressBar()
 	d.draw()

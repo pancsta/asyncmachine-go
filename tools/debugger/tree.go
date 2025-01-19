@@ -113,7 +113,7 @@ func (d *Debugger) updateTree() {
 	// debug
 	// log.Println("///// updateTree")
 
-	queue := ""
+	queue := " "
 	if c.CursorTx1 == 0 {
 		msg = c.MsgStruct
 	} else {
@@ -123,7 +123,7 @@ func (d *Debugger) updateTree() {
 			len(c.MsgStruct.StatesIndex), tx.Queue)
 	}
 
-	d.tree.SetTitle(" Structure" + queue)
+	d.tree.SetTitle(" Schema" + queue)
 
 	var steps []*am.Step
 	if c.CursorTx1 < len(c.MsgTxs) && c.CursorStep > 0 {

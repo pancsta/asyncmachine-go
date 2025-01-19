@@ -172,7 +172,7 @@ func (d *Debugger) StateNameSelectedState(e *am.Event) {
 		d.updateMatrix()
 	}
 
-	d.updateKeyBars()
+	d.updateStatusBars()
 }
 
 // StateNameSelectedStateNameSelected handles cursor moving from a state name to
@@ -182,9 +182,11 @@ func (d *Debugger) StateNameSelectedStateNameSelected(e *am.Event) {
 }
 
 func (d *Debugger) StateNameSelectedEnd(_ *am.Event) {
-	d.C.SelectedState = ""
+	if d.C != nil {
+		d.C.SelectedState = ""
+	}
 	d.updateTree()
-	d.updateKeyBars()
+	d.updateStatusBars()
 }
 
 func (d *Debugger) PlayingState(_ *am.Event) {
@@ -201,6 +203,7 @@ func (d *Debugger) PlayingState(_ *am.Event) {
 	} else {
 		d.Mach.Add1(ss.Fwd, nil)
 	}
+	d.updateToolbar()
 
 	ctx := d.Mach.NewStateCtx(ss.Playing)
 	go func() {
@@ -222,6 +225,7 @@ func (d *Debugger) PlayingState(_ *am.Event) {
 
 func (d *Debugger) PlayingEnd(_ *am.Event) {
 	d.playTimer.Stop()
+	d.updateToolbar()
 }
 
 func (d *Debugger) PausedState(_ *am.Event) {
@@ -387,32 +391,34 @@ func (d *Debugger) TimelineStepsFocusedEnd(_ *am.Event) {
 	d.shinkStructPane()
 }
 
-func (d *Debugger) FiltersFocusedEnter(e *am.Event) bool {
-	f, ok1 := e.Args["filter"]
-	_, ok2 := f.(FilterName)
-
-	// both or none
-	return ok1 && ok2 || (!ok1 && !ok2)
+func (d *Debugger) Toolbar1FocusedState(e *am.Event) {
+	d.toolbars[0].SetBackgroundColor(cview.Styles.MoreContrastBackgroundColor)
+	d.updateToolbar()
 }
 
-func (d *Debugger) FiltersFocusedState(e *am.Event) {
-	d.filtersBar.SetBackgroundColor(cview.Styles.MoreContrastBackgroundColor)
-	d.updateFiltersBar()
+func (d *Debugger) Toolbar1FocusedEnd(_ *am.Event) {
+	d.toolbars[0].SetBackgroundColor(cview.Styles.PrimitiveBackgroundColor)
+	d.updateToolbar()
 }
 
-func (d *Debugger) FiltersFocusedEnd(_ *am.Event) {
-	d.filtersBar.SetBackgroundColor(cview.Styles.PrimitiveBackgroundColor)
-	d.updateFiltersBar()
+func (d *Debugger) Toolbar2FocusedState(e *am.Event) {
+	d.toolbars[1].SetBackgroundColor(cview.Styles.MoreContrastBackgroundColor)
+	d.updateToolbar()
+}
+
+func (d *Debugger) Toolbar2FocusedEnd(_ *am.Event) {
+	d.toolbars[1].SetBackgroundColor(cview.Styles.PrimitiveBackgroundColor)
+	d.updateToolbar()
 }
 
 func (d *Debugger) AddressFocusedState(e *am.Event) {
 	d.addressBar.SetBackgroundColor(cview.Styles.MoreContrastBackgroundColor)
-	d.updateFiltersBar()
+	d.updateToolbar()
 }
 
 func (d *Debugger) AddressFocusedEnd(_ *am.Event) {
 	d.addressBar.SetBackgroundColor(cview.Styles.PrimitiveBackgroundColor)
-	d.updateFiltersBar()
+	d.updateToolbar()
 }
 
 // ///// CONNECTION
@@ -846,6 +852,7 @@ func (d *Debugger) ClientSelectedEnd(e *am.Event) {
 func (d *Debugger) HelpDialogState(_ *am.Event) {
 	// re-render for mem stats
 	d.updateHelpDialog()
+	d.updateToolbar()
 	// TODO use Visibility instead of SendToFront
 	d.LayoutRoot.SendToFront("main")
 	d.LayoutRoot.SendToFront("help")
@@ -857,10 +864,12 @@ func (d *Debugger) HelpDialogEnd(e *am.Event) {
 		// all dialogs closed, show main
 		d.LayoutRoot.SendToFront("main")
 		d.updateFocusable()
+		d.updateToolbar()
 	}
 }
 
 func (d *Debugger) ExportDialogState(_ *am.Event) {
+	d.updateToolbar()
 	// TODO use Visibility instead of SendToFront
 	d.LayoutRoot.SendToFront("main")
 	d.LayoutRoot.SendToFront("export")
@@ -872,6 +881,7 @@ func (d *Debugger) ExportDialogEnd(e *am.Event) {
 		// all dialogs closed, show main
 		d.LayoutRoot.SendToFront("main")
 		d.updateFocusable()
+		d.updateToolbar()
 	}
 }
 
@@ -945,52 +955,104 @@ func (d *Debugger) ScrollToStepState(e *am.Event) {
 	d.RedrawFull(false)
 }
 
-// TODO enter, valid params
-func (d *Debugger) ToggleFilterState(e *am.Event) {
-	// TODO split the state into an async one
-	filterTxs := false
-	filter := e.Args["FilterName"].(FilterName)
+func (d *Debugger) ToggleToolEnter(e *am.Event) bool {
+	_, ok := e.Args["ToolName"].(ToolName)
+	return ok
+}
 
-	switch filter {
+func (d *Debugger) ToggleToolState(e *am.Event) {
+	// TODO split the state into an async one
+	// TODO refac to FilterToggledState
+	tool := e.Args["ToolName"].(ToolName)
+
+	// tool is a filter and needs re-filter txs
+	filterTxs := false
+
+	switch tool {
 	// TODO move logic after toggle to handlers
 
-	case filterCanceledTx:
+	case toolFilterCanceledTx:
 		d.Mach.Toggle1(ss.FilterCanceledTx, nil)
 		filterTxs = true
 
-	case filterAutoTx:
+	case toolFilterAutoTx:
 		d.Mach.Toggle1(ss.FilterAutoTx, nil)
 		filterTxs = true
 
-	case filterEmptyTx:
+	case toolFilterEmptyTx:
 		d.Mach.Toggle1(ss.FilterEmptyTx, nil)
 		filterTxs = true
 
-	case filterHealthcheck:
+	case toolFilterHealthcheck:
 		d.Mach.Toggle1(ss.FilterHealthcheck, nil)
 		filterTxs = true
 
-	case FilterSummaries:
+	case ToolFilterSummaries:
 		d.Mach.Toggle1(ss.FilterSummaries, nil)
 
-	case filterLog0:
+	case toolLog0:
 		d.Opts.Filters.LogLevel = am.LogNothing
-	case filterLog1:
+	case toolLog1:
 		d.Opts.Filters.LogLevel = am.LogChanges
-	case filterLog2:
+	case toolLog2:
 		d.Opts.Filters.LogLevel = am.LogOps
-	case filterLog3:
+	case toolLog3:
 		d.Opts.Filters.LogLevel = am.LogDecisions
-	case filterLog4:
+	case toolLog4:
 		d.Opts.Filters.LogLevel = am.LogEverything
 
-	case filterReader:
+	case toolReader:
 		d.Mach.Toggle1(ss.LogReaderEnabled, nil)
+
+	case toolRain:
+		d.toolRain()
+
+	case toolHelp:
+		d.Mach.Toggle1(ss.HelpDialog, nil)
+
+	case toolPlay:
+		if d.Mach.Is1(ss.Paused) {
+			d.Mach.Add1(ss.Playing, nil)
+		} else {
+			d.Mach.Add1(ss.Paused, nil)
+		}
+
+	case toolTail:
+		d.Mach.Toggle1(ss.TailMode, nil)
+
+	case toolPrev:
+		d.Mach.Add1(ss.UserBack, nil)
+
+	case toolNext:
+		d.Mach.Add1(ss.UserFwd, nil)
+
+	case toolJumpPrev:
+		// TODO state
+		go d.jumpBack(nil)
+
+	case toolJumpNext:
+		// TODO state
+		go d.jumpFwd(nil)
+
+	case toolFirst:
+		d.toolFirstTx()
+
+	case toolLast:
+		d.toolLastTx()
+
+	case toolExpand:
+		d.toolExpand()
+
+	case toolMatrix:
+		d.toolMatrix()
+
+	case toolExport:
+		d.Mach.Toggle1(ss.ExportDialog, nil)
 	}
 
-	stateCtx := d.Mach.NewStateCtx(ss.ToggleFilter)
+	stateCtx := d.Mach.NewStateCtx(ss.ToggleTool)
 
-	// process the filter change
+	// process the toolbarItem change
 	go d.ProcessFilterChange(stateCtx, filterTxs)
 }
 
