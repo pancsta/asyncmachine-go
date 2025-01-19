@@ -955,23 +955,23 @@ func (d *Debugger) ToggleFilterState(e *am.Event) {
 	// TODO move logic after toggle to handlers
 
 	case filterCanceledTx:
-		d.Mach.Toggle1(ss.FilterCanceledTx)
+		d.Mach.Toggle1(ss.FilterCanceledTx, nil)
 		filterTxs = true
 
 	case filterAutoTx:
-		d.Mach.Toggle1(ss.FilterAutoTx)
+		d.Mach.Toggle1(ss.FilterAutoTx, nil)
 		filterTxs = true
 
 	case filterEmptyTx:
-		d.Mach.Toggle1(ss.FilterEmptyTx)
+		d.Mach.Toggle1(ss.FilterEmptyTx, nil)
 		filterTxs = true
 
 	case filterHealthcheck:
-		d.Mach.Toggle1(ss.FilterHealthcheck)
+		d.Mach.Toggle1(ss.FilterHealthcheck, nil)
 		filterTxs = true
 
 	case FilterSummaries:
-		d.Mach.Toggle1(ss.FilterSummaries)
+		d.Mach.Toggle1(ss.FilterSummaries, nil)
 
 	case filterLog0:
 		d.Opts.Filters.LogLevel = am.LogNothing
@@ -985,7 +985,7 @@ func (d *Debugger) ToggleFilterState(e *am.Event) {
 		d.Opts.Filters.LogLevel = am.LogEverything
 
 	case filterReader:
-		d.Mach.Toggle1(ss.LogReaderEnabled)
+		d.Mach.Toggle1(ss.LogReaderEnabled, nil)
 	}
 
 	stateCtx := d.Mach.NewStateCtx(ss.ToggleFilter)
