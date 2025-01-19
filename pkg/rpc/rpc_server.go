@@ -37,7 +37,7 @@ type Server struct {
 	// Source is a state Source, either a local or remote RPC worker.
 	Source am.Api
 	// Addr is the address of the server on the network.
-	Addr            string
+	Addr string
 	// DeliveryTimeout is a timeout for SendPayload to the client.
 	DeliveryTimeout time.Duration
 	// PushInterval is the interval for clock updates, effectively throttling
