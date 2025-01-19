@@ -55,7 +55,7 @@ func RandListener(host string) net.Listener {
 	// for i := 0; i < 10; i++ {
 
 	// addr := host + ":" + RandPort(40000, 50000)
-	l, err := net.Listen("tcp", ":0")
+	l, err := net.Listen("tcp4", host+":0")
 	if err == nil {
 		return l
 	}

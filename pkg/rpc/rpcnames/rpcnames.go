@@ -1,14 +1,16 @@
 package rpcnames
 
-type Name int
+// TODO use enum pkg github.com/xybor-x/enum
+// TODO separate ClientNames and ServerNames
+// TODO keep in /pkg/rpc?
 
-// TODO separate and reserve IDs forever
+type Name int
 
 const (
 	// Server
 
-	Add   Name = iota + 1
-	AddNS Name = iota + 1
+	Add Name = iota + 1
+	AddNS
 	Remove
 	Set
 	Hello
@@ -22,6 +24,7 @@ const (
 	ClientSetClock
 	ClientPushAllTicks
 	ClientSendPayload
+	ClientBye
 )
 
 func (n Name) Encode() string {
@@ -46,14 +49,16 @@ func (n Name) String() string {
 		return "Log"
 	case Sync:
 		return "Sync"
+	case Bye:
+		return "Close"
 	case ClientSetClock:
 		return "ClientSetClock"
 	case ClientPushAllTicks:
 		return "ClientPushAllTicks"
 	case ClientSendPayload:
 		return "ClientSendPayload"
-	case Bye:
-		return "Close"
+	case ClientBye:
+		return "ClientBye"
 	}
 
 	return "!UNKNOWN!"

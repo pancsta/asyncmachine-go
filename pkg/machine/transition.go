@@ -142,7 +142,11 @@ func (t *Transition) StatesBefore() S {
 	// TODO support SetSchema (index for schema and index for the state)
 	// TODO should preserve order?
 	var ret S
-	states := t.Machine.StateNames()
+	mach := t.Machine
+	if mach == nil {
+		return ret
+	}
+	states := mach.StateNames()
 	for i := range t.TimeBefore {
 		if IsActiveTick(t.TimeBefore[i]) {
 			ret = append(ret, states[i])
@@ -156,7 +160,11 @@ func (t *Transition) StatesBefore() S {
 func (t *Transition) TargetStates() S {
 	// TODO support SetSchema (index for schema and index for the state)
 	ret := make(S, len(t.TargetIndexes))
-	states := t.Machine.StateNames()
+	mach := t.Machine
+	if mach == nil {
+		return ret
+	}
+	states := mach.StateNames()
 	for i, idx := range t.TargetIndexes {
 		if idx == -1 {
 			// disposed

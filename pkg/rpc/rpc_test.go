@@ -453,15 +453,9 @@ func TestRetryCall(t *testing.T) {
 	disposeTest(t, c, s, false)
 }
 
-func TestRetryConnFLAKY(t *testing.T) {
-	// TODO flaky
-	if os.Getenv(amhelp.EnvAmTestRunner) != "" {
-		t.Skip("FLAKY timeout")
-		return
-	}
-
+func TestRetryConn(t *testing.T) {
 	t.Parallel()
-	// amhelp.EnableDebugging(false)
+	// amhelp.EnableDebugging(true)
 
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
@@ -475,7 +469,7 @@ func TestRetryConnFLAKY(t *testing.T) {
 	s.Addr = addr.String()
 
 	go func() {
-		// wait for reconnect
+		// wait for client to reconnect and then start the server
 		<-c.Mach.WhenTime(am.S{ssC.Connecting}, am.Time{3}, nil)
 		s.Start()
 	}()

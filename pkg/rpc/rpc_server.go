@@ -1,5 +1,7 @@
 package rpc
 
+// TODO call ClientBye on Disposing
+
 import (
 	"context"
 	"errors"
@@ -35,7 +37,8 @@ type Server struct {
 	// Source is a state Source, either a local or remote RPC worker.
 	Source am.Api
 	// Addr is the address of the server on the network.
-	Addr            string
+	Addr string
+	// DeliveryTimeout is a timeout for SendPayload to the client.
 	DeliveryTimeout time.Duration
 	// PushInterval is the interval for clock updates, effectively throttling
 	// the number of updates sent to the client within the interval window.
@@ -153,7 +156,7 @@ func NewServer(
 	if payloadState == ssW.SendPayload {
 		// default handlers
 		h = &SendPayloadHandlers{
-			SendPayloadState: getSendPayloadState(s),
+			SendPayloadState: getSendPayloadState(s, ssW.SendPayload),
 		}
 	} else {
 		// dynamic handlers
@@ -256,7 +259,7 @@ func (s *Server) RpcStartingState(e *am.Event) {
 				(*lisP).Close()
 				s.Listener.Store(nil)
 			}
-			if ctxRpcStarting.Err() != nil {
+			if ctxStart.Err() != nil {
 				return // expired
 			}
 
@@ -354,6 +357,7 @@ func (s *Server) Stop(dispose bool) am.Result {
 func (s *Server) SendPayload(
 	event *am.Event, ctx context.Context, payload *ArgsPayload,
 ) error {
+	// TODO ctx as 1st param
 	// TODO add SendPayloadAsync calling RemoteSendingPayload first
 	// TODO bind to an async state
 
@@ -374,7 +378,8 @@ func (s *Server) SendPayload(
 		payload.Source = event.MachineId
 		payload.SourceTx = event.TransitionId
 	}
-	s.log("sending payload %s", payload.Name)
+	s.log("sending payload %s from %s to %s", payload.Name, payload.Source,
+		payload.Destination)
 
 	// TODO failsafe
 	return s.rpcClient.Load().CallWithContext(ctx,
@@ -413,7 +418,7 @@ func (s *Server) bindRpcHandlers() {
 	s.rpcServer.Handle(rpcnames.Remove.Encode(), s.RemoteRemove)
 	s.rpcServer.Handle(rpcnames.Set.Encode(), s.RemoteSet)
 	s.rpcServer.Handle(rpcnames.Sync.Encode(), s.RemoteSync)
-	s.rpcServer.Handle(rpcnames.Bye.Encode(), s.RemoteBye)
+	s.rpcServer.Handle(rpcnames.ClientBye.Encode(), s.RemoteBye)
 
 	// TODO RemoteLog, RemoteWhenArgs, RemoteGetMany
 
@@ -846,9 +851,9 @@ type SendPayloadHandlers struct {
 // getSendPayloadState returns a handler (usually SendPayloadState), that will
 // deliver a payload to the RPC client. The resulting function can be bound in
 // anon handlers.
-func getSendPayloadState(s *Server) am.HandlerFinal {
+func getSendPayloadState(s *Server, stateName string) am.HandlerFinal {
 	return func(e *am.Event) {
-		e.Machine().EvRemove1(e, ssW.SendPayload, nil)
+		e.Machine().EvRemove1(e, stateName, nil)
 		ctx := s.Mach.NewStateCtx(ssW.Start)
 		args := ParseArgs(e.Args)
 		argsOut := &A{Name: args.Name}
@@ -875,9 +880,10 @@ func getSendPayloadState(s *Server) am.HandlerFinal {
 	}
 }
 
-// createSendPayloadHandlers creates SendPayload handlers for a custom state.
+// createSendPayloadHandlers creates SendPayload handlers for a custom (dynamic)
+// state name. Useful when binding >1 RPC server into the same state source.
 func createSendPayloadHandlers(s *Server, stateName string) any {
-	fn := getSendPayloadState(s)
+	fn := getSendPayloadState(s, stateName)
 
 	// define a struct with the handler
 	structType := reflect.StructOf([]reflect.StructField{
