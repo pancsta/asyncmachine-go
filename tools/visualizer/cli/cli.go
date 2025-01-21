@@ -7,10 +7,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"runtime"
-	"runtime/pprof"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -19,15 +16,15 @@ import (
 )
 
 const (
-	pLogFile = "log-file"
+	pLogFile         = "log-file"
 	pLogLevel        = "log-level"
-	pServerAddr      = "listen-on"
+	pVersion         = "version"
+	pVersionShort    = "v"
+	pServerAddr      = "addr"
 	pServerAddrShort = "l"
-	// TODO remove
-	pAmDbgAddr        = "am-dbg-addr"
+
 	pEnableMouse      = "enable-mouse"
 	pCleanOnConnect   = "clean-on-connect"
-	pVersion          = "version"
 	pImport           = "import-data"
 	pImportShort      = "i"
 	pSelectConn       = "select-connected"
@@ -36,41 +33,34 @@ const (
 	pStartupMachShort = "m"
 	pStartupTx        = "select-transition"
 	pStartupTxShort   = "t"
-	pView             = "view"
-	pViewShort        = "v"
+
 	// TODO AM_DBG_PROF
 	pProfSrv      = "prof-srv"
 	pMaxMem       = "max-mem"
-	pLog2Ttl      = "log-2-ttl"
-	pReader       = "reader"
 	pReaderShort  = "r"
 	pFwdData      = "fwd-data"
 	pFwdDataShort = "f"
-	// TODO --filters
-	// TODO --view
-	// TODO --rain
 )
 
 type Params struct {
-	LogLevel        am.LogLevel
-	LogFile         string
-	Version         bool
-	ServerAddr      string
-	DebugAddr       string
-	ImportData      string
+	LogLevel   am.LogLevel
+	LogFile    string
+	Version    bool
+	ServerAddr string
+	DebugAddr  string
+	ImportData string
+
+	// later
 	StartupMachine  string
 	StartupView     string
 	StartupTx       int
 	EnableMouse     bool
 	CleanOnConnect  bool
 	SelectConnected bool
-	ProfMem         bool
-	ProfCpu         bool
 	ProfSrv         string
-	MaxMemMb        int
-	Log2Ttl         time.Duration
-	Reader          bool
-	FwdData         []string
+
+	MaxMemMb int
+	FwdData  []string
 }
 
 type RootFn func(cmd *cobra.Command, args []string, params Params)
@@ -99,9 +89,6 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.Int(pLogLevel, 0, "Log level, 0-5 (silent-everything)")
 	f.StringP(pServerAddr, pServerAddrShort, telemetry.DbgAddr,
 		"Host and port for the debugger to listen on")
-	f.String(pAmDbgAddr, "", "Debug this instance of am-dbg with another one")
-	f.StringP(pView, pViewShort, "tree-log",
-		"Initial view (tree-log, tree-matrix, matrix)")
 	f.StringP(pStartupMach,
 		pStartupMachShort, "",
 		"Select a machine by (partial) ID on startup (requires --"+pImport+")")
@@ -118,16 +105,14 @@ func AddFlags(rootCmd *cobra.Command) {
 		"Select the newly connected machine, if no other is connected")
 	f.StringP(pImport, pImportShort, "",
 		"Import an exported gob.bt file")
-	f.BoolP(pReader, pReaderShort, false, "Enable Log Reader")
 	f.StringP(pFwdData, pFwdDataShort, "",
 		"Fordward incoming data to other instances (eg addr1,addr2)")
 
 	// profile & mem
 	f.String(pProfSrv, "", "Start pprof server")
 	f.Int(pMaxMem, 100, "Max memory usage (in MB) to flush old transitions")
-	f.String(pLog2Ttl, "24h", "Max time to live for logs level 2")
 
-	f.Bool(pVersion, false, "Print version and exit")
+	f.BoolP(pVersion, pVersionShort, false, "Print version and exit")
 }
 
 func ParseParams(cmd *cobra.Command, _ []string) Params {
@@ -146,22 +131,17 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 	}
 
 	logLevel := am.LogLevel(logLevelInt)
+
 	serverAddr := cmd.Flag(pServerAddr).Value.String()
-	debugAddr := cmd.Flag(pAmDbgAddr).Value.String()
 	importData := cmd.Flag(pImport).Value.String()
 	fwdDataRaw := cmd.Flag(pFwdData).Value.String()
 	profSrv := cmd.Flag(pProfSrv).Value.String()
 	startupMachine := cmd.Flag(pStartupMach).Value.String()
-	startupView := cmd.Flag(pView).Value.String()
 	startupTx, err := cmd.Flags().GetInt(pStartupTx)
 	if err != nil {
 		panic(err)
 	}
 	maxMem, err := cmd.Flags().GetInt(pMaxMem)
-	if err != nil {
-		panic(err)
-	}
-	log2Ttl, err := time.ParseDuration(cmd.Flag(pLog2Ttl).Value.String())
 	if err != nil {
 		panic(err)
 	}
@@ -181,11 +161,6 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 		panic(err)
 	}
 
-	reader, err := cmd.Flags().GetBool(pReader)
-	if err != nil {
-		panic(err)
-	}
-
 	// TODO suppose multiple instances
 	var fwdData []string
 	if fwdDataRaw != "" {
@@ -193,25 +168,21 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 	}
 
 	return Params{
+		Version:         version,
 		LogLevel:        logLevel,
 		LogFile:         logFile,
-		Version:         version,
 		ServerAddr:      serverAddr,
-		DebugAddr:       debugAddr,
 		ImportData:      importData,
 		StartupMachine:  startupMachine,
-		StartupView:     startupView,
 		StartupTx:       startupTx,
 		EnableMouse:     enableMouse,
 		CleanOnConnect:  cleanOnConnect,
 		SelectConnected: selectConnected,
-		Reader:          reader,
 		FwdData:         fwdData,
 
 		// profiling
 		ProfSrv:  profSrv,
 		MaxMemMb: maxMem,
-		Log2Ttl:  log2Ttl,
 	}
 }
 
@@ -236,47 +207,12 @@ func GetLogger(params *Params) *log.Logger {
 	return log.New(file, "", log.LstdFlags)
 }
 
-func HandleProfMem(logger *log.Logger, p *Params) {
-	if !p.ProfMem {
-		return
-	}
-
-	f, err := os.Create("mem.prof")
-	if err != nil {
-		logger.Fatal("could not create memory profile: ", err)
-	}
-	defer f.Close() // error handling omitted for example
-
-	runtime.GC() // get up-to-date statistics
-	if err := pprof.WriteHeapProfile(f); err != nil {
-		logger.Fatal("could not write memory profile: ", err)
-	}
-}
-
-func StartCpuProfile(logger *log.Logger, p *Params) func() {
-	if !p.ProfCpu {
-		return nil
-	}
-
-	f, err := os.Create("cpu.prof")
-	if err != nil {
-		logger.Fatal("could not create CPU profile: ", err)
-	}
-	if err := pprof.StartCPUProfile(f); err != nil {
-		logger.Fatal("could not start CPU profile: ", err)
-	}
-	return func() {
-		pprof.StopCPUProfile()
-		f.Close()
-	}
-}
-
 func StartCpuProfileSrv(ctx context.Context, logger *log.Logger, p *Params) {
 	if p.ProfSrv == "" {
 		return
 	}
 	go func() {
-		logger.Println("Starting pprof server on "+p.ProfSrv)
+		logger.Println("Starting pprof server on " + p.ProfSrv)
 		// TODO support ctx cancel
 		if err := http.ListenAndServe(p.ProfSrv, nil); err != nil {
 			logger.Fatalf("could not start pprof server: %v", err)

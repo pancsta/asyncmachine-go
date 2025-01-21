@@ -900,8 +900,6 @@ func (d *Debugger) parseMsgReader(
 	c *Client, log *am.LogEntry, txEntries []*logReaderEntryPtr,
 	tx *telemetry.DbgMsgTx,
 ) []*logReaderEntryPtr {
-	// TODO pipes
-
 	// NEW
 
 	if strings.HasPrefix(log.Text, "[when:new] ") {

@@ -157,7 +157,7 @@ func render(dbg *debugger.Debugger) {
 	dbg.SetFilterLogLevel(am.LogChanges)
 	// TODO via state handlers, pass focused filter
 	mach.Add1(ss.Toolbar1Focused, am.A{"filter": debugger.ToolFilterSummaries})
-	dbg.ProcessFilterChange(context.TODO(), false)
+	dbg.Mach.Add1(ss.ProcessingFilters, nil)
 	goBack(mach, 1)
 
 	// end screen

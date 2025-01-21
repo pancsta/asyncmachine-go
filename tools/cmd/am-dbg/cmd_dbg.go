@@ -1,4 +1,4 @@
-// am-dbg is a lightweight, multi-client debugger for asyncmachine-go.
+// am-dbg is a multi-client TUI debugger for asyncmachine-go.
 package main
 
 import (

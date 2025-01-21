@@ -559,6 +559,7 @@ func (d *Debugger) DisconnectEventState(e *am.Event) {
 // ///// CLIENTS
 
 func (d *Debugger) ClientMsgEnter(e *am.Event) bool {
+	// TODO typed params
 	_, ok := e.Args["msgs_tx"].([]*telemetry.DbgMsgTx)
 	if !ok {
 		d.Mach.Log("Error: msg_tx malformed\n")
@@ -574,6 +575,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	// TODO make it async via a dedicated goroutine, pushing results to
 	//  async multi state ClientMsgDone
 
+	// TODO typed params
 	msgs := e.Args["msgs_tx"].([]*telemetry.DbgMsgTx)
 	connIds := e.Args["conn_ids"].([]string)
 	mach := d.Mach
@@ -583,10 +585,9 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	selectedUpdated := false
 	for i, msg := range msgs {
 
-		// TODO check tokens
 		machId := msg.MachineID
-		c := d.Clients[machId]
-		if _, ok := d.Clients[machId]; !ok {
+		c, ok := d.Clients[machId]
+		if !ok {
 			d.Mach.Log("Error: client not found: %s\n", machId)
 			continue
 		}
@@ -716,15 +717,8 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 	clientID := e.Args["Client.id"].(string)
 	fromConnected, _ := e.Args["from_connected"].(bool)
 	fromPlaying := slices.Contains(e.Transition().StatesBefore(), ss.Playing)
-
-	if d.Clients[clientID] == nil {
-		// TODO handle err, remove state
-		d.Mach.Log("Error: client not found: %s\n", clientID)
-
-		return
-	}
-
 	ctx := d.Mach.NewStateCtx(ss.SelectingClient)
+
 	// select the new default client
 	d.C = d.Clients[clientID]
 	// re-feed the whole log and pass the context to allow cancelation
@@ -740,7 +734,7 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 		}
 
 		// start with prepping the data
-		d.filterClientTxs()
+		d.filterClientTxs(ctx)
 
 		// scroll to the same place as the prev client
 		match := false
@@ -961,12 +955,13 @@ func (d *Debugger) ToggleToolEnter(e *am.Event) bool {
 }
 
 func (d *Debugger) ToggleToolState(e *am.Event) {
-	// TODO split the state into an async one
-	// TODO refac to FilterToggledState
+	d.Mach.EvRemove1(e, ss.ToggleTool, nil)
+
 	tool := e.Args["ToolName"].(ToolName)
 
 	// tool is a filter and needs re-filter txs
 	filterTxs := false
+	rebuildLog := false
 
 	switch tool {
 	// TODO move logic after toggle to handlers
@@ -989,17 +984,23 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 
 	case ToolFilterSummaries:
 		d.Mach.Toggle1(ss.FilterSummaries, nil)
+		rebuildLog = true
 
 	case toolLog0:
 		d.Opts.Filters.LogLevel = am.LogNothing
+		rebuildLog = true
 	case toolLog1:
 		d.Opts.Filters.LogLevel = am.LogChanges
+		rebuildLog = true
 	case toolLog2:
 		d.Opts.Filters.LogLevel = am.LogOps
+		rebuildLog = true
 	case toolLog3:
 		d.Opts.Filters.LogLevel = am.LogDecisions
+		rebuildLog = true
 	case toolLog4:
 		d.Opts.Filters.LogLevel = am.LogEverything
+		rebuildLog = true
 
 	case toolReader:
 		d.Mach.Toggle1(ss.LogReaderEnabled, nil)
@@ -1050,10 +1051,10 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		d.Mach.Toggle1(ss.ExportDialog, nil)
 	}
 
-	stateCtx := d.Mach.NewStateCtx(ss.ToggleTool)
-
-	// process the toolbarItem change
-	go d.ProcessFilterChange(stateCtx, filterTxs)
+	// process filters and log
+	if filterTxs || rebuildLog {
+		d.Mach.EvAdd1(e, ss.ProcessingFilters, am.A{"filterTxs": filterTxs})
+	}
 }
 
 func (d *Debugger) SwitchingClientTxState(e *am.Event) {
@@ -1261,7 +1262,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 					c.CursorTx1 = int(math.Max(0, float64(c.CursorTx1-idx)))
 					// re-filter
 					if d.isFiltered() {
-						d.filterClientTxs()
+						d.filterClientTxs(ctx)
 					}
 				}
 

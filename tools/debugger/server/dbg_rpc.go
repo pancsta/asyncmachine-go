@@ -1,4 +1,5 @@
 package server
+// TODO provide a state mixin: ConnectEvent ClientMsg DisconnectEvent
 
 import (
 	"encoding/gob"
