@@ -135,14 +135,15 @@ mach.Add1("Foo", nil)
 mach.Is1("Foo") // false
 ```
 
-**Complicated** - wait on a multi state (event) with 1s timeout, and mutate with typed args, on top of a state context.
+**Complicated** - wait on a multi state (event) and a sync state (Ready) with
+1s timeout, and mutate with typed args, on top of a state context.
 
 ```go
-// state ctx is a non-err ctx
+// state ctx is an expiration ctx
 ctx := client.Mach.NewStateCtx(ssC.WorkerReady)
 // clock-based subscription
 whenPayload := client.Mach.WhenTicks(ssC.WorkerPayload, 1, ctx)
-// mutation
+// state mutation
 client.WorkerRpc.Worker.Add1(ssW.WorkRequested, Pass(&A{
     Input: 2}))
 // WaitFor* wraps select statements
@@ -157,7 +158,7 @@ if ctx.Err() != nil {
 }
 // check error
 if err != nil {
-    // mutation
+    // err state mutation
     client.Mach.AddErr(err, nil)
     return // no err required
 }
