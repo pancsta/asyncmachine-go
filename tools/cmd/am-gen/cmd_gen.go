@@ -53,6 +53,7 @@ func main() {
 			}
 		},
 	}
+	cli.AddRootFlags(rootCmd)
 
 	// states-file
 	statesCmd := &cobra.Command{
