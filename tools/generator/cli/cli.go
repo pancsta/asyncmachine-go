@@ -184,7 +184,7 @@ func AddStatesFlags(cmd *cobra.Command) {
 		"State names to generate. Eg: State1,State2")
 	f.StringP(pSFInherit, pSFInheritShort, "",
 		"Inherit from a built-in states machine: "+
-			"basic,connected,rpc/worker,node/worker")
+			"basic,connected,disposed,rpc/worker,node/worker")
 	f.StringP(pSFGroups, pSFGroupsShort, "",
 		"Groups to generate. Eg: Group1,Group2")
 	f.StringP(pSFName, pSFNameShort, "",
