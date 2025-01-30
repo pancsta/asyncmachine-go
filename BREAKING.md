@@ -4,8 +4,8 @@ Only `pkg/machine` and `pkg/states` adhere to semver. Semver of other packages i
 
 ## v0.10
 
-- `FooBar` handlers execute later and more often
-- `FooAny`, `AnyFoo` handlers has been removed
+- `FooBar` handlers get execute later and more often
+- `FooAny`, `AnyFoo` handlers have been removed
 - `AnyAny` is now `AnyEnter`
 
 ## v0.9
