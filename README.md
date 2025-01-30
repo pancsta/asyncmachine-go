@@ -38,15 +38,17 @@ It has atomic transitions, relations, [transparent RPC](/pkg/rpc/README.md), [TU
 [telemetry](/pkg/telemetry/README.md), [workers](/pkg/node/README.md), and soon diagrams.
 
 Its main purpose is workflows (in-process or distributed), although it can be used for a wide range of
-stateful applications - daemons, UIs, bots, agents, firewalls, consensus algos, etc. **asyncmachine** can precisely (and
-transparently) target a specific point in a scenario and easily bring structure to event-based systems. It takes care of
-most contexts, `select` statements, and panics.
+stateful applications - daemons, UIs, configs, bots, agents, firewalls, consensus algos, etc. **asyncmachine** can
+precisely (and transparently) target a specific point in a scenario and easily bring structure to event-based systems.
+It takes care of most contexts, `select` statements, and panics.
 
 It aims at creating **autonomous** workflows with **organic** control flow and **stateful** APIs:
 
 - **autonomous** - automatic states, relations, context-based decisions
 - **organic** - relations, negotiation, cancellation
 - **stateful** - maintaing context, responsive, atomic
+
+[![diagrams](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)](https://github.com/pancsta/asyncmachine-go/pull/216)
 
 ## Stack
 
@@ -135,8 +137,8 @@ mach.Add1("Foo", nil)
 mach.Is1("Foo") // false
 ```
 
-**Complicated** - wait on a multi state (event) and a sync state (Ready) with
-1s timeout, and mutate with typed args, on top of a state context.
+**Complicated** - wait on a multi state (event) and Ready state with a 1s
+timeout, then mutate with typed args, on top of a state context.
 
 ```go
 // state ctx is an expiration ctx
@@ -218,7 +220,7 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 
 ## Getting Started
 
-🦾 [`/pkg/machine`](pkg/machine/README.md) is the main package, while [`/pkg/node`](pkg/node) is
+🦾 **[`/pkg/machine`](pkg/machine/README.md)** is the main package, while [`/pkg/node`](pkg/node) is
 the high-level usage. Examples in [`/examples`](/examples/README.md) are good for a general grasp, while [`/docs/manual.md`](/docs/manual.md)
 and [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details. Reading tests is always a good idea.
 

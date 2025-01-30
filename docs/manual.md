@@ -184,7 +184,7 @@ inactive**. A list (slice) of state ticks forms a **machine clock**. The sum of 
 current **machine time**.
 
 Machine clock is a [logical clock](https://en.wikipedia.org/wiki/Logical_clock), which purpose is to distinguish
-different instances of the same state. It's most commonly used by in the form of `context.Context` via
+different instances of the same state. It's most commonly used in the form of `context.Context` via
 [`Machine.NewStateCtx(state string)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.NewStateCtx),
 but it also provides methods on its own data type [`am.Time`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Time).
 
@@ -247,10 +247,10 @@ Methods to check the active states:
 
 - [`Machine.Is(states)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Is)
 - [`Machine.Is1(state)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Is1)
-- [`Not(states)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Not)
-- [`Not1(state)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Not1)
-- [`Any(states1, states2...)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Any)
-- [`Any1(state1, state2...)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Any1)
+- [`Machine.Not(states)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Not)
+- [`Machine.Not1(state)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Not1)
+- [`Machine.Any(states1, states2...)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Any)
+- [`Machine.Any1(state1, state2...)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Any1)
 
 Methods to inspect / dump the currently active states:
 
@@ -386,8 +386,11 @@ States usually belong to one of these categories:
 1. Input states (e.g. RPC msgs)
 2. Read-only states (e.g. external state / UI state / summaries)
 3. Action states (e.g. Start, ShowModal, public API methods)
+4. Background tasks (e.g. Processing)
+5. Joining states (e.g. ProcessingDone)
 
-Action states often de-activate themselves after they are done, as a part of their [final handler](#final-handlers).
+_Action states_ often de-activate themselves after they are done, as a part of their [final handler](#final-handlers). _Joining
+states_ are used for relations with other states, as relations to an inactive state are not possible.
 
 **Example** - self removal
 
@@ -844,7 +847,7 @@ Side effects:
 
 [Mutations](/docs/manual.md#mutations) are the heartbeat of asyncmachine, while [relations](/docs/manual.md#relations)
 define the rules of the flow. Each [state](#defining-states) can have 4 types of **relations**. Each relation accepts a
-list of state names. Relations guarantee optional consistency among [active states](#active-states).
+list of state names. Relations guarantee consistency among [active states](#active-states).
 
 Relations form a Directed Cyclic Graph (DCG), but are not Turing complete, as they guarantee termination. Only
 [auto states](#auto-states) trigger a single, automatic mutation attempt.
