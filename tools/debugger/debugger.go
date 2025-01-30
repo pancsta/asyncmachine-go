@@ -806,8 +806,8 @@ func (d *Debugger) Start(clientID string, txNum int, uiView string) {
 func (d *Debugger) SetFilterLogLevel(lvl am.LogLevel) {
 	d.Opts.Filters.LogLevel = lvl
 
-	// process the toolbarItem change
-	go d.ProcessFilterChange(context.TODO(), false)
+	// process filters
+	d.Mach.Add1(ss.ProcessingFilters, nil)
 }
 
 func (d *Debugger) ImportData(filename string) {
@@ -2084,7 +2084,7 @@ func (d *Debugger) getSidebarCurrClientIdx() int {
 
 // filterClientTxs toolbarItems client's txs according the selected
 // toolbarItems. Called by toolbarItem states, not directly.
-func (d *Debugger) filterClientTxs() {
+func (d *Debugger) filterClientTxs(ctx context.Context) {
 	if d.C == nil || !d.isFiltered() {
 		return
 	}
@@ -2096,6 +2096,9 @@ func (d *Debugger) filterClientTxs() {
 
 	d.C.msgTxsFiltered = nil
 	for i := range d.C.MsgTxs {
+		if ctx.Err() != nil {
+			return // expired
+		}
 		if d.filterTx(d.C, i, auto, empty, canceled, healthcheck) {
 			d.C.msgTxsFiltered = append(d.C.msgTxsFiltered, i)
 		}
@@ -2173,23 +2176,23 @@ func (d *Debugger) scrollToTime(hT time.Time, filter bool) bool {
 	return true
 }
 
-func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
-	// TODO refac to FilterToggledState
-	<-d.Mach.WhenQueueEnds(ctx)
-	if ctx.Err() != nil {
-		d.Mach.Remove1(ss.ToggleTool, nil)
-		return // expired
-	}
+func (d *Debugger) ProcessingFiltersState(e *am.Event) {
+	ctx := d.Mach.NewStateCtx(ss.ProcessingFilters)
+	filterTxs, _ := e.Args["filterTxs"].(bool)
 
-	if filterTxs {
-		d.filterClientTxs()
-	}
+	go func() {
+		defer d.Mach.EvRemove1(e, ss.ProcessingFilters, nil)
+		if ctx.Err() != nil {
+			return // expired
+		}
 
-	if d.C != nil {
-
-		// stay on the last one
-		if d.Mach.Is1(ss.TailMode) {
-			d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
+		if filterTxs {
+			d.filterClientTxs(ctx)
+			cursor1 := d.C.CursorTx1
+			if d.Mach.Is1(ss.TailMode) {
+				cursor1 = len(d.C.MsgTxs)
+			}
+			d.SetCursor1(d.filterTxCursor(d.C, cursor1, false), false)
 		}
 
 		// rebuild the whole log to reflect the UI changes
@@ -2198,25 +2201,18 @@ func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
 			d.Mach.AddErr(err, nil)
 		}
 		d.updateLog(false)
-
 		if ctx.Err() != nil {
 			return // expired
 		}
 
-		if filterTxs {
-			d.SetCursor1(d.filterTxCursor(d.C, d.C.CursorTx1, false), false)
-		}
-	}
-
-	// queue this removal after toolbarItem states, so we can depend on WhenNot
-	d.Mach.Remove1(ss.ToggleTool, nil)
-
-	d.updateClientList(false)
-	d.updateToolbar()
-	d.updateTimelines()
-	d.updateMatrixRain()
-	d.updateLog(false)
-	d.draw()
+		// udpate and redraw
+		d.updateClientList(false)
+		d.updateToolbar()
+		d.updateTimelines()
+		d.updateMatrixRain()
+		d.updateLog(false)
+		d.draw()
+	}()
 }
 
 func (d *Debugger) GetParentTags(c *Client, tags []string) []string {

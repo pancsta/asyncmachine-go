@@ -80,6 +80,13 @@ tasks:
           --import-data am-dbg-dump.gob.br
           {{.CLI_ARGS}}
 
+  am-dbg-demo:
+    desc: Start am-dbg with a recent dump file
+    silent: false
+    cmd: go run ./tools/cmd/am-dbg 
+           --import-data am-dbg-dump.gob.br
+           --listen-on -1
+
   am-dbg-dbg:
     desc: Start am-dbg on port 9913, so it can debug other instances via --am-dbg-addr
     silent: false
@@ -359,7 +366,9 @@ tasks:
 
   gen-manual-pdf:
     cmds:
-      - pandoc -f markdown-implicit_figures docs/manual.md -o assets/asyncmachine-go/manual.pdf
+      - pandoc -f markdown-implicit_figures
+          -V geometry:margin=0.5in
+          docs/manual.md -o assets/asyncmachine-go/manual.pdf
 
   prof-cpu-img:
     cmds:

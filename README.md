@@ -137,8 +137,8 @@ mach.Add1("Foo", nil)
 mach.Is1("Foo") // false
 ```
 
-**Complicated** - wait on a multi state (event) and Ready state with 1s
-timeout, and mutate with typed args, on top of a state context.
+**Complicated** - wait on a multi state (event) and Ready state with a 1s
+timeout, then mutate with typed args, on top of a state context.
 
 ```go
 // state ctx is an expiration ctx
@@ -228,17 +228,18 @@ and [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation detai
 
 This monorepo offers the following importable packages and runnable tools:
 
+- [`/pkg/graph`](/pkg/graph/README.md) DCG of interconnected state machines.
 - [`/pkg/helpers`](/pkg/helpers/README.md) Useful functions when working with async state machines.
 - [`/pkg/history`](/pkg/history/README.md) History tracking and traversal.
 - 🦾 **[`/pkg/machine`](/pkg/machine/README.md) State machine, dependency free, semver compatible.**
 - [`/pkg/node`](/pkg/node/README.md) Distributed worker pools with supervisors.
 - [`/pkg/rpc`](/pkg/rpc/README.md) Remote state machines, with the same API as local ones.
 - [`/pkg/states`](/pkg/states/README.md) Reusable state definitions, handlers, and piping.
-- [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for metrics, traces, and logs.
+- [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for debug, metrics, traces, and logs.
 - `/pkg/pubsub` Planned.
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates states files and Grafana dashboards.
-- `/tools/cmd/am-vis` Planned.
+- [`/tools/cmd/am-vis`](/tools/cmd/am-vis/README.md) Generates diagrams of a filtered graph.
 
 [![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)](/tools/cmd/am-dbg/README.md)
 

@@ -26,8 +26,8 @@ func Add(
 	target.LogLvl(am.LogOps, "[pipe-in:add] %s from %s", targetState, source.Id())
 
 	// TODO optimize
-	source.HandleDispose(gcHandler(target))
-	target.HandleDispose(gcHandler(source))
+	source.HandleDispose(newGcNotif(target))
+	target.HandleDispose(newGcNotif(source))
 
 	return func(e *am.Event) {
 		target.EvAdd1(e, targetState, e.Args)
@@ -49,8 +49,8 @@ func Remove(
 		source.Id())
 
 	// TODO optimize
-	source.HandleDispose(gcHandler(target))
-	target.HandleDispose(gcHandler(source))
+	source.HandleDispose(newGcNotif(target))
+	target.HandleDispose(newGcNotif(source))
 
 	return func(e *am.Event) {
 		target.EvRemove1(e, targetState, e.Args)
@@ -140,7 +140,7 @@ func BindReady(
 	return source.BindHandlers(h)
 }
 
-func gcHandler(mach *am.Machine) am.HandlerDispose {
+func newGcNotif(mach *am.Machine) am.HandlerDispose {
 	return func(id string, ctx context.Context) {
 		mach.LogLvl(am.LogOps, "[pipe:gc] %s", id)
 	}

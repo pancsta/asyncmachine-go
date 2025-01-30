@@ -771,9 +771,13 @@ func (s *Server) RemoteSetPushAllTicks(
 
 // ///// ///// /////
 
-// BindServer binds RpcReady and ClientConnected with Add/Remove, to custom
+// BindServer binds RpcReady and HandshakeDone with Add/Remove, to custom
 // states.
 func BindServer(source, target *am.Machine, rpcReady, clientConn string) error {
+	if rpcReady == "" || clientConn == "" {
+		return fmt.Errorf("rpcReady and clientConn must be set")
+	}
+
 	h := &struct {
 		RpcReadyState am.HandlerFinal
 		RpcReadyEnd   am.HandlerFinal
@@ -784,20 +788,24 @@ func BindServer(source, target *am.Machine, rpcReady, clientConn string) error {
 		RpcReadyState: ampipe.Add(source, target, ssS.RpcReady, rpcReady),
 		RpcReadyEnd:   ampipe.Remove(source, target, ssS.RpcReady, rpcReady),
 
-		HandshakeDoneState: ampipe.Add(source, target, ssS.ClientConnected,
+		HandshakeDoneState: ampipe.Add(source, target, ssS.HandshakeDone,
 			clientConn),
-		HandshakeDoneEnd: ampipe.Remove(source, target, ssS.ClientConnected,
+		HandshakeDoneEnd: ampipe.Remove(source, target, ssS.HandshakeDone,
 			clientConn),
 	}
 
 	return source.BindHandlers(h)
 }
 
-// BindServerMulti binds RpcReady, ClientConnected, and ClientDisconnected.
+// BindServerMulti binds RpcReady, HandshakeDone/State, and HandshakeDone/End.
 // RpcReady is Add/Remove, other two are Add-only to passed multi states.
 func BindServerMulti(
 	source, target *am.Machine, rpcReady, clientConn, clientDisconn string,
 ) error {
+	if rpcReady == "" || clientConn == "" || clientDisconn == "" {
+		return fmt.Errorf("rpcReady, clientConn, and clientDisconn must be set")
+	}
+
 	h := &struct {
 		RpcReadyState am.HandlerFinal
 		RpcReadyEnd   am.HandlerFinal
@@ -809,9 +817,9 @@ func BindServerMulti(
 		RpcReadyEnd:   ampipe.Remove(source, target, ssS.RpcReady, rpcReady),
 
 		HandshakeDoneState: ampipe.Add(source, target,
-			ssS.ClientConnected, clientConn),
+			ssS.HandshakeDone, clientConn),
 		HandshakeDoneEnd: ampipe.Add(source, target,
-			ssS.ClientConnected, clientDisconn),
+			ssS.HandshakeDone, clientDisconn),
 	}
 
 	return source.BindHandlers(h)

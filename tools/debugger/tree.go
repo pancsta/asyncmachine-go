@@ -64,12 +64,12 @@ func (d *Debugger) initMachineTree() *cview.TreeView {
 		if !ok || ref.stateName == "" {
 			d.Mach.Remove1(ss.StateNameSelected, nil)
 			d.lastSelectedState = ""
-			return
+		} else {
+			d.Mach.Add1(ss.StateNameSelected, am.A{
+				"state": ref.stateName,
+			})
 		}
 
-		d.Mach.Add1(ss.StateNameSelected, am.A{
-			"state": ref.stateName,
-		})
 		d.updateLogReader()
 		d.updateMatrix()
 	})
