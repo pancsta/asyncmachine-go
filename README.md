@@ -48,7 +48,7 @@ It aims at creating **autonomous** workflows with **organic** control flow and *
 - **organic** - relations, negotiation, cancellation
 - **stateful** - maintaing context, responsive, atomic
 
-![diagrams](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)
+[![diagrams](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)](https://github.com/pancsta/asyncmachine-go/pull/216)
 
 ## Stack
 
@@ -137,8 +137,8 @@ mach.Add1("Foo", nil)
 mach.Is1("Foo") // false
 ```
 
-**Complicated** - wait on a multi state (event) and Ready state with 1s
-timeout, and mutate with typed args, on top of a state context.
+**Complicated** - wait on a multi state (event) and Ready state with a 1s
+timeout, then mutate with typed args, on top of a state context.
 
 ```go
 // state ctx is an expiration ctx
