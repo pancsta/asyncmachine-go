@@ -139,11 +139,14 @@ func copyFields(src, dst interface{}) {
 // AT represents typed arguments of pkg/machine, extracted from Event.Args
 // via ParseArgs, or created manually to for Pass.
 type AT struct {
-	Err      error
-	ErrTrace string
-	Panic    *ExceptionArgsPanic
-	// TODO
-	// Event
+	Err          error
+	ErrTrace     string
+	Panic        *ExceptionArgsPanic
+	TargetStates S
+	CalledStates S
+	TimeBefore   Time
+	TimeAfter    Time
+	Event        *Event
 }
 
 // ParseArgs extracts AT from A.

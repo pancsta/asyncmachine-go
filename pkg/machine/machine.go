@@ -2290,6 +2290,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 
 		// tracers
 		m.tracersLock.RLock()
+		tx := m.t.Load()
 		for i := range m.tracers {
 			m.tracers[i].HandlerStart(m.t.Load(), handlerName, methodName)
 		}
@@ -2317,9 +2318,15 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		case <-m.handlerTimer.C:
 			// notify the handler loop
 			m.handlerTimeout <- struct{}{}
-			m.log(LogOps, "[cancel] (%s) by timeout",
-				j(m.t.Load().TargetStates()))
-			m.AddErr(fmt.Errorf("%w: %s", ErrHandlerTimeout, methodName), nil)
+			m.log(LogOps, "[cancel] (%s) by timeout", j(tx.TargetStates()))
+			err := fmt.Errorf("%w: %s", ErrHandlerTimeout, methodName)
+			m.EvAddErr(e, err, Pass(&AT{
+				TargetStates: tx.TargetStates(),
+				CalledStates: tx.CalledStates(),
+				TimeBefore:   tx.TimeBefore,
+				TimeAfter:    tx.TimeAfter,
+				Event:        e.Clone(),
+			}))
 			timeout = true
 
 		case r := <-m.handlerPanic:
@@ -2940,6 +2947,7 @@ func (m *Machine) EvAddErrState(
 	}
 
 	// build args
+	// TODO read [event] and fill out relevant fields
 	argsT := &AT{
 		Err:      err,
 		ErrTrace: trace,
