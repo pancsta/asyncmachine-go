@@ -309,7 +309,12 @@ func (d *Debugger) getKeystrokes() map[string]func(
 
 		// prev tx
 		"left": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Any1(
+			// scrolling
+			if d.Mach.Is1(ss.LogFocused) {
+				d.Mach.Add1(ss.LogUserScrolled, nil)
+
+				return ev
+			} else if d.Mach.Any1(
 				ss.AddressFocused, ss.Toolbar1Focused, ss.Toolbar2Focused) {
 
 				return ev
@@ -340,7 +345,12 @@ func (d *Debugger) getKeystrokes() map[string]func(
 
 		// next tx
 		"right": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Any1(
+			// scrolling
+			if d.Mach.Is1(ss.LogFocused) {
+				d.Mach.Add1(ss.LogUserScrolled, nil)
+
+				return ev
+			} else if d.Mach.Any1(
 				ss.AddressFocused, ss.Toolbar1Focused, ss.Toolbar2Focused) {
 
 				return ev

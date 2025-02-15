@@ -179,6 +179,7 @@ func (d *Debugger) initTimelineTx() {
 		_, _, width, _ := d.timelineTxs.GetRect()
 		x, _ := event.Position()
 		pos := float64(x) / float64(width)
+		// TODO eval / lock
 		txNum := math.Round(float64(len(d.C.MsgTxs)) * pos)
 		d.Mach.Add1(ss.ScrollToTx, am.A{
 			"Client.cursorTx": int(txNum),

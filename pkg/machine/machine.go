@@ -169,7 +169,7 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 		QueueLimit:       1000,
 		DisposeTimeout:   time.Second,
 
-		id:             randID(),
+		id:             RandId(),
 		states:         parsedStates,
 		clock:          Clock{},
 		handlers:       []*handler{},

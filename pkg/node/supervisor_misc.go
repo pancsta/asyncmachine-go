@@ -46,7 +46,7 @@ type bootstrap struct {
 func newBootstrap(ctx context.Context, super *Supervisor) (*bootstrap, error) {
 	b := &bootstrap{
 		Super:      super,
-		Name:       super.Name + utils.RandID(6),
+		Name:       super.Name + utils.RandId(6),
 		LogEnabled: os.Getenv(EnvAmNodeLogSupervisor) != "",
 	}
 	mach, err := am.NewCommon(ctx, "nb-"+b.Name, states.BootstrapStruct,

@@ -153,7 +153,7 @@ func rpcAccept(l net.Listener, mach *am.Machine, fwdTo []*rpc.Client) {
 		// handle the client
 		go func() {
 			server := rpc.NewServer()
-			connID := utils.RandID(8)
+			connID := utils.RandId(8)
 			rcvr := &RPCServer{
 				Mach:   mach,
 				ConnID: connID,

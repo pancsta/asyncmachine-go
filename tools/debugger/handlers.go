@@ -238,12 +238,14 @@ func (d *Debugger) TailModeState(_ *am.Event) {
 	d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
 	d.updateMatrixRain()
 	d.updateClientList(true)
+	d.updateToolbar()
 	// needed bc tail mode if carried over via SelectingClient
 	d.RedrawFull(true)
 }
 
 func (d *Debugger) TailModeEnd(_ *am.Event) {
 	d.updateMatrixRain()
+	d.updateToolbar()
 	d.RedrawFull(true)
 }
 
@@ -578,6 +580,22 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	connIds := e.Args["conn_ids"].([]string)
 	mach := d.Mach
 
+	// GC in progress - save msgs and parse on next ClientMsgState
+	// TODO remove with SQL
+	if mach.Is1(ss.GcMsgs) {
+		d.msgsDelayed = append(d.msgsDelayed, msgs...)
+		d.msgsDelayedConns = append(d.msgsDelayedConns, connIds...)
+		return
+	}
+
+	// parse pending msgs, if any
+	if len(d.msgsDelayed) > 0 {
+		msgs = slices.Concat(d.msgsDelayed, msgs)
+		connIds = slices.Concat(d.msgsDelayedConns, connIds)
+		d.msgsDelayed = nil
+		d.msgsDelayedConns = nil
+	}
+
 	updateTailMode := false
 	updateFirstTx := false
 	selectedUpdated := false
@@ -733,16 +751,17 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 	// remain in TailMode after the selection
 	wasTailMode := slices.Contains(e.Transition().StatesBefore(), ss.TailMode)
 
-	// TODO dont fork once progressive log rendering is in place
+	// TODO extract SelectingClientFiltered
 	go func() {
 		if ctx.Err() != nil {
 			return // expired
 		}
 
-		// start with prepping the data
+		// start with prepping the data TODO filtering in eval
 		d.filterClientTxs()
 
 		// scroll to the same place as the prev client
+		// TODO continue in SelectingClientFilteredState
 		match := false
 		if !wasTailMode {
 			match = d.scrollToTime(d.lastScrolledTxTime, true)
@@ -768,6 +787,7 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 		// initial build of the states tree
 		d.buildStatesTree()
 		if d.Mach.Is1(ss.TreeLogView) || d.Mach.Is1(ss.TreeMatrixView) {
+			// TODO races, do updates in a handler
 			d.updateTree()
 		}
 

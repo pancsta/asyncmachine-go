@@ -93,6 +93,8 @@ type DbgMsgTx struct {
 	IsAuto bool
 	// queue length at the start of the transition
 	Queue int
+	// TODO include missed mutations because of the queue limit
+	//  since the previous tx
 	// Time is human time. Don't send this over the wire.
 	// TODO remove, re-gen all the assets
 	Time *time.Time
@@ -342,7 +344,8 @@ func (t *DbgTracer) TransitionEnd(tx *am.Transition) {
 }
 
 func (t *DbgTracer) MachineDispose(id string) {
-	t.Mach = nil
+	// TODO lock & dispose?
+	// t.Mach = nil
 
 	go func() {
 		// TODO push out pending m.logEntries using add:Healthcheck (if set)

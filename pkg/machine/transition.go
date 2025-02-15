@@ -55,7 +55,7 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	defer m.activeStatesLock.RUnlock()
 
 	t := &Transition{
-		ID:         randID(),
+		ID:         RandId(),
 		Mutation:   item,
 		TimeBefore: m.time(nil),
 		Machine:    m,

@@ -134,7 +134,7 @@ func (d *Debugger) parseMsgLogEntry(
 	lvl := entry.Level
 
 	// make [extern] as LogNothing
-	if strings.HasPrefix(entry.Text, "[extern]") {
+	if strings.HasPrefix(entry.Text, "[extern") {
 		lvl = am.LogNothing
 	}
 	t := fmtLogEntry(entry.Text, tx.CalledStateNames(c.MsgStruct.StatesIndex),
