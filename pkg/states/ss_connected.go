@@ -1,11 +1,19 @@
 package states
 
 import (
+	"errors"
+	"fmt"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
 // ConnectedStatesDef contains states for a connection status.
+// Required states:
+// - Start
 type ConnectedStatesDef struct {
+	// ErrConnecting is a detailed connection error, eg no access.
+	ErrConnecting string
+
 	Connecting    string
 	Connected     string
 	Disconnecting string
@@ -21,6 +29,8 @@ type ConnectedGroupsDef struct {
 
 // ConnectedStruct represents all relations and properties of ConnectedStates.
 var ConnectedStruct = am.Struct{
+	cs.ErrConnecting: {Require: S{Exception}},
+
 	cs.Connecting: {
 		Require: S{ssB.Start},
 		Remove:  cg.Connected,
@@ -53,3 +63,22 @@ var (
 	// ConnectedGroups contains all the state groups for the Connected state set.
 	ConnectedGroups = cg
 )
+
+// ERRORS
+
+// sentinel errors
+
+var ErrConnecting = errors.New("error connecting")
+
+// error mutations
+
+// AddErrConnecting wraps an error in the ErrConnecting sentinel and adds to a
+// machine.
+func AddErrConnecting(
+	event *am.Event, mach *am.Machine, err error, args am.A,
+) error {
+	err = fmt.Errorf("%w: %w", ErrConnecting, err)
+	mach.EvAddErrState(event, cs.ErrConnecting, err, args)
+
+	return err
+}

@@ -15,6 +15,7 @@ import (
 func assertStates(t *testing.T, m am.Api, expected am.S,
 	msgAndArgs ...interface{},
 ) {
+	// TODO ignore Healthcheck
 	assert.ElementsMatch(t, expected, m.ActiveStates(), msgAndArgs...)
 }
 

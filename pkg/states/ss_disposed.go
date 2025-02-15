@@ -5,6 +5,8 @@ import (
 )
 
 // DisposedStatesDef contains all the states of the Disposed state machine.
+// Required states:
+// - Start
 type DisposedStatesDef struct {
 	*am.StatesBase
 
@@ -27,7 +29,7 @@ type DisposedGroupsDef struct {
 var DisposedStruct = am.Struct{
 	ssD.RegisterDisposal: {},
 	ssD.Disposing:        {Remove: sgD.Disposed},
-	ssD.Disposed:         {Remove: sgD.Disposed},
+	ssD.Disposed:         {Remove: SAdd(sgD.Disposed, S{ssB.Start})},
 }
 
 // EXPORTS AND GROUPS

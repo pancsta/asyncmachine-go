@@ -16,9 +16,9 @@ func init() {
 }
 
 const (
-	// EnvAmNodeLogSupervisor enables machine logging for node supervisor.
+	// EnvAmNodeLogSupervisor enables extra logging for node supervisor.
 	EnvAmNodeLogSupervisor = "AM_NODE_LOG_SUPERVISOR"
-	// EnvAmNodeLogClient enables machine logging for node client.
+	// EnvAmNodeLogClient enables extra logging for node client.
 	EnvAmNodeLogClient = "AM_NODE_LOG_CLIENT"
 )
 
@@ -53,7 +53,6 @@ var (
 )
 
 // error mutations
-// TODO add event param
 
 // AddErrWorker wraps an error in the ErrWorker sentinel and adds to a machine.
 func AddErrWorker(
@@ -61,34 +60,43 @@ func AddErrWorker(
 ) error {
 	err = fmt.Errorf("%w: %w", ErrWorker, err)
 	mach.EvAddErrState(event, ssS.ErrWorker, err, args)
+
 	return err
 }
 
 // AddErrWorkerStr wraps a msg in the ErrWorker sentinel and adds to a machine.
+// TODO add event param
 func AddErrWorkerStr(mach *am.Machine, msg string, args am.A) error {
 	err := fmt.Errorf("%w: %s", ErrWorker, msg)
 	mach.AddErrState(ssS.ErrWorker, err, args)
+
 	return err
 }
 
 // AddErrPool wraps an error in the ErrPool sentinel and adds to a machine.
+// TODO add event param
 func AddErrPool(mach *am.Machine, err error, args am.A) error {
 	wrappedErr := fmt.Errorf("%w: %w", ErrPool, err)
 	mach.AddErrState(ssS.ErrPool, wrappedErr, args)
+
 	return wrappedErr
 }
 
 // AddErrPoolStr wraps a msg in the ErrPool sentinel and adds to a machine.
+// TODO add event param
 func AddErrPoolStr(mach *am.Machine, msg string, args am.A) error {
 	err := fmt.Errorf("%w: %s", ErrPool, msg)
 	mach.AddErrState(ssS.ErrPool, err, args)
+
 	return err
 }
 
 // AddErrRpc wraps an error in the ErrRpc sentinel and adds to a machine.
+// TODO add event param
 func AddErrRpc(mach *am.Machine, err error, args am.A) error {
 	wrappedErr := fmt.Errorf("%w: %w", ErrRpc, err)
 	mach.AddErrState(ssS.ErrNetwork, wrappedErr, args)
+
 	return wrappedErr
 }
 
@@ -98,7 +106,9 @@ func AddErrRpc(mach *am.Machine, err error, args am.A) error {
 
 // ///// ///// /////
 
-// A is a struct for node arguments. It's a typesafe alternative to am.A.
+const APrefix = "am_node"
+
+// A is a struct for node arguments. It's a typesafe alternative to [am.A].
 type A struct {
 	// Id is a machine ID.
 	Id string `log:"id"`
@@ -151,14 +161,14 @@ type ARpc struct {
 	SuperRpcId string `log:"super_rpc_id"`
 }
 
-// ParseArgs extracts A from [am.Event.Args]["am_node"].
+// ParseArgs extracts A from [am.Event.Args][APrefix].
 func ParseArgs(args am.A) *A {
-	if r, ok := args["am_node"].(*ARpc); ok {
+	if r, ok := args[APrefix].(*ARpc); ok {
 		return amhelp.ArgsToArgs(r, &A{})
-	} else if r, ok := args["am_node"].(ARpc); ok {
+	} else if r, ok := args[APrefix].(ARpc); ok {
 		return amhelp.ArgsToArgs(&r, &A{})
 	}
-	if a, _ := args["am_node"].(*A); a != nil {
+	if a, _ := args[APrefix].(*A); a != nil {
 		return a
 	}
 	return &A{}
@@ -166,12 +176,12 @@ func ParseArgs(args am.A) *A {
 
 // Pass prepares [am.A] from A to pass to further mutations.
 func Pass(args *A) am.A {
-	return am.A{"am_node": args}
+	return am.A{APrefix: args}
 }
 
 // PassRpc prepares [am.A] from A to pass over RPC.
 func PassRpc(args *A) am.A {
-	return am.A{"am_node": amhelp.ArgsToArgs(args, &ARpc{})}
+	return am.A{APrefix: amhelp.ArgsToArgs(args, &ARpc{})}
 }
 
 // LogArgs is an args logger for A and rpc.A.

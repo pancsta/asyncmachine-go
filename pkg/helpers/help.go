@@ -233,25 +233,25 @@ func MachDebugEnv(mach am.Api) {
 // stable for the duration.
 
 // NewReqAdd creates a new failsafe request to add states to a machine. See
-// MutRequest and NewMutRequest for more info.
+// See MutRequest for more info and NewMutRequest for the defaults.
 func NewReqAdd(mach am.Api, states am.S, args am.A) *MutRequest {
 	return NewMutRequest(mach, am.MutationAdd, states, args)
 }
 
 // NewReqAdd1 creates a new failsafe request to add a single state to a machine.
-// See MutRequest and NewMutRequest for more info.
+// See MutRequest for more info and NewMutRequest for the defaults.
 func NewReqAdd1(mach am.Api, state string, args am.A) *MutRequest {
 	return NewReqAdd(mach, am.S{state}, args)
 }
 
 // NewReqRemove creates a new failsafe request to remove states from a machine.
-// See MutRequest and NewMutRequest for more info.
+// See MutRequest for more info and NewMutRequest for the defaults.
 func NewReqRemove(mach am.Api, states am.S, args am.A) *MutRequest {
 	return NewMutRequest(mach, am.MutationRemove, states, args)
 }
 
 // NewReqRemove1 creates a new failsafe request to remove a single state from a
-// machine. See MutRequest and NewMutRequest for more info.
+// machine. See MutRequest for more info and NewMutRequest for the defaults.
 func NewReqRemove1(mach am.Api, state string, args am.A) *MutRequest {
 	return NewReqRemove(mach, am.S{state}, args)
 }
@@ -451,7 +451,7 @@ func WaitForAll(
 // machine. For state machines with error handling (like retry) it's recommended
 // to measure machine time of [am.Exception] instead.
 func WaitForErrAll(
-	ctx context.Context, timeout time.Duration, mach *am.Machine,
+	ctx context.Context, timeout time.Duration, mach am.Api,
 	chans ...<-chan struct{},
 ) error {
 	// TODO test
@@ -478,7 +478,7 @@ func WaitForErrAll(
 			// TODO check and log state ctx name
 			return ctx.Err()
 		case <-whenErr:
-			return fmt.Errorf("WhenErr closed: %w", mach.Err())
+			return fmt.Errorf("%s: %w", am.Exception, mach.Err())
 		case <-t:
 			return am.ErrTimeout
 		case <-ch:

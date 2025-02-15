@@ -884,7 +884,7 @@ func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 				return // expired
 			}
 			if res != am.Executed {
-				s.log("worker %s rejected %s", info.rpc.Worker.ID, args.WorkerRpcId)
+				s.log("worker %s rejected %s", info.rpc.Worker.Id(), args.WorkerRpcId)
 				continue
 			}
 
@@ -899,7 +899,7 @@ func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 				},
 			}))
 
-			s.log("worker %s provided to %s", info.rpc.Worker.ID, args.SuperRpcId)
+			s.log("worker %s provided to %s", info.rpc.Worker.Id(), args.SuperRpcId)
 			break
 		}
 	}()
