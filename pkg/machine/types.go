@@ -67,6 +67,7 @@ type HandlerDispose func(id string, ctx context.Context)
 // Opts struct is used to configure a new Machine.
 type Opts struct {
 	// Unique ID of this machine. Default: random ID.
+	// TODO refac to Id
 	ID string
 	// Time for a handler to execute. Default: time.Second
 	HandlerTimeout time.Duration
@@ -75,6 +76,7 @@ type Opts struct {
 	// If true, the machine will die on panics.
 	DontPanicToException bool
 	// If true, the machine will NOT prefix its logs with its ID.
+	// TODO refac to DontLogId
 	DontLogID bool
 	// Custom relations resolver. Default: *DefaultRelationsResolver.
 	Resolver RelationsResolver
@@ -88,6 +90,7 @@ type Opts struct {
 	// Overrides ParentID. Default: nil.
 	Parent Api
 	// ParentID is the ID of the parent machine. Default: "".
+	// TODO refac to ParentId
 	ParentID string
 	// Tags is a list of tags for the machine. Default: nil.
 	Tags []string
@@ -133,7 +136,7 @@ type Api interface {
 
 	// ///// LOCAL
 
-	// Checking (local)
+	// Checking (local)o
 
 	IsErr() bool
 	Is(states S) bool
@@ -234,14 +237,18 @@ const (
 var (
 	// ErrStateUnknown indicates that the state is unknown.
 	ErrStateUnknown = errors.New("state unknown")
+	// ErrStateInactive indicates that a neccessary state isn't active.
+	ErrStateInactive = errors.New("state not active")
 	// ErrCanceled can be used to indicate a canceled Transition.
 	ErrCanceled = errors.New("transition canceled")
 	// ErrQueued can be used to indicate a queued Transition.
 	ErrQueued = errors.New("transition queued")
 	// ErrInvalidArgs can be used to indicate invalid arguments.
 	ErrInvalidArgs = errors.New("invalid arguments")
-	// ErrHandlerTimeout can be used to indicate timed out mutation.
+	// ErrHandlerTimeout sindicate a timed out mutation.
 	ErrHandlerTimeout = errors.New("handler timeout")
+	// ErrHandlerTimeout sindicate a timed out eval func.
+	ErrEvalTimeout = errors.New("eval timeout")
 	// ErrTimeout can be used to indicate a timeout.
 	ErrTimeout = errors.New("timeout")
 	// ErrStateMissing is used to indicate missing states.

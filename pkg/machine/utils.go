@@ -408,7 +408,7 @@ type handlerCall struct {
 	timeout bool
 }
 
-func RandId() string {
+func randId() string {
 	id := make([]byte, 16)
 	_, err := rand.Read(id)
 	if err != nil {

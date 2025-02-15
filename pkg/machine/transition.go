@@ -11,6 +11,7 @@ import (
 // Transition represents processing of a single mutation within a machine.
 type Transition struct {
 	// ID is a unique identifier of the transition.
+	// TODO refac to Id()
 	ID string
 	// Steps is a list of steps taken by this transition (so far).
 	Steps []*Step
@@ -55,7 +56,7 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	defer m.activeStatesLock.RUnlock()
 
 	t := &Transition{
-		ID:         RandId(),
+		ID:         randId(),
 		Mutation:   item,
 		TimeBefore: m.time(nil),
 		Machine:    m,
