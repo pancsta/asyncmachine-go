@@ -2,6 +2,7 @@
 package rpc
 
 import (
+	"context"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/cenkalti/rpc2"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc/states"
@@ -116,7 +118,10 @@ const (
 
 // ///// ///// /////
 
-// A represents typed arguments of the RPC package.
+const APrefix = "am_rpc"
+
+// A represents typed arguments of the RPC package. It's a typesafe alternative
+// to [am.A].
 type A struct {
 	Id        string `log:"id"`
 	Name      string `log:"name"`
@@ -146,12 +151,12 @@ type ARpc struct {
 	Dispose   bool
 }
 
-// ParseArgs extracts A from [am.Event.Args]["am_rpc"].
+// ParseArgs extracts A from [am.Event.Args][APrefix].
 func ParseArgs(args am.A) *A {
-	if r, _ := args["am_rpc"].(*ARpc); r != nil {
+	if r, _ := args[APrefix].(*ARpc); r != nil {
 		return amhelp.ArgsToArgs(r, &A{})
 	}
-	if a, _ := args["am_rpc"].(*A); a != nil {
+	if a, _ := args[APrefix].(*A); a != nil {
 		return a
 	}
 	return &A{}
@@ -159,12 +164,12 @@ func ParseArgs(args am.A) *A {
 
 // Pass prepares [am.A] from A to pass to further mutations.
 func Pass(args *A) am.A {
-	return am.A{"am_rpc": args}
+	return am.A{APrefix: args}
 }
 
 // PassRpc prepares [am.A] from A to pass over RPC.
 func PassRpc(args *A) am.A {
-	return am.A{"am_rpc": amhelp.ArgsToArgs(args, &ARpc{})}
+	return am.A{APrefix: amhelp.ArgsToArgs(args, &ARpc{})}
 }
 
 // LogArgs is an args logger for A.
@@ -473,4 +478,50 @@ func TrafficMeter(
 	c := bytes.Load()
 	// fmt.Printf("Forwarded %d bytes\n", c)
 	counter <- c
+}
+
+// DisposeWithCtx handles early binding disposal caused by a canceled context.
+// It's used by most of "when" methods.
+// TODO GC in the handler loop instead
+// TODO mixin from am.Subscription
+func DisposeWithCtx[T comparable](
+	mach *Worker, ctx context.Context, ch chan struct{}, states am.S, binding T,
+	lock *sync.RWMutex, index map[string][]T, logMsg string,
+) {
+	if ctx == nil {
+		return
+	}
+	go func() {
+		select {
+		case <-ch:
+			return
+		case <-mach.Ctx().Done():
+			return
+		case <-ctx.Done():
+		}
+
+		// TODO track
+		utils.CloseSafe(ch)
+
+		// GC only if needed
+		if mach.Disposed.Load() {
+			return
+		}
+		lock.Lock()
+		defer lock.Unlock()
+
+		for _, s := range states {
+			if _, ok := index[s]; ok {
+				if len(index[s]) == 1 {
+					delete(index, s)
+				} else {
+					index[s] = utils.SlicesWithout(index[s], binding)
+				}
+
+				if logMsg != "" {
+					mach.LogLvl(am.LogOps, logMsg) //nolint:govet
+				}
+			}
+		}
+	}()
 }

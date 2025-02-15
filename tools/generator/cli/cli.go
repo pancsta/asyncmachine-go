@@ -9,10 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	pVersion = "version"
-	pVersionShort = "v"
-)
+const pVersion = "version"
 
 // RootParams are params for the root command.
 type RootParams struct {
@@ -26,10 +23,6 @@ func ParseRootParams(cmd *cobra.Command, _ []string) RootParams {
 	return RootParams{
 		Version: version,
 	}
-}
-
-func AddRootFlags(cmd *cobra.Command) {
-	cmd.Flags().BoolP(pVersion, pVersionShort, false, "Print version and exit")
 }
 
 // TODO move to /internal
@@ -143,6 +136,8 @@ func ParseGrafanaParams(cmd *cobra.Command, _ []string) GrafanaParams {
 
 // SFParams are params for the states-file command.
 type SFParams struct {
+	// Version - print version
+	Version bool
 	// States - State names to generate. Eg: State1,State2
 	States string
 	// Inherit - Inherit from built-in states machines (comma separated):
@@ -183,14 +178,16 @@ func AddStatesFlags(cmd *cobra.Command) {
 	f.StringP(pSFStates, pSFStatesShort, "",
 		"State names to generate. Eg: State1,State2")
 	f.StringP(pSFInherit, pSFInheritShort, "",
-		"Inherit from a built-in states machine: "+
-			"basic,connected,disposed,rpc/worker,node/worker")
+		"Inherit from a built-in states machine: " +
+		"basic,connected,rpc/worker,node/worker")
 	f.StringP(pSFGroups, pSFGroupsShort, "",
 		"Groups to generate. Eg: Group1,Group2")
 	f.StringP(pSFName, pSFNameShort, "",
 		"Name of the state machine. Eg: MyMach")
 	f.BoolP(pSFUtils, pSFUtilsShort, true,
 		"Generate states_utils.go in CWD. Overrides files.")
+	f.Bool(pVersion, false,
+		"Print version and exit")
 	f.BoolP(pSFForce, pSFForceShort, false,
 		"Override output file (if any)")
 }
@@ -226,6 +223,7 @@ func ParseSFParams(cmd *cobra.Command, _ []string) SFParams {
 	}
 
 	return SFParams{
+		// Version: version,
 		States:  states,
 		Inherit: inherit,
 		Groups:  groups,

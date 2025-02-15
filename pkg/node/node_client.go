@@ -354,7 +354,7 @@ func (c *Client) ReqWorker(ctx context.Context) error {
 		return err
 	}
 
-	c.log("worker connected: %s", c.WorkerRpc.Worker.ID)
+	c.log("worker connected: %s", c.WorkerRpc.Worker.Id())
 	return nil
 }
 

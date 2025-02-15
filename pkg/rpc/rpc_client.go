@@ -198,26 +198,13 @@ func NewClient(
 // ///// ///// /////
 
 func (c *Client) StartState(e *am.Event) {
-	// TODO extract NewWorker
-	c.Worker = &Worker{
-		c:             c,
-		ctx:           c.Mach.Ctx(),
-		states:        c.stateStruct,
-		stateNames:    c.stateNames,
-		indexWhen:     am.IndexWhen{},
-		indexStateCtx: am.IndexStateCtx{},
-		indexWhenTime: am.IndexWhenTime{},
-		whenDisposed:  make(chan struct{}),
-		machTime:      make(am.Time, len(c.stateNames)),
-		parentId:      c.Mach.Id(),
-		tags:          []string{"rpc-worker", "src-id:"},
+	ctx := c.Mach.NewStateCtx(ssC.Start)
+	worker, err := NewWorker(ctx, "", c, c.stateStruct, c.stateNames, c.Mach,
+		nil)
+	if err != nil {
+		c.Mach.AddErr(err, nil)
 	}
-	lvl := am.LogNothing
-	c.Worker.logLevel.Store(&lvl)
-	c.Worker.activeState.Store(&am.S{})
-	c.Mach.HandleDispose(func(id string, ctx context.Context) {
-		c.Worker.Dispose()
-	})
+	c.Worker = worker
 }
 
 func (c *Client) StartEnd(e *am.Event) {
@@ -447,8 +434,6 @@ func (c *Client) HandshakeDoneState(e *am.Event) {
 	// finalize the worker init
 	w := c.Worker
 	w.ID = "rw-" + c.Name
-	w.machTime = args.MachTime
-
 	c.updateClock(nil, args.MachTime)
 
 	c.log("connected to %s", c.Worker.ID)
@@ -667,7 +652,7 @@ func (c *Client) updateClock(msg ClockMsg, t am.Time) {
 		c.log("updateClock full %d: %v", sum, t)
 	}
 
-	c.Worker.updateClock(clock)
+	c.Worker.UpdateClock(clock, false)
 }
 
 func (c *Client) callFailsafe(
@@ -924,7 +909,7 @@ func (c *Client) RemotePushAllTicks(
 		}
 
 		// execute TODO
-		// c.updateClock(clock, nil)
+		// c.UpdateClock(clock, nil)
 	}
 
 	return nil

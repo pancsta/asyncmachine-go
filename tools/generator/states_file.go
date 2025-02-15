@@ -130,20 +130,17 @@ func (g *Generator) Output() string {
 	// TODO switch to github.com/dave/jennifer
 
 	var impPkgStates string
-	if g.Mach.Any1(ssG.InheritBasic, ssG.InheritConnected, ssG.InheritDisposed) {
+	if g.Mach.Any1(ssG.InheritBasic, ssG.InheritConnected) {
 		impPkgStates = "\n\tss \"github.com/pancsta/asyncmachine-go/pkg/states\""
 	}
 
 	// imports
-	// TODO include the CLI to re-gen
 	out := p(`
-		// Package states contains a stateful schema-v2 for %s.
-		// Bootstrapped with am-gen. Edit manually or re-gen & merge.
 		package states
 		
 		import (
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"%s
-	`, g.Name, impPkgStates)
+	`, impPkgStates)
 
 	if g.Mach.Is1(ssG.InheritRpcWorker) {
 		out += "\tssrpc \"github.com/pancsta/asyncmachine-go/pkg/rpc/states\"\n"
@@ -175,9 +172,6 @@ func (g *Generator) Output() string {
 	}
 	if g.Mach.Is1(ssG.InheritConnected) {
 		out += "\t// inherit from ConnectedStatesDef\n\t*ss.ConnectedStatesDef\n"
-	}
-	if g.Mach.Is1(ssG.InheritDisposed) {
-		out += "\t// inherit from DisposedStatesDef\n\t*ss.DisposedStatesDef\n"
 	}
 	if g.Mach.Is1(ssG.InheritRpcWorker) {
 		out += "\t// inherit from rpc/WorkerStatesDef\n\t*ssrpc.WorkerStatesDef\n"
@@ -225,10 +219,6 @@ func (g *Generator) Output() string {
 	if g.Mach.Is1(ssG.InheritConnected) {
 		out += fmt.Sprintf("\t// inherit from ConnectedStruct\n" +
 			"\tss.ConnectedStruct,\n")
-	}
-	if g.Mach.Is1(ssG.InheritDisposed) {
-		out += fmt.Sprintf("\t// inherit from DisposedStruct\n" +
-			"\tss.DisposedStruct,\n")
 	}
 	if g.Mach.Is1(ssG.InheritRpcWorker) {
 		out += fmt.Sprintf("\t// inherit from rpc/WorkerStruct\n" +

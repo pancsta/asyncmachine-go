@@ -64,7 +64,7 @@ func WaitForAll(
 // WaitForErrAll is a test version of [amhelp.WaitForErrAll], which errors
 // instead of returning an error.
 func WaitForErrAll(
-	t *stdtest.T, source string, ctx context.Context, mach *am.Machine,
+	t *stdtest.T, source string, ctx context.Context, mach am.Api,
 	timeout time.Duration, chans ...<-chan struct{},
 ) {
 	if err := amhelp.WaitForErrAll(ctx, timeout, mach, chans...); err != nil {
@@ -97,52 +97,52 @@ func GroupWhen1(
 }
 
 // AssertIs asserts that the machine is in the given states.
-func AssertIs(t *stdtest.T, mach *am.Machine, states am.S) {
+func AssertIs(t *stdtest.T, mach am.Api, states am.S) {
 	assert.Subset(t, mach.ActiveStates(), states, "%s expected", states)
 }
 
 // AssertIs1 asserts that the machine is in the given state.
-func AssertIs1(t *stdtest.T, mach *am.Machine, state string) {
+func AssertIs1(t *stdtest.T, mach am.Api, state string) {
 	assert.Subset(t, mach.ActiveStates(), am.S{state}, "%s expected", state)
 }
 
 // AssertNot asserts that the machine is not in the given states.
-func AssertNot(t *stdtest.T, mach *am.Machine, states am.S) {
+func AssertNot(t *stdtest.T, mach am.Api, states am.S) {
 	assert.NotSubset(t, mach.ActiveStates(), states, "%s not expected", states)
 }
 
 // AssertNot1 asserts that the machine is not in the given state.
-func AssertNot1(t *stdtest.T, mach *am.Machine, state string) {
+func AssertNot1(t *stdtest.T, mach am.Api, state string) {
 	assert.NotSubset(t, mach.ActiveStates(), am.S{state}, "%s not expected",
 		state)
 }
 
 // AssertNoErrNow asserts that the machine is not in the Exception state.
-func AssertNoErrNow(t *stdtest.T, mach *am.Machine) {
+func AssertNoErrNow(t *stdtest.T, mach am.Api) {
 	if mach.IsErr() {
 		err := mach.Err()
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("Unexpected error in %s: %s", mach.Id(), err.Error())
 		} else {
-			t.Fatal(am.Exception + " not expected ")
+			t.Fatalf("Unexpected error in %s", mach.Id())
 		}
 	}
 }
 
 // AssertNoErrEver asserts that the machine never was in the Exception state.
-func AssertNoErrEver(t *stdtest.T, mach *am.Machine) {
+func AssertNoErrEver(t *stdtest.T, mach am.Api) {
 	if mach.Tick(am.Exception) > 0 {
 		err := mach.Err()
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("Unexpected error in %s", mach.Id())
 		} else {
-			t.Fatal(am.Exception + " not expected ")
+			t.Fatalf("Unexpected PAST error in %s", mach.Id())
 		}
 	}
 }
 
 // AssertErr asserts that the machine is in the Exception state.
-func AssertErr(t *stdtest.T, mach *am.Machine) {
+func AssertErr(t *stdtest.T, mach am.Api) {
 	if !mach.IsErr() {
 		t.Fatal("expected " + am.Exception)
 	}
