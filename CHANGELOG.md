@@ -1,5 +1,23 @@
 # Changelog
 
+## [v0.10.1](https://github.com/pancsta/asyncmachine-go/tree/v0.10.1) (2025-02-15)
+
+- feat\(am-dbg\): add `--client-list file.txt` for a live detailed dump [\#224](https://github.com/pancsta/asyncmachine-go/pull/224)
+  (@pancsta)
+- docs\(pubsub\): add pubsub and schemas [\#223](https://github.com/pancsta/asyncmachine-go/pull/223) (@pancsta)
+- feat\(pubsub\): add initial pubsub implementation [\#222](https://github.com/pancsta/asyncmachine-go/pull/222) (@pancsta)
+- fix\(machine\): improve timeouts \(eg add EvalTimeout\) [\#219](https://github.com/pancsta/asyncmachine-go/pull/219)
+  (@pancsta)
+- feat\(machine\): improve exception handling [\#218](https://github.com/pancsta/asyncmachine-go/pull/218) (@pancsta)
+- fix\(am-dbg\): add fixes for large amount of clients [\#217](https://github.com/pancsta/asyncmachine-go/pull/217)
+  (@pancsta)
+- fix\(am-gen\): fix inheriting of Disposed [\#215](https://github.com/pancsta/asyncmachine-go/pull/215) (@pancsta)
+- feat\(am-dbg\): add 2nd toolbar, style log states [\#214](https://github.com/pancsta/asyncmachine-go/pull/214)
+  (@pancsta)
+- fix\(machine\): add missing args param to Toggle1, Toggle [\#213](https://github.com/pancsta/asyncmachine-go/pull/213)
+  (@pancsta)
+- fix\(rpc\): fix RPC retry ctx [\#212](https://github.com/pancsta/asyncmachine-go/pull/212) (@pancsta)
+
 ## [v0.10.0](https://github.com/pancsta/asyncmachine-go/tree/v0.10.0) (2025-01-14)
 
 - feat\(states\): add Disposed state def [\#210](https://github.com/pancsta/asyncmachine-go/pull/210) (@pancsta)
