@@ -245,9 +245,9 @@ var (
 	ErrQueued = errors.New("transition queued")
 	// ErrInvalidArgs can be used to indicate invalid arguments.
 	ErrInvalidArgs = errors.New("invalid arguments")
-	// ErrHandlerTimeout sindicate a timed out mutation.
+	// ErrHandlerTimeout indicates a timed out mutation.
 	ErrHandlerTimeout = errors.New("handler timeout")
-	// ErrHandlerTimeout sindicate a timed out eval func.
+	// ErrHandlerTimeout indicates a timed out eval func.
 	ErrEvalTimeout = errors.New("eval timeout")
 	// ErrTimeout can be used to indicate a timeout.
 	ErrTimeout = errors.New("timeout")
