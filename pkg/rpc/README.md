@@ -83,6 +83,18 @@ worker.Add1(ssrpc.WorkerStates.SendPayload, arpc.Pass(&arpc.A{
 }))
 ```
 
+#### Worker Schema
+
+State schema from [/pkg/rpc/states/ss_rpc_worker.go](/pkg/rpc/states/ss_rpc_worker.go).
+
+```go
+type WorkerStatesDef struct {
+    ErrProviding string
+    ErrSendPayload string
+    SendPayload string
+}
+```
+
 ### Server
 
 Each RPC server can handle 1 client at a time. Both client and server need the same worker states definition (structure
@@ -128,6 +140,12 @@ if err != nil {
 print("Client added Foo")
 worker.Add1("Bar", nil)
 ```
+
+#### Server Schema
+
+State schema from [/pkg/rpc/states/ss_rpc_server.go](/pkg/rpc/states/ss_rpc_server.go).
+
+![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-server.svg)
 
 ### Client
 
@@ -191,6 +209,12 @@ c.Worker.Add1("Foo", nil)
 print("Server added Bar")
 ```
 
+#### Client Schema
+
+State schema from [/pkg/rpc/states/ss_rpc_client.go](/pkg/rpc/states/ss_rpc_client.go).
+
+![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-client.svg)
+
 ### Multiplexer
 
 Because 1 server can serve only 1 client (for simplicity), it's often required to use a port multiplexer. It's very
@@ -235,6 +259,12 @@ if err != nil {
     return err
 }
 ```
+
+#### Schema
+
+State schema from [/pkg/rpc/states/ss_mux.go](/pkg/rpc/states/ss_mux.go).
+
+![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-mux.svg)
 
 ## Documentation
 

@@ -1,0 +1,58 @@
+# 🦾 /pkg/pubsub
+
+[`cd /`](/README.md)
+
+> [!NOTE]
+> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
+> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+
+**/pkg/pubsub** is a trustful decentralized synchronization network for asyncmachine-go. Each peer exposes several state
+machines, then starts gossiping about them and other ones known to him. Remote state machines are then visible to other
+peers as `/pkg/rpc.LocalWorker`. PubSub can be used to match Clients with Workers from [/pkg/node](/pkg/node/README.md).
+
+Under the hood it's based on [**libp2p gossipsub**](https://github.com/libp2p/go-libp2p-pubsub), which is amesh-based
+PubSub, also based on gossipping, but for the purpose of network topology. **libp2p** gossips are separate from gossips
+of this package.
+
+## Support
+
+- state checking YES
+- state mutations NO
+- state waiting YES
+
+## Features
+
+- gossip-based discovery
+- gossip-based clock updates
+- gossip checksums via machine time
+- rate limitting
+- no leaders, no elections
+
+## TODO
+
+- more rate limitting
+- confirmed handler timeouts
+- faster discovery
+- load test
+- mDNS & DHT & auth
+- optimizations
+
+## Screenshot
+
+[am-dbg](/tools/cmd/am-dbg/README.md) view of a PubSub with 6 peers, with p1-p5 exposing a single state machine each.
+
+![](https://pancsta.github.io/assets/asyncmachine-go/am-dbg/pubsub.png)
+
+## Schema
+
+State schema from [/pkg/pubsub/states/](/pkg/pubsub/states/ss_topic.go).
+
+![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/pubsub.svg)
+
+## Status
+
+Alpha, work in progress, not semantically versioned.
+
+## monorepo
+
+[Go back to the monorepo root](/README.md) to continue reading.

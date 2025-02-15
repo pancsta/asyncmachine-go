@@ -7,7 +7,7 @@
 > and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
 
 **/pkg/machine** is a nondeterministic, multi-state, clock-based, relational, optionally accepting, and non-blocking
-state machine. It's a form of a rules engine that can orchestrate blocking APIs into fully controllable async state
+state machine. It's a form of a **rules engine** that can orchestrate blocking APIs into fully controllable async state
 machines. Write ops are [state mutations](/docs/manual.md#mutations), read ops are [state checking](/docs/manual.md#active-states),
 and subscriptions are [state waiting](/docs/manual.md#waiting).
 
@@ -36,7 +36,7 @@ States have clocks that produce contexts (odd = active; even = inactive).
 
 ### [Queue](/docs/manual.md#queue-and-history)
 
-Queue of mutations enable lock-free [Actor Model](https://en.wikipedia.org/wiki/Actor_model).
+Queue of mutations enables lock-free [Actor Model](https://en.wikipedia.org/wiki/Actor_model).
 
 ![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_3.svg)
 
@@ -60,7 +60,7 @@ States are connected via Require, Remove, and Add relations.
 
 ### [Subscriptions](/docs/manual.md#waiting)
 
-Channel-broadcast waiting on clock values.
+Channel-based broadcast for waiting on clock values.
 
 ![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_7.svg)
 
@@ -72,7 +72,7 @@ Error is a state, handled just like any other mutation.
 val, err := someOp()
 if err != nil {
     mach.AddErr(err, nil)
-    return
+    return // no err needed
 }
 ```
 
@@ -145,11 +145,11 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
     // no blocking
     // lock-free critical section
     mach := e.Machine
-    // tick-based context
+    // clock-based context
     stateCtx := mach.NewStateCtx("ProcessingFile")
     // unblock
     go func() {
-        // re-check the tick ctx
+        // re-check the state ctx
         if stateCtx.Err() != nil {
             return // expired
         }
@@ -159,7 +159,7 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
             mach.AddErr(err, nil)
             return
         }
-        // re-check the tick ctx after a blocking call
+        // re-check the state ctx after a blocking call
         if stateCtx.Err() != nil {
             return // expired
         }
@@ -241,9 +241,9 @@ mach.Add1(ssS.KillingWorker, Pass(&A{
 
 ### Mutations and Relations
 
-[Mutations](/docs/manual.md#mutations) are the heartbeat of asyncmachine, while [relations](/docs/manual.md#relations)
-define the rules of the flow. Check out the [relations playground](https://play.golang.com/p/c89OjCUMxW-) and quiz
-yourself (or a [fancier playground](https://goplay.tools/snippet/c89OjCUMxW-)).
+While [mutations](/docs/manual.md#mutations) are the heartbeat of asyncmachine, it's the [relations](/docs/manual.md#relations)
+which define the **rules of the flow**. Check out the [relations playground](https://play.golang.com/p/c89OjCUMxW-) and
+quiz yourself (or a [fancier playground](https://goplay.tools/snippet/c89OjCUMxW-)).
 
 ```go
 mach := newMach("DryWaterWet", am.Struct{
@@ -251,7 +251,7 @@ mach := newMach("DryWaterWet", am.Struct{
         Require: am.S{"Water"},
     },
     "Dry": {
-        Remove: am.S{"Wet"},
+        Remove: am.S{"Water"},
     },
     "Water": {
         Add:    am.S{"Wet"},
@@ -328,12 +328,14 @@ type Api interface {
     // Mutations (remote)
 
     Add1(state string, args A) Result
-    Add(states S, args A) Result
+    Add(states S, args A) Result22
     Remove1(state string, args A) Result
     Remove(states S, args A) Result
     Set(states S, args A) Result
     AddErr(err error, args A) Result
     AddErrState(state string, err error, args A) Result
+
+    // Traced mutations (remote)
 
     EvAdd1(event *Event, state string, args A) Result
     EvAdd(event *Event, states S, args A) Result

@@ -35,7 +35,7 @@
 **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
 and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
 It has atomic transitions, relations, [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
-[telemetry](/pkg/telemetry/README.md), [workers](/pkg/node/README.md), and soon diagrams.
+[telemetry](/pkg/telemetry/README.md), [workers](/pkg/node/README.md), and [soon diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
 
 Its main purpose is workflows (in-process or distributed), although it can be used for a wide range of
 stateful applications - daemons, UIs, configs, bots, agents, firewalls, consensus algos, etc. **asyncmachine** can
@@ -56,64 +56,64 @@ Top layers depend on the bottom ones.
 
 <table>
   <tr>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>PubSub</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td colspan="1" align=center><a href="pkg/pubsub/README.md">PubSub</a></td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
   </tr>
   <tr>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
     <td colspan="3" align=center><a href="pkg/node/README.md">Workers</a></td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
   </tr>
   <tr>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
     <td colspan="5" align=center><a href="pkg/rpc/README.md">RPC</a></td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
   </tr>
   <tr>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
     <td colspan="7" align=center><a href="pkg/machine/README.md#aop-handlers">Handlers</a></td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
   </tr>
   <tr>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
+    <td>.</td>
+    <td>.</td>
     <td colspan="9" align=center>🦾 <a href="pkg/machine/README.md">Machine API</a></td>
-    <td>&nbsp;</td>
-    <td>&nbsp;</td>
+    <td>.</td>
+    <td>.</td>
   </tr>
   <tr>
-    <td>&nbsp;</td>
+    <td>.</td>
     <td colspan="11" align=center><a href="pkg/machine/README.md#relations">Relations</a></td>
-    <td>&nbsp;</td>
+    <td>.</td>
   </tr>
   <tr>
     <td colspan="13" align=center><a href="pkg/machine/README.md#multi-state"><b><u>
@@ -235,10 +235,10 @@ This monorepo offers the following importable packages and runnable tools:
 - [`/pkg/rpc`](/pkg/rpc/README.md) Remote state machines, with the same API as local ones.
 - [`/pkg/states`](/pkg/states/README.md) Reusable state definitions, handlers, and piping.
 - [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for metrics, traces, and logs.
-- `/pkg/pubsub` Planned.
+- [`/pkg/pubsub`](/pkg/pubsub/README.md) Decentralized PubSub based on libp2p.
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates states files and Grafana dashboards.
-- `/tools/cmd/am-vis` Planned.
+- [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates diagrams of interconnected state machines.
 
 [![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)](/tools/cmd/am-dbg/README.md)
 

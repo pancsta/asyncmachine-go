@@ -178,8 +178,16 @@ Because both local and remote workers are state machines, they can export teleme
 activate remote debugging, please set `AM_TEST_DEBUG=1` and run `task am-dbg-dbg` prior to tests. Remote tests are run
 via `task test-debugger-remote`.
 
-[![Video Walkthrough](https://pancsta.github.io/assets/asyncmachine-go/asyncmachine-go/rpc-demo1.png)](https://pancsta.github.io/assets/asyncmachine-go/asyncmachine-go/rpc-demo1.m4v)
+[![Video Walkthrough](https://pancsta.github.io/assets/asyncmachine-go/rpc-demo1.png)](https://pancsta.github.io/assets/asyncmachine-go/rpc-demo1.m4v)
+
+## Schema
+
+State schema from [/tools/debugger/states/ss_dbg.go](/tools/debugger/states/ss_dbg.go).
+
+![schema](https://pancsta.github.io/assets/asyncmachine-go/schemas/am-dbg.svg)
 
 ## monorepo
+
+- [`/pkg/rpc/HOWTO.md`](/pkg/rpc/HOWTO.md)
 
 [Go back to the monorepo root](/README.md) to continue reading.
