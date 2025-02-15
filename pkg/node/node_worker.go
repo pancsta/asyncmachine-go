@@ -71,7 +71,7 @@ func NewWorker(ctx context.Context, kind string, workerStruct am.Struct,
 		opts = &WorkerOpts{}
 	}
 
-	name := fmt.Sprintf("%s-%s-%s", kind, utils.Hostname(), utils.RandID(6))
+	name := fmt.Sprintf("%s-%s-%s", kind, utils.Hostname(), utils.RandId(6))
 
 	w := &Worker{
 		ConnTimeout:     5 * time.Second,

@@ -250,8 +250,8 @@ func (s *Supervisor) ErrWorkerState(e *am.Event) {
 
 	// possibly kill the worker
 	if !errors.Is(err, ErrWorkerKill) && w != nil {
-		err1 := w.errs.Add(utils.RandID(0), err, 0)
-		err2 := w.errsRecent.Add(utils.RandID(0), err, 0)
+		err1 := w.errs.Add(utils.RandId(0), err, 0)
+		err2 := w.errsRecent.Add(utils.RandId(0), err, 0)
 		if err := errors.Join(err1, err2); err != nil {
 			s.Mach.Log("failed to add error to worker %s: %v", args.LocalAddr, err)
 		}

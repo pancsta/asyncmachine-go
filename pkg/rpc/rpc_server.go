@@ -373,7 +373,7 @@ func (s *Server) SendPayload(
 
 	defer s.Mach.PanicToErr(nil)
 
-	payload.Token = utils.RandID(0)
+	payload.Token = utils.RandId(0)
 	if event != nil {
 		payload.Source = event.MachineId
 		payload.SourceTx = event.TransitionId

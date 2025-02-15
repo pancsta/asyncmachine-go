@@ -1,6 +1,8 @@
 package states
 
-import am "github.com/pancsta/asyncmachine-go/pkg/machine"
+import (
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+)
 
 // States map defines relations and properties of states.
 var States = am.Struct{
@@ -65,11 +67,11 @@ var States = am.Struct{
 	},
 	Ready: {Require: S{Start}},
 	// TODO should activate FiltersFocused
-	FilterAutoTx:     {},
-	FilterCanceledTx: {},
-	FilterEmptyTx:    {},
-	FilterSummaries:  {},
-	FilterHealthcheck:  {},
+	FilterAutoTx:      {},
+	FilterCanceledTx:  {},
+	FilterEmptyTx:     {},
+	FilterSummaries:   {},
+	FilterHealthcheck: {},
 
 	// ///// Actions
 
@@ -78,11 +80,12 @@ var States = am.Struct{
 		Multi:   true,
 		Require: S{Start},
 	},
-	GcMsgs: {},
+	GcMsgs: {Remove: S{SelectingClient, SwitchedClientTx, ScrollToTx,
+		ScrollToMutTx}},
 	TreeLogView: {
-		Auto:   true,
+		Auto:    true,
 		Require: S{Start},
-		Remove: SAdd(GroupViews, S{TreeMatrixView, MatrixView, MatrixRain}),
+		Remove:  SAdd(GroupViews, S{TreeMatrixView, MatrixView, MatrixRain}),
 	},
 	MatrixView:     {Remove: GroupViews},
 	TreeMatrixView: {Remove: GroupViews},
@@ -102,7 +105,7 @@ var States = am.Struct{
 	ToggleTool: {},
 	SwitchingClientTx: {
 		Require: S{Ready},
-		Remove:  SAdd(GroupSwitchedClientTx, S{GcMsgs}),
+		Remove:  GroupSwitchedClientTx,
 	},
 	SwitchedClientTx: {
 		Require: S{Ready},
@@ -110,9 +113,9 @@ var States = am.Struct{
 	},
 	ScrollToMutTx: {Require: S{ClientSelected}},
 	// TODO depend on a common Matrix view
-	MatrixRain:       {},
+	MatrixRain: {},
 	LogReaderVisible: {
-		Auto: true,
+		Auto:    true,
 		Require: S{TreeLogView, LogReaderEnabled},
 	},
 	LogReaderEnabled: {},
@@ -186,22 +189,22 @@ var (
 
 const (
 	// TODO rename to StructureFocused
-	TreeFocused           = "TreeFocused"
-	LogFocused            = "LogFocused"
-	TimelineTxsFocused    = "TimelineTxsFocused"
-	TimelineStepsFocused  = "TimelineStepsFocused"
-	MatrixFocused         = "MatrixFocused"
-	DialogFocused    = "DialogFocused"
-	Toolbar1Focused  = "Toolbar1Focused"
-	Toolbar2Focused  = "Toolbar2Focused"
-	LogReaderFocused = "LogReaderFocused"
-	AddressFocused      = "AddressFocused"
+	TreeFocused          = "TreeFocused"
+	LogFocused           = "LogFocused"
+	TimelineTxsFocused   = "TimelineTxsFocused"
+	TimelineStepsFocused = "TimelineStepsFocused"
+	MatrixFocused        = "MatrixFocused"
+	DialogFocused        = "DialogFocused"
+	Toolbar1Focused      = "Toolbar1Focused"
+	Toolbar2Focused      = "Toolbar2Focused"
+	LogReaderFocused     = "LogReaderFocused"
+	AddressFocused       = "AddressFocused"
 	// SidebarFocused is client list focused.
 	// TODO rename to ClientListFocused
-	SidebarFocused   = "SidebarFocused"
+	SidebarFocused = "SidebarFocused"
 
 	TimelineStepsScrolled = "TimelineStepsScrolled"
-	ClientMsg = "ClientMsg"
+	ClientMsg             = "ClientMsg"
 	// StateNameSelected states that a state name is selected somehwere in the
 	// tree (and possibly other places).
 	// TODO support a list of states
@@ -228,9 +231,9 @@ const (
 	// FwdStep moves to the next transition's steps
 	FwdStep = "FwdStep"
 	// BackStep moves to the previous transition's steps
-	BackStep        = "BackStep"
-	ConnectEvent    = "ConnectEvent"
-	DisconnectEvent = "DisconnectEvent"
+	BackStep         = "BackStep"
+	ConnectEvent     = "ConnectEvent"
+	DisconnectEvent  = "DisconnectEvent"
 	RemoveClient     = "RemoveClient"
 	ClientSelected   = "ClientSelected"
 	SelectingClient  = "SelectingClient"
@@ -240,17 +243,17 @@ const (
 	TreeLogView      = "TreeLogView"
 	TreeMatrixView   = "TreeMatrixView"
 	LogReaderVisible = "LogReaderVisible"
-	LogReaderEnabled	= "LogReaderEnabled"
-	UpdateLogReader	= "UpdateLogReader"
+	LogReaderEnabled = "LogReaderEnabled"
+	UpdateLogReader  = "UpdateLogReader"
 	LogUserScrolled  = "LogUserScrolled"
 	// ScrollToTx scrolls to a specific transition.
-	ScrollToTx = "ScrollToTx"
+	ScrollToTx   = "ScrollToTx"
 	ScrollToStep = "ScrollToStep"
 	// Ready is an async result of start
-	Ready            = "Ready"
-	FilterCanceledTx = "FilterCanceledTx"
-	FilterAutoTx     = "FilterAutoTx"
-	FilterHealthcheck     = "FilterHealthcheck"
+	Ready             = "Ready"
+	FilterCanceledTx  = "FilterCanceledTx"
+	FilterAutoTx      = "FilterAutoTx"
+	FilterHealthcheck = "FilterHealthcheck"
 	// FilterEmptyTx is a filter for txes which didn't change state and didn't
 	// run any self handler either
 	FilterEmptyTx   = "FilterEmptyTx"

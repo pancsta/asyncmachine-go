@@ -5,11 +5,12 @@ import (
 	"encoding/hex"
 	"os"
 	"runtime/debug"
+	"slices"
 	"strings"
 )
 
-// RandID generates a random ID of the given length (defaults to 8).
-func RandID(strLen int) string {
+// RandId generates a random ID of the given length (defaults to 8).
+func RandId(strLen int) string {
 	if strLen == 0 {
 		strLen = 16
 	}
@@ -63,3 +64,50 @@ func GetVersion() string {
 	return ver
 }
 
+// TODO remove if that speeds things up
+func CloseSafe[T any](ch chan T) {
+	select {
+	case <-ch:
+	default:
+		close(ch)
+	}
+}
+
+func SlicesWithout[S ~[]E, E comparable](coll S, el E) S {
+	idx := slices.Index(coll, el)
+	ret := slices.Clone(coll)
+	if idx == -1 {
+		return ret
+	}
+	return slices.Delete(ret, idx, idx+1)
+}
+
+// SlicesNone returns true if none of the elements of coll2 are in coll1.
+func SlicesNone[S1 ~[]E, S2 ~[]E, E comparable](col1 S1, col2 S2) bool {
+	for _, el := range col2 {
+		if slices.Contains(col1, el) {
+			return false
+		}
+	}
+	return true
+}
+
+// SlicesEvery returns true if all elements of coll2 are in coll1.
+func SlicesEvery[S1 ~[]E, S2 ~[]E, E comparable](col1 S1, col2 S2) bool {
+	for _, el := range col2 {
+		if !slices.Contains(col1, el) {
+			return false
+		}
+	}
+	return true
+}
+
+func SlicesUniq[S ~[]E, E comparable](coll S) S {
+	var ret S
+	for _, el := range coll {
+		if !slices.Contains(ret, el) {
+			ret = append(ret, el)
+		}
+	}
+	return ret
+}
