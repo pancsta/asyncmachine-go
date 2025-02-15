@@ -44,8 +44,8 @@ require (
 
 require (
 	github.com/dominikbraun/graph v0.23.0
-	github.com/surrealdb/surrealdb.go v0.3.2
 	oss.terrastruct.com/d2 v0.6.8
+	oss.terrastruct.com/util-go v0.0.0-20241005222610-44c011a04896
 )
 
 require (
@@ -61,12 +61,10 @@ require (
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/dop251/goja v0.0.0-20240927123429-241b342198c2 // indirect
-	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/gdamore/encoding v1.0.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
-	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/pprof v0.0.0-20240927180334-d43a67379298 // indirect
@@ -89,7 +87,6 @@ require (
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yuin/goldmark v1.7.4 // indirect
 	go.opentelemetry.io/otel/metric v1.31.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.31.0 // indirect
@@ -103,5 +100,4 @@ require (
 	gonum.org/v1/plot v0.14.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241007155032-5fefd90f89a9 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	oss.terrastruct.com/util-go v0.0.0-20241005222610-44c011a04896 // indirect
 )

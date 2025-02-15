@@ -171,7 +171,12 @@ func (v *Visualizer) outputD2(ctx context.Context) error {
 	}
 
 	// 3rd pass - render predecesors as halfs
-	if len(v.RenderMachs) > 0 || len(v.RenderMachsRe) > 0 {
+	machSelected := len(v.RenderMachs) > 0 || len(v.RenderMachsRe) > 0
+	renderHalfs := v.RenderPipes && v.RenderHalfPipes ||
+		v.RenderConns && v.RenderHalfConns ||
+		v.RenderParentRel && v.RenderHalfHierarchy
+
+	if machSelected && renderHalfs {
 		predMap, err := v.g.PredecessorMap()
 		if err != nil {
 			return fmt.Errorf("failed to get predecessor map: %w", err)
@@ -267,6 +272,10 @@ func (v *Visualizer) outputD2Mach(ctx context.Context, machId string) error {
 
 	// whitelist & neighbours
 	if !v.shouldRenderMach(machId) {
+		return nil
+	}
+	// render once
+	if _, ok := v.renderedMachs[machId]; ok {
 		return nil
 	}
 	v.renderedMachs[machId] = struct{}{}

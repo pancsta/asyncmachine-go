@@ -66,6 +66,7 @@ type Visualizer struct {
 	gMap graph.Graph[string, *Vertex]
 
 	// config TODO extract
+	// TODO add RenderLimit (hard limit on rendered machines, eg regexp +limit1)
 
 	// Render only these machines as starting points.
 	RenderMachs []string
