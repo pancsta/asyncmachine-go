@@ -1423,7 +1423,8 @@ func (w *Worker) updateClock(now am.Time) {
 	}
 
 	tx := &am.Transition{
-		Api:      w,
+		Api: w,
+		// TODO IsAccepted()
 		Accepted: true,
 
 		TimeBefore: before,

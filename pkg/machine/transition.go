@@ -43,9 +43,11 @@ type Transition struct {
 	// LogEntriesLock is used to lock the logs to be collected by a Tracer.
 	LogEntriesLock sync.Mutex
 	// Accepted tells if the transition was accepted during the negotiation phase.
+	// TODO make private
 	Accepted bool
 
 	isCompleted atomic.Bool
+	isAccepted  atomic.Bool
 	// Latest / current step of the transition
 	latestStep *Step
 }
@@ -63,6 +65,7 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 		Api:        m,
 		Accepted:   true,
 	}
+	t.isAccepted.Store(true)
 
 	// assign early to catch the logs
 	m.transitionLock.Lock()
@@ -506,6 +509,7 @@ func (t *Transition) emitEvents() Result {
 	// AUTO STATES
 	if result == Canceled {
 		t.Accepted = false
+		t.isAccepted.Store(false)
 	} else if !m.disposing.Load() && hasStateChanged && !t.IsAuto() {
 
 		autoMutation := m.resolver.GetAutoMutation()
@@ -569,18 +573,25 @@ func (t *Transition) setupAccepted() {
 		}
 		// all rejected, reject the whole transition
 		t.Accepted = false
+		t.isAccepted.Store(false)
 	}
 	if len(notAccepted) <= 0 {
 		return
 	}
 	t.Accepted = false
+	t.isAccepted.Store(false)
 	m.log(LogOps, "[cancel:reject] %s", j(notAccepted))
 	t.addSteps(newSteps("", notAccepted, StepCancel, 0)...)
 }
 
-// IsCompleted is true when the execution of the transition has been fully
+// IsCompleted returns true when the execution of the transition has been fully
 // completed.
-
 func (t *Transition) IsCompleted() bool {
 	return t.isCompleted.Load()
+}
+
+// IsAccepted returns true if the trasition has been accepted, which can change
+// during a transition lifecycle.
+func (t *Transition) IsAccepted() bool {
+	return t.isAccepted.Load()
 }

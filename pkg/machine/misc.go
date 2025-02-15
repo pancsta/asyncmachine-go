@@ -304,7 +304,7 @@ func (e *Event) IsValid() bool {
 		return false
 	}
 
-	return e.TransitionId == tx.ID && !tx.IsCompleted() && tx.Accepted
+	return e.TransitionId == tx.ID && !tx.IsCompleted() && tx.IsAccepted()
 }
 
 // AcceptTimeout is like IsValid, but requires the handler to stop executing
