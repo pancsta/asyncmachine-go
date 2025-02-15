@@ -37,7 +37,7 @@ and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-
 It has atomic transitions, relations, [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
 [telemetry](/pkg/telemetry/README.md), [workers](/pkg/node/README.md), and [soon diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
 
-Its main purpose is workflows (in-process or distributed), although it can be used for a wide range of
+Its main purpose is workflows (in-process / distributed / decentralized), although it can be used for a wide range of
 stateful applications - daemons, UIs, configs, bots, agents, firewalls, consensus algos, etc. **asyncmachine** can
 precisely (and transparently) target a specific point in a scenario and easily bring structure to event-based systems.
 It takes care of most contexts, `select` statements, and panics.
@@ -137,7 +137,7 @@ mach.Add1("Foo", nil)
 mach.Is1("Foo") // false
 ```
 
-**Complicated** - wait on a multi state (event) and Ready state with a 1s
+**Complicated** - wait on a multi state (event) and the Ready state with a 1s
 timeout, then mutate with typed args, on top of a state context.
 
 ```go
@@ -234,8 +234,8 @@ This monorepo offers the following importable packages and runnable tools:
 - [`/pkg/node`](/pkg/node/README.md) Distributed worker pools with supervisors.
 - [`/pkg/rpc`](/pkg/rpc/README.md) Remote state machines, with the same API as local ones.
 - [`/pkg/states`](/pkg/states/README.md) Reusable state definitions, handlers, and piping.
-- [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for metrics, traces, and logs.
-- [`/pkg/pubsub`](/pkg/pubsub/README.md) Decentralized PubSub based on libp2p.
+- [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for dbg, metrics, traces, and logs.
+- [`/pkg/pubsub`](/pkg/pubsub/README.md) Decentralized PubSub based on libp2p gossipsub.
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates states files and Grafana dashboards.
 - [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates diagrams of interconnected state machines.

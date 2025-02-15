@@ -1,4 +1,4 @@
-# 🦾 /pkg/pubsub
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /pkg/pubsub
 
 [`cd /`](/README.md)
 
@@ -10,7 +10,7 @@
 machines, then starts gossiping about them and other ones known to him. Remote state machines are then visible to other
 peers as `/pkg/rpc.LocalWorker`. PubSub can be used to match Clients with Workers from [/pkg/node](/pkg/node/README.md).
 
-Under the hood it's based on [**libp2p gossipsub**](https://github.com/libp2p/go-libp2p-pubsub), which is amesh-based
+Under the hood it's based on [**libp2p gossipsub**](https://github.com/libp2p/go-libp2p-pubsub), which is a mesh-based
 PubSub, also based on gossipping, but for the purpose of network topology. **libp2p** gossips are separate from gossips
 of this package.
 
@@ -24,18 +24,9 @@ of this package.
 
 - gossip-based discovery
 - gossip-based clock updates
-- gossip checksums via machine time
+- gossip-based checksums via machine time
 - rate limitting
 - no leaders, no elections
-
-## TODO
-
-- more rate limitting
-- confirmed handler timeouts
-- faster discovery
-- load test
-- mDNS & DHT & auth
-- optimizations
 
 ## Screenshot
 
@@ -48,6 +39,18 @@ of this package.
 State schema from [/pkg/pubsub/states/](/pkg/pubsub/states/ss_topic.go).
 
 ![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/pubsub.svg)
+
+## TODO
+
+- more rate limitting
+- confirmed handler timeouts
+- faster discovery
+- load test
+- mDNS & DHT & auth
+- optimizations
+- documentation
+  - discovery protocol
+  - sequence diagrams
 
 ## Status
 
