@@ -101,6 +101,12 @@ mach.VerifyStates(ssNames)
 worker, err := NewWorker(ctx, workerKind, mach.GetStruct(), mach.StateNames(), nil)
 ```
 
+#### Worker Schema
+
+State schema from [/pkg/node/states/ss_node_worker.go](/pkg/node/states/ss_node_worker.go).
+
+![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/node-worker.svg)
+
 ### Supervisor
 
 Supervisor needs a path to the worker's binary (with optional parameters) for `exec.Command`. It exposes states like
@@ -130,6 +136,12 @@ super.Start("localhost:1234")
 err := amhelp.WaitForAll(ctx, 2*time.Second,
     super.When1(ssnode.SupervisorStates.PoolReady, ctx))
 ```
+
+#### Supervisor Schema
+
+State schema from [/pkg/node/states/ss_supervisor.go](/pkg/node/states/ss_supervisor.go).
+
+![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/node-supervisor.svg)
 
 ## Client
 
@@ -186,6 +198,12 @@ err := amhelp.WaitForAll(ctx, 2*time.Second,
 worker := client.WorkerRpc.Worker
 worker.Add1(ssnode.WorkerStates.WorkRequested, am.A{"input": 2})
 ```
+
+#### Client Schema
+
+State schema from [/pkg/node/states/ss_node_client.go](/pkg/node/states/ss_node_client.go).
+
+![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/node-client.svg)
 
 ## TODO
 

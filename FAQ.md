@@ -55,6 +55,15 @@ No, but there's an error state (`Exception`) and `Err()` getter. Optionally, the
 
 The lack of blocking allows for immediate adjustments to incoming changes and is backed by solid cancellation support.
 
+## Is asyncmachine thread safe?
+
+Yes, all the public methods of `pkg/machine` are thread safe.
+
+## Is asyncmachine single threaded?
+
+The queue executes on the thread which caused the mutation, while handlers execute in separate goroutines each,
+later usually forking another goroutine to unblock other handlers.
+
 ## What's the origin of asyncmachine?
 
 It was a [research project](https://github.com/TobiaszCudnik/asyncmachine) between 2012 and 2019. [Video demo](http://tobiaszcudnik.github.io/asyncmachine-inspector/sample.mp4).

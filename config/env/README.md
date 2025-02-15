@@ -6,12 +6,14 @@
 > **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
 > and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
 
-**/config/env** contains all environment variables for asyncmachine, organized in files, most of which are aimed at debugging.
+**/config/env** contains all environment variables for asyncmachine, organized in files, most of which are aimed at
+debugging.
 
 ## Example Usage
 
-This will start both the test worker and tests in the debug mode via per-command env vars. Requires a running
-`task am-dbg-dbg` to receive telemetry.
+Example from [am-dbg integration tests](/pkg/rpc/HOWTO.md). Commands below will start both the am-dbg test worker
+instance and tests, in the debug mode via per-command env vars. Requires a running `task am-dbg-dbg` to receive
+telemetry (second debugger instance).
 
 ```shell
 # tty1
@@ -82,6 +84,14 @@ AM_NODE_LOG_CLIENT=1
 # print log msgs from the Node worker
 # defaults to ""
 AM_NODE_LOG_WORKER=1
+
+# print log msgs from PubSub
+# defaults to ""
+AM_PUBSUB_LOG=1
+
+# expose remote Pub workers via am-dbg (requires AM_DBG_ADDR)
+# defaults to ""
+AM_PUBSUB_DBG=1
 ```
 
 ## monorepo

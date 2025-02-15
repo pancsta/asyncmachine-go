@@ -1143,9 +1143,12 @@ which can be embedded into [handler structs](#defining-handlers).
 
 Advised error handling strategy (used by [`/pkg/node`](/pkg/node)):
 
-- create more detailed error states with a [`Require` relation](#relations) to the `Exception` state, like `ErrNetwork`
+- create more detailed error states like `ErrNetwork`
+  - with a [`Require` relation](#relations) to the `Exception` state
+  - but without being a [`Multi` state](#multi-states), so it has [state context](#clock-and-context)
 - create regular sentinel errors, like `ErrRpc`
-- create separate mutation function per each sentinel error, like `AddErrRpc`
+- create separate mutation function foc each sentinel error, like
+  - `func AddErrWorker(event *am.Event, mach *am.Machine, err error, args am.A) error`
 - one error state can be responsible for many sentinel errors
 
 Error handling methods:
@@ -1710,7 +1713,11 @@ func LogArgs(args am.A) map[string]string {
 ### Tracing and Metrics
 
 Asyncmachine offers several telemetry exporters for logging, tracing, and metrics. Please refer to [`pkg/telemetry`](/pkg/telemetry/README.md)
-for detailed information.
+for detailed information. There're traceable versions of mutation methods available, which accept `*am.Event` as the
+first param and decorate telemetry messages with MachineID, TransitionID, and Machine Time as the source. It's currently
+supported by the [am-dbg debugger](#debugging).
+
+// TOOD list EvAdd, EvAdd1, EvRemove, ... +example
 
 ### Optimizing Data Input
 
