@@ -25,7 +25,6 @@ func TestAll(t *testing.T) {
 	//				--name MyMach
 
 	params := cli.SFParams{
-		Version: false,
 		States:  "State1,State2:multi",
 		Inherit: "basic,connected,node/worker,rpc/worker",
 		Groups:  "Group1,Group2",
@@ -39,6 +38,8 @@ func TestAll(t *testing.T) {
 
 	generated := gen.Output()
 	expected := strings.TrimLeft(dedent.Dedent(`
+		// Package states contains a stateful schema-v2 for MyMach.
+		// Bootstrapped with am-gen. Edit manually or re-gen & merge.
 		package states
 		
 		import (
@@ -113,7 +114,6 @@ func TestBasicConnected(t *testing.T) {
 	//				--name MyMach
 
 	params := cli.SFParams{
-		Version: false,
 		States:  "State1,State2:multi",
 		Inherit: "basic,connected",
 		Groups:  "Group1,Group2",
@@ -127,6 +127,8 @@ func TestBasicConnected(t *testing.T) {
 
 	generated := gen.Output()
 	expected := strings.TrimLeft(dedent.Dedent(`
+		// Package states contains a stateful schema-v2 for MyMach.
+		// Bootstrapped with am-gen. Edit manually or re-gen & merge.
 		package states
 		
 		import (
@@ -193,9 +195,8 @@ func TestMinimum(t *testing.T) {
 	//				--name MyMach
 
 	params := cli.SFParams{
-		Version: false,
-		States:  "State1,State2",
-		Name:    "MyMach",
+		States: "State1,State2",
+		Name:   "MyMach",
 	}
 
 	gen, err := NewSFGenerator(ctx, params)
@@ -205,6 +206,8 @@ func TestMinimum(t *testing.T) {
 
 	generated := gen.Output()
 	expected := strings.TrimLeft(dedent.Dedent(`
+		// Package states contains a stateful schema-v2 for MyMach.
+		// Bootstrapped with am-gen. Edit manually or re-gen & merge.
 		package states
 		
 		import (
@@ -253,9 +256,8 @@ func TestRelations(t *testing.T) {
 	//				--name MyMach
 
 	params := cli.SFParams{
-		Version: false,
-		States:  "State1:auto:Require(State2;State3),State2:Add(State3),State3",
-		Name:    "MyMach",
+		States: "State1:auto:Require(State2;State3),State2:Add(State3),State3",
+		Name:   "MyMach",
 	}
 
 	gen, err := NewSFGenerator(ctx, params)
@@ -265,6 +267,8 @@ func TestRelations(t *testing.T) {
 
 	generated := gen.Output()
 	expected := strings.TrimLeft(dedent.Dedent(`
+		// Package states contains a stateful schema-v2 for MyMach.
+		// Bootstrapped with am-gen. Edit manually or re-gen & merge.
 		package states
 		
 		import (
@@ -320,10 +324,9 @@ func TestGroups(t *testing.T) {
 	//				--name MyMach
 
 	params := cli.SFParams{
-		Version: false,
-		States:  "State1,State2",
-		Groups:  "Group1,Group2",
-		Name:    "MyMach",
+		States: "State1,State2",
+		Groups: "Group1,Group2",
+		Name:   "MyMach",
 	}
 
 	gen, err := NewSFGenerator(ctx, params)
@@ -333,6 +336,8 @@ func TestGroups(t *testing.T) {
 
 	generated := gen.Output()
 	expected := strings.TrimLeft(dedent.Dedent(`
+		// Package states contains a stateful schema-v2 for MyMach.
+		// Bootstrapped with am-gen. Edit manually or re-gen & merge.
 		package states
 		
 		import (
@@ -386,10 +391,9 @@ func TestGroupsStates(t *testing.T) {
 	//				--name MyMach
 
 	params := cli.SFParams{
-		Version: false,
-		States:  "State1:remove(_Group1),State2",
-		Groups:  "Group1(State1;State2),Group2",
-		Name:    "MyMach",
+		States: "State1:remove(_Group1),State2",
+		Groups: "Group1(State1;State2),Group2",
+		Name:   "MyMach",
 	}
 
 	gen, err := NewSFGenerator(ctx, params)
@@ -399,6 +403,8 @@ func TestGroupsStates(t *testing.T) {
 
 	generated := gen.Output()
 	expected := strings.TrimLeft(dedent.Dedent(`
+		// Package states contains a stateful schema-v2 for MyMach.
+		// Bootstrapped with am-gen. Edit manually or re-gen & merge.
 		package states
 		
 		import (
