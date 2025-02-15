@@ -47,6 +47,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		DbgLogLevel:     p.LogLevel,
 		DbgLogger:       logger,
 		ImportData:      p.ImportData,
+		ClientList:      p.ClientList,
 		ServerAddr:      p.ServerAddr,
 		EnableMouse:     p.EnableMouse,
 		SelectConnected: p.SelectConnected,

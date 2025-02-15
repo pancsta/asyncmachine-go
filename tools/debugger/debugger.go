@@ -286,6 +286,8 @@ type Opts struct {
 	Filters *OptsFilters
 	// File path to import (brotli)
 	ImportData string
+	// File to dump client list into.
+	ClientList string
 	// Screen overload for tests & ssh
 	Screen tcell.Screen
 	// Debugger's ID
@@ -398,6 +400,7 @@ type Debugger struct {
 	clip            clipper.Clipboard
 	// toolbarItems is a list of row of toolbars items
 	toolbarItems     [][]toolbarItem
+	clientListFile   *os.File
 	msgsDelayed      []*telemetry.DbgMsgTx
 	msgsDelayedConns []string
 }
@@ -470,6 +473,15 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		mach.AddErr(fmt.Errorf("clipboard init: %w", err), nil)
 	}
 	d.clip = clip
+
+	// client list file
+	if d.Opts.ClientList != "" {
+		clientListFile, err := os.Create(d.Opts.ClientList)
+		if err != nil {
+			mach.AddErr(fmt.Errorf("client list file open: %w", err), nil)
+		}
+		d.clientListFile = clientListFile
+	}
 
 	return d, nil
 }

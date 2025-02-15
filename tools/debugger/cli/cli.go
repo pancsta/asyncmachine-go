@@ -31,6 +31,7 @@ const (
 	pCleanOnConnect   = "clean-on-connect"
 	pVersion          = "version"
 	pImport           = "import-data"
+	pClientList       = "client-list"
 	pImportShort      = "i"
 	pSelectConn       = "select-connected"
 	pSelectConnShort  = "c"
@@ -60,6 +61,7 @@ type Params struct {
 	ServerAddr      string
 	DebugAddr       string
 	ImportData      string
+	ClientList      string
 	StartupMachine  string
 	StartupView     string
 	StartupTx       int
@@ -107,6 +109,8 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.StringP(pStartupMach,
 		pStartupMachShort, "",
 		"Select a machine by (partial) ID on startup (requires --"+pImport+")")
+	f.String(pClientList, "", "Keep this file up-to-date with connected"+
+		` clients (eg. "am-dbg.txt")`)
 
 	// TODO parse copy-paste commas, eg 1,001
 	f.IntP(pStartupTx, pStartupTxShort, 0,
@@ -151,6 +155,7 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 	serverAddr := cmd.Flag(pServerAddr).Value.String()
 	debugAddr := cmd.Flag(pAmDbgAddr).Value.String()
 	importData := cmd.Flag(pImport).Value.String()
+	clientList := cmd.Flag(pClientList).Value.String()
 	fwdDataRaw := cmd.Flag(pFwdData).Value.String()
 	profSrv := cmd.Flag(pProfSrv).Value.String()
 	startupMachine := cmd.Flag(pStartupMach).Value.String()
@@ -201,6 +206,7 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 		ServerAddr:      serverAddr,
 		DebugAddr:       debugAddr,
 		ImportData:      importData,
+		ClientList:      clientList,
 		StartupMachine:  startupMachine,
 		StartupView:     startupView,
 		StartupTx:       startupTx,
@@ -278,7 +284,7 @@ func StartCpuProfileSrv(ctx context.Context, logger *log.Logger, p *Params) {
 		return
 	}
 	go func() {
-		logger.Println("Starting pprof server on "+p.ProfSrv)
+		logger.Println("Starting pprof server on " + p.ProfSrv)
 		// TODO support ctx cancel
 		if err := http.ListenAndServe(p.ProfSrv, nil); err != nil {
 			logger.Fatalf("could not start pprof server: %v", err)
