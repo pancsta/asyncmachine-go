@@ -148,6 +148,8 @@ func (d *Debugger) doUpdateClientList(immediate bool) {
 			longestName = maxLen
 		}
 
+		txtFile := ""
+
 		// update
 		for i, item := range d.clientList.GetItems() {
 			ref := item.GetReference().(*sidebarRef)
@@ -174,6 +176,18 @@ func (d *Debugger) doUpdateClientList(immediate bool) {
 				strings.Repeat(" ", spaceCount) + spacePost
 			label := d.getClientListLabel(namePad, c, i)
 			item.SetMainText(label)
+
+			// txt file
+			if d.Opts.ClientList != "" {
+				if !hasParent {
+					txtFile += "\n"
+				}
+				txtFile += string(cview.StripTags([]byte(label), true, false)) + "\n"
+				for _, tag := range c.MsgStruct.Tags {
+					txtFile += strings.Repeat(" ", ref.lvl) + spacePre +
+						"  #" + tag + "\n"
+				}
+			}
 		}
 
 		if len(d.Clients) > 0 {
@@ -191,6 +205,13 @@ func (d *Debugger) doUpdateClientList(immediate bool) {
 		// render if delayed
 		if !immediate {
 			d.draw(d.clientList)
+		}
+
+		// save to a file
+		if d.Opts.ClientList != "" {
+			_, _ = d.clientListFile.Seek(0, 0)
+			_ = d.clientListFile.Truncate(0)
+			_, _ = d.clientListFile.Write([]byte(txtFile))
 		}
 	}
 
