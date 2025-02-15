@@ -296,6 +296,29 @@ func (e *Event) Transition() *Transition {
 	return e.Machine().t.Load()
 }
 
+// IsValid confirm this event should still be processed. Useful for negotiation
+// handlers, which can't use state context.
+func (e *Event) IsValid() bool {
+	tx := e.Transition()
+	if tx == nil {
+		return false
+	}
+
+	return e.TransitionId == tx.ID && !tx.IsCompleted() && tx.IsAccepted()
+}
+
+// AcceptTimeout is like IsValid, but requires the handler to stop executing
+// after receiving [true].
+func (e *Event) AcceptTimeout() bool {
+	panic("Not implemented")
+
+	// TODO notify the handler loop
+	// if !e.isClosed {
+	// 	close(e.done)
+	// }
+}
+
+// Clone clones only the essential data of the Event. Useful for tracing vs GC.
 func (e *Event) Clone() *Event {
 	id := e.MachineId
 	if e.Machine() == nil {

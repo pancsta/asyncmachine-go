@@ -23,8 +23,13 @@ var _ Api = &Machine{}
 type Machine struct {
 	// Maximum number of mutations that can be queued. Default: 1000.
 	QueueLimit int
-	// Time for a handler to execute. Default: 100ms. See Opts.HandlerTimeout.
+	// HandlerTimeout defined the time for a handler to execute, before it causes
+	// an Exception. Default: 1s. See also Opts.HandlerTimeout.
+	// Using HandlerTimeout can cause race conditions, see Event.IsValid().
 	HandlerTimeout time.Duration
+	// EvalTimeout is the time the machine will try to execute an eval func.
+	// Like any other handler, eval func also has HandlerTimeout. Default: 1s.
+	EvalTimeout time.Duration
 	// If true, the machine will print all exceptions to stdout. Default: true.
 	// Requires an ExceptionHandler binding and Machine.PanicToException set.
 	LogStackTrace bool
@@ -53,7 +58,7 @@ type Machine struct {
 	disposed     atomic.Bool
 	queueRunning atomic.Bool
 	// tags are short strings describing the machine.
-	tags []string
+	tags atomic.Pointer[[]string]
 	// tracers are optional tracers for telemetry integrations.
 	tracers     []Tracer
 	tracersLock sync.RWMutex
@@ -65,6 +70,7 @@ type Machine struct {
 	// states is a map of state names to state definitions.
 	// TODO refac: schema
 	states     Struct
+	schemaVer  atomic.Int32
 	statesLock sync.RWMutex
 	// activeStates is list of currently active states.
 	activeStates     S
@@ -164,12 +170,13 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 
 	m := &Machine{
 		HandlerTimeout:   100 * time.Millisecond,
+		EvalTimeout:      time.Second,
 		LogStackTrace:    true,
 		PanicToException: true,
 		QueueLimit:       1000,
 		DisposeTimeout:   time.Second,
 
-		id:             RandId(),
+		id:             randId(),
 		states:         parsedStates,
 		clock:          Clock{},
 		handlers:       []*handler{},
@@ -226,14 +233,15 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 			m.QueueLimit = opts.QueueLimit
 		}
 		if len(opts.Tags) > 0 {
-			m.tags = slicesUniq(opts.Tags)
+			tags := slicesUniq(opts.Tags)
+			m.tags.Store(&tags)
 		}
 		m.detectEval = opts.DetectEval
 		parent = opts.Parent
 		m.parentId = opts.ParentID
 	}
 
-	if os.Getenv(EnvAmDetectEval) != "" || os.Getenv(EnvAmDebug) != "" {
+	if os.Getenv(EnvAmDetectEval) != "" {
 		m.detectEval = true
 	}
 
@@ -825,11 +833,17 @@ func (m *Machine) TimeSum(states S) uint64 {
 // transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (m *Machine) Add(states S, args A) Result {
-	if m.disposed.Load() || m.disposing.Load() ||
-		int(m.queueLen.Load()) >= m.QueueLimit {
-
+	if m.disposed.Load() || m.disposing.Load() {
 		return Canceled
 	}
+
+	// let Exception in even with a full queue, but only once
+	if int(m.queueLen.Load()) >= m.QueueLimit {
+		if !slices.Contains(states, Exception) || m.IsErr() {
+			return Canceled
+		}
+	}
+
 	m.queueMutation(MutationAdd, states, args, nil)
 	m.breakpoint(states, nil)
 
@@ -881,9 +895,7 @@ func (m *Machine) AddErr(err error, args A) Result {
 // Like every mutation method, it will resolve relations and trigger handlers.
 // AddErrState produces a stack trace of the error, if LogStackTrace is enabled.
 func (m *Machine) AddErrState(state string, err error, args A) Result {
-	if m.disposed.Load() || m.disposing.Load() ||
-		int(m.queueLen.Load()) >= m.QueueLimit {
-
+	if m.disposed.Load() || m.disposing.Load() {
 		return Canceled
 	}
 	// TODO test Err()
@@ -961,10 +973,15 @@ func (m *Machine) Err() error {
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (m *Machine) Remove(states S, args A) Result {
-	if m.disposed.Load() || m.disposing.Load() ||
-		int(m.queueLen.Load()) >= m.QueueLimit {
-
+	if m.disposed.Load() || m.disposing.Load() {
 		return Canceled
+	}
+
+	// let Exception in even with a full queue, but only once
+	if int(m.queueLen.Load()) >= m.QueueLimit {
+		if !slices.Contains(states, Exception) || !m.IsErr() {
+			return Canceled
+		}
 	}
 
 	// return early if none of the states is active
@@ -1019,7 +1036,16 @@ func (m *Machine) ParentId() string {
 
 // Tags returns machine's tags, a list of unstructured strings without spaces.
 func (m *Machine) Tags() []string {
-	return m.tags
+	tags := m.tags.Load()
+	if tags != nil {
+		return slices.Clone(*tags)
+	}
+	return nil
+}
+
+// Tags returns machine's tags, a list of unstructured strings without spaces.
+func (m *Machine) SetTags(tags []string) {
+	m.tags.Store(&tags)
 }
 
 // Is checks if all the passed states are currently active.
@@ -1251,16 +1277,18 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	// wait with a timeout
 	select {
 
-	case <-time.After(m.HandlerTimeout / 2):
+	case <-time.After(m.EvalTimeout):
 		canceled.Store(true)
 		m.log(LogOps, "[eval:timeout] %s", source[0])
-		m.AddErr(fmt.Errorf("%w: eval:%s", ErrHandlerTimeout, source), nil)
+		m.AddErr(fmt.Errorf("%w: eval:%s", ErrEvalTimeout, source), nil)
 		return false
 
 	case <-m.ctx.Done():
+		canceled.Store(true)
 		return false
 
 	case <-ctx.Done():
+		canceled.Store(true)
 		m.log(LogDecisions, "[eval:ctxdone] %s", source[0])
 		return false
 
@@ -2057,7 +2085,7 @@ func (m *Machine) Log(msg string, args ...any) {
 // LogLvl adds an internal log entry from the outside. It should be used only
 // by packages extending pkg/machine. Use Log instead.
 func (m *Machine) LogLvl(lvl LogLevel, msg string, args ...any) {
-	// refac: LvlMsg
+	// TODO refac: SysLog
 	if m.disposed.Load() {
 		return
 	}
@@ -2292,7 +2320,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		m.tracersLock.RLock()
 		tx := m.t.Load()
 		for i := range m.tracers {
-			m.tracers[i].HandlerStart(m.t.Load(), handlerName, methodName)
+			m.tracers[i].HandlerStart(tx, handlerName, methodName)
 		}
 		m.tracersLock.RUnlock()
 		handlerCall := &handlerCall{
@@ -2302,13 +2330,14 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 			timeout: false,
 		}
 
-		// reuse the timer each time
-		m.handlerTimer.Reset(m.HandlerTimeout)
 		select {
 		case <-m.ctx.Done():
 			break
 		case m.handlerStart <- handlerCall:
 		}
+
+		// reuse the timer each time
+		m.handlerTimer.Reset(m.HandlerTimeout)
 
 		// wait on the result / timeout / context
 		select {
@@ -2317,6 +2346,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 
 		case <-m.handlerTimer.C:
 			// notify the handler loop
+			// TODO wait for [Event.AcceptTimeout]
 			m.handlerTimeout <- struct{}{}
 			m.log(LogOps, "[cancel] (%s) by timeout", j(tx.TargetStates()))
 			err := fmt.Errorf("%w: %s", ErrHandlerTimeout, methodName)
@@ -2331,6 +2361,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 
 		case r := <-m.handlerPanic:
 			// recover partial state
+			// TODO pass tx info via &AT{}
 			m.recoverToErr(h, r)
 
 		case ret = <-m.handlerEnd:
@@ -2344,7 +2375,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		// tracers
 		m.tracersLock.RLock()
 		for i := range m.tracers {
-			m.tracers[i].HandlerEnd(m.t.Load(), handlerName, methodName)
+			m.tracers[i].HandlerEnd(tx, handlerName, methodName)
 		}
 		m.tracersLock.RUnlock()
 
@@ -2402,21 +2433,34 @@ func (m *Machine) handlerLoop() {
 				return
 			}
 			ret := true
-			retCh := make(chan struct{})
+			endCh := make(chan struct{})
+			timeout := atomic.Bool{}
 
 			// fork for timeout
 			go func() {
+				// confirm the event is still valid
+				if !call.event.IsValid() {
+					close(endCh)
+					return
+				}
+				// check timeout
+				if timeout.Load() {
+					close(endCh)
+					return
+				}
+
 				// catch panics and fwd
 				if m.PanicToException {
 					defer catch()
 				}
 
 				// handler signature: FooState(e *am.Event)
+				// TODO optimize https://github.com/golang/go/issues/7818
 				callRet := call.fn.Call([]reflect.Value{reflect.ValueOf(call.event)})
 				if len(callRet) > 0 {
 					ret = callRet[0].Interface().(bool)
 				}
-				close(retCh)
+				close(endCh)
 			}()
 
 			// wait for result / timeout / context
@@ -2425,8 +2469,9 @@ func (m *Machine) handlerLoop() {
 				m.handlerLoopDone()
 				return
 			case <-m.handlerTimeout:
+				timeout.Store(true)
 				continue
-			case <-retCh:
+			case <-endCh:
 				// pass
 			}
 
@@ -2443,6 +2488,7 @@ func (m *Machine) handlerLoop() {
 				return
 
 			case m.handlerEnd <- ret:
+				// pass
 			}
 		}
 	}
@@ -2834,6 +2880,10 @@ func (m *Machine) GetStruct() Struct {
 	return maps.Clone(m.states)
 }
 
+func (m *Machine) SchemaVer() uint8 {
+	return uint8(m.schemaVer.Load())
+}
+
 // SetStruct sets the machine's state structure. It will automatically call
 // VerifyStates with the names param and handle EventStructChange if successful.
 // Note: it's not recommended to change the states structure of a machine which
@@ -2847,6 +2897,7 @@ func (m *Machine) SetStruct(statesStruct Struct, names S) error {
 
 	old := m.states
 	m.states = parseStruct(statesStruct)
+	m.schemaVer.Add(1)
 
 	err := m.VerifyStates(names)
 	if err != nil {
