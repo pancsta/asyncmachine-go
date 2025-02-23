@@ -27,7 +27,7 @@ Table of contents:
   - [Benchmark State Source](#benchmark-state-source)
 - [Demos](#demos)
 - [Debugging Sessions](#debugging-sessions)
-- [Case Studies](#case-studies)
+- [Apps](#apps)
 
 ## Examples
 
@@ -129,9 +129,10 @@ Interactively use the [TUI debugger](/tools/cmd/am-dbg) with data pre-generated 
   - remote terminal: `ssh 188.166.101.108 -p 4445`
   - local terminal: `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest --import-data https://pancsta.github.io/assets/asyncmachine-go/am-dbg-exports/remote-tests.gob.br`
 
-## Case Studies
+## Apps
 
 - [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
+- [arpc REPL](/tools/repl/README.md) Cobra-based REPL.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
   simulator for libp2p-pubsub.
 - [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)

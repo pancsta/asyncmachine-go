@@ -13,9 +13,9 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 )
 
-// MuxNewServer is a function to create a new RPC server for each incoming
+// MuxNewServerFn is a function to create a new RPC server for each incoming
 // connection.
-type MuxNewServer func(num int, conn net.Conn) (*Server, error)
+type MuxNewServerFn func(num int, conn net.Conn) (*Server, error)
 
 const EnvAmRpcLogMux = "AM_RPC_LOG_MUX"
 
@@ -25,13 +25,18 @@ var ssM = states.MuxStates
 type Mux struct {
 	*am.ExceptionHandler
 	Mach *am.Machine
+	// Source is the state source to expose via RPC. Required if NewServerFn
+	// isnt provided.
+	Source am.Api
+	// NewServerFn creates a new instance of Server and is called for every new
+	// connection.
+	NewServerFn MuxNewServerFn
 
 	Name string
 	Addr string
 	// The listener used by this Mux, can be set manually before Start().
-	Listener    net.Listener
-	LogEnabled  bool
-	NewServerFn MuxNewServer
+	Listener   net.Listener
+	LogEnabled bool
 	// The last error returned by NewServerFn.
 	NewServerErr error
 
@@ -40,13 +45,18 @@ type Mux struct {
 	connCount atomic.Int64
 }
 
+// NewMux initializes a Mux instance to handle RPC server creation for incoming
+// connections with the given parameters.
+//
+// newServerFn: when nil, [Mux.Source] needs to be set manually before calling
+// [Mux.Start].
 func NewMux(
-	ctx context.Context, name string, newServer MuxNewServer, opts *MuxOpts,
+	ctx context.Context, name string, newServerFn MuxNewServerFn, opts *MuxOpts,
 ) (*Mux, error) {
 	d := &Mux{
 		Name:        name,
 		LogEnabled:  os.Getenv(EnvAmRpcLogMux) != "",
-		NewServerFn: newServer,
+		NewServerFn: newServerFn,
 	}
 	if opts == nil {
 		opts = &MuxOpts{}
@@ -84,6 +94,10 @@ func (m *Mux) NewServerErrEnter(e *am.Event) bool {
 func (m *Mux) NewServerErrState(e *am.Event) {
 	args := ParseArgs(e.Args)
 	m.NewServerErr = args.Err
+}
+
+func (m *Mux) StartEnter(e *am.Event) bool {
+	return m.NewServerFn != nil || m.Source != nil
 }
 
 func (m *Mux) StartState(e *am.Event) {
@@ -192,7 +206,7 @@ func (m *Mux) accept(l net.Listener) {
 		var server *Server
 		if m.NewServerFn == nil {
 			server, err = NewServer(m.Mach.Ctx(), ":0",
-				m.Name+"-"+strconv.Itoa(int(num)), m.Mach, &ServerOpts{
+				m.Name+"-"+strconv.Itoa(int(num)), m.Source, &ServerOpts{
 					Parent: m.Mach,
 				})
 		} else {

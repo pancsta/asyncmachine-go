@@ -2101,28 +2101,24 @@ func TestInspect(t *testing.T) {
 	// (A:1 C:1)[B:0 D:0 Exception:0]
 	names := S{"A", "B", "C", "D", "Exception"}
 	expected := `
-		A:
-		  State:   true 1
-		  Auto:    true
-		  Require: C
-		
-		B:
-		  State:   false 0
-		  Multi:   true
-		  Add:     C
-		
-		C:
-		  State:   true 1
-		  After:   D
-		
-		D:
-		  State:   false 0
-		  Add:     C B
-	
-		Exception:
-		  State:   false 0
-		  Multi:   true
-		`
+    A: true
+      Time:    1
+      Auto:    true
+      Require: C
+    B: false
+      Time:    0
+      Multi:   true
+      Add:     C
+    C: true
+      Time:    1
+      After:   D
+    D: false
+      Time:    0
+      Add:     C B
+    Exception: false
+      Time:    0
+      Multi:   true
+    `
 	assertString(t, m, expected, names)
 	// (A:1 C:1)[B:0 D:0 Exception:0]
 	m.Remove(S{"C"}, nil)
@@ -2132,28 +2128,24 @@ func TestInspect(t *testing.T) {
 	m.Add(S{"D"}, nil)
 	// (A:3 B:1 C:3 D:1)[Exception:0]
 	expected = `
-		Exception:
-		  State:   false 0
-		  Multi:   true
-	
-		A:
-		  State:   true 3
-		  Auto:    true
-		  Require: C
-		
-		B:
-		  State:   true 1
-		  Multi:   true
-		  Add:     C
-		
-		C:
-		  State:   true 3
-		  After:   D
-		
-		D:
-		  State:   true 1
-		  Add:     C B
-		`
+    Exception: false
+      Time:    0
+      Multi:   true
+    A: true
+      Time:    3
+      Auto:    true
+      Require: C
+    B: true
+      Time:    1
+      Multi:   true
+      Add:     C
+    C: true
+      Time:    3
+      After:   D
+    D: true
+      Time:    1
+      Add:     C B
+    `
 	err := m.VerifyStates(S{"Exception", "A", "B", "C", "D"})
 	assert.NoError(t, err)
 	assertString(t, m, expected, nil)

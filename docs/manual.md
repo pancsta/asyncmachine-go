@@ -379,6 +379,10 @@ meantime. It always triggers `Enter` and `State` [transition handlers](#transiti
 example of a `Multi` state (many errors can happen, and we want to know all of them). The downside is that `Multi`
 states don't have [state contexts](#clock-and-context).
 
+Side effects:
+
+- spawning goroutines in a Multi state handler may lead to an overflow, use `errgroup`
+
 ### Categories of States
 
 States usually belong to one of these categories:

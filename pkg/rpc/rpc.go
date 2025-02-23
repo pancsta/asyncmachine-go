@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -43,6 +45,10 @@ var ss = states.SharedStates
 
 // ///// ///// /////
 
+type ArgsHello struct {
+	ReqSchema bool
+}
+
 // ArgsMut is args for mutation methods.
 type ArgsMut struct {
 	States []int
@@ -75,7 +81,10 @@ type ArgsPayload struct {
 	Token string
 }
 
-type RespHandshake = am.Serialized
+type RespHandshake struct {
+	Schema     *am.Schema
+	Serialized am.Serialized
+}
 
 type RespResult struct {
 	Clock  ClockMsg
@@ -195,7 +204,7 @@ func LogArgs(args am.A) map[string]string {
 type serverRpcMethods interface {
 	// rpc
 
-	RemoteHello(client *rpc2.Client, args *Empty, resp *RespHandshake) error
+	RemoteHello(client *rpc2.Client, args *ArgsHello, resp *RespHandshake) error
 
 	// mutations
 
@@ -391,6 +400,75 @@ func (t *WorkerTracer) TransitionEnd(_ *am.Transition) {
 // ///// MISC
 
 // ///// ///// /////
+
+const (
+	EnvAmReplAddr    = "AM_REPL_ADDR"
+	EnvAmReplAddrDir = "AM_REPL_ADDR_DIR"
+)
+
+// MachReplEnv sets up a machine for a REPL connection in case AM_REPL_ADDR env
+// var is set. See MachRepl.
+func MachReplEnv(mach am.Api) {
+	addr := os.Getenv(EnvAmReplAddr)
+	dir := os.Getenv(EnvAmReplAddrDir)
+
+	MachRepl(mach, addr, dir, nil)
+}
+
+// MachReplEnv sets up a machine for a REPL connection, which allows for
+// mutations, like any other RPC connection. See [/tools/cmd/arpc] for usage.
+// This function is considered a debugging helper and can panic.
+//
+// addr: address to listen on, default to 127.0.0.1:0
+// addrDir: optional dir path to save the address file as addrDir/mach-id.addr.
+// addrCh: optional channel to send the address to, once ready
+func MachRepl(mach am.Api, addr, addrDir string, addrCh chan<- string) {
+	if amhelp.IsTestRunner() {
+		return
+	}
+
+	if addr == "" {
+		addr = "127.0.0.1:0"
+	}
+
+	mux, err := NewMux(mach.Ctx(), "repl-"+mach.Id(), nil, &MuxOpts{
+		Parent: mach,
+	})
+	// panic only early
+	if err != nil {
+		panic(err)
+	}
+	mux.Addr = addr
+	mux.Source = mach
+	mux.Start()
+
+	if addrCh == nil && addrDir == "" {
+		return
+	}
+
+	go func() {
+		if addrDir != "" {
+			err := os.MkdirAll(addrDir, 0o755)
+			if err != nil {
+				panic(err)
+			}
+		}
+		<-mux.Mach.When1(ssM.Ready, nil)
+		if addrCh != nil {
+			addrCh <- mux.Addr
+		}
+		if addrDir != "" {
+			_ = os.WriteFile(
+				filepath.Join(addrDir, mach.Id()+".addr"),
+				[]byte(mux.Addr), 0o644,
+			)
+			// TODO err
+			// if err != nil {
+			// 	panic(err)
+			// }
+		}
+	}()
+}
 
 // // DEBUG for perf testing
 // func NewClockMsg(before, after am.Time) ClockMsg {

@@ -2,12 +2,13 @@
 
 - negotiation testers (eg `CanAdd`)
 - more helpers for queue and history traversal
-- pubsub
-- rpc handlers
+- handlers for RPC workers
+- DB-based scheduler
+- NATS integration
 - go1.22 traces
 - inference
-- better support for updating states struct
+- dynamic state schemas
 - optimizations
-- manual updated to a spec
+- tutorials
 
 See also [issues](https://github.com/pancsta/asyncmachine-go/issues).

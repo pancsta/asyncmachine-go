@@ -9,15 +9,13 @@
 [![](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
 
 <div align="center">
-    <a href="#samples">Samples</a> |
-    <a href="#getting-started">Getting Started</a> |
-    <a href="#packages">Packages</a> |
-    <a href="#case-studies">Case Studies</a> |
-    <a href="#documentation">Docs</a> |
-    <a href="#community">Community</a> |
-    <a href="#development">Status</a> |
-    <a href="#development">Dev</a> |
-    <a href="#development">FAQ</a> |
+    <a href="#samples">Samples</a> .
+    <a href="#getting-started">Getting Started</a> .
+    <a href="#packages">Packages</a> .
+    <a href="#apps">Apps</a> .
+    <a href="#documentation">Docs</a> .
+    <a href="#development">Dev</a> .
+    <a href="#faq">FAQ</a> .
     <a href="#changes">Changes</a>
     <br />
 </div>
@@ -34,13 +32,14 @@
 
 **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
 and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
-It has atomic transitions, relations, [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
-[telemetry](/pkg/telemetry/README.md), [workers](/pkg/node/README.md), and [soon diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
+It offers [atomic consensus](/docs/manual.md#transition-lifecycle), [transparent RPC](/pkg/rpc/README.md),
+[TUI debugger](/tools/cmd/am-dbg/README.md), [telemetry](/pkg/telemetry/README.md), [REPL](), [workers](/pkg/node/README.md),
+and [soon diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
 
 Its main purpose is workflows (in-process / distributed / decentralized), although it can be used for a wide range of
-stateful applications - daemons, UIs, configs, bots, agents, firewalls, consensus algos, etc. **asyncmachine** can
-precisely (and transparently) target a specific point in a scenario and easily bring structure to event-based systems.
-It takes care of most contexts, `select` statements, and panics.
+stateful applications - daemons, UIs, configs, bots, agents, firewalls, consensus algos, smart graphs, etc.
+**asyncmachine** can precisely (and transparently) target a specific point in a scenario and easily bring structure to
+event-based systems. It takes care of most contexts, `select` statements, and panics.
 
 It aims at creating **autonomous** workflows with **organic** control flow and **stateful** APIs:
 
@@ -48,7 +47,7 @@ It aims at creating **autonomous** workflows with **organic** control flow and *
 - **organic** - relations, negotiation, cancellation
 - **stateful** - maintaing context, responsive, atomic
 
-[![diagrams](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)](https://github.com/pancsta/asyncmachine-go/pull/216)
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)
 
 ## Stack
 
@@ -220,9 +219,12 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 
 ## Getting Started
 
-🦾 **[`/pkg/machine`](pkg/machine/README.md)** is the main package, while [`/pkg/node`](pkg/node) is
-the high-level usage. Examples in [`/examples`](/examples/README.md) are good for a general grasp, while [`/docs/manual.md`](/docs/manual.md)
-and [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details. Reading tests is always a good idea.
+🦾 **[`/pkg/machine`](pkg/machine/README.md)** is the main package, while [`/pkg/node`](pkg/node) shows a high-level
+usage. Examples in [`/examples`](/examples/README.md) are good for a general grasp, while [`/docs/manual.md`](/docs/manual.md)
+and [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details.
+[`/tools/cmd/am-gen`](/tools/cmd/am-gen) can kick it off, while [`/examples/mach_template`](/examples/mach_template)
+is the ultimate **copy-pasta**, and [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) records every detail. Reading tests is
+always a good idea...
 
 ## [Packages](/pkg)
 
@@ -239,12 +241,14 @@ This monorepo offers the following importable packages and runnable tools:
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates states files and Grafana dashboards.
 - [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates diagrams of interconnected state machines.
+- [`/tools/cmd/arpc`](https://github.com/pancsta/asyncmachine-go/pull/216) Network-native REPL and CLI.
 
 [![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)](/tools/cmd/am-dbg/README.md)
 
-## Case Studies
+## Apps
 
 - [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
+- [arpc REPL](/tools/repl/README.md) Cobra-based REPL.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
   simulator for libp2p-pubsub.
 - [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)

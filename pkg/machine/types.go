@@ -37,6 +37,13 @@ const (
 // S (state names) is a string list of state names.
 type S []string
 
+// Struct is a map of state names to state definitions.
+// TODO refac: Schema
+type (
+	Struct = map[string]State
+	Schema = Struct
+)
+
 // State defines a single state of a machine, its properties and relations.
 type State struct {
 	Auto    bool
@@ -172,6 +179,7 @@ type Api interface {
 	TimeSum(states S) uint64
 	NewStateCtx(state string) context.Context
 	Export() *Serialized
+	// TODO GetSchema
 	GetStruct() Struct
 	Switch(groups ...S) string
 

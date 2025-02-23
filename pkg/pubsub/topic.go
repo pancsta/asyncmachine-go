@@ -38,11 +38,12 @@ import (
 // changes on the channel, introduces them when joining and via private messages
 // to newly joined peers.
 // TODO optimizations:
-// - predefined schemas
-// - random delay for initial hello
-// - reduce number of messages (max total rcv/snt msgs per a time window)
-// - smaller pool for requests?
-// - dont gossip about missing updates
+//   - predefined schemas
+//   - random delay for initial hello
+//   - reduce number of messages (max total rcv/snt msgs per a time window)
+//   - smaller pool for requests?
+//   - dont gossip about missing updates
+//   - worker pool for forked goroutines
 type Topic struct {
 	*am.ExceptionHandler
 
@@ -1322,12 +1323,30 @@ func (t *Topic) HeartbeatState(e *am.Event) {
 
 // ///// ///// /////
 
-func (t *Topic) Start() {
-	t.Mach.Add1(ss.Start, nil)
+func (t *Topic) Start() am.Result {
+	return t.Mach.Add1(ss.Start, nil)
 }
 
-func (t *Topic) Dispose() {
-	t.Mach.Add1(ss.Disposing, nil)
+func (t *Topic) Join() am.Result {
+	return t.Mach.Add1(ss.Joining, nil)
+}
+
+func (t *Topic) StartAndJoin(ctx context.Context) am.Result {
+	if t.Mach.Add1(ss.Start, nil) == am.Canceled {
+		return am.Canceled
+	}
+	err := amhelp.WaitForAll(ctx, time.Second, t.Mach.When1(ss.Connected, ctx))
+	if ctx.Err() != nil {
+		return am.Canceled
+	}
+	if err != nil {
+		return am.Canceled
+	}
+	return t.Join()
+}
+
+func (t *Topic) Dispose() am.Result {
+	return t.Mach.Add1(ss.Disposing, nil)
 }
 
 func (t *Topic) GetPeerAddrs() ([]ma.Multiaddr, error) {

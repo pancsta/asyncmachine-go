@@ -16,6 +16,7 @@ import (
 
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
+	"golang.org/x/sync/errgroup"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
@@ -175,8 +176,6 @@ func MachDebug(
 	} else {
 		mach.SetLoggerEmpty(logLvl)
 	}
-
-	// TODO increate timeouts on AM_DEBUG
 
 	if amDbgAddr == "" {
 		return
@@ -354,11 +353,7 @@ func (r *MutRequest) Run(ctx context.Context) (am.Result, error) {
 
 func (r *MutRequest) get() (am.Result, error) {
 	res := r.Mach.Add(r.States, r.Args)
-	if res == am.Canceled {
-		return res, am.ErrCanceled
-	}
-
-	return res, nil
+	return res, ResultToErr(res)
 }
 
 // Wait waits for a duration, or until the context is done. Returns nil if the
@@ -662,6 +657,30 @@ func ArgsToLogMap(s interface{}) map[string]string {
 
 		if tag != "" {
 			v, _ := field.Interface().(string)
+			// Check if the field is a string or slice of strings and cast accordingly
+			switch obj := field.Interface().(type) {
+			case string:
+				v := obj
+				if v == "" {
+					continue
+				}
+				result[tag] = v
+			case []string:
+				// Combine []string into a single comma-separated string
+				if len(obj) == 0 {
+					continue
+				}
+				result[tag] = strings.Join(obj, ",")
+			default:
+				// Call String() method if present
+				if stringer, ok := obj.(fmt.Stringer); ok {
+					v := stringer.String()
+					if v == "" {
+						continue
+					}
+					result[tag] = v
+				}
+			}
 			if v == "" {
 				continue
 			}
@@ -797,6 +816,9 @@ func FanOutIn(
 	mach *am.Machine, name string, total, concurrency int,
 	fn FanFn,
 ) (any, error) {
+	// TODO version with worker as states, instead of tasks as states
+	//  main state tries to push a list of tasks through the "worker states",
+	//  which resulst in a Done state
 	states := mach.GetStruct()
 	suffixDone := "Done"
 
@@ -913,4 +935,37 @@ func FanOutIn(
 	}
 
 	return h, nil
+}
+
+func ResultToErr(result am.Result) error {
+	switch result {
+	case am.Canceled:
+		return am.ErrCanceled
+	// case am.Queued:
+	// 	return am.ErrQueued
+	default:
+		return nil
+	}
+}
+
+type MachGroup []am.Api
+
+func (g *MachGroup) Is1(state string) bool {
+	if g == nil {
+		return false
+	}
+
+	for _, m := range *g {
+		if m.Not1(state) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func Pool(limit int) *errgroup.Group {
+	g := &errgroup.Group{}
+	g.SetLimit(limit)
+	return g
 }

@@ -25,6 +25,8 @@ var (
 	ssCo = states.ConsumerStates
 )
 
+// Client is a type representing an RPC client that interacts with a remote
+// am.Machine instance.
 type Client struct {
 	*ExceptionHandler
 
@@ -33,6 +35,8 @@ type Client struct {
 
 	// Addr is the address the Client will connect to.
 	Addr string
+	// Request the state schema from the server.
+	RequestSchema bool
 	// Worker is a remote am.Machine instance
 	Worker *Worker
 	// Consumer is the optional consumer for deliveries.
@@ -86,11 +90,11 @@ type Client struct {
 
 	// internal
 
-	callLock    sync.Mutex
-	rpc         *rpc2.Client
-	stateNames  am.S
-	stateStruct am.Struct
-	conn        net.Conn
+	callLock     sync.Mutex
+	rpc          *rpc2.Client
+	workerStates am.S
+	workerSchema am.Struct
+	conn         net.Conn
 	// tmpTestErr is an error to return on the next call or notify, only for
 	// testing.
 	tmpTestErr error
@@ -153,8 +157,8 @@ func NewClient(
 		CallRetryDelay:   100 * time.Millisecond,
 		CallRetryBackoff: 3 * time.Second,
 
-		stateNames:  slices.Clone(stateNames),
-		stateStruct: maps.Clone(stateStruct),
+		workerStates: slices.Clone(stateNames),
+		workerSchema: maps.Clone(stateStruct),
 	}
 
 	if amhelp.IsDebug() {
@@ -199,7 +203,7 @@ func NewClient(
 
 func (c *Client) StartState(e *am.Event) {
 	ctx := c.Mach.NewStateCtx(ssC.Start)
-	worker, err := NewWorker(ctx, "", c, c.stateStruct, c.stateNames, c.Mach,
+	worker, err := NewWorker(ctx, "", c, c.workerSchema, c.workerStates, c.Mach,
 		nil)
 	if err != nil {
 		c.Mach.AddErr(err, nil)
@@ -350,6 +354,10 @@ func (c *Client) HandshakingState(e *am.Event) {
 
 	// unblock
 	go func() {
+		if ctx.Err() != nil {
+			return // expired
+		}
+
 		// send hello or retry conn
 		resp := &RespHandshake{}
 		if c.HelloDelay > 0 {
@@ -365,7 +373,8 @@ func (c *Client) HandshakingState(e *am.Event) {
 		timeout := c.CallTimeout / 2
 		for i := 0; i < c.ConnRetries; i++ {
 			// TODO pass ID and key here
-			if c.call(ctx, rpcnames.Hello.Encode(), Empty{}, resp, timeout) {
+			rcpArgs := ArgsHello{ReqSchema: c.RequestSchema}
+			if c.call(ctx, rpcnames.Hello.Encode(), rcpArgs, resp, timeout) {
 				ok = true
 				c.log("hello ok on %d try", i+1)
 
@@ -389,21 +398,39 @@ func (c *Client) HandshakingState(e *am.Event) {
 		}
 
 		// validate
-		if len(resp.StateNames) == 0 {
+		stateNames := resp.Serialized.StateNames
+		if len(stateNames) == 0 {
 			AddErrRpcStr(e, c.Mach, "states missing")
 			return
 		}
-		if resp.ID == "" {
+		if resp.Serialized.ID == "" {
 			AddErrRpcStr(e, c.Mach, "ID missing")
 			return
 		}
+		if c.RequestSchema && resp.Schema == nil {
+			AddErrRpcStr(e, c.Mach, "schema missing")
+			return
+		}
+
+		// schema
+		c.RequestSchema = false
+		if resp.Schema != nil {
+			// TODO SetSchema
+			c.workerSchema = *resp.Schema
+			c.Worker.schema = *resp.Schema
+			c.workerStates = stateNames
+			c.Worker.stateNames = stateNames
+			c.Worker.machTime = make(am.Time, len(stateNames))
+		}
 
 		// ID as tag TODO find-n-replace, not via index
-		c.Worker.tags[1] = "src-id:" + resp.ID
+		c.Worker.tags[1] = "src-id:" + resp.Serialized.ID
+		// TODO setter
+		c.Worker.remoteId = resp.Serialized.ID
 
 		// compare states
-		diff := am.DiffStates(c.stateNames, resp.StateNames)
-		if len(diff) > 0 || len(resp.StateNames) != len(c.stateNames) {
+		diff := am.DiffStates(c.workerStates, stateNames)
+		if len(diff) > 0 || len(stateNames) != len(c.workerStates) {
 			AddErrRpcStr(e, c.Mach, "States differ on client/server")
 			return
 		}
@@ -417,8 +444,8 @@ func (c *Client) HandshakingState(e *am.Event) {
 
 		// finalize
 		c.Mach.EvAdd1(e, ssC.HandshakeDone, Pass(&A{
-			Id:       resp.ID,
-			MachTime: resp.Time,
+			Id:       resp.Serialized.ID,
+			MachTime: resp.Serialized.Time,
 		}))
 	}()
 }
@@ -433,10 +460,10 @@ func (c *Client) HandshakeDoneState(e *am.Event) {
 
 	// finalize the worker init
 	w := c.Worker
-	w.ID = "rw-" + c.Name
+	w.id = "rw-" + c.Name
 	c.updateClock(nil, args.MachTime)
 
-	c.log("connected to %s", c.Worker.ID)
+	c.log("connected to %s", c.Worker.id)
 	c.log("time t%d: %v", c.Worker.TimeSum(nil), args.MachTime)
 }
 

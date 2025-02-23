@@ -5,9 +5,9 @@ import (
 	"context"
 	"os"
 
-	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/spf13/cobra"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"

@@ -15,8 +15,9 @@ import (
 
 	"github.com/lithammer/dedent"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	"github.com/pancsta/asyncmachine-go/internal/utils"
 
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/generator/cli"
 	"github.com/pancsta/asyncmachine-go/tools/generator/states"
@@ -135,7 +136,7 @@ func (g *Generator) Output() string {
 	}
 
 	// imports
-	out := p(`
+	out := utils.Sp(`
 		package states
 		
 		import (
@@ -150,7 +151,7 @@ func (g *Generator) Output() string {
 	}
 
 	// struct def
-	out += p(`
+	out += utils.Sp(`
 		)
 		
 		// %sStatesDef contains all the states of the %s state machine.
@@ -184,7 +185,7 @@ func (g *Generator) Output() string {
 	out += "}\n\n"
 
 	// groups def
-	out += p(`
+	out += utils.Sp(`
 			// %sGroupsDef contains all the state groups %s state machine.
 			type %sGroupsDef struct {
 		`, g.Name, g.Name, g.Name)
@@ -301,7 +302,7 @@ func (g *Generator) Output() string {
 		out += "}\n"
 	}
 
-	out += "\n" + p(`
+	out += "\n" + utils.Sp(`
 	// EXPORTS AND GROUPS
 
 	var (
@@ -335,7 +336,7 @@ func (g *Generator) Output() string {
 		out += ", ssnode.WorkerGroups"
 	}
 
-	out += p(`
+	out += utils.Sp(`
 		)
 
 			// %sStates contains all the states for the %s machine.
@@ -400,8 +401,4 @@ func capitalizeFirstLetter(s string) string {
 		return s
 	}
 	return string(unicode.ToUpper(rune(s[0]))) + s[1:]
-}
-
-func p(txt string, args ...any) string {
-	return fmt.Sprintf(dedent.Dedent(strings.Trim(txt, "\n")), args...)
 }

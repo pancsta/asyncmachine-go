@@ -1772,8 +1772,8 @@ func (m *Machine) processQueue() Result {
 		m.timeLast.Store(&t.TimeAfter)
 
 		// process flow methods
-		m.processWhenBindings()
-		m.processWhenTimeBindings()
+		m.processWhenBindings(t)
+		m.processWhenTimeBindings(t)
 		m.processStateCtxBindings()
 	}
 
@@ -1824,15 +1824,15 @@ func (m *Machine) processStateCtxBindings() {
 	}
 }
 
-func (m *Machine) processWhenBindings() {
+func (m *Machine) processWhenBindings(t *Transition) {
 	if m.disposed.Load() {
 		return
 	}
 	m.activeStatesLock.Lock()
 
 	// calculate activated and deactivated states
-	activated := DiffStates(m.activeStates, m.t.Load().StatesBefore())
-	deactivated := DiffStates(m.t.Load().StatesBefore(), m.activeStates)
+	activated := DiffStates(m.activeStates, t.StatesBefore())
+	deactivated := DiffStates(t.StatesBefore(), m.activeStates)
 
 	// merge all states
 	all := S{}
@@ -1914,7 +1914,7 @@ func (m *Machine) processWhenBindings() {
 	}
 }
 
-func (m *Machine) processWhenTimeBindings() {
+func (m *Machine) processWhenTimeBindings(t *Transition) {
 	if m.disposed.Load() {
 		return
 	}
@@ -1923,7 +1923,7 @@ func (m *Machine) processWhenTimeBindings() {
 
 	// collect all the ticked states
 	allTicked := S{}
-	for state, t := range m.t.Load().ClockBefore() {
+	for state, t := range t.ClockBefore() {
 		// if changed, collect to check
 		if m.clock[state] != t {
 			allTicked = append(allTicked, state)
@@ -2772,8 +2772,8 @@ func (m *Machine) Inspect(states S) string {
 			active = "true"
 		}
 
-		ret += name + ":\n"
-		ret += fmt.Sprintf("  State:   %s %d\n", active, m.clock[name])
+		ret += fmt.Sprintf("%s: %s\n  Time:    %d\n",
+			name, active, m.clock[name])
 		if state.Auto {
 			ret += "  Auto:    true\n"
 		}
@@ -2792,7 +2792,6 @@ func (m *Machine) Inspect(states S) string {
 		if state.After != nil {
 			ret += "  After:   " + j(state.After) + "\n"
 		}
-		ret += "\n"
 	}
 
 	return ret

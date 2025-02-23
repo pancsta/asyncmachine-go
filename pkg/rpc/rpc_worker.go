@@ -20,10 +20,12 @@ import (
 // Worker is a subset of `pkg/machine#Machine` for RPC. Lacks the queue and
 // other local methods. Most methods are clock-based, thus executed locally.
 type Worker struct {
-	ID       string
 	Disposed atomic.Bool
 
-	ctx context.Context
+	// remoteId is the ID of the remote state machine.
+	remoteId string
+	id       string
+	ctx      context.Context
 	// RPC client parenting this Worker. If nil, worker is read-only and won't
 	// allow for mutations / network calls.
 	c             *Client
@@ -66,8 +68,8 @@ func NewWorker(
 	if schema == nil {
 		return nil, errors.New("schema cannot be nil")
 	}
-	if len(stateNames) == 0 {
-		return nil, errors.New("stateNames cannot be empty")
+	if len(schema) != len(stateNames) {
+		return nil, errors.New("schema and stateNames must have the same length")
 	}
 	if parent == nil {
 		return nil, errors.New("parent cannot be nil")
@@ -78,7 +80,7 @@ func NewWorker(
 
 	w := &Worker{
 		c:             c,
-		ID:            id,
+		id:            id,
 		ctx:           parent.Ctx(),
 		schema:        schema,
 		stateNames:    stateNames,
@@ -912,7 +914,7 @@ func (w *Worker) NewStateCtx(state string) context.Context {
 	}
 
 	v := am.CtxValue{
-		Id:    w.ID,
+		Id:    w.id,
 		State: state,
 		Tick:  w.clock(am.S{state})[state],
 	}
@@ -954,7 +956,7 @@ func (w *Worker) Log(msg string, args ...any) {
 	// TODO local log?
 }
 
-// SetLogId enables or disables the logging of the machine's ID in log messages.
+// SetLogId enables or disables the logging of the machine's id in log messages.
 func (w *Worker) SetLogId(val bool) {}
 
 // GetLogId returns the current state of the log id setting.
@@ -1041,12 +1043,17 @@ func (w *Worker) Ctx() context.Context {
 	return w.ctx
 }
 
-// Id returns the machine's ID.
+// Id returns the machine's id.
 func (w *Worker) Id() string {
-	return w.ID
+	return w.id
 }
 
-// ParentId returns the ID of the parent machine (if any).
+// RemoteId returns the ID of the remote state machine.
+func (w *Worker) RemoteId() string {
+	return w.remoteId
+}
+
+// ParentId returns the id of the parent machine (if any).
 func (w *Worker) ParentId() string {
 	return w.parentId
 }
@@ -1132,8 +1139,8 @@ func (w *Worker) Inspect(states am.S) string {
 		}
 
 		idx := slices.Index(w.stateNames, name)
-		ret += name + ":\n"
-		ret += fmt.Sprintf("  State:   %s %d\n", active, w.machTime[idx])
+		ret += fmt.Sprintf("%s: %s\n  Time:    %d\n",
+			name, active, w.machTime[idx])
 		if state.Auto {
 			ret += "  Auto:    true\n"
 		}
@@ -1152,7 +1159,6 @@ func (w *Worker) Inspect(states am.S) string {
 		if state.After != nil {
 			ret += "  After:   " + utils.J(state.After) + "\n"
 		}
-		ret += "\n"
 	}
 
 	return ret
@@ -1187,7 +1193,7 @@ func (w *Worker) MustParseStates(states am.S) am.S {
 	for _, s := range states {
 		// TODO lock
 		if _, ok := w.schema[s]; !ok {
-			panic(fmt.Sprintf("state %s is not defined for %s", s, w.ID))
+			panic(fmt.Sprintf("state %s is not defined for %s", s, w.id))
 		}
 	}
 
@@ -1383,7 +1389,7 @@ func (w *Worker) Dispose() {
 
 	utils.CloseSafe(w.whenDisposed)
 	for _, t := range w.tracers {
-		t.MachineDispose(w.ID)
+		t.MachineDispose(w.id)
 	}
 
 	// TODO push remotely?
@@ -1401,7 +1407,7 @@ func (w *Worker) WhenDisposed() <-chan struct{} {
 	return w.whenDisposed
 }
 
-// Export exports the machine state: ID, time and state names.
+// Export exports the machine state: id, time and state names.
 func (w *Worker) Export() *am.Serialized {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
@@ -1409,7 +1415,7 @@ func (w *Worker) Export() *am.Serialized {
 	w.log(am.LogChanges, "[import] exported at %d ticks", w.time(nil))
 
 	return &am.Serialized{
-		ID:         w.ID,
+		ID:         w.id,
 		Time:       w.time(nil),
 		StateNames: w.stateNames,
 	}

@@ -184,7 +184,7 @@ func PassRpc(args *A) am.A {
 	return am.A{APrefix: amhelp.ArgsToArgs(args, &ARpc{})}
 }
 
-// LogArgs is an args logger for A and rpc.A.
+// LogArgs is an args logger for A and [rpc.A].
 func LogArgs(args am.A) map[string]string {
 	a1 := rpc.ParseArgs(args)
 	a2 := ParseArgs(args)
