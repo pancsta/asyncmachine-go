@@ -64,6 +64,10 @@ Table of contents:
 - #handlers #composition
 - [origin](/pkg/states/README.md#piping)
 
+### [Mach Template](/examples/mach_template/mach_template.go)
+
+- #template #handlers #telemetry #repl #relations #generator #negotiation #multi
+
 ### [Raw Strings](/examples/raw_strings/raw_strings.go)
 
 - #relations #handlers #async #negotiation #auto
@@ -73,6 +77,10 @@ Table of contents:
 
 - #relations
 - [origin](/pkg/machine/README.md#mutations-and-relations)
+
+### [REPL](/examples/repl/main.go)
+
+- #arpc #repl
 
 ### [Subscriptions](/examples/subscriptions/example_subscriptions.go)
 

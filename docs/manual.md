@@ -1818,5 +1818,8 @@ Each of them has a readme with examples:
 - [`/pkg/rpc`](/pkg/rpc/README.md) Remote state machines, with the same API as local ones.
 - [`/pkg/states`](/pkg/states/README.md) Reusable state definitions and piping.
 - [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for metrics, traces, and logs.
+- [`/pkg/pubsub`](/pkg/pubsub/README.md) Decentralized PubSub based on libp2p gossipsub.
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) am-dbg is a multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) am-gen generates states files and Grafana dashboards.
+- [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates diagrams of interconnected state machines.
+- [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.

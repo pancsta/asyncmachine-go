@@ -1,5 +1,9 @@
 package main
 
+// Steps:
+// 1. go run .
+// 2. go run github.com/pancsta/asyncmachine-go/tools/cmd/arpc@latest -d tmp
+
 import (
 	"context"
 	"fmt"
@@ -44,25 +48,8 @@ func main() {
 		worker.Log("hello")
 	}
 
-	// periodically make some changes
-	t := time.NewTicker(3 * time.Second)
-	// names := ss.Names()
-	for {
-		exit := false
-		select {
-		case <-t.C:
-			// randState := names[rand.N(len(names))]
-			// worker.Add1(randState, nil)
-		case <-sigChan:
-			cancel()
-			exit = true
-		case <-ctx.Done():
-			exit = true
-		}
-		if exit {
-			break
-		}
-	}
+	// wait
+	<-sigChan
 
 	fmt.Println("bye")
 }

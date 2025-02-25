@@ -167,7 +167,9 @@ if err != nil {
 ```
 
 <div align="center">
+    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/arpc/README.md">
     <img src="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif" alt="REPL" />
+    </a>
 </div>
 
 **Handlers** - [Aspect Oriented](https://en.wikipedia.org/wiki/Aspect-oriented_programming) transition handlers.
@@ -245,7 +247,7 @@ This monorepo offers the following importable packages and runnable tools:
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates states files and Grafana dashboards.
 - [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates diagrams of interconnected state machines.
-- [`/tools/cmd/arpc`](https://github.com/pancsta/asyncmachine-go/pull/216) Network-native REPL and CLI.
+- [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
 
 [![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)](/tools/cmd/am-dbg/README.md)
 
