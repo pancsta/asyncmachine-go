@@ -2,6 +2,10 @@
 
 [`cd /`](/README.md)
 
+> [!NOTE]
+> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
+> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+
 ## aRPC REPL
 
 ![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/arpc.png)
@@ -106,7 +110,9 @@ Use "arpc [command] --help" for more information about a command.
 
 ## Demo
 
-![repl demo](https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif)
+<div align="center">
+    <img src="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif" alt="REPL" />
+</div>
 
 ## Credits
 

@@ -33,7 +33,7 @@
 **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
 and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
 It offers [atomic consensus](/docs/manual.md#transition-lifecycle), [transparent RPC](/pkg/rpc/README.md),
-[TUI debugger](/tools/cmd/am-dbg/README.md), [telemetry](/pkg/telemetry/README.md), [REPL](), [workers](/pkg/node/README.md),
+[TUI debugger](/tools/cmd/am-dbg/README.md), [telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md), [workers](/pkg/node/README.md),
 and [soon diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
 
 Its main purpose is workflows (in-process / distributed / decentralized), although it can be used for a wide range of
@@ -165,6 +165,10 @@ if err != nil {
 }
 // client/WorkerPayload and mach2/Ready activated
 ```
+
+<div align="center">
+    <img src="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif" alt="REPL" />
+</div>
 
 **Handlers** - [Aspect Oriented](https://en.wikipedia.org/wiki/Aspect-oriented_programming) transition handlers.
 
