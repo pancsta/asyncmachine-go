@@ -52,9 +52,34 @@ State schema from [/pkg/pubsub/states/](/pkg/pubsub/states/ss_topic.go).
   - discovery protocol
   - sequence diagrams
 
+## Usage
+
+```go
+import (
+    ma "github.com/multiformats/go-multiaddr"
+    ampubsub "github.com/pancsta/asyncmachine-go/pkg/pubsub"
+)
+
+// ...
+
+// init a pubsub peer
+ps, _ := ampubsub.NewTopic(ctx, t.Name(), name, machs, nil)
+// prep a libp2p multi address
+a, _ := ma.NewMultiaddr("/ip4/127.0.0.1/udp/75343/quic-v1")
+addrs := []ma.Multiaddr{a}
+ps.ConnAddrs = addrs
+ps.Start()
+<-ps.Mach.When1(ss.Connected, ctx)
+ps.Mach.Add1()
+```
+
 ## Status
 
 Alpha, work in progress, not semantically versioned.
+
+## Credits
+
+- [libp2p](https://libp2p.io/)
 
 ## monorepo
 

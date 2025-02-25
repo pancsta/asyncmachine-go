@@ -512,7 +512,7 @@ func (s *Server) genClockUpdate(skipTimeCheck bool) ClockMsg {
 // ///// ///// /////
 
 func (s *Server) RemoteHello(
-	client *rpc2.Client, _ *Empty, resp *RespHandshake,
+	client *rpc2.Client, req *ArgsHello, resp *RespHandshake,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
@@ -523,9 +523,16 @@ func (s *Server) RemoteHello(
 
 	mTime := s.Source.Time(nil)
 	*resp = RespHandshake{
-		ID:         s.Source.Id(),
-		StateNames: s.Source.StateNames(),
-		Time:       mTime,
+		Serialized: am.Serialized{
+			ID:         s.Source.Id(),
+			StateNames: s.Source.StateNames(),
+			Time:       mTime,
+		},
+	}
+
+	if req.ReqSchema {
+		schema := s.Source.GetStruct()
+		(*resp).Schema = &schema
 	}
 
 	// TODO block

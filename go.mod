@@ -1,8 +1,8 @@
 module github.com/pancsta/asyncmachine-go
 
-go 1.23
+go 1.23.6
 
-toolchain go1.23.1
+toolchain go1.24.0
 
 //replace github.com/pancsta/cview => ../cview
 
@@ -18,7 +18,10 @@ require (
 	github.com/hibiken/asynq v0.24.1
 	github.com/ic2hrmk/promtail v0.0.5
 	github.com/joho/godotenv v1.5.1
+	github.com/libp2p/go-libp2p v0.39.1
+	github.com/libp2p/go-libp2p-pubsub v0.13.0
 	github.com/lithammer/dedent v1.1.0
+	github.com/multiformats/go-multiaddr v0.14.0
 	github.com/nkall/compactnumber v1.1.1
 	github.com/pancsta/cview v1.5.14
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -28,14 +31,15 @@ require (
 	github.com/soheilhy/cmux v0.1.5
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.10.0
+	github.com/vmihailenco/msgpack v4.0.4+incompatible
 	github.com/zyedidia/clipper v0.1.1
 	go.opentelemetry.io/otel v1.31.0
 	go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.7.0
 	go.opentelemetry.io/otel/log v0.7.0
 	go.opentelemetry.io/otel/sdk/log v0.7.0
 	go.opentelemetry.io/otel/trace v1.31.0
-	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c
-	golang.org/x/net v0.34.0 // indirect
+	golang.org/x/exp v0.0.0-20250210185358-939b2ce775ac
+	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sync v0.11.0
 	golang.org/x/text v0.22.0
 	google.golang.org/grpc v1.67.1
@@ -43,10 +47,8 @@ require (
 )
 
 require (
-	github.com/libp2p/go-libp2p v0.39.1
-	github.com/libp2p/go-libp2p-pubsub v0.13.0
-	github.com/multiformats/go-multiaddr v0.14.0
-	github.com/vmihailenco/msgpack v4.0.4+incompatible
+	github.com/reeflective/console v0.1.22
+	github.com/reeflective/readline v1.1.2
 )
 
 require (
@@ -87,6 +89,7 @@ require (
 	github.com/ipfs/go-log/v2 v2.5.1 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
+	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
 	github.com/koron/go-ssdp v0.0.5 // indirect
@@ -155,9 +158,11 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
+	github.com/rsteube/carapace v0.46.3-0.20231214181515-27e49f3c3b69 // indirect
+	github.com/rsteube/carapace-shlex v0.1.1 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	go.opentelemetry.io/otel/metric v1.31.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.31.0 // indirect
@@ -166,14 +171,15 @@ require (
 	go.uber.org/mock v0.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
+	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/mod v0.23.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/term v0.28.0 // indirect
+	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	golang.org/x/tools v0.29.0 // indirect
+	golang.org/x/tools v0.30.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241007155032-5fefd90f89a9 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.3.0 // indirect
+	mvdan.cc/sh/v3 v3.7.0 // indirect
 )

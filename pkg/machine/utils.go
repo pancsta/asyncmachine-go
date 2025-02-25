@@ -167,9 +167,10 @@ func StateSet(source State, auto, multi bool, overlay State) State {
 // StructMerge merges multiple state structs into one, overriding the previous
 // state definitions. No relation-level merging takes place.
 func StructMerge(stateStructs ...Struct) Struct {
+	// TODO refac SchemaMerge
+	// TODO mark all-but-last states as Inherited?
 	// TODO example
 	// TODO test
-	// TODO move to resolver?
 	// defaults
 	l := len(stateStructs)
 	if l == 0 {

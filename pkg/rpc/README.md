@@ -260,7 +260,7 @@ if err != nil {
 }
 ```
 
-#### Schema
+#### Multiplexer Schema
 
 State schema from [/pkg/rpc/states/ss_mux.go](/pkg/rpc/states/ss_mux.go).
 

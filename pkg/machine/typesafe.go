@@ -11,10 +11,6 @@ import (
 
 // ///// ///// /////
 
-// Struct is a map of state names to state definitions.
-// TODO refac: Schema
-type Struct = map[string]State
-
 type StatesBase struct {
 	// Exception is the only built-in state and mean a global error. All errors
 	// have to [State.Require] the Exception state. If [Machine.PanicToErr] is

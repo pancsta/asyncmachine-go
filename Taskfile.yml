@@ -452,3 +452,8 @@ tasks:
           mmdc -i diagram_$N.mmd -o $DIR/diagram_$N.svg -w 800 -b transparent -t dark
           rm diagram_$N.mmd
         done
+
+  arpc:
+    desc: "Start an aRPC REPL"
+    cmd: go run ./tools/cmd/arpc
+        {{.CLI_ARGS}}

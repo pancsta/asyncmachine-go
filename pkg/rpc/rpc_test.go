@@ -146,7 +146,7 @@ func TestWaiting(t *testing.T) {
 	bytesCount := <-counter
 	assert.LessOrEqual(t, 650, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 750, int(bytesCount),
+	assert.GreaterOrEqual(t, 1_000, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
@@ -232,7 +232,7 @@ func TestAddManyNoSync(t *testing.T) {
 	bytesCount := <-counter
 	assert.LessOrEqual(t, 8_050, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
-	assert.GreaterOrEqual(t, 8_250, int(bytesCount),
+	assert.GreaterOrEqual(t, 8_500, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
 
 	disposeTest(t, c, s, true)
@@ -271,7 +271,7 @@ func TestAddManyInstantClock(t *testing.T) {
 	bytesCount := <-counter
 	assert.LessOrEqual(t, 16_100, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 16_700, int(bytesCount),
+	assert.GreaterOrEqual(t, 16_800, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
@@ -325,7 +325,7 @@ func TestManyStates(t *testing.T) {
 	bytesCount := <-counter
 	assert.LessOrEqual(t, 7_500, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 7_850, int(bytesCount),
+	assert.GreaterOrEqual(t, 8_000, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
@@ -375,7 +375,7 @@ func TestHighInstantClocks(t *testing.T) {
 	bytesCount := <-counter
 	assert.LessOrEqual(t, 40_750, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 41_000, int(bytesCount),
+	assert.GreaterOrEqual(t, 41_300, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)

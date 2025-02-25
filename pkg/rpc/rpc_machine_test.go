@@ -991,26 +991,22 @@ func TestInspect(t *testing.T) {
 	// (A:1 C:1)[B:0 D:0 Exception:0]
 	names := S{"A", "B", "C", "D", "Exception"}
 	expected := `
-		A:
-		  State:   true 1
+		A: true
+		  Time:    1
 		  Auto:    true
 		  Require: C
-
-		B:
-		  State:   false 0
+		B: false
+		  Time:    0
 		  Multi:   true
 		  Add:     C
-
-		C:
-		  State:   true 1
+		C: true
+		  Time:    1
 		  After:   D
-
-		D:
-		  State:   false 0
+		D: false
+		  Time:    0
 		  Add:     C B
-
-		Exception:
-		  State:   false 0
+		Exception: false
+		  Time:    0
 		  Multi:   true
 		`
 	assertString(t, w, expected, names)
@@ -1022,61 +1018,48 @@ func TestInspect(t *testing.T) {
 	w.Add(S{"D"}, nil)
 	// (A:3 B:1 C:3 D:1)[Exception:0]
 	expected = `
-		Exception:
-		  State:   false 0
+		Exception: false
+		  Time:    0
 		  Multi:   true
-		
-		A:
-		  State:   true 3
+		A: true
+		  Time:    3
 		  Auto:    true
 		  Require: C
-		
-		B:
-		  State:   true 1
+		B: true
+		  Time:    1
 		  Multi:   true
 		  Add:     C
-		
-		C:
-		  State:   true 3
+		C: true
+		  Time:    3
 		  After:   D
-		
-		D:
-		  State:   true 1
+		D: true
+		  Time:    1
 		  Add:     C B
-		
-		ErrProviding:
-		  State:   false 0
+		ErrProviding: false
+		  Time:    0
 		  Require: Exception
-		
-		ErrSendPayload:
-		  State:   false 0
+		ErrSendPayload: false
+		  Time:    0
 		  Require: Exception
-		
-		SendPayload:
-		  State:   false 0
+		SendPayload: false
+		  Time:    0
 		  Multi:   true
-		
-		ErrNetwork:
-		  State:   false 0
+		ErrNetwork: false
+		  Time:    0
 		  Require: Exception
-		
-		ErrHandlerTimeout:
-		  State:   false 0
+		ErrHandlerTimeout: false
+		  Time:    0
 		  Require: Exception
-		
-		Start:
-		  State:   false 0
-		
-		Ready:
-		  State:   false 0
+		Start: false
+		  Time:    0
+		Ready: false
+		  Time:    0
 		  Require: Start
-		
-		Healthcheck:
-		  State:   false 0
+		Healthcheck: false
+		  Time:    0
 		  Multi:   true
-		
-		Heartbeat:
-		  State:   false 0
+		Heartbeat: false
+		  Time:    0
 	`
 	assertString(t, w, expected, nil)
 

@@ -3,39 +3,14 @@ package utils
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"runtime/debug"
 	"slices"
 	"strings"
+
+	"github.com/lithammer/dedent"
 )
-
-// RandId generates a random ID of the given length (defaults to 8).
-func RandId(strLen int) string {
-	if strLen == 0 {
-		strLen = 16
-	}
-	strLen = strLen / 2
-
-	id := make([]byte, strLen)
-	_, err := rand.Read(id)
-	if err != nil {
-		return "error"
-	}
-
-	return hex.EncodeToString(id)
-}
-
-func Hostname() string {
-	if h := os.Getenv(EnvAmHostname); h != "" {
-		return h
-	}
-	host, _ := os.Hostname()
-	if host == "" {
-		host = "localhost"
-	}
-
-	return host
-}
 
 // EnvAmHostname will override the hostname in all machine names.
 const EnvAmHostname = "AM_HOSTNAME"
@@ -110,4 +85,40 @@ func SlicesUniq[S ~[]E, E comparable](coll S) S {
 		}
 	}
 	return ret
+}
+
+// RandId generates a random ID of the given length (defaults to 8).
+func RandId(strLen int) string {
+	if strLen == 0 {
+		strLen = 16
+	}
+	strLen = strLen / 2
+
+	id := make([]byte, strLen)
+	_, err := rand.Read(id)
+	if err != nil {
+		return "error"
+	}
+
+	return hex.EncodeToString(id)
+}
+
+func Hostname() string {
+	if h := os.Getenv(EnvAmHostname); h != "" {
+		return h
+	}
+	host, _ := os.Hostname()
+	if host == "" {
+		host = "localhost"
+	}
+
+	return host
+}
+
+func Sp(txt string, args ...any) string {
+	return fmt.Sprintf(dedent.Dedent(strings.Trim(txt, "\n")), args...)
+}
+
+func P(txt string, args ...any) (int, error) {
+	return fmt.Printf(dedent.Dedent(strings.Trim(txt, "\n")), args...)
 }
