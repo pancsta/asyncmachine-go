@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.10.2](https://github.com/pancsta/asyncmachine-go/tree/v0.10.2) (2025-02-25)
+
+- feat\(arpc\): add aRPC REPL [\#225](https://github.com/pancsta/asyncmachine-go/pull/225) (@pancsta)
+
 ## [v0.10.1](https://github.com/pancsta/asyncmachine-go/tree/v0.10.1) (2025-02-15)
 
 - feat\(am-dbg\): add `--client-list file.txt` for a live detailed dump [\#224](https://github.com/pancsta/asyncmachine-go/pull/224)

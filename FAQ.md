@@ -2,11 +2,12 @@
 
 ## How does asyncmachine work?
 
-It calls struct methods according to conventions and currently active states (eg `BarEnter`, `FooFoo`, `FooBar`, `BarState`).
+It calls struct methods according to conventions, a schema, and currently active states (eg `BarEnter`, `FooFoo`,
+`FooBar`, `BarState`). It tackles nondeterminism by embracing it - like an UDP event stream with structure.
 
 ## What is a "state" in asyncmachine?
 
-State as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
+State is binary as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
 
 ## What does "clock-based" mean?
 
@@ -48,7 +49,7 @@ No, just yes/no/later (`Executed`, `Canceled`, `Queued`).
 
 ## Does asyncmachine return errors?
 
-No, but there's an error state (`Exception`) and `Err()` getter. Optionally, there are also detailed error states
+No, but there's an error state (`Exception`) and the `Err()` getter. Optionally, there are also detailed error states
 (e.g. `ErrNetwork`).
 
 ## Why does asyncmachine avoid blocking?
@@ -61,12 +62,14 @@ Yes, all the public methods of `pkg/machine` are thread safe.
 
 ## Is asyncmachine single threaded?
 
-The queue executes on the thread which caused the mutation, while handlers execute in separate goroutines each,
-later usually forking another goroutine to unblock other handlers.
+The queue executes on the thread which caused the mutation, while handlers execute serialy in separate goroutines each.
+Each handler usually forks another goroutine to unblock the next handler. The amount of active goroutines can be limited
+with `amhelp.Pool` (`errgroup`) per a state, machine, or both. It's a form of structured concurrency.
 
 ## What's the origin of asyncmachine?
 
-It was a [research project](https://github.com/TobiaszCudnik/asyncmachine) between 2012 and 2019. [Video demo](http://tobiaszcudnik.github.io/asyncmachine-inspector/sample.mp4).
+It was a [self-research prototype](https://github.com/TobiaszCudnik/asyncmachine) between 2012 and 2019. There's a
+[video demo](http://tobiaszcudnik.github.io/asyncmachine-inspector/sample.mp4).
 
 ## How do I do X/Y/Z in asyncmachine?
 

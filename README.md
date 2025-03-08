@@ -33,13 +33,13 @@
 **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
 and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
 It offers [atomic consensus](/docs/manual.md#transition-lifecycle), [transparent RPC](/pkg/rpc/README.md),
-[TUI debugger](/tools/cmd/am-dbg/README.md), [telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md), [workers](/pkg/node/README.md),
-and [soon diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
+[TUI debugger](/tools/cmd/am-dbg/README.md), [telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md),
+[remote workers](/pkg/node/README.md), and [soon diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
 
 Its main purpose is workflows (in-process / distributed / decentralized), although it can be used for a wide range of
-stateful applications - daemons, UIs, configs, bots, agents, firewalls, consensus algos, smart graphs, etc.
+stateful applications - daemons, UIs, configs, bots, firewalls, consensus algos, smart graphs, etc.
 **asyncmachine** can precisely (and transparently) target a specific point in a scenario and easily bring structure to
-event-based systems. It takes care of most contexts, `select` statements, and panics.
+event-based systems. It takes care of most contexts, `select` statements, panics, and allows for structured concurrency.
 
 It aims at creating **autonomous** workflows with **organic** control flow and **stateful** APIs:
 
@@ -272,7 +272,7 @@ This monorepo offers the following importable packages and runnable tools:
 
 ## Community
 
-- [GH discussions](https://github.com/pancsta/asyncmachine-go/discussions)
+- [GitHub discussions](https://github.com/pancsta/asyncmachine-go/discussions)
 - [Matrix chat](https://matrix.to/#/#room:asyncmachine)
 
 ## Status
@@ -281,7 +281,6 @@ Under development, status depends on each package. The bottom layers seem prod g
 
 ## Development
 
-- all PRs welcome
 - before
     - `./scripts/dep-taskfile.sh`
     - `task install-deps`
@@ -289,6 +288,7 @@ Under development, status depends on each package. The bottom layers seem prod g
     - `task test`
     - `task format`
     - `task lint`
+- [good first issue](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
 
 <div align="center">
     <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video.gif?raw=true" alt="TUI Debugger" />
@@ -298,11 +298,12 @@ Under development, status depends on each package. The bottom layers seem prod g
 
 ### How does asyncmachine work?
 
-It calls struct methods according to conventions and currently active states.
+It calls struct methods according to conventions, a schema, and currently active states (eg `BarEnter`, `FooFoo`,
+`FooBar`, `BarState`). It tackles nondeterminism by embracing it - like an UDP event stream with structure.
 
 ### What is a "state" in asyncmachine?
 
-State as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
+State is a binary name as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
 
 ### What does "clock-based" mean?
 

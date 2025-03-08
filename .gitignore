@@ -50,6 +50,7 @@ go.work
 /*.gob
 /assets/*.cast.yml
 
+/tmp
 _py
 /.run
 /*.bz2

@@ -21,6 +21,7 @@ and [integration tests tutorial](/pkg/rpc/HOWTO.md).
 - multiplexing
 - reconnect / fail-safety
 - worker sending payloads to the client
+- [REPL](/tools/cmd/arpc/README.md)
 - initial optimizations
 
 Not implemented (yet):
@@ -441,5 +442,6 @@ Testing, not semantically versioned.
 - [`/examples/tree_state_source`](/examples/tree_state_source/README.md)
 - [`/pkg/rpc/HOWTO.md`](/pkg/rpc/HOWTO.md)
 - [`/examples/benchmark_grpc`](/examples/benchmark_grpc/README.md)
+- [`/tools/cmd/arpc`](/tools/cmd/arpc/README.mdhow )
 
 [Go back to the monorepo root](/README.md) to continue reading.

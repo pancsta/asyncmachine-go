@@ -113,6 +113,7 @@ Table of contents:
 ### [Benchmark libp2p PubSub](/examples/benchmark_libp2p_pubsub/README.md)
 
 - #relations #handlers #async #negotiation #libp2p
+- [origin](/tools/cmd/arpc/README.md)
 
 ### [Benchmark State Source](/examples/benchmark_libp2p_pubsub/README.md)
 
