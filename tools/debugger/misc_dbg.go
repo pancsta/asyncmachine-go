@@ -51,13 +51,16 @@ const (
 	toolFilterEmptyTx     ToolName = "skip-empty"
 	toolFilterHealthcheck ToolName = "skip-healthcheck"
 	ToolFilterSummaries   ToolName = "hide-summaries"
-	toolLog0              ToolName = "log-0"
-	toolLog1              ToolName = "log-1"
-	toolLog2              ToolName = "log-2"
-	toolLog3              ToolName = "log-3"
-	toolLog4              ToolName = "log-4"
-	toolReader            ToolName = "reader"
-	toolRain              ToolName = "rain"
+	toolLog               ToolName = "log"
+	toolGraph             ToolName = "graph"
+	toolTimelines         ToolName = "timelines"
+	// toolLog0              ToolName = "log-0"
+	// toolLog1              ToolName = "log-1"
+	// toolLog2              ToolName = "log-2"
+	// toolLog3              ToolName = "log-3"
+	// toolLog4              ToolName = "log-4"
+	toolReader ToolName = "reader"
+	toolRain   ToolName = "rain"
 
 	// row 2
 
@@ -73,6 +76,8 @@ const (
 	toolExpand   ToolName = "expand"
 	toolMatrix   ToolName = "matrix"
 	toolExport   ToolName = "export"
+	toolNextStep ToolName = "next-step"
+	toolPrevStep ToolName = "prev-step"
 )
 
 type MsgTxParsed struct {
@@ -96,18 +101,28 @@ type Opts struct {
 	DbgLogger   *log.Logger
 	// Filters for the transitions and logging
 	Filters *OptsFilters
+	// Timelines is the number of timelines to show (0-2).
+	Timelines int
 	// File path to import (brotli)
 	ImportData string
 	// File to dump client list into.
-	ClientList string
+	OutputClients bool
+	// Root dir for output files
+	OutputDir string
+	// Graph is the level of details of the current machine's graph 0-3
+	// 0 - off, 3 - most detailed
+	Graph int
 	// Screen overload for tests & ssh
 	Screen tcell.Screen
 	// Debugger's ID
 	ID string
 	// version of this instance
-	Version  string
-	MaxMemMb int
-	Log2Ttl  time.Duration
+	Version    string
+	MaxMemMb   int
+	Log2Ttl    time.Duration
+	ViewNarrow bool
+	ViewRain   bool
+	TailMode   bool
 }
 
 type OptsFilters struct {

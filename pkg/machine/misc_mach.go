@@ -252,6 +252,10 @@ type Tracer interface {
 	QueueEnd(machine Api)
 	StructChange(machine Api, old Struct)
 	VerifyStates(machine Api)
+
+	// StructChange is deprecated, use SchemaChange.
+	// TODO refac v0.11
+	// SchemaChange(machine Api, old Struct)
 }
 
 // NoOpTracer is a no-op implementation of Tracer, used for embedding.
@@ -525,11 +529,13 @@ func (eh *ExceptionHandler) ExceptionState(e *Event) {
 		err = errors.New("missing error in ExceptionState")
 	}
 	if args.Panic == nil {
+		errMsg := strings.TrimSpace(err.Error())
+
 		// TODO more mutation info
 		if mach.LogStackTrace && trace != "" {
-			mach.log(LogChanges, "[error] %s\n%s", err, trace)
+			mach.log(LogChanges, "[error] %s\n%s", errMsg, trace)
 		} else {
-			mach.log(LogChanges, "[error] %s", err)
+			mach.log(LogChanges, "[error] %s", errMsg)
 		}
 
 		return

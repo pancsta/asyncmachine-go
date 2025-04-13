@@ -44,17 +44,24 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 
 	// init the debugger
 	dbg, err := debugger.New(ctx, debugger.Opts{
-		DbgLogLevel:     p.LogLevel,
-		DbgLogger:       logger,
-		ImportData:      p.ImportData,
-		ClientList:      p.ClientList,
-		ServerAddr:      p.ServerAddr,
+		DbgLogLevel:   p.LogLevel,
+		DbgLogger:     logger,
+		ImportData:    p.ImportData,
+		OutputClients: p.OutputClients,
+		Graph:         p.Graph,
+		Timelines:     p.Timelines,
+		// ...:           p.FilterLogLevel,
+		OutputDir:       p.OutputDir,
+		ServerAddr:      p.ListenAddr,
 		EnableMouse:     p.EnableMouse,
 		SelectConnected: p.SelectConnected,
 		ShowReader:      p.Reader,
 		CleanOnConnect:  p.CleanOnConnect,
 		MaxMemMb:        p.MaxMemMb,
 		Log2Ttl:         p.Log2Ttl,
+		ViewNarrow:      p.ViewNarrow,
+		ViewRain:        p.ViewRain,
+		TailMode:        p.TailMode,
 		Version:         ver,
 	})
 	if err != nil {
@@ -71,8 +78,8 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 	}
 
 	// rpc server
-	if p.ServerAddr != "-1" {
-		go server.StartRpc(dbg.Mach, p.ServerAddr, nil, p.FwdData)
+	if p.ListenAddr != "-1" {
+		go server.StartRpc(dbg.Mach, p.ListenAddr, nil, p.FwdData)
 	}
 
 	// start and wait till the end

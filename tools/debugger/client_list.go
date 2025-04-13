@@ -12,12 +12,16 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
 // buildClientList builds the clientList with the list of clients.
 // selectedIndex: index of the selected item, -1 for the current one.
+// TODO state
 func (d *Debugger) buildClientList(selectedIndex int) {
+	if d.Mach.Not1(ss.ClientListVisible) {
+		return
+	}
 	if !d.buildCLScheduled.CompareAndSwap(false, true) {
 		// debounce non-forced updates
 		return
@@ -31,11 +35,15 @@ func (d *Debugger) buildClientList(selectedIndex int) {
 			d.doBuildClientList(selectedIndex)
 		}
 		// TODO avoid eval
-		d.Mach.Eval("doUpdateClientList", update, nil)
+		d.Mach.Eval("doBuildClientList", update, nil)
 	}()
 }
 
 func (d *Debugger) doBuildClientList(selectedIndex int) {
+	if d.Mach.Not1(ss.ClientListVisible) {
+		return
+	}
+
 	// prev state
 	selected := ""
 	var item *cview.ListItem
@@ -59,7 +67,7 @@ func (d *Debugger) doBuildClientList(selectedIndex int) {
 	humanSort(list)
 
 	pos := 0
-	// TODO REWRITE
+	// TODO REWRITE to states
 	for _, parent := range list {
 		if d.clientHasParent(parent) {
 			continue
@@ -97,6 +105,9 @@ func (d *Debugger) doBuildClientList(selectedIndex int) {
 }
 
 func (d *Debugger) updateClientList(immediate bool) {
+	if d.Mach.Not1(ss.ClientListVisible) {
+		return
+	}
 	if d.buildCLScheduled.Load() {
 		return
 	}
@@ -123,8 +134,11 @@ func (d *Debugger) updateClientList(immediate bool) {
 
 // TODO rewrite, update via a state
 func (d *Debugger) doUpdateClientList(immediate bool) {
-	if d.Mach.IsDisposed() || d.Mach.Is1(states.SelectingClient) ||
-		d.Mach.Is1(states.HelpDialog) {
+	if d.Mach.Not1(ss.ClientListVisible) {
+		return
+	}
+	if d.Mach.IsDisposed() || d.Mach.Is1(ss.SelectingClient) ||
+		d.Mach.Is1(ss.HelpDialog) {
 		return
 	}
 
@@ -178,7 +192,7 @@ func (d *Debugger) doUpdateClientList(immediate bool) {
 			item.SetMainText(label)
 
 			// txt file
-			if d.Opts.ClientList != "" {
+			if d.Opts.OutputClients {
 				if !hasParent {
 					txtFile += "\n"
 				}
@@ -207,8 +221,8 @@ func (d *Debugger) doUpdateClientList(immediate bool) {
 			d.draw(d.clientList)
 		}
 
-		// save to a file
-		if d.Opts.ClientList != "" {
+		// save to a file TODO skipped when file list not rendered
+		if d.Opts.OutputClients {
 			_, _ = d.clientListFile.Seek(0, 0)
 			_ = d.clientListFile.Truncate(0)
 			_, _ = d.clientListFile.Write([]byte(txtFile))
@@ -255,9 +269,7 @@ func (d *Debugger) clientListChild(
 			d.clientList.SetCurrentItem(pos)
 		}
 
-		pos = d.clientListChild(list, child, pos, selected, lvl+1)
-
-		pos++
+		pos = 1 + d.clientListChild(list, child, pos, selected, lvl+1)
 	}
 	return pos
 }
@@ -276,7 +288,7 @@ func (d *Debugger) getClientListLabel(
 	name string, c *Client, index int,
 ) string {
 	isHovered := d.clientList.GetCurrentItemIndex() == index
-	hasFocus := d.Mach.Is1(states.SidebarFocused)
+	hasFocus := d.Mach.Is1(ss.ClientListFocused)
 
 	var currCTxIdx int
 	var currCTx *telemetry.DbgMsgTx

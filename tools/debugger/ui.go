@@ -21,6 +21,15 @@ func (d *Debugger) initUiComponents() {
 	d.helpDialog = d.initHelpDialog()
 	d.exportDialog = d.initExportDialog()
 
+	// resize handler
+	d.App.SetAfterResizeFunc(func(_ int, _ int) {
+		// TODO state
+		go func() {
+			time.Sleep(time.Millisecond * 300)
+			d.checkNarrow()
+		}()
+	})
+
 	// tree view
 	d.tree = d.initMachineTree()
 	d.tree.SetTitle(" Schema ")
@@ -164,6 +173,11 @@ func (d *Debugger) initTimelineTx() {
 	d.timelineTxs.SetMouseCapture(func(
 		action cview.MouseAction, event *tcell.EventMouse,
 	) (cview.MouseAction, *tcell.EventMouse) {
+		c := d.C
+		if c == nil {
+			return action, event
+		}
+
 		if action == cview.MouseScrollUp || action == cview.MouseScrollLeft {
 			d.Mach.Add1(ss.Back, am.A{"amount": 5})
 
@@ -179,8 +193,8 @@ func (d *Debugger) initTimelineTx() {
 		_, _, width, _ := d.timelineTxs.GetRect()
 		x, _ := event.Position()
 		pos := float64(x) / float64(width)
-		// TODO eval / lock
-		txNum := math.Round(float64(len(d.C.MsgTxs)) * pos)
+		// TODO eval / lock / state
+		txNum := math.Round(float64(len(c.MsgTxs)) * pos)
 		d.Mach.Add1(ss.ScrollToTx, am.A{
 			"Client.cursorTx": int(txNum),
 			"trimHistory":     true,
@@ -272,8 +286,16 @@ func (d *Debugger) initAddressBar() {
 
 func (d *Debugger) initToolbar() {
 	for i := range d.toolbars {
+		// TODO handle mouse scroll left / right to scroll horizontally
+		// d.timelineTxs.SetMouseCapture(func(
+		// 		action cview.MouseAction, event *tcell.EventMouse,
+		// ) (cview.MouseAction, *tcell.EventMouse) {
+		// 	if action == cview.MouseScrollUp || action == cview.MouseScrollLeft {
+		// rows, cols := GetOffset
+		// SetOffset(rows, cols+5)
 
 		d.toolbars[i] = cview.NewTable()
+		d.toolbars[i].ScrollToBeginning()
 		d.toolbars[i].SetSelectedStyle(colorActive,
 			cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
 		d.toolbars[i].SetSelectable(true, true)
@@ -315,47 +337,71 @@ func (d *Debugger) initToolbar() {
 			{id: toolFilterHealthcheck, label: "health tx", active: func() bool {
 				return d.Mach.Not1(ss.FilterHealthcheck)
 			}},
-			{id: ToolFilterSummaries, label: "timestamps", active: func() bool {
+			{id: ToolFilterSummaries, label: "times", active: func() bool {
 				return d.Mach.Not1(ss.FilterSummaries)
 			}},
-			{id: toolLog0, label: "L0", active: func() bool {
-				return d.Opts.Filters.LogLevel == am.LogNothing
+			{id: toolLog, label: "log", active: func() bool {
+				return d.Opts.Filters.LogLevel > am.LogNothing
+			}, activeLabel: func() string {
+				// TODO make Opts threadsafe
+				return strconv.Itoa(int(d.Opts.Filters.LogLevel))
 			}},
-			{id: toolLog1, label: "L1", active: func() bool {
-				return d.Opts.Filters.LogLevel == am.LogChanges
+			// TODO make it an anchor for file://...svg
+			{id: toolGraph, label: "graph", active: func() bool {
+				return d.Opts.Graph > 0
+			}, activeLabel: func() string {
+				// TODO make Opts threadsafe
+				return strconv.Itoa(d.Opts.Graph)
 			}},
-			{id: toolLog2, label: "L2", active: func() bool {
-				return d.Opts.Filters.LogLevel == am.LogOps
+			{id: toolTimelines, label: "timelines", active: func() bool {
+				return d.Opts.Timelines > 0
+			}, activeLabel: func() string {
+				// TODO make Opts threadsafe
+				return strconv.Itoa(d.Opts.Timelines)
 			}},
-			{id: toolLog3, label: "L3", active: func() bool {
-				return d.Opts.Filters.LogLevel == am.LogDecisions
-			}},
-			{id: toolLog4, label: "L4", active: func() bool {
-				return d.Opts.Filters.LogLevel == am.LogEverything
-			}},
+			// {id: toolLog0, label: "L0", active: func() bool {
+			// 	return d.Opts.Filters.LogLevel == am.LogNothing
+			// }},
+			// {id: toolLog1, label: "L1", active: func() bool {
+			// 	return d.Opts.Filters.LogLevel == am.LogChanges
+			// }},
+			// {id: toolLog2, label: "L2", active: func() bool {
+			// 	return d.Opts.Filters.LogLevel == am.LogOps
+			// }},
+			// {id: toolLog3, label: "L3", active: func() bool {
+			// 	return d.Opts.Filters.LogLevel == am.LogDecisions
+			// }},
+			// {id: toolLog4, label: "L4", active: func() bool {
+			// 	return d.Opts.Filters.LogLevel == am.LogEverything
+			// }},
 			{id: toolReader, label: "reader", active: func() bool {
 				return d.Mach.Is1(ss.LogReaderEnabled)
 			}},
 			{id: toolRain, label: "rain", active: func() bool {
 				return d.Mach.Is1(ss.MatrixRain)
 			}},
+			{id: toolMatrix, label: "matrix", active: func() bool {
+				return d.Mach.Any1(ss.MatrixView, ss.TreeMatrixView)
+			}},
 		},
 
 		// row 2
 		{
-			{id: toolHelp, label: "[yellow]help[-]", active: func() bool {
+			{id: toolHelp, label: "[yellow:b]help[-]", active: func() bool {
 				return d.Mach.Is1(ss.HelpDialog)
-			}},
-			{id: toolPlay, label: "play", active: func() bool {
-				return d.Mach.Is1(ss.Playing)
 			}},
 			{id: toolTail, label: "tail", active: func() bool {
 				return d.Mach.Is1(ss.TailMode)
 			}},
-			{id: toolPrev, label: "prev", icon: "◀ "},
-			{id: toolNext, label: "next", icon: "▶ "},
-			{id: toolJumpPrev, label: "jump prev", icon: "◀ "},
-			{id: toolJumpNext, label: "jump next", icon: "▶ "},
+			{id: toolJumpPrev, label: "jump", icon: "◀ "},
+			{id: toolPrev, label: "tx", icon: "◀ "},
+			{id: toolPrevStep, label: "step", icon: "<"},
+			{id: toolNextStep, label: "step", icon: ">"},
+			{id: toolNext, label: "tx", icon: "▶ "},
+			{id: toolJumpNext, label: "jump", icon: "▶ "},
+			{id: toolPlay, label: "play", active: func() bool {
+				return d.Mach.Is1(ss.Playing)
+			}},
 			{id: toolFirst, label: "first", icon: "1"},
 			{id: toolLast, label: "last", icon: "N"},
 			{
@@ -365,9 +411,6 @@ func (d *Debugger) initToolbar() {
 					return len(ch) > 0 && ch[0].IsExpanded()
 				},
 			},
-			{id: toolMatrix, label: "matrix", active: func() bool {
-				return d.Mach.Any1(ss.MatrixView, ss.TreeMatrixView)
-			}},
 			{id: toolExport, label: "export", active: func() bool {
 				return d.Mach.Is1(ss.ExportDialog)
 			}},
@@ -424,7 +467,7 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[%s]state[-]        active
 		[%s]state[-]        not active
 		[red]state[-]        active error
-		[::b]*[::-]            handler ran
+		[::b]*[::-]            executed handler
 		[::b]+[::-]            to be activated
 		[::b]-[::-]            to be de-activated
 		[::b]bold[::-]         touched state
@@ -556,13 +599,13 @@ func (d *Debugger) updateHelpDialog() {
 
 func (d *Debugger) initLayout() {
 	// transition rows
-	currTxBar := cview.NewFlex()
-	currTxBar.AddItem(d.currTxBarLeft, 0, 1, false)
-	currTxBar.AddItem(d.currTxBarRight, 0, 1, false)
+	d.currTxBar = cview.NewFlex()
+	d.currTxBar.AddItem(d.currTxBarLeft, 0, 1, false)
+	d.currTxBar.AddItem(d.currTxBarRight, 0, 1, false)
 
-	nextTxBar := cview.NewFlex()
-	nextTxBar.AddItem(d.nextTxBarLeft, 0, 1, false)
-	nextTxBar.AddItem(d.nextTxBarRight, 0, 1, false)
+	d.nextTxBar = cview.NewFlex()
+	d.nextTxBar.AddItem(d.nextTxBarLeft, 0, 1, false)
+	d.nextTxBar.AddItem(d.nextTxBarRight, 0, 1, false)
 
 	// content grid
 	d.treeLogGrid = cview.NewGrid()
@@ -585,33 +628,82 @@ func (d *Debugger) initLayout() {
 	d.contentPanels.SetBackgroundColor(colorHighlight)
 
 	// main grid
-	mainGrid := cview.NewGrid()
-	mainGrid.SetRows(1, 1, -1, 2, 3, 2, 3, 1, 1, 1)
-	cols := []int{ /*sidebar*/ -1 /*content*/, -1, -1, -1, -1, -1, -1, -1, -1}
-	mainGrid.SetColumns(cols...)
-	// row 1 left
-	mainGrid.AddItem(d.addressBar, 0, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(d.tagsBar, 1, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(d.clientList, 2, 0, 1, 2, 0, 0, false)
-	// row 1 mid, right
-	mainGrid.AddItem(d.contentPanels, 2, 2, 1, 7, 0, 0, false)
-	// row 2...5
-	mainGrid.AddItem(currTxBar, 3, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(d.timelineTxs, 4, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(nextTxBar, 5, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(d.timelineSteps, 6, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(d.toolbars[0], 7, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(d.toolbars[1], 8, 0, 1, len(cols), 0, 0, false)
-	mainGrid.AddItem(d.statusBar, 9, 0, 1, len(cols), 0, 0, false)
+	d.mainGrid = cview.NewGrid()
+	d.updateLayout()
 
 	panels := cview.NewPanels()
 	panels.AddPanel("export", d.exportDialog, false, true)
 	panels.AddPanel("help", d.helpDialog, true, true)
-	panels.AddPanel("main", mainGrid, true, true)
+	panels.AddPanel("main", d.mainGrid, true, true)
 
-	d.mainGrid = mainGrid
 	d.LayoutRoot = panels
 	d.updateBorderColor()
+}
+
+func (d *Debugger) updateLayout() {
+	if d.mainGrid == nil {
+		return
+	}
+
+	d.mainGrid.Clear()
+	d.mainGrid.SetRows(1, 1, -1, 1, 1, 1)
+
+	// columns
+	var cols []int
+	if d.Mach.Is1(ss.NarrowLayout) {
+		cols = []int{ /*content*/ -1, -1, -1, -1, -1, -1, -1, -1}
+	} else {
+		cols = []int{
+			/*client list*/ -1,
+			/*content*/ -1, -1, -1, -1, -1, -1, -1, -1,
+		}
+	}
+	d.mainGridCols = cols
+	d.mainGrid.SetColumns(cols...)
+
+	// row 0
+	d.mainGrid.AddItem(d.addressBar, 0, 0, 1, len(cols), 0, 0, false)
+
+	// row 1
+	d.mainGrid.AddItem(d.tagsBar, 1, 0, 1, len(cols), 0, 0, false)
+
+	// row 2
+	if d.Mach.Not1(ss.NarrowLayout) {
+		d.mainGrid.AddItem(d.clientList, 2, 0, 1, 2, 0, 0, false)
+
+		// row 2 mid, right
+		d.mainGrid.AddItem(d.contentPanels, 2, 2, 1, 7, 0, 0, false)
+	} else {
+		// row 2 mid, right
+		d.mainGrid.AddItem(d.contentPanels, 2, 0, 1, len(cols), 0, 0, false)
+	}
+
+	row := 3
+
+	// timelines
+	if d.Mach.Not1(ss.TimelineHidden) {
+		d.mainGrid.SetRows(1, 1, -1, 2, 3, 1, 1, 1)
+
+		d.mainGrid.AddItem(d.currTxBar, row, 0, 1, len(cols), 0, 0, false)
+		row++
+		d.mainGrid.AddItem(d.timelineTxs, row, 0, 1, len(cols), 0, 0, false)
+		row++
+	}
+	if d.Mach.Not1(ss.TimelineStepsHidden) {
+		d.mainGrid.SetRows(1, 1, -1, 2, 3, 2, 3, 1, 1, 1)
+
+		d.mainGrid.AddItem(d.nextTxBar, row, 0, 1, len(cols), 0, 0, false)
+		row++
+		d.mainGrid.AddItem(d.timelineSteps, row, 0, 1, len(cols), 0, 0, false)
+		row++
+	}
+
+	// toolbars and status
+	d.mainGrid.AddItem(d.toolbars[0], row, 0, 1, len(cols), 0, 0, false)
+	row++
+	d.mainGrid.AddItem(d.toolbars[1], row, 0, 1, len(cols), 0, 0, false)
+	row++
+	d.mainGrid.AddItem(d.statusBar, row, 0, 1, len(cols), 0, 0, false)
 }
 
 func (d *Debugger) drawViews() {
@@ -653,10 +745,22 @@ func (d *Debugger) draw(components ...cview.Primitive) {
 				d.redrawCallback()
 				d.redrawCallback = nil
 			}
-			// TODO race condition, collect all components passed before a render
+			// TODO collect all components passed before a render (what?)
 		}, components...)
 		d.repaintScheduled.Store(false)
 	}()
+}
+
+func (d *Debugger) checkNarrow() {
+	_, _, width, _ := d.LayoutRoot.GetRect()
+	// TODO syntax sugar
+	// 	d.Mach.Set1Cond(ss.NarrowLayout, nil, width < 30)
+	if width < 100 {
+		d.Mach.Add1(ss.NarrowLayout, nil)
+	} else if !d.Opts.ViewNarrow {
+		// remove if not forced
+		d.Mach.Remove1(ss.NarrowLayout, nil)
+	}
 }
 
 func (d *Debugger) expandStructPane() {

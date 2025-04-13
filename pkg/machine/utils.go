@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ///// ///// /////
@@ -35,6 +36,7 @@ func StatesEqual(states1 S, states2 S) bool {
 // IsTimeAfter checks if time1 is after time2. Requires a deterministic states
 // order, e.g. by using Machine.VerifyStates.
 func IsTimeAfter(time1, time2 Time) bool {
+	// TODO move to Time.IsAfter
 	after := false
 	for i, t1 := range time1 {
 		if t1 < time2[i] {
@@ -44,6 +46,7 @@ func IsTimeAfter(time1, time2 Time) bool {
 			after = true
 		}
 	}
+
 	return after
 }
 
@@ -164,27 +167,33 @@ func StateSet(source State, auto, multi bool, overlay State) State {
 	return s
 }
 
-// StructMerge merges multiple state structs into one, overriding the previous
+// SchemaMerge merges multiple state structs into one, overriding the previous
 // state definitions. No relation-level merging takes place.
-func StructMerge(stateStructs ...Struct) Struct {
-	// TODO refac SchemaMerge
+func SchemaMerge(stateStructs ...Schema) Schema {
 	// TODO mark all-but-last states as Inherited?
 	// TODO example
 	// TODO test
 	// defaults
 	l := len(stateStructs)
 	if l == 0 {
-		return Struct{}
+		return Schema{}
 	} else if l == 1 {
 		return stateStructs[0]
 	}
 
-	ret := make(Struct)
+	ret := make(Schema)
 	for i := 0; i < l; i++ {
 		maps.Copy(ret, stateStructs[i])
 	}
 
 	return CloneStates(ret)
+}
+
+// StructMerge merges multiple state structs into one, overriding the previous
+// state definitions. No relation-level merging takes place.
+// Deprecated: use SchemaMerge
+func StructMerge(stateStructs ...Schema) Schema {
+	return SchemaMerge(stateStructs...)
 }
 
 // Serialized is a machine state serialized to a JSON/YAML/TOML compatible
@@ -510,6 +519,10 @@ func disposeWithCtx[T comparable](
 			return
 		case <-ctx.Done():
 		}
+
+		// delay a bit to avoid racing with `case <-ctx.Done():`
+		// TODO config
+		time.Sleep(100 * time.Millisecond)
 
 		// TODO track
 		closeSafe(ch)

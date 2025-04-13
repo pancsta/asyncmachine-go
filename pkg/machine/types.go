@@ -34,14 +34,13 @@ const (
 	SuffixEnd   = "End"
 )
 
-// S (state names) is a string list of state names.
-type S []string
-
-// Struct is a map of state names to state definitions.
-// TODO refac: Schema
 type (
-	Struct = map[string]State
-	Schema = Struct
+	// S (state names) is a string list of state names.
+	S []string
+	// Schema is a map of state names to state definitions.
+	Schema = map[string]State
+	// Deprecated, use Schema
+	Struct = Schema
 )
 
 // State defines a single state of a machine, its properties and relations.
@@ -245,25 +244,25 @@ const (
 var (
 	// ErrStateUnknown indicates that the state is unknown.
 	ErrStateUnknown = errors.New("state unknown")
-	// ErrStateInactive indicates that a neccessary state isn't active.
+	// ErrStateInactive indicates that a necessary state isn't active.
 	ErrStateInactive = errors.New("state not active")
-	// ErrCanceled can be used to indicate a canceled Transition.
+	// ErrCanceled indicates that a transition was canceled.
 	ErrCanceled = errors.New("transition canceled")
-	// ErrQueued can be used to indicate a queued Transition.
+	// ErrQueued indicates that a transition was queued.
 	ErrQueued = errors.New("transition queued")
-	// ErrInvalidArgs can be used to indicate invalid arguments.
+	// ErrInvalidArgs indicates that arguments are invalid.
 	ErrInvalidArgs = errors.New("invalid arguments")
-	// ErrHandlerTimeout indicates a timed out mutation.
+	// ErrHandlerTimeout indicates that a mutation timed out.
 	ErrHandlerTimeout = errors.New("handler timeout")
-	// ErrHandlerTimeout indicates a timed out eval func.
+	// ErrEvalTimeout indicates that an eval func timed out.
 	ErrEvalTimeout = errors.New("eval timeout")
-	// ErrTimeout can be used to indicate a timeout.
+	// ErrTimeout indicates that a generic timeout occurred.
 	ErrTimeout = errors.New("timeout")
-	// ErrStateMissing is used to indicate missing states.
+	// ErrStateMissing indicates that states are missing.
 	ErrStateMissing = errors.New("missing states")
-	// ErrRelation is used to indicate a relation definition error.
+	// ErrRelation indicates that a relation definition is invalid.
 	ErrRelation = errors.New("relation error")
-	// ErrDisposed is used to indicate that the machine has been disposed.
+	// ErrDisposed indicates that the machine has been disposed.
 	ErrDisposed = errors.New("machine disposed")
 	// ErrSchema indicates an issue with the state schema.
 	ErrSchema = errors.New("machine disposed")

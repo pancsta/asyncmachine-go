@@ -295,7 +295,7 @@ tasks:
   install-deps:
     cmds:
       - go mod tidy
-      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.8
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.5
       - go install mvdan.cc/gofumpt@latest
       - go install golang.org/x/tools/cmd/goimports@latest
       - go install github.com/mattn/goreman@latest
@@ -430,7 +430,6 @@ tasks:
         echo Grafana: http://localhost:3000
         echo Jaeger: http://localhost:16686
 
-
   web-metrics-clean:
     cmd: docker-compose -f deploy/web-metrics/docker-compose.yml down -v
 
@@ -454,6 +453,10 @@ tasks:
         done
 
   arpc:
-    desc: "Start an aRPC REPL"
+    desc: Start an aRPC REPL
     cmd: go run ./tools/cmd/arpc
         {{.CLI_ARGS}}
+
+  am-dbg-dashboard:
+    desc: Start an example am-dbg dashboard
+    cmd: zellij --layout ./config/dashboards/2x1x1.kdl

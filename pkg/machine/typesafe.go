@@ -60,6 +60,7 @@ func parseStateNames(v reflect.Value, names *S) {
 				value.Set(elem)
 			}
 			parseStateNames(value.Elem(), names)
+			// TODO generic type, defaulting to string, for typed indexes
 		} else if value.CanSet() && kind == reflect.String {
 			// local state name
 			value.SetString(field.Name)

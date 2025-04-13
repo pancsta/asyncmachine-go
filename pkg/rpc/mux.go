@@ -9,6 +9,7 @@ import (
 
 	"github.com/soheilhy/cmux"
 
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 )
@@ -67,6 +68,10 @@ func NewMux(
 	}
 	mach.SetLogArgs(LogArgs)
 	d.Mach = mach
+	// optional env debug
+	if os.Getenv(EnvAmRpcDbg) != "" {
+		amhelp.MachDebugEnv(mach)
+	}
 
 	return d, nil
 }
