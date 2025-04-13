@@ -21,8 +21,6 @@ import (
 // TODO cobra groups
 const (
 	// TODO remove
-	pLogFile = "2"
-	// TODO remove
 	pLogLevel        = "log-level"
 	pServerAddr      = "listen-on"
 	pServerAddrShort = "l"
@@ -118,7 +116,6 @@ func RootCmd(fn RootFn) *cobra.Command {
 func AddFlags(rootCmd *cobra.Command) {
 
 	f := rootCmd.Flags()
-	f.String(pLogFile, "", "Log file path")
 	f.Int(pLogLevel, 0, "Log level, 0-5 (silent-everything)")
 	f.StringP(pServerAddr, pServerAddrShort, telemetry.DbgAddr,
 		"Host and port for the debugger to listen on")
