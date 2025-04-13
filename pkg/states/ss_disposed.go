@@ -27,7 +27,7 @@ type DisposedGroupsDef struct {
 
 // DisposedStruct represents all relations and properties of DisposedStates.
 var DisposedStruct = am.Struct{
-	ssD.RegisterDisposal: {},
+	ssD.RegisterDisposal: {Multi: true},
 	ssD.Disposing:        {Remove: sgD.Disposed},
 	ssD.Disposed:         {Remove: SAdd(sgD.Disposed, S{ssB.Start})},
 }
@@ -61,8 +61,6 @@ func (h *DisposedHandlers) RegisterDisposalEnter(e *am.Event) bool {
 }
 
 func (h *DisposedHandlers) RegisterDisposalState(e *am.Event) {
-	e.Machine().Remove1(ssD.RegisterDisposal, nil)
-
 	fn := e.Args[DisposedArgHandler].(am.HandlerDispose)
 	h.DisposedHandlers = append(h.DisposedHandlers, fn)
 }

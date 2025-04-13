@@ -5,8 +5,7 @@ on: [push]
 jobs:
   build:
 
-    # TODO disable until fixed on GH
-    if: false  # Disable this job
+#    if: false  # Disable this job
 
     runs-on: ubuntu-latest
     strategy:
