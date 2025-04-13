@@ -2767,30 +2767,31 @@ func (m *Machine) Inspect(states S) string {
 	for _, name := range states {
 
 		state := m.states[name]
-		active := "false"
+		active := "0"
 		if slices.Contains(m.activeStates, name) {
-			active = "true"
+			active = "1"
 		}
 
-		ret += fmt.Sprintf("%s: %s\n  Time:    %d\n",
-			name, active, m.clock[name])
+		// TODO sync with rpc worker
+		ret += fmt.Sprintf("%s %s\n"+
+			"    |Time     %d\n", active, name, m.clock[name])
 		if state.Auto {
-			ret += "  Auto:    true\n"
+			ret += "    |Auto     true\n"
 		}
 		if state.Multi {
-			ret += "  Multi:   true\n"
+			ret += "    |Multi    true\n"
 		}
 		if state.Add != nil {
-			ret += "  Add:     " + j(state.Add) + "\n"
+			ret += "    |Add      " + j(state.Add) + "\n"
 		}
 		if state.Require != nil {
-			ret += "  Require: " + j(state.Require) + "\n"
+			ret += "    |Require  " + j(state.Require) + "\n"
 		}
 		if state.Remove != nil {
-			ret += "  Remove:  " + j(state.Remove) + "\n"
+			ret += "    |Remove   " + j(state.Remove) + "\n"
 		}
 		if state.After != nil {
-			ret += "  After:   " + j(state.After) + "\n"
+			ret += "    |After    " + j(state.After) + "\n"
 		}
 	}
 

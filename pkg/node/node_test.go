@@ -286,7 +286,7 @@ func TestClientWorkerPayload(t *testing.T) {
 	}
 
 	// t.Parallel()
-	amhelp.EnableDebugging(false)
+	// amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

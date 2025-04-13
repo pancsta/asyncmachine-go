@@ -991,23 +991,23 @@ func TestInspect(t *testing.T) {
 	// (A:1 C:1)[B:0 D:0 Exception:0]
 	names := S{"A", "B", "C", "D", "Exception"}
 	expected := `
-		A: true
-		  Time:    1
-		  Auto:    true
-		  Require: C
-		B: false
-		  Time:    0
-		  Multi:   true
-		  Add:     C
-		C: true
-		  Time:    1
-		  After:   D
-		D: false
-		  Time:    0
-		  Add:     C B
-		Exception: false
-		  Time:    0
-		  Multi:   true
+    1 A
+        |Time     1
+        |Auto     true
+        |Require  C
+    0 B
+        |Time     0
+        |Multi    true
+        |Add      C
+    1 C
+        |Time     1
+        |After    D
+    0 D
+        |Time     0
+        |Add      C B
+    0 Exception
+        |Time     0
+        |Multi    true
 		`
 	assertString(t, w, expected, names)
 	// (A:1 C:1)[B:0 D:0 Exception:0]
@@ -1018,48 +1018,48 @@ func TestInspect(t *testing.T) {
 	w.Add(S{"D"}, nil)
 	// (A:3 B:1 C:3 D:1)[Exception:0]
 	expected = `
-		Exception: false
-		  Time:    0
-		  Multi:   true
-		A: true
-		  Time:    3
-		  Auto:    true
-		  Require: C
-		B: true
-		  Time:    1
-		  Multi:   true
-		  Add:     C
-		C: true
-		  Time:    3
-		  After:   D
-		D: true
-		  Time:    1
-		  Add:     C B
-		ErrProviding: false
-		  Time:    0
-		  Require: Exception
-		ErrSendPayload: false
-		  Time:    0
-		  Require: Exception
-		SendPayload: false
-		  Time:    0
-		  Multi:   true
-		ErrNetwork: false
-		  Time:    0
-		  Require: Exception
-		ErrHandlerTimeout: false
-		  Time:    0
-		  Require: Exception
-		Start: false
-		  Time:    0
-		Ready: false
-		  Time:    0
-		  Require: Start
-		Healthcheck: false
-		  Time:    0
-		  Multi:   true
-		Heartbeat: false
-		  Time:    0
+		0 Exception
+		    |Time     0
+		    |Multi    true
+		1 A
+		    |Time     3
+		    |Auto     true
+		    |Require  C
+		1 B
+		    |Time     1
+		    |Multi    true
+		    |Add      C
+		1 C
+		    |Time     3
+		    |After    D
+		1 D
+		    |Time     1
+		    |Add      C B
+		0 ErrProviding
+		    |Time     0
+		    |Require  Exception
+		0 ErrSendPayload
+		    |Time     0
+		    |Require  Exception
+		0 SendPayload
+		    |Time     0
+		    |Multi    true
+		0 ErrNetwork
+		    |Time     0
+		    |Require  Exception
+		0 ErrHandlerTimeout
+		    |Time     0
+		    |Require  Exception
+		0 Start
+		    |Time     0
+		0 Ready
+		    |Time     0
+		    |Require  Start
+		0 Healthcheck
+		    |Time     0
+		    |Multi    true
+		0 Heartbeat
+		    |Time     0
 	`
 	assertString(t, w, expected, nil)
 

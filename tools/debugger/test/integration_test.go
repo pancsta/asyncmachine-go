@@ -5,8 +5,10 @@ import (
 	"encoding/gob"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/joho/godotenv"
+	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	"github.com/soheilhy/cmux"
 	"github.com/stretchr/testify/assert"
 
@@ -41,7 +43,8 @@ func init() {
 
 	// worker
 	worker, err = amtest.NewDbgWorker(false, debugger.Opts{
-		ID: "loc-worker"})
+		ID: "loc-worker",
+	})
 	if err != nil {
 		panic(err)
 	}
@@ -101,11 +104,6 @@ func TestUserFwd100(t *testing.T) {
 }
 
 func TestTailModeFLAKY(t *testing.T) {
-	// TODO flaky
-	if os.Getenv(amhelp.EnvAmTestRunner) != "" {
-		t.Skip("FLAKY")
-		return
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -151,6 +149,9 @@ func TestTailModeFLAKY(t *testing.T) {
 	worker.Mach.Add1(ss.UserBack, nil)
 	// switch to tail mode
 	worker.Mach.Add1(ss.TailMode, nil)
+
+	amhelpt.WaitForAll(t, t.Name(), ctx, time.Second,
+		worker.Mach.When1(ss.TailMode, nil))
 
 	// assert.NotEqual(t, res, am.Canceled)
 	assert.Equal(t, 4, len(worker.C.MsgTxs), "tx count")

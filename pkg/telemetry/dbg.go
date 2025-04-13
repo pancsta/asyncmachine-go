@@ -49,6 +49,7 @@ type DbgMsgStruct struct {
 	// state names defining the indexes for diffs
 	StatesIndex am.S
 	// all the states with relations
+	// TODO refac: Schema
 	States am.Struct
 	// parent machine ID
 	Parent string
@@ -71,7 +72,8 @@ type DbgMsgTx struct {
 	MachineID string
 	// Transition ID
 	ID string
-	// Clocks is [am.TimeAfter], state indexes to tick values after this tx
+	// Clocks is represents the machine time [am.Time] from after the current
+	// transition.
 	// TODO refac to TimeAfter, re-gen all the assets
 	Clocks am.Time
 	// result of the transition
@@ -93,7 +95,7 @@ type DbgMsgTx struct {
 	IsAuto bool
 	// queue length at the start of the transition
 	Queue int
-	// TODO include missed mutations because of the queue limit
+	// TODO include missed mutations (?) because of the queue limit
 	//  since the previous tx
 	// Time is human time. Don't send this over the wire.
 	// TODO remove, re-gen all the assets

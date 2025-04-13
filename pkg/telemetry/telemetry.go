@@ -9,6 +9,12 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
+const (
+	EnvOtelTrace    = "AM_OTEL_TRACE"
+	EnvOtelTraceTxs = "AM_OTEL_TRACE_TXS"
+	EnvService      = "AM_SERVICE"
+)
+
 func BindLokiLogger(mach am.Api, client promtail.Client) {
 	labels := map[string]string{
 		"asyncmachine_id": mach.Id(),

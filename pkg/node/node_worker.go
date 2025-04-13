@@ -138,7 +138,6 @@ func (w *Worker) StartState(e *am.Event) {
 		_ = AddErrRpc(w.Mach, err, nil)
 		return
 	}
-	amhelp.MachDebugEnv(w.LocalRpc.Mach)
 	w.LocalRpc.DeliveryTimeout = w.DeliveryTimeout
 	err = errors.Join(
 		// bind to Ready state
@@ -162,7 +161,6 @@ func (w *Worker) StartState(e *am.Event) {
 		_ = AddErrRpc(w.Mach, err, nil)
 		return
 	}
-	amhelp.MachDebugEnv(w.PublicRpc.Mach)
 	w.PublicRpc.DeliveryTimeout = w.DeliveryTimeout
 	err = errors.Join(
 		// bind to Ready state
@@ -230,7 +228,6 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 		_ = AddErrRpc(w.Mach, err, nil)
 		return
 	}
-	amhelp.MachDebugEnv(w.BootRpc.Mach)
 	w.BootRpc.Start()
 
 	// unblock

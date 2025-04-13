@@ -4,7 +4,6 @@ package rpc
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -104,8 +103,9 @@ func NewServer(
 		return nil, fmt.Errorf("worker states not verified, call VerifyStates()")
 	}
 	if !sourceMach.Has(ssW.Names()) {
-		err := errors.New(
-			"worker has to implement pkg/rpc/states/WorkerStatesDef")
+		err := fmt.Errorf(
+			"%w: RPC worker has to implement pkg/rpc/states/WorkerStatesDef",
+			am.ErrSchema)
 
 		return nil, err
 	}
@@ -138,6 +138,10 @@ func NewServer(
 		_ = s.Source.DetachHandlers(s.deliveryHandlers)
 	})
 	s.Mach = mach
+	// optional env debug
+	if os.Getenv(EnvAmRpcDbg) != "" {
+		amhelp.MachDebugEnv(mach)
+	}
 
 	// bind to worker via Tracer API
 	s.tracer = &WorkerTracer{s: s}

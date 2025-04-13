@@ -49,6 +49,8 @@ type ReplStatesDef struct {
 
 	// inherit from BasicStatesDef
 	*ss.BasicStatesDef
+	// inherit from ConnPoolStatesDef
+	*ss.ConnPoolStatesDef
 	// inherit from DisposedStatesDef
 	*ss.DisposedStatesDef
 }
@@ -64,32 +66,13 @@ type ReplGroupsDef struct {
 var ReplStruct = StructMerge(
 	// inherit from BasicStruct
 	ss.BasicStruct,
+	// inherit from ConnPoolSchema
+	ss.ConnPoolSchema,
 	// inherit from DisposedStruct
 	ss.DisposedStruct,
-	am.Struct{
+	am.Schema{
 
 		ssC.ErrSyntax: {},
-
-		// CONNECTION
-
-		ssC.Disconnected: {
-			Remove: S{ssC.Connecting, ssC.ConnectedFully, ssC.Disconnecting},
-		},
-		ssC.Connecting: {
-			Require: S{ssC.Start},
-			Remove:  S{ssC.Disconnecting},
-		},
-		ssC.Connected: {
-			Require: S{ssC.Start},
-			Remove:  S{ssC.Disconnected},
-		},
-		ssC.ConnectedFully: {
-			Require: S{ssC.Connected},
-			Remove:  S{ssC.Disconnected},
-		},
-		ssC.Disconnecting: {
-			Remove: S{ssC.ConnectedFully, ssC.Connected, ssC.Connecting},
-		},
 
 		// PIPES
 

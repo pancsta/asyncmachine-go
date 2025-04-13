@@ -1133,31 +1133,31 @@ func (w *Worker) Inspect(states am.S) string {
 	for _, name := range states {
 
 		state := w.schema[name]
-		active := "false"
+		active := "0"
 		if slices.Contains(activeStates, name) {
-			active = "true"
+			active = "1"
 		}
 
 		idx := slices.Index(w.stateNames, name)
-		ret += fmt.Sprintf("%s: %s\n  Time:    %d\n",
-			name, active, w.machTime[idx])
+		ret += fmt.Sprintf("%s %s\n"+
+			"    |Time     %d\n", active, name, w.machTime[idx])
 		if state.Auto {
-			ret += "  Auto:    true\n"
+			ret += "    |Auto     true\n"
 		}
 		if state.Multi {
-			ret += "  Multi:   true\n"
+			ret += "    |Multi    true\n"
 		}
 		if state.Add != nil {
-			ret += "  Add:     " + utils.J(state.Add) + "\n"
+			ret += "    |Add      " + utils.J(state.Add) + "\n"
 		}
 		if state.Require != nil {
-			ret += "  Require: " + utils.J(state.Require) + "\n"
+			ret += "    |Require  " + utils.J(state.Require) + "\n"
 		}
 		if state.Remove != nil {
-			ret += "  Remove:  " + utils.J(state.Remove) + "\n"
+			ret += "    |Remove   " + utils.J(state.Remove) + "\n"
 		}
 		if state.After != nil {
-			ret += "  After:   " + utils.J(state.After) + "\n"
+			ret += "    |After    " + utils.J(state.After) + "\n"
 		}
 	}
 

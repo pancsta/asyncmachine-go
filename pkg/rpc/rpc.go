@@ -35,6 +35,15 @@ const (
 	EnvAmRpcLogServer = "AM_RPC_LOG_SERVER"
 	// EnvAmRpcLogClient enables machine logging for RPC client.
 	EnvAmRpcLogClient = "AM_RPC_LOG_CLIENT"
+	// EnvAmRpcLogMux enables machine logging for RPC multiplexers.
+	EnvAmRpcLogMux = "AM_RPC_LOG_MUX"
+	// EnvAmRpcDbg enables env-based debugging for RPC components.
+	EnvAmRpcDbg = "AM_RPC_DBG"
+	// EnvAmReplAddr is a REPL address to listen on. "1" expands to 127.0.0.1:0.
+	EnvAmReplAddr = "AM_REPL_ADDR"
+	// EnvAmReplAddrDir is a dir path to save the address file as
+	// addrDir/mach-id.addr. Optional.
+	EnvAmReplAddrDir = "AM_REPL_ADDR_DIR"
 )
 
 var ss = states.SharedStates
@@ -401,34 +410,50 @@ func (t *WorkerTracer) TransitionEnd(_ *am.Transition) {
 
 // ///// ///// /////
 
-const (
-	EnvAmReplAddr    = "AM_REPL_ADDR"
-	EnvAmReplAddrDir = "AM_REPL_ADDR_DIR"
-)
-
 // MachReplEnv sets up a machine for a REPL connection in case AM_REPL_ADDR env
 // var is set. See MachRepl.
-func MachReplEnv(mach am.Api) {
+func MachReplEnv(mach am.Api) <-chan error {
 	addr := os.Getenv(EnvAmReplAddr)
 	dir := os.Getenv(EnvAmReplAddrDir)
 
-	MachRepl(mach, addr, dir, nil)
+	err := make(chan error)
+	if addr == "" {
+		return err
+	} else if addr == "1" {
+		// expand 1 to default
+		addr = ""
+	}
+
+	MachRepl(mach, addr, dir, nil, nil)
+
+	return err
 }
 
-// MachReplEnv sets up a machine for a REPL connection, which allows for
+// MachRepl sets up a machine for a REPL connection, which allows for
 // mutations, like any other RPC connection. See [/tools/cmd/arpc] for usage.
 // This function is considered a debugging helper and can panic.
 //
 // addr: address to listen on, default to 127.0.0.1:0
 // addrDir: optional dir path to save the address file as addrDir/mach-id.addr.
 // addrCh: optional channel to send the address to, once ready
-func MachRepl(mach am.Api, addr, addrDir string, addrCh chan<- string) {
+func MachRepl(
+	mach am.Api, addr, addrDir string, addrCh chan<- string, errCh chan<- error,
+) {
 	if amhelp.IsTestRunner() {
 		return
 	}
 
 	if addr == "" {
 		addr = "127.0.0.1:0"
+	}
+
+	if !mach.Has(ssW.Names()) {
+		err := fmt.Errorf(
+			"%w: REPL source has to implement pkg/rpc/states/WorkerStatesDef",
+			am.ErrSchema)
+
+		// panic only early
+		panic(err)
 	}
 
 	mux, err := NewMux(mach.Ctx(), "repl-"+mach.Id(), nil, &MuxOpts{
@@ -447,25 +472,29 @@ func MachRepl(mach am.Api, addr, addrDir string, addrCh chan<- string) {
 	}
 
 	go func() {
+		// prep the dir
 		if addrDir != "" {
 			err := os.MkdirAll(addrDir, 0o755)
 			if err != nil {
-				panic(err)
+				addrCh <- mux.Addr
+				return
 			}
 		}
+
+		// wait for an addr
 		<-mux.Mach.When1(ssM.Ready, nil)
 		if addrCh != nil {
 			addrCh <- mux.Addr
 		}
+		// save to dir
 		if addrDir != "" {
 			_ = os.WriteFile(
 				filepath.Join(addrDir, mach.Id()+".addr"),
 				[]byte(mux.Addr), 0o644,
 			)
-			// TODO err
-			// if err != nil {
-			// 	panic(err)
-			// }
+			if errCh != nil {
+				errCh <- nil
+			}
 		}
 	}()
 }

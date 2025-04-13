@@ -176,6 +176,10 @@ func NewClient(
 	}
 	mach.SetLogArgs(LogArgs)
 	c.Mach = mach
+	// optional env debug
+	if os.Getenv(EnvAmRpcDbg) != "" {
+		amhelp.MachDebugEnv(mach)
+	}
 
 	// TODO debug
 	mach.AddBreakpoint(nil, am.S{ssC.Disconnected})
@@ -209,6 +213,10 @@ func (c *Client) StartState(e *am.Event) {
 		c.Mach.AddErr(err, nil)
 	}
 	c.Worker = worker
+	// optional env debug
+	if os.Getenv(EnvAmRpcDbg) != "" {
+		amhelp.MachDebugEnv(worker)
+	}
 }
 
 func (c *Client) StartEnd(e *am.Event) {
@@ -483,6 +491,8 @@ func (c *Client) ExceptionState(e *am.Event) {
 	// call super
 	c.ExceptionHandler.ExceptionState(e)
 	c.Mach.EvRemove1(e, am.Exception, nil)
+	// TODO handle am.ErrSchema:
+	//  "worker has to implement pkg/rpc/states/WorkerStatesDef"
 }
 
 // RetryingConnState should be set without Connecting in the same tx

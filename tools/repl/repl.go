@@ -26,8 +26,8 @@ import (
 	"github.com/pancsta/asyncmachine-go/tools/repl/states"
 )
 
-// TOOD JSON outputs
 type Repl struct {
+	// TODO JSON output
 	*am.ExceptionHandler
 
 	Mach  *am.Machine
@@ -91,7 +91,6 @@ func (r *Repl) StartState(e *am.Event) {
 			r.Mach.AddErr(err, nil)
 		}
 		client.RequestSchema = true
-		amhelp.MachDebugEnv(client.Mach)
 
 		// bind pipes
 		err = pipes.BindReady(client.Mach, r.Mach, ss.RpcConn, ss.RpcDisconn)
@@ -463,6 +462,7 @@ func (r *Repl) ListMachinesState(e *am.Event) {
 		}
 
 		// Schema-less (ATM)
+		// TODO list NoSchema as disconnected, but marked
 		if c.Mach.Tick(ssrpc.ClientStates.Ready) == 0 {
 			if filters.NoSchema {
 				ret = append(ret, c)
@@ -675,7 +675,7 @@ func (r *Repl) ListMachines(filters *ListFilters) ([]*rpc.Client, error) {
 
 // Worker returns an RPC worker with a given ID, or nil.
 func (r *Repl) Worker(machId string) *rpc.Worker {
-	// first connected
+	// first connected TODO document
 	if machId == "." {
 		for _, c := range r.rpcClients {
 			if c.Mach.Is1(ssrpc.ClientStates.Ready) {
