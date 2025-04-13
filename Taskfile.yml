@@ -270,7 +270,7 @@ tasks:
 
   lint-go:
     cmds:
-      - $(go env GOPATH)/bin/golangci-lint run --fix
+      - $(go env GOPATH)/bin/golangci-lint run --fix --timeout 5m
 
   lint-md:
     cmds:
