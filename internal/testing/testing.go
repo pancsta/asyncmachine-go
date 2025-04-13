@@ -136,7 +136,6 @@ func NewDbgWorker(
 	if opts.DbgLogLevel > 0 && os.Getenv(am.EnvAmLogFile) != "" {
 		opts.DbgLogger = cli.GetLogger(&cli.Params{
 			LogLevel: opts.DbgLogLevel,
-			LogFile:  opts.ID + ".log",
 		})
 	}
 

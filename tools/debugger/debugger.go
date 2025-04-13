@@ -25,7 +25,10 @@ import (
 	"github.com/zyedidia/clipper"
 	"golang.org/x/text/message"
 
+	amvis "github.com/pancsta/asyncmachine-go/tools/visualizer"
+
 	"github.com/pancsta/asyncmachine-go/internal/utils"
+	"github.com/pancsta/asyncmachine-go/pkg/graph"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
@@ -33,11 +36,14 @@ import (
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
+type S = am.S
+
 type Debugger struct {
 	*am.ExceptionHandler
 	Mach *am.Machine
 
-	Clients    map[string]*Client
+	Clients map[string]*Client
+	// TODO make threadsafe
 	Opts       Opts
 	LayoutRoot *cview.Panels
 	Disposed   bool
@@ -69,6 +75,8 @@ type Debugger struct {
 	logRebuildEnd      int
 	lastScrolledTxTime time.Time
 	repaintScheduled   atomic.Bool
+	genGraphsLast      time.Time
+	graph              *graph.Graph
 	// update client list scheduled
 	updateCLScheduled  atomic.Bool
 	buildCLScheduled   atomic.Bool
@@ -97,10 +105,14 @@ type Debugger struct {
 	clientListFile   *os.File
 	msgsDelayed      []*telemetry.DbgMsgTx
 	msgsDelayedConns []string
+	currTxBar        *cview.Flex
+	nextTxBar        *cview.Flex
+	mainGridCols     []int
 }
 
 // New creates a new debugger instance and optionally import a data file.
 func New(ctx context.Context, opts Opts) (*Debugger, error) {
+	var err error
 	// init the debugger
 	d := &Debugger{
 		Clients: make(map[string]*Client),
@@ -154,7 +166,12 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		"state", "fwd", "filter",
 	}, 20))
 
-	// import data
+	d.graph, err = graph.New(d.Mach)
+	if err != nil {
+		mach.AddErr(fmt.Errorf("graph init: %w", err), nil)
+	}
+
+	// import data TODO state
 	if opts.ImportData != "" {
 		start := time.Now()
 		mach.Log("Importing data from %s", opts.ImportData)
@@ -169,9 +186,17 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	}
 	d.clip = clip
 
+	// ensure output directory exists
+	if d.Opts.OutputDir != "" && d.Opts.OutputDir != "." {
+		if err := os.MkdirAll(d.Opts.OutputDir, 0o755); err != nil {
+			mach.AddErr(fmt.Errorf("create output dir: %w", err), nil)
+		}
+	}
+
 	// client list file
-	if d.Opts.ClientList != "" {
-		clientListFile, err := os.Create(d.Opts.ClientList)
+	if d.Opts.OutputClients {
+		p := path.Join(d.Opts.OutputDir, "am-dbg-clients.txt")
+		clientListFile, err := os.Create(p)
 		if err != nil {
 			mach.AddErr(fmt.Errorf("client list file open: %w", err), nil)
 		}
@@ -240,6 +265,10 @@ func (d *Debugger) GoToMachAddress(addr *MachAddress, skipHistory bool) bool {
 }
 
 func (d *Debugger) SetCursor1(cursor int, skipHistory bool) {
+	if d.C.CursorTx1 == cursor {
+		return
+	}
+
 	// TODO validate
 	d.C.CursorTx1 = cursor
 
@@ -248,7 +277,7 @@ func (d *Debugger) SetCursor1(cursor int, skipHistory bool) {
 		if len(d.History) > 0 && d.History[0].MachId != d.C.id {
 			d.prependHistory(d.GetMachAddress())
 		}
-		// keeping the curent tx as history head
+		// keeping the current tx as history head
 		if tx := d.C.tx(d.C.CursorTx1 - 1); tx != nil {
 			// dup the current machine if tx differs
 			if len(d.History) > 1 && d.History[1].MachId == d.C.id &&
@@ -274,6 +303,10 @@ func (d *Debugger) SetCursor1(cursor int, skipHistory bool) {
 
 	// reset the step timeline
 	d.C.CursorStep = 0
+	d.Mach.Remove1(ss.TimelineStepsScrolled, nil)
+
+	// re-gen graphs
+	d.Mach.Add1(ss.SetCursor, nil)
 }
 
 func (d *Debugger) removeHistory(clientId string) {
@@ -513,6 +546,7 @@ func (d *Debugger) Start(clientID string, txNum int, uiView string) {
 }
 
 func (d *Debugger) SetFilterLogLevel(lvl am.LogLevel) {
+	// TODO thread safe
 	d.Opts.Filters.LogLevel = lvl
 
 	// process the toolbarItem change
@@ -555,7 +589,7 @@ func (d *Debugger) ImportData(filename string) {
 	var res []*Exportable
 	err = decoder.Decode(&res)
 	if err != nil {
-		log.Printf("Error: import failed %s", err)
+		d.Mach.AddErr(fmt.Errorf("Error: import failed %w", err), nil)
 		return
 	}
 
@@ -566,6 +600,14 @@ func (d *Debugger) ImportData(filename string) {
 			id:         id,
 			Exportable: *data,
 		}
+		if d.graph != nil {
+			err := d.graph.AddClient(data.MsgStruct)
+			if err != nil {
+				d.Mach.AddErr(fmt.Errorf("Error: import failed %w", err), nil)
+				return
+			}
+		}
+		d.Mach.Add1(ss.InitClient, am.A{"id": id})
 		for i := range data.MsgTxs {
 			d.parseMsg(d.Clients[id], i)
 		}
@@ -597,7 +639,11 @@ func (d *Debugger) updateToolbar() {
 
 			// checked
 			if item.active != nil && item.active() {
-				text += f(" [::b]%s[::-]", cview.Escape("[X]"))
+				if item.activeLabel != nil {
+					text += f(" [::b]%s[::-]", cview.Escape("["+item.activeLabel()+"]"))
+				} else {
+					text += f(" [::b]%s[::-]", cview.Escape("[X]"))
+				}
 			} else if item.active == nil && item.icon != "" {
 				text += f(" [grey]%s[-]", cview.Escape("["+item.icon+"]"))
 			} else if item.active == nil {
@@ -872,7 +918,11 @@ func (d *Debugger) parseMsg(c *Client, idx int) {
 	c.msgTxsParsed = append(c.msgTxsParsed, msgTxParsed)
 	c.mTimeSum = sum
 
+	// logs and graph
 	d.parseMsgLog(c, msgTx, idx)
+	if d.graph != nil {
+		d.graph.ParseMsg(c.id, msgTx)
+	}
 }
 
 // isTxSkipped checks if the tx at the given index is skipped by toolbarItems
@@ -1047,13 +1097,8 @@ func (d *Debugger) exportData(filename string) {
 		return
 	}
 
-	// validate the path
-	cwd, err := os.Getwd()
-	if err != nil {
-		log.Printf("Error: export failed %s", err)
-		return
-	}
-	gobPath := path.Join(cwd, filename+".gob.br")
+	// create file
+	gobPath := path.Join(d.Opts.OutputDir, filename+".gob.br")
 	fw, err := os.Create(gobPath)
 	if err != nil {
 		log.Printf("Error: export failed %s", err)
@@ -1152,13 +1197,14 @@ func (d *Debugger) doCleanOnConnect() bool {
 			// d.Add1(ss.RemoveClient, am.A{"Client.id": c.id})
 			delete(d.Clients, c.id)
 			d.removeHistory(c.id)
-			// c.msgTxsParsed = nil
-			// c.logMsgs = nil
-			// c.MsgTxs = nil
-			// c.MsgStruct = nil
 		}
+		if d.graph != nil {
+			d.graph.Clear()
+		}
+
 		return true
 	}
+
 	return false
 }
 
@@ -1324,19 +1370,28 @@ func (d *Debugger) updateMatrixRain() {
 
 	// TODO extract, mind currTxRow
 	currTxRow := -1
+	// TODO keep in eval / state
 	d.matrix.SetSelectionChangedFunc(func(row, column int) {
 		if d.Mach.Not1(ss.MatrixRain) {
 			return
 		}
 
+		// 1st select
 		if currTxRow == -1 {
 			d.Mach.Add1(ss.ScrollToTx, am.A{
 				"Client.cursorTx": row,
 				"trimHistory":     true,
 			})
+
+			// >1st select, if row changed
 		} else if row != currTxRow {
 			diff := row - currTxRow
 			idx := c.filterIndexByCursor1(c.CursorTx1) + diff
+			if idx == -1 {
+				return
+			}
+
+			// scroll
 			cur1 := c.msgTxsFiltered[idx] + 1
 			d.Mach.Log("diff %s", diff)
 			d.Mach.Add1(ss.ScrollToTx, am.A{
@@ -1669,4 +1724,104 @@ func (d *Debugger) GetParentTags(c *Client, tags []string) []string {
 	tags = slices.Concat(tags, parent.MsgStruct.Tags)
 
 	return d.GetParentTags(parent, tags)
+}
+
+func (d *Debugger) initGraphGen(shot *graph.Graph) []*amvis.Visualizer {
+	var vizs []*amvis.Visualizer
+
+	// render single (current one)
+	vis := amvis.New(d.Mach, shot)
+	amvis.PresetSingle(vis)
+	// TODO make opts threadsafe
+	switch d.Opts.Graph {
+	default:
+		return vizs
+
+		// single simple
+	case 1:
+		vis.RenderNestSubmachines = false
+		vis.RenderStart = false
+		vis.RenderInherited = false
+		vis.RenderPipes = false
+		vis.RenderHalfPipes = false
+		vis.RenderHalfConns = false
+		vis.RenderHalfHierarchy = false
+		vis.RenderParentRel = false
+
+		// single detailed
+	case 2:
+		vis.RenderNestSubmachines = false
+		vis.RenderStart = true
+		vis.RenderInherited = true
+		vis.RenderPipes = false
+		vis.RenderHalfPipes = false
+		vis.RenderHalfConns = false
+		vis.RenderHalfHierarchy = false
+
+		// single external
+	case 3:
+		vis.RenderNestSubmachines = true
+		vis.RenderStart = true
+		vis.RenderInherited = true
+		vis.RenderPipes = true
+	}
+
+	d.Mach.Log("rendering graphs lvl %d", d.Opts.Graph)
+
+	// vis
+	// mach-id.svg
+	machId := d.C.id
+	vis.RenderMachs = []string{machId}
+	vis.OutputFilename = path.Join(d.Opts.OutputDir, machId)
+
+	vizs = append(vizs, vis)
+
+	// TODO render by prefixes
+	// } else {
+	// 	for _, p := range strings.Split(d.Opts.Graph, ",") {
+	//
+	// 		// vis
+	// 		vis := amvis.New(d.Mach, shot)
+	// 		if p == "1" || p == "true" {
+	// 			// render single (current one)
+	// 			amvis.PresetSingle(vis)
+	// 			vis.RenderMachs = []string{p}
+	// 			vis.RenderNestSubmachines = true
+	// 			vis.RenderStart = true
+	// 		} else {
+	// 			// render by prefix
+	// 			prefix := regexp.MustCompile("^" + p)
+	// 			amvis.PresetNeighbourhood(vis)
+	// 			vis.RenderMachsRe = []*regexp.Regexp{prefix}
+	// 			vis.RenderDistance = 1
+	// 			vis.RenderDepth = 1
+	// 		}
+	// 		// prefix with am-vis
+	// 		vis.OutputFilename = path.Join(d.Opts.OutputDir, "am-vis-"+p)
+	//
+	// 		vizs = append(vizs, vis)
+	// 	}
+	// }
+
+	// map
+	// TODO skip if there was no change in schemas
+	//  hash schemas and schema's hashes, then compare
+
+	vis = amvis.New(d.Mach, shot)
+	amvis.PresetMap(vis)
+	vis.OutputFilename = path.Join(d.Opts.OutputDir, "am-vis-map")
+
+	return append(vizs, vis)
+}
+
+func (d *Debugger) syncOptsTimelines() {
+	switch d.Opts.Timelines {
+	case 0:
+		d.Mach.Add(S{ss.TimelineHidden, ss.TimelineStepsHidden}, nil)
+	case 1:
+		d.Mach.Add1(ss.TimelineStepsHidden, nil)
+		d.Mach.Remove1(ss.TimelineHidden, nil)
+	case 2:
+		d.Mach.Remove(S{ss.TimelineStepsHidden, ss.TimelineHidden}, nil)
+	}
 }

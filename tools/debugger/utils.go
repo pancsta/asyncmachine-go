@@ -20,10 +20,11 @@ type Focusable struct {
 }
 
 type toolbarItem struct {
-	id     ToolName
-	label  string
-	icon   string
-	active func() bool
+	id          ToolName
+	label       string
+	icon        string
+	active      func() bool
+	activeLabel func() string
 }
 
 // TODO migrate to Provide-Delivered

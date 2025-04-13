@@ -161,6 +161,12 @@ func (d *Debugger) rebuildLog(ctx context.Context, endIndex int) error {
 		buf = append(buf, d.getLogEntryTxt(i)...)
 	}
 
+	// TODO activate when progressive rendering lands
+	// if d.Mach.Is1(ss.NarrowLayout) {
+	// 	t = strings.ReplaceAll(t, "[yellow][extern", "[yellow][e")
+	// 	t = strings.ReplaceAll(t, "[yellow][state", "[yellow][s")
+	// }
+
 	// TODO rebuild from endIndex to len(msgs)
 
 	_, err := d.log.Write(buf)
@@ -258,8 +264,11 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 	return []byte(ret)
 }
 
-var stateChangPrefix = regexp.MustCompile(
+var logPrefixState = regexp.MustCompile(
 	`^\[yellow\]\[state\[\]\[white\] .+\)\n$`)
+
+var logPrefixExtern = regexp.MustCompile(
+	`^\[yellow\]\[extern.+\n$`)
 
 var (
 	filenamePattern = regexp.MustCompile(`/[a-z_]+\.go:\d+ \+(?i)`)
@@ -293,7 +302,7 @@ func fmtLogEntry(
 	}
 
 	// log args highlight
-	ret = stateChangPrefix.ReplaceAllStringFunc(ret, func(m string) string {
+	ret = logPrefixState.ReplaceAllStringFunc(ret, func(m string) string {
 		line := strings.Split(strings.TrimRight(m, ")\n"), "(")
 		args := ""
 		for _, arg := range strings.Split(line[1], " ") {
@@ -307,6 +316,13 @@ func fmtLogEntry(
 		}
 
 		return line[0] + args + "\n"
+	})
+
+	// fade out externs TODO skip when L0
+	ret = logPrefixExtern.ReplaceAllStringFunc(ret, func(m string) string {
+		prefix, content, _ := strings.Cut(m, " ")
+
+		return prefix + " [darkgrey]" + content
 	})
 
 	// highlight state names (in the msg body)

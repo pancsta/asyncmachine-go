@@ -1817,15 +1817,16 @@ func TestWhenCtx(t *testing.T) {
 	}
 
 	// wait for the context to be canceled and cleanups happen
-	time.Sleep(10 * time.Millisecond)
+	// TODO bind to default
+	time.Sleep(2 * 100 * time.Millisecond)
 
 	// assert
 	// use internal locks to avoid races
 	m.activeStatesLock.Lock()
 	m.indexWhenArgsLock.Lock()
-	assert.Equal(t, len(m.indexWhenTime), 0)
-	assert.Equal(t, len(m.indexWhen), 0)
-	assert.Equal(t, len(m.indexWhenArgs), 0)
+	assert.Equal(t, 0, len(m.indexWhenTime))
+	assert.Equal(t, 0, len(m.indexWhen))
+	assert.Equal(t, 0, len(m.indexWhenArgs))
 	m.activeStatesLock.Unlock()
 	m.indexWhenArgsLock.Unlock()
 

@@ -356,8 +356,8 @@ func (r *MutRequest) get() (am.Result, error) {
 	return res, ResultToErr(res)
 }
 
-// Wait waits for a duration, or until the context is done. Returns nil if the
-// duration has passed, or err is ctx is done.
+// Wait waits for a duration, or until the context is done. Returns true if the
+// duration has passed, or false if ctx is done.
 func Wait(ctx context.Context, length time.Duration) bool {
 	t := time.After(length)
 

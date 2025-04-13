@@ -39,7 +39,7 @@ var States = am.Struct{
 
 	TreeFocused:          {Remove: GroupFocused},
 	LogFocused:           {Remove: GroupFocused},
-	SidebarFocused:       {Remove: GroupFocused},
+	ClientListFocused:    {Remove: GroupFocused},
 	TimelineTxsFocused:   {Remove: GroupFocused},
 	TimelineStepsFocused: {Remove: GroupFocused},
 	MatrixFocused:        {Remove: GroupFocused},
@@ -52,6 +52,16 @@ var States = am.Struct{
 	},
 	AddressFocused: {Remove: GroupFocused},
 
+	TimelineHidden:      {Require: S{TimelineStepsHidden}},
+	TimelineStepsHidden: {},
+	NarrowLayout: {
+		Require: S{Ready},
+		Remove:  S{ClientListVisible},
+	},
+	ClientListVisible: {
+		Require: S{Ready},
+		Auto:    true,
+	},
 	StateNameSelected:     {Require: S{ClientSelected}},
 	TimelineStepsScrolled: {Require: S{ClientSelected}},
 	HelpDialog:            {Remove: GroupDialog},
@@ -156,6 +166,20 @@ var States = am.Struct{
 		Remove:  S{SelectingClient},
 	},
 	RemoveClient: {Require: S{ClientSelected}},
+
+	SetCursor: {
+		Multi:   true,
+		Require: S{Ready},
+	},
+	GraphsScheduled: {
+		Multi:   true,
+		Require: S{Ready},
+	},
+	GraphsRendering: {
+		Require: S{Ready},
+	},
+
+	InitClient: {Multi: true},
 }
 
 // Groups of states.
@@ -163,7 +187,7 @@ var States = am.Struct{
 var (
 	GroupFocused = S{
 		TreeFocused, LogFocused, TimelineTxsFocused,
-		TimelineStepsFocused, SidebarFocused, MatrixFocused, DialogFocused,
+		TimelineStepsFocused, ClientListFocused, MatrixFocused, DialogFocused,
 		Toolbar1Focused, Toolbar2Focused, LogReaderFocused, AddressFocused,
 	}
 	GroupPlaying = S{
@@ -193,15 +217,17 @@ const (
 	LogFocused           = "LogFocused"
 	TimelineTxsFocused   = "TimelineTxsFocused"
 	TimelineStepsFocused = "TimelineStepsFocused"
+	TimelineHidden       = "TimelineHidden"
+	TimelineStepsHidden  = "TimelineStepsHidden"
 	MatrixFocused        = "MatrixFocused"
 	DialogFocused        = "DialogFocused"
 	Toolbar1Focused      = "Toolbar1Focused"
 	Toolbar2Focused      = "Toolbar2Focused"
 	LogReaderFocused     = "LogReaderFocused"
 	AddressFocused       = "AddressFocused"
-	// SidebarFocused is client list focused.
+	// ClientListFocused is client list focused.
 	// TODO rename to ClientListFocused
-	SidebarFocused = "SidebarFocused"
+	ClientListFocused = "ClientListFocused"
 
 	TimelineStepsScrolled = "TimelineStepsScrolled"
 	ClientMsg             = "ClientMsg"
@@ -209,6 +235,9 @@ const (
 	// tree (and possibly other places).
 	// TODO support a list of states
 	StateNameSelected = "StateNameSelected"
+	// NarrowLayout activates when resized or started in a narrow TUI viewport.
+	NarrowLayout      = "NarrowLayout"
+	ClientListVisible = "ClientListVisible"
 	Start             = "Start"
 	Healthcheck       = "Healthcheck"
 	GcMsgs            = "GcMsgs"
@@ -267,8 +296,12 @@ const (
 	// ScrollToMutTx scrolls to a transition which mutated or called the
 	// passed state,
 	// If fwd is true, it scrolls forward, otherwise backwards.
-	ScrollToMutTx = "ScrollToMutTx"
-	MatrixRain    = "MatrixRain"
+	ScrollToMutTx   = "ScrollToMutTx"
+	MatrixRain      = "MatrixRain"
+	SetCursor       = "SetCursor"
+	GraphsRendering = "GraphsRendering"
+	GraphsScheduled = "GraphsScheduled"
+	InitClient      = "InitClient"
 )
 
 // Names of all the states (pkg enum).
@@ -294,14 +327,18 @@ var Names = S{
 	LogFocused,
 	LogReaderFocused,
 	AddressFocused,
-	SidebarFocused,
+	ClientListFocused,
 	TimelineTxsFocused,
 	TimelineStepsFocused,
+	TimelineHidden,
+	TimelineStepsHidden,
 	Toolbar1Focused,
 	Toolbar2Focused,
 	MatrixFocused,
 	DialogFocused,
 	StateNameSelected,
+	NarrowLayout,
+	ClientListVisible,
 	HelpDialog,
 	ExportDialog,
 	LogUserScrolled,
@@ -346,6 +383,12 @@ var Names = S{
 	ClientSelected,
 	SelectingClient,
 	RemoveClient,
+
+	SetCursor,
+	GraphsRendering,
+	GraphsScheduled,
+
+	InitClient,
 
 	am.Exception,
 }

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"io"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -18,9 +17,11 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
+// TODO enum
+// TODO cobra groups
 const (
 	// TODO remove
-	pLogFile = "log-file"
+	pLogFile = "2"
 	// TODO remove
 	pLogLevel        = "log-level"
 	pServerAddr      = "listen-on"
@@ -31,7 +32,6 @@ const (
 	pCleanOnConnect   = "clean-on-connect"
 	pVersion          = "version"
 	pImport           = "import-data"
-	pClientList       = "client-list"
 	pImportShort      = "i"
 	pSelectConn       = "select-connected"
 	pSelectConnShort  = "c"
@@ -39,29 +39,40 @@ const (
 	pStartupMachShort = "m"
 	pStartupTx        = "select-transition"
 	pStartupTxShort   = "t"
-	pView             = "view"
-	pViewShort        = "v"
+	pTail             = "tail"
 	// TODO AM_DBG_PROF
 	pProfSrv      = "prof-srv"
 	pMaxMem       = "max-mem"
 	pLog2Ttl      = "log-2-ttl"
-	pReader       = "reader"
 	pReaderShort  = "r"
 	pFwdData      = "fwd-data"
 	pFwdDataShort = "f"
-	// TODO --filters
-	// TODO --view
-	// TODO --rain
+	// TODO --filters + loglevel, eg canceled,L1,empty
+	// TODO --view-rain
+
+	// MISC
+
+	pDir            = "dir"
+	pOutputDirShort = "d"
+	pOutputClients  = "output-clients"
+
+	// UI
+
+	pView       = "view"
+	pViewShort  = "v"
+	pViewNarrow = "view-narrow"
+	pReader     = "view-reader"
+	pGraph      = "graph"
+	pTimelines  = "view-timelines"
+	pRain       = "view-rain"
 )
 
 type Params struct {
 	LogLevel        am.LogLevel
-	LogFile         string
 	Version         bool
-	ServerAddr      string
+	ListenAddr      string
 	DebugAddr       string
 	ImportData      string
-	ClientList      string
 	StartupMachine  string
 	StartupView     string
 	StartupTx       int
@@ -75,6 +86,15 @@ type Params struct {
 	Log2Ttl         time.Duration
 	Reader          bool
 	FwdData         []string
+	ViewNarrow      bool
+	ViewRain        bool
+
+	OutputDir     string
+	Graph         int
+	OutputClients bool
+	Timelines     int
+	Rain          bool
+	TailMode      bool
 }
 
 type RootFn func(cmd *cobra.Command, args []string, params Params)
@@ -82,6 +102,7 @@ type RootFn func(cmd *cobra.Command, args []string, params Params)
 func RootCmd(fn RootFn) *cobra.Command {
 	// TODO --dark-mode auto|on|off
 	// TODO --rename-duplicates renames disconnected dups as NAME-TIME
+	// TODO group flags in groups
 	rootCmd := &cobra.Command{
 		Use: "am-dbg",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -95,8 +116,6 @@ func RootCmd(fn RootFn) *cobra.Command {
 }
 
 func AddFlags(rootCmd *cobra.Command) {
-	// TODO bind param here, remove ParseParams, support StringArrayP
-	// p := &Params{}
 
 	f := rootCmd.Flags()
 	f.String(pLogFile, "", "Log file path")
@@ -109,8 +128,6 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.StringP(pStartupMach,
 		pStartupMachShort, "",
 		"Select a machine by (partial) ID on startup (requires --"+pImport+")")
-	f.String(pClientList, "", "Keep this file up-to-date with connected"+
-		` clients (eg. "am-dbg.txt")`)
 
 	// TODO parse copy-paste commas, eg 1,001
 	f.IntP(pStartupTx, pStartupTxShort, 0,
@@ -122,18 +139,32 @@ func AddFlags(rootCmd *cobra.Command) {
 		"Clean up disconnected clients on the 1st connection")
 	f.BoolP(pSelectConn, pSelectConnShort, false,
 		"Select the newly connected machine, if no other is connected")
+	f.Bool(pViewNarrow, false,
+		"Force a narrow view, independently of the viewport size")
 	f.StringP(pImport, pImportShort, "",
 		"Import an exported gob.bt file")
 	f.BoolP(pReader, pReaderShort, false, "Enable Log Reader")
 	f.StringP(pFwdData, pFwdDataShort, "",
-		"Fordward incoming data to other instances (eg addr1,addr2)")
+		"Forward incoming data to other instances (eg addr1,addr2)")
 
-	// profile & mem
+	// MISC
+
 	f.String(pProfSrv, "", "Start pprof server")
 	f.Int(pMaxMem, 100, "Max memory usage (in MB) to flush old transitions")
 	f.String(pLog2Ttl, "24h", "Max time to live for logs level 2")
-
 	f.Bool(pVersion, false, "Print version and exit")
+
+	// OUTPUT
+
+	f.StringP(pDir, pOutputDirShort, ".",
+		"Output directory for generated files")
+	f.Bool(pOutputClients, false,
+		"Write a detailed client list into in am-dbg-clients.txt inside --dir")
+	f.Int(pGraph, 0,
+		"Level of details for graphs (svg, d2, mermaid) in --dir (0-3)")
+	f.Int(pTimelines, 2, "Number of timelines to show (0-2)")
+	f.Bool(pRain, false, "Show the rain view")
+	f.Bool(pTail, true, "Start from the last tx")
 }
 
 func ParseParams(cmd *cobra.Command, _ []string) Params {
@@ -145,17 +176,36 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 		panic(err)
 	}
 
-	logFile := cmd.Flag(pLogFile).Value.String()
+	outputDir := cmd.Flag(pDir).Value.String()
 	logLevelInt, err := cmd.Flags().GetInt(pLogLevel)
 	if err != nil {
 		panic(err)
 	}
+	logLevelInt = min(4, logLevelInt)
 
 	logLevel := am.LogLevel(logLevelInt)
 	serverAddr := cmd.Flag(pServerAddr).Value.String()
 	debugAddr := cmd.Flag(pAmDbgAddr).Value.String()
 	importData := cmd.Flag(pImport).Value.String()
-	clientList := cmd.Flag(pClientList).Value.String()
+
+	// graph
+	graph, err := cmd.Flags().GetInt(pGraph)
+	if err != nil {
+		panic(err)
+	}
+	graph = min(3, graph)
+
+	// timelines
+	timelines, err := cmd.Flags().GetInt(pTimelines)
+	if err != nil {
+		panic(err)
+	}
+	timelines = min(2, timelines)
+
+	outputClients, err := cmd.Flags().GetBool(pOutputClients)
+	if err != nil {
+		panic(err)
+	}
 	fwdDataRaw := cmd.Flag(pFwdData).Value.String()
 	profSrv := cmd.Flag(pProfSrv).Value.String()
 	startupMachine := cmd.Flag(pStartupMach).Value.String()
@@ -169,6 +219,19 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 		panic(err)
 	}
 	log2Ttl, err := time.ParseDuration(cmd.Flag(pLog2Ttl).Value.String())
+	if err != nil {
+		panic(err)
+	}
+
+	rain, err := cmd.Flags().GetBool(pRain)
+	if err != nil {
+		panic(err)
+	}
+	if rain && startupView == "tree-log" {
+		startupView = "tree-matrix"
+	}
+
+	tail, err := cmd.Flags().GetBool(pTail)
 	if err != nil {
 		panic(err)
 	}
@@ -188,6 +251,11 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 		panic(err)
 	}
 
+	viewNarrow, err := cmd.Flags().GetBool(pViewNarrow)
+	if err != nil {
+		panic(err)
+	}
+
 	reader, err := cmd.Flags().GetBool(pReader)
 	if err != nil {
 		panic(err)
@@ -200,26 +268,41 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 	}
 
 	return Params{
-		LogLevel:        logLevel,
-		LogFile:         logFile,
-		Version:         version,
-		ServerAddr:      serverAddr,
-		DebugAddr:       debugAddr,
-		ImportData:      importData,
-		ClientList:      clientList,
+		ListenAddr: serverAddr,
+		DebugAddr:  debugAddr,
+		ImportData: importData,
+		FwdData:    fwdData,
+
+		// config
+
 		StartupMachine:  startupMachine,
-		StartupView:     startupView,
 		StartupTx:       startupTx,
-		EnableMouse:     enableMouse,
 		CleanOnConnect:  cleanOnConnect,
 		SelectConnected: selectConnected,
-		Reader:          reader,
-		FwdData:         fwdData,
+		TailMode:        tail,
 
-		// profiling
+		// UI
+
+		EnableMouse: enableMouse,
+		Reader:      reader,
+		StartupView: startupView,
+		ViewNarrow:  viewNarrow,
+		ViewRain:    rain,
+
+		// output
+
+		OutputClients: outputClients,
+		OutputDir:     outputDir,
+		Graph:         graph,
+		Timelines:     timelines,
+
+		// misc
+
+		LogLevel: logLevel,
 		ProfSrv:  profSrv,
 		MaxMemMb: maxMem,
 		Log2Ttl:  log2Ttl,
+		Version:  version,
 	}
 }
 
@@ -230,13 +313,11 @@ func GetLogger(params *Params) *log.Logger {
 	if params.LogLevel < am.LogNothing {
 		return log.Default()
 	}
+	name := "am-dbg.log"
 
 	// file logging
-	if params.LogFile == "" {
-		return log.New(io.Discard, "", log.LstdFlags)
-	}
-	_ = os.Remove(params.LogFile)
-	file, err := os.OpenFile(params.LogFile, os.O_CREATE|os.O_WRONLY, 0o666)
+	_ = os.Remove(name)
+	file, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY, 0o666)
 	if err != nil {
 		panic(err)
 	}

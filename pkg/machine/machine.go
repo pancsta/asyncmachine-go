@@ -10,6 +10,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -122,7 +123,7 @@ type Machine struct {
 
 // NewCommon creates a new Machine instance with all the common options set.
 func NewCommon(
-	ctx context.Context, id string, statesStruct Struct, stateNames S,
+	ctx context.Context, id string, stateSchema Schema, stateNames S,
 	handlers any, parent Api, opts *Opts,
 ) (*Machine, error) {
 	machOpts := &Opts{ID: id}
@@ -146,7 +147,7 @@ func NewCommon(
 		machOpts.LogArgs = NewArgsMapper(LogArgs, 0)
 	}
 
-	mach := New(ctx, statesStruct, machOpts)
+	mach := New(ctx, stateSchema, machOpts)
 	err := mach.VerifyStates(stateNames)
 	if err != nil {
 		return nil, err
@@ -273,6 +274,8 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 	if ctx == nil {
 		ctx = context.TODO()
 	}
+	m.ctx, m.cancel = context.WithCancel(ctx)
+
 	if parent != nil {
 		m.parentId = parent.Id()
 
@@ -280,13 +283,10 @@ func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
 
 		// info the tracers about this being a submachine
 		for _, t := range pTracers {
-			if !t.Inheritable() {
-				continue
-			}
+			// TODO support inheritable?
 			t.NewSubmachine(parent, m)
 		}
 	}
-	m.ctx, m.cancel = context.WithCancel(ctx)
 
 	// tracers
 	for i := range m.tracers {
@@ -308,7 +308,7 @@ func (m *Machine) Dispose() {
 
 	go func() {
 		if m.disposed.Load() {
-			m.log(LogDecisions, "[doDispose] already disposed")
+			m.log(LogDecisions, "[Dispose] already disposed")
 			return
 		}
 		m.queueProcessing.Store(false)
@@ -563,9 +563,9 @@ func (m *Machine) WhenNot1(state string, ctx context.Context) <-chan struct{} {
 // WhenArgs returns a channel that will be closed when the passed state
 // becomes active with all the passed args. Args are compared using the native
 // '=='. It's meant to be used with async Multi states, to filter out
-// a specific completion.
+// a specific call.
 //
-// ctx: optional context that will close the channel when handlerLoopDone.
+// ctx: optional context that will close the channel when handler loop ends.
 func (m *Machine) WhenArgs(
 	state string, args A, ctx context.Context,
 ) <-chan struct{} {
@@ -1023,6 +1023,8 @@ func (m *Machine) Set(states S, args A) Result {
 
 	return m.processQueue()
 }
+
+// TODO Set1Cond(name, args, cond bool)
 
 // Id returns the machine's id.
 func (m *Machine) Id() string {
@@ -2278,7 +2280,8 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		h := handlers[i]
 		h.mx.Lock()
 		methodName := e.Name
-		handlerName := h.name
+		// TODO descriptive name
+		handlerName := strconv.Itoa(i) + ":" + h.name
 
 		if m.GetLogLevel() >= LogEverything {
 			emitterID := truncateStr(handlerName, 15)
@@ -2772,7 +2775,6 @@ func (m *Machine) Inspect(states S) string {
 			active = "1"
 		}
 
-		// TODO sync with rpc worker
 		ret += fmt.Sprintf("%s %s\n"+
 			"    |Time     %d\n", active, name, m.clock[name])
 		if state.Auto {

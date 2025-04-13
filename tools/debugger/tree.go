@@ -39,6 +39,8 @@ type nodeRef struct {
 	// node is a state property (Auto, Multi)
 	isProp    bool
 	propLabel string
+	// TODO
+	// isBreakLine bool
 }
 
 const treeIndent = 3
@@ -639,7 +641,12 @@ func (d *Debugger) handleExpanded(
 func (d *Debugger) buildStatesTree() {
 	msg := d.C.MsgStruct
 	d.treeRoot.ClearChildren()
+	// var bl bool
 	for _, name := range msg.StatesIndex {
+		// if !bl {
+		// 	// TODO enable breaklines
+		// 	bl = d.addBreakLine(name, i)
+		// }
 		d.addState(name)
 	}
 	d.treeRoot.CollapseAll()
@@ -663,6 +670,38 @@ func (d *Debugger) selectTreeState(name string) {
 		return true
 	})
 }
+
+// TODO enable breaklines with model-based rendering
+// var pkgStates = am.SAdd(ssam.BasicStates.Names(),
+//  ssam.ConnPoolStates.Names(), ssam.ConnectedStates.Names(),
+// 	ssam.DisposedStates.Names())
+// func (d *Debugger) addBreakLine(name string, idx int) bool {
+// 	// TODO requires TreeNode#SetHidden(true)
+// 	//  hide in steps view
+// 	c := d.C
+// 	if c == nil {
+// 		return false
+// 	}
+//
+// 	// check if this and all next are in pkg/states
+// 	names := c.MsgStruct.StatesIndex[idx:len(c.MsgStruct.StatesIndex)]
+// 	for _, name2 := range names {
+// 		if !slices.Contains(pkgStates, name2) {
+// 			return false
+// 		}
+// 	}
+//
+// 	stateNode := cview.NewTreeNode("pkg/states")
+// 	stateNode.SetSelectable(false)
+// 	stateNode.SetReference(&nodeRef{
+// 		stateName: name,
+// 		// isBreakLine: true,
+// 	})
+// 	d.treeRoot.AddChild(stateNode)
+// 	stateNode.SetColor(tcell.ColorDarkGrey)
+//
+// 	return true
+// }
 
 func (d *Debugger) addState(name string) {
 	c := d.C

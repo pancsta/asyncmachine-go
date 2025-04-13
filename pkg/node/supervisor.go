@@ -316,7 +316,6 @@ func (s *Supervisor) StartState(e *am.Event) {
 		_ = AddErrRpc(s.Mach, err, nil)
 		return
 	}
-	amhelp.MachDebugEnv(s.PublicMux.Mach)
 
 	// local rpc TODO mux
 	opts := &rpc.ServerOpts{
@@ -329,7 +328,6 @@ func (s *Supervisor) StartState(e *am.Event) {
 		_ = AddErrRpc(s.Mach, err, nil)
 		return
 	}
-	amhelp.MachDebugEnv(s.LocalRpc.Mach)
 	s.LocalRpc.DeliveryTimeout = s.DeliveryTimeout
 	err = rpc.BindServerMulti(s.LocalRpc.Mach, s.Mach, ssS.LocalRpcReady,
 		ssS.SuperConnected, ssS.SuperDisconnected)
@@ -549,7 +547,6 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 			_ = AddErrWorker(e, s.Mach, err, Pass(&argsOut))
 			return
 		}
-		amhelp.MachDebugEnv(wrpc.Mach)
 
 		// wait for client ready
 		wrpc.Start()
@@ -562,9 +559,6 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 			_ = AddErrWorker(e, s.Mach, wrpc.Mach.Err(), Pass(&argsOut))
 			return
 		}
-
-		// dbg the RPC worker
-		amhelp.MachDebugEnv(wrpc.Worker)
 
 		// next
 		argsOut.WorkerRpc = wrpc
@@ -1115,7 +1109,6 @@ func (s *Supervisor) newClientConn(
 	if err != nil {
 		return nil, err
 	}
-	amhelp.MachDebugEnv(rpcS.Mach)
 
 	// set up
 	rpcS.DeliveryTimeout = s.DeliveryTimeout

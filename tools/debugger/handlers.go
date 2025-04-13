@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -17,6 +19,8 @@ import (
 	"golang.org/x/exp/maps"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
+
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
@@ -76,17 +80,16 @@ func (d *Debugger) StartState(e *am.Event) {
 			d.Mach.Add1(ss.MatrixView, nil)
 		}
 
-		// boot imported data
+		// go directly to Ready when data empty
 		if len(d.Clients) <= 0 {
 			d.Mach.Add1(ss.Ready, nil)
 			return
 		}
 
+		// init imported data
 		d.buildClientList(-1)
 		ids := maps.Keys(d.Clients)
-		if clientId == "" {
-			clientId = ids[0]
-		} else {
+		if clientId != "" {
 			// partial match available client IDs
 			for _, id := range ids {
 				if strings.Contains(id, clientId) {
@@ -95,9 +98,13 @@ func (d *Debugger) StartState(e *am.Event) {
 				}
 			}
 		}
+		// default selected ID
+		if !slices.Contains(ids, clientId) {
+			clientId = ids[0]
+		}
 		d.prependHistory(&MachAddress{MachId: clientId})
+		// TODO timeout
 		d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": clientId})
-		// TODO dimeout
 		<-d.Mach.When1(ss.ClientSelected, nil)
 
 		if stateCtx.Err() != nil {
@@ -116,15 +123,31 @@ func (d *Debugger) StartEnd(_ *am.Event) {
 	d.App.Stop()
 }
 
-func (d *Debugger) ReadyState(_ *am.Event) {
+func (d *Debugger) ReadyState(e *am.Event) {
 	d.healthcheck = time.NewTicker(healthcheckInterval)
+
+	// late options
+	// TODO migrate args from Start() method
+	if d.Opts.ViewNarrow {
+		d.Mach.EvAdd1(e, ss.NarrowLayout, nil)
+	}
+	d.syncOptsTimelines()
+	if d.Opts.Graph > 0 {
+		d.Mach.EvAdd1(e, ss.GraphsScheduled, nil)
+	}
+	if d.Opts.ViewRain {
+		d.Mach.EvAdd1(e, ss.MatrixRain, nil)
+	}
+	if d.Opts.TailMode {
+		d.Mach.EvAdd1(e, ss.TailMode, nil)
+	}
 
 	// unblock
 	go func() {
 		for {
 			select {
 			case <-d.healthcheck.C:
-				d.Mach.Add1(ss.Healthcheck, nil)
+				d.Mach.EvAdd1(e, ss.Healthcheck, nil)
 
 			case <-d.Mach.Ctx().Done():
 				d.healthcheck.Stop()
@@ -426,9 +449,9 @@ func (d *Debugger) AddressFocusedEnd(_ *am.Event) {
 // ///// CONNECTION
 
 func (d *Debugger) ConnectEventEnter(e *am.Event) bool {
-	_, ok1 := e.Args["msg_struct"].(*telemetry.DbgMsgStruct)
+	msg, ok1 := e.Args["msg_struct"].(*telemetry.DbgMsgStruct)
 	_, ok2 := e.Args["conn_id"].(string)
-	if !ok1 || !ok2 {
+	if !ok1 || !ok2 || msg.ID == "" {
 		d.Mach.Log("Error: msg_struct malformed\n")
 		return false
 	}
@@ -527,6 +550,16 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 		d.Mach.Add1(ss.TailMode, nil)
 	}
 
+	// graph
+	if d.graph != nil {
+		_ = d.graph.AddClient(msg)
+		// TODO errors, check for dups, enable once stable
+		// if err != nil {
+		// d.Mach.AddErr(err, nil)
+		// }
+	}
+	d.Mach.Add1(ss.InitClient, am.A{"id": msg.ID})
+
 	d.draw()
 }
 
@@ -585,6 +618,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	if mach.Is1(ss.GcMsgs) {
 		d.msgsDelayed = append(d.msgsDelayed, msgs...)
 		d.msgsDelayedConns = append(d.msgsDelayedConns, connIds...)
+
 		return
 	}
 
@@ -645,7 +679,6 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 			}
 			if d.Mach.Is1(ss.TailMode) {
 				updateTailMode = true
-				c.CursorStep = 0
 			}
 
 			// update Tx info on the first Tx
@@ -680,18 +713,15 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 
 func (d *Debugger) RemoveClientEnter(e *am.Event) bool {
 	cid, ok := e.Args["Client.id"].(string)
-	return ok && cid != ""
+	_, ok2 := d.Clients[cid]
+
+	return ok && cid != "" && ok2
 }
 
 func (d *Debugger) RemoveClientState(e *am.Event) {
 	d.Mach.Remove1(ss.RemoveClient, nil)
-
 	cid := e.Args["Client.id"].(string)
 	c := d.Clients[cid]
-	if c == nil {
-		d.Mach.Log("Error: cant remove client %s: not found", cid)
-		return
-	}
 
 	// clean up
 	delete(d.Clients, cid)
@@ -770,6 +800,9 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 		// or scroll to the last one
 		if !match {
 			d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), true)
+		} else {
+			// setCursor triggers GraphsScheduled
+			d.Mach.EvAdd1(e, ss.GraphsScheduled, nil)
 		}
 		d.updateTimelines()
 		d.updateTxBars()
@@ -907,22 +940,27 @@ func (d *Debugger) ExportDialogEnd(e *am.Event) {
 
 func (d *Debugger) MatrixViewState(_ *am.Event) {
 	d.drawViews()
+	d.updateToolbar()
 }
 
 func (d *Debugger) MatrixViewEnd(_ *am.Event) {
 	d.drawViews()
+	d.updateToolbar()
 }
 
 func (d *Debugger) TreeMatrixViewState(_ *am.Event) {
 	d.drawViews()
+	d.updateToolbar()
 }
 
 func (d *Debugger) TreeMatrixViewEnd(_ *am.Event) {
 	d.drawViews()
+	d.updateToolbar()
 }
 
 func (d *Debugger) MatrixRainState(_ *am.Event) {
 	d.drawViews()
+	d.updateToolbar()
 }
 
 func (d *Debugger) ScrollToTxEnter(e *am.Event) bool {
@@ -931,7 +969,7 @@ func (d *Debugger) ScrollToTxEnter(e *am.Event) bool {
 	c := d.C
 
 	return c != nil && (ok2 && c.txIndex(id) > -1 ||
-		ok1 && len(c.MsgTxs) > cursor+1)
+		ok1 && len(c.MsgTxs) > cursor) && cursor >= 0
 }
 
 // ScrollToTxState scrolls to a specific transition (cursor position 1-based).
@@ -953,13 +991,29 @@ func (d *Debugger) ScrollToTxState(e *am.Event) {
 	d.RedrawFull(false)
 }
 
+func (d *Debugger) NarrowLayoutExit(e *am.Event) bool {
+	return !d.Opts.ViewNarrow
+}
+
+func (d *Debugger) NarrowLayoutState(e *am.Event) {
+	d.updateLayout()
+	d.buildClientList(-1)
+	d.RedrawFull(false)
+}
+
+func (d *Debugger) NarrowLayoutEnd(e *am.Event) {
+	d.updateLayout()
+	d.buildClientList(-1)
+	d.RedrawFull(false)
+}
+
 func (d *Debugger) ScrollToStepEnter(e *am.Event) bool {
 	cursor, _ := e.Args["Client.cursorStep"].(int)
 	c := d.C
 	return c != nil && cursor > 0 && d.nextTx() != nil
 }
 
-// ScrollToTxState scrolls to a specific transition (cursor position 1-based).
+// ScrollToStepState scrolls to a specific transition (cursor position 1-based).
 func (d *Debugger) ScrollToStepState(e *am.Event) {
 	d.Mach.Remove1(ss.ScrollToStep, nil)
 
@@ -1010,16 +1064,16 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 	case ToolFilterSummaries:
 		d.Mach.Toggle1(ss.FilterSummaries, nil)
 
-	case toolLog0:
-		d.Opts.Filters.LogLevel = am.LogNothing
-	case toolLog1:
-		d.Opts.Filters.LogLevel = am.LogChanges
-	case toolLog2:
-		d.Opts.Filters.LogLevel = am.LogOps
-	case toolLog3:
-		d.Opts.Filters.LogLevel = am.LogDecisions
-	case toolLog4:
-		d.Opts.Filters.LogLevel = am.LogEverything
+	case toolLog:
+		d.Opts.Filters.LogLevel = (d.Opts.Filters.LogLevel + 1) % 5
+
+	case toolGraph:
+		d.Opts.Graph = (d.Opts.Graph + 1) % 4
+		d.Mach.Add1(ss.GraphsScheduled, nil)
+
+	case toolTimelines:
+		d.Opts.Timelines = (d.Opts.Timelines + 1) % 3
+		d.syncOptsTimelines()
 
 	case toolReader:
 		d.Mach.Toggle1(ss.LogReaderEnabled, nil)
@@ -1045,6 +1099,12 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 
 	case toolNext:
 		d.Mach.Add1(ss.UserFwd, nil)
+
+	case toolNextStep:
+		d.Mach.Add1(ss.UserFwdStep, nil)
+
+	case toolPrevStep:
+		d.Mach.Add1(ss.UserBackStep, nil)
 
 	case toolJumpPrev:
 		// TODO state
@@ -1173,11 +1233,18 @@ func (d *Debugger) ExceptionState(e *am.Event) {
 
 	d.updateBorderColor()
 
-	// create a log file
+	// create / append the err log file
 	s := fmt.Sprintf("%s\n%s\n\n%s", time.Now(), d.Mach.Err(), trace)
-	err := os.WriteFile("am-dbg-err.log", []byte(s), 0o644)
+	path := filepath.Join(d.Opts.OutputDir, "am-dbg-err.log")
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
 		d.Mach.Log("Error: %s\n", err)
+		return
+	}
+	_, err = f.Write([]byte(s))
+	if err1 := f.Close(); err1 != nil && err == nil {
+		d.Mach.Log("Error: %s\n", err1)
+		return
 	}
 }
 
@@ -1327,4 +1394,113 @@ func (d *Debugger) LogReaderVisibleEnd(e *am.Event) {
 	}
 	d.treeLogGrid.RemoveItem(d.logReader)
 	d.updateFocusable()
+}
+
+// gen graph, state-based throttling
+
+func (d *Debugger) SetCursorState(e *am.Event) {
+	d.Mach.EvAdd1(e, ss.GraphsScheduled, nil)
+}
+
+func (d *Debugger) GraphsScheduledEnter(e *am.Event) bool {
+	return d.C != nil && d.Opts.Graph > 0
+}
+
+func (d *Debugger) GraphsScheduledState(e *am.Event) {
+	// TODO cancel rendering on:
+	//  - client change
+	//  - details change
+	//  - but not on tx change (wait until completed)
+	d.Mach.EvAdd1(e, ss.GraphsRendering, nil)
+}
+
+func (d *Debugger) GraphsRenderingEnter(e *am.Event) bool {
+	// only if freq time passed
+	return d.Opts.Graph > 0 && d.C != nil
+}
+
+func (d *Debugger) GraphsRenderingState(e *am.Event) {
+	ctx := d.Mach.NewStateCtx(ss.GraphsRendering)
+	shot, err := d.graph.Clone()
+	if err != nil {
+		// TODO ErrGraph
+		d.Mach.EvAddErr(e, err, nil)
+		d.Mach.EvRemove(e, S{ss.GraphsRendering, ss.GraphsScheduled}, nil)
+
+		return
+	}
+
+	// unblock
+	go func() {
+		if ctx.Err() != nil {
+			return // expired
+		}
+		// mark rendering as in-progress
+		d.Mach.EvRemove1(e, ss.GraphsScheduled, nil)
+
+		// create the visualizer, default
+		vizs := d.initGraphGen(shot)
+		pool := amhelp.Pool(2)
+
+		for _, vis := range vizs {
+			pool.Go(vis.GenDiagrams)
+		}
+
+		err := pool.Wait()
+		if err != nil {
+			// TODO ErrGraph
+			d.Mach.EvAddErr(e, err, nil)
+			d.Mach.EvRemove(e, S{ss.GraphsRendering, ss.GraphsScheduled}, nil)
+
+			return
+		}
+
+		// symlink am-dbg.svg -> id.svg
+		symlink := path.Join(d.Opts.OutputDir, "am-vis.svg")
+		_ = os.Remove(symlink)
+		err = os.Symlink(d.C.id+".svg", symlink)
+		if err != nil {
+			d.Mach.EvAddErr(e, fmt.Errorf("symlink create: %w", err), nil)
+		}
+
+		// render a fresher one
+		d.genGraphsLast = time.Now()
+		d.Mach.EvRemove1(e, ss.GraphsRendering, nil)
+		if d.Mach.Is1(ss.GraphsScheduled) {
+			d.Mach.EvRemove1(e, ss.GraphsScheduled, nil)
+			d.Mach.EvAdd1(e, ss.GraphsRendering, nil)
+		}
+	}()
+}
+
+func (d *Debugger) ClientListVisibleState(e *am.Event) {
+	ctx := d.Mach.NewStateCtx(ss.ClientListVisible)
+	d.buildClientList(-1)
+	go func() {
+		if !amhelp.Wait(ctx, sidebarUpdateDebounce) {
+			return
+		}
+		d.draw(d.clientList)
+	}()
+}
+
+func (d *Debugger) TimelineHiddenState(e *am.Event) {
+	// handled in TimelineStepsHiddenState
+	if e.Machine().Is1(ss.TimelineStepsHidden) {
+		return
+	}
+
+	d.updateLayout()
+}
+
+func (d *Debugger) TimelineHiddenEnd(e *am.Event) {
+	d.updateLayout()
+}
+
+func (d *Debugger) TimelineStepsHiddenEnd(e *am.Event) {
+	d.updateLayout()
+}
+
+func (d *Debugger) TimelineStepsHiddenState(e *am.Event) {
+	d.updateLayout()
 }

@@ -17,7 +17,6 @@ import (
 var (
 	dataFile       = "assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br"
 	logLevel       = am.LogOps
-	logFile        = "am-dbg-video.log"
 	filterLogLevel = am.LogChanges
 	startupMachine = "sim-p1"
 	startupTx      = 27
@@ -61,7 +60,6 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 	ctx := context.Background()
 
 	// overwrite params
-	p.LogFile = logFile
 	p.LogLevel = logLevel
 	p.ImportData = dataFile
 	p.DebugAddr = debugAddr
@@ -74,7 +72,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		ImportData:  p.ImportData,
 		DbgLogLevel: p.LogLevel,
 		DbgLogger:   cli.GetLogger(&p),
-		ServerAddr:  p.ServerAddr,
+		ServerAddr:  p.ListenAddr,
 		EnableMouse: p.EnableMouse,
 		Version:     utils.GetVersion(),
 		ID:          "video",
@@ -144,7 +142,7 @@ func render(dbg *debugger.Debugger) {
 
 	mach.Remove1(ss.StateNameSelected, nil)
 	mach.Add(am.S{ss.TreeMatrixView, ss.MatrixRain}, nil)
-	mach.Add1(ss.SidebarFocused, nil)
+	mach.Add1(ss.ClientListFocused, nil)
 	goBack(mach, 14)
 
 	// go back with clean UI

@@ -144,7 +144,7 @@ func (d *Debugger) afterFocus() func(p cview.Primitive) {
 		case d.clientList.Box:
 			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
 				d.clientList.Box))
-			d.Mach.Add1(ss.SidebarFocused, nil)
+			d.Mach.Add1(ss.ClientListFocused, nil)
 
 		case d.matrix:
 			fallthrough
@@ -197,7 +197,7 @@ func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 	for _, key := range keys {
 		key := key
 		err := inputHandler.Set(key, func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Not(am.S{ss.SidebarFocused, ss.TreeFocused}) {
+			if d.Mach.Not(am.S{ss.ClientListFocused, ss.TreeFocused}) {
 				return ev
 			}
 
@@ -212,7 +212,7 @@ func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 			// find the first client starting with the key
 
 			// sidebar
-			if d.Mach.Is1(ss.SidebarFocused) {
+			if d.Mach.Is1(ss.ClientListFocused) {
 				currIdx := d.clientList.GetCurrentItemIndex()
 
 				for i, item := range d.clientList.GetItems() {
@@ -498,12 +498,12 @@ func (d *Debugger) getKeystrokes() map[string]func(
 
 		// remove client (sidebar)
 		"backspace": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Not1(ss.SidebarFocused) {
+			if d.Mach.Not1(ss.ClientListFocused) {
 				return ev
 			}
 
 			sel := d.clientList.GetCurrentItem()
-			if sel == nil || d.Mach.Not1(ss.SidebarFocused) {
+			if sel == nil || d.Mach.Not1(ss.ClientListFocused) {
 				return nil
 			}
 
@@ -516,7 +516,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 		// scroll to LogScrolled
 		// scroll sidebar
 		"down": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Is1(ss.SidebarFocused) {
+			if d.Mach.Is(S{ss.ClientListFocused, ss.ClientListVisible}) {
 				// TODO state?
 				go func() {
 					d.updateClientList(true)
@@ -529,7 +529,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 			return ev
 		},
 		"up": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Is1(ss.SidebarFocused) {
+			if d.Mach.Is(S{ss.ClientListFocused, ss.ClientListVisible}) {
 				// TODO state?
 				go func() {
 					d.updateClientList(true)
@@ -735,7 +735,7 @@ func (d *Debugger) updateFocusable() {
 
 	// change focus (or not) when changing view types
 	switch d.Mach.Switch(ss.GroupFocused) {
-	case ss.SidebarFocused:
+	case ss.ClientListFocused:
 		d.focusManager.Focus(d.clientList)
 	case ss.TreeFocused:
 		if d.Mach.Any1(ss.TreeMatrixView, ss.TreeLogView) {

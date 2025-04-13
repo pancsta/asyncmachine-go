@@ -108,7 +108,7 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 			// TODO cache import data and deep copy for new connections
 			ImportData: par.ImportData,
 			// ServerAddr is disabled
-			ServerAddr:  par.ServerAddr,
+			ServerAddr:  par.ListenAddr,
 			EnableMouse: par.EnableMouse,
 			Version:     ver,
 		})

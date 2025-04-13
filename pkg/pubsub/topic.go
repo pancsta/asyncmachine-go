@@ -250,7 +250,7 @@ func (t *Topic) StartState(e *am.Event) {
 		}
 		t.host = host
 
-		// TODO late tags
+		// TODO late tags, init earlier and append tags
 		self := host.ID().String()
 		tags := t.Mach.Tags()
 		tags = append(tags, "peer:"+self)
