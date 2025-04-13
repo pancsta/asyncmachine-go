@@ -81,7 +81,36 @@ func (t Time) Sum() uint64 {
 	for _, idx := range t {
 		sum += idx
 	}
+
 	return sum
+}
+
+// DiffSince returns the number of ticks for each state in Time since the
+// passed machine time.
+func (t Time) DiffSince(before Time) Time {
+	ret := make(Time, len(t))
+	if len(t) != len(before) {
+		return ret
+	}
+
+	for i := range before {
+		ret[i] = t[i] - before[i]
+	}
+
+	return ret
+}
+
+func (t Time) Add(t2 Time) Time {
+	ret := make(Time, len(t))
+	if len(t) != len(t2) {
+		return t
+	}
+
+	for i := range t2 {
+		ret[i] = t[i] + t2[i]
+	}
+
+	return ret
 }
 
 // Context
