@@ -2,7 +2,7 @@
 
 <!-- TOC -->
 
-- version `v0.10.0`
+- version `v0.10.3`
 - [Legend](#legend)
 - [Machine and States](#machine-and-states)
   - [Defining States](#defining-states)
@@ -187,6 +187,7 @@ Machine clock is a [logical clock](https://en.wikipedia.org/wiki/Logical_clock),
 different instances of the same state. It's most commonly used in the form of `context.Context` via
 [`Machine.NewStateCtx(state string)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.NewStateCtx),
 but it also provides methods on its own data type [`am.Time`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Time).
+An instance of state context gets canceled once the state becomes inactive.
 
 Other related methods and functions:
 
@@ -402,6 +403,24 @@ states_ are used for relations with other states, as relations to an inactive st
 func (h *Handlers) ClickState(e *am.Event) {
     // add removal to the queue
     e.Machine.Remove1("Click")
+}
+```
+
+**Example** - clock-based self removal
+
+```go
+func (h *Handlers) ClickState(e *am.Event) {
+    mach := e.Machine
+    tick := mach.Tick("Click")
+
+    go func() {
+        // ... blocking calls
+
+        // last one deactivates
+        if tick == mach.Tick("Click") {
+            mach.Remove1("Click", nil)
+        }
+    }()
 }
 ```
 
@@ -853,8 +872,9 @@ Side effects:
 define the rules of the flow. Each [state](#defining-states) can have 4 types of **relations**. Each relation accepts a
 list of state names. Relations guarantee consistency among [active states](#active-states).
 
-Relations form a Directed Cyclic Graph (DCG), but are not Turing complete, as they guarantee termination. Only
-[auto states](#auto-states) trigger a single, automatic mutation attempt.
+Relations form a [multigraph (with identity edges)](https://en.wikipedia.org/wiki/Multigraph) of state nodes,
+but are not Turing complete, as they guarantee termination. Only [auto states](#auto-states) trigger a single,
+automatic mutation attempt.
 
 #### `Add` relation
 

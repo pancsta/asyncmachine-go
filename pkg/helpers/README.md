@@ -3,8 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
 
 **/pkg/helpers** is the swiss army knife for async state machines. It encapsulates many low-level details of
 [`/pkg/machine`](/pkg/machine/README.md) and provide easy to reason about functions. It specifically deals with

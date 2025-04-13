@@ -3,8 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
 
 **/pkg/history** provides mutation history tracking and traversal. It's in an early stage, but it has a very important
 role in making informed decision about state flow. Besides providing a log of changes, it also binds human time to

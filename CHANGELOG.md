@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.10.3](https://github.com/pancsta/asyncmachine-go/tree/v0.10.3) (2025-04-13)
+
+- feat\(am-dbg\): add graphs, dashboards, and others [\#229](https://github.com/pancsta/asyncmachine-go/pull/229)
+  (@pancsta)
+- feat: add MTimeDiff, Time.DiffSince [\#228](https://github.com/pancsta/asyncmachine-go/pull/228) (@pancsta)
+- feat\(telemetry\): add env-based activation for Otel, Prom, Grafana, pkg/rpc [\#227](https://github.com/pancsta/asyncmachine-go/pull/227)
+  (@pancsta)
+- feat\(pkg/states\): add global import, BindStart, ConnPool [\#226](https://github.com/pancsta/asyncmachine-go/pull/226)
+  (@pancsta)
+
 ## [v0.10.2](https://github.com/pancsta/asyncmachine-go/tree/v0.10.2) (2025-02-25)
 
 - feat\(arpc\): add aRPC REPL [\#225](https://github.com/pancsta/asyncmachine-go/pull/225) (@pancsta)

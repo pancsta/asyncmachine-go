@@ -7,11 +7,12 @@ It calls struct methods according to conventions, a schema, and currently active
 
 ## What is a "state" in asyncmachine?
 
-State is binary as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
+State is binary name as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
 
 ## What does "clock-based" mean?
 
-Each state has a counter of activations & de-activations, and all state counters create "machine time".
+Each state has a counter of activations & de-activations, and all state counters create "machine time". It's a logical
+clock.
 
 ## What's the difference between states and events?
 
@@ -20,7 +21,7 @@ The same event happening many times will cause only 1 state activation until the
 ## What's the difference between subscribing to events and waiting on states?
 
 Event subscription will tigger as many times as the event, while waiting followed by a new waiting can miss some
-"state instances" (those can be infered from the state's clock).
+"state instances" (those can be inferred from the state's clock).
 
 ## How does asyncmachine compare to [Temporal](https://github.com/temporalio/temporal)?
 

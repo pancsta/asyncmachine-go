@@ -30,22 +30,36 @@
 > [!NOTE]
 > State machines communicate through states (mutations, checking, and waiting).
 
-**asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
-It offers [atomic consensus](/docs/manual.md#transition-lifecycle), [transparent RPC](/pkg/rpc/README.md),
+**asyncmachine-go** is a batteries-included graph control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
+and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state-machine](/pkg/machine/README.md)**.
+It features [atomic transitions](/docs/manual.md#transition-lifecycle), [transparent RPC](/pkg/rpc/README.md),
 [TUI debugger](/tools/cmd/am-dbg/README.md), [telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md),
-[remote workers](/pkg/node/README.md), and [soon diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
+[remote workers](/pkg/node/README.md), and [diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
 
-Its main purpose is workflows (in-process / distributed / decentralized), although it can be used for a wide range of
-stateful applications - daemons, UIs, configs, bots, firewalls, consensus algos, smart graphs, etc.
-**asyncmachine** can precisely (and transparently) target a specific point in a scenario and easily bring structure to
-event-based systems. It takes care of most contexts, `select` statements, panics, and allows for structured concurrency.
+As a control flow library, it decides about running of predefined bits of code (transition handlers) - their order and
+which ones to run, according to currently active states (flags). Thanks to a novel state machine, the amount of handlers
+can be minimized, while maximizing scenario coverage. It's fault-tolerant by design, has rule-based mutations, and can
+be used to target virtually any step-in-time, in any workflow.
+
+**AM** takes care of most contexts, `select` statements, and panics, while allowing for graph-structured concurrency
+with goroutine cancellation. The history log and relations have a vector format.
 
 It aims at creating **autonomous** workflows with **organic** control flow and **stateful** APIs:
 
 - **autonomous** - automatic states, relations, context-based decisions
 - **organic** - relations, negotiation, cancellation
-- **stateful** - maintaing context, responsive, atomic
+- **stateful** - maintaining context, responsive, atomic
+
+Each state represents:
+
+- binary flag
+- node in a multigraph
+- AOP aspect
+- metric
+- trace
+- subscription topic
+- multiple methods
+- breakpoint
 
 ![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)
 
@@ -105,7 +119,7 @@ Top layers depend on the bottom ones.
   <tr>
     <td>.</td>
     <td>.</td>
-    <td colspan="9" align=center>🦾 <a href="pkg/machine/README.md">Machine API</a></td>
+    <td colspan="9" align=center>🐇 <a href="pkg/machine/README.md">Machine API</a></td>
     <td>.</td>
     <td>.</td>
   </tr>
@@ -225,17 +239,21 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 
 ## Getting Started
 
-🦾 **[`/pkg/machine`](pkg/machine/README.md)** is the main package, while [`/pkg/node`](pkg/node) shows a high-level
-usage. Examples in [`/examples`](/examples/README.md) are good for a general grasp, while [`/docs/manual.md`](/docs/manual.md)
-and [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details.
-[`/tools/cmd/am-gen`](/tools/cmd/am-gen) can kick it off, while [`/examples/mach_template`](/examples/mach_template)
-is the ultimate **copy-pasta**, and [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) records every detail. Reading tests is
-always a good idea...
+- 🦾 **[`/pkg/machine`](pkg/machine/README.md)** is the main package
+- [`/pkg/node`](pkg/node) shows a high-level usage
+- examples in [`/examples`](/examples/README.md) are good for a general grasp
+- [`/docs/manual.md`](/docs/manual.md)
+  and [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen) will bootstrap
+- [`/examples/mach_template`](/examples/mach_template) is copy-paste ready
+- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) records every detail
+- reading tests is always a good idea...
 
 ## [Packages](/pkg)
 
 This monorepo offers the following importable packages and runnable tools:
 
+- [`/pkg/graph`(/pkg/graph/README.md) Multigraph of interconnected state machines.
 - [`/pkg/helpers`](/pkg/helpers/README.md) Useful functions when working with async state machines.
 - [`/pkg/history`](/pkg/history/README.md) History tracking and traversal.
 - 🦾 **[`/pkg/machine`](/pkg/machine/README.md) State machine, dependency free, semver compatible.**
@@ -253,8 +271,8 @@ This monorepo offers the following importable packages and runnable tools:
 
 ## Apps
 
-- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
-- [arpc REPL](/tools/repl/README.md) Cobra-based REPL.
+- [arpc REPL](/tools/repl) Cobra-based REPL.
+- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state-machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
   simulator for libp2p-pubsub.
 - [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
@@ -307,7 +325,8 @@ State is a binary name as in status / switch / flag, eg "process RUNNING" or "ca
 
 ### What does "clock-based" mean?
 
-Each state has a counter of activations & de-activations, and all state counters create "machine time".
+Each state has a counter of activations & de-activations, and all state counters create "machine time". It's a logical
+clock.
 
 ### What's the difference between states and events?
 

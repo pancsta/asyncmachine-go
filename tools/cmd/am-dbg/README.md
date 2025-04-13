@@ -3,8 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
 
 ## am-dbg TUI Debugger
 
@@ -31,8 +30,7 @@ It's built around a timeline of transitions and allows for precise searches and 
 - Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
 
 ## Features
 
@@ -59,6 +57,7 @@ It's built around a timeline of transitions and allows for precise searches and 
   - **contexts**: list state contexts and mach time.
   - **subscriptions**: list awaited clocks.
   - **piped states**: list all inbound and outbound pipes.
+- **partial layout**: some elements of the UI can be hidden, so many instances can create dashboards
 
 ```text
 Usage:
@@ -67,22 +66,28 @@ Usage:
 Flags:
       --am-dbg-addr string      Debug this instance of am-dbg with another one
       --clean-on-connect        Clean up disconnected clients on the 1st connection
+  -d, --dir string              Output directory for generated files (default ".")
       --enable-mouse            Enable mouse support (experimental) (default true)
-  -f, --fwd-data string         Fordward incoming data to other instances (eg addr1,addr2)
+  -f, --fwd-data string         Forward incoming data to other instances (eg addr1,addr2)
+      --graph int               Level of details for graphs (svg, d2, mermaid) in --dir (0-3)
   -h, --help                    help for am-dbg
   -i, --import-data string      Import an exported gob.bt file
   -l, --listen-on string        Host and port for the debugger to listen on (default "localhost:6831")
       --log-2-ttl string        Max time to live for logs level 2 (default "24h")
-      --log-file string         Log file path
       --log-level int           Log level, 0-5 (silent-everything)
       --max-mem int             Max memory usage (in MB) to flush old transitions (default 100)
+      --output-clients          Write a detailed client list into in am-dbg-clients.txt inside --dir
       --prof-srv string         Start pprof server
-  -r, --reader                  Enable Log Reader
   -c, --select-connected        Select the newly connected machine, if no other is connected
-  -m, --select-machine string   Select a machine by ID on startup (requires --import-data)
+  -m, --select-machine string   Select a machine by (partial) ID on startup (requires --import-data)
   -t, --select-transition int   Select a transaction by _number_ on startup (requires --select-machine)
+      --tail                    Start from the last tx (default true)
       --version                 Print version and exit
   -v, --view string             Initial view (tree-log, tree-matrix, matrix) (default "tree-log")
+      --view-narrow             Force a narrow view, independently of the viewport size
+      --view-rain               Show the rain view
+  -r, --view-reader             Enable Log Reader
+      --view-timelines int      Number of timelines to show (0-2) (default 2)
 ```
 
 ![legend](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-legend.png)
@@ -149,7 +154,8 @@ Tests:
 ![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)
 
 Small-scale dashboards can be achieved by using the `--fwd-data` param, with multiple instances **am-dbg** as
-destinations. It will duplicate all the memory allocations and won't scale far.
+destinations. It will duplicate all the memory allocations and won't scale far, but it will work. Check out
+[`/config/dashboards`](/config/dashboards) directory for preconfigured [zellij layouts](https://zellij.dev/).
 
 ## Steps for SSH Server
 

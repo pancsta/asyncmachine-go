@@ -3,8 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
 
 Table of contents:
 
@@ -140,8 +139,8 @@ Interactively use the [TUI debugger](/tools/cmd/am-dbg) with data pre-generated 
 
 ## Apps
 
-- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
-- [arpc REPL](/tools/repl/README.md) Cobra-based REPL.
+- [arpc REPL](/tools/repl) Cobra-based REPL.
+- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state-machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
   simulator for libp2p-pubsub.
 - [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)

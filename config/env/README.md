@@ -3,8 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
 
 **/config/env** contains all environment variables for asyncmachine, organized in files, most of which are aimed at
 debugging.
@@ -28,19 +27,24 @@ env (cat config/env/debug-tests.env) task test-debugger-remote
 It's not possible to keep comments in the .evn file for fishshell. Meanings below.
 
 ```shell
+
+### MACHINE
+
 # enable a simple debugging mode (eg long timeouts)
 # "1", "2", "" (default)
 AM_DEBUG=1
 
 # address of a running am-dbg instance
+# "1" expands to localhost:6831
 # defaults to ""
 AM_DBG_ADDR=localhost:6831
 
 # enables a healthcheck ticker for every debugged machine
+# defaults to ""
 AM_HEALTHCHECK=1
 
-# set the log level
-# "1", "2", "3", "4", "0" (default)
+# set the log level 0-4
+# defaults to "0"
 AM_LOG=2
 
 # enable file logging (use machine ID as name)
@@ -55,11 +59,51 @@ AM_DETECT_EVAL=1
 # defaults to ""
 AM_TEST_DEBUG=1
 
+### TESTS
+
 # RPC port on a remote worker to connect to
 AM_DBG_WORKER_RPC_ADDR=localhost:53480
 
 # am-dbg telemetry port on a remote worker to connect to
 AM_DBG_WORKER_TELEMETRY_ADDR=localhost:53470
+
+### TELEMETRY
+
+# telemetry source (service / job)
+# defaults to ""
+AM_SERVICE=
+
+# prometheus address
+# defaults to ""
+AM_PROM_PUSH_URL=http://localhost:9091
+# grafana address, required for automatic dashboards
+# defaults to ""
+AM_GRAFANA_URL=http://localhost:3000
+# grafana API token, required for automatic dashboards
+# defaults to ""
+AM_GRAFANA_TOKEN=
+
+# export Otel traces for states and submachines
+# defaults to ""
+AM_OTEL_TRACE=1
+
+# create additional Otel traces for transitions
+# defaults to ""
+AM_OTEL_TRACE_TXS=1
+
+# destination address for Otel traces
+# defaults to "localhost:4317"
+# OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=localhost:4317
+
+# prefix of stack traces to remove
+# defaults to ""
+AM_TRACE_FILTER=
+
+# replace hostname in machine names
+# defaults to ""
+AM_HOSTNAME=
+
+### RPC
 
 # print log msgs from the RPC server
 # defaults to ""
@@ -73,6 +117,13 @@ AM_RPC_LOG_CLIENT=1
 # defaults to ""
 AM_RPC_LOG_MUX=1
 
+# expose RPC components via am-dbg (requires AM_DBG_ADDR)
+# and Otel (requires AM_OTEL_TRACE)
+# defaults to ""
+AM_RPC_DBG=1
+
+### NODE
+
 # print log msgs from the Node supervisor
 # defaults to ""
 AM_NODE_LOG_SUPERVISOR=1
@@ -85,13 +136,25 @@ AM_NODE_LOG_CLIENT=1
 # defaults to ""
 AM_NODE_LOG_WORKER=1
 
+### PUBSUB
+
 # print log msgs from PubSub
 # defaults to ""
 AM_PUBSUB_LOG=1
 
-# expose remote Pub workers via am-dbg (requires AM_DBG_ADDR)
+# expose remote PubSub workers via am-dbg (requires AM_DBG_ADDR)
 # defaults to ""
 AM_PUBSUB_DBG=1
+
+### REPL
+
+# REPL address to listen on. "1" expands to 127.0.0.1:0.
+# defaults to ""
+AM_REPL_ADDR=1
+
+# REPL address file dir path (`addrDir/mach-id.addr`). Optional.
+# defaults to ""
+AM_REPL_ADDR_DIR=tmp
 ```
 
 ## monorepo
