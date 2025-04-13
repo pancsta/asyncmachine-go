@@ -2,6 +2,7 @@
 //  - repeated cli params
 //  - AST
 //  - embed pkg/states/states_utils.go
+//  	- optional with pkg/states/global
 
 package generator
 

@@ -116,6 +116,30 @@ func BindErr(source, target *am.Machine, targetErr string) error {
 	return source.BindHandlers(h)
 }
 
+// BindStart binds Start to custom states using Add/Remove. Empty state
+// defaults to Start.
+func BindStart(
+	source, target *am.Machine, activeState, inactiveState string,
+) error {
+
+	if activeState == "" {
+		activeState = ss.BasicStates.Start
+	}
+	if inactiveState == "" {
+		inactiveState = ss.BasicStates.Start
+	}
+
+	h := &struct {
+		StartState am.HandlerFinal
+		StartEnd   am.HandlerFinal
+	}{
+		StartState: Add(source, target, ss.BasicStates.Start, activeState),
+		StartEnd:   Remove(source, target, ss.BasicStates.Start, inactiveState),
+	}
+
+	return source.BindHandlers(h)
+}
+
 // BindReady binds Ready to custom states using Add/Remove. Empty state
 // defaults to Ready.
 func BindReady(
@@ -139,6 +163,35 @@ func BindReady(
 
 	return source.BindHandlers(h)
 }
+
+// // Bind binds an arbitrary state to custom states using Add and Remove.
+// // Empty [activeState] and [inactiveState] defaults to [source].
+// // TODO
+// func Bind(
+// 	state string, source, target *am.Machine, activeState, inactiveState string
+// ) error {
+//
+// 	if state == "" {
+// 		return am.ErrStateMissing
+// 	}
+// 	if activeState == "" {
+// 		activeState = state
+// 	}
+// 	if inactiveState == "" {
+// 		inactiveState = state
+// 	}
+//
+// 	// TODO dynamic struct init, see pkg/rpc
+// 	h := &struct {
+// 		StartState am.HandlerFinal
+// 		StartEnd   am.HandlerFinal
+// 	}{
+// 		StartState: Add(source, target, ss.BasicStates.Start, activeState),
+// 		StartEnd:   Remove(source, target, ss.BasicStates.Start, inactiveState),
+// 	}
+//
+// 	return source.BindHandlers(h)
+// }
 
 func gcHandler(mach *am.Machine) am.HandlerDispose {
 	return func(id string, ctx context.Context) {
