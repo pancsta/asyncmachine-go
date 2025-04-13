@@ -1,0 +1,16 @@
+layout {
+    pane split_direction="horizontal" {
+        pane size="50%" split_direction="vertical" {
+            pane size="50%" command="am-dbg" {
+                args "-l" "localhost:6832" "--view-narrow" "--view-timelines" "0"  "--tail" "--view-rain" "1" "--view" "matrix"
+            }
+            pane size="50%" command="am-dbg" {
+                args "-l" "localhost:6833" "--view-narrow" "--view-timelines" "0"  "--tail"
+            }
+        }
+
+        pane size="50%" command="sh" {
+            args "-c" "sleep 2 && am-dbg --dir tmp -l localhost:6831 --fwd-data localhost:6832,localhost:6833 --graph 3 --tail"
+        }
+    }
+}

@@ -1,0 +1,21 @@
+layout {
+    pane split_direction="vertical" {
+        pane size="50%" split_direction="horizontal" {
+            pane size="50%" split_direction="vertical" {
+                pane size="50%" command="am-dbg" {
+                    args "-l" "localhost:6832" "--view-narrow" "--view-timelines" "0" "--view" "matrix" "--tail"
+                }
+                pane size="50%" command="am-dbg" {
+                    args "-l" "localhost:6833" "--view-narrow" "--view-timelines" "0" "--view-rain" "--view" "matrix" "--tail"
+                }
+            }
+            pane size="50%" command="am-dbg" {
+                args "-l" "localhost:6834" "--view-narrow" "--view-timelines" "0" "--tail" "--view-timelines" "1" "--view-reader"
+            }
+        }
+        
+        pane size="50%" command="sh" {
+            args "-c" "sleep 2 && am-dbg --dir tmp -l localhost:6831 --fwd-data localhost:6832,localhost:6833,localhost:6834 --graph 3 --tail"
+        }
+    }
+}
