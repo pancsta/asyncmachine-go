@@ -23,10 +23,6 @@ type History struct {
 	maxEntries int
 }
 
-func (h *History) Inheritable() bool {
-	return false
-}
-
 func (h *History) TransitionEnd(tx *am.Transition) {
 	if !tx.Accepted {
 		return
@@ -53,8 +49,10 @@ func (h *History) TransitionEnd(tx *am.Transition) {
 	h.Entries = append(h.Entries, Entry{
 		CalledStates: amhelp.StatesToIndexes(tx.Machine.StateNames(),
 			tx.Mutation.CalledStates),
-		Type: tx.Mutation.Type,
-		Auto: tx.Mutation.Auto,
+		// TODO add to Transition
+		MTimeDiff: tx.TimeAfter.DiffSince(tx.TimeBefore),
+		Type:      tx.Mutation.Type,
+		Auto:      tx.Mutation.Auto,
 	})
 	h.mx.Lock()
 	// update last seen time
@@ -74,10 +72,12 @@ type Entry struct {
 	CalledStates []int
 	// Auto is true if the mutation was triggered by an Auto state
 	Auto bool
-	// T machine time (logical clocks)
-	T am.Time
-	// Time real time
-	Time time.Time
+	// MTime is machine time.
+	MTime am.Time
+	// HTime is human time.
+	HTime time.Time
+	// MTimeDiff is a machine time diff since the last entry.
+	MTimeDiff am.Time
 }
 
 type MatcherStates struct {
