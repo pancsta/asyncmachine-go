@@ -265,6 +265,8 @@ var (
 	ErrRelation = errors.New("relation error")
 	// ErrDisposed is used to indicate that the machine has been disposed.
 	ErrDisposed = errors.New("machine disposed")
+	// ErrSchema indicates an issue with the state schema.
+	ErrSchema = errors.New("machine disposed")
 )
 
 func (r Result) String() string {

@@ -229,7 +229,7 @@ func MachDebugEnv(mach am.Api) {
 }
 
 // TODO StableWhen(dur, states, ctx) - like When, but makes sure the state is
-// stable for the duration.
+//  stable for the duration.
 
 // NewReqAdd creates a new failsafe request to add states to a machine. See
 // See MutRequest for more info and NewMutRequest for the defaults.

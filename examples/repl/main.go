@@ -72,7 +72,7 @@ func newWorker(ctx context.Context, num int) (*am.Machine, error) {
 	// worker.SetLogArgs(am.NewArgsMapper([]string{"log"}, 0))
 	worker.SetLogLevel(am.LogChanges)
 	// start a REPL aRPC server, create an addr file
-	arpc.MachRepl(worker, "", "tmp", nil)
+	arpc.MachRepl(worker, "", "tmp", nil, nil)
 
 	return worker, nil
 }

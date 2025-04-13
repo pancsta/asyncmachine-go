@@ -6,17 +6,27 @@ package prometheus
 // TODO collect also total numbers?
 
 import (
+	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
+
+const EnvPromPushUrl = "AM_PROM_PUSH_URL"
+
+type PromInheritTracer struct {
+	*am.NoOpTracer
+
+	m *Metrics
+}
 
 // PromTracer is [am.Tracer] for tracing state machines.
 type PromTracer struct {
@@ -33,6 +43,37 @@ func (t *PromTracer) StructChange(machine am.Api, old am.Struct) {
 
 func (t *PromTracer) MachineDispose(machId string) {
 	t.m.Close()
+}
+
+func (t *PromTracer) NewSubmachine(parent, mach am.Api) {
+
+	// skip RPC machines
+	dbgRpc := os.Getenv("AM_RPC_DBG") != ""
+	for _, tag := range mach.Tags() {
+		if strings.HasPrefix(tag, "rpc-") && !dbgRpc {
+			return
+		}
+	}
+
+	// bind metrics and configured exporters
+	m2 := BindMach(mach)
+	if t.m.pusher != nil {
+		BindToPusher(m2, t.m.pusher)
+	}
+	if t.m.registry != nil {
+		BindToRegistry(m2, t.m.registry)
+	}
+
+	// bind inheritance tracer
+	err := mach.BindTracer(&PromInheritTracer{
+		m: m2,
+	})
+	if err != nil {
+		mach.AddErr(err, nil)
+		return
+	}
+
+	t.m.childMetrics = append(t.m.childMetrics, m2)
 }
 
 func (t *PromTracer) TransitionInit(tx *am.Transition) {
@@ -120,8 +161,8 @@ type Metrics struct {
 	// using Machine.DetachTracer.
 	Tracer am.Tracer
 
-	mx         sync.Mutex
-	closed     bool
+	mx     sync.Mutex
+	closed bool
 
 	// mach definition
 
@@ -172,12 +213,12 @@ type Metrics struct {
 	statesTouchedLen uint
 
 	// number of errors
-	ExceptionsCount    prometheus.Gauge
-	exceptionsCount    uint64
+	ExceptionsCount prometheus.Gauge
+	exceptionsCount uint64
 
 	// number of transitions
-	TransitionsCount    prometheus.Gauge
-	transitionsCount    uint64
+	TransitionsCount prometheus.Gauge
+	transitionsCount uint64
 
 	// stats
 
@@ -192,9 +233,12 @@ type Metrics struct {
 	handlersAmountLen uint
 
 	// transition time
-	TxTime    prometheus.Gauge
-	txTime    uint64
-	txTimeLen uint
+	TxTime       prometheus.Gauge
+	txTime       uint64
+	txTimeLen    uint
+	pusher       *push.Pusher
+	registry     *prometheus.Registry
+	childMetrics []*Metrics
 }
 
 func newMetrics(mach am.Api) *Metrics {
@@ -215,8 +259,8 @@ func newMetrics(mach am.Api) *Metrics {
 			Namespace: "am",
 		}),
 		RefStatesAmount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "ref_states_" + machId,
-			Help: "Number of states referenced by relations",
+			Name:      "ref_states_" + machId,
+			Help:      "Number of states referenced by relations",
 			Namespace: "am",
 		}),
 
@@ -336,6 +380,11 @@ func (m *Metrics) Sync() {
 	m.txTime = 0
 	m.txTimeLen = 0
 	m.transitionsCount = 0
+
+	// sync children
+	for _, child := range m.childMetrics {
+		child.Sync()
+	}
 }
 
 // Close sets all gauges to 0.
@@ -365,9 +414,18 @@ func (m *Metrics) Close() {
 	m.TxTime.Set(0)
 }
 
+func (m *Metrics) SetPusher(pusher *push.Pusher) {
+	m.pusher = pusher
+}
+
+func (m *Metrics) SetRegistry(registry *prometheus.Registry) {
+	m.registry = registry
+}
+
 // BindMach bind transitions to Prometheus metrics.
 func BindMach(mach am.Api) *Metrics {
 	metrics := newMetrics(mach)
+	mach.Log("[bind] Prometheus metrics")
 
 	// state & relations
 	// TODO bind in StructChange
@@ -405,6 +463,8 @@ func BindMach(mach am.Api) *Metrics {
 
 func BindToPusher(metrics *Metrics, pusher *push.Pusher) {
 
+	metrics.SetPusher(pusher)
+
 	// transition
 	pusher.Collector(metrics.TransitionsCount)
 	pusher.Collector(metrics.QueueSize)
@@ -430,6 +490,8 @@ func BindToPusher(metrics *Metrics, pusher *push.Pusher) {
 }
 
 func BindToRegistry(metrics *Metrics, registry *prometheus.Registry) {
+
+	metrics.SetRegistry(registry)
 
 	// transition
 	registry.MustRegister(metrics.TransitionsCount)
@@ -463,3 +525,42 @@ func average(sum uint64, sampleLen uint) float64 {
 	return float64(sum / uint64(sampleLen))
 }
 
+func MachMetricsEnv(mach am.Api) *Metrics {
+
+	promPushUrl := os.Getenv(EnvPromPushUrl)
+	promService := os.Getenv(telemetry.EnvService)
+
+	// Return early if any required variables are empty
+	if promPushUrl == "" || promService == "" {
+		return nil
+	}
+
+	// bind metrics via a pusher
+	// TODO global ticker
+	p := push.New(promPushUrl, telemetry.NormalizeId(promService))
+
+	// bind transition to metrics
+	m := BindMach(mach)
+	BindToPusher(m, p)
+	// TODO config
+	t := time.NewTicker(15 * time.Second)
+	go func() {
+		for {
+
+			select {
+			// sync every 15 secs
+			case <-t.C:
+				m.Sync()
+				err := p.Push()
+				if err != nil {
+					mach.AddErr(err, nil)
+				}
+
+			case <-mach.Ctx().Done():
+				// pass
+			}
+		}
+	}()
+
+	return m
+}

@@ -17,7 +17,6 @@ import (
 	"github.com/lithammer/dedent"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
-
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/generator/cli"
@@ -155,7 +154,7 @@ func (g *Generator) Output() string {
 	out += utils.Sp(`
 		)
 		
-		// %sStatesDef contains all the states of the %s state machine.
+		// %sStatesDef contains all the states of the %s state-machine.
 		type %sStatesDef struct {
 			*am.StatesBase
 	
@@ -187,7 +186,7 @@ func (g *Generator) Output() string {
 
 	// groups def
 	out += utils.Sp(`
-			// %sGroupsDef contains all the state groups %s state machine.
+			// %sGroupsDef contains all the state groups %s state-machine.
 			type %sGroupsDef struct {
 		`, g.Name, g.Name, g.Name)
 	if g.Mach.Is1(ssG.InheritConnected) {
@@ -340,9 +339,9 @@ func (g *Generator) Output() string {
 	out += utils.Sp(`
 		)
 
-			// %sStates contains all the states for the %s machine.
+			// %sStates contains all the states for the %s state-machine.
 			%sStates = ss%s
-			// %sGroups contains all the state groups for the %s machine.
+			// %sGroups contains all the state groups for the %s state-machine.
 			%sGroups = sg%s
 		)
 	`, g.Name, g.Name, g.Name, g.N, g.Name, g.Name, g.Name, g.N)

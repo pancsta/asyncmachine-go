@@ -19,14 +19,18 @@ import (
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
+// TODO use utils.Sp for all multilines
+
 type (
 	S = am.S
 	T = am.Time
 )
 
+var Sp = utils.Sp
+
 var (
 	title   = "aRPC REPL for asyncmachine.dev"
-	example = utils.Sp(`
+	example = Sp(`
 	- REPL from an addr
 	  $ arpc localhost:6452
 	- REPL from a file
@@ -248,8 +252,8 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 	addCmd := &cobra.Command{
 		Use: "add MACH STATES",
 		Example: "$ add mach1 Foo Bar \\\n" +
-			"  --arg name1 --val val1 \\\n" +
-			"  --arg name2 --val val2",
+			"    --arg name1 --val val1 \\\n" +
+			"    --arg name2 --val val2",
 		Short:   "Add states to a single machine",
 		Args:    cobra.MinimumNArgs(2),
 		GroupID: "mutating",
@@ -283,8 +287,8 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 	removeCmd := &cobra.Command{
 		Use: "remove MACH STATES",
 		Example: "$ remove mach1 Foo Bar \\\n" +
-			"  --arg name1 --val val1 \\\n" +
-			"  --arg name2 --val val2",
+			"    --arg name1 --val val1 \\\n" +
+			"    --arg name2 --val val2",
 		Short:   "Removed states from a single machine",
 		Args:    cobra.MinimumNArgs(2),
 		GroupID: "mutating",
@@ -317,8 +321,8 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 	groupAddCmd := &cobra.Command{
 		Use: "group-add STATES",
 		Example: "$ group-add -r myid-.\\* Foo Bar \\\n" +
-			"  --arg name1 --val val1 \\\n" +
-			"  --arg name2 --val val2",
+			"    --arg name1 --val val1 \\\n" +
+			"    --arg name2 --val val2",
 		Short:   "Add states to a group of machines",
 		Args:    cobra.MinimumNArgs(1),
 		GroupID: "mutating",
@@ -370,8 +374,8 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 	groupRemoveCmd := &cobra.Command{
 		Use: "group-remove STATES",
 		Example: "$ group-remove -r myid-.\\* Foo Bar \\\n" +
-			"  --arg name1 --val val1 \\\n" +
-			"  --arg name2 --val val2",
+			"    --arg name1 --val val1 \\\n" +
+			"    --arg name2 --val val2",
 		Short:   "Remove states from a group of machines",
 		Args:    cobra.MinimumNArgs(1),
 		GroupID: "mutating",
@@ -855,7 +859,8 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 				return nil
 			}
 
-			ret := w.Inspect(nil)
+			ret := "mach://" + w.RemoteId() + "\n\n"
+			ret += w.Inspect(nil)
 			repl.Print(ret)
 
 			return nil
@@ -876,12 +881,12 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 
 			conn, disconn, inprog := 0, 0, 0
 			for _, rpc := range rpcs {
-				if rpc.Mach.Is1(ss.Connected) {
+				if rpc.Mach.Is1(ss.Ready) {
 					conn++
-				} else if rpc.Mach.Is1(ss.Disconnected) {
-					disconn++
 				} else if rpc.Mach.Is1(ss.Connecting) {
 					inprog++
+				} else {
+					disconn++
 				}
 			}
 

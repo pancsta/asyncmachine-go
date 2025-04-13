@@ -152,7 +152,6 @@ func (c *Client) StartState(e *am.Event) {
 		_ = AddErrRpc(c.Mach, err, nil)
 		return
 	}
-	amhelp.MachDebugEnv(c.SuperRpc.Mach)
 
 	// bind to super rpc
 	err = errors.Join(
@@ -206,8 +205,6 @@ func (c *Client) StartState(e *am.Event) {
 
 				return
 			}
-
-			amhelp.MachDebugEnv(c.SuperRpc.Worker)
 		}
 	}()
 }
@@ -282,7 +279,6 @@ func (c *Client) WorkerPayloadState(e *am.Event) {
 		}
 		// delay for rpc/Mux
 		c.WorkerRpc.HelloDelay = 100 * time.Millisecond
-		amhelp.MachDebugEnv(c.WorkerRpc.Mach)
 
 		// bind to worker rpc
 		err = errors.Join(
@@ -308,10 +304,6 @@ func (c *Client) WorkerPayloadState(e *am.Event) {
 			return
 		}
 	}()
-}
-
-func (c *Client) WorkerReadyState(e *am.Event) {
-	amhelp.MachDebugEnv(c.WorkerRpc.Worker)
 }
 
 // ///// ///// /////

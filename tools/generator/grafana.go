@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
+	"sync"
 
 	"github.com/K-Phoen/grabana"
 	"github.com/K-Phoen/grabana/dashboard"
@@ -14,6 +16,7 @@ import (
 	"github.com/K-Phoen/grabana/target/prometheus"
 	"github.com/K-Phoen/grabana/timeseries"
 
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/generator/cli"
 )
@@ -201,4 +204,69 @@ func SyncDashboard(
 	}
 
 	return nil
+}
+
+func MachDashboardEnv(mach *am.Machine) error {
+	p := cli.GrafanaParams{}
+	p.GrafanaUrl = os.Getenv("AM_GRAFANA_URL")
+	p.Token = os.Getenv("AM_GRAFANA_TOKEN")
+	p.Folder = "asyncmachine"
+	p.Ids = mach.Id()
+	p.Name = mach.Id()
+	p.Source = os.Getenv("AM_SERVICE")
+
+	if p.GrafanaUrl == "" || p.Token == "" || p.Source == "" {
+		return nil
+	}
+
+	t := &SyncTracer{
+		p: p,
+	}
+
+	mach.Log("Grafana dashboard env")
+	return mach.BindTracer(t)
+}
+
+// SyncTracer is [am.Tracer] for tracing new submachines and syncing the Grafana
+// dashboard.
+type SyncTracer struct {
+	*am.NoOpTracer
+
+	p  cli.GrafanaParams
+	mx sync.Mutex
+}
+
+func (t *SyncTracer) MachineInit(mach am.Api) context.Context {
+	t.updateDashboard(mach)
+	return nil
+}
+
+func (t *SyncTracer) NewSubmachine(parent, mach am.Api) {
+	// skip RPC machines
+	dbgRpc := os.Getenv("AM_RPC_DBG") != ""
+	for _, tag := range mach.Tags() {
+		if strings.HasPrefix(tag, "rpc-") && !dbgRpc {
+			return
+		}
+	}
+
+	t.updateDashboard(mach)
+}
+
+func (t *SyncTracer) updateDashboard(mach am.Api) {
+	t.mx.Lock()
+	defer t.mx.Unlock()
+
+	t.p.Ids = strings.TrimLeft(t.p.Ids+","+mach.Id(), ",")
+
+	// TODO refresh on schema change
+	b, err := GenDashboard(t.p)
+	if err != nil {
+		mach.AddErr(err, nil)
+		return
+	}
+
+	if err := SyncDashboard(mach.Ctx(), t.p, b); err != nil {
+		mach.AddErr(err, nil)
+	}
 }

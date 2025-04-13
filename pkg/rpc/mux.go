@@ -17,8 +17,6 @@ import (
 // connection.
 type MuxNewServerFn func(num int, conn net.Conn) (*Server, error)
 
-const EnvAmRpcLogMux = "AM_RPC_LOG_MUX"
-
 var ssM = states.MuxStates
 
 // Mux creates a new RPC server for each incoming connection.

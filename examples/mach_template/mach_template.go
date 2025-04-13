@@ -7,6 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	amprom "github.com/pancsta/asyncmachine-go/pkg/telemetry/prometheus"
+	amgen "github.com/pancsta/asyncmachine-go/tools/generator"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/pancsta/asyncmachine-go/examples/mach_template/states"
@@ -82,7 +85,7 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 	// use the schema from ./states
 	// any struct can be used as handlers
 
-	handlers := &TemmplateHandlers{
+	handlers := &TemplateHandlers{
 		p:    amhelp.Pool(10),
 		bazP: amhelp.Pool(1),
 	}
@@ -98,8 +101,27 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 	mach.SetLogLevel(am.LogChanges)
 	mach.SetLogArgs(LogArgs)
 	amhelp.MachDebugEnv(mach)
-	// start a REPL aRPC server, create an addr file
-	arpc.MachRepl(mach, "", "tmp", nil)
+	// start a dedicated aRPC server for the REPL, create an addr file
+	arpc.MachReplEnv(mach)
+
+	// root machines only
+	if mach.ParentId() == "" {
+
+		// export metrics to prometheus
+		amprom.MachMetricsEnv(mach)
+
+		// grafana dashboard
+		err := amgen.MachDashboardEnv(mach)
+		if err != nil {
+			mach.AddErr(err, nil)
+		}
+
+		// open telemetry traces
+		err = amtele.MachBindOtelEnv(mach, false)
+		if err != nil {
+			mach.AddErr(err, nil)
+		}
+	}
 
 	// manual tracing
 
@@ -118,7 +140,7 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 
 // ///// ///// /////
 
-type TemmplateHandlers struct {
+type TemplateHandlers struct {
 	*am.ExceptionHandler
 	Mach *am.Machine
 
@@ -128,7 +150,7 @@ type TemmplateHandlers struct {
 	bazP *errgroup.Group
 }
 
-func (h *TemmplateHandlers) FooState(e *am.Event) {
+func (h *TemplateHandlers) FooState(e *am.Event) {
 	ctx := h.Mach.NewStateCtx(ss.Bar)
 
 	// unblock
@@ -141,12 +163,12 @@ func (h *TemmplateHandlers) FooState(e *am.Event) {
 	})
 }
 
-func (h *TemmplateHandlers) BarExit(e *am.Event) bool {
+func (h *TemplateHandlers) BarExit(e *am.Event) bool {
 	// accept de-activation only if Baz happened 10x more
 	return h.Mach.Tick(ss.Baz) > h.Mach.Tick(ss.Bar)*10
 }
 
-func (h *TemmplateHandlers) BazState(e *am.Event) {
+func (h *TemplateHandlers) BazState(e *am.Event) {
 	args := ParseArgs(e.Args)
 	addr := args.Addr
 
@@ -167,18 +189,18 @@ func (h *TemmplateHandlers) BazState(e *am.Event) {
 	})
 }
 
-func (h *TemmplateHandlers) BazDoneState(e *am.Event) {
+func (h *TemplateHandlers) BazDoneState(e *am.Event) {
 	// new transition (will probably can cancelled)
 	h.Mach.Remove1(ss.Bar, nil)
 }
 
-func (h *TemmplateHandlers) ChannelEnter(e *am.Event) bool {
+func (h *TemplateHandlers) ChannelEnter(e *am.Event) bool {
 	args := ParseArgs(e.Args)
 	// only buffered channel can pass
 	return args != nil && cap(args.ReturnCh) > 0
 }
 
-func (h *TemmplateHandlers) ChannelState(e *am.Event) {
+func (h *TemplateHandlers) ChannelState(e *am.Event) {
 	// no validation needed
 	ParseArgs(e.Args).ReturnCh <- []string{"hello", "machines"}
 }

@@ -1,3 +1,4 @@
+//nolint:lll
 package generator
 
 import (
@@ -47,7 +48,7 @@ func TestAll(t *testing.T) {
 			ssnode "github.com/pancsta/asyncmachine-go/pkg/node/states"
 		)
 		
-		// MyMachStatesDef contains all the states of the MyMach state machine.
+		// MyMachStatesDef contains all the states of the MyMach state-machine.
 		type MyMachStatesDef struct {
 			*am.StatesBase
 		
@@ -62,7 +63,7 @@ func TestAll(t *testing.T) {
 			*ssnode.WorkerStatesDef
 		}
 		
-		// MyMachGroupsDef contains all the state groups MyMach state machine.
+		// MyMachGroupsDef contains all the state groups MyMach state-machine.
 		type MyMachGroupsDef struct {
 			*ss.ConnectedGroupsDef
 			*ssnode.WorkerGroupsDef
@@ -95,9 +96,9 @@ func TestAll(t *testing.T) {
 				Group2: S{},
 			}, ss.ConnectedGroups, ssnode.WorkerGroups)
 		
-			// MyMachStates contains all the states for the MyMach machine.
+			// MyMachStates contains all the states for the MyMach state-machine.
 			MyMachStates = ssM
-			// MyMachGroups contains all the state groups for the MyMach machine.
+			// MyMachGroups contains all the state groups for the MyMach state-machine.
 			MyMachGroups = sgM
 		)
 	`), "\n")
@@ -134,7 +135,7 @@ func TestBasicConnected(t *testing.T) {
 			ss "github.com/pancsta/asyncmachine-go/pkg/states"
 		)
 		
-		// MyMachStatesDef contains all the states of the MyMach state machine.
+		// MyMachStatesDef contains all the states of the MyMach state-machine.
 		type MyMachStatesDef struct {
 			*am.StatesBase
 		
@@ -147,7 +148,7 @@ func TestBasicConnected(t *testing.T) {
 			*ss.ConnectedStatesDef
 		}
 		
-		// MyMachGroupsDef contains all the state groups MyMach state machine.
+		// MyMachGroupsDef contains all the state groups MyMach state-machine.
 		type MyMachGroupsDef struct {
 			*ss.ConnectedGroupsDef
 			Group1 S
@@ -177,9 +178,9 @@ func TestBasicConnected(t *testing.T) {
 				Group2: S{},
 			}, ss.ConnectedGroups)
 		
-			// MyMachStates contains all the states for the MyMach machine.
+			// MyMachStates contains all the states for the MyMach state-machine.
 			MyMachStates = ssM
-			// MyMachGroups contains all the state groups for the MyMach machine.
+			// MyMachGroups contains all the state groups for the MyMach state-machine.
 			MyMachGroups = sgM
 		)
 	`), "\n")
@@ -211,7 +212,7 @@ func TestMinimum(t *testing.T) {
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 		)
 		
-		// MyMachStatesDef contains all the states of the MyMach state machine.
+		// MyMachStatesDef contains all the states of the MyMach state-machine.
 		type MyMachStatesDef struct {
 			*am.StatesBase
 		
@@ -220,7 +221,7 @@ func TestMinimum(t *testing.T) {
 		
 		}
 		
-		// MyMachGroupsDef contains all the state groups MyMach state machine.
+		// MyMachGroupsDef contains all the state groups MyMach state-machine.
 		type MyMachGroupsDef struct {
 		}
 		
@@ -237,9 +238,9 @@ func TestMinimum(t *testing.T) {
 			ssM = am.NewStates(MyMachStatesDef{})
 			sgM = am.NewStateGroups(MyMachGroupsDef{})
 		
-			// MyMachStates contains all the states for the MyMach machine.
+			// MyMachStates contains all the states for the MyMach state-machine.
 			MyMachStates = ssM
-			// MyMachGroups contains all the state groups for the MyMach machine.
+			// MyMachGroups contains all the state groups for the MyMach state-machine.
 			MyMachGroups = sgM
 		)
 	`), "\n")
@@ -271,7 +272,7 @@ func TestRelations(t *testing.T) {
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 		)
 		
-		// MyMachStatesDef contains all the states of the MyMach state machine.
+		// MyMachStatesDef contains all the states of the MyMach state-machine.
 		type MyMachStatesDef struct {
 			*am.StatesBase
 		
@@ -281,7 +282,7 @@ func TestRelations(t *testing.T) {
 		
 		}
 		
-		// MyMachGroupsDef contains all the state groups MyMach state machine.
+		// MyMachGroupsDef contains all the state groups MyMach state-machine.
 		type MyMachGroupsDef struct {
 		}
 		
@@ -304,9 +305,9 @@ func TestRelations(t *testing.T) {
 			ssM = am.NewStates(MyMachStatesDef{})
 			sgM = am.NewStateGroups(MyMachGroupsDef{})
 		
-			// MyMachStates contains all the states for the MyMach machine.
+			// MyMachStates contains all the states for the MyMach state-machine.
 			MyMachStates = ssM
-			// MyMachGroups contains all the state groups for the MyMach machine.
+			// MyMachGroups contains all the state groups for the MyMach state-machine.
 			MyMachGroups = sgM
 		)
 	`), "\n")
@@ -339,7 +340,7 @@ func TestGroups(t *testing.T) {
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 		)
 		
-		// MyMachStatesDef contains all the states of the MyMach state machine.
+		// MyMachStatesDef contains all the states of the MyMach state-machine.
 		type MyMachStatesDef struct {
 			*am.StatesBase
 		
@@ -348,7 +349,7 @@ func TestGroups(t *testing.T) {
 	
 		}
 		
-		// MyMachGroupsDef contains all the state groups MyMach state machine.
+		// MyMachGroupsDef contains all the state groups MyMach state-machine.
 		type MyMachGroupsDef struct {
 			Group1 S
 			Group2 S
@@ -370,9 +371,9 @@ func TestGroups(t *testing.T) {
 				Group2: S{},
 			})
 		
-			// MyMachStates contains all the states for the MyMach machine.
+			// MyMachStates contains all the states for the MyMach state-machine.
 			MyMachStates = ssM
-			// MyMachGroups contains all the state groups for the MyMach machine.
+			// MyMachGroups contains all the state groups for the MyMach state-machine.
 			MyMachGroups = sgM
 		)
 	`), "\n")
@@ -405,7 +406,7 @@ func TestGroupsStates(t *testing.T) {
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 		)
 		
-		// MyMachStatesDef contains all the states of the MyMach state machine.
+		// MyMachStatesDef contains all the states of the MyMach state-machine.
 		type MyMachStatesDef struct {
 			*am.StatesBase
 		
@@ -414,7 +415,7 @@ func TestGroupsStates(t *testing.T) {
 	
 		}
 		
-		// MyMachGroupsDef contains all the state groups MyMach state machine.
+		// MyMachGroupsDef contains all the state groups MyMach state-machine.
 		type MyMachGroupsDef struct {
 			Group1 S
 			Group2 S
@@ -438,9 +439,9 @@ func TestGroupsStates(t *testing.T) {
 				Group2: S{},
 			})
 		
-			// MyMachStates contains all the states for the MyMach machine.
+			// MyMachStates contains all the states for the MyMach state-machine.
 			MyMachStates = ssM
-			// MyMachGroups contains all the state groups for the MyMach machine.
+			// MyMachGroups contains all the state groups for the MyMach state-machine.
 			MyMachGroups = sgM
 		)
 	`), "\n")
