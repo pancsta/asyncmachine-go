@@ -215,6 +215,7 @@ func EnvLogLevel(name string) LogLevel {
 		name = EnvAmLog
 	}
 	v, _ := strconv.Atoi(os.Getenv(name))
+
 	return LogLevel(v)
 }
 

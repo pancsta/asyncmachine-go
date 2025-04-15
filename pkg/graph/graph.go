@@ -12,11 +12,10 @@ import (
 	"github.com/dominikbraun/graph"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
-	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
-
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
 type Vertex struct {

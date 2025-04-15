@@ -253,7 +253,7 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 
 This monorepo offers the following importable packages and runnable tools:
 
-- [`/pkg/graph`(/pkg/graph/README.md) Multigraph of interconnected state machines.
+- [`/pkg/graph`](/pkg/graph) Multigraph of interconnected state machines.
 - [`/pkg/helpers`](/pkg/helpers/README.md) Useful functions when working with async state machines.
 - [`/pkg/history`](/pkg/history/README.md) History tracking and traversal.
 - 🦾 **[`/pkg/machine`](/pkg/machine/README.md) State machine, dependency free, semver compatible.**
@@ -271,6 +271,7 @@ This monorepo offers the following importable packages and runnable tools:
 
 ## Apps
 
+- [SecAI](https://github.com/pancsta/secai) Autonomous AI Agents.
 - [arpc REPL](/tools/repl) Cobra-based REPL.
 - [am-dbg TUI Debugger](/tools/debugger/README.md) Single state-machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox

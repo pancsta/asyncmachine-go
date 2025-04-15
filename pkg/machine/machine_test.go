@@ -2,6 +2,7 @@ package machine
 
 import (
 	"context"
+	"errors"
 	"os"
 	"regexp"
 	"strings"
@@ -1117,6 +1118,79 @@ func TestHandlerArgs(t *testing.T) {
 	<-m.WhenDisposed()
 }
 
+// TestEvMutations
+type TestEvH struct{}
+
+func (h *TestEvH) AState(e *Event) {
+	e.Machine().EvAdd1(e, "B", e.Args)
+	e.Machine().EvRemove1(e, "A", nil)
+}
+
+func (h *TestEvH) BState(e *Event) {
+	t := e.Args["t"].(*testing.T)
+	assert.Equal(t, e.MachineId, e.Mutation().Source.MachId)
+}
+
+func TestEvMutations(t *testing.T) {
+	t.Parallel()
+	// init
+	m := NewNoRels(t, nil)
+
+	// bind history
+	history := trackTransitions(m)
+
+	// bind handlers
+	err := m.BindHandlers(&TestEvH{})
+	assert.NoError(t, err)
+
+	// test
+	// handlers will assert
+	m.Add1("A", A{"t": t})
+	// m.When1("B", nil)
+
+	// assert
+	assertEventCountsMin(t, history, 1)
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+func TestEval(t *testing.T) {
+	t.Parallel()
+	// init
+	m := NewNoRels(t, nil)
+	m.detectEval = true
+
+	// test
+	a := 0
+	m.Eval(t.Name(), func() {
+		a = 1
+	}, nil)
+
+	// assert
+	assert.Equal(t, 1, a)
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+func TestBreakpoints(t *testing.T) {
+	t.Parallel()
+	// init
+	m := NewNoRels(t, nil)
+
+	// test
+	m.LogStackTrace = true
+	m.AddBreakpoint(S{"A"}, S{"B"})
+	m.Add1("A", nil)
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
 func TestHandlerStateState(t *testing.T) {
 	t.Parallel()
 
@@ -1470,6 +1544,7 @@ func TestWhenNot(t *testing.T) {
 	// test
 	m.Add(S{"A"}, nil)
 	<-m.WhenNot(S{"B", "C"}, nil)
+	<-m.WhenNot1("B", nil)
 
 	// assert
 	assertStates(t, m, S{"A"})
@@ -1662,19 +1737,28 @@ type TestQueueCheckableHandlers struct {
 
 func (h *TestQueueCheckableHandlers) AState(e *Event) {
 	t := e.Args["t"].(*testing.T)
-	e.Machine().Add(S{"B"}, nil)
-	e.Machine().Add(S{"C"}, nil)
-	e.Machine().Add(S{"D"}, nil)
-	assert.Len(t, e.Machine().queue, 3, "queue should have 3 mutations scheduled")
+	m := e.Machine()
+	m.Add(S{"B"}, nil)
+	m.Add(S{"C"}, nil)
+	m.Add(S{"D"}, nil)
+	assert.Len(t, m.queue, 3, "queue should have 3 mutations scheduled")
 	h.assertsCount++
+
 	assert.Equal(t, 1,
-		e.Machine().IsQueued(MutationAdd, S{"C"}, false, false, 0),
+		m.IsQueued(MutationAdd, S{"C"}, false, false, 0),
 		"C should be queued")
+	assert.True(t, m.WillBe1("C"), "A should NOT be queued")
 	h.assertsCount++
+
 	assert.Equal(t, -1,
-		e.Machine().IsQueued(MutationAdd, S{"A"}, false, false, 0),
+		m.IsQueued(MutationAdd, S{"A"}, false, false, 0),
 		"A should NOT be queued")
+	assert.False(t, m.WillBe1("A"), "A should NOT be queued")
 	h.assertsCount++
+
+	// coverage
+	assert.False(t, m.WillBeRemoved1("A"), "No removal should be queued")
+	assert.False(t, m.WillBeRemoved1("A"), "No removal should be queued")
 }
 
 func TestQueueCheckable(t *testing.T) {
@@ -1779,6 +1863,7 @@ func TestTime(t *testing.T) {
 	assertTime(t, m, S{"A", "B", "C", "D"}, Time{3, 7, 5, 1})
 	assert.True(t, IsTimeAfter(now, before))
 	assert.False(t, IsTimeAfter(before, now))
+	assert.Equal(t, 16, int(m.TimeSum(nil)))
 
 	// dispose
 	m.Dispose()
@@ -1793,6 +1878,8 @@ func TestWhenCtx(t *testing.T) {
 	// wait on 2 Whens with a step context
 	ctx, cancel := context.WithCancel(context.Background())
 	whenTimeCh := m.WhenTime(S{"A", "B"}, Time{3, 3}, ctx)
+	whenTicks1Ch := m.WhenTicks("A", 2, ctx)
+	whenTicks2Ch := m.WhenTicksEq("B", 3, ctx)
 	whenArgsCh := m.WhenArgs("B", A{"foo": "bar"}, ctx)
 	whenCh := m.When1("C", ctx)
 
@@ -1812,6 +1899,10 @@ func TestWhenCtx(t *testing.T) {
 	case <-whenArgsCh:
 		t.Fatal("when shouldnt be resolved")
 	case <-whenTimeCh:
+		t.Fatal("when shouldnt be resolved")
+	case <-whenTicks1Ch:
+		t.Fatal("when shouldnt be resolved")
+	case <-whenTicks2Ch:
 		t.Fatal("when shouldnt be resolved")
 	case <-ctx.Done():
 	}
@@ -1948,6 +2039,9 @@ func TestTracers(t *testing.T) {
 	assert.False(t, m.tracers[0].Inheritable())
 	m.Add1("A", nil)
 
+	// assert
+	assert.Len(t, m.Tracers(), 1)
+
 	// dispose
 	m.Dispose()
 	<-m.WhenDisposed()
@@ -1965,12 +2059,6 @@ func TestSubmachines(t *testing.T) {
 	t.Skip()
 }
 
-func TestEval(t *testing.T) {
-	t.Parallel()
-	// TODO TestEval
-	t.Skip()
-}
-
 func TestSetStates(t *testing.T) {
 	t.Parallel()
 	// init
@@ -1984,10 +2072,12 @@ func TestSetStates(t *testing.T) {
 	s["E"] = State{}
 
 	// update states
+	rev := m.SchemaVer()
 	err := m.SetStruct(s, S{"A", "B", "C", "D", "E"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	assert.NotEqual(t, rev, m.SchemaVer())
 
 	// test
 	m.Set(S{"A", "B", "D"}, nil)
@@ -2362,6 +2452,10 @@ func TestLogger(t *testing.T) {
 	m.Add1("A", nil)
 	m.SetLogger(nil)
 	m.Add1("A", nil)
+	m.SetLogId(!m.GetLogId())
+	m.Log("foo")
+	m.LogLvl(LogChanges, "foo")
+	m.SetLoggerEmpty(LogChanges)
 
 	// dispose
 	m.Dispose()
@@ -2605,3 +2699,64 @@ func TestListHandlers(t *testing.T) {
 }
 
 // TODO TestResolverDagSort
+
+func TestCountActive(t *testing.T) {
+	t.Parallel()
+
+	// init
+	m := NewNoRels(t, nil)
+	m.Add1("A", nil)
+
+	assert.Equal(t, m.CountActive(S{"A", "B"}), 1)
+}
+
+func TestAddErr(t *testing.T) {
+	t.Parallel()
+
+	// add err
+	m := NewNoRels(t, nil)
+	err := errors.New("test")
+	m.AddErrState("B", err, nil)
+	m.AddErr(err, nil)
+	assert.True(t, m.Is1("B"))
+	assert.True(t, m.IsErr())
+
+	// panic to state
+	m = NewNoRels(t, nil)
+	go func() {
+		defer m.PanicToErrState("B", nil)
+
+		panic("test")
+	}()
+	<-m.WhenErr(nil)
+	assert.True(t, m.Is1("B"))
+	assert.True(t, m.IsErr())
+
+	// panic to err
+	m = NewNoRels(t, nil)
+	go func() {
+		defer m.PanicToErr(nil)
+
+		panic("test")
+	}()
+	<-m.WhenErr(nil)
+	assert.True(t, m.IsErr())
+}
+
+func TestToggle(t *testing.T) {
+	t.Parallel()
+
+	m := NewNoRels(t, nil)
+	m.Toggle1("A", nil)
+	assert.True(t, m.Is1("A"))
+	m.Toggle1("A", nil)
+	assert.False(t, m.Is1("A"))
+
+	m = NewNoRels(t, nil)
+	m.Toggle(S{"A"}, nil)
+	assert.True(t, m.Is1("A"))
+	m.Toggle(S{"A"}, nil)
+	assert.False(t, m.Is1("A"))
+
+	// TODO test params
+}

@@ -9,6 +9,8 @@ import (
 )
 
 func TestWithOpts(t *testing.T) {
+	t.Parallel()
+
 	// OptsWithDebug
 	opts := &Opts{
 		DontPanicToException: false,
@@ -30,12 +32,16 @@ func TestWithOpts(t *testing.T) {
 }
 
 func TestResultString(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "executed", Executed.String())
 	assert.Equal(t, "canceled", Canceled.String())
 	assert.Equal(t, "queued", Queued.String())
 }
 
 func TestMutationTypeString(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "add", MutationAdd.String())
 	assert.Equal(t, "remove", MutationRemove.String())
 	assert.Equal(t, "set", MutationSet.String())
@@ -43,6 +49,8 @@ func TestMutationTypeString(t *testing.T) {
 }
 
 func TestStepTypeString(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "rel", StepRelation.String())
 	assert.Equal(t, "handler", StepHandler.String())
 	assert.Equal(t, "set", StepSet.String())
@@ -54,6 +62,8 @@ func TestStepTypeString(t *testing.T) {
 }
 
 func TestRelationString(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "after", RelationAfter.String())
 	assert.Equal(t, "add", RelationAdd.String())
 	assert.Equal(t, "require", RelationRequire.String())
@@ -61,6 +71,8 @@ func TestRelationString(t *testing.T) {
 }
 
 func TestLogLevelString(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "nothing", LogNothing.String())
 	assert.Equal(t, "nothing", LogLevel(0).String())
 	assert.Equal(t, "changes", LogChanges.String())
@@ -70,6 +82,8 @@ func TestLogLevelString(t *testing.T) {
 }
 
 func TestNewArgsMapper(t *testing.T) {
+	t.Parallel()
+
 	// short
 	mapper := NewArgsMapper([]string{"arg", "arg2"}, 2)
 	res := mapper(A{"arg": "foo"})
@@ -86,6 +100,8 @@ func TestNewArgsMapper(t *testing.T) {
 }
 
 func TestParseStruct(t *testing.T) {
+	t.Parallel()
+
 	s := Struct{
 		"A": {
 			Remove: S{"A", "B", "C"},
@@ -108,6 +124,8 @@ func TestParseStruct(t *testing.T) {
 }
 
 func TestSMerge(t *testing.T) {
+	t.Parallel()
+
 	s := S{"A", "B", "C"}
 	s2 := S{"C", "D", "E"}
 	ex := S{"A", "B", "C", "D", "E"}
@@ -116,6 +134,8 @@ func TestSMerge(t *testing.T) {
 }
 
 func TestIsActiveTick(t *testing.T) {
+	t.Parallel()
+
 	assert.True(t, IsActiveTick(1))
 	assert.False(t, IsActiveTick(0))
 	assert.False(t, IsActiveTick(6548734))
@@ -178,9 +198,23 @@ var (
 )
 
 func TestStatesFile(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, testStates.Foo, "Foo")
 	assert.Equal(t, testStates.Bar, "Bar")
 	assert.Equal(t, testGroups.FooBar, S{"Foo", "Bar"})
 	assert.Equal(t, testGroups.FooBaz, S{"Foo", "Baz"})
 	assert.NotNil(t, TestStatesFileStruct["Foo"])
+}
+
+func TestTimeMethods(t *testing.T) {
+	t.Parallel()
+
+	mt := Time{2, 1, 3}
+	assert.Equal(t, mt.Is1(1), true)
+	assert.Equal(t, mt.Is([]int{1}), true)
+	assert.Equal(t, mt.Any1(1), true)
+
+	mt2 := mt.Add(mt)
+	assert.Equal(t, mt2.DiffSince(mt), mt)
 }

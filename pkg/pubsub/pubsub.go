@@ -1,5 +1,7 @@
 package pubsub
 
+// TODO use amhelp.Pool
+
 import (
 	"errors"
 	"fmt"
@@ -54,7 +56,7 @@ type (
 	PeerGossips map[string]Gossips
 )
 
-// MsgHello is sent when a peer exposes state machines in the topic.
+// Info is sent when a peer exposes state machines in the topic.
 type Info struct {
 	Id     string
 	Schema am.Struct
@@ -77,7 +79,7 @@ type (
 
 // WRAPPERS
 
-// MsgBye is sent when a peer un-exposes state machines in the topic.
+// MsgByeMach is sent when a peer un-exposes state machines in the topic.
 type MsgByeMach struct {
 	PeerBye bool
 	Id      string

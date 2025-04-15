@@ -184,8 +184,6 @@ const (
 
 func (l LogLevel) String() string {
 	switch l {
-	case LogNothing:
-		return "nothing"
 	case LogChanges:
 		return "changes"
 	case LogOps:
@@ -194,8 +192,9 @@ func (l LogLevel) String() string {
 		return "decisions"
 	case LogEverything:
 		return "everything"
+	default:
+		return "nothing"
 	}
-	return "nothing"
 }
 
 // LogArgs is a list of common argument names to be logged. Useful for
@@ -275,9 +274,11 @@ func (t *NoOpTracer) HandlerEnd(
 func (t *NoOpTracer) MachineInit(machine Api) context.Context {
 	return nil
 }
-func (t *NoOpTracer) MachineDispose(machID string)         {}
-func (t *NoOpTracer) NewSubmachine(parent, machine Api)    {}
-func (t *NoOpTracer) QueueEnd(machine Api)                 {}
+func (t *NoOpTracer) MachineDispose(machID string)      {}
+func (t *NoOpTracer) NewSubmachine(parent, machine Api) {}
+func (t *NoOpTracer) QueueEnd(machine Api)              {}
+
+// TODO refac SchemaChange
 func (t *NoOpTracer) StructChange(machine Api, old Struct) {}
 func (t *NoOpTracer) VerifyStates(machine Api)             {}
 func (t *NoOpTracer) Inheritable() bool                    { return false }

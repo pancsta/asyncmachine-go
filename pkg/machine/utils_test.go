@@ -201,3 +201,48 @@ func assertString(t *testing.T, m *Machine, expected string, states S) {
 		strings.Trim(dedent.Dedent(expected), "\n"),
 		strings.Trim(m.Inspect(states), "\n"))
 }
+
+func TestEnv(t *testing.T) {
+	t.Setenv(EnvAmLog, "2")
+	assert.Equal(t, LogOps, EnvLogLevel(""))
+}
+
+func TestAMerge(t *testing.T) {
+	t.Parallel()
+
+	a1 := A{"a": 1}
+	a2 := A{"b": 2}
+
+	m := AMerge(a1, a2)
+	assert.Equal(t, 1, m["a"])
+	assert.Equal(t, 2, m["b"])
+}
+
+func TestStateUtils(t *testing.T) {
+	t.Parallel()
+
+	s := State{
+		Auto:   true,
+		Remove: S{"A"},
+		Add:    S{"B"},
+	}
+
+	add := StateAdd(s, State{
+		Multi:  true,
+		Remove: S{"C"},
+	})
+	set := StateSet(s, false, true, State{
+		Remove: S{"C"},
+	})
+
+	// assert
+	assert.Equal(t, S{"A", "C"}, add.Remove)
+	assert.Equal(t, S{"C"}, set.Remove)
+
+	assert.True(t, add.Auto)
+	assert.False(t, set.Auto)
+
+	assert.False(t, StatesEqual(S{"A"}, S{"B"}))
+	assert.False(t, StatesEqual(S{"A"}, S{"A", "B"}))
+	assert.True(t, StatesEqual(S{"A"}, S{"A"}))
+}

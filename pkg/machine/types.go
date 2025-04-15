@@ -398,7 +398,8 @@ type Step struct {
 	Data any
 }
 
-// FromState returns the source state of a step. Optional, unless no ToState().
+// GetFromState returns the source state of a step. Optional, unless no
+// GetToState().
 func (s *Step) GetFromState(index S) string {
 	// TODO rename to FromState
 	if s.FromStateIdx == -1 {
@@ -411,7 +412,8 @@ func (s *Step) GetFromState(index S) string {
 	return ""
 }
 
-// ToState returns the target state of a step. Optional, unless no FromState().
+// GetToState returns the target state of a step. Optional, unless no
+// GetFromState().
 func (s *Step) GetToState(index S) string {
 	// TODO rename to ToState
 	if s.ToStateIdx == -1 {

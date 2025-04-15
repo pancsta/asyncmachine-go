@@ -2873,8 +2873,8 @@ func (m *Machine) Queue() []*Mutation {
 	return slices.Clone(m.queue)
 }
 
-// GetStruct returns a copy of machine's state structure.
-func (m *Machine) GetStruct() Struct {
+// GetSchema returns a copy of machine's schema.
+func (m *Machine) GetSchema() Struct {
 	// TODO refac: Schema
 	m.statesLock.RLock()
 	defer m.statesLock.RUnlock()
@@ -2882,15 +2882,27 @@ func (m *Machine) GetStruct() Struct {
 	return maps.Clone(m.states)
 }
 
+// GetStruct is deprecated, use GetSchema,
+func (m *Machine) GetStruct() Struct {
+	// TODO remove
+	return m.GetSchema()
+}
+
 func (m *Machine) SchemaVer() uint8 {
 	return uint8(m.schemaVer.Load())
 }
 
-// SetStruct sets the machine's state structure. It will automatically call
+// SetStruct is deprecated, see SetSchema.
+func (m *Machine) SetStruct(statesStruct Struct, names S) error {
+	// TODO remove
+	return m.SetSchema(statesStruct, names)
+}
+
+// SetSchema sets the machine's schema. It will automatically call
 // VerifyStates with the names param and handle EventStructChange if successful.
 // Note: it's not recommended to change the states structure of a machine which
 // has already produced transitions.
-func (m *Machine) SetStruct(statesStruct Struct, names S) error {
+func (m *Machine) SetSchema(statesStruct Struct, names S) error {
 	// TODO refac: SetSchema
 	m.statesLock.RLock()
 	defer m.statesLock.RUnlock()
@@ -3008,24 +3020,6 @@ func (m *Machine) EvAddErrState(
 
 	// TODO prepend to the queue? what effects / benefits
 	return m.EvAdd(event, S{state, Exception}, PassMerge(args, argsT))
-}
-
-// CanAdd TODO CanAdd
-// Planned.
-func (m *Machine) CanAdd(states S) bool {
-	panic("CanAdd not implemented; github.com/pancsta/asyncmachine-go/pulls")
-}
-
-// CanSet TODO CanSet
-// Planned.
-func (m *Machine) CanSet(states S) bool {
-	panic("CanSet not implemented; github.com/pancsta/asyncmachine-go/pulls")
-}
-
-// CanRemove TODO CanRemove
-// Planned.
-func (m *Machine) CanRemove(states S) bool {
-	panic("CanRemove not implemented; github.com/pancsta/asyncmachine-go/pulls")
 }
 
 // Export exports the machine state as Serialized: ID, machine time, and
