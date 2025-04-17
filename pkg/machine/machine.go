@@ -1139,6 +1139,7 @@ func (m *Machine) Any(states ...S) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -1150,6 +1151,7 @@ func (m *Machine) Any1(states ...string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -1468,7 +1470,7 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 	t := m.t.Load()
 
 	// dont double handle an exception (no nesting)
-	if slices.Contains(t.Mutation.CalledStates, "Exception") {
+	if slices.Contains(t.Mutation.CalledStates, Exception) {
 		return
 	}
 
@@ -1696,10 +1698,10 @@ func (m *Machine) breakpoint(added S, removed S) {
 	for _, bp := range m.breakpoints {
 
 		// check if the breakpoint matches
-		if !slices.Equal(bp[0], added) {
+		if len(added) > 0 && !slices.Equal(bp[0], added) {
 			continue
 		}
-		if !slices.Equal(bp[1], removed) {
+		if len(removed) > 0 && !slices.Equal(bp[1], removed) {
 			continue
 		}
 		found = true
@@ -2946,6 +2948,8 @@ func (m *Machine) EvAdd(event *Event, states S, args A) Result {
 
 	return m.processQueue()
 }
+
+// TODO add EvToggle, EvToggle1
 
 // EvAdd1 is like Add1, but passed the source event as the 1st param, which
 // results in traceable transitions.

@@ -39,6 +39,11 @@ type DefaultRelationsResolver struct {
 var _ RelationsResolver = &DefaultRelationsResolver{}
 
 func (rr *DefaultRelationsResolver) NewStruct() {
+	if rr.Machine == nil {
+		// manual resolver instance
+		return
+	}
+
 	g := newGraph()
 	for _, name := range rr.Machine.StateNames() {
 		state := rr.Machine.states[name]

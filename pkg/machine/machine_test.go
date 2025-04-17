@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -2050,6 +2051,7 @@ func (h *TestNewCommonHandlers) AState(e *Event) {}
 
 func TestNewCommon(t *testing.T) {
 	t.Parallel()
+
 	// init
 	s := Schema{"A": {}, Exception: {}}
 	m, err := NewCommon(context.TODO(), "foo", s, maps.Keys(s),
@@ -2060,6 +2062,26 @@ func TestNewCommon(t *testing.T) {
 	assert.Equal(t, 1, len(m.handlers))
 }
 
+func TestNewCommonLessCommon(t *testing.T) {
+	t.Setenv("AM_TEST_RUNNER", "1")
+
+	m := NewNoRels(t, S{"A", "C"})
+
+	// init
+	s := Schema{"A": {}, Exception: {}}
+	m2, err := NewCommon(context.TODO(), "foo", s, maps.Keys(s),
+		&TestNewCommonHandlers{}, m, &Opts{LogLevel: LogChanges})
+
+	// assert
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(m2.handlers))
+	assert.Greater(t, m2.HandlerTimeout, m.HandlerTimeout)
+
+	_, err = NewCommon(context.TODO(), "foo", s, S{"A", "B"},
+		&TestNewCommonHandlers{}, m, &Opts{LogLevel: LogChanges})
+	assert.Error(t, err)
+}
+
 // TestTracers
 type TestTracersHandlers struct {
 	*ExceptionHandler
@@ -2067,23 +2089,36 @@ type TestTracersHandlers struct {
 
 func (h *TestTracersHandlers) AState(e *Event) {}
 
+type TestTracersTracer struct {
+	*NoOpTracer
+}
+
+func (t *TestTracersTracer) MachineInit(m Api) context.Context {
+	// unittest only, this should always inherit
+	return context.Background()
+}
+
 func TestTracers(t *testing.T) {
 	t.Parallel()
-	tNoop := &NoOpTracer{}
-	m := New(context.TODO(), Schema{"A": {}}, &Opts{
+
+	// init
+	tNoop := &TestTracersTracer{}
+	m := NewNoRels(t, nil)
+	m2 := New(context.TODO(), Schema{"A": {}}, &Opts{
 		Tracers: []Tracer{tNoop},
+		Parent:  m,
 	})
-	_ = m.BindHandlers(&TestTracersHandlers{})
-	assert.Equal(t, 1, len(m.tracers))
-	assert.False(t, m.tracers[0].Inheritable())
-	m.Add1("A", nil)
+	_ = m2.BindHandlers(&TestTracersHandlers{})
+	assert.Equal(t, 1, len(m2.tracers))
+	assert.False(t, m2.tracers[0].Inheritable())
+	m2.Add1("A", nil)
 
 	// assert
-	assert.Len(t, m.Tracers(), 1)
+	assert.Len(t, m2.Tracers(), 1)
 
 	// dispose
-	m.Dispose()
-	<-m.WhenDisposed()
+	m2.Dispose()
+	<-m2.WhenDisposed()
 }
 
 func TestQueueLimit(t *testing.T) {
@@ -2100,6 +2135,7 @@ func TestSubmachines(t *testing.T) {
 
 func TestSetStates(t *testing.T) {
 	t.Parallel()
+
 	// init
 	m := NewNoRels(t, S{"A", "C"})
 
@@ -2167,6 +2203,8 @@ func TestAny(t *testing.T) {
 	assert.True(t, m.Any(S{"A", "B"}, S{"C"}), "A B should be active")
 	assert.True(t, m.Any(S{"A", "B", "C"}, S{"A"}), "A B C is partially active")
 	assert.True(t, m.Any1("A", "B"), "A B is fully active")
+	assert.False(t, m.Any(S{"C"}), "C should not be active")
+	assert.False(t, m.Any1("C"), "C should not be active")
 
 	// dispose
 	m.Dispose()
@@ -2303,7 +2341,10 @@ type TestWhenQueueEndsHandlers struct {
 
 func (h *TestWhenQueueEndsHandlers) AState(e *Event) {
 	close(e.Args["readyMut"].(chan struct{}))
-	<-e.Args["readyGo"].(chan struct{})
+	readyGo, ok := e.Args["readyGo"].(chan struct{})
+	if ok {
+		<-readyGo
+	}
 	e.Machine().Add1("B", nil)
 }
 
@@ -2334,6 +2375,19 @@ func TestWhenQueueEnds(t *testing.T) {
 		close(readyGo)
 	}()
 	m.Add1("A", A{"readyMut": readyMut, "readyGo": readyGo})
+	// confirm the queue wait is closed
+	<-queueEnds
+	m.Remove1("A", nil)
+
+	// test with ctx race
+	ctx, cancel := context.WithCancel(context.Background())
+	readyMut = make(chan struct{})
+	go func() {
+		<-readyMut
+		queueEnds = m.WhenQueueEnds(ctx)
+		cancel()
+	}()
+	m.Add1("A", A{"readyMut": readyMut})
 	// confirm the queue wait is closed
 	<-queueEnds
 
@@ -2514,6 +2568,8 @@ func TestIsClock(t *testing.T) {
 	// test
 	assert.False(t, m.IsClock(cAll))
 	assert.False(t, m.IsClock(cA))
+	cA["A"]++
+	assert.True(t, m.IsClock(cA))
 
 	// dispose
 	m.Dispose()
@@ -2622,11 +2678,16 @@ func TestBindTracer(t *testing.T) {
 
 	// init
 	m := NewNoRels(t, nil)
-	trace := &TestBindTracerTracer{}
+	trace := TestBindTracerTracer{}
 
 	// test
-	_ = m.BindTracer(trace)
-	removed := m.DetachTracer(trace)
+	err := m.BindTracer(&trace)
+	assert.NoError(t, err)
+	removed := m.DetachTracer(&trace)
+	err = m.BindTracer(trace)
+	assert.Error(t, err)
+	assert.False(t, m.DetachTracer(trace))
+	assert.False(t, m.DetachTracer(&NoOpTracer{}))
 
 	// assert
 	assert.Len(t, m.tracers, 0)
@@ -2768,7 +2829,7 @@ func TestAddErr(t *testing.T) {
 
 		panic("test")
 	}()
-	<-m.WhenErr(nil)
+	<-m.WhenErr(context.TODO())
 	assert.True(t, m.Is1("B"))
 	assert.True(t, m.IsErr())
 
@@ -2779,7 +2840,7 @@ func TestAddErr(t *testing.T) {
 
 		panic("test")
 	}()
-	<-m.WhenErr(nil)
+	<-m.WhenErr(context.TODO())
 	assert.True(t, m.IsErr())
 }
 
@@ -2816,6 +2877,7 @@ func TestOpts(t *testing.T) {
 		LogLevel:          LogChanges,
 		QueueLimit:        10,
 		Tags:              tags,
+		Resolver:          &DefaultRelationsResolver{},
 	})
 	assert.Equal(t, m.Id(), m2.ParentId())
 	assert.Equal(t, false, m2.LogStackTrace)
@@ -2826,4 +2888,79 @@ func TestOpts(t *testing.T) {
 	tags2 := []string{"c"}
 	m2.SetTags(tags2)
 	assert.Equal(t, tags2, m2.Tags())
+}
+
+func TestDisposedNoOp(t *testing.T) {
+	t.Parallel()
+
+	m := NewNoRels(t, nil)
+	m.Dispose()
+	<-m.WhenDisposed()
+	e := &Event{}
+	tx := &Transition{}
+	s := S{"A"}
+
+	// mutations
+	assert.Equal(t, Canceled, m.Set(s, nil))
+	assert.Equal(t, Canceled, m.Add1("A", nil))
+	assert.Equal(t, Canceled, m.Remove1("A", nil))
+	assert.Equal(t, Canceled, m.Toggle1("A", nil))
+	assert.Equal(t, Canceled, m.Toggle(s, nil))
+	assert.Equal(t, Canceled, m.AddErrState("A", errors.New("e"), nil))
+	assert.Equal(t, Canceled, m.EvAdd1(e, "A", nil))
+	assert.Equal(t, Canceled, m.EvRemove1(e, "A", nil))
+	assert.Equal(t, Canceled, m.EvAddErrState(e, "A", errors.New("e"), nil))
+	assert.Equal(t, Canceled, m.processQueue())
+
+	// states
+	assert.Len(t, m.Queue(), 0)
+	assert.Len(t, m.ActiveStates(), 0)
+	assert.Len(t, m.Clock(nil), 0)
+
+	// when
+	<-m.When1("A", nil)
+	<-m.WhenNot1("A", nil)
+	<-m.WhenArgs("A", A{}, nil)
+	<-m.WhenTime(s, Time{}, nil)
+	<-m.WhenQueueEnds(context.TODO())
+
+	res, _ := m.processHandlers(e)
+	assert.Equal(t, Canceled, res)
+	res, _ = m.handle("test", A{}, &Step{}, false)
+	assert.Equal(t, Canceled, res)
+
+	// others
+	assert.Equal(t, -1, m.IsQueued(MutationAdd, s, false, false, 0))
+	assert.Equal(t, -1, m.Index("A"))
+	assert.Empty(t, m.Has1("A"))
+	assert.Empty(t, m.IsClock(Clock{}))
+	assert.Empty(t, m.IsTime(Time{}, s))
+	assert.Empty(t, m.String())
+	assert.Empty(t, m.Time(nil))
+	assert.Empty(t, m.time(nil))
+	assert.Empty(t, m.TimeSum(nil))
+	assert.Empty(t, m.Tick("A"))
+	assert.Empty(t, m.StringAll())
+	assert.Empty(t, m.Inspect(nil))
+	assert.Empty(t, m.detectQueueDuplicates(MutationAdd, s))
+	assert.Empty(t, m.Eval("test", func() {}, nil))
+	assert.Empty(t, m.BindHandlers(struct{}{}))
+	assert.Empty(t, m.DetachHandlers(struct{}{}))
+	assert.Empty(t, m.VerifyStates(s))
+	assert.Empty(t, m.NewStateCtx("A"))
+	assert.Empty(t, m.newHandler(struct{}{}, "test", &reflect.Value{},
+		[]string{"test"}))
+	assert.Empty(t, m.setActiveStates(s, s, false))
+	m.log(LogChanges, "")
+	m.Log("")
+	m.LogLvl(LogChanges, "")
+	m.doDispose(false)
+	m.PanicToErr(A{})
+	m.PanicToErrState("A", A{})
+	m.queueMutation(MutationAdd, s, A{}, nil)
+	m.processStateCtxBindings()
+	m.processWhenBindings(tx)
+	m.processWhenTimeBindings(tx)
+	m.processWhenQueueBindings()
+	m.processWhenArgs(e)
 }
