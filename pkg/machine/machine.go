@@ -438,11 +438,12 @@ func (m *Machine) WhenErr(disposeCtx context.Context) <-chan struct{} {
 //
 // ctx: optional context that will close the channel when handlerLoopDone.
 func (m *Machine) When(states S, ctx context.Context) <-chan struct{} {
-	if m.disposed.Load() {
-		return nil
-	}
 	// TODO re-use channels with the same state set and context
 	ch := make(chan struct{})
+	if m.disposed.Load() {
+		close(ch)
+		return ch
+	}
 
 	// lock
 	m.activeStatesLock.Lock()
@@ -501,9 +502,6 @@ func (m *Machine) When1(state string, ctx context.Context) <-chan struct{} {
 //
 // ctx: optional context that will close the channel when handlerLoopDone.
 func (m *Machine) WhenNot(states S, ctx context.Context) <-chan struct{} {
-	if m.disposed.Load() {
-		return nil
-	}
 	ch := make(chan struct{})
 	if m.disposed.Load() {
 		close(ch)
@@ -569,12 +567,14 @@ func (m *Machine) WhenNot1(state string, ctx context.Context) <-chan struct{} {
 func (m *Machine) WhenArgs(
 	state string, args A, ctx context.Context,
 ) <-chan struct{} {
-	if m.disposed.Load() {
-		return nil
-	}
 	// TODO better val comparisons
 	//  support regexp for strings
+
 	ch := make(chan struct{})
+	if m.disposed.Load() {
+		close(ch)
+		return ch
+	}
 
 	m.MustParseStates(S{state})
 	name := state + SuffixState
@@ -621,10 +621,11 @@ func (m *Machine) WhenArgs(
 func (m *Machine) WhenTime(
 	states S, times Time, ctx context.Context,
 ) <-chan struct{} {
-	if m.disposed.Load() {
-		return nil
-	}
 	ch := make(chan struct{})
+	if m.disposed.Load() {
+		close(ch)
+		return ch
+	}
 	valid := len(states) == len(times)
 	m.MustParseStates(states)
 	indexWhenTime := m.indexWhenTime
@@ -636,7 +637,7 @@ func (m *Machine) WhenTime(
 			"whenTime: states and times must have the same length (%s)", j(states))
 		m.AddErr(err, nil)
 
-		return nil
+		return ch
 	}
 
 	// locks
@@ -716,10 +717,11 @@ func (m *Machine) WhenTicksEq(
 //
 // ctx: optional context that will close the channel when handlerLoopDone.
 func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan struct{} {
-	if m.disposed.Load() {
-		return nil
-	}
 	ch := make(chan struct{})
+	if m.disposed.Load() {
+		close(ch)
+		return ch
+	}
 
 	// locks
 	m.indexWhenQueueLock.Lock()
@@ -728,7 +730,6 @@ func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan struct{} {
 	// finish early
 	if !m.queueRunning.Load() {
 		close(ch)
-
 		return ch
 	}
 
