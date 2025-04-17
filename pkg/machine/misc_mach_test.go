@@ -212,8 +212,11 @@ func TestTimeMethods(t *testing.T) {
 
 	mt := Time{2, 1, 3}
 	assert.Equal(t, mt.Is1(1), true)
+	assert.Equal(t, mt.Is1(-1), false)
 	assert.Equal(t, mt.Is([]int{1}), true)
+	assert.Equal(t, mt.Is([]int{-1}), false)
 	assert.Equal(t, mt.Any1(1), true)
+	assert.Equal(t, mt.Any1(2), true)
 
 	mt2 := mt.Add(mt)
 	assert.Equal(t, mt2.DiffSince(mt), mt)

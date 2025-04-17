@@ -156,7 +156,7 @@ const APrefix = "am_pubsub"
 
 // A is a struct for node arguments. It's a typesafe alternative to [am.A].
 type A struct {
-	// MsgInfo happend when a peer introduces it's exposed state machines.
+	// MsgInfo happens when a peer introduces it's exposed state machines.
 	MsgInfo       *MsgInfo
 	MsgUpdates    *MsgUpdates
 	MsgBye        *MsgBye

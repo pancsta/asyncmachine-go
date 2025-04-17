@@ -19,12 +19,13 @@ import (
 
 var _ Api = &Machine{}
 
-// Machine represent states, provides mutation methods, helpers methods and
-// info about the current and scheduled transitions (if any).
+// Machine provides a state machine API with mutations, state schema, handlers,
+// subscriptions, tracers, and helpers methods. It also holds a queue of
+// mutations to execute.
 type Machine struct {
 	// Maximum number of mutations that can be queued. Default: 1000.
 	QueueLimit int
-	// HandlerTimeout defined the time for a handler to execute, before it causes
+	// HandlerTimeout defined the time for a handler to execute before it causes
 	// an Exception. Default: 1s. See also Opts.HandlerTimeout.
 	// Using HandlerTimeout can cause race conditions, see Event.IsValid().
 	HandlerTimeout time.Duration
@@ -37,7 +38,7 @@ type Machine struct {
 	// If true, the machine will catch panic and trigger the Exception state.
 	// Default: true.
 	PanicToException bool
-	// DisposeTimeout specifies the duration to wait for the queue do drain during
+	// DisposeTimeout specifies the duration to wait for the queue to drain during
 	// disposal. Default 1s.
 	DisposeTimeout time.Duration
 
@@ -47,15 +48,15 @@ type Machine struct {
 	logID bool
 	// statesVerified assures the state names have been ordered using VerifyStates
 	statesVerified atomic.Bool
-	// Unique ID of this machine. Default: random. Read-only.
+	// Unique ID of this machine. Default: random.
 	id string
-	// ctx is the context of the machine. Read-only.
+	// ctx is the context of the machine.
 	ctx context.Context
 	// parentId is the id of the parent machine (if any).
 	parentId string
 	// disposing disabled auto states
 	disposing atomic.Bool
-	// disposed tells if machine has been disposed and is no-op.
+	// disposed tells if the machine has been disposed and is no-op.
 	disposed     atomic.Bool
 	queueRunning atomic.Bool
 	// tags are short strings describing the machine.
@@ -73,7 +74,7 @@ type Machine struct {
 	states     Struct
 	schemaVer  atomic.Int32
 	statesLock sync.RWMutex
-	// activeStates is list of currently active states.
+	// activeStates is a list of currently active states.
 	activeStates     S
 	activeStatesLock sync.RWMutex
 	// queue of mutations to be executed.
@@ -81,7 +82,7 @@ type Machine struct {
 	queueLock       sync.RWMutex
 	queueProcessing atomic.Bool
 	queueLen        atomic.Int32
-	// Relations resolver, used to produce target states of a transition.
+	// Relation resolver, used to produce target states of a transition.
 	// Default: *DefaultRelationsResolver.
 	resolver RelationsResolver
 	// List of all the registered state names.
@@ -2199,6 +2200,7 @@ func (m *Machine) SetLogLevel(level LogLevel) {
 
 // GetLogLevel returns the log level of the machine.
 func (m *Machine) GetLogLevel() LogLevel {
+	// TODO refac: LogLevel()
 	return *m.logLevel.Load()
 }
 
