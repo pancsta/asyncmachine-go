@@ -41,7 +41,8 @@ type DbgMsg interface {
 
 // DbgMsgStruct contains the state and relations data.
 type DbgMsgStruct struct {
-	// TODO refac: Schema
+	// TODO refac: DbgMsgSchema
+	// TODO add schema ver
 
 	// Machine ID
 	ID string

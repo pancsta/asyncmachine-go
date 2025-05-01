@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"log"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 
 	"code.rocketnine.space/tslocum/cbind"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 
@@ -44,10 +42,12 @@ func (d *Debugger) initFocusManager() *cbind.Configuration {
 	d.focusManager = cview.NewFocusManager(d.App.SetFocus)
 	d.focusManager.SetWrapAround(true)
 	inputHandler := cbind.NewConfiguration()
-	d.App.SetAfterFocusFunc(d.afterFocus())
+	d.App.SetAfterFocusFunc(d.newAfterFocusFn())
 
 	focusChange := func(f func()) func(ev *tcell.EventKey) *tcell.EventKey {
 		return func(ev *tcell.EventKey) *tcell.EventKey {
+			defer d.Mach.PanicToErr(nil)
+
 			// keep Tab inside dialogs
 			if d.Mach.Any1(ss.GroupDialog...) {
 				return ev
@@ -80,103 +80,10 @@ func (d *Debugger) initFocusManager() *cbind.Configuration {
 	return inputHandler
 }
 
-// afterFocus forwards focus events to machine states
-func (d *Debugger) afterFocus() func(p cview.Primitive) {
+// newAfterFocusFn forwards focus events to machine states
+func (d *Debugger) newAfterFocusFn() func(p cview.Primitive) {
 	return func(p cview.Primitive) {
-		switch p {
-
-		case d.tree:
-			fallthrough
-		case d.tree.Box:
-			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.tree.Box))
-			d.Mach.Add1(ss.TreeFocused, nil)
-
-		case d.log:
-			fallthrough
-		case d.log.Box:
-			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.log.Box))
-			d.Mach.Add1(ss.LogFocused, nil)
-
-		case d.logReader:
-			fallthrough
-		case d.logReader.Box:
-			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
-				d.logReader.Box))
-			d.Mach.Add1(ss.LogReaderFocused, nil)
-
-		case d.timelineTxs:
-			fallthrough
-		case d.timelineTxs.Box:
-			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
-				d.timelineTxs.Box))
-			d.Mach.Add1(ss.TimelineTxsFocused, nil)
-
-		case d.timelineSteps:
-			fallthrough
-		case d.timelineSteps.Box:
-			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
-				d.timelineSteps.Box))
-			d.Mach.Add1(ss.TimelineStepsFocused, nil)
-
-		case d.toolbars[0]:
-			fallthrough
-		case d.toolbars[0].Box:
-			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
-				d.toolbars[0].Box))
-			d.Mach.Add1(ss.Toolbar1Focused, nil)
-
-		case d.toolbars[1]:
-			fallthrough
-		case d.toolbars[1].Box:
-			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
-				d.toolbars[1].Box))
-			d.Mach.Add1(ss.Toolbar2Focused, nil)
-
-		case d.addressBar:
-			fallthrough
-		case d.addressBar.Box:
-			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
-				d.addressBar.Box))
-			d.Mach.Add1(ss.AddressFocused, nil)
-
-		case d.clientList:
-			fallthrough
-		case d.clientList.Box:
-			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
-				d.clientList.Box))
-			d.Mach.Add1(ss.ClientListFocused, nil)
-
-		case d.matrix:
-			fallthrough
-		case d.matrix.Box:
-			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
-				d.matrix.Box))
-			d.Mach.Add1(ss.MatrixFocused, nil)
-
-		// DIALOGS
-
-		case d.helpDialog:
-			fallthrough
-		case d.helpDialog.Box:
-			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
-				d.helpDialog.Box))
-			d.Mach.Add1(ss.DialogFocused, nil)
-
-		case d.exportDialog:
-			fallthrough
-		case d.exportDialog.Box:
-			_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
-				d.exportDialog.Box))
-			d.Mach.Add1(ss.DialogFocused, nil)
-		}
-
-		// update the log highlight on focus change
-		if d.Mach.Is1(ss.TreeLogView) && d.Mach.Not1(ss.LogReaderFocused) {
-			d.updateLog(true)
-		}
-
-		d.updateClientList(true)
-		d.updateStatusBars()
+		d.Mach.Add1(ss.AfterFocus, am.A{"cview.Primitive": p})
 	}
 }
 
@@ -424,7 +331,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 		},
 
 		"alt+r": func(ev *tcell.EventKey) *tcell.EventKey {
-			d.toolRain()
+			d.Mach.Add1(ss.ToolRain, nil)
 
 			return nil
 		},
@@ -637,19 +544,6 @@ func (d *Debugger) toolExpand() {
 	}
 }
 
-func (d *Debugger) toolRain() {
-	if d.Mach.Is1(ss.MatrixRain) {
-		d.Mach.Add1(ss.TreeLogView, nil)
-	} else {
-		d.Mach.Add(am.S{ss.MatrixRain, ss.TreeMatrixView}, nil)
-		// TODO force redraw to get rect size, not ideal
-		d.redrawCallback = func() {
-			time.Sleep(1 * 16 * time.Millisecond)
-			d.drawViews()
-		}
-	}
-}
-
 func (d *Debugger) shouldScrollCurrView() bool {
 	// always scroll matrix and log views
 	return d.Mach.Any1(ss.MatrixFocused, ss.LogFocused)
@@ -672,12 +566,7 @@ func (d *Debugger) throttleKey(ev *tcell.EventKey, ms int) bool {
 	return false
 }
 
-func (d *Debugger) updateFocusable() {
-	if d.focusManager == nil {
-		d.Mach.Log("Error: focus manager not initialized")
-		return
-	}
-
+func (d *Debugger) initFocusable() {
 	var prims []cview.Primitive
 	switch d.Mach.Switch(ss.GroupViews) {
 
@@ -732,53 +621,4 @@ func (d *Debugger) updateFocusable() {
 
 	d.focusManager.Reset()
 	d.focusManager.Add(prims...)
-
-	// change focus (or not) when changing view types
-	switch d.Mach.Switch(ss.GroupFocused) {
-	case ss.ClientListFocused:
-		d.focusManager.Focus(d.clientList)
-	case ss.TreeFocused:
-		if d.Mach.Any1(ss.TreeMatrixView, ss.TreeLogView) {
-			d.focusManager.Focus(d.tree)
-		} else {
-			d.focusManager.Focus(d.clientList)
-		}
-	case ss.LogFocused:
-		if d.Mach.Is1(ss.TreeLogView) {
-			d.focusManager.Focus(d.log)
-		} else {
-			d.focusManager.Focus(d.clientList)
-		}
-	case ss.LogReaderFocused:
-		if d.Mach.Is(am.S{ss.TreeLogView, ss.LogReaderVisible}) {
-			d.focusManager.Focus(d.logReader)
-		} else if d.Mach.Is1(ss.TreeLogView) && d.Mach.Not1(ss.LogReaderVisible) {
-			d.focusManager.Focus(d.log)
-		} else {
-			d.focusManager.Focus(d.clientList)
-		}
-	case ss.MatrixFocused:
-		if d.Mach.Any1(ss.TreeMatrixView, ss.MatrixView) {
-			d.focusManager.Focus(d.matrix)
-		} else {
-			d.focusManager.Focus(d.clientList)
-		}
-	case ss.TimelineTxsFocused:
-		d.focusManager.Focus(d.timelineTxs)
-	case ss.TimelineStepsFocused:
-		d.focusManager.Focus(d.timelineSteps)
-	case ss.Toolbar1Focused:
-		d.focusManager.Focus(d.toolbars[0])
-	case ss.Toolbar2Focused:
-		d.focusManager.Focus(d.toolbars[1])
-	case ss.AddressFocused:
-		d.focusManager.Focus(d.addressBar)
-	default:
-		d.focusManager.Focus(d.clientList)
-	}
-}
-
-func (d *Debugger) updateStatusBars() {
-	txt := ""
-	d.statusBar.SetText(txt)
 }

@@ -106,6 +106,8 @@ func (d *Debugger) initMachineTree() *cview.TreeView {
 }
 
 func (d *Debugger) updateTree() {
+	// TODO refac to updateSchema (state)
+
 	var msg telemetry.DbgMsg
 	c := d.C
 	if c == nil {
@@ -128,7 +130,7 @@ func (d *Debugger) updateTree() {
 	d.tree.SetTitle(" Schema" + queue)
 
 	var steps []*am.Step
-	if c.CursorTx1 < len(c.MsgTxs) && c.CursorStep > 0 {
+	if c.CursorTx1 < len(c.MsgTxs) && c.CursorStep1 > 0 {
 		steps = d.nextTx().Steps
 	}
 
@@ -278,7 +280,7 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 	maxLen := 0
 
 	// walk the tree only when scrolling steps
-	if c.CursorStep < 1 {
+	if c.CursorStep1 < 1 {
 		for _, node := range d.tree.GetRoot().GetChildren() {
 			ref, ok := node.GetReference().(*nodeRef)
 			if !ok {
@@ -322,7 +324,7 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 			stateName := ref.stateName
 			for i := range steps {
 
-				if c.CursorStep == i {
+				if c.CursorStep1 == i {
 					break
 				}
 				step := steps[i]
@@ -408,7 +410,7 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 			// RELATION NODES
 			for i := range steps {
 
-				if c.CursorStep == i {
+				if c.CursorStep1 == i {
 					break
 				}
 
@@ -441,7 +443,7 @@ func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step) {
 	}
 
 	// walk the tree only when scrolling steps
-	if c.CursorStep < 1 {
+	if c.CursorStep1 < 1 {
 		return
 	}
 
@@ -472,7 +474,7 @@ func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step) {
 			stateName := ref.stateName
 			for i := range steps {
 
-				if c.CursorStep == i {
+				if c.CursorStep1 == i {
 					break
 				}
 				step := steps[i]
@@ -631,7 +633,7 @@ func (d *Debugger) handleExpanded(
 	}
 
 	// expand when touched or expanded by the user
-	stepsMode := c.CursorStep > 0 || d.Mach.Is1(ss.TimelineStepsFocused)
+	stepsMode := c.CursorStep1 > 0 || d.Mach.Is1(ss.TimelineStepsFocused)
 	node.SetExpanded(false)
 	if (ref.expanded && !stepsMode) || (ref.touched && stepsMode) {
 		node.SetExpanded(true)

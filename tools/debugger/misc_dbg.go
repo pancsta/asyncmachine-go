@@ -52,7 +52,7 @@ const (
 	toolFilterHealthcheck ToolName = "skip-healthcheck"
 	ToolFilterSummaries   ToolName = "hide-summaries"
 	toolLog               ToolName = "log"
-	toolGraph             ToolName = "graph"
+	toolDiagrams          ToolName = "diagrams"
 	toolTimelines         ToolName = "timelines"
 	// toolLog0              ToolName = "log-0"
 	// toolLog1              ToolName = "log-1"
@@ -136,6 +136,7 @@ type OptsFilters struct {
 type ToolName string
 
 type Exportable struct {
+	// TODO refac MsgSchema
 	MsgStruct *telemetry.DbgMsgStruct
 	MsgTxs    []*telemetry.DbgMsgTx
 }
@@ -178,7 +179,7 @@ type Client struct {
 	// current transition, 1-based, mirrors the slider
 	CursorTx1 int
 	// current step, 1-based, mirrors the slider
-	CursorStep          int
+	CursorStep1         int
 	SelectedState       string
 	SelectedReaderEntry *logReaderEntryPtr
 	ReaderCollapsed     bool

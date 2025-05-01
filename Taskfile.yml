@@ -123,7 +123,7 @@ tasks:
       AM_TEST_RUNNER: 1
     desc: Run all local tests
     cmds:
-      - task: clean
+      - task: clean-test
       - go test ./... {{.CLI_ARGS}}
 
   test-path:
@@ -131,7 +131,7 @@ tasks:
       AM_TEST_RUNNER: 1
     desc: Run tests for a provided path
     cmds:
-      - task: clean
+      - task: clean-test
       - go test {{.CLI_ARGS}}
       - go test -race {{.CLI_ARGS}}
 
@@ -156,7 +156,7 @@ tasks:
     env:
       AM_TEST_RUNNER: 1
     cmds:
-      - task: clean
+      - task: clean-test
       - go test -p 1 --parallel 1 ./pkg/... 
           -coverprofile=coverage-pkg.txt -covermode=atomic
       - go tool cover -func=coverage-pkg.txt | grep total | awk '{print $3}' >
@@ -167,7 +167,7 @@ tasks:
       AM_TEST_RUNNER: 1
     desc: Run all local tests in a series
     cmds:
-      - task: clean
+      - task: clean-test
       - go test -p 1 --parallel 1 ./... {{.CLI_ARGS}}
 
   test-race:
@@ -176,13 +176,13 @@ tasks:
       AM_DETECT_EVAL: 1
     desc: Run all local tests with -race
     cmds:
-      - task: clean
+      - task: clean-test
       - go test -v -race ./... {{.CLI_ARGS}}
 
   test-debugger:
     desc: Run local am-dbg integration tests
     cmds:
-      - task: clean
+      - task: clean-test
       - go test
         ./tools/debugger/test {{.CLI_ARGS}}
 
@@ -191,18 +191,27 @@ tasks:
       - config/env/tests-remote.env
     desc: Run remote am-dbg integration tests against a running worker (see task am-dbg-worker)
     cmds:
-      - task: clean
+      - task: clean-test
       - go test -tags test_worker
           ./tools/debugger/test/remote {{.CLI_ARGS}}
 
   precommit:
     cmds:
-      - task: gen-jsonschema
+      - task: clean
       - task: format
       - .git/hooks/pre-commit
+      - task: test-race
+
+  clean-lint:
+    cmd: golangci-lint cache clean
+
+  clean-test:
+    cmd: go clean -testcache
 
   clean:
-    cmd: go clean -testcache
+    cmds:
+      - task: clean-test
+      - task: clean-lint
 
   cloc-go:
     cmd: gocloc --output-type json . |
@@ -336,19 +345,20 @@ tasks:
       - convert assets/asyncmachine-go/video.gif -delete 0 assets/asyncmachine-go/video.gif
 
   video:
-    desc: Record a video
+    desc: Record a video with a preview
     cmds:
       - terminalizer record
         --config config/terminalizer.yml assets/asyncmachine-go/video.cast
         --skip-sharing
       # delete first 1 record (each has 2 lines)
       - sed -i '/^records:/{n;N;d;}' assets/asyncmachine-go/video.cast.yml
+      - task: video-gif-quick
 
   video-run:
     cmds:
       - go run ./internal/cmd/am-dbg-video
 
-  video-all:
+  gen-video:
     desc: Create assets/asyncmachine-go/video.gif using internal/cmd/video
     cmds:
       - task: video
@@ -460,8 +470,15 @@ tasks:
         {{.CLI_ARGS}}
 
   am-dbg-dashboard:
-    desc: Start an example am-dbg dashboard
-    cmd: zellij --layout ./config/dashboards/2x1x1.kdl
+    desc: Start an example Zellij am-dbg dashboard
+    # TODO config file
+    cmd: zellij --session am-dbg-dash --new-session-with-layout ./config/dashboards/dash-2x1x1.kdl
+        options --no-pane-frames
+          --on-force-close quit
+
+  am-dbg-dashboard-exit:
+    desc: Exit Zellij dashboard
+    cmd: zellij delete-session am-dbg-dash --force
 
   gen-jsonschema:
     desc: Generate JSON schemas for pkg/integrations
