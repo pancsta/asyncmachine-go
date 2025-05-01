@@ -1,17 +1,9 @@
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /config/env
-
-[`cd /`](/README.md)
-
-> [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
-
-**/config/env** contains all environment variables for asyncmachine, organized in files, most of which are aimed at
-debugging.
+# Env Configs
 
 ## Example Usage
 
 Example from [am-dbg integration tests](/pkg/rpc/HOWTO.md). Commands below will start both the am-dbg test worker
-instance and tests, in the debug mode via per-command env vars. Requires a running `task am-dbg-dbg` to receive
+instance and tests in the debug mode via per-command env vars. Requires a running `task am-dbg-dbg` to receive
 telemetry (second debugger instance).
 
 ```shell
@@ -22,15 +14,16 @@ env (cat config/env/debug-telemetry.env) task am-dbg-worker
 env (cat config/env/debug-tests.env) task test-debugger-remote
 ```
 
-## List
-
-It's not possible to keep comments in the .evn file for fishshell. Meanings below.
+## Supported Env Variables
 
 ```shell
 
+### ### ###
 ### MACHINE
+### ### ###
 
 # enable a simple debugging mode (eg long timeouts)
+# "2" logs to stdout (where applicable)
 # "1", "2", "" (default)
 AM_DEBUG=1
 
@@ -59,7 +52,9 @@ AM_DETECT_EVAL=1
 # defaults to ""
 AM_TEST_DEBUG=1
 
+### ### ###
 ### TESTS
+### ### ###
 
 # RPC port on a remote worker to connect to
 AM_DBG_WORKER_RPC_ADDR=localhost:53480
@@ -67,13 +62,15 @@ AM_DBG_WORKER_RPC_ADDR=localhost:53480
 # am-dbg telemetry port on a remote worker to connect to
 AM_DBG_WORKER_TELEMETRY_ADDR=localhost:53470
 
+### ### ###
 ### TELEMETRY
+### ### ###
 
 # telemetry source (service / job)
 # defaults to ""
 AM_SERVICE=
 
-# prometheus address
+# prometheus address, requires AM_SERVICE
 # defaults to ""
 AM_PROM_PUSH_URL=http://localhost:9091
 # grafana address, required for automatic dashboards
@@ -81,29 +78,38 @@ AM_PROM_PUSH_URL=http://localhost:9091
 AM_GRAFANA_URL=http://localhost:3000
 # grafana API token, required for automatic dashboards
 # defaults to ""
-AM_GRAFANA_TOKEN=
+AM_GRAFANA_TOKEN=secret
 
-# export Otel traces for states and submachines
+# export Otel traces for states and submachines, requires AM_SERVICE
 # defaults to ""
 AM_OTEL_TRACE=1
-
 # create additional Otel traces for transitions
 # defaults to ""
 AM_OTEL_TRACE_TXS=1
-
+# include logged arguments as traces tags
+# defaults to ""
+AM_OTEL_TRACE_ARGS=1
+# skip traces for auto transitions
+# defaults to ""
+AM_OTEL_TRACE_NOAUTO=
+# prefix of stack traces to remove
+# defaults to ""
+AM_TRACE_FILTER=
 # destination address for Otel traces
 # defaults to "localhost:4317"
 # OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=localhost:4317
 
-# prefix of stack traces to remove
+# export logs to Loki, requires AM_SERVICE
 # defaults to ""
-AM_TRACE_FILTER=
+AM_LOKI_ADDR=localhost:3100
 
 # replace hostname in machine names
 # defaults to ""
-AM_HOSTNAME=
+AM_HOSTNAME=fakehost
 
+### ### ###
 ### RPC
+### ### ###
 
 # print log msgs from the RPC server
 # defaults to ""
@@ -122,7 +128,9 @@ AM_RPC_LOG_MUX=1
 # defaults to ""
 AM_RPC_DBG=1
 
+### ### ###
 ### NODE
+### ### ###
 
 # print log msgs from the Node supervisor
 # defaults to ""
@@ -136,7 +144,9 @@ AM_NODE_LOG_CLIENT=1
 # defaults to ""
 AM_NODE_LOG_WORKER=1
 
+### ### ###
 ### PUBSUB
+### ### ###
 
 # print log msgs from PubSub
 # defaults to ""
@@ -146,7 +156,9 @@ AM_PUBSUB_LOG=1
 # defaults to ""
 AM_PUBSUB_DBG=1
 
+### ### ###
 ### REPL
+### ### ###
 
 # REPL address to listen on. "1" expands to 127.0.0.1:0.
 # defaults to ""
@@ -156,7 +168,3 @@ AM_REPL_ADDR=1
 # defaults to ""
 AM_REPL_ADDR_DIR=tmp
 ```
-
-## monorepo
-
-[Go back to the monorepo root](/README.md) to continue reading.

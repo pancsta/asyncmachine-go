@@ -2,11 +2,19 @@
 
 Only `pkg/machine` and `pkg/states` adhere to semver. Semver of other packages is not guaranteed at the moment.
 
+## v0.11
+
+- `am.Struct` is now `am.Schema`
+- `Machine.GetStruct()` is now `Machine.Schema()`
+- `am.StructMerge()` is now `am.SchemaMerge()`
+- `Tracer.StructChange()` is now `Tracer.SchemaChange()`
+- `Machine.WhenTicksEq()` is now `Machine.WhenTime1()`
+
 ## v0.10
 
-- `FooBar` handlers get execute later and more often
-- `FooAny`, `AnyFoo` handlers have been removed
-- `AnyAny` is now `AnyEnter`
+- `FooBar()` handlers get executed later and more often
+- `FooAny()`, `AnyFoo()` handlers have been removed
+- `AnyAny()` is now `AnyEnter()`
 
 ## v0.9
 
@@ -36,12 +44,12 @@ Only `pkg/machine` and `pkg/states` adhere to semver. Semver of other packages i
 - `Machine.StateNames` is now `Machine.StateNames()`
 - `Machine.Transition` is now `Machine.Transition()`
 - `Machine.Err` is now `Machine.Err()`
-- `Machine.AddErrStr()` is now removed
+- `Machine.AddErrStr()` has been removed
 - `Machine.AddErr(error)` is now `Machine.AddErr(error, Args)`
 - `Machine.AddErrState(string, error)` is now `Machine.AddErrState(state, error, Args)`
 - `Machine.WhenTicksEq()` now accepts `uint64`
 - `Machine.IsClock()` and `Machine.Clock()` are now `Machine.Time()`
-- `Machine.OnEvent()` is now removed
+- `Machine.OnEvent()` has been removed
 - `Machine.DuringTransition()` is now `Machine.Transition()`
 - `Machine.SetTestLogger()` is now `Machine.SetLoggerSimple()`
 - `Machine.HasStateChanged()` is now `Machine.IsClock()`
@@ -55,5 +63,5 @@ Only `pkg/machine` and `pkg/states` adhere to semver. Semver of other packages i
 - `Transition.IsCompleted` is now `Transition.IsCompleted()`
 - `T` is now `Time`
 - `Clocks` is now `Clock`
-- `Event*` enum is now removed
+- `Event*` enum has been removed
 - `SMerge` is now `SAdd`

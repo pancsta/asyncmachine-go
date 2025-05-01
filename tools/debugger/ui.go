@@ -342,10 +342,10 @@ func (d *Debugger) initToolbar() {
 			}},
 			// TODO make it an anchor for file://...svg
 			{id: toolDiagrams, label: "diagrams", active: func() bool {
-				return d.Opts.Graph > 0
+				return d.Opts.Diagrams > 0
 			}, activeLabel: func() string {
 				// TODO make Opts threadsafe
-				return strconv.Itoa(d.Opts.Graph)
+				return strconv.Itoa(d.Opts.Diagrams)
 			}},
 			{id: toolTimelines, label: "timelines", active: func() bool {
 				return d.Opts.Timelines > 0

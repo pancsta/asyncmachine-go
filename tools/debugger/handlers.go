@@ -133,7 +133,7 @@ func (d *Debugger) ReadyState(e *am.Event) {
 		d.Mach.EvAdd1(e, ss.NarrowLayout, nil)
 	}
 	d.syncOptsTimelines()
-	if d.Opts.Graph > 0 {
+	if d.Opts.Diagrams > 0 {
 		d.Mach.EvAdd1(e, ss.GraphsScheduled, nil)
 	}
 	if d.Opts.ViewRain {
@@ -1082,7 +1082,7 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		d.Opts.Filters.LogLevel = (d.Opts.Filters.LogLevel + 1) % 5
 
 	case toolDiagrams:
-		d.Opts.Graph = (d.Opts.Graph + 1) % 4
+		d.Opts.Diagrams = (d.Opts.Diagrams + 1) % 4
 		d.Mach.Add1(ss.GraphsScheduled, nil)
 
 	case toolTimelines:
@@ -1417,7 +1417,7 @@ func (d *Debugger) SetCursorState(e *am.Event) {
 }
 
 func (d *Debugger) GraphsScheduledEnter(e *am.Event) bool {
-	return d.C != nil && d.Opts.Graph > 0
+	return d.C != nil && d.Opts.Diagrams > 0
 }
 
 func (d *Debugger) GraphsScheduledState(e *am.Event) {
@@ -1430,7 +1430,7 @@ func (d *Debugger) GraphsScheduledState(e *am.Event) {
 
 func (d *Debugger) GraphsRenderingEnter(e *am.Event) bool {
 	// only if freq time passed
-	return d.Opts.Graph > 0 && d.C != nil
+	return d.Opts.Diagrams > 0 && d.C != nil
 }
 
 func (d *Debugger) GraphsRenderingState(e *am.Event) {

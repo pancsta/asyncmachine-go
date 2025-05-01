@@ -3,11 +3,11 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 ## am-dbg TUI Debugger
 
-[![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-reader.png)](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-large.png)
+[![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-reader.png)](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-reader.png)
 
 `am-dbg` is a lightweight, multi-client debugger which can handle hundreds of simultaneous streams from asyncmachines.
 It's built around a timeline of transitions and allows for precise searches and drill-downs of state mutations.
@@ -16,6 +16,9 @@ It's built around a timeline of transitions and allows for precise searches and 
   <tr>
     <td>
         <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png" />
+    </td>
+    <td>
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-steps.png" />
     </td>
     <td>
         <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-rain.png" />
@@ -30,7 +33,7 @@ It's built around a timeline of transitions and allows for precise searches and 
 - Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 ## Features
 
@@ -69,7 +72,7 @@ Flags:
   -d, --dir string              Output directory for generated files (default ".")
       --enable-mouse            Enable mouse support (experimental) (default true)
   -f, --fwd-data string         Forward incoming data to other instances (eg addr1,addr2)
-      --graph int               Level of details for graphs (svg, d2, mermaid) in --dir (0-3)
+      --diagrams int            Level of details for diagrams (svg, d2, mermaid) in --dir (0-3)
   -h, --help                    help for am-dbg
   -i, --import-data string      Import an exported gob.bt file
   -l, --listen-on string        Host and port for the debugger to listen on (default "localhost:6831")

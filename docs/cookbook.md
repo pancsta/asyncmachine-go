@@ -170,7 +170,7 @@ mach.SetLogArgs(am.NewArgsMapper([]string{"id", "name"}, 20))
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 // ...
 ctx := context.TODO()
-states := am.Struct{"Foo":{}, "Bar":{Require: am.S{"Foo"}}}
+states := am.Schema{"Foo":{}, "Bar":{Require: am.S{"Foo"}}}
 // state machine
 mach := am.New(ctx, states, &am.Opts{
     ID: "mach1",
@@ -353,7 +353,7 @@ See also:
 - [waiting on multi states](#wait-for-a-state-activation-with-argument-values)
 
 ```go
-var States = am.Struct{
+var States = am.Schema{
     ConnectEvent:    {Multi: true},
 }
 
@@ -525,7 +525,7 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 type S = am.S
 
 // States map defines relations and properties of states.
-var States = am.Struct{
+var States = am.Schema{
     Start:     {},
     Heartbeat: {Require: S{Start}},
 }
@@ -549,7 +549,7 @@ var Names = S{Start, Heartbeat}
 ## State Mutex Groups
 
 ```go
-var States = am.Struct{
+var States = am.Schema{
     Connected: {Remove: groupConnected},
     Connecting: {Remove: groupConnected},
     Disconnecting: {Remove: groupConnected},

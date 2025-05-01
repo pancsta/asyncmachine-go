@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 **aRPC** is a transparent RPC for state machines implemented using [asyncmachine-go](/). It's
 clock-based and features many optimizations, e.g. having most of the API methods executed locally (as state changes are
@@ -43,7 +43,7 @@ Additionally, remote RPC workers can also have RPC servers attached to themselve
 ### Worker
 
 Any state machine can be exposed as an RPC worker, as long as it implements [`/pkg/rpc/states/WorkerStructDef`](/pkg/rpc/states/ss_rpc_worker.go).
-This can be done either manually, or by using state helpers ([StructMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
+This can be done either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
 [SAdd](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SAdd)), or by generating a states file with
 [am-gen](/tools/cmd/am-gen/README.md). It's also required to have the states verified by [Machine.VerifyStates](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.VerifyStates).
 Worker can send data to the client via the `SendPayload` state.
@@ -60,7 +60,7 @@ import (
 // ...
 
 // inherit from RPC worker
-ssStruct := am.StructMerge(ssrpc.WorkerStruct, am.Struct{
+ssStruct := am.SchemaMerge(ssrpc.WorkerStruct, am.Schema{
     "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
 })
@@ -149,7 +149,7 @@ State schema from [/pkg/rpc/states/ss_rpc_server.go](/pkg/rpc/states/ss_rpc_serv
 
 ### Client
 
-Each RPC client can connect to 1 server and needs to know worker's states structure and order. Data send by a worker via
+Each RPC client can connect to 1 server and needs to know worker's machine schema and order. Data send by a worker via
 `SendPayload` will be received by a [Consumer machine](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc/states#ConsumerStatesDef)
 (passed via [ClientOpts.Consumer](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#ClientOpts)) as an Add
 mutation of the `WorkerPayload` state (see a [detailed diagram](/docs/diagrams.md#rpc-getter-flow)). Client supports
@@ -177,7 +177,7 @@ import (
 
 var addr string
 // worker state structure
-var ssStruct am.Struct
+var ssStruct am.Schema
 // worker state names
 var ssNames am.S
 
@@ -311,6 +311,15 @@ ok      github.com/pancsta/asyncmachine-go/examples/benchmark_grpc      5.187s
 with distinction which methods happen where (locally or on remote).
 
 ```go
+// A (arguments) is a map of named arguments for a Mutation.
+type A map[string]any
+// S (state names) is a string list of state names.
+type S []string
+type Time []uint64
+type Clock map[string]uint64
+type Result int
+type Schema = map[string]State
+
 // Api is a subset of Machine for alternative implementations.
 type Api interface {
     // ///// REMOTE
@@ -364,8 +373,8 @@ type Api interface {
     WhenNot1(state string, ctx context.Context) <-chan struct{}
     WhenTime(
         states S, times Time, ctx context.Context) <-chan struct{}
+    WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
     WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
-    WhenTicksEq(state string, tick uint64, ctx context.Context) <-chan struct{}
     WhenErr(ctx context.Context) <-chan struct{}
 
     // Getters (local)
@@ -378,7 +387,7 @@ type Api interface {
     TimeSum(states S) uint64
     NewStateCtx(state string) context.Context
     Export() *Serialized
-    GetStruct() Struct
+    Schema() Schema
     Switch(groups ...S) string
 
     // Misc (local)

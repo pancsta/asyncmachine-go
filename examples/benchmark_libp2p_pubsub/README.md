@@ -3,7 +3,7 @@
 - [cd /](/)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 [**go-libp2p-pubsub-benchmark**](https://github.com/pancsta/go-libp2p-pubsub-benchmark) compares the default
 [go-libp2p-pubsub](https://github.com/libp2p/go-libp2p-pubsub) implementation to the [asyncmachine version](https://github.com/pancsta/go-libp2p-pubsub/).
@@ -27,7 +27,7 @@ version.
 
 <details>
 
-<summary>See states structure and relations (pubsub host)</summary>
+<summary>See machine schema and relations (pubsub host)</summary>
 
 ```go
 package states
@@ -35,7 +35,7 @@ package states
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
 // States define relations between states
-var States = am.Struct{
+var States = am.Schema{
     // peers
     PeersPending: {},
     PeersDead:    {},
@@ -72,7 +72,7 @@ var States = am.Struct{
 
 <details>
 
-<summary>See states structure and relations (discovery & bootstrap)</summary>
+<summary>See machine schema and relations (discovery & bootstrap)</summary>
 
 ```go
 package discovery
@@ -83,7 +83,7 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 type S = am.S
 
 // States define relations between states.
-var States = am.Struct{
+var States = am.Schema{
     Start: {
         Add: S{PoolTimer},
     },
@@ -120,7 +120,7 @@ var States = am.Struct{
 }
 
 // StatesBootstrapFlow define relations between states for the bootstrap flow.
-var StatesBootstrapFlow = am.Struct{
+var StatesBootstrapFlow = am.Schema{
     Start: {
         Add: S{BootstrapChecking},
     },

@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 To read about **am-dbg**, go to [/tools/cmd/am-dbg](/tools/cmd/am-dbg/README.md). This package is about the
 implementation, not the end-user application.
@@ -20,11 +20,11 @@ good example to see how easily an AM-based program can be controller with a scri
 
 <details>
 
-<summary>See states structure and relations</summary>
+<summary>See machine schema and relations</summary>
 
 ```go
 // States map defines relations and properties of states.
-var States = am.Struct{
+var States = am.Schema{
 
     // ///// Input events
 
@@ -90,12 +90,9 @@ var States = am.Struct{
     },
     LogUserScrolled: {
         Remove: S{Playing, TailMode},
-        // TODO remove the requirement once its possible to go back
-        //  to timeline-scroll somehow
         Require: S{LogFocused},
     },
     Ready: {Require: S{Start}},
-    // TODO should activate FiltersFocused
     FilterAutoTx:      {},
     FilterCanceledTx:  {},
     FilterEmptyTx:     {},
@@ -141,7 +138,6 @@ var States = am.Struct{
         Remove:  GroupSwitchedClientTx,
     },
     ScrollToMutTx: {Require: S{ClientSelected}},
-    // TODO depend on a common Matrix view
     MatrixRain: {},
     LogReaderVisible: {
         Auto:    true,

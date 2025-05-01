@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 **/pkg/states** contains common state definitions to make state-based API easier to compose and exchange. Additionally it
 offers tooling for "piping" states between state machines.
@@ -26,7 +26,7 @@ import ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 
 ```go
 // inherit from RPC worker
-ssStruct := am.StructMerge(ssam.BasicStruct, am.Struct{
+ssStruct := am.SchemaMerge(ssam.BasicStruct, am.Schema{
     "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
 })
@@ -47,11 +47,11 @@ type MyMachStatesDef struct {
     *ss.BasicStatesDef
 }
 
-// MyMachStruct represents all relations and properties of MyMachStates.
-var MyMachStruct = StructMerge(
+// MyMachSchema represents all relations and properties of MyMachStates.
+var MyMachSchema = SchemaMerge(
     // inherit from BasicStruct
     ss.BasicStruct,
-    am.Struct{
+    am.Schema{
 
         ssM.State1: {},
         ssM.State2: {
@@ -125,7 +125,7 @@ import (
 
 // ...
 
-MyMychStruct = am.Struct{
+MyMychStruct = am.Schema{
 
     // inject Client states into Connected
     "Connected": StateAdd(

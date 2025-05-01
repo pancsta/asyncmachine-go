@@ -158,7 +158,7 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.Bool(pOutputClients, false,
 		"Write a detailed client list into in am-dbg-clients.txt inside --dir")
 	f.Int(pDiagrams, 0,
-		"Level of details for graphs (svg, d2, mermaid) in --dir (0-3)")
+		"Level of details for diagrams (svg, d2, mermaid) in --dir (0-3)")
 	f.Int(pTimelines, 2, "Number of timelines to show (0-2)")
 	f.Bool(pRain, false, "Show the rain view")
 	f.Bool(pTail, true, "Start from the last tx")

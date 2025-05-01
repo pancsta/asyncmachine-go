@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 **/pkg/history** provides mutation history tracking and traversal. It's in an early stage, but it has a very important
 role in making informed decision about state flow. Besides providing a log of changes, it also binds human time to

@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.11.0](https://github.com/pancsta/asyncmachine-go/tree/v0.11.0) (2025-05-01)
+
+- feat\(am-gen\): generate basic schema constructors [\#235](https://github.com/pancsta/asyncmachine-go/pull/235)
+  (@pancsta)
+- feat\(am-dbg\): improve toolbar and statusbar [\#234](https://github.com/pancsta/asyncmachine-go/pull/234)
+  (@pancsta)
+- refac\(machine\): rename Struct to Schema, WhenTicksEq to WhenTime1 [\#233](https://github.com/pancsta/asyncmachine-go/pull/233)
+  (@pancsta)
+- feat\(integrations\): add NATS and JSON types with schemas [\#232](https://github.com/pancsta/asyncmachine-go/pull/232)
+  (@pancsta)
+- feat\(telemetry\): improve Otel integration [\#231](https://github.com/pancsta/asyncmachine-go/pull/231)
+  (@pancsta)
+
 ## [v0.10.3](https://github.com/pancsta/asyncmachine-go/tree/v0.10.3) (2025-04-13)
 
 - feat\(am-dbg\): add graphs, dashboards, and others [\#229](https://github.com/pancsta/asyncmachine-go/pull/229)

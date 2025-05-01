@@ -7,11 +7,11 @@ It calls struct methods according to conventions, a schema, and currently active
 
 ## What is a "state" in asyncmachine?
 
-State is binary name as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
+State is a binary name as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
 
 ## What does "clock-based" mean?
 
-Each state has a counter of activations & de-activations, and all state counters create "machine time". It's a logical
+Each state has a counter of activations & deactivations, and all state counters create "machine time". It's a logical
 clock.
 
 ## What's the difference between states and events?
@@ -37,8 +37,14 @@ natively state-based (even the [code generator](/tools/generator/states/ss_gener
 
 ## Can asyncmachine be integrated with other frameworks?
 
-Yes, asyncmachine is more of a set of libraries following the same conventions than an actual framework. It can
-integrate with anything via state-based APIs.
+Yes, asyncmachine is more of a set of libraries following the same conventions, than an actual framework. It can
+integrate with anything via [state-based APIs](/pkg/machine/README.md#api) or [JSON](/pkg/integrations/README.md).
+
+## What's the overhead?
+
+According to early benchmarks of [libp2p-pubsub ported to asyncmachine v0.5.0](https://github.com/pancsta/go-libp2p-pubsub-benchmark/blob/main/bench.md)
+([PDF version](https://raw.githubusercontent.com/pancsta/go-libp2p-pubsub-benchmark/refs/heads/main/assets/bench.pdf)),
+the CPU overhead is around 15-20%, while the memory ceiling remains the same.
 
 ## Does aRPC auto sync data?
 
@@ -61,7 +67,7 @@ The lack of blocking allows for immediate adjustments to incoming changes and is
 
 Yes, all the public methods of `pkg/machine` are thread safe.
 
-## Is asyncmachine single threaded?
+## Is asyncmachine single-threaded?
 
 The queue executes on the thread which caused the mutation, while handlers execute serialy in separate goroutines each.
 Each handler usually forks another goroutine to unblock the next handler. The amount of active goroutines can be limited
