@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pancsta/asyncmachine-go/pkg/integrations/msg-kind-resp",
+  "$ref": "#/$defs/MsgKindResp",
+  "$defs": {
+    "Kind": {
+      "properties": {
+        "Value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Value"
+      ]
+    },
+    "MsgKindResp": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/Kind",
+          "description": "The kind of the response."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "description": "MsgKindResp is a decoding helper."
+    }
+  }
+}

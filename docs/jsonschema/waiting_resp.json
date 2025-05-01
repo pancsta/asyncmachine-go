@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pancsta/asyncmachine-go/pkg/integrations/waiting-resp",
+  "$ref": "#/$defs/WaitingResp",
+  "$defs": {
+    "Kind": {
+      "properties": {
+        "Value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Value"
+      ]
+    },
+    "S": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "Time": {
+      "items": {
+        "type": "integer"
+      },
+      "type": "array"
+    },
+    "WaitingResp": {
+      "oneOf": [
+        {
+          "required": [
+            "states",
+            "states_not"
+          ],
+          "title": "states"
+        }
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/Kind",
+          "description": "The kind of the response."
+        },
+        "mach_id": {
+          "type": "string",
+          "description": "The ID of the state machine."
+        },
+        "states": {
+          "$ref": "#/$defs/S",
+          "description": "The active states waited for. If time is empty, all these states are active simultaneously."
+        },
+        "states_not": {
+          "$ref": "#/$defs/S",
+          "description": "The inactive states waited for."
+        },
+        "time": {
+          "$ref": "#/$defs/Time",
+          "description": "The requested machine time (the current one may be higher)."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind",
+        "mach_id"
+      ]
+    }
+  }
+}
