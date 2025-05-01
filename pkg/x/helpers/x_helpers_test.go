@@ -16,9 +16,9 @@ type T = am.Time
 func TestTimeMatrix(t *testing.T) {
 	// m1 init
 	m1 := NewNoRels(t, nil)
-	statesStruct := m1.GetStruct()
+	statesStruct := m1.Schema()
 	statesStruct["B"] = am.State{Multi: true}
-	err := m1.SetStruct(statesStruct, S{"A", "B", "C", "D", am.Exception})
+	err := m1.SetSchema(statesStruct, S{"A", "B", "C", "D", am.Exception})
 	assert.NoError(t, err)
 
 	// mutate & assert
@@ -29,9 +29,9 @@ func TestTimeMatrix(t *testing.T) {
 
 	// m2 init
 	m2 := NewNoRels(t, nil)
-	statesStruct = m1.GetStruct()
+	statesStruct = m1.Schema()
 	statesStruct["B"] = am.State{Multi: true}
-	err = m2.SetStruct(statesStruct, S{"A", "B", "C", "D", am.Exception})
+	err = m2.SetSchema(statesStruct, S{"A", "B", "C", "D", am.Exception})
 	assert.NoError(t, err)
 
 	// mutate & assert
@@ -48,12 +48,12 @@ func TestTimeMatrix(t *testing.T) {
 	assert.Equal(t, T{2, 6, 2, 1, 0}, matrix[1])
 }
 
-///// helpers
+// /// helpers
 // TODO extract test helpers to internal/testing
 
 // NewNoRels creates a new machine with no relations between states.
 func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
-	m := am.New(context.Background(), am.Struct{
+	m := am.New(context.Background(), am.Schema{
 		"A": {},
 		"B": {},
 		"C": {},

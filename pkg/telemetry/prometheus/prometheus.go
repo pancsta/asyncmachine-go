@@ -37,7 +37,7 @@ type PromTracer struct {
 	prevTime    uint64
 }
 
-func (t *PromTracer) StructChange(machine am.Api, old am.Struct) {
+func (t *PromTracer) SchemaChange(machine am.Api, old am.Schema) {
 	// TODO refresh state and relation metrics
 }
 
@@ -425,14 +425,14 @@ func (m *Metrics) SetRegistry(registry *prometheus.Registry) {
 // BindMach bind transitions to Prometheus metrics.
 func BindMach(mach am.Api) *Metrics {
 	metrics := newMetrics(mach)
-	mach.Log("[bind] Prometheus metrics")
+	mach.Log("[bind] prometheus metrics")
 
 	// state & relations
-	// TODO bind in StructChange
+	// TODO bind in SchemaChange
 	metrics.StatesAmount.Set(float64(len(mach.StateNames())))
 	relCount := 0
 	stateRefCount := 0
-	for _, state := range mach.GetStruct() {
+	for _, state := range mach.Schema() {
 
 		if state.Add != nil {
 			relCount++
@@ -525,12 +525,17 @@ func average(sum uint64, sampleLen uint) float64 {
 	return float64(sum / uint64(sampleLen))
 }
 
+// MachMetricsEnv bind an OpenTelemetry tracer to [mach], based on environment
+// variables:
+// - AM_SERVICE (required)
+// - AM_PROM_PUSH_URL (required)
+// This tracer is inherited by submachines.
 func MachMetricsEnv(mach am.Api) *Metrics {
 
 	promPushUrl := os.Getenv(EnvPromPushUrl)
 	promService := os.Getenv(telemetry.EnvService)
 
-	// Return early if any required variables are empty
+	// return early if any required variables are empty
 	if promPushUrl == "" || promService == "" {
 		return nil
 	}

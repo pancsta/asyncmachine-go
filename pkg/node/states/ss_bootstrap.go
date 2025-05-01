@@ -3,6 +3,7 @@ package states
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // BootstrapStatesDef contains all the states of the Bootstrap state machine.
@@ -16,12 +17,12 @@ type BootstrapStatesDef struct {
 	*ssrpc.WorkerStatesDef
 }
 
-// BootstrapStruct represents all relations and properties of
+// BootstrapSchema represents all relations and properties of
 // BootstrapStatesDef.
-var BootstrapStruct = StructMerge(
+var BootstrapSchema = SchemaMerge(
 	// inherit from WorkerStruct
-	ssrpc.WorkerStruct,
-	am.Struct{
+	ssrpc.WorkerSchema,
+	am.Schema{
 		cos.WorkerAddr: {},
 	})
 

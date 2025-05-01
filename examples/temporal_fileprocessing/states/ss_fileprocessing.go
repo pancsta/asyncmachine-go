@@ -8,7 +8,7 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 type S = am.S
 
 // States map defines relations and properties of states.
-var States = am.Struct{
+var States = am.Schema{
 	DownloadingFile: {Remove: GroupFileDownloaded},
 	FileDownloaded:  {Remove: GroupFileDownloaded},
 	ProcessingFile: {
@@ -33,7 +33,7 @@ var (
 	GroupFileUploaded   = S{UploadingFile, FileUploaded}
 )
 
-//#region boilerplate defs
+// #region boilerplate defs
 
 // Names of all the states (pkg enum).
 
@@ -49,4 +49,4 @@ const (
 // Names is an ordered list of all the state names.
 var Names = S{DownloadingFile, FileDownloaded, ProcessingFile, FileProcessed, UploadingFile, FileUploaded}
 
-//#endregion
+// #endregion

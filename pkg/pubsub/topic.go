@@ -160,7 +160,7 @@ func NewTopic(
 		suffix = utils.RandId(2)
 	}
 
-	mach, err := am.NewCommon(ctx, "ps-"+name+"-"+suffix, states.TopicStruct,
+	mach, err := am.NewCommon(ctx, "ps-"+name+"-"+suffix, states.TopicSchema,
 		ss.Names(), t, opts.Parent, &am.Opts{
 			Tags: []string{"pubsub:" + name},
 
@@ -1610,7 +1610,7 @@ func (t *Topic) doSendInfo(ctx context.Context, peerIds []string) {
 				machs[machIdx] = &Info{
 					Id: mach.Id(),
 					// TODO pre-shared schemas
-					Schema: mach.GetStruct(),
+					Schema: mach.Schema(),
 					States: mach.StateNames(),
 					MTime:  mach.Time(nil),
 					Tags:   mach.Tags(),

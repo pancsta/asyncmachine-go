@@ -51,8 +51,8 @@ func IsTimeAfter(time1, time2 Time) bool {
 }
 
 // CloneStates deep clones the states struct and returns a copy.
-func CloneStates(stateStruct Struct) Struct {
-	ret := make(Struct)
+func CloneStates(stateStruct Schema) Schema {
+	ret := make(Schema)
 
 	for name, state := range stateStruct {
 		ret[name] = cloneState(state)
@@ -189,20 +189,13 @@ func SchemaMerge(stateStructs ...Schema) Schema {
 	return CloneStates(ret)
 }
 
-// StructMerge merges multiple state structs into one, overriding the previous
-// state definitions. No relation-level merging takes place.
-// Deprecated: use SchemaMerge
-func StructMerge(stateStructs ...Schema) Schema {
-	return SchemaMerge(stateStructs...)
-}
-
 // Serialized is a machine state serialized to a JSON/YAML/TOML compatible
 // struct. One also needs the state Struct to re-create a state machine.
 type Serialized struct {
 	// ID is the ID of a state machine.
-	ID string `json:"id" yaml:"id"`
+	ID string `json:"id" yaml:"id" toml:"id"`
 	// Time represents machine time - a list of state activation counters.
-	Time Time `json:"time" yaml:"time"`
+	Time Time `json:"time" yaml:"time" toml:"time"`
 	// StateNames is an ordered list of state names.
 	StateNames S `json:"state_names" yaml:"state_names" toml:"state_names"`
 }
@@ -355,7 +348,7 @@ func padString(str string, length int, pad string) string {
 	}
 }
 
-func parseStruct(states Struct) Struct {
+func parseSchema(states Schema) Schema {
 	// TODO move to Resolver
 	// TODO capitalize states
 

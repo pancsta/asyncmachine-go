@@ -276,7 +276,7 @@ var (
 )
 
 func fmtLogEntry(
-	entry string, calledStates []string, machStruct am.Struct,
+	entry string, calledStates []string, machStruct am.Schema,
 ) string {
 	if entry == "" {
 		return entry

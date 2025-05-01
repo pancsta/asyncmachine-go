@@ -5,7 +5,14 @@
 // - disposed
 package states
 
-import am "github.com/pancsta/asyncmachine-go/pkg/machine"
+import (
+	_ "embed"
+
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+)
+
+//go:embed states_utils.go
+var StatesUtilsFile string
 
 // BasicStatesDef contains all the basic states.
 type BasicStatesDef struct {
@@ -28,7 +35,7 @@ type BasicStatesDef struct {
 	Heartbeat string
 }
 
-var BasicStruct = am.Struct{
+var BasicSchema = am.Schema{
 	// Errors
 
 	ssB.Exception:         {Multi: true},

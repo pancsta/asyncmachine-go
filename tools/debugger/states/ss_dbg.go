@@ -2,10 +2,11 @@ package states
 
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // States map defines relations and properties of states.
-var States = am.Struct{
+var States = am.Schema{
 
 	// ///// Input events
 

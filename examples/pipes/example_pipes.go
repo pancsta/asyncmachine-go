@@ -25,14 +25,14 @@ func main() {
 	ctx := context.Background()
 
 	// init state machines
-	mach1 := am.New(ctx, am.Struct{
+	mach1 := am.New(ctx, am.Schema{
 		"Ready":       {},
 		"Foo":         {},
 		"Bar":         {},
 		"Custom":      {},
 		"Healthcheck": {Multi: true},
 	}, &am.Opts{LogLevel: am.LogOps, ID: "source"})
-	mach2 := am.New(ctx, am.Struct{
+	mach2 := am.New(ctx, am.Schema{
 		"Ready":       {},
 		"Custom":      {},
 		"Healthcheck": {Multi: true},

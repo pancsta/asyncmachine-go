@@ -9,6 +9,8 @@ import (
 	"maps"
 	"os"
 	"reflect"
+	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -70,8 +72,7 @@ type Machine struct {
 	t              atomic.Pointer[Transition]
 	transitionLock sync.RWMutex
 	// states is a map of state names to state definitions.
-	// TODO refac: schema
-	states     Struct
+	states     Schema
 	schemaVer  atomic.Int32
 	statesLock sync.RWMutex
 	// activeStates is a list of currently active states.
@@ -166,9 +167,9 @@ func NewCommon(
 
 // New creates a new Machine instance, bound to context and modified with
 // optional Opts.
-func New(ctx context.Context, statesStruct Struct, opts *Opts) *Machine {
+func New(ctx context.Context, statesStruct Schema, opts *Opts) *Machine {
 	// parse relations
-	parsedStates := parseStruct(statesStruct)
+	parsedStates := parseSchema(statesStruct)
 
 	m := &Machine{
 		HandlerTimeout:   100 * time.Millisecond,
@@ -694,6 +695,16 @@ func (m *Machine) WhenTime(
 	return ch
 }
 
+// WhenTime1 waits till ticks for a single state equal the given value (or
+// more).
+//
+// ctx: optional context that will close the channel when handlerLoopDone.
+func (m *Machine) WhenTime1(
+	state string, ticks uint64, ctx context.Context,
+) <-chan struct{} {
+	return m.WhenTime(S{state}, Time{ticks}, ctx)
+}
+
 // WhenTicks waits N ticks of a single state (relative to now). Uses WhenTime
 // underneath.
 //
@@ -702,16 +713,6 @@ func (m *Machine) WhenTicks(
 	state string, ticks int, ctx context.Context,
 ) <-chan struct{} {
 	return m.WhenTime(S{state}, Time{uint64(ticks) + m.Tick(state)}, ctx)
-}
-
-// WhenTicksEq waits till ticks for a single state equal the given value (or
-// more). Uses WhenTime underneath.
-//
-// ctx: optional context that will close the channel when handlerLoopDone.
-func (m *Machine) WhenTicksEq(
-	state string, ticks uint64, ctx context.Context,
-) <-chan struct{} {
-	return m.WhenTime(S{state}, Time{ticks}, ctx)
 }
 
 // WhenQueueEnds closes every time the queue ends, or the optional ctx expires.
@@ -857,7 +858,7 @@ func (m *Machine) Add1(state string, args A) Result {
 	return m.Add(S{state}, args)
 }
 
-// Toggle de-activates a list of states in case all are active, or activates
+// Toggle deactivates a list of states in case all are active, or activates
 // all otherwise. Returns the result of the transition (Executed, Queued,
 // Canceled).
 func (m *Machine) Toggle(states S, args A) Result {
@@ -871,7 +872,7 @@ func (m *Machine) Toggle(states S, args A) Result {
 	}
 }
 
-// Toggle1 activates or de-activates a single state, depending on its current
+// Toggle1 activates or deactivates a single state, depending on its current
 // state. Returns the result of the transition (Executed, Queued, Canceled).
 func (m *Machine) Toggle1(state string, args A) Result {
 	if m.disposed.Load() {
@@ -971,7 +972,7 @@ func (m *Machine) Err() error {
 	return *err
 }
 
-// Remove de-activates a list of states in the machine, returning the result of
+// Remove deactivates a list of states in the machine, returning the result of
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (m *Machine) Remove(states S, args A) Result {
@@ -1014,7 +1015,7 @@ func (m *Machine) Remove1(state string, args A) Result {
 	return m.Remove(S{state}, args)
 }
 
-// Set de-activates a list of states in the machine, returning the result of
+// Set deactivates a list of states in the machine, returning the result of
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (m *Machine) Set(states S, args A) Result {
@@ -1285,7 +1286,7 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 
 	case <-time.After(m.EvalTimeout):
 		canceled.Store(true)
-		m.log(LogOps, "[eval:timeout] %s", source[0])
+		m.log(LogOps, "[eval:timeout] %s", source)
 		m.AddErr(fmt.Errorf("%w: eval:%s", ErrEvalTimeout, source), nil)
 		return false
 
@@ -1295,7 +1296,7 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 
 	case <-ctx.Done():
 		canceled.Store(true)
-		m.log(LogDecisions, "[eval:ctxdone] %s", source[0])
+		m.log(LogDecisions, "[eval:ctxdone] %s", source)
 		return false
 
 	case <-done:
@@ -1308,7 +1309,7 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 // NewStateCtx returns a new sub-context, bound to the current clock's tick of
 // the passed state.
 //
-// Context cancels when the state has been de-activated, or right away,
+// Context cancels when the state has been deactivated, or right away,
 // if it isn't currently active.
 //
 // State contexts are used to check state expirations and should be checked
@@ -1364,9 +1365,12 @@ func (m *Machine) MustBindHandlers(handlers any) {
 	}
 }
 
+// TODO move
+var emitterNameRe = regexp.MustCompile(`/\w+\.go:\d+`)
+
 // BindHandlers binds a struct of handler methods to machine's states, based on
 // the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
-// optionall return bool.
+// optional return bool.
 func (m *Machine) BindHandlers(handlers any) error {
 	if m.disposed.Load() {
 		return nil
@@ -1382,7 +1386,20 @@ func (m *Machine) BindHandlers(handlers any) error {
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
 		return errors.New("BindHandlers expects a pointer to a struct")
 	}
+
+	// extract the name
 	name := reflect.TypeOf(handlers).Elem().Name()
+	if name == "" {
+		name = "anon"
+		if os.Getenv(EnvAmDebug) != "" {
+			buf := make([]byte, 4024)
+			n := runtime.Stack(buf, false)
+			stack := string(buf[:n])
+			lines := strings.Split(stack, "\n")
+			name = lines[len(lines)-2]
+			name = strings.TrimLeft(emitterNameRe.FindString(name), "/")
+		}
+	}
 
 	// detect methods
 	var methodNames []string
@@ -1494,6 +1511,7 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 		// as their final handlers haven't been executed
 		for _, s := range finals {
 
+			// TODO use fromState
 			if t.latestStep.FromState == s {
 				found = true
 			}
@@ -1652,7 +1670,7 @@ func (m *Machine) setActiveStates(calledStates S, targetStates S,
 		}
 	}
 
-	// tick de-activated states by +1
+	// tick deactivated states by +1
 	for _, state := range removedStates {
 		m.clock[state]++
 	}
@@ -2632,14 +2650,14 @@ func (m *Machine) WillBe1(state string) bool {
 }
 
 // WillBeRemoved returns true if the passed states are scheduled to be
-// de-activated.  See IsQueued to perform more detailed queries.
+// deactivated.  See IsQueued to perform more detailed queries.
 func (m *Machine) WillBeRemoved(states S) bool {
 	// TODO test
 	return -1 != m.IsQueued(MutationRemove, states, false, false, 0)
 }
 
 // WillBeRemoved1 returns true if the passed state is scheduled to be
-// de-activated. See IsQueued to perform more detailed queries.
+// deactivated. See IsQueued to perform more detailed queries.
 func (m *Machine) WillBeRemoved1(state string) bool {
 	// TODO test
 	return m.WillBeRemoved(S{state})
@@ -2879,7 +2897,7 @@ func (m *Machine) Queue() []*Mutation {
 }
 
 // GetSchema returns a copy of machine's schema.
-func (m *Machine) GetSchema() Struct {
+func (m *Machine) GetSchema() Schema {
 	// TODO refac: Schema
 	m.statesLock.RLock()
 	defer m.statesLock.RUnlock()
@@ -2887,8 +2905,8 @@ func (m *Machine) GetSchema() Struct {
 	return maps.Clone(m.states)
 }
 
-// GetStruct is deprecated, use GetSchema,
-func (m *Machine) GetStruct() Struct {
+// Schema is deprecated, use GetSchema,
+func (m *Machine) Schema() Schema {
 	// TODO remove
 	return m.GetSchema()
 }
@@ -2897,25 +2915,18 @@ func (m *Machine) SchemaVer() uint8 {
 	return uint8(m.schemaVer.Load())
 }
 
-// SetStruct is deprecated, see SetSchema.
-func (m *Machine) SetStruct(statesStruct Struct, names S) error {
-	// TODO remove
-	return m.SetSchema(statesStruct, names)
-}
-
 // SetSchema sets the machine's schema. It will automatically call
-// VerifyStates with the names param and handle EventStructChange if successful.
+// VerifyStates with the names param and handle EventSchemaChange if successful.
 // Note: it's not recommended to change the states structure of a machine which
 // has already produced transitions.
-func (m *Machine) SetSchema(statesStruct Struct, names S) error {
-	// TODO refac: SetSchema
+func (m *Machine) SetSchema(statesSchema Schema, names S) error {
 	m.statesLock.RLock()
 	defer m.statesLock.RUnlock()
 	m.queueLock.RLock()
 	defer m.queueLock.RUnlock()
 
 	old := m.states
-	m.states = parseStruct(statesStruct)
+	m.states = parseSchema(statesSchema)
 	m.schemaVer.Add(1)
 
 	err := m.VerifyStates(names)
@@ -2928,7 +2939,7 @@ func (m *Machine) SetSchema(statesStruct Struct, names S) error {
 	// tracers
 	m.tracersLock.RLock()
 	for i := 0; !m.disposed.Load() && i < len(m.tracers); i++ {
-		m.tracers[i].StructChange(m, old)
+		m.tracers[i].SchemaChange(m, old)
 	}
 	m.tracersLock.RUnlock()
 
@@ -2951,13 +2962,13 @@ func (m *Machine) EvAdd(event *Event, states S, args A) Result {
 
 // TODO add EvToggle, EvToggle1
 
-// EvAdd1 is like Add1, but passed the source event as the 1st param, which
+// EvAdd1 is like Add1 but passed the source event as the 1st param, which
 // results in traceable transitions.
 func (m *Machine) EvAdd1(event *Event, states string, args A) Result {
 	return m.EvAdd(event, S{states}, args)
 }
 
-// EvRemove is like Remove, but passed the source event as the 1st param, which
+// EvRemove is like Remove but passed the source event as the 1st param, which
 // results in traceable transitions.
 func (m *Machine) EvRemove(event *Event, states S, args A) Result {
 	if m.disposed.Load() || m.disposing.Load() ||

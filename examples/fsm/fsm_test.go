@@ -1,22 +1,22 @@
 // Based on https://en.wikipedia.org/wiki/Finite-state_machine
 //
-//=== RUN   TestTurnstile
-//[state] +Locked
+// === RUN   TestTurnstile
+// [state] +Locked
 //    fsm_test.go:74: Push into (Locked:1)
 //    fsm_test.go:79: Coin into (Locked:1)
-//[state] +InputCoin
-//[state] -InputCoin
-//[state] +Unlocked -Locked
+// [state] +InputCoin
+// [state] -InputCoin
+// [state] +Unlocked -Locked
 //    fsm_test.go:85: Coin into (Unlocked:1)
-//[state] +InputCoin
-//[state] -InputCoin
+// [state] +InputCoin
+// [state] -InputCoin
 //    fsm_test.go:91: Push into (Unlocked:1)
-//[state] +InputPush
-//[state] -InputPush
-//[state] +Locked -Unlocked
+// [state] +InputPush
+// [state] -InputPush
+// [state] +Locked -Unlocked
 //    fsm_test.go:96: End with (Locked:3)
-//--- PASS: TestTurnstile (0.00s)
-//PASS
+// --- PASS: TestTurnstile (0.00s)
+// PASS
 
 package fsm
 
@@ -44,7 +44,7 @@ func init() {
 // state enum pkg
 
 var (
-	states = am.Struct{
+	states = am.Schema{
 		// input states
 		InputPush: {},
 		InputCoin: {},

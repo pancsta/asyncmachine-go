@@ -43,11 +43,14 @@ type Transition struct {
 	// LogEntriesLock is used to lock the logs to be collected by a Tracer.
 	LogEntriesLock sync.Mutex
 	// Accepted tells if the transition was accepted during the negotiation phase.
-	// TODO make private
+	// Deprecated, use IsAccepted().
+	// TODO refac v0.11: make private
 	Accepted bool
 
 	isCompleted atomic.Bool
 	isAccepted  atomic.Bool
+	// TODO confirms relations resolved and negotiation ended
+	// isSettled atomic.Bool
 	// Latest / current step of the transition
 	latestStep *Step
 }
@@ -576,8 +579,8 @@ func (t *Transition) IsCompleted() bool {
 	return t.isCompleted.Load()
 }
 
-// IsAccepted returns true if the trasition has been accepted, which can change
-// during a transition lifecycle.
+// IsAccepted returns true if the transition has been accepted, which can change
+// during the transition's negotiation phase and while resolving relations.
 func (t *Transition) IsAccepted() bool {
 	return t.isAccepted.Load()
 }

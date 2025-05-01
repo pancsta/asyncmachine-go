@@ -57,7 +57,7 @@ func Remove(
 	}
 }
 
-// BindConnected binds a [ss.ConnectedStruct] machine to 4 custom states. Each
+// BindConnected binds a [ss.ConnectedSchema] machine to 4 custom states. Each
 // one is optional and bound with Add/Remove.
 func BindConnected(
 	source, target *am.Machine, disconnected, connecting, connected,

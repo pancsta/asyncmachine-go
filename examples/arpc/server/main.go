@@ -91,7 +91,7 @@ func main() {
 func newWorker(ctx context.Context) (*am.Machine, error) {
 
 	// init
-	worker, err := am.NewCommon(ctx, "worker", states.ExampleStruct, ss.Names(), &workerHandlers{}, nil, nil)
+	worker, err := am.NewCommon(ctx, "worker", states.ExampleSchema, ss.Names(), &workerHandlers{}, nil, nil)
 	if err != nil {
 		return nil, err
 	}

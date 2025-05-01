@@ -28,8 +28,8 @@ type NfaGroupsDef struct {
 	Steps S
 }
 
-// NfaStruct represents all relations and properties of NfaStates.
-var NfaStruct = am.Struct{
+// NfaSchema represents all relations and properties of NfaStates.
+var NfaSchema = am.Schema{
 
 	ssN.Start: {Add: S{ssN.StepX}},
 	ssN.Ready: {Require: S{ssN.Start}},

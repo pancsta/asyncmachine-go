@@ -284,7 +284,7 @@ func (t *DbgTracer) MachineInit(mach am.Api) context.Context {
 	return nil
 }
 
-func (t *DbgTracer) StructChange(mach am.Api, _ am.Struct) {
+func (t *DbgTracer) SchemaChange(mach am.Api, _ am.Schema) {
 	// TODO support struct patches as DbgMsgTx.StructPatch
 	// add to the queue
 	t.queue <- func() {
@@ -384,7 +384,7 @@ func sendStructMsg(mach am.Api, client *dbgClient) error {
 	msg := &DbgMsgStruct{
 		ID:          mach.Id(),
 		StatesIndex: mach.StateNames(),
-		States:      mach.GetStruct(),
+		States:      mach.Schema(),
 		Parent:      mach.ParentId(),
 		Tags:        mach.Tags(),
 	}

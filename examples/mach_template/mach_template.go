@@ -89,7 +89,7 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 		p:    amhelp.Pool(10),
 		bazP: amhelp.Pool(1),
 	}
-	mach, err := am.NewCommon(ctx, "templ", states.MachTemplateStruct, ss.Names(),
+	mach, err := am.NewCommon(ctx, "templ", states.MachTemplateSchema, ss.Names(),
 		handlers, nil, &am.Opts{Tags: []string{"tag:val", "tag2"}})
 	if err != nil {
 		return nil, err
@@ -190,7 +190,7 @@ func (h *TemplateHandlers) BazState(e *am.Event) {
 }
 
 func (h *TemplateHandlers) BazDoneState(e *am.Event) {
-	// new transition (will probably can cancelled)
+	// new transition (will probably be canceled)
 	h.Mach.Remove1(ss.Bar, nil)
 }
 

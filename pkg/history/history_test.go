@@ -15,7 +15,7 @@ import (
 
 func ExampleTrack() {
 	// create a machine
-	mach := am.New(context.Background(), am.Struct{
+	mach := am.New(context.Background(), am.Schema{
 		"A": {},
 		"B": {},
 	}, nil)
@@ -65,7 +65,7 @@ func TestTrackPreactivation(t *testing.T) {
 
 // NewNoRels creates a new machine with no relations between states.
 func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
-	m := am.New(context.Background(), am.Struct{
+	m := am.New(context.Background(), am.Schema{
 		"A": {},
 		"B": {},
 		"C": {},

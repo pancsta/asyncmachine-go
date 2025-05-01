@@ -49,7 +49,7 @@ func BenchmarkClientArpc(b *testing.B) {
 	go arpc.TrafficMeter(counterListener, serverAddr, counter, end)
 
 	// init client
-	c, err := arpc.NewClient(ctx, connAddr, "worker", states.WorkerStruct,
+	c, err := arpc.NewClient(ctx, connAddr, "worker", states.WorkerSchema,
 		ss.Names(), nil)
 	if err != nil {
 		b.Fatal(err)
@@ -86,7 +86,7 @@ func BenchmarkClientArpc(b *testing.B) {
 	ticks := c.Worker.Tick(ss.Event)
 	go func() {
 		for {
-			<-c.Worker.WhenTicksEq(ss.Event, ticks+2, nil)
+			<-c.Worker.WhenTime1(ss.Event, ticks+2, nil)
 			ticks += 2
 
 			// loop

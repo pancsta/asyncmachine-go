@@ -33,7 +33,7 @@ func main() {
 // SYNC
 func depGraph() {
 	// init the state machine
-	mach := am.New(nil, am.Struct{
+	mach := am.New(nil, am.Schema{
 		"A": {
 			Auto:    true,
 			Require: am.S{"B", "C"},
@@ -73,7 +73,7 @@ func (h *handlers) DState(e *am.Event) {
 
 func asyncDepGraph() {
 	// init the state machine
-	mach := am.New(nil, am.Struct{
+	mach := am.New(nil, am.Schema{
 		"AInit": {
 			Auto:    true,
 			Require: am.S{"B", "C"},

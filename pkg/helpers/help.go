@@ -137,7 +137,7 @@ func Add1AsyncBlock(
 
 // IsMulti returns true if a state is a multi state.
 func IsMulti(mach am.Api, state string) bool {
-	return mach.GetStruct()[state].Multi
+	return mach.Schema()[state].Multi
 }
 
 // StatesToIndexes converts a list of state names to a list of state indexes,
@@ -819,7 +819,7 @@ func FanOutIn(
 	// TODO version with worker as states, instead of tasks as states
 	//  main state tries to push a list of tasks through the "worker states",
 	//  which resulst in a Done state
-	states := mach.GetStruct()
+	states := mach.Schema()
 	suffixDone := "Done"
 
 	if !mach.Has(am.S{name, name + suffixDone}) {
@@ -852,7 +852,7 @@ func FanOutIn(
 	states[name+suffixDone] = done
 
 	names := slices.Concat(mach.StateNames(), groupTasks, groupDone)
-	err := mach.SetStruct(states, names)
+	err := mach.SetSchema(states, names)
 	if err != nil {
 		return nil, err
 	}

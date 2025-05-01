@@ -59,7 +59,7 @@ func newWorker(ctx context.Context, num int) (*am.Machine, error) {
 
 	handlers := &workerHandlers{}
 	id := fmt.Sprintf("worker%d", num)
-	worker, err := am.NewCommon(ctx, id, states.ExampleStruct,
+	worker, err := am.NewCommon(ctx, id, states.ExampleSchema,
 		ss.Names(), handlers, nil, nil)
 	if err != nil {
 		return nil, err

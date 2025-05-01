@@ -3,6 +3,7 @@ package states
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/states"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // SharedStatesDef contains all the states of the Worker state machine.
@@ -30,11 +31,11 @@ type SharedGroupsDef struct {
 	Handshake S
 }
 
-// SharedStruct represents all relations and properties of WorkerStates.
-var SharedStruct = StructMerge(
+// SharedSchema represents all relations and properties of WorkerStates.
+var SharedSchema = SchemaMerge(
 	// inherit from BasicStruct
-	states.BasicStruct,
-	am.Struct{
+	states.BasicSchema,
+	am.Schema{
 
 		// Errors
 		s.ErrNetworkTimeout: {

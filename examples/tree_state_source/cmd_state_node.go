@@ -150,7 +150,7 @@ func ReadEnv(ctx context.Context) *Node {
 
 func localWorker(ctx context.Context, node *Node) (*am.Machine, error) {
 	// worker state machine
-	worker, err := am.NewCommon(ctx, node.Name, states.FlightsStruct,
+	worker, err := am.NewCommon(ctx, node.Name, states.FlightsSchema,
 		ss.Names(), nil, nil, nil)
 	if err != nil {
 		panic(err)
@@ -163,7 +163,7 @@ func localWorker(ctx context.Context, node *Node) (*am.Machine, error) {
 
 func replicant(ctx context.Context, node *Node) (*arpc.Client, error) {
 	// RPC client
-	client, err := arpc.NewClient(ctx, node.ParentAddr, node.Name, states.FlightsStruct, states.FlightsStates.Names(), nil)
+	client, err := arpc.NewClient(ctx, node.ParentAddr, node.Name, states.FlightsSchema, states.FlightsStates.Names(), nil)
 	if err != nil {
 		panic(err)
 	}

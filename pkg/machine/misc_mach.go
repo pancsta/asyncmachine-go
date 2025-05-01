@@ -76,6 +76,7 @@ func (t Time) String() string {
 	return ret
 }
 
+// Sum returns the sum of all the ticks in Time.
 func (t Time) Sum() uint64 {
 	var sum uint64
 	for _, idx := range t {
@@ -84,6 +85,8 @@ func (t Time) Sum() uint64 {
 
 	return sum
 }
+
+// TODO TimeSum(nil)
 
 // DiffSince returns the number of ticks for each state in Time since the
 // passed machine time.
@@ -199,7 +202,7 @@ func (l LogLevel) String() string {
 
 // LogArgs is a list of common argument names to be logged. Useful for
 // debugging.
-var LogArgs = []string{"name", "id", "port", "addr"}
+var LogArgs = []string{"name", "id", "port", "addr", "err"}
 
 // NewArgsMapper returns a matcher function for LogArgs. Useful for debugging
 // untyped argument maps.
@@ -249,12 +252,8 @@ type Tracer interface {
 	NewSubmachine(parent, machine Api)
 	Inheritable() bool
 	QueueEnd(machine Api)
-	StructChange(machine Api, old Struct)
+	SchemaChange(machine Api, old Schema)
 	VerifyStates(machine Api)
-
-	// StructChange is deprecated, use SchemaChange.
-	// TODO refac v0.11
-	// SchemaChange(machine Api, old Struct)
 }
 
 // NoOpTracer is a no-op implementation of Tracer, used for embedding.
@@ -278,8 +277,7 @@ func (t *NoOpTracer) MachineDispose(machID string)      {}
 func (t *NoOpTracer) NewSubmachine(parent, machine Api) {}
 func (t *NoOpTracer) QueueEnd(machine Api)              {}
 
-// TODO refac SchemaChange
-func (t *NoOpTracer) StructChange(machine Api, old Struct) {}
+func (t *NoOpTracer) SchemaChange(machine Api, old Schema) {}
 func (t *NoOpTracer) VerifyStates(machine Api)             {}
 func (t *NoOpTracer) Inheritable() bool                    { return false }
 

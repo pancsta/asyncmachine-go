@@ -4,6 +4,7 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/states"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // SupervisorStatesDef contains all the states of the Supervisor state machine.
@@ -103,11 +104,11 @@ type SupervisorGroupsDef struct {
 	PoolNormalized S
 }
 
-// SupervisorStruct represents all relations and properties of SupervisorStates.
-var SupervisorStruct = StructMerge(
+// SupervisorSchema represents all relations and properties of SupervisorStates.
+var SupervisorSchema = SchemaMerge(
 	// inherit from WorkerStruct
-	ssrpc.WorkerStruct,
-	am.Struct{
+	ssrpc.WorkerSchema,
+	am.Schema{
 
 		// errors
 

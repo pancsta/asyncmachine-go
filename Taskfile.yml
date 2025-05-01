@@ -197,6 +197,7 @@ tasks:
 
   precommit:
     cmds:
+      - task: gen-jsonschema
       - task: format
       - .git/hooks/pre-commit
 
@@ -448,7 +449,8 @@ tasks:
       - go run ./scripts/extract_mermaid docs/diagrams.md "$NUMS"
       - | 
         for N in $NUMS; do
-          mmdc -i diagram_$N.mmd -o $DIR/diagram_$N.svg -w 800 -b transparent -t dark
+          mmdc -i diagram_$N.mmd -o $DIR/diagram_$N.dark.svg -w 800 -b transparent -t dark
+          mmdc -i diagram_$N.mmd -o $DIR/diagram_$N.light.svg -w 800 -b transparent
           rm diagram_$N.mmd
         done
 

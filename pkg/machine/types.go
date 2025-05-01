@@ -9,24 +9,25 @@ import (
 
 const (
 	// EnvAmDebug enables a simple debugging mode (eg long timeouts).
+	// "2" logs to stdout (where applicable)
 	// "1" | "2" | "" (default)
 	EnvAmDebug = "AM_DEBUG"
 	// EnvAmLog sets the log level.
 	// "1" | "2" | "3" | "4" | "" (default)
 	EnvAmLog = "AM_LOG"
-	// EnvAmLogFile enables file logging (use machine ID as name).
+	// EnvAmLogFile enables file logging (use machine ID as a name).
 	// "1" | "" (default)
 	EnvAmLogFile = "AM_LOG_FILE"
 	// EnvAmDetectEval detects evals directly in handlers (use in tests).
 	EnvAmDetectEval = "AM_DETECT_EVAL"
-	// EnvAmTraceFilter will remove its contents from stack traces, making them
-	// shorter.
+	// EnvAmTraceFilter will remove its contents from stack traces, shortening
+	// them .
 	EnvAmTraceFilter = "AM_TRACE_FILTER"
 	// EnvAmTestDebug activates debugging in tests.
 	EnvAmTestDebug = "AM_TEST_DEBUG"
 	// HandlerGlobal is the name of a global transition handler.
 	HandlerGlobal = "AnyEnter"
-	// Any is a name of a meta state used in catch-all handlers.
+	// Any is a name of a meta-state used in catch-all handlers.
 	Any         = "Any"
 	SuffixEnter = "Enter"
 	SuffixExit  = "Exit"
@@ -39,8 +40,6 @@ type (
 	S []string
 	// Schema is a map of state names to state definitions.
 	Schema = map[string]State
-	// Deprecated, use Schema
-	Struct = Schema
 )
 
 // State defines a single state of a machine, its properties and relations.
@@ -57,7 +56,7 @@ type State struct {
 // A (arguments) is a map of named arguments for a Mutation.
 type A map[string]any
 
-// Clock is a map of state names to their clock tick values. It's like Time, but
+// Clock is a map of state names to their tick values. It's like Time but
 // indexed by string, instead of int.
 type Clock map[string]uint64
 
@@ -164,8 +163,8 @@ type Api interface {
 	WhenNot1(state string, ctx context.Context) <-chan struct{}
 	WhenTime(
 		states S, times Time, ctx context.Context) <-chan struct{}
+	WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
 	WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
-	WhenTicksEq(state string, tick uint64, ctx context.Context) <-chan struct{}
 	WhenErr(ctx context.Context) <-chan struct{}
 
 	// Getters (local)
@@ -178,8 +177,7 @@ type Api interface {
 	TimeSum(states S) uint64
 	NewStateCtx(state string) context.Context
 	Export() *Serialized
-	// TODO GetSchema
-	GetStruct() Struct
+	Schema() Schema
 	Switch(groups ...S) string
 
 	// Misc (local)
@@ -390,7 +388,7 @@ type Step struct {
 	IsFinal bool
 	// marks a self handler (FooFoo)
 	IsSelf bool
-	// marks an enter handler (FooEnter). Requires IsFinal.
+	// marks an enter handler (FooState, but not FooEnd). Requires IsFinal.
 	IsEnter bool
 	// Deprecated, use GetToState(). TODO remove
 	FromState    string
@@ -400,6 +398,7 @@ type Step struct {
 	ToStateIdx int
 	// Deprecated, use RelType. TODO remove
 	Data any
+	// TODO emitter
 }
 
 // GetFromState returns the source state of a step. Optional, unless no
@@ -459,6 +458,7 @@ func newStep(from string, to string, stepType StepType,
 ) *Step {
 	// TODO optimize with state indexes
 	return &Step{
+		// TODO refac v0.11
 		FromState: from,
 		ToState:   to,
 		Type:      stepType,
@@ -497,5 +497,6 @@ func (r Relation) String() string {
 	case RelationRemove:
 		return "remove"
 	}
+
 	return ""
 }

@@ -71,15 +71,15 @@ func TestAll(t *testing.T) {
 			Group2 S
 		}
 		
-		// MyMachStruct represents all relations and properties of MyMachStates.
-		var MyMachStruct = StructMerge(
-			// inherit from BasicStruct
-			ss.BasicStruct,
-			// inherit from ConnectedStruct
-			ss.ConnectedStruct,
-			// inherit from node/WorkerStruct
-			ssnode.WorkerStruct,
-			am.Struct{
+		// MyMachSchema represents all relations and properties of MyMachStates.
+		var MyMachSchema = SchemaMerge(
+			// inherit from BasicSchema
+			ss.BasicSchema,
+			// inherit from ConnectedSchema
+			ss.ConnectedSchema,
+			// inherit from node/WorkerSchema
+			ssnode.WorkerSchema,
+			am.Schema{
 		
 				ssM.State1: {},
 				ssM.State2: {
@@ -155,13 +155,13 @@ func TestBasicConnected(t *testing.T) {
 			Group2 S
 		}
 		
-		// MyMachStruct represents all relations and properties of MyMachStates.
-		var MyMachStruct = StructMerge(
-			// inherit from BasicStruct
-			ss.BasicStruct,
-			// inherit from ConnectedStruct
-			ss.ConnectedStruct,
-			am.Struct{
+		// MyMachSchema represents all relations and properties of MyMachStates.
+		var MyMachSchema = SchemaMerge(
+			// inherit from BasicSchema
+			ss.BasicSchema,
+			// inherit from ConnectedSchema
+			ss.ConnectedSchema,
+			am.Schema{
 		
 				ssM.State1: {},
 				ssM.State2: {
@@ -225,8 +225,8 @@ func TestMinimum(t *testing.T) {
 		type MyMachGroupsDef struct {
 		}
 		
-		// MyMachStruct represents all relations and properties of MyMachStates.
-		var MyMachStruct = am.Struct{
+		// MyMachSchema represents all relations and properties of MyMachStates.
+		var MyMachSchema = am.Schema{
 		
 			ssM.State1: {},
 			ssM.State2: {},
@@ -286,8 +286,8 @@ func TestRelations(t *testing.T) {
 		type MyMachGroupsDef struct {
 		}
 		
-		// MyMachStruct represents all relations and properties of MyMachStates.
-		var MyMachStruct = am.Struct{
+		// MyMachSchema represents all relations and properties of MyMachStates.
+		var MyMachSchema = am.Schema{
 		
 			ssM.State1: {
 				Auto: true,
@@ -355,8 +355,8 @@ func TestGroups(t *testing.T) {
 			Group2 S
 		}
 		
-		// MyMachStruct represents all relations and properties of MyMachStates.
-		var MyMachStruct = am.Struct{
+		// MyMachSchema represents all relations and properties of MyMachStates.
+		var MyMachSchema = am.Schema{
 	
 			ssM.State1: {},
 			ssM.State2: {},
@@ -421,8 +421,8 @@ func TestGroupsStates(t *testing.T) {
 			Group2 S
 		}
 		
-		// MyMachStruct represents all relations and properties of MyMachStates.
-		var MyMachStruct = am.Struct{
+		// MyMachSchema represents all relations and properties of MyMachStates.
+		var MyMachSchema = am.Schema{
 	
 			ssM.State1: {
 				Remove: SAdd(sgM.Group1),

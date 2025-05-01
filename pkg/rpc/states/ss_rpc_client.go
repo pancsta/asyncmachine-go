@@ -3,6 +3,7 @@ package states
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/states"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // ClientStatesDef contains all the states of the Client state machine.
@@ -46,13 +47,13 @@ type ClientGroupsDef struct {
 	// TODO
 }
 
-// ClientStruct represents all relations and properties of ClientStates.
-var ClientStruct = StructMerge(
+// ClientSchema represents all relations and properties of ClientStates.
+var ClientSchema = SchemaMerge(
 	// inherit from SharedStruct
-	SharedStruct,
+	SharedSchema,
 	// inherit from ConnectedStruct
-	states.ConnectedStruct,
-	am.Struct{
+	states.ConnectedSchema,
+	am.Schema{
 
 		// Try to RetryingConn on ErrNetwork.
 		ssC.ErrNetwork: {
@@ -71,7 +72,7 @@ var ClientStruct = StructMerge(
 
 		// inject Client states into Connected
 		ssC.Connected: StateAdd(
-			states.ConnectedStruct[states.ConnectedStates.Connected],
+			states.ConnectedSchema[states.ConnectedStates.Connected],
 			am.State{
 				Remove: S{ssC.RetryingConn},
 				Add:    S{ssC.Handshaking},
@@ -79,14 +80,14 @@ var ClientStruct = StructMerge(
 
 		// inject Client states into Handshaking
 		ssC.Handshaking: StateAdd(
-			SharedStruct[s.Handshaking],
+			SharedSchema[s.Handshaking],
 			am.State{
 				Require: S{ssC.Connected},
 			}),
 
 		// inject Client states into HandshakeDone
 		ssC.HandshakeDone: am.StateAdd(
-			SharedStruct[ssC.HandshakeDone], am.State{
+			SharedSchema[ssC.HandshakeDone], am.State{
 				// HandshakeDone will depend on Connected.
 				Require: S{ssC.Connected},
 			}),

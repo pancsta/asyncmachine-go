@@ -12,11 +12,11 @@ type MachTemplateStatesDef struct {
 	*am.StatesBase
 
 	ErrExample string
-	Foo string
-	Bar string
-	Baz string
-	BazDone string
-	Channel string
+	Foo        string
+	Bar        string
+	Baz        string
+	BazDone    string
+	Channel    string
 
 	// inherit from BasicStatesDef
 	*ss.BasicStatesDef
@@ -33,15 +33,15 @@ type MachTemplateGroupsDef struct {
 	Group2 S
 }
 
-// MachTemplateStruct represents all relations and properties of MachTemplateStates.
-var MachTemplateStruct = StructMerge(
-	// inherit from BasicStruct
-	ss.BasicStruct,
-	// inherit from ConnectedStruct
-	ss.ConnectedStruct,
-	// inherit from DisposedStruct
-	ss.DisposedStruct,
-	am.Struct{
+// MachTemplateSchema represents all relations and properties of MachTemplateStates.
+var MachTemplateSchema = SchemaMerge(
+	// inherit from BasicSchema
+	ss.BasicSchema,
+	// inherit from ConnectedSchema
+	ss.ConnectedSchema,
+	// inherit from DisposedSchema
+	ss.DisposedSchema,
+	am.Schema{
 
 		ssM.ErrExample: {
 			Require: S{ssM.Exception},
@@ -57,7 +57,7 @@ var MachTemplateStruct = StructMerge(
 			Multi: true,
 		},
 		ssM.Channel: {},
-})
+	})
 
 // EXPORTS AND GROUPS
 

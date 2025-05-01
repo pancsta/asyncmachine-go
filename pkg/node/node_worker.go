@@ -54,7 +54,7 @@ type Worker struct {
 
 // NewWorker initializes a new Worker instance and returns it, or an error if
 // validation fails.
-func NewWorker(ctx context.Context, kind string, workerStruct am.Struct,
+func NewWorker(ctx context.Context, kind string, workerStruct am.Schema,
 	stateNames am.S, opts *WorkerOpts,
 ) (*Worker, error) {
 	// validate
@@ -218,7 +218,7 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 	// connect to the bootstrap machine
 	opts := &rpc.ClientOpts{Parent: w.Mach}
 	w.BootRpc, err = rpc.NewClient(ctx, w.BootAddr, "nw-"+w.Name,
-		states.BootstrapStruct, states.BootstrapStates.Names(), opts)
+		states.BootstrapSchema, states.BootstrapStates.Names(), opts)
 	if err != nil {
 		_ = AddErrRpc(w.Mach, err, nil)
 		return

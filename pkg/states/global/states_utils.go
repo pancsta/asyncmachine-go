@@ -6,8 +6,6 @@
 // import.
 package global
 
-// TODO import in local pkgs, as global namespace
-
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
 // S is a type alias for a list of state names.
@@ -27,7 +25,7 @@ var StateAdd = am.StateAdd
 var StateSet = am.StateSet
 
 // SchemaMerge is a func alias for extending an existing state schema.
-var SchemaMerge = am.StructMerge
+var SchemaMerge = am.SchemaMerge
 
 // Exception is a type alias for the exception state.
 var Exception = am.Exception

@@ -105,7 +105,7 @@ type Supervisor struct {
 	// workerSNames is a list of states for the worker.
 	workerSNames am.S
 	// workerStruct is the struct for the worker.
-	workerStruct am.Struct
+	workerStruct am.Schema
 
 	// in-memory workers
 
@@ -128,7 +128,7 @@ type Supervisor struct {
 // specified context, worker attributes, and options.
 func NewSupervisor(
 	ctx context.Context, workerKind string, workerBin []string,
-	workerStruct am.Struct, workerSNames am.S, opts *SupervisorOpts,
+	workerStruct am.Schema, workerSNames am.S, opts *SupervisorOpts,
 ) (*Supervisor, error) {
 	// validate
 	if len(workerBin) == 0 || workerBin[0] == "" {
@@ -199,7 +199,7 @@ func NewSupervisor(
 		s.OpTimeout = 10 * s.OpTimeout
 	}
 
-	mach, err := am.NewCommon(ctx, "ns-"+s.Name, states.SupervisorStruct,
+	mach, err := am.NewCommon(ctx, "ns-"+s.Name, states.SupervisorSchema,
 		ssS.Names(), s, opts.Parent, &am.Opts{Tags: []string{
 			"node-supervisor", "kind:" + workerKind,
 			"instance:" + strconv.Itoa(opts.InstanceNum),

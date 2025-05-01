@@ -49,7 +49,7 @@ func newBootstrap(ctx context.Context, super *Supervisor) (*bootstrap, error) {
 		Name:       super.Name + utils.RandId(6),
 		LogEnabled: os.Getenv(EnvAmNodeLogSupervisor) != "",
 	}
-	mach, err := am.NewCommon(ctx, "nb-"+b.Name, states.BootstrapStruct,
+	mach, err := am.NewCommon(ctx, "nb-"+b.Name, states.BootstrapSchema,
 		ssB.Names(), b, super.Mach, &am.Opts{Tags: []string{"node-bootstrap"}})
 	if err != nil {
 		return nil, err

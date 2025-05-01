@@ -94,7 +94,7 @@ func NewRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 
 	// TODO define these in /states using v2 as RelWorkerStruct and
 	//  RelWorkerStates, inheriting frm RelStructDef etc
-	ssStruct := am.SchemaMerge(ssrpc.WorkerStruct, ss.States)
+	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, ss.States)
 	ssNames := am.SAdd(ss.Names, ssrpc.WorkerStates.Names())
 
 	// machine init
@@ -119,7 +119,7 @@ func NewRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 // inherit from RPC worker
 
 var (
-	RelsNodeWorkerStruct = am.SchemaMerge(ssnode.WorkerStruct, ss.States)
+	RelsNodeWorkerStruct = am.SchemaMerge(ssnode.WorkerSchema, ss.States)
 	RelsNodeWorkerStates = am.SAdd(ss.Names, ssnode.WorkerStates.Names())
 )
 
@@ -150,7 +150,7 @@ func NewRelsNodeWorker(t *testing.T, initialState am.S) *am.Machine {
 // NewNoRels creates a new machine without relations between states.
 func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
 	// machine init
-	mach := am.New(context.Background(), am.Struct{
+	mach := am.New(context.Background(), am.Schema{
 		ss.A: {},
 		ss.B: {},
 		ss.C: {},
@@ -177,7 +177,7 @@ func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
 func NewNoRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 
 	// inherit from RPC worker
-	ssStruct := am.SchemaMerge(ssrpc.WorkerStruct, am.Struct{
+	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, am.Schema{
 		ss.A: {},
 		ss.B: {},
 		ss.C: {},
@@ -205,7 +205,7 @@ func NewNoRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 }
 
 // NewCustom creates a new machine with custom states.
-func NewCustom(t *testing.T, states am.Struct) *am.Machine {
+func NewCustom(t *testing.T, states am.Schema) *am.Machine {
 	mach := am.New(context.Background(), states, &am.Opts{
 		ID: "t-" + t.Name()})
 	err := mach.VerifyStates(append(maps.Keys(states), am.Exception))
@@ -223,11 +223,11 @@ func NewCustom(t *testing.T, states am.Struct) *am.Machine {
 }
 
 // NewCustomRpcWorker creates a new worker with custom states.
-func NewCustomRpcWorker(t *testing.T, states am.Struct) *am.Machine {
+func NewCustomRpcWorker(t *testing.T, states am.Schema) *am.Machine {
 
 	// inherit from RPC worker
 
-	ssStruct := am.SchemaMerge(ssrpc.WorkerStruct, states)
+	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, states)
 	ssNames := am.SAdd(maps.Keys(states), ssrpc.WorkerStates.Names())
 
 	mach := am.New(context.Background(), ssStruct, &am.Opts{

@@ -93,7 +93,7 @@ type Client struct {
 	callLock     sync.Mutex
 	rpc          *rpc2.Client
 	workerStates am.S
-	workerSchema am.Struct
+	workerSchema am.Schema
 	conn         net.Conn
 	// tmpTestErr is an error to return on the next call or notify, only for
 	// testing.
@@ -115,7 +115,7 @@ var (
 // takes a consumer, which is a state machine with a WorkerPayload state. See
 // states.ConsumerStates.
 func NewClient(
-	ctx context.Context, workerAddr string, name string, stateStruct am.Struct,
+	ctx context.Context, workerAddr string, name string, stateStruct am.Schema,
 	stateNames am.S, opts *ClientOpts,
 ) (*Client, error) {
 	// validate
@@ -166,7 +166,7 @@ func NewClient(
 	}
 
 	// state machine
-	mach, err := am.NewCommon(ctx, GetClientId(name), states.ClientStruct,
+	mach, err := am.NewCommon(ctx, GetClientId(name), states.ClientSchema,
 		ssC.Names(), c, opts.Parent, &am.Opts{Tags: []string{
 			"rpc-client",
 			"addr:" + workerAddr,

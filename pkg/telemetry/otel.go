@@ -24,6 +24,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
@@ -128,13 +129,11 @@ func NewOtelMachTracer(
 
 	if opts.Logf != nil {
 		mt.Logf = opts.Logf
-	} else if os.Getenv(am.EnvAmDebug) != "" {
+	} else if am.EnvLogLevel("") >= am.LogDecisions {
 		mt.Logf = rootMach.Log
 	} else {
 		mt.Logf = func(format string, args ...any) {}
 	}
-
-	mt.Logf("[otel] NewOtelMachTracer")
 
 	return mt
 }
@@ -163,6 +162,7 @@ func (mt *OtelMachTracer) MachineInit(mach am.Api) context.Context {
 	index := mt.NextIndex
 	mt.NextIndex++
 	name := "mach:" + strconv.Itoa(index) + ":" + id
+	mach.Log("[bind] otel traces")
 	mt.Logf("[otel] MachineInit: trace %s", id)
 
 	// nest under parent
@@ -625,7 +625,7 @@ func BindOtelLogger(
 }
 
 // MachBindOtelEnv bind an OpenTelemetry tracer to [mach], based on environment
-// vars:
+// variables:
 // - AM_SERVICE (required)
 // - AM_OTEL_TRACE (required)
 // - AM_OTEL_TRACE_TXS
@@ -653,9 +653,6 @@ func MachBindOtelEnv(mach am.Api) error {
 
 		SkipAuto: os.Getenv(EnvOtelTraceNoauto) != "",
 	})
-
-	// mark the mach context with the trace
-	// mach.SetCtx(ctx)
 
 	// flush and close
 	var dispose am.HandlerDispose = func(id string, _ context.Context) {

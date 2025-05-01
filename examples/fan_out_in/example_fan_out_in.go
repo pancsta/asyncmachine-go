@@ -23,7 +23,7 @@ func init() {
 func main() {
 	ctx := context.Background()
 
-	states := am.Struct{
+	states := am.Schema{
 		// task start state
 		"Task": {Require: am.S{"Start"}},
 		// task done state

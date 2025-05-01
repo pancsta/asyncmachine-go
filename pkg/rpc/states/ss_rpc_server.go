@@ -2,6 +2,7 @@ package states
 
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // ServerStatesDef contains all the states of the Client state machine.
@@ -41,11 +42,11 @@ type ServerGroupsDef struct {
 	Rpc S
 }
 
-// ServerStruct represents all relations and properties of ClientStates.
-var ServerStruct = StructMerge(
+// ServerSchema represents all relations and properties of ClientStates.
+var ServerSchema = SchemaMerge(
 	// inherit from SharedStruct
-	SharedStruct,
-	am.Struct{
+	SharedSchema,
+	am.Schema{
 
 		ssS.ErrOnClient: {Require: S{Exception}},
 		ssS.ErrNetwork: {
@@ -55,7 +56,7 @@ var ServerStruct = StructMerge(
 
 		// inject Server states into HandshakeDone
 		ssS.HandshakeDone: StateAdd(
-			SharedStruct[ssS.HandshakeDone],
+			SharedSchema[ssS.HandshakeDone],
 			am.State{
 				Remove: S{Exception},
 			}),

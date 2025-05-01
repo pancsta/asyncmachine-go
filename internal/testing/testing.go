@@ -67,7 +67,7 @@ func NewRpcTest(
 	time.Sleep(10 * time.Millisecond)
 
 	// Client init
-	c, err := rpc.NewClient(ctx, addr, t.Name(), worker.GetStruct(),
+	c, err := rpc.NewClient(ctx, addr, t.Name(), worker.Schema(),
 		worker.StateNames(), &rpc.ClientOpts{
 			Consumer: consumer,
 			Parent:   worker,
@@ -174,7 +174,7 @@ func NewDbgWorker(
 }
 
 func NewRpcClient(
-	t *testing.T, ctx context.Context, addr string, stateStruct am.Struct,
+	t *testing.T, ctx context.Context, addr string, stateStruct am.Schema,
 	stateNames am.S, consumer *am.Machine,
 ) *rpc.Client {
 
