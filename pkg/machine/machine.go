@@ -1243,8 +1243,9 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 					if !strings.Contains(line, match) {
 						continue
 					}
-					panic(fmt.Sprintf("error: Eval() called directly in handler %s.%s",
-						handler.name, method))
+					msg := fmt.Sprintf("error: Eval() called directly in handler %s.%s",
+						handler.name, method)
+					panic(msg)
 				}
 			}
 

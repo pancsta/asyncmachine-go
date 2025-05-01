@@ -153,7 +153,7 @@ func (r *Repl) ReplModeState(e *am.Event) {
 	if err != nil {
 		fmt.Println("Failed to open history file " + historyPath)
 	}
-	r.injecCompletions()
+	r.injectCompletions()
 	r.C = console.New("arpc")
 	r.C.NewlineAfter = false
 	r.C.NewlineBefore = false
@@ -657,7 +657,7 @@ func (r *Repl) PrintMsg(txt string, args ...any) {
 	}
 	r.lastMsg = txt
 
-	r.C.TransientPrintf(txt)
+	_, _ = r.C.TransientPrintf("%s", txt)
 }
 
 func (r *Repl) ListMachines(filters *ListFilters) ([]*rpc.Client, error) {
@@ -695,7 +695,7 @@ func (r *Repl) Worker(machId string) *rpc.Worker {
 	return rpcs[0].Worker
 }
 
-func (r *Repl) injecCompletions() {
+func (r *Repl) injectCompletions() {
 	for _, cmd := range r.Cmd.Commands() {
 		switch cmd.Name() {
 		// TODO enum, not strings

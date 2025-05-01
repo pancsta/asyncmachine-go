@@ -46,7 +46,9 @@ func Wait(
 	t *stdtest.T, errMsg string, ctx context.Context, length time.Duration,
 ) {
 	if !amhelp.Wait(ctx, length) {
-		t.Fatal("ctx expired")
+		if t.Context().Err() == nil {
+			t.Fatal("ctx expired")
+		}
 	}
 }
 
@@ -57,7 +59,9 @@ func WaitForAll(
 	chans ...<-chan struct{},
 ) {
 	if err := amhelp.WaitForAll(ctx, timeout, chans...); err != nil {
-		t.Fatal("error for " + source + ": " + err.Error())
+		if t.Context().Err() == nil {
+			t.Fatal("error for " + source + ": " + err.Error())
+		}
 	}
 }
 
@@ -68,7 +72,9 @@ func WaitForErrAll(
 	timeout time.Duration, chans ...<-chan struct{},
 ) {
 	if err := amhelp.WaitForErrAll(ctx, timeout, mach, chans...); err != nil {
-		t.Fatal("error for " + source + ": " + err.Error())
+		if t.Context().Err() == nil {
+			t.Fatal("error for " + source + ": " + err.Error())
+		}
 	}
 }
 
@@ -79,7 +85,9 @@ func WaitForAny(
 	chans ...<-chan struct{},
 ) {
 	if err := amhelp.WaitForAny(ctx, timeout, chans...); err != nil {
-		t.Fatal("error for " + source + ": " + err.Error())
+		if t.Context().Err() == nil {
+			t.Fatal("error for " + source + ": " + err.Error())
+		}
 	}
 }
 
@@ -90,7 +98,9 @@ func GroupWhen1(
 ) []<-chan struct{} {
 	chs, err := amhelp.GroupWhen1(mach, state, ctx)
 	if err != nil {
-		t.Fatal(err)
+		if t.Context().Err() == nil {
+			t.Fatal(err)
+		}
 	}
 
 	return chs
@@ -119,7 +129,7 @@ func AssertNot1(t *stdtest.T, mach am.Api, state string) {
 
 // AssertNoErrNow asserts that the machine is not in the Exception state.
 func AssertNoErrNow(t *stdtest.T, mach am.Api) {
-	if mach.IsErr() {
+	if mach.IsErr() && t.Context().Err() == nil {
 		err := mach.Err()
 		if err != nil {
 			t.Fatalf("Unexpected error in %s: %s", mach.Id(), err.Error())
@@ -131,7 +141,7 @@ func AssertNoErrNow(t *stdtest.T, mach am.Api) {
 
 // AssertNoErrEver asserts that the machine never was in the Exception state.
 func AssertNoErrEver(t *stdtest.T, mach am.Api) {
-	if mach.Tick(am.Exception) > 0 {
+	if mach.Tick(am.Exception) > 0 && t.Context().Err() == nil {
 		err := mach.Err()
 		if err != nil {
 			t.Fatalf("Unexpected error in %s", mach.Id())
@@ -143,7 +153,7 @@ func AssertNoErrEver(t *stdtest.T, mach am.Api) {
 
 // AssertErr asserts that the machine is in the Exception state.
 func AssertErr(t *stdtest.T, mach am.Api) {
-	if !mach.IsErr() {
+	if !mach.IsErr() && t.Context().Err() == nil {
 		t.Fatal("expected " + am.Exception)
 	}
 }

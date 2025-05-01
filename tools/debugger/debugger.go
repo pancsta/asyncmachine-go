@@ -302,7 +302,7 @@ func (d *Debugger) SetCursor1(cursor int, skipHistory bool) {
 	}
 
 	// reset the step timeline
-	d.C.CursorStep = 0
+	d.C.CursorStep1 = 0
 	d.Mach.Remove1(ss.TimelineStepsScrolled, nil)
 
 	// re-gen graphs
@@ -638,16 +638,23 @@ func (d *Debugger) updateToolbar() {
 			_, sel := d.toolbars[i].GetSelection()
 
 			// checked
+			esc := cview.Escape
 			if item.active != nil && item.active() {
 				if item.activeLabel != nil {
-					text += f(" [::b]%s[::-]", cview.Escape("["+item.activeLabel()+"]"))
+					text += f(" [::b]%s[::-]", esc("["+item.activeLabel()+"]"))
 				} else {
-					text += f(" [::b]%s[::-]", cview.Escape("[X]"))
+					text += f(" [::b]%s[::-]", esc("[X]"))
 				}
+
+				// button - dedicated icon
 			} else if item.active == nil && item.icon != "" {
-				text += f(" [grey]%s[-]", cview.Escape("["+item.icon+"]"))
+				text += f(" [gray]%s[-]%s[gray]%s[-]", esc("["), item.icon, esc("]"))
+
+				// unchecked
 			} else if item.active == nil {
 				text += f(" [grey][ ][-]")
+
+				// button - default icon
 			} else {
 				text += f(" [ ]")
 			}
@@ -736,7 +743,7 @@ func (d *Debugger) updateAddressBar() {
 	addrCell := d.addressBar.GetCell(0, 4)
 	if machId != "" && txId != "" {
 		addrCell.SetText(machColor + "mach://[-][::u]" + machId +
-			"[::-][grey]/[-]" + txId)
+			"[::-][grey]/" + txId)
 	} else if machId != "" {
 		addrCell.SetText(machColor + "mach://[-][::u]" + machId)
 	} else {
@@ -1036,7 +1043,7 @@ func (d *Debugger) updateTimelines() {
 	}
 
 	// mark last step of a cancelled tx in red
-	if nextTx != nil && c.CursorStep == len(nextTx.Steps) && !nextTx.Accepted {
+	if nextTx != nil && c.CursorStep1 == len(nextTx.Steps) && !nextTx.Accepted {
 		d.timelineSteps.SetFilledColor(tcell.ColorRed)
 	}
 
@@ -1069,9 +1076,9 @@ func (d *Debugger) updateTimelines() {
 	// progressbar cant be max==0
 	d.timelineSteps.SetMax(max(stepsCount, 1))
 	// progress <= max
-	d.timelineSteps.SetProgress(c.CursorStep)
+	d.timelineSteps.SetProgress(c.CursorStep1)
 	d.timelineSteps.SetTitle(fmt.Sprintf(
-		" Next mutation step %d / %d ", c.CursorStep, stepsCount))
+		" Next mutation step %d / %d ", c.CursorStep1, stepsCount))
 	d.timelineSteps.SetEmptyRune(' ')
 }
 
@@ -1233,7 +1240,7 @@ func (d *Debugger) updateMatrixRelations() {
 	index := c.MsgStruct.StatesIndex
 	var tx *telemetry.DbgMsgTx
 	var prevTx *telemetry.DbgMsgTx
-	if c.CursorStep == 0 {
+	if c.CursorStep1 == 0 {
 		tx = d.currentTx()
 		prevTx = d.prevTx()
 	} else {
@@ -1244,8 +1251,8 @@ func (d *Debugger) updateMatrixRelations() {
 	calledStates := tx.CalledStateNames(c.MsgStruct.StatesIndex)
 
 	// show the current tx summary on step 0, and partial if cursor > 0
-	if c.CursorStep > 0 {
-		steps = steps[:c.CursorStep]
+	if c.CursorStep1 > 0 {
+		steps = steps[:c.CursorStep1]
 	}
 
 	highlightIndex := -1

@@ -15,13 +15,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 	"golang.org/x/exp/maps"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
-
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
@@ -40,6 +40,7 @@ func (d *Debugger) StartState(e *am.Event) {
 	d.bindKeyboard()
 	d.initUiComponents()
 	d.initLayout()
+	d.initFocusable()
 	if d.Opts.EnableMouse {
 		d.App.EnableMouse(true)
 	}
@@ -171,14 +172,18 @@ func (d *Debugger) AnyState(e *am.Event) {
 
 	// redraw on auto states
 	// TODO this should be done better
-	if tx.IsAuto() && tx.Accepted {
+	if tx.IsAuto() && tx.IsAccepted() {
 		d.updateTxBars()
 		d.draw()
 	}
 }
 
+func (d *Debugger) StateNameSelectedEnter(e *am.Event) bool {
+	_, ok := e.Args["state"].(string)
+	return ok
+}
+
 func (d *Debugger) StateNameSelectedState(e *am.Event) {
-	// TODO guard
 	d.C.SelectedState = e.Args["state"].(string)
 	d.lastSelectedState = d.C.SelectedState
 
@@ -195,7 +200,7 @@ func (d *Debugger) StateNameSelectedState(e *am.Event) {
 		d.updateMatrix()
 	}
 
-	d.updateStatusBars()
+	d.Mach.Add1(ss.UpdateStatusBar, nil)
 }
 
 // StateNameSelectedStateNameSelected handles cursor moving from a state name to
@@ -209,7 +214,7 @@ func (d *Debugger) StateNameSelectedEnd(_ *am.Event) {
 		d.C.SelectedState = ""
 	}
 	d.updateTree()
-	d.updateStatusBars()
+	d.Mach.Add1(ss.UpdateStatusBar, nil)
 }
 
 func (d *Debugger) PlayingState(_ *am.Event) {
@@ -343,7 +348,7 @@ func (d *Debugger) FwdStepEnter(_ *am.Event) bool {
 	if nextTx == nil {
 		return false
 	}
-	return d.C.CursorStep < len(nextTx.Steps)+1
+	return d.C.CursorStep1 < len(nextTx.Steps)+1
 }
 
 func (d *Debugger) FwdStepState(_ *am.Event) {
@@ -352,11 +357,11 @@ func (d *Debugger) FwdStepState(_ *am.Event) {
 	// next tx
 	nextTx := d.nextTx()
 	// scroll to the next tx
-	if d.C.CursorStep == len(nextTx.Steps) {
+	if d.C.CursorStep1 == len(nextTx.Steps) {
 		d.Mach.Add1(ss.Fwd, nil)
 		return
 	}
-	d.C.CursorStep++
+	d.C.CursorStep1++
 
 	d.handleTStepsScrolled()
 	d.RedrawFull(false)
@@ -367,21 +372,21 @@ func (d *Debugger) UserBackStepState(_ *am.Event) {
 }
 
 func (d *Debugger) BackStepEnter(_ *am.Event) bool {
-	return d.C.CursorStep > 0 || d.C.CursorTx1 > 0
+	return d.C.CursorStep1 > 0 || d.C.CursorTx1 > 0
 }
 
 func (d *Debugger) BackStepState(_ *am.Event) {
 	d.Mach.Remove1(ss.BackStep, nil)
 
 	// wrap if there's a prev tx
-	if d.C.CursorStep <= 0 {
+	if d.C.CursorStep1 <= 0 {
 		d.SetCursor1(d.filterTxCursor(d.C, d.C.CursorTx1-1, false), false)
 		d.updateLog(false)
 		nextTx := d.nextTx()
-		d.C.CursorStep = len(nextTx.Steps)
+		d.C.CursorStep1 = len(nextTx.Steps)
 
 	} else {
-		d.C.CursorStep--
+		d.C.CursorStep1--
 	}
 
 	d.updateClientList(false)
@@ -391,7 +396,7 @@ func (d *Debugger) BackStepState(_ *am.Event) {
 
 func (d *Debugger) handleTStepsScrolled() {
 	// TODO merge with a CursorStep setter
-	tStepsScrolled := d.C.CursorStep != 0
+	tStepsScrolled := d.C.CursorStep1 != 0
 
 	if tStepsScrolled {
 		d.Mach.Add1(ss.TimelineStepsScrolled, nil)
@@ -417,7 +422,11 @@ func (d *Debugger) TimelineStepsFocusedEnd(_ *am.Event) {
 }
 
 func (d *Debugger) Toolbar1FocusedState(e *am.Event) {
-	d.toolbars[0].SetBackgroundColor(cview.Styles.MoreContrastBackgroundColor)
+	color := cview.Styles.MoreContrastBackgroundColor
+	if d.Mach.IsErr() {
+		color = tcell.ColorRed
+	}
+	d.toolbars[0].SetBackgroundColor(color)
 	d.updateToolbar()
 }
 
@@ -427,7 +436,11 @@ func (d *Debugger) Toolbar1FocusedEnd(_ *am.Event) {
 }
 
 func (d *Debugger) Toolbar2FocusedState(e *am.Event) {
-	d.toolbars[1].SetBackgroundColor(cview.Styles.MoreContrastBackgroundColor)
+	color := cview.Styles.MoreContrastBackgroundColor
+	if d.Mach.IsErr() {
+		color = tcell.ColorRed
+	}
+	d.toolbars[1].SetBackgroundColor(color)
 	d.updateToolbar()
 }
 
@@ -437,7 +450,11 @@ func (d *Debugger) Toolbar2FocusedEnd(_ *am.Event) {
 }
 
 func (d *Debugger) AddressFocusedState(e *am.Event) {
-	d.addressBar.SetBackgroundColor(cview.Styles.MoreContrastBackgroundColor)
+	color := cview.Styles.MoreContrastBackgroundColor
+	if d.Mach.IsErr() {
+		color = tcell.ColorRed
+	}
+	d.addressBar.SetBackgroundColor(color)
 	d.updateToolbar()
 }
 
@@ -594,13 +611,9 @@ func (d *Debugger) DisconnectEventState(e *am.Event) {
 // ///// CLIENTS
 
 func (d *Debugger) ClientMsgEnter(e *am.Event) bool {
-	_, ok := e.Args["msgs_tx"].([]*telemetry.DbgMsgTx)
-	if !ok {
-		d.Mach.Log("Error: msg_tx malformed\n")
-		return false
-	}
-
-	return true
+	_, ok1 := e.Args["msgs_tx"].([]*telemetry.DbgMsgTx)
+	_, ok2 := e.Args["conn_ids"].([]string)
+	return ok1 && ok2
 }
 
 func (d *Debugger) ClientMsgState(e *am.Event) {
@@ -705,6 +718,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	d.updateClientList(false)
 	d.updateTimelines()
 	d.updateMatrix()
+	d.updateAddressBar()
 
 	if selectedUpdated {
 		d.draw()
@@ -916,7 +930,7 @@ func (d *Debugger) HelpDialogEnd(e *am.Event) {
 	if len(diff) == len(ss.GroupDialog) {
 		// all dialogs closed, show main
 		d.LayoutRoot.SendToFront("main")
-		d.updateFocusable()
+		d.Mach.Add1(ss.UpdateFocus, nil)
 		d.updateToolbar()
 	}
 }
@@ -933,7 +947,7 @@ func (d *Debugger) ExportDialogEnd(e *am.Event) {
 	if len(diff) == len(ss.GroupDialog) {
 		// all dialogs closed, show main
 		d.LayoutRoot.SendToFront("main")
-		d.updateFocusable()
+		d.Mach.Add1(ss.UpdateFocus, nil)
 		d.updateToolbar()
 	}
 }
@@ -1023,7 +1037,7 @@ func (d *Debugger) ScrollToStepState(e *am.Event) {
 	if cursor > len(nextTx.Steps) {
 		cursor = len(nextTx.Steps)
 	}
-	d.C.CursorStep = cursor
+	d.C.CursorStep1 = cursor
 
 	d.handleTStepsScrolled()
 	d.RedrawFull(false)
@@ -1067,7 +1081,7 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 	case toolLog:
 		d.Opts.Filters.LogLevel = (d.Opts.Filters.LogLevel + 1) % 5
 
-	case toolGraph:
+	case toolDiagrams:
 		d.Opts.Graph = (d.Opts.Graph + 1) % 4
 		d.Mach.Add1(ss.GraphsScheduled, nil)
 
@@ -1079,7 +1093,7 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		d.Mach.Toggle1(ss.LogReaderEnabled, nil)
 
 	case toolRain:
-		d.toolRain()
+		d.Mach.Add1(ss.ToolRain, nil)
 
 	case toolHelp:
 		d.Mach.Toggle1(ss.HelpDialog, nil)
@@ -1382,7 +1396,7 @@ func (d *Debugger) LogReaderVisibleState(e *am.Event) {
 		d.treeLogGrid.UpdateItem(d.log, 0, 3, 1, 2, 0, 0, false)
 		d.treeLogGrid.AddItem(d.logReader, 0, 5, 1, 1, 0, 0, false)
 	}
-	d.updateFocusable()
+	d.Mach.Add1(ss.UpdateFocus, nil)
 	d.updateBorderColor()
 }
 
@@ -1393,7 +1407,7 @@ func (d *Debugger) LogReaderVisibleEnd(e *am.Event) {
 		d.treeLogGrid.UpdateItem(d.log, 0, 3, 1, 3, 0, 0, false)
 	}
 	d.treeLogGrid.RemoveItem(d.logReader)
-	d.updateFocusable()
+	d.Mach.Add1(ss.UpdateFocus, nil)
 }
 
 // gen graph, state-based throttling
@@ -1503,4 +1517,186 @@ func (d *Debugger) TimelineStepsHiddenEnd(e *am.Event) {
 
 func (d *Debugger) TimelineStepsHiddenState(e *am.Event) {
 	d.updateLayout()
+}
+
+func (d *Debugger) UpdateFocusState(e *am.Event) {
+	d.initFocusable()
+
+	// change focus (or not) when changing view types
+	switch d.Mach.Switch(ss.GroupFocused) {
+	case ss.ClientListFocused:
+		d.focusManager.Focus(d.clientList)
+	case ss.TreeFocused:
+		if d.Mach.Any1(ss.TreeMatrixView, ss.TreeLogView) {
+			d.focusManager.Focus(d.tree)
+		} else {
+			d.focusManager.Focus(d.clientList)
+		}
+	case ss.LogFocused:
+		if d.Mach.Is1(ss.TreeLogView) {
+			d.focusManager.Focus(d.log)
+		} else {
+			d.focusManager.Focus(d.clientList)
+		}
+	case ss.LogReaderFocused:
+		if d.Mach.Is(am.S{ss.TreeLogView, ss.LogReaderVisible}) {
+			d.focusManager.Focus(d.logReader)
+		} else if d.Mach.Is1(ss.TreeLogView) && d.Mach.Not1(ss.LogReaderVisible) {
+			d.focusManager.Focus(d.log)
+		} else {
+			d.focusManager.Focus(d.clientList)
+		}
+	case ss.MatrixFocused:
+		if d.Mach.Any1(ss.TreeMatrixView, ss.MatrixView) {
+			d.focusManager.Focus(d.matrix)
+		} else {
+			d.focusManager.Focus(d.clientList)
+		}
+	case ss.TimelineTxsFocused:
+		d.focusManager.Focus(d.timelineTxs)
+	case ss.TimelineStepsFocused:
+		d.focusManager.Focus(d.timelineSteps)
+	case ss.Toolbar1Focused:
+		d.focusManager.Focus(d.toolbars[0])
+	case ss.Toolbar2Focused:
+		d.focusManager.Focus(d.toolbars[1])
+	case ss.AddressFocused:
+		d.focusManager.Focus(d.addressBar)
+	default:
+		d.focusManager.Focus(d.clientList)
+	}
+}
+
+func (d *Debugger) AfterFocusEnter(e *am.Event) bool {
+	_, ok := e.Args["cview.Primitive"]
+	return ok
+}
+
+func (d *Debugger) AfterFocusState(e *am.Event) {
+	p := e.Args["cview.Primitive"]
+
+	switch p {
+
+	case d.tree:
+		fallthrough
+	case d.tree.Box:
+		_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.tree.Box))
+		d.Mach.Add1(ss.TreeFocused, nil)
+
+	case d.log:
+		fallthrough
+	case d.log.Box:
+		_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable, d.log.Box))
+		d.Mach.Add1(ss.LogFocused, nil)
+
+	case d.logReader:
+		fallthrough
+	case d.logReader.Box:
+		_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+			d.logReader.Box))
+		d.Mach.Add1(ss.LogReaderFocused, nil)
+
+	case d.timelineTxs:
+		fallthrough
+	case d.timelineTxs.Box:
+		_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+			d.timelineTxs.Box))
+		d.Mach.Add1(ss.TimelineTxsFocused, nil)
+
+	case d.timelineSteps:
+		fallthrough
+	case d.timelineSteps.Box:
+		_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+			d.timelineSteps.Box))
+		d.Mach.Add1(ss.TimelineStepsFocused, nil)
+
+	case d.toolbars[0]:
+		fallthrough
+	case d.toolbars[0].Box:
+		_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+			d.toolbars[0].Box))
+		d.Mach.Add1(ss.Toolbar1Focused, nil)
+
+	case d.toolbars[1]:
+		fallthrough
+	case d.toolbars[1].Box:
+		_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+			d.toolbars[1].Box))
+		d.Mach.Add1(ss.Toolbar2Focused, nil)
+
+	case d.addressBar:
+		fallthrough
+	case d.addressBar.Box:
+		_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+			d.addressBar.Box))
+		d.Mach.Add1(ss.AddressFocused, nil)
+
+	case d.clientList:
+		fallthrough
+	case d.clientList.Box:
+		_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+			d.clientList.Box))
+		d.Mach.Add1(ss.ClientListFocused, nil)
+
+	case d.matrix:
+		fallthrough
+	case d.matrix.Box:
+		_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+			d.matrix.Box))
+		d.Mach.Add1(ss.MatrixFocused, nil)
+
+	// DIALOGS
+
+	case d.helpDialog:
+		fallthrough
+	case d.helpDialog.Box:
+		_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+			d.helpDialog.Box))
+		d.Mach.Add1(ss.DialogFocused, nil)
+
+	case d.exportDialog:
+		fallthrough
+	case d.exportDialog.Box:
+		_ = d.focusManager.SetFocusIndex(slices.Index(d.focusable,
+			d.exportDialog.Box))
+		d.Mach.Add1(ss.DialogFocused, nil)
+	}
+
+	// update the log highlight on focus change
+	if d.Mach.Is1(ss.TreeLogView) && d.Mach.Not1(ss.LogReaderFocused) {
+		d.updateLog(true)
+	}
+
+	d.updateClientList(true)
+	d.Mach.Add1(ss.UpdateStatusBar, nil)
+}
+
+func (d *Debugger) ToolRainState(e *am.Event) {
+	if d.Mach.Is1(ss.MatrixRain) {
+		d.Mach.Add1(ss.TreeLogView, nil)
+	} else {
+		d.Mach.Add(am.S{ss.MatrixRain, ss.TreeMatrixView}, nil)
+		// TODO force redraw to get rect size, not ideal
+		d.redrawCallback = func() {
+			time.Sleep(1 * 16 * time.Millisecond)
+			d.drawViews()
+		}
+	}
+}
+
+func (d *Debugger) UpdateStatusBarState(e *am.Event) {
+	c := d.C
+	if c == nil {
+		defer d.statusBar.SetText("")
+		return
+	}
+
+	txt := ""
+	if c.CursorStep1 > 0 {
+		tx := c.MsgTxs[c.CursorTx1]
+		step := tx.Steps[c.CursorStep1-1]
+		txt = "Step: " + step.StringFromIdx(c.MsgStruct.StatesIndex)
+	}
+
+	d.statusBar.SetText(txt)
 }

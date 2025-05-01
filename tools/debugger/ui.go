@@ -36,6 +36,7 @@ func (d *Debugger) initUiComponents() {
 	d.tree.SetBorder(true)
 
 	// sidebar
+	// TODO refac to a tree component
 	d.clientList = cview.NewList()
 	d.clientList.SetTitle(" Machines ")
 	d.clientList.SetBorder(true)
@@ -55,6 +56,7 @@ func (d *Debugger) initUiComponents() {
 			return
 		}
 		d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": client.name})
+		// TODO wait with timeout
 		<-d.Mach.When1(ss.ClientSelected, nil)
 		d.prependHistory(&MachAddress{MachId: client.name})
 		d.updateAddressBar()
@@ -124,14 +126,13 @@ func (d *Debugger) initUiComponents() {
 
 	// TODO status bar (keystrokes, msgs), step info bar (type, from, to, data)
 	d.statusBar = cview.NewTextView()
-	d.statusBar.SetTextAlign(cview.AlignCenter)
+	d.statusBar.SetTextAlign(cview.AlignRight)
 	d.statusBar.SetDynamicColors(true)
 
 	// update models
 	d.updateTimelines()
 	d.updateTxBars()
-	d.updateStatusBars()
-	d.updateFocusable()
+	d.Mach.Add(S{ss.UpdateStatusBar, ss.UpdateFocus}, nil)
 }
 
 func (d *Debugger) initTimelineSteps() {
@@ -286,13 +287,6 @@ func (d *Debugger) initAddressBar() {
 
 func (d *Debugger) initToolbar() {
 	for i := range d.toolbars {
-		// TODO handle mouse scroll left / right to scroll horizontally
-		// d.timelineTxs.SetMouseCapture(func(
-		// 		action cview.MouseAction, event *tcell.EventMouse,
-		// ) (cview.MouseAction, *tcell.EventMouse) {
-		// 	if action == cview.MouseScrollUp || action == cview.MouseScrollLeft {
-		// rows, cols := GetOffset
-		// SetOffset(rows, cols+5)
 
 		d.toolbars[i] = cview.NewTable()
 		d.toolbars[i].ScrollToBeginning()
@@ -306,7 +300,7 @@ func (d *Debugger) initToolbar() {
 			if column >= len(d.toolbarItems[i]) {
 				return
 			}
-			// TODO state for button down
+
 			d.toolbars[i].SetSelectedStyle(colorActive,
 				cview.Styles.PrimitiveBackgroundColor, tcell.AttrUnderline)
 			d.Mach.Add1(ss.ToggleTool, am.A{"ToolName": d.toolbarItems[i][column].id})
@@ -347,7 +341,7 @@ func (d *Debugger) initToolbar() {
 				return strconv.Itoa(int(d.Opts.Filters.LogLevel))
 			}},
 			// TODO make it an anchor for file://...svg
-			{id: toolGraph, label: "graph", active: func() bool {
+			{id: toolDiagrams, label: "diagrams", active: func() bool {
 				return d.Opts.Graph > 0
 			}, activeLabel: func() string {
 				// TODO make Opts threadsafe
@@ -359,21 +353,6 @@ func (d *Debugger) initToolbar() {
 				// TODO make Opts threadsafe
 				return strconv.Itoa(d.Opts.Timelines)
 			}},
-			// {id: toolLog0, label: "L0", active: func() bool {
-			// 	return d.Opts.Filters.LogLevel == am.LogNothing
-			// }},
-			// {id: toolLog1, label: "L1", active: func() bool {
-			// 	return d.Opts.Filters.LogLevel == am.LogChanges
-			// }},
-			// {id: toolLog2, label: "L2", active: func() bool {
-			// 	return d.Opts.Filters.LogLevel == am.LogOps
-			// }},
-			// {id: toolLog3, label: "L3", active: func() bool {
-			// 	return d.Opts.Filters.LogLevel == am.LogDecisions
-			// }},
-			// {id: toolLog4, label: "L4", active: func() bool {
-			// 	return d.Opts.Filters.LogLevel == am.LogEverything
-			// }},
 			{id: toolReader, label: "reader", active: func() bool {
 				return d.Mach.Is1(ss.LogReaderEnabled)
 			}},
@@ -394,10 +373,10 @@ func (d *Debugger) initToolbar() {
 				return d.Mach.Is1(ss.TailMode)
 			}},
 			{id: toolJumpPrev, label: "jump", icon: "◀ "},
-			{id: toolPrev, label: "tx", icon: "◀ "},
+			{id: toolPrev, label: "tx", icon: "◁ "},
 			{id: toolPrevStep, label: "step", icon: "<"},
 			{id: toolNextStep, label: "step", icon: ">"},
-			{id: toolNext, label: "tx", icon: "▶ "},
+			{id: toolNext, label: "tx", icon: "▷ "},
 			{id: toolJumpNext, label: "jump", icon: "▶ "},
 			{id: toolPlay, label: "play", active: func() bool {
 				return d.Mach.Is1(ss.Playing)
@@ -708,7 +687,7 @@ func (d *Debugger) updateLayout() {
 
 func (d *Debugger) drawViews() {
 	d.updateViews(true)
-	d.updateFocusable()
+	d.Mach.Add1(ss.UpdateFocus, nil)
 	d.draw()
 }
 
@@ -717,7 +696,7 @@ func (d *Debugger) RedrawFull(immediate bool) {
 	d.updateViews(immediate)
 	d.updateTimelines()
 	d.updateTxBars()
-	d.updateStatusBars()
+	d.Mach.Add1(ss.UpdateStatusBar, nil)
 	d.updateBorderColor()
 	d.updateAddressBar()
 	d.draw()

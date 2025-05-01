@@ -76,7 +76,10 @@ var States = am.Schema{
 		//  to timeline-scroll somehow
 		Require: S{LogFocused},
 	},
-	Ready: {Require: S{Start}},
+	Ready: {
+		Require: S{Start},
+		Add:     S{UpdateFocus},
+	},
 	// TODO should activate FiltersFocused
 	FilterAutoTx:      {},
 	FilterCanceledTx:  {},
@@ -130,7 +133,25 @@ var States = am.Schema{
 		Require: S{TreeLogView, LogReaderEnabled},
 	},
 	LogReaderEnabled: {},
-	UpdateLogReader:  {Require: S{LogReaderEnabled}},
+	UpdateLogReader:  {Require: S{Ready, LogReaderEnabled}},
+	UpdateFocus: {
+		Multi:   true,
+		Require: S{Ready},
+	},
+	AfterFocus: {
+		Multi:   true,
+		Require: S{Ready},
+		Add:     S{UpdateStatusBar},
+	},
+	UpdateStatusBar: {
+		Multi:   true,
+		Require: S{Ready},
+		After:   S{AfterFocus},
+	},
+	ToolRain: {
+		Multi:   true,
+		Require: S{Ready},
+	},
 
 	// tx / steps back / fwd
 
@@ -213,7 +234,7 @@ var (
 // Names of all the states (pkg enum).
 
 const (
-	// TODO rename to StructureFocused
+	// TODO rename to SchemaFocused
 	TreeFocused          = "TreeFocused"
 	LogFocused           = "LogFocused"
 	TimelineTxsFocused   = "TimelineTxsFocused"
@@ -275,6 +296,10 @@ const (
 	LogReaderVisible = "LogReaderVisible"
 	LogReaderEnabled = "LogReaderEnabled"
 	UpdateLogReader  = "UpdateLogReader"
+	UpdateFocus      = "UpdateFocus"
+	AfterFocus       = "AfterFocus"
+	UpdateStatusBar  = "UpdateStatusBar"
+	ToolRain         = "ToolRain"
 	LogUserScrolled  = "LogUserScrolled"
 	// ScrollToTx scrolls to a specific transition.
 	ScrollToTx   = "ScrollToTx"
@@ -370,6 +395,10 @@ var Names = S{
 	LogReaderVisible,
 	LogReaderEnabled,
 	UpdateLogReader,
+	UpdateFocus,
+	AfterFocus,
+	UpdateStatusBar,
+	ToolRain,
 
 	// tx / steps back / fwd
 	Fwd,

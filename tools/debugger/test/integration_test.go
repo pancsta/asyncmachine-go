@@ -203,6 +203,6 @@ func TestStepsResetAfterStateJump(t *testing.T) {
 	})
 
 	// assert
-	assert.Equal(t, 0, worker.C.CursorStep, "Steps timeline should reset")
+	assert.Equal(t, 0, worker.C.CursorStep1, "Steps timeline should reset")
 	// TODO assert not playing
 }
