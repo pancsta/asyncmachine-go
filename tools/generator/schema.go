@@ -140,6 +140,8 @@ func (g *Generator) Output() string {
 		package states
 		
 		import (
+			"context"
+	
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"%s
 	`, impPkgStates)
 
@@ -344,7 +346,13 @@ func (g *Generator) Output() string {
 			// %sGroups contains all the state groups for the %s state-machine.
 			%sGroups = sg%s
 		)
-	`, g.Name, g.Name, g.Name, g.N, g.Name, g.Name, g.Name, g.N)
+	
+		// New%s creates a new %s state-machine in the most basic form.
+		func New%s(ctx context.Context) *am.Machine {
+			return am.New(ctx, %sSchema, nil)
+		}
+	`, g.Name, g.Name, g.Name, g.N, g.Name, g.Name, g.Name, g.N, g.Name, g.Name,
+		g.Name, g.Name)
 
 	return out
 }

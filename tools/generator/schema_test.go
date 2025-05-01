@@ -43,6 +43,8 @@ func TestAll(t *testing.T) {
 		package states
 		
 		import (
+			"context"
+	
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 			ss "github.com/pancsta/asyncmachine-go/pkg/states"
 			ssnode "github.com/pancsta/asyncmachine-go/pkg/node/states"
@@ -101,6 +103,11 @@ func TestAll(t *testing.T) {
 			// MyMachGroups contains all the state groups for the MyMach state-machine.
 			MyMachGroups = sgM
 		)
+	
+		// NewMyMach creates a new MyMach state-machine in the most basic form.
+		func NewMyMach(ctx context.Context) *am.Machine {
+			return am.New(ctx, MyMachSchema, nil)
+		}
 	`), "\n")
 
 	assert.Equal(t, expected, removeEmptyLines(generated))
@@ -131,6 +138,8 @@ func TestBasicConnected(t *testing.T) {
 		package states
 		
 		import (
+			"context"
+	
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 			ss "github.com/pancsta/asyncmachine-go/pkg/states"
 		)
@@ -183,6 +192,11 @@ func TestBasicConnected(t *testing.T) {
 			// MyMachGroups contains all the state groups for the MyMach state-machine.
 			MyMachGroups = sgM
 		)
+	
+		// NewMyMach creates a new MyMach state-machine in the most basic form.
+		func NewMyMach(ctx context.Context) *am.Machine {
+			return am.New(ctx, MyMachSchema, nil)
+		}
 	`), "\n")
 
 	assert.Equal(t, expected, removeEmptyLines(generated))
@@ -209,6 +223,8 @@ func TestMinimum(t *testing.T) {
 		package states
 		
 		import (
+			"context"
+	
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 		)
 		
@@ -243,6 +259,11 @@ func TestMinimum(t *testing.T) {
 			// MyMachGroups contains all the state groups for the MyMach state-machine.
 			MyMachGroups = sgM
 		)
+	
+		// NewMyMach creates a new MyMach state-machine in the most basic form.
+		func NewMyMach(ctx context.Context) *am.Machine {
+			return am.New(ctx, MyMachSchema, nil)
+		}
 	`), "\n")
 
 	assert.Equal(t, expected, removeEmptyLines(generated))
@@ -269,6 +290,8 @@ func TestRelations(t *testing.T) {
 		package states
 		
 		import (
+			"context"
+	
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 		)
 		
@@ -310,6 +333,11 @@ func TestRelations(t *testing.T) {
 			// MyMachGroups contains all the state groups for the MyMach state-machine.
 			MyMachGroups = sgM
 		)
+	
+		// NewMyMach creates a new MyMach state-machine in the most basic form.
+		func NewMyMach(ctx context.Context) *am.Machine {
+			return am.New(ctx, MyMachSchema, nil)
+		}
 	`), "\n")
 
 	assert.Equal(t, expected, removeEmptyLines(generated))
@@ -337,6 +365,8 @@ func TestGroups(t *testing.T) {
 		package states
 		
 		import (
+			"context"
+	
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 		)
 		
@@ -376,6 +406,11 @@ func TestGroups(t *testing.T) {
 			// MyMachGroups contains all the state groups for the MyMach state-machine.
 			MyMachGroups = sgM
 		)
+	
+		// NewMyMach creates a new MyMach state-machine in the most basic form.
+		func NewMyMach(ctx context.Context) *am.Machine {
+			return am.New(ctx, MyMachSchema, nil)
+		}
 	`), "\n")
 
 	assert.Equal(t, expected, removeEmptyLines(generated))
@@ -403,6 +438,8 @@ func TestGroupsStates(t *testing.T) {
 		package states
 		
 		import (
+			"context"
+	
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 		)
 		
@@ -444,6 +481,11 @@ func TestGroupsStates(t *testing.T) {
 			// MyMachGroups contains all the state groups for the MyMach state-machine.
 			MyMachGroups = sgM
 		)
+		
+		// NewMyMach creates a new MyMach state-machine in the most basic form.
+		func NewMyMach(ctx context.Context) *am.Machine {
+			return am.New(ctx, MyMachSchema, nil)
+		}
 	`), "\n")
 
 	assert.Equal(t, expected, removeEmptyLines(generated))
