@@ -2392,6 +2392,7 @@ func TestWhenQueueEnds(t *testing.T) {
 		cancel()
 	}()
 	m.Add1("A", A{"readyMut": readyMut})
+	<-ctx.Done()
 	// confirm the queue wait is closed
 	<-queueEnds
 
