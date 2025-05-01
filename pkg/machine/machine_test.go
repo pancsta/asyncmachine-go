@@ -127,7 +127,7 @@ func NewRels(t *testing.T, initialState S) *Machine {
 }
 
 // NewNoRels creates a new machine with no relations between states.
-func NewCustomStates(t *testing.T, states Struct) *Machine {
+func NewCustomStates(t *testing.T, states Schema) *Machine {
 	m := New(context.Background(), states, nil)
 	m.SetLogger(func(i LogLevel, msg string, args ...any) {
 		t.Logf(msg, args...)
@@ -1018,6 +1018,7 @@ func TestSwitch(t *testing.T) {
 
 func TestDispose(t *testing.T) {
 	t.Parallel()
+
 	// init
 	m := NewNoRels(t, S{"A"})
 	ran := false
@@ -1034,6 +1035,7 @@ func TestDispose(t *testing.T) {
 
 func TestDisposeForce(t *testing.T) {
 	t.Parallel()
+
 	// init
 	m := NewNoRels(t, S{"A"})
 	ran := false
@@ -1052,6 +1054,7 @@ func TestDisposeForce(t *testing.T) {
 
 func TestLogArgs(t *testing.T) {
 	t.Parallel()
+
 	// init
 	m := NewNoRels(t, S{"A"})
 	mapper := NewArgsMapper([]string{"arg", "arg2"}, 5)
@@ -1909,7 +1912,7 @@ func TestWhenCtx(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	whenTimeCh := m.WhenTime(S{"A", "B"}, Time{3, 3}, ctx)
 	whenTicks1Ch := m.WhenTicks("A", 2, ctx)
-	whenTicks2Ch := m.WhenTicksEq("B", 3, ctx)
+	whenTicks2Ch := m.WhenTime1("B", 3, ctx)
 	whenArgsCh := m.WhenArgs("B", A{"foo": "bar"}, ctx)
 	whenCh := m.When1("C", ctx)
 
@@ -2141,7 +2144,7 @@ func TestSetStates(t *testing.T) {
 	m := NewNoRels(t, S{"A", "C"})
 
 	// add relations and states
-	s := m.GetStruct()
+	s := m.Schema()
 	s["A"] = State{Multi: true}
 	s["B"] = State{Remove: S{"C"}}
 	s["D"] = State{Add: S{"E"}}
@@ -2149,7 +2152,7 @@ func TestSetStates(t *testing.T) {
 
 	// update states
 	rev := m.SchemaVer()
-	err := m.SetStruct(s, S{"A", "B", "C", "D", "E"})
+	err := m.SetSchema(s, S{"A", "B", "C", "D", "E"})
 	if err != nil {
 		t.Fatal(err)
 	}

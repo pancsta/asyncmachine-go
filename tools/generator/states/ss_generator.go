@@ -2,6 +2,7 @@ package states
 
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // GeneratorStatesDef contains all the states of the Client state machine.
@@ -29,8 +30,8 @@ type GeneratorGroupsDef struct {
 	Inherit S
 }
 
-// GeneratorStruct represents all relations and properties of GeneratorStates.
-var GeneratorStruct = am.Struct{
+// GeneratorSchema represents all relations and properties of GeneratorStates.
+var GeneratorSchema = am.Schema{
 	ssG.InheritBasic:     {},
 	ssG.InheritConnected: {Add: S{ssG.GroupsInherited}},
 	ssG.InheritDisposed:  {},

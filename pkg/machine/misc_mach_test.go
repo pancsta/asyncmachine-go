@@ -102,7 +102,7 @@ func TestNewArgsMapper(t *testing.T) {
 func TestParseStruct(t *testing.T) {
 	t.Parallel()
 
-	s := Struct{
+	s := Schema{
 		"A": {
 			Remove: S{"A", "B", "C"},
 			Add:    S{"C"},
@@ -111,7 +111,7 @@ func TestParseStruct(t *testing.T) {
 		"B": {},
 		"C": {},
 	}
-	ex := Struct{
+	ex := Schema{
 		"A": {
 			Remove: S{"B"},
 			Add:    S{"C"},
@@ -120,7 +120,7 @@ func TestParseStruct(t *testing.T) {
 		"B": {},
 		"C": {},
 	}
-	assert.Equal(t, ex, parseStruct(s))
+	assert.Equal(t, ex, parseSchema(s))
 }
 
 func TestSMerge(t *testing.T) {
@@ -156,7 +156,7 @@ type TestStatesFileGroupsSuperDef struct {
 	FooBaz S
 }
 
-var TestStatesFileSuperStruct = Struct{
+var TestStatesFileSuperStruct = Schema{
 	testSuperStates.Foo: {},
 	testSuperStates.Baz: {},
 }
@@ -183,9 +183,9 @@ type TestStatesFileGroupsDef struct {
 	FooBar S
 }
 
-var TestStatesFileStruct = StructMerge(
+var TestStatesFileStruct = SchemaMerge(
 	TestStatesFileSuperStruct,
-	Struct{
+	Schema{
 		testStates.Bar: {},
 	})
 

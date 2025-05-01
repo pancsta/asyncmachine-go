@@ -158,7 +158,7 @@ func TestNfa(t *testing.T) {
 	// code
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mach, err := am.NewCommon(ctx, "nfa-"+tt.name, states.NfaStruct, ss.Names(), &Regexp{}, nil, nil)
+			mach, err := am.NewCommon(ctx, "nfa-"+tt.name, states.NfaSchema, ss.Names(), &Regexp{}, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

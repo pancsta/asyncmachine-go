@@ -223,7 +223,7 @@ func MachDashboardEnv(mach *am.Machine) error {
 		p: p,
 	}
 
-	mach.Log("Grafana dashboard env")
+	mach.Log("[bind] grafana dashboard")
 	return mach.BindTracer(t)
 }
 

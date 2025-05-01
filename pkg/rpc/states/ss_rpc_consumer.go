@@ -13,8 +13,8 @@ type ConsumerStatesDef struct {
 	WorkerPayload string
 }
 
-// ConsumerStruct represents all relations and properties of ConsumerStates.
-var ConsumerStruct = am.Struct{
+// ConsumerSchema represents all relations and properties of ConsumerStates.
+var ConsumerSchema = am.Schema{
 	ssCo.WorkerPayload: {Multi: true},
 }
 

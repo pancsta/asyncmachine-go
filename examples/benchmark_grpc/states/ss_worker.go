@@ -24,11 +24,11 @@ type WorkerGroupsDef struct {
 	Values S
 }
 
-// WorkerStruct represents all relations and properties of WorkerStates.
-var WorkerStruct = StructMerge(
-	// inherit from BasicStruct
-	ssrpc.WorkerStruct,
-	am.Struct{
+// WorkerSchema represents all relations and properties of WorkerStates.
+var WorkerSchema = SchemaMerge(
+	// inherit from WorkerSchema
+	ssrpc.WorkerSchema,
+	am.Schema{
 
 		// ops
 		ws.CallOp: {

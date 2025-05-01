@@ -47,7 +47,7 @@ func BindLokiLogger(mach am.Api, client promtail.Client) {
 	}
 
 	mach.SetLogger(amlog)
-	mach.Log("Loki logger bound")
+	mach.Log("[bind] loki logger")
 }
 
 // everything else than a-z and _

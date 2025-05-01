@@ -1,5 +1,3 @@
-// Package integrations provides NATS and other JSON integrations.
-//
 //nolint:lll
 package integrations
 

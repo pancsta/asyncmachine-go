@@ -59,7 +59,7 @@ type (
 // Info is sent when a peer exposes state machines in the topic.
 type Info struct {
 	Id     string
-	Schema am.Struct
+	Schema am.Schema
 	States am.S
 	MTime  am.Time
 	Tags   []string

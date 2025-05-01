@@ -122,7 +122,7 @@ func NewServer(
 	s.lastClockSum.Store(&sum)
 
 	// state machine
-	mach, err := am.NewCommon(ctx, "rs-"+name, states.ServerStruct, ssS.Names(),
+	mach, err := am.NewCommon(ctx, "rs-"+name, states.ServerSchema, ssS.Names(),
 		s, opts.Parent, &am.Opts{Tags: []string{"rpc-server"}})
 	if err != nil {
 		return nil, err
@@ -522,7 +522,7 @@ func (s *Server) RemoteHello(
 		return am.ErrCanceled
 	}
 	// TODO pass ID and key here
-	// TODO GetStruct and Time inside Eval
+	// TODO Schema and Time inside Eval
 	// TODO check if client here is the same as RespHandshakeAck
 
 	mTime := s.Source.Time(nil)
@@ -535,7 +535,7 @@ func (s *Server) RemoteHello(
 	}
 
 	if req.ReqSchema {
-		schema := s.Source.GetStruct()
+		schema := s.Source.Schema()
 		(*resp).Schema = &schema
 	}
 

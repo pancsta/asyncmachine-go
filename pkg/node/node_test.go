@@ -195,7 +195,7 @@ func TestClientSupervisor(t *testing.T) {
 	cDeps := &ClientStateDeps{
 		WorkerSStruct: testutils.RelsNodeWorkerStruct,
 		WorkerSNames:  testutils.RelsNodeWorkerStates,
-		ClientSStruct: states.ClientStruct,
+		ClientSStruct: states.ClientSchema,
 		ClientSNames:  states.ClientStates.Names(),
 	}
 	c, err := NewClient(ctx, "cli", getKind(t), cDeps, nil)
@@ -348,7 +348,7 @@ func newClient(t *testing.T, ctx context.Context) *Client {
 	cDeps := &ClientStateDeps{
 		WorkerSStruct: testutils.RelsNodeWorkerStruct,
 		WorkerSNames:  testutils.RelsNodeWorkerStates,
-		ClientSStruct: states.ClientStruct,
+		ClientSStruct: states.ClientSchema,
 		ClientSNames:  states.ClientStates.Names(),
 	}
 	c, err := NewClient(ctx, "cli", getKind(t), cDeps, nil)
@@ -401,7 +401,7 @@ func newTestFork(
 
 		// worker
 		mach := testutils.NewRelsNodeWorker(t, nil)
-		worker, err := NewWorker(ctx, workerKind, mach.GetStruct(),
+		worker, err := NewWorker(ctx, workerKind, mach.Schema(),
 			mach.StateNames(), nil)
 		if err != nil {
 			t.Fatal(err)

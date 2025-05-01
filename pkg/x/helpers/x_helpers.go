@@ -47,7 +47,7 @@ func NestedState(
 
 	// ignore active non-multi nested states
 	tick := submach.Tick(state)
-	isMulti := submach.GetStruct()[state].Multi
+	isMulti := submach.Schema()[state].Multi
 	if am.IsActiveTick(tick) && !isMulti {
 		return am.Canceled, nil, fmt.Errorf("nested state %s is active", state)
 	}
@@ -86,9 +86,9 @@ func TimeMatrix(machines []*am.Machine) ([]am.Time, error) {
 	}
 
 	matrix := make([]am.Time, len(machines))
-	prevLen := len(machines[0].GetStruct())
+	prevLen := len(machines[0].Schema())
 	for i, mach := range machines {
-		if len(mach.GetStruct()) != prevLen {
+		if len(mach.Schema()) != prevLen {
 			return nil, errors.New("machines have different state lengths")
 		}
 		matrix[i] = mach.Time(nil)

@@ -24,7 +24,7 @@ require (
 	github.com/libp2p/go-libp2p-pubsub v0.13.0
 	github.com/lithammer/dedent v1.1.0
 	github.com/multiformats/go-multiaddr v0.14.0
-	github.com/nats-io/nats-server/v2 v2.11.3
+	github.com/nats-io/nats-server/v2 v2.11.2
 	github.com/nats-io/nats.go v1.41.2
 	github.com/nkall/compactnumber v1.1.1
 	github.com/orsinium-labs/enum v1.4.0

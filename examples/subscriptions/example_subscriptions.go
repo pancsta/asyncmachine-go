@@ -27,7 +27,7 @@ func main() {
 	ctx := context.Background()
 
 	// init state machines
-	mach := am.New(ctx, am.Struct{
+	mach := am.New(ctx, am.Schema{
 		"Foo":         {},
 		"Bar":         {},
 		"Healthcheck": {Multi: true},

@@ -40,7 +40,7 @@ func main() {
 	}()
 
 	// worker
-	client, err := newClient(ctx, addr, states.ExampleStruct, ss.Names())
+	client, err := newClient(ctx, addr, states.ExampleSchema, ss.Names())
 	if err != nil {
 		panic(err)
 	}
@@ -77,18 +77,18 @@ func main() {
 }
 
 func newClient(
-	ctx context.Context, addr string, ssStruct am.Struct, ssNames am.S,
+	ctx context.Context, addr string, ssSchema am.Schema, ssNames am.S,
 ) (*arpc.Client, error) {
 
 	// consumer
-	consumer := am.New(ctx, ssrpc.ConsumerStruct, nil)
+	consumer := am.New(ctx, ssrpc.ConsumerSchema, nil)
 	err := consumer.BindHandlers(&clientHandlers{})
 	if err != nil {
 		return nil, err
 	}
 
 	// init
-	c, err := arpc.NewClient(ctx, addr, "clientid", ssStruct, ssNames, &arpc.ClientOpts{
+	c, err := arpc.NewClient(ctx, addr, "clientid", ssSchema, ssNames, &arpc.ClientOpts{
 		Consumer: consumer,
 	})
 	if err != nil {

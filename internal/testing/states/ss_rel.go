@@ -13,7 +13,7 @@ type S = am.S
 
 // States map defines relations and properties of states.
 // TODO rename to rel
-var States = am.Struct{
+var States = am.Schema{
 	A: {
 		Auto:    true,
 		Require: S{C},

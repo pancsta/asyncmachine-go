@@ -1,4 +1,3 @@
-
 package states
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -19,5 +18,5 @@ var StateAdd = am.StateAdd
 // definition. See [am.StateSet].
 var StateSet = am.StateSet
 
-// StructMerge is a func alias for extending an existing state structure. See [am.StructMerge].
-var StructMerge = am.StructMerge
+// SchemaMerge is a func alias for extending an existing state structure. See [am.SchemaMerge].
+var SchemaMerge = am.SchemaMerge

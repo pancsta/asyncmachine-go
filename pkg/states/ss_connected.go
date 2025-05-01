@@ -40,8 +40,8 @@ type ConnectedGroupsDef struct {
 	Connected S
 }
 
-// ConnectedStruct represents all relations and properties of ConnectedStates.
-var ConnectedStruct = am.Schema{
+// ConnectedSchema represents all relations and properties of ConnectedStates.
+var ConnectedSchema = am.Schema{
 	ssC.ErrConnecting: {Require: S{Exception}},
 
 	ssC.Connecting: {

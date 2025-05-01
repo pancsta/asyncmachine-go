@@ -5,6 +5,7 @@ package states
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // ReplStatesDef contains all the states of the Repl state machine.
@@ -62,14 +63,14 @@ type ReplGroupsDef struct {
 	Cmds S
 }
 
-// ReplStruct represents all relations and properties of ReplStates.
-var ReplStruct = StructMerge(
+// ReplSchema represents all relations and properties of ReplStates.
+var ReplSchema = SchemaMerge(
 	// inherit from BasicStruct
-	ss.BasicStruct,
+	ss.BasicSchema,
 	// inherit from ConnPoolSchema
 	ss.ConnPoolSchema,
 	// inherit from DisposedStruct
-	ss.DisposedStruct,
+	ss.DisposedSchema,
 	am.Schema{
 
 		ssC.ErrSyntax: {},

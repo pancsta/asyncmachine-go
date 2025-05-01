@@ -43,7 +43,7 @@ func New(ctx context.Context, id string) (*Repl, error) {
 	r := &Repl{}
 
 	// REPL machine
-	mach, err := am.NewCommon(ctx, id, states.ReplStruct, ss.Names(), r, nil,
+	mach, err := am.NewCommon(ctx, id, states.ReplSchema, ss.Names(), r, nil,
 		&am.Opts{
 			DontLogID:      true,
 			HandlerTimeout: 1 * time.Second,

@@ -5,6 +5,7 @@ package states
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // TopicStatesDef contains all the states of the Topic state machine.
@@ -29,9 +30,9 @@ type TopicStatesDef struct {
 	// events
 
 	PeerJoined string
-	PeerLeft string
-	MsgInfo  string
-	MsgBye   string
+	PeerLeft   string
+	MsgInfo    string
+	MsgBye     string
 	// MsgUpdates received
 	MsgUpdates string
 	// MsgReqInfo received
@@ -63,15 +64,15 @@ type TopicGroupsDef struct {
 	*ss.ConnectedGroupsDef
 }
 
-// TopicStruct represents all relations and properties of TopicStates.
-var TopicStruct = StructMerge(
+// TopicSchema represents all relations and properties of TopicStates.
+var TopicSchema = SchemaMerge(
 	// inherit from BasicStruct
-	ss.BasicStruct,
+	ss.BasicSchema,
 	// inherit from ConnectedStruct
-	ss.ConnectedStruct,
+	ss.ConnectedSchema,
 	// inherit from DisposedStruct
-	ss.DisposedStruct,
-	am.Struct{
+	ss.DisposedSchema,
+	am.Schema{
 
 		// errors
 
@@ -154,7 +155,7 @@ var TopicStruct = StructMerge(
 			Multi:   true,
 			Require: S{ssT.Joined},
 		},
-		ssT.SendInfo:  {
+		ssT.SendInfo: {
 			Multi:   true,
 			Require: S{ssT.Joined},
 		},

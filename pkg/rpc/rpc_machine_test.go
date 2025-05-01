@@ -21,7 +21,7 @@ type S = am.S
 // type A = am.A
 type (
 	State  = am.State
-	Struct = am.Struct
+	Struct = am.Schema
 )
 
 func init() {
@@ -157,9 +157,9 @@ func TestRemoveRelation(t *testing.T) {
 
 	// relations
 	m := utils.NewNoRelsRpcWorker(t, S{"D"})
-	rels := m.GetStruct()
+	rels := m.Schema()
 	rels["C"] = State{Remove: S{"D"}}
-	_ = m.SetStruct(rels, sstest.Names)
+	_ = m.SetSchema(rels, sstest.Names)
 	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
@@ -180,9 +180,9 @@ func TestRemoveRelationSimultaneous(t *testing.T) {
 	m := utils.NewNoRelsRpcWorker(t, S{"D"})
 
 	// relations
-	rels := m.GetStruct()
+	rels := m.Schema()
 	rels["C"] = State{Remove: S{"D"}}
-	_ = m.SetStruct(rels, sstest.Names)
+	_ = m.SetSchema(rels, sstest.Names)
 	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
@@ -250,11 +250,11 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 			defer cancel()
 
 			m := utils.NewNoRelsRpcWorker(t, S{"D"})
-			rels := m.GetStruct()
+			rels := m.Schema()
 			// C and D are cross blocking each other via Remove
 			rels["C"] = State{Remove: S{"D"}}
 			rels["D"] = State{Remove: S{"C"}}
-			_ = m.SetStruct(rels, sstest.Names)
+			_ = m.SetSchema(rels, sstest.Names)
 			_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 			w := c.Worker
 
@@ -286,10 +286,10 @@ func TestAddRelation(t *testing.T) {
 
 	// machine
 	m := utils.NewNoRelsRpcWorker(t, nil)
-	rels := m.GetStruct()
+	rels := m.Schema()
 	rels["A"] = State{Remove: S{"D"}}
 	rels["C"] = State{Add: S{"D"}}
-	_ = m.SetStruct(rels, sstest.Names)
+	_ = m.SetSchema(rels, sstest.Names)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
@@ -316,9 +316,9 @@ func TestRequireRelation(t *testing.T) {
 
 	// machine
 	mach := utils.NewNoRelsRpcWorker(t, nil)
-	rels := mach.GetStruct()
+	rels := mach.Schema()
 	rels["A"] = State{Require: S{"D"}}
-	_ = mach.SetStruct(rels, sstest.Names)
+	_ = mach.SetSchema(rels, sstest.Names)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -342,9 +342,9 @@ func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
 
 	// machine
 	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
-	rels := mach.GetStruct()
+	rels := mach.Schema()
 	rels["C"] = State{Require: S{"D"}}
-	_ = mach.SetStruct(rels, sstest.Names)
+	_ = mach.SetSchema(rels, sstest.Names)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -368,12 +368,12 @@ func TestAutoStates(t *testing.T) {
 
 	// machine
 	mach := utils.NewNoRelsRpcWorker(t, nil)
-	rels := mach.GetStruct()
+	rels := mach.Schema()
 	rels["B"] = State{
 		Auto:    true,
 		Require: S{"A"},
 	}
-	_ = mach.SetStruct(rels, sstest.Names)
+	_ = mach.SetSchema(rels, sstest.Names)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -398,9 +398,9 @@ func TestSwitch(t *testing.T) {
 
 	// machine
 	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
-	rels := mach.GetStruct()
+	rels := mach.Schema()
 	rels["C"] = State{Require: S{"D"}}
-	_ = mach.SetStruct(rels, sstest.Names)
+	_ = mach.SetSchema(rels, sstest.Names)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -618,7 +618,7 @@ func TestPartialAuto(t *testing.T) {
 
 	// machine
 	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
-	rels := mach.GetStruct()
+	rels := mach.Schema()
 	// relations
 	rels["C"] = State{
 		Auto:    true,
@@ -628,7 +628,7 @@ func TestPartialAuto(t *testing.T) {
 		Auto:    true,
 		Require: S{"B"},
 	}
-	_ = mach.SetStruct(rels, sstest.Names)
+	_ = mach.SetSchema(rels, sstest.Names)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -652,9 +652,9 @@ func TestTime(t *testing.T) {
 
 	// machine
 	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
-	rels := mach.GetStruct()
+	rels := mach.Schema()
 	rels["B"] = State{Multi: true}
-	_ = mach.SetStruct(rels, sstest.Names)
+	_ = mach.SetSchema(rels, sstest.Names)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -839,12 +839,12 @@ func TestIs(t *testing.T) {
 
 	// machine
 	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
-	rels := mach.GetStruct()
+	rels := mach.Schema()
 	rels["B"] = State{
 		Auto:    true,
 		Require: S{"A"},
 	}
-	_ = mach.SetStruct(rels, sstest.Names)
+	_ = mach.SetSchema(rels, sstest.Names)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -866,12 +866,12 @@ func TestNot(t *testing.T) {
 
 	// machine
 	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
-	rels := mach.GetStruct()
+	rels := mach.Schema()
 	rels["B"] = State{
 		Auto:    true,
 		Require: S{"A"},
 	}
-	_ = mach.SetStruct(rels, sstest.Names)
+	_ = mach.SetSchema(rels, sstest.Names)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -894,12 +894,12 @@ func TestAny(t *testing.T) {
 
 	// machine
 	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
-	rels := mach.GetStruct()
+	rels := mach.Schema()
 	rels["B"] = State{
 		Auto:    true,
 		Require: S{"A"},
 	}
-	_ = mach.SetStruct(rels, sstest.Names)
+	_ = mach.SetSchema(rels, sstest.Names)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -922,10 +922,10 @@ func TestClock(t *testing.T) {
 
 	// machine
 	mach := utils.NewNoRelsRpcWorker(t, nil)
-	rels := mach.GetStruct()
+	rels := mach.Schema()
 	// relations
 	rels["B"] = State{Multi: true}
-	_ = mach.SetStruct(rels, sstest.Names)
+	_ = mach.SetSchema(rels, sstest.Names)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)

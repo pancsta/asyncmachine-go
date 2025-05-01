@@ -143,7 +143,7 @@ func (c *Client) StartState(e *am.Event) {
 
 	// init super rpc (but dont connect just yet)
 	c.SuperRpc, err = rpc.NewClient(ctx, addr, GetSuperClientId(c.Name),
-		states.SupervisorStruct, ssS.Names(), &rpc.ClientOpts{
+		states.SupervisorSchema, ssS.Names(), &rpc.ClientOpts{
 			Parent:   c.Mach,
 			Consumer: c.Mach,
 		})
@@ -374,9 +374,9 @@ func (c *Client) log(msg string, args ...any) {
 // ClientStateDeps contains the state definitions and names of the client and
 // worker machines, needed to create a new client.
 type ClientStateDeps struct {
-	ClientSStruct am.Struct
+	ClientSStruct am.Schema
 	ClientSNames  am.S
-	WorkerSStruct am.Struct
+	WorkerSStruct am.Schema
 	WorkerSNames  am.S
 }
 

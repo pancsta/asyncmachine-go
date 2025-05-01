@@ -25,8 +25,8 @@ type DisposedGroupsDef struct {
 	Disposed S
 }
 
-// DisposedStruct represents all relations and properties of DisposedStates.
-var DisposedStruct = am.Struct{
+// DisposedSchema represents all relations and properties of DisposedStates.
+var DisposedSchema = am.Schema{
 	ssD.RegisterDisposal: {Multi: true},
 	ssD.Disposing:        {Remove: sgD.Disposed},
 	ssD.Disposed:         {Remove: SAdd(sgD.Disposed, S{ssB.Start})},

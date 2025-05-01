@@ -38,7 +38,7 @@ func TestBasic(t *testing.T) {
 	defer cancel()
 
 	// init worker
-	ssStruct := am.StructMerge(ssrpc.WorkerStruct, am.Struct{
+	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, am.Schema{
 		"Foo": {},
 		"Bar": {Require: am.S{"Foo"}},
 	})
@@ -286,7 +286,7 @@ func TestManyStates(t *testing.T) {
 	end := make(chan struct{})
 
 	// reuse the worker and add many rand states
-	ssStruct := am.StructMerge(ssrpc.WorkerStruct, sstest.States)
+	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, sstest.States)
 	ssNames := am.SAdd(ssrpc.WorkerStates.Names(), sstest.Names)
 	randAmount := 100
 	for i := 0; i < randAmount; i++ {
@@ -629,7 +629,7 @@ func TestPayload(t *testing.T) {
 	// consumer
 	consHandlers := &TestPayloadConsumer{t: t}
 	consMach, err := am.NewCommon(ctx, "TestPayloadConsumer",
-		ssrpc.ConsumerStruct, ssCo.Names(), consHandlers, nil, nil)
+		ssrpc.ConsumerSchema, ssCo.Names(), consHandlers, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -692,7 +692,7 @@ func TestMux(t *testing.T) {
 	// client fac
 	newC := func(num int) *Client {
 		name := fmt.Sprintf("%s-%d", t.Name(), num)
-		c, err := NewClient(ctx, connAddr, name, w.GetStruct(), w.StateNames(),
+		c, err := NewClient(ctx, connAddr, name, w.Schema(), w.StateNames(),
 			&ClientOpts{Parent: mux.Mach})
 		if err != nil {
 			t.Fatal(err)
@@ -818,7 +818,7 @@ func NewTest(
 	time.Sleep(10 * time.Millisecond)
 
 	// client init
-	c, err := NewClient(ctx, connAddr, t.Name(), worker.GetStruct(),
+	c, err := NewClient(ctx, connAddr, t.Name(), worker.Schema(),
 		worker.StateNames(), &ClientOpts{
 			Consumer: consumer,
 			Parent:   worker,

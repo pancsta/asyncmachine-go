@@ -85,8 +85,8 @@ type A struct {
 	ListFilters *ListFilters
 }
 
-// TODO maybe merge with pubsub
-// TODO extract to pkg/helpers/Group
+// TODO merge with pkg/pubsub and pkg/integrations
+// TODO extract to pkg/helpers.Group
 type ListFilters struct {
 	// ID and hierarchy
 
@@ -119,7 +119,7 @@ type ListFilters struct {
 	// TODO tagKey
 	// TODO tagVal
 
-	// RPC TODO keep in repl
+	// RPC TODO keep only for REPL
 
 	// Include never connected machines
 	NoSchema bool

@@ -21,7 +21,6 @@ Gates:
 	Flight1Gate3
 */
 
-
 package main
 
 import (
@@ -42,7 +41,7 @@ const (
 func main() {
 	ctx := context.Background()
 
-	// TODO am.Struct to cli.SFParams converter
+	// TODO am.Schema to cli.SFParams converter
 	params := cli.SFParams{
 		Name:    "Flights",
 		Inherit: "rpc/worker",
@@ -81,7 +80,7 @@ func main() {
 			numG := strconv.Itoa(ii)
 			gate := flight + "Gate" + numG
 
-			params.States += gate + ":remove(_"+flight+"Gates),"
+			params.States += gate + ":remove(_" + flight + "Gates),"
 			params.Groups += gate + ";"
 		}
 		params.Groups = strings.TrimRight(params.Groups, ";") + "),"

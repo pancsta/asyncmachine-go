@@ -457,7 +457,7 @@ func RandMach(
 	if parent != nil {
 		opts.Parent = parent
 	}
-	m := am.New(ctx, am.Struct{
+	m := am.New(ctx, am.Schema{
 		"Foo": {Require: am.S{"Bar"}},
 		"Bar": {},
 	}, opts)

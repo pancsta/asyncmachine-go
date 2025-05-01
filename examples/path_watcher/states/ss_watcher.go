@@ -6,7 +6,7 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 type S = am.S
 
 // States map defines relations and properties of states (for files).
-var States = am.Struct{
+var States = am.Schema{
 	Init: {
 		Add: S{Watching},
 	},
@@ -29,7 +29,7 @@ var States = am.Struct{
 }
 
 // StatesDir map defines relations and properties of states (for directories).
-var StatesDir = am.Struct{
+var StatesDir = am.Schema{
 	Refreshing: {
 		Remove: groupRefreshed,
 	},
@@ -46,7 +46,7 @@ var StatesDir = am.Struct{
 
 var groupRefreshed = S{Refreshing, Refreshed, DirDebounced}
 
-//#region boilerplate defs
+// #region boilerplate defs
 
 // Names of all the states (pkg enum).
 
@@ -70,4 +70,4 @@ var Names = S{Init, Watching, ChangeEvent, Refreshing, Refreshed, AllRefreshed}
 // NamesDir is an ordered list of all the state names for directories.
 var NamesDir = S{Refreshing, Refreshed, DirDebounced, DirCached}
 
-//#endregion
+// #endregion

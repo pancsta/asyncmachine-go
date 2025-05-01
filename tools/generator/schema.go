@@ -1,10 +1,11 @@
+// Package generator generates state-machine schemas and grafana dashboards.
+package generator
+
 // TODO rewrite:
 //  - repeated cli params
 //  - AST
 //  - embed pkg/states/states_utils.go
 //  	- optional with pkg/states/global
-
-package generator
 
 import (
 	"context"
@@ -14,11 +15,10 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/lithammer/dedent"
-
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/tools/generator/cli"
 	"github.com/pancsta/asyncmachine-go/tools/generator/states"
 )
@@ -203,35 +203,35 @@ func (g *Generator) Output() string {
 
 	// struct
 	out += fmt.Sprintf(
-		"// %sStruct represents all relations and properties of %sStates.\n",
+		"// %sSchema represents all relations and properties of %sStates.\n",
 		g.Name, g.Name)
 	var indent string
 	if g.Mach.Is1(ssG.Inherit) {
 		indent = "\t"
-		out += fmt.Sprintf("var %sStruct = StructMerge(\n", g.Name)
+		out += fmt.Sprintf("var %sSchema = SchemaMerge(\n", g.Name)
 	} else {
-		out += fmt.Sprintf("var %sStruct = am.Struct{\n", g.Name)
+		out += fmt.Sprintf("var %sSchema = am.Schema{\n", g.Name)
 	}
 
 	// struct inherit
 	if g.Mach.Is1(ssG.InheritBasic) {
-		out += "\t// inherit from BasicStruct\n\tss.BasicStruct,\n"
+		out += "\t// inherit from BasicSchema\n\tss.BasicSchema,\n"
 	}
 	if g.Mach.Is1(ssG.InheritConnected) {
-		out += fmt.Sprintf("\t// inherit from ConnectedStruct\n" +
-			"\tss.ConnectedStruct,\n")
+		out += fmt.Sprintf("\t// inherit from ConnectedSchema\n" +
+			"\tss.ConnectedSchema,\n")
 	}
 	if g.Mach.Is1(ssG.InheritRpcWorker) {
-		out += fmt.Sprintf("\t// inherit from rpc/WorkerStruct\n" +
-			"\tssrpc.WorkerStruct,\n")
+		out += fmt.Sprintf("\t// inherit from rpc/WorkerSchema\n" +
+			"\tssrpc.WorkerSchema,\n")
 	}
 	if g.Mach.Is1(ssG.InheritNodeWorker) {
-		out += fmt.Sprintf("\t// inherit from node/WorkerStruct\n" +
-			"\tssnode.WorkerStruct,\n")
+		out += fmt.Sprintf("\t// inherit from node/WorkerSchema\n" +
+			"\tssnode.WorkerSchema,\n")
 	}
 
 	if g.Mach.Is1(ssG.Inherit) {
-		out += "\tam.Struct{\n"
+		out += "\tam.Schema{\n"
 	}
 
 	// struct states
@@ -353,7 +353,7 @@ func NewSFGenerator(
 	ctx context.Context, param cli.SFParams,
 ) (*Generator, error) {
 	g := &Generator{}
-	mach, err := am.NewCommon(ctx, "gen", states.GeneratorStruct, ssG.Names(),
+	mach, err := am.NewCommon(ctx, "gen", states.GeneratorSchema, ssG.Names(),
 		g, nil, nil)
 	if err != nil {
 		return nil, err
@@ -367,33 +367,7 @@ func NewSFGenerator(
 }
 
 func GenUtilsFile() string {
-	return strings.Trim(dedent.Dedent(`
-		package states
-		
-		import am "github.com/pancsta/asyncmachine-go/pkg/machine"
-		
-		// S is a type alias for a list of state names.
-		type S = am.S
-
-		// State is a type alias for a state definition. See [am.State].
-		type State = am.State
-		
-		// SAdd is a func alias for merging lists of states.
-		var SAdd = am.SAdd
-		
-		// StateAdd is a func alias for adding to an existing state definition.
-		var StateAdd = am.StateAdd
-		
-		// StateSet is a func alias for replacing parts of an existing state
-		// definition.
-		var StateSet = am.StateSet
-		
-		// StructMerge is a func alias for extending an existing state structure.
-		var StructMerge = am.StructMerge
-
-		// Exception is a type alias for the exception state.
-		var Exception = am.Exception
-	`), "\n")
+	return ssam.StatesUtilsFile
 }
 
 func capitalizeFirstLetter(s string) string {

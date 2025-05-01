@@ -30,7 +30,7 @@ type Worker struct {
 	// allow for mutations / network calls.
 	c             *Client
 	err           error
-	schema        am.Struct
+	schema        am.Schema
 	clockMx       sync.RWMutex
 	machTime      am.Time
 	stateNames    am.S
@@ -58,7 +58,7 @@ var _ am.Api = &Worker{}
 
 // NewWorker creates a new instance of a Worker.
 func NewWorker(
-	ctx context.Context, id string, c *Client, schema am.Struct, stateNames am.S,
+	ctx context.Context, id string, c *Client, schema am.Schema, stateNames am.S,
 	parent *am.Machine, tags []string,
 ) (*Worker, error) {
 	// validate
@@ -750,6 +750,16 @@ func (w *Worker) WhenTime(
 	return ch
 }
 
+// WhenTime1 waits till ticks for a single state equal the given absolute
+// value (or more). Uses WhenTime underneath.
+//
+// ctx: optional context that will close the channel when done.
+func (w *Worker) WhenTime1(
+	state string, ticks uint64, ctx context.Context,
+) <-chan struct{} {
+	return w.WhenTime(am.S{state}, am.Time{ticks}, ctx)
+}
+
 // WhenTicks waits N ticks of a single state (relative to now). Uses WhenTime
 // underneath.
 //
@@ -758,16 +768,6 @@ func (w *Worker) WhenTicks(
 	state string, ticks int, ctx context.Context,
 ) <-chan struct{} {
 	return w.WhenTime(am.S{state}, am.Time{uint64(ticks) + w.Tick(state)}, ctx)
-}
-
-// WhenTicksEq waits till ticks for a single state equal the given absolute
-// value (or more). Uses WhenTime underneath.
-//
-// ctx: optional context that will close the channel when done.
-func (w *Worker) WhenTicksEq(
-	state string, ticks uint64, ctx context.Context,
-) <-chan struct{} {
-	return w.WhenTime(am.S{state}, am.Time{ticks}, ctx)
 }
 
 // WhenErr returns a channel that will be closed when the machine is in the
@@ -1421,8 +1421,8 @@ func (w *Worker) Export() *am.Serialized {
 	}
 }
 
-// GetStruct returns a copy of machine's state structure.
-func (w *Worker) GetStruct() am.Struct {
+// Schema returns a copy of machine's state structure.
+func (w *Worker) Schema() am.Schema {
 	return w.schema
 }
 

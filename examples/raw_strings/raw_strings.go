@@ -22,7 +22,7 @@ func init() {
 
 func main() {
 	// init the state machine
-	mach := am.New(nil, am.Struct{
+	mach := am.New(nil, am.Schema{
 		"ProcessingFile": { // async
 			Remove: am.S{"FileProcessed"},
 		},
