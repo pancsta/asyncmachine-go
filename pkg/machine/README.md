@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 **/pkg/machine** is a nondeterministic, multi-state, clock-based, relational, optionally accepting, and non-blocking
 state machine. It's a form of a **rules engine** that can orchestrate blocking APIs into fully controllable async
@@ -25,43 +25,72 @@ the [manual](/docs/manual.md).
 
 Many states can be active at the same time.
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_1.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_1.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_1.light.svg">
+  <img alt="Diagram showing multi-state capability" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_1.light.svg">
+</picture>
 
 ### [Clock and state contexts](/docs/manual.md#clock-and-context)
 
 States have clocks that produce contexts (odd = active; even = inactive).
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_2.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_2.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_2.light.svg">
+  <img alt="Diagram showing state clocks and contexts" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_2.light.svg">
+</picture>
 
 ### [Queue](/docs/manual.md#queue-and-history)
 
 Queue of mutations enables lock-free [Actor Model](https://en.wikipedia.org/wiki/Actor_model).
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_3.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_3.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_3.light.svg">
+  <img alt="Diagram showing queue and mutations" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_3.light.svg">
+</picture>
 
 ### [AOP handlers](/docs/manual.md#transition-handlers)
 
-States are [Aspects](https://en.wikipedia.org/wiki/Aspect-oriented_programming) with Enter, State, Exit, and End handlers.
+States are [Aspects](https://en.wikipedia.org/wiki/Aspect-oriented_programming) with Enter, State, Exit, and End
+handlers.
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_4.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_4.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_4.light.svg">
+  <img alt="Diagram showing AOP handlers" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_4.light.svg">
+</picture>
 
 ### [Negotiation](/docs/manual.md#transition-lifecycle)
 
 Transitions are cancellable (during the negotiation phase).
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_5.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_5.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_5.light.svg">
+  <img alt="Diagram showing negotiation phase" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_5.light.svg">
+</picture>
 
 ### [Relations](/docs/manual.md#relations)
 
 States are connected via Require, Remove, and Add relations.
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_6.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_6.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_6.light.svg">
+  <img alt="Diagram showing state relations" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_6.light.svg">
+</picture>
 
 ### [Subscriptions](/docs/manual.md#waiting)
 
 Channel-based broadcast for waiting on clock values.
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_7.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_7.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_7.light.svg">
+  <img alt="Diagram showing subscriptions" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_7.light.svg">
+</picture>
 
 ### [Error handling](/docs/manual.md#error-handling)
 
@@ -77,11 +106,11 @@ if err != nil {
 
 ### [Tracers](/docs/manual.md#tracing-and-metrics)
 
-Synchronouse tracers for internal events.
+Synchronous tracers for internal events.
 
 ```text
 TransitionInit TransitionStart TransitionEnd HandlerStart HandlerEnd
-MachineInit MachineDispose NewSubmachine QueueEnd StructChange VerifyStates
+MachineInit MachineDispose NewSubmachine QueueEnd SchemaChange VerifyStates
 ```
 
 ## Usage
@@ -97,7 +126,7 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
 func main() {
     // init the state machine
-    mach := am.New(nil, am.Struct{
+    mach := am.New(nil, am.Schema{
         "ProcessingFile": { // async
             Remove: am.S{"FileProcessed"},
         },
@@ -190,7 +219,7 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 <-mach.WhenErr(nil)
 ```
 
-### States File
+### Schema File
 
 ```go
 // BasicStatesDef contains all the states of the Basic state machine.
@@ -213,7 +242,7 @@ type BasicStatesDef struct {
     Healthcheck string
 }
 
-var BasicStruct = am.Struct{
+var BasicSchema = am.Schema{
 
     // Errors
 
@@ -242,10 +271,10 @@ mach.Add1(ssS.KillingWorker, Pass(&A{
 
 While [mutations](/docs/manual.md#mutations) are the heartbeat of asyncmachine, it's the [relations](/docs/manual.md#relations)
 which define the **rules of the flow**. Check out the [relations playground](https://play.golang.com/p/c89OjCUMxW-) and
-quiz yourself (or a [fancier playground](https://goplay.tools/snippet/c89OjCUMxW-)).
+quiz yourself (maybe a [fancier playground](https://goplay.tools/snippet/c89OjCUMxW-)).
 
 ```go
-mach := newMach("DryWaterWet", am.Struct{
+mach := newMach("DryWaterWet", am.Schema{
     "Wet": {
         Require: am.S{"Water"},
     },
@@ -283,12 +312,15 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 [![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png)](/tools/cmd/am-dbg/README.md)
 
-- **[`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md)** Multi-client TUI debugger.
-- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates states files and Grafana dashboards.
-- `/tools/cmd/am-vis` Planned.
+- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates schema files and Grafana dashboards.
+- [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates diagrams of interconnected state machines.
+- [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
 
-## Case Studies
+## Apps
 
+- [secai](https://github.com/pancsta/secai) AI Agents framework.
+- [arpc REPL](/tools/repl) Cobra-based REPL.
 - [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
   simulator for libp2p-pubsub.
@@ -318,7 +350,7 @@ type S []string
 type Time []uint64
 type Clock map[string]uint64
 type Result int
-type Struct = map[string]State
+type Schema = map[string]State
 
 // Api is a subset of Machine for alternative implementations.
 type Api interface {
@@ -375,8 +407,8 @@ type Api interface {
     WhenNot1(state string, ctx context.Context) <-chan struct{}
     WhenTime(
         states S, times Time, ctx context.Context) <-chan struct{}
+    WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
     WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
-    WhenTicksEq(state string, tick uint64, ctx context.Context) <-chan struct{}
     WhenErr(ctx context.Context) <-chan struct{}
 
     // Getters (local)
@@ -389,7 +421,7 @@ type Api interface {
     TimeSum(states S) uint64
     NewStateCtx(state string) context.Context
     Export() *Serialized
-    GetStruct() Struct
+    Schema() Schema
     Switch(groups ...S) string
 
     // Misc (local)
@@ -466,16 +498,16 @@ Release Candidate, semantically versioned, not optimized yet.
 
 **asyncmachine** is loosely based on the following concepts:
 
-- [NFA nondeterministic state machines](https://en.wikipedia.org/wiki/Nondeterministic_finite_automaton)
-- [EDA event emitters](https://en.wikipedia.org/wiki/Event-driven_architecture)
+- [dependency graph](https://en.wikipedia.org/wiki/Dependency_graph)
+- [async event emitter](https://en.wikipedia.org/wiki/Event-driven_architecture)
+- [nondeterministic state machine](https://en.wikipedia.org/wiki/Nondeterministic_finite_automaton)
 - [queue](https://en.wikipedia.org/wiki/Queue_(abstract_data_type))
-- [AOP aspect oriented programming](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
+- [aspect-oriented programming](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
 - [SQL relations](https://en.wikipedia.org/wiki/SQL)
 - [Paxos negotiation](https://en.wikipedia.org/wiki/Paxos_(computer_science))
-- [Non-blocking](https://en.wikipedia.org/wiki/Non-blocking_algorithm)
-- [Actor Model](https://en.wikipedia.org/wiki/Actor_model)
-- [DAG dependency graph](https://en.wikipedia.org/wiki/Dependency_graph)
 - [logical clock](https://en.wikipedia.org/wiki/Logical_clock)
+- [non-blocking](https://en.wikipedia.org/wiki/Non-blocking_algorithm)
+- [Actor Model](https://en.wikipedia.org/wiki/Actor_model)
 - [causal inference](https://en.wikipedia.org/wiki/Causal_inference)
 - [declarative logic](https://en.wikipedia.org/wiki/Declarative_programming)
 

@@ -37,14 +37,14 @@ It features [atomic transitions](/docs/manual.md#transition-lifecycle), [transpa
 [remote workers](/pkg/node/README.md), and [diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
 
 As a control flow library, it decides about running of predefined bits of code (transition handlers) - their order and
-which ones to run, according to currently active states (flags). Thanks to a novel state machine, the amount of handlers
-can be minimized, while maximizing scenario coverage. It's fault-tolerant by design, has rule-based mutations, and can
-be used to target virtually any step-in-time, in any workflow.
+which ones to run, according to currently active states (flags). Thanks to a [novel state machine](/pkg/machine/README.md),
+the number of handlers can be minimized while maximizing scenario coverage. It's lightweight, fault-tolerant by design,
+has rule-based mutations, and can be used to target virtually any step-in-time, in any workflow.
 
-**AM** takes care of most contexts, `select` statements, and panics, while allowing for graph-structured concurrency
-with goroutine cancellation. The history log and relations have a vector format.
+**asyncmachine-go** takes care of `context`, `select`, and `panic`, while allowing for graph-structured concurrency
+with goroutine cancellation. The history log and relations have vector formats.
 
-It aims at creating **autonomous** workflows with **organic** control flow and **stateful** APIs:
+It aims to create **autonomous** workflows with **organic** control flow and **stateful** APIs:
 
 - **autonomous** - automatic states, relations, context-based decisions
 - **organic** - relations, negotiation, cancellation
@@ -61,11 +61,15 @@ Each state represents:
 - multiple methods
 - breakpoint
 
+Besides workflows, it can be used for **stateful applications** of any size - daemons, UIs, configs, bots, firewalls,
+synchronization consensus, games, smart graphs, microservice orchestration, contracts, simulators, as well as
+**"real-time" systems** which rely on instant cancellations.
+
 ![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)
 
 ## Stack
 
-Top layers depend on the bottom ones.
+The top layers depend on the bottom ones.
 
 <table>
   <tr>
@@ -142,7 +146,7 @@ Top layers depend on the bottom ones.
 ```go
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 // ...
-mach := am.New(nil, am.Struct{
+mach := am.New(nil, am.Schema{
     "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
 }, nil)
@@ -164,7 +168,7 @@ client.WorkerRpc.Worker.Add1(ssW.WorkRequested, Pass(&A{
 // WaitFor* wraps select statements
 err := amhelp.WaitForAll(ctx, time.Second,
     // post-mutation subscription
-    mach2.When1(ss.BasicStatesDef.Ready, nil),
+    mach.When1(ss.BasicStatesDef.Ready, nil),
     // pre-mutation subscription
     whenPayload)
 // check cancellation
@@ -177,7 +181,7 @@ if err != nil {
     client.Mach.AddErr(err, nil)
     return // no err required
 }
-// client/WorkerPayload and mach2/Ready activated
+// client/WorkerPayload and mach/Ready activated
 ```
 
 <div align="center">
@@ -237,6 +241,14 @@ type WorkerStatesDef struct {
 
 All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 
+<div align="center">
+    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/pkg/telemetry/README.md#open-telemetry-traces">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
+  <img alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
+</picture></a></div>
+
 ## Getting Started
 
 - 🦾 **[`/pkg/machine`](pkg/machine/README.md)** is the main package
@@ -247,23 +259,28 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) will bootstrap
 - [`/examples/mach_template`](/examples/mach_template) is copy-paste ready
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) records every detail
-- reading tests is always a good idea...
+- [reading tests](https://github.com/search?q=repo%3Apancsta%2Fasyncmachine-go+path%3A%2F.*_test.go%2F&type=code)
+  is always a good idea
 
 ## [Packages](/pkg)
 
-This monorepo offers the following importable packages and runnable tools:
+This monorepo offers the following importable packages and runnable tools, especially:
+
+- 🦾 **[`/pkg/machine`](/pkg/machine/README.md) State machine, dependency free, semver compatible.**
+- [`/pkg/states`](/pkg/states/README.md) Reusable state schemas, handlers, and piping.
+- [`/pkg/helpers`](/pkg/helpers/README.md) Useful functions when working with async state machines.
+- [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for dbg, metrics, traces, and logs.
+
+Remaining packages:
 
 - [`/pkg/graph`](/pkg/graph) Multigraph of interconnected state machines.
-- [`/pkg/helpers`](/pkg/helpers/README.md) Useful functions when working with async state machines.
 - [`/pkg/history`](/pkg/history/README.md) History tracking and traversal.
-- 🦾 **[`/pkg/machine`](/pkg/machine/README.md) State machine, dependency free, semver compatible.**
+- [`/pkg/integrations`](/pkg/integrations/README.md) NATS and other JSON integrations.
 - [`/pkg/node`](/pkg/node/README.md) Distributed worker pools with supervisors.
 - [`/pkg/rpc`](/pkg/rpc/README.md) Remote state machines, with the same API as local ones.
-- [`/pkg/states`](/pkg/states/README.md) Reusable state definitions, handlers, and piping.
-- [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for dbg, metrics, traces, and logs.
 - [`/pkg/pubsub`](/pkg/pubsub/README.md) Decentralized PubSub based on libp2p gossipsub.
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.
-- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates states files and Grafana dashboards.
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates schema files and Grafana dashboards.
 - [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates diagrams of interconnected state machines.
 - [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
 
@@ -271,7 +288,7 @@ This monorepo offers the following importable packages and runnable tools:
 
 ## Apps
 
-- [SecAI](https://github.com/pancsta/secai) Autonomous AI Agents.
+- [secai](https://github.com/pancsta/secai) AI Agents framework.
 - [arpc REPL](/tools/repl) Cobra-based REPL.
 - [am-dbg TUI Debugger](/tools/debugger/README.md) Single state-machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
@@ -307,7 +324,8 @@ Under development, status depends on each package. The bottom layers seem prod g
     - `task test`
     - `task format`
     - `task lint`
-- [good first issue](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
+    - `task precommit`
+- [good first issues](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
 
 <div align="center">
     <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video.gif?raw=true" alt="TUI Debugger" />
@@ -326,12 +344,14 @@ State is a binary name as in status / switch / flag, eg "process RUNNING" or "ca
 
 ### What does "clock-based" mean?
 
-Each state has a counter of activations & de-activations, and all state counters create "machine time". It's a logical
+Each state has a counter of activations & deactivations, and all state counters create "machine time". It's a logical
 clock.
 
 ### What's the difference between states and events?
 
-Same event happening many times will cause only 1 state activation, until the state becomes inactive.
+The same event happening many times will cause only 1 state activation, until the state becomes inactive.
+
+The complete FAQ is available at [FAQ.md](/FAQ.md).
 
 ## Changes
 

@@ -197,6 +197,7 @@ tasks:
 
   precommit:
     cmds:
+      - go mod tidy
       - task: clean
       - task: format
       - .git/hooks/pre-commit

@@ -3,7 +3,7 @@
 - [cd /](/)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 Benchmark of [`/examples/tree_state_source`](/examples/tree_state_source/README.md) using [go-wrk](https://github.com/tsliwowicz/go-wrk)
 and [Caddy](https://caddyserver.com/) in various tree configurations. Every node is a resource limited container

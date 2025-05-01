@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 **/pkg/node** provides distributed workflows via state-based orchestration of worker pools. Features a failsafe
 supervision, as well as state machines for workers and clients. All actors communicate via [aRPC](/pkg/rpc/README.md),
@@ -47,7 +47,7 @@ import amnode "github.com/pancsta/asyncmachine-go/pkg/node"
 ### Worker
 
 Any state machine can be exposed as a Node Worker, as long as it implements `/pkg/node/states.WorkerStructDef`. This can
-be done either manually, or by using state helpers ([StructMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
+be done either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
 [SAdd](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SAdd)), or by generating a states file with [am-gen](/tools/cmd/am-gen/README.md).
 It's also required to have the states verified by [Machine.VerifyStates](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.VerifyStates).
 Worker should respond to `WorkRequested` and produce `ClientSendPayload` to send data to the client.
@@ -88,7 +88,7 @@ func (w *workerHandlers) WorkRequestedState(e *am.Event) {
 // ...
 
 // inherit from Node worker
-ssStruct := am.StructMerge(ssnode.WorkerStruct, am.Struct{
+ssStruct := am.SchemaMerge(ssnode.WorkerStruct, am.Schema{
     "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
 })
@@ -97,7 +97,7 @@ ssNames := am.SAdd(ssnode.WorkerStates.Names(), am.S{"Foo", "Bar"})
 // init
 mach := am.New(ctx, ssStruct, nil)
 mach.VerifyStates(ssNames)
-worker, err := NewWorker(ctx, workerKind, mach.GetStruct(), mach.StateNames(), nil)
+worker, err := NewWorker(ctx, workerKind, mach.Schema(), mach.StateNames(), nil)
 ```
 
 #### Worker Schema
@@ -122,7 +122,7 @@ import (
 // ...
 
 var ssNames am.S
-var ssStruct am.Struct
+var ssStruct am.Schema
 var workerKind string
 var workerBin []string
 
@@ -145,9 +145,9 @@ State schema from [/pkg/node/states/ss_supervisor.go](/pkg/node/states/ss_superv
 ## Client
 
 Any state machine can a Node Client, as long as it implements `/pkg/node/states.ClientStructDef`. This can be done
-either manually, or by using state helpers ([StructMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
+either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
 [SAdd](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SAdd)), or by generating a states file with [am-gen](/tools/cmd/am-gen/README.md).
-Client also needs to know his worker's states structure and order. To connect to the worker pool, client accepts a list
+Client also needs to know his worker's machine schema and order. To connect to the worker pool, client accepts a list
 of supervisor addresses (PubSub discovery in on the roadmap), and will be trying to connect to them in order. After
 `SuperReady` activates, client can call [`Client.ReqWorker(ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Client.ReqWorker),
 which will request a worker from the supervisor, resulting in `WorkerReady`. At this point client can access the worker
@@ -165,12 +165,12 @@ import (
 // ...
 
 var ssWorkerNames am.S
-var ssWorkerStruct am.Struct
+var ssWorkerStruct am.Schema
 var workerKind string
 var superAddrs []string
 
 // inherit from Node client
-ssStruct := am.StructMerge(ssnode.ClientStruct, am.Struct{
+ssStruct := am.SchemaMerge(ssnode.ClientStruct, am.Schema{
     "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
 })

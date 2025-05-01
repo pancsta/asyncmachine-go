@@ -109,9 +109,9 @@ type Opts struct {
 	OutputClients bool
 	// Root dir for output files
 	OutputDir string
-	// Graph is the level of details of the current machine's graph 0-3
+	// Diagrams is the level of details of the current machine's graph 0-3
 	// 0 - off, 3 - most detailed
-	Graph int
+	Diagrams int
 	// Screen overload for tests & ssh
 	Screen tcell.Screen
 	// Debugger's ID

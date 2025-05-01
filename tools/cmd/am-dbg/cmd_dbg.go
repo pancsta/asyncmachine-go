@@ -48,7 +48,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		DbgLogger:     logger,
 		ImportData:    p.ImportData,
 		OutputClients: p.OutputClients,
-		Graph:         p.Graph,
+		Diagrams:      p.Graph,
 		Timelines:     p.Timelines,
 		// ...:           p.FilterLogLevel,
 		OutputDir:       p.OutputDir,

@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 State source of flight statuses - in the real world this data-oriented problem should be modelled using composition and
 handler delegation, but it's flat in this example for simplicity and research purposes.

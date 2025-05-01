@@ -3,9 +3,9 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
-**/pkg/pubsub** is a trustful decentralized synchronization network for asyncmachine-go. Each peer exposes several state
+**/pkg/pubsub** is a trustful and decentralized synchronization network for asyncmachine-go. Each peer exposes several state
 machines, then starts gossiping about them and other ones known to him. Remote state machines are then visible to other
 peers as `/pkg/rpc.LocalWorker`. PubSub can be used to match Clients with Workers from [/pkg/node](/pkg/node/README.md).
 
@@ -37,11 +37,11 @@ of this package.
 
 State schema from [/pkg/pubsub/states/](/pkg/pubsub/states/ss_topic.go).
 
-![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/pubsub.svg)
+![worker schema](https://pancsta.github.io/assets/asyncmachine-go/schemas/pubsub.svg)
 
 ## TODO
 
-- more rate limitting
+- more rate limiting
 - confirmed handler timeouts
 - faster discovery
 - load test

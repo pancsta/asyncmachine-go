@@ -1740,7 +1740,7 @@ func (d *Debugger) initGraphGen(shot *graph.Graph) []*amvis.Visualizer {
 	vis := amvis.New(d.Mach, shot)
 	amvis.PresetSingle(vis)
 	// TODO make opts threadsafe
-	switch d.Opts.Graph {
+	switch d.Opts.Diagrams {
 	default:
 		return vizs
 
@@ -1773,7 +1773,7 @@ func (d *Debugger) initGraphGen(shot *graph.Graph) []*amvis.Visualizer {
 		vis.RenderPipes = true
 	}
 
-	d.Mach.Log("rendering graphs lvl %d", d.Opts.Graph)
+	d.Mach.Log("rendering graphs lvl %d", d.Opts.Diagrams)
 
 	// vis
 	// mach-id.svg

@@ -3,14 +3,14 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor, state-machine).
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
-**/pkg/telemetry** provides several telemetry exporters and a [Grafana dashboard](#grafana-dashboard):
+**/pkg/telemetry** provides several telemetry exporters and is accompanied by [generated Grafana dashboards](/tools/cmd/am-gen/README.md#grafana-dashboard):
 
 - [dbg](#dbg)
-- [OpenTelemetry Traces](#open-telemetry-traces)
-- [OpenTelemetry Logger](#open-telemetry)
-- [Prometheus Metrics](#prometheus)
+- [OpenTelemetry Traces](#opentelemetry-traces)
+- [OpenTelemetry Logger](#opentelemetry-logger)
+- [Prometheus Metrics](#prometheus-metrics)
 - [Loki Logger](#loki-logger)
 
 ## dbg
@@ -21,9 +21,18 @@ It delivers `DbgMsg` and `DbgMsgStruct` via standard `net/rpc`. It can also be c
 ## OpenTelemetry Traces
 
 [Open Telemetry traces](https://opentelemetry.io/) integration exposes machine's states and transitions as Otel traces,
-compatible with [Jaeger](https://www.jaegertracing.io/). Tracers are inherited from parent machines and form a tree.
+compatible with [Jaeger](https://www.jaegertracing.io/). Tracers are inherited from parent machines and
+form a tree, with each machine getting a position index as a prefix, eg `0:mach:MyMachId`. The transitions are linked
+to the states with [logged arguments](/docs/manual.md#arguments-logging) are added as trace's tags. Machine tags are
+added as well.
 
-![Prometheus Grafana](https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.dark.png)
+<div align="center">
+    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/pkg/telemetry/README.md#open-telemetry-traces">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
+  <img alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
+</picture></a></div>
 
 ### Tree Structure
 
@@ -36,10 +45,7 @@ compatible with [Jaeger](https://www.jaegertracing.io/). Tracers are inherited f
       - ...
     - ...
   - transitions
-    - [add] Foo
-      - FooEnter (trace)
-      - FooState (trace)
-      - ...
+    - [add] Foo (trace)
     - ...
   - submachines
     - mach:ID2
@@ -47,10 +53,24 @@ compatible with [Jaeger](https://www.jaegertracing.io/). Tracers are inherited f
     - ...
 ```
 
-You can [import an existing asset](https://pancsta.github.io/assets/asyncmachine-go/bench-jaeger-3h-10m.traces.json)
-into your Jaeger instance for an interactive demo.
+### Otel Tracing Setup
 
-### Otel tracing Setup
+### Automatic Otel Tracing
+
+See [/docs/env-configs.md](/docs/env-configs.md) for the required environment variables.
+
+```go
+// root machines only
+if mach.ParentId() == "" {
+    // open telemetry traces
+    err = amtele.MachBindOtelEnv(mach)
+    if err != nil {
+    mach.AddErr(err, nil)
+    }
+}
+```
+
+### Manual Otel Tracing
 
 ```go
 import (
@@ -102,7 +122,19 @@ amtele.BindOtelLogger(mach, logProvider, "myserviceid")
 a defined interval, and exposes averaged metrics. Use it with the provided [Grafana dashboard](#grafana-dashboard).
 Tracers are inherited from parent machines.
 
-### Prometheus Setup
+### Automatic Prometheus Setup
+
+See [/docs/env-configs.md](/docs/env-configs.md) for the required environment variables.
+
+```go
+// root machines only
+if mach.ParentId() == "" {
+    // export metrics to prometheus
+    metrics := amprom.MachMetricsEnv(mach)
+}
+```
+
+### Manual Prometheus Setup
 
 ```go
 import (
@@ -129,6 +161,23 @@ amprom.BindToPusher(promPusher)
 
 Loki is the easiest way to persist distributed logs from asyncmachine. You'll need a [promtail client](https://github.com/ic2hrmk/promtail).
 
+### Automatic Loki Setup
+
+See [/docs/env-configs.md](/docs/env-configs.md) for the required environment variables.
+
+```go
+import (
+    amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+)
+
+// ...
+
+var mach *am.Machine
+amtele.BindLokiEnv(mach)
+```
+
+### Manual Loki Setup
+
 ```go
 import (
     "github.com/ic2hrmk/promtail"
@@ -153,54 +202,16 @@ defer promtailClient.Close()
 amtele.BindLokiLogger(mach, promtailClient)
 ```
 
-## Grafana Dashboard
-
-![grafana](https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png)
-
-Grafana dashboards need to be generated per "source" (e.g. process), by passing all monitored machine IDs and the source
-name (`service_name` for Loki, `job` for Prometheus). See [am-gen grafana](/tools/cmd/am-gen/README.md). It will
-optionally auto-sync the dashboard using [K-Phoen/grabana](https://github.com/K-Phoen/grabana) (requires
-`GRAFANA_TOKEN`).
-
-```bash
-am-gen grafana \
-  --name "My Dashboard" \
-  --ids MyMach1,MyMach2 \
-  --source service_name_or_job \
-  --grafana-url http://localhost:3000
-```
-
-Panels:
-
-- Number of transitions
-- Transition Mutations
-  - Queue size
-  - States added
-  - States removed
-  - States touched
-- Transition Details
-  - Transition ticks
-  - Number of steps
-  - Number of handlers
-- States & Relations
-  - Number of states
-  - Number of relations
-  - Referenced states
-  - Active states
-  - Inactive states
-- Average Transition Time
-- Errors
-- Log view
-
 ## Inheritance
 
 Most of the exporters are automatically inherited from parent machines, so the results come in automatically. To define
-a sub-parent relationship, use [`am.Opts.Parent`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Opts.Parent)
+a submachine-parent relationship, use [`am.Opts.Parent`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Opts.Parent)
 while initializing a machine. Alternatively, tracers can be copied using `OptsWithParentTracers`, or manually via
 `Machine.Tracers`.
 
 ## Documentation
 
+- [list of supported env vars](/docs/env-configs.md)
 - [godoc /pkg/telemetry](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/telemetry)
 
 ## Status
