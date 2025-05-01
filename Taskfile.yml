@@ -460,3 +460,7 @@ tasks:
   am-dbg-dashboard:
     desc: Start an example am-dbg dashboard
     cmd: zellij --layout ./config/dashboards/2x1x1.kdl
+
+  gen-jsonschema:
+    desc: Generate JSON schemas for pkg/integrations
+    cmd: go run ./scripts/gen_jsonschema

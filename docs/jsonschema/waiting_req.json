@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pancsta/asyncmachine-go/pkg/integrations/waiting-req",
+  "$ref": "#/$defs/WaitingReq",
+  "$defs": {
+    "Kind": {
+      "properties": {
+        "Value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Value"
+      ]
+    },
+    "S": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "Time": {
+      "items": {
+        "type": "integer"
+      },
+      "type": "array"
+    },
+    "WaitingReq": {
+      "oneOf": [
+        {
+          "required": [
+            "states"
+          ],
+          "title": "states"
+        },
+        {
+          "required": [
+            "states_not"
+          ],
+          "title": "statesNot"
+        }
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/Kind",
+          "description": "The kind of the request."
+        },
+        "states": {
+          "$ref": "#/$defs/S",
+          "description": "The states to wait for, the default is to all states being active simultaneously (if no time passed)."
+        },
+        "states_not": {
+          "$ref": "#/$defs/S",
+          "description": "The states names to wait for to be inactive. Ignores the Time field."
+        },
+        "time": {
+          "$ref": "#/$defs/Time",
+          "description": "The specific (minimal) time to wait for."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind"
+      ]
+    }
+  }
+}

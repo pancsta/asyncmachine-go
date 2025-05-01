@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pancsta/asyncmachine-go/pkg/integrations/getter-resp",
+  "$ref": "#/$defs/GetterResp",
+  "$defs": {
+    "Clock": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "type": "object"
+    },
+    "GetterResp": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/Kind",
+          "description": "The kind of the response."
+        },
+        "mach_id": {
+          "type": "string",
+          "description": "The ID of the state machine."
+        },
+        "time": {
+          "$ref": "#/$defs/Time",
+          "description": "The ticks of the passed states"
+        },
+        "time_sum": {
+          "type": "integer",
+          "description": "The sum of ticks of the passed states"
+        },
+        "clocks": {
+          "$ref": "#/$defs/Clock",
+          "description": "The named clocks of the passed states"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "The tags of the state machine"
+        },
+        "export": {
+          "$ref": "#/$defs/Serialized",
+          "description": "The importable version of the state machine"
+        },
+        "id": {
+          "type": "string",
+          "description": "The ID of the state machine"
+        },
+        "parent_id": {
+          "type": "string",
+          "description": "The ID of the parent state machine"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "description": "GetterResp is a response to GetterReq."
+    },
+    "Kind": {
+      "properties": {
+        "Value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Value"
+      ]
+    },
+    "S": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "Serialized": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "time": {
+          "$ref": "#/$defs/Time"
+        },
+        "state_names": {
+          "$ref": "#/$defs/S"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "time",
+        "state_names"
+      ]
+    },
+    "Time": {
+      "items": {
+        "type": "integer"
+      },
+      "type": "array"
+    }
+  }
+}
