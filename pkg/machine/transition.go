@@ -251,23 +251,9 @@ func (t *Transition) LogArgs() string {
 
 // String representation of the transition and the steps taken so far.
 func (t *Transition) String() string {
-	// TODO infer handler names
 	var lines []string
 	for _, step := range t.Steps {
-
-		var line string
-		if step.FromState != "" && step.ToState != "" {
-			line += step.FromState + " -> " + step.ToState
-		} else {
-			name := step.FromState
-			if name == "" {
-				name = step.ToState
-			}
-			line = name
-		}
-
-		line += " (" + step.Type.String() + ")"
-		lines = append(lines, line)
+		lines = append(lines, step.StringFromIdx(t.Machine.StateNames()))
 	}
 
 	return strings.Join(lines, "\n")

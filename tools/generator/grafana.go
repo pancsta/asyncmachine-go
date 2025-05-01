@@ -39,6 +39,17 @@ func GenDashboard(p cli.GrafanaParams) (*dashboard.Builder, error) {
 					prometheus.Legend("Number of transitions"),
 				),
 			),
+
+			row.WithHeatmap(
+				"Transition errors",
+				heatmap.Span(12),
+				heatmap.Height("150px"),
+				heatmap.DataSource("Prometheus"),
+				heatmap.WithPrometheusTarget(
+					`am_exceptions_`+pId+`{job="`+source+`"}`,
+					prometheus.Legend("Exception"),
+				),
+			),
 		), dashboard.Row(
 			"Details: "+id,
 			row.Collapse(),
@@ -123,17 +134,6 @@ func GenDashboard(p cli.GrafanaParams) (*dashboard.Builder, error) {
 				heatmap.WithPrometheusTarget(
 					`am_tx_time_`+pId+`{job="`+source+`"}`,
 					prometheus.Legend("Human time (μs)"),
-				),
-			),
-
-			row.WithHeatmap(
-				"Transition errors",
-				heatmap.Span(12),
-				heatmap.Height("150px"),
-				heatmap.DataSource("Prometheus"),
-				heatmap.WithPrometheusTarget(
-					`am_exceptions_`+pId+`{job="`+source+`"}`,
-					prometheus.Legend("Exception"),
 				),
 			),
 		), dashboard.Row(

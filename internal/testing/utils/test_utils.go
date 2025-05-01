@@ -39,7 +39,7 @@ func RandPort(min, max int) string {
 }
 
 // RandListener creates a new listener on an open port between 40000 and 50000.
-// It allows to avoid conflicts with other tests, using predefined addresses,
+// It allows avoiding conflicts with other tests, using predefined addresses,
 // unlike using port 0.
 func RandListener(host string) net.Listener {
 
@@ -74,13 +74,14 @@ func NewRels(t *testing.T, initialState am.S) *am.Machine {
 		t.Fatal(err)
 	}
 
+	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
+	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -93,7 +94,7 @@ func NewRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 
 	// TODO define these in /states using v2 as RelWorkerStruct and
 	//  RelWorkerStates, inheriting frm RelStructDef etc
-	ssStruct := am.StructMerge(ssrpc.WorkerStruct, ss.States)
+	ssStruct := am.SchemaMerge(ssrpc.WorkerStruct, ss.States)
 	ssNames := am.SAdd(ss.Names, ssrpc.WorkerStates.Names())
 
 	// machine init
@@ -104,8 +105,8 @@ func NewRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 		t.Fatal(err)
 	}
 
+	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
@@ -118,7 +119,7 @@ func NewRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 // inherit from RPC worker
 
 var (
-	RelsNodeWorkerStruct = am.StructMerge(ssnode.WorkerStruct, ss.States)
+	RelsNodeWorkerStruct = am.SchemaMerge(ssnode.WorkerStruct, ss.States)
 	RelsNodeWorkerStates = am.SAdd(ss.Names, ssnode.WorkerStates.Names())
 )
 
@@ -134,13 +135,14 @@ func NewRelsNodeWorker(t *testing.T, initialState am.S) *am.Machine {
 		t.Fatal(err)
 	}
 
+	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
+	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -159,13 +161,14 @@ func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
 		t.Fatal(err)
 	}
 
+	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
+	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -174,8 +177,7 @@ func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
 func NewNoRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 
 	// inherit from RPC worker
-
-	ssStruct := am.StructMerge(ssrpc.WorkerStruct, am.Struct{
+	ssStruct := am.SchemaMerge(ssrpc.WorkerStruct, am.Struct{
 		ss.A: {},
 		ss.B: {},
 		ss.C: {},
@@ -190,13 +192,14 @@ func NewNoRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 		t.Fatal(err)
 	}
 
+	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
+	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -210,10 +213,11 @@ func NewCustom(t *testing.T, states am.Struct) *am.Machine {
 		t.Fatal(err)
 	}
 
+	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
+	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -223,7 +227,7 @@ func NewCustomRpcWorker(t *testing.T, states am.Struct) *am.Machine {
 
 	// inherit from RPC worker
 
-	ssStruct := am.StructMerge(ssrpc.WorkerStruct, states)
+	ssStruct := am.SchemaMerge(ssrpc.WorkerStruct, states)
 	ssNames := am.SAdd(maps.Keys(states), ssrpc.WorkerStates.Names())
 
 	mach := am.New(context.Background(), ssStruct, &am.Opts{
@@ -233,10 +237,11 @@ func NewCustomRpcWorker(t *testing.T, states am.Struct) *am.Machine {
 		t.Fatal(err)
 	}
 
+	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
+	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }

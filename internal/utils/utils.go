@@ -119,6 +119,6 @@ func Sp(txt string, args ...any) string {
 	return fmt.Sprintf(dedent.Dedent(strings.Trim(txt, "\n")), args...)
 }
 
-func P(txt string, args ...any) (int, error) {
-	return fmt.Printf(dedent.Dedent(strings.Trim(txt, "\n")), args...)
+func P(txt string, args ...any) {
+	fmt.Printf(dedent.Dedent(strings.Trim(txt, "\n")), args...)
 }
