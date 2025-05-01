@@ -117,7 +117,7 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 		}
 
 		// open telemetry traces
-		err = amtele.MachBindOtelEnv(mach, false)
+		err = amtele.MachBindOtelEnv(mach)
 		if err != nil {
 			mach.AddErr(err, nil)
 		}

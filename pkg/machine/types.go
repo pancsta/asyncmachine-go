@@ -142,7 +142,7 @@ type Api interface {
 
 	// ///// LOCAL
 
-	// Checking (local)o
+	// Checking (local)
 
 	IsErr() bool
 	Is(states S) bool
@@ -338,6 +338,10 @@ func (m Mutation) StateWasCalled(state string) bool {
 	return slices.Contains(m.CalledStates, state)
 }
 
+func (m Mutation) String() string {
+	return "[" + m.Type.String() + "] " + j(m.CalledStates)
+}
+
 // StepType enum
 type StepType int8
 
@@ -402,6 +406,9 @@ type Step struct {
 // GetToState().
 func (s *Step) GetFromState(index S) string {
 	// TODO rename to FromState
+	if s.FromState != "" {
+		return s.FromState
+	}
 	if s.FromStateIdx == -1 {
 		return ""
 	}
@@ -416,6 +423,9 @@ func (s *Step) GetFromState(index S) string {
 // GetFromState().
 func (s *Step) GetToState(index S) string {
 	// TODO rename to ToState
+	if s.ToState != "" {
+		return s.ToState
+	}
 	if s.ToStateIdx == -1 {
 		return ""
 	}
@@ -424,6 +434,24 @@ func (s *Step) GetToState(index S) string {
 	}
 
 	return ""
+}
+
+func (s *Step) StringFromIdx(idx S) string {
+	var line string
+	from := s.GetFromState(idx)
+	to := s.GetToState(idx)
+
+	if from != "" && to != "" {
+		line += from + " -> " + to
+	} else {
+		line = from
+		if line == "" {
+			line = to
+		}
+	}
+
+	// TODO infer handler names
+	return line + " (" + s.Type.String() + ")"
 }
 
 func newStep(from string, to string, stepType StepType,

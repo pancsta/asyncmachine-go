@@ -163,7 +163,7 @@ func IndexesToStates(allStates am.S, indexes []int) am.S {
 }
 
 // MachDebug sets up a machine for debugging, based on the AM_DEBUG env var,
-// passed am-dbg address, log level and stdout flag.
+// passed am-dbg address, log level, and stdout flag.
 func MachDebug(
 	mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout bool,
 ) {

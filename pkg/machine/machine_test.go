@@ -936,7 +936,8 @@ func (h *TestHandlerStateInfoHandlers) DEnter(e *Event) {
 		"provide the target states of the transition")
 	assert.True(t, e.Mutation().StateWasCalled("D"),
 		"provide the called states of the transition")
-	txStrExp := "D (requested)\nD (set)\nA (remove)\nA (handler)"
+	txStrExp := "A -> D (requested)\nA -> D (set)\n" +
+		"A -> A (remove)\nA -> A (handler)"
 	txStr := e.Transition().String()
 	assert.Equal(t, txStrExp, txStr,
 		"provide a string version of the transition")

@@ -9,13 +9,10 @@ import (
 	"log"
 	"net/rpc"
 	"slices"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	// TODO loose lo
-	"github.com/samber/lo"
 )
 
 // ///// ///// /////
@@ -44,13 +41,15 @@ type DbgMsg interface {
 
 // DbgMsgStruct contains the state and relations data.
 type DbgMsgStruct struct {
+	// TODO refac: Schema
+
 	// Machine ID
 	ID string
 	// state names defining the indexes for diffs
 	StatesIndex am.S
 	// all the states with relations
 	// TODO refac: Schema
-	States am.Struct
+	States am.Schema
 	// parent machine ID
 	Parent string
 	// machine tags
@@ -103,7 +102,7 @@ type DbgMsgTx struct {
 }
 
 func (d *DbgMsgTx) Clock(statesIndex am.S, state string) uint64 {
-	idx := lo.IndexOf(statesIndex, state)
+	idx := slices.Index(statesIndex, state)
 	return d.Clocks[idx]
 }
 
@@ -125,7 +124,7 @@ func (d *DbgMsgTx) Is(statesIndex am.S, states am.S) bool {
 }
 
 func (d *DbgMsgTx) Index(statesIndex am.S, state string) int {
-	idx := lo.IndexOf(statesIndex, state) //nolint:typecheck
+	idx := slices.Index(statesIndex, state) //nolint:typecheck
 	return idx
 }
 
@@ -133,7 +132,7 @@ func (d *DbgMsgTx) ActiveStates(statesIndex am.S) am.S {
 	ret := am.S{}
 
 	for _, state := range statesIndex {
-		if am.IsActiveTick(d.Clocks[lo.IndexOf(statesIndex, state)]) {
+		if am.IsActiveTick(d.Clocks[slices.Index(statesIndex, state)]) {
 			ret = append(ret, state)
 		}
 	}
@@ -318,10 +317,7 @@ func (t *DbgTracer) TransitionEnd(tx *am.Transition) {
 		Accepted:     tx.Accepted,
 		Type:         tx.Mutation.Type,
 		CalledStates: tx.CalledStates(),
-		Steps: lo.Map(tx.Steps,
-			func(step *am.Step, _ int) *am.Step {
-				return step
-			}),
+		Steps:        tx.Steps,
 		// no locking necessary, as the tx is finalized (read-only)
 		LogEntries:    removeLogPrefix(mach, tx.LogEntries),
 		PreLogEntries: removeLogPrefix(mach, tx.PreLogEntries),
@@ -425,28 +421,4 @@ func removeLogPrefix(mach am.Api, entries []*am.LogEntry) []*am.LogEntry {
 	}
 
 	return ret
-}
-
-// ///// ///// /////
-
-// ///// UTILS TODO move to internal/utils
-
-// ///// ///// /////
-
-// j joins state names
-func j(states []string) string {
-	return strings.Join(states, " ")
-}
-
-// jw joins state names with `sep`.
-func jw(states []string, sep string) string {
-	return strings.Join(states, sep)
-}
-
-func timeSum(clocks am.Time) int64 {
-	sum := int64(0)
-	for _, clock := range clocks {
-		sum += int64(clock)
-	}
-	return sum
 }
