@@ -146,14 +146,16 @@ type Api interface {
 	IsErr() bool
 	Is(states S) bool
 	Is1(state string) bool
-	Not(states S) bool
-	Not1(state string) bool
 	Any(states ...S) bool
 	Any1(state ...string) bool
+	Not(states S) bool
+	Not1(state string) bool
+	IsTime(time Time, states S) bool
+	WasTime(time Time, states S) bool
+	IsClock(clock Clock) bool
+	WasClock(clock Clock) bool
 	Has(states S) bool
 	Has1(state string) bool
-	IsTime(time Time, states S) bool
-	IsClock(clock Clock) bool
 
 	// Waiting (local)
 

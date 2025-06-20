@@ -2697,6 +2697,24 @@ func (m *Machine) IsClock(clock Clock) bool {
 	return true
 }
 
+// WasClock checks if the passed time has happened (or happening right now).
+// Returns false if at least one state is too early.
+func (m *Machine) WasClock(clock Clock) bool {
+	if m.disposed.Load() {
+		return false
+	}
+	m.activeStatesLock.RLock()
+	defer m.activeStatesLock.RUnlock()
+
+	for state, tick := range clock {
+		if m.clock[state] < tick {
+			return false
+		}
+	}
+
+	return true
+}
+
 // IsTime checks if the machine has changed since the passed
 // time (list of ticks). Returns true if at least one state has changed. The
 // states param is optional and can be used to check only a subset of states.
@@ -2713,6 +2731,29 @@ func (m *Machine) IsTime(t Time, states S) bool {
 
 	for i, tick := range t {
 		if m.clock[states[i]] != tick {
+			return false
+		}
+	}
+
+	return true
+}
+
+// WasTime checks if the passed time has happened (or happening right now).
+// Returns false if at least one state is too early. The
+// states param is optional and can be used to check only a subset of states.
+func (m *Machine) WasTime(t Time, states S) bool {
+	if m.disposed.Load() {
+		return false
+	}
+	m.activeStatesLock.RLock()
+	defer m.activeStatesLock.RUnlock()
+
+	if states == nil {
+		states = m.stateNames
+	}
+
+	for i, tick := range t {
+		if m.clock[states[i]] < tick {
 			return false
 		}
 	}
