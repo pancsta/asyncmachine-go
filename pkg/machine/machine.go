@@ -898,9 +898,10 @@ func (m *Machine) AddErr(err error, args A) Result {
 // Like every mutation method, it will resolve relations and trigger handlers.
 // AddErrState produces a stack trace of the error, if LogStackTrace is enabled.
 func (m *Machine) AddErrState(state string, err error, args A) Result {
-	if m.disposed.Load() || m.disposing.Load() {
+	if m.disposed.Load() || m.disposing.Load() || err == nil {
 		return Canceled
 	}
+
 	// TODO test Err()
 	m.err.Store(&err)
 
