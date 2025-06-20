@@ -61,6 +61,7 @@ type Server struct {
 	AllowId string
 
 	rpcServer *rpc2.Server
+	// rpcClient is the internal rpc2 client.
 	rpcClient atomic.Pointer[rpc2.Client]
 	// lastClockHTime is the last (human) time a clock update was sent to the
 	// client.
@@ -102,9 +103,12 @@ func NewServer(
 	if !sourceMach.StatesVerified() {
 		return nil, fmt.Errorf("worker states not verified, call VerifyStates()")
 	}
-	if !sourceMach.Has(ssW.Names()) {
+	hasHandlers := sourceMach.HasHandlers()
+	if hasHandlers && !sourceMach.Has(ssW.Names()) {
+		// error only when some handlers bound, skip deterministic machines
 		err := fmt.Errorf(
-			"%w: RPC worker has to implement pkg/rpc/states/WorkerStatesDef",
+			"%w: RPC worker with handlers has to implement "+
+				"pkg/rpc/states/WorkerStatesDef",
 			am.ErrSchema)
 
 		return nil, err
@@ -134,7 +138,7 @@ func NewServer(
 			s.Listener.Store(nil)
 		}
 		s.rpcServer = nil
-		s.Source.DetachTracer(s.tracer)
+		_ = s.Source.DetachTracer(s.tracer)
 		_ = s.Source.DetachHandlers(s.deliveryHandlers)
 	})
 	s.Mach = mach
@@ -147,32 +151,34 @@ func NewServer(
 	s.tracer = &WorkerTracer{s: s}
 	_ = sourceMach.BindTracer(s.tracer)
 
-	// payload state
+	// handle payload
+	if hasHandlers {
 
-	payloadState := ssW.SendPayload
-	if opts.PayloadState != "" {
-		payloadState = opts.PayloadState
-	}
-
-	// payload handlers
-
-	var h any
-	if payloadState == ssW.SendPayload {
-		// default handlers
-		h = &SendPayloadHandlers{
-			SendPayloadState: getSendPayloadState(s, ssW.SendPayload),
+		// payload state
+		payloadState := ssW.SendPayload
+		if opts.PayloadState != "" {
+			payloadState = opts.PayloadState
 		}
-	} else {
-		// dynamic handlers
-		h = createSendPayloadHandlers(s, payloadState)
+
+		// payload handlers
+		var h any
+		if payloadState == ssW.SendPayload {
+			// default handlers
+			h = &SendPayloadHandlers{
+				SendPayloadState: getSendPayloadState(s, ssW.SendPayload),
+			}
+		} else {
+			// dynamic handlers
+			h = createSendPayloadHandlers(s, payloadState)
+		}
+		err = sourceMach.BindHandlers(h)
+		if err != nil {
+			return nil, err
+		}
+		mach.HandleDispose(func(id string, ctx context.Context) {
+			_ = sourceMach.DetachHandlers(h)
+		})
 	}
-	err = sourceMach.BindHandlers(h)
-	if err != nil {
-		return nil, err
-	}
-	mach.HandleDispose(func(id string, ctx context.Context) {
-		_ = sourceMach.DetachHandlers(h)
-	})
 
 	return s, nil
 }
@@ -289,7 +295,7 @@ func (s *Server) RpcReadyEnter(e *am.Event) bool {
 	return s.Mach.Is1(ssS.RpcStarting)
 }
 
-// RpcReadyState starts a ticker to compensate for clock push denounces.
+// RpcReadyState starts a ticker to compensate for clock push debounces.
 func (s *Server) RpcReadyState(e *am.Event) {
 	// no ticker for instant clocks
 	if s.PushInterval == 0 {
@@ -346,9 +352,13 @@ func (s *Server) Start() am.Result {
 
 // Stop stops the server, and optionally disposes resources.
 func (s *Server) Stop(dispose bool) am.Result {
+	if s.Mach == nil {
+		return am.Canceled
+	}
 	if dispose {
 		s.log("disposing")
 	}
+	// TODO use Disposing
 	res := s.Mach.Remove1(ssS.Start, Pass(&A{
 		Dispose: dispose,
 	}))
@@ -527,16 +537,17 @@ func (s *Server) RemoteHello(
 
 	mTime := s.Source.Time(nil)
 	*resp = RespHandshake{
-		Serialized: am.Serialized{
+		Serialized: &am.Serialized{
 			ID:         s.Source.Id(),
 			StateNames: s.Source.StateNames(),
 			Time:       mTime,
 		},
 	}
 
+	// return the schema if requested
 	if req.ReqSchema {
 		schema := s.Source.Schema()
-		(*resp).Schema = &schema
+		resp.Schema = schema
 	}
 
 	// TODO block
@@ -864,8 +875,10 @@ type SendPayloadHandlers struct {
 // anon handlers.
 func getSendPayloadState(s *Server, stateName string) am.HandlerFinal {
 	return func(e *am.Event) {
+		// self-remove
 		e.Machine().EvRemove1(e, stateName, nil)
-		ctx := s.Mach.NewStateCtx(ssW.Start)
+
+		ctx := s.Mach.NewStateCtx(ssS.Start)
 		args := ParseArgs(e.Args)
 		argsOut := &A{Name: args.Name}
 

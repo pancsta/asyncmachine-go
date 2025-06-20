@@ -12,7 +12,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 
-	sstest "github.com/pancsta/asyncmachine-go/internal/testing/states"
+	sst "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
@@ -43,7 +43,7 @@ func TestBasic(t *testing.T) {
 		"Bar": {Require: am.S{"Foo"}},
 	})
 	ssNames := am.SAdd(ssrpc.WorkerStates.Names(), am.S{"Foo", "Bar"})
-	worker := am.New(ctx, ssStruct, &am.Opts{ID: "w-" + t.Name()})
+	worker := am.New(ctx, ssStruct, &am.Opts{Id: "w-" + t.Name()})
 	err := worker.VerifyStates(ssNames)
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestTypeSafe(t *testing.T) {
 	_, _, s, c := NewTest(t, ctx, worker, nil, nil, nil, false)
 
 	// test
-	states := am.S{sstest.A, sstest.C}
+	states := am.S{sst.A, sst.C}
 	c.Worker.Add(states, nil)
 
 	// assert
@@ -126,10 +126,10 @@ func TestWaiting(t *testing.T) {
 	// test
 	whenA := make(chan struct{})
 	go func() {
-		<-c.Worker.When1(sstest.A, ctx)
+		<-c.Worker.When1(sst.A, ctx)
 		close(whenA)
 	}()
-	states := am.S{sstest.A, sstest.C}
+	states := am.S{sst.A, sst.C}
 	c.Worker.Add(states, nil)
 	<-whenA
 
@@ -164,14 +164,14 @@ func TestAddMany(t *testing.T) {
 	// test
 	whenD := make(chan struct{})
 	go func() {
-		<-c.Worker.When1(sstest.D, ctx)
+		<-c.Worker.When1(sst.D, ctx)
 		close(whenD)
 	}()
-	states := am.S{sstest.A, sstest.C}
+	states := am.S{sst.A, sst.C}
 	for i := 0; i < 500; i++ {
 		c.Worker.Add(states, nil)
 	}
-	c.Worker.Add1(sstest.D, nil)
+	c.Worker.Add1(sst.D, nil)
 	<-whenD
 
 	// mark log and counter
@@ -205,14 +205,14 @@ func TestAddManyNoSync(t *testing.T) {
 	// test
 	whenD := make(chan struct{})
 	go func() {
-		<-c.Worker.When1(sstest.D, ctx)
+		<-c.Worker.When1(sst.D, ctx)
 		close(whenD)
 	}()
-	states := am.S{sstest.A, sstest.C}
+	states := am.S{sst.A, sst.C}
 	for i := 0; i < 500; i++ {
 		c.Worker.AddNS(states, nil)
 	}
-	c.Worker.Add1NS(sstest.D, nil)
+	c.Worker.Add1NS(sst.D, nil)
 
 	// wait for the network to settle, as Sync arrives before +D, this can be
 	// flaky, and it's better to Add1(sstest.D, nil), but Sync() is being tested
@@ -252,14 +252,14 @@ func TestAddManyInstantClock(t *testing.T) {
 	// test
 	whenD := make(chan struct{})
 	go func() {
-		<-c.Worker.When1(sstest.D, ctx)
+		<-c.Worker.When1(sst.D, ctx)
 		close(whenD)
 	}()
-	states := am.S{sstest.A, sstest.C}
+	states := am.S{sst.A, sst.C}
 	for i := 0; i < 500; i++ {
 		c.Worker.Add(states, nil)
 	}
-	c.Worker.Add1(sstest.D, nil)
+	c.Worker.Add1(sst.D, nil)
 	<-whenD
 
 	// mark log and counter
@@ -286,8 +286,8 @@ func TestManyStates(t *testing.T) {
 	end := make(chan struct{})
 
 	// reuse the worker and add many rand states
-	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, sstest.States)
-	ssNames := am.SAdd(ssrpc.WorkerStates.Names(), sstest.Names)
+	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, sst.States)
+	ssNames := am.SAdd(ssrpc.WorkerStates.Names(), sst.Names)
 	randAmount := 100
 	for i := 0; i < randAmount; i++ {
 		n := fmt.Sprintf("State%d", i)
@@ -304,14 +304,14 @@ func TestManyStates(t *testing.T) {
 	// test
 	whenD := make(chan struct{})
 	go func() {
-		<-c.Worker.When1(sstest.D, ctx)
+		<-c.Worker.When1(sst.D, ctx)
 		close(whenD)
 	}()
 	for i := 5; i < randAmount-5; i++ {
 		c.Worker.Remove1(ssNames[i-3], nil)
 		c.Worker.Add1(ssNames[i], nil)
 	}
-	c.Worker.Add1(sstest.D, nil)
+	c.Worker.Add1(sst.D, nil)
 	<-whenD
 
 	// mark log and counter
@@ -342,27 +342,27 @@ func TestHighInstantClocks(t *testing.T) {
 	// reuse the worker and bump the clocks high
 	worker := utils.NewRelsRpcWorker(t, nil)
 	clock := worker.Clock(nil)
-	clock[sstest.A] = 1_000_000
-	clock[sstest.C] = 1_000_000
+	clock[sst.A] = 1_000_000
+	clock[sst.C] = 1_000_000
 	am.MockClock(worker, clock)
 	// disable clock optimization
 	interval := 0 * time.Second
 	counter, _, s, c := NewTest(t, ctx, worker, end, &interval, nil, false)
 
 	// test
-	assert.GreaterOrEqual(t, 1_000_000, int(worker.Tick(sstest.A)),
+	assert.GreaterOrEqual(t, 1_000_000, int(worker.Tick(sst.A)),
 		"Bytes transferred (both ways)")
 	whenD := make(chan struct{})
 	go func() {
-		<-c.Worker.When1(sstest.D, ctx)
+		<-c.Worker.When1(sst.D, ctx)
 		close(whenD)
 	}()
-	states := am.S{sstest.A, sstest.C}
+	states := am.S{sst.A, sst.C}
 	for i := 0; i < 500; i++ {
 		c.Worker.Add(states, nil)
 		c.Worker.Remove(states, nil)
 	}
-	c.Worker.Add1(sstest.D, nil)
+	c.Worker.Add1(sst.D, nil)
 	<-whenD
 
 	// mark log and counter
@@ -416,7 +416,7 @@ func TestRetryCall(t *testing.T) {
 	// inject a fake error
 	c.tmpTestErr = fmt.Errorf("IGNORE MOCK ERR")
 	whenRetrying := c.Mach.When1(ssrpc.ClientStates.RetryingCall, nil)
-	c.Worker.Add1(sstest.A, nil)
+	c.Worker.Add1(sst.A, nil)
 	amhelpt.WaitForAll(t, "RetryingCall", ctx, 2*time.Second, whenRetrying)
 
 	// .TODO amtest
@@ -433,7 +433,7 @@ func TestRetryCall(t *testing.T) {
 
 	go func() {
 		// this will block and retry
-		c.Worker.Add1(sstest.D, nil)
+		c.Worker.Add1(sst.D, nil)
 		wg.Done()
 	}()
 	go func() {
@@ -445,7 +445,7 @@ func TestRetryCall(t *testing.T) {
 	wg.Wait()
 
 	// TODO amtest asserts
-	assert.True(t, w.Is1(sstest.D), "Worker state set")
+	assert.True(t, w.Is1(sst.D), "Worker state set")
 	assert.True(t, s.Mach.Is1(ssrpc.ServerStates.Ready), "Server ready")
 	assert.True(t, s.Mach.Is1(ssrpc.ClientStates.Ready), "Client ready")
 	assert.True(t, handlers.blocked, "Handlers should block")
@@ -480,7 +480,7 @@ func TestRetryConn(t *testing.T) {
 		c.Mach.When1(ssC.Ready, ctx),
 		s.Mach.When1(ssS.Ready, ctx))
 
-	c.Worker.Add1(sstest.A, nil)
+	c.Worker.Add1(sst.A, nil)
 
 	// assert
 	amhelpt.AssertIs1(t, c.Mach, ssrpc.ClientStates.Ready)
@@ -537,14 +537,14 @@ func TestRetryErrNetworkTimeout(t *testing.T) {
 	}()
 	go func() {
 		// this will block until connections restarts
-		c.Worker.Add1(sstest.D, nil)
+		c.Worker.Add1(sst.D, nil)
 		wg.Done()
 	}()
 
 	wg.Wait()
 
 	// assert
-	amhelpt.AssertIs1(t, w, sstest.D)
+	amhelpt.AssertIs1(t, w, sst.D)
 
 	amhelpt.AssertIs1(t, c.Mach, ssrpc.ClientStates.Ready)
 	amhelpt.AssertIs1(t, s.Mach, ssrpc.ServerStates.Ready)
@@ -570,10 +570,10 @@ func TestRetryClosedListener(t *testing.T) {
 	lis := *s.Listener.Load()
 	_ = lis.Close()
 	time.Sleep(100 * time.Millisecond)
-	c.Worker.Add1(sstest.D, nil)
+	c.Worker.Add1(sst.D, nil)
 
 	// wait for D
-	_ = amhelp.WaitForAll(ctx, 2*time.Second, c.Worker.When1(sstest.D, ctx))
+	_ = amhelp.WaitForAll(ctx, 2*time.Second, c.Worker.When1(sst.D, ctx))
 
 	// assert
 	amhelpt.AssertIs1(t, c.Mach, ssrpc.ClientStates.Ready)
@@ -592,7 +592,7 @@ type TestPayloadWorker struct{}
 // CState will trigger SendPayload
 func (w *TestPayloadWorker) CState(e *am.Event) {
 	// TODO use v2 state def
-	e.Machine().Remove1(sstest.C, nil)
+	e.Machine().Remove1(sst.C, nil)
 	args := ParseArgs(e.Args)
 	argsOut := &A{
 		Name:    args.Name,
@@ -646,7 +646,7 @@ func TestPayload(t *testing.T) {
 
 	whenDelivered := consMach.When1(ssCo.WorkerPayload, nil)
 	// Consumer requests a payload from the remote worker
-	c.Worker.Add1(sstest.C, PassRpc(&A{Name: "TestPayload"}))
+	c.Worker.Add1(sst.C, PassRpc(&A{Name: "TestPayload"}))
 	// Consumer waits for WorkerDelivered
 	err = amhelp.WaitForAll(ctx, 2*time.Second, whenDelivered)
 
@@ -749,12 +749,12 @@ func TestMux(t *testing.T) {
 
 	// start mutating (C adds auto A)
 	// TODO use v2 state def
-	clients[0].Worker.Add1(sstest.C, nil)
+	clients[0].Worker.Add1(sst.C, nil)
 
 	// wait for all clients to get the new state
 	amhelpt.WaitForAll(t, "cWorkers A", ctx, 2*time.Second,
 		// TODO use v2 state def
-		amhelpt.GroupWhen1(t, cWorkers, sstest.A, nil)...)
+		amhelpt.GroupWhen1(t, cWorkers, sst.A, nil)...)
 
 	if amhelp.IsTelemetry() {
 		time.Sleep(1 * time.Second)

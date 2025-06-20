@@ -10,7 +10,7 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
-// TOOD use /internal
+// TODO use /internal
 
 func assertStates(t *testing.T, m am.Api, expected am.S,
 	msgAndArgs ...interface{},

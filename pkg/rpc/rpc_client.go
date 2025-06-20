@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -182,7 +183,7 @@ func NewClient(
 	}
 
 	// TODO debug
-	mach.AddBreakpoint(nil, am.S{ssC.Disconnected})
+	// mach.AddBreakpoint(nil, am.S{ssC.Disconnected})
 
 	if opts.Consumer != nil {
 
@@ -222,7 +223,7 @@ func (c *Client) StartState(e *am.Event) {
 func (c *Client) StartEnd(e *am.Event) {
 	// gather state from before the transition
 	before := e.Transition().TimeBefore
-	idx := e.Machine().Index
+	idx := e.Machine().Index1
 
 	// if never connected, stop here
 	if before.Is([]int{idx(ssC.Connecting), idx(ssC.Exception)}) {
@@ -344,7 +345,7 @@ func (c *Client) DisconnectedEnter(e *am.Event) bool {
 func (c *Client) DisconnectedState(e *am.Event) {
 	// try to reconnect
 	wasAny := e.Transition().TimeBefore.Any1
-	if wasAny(c.Mach.Index(ssC.Connected), c.Mach.Index(ssC.Connecting)) &&
+	if wasAny(c.Mach.Index1(ssC.Connected), c.Mach.Index1(ssC.Connecting)) &&
 		c.ReconnectOn {
 
 		c.Mach.EvAdd1(e, ssC.RetryingConn, nil)
@@ -423,12 +424,7 @@ func (c *Client) HandshakingState(e *am.Event) {
 		// schema
 		c.RequestSchema = false
 		if resp.Schema != nil {
-			// TODO SetSchema
-			c.workerSchema = *resp.Schema
-			c.Worker.schema = *resp.Schema
-			c.workerStates = stateNames
-			c.Worker.stateNames = stateNames
-			c.Worker.machTime = make(am.Time, len(stateNames))
+			c.updateSchema(resp)
 		}
 
 		// ID as tag TODO find-n-replace, not via index
@@ -456,6 +452,32 @@ func (c *Client) HandshakingState(e *am.Event) {
 			MachTime: resp.Serialized.Time,
 		}))
 	}()
+}
+
+func (c *Client) updateSchema(resp *RespHandshake) {
+	index := resp.Serialized.StateNames
+
+	// TODO move to Worker.SetSchema
+	w := c.Worker
+	w.schemaMx.Lock()
+	defer w.schemaMx.Unlock()
+	w.clockMx.Lock()
+	defer w.clockMx.Unlock()
+	c.workerSchema = resp.Schema
+	c.workerStates = index
+
+	// save in the client
+	w.schema = resp.Schema
+	w.stateNames = index
+
+	// merge
+	mtime := w.machTime
+	if len(mtime) > 0 {
+		w.machTime = slices.Concat(mtime, make(am.Time, len(index)-len(mtime)))
+	} else {
+		// create
+		w.machTime = make(am.Time, len(index))
+	}
 }
 
 func (c *Client) HandshakeDoneEnter(e *am.Event) bool {
@@ -493,6 +515,7 @@ func (c *Client) ExceptionState(e *am.Event) {
 	c.Mach.EvRemove1(e, am.Exception, nil)
 	// TODO handle am.ErrSchema:
 	//  "worker has to implement pkg/rpc/states/WorkerStatesDef"
+	//  only for nondeterministic machs
 }
 
 // RetryingConnState should be set without Connecting in the same tx
@@ -614,7 +637,7 @@ func (c *Client) Stop(waitTillExit context.Context, dispose bool) am.Result {
 	return res
 }
 
-// GetKind returns a kind of RPC component (server / client).
+// GetKind returns a kind of the RPC component (server / client).
 func (c *Client) GetKind() Kind {
 	return KindClient
 }
@@ -649,6 +672,7 @@ func (c *Client) bindRpcHandlers(conn net.Conn) {
 	c.rpc.Handle(rpcnames.ClientPushAllTicks.Encode(), c.RemotePushAllTicks)
 	c.rpc.Handle(rpcnames.ClientSendPayload.Encode(), c.RemoteSendPayload)
 	c.rpc.Handle(rpcnames.ClientBye.Encode(), c.RemoteBye)
+	c.rpc.Handle(rpcnames.ClientSchemaChange.Encode(), c.RemoteSchemaChange)
 
 	// wait for reply on each req
 	c.rpc.SetBlocking(true)
@@ -802,6 +826,7 @@ func (c *Client) call(
 	}
 	// err
 	if err != nil {
+		// TODO specific err?
 		AddErr(nil, c.Mach, mName, err)
 		return false
 	}
@@ -985,10 +1010,21 @@ func (c *Client) RemoteSendPayload(
 }
 
 // RemoteBye is called by the server on a planned disconnect.
-// TODO take a reason / source state.
+// TODO take a reason / source event?
 func (c *Client) RemoteBye(
 	_ *rpc2.Client, _ *Empty, _ *Empty,
 ) error {
+	// TODO check if this expected / covers all scenarios
+	c.Mach.Remove1(ssC.Start, nil)
+	return nil
+}
+
+// RemoteSchemaChange is called by the server on a source machine schema change.
+func (c *Client) RemoteSchemaChange(
+	_ *rpc2.Client, msg *RespHandshake, _ *Empty,
+) error {
+	c.log("new schema v" + strconv.Itoa(len(msg.Serialized.StateNames)))
+	c.updateSchema(msg)
 	return nil
 }
 
