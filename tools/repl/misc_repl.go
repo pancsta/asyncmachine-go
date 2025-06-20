@@ -148,7 +148,7 @@ func LogArgs(args am.A) map[string]string {
 		return nil
 	}
 
-	return am.AMerge(amhelp.ArgsToLogMap(a1), amhelp.ArgsToLogMap(a2))
+	return am.AMerge(amhelp.ArgsToLogMap(a1, 0), amhelp.ArgsToLogMap(a2, 0))
 }
 
 func completionsNarrowDown(
