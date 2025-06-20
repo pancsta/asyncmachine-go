@@ -4,6 +4,7 @@ package prometheus
 
 // TODO measure auto added states
 // TODO collect also total numbers?
+// TODO race in NewSUbmachine BindToPusher
 
 import (
 	"os"
@@ -81,7 +82,7 @@ func (t *PromTracer) TransitionInit(tx *am.Transition) {
 }
 
 func (t *PromTracer) TransitionEnd(tx *am.Transition) {
-	if t.m.closed || !tx.Accepted {
+	if t.m.closed || !tx.IsAccepted.Load() {
 		return
 	}
 
@@ -529,8 +530,14 @@ func average(sum uint64, sampleLen uint) float64 {
 // variables:
 // - AM_SERVICE (required)
 // - AM_PROM_PUSH_URL (required)
-// This tracer is inherited by submachines.
+//
+// This tracer is inherited by submachines, and this function applies only to
+// top-level machines.
 func MachMetricsEnv(mach am.Api) *Metrics {
+
+	if mach.ParentId() != "" {
+		return nil
+	}
 
 	promPushUrl := os.Getenv(EnvPromPushUrl)
 	promService := os.Getenv(telemetry.EnvService)
