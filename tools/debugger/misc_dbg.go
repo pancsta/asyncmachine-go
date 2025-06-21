@@ -90,6 +90,7 @@ type MsgTxParsed struct {
 }
 
 type Opts struct {
+	MachUrl         string
 	SelectConnected bool
 	CleanOnConnect  bool
 	EnableMouse     bool
@@ -161,7 +162,15 @@ func (ma *MachAddress) Clone() *MachAddress {
 
 func (a *MachAddress) String() string {
 	if a.TxId != "" {
-		return fmt.Sprintf("mach://%s/%s", a.MachId, a.TxId)
+		u := fmt.Sprintf("mach://%s/%s", a.MachId, a.TxId)
+		if a.Step != 0 {
+			u += fmt.Sprintf("/%d", a.Step)
+		}
+		if a.MachTime != 0 {
+			u += fmt.Sprintf("/t%d", a.MachTime)
+		}
+
+		return u
 	}
 	if a.MachTime != 0 {
 		return fmt.Sprintf("mach://%s/t%d", a.MachId, a.MachTime)

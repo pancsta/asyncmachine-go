@@ -214,21 +214,26 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 
 // GetMachAddress returns the address of the currently visible view (mach, tx).
 func (d *Debugger) GetMachAddress() *MachAddress {
-	if d.C == nil {
+	c := d.C
+	if c == nil {
 		return nil
 	}
 	a := &MachAddress{
-		MachId: d.C.id,
+		MachId:   c.id,
+		MachTime: c.mTimeSum,
 	}
-	if d.C.CursorTx1 > 0 {
-		a.TxId = d.C.MsgTxs[d.C.CursorTx1-1].ID
+	if c.CursorTx1 > 0 {
+		a.TxId = c.MsgTxs[c.CursorTx1-1].ID
 	}
-	// TODO mach time
+	if c.CursorStep1 > 0 {
+		a.Step = c.CursorStep1
+	}
 
 	return a
 }
 
 // GoToMachAddress tries to render a view of the provided address (mach, tx).
+// Blocks.
 func (d *Debugger) GoToMachAddress(addr *MachAddress, skipHistory bool) bool {
 	// TODO should be ana async state, always change the view via this state
 
@@ -236,24 +241,42 @@ func (d *Debugger) GoToMachAddress(addr *MachAddress, skipHistory bool) bool {
 		return false
 	}
 
-	// select mach, if not selected
+	var wait <-chan struct{}
+	mach := d.Mach
+
+	// select the target mach, if not selected
 	if d.C == nil || d.C.id != addr.MachId {
-		res := d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": addr.MachId})
+		// TODO ctx
+		// TODO extract as amhelp.WhenNextActive
+		if mach.Is1(ss.ClientSelected) {
+			wait = mach.WhenTicks(ss.ClientSelected, 2, nil)
+		} else {
+			wait = mach.When1(ss.ClientSelected, nil)
+		}
+		res := mach.Add1(ss.SelectingClient, am.A{"Client.id": addr.MachId})
 		if res == am.Canceled {
 			return false
 		}
+	} else {
+		// TODO ctx
+		wait = mach.When1(ss.ClientSelected, nil)
 	}
 
-	// TODO ctx
-	<-d.Mach.When1(ss.ClientSelected, nil)
+	<-wait
 	if addr.TxId != "" {
-		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": addr.TxId})
+		// TODO typed args
+		args := am.A{"Client.txId": addr.TxId}
+		if addr.Step != 0 {
+			args["Client.cursorStep"] = addr.Step
+			mach.Add1(ss.ScrollToStep, args)
+		}
+		mach.Add1(ss.ScrollToTx, args)
 	} else if addr.MachTime != 0 {
 		tx := d.C.tx(d.C.txByMachTime(addr.MachTime))
-		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
+		mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
 	} else if !addr.HumanTime.IsZero() {
 		tx := d.C.tx(d.C.lastTxTill(addr.HumanTime))
-		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
+		mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
 	}
 	if !skipHistory {
 		d.prependHistory(addr)
@@ -264,7 +287,7 @@ func (d *Debugger) GoToMachAddress(addr *MachAddress, skipHistory bool) bool {
 	return true
 }
 
-func (d *Debugger) SetCursor1(cursor int, skipHistory bool) {
+func (d *Debugger) SetCursor1(cursor int, cursorStep int, skipHistory bool) {
 	if d.C.CursorTx1 == cursor {
 		return
 	}
@@ -298,11 +321,19 @@ func (d *Debugger) SetCursor1(cursor int, skipHistory bool) {
 	if cursor == 0 {
 		d.lastScrolledTxTime = time.Time{}
 	} else {
-		d.lastScrolledTxTime = *d.currentTx().Time
+		tx := d.currentTx()
+		d.lastScrolledTxTime = *tx.Time
+
+		// tx file
+		if d.Opts.OutputTx {
+			index := d.C.MsgStruct.StatesIndex
+			_, _ = d.txListFile.WriteAt([]byte(tx.StdString(index)), 0)
+		}
 	}
 
 	// reset the step timeline
-	d.C.CursorStep1 = 0
+	// TODO validate
+	d.C.CursorStep1 = cursorStep
 	d.Mach.Remove1(ss.TimelineStepsScrolled, nil)
 
 	// re-gen graphs
@@ -680,11 +711,16 @@ func (d *Debugger) updateAddressBar() {
 	machId := ""
 	machConn := false
 	txId := ""
+	stepId := ""
 	if d.C != nil {
 		machId = d.C.id
 		if d.C.CursorTx1 > 0 {
 			// TODO conflict with GC?
 			txId = d.C.MsgTxs[d.C.CursorTx1-1].ID
+		}
+		if d.C.CursorStep1 > 0 {
+			// TODO conflict with GC?
+			stepId = strconv.Itoa(d.C.CursorStep1)
 		}
 		machConn = d.C.connected.Load()
 	}
@@ -742,8 +778,12 @@ func (d *Debugger) updateAddressBar() {
 	}
 	addrCell := d.addressBar.GetCell(0, 4)
 	if machId != "" && txId != "" {
+		s := ""
+		if stepId != "" {
+			s = "/" + stepId
+		}
 		addrCell.SetText(machColor + "mach://[-][::u]" + machId +
-			"[::-][grey]/" + txId)
+			"[::-][grey]/" + txId + s)
 	} else if machId != "" {
 		addrCell.SetText(machColor + "mach://[-][::u]" + machId)
 	} else {
