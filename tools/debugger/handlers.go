@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -27,6 +28,8 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
+
+// TODO Enter
 
 func (d *Debugger) StartState(e *am.Event) {
 	clientId, _ := e.Args["Client.id"].(string)
@@ -195,7 +198,7 @@ func (d *Debugger) AnyState(e *am.Event) {
 
 	// redraw on auto states
 	// TODO this should be done better
-	if tx.IsAuto() && tx.IsAccepted() {
+	if tx.IsAuto() && tx.IsAccepted.Load() {
 		d.updateTxBars()
 		d.draw()
 	}
@@ -495,6 +498,7 @@ func (d *Debugger) ConnectEventEnter(e *am.Event) bool {
 		d.Mach.Log("Error: msg_struct malformed\n")
 		return false
 	}
+
 	return true
 }
 
@@ -503,32 +507,43 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 	// initial structure data
 	msg := e.Args["msg_struct"].(*telemetry.DbgMsgStruct)
-	connID := e.Args["conn_id"].(string)
+	connId := e.Args["conn_id"].(string)
 	var c *Client
 
-	// cleanup removes all previous clients, if all are disconnected
+	// cleanup removes all previous clients if all are disconnected
 	cleanup := false
 	if d.Opts.CleanOnConnect {
 		// remove old clients
 		cleanup = d.doCleanOnConnect()
 	}
 
-	if _, exists := d.Clients[msg.ID]; exists {
-		d.Mach.Log("client %s already exists", msg.ID)
+	if existing, ok := d.Clients[msg.ID]; ok {
+		if existing.connId != "" && existing.connId == connId {
+			d.Mach.Log("schema changed for %s", msg.ID)
+			// TODO use MsgStructPatch
+			existing.Exportable.MsgStruct = msg
+			c = existing
+
+		} else {
+			// TODO rename and keep the old client when connId differs
+			d.Mach.Log("client %s already exists", msg.ID)
+		}
 	}
 
-	// always create a new client on struct msgs
-	// TODO rename and keep the old client
-	c = &Client{
-		id:     msg.ID,
-		connID: connID,
-		Exportable: Exportable{
-			MsgStruct: msg,
-		},
+	// create a new client
+	if c == nil {
+		c = &Client{
+			id:     msg.ID,
+			connId: connId,
+			Exportable: Exportable{
+				MsgStruct: msg,
+			},
+			logReader: make(map[string][]*logReaderEntry),
+		}
+		c.connected.Store(true)
+		d.Clients[msg.ID] = c
 	}
-	c.connected.Store(true)
 
-	d.Clients[msg.ID] = c
 	if !cleanup {
 		d.buildClientList(-1)
 	}
@@ -618,7 +633,7 @@ func (d *Debugger) DisconnectEventState(e *am.Event) {
 
 	connID := e.Args["conn_id"].(string)
 	for _, c := range d.Clients {
-		if c.connID != "" && c.connID == connID {
+		if c.connId != "" && c.connId == connID {
 			// mark as disconnected
 			c.connected.Store(false)
 			break
@@ -685,7 +700,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 		}
 
 		// verify it's from the same client
-		if c.connID != connIds[i] {
+		if c.connId != connIds[i] {
 			d.Mach.Log("Error: conn_id mismatch for %s, ignoring tx\n", machId)
 			continue
 		}
@@ -695,15 +710,12 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 		c.MsgTxs = append(c.MsgTxs, msg)
 		// parse the msg
 		d.parseMsg(c, idx)
-		filterOK := d.filterTx(c, idx, mach.Is1(ss.FilterCanceledTx),
-			mach.Is1(ss.FilterAutoTx), mach.Is1(ss.FilterEmptyTx),
+		filterOK := d.filterTx(c, idx, mach.Is1(ss.FilterAutoTx),
+			mach.Is1(ss.FilterEmptyTx), mach.Is1(ss.FilterCanceledTx),
 			mach.Is1(ss.FilterHealthcheck))
 		if filterOK {
-			c.msgTxsFiltered = append(c.msgTxsFiltered, idx)
+			c.MsgTxsFiltered = append(c.MsgTxsFiltered, idx)
 		}
-
-		// update the UI
-		// TODO debounce UI updates
 
 		if c == d.C {
 			selectedUpdated = true
@@ -929,8 +941,9 @@ func (d *Debugger) ClientSelectedState(e *am.Event) {
 }
 
 func (d *Debugger) ClientSelectedEnd(e *am.Event) {
+	idx := d.Mach.Index1(ss.SelectingClient)
 	// clean up, except when switching to SelectingClient
-	if !e.Mutation().StateWasCalled(ss.SelectingClient) {
+	if !e.Mutation().IsCalled(idx) {
 		d.C = nil
 	}
 
@@ -949,12 +962,16 @@ func (d *Debugger) HelpDialogState(_ *am.Event) {
 }
 
 func (d *Debugger) HelpDialogEnd(e *am.Event) {
-	diff := am.DiffStates(ss.GroupDialog, e.Transition().TargetStates())
+	tx := e.Transition()
+	diff := am.DiffStates(ss.GroupDialog, tx.TargetStates())
 	if len(diff) == len(ss.GroupDialog) {
 		// all dialogs closed, show main
 		d.LayoutRoot.SendToFront("main")
 		d.Mach.Add1(ss.UpdateFocus, nil)
 		d.updateToolbar()
+
+		d.focusManager.Focus(d.clientList)
+		d.draw()
 	}
 }
 
@@ -972,6 +989,9 @@ func (d *Debugger) ExportDialogEnd(e *am.Event) {
 		d.LayoutRoot.SendToFront("main")
 		d.Mach.Add1(ss.UpdateFocus, nil)
 		d.updateToolbar()
+
+		d.focusManager.Focus(d.clientList)
+		d.draw()
 	}
 }
 
@@ -1014,13 +1034,14 @@ func (d *Debugger) ScrollToTxState(e *am.Event) {
 	d.Mach.Remove1(ss.ScrollToTx, nil)
 
 	cursor, _ := e.Args["Client.cursorTx"].(int)
+	cursorStep, _ := e.Args["Client.cursorStep"].(int)
 	trim, _ := e.Args["trimHistory"].(bool)
 	id, ok2 := e.Args["Client.txId"].(string)
 	if ok2 {
 		// TODO lowers the index each time
 		cursor = d.C.txIndex(id) + 1
 	}
-	d.SetCursor1(d.filterTxCursor(d.C, cursor, true), false)
+	d.SetCursor1(d.filterTxCursor(d.C, cursor, true), cursorStep, false)
 	if trim {
 		d.trimHistory()
 	}
@@ -1040,7 +1061,6 @@ func (d *Debugger) NarrowLayoutState(e *am.Event) {
 
 func (d *Debugger) NarrowLayoutEnd(e *am.Event) {
 	d.updateLayout()
-	d.buildClientList(-1)
 	d.RedrawFull(false)
 }
 
@@ -1101,6 +1121,9 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 	case ToolFilterSummaries:
 		d.Mach.Toggle1(ss.FilterSummaries, nil)
 
+	case ToolFilterTraces:
+		d.Mach.Toggle1(ss.FilterTraces, nil)
+
 	case toolLog:
 		d.Opts.Filters.LogLevel = (d.Opts.Filters.LogLevel + 1) % 5
 
@@ -1145,11 +1168,11 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 
 	case toolJumpPrev:
 		// TODO state
-		go d.jumpBack(nil)
+		go d.jumpBackKey(nil)
 
 	case toolJumpNext:
 		// TODO state
-		go d.jumpFwd(nil)
+		go d.jumpFwdKey(nil)
 
 	case toolFirst:
 		d.toolFirstTx()
@@ -1215,7 +1238,7 @@ func (d *Debugger) SwitchedClientTxState(_ *am.Event) {
 func (d *Debugger) ScrollToMutTxState(e *am.Event) {
 	d.Mach.Remove1(ss.ScrollToMutTx, nil)
 
-	// TODO validate in Enter and add a sentinel error ErrInvalidArgs
+	// TODO validate in Enter
 	state, _ := e.Args["state"].(string)
 	fwd, _ := e.Args["fwd"].(bool)
 
@@ -1243,7 +1266,7 @@ func (d *Debugger) ScrollToMutTxState(e *am.Event) {
 		}
 
 		// skip filtered out
-		if d.isFiltered() && !slices.Contains(c.msgTxsFiltered, msgIdx) {
+		if d.isFiltered() && !slices.Contains(c.MsgTxsFiltered, msgIdx) {
 			continue
 		}
 
@@ -1286,7 +1309,6 @@ func (d *Debugger) ExceptionState(e *am.Event) {
 }
 
 func (d *Debugger) GcMsgsEnter(e *am.Event) bool {
-	runtime.GC()
 	return AllocMem() > uint64(d.Opts.MaxMemMb)*1024*1024
 }
 
@@ -1718,8 +1740,18 @@ func (d *Debugger) UpdateStatusBarState(e *am.Event) {
 	if c.CursorStep1 > 0 {
 		tx := c.MsgTxs[c.CursorTx1]
 		step := tx.Steps[c.CursorStep1-1]
-		txt = "Step: " + step.StringFromIdx(c.MsgStruct.StatesIndex)
+		txt = step.StringFromIndex(c.MsgStruct.StatesIndex)
 	}
 
+	// markdown to cview
+	i := 0
+	for strings.Contains(txt, "**") {
+		rep := "[::b]"
+		if i%2 == 1 {
+			rep = "[::-]"
+		}
+		i++
+		txt = strings.Replace(txt, "**", rep, 1)
+	}
 	d.statusBar.SetText(txt)
 }

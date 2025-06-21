@@ -1,5 +1,9 @@
 package server
 
+// TODO rewrite to a better protocol with
+//  - everything from the reader
+//  - graphs
+
 import (
 	"encoding/gob"
 	"fmt"
@@ -24,6 +28,24 @@ type RPCServer struct {
 	FwdTo  []*rpc.Client
 }
 
+type DbgMsgSchemaFwd struct {
+	MsgStruct *telemetry.DbgMsgStruct
+	ConnId    string
+}
+
+func (r *RPCServer) DbgMsgSchemaFwd(
+	msg *DbgMsgSchemaFwd, _ *string,
+) error {
+	r.Mach.Add1(ss.ConnectEvent, am.A{
+		// TODO typed args
+		"msg_struct": msg.MsgStruct,
+		"conn_id":    msg.ConnId,
+		"Client.id":  msg.MsgStruct.ID,
+	})
+
+	return nil
+}
+
 func (r *RPCServer) DbgMsgStruct(
 	msgStruct *telemetry.DbgMsgStruct, _ *string,
 ) error {
@@ -35,8 +57,12 @@ func (r *RPCServer) DbgMsgStruct(
 	})
 
 	// fwd to other instances
-	for _, fwd := range r.FwdTo {
-		err := fwd.Call("RPCServer.DbgMsgStruct", msgStruct, nil)
+	for _, host := range r.FwdTo {
+		fwdMsg := DbgMsgSchemaFwd{
+			MsgStruct: msgStruct,
+			ConnId:    r.ConnID,
+		}
+		err := host.Call("RPCServer.DbgMsgSchemaFwd", &fwdMsg, nil)
 		if err != nil {
 			return err
 		}
@@ -84,8 +110,66 @@ func (r *RPCServer) DbgMsgTx(msgTx *telemetry.DbgMsgTx, _ *string) error {
 	queueConnId = append(queueConnId, r.ConnID)
 
 	// fwd to other instances
-	for _, fwd := range r.FwdTo {
-		err := fwd.Call("RPCServer.DbgMsgTx", msgTx, nil)
+	for _, host := range r.FwdTo {
+		fwdMsg := DbgMsgTx{
+			MsgTx:  msgTx,
+			ConnId: r.ConnID,
+		}
+		err := host.Call("RPCServer.DbgMsgTxFwd", fwdMsg, nil)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+type DbgMsgTx struct {
+	MsgTx  *telemetry.DbgMsgTx
+	ConnId string
+}
+
+func (r *RPCServer) DbgMsgTxFwd(msg *DbgMsgTx, _ *string) error {
+	queueMx.Lock()
+	defer queueMx.Unlock()
+
+	msgTx := msg.MsgTx
+	connId := msg.ConnId
+
+	if !scheduled {
+		scheduled = true
+		go func() {
+			// debounce
+			time.Sleep(time.Second)
+
+			queueMx.Lock()
+			defer queueMx.Unlock()
+
+			r.Mach.Add1(ss.ClientMsg, am.A{
+				"msgs_tx":  queue,
+				"conn_ids": queueConnId,
+			})
+			// DEBUG
+			// println("sent", len(queue), "msgs")
+			queue = nil
+			queueConnId = nil
+			scheduled = false
+		}()
+	}
+
+	now := time.Now()
+	// TODO remove
+	msgTx.Time = &now
+	queue = append(queue, msgTx)
+	queueConnId = append(queueConnId, connId)
+
+	// fwd to other instances
+	for _, host := range r.FwdTo {
+		fwdMsg := DbgMsgTx{
+			MsgTx:  msgTx,
+			ConnId: connId,
+		}
+		err := host.Call("RPCServer.DbgMsgTxFwd", &fwdMsg, nil)
 		if err != nil {
 			return err
 		}

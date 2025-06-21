@@ -54,6 +54,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		OutputDir:       p.OutputDir,
 		ServerAddr:      p.ListenAddr,
 		EnableMouse:     p.EnableMouse,
+		MachUrl:         p.MachUrl,
 		SelectConnected: p.SelectConnected,
 		ShowReader:      p.Reader,
 		CleanOnConnect:  p.CleanOnConnect,

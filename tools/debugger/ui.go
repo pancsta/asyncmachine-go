@@ -71,14 +71,29 @@ func (d *Debugger) initUiComponents() {
 	d.log.SetRegions(true)
 	d.log.SetTextAlign(cview.AlignLeft)
 	// wrapping causes perf issues in cview/reindexBuffer
+	// TODO add to toolbar as [ ]wrap once dynamic rendering lands
 	d.log.SetWrap(false)
 	d.log.SetDynamicColors(true)
 	d.log.SetTitle(" Log ")
 	d.log.SetHighlightForegroundColor(tcell.ColorWhite)
 	d.log.SetHighlightBackgroundColor(colorHighlight2)
 	d.log.SetScrollBarColor(colorHighlight2)
+	// log click
+	statePrefixes := []string{"[state] ", "[state:auto] "}
 	d.log.SetClickedFunc(func(txId string) {
+		txIdx := d.C.txIndex(txId)
+		// TODO pass as "Client.cursorTx"
 		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": txId})
+		logs := d.C.MsgTxs[txIdx].LogEntries
+		for _, l := range logs {
+			for _, prefix := range statePrefixes {
+				if strings.HasPrefix(l.Text, prefix) {
+					state := strings.Split(l.Text[len(prefix)+1:], " ")[0]
+					d.Mach.Add1(ss.StateNameSelected, am.A{"state": state})
+					break
+				}
+			}
+		}
 	})
 
 	// reader view
@@ -297,7 +312,7 @@ func (d *Debugger) initToolbar() {
 
 		// click effect
 		d.toolbars[i].SetSelectedFunc(func(row, column int) {
-			if column >= len(d.toolbarItems[i]) {
+			if column >= len(d.toolbarItems[i]) || column == -1 {
 				return
 			}
 
@@ -317,8 +332,33 @@ func (d *Debugger) initToolbar() {
 	// TODO save filters per machine checkbox
 	// TODO next error
 	d.toolbarItems = [][]toolbarItem{
+
 		// row 1
 		{
+			{id: toolJumpPrev, label: "jump", icon: "◀ "},
+			{id: toolPrevStep, label: "step", icon: "<"},
+			{id: toolPrev, label: "tx", icon: "◁ "},
+			{id: toolNext, label: "tx", icon: "▷ "},
+			{id: toolNextStep, label: "step", icon: ">"},
+			{id: toolJumpNext, label: "jump", icon: "▶ "},
+			{id: toolPlay, label: "play", active: func() bool {
+				return d.Mach.Is1(ss.Playing)
+			}},
+			{id: toolFirst, label: "first", icon: "1"},
+			{id: toolLast, label: "last", icon: "N"},
+			{id: toolExport, label: "export", active: func() bool {
+				return d.Mach.Is1(ss.ExportDialog)
+			}},
+		},
+
+		// row 2
+		{
+			{id: toolLog, label: "log", active: func() bool {
+				return d.Opts.Filters.LogLevel > am.LogNothing
+			}, activeLabel: func() string {
+				// TODO make Opts threadsafe
+				return strconv.Itoa(int(d.Opts.Filters.LogLevel))
+			}},
 			{id: toolFilterCanceledTx, label: "canceled tx", active: func() bool {
 				return d.Mach.Not1(ss.FilterCanceledTx)
 			}},
@@ -334,11 +374,40 @@ func (d *Debugger) initToolbar() {
 			{id: ToolFilterSummaries, label: "times", active: func() bool {
 				return d.Mach.Not1(ss.FilterSummaries)
 			}},
-			{id: toolLog, label: "log", active: func() bool {
-				return d.Opts.Filters.LogLevel > am.LogNothing
+			{id: ToolFilterTraces, label: "traces", active: func() bool {
+				return d.Mach.Not1(ss.FilterTraces)
+			}},
+			// TODO values t / c / m
+			//  touch / called / mutation (change)
+			//  eg "[call]jump"
+			// {id: ToolFilterTraces, label: "jump", active: func() bool {
+			// 	return d.Mach.Not1(ss.FilterJumpTouch)
+			// }},
+		},
+
+		// row 3
+		{
+			{id: toolHelp, label: "[yellow:b]help[-]", active: func() bool {
+				return d.Mach.Is1(ss.HelpDialog)
+			}},
+			{id: toolTail, label: "tail", active: func() bool {
+				return d.Mach.Is1(ss.TailMode)
+			}},
+			{id: toolReader, label: "reader", active: func() bool {
+				return d.Mach.Is1(ss.LogReaderEnabled)
+			}},
+			{
+				id:    toolExpand,
+				label: "expand", active: func() bool {
+					ch := d.treeRoot.GetChildren()
+					return len(ch) > 0 && ch[0].IsExpanded()
+				},
+			},
+			{id: toolTimelines, label: "timelines", active: func() bool {
+				return d.Opts.Timelines > 0
 			}, activeLabel: func() string {
 				// TODO make Opts threadsafe
-				return strconv.Itoa(int(d.Opts.Filters.LogLevel))
+				return strconv.Itoa(d.Opts.Timelines)
 			}},
 			// TODO make it an anchor for file://...svg
 			{id: toolDiagrams, label: "diagrams", active: func() bool {
@@ -347,51 +416,11 @@ func (d *Debugger) initToolbar() {
 				// TODO make Opts threadsafe
 				return strconv.Itoa(d.Opts.Diagrams)
 			}},
-			{id: toolTimelines, label: "timelines", active: func() bool {
-				return d.Opts.Timelines > 0
-			}, activeLabel: func() string {
-				// TODO make Opts threadsafe
-				return strconv.Itoa(d.Opts.Timelines)
-			}},
-			{id: toolReader, label: "reader", active: func() bool {
-				return d.Mach.Is1(ss.LogReaderEnabled)
-			}},
 			{id: toolRain, label: "rain", active: func() bool {
 				return d.Mach.Is1(ss.MatrixRain)
 			}},
 			{id: toolMatrix, label: "matrix", active: func() bool {
 				return d.Mach.Any1(ss.MatrixView, ss.TreeMatrixView)
-			}},
-		},
-
-		// row 2
-		{
-			{id: toolHelp, label: "[yellow:b]help[-]", active: func() bool {
-				return d.Mach.Is1(ss.HelpDialog)
-			}},
-			{id: toolTail, label: "tail", active: func() bool {
-				return d.Mach.Is1(ss.TailMode)
-			}},
-			{id: toolJumpPrev, label: "jump", icon: "◀ "},
-			{id: toolPrev, label: "tx", icon: "◁ "},
-			{id: toolPrevStep, label: "step", icon: "<"},
-			{id: toolNextStep, label: "step", icon: ">"},
-			{id: toolNext, label: "tx", icon: "▷ "},
-			{id: toolJumpNext, label: "jump", icon: "▶ "},
-			{id: toolPlay, label: "play", active: func() bool {
-				return d.Mach.Is1(ss.Playing)
-			}},
-			{id: toolFirst, label: "first", icon: "1"},
-			{id: toolLast, label: "last", icon: "N"},
-			{
-				id:    toolExpand,
-				label: "expand", active: func() bool {
-					ch := d.treeRoot.GetChildren()
-					return len(ch) > 0 && ch[0].IsExpanded()
-				},
-			},
-			{id: toolExport, label: "export", active: func() bool {
-				return d.Mach.Is1(ss.ExportDialog)
 			}},
 		},
 	}
@@ -443,9 +472,11 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	left.SetPadding(1, 1, 1, 1)
 	left.SetText(fmt.Sprintf(dedent.Dedent(strings.Trim(`
 		[::b]### [::u]tree legend[::-]
-		[%s]state[-]        active
-		[%s]state[-]        not active
-		[red]state[-]        active error
+		[%s::b]state[-]        active state
+		[%s::b]state[-]        inactive state
+		[red::b]state[-]        active error state
+		[::b]M|[::-]           multi state
+		[::b]|5[::-]           tick value
 		[::b]*[::-]            executed handler
 		[::b]+[::-]            to be activated
 		[::b]-[::-]            to be de-activated
@@ -457,25 +488,27 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[red::b]|[-::-]            rel link end
 	
 		[::b]### [::u]matrix legend[::-]
-		[::b]underline[::-]  called state
-		[::b]1st row[::-]    called states
-		           col == state index
-		[::b]2nd row[::-]    state tick changes
-		           col == state index
-		[::b]>=3 row[::-]    state relations
-		           cartesian product
-		           col == source state index
-		           row == target state index
+		[::b]underline[::-]    called state
+		[::b]1st row[::-]      called states
+		             col == state index
+		[::b]2nd row[::-]      state tick changes
+		             col == state index
+		[::b]>=3 row[::-]      state relations
+		             cartesian product
+		             col == source state index
+		             row == target state index
 	
 		[::b]### [::u]matrix rain legend[::-]
-		[::b]1[::-]          state active
-		[::b]2[::-]          state active and touched
-		[::b]-[::-]          state touched
-		[::b]|[::-]          state de-activated
-		[::b]c[::-]          state canceled
-		underline  state called
-		
+		[::b]1[::-]            state active
+		[::b]2[::-]            state active and touched
+		[::b]-[::-]            state touched
+		[::b]|[::-]            state de-activated
+		[::b]c[::-]            state canceled
+		underline    state called
 	
+		[::b]### [::u]dashboard keystrokes[::-]
+		[::b]alt arrow[::-]    navigate to tiles
+		[::b]alt -+[::-]       change size of a tile
 	`, "\n ")), colorActive, colorInactive))
 
 	// render the right side separately
@@ -534,26 +567,28 @@ func (d *Debugger) updateHelpDialog() {
 	d.helpDialogRight.SetText(fmt.Sprintf(dedent.Dedent(strings.Trim(`
 		[::b]### [::u]keystrokes[::-]
 		[::b]tab[::-]                change focus
-		[::b]shift+tab[::-]          change focus
+		[::b]shift tab[::-]          change focus
 		[::b]space[::-]              play/pause
-		[::b]left/right[::-]         prev/next / navigate
-		[::b]alt+left/right[::-]     fast jump
-		[::b]alt+h/l[::-]            fast jump
-		[::b]alt+h/l[::-]            state jump (when selected)
+		[::b]left/right[::-]         prev/next tx
+		[::b]left/right[::-]         scroll log
+		[::b]alt left/right[::-]     fast jump
+		[::b]alt j/k[::-]            prev/next step
+		[::b]alt h/l[::-]            fast jump
+		[::b]alt h/l[::-]            state jump (when selected)
 		[::b]up/down[::-]            scroll / navigate
 		[::b]j/k[::-]                scroll / navigate
-		[::b]alt+j/k[::-]            page up/down
-		[::b]alt+e[::-]              expand/collapse tree
+		[::b]alt j/k[::-]            page up/down
+		[::b]alt e[::-]              expand/collapse tree
 		[::b]enter[::-]              expand/collapse node
-		[::b]alt+v[::-]              tail mode
-		[::b]alt+r[::-]              rain view
-		[::b]alt+m[::-]              matrix views
-		[::b]alt+o[::-]              log reader
+		[::b]alt v[::-]              tail mode
+		[::b]alt r[::-]              rain view
+		[::b]alt m[::-]              matrix views
+		[::b]alt o[::-]              log reader
 		[::b]home/end[::-]           struct / last tx
-		[::b]alt+s[::-]              export data
+		[::b]alt s[::-]              export data
 		[::b]backspace[::-]          remove machine
 		[::b]esc[::-]                focus mach list
-		[::b]ctrl+q[::-]             quit
+		[::b]ctrl q[::-]             quit
 		[::b]?[::-]                  show help
 	
 		[::b]### [::u]machine list legend[::-]
@@ -625,7 +660,7 @@ func (d *Debugger) updateLayout() {
 	}
 
 	d.mainGrid.Clear()
-	d.mainGrid.SetRows(1, 1, -1, 1, 1, 1)
+	d.mainGrid.SetRows(1, 1, -1, 1, 1, 1, 1)
 
 	// columns
 	var cols []int
@@ -661,7 +696,7 @@ func (d *Debugger) updateLayout() {
 
 	// timelines
 	if d.Mach.Not1(ss.TimelineHidden) {
-		d.mainGrid.SetRows(1, 1, -1, 2, 3, 1, 1, 1)
+		d.mainGrid.SetRows(1, 1, -1, 2, 3, 1, 1, 1, 1)
 
 		d.mainGrid.AddItem(d.currTxBar, row, 0, 1, len(cols), 0, 0, false)
 		row++
@@ -669,7 +704,7 @@ func (d *Debugger) updateLayout() {
 		row++
 	}
 	if d.Mach.Not1(ss.TimelineStepsHidden) {
-		d.mainGrid.SetRows(1, 1, -1, 2, 3, 2, 3, 1, 1, 1)
+		d.mainGrid.SetRows(1, 1, -1, 2, 3, 2, 3, 1, 1, 1, 1)
 
 		d.mainGrid.AddItem(d.nextTxBar, row, 0, 1, len(cols), 0, 0, false)
 		row++
@@ -681,6 +716,8 @@ func (d *Debugger) updateLayout() {
 	d.mainGrid.AddItem(d.toolbars[0], row, 0, 1, len(cols), 0, 0, false)
 	row++
 	d.mainGrid.AddItem(d.toolbars[1], row, 0, 1, len(cols), 0, 0, false)
+	row++
+	d.mainGrid.AddItem(d.toolbars[2], row, 0, 1, len(cols), 0, 0, false)
 	row++
 	d.mainGrid.AddItem(d.statusBar, row, 0, 1, len(cols), 0, 0, false)
 }

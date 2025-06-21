@@ -53,6 +53,8 @@ const (
 	pDir            = "dir"
 	pOutputDirShort = "d"
 	pOutputClients  = "output-clients"
+	pOutputTx       = "output-tx"
+	pDiagrams       = "output-diagrams"
 
 	// UI
 
@@ -60,7 +62,6 @@ const (
 	pViewShort  = "v"
 	pViewNarrow = "view-narrow"
 	pReader     = "view-reader"
-	pDiagrams   = "diagrams"
 	pTimelines  = "view-timelines"
 	pRain       = "view-rain"
 )
@@ -93,6 +94,7 @@ type Params struct {
 	Timelines     int
 	Rain          bool
 	TailMode      bool
+	OutputTx      bool
 	MachUrl       string
 }
 
@@ -148,7 +150,7 @@ func AddFlags(rootCmd *cobra.Command) {
 	// MISC
 
 	f.String(pProfSrv, "", "Start pprof server")
-	f.Int(pMaxMem, 100, "Max memory usage (in MB) to flush old transitions")
+	f.Int(pMaxMem, 1000, "Max memory usage (in MB) to flush old transitions")
 	f.String(pLog2Ttl, "24h", "Max time to live for logs level 2")
 	f.Bool(pVersion, false, "Print version and exit")
 
@@ -157,9 +159,12 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.StringP(pDir, pOutputDirShort, ".",
 		"Output directory for generated files")
 	f.Bool(pOutputClients, false,
-		"Write a detailed client list into in am-dbg-clients.txt inside --dir")
+		"Write a detailed client list into am-dbg-clients.txt inside --dir")
+	f.Bool(pOutputTx, false,
+		"Write the current transition with steps into am-dbg-tx.md inside --dir")
 	f.Int(pDiagrams, 0,
-		"Level of details for diagrams (svg, d2, mermaid) in --dir (0-3)")
+		"Level of details for diagrams (svg, d2, mermaid) in "+
+			"--dir (0 off, 1-3 on). EXPERIMENTAL")
 	f.Int(pTimelines, 2, "Number of timelines to show (0-2)")
 	f.Bool(pRain, false, "Show the rain view")
 	f.Bool(pTail, true, "Start from the last tx")
@@ -205,6 +210,7 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 	timelines = min(2, timelines)
 
 	outputClients, err := cmd.Flags().GetBool(pOutputClients)
+	outputTx, err := cmd.Flags().GetBool(pOutputTx)
 	if err != nil {
 		panic(err)
 	}
@@ -296,6 +302,7 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 		// output
 
 		OutputClients: outputClients,
+		OutputTx:      outputTx,
 		OutputDir:     outputDir,
 		Graph:         graph,
 		Timelines:     timelines,

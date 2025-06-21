@@ -87,7 +87,7 @@ type Debugger struct {
 	focusManager       *cview.FocusManager
 	exportDialog       *cview.Modal
 	contentPanels      *cview.Panels
-	toolbars           [2]*cview.Table
+	toolbars           [3]*cview.Table
 	treeLogGrid        *cview.Grid
 	treeMatrixGrid     *cview.Grid
 	lastSelectedState  string
@@ -103,11 +103,13 @@ type Debugger struct {
 	// toolbarItems is a list of row of toolbars items
 	toolbarItems     [][]toolbarItem
 	clientListFile   *os.File
+	txListFile       *os.File
 	msgsDelayed      []*telemetry.DbgMsgTx
 	msgsDelayedConns []string
 	currTxBar        *cview.Flex
 	nextTxBar        *cview.Flex
 	mainGridCols     []int
+	readerExpanded   map[string]bool
 }
 
 // New creates a new debugger instance and optionally import a data file.
@@ -115,7 +117,8 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	var err error
 	// init the debugger
 	d := &Debugger{
-		Clients: make(map[string]*Client),
+		Clients:        make(map[string]*Client),
+		readerExpanded: make(map[string]bool),
 	}
 
 	d.Opts = opts
@@ -143,7 +146,7 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	mach, err := am.NewCommon(ctx, "", ss.States, ss.Names, d, nil, &am.Opts{
 		DontLogID:      true,
 		HandlerTimeout: 1 * time.Second,
-		ID:             "d-" + id,
+		Id:             "d-" + id,
 		Tags:           []string{"am-dbg"},
 	})
 	if err != nil {
@@ -201,6 +204,16 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 			mach.AddErr(fmt.Errorf("client list file open: %w", err), nil)
 		}
 		d.clientListFile = clientListFile
+	}
+
+	// tx file
+	if d.Opts.OutputTx {
+		p := path.Join(d.Opts.OutputDir, "am-dbg-tx.md")
+		txListFile, err := os.Create(p)
+		if err != nil {
+			mach.AddErr(fmt.Errorf("tx list file open: %w", err), nil)
+		}
+		d.txListFile = txListFile
 	}
 
 	return d, nil
@@ -630,6 +643,7 @@ func (d *Debugger) ImportData(filename string) {
 		d.Clients[id] = &Client{
 			id:         id,
 			Exportable: *data,
+			logReader:  make(map[string][]*logReaderEntry),
 		}
 		if d.graph != nil {
 			err := d.graph.AddClient(data.MsgStruct)
@@ -691,7 +705,9 @@ func (d *Debugger) updateToolbar() {
 			}
 
 			// focused
-			if d.toolbarItems[i][sel].id == ToolName(item.id) && focused {
+			if sel != -1 && d.toolbarItems[i][sel].id == ToolName(item.id) &&
+				focused {
+
 				text += "[white]" + item.label
 			} else if !focused {
 				text += f("[%s]%s", colorHighlight2, item.label)
@@ -837,60 +853,6 @@ func (d *Debugger) updateViews(immediate bool) {
 	}
 }
 
-// TODO state
-func (d *Debugger) jumpBack(ev *tcell.EventKey) *tcell.EventKey {
-	if ev != nil && d.throttleKey(ev, arrowThrottleMs) {
-		return nil
-	}
-
-	ctx := context.TODO()
-	d.Mach.Remove(am.S{ss.Playing, ss.TailMode}, nil)
-
-	if d.Mach.Is1(ss.StateNameSelected) {
-		// state jump
-		amhelp.Add1Block(ctx, d.Mach, ss.ScrollToMutTx, am.A{
-			"state": d.C.SelectedState,
-			"fwd":   false,
-		})
-		// sidebar for errs
-		d.updateClientList(true)
-	} else {
-		// fast jump
-		amhelp.Add1Block(ctx, d.Mach, ss.Back, am.A{
-			"amount": min(fastJumpAmount, d.C.CursorTx1),
-		})
-	}
-
-	return nil
-}
-
-// TODO state
-func (d *Debugger) jumpFwd(ev *tcell.EventKey) *tcell.EventKey {
-	if ev != nil && d.throttleKey(ev, arrowThrottleMs) {
-		return nil
-	}
-
-	ctx := context.TODO()
-	d.Mach.Remove(am.S{ss.Playing, ss.TailMode}, nil)
-
-	if d.Mach.Is1(ss.StateNameSelected) {
-		// state jump
-		amhelp.Add1Block(ctx, d.Mach, ss.ScrollToMutTx, am.A{
-			"state": d.C.SelectedState,
-			"fwd":   true,
-		})
-		// sidebar for errs
-		d.updateClientList(true)
-	} else {
-		// fast jump
-		amhelp.Add1Block(ctx, d.Mach, ss.Fwd, am.A{
-			"amount": min(fastJumpAmount, len(d.C.MsgTxs)-d.C.CursorTx1),
-		})
-	}
-
-	return nil
-}
-
 // memorizeTxTime will memorize the current tx time
 func (d *Debugger) memorizeTxTime(c *Client) {
 	if c.CursorTx1 > 0 && c.CursorTx1 <= len(c.MsgTxs) {
@@ -902,7 +864,7 @@ func (d *Debugger) parseMsg(c *Client, idx int) {
 	// TODO handle panics from wrongly indexed msgs
 	// defer d.Mach.PanicToErr(nil)
 
-	// TODO verify hosts by token, to distinguish 2 hosts with the same ID
+	// TODO verify connId
 	msgTx := c.MsgTxs[idx]
 
 	var sum uint64
@@ -951,7 +913,7 @@ func (d *Debugger) parseMsg(c *Client, idx int) {
 	// errors
 	var isErr bool
 	for _, name := range index {
-		if strings.HasPrefix(name, "Err") && msgTx.Is1(index, name) {
+		if strings.HasPrefix(name, am.PrefixErr) && msgTx.Is1(index, name) {
 			isErr = true
 			break
 		}
@@ -978,7 +940,7 @@ func (d *Debugger) isTxSkipped(c *Client, idx int) bool {
 	if !d.isFiltered() {
 		return false
 	}
-	return slices.Index(c.msgTxsFiltered, idx) == -1
+	return slices.Index(c.MsgTxsFiltered, idx) == -1
 }
 
 // filterTxCursor fixes the current cursor according to toolbarItems
@@ -1034,7 +996,7 @@ func (d *Debugger) updateTxBars() {
 		if c == nil || len(c.MsgTxs) == 0 {
 			d.currTxBarLeft.SetText("No transitions yet...")
 		} else {
-			d.currTxBarLeft.SetText("Initial structure")
+			d.currTxBarLeft.SetText("Initial machine schema")
 		}
 	} else {
 
@@ -1082,7 +1044,7 @@ func (d *Debugger) updateTimelines() {
 		d.timelineSteps.SetFilledColor(tcell.ColorGray)
 	}
 
-	// mark last step of a cancelled tx in red
+	// mark the last step of a canceled tx in red
 	if nextTx != nil && c.CursorStep1 == len(nextTx.Steps) && !nextTx.Accepted {
 		d.timelineSteps.SetFilledColor(tcell.ColorRed)
 	}
@@ -1101,12 +1063,12 @@ func (d *Debugger) updateTimelines() {
 	// title
 	var title string
 	if d.isFiltered() {
-		pos := slices.Index(c.msgTxsFiltered, c.CursorTx1-1) + 1
+		pos := slices.Index(c.MsgTxsFiltered, c.CursorTx1-1) + 1
 		if c.CursorTx1 == 0 {
 			pos = 0
 		}
 		title = d.P.Sprintf(" Transition %d / %d [%s]%d / %d[-] ",
-			pos, len(c.msgTxsFiltered), colorHighlight2, c.CursorTx1, txCount)
+			pos, len(c.MsgTxsFiltered), colorHighlight2, c.CursorTx1, txCount)
 	} else {
 		title = d.P.Sprintf(" Transition %d / %d ", c.CursorTx1, txCount)
 	}
@@ -1439,7 +1401,7 @@ func (d *Debugger) updateMatrixRain() {
 			}
 
 			// scroll
-			cur1 := c.msgTxsFiltered[idx] + 1
+			cur1 := c.MsgTxsFiltered[idx] + 1
 			d.Mach.Log("diff %s", diff)
 			d.Mach.Add1(ss.ScrollToTx, am.A{
 				"Client.cursorTx": cur1,
@@ -1476,24 +1438,24 @@ func (d *Debugger) updateMatrixRain() {
 
 	// ahead
 	aheadOk := func(i int, max int) bool {
-		return i < len(c.msgTxsFiltered) && len(toShow) <= max
+		return i < len(c.MsgTxsFiltered) && len(toShow) <= max
 	}
 	for i := cur; aheadOk(i, ahead); i++ {
-		toShow = append(toShow, c.msgTxsFiltered[i])
+		toShow = append(toShow, c.MsgTxsFiltered[i])
 		curLast = i
 	}
 
 	// behind
 	behindOk := func(i int) bool {
-		return i >= 0 && i < len(c.msgTxsFiltered) && len(toShow) <= rows
+		return i >= 0 && i < len(c.MsgTxsFiltered) && len(toShow) <= rows
 	}
 	for i := cur - 1; behindOk(i); i-- {
-		toShow = slices.Concat([]int{c.msgTxsFiltered[i]}, toShow)
+		toShow = slices.Concat([]int{c.MsgTxsFiltered[i]}, toShow)
 	}
 
 	// ahead again
 	for i := curLast + 1; aheadOk(i, rows); i++ {
-		toShow = append(toShow, c.msgTxsFiltered[i])
+		toShow = append(toShow, c.MsgTxsFiltered[i])
 	}
 
 	for i, idx := range toShow {
@@ -1638,10 +1600,10 @@ func (d *Debugger) filterClientTxs() {
 	canceled := d.Mach.Is1(ss.FilterCanceledTx)
 	healthcheck := d.Mach.Is1(ss.FilterHealthcheck)
 
-	d.C.msgTxsFiltered = nil
+	d.C.MsgTxsFiltered = nil
 	for i := range d.C.MsgTxs {
 		if d.filterTx(d.C, i, auto, empty, canceled, healthcheck) {
-			d.C.msgTxsFiltered = append(d.C.msgTxsFiltered, i)
+			d.C.MsgTxsFiltered = append(d.C.MsgTxsFiltered, i)
 		}
 	}
 }
@@ -1651,28 +1613,30 @@ func (d *Debugger) isFiltered() bool {
 	return d.Mach.Any1(ss.GroupFilters...)
 }
 
-// filterTx returns true when a TX passed the passed toolbarItems.
+// filterTx returns true when a TX passes selected toolbarItems.
 func (d *Debugger) filterTx(
-	c *Client, idx int, auto, empty, canceled, healthcheck bool,
+	c *Client, idx int, skipAuto, skipEmpty, skipCanceled, skipHealth bool,
 ) bool {
 	tx := c.MsgTxs[idx]
-
-	if auto && tx.IsAuto {
-		return false
-	}
-	if canceled && !tx.Accepted {
-		return false
-	}
-
-	// empty
 	parsed := c.msgTxsParsed[idx]
-	txEmpty := true
-	if empty && len(parsed.StatesAdded) == 0 &&
-		len(parsed.StatesRemoved) == 0 {
+	added := parsed.StatesAdded
+	removed := parsed.StatesRemoved
+
+	if skipAuto && tx.IsAuto {
+		return false
+	}
+	if skipCanceled && !tx.Accepted {
+		return false
+	}
+
+	// skip empty
+	if skipEmpty && len(added) == 0 && len(removed) == 0 {
+		txEmpty := true
 		for _, step := range tx.Steps {
-			// running a handler is not empty
-			// TODO test running a handler is not empty
-			if step.Type == am.StepHandler {
+			// tx with an executed handler is not empty (besides handlers for Any)
+			if step.Type == am.StepHandler && !(step.FromStateIdx == -1 &&
+				step.ToStateIdx == -1) {
+
 				txEmpty = false
 			}
 		}
@@ -1683,19 +1647,11 @@ func (d *Debugger) filterTx(
 	}
 
 	// healthcheck
-	hCheck := ssam.BasicStates.Healthcheck
-	hBeat := ssam.BasicStates.Heartbeat
-	if healthcheck && len(parsed.StatesAdded) == 1 &&
-		len(parsed.StatesRemoved) == 0 {
-		if c.indexesToStates(parsed.StatesAdded)[0] == hCheck ||
-			c.indexesToStates(parsed.StatesAdded)[0] == hBeat {
-			return false
-		}
-	}
-	if healthcheck && len(parsed.StatesRemoved) == 1 &&
-		len(parsed.StatesAdded) == 0 {
-		if c.indexesToStates(parsed.StatesRemoved)[0] == hCheck ||
-			c.indexesToStates(parsed.StatesRemoved)[0] == hBeat {
+	if skipHealth {
+		health := c.statesToIndexes(S{ssam.BasicStates.Healthcheck, ssam.BasicStates.Heartbeat})
+		if len(added) == 1 && len(removed) == 0 && slices.Contains(health, added[0]) ||
+			len(added) == 0 && len(removed) == 1 && slices.Contains(health, removed[0]) {
+
 			return false
 		}
 	}
@@ -1712,7 +1668,7 @@ func (d *Debugger) scrollToTime(hT time.Time, filter bool) bool {
 	if filter {
 		latestTx = d.filterTxCursor(d.C, latestTx, true)
 	}
-	d.SetCursor1(latestTx, true)
+	d.SetCursor1(latestTx, 0, true)
 
 	return true
 }
@@ -1733,7 +1689,7 @@ func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
 
 		// stay on the last one
 		if d.Mach.Is1(ss.TailMode) {
-			d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
+			d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), 0, false)
 		}
 
 		// rebuild the whole log to reflect the UI changes
@@ -1748,7 +1704,7 @@ func (d *Debugger) ProcessFilterChange(ctx context.Context, filterTxs bool) {
 		}
 
 		if filterTxs {
-			d.SetCursor1(d.filterTxCursor(d.C, d.C.CursorTx1, false), false)
+			d.SetCursor1(d.filterTxCursor(d.C, d.C.CursorTx1, false), 0, false)
 		}
 	}
 
