@@ -500,7 +500,22 @@ func (w *Worker) IsClock(clock am.Clock) bool {
 	defer w.clockMx.RUnlock()
 
 	for state, tick := range clock {
-		if w.machTime[w.Index(state)] != tick {
+		if w.machTime[w.Index1(state)] != tick {
+			return false
+		}
+	}
+
+	return true
+}
+
+// WasClock checks if the passed time has happened (or happening right now).
+// Returns false if at least one state is too early.
+func (w *Worker) WasClock(clock am.Clock) bool {
+	w.clockMx.RLock()
+	defer w.clockMx.RUnlock()
+
+	for state, tick := range clock {
+		if w.machTime[w.Index1(state)] < tick {
 			return false
 		}
 	}
@@ -516,12 +531,35 @@ func (w *Worker) IsTime(t am.Time, states am.S) bool {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
 
+	index := w.StateNames()
 	if states == nil {
-		states = w.stateNames
+		states = index
 	}
 
 	for i, tick := range t {
-		if w.machTime[w.Index(states[i])] != tick {
+		if w.machTime[slices.Index(index, states[i])] != tick {
+			return false
+		}
+	}
+
+	return true
+}
+
+// WasTime checks if the passed time has happened (or happening right now).
+// Returns false if at least one state is too early. The
+// states param is optional and can be used to check only a subset of states.
+func (w *Worker) WasTime(t am.Time, states am.S) bool {
+	w.MustParseStates(states)
+	w.clockMx.RLock()
+	defer w.clockMx.RUnlock()
+
+	index := w.StateNames()
+	if states == nil {
+		states = index
+	}
+
+	for i, tick := range t {
+		if w.machTime[slices.Index(index, states[i])] < tick {
 			return false
 		}
 	}
