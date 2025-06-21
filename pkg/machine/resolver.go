@@ -10,21 +10,25 @@ import (
 // Not thread-safe.
 // TODO support custom relation types and additional state properties.
 type RelationsResolver interface {
-	// GetTargetStates returns the target states after parsing the relations.
-	GetTargetStates(t *Transition, calledStates S) S
-	// GetAutoMutation returns an (optional) auto mutation which is appended to
-	// the queue after the transition is executed.
-	GetAutoMutation() *Mutation
+	// TargetStates returns the target states after parsing the relations.
+	TargetStates(t *Transition, calledStates, index S) S
+	// NewAutoMutation returns an (optional) auto mutation which is appended to
+	// the queue after the transition is executed. It also returns the names of
+	// the called states.
+	NewAutoMutation() (*Mutation, S)
 	// SortStates sorts the states in the order their handlers should be
 	// executed.
 	SortStates(states S)
-	// GetRelationsOf returns a list of relation types of the given state.
-	GetRelationsOf(fromState string) ([]Relation, error)
-	// GetRelationsBetween returns a list of relation types between the given
+	// RelationsOf returns a list of relation types of the given state.
+	RelationsOf(fromState string) ([]Relation, error)
+	// RelationsBetween returns a list of relation types between the given
 	// states.
-	GetRelationsBetween(fromState, toState string) ([]Relation, error)
-	// NewStruct runs when Machine receives a new struct.
-	NewStruct()
+	RelationsBetween(fromState, toState string) ([]Relation, error)
+	InboundRelationsOf(toState string) (S, error)
+	// TODO InboundRelationsBetween
+
+	// NewSchema runs when Machine receives a new struct.
+	NewSchema(schema Schema, states S)
 }
 
 // DefaultRelationsResolver is the default implementation of the
@@ -33,20 +37,23 @@ type RelationsResolver interface {
 type DefaultRelationsResolver struct {
 	Machine    *Machine
 	Transition *Transition
+	Index      S
 	topology   S
 }
 
 var _ RelationsResolver = &DefaultRelationsResolver{}
 
-func (rr *DefaultRelationsResolver) NewStruct() {
+func (rr *DefaultRelationsResolver) NewSchema(schema Schema, states S) {
 	if rr.Machine == nil {
 		// manual resolver instance
 		return
 	}
 
+	rr.Index = states
+
 	g := newGraph()
-	for _, name := range rr.Machine.StateNames() {
-		state := rr.Machine.states[name]
+	for _, name := range rr.Index {
+		state := rr.Machine.schema[name]
 		for _, req := range state.Require {
 			g.AddEdge(name, req)
 		}
@@ -63,11 +70,13 @@ func (rr *DefaultRelationsResolver) NewStruct() {
 }
 
 // GetTargetStates implements RelationsResolver.GetTargetStates.
-func (rr *DefaultRelationsResolver) GetTargetStates(
-	t *Transition, statesToSet S,
+func (rr *DefaultRelationsResolver) TargetStates(
+	t *Transition, statesToSet, index S,
 ) S {
 	rr.Transition = t
 	rr.Machine = t.Machine
+	rr.Index = index
+
 	m := t.Machine
 	statesToSet = m.MustParseStates(statesToSet)
 	statesToSet = rr.parseAdd(statesToSet)
@@ -115,7 +124,7 @@ func (rr *DefaultRelationsResolver) GetTargetStates(
 	// states removed by the states which are about to be set
 	var toRemove S
 	for _, name := range resolvedS {
-		state := m.states[name]
+		state := m.schema[name]
 		if state.Remove != nil {
 			toRemove = append(toRemove, state.Remove...)
 		}
@@ -135,19 +144,20 @@ func (rr *DefaultRelationsResolver) GetTargetStates(
 }
 
 // GetAutoMutation implements RelationsResolver.GetAutoMutation.
-func (rr *DefaultRelationsResolver) GetAutoMutation() *Mutation {
+func (rr *DefaultRelationsResolver) NewAutoMutation() (*Mutation, S) {
 	t := rr.Transition
 	m := t.Machine
 	var toAdd []string
+
 	// check all Auto states
-	for s := range m.states {
-		if !m.states[s].Auto {
+	for s := range m.schema {
+		if !m.schema[s].Auto {
 			continue
 		}
 		// check if the state is blocked by another active state
 		isBlocked := func() bool {
 			for _, active := range m.activeStates {
-				if slices.Contains(m.states[active].Remove, s) {
+				if slices.Contains(m.schema[active].Remove, s) {
 					m.log(LogEverything, "[auto:rel:remove] %s by %s", s,
 						active)
 					return true
@@ -160,13 +170,14 @@ func (rr *DefaultRelationsResolver) GetAutoMutation() *Mutation {
 		}
 	}
 	if len(toAdd) < 1 {
-		return nil
+		return nil, nil
 	}
+
 	return &Mutation{
-		Type:         MutationAdd,
-		CalledStates: toAdd,
-		Auto:         true,
-	}
+		Type:   MutationAdd,
+		Called: m.Index(toAdd),
+		Auto:   true,
+	}, toAdd
 }
 
 // SortStates implements RelationsResolver.SortStates.
@@ -180,8 +191,8 @@ func (rr *DefaultRelationsResolver) SortStates(states S) {
 	sort.SliceStable(states, func(i, j int) bool {
 		name1 := states[i]
 		name2 := states[j]
-		state1 := m.states[name1]
-		state2 := m.states[name2]
+		state1 := m.schema[name1]
+		state2 := m.schema[name2]
 
 		// forward relations
 		if slices.Contains(state1.After, name2) {
@@ -214,7 +225,7 @@ func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 	for changed {
 		changed = false
 		for _, name := range states {
-			state := rr.Machine.states[name]
+			state := rr.Machine.schema[name]
 
 			if slices.Contains(t.StatesBefore(), name) && !state.Multi {
 				continue
@@ -226,8 +237,10 @@ func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 			// filter the Add relation from states called for removal
 			var addStates S
 			for _, add := range state.Add {
+				idxAdd := slices.Index(rr.Index, add)
 				if t.Type() == MutationRemove &&
-					slices.Contains(t.Mutation.CalledStates, add) {
+					slices.Contains(t.Mutation.Called, idxAdd) {
+
 					continue
 				}
 				addStates = append(addStates, add)
@@ -244,6 +257,7 @@ func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 			changed = true
 		}
 	}
+
 	return ret
 }
 
@@ -256,7 +270,7 @@ func (rr *DefaultRelationsResolver) stateBlockedBy(
 	blockedBy := S{}
 
 	for _, blocking := range blockingStates {
-		state := m.states[blocking]
+		state := m.schema[blocking]
 		if !slices.Contains(state.Remove, blocked) {
 			continue
 		}
@@ -279,7 +293,7 @@ func (rr *DefaultRelationsResolver) parseRequire(states S) S {
 	for lengthBefore != len(states) {
 		lengthBefore = len(states)
 		states = slicesFilter(states, func(name string, _ int) bool {
-			state := rr.Machine.states[name]
+			state := rr.Machine.schema[name]
 			missingReqs := rr.getMissingRequires(name, state, states)
 			if len(missingReqs) > 0 {
 				missingMap[name] = missingReqs
@@ -318,7 +332,9 @@ func (rr *DefaultRelationsResolver) getMissingRequires(
 		}
 		ret = append(ret, req)
 		t.addSteps(newStep(name, "", StepRemoveNotActive, 0))
-		if slices.Contains(t.Mutation.CalledStates, name) {
+
+		idx := slices.Index(rr.Index, name)
+		if slices.Contains(t.Mutation.Called, idx) {
 			t.addSteps(newStep("", req,
 				StepCancel, 0))
 		}
@@ -327,9 +343,9 @@ func (rr *DefaultRelationsResolver) getMissingRequires(
 	return ret
 }
 
-// GetRelationsBetween returns a list of directional relation types between
-// the given states. Not thread safe.
-func (rr *DefaultRelationsResolver) GetRelationsBetween(
+// GetRelationsBetween returns a list of outbound relations between
+// fromState -> toState. Not thread safe.
+func (rr *DefaultRelationsResolver) RelationsBetween(
 	fromState, toState string,
 ) ([]Relation, error) {
 	m := rr.Machine
@@ -341,7 +357,7 @@ func (rr *DefaultRelationsResolver) GetRelationsBetween(
 		return nil, fmt.Errorf("%w: %s", ErrStateUnknown, toState)
 	}
 
-	state := m.states[fromState]
+	state := m.schema[fromState]
 	var relations []Relation
 
 	if state.Add != nil && slices.Contains(state.Add, toState) {
@@ -365,7 +381,7 @@ func (rr *DefaultRelationsResolver) GetRelationsBetween(
 
 // GetRelationsOf returns a list of relation types of the given state.
 // Not thread safe.
-func (rr *DefaultRelationsResolver) GetRelationsOf(fromState string) (
+func (rr *DefaultRelationsResolver) RelationsOf(fromState string) (
 	[]Relation, error,
 ) {
 	m := rr.Machine
@@ -373,7 +389,7 @@ func (rr *DefaultRelationsResolver) GetRelationsOf(fromState string) (
 	if !m.Has1(fromState) {
 		return nil, fmt.Errorf("%w: %s", ErrStateUnknown, fromState)
 	}
-	state := m.states[fromState]
+	state := m.schema[fromState]
 
 	var relations []Relation
 	if state.Add != nil {
@@ -393,6 +409,43 @@ func (rr *DefaultRelationsResolver) GetRelationsOf(fromState string) (
 	}
 
 	return relations, nil
+}
+
+// InboundRelationsOf returns a list of states pointing to [toState].
+// Not thread safe.
+func (rr *DefaultRelationsResolver) InboundRelationsOf(toState string) (
+	S, error,
+) {
+	m := rr.Machine
+
+	if !m.Has1(toState) {
+		return nil, fmt.Errorf("%w: %s", ErrStateUnknown, toState)
+	}
+
+	var states S
+	for name, state := range m.schema {
+		if name == toState {
+			continue
+		}
+
+		if slices.Contains(state.Add, toState) {
+			states = append(states, name)
+		}
+
+		if slices.Contains(state.Require, toState) {
+			states = append(states, name)
+		}
+
+		if slices.Contains(state.Remove, toState) {
+			states = append(states, name)
+		}
+
+		if slices.Contains(state.After, toState) {
+			states = append(states, name)
+		}
+	}
+
+	return states, nil
 }
 
 // graph represents a directed graph using an adjacency list.

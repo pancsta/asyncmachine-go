@@ -50,8 +50,8 @@ func IsTimeAfter(time1, time2 Time) bool {
 	return after
 }
 
-// CloneStates deep clones the states struct and returns a copy.
-func CloneStates(stateStruct Schema) Schema {
+// CloneSchema deep clones the states struct and returns a copy.
+func CloneSchema(stateStruct Schema) Schema {
 	ret := make(Schema)
 
 	for name, state := range stateStruct {
@@ -81,6 +81,9 @@ func cloneState(state State) State {
 	if state.After != nil {
 		stateCopy.After = slices.Clone(state.After)
 	}
+	if state.Tags != nil {
+		stateCopy.Tags = slices.Clone(state.Tags)
+	}
 
 	return stateCopy
 }
@@ -109,15 +112,40 @@ func SAdd(states ...S) S {
 	return slicesUniq(s)
 }
 
+// SRem removes groups > 1 from nr 1.
+func SRem(src S, states ...S) S {
+	// TODO test
+	// TODO move to resolver
+	s := slices.Clone(src)
+	if len(states) == 0 {
+		return s
+	}
+
+	for i := 1; i < len(states); i++ {
+		for ii := 0; ii < len(states[i]); ii++ {
+			s = slicesWithout(s, states[i][ii])
+		}
+	}
+
+	return s
+}
+
 // StateAdd adds new states to relations of the source state, without
 // removing existing ones. Useful for adjusting shared stated to a specific
-// machine.
+// machine. Only "true" values for Auto and Multi are applied from [overlay].
 func StateAdd(source State, overlay State) State {
 	// TODO example
 	// TODO test
 	// TODO move to resolver?
 	s := cloneState(source)
 	o := cloneState(overlay)
+
+	if o.Auto {
+		s.Auto = true
+	}
+	if o.Multi {
+		s.Multi = true
+	}
 
 	// relations
 	if o.Add != nil {
@@ -169,35 +197,24 @@ func StateSet(source State, auto, multi bool, overlay State) State {
 
 // SchemaMerge merges multiple state structs into one, overriding the previous
 // state definitions. No relation-level merging takes place.
-func SchemaMerge(stateStructs ...Schema) Schema {
+func SchemaMerge(schemas ...Schema) Schema {
 	// TODO mark all-but-last states as Inherited?
 	// TODO example
 	// TODO test
 	// defaults
-	l := len(stateStructs)
+	l := len(schemas)
 	if l == 0 {
 		return Schema{}
 	} else if l == 1 {
-		return stateStructs[0]
+		return schemas[0]
 	}
 
 	ret := make(Schema)
 	for i := 0; i < l; i++ {
-		maps.Copy(ret, stateStructs[i])
+		maps.Copy(ret, schemas[i])
 	}
 
-	return CloneStates(ret)
-}
-
-// Serialized is a machine state serialized to a JSON/YAML/TOML compatible
-// struct. One also needs the state Struct to re-create a state machine.
-type Serialized struct {
-	// ID is the ID of a state machine.
-	ID string `json:"id" yaml:"id" toml:"id"`
-	// Time represents machine time - a list of state activation counters.
-	Time Time `json:"time" yaml:"time" toml:"time"`
-	// StateNames is an ordered list of state names.
-	StateNames S `json:"state_names" yaml:"state_names" toml:"state_names"`
+	return CloneSchema(ret)
 }
 
 // EnvLogLevel returns a log level from an environment variable, AM_LOG by
@@ -396,12 +413,13 @@ func padString(str string, length int, pad string) string {
 	}
 }
 
-func parseSchema(states Schema) Schema {
+func ParseSchema(schema Schema) Schema {
 	// TODO move to Resolver
 	// TODO capitalize states
 
-	parsedStates := CloneStates(states)
-	for name, state := range states {
+	parsed := CloneSchema(schema)
+	states := slices.Collect(maps.Keys(schema))
+	for name, state := range schema {
 
 		// avoid self removal
 		if slices.Contains(state.Remove, name) {
@@ -412,6 +430,10 @@ func parseSchema(states Schema) Schema {
 		for _, add := range state.Add {
 			if slices.Contains(state.Remove, add) {
 				state.Remove = slicesWithout(state.Remove, add)
+
+				// check if exists
+			} else if !slices.Contains(states, add) {
+				state.Add = slicesWithout(state.Add, add)
 			}
 		}
 
@@ -420,10 +442,27 @@ func parseSchema(states Schema) Schema {
 			state.After = slicesWithout(state.After, name)
 		}
 
-		parsedStates[name] = state
+		// remove references to non-existing states
+		for _, n := range state.Remove {
+			if !slices.Contains(states, n) {
+				state.Remove = slicesWithout(state.Remove, n)
+			}
+		}
+		for _, n := range state.After {
+			if !slices.Contains(states, n) {
+				state.After = slicesWithout(state.After, n)
+			}
+		}
+		for _, n := range state.Remove {
+			if !slices.Contains(states, n) {
+				state.Remove = slicesWithout(state.Remove, n)
+			}
+		}
+
+		parsed[name] = state
 	}
 
-	return parsedStates
+	return parsed
 }
 
 // compareArgs return true if args2 is a subset of args1.
@@ -439,17 +478,6 @@ func compareArgs(args1, args2 A) bool {
 	}
 
 	return match
-}
-
-func truncateStr(s string, maxLength int) string {
-	if len(s) <= maxLength {
-		return s
-	}
-	if maxLength < 5 {
-		return s[:maxLength]
-	} else {
-		return s[:maxLength-3] + "..."
-	}
 }
 
 type handlerCall struct {
@@ -598,7 +626,7 @@ func cloneOptions(opts *Opts) *Opts {
 	}
 
 	return &Opts{
-		ID:                   opts.ID,
+		Id:                   opts.Id,
 		HandlerTimeout:       opts.HandlerTimeout,
 		DontPanicToException: opts.DontPanicToException,
 		DontLogStackTrace:    opts.DontLogStackTrace,
@@ -609,7 +637,7 @@ func cloneOptions(opts *Opts) *Opts {
 		LogArgs:              opts.LogArgs,
 		QueueLimit:           opts.QueueLimit,
 		Parent:               opts.Parent,
-		ParentID:             opts.ParentID,
+		ParentId:             opts.ParentId,
 		Tags:                 opts.Tags,
 		DetectEval:           opts.DetectEval,
 	}
