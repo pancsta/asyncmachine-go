@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"context"
 	"os"
 	"regexp"
 	"strings"
@@ -77,11 +78,16 @@ func BindLokiEnv(mach am.Api) error {
 		return err
 	}
 
+	// flush and close
+	var dispose am.HandlerDispose = func(id string, _ context.Context) {
+		pt.Close()
+	}
+
 	// dispose somehow
 	register := ssam.DisposedStates.RegisterDisposal
 	if mach.Has1(register) {
 		mach.Add1(register, am.A{
-			ssam.DisposedArgHandler: pt.Close,
+			ssam.DisposedArgHandler: dispose,
 		})
 	} else {
 		func() {

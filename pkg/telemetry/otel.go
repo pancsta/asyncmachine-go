@@ -67,6 +67,10 @@ type OtelMachTracerOpts struct {
 	SkipLogArgs bool
 	// if true, auto transitions won't be traced
 	SkipAuto bool
+	// TODO
+	WhitelistStates am.S
+	// TODO
+	BlacklistStates am.S
 
 	// TODO skipping empty and canceled txs requires a custom Processor to
 	//  discard an open span
@@ -82,6 +86,8 @@ type OtelMachTracerOpts struct {
 type OtelMachTracer struct {
 	*am.NoOpTracer
 
+	// TODO rewrite with better locking
+
 	Tracer        trace.Tracer
 	Machines      map[string]*OtelMachineData
 	MachinesMx    sync.Mutex
@@ -93,7 +99,9 @@ type OtelMachTracer struct {
 	// map of parent Span for each submachine
 	parentSpans map[string]trace.Span
 	// child-parent map, used for parentSpans
-	parents map[string]string
+	parents       map[string]string
+	parentsMx     sync.Mutex
+	parentSpansMx sync.Mutex
 
 	opts      *OtelMachTracerOpts
 	ended     bool
@@ -138,9 +146,11 @@ func NewOtelMachTracer(
 	return mt
 }
 
-func (mt *OtelMachTracer) getMachineData(id string) *OtelMachineData {
-	mt.MachinesMx.Lock()
-	defer mt.MachinesMx.Unlock()
+func (mt *OtelMachTracer) getMachineData(id string, locked bool) *OtelMachineData {
+	if !locked {
+		mt.MachinesMx.Lock()
+		defer mt.MachinesMx.Unlock()
+	}
 
 	if data, ok := mt.Machines[id]; ok {
 		return data
@@ -154,11 +164,14 @@ func (mt *OtelMachTracer) getMachineData(id string) *OtelMachineData {
 		mt.Machines[id] = data
 		mt.MachinesOrder = append(mt.MachinesOrder, id)
 	}
+
 	return data
 }
 
 func (mt *OtelMachTracer) MachineInit(mach am.Api) context.Context {
 	id := mach.Id()
+	mt.parentsMx.Lock()
+
 	index := mt.NextIndex
 	mt.NextIndex++
 	name := "mach:" + strconv.Itoa(index) + ":" + id
@@ -175,6 +188,7 @@ func (mt *OtelMachTracer) MachineInit(mach am.Api) context.Context {
 	} else {
 		ctx = trace.ContextWithSpan(ctx, mt.RootSpan)
 	}
+	mt.parentsMx.Unlock()
 
 	// create a machine trace
 	machCtx, machSpan := mt.Tracer.Start(ctx, name, trace.WithAttributes(
@@ -182,7 +196,7 @@ func (mt *OtelMachTracer) MachineInit(mach am.Api) context.Context {
 	))
 
 	// create a machine trace
-	data := mt.getMachineData(id)
+	data := mt.getMachineData(id, false)
 	data.machTrace = machCtx
 	data.ID = id
 	data.Index = index
@@ -211,6 +225,8 @@ func (mt *OtelMachTracer) MachineInit(mach am.Api) context.Context {
 
 // NewSubmachine links 2 machines with a parent-child relationship.
 func (mt *OtelMachTracer) NewSubmachine(parent, mach am.Api) {
+	// TODO race on mt.parents
+
 	if mt.ended {
 		mt.Logf("[otel] NewSubmachine: tracer already ended, ignoring %s",
 			mach.Id())
@@ -231,13 +247,16 @@ func (mt *OtelMachTracer) NewSubmachine(parent, mach am.Api) {
 		return
 	}
 
+	mt.parentsMx.Lock()
 	_, ok := mt.parents[mach.Id()]
 	if ok {
+		mt.parentsMx.Unlock()
 		mt.Logf("Submachine already being traced (duplicate ID %s)", mach.Id())
 		return
 	}
 	mt.parents[mach.Id()] = parent.Id()
-	data := mt.getMachineData(parent.Id())
+	mt.parentsMx.Unlock()
+	data := mt.getMachineData(parent.Id(), false)
 	data.mx.Lock()
 	defer data.mx.Unlock()
 
@@ -246,6 +265,7 @@ func (mt *OtelMachTracer) NewSubmachine(parent, mach am.Api) {
 		return
 	}
 
+	mt.parentSpansMx.Lock()
 	if _, ok := mt.parentSpans[parent.Id()]; !ok {
 		// create a group span for submachines
 		_, submachGroupSpan := mt.Tracer.Start(
@@ -255,6 +275,7 @@ func (mt *OtelMachTracer) NewSubmachine(parent, mach am.Api) {
 		// groups are only for nesting, so end it right away
 		submachGroupSpan.End()
 	}
+	mt.parentSpansMx.Unlock()
 }
 
 func (mt *OtelMachTracer) MachineDispose(id string) {
@@ -265,6 +286,7 @@ func (mt *OtelMachTracer) MachineDispose(id string) {
 }
 
 func (mt *OtelMachTracer) doDispose(id string) {
+
 	data, ok := mt.Machines[id]
 	if !ok {
 		mt.Logf("[otel] MachineDispose: machine %s not found", id)
@@ -272,6 +294,9 @@ func (mt *OtelMachTracer) doDispose(id string) {
 	}
 	mt.Logf("[otel] MachineDispose: disposing %s", id)
 	data.mx.Lock()
+	defer data.mx.Unlock()
+	mt.parentSpansMx.Lock()
+	defer mt.parentSpansMx.Unlock()
 
 	delete(mt.parentSpans, id)
 	delete(mt.Machines, id)
@@ -295,10 +320,13 @@ func (mt *OtelMachTracer) doDispose(id string) {
 	trace.SpanFromContext(data.stateGroup).End()
 	trace.SpanFromContext(data.txGroup).End()
 	trace.SpanFromContext(data.machTrace).End()
-	data.mx.Unlock()
 }
 
 func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
+	// TODO deadlock
+	mt.MachinesMx.Lock()
+	defer mt.MachinesMx.Unlock()
+
 	if mt.ended {
 		mt.Logf("[otel] TransitionInit: tracer already ended, ignoring %s",
 			tx.Machine.Id())
@@ -313,7 +341,7 @@ func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
 		return
 	}
 
-	data := mt.getMachineData(tx.Machine.Id())
+	data := mt.getMachineData(tx.Machine.Id(), true)
 	if data.Ended {
 		mt.Logf("[otel] TransitionInit: machine %s already ended", tx.Machine.Id())
 		return
@@ -386,6 +414,9 @@ func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
 	}
 
 	// expose
+	data.mx.Lock()
+	defer data.mx.Unlock()
+
 	data.txTrace = ctx
 	data.txHist = append(data.txHist, OtelTxHist{
 		Id:  tx.ID,
@@ -412,7 +443,7 @@ func (mt *OtelMachTracer) TransitionEnd(tx *am.Transition) {
 		return
 	}
 
-	data := mt.getMachineData(tx.Machine.Id())
+	data := mt.getMachineData(tx.Machine.Id(), false)
 	if data.Ended {
 		mt.Logf("[otel] TransitionEnd: machine %s already ended", tx.Machine.Id())
 		return
@@ -449,7 +480,7 @@ func (mt *OtelMachTracer) TransitionEnd(tx *am.Transition) {
 		txSpan.SetAttributes(
 			attribute.String("states_diff", strings.Trim(statesDiff, " ")),
 			attribute.Int64("time_after", int64(tx.TimeAfter.Sum())),
-			attribute.Bool("accepted", tx.IsAccepted()),
+			attribute.Bool("accepted", tx.IsAccepted.Load()),
 			attribute.Bool("auto", tx.IsAuto()),
 			attribute.Int("steps_count", len(tx.Steps)),
 		)
@@ -469,7 +500,7 @@ func (mt *OtelMachTracer) TransitionEnd(tx *am.Transition) {
 	}
 
 	// handle state changes
-	if !tx.IsAccepted() {
+	if !tx.IsAccepted.Load() {
 		return
 	}
 
@@ -534,7 +565,7 @@ func (mt *OtelMachTracer) HandlerEnd(
 	if mt.opts.SkipTransitions {
 		return
 	}
-	data := mt.getMachineData(tx.Machine.Id())
+	data := mt.getMachineData(tx.Machine.Id(), false)
 	if data.Ended {
 		return
 	}
@@ -631,8 +662,14 @@ func BindOtelLogger(
 // - AM_OTEL_TRACE_TXS
 // - OTEL_EXPORTER_OTLP_ENDPOINT
 // - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
-// This tracer is inherited by submachines.
+//
+// This tracer is inherited by submachines, and this function applies only to
+// top-level machines.
 func MachBindOtelEnv(mach am.Api) error {
+	if mach.ParentId() != "" {
+		return nil
+	}
+
 	service := os.Getenv(EnvService)
 	if os.Getenv(EnvOtelTrace) == "" || service == "" {
 		return nil
