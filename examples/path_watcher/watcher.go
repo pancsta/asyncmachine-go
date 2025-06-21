@@ -52,7 +52,7 @@ func New(ctx context.Context) (*PathWatcher, error) {
 		lastRefresh: make(map[string]time.Time),
 	}
 	opts := &am.Opts{
-		ID: "watcher",
+		Id: "watcher",
 	}
 
 	if os.Getenv("YASM_DEBUG") != "" {
@@ -272,7 +272,7 @@ func (w *PathWatcher) RefreshingExit(e *am.Event) bool {
 	mut := e.Mutation()
 
 	// removing Init is a force shutdown
-	removeInit := mut.Type == am.MutationRemove && mut.StateWasCalled(ss.Init)
+	removeInit := mut.Type == am.MutationRemove && mut.IsCalled(w.Mach.Index1(ss.Init))
 
 	return len(w.ongoing) == 0 || removeInit
 }

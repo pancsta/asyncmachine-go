@@ -4,7 +4,7 @@ go 1.24
 
 toolchain go1.24.0
 
-//replace github.com/pancsta/cview => ../cview
+replace github.com/pancsta/cview => ../cview
 
 require (
 	code.rocketnine.space/tslocum/cbind v0.1.5

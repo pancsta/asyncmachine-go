@@ -89,7 +89,7 @@ func (t *Turnstile) InputCoinState(e *am.Event) {
 
 func TestTurnstile(t *testing.T) {
 	mach := am.New(context.Background(), states, &am.Opts{
-		ID:                   "turnstile",
+		Id:                   "turnstile",
 		DontPanicToException: true,
 		DontLogID:            true,
 		LogLevel:             am.LogChanges,

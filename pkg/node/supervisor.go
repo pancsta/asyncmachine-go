@@ -697,7 +697,7 @@ func (s *Supervisor) HeartbeatState(e *am.Event) {
 	//
 	// 	// was Ready, but not anymore
 	// 	if w.Not1(ssW.Ready) && w.Tick(ssW.Ready) > 2 {
-	// 		s.Mach.Add1(ssS.KillingWorker, Pass(&A{
+	// 		s.Mach.Add(ssS.KillingWorker, Pass(&A{
 	// 			LocalAddr: info.localAddr,
 	// 		}))
 	// 	}

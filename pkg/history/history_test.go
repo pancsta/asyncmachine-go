@@ -26,7 +26,6 @@ func ExampleTrack() {
 	// collect some info
 	h.ActivatedRecently("A", time.Second) // true
 	fmt.Printf("%s", h.LastActivated["A"])
-	println(h.Entries)
 }
 
 func TestTrack(t *testing.T) {
@@ -47,7 +46,7 @@ func TestTrack(t *testing.T) {
 	// assert
 	assert.Greater(t, h.LastActivated["A"].Nanosecond(), lastA.Nanosecond(),
 		"Activation timestamp updated")
-	assert.Len(t, h.Entries, 4, "4 mutations for tracked states")
+	assert.Len(t, *h.Entries.Load(), 4, "4 mutations for tracked states")
 	assert.True(t, h.ActivatedRecently("A", time.Second), "A was activated")
 	assert.False(t, h.ActivatedRecently("B", time.Second), "B isn't tracked")
 }

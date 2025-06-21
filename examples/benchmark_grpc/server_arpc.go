@@ -31,7 +31,7 @@ func NewWorkerArpcServer(
 	// init
 	w := &WorkerArpcServer{
 		Worker: worker,
-		Mach:   am.New(ctx, states.WorkerSchema, &am.Opts{ID: "worker"}),
+		Mach:   am.New(ctx, states.WorkerSchema, &am.Opts{Id: "worker"}),
 	}
 
 	// verify states and bind to methods

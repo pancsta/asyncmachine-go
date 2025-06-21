@@ -32,7 +32,7 @@ func main() {
 
 	// machine init
 	mach := am.New(context.Background(), testutils.RelsNodeWorkerStruct, &am.Opts{
-		ID: "t-worker-" + addr})
+		Id: "t-worker-" + addr})
 	err := mach.VerifyStates(testutils.RelsNodeWorkerStates)
 	if err != nil {
 		panic(err)

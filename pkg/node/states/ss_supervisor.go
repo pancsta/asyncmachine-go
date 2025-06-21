@@ -3,7 +3,7 @@ package states
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
-	"github.com/pancsta/asyncmachine-go/pkg/states"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
@@ -87,6 +87,8 @@ type SupervisorStatesDef struct {
 	// as mutation args.
 	SuperSendPayload string
 
+	// inherit from BasicStatesDef
+	*ssam.BasicStatesDef
 	// inherit from WorkerStatesDef
 	*ssrpc.WorkerStatesDef
 }
@@ -94,7 +96,7 @@ type SupervisorStatesDef struct {
 // SupervisorGroupsDef contains all the state groups of the Supervisor state
 // machine.
 type SupervisorGroupsDef struct {
-	*states.ConnectedGroupsDef
+	*ssam.ConnectedGroupsDef
 
 	// PoolStatus are pool's possible statuses, 1 active at a time.
 	PoolStatus S
@@ -106,6 +108,8 @@ type SupervisorGroupsDef struct {
 
 // SupervisorSchema represents all relations and properties of SupervisorStates.
 var SupervisorSchema = SchemaMerge(
+	// inherit from BasicSchema
+	ssam.BasicSchema,
 	// inherit from WorkerStruct
 	ssrpc.WorkerSchema,
 	am.Schema{

@@ -68,7 +68,7 @@ func RandListener(host string) net.Listener {
 func NewRels(t *testing.T, initialState am.S) *am.Machine {
 	// machine init
 	mach := am.New(context.Background(), ss.States, &am.Opts{
-		ID: "t-" + t.Name()})
+		Id: "t-" + t.Name()})
 	err := mach.VerifyStates(ss.Names)
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +99,7 @@ func NewRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 
 	// machine init
 	mach := am.New(context.Background(), ssStruct, &am.Opts{
-		ID: "t-" + t.Name()})
+		Id: "t-" + t.Name()})
 	err := mach.VerifyStates(ssNames)
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +129,7 @@ func NewRelsNodeWorker(t *testing.T, initialState am.S) *am.Machine {
 
 	// machine init
 	mach := am.New(context.Background(), RelsNodeWorkerStruct, &am.Opts{
-		ID: "t-" + t.Name()})
+		Id: "t-" + t.Name()})
 	err := mach.VerifyStates(RelsNodeWorkerStates)
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +155,7 @@ func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
 		ss.B: {},
 		ss.C: {},
 		ss.D: {},
-	}, &am.Opts{ID: "t-" + t.Name()})
+	}, &am.Opts{Id: "t-" + t.Name()})
 	err := mach.VerifyStates(ss.Names)
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +186,40 @@ func NewNoRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 	ssNames := am.SAdd(ss.Names, ssrpc.WorkerStates.Names())
 
 	// machine init
-	mach := am.New(context.Background(), ssStruct, &am.Opts{ID: "t-" + t.Name()})
+	mach := am.New(context.Background(), ssStruct, &am.Opts{Id: "t-" + t.Name()})
+	err := mach.VerifyStates(ssNames)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
+	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
+		mach.HandlerTimeout = 2 * time.Minute
+	}
+	if initialState != nil {
+		mach.Set(initialState, nil)
+	}
+	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
+
+	return mach
+}
+
+// NewNoRelsRpcWorkerSchema creates a new RPC worker without relations between
+// states and applies a schema overlay.
+func NewNoRelsRpcWorkerSchema(
+	t *testing.T, initialState am.S, overlay am.Schema) *am.Machine {
+
+	// inherit from RPC worker
+	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, am.SchemaMerge(am.Schema{
+		ss.A: {},
+		ss.B: {},
+		ss.C: {},
+		ss.D: {},
+	}, overlay))
+	ssNames := am.SAdd(ss.Names, ssrpc.WorkerStates.Names())
+
+	// machine init
+	mach := am.New(context.Background(), ssStruct, &am.Opts{Id: "t-" + t.Name()})
 	err := mach.VerifyStates(ssNames)
 	if err != nil {
 		t.Fatal(err)
@@ -207,7 +240,7 @@ func NewNoRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 // NewCustom creates a new machine with custom states.
 func NewCustom(t *testing.T, states am.Schema) *am.Machine {
 	mach := am.New(context.Background(), states, &am.Opts{
-		ID: "t-" + t.Name()})
+		Id: "t-" + t.Name()})
 	err := mach.VerifyStates(append(maps.Keys(states), am.Exception))
 	if err != nil {
 		t.Fatal(err)
@@ -231,7 +264,7 @@ func NewCustomRpcWorker(t *testing.T, states am.Schema) *am.Machine {
 	ssNames := am.SAdd(maps.Keys(states), ssrpc.WorkerStates.Names())
 
 	mach := am.New(context.Background(), ssStruct, &am.Opts{
-		ID: "t-" + t.Name()})
+		Id: "t-" + t.Name()})
 	err := mach.VerifyStates(ssNames)
 	if err != nil {
 		t.Fatal(err)

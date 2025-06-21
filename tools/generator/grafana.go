@@ -206,8 +206,21 @@ func SyncDashboard(
 	return nil
 }
 
+// MachDashboardEnv binds a Grafana dashboard generator to the [mach], based on environment
+// // variables:
+// - AM_GRAFANA_URL: the Grafana URL
+// - AM_GRAFANA_TOKEN: the Grafana API token
+// - AM_SERVICE: the service name
+//
+// This tracer is inherited by submachines, and this function applies only to
+// top-level machines.
 func MachDashboardEnv(mach *am.Machine) error {
+	if mach.ParentId() != "" {
+		return nil
+	}
+
 	p := cli.GrafanaParams{}
+	// TODO named vars for env vars
 	p.GrafanaUrl = os.Getenv("AM_GRAFANA_URL")
 	p.Token = os.Getenv("AM_GRAFANA_TOKEN")
 	p.Folder = "asyncmachine"

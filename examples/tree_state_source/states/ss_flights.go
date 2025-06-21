@@ -3,6 +3,7 @@ package states
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
 // FlightsStatesDef contains all the states of the Flights state machine.
@@ -150,6 +151,8 @@ type FlightsStatesDef struct {
 	Flight10Gate4       string
 	Flight10Gate5       string
 
+	// inherit from BasicStatesDef
+	*ssam.BasicStatesDef
 	// inherit from rpc/WorkerStatesDef
 	*ssrpc.WorkerStatesDef
 }
@@ -190,6 +193,8 @@ type FlightsGroupsDef struct {
 
 // FlightsSchema represents all relations and properties of FlightsStates.
 var FlightsSchema = SchemaMerge(
+	// inherit from BasicSchema
+	ssam.BasicSchema,
 	// inherit from rpc/WorkerSchema
 	ssrpc.WorkerSchema,
 	am.Schema{
