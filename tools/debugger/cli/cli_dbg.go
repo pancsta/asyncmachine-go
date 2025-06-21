@@ -93,6 +93,7 @@ type Params struct {
 	Timelines     int
 	Rain          bool
 	TailMode      bool
+	MachUrl       string
 }
 
 type RootFn func(cmd *cobra.Command, args []string, params Params)
@@ -164,8 +165,12 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.Bool(pTail, true, "Start from the last tx")
 }
 
-func ParseParams(cmd *cobra.Command, _ []string) Params {
+func ParseParams(cmd *cobra.Command, args []string) Params {
 	// TODO dont panic
+	url := ""
+	if len(args) > 0 {
+		url = args[0]
+	}
 
 	// params
 	version, err := cmd.Flags().GetBool(pVersion)
@@ -265,6 +270,8 @@ func ParseParams(cmd *cobra.Command, _ []string) Params {
 	}
 
 	return Params{
+		MachUrl: url,
+
 		ListenAddr: serverAddr,
 		DebugAddr:  debugAddr,
 		ImportData: importData,

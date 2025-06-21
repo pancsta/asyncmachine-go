@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -143,6 +144,28 @@ func (d *Debugger) ReadyState(e *am.Event) {
 		d.Mach.EvAdd1(e, ss.TailMode, nil)
 	}
 
+	// TODO extract march url parsing and merge with addr bar
+	if u := d.Opts.MachUrl; u != "" {
+		up, err := url.Parse(d.Opts.MachUrl)
+		if err != nil {
+			d.Mach.EvAddErr(e, err, nil)
+		} else if up.Host != "" {
+			addr := &MachAddress{
+				MachId: up.Host,
+			}
+			p := strings.Split(up.Path, "/")
+			if len(p) > 1 {
+				addr.TxId = p[1]
+			}
+			if len(p) > 2 {
+				if s, err := strconv.Atoi(p[2]); err == nil {
+					addr.Step = s
+				}
+			}
+			go d.GoToMachAddress(addr, false)
+		}
+	}
+
 	// unblock
 	go func() {
 		for {
@@ -263,7 +286,7 @@ func (d *Debugger) PausedState(_ *am.Event) {
 }
 
 func (d *Debugger) TailModeState(_ *am.Event) {
-	d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
+	d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), 0, false)
 	d.updateMatrixRain()
 	d.updateClientList(true)
 	d.updateToolbar()
@@ -296,7 +319,7 @@ func (d *Debugger) FwdState(e *am.Event) {
 	amount = max(amount, 1)
 
 	c := d.C
-	d.SetCursor1(d.filterTxCursor(c, c.CursorTx1+amount, true), false)
+	d.SetCursor1(d.filterTxCursor(c, c.CursorTx1+amount, true), 0, false)
 	d.trimHistory()
 	d.handleTStepsScrolled()
 	if d.Mach.Is1(ss.Playing) && c.CursorTx1 == len(c.MsgTxs) {
@@ -326,7 +349,7 @@ func (d *Debugger) BackState(e *am.Event) {
 	amount = max(amount, 1)
 
 	c := d.C
-	d.SetCursor1(d.filterTxCursor(d.C, c.CursorTx1-amount, false), false)
+	d.SetCursor1(d.filterTxCursor(d.C, c.CursorTx1-amount, false), 0, false)
 	d.trimHistory()
 	d.handleTStepsScrolled()
 
@@ -380,7 +403,7 @@ func (d *Debugger) BackStepState(_ *am.Event) {
 
 	// wrap if there's a prev tx
 	if d.C.CursorStep1 <= 0 {
-		d.SetCursor1(d.filterTxCursor(d.C, d.C.CursorTx1-1, false), false)
+		d.SetCursor1(d.filterTxCursor(d.C, d.C.CursorTx1-1, false), 0, false)
 		d.updateLog(false)
 		nextTx := d.nextTx()
 		d.C.CursorStep1 = len(nextTx.Steps)
@@ -704,7 +727,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	// UI updates for the selected client
 	if updateTailMode {
 		// force the latest tx
-		d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
+		d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), 0, false)
 		// sidebar for errs
 		d.updateViews(false)
 	}
@@ -813,7 +836,7 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 
 		// or scroll to the last one
 		if !match {
-			d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), true)
+			d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), 0, true)
 		} else {
 			// setCursor triggers GraphsScheduled
 			d.Mach.EvAdd1(e, ss.GraphsScheduled, nil)
