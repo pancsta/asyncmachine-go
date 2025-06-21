@@ -842,7 +842,8 @@ func GroupWhen1(
 	return chans, nil
 }
 
-// TODO func WhenAny1(mach am.Api, states am.S, ctx context.Context) []<-chan struct{}
+// TODO func WhenAny1(mach am.Api, states am.S, ctx context.Context)
+//  []<-chan struct{}
 
 // RemoveMulti creates a final handler which removes a multi state from a
 // machine. Useful to avoid FooState-Remove1-Foo repetition.
@@ -928,7 +929,8 @@ func Pool(limit int) *errgroup.Group {
 	return g
 }
 
-// Cond is a set of state conditions, which when all met make the condition true.
+// Cond is a set of state conditions, which when all met make the condition
+// true.
 type Cond struct {
 	// TODO IsMatch, AnyMatch, ... for regexps
 
@@ -951,10 +953,12 @@ type Cond struct {
 }
 
 func (c Cond) String() string {
-	return fmt.Sprintf("is: %s, any: %s, not: %s, clock: %v", c.Is, c.Any1, c.Not, c.Clock)
+	return fmt.Sprintf("is: %s, any: %s, not: %s, clock: %v",
+		c.Is, c.Any1, c.Not, c.Clock)
 }
 
-// Check compares the specified conditions against the passed machine. When mach is nil, Check returns false.
+// Check compares the specified conditions against the passed machine. When mach
+// is nil, Check returns false.
 func (c Cond) Check(mach am.Api) bool {
 	if mach == nil {
 		return false
@@ -984,23 +988,19 @@ func (c Cond) IsEmpty() bool {
 // TODO thread safety via atomics
 type StateLoop struct {
 	loopState string
+	ctxStates am.S
 	mach      am.Api
 	ended     bool
 	interval  time.Duration
 	threshold int
-
-	// state context of loopState
-	ctx       context.Context
-	ctxStates am.S
+	check     func() bool
 
 	lastSTime uint64
 	lastHTime time.Time
-
-	// Start State Time of ctxStates
+	// mach time of [ctxStates] when started
 	startSTime uint64
 	// Start Human Time
 	startHTime time.Time
-	check      func() bool
 }
 
 func (l *StateLoop) String() string {
@@ -1025,19 +1025,19 @@ func (l *StateLoop) Sum() uint64 {
 
 // Ok returns true if the loop should continue.
 func (l *StateLoop) Ok(ctx context.Context) bool {
-
 	if l.ended {
 		return false
-
 	} else if ctx != nil && ctx.Err() != nil {
-		err := fmt.Errorf("loop: arg ctx expired for %s/%s", l.mach.Id(), l.loopState)
+		err := fmt.Errorf("loop: arg ctx expired for %s/%s", l.mach.Id(),
+			l.loopState)
 		l.mach.AddErr(err, nil)
 		l.ended = true
 
 		return false
 
 	} else if l.mach.Not1(l.loopState) {
-		err := fmt.Errorf("loop: state ctx expired for %s/%s", l.mach.Id(), l.loopState)
+		err := fmt.Errorf("loop: state ctx expired for %s/%s", l.mach.Id(),
+			l.loopState)
 		l.mach.AddErr(err, nil)
 		l.ended = true
 
@@ -1061,7 +1061,8 @@ func (l *StateLoop) Ok(ctx context.Context) bool {
 
 		// check the current interval window
 	} else if int(sum) > l.threshold {
-		err := fmt.Errorf("loop: threshold exceeded for %s/%s", l.mach.Id(), l.loopState)
+		err := fmt.Errorf("loop: threshold exceeded for %s/%s", l.mach.Id(),
+			l.loopState)
 		l.mach.AddErr(err, nil)
 		l.ended = true
 
@@ -1086,7 +1087,6 @@ func (l *StateLoop) Ended() bool {
 func NewStateLoop(
 	mach *am.Machine, loopState string, optCheck func() bool,
 ) *StateLoop {
-
 	schema := mach.Schema()
 	mach.MustParseStates(S{loopState})
 
@@ -1150,7 +1150,6 @@ func (l SlogToMachLog) Write(p []byte) (n int, err error) {
 // TagValue returns the value part from a text tag "key:value". For tag without
 // value, it returns the tag name.
 func TagValue(tags []string, key string) string {
-
 	for _, t := range tags {
 		// no value
 		if t == key {
@@ -1174,7 +1173,8 @@ func TagValue(tags []string, key string) string {
 // overlaps eg "FooFooName" will be "Foo".
 func PrefixStates(
 	schema am.Schema, prefix string, removeDups bool, optWhitelist,
-	optBlacklist S) am.Schema {
+	optBlacklist S,
+) am.Schema {
 	schema = am.CloneSchema(schema)
 
 	for name, s := range schema {

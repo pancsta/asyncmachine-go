@@ -517,7 +517,6 @@ func (s *Step) StringFromIndex(idx S) string {
 func newStep(from string, to string, stepType StepType,
 	relType Relation,
 ) *Step {
-
 	ret := &Step{
 		// TODO refac with the new dbg protocol, use indexes only
 		FromState: from,

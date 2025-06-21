@@ -206,8 +206,8 @@ func SyncDashboard(
 	return nil
 }
 
-// MachDashboardEnv binds a Grafana dashboard generator to the [mach], based on environment
-// // variables:
+// MachDashboardEnv binds a Grafana dashboard generator to the [mach], based on
+// environment variables:
 // - AM_GRAFANA_URL: the Grafana URL
 // - AM_GRAFANA_TOKEN: the Grafana API token
 // - AM_SERVICE: the service name

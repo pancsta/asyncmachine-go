@@ -151,6 +151,8 @@ func rootRun(
 	repl *Repl, cmd *cobra.Command, args []string, cliArgs []string,
 	cliCmd *cobra.Command,
 ) error {
+	var watcher *fsnotify.Watcher
+	var addrs []string
 	mach := repl.Mach
 
 	// CLI mode
@@ -160,9 +162,6 @@ func rootRun(
 	if l == 0 {
 		return nil
 	}
-
-	addrs := []string{args[0]}
-	var watcher *fsnotify.Watcher
 
 	// flags
 	isWatch, err := cmd.Flags().GetBool("watch")
@@ -332,7 +331,9 @@ func handleDebug(cmd *cobra.Command, mach *am.Machine) (string, error) {
 
 // TODO watch in a state, handle filenames other then *.addr, add/remove
 //   - only affected clients, dont re-start
-func initWatcher(mach *am.Machine, watchpath string, isDir bool) (*fsnotify.Watcher, error) {
+func initWatcher(
+	mach *am.Machine, watchpath string, isDir bool,
+) (*fsnotify.Watcher, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err

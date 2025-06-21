@@ -24,8 +24,10 @@ func Add(
 	if targetState == "" {
 		targetState = sourceState
 	}
-	source.InternalLog(am.LogOps, "[pipe-out:add] %s to %s", sourceState, target.Id())
-	target.InternalLog(am.LogOps, "[pipe-in:add] %s from %s", targetState, source.Id())
+	source.InternalLog(am.LogOps, "[pipe-out:add] %s to %s", sourceState,
+		target.Id())
+	target.InternalLog(am.LogOps, "[pipe-in:add] %s from %s", targetState,
+		source.Id())
 
 	// TODO optimize
 	source.HandleDispose(gcHandler(target))

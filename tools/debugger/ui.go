@@ -332,7 +332,6 @@ func (d *Debugger) initToolbar() {
 	// TODO save filters per machine checkbox
 	// TODO next error
 	d.toolbarItems = [][]toolbarItem{
-
 		// row 1
 		{
 			{id: toolJumpPrev, label: "jump", icon: "◀ "},

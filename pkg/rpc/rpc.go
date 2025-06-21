@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/rpc2"
+
 	"github.com/pancsta/asyncmachine-go/pkg/rpc/rpcnames"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"

@@ -136,8 +136,8 @@ func (d *Debugger) parseMsgLogEntry(
 	if strings.HasPrefix(entry.Text, "[extern") {
 		lvl = am.LogNothing
 	}
-	t := fmtLogEntry(d.Mach, entry.Text, tx.CalledStateNames(c.MsgStruct.StatesIndex),
-		c.MsgStruct.States)
+	t := fmtLogEntry(d.Mach, entry.Text, tx.CalledStateNames(
+		c.MsgStruct.StatesIndex), c.MsgStruct.States)
 
 	return &am.LogEntry{Level: lvl, Text: t}
 }
@@ -268,7 +268,9 @@ var (
 )
 
 // TODO split
-func fmtLogEntry(mach *am.Machine, entry string, calledStates []string, machStruct am.Schema) string {
+func fmtLogEntry(
+	mach *am.Machine, entry string, calledStates []string, machStruct am.Schema,
+) string {
 	if entry == "" {
 		return entry
 	}
@@ -865,7 +867,8 @@ func (d *Debugger) updateLogReader() {
 
 		if targetTxIdx != -1 {
 			targetTx := targetMach.tx(targetTxIdx)
-			calledStates := targetTx.CalledStateNames(targetMach.MsgStruct.StatesIndex)
+			calledStates := targetTx.CalledStateNames(
+				targetMach.MsgStruct.StatesIndex)
 			label = capitalizeFirst(tx.Type.String()) + " [::b]" +
 				utils.J(calledStates)
 			if slices.Contains(calledStates, selState) {
@@ -956,7 +959,8 @@ func (d *Debugger) updateLogReader() {
 
 			if targetTxIdx != -1 {
 				targetTx := targetMach.tx(targetTxIdx)
-				calledStates := targetTx.CalledStateNames(targetMach.MsgStruct.StatesIndex)
+				calledStates := targetTx.CalledStateNames(
+					targetMach.MsgStruct.StatesIndex)
 				label = capitalizeFirst(tx.Type.String()) + " [::b]" +
 					utils.J(calledStates)
 				if slices.Contains(calledStates, selState) {

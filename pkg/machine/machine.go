@@ -1623,7 +1623,6 @@ func (m *Machine) VerifyStates(states S) error {
 }
 
 func (m *Machine) verifyStates(states S) error {
-
 	var errs []error
 	var checked []string
 	for _, s := range states {
@@ -2155,8 +2154,8 @@ func (m *Machine) Log(msg string, args ...any) {
 	m.log(LogChanges, prefix+"] "+msg, args...)
 }
 
-// InternalLog adds an internal log entry from the outside. It should be used only
-// by packages extending pkg/machine. Use Log instead.
+// InternalLog adds an internal log entry from the outside. It should be used
+// only by packages extending pkg/machine. Use Log instead.
 func (m *Machine) InternalLog(lvl LogLevel, msg string, args ...any) {
 	if m.disposed.Load() {
 		return

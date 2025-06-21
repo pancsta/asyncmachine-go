@@ -850,6 +850,7 @@ func (w *Worker) StateNames() am.S {
 
 	return slices.Clone(w.stateNames)
 }
+
 func (w *Worker) StateNamesMatch(re *regexp.Regexp) am.S {
 	ret := am.S{}
 	for _, name := range w.StateNames() {

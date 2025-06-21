@@ -41,7 +41,7 @@ func (d *Debugger) buildClientList(selectedIndex int) {
 
 func (d *Debugger) doBuildClientList(selectedIndex int) {
 	defer d.buildCLScheduled.Store(false)
-	
+
 	if d.Mach.Not1(ss.ClientListVisible) {
 		return
 	}

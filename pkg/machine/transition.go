@@ -19,7 +19,8 @@ type Transition struct {
 	// TimeBefore is the machine time from before the transition.
 	TimeBefore Time
 	// TimeAfter is the machine time from after the transition. If the transition
-	// has been canceled, this will be the same as TimeBefore. This field is nil until the negotiation phase finishes.
+	// has been canceled, this will be the same as TimeBefore. This field is nil
+	// until the negotiation phase finishes.
 	TimeAfter Time
 	// TargetIndexes is a list of indexes of the target states.
 	TargetIndexes []int
@@ -265,9 +266,10 @@ func (t *Transition) String() string {
 	}
 
 	source := ""
-	if t.Mutation.Source != nil {
-		source = fmt.Sprintf("\nsource: [%s](%s/%s/t%d)", t.Mutation.Source.TxId,
-			t.Mutation.Source.MachId, t.Mutation.Source.TxId, t.Mutation.Source.MachTime)
+	mutSrc := t.Mutation.Source
+	if mutSrc != nil {
+		source = fmt.Sprintf("\nsource: [%s](%s/%s/t%d)", mutSrc.TxId,
+			mutSrc.MachId, mutSrc.TxId, mutSrc.MachTime)
 	}
 
 	return fmt.Sprintf("tx#%s\n%s%s%s", t.ID, t.Mutation.StringFromIndex(index),
@@ -368,7 +370,6 @@ func (t *Transition) emitExitEvents() Result {
 func (t *Transition) emitHandler(
 	from, to string, isFinal, isEnter bool, event string, args A,
 ) Result {
-
 	step := newStep(from, to, StepHandler, 0)
 	step.IsFinal = isFinal
 	step.IsEnter = isEnter
@@ -516,7 +517,6 @@ func (t *Transition) emitEvents() Result {
 		result = t.emitFinalEvents()
 		hasStateChanged = !m.IsTime(t.TimeBefore, nil)
 	} else {
-
 		// gather new clock values, overwrite fake TimeAfter
 		t.TimeAfter = t.TimeBefore
 	}

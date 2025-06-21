@@ -52,7 +52,8 @@ aRPC auto syncs only clock values, which technically is `[n]uint64` (`n` = numbe
 
 ## Does asyncmachine return data?
 
-No, just yes/no/later (`Executed`, `Canceled`, `Queued`). Use channels in mutation args for returning local data and the `SendPayload` state for aRPC.
+No, just yes/no/later (`Executed`, `Canceled`, `Queued`). Use channels in mutation args for returning local data and
+the `SendPayload` state for aRPC.
 
 ## Does asyncmachine return errors?
 
@@ -75,7 +76,8 @@ with `amhelp.Pool` (`errgroup`) per a state, machine, or both. It's a form of st
 
 ## What should be a "state"?
 
-Only interesting things - if we don't care about something to be a separate entity, there's no need to orchestrate it as a separate state.
+Only interesting things - if we don't care about something to be a separate entity, there's no need to orchestrate it
+as a separate state.
 
 ## What's the origin of asyncmachine?
 

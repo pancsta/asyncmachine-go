@@ -121,7 +121,6 @@ func (m *DbgMsgTx) Clock(statesIndex am.S, state string) uint64 {
 }
 
 func (m *DbgMsgTx) Is(statesIndex am.S, states am.S) bool {
-
 	for _, state := range states {
 		idx := m.Index(statesIndex, state)
 
@@ -176,7 +175,8 @@ func (m *DbgMsgTx) CalledStateNames(statesIndex am.S) am.S {
 
 // TODO unify
 func (m *DbgMsgTx) StdString(statesIndex am.S) string {
-	ret := "tx#" + m.ID + "\n[" + m.Type.String() + "] " + utils.J(m.CalledStateNames(statesIndex)) + "\n"
+	ret := "tx#" + m.ID + "\n[" + m.Type.String() + "] " +
+		utils.J(m.CalledStateNames(statesIndex)) + "\n"
 	// TODO add source from mutation
 	for _, step := range m.Steps {
 		ret += "- " + step.StringFromIndex(statesIndex) + "\n"

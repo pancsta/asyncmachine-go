@@ -19,7 +19,8 @@ func TestTimeMatrix(t *testing.T) {
 	statesStruct := m1.Schema()
 	statesStruct["B"] = am.State{Multi: true}
 	statesStruct["Bump1"] = am.State{}
-	err := m1.SetSchema(statesStruct, S{"A", "B", "C", "D", "Bump1", am.Exception})
+	err := m1.SetSchema(statesStruct,
+		S{"A", "B", "C", "D", "Bump1", am.Exception})
 	assert.NoError(t, err)
 
 	// mutate & assert

@@ -55,10 +55,9 @@ It aims to create **autonomous** workflows with **organic** control flow and **s
 Each state represents:
 
 - binary flag
-- ID
 - node with relations
 - AOP aspect
-- logical clock
+- **logical clock**
 - subscription topic
 - multiple methods
 - metric
@@ -84,12 +83,7 @@ The top layers depend on the bottom ones.
     <td>.</td>
     <td>.</td>
     <td>.</td>
-    <td>.</td>
-    <td>.</td>
     <td colspan="1" align=center><a href="pkg/pubsub/README.md">PubSub</a></td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
     <td>.</td>
     <td>.</td>
     <td>.</td>
@@ -99,8 +93,6 @@ The top layers depend on the bottom ones.
   </tr>
 
   <tr>
-    <td>.</td>
-    <td>.</td>
     <td>.</td>
     <td>.</td>
     <td>.</td>
@@ -112,14 +104,9 @@ The top layers depend on the bottom ones.
     <td>.</td>
     <td>.</td>
     <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
   </tr>
 
   <tr>
-    <td>.</td>
-    <td>.</td>
     <td>.</td>
     <td>.</td>
     <td>.</td>
@@ -129,13 +116,9 @@ The top layers depend on the bottom ones.
     <td>.</td>
     <td>.</td>
     <td>.</td>
-    <td>.</td>
-    <td>.</td>
   </tr>
 
   <tr>
-    <td>.</td>
-    <td>.</td>
     <td>.</td>
     <td>.</td>
     <td>.</td>
@@ -143,40 +126,26 @@ The top layers depend on the bottom ones.
     <td>.</td>
     <td>.</td>
     <td>.</td>
-    <td>.</td>
-    <td>.</td>
   </tr>
 
   <tr>
-    <td>.</td>
-    <td>.</td>
     <td>.</td>
     <td>.</td>
     <td colspan="9" align=center>🐇 <a href="pkg/machine/README.md">Machine API</a></td>
     <td>.</td>
     <td>.</td>
-    <td>.</td>
-    <td>.</td>
   </tr>
 
   <tr>
-    <td>.</td>
-    <td>.</td>
     <td>.</td>
     <td colspan="11" align=center><a href="pkg/machine/README.md#relations">Relations</a></td>
     <td>.</td>
-    <td>.</td>
-    <td>.</td>
   </tr>
 
   <tr>
-    <td>.</td>
-    <td>.</td>
     <td colspan="13" align=center><a href="pkg/machine/README.md#multi-state"><b><u>
         States
     </u></b></a></td>
-    <td>.</td>
-    <td>.</td>
   </tr>
 </table>
 
@@ -295,7 +264,7 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 - 🦾 **[`/pkg/machine`](pkg/machine/README.md)** is the main package
 - [`/pkg/node`](pkg/node) shows a high-level usage
 - examples in [`/examples`](/examples/README.md) are good for a general grasp
-  - with [`/examples/mach_template`](/examples/mach_template) being ready for copy-paste
+    - with [`/examples/mach_template`](/examples/mach_template) being ready for copy-paste
 - [`/docs/manual.md`](/docs/manual.md)
   and [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) will bootstrap
@@ -349,7 +318,7 @@ Other packages:
     - [Changing State](/docs/manual.md#changing-state)
     - [Advanced Topics](/docs/manual.md#advanced-topics)
     - [Cheatsheet](/docs/manual.md#cheatsheet)
-    
+
 ## Goals
 
 - scale up, not down

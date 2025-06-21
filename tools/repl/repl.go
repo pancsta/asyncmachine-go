@@ -82,7 +82,6 @@ func (r *Repl) StartEnter(e *am.Event) bool {
 }
 
 func (r *Repl) StartState(e *am.Event) {
-
 	// init clients TODO avoid empty entries
 	r.rpcClients = make([]*rpc.Client, len(r.Addrs))
 	for i, addr := range r.Addrs {
@@ -648,7 +647,7 @@ func (r *Repl) DisconnectedState(e *am.Event) {
 		if c == nil {
 			continue
 		}
-		c.Stop(nil, false)
+		c.Stop(context.Background(), false)
 	}
 }
 

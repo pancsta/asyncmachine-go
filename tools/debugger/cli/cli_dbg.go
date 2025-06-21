@@ -210,6 +210,9 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 	timelines = min(2, timelines)
 
 	outputClients, err := cmd.Flags().GetBool(pOutputClients)
+	if err != nil {
+		panic(err)
+	}
 	outputTx, err := cmd.Flags().GetBool(pOutputTx)
 	if err != nil {
 		panic(err)

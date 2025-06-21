@@ -61,7 +61,7 @@ State schema from [/pkg/pubsub/states/](/pkg/pubsub/states/ss_topic.go).
 import (
     ma "github.com/multiformats/go-multiaddr"
     ampubsub "github.com/pancsta/asyncmachine-go/pkg/pubsub"
-	ssps "github.com/pancsta/asyncmachine-go/pkg/pubsub/states"
+    ssps "github.com/pancsta/asyncmachine-go/pkg/pubsub/states"
 )
 
 var ss = states.TopicStates

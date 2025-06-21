@@ -146,7 +146,9 @@ func NewOtelMachTracer(
 	return mt
 }
 
-func (mt *OtelMachTracer) getMachineData(id string, locked bool) *OtelMachineData {
+func (mt *OtelMachTracer) getMachineData(
+	id string, locked bool,
+) *OtelMachineData {
 	if !locked {
 		mt.MachinesMx.Lock()
 		defer mt.MachinesMx.Unlock()
@@ -286,7 +288,6 @@ func (mt *OtelMachTracer) MachineDispose(id string) {
 }
 
 func (mt *OtelMachTracer) doDispose(id string) {
-
 	data, ok := mt.Machines[id]
 	if !ok {
 		mt.Logf("[otel] MachineDispose: machine %s not found", id)

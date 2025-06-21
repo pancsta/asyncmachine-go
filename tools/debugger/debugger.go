@@ -1648,9 +1648,12 @@ func (d *Debugger) filterTx(
 
 	// healthcheck
 	if skipHealth {
-		health := c.statesToIndexes(S{ssam.BasicStates.Healthcheck, ssam.BasicStates.Heartbeat})
-		if len(added) == 1 && len(removed) == 0 && slices.Contains(health, added[0]) ||
-			len(added) == 0 && len(removed) == 1 && slices.Contains(health, removed[0]) {
+		health := c.statesToIndexes(
+			S{ssam.BasicStates.Healthcheck, ssam.BasicStates.Heartbeat})
+		isAdd1 := len(added) == 1 && len(removed) == 0
+		isRemove1 := len(added) == 0 && len(removed) == 1
+		if isAdd1 && slices.Contains(health, added[0]) ||
+			isRemove1 && slices.Contains(health, removed[0]) {
 
 			return false
 		}

@@ -214,7 +214,9 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 		color := colorInactive
 
 		if msg.Is(c.MsgStruct.StatesIndex, am.S{stateName}) {
-			if stateName == am.Exception || strings.HasPrefix(stateName, am.PrefixErr) {
+			if stateName == am.Exception ||
+				strings.HasPrefix(stateName, am.PrefixErr) {
+
 				color = colorErr
 			} else {
 				color = colorActive
@@ -291,7 +293,9 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 	return maxLen
 }
 
-func (d *Debugger) updateTreeTxSteps(steps []*am.Step, tx *telemetry.DbgMsgTx) int {
+func (d *Debugger) updateTreeTxSteps(
+	steps []*am.Step, tx *telemetry.DbgMsgTx,
+) int {
 	c := d.C
 	if c == nil {
 		return 0
@@ -470,9 +474,11 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step, tx *telemetry.DbgMsgTx) i
 	return maxLenTagged
 }
 
-var reTreeStateColorFix = regexp.MustCompile("\\[white\\](M?\\|\\d+)(\\.*)")
+var reTreeStateColorFix = regexp.MustCompile(`\[white\](M?\|\d+)(\.*)`)
 
-func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step, msg telemetry.DbgMsg) {
+func (d *Debugger) updateTreeRelCols(
+	colStartIdx int, steps []*am.Step, msg telemetry.DbgMsg,
+) {
 	c := d.C
 	if c == nil {
 		return
@@ -659,9 +665,11 @@ func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step, msg tele
 		// TODO avoid monkey patching
 		if ref.stateName != "" && !ref.isRef {
 			if !msg.Is(d.C.MsgStruct.StatesIndex, am.S{ref.stateName}) {
-				text = reTreeStateColorFix.ReplaceAllString(text, "["+colorInactive.String()+"]$1[grey]$2")
+				text = reTreeStateColorFix.ReplaceAllString(text,
+					"["+colorInactive.String()+"]$1[grey]$2")
 			} else {
-				text = reTreeStateColorFix.ReplaceAllString(text, "["+colorActive.String()+"]$1[grey]$2")
+				text = reTreeStateColorFix.ReplaceAllString(text,
+					"["+colorActive.String()+"]$1[grey]$2")
 			}
 		}
 		node.SetText(text + suffix)
@@ -816,7 +824,6 @@ func (d *Debugger) addState(name string) {
 
 		stateNode.AddChild(tagRootNode)
 	}
-
 }
 
 // sortTree requires updateTree called before
