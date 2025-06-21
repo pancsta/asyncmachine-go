@@ -433,13 +433,15 @@ func newPsPeer(
 
 	// pick N random addrs
 	pickedAddrs := []ma.Multiaddr{}
+	pickedAddrsStr := []string{}
 	for range n {
 		if len(connAddrs) == 0 {
 			break
 		}
 		a := connAddrs[rand.Intn(len(connAddrs))]
-		if !slices.Contains(pickedAddrs, a) {
+		if !slices.Contains(pickedAddrsStr, a.String()) {
 			pickedAddrs = append(pickedAddrs, a)
+			pickedAddrsStr = append(pickedAddrsStr, a.String())
 		}
 	}
 

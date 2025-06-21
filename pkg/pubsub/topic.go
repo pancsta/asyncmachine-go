@@ -1274,7 +1274,11 @@ func (t *Topic) ListMachinesState(e *am.Event) {
 		}
 	}
 
-	retCh <- ret
+	select {
+	case retCh <- ret:
+	default:
+		t.log("ListMachines: closed chan, dropping")
+	}
 }
 
 func (t *Topic) HeartbeatState(e *am.Event) {
