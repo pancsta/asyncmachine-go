@@ -68,7 +68,7 @@ func (h *DisposedHandlers) RegisterDisposalEnter(e *am.Event) bool {
 	fn, ok := e.Args[DisposedArgHandler].(am.HandlerDispose)
 	ret := ok && fn != nil
 	// avoid errs on check mutations
-	if ret == false && !e.IsCheck {
+	if !ret && !e.IsCheck {
 		err := fmt.Errorf("%w: DisposedArgHandler invalid", am.ErrInvalidArgs)
 		e.Machine().AddErr(err, nil)
 	}

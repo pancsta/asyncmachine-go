@@ -12,6 +12,7 @@
     <a href="#samples">Samples</a> .
     <a href="#getting-started">Getting Started</a> .
     <a href="#packages">Packages</a> .
+    <a href="#devtools">Devtools</a> .
     <a href="#apps">Apps</a> .
     <a href="#documentation">Docs</a> .
     <a href="#development">Dev</a> .
@@ -28,13 +29,14 @@
 </div>
 
 > [!NOTE]
-> State machines communicate through states (mutations, checking, and waiting).
+> State machines communicate through states.
 
 **asyncmachine-go** is a batteries-included graph control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
 and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state-machine](/pkg/machine/README.md)**.
-It features [atomic transitions](/docs/manual.md#transition-lifecycle), [transparent RPC](/pkg/rpc/README.md),
-[TUI debugger](/tools/cmd/am-dbg/README.md), [telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md),
-[remote workers](/pkg/node/README.md), and [diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
+It features [atomic transitions](/docs/manual.md#transition-lifecycle), [relations with consensus](/docs/manual.md#relations),
+[transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
+[telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md), [remote workers](/pkg/node/README.md),
+and [diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
 
 As a control flow library, it decides about running of predefined bits of code (transition handlers) - their order and
 which ones to run, according to currently active states (flags). Thanks to a [novel state machine](/pkg/machine/README.md),
@@ -53,17 +55,20 @@ It aims to create **autonomous** workflows with **organic** control flow and **s
 Each state represents:
 
 - binary flag
-- node in a multigraph
+- ID
+- node with relations
 - AOP aspect
-- metric
-- trace
+- logical clock
 - subscription topic
 - multiple methods
+- metric
+- trace
+- lock
 - breakpoint
 
 Besides workflows, it can be used for **stateful applications** of any size - daemons, UIs, configs, bots, firewalls,
-synchronization consensus, games, smart graphs, microservice orchestration, contracts, simulators, as well as
-**"real-time" systems** which rely on instant cancellations.
+synchronization consensus, games, smart graphs, microservice orchestration, robots, contracts, streams, DI containers,
+test scenarios, simulators, as well as **"real-time" systems** which rely on instant cancelation.
 
 ![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)
 
@@ -79,6 +84,8 @@ The top layers depend on the bottom ones.
     <td>.</td>
     <td>.</td>
     <td>.</td>
+    <td>.</td>
+    <td>.</td>
     <td colspan="1" align=center><a href="pkg/pubsub/README.md">PubSub</a></td>
     <td>.</td>
     <td>.</td>
@@ -86,8 +93,14 @@ The top layers depend on the bottom ones.
     <td>.</td>
     <td>.</td>
     <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
   </tr>
+
   <tr>
+    <td>.</td>
+    <td>.</td>
     <td>.</td>
     <td>.</td>
     <td>.</td>
@@ -99,8 +112,14 @@ The top layers depend on the bottom ones.
     <td>.</td>
     <td>.</td>
     <td>.</td>
+    <td>.</td>
+    <td>.</td>
+    <td>.</td>
   </tr>
+
   <tr>
+    <td>.</td>
+    <td>.</td>
     <td>.</td>
     <td>.</td>
     <td>.</td>
@@ -110,8 +129,13 @@ The top layers depend on the bottom ones.
     <td>.</td>
     <td>.</td>
     <td>.</td>
+    <td>.</td>
+    <td>.</td>
   </tr>
+
   <tr>
+    <td>.</td>
+    <td>.</td>
     <td>.</td>
     <td>.</td>
     <td>.</td>
@@ -119,23 +143,40 @@ The top layers depend on the bottom ones.
     <td>.</td>
     <td>.</td>
     <td>.</td>
+    <td>.</td>
+    <td>.</td>
   </tr>
+
   <tr>
+    <td>.</td>
+    <td>.</td>
     <td>.</td>
     <td>.</td>
     <td colspan="9" align=center>🐇 <a href="pkg/machine/README.md">Machine API</a></td>
     <td>.</td>
     <td>.</td>
+    <td>.</td>
+    <td>.</td>
   </tr>
+
   <tr>
+    <td>.</td>
+    <td>.</td>
     <td>.</td>
     <td colspan="11" align=center><a href="pkg/machine/README.md#relations">Relations</a></td>
     <td>.</td>
+    <td>.</td>
+    <td>.</td>
   </tr>
+
   <tr>
+    <td>.</td>
+    <td>.</td>
     <td colspan="13" align=center><a href="pkg/machine/README.md#multi-state"><b><u>
         States
     </u></b></a></td>
+    <td>.</td>
+    <td>.</td>
   </tr>
 </table>
 
@@ -254,24 +295,24 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 - 🦾 **[`/pkg/machine`](pkg/machine/README.md)** is the main package
 - [`/pkg/node`](pkg/node) shows a high-level usage
 - examples in [`/examples`](/examples/README.md) are good for a general grasp
+  - with [`/examples/mach_template`](/examples/mach_template) being ready for copy-paste
 - [`/docs/manual.md`](/docs/manual.md)
   and [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) will bootstrap
-- [`/examples/mach_template`](/examples/mach_template) is copy-paste ready
-- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) records every detail
-- [reading tests](https://github.com/search?q=repo%3Apancsta%2Fasyncmachine-go+path%3A%2F.*_test.go%2F&type=code)
+- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) will record every detail
+- and [reading tests](https://github.com/search?q=repo%3Apancsta%2Fasyncmachine-go+path%3A%2F.*_test.go%2F&type=code)
   is always a good idea
 
 ## [Packages](/pkg)
 
-This monorepo offers the following importable packages and runnable tools, especially:
+This monorepo offers the following importable packages, especially:
 
 - 🦾 **[`/pkg/machine`](/pkg/machine/README.md) State machine, dependency free, semver compatible.**
 - [`/pkg/states`](/pkg/states/README.md) Reusable state schemas, handlers, and piping.
 - [`/pkg/helpers`](/pkg/helpers/README.md) Useful functions when working with async state machines.
 - [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for dbg, metrics, traces, and logs.
 
-Remaining packages:
+Other packages:
 
 - [`/pkg/graph`](/pkg/graph) Multigraph of interconnected state machines.
 - [`/pkg/history`](/pkg/history/README.md) History tracking and traversal.
@@ -279,6 +320,9 @@ Remaining packages:
 - [`/pkg/node`](/pkg/node/README.md) Distributed worker pools with supervisors.
 - [`/pkg/rpc`](/pkg/rpc/README.md) Remote state machines, with the same API as local ones.
 - [`/pkg/pubsub`](/pkg/pubsub/README.md) Decentralized PubSub based on libp2p gossipsub.
+
+## [Devtools](/tools)
+
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates schema files and Grafana dashboards.
 - [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates diagrams of interconnected state machines.
@@ -305,6 +349,14 @@ Remaining packages:
     - [Changing State](/docs/manual.md#changing-state)
     - [Advanced Topics](/docs/manual.md#advanced-topics)
     - [Cheatsheet](/docs/manual.md#cheatsheet)
+    
+## Goals
+
+- scale up, not down
+- defaults work by default
+- everything can be traced and debugged
+- automation is evolution
+- state != data
 
 ## Community
 

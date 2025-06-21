@@ -164,7 +164,7 @@ AM_PUBSUB_DBG=1
 # defaults to ""
 AM_REPL_ADDR=1
 
-# REPL address file dir path (`addrDir/mach-id.addr`). Optional.
+# REPL address file dir path (for `$AM_REPL_DIR/mach-id.addr`). Optional.
 # defaults to ""
-AM_REPL_ADDR_DIR=tmp
+AM_REPL_DIR=tmp
 ```

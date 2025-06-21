@@ -60,13 +60,16 @@ added as well.
 See [/docs/env-configs.md](/docs/env-configs.md) for the required environment variables.
 
 ```go
-// root machines only
-if mach.ParentId() == "" {
-    // open telemetry traces
-    err = amtele.MachBindOtelEnv(mach)
-    if err != nil {
+import amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+
+// ...
+
+var mach *am.Machine
+
+// open telemetry traces
+err = amtele.MachBindOtelEnv(mach)
+if err != nil {
     mach.AddErr(err, nil)
-    }
 }
 ```
 
@@ -127,11 +130,14 @@ Tracers are inherited from parent machines.
 See [/docs/env-configs.md](/docs/env-configs.md) for the required environment variables.
 
 ```go
-// root machines only
-if mach.ParentId() == "" {
-    // export metrics to prometheus
-    metrics := amprom.MachMetricsEnv(mach)
-}
+import amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+
+// ...
+
+var mach *am.Machine
+
+// export metrics to prometheus
+metrics := amprom.MachMetricsEnv(mach)
 ```
 
 ### Manual Prometheus Setup
@@ -142,6 +148,7 @@ import (
     am "github.com/pancsta/asyncmachine-go/pkg/machine"
     amprom "github.com/pancsta/asyncmachine-go/pkg/telemetry/prometheus"
     "github.com/prometheus/client_golang/prometheus/push"
+)
 
 // ...
 
@@ -166,13 +173,13 @@ Loki is the easiest way to persist distributed logs from asyncmachine. You'll ne
 See [/docs/env-configs.md](/docs/env-configs.md) for the required environment variables.
 
 ```go
-import (
-    amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
-)
+import amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 
 // ...
 
 var mach *am.Machine
+
+// export logs to Loki logger
 amtele.BindLokiEnv(mach)
 ```
 

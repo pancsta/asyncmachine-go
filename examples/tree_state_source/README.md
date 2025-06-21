@@ -38,6 +38,8 @@ type FlightsStatesDef struct {
 
     // ...
 
+	// inherit from BasicStatesDef
+	*ssam.BasicStatesDef
     // inherit from rpc/WorkerStatesDef
     *ssrpc.WorkerStatesDef
 }

@@ -173,7 +173,7 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
     // no blocking
     // lock-free critical section
     mach := e.Machine
-    // clock-based context
+    // clock-based expiration context
     stateCtx := mach.NewStateCtx("ProcessingFile")
     // unblock
     go func() {
@@ -208,6 +208,9 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 
 // wait for EventConnected to be activated with an arg ID=123
 <-mach.WhenArgs("EventConnected", am.A{"ID": 123}, nil)
+
+// wait for Foo to have a tick >= 6
+<-mach.WhenTime1("Foo", 6, nil)
 
 // wait for Foo to have a tick >= 6 and Bar tick >= 10
 <-mach.WhenTime(am.S{"Foo", "Bar"}, am.Time{6, 10}, nil)
@@ -343,6 +346,7 @@ The most common API methods are listed below. There's more for [local state mach
 but all of these are also implemented in the [transparent RPC layer](/pkg/rpc/README.md).
 
 ```go
+// TODO update
 // A (arguments) is a map of named arguments for a Mutation.
 type A map[string]any
 // S (state names) is a string list of state names.
@@ -506,6 +510,7 @@ Release Candidate, semantically versioned, not optimized yet.
 - [SQL relations](https://en.wikipedia.org/wiki/SQL)
 - [Paxos negotiation](https://en.wikipedia.org/wiki/Paxos_(computer_science))
 - [logical clock](https://en.wikipedia.org/wiki/Logical_clock)
+- [programming by contract](https://en.wikipedia.org/wiki/Design_by_contract)
 - [non-blocking](https://en.wikipedia.org/wiki/Non-blocking_algorithm)
 - [Actor Model](https://en.wikipedia.org/wiki/Actor_model)
 - [causal inference](https://en.wikipedia.org/wiki/Causal_inference)

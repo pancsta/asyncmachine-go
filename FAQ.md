@@ -52,7 +52,7 @@ aRPC auto syncs only clock values, which technically is `[n]uint64` (`n` = numbe
 
 ## Does asyncmachine return data?
 
-No, just yes/no/later (`Executed`, `Canceled`, `Queued`).
+No, just yes/no/later (`Executed`, `Canceled`, `Queued`). Use channels in mutation args for returning local data and the `SendPayload` state for aRPC.
 
 ## Does asyncmachine return errors?
 
@@ -72,6 +72,10 @@ Yes, all the public methods of `pkg/machine` are thread safe.
 The queue executes on the thread which caused the mutation, while handlers execute serialy in separate goroutines each.
 Each handler usually forks another goroutine to unblock the next handler. The amount of active goroutines can be limited
 with `amhelp.Pool` (`errgroup`) per a state, machine, or both. It's a form of structured concurrency.
+
+## What should be a "state"?
+
+Only interesting things - if we don't care about something to be a separate entity, there's no need to orchestrate it as a separate state.
 
 ## What's the origin of asyncmachine?
 
