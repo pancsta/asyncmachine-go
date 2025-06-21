@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
+	"log/slog"
 	"os"
 	"reflect"
 	"slices"
@@ -29,6 +29,12 @@ const (
 	// EnvAmTestRunner indicates the main test tunner, disables any telemetry.
 	EnvAmTestRunner     = "AM_TEST_RUNNER"
 	healthcheckInterval = 30 * time.Second
+)
+
+type (
+	S      = am.S
+	A      = am.A
+	Schema = am.Schema
 )
 
 // Add1Block activates a state and waits until it becomes active. If it's a
@@ -141,7 +147,7 @@ func IsMulti(mach am.Api, state string) bool {
 }
 
 // StatesToIndexes converts a list of state names to a list of state indexes,
-// for a given machine.
+// for the given machine. It returns -1 for unknown states.
 func StatesToIndexes(allStates am.S, states am.S) []int {
 	indexes := make([]int, len(states))
 	for i, state := range states {
@@ -156,6 +162,10 @@ func StatesToIndexes(allStates am.S, states am.S) []int {
 func IndexesToStates(allStates am.S, indexes []int) am.S {
 	states := make(am.S, len(indexes))
 	for i, idx := range indexes {
+		if idx == -1 {
+			states[i] = "unknown" + strconv.Itoa(i)
+			continue
+		}
 		states[i] = allStates[idx]
 	}
 
@@ -184,6 +194,7 @@ func MachDebug(
 	// trace to telemetry
 	err := telemetry.TransitionsToDbg(mach, amDbgAddr)
 	if err != nil {
+		// TODO dont panic
 		panic(err)
 	}
 
@@ -593,7 +604,7 @@ func WaitForErrAny(
 	}
 }
 
-// Activations returns the number of state activations from an amount of ticks
+// Activations return the number of state activations from the number of ticks
 // passed.
 func Activations(u uint64) int {
 	return int((u + 1) / 2)
@@ -643,58 +654,143 @@ func Implements(statesChecked, statesNeeded am.S) error {
 
 // ArgsToLogMap converts an [A] (arguments) struct to a map of strings using
 // `log` tags as keys, and their cased string values.
-func ArgsToLogMap(s interface{}) map[string]string {
+func ArgsToLogMap(args interface{}, maxLen int) map[string]string {
+	if maxLen == 0 {
+		maxLen = max(4, am.LogArgsMaxLen)
+	}
+	skipMaxLen := false
 	result := make(map[string]string)
-	val := reflect.ValueOf(s).Elem()
+	val := reflect.ValueOf(args).Elem()
 	if !val.IsValid() {
 		return result
 	}
-	typ := reflect.TypeOf(s).Elem()
+	typ := reflect.TypeOf(args).Elem()
 
 	for i := 0; i < val.NumField(); i++ {
 		field := val.Field(i)
-		tag := typ.Field(i).Tag.Get("log")
+		key := typ.Field(i).Tag.Get("log")
+		if key == "" {
+			continue
+		}
 
-		if tag != "" {
-			v, _ := field.Interface().(string)
-			// Check if the field is a string or slice of strings and cast accordingly
-			switch obj := field.Interface().(type) {
-			case string:
-				v := obj
-				if v == "" {
-					continue
-				}
-				result[tag] = v
-			case []string:
-				// Combine []string into a single comma-separated string
-				if len(obj) == 0 {
-					continue
-				}
-				result[tag] = strings.Join(obj, ",")
-			default:
-				// Call String() method if present
-				if stringer, ok := obj.(fmt.Stringer); ok {
-					v := stringer.String()
-					if v == "" {
-						continue
-					}
-					result[tag] = v
-				}
-			}
+		// check if the field is of a known type
+		switch v := field.Interface().(type) {
+		// strings
+		case string:
 			if v == "" {
 				continue
 			}
-			result[tag] = field.Interface().(string)
+			result[key] = v
+		case []string:
+			// combine []string into a single comma-separated string
+			if len(v) == 0 {
+				continue
+			}
+			skipMaxLen = true
+			txt := ""
+
+			ii := 0
+			for _, el := range v {
+				if reflect.ValueOf(v).IsNil() {
+					continue
+				}
+				if txt != "" {
+					txt += ", "
+				}
+
+				txt += `"` + am.TruncateStr(el, maxLen/2) + `"`
+				if ii >= maxLen/2 {
+					txt += fmt.Sprintf(" ... (%d more)", len(v)-ii)
+					break
+				}
+
+				ii++
+			}
+			if txt == "" {
+				continue
+			}
+			result[key] = txt
+
+		case bool:
+			if !v {
+				continue
+			}
+			result[key] = fmt.Sprintf("%v", v)
+		case []bool:
+			// combine []string into a single comma-separated string
+			if len(v) == 0 {
+				continue
+			}
+			result[key] = fmt.Sprintf("%v", v)
+			// TODO fix highlighting issues in am-dbg
+			result[key] = strings.Trim(result[key], "[]")
+
+			// duration
+		case time.Duration:
+			if v.Seconds() == 0 {
+				continue
+			}
+			result[key] = v.String()
+
+			// String() method
+		case fmt.Stringer:
+			if reflect.ValueOf(v).IsNil() {
+				continue
+			}
+			txt := v.String()
+			if txt == "" {
+				continue
+			}
+			result[key] = txt
+
+			// skip unknown types, besides []fmt.Stringer
+		default:
+			if field.Kind() != reflect.Slice {
+				continue
+			}
+
+			valLen := field.Len()
+			skipMaxLen = true
+			txt := ""
+			ii := 0
+
+			for i := 0; i < valLen; i++ {
+				el := field.Index(i).Interface()
+				s, ok := el.(fmt.Stringer)
+				if ok && s.String() != "" {
+					if txt != "" {
+						txt += ", "
+					}
+					txt += `"` + am.TruncateStr(s.String(), maxLen/2) + `"`
+					if i >= maxLen/2 {
+						txt += fmt.Sprintf(" ... (%d more)", valLen-ii)
+						break
+					}
+				}
+
+				ii++
+			}
+
+			if txt == "" {
+				continue
+			}
+			result[key] = txt
+		}
+
+		result[key] = strings.ReplaceAll(result[key], "\n", " ")
+		if !skipMaxLen && len(result[key]) > maxLen {
+			result[key] = am.TruncateStr(result[key], maxLen)
 		}
 	}
 
 	return result
 }
 
-// ArgsToArgs converts [A] (arguments) into an overlapping [A]. Useful for
+// ArgsToArgs converts [am.A] (arguments) into an overlapping [am.A]. Useful for
 // removing fields which can't be passed over RPC, and back. Both params should
-// be pointers to struct and share at least one field.
+// be pointers to a struct and share at least one field.
 func ArgsToArgs[T any](src interface{}, dest T) T {
+	// TODO test
 	srcVal := reflect.ValueOf(src).Elem()
 	destVal := reflect.ValueOf(dest).Elem()
 
@@ -746,6 +842,8 @@ func GroupWhen1(
 	return chans, nil
 }
 
+// TODO func WhenAny1(mach am.Api, states am.S, ctx context.Context) []<-chan struct{}
+
 // RemoveMulti creates a final handler which removes a multi state from a
 // machine. Useful to avoid FooState-Remove1-Foo repetition.
 func RemoveMulti(mach am.Api, state string) am.HandlerFinal {
@@ -763,7 +861,7 @@ func GetTransitionStates(
 	after := tx.TimeAfter
 
 	is := func(time am.Time, i int) bool {
-		return time != nil && am.IsActiveTick(time[i])
+		return time != nil && am.IsActiveTick(time.Get(i))
 	}
 
 	for i, name := range index {
@@ -771,7 +869,7 @@ func GetTransitionStates(
 			removed = append(removed, name)
 		} else if !is(before, i) && is(after, i) {
 			added = append(added, name)
-		} else if before != nil && before[i] != after[i] {
+		} else if before != nil && before.Get(i) != after.Get(i) {
 			// treat multi states as added
 			added = append(added, name)
 		}
@@ -780,162 +878,22 @@ func GetTransitionStates(
 	// touched
 	touched = am.S{}
 	for _, step := range tx.Steps {
-		if step.FromState != "" {
-			touched = append(touched, step.FromState)
+		if s := step.GetFromState(index); s != "" {
+			touched = append(touched, s)
 		}
-		if step.ToState != "" {
-			touched = append(touched, step.ToState)
+		if s := step.GetToState(index); s != "" {
+			touched = append(touched, s)
 		}
 	}
 
 	return added, removed, touched
 }
 
-// TODO
+// TODO batch and merge with am-dbg
 // func Batch(input <-chan any, state string, arg string, window time.Duration,
 //   maxElement int) {
 //
 // }
-
-type FanFn func(num int, state, stateDone string)
-
-type FanHandlers struct {
-	Concurrency int
-	AnyState    am.HandlerFinal
-	GroupTasks  am.S
-	GroupDone   am.S
-}
-
-// FanOutIn creates [total] numer of state pairs of "Name1" and "Name1Done", as
-// well as init and merge states ("Name", "NameDone"). [name] is treated as a
-// namespace and can't have other states within. Retry can be achieved by adding
-// the init state repetively. FanOutIn can be chained, but it should be called
-// before any mutations or telemetry (as it changes the state struct). The
-// returned handlers struct can be used to adjust concurrency level.
-func FanOutIn(
-	mach *am.Machine, name string, total, concurrency int,
-	fn FanFn,
-) (any, error) {
-	// TODO version with worker as states, instead of tasks as states
-	//  main state tries to push a list of tasks through the "worker states",
-	//  which resulst in a Done state
-	states := mach.Schema()
-	suffixDone := "Done"
-
-	if !mach.Has(am.S{name, name + suffixDone}) {
-		return nil, fmt.Errorf("%w: %s", am.ErrStateMissing, name)
-	}
-	base := states[name]
-
-	// create task states
-	groupTasks := make(am.S, total)
-	groupDone := make(am.S, total)
-	for i := range total {
-		num := strconv.Itoa(i)
-		groupTasks[i] = name + num
-		groupDone[i] = name + num + suffixDone
-	}
-	for i := range total {
-		num := strconv.Itoa(i)
-		// task state
-		states[name+num] = base
-		// task completed state, removes task state
-		states[name+num+suffixDone] = am.State{Remove: am.S{name + num}}
-	}
-
-	// inject into a fan-in state
-	done := am.StateAdd(states[name+suffixDone], am.State{
-		Require: groupDone,
-		Remove:  am.S{name},
-	})
-	done.Auto = true
-	states[name+suffixDone] = done
-
-	names := slices.Concat(mach.StateNames(), groupTasks, groupDone)
-	err := mach.SetSchema(states, names)
-	if err != nil {
-		return nil, err
-	}
-
-	// handlers
-	h := FanHandlers{
-		Concurrency: concurrency,
-		GroupTasks:  groupTasks,
-		GroupDone:   groupDone,
-	}
-
-	// simulate fanout states and the init state
-	// Task(e)
-	// Task1(e)
-	// Task2(e)
-	h.AnyState = func(e *am.Event) {
-		// get tx info
-		called := e.Transition().CalledStates()
-		if len(called) < 1 {
-			return
-		}
-
-		for _, state := range called {
-
-			// fan-out state handler, eg Task1
-			// TODO extract to IsFanOutHandler(called am.S, false) bool
-			if strings.HasPrefix(state, name) && len(state) > len(name) &&
-				!strings.HasSuffix(state, suffixDone) {
-
-				iStr, _ := strings.CutPrefix(state, name)
-				num, err := strconv.Atoi(iStr)
-				if err != nil {
-					// TODO
-					panic(err)
-				}
-
-				// call the function and mark as done
-				fn(num, state, state+suffixDone)
-			}
-
-			// fan-out done handler, eg Task1Done
-			// TODO extract to IsFanOutHandler(called am.S, true) bool
-			if strings.HasPrefix(state, name) && len(state) > len(name) &&
-				strings.HasSuffix(state, suffixDone) {
-
-				// call the init state
-				mach.Add1(name, nil)
-			}
-
-			// fan-out init handler, eg Task
-			if state == name {
-
-				// gather remaining ones
-				var remaining am.S
-				for _, name := range groupTasks {
-					// check if done or in progress
-					if mach.Any1(name+suffixDone, name) {
-						continue
-					}
-					remaining = append(remaining, name)
-				}
-
-				// start N threads
-				running := mach.CountActive(groupTasks)
-				// TODO check against running via mach.CountActive
-				for i := running; i < h.Concurrency && len(remaining) > 0; i++ {
-
-					// add a random one
-					idx := rand.Intn(len(remaining))
-					mach.Add1(remaining[idx], nil)
-					remaining = slices.Delete(remaining, idx, idx+1)
-				}
-			}
-		}
-	}
-
-	err = mach.BindHandlers(&h)
-	if err != nil {
-		return nil, err
-	}
-
-	return h, nil
-}
 
 func ResultToErr(result am.Result) error {
 	switch result {
@@ -968,4 +926,309 @@ func Pool(limit int) *errgroup.Group {
 	g := &errgroup.Group{}
 	g.SetLimit(limit)
 	return g
+}
+
+// Cond is a set of state conditions, which when all met make the condition true.
+type Cond struct {
+	// TODO IsMatch, AnyMatch, ... for regexps
+
+	// Only if all these states are active.
+	Is S
+	// TODO implement
+	// Only if any of these groups of states are active.
+	Any []S
+	// Only if any of these states is active.
+	Any1 S
+	// Only if none of these states are active.
+	Not S
+	// Only if the clock is equal or higher then.
+	Clock am.Clock
+
+	// TODO time queries
+	// Query string
+	// AnyQuery string
+	// NotQuery string
+}
+
+func (c Cond) String() string {
+	return fmt.Sprintf("is: %s, any: %s, not: %s, clock: %v", c.Is, c.Any1, c.Not, c.Clock)
+}
+
+// Check compares the specified conditions against the passed machine. When mach is nil, Check returns false.
+func (c Cond) Check(mach am.Api) bool {
+	if mach == nil {
+		return false
+	}
+
+	if !mach.Is(c.Is) {
+		return false
+	}
+	if mach.Any1(c.Not...) {
+		return false
+	}
+	if len(c.Any1) > 0 && !mach.Any1(c.Any1...) {
+		return false
+	}
+	if !mach.WasClock(c.Clock) {
+		return false
+	}
+
+	return true
+}
+
+// IsEmpty returns false if no condition is defined.
+func (c Cond) IsEmpty() bool {
+	return c.Is == nil && c.Any1 == nil && c.Not == nil && c.Clock == nil
+}
+
+// TODO thread safety via atomics
+type StateLoop struct {
+	loopState string
+	mach      am.Api
+	ended     bool
+	interval  time.Duration
+	threshold int
+
+	// state context of loopState
+	ctx       context.Context
+	ctxStates am.S
+
+	lastSTime uint64
+	lastHTime time.Time
+
+	// Start State Time of ctxStates
+	startSTime uint64
+	// Start Human Time
+	startHTime time.Time
+	check      func() bool
+}
+
+func (l *StateLoop) String() string {
+	ok := "ok"
+	if l.ended {
+		ok = "ended"
+	}
+
+	return fmt.Sprintf("StateLoop: %s for %s/%s", ok, l.mach.Id(), l.loopState)
+}
+
+// Break breaks the loop.
+func (l *StateLoop) Break() {
+	l.ended = true
+	l.mach.Log(l.String())
+}
+
+// Sum returns a sum of state time from all context states.
+func (l *StateLoop) Sum() uint64 {
+	return l.mach.TimeSum(l.ctxStates)
+}
+
+// Ok returns true if the loop should continue.
+func (l *StateLoop) Ok(ctx context.Context) bool {
+
+	if l.ended {
+		return false
+
+	} else if ctx != nil && ctx.Err() != nil {
+		err := fmt.Errorf("loop: arg ctx expired for %s/%s", l.mach.Id(), l.loopState)
+		l.mach.AddErr(err, nil)
+		l.ended = true
+
+		return false
+
+	} else if l.mach.Not1(l.loopState) {
+		err := fmt.Errorf("loop: state ctx expired for %s/%s", l.mach.Id(), l.loopState)
+		l.mach.AddErr(err, nil)
+		l.ended = true
+
+		return false
+	}
+
+	// stop on a function check
+	if l.check != nil && !l.check() {
+		l.ended = true
+
+		return false
+	}
+
+	// reset counters on a new interval window
+	sum := l.mach.TimeSum(l.ctxStates)
+	if time.Since(l.lastHTime) > l.interval {
+		l.lastHTime = time.Now()
+		l.lastSTime = sum
+
+		return true
+
+		// check the current interval window
+	} else if int(sum) > l.threshold {
+		err := fmt.Errorf("loop: threshold exceeded for %s/%s", l.mach.Id(), l.loopState)
+		l.mach.AddErr(err, nil)
+		l.ended = true
+
+		return false
+	}
+
+	l.lastSTime = sum
+
+	return true
+}
+
+// Ended returns the ended flag, but does not any context. Useful for
+// negotiation handles which don't have state context yet.
+func (l *StateLoop) Ended() bool {
+	return l.ended
+}
+
+// NewStateLoop helper creates a state loop guard bound to a specific state
+// (eg Heartbeat), preventing infinite loops. It monitors context, off states,
+// ticks of related "context states", and an optional check function.
+// Not thread safe ATM.
+func NewStateLoop(
+	mach *am.Machine, loopState string, optCheck func() bool,
+) *StateLoop {
+
+	schema := mach.Schema()
+	mach.MustParseStates(S{loopState})
+
+	// collect related states
+	ctxStates := S{loopState}
+
+	// collect dependencies of the loopState
+	ctxStates = append(ctxStates, schema[loopState].Require...)
+
+	// collect states adding the loop state
+	resolver := mach.Resolver()
+	inbound, _ := resolver.InboundRelationsOf(loopState)
+	for _, name := range inbound {
+		rels, _ := resolver.RelationsBetween(name, loopState)
+		if len(rels) > 0 {
+			ctxStates = append(ctxStates, name)
+		}
+	}
+
+	l := &StateLoop{
+		loopState:  loopState,
+		mach:       mach,
+		ctxStates:  ctxStates,
+		startHTime: time.Now(),
+		startSTime: mach.TimeSum(ctxStates),
+		// TODO config
+		interval: time.Second,
+		// TODO config
+		threshold: 500,
+		check:     optCheck,
+	}
+	mach.Log(l.String())
+
+	return l
+}
+
+// SLOG
+
+var SlogToMachLogOpts = &slog.HandlerOptions{
+	ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+		// omit these
+		if a.Key == slog.TimeKey || a.Key == slog.LevelKey {
+			return slog.Attr{}
+		}
+		return a
+	},
+}
+
+type SlogToMachLog struct {
+	Mach am.Api
+}
+
+func (l SlogToMachLog) Write(p []byte) (n int, err error) {
+	s, _ := strings.CutPrefix(string(p), "msg=")
+	l.Mach.Log(s)
+	return len(p), nil
+}
+
+// STATE UTILS
+
+// TagValue returns the value part from a text tag "key:value". For tag without
+// value, it returns the tag name.
+func TagValue(tags []string, key string) string {
+
+	for _, t := range tags {
+		// no value
+		if t == key {
+			return key
+		}
+
+		// check value
+		p := key + ":"
+		if !strings.HasPrefix(t, p) {
+			continue
+		}
+
+		val, _ := strings.CutPrefix(t, p)
+		return val
+	}
+
+	return ""
+}
+
+// PrefixStates will prefix all state names with [prefix]. removeDups will skip
+// overlaps eg "FooFooName" will be "Foo".
+func PrefixStates(
+	schema am.Schema, prefix string, removeDups bool, optWhitelist,
+	optBlacklist S) am.Schema {
+	schema = am.CloneSchema(schema)
+
+	for name, s := range schema {
+		if len(optWhitelist) > 0 && !slices.Contains(optWhitelist, name) {
+			continue
+		} else if len(optBlacklist) > 0 && slices.Contains(optBlacklist, name) {
+			continue
+		}
+
+		for i, r := range s.After {
+			newName := r
+			if !removeDups || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.After[i] = newName
+		}
+		for i, r := range s.Add {
+			newName := r
+			if !removeDups || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.Add[i] = newName
+		}
+		for i, r := range s.Remove {
+			newName := r
+			if !removeDups || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.Remove[i] = newName
+		}
+		for i, r := range s.Require {
+			newName := r
+			if !removeDups || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.Require[i] = newName
+		}
+
+		newName := name
+		if !removeDups || !strings.HasPrefix(name, prefix) {
+			newName = prefix + name
+		}
+
+		// replace
+		delete(schema, name)
+		schema[newName] = s
+	}
+
+	return schema
+}
+
+// CountRelations will count all referenced states in all relations of the
+// given state.
+func CountRelations(state *am.State) int {
+	return len(state.Remove) + len(state.Add) + len(state.Require) +
+		len(state.After)
 }

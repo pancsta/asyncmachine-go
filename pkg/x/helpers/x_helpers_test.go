@@ -18,7 +18,8 @@ func TestTimeMatrix(t *testing.T) {
 	m1 := NewNoRels(t, nil)
 	statesStruct := m1.Schema()
 	statesStruct["B"] = am.State{Multi: true}
-	err := m1.SetSchema(statesStruct, S{"A", "B", "C", "D", am.Exception})
+	statesStruct["Bump1"] = am.State{}
+	err := m1.SetSchema(statesStruct, S{"A", "B", "C", "D", "Bump1", am.Exception})
 	assert.NoError(t, err)
 
 	// mutate & assert
@@ -31,7 +32,8 @@ func TestTimeMatrix(t *testing.T) {
 	m2 := NewNoRels(t, nil)
 	statesStruct = m1.Schema()
 	statesStruct["B"] = am.State{Multi: true}
-	err = m2.SetSchema(statesStruct, S{"A", "B", "C", "D", am.Exception})
+	statesStruct["Bump1"] = am.State{}
+	err = m2.SetSchema(statesStruct, S{"A", "B", "C", "D", "Bump1", am.Exception})
 	assert.NoError(t, err)
 
 	// mutate & assert
@@ -44,8 +46,8 @@ func TestTimeMatrix(t *testing.T) {
 
 	matrix, err := TimeMatrix([]*am.Machine{m1, m2})
 	assert.NoError(t, err)
-	assert.Equal(t, T{1, 3, 0, 0, 0}, matrix[0])
-	assert.Equal(t, T{2, 6, 2, 1, 0}, matrix[1])
+	assert.Equal(t, T{1, 3, 0, 0, 0, 0}, matrix[0])
+	assert.Equal(t, T{2, 6, 2, 1, 0, 0}, matrix[1])
 }
 
 // /// helpers
