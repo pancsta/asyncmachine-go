@@ -315,6 +315,54 @@ func AMerge[K comparable, V any](maps ...map[K]V) map[K]V {
 	return out
 }
 
+// TruncateStr with shorten the string and leave a tripedot suffix.
+func TruncateStr(s string, maxLength int) string {
+	if len(s) <= maxLength {
+		return s
+	}
+	if maxLength < 5 {
+		return s[:maxLength]
+	} else {
+		return s[:maxLength-3] + "..."
+	}
+}
+
+// IndexToTime returns "virtual time" with selected states active. It's useful
+// to use time methods on a list of states, eg the called ones.
+func IndexToTime(index S, active []int) Time {
+	ret := make(Time, len(index))
+	for _, i := range active {
+		ret[i] = 1
+	}
+
+	return ret
+}
+
+// IndexToStates decodes state indexes based on the provided index.
+func IndexToStates(index S, states []int) S {
+	ret := make(S, len(states))
+	for i, idx := range states {
+		name := "unknown" + strconv.Itoa(idx)
+		if len(index) > idx {
+			name = index[idx]
+		}
+		ret[i] = name
+	}
+
+	return ret
+}
+
+// StatesToIndex returns a subset of [index] that matches [states]. Unknown
+// states are represented by -1.
+func StatesToIndex(index S, states S) []int {
+	ret := make([]int, len(states))
+	for i, state := range states {
+		ret[i] = slices.Index(index, state)
+	}
+
+	return ret
+}
+
 // ///// ///// /////
 
 // ///// UTILS

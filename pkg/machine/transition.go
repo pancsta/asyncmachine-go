@@ -191,7 +191,7 @@ func (t *Transition) IsAuto() bool {
 
 // CalledStates return explicitly called / requested states of the transition.
 func (t *Transition) CalledStates() S {
-	return t.Mutation.CalledStates
+	return IndexToStates(t.Machine.StateNames(), t.Mutation.Called)
 }
 
 // ClockBefore return the Clock from before the transition.
@@ -254,12 +254,25 @@ func (t *Transition) LogArgs() string {
 
 // String representation of the transition and the steps taken so far.
 func (t *Transition) String() string {
+	index := t.Machine.StateNames()
 	var lines []string
 	for _, step := range t.Steps {
-		lines = append(lines, step.StringFromIdx(t.Machine.StateNames()))
+		lines = append(lines, step.StringFromIndex(index))
 	}
 
-	return strings.Join(lines, "\n")
+	steps := strings.Join(lines, "\n- ")
+	if steps != "" {
+		steps = "\n- " + steps
+	}
+
+	source := ""
+	if t.Mutation.Source != nil {
+		source = fmt.Sprintf("\nsource: [%s](%s/%s/t%d)", t.Mutation.Source.TxId,
+			t.Mutation.Source.MachId, t.Mutation.Source.TxId, t.Mutation.Source.MachTime)
+	}
+
+	return fmt.Sprintf("tx#%s\n%s%s%s", t.ID, t.Mutation.StringFromIndex(index),
+		source, steps)
 }
 
 func (t *Transition) addSteps(steps ...*Step) {
@@ -278,7 +291,7 @@ func (t *Transition) setupExitEnter() {
 	var enters S
 	for _, s := range targetStates {
 		// enter activate state only for multi states called directly
-		state := m.states[s]
+		state := m.schema[s]
 		if !m.is(S{s}) || (state.Multi && slices.Contains(t.CalledStates(), s)) {
 			enters = append(enters, s)
 		}
@@ -477,14 +490,29 @@ func (t *Transition) emitEvents() Result {
 		result = t.emitHandler(Any, Any, Any+SuffixEnter, t.Mutation.Args)
 	}
 
+	// TODO recheck auto txs for target states, excluding the rejected ones
+	//  to remove direct and transitive Add relation
+
+	// TODO return here from CanAdd and CanRemove
+
 	// FINAL HANDLERS (non cancellable)
 	if result != Canceled {
 
+		// mutate the clocks
+		m.activeStatesLock.Lock()
 		m.setActiveStates(t.CalledStates(), t.TargetStates(), t.IsAuto())
+		// gather new clock values, overwrite fake TimeAfter
+		t.TimeAfter = m.time(nil)
+		m.activeStatesLock.Unlock()
+
 		// FooState
 		// FooEnd
 		result = t.emitFinalEvents()
 		hasStateChanged = !m.IsTime(t.TimeBefore, nil)
+	} else {
+
+		// gather new clock values, overwrite fake TimeAfter
+		t.TimeAfter = t.TimeBefore
 	}
 
 	// global AnyState handler
@@ -492,18 +520,15 @@ func (t *Transition) emitEvents() Result {
 		result = t.emitHandler(Any, Any, Any+SuffixState, t.Mutation.Args)
 	}
 
-	// gather new clock values, overwrite fake TimeAfter
-	t.TimeAfter = m.time(nil)
-
 	// AUTO STATES
 	if result == Canceled {
 		t.Accepted = false
 		t.isAccepted.Store(false)
 	} else if !m.disposing.Load() && hasStateChanged && !t.IsAuto() {
 
-		autoMutation := m.resolver.GetAutoMutation()
+		autoMutation, calledStates := m.resolver.NewAutoMutation()
 		if autoMutation != nil {
-			m.log(LogOps, "[auto] %s", j(autoMutation.CalledStates))
+			m.log(LogOps, "[auto] %s", j(calledStates))
 			// unshift
 			m.queueLock.Lock()
 			m.queue = append([]*Mutation{autoMutation}, m.queue...)

@@ -3,6 +3,7 @@ package machine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 )
@@ -314,30 +315,37 @@ func (m MutationType) String() string {
 type Mutation struct {
 	// add, set, remove
 	Type MutationType
-	// states explicitly passed to the mutation method
-	// TODO optimize as index-based CalledStates() S
-	CalledStates S
+	// States explicitly passed to the mutation method, as their indexes. Use
+	// Transition.CalledStates or IndexToStates to get the actual state names.
+	Called []int
 	// argument map passed to the mutation method (if any).
 	Args A
 	// this mutation has been triggered by an auto state
 	Auto bool
 	// Source is the source event for this mutation.
 	Source *MutSource
+
 	// specific context for this mutation (optional)
 	ctx context.Context
 	// optional eval func, only for mutationEval
 	eval func()
 }
 
-// StateWasCalled returns true if the Mutation was called (directly) with the
-// passed state (in opposite to it coming from an `Add` relation).
-// TODO change to CalledIs(), CalledIs1(), CalledAny(), CalledAny1()
-func (m Mutation) StateWasCalled(state string) bool {
-	return slices.Contains(m.CalledStates, state)
+func (m Mutation) String() string {
+	return fmt.Sprintf("[%s] %v", m.Type, m.Called)
 }
 
-func (m Mutation) String() string {
-	return "[" + m.Type.String() + "] " + j(m.CalledStates)
+func (m Mutation) IsCalled(idx int) bool {
+	return slices.Contains(m.Called, idx)
+}
+
+func (m Mutation) CalledIndex(index S) *TimeIndex {
+	return NewTimeIndex(index, m.Called)
+}
+
+func (m Mutation) StringFromIndex(index S) string {
+	called := NewTimeIndex(index, m.Called)
+	return "[" + m.Type.String() + "] " + j(called.ActiveStates())
 }
 
 // StepType enum

@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,10 +21,21 @@ type Time []uint64
 
 // Time TODO Any, Any1, Not, Not1
 
+// Get returns the tick at the given index, or 0 if out of bounds (for old
+// schemas).
+func (t Time) Get(idx int) uint64 {
+	// out of bound falls back to 0
+	if len(t) <= idx {
+		return 0
+	}
+
+	return t[idx]
+}
+
 // Is1 checks if a state is active at a given time, via its index. See
 // Machine.Index().
 func (t Time) Is1(idx int) bool {
-	if idx == -1 {
+	if idx == -1 || idx >= len(t) {
 		return false
 	}
 	return IsActiveTick(t[idx])
@@ -49,6 +61,33 @@ func (t Time) Is(idxs []int) bool {
 	return true
 }
 
+// TODO docs
+func (t Time) Not(idxs []int) bool {
+	if len(idxs) == 0 {
+		return true
+	}
+
+	for _, idx := range idxs {
+		// -1 is not found or mach disposed
+		if idx != -1 && IsActiveTick(t[idx]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// TODO docs
+func (t Time) Not1(idx int) bool {
+	if idx == -1 || idx >= len(t) {
+		return false
+	}
+
+	return !IsActiveTick(t[idx])
+}
+
+// TODO Any
+
 // Any1 see Machine.Any1.
 func (t Time) Any1(idxs ...int) bool {
 	if len(idxs) == 0 {
@@ -66,11 +105,42 @@ func (t Time) Any1(idxs ...int) bool {
 
 func (t Time) String() string {
 	ret := ""
-	for _, idx := range t {
+	for _, tick := range t {
 		if ret != "" {
-			ret += ","
+			ret += " "
 		}
-		ret += fmt.Sprintf("%d", idx)
+		ret += strconv.Itoa(int(tick))
+	}
+
+	return ret
+}
+
+// ActiveStates returns a list of active state names in this machine time slice.
+func (t Time) ActiveStates(index S) S {
+	ret := S{}
+	for i, tick := range t {
+		if !IsActiveTick(tick) {
+			continue
+		}
+		name := "unknown" + strconv.Itoa(i)
+		if len(index) > i {
+			name = index[i]
+		}
+		ret = append(ret, name)
+	}
+
+	return ret
+}
+
+// ActiveIndex returns a list of active state indexes in this machine time
+// slice.
+func (t Time) ActiveIndex() []int {
+	ret := []int{}
+	for i, tick := range t {
+		if !IsActiveTick(tick) {
+			continue
+		}
+		ret = append(ret, i)
 	}
 
 	return ret
@@ -86,7 +156,20 @@ func (t Time) Sum() uint64 {
 	return sum
 }
 
-// TODO TimeSum(nil)
+// TODO Time(states) - part of [Api]
+
+func (t Time) TimeSum(idxs []int) uint64 {
+	if len(idxs) == 0 {
+		return t.Sum()
+	}
+
+	var sum uint64
+	for _, idx := range idxs {
+		sum += t[idx]
+	}
+
+	return sum
+}
 
 // DiffSince returns the number of ticks for each state in Time since the
 // passed machine time.
@@ -103,6 +186,7 @@ func (t Time) DiffSince(before Time) Time {
 	return ret
 }
 
+// Add sums 2 instances of Time and returns a new one.
 func (t Time) Add(t2 Time) Time {
 	ret := make(Time, len(t))
 	if len(t) != len(t2) {
@@ -114,6 +198,81 @@ func (t Time) Add(t2 Time) Time {
 	}
 
 	return ret
+}
+
+// TimeIndex
+
+// TimeIndex is Time with a bound state index (list of state names). It's not
+// suitable for storage, use Time instead.
+type TimeIndex struct {
+	Time
+	Index S
+}
+
+func NewTimeIndex(index S, activeStates []int) *TimeIndex {
+	ret := &TimeIndex{
+		Index: index,
+		Time:  make(Time, len(index)),
+	}
+	for _, idx := range activeStates {
+		ret.Time[idx] = 1
+	}
+
+	return ret
+}
+
+func (t TimeIndex) StateName(idx int) string {
+	if idx >= len(t.Index) {
+		return ""
+	}
+
+	return t.Index[idx]
+}
+
+// all methods from Time
+
+func (t TimeIndex) Is(states S) bool {
+	return t.Time.Is(StatesToIndex(t.Index, states))
+}
+
+func (t TimeIndex) Is1(state string) bool {
+	return t.Time.Is(StatesToIndex(t.Index, S{state}))
+}
+
+func (t TimeIndex) Not(states S) bool {
+	return t.Time.Not(StatesToIndex(t.Index, states))
+}
+
+func (t TimeIndex) Not1(state string) bool {
+	return t.Time.Not(StatesToIndex(t.Index, S{state}))
+}
+
+func (t TimeIndex) Any1(states ...string) bool {
+	return t.Time.Any1(StatesToIndex(t.Index, states)...)
+}
+
+func (t TimeIndex) String() string {
+	ret := ""
+	for i, tick := range t.Time {
+		if ret != "" {
+			ret += " "
+		}
+		name := t.StateName(int(tick))
+		if name == "" {
+			name = "unknown" + strconv.Itoa(i)
+		}
+		ret += name
+	}
+
+	return ret
+}
+
+func (t TimeIndex) ActiveStates() S {
+	return t.Time.ActiveStates(t.Index)
+}
+
+func (t TimeIndex) TimeSum(states S) uint64 {
+	return t.Time.TimeSum(StatesToIndex(t.Index, states))
 }
 
 // Context
