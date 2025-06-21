@@ -10,10 +10,50 @@ tasks:
   build:
     ignore_error: true
     cmds:
-      - go build ./examples/...
-      - go build ./pkg/...
-      - go build ./internal/...
-      - go build ./tools/...
+      - go build -o dist ./examples/...
+      - go build -o dist ./pkg/...
+      - go build -o dist ./internal/...
+      - go build -o dist ./tools/...
+
+  build-am-dbg:
+    ignore_error: true
+    cmd: go build -o dist ./tools/cmd/am-dbg
+
+  build-arpc:
+    ignore_error: true
+    cmd: go build -o dist ./tools/cmd/arpc
+
+  docker-web-am-dbg:
+    env:
+      DOCKER_BUILDKIT: 1
+    cmd: docker build -t asyncmachine/web-am-dbg
+      -f deploy/web-am-dbg/Dockerfile ..
+
+  docker-web-am-dbg-start:
+    env:
+      AM_REPL_DIR: /data
+    vars:
+      AM_REPL_DIR: '{{.AM_REPL_DIR | default "./tmp"}}'
+      AM_DBG_BASE_PATH: '{{.AM_DBG_BASE_PATH | default "/"}}'
+    ignore_error: true
+    cmds:
+      - task: docker-web-am-dbg-stop
+      - docker run
+          --volume {{.AM_REPL_DIR}}:/data
+          -e AM_REPL_DIR=/data
+          -e AM_DBG_ADDR=0.0.0.0:6831
+          -e AM_DBG_BASE_PATH={{.AM_DBG_BASE_PATH}}
+          --name am-dbg
+          --publish 7681:7681
+          --publish 6831:6831
+          -it
+          asyncmachine/web-am-dbg
+
+  docker-web-am-dbg-stop:
+    ignore_error: true
+    cmds:
+      - docker stop am-dbg
+      - docker rm am-dbg
 
   release:
     cmd: goreleaser release --clean --skip-publish --skip-validate
@@ -24,7 +64,18 @@ tasks:
   am-dbg:
     silent: false
     cmds:
-      - go run ./tools/cmd/am-dbg --clean-on-connect --max-mem 1000 {{.CLI_ARGS}}
+      - go run ./tools/cmd/am-dbg --clean-on-connect --max-mem 1000
+        --dir tmp
+        {{.CLI_ARGS}}
+
+  am-dbg-race:
+    silent: false
+    env:
+      GORACE: "log_path=tmp/am-dbg-race.log"
+    cmds:
+      - go run -race ./tools/cmd/am-dbg --clean-on-connect --max-mem 1000
+        --dir tmp
+        {{.CLI_ARGS}}
 
   am-dbg-prof:
     desc: Profile am-dbg
@@ -33,6 +84,7 @@ tasks:
       - go run ./tools/cmd/am-dbg
         --clean-on-connect
         --prof-srv :6060
+        --dir tmp
         {{.CLI_ARGS}}
 
   am-dbg-prof2:
@@ -43,6 +95,7 @@ tasks:
         --clean-on-connect
         --prof-srv :6060
         --am-dbg-addr localhost:9913
+        --dir tmp
         {{.CLI_ARGS}}
 
   am-dbg-asset:
@@ -53,6 +106,8 @@ tasks:
           --import-data assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
           --select-machine sim-p0
           --select-transition 20
+          --max-mem 1000
+          --dir tmp
           -l -1
           {{.CLI_ARGS}}
 
@@ -64,6 +119,8 @@ tasks:
           --import-data assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
           --select-machine sim-p0
           --select-transition 20
+          --max-mem 1000
+          --dir tmp
           {{.CLI_ARGS}}
 
   am-dbg-ssh-connect:
@@ -77,43 +134,45 @@ tasks:
     silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
-          --import-data am-dbg-dump.gob.br
-          {{.CLI_ARGS}}
+        --import-data tmp/am-dbg-dump.gob.br
+        --dir tmp
+        {{.CLI_ARGS}}
 
   am-dbg-dbg:
     desc: Start am-dbg on port 9913, so it can debug other instances via --am-dbg-addr
     silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
-          --listen-on localhost:9913
-          --select-connected
-          --log-2-ttl 5m
-          {{.CLI_ARGS}}
+        --listen-on localhost:9913
+        --select-connected
+        --log-2-ttl 5m
+        {{.CLI_ARGS}}
 
   am-dbg-dbg-prof:
     desc: Profile am-dbg-dbg
     cmds:
       - go run ./tools/cmd/am-dbg
-          --listen-on localhost:9913
-          --select-connected
-          --log-2-ttl 5m
-          --prof-srv :6050
-          {{.CLI_ARGS}}
+        --listen-on localhost:9913
+        --select-connected
+        --log-2-ttl 5m
+        --prof-srv :6050
+        {{.CLI_ARGS}}
 
   am-dbg-worker:
     desc: Run am-dbg as an RPC worker, optionally starting the dbg RPC server via -server-addr
     silent: false
     cmds:
       - go run ./internal/testing/cmd/am-dbg-worker
-          -server-addr=localhost:53470
-          -worker-addr=localhost:53480
+        -server-addr=localhost:53470
+        -worker-addr=localhost:53480
 
   am-dbg-delve:
     silent: false
     env:
       AM_DEBUG: 1
     cmds:
-      - dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient
+      - dlv debug --headless
+        --listen=:2345 --api-version=2 --accept-multiclient
         ./tools/cmd/am-dbg -- 
           --clean-on-connect 
           {{.CLI_ARGS}}
@@ -421,20 +480,6 @@ tasks:
       - echo "Running 10_000 server events"
       - go test -bench=. -benchtime=10000x -v
 
-  website:
-    dir: website
-    cmd: npm run preview
-
-  website-build:
-    dir: website
-    cmd: npm run build
-
-  website-serve:
-    dir: website
-    cmds:
-      - task: website-build
-      - cd build && simple-http-server -p 5000 -i
-
   web-metrics:
     cmds:
       - docker-compose -f deploy/web-metrics/docker-compose.yml up -d --force-recreate
@@ -466,21 +511,116 @@ tasks:
         done
 
   arpc:
+    silent: true
     desc: Start an aRPC REPL
     cmd: go run ./tools/cmd/arpc
         {{.CLI_ARGS}}
 
-  am-dbg-dashboard:
-    desc: Start an example Zellij am-dbg dashboard
-    # TODO config file
-    cmd: zellij --session am-dbg-dash --new-session-with-layout ./config/dashboards/dash-2x1x1.kdl
-        options --no-pane-frames
-          --on-force-close quit
+  dashboard-full:
+    vars:
+      AM_REPL_DIR: '{{.AM_REPL_DIR | default "./tmp"}}'
+      AM_DBG_ADDR: '{{.AM_DBG_ADDR | default ":6831"}}'
+    env:
+      AM_REPL_DIR: "{{.AM_REPL_DIR}}"
+      AM_DBG_ADDR: "{{.AM_DBG_ADDR}}"
+    desc: Start a dashboard with 4 instances of am-dbg
+    ignore_error: true
+    cmds:
+      - task: build-am-dbg
+      - task: build-arpc
+      - task: dashboard-exit
+      - zellij --session am-dashboard 
+          --new-session-with-layout ./config/dashboards/dash-full.kdl
+      - task: dashboard-exit
 
-  am-dbg-dashboard-exit:
+  dashboard-wide-narrow:
+    vars:
+      AM_DBG_ADDR: '{{.AM_DBG_ADDR | default ":6831"}}'
+    env:
+      AM_DBG_ADDR: "{{.AM_DBG_ADDR}}"
+    desc: Start a dashboard with 2 instances of am-dbg
+    ignore_error: true
+    cmds:
+      - task: build-am-dbg
+      - task: dashboard-exit
+      - zellij --session am-dashboard 
+        --new-session-with-layout ./config/dashboards/dash-wide-narrow.kdl
+      - task: dashboard-exit
+
+  dashboard-repl:
+    silent: false
+    vars:
+      AM_REPL_DIR: '{{.AM_REPL_DIR | default "./tmp"}}'
+      AM_DBG_ADDR: '{{.AM_DBG_ADDR | default ":6831"}}'
+    env:
+      AM_REPL_DIR: "{{.AM_REPL_DIR}}"
+      AM_DBG_ADDR: "{{.AM_DBG_ADDR}}"
+    desc: Start a dashboard with am-dbg and a REPL
+    ignore_error: true
+    cmds:
+      - task: build-am-dbg
+      - task: build-arpc
+      - echo $AM_DBG_ADDR
+      - task: dashboard-exit
+      - zellij --session am-dashboard 
+          --new-session-with-layout ./config/dashboards/dash-repl.kdl
+      - task: dashboard-exit
+
+  dashboard-wn-repl:
+    vars:
+      AM_REPL_DIR: '{{.AM_REPL_DIR | default "./tmp"}}'
+      AM_DBG_ADDR: '{{.AM_DBG_ADDR | default ":6831"}}'
+    env:
+      AM_REPL_DIR: "{{.AM_REPL_DIR}}"
+      AM_DBG_ADDR: "{{.AM_DBG_ADDR}}"
+    desc: Start a dashboard with 2 instances of am-dbg and a REPL
+    ignore_error: true
+    cmds:
+      - task: build-am-dbg
+      - task: build-arpc
+      - task: dashboard-exit
+      - zellij --session am-dashboard 
+          --new-session-with-layout ./config/dashboards/dash-wide-narrow-repl.kdl
+      - task: dashboard-exit
+
+  dashboard-exit:
     desc: Exit Zellij dashboard
-    cmd: zellij delete-session am-dbg-dash --force
+    cmd: zellij delete-session am-dashboard --force
 
   gen-jsonschema:
     desc: Generate JSON schemas for pkg/integrations
     cmd: go run ./scripts/gen_jsonschema
+
+  web-dashboard-ttyd:
+    silent: false
+    env:
+      AM_REPL_DIR: "{{.AM_REPL_DIR}}"
+    requires:
+      vars: [AM_REPL_DIR, AM_DBG_BASE_PATH]
+    cmds:
+      - ttyd --writable
+          -t titleFixed="am-dbg"
+          -t disableLeaveAlert=true
+          -t disableResizeOverlay=true
+          --base-path {{.AM_DBG_BASE_PATH}}
+          zellij attach am-dashboard
+
+  web-dashboard-repl:
+    silent: false
+    env:
+      AM_REPL_DIR: "{{.AM_REPL_DIR}}"
+      AM_DBG_ADDR: "{{.AM_DBG_ADDR}}"
+    desc: Start a web dashboard with am-dbg and a REPL
+    requires:
+      vars: [AM_REPL_DIR]
+    ignore_error: true
+    cmds:
+#      - task: build-am-dbg
+      - task: dashboard-exit
+      - task web-dashboard-ttyd &
+      # set term size
+      - stty cols 200
+      - stty rows 100
+      - zellij --session am-dashboard 
+        --new-session-with-layout ./config/dashboards/dash-repl.kdl
+      - task: dashboard-exit

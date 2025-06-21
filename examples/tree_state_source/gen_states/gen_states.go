@@ -44,7 +44,7 @@ func main() {
 	// TODO am.Schema to cli.SFParams converter
 	params := cli.SFParams{
 		Name:    "Flights",
-		Inherit: "rpc/worker",
+		Inherit: "rpc/worker,basic",
 	}
 
 	for i := 1; i <= flights; i++ {

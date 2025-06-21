@@ -210,6 +210,7 @@ func (h *TemplateHandlers) ChannelState(e *am.Event) {
 // ///// ARGS
 
 // ///// ///// /////
+// TODO add RPC args example from pkg/node
 
 const APrefix = "am_node"
 
@@ -259,7 +260,7 @@ func LogArgs(args am.A) map[string]string {
 		return nil
 	}
 
-	return amhelp.ArgsToLogMap(a)
+	return amhelp.ArgsToLogMap(a, 0)
 }
 
 // ///// ///// /////

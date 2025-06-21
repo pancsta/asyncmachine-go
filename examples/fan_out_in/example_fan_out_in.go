@@ -8,6 +8,7 @@ import (
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	amxhelp "github.com/pancsta/asyncmachine-go/pkg/x/helpers"
 )
 
 func init() {
@@ -66,7 +67,7 @@ func main() {
 
 	// create task states
 	// 10 tasks, 3 running concurrently
-	_, err = amhelp.FanOutIn(mach, "Task", 15, 3, fn)
+	_, err = amxhelp.FanOutIn(mach, "Task", 15, 3, fn)
 	if err != nil {
 		panic(err)
 	}

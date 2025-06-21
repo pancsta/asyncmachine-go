@@ -31,12 +31,12 @@ func main() {
 		"Bar":         {},
 		"Custom":      {},
 		"Healthcheck": {Multi: true},
-	}, &am.Opts{LogLevel: am.LogOps, ID: "source"})
+	}, &am.Opts{LogLevel: am.LogOps, Id: "source"})
 	mach2 := am.New(ctx, am.Schema{
 		"Ready":       {},
 		"Custom":      {},
 		"Healthcheck": {Multi: true},
-	}, &am.Opts{LogLevel: am.LogOps, ID: "destination"})
+	}, &am.Opts{LogLevel: am.LogOps, Id: "destination"})
 	amhelp.MachDebugEnv(mach1)
 	amhelp.MachDebugEnv(mach2)
 

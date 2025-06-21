@@ -45,7 +45,7 @@ func depGraph() {
 		"C":     {Auto: true},
 		"D":     {Auto: true},
 		"Start": {},
-	}, &am.Opts{LogLevel: am.LogChanges, ID: "sync"})
+	}, &am.Opts{LogLevel: am.LogChanges, Id: "sync"})
 	amhelp.MachDebugEnv(mach)
 	_ = mach.BindHandlers(&handlers{})
 	mach.Add1("Start", nil)
@@ -94,7 +94,7 @@ func asyncDepGraph() {
 		"D":     {},
 
 		"Start": {},
-	}, &am.Opts{LogLevel: am.LogChanges, ID: "async"})
+	}, &am.Opts{LogLevel: am.LogChanges, Id: "async"})
 	amhelp.MachDebugEnv(mach)
 	_ = mach.BindHandlers(&asyncHandlers{})
 	mach.Add1("Start", nil)

@@ -478,19 +478,21 @@ func (v *Visualizer) cleanBuffer() {
 
 // fullIdPath returns a slice of strings representing the complete hierarchy of
 // IDs, starting from the given machId and traversing through its parents.
+// TODO suport errs
 func (v *Visualizer) fullIdPath(machId string, shorten bool) []string {
 	ret := []string{machId}
 	if shorten {
 		ret[0] = v.shortId(machId)
 	}
 	mach := v.g.Clients()[machId]
-	for mach.MsgStruct.Parent != "" {
+	for mach != nil && mach.MsgStruct != nil && mach.MsgStruct.Parent != "" {
 		parent := mach.MsgStruct.Parent
 		if shorten {
 			parent = v.shortId(parent)
 		}
 		// prepend
 		ret = slices.Concat([]string{parent}, ret)
+		// TODO check for mach is nil and log / err
 		mach = v.g.Clients()[mach.MsgStruct.Parent]
 	}
 

@@ -4,34 +4,36 @@ package history
 import (
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
 type History struct {
 	*am.NoOpTracer
 
-	Entries []Entry
+	Entries atomic.Pointer[[]Entry]
 	// LastActivated is a map of state names to the last time they were activated
 	LastActivated map[string]time.Time
 	// tracked states
-	States am.S
+	WhitelistCalled am.S
 
 	mx         sync.Mutex
 	maxEntries int
 }
 
 func (h *History) TransitionEnd(tx *am.Transition) {
-	if !tx.Accepted {
+	if !tx.IsAccepted.Load() {
 		return
 	}
 
+	called := tx.CalledStates()
 	mut := tx.Mutation
 	match := false
-	for _, name := range h.States {
-		if mut.StateWasCalled(name) {
+	// TODO track both called and changed
+	for _, name := range h.WhitelistCalled {
+		if slices.Contains(called, name) {
 			match = true
 			break
 		}
@@ -39,25 +41,26 @@ func (h *History) TransitionEnd(tx *am.Transition) {
 	if !match {
 		return
 	}
+	hEntries := *h.Entries.Load()
 
 	// rotate TODO optimize rotation
-	if len(h.Entries) >= h.maxEntries {
-		cutFrom := len(h.Entries) - h.maxEntries
-		h.Entries = h.Entries[cutFrom:]
+	if len(hEntries) >= h.maxEntries {
+		cutFrom := len(hEntries) - h.maxEntries
+		hEntries = hEntries[cutFrom:]
 	}
 	// remember this mutation, remove Args
-	h.Entries = append(h.Entries, Entry{
-		CalledStates: amhelp.StatesToIndexes(tx.Machine.StateNames(),
-			tx.Mutation.CalledStates),
+	hEntries = append(hEntries, Entry{
+		CalledStates: mut.Called,
 		// TODO add to Transition
 		MTimeDiff: tx.TimeAfter.DiffSince(tx.TimeBefore),
 		Type:      tx.Mutation.Type,
 		Auto:      tx.Mutation.Auto,
 	})
 	h.mx.Lock()
+	h.Entries.Store(&hEntries)
 	// update last seen time
 	for _, name := range tx.TargetStates() {
-		if !slices.Contains(h.States, name) {
+		if !slices.Contains(h.WhitelistCalled, name) {
 			continue
 		}
 		h.LastActivated[name] = time.Now()
@@ -150,19 +153,21 @@ func (h *History) StatesInactiveDuring(
 // maxEntries: the maximum number of entries to keep in the history, 0 for
 // default.
 // TODO add MaxLimits{Entries int, Age time.Duration, MachineAge: uint64}
-func Track(mach *am.Machine, states am.S, maxEntries int) *History {
+// TODO blacklistCalled, whitelistChanged, blacklistChanged
+func Track(mach *am.Machine, whitelistCalled am.S, maxEntries int) *History {
 	if maxEntries <= 0 {
 		maxEntries = 1000
 	}
 	history := &History{
-		Entries:       []Entry{},
-		LastActivated: map[string]time.Time{},
-		States:        states,
-		maxEntries:    maxEntries,
+		LastActivated:   map[string]time.Time{},
+		WhitelistCalled: whitelistCalled,
+		maxEntries:      maxEntries,
 	}
+	hEntries := []Entry{}
+	history.Entries.Store(&hEntries)
 
 	// mark active states as activated to reflect the current state
-	for _, name := range states {
+	for _, name := range whitelistCalled {
 		if mach.Is1(name) {
 			history.LastActivated[name] = time.Now()
 		}

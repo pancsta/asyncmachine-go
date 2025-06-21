@@ -33,7 +33,7 @@ func main() {
 			Auto:    true,
 			Require: am.S{"ProcessingFile"},
 		},
-	}, &am.Opts{LogLevel: am.LogOps, ID: "raw-strings"})
+	}, &am.Opts{LogLevel: am.LogOps, Id: "raw-strings"})
 	amhelp.MachDebugEnv(mach)
 	mach.BindHandlers(&Handlers{
 		Filename: "README.md",

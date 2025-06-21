@@ -31,7 +31,7 @@ func main() {
 		"Foo":         {},
 		"Bar":         {},
 		"Healthcheck": {Multi: true},
-	}, &am.Opts{LogLevel: am.LogOps, ID: "source"})
+	}, &am.Opts{LogLevel: am.LogOps, Id: "source"})
 	amhelp.MachDebugEnv(mach)
 
 	wg := sync.WaitGroup{}

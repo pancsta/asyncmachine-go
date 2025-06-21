@@ -13,6 +13,7 @@ node_modules
 # Ignore build output directories
 dist
 build
+tmp
 
 # Ignore Dockerfile and docker-compose.yml
 Dockerfile

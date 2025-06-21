@@ -1,6 +1,8 @@
 package main
 
-import am "github.com/pancsta/asyncmachine-go/pkg/machine"
+import (
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+)
 
 const log = am.LogOps
 
@@ -44,9 +46,17 @@ func FileProcessed() {
 			Require: am.S{"ProcessingFile"},
 		},
 	})
+	lastTx := am.NewLastTxTracer()
+	err := mach.BindTracer(lastTx)
+	if err != nil {
+		panic(err)
+	}
+
 	mach.Add1("ProcessingFile", nil)
 	// TODO quiz: is InProgress active?
 	mach.Add1("FileProcessed", nil)
+
+	println(lastTx)
 }
 
 func DryWaterWet() {
@@ -120,7 +130,7 @@ func Quiz() {
 
 func newMach(id string, machSchema am.Schema) *am.Machine {
 	mach := am.New(nil, machSchema, &am.Opts{
-		ID:        id,
+		Id:        id,
 		DontLogID: true,
 		Tracers:   []am.Tracer{&Tracer{}},
 		LogLevel:  log,
@@ -141,5 +151,5 @@ type Tracer struct {
 }
 
 func (t *Tracer) TransitionEnd(tx *am.Transition) {
-	println("=> " + tx.Machine.String())
+	// println("=> " + tx.Machine.String())
 }
