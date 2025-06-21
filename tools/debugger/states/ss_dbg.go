@@ -85,6 +85,7 @@ var States = am.Schema{
 	FilterCanceledTx:  {},
 	FilterEmptyTx:     {},
 	FilterSummaries:   {},
+	FilterTraces:      {},
 	FilterHealthcheck: {},
 
 	// ///// Actions
@@ -313,6 +314,7 @@ const (
 	// run any self handler either
 	FilterEmptyTx   = "FilterEmptyTx"
 	FilterSummaries = "FilterSummaries"
+	FilterTraces    = "FilterTraces"
 	ToggleTool      = "ToggleTool"
 	// SwitchingClientTx switches to the given client and scrolls to the given
 	// transaction (1-based tx index). Accepts Client.id and Client.cursorTx.
@@ -334,6 +336,7 @@ const (
 
 // Names is an ordered list of all the state names.
 var Names = S{
+	am.Exception,
 
 	// /// Input events
 
@@ -386,6 +389,7 @@ var Names = S{
 	FilterCanceledTx,
 	FilterEmptyTx,
 	FilterSummaries,
+	FilterTraces,
 	FilterHealthcheck,
 	ToggleTool,
 	SwitchingClientTx,
@@ -419,8 +423,6 @@ var Names = S{
 	GraphsScheduled,
 
 	InitClient,
-
-	am.Exception,
 }
 
 // #endregion

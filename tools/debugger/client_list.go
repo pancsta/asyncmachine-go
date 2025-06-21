@@ -40,6 +40,8 @@ func (d *Debugger) buildClientList(selectedIndex int) {
 }
 
 func (d *Debugger) doBuildClientList(selectedIndex int) {
+	defer d.buildCLScheduled.Store(false)
+	
 	if d.Mach.Not1(ss.ClientListVisible) {
 		return
 	}
@@ -99,7 +101,6 @@ func (d *Debugger) doBuildClientList(selectedIndex int) {
 	d.clientList.SetTitle(d.P.Sprintf(
 		" Machines:%d T:%v ", len(d.Clients), totalSum))
 
-	d.buildCLScheduled.Store(false)
 	// sort TODO rewrite
 	d.doUpdateClientList(true)
 }

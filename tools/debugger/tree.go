@@ -39,6 +39,8 @@ type nodeRef struct {
 	// node is a state property (Auto, Multi)
 	isProp    bool
 	propLabel string
+	isTagRoot bool
+	isTag     bool
 	// TODO
 	// isBreakLine bool
 }
@@ -130,18 +132,19 @@ func (d *Debugger) updateTree() {
 	d.tree.SetTitle(" Schema" + queue)
 
 	var steps []*am.Step
+	nextTx := d.nextTx()
 	if c.CursorTx1 < len(c.MsgTxs) && c.CursorStep1 > 0 {
-		steps = d.nextTx().Steps
+		steps = nextTx.Steps
 	}
 
 	// default decorations plus name highlights
 	colIdx := d.updateTreeDefaultsHighlights(msg)
 
 	// decorate steps, take the longest row from either defaults or steps
-	colIdx = max(colIdx, d.updateTreeTxSteps(steps))
+	colIdx = max(colIdx, d.updateTreeTxSteps(steps, nextTx))
 	colIdx += treeIndent
 	d.sortTree()
-	d.updateTreeRelCols(colIdx, steps)
+	d.updateTreeRelCols(colIdx, steps, nextTx)
 }
 
 // returns the length of the longest row
@@ -156,7 +159,7 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 	for _, name := range c.MsgStruct.StatesIndex {
 		maxNameLen = max(maxNameLen, len(name))
 	}
-
+	schema := c.MsgStruct.States
 	maxLen := 0
 
 	d.tree.GetRoot().WalkUnsafe(func(
@@ -177,13 +180,25 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 		// node.SetBold(false)
 		node.SetUnderline(false)
 
+		// relation state
 		if ref.isRel {
-
 			node.SetText(capitalizeFirst(ref.rel.String()))
 			return true
-		} else if ref.isProp {
 
+			// auto / multi prop
+		} else if ref.isProp {
 			node.SetText(ref.propLabel)
+			// get node text length
+			maxLen = maxNodeLen(node, maxLen, depth)
+			return true
+
+			// tag name (ignore)
+		} else if ref.isTag {
+			return true
+
+			// tag root (collapse)
+		} else if ref.isTagRoot {
+			node.SetText("Tags")
 			// get node text length
 			maxLen = maxNodeLen(node, maxLen, depth)
 			return true
@@ -199,7 +214,7 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 		color := colorInactive
 
 		if msg.Is(c.MsgStruct.StatesIndex, am.S{stateName}) {
-			if stateName == am.Exception || strings.HasPrefix(stateName, "Err") {
+			if stateName == am.Exception || strings.HasPrefix(stateName, am.PrefixErr) {
 				color = colorErr
 			} else {
 				color = colorActive
@@ -208,6 +223,11 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 
 		// reset to defaults
 		node.SetText(stateNamePad)
+
+		multi := " "
+		if s, ok := schema[stateName]; ok && !ref.isRef && s.Multi {
+			multi = "M"
+		}
 
 		// reset to defaults
 		if stateName != c.SelectedState {
@@ -223,7 +243,7 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 				tick := d.P.Sprintf("%d", msg.Clock(c.MsgStruct.StatesIndex,
 					stateName))
 				node.SetColor(color)
-				node.SetText(stateNamePad + " |" + tick)
+				node.SetText(stateNamePad + " " + multi + "|" + tick)
 			}
 
 			// get node text length
@@ -248,7 +268,7 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 		tick := strconv.FormatUint(msg.Clock(c.MsgStruct.StatesIndex,
 			stateName), 10)
 		node.SetColor(color)
-		node.SetText(stateNamePad + " |" + tick)
+		node.SetText(stateNamePad + " " + multi + "|" + tick)
 
 		// get node text length
 		maxLen = maxNodeLen(node, maxLen, depth)
@@ -271,7 +291,7 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 	return maxLen
 }
 
-func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
+func (d *Debugger) updateTreeTxSteps(steps []*am.Step, tx *telemetry.DbgMsgTx) int {
 	c := d.C
 	if c == nil {
 		return 0
@@ -376,7 +396,13 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 					// states handler executed
 					if step.GetFromState(states) == stateName ||
 						step.GetToState(states) == stateName {
-						node.SetText(node.GetText() + textMargin + "[::b]*[::-]")
+
+						// canceled
+						if !tx.Accepted && i == len(steps)-1 {
+							node.SetText(node.GetText() + textMargin + "[red::b]*[-::-]")
+						} else {
+							node.SetText(node.GetText() + textMargin + "[::b]*[::-]")
+						}
 						nodeSetBold(node)
 						ref.touched = true
 					}
@@ -398,7 +424,13 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 
 				case am.StepCancel:
 					if step.GetToState(states) == stateName && !ref.isRef {
-						node.SetText(node.GetText() + textMargin + "!")
+
+						// canceled
+						if !tx.Accepted && i == len(steps)-1 {
+							node.SetText(node.GetText() + textMargin + "[red::b]![-::-]")
+						} else {
+							node.SetText(node.GetText() + textMargin + "[::b]![::-]")
+						}
 						nodeSetBold(node)
 						ref.touched = true
 					}
@@ -426,6 +458,8 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 					ref.touched = true
 				}
 			}
+		} else if ref.isTagRoot {
+			node.Collapse()
 		}
 
 		maxLenTagged = maxNodeLen(node, maxLenTagged, depth)
@@ -436,7 +470,9 @@ func (d *Debugger) updateTreeTxSteps(steps []*am.Step) int {
 	return maxLenTagged
 }
 
-func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step) {
+var reTreeStateColorFix = regexp.MustCompile("\\[white\\](M?\\|\\d+)(\\.*)")
+
+func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step, msg telemetry.DbgMsg) {
 	c := d.C
 	if c == nil {
 		return
@@ -616,7 +652,19 @@ func (d *Debugger) updateTreeRelCols(colStartIdx int, steps []*am.Step) {
 		// active, nodeColStartIdx, nodeVisibleLen(node))
 
 		// d.Mach.Log("%s", nodeCols)
-		node.SetText(node.GetText() + trailingDots.ReplaceAllString(nodeCols, ""))
+		suffix := trailingDots.ReplaceAllString(nodeCols, "")
+		text := node.GetText()
+		// regexp
+
+		// TODO avoid monkey patching
+		if ref.stateName != "" && !ref.isRef {
+			if !msg.Is(d.C.MsgStruct.StatesIndex, am.S{ref.stateName}) {
+				text = reTreeStateColorFix.ReplaceAllString(text, "["+colorInactive.String()+"]$1[grey]$2")
+			} else {
+				text = reTreeStateColorFix.ReplaceAllString(text, "["+colorActive.String()+"]$1[grey]$2")
+			}
+		}
+		node.SetText(text + suffix)
 
 		// debug
 		// d.Mach.Log("%s%s", strings.Repeat("---", depth), node.GetText())
@@ -710,13 +758,7 @@ func (d *Debugger) addState(name string) {
 	if c == nil {
 		return
 	}
-
 	state := c.MsgStruct.States[name]
-	stateNode := cview.NewTreeNode(name + " |0")
-	stateNode.SetSelectable(true)
-	stateNode.SetReference(&nodeRef{stateName: name})
-	d.treeRoot.AddChild(stateNode)
-	stateNode.SetColor(colorInactive)
 
 	// labels
 	labels := ""
@@ -724,16 +766,23 @@ func (d *Debugger) addState(name string) {
 		labels += "auto"
 	}
 
+	multi := " "
 	if state.Multi {
 		if labels != "" {
 			labels += " "
 		}
 		labels += "multi"
+		multi = "M"
 	}
+
+	stateNode := cview.NewTreeNode(name + " " + multi + "|0")
+	stateNode.SetSelectable(true)
+	stateNode.SetReference(&nodeRef{stateName: name})
+	stateNode.SetColor(colorInactive)
+	d.treeRoot.AddChild(stateNode)
 
 	if labels != "" {
 		labelNode := cview.NewTreeNode(labels)
-		labelNode.SetSelectable(false)
 		labelNode.SetReference(&nodeRef{
 			isProp:    true,
 			propLabel: labels,
@@ -746,6 +795,28 @@ func (d *Debugger) addState(name string) {
 	addRelation(stateNode, name, am.RelationRequire, state.Require)
 	addRelation(stateNode, name, am.RelationRemove, state.Remove)
 	addRelation(stateNode, name, am.RelationAfter, state.After)
+
+	// tags
+	if len(state.Tags) > 0 {
+		tagRootNode := cview.NewTreeNode("Tags")
+		tagRootNode.SetSelectable(true)
+		tagRootNode.SetReference(&nodeRef{
+			isTagRoot: true,
+		})
+		tagRootNode.SetColor(tcell.ColorGrey)
+
+		for _, tag := range state.Tags {
+			tagNode := cview.NewTreeNode("#" + tag)
+			tagNode.SetColor(tcell.ColorGrey)
+			tagNode.SetReference(&nodeRef{
+				isTag: true,
+			})
+			tagRootNode.AddChild(tagNode)
+		}
+
+		stateNode.AddChild(tagRootNode)
+	}
+
 }
 
 // sortTree requires updateTree called before

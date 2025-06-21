@@ -1,6 +1,7 @@
 package debugger
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
@@ -215,89 +217,32 @@ func (d *Debugger) getKeystrokes() map[string]func(
 		},
 
 		// prev tx
-		"left": func(ev *tcell.EventKey) *tcell.EventKey {
-			// scrolling
-			if d.Mach.Is1(ss.LogFocused) {
-				d.Mach.Add1(ss.LogUserScrolled, nil)
-
-				return ev
-			} else if d.Mach.Any1(
-				ss.AddressFocused, ss.Toolbar1Focused, ss.Toolbar2Focused) {
-
-				return ev
-			}
-
-			if d.Mach.Not1(ss.ClientSelected) {
-				return nil
-			}
-			if d.throttleKey(ev, arrowThrottleMs) {
-				// TODO fast jump scroll while holding the key
-				return nil
-			}
-
-			// skip if scrolling
-			if d.shouldScrollCurrView() {
-				return ev
-			}
-
-			// scroll timelines
-			if d.Mach.Is1(ss.TimelineStepsFocused) {
-				d.Mach.Add1(ss.UserBackStep, nil)
-			} else {
-				d.Mach.Add1(ss.UserBack, nil)
-			}
-
-			return nil
-		},
+		"left": d.prevTxKey(),
 
 		// next tx
-		"right": func(ev *tcell.EventKey) *tcell.EventKey {
-			// scrolling
-			if d.Mach.Is1(ss.LogFocused) {
-				d.Mach.Add1(ss.LogUserScrolled, nil)
+		"right": d.nextTxKey(),
 
-				return ev
-			} else if d.Mach.Any1(
-				ss.AddressFocused, ss.Toolbar1Focused, ss.Toolbar2Focused) {
+		// state jumps
+		"alt+h":     d.jumpBackKey,
+		"alt+l":     d.jumpFwdKey,
+		"alt+Left":  d.jumpBackKey,
+		"alt+Right": d.jumpFwdKey,
+		"alt+j": func(ev *tcell.EventKey) *tcell.EventKey {
+			d.Mach.Add1(ss.UserBackStep, nil)
 
-				return ev
-			}
-
-			if d.Mach.Not1(ss.ClientSelected) {
-				return nil
-			}
-			if d.throttleKey(ev, arrowThrottleMs) {
-				// TODO fast jump scroll while holding the key
-				return nil
-			}
-
-			// skip if scrolling
-			if d.shouldScrollCurrView() {
-				return ev
-			}
-
-			// scroll timelines
-			if d.Mach.Is1(ss.TimelineStepsFocused) {
-				// TODO try mach.IsScheduled(ss.UserFwdStep, am.MutationTypeAdd)
-				d.Mach.Add1(ss.UserFwdStep, nil)
-			} else {
-				d.Mach.Add1(ss.UserFwd, nil)
-			}
+			return nil
+		},
+		"alt+k": func(ev *tcell.EventKey) *tcell.EventKey {
+			d.Mach.Add1(ss.UserFwdStep, nil)
 
 			return nil
 		},
 
-		// state jumps
-		"alt+h":     d.jumpBack,
-		"alt+l":     d.jumpFwd,
-		"alt+Left":  d.jumpBack,
-		"alt+Right": d.jumpFwd,
-
 		// page up / down
-		"alt+j": func(ev *tcell.EventKey) *tcell.EventKey {
+		"alt+n": func(ev *tcell.EventKey) *tcell.EventKey {
 			return tcell.NewEventKey(tcell.KeyPgDn, ' ', tcell.ModNone)
 		},
-		"alt+k": func(ev *tcell.EventKey) *tcell.EventKey {
+		"alt+p": func(ev *tcell.EventKey) *tcell.EventKey {
 			return tcell.NewEventKey(tcell.KeyPgUp, ' ', tcell.ModNone)
 		},
 
@@ -398,8 +343,6 @@ func (d *Debugger) getKeystrokes() map[string]func(
 				return nil
 			}
 
-			d.focusManager.Focus(d.clientList)
-
 			return ev
 		},
 
@@ -451,6 +394,139 @@ func (d *Debugger) getKeystrokes() map[string]func(
 	}
 }
 
+func (d *Debugger) nextTxKey() func(ev *tcell.EventKey) *tcell.EventKey {
+	return func(ev *tcell.EventKey) *tcell.EventKey {
+		// scrolling
+		if d.Mach.Is1(ss.LogFocused) {
+			d.Mach.Add1(ss.LogUserScrolled, nil)
+
+			return ev
+		} else if d.Mach.Any1(
+			ss.AddressFocused, ss.Toolbar1Focused, ss.Toolbar2Focused) {
+
+			return ev
+		}
+
+		if d.Mach.Not1(ss.ClientSelected) {
+			return nil
+		}
+		if d.throttleKey(ev, arrowThrottleMs) {
+			// TODO fast jump scroll while holding the key
+			return nil
+		}
+
+		// skip if scrolling
+		if d.shouldScrollCurrView() {
+			return ev
+		}
+
+		// scroll timelines
+		if d.Mach.Is1(ss.TimelineStepsFocused) {
+			// TODO try mach.IsScheduled(ss.UserFwdStep, am.MutationTypeAdd)
+			d.Mach.Add1(ss.UserFwdStep, nil)
+		} else {
+			d.Mach.Add1(ss.UserFwd, nil)
+		}
+
+		return nil
+	}
+}
+
+func (d *Debugger) prevTxKey() func(ev *tcell.EventKey) *tcell.EventKey {
+	return func(ev *tcell.EventKey) *tcell.EventKey {
+		// scrolling
+		if d.Mach.Is1(ss.LogFocused) {
+			d.Mach.Add1(ss.LogUserScrolled, nil)
+
+			return ev
+		} else if d.Mach.Any1(
+			ss.AddressFocused, ss.Toolbar1Focused, ss.Toolbar2Focused) {
+
+			return ev
+		}
+
+		if d.Mach.Not1(ss.ClientSelected) {
+			return nil
+		}
+		if d.throttleKey(ev, arrowThrottleMs) {
+			// TODO fast jump scroll while holding the key
+			return nil
+		}
+
+		// skip if scrolling
+		if d.shouldScrollCurrView() {
+			return ev
+		}
+
+		// scroll timelines
+		if d.Mach.Is1(ss.TimelineStepsFocused) {
+			d.Mach.Add1(ss.UserBackStep, nil)
+		} else {
+			d.Mach.Add1(ss.UserBack, nil)
+		}
+
+		return nil
+	}
+}
+
+func (d *Debugger) jumpBackKey(ev *tcell.EventKey) *tcell.EventKey {
+	if d.C == nil {
+		return nil
+	}
+	if ev != nil && d.throttleKey(ev, arrowThrottleMs) {
+		return nil
+	}
+
+	ctx := context.TODO()
+	d.Mach.Remove(am.S{ss.Playing, ss.TailMode}, nil)
+
+	if d.Mach.Is1(ss.StateNameSelected) {
+		// state jump
+		amhelp.Add1Block(ctx, d.Mach, ss.ScrollToMutTx, am.A{
+			"state": d.C.SelectedState,
+			"fwd":   false,
+		})
+		// sidebar for errs
+		d.updateClientList(true)
+	} else {
+		// fast jump
+		amhelp.Add1Block(ctx, d.Mach, ss.Back, am.A{
+			"amount": min(fastJumpAmount, d.C.CursorTx1),
+		})
+	}
+
+	return nil
+}
+
+func (d *Debugger) jumpFwdKey(ev *tcell.EventKey) *tcell.EventKey {
+	if d.C == nil {
+		return nil
+	}
+	if ev != nil && d.throttleKey(ev, arrowThrottleMs) {
+		return nil
+	}
+
+	ctx := context.TODO()
+	d.Mach.Remove(am.S{ss.Playing, ss.TailMode}, nil)
+
+	if d.Mach.Is1(ss.StateNameSelected) {
+		// state jump
+		amhelp.Add1Block(ctx, d.Mach, ss.ScrollToMutTx, am.A{
+			"state": d.C.SelectedState,
+			"fwd":   true,
+		})
+		// sidebar for errs
+		d.updateClientList(true)
+	} else {
+		// fast jump
+		amhelp.Add1Block(ctx, d.Mach, ss.Fwd, am.A{
+			"amount": min(fastJumpAmount, len(d.C.MsgTxs)-d.C.CursorTx1),
+		})
+	}
+
+	return nil
+}
+
 func (d *Debugger) toolMatrix() {
 	if d.Mach.Is1(ss.TreeLogView) {
 		d.Mach.Add1(ss.MatrixView, nil)
@@ -473,7 +549,7 @@ func (d *Debugger) toolLastTx() {
 	if d.Mach.Not1(ss.ClientSelected) {
 		return
 	}
-	d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), false)
+	d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), 0, false)
 	d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
 	// sidebar for errs
 	d.updateClientList(true)
@@ -484,7 +560,7 @@ func (d *Debugger) toolFirstTx() {
 	if d.Mach.Not1(ss.ClientSelected) {
 		return
 	}
-	d.SetCursor1(d.filterTxCursor(d.C, 0, true), false)
+	d.SetCursor1(d.filterTxCursor(d.C, 0, true), 0, false)
 	d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
 	// sidebar for errs
 	d.updateClientList(true)
@@ -521,7 +597,7 @@ func (d *Debugger) toolExpand() {
 		return
 	}
 
-	// struct tree
+	// schema tree
 	expanded := false
 	children := d.tree.GetRoot().GetChildren()
 
@@ -542,6 +618,8 @@ func (d *Debugger) toolExpand() {
 			child.GetReference().(*nodeRef).expanded = true
 		}
 	}
+
+	// TODO maybe expand recursively?
 }
 
 func (d *Debugger) shouldScrollCurrView() bool {

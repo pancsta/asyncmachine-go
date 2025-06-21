@@ -155,7 +155,7 @@ func TestTailModeFLAKY(t *testing.T) {
 
 	// assert.NotEqual(t, res, am.Canceled)
 	assert.Equal(t, 4, len(worker.C.MsgTxs), "tx count")
-	assert.Equal(t, 4, worker.C.CursorTx1, "cursorTx")
+	assert.Equal(t, len(worker.C.MsgTxsFiltered), worker.C.CursorTx1, "cursorTx")
 	// TODO assert tree clocks
 	// TODO assert log highlight
 }

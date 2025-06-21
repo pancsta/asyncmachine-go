@@ -51,8 +51,7 @@ func (d *Debugger) doUpdateLog() {
 
 	if c.MsgStruct != nil {
 		title := " Log:" + d.Opts.Filters.LogLevel.String() + " "
-		if tx != nil {
-			// TODO panic -1
+		if tx != nil && c.CursorTx1 != 0 {
 			t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx1-1].TimeSum))
 			title += "Time:" + t + " "
 		}
@@ -76,8 +75,8 @@ func (d *Debugger) doUpdateLog() {
 	}
 
 	// highlight this tx or the prev if empty
-	if len(tx.LogEntries) == 0 && d.prevTx() != nil {
-		last := d.prevTx()
+	last := d.PrevTx()
+	if len(tx.LogEntries) == 0 && last != nil {
 		for i := d.C.CursorTx1 - 1; i > 0; i-- {
 			if len(last.LogEntries) > 0 {
 				tx = last
@@ -137,7 +136,7 @@ func (d *Debugger) parseMsgLogEntry(
 	if strings.HasPrefix(entry.Text, "[extern") {
 		lvl = am.LogNothing
 	}
-	t := fmtLogEntry(entry.Text, tx.CalledStateNames(c.MsgStruct.StatesIndex),
+	t := fmtLogEntry(d.Mach, entry.Text, tx.CalledStateNames(c.MsgStruct.StatesIndex),
 		c.MsgStruct.States)
 
 	return &am.LogEntry{Level: lvl, Text: t}
@@ -204,7 +203,7 @@ func (d *Debugger) appendLogEntry(index int) error {
 // getLogEntryTxt prepares a log entry for UI rendering
 // index: 1-based
 func (d *Debugger) getLogEntryTxt(index int) []byte {
-	if index < 1 || index > len(d.C.MsgTxs) {
+	if index < 0 || index >= len(d.C.MsgTxs) {
 		return nil
 	}
 
@@ -212,9 +211,9 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 	ret := ""
 	tx := c.MsgTxs[index]
 
-	if index > 0 && d.Mach.Not1(ss.FilterSummaries) {
+	if d.Mach.Not1(ss.FilterSummaries) {
 		msgTime := tx.Time
-		prevMsg := c.MsgTxs[index-1]
+		prevMsg := c.MsgTxs[index]
 		prevMsgTime := prevMsg.Time
 		if prevMsgTime.Second() != msgTime.Second() {
 			// grouping labels (per second)
@@ -237,29 +236,22 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 			continue
 		}
 
+		// stack traces removal
+		isErr := strings.HasPrefix(logStr, `[yellow][error[]`)
+		isBreakpoint := strings.HasPrefix(logStr, `[yellow][breakpoint[]`)
+		if (isErr || isBreakpoint) && strings.Contains(logStr, "\n") &&
+			d.Mach.Is1(ss.FilterTraces) {
+
+			ret += strings.Split(logStr, "\n")[0] + "\n"
+			continue
+		}
+
 		ret += logStr
 	}
 
 	// create a highlight region (even for empty txs)
 	txId := tx.ID
 	ret = `["` + txId + `"]` + ret + `[""]`
-
-	// state string TODO remove?
-	// if d.Mach.Not1(ss.FilterSummaries) {
-	// 	parsed := c.msgTxsParsed[index]
-	// 	if len(parsed.StatesAdded) > 0 || len(parsed.StatesRemoved) > 0 {
-	// 		str := tx.String(c.MsgStruct.StatesIndex)
-	//
-	// 		// highlight new states
-	// 		for _, name := range c.indexesToStates(parsed.StatesAdded) {
-	// 			str = strings.ReplaceAll(
-	// 				strings.ReplaceAll(str,
-	// 					"("+name, "([::b]"+name+"[::-]"),
-	// 				" "+name, " [::b]"+name+"[::-]")
-	// 		}
-	// 		ret += `[grey]` + str + "[-]\n"
-	// 	}
-	// }
 
 	return []byte(ret)
 }
@@ -275,9 +267,8 @@ var (
 	methodPattern   = regexp.MustCompile(`\.[^.]+?$`)
 )
 
-func fmtLogEntry(
-	entry string, calledStates []string, machStruct am.Schema,
-) string {
+// TODO split
+func fmtLogEntry(mach *am.Machine, entry string, calledStates []string, machStruct am.Schema) string {
 	if entry == "" {
 		return entry
 	}
@@ -358,33 +349,44 @@ func fmtLogEntry(
 	ret = strings.Trim(ret, " \n	")
 
 	// stack traces highlight
-	if strings.HasPrefix(ret, `[yellow][error[]`) &&
-		strings.Contains(ret, "\n") {
+	isErr := strings.HasPrefix(ret, `[yellow][error[]`)
+	isBreakpoint := strings.HasPrefix(ret, `[yellow][breakpoint[]`)
+	if (isErr || isBreakpoint) && strings.Contains(ret, "\n") {
+
+		// highlight
 		lines := strings.Split(ret, "\n")
-		lines[0] += "[grey]"
+		linesNew := []string{lines[0] + "[grey]"}
+		skipNext := false
 		for i, line := range lines {
-			if i == 0 {
+			if i == 0 || skipNext {
+				skipNext = false
+				continue
+			}
+			// filter out machine lines
+			if strings.Contains(line, "machine.(*Machine).handlerLoop in ") {
+				linesNew = linesNew[0 : len(linesNew)-6]
+				skipNext = true
 				continue
 			}
 
 			// method line
 			if i%2 == 1 {
-				lines[i] = methodPattern.ReplaceAllStringFunc(line,
+				linesNew = append(linesNew, methodPattern.ReplaceAllStringFunc(line,
 					func(m string) string {
 						m = strings.TrimLeft(m, ".")
 						return ".[white]" + m + "[grey]"
-					})
+					}))
 			} else {
 				// file line
-				lines[i] = filenamePattern.ReplaceAllStringFunc(line,
+				linesNew = append(linesNew, filenamePattern.ReplaceAllStringFunc(line,
 					func(m string) string {
 						m = strings.Trim(m, "/ +")
 						return "/[white]" + m + "[grey] +"
-					})
+					}))
 			}
 		}
 
-		ret = strings.Join(lines, "\n")
+		ret = strings.Join(linesNew, "\n")
 	}
 
 	return ret + "\n"
@@ -448,7 +450,7 @@ type logReaderTreeRef struct {
 	// child int // TODO
 }
 
-var removeBracketsRe = regexp.MustCompile(`\[[^\]]*\]`)
+var removeStyleBracketsRe = regexp.MustCompile(`\[[^\]]*\]`)
 
 func (d *Debugger) initLogReader() *cview.TreeView {
 	root := cview.NewTreeNode("Extracted")
@@ -471,6 +473,7 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 		}
 
 		if d.C != nil {
+			// TODO needed? works?
 			d.C.SelectedReaderEntry = ref.entry
 		}
 
@@ -487,7 +490,6 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 	// click / enter
 	tree.SetSelectedFunc(func(node *cview.TreeNode) {
 		// TODO support extMachTime
-
 		ref, ok := node.GetReference().(*logReaderTreeRef)
 		if !ok {
 			return
@@ -495,6 +497,13 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 
 		// expand
 		node.SetExpanded(!node.IsExpanded())
+
+		isTop := node.GetParent() == tree.GetRoot()
+		if isTop {
+			name := strings.Split(node.GetText(), " ")[0]
+			name = removeStyleBracketsRe.ReplaceAllString(name, "")
+			d.readerExpanded[name] = node.IsExpanded()
+		}
 
 		addr := ref.addr
 		if addr == nil {
@@ -509,7 +518,7 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 		tick := d.Mach.Tick(ss.UpdateLogReader)
 		text := node.GetText()
 		node.SetText("[" + colorActive.String() + "::u]" +
-			removeBracketsRe.ReplaceAllString(text, ""))
+			removeStyleBracketsRe.ReplaceAllString(text, ""))
 		d.draw(d.logReader)
 
 		go func() {
@@ -529,6 +538,7 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 	return tree
 }
 
+// TODO move
 type MachTime struct {
 	Id   string
 	Time uint64
@@ -536,11 +546,11 @@ type MachTime struct {
 
 func (d *Debugger) updateLogReader() {
 	// TODO split
+	// TODO migrate to a state handler
 	if d.Mach.Not1(ss.LogReaderVisible) {
 		return
 	}
 
-	// TODO migrate to a state handler
 	d.Mach.Add1(ss.UpdateLogReader, nil)
 	d.Mach.Remove1(ss.UpdateLogReader, nil)
 
@@ -554,7 +564,7 @@ func (d *Debugger) updateLogReader() {
 
 	tx := c.MsgTxs[c.CursorTx1-1]
 	txParsed := c.msgTxsParsed[c.CursorTx1-1]
-	allStates := c.MsgStruct.StatesIndex
+	statesIndex := c.MsgStruct.StatesIndex
 
 	var (
 		// parents
@@ -567,6 +577,8 @@ func (d *Debugger) updateLogReader() {
 		parentPipeOut  *cview.TreeNode
 		parentHandlers *cview.TreeNode
 		parentSource   *cview.TreeNode
+		parentForks    *cview.TreeNode
+		parentSiblings *cview.TreeNode
 	)
 
 	selState := d.C.SelectedState
@@ -595,7 +607,7 @@ func (d *Debugger) updateLogReader() {
 				if parentCtx == nil {
 					parentCtx = cview.NewTreeNode("StateCtx")
 				}
-				states := amhelp.IndexesToStates(allStates, entry.states)
+				states := amhelp.IndexesToStates(statesIndex, entry.states)
 				node = cview.NewTreeNode(d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
 					utils.J(states), entry.createdAt))
 				parentCtx.AddChild(node)
@@ -607,7 +619,7 @@ func (d *Debugger) updateLogReader() {
 				if parentWhen == nil {
 					parentWhen = cview.NewTreeNode("When")
 				}
-				states := amhelp.IndexesToStates(allStates, entry.states)
+				states := amhelp.IndexesToStates(statesIndex, entry.states)
 				node = cview.NewTreeNode(d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
 					utils.J(states), entry.createdAt))
 				parentWhen.AddChild(node)
@@ -619,7 +631,7 @@ func (d *Debugger) updateLogReader() {
 				if parentWhenNot == nil {
 					parentWhenNot = cview.NewTreeNode("WhenNot")
 				}
-				states := amhelp.IndexesToStates(allStates, entry.states)
+				states := amhelp.IndexesToStates(statesIndex, entry.states)
 				node = cview.NewTreeNode(d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
 					utils.J(states), entry.createdAt))
 				parentWhenNot.AddChild(node)
@@ -634,9 +646,9 @@ func (d *Debugger) updateLogReader() {
 				txt := ""
 				highlight := false
 				for i, idx := range entry.states {
-					txt += fmt.Sprintf("[::b]%s[::-]:%d ", allStates[idx],
+					txt += fmt.Sprintf("[::b]%s[::-]:%d ", statesIndex[idx],
 						entry.ticks[i])
-					if allStates[idx] == selState {
+					if statesIndex[idx] == selState {
 						highlight = true
 					}
 				}
@@ -651,7 +663,7 @@ func (d *Debugger) updateLogReader() {
 				if parentWhenArgs == nil {
 					parentWhenArgs = cview.NewTreeNode("WhenArgs")
 				}
-				states := amhelp.IndexesToStates(allStates, entry.states)
+				states := amhelp.IndexesToStates(statesIndex, entry.states)
 				node = cview.NewTreeNode(d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
 					utils.J(states), entry.createdAt))
 				node2 := cview.NewTreeNode(d.P.Sprintf("%s", entry.args))
@@ -664,7 +676,7 @@ func (d *Debugger) updateLogReader() {
 				}
 
 			case logReaderPipeIn:
-				states := amhelp.IndexesToStates(allStates, entry.states)
+				states := amhelp.IndexesToStates(statesIndex, entry.states)
 
 				// state name redirs to the moment of piping
 				nodeRef.machId = c.id
@@ -710,7 +722,7 @@ func (d *Debugger) updateLogReader() {
 				}
 
 			case logReaderPipeOut:
-				states := amhelp.IndexesToStates(allStates, entry.states)
+				states := amhelp.IndexesToStates(statesIndex, entry.states)
 
 				// state name redirs to the moment of piping
 				nodeRef.machId = c.id
@@ -786,7 +798,7 @@ func (d *Debugger) updateLogReader() {
 		// details (only for external machines)
 		var node *cview.TreeNode
 		if source[0] != c.id {
-			node = cview.NewTreeNode(d.P.Sprintf("%s [grey]t%s[-]", source[0],
+			node = cview.NewTreeNode(d.P.Sprintf("%s [grey]t%v[-]", source[0],
 				source[2]))
 			node.SetIndent(1)
 			node.SetReference(&logReaderTreeRef{
@@ -836,8 +848,172 @@ func (d *Debugger) updateLogReader() {
 		}
 	}
 
+	// forked events
+	parentForks = cview.NewTreeNode("Forked")
+	parentForks.SetExpanded(false)
+	for _, link := range txParsed.Forks {
+
+		targetMach := d.getClient(link.MachId)
+		targetTxIdx := targetMach.txIndex(link.TxId)
+		highlight := false
+
+		label := d.P.Sprintf("%s#%s", link.MachId, link.TxId)
+		// internal tx
+		if link.MachId == c.id {
+			label = d.P.Sprintf("#%s", link.TxId)
+		}
+
+		if targetTxIdx != -1 {
+			targetTx := targetMach.tx(targetTxIdx)
+			calledStates := targetTx.CalledStateNames(targetMach.MsgStruct.StatesIndex)
+			label = capitalizeFirst(tx.Type.String()) + " [::b]" +
+				utils.J(calledStates)
+			if slices.Contains(calledStates, selState) {
+				highlight = true
+			}
+		}
+
+		node := cview.NewTreeNode(label)
+		node.SetIndent(1)
+		node.SetReference(&logReaderTreeRef{
+			machId: link.MachId,
+			txId:   link.TxId,
+		})
+		parentForks.AddChild(node)
+
+		// highlight
+		if highlight {
+			node.SetHighlighted(true)
+		}
+
+		// details (only for external machines)
+		if link.MachId != c.id && targetMach != nil {
+			// label
+			label2 := d.P.Sprintf("%s#%s", link.MachId,
+				link.TxId)
+			if targetTxIdx != -1 {
+				targetTx := targetMach.tx(targetTxIdx)
+				label2 = d.P.Sprintf("%s [grey]t%v[-]", link.MachId,
+					targetTx.TimeSum())
+			}
+
+			node2 := cview.NewTreeNode(label2)
+			node2.SetIndent(1)
+			node2.SetReference(&logReaderTreeRef{
+				machId: link.MachId,
+				txId:   link.TxId,
+			})
+			node.AddChild(node2)
+			if highlight {
+				node2.SetHighlighted(true)
+			}
+
+			// ID and tags (only for external machines)
+
+			if tags := targetMach.MsgStruct.Tags; len(tags) > 0 {
+				node3 := cview.NewTreeNode("[grey]#" + strings.Join(tags, " #"))
+				node3.SetIndent(1)
+				node.AddChild(node3)
+				if highlight {
+					node3.SetHighlighted(true)
+				}
+			}
+		}
+	}
+
+	// sibling events
+	parentSiblings = cview.NewTreeNode("Siblings")
+	parentSiblings.SetExpanded(false)
+	// get source tx
+	for _, entry := range tx.LogEntries {
+		if !strings.HasPrefix(entry.Text, "[source] ") {
+			continue
+		}
+
+		source := strings.Split(entry.Text[len("[source] "):], "/")
+
+		// source tx info
+		sC, sTx := d.getClientTx(source[0], source[1])
+		if sTx == nil {
+			break
+		}
+		sTxParsed := sC.txParsed(sC.txIndex(sTx.ID))
+
+		for _, link := range sTxParsed.Forks {
+			if link.MachId == c.id && link.TxId == tx.ID {
+				continue
+			}
+
+			targetMach := d.getClient(link.MachId)
+			targetTxIdx := targetMach.txIndex(link.TxId)
+			highlight := false
+
+			label := d.P.Sprintf("%s#%s", link.MachId, link.TxId)
+			// internal tx
+			if link.MachId == c.id {
+				label = d.P.Sprintf("#%s", link.TxId)
+			}
+
+			if targetTxIdx != -1 {
+				targetTx := targetMach.tx(targetTxIdx)
+				calledStates := targetTx.CalledStateNames(targetMach.MsgStruct.StatesIndex)
+				label = capitalizeFirst(tx.Type.String()) + " [::b]" +
+					utils.J(calledStates)
+				if slices.Contains(calledStates, selState) {
+					highlight = true
+				}
+			}
+
+			node := cview.NewTreeNode(label)
+			node.SetIndent(1)
+			node.SetReference(&logReaderTreeRef{
+				machId: link.MachId,
+				txId:   link.TxId,
+			})
+			parentSiblings.AddChild(node)
+
+			// highlight
+			if highlight {
+				node.SetHighlighted(true)
+			}
+
+			// details (only for external machines)
+			if link.MachId != c.id && targetMach != nil {
+				// label
+				label2 := d.P.Sprintf("%s#%s", link.MachId,
+					link.TxId)
+				if targetTxIdx != -1 {
+					targetTx := targetMach.tx(targetTxIdx)
+					label2 = d.P.Sprintf("%s [grey]t%v[-]", link.MachId,
+						targetTx.TimeSum())
+				}
+
+				node2 := cview.NewTreeNode(label2)
+				node2.SetIndent(1)
+				node2.SetReference(&logReaderTreeRef{
+					machId: link.MachId,
+					txId:   link.TxId,
+				})
+				node.AddChild(node2)
+				if highlight {
+					node2.SetHighlighted(true)
+				}
+
+				// ID and tags (only for external machines)
+
+				if tags := targetMach.MsgStruct.Tags; len(tags) > 0 {
+					node3 := cview.NewTreeNode("[grey]#" + strings.Join(tags, " #"))
+					node3.SetIndent(1)
+					node.AddChild(node3)
+					if highlight {
+						node3.SetHighlighted(true)
+					}
+				}
+			}
+		}
+	}
+
 	// executed handlers for the curr tx
-	// TODO memorize expanded
 	parentHandlers = cview.NewTreeNode("Executed")
 	parentHandlers.SetExpanded(false)
 	for _, entry := range tx.LogEntries {
@@ -861,6 +1037,11 @@ func (d *Debugger) updateLogReader() {
 	}
 
 	addParent := func(parent *cview.TreeNode) {
+		name := parent.GetText()
+		if expanded, ok := d.readerExpanded[name]; ok {
+			parent.SetExpanded(expanded)
+		}
+
 		count := len(parent.GetChildren())
 		if count > 0 && parent != parentSource {
 			parent.SetText(fmt.Sprintf("[%s]%s[-] (%d)", colorActive,
@@ -881,6 +1062,14 @@ func (d *Debugger) updateLogReader() {
 		addParent(parentSource)
 		// need bc the root is hidden
 		d.logReader.SetCurrentNode(parentSource)
+	}
+
+	// append parents
+	if parentForks != nil {
+		addParent(parentForks)
+	}
+	if parentSiblings != nil {
+		addParent(parentSiblings)
 	}
 	if parentHandlers != nil {
 		addParent(parentHandlers)
@@ -908,8 +1097,10 @@ func (d *Debugger) updateLogReader() {
 	}
 
 	// expand all nodes
-	root.CollapseAll()
-	root.Expand()
+	go d.App.QueueUpdateDraw(func() {
+		root.CollapseAll()
+		root.Expand()
+	})
 }
 
 func (d *Debugger) parseMsgReader(
@@ -920,7 +1111,21 @@ func (d *Debugger) parseMsgReader(
 
 	// NEW
 
-	if strings.HasPrefix(log.Text, "[when:new] ") {
+	if strings.HasPrefix(log.Text, "[source] ") {
+
+		source := strings.Split(log.Text[len("[source] "):], "/")
+
+		if sourceMach := d.getClient(source[0]); sourceMach != nil {
+			txIdx := sourceMach.txIndex(source[1])
+			if txIdx != -1 {
+				srcTxParsed := sourceMach.txParsed(txIdx)
+				srcTxParsed.Forks = append(srcTxParsed.Forks, MachAddress{
+					MachId: c.id,
+					TxId:   tx.ID,
+				})
+			}
+		}
+	} else if strings.HasPrefix(log.Text, "[when:new] ") {
 
 		// [when:new] Foo,Bar
 		states := strings.Split(log.Text[len("[when:new] "):], " ")
@@ -1014,10 +1219,11 @@ func (d *Debugger) parseMsgReader(
 			mut = am.MutationAdd
 		}
 
+		states := strings.Split(strings.Trim(msg[0], "[]"), " ")
 		idx := c.addReaderEntry(tx.ID, &logReaderEntry{
 			kind:      kind,
 			pipe:      mut,
-			states:    c.statesToIndexes(am.S{msg[0]}),
+			states:    c.statesToIndexes(states),
 			createdAt: c.mTimeSum,
 			mach:      msg[1],
 		})

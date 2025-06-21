@@ -16,19 +16,19 @@ import (
 	"github.com/gdamore/tcell/v2/terminfo"
 	"github.com/gliderlabs/ssh"
 	"github.com/lithammer/dedent"
-	"github.com/pancsta/asyncmachine-go/internal/utils"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
 	"github.com/spf13/cobra"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
 type Params struct {
 	cli.Params
 
-	SSHAddr string
+	SshAddr string
 }
 
 func main() {
@@ -69,7 +69,7 @@ func parseParams(cmd *cobra.Command, p cli.Params) Params {
 	sshAddr := cmd.Flag(cliParamServerAddr).Value.String()
 	return Params{
 		Params:  p,
-		SSHAddr: sshAddr,
+		SshAddr: sshAddr,
 	}
 }
 
@@ -93,8 +93,7 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 			return
 		}
 
-		// tview says we don't have to do this
-		// when using SetScreen, but it lies
+		// Init is required for cview, but not for tview
 		if err := screen.Init(); err != nil {
 			_, _ = fmt.Fprintln(sess.Stderr(), "unable to init screen:", err)
 			return
@@ -105,8 +104,7 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 			Screen:      screen,
 			DbgLogLevel: par.LogLevel,
 			DbgLogger:   cli.GetLogger(&par.Params),
-			// TODO cache import data and deep copy for new connections
-			ImportData: par.ImportData,
+			ImportData:  par.ImportData,
 			// ServerAddr is disabled
 			ServerAddr:  par.ListenAddr,
 			EnableMouse: par.EnableMouse,
@@ -159,8 +157,8 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 			return nil
 		}
 
-		fmt.Printf("SSH: listening on %s\n", par.SSHAddr)
-		err := ssh.ListenAndServe(par.SSHAddr, nil, optSrv)
+		fmt.Printf("SSH: listening on %s\n", par.SshAddr)
+		err := ssh.ListenAndServe(par.SshAddr, nil, optSrv)
 		if err != nil {
 			log.Printf("ssh.ListenAndServe: %v", err)
 			close(srvCh)
@@ -178,7 +176,9 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 }
 
 // ///// ///// /////
+
 // ///// SSH
+
 // ///// ///// /////
 
 func NewSessionScreen(s ssh.Session) (tcell.Screen, error) {

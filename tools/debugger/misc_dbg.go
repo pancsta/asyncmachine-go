@@ -5,6 +5,7 @@ import (
 	"log"
 	"slices"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -51,6 +52,7 @@ const (
 	toolFilterEmptyTx     ToolName = "skip-empty"
 	toolFilterHealthcheck ToolName = "skip-healthcheck"
 	ToolFilterSummaries   ToolName = "hide-summaries"
+	ToolFilterTraces      ToolName = "hide-traces"
 	toolLog               ToolName = "log"
 	toolDiagrams          ToolName = "diagrams"
 	toolTimelines         ToolName = "timelines"
@@ -84,9 +86,12 @@ type MsgTxParsed struct {
 	StatesAdded   []int
 	StatesRemoved []int
 	StatesTouched []int
-	// TimeSum is machine time.
+	// TimeSum is machine time after this transition.
 	TimeSum       uint64
 	ReaderEntries []*logReaderEntryPtr
+	// Transitionss which reported this one as their source
+	Forks       []MachAddress
+	ForksLabels []string
 }
 
 type Opts struct {
@@ -124,6 +129,7 @@ type Opts struct {
 	ViewNarrow bool
 	ViewRain   bool
 	TailMode   bool
+	OutputTx   bool
 }
 
 type OptsFilters struct {
@@ -137,7 +143,7 @@ type OptsFilters struct {
 type ToolName string
 
 type Exportable struct {
-	// TODO refac MsgSchema
+	// TODO refac MsgStruct
 	MsgStruct *telemetry.DbgMsgStruct
 	MsgTxs    []*telemetry.DbgMsgTx
 }
@@ -185,28 +191,32 @@ func (a *MachAddress) String() string {
 type Client struct {
 	// bits which get saved into the go file
 	Exportable
-	// current transition, 1-based, mirrors the slider
+	// current transition, 1-based, mirrors the slider (eg 1 means tx.ID == 0)
+	// TODO atomic
 	CursorTx1 int
 	// current step, 1-based, mirrors the slider
+	// TODO atomic
 	CursorStep1         int
 	SelectedState       string
 	SelectedReaderEntry *logReaderEntryPtr
 	ReaderCollapsed     bool
 
 	txCache   map[string]int
+	txCacheMx sync.Mutex
 	id        string
-	connID    string
+	connId    string
 	connected atomic.Bool
 	// processed
 	msgTxsParsed []*MsgTxParsed
 	// processed list of filtered tx indexes
-	msgTxsFiltered []int
+	MsgTxsFiltered []int
 	// cache of processed log entries
 	logMsgs [][]*am.LogEntry
 	// extracted log entries per tx ID
 	// TODO GC when all entries are closedAt and the first client's tx is later
 	//  than the latest closedAt; whole tx needs to be disposed at the same time
-	logReader map[string][]*logReaderEntry
+	logReader   map[string][]*logReaderEntry
+	logReaderMx sync.Mutex
 	// indexes of txs with errors, desc order for bisects
 	// TOOD refresh on GC
 	errors   []int
@@ -263,18 +273,18 @@ func (c *Client) lastTxTill(hTime time.Time) int {
 }
 
 func (c *Client) addReaderEntry(txId string, entry *logReaderEntry) int {
-	if c.logReader == nil {
-		c.logReader = make(map[string][]*logReaderEntry)
-	}
+	c.logReaderMx.Lock()
+	defer c.logReaderMx.Unlock()
+
 	c.logReader[txId] = append(c.logReader[txId], entry)
 
 	return len(c.logReader[txId]) - 1
 }
 
 func (c *Client) getReaderEntry(txId string, idx int) *logReaderEntry {
-	if c.logReader == nil {
-		c.logReader = make(map[string][]*logReaderEntry)
-	}
+	c.logReaderMx.Lock()
+	defer c.logReaderMx.Unlock()
+
 	ptrTx, ok := c.logReader[txId]
 	if !ok || idx >= len(ptrTx) {
 		return nil
@@ -291,7 +301,11 @@ func (c *Client) indexesToStates(indexes []int) am.S {
 	return amhelp.IndexesToStates(c.MsgStruct.StatesIndex, indexes)
 }
 
+// txIndex returns the index of transition ID [id] or -1 if not found.
 func (c *Client) txIndex(id string) int {
+	c.txCacheMx.Lock()
+	defer c.txCacheMx.Unlock()
+
 	if c.txCache == nil {
 		c.txCache = make(map[string]int)
 	}
@@ -317,6 +331,14 @@ func (c *Client) tx(idx int) *telemetry.DbgMsgTx {
 	return c.MsgTxs[idx]
 }
 
+func (c *Client) txParsed(idx int) *MsgTxParsed {
+	if idx < 0 || idx >= len(c.msgTxsParsed) {
+		return nil
+	}
+
+	return c.msgTxsParsed[idx]
+}
+
 func (c *Client) txByMachTime(sum uint64) int {
 	idx, ok := slices.BinarySearchFunc(c.msgTxsParsed,
 		&MsgTxParsed{TimeSum: sum}, func(i, j *MsgTxParsed) int {
@@ -340,7 +362,7 @@ func (c *Client) filterIndexByCursor1(cursor1 int) int {
 	if cursor1 == 0 {
 		return 0
 	}
-	return slices.Index(c.msgTxsFiltered, cursor1-1)
+	return slices.Index(c.MsgTxsFiltered, cursor1-1)
 }
 
 // TODO
