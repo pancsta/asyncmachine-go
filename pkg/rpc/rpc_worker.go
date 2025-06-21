@@ -298,7 +298,7 @@ func (w *Worker) AddErr(err error, args am.A) am.Result {
 // Like every mutation method, it will resolve relations and trigger handlers.
 // AddErrState produces a stack trace of the error, if LogStackTrace is enabled.
 func (w *Worker) AddErrState(state string, err error, args am.A) am.Result {
-	if w.c == nil || w.Disposed.Load() {
+	if w.c == nil || w.Disposed.Load() || err == nil {
 		return am.Canceled
 	}
 
