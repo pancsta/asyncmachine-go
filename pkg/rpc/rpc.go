@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/rpc2"
+	"github.com/pancsta/asyncmachine-go/pkg/rpc/rpcnames"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -41,9 +42,9 @@ const (
 	EnvAmRpcDbg = "AM_RPC_DBG"
 	// EnvAmReplAddr is a REPL address to listen on. "1" expands to 127.0.0.1:0.
 	EnvAmReplAddr = "AM_REPL_ADDR"
-	// EnvAmReplAddrDir is a dir path to save the address file as
-	// addrDir/mach-id.addr. Optional.
-	EnvAmReplAddrDir = "AM_REPL_ADDR_DIR"
+	// EnvAmReplDir is a dir path to save the address file as
+	// $AM_REPL_DIR/mach-id.addr. Optional.
+	EnvAmReplDir = "AM_REPL_DIR"
 )
 
 var ss = states.SharedStates
@@ -91,8 +92,8 @@ type ArgsPayload struct {
 }
 
 type RespHandshake struct {
-	Schema     *am.Schema
-	Serialized am.Serialized
+	Schema     am.Schema
+	Serialized *am.Serialized
 }
 
 type RespResult struct {
@@ -197,7 +198,7 @@ func LogArgs(args am.A) map[string]string {
 		return nil
 	}
 
-	return amhelp.ArgsToLogMap(a)
+	return amhelp.ArgsToLogMap(a, 0)
 }
 
 // // DEBUG for perf testing TODO tag
@@ -284,8 +285,9 @@ func AddErrNoConn(e *am.Event, mach *am.Machine, err error) {
 }
 
 // AddErr detects sentinels from error msgs and calls the proper error setter.
+// TODO also return error for compat
 func AddErr(e *am.Event, mach *am.Machine, msg string, err error) {
-	if msg == "" {
+	if msg != "" {
 		err = fmt.Errorf("%w: %s", err, msg)
 	}
 
@@ -399,6 +401,23 @@ func (t *WorkerTracer) TransitionEnd(_ *am.Transition) {
 	}()
 }
 
+func (t *WorkerTracer) SchemaChange(mach am.Api, oldSchema am.Schema) {
+	go func() {
+		t.s.mutMx.Lock()
+		defer t.s.mutMx.Unlock()
+
+		if c := t.s.rpcClient.Load(); c != nil {
+			msg := &RespHandshake{
+				Schema:     mach.Schema(),
+				Serialized: mach.Export(),
+			}
+			err := c.CallWithContext(mach.Ctx(),
+				rpcnames.ClientSchemaChange.Encode(), msg, &Empty{})
+			mach.AddErr(err, nil)
+		}
+	}()
+}
+
 // TODO implement as an optimization
 // func (t *WorkerTracer) QueueEnd(_ *am.Transition) {
 //	t.s.pushClockUpdate()
@@ -414,7 +433,7 @@ func (t *WorkerTracer) TransitionEnd(_ *am.Transition) {
 // var is set. See MachRepl.
 func MachReplEnv(mach am.Api) <-chan error {
 	addr := os.Getenv(EnvAmReplAddr)
-	dir := os.Getenv(EnvAmReplAddrDir)
+	dir := os.Getenv(EnvAmReplDir)
 
 	err := make(chan error)
 	if addr == "" {
@@ -436,6 +455,7 @@ func MachReplEnv(mach am.Api) <-chan error {
 // addr: address to listen on, default to 127.0.0.1:0
 // addrDir: optional dir path to save the address file as addrDir/mach-id.addr.
 // addrCh: optional channel to send the address to, once ready
+// errCh: optional channel to send err to, once ready
 func MachRepl(
 	mach am.Api, addr, addrDir string, addrCh chan<- string, errCh chan<- error,
 ) {
@@ -447,7 +467,7 @@ func MachRepl(
 		addr = "127.0.0.1:0"
 	}
 
-	if !mach.Has(ssW.Names()) {
+	if mach.HasHandlers() && !mach.Has(ssW.Names()) {
 		err := fmt.Errorf(
 			"%w: REPL source has to implement pkg/rpc/states/WorkerStatesDef",
 			am.ErrSchema)
@@ -468,16 +488,35 @@ func MachRepl(
 	mux.Start()
 
 	if addrCh == nil && addrDir == "" {
+		if errCh != nil {
+			close(errCh)
+		}
 		return
 	}
 
 	go func() {
+		// dispose ret channels
+		defer func() {
+			if errCh != nil {
+				close(errCh)
+			}
+			if addrCh != nil {
+				close(addrCh)
+			}
+		}()
+
 		// prep the dir
+		dirOk := false
 		if addrDir != "" {
-			err := os.MkdirAll(addrDir, 0o755)
-			if err != nil {
-				addrCh <- mux.Addr
-				return
+			if _, err := os.Stat(addrDir); os.IsNotExist(err) {
+				err := os.MkdirAll(addrDir, 0o755)
+				if err == nil {
+					dirOk = true
+				} else if errCh != nil {
+					errCh <- err
+				}
+			} else {
+				dirOk = true
 			}
 		}
 
@@ -486,14 +525,15 @@ func MachRepl(
 		if addrCh != nil {
 			addrCh <- mux.Addr
 		}
+
 		// save to dir
-		if addrDir != "" {
-			_ = os.WriteFile(
+		if dirOk && addrDir != "" {
+			err = os.WriteFile(
 				filepath.Join(addrDir, mach.Id()+".addr"),
 				[]byte(mux.Addr), 0o644,
 			)
 			if errCh != nil {
-				errCh <- nil
+				errCh <- err
 			}
 		}
 	}()
@@ -512,12 +552,12 @@ func MachRepl(
 func NewClockMsg(before, after am.Time) ClockMsg {
 	var val [][2]int
 
-	for k := range after {
-		if before == nil {
+	for i := range after {
+		if before == nil || i >= len(before) {
 			// TODO test this path
-			val = append(val, [2]int{k, int(after[k])})
-		} else if before[k] != after[k] {
-			val = append(val, [2]int{k, int(after[k] - before[k])})
+			val = append(val, [2]int{i, int(after[i])})
+		} else if before[i] != after[i] {
+			val = append(val, [2]int{i, int(after[i] - before[i])})
 		}
 	}
 
@@ -526,10 +566,18 @@ func NewClockMsg(before, after am.Time) ClockMsg {
 
 func ClockFromMsg(before am.Time, msg ClockMsg) am.Time {
 	after := slices.Clone(before)
+	l := len(after)
 
 	for _, v := range msg {
+		if len(v) < 2 {
+			continue
+		}
 		key := v[0]
 		val := v[1]
+		if key >= l {
+			// TODO
+			continue
+		}
 		after[key] += uint64(val)
 	}
 

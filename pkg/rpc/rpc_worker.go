@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -32,6 +33,7 @@ type Worker struct {
 	err           error
 	schema        am.Schema
 	clockMx       sync.RWMutex
+	schemaMx      sync.RWMutex
 	machTime      am.Time
 	stateNames    am.S
 	activeState   atomic.Pointer[am.S]
@@ -122,7 +124,7 @@ func (w *Worker) Sync() am.Time {
 	}
 
 	// validate
-	if len(resp.Time) > 0 && len(resp.Time) != len(w.stateNames) {
+	if len(resp.Time) > 0 && len(resp.Time) != len(w.StateNames()) {
 		AddErrRpcStr(nil, w.c.Mach, "wrong clock len")
 		return nil
 	}
@@ -843,7 +845,20 @@ func (w *Worker) Err() error {
 
 // StateNames returns a copy of all the state names.
 func (w *Worker) StateNames() am.S {
-	return w.stateNames
+	w.schemaMx.Lock()
+	defer w.schemaMx.Unlock()
+
+	return slices.Clone(w.stateNames)
+}
+func (w *Worker) StateNamesMatch(re *regexp.Regexp) am.S {
+	ret := am.S{}
+	for _, name := range w.StateNames() {
+		if re.MatchString(name) {
+			ret = append(ret, name)
+		}
+	}
+
+	return ret
 }
 
 // ActiveStates returns a copy of the currently active states.
@@ -860,7 +875,7 @@ func (w *Worker) Tick(state string) uint64 {
 }
 
 func (w *Worker) tick(state string) uint64 {
-	idx := slices.Index(w.stateNames, state)
+	idx := slices.Index(w.StateNames(), state)
 
 	return w.machTime[idx]
 }
@@ -875,13 +890,15 @@ func (w *Worker) Clock(states am.S) am.Clock {
 }
 
 func (w *Worker) clock(states am.S) am.Clock {
+	index := w.StateNames()
+
 	if states == nil {
-		states = w.stateNames
+		states = index
 	}
 
 	ret := am.Clock{}
 	for _, state := range states {
-		idx := slices.Index(w.stateNames, state)
+		idx := slices.Index(index, state)
 		ret[state] = w.machTime[idx]
 	}
 
@@ -898,13 +915,14 @@ func (w *Worker) Time(states am.S) am.Time {
 }
 
 func (w *Worker) time(states am.S) am.Time {
+	index := w.StateNames()
 	if states == nil {
-		states = w.stateNames
+		states = index
 	}
 
 	ret := am.Time{}
 	for _, state := range states {
-		idx := slices.Index(w.stateNames, state)
+		idx := slices.Index(index, state)
 		ret = append(ret, w.machTime[idx])
 	}
 
@@ -920,13 +938,14 @@ func (w *Worker) TimeSum(states am.S) uint64 {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
 
+	index := w.StateNames()
 	if states == nil {
-		states = w.stateNames
+		states = index
 	}
 
 	var sum uint64
 	for _, state := range states {
-		idx := slices.Index(w.stateNames, state)
+		idx := slices.Index(index, state)
 		sum += w.machTime[idx]
 	}
 
@@ -1108,9 +1127,10 @@ func (w *Worker) String() string {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
 
+	index := w.StateNames()
 	active := w.ActiveStates()
 	ret := "("
-	for _, state := range w.stateNames {
+	for _, state := range index {
 		if !slices.Contains(active, state) {
 			continue
 		}
@@ -1118,7 +1138,7 @@ func (w *Worker) String() string {
 		if ret != "(" {
 			ret += " "
 		}
-		idx := slices.Index(w.stateNames, state)
+		idx := slices.Index(index, state)
 		ret += fmt.Sprintf("%s:%d", state, w.machTime[idx])
 	}
 
@@ -1132,11 +1152,12 @@ func (w *Worker) StringAll() string {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
 
+	index := w.StateNames()
 	activeStates := w.ActiveStates()
 	ret := "("
 	ret2 := "["
-	for _, state := range w.stateNames {
-		idx := slices.Index(w.stateNames, state)
+	for _, state := range index {
+		idx := slices.Index(index, state)
 
 		if slices.Contains(activeStates, state) {
 			if ret != "(" {
@@ -1162,8 +1183,9 @@ func (w *Worker) Inspect(states am.S) string {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
 
+	index := w.StateNames()
 	if states == nil {
-		states = w.stateNames
+		states = index
 	}
 
 	activeStates := w.ActiveStates()
@@ -1176,7 +1198,7 @@ func (w *Worker) Inspect(states am.S) string {
 			active = "1"
 		}
 
-		idx := slices.Index(w.stateNames, name)
+		idx := slices.Index(index, name)
 		ret += fmt.Sprintf("%s %s\n"+
 			"    |Time     %d\n", active, name, w.machTime[idx])
 		if state.Auto {
@@ -1227,11 +1249,14 @@ func (w *Worker) log(level am.LogLevel, msg string, args ...any) {
 // MustParseStates parses the states and returns them as a list.
 // Panics when a state is not defined. It's an usafe equivalent of VerifyStates.
 func (w *Worker) MustParseStates(states am.S) am.S {
-	// check if all states are defined in m.Struct
+	w.schemaMx.Lock()
+	defer w.schemaMx.Unlock()
+
+	// check if all states are defined in m.Schema
 	for _, s := range states {
-		// TODO lock
 		if _, ok := w.schema[s]; !ok {
-			panic(fmt.Sprintf("state %s is not defined for %s", s, w.id))
+			panic(fmt.Sprintf("state %s is not defined for %s (via %s)", s,
+				w.remoteId, w.id))
 		}
 	}
 
@@ -1356,6 +1381,7 @@ func (w *Worker) processWhenBindings(statesBefore am.S) {
 func (w *Worker) processWhenTimeBindings(timeBefore am.Time) {
 	w.clockMx.Lock()
 	indexWhenTime := w.indexWhenTime
+	index := w.StateNames()
 	var toClose []chan struct{}
 
 	// collect all the ticked states
@@ -1363,7 +1389,7 @@ func (w *Worker) processWhenTimeBindings(timeBefore am.Time) {
 	for idx, t := range timeBefore {
 		// if changed, collect to check
 		if w.machTime[idx] != t {
-			all = append(all, w.stateNames[idx])
+			all = append(all, index[idx])
 		}
 	}
 
@@ -1373,7 +1399,7 @@ func (w *Worker) processWhenTimeBindings(timeBefore am.Time) {
 
 			// check if the requested time has passed
 			if !binding.Completed[s] &&
-				w.machTime[w.Index(s)] >= binding.Times[binding.Index[s]] {
+				w.machTime[w.Index1(s)] >= binding.Times[binding.Index[s]] {
 				binding.Matched++
 				// mark in the index as completed
 				binding.Completed[s] = true
@@ -1411,9 +1437,18 @@ func (w *Worker) processWhenTimeBindings(timeBefore am.Time) {
 	}
 }
 
-// Index returns the index of a state in the machine's StateNames() list.
-func (w *Worker) Index(state string) int {
-	return slices.Index(w.stateNames, state)
+// Index1 returns the index of a state in the machine's StateNames() list.
+func (w *Worker) Index1(state string) int {
+	return slices.Index(w.StateNames(), state)
+}
+
+func (w *Worker) Index(states am.S) []int {
+	ret := make([]int, len(states))
+	for i, state := range states {
+		ret[i] = w.Index1(state)
+	}
+
+	return ret
 }
 
 // Dispose disposes the machine and all its emitters. You can wait for the
@@ -1455,7 +1490,7 @@ func (w *Worker) Export() *am.Serialized {
 	return &am.Serialized{
 		ID:         w.id,
 		Time:       w.time(nil),
-		StateNames: w.stateNames,
+		StateNames: w.StateNames(),
 	}
 }
 
@@ -1466,11 +1501,12 @@ func (w *Worker) Schema() am.Schema {
 
 // BindHandlers binds a struct of handler methods to machine's states, based on
 // the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
-// optionall return bool.
+// optionally return bool.
 //
-// RPC worker will bind handelrs locally, not to the remote machine.
+// RPC worker will bind handlers locally, not to the remote machine.
+// RPC worker handlers are still TODO.
 func (w *Worker) BindHandlers(handlers any) error {
-	names, err := am.ListHandlers(handlers, w.stateNames)
+	names, err := am.ListHandlers(handlers, w.StateNames())
 	if err != nil {
 		return err
 	}
@@ -1492,6 +1528,16 @@ func (w *Worker) BindHandlers(handlers any) error {
 	w.log(am.LogOps, "[handlers] bind %s", name)
 
 	return nil
+}
+
+// HasHandlers returns true if this machine has bound handlers, and thus an
+// allocated goroutine. It also makes it nondeterministic.
+func (w *Worker) HasHandlers() bool {
+	// TODO lock
+	// w.handlersLock.Lock()
+	// defer w.handlersLock.Unlock()
+
+	return len(w.handlers) > 0
 }
 
 // DetachHandlers detaches previously bound machine handlers.
@@ -1530,26 +1576,27 @@ func (w *Worker) BindTracer(tracer am.Tracer) error {
 
 // DetachTracer tries to remove a tracer from the machine. Returns true if the
 // tracer was found and removed.
-func (w *Worker) DetachTracer(tracer am.Tracer) bool {
+func (w *Worker) DetachTracer(tracer am.Tracer) error {
 	w.tracersMx.Lock()
 	defer w.tracersMx.Unlock()
 
 	v := reflect.ValueOf(tracer)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		return false
+		return errors.New("DetachTracer expects a pointer to a struct")
 	}
 	name := reflect.TypeOf(tracer).Elem().Name()
 
 	for i, t := range w.tracers {
 		if t == tracer {
-			w.tracers = append(w.tracers[:i], w.tracers[i+1:]...)
+			// TODO check
+			w.tracers = slices.Delete(w.tracers, i, i+1)
 			w.log(am.LogOps, "[tracers] detach %s", name)
 
-			return true
+			return nil
 		}
 	}
 
-	return false
+	return errors.New("tracer not bound")
 }
 
 // Tracers return a copy of currenty attached tracers.
@@ -1581,26 +1628,27 @@ func (w *Worker) UpdateClock(now am.Time, lock bool) {
 	}
 	activeBefore := w.ActiveStates()
 	active := am.S{}
-	for i, state := range w.stateNames {
+	index := w.StateNames()
+	for i, state := range index {
 		if am.IsActiveTick(now[i]) {
 			active = append(active, state)
 		}
 	}
 
 	tx := &am.Transition{
-		Api:      w,
-		Accepted: true,
+		Api: w,
 
 		TimeBefore: before,
 		TimeAfter:  now,
 		Mutation: &am.Mutation{
-			Type:         am.MutationSet,
-			CalledStates: active,
-			Args:         nil,
-			Auto:         false,
+			Type:   am.MutationSet,
+			Called: w.Index(active),
+			Args:   nil,
+			Auto:   false,
 		},
 		LogEntries: w.logEntries,
 	}
+	tx.IsAccepted.Store(true)
 	w.logEntries = nil
 	// TODO fire handlers if set
 
@@ -1629,4 +1677,8 @@ func (w *Worker) UpdateClock(now am.Time, lock bool) {
 	w.processWhenBindings(activeBefore)
 	w.processWhenTimeBindings(before)
 	w.processStateCtxBindings(activeBefore)
+}
+
+func (w *Worker) AddBreakpoint(added am.S, removed am.S) {
+	// empty
 }

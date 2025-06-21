@@ -215,6 +215,7 @@ func (m *Mux) accept(l net.Listener) {
 		} else {
 			server, err = m.NewServerFn(int(num), conn)
 		}
+		// TODO return this err to the RPC client
 		if err != nil {
 			_ = conn.Close()
 			mach.Log("failed to create a new server: %s", err)

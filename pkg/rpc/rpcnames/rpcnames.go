@@ -25,6 +25,7 @@ const (
 	ClientPushAllTicks
 	ClientSendPayload
 	ClientBye
+	ClientSchemaChange
 )
 
 func (n Name) Encode() string {
@@ -59,6 +60,8 @@ func (n Name) String() string {
 		return "ClientSendPayload"
 	case ClientBye:
 		return "ClientBye"
+	case ClientSchemaChange:
+		return "SchemaChange"
 	}
 
 	return "!UNKNOWN!"
