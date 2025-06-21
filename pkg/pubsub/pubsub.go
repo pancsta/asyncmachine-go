@@ -1,12 +1,11 @@
 package pubsub
 
-// TODO use amhelp.Pool
-
 import (
 	"errors"
 	"fmt"
 	"regexp"
 	"sync/atomic"
+	"time"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/multiformats/go-multiaddr"
@@ -31,6 +30,7 @@ var ss = states.TopicStates
 // ///// ARGS
 
 // ///// ///// /////
+// TODO keep with states
 
 // PARTIALS
 
@@ -168,12 +168,14 @@ type A struct {
 	// Msg is a raw msg.
 	Msg []byte
 	// PeerId is a peer ID
-	PeerId  string `log:"peer"`
-	PeerIds []string
+	PeerId  string   `log:"peer"`
+	PeerIds []string `log:"peer_ids"`
 	// MachId is a state machine ID
-	MachId string
+	MachId string `log:"mach_id"`
 	// MTime is machine time
 	MTime am.Time `log:"mtime"`
+	// HTime is human time
+	HTime time.Time
 	// Addrs is a list of addresses.
 	Addrs []multiaddr.Multiaddr `log:"addrs"`
 	// WorkersCh is a return channel for a list of [rpc.Worker]. It has to be
@@ -185,6 +187,7 @@ type A struct {
 	PeersGossip PeerGossips
 }
 
+// TODO merge with REPL, add tag-based queries (to find workers)
 type ListFilters struct {
 	IdExact   string
 	IdPartial string
@@ -195,7 +198,6 @@ type ListFilters struct {
 	DepthLevel  int
 	ChildrenMax int
 	ChildrenMin int
-	// TODO more filters?
 }
 
 // ParseArgs extracts A from [am.Event.Args][APrefix].
@@ -218,7 +220,7 @@ func LogArgs(args am.A) map[string]string {
 		return nil
 	}
 
-	return amhelp.ArgsToLogMap(a)
+	return amhelp.ArgsToLogMap(a, 0)
 }
 
 // ///// ///// /////

@@ -113,7 +113,7 @@ func Test2Peers(t *testing.T) {
 
 func TestExposing(t *testing.T) {
 	// t.Parallel()
-	// amhelp.EnableDebugging(false)
+	amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -167,12 +167,12 @@ func TestExposing(t *testing.T) {
 	// test update 1 -> 0
 	machs1[0].Add1("Bar", nil)
 	amhelpt.WaitForAll(t, "p0-gets-update", ctx, time.Second,
-		p0.Mach.WhenTime(am.S{ss.MsgUpdates}, am.Time{1}, nil))
+		p0.Mach.WhenTime(am.S{ss.MsgInfo}, am.Time{1}, nil))
 
 	// test update 0 -> 1
 	machs0[0].Add1("Bar", nil)
 	amhelpt.WaitForAll(t, "p1-gets-update", ctx, time.Second,
-		p1.Mach.WhenTime(am.S{ss.MsgUpdates}, am.Time{1}, nil))
+		p1.Mach.WhenTime(am.S{ss.MsgInfo}, am.Time{1}, nil))
 
 	// TODO list machs and assert clocks
 	amhelpt.AssertNoErrEver(t, p0.Mach)
@@ -193,8 +193,7 @@ func TestExposingMany(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	amountPeers := 6 // min
-	// amountPeers := 100
+	amountPeers := 100
 	amountSources := 3
 	parallel := 10
 
@@ -213,6 +212,8 @@ func TestExposingMany(t *testing.T) {
 	eg.SetLimit(parallel)
 	started := 0
 
+	// min 6 peers
+	amountPeers = max(6, amountPeers)
 	for i := range amountPeers {
 		// skip root
 		if i == 0 {
@@ -269,7 +270,7 @@ func TestExposingMany(t *testing.T) {
 
 	t.Log("Discovering...")
 
-	// assert the progapagtion to other peers
+	// assert the propagation to other peers
 	for i, ps := range peers {
 		if i == 5 || i == 0 {
 			continue
@@ -280,8 +281,10 @@ func TestExposingMany(t *testing.T) {
 		// get ALL local workers
 		ch := make(chan []*rpc.Worker, 1)
 		args := &A{WorkersCh: ch}
-		res, _ := amhelp.NewReqAdd1(ps.Mach, ss.ListMachines, Pass(args)).
-			Delay(time.Second).Run(ctx)
+		reqListMachs := amhelp.NewReqAdd1(ps.Mach, ss.ListMachines, Pass(args))
+
+		// execute
+		res, _ := reqListMachs.Delay(time.Second).Run(ctx)
 		if res == am.Canceled {
 			t.Logf("Peer %d: unable to list machines", i)
 			close(ch)
@@ -297,7 +300,7 @@ func TestExposingMany(t *testing.T) {
 
 	t.Log("Discovery OK")
 
-	// assert the progapagtion to other peers
+	// assert the propagation to other peers
 	for i, ps := range peers {
 		if i == 5 || i == 0 {
 			continue
@@ -311,8 +314,10 @@ func TestExposingMany(t *testing.T) {
 				PeerId: p5Id,
 			},
 		}
-		res, _ := amhelp.NewReqAdd1(ps.Mach, ss.ListMachines, Pass(args)).
-			Delay(time.Second).Run(ctx)
+		reqListMachs := amhelp.NewReqAdd1(ps.Mach, ss.ListMachines, Pass(args))
+
+		// execute
+		res, _ := reqListMachs.Delay(time.Second).Run(ctx)
 		// t.Logf("Peer %d: getting p5 local workers", i)
 		if res == am.Canceled {
 			t.Logf("Peer %d: p5 peers CANCELED", i)
@@ -341,7 +346,7 @@ func TestExposingMany(t *testing.T) {
 		peersSynced++
 	}
 
-	// TODO this can be flaky due to the last of timeouts and a short queue
+	// TODO this can be flaky due to the lack of timeouts and a short queue
 	for _, ps := range peers {
 		amhelpt.AssertNoErrNow(t, ps.Mach)
 	}
@@ -452,7 +457,7 @@ func RandMach(
 	ctx context.Context, suffix string, parent *am.Machine,
 ) *am.Machine {
 	opts := &am.Opts{
-		ID: "rand-" + suffix,
+		Id: "rand-" + suffix,
 	}
 	if parent != nil {
 		opts.Parent = parent

@@ -27,6 +27,15 @@ type TopicStatesDef struct {
 	// Other peers have later clock values for some known peers
 	MissUpdatesByGossip string
 
+	// work
+
+	SendGossips       string
+	SendUpdates       string
+	ReqMissingPeers   string
+	ReqMissingUpdates string
+	// Sends MsgInfo to specific peers or the channel.
+	DoSendInfo string
+
 	// events
 
 	PeerJoined string
@@ -39,7 +48,7 @@ type TopicStatesDef struct {
 	MsgReqInfo string
 	// MsgReqUpdates received
 	MsgReqUpdates string
-	// MsgReceived measn a general msg was sent to the channel.
+	// MsgReceived means a general msg was sent to the channel.
 	MsgReceived string
 
 	// actions
@@ -48,8 +57,7 @@ type TopicStatesDef struct {
 	// via chan, as [rpc.Worker].
 	ListMachines string
 	SendMsg      string
-	// Sends MsgInfo to specific peers or the channel.
-	SendInfo string
+	SendInfo     string
 
 	// inherit from BasicStatesDef
 	*ss.BasicStatesDef
@@ -94,6 +102,14 @@ var TopicSchema = SchemaMerge(
 			Auto:    true,
 			Require: S{ssT.Joined},
 		},
+
+		// work states
+
+		ssT.SendGossips:       {Require: S{ssT.Joined}},
+		ssT.SendUpdates:       {Require: S{ssT.Joined}},
+		ssT.ReqMissingPeers:   {Require: S{ssT.Joined}},
+		ssT.ReqMissingUpdates: {Require: S{ssT.Joined}},
+		ssT.DoSendInfo:        {Require: S{ssT.Joined}},
 
 		// external events
 
@@ -155,10 +171,7 @@ var TopicSchema = SchemaMerge(
 			Multi:   true,
 			Require: S{ssT.Joined},
 		},
-		ssT.SendInfo: {
-			Multi:   true,
-			Require: S{ssT.Joined},
-		},
+		ssT.SendInfo:  {Require: S{ssT.Joined}},
 		ssT.Heartbeat: {Require: S{ssT.Joined}},
 	})
 
@@ -173,8 +186,3 @@ var (
 	// TopicGroups contains all the state groups for the Topic machine.
 	TopicGroups = sgT
 )
-
-// Hnadlers
-
-type TopicExternalHandlers interface {
-}
