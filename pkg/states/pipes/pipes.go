@@ -1,18 +1,20 @@
-// Package pipe provide helpers to pipe states from one machine to another.
+// Package pipes provide helpers to pipe states from one machine to another.
 package pipes
 
 // TODO register disposal handlers, detach from source machines
 
 import (
 	"context"
+	"strings"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
-// Add adds a pipe for an Add mutation between source and target machines.
+// Add adds a pipe for an Add mutation between source and target machines, for
+// a single target state.
 //
-// targetState: default to sourceState
+// targetState: defaults to sourceState
 func Add(
 	source, target *am.Machine, sourceState string, targetState string,
 ) am.HandlerFinal {
@@ -22,18 +24,27 @@ func Add(
 	if targetState == "" {
 		targetState = sourceState
 	}
-	source.LogLvl(am.LogOps, "[pipe-out:add] %s to %s", sourceState, target.Id())
-	target.LogLvl(am.LogOps, "[pipe-in:add] %s from %s", targetState, source.Id())
+	source.InternalLog(am.LogOps, "[pipe-out:add] %s to %s", sourceState, target.Id())
+	target.InternalLog(am.LogOps, "[pipe-in:add] %s from %s", targetState, source.Id())
 
 	// TODO optimize
 	source.HandleDispose(gcHandler(target))
 	target.HandleDispose(gcHandler(source))
 
 	return func(e *am.Event) {
-		target.EvAdd1(e, targetState, e.Args)
+		// include Exception when adding errors
+		if strings.HasPrefix(targetState, am.PrefixErr) {
+			target.EvAdd(e, am.S{am.Exception, targetState}, e.Args)
+		} else {
+			target.EvAdd1(e, targetState, e.Args)
+		}
 	}
 }
 
+// Remove adds a pipe for a Remove mutation between source and target
+// machines, for a single target state.
+//
+// targetState: defaults to sourceState
 func Remove(
 	source, target *am.Machine, sourceState string, targetState string,
 ) am.HandlerFinal {
@@ -43,9 +54,9 @@ func Remove(
 	if targetState == "" {
 		targetState = sourceState
 	}
-	source.LogLvl(am.LogOps, "[pipe-out:remove] %s to %s", sourceState,
+	source.InternalLog(am.LogOps, "[pipe-out:remove] %s to %s", sourceState,
 		target.Id())
-	target.LogLvl(am.LogOps, "[pipe-in:remove] %s from %s", targetState,
+	target.InternalLog(am.LogOps, "[pipe-in:remove] %s from %s", targetState,
 		source.Id())
 
 	// TODO optimize
@@ -100,9 +111,8 @@ func BindConnected(
 }
 
 // BindErr binds Exception to a custom state using Add. Empty state defaults to
-// [am.Exception].
+// [am.Exception], and a custom state will also add [am.Exception].
 func BindErr(source, target *am.Machine, targetErr string) error {
-
 	if targetErr == "" {
 		targetErr = am.Exception
 	}
@@ -121,14 +131,6 @@ func BindErr(source, target *am.Machine, targetErr string) error {
 func BindStart(
 	source, target *am.Machine, activeState, inactiveState string,
 ) error {
-
-	if activeState == "" {
-		activeState = ss.BasicStates.Start
-	}
-	if inactiveState == "" {
-		inactiveState = ss.BasicStates.Start
-	}
-
 	h := &struct {
 		StartState am.HandlerFinal
 		StartEnd   am.HandlerFinal
@@ -140,19 +142,11 @@ func BindStart(
 	return source.BindHandlers(h)
 }
 
-// BindReady binds Ready to custom states using Add/Remove. Empty state
+// BindReady binds Ready to custom states using Add/. Empty state
 // defaults to Ready.
 func BindReady(
 	source, target *am.Machine, activeState, inactiveState string,
 ) error {
-
-	if activeState == "" {
-		activeState = ss.BasicStates.Ready
-	}
-	if inactiveState == "" {
-		inactiveState = ss.BasicStates.Ready
-	}
-
 	h := &struct {
 		ReadyState am.HandlerFinal
 		ReadyEnd   am.HandlerFinal
@@ -195,6 +189,6 @@ func BindReady(
 
 func gcHandler(mach *am.Machine) am.HandlerDispose {
 	return func(id string, ctx context.Context) {
-		mach.LogLvl(am.LogOps, "[pipe:gc] %s", id)
+		mach.InternalLog(am.LogOps, "[pipe:gc] %s", id)
 	}
 }

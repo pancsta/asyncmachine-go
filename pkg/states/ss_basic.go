@@ -38,9 +38,15 @@ type BasicStatesDef struct {
 var BasicSchema = am.Schema{
 	// Errors
 
-	ssB.Exception:         {Multi: true},
-	ssB.ErrNetwork:        {Require: S{Exception}},
-	ssB.ErrHandlerTimeout: {Require: S{Exception}},
+	ssB.Exception: {Multi: true},
+	ssB.ErrNetwork: {
+		Multi:   true,
+		Require: S{Exception},
+	},
+	ssB.ErrHandlerTimeout: {
+		Multi:   true,
+		Require: S{Exception},
+	},
 
 	// Basics
 
