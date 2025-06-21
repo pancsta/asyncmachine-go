@@ -1371,12 +1371,14 @@ var emitterNameRe = regexp.MustCompile(`/\w+\.go:\d+`)
 
 // BindHandlers binds a struct of handler methods to machine's states, based on
 // the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
-// optional return bool.
+// optionally return bool.
 func (m *Machine) BindHandlers(handlers any) error {
 	if m.disposed.Load() {
 		return nil
 	}
+	first := false
 	if !m.handlerLoopRunning {
+		first = true
 		m.handlerLoopRunning = true
 
 		// start the handler loop
@@ -1408,7 +1410,7 @@ func (m *Machine) BindHandlers(handlers any) error {
 		var err error
 		methodNames, err = ListHandlers(handlers, m.stateNames)
 		if err != nil {
-			return fmt.Errorf("error listing handlers: %w", err)
+			return fmt.Errorf("listing handlers: %w", err)
 		}
 	}
 
@@ -1420,6 +1422,11 @@ func (m *Machine) BindHandlers(handlers any) error {
 	} else {
 		// index for anon handlers
 		m.log(LogOps, "[handlers] bind %d", len(old))
+	}
+
+	// if already in Exception when 1st handler group is bound, re-add the err
+	if first && m.IsErr() {
+		m.AddErr(m.Err(), nil)
 	}
 
 	return nil
