@@ -14,14 +14,6 @@ type ReplStatesDef struct {
 
 	ErrSyntax string
 
-	// CONNECTION
-
-	Disconnected   string
-	Connecting     string
-	Connected      string
-	ConnectedFully string
-	Disconnecting  string
-
 	// PIPES
 
 	RpcConn    string
@@ -47,6 +39,8 @@ type ReplStatesDef struct {
 	ReplMode string
 	// List fully connected machines, with filters.
 	ListMachines string
+	// Watch mode detected a change in address files
+	AddrChanged string
 
 	// inherit from BasicStatesDef
 	*ss.BasicStatesDef
@@ -73,7 +67,16 @@ var ReplSchema = SchemaMerge(
 	ss.DisposedSchema,
 	am.Schema{
 
-		ssC.ErrSyntax: {},
+		ssC.ErrSyntax: {
+			Multi:   true,
+			Require: S{Exception},
+		},
+
+		ssC.ErrNetwork: {
+			Multi:   true,
+			Require: S{Exception},
+			Remove:  S{ssC.ConnectedFully},
+		},
 
 		// PIPES
 
@@ -129,11 +132,16 @@ var ReplSchema = SchemaMerge(
 
 		// STATUS
 
-		ssC.ReplMode: {Require: S{ssC.Start}},
+		ssC.ReplMode: {},
 
 		// ACTIONS
 
 		ssC.ListMachines: {
+			Multi:   true,
+			Require: S{ssC.Start},
+		},
+
+		ssC.AddrChanged: {
 			Multi:   true,
 			Require: S{ssC.Start},
 		},

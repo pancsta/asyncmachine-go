@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"os"
+	"os/signal"
 	"time"
 
-	"github.com/joho/godotenv"
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -17,7 +17,6 @@ var ss = states.ReplStates
 var randomId = false
 
 func init() {
-	_ = godotenv.Load()
 	// amhelp.EnableDebugging(false)
 	// amhelp.EnableDebugging(true)
 }
@@ -35,7 +34,7 @@ func main() {
 	for i, v := range osArgs {
 		if v == "--" && len(os.Args) > i+1 {
 			cliArgs = os.Args[i+2:]
-			connArgs = os.Args[1:i+1]
+			connArgs = os.Args[1 : i+1]
 			break
 		}
 	}
@@ -64,9 +63,15 @@ func main() {
 		}
 	}
 
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+
 	// waits
 	select {
 
+	// signal
+	case <-sigCh:
+		r.Mach.Add1(ss.Disposing, nil)
 	// CLI
 	case <-r.Mach.WhenNot1(ss.ReplMode, nil):
 	// exit

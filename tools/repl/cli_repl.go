@@ -1,6 +1,7 @@
 package repl
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -9,13 +10,16 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
@@ -78,6 +82,13 @@ func NewRootCommand(repl *Repl, cliArgs, osArgs []string) *cobra.Command {
 		"Load addresses from a file")
 	rootCmd.Flags().BoolP("dir", "d", false,
 		"Load *.addr files from a directory")
+	rootCmd.Flags().BoolP("watch", "w", false,
+		"Watch the addr file / dir for changes (EXPERIMENTAL)")
+	rootCmd.Flags().String("am-dbg-addr", "",
+		"Connect this client to am-dbg")
+	rootCmd.Flags().Int("log-level", 0,
+		"Log level, 0-5 (silent-everything)")
+	// TODO --log-file
 
 	// CLI only flags
 
@@ -151,55 +162,88 @@ func rootRun(
 	}
 
 	addrs := []string{args[0]}
+	var watcher *fsnotify.Watcher
 
-	// addr from a file
-	file, err := cmd.Flags().GetBool("file")
+	// flags
+	isWatch, err := cmd.Flags().GetBool("watch")
 	if err != nil {
 		return err
 	}
-	if file {
-		content, err := os.ReadFile(args[0])
+	isDir, err := cmd.Flags().GetBool("dir")
+	if err != nil {
+		return err
+	}
+	isFile, err := cmd.Flags().GetBool("file")
+	if err != nil {
+		return err
+	}
+
+	// validate flags
+	if isDir && isFile {
+		return fmt.Errorf("cannot use both --dir and --file")
+	}
+	if isWatch && !isDir && !isFile {
+		return fmt.Errorf("--file or --dir required for --watch")
+	}
+	clipath := args[0]
+
+	// debug
+	dbgAddr, err := handleDebug(cmd, mach)
+	if err != nil {
+		return err
+	}
+
+	// init fs watcher
+	if isWatch {
+		watcher, err = initWatcher(mach, clipath, isDir)
+		if err != nil {
+			return err
+		}
+	}
+
+	// addr from a file
+	if isFile {
+
+		content, err := os.ReadFile(clipath)
 		if err != nil {
 			return fmt.Errorf("%w\n", err)
 		}
-
 		addrs = []string{strings.TrimSpace(string(content))}
-	}
 
-	// addrs from a dir
-	dir, err := cmd.Flags().GetBool("dir")
-	if err != nil {
-		return err
-	}
-	if dir {
-		addrs = []string{}
-		path := args[0]
+		// watch
+		if isWatch {
+			err = watcher.Add(clipath)
+			if err != nil {
+				return fmt.Errorf("failed to watch file: %w", err)
+			}
+		}
 
-		err := filepath.WalkDir(path,
-			func(path string, d fs.DirEntry, err error) error {
-				if err != nil {
-					return err
-				}
-				if !d.IsDir() && strings.HasSuffix(path, ".addr") {
-					content, err := os.ReadFile(path)
-					if err != nil {
-						return fmt.Errorf(
-							"%s: %w\n", path, err)
-					}
-					addrs = append(addrs, strings.TrimSpace(string(content)))
-				}
-
-				return nil
-			})
+		// addrs from a dir
+	} else if isDir {
+		addrs, err = addrsFromDir(clipath)
 		if err != nil {
 			return fmt.Errorf("failed to scan directory: %w", err)
 		}
 		if len(addrs) == 0 {
-			return fmt.Errorf("no .addr files found in %s", path)
+			return fmt.Errorf("no .addr files found in %s", clipath)
 		}
+
+		// watch
+		if isWatch {
+			err = watcher.Add(clipath)
+			if err != nil {
+				return fmt.Errorf("failed to watch dir: %w", err)
+			}
+		}
+
+		// addr from CLI
+	} else {
+		addrs = []string{clipath}
 	}
 
+	// collected addresses
 	repl.Addrs = addrs
+	repl.DbgAddr = dbgAddr
 
 	// CLI mode
 	if len(cliArgs) > 0 {
@@ -243,6 +287,130 @@ func rootRun(
 	res := mach.Add(am.S{ss.Start, ss.ReplMode}, nil)
 
 	return amhelp.ResultToErr(res)
+}
+
+func addrsFromDir(dirpath string) ([]string, error) {
+	var addrs []string
+
+	err := filepath.WalkDir(dirpath,
+		func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() && strings.HasSuffix(path, ".addr") {
+				content, err := os.ReadFile(path)
+				if err != nil {
+					return fmt.Errorf(
+						"%s: %w\n", path, err)
+				}
+				addrs = append(addrs, strings.TrimSpace(string(content)))
+			}
+
+			return nil
+		})
+
+	return addrs, err
+}
+
+func handleDebug(cmd *cobra.Command, mach *am.Machine) (string, error) {
+	logLevelInt, err := cmd.Flags().GetInt("log-level")
+	if err != nil {
+		return "", err
+	}
+	logLevelInt = min(4, logLevelInt)
+	logLevel := am.LogLevel(logLevelInt)
+	dbgAddr, err := cmd.Flags().GetString("am-dbg-addr")
+	if err != nil {
+		return "", err
+	}
+	if dbgAddr != "" {
+		amhelp.MachDebug(mach, dbgAddr, logLevel, false)
+	}
+
+	return dbgAddr, nil
+}
+
+// TODO watch in a state, handle filenames other then *.addr, add/remove
+//   - only affected clients, dont re-start
+func initWatcher(mach *am.Machine, watchpath string, isDir bool) (*fsnotify.Watcher, error) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, err
+	}
+	mach.HandleDispose(func(id string, ctx context.Context) {
+		_ = watcher.Close()
+	})
+
+	// watch for changes and trigger AddrChanged
+	go func() {
+		var running atomic.Bool
+		var pending atomic.Bool
+
+		// TODO how very (not) nice
+		var restart func()
+		restart = func() {
+			mach.Log("watcher: restarting")
+			time.Sleep(time.Second)
+			var addrs []string
+			if isDir {
+				addrs, err = addrsFromDir(watchpath)
+				if err != nil {
+					mach.AddErr(err, nil)
+					return
+				}
+			} else {
+				content, err := os.ReadFile(watchpath)
+				if err != nil {
+					mach.AddErr(err, nil)
+				}
+				addrs = []string{string(content)}
+			}
+			mach.Log("watcher: collected %d addresses", len(addrs))
+
+			mach.Add1(ss.AddrChanged, Pass(&A{
+				Addrs: addrs,
+			}))
+			running.Store(false)
+			if pending.CompareAndSwap(true, false) {
+				// TODO lets go deeper!
+				restart()
+			}
+		}
+
+		for {
+			select {
+			case <-mach.Ctx().Done():
+				return
+
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+
+				// change
+				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
+					if !strings.HasSuffix(event.Name, ".addr") {
+						continue
+					}
+
+					if !running.CompareAndSwap(false, true) {
+						// already running, mark for later
+						pending.Store(true)
+						continue
+					}
+
+					// debounce and re-start
+					go restart()
+				}
+
+				// removed TODO handle better
+				// if event.Op&fsnotify.Remove == fsnotify.Remove {
+				// }
+			}
+		}
+	}()
+
+	return watcher, nil
 }
 
 func MutationCmds(repl *Repl) []*cobra.Command {
@@ -596,6 +764,7 @@ func SysCmds(repl *Repl) []*cobra.Command {
 		GroupID: "repl",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mach.Add1(ss.Disposing, nil)
+			mach.Remove1(ss.ReplMode, nil)
 
 			return nil
 		},
@@ -620,6 +789,7 @@ func ReplCmds(repl *Repl) []*cobra.Command {
 	mach := repl.Mach
 
 	// Connect command
+	// TODO connet to a new mach via addr
 	connCmd := &cobra.Command{
 		Use:     "connect",
 		Short:   "Try to re-connect to all machines",
@@ -763,10 +933,11 @@ func WaitingCmds(repl *Repl) []*cobra.Command {
 
 func InspectingCmds(repl *Repl) []*cobra.Command {
 	// List command
+	// TODO support returning net addresses
 	listCmd := &cobra.Command{
 		Use:     "list",
 		Example: "list -a Foo -a Bar --mtime-min 1631",
-		Short:   "List connected machines",
+		Short:   "List handshooked machines",
 		GroupID: "repl",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return listRun(repl, cmd, args)
@@ -881,7 +1052,7 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 
 			conn, disconn, inprog := 0, 0, 0
 			for _, rpc := range rpcs {
-				if rpc.Mach.Is1(ss.Ready) {
+				if rpc.Mach.Is1(ssrpc.ClientStates.Ready) {
 					conn++
 				} else if rpc.Mach.Is1(ss.Connecting) {
 					inprog++
@@ -890,11 +1061,14 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 				}
 			}
 
+			// TODO get the list via a state, take total from list of registered
+			//  (named) addresses
 			repl.Print(strings.Repeat("%-15s %d\n", 4),
 				"Connected:", conn,
 				"Connecting:", inprog,
 				"Disconnected:", disconn,
-				"Total:", len(repl.Addrs))
+				"Total:", len(rpcs),
+			)
 
 			return nil
 		},
@@ -947,8 +1121,13 @@ func listRun(repl *Repl, cmd *cobra.Command, args []string) error {
 		}
 
 		conn := "C"
-		if w.Not1(ssam.BasicStates.Ready) {
+		if c.Mach.Not1(ssrpc.ClientStates.Ready) {
 			conn = "D"
+		}
+		if w.Has1(ssam.BasicStates.Ready) && w.Is1(ssam.BasicStates.Ready) {
+			conn += "R"
+		} else if w.Has1(ssam.BasicStates.Start) && w.Is1(ssam.BasicStates.Start) {
+			conn += "S"
 		}
 
 		// TODO conns since time in htime
