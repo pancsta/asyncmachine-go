@@ -53,9 +53,9 @@ func TestStepTypeString(t *testing.T) {
 
 	assert.Equal(t, "rel", StepRelation.String())
 	assert.Equal(t, "handler", StepHandler.String())
-	assert.Equal(t, "set", StepSet.String())
-	assert.Equal(t, "remove", StepRemove.String())
-	assert.Equal(t, "removenotactive", StepRemoveNotActive.String())
+	assert.Equal(t, "activate", StepSet.String())
+	assert.Equal(t, "deactivate", StepRemove.String())
+	assert.Equal(t, "deactivate-passive", StepRemoveNotActive.String())
 	assert.Equal(t, "requested", StepRequested.String())
 	assert.Equal(t, "cancel", StepCancel.String())
 	assert.Equal(t, "", StepType(0).String())
@@ -120,7 +120,7 @@ func TestParseStruct(t *testing.T) {
 		"B": {},
 		"C": {},
 	}
-	assert.Equal(t, ex, parseSchema(s))
+	assert.Equal(t, ex, ParseSchema(s))
 }
 
 func TestSMerge(t *testing.T) {

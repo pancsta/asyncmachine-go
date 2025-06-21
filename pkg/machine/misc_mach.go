@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -363,14 +365,18 @@ func (l LogLevel) String() string {
 // debugging.
 var LogArgs = []string{"name", "id", "port", "addr", "err"}
 
+// LogArgsMaxLen is the default maximum length of the arg's string
+// representation.
+var LogArgsMaxLen = 20
+
 // NewArgsMapper returns a matcher function for LogArgs. Useful for debugging
 // untyped argument maps.
 //
-// maxlen: maximum length of the string representation of the argument
-// (default=20).
-func NewArgsMapper(names []string, maxlen int) func(args A) map[string]string {
-	if maxlen == 0 {
-		maxlen = 20
+// maxLen: maximum length of the arg's string representation). Default to
+// LogArgsMaxLen,
+func NewArgsMapper(names []string, maxLen int) func(args A) map[string]string {
+	if maxLen == 0 {
+		maxLen = LogArgsMaxLen
 	}
 
 	return func(args A) map[string]string {
@@ -389,7 +395,7 @@ func NewArgsMapper(names []string, maxlen int) func(args A) map[string]string {
 			if !oks[i] {
 				continue
 			}
-			ret[name] = truncateStr(fmt.Sprintf("%v", args[name]), maxlen)
+			ret[name] = TruncateStr(fmt.Sprintf("%v", args[name]), maxLen)
 		}
 
 		return ret
@@ -448,6 +454,8 @@ var _ Tracer = &NoOpTracer{}
 
 // ///// ///// /////
 
+var emitterNameRe = regexp.MustCompile(`/\w+\.go:\d+`)
+
 // Event struct represents a single event of a Mutation within a Transition.
 // One event can have 0-n handlers.
 type Event struct {
@@ -500,7 +508,8 @@ func (e *Event) IsValid() bool {
 		return false
 	}
 
-	return e.TransitionId == tx.ID && !tx.IsCompleted() && tx.IsAccepted()
+	return e.TransitionId == tx.ID && !tx.IsCompleted.Load() &&
+		tx.IsAccepted.Load()
 }
 
 // AcceptTimeout is like IsValid, but requires the handler to stop executing
@@ -609,7 +618,7 @@ func (e *handler) dispose() {
 // ///// ///// /////
 
 const (
-	// Exception is a name the Exception state.
+	// Exception is the name of the Exception state.
 	Exception = "Exception"
 )
 
@@ -689,7 +698,7 @@ func (eh *ExceptionHandler) ExceptionState(e *Event) {
 
 	// err
 	if err == nil {
-		err = errors.New("missing error in ExceptionState")
+		err = errors.New("missing error in args to ExceptionState")
 	}
 	if args.Panic == nil {
 		errMsg := strings.TrimSpace(err.Error())
@@ -715,4 +724,33 @@ func (eh *ExceptionHandler) ExceptionState(e *Event) {
 		mach.log(LogChanges, "[error:%s] %s (%s)", mutType,
 			j(args.Panic.CalledStates), err)
 	}
+}
+
+// NewLastTxTracer returns a Tracer that logs the last transition.
+func NewLastTxTracer() *LastTxTracer {
+	return &LastTxTracer{}
+}
+
+// TODO add TTL, ctx
+type LastTxTracer struct {
+	*NoOpTracer
+	lastTx atomic.Pointer[Transition]
+}
+
+func (t *LastTxTracer) TransitionEnd(transition *Transition) {
+	t.lastTx.Store(transition)
+}
+
+// Load returns the last transition.
+func (t *LastTxTracer) Load() *Transition {
+	return t.lastTx.Load()
+}
+
+func (t *LastTxTracer) String() string {
+	tx := t.lastTx.Load()
+	if tx == nil {
+		return ""
+	}
+
+	return tx.String()
 }

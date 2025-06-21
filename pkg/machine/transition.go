@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -11,14 +12,14 @@ import (
 // Transition represents processing of a single mutation within a machine.
 type Transition struct {
 	// ID is a unique identifier of the transition.
-	// TODO refac to Id()
+	// TODO refac to Id() with the new dbg protocol
 	ID string
 	// Steps is a list of steps taken by this transition (so far).
 	Steps []*Step
 	// TimeBefore is the machine time from before the transition.
 	TimeBefore Time
 	// TimeAfter is the machine time from after the transition. If the transition
-	// has been canceled, this will be the same as TimeBefore.
+	// has been canceled, this will be the same as TimeBefore. This field is nil until the negotiation phase finishes.
 	TimeAfter Time
 	// TargetIndexes is a list of indexes of the target states.
 	TargetIndexes []int
@@ -42,13 +43,14 @@ type Transition struct {
 	QueueLen int
 	// LogEntriesLock is used to lock the logs to be collected by a Tracer.
 	LogEntriesLock sync.Mutex
-	// Accepted tells if the transition was accepted during the negotiation phase.
-	// Deprecated, use IsAccepted().
-	// TODO refac v0.11: make private
-	Accepted bool
+	// IsCompleted returns true when the execution of the transition has been
+	// fully completed.
+	IsCompleted atomic.Bool
+	// IsAccepted returns true if the transition has been accepted, which can
+	// change during the transition's negotiation phase and while resolving
+	// relations.
+	IsAccepted atomic.Bool
 
-	isCompleted atomic.Bool
-	isAccepted  atomic.Bool
 	// TODO confirms relations resolved and negotiation ended
 	// isSettled atomic.Bool
 	// Latest / current step of the transition
@@ -66,9 +68,8 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 		TimeBefore: m.time(nil),
 		Machine:    m,
 		Api:        m,
-		Accepted:   true,
 	}
-	t.isAccepted.Store(true)
+	t.IsAccepted.Store(true)
 
 	// assign early to catch the logs
 	m.transitionLock.Lock()
@@ -125,10 +126,10 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	}
 
 	// simulate TimeAfter (temporarily)
-	targetStates := m.resolver.GetTargetStates(t, statesToSet)
+	targetStates := m.resolver.TargetStates(t, statesToSet, m.StateNames())
 	t.TargetIndexes = make([]int, len(targetStates))
 	for i, name := range targetStates {
-		t.TargetIndexes[i] = m.Index(name)
+		t.TargetIndexes[i] = m.Index1(name)
 	}
 
 	impliedStates := DiffStates(targetStates, statesToSet)
@@ -137,7 +138,7 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	}
 
 	t.setupAccepted()
-	if t.Accepted {
+	if t.IsAccepted.Load() {
 		t.setupExitEnter()
 	}
 
@@ -146,7 +147,6 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 
 // StatesBefore is a list of states before the transition.
 func (t *Transition) StatesBefore() S {
-	// TODO support SetSchema (index for schema and index for the state)
 	// TODO should preserve order?
 	var ret S
 	mach := t.Machine
@@ -165,7 +165,6 @@ func (t *Transition) StatesBefore() S {
 
 // TargetStates is a list of states after parsing the relations.
 func (t *Transition) TargetStates() S {
-	// TODO support SetSchema (index for schema and index for the state)
 	ret := make(S, len(t.TargetIndexes))
 	mach := t.Machine
 	if mach == nil {
@@ -313,7 +312,7 @@ func (t *Transition) emitSelfEvents() Result {
 		}
 
 		name := s + s
-		step := newStep(s, "", StepHandler, 0)
+		step := newStep("", s, StepHandler, 0)
 		step.IsSelf = true
 		ret, handlerCalled = m.handle(name, t.Mutation.Args, step, false)
 		if handlerCalled {
@@ -332,7 +331,7 @@ func (t *Transition) emitEnterEvents() Result {
 		args := t.Mutation.Args
 
 		// FooEnter
-		ret := t.emitHandler("", toState, toState+SuffixEnter, args)
+		ret := t.emitHandler("", toState, false, true, toState+SuffixEnter, args)
 		if ret == Canceled {
 			if t.IsAuto() {
 				// partial auto state acceptance
@@ -350,7 +349,8 @@ func (t *Transition) emitEnterEvents() Result {
 func (t *Transition) emitExitEvents() Result {
 	for _, fromState := range t.Exits {
 		// FooExit
-		ret := t.emitHandler(fromState, "", fromState+SuffixExit, t.Mutation.Args)
+		ret := t.emitHandler(fromState, "", false, false, fromState+SuffixExit,
+			t.Mutation.Args)
 		if ret == Canceled {
 			if t.IsAuto() {
 				// partial auto state acceptance
@@ -365,8 +365,13 @@ func (t *Transition) emitExitEvents() Result {
 	return Executed
 }
 
-func (t *Transition) emitHandler(from, to, event string, args A) Result {
+func (t *Transition) emitHandler(
+	from, to string, isFinal, isEnter bool, event string, args A,
+) Result {
+
 	step := newStep(from, to, StepHandler, 0)
+	step.IsFinal = isFinal
+	step.IsEnter = isEnter
 	t.latestStep = step
 	ret, handlerCalled := t.Machine.handle(event, args, step, false)
 	if handlerCalled {
@@ -390,7 +395,7 @@ func (t *Transition) emitFinalEvents() Result {
 			handler = s + SuffixEnd
 		}
 
-		step := newStep(s, "", StepHandler, 0)
+		step := newStep("", s, StepHandler, 0)
 		step.IsFinal = true
 		step.IsEnter = isEnter
 		t.latestStep = step
@@ -446,7 +451,7 @@ func (t *Transition) emitStateStateEvents() Result {
 func (t *Transition) emitEvents() Result {
 	m := t.Machine
 	result := Executed
-	if !t.Accepted {
+	if !t.IsAccepted.Load() {
 		result = Canceled
 	}
 	hasStateChanged := false
@@ -487,7 +492,8 @@ func (t *Transition) emitEvents() Result {
 
 	// global AnyEnter handler
 	if result != Canceled {
-		result = t.emitHandler(Any, Any, Any+SuffixEnter, t.Mutation.Args)
+		result = t.emitHandler(Any, Any, false, true, Any+SuffixEnter,
+			t.Mutation.Args)
 	}
 
 	// TODO recheck auto txs for target states, excluding the rejected ones
@@ -517,13 +523,13 @@ func (t *Transition) emitEvents() Result {
 
 	// global AnyState handler
 	if result != Canceled {
-		result = t.emitHandler(Any, Any, Any+SuffixState, t.Mutation.Args)
+		result = t.emitHandler(Any, Any, true, true, Any+SuffixState,
+			t.Mutation.Args)
 	}
 
 	// AUTO STATES
 	if result == Canceled {
-		t.Accepted = false
-		t.isAccepted.Store(false)
+		t.IsAccepted.Store(false)
 	} else if !m.disposing.Load() && hasStateChanged && !t.IsAuto() {
 
 		autoMutation, calledStates := m.resolver.NewAutoMutation()
@@ -543,7 +549,7 @@ func (t *Transition) emitEvents() Result {
 	t.QueueLen = int(m.queueLen.Load())
 	m.logEntries = nil
 	m.logEntriesLock.Unlock()
-	t.isCompleted.Store(true)
+	t.IsCompleted.Store(true)
 
 	// tracers
 	m.tracersLock.RLock()
@@ -586,26 +592,12 @@ func (t *Transition) setupAccepted() {
 			return
 		}
 		// all rejected, reject the whole transition
-		t.Accepted = false
-		t.isAccepted.Store(false)
+		t.IsAccepted.Store(false)
 	}
 	if len(notAccepted) <= 0 {
 		return
 	}
-	t.Accepted = false
-	t.isAccepted.Store(false)
+	t.IsAccepted.Store(false)
 	m.log(LogOps, "[cancel:reject] %s", j(notAccepted))
 	t.addSteps(newSteps("", notAccepted, StepCancel, 0)...)
-}
-
-// IsCompleted returns true when the execution of the transition has been fully
-// completed.
-func (t *Transition) IsCompleted() bool {
-	return t.isCompleted.Load()
-}
-
-// IsAccepted returns true if the transition has been accepted, which can change
-// during the transition's negotiation phase and while resolving relations.
-func (t *Transition) IsAccepted() bool {
-	return t.isAccepted.Load()
 }

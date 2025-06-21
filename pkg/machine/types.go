@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"time"
 )
@@ -16,7 +17,7 @@ const (
 	// EnvAmLog sets the log level.
 	// "1" | "2" | "3" | "4" | "" (default)
 	EnvAmLog = "AM_LOG"
-	// EnvAmLogFile enables file logging (use machine ID as a name).
+	// EnvAmLogFile enables file logging (using machine ID as the name).
 	// "1" | "" (default)
 	EnvAmLogFile = "AM_LOG_FILE"
 	// EnvAmDetectEval detects evals directly in handlers (use in tests).
@@ -34,6 +35,7 @@ const (
 	SuffixExit  = "Exit"
 	SuffixState = "State"
 	SuffixEnd   = "End"
+	PrefixErr   = "Err"
 )
 
 type (
@@ -45,13 +47,13 @@ type (
 
 // State defines a single state of a machine, its properties and relations.
 type State struct {
-	Auto    bool
-	Multi   bool
-	Require S
-	Add     S
-	Remove  S
-	After   S
-	Tags    []string
+	Auto    bool     `json:"auto,omitempty"`
+	Multi   bool     `json:"multi,omitempty"`
+	Require S        `json:"require,omitempty"`
+	Add     S        `json:"add,omitempty"`
+	Remove  S        `json:"remove,omitempty"`
+	After   S        `json:"after,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
 }
 
 // A (arguments) is a map of named arguments for a Mutation.
@@ -62,10 +64,10 @@ type A map[string]any
 type Clock map[string]uint64
 
 // HandlerFinal is a final transition handler func signature.
-type HandlerFinal func(*Event)
+type HandlerFinal func(e *Event)
 
 // HandlerNegotiation is a negotiation transition handler func signature.
-type HandlerNegotiation func(*Event) bool
+type HandlerNegotiation func(e *Event) bool
 
 // HandlerDispose is a machine disposal handler func signature.
 type HandlerDispose func(id string, ctx context.Context)
@@ -73,8 +75,7 @@ type HandlerDispose func(id string, ctx context.Context)
 // Opts struct is used to configure a new Machine.
 type Opts struct {
 	// Unique ID of this machine. Default: random ID.
-	// TODO refac to Id
-	ID string
+	Id string
 	// Time for a handler to execute. Default: time.Second
 	HandlerTimeout time.Duration
 	// If true, the machine will NOT print all exceptions to stdout.
@@ -96,8 +97,7 @@ type Opts struct {
 	// Overrides ParentID. Default: nil.
 	Parent Api
 	// ParentID is the ID of the parent machine. Default: "".
-	// TODO refac to ParentId
-	ParentID string
+	ParentId string
 	// Tags is a list of tags for the machine. Default: nil.
 	Tags []string
 	// QueueLimit is the maximum number of mutations that can be queued.
@@ -111,7 +111,19 @@ type Opts struct {
 	DetectEval bool
 }
 
+// Serialized is a machine state serialized to a JSON/YAML/TOML compatible
+// struct. One also needs the state Struct to re-create a state machine.
+type Serialized struct {
+	// ID is the ID of a state machine.
+	ID string `json:"id" yaml:"id" toml:"id"`
+	// Time represents machine time - a list of state activation counters.
+	Time Time `json:"time" yaml:"time" toml:"time"`
+	// StateNames is an ordered list of state names.
+	StateNames S `json:"state_names" yaml:"state_names" toml:"state_names"`
+}
+
 // Api is a subset of Machine for alternative implementations.
+// TODO copy docs from Machine.
 type Api interface {
 	// ///// REMOTE
 
@@ -173,6 +185,7 @@ type Api interface {
 	// Getters (local)
 
 	StateNames() S
+	StateNamesMatch(re *regexp.Regexp) S
 	ActiveStates() S
 	Tick(state string) uint64
 	Clock(states S) Clock
@@ -199,13 +212,16 @@ type Api interface {
 	String() string
 	StringAll() string
 	Inspect(states S) string
-	Index(state string) int
+	Index(states S) []int
+	Index1(state string) int
 	BindHandlers(handlers any) error
 	DetachHandlers(handlers any) error
+	HasHandlers() bool
 	StatesVerified() bool
 	Tracers() []Tracer
-	DetachTracer(tracer Tracer) bool
+	DetachTracer(tracer Tracer) error
 	BindTracer(tracer Tracer) error
+	AddBreakpoint(added S, removed S)
 	Dispose()
 	WhenDisposed() <-chan struct{}
 	IsDisposed() bool
@@ -265,8 +281,8 @@ var (
 	ErrRelation = errors.New("relation error")
 	// ErrDisposed indicates that the machine has been disposed.
 	ErrDisposed = errors.New("machine disposed")
-	// ErrSchema indicates an issue with the state schema.
-	ErrSchema = errors.New("machine disposed")
+	// ErrSchema indicates an issue with the machine schema.
+	ErrSchema = errors.New("schema error")
 )
 
 func (r Result) String() string {
@@ -375,11 +391,11 @@ func (tt StepType) String() string {
 	case StepHandler:
 		return "handler"
 	case StepSet:
-		return "set"
+		return "activate"
 	case StepRemove:
-		return "remove"
+		return "deactivate"
 	case StepRemoveNotActive:
-		return "removenotactive"
+		return "deactivate-passive"
 	case StepRequested:
 		return "requested"
 	case StepCancel:
@@ -400,15 +416,17 @@ type Step struct {
 	IsSelf bool
 	// marks an enter handler (FooState, but not FooEnd). Requires IsFinal.
 	IsEnter bool
-	// Deprecated, use GetToState(). TODO remove
-	FromState    string
-	FromStateIdx int
 	// Deprecated, use GetFromState(). TODO remove
-	ToState    string
+	FromState string
+	// TODO implement
+	FromStateIdx int
+	// Deprecated, use GetToState(). TODO remove
+	ToState string
+	// TODO implement
 	ToStateIdx int
 	// Deprecated, use RelType. TODO remove
 	Data any
-	// TODO emitter
+	// TODO emitter name and num
 }
 
 // GetFromState returns the source state of a step. Optional, unless no
@@ -445,35 +463,77 @@ func (s *Step) GetToState(index S) string {
 	return ""
 }
 
-func (s *Step) StringFromIdx(idx S) string {
+func (s *Step) StringFromIndex(idx S) string {
 	var line string
+
+	// collect
 	from := s.GetFromState(idx)
 	to := s.GetToState(idx)
+	if from == "" && to == "" {
+		to = Any
+	}
 
+	// format TODO markdown?
+	if from != "" {
+		from = "**" + from + "**"
+	}
+	if to != "" {
+		to = "**" + to + "**"
+	}
+
+	// output
 	if from != "" && to != "" {
-		line += from + " -> " + to
+		line += from + " " + s.RelType.String() + " " + to
 	} else {
 		line = from
-		if line == "" {
-			line = to
+	}
+	if line == "" {
+		line = to
+	}
+
+	if s.Type == StepRelation {
+		return line
+	}
+
+	suffix := ""
+	if s.Type == StepHandler {
+		if s.IsSelf {
+			suffix = line
+		} else if s.IsFinal && s.IsEnter {
+			suffix = "State"
+		} else if s.IsFinal && !s.IsEnter {
+			suffix = "End"
+		} else if !s.IsFinal && s.IsEnter {
+			suffix = "Enter"
+		} else if !s.IsFinal && !s.IsEnter {
+			suffix = "Exit"
 		}
 	}
 
 	// TODO infer handler names
-	return line + " (" + s.Type.String() + ")"
+	return s.Type.String() + " " + line + suffix
 }
 
 func newStep(from string, to string, stepType StepType,
 	relType Relation,
 ) *Step {
-	// TODO optimize with state indexes
-	return &Step{
-		// TODO refac v0.11
+
+	ret := &Step{
+		// TODO refac with the new dbg protocol, use indexes only
 		FromState: from,
 		ToState:   to,
 		Type:      stepType,
 		RelType:   relType,
 	}
+	// default values TODO use real values
+	if from == "" {
+		ret.FromStateIdx = -1
+	}
+	if to == "" {
+		ret.ToStateIdx = -1
+	}
+
+	return ret
 }
 
 func newSteps(from string, toStates S, stepType StepType,
@@ -483,6 +543,7 @@ func newSteps(from string, toStates S, stepType StepType,
 	for _, to := range toStates {
 		ret = append(ret, newStep(from, to, stepType, relType))
 	}
+
 	return ret
 }
 
@@ -490,6 +551,7 @@ func newSteps(from string, toStates S, stepType StepType,
 type Relation int8
 
 const (
+	// TODO refac, 0 should be RelationNone, start from 1, udpate with dbg proto
 	RelationAfter Relation = iota
 	RelationAdd
 	RelationRequire
