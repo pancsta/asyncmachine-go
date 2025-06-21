@@ -453,16 +453,21 @@ var _ Tracer = &NoOpTracer{}
 type Event struct {
 	// Name of the event / handler
 	Name string
-	// Machine is the machine that the event belongs to, it can be used to access
-	// the current Transition and Mutation.
-	machine *Machine
 	// MachineId is the ID of the parent machine.
 	MachineId string
 	// TransitionId is the ID of the parent transition.
 	TransitionId string
 	// Args is a map of named arguments for a Mutation.
 	Args A
-	// internal events lack a step
+	// IsCheck is true if this event is a check event, fired by one of Can*()
+	// methods. Useful for avoiding flooding the log with errors.
+	IsCheck bool
+	// TODO add Source with MachID and TxID (useful for piping)
+
+	// Machine is the machine that the event belongs to. It can be used to access
+	// the current Transition and Mutation.
+	machine *Machine
+	// internal events always have a nil step
 	step *Step
 }
 
