@@ -7,11 +7,13 @@
 
 **/pkg/pubsub** is a trustful and decentralized synchronization network for asyncmachine-go. Each peer exposes several state
 machines, then starts gossiping about them and other ones known to him. Remote state machines are then visible to other
-peers as `/pkg/rpc.LocalWorker`. PubSub can be used to match Clients with Workers from [/pkg/node](/pkg/node/README.md).
+peers as `/pkg/rpc.Worker`. PubSub can be used to match **Clients** with **Supervisors** from [/pkg/node](/pkg/node/README.md).
 
 Under the hood it's based on [**libp2p gossipsub**](https://github.com/libp2p/go-libp2p-pubsub), which is a mesh-based
-PubSub, also based on gossipping, but for the purpose of network topology. **libp2p** gossips are separate from gossips
-of this package.
+PubSub, also based on gossipping:
+
+- **libp2p** gossips create and maintain the network topology
+- **pkg/pubsub** gossips synchronize machine schemas and clocks
 
 ## Support
 
@@ -24,7 +26,7 @@ of this package.
 - gossip-based discovery
 - gossip-based clock updates
 - gossip-based checksums via machine time
-- rate limitting
+- rate limiting
 - no leaders, no elections
 
 ## Screenshot
@@ -41,10 +43,10 @@ State schema from [/pkg/pubsub/states/](/pkg/pubsub/states/ss_topic.go).
 
 ## TODO
 
-- more rate limiting
-- confirmed handler timeouts
+- more protocol-level rate limiting
+- confirmed handler timeouts #220
 - faster discovery
-- load test
+- 1k peer load test
 - mDNS & DHT & auth
 - optimizations
 - documentation
@@ -53,23 +55,68 @@ State schema from [/pkg/pubsub/states/](/pkg/pubsub/states/ss_topic.go).
 
 ## Usage
 
+### Peer Init
+
+```go
+import (
+    ma "github.com/multiformats/go-multiaddr"
+    ampubsub "github.com/pancsta/asyncmachine-go/pkg/pubsub"
+	ssps "github.com/pancsta/asyncmachine-go/pkg/pubsub/states"
+)
+
+var ss = states.TopicStates
+
+// ...
+
+// new pubsub peer
+ps, _ := ampubsub.NewTopic(ctx, t.Name(), name, machs, nil)
+// address of an existing peer
+a, _ := ma.NewMultiaddr("/ip4/127.0.0.1/udp/75343/quic-v1")
+addrs := []ma.Multiaddr{a}
+
+// connect
+ps.ConnAddrs = addrs
+ps.Start()
+<-ps.Mach.When1(ss.Connected, ctx)
+ps.Mach.Add1(ss.Joining, nil)
+```
+
+## Remote Workers
+
 ```go
 import (
     ma "github.com/multiformats/go-multiaddr"
     ampubsub "github.com/pancsta/asyncmachine-go/pkg/pubsub"
 )
 
+var ss = states.TopicStates
+
 // ...
 
-// init a pubsub peer
-ps, _ := ampubsub.NewTopic(ctx, t.Name(), name, machs, nil)
-// prep a libp2p multi address
-a, _ := ma.NewMultiaddr("/ip4/127.0.0.1/udp/75343/quic-v1")
-addrs := []ma.Multiaddr{a}
-ps.ConnAddrs = addrs
-ps.Start()
-<-ps.Mach.When1(ss.Connected, ctx)
-ps.Mach.Add1()
+var remotePeerId string
+
+// list machines exported by [remotePeerId]
+ch := make(chan []*rpc.Worker, 1)
+args := &A{
+    WorkersCh: ch,
+    ListFilters: &ListFilters{
+        PeerId: remotePeerId,
+    },
+}
+_ = ps.Mach.Add1(ss.ListMachines, Pass(args))
+workers := <-ch
+close(ch)
+
+// find a worker tagged "foo", add state "Bar", and wait for state "Baz"
+for _, mach := range workers {
+    if amhelp.TagValue(mach.Tags(), "foo") == "" {
+        continue
+    }
+    mach.Add1("Bar", nil)
+    <-mach.Add1("Baz", nil)
+    println("Baz set on " + mach.Id())
+    break
+}
 ```
 
 ## Status
