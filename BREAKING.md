@@ -2,6 +2,20 @@
 
 Only `pkg/machine` and `pkg/states` adhere to semver. Semver of other packages is not guaranteed at the moment.
 
+## v0.12
+
+- `Opts.ID` and `Opts.ParentID` are now `Opts.Id`, `Opts.ParentId`
+- `RelationsResolver` had many renames
+- `Mutation.StateWasCalled(string)` is now `Mutation.IsCalled(int)`
+- `Mutation.CalledStates` has been removed
+- `Machine.GetLogger() *Logger` is now `Machine.Logger() Logger`
+- `Machine.GetLogLevel()` is now `Machine.LogLevel()`
+- `Transition.IsAccepted` and `Transition.IsCompleted` are now `atomic.Bool`
+- `Machine.DetachTracer` now returns `error`
+- added `Api.HasHandlers()`
+- `Machine.Index` is now `Machine.Index1`
+- `Machine.IndexN` is now `Machine.Index`
+
 ## v0.11
 
 - `am.Struct` is now `am.Schema`
