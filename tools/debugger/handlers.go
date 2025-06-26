@@ -848,7 +848,12 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 
 		// or scroll to the last one
 		if !match {
-			d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), 0, true)
+			d.Mach.Eval("SelectingClientState", func() {
+				d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), 0, true)
+			}, ctx)
+			if ctx.Err() != nil {
+				return // expired
+			}
 		} else {
 			// setCursor triggers GraphsScheduled
 			d.Mach.EvAdd1(e, ss.GraphsScheduled, nil)

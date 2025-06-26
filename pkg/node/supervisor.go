@@ -470,6 +470,7 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 		cmdArgs = s.WorkerBin[1:]
 	}
 	// TODO custom param name -a
+	// TODO store PIDs of workers, clean up old PIDs
 	cmdArgs = slices.Concat(cmdArgs, []string{"-a", bootAddr})
 	s.log("forking worker %s %s", s.WorkerBin[0], cmdArgs)
 	cmd := exec.CommandContext(ctx, s.WorkerBin[0], cmdArgs...)

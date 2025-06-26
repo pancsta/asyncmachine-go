@@ -68,6 +68,11 @@ func TestFork1Process(t *testing.T) {
 	// amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// kill the hanging node_test_worker
+	// TODO kill the pid from supervisor
+	t.Cleanup(func() {
+		testutils.KillProcessesByName("node_test_worker")
+	})
 
 	wd, err := os.Getwd()
 	if err != nil {

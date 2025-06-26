@@ -300,6 +300,7 @@ func (d *Debugger) GoToMachAddress(addr *MachAddress, skipHistory bool) bool {
 	return true
 }
 
+// TODO dedicated state with a ret chan
 func (d *Debugger) SetCursor1(cursor int, cursorStep int, skipHistory bool) {
 	if d.C.CursorTx1 == cursor {
 		return

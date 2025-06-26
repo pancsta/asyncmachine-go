@@ -2,15 +2,18 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"net"
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/shirou/gopsutil/v3/process"
 	"golang.org/x/exp/maps"
 
 	ss "github.com/pancsta/asyncmachine-go/internal/testing/states"
@@ -277,4 +280,71 @@ func NewCustomRpcWorker(t *testing.T, states am.Schema) *am.Machine {
 	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
+}
+
+// KillProcessesByName finds and attempts to terminate all processes with the
+// given name. It returns a slice of PIDs that were successfully terminated and
+// a slice of errors for any processes that could not be terminated.
+func KillProcessesByName(
+	processName string) (killedPIDs []int32, errs []error) {
+
+	fmt.Printf("Searching for processes named '%s'...\n", processName)
+	processes, err := process.Processes()
+	if err != nil {
+		err := fmt.Errorf("failed to get process list: %w", err)
+		return nil, []error{err}
+	}
+
+	for _, p := range processes {
+		name, err := p.Name()
+		if err != nil {
+			// Skip processes whose names cannot be retrieved (e.g., transient or
+			// permission issues)
+			continue
+		}
+
+		// Use strings.EqualFold for case-insensitive comparison, or `==` for
+		// case-sensitive
+		if strings.EqualFold(name, processName) { // Use `name == processName` for
+			// exact case match
+			pid := p.Pid
+
+			// Try graceful termination first (SIGTERM)
+			if termErr := p.Terminate(); termErr != nil {
+				// If graceful termination fails, try forceful kill (SIGKILL)
+				if os.IsPermission(termErr) {
+					err := fmt.Errorf("permission denied for PID %d (%s): %w",
+						pid, name, termErr)
+					errs = append(errs, err)
+					continue // Cannot kill this one, move to next
+				}
+
+				if killErr := p.Kill(); killErr != nil {
+					killErr := fmt.Errorf("failed to force kill PID %d (%s): %w",
+						pid, name, killErr)
+					errs = append(errs, killErr)
+					continue // Failed to kill, move to next
+				}
+			}
+
+			// Give the process a very brief moment to react to the signal
+			time.Sleep(50 * time.Millisecond)
+
+			// Verify if the process is no longer running
+			stillRunning, checkErr := p.IsRunning()
+			if checkErr == nil && !stillRunning {
+				fmt.Printf("  Successfully terminated PID %d (%s).\n", pid, name)
+				killedPIDs = append(killedPIDs, pid)
+			} else if checkErr != nil {
+				errs = append(errs, fmt.Errorf(
+					"could not verify status of PID %d (%s): %w", pid, name, checkErr))
+			} else { // stillRunning is true
+				errs = append(errs, fmt.Errorf(
+					"PID %d (%s) is still running after termination attempts",
+					pid, name))
+			}
+		}
+	}
+
+	return killedPIDs, errs
 }

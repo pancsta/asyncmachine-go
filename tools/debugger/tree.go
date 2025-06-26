@@ -229,6 +229,9 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 		multi := " "
 		if s, ok := schema[stateName]; ok && !ref.isRef && s.Multi {
 			multi = "M"
+			if color == colorActive {
+				color = colorActive2
+			}
 		}
 
 		// reset to defaults

@@ -83,7 +83,7 @@ The top layers depend on the bottom ones.
     <td>.</td>
     <td>.</td>
     <td>.</td>
-    <td colspan="1" align=center><a href="pkg/pubsub/README.md">PubSub</a></td>
+    <td colspan="1" align=center><a href="pkg/pubsub">PubSub</a></td>
     <td>.</td>
     <td>.</td>
     <td>.</td>
@@ -98,7 +98,7 @@ The top layers depend on the bottom ones.
     <td>.</td>
     <td>.</td>
     <td>.</td>
-    <td colspan="3" align=center><a href="pkg/node/README.md">Workers</a></td>
+    <td colspan="3" align=center><a href="pkg/node">Workers</a></td>
     <td>.</td>
     <td>.</td>
     <td>.</td>
@@ -111,7 +111,7 @@ The top layers depend on the bottom ones.
     <td>.</td>
     <td>.</td>
     <td>.</td>
-    <td colspan="5" align=center><a href="pkg/rpc/README.md">RPC</a></td>
+    <td colspan="5" align=center><a href="pkg/rpc">RPC</a></td>
     <td>.</td>
     <td>.</td>
     <td>.</td>
@@ -131,7 +131,7 @@ The top layers depend on the bottom ones.
   <tr>
     <td>.</td>
     <td>.</td>
-    <td colspan="9" align=center>🐇 <a href="pkg/machine/README.md">Machine API</a></td>
+    <td colspan="9" align=center>🐇 <a href="pkg/machine">Machine API</a></td>
     <td>.</td>
     <td>.</td>
   </tr>
@@ -276,34 +276,34 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 
 This monorepo offers the following importable packages, especially:
 
-- 🦾 **[`/pkg/machine`](/pkg/machine/README.md) State machine, dependency free, semver compatible.**
-- [`/pkg/states`](/pkg/states/README.md) Reusable state schemas, handlers, and piping.
-- [`/pkg/helpers`](/pkg/helpers/README.md) Useful functions when working with async state machines.
-- [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for dbg, metrics, traces, and logs.
+- 🦾 **[`/pkg/machine`](/pkg/machine) State machine, dependency free, semver compatible.**
+- [`/pkg/states`](/pkg/states) Reusable state schemas, handlers, and piping.
+- [`/pkg/helpers`](/pkg/helpers) Useful functions when working with async state machines.
+- [`/pkg/telemetry`](/pkg/telemetry) Telemetry exporters for dbg, metrics, traces, and logs.
 
 Other packages:
 
 - [`/pkg/graph`](/pkg/graph) Multigraph of interconnected state machines.
-- [`/pkg/history`](/pkg/history/README.md) History tracking and traversal.
-- [`/pkg/integrations`](/pkg/integrations/README.md) NATS and other JSON integrations.
-- [`/pkg/node`](/pkg/node/README.md) Distributed worker pools with supervisors.
-- [`/pkg/rpc`](/pkg/rpc/README.md) Remote state machines, with the same API as local ones.
-- [`/pkg/pubsub`](/pkg/pubsub/README.md) Decentralized PubSub based on libp2p gossipsub.
+- [`/pkg/history`](/pkg/history) History tracking and traversal.
+- [`/pkg/integrations`](/pkg/integrations) NATS and other JSON integrations.
+- [`/pkg/node`](/pkg/node) Distributed worker pools with supervisors.
+- [`/pkg/rpc`](/pkg/rpc) Remote state machines, with the same API as local ones.
+- [`/pkg/pubsub`](/pkg/pubsub) Decentralized PubSub based on libp2p gossipsub.
 
 ## [Devtools](/tools)
 
-- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.
-- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates schema files and Grafana dashboards.
+- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) Multi-client TUI debugger.
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen) Generates schema files and Grafana dashboards.
 - [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates diagrams of interconnected state machines.
 - [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
 
-[![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)](/tools/cmd/am-dbg/README.md)
+[![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)](/tools/cmd/am-dbg)
 
 ## Apps
 
 - [secai](https://github.com/pancsta/secai) AI Agents framework.
 - [arpc REPL](/tools/repl) Cobra-based REPL.
-- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state-machine TUI app.
+- [am-dbg TUI Debugger](/tools/debugger) Single state-machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
   simulator for libp2p-pubsub.
 - [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
@@ -365,8 +365,8 @@ State is a binary name as in status / switch / flag, eg "process RUNNING" or "ca
 
 ### What does "clock-based" mean?
 
-Each state has a counter of activations & deactivations, and all state counters create "machine time". It's a logical
-clock.
+Each state has a counter of activations & deactivations, and all state counters create "machine time". These are logical
+clocks.
 
 ### What's the difference between states and events?
 

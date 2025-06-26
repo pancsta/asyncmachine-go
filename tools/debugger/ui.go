@@ -386,10 +386,10 @@ func (d *Debugger) initToolbar() {
 
 		// row 3
 		{
-			{id: toolHelp, label: "[yellow:b]help[-]", active: func() bool {
+			{id: toolHelp, label: "[yellow::b]help[-]", active: func() bool {
 				return d.Mach.Is1(ss.HelpDialog)
 			}},
-			{id: toolTail, label: "tail", active: func() bool {
+			{id: toolTail, label: "[::b]tail[-::-]", active: func() bool {
 				return d.Mach.Is1(ss.TailMode)
 			}},
 			{id: toolReader, label: "reader", active: func() bool {

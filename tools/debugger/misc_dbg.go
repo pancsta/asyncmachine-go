@@ -20,6 +20,7 @@ import (
 const (
 	// TODO light mode
 	colorActive     = tcell.ColorOlive
+	colorActive2    = tcell.ColorOliveDrab
 	colorInactive   = tcell.ColorLimeGreen
 	colorHighlight  = tcell.ColorDarkSlateGray
 	colorHighlight2 = tcell.ColorDimGray
