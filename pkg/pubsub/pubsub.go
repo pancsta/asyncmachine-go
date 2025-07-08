@@ -163,13 +163,16 @@ type A struct {
 	MsgReqInfo    *MsgReqInfo
 	MsgReqUpdates *MsgReqUpdates
 	MsgGossip     *MsgGossip
-	// Msgs is a list of received general (non-semantic) PubSub messages.
+	// Msgs is a list of PubSub messages.
 	Msgs []*pubsub.Message
+	// Length is a general length used for logging
+	Length int `log:"length"`
 	// Msg is a raw msg.
 	Msg []byte
 	// PeerId is a peer ID
-	PeerId  string   `log:"peer"`
-	PeerIds []string `log:"peer_ids"`
+	Peer    string `log:"peer"`
+	PeerId  string
+	PeerIds []string
 	// MachId is a state machine ID
 	MachId string `log:"mach_id"`
 	// MTime is machine time

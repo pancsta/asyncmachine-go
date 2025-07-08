@@ -94,6 +94,7 @@ var ss = states.TopicStates
 // ...
 
 var remotePeerId string
+var ps *ampusub.Topic
 
 // list machines exported by [remotePeerId]
 ch := make(chan []*rpc.Worker, 1)
@@ -105,7 +106,7 @@ args := &A{
 }
 _ = ps.Mach.Add1(ss.ListMachines, Pass(args))
 workers := <-ch
-close(ch)
+close(ch)s
 
 // find a worker tagged "foo", add state "Bar", and wait for state "Baz"
 for _, mach := range workers {
@@ -113,8 +114,10 @@ for _, mach := range workers {
         continue
     }
     mach.Add1("Bar", nil)
-    <-mach.Add1("Baz", nil)
-    println("Baz set on " + mach.Id())
+    println("Bar set on " + mach.Id())
+    
+    <-mach.When1("Baz", nil)
+    println("Baz active on " + mach.Id())
     break
 }
 ```

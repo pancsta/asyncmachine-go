@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
-	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	quicTransport "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/vmihailenco/msgpack"
@@ -28,6 +28,7 @@ import (
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/pubsub/states"
+	udsTransport "github.com/pancsta/asyncmachine-go/pkg/pubsub/uds"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
@@ -37,18 +38,18 @@ import (
 // changes on the channel, introduces them when joining and via private messages
 // to newly joined peers.
 // TODO optimizations:
-//   - predefined schemas
-//   - random delay for initial hello
-//   - reduce number of messages (max total rcv/snt msgs per a time window)
-//   - https://github.com/pancsta/asyncmachine-go/issues/220
-//   - dont gossip about missing updates
+//   - avoid txs which will get cancelled (CPU)
+//   - rate limit the TOTAL amount of msgs in the network (CPU, network)
+//   - hook into libp2p errors, eg queue full, and act accordingly
 type Topic struct {
 	*am.ExceptionHandler
 
 	// T represents the PubSub topic used for communication.
 	T *ps.Topic
 	// Mach is a state machine for this PubSub.
-	Mach *am.Machine
+	Mach        *am.Machine
+	MachMetrics atomic.Pointer[am.Machine]
+	HostToPeer  map[string]string
 	// ListenAddrs contains the list of multiaddresses that this topic listens on.
 	// None will allocate one automatically.
 	ListenAddrs []ma.Multiaddr
@@ -69,11 +70,26 @@ type Topic struct {
 	LogEnabled bool
 	// HeartbeatFreq broadcasts changed clocks of exposed machines.
 	HeartbeatFreq time.Duration
-	// Maximum msgs per minute in the network,
+	// Maximum msgs per minute sent to the network. Does not include MsgInfo,
+	// which are debounced.
 	MaxMsgsPerWin int
 	// DebugWorkerTelemetry exposes local workers to am-dbg
 	DebugWorkerTelemetry bool
 	ConnectionsToReady   int
+	// all amounts and delayes are multiplied by this factor
+	Multiplayer        int
+	SendInfoDebounceMs int
+	// Max allowed queue length to send MsgInfo to newly joned peers, as well as
+	// received msgs.
+	MaxQueueLen int
+	// Number of gossips to send in SendGossipsState
+	GossipAmount int
+
+	// Use this hardcoded schema instead of exchanging real ones. Limits all the
+	// workers to this one.
+	// TODO catalog of named schemas, exchange unknown ones
+	TestSchema am.Schema
+	TestStates am.S
 
 	// THIS PEER
 
@@ -82,10 +98,9 @@ type Topic struct {
 	host host.Host
 	// ps is the underlying Gossipsub instance, used for managing
 	// PubSub operations like subscriptions and publishing.
-	ps                *ps.PubSub
-	sub               *ps.Subscription
-	handler           *ps.TopicEventHandler
-	sendHelloDebounce time.Duration
+	ps      *ps.PubSub
+	sub     *ps.Subscription
+	handler *ps.TopicEventHandler
 
 	// OTHER PEERS
 
@@ -99,7 +114,7 @@ type Topic struct {
 	missingUpdates PeerGossips
 	// tracers attached to ExposedMachs.
 	tracers []*Tracer
-	// clock updated which arrived before MsgInfo TODO GC
+	// clock updates which arrived before MsgInfo TODO GC
 	pendingMachUpdates map[string]map[int]am.Time
 	// TODO verify number of exposed workers
 	missingPeers  map[string]struct{}
@@ -115,6 +130,8 @@ type Topic struct {
 	msgsWin int
 	// msgs send in the current messages time window
 	msgsWinCount int
+	// use Unix Domain Sockets as a localhost-only transport
+	transportUds bool
 }
 
 func NewTopic(
@@ -126,20 +143,23 @@ func NewTopic(
 	}
 
 	t := &Topic{
+		Multiplayer:          5,
+		MaxQueueLen:          10,
+		GossipAmount:         5,
 		Name:                 name,
 		ExposedMachs:         exposedMachs,
 		LogEnabled:           os.Getenv(EnvAmPubsubLog) != "",
 		DebugWorkerTelemetry: os.Getenv(EnvAmPubsubDbg) != "",
 		HeartbeatFreq:        time.Second,
-		MaxMsgsPerWin:        100,
+		MaxMsgsPerWin:        10,
 		ConnectionsToReady:   5,
+		SendInfoDebounceMs:   500,
 
 		tracers: make([]*Tracer, len(exposedMachs)),
 		workers: make(map[string]map[int]*rpc.Worker),
 		// TODO config
 		pool:               amhelp.Pool(10),
 		info:               make(map[string]map[int]*Info),
-		sendHelloDebounce:  time.Millisecond * 500,
 		pendingMachUpdates: make(map[string]map[int]am.Time),
 		missingPeers:       make(map[string]struct{}),
 		missingUpdates:     make(PeerGossips),
@@ -165,11 +185,10 @@ func NewTopic(
 		ss.Names(), t, opts.Parent, &am.Opts{
 			Tags: []string{"pubsub:" + name},
 
-			// TODO replace the low queue limit with timeouts
-			//  once [am.Event.AcceptTimeout] is implemented
-			//  https://github.com/pancsta/asyncmachine-go/issues/220
-			HandlerTimeout: time.Minute,
-			QueueLimit:     10,
+			// TODO DEBUG
+			// HandlerTimeout:  time.Minute,
+			// HandlerDeadline: 10 * time.Minute,
+			// QueueLimit:     10,
 		})
 	if err != nil {
 		return nil, err
@@ -187,18 +206,20 @@ func NewTopic(
 
 // ///// ///// /////
 
+func (t *Topic) ExceptionEnter(e *am.Event) bool {
+	err := am.ParseArgs(e.Args).Err
+
+	// ignore ErrEvalTimeout
+	return !errors.Is(err, am.ErrEvalTimeout)
+}
+
 func (t *Topic) ExceptionState(e *am.Event) {
+
 	// super
 	t.ExceptionHandler.ExceptionState(e)
 	args := am.ParseArgs(e.Args)
 	err := args.Err
 	target := args.TargetStates
-
-	// ignore ErrEvalTimeout
-	if errors.Is(err, am.ErrEvalTimeout) {
-		t.Mach.EvRemove1(e, ss.Exception, nil)
-		return
-	}
 
 	// retry JoiningState timeouts (once)
 	if errors.Is(err, am.ErrHandlerTimeout) &&
@@ -226,22 +247,31 @@ func (t *Topic) StartState(e *am.Event) {
 		}
 		t.Mach.PanicToErrState(ss.ErrJoining, nil)
 
-		// TODO cache
-		privk, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 0)
-		if err != nil {
-			_ = AddErrJoining(e, t.Mach, err, nil)
-			return
+		// new libp2p host
+		var security libp2p.Option
+		transport := libp2p.Transport(quicTransport.NewTransport)
+		if t.transportUds {
+			transport = libp2p.Transport(udsTransport.NewUDSTransport)
+			security = libp2p.NoSecurity
+		} else {
+			// TODO cache
+			privk, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 0)
+			if err != nil {
+				_ = AddErrJoining(e, t.Mach, err, nil)
+				return
+			}
+			security = libp2p.Identity(privk)
 		}
 
-		// new libp2p host
-		host, err := libp2p.New(
-			libp2p.Transport(quicTransport.NewTransport),
+		host, err := libp2p.New(transport,
+			// libp2p.Transport(tcpTransport.NewTCPTransport),
 			// libp2p.Transport(webtransport.New),
 			// libp2p.Transport(webrtc.New),
 			libp2p.ListenAddrs(t.ListenAddrs...),
 			// TODO debug
 			// libp2p.ResourceManager(&network.NullResourceManager{}),
-			libp2p.Identity(privk))
+			security,
+		)
 
 		if ctx.Err() != nil {
 			return // expired
@@ -253,19 +283,19 @@ func (t *Topic) StartState(e *am.Event) {
 		t.host = host
 
 		// TODO late tags, init earlier and append tags
-		self := host.ID().String()
+		pid := host.ID().String()
 		tags := t.Mach.Tags()
-		tags = append(tags, "peer:"+self)
+		tags = append(tags, "peer:"+pid)
 		t.Mach.SetTags(tags)
 		amhelp.MachDebugEnv(t.Mach)
 
-		resources := relayv2.DefaultResources()
-		resources.MaxReservations = 256
-		_, err = relayv2.New(t.host, relayv2.WithResources(resources))
-		if err != nil {
-			_ = AddErrJoining(e, t.Mach, err, nil)
-			return
-		}
+		// resources := relayv2.DefaultResources()
+		// resources.MaxReservations = 256
+		// _, err = relayv2.New(t.host, relayv2.WithResources(resources))
+		// if err != nil {
+		// 	_ = AddErrJoining(e, t.Mach, err, nil)
+		// 	return
+		// }
 
 		// new gossipsub
 		gossip, err := ps.NewGossipSub(ctx, host)
@@ -297,11 +327,15 @@ func (t *Topic) StartState(e *am.Event) {
 
 		// mark as completed
 		t.Mach.EvAdd1(e, ss.Started, Pass(&A{
-			PeerId: host.ID().String(),
+			PeerId: pid,
+			Peer:   t.peerName(pid),
 		}))
 
 		// start Heartbeat
-		tick := time.NewTicker(t.HeartbeatFreq)
+		if t.HeartbeatFreq == 0 {
+			return
+		}
+		tick := time.NewTicker(t.HeartbeatFreq * time.Duration(t.Multiplayer))
 		defer tick.Stop()
 		for {
 			select {
@@ -391,12 +425,8 @@ func (t *Topic) ConnectingState(e *am.Event) {
 	}()
 }
 
-func (t *Topic) ConnCount() int {
-	return t.host.ConnManager().(*connmgr.BasicConnMgr).GetInfo().ConnCount
-}
-
-func (t *Topic) DisconnectingStart(e *am.Event) {
-}
+// func (t *Topic) DisconnectingStart(e *am.Event) {
+// }
 
 func (t *Topic) JoiningState(e *am.Event) {
 	ctx := t.Mach.NewStateCtx(ss.Joining)
@@ -418,7 +448,8 @@ func (t *Topic) JoiningState(e *am.Event) {
 		t.T = topic
 
 		// msg subscription
-		subscription, err := t.T.Subscribe()
+		// TODO config
+		subscription, err := t.T.Subscribe(ps.WithBufferSize(1024))
 		if ctx.Err() != nil {
 			return // expired
 		}
@@ -433,12 +464,138 @@ func (t *Topic) JoiningState(e *am.Event) {
 	}()
 }
 
+func (t *Topic) ProcessMsgsState(e *am.Event) {
+	mach := t.Mach
+	for _, psMsg := range ParseArgs(e.Args).Msgs {
+		if psMsg == nil {
+			continue
+		}
+		fromId := psMsg.GetFrom().String()
+
+		var base Msg
+		// TODO custom err state
+		if err := msgpack.Unmarshal(psMsg.Data, &base); err != nil {
+			// generic msg
+			mach.Add1(ss.MsgReceived, Pass(&A{
+				Msgs:   []*ps.Message{psMsg},
+				Length: 1,
+			}))
+		} else {
+			switch base.Type {
+
+			case MsgTypeInfo:
+				var msg MsgInfo
+				if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
+					// handle schemas
+					mach.Add1(ss.MsgInfo, Pass(&A{
+						MsgInfo: &msg,
+						PeerId:  fromId,
+						Peer:    t.peerName(fromId),
+					}))
+					// handle gossips TODO handle in MsgInfo
+					mach.Add1(ss.MissPeersByGossip, Pass(&A{
+						PeersGossip: msg.PeerGossips,
+						PeerId:      fromId,
+						Peer:        t.peerName(fromId),
+					}))
+					mach.Add1(ss.MissUpdatesByGossip, Pass(&A{
+						PeersGossip: msg.PeerGossips,
+						PeerId:      fromId,
+					}))
+				} else {
+					mach.EvAddErr(e, err, nil)
+				}
+
+			case MsgTypeBye:
+				var msg MsgBye
+				if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
+					mach.Add1(ss.MsgBye, Pass(&A{
+						MsgBye: &msg,
+						PeerId: fromId,
+					}))
+				}
+
+			case MsgTypeUpdates:
+				var msg MsgUpdates
+				if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
+					mach.Add1(ss.MsgUpdates, Pass(&A{
+						MsgUpdates: &msg,
+						PeerId:     fromId,
+					}))
+				} else {
+					mach.EvAddErr(e, err, nil)
+				}
+
+			case MsgTypeGossip:
+				var msg MsgGossip
+				if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
+					// TODO handle both in MissPeersState
+					mach.Add1(ss.MissPeersByGossip, Pass(&A{
+						PeersGossip: msg.PeerGossips,
+						PeerId:      fromId,
+					}))
+					mach.Add1(ss.MissUpdatesByGossip, Pass(&A{
+						PeersGossip: msg.PeerGossips,
+						PeerId:      fromId,
+					}))
+				} else {
+					mach.EvAddErr(e, err, nil)
+				}
+
+			// requests
+
+			case MsgTypeReqInfo:
+				var msg MsgReqInfo
+				if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
+					mach.Add1(ss.MsgReqInfo, Pass(&A{
+						MsgReqInfo: &msg,
+						PeerId:     fromId,
+						Peer:       t.peerName(fromId),
+						HTime:      time.Now(),
+					}))
+				} else {
+					mach.EvAddErr(e, err, nil)
+				}
+
+			case MsgTypeReqUpdates:
+				var msg MsgReqUpdates
+				if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
+					mach.Add1(ss.MsgReqUpdates, Pass(&A{
+						MsgReqUpdates: &msg,
+						PeerId:        fromId,
+						Peer:          t.peerName(fromId),
+					}))
+				} else {
+					mach.EvAddErr(e, err, nil)
+				}
+
+			default:
+				// Log an error for unsupported message types
+				err := fmt.Errorf("unsupported msg type: %s", base.Type)
+				_ = AddErrListening(nil, mach, err, nil)
+			}
+		}
+	}
+}
+
 func (t *Topic) JoinedState(e *am.Event) {
-	ctx := t.Mach.NewStateCtx(ss.Joined)
-	t.Mach.InternalLog(am.LogOps, "[pubsub:joined] "+t.Name)
+	mach := t.Mach
+	ctx := mach.NewStateCtx(ss.Joined)
+	mach.InternalLog(am.LogOps, "[pubsub:joined] "+t.Name)
 	self := t.host.ID().String()
 
 	t.retried = false
+
+	if !e.IsValid() {
+		return
+	}
+
+	// TODO push out also on heartbeat (requires sub.Next == chan)
+	// TODO config
+	bufSize := 50
+	msgs := make([]*ps.Message, bufSize)
+	msgsMx := sync.Mutex{}
+	msgsI := 0
 
 	// receive msgs TODO extract
 	go func() {
@@ -448,7 +605,7 @@ func (t *Topic) JoinedState(e *am.Event) {
 				return // expired
 			}
 			if err != nil {
-				_ = AddErrListening(e, t.Mach, err, nil)
+				_ = AddErrListening(e, mach, err, nil)
 				continue
 			}
 			// no self msgs
@@ -457,113 +614,61 @@ func (t *Topic) JoinedState(e *am.Event) {
 				continue
 			}
 
-			// fork
-			go t.pool.Go(func() error {
-				if ctx.Err() != nil {
-					return nil // expired
-				}
+			// drop msgs above threshold
+			// TODO config
+			if mach.QueueLen() > t.MaxQueueLen {
+				continue
+			}
 
-				var base Msg
-				// TODO error support
-				if err := msgpack.Unmarshal(psMsg.Data, &base); err != nil {
-					// generic msg
-					t.Mach.EvAdd1(e, ss.MsgReceived, Pass(&A{Msgs: []*ps.Message{psMsg}}))
-				} else {
-					switch base.Type {
+			// stash for now
+			msgsMx.Lock()
+			if msgsI < bufSize {
+				msgs[msgsI] = psMsg
+				msgsI++
+				msgsMx.Unlock()
+				continue
+			}
 
-					case MsgTypeInfo:
-						var msg MsgInfo
-						if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
-							// handle schemas
-							t.Mach.EvAdd1(e, ss.MsgInfo, Pass(&A{
-								MsgInfo: &msg,
-								PeerId:  fromId,
-							}))
-							// handle gossips TODO handle in MsgInfo
-							t.Mach.EvAdd1(e, ss.MissPeersByGossip, Pass(&A{
-								PeersGossip: msg.PeerGossips,
-								PeerId:      fromId,
-							}))
-							t.Mach.EvAdd1(e, ss.MissUpdatesByGossip, Pass(&A{
-								PeersGossip: msg.PeerGossips,
-								PeerId:      fromId,
-							}))
-						}
-
-					case MsgTypeBye:
-						var msg MsgBye
-						if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
-							t.Mach.EvAdd1(e, ss.MsgBye, Pass(&A{
-								MsgBye: &msg,
-								PeerId: fromId,
-							}))
-						}
-
-					case MsgTypeUpdates:
-						var msg MsgUpdates
-						if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
-							t.Mach.EvAdd1(e, ss.MsgUpdates, Pass(&A{
-								MsgUpdates: &msg,
-								PeerId:     fromId,
-							}))
-						}
-
-					case MsgTypeGossip:
-						var msg MsgGossip
-						if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
-							// TODO handle both in MissPeersState
-							t.Mach.EvAdd1(e, ss.MissPeersByGossip, Pass(&A{
-								PeersGossip: msg.PeerGossips,
-								PeerId:      fromId,
-							}))
-							t.Mach.EvAdd1(e, ss.MissUpdatesByGossip, Pass(&A{
-								PeersGossip: msg.PeerGossips,
-								PeerId:      fromId,
-							}))
-						}
-
-					// requests
-
-					case MsgTypeReqInfo:
-						var msg MsgReqInfo
-						if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
-							t.Mach.EvAdd1(e, ss.MsgReqInfo, Pass(&A{
-								MsgReqInfo: &msg,
-								PeerId:     fromId,
-								HTime:      time.Now(),
-							}))
-						}
-
-					case MsgTypeReqUpdates:
-						var msg MsgReqUpdates
-						if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
-							t.Mach.EvAdd1(e, ss.MsgReqUpdates, Pass(&A{
-								MsgReqUpdates: &msg,
-								PeerId:        fromId,
-							}))
-							// memorize requested peer IDs as recently requested (de-dup)
-							// TODO update in MsgReqUpdates
-							peerIds := slices.Clone(msg.PeerIds)
-							t.Mach.Eval("MsgTypeReqUpdate", func() {
-								for _, pid := range peerIds {
-									t.reqUpdate[pid] = time.Now()
-								}
-							}, ctx)
-						}
-
-					default:
-						// Log an error for unsupported message types
-						err := fmt.Errorf("unsupported msg type: %s", base.Type)
-						_ = AddErrListening(e, t.Mach, err, nil)
-					}
-				}
-
-				return nil
-			})
+			// flush
+			mach.Add1(ss.ProcessMsgs, Pass(&A{
+				Msgs:   msgs,
+				Length: msgsI,
+			}))
+			msgs = make([]*ps.Message, bufSize)
+			msgsI = 0
+			msgsMx.Unlock()
 		}
 	}()
 
-	// peer events TODO extract
+	// periodic flush TODO flush on heartbeat
+	go func() {
+		if ctx.Err() != nil {
+			return // expired
+		}
+
+		t := time.NewTicker(1 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				// exit
+			case <-t.C:
+				// flush
+				msgsMx.Lock()
+				if msgsI > 0 {
+					mach.Add1(ss.ProcessMsgs, Pass(&A{
+						Msgs:   msgs,
+						Length: msgsI,
+					}))
+					msgs = make([]*ps.Message, bufSize)
+					msgsI = 0
+				}
+				msgsMx.Unlock()
+			}
+		}
+	}()
+
+	// topic events TODO extract
 	go func() {
 		if ctx.Err() != nil {
 			return // expired
@@ -572,7 +677,7 @@ func (t *Topic) JoinedState(e *am.Event) {
 		// peer subscription
 		handler, err := t.T.EventHandler()
 		if err != nil {
-			_ = AddErrJoining(e, t.Mach, err, nil)
+			_ = AddErrJoining(nil, mach, err, nil)
 			return
 		}
 		t.handler = handler
@@ -583,18 +688,21 @@ func (t *Topic) JoinedState(e *am.Event) {
 				return // expired
 			}
 			if err != nil {
-				_ = AddErrListening(e, t.Mach, err, nil)
+				_ = AddErrListening(nil, mach, err, nil)
 				continue
 			}
 
+			fromId := pEv.Peer.String()
 			switch pEv.Type {
 			case ps.PeerJoin:
-				t.Mach.EvAdd1(e, ss.PeerJoined, Pass(&A{
-					PeerId: pEv.Peer.String(),
+				mach.Add1(ss.PeerJoined, Pass(&A{
+					PeerId: fromId,
+					Peer:   t.peerName(fromId),
 				}))
 			case ps.PeerLeave:
-				t.Mach.EvAdd1(e, ss.PeerLeft, Pass(&A{
-					PeerId: pEv.Peer.String(),
+				mach.Add1(ss.PeerLeft, Pass(&A{
+					PeerId: fromId,
+					Peer:   t.peerName(fromId),
 				}))
 			}
 		}
@@ -611,7 +719,7 @@ func (t *Topic) JoinedState(e *am.Event) {
 			}
 
 			// send Hello
-			t.Mach.EvAdd1(e, ss.SendInfo, Pass(&A{
+			mach.Add1(ss.SendInfo, Pass(&A{
 				PeerIds: []string{t.host.ID().String()},
 			}))
 		}()
@@ -625,16 +733,15 @@ func (t *Topic) JoinedEnd(e *am.Event) {
 	}
 }
 
+func (t *Topic) PeerLeftEnter(e *am.Event) bool {
+	return ParseArgs(e.Args).PeerId != ""
+}
+
 // EVENTS
 
-func (t *Topic) PeerLeftEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
-	return a != nil && a.PeerId != ""
-}
-
-func (t *Topic) PeerLeftState(e *am.Event) {
-	// TODO direct all owned local workers to MachLeft
-}
+// func (t *Topic) PeerLeftState(e *am.Event) {
+// 	// TODO direct all owned local workers to MachLeft
+// }
 
 func (t *Topic) MsgInfoEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
@@ -664,8 +771,6 @@ func (t *Topic) MsgInfoEnter(e *am.Event) bool {
 }
 
 func (t *Topic) MsgInfoState(e *am.Event) {
-	// t.Mach.EvRemove1(e, ss.MsgHello, nil)
-
 	ctx := t.Mach.NewStateCtx(ss.Start)
 	args := ParseArgs(e.Args)
 	added := 0
@@ -689,11 +794,13 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 			t.Mach.EvRemove1(e, ss.MissPeersByGossip, nil)
 		}
 
+		t.metric("Info", peerId)
+		t.metric("Peer", "")
 		// create local workers
 		for machIdx, info := range machs {
 			// check already exists
 			if w, ok := t.workers[peerId][machIdx]; ok {
-				// update to a newest clock
+				// update to the newest clock
 				if info.MTime.Sum() > w.TimeSum(nil) {
 					w.UpdateClock(info.MTime, true)
 				}
@@ -704,22 +811,32 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 			// compose a unique ID
 			tags := []string{"pubsub-worker", "src-id:" + info.Id}
 			id := "ps-" + info.Id + "-" + utils.RandId(4)
-			worker, err := rpc.NewWorker(ctx, id, nil, info.Schema, info.States,
-				t.Mach, tags)
+			// mach schema
+			schema := info.Schema
+			if t.TestSchema != nil {
+				schema = t.TestSchema
+			}
+			names := info.States
+			if t.TestStates != nil {
+				names = t.TestStates
+			}
+			worker, err := rpc.NewWorker(ctx, id, nil, schema, names, t.Mach, tags)
 			if err != nil {
 				// TODO custom error?
 				t.Mach.EvAddErr(e, err, nil)
 				continue
 			}
 			if t.DebugWorkerTelemetry {
-				amhelp.MachDebugEnv(worker)
+				// TODO DEBUG
+				if t.peerName(peerId) == "P5" {
+					amhelp.MachDebugEnv(worker)
+				}
 			}
 
 			// check for ahead-of-time MsgUpdates
 			// add ctx to go-s
 			if mtime, ok := t.pendingMachUpdates[peerId][machIdx]; ok {
-				// TODO unsafe?
-				go worker.UpdateClock(mtime, true)
+				worker.UpdateClock(mtime, true)
 				// GC
 				delete(t.pendingMachUpdates[peerId], machIdx)
 				if len(t.pendingMachUpdates[peerId]) == 0 {
@@ -728,8 +845,7 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 				t.Mach.EvRemove1(e, ss.MissPeersByUpdates, nil)
 
 			} else {
-				// TODO unsafe?
-				go worker.UpdateClock(info.MTime, true)
+				worker.UpdateClock(info.MTime, true)
 			}
 
 			t.workers[peerId][machIdx] = worker
@@ -743,6 +859,7 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 	fromPeerId := args.PeerId
 	if _, ok := t.workers[fromPeerId]; !ok {
 		t.missingPeers[fromPeerId] = struct{}{}
+		t.metric("Gossip", fromPeerId)
 	}
 
 	if added > 0 {
@@ -751,7 +868,11 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 			len(t.workers), len(t.missingPeers))
 
 		for pid := range t.missingPeers {
-			t.log("Missing example: %s", pid)
+			name := t.peerName(pid)
+			if name == "" {
+				name = pid
+			}
+			t.log("Missing example: %s", name)
 			break
 		}
 	}
@@ -803,8 +924,12 @@ func (t *Topic) MissPeersByGossipState(e *am.Event) {
 		// if p, ok := t.workers[peerId]; !ok || len(p) != count {
 		if _, ok := t.workers[peerId]; !ok {
 			t.missingPeers[peerId] = struct{}{}
-			t.log("New missing %s", peerId)
-			t.log("Total: %d; Missing: %d",
+			name := t.peerName(peerId)
+			if name == "" {
+				name = peerId
+			}
+			t.log("New missing %s", name)
+			t.log("Known: %d; Missing: %d",
 				len(t.workers), len(t.missingPeers))
 		}
 	}
@@ -871,12 +996,14 @@ func (t *Topic) MissUpdatesByGossipState(e *am.Event) {
 			m, ok := t.workers[peerId][machIdx]
 			if !ok {
 				t.missingUpdates[peerId][machIdx] = mtime
+				t.metric("Gossip", peerId)
 				continue
 			}
 
 			// accept when received time is higher
 			if mtime > m.TimeSum(nil) {
 				t.missingUpdates[peerId][machIdx] = mtime
+				t.metric("Gossip", peerId)
 			}
 		}
 
@@ -896,6 +1023,7 @@ func (t *Topic) PeerJoinedEnter(e *am.Event) bool {
 }
 
 func (t *Topic) PeerJoinedState(e *am.Event) {
+
 	t.Mach.EvRemove1(e, ss.PeerJoined, nil)
 	args := ParseArgs(e.Args)
 	peerId := args.PeerId
@@ -903,30 +1031,33 @@ func (t *Topic) PeerJoinedState(e *am.Event) {
 	// mark as missing
 	// TODO add MissPeerByJoin ?
 	t.missingPeers[peerId] = struct{}{}
-	// say hellp
+	// say hello, but drop msgs above threshold
+	// TODO config
+	if t.Mach.QueueLen() > t.MaxQueueLen {
+		return
+	}
 	t.Mach.EvAdd1(e, ss.SendInfo, Pass(&A{
 		PeerIds: []string{t.host.ID().String()},
 	}))
 }
 
+func (t *Topic) MsgByeEnter(e *am.Event) bool {
+	return ParseArgs(e.Args).MsgBye != nil
+}
+
 // MSGS
 
-func (t *Topic) MsgByeEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
-	return a != nil && a.MsgBye != nil
-}
-
-func (t *Topic) MsgByeState(e *am.Event) {
-	// TODO
-}
+// func (t *Topic) MsgByeState(e *am.Event) {
+// 	// TODO
+// }
 
 func (t *Topic) MsgReceivedEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
-	return a != nil && a.Msgs != nil
+	return ParseArgs(e.Args).Msgs != nil
 }
 
 func (t *Topic) SendMsgEnter(e *am.Event) bool {
-	win := time.Now().Second() % 10
+	// sec / multiplayer time window
+	win := time.Now().Second() / t.Multiplayer
 	if t.msgsWin != win {
 		t.msgsWin = win
 		t.msgsWinCount = 0
@@ -943,15 +1074,27 @@ func (t *Topic) SendMsgEnter(e *am.Event) bool {
 }
 
 func (t *Topic) SendMsgState(e *am.Event) {
-	t.Mach.EvRemove1(e, ss.SendMsg, nil)
 	ctx := t.Mach.NewStateCtx(ss.Start)
 	args := ParseArgs(e.Args)
 	msg := args.Msg
 
-	go t.pool.Go(func() error {
+	switch args.MsgType {
+	case string(MsgTypeReqInfo):
+		t.lastReqHello = time.Now()
+	case string(MsgTypeReqUpdates):
+		t.lastReqUpdate = time.Now()
+	}
+
+	// unblock
+	if !e.IsValid() {
+		return
+	}
+	t.pool.Go(func() error {
 		if ctx.Err() != nil {
 			return nil // expired
 		}
+		// TODO concurrent write to a map?!
+		//  ihave, ok := gs.gossip[p]
 		err := t.T.Publish(ctx, msg)
 		if ctx.Err() != nil {
 			return nil // expired
@@ -963,18 +1106,26 @@ func (t *Topic) SendMsgState(e *am.Event) {
 }
 
 func (t *Topic) SendInfoEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
-	return a != nil && len(a.PeerIds) > 0
+	return len(ParseArgs(e.Args).PeerIds) > 0
 }
 
 func (t *Topic) SendInfoState(e *am.Event) {
 	ctx := t.Mach.NewStateCtx(ss.SendInfo)
-	debounce := t.sendHelloDebounce
 	args := ParseArgs(e.Args)
 
+	// random delay
+	debounce := t.SendInfoDebounceMs * t.Multiplayer
+	debounceMax := debounce * 2
+	delay := time.Duration(rand.Intn(debounceMax)) * time.Millisecond
+
+	// unblock
+	if !e.IsValid() {
+		t.Mach.EvRemove1(e, ss.SendInfo, nil)
+		return
+	}
 	go func() {
 		defer t.Mach.EvRemove1(e, ss.SendInfo, nil)
-		if !amhelp.Wait(ctx, debounce) {
+		if !amhelp.Wait(ctx, delay) {
 			return // expired
 		}
 		t.Mach.EvAdd1(e, ss.DoSendInfo, Pass(&A{
@@ -989,7 +1140,6 @@ func (t *Topic) MsgUpdatesEnter(e *am.Event) bool {
 }
 
 func (t *Topic) MsgUpdatesState(e *am.Event) {
-	// t.Mach.EvRemove1(e, ss.MachUpdate, nil)
 	args := ParseArgs(e.Args)
 	self := t.host.ID().String()
 
@@ -1005,6 +1155,7 @@ func (t *Topic) MsgUpdatesState(e *am.Event) {
 			t.Mach.EvAdd1(e, ss.MissPeersByUpdates, Pass(&A{
 				MachClocks: machs,
 				PeerId:     peerId,
+				Peer:       t.peerName(peerId),
 			}))
 
 			// process on ss.MsgInfo
@@ -1012,6 +1163,7 @@ func (t *Topic) MsgUpdatesState(e *am.Event) {
 		}
 
 		missing := t.missingUpdates[peerId] //lint:ignore gosimple
+		t.metric("Update", peerId)
 
 		// for all updated machines
 		for machIdx, mtime := range machs {
@@ -1073,7 +1225,6 @@ func (t *Topic) MsgReqInfoEnter(e *am.Event) bool {
 }
 
 func (t *Topic) MsgReqInfoState(e *am.Event) {
-	// t.Mach.EvRemove1(e, ss.MsgReqInfo, nil)
 	args := ParseArgs(e.Args)
 
 	// collect peers we know (incl this peer)
@@ -1110,8 +1261,8 @@ func (t *Topic) MsgReqUpdatesEnter(e *am.Event) bool {
 	self := t.host.ID().String()
 	for _, peerId := range a.MsgReqInfo.PeerIds {
 		if _, ok := t.workers[peerId]; ok || peerId == self {
-			// only 1 known peer answers (randomly)
 			// TODO increase the probability with repeated requests
+			// return rand.Intn(t.Multiplayer) != 0
 			return rand.Intn(len(t.workers)) != 0
 		}
 	}
@@ -1119,6 +1270,7 @@ func (t *Topic) MsgReqUpdatesEnter(e *am.Event) bool {
 	return false
 }
 
+// TODO this is never fired
 func (t *Topic) MsgReqUpdatesState(e *am.Event) {
 	// TODO per-mach index requests (partial)
 	// t.Mach.EvRemove1(e, ss.MsgReqInfo, nil)
@@ -1139,8 +1291,10 @@ func (t *Topic) MsgReqUpdatesState(e *am.Event) {
 			for i, mach := range t.ExposedMachs {
 				update.PeerClocks[peerId][i] = mach.Time(nil)
 			}
-
 		}
+
+		// memorize requested peer IDs as recently requested (de-dup)
+		t.reqUpdate[peerId] = time.Now()
 
 		// remote peer
 		if machs, ok := t.workers[peerId]; ok {
@@ -1151,7 +1305,7 @@ func (t *Topic) MsgReqUpdatesState(e *am.Event) {
 		}
 	}
 
-	// comfirm we know the sender
+	// confirm we know the sender
 	fromPeerId := args.PeerId
 	if _, ok := t.workers[fromPeerId]; !ok {
 		t.missingPeers[fromPeerId] = struct{}{}
@@ -1161,7 +1315,12 @@ func (t *Topic) MsgReqUpdatesState(e *am.Event) {
 	if len(update.PeerClocks) <= 0 {
 		return
 	}
-	go t.pool.Go(func() error {
+
+	// unblock
+	if !e.IsValid() {
+		return
+	}
+	t.pool.Go(func() error {
 		if ctx.Err() != nil {
 			return nil // expired
 		}
@@ -1194,6 +1353,7 @@ func (t *Topic) MissPeersByUpdatesState(e *am.Event) {
 	_, ok := t.pendingMachUpdates[peerId]
 	if !ok {
 		t.pendingMachUpdates[peerId] = pending
+		t.metric("Gossip", peerId)
 
 		// process on ss.MsgInfo
 		return
@@ -1205,10 +1365,12 @@ func (t *Topic) MissPeersByUpdatesState(e *am.Event) {
 			// merge
 			if mtimeNew.Sum() > mtimeOld.Sum() {
 				t.pendingMachUpdates[peerId][machIdx] = mtimeNew
+				t.metric("Gossip", peerId)
 			}
 		} else {
 			// add
 			t.pendingMachUpdates[peerId][machIdx] = mtimeNew
+			t.metric("Gossip", peerId)
 		}
 	}
 }
@@ -1217,14 +1379,14 @@ func (t *Topic) MissPeersByUpdatesExit(e *am.Event) bool {
 	return len(t.pendingMachUpdates) == 0
 }
 
-// ACTIONS
-
 func (t *Topic) ListMachinesEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	return a != nil && a.WorkersCh != nil &&
 		// check buffered channel
 		cap(a.WorkersCh) > 0
 }
+
+// ACTIONS
 
 func (t *Topic) ListMachinesState(e *am.Event) {
 	t.Mach.EvRemove1(e, ss.ListMachines, nil)
@@ -1274,11 +1436,9 @@ func (t *Topic) ListMachinesState(e *am.Event) {
 		}
 	}
 
-	select {
-	case retCh <- ret:
-	default:
-		t.log("ListMachines: closed chan, dropping")
-	}
+	// TODO dont send on closed chann
+	t.log("listing %d workers", len(ret))
+	retCh <- ret
 }
 
 func (t *Topic) HeartbeatState(e *am.Event) {
@@ -1290,14 +1450,17 @@ func (t *Topic) HeartbeatState(e *am.Event) {
 	mach.EvRemove1(e, ss.MissPeersByUpdates, nil)
 
 	// delegate work
-	mach.EvAdd1(e, ss.SendGossips, nil)
-	mach.EvAdd1(e, ss.ReqMissingUpdates, nil)
-	mach.EvAdd1(e, ss.ReqMissingPeers, nil)
-	mach.EvAdd1(e, ss.SendUpdates, nil)
-}
+	delegated := am.S{ss.SendGossips, ss.ReqMissingUpdates, ss.ReqMissingPeers}
+	for _, state := range delegated {
+		if mach.Not1(state) && !mach.WillBe1(state) {
+			mach.EvAdd1(e, state, nil)
+		}
+	}
 
-func (t *Topic) SendUpdatesState(e *am.Event) {
-	ctx := t.Mach.NewStateCtx(ss.SendUpdates)
+	// send updates, if any
+	if mach.Is1(ss.SendUpdates) || mach.WillBe1(ss.SendUpdates) {
+		return
+	}
 
 	// collect updates
 	clocks := make(MachClocks)
@@ -1310,11 +1473,19 @@ func (t *Topic) SendUpdatesState(e *am.Event) {
 		clocks[i] = mtime
 	}
 
-	// no updates
-	if len(clocks) <= 0 {
-		t.Mach.EvRemove1(e, ss.SendUpdates, nil)
-		return
-	}
+	mach.EvAdd1(e, ss.SendUpdates, Pass(&A{
+		MachClocks: clocks,
+	}))
+}
+
+func (t *Topic) SendUpdatesEnter(e *am.Event) bool {
+	a := ParseArgs(e.Args)
+	return len(a.MachClocks) > 0
+}
+
+func (t *Topic) SendUpdatesState(e *am.Event) {
+	defer t.Mach.EvRemove1(e, ss.SendUpdates, nil)
+	clocks := ParseArgs(e.Args).MachClocks
 
 	// send updates
 	self := t.host.ID().String()
@@ -1323,32 +1494,30 @@ func (t *Topic) SendUpdatesState(e *am.Event) {
 		PeerClocks: make(map[string]MachClocks),
 	}
 	update.PeerClocks[self] = clocks
-	// send updates
-	go t.pool.Go(func() error {
-		defer t.Mach.EvRemove1(e, ss.SendUpdates, nil)
-		if ctx.Err() != nil {
-			return nil // expired
-		}
 
-		encoded, err := msgpack.Marshal(update)
-		if err != nil {
-			t.Mach.EvAddErr(e, err, nil)
-			return nil
-		}
-		t.Mach.EvAdd1(e, ss.SendMsg, Pass(&A{
-			Msg:     encoded,
-			MsgType: string(MsgTypeUpdates),
-		}))
+	// make sure it's still on
+	if !e.IsValid() {
+		return
+	}
 
-		return nil
-	})
+	encoded, err := msgpack.Marshal(update)
+	if err != nil {
+		t.Mach.EvAddErr(e, err, nil)
+		return
+	}
+	t.Mach.EvAdd1(e, ss.SendMsg, Pass(&A{
+		Msg:     encoded,
+		MsgType: string(MsgTypeUpdates),
+	}))
 }
 
 func (t *Topic) SendGossipsEnter(e *am.Event) bool {
 	if len(t.workers) == 0 {
 		return false
 	}
-	// randomize gossip to 1 peer per 1 Heartbeat
+	// randomize gossip per 1 Heartbeat
+	// TODO config
+	// if rand.Intn(t.Multiplayer) != 0 {
 	if rand.Intn(len(t.workers)) != 0 {
 		return false
 	}
@@ -1361,7 +1530,7 @@ func (t *Topic) SendGossipsState(e *am.Event) {
 
 	allPids := slices.Collect(maps.Keys(t.workers))
 	sendPids := PeerGossips{}
-	for range 5 {
+	for range t.GossipAmount {
 		pid := allPids[rand.Intn(len(allPids))]
 		// skip empty peers
 		if len(t.workers[pid]) == 0 {
@@ -1375,10 +1544,14 @@ func (t *Topic) SendGossipsState(e *am.Event) {
 	}
 
 	// unblock
-	go t.pool.Go(func() error {
+	if !e.IsValid() {
+		t.Mach.EvRemove1(e, ss.SendGossips, nil)
+		return
+	}
+	go func() {
 		defer t.Mach.EvRemove1(e, ss.SendGossips, nil)
 		if ctx.Err() != nil {
-			return nil // expired
+			return // expired
 		}
 
 		randPeers := &MsgGossip{
@@ -1388,15 +1561,13 @@ func (t *Topic) SendGossipsState(e *am.Event) {
 		encoded, err := msgpack.Marshal(randPeers)
 		if err != nil {
 			t.Mach.EvAddErr(e, err, nil)
-			return nil
+			return
 		}
 		t.Mach.EvAdd1(e, ss.SendMsg, Pass(&A{
 			Msg:     encoded,
 			MsgType: string(MsgTypeGossip),
 		}))
-
-		return nil
-	})
+	}()
 }
 
 // how often to look for missing peers
@@ -1418,13 +1589,14 @@ func (t *Topic) ReqMissingPeersEnter(e *am.Event) bool {
 }
 
 func (t *Topic) ReqMissingPeersState(e *am.Event) {
-	ctx := t.Mach.NewStateCtx(ss.ReqMissingPeers)
+	mach := t.Mach
+	ctx := mach.NewStateCtx(ss.ReqMissingPeers)
 
 	// TODO config
 	amount := 5
 	maxTries := 15
 	// how often to request MsgHello per 1 peer
-	reqHelloFreq := time.Second * 5
+	reqHelloFreq := time.Second * 5 * time.Duration(t.Multiplayer)
 
 	// req missing peers
 	// TODO fair request dist per peer IDs
@@ -1448,34 +1620,38 @@ func (t *Topic) ReqMissingPeersState(e *am.Event) {
 	}
 
 	if len(reqPids) <= 0 {
+		mach.EvRemove1(e, ss.ReqMissingPeers, nil)
 		return
 	}
 
+	t.log("missing peers: %d", len(reqPids))
+
 	// unblock
-	go t.pool.Go(func() error {
-		defer t.Mach.EvRemove1(e, ss.ReqMissingPeers, nil)
+	if !e.IsValid() {
+		mach.EvRemove1(e, ss.ReqMissingPeers, nil)
+		return
+	}
+	t.pool.Go(func() error {
+		defer mach.EvRemove1(e, ss.ReqMissingPeers, nil)
 		if ctx.Err() != nil {
 			return nil // expired
 		}
 
+		// encode and send
 		reqHello := &MsgReqInfo{
 			Msg:     Msg{MsgTypeReqInfo},
 			PeerIds: reqPids,
 		}
 		encoded, err := msgpack.Marshal(reqHello)
 		if err != nil {
-			t.Mach.EvAddErr(e, err, nil)
+			mach.EvAddErr(e, err, nil)
 			return nil
 		}
-		// TODO update in SendMsgState
-		t.Mach.Eval("reqMissingPeers", func() {
-			t.lastReqHello = time.Now()
-		}, ctx)
-		t.Mach.EvAdd1(e, ss.SendMsg, Pass(&A{
-			Msg: encoded,
-			// debug
+		mach.EvAdd1(e, ss.SendMsg, Pass(&A{
+			Msg:     encoded,
 			MsgType: string(reqHello.Type),
 			PeerId:  reqPids[0],
+			Peer:    t.peerName(reqPids[0]),
 		}))
 
 		return nil
@@ -1506,7 +1682,7 @@ func (t *Topic) ReqMissingUpdatesState(e *am.Event) {
 	amount := 5
 	maxTries := 15
 	// how often to request MsgUpdates per 1 peer
-	reqUpdateFreq := time.Second * 5
+	reqUpdateFreq := time.Second * time.Duration(5*t.Multiplayer)
 
 	// req missing peers
 	// TODO fair request dist per peer IDs
@@ -1528,11 +1704,16 @@ func (t *Topic) ReqMissingUpdatesState(e *am.Event) {
 	}
 
 	if len(reqPids) <= 0 {
+		t.Mach.EvRemove1(e, ss.ReqMissingUpdates, nil)
 		return
 	}
 
 	// unblock
-	go t.pool.Go(func() error {
+	if !e.IsValid() {
+		t.Mach.EvRemove1(e, ss.ReqMissingUpdates, nil)
+		return
+	}
+	t.pool.Go(func() error {
 		defer t.Mach.EvRemove1(e, ss.ReqMissingUpdates, nil)
 		if ctx.Err() != nil {
 			return nil // expired
@@ -1547,19 +1728,115 @@ func (t *Topic) ReqMissingUpdatesState(e *am.Event) {
 			t.Mach.EvAddErr(e, err, nil)
 			return nil
 		}
-		// TODO update in SendMsgState
-		t.Mach.Eval("reqMissingUpdates", func() {
-			t.lastReqUpdate = time.Now()
-		}, ctx)
 		t.Mach.EvAdd1(e, ss.SendMsg, Pass(&A{
 			Msg: encoded,
 			// debug
 			MsgType: string(reqUpdate.Type),
 			PeerId:  reqPids[0],
+			Peer:    t.peerName(reqPids[0]),
 		}))
 
 		return nil
 	})
+}
+
+func (t *Topic) DoSendInfoEnter(e *am.Event) bool {
+	return len(ParseArgs(e.Args).PeerIds) > 0
+}
+
+func (t *Topic) DoSendInfoState(e *am.Event) {
+	t.Mach.EvRemove1(e, ss.DoSendInfo, nil)
+	args := ParseArgs(e.Args)
+	peerIds := args.PeerIds
+
+	// collect gossips and info
+	gossips := PeerGossips{}
+	self := t.host.ID().String()
+	exposed := slices.Clone(t.ExposedMachs)
+
+	// gossip about 5 random peers
+	for range min(t.GossipAmount, len(t.workers)) {
+		ids := slices.Collect(maps.Keys(t.workers))
+		pid := ids[rand.Intn(len(t.workers))]
+		// skip empty peers
+		if len(t.workers[pid]) == 0 {
+			continue
+		}
+		sums := map[int]uint64{}
+		for i, w := range t.workers[pid] {
+			sums[i] = w.Time(nil).Sum()
+		}
+		gossips[pid] = sums
+	}
+
+	if !e.IsValid() {
+		return
+	}
+
+	// try again if didnt go through
+	// if !ok {
+	// 	t.Mach.Remove1(ss.SendHello, nil)
+	// 	t.Mach.Add1(ss.SendHello, nil)
+	// 	// TODO detect too many retires (compare PeerJoined ticks)
+	// 	return
+	// }
+
+	// list all requested machs
+	msg := &MsgInfo{
+		Msg:         Msg{MsgTypeInfo},
+		PeerInfo:    PeerInfo{},
+		PeerGossips: gossips,
+	}
+	for _, peerId := range peerIds {
+		machs := MachInfo{}
+
+		// say hello
+		if peerId == self {
+			for machIdx, mach := range exposed {
+
+				// mach schema
+				var schema am.Schema
+				if t.TestSchema == nil {
+					schema = mach.Schema()
+				}
+				var names am.S
+				if t.TestStates == nil {
+					names = mach.StateNames()
+				}
+
+				// info msg
+				machs[machIdx] = &Info{
+					Id:     mach.Id(),
+					Schema: schema,
+					States: names,
+					MTime:  mach.Time(nil),
+					Tags:   mach.Tags(),
+					Parent: mach.ParentId(),
+				}
+			}
+		} else {
+
+			// fwd what we know
+			if _, ok := t.info[peerId]; !ok {
+				continue
+			}
+			// TODO send only requested ones
+			machs = t.info[peerId]
+		}
+
+		msg.PeerInfo[peerId] = machs
+	}
+
+	// send
+	encoded, err := msgpack.Marshal(msg)
+	if err != nil {
+		t.Mach.EvAddErr(e, err, nil)
+		return
+	}
+	t.Mach.EvAdd1(e, ss.SendMsg, Pass(&A{
+		Msg:     encoded,
+		MsgType: string(MsgTypeInfo),
+	}))
 }
 
 // ///// ///// /////
@@ -1570,6 +1847,10 @@ func (t *Topic) ReqMissingUpdatesState(e *am.Event) {
 
 func (t *Topic) Start() am.Result {
 	return t.Mach.Add1(ss.Start, nil)
+}
+
+func (t *Topic) ConnCount() int {
+	return t.host.ConnManager().(*connmgr.BasicConnMgr).GetInfo().ConnCount
 }
 
 func (t *Topic) Join() am.Result {
@@ -1587,6 +1868,7 @@ func (t *Topic) StartAndJoin(ctx context.Context) am.Result {
 	if err != nil {
 		return am.Canceled
 	}
+
 	return t.Join()
 }
 
@@ -1619,90 +1901,6 @@ func (t *Topic) GetPeerAddrs() ([]ma.Multiaddr, error) {
 	return peerAddrs, nil
 }
 
-func (t *Topic) DoSendInfoEnter(e *am.Event) bool {
-	return len(ParseArgs(e.Args).PeerIds) > 0
-}
-
-func (t *Topic) DoSendInfoState(e *am.Event) {
-	t.Mach.EvRemove1(e, ss.DoSendInfo, nil)
-	args := ParseArgs(e.Args)
-	peerIds := args.PeerIds
-
-	// collect gossips and info
-	gossips := PeerGossips{}
-	self := t.host.ID().String()
-	exposed := slices.Clone(t.ExposedMachs)
-
-	// gossip about 5 random peers
-	for range min(5, len(t.workers)) {
-		ids := slices.Collect(maps.Keys(t.workers))
-		pid := ids[rand.Intn(len(t.workers))]
-		// skip empty peers
-		if len(t.workers[pid]) == 0 {
-			continue
-		}
-		sums := map[int]uint64{}
-		for i, w := range t.workers[pid] {
-			sums[i] = w.Time(nil).Sum()
-		}
-		gossips[pid] = sums
-	}
-
-	// try again if didnt go through
-	// if !ok {
-	// 	t.Mach.Remove1(ss.SendHello, nil)
-	// 	t.Mach.Add1(ss.SendHello, nil)
-	// 	// TODO detect too many retires (compare PeerJoined ticks)
-	// 	return
-	// }
-
-	// list all requested machs
-	msg := &MsgInfo{
-		Msg:         Msg{MsgTypeInfo},
-		PeerInfo:    PeerInfo{},
-		PeerGossips: gossips,
-	}
-	for _, peerId := range peerIds {
-		machs := MachInfo{}
-
-		// say hello
-		if peerId == self {
-			for machIdx, mach := range exposed {
-				machs[machIdx] = &Info{
-					Id: mach.Id(),
-					// TODO pre-shared schemas
-					Schema: mach.Schema(),
-					States: mach.StateNames(),
-					MTime:  mach.Time(nil),
-					Tags:   mach.Tags(),
-					Parent: mach.ParentId(),
-				}
-			}
-		} else {
-
-			// fwd what we know
-			if _, ok := t.info[peerId]; !ok {
-				continue
-			}
-			// TODO send only requested ones
-			machs = t.info[peerId]
-		}
-
-		msg.PeerInfo[peerId] = machs
-	}
-
-	// send
-	encoded, err := msgpack.Marshal(msg)
-	if err != nil {
-		t.Mach.EvAddErr(e, err, nil)
-		return
-	}
-	t.Mach.EvAdd1(e, ss.SendMsg, Pass(&A{
-		Msg:     encoded,
-		MsgType: string(MsgTypeInfo),
-	}))
-}
-
 func (t *Topic) workersCount() int {
 	ret := 0
 	for _, workers := range t.workers {
@@ -1716,4 +1914,85 @@ func (t *Topic) log(msg string, args ...any) {
 		return
 	}
 	t.Mach.Log(msg, args...)
+}
+
+func (t *Topic) peerName(pid string) string {
+	if name, ok := t.HostToPeer[pid]; ok {
+		return name
+	}
+
+	return ""
+}
+
+func (t *Topic) metric(msg, host string) bool {
+	metric := t.MachMetrics.Load()
+	if metric == nil {
+		return false
+
+	}
+
+	key := msg + host
+	if name := t.peerName(host); name != "" {
+		key = name + msg
+	}
+	if !metric.Has1(key) {
+		return false
+	}
+
+	metric.Add1(key, nil)
+
+	return true
+}
+
+func (t *Topic) syncMetrics() {
+	metric := t.MachMetrics.Load()
+	if metric == nil {
+		return
+	}
+
+	add := func(state string) {
+		if !metric.Has1(state) {
+			return
+		}
+
+		metric.Add1(state, nil)
+	}
+
+	t.Mach.Eval("syncMetrics", func() {
+		state := ""
+
+		for hostId := range t.missingUpdates {
+			state = "Gossip" + hostId
+			if id, ok := t.HostToPeer[hostId]; ok {
+				state = id + "Gossip"
+			}
+			add(state)
+		}
+
+		for hostId := range t.pendingMachUpdates {
+			state = "Gossip" + hostId
+			if id, ok := t.HostToPeer[hostId]; ok {
+				state = id + "Gossip"
+			}
+			add(state)
+		}
+
+		for hostId := range t.missingPeers {
+			state = "Gossip" + hostId
+			if id, ok := t.HostToPeer[hostId]; ok {
+				state = id + "Gossip"
+			}
+			add(state)
+		}
+
+		for hostId := range t.info {
+			state = "Info" + hostId
+			if id, ok := t.HostToPeer[hostId]; ok {
+				state = id + "Info"
+			}
+			add(state)
+			add("Peer")
+		}
+	}, nil)
+
 }
