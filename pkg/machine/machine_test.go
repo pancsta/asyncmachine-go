@@ -874,8 +874,12 @@ func TestPartialAutoStatesByEnter(t *testing.T) {
 	// init
 	m := NewCustomStates(t, Schema{
 		"A": {Auto: true},
-		"B": {Auto: true},
+		"B": {
+			Auto: true,
+			Add:  S{"D"},
+		},
 		"C": {},
+		"D": {},
 	})
 
 	// BEnter cancels
