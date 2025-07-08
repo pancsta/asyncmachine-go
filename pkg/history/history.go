@@ -51,9 +51,10 @@ func (h *History) TransitionEnd(tx *am.Transition) {
 	// remember this mutation, remove Args
 	hEntries = append(hEntries, Entry{
 		CalledStates: mut.Called,
-		MTimeDiff:    tx.TimeAfter.DiffSince(tx.TimeBefore),
-		Type:         tx.Mutation.Type,
-		Auto:         tx.Mutation.Auto,
+		// TODO add to Transition?
+		MTimeDiff: tx.TimeAfter.DiffSince(tx.TimeBefore),
+		Type:      tx.Mutation.Type,
+		Auto:      tx.Mutation.Auto,
 	})
 	h.mx.Lock()
 	h.Entries.Store(&hEntries)

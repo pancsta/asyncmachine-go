@@ -82,6 +82,8 @@ func (h *DisposedHandlers) RegisterDisposalState(e *am.Event) {
 	h.DisposedHandlers = append(h.DisposedHandlers, fn)
 }
 
+// DisposingState triggers a disposal procedure, but does NOT dispose the
+// machine.
 func (h *DisposedHandlers) DisposingState(e *am.Event) {
 	mach := e.Machine()
 	ctx := mach.NewStateCtx(ssD.Disposing)

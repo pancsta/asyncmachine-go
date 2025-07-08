@@ -1613,6 +1613,7 @@ func (w *Worker) Tracers() []am.Tracer {
 // client, pubsub, etc).
 func (w *Worker) UpdateClock(now am.Time, lock bool) {
 	// TODO require mutType and called states for PushAllTicks and handlers
+	// TODO pass tx ID
 	// clockMx already locked by RPC client (but not pkg/pubsub)
 	// w.clockMx.Lock()
 

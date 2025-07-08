@@ -36,7 +36,7 @@ AM_DBG_ADDR=localhost:6831
 # defaults to ""
 AM_HEALTHCHECK=1
 
-# set the log level 0-4
+# set the log level 0-6
 # defaults to "0"
 AM_LOG=2
 

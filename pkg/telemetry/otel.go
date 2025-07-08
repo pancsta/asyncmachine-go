@@ -623,8 +623,11 @@ func BindOtelLogger(
 		} else {
 			switch level {
 
-			case am.LogChanges:
+			case am.LogExternal:
 				r.SetSeverity(olog.SeverityInfo4)
+				r.SetSeverityText(am.LogChanges.String())
+			case am.LogChanges:
+				r.SetSeverity(olog.SeverityInfo3)
 				r.SetSeverityText(am.LogChanges.String())
 			case am.LogOps:
 				r.SetSeverity(olog.SeverityInfo1)

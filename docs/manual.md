@@ -554,7 +554,7 @@ through a handler naming convention. Use [`LogEverything`](#logging) to see a fu
 **State handler** is a struct method with a predefined suffix or prefix, which receives an [Event struct](#event-struct).
 There are [negotiation handlers](#negotiation-handlers) (returning a `bool`) and [final handlers](#final-handlers) (with
 no return). Order of the handlers depends on currently [active states](#active-states) and relations of
-[active](#active-states) and [target states](#calculating-target-states). Handlers executed each in a separate
+[active](#active-states) and [target states](#calculating-target-states). Handlers are executed in a dedicated
 goroutine, with a timeout of [`Machine.HandlerTimeout`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine).
 
 **Example** - handlers for the state Foo

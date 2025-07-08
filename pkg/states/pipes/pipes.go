@@ -18,6 +18,20 @@ import (
 func Add(
 	source, target *am.Machine, sourceState string, targetState string,
 ) am.HandlerFinal {
+	// TODO support am.Api
+	return add(false, source, target, sourceState, targetState)
+}
+
+func AddFlat(
+	source, target *am.Machine, sourceState string, targetState string,
+) am.HandlerFinal {
+	// TODO support am.Api
+	return add(true, source, target, sourceState, targetState)
+}
+
+func add(
+	flat bool, source, target *am.Machine, sourceState string, targetState string,
+) am.HandlerFinal {
 	if sourceState == "" {
 		panic(am.ErrStateMissing)
 	}
@@ -32,13 +46,20 @@ func Add(
 	// TODO optimize
 	source.HandleDispose(gcHandler(target))
 	target.HandleDispose(gcHandler(source))
+	names := am.S{targetState}
+	// include Exception when adding errors
+	if strings.HasPrefix(targetState, am.PrefixErr) {
+		names = am.S{am.Exception, targetState}
+	}
 
 	return func(e *am.Event) {
-		// include Exception when adding errors
-		if strings.HasPrefix(targetState, am.PrefixErr) {
-			target.EvAdd(e, am.S{am.Exception, targetState}, e.Args)
+		// flat skips unnecessary mutations
+		if flat && target.Is(names) {
+			return
+		} else if flat {
+			target.Add(names, nil)
 		} else {
-			target.EvAdd1(e, targetState, e.Args)
+			target.EvAdd(e, names, e.Args)
 		}
 	}
 }
@@ -49,6 +70,20 @@ func Add(
 // targetState: defaults to sourceState
 func Remove(
 	source, target *am.Machine, sourceState string, targetState string,
+) am.HandlerFinal {
+	// TODO support am.Api
+	return remove(false, source, target, sourceState, targetState)
+}
+
+func RemoveFlat(
+	source, target *am.Machine, sourceState string, targetState string,
+) am.HandlerFinal {
+	// TODO support am.Api
+	return remove(true, source, target, sourceState, targetState)
+}
+
+func remove(
+	flat bool, source, target *am.Machine, sourceState string, targetState string,
 ) am.HandlerFinal {
 	if sourceState == "" {
 		panic(am.ErrStateMissing)
@@ -66,7 +101,14 @@ func Remove(
 	target.HandleDispose(gcHandler(source))
 
 	return func(e *am.Event) {
-		target.EvRemove1(e, targetState, e.Args)
+		// flat skips unnecessary mutations
+		if flat && target.Not1(targetState) {
+			return
+		} else if flat {
+			target.Remove1(targetState, nil)
+		} else {
+			target.EvRemove1(e, targetState, e.Args)
+		}
 	}
 }
 
