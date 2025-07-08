@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 	"golang.org/x/exp/maps"
@@ -137,8 +138,8 @@ func (d *Debugger) ReadyState(e *am.Event) {
 		d.Mach.EvAdd1(e, ss.NarrowLayout, nil)
 	}
 	d.syncOptsTimelines()
-	if d.Opts.Diagrams > 0 {
-		d.Mach.EvAdd1(e, ss.GraphsScheduled, nil)
+	if d.Opts.OutputDiagrams > 0 {
+		d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
 	}
 	if d.Opts.ViewRain {
 		d.Mach.EvAdd1(e, ss.MatrixRain, nil)
@@ -533,8 +534,9 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 	// create a new client
 	if c == nil {
 		c = &Client{
-			id:     msg.ID,
-			connId: connId,
+			id:         msg.ID,
+			connId:     connId,
+			schemaHash: amhelp.SchemaHash(msg.States),
 			Exportable: Exportable{
 				MsgStruct: msg,
 			},
@@ -855,8 +857,8 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 				return // expired
 			}
 		} else {
-			// setCursor triggers GraphsScheduled
-			d.Mach.EvAdd1(e, ss.GraphsScheduled, nil)
+			// setCursor triggers DiagramsScheduled
+			d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
 		}
 		d.updateTimelines()
 		d.updateTxBars()
@@ -1130,11 +1132,11 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		d.Mach.Toggle1(ss.FilterTraces, nil)
 
 	case toolLog:
-		d.Opts.Filters.LogLevel = (d.Opts.Filters.LogLevel + 1) % 5
+		d.Opts.Filters.LogLevel = (d.Opts.Filters.LogLevel + 1) % 7
 
 	case toolDiagrams:
-		d.Opts.Diagrams = (d.Opts.Diagrams + 1) % 4
-		d.Mach.Add1(ss.GraphsScheduled, nil)
+		d.Opts.OutputDiagrams = (d.Opts.OutputDiagrams + 1) % 4
+		d.Mach.Add1(ss.DiagramsScheduled, nil)
 
 	case toolTimelines:
 		d.Opts.Timelines = (d.Opts.Timelines + 1) % 3
@@ -1358,7 +1360,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 					if log == nil {
 						continue
 					}
-					if log.Level == am.LogChanges {
+					if log.Level <= am.LogChanges {
 						repl = append(repl, log)
 					}
 				}
@@ -1463,78 +1465,85 @@ func (d *Debugger) LogReaderVisibleEnd(e *am.Event) {
 // gen graph, state-based throttling
 
 func (d *Debugger) SetCursorState(e *am.Event) {
-	d.Mach.EvAdd1(e, ss.GraphsScheduled, nil)
+	d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
 }
 
-func (d *Debugger) GraphsScheduledEnter(e *am.Event) bool {
-	return d.C != nil && d.Opts.Diagrams > 0
+func (d *Debugger) DiagramsScheduledEnter(e *am.Event) bool {
+	// TODO refuse on too many ErrDiagrams, remove ErrDiagrams in ErrDiagramsState
+	return d.C != nil && d.Opts.OutputDiagrams > 0
 }
 
-func (d *Debugger) GraphsScheduledState(e *am.Event) {
+func (d *Debugger) DiagramsScheduledState(e *am.Event) {
 	// TODO cancel rendering on:
 	//  - client change
 	//  - details change
 	//  - but not on tx change (wait until completed)
-	d.Mach.EvAdd1(e, ss.GraphsRendering, nil)
+	d.Mach.EvAdd1(e, ss.DiagramsRendering, nil)
 }
 
-func (d *Debugger) GraphsRenderingEnter(e *am.Event) bool {
-	// only if freq time passed
-	return d.Opts.Diagrams > 0 && d.C != nil
+func (d *Debugger) DiagramsRenderingEnter(e *am.Event) bool {
+	return d.Opts.OutputDiagrams > 0 && d.C != nil
 }
 
-func (d *Debugger) GraphsRenderingState(e *am.Event) {
-	ctx := d.Mach.NewStateCtx(ss.GraphsRendering)
+func (d *Debugger) DiagramsRenderingState(e *am.Event) {
+	lvl := d.Opts.OutputDiagrams
+	dir := path.Join(d.Opts.OutputDir, "diagrams")
+	id := d.C.id
+	tx := d.currentTx()
+	svgName := fmt.Sprintf("%s-%d-%s", id, lvl, d.C.schemaHash)
+	svgPath := filepath.Join(dir, svgName+".svg")
+
+	// output dir
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		d.Mach.EvAddErrState(e, ss.ErrDiagrams,
+			fmt.Errorf("create output dir: %w", err), nil)
+	}
+
+	// cached?
+
+	// mem cache
+	if d.cache.diagramId == id && d.cache.diagramLvl == lvl {
+		cache := d.cache.diagramDom
+		go d.diagramsMemCache(e, id, cache, tx, dir, svgName)
+		return
+
+		// file cache
+	} else if _, err := os.Stat(svgPath); err == nil {
+		go d.diagramsFileCache(e, id, tx, d.cache.diagramLvl, dir, svgName)
+		return
+	}
+
+	// no cache - render
+
+	// clone the current graph TODO optimize
 	shot, err := d.graph.Clone()
 	if err != nil {
-		// TODO ErrGraph
-		d.Mach.EvAddErr(e, err, nil)
-		d.Mach.EvRemove(e, S{ss.GraphsRendering, ss.GraphsScheduled}, nil)
-
+		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
 		return
 	}
 
 	// unblock
-	go func() {
-		if ctx.Err() != nil {
-			return // expired
-		}
-		// mark rendering as in-progress
-		d.Mach.EvRemove1(e, ss.GraphsScheduled, nil)
+	go d.diagramsRender(e, shot, id, lvl, len(d.Clients), dir, svgName)
+}
 
-		// create the visualizer, default
-		vizs := d.initGraphGen(shot)
-		pool := amhelp.Pool(2)
+func (d *Debugger) DiagramsReadyState(e *am.Event) {
+	defer d.Mach.EvRemove1(e, ss.DiagramsReady, nil)
 
-		for _, vis := range vizs {
-			pool.Go(vis.GenDiagrams)
-		}
+	// update cache
+	// TODO typed args
+	cache, ok := e.Args["Diagram.cache"].(*goquery.Document)
+	if ok {
+		d.cache.diagramDom = cache
+		d.cache.diagramLvl = e.Args["Diagram.lvl"].(int)
+		d.cache.diagramId = e.Args["Diagram.id"].(string)
+	}
 
-		err := pool.Wait()
-		if err != nil {
-			// TODO ErrGraph
-			d.Mach.EvAddErr(e, err, nil)
-			d.Mach.EvRemove(e, S{ss.GraphsRendering, ss.GraphsScheduled}, nil)
-
-			return
-		}
-
-		// symlink am-dbg.svg -> id.svg
-		symlink := path.Join(d.Opts.OutputDir, "am-vis.svg")
-		_ = os.Remove(symlink)
-		err = os.Symlink(d.C.id+".svg", symlink)
-		if err != nil {
-			d.Mach.EvAddErr(e, fmt.Errorf("symlink create: %w", err), nil)
-		}
-
-		// render a fresher one
-		d.genGraphsLast = time.Now()
-		d.Mach.EvRemove1(e, ss.GraphsRendering, nil)
-		if d.Mach.Is1(ss.GraphsScheduled) {
-			d.Mach.EvRemove1(e, ss.GraphsScheduled, nil)
-			d.Mach.EvAdd1(e, ss.GraphsRendering, nil)
-		}
-	}()
+	// render a fresher one, if scheduled
+	d.genGraphsLast = time.Now()
+	if d.Mach.Is1(ss.DiagramsScheduled) {
+		d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
+		d.Mach.EvAdd1(e, ss.DiagramsRendering, nil)
+	}
 }
 
 func (d *Debugger) ClientListVisibleState(e *am.Event) {
@@ -1572,49 +1581,53 @@ func (d *Debugger) TimelineStepsHiddenState(e *am.Event) {
 func (d *Debugger) UpdateFocusState(e *am.Event) {
 	d.initFocusable()
 
-	// change focus (or not) when changing view types
-	switch d.Mach.Switch(ss.GroupFocused) {
-	case ss.ClientListFocused:
-		d.focusManager.Focus(d.clientList)
-	case ss.TreeFocused:
-		if d.Mach.Any1(ss.TreeMatrixView, ss.TreeLogView) {
-			d.focusManager.Focus(d.tree)
-		} else {
+	// unblock bc of locks
+	go func() {
+
+		// change focus (or not) when changing view types
+		switch d.Mach.Switch(ss.GroupFocused) {
+		case ss.ClientListFocused:
+			d.focusManager.Focus(d.clientList)
+		case ss.TreeFocused:
+			if d.Mach.Any1(ss.TreeMatrixView, ss.TreeLogView) {
+				d.focusManager.Focus(d.tree)
+			} else {
+				d.focusManager.Focus(d.clientList)
+			}
+		case ss.LogFocused:
+			if d.Mach.Is1(ss.TreeLogView) {
+				d.focusManager.Focus(d.log)
+			} else {
+				d.focusManager.Focus(d.clientList)
+			}
+		case ss.LogReaderFocused:
+			if d.Mach.Is(am.S{ss.TreeLogView, ss.LogReaderVisible}) {
+				d.focusManager.Focus(d.logReader)
+			} else if d.Mach.Is1(ss.TreeLogView) && d.Mach.Not1(ss.LogReaderVisible) {
+				d.focusManager.Focus(d.log)
+			} else {
+				d.focusManager.Focus(d.clientList)
+			}
+		case ss.MatrixFocused:
+			if d.Mach.Any1(ss.TreeMatrixView, ss.MatrixView) {
+				d.focusManager.Focus(d.matrix)
+			} else {
+				d.focusManager.Focus(d.clientList)
+			}
+		case ss.TimelineTxsFocused:
+			d.focusManager.Focus(d.timelineTxs)
+		case ss.TimelineStepsFocused:
+			d.focusManager.Focus(d.timelineSteps)
+		case ss.Toolbar1Focused:
+			d.focusManager.Focus(d.toolbars[0])
+		case ss.Toolbar2Focused:
+			d.focusManager.Focus(d.toolbars[1])
+		case ss.AddressFocused:
+			d.focusManager.Focus(d.addressBar)
+		default:
 			d.focusManager.Focus(d.clientList)
 		}
-	case ss.LogFocused:
-		if d.Mach.Is1(ss.TreeLogView) {
-			d.focusManager.Focus(d.log)
-		} else {
-			d.focusManager.Focus(d.clientList)
-		}
-	case ss.LogReaderFocused:
-		if d.Mach.Is(am.S{ss.TreeLogView, ss.LogReaderVisible}) {
-			d.focusManager.Focus(d.logReader)
-		} else if d.Mach.Is1(ss.TreeLogView) && d.Mach.Not1(ss.LogReaderVisible) {
-			d.focusManager.Focus(d.log)
-		} else {
-			d.focusManager.Focus(d.clientList)
-		}
-	case ss.MatrixFocused:
-		if d.Mach.Any1(ss.TreeMatrixView, ss.MatrixView) {
-			d.focusManager.Focus(d.matrix)
-		} else {
-			d.focusManager.Focus(d.clientList)
-		}
-	case ss.TimelineTxsFocused:
-		d.focusManager.Focus(d.timelineTxs)
-	case ss.TimelineStepsFocused:
-		d.focusManager.Focus(d.timelineSteps)
-	case ss.Toolbar1Focused:
-		d.focusManager.Focus(d.toolbars[0])
-	case ss.Toolbar2Focused:
-		d.focusManager.Focus(d.toolbars[1])
-	case ss.AddressFocused:
-		d.focusManager.Focus(d.addressBar)
-	default:
-		d.focusManager.Focus(d.clientList)
-	}
+	}()
 }
 
 func (d *Debugger) AfterFocusEnter(e *am.Event) bool {

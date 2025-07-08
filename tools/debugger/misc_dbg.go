@@ -20,7 +20,7 @@ import (
 const (
 	// TODO light mode
 	colorActive     = tcell.ColorOlive
-	colorActive2    = tcell.ColorOliveDrab
+	colorActive2    = tcell.ColorGreenYellow
 	colorInactive   = tcell.ColorLimeGreen
 	colorHighlight  = tcell.ColorDarkSlateGray
 	colorHighlight2 = tcell.ColorDimGray
@@ -52,11 +52,12 @@ const (
 	toolFilterAutoTx      ToolName = "skip-auto"
 	toolFilterEmptyTx     ToolName = "skip-empty"
 	toolFilterHealthcheck ToolName = "skip-healthcheck"
-	ToolFilterSummaries   ToolName = "hide-summaries"
-	ToolFilterTraces      ToolName = "hide-traces"
-	toolLog               ToolName = "log"
-	toolDiagrams          ToolName = "diagrams"
-	toolTimelines         ToolName = "timelines"
+	// TODO rename to timestamps
+	ToolFilterSummaries ToolName = "hide-summaries"
+	ToolFilterTraces    ToolName = "hide-traces"
+	toolLog             ToolName = "log"
+	toolDiagrams        ToolName = "diagrams"
+	toolTimelines       ToolName = "timelines"
 	// toolLog0              ToolName = "log-0"
 	// toolLog1              ToolName = "log-1"
 	// toolLog2              ToolName = "log-2"
@@ -116,9 +117,9 @@ type Opts struct {
 	OutputClients bool
 	// Root dir for output files
 	OutputDir string
-	// Diagrams is the level of details of the current machine's graph 0-3
+	// OutputDiagrams is the details level of the current machine's diagram (0-3).
 	// 0 - off, 3 - most detailed
-	Diagrams int
+	OutputDiagrams int
 	// Screen overload for tests & ssh
 	Screen tcell.Screen
 	// Debugger's ID
@@ -202,11 +203,12 @@ type Client struct {
 	SelectedReaderEntry *logReaderEntryPtr
 	ReaderCollapsed     bool
 
-	txCache   map[string]int
-	txCacheMx sync.Mutex
-	id        string
-	connId    string
-	connected atomic.Bool
+	txCache    map[string]int
+	txCacheMx  sync.Mutex
+	id         string
+	connId     string
+	schemaHash string
+	connected  atomic.Bool
 	// processed
 	msgTxsParsed []*MsgTxParsed
 	// processed list of filtered tx indexes

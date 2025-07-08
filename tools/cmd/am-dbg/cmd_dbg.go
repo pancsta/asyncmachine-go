@@ -44,12 +44,12 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 
 	// init the debugger
 	dbg, err := debugger.New(ctx, debugger.Opts{
-		DbgLogLevel:   p.LogLevel,
-		DbgLogger:     logger,
-		ImportData:    p.ImportData,
-		OutputClients: p.OutputClients,
-		Diagrams:      p.Graph,
-		Timelines:     p.Timelines,
+		DbgLogLevel:    p.LogLevel,
+		DbgLogger:      logger,
+		ImportData:     p.ImportData,
+		OutputClients:  p.OutputClients,
+		OutputDiagrams: p.Graph,
+		Timelines:      p.Timelines,
 		// ...:           p.FilterLogLevel,
 		OutputDir:       p.OutputDir,
 		ServerAddr:      p.ListenAddr,

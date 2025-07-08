@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/dominikbraun/graph"
 
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
@@ -75,6 +76,7 @@ type Visualizer struct {
 
 	// config TODO extract
 	// TODO add RenderLimit (hard limit on rendered machines, eg regexp +limit1)
+	// TODO dimmed active color for multi states
 
 	// Render only these machines as starting points.
 	RenderMachs []string
@@ -690,4 +692,80 @@ func genId(lastId string) string {
 			return string(characters[0]) + string(runes)
 		}
 	}
+}
+
+type Selection struct {
+	MachId string
+	States am.S
+	Active am.S
+}
+
+func UpdateCache(
+	ctx context.Context, filepath string, dom *goquery.Document,
+	selections ...*Selection) error {
+
+	for _, sel := range selections {
+		for _, state := range sel.States {
+			if ctx.Err() != nil {
+				return nil
+			}
+
+			isActive := slices.Contains(sel.Active, state)
+			isStart := state == ssam.BasicStates.Start
+			isReady := state == ssam.BasicStates.Ready
+			isErr := state == am.Exception || strings.HasPrefix(state, am.PrefixErr)
+
+			fillOuter := "#CDD6F4"
+			classOuter := "text-bold fill-N1"
+
+			strokeInner := "white"
+			fillInner := "#45475A"
+			classInner := "fill-B5"
+
+			if isActive {
+				fillOuter = "black"
+				classOuter = "text-bold"
+
+				strokeInner = "#5F5C5C"
+				fillInner = "yellow"
+				classInner = "stroke-B1"
+
+				if isReady {
+					fillInner = "deepskyblue"
+				} else if isStart {
+					fillInner = "#329241"
+				} else if isErr {
+					fillInner = "red"
+				}
+			}
+
+			// update
+
+			root := dom.Find("g > text:contains(" + state + ")").
+				// exact text match
+				FilterFunction(func(i int, s *goquery.Selection) bool {
+					return s.Text() == state
+				})
+
+			root.
+				// outer
+				SetAttr("fill", fillOuter).
+				SetAttr("class", classOuter).
+				// inner
+				Prev().Children().SetAttr("stroke", strokeInner).
+				SetAttr("class", classInner).
+				First().SetAttr("fill", fillInner)
+		}
+	}
+
+	// save the result
+	if ctx.Err() != nil {
+		return nil
+	}
+	html, err := goquery.OuterHtml(dom.Selection)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(filepath, []byte(html), 0644)
 }

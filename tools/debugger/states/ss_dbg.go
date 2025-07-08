@@ -8,6 +8,14 @@ import (
 // States map defines relations and properties of states.
 var States = am.Schema{
 
+	// Errors
+
+	ErrDiagrams: {
+		Multi:   true,
+		Require: S{Exception},
+		Remove:  S{DiagramsScheduled, DiagramsRendering},
+	},
+
 	// ///// Input events
 
 	ClientMsg:       {Multi: true},
@@ -194,13 +202,15 @@ var States = am.Schema{
 		Multi:   true,
 		Require: S{Ready},
 	},
-	GraphsScheduled: {
+	DiagramsScheduled: {
 		Multi:   true,
 		Require: S{Ready},
 	},
-	GraphsRendering: {
+	DiagramsRendering: {
 		Require: S{Ready},
+		Remove:  S{DiagramsReady},
 	},
+	DiagramsReady: {Remove: S{DiagramsRendering}},
 
 	InitClient: {Multi: true},
 }
@@ -324,12 +334,14 @@ const (
 	// ScrollToMutTx scrolls to a transition which mutated or called the
 	// passed state,
 	// If fwd is true, it scrolls forward, otherwise backwards.
-	ScrollToMutTx   = "ScrollToMutTx"
-	MatrixRain      = "MatrixRain"
-	SetCursor       = "SetCursor"
-	GraphsRendering = "GraphsRendering"
-	GraphsScheduled = "GraphsScheduled"
-	InitClient      = "InitClient"
+	ScrollToMutTx     = "ScrollToMutTx"
+	MatrixRain        = "MatrixRain"
+	SetCursor         = "SetCursor"
+	DiagramsScheduled = "DiagramsScheduled"
+	DiagramsRendering = "DiagramsRendering"
+	DiagramsReady     = "DiagramsReady"
+	ErrDiagrams       = "ErrDiagrams"
+	InitClient        = "InitClient"
 )
 
 // Names of all the states (pkg enum).
@@ -419,8 +431,10 @@ var Names = S{
 	RemoveClient,
 
 	SetCursor,
-	GraphsRendering,
-	GraphsScheduled,
+	DiagramsScheduled,
+	DiagramsRendering,
+	DiagramsReady,
+	ErrDiagrams,
 
 	InitClient,
 }

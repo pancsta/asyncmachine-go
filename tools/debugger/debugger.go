@@ -19,24 +19,31 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/andybalholm/brotli"
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 	"github.com/zyedidia/clipper"
 	"golang.org/x/text/message"
 
-	amvis "github.com/pancsta/asyncmachine-go/tools/visualizer"
-
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/pancsta/asyncmachine-go/pkg/graph"
+	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	amvis "github.com/pancsta/asyncmachine-go/tools/visualizer"
 )
 
 type S = am.S
+
+type cache struct {
+	diagramId  string
+	diagramLvl int
+	diagramDom *goquery.Document
+}
 
 type Debugger struct {
 	*am.ExceptionHandler
@@ -57,6 +64,7 @@ type Debugger struct {
 	History       []*MachAddress
 	HistoryCursor int
 
+	cache              cache
 	tree               *cview.TreeView
 	treeRoot           *cview.TreeNode
 	log                *cview.TextView
@@ -591,7 +599,7 @@ func (d *Debugger) Start(clientID string, txNum int, uiView string) {
 }
 
 func (d *Debugger) SetFilterLogLevel(lvl am.LogLevel) {
-	// TODO thread safe
+	// TODO state SetOptsState
 	d.Opts.Filters.LogLevel = lvl
 
 	// process the toolbarItem change
@@ -643,6 +651,7 @@ func (d *Debugger) ImportData(filename string) {
 		id := data.MsgStruct.ID
 		d.Clients[id] = &Client{
 			id:         id,
+			schemaHash: amhelp.SchemaHash((*data).MsgStruct.States),
 			Exportable: *data,
 			logReader:  make(map[string][]*logReaderEntry),
 		}
@@ -1733,18 +1742,22 @@ func (d *Debugger) GetParentTags(c *Client, tags []string) []string {
 	return d.GetParentTags(parent, tags)
 }
 
-func (d *Debugger) initGraphGen(shot *graph.Graph) []*amvis.Visualizer {
+func (d *Debugger) initGraphGen(
+	snapshot *graph.Graph, id string, details, clients int, outDir,
+	svgName string,
+) []*amvis.Visualizer {
+
 	var vizs []*amvis.Visualizer
 
 	// render single (current one)
-	vis := amvis.New(d.Mach, shot)
+	vis := amvis.New(d.Mach, snapshot)
 	amvis.PresetSingle(vis)
-	// TODO make opts threadsafe
-	switch d.Opts.Diagrams {
+	// TODO enum
+	switch details {
 	default:
 		return vizs
 
-		// single simple
+		// single (simple)
 	case 1:
 		vis.RenderNestSubmachines = false
 		vis.RenderStart = false
@@ -1755,7 +1768,7 @@ func (d *Debugger) initGraphGen(shot *graph.Graph) []*amvis.Visualizer {
 		vis.RenderHalfHierarchy = false
 		vis.RenderParentRel = false
 
-		// single detailed
+		// single (detailed)
 	case 2:
 		vis.RenderNestSubmachines = false
 		vis.RenderStart = true
@@ -1765,7 +1778,7 @@ func (d *Debugger) initGraphGen(shot *graph.Graph) []*amvis.Visualizer {
 		vis.RenderHalfConns = false
 		vis.RenderHalfHierarchy = false
 
-		// single external
+		// single (external)
 	case 3:
 		vis.RenderNestSubmachines = true
 		vis.RenderStart = true
@@ -1773,13 +1786,11 @@ func (d *Debugger) initGraphGen(shot *graph.Graph) []*amvis.Visualizer {
 		vis.RenderPipes = true
 	}
 
-	d.Mach.Log("rendering graphs lvl %d", d.Opts.Diagrams)
+	d.Mach.Log("rendering graphs lvl %d", details)
 
-	// vis
-	// mach-id.svg
-	machId := d.C.id
-	vis.RenderMachs = []string{machId}
-	vis.OutputFilename = path.Join(d.Opts.OutputDir, machId)
+	// machine diagram
+	vis.RenderMachs = []string{id}
+	vis.OutputFilename = path.Join(outDir, svgName)
 
 	vizs = append(vizs, vis)
 
@@ -1814,9 +1825,13 @@ func (d *Debugger) initGraphGen(shot *graph.Graph) []*amvis.Visualizer {
 	// TODO skip if there was no change in schemas
 	//  hash schemas and schema's hashes, then compare
 
-	vis = amvis.New(d.Mach, shot)
-	amvis.PresetMap(vis)
-	vis.OutputFilename = path.Join(d.Opts.OutputDir, "am-vis-map")
+	// map renderer, check cache
+	mapPath := fmt.Sprintf("am-vis-map-%d", clients)
+	if _, err := os.Stat(mapPath); err != nil {
+		vis = amvis.New(d.Mach, snapshot)
+		amvis.PresetMap(vis)
+		vis.OutputFilename = path.Join(outDir, mapPath)
+	}
 
 	return append(vizs, vis)
 }
@@ -1831,4 +1846,154 @@ func (d *Debugger) syncOptsTimelines() {
 	case 2:
 		d.Mach.Remove(S{ss.TimelineStepsHidden, ss.TimelineHidden}, nil)
 	}
+}
+
+func (d *Debugger) diagramsRender(
+	e *am.Event, shot *amgraph.Graph, id string, details, clients int,
+	outDir string, svgName string) {
+
+	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	// mark rendering as in-progress
+	d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
+
+	// create the visualizer
+	vizs := d.initGraphGen(shot, id, details, clients, outDir, svgName)
+	// TODO config
+	pool := amhelp.Pool(2)
+
+	for _, vis := range vizs {
+		pool.Go(vis.GenDiagrams)
+	}
+
+	err := pool.Wait()
+	if err != nil {
+		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+		return
+	}
+
+	// link
+	d.diagramLink(outDir, svgName)
+	if ctx.Err() != nil {
+		return // expired
+	}
+
+	// symlink am-vis-map.svg -> am-vis-map-CLIENTS.svg
+	source := path.Join(outDir, "am-vis-map.svg")
+	target := fmt.Sprintf("am-vis-map-%d.svg", clients)
+	_ = os.Remove(source)
+	err = os.Symlink(target, source)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	d.Mach.EvAddErr(e, err, nil)
+
+	// next
+	d.Mach.EvAdd1(e, ss.DiagramsReady, nil)
+}
+
+func (d *Debugger) diagramLink(outDir string, svgName string) {
+	// symlink am-vis.svg -> ID-LVL-HASH.svg
+	source := path.Join(outDir, "am-vis.svg")
+	target := fmt.Sprintf("%s.svg", svgName)
+	_ = os.Remove(source)
+	err := os.Symlink(target, source)
+	d.Mach.AddErr(err, nil)
+}
+
+func (d *Debugger) diagramsMemCache(
+	e *am.Event, id string, cache *goquery.Document, tx *telemetry.DbgMsgTx,
+	outDir, svgName string,
+) {
+
+	svgPath := path.Join(outDir, svgName+".svg")
+	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	// mark rendering as in-progress
+	d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
+
+	// update cache DOM
+	states := d.C.MsgStruct.StatesIndex
+	sel := amvis.Selection{
+		MachId: id,
+		States: states,
+		Active: tx.ActiveStates(states),
+	}
+	err := amvis.UpdateCache(ctx, svgPath, cache, &sel)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	if err != nil {
+		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+		return
+	}
+
+	// link
+	d.diagramLink(outDir, svgName)
+	if ctx.Err() != nil {
+		return // expired
+	}
+
+	// next
+	d.Mach.EvAdd1(e, ss.DiagramsReady, nil)
+}
+
+func (d *Debugger) diagramsFileCache(
+	e *am.Event, id string, tx *telemetry.DbgMsgTx, lvl int, outDir,
+	svgName string,
+) {
+
+	svgPath := path.Join(outDir, svgName+".svg")
+	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	// mark rendering as in-progress
+	d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
+
+	// read cache from a file
+	file, err := os.Open(svgPath)
+	if err != nil {
+		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+		return
+	}
+	cache, err := goquery.NewDocumentFromReader(file)
+	if err != nil {
+		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+		return
+	}
+
+	// update cache DOM
+	states := d.C.MsgStruct.StatesIndex
+	sel := amvis.Selection{
+		MachId: id,
+		States: states,
+		Active: tx.ActiveStates(states),
+	}
+	err = amvis.UpdateCache(ctx, svgPath, cache, &sel)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	if err != nil {
+		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+		return
+	}
+
+	// link
+	d.diagramLink(outDir, svgName)
+	if ctx.Err() != nil {
+		return // expired
+	}
+
+	// next
+	d.Mach.EvAdd1(e, ss.DiagramsReady, am.A{
+		// TODO typed args
+		"Diagram.cache": cache,
+		"Diagram.id":    id,
+		"Diagram.lvl":   lvl,
+	})
 }
