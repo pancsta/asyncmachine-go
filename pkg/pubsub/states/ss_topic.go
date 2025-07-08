@@ -57,6 +57,7 @@ type TopicStatesDef struct {
 	// via chan, as [rpc.Worker].
 	ListMachines string
 	SendMsg      string
+	ProcessMsgs  string
 	SendInfo     string
 
 	// inherit from BasicStatesDef
@@ -168,6 +169,10 @@ var TopicSchema = SchemaMerge(
 			Require: S{ssT.Joined},
 		},
 		ssT.SendMsg: {
+			Multi:   true,
+			Require: S{ssT.Joined},
+		},
+		ssT.ProcessMsgs: {
 			Multi:   true,
 			Require: S{ssT.Joined},
 		},
