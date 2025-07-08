@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"sync/atomic"
 	"time"
 )
 
@@ -349,7 +350,9 @@ type Mutation struct {
 	// specific context for this mutation (optional)
 	ctx context.Context
 	// optional eval func, only for mutationEval
-	eval func()
+	eval        func()
+	evalSource  string
+	cacheCalled atomic.Pointer[S]
 }
 
 func (m Mutation) String() string {
@@ -541,6 +544,7 @@ func newStep(from string, to string, stepType StepType,
 func newSteps(from string, toStates S, stepType StepType,
 	relType Relation,
 ) []*Step {
+	// TODO optimize, only use during debug
 	var ret []*Step
 	for _, to := range toStates {
 		ret = append(ret, newStep(from, to, stepType, relType))

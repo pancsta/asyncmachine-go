@@ -816,6 +816,11 @@ func TestAutoStates(t *testing.T) {
 	assert.Contains(t, log, "[auto] B", "log should mention the auto state")
 }
 
+func TestAutoStatesHeartbeat(t *testing.T) {
+	// TODO assert no auto tx for Heartbeat, Healtcheck
+	t.Skip("TODO")
+}
+
 func TestPartialAutoStates(t *testing.T) {
 	t.Parallel()
 
@@ -950,6 +955,11 @@ func (h *TestHandlerStateInfoHandlers) DEnter(e *Event) {
 }
 
 func TestHandlerStateInfo(t *testing.T) {
+	if os.Getenv("AM_TEST_RUNNER") != "" {
+		t.Skip("debug only")
+		return
+	}
+
 	t.Parallel()
 	// init
 	m := NewNoRels(t, S{"A"})
@@ -1726,8 +1736,7 @@ func (h *TestStateCtxHandlers) AState(e *Event) {
 		close(h.callbackCh)
 	}()
 
-	index := mach.StateNames()
-	assert.Equal(t, "A", e.step.GetToState(index))
+	assert.Equal(t, "A", e.Transition().latestStepToState)
 }
 
 func TestStateCtx(t *testing.T) {
@@ -2959,7 +2968,7 @@ func TestDisposedNoOp(t *testing.T) {
 
 	res, _ := m.processHandlers(e)
 	assert.Equal(t, Canceled, res)
-	res, _ = m.handle("test", A{}, &Step{}, false)
+	res, _ = m.handle("test", A{}, false, false, false)
 	assert.Equal(t, Canceled, res)
 
 	// others
@@ -2991,7 +3000,7 @@ func TestDisposedNoOp(t *testing.T) {
 	m.PanicToErr(A{})
 	m.PanicToErrState("A", A{})
 	m.queueMutation(MutationAdd, s, A{}, nil)
-	m.processStateCtxBindings()
+	m.processStateCtxBindings(tx)
 	m.processWhenBindings(tx)
 	m.processWhenTimeBindings(tx)
 	m.processWhenQueueBindings()

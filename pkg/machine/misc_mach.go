@@ -484,7 +484,8 @@ type Event struct {
 	// the current Transition and Mutation.
 	machine *Machine
 	// internal events always have a nil step
-	step *Step
+	step     *Step
+	internal bool
 }
 
 // Mutation returns the Mutation of an Event.
@@ -518,17 +519,6 @@ func (e *Event) IsValid() bool {
 
 	return e.TransitionId == tx.ID && !tx.IsCompleted.Load() &&
 		tx.IsAccepted.Load()
-}
-
-// AcceptTimeout is like IsValid, but requires the handler to stop executing
-// after receiving [true].
-func (e *Event) AcceptTimeout() bool {
-	panic("Not implemented")
-
-	// TODO notify the handler loop
-	// if !e.isClosed {
-	// 	close(e.done)
-	// }
 }
 
 // Clone clones only the essential data of the Event. Useful for tracing vs GC.
@@ -627,7 +617,9 @@ func (e *handler) dispose() {
 
 const (
 	// Exception is the name of the Exception state.
-	Exception = "Exception"
+	Exception   = "Exception"
+	Heartbeat   = "Heartbeat"
+	Healthcheck = "Healthcheck"
 )
 
 // ExceptionArgsPanic is an optional argument ["panic"] for the Exception state
@@ -641,7 +633,9 @@ type ExceptionArgsPanic struct {
 }
 
 // ExceptionHandler provide a basic Exception state support, as should be
-// embedded into handler structs in most of the cases.
+// embedded into handler structs in most of the cases. Because ExceptionState
+// will be called after [Machine.HandlerDeadline], it should handle locks
+// on its own (to not race with itself).
 type ExceptionHandler struct{}
 
 type recoveryData struct {

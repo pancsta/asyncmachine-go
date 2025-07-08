@@ -35,10 +35,11 @@ type RelationsResolver interface {
 // RelationsResolver with Add, Remove, Require and After. It can be overridden
 // using Opts.Resolver.
 type DefaultRelationsResolver struct {
-	Machine    *Machine
-	Transition *Transition
-	Index      S
-	topology   S
+	Machine      *Machine
+	Transition   *Transition
+	Index        S
+	topology     S
+	statesBefore S
 }
 
 var _ RelationsResolver = &DefaultRelationsResolver{}
@@ -69,13 +70,14 @@ func (rr *DefaultRelationsResolver) NewSchema(schema Schema, states S) {
 	}
 }
 
-// GetTargetStates implements RelationsResolver.GetTargetStates.
+// TargetStates implements RelationsResolver.TargetStates.
 func (rr *DefaultRelationsResolver) TargetStates(
 	t *Transition, statesToSet, index S,
 ) S {
 	rr.Transition = t
 	rr.Machine = t.Machine
 	rr.Index = index
+	rr.statesBefore = t.StatesBefore()
 
 	m := t.Machine
 	statesToSet = m.MustParseStates(statesToSet)
@@ -84,10 +86,11 @@ func (rr *DefaultRelationsResolver) TargetStates(
 	statesToSet = rr.parseRequire(statesToSet)
 
 	// start from the end
+	// TODO optimize?
 	resolvedS := slicesReverse(statesToSet)
 
 	// collect blocked calledStates
-	alreadyBlocked := S{}
+	alreadyBlocked := map[string]struct{}{}
 
 	// remove already blocked calledStates
 	resolvedS = slicesFilter(resolvedS, func(name string, _ int) bool {
@@ -95,13 +98,14 @@ func (rr *DefaultRelationsResolver) TargetStates(
 
 		// ignore blocking by already blocked states
 		blockedBy = slicesFilter(blockedBy, func(blockerName string, _ int) bool {
-			return !slices.Contains(alreadyBlocked, blockerName)
+			_, ok := alreadyBlocked[blockerName]
+			return !ok
 		})
 		if len(blockedBy) == 0 {
 			return true
 		}
 
-		alreadyBlocked = append(alreadyBlocked, name)
+		alreadyBlocked[name] = struct{}{}
 		// if state wasn't implied by another state (was one of the active
 		// states) then make it a higher priority log msg
 		var lvl LogLevel
@@ -149,7 +153,7 @@ func (rr *DefaultRelationsResolver) TargetStates(
 func (rr *DefaultRelationsResolver) NewAutoMutation() (*Mutation, S) {
 	t := rr.Transition
 	m := t.Machine
-	var toAdd []string
+	var toAdd S
 
 	// check all Auto states
 	for s := range m.schema {
@@ -175,11 +179,14 @@ func (rr *DefaultRelationsResolver) NewAutoMutation() (*Mutation, S) {
 		return nil, nil
 	}
 
-	return &Mutation{
+	mut := Mutation{
 		Type:   MutationAdd,
 		Called: m.Index(toAdd),
 		Auto:   true,
-	}, toAdd
+	}
+	mut.cacheCalled.Store(&toAdd)
+
+	return &mut, toAdd
 }
 
 // SortStates implements RelationsResolver.SortStates.
@@ -190,6 +197,7 @@ func (rr *DefaultRelationsResolver) SortStates(states S) {
 	rr.sortRequire(states)
 
 	// sort by After
+	// TODO optimize / cache (but not in debug, to have steps)
 	sort.SliceStable(states, func(i, j int) bool {
 		name1 := states[i]
 		name2 := states[j]
@@ -216,7 +224,7 @@ func (rr *DefaultRelationsResolver) SortStates(states S) {
 
 // sortRequire sorts the states by Require relations.
 func (rr *DefaultRelationsResolver) sortRequire(states S) {
-	// TODO optimize with an index
+	// TODO optimize with an index / cache
 	sort.SliceStable(states, func(i, j int) bool {
 		return slices.Index(rr.topology, states[i]) <
 			slices.Index(rr.topology, states[j])
@@ -225,6 +233,7 @@ func (rr *DefaultRelationsResolver) sortRequire(states S) {
 
 // TODO docs
 func (rr *DefaultRelationsResolver) parseAdd(states S) S {
+	// TODO optimize: loose Contains?
 	t := rr.Transition
 	ret := states
 	visited := S{}
@@ -234,7 +243,7 @@ func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 		for _, name := range states {
 			state := rr.Machine.schema[name]
 
-			if slices.Contains(t.StatesBefore(), name) && !state.Multi {
+			if slices.Contains(rr.statesBefore, name) && !state.Multi {
 				continue
 			}
 			if slices.Contains(visited, name) {
@@ -334,6 +343,7 @@ func (rr *DefaultRelationsResolver) getMissingRequires(
 	name string, state State, states S,
 ) S {
 	t := rr.Transition
+	m := t.Machine
 	ret := S{}
 
 	for _, req := range state.Require {
