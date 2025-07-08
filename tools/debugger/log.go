@@ -213,7 +213,7 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 
 	if d.Mach.Not1(ss.FilterSummaries) {
 		msgTime := tx.Time
-		prevMsg := c.MsgTxs[index]
+		prevMsg := c.MsgTxs[index-1]
 		prevMsgTime := prevMsg.Time
 		if prevMsgTime.Second() != msgTime.Second() {
 			// grouping labels (per second)
