@@ -2147,7 +2147,7 @@ func (m *Machine) Ctx() context.Context {
 	return m.ctx
 }
 
-// Log logs an [extern] message unless LogNoUser is set.
+// Log logs an [extern] message unless LogNothing is set.
 // Optionally redirects to a custom logger from SetLogger.
 func (m *Machine) Log(msg string, args ...any) {
 	if m.disposed.Load() {

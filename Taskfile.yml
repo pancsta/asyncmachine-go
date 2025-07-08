@@ -252,6 +252,13 @@ tasks:
       - go test -tags test_worker
           ./tools/debugger/test/remote {{.CLI_ARGS}}
 
+  test-pubsub-trace:
+    desc: Run the pubsub load test with tracing
+    cmds:
+      - task: clean-test
+      - go test -trace=trace.out ./pkg/pubsub/ -test.run '^\QTestExposingMany\E$' -v
+      - go tool trace trace.out
+
   precommit:
     cmds:
       - go mod tidy
@@ -272,12 +279,15 @@ tasks:
       - task: clean-lint
 
   cloc-go:
-    cmd: gocloc --output-type json . |
+    cmd: gocloc --output-type json
+      --not-match-d=examples
+      . |
       jq '.languages[] | select(.name == "Go").code' |
       go run ./scripts/compact_number
 
   cloc-go-pkg:
-    cmd: gocloc --output-type json pkg |
+    cmd: gocloc --output-type json
+      pkg |
       jq '.languages[] | select(.name == "Go").code' |
       go run ./scripts/compact_number
 

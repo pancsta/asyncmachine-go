@@ -1,3 +1,6 @@
+ignore:
+  - "pkg/pubsub/uds/**" # belongs to libp2p
+
 component_management:
 
   default_rules:
