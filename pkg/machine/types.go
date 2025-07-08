@@ -78,6 +78,8 @@ type Opts struct {
 	Id string
 	// Time for a handler to execute. Default: time.Second
 	HandlerTimeout time.Duration
+	// TODO docs
+	HandlerDeadline time.Duration
 	// If true, the machine will NOT print all exceptions to stdout.
 	DontLogStackTrace bool
 	// If true, the machine will die on panics.
@@ -108,7 +110,8 @@ type Opts struct {
 	// deadlock. It works in similar way as -race flag in Go and can also be
 	// triggered by setting either env var: AM_DEBUG=1 or AM_DETECT_EVAL=1.
 	// Default: false.
-	DetectEval bool
+	DetectEval     bool
+	HandlerBackoff time.Duration
 }
 
 // Serialized is a machine state serialized to a JSON/YAML/TOML compatible

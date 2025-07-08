@@ -31,6 +31,14 @@ type Machine struct {
 	// an Exception. Default: 1s. See also Opts.HandlerTimeout.
 	// Using HandlerTimeout can cause race conditions, see Event.IsValid().
 	HandlerTimeout time.Duration
+	// HandlerDeadline is a grace period after a handler timeout, before the
+	// machine moves on.
+	HandlerDeadline time.Duration
+	// LastHandlerDeadline stores when was the last HandlerDeadline hit.
+	LastHandlerDeadline atomic.Pointer[time.Time]
+	// HandlerBackoff is the time after the a HandlerDeadline, during which the
+	// machine will return [Canceled] to any mutation.
+	HandlerBackoff time.Duration
 	// EvalTimeout is the time the machine will try to execute an eval func.
 	// Like any other handler, eval func also has HandlerTimeout. Default: 1s.
 	EvalTimeout time.Duration
@@ -103,7 +111,6 @@ type Machine struct {
 	indexWhenQueueLock sync.Mutex
 	handlerStart       chan *handlerCall
 	handlerEnd         chan bool
-	handlerTimeout     chan struct{}
 	handlerPanic       chan recoveryData
 	handlerTimer       *time.Timer
 	logEntriesLock     sync.Mutex
@@ -113,9 +120,9 @@ type Machine struct {
 	disposeHandlers    []HandlerDispose
 	timeLast           atomic.Pointer[Time]
 	// Channel closing when the machine finished disposal. Read-only.
-	whenDisposed chan struct{}
-	// TODO atomic
-	handlerLoopRunning bool
+	whenDisposed       chan struct{}
+	handlerLoopRunning atomic.Bool
+	handlerLoopVer     atomic.Int32
 	detectEval         bool
 	// unlockDisposed means that disposal is in progress and holding the queueLock
 	unlockDisposed atomic.Bool
@@ -174,27 +181,28 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 
 	m := &Machine{
 		HandlerTimeout:   100 * time.Millisecond,
+		HandlerDeadline:  10 * time.Second,
+		HandlerBackoff:   3 * time.Second,
 		EvalTimeout:      time.Second,
 		LogStackTrace:    true,
 		PanicToException: true,
 		QueueLimit:       1000,
 		DisposeTimeout:   time.Second,
 
-		id:             randId(),
-		schema:         parsedStates,
-		clock:          Clock{},
-		handlers:       []*handler{},
-		logID:          true,
-		indexWhen:      IndexWhen{},
-		indexWhenTime:  IndexWhenTime{},
-		indexWhenArgs:  IndexWhenArgs{},
-		indexStateCtx:  IndexStateCtx{},
-		handlerStart:   make(chan *handlerCall),
-		handlerEnd:     make(chan bool),
-		handlerTimeout: make(chan struct{}),
-		handlerPanic:   make(chan recoveryData),
-		handlerTimer:   time.NewTimer(24 * time.Hour),
-		whenDisposed:   make(chan struct{}),
+		id:            randId(),
+		schema:        parsedStates,
+		clock:         Clock{},
+		handlers:      []*handler{},
+		logID:         true,
+		indexWhen:     IndexWhen{},
+		indexWhenTime: IndexWhenTime{},
+		indexWhenArgs: IndexWhenArgs{},
+		indexStateCtx: IndexStateCtx{},
+		handlerStart:  make(chan *handlerCall),
+		handlerEnd:    make(chan bool),
+		handlerPanic:  make(chan recoveryData),
+		handlerTimer:  time.NewTimer(24 * time.Hour),
+		whenDisposed:  make(chan struct{}),
 	}
 
 	m.timeLast.Store(&Time{})
@@ -211,6 +219,12 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 		}
 		if opts.HandlerTimeout != 0 {
 			m.HandlerTimeout = opts.HandlerTimeout
+		}
+		if opts.HandlerDeadline != 0 {
+			m.HandlerDeadline = opts.HandlerDeadline
+		}
+		if opts.HandlerBackoff != 0 {
+			m.HandlerBackoff = opts.HandlerBackoff
 		}
 		if opts.DontPanicToException {
 			m.PanicToException = false
@@ -909,7 +923,7 @@ func (m *Machine) AddErr(err error, args A) Result {
 // Like every mutation method, it will resolve relations and trigger handlers.
 // AddErrState produces a stack trace of the error, if LogStackTrace is enabled.
 func (m *Machine) AddErrState(state string, err error, args A) Result {
-	if m.disposed.Load() || m.disposing.Load() || err == nil {
+	if m.disposed.Load() || m.disposing.Load() || m.Backoff() || err == nil {
 		return Canceled
 	}
 
@@ -988,7 +1002,7 @@ func (m *Machine) Err() error {
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (m *Machine) Remove(states S, args A) Result {
-	if m.disposed.Load() || m.disposing.Load() {
+	if m.disposed.Load() || m.disposing.Load() || m.Backoff() {
 		return Canceled
 	}
 
@@ -1381,9 +1395,9 @@ func (m *Machine) BindHandlers(handlers any) error {
 		return nil
 	}
 	first := false
-	if !m.handlerLoopRunning {
+	if !m.handlerLoopRunning.Load() {
 		first = true
-		m.handlerLoopRunning = true
+		m.handlerLoopRunning.Store(true)
 
 		// start the handler loop
 		go m.handlerLoop()
@@ -2422,20 +2436,45 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		case <-m.ctx.Done():
 
 		case <-m.handlerTimer.C:
-			// notify the handler loop
-			// TODO wait for [Event.AcceptTimeout]
-			m.handlerTimeout <- struct{}{}
+			// timeout, fork a new handler loop
 			m.log(LogOps, "[cancel] (%s) by timeout", j(tx.TargetStates()))
-			err := fmt.Errorf("%w: %s from %s", ErrHandlerTimeout, methodName,
-				h.name)
-			m.EvAddErr(e, err, Pass(&AT{
-				TargetStates: tx.TargetStates(),
-				CalledStates: tx.CalledStates(),
-				TimeBefore:   tx.TimeBefore,
-				TimeAfter:    tx.TimeAfter,
-				Event:        e.Clone(),
-			}))
+			m.log(LogDecisions, "[handler:timeout]: %s from %s", methodName, h.name)
 			timeout = true
+
+			// wait for the handler to exit within HandlerDeadline
+			select {
+			case <-m.handlerEnd:
+				// accepted timeout (good)
+				m.log(LogEverything, "[handler:acc-timeout] %s from %s", e.Name, h.name)
+
+				// TODO optimize re-use a timer like timeout
+			case <-time.After(m.HandlerDeadline):
+				m.log(LogEverything, "[handler:deadline] %s from %s", e.Name, h.name)
+				// deadlined timeout (bad)
+				// fork a new handler loop
+				go m.handlerLoop()
+
+				// clear the queue
+				m.queueLock.Lock()
+				m.queue = nil
+				m.queueLen.Store(0)
+				m.queueLock.Unlock()
+
+				// enqueue the relevant err
+				err := fmt.Errorf("%w: %s from %s", ErrHandlerTimeout, methodName,
+					h.name)
+				m.EvAddErr(e, err, Pass(&AT{
+					TargetStates: tx.TargetStates(),
+					CalledStates: tx.CalledStates(),
+					TimeBefore:   tx.TimeBefore,
+					TimeAfter:    tx.TimeAfter,
+					Event:        e.Clone(),
+				}))
+
+				// activate Backoff for further mutations
+				now := time.Now()
+				m.LastHandlerDeadline.Store(&now)
+			}
 
 		case r := <-m.handlerPanic:
 			// recover partial state
@@ -2479,6 +2518,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 }
 
 func (m *Machine) handlerLoop() {
+	ver := m.handlerLoopVer.Add(1)
 	catch := func() {
 		err := recover()
 		if err == nil {
@@ -2511,51 +2551,22 @@ func (m *Machine) handlerLoop() {
 				return
 			}
 			ret := true
-			endCh := make(chan struct{})
-			timeout := atomic.Bool{}
 
-			// fork for timeout
-			go func() {
-				// confirm the event is still valid
-				if !call.event.IsValid() {
-					close(endCh)
-					return
-				}
-				// check timeout
-				if timeout.Load() {
-					close(endCh)
-					return
-				}
-
-				// catch panics and fwd
-				if m.PanicToException {
-					defer catch()
-				}
-
-				// handler signature: FooState(e *am.Event)
-				// TODO optimize https://github.com/golang/go/issues/7818
+			// handler signature: FooState(e *am.Event)
+			// TODO optimize https://github.com/golang/go/issues/7818
+			if call.event.IsValid() {
 				callRet := call.fn.Call([]reflect.Value{reflect.ValueOf(call.event)})
 				if len(callRet) > 0 {
 					ret = callRet[0].Interface().(bool)
 				}
-				close(endCh)
-			}()
-
-			// wait for result / timeout / context
-			select {
-			case <-m.ctx.Done():
-				m.handlerLoopDone()
-				return
-			case <-m.handlerTimeout:
-				timeout.Store(true)
-				continue
-			case <-endCh:
-				// pass
+			} else {
+				m.log(LogDecisions, "[handler:invalid] %s", call.name)
+				ret = false
 			}
 
-			// needed to avoid racing
-			if m.ctx.Err() != nil {
-				m.handlerLoopDone()
+			// exit, a new clone is running
+			currVer := m.handlerLoopVer.Load()
+			if currVer != ver {
 				return
 			}
 
@@ -3067,7 +3078,7 @@ func (m *Machine) SetSchema(newSchema Schema, names S) error {
 // EvAdd is like Add, but passed the source event as the 1st param, which
 // results in traceable transitions.
 func (m *Machine) EvAdd(event *Event, states S, args A) Result {
-	if m.disposed.Load() || m.disposing.Load() ||
+	if m.disposed.Load() || m.disposing.Load() || m.Backoff() ||
 		int(m.queueLen.Load()) >= m.QueueLimit {
 
 		return Canceled
@@ -3089,7 +3100,7 @@ func (m *Machine) EvAdd1(event *Event, state string, args A) Result {
 // EvRemove is like Remove but passed the source event as the 1st param, which
 // results in traceable transitions.
 func (m *Machine) EvRemove(event *Event, states S, args A) Result {
-	if m.disposed.Load() || m.disposing.Load() ||
+	if m.disposed.Load() || m.disposing.Load() || m.Backoff() ||
 		int(m.queueLen.Load()) >= m.QueueLimit {
 
 		return Canceled
@@ -3134,7 +3145,7 @@ func (m *Machine) EvAddErr(event *Event, err error, args A) Result {
 func (m *Machine) EvAddErrState(
 	event *Event, state string, err error, args A,
 ) Result {
-	if m.disposed.Load() || m.disposing.Load() ||
+	if m.disposed.Load() || m.disposing.Load() || m.Backoff() ||
 		int(m.queueLen.Load()) >= m.QueueLimit || err == nil {
 
 		return Canceled
@@ -3291,4 +3302,14 @@ func (m *Machine) Tracers() []Tracer {
 	defer m.tracersLock.Unlock()
 
 	return slices.Clone(m.tracers)
+}
+
+// TODO move
+type HandlerError func(mach *Machine, err error)
+
+// Backoff is true in case the machine had a recent HandlerDeadline. During a
+// backoff, all mutations will be [Canceled].
+func (m *Machine) Backoff() bool {
+	last := m.LastHandlerDeadline.Load()
+	return last != nil && time.Since(*last) < m.HandlerBackoff
 }
