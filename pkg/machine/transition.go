@@ -88,14 +88,14 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	m.tracersLock.RUnlock()
 
 	// log stuff
-	states := t.CalledStates()
+	called := t.CalledStates()
 	mutType := t.Type()
 	logArgs := t.LogArgs()
-	t.addSteps(newSteps("", states, StepRequested, 0)...)
+	t.addSteps(newSteps("", called, StepRequested, 0)...)
 	if item.Auto {
-		m.log(LogDecisions, "[%s:auto] %s%s", mutType, j(states), logArgs)
+		m.log(LogDecisions, "[%s:auto] %s%s", mutType, j(called), logArgs)
 	} else {
-		m.log(LogOps, "[%s] %s%s", mutType, j(states), logArgs)
+		m.log(LogOps, "[%s] %s%s", mutType, j(called), logArgs)
 	}
 	src := item.Source
 	if src != nil {
@@ -103,6 +103,28 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	}
 
 	// set up the mutation
+	statesToSet := t.statesToSet(mutType, called)
+	targetStates := m.resolver.TargetStates(t, statesToSet, m.StateNames())
+
+	// simulate TimeAfter (temporarily)
+	t.TargetIndexes = m.Index(targetStates)
+
+	impliedStates := DiffStates(targetStates, statesToSet)
+	if len(impliedStates) > 0 {
+		m.log(LogOps, "[implied] %s", j(impliedStates))
+	}
+
+	t.setupAccepted()
+	if t.IsAccepted.Load() {
+		t.setupExitEnter()
+	}
+
+	return t
+}
+
+func (t *Transition) statesToSet(mutType MutationType, states S) S {
+	m := t.Machine
+
 	statesToSet := S{}
 	switch mutType {
 
@@ -126,24 +148,7 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 			StepRemove, 0)...)
 	}
 
-	// simulate TimeAfter (temporarily)
-	targetStates := m.resolver.TargetStates(t, statesToSet, m.StateNames())
-	t.TargetIndexes = make([]int, len(targetStates))
-	for i, name := range targetStates {
-		t.TargetIndexes[i] = m.Index1(name)
-	}
-
-	impliedStates := DiffStates(targetStates, statesToSet)
-	if len(impliedStates) > 0 {
-		m.log(LogOps, "[implied] %s", j(impliedStates))
-	}
-
-	t.setupAccepted()
-	if t.IsAccepted.Load() {
-		t.setupExitEnter()
-	}
-
-	return t
+	return statesToSet
 }
 
 // StatesBefore is a list of states before the transition.
@@ -456,6 +461,7 @@ func (t *Transition) emitEvents() Result {
 		result = Canceled
 	}
 	hasStateChanged := false
+	called := t.CalledStates()
 
 	// tracers
 	m.tracersLock.RLock()
@@ -497,8 +503,15 @@ func (t *Transition) emitEvents() Result {
 			t.Mutation.Args)
 	}
 
-	// TODO recheck auto txs for target states, excluding the rejected ones
-	//  to remove direct and transitive Add relation
+	// recheck auto txs for canceled handlers, remove direct and transitive Add
+	// relation
+	if t.IsAuto() {
+		rejected := DiffStates(called, t.TargetStates())
+		calledClean := DiffStates(called, rejected)
+		toSet := t.statesToSet(MutationAdd, calledClean)
+		targetStates := m.resolver.TargetStates(t, toSet, m.StateNames())
+		t.TargetIndexes = m.Index(targetStates)
+	}
 
 	// TODO return here from CanAdd and CanRemove
 
@@ -507,7 +520,7 @@ func (t *Transition) emitEvents() Result {
 
 		// mutate the clocks
 		m.activeStatesLock.Lock()
-		m.setActiveStates(t.CalledStates(), t.TargetStates(), t.IsAuto())
+		m.setActiveStates(called, t.TargetStates(), t.IsAuto())
 		// gather new clock values, overwrite fake TimeAfter
 		t.TimeAfter = m.time(nil)
 		m.activeStatesLock.Unlock()
@@ -562,7 +575,7 @@ func (t *Transition) emitEvents() Result {
 		return Canceled
 	}
 	if t.Type() == MutationRemove {
-		if m.Not(t.CalledStates()) {
+		if m.Not(called) {
 			return Executed
 		} else {
 			// TODO error?
