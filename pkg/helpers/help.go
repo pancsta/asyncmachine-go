@@ -1232,3 +1232,171 @@ func CountRelations(state *am.State) int {
 	return len(state.Remove) + len(state.Add) + len(state.Require) +
 		len(state.After)
 }
+
+// NewMirror creates a submachine which mirrors the given source machine. If
+// [flat] is true, only mutations changing the state will be propagated, along
+// with the currently active states.
+//
+// At this point, the handlers' struct needs to be defined manually with fields
+// of type `am.HandlerFinal`.
+//
+// [id] is optional.
+func NewMirror(
+	id string, flat bool, source *am.Machine, handlers any, states am.S,
+) (*am.Machine, error) {
+	// TODO create handlers
+	// TODO dont create a new machine, add to an existing one
+
+	v := reflect.ValueOf(handlers)
+	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+		return nil, errors.New("BindHandlers expects a pointer to a struct")
+	}
+	vElem := v.Elem()
+
+	// detect methods
+	var methodNames []string
+	methodNames, err := am.ListHandlers(handlers, states)
+	if err != nil {
+		return nil, fmt.Errorf("listing handlers: %w", err)
+	}
+
+	// TODO support am.Api
+	if id == "" {
+		id = "mirror-" + source.Id()
+	}
+	sourceSchema := source.Schema()
+	names := am.S{am.Exception}
+	schema := am.Schema{}
+	for _, name := range states {
+		schema[name] = am.State{
+			Multi: sourceSchema[name].Multi,
+		}
+		names = append(names, name)
+	}
+	mirror := am.New(source.Ctx(), schema, &am.Opts{
+		Id:     id,
+		Parent: source,
+	})
+
+	// set up pipes TODO loop over handlers
+	for _, method := range methodNames {
+		var state string
+		var isAdd bool
+		field := vElem.FieldByName(method)
+
+		// check handler method
+		if strings.HasSuffix(method, am.SuffixState) {
+			state = method[:len(method)-len(am.SuffixState)]
+			isAdd = true
+		} else if strings.HasSuffix(method, am.SuffixEnd) {
+			state = method[:len(method)-len(am.SuffixEnd)]
+		} else {
+			return nil, fmt.Errorf("unsupported handler %s for %s", method, id)
+		}
+
+		// pipe
+		var p am.HandlerFinal
+		if flat {
+			// sync active for flats
+			if source.Is1(state) {
+				mirror.Add1(state, nil)
+			}
+			if isAdd {
+				p = pipes.AddFlat(source, mirror, state, "")
+			} else {
+				p = pipes.RemoveFlat(source, mirror, state, "")
+			}
+
+		} else {
+			if isAdd {
+				p = pipes.Add(source, mirror, state, "")
+			} else {
+				p = pipes.Remove(source, mirror, state, "")
+			}
+		}
+
+		field.Set(reflect.ValueOf(p))
+	}
+
+	// bind pipe handlers
+	if err := source.BindHandlers(handlers); err != nil {
+		return nil, err
+	}
+
+	return mirror, nil
+}
+
+// CopySchema copies states from the source to target schema, from the passed
+// list of states. Returns a list of copied states, and an error. CopySchema
+// verifies states.
+func CopySchema(source am.Schema, target *am.Machine, states am.S) error {
+	if len(states) == 0 {
+		return nil
+	}
+
+	newSchema := target.Schema()
+	for _, name := range states {
+		if _, ok := source[name]; !ok {
+			return fmt.Errorf("%w: state %s in source schema",
+				am.ErrStateMissing, name)
+		}
+
+		newSchema[name] = source[name]
+	}
+	newStates := utils.SlicesUniq(slices.Concat(target.StateNames(), states))
+
+	return target.SetSchema(newSchema, newStates)
+}
+
+// SchemaHash computes an MD5 hash of the passed schema. The order of states
+// is not important.
+func SchemaHash(schema am.Schema) string {
+	ret := ""
+	keys := slices.Collect(maps.Keys(schema))
+	sort.Strings(keys)
+	for _, k := range keys {
+		ret += k + ":"
+
+		// properties
+		if schema[k].Auto {
+			ret += "a,"
+		}
+		if schema[k].Multi {
+			ret += "m,"
+		}
+
+		// relations
+		after := slices.Clone(schema[k].After)
+		sort.Strings(after)
+		for _, r := range after {
+			ret += r + ","
+		}
+		ret += ";"
+
+		remove := slices.Clone(schema[k].Remove)
+		sort.Strings(remove)
+		for _, r := range remove {
+			ret += r + ","
+		}
+		ret += ";"
+
+		add := slices.Clone(schema[k].Add)
+		sort.Strings(add)
+		for _, r := range add {
+			ret += r + ","
+		}
+		ret += ";"
+
+		require := slices.Clone(schema[k].Require)
+		sort.Strings(require)
+		for _, r := range require {
+			ret += r + ","
+		}
+		ret += ";"
+	}
+
+	hasher := md5.New()
+	hasher.Write([]byte(ret))
+
+	return hex.EncodeToString(hasher.Sum(nil))
+}
