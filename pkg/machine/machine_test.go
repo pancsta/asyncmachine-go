@@ -865,7 +865,7 @@ func TestPartialAutoStatesByStateState(t *testing.T) {
 
 	// trigger auto
 	m.Add1("C", nil)
-	assertStates(t, m, S{"C", "A"}, "only A auto state should be active")
+	assertStates(t, m, S{"C", "A"}, "only C and A auto state should be active")
 }
 
 func TestPartialAutoStatesByEnter(t *testing.T) {
@@ -2663,6 +2663,7 @@ func TestHandlerTimeout(t *testing.T) {
 	// init
 	m := NewNoRels(t, nil)
 	m.HandlerTimeout = 450 * time.Millisecond
+	m.HandlerDeadline = time.Second
 
 	// bind handlers
 	err := m.BindHandlers(&TestHandlerTimeoutHandlers{})
@@ -2672,11 +2673,33 @@ func TestHandlerTimeout(t *testing.T) {
 	res := m.Add1("A", nil)
 
 	// assert TODO assert log
-	assert.Equal(t, Canceled, res, "expeting Canceled")
+	assert.Equal(t, Canceled, res, "expecting Canceled")
 
 	// dispose
 	m.Dispose()
 	<-m.WhenDisposed()
+}
+
+// TestNestedMutation
+type TestHandlerAcceptTimeoutHandlers struct {
+	*ExceptionHandler
+}
+
+func (h *TestHandlerAcceptTimeoutHandlers) AState(e *Event) {
+	// wait longer then the timeout
+	time.Sleep(500 * time.Millisecond)
+
+	// TODO assert pre-err
+
+	if !e.IsValid() {
+		return
+	}
+	panic("should not reach here")
+}
+
+func TestHandlerDeadline(t *testing.T) {
+	t.Skip("TODO")
+	// TODO assert new event loop and backoff
 }
 
 // TestBindTracer
