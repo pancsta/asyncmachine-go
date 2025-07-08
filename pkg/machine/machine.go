@@ -129,6 +129,7 @@ type Machine struct {
 	// breakpoints are a list of breakpoints for debugging. [][added, removed]
 	breakpointsMx sync.Mutex
 	breakpoints   [][2]S
+	onError       atomic.Pointer[HandlerError]
 }
 
 // NewCommon creates a new Machine instance with all the common options set.
@@ -939,6 +940,12 @@ func (m *Machine) AddErrState(state string, err error, args A) Result {
 	argsT := &AT{
 		Err:      err,
 		ErrTrace: trace,
+	}
+
+	// error handler
+	onErr := m.onError.Load()
+	if onErr != nil {
+		(*onErr)(m, err)
 	}
 
 	// TODO prepend to the queue? what effects / benefits
@@ -2698,6 +2705,46 @@ func (m *Machine) IsQueued(mutationType MutationType, states S,
 	return -1
 }
 
+// IsQueuedAbove allows for rate-limiting of mutations for a specific state.
+func (m *Machine) IsQueuedAbove(threshold int, mutationType MutationType, states S,
+	withoutArgsOnly bool, statesStrictEqual bool, startIndex int,
+) bool {
+	if m.disposed.Load() {
+		return false
+	}
+	// TODO test
+	m.queueLock.RLock()
+	defer m.queueLock.RUnlock()
+
+	c := 0
+
+	for i, item := range m.queue {
+		if i >= startIndex &&
+			item.Type == mutationType &&
+			((withoutArgsOnly && len(item.Args) == 0) || !withoutArgsOnly) &&
+			// target states have to be at least as long as the checked ones
+			// or exactly the same in case of a strict_equal
+			((statesStrictEqual &&
+				len(item.Called) == len(states)) ||
+				(!statesStrictEqual &&
+					len(item.Called) >= len(states))) &&
+			// and all the checked ones have to be included in the target ones
+			slicesEvery(item.Called, m.Index(states)) {
+
+			c++
+			if c >= threshold {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (m *Machine) QueueLen() int {
+	return int(m.queueLen.Load())
+}
+
 // WillBe returns true if the passed states are scheduled to be activated.
 // See IsQueued to perform more detailed queries.
 func (m *Machine) WillBe(states S) bool {
@@ -3158,6 +3205,12 @@ func (m *Machine) EvAddErrState(
 		trace = captureStackTrace()
 	}
 
+	// error handler
+	onErr := m.onError.Load()
+	if onErr != nil {
+		(*onErr)(m, err)
+	}
+
 	// build args
 	// TODO read [event] and fill out relevant fields
 	argsT := &AT{
@@ -3306,6 +3359,12 @@ func (m *Machine) Tracers() []Tracer {
 
 // TODO move
 type HandlerError func(mach *Machine, err error)
+
+// OnError is the most basic error handler, useful for machines without any
+// handlers.
+func (m *Machine) OnError(fn HandlerError) {
+	m.onError.Store(&fn)
+}
 
 // Backoff is true in case the machine had a recent HandlerDeadline. During a
 // backoff, all mutations will be [Canceled].
