@@ -20,7 +20,6 @@ import (
 // TODO enum
 // TODO cobra groups
 const (
-	// TODO remove
 	pLogLevel        = "log-level"
 	pServerAddr      = "listen-on"
 	pServerAddrShort = "l"
@@ -41,7 +40,7 @@ const (
 	// TODO AM_DBG_PROF
 	pProfSrv      = "prof-srv"
 	pMaxMem       = "max-mem"
-	pLog2Ttl      = "log-2-ttl"
+	pLogOpsTtl    = "log-ops-ttl"
 	pReaderShort  = "r"
 	pFwdData      = "fwd-data"
 	pFwdDataShort = "f"
@@ -119,7 +118,8 @@ func RootCmd(fn RootFn) *cobra.Command {
 func AddFlags(rootCmd *cobra.Command) {
 
 	f := rootCmd.Flags()
-	f.Int(pLogLevel, 0, "Log level, 0-5 (silent-everything)")
+	f.Int(pLogLevel, 0,
+		"Log level produced by this instance, 0-6 (silent-everything)")
 	f.StringP(pServerAddr, pServerAddrShort, telemetry.DbgAddr,
 		"Host and port for the debugger to listen on")
 	f.String(pAmDbgAddr, "", "Debug this instance of am-dbg with another one")
@@ -151,7 +151,7 @@ func AddFlags(rootCmd *cobra.Command) {
 
 	f.String(pProfSrv, "", "Start pprof server")
 	f.Int(pMaxMem, 1000, "Max memory usage (in MB) to flush old transitions")
-	f.String(pLog2Ttl, "24h", "Max time to live for logs level 2")
+	f.String(pLogOpsTtl, "24h", "Max time to live for logs level LogOps")
 	f.Bool(pVersion, false, "Print version and exit")
 
 	// OUTPUT
@@ -229,7 +229,7 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 	if err != nil {
 		panic(err)
 	}
-	log2Ttl, err := time.ParseDuration(cmd.Flag(pLog2Ttl).Value.String())
+	log2Ttl, err := time.ParseDuration(cmd.Flag(pLogOpsTtl).Value.String())
 	if err != nil {
 		panic(err)
 	}
@@ -368,6 +368,7 @@ func StartCpuProfile(logger *log.Logger, p *Params) func() {
 	if err := pprof.StartCPUProfile(f); err != nil {
 		logger.Fatal("could not start CPU profile: ", err)
 	}
+	
 	return func() {
 		pprof.StopCPUProfile()
 		f.Close()

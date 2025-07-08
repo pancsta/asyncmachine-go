@@ -211,16 +211,6 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 	ret := ""
 	tx := c.MsgTxs[index]
 
-	if d.Mach.Not1(ss.FilterSummaries) {
-		msgTime := tx.Time
-		prevMsg := c.MsgTxs[index-1]
-		prevMsgTime := prevMsg.Time
-		if prevMsgTime.Second() != msgTime.Second() {
-			// grouping labels (per second)
-			ret += `[grey]` + msgTime.Format(timeFormat) + "[-]\n"
-		}
-	}
-
 	for _, le := range c.logMsgs[index] {
 		logStr := le.Text
 		logLvl := le.Level
@@ -247,6 +237,17 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 		}
 
 		ret += logStr
+	}
+
+	if ret != "" && d.Mach.Not1(ss.FilterSummaries) && index > 0 {
+		msgTime := tx.Time
+		prevMsg := c.MsgTxs[index-1]
+		if prevMsg.Time.Second() != msgTime.Second() ||
+			msgTime.Sub(*prevMsg.Time) > time.Second {
+
+			// grouping labels (per second)
+			ret += `[grey]` + msgTime.Format(timeFormat) + "[-]\n"
+		}
 	}
 
 	// create a highlight region (even for empty txs)
@@ -365,8 +366,8 @@ func fmtLogEntry(
 				continue
 			}
 			// filter out machine lines
-			if strings.Contains(line, "machine.(*Machine).handlerLoop in ") {
-				linesNew = linesNew[0 : len(linesNew)-6]
+			if strings.Contains(line, "machine.(*Machine).handlerLoop(") {
+				linesNew = linesNew[0 : len(linesNew)-4]
 				skipNext = true
 				continue
 			}

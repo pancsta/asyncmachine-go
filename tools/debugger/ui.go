@@ -410,10 +410,10 @@ func (d *Debugger) initToolbar() {
 			}},
 			// TODO make it an anchor for file://...svg
 			{id: toolDiagrams, label: "diagrams", active: func() bool {
-				return d.Opts.Diagrams > 0
+				return d.Opts.OutputDiagrams > 0
 			}, activeLabel: func() string {
 				// TODO make Opts threadsafe
-				return strconv.Itoa(d.Opts.Diagrams)
+				return strconv.Itoa(d.Opts.OutputDiagrams)
 			}},
 			{id: toolRain, label: "rain", active: func() bool {
 				return d.Mach.Is1(ss.MatrixRain)
@@ -473,6 +473,7 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[::b]### [::u]tree legend[::-]
 		[%s::b]state[-]        active state
 		[%s::b]state[-]        inactive state
+		[%s::b]state[-]        active multi state
 		[red::b]state[-]        active error state
 		[::b]M|[::-]           multi state
 		[::b]|5[::-]           tick value
@@ -508,7 +509,7 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[::b]### [::u]dashboard keystrokes[::-]
 		[::b]alt arrow[::-]    navigate to tiles
 		[::b]alt -+[::-]       change size of a tile
-	`, "\n ")), colorActive, colorInactive))
+	`, "\n ")), colorActive, colorActive2, colorInactive))
 
 	// render the right side separately
 	d.updateHelpDialog()
