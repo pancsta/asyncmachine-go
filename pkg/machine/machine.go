@@ -2172,7 +2172,7 @@ func (m *Machine) Log(msg string, args ...any) {
 	// single lines only
 	msg = strings.ReplaceAll(msg, "\n", " ")
 
-	m.log(LogChanges, prefix+"] "+msg, args...)
+	m.log(LogExternal, prefix+"] "+msg, args...)
 }
 
 // InternalLog adds an internal log entry from the outside. It should be used
@@ -2345,13 +2345,16 @@ func (m *Machine) handle(
 	}
 
 	// negotiation support
-	if !step.IsFinal && res == Canceled {
-		var self string
-		if step.IsSelf {
-			self = ":self"
+	if !isFinal && res == Canceled {
+		if m.LogLevel() >= LogOps {
+			var self string
+			if isSelf {
+				self = ":self"
+			}
+
+			m.log(LogOps, "[cancel%s] (%s) by %s", self,
+				j(targetStates), name)
 		}
-		m.log(LogOps, "[cancel%s] (%s) by %s", self,
-			targetStates, name)
 
 		return Canceled, handlerCalled
 	}

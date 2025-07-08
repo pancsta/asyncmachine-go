@@ -112,10 +112,12 @@ func (rr *DefaultRelationsResolver) TargetStates(
 		}
 
 		m.log(lvl, "[rel:remove] %s by %s", name, j(blockedBy))
-		if m.is(S{name}) {
-			t.addSteps(newStep("", name, StepRemove, 0))
-		} else {
-			t.addSteps(newStep("", name, StepRemoveNotActive, 0))
+		if m.LogLevel() >= LogSteps {
+			if m.is(S{name}) {
+				t.addSteps(newStep("", name, StepRemove, 0))
+			} else {
+				t.addSteps(newStep("", name, StepRemoveNotActive, 0))
+			}
 		}
 
 		return false
@@ -196,10 +198,15 @@ func (rr *DefaultRelationsResolver) SortStates(states S) {
 
 		// forward relations
 		if slices.Contains(state1.After, name2) {
-			t.addSteps(newStep(name2, name1, StepRelation, RelationAfter))
+			if m.LogLevel() >= LogSteps {
+				t.addSteps(newStep(name2, name1, StepRelation, RelationAfter))
+			}
 			return false
+
 		} else if slices.Contains(state2.After, name1) {
-			t.addSteps(newStep(name1, name2, StepRelation, RelationAfter))
+			if m.LogLevel() >= LogSteps {
+				t.addSteps(newStep(name1, name2, StepRelation, RelationAfter))
+			}
 			return true
 		}
 
@@ -249,9 +256,11 @@ func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 				continue
 			}
 
-			t.addSteps(newSteps(name, addStates, StepRelation,
-				RelationAdd)...)
-			t.addSteps(newSteps("", addStates, StepSet, 0)...)
+			if rr.Machine.LogLevel() >= LogChanges {
+				t.addSteps(newSteps(name, addStates, StepRelation,
+					RelationAdd)...)
+				t.addSteps(newSteps("", addStates, StepSet, 0)...)
+			}
 			ret = append(ret, addStates...)
 			visited = append(visited, name)
 			changed = true
@@ -269,14 +278,17 @@ func (rr *DefaultRelationsResolver) stateBlockedBy(
 	t := rr.Transition
 	blockedBy := S{}
 
+	// TODO optimize by schema index eg ["Foo-Bar-Remove"]
 	for _, blocking := range blockingStates {
 		state := m.schema[blocking]
 		if !slices.Contains(state.Remove, blocked) {
 			continue
 		}
 
-		t.addSteps(newStep(blocking, blocked, StepRelation,
-			RelationRemove))
+		if m.LogLevel() >= LogSteps {
+			t.addSteps(newStep(blocking, blocked, StepRelation,
+				RelationRemove))
+		}
 		blockedBy = append(blockedBy, blocking)
 	}
 
@@ -325,18 +337,24 @@ func (rr *DefaultRelationsResolver) getMissingRequires(
 	ret := S{}
 
 	for _, req := range state.Require {
-		t.addSteps(newStep(name, req, StepRelation,
-			RelationRequire))
+		if m.LogLevel() >= LogSteps {
+			t.addSteps(newStep(name, req, StepRelation,
+				RelationRequire))
+		}
 		if slices.Contains(states, req) {
 			continue
 		}
 		ret = append(ret, req)
-		t.addSteps(newStep(name, "", StepRemoveNotActive, 0))
+		if m.LogLevel() >= LogSteps {
+			t.addSteps(newStep(name, "", StepRemoveNotActive, 0))
+		}
 
 		idx := slices.Index(rr.Index, name)
 		if slices.Contains(t.Mutation.Called, idx) {
-			t.addSteps(newStep("", req,
-				StepCancel, 0))
+			if m.LogLevel() >= LogSteps {
+				t.addSteps(newStep("", req,
+					StepCancel, 0))
+			}
 		}
 	}
 

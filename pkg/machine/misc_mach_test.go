@@ -75,6 +75,7 @@ func TestLogLevelString(t *testing.T) {
 
 	assert.Equal(t, "nothing", LogNothing.String())
 	assert.Equal(t, "nothing", LogLevel(0).String())
+	assert.Equal(t, "external", LogExternal.String())
 	assert.Equal(t, "changes", LogChanges.String())
 	assert.Equal(t, "ops", LogOps.String())
 	assert.Equal(t, "decisions", LogDecisions.String())
