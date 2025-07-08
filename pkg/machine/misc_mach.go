@@ -332,10 +332,14 @@ type LogEntry struct {
 // LogLevel enum
 type LogLevel int
 
-// TODO add LogOpsSubs (30), spread log level 0 - 10 - 20 - 30 - 40
+// TODO spread log level 0 - 10 - 20 - 30 - 40 - 50 - 60
 const (
 	// LogNothing means no logging, including external msgs.
 	LogNothing LogLevel = iota
+	// LogExternal will show ony external user msgs.
+	LogExternal
+	// LogSteps will show external user msgs and also create transition steps.
+	LogSteps
 	// LogChanges means logging state changes and external msgs.
 	LogChanges
 	// LogOps means LogChanges + logging all the operations.
@@ -348,6 +352,10 @@ const (
 
 func (l LogLevel) String() string {
 	switch l {
+	case LogExternal:
+		return "external"
+	case LogSteps:
+		return "steps"
 	case LogChanges:
 		return "changes"
 	case LogOps:

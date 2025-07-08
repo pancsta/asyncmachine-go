@@ -90,8 +90,11 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	// log stuff
 	called := t.CalledStates()
 	mutType := t.Type()
-	logArgs := t.LogArgs()
-	t.addSteps(newSteps("", called, StepRequested, 0)...)
+	logArgs := ""
+	if m.LogLevel() >= LogSteps {
+		logArgs = t.LogArgs()
+		t.addSteps(newSteps("", called, StepRequested, 0)...)
+	}
 	if item.Auto {
 		m.log(LogDecisions, "[%s:auto] %s%s", mutType, j(called), logArgs)
 	} else {
@@ -132,7 +135,11 @@ func (t *Transition) statesToSet(mutType MutationType, states S) S {
 		statesToSet = slicesFilter(m.activeStates, func(state string, _ int) bool {
 			return !slices.Contains(states, state)
 		})
-		t.addSteps(newSteps("", states, StepRemove, 0)...)
+		if m.LogLevel() >= LogSteps {
+			t.addSteps(newSteps("", states, StepRemove, 0)...)
+		}
+
+		return statesToSet
 
 	case MutationAdd:
 		statesToSet = append(statesToSet, states...)
@@ -141,11 +148,13 @@ func (t *Transition) statesToSet(mutType MutationType, states S) S {
 			StepSet, 0)...)
 
 	case MutationSet:
-		statesToSet = states
-		t.addSteps(newSteps("", DiffStates(statesToSet, m.activeStates),
-			StepSet, 0)...)
-		t.addSteps(newSteps("", DiffStates(m.activeStates, statesToSet),
-			StepRemove, 0)...)
+		statesToSet := states
+		if m.LogLevel() >= LogSteps {
+			t.addSteps(newSteps("", DiffStates(statesToSet, m.activeStates),
+				StepSet, 0)...)
+			t.addSteps(newSteps("", DiffStates(m.activeStates, statesToSet),
+				StepRemove, 0)...)
+		}
 	}
 
 	return statesToSet
@@ -319,10 +328,11 @@ func (t *Transition) emitSelfEvents() Result {
 		}
 
 		name := s + s
-		step := newStep("", s, StepHandler, 0)
-		step.IsSelf = true
-		ret, handlerCalled = m.handle(name, t.Mutation.Args, step, false)
-		if handlerCalled {
+		t.latestStepToState = s
+		ret, handlerCalled = m.handle(name, t.Mutation.Args, false, false, true)
+		if handlerCalled && m.LogLevel() >= LogSteps {
+			step := newStep("", s, StepHandler, 0)
+			step.IsSelf = true
 			t.addSteps(step)
 		}
 		if ret == Canceled {
@@ -375,12 +385,14 @@ func (t *Transition) emitExitEvents() Result {
 func (t *Transition) emitHandler(
 	from, to string, isFinal, isEnter bool, event string, args A,
 ) Result {
-	step := newStep(from, to, StepHandler, 0)
-	step.IsFinal = isFinal
-	step.IsEnter = isEnter
-	t.latestStep = step
-	ret, handlerCalled := t.Machine.handle(event, args, step, false)
-	if handlerCalled {
+
+	t.latestStepToState = to
+	ret, handlerCalled := t.Machine.handle(event, args, isFinal, isEnter, false)
+
+	if handlerCalled && t.Machine.LogLevel() >= LogChanges {
+		step := newStep(from, to, StepHandler, 0)
+		step.IsFinal = isFinal
+		step.IsEnter = isEnter
 		t.addSteps(step)
 	}
 	return ret
@@ -401,14 +413,13 @@ func (t *Transition) emitFinalEvents() Result {
 			handler = s + SuffixEnd
 		}
 
-		step := newStep("", s, StepHandler, 0)
-		step.IsFinal = true
-		step.IsEnter = isEnter
-		t.latestStep = step
-		ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args, step,
-			false)
+		ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args,
+			true, isEnter, false)
 
-		if handlerCalled {
+		if handlerCalled && t.Machine.LogLevel() >= LogChanges {
+			step := newStep("", s, StepHandler, 0)
+			step.IsFinal = true
+			step.IsEnter = isEnter
 			t.addSteps(step)
 		}
 
@@ -434,7 +445,8 @@ func (t *Transition) emitStateStateEvents() Result {
 			ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args, step,
 				false)
 
-			if handlerCalled {
+			if handlerCalled && t.Machine.LogLevel() >= LogChanges {
+				step := newStep(before[i], after[ii], StepHandler, 0)
 				t.addSteps(step)
 			}
 
@@ -462,6 +474,7 @@ func (t *Transition) emitEvents() Result {
 	}
 	hasStateChanged := false
 	called := t.CalledStates()
+	logEverything := m.LogLevel() == LogEverything
 
 	// tracers
 	m.tracersLock.RLock()
@@ -472,35 +485,38 @@ func (t *Transition) emitEvents() Result {
 
 	// NEGOTIATION CALLS PHASE (cancellable)
 
-	// FooExit handlers
-	if result != Canceled {
-		result = t.emitExitEvents()
-	}
+	if logEverything {
 
-	// FooEnter handlers
-	if result != Canceled {
-		result = t.emitEnterEvents()
-	}
+		// FooExit handlers
+		if result != Canceled {
+			result = t.emitExitEvents()
+		}
 
-	// FooFoo handlers
-	if result != Canceled && t.Type() != MutationRemove {
-		result = t.emitSelfEvents()
-	}
+		// FooEnter handlers
+		if result != Canceled {
+			result = t.emitEnterEvents()
+		}
 
-	// BarFoo
-	if result != Canceled {
-		result = t.emitStateStateEvents()
-	}
+		// FooFoo handlers
+		if result != Canceled && t.Type() != MutationRemove {
+			result = t.emitSelfEvents()
+		}
 
-	// none of the auto states has been accepted, so cancel
-	if t.IsAuto() && len(t.TargetIndexes) == 0 {
-		result = Canceled
-	}
+		// BarFoo
+		if result != Canceled {
+			result = t.emitStateStateEvents()
+		}
 
-	// global AnyEnter handler
-	if result != Canceled {
-		result = t.emitHandler(Any, Any, false, true, Any+SuffixEnter,
-			t.Mutation.Args)
+		// none of the auto states has been accepted, so cancel
+		if t.IsAuto() && len(t.TargetIndexes) == 0 {
+			result = Canceled
+		}
+
+		// global AnyEnter handler
+		if result != Canceled {
+			result = t.emitHandler(Any, Any, false, true, Any+SuffixEnter,
+				t.Mutation.Args)
+		}
 	}
 
 	// recheck auto txs for canceled handlers, remove direct and transitive Add
@@ -525,9 +541,11 @@ func (t *Transition) emitEvents() Result {
 		t.TimeAfter = m.time(nil)
 		m.activeStatesLock.Unlock()
 
-		// FooState
-		// FooEnd
-		result = t.emitFinalEvents()
+		if logEverything || len(m.indexWhenArgs) > 0 {
+			// FooState
+			// FooEnd
+			result = t.emitFinalEvents()
+		}
 		hasStateChanged = !m.IsTime(t.TimeBefore, nil)
 	} else {
 		// gather new clock values, overwrite fake TimeAfter
@@ -535,7 +553,7 @@ func (t *Transition) emitEvents() Result {
 	}
 
 	// global AnyState handler
-	if result != Canceled {
+	if result != Canceled && logEverything {
 		result = t.emitHandler(Any, Any, true, true, Any+SuffixState,
 			t.Mutation.Args)
 	}
