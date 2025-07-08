@@ -24,6 +24,7 @@ import (
 
 // DiffStates returns the states that are in states1 but not in states2.
 func DiffStates(states1 S, states2 S) S {
+	// TODO optimize
 	return slicesFilter(states1, func(name string, i int) bool {
 		return !slices.Contains(states2, name)
 	})
@@ -229,7 +230,8 @@ func EnvLogLevel(name string) LogLevel {
 	return LogLevel(v)
 }
 
-// ListHandlers returns a list of handler method names from a handlers struct.
+// ListHandlers returns a list of handler method names from a handlers struct,
+// limited to [states].
 func ListHandlers(handlers any, states S) ([]string, error) {
 	var methodNames []string
 	var errs []error
@@ -358,10 +360,10 @@ func IndexToTime(index S, active []int) Time {
 // IndexToStates decodes state indexes based on the provided index.
 func IndexToStates(index S, states []int) S {
 	ret := make(S, len(states))
-	for i, idx := range states {
-		name := "unknown" + strconv.Itoa(idx)
-		if len(index) > idx {
-			name = index[idx]
+	for i := range states {
+		name := "unknown" + strconv.Itoa(states[i])
+		if len(index) > states[i] {
+			name = index[states[i]]
 		}
 		ret[i] = name
 	}
@@ -373,8 +375,8 @@ func IndexToStates(index S, states []int) S {
 // states are represented by -1.
 func StatesToIndex(index S, states S) []int {
 	ret := make([]int, len(states))
-	for i, state := range states {
-		ret[i] = slices.Index(index, state)
+	for i := range states {
+		ret[i] = slices.Index(index, states[i])
 	}
 
 	return ret
@@ -528,7 +530,7 @@ func slicesEvery[S1 ~[]E, S2 ~[]E, E comparable](col1 S1, col2 S2) bool {
 }
 
 func slicesFilter[S ~[]E, E any](coll S, fn func(item E, i int) bool) S {
-	var ret S
+	ret := make(S, 0, len(coll))
 	for i, el := range coll {
 		if fn(el, i) {
 			ret = append(ret, el)
@@ -545,27 +547,19 @@ func slicesReverse[S ~[]E, E any](coll S) S {
 	return ret
 }
 
-func slicesUniq[S ~[]E, E comparable](coll S) S {
-	dups := false
-	l := len(coll)
-	for i, el := range coll {
-		for ii := i; ii < len(coll)-1; ii++ {
-			if l > ii+1 && el == coll[ii+1] {
-				dups = true
-				break
-			}
+func slicesUniq[T comparable](coll []T) []T {
+	if len(coll) == 0 {
+		return []T{}
+	}
+	seen := make(map[T]struct{}, len(coll))
+	ret := make([]T, 0, len(coll))
+	for _, v := range coll {
+		if _, ok := seen[v]; !ok {
+			seen[v] = struct{}{}
+			ret = append(ret, v)
 		}
 	}
-	if !dups {
-		// return slices.Clone(coll)
-		return coll
-	}
-	var ret S
-	for _, el := range coll {
-		if !slices.Contains(ret, el) {
-			ret = append(ret, el)
-		}
-	}
+
 	return ret
 }
 

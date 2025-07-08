@@ -204,7 +204,7 @@ func assertString(t *testing.T, m *Machine, expected string, states S) {
 
 func TestEnv(t *testing.T) {
 	t.Setenv(EnvAmLog, "2")
-	assert.Equal(t, LogOps, EnvLogLevel(""))
+	assert.Equal(t, LogSteps, EnvLogLevel(""))
 }
 
 func TestAMerge(t *testing.T) {

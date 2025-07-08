@@ -4,18 +4,24 @@ package helpers
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"reflect"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
+	"github.com/pancsta/asyncmachine-go/internal/utils"
+	"github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 	"golang.org/x/sync/errgroup"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -712,16 +718,32 @@ func ArgsToLogMap(args interface{}, maxLen int) map[string]string {
 			result[key] = txt
 
 		case bool:
+			// skip default
 			if !v {
 				continue
 			}
 			result[key] = fmt.Sprintf("%v", v)
 		case []bool:
-			// combine []string into a single comma-separated string
+			// combine []bool into a single comma-separated string
 			if len(v) == 0 {
 				continue
 			}
 			result[key] = fmt.Sprintf("%v", v)
+			// TODO fix highlighting issues in am-dbg
+			result[key] = strings.Trim(result[key], "[]")
+
+		case int:
+			// skip default
+			if v == 0 {
+				continue
+			}
+			result[key] = fmt.Sprintf("%d", v)
+		case []int:
+			// combine []int into a single comma-separated string
+			if len(v) == 0 {
+				continue
+			}
+			result[key] = fmt.Sprintf("%d", v)
 			// TODO fix highlighting issues in am-dbg
 			result[key] = strings.Trim(result[key], "[]")
 

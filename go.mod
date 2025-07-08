@@ -19,11 +19,13 @@ require (
 	github.com/hibiken/asynq v0.24.1
 	github.com/ic2hrmk/promtail v0.0.5
 	github.com/invopop/jsonschema v0.12.0
+	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/joho/godotenv v1.5.1
 	github.com/libp2p/go-libp2p v0.39.1
 	github.com/libp2p/go-libp2p-pubsub v0.13.0
 	github.com/lithammer/dedent v1.1.0
 	github.com/multiformats/go-multiaddr v0.14.0
+	github.com/multiformats/go-multiaddr-fmt v0.1.0
 	github.com/nats-io/nats-server/v2 v2.11.2
 	github.com/nats-io/nats.go v1.41.2
 	github.com/nkall/compactnumber v1.1.1
@@ -49,6 +51,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.35.0
 	go.opentelemetry.io/otel/sdk/log v0.11.0
 	go.opentelemetry.io/otel/trace v1.35.0
+	go.uber.org/mock v0.5.0
 	golang.org/x/exp v0.0.0-20250210185358-939b2ce775ac
 	golang.org/x/sync v0.13.0
 	golang.org/x/text v0.24.0
@@ -106,7 +109,6 @@ require (
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/ipfs/go-cid v0.5.0 // indirect
-	github.com/ipfs/go-log/v2 v2.5.1 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
@@ -116,6 +118,7 @@ require (
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/libp2p/go-flow-metrics v0.2.0 // indirect
 	github.com/libp2p/go-libp2p-asn-util v0.4.1 // indirect
+	github.com/libp2p/go-libp2p-testing v0.12.0 // indirect
 	github.com/libp2p/go-msgio v0.3.0 // indirect
 	github.com/libp2p/go-nat v0.2.0 // indirect
 	github.com/libp2p/go-netroute v0.2.2 // indirect
@@ -137,7 +140,6 @@ require (
 	github.com/multiformats/go-base32 v0.1.0 // indirect
 	github.com/multiformats/go-base36 v0.2.0 // indirect
 	github.com/multiformats/go-multiaddr-dns v0.4.1 // indirect
-	github.com/multiformats/go-multiaddr-fmt v0.1.0 // indirect
 	github.com/multiformats/go-multibase v0.2.0 // indirect
 	github.com/multiformats/go-multicodec v0.9.0 // indirect
 	github.com/multiformats/go-multihash v0.2.3 // indirect
@@ -201,7 +203,6 @@ require (
 	go.opentelemetry.io/proto/otlp v1.5.0 // indirect
 	go.uber.org/dig v1.18.0 // indirect
 	go.uber.org/fx v1.23.0 // indirect
-	go.uber.org/mock v0.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.37.0 // indirect
