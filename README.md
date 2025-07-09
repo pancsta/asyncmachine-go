@@ -24,9 +24,11 @@
 # <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> asyncmachine-go
 
 <div align="center">
-    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/am-dbg/README.md">
-    <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video-mouse.gif?raw=true" alt="TUI Debugger" /></a>
-</div>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.light.png">
+  <img alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.light.png">
+</picture></div>
 
 > [!NOTE]
 > State machines communicate through states.
@@ -41,16 +43,22 @@ and [diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
 As a control flow library, it decides about running of predefined bits of code (transition handlers) - their order and
 which ones to run, according to currently active states (flags). Thanks to a [novel state machine](/pkg/machine/README.md),
 the number of handlers can be minimized while maximizing scenario coverage. It's lightweight, fault-tolerant by design,
-has rule-based mutations, and can be used to target virtually any step-in-time, in any workflow.
+has rule-based mutations, and can be used to target virtually *any* step-in-time, in *any* workflow.
 
 **asyncmachine-go** takes care of `context`, `select`, and `panic`, while allowing for graph-structured concurrency
-with goroutine cancellation. The history log and relations have vector formats.
+with [goroutine cancellation](https://github.com/pancsta/asyncmachine-go/pull/261). The history log and relations have
+vector formats.
 
 It aims to create **autonomous** workflows with **organic** control flow and **stateful** APIs:
 
 - **autonomous** - automatic states, relations, context-based decisions
 - **organic** - relations, negotiation, cancellation
 - **stateful** - maintaining context, responsive, atomic
+
+<div align="center">
+    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/am-dbg/README.md">
+    <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video-mouse.gif?raw=true" alt="TUI Debugger" /></a>
+</div>
 
 Each state represents:
 
@@ -68,8 +76,6 @@ Each state represents:
 Besides workflows, it can be used for **stateful applications** of any size - daemons, UIs, configs, bots, firewalls,
 synchronization consensus, games, smart graphs, microservice orchestration, robots, contracts, streams, DI containers,
 test scenarios, simulators, as well as **"real-time" systems** which rely on instant cancelation.
-
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)
 
 ## Stack
 
@@ -148,6 +154,8 @@ The top layers depend on the bottom ones.
     </u></b></a></td>
   </tr>
 </table>
+
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)
 
 ## Samples
 
@@ -336,6 +344,8 @@ Other packages:
 
 Under development, status depends on each package. The bottom layers seem prod grade, the top ones are alpha or testing.
 
+![grafana](https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png)
+
 ## Development
 
 - before
@@ -347,10 +357,6 @@ Under development, status depends on each package. The bottom layers seem prod g
     - `task lint`
     - `task precommit`
 - [good first issues](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
-
-<div align="center">
-    <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video.gif?raw=true" alt="TUI Debugger" />
-</div>
 
 ## [FAQ](./FAQ.md)
 
@@ -379,3 +385,7 @@ The complete FAQ is available at [FAQ.md](/FAQ.md).
 - [Changelog](CHANGELOG.md)
 - [Breaking Changes](BREAKING.md)
 - [Roadmap](ROADMAP.md)
+
+<div align="center">
+    <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video.gif?raw=true" alt="TUI Debugger" />
+</div>

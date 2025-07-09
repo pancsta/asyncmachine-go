@@ -12,6 +12,7 @@
 - [OpenTelemetry Logger](#opentelemetry-logger)
 - [Prometheus Metrics](#prometheus-metrics)
 - [Loki Logger](#loki-logger)
+- [Grafana Dashboards](#grafana-dashboard)
 
 ## dbg
 
@@ -209,10 +210,59 @@ defer promtailClient.Close()
 amtele.BindLokiLogger(mach, promtailClient)
 ```
 
+## Grafana Dashboard
+
+![grafana](https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png)
+
+More info about Grafana dashboards can be found in [/tools/cmd/am-gen](/tools/cmd/am-gen/README.md#grafana-dashboard).
+
+### Automatic Grafana Setup
+
+See [/docs/env-configs.md](/docs/env-configs.md) for the required environment variables.
+
+```go
+import amgen "github.com/pancsta/asyncmachine-go/tools/generator"
+
+// ...
+
+var mach *am.Machine
+
+// create a dedicated dashboard for [mach] and submachines
+amgen.MachDashboardEnv(mach)
+```
+
+### Manual Grafana Setup
+
+```go
+import (
+    amgen "github.com/pancsta/asyncmachine-go/tools/generator"
+    amgencli "github.com/pancsta/asyncmachine-go/tools/generator/cli"
+)
+
+// ...
+
+var mach *am.Machine
+var service string
+var url string
+var token string
+
+p := amgencli.GrafanaParams{
+    Ids:        mach.Id(),
+    Name:       mach.Id(),
+    Folder:     "asyncmachine",
+    GrafanaUrl: url,
+    Token:      token,
+    Source:     service,
+}
+t := &amgen.SyncTracer{p: p}
+
+mach.BindTracer(t)
+```
+
 ## Inheritance
 
-Most of the exporters are automatically inherited from parent machines, so the results come in automatically. To define
-a submachine-parent relationship, use [`am.Opts.Parent`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Opts.Parent)
+Most of the telemetry exporters are automatically inherited from parent machines, so the results come in automatically.
+To define a submachine-parent relationship, use [`am.Opts.Parent`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Opts.Parent)
 while initializing a machine. Alternatively, tracers can be copied using `OptsWithParentTracers`, or manually via
 `Machine.Tracers`.
 

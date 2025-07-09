@@ -115,7 +115,7 @@ for _, mach := range workers {
     }
     mach.Add1("Bar", nil)
     println("Bar set on " + mach.Id())
-    
+
     <-mach.When1("Baz", nil)
     println("Baz active on " + mach.Id())
     break

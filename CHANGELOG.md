@@ -1,5 +1,28 @@
 # Changelog
 
+## [v0.12.0](https://github.com/pancsta/asyncmachine-go/tree/v0.13.0) (2025-07-09)
+
+- feat: release v0.13.0 [\#269](https://github.com/pancsta/asyncmachine-go/pull/269)
+   (@pancsta)
+- feat\(am-dbg\): cache SVG diagrams based on schema hashes [\#268](https://github.com/pancsta/asyncmachine-go/pull/268)
+   (@pancsta)
+- feat\(machine\): various space and time optimizations [\#267](https://github.com/pancsta/asyncmachine-go/pull/267)
+   (@pancsta)
+- feat\(machine\): add LogExternal, LogSteps log levels [\#266](https://github.com/pancsta/asyncmachine-go/pull/266)
+   (@pancsta)
+- feat\(helpers\): support copying schemas and mirror machines [\#265](https://github.com/pancsta/asyncmachine-go/pull/265)
+   (@pancsta)
+- feat\(pubsub\): optimize pubsub, add UDS for tests [\#264](https://github.com/pancsta/asyncmachine-go/pull/264)
+   (@pancsta)
+- feat\(machine\): add OnError\(\), IsQueueAbove\(\), QueueLen\(\) [\#263](https://github.com/pancsta/asyncmachine-go/pull/263)
+   (@pancsta)
+- feat\(machine\): introduce backoff for handler timeouts [\#261](https://github.com/pancsta/asyncmachine-go/pull/261)
+   (@pancsta)
+- fix\(dm-dbg\): fix log timestamps [\#260](https://github.com/pancsta/asyncmachine-go/pull/260)
+  (@pancsta)
+- fix\(machine\): fix states implied by rejected auto states should also be rejected [\#259](https://github.com/pancsta/asyncmachine-go/pull/259)
+   (@pancsta)
+
 ## [v0.12.0](https://github.com/pancsta/asyncmachine-go/tree/v0.12.0) (2025-06-26)
 
 - feat: release v0.12 [\#253](https://github.com/pancsta/asyncmachine-go/pull/253)

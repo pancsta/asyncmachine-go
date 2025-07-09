@@ -415,3 +415,22 @@ flowchart TB
     end
     RpcReadyState -- aRPC Add --> WorkerAddr
 ```
+
+### Transition Lifecycle
+
+```d2
+direction: right
+
+Mutation -> Transition.Consensus.Relations -> Transition.Consensus.Negotiation -> Transition.Execution
+Transition: {
+  Consensus: {
+    Relations
+    Negotiation
+  }
+  Execution
+}
+
+Transition.Execution -> Mutation: queue
+Transition.Execution -> Auto states: state changed
+Auto states -> Mutation: queue
+```

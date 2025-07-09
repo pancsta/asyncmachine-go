@@ -108,6 +108,11 @@ Flags:
 
 ![grafana](https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png)
 
+Grafana dashboards need to be generated per "source" (e.g. process), by passing all monitored machine IDs and the source
+name (`service_name` for Loki, `job` for Prometheus). It will
+optionally auto-sync the dashboard using [K-Phoen/grabana](https://github.com/K-Phoen/grabana) (requires
+`GRAFANA_TOKEN`).
+
 - generates separate dashboard per source (job)
 - supports [Loki and Prometheus](/pkg/telemetry/README.md)
 - can sync via `GRAFANA_TOKEN` with `--grafana-url`
@@ -144,14 +149,45 @@ Panels:
 See [/docs/env-configs.md](/docs/env-configs.md) for the required environment variables.
 
 ```go
-// grafana dashboard
-err := amgen.MachDashboardEnv(mach)
-if err != nil {
-    mach.AddErr(err, nil)
-}
+import amgen "github.com/pancsta/asyncmachine-go/tools/generator"
+
+// ...
+
+var mach *am.Machine
+
+// create a dedicated dashboard for [mach] and submachines
+amgen.MachDashboardEnv(mach)
 ```
 
 ### Manual Grafana Setup
+
+```go
+import (
+    amgen "github.com/pancsta/asyncmachine-go/tools/generator"
+    amgencli "github.com/pancsta/asyncmachine-go/tools/generator/cli"
+)
+
+// ...
+
+var mach *am.Machine
+var service string
+var url string
+var token string
+
+p := amgencli.GrafanaParams{
+    Ids:        mach.Id(),
+    Name:       mach.Id(),
+    Folder:     "asyncmachine",
+    GrafanaUrl: url,
+    Token:      token,
+    Source:     service,
+}
+t := &amgen.SyncTracer{p: p}
+
+mach.BindTracer(t)
+```
+
+### Manual Grafana Setup (shell)
 
 The command below will create a dashboard for machines with IDs `root,_rm-root,_rs-root-0,_rs-root-1,_rs-root-2`.
 Without `--grafana-url`, it will output a JSON version of the same dashboard.
