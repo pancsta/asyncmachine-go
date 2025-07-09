@@ -219,14 +219,14 @@ func MachDashboardEnv(mach *am.Machine) error {
 		return nil
 	}
 
-	p := cli.GrafanaParams{}
-	// TODO named vars for env vars
-	p.GrafanaUrl = os.Getenv("AM_GRAFANA_URL")
-	p.Token = os.Getenv("AM_GRAFANA_TOKEN")
-	p.Folder = "asyncmachine"
-	p.Ids = mach.Id()
-	p.Name = mach.Id()
-	p.Source = os.Getenv("AM_SERVICE")
+	p := cli.GrafanaParams{
+		Ids:        mach.Id(),
+		Name:       mach.Id(),
+		Folder:     "asyncmachine",
+		GrafanaUrl: os.Getenv("AM_GRAFANA_URL"),
+		Token:      os.Getenv("AM_GRAFANA_TOKEN"),
+		Source:     os.Getenv("AM_SERVICE"),
+	}
 
 	if p.GrafanaUrl == "" || p.Token == "" || p.Source == "" {
 		return nil

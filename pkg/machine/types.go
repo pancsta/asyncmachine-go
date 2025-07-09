@@ -355,19 +355,19 @@ type Mutation struct {
 	cacheCalled atomic.Pointer[S]
 }
 
-func (m Mutation) String() string {
+func (m *Mutation) String() string {
 	return fmt.Sprintf("[%s] %v", m.Type, m.Called)
 }
 
-func (m Mutation) IsCalled(idx int) bool {
+func (m *Mutation) IsCalled(idx int) bool {
 	return slices.Contains(m.Called, idx)
 }
 
-func (m Mutation) CalledIndex(index S) *TimeIndex {
+func (m *Mutation) CalledIndex(index S) *TimeIndex {
 	return NewTimeIndex(index, m.Called)
 }
 
-func (m Mutation) StringFromIndex(index S) string {
+func (m *Mutation) StringFromIndex(index S) string {
 	called := NewTimeIndex(index, m.Called)
 	return "[" + m.Type.String() + "] " + j(called.ActiveStates())
 }

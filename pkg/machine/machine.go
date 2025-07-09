@@ -97,6 +97,7 @@ type Machine struct {
 	stateNames         S
 	stateNamesExport   S
 	handlersLock       sync.Mutex
+	loopLock           sync.Mutex
 	handlers           []*handler
 	clock              Clock
 	cancel             context.CancelFunc
@@ -396,6 +397,9 @@ func (m *Machine) doDispose(force bool) {
 	m.tracers = nil
 	go func() {
 		time.Sleep(100 * time.Millisecond)
+		m.loopLock.Lock()
+		defer m.loopLock.Unlock()
+
 		closeSafe(m.handlerEnd)
 		closeSafe(m.handlerPanic)
 		closeSafe(m.handlerStart)
@@ -1620,9 +1624,8 @@ func (m *Machine) MustParseStates(states S) S {
 	}
 
 	// check if all states are defined in m.Struct
-	// TODO optimize?
-	ret := make(S, len(states))
 	seen := make(map[string]struct{})
+	dups := false
 	for i := range states {
 		if _, ok := m.schema[states[i]]; !ok {
 			panic(fmt.Errorf(
@@ -1630,11 +1633,16 @@ func (m *Machine) MustParseStates(states S) S {
 				states[i], m.id))
 		}
 		if _, ok := seen[states[i]]; !ok {
-			ret = append(ret, states[i])
 			seen[states[i]] = struct{}{}
+		} else {
+			// mark as duplicated
+			dups = true
 		}
 	}
 
+	if dups {
+		return slicesUniq(states)
+	}
 	return states
 }
 
@@ -2343,6 +2351,9 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 	for i := 0; !m.disposing.Load() && i < len(handlers); i++ {
 
 		h := handlers[i]
+		if h == nil {
+			continue
+		}
 		h.mx.Lock()
 		methodName := e.Name
 		// TODO descriptive name
@@ -2546,14 +2557,17 @@ func (m *Machine) handlerLoop() {
 				return
 			}
 
+			m.loopLock.Lock()
+
 			// pass the result to handlerLoop
 			select {
 			case <-m.ctx.Done():
 				m.handlerLoopDone()
+				m.loopLock.Unlock()
 				return
 
 			case m.handlerEnd <- ret:
-				// pass
+				m.loopLock.Unlock()
 			}
 		}
 	}
@@ -2675,8 +2689,8 @@ func (m *Machine) IsQueued(mutationType MutationType, states S,
 }
 
 // IsQueuedAbove allows for rate-limiting of mutations for a specific state.
-func (m *Machine) IsQueuedAbove(threshold int, mutationType MutationType, states S,
-	withoutArgsOnly bool, statesStrictEqual bool, startIndex int,
+func (m *Machine) IsQueuedAbove(threshold int, mutationType MutationType,
+	states S, withoutArgsOnly bool, statesStrictEqual bool, startIndex int,
 ) bool {
 	if m.disposed.Load() {
 		return false

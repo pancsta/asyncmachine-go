@@ -3,7 +3,9 @@ package visualizer
 // func TestUpdates(t *testing.T) {
 // 	sel := &Selection{
 // 		MachId: "cook",
-// 		States: am.S{"Exception", "StoryCookingStarted", "StoryJoke", "Ready", "Requesting", "StoryStartAgain", "Start", "BaseDBStarting", "CheckStories"},
+// 		States: am.S{"Exception", "StoryCookingStarted", "StoryJoke", "Ready",
+// 			"Requesting", "StoryStartAgain", "Start", "BaseDBStarting",
+// 			"CheckStories"},
 // 		// Active: am.S{"StoryJoke"},
 // 		Active: am.S{"Ready", "StoryStartAgain", "Start", "CheckStories"},
 // 	}

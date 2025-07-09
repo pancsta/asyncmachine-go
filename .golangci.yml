@@ -1,7 +1,8 @@
-run:
-  exclude-files:
-    - "examples/.*"
-    - "scripts/.*"
+issues:
+  exclude-dirs:
+    - "vendor"
+    - "third_party"
+    - "pkg/pubsub/uds"
 
 linters:
   enable:

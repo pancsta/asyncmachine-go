@@ -1746,7 +1746,6 @@ func (d *Debugger) initGraphGen(
 	snapshot *graph.Graph, id string, details, clients int, outDir,
 	svgName string,
 ) []*amvis.Visualizer {
-
 	var vizs []*amvis.Visualizer
 
 	// render single (current one)
@@ -1850,8 +1849,8 @@ func (d *Debugger) syncOptsTimelines() {
 
 func (d *Debugger) diagramsRender(
 	e *am.Event, shot *amgraph.Graph, id string, details, clients int,
-	outDir string, svgName string) {
-
+	outDir string, svgName string,
+) {
 	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
 	if ctx.Err() != nil {
 		return // expired
@@ -1907,7 +1906,6 @@ func (d *Debugger) diagramsMemCache(
 	e *am.Event, id string, cache *goquery.Document, tx *telemetry.DbgMsgTx,
 	outDir, svgName string,
 ) {
-
 	svgPath := path.Join(outDir, svgName+".svg")
 	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
 	if ctx.Err() != nil {
@@ -1946,7 +1944,6 @@ func (d *Debugger) diagramsFileCache(
 	e *am.Event, id string, tx *telemetry.DbgMsgTx, lvl int, outDir,
 	svgName string,
 ) {
-
 	svgPath := path.Join(outDir, svgName+".svg")
 	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
 	if ctx.Err() != nil {

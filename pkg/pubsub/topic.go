@@ -214,7 +214,6 @@ func (t *Topic) ExceptionEnter(e *am.Event) bool {
 }
 
 func (t *Topic) ExceptionState(e *am.Event) {
-
 	// super
 	t.ExceptionHandler.ExceptionState(e)
 	args := am.ParseArgs(e.Args)
@@ -1023,7 +1022,6 @@ func (t *Topic) PeerJoinedEnter(e *am.Event) bool {
 }
 
 func (t *Topic) PeerJoinedState(e *am.Event) {
-
 	t.Mach.EvRemove1(e, ss.PeerJoined, nil)
 	args := ParseArgs(e.Args)
 	peerId := args.PeerId
@@ -1928,7 +1926,6 @@ func (t *Topic) metric(msg, host string) bool {
 	metric := t.MachMetrics.Load()
 	if metric == nil {
 		return false
-
 	}
 
 	key := msg + host
@@ -1994,5 +1991,4 @@ func (t *Topic) syncMetrics() {
 			add("Peer")
 		}
 	}, nil)
-
 }

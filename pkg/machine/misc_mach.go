@@ -483,9 +483,6 @@ type Event struct {
 	// Machine is the machine that the event belongs to. It can be used to access
 	// the current Transition and Mutation.
 	machine *Machine
-	// internal events always have a nil step
-	step     *Step
-	internal bool
 }
 
 // Mutation returns the Mutation of an Event.

@@ -1583,7 +1583,6 @@ func (d *Debugger) UpdateFocusState(e *am.Event) {
 
 	// unblock bc of locks
 	go func() {
-
 		// change focus (or not) when changing view types
 		switch d.Mach.Switch(ss.GroupFocused) {
 		case ss.ClientListFocused:

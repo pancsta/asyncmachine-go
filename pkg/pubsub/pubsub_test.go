@@ -14,9 +14,10 @@ import (
 
 	"github.com/joho/godotenv"
 	ma "github.com/multiformats/go-multiaddr"
-	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/sync/errgroup"
+
+	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
@@ -66,7 +67,8 @@ type mirrorHandlers struct {
 	ProcessMsgsState       am.HandlerFinal
 }
 
-var mirrorStates = am.S{am.Exception,
+var mirrorStates = am.S{
+	am.Exception,
 	ss.Joined, ss.Ready, ss.MissPeersByUpdates, ss.MissPeersByGossip,
 	ss.MissUpdatesByGossip, ss.SendGossips, ss.SendUpdates, ss.SendInfo,
 	ss.MsgReqUpdates, ss.MsgReqInfo, ss.ProcessMsgs, ss.ReqMissingUpdates,
@@ -534,7 +536,7 @@ func TestExposingMany(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			ps.Dispose()
-			amhelp.WaitForAll(ctx, 100*time.Millisecond,
+			_ = amhelp.WaitForAll(ctx, 100*time.Millisecond,
 				ps.Mach.When1(ss.Disposed, nil))
 			ps.Mach.Dispose()
 			wg.Done()

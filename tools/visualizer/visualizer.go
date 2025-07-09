@@ -702,8 +702,8 @@ type Selection struct {
 
 func UpdateCache(
 	ctx context.Context, filepath string, dom *goquery.Document,
-	selections ...*Selection) error {
-
+	selections ...*Selection,
+) error {
 	for _, sel := range selections {
 		for _, state := range sel.States {
 			if ctx.Err() != nil {
@@ -767,5 +767,5 @@ func UpdateCache(
 		return err
 	}
 
-	return os.WriteFile(filepath, []byte(html), 0644)
+	return os.WriteFile(filepath, []byte(html), 0o644)
 }

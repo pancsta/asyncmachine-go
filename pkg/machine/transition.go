@@ -192,7 +192,6 @@ func (t *Transition) CleanCache() {
 
 // StatesBefore is a list of states before the transition.
 func (t *Transition) StatesBefore() S {
-
 	// cache
 	if v := t.cacheStatesBefore.Load(); v != nil {
 		return *v
@@ -216,7 +215,6 @@ func (t *Transition) StatesBefore() S {
 
 // TargetStates is a list of states after parsing the relations.
 func (t *Transition) TargetStates() S {
-
 	// cache
 	if v := t.cacheTargetStates.Load(); v != nil {
 		return *v
@@ -455,7 +453,6 @@ func (t *Transition) emitExitEvents() Result {
 func (t *Transition) emitHandler(
 	from, to string, isFinal, isEnter bool, event string, args A,
 ) Result {
-
 	t.latestStepToState = to
 	ret, handlerCalled := t.Machine.handle(event, args, isFinal, isEnter, false)
 
