@@ -6,9 +6,8 @@ toolchain go1.24.0
 
 //replace github.com/pancsta/cview => ../cview
 
-// replace libp2p's prom with no-op
-// TODO always update to the prev minor version, to dont no-op /pkg/telemetry/prom
-replace github.com/prometheus/client_golang v1.22.0 => github.com/pancsta/prom_client_golang v0.0.0-20250629100015-513d4c0bdd5e
+// replace libp2p's prom with no-op to prevent a goroutine leak in load tests
+//replace github.com/prometheus/client_golang => github.com/pancsta/prom_client_golang v0.0.0-20250629100015-513d4c0bdd5e
 
 require (
 	code.rocketnine.space/tslocum/cbind v0.1.5

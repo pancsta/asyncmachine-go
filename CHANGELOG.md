@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.12.0](https://github.com/pancsta/asyncmachine-go/tree/v0.13.0) (2025-07-09)
+## [v0.13.0](https://github.com/pancsta/asyncmachine-go/tree/v0.13.0) (2025-07-09)
 
 - feat: release v0.13.0 [\#269](https://github.com/pancsta/asyncmachine-go/pull/269)
    (@pancsta)
