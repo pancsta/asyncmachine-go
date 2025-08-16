@@ -862,6 +862,27 @@ func (m *Machine) TimeSum(states S) uint64 {
 	return ret
 }
 
+// PrependMut prepends the mutation to the front of the queue. This is a special
+// cases only method and should be used with caution, as it can create an
+// infinite loop. It's useful for postponing mutations inside a negotiation
+// handler
+func (m *Machine) PrependMut(mut *Mutation) Result {
+	if m.disposed.Load() {
+		return Canceled
+	}
+
+	statesParsed := m.MustParseStates(IndexToStates(m.StateNames(), mut.Called))
+	m.log(LogOps, "[prepend:%s] %s", mut.Type, j(statesParsed))
+
+	m.queueLock.Lock()
+	mut.cacheCalled.Store(&statesParsed)
+	m.queue = append([]*Mutation{mut}, m.queue...)
+	m.queueLen.Store(int32(len(m.queue)))
+	m.queueLock.Unlock()
+
+	return m.processQueue()
+}
+
 // Add activates a list of states in the machine, returning the result of the
 // transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
