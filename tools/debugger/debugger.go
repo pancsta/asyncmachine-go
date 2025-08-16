@@ -96,7 +96,7 @@ type Debugger struct {
 	exportDialog       *cview.Modal
 	contentPanels      *cview.Panels
 	toolbars           [3]*cview.Table
-	treeLogGrid        *cview.Grid
+	schemaLogGrid      *cview.Grid
 	treeMatrixGrid     *cview.Grid
 	lastSelectedState  string
 	// TODO should be after a redraw, not before
