@@ -361,6 +361,8 @@ type Mutation struct {
 	Auto bool
 	// Source is the source event for this mutation.
 	Source *MutSource
+	// Can* methods
+	IsCheck bool
 
 	// specific context for this mutation (optional)
 	ctx context.Context
