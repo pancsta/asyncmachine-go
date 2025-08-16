@@ -2,6 +2,7 @@ package visualizer
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,6 +18,9 @@ import (
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
+
+//go:embed diagram.html
+var HtmlDiagram []byte
 
 func PresetSingle(vis *Visualizer) {
 	vis.RenderDefaults()
@@ -80,6 +84,8 @@ type Visualizer struct {
 
 	// Render only these machines as starting points.
 	RenderMachs []string
+	// Render only these states
+	RenderAllowlist am.S
 	// Render only machines matching the regular expressions as starting points.
 	RenderMachsRe []*regexp.Regexp
 	// Skip rendering of these machines.
@@ -189,6 +195,7 @@ func New(mach *am.Machine, graph *amgraph.Graph) *Visualizer {
 
 func (v *Visualizer) RenderDefaults() {
 	// ON
+
 	v.RenderReady = true
 	v.RenderStart = true
 	v.RenderException = true
@@ -522,8 +529,9 @@ func (v *Visualizer) shouldRenderState(machId, state string) bool {
 	if !v.shouldRenderMach(machId) {
 		return false
 	}
+	allow := v.RenderAllowlist
 
-	// whitelist
+	// special states
 	if !v.RenderStates {
 		// Start
 		if v.RenderStart && state == ssam.BasicStates.Start {
@@ -539,7 +547,7 @@ func (v *Visualizer) shouldRenderState(machId, state string) bool {
 		}
 	}
 
-	// blacklist
+	// special states and allowlist
 	if v.RenderStates {
 		// Start
 		if !v.RenderStart && state == ssam.BasicStates.Start {
@@ -553,6 +561,13 @@ func (v *Visualizer) shouldRenderState(machId, state string) bool {
 		if !v.RenderException && state == am.Exception {
 			return false
 		}
+
+		// states allowlist
+		if len(allow) > 0 && !slices.Contains(allow, state) {
+			return false
+		}
+
+		// TODO states skiplist
 	}
 
 	// inherited

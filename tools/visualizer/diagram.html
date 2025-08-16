@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>am-vis machine diagrams</title>
+    <style>
+        /* Make the body and container fullscreen */
+        html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Prevent scrollbars */
+            background: black;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        }
+        #svg-container {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background-color: #fff;
+            cursor: grab;
+        }
+        #svg-container:active {
+            cursor: grabbing;
+        }
+        svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: black;
+        }
+        /* Status bar for user feedback */
+        #status-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: #ffc107;
+            color: #333;
+            text-align: center;
+            padding: 8px;
+            font-size: 14px;
+            z-index: 1000;
+            display: none; /* Hidden by default */
+        }
+        #status-bar.error {
+            background-color: #dc3545;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="status-bar">Connecting...</div>
+    <div id="svg-container">
+        <!-- SVG content will be loaded here dynamically -->
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Configuration ---
+            const SVG_URL = 'http://localhost:6831/diagrams/mach.svg';
+            const WEBSOCKET_URL = 'ws://localhost:6831/diagrams/mach.ws';
+            const STORAGE_KEY = 'svg-viewbox-state';
+
+            const svgContainer = document.getElementById('svg-container');
+            const statusBar = document.getElementById('status-bar');
+
+            let svg = null; // SVG element will be created after fetch
+            let viewBox = { x: 0, y: 0, width: 500, height: 500 }; // Default viewBox
+
+            let isPanning = false;
+            let startPoint = { x: 0, y: 0 };
+
+            // --- WebSocket State ---
+            let reconnectAttempts = 0;
+            const maxReconnectDelay = 30000; // 30 seconds
+
+            /**
+             * Saves the current viewBox state to localStorage.
+             */
+            function saveViewBoxState() {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(viewBox));
+            }
+
+            /**
+             * Loads the viewBox state from localStorage.
+             * @returns {object|null} The saved viewBox object or null if not found.
+             */
+            function loadViewBoxState() {
+                const savedState = localStorage.getItem(STORAGE_KEY);
+                try {
+                    if (savedState) {
+                        return JSON.parse(savedState);
+                    }
+                } catch (e) {
+                    console.error("Failed to parse saved viewBox state:", e);
+                    return null;
+                }
+                return null;
+            }
+
+            /**
+             * Fetches and displays the SVG from the URL.
+             * @param {boolean} restoreState - If true, tries to load the view from localStorage.
+             */
+            async function loadSVG(restoreState = false) {
+                console.log('Fetching SVG from:', SVG_URL);
+                try {
+                    // Add a cache-busting parameter to ensure the latest version is always requested
+                    const urlWithCacheBuster = `${SVG_URL}?t=${new Date().getTime()}`;
+                    const response = await fetch(urlWithCacheBuster);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    const svgText = await response.text();
+                    svgContainer.innerHTML = svgText;
+                    svg = svgContainer.querySelector('svg');
+
+                    if (!svg) {
+                        throw new Error('No SVG element found in the fetched content.');
+                    }
+
+                    // Try to load the saved viewbox state only if requested
+                    let savedViewBox = null;
+                    if (restoreState) {
+                        savedViewBox = loadViewBoxState();
+                    }
+
+                    if (savedViewBox) {
+                        console.log("Restoring saved view state.");
+                        viewBox = savedViewBox;
+                    } else {
+                        // If no saved state or not restoring, use the SVG's default viewBox
+                        console.log("Resetting to default view state.");
+                        const vbAttr = svg.getAttribute('viewBox');
+                        if (vbAttr) {
+                            const parts = vbAttr.split(' ').map(Number);
+                            viewBox = { x: parts[0], y: parts[1], width: parts[2], height: parts[3] };
+                        }
+                    }
+                    svg.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+                    console.log('SVG loaded successfully.');
+                } catch (error) {
+                    console.error('Failed to load SVG:', error);
+                    svgContainer.innerHTML = `<p style="color: red; padding: 1rem;">Error loading SVG: ${error.message}</p>`;
+                }
+            }
+
+            /**
+             * Updates the status bar message and style.
+             */
+            function updateStatus(message, isError = false) {
+                if (message) {
+                    statusBar.textContent = message;
+                    statusBar.className = isError ? 'error' : '';
+                    statusBar.style.display = 'block';
+                } else {
+                    statusBar.style.display = 'none';
+                }
+            }
+
+            /**
+             * Connects to the WebSocket server and listens for the 'refresh' event.
+             */
+            function connectWebSocket() {
+                updateStatus('Connecting to WebSocket...');
+                const socket = new WebSocket(WEBSOCKET_URL);
+
+                socket.onopen = () => {
+                    console.log('WebSocket connection established.');
+                    updateStatus(null); // Hide status bar on successful connection
+                    reconnectAttempts = 0; // Reset counter on success
+                };
+
+                socket.onmessage = (event) => {
+                    if (event.data === 'refresh') {
+                        console.log('Received "refresh" event, reloading SVG and restoring view.');
+                        loadSVG(true); // Pass true to restore state
+                    } else {
+                        console.log('Received message:', event.data);
+                    }
+                };
+
+                socket.onclose = () => {
+                    console.log('WebSocket connection closed.');
+                    // Implement exponential backoff for reconnection
+                    const delay = Math.min(maxReconnectDelay, 1000 * Math.pow(2, reconnectAttempts));
+                    reconnectAttempts++;
+                    updateStatus(`Connection lost. Reconnecting in ${Math.round(delay / 1000)}s...`, true);
+                    setTimeout(connectWebSocket, delay);
+                };
+
+                socket.onerror = (error) => {
+                    console.error('WebSocket error occurred. See onclose event for reconnection logic.');
+                    socket.close();
+                };
+            }
+
+            // --- Pan & Zoom Event Listeners ---
+            svgContainer.addEventListener('wheel', (event) => {
+                if (!svg) return;
+                event.preventDefault();
+
+                const zoomFactor = 1.5;
+                const mousePoint = getSVGPoint(event.clientX, event.clientY);
+                const scale = (event.deltaY < 0) ? 1 / zoomFactor : zoomFactor;
+
+                viewBox.x = mousePoint.x - (mousePoint.x - viewBox.x) * scale;
+                viewBox.y = mousePoint.y - (mousePoint.y - viewBox.y) * scale;
+                viewBox.width *= scale;
+                viewBox.height *= scale;
+
+                svg.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+                saveViewBoxState(); // Save state after zooming
+            });
+
+            svgContainer.addEventListener('mousedown', (event) => {
+                if (!svg) return;
+                isPanning = true;
+                startPoint = { x: event.clientX, y: event.clientY };
+            });
+
+            svgContainer.addEventListener('mousemove', (event) => {
+                if (!isPanning || !svg) return;
+                event.preventDefault();
+
+                const endPoint = { x: event.clientX, y: event.clientY };
+                const dx = (startPoint.x - endPoint.x) * (viewBox.width / svgContainer.clientWidth);
+                const dy = (startPoint.y - endPoint.y) * (viewBox.height / svgContainer.clientHeight);
+
+                viewBox.x += dx;
+                viewBox.y += dy;
+
+                svg.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+                startPoint = endPoint;
+                saveViewBoxState(); // Save state after panning
+            });
+
+            svgContainer.addEventListener('mouseup', () => isPanning = false);
+            svgContainer.addEventListener('mouseleave', () => isPanning = false);
+
+            /**
+             * Converts a screen point to an SVG coordinate system point.
+             */
+            function getSVGPoint(clientX, clientY) {
+                const CTM = svg.getScreenCTM();
+                if (!CTM) return { x: 0, y: 0 };
+                return {
+                    x: (clientX - CTM.e) / CTM.a,
+                    y: (clientY - CTM.f) / CTM.d
+                };
+            }
+
+            // --- Initial Load ---
+            // On initial load, don't restore state. This will use the SVG's default view.
+            loadSVG();
+            connectWebSocket();
+        });
+    </script>
+
+</body>
+</html>
