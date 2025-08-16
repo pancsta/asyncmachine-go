@@ -80,8 +80,10 @@ type Machine struct {
 	t atomic.Pointer[Transition]
 	// schema is a map of state names to state definitions.
 	// TODO atomic?
-	schema     Schema
-	schemaLock sync.RWMutex
+	schema      Schema
+	groups      map[string][]int
+	groupsOrder []string
+	schemaLock  sync.RWMutex
 	// activeStates is a list of currently active schema.
 	activeStates     S
 	activeStatesLock sync.RWMutex
@@ -3363,4 +3365,64 @@ func (m *Machine) Backoff() bool {
 
 func (m *Machine) OnChange(fn func()) {
 	// TODO
+}
+
+func (m *Machine) SetGroups(groups any, optStates States) {
+	m.schemaLock.Lock()
+	defer m.schemaLock.Unlock()
+	list := map[string][]int{}
+	order := []string{}
+	index := m.stateNames
+
+	// add all the groups
+	// TODO recursive for inherited groups
+	val := reflect.ValueOf(groups)
+	typ := val.Type()
+	for i := 0; i < val.NumField(); i++ {
+		field := typ.Field(i)
+		kind := field.Type.Kind()
+		if kind != reflect.Slice {
+			continue
+		}
+		name := field.Name
+		value := val.Field(i).Interface()
+		if states, ok := value.(S); ok {
+			list[name] = StatesToIndex(index, states)
+			order = append(order, name)
+		}
+	}
+
+	// add all the schemas (nested)
+
+	// state schema structure
+	if optStates != nil {
+		groups, order2 := optStates.StateGroups()
+		for _, name := range order2 {
+			list[name] = groups[name]
+			order = append(order, name)
+		}
+	}
+
+	m.groups = list
+	m.groupsOrder = order
+}
+
+func (m *Machine) SetGroupsString(groups map[string]S, order []string) {
+	m.schemaLock.Lock()
+	defer m.schemaLock.Unlock()
+	list := map[string][]int{}
+
+	for name, states := range groups {
+		list[name] = StatesToIndex(m.stateNames, states)
+	}
+
+	m.groups = list
+	m.groupsOrder = order
+}
+
+func (m *Machine) Groups() (map[string][]int, []string) {
+	m.schemaLock.Lock()
+	defer m.schemaLock.Unlock()
+
+	return m.groups, m.groupsOrder
 }
