@@ -634,6 +634,14 @@ func (t *Transition) emitEvents() Result {
 			// FooEnd
 			result = t.emitFinalEvents()
 		}
+
+		// handle timeouts in final handlers the same as a panic
+		// TODO test
+		if result == Canceled {
+			m.recoverFinalPhase()
+		}
+
+		// TODO safe to continue?
 		hasStateChanged = !m.IsTime(t.TimeBefore, nil)
 	} else {
 		// gather new clock values, overwrite fake TimeAfter
