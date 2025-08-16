@@ -1421,5 +1421,87 @@ func SchemaHash(schema am.Schema) string {
 	hasher := md5.New()
 	hasher.Write([]byte(ret))
 
-	return hex.EncodeToString(hasher.Sum(nil))
+	hash := hex.EncodeToString(hasher.Sum(nil))
+	// short hash
+	return hash[:6]
+}
+
+// TODO ChanGetter
+
+// CantAdd will confirm that the mutation is impossible.
+func CantAdd(mach am.Api, states am.S, args am.A) bool {
+	return mach.CanAdd(states, args) == am.Canceled
+}
+
+// CantAdd1 is a single-state version of [CantAdd].
+func CantAdd1(mach am.Api, state string, args am.A) bool {
+	return mach.CanAdd(am.S{state}, args) == am.Canceled
+}
+
+// CantRemove will confirm that the mutation is impossible.
+func CantRemove(mach am.Api, states am.S, args am.A) bool {
+	return mach.CanRemove(states, args) == am.Canceled
+}
+
+// CantRemove1 is a single-state version of [CantRemove].
+func CantRemove1(mach am.Api, state string, args am.A) bool {
+	return mach.CanRemove(am.S{state}, args) == am.Canceled
+}
+
+// AskAdd will first check if a mutation isn't impossible and only then try
+// to mutate the state machine. Causes the negotiation phase to execute twice.
+// Useful to avoid canceled transitions.
+//
+// See also [am.Machine.CanAdd] and [CantAdd].
+func AskAdd(mach am.Api, states am.S, args am.A) am.Result {
+	return EvAskAdd(nil, mach, states, args)
+}
+
+// EvAskAdd is a traced version of [AskAdd].
+func EvAskAdd(e *am.Event, mach am.Api, states am.S, args am.A) am.Result {
+	// only if not impossible
+	if !CantAdd(mach, states, args) {
+		return mach.EvAdd(e, states, args)
+	}
+
+	return am.Canceled
+}
+
+// AskAdd1 is a single-state version of [AskAdd].
+func AskAdd1(mach am.Api, state string, args am.A) am.Result {
+	return AskAdd(mach, S{state}, args)
+}
+
+// EvAskAdd1 is a traced version of [AskAdd] for a single state.
+func EvAskAdd1(e *am.Event, mach am.Api, state string, args am.A) am.Result {
+	return EvAskAdd(e, mach, S{state}, args)
+}
+
+// AskRemove will first check if a mutation isn't impossible and only then try
+// to mutate the state machine. Causes the negotiation phase to execute twice.
+// Useful to avoid canceled transitions.
+//
+// See also [am.Machine.CanRemove] and [CantRemove].
+func AskRemove(mach am.Api, states am.S, args am.A) am.Result {
+	return EvAskRemove(nil, mach, states, args)
+}
+
+// EvAskRemove is a traced version of [AskRemove].
+func EvAskRemove(e *am.Event, mach am.Api, states am.S, args am.A) am.Result {
+	// only if not impossible
+	if !CantRemove(mach, states, args) {
+		return mach.EvRemove(e, states, args)
+	}
+
+	return am.Canceled
+}
+
+// AskRemove1 is a single-state version of [AskRemove].
+func AskRemove1(mach am.Api, state string, args am.A) am.Result {
+	return AskRemove(mach, S{state}, args)
+}
+
+// EvAskRemove1 is a traced version of [AskRemove] for a single state.
+func EvAskRemove1(e *am.Event, mach am.Api, state string, args am.A) am.Result {
+	return EvAskRemove(e, mach, S{state}, args)
 }
