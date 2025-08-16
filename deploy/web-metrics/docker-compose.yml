@@ -64,7 +64,7 @@ services:
   # TODO update https://docs.google.com/document/d/18B1yTMewRft2N0nW9K-ecVRTt5VaNgnrPTW1eL236t4/edit?tab=t.0#heading=h.5j21da1bep6t
 
   jaeger:
-    image: jaegertracing/all-in-one:1.26
+    image: jaegertracing/all-in-one:1.71.0
     container_name: jaeger
     environment:
       - COLLECTOR_OTLP_ENABLED=true
@@ -97,4 +97,3 @@ services:
 
 volumes:
   grafana_data: { }
-  perses: { }
