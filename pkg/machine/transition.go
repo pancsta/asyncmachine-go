@@ -106,7 +106,7 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 	called := t.CalledStates()
 	mutType := t.Type()
 	logArgs := ""
-	if m.LogLevel() >= LogSteps {
+	if t.isLogSteps() {
 		logArgs = t.LogArgs()
 		t.addSteps(newSteps("", called, StepRequested, 0)...)
 	}
@@ -150,7 +150,7 @@ func (t *Transition) statesToSet(mutType MutationType, states S) S {
 		statesToSet := slicesFilter(m.activeStates, func(state string, _ int) bool {
 			return !slices.Contains(states, state)
 		})
-		if m.LogLevel() >= LogSteps {
+		if t.isLogSteps() {
 			t.addSteps(newSteps("", states, StepRemove, 0)...)
 		}
 
@@ -158,7 +158,7 @@ func (t *Transition) statesToSet(mutType MutationType, states S) S {
 
 	case MutationAdd:
 		statesToSet := slices.Concat(states, m.activeStates)
-		if m.LogLevel() >= LogSteps {
+		if t.isLogSteps() {
 			t.addSteps(newSteps("", DiffStates(statesToSet, m.activeStates),
 				StepSet, 0)...)
 		}
@@ -167,7 +167,7 @@ func (t *Transition) statesToSet(mutType MutationType, states S) S {
 
 	case MutationSet:
 		statesToSet := states
-		if m.LogLevel() >= LogSteps {
+		if t.isLogSteps() {
 			t.addSteps(newSteps("", DiffStates(statesToSet, m.activeStates),
 				StepSet, 0)...)
 			t.addSteps(newSteps("", DiffStates(m.activeStates, statesToSet),
@@ -306,7 +306,7 @@ func (t *Transition) Type() MutationType {
 // LogArgs returns a text snippet with arguments which should be logged for this
 // Mutation.
 func (t *Transition) LogArgs() string {
-	matcher := t.Machine.GetLogArgs()
+	matcher := t.Machine.semLogger.Args()
 	if matcher == nil {
 		return ""
 	}
@@ -392,7 +392,7 @@ func (t *Transition) emitSelfEvents() Result {
 		name := s + s
 		t.latestStepToState = s
 		ret, handlerCalled = m.handle(name, t.Mutation.Args, false, false, true)
-		if handlerCalled && m.LogLevel() >= LogSteps {
+		if handlerCalled && t.isLogSteps() {
 			step := newStep("", s, StepHandler, 0)
 			step.IsSelf = true
 			t.addSteps(step)
@@ -456,7 +456,7 @@ func (t *Transition) emitHandler(
 	t.latestStepToState = to
 	ret, handlerCalled := t.Machine.handle(event, args, isFinal, isEnter, false)
 
-	if handlerCalled && t.Machine.LogLevel() >= LogChanges {
+	if handlerCalled && t.Machine.semLogger.IsSteps() {
 		step := newStep(from, to, StepHandler, 0)
 		step.IsFinal = isFinal
 		step.IsEnter = isEnter
@@ -483,7 +483,7 @@ func (t *Transition) emitFinalEvents() Result {
 		ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args,
 			true, isEnter, false)
 
-		if handlerCalled && t.Machine.LogLevel() >= LogChanges {
+		if handlerCalled && t.Machine.semLogger.IsSteps() {
 			step := newStep("", s, StepHandler, 0)
 			step.IsFinal = true
 			step.IsEnter = isEnter
@@ -515,7 +515,7 @@ func (t *Transition) emitStateStateEvents() Result {
 			ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args, false,
 				false, false)
 
-			if handlerCalled && t.Machine.LogLevel() >= LogChanges {
+			if handlerCalled && t.Machine.semLogger.IsSteps() {
 				step := newStep(before[i], after[ii], StepHandler, 0)
 				t.addSteps(step)
 			}
@@ -560,7 +560,7 @@ func (t *Transition) emitEvents() Result {
 	hasStateChanged := false
 	called := t.CalledStates()
 	hasHandlers := t.Machine.handlerLoopRunning.Load()
-	logEverything := m.LogLevel() == LogEverything
+	logEverything := m.semLogger.Level() == LogEverything
 
 	// tracers
 	m.tracersLock.RLock()
@@ -729,5 +729,16 @@ func (t *Transition) setupAccepted() {
 	}
 	t.IsAccepted.Store(false)
 	m.log(LogOps, "[cancel:reject] %s", j(notAccepted))
-	t.addSteps(newSteps("", notAccepted, StepCancel, 0)...)
+	if t.isLogSteps() {
+		t.addSteps(newSteps("", notAccepted, StepCancel, 0)...)
+	}
+}
+
+func (t *Transition) isLogSteps() bool {
+	l := t.Machine.semLogger
+	if t.Mutation.IsCheck && !l.IsCan() {
+		return false
+	}
+
+	return l.IsSteps()
 }

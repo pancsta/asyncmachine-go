@@ -317,12 +317,12 @@ func OptsWithTracers(opts *Opts, tracers ...Tracer) *Opts {
 
 // ///// ///// /////
 
-// Logger is a logging function for the machine.
-type Logger func(level LogLevel, msg string, args ...any)
+// LoggerFn is a logging function for the machine.
+type LoggerFn func(level LogLevel, msg string, args ...any)
 
-// LogArgsMapper is a function that maps arguments to be logged. Useful for
-// debugging.
-type LogArgsMapper func(args A) map[string]string
+// LogArgsMapperFn is a function that maps arguments to be logged. Useful for
+// debugging. See NewArgsMapper.
+type LogArgsMapperFn func(args A) map[string]string
 
 type LogEntry struct {
 	Level LogLevel
@@ -332,14 +332,11 @@ type LogEntry struct {
 // LogLevel enum
 type LogLevel int
 
-// TODO spread log level 0 - 10 - 20 - 30 - 40 - 50 - 60
 const (
 	// LogNothing means no logging, including external msgs.
 	LogNothing LogLevel = iota
 	// LogExternal will show ony external user msgs.
 	LogExternal
-	// LogSteps will show external user msgs and also create transition steps.
-	LogSteps
 	// LogChanges means logging state changes and external msgs.
 	LogChanges
 	// LogOps means LogChanges + logging all the operations.
@@ -352,10 +349,12 @@ const (
 
 func (l LogLevel) String() string {
 	switch l {
+	case LogNothing:
+		fallthrough
+	default:
+		return "nothing"
 	case LogExternal:
 		return "external"
-	case LogSteps:
-		return "steps"
 	case LogChanges:
 		return "changes"
 	case LogOps:
@@ -364,9 +363,187 @@ func (l LogLevel) String() string {
 		return "decisions"
 	case LogEverything:
 		return "everything"
-	default:
-		return "nothing"
 	}
+}
+
+// SemLogger is a semantic logger for structured events. It's useful for graph
+// info and configuring the text logger.
+type SemLogger interface {
+	// TODO SetTag, RemoveTag, JoinTopic, LeaveTopic, custom graph links / edges
+
+	// graph
+
+	// AddPipeOut informs that [sourceState] has been piped out into [targetMach].
+	// The name of the target state is unknown.
+	AddPipeOut(addMut bool, sourceState, targetMach string)
+	// AddPipeIn informs that [targetState] has been piped into this machine from
+	// [sourceMach]. The name of the source state is unknown.
+	AddPipeIn(addMut bool, targetState, sourceMach string)
+	// RemovePipes removes all pipes for the passed machine ID.
+	RemovePipes(machId string)
+
+	// details
+
+	IsCan() bool
+	EnableCan(enable bool)
+	// IsSteps return true when the machine is logging transition steps.
+	IsSteps() bool
+	// EnableSteps enables / disables logging of transition steps.
+	EnableSteps(enable bool)
+	// IsGraph returns true when the machine is logging graph structures.
+	IsGraph() bool
+	// EnableGraph enables / disables logging of graph structures.
+	EnableGraph(enable bool)
+	// EnableId enables or disables the logging of the machine's ID in log
+	// messages.
+	EnableId(val bool)
+	// IsId returns true when the machine is logging the machine's ID in log
+	// messages.
+	IsId() bool
+
+	// logger
+
+	// SetLogger sets a custom logger function.
+	SetLogger(logger LoggerFn)
+	// Logger returns the current custom logger function or nil.
+	Logger() LoggerFn
+	// SetLevel sets the log level of the machine.
+	SetLevel(lvl LogLevel)
+	// Level returns the log level of the machine.
+	Level() LogLevel
+	// SetEmpty creates an empty logger that does nothing and sets the log
+	// level in one call. Useful when combined with am-dbg. Requires LogChanges
+	// log level to produce any output.
+	SetEmpty(lvl LogLevel)
+	// SetSimple takes log.Printf and sets the log level in one
+	// call. Useful for testing. Requires LogChanges log level to produce any
+	// output.
+	SetSimple(logf func(format string, args ...any), level LogLevel)
+	// SetArgs accepts a function which decides which mutation arguments to log.
+	// See NewArgsMapper or create your own manually.
+	SetArgs(mapper LogArgsMapperFn)
+	// Args returns the current log args mapper function.
+	Args() LogArgsMapperFn
+}
+type semLogger struct {
+	mach  *Machine
+	steps atomic.Bool
+	graph atomic.Bool
+	can   atomic.Bool
+}
+
+// implement [SemLogger]
+var _ SemLogger = &semLogger{}
+
+func (s *semLogger) SetArgs(mapper LogArgsMapperFn) {
+	// TODO thread safe
+	s.mach.logArgs = mapper
+}
+
+func (s *semLogger) Args() LogArgsMapperFn {
+	// TODO thread safe
+	return s.mach.logArgs
+}
+
+func (s *semLogger) EnableId(val bool) {
+	s.mach.logId.Store(val)
+}
+
+func (s *semLogger) IsId() bool {
+	return s.mach.logId.Load()
+}
+
+func (s *semLogger) SetLogger(fn LoggerFn) {
+	if fn == nil {
+		s.mach.logger.Store(nil)
+
+		return
+	}
+	s.mach.logger.Store(&fn)
+}
+
+func (s *semLogger) Logger() LoggerFn {
+	if l := s.mach.logger.Load(); l != nil {
+		return *l
+	}
+
+	return nil
+}
+
+func (s *semLogger) SetLevel(lvl LogLevel) {
+	s.mach.logLevel.Store(&lvl)
+}
+
+func (s *semLogger) Level() LogLevel {
+	return *s.mach.logLevel.Load()
+}
+
+func (s *semLogger) SetEmpty(lvl LogLevel) {
+	var logger LoggerFn = func(_ LogLevel, msg string, args ...any) {
+		// no-op
+	}
+	s.mach.logger.Store(&logger)
+	s.mach.logLevel.Store(&lvl)
+}
+
+func (s *semLogger) SetSimple(
+	logf func(format string, args ...any), level LogLevel,
+) {
+	if logf == nil {
+		panic("logf cannot be nil")
+	}
+
+	var logger LoggerFn = func(_ LogLevel, msg string, args ...any) {
+		logf(msg, args...)
+	}
+	s.mach.logger.Store(&logger)
+	s.mach.logLevel.Store(&level)
+}
+
+func (s *semLogger) AddPipeOut(addMut bool, sourceState, targetMach string) {
+	kind := "remove"
+	if addMut {
+		kind = "add"
+	}
+	s.mach.log(LogOps, "[pipe-out:%s] %s to %s", kind, sourceState,
+		targetMach)
+}
+
+func (s *semLogger) AddPipeIn(addMut bool, targetState, sourceMach string) {
+	kind := "remove"
+	if addMut {
+		kind = "add"
+	}
+	s.mach.log(LogOps, "[pipe-in:%s] %s from %s", kind, targetState,
+		sourceMach)
+}
+
+func (s *semLogger) RemovePipes(machId string) {
+	s.mach.log(LogOps, "[pipe:gc] %s", machId)
+}
+
+func (s *semLogger) IsSteps() bool {
+	return s.steps.Load()
+}
+
+func (s *semLogger) EnableSteps(enable bool) {
+	s.steps.Store(enable)
+}
+
+func (s *semLogger) IsCan() bool {
+	return s.can.Load()
+}
+
+func (s *semLogger) EnableCan(enable bool) {
+	s.can.Store(enable)
+}
+
+func (s *semLogger) IsGraph() bool {
+	return s.graph.Load()
+}
+
+func (s *semLogger) EnableGraph(enable bool) {
+	s.graph.Store(enable)
 }
 
 // LogArgs is a list of common argument names to be logged. Useful for

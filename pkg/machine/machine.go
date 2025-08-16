@@ -102,7 +102,8 @@ type Machine struct {
 	clock              Clock
 	cancel             context.CancelFunc
 	logLevel           atomic.Pointer[LogLevel]
-	logger             atomic.Pointer[Logger]
+	logger             atomic.Pointer[LoggerFn]
+	semLogger          SemLogger
 	indexWhen          IndexWhen
 	indexWhenTime      IndexWhenTime
 	indexWhenArgs      IndexWhenArgs
@@ -207,6 +208,7 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 		whenDisposed:  make(chan struct{}),
 	}
 
+	m.semLogger = &semLogger{mach: m}
 	m.timeLast.Store(&Time{})
 	lvl := LogNothing
 	m.logLevel.Store(&lvl)
@@ -241,7 +243,7 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 			m.resolver = opts.Resolver
 		}
 		if opts.LogLevel != LogNothing {
-			m.SetLogLevel(opts.LogLevel)
+			m.semLogger.SetLevel(opts.LogLevel)
 		}
 		if opts.Tracers != nil {
 			m.tracers = opts.Tracers
@@ -1747,7 +1749,7 @@ func (m *Machine) setActiveStates(calledStates S, targetStates S,
 	}
 
 	// construct a logging msg
-	if m.LogLevel() >= LogSteps {
+	if m.SemLogger().Level() >= LogExternal {
 		logMsg := ""
 		if len(newStates) > 0 {
 			logMsg += " +" + strings.Join(newStates, " +")
@@ -1755,7 +1757,7 @@ func (m *Machine) setActiveStates(calledStates S, targetStates S,
 		if len(removedStates) > 0 {
 			logMsg += " -" + strings.Join(removedStates, " -")
 		}
-		if len(noChangeStates) > 0 && m.LogLevel() > LogDecisions {
+		if len(noChangeStates) > 0 && m.semLogger.Level() > LogDecisions {
 			logMsg += " " + j(noChangeStates)
 		}
 
@@ -2129,34 +2131,13 @@ func (m *Machine) processWhenArgs(e *Event) {
 	}
 }
 
-// SetLogArgs accepts a function which decides which mutation arguments to log.
-// See NewArgsMapper or create your own manually.
-func (m *Machine) SetLogArgs(mapper LogArgsMapper) {
-	m.logArgs = mapper
-}
-
-// GetLogArgs returns the current log args function.
-func (m *Machine) GetLogArgs() LogArgsMapper {
-	return m.logArgs
-}
-
-// SetLogId enables or disables the logging of the machine's ID in log messages.
-func (m *Machine) SetLogId(val bool) {
-	m.logID = val
-}
-
-// GetLogId returns the current state of the log ID setting.
-func (m *Machine) GetLogId() bool {
-	return m.logID
-}
-
 // Ctx return machine's root context.
 func (m *Machine) Ctx() context.Context {
 	return m.ctx
 }
 
 // Log logs an [extern] message unless LogNothing is set.
-// Optionally redirects to a custom logger from SetLogger.
+// Optionally redirects to a custom logger from SemLogger().SetLogger.
 func (m *Machine) Log(msg string, args ...any) {
 	if m.disposed.Load() {
 		return
@@ -2169,23 +2150,10 @@ func (m *Machine) Log(msg string, args ...any) {
 	m.log(LogExternal, prefix+"] "+msg, args...)
 }
 
-// InternalLog adds an internal log entry from the outside. It should be used
-// only by packages extending pkg/machine. Use Log instead.
-func (m *Machine) InternalLog(lvl LogLevel, msg string, args ...any) {
-	if m.disposed.Load() {
-		return
-	}
-
-	// single lines only
-	msg = strings.ReplaceAll(msg, "\n", " ")
-
-	m.log(lvl, msg, args...)
-}
-
 // log logs a message if the log level is high enough.
-// Optionally redirects to a custom logger from SetLogger.
+// Optionally redirects to a custom logger from SemLogger().SetLogger.
 func (m *Machine) log(level LogLevel, msg string, args ...any) {
-	if level > m.LogLevel() || m.disposed.Load() {
+	if level > m.semLogger.Level() || m.disposed.Load() {
 		return
 	}
 
@@ -2198,7 +2166,7 @@ func (m *Machine) log(level LogLevel, msg string, args ...any) {
 	}
 
 	out := fmt.Sprintf(msg, args...)
-	logger := m.Logger()
+	logger := m.semLogger.Logger()
 	if logger != nil {
 		logger(level, msg, args...)
 	} else {
@@ -2209,8 +2177,8 @@ func (m *Machine) log(level LogLevel, msg string, args ...any) {
 	t := m.Transition()
 	if t != nil && !t.IsCompleted.Load() {
 		// append the log msg to the current transition
-		t.LogEntriesLock.Lock()
-		defer t.LogEntriesLock.Unlock()
+		t.InternalLogEntriesLock.Lock()
+		defer t.InternalLogEntriesLock.Unlock()
 		t.LogEntries = append(t.LogEntries, &LogEntry{level, out})
 
 	} else {
@@ -2231,62 +2199,9 @@ func (m *Machine) log(level LogLevel, msg string, args ...any) {
 	}
 }
 
-// SetLoggerSimple takes log.Printf and sets the log level in one
-// call. Useful for testing. Requires LogChanges log level to produce any
-// output.
-func (m *Machine) SetLoggerSimple(
-	logf func(format string, args ...any), level LogLevel,
-) {
-	if logf == nil {
-		panic("logf cannot be nil")
-	}
-
-	var logger Logger = func(_ LogLevel, msg string, args ...any) {
-		logf(msg, args...)
-	}
-	m.logger.Store(&logger)
-	m.logLevel.Store(&level)
-}
-
-// SetLoggerEmpty creates an empty logger that does nothing and sets the log
-// level in one call. Useful when combined with am-dbg. Requires LogChanges log
-// level to produce any output.
-func (m *Machine) SetLoggerEmpty(level LogLevel) {
-	var logger Logger = func(_ LogLevel, msg string, args ...any) {
-		// no-op
-	}
-	m.logger.Store(&logger)
-	m.logLevel.Store(&level)
-}
-
-// SetLogger sets a custom logger function.
-func (m *Machine) SetLogger(fn Logger) {
-	if fn == nil {
-		m.logger.Store(nil)
-
-		return
-	}
-	m.logger.Store(&fn)
-}
-
-// Logger returns the current custom logger function, or nil.
-func (m *Machine) Logger() Logger {
-	// TODO should return `Logger` not `*Logger`?
-	if l := m.logger.Load(); l != nil {
-		return *l
-	}
-
-	return nil
-}
-
-// SetLogLevel sets the log level of the machine.
-func (m *Machine) SetLogLevel(level LogLevel) {
-	m.logLevel.Store(&level)
-}
-
-// LogLevel returns the log level of the machine.
-func (m *Machine) LogLevel() LogLevel {
-	return *m.logLevel.Load()
+// SemLogger returns the semantic logger of the machine
+func (m *Machine) SemLogger() SemLogger {
+	return m.semLogger
 }
 
 // handle triggers methods on handlers structs.
@@ -2325,7 +2240,7 @@ func (m *Machine) handle(
 
 	// negotiation support
 	if !isFinal && res == Canceled {
-		if m.LogLevel() >= LogOps {
+		if m.semLogger.Level() >= LogOps {
 			var self string
 			if isSelf {
 				self = ":self"
@@ -2359,7 +2274,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		// TODO descriptive name
 		handlerName := strconv.Itoa(i) + ":" + h.name
 
-		if m.LogLevel() >= LogEverything {
+		if m.semLogger.Level() >= LogEverything {
 			emitterID := TruncateStr(handlerName, 15)
 			emitterID = padString(strings.ReplaceAll(emitterID, " ", "_"), 15, "_")
 			m.log(LogEverything, "[handle:%-15s] %s", emitterID, methodName)

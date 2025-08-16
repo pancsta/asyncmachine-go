@@ -28,7 +28,7 @@ func TestWithOpts(t *testing.T) {
 
 	// OptsWithParentTracers
 	mach := New(context.TODO(), nil, opts)
-	mach.SetLogArgs(NewArgsMapper([]string{"arg"}, 10))
+	mach.SemLogger().SetArgs(NewArgsMapper([]string{"arg"}, 10))
 }
 
 func TestResultString(t *testing.T) {

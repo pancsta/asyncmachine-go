@@ -18,6 +18,18 @@ const (
 	// EnvAmLog sets the log level.
 	// "1" | "2" | "3" | "4" | "" (default)
 	EnvAmLog = "AM_LOG"
+	// EnvAmLogFull enables all the semantuc loggers.
+	// "1" | "2" | "3" | "4" | "5" | "" (default)
+	EnvAmLogFull = "AM_LOG_FULL"
+	// EnvAmLogSteps logs transition steps
+	// "1" | "" (default)
+	EnvAmLogSteps = "AM_LOG_STEPS"
+	// EnvAmLogGraph logs graph structure (mut traces, pipes, etc)
+	// "1" | "" (default)
+	EnvAmLogGraph = "AM_LOG_GRAPH"
+	// EnvAmLogChecks logs Can methods.
+	// "1" | "" (default)
+	EnvAmLogChecks = "AM_LOG_CHECKS"
 	// EnvAmLogFile enables file logging (using machine ID as the name).
 	// "1" | "" (default)
 	EnvAmLogFile = "AM_LOG_FILE"
@@ -202,19 +214,22 @@ type Api interface {
 
 	// Misc (local)
 
-	Log(msg string, args ...any)
+	// Id is [Machine.Id].
 	Id() string
+	// ParentId is [Machine.ParentId].
 	ParentId() string
+	// Tags is [Machine.Tags].
 	Tags() []string
-	SetLogId(val bool)
-	GetLogId() bool
-	SetLogger(logger Logger)
-	SetLogLevel(lvl LogLevel)
-	SetLoggerEmpty(lvl LogLevel)
-	SetLoggerSimple(logf func(format string, args ...any), level LogLevel)
+	// Ctx is [Machine.Ctx].
 	Ctx() context.Context
+	// String is [Machine.String].
 	String() string
+	// StringAll is [Machine.StringAll].
 	StringAll() string
+	// Log is [Machine.Log].
+	Log(msg string, args ...any)
+	// SemLogger is [Machine.SemLogger].
+	SemLogger() SemLogger
 	Inspect(states S) string
 	Index(states S) []int
 	Index1(state string) int
