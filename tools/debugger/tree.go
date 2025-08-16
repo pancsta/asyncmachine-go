@@ -702,8 +702,16 @@ func (d *Debugger) handleExpanded(
 func (d *Debugger) buildStatesTree() {
 	msg := d.C.MsgStruct
 	d.treeRoot.ClearChildren()
-	// var bl bool
-	for _, name := range msg.StatesIndex {
+
+	// pick states
+	states := msg.StatesIndex
+	if c.SelectedGroup != "" {
+		states = c.msgSchemaParsed.Groups[c.SelectedGroup]
+	}
+	d.schemaTreeStates = states
+
+	// build
+	for _, name := range states {
 		// if !bl {
 		// 	// TODO enable breaklines
 		// 	bl = d.addBreakLine(name, i)

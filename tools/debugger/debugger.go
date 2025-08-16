@@ -1250,6 +1250,9 @@ func (d *Debugger) updateMatrixRelations() {
 	}
 
 	index := c.MsgStruct.StatesIndex
+	if c.SelectedGroup != "" {
+		index = c.msgSchemaParsed.Groups[c.SelectedGroup]
+	}
 	var tx *telemetry.DbgMsgTx
 	var prevTx *telemetry.DbgMsgTx
 	if c.CursorStep1 == 0 {
@@ -1429,8 +1432,11 @@ func (d *Debugger) updateMatrixRain() {
 	d.matrix.SetSelectable(true, true)
 
 	index := c.MsgStruct.StatesIndex
-	tx := d.currentTx()
-	prevTx := d.prevTx()
+	if g := c.SelectedGroup; g != "" {
+		index = c.msgSchemaParsed.Groups[g]
+	}
+	tx := d.hCurrentTx()
+	prevTx := d.hPrevTx()
 	_, _, _, rows := d.matrix.GetRect()
 
 	// collect tx to show, starting from the end (timeline 1-based index)
@@ -1580,7 +1586,52 @@ func (d *Debugger) updateMatrixRain() {
 	d.matrix.ScrollToBeginning()
 }
 
-func (d *Debugger) getSidebarCurrClientIdx() int {
+func (d *Debugger) hUpdateStatusBar() {
+	c := d.C
+	if c == nil {
+		d.statusBar.SetText("")
+		return
+	}
+
+	txt := ""
+	if c.CursorStep1 > 0 {
+		tx := c.MsgTxs[c.CursorTx1]
+		step := tx.Steps[c.CursorStep1-1]
+		txt = step.StringFromIndex(c.MsgStruct.StatesIndex)
+	}
+
+	// markdown to cview
+	i := 0
+	for strings.Contains(txt, "**") {
+		rep := "[::b]"
+		if i%2 == 1 {
+			rep = "[::-]"
+		}
+		i++
+		txt = strings.Replace(txt, "**", rep, 1)
+	}
+	d.statusBar.SetText(txt)
+}
+
+func (d *Debugger) hUpdateTreeGroups() {
+	var sel int
+	var opts []*cview.DropDownOption
+	for i, name := range d.C.msgSchemaParsed.GroupsOrder {
+		opts = append(opts, cview.NewDropDownOption(name))
+		if name == d.C.SelectedGroup {
+			sel = i
+		}
+	}
+
+	d.treeGroups.SetOptions(func(_ int, opt *cview.DropDownOption) {
+		// TODO typed args
+		d.Mach.Add1(ss.SetGroup, am.A{"group": opt.GetText()})
+	}, opts...)
+	// TODO not great
+	go d.treeGroups.SetCurrentOption(sel)
+}
+
+func (d *Debugger) hGetSidebarCurrClientIdx() int {
 	if d.C == nil {
 		return -1
 	}
@@ -1609,10 +1660,15 @@ func (d *Debugger) filterClientTxs() {
 	empty := d.Mach.Is1(ss.FilterEmptyTx)
 	canceled := d.Mach.Is1(ss.FilterCanceledTx)
 	healthcheck := d.Mach.Is1(ss.FilterHealthcheck)
+	outGroup := d.Mach.Is1(ss.FilterOutGroup)
+	checks := d.Mach.Is1(ss.FilterChecks)
 
 	d.C.MsgTxsFiltered = nil
 	for i := range d.C.MsgTxs {
-		if d.filterTx(d.C, i, auto, empty, canceled, healthcheck) {
+		match := d.hFilterTx(d.C, i,
+			// TODO param group
+			auto, empty, canceled, healthcheck, outGroup, checks)
+		if match {
 			d.C.MsgTxsFiltered = append(d.C.MsgTxsFiltered, i)
 		}
 	}
@@ -1623,20 +1679,35 @@ func (d *Debugger) isFiltered() bool {
 	return d.Mach.Any1(ss.GroupFilters...)
 }
 
-// filterTx returns true when a TX passes selected toolbarItems.
-func (d *Debugger) filterTx(
-	c *Client, idx int, skipAuto, skipEmpty, skipCanceled, skipHealth bool,
+// hFilterTx returns true when a TX passes selected toolbarItems.
+func (d *Debugger) hFilterTx(
+	c *Client, idx int, skipAuto, skipEmpty, skipCanceled, skipHealth,
+	skipOutGroup, skipChecks bool,
 ) bool {
 	tx := c.MsgTxs[idx]
 	parsed := c.msgTxsParsed[idx]
 	added := parsed.StatesAdded
 	removed := parsed.StatesRemoved
+	called := tx.CalledStateNames(c.MsgStruct.StatesIndex)
+	group := c.SelectedGroup
 
+	// basic filters
 	if skipAuto && tx.IsAuto {
 		return false
 	}
 	if skipCanceled && !tx.Accepted {
 		return false
+	}
+	if skipChecks && tx.IsCheck {
+		return false
+	}
+
+	// filter out txs without called from the group (if any)
+	if skipOutGroup && group != "" {
+		groupStates := c.msgSchemaParsed.Groups[group]
+		if len(am.SameStates(called, groupStates)) == 0 {
+			return false
+		}
 	}
 
 	// skip empty

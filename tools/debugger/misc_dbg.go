@@ -48,10 +48,12 @@ var colorDefault = cview.Styles.PrimaryTextColor
 
 const (
 	// row 1
-	toolFilterCanceledTx  ToolName = "skip-canceled"
-	toolFilterAutoTx      ToolName = "skip-auto"
-	toolFilterEmptyTx     ToolName = "skip-empty"
-	toolFilterHealthcheck ToolName = "skip-healthcheck"
+	toolFilterCanceledTx ToolName = "skip-canceled"
+	toolFilterAutoTx     ToolName = "skip-auto"
+	toolFilterEmptyTx    ToolName = "skip-empty"
+	toolFilterHealth     ToolName = "skip-health"
+	toolFilterOutGroup   ToolName = "skip-outgroup"
+	toolFilterChecks     ToolName = "skip-checks"
 	// TODO rename to timestamps
 	ToolFilterSummaries ToolName = "hide-summaries"
 	ToolFilterTraces    ToolName = "hide-traces"
@@ -94,6 +96,11 @@ type MsgTxParsed struct {
 	// Transitionss which reported this one as their source
 	Forks       []MachAddress
 	ForksLabels []string
+}
+
+type MsgSchemaParsed struct {
+	Groups      map[string]S
+	GroupsOrder []string
 }
 
 type Opts struct {
@@ -222,8 +229,9 @@ type Client struct {
 	logReaderMx sync.Mutex
 	// indexes of txs with errors, desc order for bisects
 	// TOOD refresh on GC
-	errors   []int
-	mTimeSum uint64
+	errors        []int
+	mTimeSum      uint64
+	SelectedGroup string
 }
 
 func (c *Client) lastActive() time.Time {
@@ -366,6 +374,46 @@ func (c *Client) filterIndexByCursor1(cursor1 int) int {
 		return 0
 	}
 	return slices.Index(c.MsgTxsFiltered, cursor1-1)
+}
+
+func (c *Client) parseSchema() {
+	// defaults
+	schema := c.MsgStruct
+	sp := &MsgSchemaParsed{
+		GroupsOrder: []string{"all"},
+		Groups: map[string]S{
+			"all": schema.StatesIndex,
+		},
+	}
+	c.msgSchemaParsed = sp
+
+	if len(schema.GroupsOrder) == 0 {
+		return
+	}
+
+	// schema groups
+	pastSelf := false
+	prev := S{}
+	for _, g := range schema.GroupsOrder {
+		name := strings.TrimSuffix(g, "StatesDef")
+		if g == "self" {
+			name = "- self"
+		} else if pastSelf {
+			name = "- " + name
+		}
+		sp.GroupsOrder = append(sp.GroupsOrder, name)
+		sp.Groups[name] = c.indexesToStates(schema.Groups[g])
+
+		if pastSelf {
+			// merge with prev groups
+			sp.Groups[g] = slices.Concat(sp.Groups[name], prev)
+			prev = sp.Groups[name]
+		}
+
+		if g == "self" {
+			pastSelf = true
+		}
+	}
 }
 
 // TODO
