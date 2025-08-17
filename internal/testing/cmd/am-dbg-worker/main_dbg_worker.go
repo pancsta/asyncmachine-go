@@ -60,7 +60,7 @@ func main() {
 
 	// am-dbg server (used for testing live connections)
 	if *serverAddr != "" {
-		go server.StartRpc(dbg.Mach, *serverAddr, nil, nil)
+		go server.StartRpc(dbg.Mach, *serverAddr, nil, nil, false)
 	}
 
 	// start with a timeout

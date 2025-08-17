@@ -1219,7 +1219,7 @@ func TestBreakpoints(t *testing.T) {
 
 	// test
 	m.LogStackTrace = true
-	m.AddBreakpoint(S{"A"}, S{"B"})
+	m.AddBreakpoint(S{"A"}, S{"B"}, false)
 	m.Add1("A", nil)
 
 	// dispose
