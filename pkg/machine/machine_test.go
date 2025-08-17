@@ -3006,3 +3006,95 @@ func TestDisposedNoOp(t *testing.T) {
 	m.processWhenQueueBindings()
 	m.processWhenArgs(e)
 }
+
+// SCHEMA GROUPS
+
+type TestGroups0Def struct {
+	// shadow duplicated StatesBase
+	*StatesBase
+
+	State00 string
+	State01 string
+}
+type TestGroups1Def struct {
+	// shadow duplicated StatesBase
+	*TestGroups0Def
+
+	State10 string
+	State11 string
+}
+type TestGroups2Def struct {
+	// shadow duplicated StatesBase
+	*TestGroups1Def
+
+	State20 string
+	State21 string
+}
+
+type TestGroupsBaseGroupsDef struct {
+	BaseGroup0 S
+	BaseGroup1 S
+}
+
+type TestGroups2GroupsDef struct {
+	*TestGroupsBaseGroupsDef
+	Group0           S
+	GroupTestNameBar S
+}
+
+var testGroups0Schema = Schema{
+	testGroups2S.State00: {},
+	testGroups2S.State01: {},
+}
+
+var testGroups1Schema = SchemaMerge(
+	testGroups0Schema,
+	Schema{
+		testGroups2S.State10: {},
+		testGroups2S.State11: {},
+	})
+
+var testGroups2Schema = SchemaMerge(
+	testGroups1Schema,
+	Schema{
+		testGroups2S.State20: {},
+		testGroups2S.State21: {},
+	})
+
+// EXPORTS AND GROUPS
+
+var (
+	testGroups2S   = NewStates(TestGroups2Def{})
+	testGroupsBase = NewStateGroups(TestGroupsBaseGroupsDef{
+		BaseGroup0: S{"State10", "State11"},
+		BaseGroup1: S{"State21", "State10"},
+	})
+	testGroupsG = NewStateGroups(TestGroups2GroupsDef{
+		Group0:           S{"State20", "State21"},
+		GroupTestNameBar: S{"State11", "State20"},
+	}, testGroupsBase)
+)
+
+func TestGroups(t *testing.T) {
+	t.Parallel()
+
+	m := NewCustomStates(t, testGroups2Schema)
+	m.SetGroups(testGroupsG, testGroups2S)
+	groups, order := m.Groups()
+
+	assert.Equal(t, groups, map[string][]int{
+		// groups TODO inherited
+		// "BaseGroup0":       {3, 4},
+		// "BaseGroup1":       {6, 3},
+		"Group0":           {5, 6},
+		"GroupTestNameBar": {4, 5},
+
+		// schema
+		"self":           {5, 6},
+		"TestGroups1Def": {3, 4},
+		"TestGroups0Def": {1, 2},
+	})
+	assert.Equal(t, order, []string{
+		"Group0", "GroupTestNameBar", "self", "TestGroups1Def", "TestGroups0Def",
+	})
+}

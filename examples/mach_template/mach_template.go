@@ -96,6 +96,9 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 	}
 	handlers.Mach = mach
 
+	// inject groups and infer parents tree
+	mach.SetGroups(states.MachTemplateGroups, states.MachTemplateStates)
+
 	// telemetry
 
 	mach.SetLogLevel(am.LogChanges)
@@ -104,23 +107,21 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 	// start a dedicated aRPC server for the REPL, create an addr file
 	arpc.MachReplEnv(mach)
 
-	// root machines only
-	if mach.ParentId() == "" {
+	// parent-only exporters
 
-		// export metrics to prometheus
-		amprom.MachMetricsEnv(mach)
+	// export metrics to prometheus
+	amprom.MachMetricsEnv(mach)
 
-		// grafana dashboard
-		err := amgen.MachDashboardEnv(mach)
-		if err != nil {
-			mach.AddErr(err, nil)
-		}
+	// grafana dashboard
+	err = amgen.MachDashboardEnv(mach)
+	if err != nil {
+		mach.AddErr(err, nil)
+	}
 
-		// open telemetry traces
-		err = amtele.MachBindOtelEnv(mach)
-		if err != nil {
-			mach.AddErr(err, nil)
-		}
+	// open telemetry traces
+	err = amtele.MachBindOtelEnv(mach)
+	if err != nil {
+		mach.AddErr(err, nil)
 	}
 
 	// manual tracing

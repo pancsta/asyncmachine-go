@@ -15,35 +15,60 @@ type StatesBase struct {
 	// Exception is the only built-in state and mean a global error. All errors
 	// have to [State.Require] the Exception state. If [Machine.PanicToErr] is
 	// true, Exception will receive it.
-	Exception string
-	names     S
+	Exception   string
+	names       S
+	groups      map[string][]int
+	groupsOrder []string
 }
+
+var _ States = &StatesBase{}
 
 func (b *StatesBase) Names() S {
 	return b.names
+}
+
+func (b *StatesBase) StateGroups() (map[string][]int, []string) {
+	return b.groups, b.groupsOrder
 }
 
 func (b *StatesBase) SetNames(names S) {
 	b.names = slicesUniq(names)
 }
 
+func (b *StatesBase) SetStateGroups(groups map[string][]int, order []string) {
+	b.groups = groups
+	b.groupsOrder = order
+}
+
 type States interface {
 	// Names returns the state names of the state machine.
 	Names() S
+	StateGroups() (map[string][]int, []string)
 	SetNames(S)
+	SetStateGroups(map[string][]int, []string)
 }
 
 func NewStates[G States](states G) G {
 	// read and assign names of all the embedded structs
 	names := S{}
+	groups := map[string][]int{}
 	v := reflect.ValueOf(&states).Elem()
-	parseStateNames(v, &names)
+	order := []string{}
+	parseStateNames(v, &names, "self", groups, &order)
 	states.SetNames(names)
+	states.SetStateGroups(groups, order)
 
 	return states
 }
 
-func parseStateNames(v reflect.Value, names *S) {
+func parseStateNames(
+	v reflect.Value, names *S, group string, groups map[string][]int,
+	order *[]string,
+) {
+	if group != "StatesBase" {
+		groups[group] = []int{}
+		*order = append(*order, group)
+	}
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
 
@@ -59,12 +84,17 @@ func parseStateNames(v reflect.Value, names *S) {
 				elem := reflect.New(field.Type.Elem())
 				value.Set(elem)
 			}
-			parseStateNames(value.Elem(), names)
-			// TODO generic type, defaulting to string, for typed indexes
+			parseStateNames(value.Elem(), names, field.Name, groups, order)
+
 		} else if value.CanSet() && kind == reflect.String {
 			// local state name
 			value.SetString(field.Name)
-			*names = append(*names, field.Name)
+			if !slices.Contains(*names, field.Name) {
+				if group != "StatesBase" {
+					groups[group] = append(groups[group], len(*names))
+				}
+				*names = append(*names, field.Name)
+			}
 		}
 	}
 }
@@ -74,7 +104,7 @@ func NewStateGroups[G any](groups G, mixins ...any) G {
 	v := reflect.ValueOf(&groups).Elem()
 	initNilEmbeds(v)
 
-	// assign groups from mixins into the groups struct
+	// assign values from parent mixins into the local instance
 	for i := range mixins {
 		copyFields(mixins[i], &groups)
 	}
@@ -114,8 +144,9 @@ func copyFields(src, dst interface{}) {
 	}
 
 	for i := 0; i < srcVal.NumField(); i++ {
+		name := srcVal.Type().Field(i).Name
 		srcField := srcVal.Field(i)
-		dstField := dstVal.FieldByName(srcVal.Type().Field(i).Name)
+		dstField := dstVal.FieldByName(name)
 
 		if srcField.Kind() == reflect.Struct {
 			copyFields(srcField.Addr().Interface(), dstField.Addr().Interface())
