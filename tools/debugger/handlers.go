@@ -1791,29 +1791,88 @@ func (d *Debugger) ToolRainState(e *am.Event) {
 	}
 }
 
-func (d *Debugger) UpdateStatusBarState(e *am.Event) {
-	c := d.C
-	if c == nil {
-		defer d.statusBar.SetText("")
-		return
-	}
+func (d *Debugger) WebReqState(e *am.Event) {
+	// TODO TYPED PARAMS
+	r := e.Args["*http.Request"].(*http.Request)
+	w := e.Args["http.ResponseWriter"].(http.ResponseWriter)
+	done := e.Args["doneChan"].(chan struct{})
+	defer close(done)
 
-	txt := ""
-	if c.CursorStep1 > 0 {
-		tx := c.MsgTxs[c.CursorTx1]
-		step := tx.Steps[c.CursorStep1-1]
-		txt = step.StringFromIndex(c.MsgStruct.StatesIndex)
-	}
+	u := r.RequestURI
+	switch {
 
-	// markdown to cview
-	i := 0
-	for strings.Contains(txt, "**") {
-		rep := "[::b]"
-		if i%2 == 1 {
-			rep = "[::-]"
+	// diagram viewer
+	case u == "/":
+		fallthrough
+	case u == "/diagrams/mach":
+		_, err := w.Write(visualizer.HtmlDiagram)
+		d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
+
+	// default svg symlink
+	case strings.HasPrefix(u, "/diagrams/mach.svg"):
+		svgPath := filepath.Join(d.Opts.OutputDir, "diagrams", "am-vis.svg")
+		b, err := os.ReadFile(svgPath)
+		d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
+		if err != nil {
+			return
 		}
-		i++
-		txt = strings.Replace(txt, "**", rep, 1)
+		_, err = w.Write(b)
+		d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
 	}
-	d.statusBar.SetText(txt)
+}
+
+func (d *Debugger) WebSocketState(e *am.Event) {
+	// TODO TYPED PARAMS
+	ws := e.Args["*websocket.Conn"].(*websocket.Conn)
+	r := e.Args["*http.Request"].(*http.Request)
+	done := e.Args["doneChan"].(chan struct{})
+	clientDone := make(chan struct{})
+
+	// unblock
+	go func() {
+		for {
+			// wait for diagrams start
+			select {
+			case <-clientDone:
+				close(done)
+				return
+			case <-d.Mach.When1(ss.DiagramsScheduled, nil):
+			}
+
+			// wait for diagrams ready
+			select {
+			case <-clientDone:
+				close(done)
+				return
+			// TODO loop over WSs in DiagramsReady. no goroutine per each
+			case <-d.Mach.When1(ss.DiagramsReady, nil):
+				// msg
+				err := ws.Write(r.Context(), websocket.MessageText,
+					[]byte("refresh"))
+				d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
+				if err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			// msgType, msg, err := ws.Read(r.Context())
+			_, _, err := ws.Read(r.Context())
+			if err != nil {
+				if websocket.CloseStatus(err) != -1 {
+					d.Mach.Log("websocket closed")
+				} else {
+					err = fmt.Errorf("websocket read: %w", err)
+					d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
+				}
+
+				// close up
+				close(clientDone)
+				return
+			}
+		}
+	}()
 }

@@ -9,11 +9,13 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"net/rpc"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/soheilhy/cmux"
 
@@ -46,22 +48,23 @@ func (r *RPCServer) DbgMsgSchemaFwd(
 	return nil
 }
 
-func (r *RPCServer) DbgMsgStruct(
-	msgStruct *telemetry.DbgMsgStruct, _ *string,
+func (r *RPCServer) DbgMsgSchema(
+	msgSchema *telemetry.DbgMsgStruct, _ *string,
 ) error {
 	r.Mach.Add1(ss.ConnectEvent, am.A{
 		// TODO typed args
-		"msg_struct": msgStruct,
+		"msg_struct": msgSchema,
 		"conn_id":    r.ConnID,
-		"Client.id":  msgStruct.ID,
+		"Client.id":  msgSchema.ID,
 	})
 
 	// fwd to other instances
 	for _, host := range r.FwdTo {
 		fwdMsg := DbgMsgSchemaFwd{
-			MsgStruct: msgStruct,
+			MsgStruct: msgSchema,
 			ConnId:    r.ConnID,
 		}
+		// TODO const name
 		err := host.Call("RPCServer.DbgMsgSchemaFwd", &fwdMsg, nil)
 		if err != nil {
 			return err
@@ -104,7 +107,6 @@ func (r *RPCServer) DbgMsgTx(msgTx *telemetry.DbgMsgTx, _ *string) error {
 	}
 
 	now := time.Now()
-	// TODO remove
 	msgTx.Time = &now
 	queue = append(queue, msgTx)
 	queueConnId = append(queueConnId, r.ConnID)
@@ -115,6 +117,7 @@ func (r *RPCServer) DbgMsgTx(msgTx *telemetry.DbgMsgTx, _ *string) error {
 			MsgTx:  msgTx,
 			ConnId: r.ConnID,
 		}
+		// TODO const name
 		err := host.Call("RPCServer.DbgMsgTxFwd", fwdMsg, nil)
 		if err != nil {
 			return err
@@ -158,7 +161,6 @@ func (r *RPCServer) DbgMsgTxFwd(msg *DbgMsgTx, _ *string) error {
 	}
 
 	now := time.Now()
-	// TODO remove
 	msgTx.Time = &now
 	queue = append(queue, msgTx)
 	queueConnId = append(queueConnId, connId)
@@ -212,8 +214,31 @@ func StartRpc(
 		mux <- m
 	}
 
-	rpcL := m.Match(cmux.Any())
-	go rpcAccept(rpcL, mach, fwdTo)
+	httpL1 := m.Match(cmux.HTTP1Fast())
+	httpL2 := m.Match(cmux.HTTP1())
+	tcpL := m.Match(cmux.Any())
+	httpS := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+			if r.RequestURI == "/diagrams/mach.ws" {
+				wsHandler(w, r, mach)
+				return
+			}
+			httpHandler(w, r, mach)
+		})}
+
+	// listen
+	go func() {
+		err := httpS.Serve(httpL1)
+		// TODO ErrNetwork
+		mach.AddErr(err, nil)
+	}()
+	go func() {
+		err := httpS.Serve(httpL2)
+		// TODO ErrNetwork
+		mach.AddErr(err, nil)
+	}()
+	go tcpAccept(tcpL, mach, fwdTo)
 
 	// start cmux
 	if err := m.Serve(); err != nil {
@@ -222,14 +247,14 @@ func StartRpc(
 	}
 }
 
-func rpcAccept(l net.Listener, mach *am.Machine, fwdTo []*rpc.Client) {
+func tcpAccept(l net.Listener, mach *am.Machine, fwdTo []*rpc.Client) {
 	// TODO restart on error
-	defer mach.PanicToErr(nil)
+	// defer mach.PanicToErr(nil)
 
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Println(err)
+			// log.Println(err)
 			mach.AddErr(err, nil)
 			continue
 		}
@@ -246,7 +271,6 @@ func rpcAccept(l net.Listener, mach *am.Machine, fwdTo []*rpc.Client) {
 
 			err = server.Register(rcvr)
 			if err != nil {
-				log.Println(err)
 				rcvr.Mach.AddErr(err, nil)
 				// TODO err msg
 				fmt.Println(err)
@@ -264,6 +288,7 @@ func rpcAccept(l net.Listener, mach *am.Machine, fwdTo []*rpc.Client) {
 
 // ///// REMOTE MACHINE RPC
 
+// TODO remove
 // ///// ///// /////
 
 type GetField int
@@ -302,4 +327,73 @@ func (n GetField) Encode() string {
 
 func Decode(s string) GetField {
 	return GetField(s[0])
+}
+
+// ///// ///// /////
+
+// ///// WEB
+
+// ///// ///// /////
+
+// httpHandler serves plain HTTP requests.
+func httpHandler(w http.ResponseWriter, r *http.Request, mach *am.Machine) {
+	done := make(chan struct{})
+
+	middleware(w)
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	mach.Add1(ss.WebReq, am.A{
+		// TODO typed params
+		"uri":                 r.RequestURI,
+		"*http.Request":       r,
+		"http.ResponseWriter": w,
+		"doneChan":            done,
+		"addr":                r.RemoteAddr,
+	})
+	// TODO timeout
+	<-done
+}
+
+// wsHandler handles WebSocket upgrade requests and echoes messages.
+func wsHandler(w http.ResponseWriter, r *http.Request, mach *am.Machine) {
+	middleware(w)
+
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		mach.AddErrState(ss.ErrWeb, err, nil)
+		return
+	}
+	defer c.Close(websocket.StatusInternalError, "internal error")
+	done := make(chan struct{})
+	mach.Add1(ss.WebSocket, am.A{
+		// TODO typed params
+		"*websocket.Conn":     c,
+		"*http.Request":       r,
+		"http.ResponseWriter": w,
+		"doneChan":            done,
+		"addr":                r.RemoteAddr,
+	})
+	// TODO timeout
+	<-done
+}
+
+func middleware(w http.ResponseWriter) {
+	// CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods",
+		"POST, GET, OPTIONS, PUT, DELETE")
+	w.Header().Set("Access-Control-Allow-Headers",
+		"Accept, Content-Type, Content-Length, Accept-Encoding, "+
+			"X-CSRF-Token, Authorization")
+
+	// cache
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 }
