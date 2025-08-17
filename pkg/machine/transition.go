@@ -605,29 +605,31 @@ func (t *Transition) emitEvents() Result {
 		}
 	}
 
-	// recheck auto txs for canceled handlers, remove direct and transitive Add
-	// relation
-	if t.IsAuto() {
-		rejected := DiffStates(called, t.TargetStates())
-		calledClean := DiffStates(called, rejected)
-		toSet := t.statesToSet(MutationAdd, calledClean)
-		targetStates := m.resolver.TargetStates(t, toSet, m.StateNames())
-		t.TargetIndexes = m.Index(targetStates)
-		t.cacheTargetStates.Store(&targetStates)
-		// TODO states before too
-	}
+	// skip for CanAdd and CanRemove
+	if !t.Mutation.IsCheck {
+		// TODO extract
 
-	// TODO return here from CanAdd and CanRemove
+		// recheck auto txs for canceled handlers, remove direct and transitive Add
+		// relation
+		if t.IsAuto() {
+			rejected := DiffStates(called, t.TargetStates())
+			calledClean := DiffStates(called, rejected)
+			toSet := t.statesToSet(MutationAdd, calledClean)
+			targetStates := m.resolver.TargetStates(t, toSet, m.StateNames())
+			t.TargetIndexes = m.Index(targetStates)
+			t.cacheTargetStates.Store(&targetStates)
+			// TODO states before too
+		}
 
-	// FINAL HANDLERS (non cancellable)
-	if result != Canceled {
+		// FINAL HANDLERS (non cancellable)
+		if result != Canceled {
 
-		// mutate the clocks
-		m.activeStatesLock.Lock()
-		m.setActiveStates(called, t.TargetStates(), t.IsAuto())
-		// gather new clock values, overwrite fake TimeAfter
-		t.TimeAfter = m.time(nil)
-		m.activeStatesLock.Unlock()
+			// mutate the clocks
+			m.activeStatesLock.Lock()
+			m.setActiveStates(called, t.TargetStates(), t.IsAuto())
+			// gather new clock values, overwrite fake TimeAfter
+			t.TimeAfter = m.time(nil)
+			m.activeStatesLock.Unlock()
 
 		if hasHandlers || logEverything || len(m.indexWhenArgs) > 0 {
 			// FooState
@@ -648,45 +650,46 @@ func (t *Transition) emitEvents() Result {
 		t.TimeAfter = t.TimeBefore
 	}
 
-	// global AnyState handler
-	if result != Canceled && (hasHandlers || logEverything) {
-		result = t.emitHandler(Any, Any, true, true, Any+SuffixState,
-			t.Mutation.Args)
-	}
-
-	// AUTO STATES
-	if result == Canceled {
-		t.IsAccepted.Store(false)
-	} else if !m.disposing.Load() && hasStateChanged && !t.IsAuto() &&
-		!t.IsHealth() {
-
-		autoMutation, calledStates := m.resolver.NewAutoMutation()
-		if autoMutation != nil {
-			m.log(LogOps, "[auto] %s", j(calledStates))
-			// unshift
-			m.queueLock.Lock()
-			m.queue = append([]*Mutation{autoMutation}, m.queue...)
-			m.queueLen.Store(int32(len(m.queue)))
-			m.queueLock.Unlock()
+		// global AnyState handler
+		if result != Canceled && (hasHandlers || logEverything) {
+			result = t.emitHandler(Any, Any, true, true, Any+SuffixState,
+				t.Mutation.Args)
 		}
-	}
 
-	// collect previous log entries
-	m.logEntriesLock.Lock()
-	t.PreLogEntries = m.logEntries
-	t.QueueLen = int(m.queueLen.Load())
-	m.logEntries = nil
-	m.logEntriesLock.Unlock()
-	t.IsCompleted.Store(true)
+		// AUTO STATES
+		if result == Canceled {
+			t.IsAccepted.Store(false)
+		} else if !m.disposing.Load() && hasStateChanged && !t.IsAuto() &&
+			!t.IsHealth() {
 
-	// cache for subscriptions, mind partially accepted auto states
-	if t.IsAuto() {
-		before := t.StatesBefore()
-		t.cacheActivated = DiffStates(m.activeStates, before)
-		t.cacheDeactivated = DiffStates(before, m.activeStates)
-	} else {
-		t.cacheActivated = t.Enters
-		t.cacheDeactivated = t.Exits
+			autoMutation, calledStates := m.resolver.NewAutoMutation()
+			if autoMutation != nil {
+				m.log(LogOps, "[auto] %s", j(calledStates))
+				// unshift
+				m.queueLock.Lock()
+				m.queue = append([]*Mutation{autoMutation}, m.queue...)
+				m.queueLen.Store(int32(len(m.queue)))
+				m.queueLock.Unlock()
+			}
+		}
+
+		// collect previous log entries
+		m.logEntriesLock.Lock()
+		t.PreLogEntries = m.logEntries
+		t.QueueLen = int(m.queueLen.Load())
+		m.logEntries = nil
+		m.logEntriesLock.Unlock()
+		t.IsCompleted.Store(true)
+
+		// cache for subscriptions, mind partially accepted auto states
+		if t.IsAuto() {
+			before := t.StatesBefore()
+			t.cacheActivated = DiffStates(m.activeStates, before)
+			t.cacheDeactivated = DiffStates(before, m.activeStates)
+		} else {
+			t.cacheActivated = t.Enters
+			t.cacheDeactivated = t.Exits
+		}
 	}
 
 	// tracers
@@ -698,7 +701,11 @@ func (t *Transition) emitEvents() Result {
 
 	if result == Canceled {
 		return Canceled
+	} else if t.Mutation.IsCheck {
+		return result
 	}
+
+	// TODO optimize: remove checks?
 	if t.Type() == MutationRemove {
 		if m.Not(called) {
 			return Executed

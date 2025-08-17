@@ -981,6 +981,40 @@ func (m *Machine) AddErrState(state string, err error, args A) Result {
 	return m.Add(S{state, Exception}, PassMerge(args, argsT))
 }
 
+func (m *Machine) CanAdd(states S, args A) Result {
+	if m.disposed.Load() || m.disposing.Load() || m.Backoff() {
+		return Canceled
+	}
+
+	return m.PrependMut(&Mutation{
+		Type:    MutationAdd,
+		Called:  m.Index(states),
+		Args:    args,
+		IsCheck: true,
+	})
+}
+
+func (m *Machine) CanAdd1(state string, args A) Result {
+	return m.CanAdd(S{state}, args)
+}
+
+func (m *Machine) CanRemove(states S, args A) Result {
+	if m.disposed.Load() || m.disposing.Load() || m.Backoff() {
+		return Canceled
+	}
+
+	return m.PrependMut(&Mutation{
+		Type:    MutationRemove,
+		Called:  m.Index(states),
+		Args:    args,
+		IsCheck: true,
+	})
+}
+
+func (m *Machine) CanRemove1(state string, args A) Result {
+	return m.CanRemove(S{state}, nil)
+}
+
 // PanicToErr will catch a panic and add the Exception state. Needs to
 // be called in a defer statement, just like a recover() call.
 func (m *Machine) PanicToErr(args A) {
@@ -1221,7 +1255,7 @@ func (m *Machine) Any1(states ...string) bool {
 
 // queueMutation queues a mutation to be executed.
 func (m *Machine) queueMutation(
-	mutationType MutationType, states S, args A, event *Event,
+	mutationType MutationType, states S, args A, event *Event, isCheck bool,
 ) {
 	if m.disposed.Load() {
 		return
@@ -1238,6 +1272,7 @@ func (m *Machine) queueMutation(
 	// Detect duplicates and avoid queueing them, but not for multi states.
 	if !multi && len(args) == 0 &&
 		m.detectQueueDuplicates(mutationType, statesParsed) {
+
 		m.log(LogOps, "[queue:skipped] Duplicate detected for [%s] %s",
 			mutationType, j(statesParsed))
 		return
@@ -1263,11 +1298,12 @@ func (m *Machine) queueMutation(
 		}
 	}
 	mut := &Mutation{
-		Type:   mutationType,
-		Called: m.Index(statesParsed),
-		Args:   args,
-		Auto:   false,
-		Source: source,
+		Type:    mutationType,
+		Called:  m.Index(statesParsed),
+		Args:    args,
+		Auto:    false,
+		Source:  source,
+		IsCheck: isCheck,
 	}
 	mut.cacheCalled.Store(&statesParsed)
 	m.queue = append(m.queue, mut)
@@ -1333,20 +1369,15 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 		ctx = context.Background()
 	}
 
-	m.queueLock.Lock()
-
-	// prepend to the queue
-	m.queue = append([]*Mutation{{
+	// prepend to the queue the queue, but ignore the result
+	mut := &Mutation{
 		Type:       mutationEval,
 		eval:       wrap,
 		evalSource: source,
 		ctx:        ctx,
-	}}, m.queue...)
-	m.queueLen.Store(int32(len(m.queue)))
-	m.queueLock.Unlock()
-
-	// process the queue if needed, but ignore the result
-	m.processQueue()
+	}
+	// TODO handle Canceled?
+	_ = m.PrependMut(mut)
 
 	// wait with a timeout
 	select {
@@ -1909,7 +1940,7 @@ func (m *Machine) processQueue() Result {
 		ret = append(ret, t.emitEvents())
 		m.timeLast.Store(&t.TimeAfter)
 
-		if t.IsAccepted.Load() {
+		if t.IsAccepted.Load() && !t.Mutation.IsCheck {
 			// process flow methods
 			m.processWhenBindings(t)
 			m.processWhenTimeBindings(t)
