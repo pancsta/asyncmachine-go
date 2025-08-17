@@ -74,3 +74,4 @@ _py
 *.mmd
 /demo
 /am-dbg.txt
+tools/visualizer/testdata/*

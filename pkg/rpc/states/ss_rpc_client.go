@@ -88,7 +88,7 @@ var ClientSchema = SchemaMerge(
 		// inject Client states into HandshakeDone
 		ssC.HandshakeDone: am.StateAdd(
 			SharedSchema[ssC.HandshakeDone], am.State{
-				// HandshakeDone will depend on Connected.
+				// HandshakeDone will depend on Connected.2
 				Require: S{ssC.Connected},
 			}),
 

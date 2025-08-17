@@ -2,6 +2,9 @@
 package pipes
 
 // TODO register disposal handlers, detach from source machines
+// TODO implement removal of pipes via:
+//  - binding-struct
+//  - tagging of handler structs
 
 import (
 	"context"
@@ -38,10 +41,11 @@ func add(
 	if targetState == "" {
 		targetState = sourceState
 	}
-	source.InternalLog(am.LogOps, "[pipe-out:add] %s to %s", sourceState,
-		target.Id())
-	target.InternalLog(am.LogOps, "[pipe-in:add] %s from %s", targetState,
-		source.Id())
+
+	// graph info
+	semLog := source.SemLogger()
+	semLog.AddPipeOut(true, sourceState, target.Id())
+	semLog.AddPipeIn(true, targetState, source.Id())
 
 	// TODO optimize
 	source.HandleDispose(gcHandler(target))
@@ -91,10 +95,11 @@ func remove(
 	if targetState == "" {
 		targetState = sourceState
 	}
-	source.InternalLog(am.LogOps, "[pipe-out:remove] %s to %s", sourceState,
-		target.Id())
-	target.InternalLog(am.LogOps, "[pipe-in:remove] %s from %s", targetState,
-		source.Id())
+
+	// graph info
+	semLog := source.SemLogger()
+	semLog.AddPipeOut(false, sourceState, target.Id())
+	semLog.AddPipeIn(false, targetState, source.Id())
 
 	// TODO optimize
 	source.HandleDispose(gcHandler(target))
@@ -233,6 +238,6 @@ func BindReady(
 
 func gcHandler(mach *am.Machine) am.HandlerDispose {
 	return func(id string, ctx context.Context) {
-		mach.InternalLog(am.LogOps, "[pipe:gc] %s", id)
+		mach.SemLogger().RemovePipes(id)
 	}
 }

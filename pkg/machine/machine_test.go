@@ -1737,7 +1737,7 @@ func (h *TestStateCtxHandlers) AState(e *Event) {
 		close(h.callbackCh)
 	}()
 
-	assert.Equal(t, "A", e.Transition().latestStepToState)
+	assert.Equal(t, "A", e.Transition().latestHandlerToState)
 }
 
 func TestStateCtx(t *testing.T) {
@@ -2914,7 +2914,7 @@ func TestOpts(t *testing.T) {
 	tags := []string{"a", "b"}
 	m2 := New(m.Ctx(), Schema{}, &Opts{
 		Parent:            m,
-		DontLogID:         true,
+		DontLogId:         true,
 		DontLogStackTrace: true,
 		LogLevel:          LogChanges,
 		QueueLimit:        10,
@@ -2998,7 +2998,7 @@ func TestDisposedNoOp(t *testing.T) {
 	m.doDispose(false)
 	m.PanicToErr(A{})
 	m.PanicToErrState("A", A{})
-	m.queueMutation(MutationAdd, s, A{}, nil)
+	m.queueMutation(MutationAdd, s, A{}, nil, false)
 	m.processStateCtxBindings(tx)
 	m.processWhenBindings(tx)
 	m.processWhenTimeBindings(tx)
@@ -3096,4 +3096,18 @@ func TestGroups(t *testing.T) {
 	assert.Equal(t, order, []string{
 		"Group0", "GroupTestNameBar", "self", "TestGroups1Def", "TestGroups0Def",
 	})
+}
+
+func TestCanAdd(t *testing.T) {
+	t.Parallel()
+	m := NewRels(t, nil)
+	// m.semLogger.SetLevel(LogDecisions)
+	assert.Equal(t, Canceled, m.CanAdd(S{"A"}, nil), "Cant add A")
+	assert.Equal(t, Executed, m.CanAdd(S{"C"}, nil), "Can add C")
+
+	// TODO test handler negotiation
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
 }

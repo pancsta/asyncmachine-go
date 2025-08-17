@@ -194,7 +194,8 @@ func NewTopic(
 		return nil, err
 	}
 
-	mach.SetLogArgs(LogArgs)
+	mach.SemLogger().SetArgs(LogArgs)
+	mach.SetGroups(states.TopicGroups, states.TopicStates)
 	t.Mach = mach
 
 	return t, nil
@@ -492,12 +493,12 @@ func (t *Topic) ProcessMsgsState(e *am.Event) {
 						Peer:    t.peerName(fromId),
 					}))
 					// handle gossips TODO handle in MsgInfo
-					mach.Add1(ss.MissPeersByGossip, Pass(&A{
+					amhelp.AskAdd1(mach, ss.MissPeersByGossip, Pass(&A{
 						PeersGossip: msg.PeerGossips,
 						PeerId:      fromId,
 						Peer:        t.peerName(fromId),
 					}))
-					mach.Add1(ss.MissUpdatesByGossip, Pass(&A{
+					amhelp.AskAdd1(mach, ss.MissUpdatesByGossip, Pass(&A{
 						PeersGossip: msg.PeerGossips,
 						PeerId:      fromId,
 					}))
@@ -529,11 +530,11 @@ func (t *Topic) ProcessMsgsState(e *am.Event) {
 				var msg MsgGossip
 				if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
 					// TODO handle both in MissPeersState
-					mach.Add1(ss.MissPeersByGossip, Pass(&A{
+					amhelp.AskAdd1(mach, ss.MissPeersByGossip, Pass(&A{
 						PeersGossip: msg.PeerGossips,
 						PeerId:      fromId,
 					}))
-					mach.Add1(ss.MissUpdatesByGossip, Pass(&A{
+					amhelp.AskAdd1(mach, ss.MissUpdatesByGossip, Pass(&A{
 						PeersGossip: msg.PeerGossips,
 						PeerId:      fromId,
 					}))
@@ -546,7 +547,7 @@ func (t *Topic) ProcessMsgsState(e *am.Event) {
 			case MsgTypeReqInfo:
 				var msg MsgReqInfo
 				if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
-					mach.Add1(ss.MsgReqInfo, Pass(&A{
+					amhelp.AskAdd1(mach, ss.MsgReqInfo, Pass(&A{
 						MsgReqInfo: &msg,
 						PeerId:     fromId,
 						Peer:       t.peerName(fromId),
@@ -559,7 +560,7 @@ func (t *Topic) ProcessMsgsState(e *am.Event) {
 			case MsgTypeReqUpdates:
 				var msg MsgReqUpdates
 				if err := msgpack.Unmarshal(psMsg.Data, &msg); err == nil {
-					mach.Add1(ss.MsgReqUpdates, Pass(&A{
+					amhelp.AskAdd1(mach, ss.MsgReqUpdates, Pass(&A{
 						MsgReqUpdates: &msg,
 						PeerId:        fromId,
 						Peer:          t.peerName(fromId),
@@ -580,7 +581,7 @@ func (t *Topic) ProcessMsgsState(e *am.Event) {
 func (t *Topic) JoinedState(e *am.Event) {
 	mach := t.Mach
 	ctx := mach.NewStateCtx(ss.Joined)
-	mach.InternalLog(am.LogOps, "[pubsub:joined] "+t.Name)
+	// TODO SemLogger().JoinTopic(t.Name)
 	self := t.host.ID().String()
 
 	t.retried = false
@@ -726,7 +727,7 @@ func (t *Topic) JoinedState(e *am.Event) {
 }
 
 func (t *Topic) JoinedEnd(e *am.Event) {
-	t.Mach.InternalLog(am.LogOps, "[pubsub:left] "+t.Name)
+	// TODO SemLogger().LeaveTopic(t.Name)
 	if t.handler != nil {
 		t.handler.Cancel()
 	}

@@ -11,7 +11,7 @@ func init() {
 	// import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(false)
-	// amhelp.SetLogLevel(am.LogChanges)
+	// amhelp.SemLogger().SetLevel(am.LogChanges)
 }
 
 func main() {
@@ -131,7 +131,7 @@ func Quiz() {
 func newMach(id string, machSchema am.Schema) *am.Machine {
 	mach := am.New(nil, machSchema, &am.Opts{
 		Id:        id,
-		DontLogID: true,
+		DontLogId: true,
 		Tracers:   []am.Tracer{&Tracer{}},
 		LogLevel:  log,
 	})

@@ -20,7 +20,7 @@ func TestLog(t *testing.T) {
 	}
 	logProvider := NewOtelLoggerProvider(logExporter)
 	mach := testutils.NewRels(t, nil)
-	mach.SetLogLevel(am.LogDecisions)
+	mach.SemLogger().SetLevel(am.LogDecisions)
 	BindOtelLogger(mach, logProvider, "")
 
 	mach.Add1(ss.C, nil)

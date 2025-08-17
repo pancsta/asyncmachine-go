@@ -71,17 +71,17 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		},
 		ImportData:  p.ImportData,
 		DbgLogLevel: p.LogLevel,
-		DbgLogger:   cli.GetLogger(&p),
+		DbgLogger:   cli.GetLogger(&p, ""),
 		ServerAddr:  p.ListenAddr,
 		EnableMouse: p.EnableMouse,
 		Version:     utils.GetVersion(),
-		ID:          "video",
+		Id:          "video",
 		MaxMemMb:    1000,
 	})
 	if err != nil {
 		panic(err)
 	}
-	helpers.MachDebug(dbg.Mach, debugAddr, logLevel, false)
+	helpers.MachDebug(dbg.Mach, debugAddr, logLevel, false, true, true, true)
 
 	dbg.Start(startupMachine, startupTx, initialView)
 	go render(dbg)
@@ -155,7 +155,7 @@ func render(dbg *debugger.Debugger) {
 	dbg.SetFilterLogLevel(am.LogChanges)
 	// TODO via state handlers, pass focused filter
 	mach.Add1(ss.Toolbar1Focused, am.A{"filter": debugger.ToolFilterSummaries})
-	dbg.ProcessFilterChange(context.TODO(), false)
+	// dbg.HProcessFilterChange(context.TODO(), false)
 	goBack(mach, 1)
 
 	// end screen

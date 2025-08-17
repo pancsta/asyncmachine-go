@@ -66,7 +66,7 @@ func NewMux(
 	if err != nil {
 		return nil, err
 	}
-	mach.SetLogArgs(LogArgs)
+	mach.SemLogger().SetArgs(LogArgs)
 	d.Mach = mach
 	// optional env debug
 	if os.Getenv(EnvAmRpcDbg) != "" {

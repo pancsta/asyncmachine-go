@@ -34,9 +34,9 @@ type Machine struct {
 	// HandlerDeadline is a grace period after a handler timeout, before the
 	// machine moves on.
 	HandlerDeadline time.Duration
-	// LastHandlerDeadline stores when was the last HandlerDeadline hit.
+	// LastHandlerDeadline stores when the last HandlerDeadline was hit.
 	LastHandlerDeadline atomic.Pointer[time.Time]
-	// HandlerBackoff is the time after the a HandlerDeadline, during which the
+	// HandlerBackoff is the time after a HandlerDeadline, during which the
 	// machine will return [Canceled] to any mutation.
 	HandlerBackoff time.Duration
 	// EvalTimeout is the time the machine will try to execute an eval func.
@@ -52,10 +52,10 @@ type Machine struct {
 	// disposal. Default 1s.
 	DisposeTimeout time.Duration
 
-	panicCaught bool
+	panicCaught atomic.Bool
 	// If true, logs will start with machine's id (5 chars).
 	// Default: true.
-	logID bool
+	logId atomic.Bool
 	// statesVerified assures the state names have been ordered using VerifyStates
 	statesVerified atomic.Bool
 	// Unique ID of this machine. Default: random.
@@ -67,7 +67,8 @@ type Machine struct {
 	// disposing disabled auto schema
 	disposing atomic.Bool
 	// disposed tells if the machine has been disposed and is no-op.
-	disposed     atomic.Bool
+	disposed atomic.Bool
+	// queueRunning indicates the queue is currently being executed.
 	queueRunning atomic.Bool
 	// tags are short strings describing the machine.
 	tags atomic.Pointer[[]string]
@@ -198,7 +199,6 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 		schema:        parsedStates,
 		clock:         Clock{},
 		handlers:      []*handler{},
-		logID:         true,
 		indexWhen:     IndexWhen{},
 		indexWhenTime: IndexWhenTime{},
 		indexWhenArgs: IndexWhenArgs{},
@@ -211,6 +211,7 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 	}
 
 	m.semLogger = &semLogger{mach: m}
+	m.logId.Store(true)
 	m.timeLast.Store(&Time{})
 	lvl := LogNothing
 	m.logLevel.Store(&lvl)
@@ -238,8 +239,8 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 		if opts.DontLogStackTrace {
 			m.LogStackTrace = false
 		}
-		if opts.DontLogID {
-			m.logID = false
+		if opts.DontLogId {
+			m.logId.Store(false)
 		}
 		if opts.Resolver != nil {
 			m.resolver = opts.Resolver
@@ -902,7 +903,7 @@ func (m *Machine) Add(states S, args A) Result {
 		}
 	}
 
-	m.queueMutation(MutationAdd, states, args, nil)
+	m.queueMutation(MutationAdd, states, args, nil, false)
 	m.breakpoint(states, nil)
 
 	return m.processQueue()
@@ -1099,7 +1100,7 @@ func (m *Machine) Remove(states S, args A) Result {
 	}
 
 	m.queueLock.RUnlock()
-	m.queueMutation(MutationRemove, states, args, nil)
+	m.queueMutation(MutationRemove, states, args, nil, false)
 	m.breakpoint(nil, states)
 
 	return m.processQueue()
@@ -1118,7 +1119,7 @@ func (m *Machine) Set(states S, args A) Result {
 	if m.disposed.Load() || int(m.queueLen.Load()) >= m.QueueLimit {
 		return Canceled
 	}
-	m.queueMutation(MutationSet, states, args, nil)
+	m.queueMutation(MutationSet, states, args, nil, false)
 
 	return m.processQueue()
 }
@@ -1313,9 +1314,10 @@ func (m *Machine) queueMutation(
 
 // Eval executes a function on the machine's queue, allowing to avoid using
 // locks for non-handler code. Blocking code should NOT be scheduled here.
-// Eval cannot be called within a handler's critical section, as both are using
+// Eval cannot be called within a handler's critical zone, as both are using
 // the same serial queue and will deadlock. Eval has a timeout of
-// HandlerTimeout/2 and will return false in case it happens.
+// HandlerTimeout/2 and will return false in case it happens. Evals do not
+// trigger consensus, thus are much faster than state mutations.
 //
 // ctx: nil context defaults to machine's context.
 //
@@ -1329,8 +1331,9 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	if source == "" {
 		panic("error: source of eval is required")
 	}
+
+	// check every method of every handler against the stack trace
 	if m.detectEval {
-		// check every method of every handler against the stack trace
 		trace := captureStackTrace()
 
 		for i := 0; !m.disposed.Load() && i < len(m.handlers); i++ {
@@ -1358,6 +1361,7 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	done := make(chan struct{})
 	canceled := atomic.Bool{}
 	wrap := func() {
+		// TODO optimize: close earlier when [canceled]
 		defer close(done)
 		if canceled.Load() {
 			return
@@ -1836,7 +1840,8 @@ func (m *Machine) setActiveStates(calledStates S, targetStates S,
 // out. You can set an IDE's breakpoint on this line and see the mutation's sync
 // stack trace. When Machine.LogStackTrace is set, the stack trace will be
 // printed out as well. Many breakpoints can be added, but none removed.
-func (m *Machine) AddBreakpoint(added S, removed S) {
+func (m *Machine) AddBreakpoint(added S, removed S, strict bool) {
+	// TODO strict: dont breakpoint added states when already active
 	m.breakpointsMx.Lock()
 	defer m.breakpointsMx.Unlock()
 
@@ -2213,7 +2218,7 @@ func (m *Machine) log(level LogLevel, msg string, args ...any) {
 		return
 	}
 
-	if m.logID {
+	if m.logId.Load() {
 		id := m.id
 		if len(id) > 5 {
 			id = id[:5]
@@ -2274,13 +2279,13 @@ func (m *Machine) handle(
 		Name:         name,
 		machine:      m,
 		Args:         args,
-		TransitionId: t.ID,
+		TransitionId: t.Id,
 		MachineId:    m.Id(),
 	}
 	targetStates := t.TargetStates()
 
-	t.latestStepIsEnter = isEnter
-	t.latestStepIsFinal = isFinal
+	t.latestHandlerIsEnter = isEnter
+	t.latestHandlerIsFinal = isFinal
 
 	// always init args
 	if e.Args == nil {
@@ -2289,9 +2294,9 @@ func (m *Machine) handle(
 
 	// call the handlers
 	res, handlerCalled := m.processHandlers(e)
-	if m.panicCaught {
+	if m.panicCaught.Load() {
 		res = Canceled
-		m.panicCaught = false
+		m.panicCaught.Store(false)
 	}
 
 	// negotiation support
@@ -2949,10 +2954,9 @@ func (m *Machine) Switch(groups ...S) string {
 	return ""
 }
 
-// CountActive returns the amount of active states from a passed list. Useful
+// CountActive returns the number of active states from a passed list. Useful
 // for state groups.
 func (m *Machine) CountActive(states S) int {
-	// TODO api
 	activeStates := m.ActiveStates()
 	c := 0
 	for _, state := range states {
@@ -3088,7 +3092,7 @@ func (m *Machine) EvAdd(event *Event, states S, args A) Result {
 
 		return Canceled
 	}
-	m.queueMutation(MutationAdd, states, args, event)
+	m.queueMutation(MutationAdd, states, args, event, false)
 	m.breakpoint(states, nil)
 
 	return m.processQueue()
@@ -3127,7 +3131,7 @@ func (m *Machine) EvRemove(event *Event, states S, args A) Result {
 	}
 
 	m.queueLock.RUnlock()
-	m.queueMutation(MutationRemove, states, args, event)
+	m.queueMutation(MutationRemove, states, args, event, false)
 	m.breakpoint(nil, states)
 
 	return m.processQueue()

@@ -20,14 +20,14 @@ func MachDebug(t *stdtest.T, mach am.Api, amDbgAddr string,
 	logLvl am.LogLevel, stdout bool,
 ) {
 	if stdout {
-		mach.SetLoggerSimple(t.Logf, logLvl)
+		mach.SemLogger().SetSimple(t.Logf, logLvl)
 	} else if amDbgAddr == "" {
-		mach.SetLoggerSimple(t.Logf, logLvl)
+		mach.SemLogger().SetSimple(t.Logf, logLvl)
 
 		return
 	}
 
-	amhelp.MachDebug(mach, amDbgAddr, logLvl, stdout)
+	amhelp.MachDebug(mach, amDbgAddr, logLvl, stdout, true, true, true)
 }
 
 // MachDebugEnv sets up a machine for debugging in tests, based on env vars

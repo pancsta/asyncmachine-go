@@ -51,7 +51,7 @@ func init() {
 	// - enable stdout logging
 	//
 	// amhelp.EnableDebugging(true)
-	// amhelp.SetLogLevel(am.LogOps)
+	// amhelp.SemLogger().SetLevel(am.LogOps)
 }
 
 // handlers
@@ -162,7 +162,7 @@ func TestNfa(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			mach.SetLogId(false)
+			mach.SemLogger().EnableId(false)
 			amhelp.MachDebugEnv(mach)
 			mach.Add1(ss.Start, am.A{"input": tt.input})
 			<-mach.When1(ss.Ready, nil)

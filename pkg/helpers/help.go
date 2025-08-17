@@ -1450,6 +1450,31 @@ func SchemaHash(schema am.Schema) string {
 	return hash[:6]
 }
 
+// EvalGetter is a syntax sugar for creating getters via Eval functions. Like
+// any eval, it can end with ErrEvalTimeout. Getting values via channels passed
+// to mutations is recommended and allows for a custom timeout.
+func EvalGetter[T any](
+	ctx context.Context, source string, maxTries int, mach *am.Machine,
+	eval func() (T, error),
+) (T, error) {
+	var ret T
+	var retErr error
+	evalOuter := func() {
+		ret, retErr = eval()
+	}
+
+	// try at least once
+	for range min(maxTries, 1) {
+		if !mach.Eval("EvGe/"+source, evalOuter, ctx) {
+			retErr = fmt.Errorf("%w: EvGe/%s", am.ErrEvalTimeout, source)
+		} else {
+			break
+		}
+	}
+
+	return ret, retErr
+}
+
 // TODO ChanGetter
 
 // CantAdd will confirm that the mutation is impossible.

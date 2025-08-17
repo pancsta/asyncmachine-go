@@ -334,6 +334,135 @@ func (h *ExceptionHandler) ExceptionEnter(e *am.Event) bool {
 
 // ///// ///// /////
 
+// ///// LOGGER
+
+// ///// ///// /////
+
+type semLogger struct {
+	mach  *Worker
+	steps atomic.Bool
+	graph atomic.Bool
+}
+
+func (s *semLogger) EnableQueued(val bool) {
+	// TODO
+}
+
+func (s *semLogger) IsQueued() bool {
+	return false
+}
+
+func (s *semLogger) IsCan() bool {
+	return false
+}
+
+func (s *semLogger) EnableCan(enable bool) {
+	// TODO
+}
+
+// implement [SemLogger]
+var _ am.SemLogger = &semLogger{}
+
+func (s *semLogger) SetArgs(mapper am.LogArgsMapperFn) {
+	// TODO
+}
+
+func (s *semLogger) Args() am.LogArgsMapperFn {
+	// TODO
+	return nil
+}
+
+func (s *semLogger) EnableId(val bool) {
+	// TODO
+}
+
+func (s *semLogger) IsId() bool {
+	return false
+}
+
+func (s *semLogger) SetLogger(fn am.LoggerFn) {
+	if fn == nil {
+		s.mach.logger.Store(nil)
+
+		return
+	}
+	s.mach.logger.Store(&fn)
+}
+
+func (s *semLogger) Logger() am.LoggerFn {
+	if l := s.mach.logger.Load(); l != nil {
+		return *l
+	}
+
+	return nil
+}
+
+func (s *semLogger) SetLevel(lvl am.LogLevel) {
+	s.mach.logLevel.Store(&lvl)
+}
+
+func (s *semLogger) Level() am.LogLevel {
+	return *s.mach.logLevel.Load()
+}
+
+func (s *semLogger) SetEmpty(lvl am.LogLevel) {
+	var logger am.LoggerFn = func(_ am.LogLevel, msg string, args ...any) {
+		// no-op
+	}
+	s.mach.logger.Store(&logger)
+	s.mach.logLevel.Store(&lvl)
+}
+
+func (s *semLogger) SetSimple(
+	logf func(format string, args ...any), level am.LogLevel,
+) {
+	var logger am.LoggerFn = func(_ am.LogLevel, msg string, args ...any) {
+		logf(msg, args...)
+	}
+	s.mach.logger.Store(&logger)
+	s.mach.logLevel.Store(&level)
+}
+
+func (s *semLogger) AddPipeOut(addMut bool, sourceState, targetMach string) {
+	kind := "remove"
+	if addMut {
+		kind = "add"
+	}
+	s.mach.log(am.LogOps, "[pipe-out:%s] %s to %s", kind, sourceState,
+		targetMach)
+}
+
+func (s *semLogger) AddPipeIn(addMut bool, targetState, sourceMach string) {
+	kind := "remove"
+	if addMut {
+		kind = "add"
+	}
+	s.mach.log(am.LogOps, "[pipe-in:%s] %s from %s", kind, targetState,
+		sourceMach)
+}
+
+func (s *semLogger) RemovePipes(machId string) {
+	s.mach.log(am.LogOps, "[pipe:gc] %s", machId)
+}
+
+func (s *semLogger) IsSteps() bool {
+	return s.steps.Load()
+}
+
+func (s *semLogger) EnableSteps(enable bool) {
+	s.steps.Store(enable)
+}
+
+func (s *semLogger) IsGraph() bool {
+	return s.graph.Load()
+}
+
+func (s *semLogger) EnableGraph(enable bool) {
+	s.graph.Store(enable)
+}
+
+// ///// ///// /////
+
 // ///// REMOTE HANDLERS
 
 // ///// ///// /////
@@ -647,6 +776,7 @@ func DisposeWithCtx[T comparable](
 	if ctx == nil {
 		return
 	}
+
 	go func() {
 		select {
 		case <-ch:
@@ -675,7 +805,7 @@ func DisposeWithCtx[T comparable](
 				}
 
 				if logMsg != "" {
-					mach.LogLvl(am.LogOps, logMsg) //nolint:govet
+					mach.log(am.LogOps, logMsg, nil)
 				}
 			}
 		}

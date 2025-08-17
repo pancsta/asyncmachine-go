@@ -25,7 +25,7 @@ func init() {
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(true)
-	// amhelp.SetLogLevel(am.LogChanges)
+	// amhelp.SemLogger().SetLevel(am.LogChanges)
 }
 
 func main() {
@@ -69,8 +69,8 @@ func newWorker(ctx context.Context, num int) (*am.Machine, error) {
 	// telemetry
 
 	amhelp.MachDebugEnv(worker)
-	// worker.SetLogArgs(am.NewArgsMapper([]string{"log"}, 0))
-	worker.SetLogLevel(am.LogChanges)
+	// worker.SemLogger().SetArgs(am.NewArgsMapper([]string{"log"}, 0))
+	worker.SemLogger().SetLevel(am.LogChanges)
 	// start a REPL aRPC server, create an addr file
 	arpc.MachRepl(worker, "", "tmp", nil, nil)
 

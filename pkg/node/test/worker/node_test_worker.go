@@ -39,7 +39,7 @@ func main() {
 	}
 
 	if os.Getenv(am.EnvAmDebug) != "" {
-		mach.SetLogLevel(am.LogEverything)
+		mach.SemLogger().SetLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	worker, err := node.NewWorker(ctx, "NTW", mach.Schema(),

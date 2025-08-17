@@ -4,7 +4,7 @@ go 1.24
 
 toolchain go1.24.0
 
-//replace github.com/pancsta/cview => ../cview
+replace github.com/pancsta/cview => ../cview
 
 // replace libp2p's prom with no-op to prevent a goroutine leak in load tests
 //replace github.com/prometheus/client_golang => github.com/pancsta/prom_client_golang v0.0.0-20250629100015-513d4c0bdd5e
@@ -15,6 +15,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.10.0
 	github.com/andybalholm/brotli v1.1.1
 	github.com/cenkalti/rpc2 v1.0.4
+	github.com/coder/websocket v1.8.12
 	github.com/dominikbraun/graph v0.23.0
 	github.com/failsafe-go/failsafe-go v0.6.8
 	github.com/fsnotify/fsnotify v1.7.1-0.20240403050945-7086bea086b7
