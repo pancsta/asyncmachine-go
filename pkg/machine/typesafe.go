@@ -3,11 +3,12 @@ package machine
 import (
 	"maps"
 	"reflect"
+	"slices"
 )
 
 // ///// ///// /////
 
-// ///// STATES & STRUCTURE
+// ///// STATES & SCHEMA
 
 // ///// ///// /////
 

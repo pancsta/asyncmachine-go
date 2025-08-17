@@ -38,7 +38,7 @@ func init() {
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(false)
-	// amhelp.SetLogLevel(am.LogChanges)
+	// amhelp.SemLogger().SetLevel(am.LogChanges)
 }
 
 // state enum pkg
@@ -91,7 +91,7 @@ func TestTurnstile(t *testing.T) {
 	mach := am.New(context.Background(), states, &am.Opts{
 		Id:                   "turnstile",
 		DontPanicToException: true,
-		DontLogID:            true,
+		DontLogId:            true,
 		LogLevel:             am.LogChanges,
 		HandlerTimeout:       time.Minute,
 	})

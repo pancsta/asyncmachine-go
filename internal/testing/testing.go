@@ -136,15 +136,15 @@ func NewDbgWorker(
 	if opts.DbgLogLevel > 0 && os.Getenv(am.EnvAmLogFile) != "" {
 		opts.DbgLogger = cli.GetLogger(&cli.Params{
 			LogLevel: opts.DbgLogLevel,
-		})
+		}, "")
 	}
 
 	// misc opts
 	if opts.Screen == nil {
 		opts.Screen = screen
 	}
-	if opts.ID == "" {
-		opts.ID = "rem-worker"
+	if opts.Id == "" {
+		opts.Id = "rem-worker"
 	}
 
 	// used for testing live connections (eg TailMode)

@@ -5,7 +5,7 @@ import (
 	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
-// GeneratorStatesDef contains all the states of the Client state machine.
+// GeneratorStatesDef contains all the states of the Generator state machine.
 type GeneratorStatesDef struct {
 	*am.StatesBase
 
@@ -25,7 +25,8 @@ type GeneratorStatesDef struct {
 	Groups          string
 }
 
-// GeneratorGroupsDef contains all the state groups %s state machine.
+// GeneratorGroupsDef contains all the state groups of the Generator state
+// machine.
 type GeneratorGroupsDef struct {
 	Inherit S
 }

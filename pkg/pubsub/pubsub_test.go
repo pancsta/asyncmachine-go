@@ -117,7 +117,7 @@ func Test1Peer(t *testing.T) {
 
 func Test2Peers(t *testing.T) {
 	// t.Parallel()
-	// amhelp.EnableDebugging(false)
+	amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -242,6 +242,7 @@ func TestExposing(t *testing.T) {
 }
 
 // https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes
+// replace prom/client_golang with a no-op to prevent a goroutine leak
 func TestExposingMany(t *testing.T) {
 	if os.Getenv(amhelp.EnvAmTestRunner) != "" {
 		// 100 peers with 3 workers each should finish in <1m
@@ -256,7 +257,7 @@ func TestExposingMany(t *testing.T) {
 
 	// TODO DEBUG
 	// IPFS_LOGGING=info;AM_PUBSUB_LOG=1
-	// amhelp.EnableDebugging(false)
+	amhelp.EnableDebugging(false)
 	// os.Setenv(amtele.EnvAmDbgAddr, "localhost:6831")
 	// os.Setenv("IPFS_LOGGING", "info")
 	// os.Setenv(EnvAmPubsubLog, "1")
@@ -359,8 +360,10 @@ func TestExposingMany(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			// TODO add groups to metrics
+
 			// TODO DEBUG
-			// mirror.SetLogLevel(0)
+			// mirror.SemLogger().SetLevel(0)
 			err = amtele.TransitionsToDbg(mirror, "")
 			if err != nil {
 				t.Fatal(err)

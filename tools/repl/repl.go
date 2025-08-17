@@ -50,7 +50,7 @@ func New(ctx context.Context, id string) (*Repl, error) {
 	// REPL machine
 	mach, err := am.NewCommon(ctx, id, states.ReplSchema, ss.Names(), r, nil,
 		&am.Opts{
-			DontLogID:      true,
+			DontLogId:      true,
 			HandlerTimeout: 1 * time.Second,
 			Id:             "r-" + id,
 			Tags:           []string{"arpc-repl"},
@@ -66,7 +66,7 @@ func New(ctx context.Context, id string) (*Repl, error) {
 		return nil, err
 	}
 	r.Mach = mach
-	mach.SetLogArgs(LogArgs)
+	mach.SemLogger().SetArgs(LogArgs)
 
 	return r, nil
 }
@@ -795,7 +795,8 @@ func (r *Repl) newRpcClient(addr, idSuffix string) (*rpc.Client, error) {
 
 	// telemetry
 	if r.DbgAddr != "" {
-		amhelp.MachDebug(client.Mach, r.DbgAddr, r.Mach.LogLevel(), false)
+		amhelp.MachDebug(client.Mach, r.DbgAddr, r.Mach.SemLogger().Level(),
+			false, true, true, true)
 		client.LogEnabled = true
 	}
 

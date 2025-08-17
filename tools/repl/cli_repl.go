@@ -323,7 +323,7 @@ func handleDebug(cmd *cobra.Command, mach *am.Machine) (string, error) {
 		return "", err
 	}
 	if dbgAddr != "" {
-		amhelp.MachDebug(mach, dbgAddr, logLevel, false)
+		amhelp.MachDebug(mach, dbgAddr, logLevel, false, true, true, true)
 	}
 
 	return dbgAddr, nil

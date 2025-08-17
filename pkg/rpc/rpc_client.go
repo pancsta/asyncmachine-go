@@ -175,7 +175,7 @@ func NewClient(
 	if err != nil {
 		return nil, err
 	}
-	mach.SetLogArgs(LogArgs)
+	mach.SemLogger().SetArgs(LogArgs)
 	c.Mach = mach
 	// optional env debug
 	if os.Getenv(EnvAmRpcDbg) != "" {

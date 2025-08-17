@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -50,9 +49,10 @@ type Worker struct {
 	parentId       string
 	tags           []string
 	logLevel       atomic.Pointer[am.LogLevel]
-	logger         atomic.Pointer[am.Logger]
+	logger         atomic.Pointer[am.LoggerFn]
 	logEntriesLock sync.Mutex
 	logEntries     []*am.LogEntry
+	semLogger      *semLogger
 }
 
 // Worker implements MachineApi
@@ -94,6 +94,7 @@ func NewWorker(
 		parentId:      parent.Id(),
 		tags:          tags,
 	}
+	w.semLogger = &semLogger{mach: w}
 	lvl := am.LogNothing
 	w.logLevel.Store(&lvl)
 	w.activeState.Store(&am.S{})
@@ -829,8 +830,10 @@ func (w *Worker) WhenErr(ctx context.Context) <-chan struct{} {
 func (w *Worker) WhenArgs(
 	state string, args am.A, ctx context.Context,
 ) <-chan struct{} {
-	// TODO implement me
-	panic("implement me")
+	// TODO ask the source
+	ch := make(chan struct{})
+	close(ch)
+	return ch
 }
 
 // ///// Getters (remote)
@@ -1014,80 +1017,8 @@ func (w *Worker) Log(msg string, args ...any) {
 	// TODO local log?
 }
 
-// SetLogId enables or disables the logging of the machine's id in log messages.
-func (w *Worker) SetLogId(val bool) {}
-
-// GetLogId returns the current state of the log id setting.
-func (w *Worker) GetLogId() bool {
-	// TODO
-	return false
-}
-
-// SetLoggerSimple takes log.Printf and sets the log level in one
-// call. Useful for testing. Requires LogChanges log level to produce any
-// output.
-func (w *Worker) SetLoggerSimple(
-	logf func(format string, args ...any), level am.LogLevel,
-) {
-	if logf == nil {
-		panic("logf cannot be nil")
-	}
-
-	var logger am.Logger = func(_ am.LogLevel, msg string, args ...any) {
-		logf(msg, args...)
-	}
-	w.logger.Store(&logger)
-	w.logLevel.Store(&level)
-}
-
-// SetLoggerEmpty creates an empty logger that does nothing and sets the log
-// level in one call. Useful when combined with am-dbg. Requires LogChanges log
-// level to produce any output.
-func (w *Worker) SetLoggerEmpty(level am.LogLevel) {
-	var logger am.Logger = func(_ am.LogLevel, msg string, args ...any) {
-		// no-op
-	}
-	w.logger.Store(&logger)
-	w.logLevel.Store(&level)
-}
-
-// SetLogger sets a custom logger function.
-func (w *Worker) SetLogger(fn am.Logger) {
-	if fn == nil {
-		w.logger.Store(nil)
-
-		return
-	}
-	w.logger.Store(&fn)
-}
-
-// GetLogger returns the current custom logger function, or nil.
-func (w *Worker) GetLogger() *am.Logger {
-	// TODO should return `Logger` not `*Logger`?
-	return w.logger.Load()
-}
-
-// SetLogLevel sets the log level of the machine.
-func (w *Worker) SetLogLevel(level am.LogLevel) {
-	w.logLevel.Store(&level)
-}
-
-// GetLogLevel returns the log level of the machine.
-func (w *Worker) GetLogLevel() am.LogLevel {
-	return *w.logLevel.Load()
-}
-
-// LogLvl adds an internal log entry from the outside. It should be used only
-// by packages extending pkg/machine. Use Log instead.
-func (w *Worker) LogLvl(lvl am.LogLevel, msg string, args ...any) {
-	if w.Disposed.Load() {
-		return
-	}
-
-	// single lines only
-	msg = strings.ReplaceAll(msg, "\n", " ")
-
-	w.log(lvl, msg, args...)
+func (w *Worker) SemLogger() am.SemLogger {
+	return w.semLogger
 }
 
 // StatesVerified returns true if the state names have been ordered
@@ -1226,14 +1157,14 @@ func (w *Worker) Inspect(states am.S) string {
 }
 
 func (w *Worker) log(level am.LogLevel, msg string, args ...any) {
-	if w.GetLogLevel() < level {
+	if w.semLogger.Level() < level {
 		return
 	}
 
 	out := fmt.Sprintf(msg, args...)
-	logger := w.GetLogger()
+	logger := w.semLogger.Logger()
 	if logger != nil {
-		(*logger)(level, msg, args...)
+		logger(level, msg, args...)
 	} else {
 		fmt.Println(out)
 	}
@@ -1681,6 +1612,45 @@ func (w *Worker) UpdateClock(now am.Time, lock bool) {
 	w.processStateCtxBindings(activeBefore)
 }
 
-func (w *Worker) AddBreakpoint(added am.S, removed am.S) {
+func (w *Worker) AddBreakpoint(added am.S, removed am.S, strict bool) {
 	// empty
+}
+
+func (w *Worker) Groups() (map[string][]int, []string) {
+	// TODO maybe sync along with schema?
+	return nil, nil
+}
+
+func (w *Worker) CanAdd(states am.S, args am.A) am.Result {
+	// TODO check relations
+	return am.Executed
+}
+
+func (w *Worker) CanAdd1(state string, args am.A) am.Result {
+	// TODO check relations
+	return am.Executed
+}
+
+func (w *Worker) CanRemove(states am.S, args am.A) am.Result {
+	// TODO check relations
+	return am.Executed
+}
+
+func (w *Worker) CanRemove1(state string, args am.A) am.Result {
+	// TODO check relations
+	return am.Executed
+}
+
+// CountActive returns the number of active states from a passed list. Useful
+// for state groups.
+func (w *Worker) CountActive(states am.S) int {
+	activeStates := w.ActiveStates()
+	c := 0
+	for _, state := range states {
+		if slices.Contains(activeStates, state) {
+			c++
+		}
+	}
+
+	return c
 }

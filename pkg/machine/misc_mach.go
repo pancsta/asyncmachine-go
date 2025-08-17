@@ -176,6 +176,7 @@ func (t Time) TimeSum(idxs []int) uint64 {
 // DiffSince returns the number of ticks for each state in Time since the
 // passed machine time.
 func (t Time) DiffSince(before Time) Time {
+	// TODO: optimize, add index-based diffs
 	ret := make(Time, len(t))
 	if len(t) != len(before) {
 		return ret
@@ -254,19 +255,7 @@ func (t TimeIndex) Any1(states ...string) bool {
 }
 
 func (t TimeIndex) String() string {
-	ret := ""
-	for i, tick := range t.Time {
-		if ret != "" {
-			ret += " "
-		}
-		name := t.StateName(int(tick))
-		if name == "" {
-			name = "unknown" + strconv.Itoa(i)
-		}
-		ret += name
-	}
-
-	return ret
+	return j(t.ActiveStates())
 }
 
 func (t TimeIndex) ActiveStates() S {
@@ -400,6 +389,10 @@ type SemLogger interface {
 	// IsId returns true when the machine is logging the machine's ID in log
 	// messages.
 	IsId() bool
+	// EnableQueued enables or disables the logging of queued mutations.
+	EnableQueued(val bool)
+	// IsQueued returns true when the machine is logging queued mutations.
+	IsQueued() bool
 
 	// logger
 
@@ -546,6 +539,14 @@ func (s *semLogger) EnableGraph(enable bool) {
 	s.graph.Store(enable)
 }
 
+func (s *semLogger) EnableQueued(val bool) {
+	// TODO
+}
+
+func (s *semLogger) IsQueued() bool {
+	return false
+}
+
 // LogArgs is a list of common argument names to be logged. Useful for
 // debugging.
 var LogArgs = []string{"name", "id", "port", "addr", "err"}
@@ -593,6 +594,7 @@ type Tracer interface {
 	TransitionInit(transition *Transition)
 	TransitionStart(transition *Transition)
 	TransitionEnd(transition *Transition)
+	MutationQueued(machine Api, mutation *Mutation)
 	HandlerStart(transition *Transition, emitter string, handler string)
 	HandlerEnd(transition *Transition, emitter string, handler string)
 	// MachineInit is called only for machines with tracers added via
@@ -609,9 +611,10 @@ type Tracer interface {
 // NoOpTracer is a no-op implementation of Tracer, used for embedding.
 type NoOpTracer struct{}
 
-func (t *NoOpTracer) TransitionInit(transition *Transition)  {}
-func (t *NoOpTracer) TransitionStart(transition *Transition) {}
-func (t *NoOpTracer) TransitionEnd(transition *Transition)   {}
+func (t *NoOpTracer) TransitionInit(transition *Transition)          {}
+func (t *NoOpTracer) TransitionStart(transition *Transition)         {}
+func (t *NoOpTracer) TransitionEnd(transition *Transition)           {}
+func (t *NoOpTracer) MutationQueued(machine Api, mutation *Mutation) {}
 func (t *NoOpTracer) HandlerStart(
 	transition *Transition, emitter string, handler string) {
 }
@@ -691,7 +694,7 @@ func (e *Event) IsValid() bool {
 		return false
 	}
 
-	return e.TransitionId == tx.ID && !tx.IsCompleted.Load() &&
+	return e.TransitionId == tx.Id && !tx.IsCompleted.Load() &&
 		tx.IsAccepted.Load()
 }
 
@@ -707,6 +710,15 @@ func (e *Event) Clone() *Event {
 		MachineId:    id,
 		TransitionId: e.TransitionId,
 	}
+}
+
+func (e *Event) String() string {
+	mach := e.Machine()
+	if mach == nil {
+		return e.Mutation().String()
+	}
+
+	return e.Mutation().StringFromIndex(mach.StateNames())
 }
 
 type (

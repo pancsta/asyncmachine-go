@@ -53,6 +53,10 @@ type DbgMsgStruct struct {
 	// all the states with relations
 	// TODO refac: Schema
 	States am.Schema
+	// list of group names and state indexes
+	Groups map[string][]int
+	// order of groups
+	GroupsOrder []string
 	// parent machine ID
 	Parent string
 	// machine tags
@@ -67,10 +71,15 @@ func (d *DbgMsgStruct) Is(_ am.S, _ am.S) bool {
 	return false
 }
 
+// ///// QUEUE
+
+// type DbgMsgQueue struct {
+// 	Mutation *am.Mutation
+// }
+
 // ///// TRANSITION
 
 // DbgMsgTx contains transition data.
-// TODO add event source
 type DbgMsgTx struct {
 	MachineID string
 	// Transition ID
@@ -79,12 +88,10 @@ type DbgMsgTx struct {
 	// transition.
 	// TODO refac to TimeAfter, re-gen all the assets
 	Clocks am.Time
-	// result of the transition
-	Accepted bool
 	// mutation type
 	Type am.MutationType
 	// called states
-	// TODO remove
+	// TODO remove. Deprecated use CalledStateNames
 	CalledStates []string
 	// TODO rename to CalledStates, re-gen all assets
 	CalledStatesIdxs []int
@@ -94,22 +101,26 @@ type DbgMsgTx struct {
 	LogEntries []*am.LogEntry
 	// log entries before the transition, which happened after the prev one
 	PreLogEntries []*am.LogEntry
-	// transition was triggered by an auto state
-	IsAuto bool
 	// queue length at the start of the transition
 	Queue int
+	// Time is human time. Don't send this over the wire.
+	// TODO remove or skip in msgpack
+	Time *time.Time
+	// transition was triggered by an auto state
+	IsAuto bool
+	// result of the transition
+	Accepted bool
+	IsCheck  bool
+
+	// TODO add Mutation.Source, only if semLogger.IsGraph() == true
+	// Source *am.MutSource
 	// TODO include missed mutations (?) because of the queue limit
 	//  since the previous tx
-	// Time is human time. Don't send this over the wire.
-	// TODO remove, re-gen all the assets
-	Time *time.Time
-	// TODO add Mutation.Source
-	// Source *am.MutSource
-
-	// TODO add Transition.PipesAdd
-	// TODO add Transition.PipesRemove
-	// TODO add Transition.CtxAdd
-	// TODO add Transition.CtxRemove
+	// TODO add Transition.PipesAdded
+	// TODO add Transition.PipesRemoved
+	// TODO add Transition.CtxAdded
+	// TODO add Transition.CtxRemoved
+	// TODO add time taken via tracer
 }
 
 func (m *DbgMsgTx) Clock(statesIndex am.S, state string) uint64 {
@@ -219,6 +230,7 @@ func (c *dbgClient) sendMsgTx(msg *DbgMsgTx) error {
 	var reply string
 	// DEBUG
 	// fmt.Printf("sendMsgTx %v\n", msg.CalledStates)
+	// TODO const name
 	err := c.rpc.Call("RPCServer.DbgMsgTx", msg, &reply)
 	if err != nil {
 		return err
@@ -227,14 +239,15 @@ func (c *dbgClient) sendMsgTx(msg *DbgMsgTx) error {
 	return nil
 }
 
-func (c *dbgClient) sendMsgStruct(msg *DbgMsgStruct) error {
+func (c *dbgClient) sendMsgSchema(msg *DbgMsgStruct) error {
 	if c == nil {
 		return nil
 	}
 
 	var reply string
 	// TODO use Go() to not block
-	err := c.rpc.Call("RPCServer.DbgMsgStruct", msg, &reply)
+	// TODO const name
+	err := c.rpc.Call("RPCServer.DbgMsgSchema", msg, &reply)
 	if err != nil {
 		return err
 	}
@@ -255,6 +268,8 @@ type DbgTracer struct {
 	errCount atomic.Int32
 	exited   atomic.Bool
 }
+
+var _ am.Tracer = &DbgTracer{}
 
 func NewDbgTracer(mach am.Api, addr string) *DbgTracer {
 	t := &DbgTracer{
@@ -295,7 +310,7 @@ func (t *DbgTracer) MachineInit(mach am.Api) context.Context {
 			return
 		}
 
-		err = sendStructMsg(mach, t.c)
+		err = sendMsgSchema(mach, t.c)
 		if err != nil && os.Getenv(am.EnvAmLog) != "" {
 			log.Println(err, nil)
 			return
@@ -308,7 +323,7 @@ func (t *DbgTracer) MachineInit(mach am.Api) context.Context {
 func (t *DbgTracer) SchemaChange(mach am.Api, _ am.Schema) {
 	// add to the queue
 	t.queue <- func() {
-		err := sendStructMsg(mach, t.c)
+		err := sendMsgSchema(mach, t.c)
 		if err != nil {
 			err = fmt.Errorf("failed to send new struct to am-dbg: %w", err)
 			mach.AddErr(err, nil)
@@ -333,16 +348,23 @@ func (t *DbgTracer) TransitionEnd(tx *am.Transition) {
 
 		return
 	}
+	mut := tx.Mutation
 
-	tx.LogEntriesLock.Lock()
-	defer tx.LogEntriesLock.Unlock()
+	// skip check mutations when not logging them
+	if mut.IsCheck && !mach.SemLogger().IsCan() {
+		return
+	}
+
+	tx.InternalLogEntriesLock.Lock()
+	defer tx.InternalLogEntriesLock.Unlock()
 
 	msg := &DbgMsgTx{
 		MachineID:    mach.Id(),
-		ID:           tx.ID,
+		ID:           tx.Id,
 		Clocks:       tx.TimeAfter,
 		Accepted:     tx.IsAccepted.Load(),
-		Type:         tx.Mutation.Type,
+		IsCheck:      mut.IsCheck,
+		Type:         mut.Type,
 		CalledStates: tx.CalledStates(),
 		Steps:        tx.Steps,
 		// no locking necessary, as the tx is finalized (read-only)
@@ -403,25 +425,32 @@ func TransitionsToDbg(mach am.Api, addr string) error {
 
 	// add the tracer
 	tracer := NewDbgTracer(mach, addr)
-	_ = mach.BindTracer(tracer)
+	err := mach.BindTracer(tracer)
+	if err != nil {
+		return err
+	}
+
 	// call manually for existing machines
 	tracer.MachineInit(mach)
 
 	return nil
 }
 
-// sendStructMsg sends the machine's states and relations
-func sendStructMsg(mach am.Api, client *dbgClient) error {
+// sendMsgSchema sends the machine's states and relations
+func sendMsgSchema(mach am.Api, client *dbgClient) error {
+	groups, order := mach.Groups()
 	msg := &DbgMsgStruct{
 		ID:          mach.Id(),
 		StatesIndex: mach.StateNames(),
 		States:      mach.Schema(),
+		Groups:      groups,
+		GroupsOrder: order,
 		Parent:      mach.ParentId(),
 		Tags:        mach.Tags(),
 	}
 
 	// TODO retries
-	err := client.sendMsgStruct(msg)
+	err := client.sendMsgSchema(msg)
 	if err != nil {
 		return fmt.Errorf("failed to send a msg to am-dbg: %w", err)
 	}
@@ -431,13 +460,13 @@ func sendStructMsg(mach am.Api, client *dbgClient) error {
 
 func removeLogPrefix(mach am.Api, entries []*am.LogEntry) []*am.LogEntry {
 	clone := slices.Clone(entries)
-	if !mach.GetLogId() {
+	if !mach.SemLogger().IsId() {
 		return clone
 	}
 
-	maxIDlen := 5
+	maxIdLen := 5
 	addChars := 3 // "[] "
-	prefixLen := min(len(mach.Id())+addChars, maxIDlen+addChars)
+	prefixLen := min(len(mach.Id())+addChars, maxIdLen+addChars)
 
 	ret := make([]*am.LogEntry, len(clone))
 	for i, le := range clone {

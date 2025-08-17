@@ -108,7 +108,7 @@ func NewClient(ctx context.Context, id string, workerKind string,
 		return nil, err
 	}
 
-	mach.SetLogArgs(LogArgs)
+	mach.SemLogger().SetArgs(LogArgs)
 	c.Mach = mach
 	amhelp.MachDebugEnv(mach)
 

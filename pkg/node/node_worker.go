@@ -91,7 +91,7 @@ func NewWorker(ctx context.Context, kind string, workerStruct am.Schema,
 		return nil, err
 	}
 
-	mach.SetLogArgs(LogArgs)
+	mach.SemLogger().SetArgs(LogArgs)
 	w.Mach = mach
 	amhelp.MachDebugEnv(mach)
 

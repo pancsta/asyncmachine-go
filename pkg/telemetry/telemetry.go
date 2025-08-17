@@ -26,7 +26,7 @@ func BindLokiLogger(mach am.Api, client promtail.Client) {
 	labels := map[string]string{
 		"asyncmachine_id": mach.Id(),
 	}
-	mach.SetLogId(false)
+	mach.SemLogger().EnableId(false)
 
 	amlog := func(level am.LogLevel, msg string, args ...any) {
 		if strings.HasPrefix(msg, "[error") {
@@ -47,7 +47,7 @@ func BindLokiLogger(mach am.Api, client promtail.Client) {
 		}
 	}
 
-	mach.SetLogger(amlog)
+	mach.SemLogger().SetLogger(amlog)
 	mach.Log("[bind] loki logger")
 }
 

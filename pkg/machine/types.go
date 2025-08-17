@@ -16,7 +16,7 @@ const (
 	// "1" | "2" | "" (default)
 	EnvAmDebug = "AM_DEBUG"
 	// EnvAmLog sets the log level.
-	// "1" | "2" | "3" | "4" | "" (default)
+	// "1" | "2" | "3" | "4" | "5" | "" (default)
 	EnvAmLog = "AM_LOG"
 	// EnvAmLogFull enables all the semantuc loggers.
 	// "1" | "2" | "3" | "4" | "5" | "" (default)
@@ -99,7 +99,7 @@ type Opts struct {
 	DontPanicToException bool
 	// If true, the machine will NOT prefix its logs with its ID.
 	// TODO refac to DontLogId
-	DontLogID bool
+	DontLogId bool
 	// Custom relations resolver. Default: *DefaultRelationsResolver.
 	Resolver RelationsResolver
 	// Log level of the machine. Default: LogNothing.
@@ -145,72 +145,130 @@ type Api interface {
 
 	// Mutations (remote)
 
+	// Add1 is [Machine.Add1].
 	Add1(state string, args A) Result
+	// Add is [Machine.Add].
 	Add(states S, args A) Result
+	// Remove1 is [Machine.Remove1].
 	Remove1(state string, args A) Result
+	// Remove is [Machine.Remove].
 	Remove(states S, args A) Result
+	// Set is [Machine.Set].
 	Set(states S, args A) Result
+	// AddErr is [Machine.AddErr].
 	AddErr(err error, args A) Result
+	// AddErrState is [Machine.AddErrState].
 	AddErrState(state string, err error, args A) Result
 
+	// EvAdd1 is [Machine.EvAdd1].
 	EvAdd1(event *Event, state string, args A) Result
+	// EvAdd is [Machine.EvAdd].
 	EvAdd(event *Event, states S, args A) Result
+	// EvRemove1 is [Machine.EvRemove1].
 	EvRemove1(event *Event, state string, args A) Result
+	// EvRemove is [Machine.EvRemove].
 	EvRemove(event *Event, states S, args A) Result
+	// EvAddErr is [Machine.EvAddErr].
 	EvAddErr(event *Event, err error, args A) Result
+	// EvAddErrState is [Machine.EvAddErrState].
 	EvAddErrState(event *Event, state string, err error, args A) Result
 
 	// Waiting (remote)
 
+	// WhenArgs is [Machine.WhenArgs].
 	WhenArgs(state string, args A, ctx context.Context) <-chan struct{}
 
 	// Getters (remote)
 
+	// Err is [Machine.Err].
 	Err() error
 
 	// ///// LOCAL
 
 	// Checking (local)
 
+	// IsErr is [Machine.IsErr].
 	IsErr() bool
+	// Is is [Machine.Is].
 	Is(states S) bool
+	// Is1 is [Machine.Is1].
 	Is1(state string) bool
+	// Any is [Machine.Any].
 	Any(states ...S) bool
+	// Any1 is [Machine.Any1].
 	Any1(state ...string) bool
+	// Not is [Machine.Not].
 	Not(states S) bool
+	// Not1 is [Machine.Not1].
 	Not1(state string) bool
+	// IsTime is [Machine.IsTime].
 	IsTime(time Time, states S) bool
+	// WasTime is [Machine.WasTime].
 	WasTime(time Time, states S) bool
+	// IsClock is [Machine.IsClock].
 	IsClock(clock Clock) bool
+	// WasClock is [Machine.WasClock].
 	WasClock(clock Clock) bool
+	// Has is [Machine.Has].
 	Has(states S) bool
+	// Has1 is [Machine.Has1].
 	Has1(state string) bool
+	// CanAdd is [Machine.CanAdd].
+	CanAdd(states S, args A) Result
+	CanAdd1(state string, args A) Result
+	CanRemove(states S, args A) Result
+	CanRemove1(state string, args A) Result
+	CountActive(states S) int
 
 	// Waiting (local)
 
+	// When is [Machine.When].
 	When(states S, ctx context.Context) <-chan struct{}
+	// When1 is [Machine.When1].
 	When1(state string, ctx context.Context) <-chan struct{}
+	// WhenNot is [Machine.WhenNot].
 	WhenNot(states S, ctx context.Context) <-chan struct{}
+	// WhenNot1 is [Machine.WhenNot1].
 	WhenNot1(state string, ctx context.Context) <-chan struct{}
-	WhenTime(
-		states S, times Time, ctx context.Context) <-chan struct{}
+	// WhenTime is [Machine.WhenTime].
+	WhenTime(states S, times Time, ctx context.Context) <-chan struct{}
+	// WhenTime1 is [Machine.WhenTime1].
 	WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
+	// WhenTicks is [Machine.WhenTicks].
 	WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
+	// WhenErr is [Machine.WhenErr].
 	WhenErr(ctx context.Context) <-chan struct{}
 
 	// Getters (local)
 
+	// StateNames is [Machine.StateNames].
 	StateNames() S
+	// StateNamesMatch is [Machine.StateNamesMatch].
 	StateNamesMatch(re *regexp.Regexp) S
+	// ActiveStates is [Machine.ActiveStates].
 	ActiveStates() S
+	// Tick is [Machine.Tick].
 	Tick(state string) uint64
+	// Clock is [Machine.Clock].
 	Clock(states S) Clock
+	// Time is [Machine.Time].
 	Time(states S) Time
+	// TimeSum is [Machine.TimeSum].
 	TimeSum(states S) uint64
+	// NewStateCtx is [Machine.NewStateCtx].
 	NewStateCtx(state string) context.Context
+	// Export is [Machine.Export].
 	Export() *Serialized
+	// Schema is [Machine.Schema].
 	Schema() Schema
+	// Switch is [Machine.Switch].
 	Switch(groups ...S) string
+	// Groups is [Machine.Groups].
+	Groups() (map[string][]int, []string)
+	// Index is [Machine.Index].
+	Index(states S) []int
+	// Index1 is [Machine.Index1].
+	Index1(state string) int
 
 	// Misc (local)
 
@@ -230,19 +288,29 @@ type Api interface {
 	Log(msg string, args ...any)
 	// SemLogger is [Machine.SemLogger].
 	SemLogger() SemLogger
+	// Inspect is [Machine.Inspect].
 	Inspect(states S) string
-	Index(states S) []int
-	Index1(state string) int
+	// BindHandlers is [Machine.BindHandlers].
 	BindHandlers(handlers any) error
+	// DetachHandlers is [Machine.DetachHandlers].
 	DetachHandlers(handlers any) error
+	// HasHandlers is [Machine.HasHandlers].
 	HasHandlers() bool
+	// StatesVerified is [Machine.StatesVerified].
 	StatesVerified() bool
+	// Tracers is [Machine.Tracers].
 	Tracers() []Tracer
+	// DetachTracer is [Machine.DetachTracer].
 	DetachTracer(tracer Tracer) error
+	// BindTracer is [Machine.BindTracer].
 	BindTracer(tracer Tracer) error
-	AddBreakpoint(added S, removed S)
+	// AddBreakpoint is [Machine.AddBreakpoint].
+	AddBreakpoint(added S, removed S, strict bool)
+	// Dispose is [Machine.Dispose].
 	Dispose()
+	// WhenDisposed is [Machine.WhenDisposed].
 	WhenDisposed() <-chan struct{}
+	// IsDisposed is [Machine.IsDisposed].
 	IsDisposed() bool
 }
 
@@ -271,8 +339,8 @@ const (
 	// - Machine.WhenTicks
 	// - Machine.WhenTicksEq
 	Queued
-	// ResultNoOp means that the transition was a no-op, i.e. the state was
-	// already active. ResultNoOp is only used by helpers, and never returned by
+	// ResultNoOp means that the transition was a no-op, i.e., the state was
+	// already active. ResultNoOp is only used by helpers and never returned by
 	// the machine itself.
 	ResultNoOp
 )
@@ -284,7 +352,8 @@ var (
 	ErrStateInactive = errors.New("state not active")
 	// ErrCanceled indicates that a transition was canceled.
 	ErrCanceled = errors.New("transition canceled")
-	// ErrQueued indicates that a transition was queued.
+	// ErrQueued indicates that a mutation was queued. Queuing is a feature, and
+	// not an error, but it may be considered as such in certain cases.
 	ErrQueued = errors.New("transition queued")
 	// ErrInvalidArgs indicates that arguments are invalid.
 	ErrInvalidArgs = errors.New("invalid arguments")

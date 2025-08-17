@@ -77,14 +77,14 @@ func NewRels(t *testing.T, initialState am.S) *am.Machine {
 		t.Fatal(err)
 	}
 
-	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -108,7 +108,7 @@ func NewRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 		t.Fatal(err)
 	}
 
-	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
 		mach.HandlerTimeout = 2 * time.Minute
 	}
@@ -138,14 +138,14 @@ func NewRelsNodeWorker(t *testing.T, initialState am.S) *am.Machine {
 		t.Fatal(err)
 	}
 
-	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -164,14 +164,14 @@ func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
 		t.Fatal(err)
 	}
 
-	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -195,14 +195,14 @@ func NewNoRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 		t.Fatal(err)
 	}
 
-	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -228,14 +228,14 @@ func NewNoRelsRpcWorkerSchema(
 		t.Fatal(err)
 	}
 
-	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -249,11 +249,11 @@ func NewCustom(t *testing.T, states am.Schema) *am.Machine {
 		t.Fatal(err)
 	}
 
-	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
 		mach.HandlerTimeout = 2 * time.Minute
 	}
-	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -273,11 +273,11 @@ func NewCustomRpcWorker(t *testing.T, states am.Schema) *am.Machine {
 		t.Fatal(err)
 	}
 
-	mach.SetLogLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
 		mach.HandlerTimeout = 2 * time.Minute
 	}
-	mach.SetLogArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }

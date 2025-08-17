@@ -48,7 +48,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	helpers.MachDebug(s.Mach, amDbgAddr, logLvl, false)
+	helpers.MachDebug(s.Mach, amDbgAddr, logLvl, false, true, true, true)
 
 	// tear down
 	defer func() {

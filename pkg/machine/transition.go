@@ -11,9 +11,8 @@ import (
 
 // Transition represents processing of a single mutation within a machine.
 type Transition struct {
-	// ID is a unique identifier of the transition.
-	// TODO refac to Id() with the new dbg protocol
-	ID string
+	// Id is a unique identifier of the transition.
+	Id string
 	// Steps is a list of steps taken by this transition (so far).
 	Steps []*Step
 	// HasStateChanged is true if the transition has changed the state of the
@@ -45,8 +44,8 @@ type Transition struct {
 	PreLogEntries []*LogEntry
 	// QueueLen is the length of the queue after the transition.
 	QueueLen int
-	// LogEntriesLock is used to lock the logs to be collected by a Tracer.
-	LogEntriesLock sync.Mutex
+	// InternalLogEntriesLock is used to lock the logs to be collected by Tracers.
+	InternalLogEntriesLock sync.Mutex
 	// IsCompleted returns true when the execution of the transition has been
 	// fully completed.
 	IsCompleted atomic.Bool
@@ -54,14 +53,15 @@ type Transition struct {
 	// change during the transition's negotiation phase and while resolving
 	// relations.
 	IsAccepted atomic.Bool
-
+	// TODO true for panic and timeouts
+	// IsBroken atomic.Bool
 	// TODO confirms relations resolved and negotiation ended
-	// isSettled atomic.Bool
+	// IsSettled atomic.Bool
 
 	// last step info for panic recovery
-	latestStepIsEnter bool
-	latestStepIsFinal bool
-	latestStepToState string
+	latestHandlerIsEnter bool
+	latestHandlerIsFinal bool
+	latestHandlerToState string
 
 	cacheTargetStates atomic.Pointer[S]
 	cacheStatesBefore atomic.Pointer[S]
@@ -71,16 +71,21 @@ type Transition struct {
 }
 
 // newTransition creates a new transition for the given mutation.
-func newTransition(m *Machine, item *Mutation) *Transition {
+func newTransition(m *Machine, mut *Mutation) *Transition {
 	m.activeStatesLock.RLock()
 	defer m.activeStatesLock.RUnlock()
 
 	t := &Transition{
-		ID:         randId(),
-		Mutation:   item,
+		Id:         randId(),
+		Mutation:   mut,
 		TimeBefore: m.time(nil),
 		Machine:    m,
 		Api:        m,
+	}
+
+	// checks dont change time
+	if mut.IsCheck {
+		t.TimeAfter = t.TimeBefore
 	}
 
 	activeStates := slices.Clone(m.activeStates)
@@ -110,12 +115,12 @@ func newTransition(m *Machine, item *Mutation) *Transition {
 		logArgs = t.LogArgs()
 		t.addSteps(newSteps("", called, StepRequested, 0)...)
 	}
-	if item.Auto {
+	if mut.Auto {
 		m.log(LogDecisions, "[%s:auto] %s%s", mutType, j(called), logArgs)
 	} else {
 		m.log(LogOps, "[%s] %s%s", mutType, j(called), logArgs)
 	}
-	src := item.Source
+	src := mut.Source
 	if src != nil {
 		m.log(LogOps, "[source] %s/%s/%d", src.MachId, src.TxId, src.MachTime)
 	}
@@ -183,9 +188,9 @@ func (t *Transition) statesToSet(mutType MutationType, states S) S {
 func (t *Transition) CleanCache() {
 	t.cacheTargetStates.Store(nil)
 	t.cacheStatesBefore.Store(nil)
-	t.latestStepToState = ""
-	t.latestStepIsEnter = false
-	t.latestStepIsFinal = false
+	t.latestHandlerToState = ""
+	t.latestHandlerIsEnter = false
+	t.latestHandlerIsFinal = false
 	t.cacheClockBefore.Store(nil)
 	t.Mutation.cacheCalled.Store(nil)
 }
@@ -348,7 +353,7 @@ func (t *Transition) String() string {
 			mutSrc.MachId, mutSrc.TxId, mutSrc.MachTime)
 	}
 
-	return fmt.Sprintf("tx#%s\n%s%s%s", t.ID, t.Mutation.StringFromIndex(index),
+	return fmt.Sprintf("tx#%s\n%s%s%s", t.Id, t.Mutation.StringFromIndex(index),
 		source, steps)
 }
 
@@ -390,7 +395,7 @@ func (t *Transition) emitSelfEvents() Result {
 		}
 
 		name := s + s
-		t.latestStepToState = s
+		t.latestHandlerToState = s
 		ret, handlerCalled = m.handle(name, t.Mutation.Args, false, false, true)
 		if handlerCalled && t.isLogSteps() {
 			step := newStep("", s, StepHandler, 0)
@@ -453,7 +458,7 @@ func (t *Transition) emitExitEvents() Result {
 func (t *Transition) emitHandler(
 	from, to string, isFinal, isEnter bool, event string, args A,
 ) Result {
-	t.latestStepToState = to
+	t.latestHandlerToState = to
 	ret, handlerCalled := t.Machine.handle(event, args, isFinal, isEnter, false)
 
 	if handlerCalled && t.Machine.semLogger.IsSteps() {
@@ -474,10 +479,10 @@ func (t *Transition) emitFinalEvents() Result {
 		var handler string
 		if isEnter {
 			handler = s + SuffixState
-			t.latestStepToState = s
+			t.latestHandlerToState = s
 		} else {
 			handler = s + SuffixEnd
-			t.latestStepToState = ""
+			t.latestHandlerToState = ""
 		}
 
 		ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args,
@@ -511,7 +516,7 @@ func (t *Transition) emitStateStateEvents() Result {
 			}
 
 			handler := before[i] + after[ii]
-			t.latestStepToState = ""
+			t.latestHandlerToState = ""
 			ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args, false,
 				false, false)
 
@@ -631,24 +636,24 @@ func (t *Transition) emitEvents() Result {
 			t.TimeAfter = m.time(nil)
 			m.activeStatesLock.Unlock()
 
-		if hasHandlers || logEverything || len(m.indexWhenArgs) > 0 {
-			// FooState
-			// FooEnd
-			result = t.emitFinalEvents()
-		}
+			if hasHandlers || logEverything || len(m.indexWhenArgs) > 0 {
+				// FooState
+				// FooEnd
+				result = t.emitFinalEvents()
+			}
 
-		// handle timeouts in final handlers the same as a panic
-		// TODO test
-		if result == Canceled {
-			m.recoverFinalPhase()
-		}
+			// handle timeouts in final handlers the same as a panic
+			// TODO test
+			if result == Canceled {
+				m.recoverFinalPhase()
+			}
 
-		// TODO safe to continue?
-		hasStateChanged = !m.IsTime(t.TimeBefore, nil)
-	} else {
-		// gather new clock values, overwrite fake TimeAfter
-		t.TimeAfter = t.TimeBefore
-	}
+			// TODO safe to continue?
+			hasStateChanged = !m.IsTime(t.TimeBefore, nil)
+		} else {
+			// gather new clock values, overwrite fake TimeAfter
+			t.TimeAfter = t.TimeBefore
+		}
 
 		// global AnyState handler
 		if result != Canceled && (hasHandlers || logEverything) {

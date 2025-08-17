@@ -391,7 +391,7 @@ func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
 
 	// build a regular trace
 	ctx, span := mt.Tracer.Start(data.txGroup, name, trace.WithAttributes(
-		attribute.String("tx_id", tx.ID),
+		attribute.String("tx_id", tx.Id),
 		attribute.Int64("time_before", int64(tx.TimeBefore.Sum())),
 		attribute.String("mutation", mutLabel),
 	))
@@ -404,7 +404,7 @@ func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
 	}
 
 	// trace logged args, if any and enabled
-	argsMatcher := tx.Machine.GetLogArgs()
+	argsMatcher := tx.Machine.SemLogger().Args()
 	if !mt.opts.SkipLogArgs && argsMatcher != nil {
 		for param, val := range argsMatcher(tx.Args()) {
 			span.SetAttributes(
@@ -426,7 +426,7 @@ func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
 
 	data.txTrace = ctx
 	data.txHist = append(data.txHist, OtelTxHist{
-		Id:  tx.ID,
+		Id:  tx.Id,
 		Ctx: ctx,
 	})
 	if len(data.txHist) > maxHist {
@@ -547,7 +547,7 @@ func (mt *OtelMachTracer) TransitionEnd(tx *am.Transition) {
 		} else {
 			ctx, instanceSpan = mt.Tracer.Start(nameCtx,
 				strconv.Itoa(data.Index)+":"+state, trace.WithAttributes(
-					attribute.String("tx_id", tx.ID),
+					attribute.String("tx_id", tx.Id),
 				))
 			data.stateInstances[state] = ctx
 			instanceSpan.AddEvent(tx.Mutation.String())
@@ -619,7 +619,7 @@ func BindOtelLogger(
 	mach am.Api, provider *ologsdk.LoggerProvider, service string,
 ) {
 	l := provider.Logger(mach.Id())
-	mach.SetLogId(false)
+	mach.SemLogger().EnableId(false)
 
 	amlog := func(level am.LogLevel, msg string, args ...any) {
 		r := olog.Record{}
@@ -662,7 +662,7 @@ func BindOtelLogger(
 		l.Emit(mach.Ctx(), r)
 	}
 
-	mach.SetLogger(amlog)
+	mach.SemLogger().SetLogger(amlog)
 }
 
 // MachBindOtelEnv bind an OpenTelemetry tracer to [mach], based on environment
@@ -729,6 +729,13 @@ func MachBindOtelEnv(mach am.Api) error {
 			ssam.DisposedArgHandler: dispose,
 		})
 	}
+	// TODO RegisterDispose (cast)
+	// else {
+	// 	func() {
+	// 		<-mach.WhenDisposed()
+	// 		dispose(mach.Id(), nil)
+	// 	}()
+	// }
 
 	// bind the Otel tracer
 	err = mach.BindTracer(mt)

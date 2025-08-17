@@ -131,7 +131,7 @@ func NewServer(
 	if err != nil {
 		return nil, err
 	}
-	mach.SetLogArgs(LogArgs)
+	mach.SemLogger().SetArgs(LogArgs)
 	mach.HandleDispose(func(id string, ctx context.Context) {
 		if l := s.Listener.Load(); l != nil {
 			_ = (*l).Close()

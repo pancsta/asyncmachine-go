@@ -143,7 +143,7 @@ tasks:
       - go run ./tools/cmd/am-dbg
         --listen-on localhost:9913
         --select-connected
-        --log-2-ttl 5m
+        --log-ops-ttl 5m
         {{.CLI_ARGS}}
 
   am-dbg-dbg-prof:
@@ -152,7 +152,7 @@ tasks:
       - go run ./tools/cmd/am-dbg
         --listen-on localhost:9913
         --select-connected
-        --log-2-ttl 5m
+        --log-ops-ttl 5m
         --prof-srv :6050
         {{.CLI_ARGS}}
 
@@ -174,6 +174,8 @@ tasks:
         ./tools/cmd/am-dbg -- 
           --clean-on-connect 
           {{.CLI_ARGS}}
+
+  am-dbg-install: go install ./tools/cmd/am-dbg
 
   test:
     env:
@@ -278,18 +280,33 @@ tasks:
       - task: clean-test
       - task: clean-lint
 
-  cloc-go:
-    cmd: gocloc --output-type json
-      --not-match-d=examples
+  cloc-go-total: gocloc --output-type json
       . |
       jq '.languages[] | select(.name == "Go").code' |
       go run ./scripts/compact_number
 
-  cloc-go-pkg:
-    cmd: gocloc --output-type json
-      pkg |
-      jq '.languages[] | select(.name == "Go").code' |
-      go run ./scripts/compact_number
+  cloc-go-internal: gocloc --output-type json
+    --not-match=_test\.go
+    internal |
+    jq '.languages[] | select(.name == "Go").code' |
+    go run ./scripts/compact_number
+
+  cloc-go-tools: gocloc --output-type json
+    --not-match=_test\.go
+    tools |
+    jq '.languages[] | select(.name == "Go").code' |
+    go run ./scripts/compact_number
+
+  cloc-go-pkg: gocloc --output-type json
+    --not-match=_test\.go
+    pkg |
+    jq '.languages[] | select(.name == "Go").code' |
+    go run ./scripts/compact_number
+
+  cloc-go-examples: gocloc --output-type json
+    examples |
+    jq '.languages[] | select(.name == "Go").code' |
+    go run ./scripts/compact_number
 
   cloc:
     cmds:
@@ -344,6 +361,7 @@ tasks:
           echo "Error: Empty links" >&2
           exit 1
         fi
+      - task: format
       - task: check-fmt
 
   lint-go:

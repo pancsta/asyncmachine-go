@@ -181,8 +181,8 @@ func assertEventCountsMin(t *testing.T, history *History, expected int) {
 
 func captureLog(t *testing.T, m *Machine, log *string) {
 	mx := sync.Mutex{}
-	m.SetLogLevel(LogEverything)
-	m.SetLogger(func(i LogLevel, msg string, args ...any) {
+	m.SemLogger().SetLevel(LogEverything)
+	m.SemLogger().SetLogger(func(i LogLevel, msg string, args ...any) {
 		if m.IsDisposed() {
 			return
 		}
@@ -203,8 +203,8 @@ func assertString(t *testing.T, m *Machine, expected string, states S) {
 }
 
 func TestEnv(t *testing.T) {
-	t.Setenv(EnvAmLog, "2")
-	assert.Equal(t, LogSteps, EnvLogLevel(""))
+	t.Setenv(EnvAmLog, "1")
+	assert.Equal(t, LogExternal, EnvLogLevel(""))
 }
 
 func TestAMerge(t *testing.T) {

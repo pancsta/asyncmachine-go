@@ -30,6 +30,13 @@ func DiffStates(states1 S, states2 S) S {
 	})
 }
 
+// SameStates return states present in both states1 and states2.
+func SameStates(states1 S, states2 S) S {
+	return slicesFilter(states1, func(name string, i int) bool {
+		return slices.Contains(states2, name)
+	})
+}
+
 func StatesEqual(states1 S, states2 S) bool {
 	return slicesEvery(states1, states2) && slicesEvery(states2, states1)
 }
@@ -221,7 +228,6 @@ func SchemaMerge(schemas ...Schema) Schema {
 // EnvLogLevel returns a log level from an environment variable, AM_LOG by
 // default.
 func EnvLogLevel(name string) LogLevel {
-	// TODO cookbook
 	if name == "" {
 		name = EnvAmLog
 	}
@@ -253,12 +259,14 @@ func ListHandlers(handlers any, states S) ([]string, error) {
 		}
 	}
 
+	// methods
 	t := reflect.TypeOf(handlers)
 	for i := 0; i < t.NumMethod(); i++ {
 		method := t.Method(i).Name
 		check(method)
 	}
 
+	// fields
 	val := reflect.ValueOf(handlers).Elem()
 	typ := val.Type()
 	for i := 0; i < val.NumField(); i++ {
@@ -362,7 +370,7 @@ func IndexToStates(index S, states []int) S {
 	ret := make(S, len(states))
 	for i := range states {
 		name := "unknown" + strconv.Itoa(states[i])
-		if len(index) > states[i] {
+		if len(index) > states[i] && states[i] != -1 {
 			name = index[states[i]]
 		}
 		ret[i] = name
@@ -529,6 +537,7 @@ func slicesEvery[S1 ~[]E, S2 ~[]E, E comparable](col1 S1, col2 S2) bool {
 	return true
 }
 
+// TODO replace with slices.DeleteFunc
 func slicesFilter[S ~[]E, E any](coll S, fn func(item E, i int) bool) S {
 	ret := make(S, 0, len(coll))
 	for i, el := range coll {
@@ -624,7 +633,7 @@ func cloneOptions(opts *Opts) *Opts {
 		HandlerTimeout:       opts.HandlerTimeout,
 		DontPanicToException: opts.DontPanicToException,
 		DontLogStackTrace:    opts.DontLogStackTrace,
-		DontLogID:            opts.DontLogID,
+		DontLogId:            opts.DontLogId,
 		Resolver:             opts.Resolver,
 		LogLevel:             opts.LogLevel,
 		Tracers:              opts.Tracers,

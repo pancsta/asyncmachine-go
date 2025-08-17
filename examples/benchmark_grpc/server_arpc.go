@@ -58,8 +58,8 @@ func NewWorkerArpcServer(
 
 	// logging
 	logLvl := am.EnvLogLevel("")
-	w.RPC.Mach.SetLoggerSimple(w.log, logLvl)
-	w.Mach.SetLoggerSimple(w.log, logLvl)
+	w.RPC.Mach.SemLogger().SetSimple(w.log, logLvl)
+	w.Mach.SemLogger().SetSimple(w.log, logLvl)
 
 	// telemetry debug
 	helpers.MachDebugEnv(w.RPC.Mach)

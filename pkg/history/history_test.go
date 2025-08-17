@@ -70,11 +70,11 @@ func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
 		"C": {},
 		"D": {},
 	}, nil)
-	m.SetLogger(func(i am.LogLevel, msg string, args ...any) {
+	m.SemLogger().SetLogger(func(i am.LogLevel, msg string, args ...any) {
 		t.Logf(msg, args...)
 	})
 	if amhelp.IsDebug() {
-		m.SetLogLevel(am.LogEverything)
+		m.SemLogger().SetLevel(am.LogEverything)
 		m.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
