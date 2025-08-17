@@ -95,6 +95,8 @@ var States = am.Schema{
 	FilterSummaries:   {},
 	FilterTraces:      {},
 	FilterHealthcheck: {},
+	FilterChecks:      {},
+	FilterOutGroup:    {},
 
 	// ///// Actions
 
@@ -320,6 +322,9 @@ const (
 	FilterCanceledTx  = "FilterCanceledTx"
 	FilterAutoTx      = "FilterAutoTx"
 	FilterHealthcheck = "FilterHealthcheck"
+	FilterChecks      = "FilterChecks"
+	// FilterOutGroup filters out txs for states outside the selected group.
+	FilterOutGroup = "FilterOutGroup"
 	// FilterEmptyTx is a filter for txes which didn't change state and didn't
 	// run any self handler either
 	FilterEmptyTx   = "FilterEmptyTx"
@@ -403,6 +408,8 @@ var Names = S{
 	FilterSummaries,
 	FilterTraces,
 	FilterHealthcheck,
+	FilterChecks,
+	FilterOutGroup,
 	ToggleTool,
 	SwitchingClientTx,
 	SwitchedClientTx,

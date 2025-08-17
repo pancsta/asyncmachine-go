@@ -487,7 +487,17 @@ func (d *Debugger) AddressFocusedState(e *am.Event) {
 
 func (d *Debugger) AddressFocusedEnd(_ *am.Event) {
 	d.addressBar.SetBackgroundColor(cview.Styles.PrimitiveBackgroundColor)
-	d.updateToolbar()
+	d.hUpdateToolbar()
+}
+
+func (d *Debugger) TreeGroupsFocusedState(e *am.Event) {
+	d.treeGroups.SetBackgroundColor(d.getFocusColor())
+	d.hUpdateToolbar()
+}
+
+func (d *Debugger) TreeGroupsFocusedEnd(_ *am.Event) {
+	d.treeGroups.SetBackgroundColor(cview.Styles.PrimitiveBackgroundColor)
+	d.hUpdateToolbar()
 }
 
 // ///// CONNECTION
@@ -794,6 +804,32 @@ func (d *Debugger) RemoveClientState(e *am.Event) {
 	}
 
 	d.draw()
+}
+
+func (d *Debugger) SetGroupEnter(e *am.Event) bool {
+	group, _ := e.Args["group"].(string)
+	_, ok := d.C.msgSchemaParsed.Groups[group]
+	return group != "" && group != d.C.SelectedGroup && ok
+}
+
+func (d *Debugger) SetGroupState(e *am.Event) {
+	group := e.Args["group"].(string)
+	c := d.C
+
+	if group == "all" {
+		c.SelectedGroup = ""
+	} else {
+		c.SelectedGroup = group
+	}
+	d.hBuildSchemaTree()
+	d.hUpdateSchemaTree()
+	d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
+	d.Mach.EvAdd(e, am.S{ss.ToolToggled, ss.RebuildLog}, am.A{
+		// TODO typed args
+		"filterTxs":     true,
+		"logRebuildEnd": len(c.MsgTxs),
+	},
+	)
 }
 
 // TODO SelectingClientSelectingClient (for?)
@@ -1488,9 +1524,18 @@ func (d *Debugger) DiagramsRenderingEnter(e *am.Event) bool {
 func (d *Debugger) DiagramsRenderingState(e *am.Event) {
 	lvl := d.Opts.OutputDiagrams
 	dir := path.Join(d.Opts.OutputDir, "diagrams")
-	id := d.C.id
-	tx := d.currentTx()
-	svgName := fmt.Sprintf("%s-%d-%s", id, lvl, d.C.schemaHash)
+	c := d.C
+	tx := d.hCurrentTx()
+	svgName := fmt.Sprintf("%s-%d-%s", c.id, lvl, c.schemaHash)
+
+	// state groups
+	var states S
+	if g := c.SelectedGroup; g != "" {
+		states = c.msgSchemaParsed.Groups[g]
+		gg := strings.ReplaceAll(strings.ReplaceAll(g, "-", ""), " ", "")
+		svgName = fmt.Sprintf("%s-%s-%d-%s",
+			c.id, strings.ToLower(gg), lvl, c.schemaHash)
+	}
 	svgPath := filepath.Join(dir, svgName+".svg")
 
 	// output dir

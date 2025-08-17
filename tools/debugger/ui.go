@@ -35,6 +35,14 @@ func (d *Debugger) initUiComponents() {
 	d.tree.SetTitle(" Schema ")
 	d.tree.SetBorder(true)
 
+	// groups dropdown
+	d.treeGroups = cview.NewDropDown()
+	d.treeGroups.SetLabel(" Group ")
+	d.treeGroups.SetFieldBackgroundColor(colorHighlight)
+	d.treeGroups.SetDropDownBackgroundColor(colorHighlight)
+	d.treeGroups.SetDropDownSelectedTextColor(colorDefault)
+	d.treeGroups.SetDropDownTextColor(colorDefault)
+
 	// sidebar
 	// TODO refac to a tree component
 	d.clientList = cview.NewList()
@@ -370,6 +378,12 @@ func (d *Debugger) initToolbar() {
 			{id: toolFilterHealthcheck, label: "health tx", active: func() bool {
 				return d.Mach.Not1(ss.FilterHealthcheck)
 			}},
+			{id: toolFilterOutGroup, label: "group", active: func() bool {
+				return d.Mach.Is1(ss.FilterOutGroup)
+			}},
+			{id: toolFilterChecks, label: "checks", active: func() bool {
+				return d.Mach.Not1(ss.FilterChecks)
+			}},
 			{id: ToolFilterSummaries, label: "times", active: func() bool {
 				return d.Mach.Not1(ss.FilterSummaries)
 			}},
@@ -398,9 +412,9 @@ func (d *Debugger) initToolbar() {
 			{
 				id:    toolExpand,
 				label: "expand", active: func() bool {
-					ch := d.treeRoot.GetChildren()
-					return len(ch) > 0 && ch[0].IsExpanded()
-				},
+				ch := d.treeRoot.GetChildren()
+				return len(ch) > 0 && ch[0].IsExpanded()
+			},
 			},
 			{id: toolTimelines, label: "timelines", active: func() bool {
 				return d.Opts.Timelines > 0
@@ -611,7 +625,13 @@ func (d *Debugger) updateHelpDialog() {
 		strconv.Itoa(mem)+"mb"))
 }
 
-func (d *Debugger) initLayout() {
+func (d *Debugger) hInitLayout() {
+	// tree schema
+	d.treeLayout = cview.NewFlex()
+	d.treeLayout.SetDirection(cview.FlexRow)
+	d.treeLayout.AddItem(d.treeGroups, 1, 1, false)
+	d.treeLayout.AddItem(d.tree, 0, 1, false)
+
 	// transition rows
 	d.currTxBar = cview.NewFlex()
 	d.currTxBar.AddItem(d.currTxBarLeft, 0, 1, false)
