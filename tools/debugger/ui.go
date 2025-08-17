@@ -17,7 +17,7 @@ import (
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
-func (d *Debugger) initUiComponents() {
+func (d *Debugger) hInitUiComponents() {
 	d.helpDialog = d.initHelpDialog()
 	d.exportDialog = d.initExportDialog()
 
@@ -26,12 +26,12 @@ func (d *Debugger) initUiComponents() {
 		// TODO state
 		go func() {
 			time.Sleep(time.Millisecond * 300)
-			d.checkNarrow()
+			d.hUpdateNarrowLayout()
 		}()
 	})
 
 	// tree view
-	d.tree = d.initMachineTree()
+	d.tree = d.hInitSchemaTree()
 	d.tree.SetTitle(" Schema ")
 	d.tree.SetBorder(true)
 
@@ -66,8 +66,8 @@ func (d *Debugger) initUiComponents() {
 		d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": client.name})
 		// TODO wait with timeout
 		<-d.Mach.When1(ss.ClientSelected, nil)
-		d.prependHistory(&MachAddress{MachId: client.name})
-		d.updateAddressBar()
+		d.hPrependHistory(&MachAddress{MachId: client.name})
+		d.hUpdateAddressBar()
 		d.draw(d.addressBar)
 	})
 	d.clientList.SetSelectedAlwaysVisible(true)
@@ -89,19 +89,26 @@ func (d *Debugger) initUiComponents() {
 	// log click
 	statePrefixes := []string{"[state] ", "[state:auto] "}
 	d.log.SetClickedFunc(func(txId string) {
-		txIdx := d.C.txIndex(txId)
-		// TODO pass as "Client.cursorTx"
-		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": txId})
-		logs := d.C.MsgTxs[txIdx].LogEntries
-		for _, l := range logs {
-			for _, prefix := range statePrefixes {
-				if strings.HasPrefix(l.Text, prefix) {
-					state := strings.Split(l.Text[len(prefix)+1:], " ")[0]
-					d.Mach.Add1(ss.StateNameSelected, am.A{"state": state})
-					break
+		// unblock coz locks
+		go func() {
+			// scroll to tx
+			txIdx := d.C.txIndex(txId)
+			d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": txId})
+
+			// select the clicked state
+			d.Mach.Eval("log.SetClickedFunc", func() {
+				logs := d.C.MsgTxs[txIdx].LogEntries
+				for _, l := range logs {
+					for _, prefix := range statePrefixes {
+						if strings.HasPrefix(l.Text, prefix) {
+							state := strings.Split(l.Text[len(prefix)+1:], " ")[0]
+							d.Mach.Add1(ss.StateNameSelected, am.A{"state": state})
+							break
+						}
+					}
 				}
-			}
-		}
+			}, nil)
+		}()
 	})
 
 	// reader view
@@ -114,10 +121,11 @@ func (d *Debugger) initUiComponents() {
 	d.matrix = cview.NewTable()
 	d.matrix.SetBorder(true)
 	d.matrix.SetTitle(" Matrix ")
-	// TODO draw scrollbar at the right edge
-	d.matrix.SetScrollBarVisibility(cview.ScrollBarNever)
+	// TODO draw scrollbar horizontal scrollbar
+	d.matrix.SetScrollBarVisibility(cview.ScrollBarAuto)
 	d.matrix.SetPadding(0, 0, 1, 0)
 	d.matrix.SetScrollBarColor(colorHighlight2)
+	d.matrix.SetSelectedStyle(colorDefault, colorHighlight, tcell.AttrNone)
 
 	// current tx bar
 	d.currTxBarLeft = cview.NewTextView()
@@ -126,6 +134,7 @@ func (d *Debugger) initUiComponents() {
 	d.currTxBarRight = cview.NewTextView()
 	d.currTxBarRight.SetTextAlign(cview.AlignRight)
 	d.currTxBarRight.SetScrollBarColor(colorHighlight2)
+	d.currTxBarRight.SetDynamicColors(true)
 
 	// next tx bar
 	d.nextTxBarLeft = cview.NewTextView()
@@ -134,18 +143,19 @@ func (d *Debugger) initUiComponents() {
 	d.nextTxBarRight = cview.NewTextView()
 	d.nextTxBarRight.SetTextAlign(cview.AlignRight)
 	d.nextTxBarRight.SetScrollBarColor(colorHighlight2)
+	d.nextTxBarRight.SetDynamicColors(true)
 
 	// timeline tx
-	d.initTimelineTx()
+	d.hInitTimelineTx()
 
 	// timeline steps
-	d.initTimelineSteps()
+	d.hInitTimelineSteps()
 
 	// address bar
-	d.initAddressBar()
+	d.hInitAddressBar()
 
 	// toolbar
-	d.initToolbar()
+	d.hInitToolbar()
 
 	// TODO status bar (keystrokes, msgs), step info bar (type, from, to, data)
 	d.statusBar = cview.NewTextView()
@@ -153,12 +163,13 @@ func (d *Debugger) initUiComponents() {
 	d.statusBar.SetDynamicColors(true)
 
 	// update models
-	d.updateTimelines()
-	d.updateTxBars()
-	d.Mach.Add(S{ss.UpdateStatusBar, ss.UpdateFocus}, nil)
+	d.hUpdateTimelines()
+	d.hUpdateTxBars()
+	d.hUpdateStatusBar()
+	d.Mach.Add1(ss.UpdateFocus, nil)
 }
 
-func (d *Debugger) initTimelineSteps() {
+func (d *Debugger) hInitTimelineSteps() {
 	d.timelineSteps = cview.NewProgressBar()
 	d.timelineSteps.SetBorder(true)
 	d.timelineSteps.SetFilledColor(tcell.ColorLightGray)
@@ -189,7 +200,7 @@ func (d *Debugger) initTimelineSteps() {
 	})
 }
 
-func (d *Debugger) initTimelineTx() {
+func (d *Debugger) hInitTimelineTx() {
 	d.timelineTxs = cview.NewProgressBar()
 	d.timelineTxs.SetBorder(true)
 	d.timelineTxs.SetFilledColor(tcell.ColorLightGray)
@@ -228,7 +239,7 @@ func (d *Debugger) initTimelineTx() {
 	})
 }
 
-func (d *Debugger) initAddressBar() {
+func (d *Debugger) hInitAddressBar() {
 	// TODO enum for col indexes
 
 	d.addressBar = cview.NewTable()
@@ -256,20 +267,20 @@ func (d *Debugger) initAddressBar() {
 				return
 			}
 			d.HistoryCursor++
-			d.GoToMachAddress(d.History[d.HistoryCursor], true)
+			d.hGoToMachAddress(d.History[d.HistoryCursor], true)
 
 		case 2: // next mach
 			if d.HistoryCursor <= 0 {
 				return
 			}
 			d.HistoryCursor--
-			d.GoToMachAddress(d.History[d.HistoryCursor], true)
+			d.hGoToMachAddress(d.History[d.HistoryCursor], true)
 
 		case 6: // copy
 			if d.clip == nil {
 				return
 			}
-			addr := d.GetMachAddress().String()
+			addr := d.hGetMachAddress().String()
 			_ = d.clip.WriteAll(clipper.RegClipboard, []byte(addr))
 
 		case 8: // paste
@@ -282,7 +293,7 @@ func (d *Debugger) initAddressBar() {
 				if u.Path != "" {
 					addr.TxId = strings.TrimLeft(u.Path, "/")
 				}
-				d.GoToMachAddress(addr, false)
+				d.hGoToMachAddress(addr, false)
 			}
 		}
 
@@ -305,10 +316,10 @@ func (d *Debugger) initAddressBar() {
 	d.tagsBar = cview.NewTextView()
 	d.tagsBar.SetTextColor(tcell.ColorGrey)
 	d.tagsBar.SetDynamicColors(true)
-	d.updateAddressBar()
+	d.hUpdateAddressBar()
 }
 
-func (d *Debugger) initToolbar() {
+func (d *Debugger) hInitToolbar() {
 	for i := range d.toolbars {
 
 		d.toolbars[i] = cview.NewTable()
@@ -375,8 +386,8 @@ func (d *Debugger) initToolbar() {
 			{id: toolFilterEmptyTx, label: "empty tx", active: func() bool {
 				return d.Mach.Not1(ss.FilterEmptyTx)
 			}},
-			{id: toolFilterHealthcheck, label: "health tx", active: func() bool {
-				return d.Mach.Not1(ss.FilterHealthcheck)
+			{id: toolFilterHealth, label: "health tx", active: func() bool {
+				return d.Mach.Not1(ss.FilterHealth)
 			}},
 			{id: toolFilterOutGroup, label: "group", active: func() bool {
 				return d.Mach.Is1(ss.FilterOutGroup)
@@ -412,9 +423,9 @@ func (d *Debugger) initToolbar() {
 			{
 				id:    toolExpand,
 				label: "expand", active: func() bool {
-				ch := d.treeRoot.GetChildren()
-				return len(ch) > 0 && ch[0].IsExpanded()
-			},
+					ch := d.treeRoot.GetChildren()
+					return len(ch) > 0 && ch[0].IsExpanded()
+				},
 			},
 			{id: toolTimelines, label: "timelines", active: func() bool {
 				return d.Opts.Timelines > 0
@@ -438,10 +449,9 @@ func (d *Debugger) initToolbar() {
 		},
 	}
 
-	d.updateToolbar()
+	d.hUpdateToolbar()
 }
 
-// TODO anon machine with handlers
 func (d *Debugger) initExportDialog() *cview.Modal {
 	exportDialog := cview.NewModal()
 	form := exportDialog.GetForm()
@@ -461,7 +471,7 @@ func (d *Debugger) initExportDialog() *cview.Modal {
 		if buttonLabel == "Save" && filename != "" {
 			form.GetButton(0).SetLabel("Saving...")
 			form.Draw(d.App.GetScreen())
-			d.exportData(filename)
+			d.hExportData(filename)
 			d.Mach.Remove1(ss.ExportDialog, nil)
 			form.GetButton(0).SetLabel("Save")
 		} else if buttonLabel == "Cancel" {
@@ -486,9 +496,9 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	left.SetText(fmt.Sprintf(dedent.Dedent(strings.Trim(`
 		[::b]### [::u]tree legend[::-]
 		[%s::b]state[-]        active state
-		[%s::b]state[-]        inactive state
+		[red::b]state[-]        active state (error)
 		[%s::b]state[-]        active multi state
-		[red::b]state[-]        active error state
+		[%s::b]state[-]        inactive state
 		[::b]M|[::-]           multi state
 		[::b]|5[::-]           tick value
 		[::b]*[::-]            executed handler
@@ -501,17 +511,6 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[green::b]|[-::-]            rel link start
 		[red::b]|[-::-]            rel link end
 	
-		[::b]### [::u]matrix legend[::-]
-		[::b]underline[::-]    called state
-		[::b]1st row[::-]      called states
-		             col == state index
-		[::b]2nd row[::-]      state tick changes
-		             col == state index
-		[::b]>=3 row[::-]      state relations
-		             cartesian product
-		             col == source state index
-		             row == target state index
-	
 		[::b]### [::u]matrix rain legend[::-]
 		[::b]1[::-]            state active
 		[::b]2[::-]            state active and touched
@@ -523,10 +522,21 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[::b]### [::u]dashboard keystrokes[::-]
 		[::b]alt arrow[::-]    navigate to tiles
 		[::b]alt -+[::-]       change size of a tile
+	
+		[::b]### [::u]matrix legend[::-]
+		[::b]underline[::-]    called state
+		[::b]1st row[::-]      called states
+		             col == state index
+		[::b]2nd row[::-]      state tick changes
+		             col == state index
+		[::b]>=3 row[::-]      state relations
+		             cartesian product
+		             col == source state index
+		             row == target state index
 	`, "\n ")), colorActive, colorActive2, colorInactive))
 
 	// render the right side separately
-	d.updateHelpDialog()
+	d.hUpdateHelpDialog()
 
 	grid := cview.NewGrid()
 	grid.SetTitle(" asyncmachine-go debugger ")
@@ -568,7 +578,7 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	return flexVer
 }
 
-func (d *Debugger) updateHelpDialog() {
+func (d *Debugger) hUpdateHelpDialog() {
 	mem := int(AllocMem() / 1024 / 1024)
 	if d.helpDialogRight == nil {
 		d.helpDialogRight = cview.NewTextView()
@@ -652,19 +662,19 @@ func (d *Debugger) hInitLayout() {
 	d.treeMatrixGrid = cview.NewGrid()
 	d.treeMatrixGrid.SetRows(-1)
 	d.treeMatrixGrid.SetColumns( /*tree*/ -1, -1 /*log*/, -1, -1, -1, -1)
-	d.treeMatrixGrid.AddItem(d.tree, 0, 0, 1, 2, 0, 0, false)
+	d.treeMatrixGrid.AddItem(d.treeLayout, 0, 0, 1, 2, 0, 0, false)
 	d.treeMatrixGrid.AddItem(d.matrix, 0, 2, 1, 4, 0, 0, false)
 
 	// content panels
 	d.contentPanels = cview.NewPanels()
-	d.contentPanels.AddPanel("tree-log", d.treeLogGrid, true, true)
+	d.contentPanels.AddPanel("tree-log", d.schemaLogGrid, true, true)
 	d.contentPanels.AddPanel("tree-matrix", d.treeMatrixGrid, true, false)
 	d.contentPanels.AddPanel("matrix", d.matrix, true, false)
 	d.contentPanels.SetBackgroundColor(colorHighlight)
 
 	// main grid
 	d.mainGrid = cview.NewGrid()
-	d.updateLayout()
+	d.hUpdateLayout()
 
 	panels := cview.NewPanels()
 	panels.AddPanel("export", d.exportDialog, false, true)
@@ -672,10 +682,10 @@ func (d *Debugger) hInitLayout() {
 	panels.AddPanel("main", d.mainGrid, true, true)
 
 	d.LayoutRoot = panels
-	d.updateBorderColor()
+	d.hUpdateBorderColor()
 }
 
-func (d *Debugger) updateLayout() {
+func (d *Debugger) hUpdateLayout() {
 	if d.mainGrid == nil {
 		return
 	}
@@ -704,7 +714,7 @@ func (d *Debugger) updateLayout() {
 
 	// row 2
 	if d.Mach.Not1(ss.NarrowLayout) {
-		d.mainGrid.AddItem(d.clientList, 2, 0, 1, 2, 0, 0, false)
+		d.mainGrid.AddItem(d.clientList, 2, 0, 1, 2, 0, 0, true)
 
 		// row 2 mid, right
 		d.mainGrid.AddItem(d.contentPanels, 2, 2, 1, 7, 0, 0, false)
@@ -741,22 +751,25 @@ func (d *Debugger) updateLayout() {
 	d.mainGrid.AddItem(d.toolbars[2], row, 0, 1, len(cols), 0, 0, false)
 	row++
 	d.mainGrid.AddItem(d.statusBar, row, 0, 1, len(cols), 0, 0, false)
+
+	d.hUpdateFocusable()
+	// TODO UpdateFocus?
 }
 
-func (d *Debugger) drawViews() {
-	d.updateViews(true)
+func (d *Debugger) hDrawViews() {
+	d.hUpdateViews(true)
 	d.Mach.Add1(ss.UpdateFocus, nil)
 	d.draw()
 }
 
-// RedrawFull updates all components of the debugger UI, except the sidebar.
-func (d *Debugger) RedrawFull(immediate bool) {
-	d.updateViews(immediate)
-	d.updateTimelines()
-	d.updateTxBars()
-	d.Mach.Add1(ss.UpdateStatusBar, nil)
-	d.updateBorderColor()
-	d.updateAddressBar()
+// hRedrawFull updates all components of the debugger UI, except the sidebar.
+func (d *Debugger) hRedrawFull(immediate bool) {
+	d.hUpdateViews(immediate)
+	d.hUpdateTimelines()
+	d.hUpdateTxBars()
+	d.hUpdateStatusBar()
+	d.hUpdateBorderColor()
+	d.hUpdateAddressBar()
 	d.draw()
 }
 
@@ -776,22 +789,22 @@ func (d *Debugger) draw(components ...cview.Primitive) {
 
 		// TODO re-draw only changed components
 		// TODO re-draw only c.Box.Draw() when simply changing focus
+		// TODO maybe: use QueueUpdate and call GetRoot.Draw() in Eval? bench and
+		//  compare?
 		d.App.QueueUpdateDraw(func() {
 			// run and dispose a registered callback
 			if d.redrawCallback != nil {
 				d.redrawCallback()
 				d.redrawCallback = nil
 			}
-			// TODO collect all components passed before a render (what?)
+			d.repaintScheduled.Store(false)
 		}, components...)
-		d.repaintScheduled.Store(false)
 	}()
 }
 
-func (d *Debugger) checkNarrow() {
+func (d *Debugger) hUpdateNarrowLayout() {
 	_, _, width, _ := d.LayoutRoot.GetRect()
-	// TODO syntax sugar
-	// 	d.Mach.Set1Cond(ss.NarrowLayout, nil, width < 30)
+
 	if width < 100 {
 		d.Mach.Add1(ss.NarrowLayout, nil)
 	} else if !d.Opts.ViewNarrow {
@@ -842,37 +855,109 @@ func (d *Debugger) hUpdateSchemaLogGrid() {
 		d.schemaLogGrid.UpdateItem(d.treeLayout, 0, 0, 1, 3, 0, 0, false)
 		d.schemaLogGrid.AddItem(d.matrix, 0, 3, 1, 3, 0, 0, false)
 
-	if d.Mach.Is1(ss.LogReaderVisible) {
-		d.treeLogGrid.UpdateItem(d.log, 0, 3, 1, 2, 0, 0, false)
-		d.treeLogGrid.UpdateItem(d.logReader, 0, 5, 1, 1, 0, 0, false)
-	} else {
-		d.treeLogGrid.UpdateItem(d.log, 0, 3, 1, 3, 0, 0, false)
+	case showMatrix:
+		d.schemaLogGrid.UpdateItem(d.treeLayout, 0, 0, 1, 2, 0, 0, false)
+		d.schemaLogGrid.AddItem(d.matrix, 0, 3, 1, 4, 0, 0, false)
+
+	// none
+
+	case !showLog && !showReader && !showMatrix:
+		d.schemaLogGrid.UpdateItem(d.treeLayout, 0, 0, 1, 6, 0, 0, false)
 	}
-
-	d.treeMatrixGrid.UpdateItem(d.tree, 0, 0, 1, 3, 0, 0, false)
-	d.treeMatrixGrid.UpdateItem(d.matrix, 0, 3, 1, 3, 0, 0, false)
-
-	d.RedrawFull(false)
 }
 
-func (d *Debugger) shinkStructPane() {
-	// keep expanded on any of these
-	if d.Mach.Any1(ss.TimelineStepsScrolled, ss.TimelineStepsFocused) {
-		return
+func (d *Debugger) hBoxFromPrimitive(p any) (*cview.Box, string) {
+	var box *cview.Box
+	var state string
+
+	switch p {
+
+	case d.treeGroups:
+		fallthrough
+	case d.treeGroups.Box:
+		box = d.treeGroups.Box
+		state = ss.TreeGroupsFocused
+
+	case d.tree:
+		fallthrough
+	case d.tree.Box:
+		box = d.tree.Box
+		state = ss.TreeFocused
+
+	case d.log:
+		fallthrough
+	case d.log.Box:
+		box = d.log.Box
+		state = ss.LogFocused
+
+	case d.logReader:
+		fallthrough
+	case d.logReader.Box:
+		box = d.logReader.Box
+		state = ss.LogReaderFocused
+
+	case d.timelineTxs:
+		fallthrough
+	case d.timelineTxs.Box:
+		box = d.timelineTxs.Box
+		state = ss.TimelineTxsFocused
+
+	case d.timelineSteps:
+		fallthrough
+	case d.timelineSteps.Box:
+		box = d.timelineSteps.Box
+		state = ss.TimelineStepsFocused
+
+	case d.toolbars[0]:
+		fallthrough
+	case d.toolbars[0].Box:
+		box = d.toolbars[0].Box
+		state = ss.Toolbar1Focused
+
+	case d.toolbars[1]:
+		fallthrough
+	case d.toolbars[1].Box:
+		box = d.toolbars[1].Box
+		state = ss.Toolbar2Focused
+
+	case d.toolbars[2]:
+		fallthrough
+	case d.toolbars[2].Box:
+		box = d.toolbars[2].Box
+		state = ss.Toolbar3Focused
+
+	case d.addressBar:
+		fallthrough
+	case d.addressBar.Box:
+		box = d.addressBar.Box
+		state = ss.AddressFocused
+
+	case d.clientList:
+		fallthrough
+	case d.clientList.Box:
+		box = d.clientList.Box
+		state = ss.ClientListFocused
+
+	case d.matrix:
+		fallthrough
+	case d.matrix.Box:
+		box = d.matrix.Box
+		state = ss.MatrixFocused
+
+	// DIALOGS
+
+	case d.helpDialog:
+		fallthrough
+	case d.helpDialog.Box:
+		box = d.helpDialog.Box
+		state = ss.DialogFocused
+
+	case d.exportDialog:
+		fallthrough
+	case d.exportDialog.Box:
+		box = d.exportDialog.Box
+		state = ss.DialogFocused
 	}
 
-	// keep in sync with initLayout()
-	d.treeLogGrid.UpdateItem(d.tree, 0, 0, 1, 2, 0, 0, false)
-
-	if d.Mach.Is1(ss.LogReaderVisible) {
-		d.treeLogGrid.UpdateItem(d.log, 0, 2, 1, 2, 0, 0, false)
-		d.treeLogGrid.UpdateItem(d.logReader, 0, 4, 1, 2, 0, 0, false)
-	} else {
-		d.treeLogGrid.UpdateItem(d.log, 0, 2, 1, 4, 0, 0, false)
-	}
-
-	d.treeMatrixGrid.UpdateItem(d.tree, 0, 0, 1, 2, 0, 0, false)
-	d.treeMatrixGrid.UpdateItem(d.matrix, 0, 2, 1, 4, 0, 0, false)
-
-	d.RedrawFull(false)
+	return box, state
 }

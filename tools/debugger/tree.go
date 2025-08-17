@@ -50,7 +50,7 @@ const treeIndent = 3
 // TODO tree model
 var trailingDots = regexp.MustCompile(`\.+$`)
 
-func (d *Debugger) initMachineTree() *cview.TreeView {
+func (d *Debugger) hInitSchemaTree() *cview.TreeView {
 	d.treeRoot = cview.NewTreeNode("States")
 	// d.treeRoot.SetColor(tcell.ColorRed)
 
@@ -68,16 +68,18 @@ func (d *Debugger) initMachineTree() *cview.TreeView {
 		if !ok || ref.stateName == "" {
 			d.Mach.Remove1(ss.StateNameSelected, nil)
 			d.lastSelectedState = ""
+
 			return
 		}
 
 		d.Mach.Add1(ss.StateNameSelected, am.A{
 			"state": ref.stateName,
 		})
-		d.updateLogReader()
-		d.updateMatrix()
+		d.hUpdateLogReader()
+		d.hUpdateMatrix()
 	})
 
+	// click
 	tree.SetSelectedFunc(func(node *cview.TreeNode) {
 		ref, ok := node.GetReference().(*nodeRef)
 		if !ok {
@@ -100,14 +102,18 @@ func (d *Debugger) initMachineTree() *cview.TreeView {
 			}
 		}
 
-		ref.expanded = !node.IsExpanded()
-		node.SetExpanded(ref.expanded)
+		// expand on 2nd click
+		curr := d.tree.GetCurrentNode()
+		if curr == node {
+			ref.expanded = !node.IsExpanded()
+			node.SetExpanded(ref.expanded)
+		}
 	})
 
 	return tree
 }
 
-func (d *Debugger) updateTree() {
+func (d *Debugger) hUpdateSchemaTree() {
 	// TODO refac to updateSchema (state)
 
 	var msg telemetry.DbgMsg
@@ -117,13 +123,15 @@ func (d *Debugger) updateTree() {
 	}
 
 	// debug
-	// log.Println("///// updateTree")
+	// log.Println("///// hUpdateSchemaTree")
 
 	queue := " "
+	i1 := 0
 	if c.CursorTx1 == 0 {
 		msg = c.MsgStruct
 	} else {
-		tx := c.MsgTxs[c.CursorTx1-1]
+		i1 = c.CursorTx1 - 1
+		tx := c.MsgTxs[i1]
 		msg = tx
 		queue = fmt.Sprintf(":%d Q:%d ",
 			len(c.MsgStruct.StatesIndex), tx.Queue)
@@ -132,37 +140,40 @@ func (d *Debugger) updateTree() {
 	d.tree.SetTitle(" Schema" + queue)
 
 	var steps []*am.Step
-	nextTx := d.nextTx()
+	nextTx := d.hNnextTx()
 	if c.CursorTx1 < len(c.MsgTxs) && c.CursorStep1 > 0 {
 		steps = nextTx.Steps
 	}
 
 	// default decorations plus name highlights
-	colIdx := d.updateTreeDefaultsHighlights(msg)
+	colIdx := d.hUpdateTreeDefaultsHighlights(msg, i1)
 
 	// decorate steps, take the longest row from either defaults or steps
-	colIdx = max(colIdx, d.updateTreeTxSteps(steps, nextTx))
+	colIdx = max(colIdx, d.hUpdateTreeTxSteps(steps, nextTx))
 	colIdx += treeIndent
-	d.sortTree()
-	d.updateTreeRelCols(colIdx, steps, nextTx)
+	d.hSortTree()
+	d.hUpdateTreeRelCols(colIdx, steps, nextTx)
 }
 
 // returns the length of the longest row
 // TODO refactor
-func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
+func (d *Debugger) hUpdateTreeDefaultsHighlights(
+	msg telemetry.DbgMsg, idx int,
+) int {
 	c := d.C
 	if c == nil {
 		return 0
 	}
 
 	maxNameLen := 0
+	// TODO group index
 	for _, name := range c.MsgStruct.StatesIndex {
 		maxNameLen = max(maxNameLen, len(name))
 	}
 	schema := c.MsgStruct.States
 	maxLen := 0
 
-	d.tree.GetRoot().WalkUnsafe(func(
+	d.tree.GetRoot().Walk(func(
 		node, parent *cview.TreeNode, depth int,
 	) bool {
 		// skip the root
@@ -296,7 +307,7 @@ func (d *Debugger) updateTreeDefaultsHighlights(msg telemetry.DbgMsg) int {
 	return maxLen
 }
 
-func (d *Debugger) updateTreeTxSteps(
+func (d *Debugger) hUpdateTreeTxSteps(
 	steps []*am.Step, tx *telemetry.DbgMsgTx,
 ) int {
 	c := d.C
@@ -319,7 +330,7 @@ func (d *Debugger) updateTreeTxSteps(
 	}
 
 	// get max length
-	d.tree.GetRoot().WalkUnsafe(func(
+	d.tree.GetRoot().Walk(func(
 		node, parent *cview.TreeNode, depth int,
 	) bool {
 		if parent != nil {
@@ -331,7 +342,7 @@ func (d *Debugger) updateTreeTxSteps(
 	// current max len with step tags
 	maxLenTagged := maxLen
 
-	d.tree.GetRoot().WalkUnsafe(func(
+	d.tree.GetRoot().Walk(func(
 		node, parent *cview.TreeNode, depth int,
 	) bool {
 		// skip the root
@@ -479,7 +490,7 @@ func (d *Debugger) updateTreeTxSteps(
 
 var reTreeStateColorFix = regexp.MustCompile(`\[white\](M?\|\d+)(\.*)`)
 
-func (d *Debugger) updateTreeRelCols(
+func (d *Debugger) hUpdateTreeRelCols(
 	colStartIdx int, steps []*am.Step, msg telemetry.DbgMsg,
 ) {
 	c := d.C
@@ -495,7 +506,7 @@ func (d *Debugger) updateTreeRelCols(
 	var relCols []RelCol
 	var closed bool
 
-	d.tree.GetRoot().WalkUnsafe(func(
+	d.tree.GetRoot().Walk(func(
 		node, parent *cview.TreeNode, depth int,
 	) bool {
 		// skip the root
@@ -687,6 +698,7 @@ func (d *Debugger) updateTreeRelCols(
 func (d *Debugger) handleExpanded(
 	node *cview.TreeNode, ref *nodeRef, c *Client,
 ) {
+	// TODO ref lock? copy?
 	if ref.isRef || ref.stateName == "" {
 		return
 	}
@@ -699,8 +711,9 @@ func (d *Debugger) handleExpanded(
 	}
 }
 
-func (d *Debugger) buildStatesTree() {
-	msg := d.C.MsgStruct
+func (d *Debugger) hBuildSchemaTree() {
+	c := d.C
+	msg := c.MsgStruct
 	d.treeRoot.ClearChildren()
 
 	// pick states
@@ -716,13 +729,13 @@ func (d *Debugger) buildStatesTree() {
 		// 	// TODO enable breaklines
 		// 	bl = d.addBreakLine(name, i)
 		// }
-		d.addState(name)
+		d.hAddState(name)
 	}
 	d.treeRoot.CollapseAll()
 	d.treeRoot.Expand()
 }
 
-func (d *Debugger) selectTreeState(name string) {
+func (d *Debugger) hSelectTreeState(name string) {
 	if d.tree == nil {
 		return
 	}
@@ -772,7 +785,7 @@ func (d *Debugger) selectTreeState(name string) {
 // 	return true
 // }
 
-func (d *Debugger) addState(name string) {
+func (d *Debugger) hAddState(name string) {
 	c := d.C
 	if c == nil {
 		return
@@ -810,10 +823,13 @@ func (d *Debugger) addState(name string) {
 	}
 
 	// relations
-	addRelation(stateNode, name, am.RelationAdd, state.Add)
-	addRelation(stateNode, name, am.RelationRequire, state.Require)
-	addRelation(stateNode, name, am.RelationRemove, state.Remove)
-	addRelation(stateNode, name, am.RelationAfter, state.After)
+	addRelation(stateNode, name, am.RelationAdd, state.Add, d.schemaTreeStates)
+	addRelation(stateNode, name, am.RelationRequire, state.Require,
+		d.schemaTreeStates)
+	addRelation(stateNode, name, am.RelationRemove, state.Remove,
+		d.schemaTreeStates)
+	addRelation(stateNode, name, am.RelationAfter, state.After,
+		d.schemaTreeStates)
 
 	// tags
 	if len(state.Tags) > 0 {
@@ -822,7 +838,6 @@ func (d *Debugger) addState(name string) {
 		tagRootNode.SetReference(&nodeRef{
 			isTagRoot: true,
 		})
-		tagRootNode.SetColor(tcell.ColorGrey)
 
 		for _, tag := range state.Tags {
 			tagNode := cview.NewTreeNode("#" + tag)
@@ -837,8 +852,8 @@ func (d *Debugger) addState(name string) {
 	}
 }
 
-// sortTree requires updateTree called before
-func (d *Debugger) sortTree() {
+// hSortTree requires hUpdateSchemaTree called before
+func (d *Debugger) hSortTree() {
 	// sort state names in the tree with touched ones first
 	nodes := d.treeRoot.GetChildren()
 	slices.SortStableFunc(nodes, func(a, b *cview.TreeNode) int {
@@ -910,7 +925,7 @@ func getRelColNameFromRef(ref *nodeRef) string {
 
 func addRelation(
 	stateNode *cview.TreeNode, parentState string, rel am.Relation,
-	relations []string,
+	relations []string, statesWhitelist am.S,
 ) {
 	if len(relations) <= 0 {
 		return
@@ -924,6 +939,11 @@ func addRelation(
 	})
 
 	for i := range relations {
+		// TODO option, avoid empty
+		// if !slices.Contains(statesWhitelist, relations[i]) {
+		// 	continue
+		// }
+
 		relState := relations[i]
 		stateNode := cview.NewTreeNode(relState)
 		stateNode.SetReference(&nodeRef{

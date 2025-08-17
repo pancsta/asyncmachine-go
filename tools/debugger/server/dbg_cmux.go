@@ -182,6 +182,7 @@ func (r *RPCServer) DbgMsgTxFwd(msg *DbgMsgTx, _ *string) error {
 
 func StartRpc(
 	mach *am.Machine, addr string, mux chan<- cmux.CMux, fwdAdds []string,
+	enableHttp bool,
 ) {
 	var err error
 	gob.Register(am.Relation(0))
@@ -209,36 +210,46 @@ func StartRpc(
 
 	// cmux
 	m := cmux.New(lis)
-	// push out for IoC
-	if mux != nil {
-		mux <- m
+	var httpL1, httpL2 net.Listener
+	var httpS *http.Server
+
+	if enableHttp {
+		httpL1 = m.Match(cmux.HTTP1Fast())
+		httpL2 = m.Match(cmux.HTTP1())
+		httpS = &http.Server{
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+				if r.RequestURI == "/diagrams/mach.ws" {
+					wsHandler(w, r, mach)
+					return
+				}
+				httpHandler(w, r, mach)
+			})}
+	}
+	tcpL := m.Match(cmux.Any())
+
+	go tcpAccept(tcpL, mach, fwdTo)
+	if enableHttp {
+		// listen
+		go func() {
+			err := httpS.Serve(httpL1)
+			// TODO ErrNetwork
+			mach.AddErr(err, nil)
+		}()
+		go func() {
+			err := httpS.Serve(httpL2)
+			// TODO ErrNetwork
+			mach.AddErr(err, nil)
+		}()
 	}
 
-	httpL1 := m.Match(cmux.HTTP1Fast())
-	httpL2 := m.Match(cmux.HTTP1())
-	tcpL := m.Match(cmux.Any())
-	httpS := &http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-			if r.RequestURI == "/diagrams/mach.ws" {
-				wsHandler(w, r, mach)
-				return
-			}
-			httpHandler(w, r, mach)
-		})}
-
-	// listen
-	go func() {
-		err := httpS.Serve(httpL1)
-		// TODO ErrNetwork
-		mach.AddErr(err, nil)
-	}()
-	go func() {
-		err := httpS.Serve(httpL2)
-		// TODO ErrNetwork
-		mach.AddErr(err, nil)
-	}()
-	go tcpAccept(tcpL, mach, fwdTo)
+	// push out for IoC
+	if mux != nil {
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			mux <- m
+		}()
+	}
 
 	// start cmux
 	if err := m.Serve(); err != nil {

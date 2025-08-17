@@ -5,6 +5,7 @@ import (
 	"log"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -113,7 +114,9 @@ type Opts struct {
 	ServerAddr string
 	// Log level of the debugger's machine
 	DbgLogLevel am.LogLevel
-	DbgLogger   *log.Logger
+	// Go race detector is enabled
+	DbgRace   bool
+	DbgLogger *log.Logger
 	// Filters for the transitions and logging
 	Filters *OptsFilters
 	// Timelines is the number of timelines to show (0-2).
@@ -130,7 +133,7 @@ type Opts struct {
 	// Screen overload for tests & ssh
 	Screen tcell.Screen
 	// Debugger's ID
-	ID string
+	Id string
 	// version of this instance
 	Version    string
 	MaxMemMb   int
@@ -217,7 +220,8 @@ type Client struct {
 	schemaHash string
 	connected  atomic.Bool
 	// processed
-	msgTxsParsed []*MsgTxParsed
+	msgTxsParsed    []*MsgTxParsed
+	msgSchemaParsed *MsgSchemaParsed
 	// processed list of filtered tx indexes
 	MsgTxsFiltered []int
 	// cache of processed log entries

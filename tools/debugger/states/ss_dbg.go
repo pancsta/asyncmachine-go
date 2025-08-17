@@ -15,12 +15,24 @@ var States = am.Schema{
 		Require: S{Exception},
 		Remove:  S{DiagramsScheduled, DiagramsRendering},
 	},
+	ErrWeb: {
+		Multi:   true,
+		Require: S{Exception},
+	},
 
 	// ///// Input events
 
 	ClientMsg:       {Multi: true},
 	ConnectEvent:    {Multi: true},
 	DisconnectEvent: {Multi: true},
+	WebReq: {
+		Multi:   true,
+		Require: S{Start},
+	},
+	WebSocket: {
+		Multi:   true,
+		Require: S{Start},
+	},
 
 	// user scrolling tx / steps
 	UserFwd: {
@@ -47,6 +59,7 @@ var States = am.Schema{
 	// focus group
 
 	TreeFocused:          {Remove: GroupFocused},
+	TreeGroupsFocused:    {Remove: GroupFocused},
 	LogFocused:           {Remove: GroupFocused},
 	ClientListFocused:    {Remove: GroupFocused},
 	TimelineTxsFocused:   {Remove: GroupFocused},
@@ -55,6 +68,7 @@ var States = am.Schema{
 	DialogFocused:        {Remove: GroupFocused},
 	Toolbar1Focused:      {Remove: GroupFocused},
 	Toolbar2Focused:      {Remove: GroupFocused},
+	Toolbar3Focused:      {Remove: GroupFocused},
 	LogReaderFocused: {
 		Require: S{LogReaderVisible},
 		Remove:  GroupFocused,
@@ -89,18 +103,21 @@ var States = am.Schema{
 		Add:     S{UpdateFocus},
 	},
 	// TODO should activate FiltersFocused
-	FilterAutoTx:      {},
-	FilterCanceledTx:  {},
-	FilterEmptyTx:     {},
-	FilterSummaries:   {},
-	FilterTraces:      {},
-	FilterHealthcheck: {},
-	FilterChecks:      {},
-	FilterOutGroup:    {},
+	FilterAutoTx:     {},
+	FilterCanceledTx: {},
+	FilterEmptyTx:    {},
+	FilterSummaries:  {},
+	FilterTraces:     {},
+	FilterHealth:     {},
+	FilterChecks:     {},
+	FilterOutGroup:   {},
+	Redraw:           {},
 
 	// ///// Actions
 
-	Start: {Add: S{FilterSummaries, FilterHealthcheck, FilterEmptyTx}},
+	Start: {Add: S{
+		FilterSummaries, FilterHealth, FilterEmptyTx, ClientListFocused,
+	}},
 	Healthcheck: {
 		Multi:   true,
 		Require: S{Start},
@@ -127,7 +144,8 @@ var States = am.Schema{
 		Require: S{ClientSelected},
 		Remove:  GroupPlaying,
 	},
-	ToggleTool: {},
+	ToggleTool:  {Remove: S{ToolToggled}},
+	ToolToggled: {Remove: S{ToggleTool}},
 	SwitchingClientTx: {
 		Require: S{Ready},
 		Remove:  GroupSwitchedClientTx,
@@ -152,12 +170,6 @@ var States = am.Schema{
 	AfterFocus: {
 		Multi:   true,
 		Require: S{Ready},
-		Add:     S{UpdateStatusBar},
-	},
-	UpdateStatusBar: {
-		Multi:   true,
-		Require: S{Ready},
-		After:   S{AfterFocus},
 	},
 	ToolRain: {
 		Multi:   true,
@@ -199,10 +211,24 @@ var States = am.Schema{
 		Remove:  S{SelectingClient},
 	},
 	RemoveClient: {Require: S{ClientSelected}},
+	RebuildLog: {
+		Multi:   true,
+		Require: S{ClientSelected},
+		Remove:  S{LogBuilt},
+		After:   S{ClientSelected},
+	},
+	LogBuilt: {
+		Require: S{ClientSelected},
+		Remove:  S{RebuildLog},
+	},
 
 	SetCursor: {
 		Multi:   true,
 		Require: S{Ready},
+	},
+	SetGroup: {
+		Multi:   true,
+		Require: S{ClientSelected},
 	},
 	DiagramsScheduled: {
 		Multi:   true,
@@ -221,9 +247,15 @@ var States = am.Schema{
 
 var (
 	GroupFocused = S{
-		TreeFocused, LogFocused, TimelineTxsFocused,
-		TimelineStepsFocused, ClientListFocused, MatrixFocused, DialogFocused,
-		Toolbar1Focused, Toolbar2Focused, LogReaderFocused, AddressFocused,
+		AddressFocused, ClientListFocused, TreeGroupsFocused, TreeFocused,
+
+		LogFocused, LogReaderFocused, MatrixFocused,
+
+		TimelineTxsFocused, TimelineStepsFocused,
+
+		Toolbar1Focused, Toolbar2Focused, Toolbar3Focused,
+
+		DialogFocused,
 	}
 	GroupPlaying = S{
 		Playing, Paused, TailMode,
@@ -238,7 +270,7 @@ var (
 		SwitchingClientTx, SwitchedClientTx,
 	}
 	GroupFilters = S{
-		FilterAutoTx, FilterCanceledTx, FilterEmptyTx, FilterHealthcheck,
+		FilterAutoTx, FilterCanceledTx, FilterEmptyTx, FilterHealth, FilterOutGroup,
 	}
 )
 
@@ -249,6 +281,7 @@ var (
 const (
 	// TODO rename to SchemaFocused
 	TreeFocused          = "TreeFocused"
+	TreeGroupsFocused    = "TreeGroupsFocused"
 	LogFocused           = "LogFocused"
 	TimelineTxsFocused   = "TimelineTxsFocused"
 	TimelineStepsFocused = "TimelineStepsFocused"
@@ -258,12 +291,15 @@ const (
 	DialogFocused        = "DialogFocused"
 	Toolbar1Focused      = "Toolbar1Focused"
 	Toolbar2Focused      = "Toolbar2Focused"
+	Toolbar3Focused      = "Toolbar3Focused"
 	LogReaderFocused     = "LogReaderFocused"
 	AddressFocused       = "AddressFocused"
 	// ClientListFocused is client list focused.
 	// TODO rename to ClientListFocused
 	ClientListFocused = "ClientListFocused"
 
+	// Redraw means the UI should be re-drawn.
+	Redraw                = "Redraw'"
 	TimelineStepsScrolled = "TimelineStepsScrolled"
 	ClientMsg             = "ClientMsg"
 	// StateNameSelected states that a state name is selected somehwere in the
@@ -298,8 +334,12 @@ const (
 	BackStep         = "BackStep"
 	ConnectEvent     = "ConnectEvent"
 	DisconnectEvent  = "DisconnectEvent"
+	WebReq           = "WebReq"
+	WebSocket        = "WebSocket"
 	RemoveClient     = "RemoveClient"
 	ClientSelected   = "ClientSelected"
+	RebuildLog       = "RebuildLog"
+	LogBuilt         = "LogBuilt"
 	SelectingClient  = "SelectingClient"
 	HelpDialog       = "HelpDialog"
 	ExportDialog     = "ExportDialog"
@@ -311,18 +351,17 @@ const (
 	UpdateLogReader  = "UpdateLogReader"
 	UpdateFocus      = "UpdateFocus"
 	AfterFocus       = "AfterFocus"
-	UpdateStatusBar  = "UpdateStatusBar"
 	ToolRain         = "ToolRain"
 	LogUserScrolled  = "LogUserScrolled"
 	// ScrollToTx scrolls to a specific transition.
 	ScrollToTx   = "ScrollToTx"
 	ScrollToStep = "ScrollToStep"
 	// Ready is an async result of start
-	Ready             = "Ready"
-	FilterCanceledTx  = "FilterCanceledTx"
-	FilterAutoTx      = "FilterAutoTx"
-	FilterHealthcheck = "FilterHealthcheck"
-	FilterChecks      = "FilterChecks"
+	Ready            = "Ready"
+	FilterCanceledTx = "FilterCanceledTx"
+	FilterAutoTx     = "FilterAutoTx"
+	FilterHealth     = "FilterHealth"
+	FilterChecks     = "FilterChecks"
 	// FilterOutGroup filters out txs for states outside the selected group.
 	FilterOutGroup = "FilterOutGroup"
 	// FilterEmptyTx is a filter for txes which didn't change state and didn't
@@ -331,6 +370,7 @@ const (
 	FilterSummaries = "FilterSummaries"
 	FilterTraces    = "FilterTraces"
 	ToggleTool      = "ToggleTool"
+	ToolToggled     = "ToolToggled"
 	// SwitchingClientTx switches to the given client and scrolls to the given
 	// transaction (1-based tx index). Accepts Client.id and Client.cursorTx.
 	SwitchingClientTx = "SwitchingClientTx"
@@ -339,13 +379,16 @@ const (
 	// ScrollToMutTx scrolls to a transition which mutated or called the
 	// passed state,
 	// If fwd is true, it scrolls forward, otherwise backwards.
-	ScrollToMutTx     = "ScrollToMutTx"
-	MatrixRain        = "MatrixRain"
-	SetCursor         = "SetCursor"
+	ScrollToMutTx = "ScrollToMutTx"
+	MatrixRain    = "MatrixRain"
+	SetCursor     = "SetCursor"
+	// TODO merge with SetCursor (better name?)
+	SetGroup          = "SetGroup"
 	DiagramsScheduled = "DiagramsScheduled"
 	DiagramsRendering = "DiagramsRendering"
 	DiagramsReady     = "DiagramsReady"
 	ErrDiagrams       = "ErrDiagrams"
+	ErrWeb            = "ErrWeb"
 	InitClient        = "InitClient"
 )
 
@@ -360,6 +403,8 @@ var Names = S{
 	ClientMsg,
 	ConnectEvent,
 	DisconnectEvent,
+	WebReq,
+	WebSocket,
 
 	// user scrolling
 	UserFwd,
@@ -370,6 +415,7 @@ var Names = S{
 	// /// External state (eg UI)
 
 	TreeFocused,
+	TreeGroupsFocused,
 	LogFocused,
 	LogReaderFocused,
 	AddressFocused,
@@ -380,6 +426,7 @@ var Names = S{
 	TimelineStepsHidden,
 	Toolbar1Focused,
 	Toolbar2Focused,
+	Toolbar3Focused,
 	MatrixFocused,
 	DialogFocused,
 	StateNameSelected,
@@ -390,6 +437,7 @@ var Names = S{
 	LogUserScrolled,
 	Ready,
 	TimelineStepsScrolled,
+	Redraw,
 
 	// /// Actions
 
@@ -407,10 +455,11 @@ var Names = S{
 	FilterEmptyTx,
 	FilterSummaries,
 	FilterTraces,
-	FilterHealthcheck,
+	FilterHealth,
 	FilterChecks,
 	FilterOutGroup,
 	ToggleTool,
+	ToolToggled,
 	SwitchingClientTx,
 	SwitchedClientTx,
 	ScrollToMutTx,
@@ -420,7 +469,6 @@ var Names = S{
 	UpdateLogReader,
 	UpdateFocus,
 	AfterFocus,
-	UpdateStatusBar,
 	ToolRain,
 
 	// tx / steps back / fwd
@@ -436,12 +484,16 @@ var Names = S{
 	ClientSelected,
 	SelectingClient,
 	RemoveClient,
+	RebuildLog,
+	LogBuilt,
 
 	SetCursor,
+	SetGroup,
 	DiagramsScheduled,
 	DiagramsRendering,
 	DiagramsReady,
 	ErrDiagrams,
+	ErrWeb,
 
 	InitClient,
 }

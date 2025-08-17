@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,12 +21,13 @@ import (
 // regexp removing [foo]
 var re = regexp.MustCompile(`\[(.*?)\]`)
 
+// TODO move
 func normalizeText(text string) string {
 	return strings.ToLower(re.ReplaceAllString(text, ""))
 }
 
-func (d *Debugger) bindKeyboard() {
-	inputHandler := d.initFocusManager()
+func (d *Debugger) hBindKeyboard() {
+	inputHandler := d.hInitFocusManager()
 
 	// custom keys
 	for key, fn := range d.getKeystrokes() {
@@ -35,11 +37,11 @@ func (d *Debugger) bindKeyboard() {
 		}
 	}
 
-	d.searchTreeSidebar(inputHandler)
+	d.hSearchSchemaClients(inputHandler)
 	d.App.SetInputCapture(inputHandler.Capture)
 }
 
-func (d *Debugger) initFocusManager() *cbind.Configuration {
+func (d *Debugger) hInitFocusManager() *cbind.Configuration {
 	// focus manager
 	d.focusManager = cview.NewFocusManager(d.App.SetFocus)
 	d.focusManager.SetWrapAround(true)
@@ -67,6 +69,7 @@ func (d *Debugger) initFocusManager() *cbind.Configuration {
 	for _, key := range cview.Keys.MovePreviousField {
 		err := inputHandler.Set(key, focusChange(d.focusManager.FocusPrevious))
 		if err != nil {
+			// TODO no log
 			log.Printf("Error: binding keys %s", err)
 		}
 	}
@@ -75,6 +78,7 @@ func (d *Debugger) initFocusManager() *cbind.Configuration {
 	for _, key := range cview.Keys.MoveNextField {
 		err := inputHandler.Set(key, focusChange(d.focusManager.FocusNext))
 		if err != nil {
+			// TODO no log
 			log.Printf("Error: binding keys %s", err)
 		}
 	}
@@ -86,12 +90,14 @@ func (d *Debugger) initFocusManager() *cbind.Configuration {
 func (d *Debugger) newAfterFocusFn() func(p cview.Primitive) {
 	return func(p cview.Primitive) {
 		d.Mach.Add1(ss.AfterFocus, am.A{"cview.Primitive": p})
+		// d.Mach.Log("after focus %s", p)
 	}
 }
 
-// searchTreeSidebar does search-as-you-type for a-z, -, _ in the tree and
+// hSearchSchemaClients does search-as-you-type for a-z, -, _ in the tree and
 // clientList, with a searchAsTypeWindow buffer.
-func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
+// TODO split
+func (d *Debugger) hSearchSchemaClients(inputHandler *cbind.Configuration) {
 	var (
 		bufferStart time.Time
 		buffer      string
@@ -105,6 +111,7 @@ func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 
 	for _, key := range keys {
 		key := key
+		// TODO extract
 		err := inputHandler.Set(key, func(ev *tcell.EventKey) *tcell.EventKey {
 			if d.Mach.Not(am.S{ss.ClientListFocused, ss.TreeFocused}) {
 				return ev
@@ -133,24 +140,22 @@ func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 					text := normalizeText(item.GetMainText())
 					if strings.HasPrefix(text, buffer) {
 						d.clientList.SetCurrentItem(i)
-						d.updateClientList(true)
+						d.hUpdateClientList()
 						d.draw(d.clientList)
 						break
 					}
 				}
 
-				// TODO wrap search
+				// TODO wrap search, extract
 			} else if d.Mach.Is1(ss.TreeFocused) {
 
 				// tree
-				found := false
 				currNodePassed := false
 				currNode := d.tree.GetCurrentNode()
-				d.treeRoot.WalkUnsafe(
+				// TODO optimize
+				var nodeMatch *cview.TreeNode
+				d.treeRoot.Walk(
 					func(node, parent *cview.TreeNode, depth int) bool {
-						if found {
-							return false
-						}
 						if !currNodePassed && node != currNode {
 							return true
 						}
@@ -159,7 +164,7 @@ func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 						text := normalizeText(node.GetText())
 
 						// check if branch is expanded
-						p := node.GetParent()
+						p := parent
 						for p != nil {
 							if !p.IsExpanded() {
 								return true
@@ -167,26 +172,29 @@ func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 							p = p.GetParent()
 						}
 
+						// match found
 						if strings.HasPrefix(text, buffer) {
-							found = true
-
-							// handle StateNameSelected
-							ref, ok := node.GetReference().(*nodeRef)
-							if ok && ref != nil && ref.stateName != "" {
-								d.Mach.Add1(ss.StateNameSelected, am.A{"state": ref.stateName})
-							} else {
-								d.Mach.Remove1(ss.StateNameSelected, nil)
-							}
-							d.updateTree()
-							d.updateLogReader()
-							d.draw()
-							d.tree.SetCurrentNode(node)
+							nodeMatch = node
 
 							return false
 						}
 
 						return true
 					})
+
+				if nodeMatch != nil {
+					// handle StateNameSelected
+					ref, ok := nodeMatch.GetReference().(*nodeRef)
+					if ok && ref != nil && ref.stateName != "" {
+						d.Mach.Add1(ss.StateNameSelected, am.A{"state": ref.stateName})
+					} else {
+						d.Mach.Remove1(ss.StateNameSelected, nil)
+					}
+					d.hUpdateSchemaTree()
+					d.hUpdateLogReader()
+					d.draw()
+					d.tree.SetCurrentNode(nodeMatch)
+				}
 
 				// TODO wrap search
 			}
@@ -199,8 +207,10 @@ func (d *Debugger) searchTreeSidebar(inputHandler *cbind.Configuration) {
 	}
 }
 
-func (d *Debugger) getKeystrokes() map[string]func(
-	ev *tcell.EventKey) *tcell.EventKey {
+// TODO move
+type tcellKeyFn = func(ev *tcell.EventKey) *tcell.EventKey
+
+func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 	// TODO add state deps to the keystrokes structure
 	// TODO use tcell.KeyNames instead of strings as keys
 	// TODO rate limit
@@ -217,16 +227,16 @@ func (d *Debugger) getKeystrokes() map[string]func(
 		},
 
 		// prev tx
-		"left": d.prevTxKey(),
+		"left": d.hPrevTxKey(),
 
 		// next tx
-		"right": d.nextTxKey(),
+		"right": d.hNextTxKey(),
 
 		// state jumps
-		"alt+h":     d.jumpBackKey,
-		"alt+l":     d.jumpFwdKey,
-		"alt+Left":  d.jumpBackKey,
-		"alt+Right": d.jumpFwdKey,
+		"alt+h":     d.hJumpBackKey,
+		"alt+l":     d.hJumpFwdKey,
+		"alt+Left":  d.hJumpBackKey,
+		"alt+Right": d.hJumpFwdKey,
 		"alt+j": func(ev *tcell.EventKey) *tcell.EventKey {
 			d.Mach.Add1(ss.UserBackStep, nil)
 
@@ -249,7 +259,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 		// expand / collapse trees
 		"alt+e": func(ev *tcell.EventKey) *tcell.EventKey {
 			// TODO unify
-			d.toolExpand()
+			d.hToolExpand()
 
 			return nil
 		},
@@ -283,14 +293,14 @@ func (d *Debugger) getKeystrokes() map[string]func(
 
 		// scroll to the first tx
 		"home": func(ev *tcell.EventKey) *tcell.EventKey {
-			d.toolFirstTx()
+			d.hToolFirstTx()
 
 			return nil
 		},
 
 		// scroll to the last tx
 		"end": func(ev *tcell.EventKey) *tcell.EventKey {
-			d.toolLastTx()
+			d.hToolLastTx()
 
 			return nil
 		},
@@ -343,6 +353,13 @@ func (d *Debugger) getKeystrokes() map[string]func(
 				return nil
 			}
 
+			// default focus element
+			if d.Mach.Is1(ss.ClientListVisible) {
+				d.Mach.Add1(ss.ClientListFocused, nil)
+			} else {
+				d.Mach.Add1(ss.AddressFocused, nil)
+			}
+
 			return ev
 		},
 
@@ -367,11 +384,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 		// scroll sidebar
 		"down": func(ev *tcell.EventKey) *tcell.EventKey {
 			if d.Mach.Is(S{ss.ClientListFocused, ss.ClientListVisible}) {
-				// TODO state?
-				go func() {
-					d.updateClientList(true)
-					d.draw(d.clientList)
-				}()
+				d.updateClientList()
 			} else if d.Mach.Is1(ss.LogFocused) {
 				d.Mach.Add1(ss.LogUserScrolled, nil)
 			}
@@ -380,11 +393,7 @@ func (d *Debugger) getKeystrokes() map[string]func(
 		},
 		"up": func(ev *tcell.EventKey) *tcell.EventKey {
 			if d.Mach.Is(S{ss.ClientListFocused, ss.ClientListVisible}) {
-				// TODO state?
-				go func() {
-					d.updateClientList(true)
-					d.draw(d.clientList)
-				}()
+				d.updateClientList()
 			} else if d.Mach.Is1(ss.LogFocused) {
 				d.Mach.Add1(ss.LogUserScrolled, nil)
 			}
@@ -394,23 +403,27 @@ func (d *Debugger) getKeystrokes() map[string]func(
 	}
 }
 
-func (d *Debugger) nextTxKey() func(ev *tcell.EventKey) *tcell.EventKey {
+// these UI components can be navigated with keys
+var keyNavigable = am.S{
+	ss.AddressFocused, ss.Toolbar1Focused,
+	ss.Toolbar2Focused, ss.Toolbar3Focused,
+}
+
+func (d *Debugger) hNextTxKey() tcellKeyFn {
 	return func(ev *tcell.EventKey) *tcell.EventKey {
 		// scrolling
 		if d.Mach.Is1(ss.LogFocused) {
 			d.Mach.Add1(ss.LogUserScrolled, nil)
 
 			return ev
-		} else if d.Mach.Any1(
-			ss.AddressFocused, ss.Toolbar1Focused, ss.Toolbar2Focused) {
-
+		} else if d.Mach.Any1(keyNavigable...) {
 			return ev
 		}
 
 		if d.Mach.Not1(ss.ClientSelected) {
 			return nil
 		}
-		if d.throttleKey(ev, arrowThrottleMs) {
+		if d.hThrottleKey(ev, arrowThrottleMs) {
 			// TODO fast jump scroll while holding the key
 			return nil
 		}
@@ -432,23 +445,21 @@ func (d *Debugger) nextTxKey() func(ev *tcell.EventKey) *tcell.EventKey {
 	}
 }
 
-func (d *Debugger) prevTxKey() func(ev *tcell.EventKey) *tcell.EventKey {
+func (d *Debugger) hPrevTxKey() tcellKeyFn {
 	return func(ev *tcell.EventKey) *tcell.EventKey {
 		// scrolling
 		if d.Mach.Is1(ss.LogFocused) {
 			d.Mach.Add1(ss.LogUserScrolled, nil)
 
 			return ev
-		} else if d.Mach.Any1(
-			ss.AddressFocused, ss.Toolbar1Focused, ss.Toolbar2Focused) {
-
+		} else if d.Mach.Any1(keyNavigable...) {
 			return ev
 		}
 
 		if d.Mach.Not1(ss.ClientSelected) {
 			return nil
 		}
-		if d.throttleKey(ev, arrowThrottleMs) {
+		if d.hThrottleKey(ev, arrowThrottleMs) {
 			// TODO fast jump scroll while holding the key
 			return nil
 		}
@@ -469,25 +480,31 @@ func (d *Debugger) prevTxKey() func(ev *tcell.EventKey) *tcell.EventKey {
 	}
 }
 
-func (d *Debugger) jumpBackKey(ev *tcell.EventKey) *tcell.EventKey {
-	if d.C == nil {
+func (d *Debugger) hJumpBackKey(ev *tcell.EventKey) *tcell.EventKey {
+	if d.Mach.Not1(ss.ClientSelected) {
 		return nil
 	}
-	if ev != nil && d.throttleKey(ev, arrowThrottleMs) {
+	if ev != nil && d.hThrottleKey(ev, arrowThrottleMs) {
 		return nil
 	}
 
+	// TODO Start?
 	ctx := context.TODO()
 	d.Mach.Remove(am.S{ss.Playing, ss.TailMode}, nil)
 
 	if d.Mach.Is1(ss.StateNameSelected) {
+		state := ss.ScrollToMutTx
+		// if d.Mach.Is1(ss.JumpTouch) {
+		// 	state = ss.ScrollToTouchTx
+		// }
+
 		// state jump
-		amhelp.Add1Block(ctx, d.Mach, ss.ScrollToMutTx, am.A{
+		amhelp.Add1Block(ctx, d.Mach, state, am.A{
 			"state": d.C.SelectedState,
 			"fwd":   false,
 		})
 		// sidebar for errs
-		d.updateClientList(true)
+		d.hUpdateClientList()
 	} else {
 		// fast jump
 		amhelp.Add1Block(ctx, d.Mach, ss.Back, am.A{
@@ -498,25 +515,31 @@ func (d *Debugger) jumpBackKey(ev *tcell.EventKey) *tcell.EventKey {
 	return nil
 }
 
-func (d *Debugger) jumpFwdKey(ev *tcell.EventKey) *tcell.EventKey {
-	if d.C == nil {
+func (d *Debugger) hJumpFwdKey(ev *tcell.EventKey) *tcell.EventKey {
+	if d.Mach.Not1(ss.ClientSelected) {
 		return nil
 	}
-	if ev != nil && d.throttleKey(ev, arrowThrottleMs) {
+	if ev != nil && d.hThrottleKey(ev, arrowThrottleMs) {
 		return nil
 	}
 
+	// TODO Start?
 	ctx := context.TODO()
 	d.Mach.Remove(am.S{ss.Playing, ss.TailMode}, nil)
 
 	if d.Mach.Is1(ss.StateNameSelected) {
+		state := ss.ScrollToMutTx
+		// if d.Mach.Is1(ss.JumpTouch) {
+		// 	state = ss.ScrollToTouchTx
+		// }
+
 		// state jump
-		amhelp.Add1Block(ctx, d.Mach, ss.ScrollToMutTx, am.A{
+		amhelp.Add1Block(ctx, d.Mach, state, am.A{
 			"state": d.C.SelectedState,
 			"fwd":   true,
 		})
 		// sidebar for errs
-		d.updateClientList(true)
+		d.hUpdateClientList()
 	} else {
 		// fast jump
 		amhelp.Add1Block(ctx, d.Mach, ss.Fwd, am.A{
@@ -537,7 +560,7 @@ func (d *Debugger) toolMatrix() {
 		} else {
 			d.Mach.Add1(ss.MatrixRain, nil)
 		}
-	} else if d.Mach.Is1(ss.TreeMatrixView) && d.Mach.Not1(ss.MatrixRain) {
+	} else if d.Mach.Any1(ss.TreeMatrixView, ss.MatrixRain) {
 		d.Mach.Add1(ss.MatrixRain, nil)
 	} else {
 		d.Mach.Remove1(ss.MatrixRain, nil)
@@ -545,29 +568,29 @@ func (d *Debugger) toolMatrix() {
 	}
 }
 
-func (d *Debugger) toolLastTx() {
+func (d *Debugger) hToolLastTx() {
 	if d.Mach.Not1(ss.ClientSelected) {
 		return
 	}
-	d.SetCursor1(d.filterTxCursor(d.C, len(d.C.MsgTxs), false), 0, false)
+	d.hSetCursor1(d.hFilterTxCursor(d.C, len(d.C.MsgTxs), false), 0, false)
 	d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
 	// sidebar for errs
-	d.updateClientList(true)
-	d.RedrawFull(true)
+	d.hUpdateClientList()
+	d.hRedrawFull(true)
 }
 
-func (d *Debugger) toolFirstTx() {
+func (d *Debugger) hToolFirstTx() {
 	if d.Mach.Not1(ss.ClientSelected) {
 		return
 	}
-	d.SetCursor1(d.filterTxCursor(d.C, 0, true), 0, false)
+	d.hSetCursor1(d.hFilterTxCursor(d.C, 0, true), 0, false)
 	d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
 	// sidebar for errs
-	d.updateClientList(true)
-	d.RedrawFull(true)
+	d.hUpdateClientList()
+	d.hRedrawFull(true)
 }
 
-func (d *Debugger) toolExpand() {
+func (d *Debugger) hToolExpand() {
 	// log reader tree
 	if d.Mach.Is1(ss.LogReaderFocused) {
 		root := d.logReader.GetRoot()
@@ -630,8 +653,8 @@ func (d *Debugger) shouldScrollCurrView() bool {
 }
 
 // TODO optimize usage places
-func (d *Debugger) throttleKey(ev *tcell.EventKey, ms int) bool {
-	// throttle
+func (d *Debugger) hThrottleKey(ev *tcell.EventKey, ms int) bool {
+	// throttle TODO atomics
 	sameKey := d.lastKeystroke == ev.Key()
 	elapsed := time.Since(d.lastKeystrokeTime)
 	if sameKey && elapsed < time.Duration(ms)*time.Millisecond {
@@ -644,59 +667,58 @@ func (d *Debugger) throttleKey(ev *tcell.EventKey, ms int) bool {
 	return false
 }
 
-func (d *Debugger) initFocusable() {
+func (d *Debugger) hUpdateFocusable() {
 	var prims []cview.Primitive
-	switch d.Mach.Switch(ss.GroupViews) {
 
-	case ss.MatrixView:
-		d.focusable = []*cview.Box{
-			d.addressBar.Box, d.clientList.Box, d.matrix.Box, d.timelineTxs.Box,
-			d.timelineSteps.Box, d.toolbars[0].Box, d.toolbars[1].Box,
-		}
-		prims = []cview.Primitive{
-			d.addressBar, d.clientList, d.matrix, d.timelineTxs,
-			d.timelineSteps, d.toolbars[0], d.toolbars[1],
-		}
-
-	case ss.TreeMatrixView:
-		d.focusable = []*cview.Box{
-			d.addressBar.Box, d.clientList.Box, d.tree.Box, d.matrix.Box,
-			d.timelineTxs.Box, d.timelineSteps.Box, d.toolbars[0].Box,
-			d.toolbars[1].Box,
-		}
-		prims = []cview.Primitive{
-			d.addressBar, d.clientList, d.tree, d.matrix, d.timelineTxs,
-			d.timelineSteps, d.toolbars[0], d.toolbars[1],
-		}
-
-	case ss.TreeLogView:
-		fallthrough
-	default:
-		if d.Mach.Is1(ss.LogReaderVisible) {
-
-			d.focusable = []*cview.Box{
-				d.addressBar.Box, d.clientList.Box, d.tree.Box, d.log.Box,
-				d.logReader.Box, d.timelineTxs.Box, d.timelineSteps.Box,
-				d.toolbars[0].Box, d.toolbars[1].Box,
-			}
-			prims = []cview.Primitive{
-				d.addressBar, d.clientList, d.tree, d.log, d.logReader, d.timelineTxs,
-				d.timelineSteps, d.toolbars[0], d.toolbars[1],
-			}
-		} else {
-
-			d.focusable = []*cview.Box{
-				d.addressBar.Box, d.clientList.Box, d.tree.Box, d.log.Box,
-				d.timelineTxs.Box, d.timelineSteps.Box, d.toolbars[0].Box,
-				d.toolbars[1].Box,
-			}
-			prims = []cview.Primitive{
-				d.addressBar, d.clientList, d.tree, d.log, d.timelineTxs,
-				d.timelineSteps, d.toolbars[0], d.toolbars[1],
-			}
-		}
+	d.focusable = []*cview.Box{
+		d.addressBar.Box, d.clientList.Box, d.treeGroups.Box, d.tree.Box,
+	}
+	prims = []cview.Primitive{
+		d.addressBar, d.clientList, d.treeGroups, d.tree,
 	}
 
-	d.focusManager.Reset()
-	d.focusManager.Add(prims...)
+	if d.Mach.Not1(ss.ClientListVisible) {
+		d.focusable = slices.Delete(d.focusable, 1, 2)
+		prims = slices.Delete(prims, 1, 2)
+	}
+
+	// matrix
+	if d.Mach.Any1(ss.MatrixView, ss.TreeMatrixView) {
+		d.focusable = append(d.focusable, d.matrix.Box)
+		prims = append(prims, d.matrix)
+
+		// log
+	} else if d.Opts.Filters.LogLevel != am.LogNothing {
+		d.focusable = append(d.focusable, d.log.Box)
+		prims = append(prims, d.log)
+	}
+
+	// add log reader
+	if d.Mach.Is1(ss.LogReaderVisible) {
+		d.focusable = append(d.focusable, d.logReader.Box)
+		prims = append(prims, d.logReader)
+	}
+
+	// add timelines
+	switch d.Opts.Timelines {
+	case 2:
+		d.focusable = append(d.focusable, d.timelineTxs.Box, d.timelineSteps.Box)
+		prims = append(prims, d.timelineTxs, d.timelineSteps)
+	case 1:
+		d.focusable = append(d.focusable, d.timelineTxs.Box)
+		prims = append(prims, d.timelineTxs)
+
+	}
+
+	// add toolbars
+	d.focusable = append(d.focusable, d.toolbars[0].Box, d.toolbars[1].Box,
+		d.toolbars[2].Box)
+	prims = append(prims, d.toolbars[0], d.toolbars[1], d.toolbars[2])
+
+	// unblock bc of locks
+	// TODO fix locks
+	go func() {
+		d.focusManager.Reset()
+		d.focusManager.Add(prims...)
+	}()
 }
