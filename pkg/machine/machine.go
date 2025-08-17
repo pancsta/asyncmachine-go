@@ -1532,7 +1532,7 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 		return
 	}
 
-	m.panicCaught = true
+	m.panicCaught.Store(true)
 	m.currentHandler.Store("")
 	t := m.t.Load()
 	index := m.StateNames()
@@ -1549,48 +1549,15 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 	m.err.Store(&err)
 
 	// final phase, trouble...
-	if t.latestStepIsFinal {
-
-		// try to fix active states
-		finals := slices.Concat(t.Exits, t.Enters)
-		m.activeStatesLock.RLock()
-		activeStates := m.activeStates
-		m.activeStatesLock.RUnlock()
-		found := false
-
-		// walk over enter/exits and remove states after the last step,
-		// as their final handlers haven't been executed
-		for _, s := range finals {
-
-			if t.latestStepToState == s {
-				found = true
-			}
-			if !found {
-				continue
-			}
-
-			if t.latestStepIsEnter {
-				activeStates = slicesWithout(activeStates, s)
-			} else {
-				activeStates = append(activeStates, s)
-			}
-		}
-
-		m.log(LogOps, "[recover] partial final states as (%s)",
-			j(activeStates))
-		m.activeStatesLock.Lock()
-		defer m.activeStatesLock.Unlock()
-		m.setActiveStates(t.CalledStates(), activeStates, t.IsAuto())
-		t.IsCompleted.Store(true)
+	if t.latestHandlerIsFinal {
+		m.recoverFinalPhase()
 	}
-
 	m.log(LogOps, "[cancel] (%s) by recover", j(t.TargetStates()))
-	if t.Mutation == nil {
-		// TODO can this even happen?
-		panic(fmt.Sprintf("no mutation panic in %s: %s", handler.name, err))
-	}
 
-	// negotiation phase, simply cancel and...
+	// negotiation phase - canceling is enough
+	t.IsAccepted.Store(false)
+	t.IsCompleted.Store(true)
+
 	// prepend add:Exception to the beginning of the queue
 	errMut := &Mutation{
 		Type:   MutationAdd,
@@ -1614,6 +1581,41 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 
 	// restart the handler loop
 	go m.handlerLoop()
+}
+
+func (m *Machine) recoverFinalPhase() {
+	t := m.t.Load()
+
+	// try to fix active states
+	finals := slices.Concat(t.Exits, t.Enters)
+	m.activeStatesLock.RLock()
+	activeStates := m.activeStates
+	m.activeStatesLock.RUnlock()
+	found := false
+
+	// walk over enter/exits and remove states after the last step,
+	// as their final handlers haven't been executed
+	for _, s := range finals {
+
+		if t.latestHandlerToState == s {
+			found = true
+		}
+		if !found {
+			continue
+		}
+
+		if t.latestHandlerIsEnter {
+			activeStates = slicesWithout(activeStates, s)
+		} else {
+			activeStates = append(activeStates, s)
+		}
+	}
+
+	m.log(LogOps, "[recover] partial final states as (%s)",
+		j(activeStates))
+	m.activeStatesLock.Lock()
+	defer m.activeStatesLock.Unlock()
+	m.setActiveStates(t.CalledStates(), activeStates, t.IsAuto())
 }
 
 // MustParseStates parses the states and returns them as a list.
