@@ -179,23 +179,36 @@ func IndexesToStates(allStates am.S, indexes []int) am.S {
 	return states
 }
 
-// MachDebug sets up a machine for debugging, based on the AM_DEBUG env var,
-// passed am-dbg address, log level, and stdout flag.
+// MachDebug exports transition telemetry to an am-dbg instance listening at
+// [amDbgAddr].
 func MachDebug(
-	mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout bool,
+	mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout, steps, graph,
+	checks bool,
 ) {
 	if IsTestRunner() {
 		return
 	}
 
+	semlog := mach.SemLogger()
 	if stdout {
-		mach.SetLogLevel(logLvl)
+		semlog.SetLevel(logLvl)
 	} else {
-		mach.SetLoggerEmpty(logLvl)
+		semlog.SetEmpty(logLvl)
 	}
 
 	if amDbgAddr == "" {
 		return
+	}
+
+	// extras
+	if steps {
+		semlog.EnableSteps(true)
+	}
+	if graph {
+		semlog.EnableGraph(true)
+	}
+	if checks {
+		semlog.EnableCan(true)
 	}
 
 	// trace to telemetry
@@ -208,6 +221,30 @@ func MachDebug(
 	if os.Getenv(EnvAmHealthcheck) != "" {
 		Healthcheck(mach)
 	}
+}
+
+// MachDebugEnv sets up a machine for debugging, based on env vars only:
+// AM_DBG_ADDR, AM_LOG, and AM_DEBUG. This function should be called right
+// after the machine is created, to catch all the log entries.
+func MachDebugEnv(mach am.Api) {
+	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
+	logLvl := am.EnvLogLevel("")
+	stdout := os.Getenv(am.EnvAmDebug) == "2"
+	steps := os.Getenv(am.EnvAmLogSteps) == "1"
+	graph := os.Getenv(am.EnvAmLogGraph) == "1"
+	checks := os.Getenv(am.EnvAmLogChecks) == "1"
+	if os.Getenv(am.EnvAmLogFull) == "1" {
+		steps = true
+		graph = true
+		checks = true
+	}
+
+	// expand to default
+	if amDbgAddr == "1" {
+		amDbgAddr = telemetry.DbgAddr
+	}
+
+	MachDebug(mach, amDbgAddr, logLvl, stdout, steps, graph, checks)
 }
 
 // Healthcheck adds a state to a machine every 5 seconds, until the context is
@@ -228,22 +265,6 @@ func Healthcheck(mach am.Api) {
 			}
 		}
 	}()
-}
-
-// MachDebugEnv sets up a machine for debugging, based on env vars only:
-// AM_DBG_ADDR, AM_LOG, and AM_DEBUG. This function should be called right
-// after the machine is created, to catch all the log entries.
-func MachDebugEnv(mach am.Api) {
-	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
-	logLvl := am.EnvLogLevel("")
-	stdout := os.Getenv(am.EnvAmDebug) == "2"
-
-	// inherit default
-	if amDbgAddr == "1" {
-		amDbgAddr = telemetry.DbgAddr
-	}
-
-	MachDebug(mach, amDbgAddr, logLvl, stdout)
 }
 
 // TODO StableWhen(dur, states, ctx) - like When, but makes sure the state is
@@ -637,13 +658,16 @@ func EnableDebugging(stdout bool) {
 		_ = os.Setenv(am.EnvAmDebug, "1")
 	}
 	_ = os.Setenv(telemetry.EnvAmDbgAddr, "localhost:6831")
-	_ = os.Setenv(am.EnvAmLog, "2")
+	_ = os.Setenv(am.EnvAmLogSteps, "1")
+	_ = os.Setenv(am.EnvAmLogGraph, "1")
+	_ = os.Setenv(am.EnvAmLogChecks, "1")
+	SetEnvLogLevel(am.LogOps)
 	// _ = os.Setenv(EnvAmHealthcheck, "1")
 }
 
-// SetLogLevel sets AM_LOG env var to the passed log level. It will affect all
-// future state machines using MachDebugEnv.
-func SetLogLevel(level am.LogLevel) {
+// SetEnvLogLevel sets AM_LOG env var to the passed log level. It will affect
+// all future state machines using MachDebugEnv.
+func SetEnvLogLevel(level am.LogLevel) {
 	_ = os.Setenv(am.EnvAmLog, strconv.Itoa(int(level)))
 }
 
@@ -829,7 +853,7 @@ func ArgsToArgs[T any](src interface{}, dest T) T {
 	return dest
 }
 
-// IsDebug returns true if the process is in simple debug mode.
+// IsDebug returns true if the process is in a "simple debug mode" via AM_DEBUG.
 func IsDebug() bool {
 	return os.Getenv(am.EnvAmDebug) != "" && !IsTestRunner()
 }

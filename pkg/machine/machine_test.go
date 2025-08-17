@@ -62,7 +62,7 @@ func ExampleNewCommon() {
 	if err != nil {
 		panic(err)
 	}
-	mach.SetLogLevel(LogOps)
+	mach.SemLogger().SetLevel(LogOps)
 
 	// debug
 	// import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -79,11 +79,11 @@ func NewNoRels(t *testing.T, initialState S) *Machine {
 		"D": {},
 	}, nil)
 
-	m.SetLogger(func(i LogLevel, msg string, args ...any) {
+	m.SemLogger().SetLogger(func(i LogLevel, msg string, args ...any) {
 		t.Logf(msg, args...)
 	})
 	if os.Getenv(EnvAmDebug) != "" && os.Getenv("AM_TEST_RUNNER") == "" {
-		m.SetLogLevel(LogEverything)
+		m.SemLogger().SetLevel(LogEverything)
 		m.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
@@ -112,11 +112,11 @@ func NewRels(t *testing.T, initialState S) *Machine {
 		},
 	}, nil)
 
-	m.SetLogger(func(i LogLevel, msg string, args ...any) {
+	m.SemLogger().SetLogger(func(i LogLevel, msg string, args ...any) {
 		t.Logf(msg, args...)
 	})
 	if os.Getenv(EnvAmDebug) != "" && os.Getenv("AM_TEST_RUNNER") == "" {
-		m.SetLogLevel(LogEverything)
+		m.SemLogger().SetLevel(LogEverything)
 		m.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
@@ -129,13 +129,14 @@ func NewRels(t *testing.T, initialState S) *Machine {
 // NewNoRels creates a new machine with no relations between states.
 func NewCustomStates(t *testing.T, states Schema) *Machine {
 	m := New(context.Background(), states, nil)
-	m.SetLogger(func(i LogLevel, msg string, args ...any) {
+	m.SemLogger().SetLogger(func(i LogLevel, msg string, args ...any) {
 		t.Logf(msg, args...)
 	})
 	if os.Getenv(EnvAmDebug) != "" && os.Getenv("AM_TEST_RUNNER") == "" {
-		m.SetLogLevel(LogEverything)
+		m.SemLogger().SetLevel(LogEverything)
 		m.HandlerTimeout = 2 * time.Minute
 	}
+
 	return m
 }
 
@@ -994,11 +995,11 @@ func TestGetters(t *testing.T) {
 	// init
 	m := NewNoRels(t, S{"A"})
 	mapper := NewArgsMapper([]string{"arg", "arg2"}, 5)
-	m.SetLogArgs(mapper)
-	m.SetLogLevel(LogEverything)
+	m.SemLogger().SetArgs(mapper)
+	m.SemLogger().SetLevel(LogEverything)
 
 	// assert
-	assert.Equal(t, LogEverything, m.LogLevel())
+	assert.Equal(t, LogEverything, m.SemLogger().Level())
 	assert.Equal(t, 0, len(m.Queue()))
 
 	// dispose
@@ -1074,7 +1075,7 @@ func TestLogArgs(t *testing.T) {
 	// init
 	m := NewNoRels(t, S{"A"})
 	mapper := NewArgsMapper([]string{"arg", "arg2"}, 5)
-	m.SetLogArgs(mapper)
+	m.SemLogger().SetArgs(mapper)
 
 	// bind logger
 	log := ""
@@ -2558,19 +2559,18 @@ func TestLogger(t *testing.T) {
 	m := NewNoRels(t, nil)
 
 	// test
-	m.SetLoggerSimple(t.Logf, LogEverything)
-	assert.NotNil(t, m.Logger())
+	m.SemLogger().SetSimple(t.Logf, LogEverything)
+	assert.NotNil(t, m.SemLogger().Logger())
 	assert.Panics(t, func() {
-		m.SetLoggerSimple(nil, LogEverything)
+		m.SemLogger().SetSimple(nil, LogEverything)
 	})
 	// coverage
 	m.Add1("A", nil)
-	m.SetLogger(nil)
+	m.SemLogger().SetLogger(nil)
 	m.Add1("A", nil)
-	m.SetLogId(!m.GetLogId())
+	m.SemLogger().EnableId(!m.SemLogger().IsId())
 	m.Log("foo")
-	m.InternalLog(LogChanges, "foo")
-	m.SetLoggerEmpty(LogChanges)
+	m.SemLogger().SetEmpty(LogChanges)
 
 	// dispose
 	m.Dispose()
@@ -2925,7 +2925,7 @@ func TestOpts(t *testing.T) {
 	assert.Equal(t, false, m2.LogStackTrace)
 	assert.Equal(t, tags, m2.Tags())
 	assert.Equal(t, 10, m2.QueueLimit)
-	assert.Equal(t, LogChanges, m2.LogLevel())
+	assert.Equal(t, LogChanges, m2.SemLogger().Level())
 
 	tags2 := []string{"c"}
 	m2.SetTags(tags2)
@@ -2995,7 +2995,6 @@ func TestDisposedNoOp(t *testing.T) {
 	assert.Empty(t, m.setActiveStates(s, s, false))
 	m.log(LogChanges, "")
 	m.Log("")
-	m.InternalLog(LogChanges, "")
 	m.doDispose(false)
 	m.PanicToErr(A{})
 	m.PanicToErrState("A", A{})

@@ -116,7 +116,7 @@ func (rr *DefaultRelationsResolver) TargetStates(
 		}
 
 		m.log(lvl, "[rel:remove] %s by %s", name, j(blockedBy))
-		if m.LogLevel() >= LogSteps {
+		if t.isLogSteps() {
 			if m.is(S{name}) {
 				t.addSteps(newStep("", name, StepRemove, 0))
 			} else {
@@ -206,13 +206,13 @@ func (rr *DefaultRelationsResolver) SortStates(states S) {
 
 		// forward relations
 		if slices.Contains(state1.After, name2) {
-			if m.LogLevel() >= LogSteps {
+			if t.isLogSteps() {
 				t.addSteps(newStep(name2, name1, StepRelation, RelationAfter))
 			}
 			return false
 
 		} else if slices.Contains(state2.After, name1) {
-			if m.LogLevel() >= LogSteps {
+			if t.isLogSteps() {
 				t.addSteps(newStep(name1, name2, StepRelation, RelationAfter))
 			}
 			return true
@@ -265,7 +265,7 @@ func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 				continue
 			}
 
-			if rr.Machine.LogLevel() >= LogChanges {
+			if rr.Machine.semLogger.IsSteps() {
 				t.addSteps(newSteps(name, addStates, StepRelation,
 					RelationAdd)...)
 				t.addSteps(newSteps("", addStates, StepSet, 0)...)
@@ -294,7 +294,7 @@ func (rr *DefaultRelationsResolver) stateBlockedBy(
 			continue
 		}
 
-		if m.LogLevel() >= LogSteps {
+		if t.isLogSteps() {
 			t.addSteps(newStep(blocking, blocked, StepRelation,
 				RelationRemove))
 		}
@@ -343,11 +343,10 @@ func (rr *DefaultRelationsResolver) getMissingRequires(
 	name string, state State, states S,
 ) S {
 	t := rr.Transition
-	m := t.Machine
 	ret := S{}
 
 	for _, req := range state.Require {
-		if m.LogLevel() >= LogSteps {
+		if t.isLogSteps() {
 			t.addSteps(newStep(name, req, StepRelation,
 				RelationRequire))
 		}
@@ -355,13 +354,13 @@ func (rr *DefaultRelationsResolver) getMissingRequires(
 			continue
 		}
 		ret = append(ret, req)
-		if m.LogLevel() >= LogSteps {
+		if t.isLogSteps() {
 			t.addSteps(newStep(name, "", StepRemoveNotActive, 0))
 		}
 
 		idx := slices.Index(rr.Index, name)
 		if slices.Contains(t.Mutation.Called, idx) {
-			if m.LogLevel() >= LogSteps {
+			if t.isLogSteps() {
 				t.addSteps(newStep("", req,
 					StepCancel, 0))
 			}
