@@ -5,10 +5,10 @@ import (
 	"context"
 	"os"
 
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	"github.com/spf13/cobra"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
@@ -35,7 +35,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 	}
 
 	// logger and profiler
-	logger := cli.GetLogger(&p)
+	logger := cli.GetLogger(&p, p.OutputDir)
 	cli.StartCpuProfileSrv(ctx, logger, &p)
 	stopProfile := cli.StartCpuProfile(logger, &p)
 	if stopProfile != nil {
@@ -44,11 +44,12 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 
 	// init the debugger
 	dbg, err := debugger.New(ctx, debugger.Opts{
+		Id:             p.Id,
 		DbgLogLevel:    p.LogLevel,
 		DbgLogger:      logger,
 		ImportData:     p.ImportData,
 		OutputClients:  p.OutputClients,
-		OutputDiagrams: p.Graph,
+		OutputDiagrams: p.OutputDiagrams,
 		Timelines:      p.Timelines,
 		// ...:           p.FilterLogLevel,
 		OutputDir:       p.OutputDir,
@@ -59,7 +60,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		ShowReader:      p.Reader,
 		CleanOnConnect:  p.CleanOnConnect,
 		MaxMemMb:        p.MaxMemMb,
-		Log2Ttl:         p.Log2Ttl,
+		Log2Ttl:         p.LogOpsTtl,
 		ViewNarrow:      p.ViewNarrow,
 		ViewRain:        p.ViewRain,
 		TailMode:        p.TailMode,
@@ -71,16 +72,24 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 
 	// rpc client
 	if p.DebugAddr != "" {
-		err := telemetry.TransitionsToDbg(dbg.Mach, p.DebugAddr)
-		// TODO retries
-		if err != nil {
-			panic(err)
-		}
+		amhelp.MachDebug(dbg.Mach, p.DebugAddr, p.LogLevel, false,
+			// dbg details
+			true, true, true)
+
+		// TODO --otel flag
+		// os.Setenv(telemetry.EnvService, "dbg")
+		// os.Setenv(telemetry.EnvOtelTrace, "1")
+		// os.Setenv(telemetry.EnvOtelTraceTxs, "1")
+		// err = telemetry.MachBindOtelEnv(dbg.Mach)
+		// if err != nil {
+		// 	panic(err)
+		// }
 	}
 
 	// rpc server
 	if p.ListenAddr != "-1" {
-		go server.StartRpc(dbg.Mach, p.ListenAddr, nil, p.FwdData)
+		go server.StartRpc(dbg.Mach, p.ListenAddr, nil, p.FwdData,
+			p.UiDiagrams)
 	}
 
 	// start and wait till the end

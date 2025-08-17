@@ -6,6 +6,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"strings"
@@ -20,11 +21,12 @@ import (
 // TODO enum
 // TODO cobra groups
 const (
-	pLogLevel        = "log-level"
-	pServerAddr      = "listen-on"
-	pServerAddrShort = "l"
-	// TODO remove
+	pLogLevel         = "log-level"
+	pId               = "id"
+	pServerAddr       = "listen-on"
+	pServerAddrShort  = "l"
 	pAmDbgAddr        = "am-dbg-addr"
+	pGoRace           = "go-race"
 	pEnableMouse      = "enable-mouse"
 	pCleanOnConnect   = "clean-on-connect"
 	pVersion          = "version"
@@ -53,7 +55,8 @@ const (
 	pOutputDirShort = "d"
 	pOutputClients  = "output-clients"
 	pOutputTx       = "output-tx"
-	pDiagrams       = "output-diagrams"
+	pOutputDiagrams = "output-diagrams"
+	pUiDiagrams     = "ui-diagrams"
 
 	// UI
 
@@ -66,10 +69,14 @@ const (
 )
 
 type Params struct {
-	LogLevel        am.LogLevel
+	// LogLevel is the log level of this instance (for debugging).
+	LogLevel am.LogLevel
+	// Id is the ID of this asyncmachine (for debugging).
+	Id              string
 	Version         bool
 	ListenAddr      string
 	DebugAddr       string
+	RaceDetector    bool
 	ImportData      string
 	StartupMachine  string
 	StartupView     string
@@ -81,20 +88,21 @@ type Params struct {
 	ProfCpu         bool
 	ProfSrv         string
 	MaxMemMb        int
-	Log2Ttl         time.Duration
+	LogOpsTtl       time.Duration
 	Reader          bool
 	FwdData         []string
 	ViewNarrow      bool
 	ViewRain        bool
 
-	OutputDir     string
-	Graph         int
-	OutputClients bool
-	Timelines     int
-	Rain          bool
-	TailMode      bool
-	OutputTx      bool
-	MachUrl       string
+	OutputDir      string
+	OutputDiagrams int
+	UiDiagrams     bool
+	OutputClients  bool
+	Timelines      int
+	Rain           bool
+	TailMode       bool
+	OutputTx       bool
+	MachUrl        string
 }
 
 type RootFn func(cmd *cobra.Command, args []string, params Params)
@@ -118,11 +126,14 @@ func RootCmd(fn RootFn) *cobra.Command {
 func AddFlags(rootCmd *cobra.Command) {
 
 	f := rootCmd.Flags()
+	// TODO understand string names like Changes, Ops
 	f.Int(pLogLevel, 0,
 		"Log level produced by this instance, 0-6 (silent-everything)")
 	f.StringP(pServerAddr, pServerAddrShort, telemetry.DbgAddr,
 		"Host and port for the debugger to listen on")
+	f.String(pId, "am-dbg", "ID of this instance")
 	f.String(pAmDbgAddr, "", "Debug this instance of am-dbg with another one")
+	f.Bool(pGoRace, false, "Go race detector is enabled")
 	f.StringP(pView, pViewShort, "tree-log",
 		"Initial view (tree-log, tree-matrix, matrix)")
 	f.StringP(pStartupMach,
@@ -142,7 +153,7 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.Bool(pViewNarrow, false,
 		"Force a narrow view, independently of the viewport size")
 	f.StringP(pImport, pImportShort, "",
-		"Import an exported gob.bt file")
+		"Import an exported gob.br file")
 	f.BoolP(pReader, pReaderShort, false, "Enable Log Reader")
 	f.StringP(pFwdData, pFwdDataShort, "",
 		"Forward incoming data to other instances (eg addr1,addr2)")
@@ -162,9 +173,10 @@ func AddFlags(rootCmd *cobra.Command) {
 		"Write a detailed client list into am-dbg-clients.txt inside --dir")
 	f.Bool(pOutputTx, false,
 		"Write the current transition with steps into am-dbg-tx.md inside --dir")
-	f.Int(pDiagrams, 0,
+	f.Int(pOutputDiagrams, 0,
 		"Level of details for diagrams (svg, d2, mermaid) in "+
 			"--dir (0 off, 1-3 on). EXPERIMENTAL")
+	f.Bool(pUiDiagrams, false, "Start a web diagrams viewer (EXPERIMENTAL)")
 	f.Int(pTimelines, 2, "Number of timelines to show (0-2)")
 	f.Bool(pRain, false, "Show the rain view")
 	f.Bool(pTail, true, "Start from the last tx")
@@ -184,6 +196,7 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 	}
 
 	outputDir := cmd.Flag(pDir).Value.String()
+	id := cmd.Flag(pId).Value.String()
 	logLevelInt, err := cmd.Flags().GetInt(pLogLevel)
 	if err != nil {
 		panic(err)
@@ -195,12 +208,21 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 	debugAddr := cmd.Flag(pAmDbgAddr).Value.String()
 	importData := cmd.Flag(pImport).Value.String()
 
-	// graph
-	graph, err := cmd.Flags().GetInt(pDiagrams)
+	race, err := cmd.Flags().GetBool(pGoRace)
 	if err != nil {
 		panic(err)
 	}
-	graph = min(3, graph)
+
+	// diagrams
+	outputDiagrams, err := cmd.Flags().GetInt(pOutputDiagrams)
+	if err != nil {
+		panic(err)
+	}
+	outputDiagrams = min(3, outputDiagrams)
+	uiDiagrams, err := cmd.Flags().GetBool(pUiDiagrams)
+	if err != nil {
+		panic(err)
+	}
 
 	// timelines
 	timelines, err := cmd.Flags().GetInt(pTimelines)
@@ -279,11 +301,8 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 	}
 
 	return Params{
-		MachUrl: url,
-
+		MachUrl:    url,
 		ListenAddr: serverAddr,
-		DebugAddr:  debugAddr,
-		ImportData: importData,
 		FwdData:    fwdData,
 
 		// config
@@ -304,30 +323,38 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 
 		// output
 
-		OutputClients: outputClients,
-		OutputTx:      outputTx,
-		OutputDir:     outputDir,
-		Graph:         graph,
-		Timelines:     timelines,
+		OutputClients:  outputClients,
+		OutputTx:       outputTx,
+		OutputDir:      outputDir,
+		OutputDiagrams: outputDiagrams,
+		UiDiagrams:     uiDiagrams,
+		Timelines:      timelines,
 
 		// misc
 
-		LogLevel: logLevel,
-		ProfSrv:  profSrv,
-		MaxMemMb: maxMem,
-		Log2Ttl:  log2Ttl,
-		Version:  version,
+		MaxMemMb:  maxMem,
+		LogOpsTtl: log2Ttl,
+		Version:   version,
+
+		// dbg
+
+		DebugAddr:    debugAddr,
+		RaceDetector: race,
+		ImportData:   importData,
+		LogLevel:     logLevel,
+		Id:           id,
+		ProfSrv:      profSrv,
 	}
 }
 
 // GetLogger returns a file logger, according to params.
-func GetLogger(params *Params) *log.Logger {
+func GetLogger(params *Params, dir string) *log.Logger {
 	// TODO slog
 
 	if params.LogLevel < am.LogNothing {
 		return log.Default()
 	}
-	name := "am-dbg.log"
+	name := filepath.Join(dir, "am-dbg.log")
 
 	// file logging
 	_ = os.Remove(name)
@@ -368,7 +395,7 @@ func StartCpuProfile(logger *log.Logger, p *Params) func() {
 	if err := pprof.StartCPUProfile(f); err != nil {
 		logger.Fatal("could not start CPU profile: ", err)
 	}
-	
+
 	return func() {
 		pprof.StopCPUProfile()
 		f.Close()

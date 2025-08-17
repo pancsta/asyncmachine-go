@@ -103,7 +103,8 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 			// ssh screen
 			Screen:      screen,
 			DbgLogLevel: par.LogLevel,
-			DbgLogger:   cli.GetLogger(&par.Params),
+			DbgRace:     par.RaceDetector,
+			DbgLogger:   cli.GetLogger(&par.Params, par.OutputDir),
 			ImportData:  par.ImportData,
 			// ServerAddr is disabled
 			ServerAddr:  par.ListenAddr,

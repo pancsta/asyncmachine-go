@@ -1,7 +1,6 @@
 package debugger
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"slices"
@@ -19,35 +18,32 @@ import (
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
-func (d *Debugger) updateLog(immediate bool) {
-	d.updateLogReader()
-
-	if immediate {
-		go d.doUpdateLog()
-		return
-	}
-
+// TODO state: UpdateLogScheduled
+func (d *Debugger) updateLog() {
 	if !d.updateLogScheduled.CompareAndSwap(false, true) {
 		return
 	}
 
 	go func() {
-		// TODO amg.Wait
+		// TODO amhelp.Wait
 		time.Sleep(logUpdateDebounce)
-		d.doUpdateLog()
+		// TODO state: UpdateLog
+		d.Mach.Eval("updateLog", d.hUpdateLog, nil)
 		d.draw()
 		d.updateLogScheduled.Swap(false)
 	}()
 }
 
-func (d *Debugger) doUpdateLog() {
+// TODO state UpdateLog
+func (d *Debugger) hUpdateLog() {
 	// check for a ready client
-	c := d.Client()
+	c := d.C
 	if c == nil {
 		return
 	}
 
-	tx := d.CurrentTx()
+	d.hUpdateLogReader()
+	tx := d.hCurrentTx()
 
 	if c.MsgStruct != nil {
 		title := " Log:" + d.Opts.Filters.LogLevel.String() + " "
@@ -61,7 +57,7 @@ func (d *Debugger) doUpdateLog() {
 	// highlight the next tx if scrolling by steps
 	bySteps := d.Mach.Is1(ss.TimelineStepsScrolled)
 	if bySteps {
-		tx = d.nextTx()
+		tx = d.hNnextTx()
 	}
 	if tx == nil {
 		d.log.Highlight("")
@@ -75,7 +71,7 @@ func (d *Debugger) doUpdateLog() {
 	}
 
 	// highlight this tx or the prev if empty
-	last := d.PrevTx()
+	last := d.hPrevTx()
 	if len(tx.LogEntries) == 0 && last != nil {
 		for i := d.C.CursorTx1 - 1; i > 0; i-- {
 			if len(last.LogEntries) > 0 {
@@ -96,7 +92,7 @@ func (d *Debugger) doUpdateLog() {
 	}
 }
 
-func (d *Debugger) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
+func (d *Debugger) hParseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
 	logEntries := make([]*am.LogEntry, 0)
 
 	tx := c.MsgTxs[idx]
@@ -109,7 +105,7 @@ func (d *Debugger) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
 	// pre-tx log entries
 	for _, entry := range msgTx.PreLogEntries {
 		readerEntries = d.parseMsgReader(c, entry, readerEntries, tx)
-		if pe := d.parseMsgLogEntry(c, tx, entry); pe != nil {
+		if pe := d.hParseMsgLogEntry(c, tx, entry); pe != nil {
 			logEntries = append(logEntries, pe)
 		}
 	}
@@ -117,7 +113,7 @@ func (d *Debugger) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
 	// tx log entries
 	for _, entry := range msgTx.LogEntries {
 		readerEntries = d.parseMsgReader(c, entry, readerEntries, tx)
-		if pe := d.parseMsgLogEntry(c, tx, entry); pe != nil {
+		if pe := d.hParseMsgLogEntry(c, tx, entry); pe != nil {
 			logEntries = append(logEntries, pe)
 		}
 	}
@@ -127,24 +123,30 @@ func (d *Debugger) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
 	c.msgTxsParsed[idx].ReaderEntries = readerEntries
 }
 
-func (d *Debugger) parseMsgLogEntry(
+func (d *Debugger) hParseMsgLogEntry(
 	c *Client, tx *telemetry.DbgMsgTx, entry *am.LogEntry,
 ) *am.LogEntry {
 	lvl := entry.Level
 
-	// make [extern] as LogNothing
-	if strings.HasPrefix(entry.Text, "[extern") {
-		lvl = am.LogNothing
-	}
 	t := fmtLogEntry(d.Mach, entry.Text, tx.CalledStateNames(
 		c.MsgStruct.StatesIndex), c.MsgStruct.States)
 
 	return &am.LogEntry{Level: lvl, Text: t}
 }
 
+func (d *Debugger) RebuildLogEnter(e *am.Event) bool {
+	// TODO typed args
+	_, ok := e.Args["logRebuildEnd"].(int)
+	return ok
+}
+
 // TODO progressive rendering
-func (d *Debugger) rebuildLog(ctx context.Context, endIndex int) error {
+// TODO un-dim [extern] when Opts.Filters.Loglevel <= LogExternal
+func (d *Debugger) RebuildLogState(e *am.Event) {
+	// TODO typed args
+	endIndex := e.Args["logRebuildEnd"].(int)
 	d.log.Clear()
+	ctx := d.Mach.NewStateCtx(ss.RebuildLog)
 	var buf []byte
 
 	for i := 0; i < endIndex && ctx.Err() == nil; i++ {
@@ -152,12 +154,13 @@ func (d *Debugger) rebuildLog(ctx context.Context, endIndex int) error {
 		if i%500 == 0 {
 			_, err := d.log.Write(buf)
 			if err != nil {
-				return err
+				d.Mach.EvAddErr(e, err, nil)
+				return
 			}
 			buf = nil
 		}
 
-		buf = append(buf, d.getLogEntryTxt(i)...)
+		buf = append(buf, d.hGetLogEntryTxt(i)...)
 	}
 
 	// TODO activate when progressive rendering lands
@@ -166,11 +169,10 @@ func (d *Debugger) rebuildLog(ctx context.Context, endIndex int) error {
 	// 	t = strings.ReplaceAll(t, "[yellow][state", "[yellow][s")
 	// }
 
-	// TODO rebuild from endIndex to len(msgs)
-
 	_, err := d.log.Write(buf)
 	if err != nil {
-		return err
+		d.Mach.EvAddErr(e, err, nil)
+		return
 	}
 
 	// scroll, but only if not manually scrolled
@@ -178,11 +180,11 @@ func (d *Debugger) rebuildLog(ctx context.Context, endIndex int) error {
 		d.log.ScrollToHighlight()
 	}
 
-	return nil
+	d.Mach.EvAdd1(e, ss.LogBuilt, nil)
 }
 
-func (d *Debugger) appendLogEntry(index int) error {
-	entry := d.getLogEntryTxt(index)
+func (d *Debugger) hAppendLogEntry(index int) error {
+	entry := d.hGetLogEntryTxt(index)
 	if entry == nil {
 		return nil
 	}
@@ -200,9 +202,9 @@ func (d *Debugger) appendLogEntry(index int) error {
 	return nil
 }
 
-// getLogEntryTxt prepares a log entry for UI rendering
+// hGetLogEntryTxt prepares a log entry for UI rendering
 // index: 1-based
-func (d *Debugger) getLogEntryTxt(index int) []byte {
+func (d *Debugger) hGetLogEntryTxt(index int) []byte {
 	if index < 0 || index >= len(d.C.MsgTxs) {
 		return nil
 	}
@@ -218,7 +220,7 @@ func (d *Debugger) getLogEntryTxt(index int) []byte {
 			continue
 		}
 
-		if d.isFiltered() && d.isTxSkipped(c, index) {
+		if d.isFiltered() && d.hIsTxSkipped(c, index) {
 			// skip filtered txs
 			continue
 		} else if logLvl > d.Opts.Filters.LogLevel {
@@ -312,7 +314,7 @@ func fmtLogEntry(
 		return line[0] + args + "\n"
 	})
 
-	// fade out externs TODO skip when L0
+	// fade out externs
 	ret = logPrefixExtern.ReplaceAllStringFunc(ret, func(m string) string {
 		prefix, content, _ := strings.Cut(m, " ")
 
@@ -526,7 +528,7 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 
 		go func() {
 			time.Sleep(time.Millisecond * 200)
-			d.GoToMachAddress(addr, false)
+			d.hGoToMachAddress(addr, false)
 
 			// restore in case no redir
 			time.Sleep(time.Millisecond * 50)
@@ -547,7 +549,7 @@ type MachTime struct {
 	Time uint64
 }
 
-func (d *Debugger) updateLogReader() {
+func (d *Debugger) hUpdateLogReader() {
 	// TODO split
 	// TODO migrate to a state handler
 	if d.Mach.Not1(ss.LogReaderVisible) {
@@ -812,7 +814,7 @@ func (d *Debugger) updateLogReader() {
 		}
 
 		// source tx info
-		if sC, sTx := d.getClientTx(source[0], source[1]); sTx != nil {
+		if sC, sTx := d.hGetClientTx(source[0], source[1]); sTx != nil {
 			stateNames := sTx.CalledStateNames(sC.MsgStruct.StatesIndex)
 			label := capitalizeFirst(sTx.Type.String()) + " [::b]" +
 				utils.J(stateNames)
@@ -840,7 +842,7 @@ func (d *Debugger) updateLogReader() {
 		}
 
 		// tags (only for external machines)
-		if sourceMach := d.getClient(source[0]); sourceMach != nil &&
+		if sourceMach := d.hGetClient(source[0]); sourceMach != nil &&
 			source[0] != c.id {
 
 			if tags := sourceMach.MsgStruct.Tags; len(tags) > 0 {
@@ -856,7 +858,7 @@ func (d *Debugger) updateLogReader() {
 	parentForks.SetExpanded(false)
 	for _, link := range txParsed.Forks {
 
-		targetMach := d.getClient(link.MachId)
+		targetMach := d.hGetClient(link.MachId)
 		targetTxIdx := targetMach.txIndex(link.TxId)
 		highlight := false
 
@@ -937,7 +939,7 @@ func (d *Debugger) updateLogReader() {
 		source := strings.Split(entry.Text[len("[source] "):], "/")
 
 		// source tx info
-		sC, sTx := d.getClientTx(source[0], source[1])
+		sC, sTx := d.hGetClientTx(source[0], source[1])
 		if sTx == nil {
 			break
 		}
@@ -948,7 +950,7 @@ func (d *Debugger) updateLogReader() {
 				continue
 			}
 
-			targetMach := d.getClient(link.MachId)
+			targetMach := d.hGetClient(link.MachId)
 			targetTxIdx := targetMach.txIndex(link.TxId)
 			highlight := false
 
@@ -1120,7 +1122,7 @@ func (d *Debugger) parseMsgReader(
 
 		source := strings.Split(log.Text[len("[source] "):], "/")
 
-		if sourceMach := d.getClient(source[0]); sourceMach != nil {
+		if sourceMach := d.hGetClient(source[0]); sourceMach != nil {
 			txIdx := sourceMach.txIndex(source[1])
 			if txIdx != -1 {
 				srcTxParsed := sourceMach.txParsed(txIdx)

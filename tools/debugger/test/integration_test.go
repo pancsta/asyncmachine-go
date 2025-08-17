@@ -33,17 +33,25 @@ var workerAddr = "localhost:" + utils.RandPort(52001, 53000)
 func init() {
 	_ = godotenv.Load()
 
+	// worker uses env debugging
 	if os.Getenv(am.EnvAmTestDebug) != "" {
 		amhelp.EnableDebugging(false)
 		os.Setenv(am.EnvAmLogFile, "1")
 	}
 
+	// quick debug
+	_ = os.Setenv(telemetry.EnvAmDbgAddr, "localhost:6831")
+	amhelp.SetEnvLogLevel(am.LogOps)
+
 	var err error
 	gob.Register(server.GetField(0))
 
 	// worker
+	// TODO get opt defaults from the CLI
 	worker, err = amtest.NewDbgWorker(false, debugger.Opts{
-		ID: "loc-worker",
+		Id: "loc-worker",
+		// TODO deadlock with `Timelines: 0,`
+		Timelines: 2,
 	})
 	if err != nil {
 		panic(err)
@@ -52,7 +60,7 @@ func init() {
 	// init am-dbg telemetry server
 	muxCh := make(chan cmux.CMux, 1)
 	defer close(muxCh)
-	go server.StartRpc(worker.Mach, workerAddr, muxCh, nil)
+	go server.StartRpc(worker.Mach, workerAddr, muxCh, nil, false)
 	// wait for mux
 	<-muxCh
 }
@@ -62,6 +70,7 @@ func TestUserFwd(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	mach := worker.Mach
+	amhelp.EnableDebugging(false)
 
 	// fixtures
 	cursorTx := 20
@@ -104,6 +113,9 @@ func TestUserFwd100(t *testing.T) {
 }
 
 func TestTailModeFLAKY(t *testing.T) {
+	// TODO fix schema delivery (cmux issue?)
+	// t.Skip(true)
+	amhelp.EnableDebugging(false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -111,9 +123,9 @@ func TestTailModeFLAKY(t *testing.T) {
 	// create a listener for ConnectEvent
 	whenConn := worker.Mach.WhenTicks(ss.ConnectEvent, 1, ctx)
 
-	// fixture machine
+	// fixture machine TODO schema never gets delivered
 	mach := utils.NewRels(t, nil)
-	mach.SetLoggerEmpty(am.LogOps)
+	mach.SemLogger().SetEmpty(am.LogOps)
 	err := telemetry.TransitionsToDbg(mach, workerAddr)
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +136,7 @@ func TestTailModeFLAKY(t *testing.T) {
 	whenDelivered := worker.Mach.WhenTicks(ss.ClientMsg, 2, ctx)
 
 	// generate fixture events
-	// mach.SetLoggerSimple(t.Logf, am.LogOps)
+	// mach.SemLogger().SetSimple(t.Logf, am.LogOps)
 	mach.Add1(ssTest.C, nil)
 	mach.Add1(ssTest.D, nil)
 	mach.Add1(ssTest.A, nil)

@@ -113,7 +113,7 @@ func TestTailModeRemote(t *testing.T) {
 	testing2.MachDebug(t, mach, amDbgAddr, logLvl, true)
 
 	// connect to the worker as a new telemetry client
-	mach.SetLogLevel(am.LogOps)
+	mach.SemLogger().SetLevel(am.LogOps)
 	err := telemetry.TransitionsToDbg(mach, workerTelemetryAddr)
 	if err != nil {
 		t.Fatal(err)
@@ -210,7 +210,7 @@ func TestUserFwdRemoteLoopback(t *testing.T) {
 	t.Skip("Debug only")
 
 	// init debugger
-	d, err := amtest.NewDbgWorker(false, debugger.Opts{ID: t.Name()})
+	d, err := amtest.NewDbgWorker(false, debugger.Opts{Id: t.Name()})
 	assert.NoError(t, err)
 
 	// init rpc (full client-server setup)

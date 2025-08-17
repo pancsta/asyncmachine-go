@@ -26,20 +26,18 @@ func (d *Debugger) buildClientList(selectedIndex int) {
 		// debounce non-forced updates
 		return
 	}
-	// cancel update
-	d.updateCLScheduled.Store(false)
 
 	go func() {
 		time.Sleep(sidebarUpdateDebounce)
 		update := func() {
-			d.doBuildClientList(selectedIndex)
+			d.hBuildClientList(selectedIndex)
 		}
 		// TODO avoid eval
-		d.Mach.Eval("doBuildClientList", update, nil)
+		d.Mach.Eval("hBuildClientList", update, nil)
 	}()
 }
 
-func (d *Debugger) doBuildClientList(selectedIndex int) {
+func (d *Debugger) hBuildClientList(selectedIndex int) {
 	defer d.buildCLScheduled.Store(false)
 
 	if d.Mach.Not1(ss.ClientListVisible) {
@@ -71,7 +69,7 @@ func (d *Debugger) doBuildClientList(selectedIndex int) {
 	pos := 0
 	// TODO REWRITE to states
 	for _, parent := range list {
-		if d.clientHasParent(parent) {
+		if d.hClientHasParent(parent) {
 			continue
 		}
 
@@ -88,7 +86,7 @@ func (d *Debugger) doBuildClientList(selectedIndex int) {
 			d.clientList.SetCurrentItem(pos)
 		}
 
-		pos = d.clientListChild(list, parent, pos, selected, 1)
+		pos = d.hClientListChild(list, parent, pos, selected, 1)
 
 		pos++
 	}
@@ -102,39 +100,38 @@ func (d *Debugger) doBuildClientList(selectedIndex int) {
 		" Machines:%d T:%v ", len(d.Clients), totalSum))
 
 	// sort TODO rewrite
-	d.doUpdateClientList(true)
+	d.hUpdateClientList()
 }
 
-func (d *Debugger) updateClientList(immediate bool) {
-	if d.Mach.Not1(ss.ClientListVisible) {
-		return
-	}
-	if d.buildCLScheduled.Load() {
-		return
-	}
-	if immediate {
-		d.doUpdateClientList(true)
+func (d *Debugger) updateClientList() {
+	if d.buildCLScheduled.Load() || d.Mach.Not1(ss.ClientListVisible) {
 		return
 	}
 
+	// debounce
 	if !d.updateCLScheduled.CompareAndSwap(false, true) {
 		// debounce non-forced updates
 		return
 	}
 
 	go func() {
+		// TODO amhelp.Wait
 		time.Sleep(sidebarUpdateDebounce)
 		// canceled
 		if !d.updateCLScheduled.CompareAndSwap(true, false) {
 			// debounce non-forced updates
 			return
 		}
-		d.doUpdateClientList(false)
+
+		d.Mach.Eval("doUpdateClientList", func() {
+			d.hUpdateClientList()
+			d.draw(d.clientList)
+		}, nil)
 	}()
 }
 
-// TODO rewrite, update via a state
-func (d *Debugger) doUpdateClientList(immediate bool) {
+func (d *Debugger) hUpdateClientList() {
+	defer d.buildCLScheduled.Store(false)
 	if d.Mach.Not1(ss.ClientListVisible) {
 		return
 	}
@@ -143,101 +140,85 @@ func (d *Debugger) doUpdateClientList(immediate bool) {
 		return
 	}
 
-	update := func() {
-		_, _, width, _ := d.clientList.GetRect()
-		maxLen := width - 13
-		if maxLen < 5 {
-			maxLen = 15
+	_, _, width, _ := d.clientList.GetRect()
+	maxLen := width - 13
+	if maxLen < 5 {
+		maxLen = 15
+	}
+
+	// count
+	longestName := 0
+	for _, item := range d.clientList.GetItems() {
+		ref := item.GetReference().(*sidebarRef)
+		l := len(ref.name) + ref.lvl
+		if l > longestName {
+			longestName = l
+		}
+	}
+	if longestName > maxLen {
+		longestName = maxLen
+	}
+
+	txtFile := ""
+
+	// update
+	for i, item := range d.clientList.GetItems() {
+		ref := item.GetReference().(*sidebarRef)
+		c := d.Clients[ref.name]
+		if c == nil {
+			d.Mach.AddErr(fmt.Errorf("client %s doesnt exist", ref.name), nil)
+			continue
 		}
 
-		// count
-		longestName := 0
-		for _, item := range d.clientList.GetItems() {
-			ref := item.GetReference().(*sidebarRef)
-			l := len(ref.name) + ref.lvl
-			if l > longestName {
-				longestName = l
-			}
-		}
-		if longestName > maxLen {
-			longestName = maxLen
+		spacePre := ""
+		spacePost := " "
+		hasParent := d.hClientHasParent(c.id)
+		if hasParent {
+			spacePre = " "
 		}
 
-		txtFile := ""
-
-		// update
-		for i, item := range d.clientList.GetItems() {
-			ref := item.GetReference().(*sidebarRef)
-			c := d.Clients[ref.name]
-			if c == nil {
-				d.Mach.AddErr(fmt.Errorf("client %s doesnt exist", ref.name), nil)
-				continue
-			}
-
-			spacePre := ""
-			spacePost := " "
-			hasParent := d.clientHasParent(c.id)
-			if hasParent {
-				spacePre = " "
-			}
-
-			name := strings.Repeat("-", ref.lvl) + spacePre + ref.name
-			if len(name) > maxLen {
-				name = name[:maxLen-2] + ".."
-			}
-
-			spaceCount := int(math.Max(0, float64(longestName+1-len(name))))
-			namePad := name +
-				strings.Repeat(" ", spaceCount) + spacePost
-			label := d.getClientListLabel(namePad, c, i)
-			item.SetMainText(label)
-
-			// txt file
-			if d.Opts.OutputClients {
-				if !hasParent {
-					txtFile += "\n"
-				}
-				txtFile += string(cview.StripTags([]byte(label), true, false)) + "\n"
-				for _, tag := range c.MsgStruct.Tags {
-					txtFile += strings.Repeat(" ", ref.lvl) + spacePre +
-						"  #" + tag + "\n"
-				}
-			}
+		name := strings.Repeat("-", ref.lvl) + spacePre + ref.name
+		if len(name) > maxLen {
+			name = name[:maxLen-2] + ".."
 		}
 
-		if len(d.Clients) > 0 {
-			var totalSum uint64
-			for _, c := range d.Clients {
-				totalSum += c.mTimeSum
-			}
+		spaceCount := int(math.Max(0, float64(longestName+1-len(name))))
+		namePad := name +
+			strings.Repeat(" ", spaceCount) + spacePost
+		label := d.hGetClientListLabel(namePad, c, i)
+		item.SetMainText(label)
 
-			d.clientList.SetTitle(d.P.Sprintf(
-				" Machines:%d T:%v ", len(d.Clients), totalSum))
-		} else {
-			d.clientList.SetTitle(" Machines ")
-		}
-
-		// render if delayed
-		if !immediate {
-			d.draw(d.clientList)
-		}
-
-		// save to a file TODO skipped when file list not rendered
+		// txt file
 		if d.Opts.OutputClients {
-			_, _ = d.clientListFile.Seek(0, 0)
-			_ = d.clientListFile.Truncate(0)
-			_, _ = d.clientListFile.Write([]byte(txtFile))
+			if !hasParent {
+				txtFile += "\n"
+			}
+			txtFile += string(cview.StripTags([]byte(label), true, false)) + "\n"
+			for _, tag := range c.MsgStruct.Tags {
+				txtFile += strings.Repeat(" ", ref.lvl) + spacePre +
+					"  #" + tag + "\n"
+			}
 		}
 	}
 
-	// avoid eval in handlers
-	if immediate {
-		update()
+	if len(d.Clients) > 0 {
+		var totalSum uint64
+		for _, c := range d.Clients {
+			totalSum += c.mTimeSum
+		}
+
+		d.clientList.SetTitle(d.P.Sprintf(
+			" Machines:%d T:%v ", len(d.Clients), totalSum))
 	} else {
-		d.Mach.Eval("doUpdateClientList", update, nil)
+		d.clientList.SetTitle(" Machines ")
 	}
 
-	d.updateCLScheduled.Store(false)
+	// save to a file TODO skipped when file list not rendered
+	if d.Opts.OutputClients {
+		_, _ = d.clientListFile.Seek(0, 0)
+		_ = d.clientListFile.Truncate(0)
+		_, _ = d.clientListFile.Write([]byte(txtFile))
+	}
 }
 
 // TODO move
@@ -246,14 +227,14 @@ type sidebarRef struct {
 	lvl  int
 }
 
-func (d *Debugger) clientListChild(
+func (d *Debugger) hClientListChild(
 	list []string, parent string, pos int, selected string,
 	lvl int,
 ) int {
 	for _, child := range list {
 		cc := d.Clients[child]
 
-		if !d.clientHasParent(child) || cc.MsgStruct.Parent != parent {
+		if !d.hClientHasParent(child) || cc.MsgStruct.Parent != parent {
 			continue
 		}
 
@@ -270,12 +251,12 @@ func (d *Debugger) clientListChild(
 			d.clientList.SetCurrentItem(pos)
 		}
 
-		pos = 1 + d.clientListChild(list, child, pos, selected, lvl+1)
+		pos = 1 + d.hClientListChild(list, child, pos, selected, lvl+1)
 	}
 	return pos
 }
 
-func (d *Debugger) clientHasParent(cid string) bool {
+func (d *Debugger) hClientHasParent(cid string) bool {
 	c, ok := d.Clients[cid]
 	if !ok || c.MsgStruct.Parent == "" {
 		return false
@@ -285,7 +266,7 @@ func (d *Debugger) clientHasParent(cid string) bool {
 	return ok
 }
 
-func (d *Debugger) getClientListLabel(
+func (d *Debugger) hGetClientListLabel(
 	name string, c *Client, index int,
 ) string {
 	isHovered := d.clientList.GetCurrentItemIndex() == index
@@ -294,7 +275,7 @@ func (d *Debugger) getClientListLabel(
 	var currCTxIdx int
 	var currCTx *telemetry.DbgMsgTx
 	// current tx of the selected client
-	currSelTx := d.currentTx()
+	currSelTx := d.hCurrentTx()
 	if currSelTx != nil {
 		currTime := d.lastScrolledTxTime
 		if currTime.IsZero() {
