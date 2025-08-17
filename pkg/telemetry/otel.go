@@ -1,5 +1,11 @@
 package telemetry
 
+// TODO OTEL support groups and allow lists. When groups are on, they replace
+//  the flat state list. Transitions are filtered to a group / allowlist.
+//  - AM_OTEL_GROUPS=1
+//  - AM_OTEL_GROUPS_ALLOWLIST=1
+//  - AM_OTEL_STATES_ALLOWLIST=1
+
 import (
 	"context"
 	"fmt"
@@ -24,7 +30,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
-
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
@@ -373,7 +378,8 @@ func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
 	}
 
 	// label
-	mutLabel := fmt.Sprintf("%d: %s", data.Index, tx.Mutation)
+	mutLabel := fmt.Sprintf("%d: %s", data.Index,
+		tx.Mutation.StringFromIndex(tx.Machine.StateNames()))
 	name := mutLabel
 
 	// exception support
@@ -722,11 +728,6 @@ func MachBindOtelEnv(mach am.Api) error {
 		mach.Add1(register, am.A{
 			ssam.DisposedArgHandler: dispose,
 		})
-	} else {
-		func() {
-			<-mach.WhenDisposed()
-			dispose(mach.Id(), nil)
-		}()
 	}
 
 	// bind the Otel tracer
