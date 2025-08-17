@@ -642,11 +642,12 @@ func (d *Debugger) hInitLayout() {
 	d.nextTxBar.AddItem(d.nextTxBarRight, 0, 1, false)
 
 	// content grid
-	d.treeLogGrid = cview.NewGrid()
-	d.treeLogGrid.SetRows(-1)
-	d.treeLogGrid.SetColumns( /*tree*/ -1, -1 /*log*/, -1, -1, -1, -1)
-	d.treeLogGrid.AddItem(d.tree, 0, 0, 1, 2, 0, 0, false)
-	d.treeLogGrid.AddItem(d.log, 0, 2, 1, 4, 0, 0, false)
+	d.schemaLogGrid = cview.NewGrid()
+	d.schemaLogGrid.SetRows(-1)
+	// TODO use hUpdateSchemaLogGrid()
+	d.schemaLogGrid.SetColumns( /*tree*/ -1, -1 /*log*/, -1, -1, -1, -1)
+	d.schemaLogGrid.AddItem(d.treeLayout, 0, 0, 1, 2, 0, 0, false)
+	d.schemaLogGrid.AddItem(d.log, 0, 2, 1, 4, 0, 0, false)
 
 	d.treeMatrixGrid = cview.NewGrid()
 	d.treeMatrixGrid.SetRows(-1)
@@ -799,9 +800,47 @@ func (d *Debugger) checkNarrow() {
 	}
 }
 
-func (d *Debugger) expandStructPane() {
-	// keep in sync with initLayout()
-	d.treeLogGrid.UpdateItem(d.tree, 0, 0, 1, 3, 0, 0, false)
+func (d *Debugger) hUpdateSchemaLogGrid() {
+	lvl := d.Opts.Filters.LogLevel
+
+	d.schemaLogGrid.RemoveItem(d.log)
+	d.schemaLogGrid.RemoveItem(d.logReader)
+	d.schemaLogGrid.RemoveItem(d.matrix)
+	d.schemaLogGrid.SetColumns( /*tree*/ -1, -1 /*log*/, -1, -1, -1, -1)
+
+	showLog := lvl > am.LogNothing
+	showReader := d.Mach.Is1(ss.LogReaderVisible)
+	stepping := d.Mach.Any1(ss.TimelineStepsScrolled, ss.TimelineStepsFocused)
+	showMatrix := d.Mach.Is1(ss.TreeMatrixView)
+
+	// TODO flexbox...
+	switch {
+
+	// log
+
+	case showLog && showReader && stepping:
+		d.schemaLogGrid.UpdateItem(d.treeLayout, 0, 0, 1, 3, 0, 0, false)
+		d.schemaLogGrid.AddItem(d.log, 0, 3, 1, 2, 0, 0, false)
+		d.schemaLogGrid.AddItem(d.logReader, 0, 5, 1, 1, 0, 0, false)
+
+	case showLog && showReader:
+		d.schemaLogGrid.UpdateItem(d.treeLayout, 0, 0, 1, 2, 0, 0, false)
+		d.schemaLogGrid.AddItem(d.log, 0, 2, 1, 2, 0, 0, false)
+		d.schemaLogGrid.AddItem(d.logReader, 0, 4, 1, 2, 0, 0, false)
+
+	case showLog && !showReader:
+		d.schemaLogGrid.UpdateItem(d.treeLayout, 0, 0, 1, 2, 0, 0, false)
+		d.schemaLogGrid.AddItem(d.log, 0, 2, 1, 4, 0, 0, false)
+
+	case !showLog && showReader:
+		d.schemaLogGrid.UpdateItem(d.treeLayout, 0, 0, 1, 3, 0, 0, false)
+		d.schemaLogGrid.AddItem(d.logReader, 0, 3, 1, 3, 0, 0, false)
+
+	// matrix
+
+	case showMatrix && stepping:
+		d.schemaLogGrid.UpdateItem(d.treeLayout, 0, 0, 1, 3, 0, 0, false)
+		d.schemaLogGrid.AddItem(d.matrix, 0, 3, 1, 3, 0, 0, false)
 
 	if d.Mach.Is1(ss.LogReaderVisible) {
 		d.treeLogGrid.UpdateItem(d.log, 0, 3, 1, 2, 0, 0, false)
