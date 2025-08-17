@@ -92,7 +92,7 @@ am.Schema{
 }
 ```
 
-State names have a predefined **naming convention** which is `CamelCase`.
+State names have a predefined [naming convention](#naming-convention) which is `CamelCase`.
 
 **Example** - synchronous state
 
@@ -548,8 +548,9 @@ Once a transition begins to execute, it goes through the following steps:
 
 ### Transition Handlers
 
-**Asyncmachine** implements **AOP** ([Aspect Oriented Programming](https://en.wikipedia.org/wiki/Aspect-oriented_programming))
-through a handler naming convention. Use [`LogEverything`](#logging) to see a full list of each transition's handlers.
+The **asyncmachine** implements **AOP** ([Aspect Oriented Programming](https://en.wikipedia.org/wiki/Aspect-oriented_programming))
+through a handler naming convention (either via a suffix or concatenation). Use [`LogEverything`](#logging) to see a
+full list of each transition's handlers.
 
 **State handler** is a struct method with a predefined suffix or prefix, which receives an [Event struct](#event-struct).
 There are [negotiation handlers](#negotiation-handlers) (returning a `bool`) and [final handlers](#final-handlers) (with
@@ -597,6 +598,20 @@ List of handlers during a transition from `Foo` to `Foo Bar`, in the order of ex
 - `BarState` - [final handler](#final-handlers)
 
 Self handlers provide a simple alternative to [`Multi` states](#multi-states), while fully maintaining [state clocks](#clock-and-context).
+
+#### Transition Sub-handler
+
+**State sub-handler** is a struct method which does not get called directly via the event loop, but also lacks locking,
+because of which, they can only be called by other handlers (either top level or sub-handlers). There is a [naming convention](#naming-convention)
+for these handlers, but no conventions for either parameters not return values.
+
+Example:
+
+- `hListProcesses(name string) ([]string, error)`
+- `hDoFoo() error`
+
+Sub-handlers are useful when combined with `EvalToGetter` from `pkg/helpers`, as well as for sharing code between
+handlers, without worrying about calling it from a non-handler code-path.
 
 ### Defining Handlers
 
@@ -1789,13 +1804,22 @@ func Msg(msgTx *Msg) {
 - wait contexts
 - Dispose
 - WhenDisposed
-- RegisterDisposalHandler
+- HandleDispose
 
 ### Dynamically Generating States
 
 // TODO
 
-- Machine.SetStrcut
+- Machine.SetSchema
+- schema versions
+
+### Naming Convention
+
+- states: CamelCase, eg `ProcessRunning`
+- handlers: CamelCase, eg `ProcessRunningState`
+- sub-handlers: CamelCase, eg `hListRunning`
+  - TODO dedicated section with examples
+- regular methods: none, eg `privMethod`, `PubMethod`
 
 ## Cheatsheet
 

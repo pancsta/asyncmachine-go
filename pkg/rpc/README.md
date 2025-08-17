@@ -327,12 +327,14 @@ type Api interface {
     // Mutations (remote)
 
     Add1(state string, args A) Result
-    Add(states S, args A) Result
+    Add(states S, args A) Result22
     Remove1(state string, args A) Result
     Remove(states S, args A) Result
     Set(states S, args A) Result
     AddErr(err error, args A) Result
     AddErrState(state string, err error, args A) Result
+
+    // Traced mutations (remote)
 
     EvAdd1(event *Event, state string, args A) Result
     EvAdd(event *Event, states S, args A) Result
@@ -389,22 +391,19 @@ type Api interface {
     Export() *Serialized
     Schema() Schema
     Switch(groups ...S) string
+    Index(states S) []int
+    Index1(state string) int
 
     // Misc (local)
 
-    Log(msg string, args ...any)
     Id() string
     ParentId() string
     Tags() []string
-    SetLogId(val bool)
-    GetLogId() bool
-    SetLogger(logger Logger)
-    SetLogLevel(lvl LogLevel)
-    SetLoggerEmpty(lvl LogLevel)
-    SetLoggerSimple(logf func(format string, args ...any), level LogLevel)
     Ctx() context.Context
     String() string
     StringAll() string
+    Log(msg string, args ...any)
+    SemLogger() SemLogger
     Inspect(states S) string
     Index(state string) int
     BindHandlers(handlers any) error

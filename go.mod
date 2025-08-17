@@ -4,7 +4,7 @@ go 1.24
 
 toolchain go1.24.0
 
-replace github.com/pancsta/cview => ../cview
+//replace github.com/pancsta/cview => ../cview
 
 // replace libp2p's prom with no-op to prevent a goroutine leak in load tests
 //replace github.com/prometheus/client_golang => github.com/pancsta/prom_client_golang v0.0.0-20250629100015-513d4c0bdd5e
@@ -35,7 +35,7 @@ require (
 	github.com/nats-io/nats.go v1.41.2
 	github.com/nkall/compactnumber v1.1.1
 	github.com/orsinium-labs/enum v1.4.0
-	github.com/pancsta/cview v1.5.17
+	github.com/pancsta/cview v1.5.18
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/prometheus/client_golang v1.22.0
 	github.com/reeflective/console v0.1.22

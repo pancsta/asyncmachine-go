@@ -118,12 +118,13 @@ jobs:
           message: ${{ env.TESTS }}
           color: blue
 
-      - name: Badge - tests /pkg
-        uses: schneegans/dynamic-badges-action@v1.3.0
-        with:
-          auth: ${{ secrets.GIST_SECRET }}
-          gistID: c6032233dc1d632732ecdc1a4c119850
-          filename: tests-pkg.json
-          label: tests /pkg
-          message: ${{ env.TESTS_PKG }}
-          color: blue
+# TODO fix
+#      - name: Badge - tests /pkg
+#        uses: schneegans/dynamic-badges-action@v1.3.0
+#        with:
+#          auth: ${{ secrets.GIST_SECRET }}
+#          gistID: c6032233dc1d632732ecdc1a4c119850
+#          filename: tests-pkg.json
+#          label: tests /pkg
+#          message: ${{ env.TESTS_PKG }}
+#          color: blue

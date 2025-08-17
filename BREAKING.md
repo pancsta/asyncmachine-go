@@ -2,6 +2,26 @@
 
 Only `pkg/machine` and `pkg/states` adhere to semver. Semver of other packages is not guaranteed at the moment.
 
+## v0.13
+
+- `LogSteps` has been removed
+- `LogChanges` is now `2`
+- `Opts.DontLogID` is now `DontLogId`
+- `Transition.ID` is now `Id`
+- `SetLogId` is now `SemLogger.EnableId`
+- `GetLogId` is now `SemLogger.IsId`
+- `SetLogArgs` is now `SemLogger.SetArgs`
+- `GetLogArgs` is now `SemLogger.Args`
+- `SetLogger` is now `SemLogger.SetLogger`
+- `GetLogger` is now `SemLogger.Logger`
+- `SetLogLevel` is now `SemLogger.SetLevel`
+- `GetLogLevel` is now `SemLogger.Level`
+- `SetLoggerEmpty` is now `SemLogger.SetEmpty`
+- `SetLoggerSimple` is now `SemLogger.SetSimple`
+- `Tracer.MutationQueued` added
+- `AddBreakpoint` has `strict` added
+- `Logger` is now `LoggerFn`
+
 ## v0.12
 
 - `Opts.ID` and `Opts.ParentID` are now `Opts.Id`, `Opts.ParentId`

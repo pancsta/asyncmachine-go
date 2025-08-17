@@ -1,7 +1,7 @@
 [![](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
 [![](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
-![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc.json)
 ![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc-pkg.json)
+![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc-tools.json)
 ![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/tests.json)
 ![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/tests-pkg.json)
 ![](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
@@ -17,7 +17,6 @@
     <a href="#documentation">Docs</a> .
     <a href="#development">Dev</a> .
     <a href="#faq">FAQ</a> .
-    <a href="#changes">Changes</a>
     <br />
 </div>
 
@@ -43,16 +42,17 @@ and [diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
 As a control flow library, it decides about running of predefined bits of code (transition handlers) - their order and
 which ones to run, according to currently active states (flags). Thanks to a [novel state machine](/pkg/machine/README.md),
 the number of handlers can be minimized while maximizing scenario coverage. It's lightweight, fault-tolerant by design,
-has rule-based mutations, and can be used to target virtually *any* step-in-time, in *any* workflow.
+has rule-based mutations, and can be used to target virtually *any* step-in-time, in *any* workflow. It's a low-level
+tool and provides acceptable performance.
 
 **asyncmachine-go** takes care of `context`, `select`, and `panic`, while allowing for graph-structured concurrency
-with [goroutine cancellation](https://github.com/pancsta/asyncmachine-go/pull/261). The history log and relations have
+with [goroutine cancelation](https://github.com/pancsta/asyncmachine-go/pull/261). The history log and relations have
 vector formats.
 
 It aims to create **autonomous** workflows with **organic** control flow and **stateful** APIs:
 
 - **autonomous** - automatic states, relations, context-based decisions
-- **organic** - relations, negotiation, cancellation
+- **organic** - relations, negotiation, cancelation
 - **stateful** - maintaining context, responsive, atomic
 
 <div align="center">
@@ -60,7 +60,7 @@ It aims to create **autonomous** workflows with **organic** control flow and **s
     <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video-mouse.gif?raw=true" alt="TUI Debugger" /></a>
 </div>
 
-Each state represents:
+#### Each state represents
 
 - binary flag
 - node with relations
@@ -73,7 +73,7 @@ Each state represents:
 - lock
 - breakpoint
 
-Besides workflows, it can be used for **stateful applications** of any size - daemons, UIs, configs, bots, firewalls,
+Besides workflows, it can be used for **stateful applications of any size** - daemons, UIs, configs, bots, firewalls,
 synchronization consensus, games, smart graphs, microservice orchestration, robots, contracts, streams, DI containers,
 test scenarios, simulators, as well as **"real-time" systems** which rely on instant cancelation.
 
@@ -137,7 +137,7 @@ The top layers depend on the bottom ones.
   <tr>
     <td>.</td>
     <td>.</td>
-    <td colspan="9" align=center>🐇 <a href="pkg/machine">Machine API</a></td>
+    <td colspan="9" align=center>🐇 <a href="pkg/machine">Machine pkg</a></td>
     <td>.</td>
     <td>.</td>
   </tr>
@@ -189,13 +189,13 @@ err := amhelp.WaitForAll(ctx, time.Second,
     mach.When1(ss.BasicStatesDef.Ready, nil),
     // pre-mutation subscription
     whenPayload)
-// check cancellation
+// check cancelation
 if ctx.Err() != nil {
     return // state ctx expired
 }
 // check error
 if err != nil {
-    // err state mutation
+    // error state mutation
     client.Mach.AddErr(err, nil)
     return // no err required
 }
@@ -291,11 +291,11 @@ This monorepo offers the following importable packages, especially:
 
 Other packages:
 
-- [`/pkg/graph`](/pkg/graph) Multigraph of interconnected state machines.
+- [`/pkg/rpc`](/pkg/rpc) Remote state machines, with the same API as local ones.
 - [`/pkg/history`](/pkg/history) History tracking and traversal.
 - [`/pkg/integrations`](/pkg/integrations) NATS and other JSON integrations.
+- [`/pkg/graph`](/pkg/graph) Multigraph of interconnected state machines.
 - [`/pkg/node`](/pkg/node) Distributed worker pools with supervisors.
-- [`/pkg/rpc`](/pkg/rpc) Remote state machines, with the same API as local ones.
 - [`/pkg/pubsub`](/pkg/pubsub) Decentralized PubSub based on libp2p gossipsub.
 
 ## [Devtools](/tools)

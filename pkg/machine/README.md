@@ -183,13 +183,13 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
         }
         // blocking call
         err := processFile(h.Filename, stateCtx)
-        if err != nil {
-            mach.AddErr(err, nil)
-            return
-        }
         // re-check the state ctx after a blocking call
         if stateCtx.Err() != nil {
             return // expired
+        }
+        if err != nil {
+            mach.AddErr(err, nil)
+            return
         }
         // move to the next state in the flow
         mach.Add1("FileProcessed", nil)
@@ -198,6 +198,8 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 ```
 
 ### [Waiting](/examples/subscriptions/example_subscriptions.go)
+
+Subscriptions do not allocate goroutines.
 
 ```go
 // wait until FileDownloaded becomes active
@@ -427,22 +429,19 @@ type Api interface {
     Export() *Serialized
     Schema() Schema
     Switch(groups ...S) string
+    Index(states S) []int
+    Index1(state string) int
 
     // Misc (local)
 
-    Log(msg string, args ...any)
     Id() string
     ParentId() string
     Tags() []string
-    SetLogId(val bool)
-    GetLogId() bool
-    SetLogger(logger Logger)
-    SetLogLevel(lvl LogLevel)
-    SetLoggerEmpty(lvl LogLevel)
-    SetLoggerSimple(logf func(format string, args ...any), level LogLevel)
     Ctx() context.Context
     String() string
     StringAll() string
+    Log(msg string, args ...any)
+    SemLogger() SemLogger
     Inspect(states S) string
     Index(state string) int
     BindHandlers(handlers any) error
@@ -496,7 +495,7 @@ func TestWhenArgs(t *testing.T) {
 
 ## Status
 
-Release Candidate, semantically versioned, not optimized yet.
+Release Candidate, semantically versioned, partially optimized.
 
 ## Concepts
 

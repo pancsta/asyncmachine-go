@@ -1,13 +1,9 @@
 # Roadmap
 
-- negotiation testers (eg `CanAdd`)
-- more helpers for queue and history traversal
 - handlers for RPC workers
-- DB-based scheduler
-- NATS integration
+- handler loop based scheduler
 - go1.22 traces
 - inference
-- dynamic state schemas
 - optimizations
 - tutorials
 

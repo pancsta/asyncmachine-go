@@ -36,9 +36,17 @@ AM_DBG_ADDR=localhost:6831
 # defaults to ""
 AM_HEALTHCHECK=1
 
-# set the log level 0-6
+# machine text log level 0-5
 # defaults to "0"
 AM_LOG=2
+
+# log transition steps
+# defaults to ""
+AM_LOG_STEPS=1
+
+# log graph structure (mut traces, pipes, etc)
+# defaults to ""
+AM_LOG_GRAPH=1
 
 # enable file logging (use machine ID as name)
 # defaults to ""
