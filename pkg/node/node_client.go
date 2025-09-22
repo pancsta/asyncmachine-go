@@ -108,7 +108,7 @@ func NewClient(ctx context.Context, id string, workerKind string,
 		return nil, err
 	}
 
-	mach.SemLogger().SetArgs(LogArgs)
+	mach.SemLogger().SetArgsMapper(LogArgs)
 	c.Mach = mach
 	amhelp.MachDebugEnv(mach)
 
@@ -176,7 +176,7 @@ func (c *Client) StartState(e *am.Event) {
 
 			// (re)start and wait
 			// TODO handle in ExceptionState when SuperConnecting active
-			c.Mach.Remove1(am.Exception, nil)
+			c.Mach.Remove1(am.StateException, nil)
 			c.SuperRpc.Addr = addr
 			// fewer retries, bc of fallbacks
 			// TODO config via a composable RetryPolicy from rpc-c

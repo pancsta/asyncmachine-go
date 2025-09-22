@@ -384,7 +384,7 @@ func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
 
 	// exception support
 	var errAttr error
-	if slices.Contains(tx.TargetStates(), am.Exception) {
+	if slices.Contains(tx.TargetStates(), am.StateException) {
 		name = "!" + name
 		errAttr = am.ParseArgs(tx.Args()).Err
 	}
@@ -404,7 +404,7 @@ func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
 	}
 
 	// trace logged args, if any and enabled
-	argsMatcher := tx.Machine.SemLogger().Args()
+	argsMatcher := tx.Machine.SemLogger().ArgsMapper()
 	if !mt.opts.SkipLogArgs && argsMatcher != nil {
 		for param, val := range argsMatcher(tx.Args()) {
 			span.SetAttributes(

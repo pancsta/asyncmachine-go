@@ -11,8 +11,8 @@ State is a binary name as in status / switch / flag, eg "process RUNNING" or "ca
 
 ## What does "clock-based" mean?
 
-Each state has a counter of activations & deactivations, and all state counters create "machine time". It's a logical
-clock.
+Each state has a counter of activations & deactivations, and all state counters create "machine time". These are logical
+clocks. The queue is also counted.
 
 ## What's the difference between states and events?
 
@@ -63,6 +63,10 @@ No, but there's an error state (`Exception`) and the `Err()` getter. Optionally,
 ## Why does asyncmachine avoid blocking?
 
 The lack of blocking allows for immediate adjustments to incoming changes and is backed by solid cancellation support.
+
+## What's the purpose of asyncmachine?
+
+The purpose of asyncmachine is a **total** control of the flow, in a declarative and network transparent way.
 
 ## Is asyncmachine thread safe?
 

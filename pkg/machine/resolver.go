@@ -74,6 +74,7 @@ func (rr *DefaultRelationsResolver) NewSchema(schema Schema, states S) {
 func (rr *DefaultRelationsResolver) TargetStates(
 	t *Transition, statesToSet, index S,
 ) S {
+
 	rr.Transition = t
 	rr.Machine = t.Machine
 	rr.Index = index
@@ -149,7 +150,7 @@ func (rr *DefaultRelationsResolver) TargetStates(
 	return targetStates
 }
 
-// GetAutoMutation implements RelationsResolver.GetAutoMutation.
+// NewAutoMutation implements RelationsResolver.GetAutoMutation.
 func (rr *DefaultRelationsResolver) NewAutoMutation() (*Mutation, S) {
 	t := rr.Transition
 	m := t.Machine
@@ -359,11 +360,9 @@ func (rr *DefaultRelationsResolver) getMissingRequires(
 		}
 
 		idx := slices.Index(rr.Index, name)
-		if slices.Contains(t.Mutation.Called, idx) {
-			if t.isLogSteps() {
-				t.addSteps(newStep("", req,
-					StepCancel, 0))
-			}
+		if slices.Contains(t.Mutation.Called, idx) && t.isLogSteps() {
+			// TODO optimize: stop on cancel
+			t.addSteps(newStep("", req, StepCancel, 0))
 		}
 	}
 

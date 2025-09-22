@@ -84,7 +84,7 @@ func NewRels(t *testing.T, initialState am.S) *am.Machine {
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -145,7 +145,7 @@ func NewRelsNodeWorker(t *testing.T, initialState am.S) *am.Machine {
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -171,7 +171,7 @@ func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -202,7 +202,7 @@ func NewNoRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -235,7 +235,7 @@ func NewNoRelsRpcWorkerSchema(
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -244,7 +244,7 @@ func NewNoRelsRpcWorkerSchema(
 func NewCustom(t *testing.T, states am.Schema) *am.Machine {
 	mach := am.New(context.Background(), states, &am.Opts{
 		Id: "t-" + t.Name()})
-	err := mach.VerifyStates(append(maps.Keys(states), am.Exception))
+	err := mach.VerifyStates(append(maps.Keys(states), am.StateException))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func NewCustom(t *testing.T, states am.Schema) *am.Machine {
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
 		mach.HandlerTimeout = 2 * time.Minute
 	}
-	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -277,7 +277,7 @@ func NewCustomRpcWorker(t *testing.T, states am.Schema) *am.Machine {
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
 		mach.HandlerTimeout = 2 * time.Minute
 	}
-	mach.SemLogger().SetArgs(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }

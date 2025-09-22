@@ -175,7 +175,7 @@ func NewClient(
 	if err != nil {
 		return nil, err
 	}
-	mach.SemLogger().SetArgs(LogArgs)
+	mach.SemLogger().SetArgsMapper(LogArgs)
 	c.Mach = mach
 	// optional env debug
 	if os.Getenv(EnvAmRpcDbg) != "" {
@@ -512,7 +512,7 @@ func (c *Client) RetryingCallEnter(e *am.Event) bool {
 func (c *Client) ExceptionState(e *am.Event) {
 	// call super
 	c.ExceptionHandler.ExceptionState(e)
-	c.Mach.EvRemove1(e, am.Exception, nil)
+	c.Mach.EvRemove1(e, am.StateException, nil)
 	// TODO handle am.ErrSchema:
 	//  "worker has to implement pkg/rpc/states/WorkerStatesDef"
 	//  only for nondeterministic machs

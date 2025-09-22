@@ -15,24 +15,11 @@ const (
 	// "2" logs to stdout (where applicable)
 	// "1" | "2" | "" (default)
 	EnvAmDebug = "AM_DEBUG"
+	// EnvAmTestRunner indicates a CI test runner.
+	EnvAmTestRunner = "AM_TEST_RUNNER"
 	// EnvAmLog sets the log level.
 	// "1" | "2" | "3" | "4" | "5" | "" (default)
 	EnvAmLog = "AM_LOG"
-	// EnvAmLogFull enables all the semantuc loggers.
-	// "1" | "2" | "3" | "4" | "5" | "" (default)
-	EnvAmLogFull = "AM_LOG_FULL"
-	// EnvAmLogSteps logs transition steps
-	// "1" | "" (default)
-	EnvAmLogSteps = "AM_LOG_STEPS"
-	// EnvAmLogGraph logs graph structure (mut traces, pipes, etc)
-	// "1" | "" (default)
-	EnvAmLogGraph = "AM_LOG_GRAPH"
-	// EnvAmLogChecks logs Can methods.
-	// "1" | "" (default)
-	EnvAmLogChecks = "AM_LOG_CHECKS"
-	// EnvAmLogFile enables file logging (using machine ID as the name).
-	// "1" | "" (default)
-	EnvAmLogFile = "AM_LOG_FILE"
 	// EnvAmDetectEval detects evals directly in handlers (use in tests).
 	EnvAmDetectEval = "AM_DETECT_EVAL"
 	// EnvAmTraceFilter will remove its contents from stack traces, shortening
@@ -40,15 +27,27 @@ const (
 	EnvAmTraceFilter = "AM_TRACE_FILTER"
 	// EnvAmTestDebug activates debugging in tests.
 	EnvAmTestDebug = "AM_TEST_DEBUG"
-	// HandlerGlobal is the name of a global transition handler.
-	HandlerGlobal = "AnyEnter"
-	// Any is a name of a meta-state used in catch-all handlers.
-	Any         = "Any"
-	SuffixEnter = "Enter"
-	SuffixExit  = "Exit"
-	SuffixState = "State"
-	SuffixEnd   = "End"
-	PrefixErr   = "Err"
+	// HandlerAnyEnter is the name of the global negotiation transition handler.
+	HandlerAnyEnter = "AnyEnter"
+	// HandlerAnyState is the name of the global final transition handler.
+	HandlerAnyState = "AnyState"
+	SuffixEnter     = "Enter"
+	SuffixExit      = "Exit"
+	SuffixState     = "State"
+	SuffixEnd       = "End"
+	PrefixErr       = "Err"
+	// StateAny is a name of a meta-state used in catch-all handlers.
+	StateAny = "Any"
+	// StateException is the name of the predefined Exception state.
+	StateException = "Exception"
+	// StateHeartbeat is the name of the predefined Heartbeat state.
+	StateHeartbeat = "Heartbeat"
+	// StateHealthcheck is the name of the predefined Healthcheck state.
+	StateHealthcheck = "Healthcheck"
+	// StateStart is the name of the predefined Start state.
+	StateStart = "Start"
+	// StateReady is the name of the predefined Ready state.
+	StateReady = "Ready"
 )
 
 type (
@@ -107,7 +106,7 @@ type Opts struct {
 	// Tracer for the machine. Default: nil.
 	Tracers []Tracer
 	// LogArgs matching function for the machine. Default: nil.
-	LogArgs func(args A) map[string]string
+	LogArgs LogArgsMapperFn
 	// Parent machine, used to inherit certain properties, e.g. tracers.
 	// Overrides ParentID. Default: nil.
 	Parent Api
@@ -139,7 +138,6 @@ type Serialized struct {
 }
 
 // Api is a subset of Machine for alternative implementations.
-// TODO copy docs from Machine.
 type Api interface {
 	// ///// REMOTE
 
@@ -159,6 +157,8 @@ type Api interface {
 	AddErr(err error, args A) Result
 	// AddErrState is [Machine.AddErrState].
 	AddErrState(state string, err error, args A) Result
+
+	// Traced mutations (remote)
 
 	// EvAdd1 is [Machine.EvAdd1].
 	EvAdd1(event *Event, state string, args A) Result
@@ -193,7 +193,7 @@ type Api interface {
 	Is(states S) bool
 	// Is1 is [Machine.Is1].
 	Is1(state string) bool
-	// Any is [Machine.Any].
+	// StateAny is [Machine.Any].
 	Any(states ...S) bool
 	// Any1 is [Machine.Any1].
 	Any1(state ...string) bool
@@ -215,9 +215,13 @@ type Api interface {
 	Has1(state string) bool
 	// CanAdd is [Machine.CanAdd].
 	CanAdd(states S, args A) Result
+	// CanAdd1 is [Machine.CanAdd1].
 	CanAdd1(state string, args A) Result
+	// CanRemove is [Machine.CanRemove].
 	CanRemove(states S, args A) Result
+	// CanRemove1 is [Machine.CanRemove1].
 	CanRemove1(state string, args A) Result
+	// CountActive is [Machine.CountActive].
 	CountActive(states S) int
 
 	// Waiting (local)
@@ -238,6 +242,8 @@ type Api interface {
 	WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
 	// WhenErr is [Machine.WhenErr].
 	WhenErr(ctx context.Context) <-chan struct{}
+	// WhenQueue is [Machine.WhenQueue].
+	WhenQueue(tick Result) <-chan struct{}
 
 	// Getters (local)
 
@@ -314,6 +320,10 @@ type Api interface {
 	WhenDisposed() <-chan struct{}
 	// IsDisposed is [Machine.IsDisposed].
 	IsDisposed() bool
+
+	// TODO debug
+
+	// QueueDump() []string
 }
 
 type breakpoint struct {
@@ -381,6 +391,9 @@ var (
 	ErrDisposed = errors.New("machine disposed")
 	// ErrSchema indicates an issue with the machine schema.
 	ErrSchema = errors.New("schema error")
+	// ErrInternal happens for internal errors in the machine. These should be
+	// reported as bugs.
+	ErrInternal = errors.New("internal error")
 )
 
 func (r Result) String() string {
@@ -389,10 +402,9 @@ func (r Result) String() string {
 		return "executed"
 	case Canceled:
 		return "canceled"
-	case Queued:
+	default:
 		return "queued"
 	}
-	return ""
 }
 
 type MutSource struct {
@@ -440,7 +452,7 @@ type Mutation struct {
 	Auto bool
 	// Source is the source event for this mutation.
 	Source *MutSource
-	// Can* methods
+	// IsCheck indicates that this mutation is a check, see [Machine.CanAdd].
 	IsCheck bool
 
 	// optional queue info
@@ -485,6 +497,21 @@ func (m *Mutation) CalledIndex(index S) *TimeIndex {
 func (m *Mutation) StringFromIndex(index S) string {
 	called := NewTimeIndex(index, m.Called)
 	return "[" + m.Type.String() + "] " + j(called.ActiveStates())
+}
+
+// MapArgs returns arguments of this Mutation which match the passed [mapper].
+func (m *Mutation) MapArgs(mapper LogArgsMapperFn) map[string]string {
+	if mapper == nil {
+		return map[string]string{}
+	}
+
+	return mapper(m.Args)
+}
+
+// LogArgs returns a text snippet with arguments which should be logged for this
+// Mutation.
+func (m *Mutation) LogArgs(mapper LogArgsMapperFn) string {
+	return MutationFormatArgs(m.MapArgs(mapper))
 }
 
 // StepType enum
@@ -591,7 +618,7 @@ func (s *Step) StringFromIndex(idx S) string {
 	from := s.GetFromState(idx)
 	to := s.GetToState(idx)
 	if from == "" && to == "" {
-		to = Any
+		to = StateAny
 	}
 
 	// format TODO markdown?
@@ -621,13 +648,13 @@ func (s *Step) StringFromIndex(idx S) string {
 		if s.IsSelf {
 			suffix = line
 		} else if s.IsFinal && s.IsEnter {
-			suffix = "State"
+			suffix = SuffixState
 		} else if s.IsFinal && !s.IsEnter {
-			suffix = "End"
+			suffix = SuffixEnd
 		} else if !s.IsFinal && s.IsEnter {
-			suffix = "Enter"
+			suffix = SuffixEnter
 		} else if !s.IsFinal && !s.IsEnter {
-			suffix = "Exit"
+			suffix = SuffixExit
 		}
 	}
 
@@ -693,3 +720,16 @@ func (r Relation) String() string {
 
 	return ""
 }
+
+// Position describes the item's position in a list. Used mostly for the queue
+// in [Machine.IsQueued].
+type Position uint8
+
+const (
+	PositionAny Position = iota
+	PositionFirst
+	PositionLast
+)
+
+type HandlerError func(mach *Machine, err error)
+type HandlerChange func(mach *Machine, err error)

@@ -42,7 +42,7 @@ var (
 		"SendingMsgs",
 		"MsgsSent",
 		"FwdToSim",
-		am.Exception,
+		am.StateException,
 	}
 )
 
@@ -72,7 +72,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		ImportData:  p.ImportData,
 		DbgLogLevel: p.LogLevel,
 		DbgLogger:   cli.GetLogger(&p, ""),
-		ServerAddr:  p.ListenAddr,
+		AddrRpc:     p.ListenAddr,
 		EnableMouse: p.EnableMouse,
 		Version:     utils.GetVersion(),
 		Id:          "video",
@@ -81,9 +81,9 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 	if err != nil {
 		panic(err)
 	}
-	helpers.MachDebug(dbg.Mach, debugAddr, logLevel, false, true, true, true)
+	helpers.MachDebug(dbg.Mach, debugAddr, logLevel, false, &am.SemConfig{Full: true})
 
-	dbg.Start(startupMachine, startupTx, initialView)
+	dbg.Start(startupMachine, startupTx, initialView, "")
 	go render(dbg)
 
 	select {
@@ -151,10 +151,10 @@ func render(dbg *debugger.Debugger) {
 	goBack(mach, 14)
 
 	SkipEnd() // TODO
-	mach.Add1(ss.FilterSummaries, nil)
+	mach.Add1(ss.LogTimestamps, nil)
 	dbg.SetFilterLogLevel(am.LogChanges)
 	// TODO via state handlers, pass focused filter
-	mach.Add1(ss.Toolbar1Focused, am.A{"filter": debugger.ToolFilterSummaries})
+	mach.Add1(ss.Toolbar1Focused, am.A{"filter": debugger.ToolLogTimestamps})
 	// dbg.HProcessFilterChange(context.TODO(), false)
 	goBack(mach, 1)
 

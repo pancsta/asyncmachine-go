@@ -34,7 +34,36 @@ const (
 	// EnvAmHealthcheck enables a healthcheck ticker for every debugged machine.
 	EnvAmHealthcheck = "AM_HEALTHCHECK"
 	// EnvAmTestRunner indicates the main test tunner, disables any telemetry.
-	EnvAmTestRunner     = "AM_TEST_RUNNER"
+	EnvAmTestRunner = "AM_TEST_RUNNER"
+	// EnvAmLogFull enables all the features of [am.SemLogger].
+	EnvAmLogFull = "AM_LOG_FULL"
+	// EnvAmLogSteps logs transition steps.
+	// See [am.SemLogger.EnableSteps].
+	// "1" | "" (default)
+	EnvAmLogSteps = "AM_LOG_STEPS"
+	// EnvAmLogGraph logs the graph structure (mutation traces, pipes, RPC, etc).
+	// See [am.SemLogger.EnableGraph].
+	// "1" | "" (default)
+	EnvAmLogGraph = "AM_LOG_GRAPH"
+	// EnvAmLogChecks logs Can methods. See [am.SemLogger.EnableCan].
+	// "1" | "" (default)
+	EnvAmLogChecks = "AM_LOG_CHECKS"
+	// EnvAmLogQueued logs queued mutations. See [am.SemLogger.EnableQueued].
+	// "1" | "" (default)
+	EnvAmLogQueued = "AM_LOG_QUEUED"
+	// EnvAmLogArgs logs mutation args. See [am.SemLogger.EnableArgs].
+	// "1" | "" (default)
+	EnvAmLogArgs = "AM_LOG_ARGS"
+	// EnvAmLogWhen logs When methods. See [am.SemLogger.EnableWhen].
+	// "1" | "" (default)
+	EnvAmLogWhen = "AM_LOG_WHEN"
+	// EnvAmLogStateCtx logs state ctxs. See [am.SemLogger.EnableStateCtx].
+	// "1" | "" (default)
+	EnvAmLogStateCtx = "AM_LOG_STATE_CTX"
+	// EnvAmLogFile enables file logging (using machine ID as the name).
+	// "1" | "" (default)
+	EnvAmLogFile = "AM_LOG_FILE"
+
 	healthcheckInterval = 30 * time.Second
 )
 
@@ -114,8 +143,6 @@ func Add1Sync(
 			return am.Canceled
 		}
 	}
-
-	return when
 }
 
 // Add1Async adds a state from an async op and waits for another one
@@ -155,6 +182,7 @@ func Add1Async(
 	}
 }
 
+// TODO AddSync
 // TODO EvAdd1Async
 // TODO EvAdd1Sync
 // TODO EvAddSync
@@ -162,6 +190,7 @@ func Add1Async(
 
 // IsMulti returns true if a state is a multi state.
 func IsMulti(mach am.Api, state string) bool {
+	// TODO safeguard
 	return mach.Schema()[state].Multi
 }
 
@@ -194,9 +223,11 @@ func IndexesToStates(allStates am.S, indexes []int) am.S {
 // MachDebug exports transition telemetry to an am-dbg instance listening at
 // [amDbgAddr].
 func MachDebug(
-	mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout, steps, graph,
-	checks bool,
+	mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout bool,
+	semConfig *am.SemConfig,
 ) {
+
+	// no debug for CI
 	if IsTestRunner() {
 		return
 	}
@@ -212,18 +243,33 @@ func MachDebug(
 		return
 	}
 
-	// extras
-	if steps {
+	// semantic logging
+	if semConfig.Steps {
 		semlog.EnableSteps(true)
 	}
-	if graph {
+	if semConfig.Graph {
 		semlog.EnableGraph(true)
 	}
-	if checks {
+	if semConfig.Can {
 		semlog.EnableCan(true)
 	}
+	if semConfig.Queued {
+		semlog.EnableQueued(true)
+	}
+	if semConfig.StateCtx {
+		semlog.EnableStateCtx(true)
+	}
+	if semConfig.Can {
+		semlog.EnableCan(true)
+	}
+	if semConfig.When {
+		semlog.EnableWhen(true)
+	}
+	if semConfig.Args {
+		semlog.EnableArgs(true)
+	}
 
-	// trace to telemetry
+	// tracer for telemetry
 	err := telemetry.TransitionsToDbg(mach, amDbgAddr)
 	if err != nil {
 		// TODO dont panic
@@ -235,6 +281,33 @@ func MachDebug(
 	}
 }
 
+// SemConfig returns a SemConfig based on env vars, or the [forceFull] flag.
+func SemConfig(forceFull bool) *am.SemConfig {
+	// full override
+	if os.Getenv(EnvAmLogFull) == "1" || forceFull {
+		return &am.SemConfig{
+			Steps:    true,
+			Graph:    true,
+			Can:      true,
+			Queued:   true,
+			StateCtx: true,
+			When:     true,
+			Args:     true,
+		}
+	}
+
+	// selective logging
+	return &am.SemConfig{
+		Steps:    os.Getenv(EnvAmLogSteps) == "1",
+		Graph:    os.Getenv(EnvAmLogGraph) == "1",
+		Can:      os.Getenv(EnvAmLogChecks) == "1",
+		Queued:   os.Getenv(EnvAmLogQueued) == "1",
+		StateCtx: os.Getenv(EnvAmLogStateCtx) == "1",
+		When:     os.Getenv(EnvAmLogWhen) == "1",
+		Args:     os.Getenv(EnvAmLogArgs) == "1",
+	}
+}
+
 // MachDebugEnv sets up a machine for debugging, based on env vars only:
 // AM_DBG_ADDR, AM_LOG, and AM_DEBUG. This function should be called right
 // after the machine is created, to catch all the log entries.
@@ -242,25 +315,18 @@ func MachDebugEnv(mach am.Api) {
 	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
 	logLvl := am.EnvLogLevel("")
 	stdout := os.Getenv(am.EnvAmDebug) == "2"
-	steps := os.Getenv(am.EnvAmLogSteps) == "1"
-	graph := os.Getenv(am.EnvAmLogGraph) == "1"
-	checks := os.Getenv(am.EnvAmLogChecks) == "1"
-	if os.Getenv(am.EnvAmLogFull) == "1" {
-		steps = true
-		graph = true
-		checks = true
-	}
 
-	// expand to default
+	// expand the default addr
 	if amDbgAddr == "1" {
 		amDbgAddr = telemetry.DbgAddr
 	}
 
-	MachDebug(mach, amDbgAddr, logLvl, stdout, steps, graph, checks)
+	MachDebug(mach, amDbgAddr, logLvl, stdout, SemConfig(false))
 }
 
 // Healthcheck adds a state to a machine every 5 seconds, until the context is
 // done. This makes sure all the logs are pushed to the telemetry server.
+// TODO use machine scheduler when ready
 func Healthcheck(mach am.Api) {
 	if !mach.Has1("Healthcheck") {
 		return
@@ -495,7 +561,7 @@ func WaitForAll(
 
 // WaitForErrAll is like WaitForAll, but also waits on WhenErr of a passed
 // machine. For state machines with error handling (like retry) it's recommended
-// to measure machine time of [am.Exception] instead.
+// to measure machine time of [am.StateException] instead.
 func WaitForErrAll(
 	ctx context.Context, timeout time.Duration, mach am.Api,
 	chans ...<-chan struct{},
@@ -524,7 +590,7 @@ func WaitForErrAll(
 			// TODO check and log state ctx name
 			return ctx.Err()
 		case <-whenErr:
-			return fmt.Errorf("%s: %w", am.Exception, mach.Err())
+			return fmt.Errorf("%s: %w", am.StateException, mach.Err())
 		case <-t:
 			return am.ErrTimeout
 		case <-ch:
@@ -590,7 +656,7 @@ func WaitForAny(
 
 // WaitForErrAny is like WaitForAny, but also waits on WhenErr of a passed
 // machine. For state machines with error handling (like retry) it's recommended
-// to measure machine time of [am.Exception] instead.
+// to measure machine time of [am.StateException] instead.
 func WaitForErrAny(
 	ctx context.Context, timeout time.Duration, mach *am.Machine,
 	chans ...<-chan struct{},
@@ -669,10 +735,8 @@ func EnableDebugging(stdout bool) {
 	} else {
 		_ = os.Setenv(am.EnvAmDebug, "1")
 	}
-	_ = os.Setenv(telemetry.EnvAmDbgAddr, "localhost:6831")
-	_ = os.Setenv(am.EnvAmLogSteps, "1")
-	_ = os.Setenv(am.EnvAmLogGraph, "1")
-	_ = os.Setenv(am.EnvAmLogChecks, "1")
+	_ = os.Setenv(telemetry.EnvAmDbgAddr, "1")
+	_ = os.Setenv(EnvAmLogFull, "1")
 	SetEnvLogLevel(am.LogOps)
 	// _ = os.Setenv(EnvAmHealthcheck, "1")
 }
@@ -791,7 +855,7 @@ func ArgsToLogMap(args interface{}, maxLen int) map[string]string {
 			}
 			result[key] = v.String()
 
-			// String() method
+			// MutString() method
 		case fmt.Stringer:
 			if reflect.ValueOf(v).IsNil() {
 				continue
@@ -914,9 +978,11 @@ func RemoveMulti(mach am.Api, state string) am.HandlerFinal {
 
 // GetTransitionStates will extract added, removed, and touched states from
 // transition's clock values and steps. Requires a state names index.
+// Collecting touched states requires transition steps.
 func GetTransitionStates(
 	tx *am.Transition, index am.S,
 ) (added am.S, removed am.S, touched am.S) {
+
 	before := tx.TimeBefore
 	after := tx.TimeAfter
 
@@ -988,6 +1054,12 @@ func Pool(limit int) *errgroup.Group {
 	return g
 }
 
+// ///// ///// /////
+
+// ///// CONDITION
+
+// ///// ///// /////
+
 // Cond is a set of state conditions, which when all met make the condition
 // true.
 type Cond struct {
@@ -1043,6 +1115,12 @@ func (c Cond) Check(mach am.Api) bool {
 func (c Cond) IsEmpty() bool {
 	return c.Is == nil && c.Any1 == nil && c.Not == nil && c.Clock == nil
 }
+
+// ///// ///// /////
+
+// ///// STATE LOOP
+
+// ///// ///// /////
 
 // TODO thread safety via atomics
 type StateLoop struct {
@@ -1182,7 +1260,11 @@ func NewStateLoop(
 	return l
 }
 
-// SLOG
+// ///// ///// /////
+
+// ///// LOGGING
+
+// ///// ///// /////
 
 var SlogToMachLogOpts = &slog.HandlerOptions{
 	ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
@@ -1204,7 +1286,11 @@ func (l SlogToMachLog) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-// STATE UTILS
+// ///// ///// /////
+
+// ///// STATE UTILS
+
+// ///// ///// /////
 
 // TagValue returns the value part from a text tag "key:value". For tag without
 // value, it returns the tag name.
@@ -1324,7 +1410,7 @@ func NewMirror(
 		id = "mirror-" + source.Id()
 	}
 	sourceSchema := source.Schema()
-	names := am.S{am.Exception}
+	names := am.S{am.StateException}
 	schema := am.Schema{}
 	for _, name := range states {
 		schema[name] = am.State{

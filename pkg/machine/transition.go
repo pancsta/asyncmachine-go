@@ -21,8 +21,8 @@ type Transition struct {
 	// TimeBefore is the machine time from before the transition.
 	TimeBefore Time
 	// TimeAfter is the machine time from after the transition. If the transition
-	// has been canceled, this will be the same as TimeBefore. This field is nil
-	// until the negotiation phase finishes.
+	// has been canceled, this will be the same as TimeBefore. This field is the
+	// same as TimeBefore, until the negotiation phase finishes.
 	TimeAfter Time
 	// TargetIndexes is a list of indexes of the target states.
 	TargetIndexes []int
@@ -45,6 +45,7 @@ type Transition struct {
 	// QueueLen is the length of the queue after the transition.
 	QueueLen int
 	// InternalLogEntriesLock is used to lock the logs to be collected by Tracers.
+	// TODO getter?
 	InternalLogEntriesLock sync.Mutex
 	// IsCompleted returns true when the execution of the transition has been
 	// fully completed.
@@ -54,9 +55,9 @@ type Transition struct {
 	// relations.
 	IsAccepted atomic.Bool
 	// TODO true for panic and timeouts
-	// IsBroken atomic.Bool
+	IsBroken atomic.Bool
 	// TODO confirms relations resolved and negotiation ended
-	// IsSettled atomic.Bool
+	IsSettled atomic.Bool
 
 	// last step info for panic recovery
 	latestHandlerIsEnter bool
@@ -68,6 +69,7 @@ type Transition struct {
 	cacheClockBefore  atomic.Pointer[Clock]
 	cacheActivated    S
 	cacheDeactivated  S
+	cacheSchema       Schema
 }
 
 // newTransition creates a new transition for the given mutation.
@@ -132,8 +134,10 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	called := t.CalledStates()
 	mutType := t.Type()
 	logArgs := ""
+	if semlog.IsArgs() || semlog.Level() > LogExternal {
+		logArgs = mut.LogArgs(semlog.ArgsMapper())
+	}
 	if t.isLogSteps() {
-		logArgs = t.LogArgs()
 		t.addSteps(newSteps("", called, StepRequested, 0)...)
 	}
 	if mut.Auto {
@@ -270,8 +274,8 @@ func (t *Transition) IsAuto() bool {
 	return t.Mutation.Auto
 }
 
-// IsHealth returns true if the transition was health-related (Healthcheck,
-// Heartbeat).
+// IsHealth returns true if the transition was health-related (StateHealthcheck,
+// StateHeartbeat).
 func (t *Transition) IsHealth() bool {
 	c := t.CalledStates()
 
@@ -279,7 +283,7 @@ func (t *Transition) IsHealth() bool {
 		return false
 	}
 
-	return c[0] == Healthcheck || c[0] == Heartbeat
+	return c[0] == StateHealthcheck || c[0] == StateHeartbeat
 }
 
 // CalledStates return explicitly called / requested states of the transition.
@@ -336,31 +340,6 @@ func (t *Transition) Args() A {
 // Type returns the type of the mutation (add, remove, set).
 func (t *Transition) Type() MutationType {
 	return t.Mutation.Type
-}
-
-// LogArgs returns a text snippet with arguments which should be logged for this
-// Mutation.
-func (t *Transition) LogArgs() string {
-	matcher := t.Machine.semLogger.Args()
-	if matcher == nil {
-		return ""
-	}
-
-	var args []string
-	matched := matcher(t.Mutation.Args)
-	if len(matched) == 0 {
-		return ""
-	}
-
-	// sort by name and print
-	names := slices.AppendSeq([]string{}, maps.Keys(matched))
-	slices.Sort(names)
-	for _, k := range names {
-		v := matched[k]
-		args = append(args, k+"="+v)
-	}
-
-	return " (" + strings.Join(args, " ") + ")"
 }
 
 // String representation of the transition and the steps taken so far.
@@ -635,7 +614,7 @@ func (t *Transition) emitEvents() Result {
 
 		// global AnyEnter handler
 		if result != Canceled {
-			result = t.emitHandler(Any, Any, false, true, Any+SuffixEnter,
+			result = t.emitHandler(StateAny, StateAny, false, true, HandlerAnyEnter,
 				t.Mutation.Args)
 		}
 	}
@@ -653,7 +632,7 @@ func (t *Transition) emitEvents() Result {
 			targetStates := m.resolver.TargetStates(t, toSet, m.StateNames())
 			t.TargetIndexes = m.Index(targetStates)
 			t.cacheTargetStates.Store(&targetStates)
-			// TODO states before too
+			// TODO cache states before?
 		}
 
 		// FINAL HANDLERS (non cancellable)
@@ -663,8 +642,10 @@ func (t *Transition) emitEvents() Result {
 			m.activeStatesLock.Lock()
 			m.setActiveStates(called, t.TargetStates(), t.IsAuto())
 			// gather new clock values, overwrite fake TimeAfter
-			t.TimeAfter = m.time(nil)
 			m.activeStatesLock.Unlock()
+
+			// always correct TimeAfter
+			t.TimeAfter = m.time(nil)
 
 			if hasHandlers || logEverything || len(m.indexWhenArgs) > 0 {
 				// FooState
@@ -676,9 +657,9 @@ func (t *Transition) emitEvents() Result {
 			// TODO test
 			if result == Canceled {
 				m.recoverFinalPhase()
+				// TODO safe to continue?
 			}
 
-			// TODO safe to continue?
 			hasStateChanged = !m.IsTime(t.TimeBefore, nil)
 		} else {
 			// always correct TimeAfter
@@ -687,7 +668,7 @@ func (t *Transition) emitEvents() Result {
 
 		// global AnyState handler
 		if result != Canceled && (hasHandlers || logEverything) {
-			result = t.emitHandler(Any, Any, true, true, Any+SuffixState,
+			result = t.emitHandler(StateAny, StateAny, true, true, HandlerAnyState,
 				t.Mutation.Args)
 		}
 
@@ -697,24 +678,12 @@ func (t *Transition) emitEvents() Result {
 		} else if !m.disposing.Load() && hasStateChanged && !t.IsAuto() &&
 			!t.IsHealth() {
 
-			autoMutation, calledStates := m.resolver.NewAutoMutation()
-			if autoMutation != nil {
+			autoMut, calledStates := m.resolver.NewAutoMutation()
+			if autoMut != nil {
 				m.log(LogOps, "[auto] %s", j(calledStates))
-				// unshift
-				m.queueLock.Lock()
-				m.queue = append([]*Mutation{autoMutation}, m.queue...)
-				m.queueLen.Store(int32(len(m.queue)))
-				m.queueLock.Unlock()
+				m.PrependMut(autoMut)
 			}
 		}
-
-		// collect previous log entries
-		m.logEntriesLock.Lock()
-		t.PreLogEntries = m.logEntries
-		t.QueueLen = int(m.queueLen.Load())
-		m.logEntries = nil
-		m.logEntriesLock.Unlock()
-		t.IsCompleted.Store(true)
 
 		// cache for subscriptions, mind partially accepted auto states
 		if t.IsAuto() {
@@ -725,7 +694,17 @@ func (t *Transition) emitEvents() Result {
 			t.cacheActivated = t.Enters
 			t.cacheDeactivated = t.Exits
 		}
+	} else if result == Canceled {
+		t.IsAccepted.Store(false)
 	}
+
+	// collect previous log entries
+	m.logEntriesLock.Lock()
+	t.PreLogEntries = m.logEntries
+	t.QueueLen = int(m.queueLen.Load())
+	m.logEntries = nil
+	m.logEntriesLock.Unlock()
+	t.IsCompleted.Store(true)
 
 	// tracers
 	m.tracersLock.RLock()
@@ -764,22 +743,40 @@ func (t *Transition) setupAccepted() {
 	if t.Type() == MutationRemove {
 		return
 	}
-	notAccepted := DiffStates(t.CalledStates(), t.TargetStates())
+	called := t.CalledStates()
+	notAccepted := DiffStates(called, t.TargetStates())
 	// Auto-states can be set partially
 	if t.IsAuto() {
 		// partially accepted
-		if len(notAccepted) < len(t.CalledStates()) {
+		if len(notAccepted) < len(called) {
 			return
 		}
 		// all rejected, reject the whole transition
 		t.IsAccepted.Store(false)
 	}
+
 	if len(notAccepted) <= 0 {
 		return
 	}
+
+	// accept if check and one of called is multi
+	isMulti := false
+	for _, s := range called {
+		if m.schema[s].Multi {
+			isMulti = true
+			break
+		}
+	}
+	if t.Mutation.IsCheck && isMulti {
+		return
+	}
+
+	// no accepted
+
 	t.IsAccepted.Store(false)
 	m.log(LogOps, "[cancel:reject] %s", j(notAccepted))
 	if t.isLogSteps() {
+		// TODO optimize: stop early on cancel
 		t.addSteps(newSteps("", notAccepted, StepCancel, 0)...)
 	}
 }

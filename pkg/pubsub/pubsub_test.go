@@ -26,11 +26,11 @@ import (
 )
 
 var workerSchema = am.Schema{
-	"Foo":        {Require: am.S{"Bar"}},
-	"Bar":        {},
-	am.Exception: {},
+	"Foo":             {Require: am.S{"Bar"}},
+	"Bar":             {},
+	am.StateException: {},
 }
-var workerStates = am.S{am.Exception, "Foo", "Bar"}
+var workerStates = am.S{am.StateException, "Foo", "Bar"}
 
 // TODO automate in NewMirror, see pkg/rpc.Server
 type mirrorHandlers struct {
@@ -68,7 +68,7 @@ type mirrorHandlers struct {
 }
 
 var mirrorStates = am.S{
-	am.Exception,
+	am.StateException,
 	ss.Joined, ss.Ready, ss.MissPeersByUpdates, ss.MissPeersByGossip,
 	ss.MissUpdatesByGossip, ss.SendGossips, ss.SendUpdates, ss.SendInfo,
 	ss.MsgReqUpdates, ss.MsgReqInfo, ss.ProcessMsgs, ss.ReqMissingUpdates,

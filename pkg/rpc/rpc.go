@@ -344,30 +344,14 @@ type semLogger struct {
 	graph atomic.Bool
 }
 
-func (s *semLogger) EnableQueued(val bool) {
-	// TODO
-}
-
-func (s *semLogger) IsQueued() bool {
-	return false
-}
-
-func (s *semLogger) IsCan() bool {
-	return false
-}
-
-func (s *semLogger) EnableCan(enable bool) {
-	// TODO
-}
-
 // implement [SemLogger]
 var _ am.SemLogger = &semLogger{}
 
-func (s *semLogger) SetArgs(mapper am.LogArgsMapperFn) {
+func (s *semLogger) SetArgsMapper(mapper am.LogArgsMapperFn) {
 	// TODO
 }
 
-func (s *semLogger) Args() am.LogArgsMapperFn {
+func (s *semLogger) ArgsMapper() am.LogArgsMapperFn {
 	// TODO
 	return nil
 }
@@ -459,6 +443,48 @@ func (s *semLogger) IsGraph() bool {
 
 func (s *semLogger) EnableGraph(enable bool) {
 	s.graph.Store(enable)
+}
+
+// TODO more data types
+
+func (s *semLogger) EnableStateCtx(val bool) {
+	// TODO
+}
+
+func (s *semLogger) IsStateCtx() bool {
+	return true
+}
+
+func (s *semLogger) EnableWhen(val bool) {
+	// TODO
+}
+
+func (s *semLogger) IsWhen() bool {
+	return true
+}
+
+func (s *semLogger) EnableArgs(val bool) {
+	// TODO params for synthetic log
+}
+
+func (s *semLogger) IsArgs() bool {
+	return true
+}
+
+func (s *semLogger) EnableQueued(val bool) {
+	// TODO
+}
+
+func (s *semLogger) IsQueued() bool {
+	return true
+}
+
+func (s *semLogger) EnableCan(enable bool) {
+	// TODO
+}
+
+func (s *semLogger) IsCan() bool {
+	return true
 }
 
 // ///// ///// /////

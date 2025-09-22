@@ -39,7 +39,7 @@ func main() {
 		},
 		"Healthcheck": {Multi: true},
 	}
-	names := am.S{"Start", "Task", "TaskDone", "Ready", "Healthcheck", am.Exception}
+	names := am.S{"Start", "Task", "TaskDone", "Ready", "Healthcheck", am.StateException}
 
 	// init state machine
 	mach, err := am.NewCommon(ctx, "fan", states, names, &am.ExceptionHandler{}, nil, &am.Opts{

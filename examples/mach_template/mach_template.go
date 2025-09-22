@@ -102,7 +102,7 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 	// telemetry
 
 	mach.SemLogger().SetLevel(am.LogChanges)
-	mach.SemLogger().SetArgs(LogArgs)
+	mach.SemLogger().SetArgsMapper(LogArgs)
 	amhelp.MachDebugEnv(mach)
 	// start a dedicated aRPC server for the REPL, create an addr file
 	arpc.MachReplEnv(mach)

@@ -115,6 +115,7 @@ func NewDbgWorker(
 	if !realTty {
 		screen = tcell.NewSimulationScreen("utf8")
 		screen.SetSize(100, 50)
+		screen.Init()
 		screen.Clear()
 	}
 
@@ -133,7 +134,7 @@ func NewDbgWorker(
 
 	// file logging
 	opts.DbgLogLevel = am.EnvLogLevel("")
-	if opts.DbgLogLevel > 0 && os.Getenv(am.EnvAmLogFile) != "" {
+	if opts.DbgLogLevel > 0 && os.Getenv(amhelp.EnvAmLogFile) != "" {
 		opts.DbgLogger = cli.GetLogger(&cli.Params{
 			LogLevel: opts.DbgLogLevel,
 		}, "")

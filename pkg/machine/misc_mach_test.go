@@ -28,7 +28,7 @@ func TestWithOpts(t *testing.T) {
 
 	// OptsWithParentTracers
 	mach := New(context.TODO(), nil, opts)
-	mach.SemLogger().SetArgs(NewArgsMapper([]string{"arg"}, 10))
+	mach.SemLogger().SetArgsMapper(NewArgsMapper([]string{"arg"}, 10))
 }
 
 func TestResultString(t *testing.T) {
@@ -36,7 +36,6 @@ func TestResultString(t *testing.T) {
 
 	assert.Equal(t, "executed", Executed.String())
 	assert.Equal(t, "canceled", Canceled.String())
-	assert.Equal(t, "queued", Queued.String())
 }
 
 func TestMutationTypeString(t *testing.T) {

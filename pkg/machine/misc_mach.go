@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"reflect"
 	"regexp"
@@ -302,7 +303,7 @@ func OptsWithTracers(opts *Opts, tracers ...Tracer) *Opts {
 
 // ///// ///// /////
 
-// ///// LOGGING
+// ///// LOGGING, TRACING
 
 // ///// ///// /////
 
@@ -358,7 +359,8 @@ func (l LogLevel) String() string {
 // SemLogger is a semantic logger for structured events. It's useful for graph
 // info and configuring the text logger.
 type SemLogger interface {
-	// TODO SetTag, RemoveTag, JoinTopic, LeaveTopic, custom graph links / edges
+	// TODO implement empty methods
+	// TODO add SetTag, RemoveTag, JoinTopic, LeaveTopic, custom graph links / edges
 
 	// graph
 
@@ -393,6 +395,18 @@ type SemLogger interface {
 	EnableQueued(val bool)
 	// IsQueued returns true when the machine is logging queued mutations.
 	IsQueued() bool
+	// EnableStateCtx enables or disables the logging of active state contexts.
+	EnableStateCtx(val bool)
+	// IsStateCtx returns true when the machine is logging active state contexts.
+	IsStateCtx() bool
+	// EnableWhen enables or disables the logging of "when" methods.
+	EnableWhen(val bool)
+	// IsWhen returns true when the machine is logging "when" methods.
+	IsWhen() bool
+	// EnableArgs enables or disables the logging known args.
+	EnableArgs(val bool)
+	// IsArgs returns true when the machine is logging known args.
+	IsArgs() bool
 
 	// logger
 
@@ -412,30 +426,48 @@ type SemLogger interface {
 	// call. Useful for testing. Requires LogChanges log level to produce any
 	// output.
 	SetSimple(logf func(format string, args ...any), level LogLevel)
-	// SetArgs accepts a function which decides which mutation arguments to log.
+	// SetArgsMapper accepts a function which decides which mutation arguments to log.
 	// See NewArgsMapper or create your own manually.
-	SetArgs(mapper LogArgsMapperFn)
-	// Args returns the current log args mapper function.
-	Args() LogArgsMapperFn
+	SetArgsMapper(mapper LogArgsMapperFn)
+	// ArgsMapper returns the current log args mapper function.
+	ArgsMapper() LogArgsMapperFn
 }
+
+// SemConfig defines a config for SemLogger.
+type SemConfig struct {
+	// TODO
+	Full     bool
+	Steps    bool
+	Graph    bool
+	Can      bool
+	Queued   bool
+	Args     bool
+	When     bool
+	StateCtx bool
+}
+
 type semLogger struct {
-	mach  *Machine
-	steps atomic.Bool
-	graph atomic.Bool
-	can   atomic.Bool
+	mach   *Machine
+	steps  atomic.Bool
+	graph  atomic.Bool
+	queued atomic.Bool
+	args   atomic.Bool
+	can    atomic.Bool
 }
 
 // implement [SemLogger]
 var _ SemLogger = &semLogger{}
 
-func (s *semLogger) SetArgs(mapper LogArgsMapperFn) {
-	// TODO thread safe
-	s.mach.logArgs = mapper
+func (s *semLogger) SetArgsMapper(mapper LogArgsMapperFn) {
+	s.mach.logArgs.Store(&mapper)
 }
 
-func (s *semLogger) Args() LogArgsMapperFn {
-	// TODO thread safe
-	return s.mach.logArgs
+func (s *semLogger) ArgsMapper() LogArgsMapperFn {
+	fn := s.mach.logArgs.Load()
+	if fn == nil {
+		return nil
+	}
+	return *fn
 }
 
 func (s *semLogger) EnableId(val bool) {
@@ -539,12 +571,38 @@ func (s *semLogger) EnableGraph(enable bool) {
 	s.graph.Store(enable)
 }
 
-func (s *semLogger) EnableQueued(val bool) {
+func (s *semLogger) IsQueued() bool {
+	return s.queued.Load()
+}
+
+func (s *semLogger) EnableQueued(enable bool) {
+	s.queued.Store(enable)
+}
+
+func (s *semLogger) IsArgs() bool {
+	return s.args.Load()
+}
+
+func (s *semLogger) EnableArgs(enable bool) {
+	s.args.Store(enable)
+}
+
+// TODO more data types
+
+func (s *semLogger) EnableStateCtx(enable bool) {
 	// TODO
 }
 
-func (s *semLogger) IsQueued() bool {
+func (s *semLogger) IsStateCtx() bool {
 	return false
+}
+
+func (s *semLogger) IsWhen() bool {
+	return false
+}
+
+func (s *semLogger) EnableWhen(enable bool) {
+	// TODO
 }
 
 // LogArgs is a list of common argument names to be logged. Useful for
@@ -586,6 +644,23 @@ func NewArgsMapper(names []string, maxLen int) func(args A) map[string]string {
 
 		return ret
 	}
+}
+
+func MutationFormatArgs(matched map[string]string) string {
+	if len(matched) == 0 {
+		return ""
+	}
+
+	// sort by name
+	var ret []string
+	names := slices.Collect(maps.Keys(matched))
+	slices.Sort(names)
+	for _, k := range names {
+		v := matched[k]
+		ret = append(ret, k+"="+v)
+	}
+
+	return " (" + strings.Join(ret, " ") + ")"
 }
 
 // Tracer is an interface for logging machine transitions and events, used by
@@ -647,6 +722,8 @@ var emitterNameRe = regexp.MustCompile(`/\w+\.go:\d+`)
 // Event struct represents a single event of a Mutation within a Transition.
 // One event can have 0-n handlers.
 type Event struct {
+	// Ctx is an optional context this event is constrained by.
+	Ctx context.Context
 	// Name of the event / handler
 	Name string
 	// MachineId is the ID of the parent machine.
@@ -698,18 +775,38 @@ func (e *Event) IsValid() bool {
 		tx.IsAccepted.Load()
 }
 
-// Clone clones only the essential data of the Event. Useful for tracing vs GC.
-func (e *Event) Clone() *Event {
+// Export clones only the essential data of the Event. Useful for tracing vs GC.
+func (e *Event) Export() *Event {
 	id := e.MachineId
 	if e.Machine() == nil {
 		id = e.Machine().Id()
 	}
 
 	return &Event{
-		Name:         e.Name,
 		MachineId:    id,
+		Name:         e.Name,
 		TransitionId: e.TransitionId,
+		IsCheck:      e.IsCheck,
 	}
+}
+
+// Clone clones the event struct, making it writable.
+func (e *Event) Clone() *Event {
+	e2 := e.Export()
+
+	// non-exportable fields
+	e2.Args = e.Args
+	e2.Ctx = e.Ctx
+
+	return e2
+}
+
+// SwapArgs clone the event and assign new args.
+func (e *Event) SwapArgs(args A) *Event {
+	e2 := e.Clone()
+	e2.Args = args
+
+	return e2
 }
 
 func (e *Event) String() string {
@@ -767,8 +864,13 @@ type WhenArgsBinding struct {
 	args A
 }
 
-type whenQueueBinding struct {
+type whenQueueEndBinding struct {
 	ch chan struct{}
+}
+
+type whenQueueBinding struct {
+	ch   chan struct{}
+	tick Result
 }
 
 // TODO optimize indexes
@@ -801,14 +903,7 @@ func (e *handler) dispose() {
 
 // ///// ///// /////
 
-const (
-	// Exception is the name of the Exception state.
-	Exception   = "Exception"
-	Heartbeat   = "Heartbeat"
-	Healthcheck = "Healthcheck"
-)
-
-// ExceptionArgsPanic is an optional argument ["panic"] for the Exception state
+// ExceptionArgsPanic is an optional argument ["panic"] for the StateException state
 // which describes a panic within a Transition handler.
 type ExceptionArgsPanic struct {
 	CalledStates S
@@ -818,7 +913,7 @@ type ExceptionArgsPanic struct {
 	StackTrace   string
 }
 
-// ExceptionHandler provide a basic Exception state support, as should be
+// ExceptionHandler provide a basic StateException state support, as should be
 // embedded into handler structs in most of the cases. Because ExceptionState
 // will be called after [Machine.HandlerDeadline], it should handle locks
 // on its own (to not race with itself).
@@ -872,12 +967,12 @@ func captureStackTrace() string {
 	return join
 }
 
-// ExceptionState is a final entry handler for the Exception state.
+// ExceptionState is a final entry handler for the StateException state.
 // Args:
-// - err error: The error that caused the Exception state.
+// - err error: The error that caused the StateException state.
 // - panic *ExceptionArgsPanic: Optional details about the panic.
 func (eh *ExceptionHandler) ExceptionState(e *Event) {
-	// TODO handle ErrHandlerTimeout to a state, if set
+	// TODO handle ErrHandlerTimeout to ErrHandlerTimeoutState (if present)
 
 	args := ParseArgs(e.Args)
 	err := args.Err

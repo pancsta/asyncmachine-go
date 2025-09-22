@@ -32,7 +32,7 @@ const (
 	serviceName = "tree_state_source"
 	// promPushFreq is the frequency of pushing metrics to Prometheus.
 	promPushFreq = 15 * time.Second
-	mutationFreq = 500 * time.Millisecond
+	mutationFreq = 5 * time.Millisecond
 )
 
 type Node struct {
@@ -58,8 +58,8 @@ func init() {
 
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
-	// amhelp.EnableDebugging(false)
-	// amhelp.SemLogger().SetLevel(am.LogChanges)
+	amhelp.EnableDebugging(false)
+	amhelp.SetEnvLogLevel(am.LogOps)
 }
 
 func main() {
@@ -292,7 +292,7 @@ func randMut(mach am.Api) {
 	pick = rand.Intn(amount)
 	state3 := ss.Names()[pick]
 
-	skip := am.S{am.Exception, ssrpc.WorkerStates.SendPayload}
+	skip := am.S{am.StateException, ssrpc.WorkerStates.SendPayload}
 	for _, s := range skip {
 		if state1 == s || state2 == s || state3 == s {
 			return
@@ -302,7 +302,7 @@ func randMut(mach am.Api) {
 	mach.Add(am.S{state1, state2, state3}, nil)
 	if mach.IsErr() {
 		fmt.Printf("Error: %s", mach.Err())
-		mach.Remove1(am.Exception, nil)
+		mach.Remove1(am.StateException, nil)
 	}
 }
 

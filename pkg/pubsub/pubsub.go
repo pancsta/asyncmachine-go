@@ -276,9 +276,9 @@ func AddErrListening(
 //
 // // TODO enable
 // func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
-// 	fmt.Printf("discovered new peer %s", pi.ID.String())
+// 	fmt.Printf("discovered new peer %s", pi.ID.MutString())
 // 	err := n.h.Connect(context.Background(), pi)
 // 	if err != nil {
-// 		fmt.Printf("error connecting to peer %s: %s", pi.ID.String(), err)
+// 		fmt.Printf("error connecting to peer %s: %s", pi.ID.MutString(), err)
 // 	}
 // }

@@ -11,7 +11,7 @@ func init() {
 	// import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(false)
-	// amhelp.SemLogger().SetLevel(am.LogChanges)
+	// amhelp.SetEnvLogLevel(am.LogOps)
 }
 
 func main() {
@@ -151,5 +151,5 @@ type Tracer struct {
 }
 
 func (t *Tracer) TransitionEnd(tx *am.Transition) {
-	// println("=> " + tx.Machine.String())
+	// println("=> " + tx.Machine.MutString())
 }
