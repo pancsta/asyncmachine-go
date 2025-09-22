@@ -96,10 +96,45 @@ func (d *Debugger) hParseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
 	logEntries := make([]*am.LogEntry, 0)
 
 	tx := c.MsgTxs[idx]
+	txParsed := c.msgTxsParsed[idx]
 	var readerEntries []*logReaderEntryPtr
 	if idx > 0 {
 		// copy from previous msg
 		readerEntries = slices.Clone(c.msgTxsParsed[idx-1].ReaderEntries)
+	}
+
+	// synthetic log for queued, canceled, and empty
+	// TODO full synth log imitating LogChanges
+	if tx.IsQueued || !tx.Accepted || txParsed.TimeDiff == 0 {
+
+		names := c.MsgStruct.StatesIndex
+		entry := &am.LogEntry{Level: am.LogChanges}
+
+		// state list
+		switch tx.Type {
+		case am.MutationAdd:
+			entry.Text = "+" + strings.Join(tx.CalledStateNames(names), " +")
+		case am.MutationRemove:
+			entry.Text = "-" + strings.Join(tx.CalledStateNames(names), " -")
+		case am.MutationSet:
+			// TODO both + and -
+		}
+
+		// result prefix
+		switch {
+		case tx.IsQueued:
+			entry.Text = "[queue] " + entry.Text
+		case !tx.Accepted:
+			entry.Text = "[cance] " + entry.Text
+		case txParsed.TimeDiff == 0:
+			entry.Text = "[empty] " + entry.Text
+		}
+
+		// log args
+		entry.Text += am.MutationFormatArgs(tx.Args)
+
+		// append and set TODO keep synth log somewhere else than Export
+		tx.LogEntries = []*am.LogEntry{entry}
 	}
 
 	// pre-tx log entries
@@ -128,68 +163,27 @@ func (d *Debugger) hParseMsgLogEntry(
 ) *am.LogEntry {
 	lvl := entry.Level
 
-	t := fmtLogEntry(d.Mach, entry.Text, tx.CalledStateNames(
-		c.MsgStruct.StatesIndex), c.MsgStruct.States)
+	t := fmtLogEntry(entry.Text, tx.CalledStateNames(c.MsgStruct.StatesIndex),
+		c.MsgStruct.States)
 
 	return &am.LogEntry{Level: lvl, Text: t}
 }
 
-func (d *Debugger) RebuildLogEnter(e *am.Event) bool {
-	// TODO typed args
-	_, ok := e.Args["logRebuildEnd"].(int)
-	return ok
-}
-
-// TODO progressive rendering
-// TODO un-dim [extern] when Opts.Filters.Loglevel <= LogExternal
-func (d *Debugger) RebuildLogState(e *am.Event) {
-	// TODO typed args
-	endIndex := e.Args["logRebuildEnd"].(int)
-	d.log.Clear()
-	ctx := d.Mach.NewStateCtx(ss.RebuildLog)
-	var buf []byte
-
-	for i := 0; i < endIndex && ctx.Err() == nil; i++ {
-		// flush every N txs
-		if i%500 == 0 {
-			_, err := d.log.Write(buf)
-			if err != nil {
-				d.Mach.EvAddErr(e, err, nil)
-				return
-			}
-			buf = nil
-		}
-
-		buf = append(buf, d.hGetLogEntryTxt(i)...)
-	}
-
-	// TODO activate when progressive rendering lands
-	// if d.Mach.Is1(ss.NarrowLayout) {
-	// 	t = strings.ReplaceAll(t, "[yellow][extern", "[yellow][e")
-	// 	t = strings.ReplaceAll(t, "[yellow][state", "[yellow][s")
-	// }
-
-	_, err := d.log.Write(buf)
-	if err != nil {
-		d.Mach.EvAddErr(e, err, nil)
-		return
-	}
-
-	// scroll, but only if not manually scrolled
-	if d.Mach.Not1(ss.LogUserScrolled) {
-		d.log.ScrollToHighlight()
-	}
-
-	d.Mach.EvAdd1(e, ss.LogBuilt, nil)
-}
-
 func (d *Debugger) hAppendLogEntry(index int) error {
-	entry := d.hGetLogEntryTxt(index)
-	if entry == nil {
+	if d.hIsTxSkipped(d.C, index) {
 		return nil
 	}
 
-	_, err := d.log.Write(entry)
+	entry, empty := d.hGetLogEntryTxt(index)
+	if entry == "" {
+		return nil
+	}
+
+	if !empty {
+		entry = "\n" + entry
+	}
+
+	_, err := d.log.Write([]byte(entry))
 	if err != nil {
 		return err
 	}
@@ -204,27 +198,31 @@ func (d *Debugger) hAppendLogEntry(index int) error {
 
 // hGetLogEntryTxt prepares a log entry for UI rendering
 // index: 1-based
-func (d *Debugger) hGetLogEntryTxt(index int) []byte {
-	if index < 0 || index >= len(d.C.MsgTxs) {
-		return nil
+func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
+	empty = true
+
+	if index < 0 || index >= len(d.C.MsgTxs) || index >= len(d.C.msgTxsParsed) ||
+		index >= len(d.C.logMsgs) {
+
+		d.Mach.AddErr(fmt.Errorf("invalid log index %d", index), nil)
+		return "", true
 	}
 
 	c := d.C
 	ret := ""
 	tx := c.MsgTxs[index]
+	txParsed := c.msgTxsParsed[index]
+	entries := c.logMsgs[index]
 
-	for _, le := range c.logMsgs[index] {
+	// confirm visibility
+	if d.hIsTxSkipped(c, index) {
+		return "", true
+	}
+
+	for _, le := range entries {
 		logStr := le.Text
 		logLvl := le.Level
-		if logStr == "" {
-			continue
-		}
-
-		if d.isFiltered() && d.hIsTxSkipped(c, index) {
-			// skip filtered txs
-			continue
-		} else if logLvl > d.Opts.Filters.LogLevel {
-			// toolbarItem out higher log level
+		if logStr == "" || logLvl > d.Opts.Filters.LogLevel {
 			continue
 		}
 
@@ -241,33 +239,92 @@ func (d *Debugger) hGetLogEntryTxt(index int) []byte {
 		ret += logStr
 	}
 
-	if ret != "" && d.Mach.Not1(ss.FilterSummaries) && index > 0 {
-		msgTime := tx.Time
-		prevMsg := c.MsgTxs[index-1]
-		if prevMsg.Time.Second() != msgTime.Second() ||
-			msgTime.Sub(*prevMsg.Time) > time.Second {
+	if ret != "" {
+		empty = false
 
-			// grouping labels (per second)
-			ret += `[grey]` + msgTime.Format(timeFormat) + "[-]\n"
+		if d.Opts.Filters.LogLevel == am.LogExternal {
+			ret = strings.ReplaceAll(ret, "[yellow][extern[][white] [darkgrey]", "")
 		}
+
+		// prefix if showing canceled or queued (gutter)
+		if (d.Mach.Not1(ss.FilterCanceledTx) || d.Mach.Not1(ss.FilterQueuedTx)) &&
+			d.Opts.Filters.LogLevel >= am.LogChanges {
+
+			p := ""
+			switch {
+			case tx.IsQueued:
+				p = "[-:yellow] [-:-]"
+			case !tx.Accepted:
+				p = "[-:red] [-:-]"
+			case txParsed.TimeDiff == 0:
+				p = "[-:grey] [-:-]"
+			default:
+				p = "[-:green] [-:-]"
+			}
+
+			// prefix each line
+			ret = strings.TrimRight(ret, "\n")
+			ret = p + strings.Join(strings.Split(ret, "\n"), "\n"+p) + "\n"
+
+			// executed dot TODO add gutter to cview textview, then enable
+			// if tx.IsQueued {
+			//
+			// 	var executed *telemetry.DbgMsgTx
+			//
+			// 	// look into the future TODO links to the wrong one
+			// 	for iii := index; iii < len(c.MsgTxs); iii++ {
+			// 		check := c.MsgTxs[iii]
+			//
+			// 		if check.IsQueued {
+			// 			continue
+			// 		}
+			//
+			// 		if check.QueueTick == tx.MutQueueTick ||
+			// 			(check.MutQueueToken > 0 && check.MutQueueToken == tx.MutQueueToken) {
+			//
+			// 			executed = check
+			// 			break
+			// 		}
+			// 	}
+			//
+			// 	if executed == nil {
+			// 		before, after, _ := strings.Cut(ret, " ")
+			// 		ret = before + "." + after
+			// 	}
+			// }
+		}
+
+		if d.Mach.Not1(ss.LogTimestamps) && index > 0 {
+			msgTime := tx.Time
+			prevMsg := c.MsgTxs[index-1]
+			if prevMsg.Time.Second() != msgTime.Second() ||
+				msgTime.Sub(*prevMsg.Time) > time.Second {
+
+				// grouping labels (per second)
+				ret += `[grey]` + msgTime.Format(timeFormat) + "[-]\n"
+			}
+		}
+
+		ret = strings.TrimRight(ret, "\n")
 	}
 
 	// create a highlight region (even for empty txs)
+	// TODO should always be in the beginning to not H scroll
 	txId := tx.ID
 	ret = `["` + txId + `"]` + ret + `[""]`
 
-	return []byte(ret)
+	return ret, empty
 }
 
 var logPrefixState = regexp.MustCompile(
-	`^\[yellow\]\[state\[\]\[white\] .+\)\n$`)
+	`^\[yellow\]\[(state|queue|cance|empty)\[\]\[white\] .+\)\n$`)
 
 var logPrefixExtern = regexp.MustCompile(
-	`^\[yellow\]\[extern.+\n$`)
+	`^\[yellow\]\[exter.+\n$`)
 
 var (
 	filenamePattern = regexp.MustCompile(`/[a-z_]+\.go:\d+ \+(?i)`)
-	methodPattern   = regexp.MustCompile(`\.[^.]+?$`)
+	methodPattern   = regexp.MustCompile(`/[^/]+?$`)
 )
 
 // TODO split

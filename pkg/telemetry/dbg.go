@@ -88,6 +88,16 @@ type DbgMsgTx struct {
 	// transition.
 	// TODO refac to TimeAfter, re-gen all the assets
 	Clocks am.Time
+	// QueueTick is the current queue tick in the machine.
+	// transition.
+	QueueTick uint64
+	// TODO QueueDebug with all string entries for comparison
+	// MutQueueToken is the token of a prepended mutation, can be scheduled or
+	// executed, depending on IsQueued.
+	MutQueueToken uint64
+	// MutQueueTick is the assigned queue tick when the tx will be executed.
+	// Only for IsQueued.
+	MutQueueTick uint64
 	// mutation type
 	Type am.MutationType
 	// called states
@@ -110,7 +120,12 @@ type DbgMsgTx struct {
 	IsAuto bool
 	// result of the transition
 	Accepted bool
-	IsCheck  bool
+	// is this a check (Can*) tx or mutation?
+	IsCheck bool
+	// is this a queued mutation?
+	IsQueued  bool
+	Args      map[string]string
+	QueueDump []string
 
 	// TODO add Mutation.Source, only if semLogger.IsGraph() == true
 	// Source *am.MutSource
@@ -267,15 +282,20 @@ type DbgTracer struct {
 	c        *dbgClient
 	errCount atomic.Int32
 	exited   atomic.Bool
+	mx       sync.Mutex
+	lastTx   string
+	// number of queued mutations since lastTx
+	queued    int
+	lastMTime am.Time
 }
 
 var _ am.Tracer = &DbgTracer{}
 
 func NewDbgTracer(mach am.Api, addr string) *DbgTracer {
 	t := &DbgTracer{
-		Addr:  addr,
-		Mach:  mach,
-		queue: make(chan func(), 1000),
+		Addr:   addr,
+		Mach:   mach,
+		outbox: make(chan func(), 1000),
 	}
 	ctx := t.Mach.Ctx()
 
@@ -283,7 +303,7 @@ func NewDbgTracer(mach am.Api, addr string) *DbgTracer {
 	go func() {
 		for {
 			select {
-			case f := <-t.queue:
+			case f := <-t.outbox:
 				f()
 			case <-ctx.Done():
 				return
@@ -298,9 +318,10 @@ func (t *DbgTracer) MachineInit(mach am.Api) context.Context {
 	gob.Register(am.Relation(0))
 	var err error
 	t.Mach = mach
+	t.lastMTime = mach.Time(nil)
 
 	// add to the queue
-	t.queue <- func() {
+	t.outbox <- func() {
 		if mach.IsDisposed() {
 			return
 		}
@@ -321,8 +342,10 @@ func (t *DbgTracer) MachineInit(mach am.Api) context.Context {
 }
 
 func (t *DbgTracer) SchemaChange(mach am.Api, _ am.Schema) {
+	t.lastMTime = mach.Time(nil)
+
 	// add to the queue
-	t.queue <- func() {
+	t.outbox <- func() {
 		err := sendMsgSchema(mach, t.c)
 		if err != nil {
 			err = fmt.Errorf("failed to send new struct to am-dbg: %w", err)
@@ -357,25 +380,41 @@ func (t *DbgTracer) TransitionEnd(tx *am.Transition) {
 
 	tx.InternalLogEntriesLock.Lock()
 	defer tx.InternalLogEntriesLock.Unlock()
+	t.mx.Lock()
+	defer t.mx.Unlock()
 
 	msg := &DbgMsgTx{
-		MachineID:    mach.Id(),
-		ID:           tx.Id,
-		Clocks:       tx.TimeAfter,
-		Accepted:     tx.IsAccepted.Load(),
-		IsCheck:      mut.IsCheck,
-		Type:         mut.Type,
-		CalledStates: tx.CalledStates(),
-		Steps:        tx.Steps,
+		MachineID:        mach.Id(),
+		ID:               tx.Id,
+		Clocks:           tx.TimeAfter,
+		Accepted:         tx.IsAccepted.Load(),
+		IsCheck:          mut.IsCheck,
+		Type:             mut.Type,
+		CalledStatesIdxs: mut.Called,
+		Steps:            tx.Steps,
 		// no locking necessary, as the tx is finalized (read-only)
 		LogEntries:    removeLogPrefix(mach, tx.LogEntries),
 		PreLogEntries: removeLogPrefix(mach, tx.PreLogEntries),
-		IsAuto:        tx.IsAuto(),
+		IsAuto:        mut.Auto,
 		Queue:         tx.QueueLen,
+		QueueTick:     mach.QueueTick(),
+		MutQueueToken: mut.QueueToken,
+		// debug
+		// QueueDump: mach.QueueDump(),
 	}
 
+	// collect args
+	semlog := mach.SemLogger()
+	if semlog.IsArgs() {
+		msg.Args = mut.MapArgs(semlog.ArgsMapper())
+	}
+
+	t.lastTx = tx.Id
+	t.lastMTime = tx.TimeAfter
+	t.queued = 0
+
 	// add to the queue
-	t.queue <- func() {
+	t.outbox <- func() {
 		if t.c == nil {
 			if os.Getenv(am.EnvAmLog) != "" {
 				log.Println(mach.Id() + ": no connection to am-dbg")
@@ -405,6 +444,63 @@ func (t *DbgTracer) MachineDispose(id string) {
 			_ = t.c.rpc.Close()
 		}
 	}()
+}
+
+func (t *DbgTracer) MutationQueued(mach am.Api, mut *am.Mutation) {
+	// skip check mutations when not logging them
+	if mut.IsCheck && !mach.SemLogger().IsCan() {
+		return
+	}
+
+	t.mx.Lock()
+	defer t.mx.Unlock()
+
+	msg := &DbgMsgTx{
+		MachineID:        mach.Id(),
+		ID:               t.lastTx + "-" + strconv.Itoa(t.queued),
+		Clocks:           t.lastMTime,
+		Accepted:         true,
+		IsCheck:          mut.IsCheck,
+		Type:             mut.Type,
+		CalledStatesIdxs: mut.Called,
+		IsAuto:           mut.Auto,
+		Queue:            int(mut.QueueLen),
+		IsQueued:         true,
+		QueueTick:        mach.QueueTick(),
+		MutQueueTick:     mut.QueueTick,
+		MutQueueToken:    mut.QueueToken,
+		// debug
+		// QueueDump: mach.QueueDump(),
+	}
+
+	// collect args
+	semlog := mach.SemLogger()
+	if semlog.IsArgs() {
+		msg.Args = mut.MapArgs(semlog.ArgsMapper())
+	}
+	if err := am.ParseArgs(mut.Args).Err; err != nil {
+		msg.Args["err"] = err.Error()
+	}
+	t.queued++
+
+	// add to the queue
+	t.outbox <- func() {
+		if t.c == nil {
+			if os.Getenv(am.EnvAmLog) != "" {
+				log.Println(mach.Id() + ": no connection to am-dbg")
+			}
+			t.errCount.Add(1)
+
+			return
+		}
+		err := t.c.sendMsgTx(msg)
+		if err != nil {
+			if os.Getenv(am.EnvAmLog) != "" {
+				log.Printf(mach.Id()+":failed to send a msg to am-dbg: %s", err)
+			}
+			t.errCount.Add(1)
+		}
+	}
 }
 
 // ///// FUNCS
