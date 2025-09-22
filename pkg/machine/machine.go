@@ -133,7 +133,7 @@ type Machine struct {
 	unlockDisposed atomic.Bool
 	// breakpoints are a list of breakpoints for debugging. [][added, removed]
 	breakpointsMx sync.Mutex
-	breakpoints   [][2]S
+	breakpoints   []*breakpoint
 	onError       atomic.Pointer[HandlerError]
 }
 
@@ -1835,6 +1835,17 @@ func (m *Machine) setActiveStates(calledStates S, targetStates S,
 	return previous
 }
 
+func (m *Machine) AddBreakpoint1(added string, removed string, strict bool) {
+	// TODO add to [Api]
+	if added != "" {
+		m.AddBreakpoint(S{added}, nil, strict)
+	} else if removed != "" {
+		m.AddBreakpoint(nil, S{removed}, strict)
+	} else {
+		m.log(LogOps, "[breakpoint] invalid")
+	}
+}
+
 // AddBreakpoint adds a breakpoint for an outcome of mutation (added and
 // removed states). Once such mutation happens, a log message will be printed
 // out. You can set an IDE's breakpoint on this line and see the mutation's sync
@@ -1845,7 +1856,11 @@ func (m *Machine) AddBreakpoint(added S, removed S, strict bool) {
 	m.breakpointsMx.Lock()
 	defer m.breakpointsMx.Unlock()
 
-	m.breakpoints = append(m.breakpoints, [2]S{added, removed})
+	m.breakpoints = append(m.breakpoints, &breakpoint{
+		Added:   added,
+		Removed: removed,
+		Strict:  strict,
+	})
 }
 
 func (m *Machine) breakpoint(added S, removed S) {
@@ -1856,12 +1871,23 @@ func (m *Machine) breakpoint(added S, removed S) {
 	for _, bp := range m.breakpoints {
 
 		// check if the breakpoint matches
-		if len(added) > 0 && !slices.Equal(bp[0], added) {
+		if len(added) > 0 && !slices.Equal(bp.Added, added) {
 			continue
 		}
-		if len(removed) > 0 && !slices.Equal(bp[1], removed) {
+		if len(removed) > 0 && !slices.Equal(bp.Removed, removed) {
 			continue
 		}
+
+		// strict skips already active / inactive
+		if bp.Strict {
+			if len(bp.Added) > 0 && m.Is(bp.Added) {
+				continue
+			}
+			if len(bp.Removed) > 0 && m.Not(bp.Removed) {
+				continue
+			}
+		}
+
 		found = true
 	}
 

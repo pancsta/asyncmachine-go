@@ -314,6 +314,12 @@ type Api interface {
 	IsDisposed() bool
 }
 
+type breakpoint struct {
+	Added   S
+	Removed S
+	Strict  bool
+}
+
 // ///// ///// /////
 
 // ///// ENUMS
