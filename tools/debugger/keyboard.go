@@ -89,7 +89,10 @@ func (d *Debugger) hInitFocusManager() *cbind.Configuration {
 // newAfterFocusFn forwards focus events to machine states
 func (d *Debugger) newAfterFocusFn() func(p cview.Primitive) {
 	return func(p cview.Primitive) {
-		d.Mach.Add1(ss.AfterFocus, am.A{"cview.Primitive": p})
+		// add, but dont dup
+		if !d.Mach.WillBe1(ss.AfterFocus, am.PositionLast) {
+			d.Mach.Add1(ss.AfterFocus, am.A{"cview.Primitive": p})
+		}
 		// d.Mach.Log("after focus %s", p)
 	}
 }
@@ -156,10 +159,17 @@ func (d *Debugger) hSearchSchemaClients(inputHandler *cbind.Configuration) {
 				var nodeMatch *cview.TreeNode
 				d.treeRoot.Walk(
 					func(node, parent *cview.TreeNode, depth int) bool {
+						if nodeMatch != nil {
+							return false
+						}
 						if !currNodePassed && node != currNode {
 							return true
+
+							// minimal match and move to next matches for speed
+						} else if !currNodePassed {
+							currNodePassed = true
+							return true
 						}
-						currNodePassed = true
 
 						text := normalizeText(node.GetText())
 
@@ -186,12 +196,15 @@ func (d *Debugger) hSearchSchemaClients(inputHandler *cbind.Configuration) {
 					// handle StateNameSelected
 					ref, ok := nodeMatch.GetReference().(*nodeRef)
 					if ok && ref != nil && ref.stateName != "" {
-						d.Mach.Add1(ss.StateNameSelected, am.A{"state": ref.stateName})
+						d.Mach.Add1(ss.StateNameSelected, am.A{
+							// TODO typed args
+							"state": ref.stateName,
+						})
 					} else {
 						d.Mach.Remove1(ss.StateNameSelected, nil)
 					}
 					d.hUpdateSchemaTree()
-					d.hUpdateLogReader()
+					d.hUpdateLogReader(nil)
 					d.draw()
 					d.tree.SetCurrentNode(nodeMatch)
 				}
@@ -258,7 +271,6 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 
 		// expand / collapse trees
 		"alt+e": func(ev *tcell.EventKey) *tcell.EventKey {
-			// TODO unify
 			d.hToolExpand()
 
 			return nil
@@ -293,14 +305,14 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 
 		// scroll to the first tx
 		"home": func(ev *tcell.EventKey) *tcell.EventKey {
-			d.hToolFirstTx()
+			d.hToolFirstTx(nil)
 
 			return nil
 		},
 
 		// scroll to the last tx
 		"end": func(ev *tcell.EventKey) *tcell.EventKey {
-			d.hToolLastTx()
+			d.hToolLastTx(nil)
 
 			return nil
 		},
@@ -353,12 +365,7 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 				return nil
 			}
 
-			// default focus element
-			if d.Mach.Is1(ss.ClientListVisible) {
-				d.Mach.Add1(ss.ClientListFocused, nil)
-			} else {
-				d.Mach.Add1(ss.AddressFocused, nil)
-			}
+			d.focusDefault()
 
 			return ev
 		},
@@ -403,6 +410,19 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 	}
 }
 
+func (d *Debugger) focusDefault() {
+	// default focus element
+	if d.Mach.Is1(ss.ClientListVisible) {
+		d.Mach.Add1(ss.ClientListFocused, nil)
+	} else if d.Mach.Not1(ss.TimelineTxHidden) {
+		d.Mach.Add1(ss.TimelineTxsFocused, nil)
+	} else {
+		d.Mach.Add1(ss.AddressFocused, nil)
+	}
+
+	d.Mach.Add1(ss.UpdateFocus, nil)
+}
+
 // these UI components can be navigated with keys
 var keyNavigable = am.S{
 	ss.AddressFocused, ss.Toolbar1Focused,
@@ -411,11 +431,13 @@ var keyNavigable = am.S{
 
 func (d *Debugger) hNextTxKey() tcellKeyFn {
 	return func(ev *tcell.EventKey) *tcell.EventKey {
-		// scrolling
+		// skip for log scrolling
 		if d.Mach.Is1(ss.LogFocused) {
 			d.Mach.Add1(ss.LogUserScrolled, nil)
 
 			return ev
+
+			// skip for other UI components
 		} else if d.Mach.Any1(keyNavigable...) {
 			return ev
 		}
@@ -434,11 +456,15 @@ func (d *Debugger) hNextTxKey() tcellKeyFn {
 		}
 
 		// scroll timelines
+		state := ss.UserFwd
 		if d.Mach.Is1(ss.TimelineStepsFocused) {
-			// TODO try mach.IsScheduled(ss.UserFwdStep, am.MutationTypeAdd)
-			d.Mach.Add1(ss.UserFwdStep, nil)
-		} else {
-			d.Mach.Add1(ss.UserFwd, nil)
+			state = ss.UserFwdStep
+		}
+
+		// check queue throttle and add the state
+		if !d.Mach.IsQueuedAbove(scrollTxThrottle, am.MutationAdd, S{state}, false, false, 0) {
+
+			d.Mach.Add1(state, nil)
 		}
 
 		return nil
@@ -447,11 +473,13 @@ func (d *Debugger) hNextTxKey() tcellKeyFn {
 
 func (d *Debugger) hPrevTxKey() tcellKeyFn {
 	return func(ev *tcell.EventKey) *tcell.EventKey {
-		// scrolling
+		// skip for log scrolling
 		if d.Mach.Is1(ss.LogFocused) {
 			d.Mach.Add1(ss.LogUserScrolled, nil)
 
 			return ev
+
+			// skip for other UI components
 		} else if d.Mach.Any1(keyNavigable...) {
 			return ev
 		}
@@ -470,10 +498,15 @@ func (d *Debugger) hPrevTxKey() tcellKeyFn {
 		}
 
 		// scroll timelines
+		state := ss.UserBack
 		if d.Mach.Is1(ss.TimelineStepsFocused) {
-			d.Mach.Add1(ss.UserBackStep, nil)
-		} else {
-			d.Mach.Add1(ss.UserBack, nil)
+			state = ss.UserBackStep
+		}
+
+		// check queue throttle and add the state
+		if !d.Mach.IsQueuedAbove(scrollTxThrottle, am.MutationAdd, S{state}, false, false, 0) {
+
+			d.Mach.Add1(state, nil)
 		}
 
 		return nil
@@ -551,39 +584,57 @@ func (d *Debugger) hJumpFwdKey(ev *tcell.EventKey) *tcell.EventKey {
 }
 
 func (d *Debugger) toolMatrix() {
-	if d.Mach.Is1(ss.TreeLogView) {
-		d.Mach.Add1(ss.MatrixView, nil)
-	} else if d.Mach.Is1(ss.MatrixView) {
-		if d.Mach.Is1(ss.MatrixRain) {
-			d.Mach.Remove1(ss.MatrixRain, nil)
-			d.Mach.Add1(ss.TreeMatrixView, nil)
-		} else {
+	is1 := d.Mach.Is1
+	not1 := d.Mach.Not1
+	switch {
+
+	// default
+	case is1(ss.TreeLogView):
+		d.Mach.Add1(ss.TreeMatrixView, nil)
+
+	// small matrix
+	case is1(ss.TreeMatrixView):
+		if not1(ss.MatrixRain) {
 			d.Mach.Add1(ss.MatrixRain, nil)
+		} else {
+			// enlarge
+			d.Mach.Remove1(ss.MatrixRain, nil)
+			d.Mach.Add1(ss.MatrixView, nil)
 		}
-	} else if d.Mach.Any1(ss.TreeMatrixView, ss.MatrixRain) {
-		d.Mach.Add1(ss.MatrixRain, nil)
-	} else {
-		d.Mach.Remove1(ss.MatrixRain, nil)
-		d.Mach.Add1(ss.TreeLogView, nil)
+
+	// large matrix
+	case is1(ss.MatrixView):
+		if not1(ss.MatrixRain) {
+			d.Mach.Add1(ss.MatrixRain, nil)
+		} else {
+			// back to default
+			d.Mach.Add1(ss.TreeLogView, nil)
+		}
 	}
 }
 
-func (d *Debugger) hToolLastTx() {
+func (d *Debugger) hToolLastTx(e *am.Event) {
 	if d.Mach.Not1(ss.ClientSelected) {
 		return
 	}
-	d.hSetCursor1(d.hFilterTxCursor(d.C, len(d.C.MsgTxs), false), 0, false)
+	d.hSetCursor1(e, am.A{
+		"cursor1":    len(d.C.MsgTxs),
+		"filterBack": true,
+	})
 	d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
 	// sidebar for errs
 	d.hUpdateClientList()
 	d.hRedrawFull(true)
 }
 
-func (d *Debugger) hToolFirstTx() {
+func (d *Debugger) hToolFirstTx(e *am.Event) {
 	if d.Mach.Not1(ss.ClientSelected) {
 		return
 	}
-	d.hSetCursor1(d.hFilterTxCursor(d.C, 0, true), 0, false)
+	d.hSetCursor1(e, am.A{
+		"cursor1": 0,
+	})
+
 	d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
 	// sidebar for errs
 	d.hUpdateClientList()
@@ -607,16 +658,8 @@ func (d *Debugger) hToolExpand() {
 
 		// memorize
 		d.C.ReaderCollapsed = expanded
-		for _, child := range children {
-			if expanded {
-				child.Collapse()
-				child.GetReference().(*logReaderTreeRef).expanded = false
-			} else {
-				child.Expand()
-				child.GetReference().(*logReaderTreeRef).expanded = true
-			}
-		}
 
+		// TODO reader looses focus
 		return
 	}
 
@@ -717,8 +760,6 @@ func (d *Debugger) hUpdateFocusable() {
 
 	// unblock bc of locks
 	// TODO fix locks
-	go func() {
-		d.focusManager.Reset()
-		d.focusManager.Add(prims...)
-	}()
+	d.focusManager.Reset()
+	d.focusManager.Add(prims...)
 }

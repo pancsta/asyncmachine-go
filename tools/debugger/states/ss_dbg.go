@@ -74,8 +74,9 @@ var States = am.Schema{
 		Remove:  GroupFocused,
 	},
 	AddressFocused: {Remove: GroupFocused},
+	Resized:        {Multi: true},
 
-	TimelineHidden:      {Require: S{TimelineStepsHidden}},
+	TimelineTxHidden:    {Require: S{TimelineStepsHidden}},
 	TimelineStepsHidden: {},
 	NarrowLayout: {
 		Require: S{Ready},
@@ -85,7 +86,10 @@ var States = am.Schema{
 		Require: S{Ready},
 		Auto:    true,
 	},
-	StateNameSelected:     {Require: S{ClientSelected}},
+	StateNameSelected: {
+		Multi:   true,
+		Require: S{ClientSelected},
+	},
 	TimelineStepsScrolled: {Require: S{ClientSelected}},
 	HelpDialog:            {Remove: GroupDialog},
 	ExportDialog: {
@@ -103,22 +107,24 @@ var States = am.Schema{
 		Add:     S{UpdateFocus},
 	},
 	// TODO should activate FiltersFocused
-	FilterAutoTx:     {},
-	FilterCanceledTx: {},
-	FilterEmptyTx:    {},
-	FilterSummaries:  {},
-	FilterTraces:     {},
-	FilterHealth:     {},
-	FilterChecks:     {},
-	FilterOutGroup:   {},
-	Redraw:           {},
+	FilterAutoTx:         {Remove: S{FilterAutoCanceledTx}},
+	FilterAutoCanceledTx: {Remove: S{FilterAutoTx}},
+	FilterCanceledTx:     {},
+	FilterQueuedTx:       {},
+	FilterEmptyTx:        {},
+	LogTimestamps:        {},
+	FilterTraces:         {},
+	FilterHealth:         {},
+	FilterChecks:         {},
+	FilterOutGroup:       {},
+	Redraw:               {},
 
 	// ///// Actions
 
 	Start: {Add: S{
-		FilterSummaries, FilterHealth, FilterEmptyTx, ClientListFocused,
+		LogTimestamps, FilterHealth, ClientListFocused, FilterAutoCanceledTx,
 	}},
-	Healthcheck: {
+	Heartbeat: {
 		Multi:   true,
 		Require: S{Start},
 	},
@@ -127,10 +133,10 @@ var States = am.Schema{
 	TreeLogView: {
 		Auto:    true,
 		Require: S{Start},
-		Remove:  SAdd(GroupViews, S{TreeMatrixView, MatrixView, MatrixRain}),
+		Remove:  SAdd(GroupViews, S{MatrixRain}),
 	},
-	MatrixView:     {Remove: GroupViews},
-	TreeMatrixView: {Remove: GroupViews},
+	MatrixView:     {Remove: SAdd(GroupViews, S{LogReaderVisible})},
+	TreeMatrixView: {Remove: SAdd(GroupViews, S{LogReaderVisible})},
 	TailMode: {
 		Require: S{ClientSelected},
 		Remove:  SAdd(GroupPlaying, S{LogUserScrolled}),
@@ -155,14 +161,27 @@ var States = am.Schema{
 		Remove:  GroupSwitchedClientTx,
 	},
 	ScrollToMutTx: {Require: S{ClientSelected}},
-	// TODO depend on a common Matrix view
+	// TODO make it depend on a common MatrixVisible state
 	MatrixRain: {},
+	MatrixRainSelected: {
+		Multi:   true,
+		Require: S{MatrixRain, ClientSelected},
+	},
 	LogReaderVisible: {
 		Auto:    true,
 		Require: S{TreeLogView, LogReaderEnabled},
 	},
-	LogReaderEnabled: {},
-	UpdateLogReader:  {Require: S{Ready, LogReaderEnabled}},
+	LogReaderEnabled:   {},
+	UpdateLogScheduled: {Require: S{Ready}},
+	UpdatingLog: {
+		Require: S{Ready, ClientSelected},
+		Remove:  S{LogUpdated},
+	},
+	LogUpdated: {
+		Require: S{Ready, ClientSelected},
+		Remove:  S{UpdatingLog},
+	},
+	UpdateLogReader: {Require: S{Ready, LogReaderEnabled}},
 	UpdateFocus: {
 		Multi:   true,
 		Require: S{Ready},
@@ -192,6 +211,7 @@ var States = am.Schema{
 	},
 
 	ScrollToTx: {
+		Multi:   true,
 		Require: S{ClientSelected},
 		Remove:  S{TailMode, Playing, TimelineStepsScrolled},
 	},
@@ -221,10 +241,7 @@ var States = am.Schema{
 		Remove:  S{BuildingLog},
 	},
 
-	SetCursor: {
-		Multi:   true,
-		Require: S{Ready},
-	},
+	SetCursor: {Require: S{Ready}},
 	SetGroup: {
 		Multi:   true,
 		Require: S{ClientSelected},
@@ -270,6 +287,15 @@ var (
 	}
 	GroupFilters = S{
 		FilterAutoTx, FilterCanceledTx, FilterEmptyTx, FilterHealth, FilterOutGroup,
+		FilterQueuedTx, FilterAutoCanceledTx,
+	}
+	// GroupDebug contains states useful when debugging the debugger in another
+	// debugger.
+	GroupDebug = S{
+		Fwd, Back, Playing, TailMode, LogBuilt, UpdatingLog, LogUpdated, BuildingLog,
+		GcMsgs, ScrollToTx, ScrollToStep, ToggleTool, ToolToggled,
+		SelectingClient, ClientSelected, StateNameSelected, DiagramsScheduled,
+		SetGroup,
 	}
 )
 
@@ -283,8 +309,8 @@ const (
 	TreeGroupsFocused    = "TreeGroupsFocused"
 	LogFocused           = "LogFocused"
 	TimelineTxsFocused   = "TimelineTxsFocused"
+	TimelineTxHidden     = "TimelineTxHidden"
 	TimelineStepsFocused = "TimelineStepsFocused"
-	TimelineHidden       = "TimelineHidden"
 	TimelineStepsHidden  = "TimelineStepsHidden"
 	MatrixFocused        = "MatrixFocused"
 	DialogFocused        = "DialogFocused"
@@ -293,12 +319,13 @@ const (
 	Toolbar3Focused      = "Toolbar3Focused"
 	LogReaderFocused     = "LogReaderFocused"
 	AddressFocused       = "AddressFocused"
+	Resized              = "Resized"
 	// ClientListFocused is client list focused.
 	// TODO rename to ClientListFocused
 	ClientListFocused = "ClientListFocused"
 
-	// Redraw means the UI should be re-drawn.
-	Redraw                = "Redraw'"
+	// Redraw means the UI should have a full re-draw.
+	Redraw                = "Redraw"
 	TimelineStepsScrolled = "TimelineStepsScrolled"
 	ClientMsg             = "ClientMsg"
 	// StateNameSelected states that a state name is selected somehwere in the
@@ -309,7 +336,7 @@ const (
 	NarrowLayout      = "NarrowLayout"
 	ClientListVisible = "ClientListVisible"
 	Start             = "Start"
-	Healthcheck       = "Healthcheck"
+	Heartbeat         = "Heartbeat"
 	GcMsgs            = "GcMsgs"
 	Playing           = "Playing"
 	Paused            = "Paused"
@@ -359,46 +386,48 @@ const (
 	ScrollToTx   = "ScrollToTx"
 	ScrollToStep = "ScrollToStep"
 	// Ready is an async result of start
-	Ready            = "Ready"
-	FilterCanceledTx = "FilterCanceledTx"
-	FilterAutoTx     = "FilterAutoTx"
-	FilterHealth     = "FilterHealth"
-	FilterChecks     = "FilterChecks"
+	Ready                = "Ready"
+	FilterCanceledTx     = "FilterCanceledTx"
+	FilterQueuedTx       = "FilterQueuedTx"
+	FilterAutoTx         = "FilterAutoTx"
+	FilterAutoCanceledTx = "FilterAutoCanceledTx"
+	FilterHealth         = "FilterHealth"
+	FilterChecks         = "FilterChecks"
 	// FilterOutGroup filters out txs for states outside the selected group.
 	FilterOutGroup = "FilterOutGroup"
-	// FilterEmptyTx is a filter for txes which didn't change state and didn't
+	// FilterEmptyTx is a filter for txs which didn't change state and didn't
 	// run any self handler either
-	FilterEmptyTx   = "FilterEmptyTx"
-	FilterSummaries = "FilterSummaries"
-	FilterTraces    = "FilterTraces"
-	ToggleTool      = "ToggleTool"
-	ToolToggled     = "ToolToggled"
+	FilterEmptyTx = "FilterEmptyTx"
+	LogTimestamps = "LogTimestamps"
+	FilterTraces  = "FilterTraces"
+	ToggleTool    = "ToggleTool"
+	ToolToggled   = "ToolToggled"
 	// SwitchingClientTx switches to the given client and scrolls to the given
-	// transaction (1-based tx index). Accepts Client.id and Client.cursorTx.
+	// transaction (1-based tx index). Accepts Client.id and cursorTx1.
 	SwitchingClientTx = "SwitchingClientTx"
 	// SwitchedClientTx is a completed SwitchingClientTx.
 	SwitchedClientTx = "SwitchedClientTx"
 	// ScrollToMutTx scrolls to a transition which mutated or called the
 	// passed state,
 	// If fwd is true, it scrolls forward, otherwise backwards.
-	ScrollToMutTx = "ScrollToMutTx"
-	MatrixRain    = "MatrixRain"
-	SetCursor     = "SetCursor"
-	// TODO merge with SetCursor (better name?)
-	SetGroup          = "SetGroup"
-	DiagramsScheduled = "DiagramsScheduled"
-	DiagramsRendering = "DiagramsRendering"
-	DiagramsReady     = "DiagramsReady"
-	ErrDiagrams       = "ErrDiagrams"
-	ErrWeb            = "ErrWeb"
-	InitClient        = "InitClient"
+	ScrollToMutTx      = "ScrollToMutTx"
+	MatrixRain         = "MatrixRain"
+	MatrixRainSelected = "MatrixRainSelected"
+	SetCursor          = "SetCursor"
+	SetGroup           = "SetGroup"
+	DiagramsScheduled  = "DiagramsScheduled"
+	DiagramsRendering  = "DiagramsRendering"
+	DiagramsReady      = "DiagramsReady"
+	ErrDiagrams        = "ErrDiagrams"
+	ErrWeb             = "ErrWeb"
+	InitClient         = "InitClient"
 )
 
 // Names of all the states (pkg enum).
 
 // Names is an ordered list of all the state names.
 var Names = S{
-	am.Exception,
+	am.StateException,
 
 	// /// Input events
 
@@ -421,10 +450,11 @@ var Names = S{
 	LogFocused,
 	LogReaderFocused,
 	AddressFocused,
+	Resized,
 	ClientListFocused,
 	TimelineTxsFocused,
 	TimelineStepsFocused,
-	TimelineHidden,
+	TimelineTxHidden,
 	TimelineStepsHidden,
 	Toolbar1Focused,
 	Toolbar2Focused,
@@ -441,10 +471,23 @@ var Names = S{
 	TimelineStepsScrolled,
 	Redraw,
 
-	// /// Actions
+	// ///// Flags
+
+	FilterAutoTx,
+	FilterAutoCanceledTx,
+	FilterCanceledTx,
+	FilterQueuedTx,
+	FilterEmptyTx,
+	LogTimestamps,
+	FilterTraces,
+	FilterHealth,
+	FilterChecks,
+	FilterOutGroup,
+
+	// ///// Actions
 
 	Start,
-	Healthcheck,
+	Heartbeat,
 	GcMsgs,
 	TreeLogView,
 	MatrixView,
@@ -452,20 +495,13 @@ var Names = S{
 	TailMode,
 	Playing,
 	Paused,
-	FilterAutoTx,
-	FilterCanceledTx,
-	FilterEmptyTx,
-	FilterSummaries,
-	FilterTraces,
-	FilterHealth,
-	FilterChecks,
-	FilterOutGroup,
 	ToggleTool,
 	ToolToggled,
 	SwitchingClientTx,
 	SwitchedClientTx,
 	ScrollToMutTx,
 	MatrixRain,
+	MatrixRainSelected,
 	LogReaderVisible,
 	LogReaderEnabled,
 	UpdateLogScheduled,

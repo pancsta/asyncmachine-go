@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -184,11 +186,15 @@ func StartRpc(
 	mach *am.Machine, addr string, mux chan<- cmux.CMux, fwdAdds []string,
 	enableHttp bool,
 ) {
+	// TODO dont listen in WASM
+
 	var err error
 	gob.Register(am.Relation(0))
 	if addr == "" {
 		addr = telemetry.DbgAddr
 	}
+	_, addrPort, _ := net.SplitHostPort(addr)
+	port, _ := strconv.Atoi(addrPort)
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Println(err)
@@ -198,7 +204,7 @@ func StartRpc(
 	}
 	mach.Log("dbg server started at %s", addr)
 
-	// conenct to other instances
+	// connect to another instances
 	fwdTo := make([]*rpc.Client, len(fwdAdds))
 	for i, a := range fwdAdds {
 		fwdTo[i], err = rpc.Dial("tcp", a)
@@ -208,15 +214,24 @@ func StartRpc(
 		}
 	}
 
-	// cmux
-	m := cmux.New(lis)
-	var httpL1, httpL2 net.Listener
-	var httpS *http.Server
+	// first cmux for tcp
+	mux1 := cmux.New(lis)
+	tcpL := mux1.Match(cmux.Any())
+	go tcpAccept(tcpL, mach, fwdTo)
 
+	// second cmux for http/ws on port+1
 	if enableHttp {
-		httpL1 = m.Match(cmux.HTTP1Fast())
-		httpL2 = m.Match(cmux.HTTP1())
-		httpS = &http.Server{
+		httpAddr := fmt.Sprintf("%s:%d",
+			addr[:strings.LastIndex(addr, ":")], port+1)
+		httpLis, err := net.Listen("tcp", httpAddr)
+		if err != nil {
+			log.Println(err)
+			mach.AddErr(err, nil)
+			panic(err)
+		}
+		mux2 := cmux.New(httpLis)
+		httpL := mux2.Match(cmux.HTTP1())
+		httpS := &http.Server{
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 				if r.RequestURI == "/diagrams/mach.ws" {
@@ -225,21 +240,16 @@ func StartRpc(
 				}
 				httpHandler(w, r, mach)
 			})}
-	}
-	tcpL := m.Match(cmux.Any())
 
-	go tcpAccept(tcpL, mach, fwdTo)
-	if enableHttp {
-		// listen
 		go func() {
-			err := httpS.Serve(httpL1)
-			// TODO ErrNetwork
-			mach.AddErr(err, nil)
+			mach.AddErr(httpS.Serve(httpL), nil)
 		}()
 		go func() {
-			err := httpS.Serve(httpL2)
-			// TODO ErrNetwork
-			mach.AddErr(err, nil)
+			if err := mux2.Serve(); err != nil {
+				fmt.Println(err)
+				mach.AddErr(err, nil)
+				os.Exit(1)
+			}
 		}()
 	}
 
@@ -247,12 +257,12 @@ func StartRpc(
 	if mux != nil {
 		go func() {
 			time.Sleep(100 * time.Millisecond)
-			mux <- m
+			mux <- mux1
 		}()
 	}
 
-	// start cmux
-	if err := m.Serve(); err != nil {
+	// start first cmux
+	if err := mux1.Serve(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}

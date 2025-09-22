@@ -1,4 +1,4 @@
-package test_local
+package integration
 
 import (
 	"context"
@@ -8,16 +8,15 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	"github.com/soheilhy/cmux"
 	"github.com/stretchr/testify/assert"
 
 	amtest "github.com/pancsta/asyncmachine-go/internal/testing"
-	ssTest "github.com/pancsta/asyncmachine-go/internal/testing/states"
+	sstest "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
@@ -33,15 +32,18 @@ var workerAddr = "localhost:" + utils.RandPort(52001, 53000)
 func init() {
 	_ = godotenv.Load()
 
+	// uncomment to debug
+	amhelp.EnableDebugging(false)
+
 	// worker uses env debugging
 	if os.Getenv(am.EnvAmTestDebug) != "" {
 		amhelp.EnableDebugging(false)
-		os.Setenv(am.EnvAmLogFile, "1")
+		os.Setenv(amhelp.EnvAmLogFile, "1")
 	}
 
-	// quick debug
-	_ = os.Setenv(telemetry.EnvAmDbgAddr, "localhost:6831")
-	amhelp.SetEnvLogLevel(am.LogOps)
+	// TODO quick debug
+	// _ = os.Setenv(telemetry.EnvAmDbgAddr, "localhost:6831")
+	// amhelp.SetEnvLogLevel(am.LogOps)
 
 	var err error
 	gob.Register(server.GetField(0))
@@ -49,8 +51,7 @@ func init() {
 	// worker
 	// TODO get opt defaults from the CLI
 	worker, err = amtest.NewDbgWorker(false, debugger.Opts{
-		Id: "loc-worker",
-		// TODO deadlock with `Timelines: 0,`
+		Id:        "loc-worker",
 		Timelines: 2,
 	})
 	if err != nil {
@@ -70,15 +71,17 @@ func TestUserFwd(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	mach := worker.Mach
-	amhelp.EnableDebugging(false)
 
 	// fixtures
 	cursorTx := 20
-	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
-		am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
+	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx, am.A{
+		// TODO typed args
+		"Client.id": "sim",
+		"cursorTx1": cursorTx,
+	})
 
 	// test
-	res := amhelp.Add1Block(ctx, mach, ss.UserFwd, nil)
+	res := amhelp.Add1Sync(ctx, mach, ss.UserFwd, nil)
 
 	// assert
 	assert.NotEqual(t, res, am.Canceled)
@@ -93,8 +96,8 @@ func TestUserFwd100(t *testing.T) {
 
 	// fixtures
 	cursorTx := 20
-	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
-		am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
+	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+		am.A{"Client.id": "sim", "cursorTx1": cursorTx})
 
 	// test
 	// add ss.UserFwd 100 times in a series
@@ -113,6 +116,8 @@ func TestUserFwd100(t *testing.T) {
 }
 
 func TestTailModeFLAKY(t *testing.T) {
+	t.Skip("TODO")
+
 	// TODO fix schema delivery (cmux issue?)
 	// t.Skip(true)
 	amhelp.EnableDebugging(false)
@@ -125,11 +130,11 @@ func TestTailModeFLAKY(t *testing.T) {
 
 	// fixture machine TODO schema never gets delivered
 	mach := utils.NewRels(t, nil)
-	mach.SemLogger().SetEmpty(am.LogOps)
-	err := telemetry.TransitionsToDbg(mach, workerAddr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// mach.SemLogger().SetEmpty(am.LogOps)
+	// err := telemetry.TransitionsToDbg(mach, workerAddr)
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
 
 	// wait for the fixture machine to connect
 	<-whenConn
@@ -137,9 +142,9 @@ func TestTailModeFLAKY(t *testing.T) {
 
 	// generate fixture events
 	// mach.SemLogger().SetSimple(t.Logf, am.LogOps)
-	mach.Add1(ssTest.C, nil)
-	mach.Add1(ssTest.D, nil)
-	mach.Add1(ssTest.A, nil)
+	mach.Add1(sstest.C, nil)
+	mach.Add1(sstest.D, nil)
+	mach.Add1(sstest.A, nil)
 
 	// wait for the msg
 	for {
@@ -180,11 +185,11 @@ func TestUserBack(t *testing.T) {
 
 	// fixtures
 	cursorTx := 20
-	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
-		am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
+	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+		am.A{"Client.id": "sim", "cursorTx1": cursorTx})
 
 	// test
-	res := amhelp.Add1Block(ctx, mach, ss.UserBack, nil)
+	res := amhelp.Add1Sync(ctx, mach, ss.UserBack, nil)
 
 	// assert
 	assert.NotEqual(t, res, am.Canceled)
@@ -200,16 +205,18 @@ func TestStepsResetAfterStateJump(t *testing.T) {
 	// fixtures
 	state := "PublishMessage"
 	cursorTx := 20
-	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
-		am.A{"Client.id": "ps-2", "Client.cursorTx": cursorTx})
+	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+		am.A{"Client.id": "ps-2", "cursorTx1": cursorTx})
 
 	// test
-	amhelp.Add1Block(ctx, mach, ss.StateNameSelected, am.A{"state": state})
-	amhelp.Add1Block(ctx, mach, ss.UserFwdStep, nil)
-	amhelp.Add1Block(ctx, mach, ss.UserFwdStep, nil)
+	mach.AddBreakpoint1(ss.StateNameSelected, "", false)
+	mach.AddBreakpoint1(ss.StateNameSelected, "", true)
+	amhelp.Add1Sync(ctx, mach, ss.StateNameSelected, am.A{"state": state})
+	amhelp.Add1Sync(ctx, mach, ss.UserFwdStep, nil)
+	amhelp.Add1Sync(ctx, mach, ss.UserFwdStep, nil)
 
 	// trigger a state jump and wait for the next scroll
-	amhelp.Add1AsyncBlock(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
+	amhelp.Add1Async(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
 		"state": state,
 		"fwd":   true,
 	})

@@ -75,7 +75,7 @@ func (d *Debugger) hInitSchemaTree() *cview.TreeView {
 		d.Mach.Add1(ss.StateNameSelected, am.A{
 			"state": ref.stateName,
 		})
-		d.hUpdateLogReader()
+		d.hUpdateLogReader(nil)
 		d.hUpdateMatrix()
 	})
 
@@ -122,25 +122,18 @@ func (d *Debugger) hUpdateSchemaTree() {
 		return
 	}
 
-	// debug
-	// log.Println("///// hUpdateSchemaTree")
-
-	queue := " "
 	i1 := 0
 	if c.CursorTx1 == 0 {
 		msg = c.MsgStruct
 	} else {
 		i1 = c.CursorTx1 - 1
-		tx := c.MsgTxs[i1]
-		msg = tx
-		queue = fmt.Sprintf(":%d Q:%d ",
-			len(c.MsgStruct.StatesIndex), tx.Queue)
+		msg = c.MsgTxs[i1]
 	}
 
-	d.tree.SetTitle(" Schema" + queue)
+	d.tree.SetTitle(d.P.Sprintf(" Schema:%v ", len(c.MsgStruct.StatesIndex)))
 
 	var steps []*am.Step
-	nextTx := d.hNnextTx()
+	nextTx := d.hNextTx()
 	if c.CursorTx1 < len(c.MsgTxs) && c.CursorStep1 > 0 {
 		steps = nextTx.Steps
 	}
@@ -166,8 +159,10 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 	}
 
 	maxNameLen := 0
+	index := c.MsgStruct.StatesIndex
+
 	// TODO group index
-	for _, name := range c.MsgStruct.StatesIndex {
+	for _, name := range index {
 		maxNameLen = max(maxNameLen, len(name))
 	}
 	schema := c.MsgStruct.States
@@ -176,6 +171,7 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 	d.tree.GetRoot().Walk(func(
 		node, parent *cview.TreeNode, depth int,
 	) bool {
+
 		// skip the root
 		if parent == nil {
 			return true
@@ -224,8 +220,8 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 		stateNamePad := stateName + strings.Repeat(" ", maxNameLen-len(stateName))
 		color := colorInactive
 
-		if msg.Is(c.MsgStruct.StatesIndex, am.S{stateName}) {
-			if stateName == am.Exception ||
+		if msg.Is(index, am.S{stateName}) {
+			if stateName == am.StateException ||
 				strings.HasPrefix(stateName, am.PrefixErr) {
 
 				color = colorErr
@@ -256,7 +252,7 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 					}
 				}
 
-				tick := d.P.Sprintf("%d", msg.Clock(c.MsgStruct.StatesIndex,
+				tick := d.P.Sprintf("%d", msg.Clock(index,
 					stateName))
 				node.SetColor(color)
 				node.SetText(stateNamePad + " " + multi + "|" + tick)
@@ -281,7 +277,7 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 		}
 
 		// top-level state
-		tick := strconv.FormatUint(msg.Clock(c.MsgStruct.StatesIndex,
+		tick := strconv.FormatUint(msg.Clock(index,
 			stateName), 10)
 		node.SetColor(color)
 		node.SetText(stateNamePad + " " + multi + "|" + tick)
@@ -879,6 +875,27 @@ func (d *Debugger) hSortTree() {
 	})
 
 	d.treeRoot.SetChildren(nodes)
+}
+
+func (d *Debugger) hUpdateTreeGroups() {
+	var sel int
+	var opts []*cview.DropDownOption
+	for i, name := range d.C.msgSchemaParsed.GroupsOrder {
+		amount := len(d.C.msgSchemaParsed.Groups[name])
+		label := "all"
+		if name != "all" {
+			label = fmt.Sprintf("%s:%d", name, amount)
+		}
+		opts = append(opts, cview.NewDropDownOption(label))
+		if name == d.C.SelectedGroup {
+			sel = i
+		}
+	}
+
+	d.treeGroups.ClearOptions()
+	d.treeGroups.AddOptions(opts...)
+	// TODO not great
+	go d.treeGroups.SetCurrentOption(sel)
 }
 
 func parentExpanded(node *cview.TreeNode) bool {

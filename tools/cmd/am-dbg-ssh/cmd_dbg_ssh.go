@@ -107,7 +107,7 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 			DbgLogger:   cli.GetLogger(&par.Params, par.OutputDir),
 			ImportData:  par.ImportData,
 			// ServerAddr is disabled
-			ServerAddr:  par.ListenAddr,
+			AddrRpc:     par.ListenAddr,
 			EnableMouse: par.EnableMouse,
 			Version:     ver,
 		})
@@ -127,7 +127,7 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 
 		// start and wait till the end
 
-		dbg.Start(par.StartupMachine, par.StartupTx, par.StartupView)
+		dbg.Start(par.StartupMachine, par.StartupTx, par.StartupView, par.StartupGroup)
 
 		select {
 		// TODO handle timeouts better

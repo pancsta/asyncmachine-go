@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>am-vis machine diagrams</title>
+    <title>am-vis machine diagram</title>
     <style>
         /* Make the body and container fullscreen */
         html, body {
@@ -120,7 +120,7 @@
                     svg = svgContainer.querySelector('svg');
 
                     if (!svg) {
-                        throw new Error('No SVG element found in the fetched content.');
+                        throw new Error('Enable diagrams on the toolbar.');
                     }
 
                     // Try to load the saved viewbox state only if requested
@@ -130,6 +130,7 @@
                     }
 
                     if (savedViewBox) {
+                        // TODO only for the same filename
                         console.log("Restoring saved view state.");
                         viewBox = savedViewBox;
                     } else {
