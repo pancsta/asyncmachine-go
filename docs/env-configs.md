@@ -30,23 +30,47 @@ AM_DEBUG=1
 # address of a running am-dbg instance
 # "1" expands to localhost:6831
 # defaults to ""
-AM_DBG_ADDR=localhost:6831
+AM_DBG_ADDR=1
 
 # enables a healthcheck ticker for every debugged machine
 # defaults to ""
 AM_HEALTHCHECK=1
 
-# machine text log level 0-5
-# defaults to "0"
-AM_LOG=2
+# enables all the features of semantic logging and transition steps
+# "1" | "" (default)
+AM_LOG_FULL=1
+
+# machine text log level
+# "0"-"5" | "0" (default)
+AM_LOG=3
 
 # log transition steps
-# defaults to ""
+# "1" | "" (default)
 AM_LOG_STEPS=1
 
-# log graph structure (mut traces, pipes, etc)
-# defaults to ""
+# log graph structure (mut traces, pipes, etc). See /pkg/machine.(*SemLogger).EnableGraph.
+# "1" | "" (default)
 AM_LOG_GRAPH=1
+
+# logs Can methods. See /pkg/machine.(*SemLogger).EnableCan.
+# "1" | "" (default)
+AM_LOG_CHECKS=1
+
+# logs queued mutations. See /pkg/machine.(*SemLogger).EnableQueued.
+# "1" | "" (default)
+AM_LOG_QUEUED=1
+
+# logs mutation args. See /pkg/machine.(*SemLogger).EnableArgs.
+# "1" | "" (default)
+AM_LOG_ARGS=1
+
+# logs When methods. See /pkg/machine.(*SemLogger).EnableWhen.
+# "1" | "" (default)
+AM_LOG_WHEN=1
+
+# logs state contexts. See /pkg/machine.(*SemLogger).EnableStateCtx.
+# "1" | "" (default)
+AM_LOG_STATE_CTX=1
 
 # enable file logging (use machine ID as name)
 # defaults to ""
@@ -153,7 +177,7 @@ AM_NODE_LOG_CLIENT=1
 AM_NODE_LOG_WORKER=1
 
 ### ### ###
-### PUBSUB
+### PUB SUB
 ### ### ###
 
 # print log msgs from PubSub
@@ -168,7 +192,8 @@ AM_PUBSUB_DBG=1
 ### REPL
 ### ### ###
 
-# REPL address to listen on. "1" expands to 127.0.0.1:0.
+# REPL address to listen on.
+# "1" expands to 127.0.0.1:0.
 # defaults to ""
 AM_REPL_ADDR=1
 

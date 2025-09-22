@@ -421,16 +421,71 @@ flowchart TB
 ```d2
 direction: right
 
-Mutation -> Transition.Consensus.Relations -> Transition.Consensus.Negotiation -> Transition.Execution
-Transition: {
-  Consensus: {
-    Relations
-    Negotiation
+classes: {
+  node: {
+    style: {
+      stroke: white
+      border-radius: 999
+      fill: "#45475A"
+      font-size: 20
+    }
   }
-  Execution
+  group: {
+    style: {
+      stroke: "#5F5C5C"
+      fill: "#262424"
+      font-size: 30
+    }
+  }
 }
 
-Transition.Execution -> Mutation: queue
-Transition.Execution -> Auto states: state changed
-Auto states -> Mutation: queue
+Mutation -> Transition.Consensus.Relations -> Transition.Consensus.Negotiation -> Transition.Execution
+Transition: {
+  class: group
+  Consensus: {
+    class: group
+    Relations
+    Negotiation
+    Relations: {
+      label: 2. Relations
+      class: node
+    }
+    Negotiation: {
+      label: 3. Negotiation
+      class: node
+    }
+  }
+  Execution
+  Execution: {
+    label: 4. Execution
+    class: node
+  }
+}
+
+Transition.Execution -> Mutation: queue {
+  style: {
+    font-size: 20
+    bold: true
+  }
+}
+Transition.Execution -> Auto: state changed {
+  style: {
+    font-size: 20
+    bold: true
+  }
+}
+Auto -> Mutation: queue {
+  style: {
+    font-size: 20
+    bold: true
+  }
+}
+Mutation: {
+  label: 1. Mutation
+  class: node
+}
+Auto: {
+  label: 5. Auto States
+  class: node
+}
 ```

@@ -66,7 +66,7 @@ From the monorepo root:
 
 1. `task web-metrics`
 2. `task gen-grafana-tree-state-source`
-3. `task tree-state-source`
+3. `task start`
 4. [http://localhost:3000](http://localhost:3000) -> Dashboards -> tree-state-source
 
 ## Possibilities
@@ -81,6 +81,8 @@ for more info.
 
 ## Config
 
+Config available in the `.env` file.
+
 ```bash
 # grafana sync
 
@@ -91,7 +93,7 @@ GRAFANA_URL=http://localhost:3000
 
 PUSH_GATEWAY_URL=http://localhost:9091
 LOKI_ADDR=localhost:3100
-AM_LOG=2
+AM_LOG=3
 
 # AM debugging
 

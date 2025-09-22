@@ -311,6 +311,7 @@ ok      github.com/pancsta/asyncmachine-go/examples/benchmark_grpc      5.187s
 with distinction which methods happen where (locally or on remote).
 
 ```go
+// TODO update
 // A (arguments) is a map of named arguments for a Mutation.
 type A map[string]any
 // S (state names) is a string list of state names.
@@ -322,99 +323,110 @@ type Schema = map[string]State
 
 // Api is a subset of Machine for alternative implementations.
 type Api interface {
-    // ///// REMOTE
+	// ///// REMOTE
 
-    // Mutations (remote)
+	// Mutations (remote)
 
-    Add1(state string, args A) Result
-    Add(states S, args A) Result22
-    Remove1(state string, args A) Result
-    Remove(states S, args A) Result
-    Set(states S, args A) Result
-    AddErr(err error, args A) Result
-    AddErrState(state string, err error, args A) Result
+	Add1(state string, args A) Result
+	Add(states S, args A) Result
+	Remove1(state string, args A) Result
+	Remove(states S, args A) Result
+	Set(states S, args A) Result
+	AddErr(err error, args A) Result
+	AddErrState(state string, err error, args A) Result
 
     // Traced mutations (remote)
 
-    EvAdd1(event *Event, state string, args A) Result
-    EvAdd(event *Event, states S, args A) Result
-    EvRemove1(event *Event, state string, args A) Result
-    EvRemove(event *Event, states S, args A) Result
-    EvAddErr(event *Event, err error, args A) Result
-    EvAddErrState(event *Event, state string, err error, args A) Result
+	EvAdd1(event *Event, state string, args A) Result
+	EvAdd(event *Event, states S, args A) Result
+	EvRemove1(event *Event, state string, args A) Result
+	EvRemove(event *Event, states S, args A) Result
+	EvAddErr(event *Event, err error, args A) Result
+	EvAddErrState(event *Event, state string, err error, args A) Result
 
-    // Waiting (remote)
+	// Waiting (remote)
 
-    WhenArgs(state string, args A, ctx context.Context) <-chan struct{}
+	WhenArgs(state string, args A, ctx context.Context) <-chan struct{}
 
-    // Getters (remote)
+	// Getters (remote)
 
-    Err() error
+	Err() error
 
-    // ///// LOCAL
+	// ///// LOCAL
 
-    // Checking (local)
+	// Checking (local)
 
-    IsErr() bool
-    Is(states S) bool
-    Is1(state string) bool
-    Not(states S) bool
-    Not1(state string) bool
-    Any(states ...S) bool
-    Any1(state ...string) bool
-    Has(states S) bool
-    Has1(state string) bool
-    IsTime(time Time, states S) bool
-    IsClock(clock Clock) bool
+	IsErr() bool
+	Is(states S) bool
+	Is1(state string) bool
+	Any(states ...S) bool
+	Any1(state ...string) bool
+	Not(states S) bool
+	Not1(state string) bool
+	IsTime(time Time, states S) bool
+	WasTime(time Time, states S) bool
+	IsClock(clock Clock) bool
+	WasClock(clock Clock) bool
+	Has(states S) bool
+	Has1(state string) bool
+	CanAdd(states S, args A) Result
+	CanAdd1(state string, args A) Result
+	CanRemove(states S, args A) Result
+	CanRemove1(state string, args A) Result
+	CountActive(states S) int
 
-    // Waiting (local)
+	// Waiting (local)
 
-    When(states S, ctx context.Context) <-chan struct{}
-    When1(state string, ctx context.Context) <-chan struct{}
-    WhenNot(states S, ctx context.Context) <-chan struct{}
-    WhenNot1(state string, ctx context.Context) <-chan struct{}
-    WhenTime(
-        states S, times Time, ctx context.Context) <-chan struct{}
-    WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
-    WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
-    WhenErr(ctx context.Context) <-chan struct{}
+	When(states S, ctx context.Context) <-chan struct{}
+	When1(state string, ctx context.Context) <-chan struct{}
+	WhenNot(states S, ctx context.Context) <-chan struct{}
+	WhenNot1(state string, ctx context.Context) <-chan struct{}
+	WhenTime(states S, times Time, ctx context.Context) <-chan struct{}
+	WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
+	WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
+	WhenErr(ctx context.Context) <-chan struct{}
+	WhenQueue(tick Result) <-chan struct{}
 
-    // Getters (local)
+	// Getters (local)
 
-    StateNames() S
-    ActiveStates() S
-    Tick(state string) uint64
-    Clock(states S) Clock
-    Time(states S) Time
-    TimeSum(states S) uint64
-    NewStateCtx(state string) context.Context
-    Export() *Serialized
-    Schema() Schema
-    Switch(groups ...S) string
-    Index(states S) []int
-    Index1(state string) int
+	StateNames() S
+	StateNamesMatch(re *regexp.Regexp) S
+	ActiveStates() S
+	Tick(state string) uint64
+	Clock(states S) Clock
+	Time(states S) Time
+	TimeSum(states S) uint64
+	QueueTick() uint64
+	NewStateCtx(state string) context.Context
+	Export() *Serialized
+	Schema() Schema
+	Switch(groups ...S) string
+	Groups() (map[string][]int, []string)
+	Index(states S) []int
+	Index1(state string) int
 
-    // Misc (local)
+	// Misc (local)
 
-    Id() string
-    ParentId() string
-    Tags() []string
-    Ctx() context.Context
-    String() string
-    StringAll() string
-    Log(msg string, args ...any)
-    SemLogger() SemLogger
-    Inspect(states S) string
-    Index(state string) int
-    BindHandlers(handlers any) error
-    DetachHandlers(handlers any) error
-    StatesVerified() bool
-    Tracers() []Tracer
-    DetachTracer(tracer Tracer) bool
-    BindTracer(tracer Tracer) error
-    Dispose()
-    WhenDisposed() <-chan struct{}
-    IsDisposed() bool
+	Id() string
+	ParentId() string
+	Tags() []string
+	Ctx() context.Context
+	String() string
+	StringAll() string
+	Log(msg string, args ...any)
+	SemLogger() SemLogger
+	Inspect(states S) string
+	BindHandlers(handlers any) error
+	DetachHandlers(handlers any) error
+	HasHandlers() bool
+	StatesVerified() bool
+	Tracers() []Tracer
+	DetachTracer(tracer Tracer) error
+	BindTracer(tracer Tracer) error
+	AddBreakpoint(added S, removed S, strict bool)
+	Dispose()
+	WhenDisposed() <-chan struct{}
+	IsDisposed() bool
 }
 ```
 

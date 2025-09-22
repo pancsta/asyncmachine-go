@@ -1,7 +1,7 @@
 # Roadmap
 
 - handlers for RPC workers
-- handler loop based scheduler
+- scheduler via the handler loop 
 - go1.22 traces
 - inference
 - optimizations

@@ -15,8 +15,8 @@
     <a href="#devtools">Devtools</a> .
     <a href="#apps">Apps</a> .
     <a href="#documentation">Docs</a> .
-    <a href="#development">Dev</a> .
     <a href="#faq">FAQ</a> .
+    <a href="#changes">Changes</a>
     <br />
 </div>
 
@@ -43,7 +43,7 @@ As a control flow library, it decides about running of predefined bits of code (
 which ones to run, according to currently active states (flags). Thanks to a [novel state machine](/pkg/machine/README.md),
 the number of handlers can be minimized while maximizing scenario coverage. It's lightweight, fault-tolerant by design,
 has rule-based mutations, and can be used to target virtually *any* step-in-time, in *any* workflow. It's a low-level
-tool and provides acceptable performance.
+tool with acceptable performance.
 
 **asyncmachine-go** takes care of `context`, `select`, and `panic`, while allowing for graph-structured concurrency
 with [goroutine cancelation](https://github.com/pancsta/asyncmachine-go/pull/261). The history log and relations have
@@ -302,7 +302,7 @@ Other packages:
 
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) Multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) Generates schema files and Grafana dashboards.
-- [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates diagrams of interconnected state machines.
+- [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates D2 diagrams.
 - [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
 
 [![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)](/tools/cmd/am-dbg)
@@ -372,7 +372,7 @@ State is a binary name as in status / switch / flag, eg "process RUNNING" or "ca
 ### What does "clock-based" mean?
 
 Each state has a counter of activations & deactivations, and all state counters create "machine time". These are logical
-clocks.
+clocks. The queue is also counted.
 
 ### What's the difference between states and events?
 
