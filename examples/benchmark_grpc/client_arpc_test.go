@@ -57,7 +57,8 @@ func BenchmarkClientArpc(b *testing.B) {
 	c.Mach.SemLogger().SetSimple(func(msg string, args ...any) {
 		l("arpc-client", msg, args...)
 	}, logLvl)
-	amhelp.MachDebug(c.Mach, amDbgAddr, logLvl, false, true, true, true)
+	amhelp.MachDebug(c.Mach, amDbgAddr, logLvl, false,
+		amhelp.SemConfig(true))
 
 	// tear down
 	b.Cleanup(func() {

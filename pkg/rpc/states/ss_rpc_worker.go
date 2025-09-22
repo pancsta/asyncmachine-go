@@ -30,8 +30,8 @@ var WorkerSchema = SchemaMerge(
 
 		// errors
 
-		ssW.ErrProviding:   {Require: S{am.Exception}},
-		ssW.ErrSendPayload: {Require: S{am.Exception}},
+		ssW.ErrProviding:   {Require: S{am.StateException}},
+		ssW.ErrSendPayload: {Require: S{am.StateException}},
 
 		// rcp getter
 

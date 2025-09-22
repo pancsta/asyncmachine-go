@@ -242,7 +242,7 @@ func EnvLogLevel(name string) LogLevel {
 	return LogLevel(v)
 }
 
-// ListHandlers returns a list of handler method names from a handlers struct,
+// ListHandlers returns a list of handler method names from a handler struct,
 // limited to [states].
 func ListHandlers(handlers any, states S) ([]string, error) {
 	var methodNames []string
@@ -259,7 +259,7 @@ func ListHandlers(handlers any, states S) ([]string, error) {
 				"%w: %s from handler %s", ErrStateMissing, s2, method))
 		}
 
-		if s1 != "" || method == HandlerGlobal {
+		if s1 != "" || (method == HandlerAnyEnter || method == HandlerAnyState) {
 			methodNames = append(methodNames, method)
 			// TODO verify method signatures early (returns and params)
 		}
@@ -289,28 +289,28 @@ func ListHandlers(handlers any, states S) ([]string, error) {
 
 // TODO prevent using these names as state names
 var handlerSuffixes = []string{
-	SuffixEnter, SuffixExit, SuffixState, SuffixEnd, Any,
+	SuffixEnter, SuffixExit, SuffixState, SuffixEnd, StateAny,
 }
 
 // IsHandler checks if a method name is a handler method, by returning a state
 // name.
 func IsHandler(states S, method string) (string, string) {
-	if method == HandlerGlobal {
+	if method == HandlerAnyEnter || method == HandlerAnyState {
 		return "", ""
 	}
 
 	// suffixes
 	for _, suffix := range handlerSuffixes {
 		if strings.HasSuffix(method, suffix) && len(method) != len(suffix) &&
-			method != Any+suffix {
+			method != StateAny+suffix {
 			return method[0 : len(method)-len(suffix)], ""
 		}
 	}
 
 	// AnyFoo
-	if strings.HasPrefix(method, Any) && len(method) != len(Any) &&
-		method != Any+SuffixState {
-		return method[len(Any):], ""
+	if strings.HasPrefix(method, StateAny) && len(method) != len(StateAny) &&
+		method != StateAny+SuffixState {
+		return method[len(StateAny):], ""
 	}
 
 	// FooBar

@@ -66,7 +66,7 @@ func New(ctx context.Context, id string) (*Repl, error) {
 		return nil, err
 	}
 	r.Mach = mach
-	mach.SemLogger().SetArgs(LogArgs)
+	mach.SemLogger().SetArgsMapper(LogArgs)
 
 	return r, nil
 }
@@ -376,10 +376,10 @@ func (r *Repl) CmdGroupAddState(e *am.Event) {
 		switch c.Worker.Add(args.States, mutArgs) {
 		case am.Executed:
 			se++
-		case am.Queued:
-			sq++
-		default:
+		case am.Canceled:
 			sc++
+		default:
+			sq++
 		}
 	}
 
@@ -441,13 +441,13 @@ func (r *Repl) CmdGroupRemoveState(e *am.Event) {
 		}
 
 		// count results
-		switch c.Worker.Remove(args.States, mutArgs) {
+		switch c.Worker.Add(args.States, mutArgs) {
 		case am.Executed:
 			se++
-		case am.Queued:
-			sq++
-		default:
+		case am.Canceled:
 			sc++
+		default:
+			sq++
 		}
 	}
 
@@ -796,7 +796,7 @@ func (r *Repl) newRpcClient(addr, idSuffix string) (*rpc.Client, error) {
 	// telemetry
 	if r.DbgAddr != "" {
 		amhelp.MachDebug(client.Mach, r.DbgAddr, r.Mach.SemLogger().Level(),
-			false, true, true, true)
+			false, amhelp.SemConfig(true))
 		client.LogEnabled = true
 	}
 

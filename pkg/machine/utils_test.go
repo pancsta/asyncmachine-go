@@ -149,7 +149,7 @@ func assertTime(t *testing.T, m *Machine, states S, times Time,
 }
 
 func assertNoException(t *testing.T, m *Machine) {
-	assert.False(t, m.Is1(Exception), "Exception state active")
+	assert.False(t, m.Is1(StateException), "Exception state active")
 }
 
 func assertEventCounts(t *testing.T, history *History, expected int) {

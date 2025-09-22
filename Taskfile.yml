@@ -19,6 +19,12 @@ tasks:
     ignore_error: true
     cmd: go build -o dist ./tools/cmd/am-dbg
 
+  build-am-dbg-wasm:
+    env:
+      GOOS: js
+      GOARCH: wasm
+    cmd: go build -o ./dist/webfiles/main.wasm ./tools/cmd/am-dbg
+
   build-arpc:
     ignore_error: true
     cmd: go build -o dist ./tools/cmd/arpc
@@ -92,7 +98,7 @@ tasks:
       - go run ./tools/cmd/am-dbg
         --clean-on-connect
         --prof-srv :6060
-        --am-dbg-addr localhost:9913
+        --dbg-am-dbg-addr localhost:9913
         --dir tmp
         {{.CLI_ARGS}}
 
@@ -137,13 +143,15 @@ tasks:
         {{.CLI_ARGS}}
 
   am-dbg-dbg:
-    desc: Start am-dbg on port 9913, so it can debug other instances via --am-dbg-addr
+    desc: Start am-dbg on port 9913, so it can debug other instances via --dbg-am-dbg-addr
     silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
         --listen-on localhost:9913
         --select-connected
         --log-ops-ttl 5m
+        --max-mem 2000
+        --dir tmp2
         {{.CLI_ARGS}}
 
   am-dbg-dbg-prof:
@@ -173,6 +181,24 @@ tasks:
         --listen=:2345 --api-version=2 --accept-multiclient
         ./tools/cmd/am-dbg -- 
           --clean-on-connect 
+          --dbg-log-level 3
+          --dbg-am-dbg-addr localhost:9913
+          --dir tmp
+          {{.CLI_ARGS}}
+
+  am-dbg-dbg-delve:
+    silent: false
+    env:
+      AM_DEBUG: 1
+    cmds:
+      - dlv debug --headless
+        --listen=:2346 --api-version=2 --accept-multiclient
+        ./tools/cmd/am-dbg -- 
+          --listen-on localhost:9913
+          --select-connected
+          --log-ops-ttl 5m
+          --max-mem 2000
+          --dir tmp2
           {{.CLI_ARGS}}
 
   am-dbg-install: go install ./tools/cmd/am-dbg

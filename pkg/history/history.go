@@ -17,14 +17,14 @@ type History struct {
 	// LastActivated is a map of state names to the last time they were activated
 	LastActivated map[string]time.Time
 	// tracked states
-	WhitelistCalled am.S
+	AllowlistCalled am.S
 
 	mx         sync.Mutex
 	maxEntries int
 }
 
 func (h *History) TransitionEnd(tx *am.Transition) {
-	if !tx.IsAccepted.Load() {
+	if !tx.IsAccepted.Load() || tx.Mutation.IsCheck {
 		return
 	}
 
@@ -32,7 +32,7 @@ func (h *History) TransitionEnd(tx *am.Transition) {
 	mut := tx.Mutation
 	match := false
 	// TODO track both called and changed
-	for _, name := range h.WhitelistCalled {
+	for _, name := range h.AllowlistCalled {
 		if slices.Contains(called, name) {
 			match = true
 			break
@@ -51,16 +51,15 @@ func (h *History) TransitionEnd(tx *am.Transition) {
 	// remember this mutation, remove Args
 	hEntries = append(hEntries, Entry{
 		CalledStates: mut.Called,
-		// TODO add to Transition?
-		MTimeDiff: tx.TimeAfter.DiffSince(tx.TimeBefore),
-		Type:      tx.Mutation.Type,
-		Auto:      tx.Mutation.Auto,
+		MTimeDiff:    tx.TimeAfter.DiffSince(tx.TimeBefore),
+		Type:         tx.Mutation.Type,
+		Auto:         tx.Mutation.Auto,
 	})
 	h.mx.Lock()
 	h.Entries.Store(&hEntries)
 	// update last seen time
 	for _, name := range tx.TargetStates() {
-		if !slices.Contains(h.WhitelistCalled, name) {
+		if !slices.Contains(h.AllowlistCalled, name) {
 			continue
 		}
 		h.LastActivated[name] = time.Now()
@@ -160,7 +159,7 @@ func Track(mach *am.Machine, whitelistCalled am.S, maxEntries int) *History {
 	}
 	history := &History{
 		LastActivated:   map[string]time.Time{},
-		WhitelistCalled: whitelistCalled,
+		AllowlistCalled: whitelistCalled,
 		maxEntries:      maxEntries,
 	}
 	hEntries := []Entry{}

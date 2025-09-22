@@ -194,7 +194,7 @@ func NewTopic(
 		return nil, err
 	}
 
-	mach.SemLogger().SetArgs(LogArgs)
+	mach.SemLogger().SetArgsMapper(LogArgs)
 	mach.SetGroups(states.TopicGroups, states.TopicStates)
 	t.Mach = mach
 

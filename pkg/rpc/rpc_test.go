@@ -61,8 +61,8 @@ func TestBasic(t *testing.T) {
 	assert.True(t, s.Mach.Is1(ssrpc.ServerStates.Ready), "Server ready")
 	assert.True(t, c.Mach.Is1(ssrpc.ClientStates.Ready), "Client ready")
 
-	assert.True(t, s.Mach.Not1(am.Exception), "No server errors")
-	assert.True(t, c.Mach.Not1(am.Exception), "No client errors")
+	assert.True(t, s.Mach.Not1(am.StateException), "No server errors")
+	assert.True(t, c.Mach.Not1(am.StateException), "No client errors")
 
 	assert.True(t, worker.Is1("Foo"), "Worker state set on the server")
 	assert.True(t, c.Worker.Is1("Foo"), "Worker state set on the client")
@@ -99,8 +99,8 @@ func TestTypeSafe(t *testing.T) {
 	assert.True(t, s.Mach.Is1(ssrpc.ServerStates.Ready), "Server ready")
 	assert.True(t, s.Mach.Is1(ssrpc.ClientStates.Ready), "Client ready")
 
-	assert.True(t, s.Mach.Not1(am.Exception), "No server errors")
-	assert.True(t, c.Mach.Not1(am.Exception), "No client errors")
+	assert.True(t, s.Mach.Not1(am.StateException), "No server errors")
+	assert.True(t, c.Mach.Not1(am.StateException), "No client errors")
 
 	assert.True(t, worker.Is(states), "Worker state set on the server")
 	assert.True(t, c.Worker.Is(states),
@@ -183,9 +183,9 @@ func TestAddMany(t *testing.T) {
 	assert.Equal(t, 0, int(s.CallCount),
 		"Server piggybacked clock on resp")
 	bytesCount := <-counter
-	assert.LessOrEqual(t, 16_300, int(bytesCount),
+	assert.LessOrEqual(t, 15_000, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
-	assert.GreaterOrEqual(t, 16_700, int(bytesCount),
+	assert.GreaterOrEqual(t, 16_000, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
 
 	disposeTest(t, c, s, true)
@@ -269,9 +269,9 @@ func TestAddManyInstantClock(t *testing.T) {
 
 	// assert
 	bytesCount := <-counter
-	assert.LessOrEqual(t, 16_100, int(bytesCount),
+	assert.LessOrEqual(t, 15_000, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 16_800, int(bytesCount),
+	assert.GreaterOrEqual(t, 16_000, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
@@ -373,9 +373,9 @@ func TestHighInstantClocks(t *testing.T) {
 	// assert
 	// byte count should be the same as in TestAddManyInstantClock
 	bytesCount := <-counter
-	assert.LessOrEqual(t, 40_750, int(bytesCount),
+	assert.LessOrEqual(t, 39_000, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 41_300, int(bytesCount),
+	assert.GreaterOrEqual(t, 40_000, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)

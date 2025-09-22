@@ -52,7 +52,7 @@ const (
 
 // Names is an ordered list of all the state names.
 var Names = S{
-	am.Exception,
+	am.StateException,
 	Start,
 	Event,
 	Value1,

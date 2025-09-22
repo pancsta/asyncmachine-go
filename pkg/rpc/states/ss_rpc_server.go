@@ -50,7 +50,7 @@ var ServerSchema = SchemaMerge(
 
 		ssS.ErrOnClient: {Require: S{Exception}},
 		ssS.ErrNetwork: {
-			Require: S{am.Exception},
+			Require: S{am.StateException},
 			Remove:  S{ssS.ClientConnected},
 		},
 

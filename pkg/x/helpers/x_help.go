@@ -1,5 +1,4 @@
-// Package helpers provides some utility functions for asyncmachine, which are
-// out of scope of the main package.
+// Package helpers provides experimental and unstable helpers.
 package helpers
 
 import (
@@ -59,11 +58,11 @@ func NestedState(
 	res := submach.Add1(state, e.Args)
 
 	// handle queuing with a timeout
-	if res == am.Queued && isMulti {
+	if am.IsQueued(res) && isMulti {
 		// wait for the state to be activated again
 		when := submach.WhenTime(am.S{state}, am.Time{tick + 2}, nil)
 		return res, when, nil
-	} else if res == am.Queued {
+	} else if am.IsQueued(res) {
 		when := submach.When1(state, nil)
 		return res, when, nil
 	}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/maps"
 )
 
@@ -477,8 +478,8 @@ func TestRequireOrder(t *testing.T) {
 	assertStates(t, m, S{"A", "B", "C", "D", "Start"})
 	// assert event counts
 	for s, count := range history.Counter {
-		if strings.HasPrefix(s, Any) {
-			// global handelrs run for auto transitions
+		if strings.HasPrefix(s, StateAny) {
+			// global handlers run for auto transitions
 			assert.Equal(t, 2, count)
 		} else {
 			assert.Equal(t, 1, count)
@@ -693,7 +694,11 @@ func TestRemoveMultiImplied(t *testing.T) {
 type TestQueueHandlers struct{}
 
 func (h *TestQueueHandlers) BEnter(e *Event) bool {
-	e.Machine().Add(S{"C"}, nil)
+	t := e.Args["t"].(*testing.T)
+	res := e.Machine().Add(S{"C"}, nil)
+	assert.Equal(t, uint64(4), uint64(res),
+		"nested Add:C is the 3rd mutation (counting from 2)")
+
 	return true
 }
 
@@ -710,12 +715,12 @@ func TestQueue(t *testing.T) {
 	assert.NoError(t, err)
 
 	// triggers Add(C) from BEnter
-	m.Set(S{"B"}, nil)
+	m.Set(S{"B"}, A{"t": t})
 
 	// assert event counts
 	for s, count := range history.Counter {
-		if strings.HasPrefix(s, Any) {
-			// global handelrs run for auto transitions
+		if strings.HasPrefix(s, StateAny) {
+			// global handlers run for auto transitions
 			assert.Equal(t, 2, count)
 		} else {
 			assert.Equal(t, 1, count)
@@ -818,7 +823,7 @@ func TestAutoStates(t *testing.T) {
 }
 
 func TestAutoStatesHeartbeat(t *testing.T) {
-	// TODO assert no auto tx for Heartbeat, Healtcheck
+	// TODO assert no auto tx for Heartbeat, Healthcheck
 	t.Skip("TODO")
 }
 
@@ -848,7 +853,7 @@ func TestPartialAutoStates(t *testing.T) {
 	// assert
 	assert.Equal(t, Executed, result, "transition should be executed")
 	assertStates(t, m, S{"A", "D"}, "dependant auto state should be set")
-	assert.Contains(t, log, "[state:auto] +A",
+	assert.Contains(t, log, "[auto_] +A",
 		"log should mention the auto state")
 }
 
@@ -968,6 +973,7 @@ func TestHandlerStateInfo(t *testing.T) {
 	if err != nil {
 		assert.NoError(t, err)
 	}
+	m.SemLogger().EnableSteps(true)
 
 	// bind history
 	events := []string{"DEnter"}
@@ -995,7 +1001,7 @@ func TestGetters(t *testing.T) {
 	// init
 	m := NewNoRels(t, S{"A"})
 	mapper := NewArgsMapper([]string{"arg", "arg2"}, 5)
-	m.SemLogger().SetArgs(mapper)
+	m.SemLogger().SetArgsMapper(mapper)
 	m.SemLogger().SetLevel(LogEverything)
 
 	// assert
@@ -1075,7 +1081,7 @@ func TestLogArgs(t *testing.T) {
 	// init
 	m := NewNoRels(t, S{"A"})
 	mapper := NewArgsMapper([]string{"arg", "arg2"}, 5)
-	m.SemLogger().SetArgs(mapper)
+	m.SemLogger().SetArgsMapper(mapper)
 
 	// bind logger
 	log := ""
@@ -1781,7 +1787,7 @@ func TestStateCtx(t *testing.T) {
 // TestQueueCheckable
 type TestQueueCheckableHandlers struct {
 	*ExceptionHandler
-	assertsCount int
+	assertsCount int16
 }
 
 func (h *TestQueueCheckableHandlers) AState(e *Event) {
@@ -1793,14 +1799,14 @@ func (h *TestQueueCheckableHandlers) AState(e *Event) {
 	assert.Len(t, m.queue, 3, "queue should have 3 mutations scheduled")
 	h.assertsCount++
 
-	assert.Equal(t, 1,
-		m.IsQueued(MutationAdd, S{"C"}, false, false, 0),
+	assert.Equal(t, int16(1),
+		m.IsQueued(MutationAdd, S{"C"}, false, false, 0, false, PositionAny),
 		"C should be queued")
 	assert.True(t, m.WillBe1("C"), "A should NOT be queued")
 	h.assertsCount++
 
-	assert.Equal(t, -1,
-		m.IsQueued(MutationAdd, S{"A"}, false, false, 0),
+	assert.Equal(t, int16(-1),
+		m.IsQueued(MutationAdd, S{"A"}, false, false, 0, false, PositionAny),
 		"A should NOT be queued")
 	assert.False(t, m.WillBe1("A"), "A should NOT be queued")
 	h.assertsCount++
@@ -1823,7 +1829,7 @@ func TestQueueCheckable(t *testing.T) {
 	m.Add(S{"A"}, A{"t": t})
 
 	// assert
-	assert.Equal(t, 3, handlers.assertsCount, "asserts executed")
+	assert.Equal(t, int16(3), handlers.assertsCount, "asserts executed")
 	assertNoException(t, m)
 
 	// dispose
@@ -2072,7 +2078,7 @@ func TestNewCommon(t *testing.T) {
 	t.Parallel()
 
 	// init
-	s := Schema{"A": {}, Exception: {}}
+	s := Schema{"A": {}, StateException: {}}
 	m, err := NewCommon(context.TODO(), "foo", s, maps.Keys(s),
 		&TestNewCommonHandlers{}, nil, nil)
 
@@ -2087,7 +2093,7 @@ func TestNewCommonLessCommon(t *testing.T) {
 	m := NewNoRels(t, S{"A", "C"})
 
 	// init
-	s := Schema{"A": {}, Exception: {}}
+	s := Schema{"A": {}, StateException: {}}
 	m2, err := NewCommon(context.TODO(), "foo", s, maps.Keys(s),
 		&TestNewCommonHandlers{}, m, &Opts{LogLevel: LogChanges})
 
@@ -2412,6 +2418,49 @@ func TestWhenQueueEnds(t *testing.T) {
 	<-ctx.Done()
 	// confirm the queue wait is closed
 	<-queueEnds
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+// TestWhenQueue
+type TestWhenQueueHandlers struct {
+	*ExceptionHandler
+	done chan struct{}
+}
+
+func (h *TestWhenQueueHandlers) AState(e *Event) {
+	m := e.Machine()
+	t := e.Args["t"].(*testing.T)
+
+	m.Add1("B", nil)
+	m.Add1("C", nil)
+	res := m.Add1("D", nil)
+	h.done = make(chan struct{})
+
+	waiting := make(chan struct{})
+	go func() {
+		go close(waiting)
+		<-m.WhenQueue(res)
+		assertStates(t, m, S{"A", "B", "C", "D"})
+		close(h.done)
+	}()
+	<-waiting
+}
+
+func TestWhenQueue(t *testing.T) {
+	t.Parallel()
+	// init
+	m := NewNoRels(t, nil)
+
+	// bind handlers
+	h := &TestWhenQueueHandlers{}
+	err := m.BindHandlers(h)
+	require.NoError(t, err)
+
+	m.Add1("A", A{"t": t})
+	<-h.done
 
 	// dispose
 	m.Dispose()
@@ -2795,7 +2844,7 @@ func TestListHandlers(t *testing.T) {
 
 	// assert
 	assert.Len(t, names, 4)
-	assert.ElementsMatch(t, []string{"AEnter", "AState", "AnyB", HandlerGlobal},
+	assert.ElementsMatch(t, []string{"AEnter", "AState", "AnyB", HandlerAnyEnter},
 		names)
 
 	// anon handlers
@@ -2819,7 +2868,7 @@ func TestListHandlers(t *testing.T) {
 
 	// assert
 	assert.Len(t, names, 4)
-	assert.ElementsMatch(t, []string{"AEnter", "AState", "AnyB", HandlerGlobal},
+	assert.ElementsMatch(t, []string{"AEnter", "AState", "AnyB", HandlerAnyEnter},
 		names)
 
 	// anon handlers for non-existing states
@@ -2972,7 +3021,7 @@ func TestDisposedNoOp(t *testing.T) {
 	assert.Equal(t, Canceled, res)
 
 	// others
-	assert.Equal(t, -1, m.IsQueued(MutationAdd, s, false, false, 0))
+	assert.Equal(t, int16(-1), m.IsQueued(MutationAdd, s, false, false, 0, false, PositionAny))
 	assert.Equal(t, -1, m.Index1("A"))
 	assert.Empty(t, m.Has1("A"))
 	assert.Empty(t, m.IsClock(Clock{}))
@@ -2984,7 +3033,7 @@ func TestDisposedNoOp(t *testing.T) {
 	assert.Empty(t, m.Tick("A"))
 	assert.Empty(t, m.StringAll())
 	assert.Empty(t, m.Inspect(nil))
-	assert.Empty(t, m.detectQueueDuplicates(MutationAdd, s))
+	assert.Empty(t, m.detectQueueDuplicates(MutationAdd, s, false))
 	assert.Empty(t, m.Eval("test", func() {}, nil))
 	assert.Empty(t, m.BindHandlers(struct{}{}))
 	assert.Empty(t, m.DetachHandlers(struct{}{}))
@@ -2998,11 +3047,11 @@ func TestDisposedNoOp(t *testing.T) {
 	m.doDispose(false)
 	m.PanicToErr(A{})
 	m.PanicToErrState("A", A{})
-	m.queueMutation(MutationAdd, s, A{}, nil, false)
-	m.processStateCtxBindings(tx)
+	m.queueMutation(MutationAdd, s, A{}, nil)
+	m.processStateCtxCacheBindings(tx)
 	m.processWhenBindings(tx)
 	m.processWhenTimeBindings(tx)
-	m.processWhenQueueBindings()
+	m.processWhenQueueEndBindings()
 	m.processWhenArgs(e)
 }
 
@@ -3102,6 +3151,7 @@ func TestCanAdd(t *testing.T) {
 	t.Parallel()
 	m := NewRels(t, nil)
 	// m.semLogger.SetLevel(LogDecisions)
+	m.AddBreakpoint1("C", "", true)
 	assert.Equal(t, Canceled, m.CanAdd(S{"A"}, nil), "Cant add A")
 	assert.Equal(t, Executed, m.CanAdd(S{"C"}, nil), "Can add C")
 

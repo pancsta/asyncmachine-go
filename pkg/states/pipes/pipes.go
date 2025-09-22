@@ -53,7 +53,7 @@ func add(
 	names := am.S{targetState}
 	// include Exception when adding errors
 	if strings.HasPrefix(targetState, am.PrefixErr) {
-		names = am.S{am.Exception, targetState}
+		names = am.S{am.StateException, targetState}
 	}
 
 	return func(e *am.Event) {
@@ -160,16 +160,16 @@ func BindConnected(
 }
 
 // BindErr binds Exception to a custom state using Add. Empty state defaults to
-// [am.Exception], and a custom state will also add [am.Exception].
+// [am.StateException], and a custom state will also add [am.StateException].
 func BindErr(source, target *am.Machine, targetErr string) error {
 	if targetErr == "" {
-		targetErr = am.Exception
+		targetErr = am.StateException
 	}
 
 	h := &struct {
 		ExceptionState am.HandlerFinal
 	}{
-		ExceptionState: Add(source, target, am.Exception, targetErr),
+		ExceptionState: Add(source, target, am.StateException, targetErr),
 	}
 
 	return source.BindHandlers(h)

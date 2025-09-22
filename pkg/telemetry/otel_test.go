@@ -35,5 +35,5 @@ func TestLog(t *testing.T) {
 
 	assert.Contains(t, out, `"Value":"t-TestLog"`)
 	assert.Contains(t, out, "[queue:add] C")
-	assert.Contains(t, out, "[state:auto] +A")
+	assert.Contains(t, out, "[auto_] +A")
 }

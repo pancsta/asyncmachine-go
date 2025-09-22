@@ -28,7 +28,7 @@ type Machine struct {
 	// Maximum number of mutations that can be queued. Default: 1000.
 	QueueLimit int
 	// HandlerTimeout defined the time for a handler to execute before it causes
-	// an Exception. Default: 1s. See also Opts.HandlerTimeout.
+	// an StateException. Default: 1s. See also Opts.HandlerTimeout.
 	// Using HandlerTimeout can cause race conditions, see Event.IsValid().
 	HandlerTimeout time.Duration
 	// HandlerDeadline is a grace period after a handler timeout, before the
@@ -45,7 +45,7 @@ type Machine struct {
 	// If true, the machine will print all exceptions to stdout. Default: true.
 	// Requires an ExceptionHandler binding and Machine.PanicToException set.
 	LogStackTrace bool
-	// If true, the machine will catch panic and trigger the Exception state.
+	// If true, the machine will catch panic and trigger the StateException state.
 	// Default: true.
 	PanicToException bool
 	// DisposeTimeout specifies the duration to wait for the queue to drain during
@@ -53,7 +53,7 @@ type Machine struct {
 	DisposeTimeout time.Duration
 
 	panicCaught atomic.Bool
-	// If true, logs will start with machine's id (5 chars).
+	// If true, logs will start with the machine's id (5 chars).
 	// Default: true.
 	logId atomic.Bool
 	// statesVerified assures the state names have been ordered using VerifyStates
@@ -160,7 +160,7 @@ func NewCommon(
 
 	if os.Getenv(EnvAmDebug) != "" {
 		machOpts = OptsWithDebug(machOpts)
-	} else if os.Getenv("AM_TEST_RUNNER") != "" {
+	} else if os.Getenv(EnvAmTestRunner) != "" {
 		machOpts.HandlerTimeout = 1 * time.Second
 	}
 
@@ -263,7 +263,7 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 			m.tracers = opts.Tracers
 		}
 		if opts.LogArgs != nil {
-			m.logArgs = opts.LogArgs
+			m.logArgs.Store(&opts.LogArgs)
 		}
 		if opts.QueueLimit != 0 {
 			m.QueueLimit = opts.QueueLimit
@@ -289,8 +289,8 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 	}
 
 	// define the exception state (if missing)
-	if _, ok := m.schema[Exception]; !ok {
-		m.schema[Exception] = State{
+	if _, ok := m.schema[StateException]; !ok {
+		m.schema[StateException] = State{
 			Multi: true,
 		}
 	}
@@ -339,6 +339,10 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 func (m *Machine) Dispose() {
 	// doDispose in a goroutine to avoid a deadlock when called from within a
 	// handler
+	// TODO var
+	if m.Has1(StateStart) {
+		m.Remove1(StateStart, nil)
+	}
 
 	go func() {
 		if m.disposed.Load() {
@@ -471,17 +475,17 @@ func (m *Machine) setHandlers(unsafe bool, handlers []*handler) {
 }
 
 // WhenErr returns a channel that will be closed when the machine is in the
-// Exception state.
+// StateException state.
 //
-// ctx: optional context that will close the channel when handlerLoopDone.
+// ctx: optional context that will close the channel early.
 func (m *Machine) WhenErr(disposeCtx context.Context) <-chan struct{} {
-	return m.When([]string{Exception}, disposeCtx)
+	return m.When([]string{StateException}, disposeCtx)
 }
 
 // When returns a channel that will be closed when all the passed states
 // become active or the machine gets disposed.
 //
-// ctx: optional context that will close the channel when handlerLoopDone.
+// ctx: optional context that will close the channel early.
 func (m *Machine) When(states S, ctx context.Context) <-chan struct{} {
 	// TODO re-use channels with the same state set and context
 	ch := make(chan struct{})
@@ -545,7 +549,7 @@ func (m *Machine) When1(state string, ctx context.Context) <-chan struct{} {
 // WhenNot returns a channel that will be closed when all the passed states
 // become inactive or the machine gets disposed.
 //
-// ctx: optional context that will close the channel when handlerLoopDone.
+// ctx: optional context that will close the channel early.
 func (m *Machine) WhenNot(states S, ctx context.Context) <-chan struct{} {
 	ch := make(chan struct{})
 	if m.disposed.Load() {
@@ -668,10 +672,11 @@ func (m *Machine) WhenArgs(
 // have passed the specified time. The time is a logical clock of the state.
 // Machine time can be sourced from [Machine.Time](), or [Machine.Clock]().
 //
-// ctx: optional context that will close the channel when handlerLoopDone.
+// ctx: optional context that will close the channel early.
 func (m *Machine) WhenTime(
 	states S, times Time, ctx context.Context,
 ) <-chan struct{} {
+
 	ch := make(chan struct{})
 	if m.disposed.Load() {
 		close(ch)
@@ -747,7 +752,7 @@ func (m *Machine) WhenTime(
 // WhenTime1 waits till ticks for a single state equal the given value (or
 // more).
 //
-// ctx: optional context that will close the channel when handlerLoopDone.
+// ctx: optional context that will close the channel early.
 func (m *Machine) WhenTime1(
 	state string, ticks uint64, ctx context.Context,
 ) <-chan struct{} {
@@ -757,7 +762,7 @@ func (m *Machine) WhenTime1(
 // WhenTicks waits N ticks of a single state (relative to now). Uses WhenTime
 // underneath.
 //
-// ctx: optional context that will close the channel when handlerLoopDone.
+// ctx: optional context that will close the channel early.
 func (m *Machine) WhenTicks(
 	state string, ticks int, ctx context.Context,
 ) <-chan struct{} {
@@ -766,17 +771,13 @@ func (m *Machine) WhenTicks(
 
 // WhenQueueEnds closes every time the queue ends, or the optional ctx expires.
 //
-// ctx: optional context that will close the channel when handlerLoopDone.
+// ctx: optional context that will close the channel early.
 func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan struct{} {
 	ch := make(chan struct{})
 	if m.disposed.Load() {
 		close(ch)
 		return ch
 	}
-
-	// locks
-	m.indexWhenQueueLock.Lock()
-	defer m.indexWhenQueueLock.Unlock()
 
 	// finish early
 	if !m.queueRunning.Load() {
@@ -1008,7 +1009,7 @@ func (m *Machine) Add(states S, args A) Result {
 
 	// let Exception in even with a full queue, but only once
 	if int(m.queueLen.Load()) >= m.QueueLimit {
-		if !slices.Contains(states, Exception) || m.IsErr() {
+		if !slices.Contains(states, StateException) || m.IsErr() {
 			return Canceled
 		}
 	}
@@ -1059,15 +1060,41 @@ func (m *Machine) Toggle1(state string, args A) Result {
 	}
 }
 
-// AddErr is a dedicated method to add the Exception state with the passed
+// EvToggle is a traced version of [Machine.Toggle].
+func (m *Machine) EvToggle(e *Event, states S, args A) Result {
+	// TODO add to Api
+	if m.disposed.Load() {
+		return Canceled
+	}
+	if m.Is(states) {
+		return m.EvRemove(e, states, args)
+	} else {
+		return m.EvAdd(e, states, args)
+	}
+}
+
+// EvToggle1 is a traced version of [Machine.Toggle1].
+func (m *Machine) EvToggle1(e *Event, state string, args A) Result {
+	// TODO add to Api
+	if m.disposed.Load() {
+		return Canceled
+	}
+	if m.Is1(state) {
+		return m.EvRemove1(e, state, args)
+	} else {
+		return m.EvAdd1(e, state, args)
+	}
+}
+
+// AddErr is a dedicated method to add the StateException state with the passed
 // error and optional arguments.
 // Like every mutation method, it will resolve relations and trigger handlers.
 // AddErr produces a stack trace of the error, if LogStackTrace is enabled.
 func (m *Machine) AddErr(err error, args A) Result {
-	return m.AddErrState(Exception, err, args)
+	return m.AddErrState(StateException, err, args)
 }
 
-// AddErrState adds a dedicated error state, along with the build in Exception
+// AddErrState adds a dedicated error state, along with the build in StateException
 // state.
 // Like every mutation method, it will resolve relations and trigger handlers.
 // AddErrState produces a stack trace of the error, if LogStackTrace is enabled.
@@ -1097,7 +1124,7 @@ func (m *Machine) AddErrState(state string, err error, args A) Result {
 	}
 
 	// TODO prepend to the queue? what effects / benefits
-	return m.Add(S{state, Exception}, PassMerge(args, argsT))
+	return m.Add(S{state, StateException}, PassMerge(args, argsT))
 }
 
 func (m *Machine) CanAdd(states S, args A) Result {
@@ -1134,7 +1161,7 @@ func (m *Machine) CanRemove1(state string, args A) Result {
 	return m.CanRemove(S{state}, nil)
 }
 
-// PanicToErr will catch a panic and add the Exception state. Needs to
+// PanicToErr will catch a panic and add the StateException state. Needs to
 // be called in a defer statement, just like a recover() call.
 func (m *Machine) PanicToErr(args A) {
 	if !m.PanicToException || m.disposed.Load() {
@@ -1153,7 +1180,7 @@ func (m *Machine) PanicToErr(args A) {
 	}
 }
 
-// PanicToErrState will catch a panic and add the Exception state, along with
+// PanicToErrState will catch a panic and add the StateException state, along with
 // the passed state. Needs to be called in a defer statement, just like a
 // recover() call.
 func (m *Machine) PanicToErrState(state string, args A) {
@@ -1172,9 +1199,9 @@ func (m *Machine) PanicToErrState(state string, args A) {
 	}
 }
 
-// IsErr checks if the machine has the Exception state currently active.
+// IsErr checks if the machine has the StateException state currently active.
 func (m *Machine) IsErr() bool {
-	return m.Is(S{Exception})
+	return m.Is(S{StateException})
 }
 
 // Err returns the last error.
@@ -1197,7 +1224,7 @@ func (m *Machine) Remove(states S, args A) Result {
 
 	// let Exception in even with a full queue, but only once
 	if int(m.queueLen.Load()) >= m.QueueLimit {
-		if !slices.Contains(states, Exception) || !m.IsErr() {
+		if !slices.Contains(states, StateException) || !m.IsErr() {
 			return Canceled
 		}
 	}
@@ -1357,7 +1384,7 @@ func (m *Machine) Not1(state string) bool {
 	return m.Not(S{state})
 }
 
-// Any a is group call to Is, returns true if any of the params return true
+// StateAny a is group call to Is, returns true if any of the params return true
 // from Is.
 //
 //	machine.StringAll() // ()[Foo:0 Bar:0 Baz:0]
@@ -1403,18 +1430,18 @@ func (m *Machine) queueMutation(
 		}
 	}
 
+	// TODO check queuelen > max(int16)
+
 	// Detect duplicates and avoid queueing them, but not for multi states, nor
-	// any params.
+	// any args.
 	if !multi && len(args) == 0 &&
-		m.detectQueueDuplicates(mutationType, statesParsed, isCheck) {
+		m.detectQueueDuplicates(mutType, statesParsed, false) {
 
 		m.log(LogOps, "[queue:skipped] Duplicate detected for [%s] %s",
 			mutType, j(statesParsed))
 
 		return uint64(Executed)
 	}
-
-	m.log(LogOps, "[queue:%s] %s", mutationType, j(statesParsed))
 
 	// args should always be initialized
 	if args == nil {
@@ -1745,7 +1772,7 @@ func (m *Machine) newHandler(
 	return e
 }
 
-// recoverToErr recovers to the Exception state by catching panics.
+// recoverToErr recovers to the StateException state by catching panics.
 func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 	if m.disposed.Load() {
 		return
@@ -1755,7 +1782,7 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 	m.currentHandler.Store("")
 	t := m.t.Load()
 	index := m.StateNames()
-	iException := m.Index1(Exception)
+	iException := m.Index1(StateException)
 
 	// dont double handle an exception (no nesting)
 	mut := t.Mutation
@@ -1780,7 +1807,7 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 	// prepend add:Exception to the beginning of the queue
 	errMut := &Mutation{
 		Type:   MutationAdd,
-		Called: m.Index(S{Exception}),
+		Called: m.Index(S{StateException}),
 		Args: Pass(&AT{
 			Err:      err,
 			ErrTrace: r.stack,
@@ -1931,9 +1958,9 @@ func (m *Machine) StatesVerified() bool {
 
 // setActiveStates sets the new active states incrementing the counters and
 // returning the previously active states.
-func (m *Machine) setActiveStates(calledStates S, targetStates S,
-	isAuto bool,
-) S {
+func (m *Machine) setActiveStates(
+	calledStates S, targetStates S, isAuto bool) S {
+
 	if m.disposed.Load() {
 		// no-op
 		return S{}
@@ -1982,13 +2009,13 @@ func (m *Machine) setActiveStates(calledStates S, targetStates S,
 		}
 
 		if len(logMsg) > 0 {
-			autoLabel := ""
+			label := "state"
 			if isAuto {
-				autoLabel = ":auto"
+				label = "auto_"
 			}
 
-			args := m.t.Load().LogArgs()
-			m.log(LogChanges, "[state%s]"+logMsg+args, autoLabel)
+			args := m.t.Load().Mutation.LogArgs(m.SemLogger().ArgsMapper())
+			m.log(LogChanges, "["+label+"]"+logMsg+args)
 		}
 	}
 
@@ -1996,7 +2023,6 @@ func (m *Machine) setActiveStates(calledStates S, targetStates S,
 }
 
 func (m *Machine) AddBreakpoint1(added string, removed string, strict bool) {
-	// TODO add to [Api]
 	if added != "" {
 		m.AddBreakpoint(S{added}, nil, strict)
 	} else if removed != "" {
@@ -2104,32 +2130,40 @@ func (m *Machine) processQueue() Result {
 		// shift the queue
 		m.queueLock.Lock()
 		lenQ := len(m.queue)
-		m.queueLen.Store(int32(lenQ))
 		if lenQ < 1 {
 			m.Log("ERROR: missing queue item")
 			return Canceled
 		}
-		item := m.queue[0]
+		mut := m.queue[0]
 		m.queue = m.queue[1:]
 		m.queueLen.Store(int32(lenQ - 1))
+		// queue ticks
+		if mut.QueueTick > 0 {
+			m.queueTicksPending -= 1
+			m.queueTick += 1
+		}
 		m.queueLock.Unlock()
 
 		// support for context cancelation
-		if item.ctx != nil && item.ctx.Err() != nil {
+		if mut.ctx != nil && mut.ctx.Err() != nil {
 			ret = append(ret, Executed)
+
 			continue
 		}
 
 		// special case for Eval mutations
-		if item.Type == mutationEval {
-			item.eval()
+		if mut.Type == mutationEval {
+			m.Log("eval: " + mut.evalSource)
+			mut.eval()
+
 			continue
 		}
-		t := newTransition(m, item)
+		t := newTransition(m, mut)
 
 		// execute the transition
 		ret = append(ret, t.emitEvents())
 		m.timeLast.Store(&t.TimeAfter)
+		// TODO assert QueueTick same as mut queue tick?
 
 		// parse wait chans
 		if t.Mutation.IsCheck {
@@ -2142,7 +2176,8 @@ func (m *Machine) processQueue() Result {
 		} else if t.IsAccepted.Load() && !t.Mutation.IsCheck {
 			m.processWhenBindings(t)
 			m.processWhenTimeBindings(t)
-			m.processStateCtxBindings(t)
+			m.processStateCtxCacheBindings(t)
+			m.processWhenQueueBindings()
 		}
 
 		t.CleanCache()
@@ -2159,7 +2194,7 @@ func (m *Machine) processQueue() Result {
 		m.tracers[i].QueueEnd(m)
 	}
 	m.tracersLock.RUnlock()
-	m.processWhenQueueBindings()
+	m.processWhenQueueEndBindings()
 
 	if len(ret) == 0 {
 		return Canceled
@@ -2167,7 +2202,7 @@ func (m *Machine) processQueue() Result {
 	return ret[0]
 }
 
-func (m *Machine) processStateCtxBindings(t *Transition) {
+func (m *Machine) processStateCtxCacheBindings(t *Transition) {
 	if m.disposed.Load() {
 		return
 	}
@@ -2255,7 +2290,7 @@ func (m *Machine) processWhenBindings(t *Transition) {
 					continue
 				}
 
-				// delete with a lookup TODO optimize
+				// delete with a lookup TODO optimize, GC later
 				m.indexWhen[state] = slicesWithout(m.indexWhen[state], binding)
 			}
 
@@ -2319,7 +2354,7 @@ func (m *Machine) processWhenTimeBindings(t *Transition) {
 					continue
 				}
 
-				// delete with a lookup TODO optimizes
+				// delete with a lookup TODO optimize, GC later
 				m.indexWhenTime[state] = slicesWithout(m.indexWhenTime[state], binding)
 			}
 
@@ -2336,14 +2371,14 @@ func (m *Machine) processWhenTimeBindings(t *Transition) {
 	}
 }
 
-func (m *Machine) processWhenQueueBindings() {
+func (m *Machine) processWhenQueueEndBindings() {
 	if m.disposed.Load() {
 		return
 	}
-	m.indexWhenQueueLock.Lock()
-	toPush := slices.Clone(m.indexWhenQueue)
-	m.indexWhenQueue = nil
-	m.indexWhenQueueLock.Unlock()
+	m.indexWhenQueueEndLock.Lock()
+	toPush := slices.Clone(m.indexWhenQueueEnd)
+	m.indexWhenQueueEnd = nil
+	m.indexWhenQueueEndLock.Unlock()
 
 	for _, binding := range toPush {
 		closeSafe(binding.ch)
@@ -2385,6 +2420,38 @@ func (m *Machine) processWhenArgs(e *Event) {
 	}
 }
 
+func (m *Machine) processWhenQueueBindings() {
+	if m.disposed.Load() {
+		return
+	}
+
+	m.indexWhenQueueLock.Lock()
+	toClose := []chan struct{}{}
+	toCloseIdx := []int{}
+	now := m.QueueTick()
+
+	// collect
+	for i, binding := range m.indexWhenQueue {
+		// compensate for Canceled == 1
+		if uint64(binding.tick) <= now {
+			m.log(LogOps, "[whenQueue:match] %d", binding.tick)
+			toClose = append(toClose, binding.ch)
+			toCloseIdx = append(toCloseIdx, i)
+		}
+	}
+
+	// GC TODO optimize
+	for _, idx := range toCloseIdx {
+		m.indexWhenQueue = slices.Delete(m.indexWhenQueue, idx, idx+1)
+	}
+	m.indexWhenQueueLock.Unlock()
+
+	// close and execute waits
+	for _, ch := range toClose {
+		closeSafe(ch)
+	}
+}
+
 // Ctx return machine's root context.
 func (m *Machine) Ctx() context.Context {
 	return m.ctx
@@ -2396,7 +2463,7 @@ func (m *Machine) Log(msg string, args ...any) {
 	if m.disposed.Load() {
 		return
 	}
-	prefix := "[extern"
+	prefix := "[exter"
 
 	// single lines only
 	msg = strings.ReplaceAll(msg, "\n", " ")
@@ -2615,7 +2682,9 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 				m.queueLock.Lock()
 				m.queue = nil
 				m.queueLen.Store(0)
+				m.queueTicksPending = 0
 				m.queueLock.Unlock()
+				// TODO dispose all argCheckDone chans
 
 				// enqueue the relevant err
 				err := fmt.Errorf("%w: %s from %s", ErrHandlerTimeout, methodName,
@@ -2625,7 +2694,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 					CalledStates: tx.CalledStates(),
 					TimeBefore:   tx.TimeBefore,
 					TimeAfter:    tx.TimeAfter,
-					Event:        e.Clone(),
+					Event:        e.Export(),
 				}))
 
 				// activate Backoff for further mutations
@@ -2759,7 +2828,7 @@ func (m *Machine) detectQueueDuplicates(mutationType MutationType,
 		return false
 	}
 	// check if this mutation is already scheduled
-	index := m.IsQueued(mutationType, states, true, true, 0, isCheck)
+	index := m.IsQueued(mutationType, states, true, true, 0, isCheck, PositionAny)
 	if index == -1 {
 		return false
 	}
@@ -2779,7 +2848,7 @@ func (m *Machine) detectQueueDuplicates(mutationType MutationType,
 	// - with or without params
 	// - state sets same or bigger than `states`
 	counterQueued := m.IsQueued(counterMutType, states,
-		false, false, index+1, isCheck)
+		false, false, index+1, isCheck, PositionAny)
 
 	return counterQueued == -1
 }
@@ -2823,27 +2892,49 @@ func (m *Machine) Tick(state string) uint64 {
 // IsQueued checks if a particular mutation has been queued. Returns
 // an index of the match or -1 if not found.
 //
-// mutationType: add, remove, set
+// mutType: add, remove, set
 //
 // states: list of states used in the mutation
 //
-// withoutParamsOnly: matches only mutation without the arguments object
+// withoutArgsOnly: matches only mutation without the arguments object
 //
 // statesStrictEqual: states of the mutation have to be exactly like `states`
 // and not a superset.
+//
+// startIndex: start later than 0
+//
+// isCheck: the mutation has to be a [Mutation.IsCheck]
+//
+// position: position in the queue, after applying the [startIndex]
 func (m *Machine) IsQueued(mutType MutationType, states S,
-	withoutArgsOnly bool, statesStrictEqual bool, startIndex int, isCheck bool,
-) int {
+	withoutArgsOnly bool, statesStrictEqual bool, startIndex int16, isCheck bool,
+	position Position,
+) int16 {
+	// TODO add QueueQuery with all the params
+	// TODO test case
+
 	if m.disposed.Load() {
 		return -1
 	}
-	// TODO test
 	m.queueLock.RLock()
 	defer m.queueLock.RUnlock()
 
+	// start index
+	qLen := int16(m.queueLen.Load())
+	if qLen == 0 || qLen-startIndex < 1 {
+		return -1
+	}
+	iter := m.queue[startIndex:]
+
+	// position
+	if position == PositionLast {
+		iter = iter[len(iter)-1:]
+	} else if position == PositionFirst {
+		iter = iter[0:1]
+	}
+
 	for i, mut := range m.queue {
-		if i >= startIndex &&
-			mut.IsCheck == isCheck &&
+		if mut.IsCheck == isCheck &&
 			mut.Type == mutType &&
 			((withoutArgsOnly && len(mut.Args) == 0) || !withoutArgsOnly) &&
 			// target states have to be at least as long as the checked ones
@@ -2855,7 +2946,7 @@ func (m *Machine) IsQueued(mutType MutationType, states S,
 			// and all the checked ones have to be included in the target ones
 			slicesEvery(mut.Called, m.Index(states)) {
 
-			return i
+			return int16(i)
 		}
 	}
 
@@ -2903,31 +2994,67 @@ func (m *Machine) QueueLen() int {
 }
 
 // WillBe returns true if the passed states are scheduled to be activated.
-// See IsQueued to perform more detailed queries.
-func (m *Machine) WillBe(states S) bool {
+// Does not cover implied states, only called ones.
+// See [Machine.IsQueued] to perform more detailed queries.
+//
+// position: optional position assertion
+func (m *Machine) WillBe(states S, position ...Position) bool {
 	// TODO test
-	return -1 != m.IsQueued(MutationAdd, states, false, false, 0, false)
+
+	if len(position) == 0 {
+		position = []Position{PositionAny}
+	}
+	idx := m.IsQueued(MutationAdd, states, false, false, 0, false, position[0])
+
+	switch {
+	case idx == -1:
+		return false
+	case idx == 0 && position[0] == PositionFirst:
+		return true
+	case int32(idx) == m.queueLen.Load()-1 && position[0] == PositionLast:
+		return true
+	default:
+		return true
+	}
 }
 
 // WillBe1 returns true if the passed state is scheduled to be activated.
 // See IsQueued to perform more detailed queries.
-func (m *Machine) WillBe1(state string) bool {
+func (m *Machine) WillBe1(state string, position ...Position) bool {
 	// TODO test
-	return m.WillBe(S{state})
+	return m.WillBe(S{state}, position...)
 }
 
 // WillBeRemoved returns true if the passed states are scheduled to be
-// deactivated.  See IsQueued to perform more detailed queries.
-func (m *Machine) WillBeRemoved(states S) bool {
+// deactivated. Does not cover implied states, only called ones. See
+// [Machine.IsQueued] to perform more detailed queries.
+//
+// position: optional position assertion
+func (m *Machine) WillBeRemoved(states S, position ...Position) bool {
 	// TODO test
-	return -1 != m.IsQueued(MutationRemove, states, false, false, 0, false)
+
+	if len(position) == 0 {
+		position = []Position{PositionAny}
+	}
+	idx := m.IsQueued(MutationRemove, states, false, false, 0, false, position[0])
+
+	switch {
+	case idx == -1:
+		return false
+	case idx == 0 && position[0] == PositionFirst:
+		return true
+	case int32(idx) == m.queueLen.Load()-1 && position[0] == PositionLast:
+		return true
+	default:
+		return true
+	}
 }
 
 // WillBeRemoved1 returns true if the passed state is scheduled to be
 // deactivated. See IsQueued to perform more detailed queries.
-func (m *Machine) WillBeRemoved1(state string) bool {
+func (m *Machine) WillBeRemoved1(state string, position ...Position) bool {
 	// TODO test
-	return m.WillBeRemoved(S{state})
+	return m.WillBeRemoved(S{state}, position...)
 }
 
 // Has return true is passed states are registered in the machine. Useful for
@@ -3179,6 +3306,7 @@ func (m *Machine) HandleDispose(fn HandlerDispose) {
 
 // ActiveStates returns a copy of the currently active states.
 func (m *Machine) ActiveStates() S {
+	// TODO merge with Switch, accept optional `states S...` param
 	if m.disposed.Load() {
 		return S{}
 	}
@@ -3290,10 +3418,18 @@ func (m *Machine) EvAdd(event *Event, states S, args A) Result {
 
 		return Canceled
 	}
-	m.queueMutation(MutationAdd, states, args, event, false)
+	queueTick := m.queueMutation(MutationAdd, states, args, event)
+	if queueTick == uint64(Executed) {
+		return Executed
+	}
 	m.breakpoint(states, nil)
 
-	return m.processQueue()
+	res := m.processQueue()
+	if res == Queued {
+		return Result(queueTick + 1)
+	}
+
+	return res
 }
 
 // TODO add EvToggle, EvToggle1
@@ -3329,10 +3465,18 @@ func (m *Machine) EvRemove(event *Event, states S, args A) Result {
 	}
 
 	m.queueLock.RUnlock()
-	m.queueMutation(MutationRemove, states, args, event, false)
+	queueTick := m.queueMutation(MutationRemove, states, args, event)
+	if queueTick == uint64(Executed) {
+		return Executed
+	}
 	m.breakpoint(nil, states)
 
-	return m.processQueue()
+	res := m.processQueue()
+	if res == Queued {
+		return Result(queueTick + 1)
+	}
+
+	return res
 }
 
 // EvRemove1 is like Remove1, but passed the source event as the 1st param,
@@ -3344,7 +3488,7 @@ func (m *Machine) EvRemove1(event *Event, state string, args A) Result {
 // EvAddErr is like AddErr, but passed the source event as the 1st param, which
 // results in traceable transitions.
 func (m *Machine) EvAddErr(event *Event, err error, args A) Result {
-	return m.EvAddErrState(event, Exception, err, args)
+	return m.EvAddErrState(event, StateException, err, args)
 }
 
 // EvAddErrState is like AddErrState, but passed the source event as the 1st
@@ -3352,6 +3496,7 @@ func (m *Machine) EvAddErr(event *Event, err error, args A) Result {
 func (m *Machine) EvAddErrState(
 	event *Event, state string, err error, args A,
 ) Result {
+
 	if m.disposed.Load() || m.disposing.Load() || m.Backoff() ||
 		int(m.queueLen.Load()) >= m.QueueLimit || err == nil {
 
@@ -3379,7 +3524,7 @@ func (m *Machine) EvAddErrState(
 	}
 
 	// TODO prepend to the queue? what effects / benefits
-	return m.EvAdd(event, S{state, Exception}, PassMerge(args, argsT))
+	return m.EvAdd(event, S{state, StateException}, PassMerge(args, argsT))
 }
 
 // Export exports the machine state as Serialized: ID, machine time, and
@@ -3463,7 +3608,7 @@ func (m *Machine) Resolver() RelationsResolver {
 	return m.resolver
 }
 
-// BindTracer binds a Tracer to the machine. Tracers can cause Exception in
+// BindTracer binds a Tracer to the machine. Tracers can cause StateException in
 // submachines, before any handlers are bound. Use the Err() getter to examine
 // such errors.
 func (m *Machine) BindTracer(tracer Tracer) error {
@@ -3518,9 +3663,6 @@ func (m *Machine) Tracers() []Tracer {
 	return slices.Clone(m.tracers)
 }
 
-// TODO move
-type HandlerError func(mach *Machine, err error)
-
 // OnError is the most basic error handler, useful for machines without any
 // handlers.
 func (m *Machine) OnError(fn HandlerError) {
@@ -3534,8 +3676,11 @@ func (m *Machine) Backoff() bool {
 	return last != nil && time.Since(*last) < m.HandlerBackoff
 }
 
-func (m *Machine) OnChange(fn func()) {
-	// TODO
+// OnChange is the most basic state-change handler, useful for machines without
+// any handlers.
+func (m *Machine) OnChange(fn HandlerChange) {
+	// TODO #262
+	panic("OnChange not implemented")
 }
 
 func (m *Machine) SetGroups(groups any, optStates States) {

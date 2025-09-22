@@ -245,7 +245,7 @@ func (g *Graph) ParseMsg(id string, msgTx *telemetry.DbgMsgTx) {
 						err := g.g.AddEdge(a[1], c.Id, data)
 						if err != nil {
 
-							// wait for the other mach to show up
+							// wait for the other mach to show up TODO better approach
 							when := g.Mach.WhenArgs(ss.InitClient, am.A{"id": a[1]}, nil)
 							go func() {
 								<-when

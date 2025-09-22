@@ -27,7 +27,8 @@ func MachDebug(t *stdtest.T, mach am.Api, amDbgAddr string,
 		return
 	}
 
-	amhelp.MachDebug(mach, amDbgAddr, logLvl, stdout, true, true, true)
+	amhelp.MachDebug(mach, amDbgAddr, logLvl, stdout,
+		amhelp.SemConfig(true))
 }
 
 // MachDebugEnv sets up a machine for debugging in tests, based on env vars
@@ -141,7 +142,7 @@ func AssertNoErrNow(t *stdtest.T, mach am.Api) {
 
 // AssertNoErrEver asserts that the machine never was in the Exception state.
 func AssertNoErrEver(t *stdtest.T, mach am.Api) {
-	if mach.Tick(am.Exception) > 0 && t.Context().Err() == nil {
+	if mach.Tick(am.StateException) > 0 && t.Context().Err() == nil {
 		err := mach.Err()
 		if err != nil {
 			t.Fatalf("Unexpected error in %s", mach.Id())
@@ -154,6 +155,6 @@ func AssertNoErrEver(t *stdtest.T, mach am.Api) {
 // AssertErr asserts that the machine is in the Exception state.
 func AssertErr(t *stdtest.T, mach am.Api) {
 	if !mach.IsErr() && t.Context().Err() == nil {
-		t.Fatal("expected " + am.Exception)
+		t.Fatal("expected " + am.StateException)
 	}
 }

@@ -209,7 +209,7 @@ func NewSupervisor(
 		return nil, err
 	}
 
-	mach.SemLogger().SetArgs(LogArgs)
+	mach.SemLogger().SetArgsMapper(LogArgs)
 	s.Mach = mach
 	amhelp.MachDebugEnv(mach)
 	mach.AddBreakpoint(am.S{ssS.ErrWorker}, nil, false)

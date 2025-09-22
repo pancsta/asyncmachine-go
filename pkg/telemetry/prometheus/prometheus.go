@@ -149,7 +149,7 @@ func (t *PromTracer) TransitionEnd(tx *am.Transition) {
 	t.m.statesInactiveAmountLen++
 
 	// Exception
-	if slices.Contains(tx.TargetStates(), am.Exception) {
+	if slices.Contains(tx.TargetStates(), am.StateException) {
 		t.m.exceptionsCount++
 	}
 

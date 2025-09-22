@@ -145,7 +145,7 @@ func (w *Worker) Sync() am.Time {
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (w *Worker) Add(states am.S, args am.A) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 
 	w.MustParseStates(states)
@@ -157,14 +157,10 @@ func (w *Worker) Add(states am.S, args am.A) am.Result {
 		Args:   args,
 	}
 	if !w.c.callFailsafe(w.Ctx(), rpcnames.Add.Encode(), rpcArgs, resp) {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 
-	// validate
-	if resp.Result == 0 {
-		AddErrRpcStr(nil, w.c.Mach, "no Result")
-		return am.ResultNoOp
-	}
+	// TODO validate resp?
 
 	// process
 	w.c.updateClock(resp.Clock, nil)
@@ -175,7 +171,7 @@ func (w *Worker) Add(states am.S, args am.A) am.Result {
 // Add1 is a shorthand method to add a single state with the passed args.
 func (w *Worker) Add1(state string, args am.A) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 	return w.Add(am.S{state}, args)
 }
@@ -186,7 +182,7 @@ func (w *Worker) Add1(state string, args am.A) am.Result {
 // calls.
 func (w *Worker) AddNS(states am.S, args am.A) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 
 	w.c.log("AddNS")
@@ -198,7 +194,7 @@ func (w *Worker) AddNS(states am.S, args am.A) am.Result {
 		Args:   args,
 	}
 	if !w.c.notifyFailsafe(w.Ctx(), rpcnames.AddNS.Encode(), rpcArgs) {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 
 	return am.Executed
@@ -207,7 +203,7 @@ func (w *Worker) AddNS(states am.S, args am.A) am.Result {
 // Add1NS is a single state version of AddNS.
 func (w *Worker) Add1NS(state string, args am.A) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 	return w.AddNS(am.S{state}, args)
 }
@@ -217,7 +213,7 @@ func (w *Worker) Add1NS(state string, args am.A) am.Result {
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (w *Worker) Remove(states am.S, args am.A) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 
 	w.MustParseStates(states)
@@ -229,14 +225,10 @@ func (w *Worker) Remove(states am.S, args am.A) am.Result {
 		Args:   args,
 	}
 	if !w.c.callFailsafe(w.Ctx(), rpcnames.Remove.Encode(), rpcArgs, resp) {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 
-	// validate
-	if resp.Result == 0 {
-		AddErrRpcStr(nil, w.c.Mach, "no Result")
-		return am.ResultNoOp
-	}
+	// TODO validate resp?
 
 	// process
 	w.c.updateClock(resp.Clock, nil)
@@ -248,7 +240,7 @@ func (w *Worker) Remove(states am.S, args am.A) am.Result {
 // See Remove().
 func (w *Worker) Remove1(state string, args am.A) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 	return w.Remove(am.S{state}, args)
 }
@@ -258,7 +250,7 @@ func (w *Worker) Remove1(state string, args am.A) am.Result {
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (w *Worker) Set(states am.S, args am.A) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 
 	w.MustParseStates(states)
@@ -270,14 +262,10 @@ func (w *Worker) Set(states am.S, args am.A) am.Result {
 		Args:   args,
 	}
 	if !w.c.callFailsafe(w.Ctx(), rpcnames.Set.Encode(), rpcArgs, resp) {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 
-	// validate
-	if resp.Result == 0 {
-		AddErrRpcStr(nil, w.c.Mach, "no Result")
-		return am.ResultNoOp
-	}
+	// TODO validate resp?
 
 	// process
 	w.c.updateClock(resp.Clock, nil)
@@ -291,9 +279,9 @@ func (w *Worker) Set(states am.S, args am.A) am.Result {
 // AddErr produces a stack trace of the error, if LogStackTrace is enabled.
 func (w *Worker) AddErr(err error, args am.A) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
-	return w.AddErrState(am.Exception, err, args)
+	return w.AddErrState(am.StateException, err, args)
 }
 
 // AddErrState adds a dedicated error state, along with the build in Exception
@@ -325,12 +313,12 @@ func (w *Worker) AddErrState(state string, err error, args am.A) am.Result {
 	// args["err.trace"] = trace
 
 	// mark errors added locally with ErrOnClient
-	return w.Add(am.S{ssS.ErrOnClient, state, am.Exception}, args)
+	return w.Add(am.S{ssS.ErrOnClient, state, am.StateException}, args)
 }
 
 func (w *Worker) EvAdd(event *am.Event, states am.S, args am.A) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 
 	w.MustParseStates(states)
@@ -340,17 +328,13 @@ func (w *Worker) EvAdd(event *am.Event, states am.S, args am.A) am.Result {
 	rpcArgs := &ArgsMut{
 		States: amhelp.StatesToIndexes(w.StateNames(), states),
 		Args:   args,
-		Event:  event.Clone(),
+		Event:  event.Export(),
 	}
 	if !w.c.callFailsafe(w.Ctx(), rpcnames.Add.Encode(), rpcArgs, resp) {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 
-	// validate
-	if resp.Result == 0 {
-		AddErrRpcStr(nil, w.c.Mach, "no Result")
-		return am.ResultNoOp
-	}
+	// TODO validate resp?
 
 	// process
 	w.c.updateClock(resp.Clock, nil)
@@ -361,28 +345,28 @@ func (w *Worker) EvAdd(event *am.Event, states am.S, args am.A) am.Result {
 // Add1 is a shorthand method to add a single state with the passed args.
 func (w *Worker) EvAdd1(event *am.Event, state string, args am.A) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 	return w.EvAdd(event, am.S{state}, args)
 }
 
 func (w *Worker) EvRemove1(event *am.Event, state string, args am.A) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 	return w.EvRemove(event, am.S{state}, args)
 }
 
 func (w *Worker) EvRemove(event *am.Event, states am.S, args am.A) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 	return am.Canceled // TODO
 }
 
 func (w *Worker) EvAddErr(event *am.Event, err error, args am.A) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 	return am.Canceled // TODO
 }
@@ -391,7 +375,7 @@ func (w *Worker) EvAddErrState(
 	event *am.Event, state string, err error, args am.A,
 ) am.Result {
 	if w.c == nil {
-		return am.ResultNoOp
+		return am.Canceled
 	}
 	return am.Canceled // TODO
 }
@@ -427,7 +411,7 @@ func (w *Worker) is(states am.S) bool {
 
 // IsErr checks if the machine has the Exception state currently active.
 func (w *Worker) IsErr() bool {
-	return w.Is1(am.Exception)
+	return w.Is1(am.StateException)
 }
 
 // Not checks if **none** of the passed states are currently active.
@@ -816,7 +800,7 @@ func (w *Worker) WhenTicks(
 //
 // ctx: optional context that will close the channel when done.
 func (w *Worker) WhenErr(ctx context.Context) <-chan struct{} {
-	return w.When([]string{am.Exception}, ctx)
+	return w.When([]string{am.StateException}, ctx)
 }
 
 // ///// Waiting (remote)
@@ -1654,3 +1638,18 @@ func (w *Worker) CountActive(states am.S) int {
 
 	return c
 }
+
+func (w *Worker) WhenQueue(tick am.Result) <-chan struct{} {
+	// TODO implement me
+	panic("implement WhenQueue")
+}
+
+func (w *Worker) QueueTick() uint64 {
+	// TODO implement me
+	panic("implement QueueTick")
+}
+
+// debug
+// func (w *Worker) QueueDump() []string {
+// 	return nil
+// }

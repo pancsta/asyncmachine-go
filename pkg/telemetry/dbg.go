@@ -10,6 +10,8 @@ import (
 	"net/rpc"
 	"os"
 	"slices"
+	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -83,6 +85,7 @@ func (d *DbgMsgStruct) Is(_ am.S, _ am.S) bool {
 type DbgMsgTx struct {
 	MachineID string
 	// Transition ID
+	// TODO refac: Id
 	ID string
 	// Clocks is represents the machine time [am.Time] from after the current
 	// transition.
@@ -101,7 +104,7 @@ type DbgMsgTx struct {
 	// mutation type
 	Type am.MutationType
 	// called states
-	// TODO remove. Deprecated use CalledStateNames
+	// TODO remove. Deprecated use CalledStateNames(index)
 	CalledStates []string
 	// TODO rename to CalledStates, re-gen all assets
 	CalledStatesIdxs []int
@@ -112,13 +115,17 @@ type DbgMsgTx struct {
 	// log entries before the transition, which happened after the prev one
 	PreLogEntries []*am.LogEntry
 	// queue length at the start of the transition
+	// TODO rename to QueueLen
+	// TODO change to int32
 	Queue int
 	// Time is human time. Don't send this over the wire.
 	// TODO remove or skip in msgpack
+	// TODO rename to HTime
 	Time *time.Time
 	// transition was triggered by an auto state
 	IsAuto bool
 	// result of the transition
+	// TODO rename to IsAccepted
 	Accepted bool
 	// is this a check (Can*) tx or mutation?
 	IsCheck bool
@@ -199,8 +206,8 @@ func (m *DbgMsgTx) CalledStateNames(statesIndex am.S) am.S {
 	return ret
 }
 
-// TODO unify
-func (m *DbgMsgTx) StdString(statesIndex am.S) string {
+// TODO unify with Tx String
+func (m *DbgMsgTx) TxString(statesIndex am.S) string {
 	ret := "tx#" + m.ID + "\n[" + m.Type.String() + "] " +
 		utils.J(m.CalledStateNames(statesIndex)) + "\n"
 	// TODO add source from mutation
@@ -211,10 +218,22 @@ func (m *DbgMsgTx) StdString(statesIndex am.S) string {
 	return ret
 }
 
+// TODO unify with Mut String
+func (m *DbgMsgTx) MutString(statesIndex am.S) string {
+	ret := "+"
+	if m.Type == am.MutationRemove {
+		ret = "-"
+	}
+	ret += utils.J(m.CalledStateNames(statesIndex))
+
+	return ret
+}
+
 func (m *DbgMsgTx) Is1(statesIndex am.S, state string) bool {
 	return m.Is(statesIndex, am.S{state})
 }
 
+// TODO Sum() and TimeSum(idxs []int)
 func (m *DbgMsgTx) TimeSum() uint64 {
 	sum := uint64(0)
 	for _, clock := range m.Clocks {
@@ -278,7 +297,7 @@ type DbgTracer struct {
 	Addr string
 	Mach am.Api
 
-	queue    chan func()
+	outbox   chan func()
 	c        *dbgClient
 	errCount atomic.Int32
 	exited   atomic.Bool

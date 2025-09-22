@@ -57,7 +57,7 @@ var ClientSchema = SchemaMerge(
 
 		// Try to RetryingConn on ErrNetwork.
 		ssC.ErrNetwork: {
-			Require: S{am.Exception},
+			Require: S{am.StateException},
 			Remove:  S{ssC.Connecting},
 		},
 
@@ -97,7 +97,7 @@ var ClientSchema = SchemaMerge(
 		ssC.RetryingCall: {Require: S{ssC.Start}},
 		ssC.CallRetryFailed: {
 			Remove: S{ssC.RetryingCall},
-			Add:    S{ssC.ErrNetwork, am.Exception},
+			Add:    S{ssC.ErrNetwork, am.StateException},
 		},
 		ssC.RetryingConn:    {Require: S{ssC.Start}},
 		ssC.ConnRetryFailed: {Remove: S{ssC.Start}},
