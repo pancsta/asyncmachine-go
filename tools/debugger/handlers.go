@@ -847,9 +847,8 @@ func (d *Debugger) SetGroupState(e *am.Event) {
 	}
 	d.hBuildSchemaTree()
 	d.hUpdateSchemaTree()
-	// TODO AskAdd1
-	d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
-	d.Mach.EvAdd(e, am.S{ss.ToolToggled, ss.RebuildLog}, am.A{
+	go amhelp.AskEvAdd1(e, d.Mach, ss.DiagramsScheduled, nil)
+	d.Mach.EvAdd(e, am.S{ss.ToolToggled, ss.BuildingLog}, am.A{
 		// TODO typed args
 		"filterTxs":     true,
 		"logRebuildEnd": len(c.MsgTxs),
@@ -932,7 +931,7 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 		}
 
 		// rebuild the whole log
-		target := am.S{ss.ClientSelected, ss.RebuildLog}
+		target := am.S{ss.ClientSelected, ss.BuildingLog}
 		if wasTailMode {
 			target = append(target, ss.TailMode)
 		}
@@ -1283,11 +1282,11 @@ func (d *Debugger) ToolToggledState(e *am.Event) {
 		}
 
 		// rebuild the whole log to reflect the UI changes
-		d.Mach.EvAdd1(e, ss.RebuildLog, am.A{
+		d.Mach.EvAdd1(e, ss.BuildingLog, am.A{
 			"logRebuildEnd": len(d.C.MsgTxs),
 		})
-		// TODO option to avoid this?
-		d.updateLog()
+		// TODO optimization: param to avoid this
+		d.Mach.EvAdd1(ss.UpdateLogScheduled, nil)
 
 		if filterTxs {
 			d.hSetCursor1(d.hFilterTxCursor(d.C, d.C.CursorTx1, false), 0, false)
@@ -1521,7 +1520,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 			if d.C == c {
 
 				// rebuild the whole log
-				d.Mach.Add1(ss.RebuildLog, am.A{
+				d.Mach.Add1(ss.BuildingLog, am.A{
 					"logRebuildEnd": len(c.MsgTxs) - 1,
 				})
 				c.CursorTx1 = int(math.Max(0, float64(c.CursorTx1-idx)))
@@ -1957,5 +1956,28 @@ func (d *Debugger) WebSocketState(e *am.Event) {
 				return
 			}
 		}
+	}()
+}
+
+func (d *Debugger) ResizedState(e *am.Event) {
+	ctx := d.Mach.NewStateCtx(ss.Resized)
+
+	d.lastResize = d.Mach.TimeSum(nil)
+	d.hUpdateNarrowLayout()
+
+	// rebuild log
+	if d.Mach.Not1(ss.ClientSelected) {
+		return
+	}
+
+	// TODO loose logRebuildEnd and include as relation
+	d.Mach.Add1(ss.BuildingLog, am.A{"logRebuildEnd": len(d.C.MsgTxs)})
+	go func() {
+		<-d.Mach.When1(ss.LogBuilt, ctx)
+		if ctx.Err() != nil {
+			return // expired
+		}
+		// force a redraw TODO bug?
+		d.draw()
 	}()
 }

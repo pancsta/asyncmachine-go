@@ -211,15 +211,14 @@ var States = am.Schema{
 		Remove:  S{SelectingClient},
 	},
 	RemoveClient: {Require: S{ClientSelected}},
-	RebuildLog: {
-		Multi:   true,
+	BuildingLog: {
 		Require: S{ClientSelected},
 		Remove:  S{LogBuilt},
 		After:   S{ClientSelected},
 	},
 	LogBuilt: {
 		Require: S{ClientSelected},
-		Remove:  S{RebuildLog},
+		Remove:  S{BuildingLog},
 	},
 
 	SetCursor: {
@@ -331,28 +330,31 @@ const (
 	// FwdStep moves to the next transition's steps
 	FwdStep = "FwdStep"
 	// BackStep moves to the previous transition's steps
-	BackStep         = "BackStep"
-	ConnectEvent     = "ConnectEvent"
-	DisconnectEvent  = "DisconnectEvent"
-	WebReq           = "WebReq"
-	WebSocket        = "WebSocket"
-	RemoveClient     = "RemoveClient"
-	ClientSelected   = "ClientSelected"
-	RebuildLog       = "RebuildLog"
-	LogBuilt         = "LogBuilt"
-	SelectingClient  = "SelectingClient"
-	HelpDialog       = "HelpDialog"
-	ExportDialog     = "ExportDialog"
-	MatrixView       = "MatrixView"
-	TreeLogView      = "TreeLogView"
-	TreeMatrixView   = "TreeMatrixView"
-	LogReaderVisible = "LogReaderVisible"
-	LogReaderEnabled = "LogReaderEnabled"
-	UpdateLogReader  = "UpdateLogReader"
-	UpdateFocus      = "UpdateFocus"
-	AfterFocus       = "AfterFocus"
-	ToolRain         = "ToolRain"
-	LogUserScrolled  = "LogUserScrolled"
+	BackStep           = "BackStep"
+	ConnectEvent       = "ConnectEvent"
+	DisconnectEvent    = "DisconnectEvent"
+	WebReq             = "WebReq"
+	WebSocket          = "WebSocket"
+	RemoveClient       = "RemoveClient"
+	ClientSelected     = "ClientSelected"
+	BuildingLog        = "BuildingLog"
+	LogBuilt           = "LogBuilt"
+	SelectingClient    = "SelectingClient"
+	HelpDialog         = "HelpDialog"
+	ExportDialog       = "ExportDialog"
+	MatrixView         = "MatrixView"
+	TreeLogView        = "TreeLogView"
+	TreeMatrixView     = "TreeMatrixView"
+	LogReaderVisible   = "LogReaderVisible"
+	LogReaderEnabled   = "LogReaderEnabled"
+	UpdateLogScheduled = "UpdateLogScheduled"
+	UpdatingLog        = "UpdatingLog"
+	LogUpdated         = "LogUpdated"
+	UpdateLogReader    = "UpdateLogReader"
+	UpdateFocus        = "UpdateFocus"
+	AfterFocus         = "AfterFocus"
+	ToolRain           = "ToolRain"
+	LogUserScrolled    = "LogUserScrolled"
 	// ScrollToTx scrolls to a specific transition.
 	ScrollToTx   = "ScrollToTx"
 	ScrollToStep = "ScrollToStep"
@@ -466,6 +468,9 @@ var Names = S{
 	MatrixRain,
 	LogReaderVisible,
 	LogReaderEnabled,
+	UpdateLogScheduled,
+	UpdatingLog,
+	LogUpdated,
 	UpdateLogReader,
 	UpdateFocus,
 	AfterFocus,
@@ -484,7 +489,7 @@ var Names = S{
 	ClientSelected,
 	SelectingClient,
 	RemoveClient,
-	RebuildLog,
+	BuildingLog,
 	LogBuilt,
 
 	SetCursor,

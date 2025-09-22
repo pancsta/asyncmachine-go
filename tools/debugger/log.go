@@ -2,6 +2,7 @@ package debugger
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -18,32 +19,147 @@ import (
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
-// TODO state: UpdateLogScheduled
-func (d *Debugger) updateLog() {
-	if !d.updateLogScheduled.CompareAndSwap(false, true) {
+// ///// ///// /////
+
+// ///// HANDLERS (LOG)
+
+// ///// ///// /////
+
+func (d *Debugger) BuildingLogEnter(e *am.Event) bool {
+	// TODO typed args
+	_, ok := e.Args["logRebuildEnd"].(int)
+	return ok && d.C != nil
+}
+
+func (d *Debugger) BuildingLogState(e *am.Event) {
+	// TODO typed args
+	// TODO handle logRebuildEnd by observing ClientMsg state clock, dont req
+	endIndex := e.Args["logRebuildEnd"].(int)
+	cursorTx1 := d.C.CursorTx1
+	level := d.Opts.Filters.LogLevel
+	ctx := d.Mach.NewStateCtx(ss.BuildingLog)
+	var buf string
+	// TODO compare memorized maxVisible (support resizing)
+	_, _, _, maxVisible := d.log.GetRect()
+
+	// skip when within the range
+	// TODO optimize: count lines from log per level and same params
+	maxDiff := float64(maxVisible * 1)
+	if d.lastResize == d.logLastResize && d.C.logRenderedLevel == level &&
+		d.logRenderedClient == d.C.MsgStruct.ID &&
+		d.C.logRenderedFilters.Equal(d.filtersFromStates()) &&
+		d.C.logRenderedTimestamps == d.Mach.Is1(ss.LogTimestamps) &&
+		math.Abs(float64(d.C.logRenderedCursor1)-float64(cursorTx1)) < maxDiff {
+
+		// d.Mach.Log("skipping...")
+		d.Mach.EvAdd1(e, ss.LogBuilt, nil)
 		return
 	}
 
+	// d.Mach.Log("building... at %d for %d", d.lastResize, maxVisible)
+	// collect TODO config for benchmarks
+	d.logRebuildEnd = endIndex
+	d.logLastResize = d.lastResize
+	// TODO traverse back and forth separately and collect log lines, skip empty
+	//  lines, limit only visible lines
+	start := max(0, cursorTx1-1-maxVisible*4)
+	end := min(endIndex, start+maxVisible*5)
+	for i := start; i < end && ctx.Err() == nil; i++ {
+		entry, empty := d.hGetLogEntryTxt(i)
+		if entry == "" {
+			continue
+		}
+		if i > start && !empty {
+			entry = "\n" + entry
+		}
+
+		buf += entry
+	}
+
+	// unblock
 	go func() {
-		// TODO amhelp.Wait
-		time.Sleep(logUpdateDebounce)
-		// TODO state: UpdateLog
-		d.Mach.Eval("updateLog", d.hUpdateLog, nil)
-		d.draw()
-		d.updateLogScheduled.Swap(false)
+		if ctx.Err() != nil {
+			return // expired
+		}
+
+		// cview is safe
+		d.log.Clear()
+		_, err := d.log.Write([]byte(buf))
+		// d.Mach.Log("writting %d", len(buf))
+		// d.Mach.Log(buf)
+		if ctx.Err() != nil {
+			return // expired
+		}
+		if err != nil {
+			d.Mach.EvAddErr(e, err, nil)
+			return
+		}
+
+		// TODO handle in LogBuiltState
+		d.Mach.Eval("BuildingLog", func() {
+			d.C.logRenderedCursor1 = cursorTx1
+			d.C.logRenderedLevel = level
+			d.logRenderedClient = d.C.MsgStruct.ID
+			d.C.logRenderedFilters = d.filtersFromStates()
+			d.C.logRenderedTimestamps = d.Mach.Is1(ss.LogTimestamps)
+			d.logAppends = 0
+		}, ctx)
+
+		d.Mach.EvAdd1(e, ss.LogBuilt, nil)
 	}()
 }
 
-// TODO state UpdateLog
-func (d *Debugger) hUpdateLog() {
-	// check for a ready client
-	c := d.C
-	if c == nil {
+func (d *Debugger) LogBuiltState(e *am.Event) {
+	d.handleLogScroll()
+}
+
+func (d *Debugger) UpdateLogScheduledState(e *am.Event) {
+	// accept and no-op when in progress
+	if d.Mach.Is1(ss.UpdatingLog) {
 		return
 	}
 
-	d.hUpdateLogReader()
+	// unblock
+	go func() {
+		d.Mach.EvRemove1(e, ss.UpdateLogScheduled, nil)
+		// start updating
+		d.Mach.EvAdd1(e, ss.UpdatingLog, nil)
+	}()
+}
+
+// TODO enter which checks that came from UpdateLogScheduled
+
+// UpdatingLogState decorates the rendered log, and rebuilds when needed.
+func (d *Debugger) UpdatingLogState(e *am.Event) {
+	ctx := d.Mach.NewStateCtx(ss.UpdatingLog)
+	// rebuild if needed
+	d.Mach.EvAdd1(e, ss.BuildingLog, am.A{"logRebuildEnd": len(d.C.MsgTxs)})
+
+	// unblock
+	go func() {
+		res := amhelp.Add1Async(ctx, d.Mach, ss.LogBuilt, ss.BuildingLog, am.A{
+			"logRebuildEnd": len(d.C.MsgTxs),
+		})
+		if am.Canceled == res {
+			return
+		}
+
+		d.Mach.EvAdd1(e, ss.LogUpdated, nil)
+	}()
+}
+
+func (d *Debugger) LogUpdatedState(e *am.Event) {
 	tx := d.hCurrentTx()
+	c := d.C
+
+	// go again?
+	defer func() {
+		if d.Mach.Is1(ss.UpdateLogScheduled) {
+			d.Mach.EvRemove1(e, ss.UpdateLogScheduled, nil)
+		}
+	}()
+
+	d.hUpdateLogReader(e)
 
 	if c.MsgStruct != nil {
 		title := " Log:" + d.Opts.Filters.LogLevel.String() + " "
@@ -57,7 +173,7 @@ func (d *Debugger) hUpdateLog() {
 	// highlight the next tx if scrolling by steps
 	bySteps := d.Mach.Is1(ss.TimelineStepsScrolled)
 	if bySteps {
-		tx = d.hNnextTx()
+		tx = d.hNextTx()
 	}
 	if tx == nil {
 		d.log.Highlight("")
@@ -92,10 +208,29 @@ func (d *Debugger) hUpdateLog() {
 	}
 }
 
+// ///// ///// /////
+
+// ///// METHODS (LOG)
+
+// ///// ///// /////
+
+func (d *Debugger) handleLogScroll() {
+	if d.Mach.Is1(ss.LogUserScrolled) {
+		// TODO restore scroll
+		return
+	}
+
+	// row-scroll only TODO not working
+	d.log.ScrollToHighlight()
+	row, _ := d.log.GetScrollOffset()
+	d.log.ScrollTo(row, 0)
+}
+
 func (d *Debugger) hParseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
 	logEntries := make([]*am.LogEntry, 0)
 
 	tx := c.MsgTxs[idx]
+	txParsed := c.msgTxsParsed[idx]
 	var readerEntries []*logReaderEntryPtr
 	if idx > 0 {
 		// copy from previous msg
@@ -132,55 +267,6 @@ func (d *Debugger) hParseMsgLogEntry(
 		c.MsgStruct.StatesIndex), c.MsgStruct.States)
 
 	return &am.LogEntry{Level: lvl, Text: t}
-}
-
-func (d *Debugger) RebuildLogEnter(e *am.Event) bool {
-	// TODO typed args
-	_, ok := e.Args["logRebuildEnd"].(int)
-	return ok
-}
-
-// TODO progressive rendering
-// TODO un-dim [extern] when Opts.Filters.Loglevel <= LogExternal
-func (d *Debugger) RebuildLogState(e *am.Event) {
-	// TODO typed args
-	endIndex := e.Args["logRebuildEnd"].(int)
-	d.log.Clear()
-	ctx := d.Mach.NewStateCtx(ss.RebuildLog)
-	var buf []byte
-
-	for i := 0; i < endIndex && ctx.Err() == nil; i++ {
-		// flush every N txs
-		if i%500 == 0 {
-			_, err := d.log.Write(buf)
-			if err != nil {
-				d.Mach.EvAddErr(e, err, nil)
-				return
-			}
-			buf = nil
-		}
-
-		buf = append(buf, d.hGetLogEntryTxt(i)...)
-	}
-
-	// TODO activate when progressive rendering lands
-	// if d.Mach.Is1(ss.NarrowLayout) {
-	// 	t = strings.ReplaceAll(t, "[yellow][extern", "[yellow][e")
-	// 	t = strings.ReplaceAll(t, "[yellow][state", "[yellow][s")
-	// }
-
-	_, err := d.log.Write(buf)
-	if err != nil {
-		d.Mach.EvAddErr(e, err, nil)
-		return
-	}
-
-	// scroll, but only if not manually scrolled
-	if d.Mach.Not1(ss.LogUserScrolled) {
-		d.log.ScrollToHighlight()
-	}
-
-	d.Mach.EvAdd1(e, ss.LogBuilt, nil)
 }
 
 func (d *Debugger) hAppendLogEntry(index int) error {
