@@ -599,19 +599,27 @@ List of handlers during a transition from `Foo` to `Foo Bar`, in the order of ex
 
 Self handlers provide a simple alternative to [`Multi` states](#multi-states), while fully maintaining [state clocks](#clock-and-context).
 
-#### Transition Sub-handler
+#### Transition Sub-Handler
 
-**State sub-handler** is a struct method which does not get called directly via the event loop, but also lacks locking,
-because of which, they can only be called by other handlers (either top level or sub-handlers). There is a [naming convention](#naming-convention)
-for these handlers, but no conventions for either parameters not return values.
+**Transition sub-handler** ("H method") is a struct method which does not get called directly by the machine, but like regular handlers, it doesn't require locking. Because of which, they can only be called by other handlers (either top-level or other sub-handlers). There is a [naming convention](#naming-convention) for these handlers, as well as a suggested signature. Sub-handlers have Inversion of Control, while transition handlers remain in control. Sub-handler scan block, but need `e.Ctx != nil`. Arguments from the original event can be replaced with `Event.SwapArgs`.
 
 Example:
 
+- `hSetCursor(e *am.Event) error` (suggested)
 - `hListProcesses(name string) ([]string, error)`
-- `hDoFoo() error`
+- `hDoFoo()`
 
 Sub-handlers are useful when combined with `EvalToGetter` from `pkg/helpers`, as well as for sharing code between
 handlers, without worrying about calling it from a non-handler code-path.
+
+// TODO more examples
+
+```go
+d.hScrollToTx(e.SwapArgs(am.A{
+    "cursorTx1":   row,
+    "trimHistory": true,
+}))
+```
 
 ### Defining Handlers
 
@@ -1374,12 +1382,19 @@ Side effects:
 
 - all state additions without arguments, for non-multi states, are reduced into 1 to avoid polluting the queue.
 
+#### Queue Ticks
+
+Eg `q342` is a queue clock's tick and triggers `<-mach.WhenQueued(queueTick)`. All the transitions with a queue tick will be executed in that order.
+
+// TODO example
+
 ### Logging
 
-Besides [inspecting methods](#inspecting-states), **asyncmachine-go** offers a very verbose logging system with 4
+Besides [inspecting methods](#inspecting-states), **asyncmachine-go** offers a very verbose logging system with 6
 levels of granularity:
 
 - `LogNothing` (default)
+- `LogExternal` external log msgs, not made by the machine
 - `LogChanges` state changes and important messages
 - `LogOps` detailed relations resolution, called handlers, queued and rejected mutations
 - `LogDecisions` more verbose variant of Ops, explaining the reasoning behind
