@@ -1270,9 +1270,10 @@ func (m *Machine) queueMutation(
 		}
 	}
 
-	// Detect duplicates and avoid queueing them, but not for multi states.
+	// Detect duplicates and avoid queueing them, but not for multi states, nor
+	// any params.
 	if !multi && len(args) == 0 &&
-		m.detectQueueDuplicates(mutationType, statesParsed) {
+		m.detectQueueDuplicates(mutationType, statesParsed, isCheck) {
 
 		m.log(LogOps, "[queue:skipped] Duplicate detected for [%s] %s",
 			mutationType, j(statesParsed))
@@ -2560,31 +2561,35 @@ func (m *Machine) handlerLoopDone() {
 // 1. Check if a mutation is scheduled (without params)
 // 2. Check if a counter mutation isn't scheduled later (any params)
 func (m *Machine) detectQueueDuplicates(mutationType MutationType,
-	parsed S,
+	states S, isCheck bool,
 ) bool {
 	if m.disposed.Load() {
 		return false
 	}
 	// check if this mutation is already scheduled
-	index := m.IsQueued(mutationType, parsed, true, true, 0)
+	index := m.IsQueued(mutationType, states, true, true, 0, isCheck)
 	if index == -1 {
 		return false
 	}
-	var counterMutationType MutationType
+	var counterMutType MutationType
 	switch mutationType {
 	case MutationAdd:
-		counterMutationType = MutationRemove
+		counterMutType = MutationRemove
 	case MutationRemove:
-		counterMutationType = MutationAdd
+		counterMutType = MutationAdd
 	default:
 	case MutationSet:
 		// avoid duplicating `set` only if at the end of the queue
 		return index > 0 && len(m.queue)-1 > 0
 	}
-	// Check if a counter mutation is scheduled and broaden the match
+
+	// Check if a counter-mutation is scheduled and broaden the match
 	// - with or without params
 	// - state sets same or bigger than `states`
-	return m.IsQueued(counterMutationType, parsed, false, false, index+1) == -1
+	counterQueued := m.IsQueued(counterMutType, states,
+		false, false, index+1, isCheck)
+
+	return counterQueued == -1
 }
 
 // Transition returns the current transition, if any.
@@ -2634,8 +2639,8 @@ func (m *Machine) Tick(state string) uint64 {
 //
 // statesStrictEqual: states of the mutation have to be exactly like `states`
 // and not a superset.
-func (m *Machine) IsQueued(mutationType MutationType, states S,
-	withoutArgsOnly bool, statesStrictEqual bool, startIndex int,
+func (m *Machine) IsQueued(mutType MutationType, states S,
+	withoutArgsOnly bool, statesStrictEqual bool, startIndex int, isCheck bool,
 ) int {
 	if m.disposed.Load() {
 		return -1
@@ -2644,18 +2649,19 @@ func (m *Machine) IsQueued(mutationType MutationType, states S,
 	m.queueLock.RLock()
 	defer m.queueLock.RUnlock()
 
-	for i, item := range m.queue {
+	for i, mut := range m.queue {
 		if i >= startIndex &&
-			item.Type == mutationType &&
-			((withoutArgsOnly && len(item.Args) == 0) || !withoutArgsOnly) &&
+			mut.IsCheck == isCheck &&
+			mut.Type == mutType &&
+			((withoutArgsOnly && len(mut.Args) == 0) || !withoutArgsOnly) &&
 			// target states have to be at least as long as the checked ones
 			// or exactly the same in case of a strict_equal
 			((statesStrictEqual &&
-				len(item.Called) == len(states)) ||
+				len(mut.Called) == len(states)) ||
 				(!statesStrictEqual &&
-					len(item.Called) >= len(states))) &&
+					len(mut.Called) >= len(states))) &&
 			// and all the checked ones have to be included in the target ones
-			slicesEvery(item.Called, m.Index(states)) {
+			slicesEvery(mut.Called, m.Index(states)) {
 
 			return i
 		}
@@ -2708,7 +2714,7 @@ func (m *Machine) QueueLen() int {
 // See IsQueued to perform more detailed queries.
 func (m *Machine) WillBe(states S) bool {
 	// TODO test
-	return -1 != m.IsQueued(MutationAdd, states, false, false, 0)
+	return -1 != m.IsQueued(MutationAdd, states, false, false, 0, false)
 }
 
 // WillBe1 returns true if the passed state is scheduled to be activated.
@@ -2722,7 +2728,7 @@ func (m *Machine) WillBe1(state string) bool {
 // deactivated.  See IsQueued to perform more detailed queries.
 func (m *Machine) WillBeRemoved(states S) bool {
 	// TODO test
-	return -1 != m.IsQueued(MutationRemove, states, false, false, 0)
+	return -1 != m.IsQueued(MutationRemove, states, false, false, 0, false)
 }
 
 // WillBeRemoved1 returns true if the passed state is scheduled to be
