@@ -255,6 +255,8 @@ type Api interface {
 	Time(states S) Time
 	// TimeSum is [Machine.TimeSum].
 	TimeSum(states S) uint64
+	// QueueTick is [Machine.QueueTick].
+	QueueTick() uint64
 	// NewStateCtx is [Machine.NewStateCtx].
 	NewStateCtx(state string) context.Context
 	// Export is [Machine.Export].
@@ -326,29 +328,31 @@ type breakpoint struct {
 
 // ///// ///// /////
 
-// Result enum is the result of a state Transition.
-type Result int8
+// Result enum is the result of a state Transition. [Queue] is a virtual value
+// and everything >= Queue represents a queue tick on which the mutation will
+// be processed. It's useful for queued negotiations.
+type Result uint64
 
 const (
 	// Executed means that the transition was executed immediately and not
 	// canceled.
-	Executed Result = 1 << iota
+	Executed Result = 0
 	// Canceled means that the transition was canceled, by either relations or a
-	// handler.
-	Canceled
-	// Queued means that the transition was queued for later execution. The
-	// following methods can be used to wait for the results:
+	// negotiation handler.
+	Canceled Result = 1
+	// Queued means that the transition was queued for later execution. Everything
+	// above 3 also means Queued. The following methods can be used to wait for
+	// the results:
 	// - Machine.When
 	// - Machine.WhenNot
 	// - Machine.WhenArgs
 	// - Machine.WhenTime
+	// - Machine.WhenTime1
 	// - Machine.WhenTicks
-	// - Machine.WhenTicksEq
-	Queued
-	// ResultNoOp means that the transition was a no-op, i.e., the state was
-	// already active. ResultNoOp is only used by helpers and never returned by
-	// the machine itself.
-	ResultNoOp
+	// - Machine.WhenQueue
+	// - Machine.WhenQueueEnds
+	// See [Machine.queueTick].
+	Queued Result = 2
 )
 
 var (
@@ -438,6 +442,25 @@ type Mutation struct {
 	Source *MutSource
 	// Can* methods
 	IsCheck bool
+
+	// optional queue info
+
+	// QueueTickNow is the queue tick during which this mutation was scheduled.
+	QueueTickNow uint64
+	// QueueLen is the length of the queue at the time when the mutation was
+	// queued.
+	QueueLen int32
+	// QueueTokensLen is the amount of unexecuted queue tokens (priority queue).
+	// TODO impl
+	QueueTokensLen int32
+	// QueueTick is the assigned queue tick at the time when the mutation was
+	// queued. 0 for prepended mutations.
+	QueueTick uint64
+	// QueueToken is a unique ID, which is given to prepended mutations.
+	// Tokens are assigned in a series but executed in random order.
+	QueueToken uint64
+
+	// internals
 
 	// specific context for this mutation (optional)
 	ctx context.Context

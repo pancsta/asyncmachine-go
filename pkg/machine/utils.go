@@ -102,6 +102,12 @@ func IsActiveTick(tick uint64) bool {
 	return tick%2 == 1
 }
 
+// IsQueued returns true if the mutation has been queued, and the result
+// represents the queue time it will be processed.
+func IsQueued(result Result) bool {
+	return result > Canceled
+}
+
 // SAdd concatenates multiple state lists into one, removing duplicates.
 // Useful for merging lists of states, eg a state group with other states
 // involved in a relation.

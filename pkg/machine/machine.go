@@ -89,41 +89,50 @@ type Machine struct {
 	activeStates     S
 	activeStatesLock sync.RWMutex
 	// queue of mutations to be executed.
-	queue           []*Mutation
-	queueLock       sync.RWMutex
-	queueProcessing atomic.Bool
-	queueLen        atomic.Int32
+	queue []*Mutation
+	// queueTick is the number of times the queue has processed a mutation. Starts
+	// from [1], for easy comparison with [Result].
+	queueTick         uint64
+	queueTicksPending uint64
+	queueToken        atomic.Uint64
+	queueLock         sync.RWMutex
+	queueProcessing   atomic.Bool
+	// total len of the queue (ticking and prepended0
+	queueLen atomic.Int32
+	// length of the ticking mutations
 	// Relation resolver, used to produce target schema of a transition.
 	// Default: *DefaultRelationsResolver.
 	resolver RelationsResolver
 	// List of all the registered state names.
-	stateNames         S
-	stateNamesExport   S
-	handlersLock       sync.Mutex
-	loopLock           sync.Mutex
-	handlers           []*handler
-	clock              Clock
-	cancel             context.CancelFunc
-	logLevel           atomic.Pointer[LogLevel]
-	logger             atomic.Pointer[LoggerFn]
-	semLogger          SemLogger
-	indexWhen          IndexWhen
-	indexWhenTime      IndexWhenTime
-	indexWhenArgs      IndexWhenArgs
-	indexWhenArgsLock  sync.RWMutex
-	indexStateCtx      IndexStateCtx
-	indexWhenQueue     []whenQueueBinding
-	indexWhenQueueLock sync.Mutex
-	handlerStart       chan *handlerCall
-	handlerEnd         chan bool
-	handlerPanic       chan recoveryData
-	handlerTimer       *time.Timer
-	logEntriesLock     sync.Mutex
-	logEntries         []*LogEntry
-	logArgs            func(args A) map[string]string
-	currentHandler     atomic.Value
-	disposeHandlers    []HandlerDispose
-	timeLast           atomic.Pointer[Time]
+	stateNames            S
+	stateNamesExport      S
+	handlersLock          sync.Mutex
+	loopLock              sync.Mutex
+	handlers              []*handler
+	clock                 Clock
+	cancel                context.CancelFunc
+	logLevel              atomic.Pointer[LogLevel]
+	logger                atomic.Pointer[LoggerFn]
+	semLogger             SemLogger
+	indexWhen             IndexWhen
+	indexWhenTime         IndexWhenTime
+	indexWhenArgs         IndexWhenArgs
+	indexWhenArgsLock     sync.RWMutex
+	indexStateCtx         IndexStateCtx
+	indexWhenQueueEnd     []whenQueueEndBinding
+	indexWhenQueueEndLock sync.Mutex
+	indexWhenQueue        []whenQueueBinding
+	indexWhenQueueLock    sync.Mutex
+	handlerStart          chan *handlerCall
+	handlerEnd            chan bool
+	handlerPanic          chan recoveryData
+	handlerTimer          *time.Timer
+	logEntriesLock        sync.Mutex
+	logEntries            []*LogEntry
+	logArgs               atomic.Pointer[LogArgsMapperFn]
+	currentHandler        atomic.Value
+	disposeHandlers       []HandlerDispose
+	timeLast              atomic.Pointer[Time]
 	// Channel closing when the machine finished disposal. Read-only.
 	whenDisposed       chan struct{}
 	handlerLoopRunning atomic.Bool
@@ -208,6 +217,8 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 		handlerPanic:  make(chan recoveryData),
 		handlerTimer:  time.NewTimer(24 * time.Hour),
 		whenDisposed:  make(chan struct{}),
+		// queue ticks start from 1 to align with the [Result] enum
+		queueTick: 1,
 	}
 
 	m.semLogger = &semLogger{mach: m}
@@ -386,6 +397,10 @@ func (m *Machine) doDispose(force bool) {
 		defer m.activeStatesLock.Unlock()
 		m.indexWhenArgsLock.Lock()
 		defer m.indexWhenArgsLock.Unlock()
+		m.indexWhenQueueEndLock.Lock()
+		defer m.indexWhenQueueEndLock.Unlock()
+		m.indexWhenQueueLock.Lock()
+		defer m.indexWhenQueueLock.Unlock()
 		m.tracersLock.Lock()
 		defer m.tracersLock.Unlock()
 		m.handlersLock.Lock()
@@ -769,8 +784,12 @@ func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan struct{} {
 		return ch
 	}
 
+	// locks
+	m.indexWhenQueueEndLock.Lock()
+	defer m.indexWhenQueueEndLock.Unlock()
+
 	// add the binding to an index of each state
-	binding := whenQueueBinding{
+	binding := whenQueueEndBinding{
 		ch: ch,
 	}
 
@@ -793,18 +812,83 @@ func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan struct{} {
 			// TODO track
 			closeSafe(ch)
 
-			m.indexWhenQueueLock.Lock()
-			defer m.indexWhenQueueLock.Unlock()
+			m.indexWhenQueueEndLock.Lock()
+			defer m.indexWhenQueueEndLock.Unlock()
 
-			m.indexWhenQueue = slicesWithout(m.indexWhenQueue, binding)
+			// TODO optimize with indexes
+			m.indexWhenQueueEnd = slicesWithout(m.indexWhenQueueEnd, binding)
 		}()
 	}
+
+	// insert the binding
+	m.indexWhenQueueEnd = append(m.indexWhenQueueEnd, binding)
+
+	return ch
+}
+
+// WhenQueue waits until the passed queueTick gets processed.
+// TODO add to Api
+func (m *Machine) WhenQueue(tick Result) <-chan struct{} {
+	// TODO add gc ctx? use cases?
+	ch := make(chan struct{})
+	if m.disposed.Load() {
+		close(ch)
+		return ch
+	}
+
+	// locks
+	m.indexWhenQueueLock.Lock()
+	defer m.indexWhenQueueLock.Unlock()
+	m.queueLock.Lock()
+	defer m.queueLock.Unlock()
+
+	// finish early
+	if m.queueTick >= uint64(tick) {
+		close(ch)
+		return ch
+	}
+
+	// TODO add entry
+
+	// add the binding to an index of each state
+	binding := whenQueueBinding{
+		ch:   ch,
+		tick: tick,
+	}
+	m.log(LogOps, "[whenQueue:new] %d", tick)
 
 	// insert the binding
 	m.indexWhenQueue = append(m.indexWhenQueue, binding)
 
 	return ch
 }
+
+// QueueTick is the number of times the queue has processed a mutation. Starts
+// from [1], for easy comparison with [Result].
+func (m *Machine) QueueTick() uint64 {
+	m.queueLock.Lock()
+	defer m.queueLock.Unlock()
+
+	return m.queueTick
+}
+
+// debug
+// func (m *Machine) QueueDump() []string {
+// 	m.queueLock.Lock()
+// 	defer m.queueLock.Unlock()
+// 	ret := make([]string, 0)
+//
+// 	index := m.StateNames()
+// 	for _, mut := range m.queue {
+// 		if mut.Type == mutationEval {
+// 			continue
+// 		}
+//
+// 		ret = append(ret, mut.StringFromIndex(index))
+// 	}
+//
+// 	return ret
+// }
 
 // WhenDisposed returns a channel that will be closed when the machine is
 // disposed. Requires bound handlers. Use Machine.disposed in case no handlers
@@ -874,22 +958,44 @@ func (m *Machine) TimeSum(states S) uint64 {
 // PrependMut prepends the mutation to the front of the queue. This is a special
 // cases only method and should be used with caution, as it can create an
 // infinite loop. It's useful for postponing mutations inside a negotiation
-// handler
+// handler. The returned Result can't be waited on, as prepended mutations don't
+// create a queue tick.
 func (m *Machine) PrependMut(mut *Mutation) Result {
 	if m.disposed.Load() {
 		return Canceled
 	}
 
+	isEval := mut.Type == mutationEval
 	statesParsed := m.MustParseStates(IndexToStates(m.StateNames(), mut.Called))
-	m.log(LogOps, "[prepend:%s] %s", mut.Type, j(statesParsed))
+	m.log(LogOps, "[prepend:%s] %s%s", mut.Type, j(statesParsed),
+		mut.LogArgs(m.SemLogger().ArgsMapper()))
 
 	m.queueLock.Lock()
-	mut.cacheCalled.Store(&statesParsed)
+	if !isEval {
+		mut.cacheCalled.Store(&statesParsed)
+	}
 	m.queue = append([]*Mutation{mut}, m.queue...)
-	m.queueLen.Store(int32(len(m.queue)))
+	lenQ := len(m.queue)
+	m.queueLen.Store(int32(lenQ))
+	if !isEval {
+		mut.QueueLen = int32(lenQ)
+		mut.QueueToken = m.queueToken.Add(1)
+		mut.QueueTickNow = m.queueTick
+	}
 	m.queueLock.Unlock()
 
-	return m.processQueue()
+	// tracers
+	if !isEval {
+		m.tracersLock.RLock()
+		for i := 0; !m.disposed.Load() && i < len(m.tracers); i++ {
+			m.tracers[i].MutationQueued(m, mut)
+		}
+		m.tracersLock.RUnlock()
+	}
+
+	res := m.processQueue()
+
+	return res
 }
 
 // Add activates a list of states in the machine, returning the result of the
@@ -907,10 +1013,18 @@ func (m *Machine) Add(states S, args A) Result {
 		}
 	}
 
-	m.queueMutation(MutationAdd, states, args, nil, false)
+	queueTick := m.queueMutation(MutationAdd, states, args, nil)
+	if queueTick == uint64(Executed) {
+		return Executed
+	}
 	m.breakpoint(states, nil)
 
-	return m.processQueue()
+	res := m.processQueue()
+	if res == Queued {
+		return Result(queueTick)
+	}
+
+	return res
 }
 
 // Add1 is a shorthand method to add a single state with the passed args.
@@ -919,7 +1033,7 @@ func (m *Machine) Add1(state string, args A) Result {
 }
 
 // Toggle deactivates a list of states in case all are active, or activates
-// all otherwise. Returns the result of the transition (Executed, Queued,
+// them otherwise. Returns the result of the transition (Executed, Queued,
 // Canceled).
 func (m *Machine) Toggle(states S, args A) Result {
 	if m.disposed.Load() {
@@ -1104,10 +1218,18 @@ func (m *Machine) Remove(states S, args A) Result {
 	}
 
 	m.queueLock.RUnlock()
-	m.queueMutation(MutationRemove, states, args, nil, false)
+	queueTick := m.queueMutation(MutationRemove, states, args, nil)
+	if queueTick == uint64(Executed) {
+		return Executed
+	}
 	m.breakpoint(nil, states)
 
-	return m.processQueue()
+	res := m.processQueue()
+	if res == Queued {
+		return Result(queueTick + 1)
+	}
+
+	return res
 }
 
 // Remove1 is a shorthand method to remove a single state with the passed args.
@@ -1123,9 +1245,17 @@ func (m *Machine) Set(states S, args A) Result {
 	if m.disposed.Load() || int(m.queueLen.Load()) >= m.QueueLimit {
 		return Canceled
 	}
-	m.queueMutation(MutationSet, states, args, nil, false)
+	queueTick := m.queueMutation(MutationSet, states, args, nil)
+	if queueTick == uint64(Executed) {
+		return Executed
+	}
 
-	return m.processQueue()
+	res := m.processQueue()
+	if res == Queued {
+		return Result(queueTick + 1)
+	}
+
+	return res
 }
 
 // TODO Set1Cond(name, args, cond bool)
@@ -1258,13 +1388,12 @@ func (m *Machine) Any1(states ...string) bool {
 	return false
 }
 
-// queueMutation queues a mutation to be executed.
+// queueMutation queues a mutation to be executed. Returns >= 0 if the mutation
+// was queued. 0 mean NoOp.
 func (m *Machine) queueMutation(
-	mutationType MutationType, states S, args A, event *Event, isCheck bool,
-) {
-	if m.disposed.Load() {
-		return
-	}
+	mutType MutationType, states S, args A, event *Event,
+) uint64 {
+
 	statesParsed := m.MustParseStates(states)
 	multi := false
 	for _, state := range statesParsed {
@@ -1280,8 +1409,9 @@ func (m *Machine) queueMutation(
 		m.detectQueueDuplicates(mutationType, statesParsed, isCheck) {
 
 		m.log(LogOps, "[queue:skipped] Duplicate detected for [%s] %s",
-			mutationType, j(statesParsed))
-		return
+			mutType, j(statesParsed))
+
+		return uint64(Executed)
 	}
 
 	m.log(LogOps, "[queue:%s] %s", mutationType, j(statesParsed))
@@ -1291,7 +1421,7 @@ func (m *Machine) queueMutation(
 		args = A{}
 	}
 
-	m.queueLock.Lock()
+	// prep the mutation
 	var source *MutSource
 	if event != nil {
 		tx := event.Transition()
@@ -1304,17 +1434,41 @@ func (m *Machine) queueMutation(
 		}
 	}
 	mut := &Mutation{
-		Type:    mutationType,
-		Called:  m.Index(statesParsed),
-		Args:    args,
-		Auto:    false,
-		Source:  source,
-		IsCheck: isCheck,
+		Type:   mutType,
+		Called: m.Index(statesParsed),
+		Args:   args,
+		Source: source,
 	}
 	mut.cacheCalled.Store(&statesParsed)
+
+	// work the queue and persist in the mutation
+	m.queueLock.Lock()
 	m.queue = append(m.queue, mut)
-	m.queueLen.Store(int32(len(m.queue)))
+	lenQ := len(m.queue)
+	m.queueLen.Store(int32(lenQ))
+	m.queueTicksPending += 1
+	mut.QueueLen = int32(lenQ)
+	mut.QueueTick = m.queueTicksPending + m.queueTick
+	mut.QueueTickNow = m.queueTick
 	m.queueLock.Unlock()
+
+	// tracers
+	m.log(LogOps, "[queue:%s] %s%s", mutType, j(statesParsed),
+		mut.LogArgs(m.SemLogger().ArgsMapper()))
+	m.tracersLock.RLock()
+	for i := 0; !m.disposed.Load() && i < len(m.tracers); i++ {
+		m.tracers[i].MutationQueued(m, mut)
+	}
+	m.tracersLock.RUnlock()
+
+	// breakpoints
+	if mut.Type == MutationAdd {
+		m.breakpoint(statesParsed, nil)
+	} else if mutType == MutationRemove {
+		m.breakpoint(nil, statesParsed)
+	}
+
+	return mut.QueueTick
 }
 
 // Eval executes a function on the machine's queue, allowing to avoid using
@@ -1643,6 +1797,7 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 	defer m.queueLock.Unlock()
 	m.queue = append([]*Mutation{errMut}, m.queue...)
 	m.queueLen.Store(int32(len(m.queue)))
+	// TODO refresh m.queueTickedLen
 
 	// restart the handler loop
 	go m.handlerLoop()
