@@ -45,15 +45,16 @@ type (
 )
 
 // Add1Block activates a state and waits until it becomes active. If it's a
-// multi state, it also waits for it te de-activate. Returns early if a
-// non-multi state is already active. Useful to avoid the queue.
+// multi-state, it also waits for it to deactivate. Returns early if a
+// non-multi state is already active. Useful to avoid the queue but can't
+// handle a rejected negotiation.
+// Deprecated: use Add1Sync instead.
 func Add1Block(
 	ctx context.Context, mach am.Api, state string, args am.A,
 ) am.Result {
-	// TODO support args["sync_token"] via WhenArgs
+	// TODO remove once Add1Sync ready
 
-	// support for multi states
-
+	// support for multi-states
 	if IsMulti(mach, state) {
 		when := mach.WhenTicks(state, 2, ctx)
 		res := mach.Add1(state, args)
@@ -63,7 +64,7 @@ func Add1Block(
 	}
 
 	if mach.Is1(state) {
-		return am.ResultNoOp
+		return am.Executed
 	}
 
 	ctxWhen, cancel := context.WithCancel(ctx)
@@ -77,53 +78,55 @@ func Add1Block(
 
 		return res
 	}
-	<-when
 
-	return res
+	// wait
+	select {
+	case <-when:
+		return am.Executed
+	case <-ctx.Done():
+		return am.Canceled
+	}
 }
 
-// Add1BlockCh is like Add1Block, but returns a channel to compose with other
-// "when" methods.
-func Add1BlockCh(
-	ctx context.Context, mach am.Api, state string, args am.A,
-) <-chan struct{} {
-	// TODO support args["sync_token"] via WhenArgs
+// Add1Sync activates a state and waits until it becomes activate, or canceled.
+// Add1Sync is a newer version of Add1Block that supports queued rejections,
+// but at the moment it is not compatible with RPC. This method checks
+// expiration ctx and returns as [am.Canceled].
+func Add1Sync(
+	ctx context.Context, mach *am.Machine, state string, args am.A,
+) am.Result {
 
-	// support for multi states
-
-	if IsMulti(mach, state) {
-		when := mach.WhenTicks(state, 2, ctx)
-		_ = mach.Add1(state, args)
-
-		return when
-	}
-
-	if mach.Is1(state) {
-		return nil
-	}
-
-	ctxWhen, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	when := mach.WhenTicks(state, 1, ctxWhen)
 	res := mach.Add1(state, args)
-	if res == am.Canceled {
-		// dispose "when" ch early
-		cancel()
-
-		return nil
+	switch res {
+	case am.Executed:
+		return res
+	case am.Canceled:
+		return res
+	default:
+		// wait TODO select ctx.Done
+		select {
+		case <-ctx.Done():
+			return am.Canceled
+		case <-mach.WhenQueue(res):
+			if mach.Is1(state) {
+				return am.Executed
+			}
+			return am.Canceled
+		}
 	}
 
 	return when
 }
 
-// Add1AsyncBlock adds a state from an async op and waits for another one
+// Add1Async adds a state from an async op and waits for another one
 // from the op to become active. Theoretically, it should work with any state
-// pair, including Multi states (assuming they remove themselves).
-func Add1AsyncBlock(
+// pair, including Multi states (assuming they remove themselves). Not
+// compatible with queued negotiation at the moment.
+func Add1Async(
 	ctx context.Context, mach am.Api, waitState string,
 	addState string, args am.A,
 ) am.Result {
+
 	ticks := 1
 	// wait 2 ticks for multi states
 	if IsMulti(mach, waitState) {
@@ -133,6 +136,7 @@ func Add1AsyncBlock(
 	ctxWhen, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// TODO use WhenQueue
 	when := mach.WhenTicks(waitState, ticks, ctxWhen)
 	res := mach.Add1(addState, args)
 	if res == am.Canceled {
@@ -141,12 +145,20 @@ func Add1AsyncBlock(
 
 		return res
 	}
-	<-when
 
-	return res
+	// wait
+	select {
+	case <-when:
+		return am.Executed
+	case <-ctx.Done():
+		return am.Canceled
+	}
 }
 
-// TODO AddSync
+// TODO EvAdd1Async
+// TODO EvAdd1Sync
+// TODO EvAddSync
+//  Remove?
 
 // IsMulti returns true if a state is a multi state.
 func IsMulti(mach am.Api, state string) bool {
