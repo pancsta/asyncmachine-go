@@ -75,17 +75,38 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	m.activeStatesLock.RLock()
 	defer m.activeStatesLock.RUnlock()
 
-	t := &Transition{
-		Id:         randId(),
-		Mutation:   mut,
-		TimeBefore: m.time(nil),
-		Machine:    m,
-		Api:        m,
+	index := m.StateNames()
+	schema := m.Schema()
+	tNow := m.time(nil)
+	tAfter := slices.Clone(tNow)
+	semlog := m.SemLogger()
+
+	// gather what we know about TimeAfter at this point (except for checks)
+	// TODO test case
+	if !mut.IsCheck {
+		is := IsActiveTick
+		for _, idx := range mut.Called {
+			name := index[idx]
+			switch {
+			case mut.Type == MutationAdd && is(tAfter[idx]) && schema[name].Multi:
+				tAfter[idx] += 2
+			case mut.Type == MutationAdd && !is(tAfter[idx]):
+				tAfter[idx] += 1
+			case mut.Type == MutationRemove && is(tAfter[idx]):
+				tAfter[idx] += 1
+			}
+			// TODO support [MutationSet]
+		}
 	}
 
-	// checks dont change time
-	if mut.IsCheck {
-		t.TimeAfter = t.TimeBefore
+	t := &Transition{
+		Id:          randId(),
+		Mutation:    mut,
+		TimeBefore:  tNow,
+		TimeAfter:   tAfter,
+		Machine:     m,
+		Api:         m,
+		cacheSchema: schema,
 	}
 
 	activeStates := slices.Clone(m.activeStates)
@@ -127,7 +148,7 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 
 	// set up the mutation
 	statesToSet := t.statesToSet(mutType, called)
-	targetStates := m.resolver.TargetStates(t, statesToSet, m.StateNames())
+	targetStates := m.resolver.TargetStates(t, statesToSet, index)
 
 	// simulate TimeAfter (temporarily)
 	t.TargetIndexes = m.Index(targetStates)
@@ -193,6 +214,7 @@ func (t *Transition) CleanCache() {
 	t.latestHandlerIsFinal = false
 	t.cacheClockBefore.Store(nil)
 	t.Mutation.cacheCalled.Store(nil)
+	t.cacheSchema = nil
 }
 
 // StatesBefore is a list of states before the transition.
@@ -268,6 +290,14 @@ func (t *Transition) CalledStates() S {
 	}
 
 	return IndexToStates(t.Api.StateNames(), t.Mutation.Called)
+}
+
+// TimeIndexAfter return TimeAfter bound to an index, for easy quering.
+func (t *Transition) TimeIndexAfter() TimeIndex {
+	return TimeIndex{
+		Time:  t.TimeAfter,
+		Index: t.Api.StateNames(),
+	}
 }
 
 // ClockBefore return the Clock from before the transition.
@@ -651,8 +681,8 @@ func (t *Transition) emitEvents() Result {
 			// TODO safe to continue?
 			hasStateChanged = !m.IsTime(t.TimeBefore, nil)
 		} else {
-			// gather new clock values, overwrite fake TimeAfter
-			t.TimeAfter = t.TimeBefore
+			// always correct TimeAfter
+			t.TimeAfter = m.time(nil)
 		}
 
 		// global AnyState handler
