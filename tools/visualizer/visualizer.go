@@ -542,7 +542,7 @@ func (v *Visualizer) shouldRenderState(machId, state string) bool {
 			return true
 		}
 		// Exception
-		if v.RenderException && state == am.Exception {
+		if v.RenderException && state == am.StateException {
 			return true
 		}
 	}
@@ -558,7 +558,7 @@ func (v *Visualizer) shouldRenderState(machId, state string) bool {
 			return false
 		}
 		// Exception
-		if !v.RenderException && state == am.Exception {
+		if !v.RenderException && state == am.StateException {
 			return false
 		}
 
@@ -582,7 +582,7 @@ func (v *Visualizer) shouldRenderState(machId, state string) bool {
 			return true
 		}
 		// Exception
-		if v.RenderException && state == am.Exception {
+		if v.RenderException && state == am.StateException {
 			return true
 		}
 
@@ -594,7 +594,7 @@ func (v *Visualizer) shouldRenderState(machId, state string) bool {
 }
 
 func (v *Visualizer) isStateInherited(state string, machStates am.S) bool {
-	if state == am.Exception {
+	if state == am.StateException {
 		return true
 	}
 
@@ -728,7 +728,7 @@ func UpdateCache(
 			isActive := slices.Contains(sel.Active, state)
 			isStart := state == ssam.BasicStates.Start
 			isReady := state == ssam.BasicStates.Ready
-			isErr := state == am.Exception || strings.HasPrefix(state, am.PrefixErr)
+			isErr := state == am.StateException || strings.HasPrefix(state, am.PrefixErr)
 
 			fillOuter := "#CDD6F4"
 			classOuter := "text-bold fill-N1"

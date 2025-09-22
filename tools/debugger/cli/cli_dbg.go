@@ -21,12 +21,12 @@ import (
 // TODO enum
 // TODO cobra groups
 const (
-	pLogLevel         = "log-level"
-	pId               = "id"
+	pDbgLogLevel      = "dbg-log-level"
+	pDbgAmDbgAddr     = "dbg-am-dbg-addr"
+	pGoRace           = "dbg-go-race"
+	pId               = "dbg-id"
 	pServerAddr       = "listen-on"
 	pServerAddrShort  = "l"
-	pAmDbgAddr        = "am-dbg-addr"
-	pGoRace           = "go-race"
 	pEnableMouse      = "enable-mouse"
 	pCleanOnConnect   = "clean-on-connect"
 	pVersion          = "version"
@@ -37,10 +37,11 @@ const (
 	pStartupMach      = "select-machine"
 	pStartupMachShort = "m"
 	pStartupTx        = "select-transition"
+	pStartupGroup     = "select-group"
 	pStartupTxShort   = "t"
 	pTail             = "tail"
 	// TODO AM_DBG_PROF
-	pProfSrv      = "prof-srv"
+	pProfSrv      = "dbg-prof-srv"
 	pMaxMem       = "max-mem"
 	pLogOpsTtl    = "log-ops-ttl"
 	pReaderShort  = "r"
@@ -63,9 +64,17 @@ const (
 	pView       = "view"
 	pViewShort  = "v"
 	pViewNarrow = "view-narrow"
-	pReader     = "view-reader"
+	pViewReader = "view-reader"
 	pTimelines  = "view-timelines"
 	pRain       = "view-rain"
+
+	// filters
+
+	pFilterGroup    = "filter-group"
+	pFilterLogLevel = "filter-log-level"
+	// TODO filter-auto=exec=all
+	// TODO filter-checked
+	// TODO rest of filters
 )
 
 type Params struct {
@@ -78,9 +87,6 @@ type Params struct {
 	DebugAddr       string
 	RaceDetector    bool
 	ImportData      string
-	StartupMachine  string
-	StartupView     string
-	StartupTx       int
 	EnableMouse     bool
 	CleanOnConnect  bool
 	SelectConnected bool
@@ -91,8 +97,17 @@ type Params struct {
 	LogOpsTtl       time.Duration
 	Reader          bool
 	FwdData         []string
-	ViewNarrow      bool
-	ViewRain        bool
+
+	StartupMachine string
+	StartupView    string
+	StartupTx      int
+	StartupGroup   string
+
+	ViewNarrow bool
+	ViewRain   bool
+
+	FilterGroup    bool
+	FilterLogLevel am.LogLevel
 
 	OutputDir      string
 	OutputDiagrams int
@@ -127,12 +142,12 @@ func AddFlags(rootCmd *cobra.Command) {
 
 	f := rootCmd.Flags()
 	// TODO understand string names like Changes, Ops
-	f.Int(pLogLevel, 0,
-		"Log level produced by this instance, 0-6 (silent-everything)")
+	f.Int(pDbgLogLevel, int(am.LogNothing),
+		"Log level produced by this instance, 0-5 (silent-everything)")
 	f.StringP(pServerAddr, pServerAddrShort, telemetry.DbgAddr,
 		"Host and port for the debugger to listen on")
 	f.String(pId, "am-dbg", "ID of this instance")
-	f.String(pAmDbgAddr, "", "Debug this instance of am-dbg with another one")
+	f.String(pDbgAmDbgAddr, "", "Debug this instance of am-dbg with another one")
 	f.Bool(pGoRace, false, "Go race detector is enabled")
 	f.StringP(pView, pViewShort, "tree-log",
 		"Initial view (tree-log, tree-matrix, matrix)")
@@ -144,6 +159,7 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.IntP(pStartupTx, pStartupTxShort, 0,
 		"Select a transaction by _number_ on startup (requires --"+
 			pStartupMach+")")
+	f.String(pStartupGroup, "", "Startup group")
 	f.Bool(pEnableMouse, true,
 		"Enable mouse support (experimental)")
 	f.Bool(pCleanOnConnect, false,
@@ -154,9 +170,15 @@ func AddFlags(rootCmd *cobra.Command) {
 		"Force a narrow view, independently of the viewport size")
 	f.StringP(pImport, pImportShort, "",
 		"Import an exported gob.br file")
-	f.BoolP(pReader, pReaderShort, false, "Enable Log Reader")
+	f.BoolP(pViewReader, pReaderShort, false, "Enable Log Reader")
 	f.StringP(pFwdData, pFwdDataShort, "",
 		"Forward incoming data to other instances (eg addr1,addr2)")
+
+	// FILTERS
+
+	f.Bool(pFilterGroup, true, "Filter transitions by a selected group")
+	f.Int(pFilterLogLevel, int(am.LogChanges), "Filter transitions to this log "+
+		"level produced by this instance, 0-5 (silent-everything)")
 
 	// MISC
 
@@ -176,10 +198,11 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.Int(pOutputDiagrams, 0,
 		"Level of details for diagrams (svg, d2, mermaid) in "+
 			"--dir (0 off, 1-3 on). EXPERIMENTAL")
-	f.Bool(pUiDiagrams, false, "Start a web diagrams viewer (EXPERIMENTAL)")
+	f.Bool(pUiDiagrams, true,
+		"Start a web diagrams viewer on a +1 port (EXPERIMENTAL)")
 	f.Int(pTimelines, 2, "Number of timelines to show (0-2)")
 	f.Bool(pRain, false, "Show the rain view")
-	f.Bool(pTail, true, "Start from the last tx")
+	f.Bool(pTail, true, "Start from the lastest tx")
 }
 
 func ParseParams(cmd *cobra.Command, args []string) Params {
@@ -197,16 +220,23 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 
 	outputDir := cmd.Flag(pDir).Value.String()
 	id := cmd.Flag(pId).Value.String()
-	logLevelInt, err := cmd.Flags().GetInt(pLogLevel)
+
+	dbgLogLevelInt, err := cmd.Flags().GetInt(pDbgLogLevel)
 	if err != nil {
 		panic(err)
 	}
-	logLevelInt = min(4, logLevelInt)
+	dbgLogLevel := am.LogLevel(min(5, dbgLogLevelInt))
 
-	logLevel := am.LogLevel(logLevelInt)
+	filterLogLevelInt, err := cmd.Flags().GetInt(pFilterLogLevel)
+	if err != nil {
+		panic(err)
+	}
+	filterLogLevel := am.LogLevel(min(5, filterLogLevelInt))
+
 	serverAddr := cmd.Flag(pServerAddr).Value.String()
-	debugAddr := cmd.Flag(pAmDbgAddr).Value.String()
+	debugAddr := cmd.Flag(pDbgAmDbgAddr).Value.String()
 	importData := cmd.Flag(pImport).Value.String()
+	startupGroup := cmd.Flag(pStartupGroup).Value.String()
 
 	race, err := cmd.Flags().GetBool(pGoRace)
 	if err != nil {
@@ -289,7 +319,12 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 		panic(err)
 	}
 
-	reader, err := cmd.Flags().GetBool(pReader)
+	reader, err := cmd.Flags().GetBool(pViewReader)
+	if err != nil {
+		panic(err)
+	}
+
+	filterGroup, err := cmd.Flags().GetBool(pFilterGroup)
 	if err != nil {
 		panic(err)
 	}
@@ -315,11 +350,17 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 
 		// UI
 
-		EnableMouse: enableMouse,
-		Reader:      reader,
-		StartupView: startupView,
-		ViewNarrow:  viewNarrow,
-		ViewRain:    rain,
+		EnableMouse:  enableMouse,
+		Reader:       reader,
+		StartupView:  startupView,
+		StartupGroup: startupGroup,
+		ViewNarrow:   viewNarrow,
+		ViewRain:     rain,
+
+		// filters
+
+		FilterGroup:    filterGroup,
+		FilterLogLevel: filterLogLevel,
 
 		// output
 
@@ -341,7 +382,7 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 		DebugAddr:    debugAddr,
 		RaceDetector: race,
 		ImportData:   importData,
-		LogLevel:     logLevel,
+		LogLevel:     dbgLogLevel,
 		Id:           id,
 		ProfSrv:      profSrv,
 	}
@@ -351,7 +392,7 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 func GetLogger(params *Params, dir string) *log.Logger {
 	// TODO slog
 
-	if params.LogLevel < am.LogNothing {
+	if params.LogLevel <= am.LogNothing {
 		return log.Default()
 	}
 	name := filepath.Join(dir, "am-dbg.log")

@@ -37,12 +37,15 @@ const (
 	logUpdateDebounce     = 300 * time.Millisecond
 	sidebarUpdateDebounce = time.Second
 	searchAsTypeWindow    = 1500 * time.Millisecond
-	healthcheckInterval   = 1 * time.Minute
+	heartbeatInterval     = 1 * time.Minute
+	// heartbeatInterval = 5 * time.Second
 	// msgMaxAge             = 0
 
 	// maxMemMb = 100
 	maxMemMb        = 50
 	msgMaxThreshold = 300
+	// max txs queued for scrolling the timelines
+	scrollTxThrottle = 3
 )
 
 var colorDefault = cview.Styles.PrimaryTextColor
@@ -50,17 +53,17 @@ var colorDefault = cview.Styles.PrimaryTextColor
 const (
 	// row 1
 	toolFilterCanceledTx ToolName = "skip-canceled"
+	toolFilterQueuedTx   ToolName = "skip-queued"
 	toolFilterAutoTx     ToolName = "skip-auto"
 	toolFilterEmptyTx    ToolName = "skip-empty"
 	toolFilterHealth     ToolName = "skip-health"
 	toolFilterOutGroup   ToolName = "skip-outgroup"
 	toolFilterChecks     ToolName = "skip-checks"
-	// TODO rename to timestamps
-	ToolFilterSummaries ToolName = "hide-summaries"
-	ToolFilterTraces    ToolName = "hide-traces"
-	toolLog             ToolName = "log"
-	toolDiagrams        ToolName = "diagrams"
-	toolTimelines       ToolName = "timelines"
+	ToolLogTimestamps    ToolName = "hide-timestamps"
+	ToolFilterTraces     ToolName = "hide-traces"
+	toolLog              ToolName = "log"
+	toolDiagrams         ToolName = "diagrams"
+	toolTimelines        ToolName = "timelines"
 	// toolLog0              ToolName = "log-0"
 	// toolLog1              ToolName = "log-1"
 	// toolLog2              ToolName = "log-2"
@@ -93,10 +96,13 @@ type MsgTxParsed struct {
 	StatesTouched []int
 	// TimeSum is machine time after this transition.
 	TimeSum       uint64
+	TimeDiff      uint64
 	ReaderEntries []*logReaderEntryPtr
-	// Transitionss which reported this one as their source
+	// Transitions which reported this one as their source
 	Forks       []MachAddress
 	ForksLabels []string
+	// QueueTick when this tx should be executed
+	ResultTick uint64
 }
 
 type MsgSchemaParsed struct {
@@ -111,7 +117,8 @@ type Opts struct {
 	EnableMouse     bool
 	ShowReader      bool
 	// MachAddress to listen on
-	ServerAddr string
+	AddrRpc  string
+	AddrHttp string
 	// Log level of the debugger's machine
 	DbgLogLevel am.LogLevel
 	// Go race detector is enabled
@@ -145,11 +152,31 @@ type Opts struct {
 }
 
 type OptsFilters struct {
-	SkipCanceledTx  bool
-	SkipAutoTx      bool
-	SkipEmptyTx     bool
-	SkipHealthcheck bool
-	LogLevel        am.LogLevel
+	SkipCanceledTx     bool
+	SkipAutoTx         bool
+	SkipAutoCanceledTx bool
+	SkipEmptyTx        bool
+	SkipHealthTx       bool
+	SkipQueuedTx       bool
+	SkipOutGroup       bool
+	SkipChecks         bool
+	LogLevel           am.LogLevel
+}
+
+func (f *OptsFilters) Equal(filters *OptsFilters) bool {
+	if filters == nil {
+		return false
+	}
+
+	return f.SkipCanceledTx == filters.SkipCanceledTx &&
+		f.SkipAutoTx == filters.SkipAutoTx &&
+		f.SkipAutoCanceledTx == filters.SkipAutoCanceledTx &&
+		f.SkipEmptyTx == filters.SkipEmptyTx &&
+		f.SkipHealthTx == filters.SkipHealthTx &&
+		f.SkipQueuedTx == filters.SkipQueuedTx &&
+		f.SkipOutGroup == filters.SkipOutGroup &&
+		f.SkipChecks == filters.SkipChecks &&
+		f.LogLevel == filters.LogLevel
 }
 
 type ToolName string
@@ -167,6 +194,13 @@ type MachAddress struct {
 	HumanTime time.Time
 	// TODO support step
 	Step int
+	// TODO support queue ticks
+	QueueTick uint64
+}
+
+type MachTime struct {
+	Id   string
+	Time uint64
 }
 
 func (ma *MachAddress) Clone() *MachAddress {
@@ -222,7 +256,7 @@ type Client struct {
 	// processed
 	msgTxsParsed    []*MsgTxParsed
 	msgSchemaParsed *MsgSchemaParsed
-	// processed list of filtered tx indexes
+	// processed list of filtered tx _indexes_
 	MsgTxsFiltered []int
 	// cache of processed log entries
 	logMsgs [][]*am.LogEntry
@@ -233,9 +267,13 @@ type Client struct {
 	logReaderMx sync.Mutex
 	// indexes of txs with errors, desc order for bisects
 	// TOOD refresh on GC
-	errors        []int
-	mTimeSum      uint64
-	SelectedGroup string
+	errors                []int
+	mTimeSum              uint64
+	SelectedGroup         string
+	logRenderedCursor1    int
+	logRenderedLevel      am.LogLevel
+	logRenderedFilters    *OptsFilters
+	logRenderedTimestamps bool
 }
 
 func (c *Client) lastActive() time.Time {
@@ -377,6 +415,7 @@ func (c *Client) filterIndexByCursor1(cursor1 int) int {
 	if cursor1 == 0 {
 		return 0
 	}
+
 	return slices.Index(c.MsgTxsFiltered, cursor1-1)
 }
 
@@ -418,6 +457,44 @@ func (c *Client) parseSchema() {
 			pastSelf = true
 		}
 	}
+}
+
+func (c *Client) txByQueueTick(qTick uint64) int {
+	idx, ok := slices.BinarySearchFunc(c.MsgTxs,
+		&telemetry.DbgMsgTx{QueueTick: qTick}, func(i, j *telemetry.DbgMsgTx) int {
+			if i.QueueTick < j.QueueTick {
+				return -1
+			} else if i.QueueTick > j.QueueTick {
+				return 1
+			}
+
+			return 0
+		})
+
+	if !ok {
+		return 0
+	}
+
+	return idx
+}
+
+func (c *Client) txByMutQueueTick(qTick uint64) int {
+	idx, ok := slices.BinarySearchFunc(c.MsgTxs,
+		&telemetry.DbgMsgTx{MutQueueTick: qTick}, func(i, j *telemetry.DbgMsgTx) int {
+			if i.MutQueueTick < j.MutQueueTick {
+				return -1
+			} else if i.MutQueueTick > j.MutQueueTick {
+				return 1
+			}
+
+			return 0
+		})
+
+	if !ok {
+		return 0
+	}
+
+	return idx
 }
 
 // TODO

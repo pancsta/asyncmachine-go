@@ -21,15 +21,6 @@ func (d *Debugger) hInitUiComponents() {
 	d.helpDialog = d.initHelpDialog()
 	d.exportDialog = d.initExportDialog()
 
-	// resize handler
-	d.App.SetAfterResizeFunc(func(_ int, _ int) {
-		// TODO state
-		go func() {
-			time.Sleep(time.Millisecond * 300)
-			d.hUpdateNarrowLayout()
-		}()
-	})
-
 	// tree view
 	d.tree = d.hInitSchemaTree()
 	d.tree.SetTitle(" Schema ")
@@ -42,36 +33,13 @@ func (d *Debugger) hInitUiComponents() {
 	d.treeGroups.SetDropDownBackgroundColor(colorHighlight)
 	d.treeGroups.SetDropDownSelectedTextColor(colorDefault)
 	d.treeGroups.SetDropDownTextColor(colorDefault)
+	d.treeGroups.SetSelectedFunc(func(_ int, opt *cview.DropDownOption) {
+		// TODO typed args
+		d.Mach.Add1(ss.SetGroup, am.A{"group": opt.GetText()})
+	})
 
 	// sidebar
-	// TODO refac to a tree component
-	d.clientList = cview.NewList()
-	d.clientList.SetTitle(" Machines ")
-	d.clientList.SetBorder(true)
-	d.clientList.ShowSecondaryText(false)
-	d.clientList.SetSelectedFocusOnly(true)
-	d.clientList.SetMainTextColor(colorActive)
-	d.clientList.SetSelectedTextColor(tcell.ColorWhite)
-	d.clientList.SetSelectedBackgroundColor(colorHighlight2)
-	d.clientList.SetHighlightFullLine(true)
-	// switch clients and handle history
-	d.clientList.SetSelectedFunc(func(i int, listItem *cview.ListItem) {
-		if d.C == nil {
-			return
-		}
-		client := listItem.GetReference().(*sidebarRef)
-		if client.name == d.C.id {
-			return
-		}
-		d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": client.name})
-		// TODO wait with timeout
-		<-d.Mach.When1(ss.ClientSelected, nil)
-		d.hPrependHistory(&MachAddress{MachId: client.name})
-		d.hUpdateAddressBar()
-		d.draw(d.addressBar)
-	})
-	d.clientList.SetSelectedAlwaysVisible(true)
-	d.clientList.SetScrollBarColor(colorHighlight2)
+	d.initClientList()
 
 	// log view
 	d.log = cview.NewTextView()
@@ -79,7 +47,7 @@ func (d *Debugger) hInitUiComponents() {
 	d.log.SetRegions(true)
 	d.log.SetTextAlign(cview.AlignLeft)
 	// wrapping causes perf issues in cview/reindexBuffer
-	// TODO add to toolbar as [ ]wrap once dynamic rendering lands
+	// TODO add to toolbar as [ ]wrap
 	d.log.SetWrap(false)
 	d.log.SetDynamicColors(true)
 	d.log.SetTitle(" Log ")
@@ -89,14 +57,17 @@ func (d *Debugger) hInitUiComponents() {
 	// log click
 	statePrefixes := []string{"[state] ", "[state:auto] "}
 	d.log.SetClickedFunc(func(txId string) {
-		// unblock coz locks
+		// unblock
 		go func() {
+
 			// scroll to tx
 			txIdx := d.C.txIndex(txId)
 			d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": txId})
 
 			// select the clicked state
 			d.Mach.Eval("log.SetClickedFunc", func() {
+				defer d.Mach.PanicToErr(nil)
+
 				logs := d.C.MsgTxs[txIdx].LogEntries
 				for _, l := range logs {
 					for _, prefix := range statePrefixes {
@@ -121,10 +92,8 @@ func (d *Debugger) hInitUiComponents() {
 	d.matrix = cview.NewTable()
 	d.matrix.SetBorder(true)
 	d.matrix.SetTitle(" Matrix ")
-	// TODO draw scrollbar horizontal scrollbar
-	d.matrix.SetScrollBarVisibility(cview.ScrollBarAuto)
+	d.matrix.SetScrollBarVisibility(cview.ScrollBarNever)
 	d.matrix.SetPadding(0, 0, 1, 0)
-	d.matrix.SetScrollBarColor(colorHighlight2)
 	d.matrix.SetSelectedStyle(colorDefault, colorHighlight, tcell.AttrNone)
 
 	// current tx bar
@@ -135,6 +104,12 @@ func (d *Debugger) hInitUiComponents() {
 	d.currTxBarRight.SetTextAlign(cview.AlignRight)
 	d.currTxBarRight.SetScrollBarColor(colorHighlight2)
 	d.currTxBarRight.SetDynamicColors(true)
+	d.currTxBarRight.SetClickedFunc(func(regionId string) {
+		d.Mach.Add1(ss.TimelineTxsFocused, nil)
+	})
+	d.currTxBarLeft.SetClickedFunc(func(regionId string) {
+		d.Mach.Add1(ss.TimelineTxsFocused, nil)
+	})
 
 	// next tx bar
 	d.nextTxBarLeft = cview.NewTextView()
@@ -144,6 +119,12 @@ func (d *Debugger) hInitUiComponents() {
 	d.nextTxBarRight.SetTextAlign(cview.AlignRight)
 	d.nextTxBarRight.SetScrollBarColor(colorHighlight2)
 	d.nextTxBarRight.SetDynamicColors(true)
+	d.nextTxBarRight.SetClickedFunc(func(regionId string) {
+		d.Mach.Add1(ss.TimelineStepsFocused, nil)
+	})
+	d.nextTxBarLeft.SetClickedFunc(func(regionId string) {
+		d.Mach.Add1(ss.TimelineStepsFocused, nil)
+	})
 
 	// timeline tx
 	d.hInitTimelineTx()
@@ -173,30 +154,32 @@ func (d *Debugger) hInitTimelineSteps() {
 	d.timelineSteps = cview.NewProgressBar()
 	d.timelineSteps.SetBorder(true)
 	d.timelineSteps.SetFilledColor(tcell.ColorLightGray)
-	// support mouse
+	// timeline click
 	d.timelineSteps.SetMouseCapture(func(
 		action cview.MouseAction, event *tcell.EventMouse,
 	) (cview.MouseAction, *tcell.EventMouse) {
-		if action == cview.MouseScrollUp || action == cview.MouseScrollLeft {
-
+		a := action
+		if a == cview.MouseScrollUp || a == cview.MouseScrollLeft {
 			d.Mach.Add1(ss.BackStep, am.A{"amount": 1})
-			return action, event
-		} else if action == cview.MouseScrollDown ||
-			action == cview.MouseScrollRight {
 
+			return a, event
+		} else if a == cview.MouseScrollDown || a == cview.MouseScrollRight {
 			d.Mach.Add1(ss.FwdStep, am.A{"amount": 1})
-			return action, event
-		} else if action != cview.MouseLeftClick {
+
+			return a, event
+		} else if a != cview.MouseLeftClick {
+
 			// TODO support wheel scrolling
-			return action, event
+			return a, event
 		}
+
 		_, _, width, _ := d.timelineSteps.GetRect()
 		x, _ := event.Position()
 		pos := float64(x) / float64(width)
 		txNum := math.Round(float64(d.timelineSteps.GetMax()) * pos)
-		d.Mach.Add1(ss.ScrollToStep, am.A{"Client.cursorStep": int(txNum)})
+		d.Mach.Add1(ss.ScrollToStep, am.A{"cursorStep1": int(txNum)})
 
-		return action, event
+		return a, event
 	})
 }
 
@@ -204,38 +187,40 @@ func (d *Debugger) hInitTimelineTx() {
 	d.timelineTxs = cview.NewProgressBar()
 	d.timelineTxs.SetBorder(true)
 	d.timelineTxs.SetFilledColor(tcell.ColorLightGray)
-	// support mouse
+	// support mouse TODO double click needed with progressive rendering
 	d.timelineTxs.SetMouseCapture(func(
 		action cview.MouseAction, event *tcell.EventMouse,
 	) (cview.MouseAction, *tcell.EventMouse) {
+		a := action
 		c := d.C
 		if c == nil {
-			return action, event
+			return a, event
 		}
 
-		if action == cview.MouseScrollUp || action == cview.MouseScrollLeft {
+		if a == cview.MouseScrollUp || a == cview.MouseScrollLeft {
 			d.Mach.Add1(ss.Back, am.A{"amount": 5})
 
-			return action, event
-		} else if action == cview.MouseScrollDown ||
-			action == cview.MouseScrollRight {
+			return a, event
+		} else if a == cview.MouseScrollDown || a == cview.MouseScrollRight {
 			d.Mach.Add1(ss.Fwd, am.A{"amount": 5})
 
-			return action, event
-		} else if action != cview.MouseLeftClick {
-			return action, event
+			return a, event
+		} else if a != cview.MouseLeftClick {
+
+			return a, event
 		}
+
 		_, _, width, _ := d.timelineTxs.GetRect()
 		x, _ := event.Position()
 		pos := float64(x) / float64(width)
-		// TODO eval / lock / state
+		// TODO race: eval / lock / state
 		txNum := math.Round(float64(len(c.MsgTxs)) * pos)
 		d.Mach.Add1(ss.ScrollToTx, am.A{
-			"Client.cursorTx": int(txNum),
-			"trimHistory":     true,
+			"cursorTx1":   int(txNum),
+			"trimHistory": true,
 		})
 
-		return action, event
+		return a, event
 	})
 }
 
@@ -377,16 +362,29 @@ func (d *Debugger) hInitToolbar() {
 				// TODO make Opts threadsafe
 				return strconv.Itoa(int(d.Opts.Filters.LogLevel))
 			}},
-			{id: toolFilterCanceledTx, label: "canceled tx", active: func() bool {
+			{id: toolFilterCanceledTx, label: "canceled", active: func() bool {
 				return d.Mach.Not1(ss.FilterCanceledTx)
 			}},
-			{id: toolFilterAutoTx, label: "auto tx", active: func() bool {
-				return d.Mach.Not1(ss.FilterAutoTx)
+			{id: toolFilterQueuedTx, label: "queued", active: func() bool {
+				return d.Mach.Not1(ss.FilterQueuedTx)
 			}},
-			{id: toolFilterEmptyTx, label: "empty tx", active: func() bool {
+			{id: toolFilterAutoTx, label: "auto", active: func() bool {
+				return d.Mach.Is1(ss.FilterAutoCanceledTx) ||
+					d.Mach.Not1(ss.FilterAutoTx)
+			}, activeLabel: func() string {
+				switch d.Mach.Switch(am.S{ss.FilterAutoTx, ss.FilterAutoCanceledTx}) {
+				case ss.FilterAutoTx:
+					return " "
+				case ss.FilterAutoCanceledTx:
+					return "*"
+				default:
+					return "X"
+				}
+			}},
+			{id: toolFilterEmptyTx, label: "empty", active: func() bool {
 				return d.Mach.Not1(ss.FilterEmptyTx)
 			}},
-			{id: toolFilterHealth, label: "health tx", active: func() bool {
+			{id: toolFilterHealth, label: "health", active: func() bool {
 				return d.Mach.Not1(ss.FilterHealth)
 			}},
 			{id: toolFilterOutGroup, label: "group", active: func() bool {
@@ -395,8 +393,8 @@ func (d *Debugger) hInitToolbar() {
 			{id: toolFilterChecks, label: "checks", active: func() bool {
 				return d.Mach.Not1(ss.FilterChecks)
 			}},
-			{id: ToolFilterSummaries, label: "times", active: func() bool {
-				return d.Mach.Not1(ss.FilterSummaries)
+			{id: ToolLogTimestamps, label: "times", active: func() bool {
+				return d.Mach.Not1(ss.LogTimestamps)
 			}},
 			{id: ToolFilterTraces, label: "traces", active: func() bool {
 				return d.Mach.Not1(ss.FilterTraces)
@@ -418,7 +416,7 @@ func (d *Debugger) hInitToolbar() {
 				return d.Mach.Is1(ss.TailMode)
 			}},
 			{id: toolReader, label: "reader", active: func() bool {
-				return d.Mach.Is1(ss.LogReaderEnabled)
+				return d.Mach.Is1(ss.LogReaderVisible)
 			}},
 			{
 				id:    toolExpand,
@@ -494,7 +492,10 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	left.SetDynamicColors(true)
 	left.SetPadding(1, 1, 1, 1)
 	left.SetText(fmt.Sprintf(dedent.Dedent(strings.Trim(`
-		[::b]### [::u]tree legend[::-]
+		[::b]### [::u]client list legend[::-]
+		[::b]T:123[-]        total network time
+	
+		[::b]### [::u]schema legend[::-]
 		[%s::b]state[-]        active state
 		[red::b]state[-]        active state (error)
 		[%s::b]state[-]        active multi state
@@ -533,6 +534,11 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		             cartesian product
 		             col == source state index
 		             row == target state index
+	
+		[::b]### [::u]log legend[::-]
+		[:green] [:-]            Executed
+		[:yellow] [:-]            Queued
+		[:red] [:-]            Canceled
 	`, "\n ")), colorActive, colorActive2, colorInactive))
 
 	// render the right side separately
@@ -565,14 +571,23 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	flexVer.AddItem(flexHor, 0, 4, false)
 	flexVer.AddItem(box4, 0, 1, false)
 
-	// close on click
+	bg := []*cview.Box{box1, box2, box3, box4}
+
+	// close on click TODO loops when clicked on toolbar help
 	flexVer.SetMouseCapture(func(
 		action cview.MouseAction, event *tcell.EventMouse,
 	) (cview.MouseAction, *tcell.EventMouse) {
 		if action == cview.MouseLeftClick {
-			d.Mach.Remove1(ss.HelpDialog, nil)
+			x, y := event.Position()
+			for _, b := range bg {
+				if b.InRect(x, y) {
+					go d.Mach.Remove1(ss.HelpDialog, nil)
+					return cview.MouseLeftClick, event
+				}
+			}
 		}
-		return action, nil
+
+		return action, event
 	})
 
 	return flexVer
@@ -588,6 +603,7 @@ func (d *Debugger) hUpdateHelpDialog() {
 	d.helpDialogRight.SetTitle(" Keystrokes ")
 	d.helpDialogRight.SetDynamicColors(true)
 	d.helpDialogRight.SetPadding(1, 1, 1, 1)
+
 	d.helpDialogRight.SetText(fmt.Sprintf(dedent.Dedent(strings.Trim(`
 		[::b]### [::u]keystrokes[::-]
 		[::b]tab[::-]                change focus
@@ -615,6 +631,9 @@ func (d *Debugger) hUpdateHelpDialog() {
 		[::b]ctrl q[::-]             quit
 		[::b]?[::-]                  show help
 	
+		[::b]### [::u]toolbar legend[::-]
+		TODO
+	
 		[::b]### [::u]machine list legend[::-]
 		T:123              total received machine time
 		[%s]client-id[-]          connected
@@ -629,10 +648,11 @@ func (d *Debugger) hUpdateHelpDialog() {
 	
 		[::b]### [::u]about am-dbg[::-]
 		%-15s    version
-		%-15s    server addr
+		%-15s    server DBG addr
+		%-15s    server HTTP addr
 		%-15s    mem usage
-	`, "\n ")), colorActive, d.Opts.Version, d.Opts.ServerAddr,
-		strconv.Itoa(mem)+"mb"))
+	`, "\n ")), colorActive, d.Opts.Version, d.Opts.AddrRpc,
+		d.Opts.AddrHttp, strconv.Itoa(mem)+"mb"))
 }
 
 func (d *Debugger) hInitLayout() {
@@ -726,7 +746,7 @@ func (d *Debugger) hUpdateLayout() {
 	row := 3
 
 	// timelines
-	if d.Mach.Not1(ss.TimelineHidden) {
+	if d.Mach.Not1(ss.TimelineTxHidden) {
 		d.mainGrid.SetRows(1, 1, -1, 2, 3, 1, 1, 1, 1)
 
 		d.mainGrid.AddItem(d.currTxBar, row, 0, 1, len(cols), 0, 0, false)
@@ -762,7 +782,11 @@ func (d *Debugger) hDrawViews() {
 	d.draw()
 }
 
-// hRedrawFull updates all components of the debugger UI, except the sidebar.
+// hRedrawFull updates the common components of the UI, except:
+// - client list,
+// - toolbars
+// - matrices
+// Then, it schedules a redraw.
 func (d *Debugger) hRedrawFull(immediate bool) {
 	d.hUpdateViews(immediate)
 	d.hUpdateTimelines()
@@ -774,6 +798,7 @@ func (d *Debugger) hRedrawFull(immediate bool) {
 }
 
 func (d *Debugger) draw(components ...cview.Primitive) {
+	// TODO detect visibility of requested components??? or in cview
 	if !d.repaintScheduled.CompareAndSwap(false, true) {
 		return
 	}

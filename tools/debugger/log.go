@@ -327,6 +327,13 @@ func (d *Debugger) hAppendLogEntry(index int) error {
 		d.log.ScrollToHighlight()
 	}
 
+	// rebuild if needed
+	d.logAppends++
+	if d.logAppends > 100 {
+		d.Mach.Add1(ss.BuildingLog, am.A{"logRebuildEnd": index})
+		d.logAppends = 0
+	}
+
 	return nil
 }
 
@@ -463,8 +470,9 @@ var (
 
 // TODO split
 func fmtLogEntry(
-	mach *am.Machine, entry string, calledStates []string, machStruct am.Schema,
+	entry string, calledStates []string, machStruct am.Schema,
 ) string {
+
 	if entry == "" {
 		return entry
 	}
@@ -488,7 +496,7 @@ func fmtLogEntry(
 		}
 	}
 
-	// log args highlight
+	// highlight log args
 	ret = logPrefixState.ReplaceAllStringFunc(ret, func(m string) string {
 		line := strings.Split(strings.TrimRight(m, ")\n"), "(")
 		args := ""
@@ -544,14 +552,14 @@ func fmtLogEntry(
 
 	ret = strings.Trim(ret, " \n	")
 
-	// stack traces highlight
+	// highlight stack traces
 	isErr := strings.HasPrefix(ret, `[yellow][error[]`)
 	isBreakpoint := strings.HasPrefix(ret, `[yellow][breakpoint[]`)
 	if (isErr || isBreakpoint) && strings.Contains(ret, "\n") {
 
 		// highlight
 		lines := strings.Split(ret, "\n")
-		linesNew := []string{lines[0] + "[grey]"}
+		linesNew := lines[0:1]
 		skipNext := false
 		for i, line := range lines {
 			if i == 0 || skipNext {
@@ -567,17 +575,21 @@ func fmtLogEntry(
 
 			// method line
 			if i%2 == 1 {
-				linesNew = append(linesNew, methodPattern.ReplaceAllStringFunc(line,
+				linesNew = append(linesNew, "[grey]"+methodPattern.ReplaceAllStringFunc(line,
 					func(m string) string {
-						m = strings.TrimLeft(m, ".")
-						return ".[white]" + m + "[grey]"
+						return "[white]" + m + "[grey]"
 					}))
 			} else {
 				// file line
-				linesNew = append(linesNew, filenamePattern.ReplaceAllStringFunc(line,
+				linesNew = append(linesNew, "[grey]"+filenamePattern.ReplaceAllStringFunc(line,
 					func(m string) string {
-						m = strings.Trim(m, "/ +")
-						return "/[white]" + m + "[grey] +"
+						mspace := strings.Split(m, " ")
+						ret := "[white]" + mspace[0]
+						if len(mspace) > 1 {
+							ret += " [grey]" + mspace[1]
+						}
+
+						return ret
 					}))
 			}
 		}

@@ -1,15 +1,17 @@
 package debugger
 
 import (
-	"fmt"
+	"context"
 	"math"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 
-	"github.com/pancsta/asyncmachine-go/pkg/machine"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
@@ -33,7 +35,7 @@ func (d *Debugger) buildClientList(selectedIndex int) {
 			d.hBuildClientList(selectedIndex)
 		}
 		// TODO avoid eval
-		d.Mach.Eval("hBuildClientList", update, nil)
+		go d.Mach.Eval("hBuildClientList", update, nil)
 	}()
 }
 
@@ -99,7 +101,6 @@ func (d *Debugger) hBuildClientList(selectedIndex int) {
 	d.clientList.SetTitle(d.P.Sprintf(
 		" Machines:%d T:%v ", len(d.Clients), totalSum))
 
-	// sort TODO rewrite
 	d.hUpdateClientList()
 }
 
@@ -125,9 +126,15 @@ func (d *Debugger) updateClientList() {
 
 		d.Mach.Eval("doUpdateClientList", func() {
 			d.hUpdateClientList()
-			d.draw(d.clientList)
+			d.drawClientList()
 		}, nil)
 	}()
+}
+
+func (d *Debugger) drawClientList() {
+	if n, _ := d.LayoutRoot.GetFrontPanel(); n == "main" {
+		d.draw(d.clientList)
+	}
 }
 
 func (d *Debugger) hUpdateClientList() {
@@ -166,7 +173,8 @@ func (d *Debugger) hUpdateClientList() {
 		ref := item.GetReference().(*sidebarRef)
 		c := d.Clients[ref.name]
 		if c == nil {
-			d.Mach.AddErr(fmt.Errorf("client %s doesnt exist", ref.name), nil)
+			// TODO happens with --clean-on-connect?
+			// d.Mach.AddErr(fmt.Errorf("client %s doesnt exist", ref.name), nil)
 			continue
 		}
 
@@ -293,11 +301,11 @@ func (d *Debugger) hGetClientListLabel(
 	if currCTx != nil {
 		readyIdx := slices.Index(c.MsgStruct.StatesIndex, ssam.BasicStates.Ready)
 		startIdx := slices.Index(c.MsgStruct.StatesIndex, ssam.BasicStates.Start)
-		errIdx := slices.Index(c.MsgStruct.StatesIndex, machine.Exception)
-		isErrNow = errIdx != -1 && machine.IsActiveTick(currCTx.Clocks[errIdx])
-		if readyIdx != -1 && machine.IsActiveTick(currCTx.Clocks[readyIdx]) {
+		errIdx := slices.Index(c.MsgStruct.StatesIndex, am.StateException)
+		isErrNow = errIdx != -1 && am.IsActiveTick(currCTx.Clocks[errIdx])
+		if readyIdx != -1 && am.IsActiveTick(currCTx.Clocks[readyIdx]) {
 			state = "R"
-		} else if startIdx != -1 && machine.IsActiveTick(currCTx.Clocks[startIdx]) {
+		} else if startIdx != -1 && am.IsActiveTick(currCTx.Clocks[startIdx]) {
 			state = "S"
 		}
 		// push to the front
@@ -334,4 +342,43 @@ func (d *Debugger) hGetClientListLabel(
 	}
 
 	return label
+}
+
+func (d *Debugger) initClientList() {
+	// TODO refac to a tree component
+	d.clientList = cview.NewList()
+	d.clientList.SetTitle(" Machines ")
+	d.clientList.SetBorder(true)
+	d.clientList.ShowSecondaryText(false)
+	d.clientList.SetSelectedFocusOnly(true)
+	d.clientList.SetMainTextColor(colorActive)
+	d.clientList.SetSelectedTextColor(tcell.ColorWhite)
+	d.clientList.SetSelectedBackgroundColor(colorHighlight2)
+	d.clientList.SetHighlightFullLine(true)
+	// switch clients and handle history
+	d.clientList.SetSelectedFunc(func(i int, listItem *cview.ListItem) {
+		if d.C == nil {
+			return
+		}
+		client := listItem.GetReference().(*sidebarRef)
+		if client.name == d.C.id {
+			return
+		}
+		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+		amhelp.Add1Async(ctx, d.Mach, ss.ClientSelected, ss.SelectingClient,
+			am.A{"Client.id": client.name},
+		)
+		if ctx.Err() != nil {
+			d.Mach.Log("timeout when selecting client %s", client.name)
+			return
+		}
+		// TODO do these in ClientSelectedState
+		d.Mach.Eval("clientList.SetSelectedFunc", func() {
+			d.hPrependHistory(&MachAddress{MachId: client.name})
+			d.hUpdateAddressBar()
+			d.draw(d.addressBar)
+		}, nil)
+	})
+	d.clientList.SetSelectedAlwaysVisible(true)
+	d.clientList.SetScrollBarColor(colorHighlight2)
 }

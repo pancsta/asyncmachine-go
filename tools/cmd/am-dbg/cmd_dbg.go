@@ -4,6 +4,10 @@ package main
 import (
 	"context"
 	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	"github.com/spf13/cobra"
@@ -24,7 +28,7 @@ func main() {
 }
 
 // TODO error msgs
-func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
+func cliRun(c *cobra.Command, _ []string, p cli.Params) {
 	ctx := context.Background()
 
 	// print the version
@@ -42,6 +46,14 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		defer stopProfile()
 	}
 
+	httpAddr := ""
+	if p.ListenAddr != "-1" {
+		addr := strings.Split(p.ListenAddr, ":")
+		httpPort, _ := strconv.Atoi(addr[1])
+		httpPort += 1
+		httpAddr = addr[0] + ":" + strconv.Itoa(httpPort)
+	}
+
 	// init the debugger
 	dbg, err := debugger.New(ctx, debugger.Opts{
 		Id:             p.Id,
@@ -53,7 +65,8 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		Timelines:      p.Timelines,
 		// ...:           p.FilterLogLevel,
 		OutputDir:       p.OutputDir,
-		ServerAddr:      p.ListenAddr,
+		AddrRpc:         p.ListenAddr,
+		AddrHttp:        httpAddr,
 		EnableMouse:     p.EnableMouse,
 		MachUrl:         p.MachUrl,
 		SelectConnected: p.SelectConnected,
@@ -63,8 +76,12 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		Log2Ttl:         p.LogOpsTtl,
 		ViewNarrow:      p.ViewNarrow,
 		ViewRain:        p.ViewRain,
-		TailMode:        p.TailMode,
+		TailMode:        p.TailMode && p.StartupTx == 0,
 		Version:         ver,
+		Filters: &debugger.OptsFilters{
+			SkipOutGroup: p.FilterGroup,
+			LogLevel:     p.FilterLogLevel,
+		},
 	})
 	if err != nil {
 		panic(err)
@@ -73,8 +90,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 	// rpc client
 	if p.DebugAddr != "" {
 		amhelp.MachDebug(dbg.Mach, p.DebugAddr, p.LogLevel, false,
-			// dbg details
-			true, true, true)
+			amhelp.SemConfig(true))
 
 		// TODO --otel flag
 		// os.Setenv(telemetry.EnvService, "dbg")
@@ -93,10 +109,14 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 	}
 
 	// start and wait till the end
-	dbg.Start(p.StartupMachine, p.StartupTx, p.StartupView)
+	dbg.Start(p.StartupMachine, p.StartupTx, p.StartupView, p.StartupGroup)
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	select {
 	case <-dbg.Mach.WhenDisposed():
+	case <-sigChan:
 	case <-dbg.Mach.WhenNot1(ss.Start, nil):
 	}
 
