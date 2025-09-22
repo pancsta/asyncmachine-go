@@ -410,6 +410,8 @@ func (m *Machine) doDispose(force bool) {
 		closeSafe(m.handlerStart)
 	}()
 
+	// TODO close all the When chans
+
 	if m.handlerTimer != nil {
 		m.handlerTimer.Stop()
 		// m.handlerTimer = nil
@@ -420,6 +422,8 @@ func (m *Machine) doDispose(force bool) {
 		m.unlockDisposed.Store(false)
 		m.queueProcessing.Store(false)
 	}
+
+	// TODO close all the CheckDone chans in the queue
 
 	// run doDispose handlers
 	// TODO timeouts?
@@ -1946,8 +1950,15 @@ func (m *Machine) processQueue() Result {
 		ret = append(ret, t.emitEvents())
 		m.timeLast.Store(&t.TimeAfter)
 
-		if t.IsAccepted.Load() && !t.Mutation.IsCheck {
-			// process flow methods
+		// parse wait chans
+		if t.Mutation.IsCheck {
+			// TODO test case
+			if done, ok := mut.Args[argCheckDone].(*CheckDone); ok {
+				done.Canceled = t.IsAccepted.Load()
+				close(done.Ch)
+			}
+
+		} else if t.IsAccepted.Load() && !t.Mutation.IsCheck {
 			m.processWhenBindings(t)
 			m.processWhenTimeBindings(t)
 			m.processStateCtxBindings(t)

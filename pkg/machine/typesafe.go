@@ -176,20 +176,38 @@ type AT struct {
 	TimeBefore   Time
 	TimeAfter    Time
 	Event        *Event
+	// MutDone chan gets closed by the machine once it's processed. Can cause chan
+	// leaks when misused. Only for Can* checks.
+	CheckDone *CheckDone
 }
+
+type CheckDone struct {
+	// TODO close these on dispose and deadline
+	Ch chan struct{}
+	// Was the mutation canceled?
+	Canceled bool
+}
+
+const argErr = "_am_err"
+const argErrTrace = "_am_errTrace"
+const argPanic = "_am_panic"
+const argCheckDone = "_am_checkDone"
 
 // ParseArgs extracts AT from A.
 func ParseArgs(args A) *AT {
 	ret := &AT{}
 
-	if val, ok := args["err"]; ok {
+	if val, ok := args[argErr]; ok {
 		ret.Err = val.(error)
 	}
-	if val, ok := args["err.trace"]; ok {
+	if val, ok := args[argErrTrace]; ok {
 		ret.ErrTrace = val.(string)
 	}
-	if val, ok := args["panic"]; ok {
+	if val, ok := args[argPanic]; ok {
 		ret.Panic = val.(*ExceptionArgsPanic)
+	}
+	if val, ok := args[argCheckDone]; ok {
+		ret.CheckDone = val.(*CheckDone)
 	}
 
 	return ret
@@ -200,13 +218,16 @@ func Pass(args *AT) A {
 	a := A{}
 
 	if args.Err != nil {
-		a["err"] = args.Err
+		a[argErr] = args.Err
 	}
 	if args.ErrTrace != "" {
-		a["err.trace"] = args.ErrTrace
+		a[argErrTrace] = args.ErrTrace
 	}
 	if args.Panic != nil {
-		a["panic"] = args.Panic
+		a[argPanic] = args.Panic
+	}
+	if args.CheckDone != nil {
+		a[argCheckDone] = args.CheckDone
 	}
 
 	return a
@@ -222,14 +243,9 @@ func PassMerge(existing A, args *AT) A {
 		a = maps.Clone(existing)
 	}
 
-	if args.Err != nil {
-		a["err"] = args.Err
-	}
-	if args.ErrTrace != "" {
-		a["err.trace"] = args.ErrTrace
-	}
-	if args.Panic != nil {
-		a["panic"] = args.Panic
+	// unmarshal
+	for k, v := range Pass(args) {
+		a[k] = v
 	}
 
 	return a
