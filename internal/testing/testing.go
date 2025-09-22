@@ -115,7 +115,7 @@ func NewDbgWorker(
 	if !realTty {
 		screen = tcell.NewSimulationScreen("utf8")
 		screen.SetSize(100, 50)
-		screen.Init()
+		_ = screen.Init()
 		screen.Clear()
 	}
 

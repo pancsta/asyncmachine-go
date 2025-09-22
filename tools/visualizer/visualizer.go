@@ -728,7 +728,8 @@ func UpdateCache(
 			isActive := slices.Contains(sel.Active, state)
 			isStart := state == ssam.BasicStates.Start
 			isReady := state == ssam.BasicStates.Ready
-			isErr := state == am.StateException || strings.HasPrefix(state, am.PrefixErr)
+			isErr := state == am.StateException ||
+				strings.HasPrefix(state, am.PrefixErr)
 
 			fillOuter := "#CDD6F4"
 			classOuter := "text-bold fill-N1"

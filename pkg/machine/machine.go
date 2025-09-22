@@ -106,7 +106,7 @@ type Machine struct {
 	// List of all the registered state names.
 	stateNames            S
 	stateNamesExport      S
-	handlersLock          sync.Mutex
+	handlersLock          sync.RWMutex
 	loopLock              sync.Mutex
 	handlers              []*handler
 	clock                 Clock
@@ -676,7 +676,6 @@ func (m *Machine) WhenArgs(
 func (m *Machine) WhenTime(
 	states S, times Time, ctx context.Context,
 ) <-chan struct{} {
-
 	ch := make(chan struct{})
 	if m.disposed.Load() {
 		close(ch)
@@ -1094,10 +1093,10 @@ func (m *Machine) AddErr(err error, args A) Result {
 	return m.AddErrState(StateException, err, args)
 }
 
-// AddErrState adds a dedicated error state, along with the build in StateException
-// state.
-// Like every mutation method, it will resolve relations and trigger handlers.
-// AddErrState produces a stack trace of the error, if LogStackTrace is enabled.
+// AddErrState adds a dedicated error state, along with the build in
+// StateException state. Like every mutation method, it will resolve relations
+// and trigger handlers. AddErrState produces a stack trace of the error, if
+// LogStackTrace is enabled.
 func (m *Machine) AddErrState(state string, err error, args A) Result {
 	if m.disposed.Load() || m.disposing.Load() || m.Backoff() || err == nil {
 		return Canceled
@@ -1180,8 +1179,8 @@ func (m *Machine) PanicToErr(args A) {
 	}
 }
 
-// PanicToErrState will catch a panic and add the StateException state, along with
-// the passed state. Needs to be called in a defer statement, just like a
+// PanicToErrState will catch a panic and add the StateException state, along
+// with the passed state. Needs to be called in a defer statement, just like a
 // recover() call.
 func (m *Machine) PanicToErrState(state string, args A) {
 	if !m.PanicToException || m.disposed.Load() || m.disposing.Load() {
@@ -1420,7 +1419,6 @@ func (m *Machine) Any1(states ...string) bool {
 func (m *Machine) queueMutation(
 	mutType MutationType, states S, args A, event *Event,
 ) uint64 {
-
 	statesParsed := m.MustParseStates(states)
 	multi := false
 	for _, state := range statesParsed {
@@ -1745,9 +1743,10 @@ func (m *Machine) DetachHandlers(handlers any) error {
 // HasHandlers returns true if this machine has bound handlers, and thus an
 // allocated goroutine. It also makes it nondeterministic.
 func (m *Machine) HasHandlers() bool {
-	m.handlersLock.Lock()
-	defer m.handlersLock.Unlock()
+	m.handlersLock.RLock()
+	defer m.handlersLock.RUnlock()
 
+	// TODO keep a cache flag?
 	return len(m.handlers) > 0
 }
 
@@ -1959,8 +1958,8 @@ func (m *Machine) StatesVerified() bool {
 // setActiveStates sets the new active states incrementing the counters and
 // returning the previously active states.
 func (m *Machine) setActiveStates(
-	calledStates S, targetStates S, isAuto bool) S {
-
+	calledStates S, targetStates S, isAuto bool,
+) S {
 	if m.disposed.Load() {
 		// no-op
 		return S{}
@@ -2172,7 +2171,6 @@ func (m *Machine) processQueue() Result {
 				done.Canceled = t.IsAccepted.Load()
 				close(done.Ch)
 			}
-
 		} else if t.IsAccepted.Load() && !t.Mutation.IsCheck {
 			m.processWhenBindings(t)
 			m.processWhenTimeBindings(t)
@@ -2583,7 +2581,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 	}
 
 	handlerCalled := false
-	handlers := m.getHandlers(false)
+	handlers := slices.Clone(m.getHandlers(false))
 	for i := 0; !m.disposing.Load() && i < len(handlers); i++ {
 
 		h := handlers[i]
@@ -2926,14 +2924,14 @@ func (m *Machine) IsQueued(mutType MutationType, states S,
 	}
 	iter := m.queue[startIndex:]
 
-	// position
+	// position TODO test case
 	if position == PositionLast {
 		iter = iter[len(iter)-1:]
 	} else if position == PositionFirst {
 		iter = iter[0:1]
 	}
 
-	for i, mut := range m.queue {
+	for i, mut := range iter {
 		if mut.IsCheck == isCheck &&
 			mut.Type == mutType &&
 			((withoutArgsOnly && len(mut.Args) == 0) || !withoutArgsOnly) &&
@@ -3496,7 +3494,6 @@ func (m *Machine) EvAddErr(event *Event, err error, args A) Result {
 func (m *Machine) EvAddErrState(
 	event *Event, state string, err error, args A,
 ) Result {
-
 	if m.disposed.Load() || m.disposing.Load() || m.Backoff() ||
 		int(m.queueLen.Load()) >= m.QueueLimit || err == nil {
 

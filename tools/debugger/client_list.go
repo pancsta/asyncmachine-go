@@ -364,7 +364,9 @@ func (d *Debugger) initClientList() {
 		if client.name == d.C.id {
 			return
 		}
-		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
 		amhelp.Add1Async(ctx, d.Mach, ss.ClientSelected, ss.SelectingClient,
 			am.A{"Client.id": client.name},
 		)

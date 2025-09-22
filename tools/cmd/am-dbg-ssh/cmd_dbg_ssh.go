@@ -127,7 +127,8 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 
 		// start and wait till the end
 
-		dbg.Start(par.StartupMachine, par.StartupTx, par.StartupView, par.StartupGroup)
+		dbg.Start(par.StartupMachine, par.StartupTx, par.StartupView,
+			par.StartupGroup)
 
 		select {
 		// TODO handle timeouts better

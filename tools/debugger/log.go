@@ -421,7 +421,8 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 			// 		}
 			//
 			// 		if check.QueueTick == tx.MutQueueTick ||
-			// 			(check.MutQueueToken > 0 && check.MutQueueToken == tx.MutQueueToken) {
+			// 			(check.MutQueueToken > 0 && check.MutQueueToken ==
+			// 			tx.MutQueueToken) {
 			//
 			// 			executed = check
 			// 			break
@@ -472,7 +473,6 @@ var (
 func fmtLogEntry(
 	entry string, calledStates []string, machStruct am.Schema,
 ) string {
-
 	if entry == "" {
 		return entry
 	}
@@ -575,22 +575,24 @@ func fmtLogEntry(
 
 			// method line
 			if i%2 == 1 {
-				linesNew = append(linesNew, "[grey]"+methodPattern.ReplaceAllStringFunc(line,
-					func(m string) string {
-						return "[white]" + m + "[grey]"
-					}))
+				linesNew = append(linesNew, "[grey]"+
+					methodPattern.ReplaceAllStringFunc(line,
+						func(m string) string {
+							return "[white]" + m + "[grey]"
+						}))
 			} else {
 				// file line
-				linesNew = append(linesNew, "[grey]"+filenamePattern.ReplaceAllStringFunc(line,
-					func(m string) string {
-						mspace := strings.Split(m, " ")
-						ret := "[white]" + mspace[0]
-						if len(mspace) > 1 {
-							ret += " [grey]" + mspace[1]
-						}
+				linesNew = append(linesNew, "[grey]"+
+					filenamePattern.ReplaceAllStringFunc(line,
+						func(m string) string {
+							mspace := strings.Split(m, " ")
+							ret := "[white]" + mspace[0]
+							if len(mspace) > 1 {
+								ret += " [grey]" + mspace[1]
+							}
 
-						return ret
-					}))
+							return ret
+						}))
 			}
 		}
 
@@ -1076,7 +1078,8 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 
 	parentQueue = cview.NewTreeNode("Queue")
 	{
-		tickNode := cview.NewTreeNode(d.P.Sprintf("current     [::b]q%v", tx.QueueTick))
+		tickNode := cview.NewTreeNode(d.P.Sprintf("current     [::b]q%v",
+			tx.QueueTick))
 		tickNode.SetIndent(1)
 		parentQueue.AddChild(tickNode)
 

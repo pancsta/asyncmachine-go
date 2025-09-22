@@ -3021,7 +3021,8 @@ func TestDisposedNoOp(t *testing.T) {
 	assert.Equal(t, Canceled, res)
 
 	// others
-	assert.Equal(t, int16(-1), m.IsQueued(MutationAdd, s, false, false, 0, false, PositionAny))
+	assert.Equal(t, int16(-1), m.IsQueued(MutationAdd, s, false, false, 0, false,
+		PositionAny))
 	assert.Equal(t, -1, m.Index1("A"))
 	assert.Empty(t, m.Has1("A"))
 	assert.Empty(t, m.IsClock(Clock{}))

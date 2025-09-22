@@ -292,8 +292,8 @@ var (
 	// GroupDebug contains states useful when debugging the debugger in another
 	// debugger.
 	GroupDebug = S{
-		Fwd, Back, Playing, TailMode, LogBuilt, UpdatingLog, LogUpdated, BuildingLog,
-		GcMsgs, ScrollToTx, ScrollToStep, ToggleTool, ToolToggled,
+		Fwd, Back, Playing, TailMode, LogBuilt, UpdatingLog, LogUpdated,
+		BuildingLog, GcMsgs, ScrollToTx, ScrollToStep, ToggleTool, ToolToggled,
 		SelectingClient, ClientSelected, StateNameSelected, DiagramsScheduled,
 		SetGroup,
 	}

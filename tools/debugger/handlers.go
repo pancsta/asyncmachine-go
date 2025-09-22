@@ -1150,25 +1150,6 @@ func (d *Debugger) ScrollToTxState(e *am.Event) {
 	d.hRedrawFull(false)
 }
 
-// ScrollToTxState scrolls to a specific transition (cursor position 1-based).
-func (d *Debugger) hScrollToTx(e *am.Event) {
-
-	cursor1, _ := e.Args["cursorTx1"].(int)
-	cursorStep1, _ := e.Args["cursorStep1"].(int)
-	trim, _ := e.Args["trimHistory"].(bool)
-	id, ok2 := e.Args["Client.txId"].(string)
-	if ok2 {
-		// TODO lowers the index each time (confirm)
-		cursor1 = d.C.txIndex(id) + 1
-	}
-
-	d.hSetCursor1(e, am.A{
-		"cursor1":     cursor1,
-		"cursorStep1": cursorStep1,
-		"trimHistory": trim,
-	})
-}
-
 func (d *Debugger) NarrowLayoutExit(e *am.Event) bool {
 	// always allow to exit
 	if e.Transition().TimeIndexAfter().Not1(ss.Start) {
@@ -1284,7 +1265,9 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		d.hSyncOptsTimelines()
 
 	case toolReader:
-		if d.Mach.Is1(ss.LogReaderEnabled) && d.Mach.Any1(ss.MatrixView, ss.TreeMatrixView) {
+		if d.Mach.Is1(ss.LogReaderEnabled) &&
+			d.Mach.Any1(ss.MatrixView, ss.TreeMatrixView) {
+
 			d.Mach.EvAdd1(e, ss.TreeLogView, nil)
 		} else if d.Mach.Not1(ss.LogReaderEnabled) {
 			d.Mach.EvAdd1(e, ss.LogReaderEnabled, nil)
@@ -1977,7 +1960,10 @@ func (d *Debugger) AnyEnter(e *am.Event) bool {
 	mach := d.Mach
 	mut := e.Mutation()
 	called := mut.CalledIndex(ss.Names)
-	pass := S{ss.ClientMsg, ss.ConnectEvent, ss.DisconnectEvent, am.StateException}
+	pass := S{
+		ss.ClientMsg, ss.ConnectEvent, ss.DisconnectEvent,
+		am.StateException,
+	}
 	if called.Any1(pass...) {
 		return true
 	}

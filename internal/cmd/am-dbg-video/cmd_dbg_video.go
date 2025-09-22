@@ -81,7 +81,8 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 	if err != nil {
 		panic(err)
 	}
-	helpers.MachDebug(dbg.Mach, debugAddr, logLevel, false, &am.SemConfig{Full: true})
+	helpers.MachDebug(dbg.Mach, debugAddr, logLevel, false,
+		&am.SemConfig{Full: true})
 
 	dbg.Start(startupMachine, startupTx, initialView, "")
 	go render(dbg)

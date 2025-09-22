@@ -601,9 +601,13 @@ Self handlers provide a simple alternative to [`Multi` states](#multi-states), w
 
 #### Transition Sub-Handler
 
-**Transition sub-handler** ("H method") is a struct method which does not get called directly by the machine, but like regular handlers, it doesn't require locking. Because of which, they can only be called by other handlers (either top-level or other sub-handlers). There is a [naming convention](#naming-convention) for these handlers, as well as a suggested signature. Sub-handlers have Inversion of Control, while transition handlers remain in control. Sub-handler scan block, but need `e.Ctx != nil`. Arguments from the original event can be replaced with `Event.SwapArgs`.
+**Transition sub-handler** ("H method") is a struct method which does not get called directly by the machine, but like
+regular handlers, it doesn't require locking. Because of which, they can only be called by other handlers (either
+top-level or other sub-handlers). There is a [naming convention](#naming-convention) for these handlers, as well as a
+suggested signature. Sub-handlers have Inversion of Control, while transition handlers remain in control. Sub-handler
+scan block, but need `e.Ctx != nil`. Arguments from the original event can be replaced with `Event.SwapArgs`.
 
-Example:
+**Example** - sub-handler methods:
 
 - `hSetCursor(e *am.Event) error` (suggested)
 - `hListProcesses(name string) ([]string, error)`
@@ -1384,7 +1388,8 @@ Side effects:
 
 #### Queue Ticks
 
-Eg `q342` is a queue clock's tick and triggers `<-mach.WhenQueued(queueTick)`. All the transitions with a queue tick will be executed in that order.
+Eg `q342` is a queue clock's tick and triggers `<-mach.WhenQueued(queueTick)`. All the transitions with a queu
+tick will be executed in that order.
 
 // TODO example
 

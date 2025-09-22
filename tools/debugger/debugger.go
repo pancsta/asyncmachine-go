@@ -97,19 +97,18 @@ type Debugger struct {
 	genGraphsLast  time.Time
 	graph          *graph.Graph
 	// update client list scheduled
-	updateCLScheduled  atomic.Bool
-	buildCLScheduled   atomic.Bool
-	lastKeystroke      tcell.Key
-	lastKeystrokeTime  time.Time
-	updateLogScheduled atomic.Bool
-	matrix             *cview.Table
-	focusManager       *cview.FocusManager
-	exportDialog       *cview.Modal
-	contentPanels      *cview.Panels
-	toolbars           [3]*cview.Table
-	schemaLogGrid      *cview.Grid
-	treeMatrixGrid     *cview.Grid
-	lastSelectedState  string
+	updateCLScheduled atomic.Bool
+	buildCLScheduled  atomic.Bool
+	lastKeystroke     tcell.Key
+	lastKeystrokeTime time.Time
+	matrix            *cview.Table
+	focusManager      *cview.FocusManager
+	exportDialog      *cview.Modal
+	contentPanels     *cview.Panels
+	toolbars          [3]*cview.Table
+	schemaLogGrid     *cview.Grid
+	treeMatrixGrid    *cview.Grid
+	lastSelectedState string
 	// TODO should be after a redraw, not before
 	// redrawCallback is auto-disposed in draw()
 	redrawCallback  func()
@@ -353,7 +352,9 @@ func (d *Debugger) hGoToMachAddress(addr *MachAddress, skipHistory bool) bool {
 	return true
 }
 
-// func (d *Debugger) hSetCursor1(cursor int, cursorStep int, skipHistory bool) {
+// func (d *Debugger) hSetCursor1(
+//   cursor int, cursorStep int, skipHistory bool,
+// ) {
 // 	if d.C.CursorTx1 == cursor {
 // 		return
 // 	}
@@ -1211,7 +1212,6 @@ func (d *Debugger) hExportData(filename string) {
 func (d *Debugger) hGetTxInfo(txIndex1 int,
 	tx *telemetry.DbgMsgTx, parsed *MsgTxParsed, title string,
 ) (string, string) {
-
 	left := title
 	right := " "
 	if tx == nil {
@@ -1768,7 +1768,6 @@ func (d *Debugger) hFilterTx(c *Client, idx int, filters *OptsFilters) bool {
 	if f.SkipHealthTx {
 		health := S{ssam.BasicStates.Healthcheck, ssam.BasicStates.Heartbeat}
 		if len(called) == 1 && slices.Contains(health, called[0]) {
-
 			return false
 		}
 	}
@@ -1779,7 +1778,6 @@ func (d *Debugger) hFilterTx(c *Client, idx int, filters *OptsFilters) bool {
 func (d *Debugger) hScrollToTime(
 	e *am.Event, hTime time.Time, filter bool,
 ) bool {
-
 	if d.C == nil {
 		return false
 	}

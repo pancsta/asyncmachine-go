@@ -360,7 +360,8 @@ func (l LogLevel) String() string {
 // info and configuring the text logger.
 type SemLogger interface {
 	// TODO implement empty methods
-	// TODO add SetTag, RemoveTag, JoinTopic, LeaveTopic, custom graph links / edges
+	// TODO add SetTag, RemoveTag, JoinTopic, LeaveTopic, custom graph
+	//  links / edges
 
 	// graph
 
@@ -426,8 +427,8 @@ type SemLogger interface {
 	// call. Useful for testing. Requires LogChanges log level to produce any
 	// output.
 	SetSimple(logf func(format string, args ...any), level LogLevel)
-	// SetArgsMapper accepts a function which decides which mutation arguments to log.
-	// See NewArgsMapper or create your own manually.
+	// SetArgsMapper accepts a function which decides which mutation arguments
+	// to log. See NewArgsMapper or create your own manually.
 	SetArgsMapper(mapper LogArgsMapperFn)
 	// ArgsMapper returns the current log args mapper function.
 	ArgsMapper() LogArgsMapperFn
@@ -903,8 +904,8 @@ func (e *handler) dispose() {
 
 // ///// ///// /////
 
-// ExceptionArgsPanic is an optional argument ["panic"] for the StateException state
-// which describes a panic within a Transition handler.
+// ExceptionArgsPanic is an optional argument ["panic"] for the StateException
+// state which describes a panic within a Transition handler.
 type ExceptionArgsPanic struct {
 	CalledStates S
 	StatesBefore S

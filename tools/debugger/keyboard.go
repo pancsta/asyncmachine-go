@@ -462,7 +462,8 @@ func (d *Debugger) hNextTxKey() tcellKeyFn {
 		}
 
 		// check queue throttle and add the state
-		if !d.Mach.IsQueuedAbove(scrollTxThrottle, am.MutationAdd, S{state}, false, false, 0) {
+		if !d.Mach.IsQueuedAbove(scrollTxThrottle, am.MutationAdd, S{state}, false,
+			false, 0) {
 
 			d.Mach.Add1(state, nil)
 		}
@@ -504,7 +505,8 @@ func (d *Debugger) hPrevTxKey() tcellKeyFn {
 		}
 
 		// check queue throttle and add the state
-		if !d.Mach.IsQueuedAbove(scrollTxThrottle, am.MutationAdd, S{state}, false, false, 0) {
+		if !d.Mach.IsQueuedAbove(scrollTxThrottle, am.MutationAdd, S{state}, false,
+			false, 0) {
 
 			d.Mach.Add1(state, nil)
 		}

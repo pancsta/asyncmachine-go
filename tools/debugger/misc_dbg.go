@@ -459,43 +459,46 @@ func (c *Client) parseSchema() {
 	}
 }
 
-func (c *Client) txByQueueTick(qTick uint64) int {
-	idx, ok := slices.BinarySearchFunc(c.MsgTxs,
-		&telemetry.DbgMsgTx{QueueTick: qTick}, func(i, j *telemetry.DbgMsgTx) int {
-			if i.QueueTick < j.QueueTick {
-				return -1
-			} else if i.QueueTick > j.QueueTick {
-				return 1
-			}
-
-			return 0
-		})
-
-	if !ok {
-		return 0
-	}
-
-	return idx
-}
-
-func (c *Client) txByMutQueueTick(qTick uint64) int {
-	idx, ok := slices.BinarySearchFunc(c.MsgTxs,
-		&telemetry.DbgMsgTx{MutQueueTick: qTick}, func(i, j *telemetry.DbgMsgTx) int {
-			if i.MutQueueTick < j.MutQueueTick {
-				return -1
-			} else if i.MutQueueTick > j.MutQueueTick {
-				return 1
-			}
-
-			return 0
-		})
-
-	if !ok {
-		return 0
-	}
-
-	return idx
-}
+// TODO enable when needed
+// func (c *Client) txByQueueTick(qTick uint64) int {
+// 	idx, ok := slices.BinarySearchFunc(c.MsgTxs,
+// 		&telemetry.DbgMsgTx{QueueTick: qTick},
+// 		func(i, j *telemetry.DbgMsgTx) int {
+// 			if i.QueueTick < j.QueueTick {
+// 				return -1
+// 			} else if i.QueueTick > j.QueueTick {
+// 				return 1
+// 			}
+//
+// 			return 0
+// 		})
+//
+// 	if !ok {
+// 		return 0
+// 	}
+//
+// 	return idx
+// }
+//
+// func (c *Client) txByMutQueueTick(qTick uint64) int {
+// 	idx, ok := slices.BinarySearchFunc(c.MsgTxs,
+// 		&telemetry.DbgMsgTx{MutQueueTick: qTick},
+// 		func(i, j *telemetry.DbgMsgTx) int {
+// 			if i.MutQueueTick < j.MutQueueTick {
+// 				return -1
+// 			} else if i.MutQueueTick > j.MutQueueTick {
+// 				return 1
+// 			}
+//
+// 			return 0
+// 		})
+//
+// 	if !ok {
+// 		return 0
+// 	}
+//
+// 	return idx
+// }
 
 // TODO
 // func NewClient()
