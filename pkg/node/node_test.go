@@ -41,7 +41,7 @@ func TestFork1(t *testing.T) {
 
 	// supervisor
 	s, err := NewSupervisor(ctx, getKind(t), []string{"test"},
-		testutils.RelsNodeWorkerStruct, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestFork1Process(t *testing.T) {
 	// supervisor
 	cmd := []string{"go", "run", wPath}
 	s, err := NewSupervisor(ctx, "NTW", cmd,
-		testutils.RelsNodeWorkerStruct, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestFork5Warm2Min2(t *testing.T) {
 
 	// supervisor
 	s, err := NewSupervisor(ctx, getKind(t), []string{"test"},
-		testutils.RelsNodeWorkerStruct, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestFork15Warm0Min7(t *testing.T) {
 
 	// supervisor
 	s, err := NewSupervisor(ctx, getKind(t), []string{"test"},
-		testutils.RelsNodeWorkerStruct, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestClientSupervisor(t *testing.T) {
 	s := newSupervisor(t, ctx, getKind(t), 1)
 
 	cDeps := &ClientStateDeps{
-		WorkerSStruct: testutils.RelsNodeWorkerStruct,
+		WorkerSStruct: testutils.RelsNodeWorkerSchema,
 		WorkerSNames:  testutils.RelsNodeWorkerStates,
 		ClientSStruct: states.ClientSchema,
 		ClientSNames:  states.ClientStates.Names(),
@@ -351,7 +351,7 @@ func newConnectedClient(t *testing.T, ctx context.Context) (
 
 func newClient(t *testing.T, ctx context.Context) *Client {
 	cDeps := &ClientStateDeps{
-		WorkerSStruct: testutils.RelsNodeWorkerStruct,
+		WorkerSStruct: testutils.RelsNodeWorkerSchema,
 		WorkerSNames:  testutils.RelsNodeWorkerStates,
 		ClientSStruct: states.ClientSchema,
 		ClientSNames:  states.ClientStates.Names(),
@@ -369,7 +369,7 @@ func newSupervisor(
 	t *testing.T, ctx context.Context, workerKind string, workers int,
 ) *Supervisor {
 	sup, err := NewSupervisor(ctx, workerKind, []string{"test"},
-		testutils.RelsNodeWorkerStruct, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

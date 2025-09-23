@@ -124,7 +124,6 @@ func Add1Block(
 func Add1Sync(
 	ctx context.Context, mach *am.Machine, state string, args am.A,
 ) am.Result {
-
 	res := mach.Add1(state, args)
 	switch res {
 	case am.Executed:
@@ -153,7 +152,6 @@ func Add1Async(
 	ctx context.Context, mach am.Api, waitState string,
 	addState string, args am.A,
 ) am.Result {
-
 	ticks := 1
 	// wait 2 ticks for multi states
 	if IsMulti(mach, waitState) {
@@ -226,7 +224,6 @@ func MachDebug(
 	mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout bool,
 	semConfig *am.SemConfig,
 ) {
-
 	// no debug for CI
 	if IsTestRunner() {
 		return
@@ -982,7 +979,6 @@ func RemoveMulti(mach am.Api, state string) am.HandlerFinal {
 func GetTransitionStates(
 	tx *am.Transition, index am.S,
 ) (added am.S, removed am.S, touched am.S) {
-
 	before := tx.TimeBefore
 	after := tx.TimeAfter
 

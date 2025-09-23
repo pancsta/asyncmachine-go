@@ -122,7 +122,7 @@ func NewRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 // inherit from RPC worker
 
 var (
-	RelsNodeWorkerStruct = am.SchemaMerge(ssnode.WorkerSchema, ss.States)
+	RelsNodeWorkerSchema = am.SchemaMerge(ssnode.WorkerSchema, ss.States)
 	RelsNodeWorkerStates = am.SAdd(ss.Names, ssnode.WorkerStates.Names())
 )
 
@@ -131,7 +131,7 @@ var (
 func NewRelsNodeWorker(t *testing.T, initialState am.S) *am.Machine {
 
 	// machine init
-	mach := am.New(context.Background(), RelsNodeWorkerStruct, &am.Opts{
+	mach := am.New(context.Background(), RelsNodeWorkerSchema, &am.Opts{
 		Id: "t-" + t.Name()})
 	err := mach.VerifyStates(RelsNodeWorkerStates)
 	if err != nil {
@@ -288,7 +288,6 @@ func NewCustomRpcWorker(t *testing.T, states am.Schema) *am.Machine {
 func KillProcessesByName(
 	processName string) (killedPIDs []int32, errs []error) {
 
-	fmt.Printf("Searching for processes named '%s'...\n", processName)
 	processes, err := process.Processes()
 	if err != nil {
 		err := fmt.Errorf("failed to get process list: %w", err)
@@ -333,7 +332,6 @@ func KillProcessesByName(
 			// Verify if the process is no longer running
 			stillRunning, checkErr := p.IsRunning()
 			if checkErr == nil && !stillRunning {
-				fmt.Printf("  Successfully terminated PID %d (%s).\n", pid, name)
 				killedPIDs = append(killedPIDs, pid)
 			} else if checkErr != nil {
 				errs = append(errs, fmt.Errorf(

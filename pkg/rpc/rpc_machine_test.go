@@ -4,14 +4,12 @@ package rpc
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
 	sst "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
-	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
@@ -21,15 +19,6 @@ type S = am.S
 type (
 	Schema = am.Schema
 )
-
-func init() {
-	if os.Getenv(am.EnvAmTestDebug) != "" {
-		helpers.EnableDebugging(true)
-		_ = os.Setenv(EnvAmRpcLogClient, "1")
-		_ = os.Setenv(EnvAmRpcLogServer, "1")
-		_ = os.Setenv(EnvAmRpcLogMux, "1")
-	}
-}
 
 func TestSingleStateActive(t *testing.T) {
 	t.Parallel()
@@ -91,6 +80,7 @@ func TestExposeAllStateNames(t *testing.T) {
 
 func TestStateSet(t *testing.T) {
 	t.Parallel()
+	// amhelp.EnableDebugging(true)
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1207,4 +1197,31 @@ func TestIsTime(t *testing.T) {
 //	// export
 //	jsonPath := path.Join(os.TempDir(), "am-TestExportImport.json")
 //	err := m1.Export()
+// }
+
+// TODO migrate to Tracer (for now)
+// TODO implement processQueue, dispose contexts while processing
+// TestWhenQueue
+// type TestWhenQueueHandlers struct {
+// 	*ExceptionHandler
+// 	done chan struct{}
+// }
+//
+// func (h *TestWhenQueueHandlers) AState(e *Event) {
+// 	m := e.Machine()
+// 	t := e.Args["t"].(*testing.T)
+//
+// 	m.Add1("B", nil)
+// 	m.Add1("C", nil)
+// 	res := m.Add1("D", nil)
+// 	h.done = make(chan struct{})
+//
+// 	waiting := make(chan struct{})
+// 	go func() {
+// 		go close(waiting)
+// 		<-m.WhenQueue(res)
+// 		assertStates(t, m, S{"A", "B", "C", "D"})
+// 		close(h.done)
+// 	}()
+// 	<-waiting
 // }

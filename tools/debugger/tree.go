@@ -171,7 +171,6 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 	d.tree.GetRoot().Walk(func(
 		node, parent *cview.TreeNode, depth int,
 	) bool {
-
 		// skip the root
 		if parent == nil {
 			return true

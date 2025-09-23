@@ -14,7 +14,6 @@ import (
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/rpc/rpcnames"
 )
 
 // Worker is a subset of `pkg/machine#Machine` for RPC. Lacks the queue and
@@ -34,6 +33,7 @@ type Worker struct {
 	clockMx       sync.RWMutex
 	schemaMx      sync.RWMutex
 	machTime      am.Time
+	queueTick     uint64
 	stateNames    am.S
 	activeState   atomic.Pointer[am.S]
 	indexStateCtx am.IndexStateCtx
@@ -91,6 +91,7 @@ func NewWorker(
 		indexWhenTime: am.IndexWhenTime{},
 		whenDisposed:  make(chan struct{}),
 		machTime:      make(am.Time, len(stateNames)),
+		queueTick:     1,
 		parentId:      parent.Id(),
 		tags:          tags,
 	}
@@ -118,7 +119,7 @@ func (w *Worker) Sync() am.Time {
 
 	// call rpc
 	resp := &RespSync{}
-	ok := w.c.callFailsafe(w.c.Mach.Ctx(), rpcnames.Sync.Encode(),
+	ok := w.c.callFailsafe(w.c.Mach.Ctx(), ServerSync.Value,
 		w.TimeSum(nil), resp)
 	if !ok {
 		return nil
@@ -132,7 +133,7 @@ func (w *Worker) Sync() am.Time {
 
 	// process if time is returned
 	if len(resp.Time) > 0 {
-		w.c.updateClock(nil, resp.Time)
+		w.c.updateClock(nil, resp.Time, resp.QueueTick)
 	}
 
 	return w.machTime
@@ -156,14 +157,14 @@ func (w *Worker) Add(states am.S, args am.A) am.Result {
 		States: amhelp.StatesToIndexes(w.StateNames(), states),
 		Args:   args,
 	}
-	if !w.c.callFailsafe(w.Ctx(), rpcnames.Add.Encode(), rpcArgs, resp) {
+	if !w.c.callFailsafe(w.Ctx(), ServerAdd.Value, rpcArgs, resp) {
 		return am.Canceled
 	}
 
 	// TODO validate resp?
 
 	// process
-	w.c.updateClock(resp.Clock, nil)
+	w.c.updateClock(resp.Clock, nil, 0)
 
 	return resp.Result
 }
@@ -193,7 +194,7 @@ func (w *Worker) AddNS(states am.S, args am.A) am.Result {
 		States: amhelp.StatesToIndexes(w.StateNames(), states),
 		Args:   args,
 	}
-	if !w.c.notifyFailsafe(w.Ctx(), rpcnames.AddNS.Encode(), rpcArgs) {
+	if !w.c.notifyFailsafe(w.Ctx(), ServerAddNS.Value, rpcArgs) {
 		return am.Canceled
 	}
 
@@ -224,14 +225,14 @@ func (w *Worker) Remove(states am.S, args am.A) am.Result {
 		States: amhelp.StatesToIndexes(w.StateNames(), states),
 		Args:   args,
 	}
-	if !w.c.callFailsafe(w.Ctx(), rpcnames.Remove.Encode(), rpcArgs, resp) {
+	if !w.c.callFailsafe(w.Ctx(), ServerRemove.Value, rpcArgs, resp) {
 		return am.Canceled
 	}
 
 	// TODO validate resp?
 
 	// process
-	w.c.updateClock(resp.Clock, nil)
+	w.c.updateClock(resp.Clock, nil, 0)
 
 	return resp.Result
 }
@@ -261,14 +262,14 @@ func (w *Worker) Set(states am.S, args am.A) am.Result {
 		States: amhelp.StatesToIndexes(w.StateNames(), states),
 		Args:   args,
 	}
-	if !w.c.callFailsafe(w.Ctx(), rpcnames.Set.Encode(), rpcArgs, resp) {
+	if !w.c.callFailsafe(w.Ctx(), ServerSet.Value, rpcArgs, resp) {
 		return am.Canceled
 	}
 
 	// TODO validate resp?
 
 	// process
-	w.c.updateClock(resp.Clock, nil)
+	w.c.updateClock(resp.Clock, nil, 0)
 
 	return resp.Result
 }
@@ -330,14 +331,14 @@ func (w *Worker) EvAdd(event *am.Event, states am.S, args am.A) am.Result {
 		Args:   args,
 		Event:  event.Export(),
 	}
-	if !w.c.callFailsafe(w.Ctx(), rpcnames.Add.Encode(), rpcArgs, resp) {
+	if !w.c.callFailsafe(w.Ctx(), ServerAdd.Value, rpcArgs, resp) {
 		return am.Canceled
 	}
 
 	// TODO validate resp?
 
 	// process
-	w.c.updateClock(resp.Clock, nil)
+	w.c.updateClock(resp.Clock, nil, 0)
 
 	return resp.Result
 }
@@ -378,6 +379,57 @@ func (w *Worker) EvAddErrState(
 		return am.Canceled
 	}
 	return am.Canceled // TODO
+}
+
+// Toggle deactivates a list of states in case all are active, or activates
+// them otherwise. Returns the result of the transition (Executed, Queued,
+// Canceled).
+func (w *Worker) Toggle(states am.S, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
+	if w.Is(states) {
+		return w.Remove(states, args)
+	} else {
+		return w.Add(states, args)
+	}
+}
+
+// Toggle1 activates or deactivates a single state, depending on its current
+// state. Returns the result of the transition (Executed, Queued, Canceled).
+func (w *Worker) Toggle1(state string, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
+	if w.Is1(state) {
+		return w.Remove1(state, args)
+	} else {
+		return w.Add1(state, args)
+	}
+}
+
+// EvToggle is a traced version of [Machine.Toggle].
+func (w *Worker) EvToggle(e *am.Event, states am.S, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
+	if w.Is(states) {
+		return w.EvRemove(e, states, args)
+	} else {
+		return w.EvAdd(e, states, args)
+	}
+}
+
+// EvToggle1 is a traced version of [Machine.Toggle1].
+func (w *Worker) EvToggle1(e *am.Event, state string, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
+	if w.Is1(state) {
+		return w.EvRemove1(e, state, args)
+	} else {
+		return w.EvAdd1(e, state, args)
+	}
 }
 
 // ///// Checking (local)
@@ -995,7 +1047,7 @@ func (w *Worker) Log(msg string, args ...any) {
 	// call rpc
 	resp := &RespResult{}
 	rpcArgs := &ArgsLog{Msg: msg, Args: args}
-	if !w.c.callFailsafe(w.Ctx(), rpcnames.Log.Encode(), rpcArgs, resp) {
+	if !w.c.callFailsafe(w.Ctx(), ServerLog.Value, rpcArgs, resp) {
 		return
 	}
 	// TODO local log?
@@ -1523,10 +1575,10 @@ func (w *Worker) Tracers() []am.Tracer {
 	return slices.Clone(w.tracers)
 }
 
-// UpdateClock is an internal method to update the clock of this Worker. It
+// InternalUpdateClock is an internal method to update the clock of this Worker. It
 // should NOT be called by anything else then a synchronization source (eg RPC
 // client, pubsub, etc).
-func (w *Worker) UpdateClock(now am.Time, lock bool) {
+func (w *Worker) InternalUpdateClock(now am.Time, qTick uint64, lock bool) {
 	// TODO require mutType and called states for PushAllTicks and handlers
 	// TODO pass tx ID
 	// clockMx already locked by RPC client (but not pkg/pubsub)
@@ -1538,50 +1590,61 @@ func (w *Worker) UpdateClock(now am.Time, lock bool) {
 	}
 
 	before := w.machTime
-	// check if changed
-	if now.Sum() == before.Sum() {
+	var activeBefore am.S
+	var tx *am.Transition
+	// time changes
+	if now.Sum() != before.Sum() {
+		activeBefore = w.ActiveStates()
+		active := am.S{}
+		index := w.StateNames()
+		for i, state := range index {
+			if am.IsActiveTick(now[i]) {
+				active = append(active, state)
+			}
+		}
+
+		tx = &am.Transition{
+			Api: w,
+
+			TimeBefore: before,
+			TimeAfter:  now,
+			Mutation: &am.Mutation{
+				Type:   am.MutationSet,
+				Called: w.Index(active),
+				Args:   nil,
+				Auto:   false,
+			},
+			LogEntries: w.logEntries,
+		}
+		// TODO may not be true for qticks only updates
+		tx.IsAccepted.Store(true)
+		w.logEntries = nil
+		// TODO fire handlers if set
+
+		// call tracers
+		for _, t := range w.tracers {
+			// TODO deadlock on method using w.clockMx
+			t.TransitionInit(tx)
+		}
+		for _, t := range w.tracers {
+			// TODO deadlock on method using w.clockMx
+			t.TransitionStart(tx)
+		}
+
+		// set active states
+		w.machTime = now
+		w.queueTick = qTick
+		w.activeState.Store(&active)
+
+		// queue tick changed
+	} else if w.queueTick != qTick {
+		w.queueTick = qTick
+
+		// no change
+	} else {
 		w.clockMx.Unlock()
 		return
 	}
-	activeBefore := w.ActiveStates()
-	active := am.S{}
-	index := w.StateNames()
-	for i, state := range index {
-		if am.IsActiveTick(now[i]) {
-			active = append(active, state)
-		}
-	}
-
-	tx := &am.Transition{
-		Api: w,
-
-		TimeBefore: before,
-		TimeAfter:  now,
-		Mutation: &am.Mutation{
-			Type:   am.MutationSet,
-			Called: w.Index(active),
-			Args:   nil,
-			Auto:   false,
-		},
-		LogEntries: w.logEntries,
-	}
-	tx.IsAccepted.Store(true)
-	w.logEntries = nil
-	// TODO fire handlers if set
-
-	// call tracers
-	for _, t := range w.tracers {
-		// TODO deadlock on method using w.clockMx
-		t.TransitionInit(tx)
-	}
-	for _, t := range w.tracers {
-		// TODO deadlock on method using w.clockMx
-		t.TransitionStart(tx)
-	}
-
-	// set active states
-	w.machTime = now
-	w.activeState.Store(&active)
 
 	// clockMx locked by RPC client
 	w.clockMx.Unlock()
@@ -1594,10 +1657,15 @@ func (w *Worker) UpdateClock(now am.Time, lock bool) {
 	w.processWhenBindings(activeBefore)
 	w.processWhenTimeBindings(before)
 	w.processStateCtxBindings(activeBefore)
+	// TODO process queue ticks
+}
+
+func (w *Worker) AddBreakpoint1(added string, removed string, strict bool) {
+	// TODO
 }
 
 func (w *Worker) AddBreakpoint(added am.S, removed am.S, strict bool) {
-	// empty
+	// TODO
 }
 
 func (w *Worker) Groups() (map[string][]int, []string) {
@@ -1645,8 +1713,10 @@ func (w *Worker) WhenQueue(tick am.Result) <-chan struct{} {
 }
 
 func (w *Worker) QueueTick() uint64 {
-	// TODO implement me
-	panic("implement QueueTick")
+	w.clockMx.RLock()
+	defer w.clockMx.RUnlock()
+
+	return w.queueTick
 }
 
 // debug

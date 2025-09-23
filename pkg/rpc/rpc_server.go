@@ -17,7 +17,6 @@ import (
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/rpc/rpcnames"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 )
@@ -44,8 +43,8 @@ type Server struct {
 	// 0 means pushes are disabled. Setting to a very small value will make
 	// pushes instant.
 	PushInterval time.Duration
-	// PushAllTicks will push all ticks to the client, enabling client-side final
-	// handlers. TODO implement
+	// PushAllTicks will push all ticks to the client, enabling client-side
+	// final handlers. TODO more info, implement via a queue
 	PushAllTicks bool
 	// Listener can be set manually before starting the server.
 	Listener atomic.Pointer[net.Listener]
@@ -63,21 +62,23 @@ type Server struct {
 	rpcServer *rpc2.Server
 	// rpcClient is the internal rpc2 client.
 	rpcClient atomic.Pointer[rpc2.Client]
-	// lastClockHTime is the last (human) time a clock update was sent to the
-	// client.
-	lastClockHTime time.Time
-	lastClock      am.Time
-	ticker         *time.Ticker
-	clockMx        sync.Mutex
+	clockMx   sync.Mutex
+	ticker    *time.Ticker
 	// mutMx is a lock preventing mutation methods from racing each other.
 	mutMx         sync.Mutex
-	lastClockSum  atomic.Pointer[uint64]
 	skipClockPush atomic.Bool
-	lastClockMsg  ClockMsg
 	tracer        *WorkerTracer
 	// ID of the currently connected client.
 	clientId         atomic.Pointer[string]
 	deliveryHandlers any
+
+	// lastClockHTime is the last (human) time a clock update was sent to the
+	// client.
+	lastClockHTime time.Time
+	lastClock      am.Time
+	lastClockSum   atomic.Uint64
+	lastClockMsg   *ClockMsg
+	lastQueueTick  uint64
 }
 
 // interfaces
@@ -121,9 +122,12 @@ func NewServer(
 		DeliveryTimeout:  5 * time.Second,
 		LogEnabled:       os.Getenv(EnvAmRpcLogServer) != "",
 		Source:           sourceMach,
+
+		// queue ticks start at 1
+		lastQueueTick: 1,
 	}
 	var sum uint64
-	s.lastClockSum.Store(&sum)
+	s.lastClockSum.Store(sum)
 
 	// state machine
 	mach, err := am.NewCommon(ctx, "rs-"+name, states.ServerSchema, ssS.Names(),
@@ -369,9 +373,8 @@ func (s *Server) Stop(dispose bool) am.Result {
 // SendPayload sends a payload to the client. It's usually called by a handler
 // for SendPayload.
 func (s *Server) SendPayload(
-	event *am.Event, ctx context.Context, payload *ArgsPayload,
+	ctx context.Context, event *am.Event, payload *ArgsPayload,
 ) error {
-	// TODO ctx as 1st param
 	// TODO add SendPayloadAsync calling RemoteSendingPayload first
 	// TODO bind to an async state
 
@@ -397,7 +400,7 @@ func (s *Server) SendPayload(
 
 	// TODO failsafe
 	return s.rpcClient.Load().CallWithContext(ctx,
-		rpcnames.ClientSendPayload.Encode(), payload, &Empty{})
+		ClientSendPayload.Value, payload, &Empty{})
 }
 
 func (s *Server) ClientId() string {
@@ -425,14 +428,14 @@ func (s *Server) bindRpcHandlers() {
 	// new RPC instance, release prev resources
 	s.rpcServer = rpc2.NewServer()
 
-	s.rpcServer.Handle(rpcnames.Hello.Encode(), s.RemoteHello)
-	s.rpcServer.Handle(rpcnames.Handshake.Encode(), s.RemoteHandshake)
-	s.rpcServer.Handle(rpcnames.Add.Encode(), s.RemoteAdd)
-	s.rpcServer.Handle(rpcnames.AddNS.Encode(), s.RemoteAddNS)
-	s.rpcServer.Handle(rpcnames.Remove.Encode(), s.RemoteRemove)
-	s.rpcServer.Handle(rpcnames.Set.Encode(), s.RemoteSet)
-	s.rpcServer.Handle(rpcnames.Sync.Encode(), s.RemoteSync)
-	s.rpcServer.Handle(rpcnames.ClientBye.Encode(), s.RemoteBye)
+	s.rpcServer.Handle(ServerHello.Value, s.RemoteHello)
+	s.rpcServer.Handle(ServerHandshake.Value, s.RemoteHandshake)
+	s.rpcServer.Handle(ServerAdd.Value, s.RemoteAdd)
+	s.rpcServer.Handle(ServerAddNS.Value, s.RemoteAddNS)
+	s.rpcServer.Handle(ServerRemove.Value, s.RemoteRemove)
+	s.rpcServer.Handle(ServerSet.Value, s.RemoteSet)
+	s.rpcServer.Handle(ServerSync.Value, s.RemoteSync)
+	s.rpcServer.Handle(ServerBye.Value, s.RemoteBye)
 
 	// TODO RemoteLog, RemoteWhenArgs, RemoteGetMany
 
@@ -481,14 +484,14 @@ func (s *Server) pushClockUpdate(force bool) {
 	s.CallCount++
 
 	// TODO failsafe retry
-	err := c.Notify(rpcnames.ClientSetClock.Encode(), clock)
+	err := c.Notify(ClientSetClock.Value, clock)
 	if err != nil {
 		s.Mach.Remove1(ssS.ClientConnected, nil)
 		AddErr(nil, s.Mach, "pushClockUpdate", err)
 	}
 }
 
-func (s *Server) genClockUpdate(skipTimeCheck bool) ClockMsg {
+func (s *Server) genClockUpdate(skipTimeCheck bool) *ClockMsg {
 	s.clockMx.Lock()
 	defer s.clockMx.Unlock()
 
@@ -498,23 +501,30 @@ func (s *Server) genClockUpdate(skipTimeCheck bool) ClockMsg {
 		return nil
 	}
 	hTime := time.Now()
+	qTick := s.Source.QueueTick()
 	mTime := s.Source.Time(nil)
 
 	// exit if no change since the last sync
-	var sum uint64
+	var tSum uint64
 	for _, v := range mTime {
-		sum += v
+		tSum += v
 	}
-	if sum == *s.lastClockSum.Load() {
-		// s.log("genClockUpdate: same sum %d", sum)
+	// update only on state change, ignoring queue ticks (for canceled and empty)
+	// TODO support queuetick-only updates (always 1 off)
+	// if tSum == s.lastClockSum.Load() && qTick == s.lastQueueTick {
+	if tSum == s.lastClockSum.Load() && qTick == s.lastQueueTick {
+		s.log("genClockUpdate: no change t%d q%d", tSum, qTick)
 		return nil
 	}
 
 	// proceed - valid clock update
-	s.lastClockMsg = NewClockMsg(s.lastClock, mTime)
+	s.lastClockMsg = NewClockMsg(tSum, s.lastClock, mTime, s.lastQueueTick, qTick)
 	s.lastClock = mTime
 	s.lastClockHTime = hTime
-	s.lastClockSum.Store(&sum)
+	s.lastQueueTick = qTick
+	s.lastClockSum.Store(tSum)
+	s.log("genClockUpdate: t%d q%d ch%d (%s)", tSum, qTick,
+		s.lastClockMsg.Checksum, s.Source.ActiveStates())
 
 	return s.lastClockMsg
 }
@@ -528,37 +538,33 @@ func (s *Server) genClockUpdate(skipTimeCheck bool) ClockMsg {
 func (s *Server) RemoteHello(
 	client *rpc2.Client, req *ArgsHello, resp *RespHandshake,
 ) error {
+
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
 	}
+	s.clockMx.Lock()
+	defer s.clockMx.Unlock()
 	// TODO pass ID and key here
-	// TODO Schema and Time inside Eval
 	// TODO check if client here is the same as RespHandshakeAck
 
-	mTime := s.Source.Time(nil)
+	export := s.Source.Export()
 	*resp = RespHandshake{
-		Serialized: &am.Serialized{
-			ID:         s.Source.Id(),
-			StateNames: s.Source.StateNames(),
-			Time:       mTime,
-		},
+		Serialized: export,
 	}
 
 	// return the schema if requested
 	if req.ReqSchema {
+		// TODO get via Api.Export to avoid races
 		schema := s.Source.Schema()
 		resp.Schema = schema
 	}
 
-	// TODO block
-	var sum uint64
-	for _, v := range mTime {
-		sum += v
-	}
-	s.log("RemoteHello: t%v", sum)
+	sum := export.Time.Sum()
+	s.log("RemoteHello: t%v q%d", sum, export.QueueTick)
 	s.Mach.Add1(ssS.Handshaking, nil)
-	s.lastClock = mTime
-	s.lastClockSum.Store(&sum)
+	s.lastClock = export.Time
+	s.lastQueueTick = export.QueueTick
+	s.lastClockSum.Store(sum)
 	s.lastClockHTime = time.Now()
 
 	// TODO timeout for RemoteHandshake
@@ -588,7 +594,8 @@ func (s *Server) RemoteHandshake(
 	}
 
 	sum := s.Source.TimeSum(nil)
-	s.log("RemoteHandshake: t%v", sum)
+	qTick := s.Source.QueueTick()
+	s.log("RemoteHandshake: t%v q%d", sum, qTick)
 
 	// accept the client
 	s.rpcClient.Store(client)
@@ -596,7 +603,8 @@ func (s *Server) RemoteHandshake(
 	s.Mach.Add1(ssS.HandshakeDone, Pass(&A{Id: *id}))
 
 	// state changed during the handshake, push manually
-	if *s.lastClockSum.Load() != sum && s.PushInterval == 0 {
+	if s.lastClockSum.Load() != sum || s.lastQueueTick != qTick &&
+		s.PushInterval == 0 {
 		s.pushClockUpdate(true)
 	}
 
@@ -728,7 +736,8 @@ func (s *Server) RemoteSync(
 
 	if s.Source.TimeSum(nil) > sum {
 		*resp = RespSync{
-			Time: s.Source.Time(nil),
+			Time:      s.Source.Time(nil),
+			QueueTick: s.Source.QueueTick(),
 		}
 	} else {
 		*resp = RespSync{}
@@ -896,7 +905,7 @@ func getSendPayloadState(s *Server, stateName string) am.HandlerFinal {
 			ctx, cancel := context.WithTimeout(ctx, s.DeliveryTimeout)
 			defer cancel()
 
-			err := s.SendPayload(e, ctx, args.Payload)
+			err := s.SendPayload(ctx, e, args.Payload)
 			if err != nil {
 				e.Machine().EvAddErrState(e, ssW.ErrSendPayload, err, Pass(argsOut))
 			}

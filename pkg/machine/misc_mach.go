@@ -376,7 +376,9 @@ type SemLogger interface {
 
 	// details
 
+	// IsCan return true when the machine is logging Can* methods.
 	IsCan() bool
+	// EnableCan enables / disables logging of Can* methods.
 	EnableCan(enable bool)
 	// IsSteps return true when the machine is logging transition steps.
 	IsSteps() bool
@@ -736,7 +738,6 @@ type Event struct {
 	// IsCheck is true if this event is a check event, fired by one of Can*()
 	// methods. Useful for avoiding flooding the log with errors.
 	IsCheck bool
-	// TODO add Source with MachID and TxID (useful for piping)
 
 	// Machine is the machine that the event belongs to. It can be used to access
 	// the current Transition and Mutation.
@@ -761,6 +762,7 @@ func (e *Event) Transition() *Transition {
 	if e.machine == nil {
 		return nil
 	}
+
 	return e.Machine().t.Load()
 }
 
@@ -769,6 +771,10 @@ func (e *Event) Transition() *Transition {
 func (e *Event) IsValid() bool {
 	tx := e.Transition()
 	if tx == nil {
+		return false
+	}
+	// optional ctx
+	if e.Ctx != nil && e.Ctx.Err() != nil {
 		return false
 	}
 
@@ -844,6 +850,7 @@ type WhenBinding struct {
 	States   StateIsActive
 	Matched  int
 	Total    int
+	Ctx      context.Context
 }
 
 type WhenTimeBinding struct {
@@ -858,15 +865,18 @@ type WhenTimeBinding struct {
 	// optional Time to match for completed from Index
 	Times     Time
 	Completed StateIsActive
+	Ctx       context.Context
 }
 
 type WhenArgsBinding struct {
 	ch   chan struct{}
 	args A
+	ctx  context.Context
 }
 
-type whenQueueEndBinding struct {
-	ch chan struct{}
+type whenQueueEndsBinding struct {
+	ch  chan struct{}
+	ctx context.Context
 }
 
 type whenQueueBinding struct {

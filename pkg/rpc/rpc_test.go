@@ -26,6 +26,9 @@ func init() {
 
 	if os.Getenv(am.EnvAmTestDebug) != "" {
 		amhelp.EnableDebugging(true)
+		_ = os.Setenv(EnvAmRpcLogClient, "1")
+		_ = os.Setenv(EnvAmRpcLogServer, "1")
+		_ = os.Setenv(EnvAmRpcLogMux, "1")
 	}
 }
 
@@ -144,9 +147,9 @@ func TestWaiting(t *testing.T) {
 	assert.Equal(t, 3, int(c.CallCount),
 		"Client called RemoteHello, RemoteHandshake, RemoteAdd")
 	bytesCount := <-counter
-	assert.LessOrEqual(t, 650, int(bytesCount),
+	assert.LessOrEqual(t, 900, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 1_000, int(bytesCount),
+	assert.GreaterOrEqual(t, 1_100, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
@@ -183,9 +186,9 @@ func TestAddMany(t *testing.T) {
 	assert.Equal(t, 0, int(s.CallCount),
 		"Server piggybacked clock on resp")
 	bytesCount := <-counter
-	assert.LessOrEqual(t, 15_000, int(bytesCount),
+	assert.LessOrEqual(t, 19_000, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
-	assert.GreaterOrEqual(t, 16_000, int(bytesCount),
+	assert.GreaterOrEqual(t, 20_000, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
 
 	disposeTest(t, c, s, true)
@@ -230,9 +233,9 @@ func TestAddManyNoSync(t *testing.T) {
 
 	// assert
 	bytesCount := <-counter
-	assert.LessOrEqual(t, 8_050, int(bytesCount),
+	assert.LessOrEqual(t, 10_000, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
-	assert.GreaterOrEqual(t, 8_500, int(bytesCount),
+	assert.GreaterOrEqual(t, 11_000, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
 
 	disposeTest(t, c, s, true)
@@ -269,9 +272,9 @@ func TestAddManyInstantClock(t *testing.T) {
 
 	// assert
 	bytesCount := <-counter
-	assert.LessOrEqual(t, 15_000, int(bytesCount),
+	assert.LessOrEqual(t, 19_000, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 16_000, int(bytesCount),
+	assert.GreaterOrEqual(t, 20_000, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
@@ -279,6 +282,8 @@ func TestAddManyInstantClock(t *testing.T) {
 
 func TestManyStates(t *testing.T) {
 	t.Parallel()
+
+	amhelp.EnableDebugging(true)
 
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
@@ -323,9 +328,9 @@ func TestManyStates(t *testing.T) {
 	assert.Equal(t, 183, int(c.CallCount),
 		"Client called handshake (2) and mutations (181)")
 	bytesCount := <-counter
-	assert.LessOrEqual(t, 7_500, int(bytesCount),
+	assert.LessOrEqual(t, 9_000, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 8_000, int(bytesCount),
+	assert.GreaterOrEqual(t, 10_000, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
@@ -373,9 +378,9 @@ func TestHighInstantClocks(t *testing.T) {
 	// assert
 	// byte count should be the same as in TestAddManyInstantClock
 	bytesCount := <-counter
-	assert.LessOrEqual(t, 39_000, int(bytesCount),
+	assert.LessOrEqual(t, 48_000, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 40_000, int(bytesCount),
+	assert.GreaterOrEqual(t, 50_000, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)

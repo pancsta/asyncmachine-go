@@ -1228,7 +1228,7 @@ func (d *Debugger) hGetTxInfo(txIndex1 int,
 
 	left += d.P.Sprintf(" | tx: %d", txIndex1)
 	if parsed.TimeDiff == 0 {
-		left += " | Time: [gray]0[-]"
+		left += " | Time: [gray] 0[-]"
 	} else {
 		left += d.P.Sprintf(" | Time: +%d", parsed.TimeDiff)
 	}

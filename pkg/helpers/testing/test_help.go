@@ -27,6 +27,11 @@ func MachDebug(t *stdtest.T, mach am.Api, amDbgAddr string,
 		return
 	}
 
+	// expand the default addr
+	if amDbgAddr == "1" {
+		amDbgAddr = telemetry.DbgAddr
+	}
+
 	amhelp.MachDebug(mach, amDbgAddr, logLvl, stdout,
 		amhelp.SemConfig(true))
 }

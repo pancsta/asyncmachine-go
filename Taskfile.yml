@@ -72,13 +72,17 @@ tasks:
         --dir tmp
         {{.CLI_ARGS}}
 
+  am-dbg-narrow: task am-dbg -- --view-narrow
+
+  am-dbg-reader: task am-dbg -- --view-narrow --view-reader
+
   am-dbg-race:
     silent: false
     env:
       GORACE: "log_path=tmp/am-dbg-race.log"
     cmds:
       - go run -race ./tools/cmd/am-dbg --clean-on-connect --max-mem 1000
-        --dir tmp
+        --dir tmp --dbg-race
         {{.CLI_ARGS}}
 
   am-dbg-prof:

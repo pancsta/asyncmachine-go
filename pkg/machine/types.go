@@ -131,10 +131,13 @@ type Opts struct {
 type Serialized struct {
 	// ID is the ID of a state machine.
 	ID string `json:"id" yaml:"id" toml:"id"`
-	// Time represents machine time - a list of state activation counters.
+	// Time is the [Machine.Time] value.
 	Time Time `json:"time" yaml:"time" toml:"time"`
+	// QueueTick is the [Machine.QueueTick] value.
+	QueueTick uint64 `json:"queue_tick" yaml:"queue_tick" toml:"queue_tick"`
 	// StateNames is an ordered list of state names.
 	StateNames S `json:"state_names" yaml:"state_names" toml:"state_names"`
+	// TODO schema hash
 }
 
 // Api is a subset of Machine for alternative implementations.
@@ -151,12 +154,16 @@ type Api interface {
 	Remove1(state string, args A) Result
 	// Remove is [Machine.Remove].
 	Remove(states S, args A) Result
-	// Set is [Machine.Set].
-	Set(states S, args A) Result
 	// AddErr is [Machine.AddErr].
 	AddErr(err error, args A) Result
 	// AddErrState is [Machine.AddErrState].
 	AddErrState(state string, err error, args A) Result
+	// Toggle is [Machine.Toggle].
+	Toggle(states S, args A) Result
+	// Toggle1 is [Machine.Toggle1].
+	Toggle1(state string, args A) Result
+	// Set is [Machine.Set].
+	Set(states S, args A) Result
 
 	// Traced mutations (remote)
 
@@ -172,6 +179,10 @@ type Api interface {
 	EvAddErr(event *Event, err error, args A) Result
 	// EvAddErrState is [Machine.EvAddErrState].
 	EvAddErrState(event *Event, state string, err error, args A) Result
+	// EvToggle is [Machine.Toggle].
+	EvToggle(event *Event, states S, args A) Result
+	// EvToggle1 is [Machine.Toggle1].
+	EvToggle1(event *Event, state string, args A) Result
 
 	// Waiting (remote)
 
@@ -193,7 +204,7 @@ type Api interface {
 	Is(states S) bool
 	// Is1 is [Machine.Is1].
 	Is1(state string) bool
-	// StateAny is [Machine.Any].
+	// Any is [Machine.Any].
 	Any(states ...S) bool
 	// Any1 is [Machine.Any1].
 	Any1(state ...string) bool
@@ -314,6 +325,8 @@ type Api interface {
 	BindTracer(tracer Tracer) error
 	// AddBreakpoint is [Machine.AddBreakpoint].
 	AddBreakpoint(added S, removed S, strict bool)
+	// AddBreakpoint1 is [Machine.AddBreakpoint1].
+	AddBreakpoint1(added string, removed string, strict bool)
 	// Dispose is [Machine.Dispose].
 	Dispose()
 	// WhenDisposed is [Machine.WhenDisposed].
@@ -731,5 +744,7 @@ const (
 	PositionLast
 )
 
-type HandlerError func(mach *Machine, err error)
-type HandlerChange func(mach *Machine, err error)
+type (
+	HandlerError  func(mach *Machine, err error)
+	HandlerChange func(mach *Machine, err error)
+)
