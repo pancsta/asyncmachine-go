@@ -1,5 +1,32 @@
 # Changelog
 
+## [v0.15.0](https://github.com/pancsta/asyncmachine-go/tree/v0.15.0) (2025-09-23)
+
+- docs: release v0.15 [\#296](https://github.com/pancsta/asyncmachine-go/pull/296)
+   (@pancsta)
+- feat: release v0.15 [\#295](https://github.com/pancsta/asyncmachine-go/pull/295)
+   (@pancsta)
+- feat\(am-dbg\): release am-dbg v0.15 [\#294](https://github.com/pancsta/asyncmachine-go/pull/294)
+   (@pancsta)
+- feat\(helpers\): add blocking Add1Sync [\#293](https://github.com/pancsta/asyncmachine-go/pull/293)
+   (@pancsta)
+- feat\(am-dbg\): add queue section to log reader [\#291](https://github.com/pancsta/asyncmachine-go/pull/291)
+   (@pancsta)
+- feat\(am-dbg\): add queued and canceled txs to log view [\#290](https://github.com/pancsta/asyncmachine-go/pull/290)
+   (@pancsta)
+- feat\(am-dbg\): progressive log rendering [\#289](https://github.com/pancsta/asyncmachine-go/pull/289)
+   (@pancsta)
+- feat\(machine\): simulate TimeAfter for called states [\#288](https://github.com/pancsta/asyncmachine-go/pull/288)
+   (@pancsta)
+- feat\(machine\): add QueueTick, WhenQueue [\#287](https://github.com/pancsta/asyncmachine-go/pull/287)
+   (@pancsta)
+- feat\(machine\): add strict breakpoints [\#286](https://github.com/pancsta/asyncmachine-go/pull/286)
+   (@pancsta)
+- feat\(machine\): add CheckDone to Can methods [\#285](https://github.com/pancsta/asyncmachine-go/pull/285)
+   (@pancsta)
+- fix\(machine\): fix duplicate detection for Can\* [\#284](https://github.com/pancsta/asyncmachine-go/pull/284)
+   (@pancsta)
+
 ## [v0.14.0-pre1](https://github.com/pancsta/asyncmachine-go/tree/v0.14.0-pre1) (2025-08-17)
 
 - feat: release v0.14.0 [\#281](https://github.com/pancsta/asyncmachine-go/pull/281)

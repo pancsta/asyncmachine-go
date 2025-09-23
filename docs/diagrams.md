@@ -427,19 +427,34 @@ classes: {
       stroke: white
       border-radius: 999
       fill: "#45475A"
-      font-size: 20
+      font-size: 50
     }
   }
   group: {
     style: {
       stroke: "#5F5C5C"
       fill: "#262424"
-      font-size: 30
+      font-size: 60
+    }
+  }
+  link: {
+    style: {
+      # font-size: 35
+      # bold: true
+      stroke-width: 8
     }
   }
 }
 
-Mutation -> Transition.Consensus.Relations -> Transition.Consensus.Negotiation -> Transition.Execution
+Mutation -> Transition.Consensus.Relations: {
+  class: link
+}
+Transition.Consensus.Relations -> Transition.Consensus.Negotiation: {
+  class: link
+}
+Transition.Consensus.Negotiation -> Transition.Execution: {
+  class: link
+}
 Transition: {
   class: group
   Consensus: {
@@ -463,22 +478,13 @@ Transition: {
 }
 
 Transition.Execution -> Mutation: queue {
-  style: {
-    font-size: 20
-    bold: true
-  }
+  class: link
 }
 Transition.Execution -> Auto: state changed {
-  style: {
-    font-size: 20
-    bold: true
-  }
+  class: link
 }
 Auto -> Mutation: queue {
-  style: {
-    font-size: 20
-    bold: true
-  }
+  class: link
 }
 Mutation: {
   label: 1. Mutation
