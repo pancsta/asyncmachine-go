@@ -2,6 +2,23 @@
 
 Only `pkg/machine` and `pkg/states` adhere to semver. Semver of other packages is not guaranteed at the moment.
 
+## v0.15
+
+- `Exception` is now `StateException`
+- `Heartbeat` is now `StateHeartbeat`
+- `Healthcheck` is now `StateHealthcheck`
+- `Any` is now `StateAny`
+- `HandlerGlobal` is now `HandlerAnyEnter`
+- `EnvAmLog*` moved to `/pkg/helpers`
+- `SemLogger.SetArgs` is now `SemLogger.SetArgsMapper`
+- `SemLogger.Args` is now `SemLogger.ArgsMapper`
+- `Transition.LogArgs` is now `Mutation.LogArgs`
+- `IsQueued` now uses `int16`
+- `IsQueued` now has `isCheck` and `position` params
+- `Event.Clone` is now `Event.Export`
+- `ResultNoOp` has been removed
+- `WillBe*` has `position` param added
+
 ## v0.13
 
 - `LogSteps` has been removed
