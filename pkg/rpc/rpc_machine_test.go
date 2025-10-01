@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	sst "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
@@ -1195,33 +1196,51 @@ func TestIsTime(t *testing.T) {
 //	m1Str := m1.Encode()
 //
 //	// export
-//	jsonPath := path.Join(os.TempDir(), "am-TestExportImport.json")
+//	jsonPath := path.Join(os.Te1mpDir(), "am-TestExportImport.json")
 //	err := m1.Export()
 // }
 
-// TODO migrate to Tracer (for now)
-// TODO implement processQueue, dispose contexts while processing
 // TestWhenQueue
-// type TestWhenQueueHandlers struct {
-// 	*ExceptionHandler
-// 	done chan struct{}
-// }
-//
-// func (h *TestWhenQueueHandlers) AState(e *Event) {
-// 	m := e.Machine()
-// 	t := e.Args["t"].(*testing.T)
-//
-// 	m.Add1("B", nil)
-// 	m.Add1("C", nil)
-// 	res := m.Add1("D", nil)
-// 	h.done = make(chan struct{})
-//
-// 	waiting := make(chan struct{})
-// 	go func() {
-// 		go close(waiting)
-// 		<-m.WhenQueue(res)
-// 		assertStates(t, m, S{"A", "B", "C", "D"})
-// 		close(h.done)
-// 	}()
-// 	<-waiting
-// }
+type TestWhenQueueTracer struct {
+	*am.NoOpTracer
+	done chan struct{}
+}
+
+func (tr *TestWhenQueueTracer) TransitionEnd(tx *am.Transition) {
+	m := tx.Machine
+	if !tx.Mutation.CalledIndex(m.StateNames()).Is1("A") {
+		return
+	}
+
+	t := tx.Mutation.Args["t"].(*testing.T)
+
+	m.Add1("B", nil)
+	m.Add1("C", nil)
+	res := m.Add1("D", nil)
+	tr.done = make(chan struct{})
+
+	waiting := make(chan struct{})
+	go func() {
+		go close(waiting)
+		<-m.WhenQueue(res)
+		assertStates(t, m, S{"A", "B", "C", "D"})
+		close(tr.done)
+	}()
+	<-waiting
+}
+
+// TODO bind via handlers
+func TestWhenQueue(t *testing.T) {
+	t.Parallel()
+	// init
+	m := utils.NewNoRels(t, nil)
+	tr := &TestWhenQueueTracer{}
+	require.NoError(t, m.BindTracer(tr))
+
+	m.Add1("A", am.A{"t": t})
+	<-tr.done
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}

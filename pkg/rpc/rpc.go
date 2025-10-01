@@ -2,7 +2,6 @@
 package rpc
 
 import (
-	"context"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -20,7 +19,6 @@ import (
 	"github.com/cenkalti/rpc2"
 	"github.com/orsinium-labs/enum"
 
-	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc/states"
@@ -57,8 +55,10 @@ var ss = states.SharedStates
 
 // RPC methods
 
-type ServerMethod enum.Member[string]
-type ClientMethod enum.Member[string]
+type (
+	ServerMethod enum.Member[string]
+	ClientMethod enum.Member[string]
+)
 
 var (
 	// methods define on the server
@@ -619,9 +619,10 @@ func MachReplEnv(mach am.Api) <-chan error {
 	dir := os.Getenv(EnvAmReplDir)
 
 	err := make(chan error)
-	if addr == "" {
+	switch addr {
+	case "":
 		return err
-	} else if addr == "1" {
+	case "1":
 		// expand 1 to default
 		addr = ""
 	}
@@ -772,7 +773,6 @@ func NewClockMsg(
 func ClockFromMsg(
 	timeBefore am.Time, qTickBefore uint64, msg *ClockMsg,
 ) (am.Time, uint64) {
-
 	// calculate
 	timeAfter := slices.Clone(timeBefore)
 	l := len(timeAfter)
@@ -842,49 +842,8 @@ func TrafficMeter(
 	counter <- c
 }
 
-// DisposeWithCtx handles early binding disposal caused by a canceled context.
-// It's used by most of "when" methods.
-// TODO GC in the handler loop instead
-// TODO mixin from am.Subscription
-func DisposeWithCtx[T comparable](
-	mach *Worker, ctx context.Context, ch chan struct{}, states am.S, binding T,
-	lock *sync.RWMutex, index map[string][]T, logMsg string,
-) {
-	if ctx == nil {
-		return
-	}
-
-	go func() {
-		select {
-		case <-ch:
-			return
-		case <-mach.Ctx().Done():
-			return
-		case <-ctx.Done():
-		}
-
-		// TODO track
-		utils.CloseSafe(ch)
-
-		// GC only if needed
-		if mach.Disposed.Load() {
-			return
-		}
-		lock.Lock()
-		defer lock.Unlock()
-
-		for _, s := range states {
-			if _, ok := index[s]; ok {
-				if len(index[s]) == 1 {
-					delete(index, s)
-				} else {
-					index[s] = utils.SlicesWithout(index[s], binding)
-				}
-
-				if logMsg != "" {
-					mach.log(am.LogOps, logMsg, nil)
-				}
-			}
-		}
-	}()
+func newClosedChan() chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
 }
