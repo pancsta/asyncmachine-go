@@ -453,17 +453,17 @@ func (m *Machine) doDispose(force bool) {
 	closeSafe(m.whenDisposed)
 }
 
-func (m *Machine) getHandlers(unsafe bool) []*handler {
-	if !unsafe {
+func (m *Machine) getHandlers(locked bool) []*handler {
+	if !locked {
 		m.handlersMx.Lock()
 		defer m.handlersMx.Unlock()
 	}
 
-	return m.handlers
+	return slices.Clone(m.handlers)
 }
 
-func (m *Machine) setHandlers(unsafe bool, handlers []*handler) {
-	if !unsafe {
+func (m *Machine) setHandlers(locked bool, handlers []*handler) {
+	if !locked {
 		m.handlersMx.Lock()
 		defer m.handlersMx.Unlock()
 	}
@@ -2111,7 +2111,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 	}
 
 	handlerCalled := false
-	handlers := slices.Clone(m.getHandlers(false))
+	handlers := m.getHandlers(false)
 	for i := 0; !m.disposing.Load() && i < len(handlers); i++ {
 
 		h := handlers[i]
