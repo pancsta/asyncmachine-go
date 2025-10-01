@@ -687,6 +687,7 @@ type Tracer interface {
 }
 
 // NoOpTracer is a no-op implementation of Tracer, used for embedding.
+// TODO rename to TracerNoOp
 type NoOpTracer struct{}
 
 func (t *NoOpTracer) TransitionInit(transition *Transition)          {}
@@ -855,13 +856,13 @@ type WhenBinding struct {
 
 type WhenTimeBinding struct {
 	Ch chan struct{}
-	// map of completed to their index positions
+	// map of matched to their index positions
 	// TODO optimize indexes
 	Index map[string]int
-	// number of matches so far
+	// number of matches so far TODO len(Index) ?
 	Matched int
 	// number of total matches needed
-	Total int
+	Total int // TODO len(Times) ?
 	// optional Time to match for completed from Index
 	Times     Time
 	Completed StateIsActive
@@ -869,9 +870,10 @@ type WhenTimeBinding struct {
 }
 
 type WhenArgsBinding struct {
-	ch   chan struct{}
-	args A
-	ctx  context.Context
+	ch      chan struct{}
+	handler string
+	args    A
+	ctx     context.Context
 }
 
 type whenQueueEndsBinding struct {
@@ -884,7 +886,7 @@ type whenQueueBinding struct {
 	tick Result
 }
 
-// TODO optimize indexes
+// TODO optimize with indexes
 type StateIsActive map[string]bool
 
 // handler represents a single event consumer, synchronized by channels.
@@ -1047,4 +1049,10 @@ func (t *LastTxTracer) String() string {
 	}
 
 	return tx.String()
+}
+
+func newClosedChan() chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
 }

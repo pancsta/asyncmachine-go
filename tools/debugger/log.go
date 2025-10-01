@@ -1281,9 +1281,10 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 			if past.MutQueueTick > 0 {
 				after = after + " " + d.P.Sprintf("[gray]q%v", past.MutQueueTick)
 			}
-			if before == "+" {
+			switch before {
+			case "+":
 				before = " +"
-			} else if before == "-" {
+			case "-":
 				before = "- "
 			}
 			mutNode := cview.NewTreeNode("[::b]" + before + "[::-]" + after)

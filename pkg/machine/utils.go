@@ -216,9 +216,10 @@ func SchemaMerge(schemas ...Schema) Schema {
 	// TODO test
 	// defaults
 	l := len(schemas)
-	if l == 0 {
+	switch l {
+	case 0:
 		return Schema{}
-	} else if l == 1 {
+	case 1:
 		return schemas[0]
 	}
 

@@ -1938,9 +1938,9 @@ func TestWhenCtx(t *testing.T) {
 	whenCh := m.When1("C", ctx)
 
 	// assert
-	assert.Greater(t, len(m.indexWhenTime), 0)
-	assert.Greater(t, len(m.indexWhen), 0)
-	assert.Greater(t, len(m.indexWhenArgs), 0)
+	assert.Greater(t, len(m.subs.whenTime), 0)
+	assert.Greater(t, len(m.subs.when), 0)
+	assert.Greater(t, len(m.subs.whenArgs), 0)
 
 	go func() {
 		time.Sleep(10 * time.Millisecond)
@@ -1962,19 +1962,13 @@ func TestWhenCtx(t *testing.T) {
 		// resolved
 	}
 
-	// wait for the context to be canceled and cleanups happen
-	// TODO bind to default value of the delay
-	time.Sleep(2 * 100 * time.Millisecond)
+	// GC contexts via another mutation
+	m.Add(S{"D"}, nil)
 
 	// assert
-	// use internal locks to avoid races
-	m.activeStatesLock.Lock()
-	m.indexWhenArgsLock.Lock()
-	assert.Equal(t, 0, len(m.indexWhenTime))
-	assert.Equal(t, 0, len(m.indexWhen))
-	assert.Equal(t, 0, len(m.indexWhenArgs))
-	m.activeStatesLock.Unlock()
-	m.indexWhenArgsLock.Unlock()
+	assert.Equal(t, 0, len(m.subs.whenTime))
+	assert.Equal(t, 0, len(m.subs.when))
+	assert.Equal(t, 0, len(m.subs.whenArgs))
 
 	// test validation
 	whenTimeCh = m.WhenTime(S{"A", "B"}, Time{1}, nil)
@@ -2409,15 +2403,17 @@ func TestWhenQueueEnds(t *testing.T) {
 	// test with ctx race
 	ctx, cancel := context.WithCancel(context.Background())
 	readyMut = make(chan struct{})
+	done := make(chan struct{})
 	go func() {
 		<-readyMut
 		queueEnds = m.WhenQueueEnds(ctx)
 		cancel()
+		// confirm the queue wait is closed
+		<-queueEnds
+		close(done)
 	}()
 	m.Add1("A", A{"readyMut": readyMut})
-	<-ctx.Done()
-	// confirm the queue wait is closed
-	<-queueEnds
+	<-done
 
 	// dispose
 	m.Dispose()
@@ -2988,7 +2984,6 @@ func TestDisposedNoOp(t *testing.T) {
 	m.Dispose()
 	<-m.WhenDisposed()
 	e := &Event{}
-	tx := &Transition{}
 	s := S{"A"}
 
 	// mutations
@@ -3049,11 +3044,6 @@ func TestDisposedNoOp(t *testing.T) {
 	m.PanicToErr(A{})
 	m.PanicToErrState("A", A{})
 	m.queueMutation(MutationAdd, s, A{}, nil)
-	m.processStateCtxCacheBindings(tx)
-	m.processWhenBindings(tx)
-	m.processWhenTimeBindings(tx)
-	m.processWhenQueueEndBindings()
-	m.processWhenArgs(e)
 }
 
 // SCHEMA GROUPS
