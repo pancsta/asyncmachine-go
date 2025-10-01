@@ -1,7 +1,6 @@
 package machine
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -12,8 +11,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 )
 
 // ///// ///// /////
@@ -37,6 +34,8 @@ func SameStates(states1 S, states2 S) S {
 	})
 }
 
+// StatesEqual returns true if states1 and states2 are equal, regardless of
+// order.
 func StatesEqual(states1 S, states2 S) bool {
 	return slicesEvery(states1, states2) && slicesEvery(states2, states1)
 }
@@ -576,57 +575,6 @@ func slicesUniq[T comparable](coll []T) []T {
 	}
 
 	return ret
-}
-
-// disposeWithCtx handles early binding disposal caused by a canceled context.
-// It's used by most of "when" methods.
-// TODO GC in the handler loop instead
-func disposeWithCtx[T comparable](
-	mach *Machine, ctx context.Context, ch chan struct{}, states S, binding T,
-	lock *sync.RWMutex, index map[string][]T, logMsg string,
-) {
-	// TODO groups waiting on the same context
-	// TODO close using the handler loop?
-	if ctx == nil {
-		return
-	}
-	go func() {
-		select {
-		case <-ch:
-			return
-		case <-mach.ctx.Done():
-			return
-		case <-ctx.Done():
-		}
-
-		// delay a bit to avoid racing with `case <-ctx.Done():`
-		// TODO config
-		time.Sleep(100 * time.Millisecond)
-
-		// TODO track
-		closeSafe(ch)
-
-		// GC only if needed
-		if mach.disposed.Load() {
-			return
-		}
-		lock.Lock()
-		defer lock.Unlock()
-
-		for _, s := range states {
-			if _, ok := index[s]; ok {
-				if len(index[s]) == 1 {
-					delete(index, s)
-				} else {
-					index[s] = slicesWithout(index[s], binding)
-				}
-
-				if logMsg != "" {
-					mach.log(LogOps, logMsg)
-				}
-			}
-		}
-	}()
 }
 
 func cloneOptions(opts *Opts) *Opts {

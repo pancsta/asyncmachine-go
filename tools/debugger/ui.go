@@ -59,7 +59,6 @@ func (d *Debugger) hInitUiComponents() {
 	d.log.SetClickedFunc(func(txId string) {
 		// unblock
 		go func() {
-
 			// scroll to tx
 			txIdx := d.C.txIndex(txId)
 			d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": txId})
@@ -168,7 +167,6 @@ func (d *Debugger) hInitTimelineSteps() {
 
 			return a, event
 		} else if a != cview.MouseLeftClick {
-
 			// TODO support wheel scrolling
 			return a, event
 		}
@@ -206,7 +204,6 @@ func (d *Debugger) hInitTimelineTx() {
 
 			return a, event
 		} else if a != cview.MouseLeftClick {
-
 			return a, event
 		}
 

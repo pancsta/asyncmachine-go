@@ -31,7 +31,7 @@ func main() {
 	// worker
 
 	// machine init
-	mach := am.New(context.Background(), testutils.RelsNodeWorkerStruct, &am.Opts{
+	mach := am.New(context.Background(), testutils.RelsNodeWorkerSchema, &am.Opts{
 		Id: "t-worker-" + addr})
 	err := mach.VerifyStates(testutils.RelsNodeWorkerStates)
 	if err != nil {

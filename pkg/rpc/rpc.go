@@ -18,8 +18,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/rpc2"
-
-	"github.com/pancsta/asyncmachine-go/pkg/rpc/rpcnames"
+	"github.com/orsinium-labs/enum"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -55,6 +54,39 @@ var ss = states.SharedStates
 // ///// TYPES
 
 // ///// ///// /////
+
+// RPC methods
+
+type ServerMethod enum.Member[string]
+type ClientMethod enum.Member[string]
+
+var (
+	// methods define on the server
+
+	ServerAdd       = ServerMethod{"Add"}
+	ServerAddNS     = ServerMethod{"AddNS"}
+	ServerRemove    = ServerMethod{"Remove"}
+	ServerSet       = ServerMethod{"Set"}
+	ServerHello     = ServerMethod{"Hello"}
+	ServerHandshake = ServerMethod{"Handshake"}
+	ServerLog       = ServerMethod{"Log"}
+	ServerSync      = ServerMethod{"Sync"}
+	ServerBye       = ServerMethod{"Close"}
+
+	ServerMethods = enum.New(ServerAdd, ServerAddNS, ServerRemove, ServerSet,
+		ServerHello, ServerHandshake, ServerLog, ServerSync, ServerBye)
+
+	// methods define on the client
+
+	ClientSetClock     = ClientMethod{"ClientSetClock"}
+	ClientPushAllTicks = ClientMethod{"ClientPushAllTicks"}
+	ClientSendPayload  = ClientMethod{"ClientSendPayload"}
+	ClientBye          = ClientMethod{"ClientBye"}
+	ClientSchemaChange = ClientMethod{"SchemaChange"}
+
+	ClientMethods = enum.New(ClientSetClock, ClientPushAllTicks,
+		ClientSendPayload, ClientBye, ClientSchemaChange)
+)
 
 type ArgsHello struct {
 	ReqSchema bool
@@ -98,12 +130,13 @@ type RespHandshake struct {
 }
 
 type RespResult struct {
-	Clock  ClockMsg
+	Clock  *ClockMsg
 	Result am.Result
 }
 
 type RespSync struct {
-	Time am.Time
+	Time      am.Time
+	QueueTick uint64
 }
 
 type RespGet struct {
@@ -112,12 +145,27 @@ type RespGet struct {
 
 type Empty struct{}
 
-type ClockMsg [][2]int
+type ClockMsg struct {
+	// Updates contain an incremental diffs of [stateIdx, diff].
+	Updates [][2]int
+	// QueueTick is an incremental diff for the queue tick.
+	QueueTick int
+	// Checksum is the last digit of (TimeSum + QueueTick)
+	Checksum uint8
+	// DBGSum       uint64
+	// DBGLastSum   uint64
+	// DBGQTick     uint64
+	// DBGLastQTick uint64
+}
 
+// PushAllTicks TODO implement
+// PushAllTicks should list all the mutations, with clocks and queue ticks
+// which then will be processed as a queue. The client reconstructs the tx on
+// his side. TODO mind partially accepted auto states (fake called states).
 type PushAllTicks struct {
-	// Mutation is 0:[am.MutationType] 1-n: called state index
-	Mutation []int
-	ClockMsg ClockMsg
+	MutationType []am.MutationType
+	CalledStates [][]int
+	ClockMsg     []*ClockMsg
 }
 
 // clientServerMethods is a shared interface for RPC client/server.
@@ -146,6 +194,7 @@ type A struct {
 	Id        string `log:"id"`
 	Name      string `log:"name"`
 	MachTime  am.Time
+	QueueTick uint64
 	Payload   *ArgsPayload
 	Addr      string `log:"addr"`
 	Err       error
@@ -226,7 +275,7 @@ type serverRpcMethods interface {
 
 // clientRpcMethods is the RPC server exposed by the RPC client for bi-di comm.
 type clientRpcMethods interface {
-	RemoteSetClock(worker *rpc2.Client, args ClockMsg, resp *Empty) error
+	RemoteSetClock(worker *rpc2.Client, args *ClockMsg, resp *Empty) error
 	RemoteSendingPayload(
 		worker *rpc2.Client, file *ArgsPayload, resp *Empty,
 	) error
@@ -493,28 +542,6 @@ func (s *semLogger) IsCan() bool {
 
 // ///// ///// /////
 
-// Event struct represents a single event of a Mutation within a Transition.
-// One event can have 0-n handlers. TODO remove?
-type Event struct {
-	// Name of the event / handler
-	Name string
-	// Machine is the machine that the event belongs to.
-	Machine am.Api
-}
-
-// Transition represents processing of a single mutation within a machine.
-type Transition struct {
-	// Machine is the parent machine of this transition.
-	Machine am.Api
-	// TimeBefore is the machine time from before the transition.
-	TimeBefore am.Time
-	// TimeAfter is the machine time from after the transition. If the transition
-	// has been canceled, this will be the same as TimeBefore.
-	TimeAfter am.Time
-}
-
-type HandlerFinal func(e *Event)
-
 type remoteHandler struct {
 	h            any
 	funcNames    []string
@@ -547,7 +574,7 @@ type WorkerTracer struct {
 	s *Server
 }
 
-func (t *WorkerTracer) TransitionEnd(_ *am.Transition) {
+func (t *WorkerTracer) TransitionEnd(tx *am.Transition) {
 	// TODO channel and value in atomic, skip dups (smaller tick values)
 	go func() {
 		t.s.mutMx.Lock()
@@ -568,7 +595,7 @@ func (t *WorkerTracer) SchemaChange(mach am.Api, oldSchema am.Schema) {
 				Serialized: mach.Export(),
 			}
 			err := c.CallWithContext(mach.Ctx(),
-				rpcnames.ClientSchemaChange.Encode(), msg, &Empty{})
+				ClientSchemaChange.Value, msg, &Empty{})
 			mach.AddErr(err, nil)
 		}
 	}()
@@ -705,39 +732,63 @@ func MachRepl(
 //	return am.Time(msg)
 // }
 
-func NewClockMsg(before, after am.Time) ClockMsg {
-	var val [][2]int
+func Checksum(mTime uint64, qTick uint64) uint8 {
+	return uint8(mTime+qTick) % 10
+}
 
-	for i := range after {
-		if before == nil || i >= len(before) {
-			// TODO test this path
-			val = append(val, [2]int{i, int(after[i])})
-		} else if before[i] != after[i] {
-			val = append(val, [2]int{i, int(after[i] - before[i])})
+// NewClockMsg create a new diff update based on the last and current machine
+// time, and last and current queue tick.
+func NewClockMsg(
+	tSum uint64, tBefore, tAfter am.Time, qBefore, qAfter uint64,
+) *ClockMsg {
+	ret := &ClockMsg{
+		QueueTick: int(qAfter) - int(qBefore),
+		Checksum:  Checksum(tSum, qAfter),
+
+		// debug
+		// DBGSum:       tSum,
+		// DBGQTick:     qAfter,
+		// DBGLastSum:   tBefore.Sum(),
+		// DBGLastQTick: qBefore,
+	}
+
+	for stateIdx := range tAfter {
+		// first call or new schema
+		if tBefore == nil || stateIdx >= len(tBefore) {
+			// TODO test this path, eg schema update
+			ret.Updates = append(ret.Updates,
+				[2]int{stateIdx, int(tAfter[stateIdx])})
+
+			// regular update
+		} else if tBefore[stateIdx] != tAfter[stateIdx] {
+			ret.Updates = append(ret.Updates,
+				[2]int{stateIdx, int(tAfter[stateIdx] - tBefore[stateIdx])})
 		}
 	}
 
-	return val
+	return ret
 }
 
-func ClockFromMsg(before am.Time, msg ClockMsg) am.Time {
-	after := slices.Clone(before)
-	l := len(after)
+func ClockFromMsg(
+	timeBefore am.Time, qTickBefore uint64, msg *ClockMsg,
+) (am.Time, uint64) {
 
-	for _, v := range msg {
-		if len(v) < 2 {
-			continue
-		}
+	// calculate
+	timeAfter := slices.Clone(timeBefore)
+	l := len(timeAfter)
+
+	for _, v := range msg.Updates {
 		key := v[0]
 		val := v[1]
 		if key >= l {
 			// TODO
 			continue
 		}
-		after[key] += uint64(val)
+		timeAfter[key] += uint64(val)
 	}
+	qTickAfter := qTickBefore + uint64(msg.QueueTick)
 
-	return after
+	return timeAfter, qTickAfter
 }
 
 func TrafficMeter(

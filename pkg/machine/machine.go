@@ -92,7 +92,8 @@ type Machine struct {
 	queue []*Mutation
 	// queueTick is the number of times the queue has processed a mutation. Starts
 	// from [1], for easy comparison with [Result].
-	queueTick         uint64
+	queueTick uint64
+	// queueTicksPending is the part of the queue with queue ticks assigned.
 	queueTicksPending uint64
 	queueToken        atomic.Uint64
 	queueLock         sync.RWMutex
@@ -104,35 +105,34 @@ type Machine struct {
 	// Default: *DefaultRelationsResolver.
 	resolver RelationsResolver
 	// List of all the registered state names.
-	stateNames            S
-	stateNamesExport      S
-	handlersLock          sync.RWMutex
-	loopLock              sync.Mutex
-	handlers              []*handler
-	clock                 Clock
-	cancel                context.CancelFunc
-	logLevel              atomic.Pointer[LogLevel]
-	logger                atomic.Pointer[LoggerFn]
-	semLogger             SemLogger
-	indexWhen             IndexWhen
-	indexWhenTime         IndexWhenTime
-	indexWhenArgs         IndexWhenArgs
-	indexWhenArgsLock     sync.RWMutex
-	indexStateCtx         IndexStateCtx
-	indexWhenQueueEnd     []whenQueueEndBinding
-	indexWhenQueueEndLock sync.Mutex
-	indexWhenQueue        []whenQueueBinding
-	indexWhenQueueLock    sync.Mutex
-	handlerStart          chan *handlerCall
-	handlerEnd            chan bool
-	handlerPanic          chan recoveryData
-	handlerTimer          *time.Timer
-	logEntriesLock        sync.Mutex
-	logEntries            []*LogEntry
-	logArgs               atomic.Pointer[LogArgsMapperFn]
-	currentHandler        atomic.Value
-	disposeHandlers       []HandlerDispose
-	timeLast              atomic.Pointer[Time]
+	stateNames             S
+	stateNamesExport       S
+	handlersLock           sync.RWMutex
+	loopLock               sync.Mutex
+	handlers               []*handler
+	clock                  Clock
+	cancel                 context.CancelFunc
+	logLevel               atomic.Pointer[LogLevel]
+	logger                 atomic.Pointer[LoggerFn]
+	semLogger              SemLogger
+	indexWhen              IndexWhen
+	indexWhenTime          IndexWhenTime
+	indexWhenArgs          IndexWhenArgs
+	indexStateCtx          IndexStateCtx
+	indexWhenQueueEnds     []whenQueueEndsBinding
+	indexWhenQueueEndsLock sync.Mutex
+	indexWhenQueue         []whenQueueBinding
+	indexWhenQueueLock     sync.Mutex
+	handlerStart           chan *handlerCall
+	handlerEnd             chan bool
+	handlerPanic           chan recoveryData
+	handlerTimer           *time.Timer
+	logEntriesLock         sync.Mutex
+	logEntries             []*LogEntry
+	logArgs                atomic.Pointer[LogArgsMapperFn]
+	currentHandler         atomic.Value
+	disposeHandlers        []HandlerDispose
+	timeLast               atomic.Pointer[Time]
 	// Channel closing when the machine finished disposal. Read-only.
 	whenDisposed       chan struct{}
 	handlerLoopRunning atomic.Bool
@@ -399,16 +399,16 @@ func (m *Machine) doDispose(force bool) {
 	if !force {
 		m.activeStatesLock.Lock()
 		defer m.activeStatesLock.Unlock()
-		m.indexWhenArgsLock.Lock()
-		defer m.indexWhenArgsLock.Unlock()
-		m.indexWhenQueueEndLock.Lock()
-		defer m.indexWhenQueueEndLock.Unlock()
+		m.indexWhenQueueEndsLock.Lock()
+		defer m.indexWhenQueueEndsLock.Unlock()
 		m.indexWhenQueueLock.Lock()
 		defer m.indexWhenQueueLock.Unlock()
 		m.tracersLock.Lock()
 		defer m.tracersLock.Unlock()
 		m.handlersLock.Lock()
 		defer m.handlersLock.Unlock()
+		m.queueLock.Lock()
+		defer m.queueLock.Unlock()
 	}
 
 	m.log(LogEverything, "[end] doDispose")
@@ -418,7 +418,6 @@ func (m *Machine) doDispose(force bool) {
 	}
 	m.handlers = nil
 
-	m.tracers = nil
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		m.loopLock.Lock()
@@ -429,7 +428,33 @@ func (m *Machine) doDispose(force bool) {
 		closeSafe(m.handlerStart)
 	}()
 
-	// TODO close all the When chans
+	// close channels
+	for state := range m.indexWhen {
+		for _, binding := range m.indexWhen[state] {
+			close(binding.Ch)
+		}
+	}
+	for state := range m.indexWhenTime {
+		for _, binding := range m.indexWhenTime[state] {
+			close(binding.Ch)
+		}
+	}
+	for state := range m.indexWhenArgs {
+		for _, binding := range m.indexWhenArgs[state] {
+			close(binding.ch)
+		}
+	}
+	for _, bind := range m.indexWhenQueueEnds {
+		close(bind.ch)
+	}
+	for _, mut := range m.queue {
+		if !mut.IsCheck {
+			continue
+		}
+		if done, ok := mut.Args[argCheckDone].(*CheckDone); ok {
+			close(done.Ch)
+		}
+	}
 
 	if m.handlerTimer != nil {
 		m.handlerTimer.Stop()
@@ -521,12 +546,9 @@ func (m *Machine) When(states S, ctx context.Context) <-chan struct{} {
 		States:   setMap,
 		Total:    len(states),
 		Matched:  matched,
+		Ctx:      ctx,
 	}
 	m.log(LogOps, "[when:new] %s", j(states))
-
-	// doDispose with context
-	disposeWithCtx(m, ctx, ch, states, binding, &m.activeStatesLock, m.indexWhen,
-		fmt.Sprintf("[when:match] %s", j(states)))
 
 	// insert the binding
 	for _, s := range states {
@@ -585,10 +607,6 @@ func (m *Machine) WhenNot(states S, ctx context.Context) <-chan struct{} {
 	}
 	m.log(LogOps, "[whenNot:new] %s", j(states))
 
-	// doDispose with context
-	disposeWithCtx(m, ctx, ch, states, binding, &m.activeStatesLock, m.indexWhen,
-		fmt.Sprintf("[whenNot:match] %s", j(states)))
-
 	// insert the binding
 	for _, s := range states {
 		if _, ok := m.indexWhen[s]; !ok {
@@ -630,8 +648,8 @@ func (m *Machine) WhenArgs(
 	name := state + SuffixState
 
 	// locks
-	m.indexWhenArgsLock.Lock()
-	defer m.indexWhenArgsLock.Unlock()
+	m.activeStatesLock.Lock()
+	defer m.activeStatesLock.Unlock()
 
 	// log TODO pass through logArgs?
 	argNames := jw(slices.AppendSeq(S{}, maps.Keys(args)), ",")
@@ -647,11 +665,8 @@ func (m *Machine) WhenArgs(
 	binding := &WhenArgsBinding{
 		ch:   ch,
 		args: args,
+		ctx:  ctx,
 	}
-
-	// doDispose with context
-	disposeWithCtx(m, ctx, ch, S{name}, binding, &m.indexWhenArgsLock,
-		m.indexWhenArgs, fmt.Sprintf("[whenArgs:match] %s (%s)", state, argNames))
 
 	// insert the binding
 	if _, ok := m.indexWhenArgs[name]; !ok {
@@ -732,13 +747,9 @@ func (m *Machine) WhenTime(
 		Total:     len(states),
 		Matched:   matched,
 		Times:     times,
+		Ctx:       ctx,
 	}
 	m.log(LogOps, "[whenTime:new] %s %s", jw(states, ","), times)
-
-	// doDispose with context
-	logMsg := fmt.Sprintf("[whenTime:match] %s %s", jw(states, ","), times)
-	disposeWithCtx(m, ctx, ch, states, binding, &m.activeStatesLock,
-		m.indexWhenTime, logMsg)
 
 	// insert the binding
 	for _, s := range states {
@@ -785,43 +796,17 @@ func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan struct{} {
 	}
 
 	// locks
-	m.indexWhenQueueEndLock.Lock()
-	defer m.indexWhenQueueEndLock.Unlock()
+	m.indexWhenQueueEndsLock.Lock()
+	defer m.indexWhenQueueEndsLock.Unlock()
 
 	// add the binding to an index of each state
-	binding := whenQueueEndBinding{
-		ch: ch,
-	}
-
-	// doDispose with context
-	// TODO extract
-	if ctx != nil {
-		go func() {
-			select {
-			case <-ch:
-				return
-			case <-m.ctx.Done():
-				return
-			case <-ctx.Done():
-			}
-			// GC only if needed
-			if m.disposed.Load() {
-				return
-			}
-
-			// TODO track
-			closeSafe(ch)
-
-			m.indexWhenQueueEndLock.Lock()
-			defer m.indexWhenQueueEndLock.Unlock()
-
-			// TODO optimize with indexes
-			m.indexWhenQueueEnd = slicesWithout(m.indexWhenQueueEnd, binding)
-		}()
+	binding := whenQueueEndsBinding{
+		ch:  ch,
+		ctx: ctx,
 	}
 
 	// insert the binding
-	m.indexWhenQueueEnd = append(m.indexWhenQueueEnd, binding)
+	m.indexWhenQueueEnds = append(m.indexWhenQueueEnds, binding)
 
 	return ch
 }
@@ -1036,6 +1021,7 @@ func (m *Machine) Add1(state string, args A) Result {
 // them otherwise. Returns the result of the transition (Executed, Queued,
 // Canceled).
 func (m *Machine) Toggle(states S, args A) Result {
+	// TODO add to Api
 	if m.disposed.Load() {
 		return Canceled
 	}
@@ -1049,6 +1035,7 @@ func (m *Machine) Toggle(states S, args A) Result {
 // Toggle1 activates or deactivates a single state, depending on its current
 // state. Returns the result of the transition (Executed, Queued, Canceled).
 func (m *Machine) Toggle1(state string, args A) Result {
+	// TODO add to Api
 	if m.disposed.Load() {
 		return Canceled
 	}
@@ -1383,7 +1370,7 @@ func (m *Machine) Not1(state string) bool {
 	return m.Not(S{state})
 }
 
-// StateAny a is group call to Is, returns true if any of the params return true
+// Any a is group call to Is, returns true if any of the params return true
 // from Is.
 //
 //	machine.StringAll() // ()[Foo:0 Bar:0 Baz:0]
@@ -1819,11 +1806,7 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 	}
 
 	// prepend the exception to the queue
-	m.queueLock.Lock()
-	defer m.queueLock.Unlock()
-	m.queue = append([]*Mutation{errMut}, m.queue...)
-	m.queueLen.Store(int32(len(m.queue)))
-	// TODO refresh m.queueTickedLen
+	m.PrependMut(errMut)
 
 	// restart the handler loop
 	go m.handlerLoop()
@@ -2159,7 +2142,7 @@ func (m *Machine) processQueue() Result {
 		}
 		t := newTransition(m, mut)
 
-		// execute the transition
+		// execute the transition and set active states
 		ret = append(ret, t.emitEvents())
 		m.timeLast.Store(&t.TimeAfter)
 		// TODO assert QueueTick same as mut queue tick?
@@ -2275,7 +2258,8 @@ func (m *Machine) processWhenBindings(t *Transition) {
 			}
 
 			// if not all matched, ignore for now
-			if binding.Matched < binding.Total {
+			expired := binding.Ctx != nil && binding.Ctx.Err() != nil
+			if binding.Matched < binding.Total && !expired {
 				continue
 			}
 
@@ -2339,7 +2323,8 @@ func (m *Machine) processWhenTimeBindings(t *Transition) {
 			}
 
 			// if not all matched, ignore for now
-			if binding.Matched < binding.Total {
+			expired := binding.Ctx != nil && binding.Ctx.Err() != nil
+			if binding.Matched < binding.Total && !expired {
 				continue
 			}
 
@@ -2373,10 +2358,10 @@ func (m *Machine) processWhenQueueEndBindings() {
 	if m.disposed.Load() {
 		return
 	}
-	m.indexWhenQueueEndLock.Lock()
-	toPush := slices.Clone(m.indexWhenQueueEnd)
-	m.indexWhenQueueEnd = nil
-	m.indexWhenQueueEndLock.Unlock()
+	m.indexWhenQueueEndsLock.Lock()
+	toPush := slices.Clone(m.indexWhenQueueEnds)
+	m.indexWhenQueueEnds = nil
+	m.indexWhenQueueEndsLock.Unlock()
 
 	for _, binding := range toPush {
 		closeSafe(binding.ch)
@@ -2389,10 +2374,11 @@ func (m *Machine) processWhenArgs(e *Event) {
 	}
 
 	// process args channels
-	m.indexWhenArgsLock.Lock()
+	m.activeStatesLock.Lock()
 	var chToClose []chan struct{}
 	for _, binding := range m.indexWhenArgs[e.Name] {
-		if !compareArgs(e.Args, binding.args) {
+		expired := binding.ctx != nil && binding.ctx.Err() != nil
+		if !compareArgs(e.Args, binding.args) && !expired {
 			continue
 		}
 
@@ -2411,7 +2397,7 @@ func (m *Machine) processWhenArgs(e *Event) {
 			m.indexWhenArgs[e.Name] = slicesWithout(m.indexWhenArgs[e.Name], binding)
 		}
 	}
-	m.indexWhenArgsLock.Unlock()
+	m.activeStatesLock.Unlock()
 
 	for _, ch := range chToClose {
 		closeSafe(ch)
@@ -3265,6 +3251,7 @@ func (m *Machine) Inspect(states S) string {
 //	case "Stopped":
 //	}
 func (m *Machine) Switch(groups ...S) string {
+	// TODO replace with ActiveState(states S...) S
 	activeStates := m.ActiveStates()
 	for _, states := range groups {
 		for _, state := range states {
@@ -3280,6 +3267,7 @@ func (m *Machine) Switch(groups ...S) string {
 // CountActive returns the number of active states from a passed list. Useful
 // for state groups.
 func (m *Machine) CountActive(states S) int {
+	// TODO replace with ActiveState(states S...) S
 	activeStates := m.ActiveStates()
 	c := 0
 	for _, state := range states {
@@ -3293,7 +3281,7 @@ func (m *Machine) CountActive(states S) int {
 
 // HandleDispose adds a function to be called after the machine gets disposed.
 // These functions will run synchronously just before WhenDisposed() channel
-// gets closed. Considering it's a low-level feature, its advaised to handle
+// gets closed. Considering it's a low-level feature, it's advised to handle
 // disposal via dedicated states.
 func (m *Machine) HandleDispose(fn HandlerDispose) {
 	m.handlersLock.Lock()
@@ -3430,8 +3418,6 @@ func (m *Machine) EvAdd(event *Event, states S, args A) Result {
 	return res
 }
 
-// TODO add EvToggle, EvToggle1
-
 // EvAdd1 is like Add1 but passed the source event as the 1st param, which
 // results in traceable transitions.
 func (m *Machine) EvAdd1(event *Event, state string, args A) Result {
@@ -3520,25 +3506,30 @@ func (m *Machine) EvAddErrState(
 		ErrTrace: trace,
 	}
 
-	// TODO prepend to the queue? what effects / benefits
+	// TODO prepend to the queue? test
 	return m.EvAdd(event, S{state, StateException}, PassMerge(args, argsT))
 }
 
 // Export exports the machine state as Serialized: ID, machine time, and
 // state names.
 func (m *Machine) Export() *Serialized {
+	// TODO return (*Serialized, Schema) to be sure it didnt race
 	m.activeStatesLock.RLock()
 	defer m.activeStatesLock.RUnlock()
+	m.queueLock.Lock()
+	defer m.queueLock.Unlock()
 
 	if !m.statesVerified.Load() {
 		panic("can't export - call VerifyStates first")
 	}
 
-	m.log(LogChanges, "[import] exported at %d ticks", m.time(nil))
+	t := m.time(nil)
+	m.log(LogOps, "[import] exported at %d ticks", t.Sum())
 
 	return &Serialized{
 		ID:         m.id,
-		Time:       m.time(nil),
+		Time:       t,
+		QueueTick:  m.queueTick,
 		StateNames: m.stateNames,
 	}
 }
@@ -3549,6 +3540,15 @@ func (m *Machine) Export() *Serialized {
 func (m *Machine) Import(data *Serialized) error {
 	m.activeStatesLock.RLock()
 	defer m.activeStatesLock.RUnlock()
+	m.queueLock.Lock()
+	defer m.queueLock.Unlock()
+	m.schemaLock.Lock()
+	defer m.schemaLock.Unlock()
+
+	// verify schema len
+	if len(m.schema) != len(data.StateNames) {
+		return fmt.Errorf("%w: importing diff state len", ErrSchema)
+	}
 
 	// restore active states and clocks
 	var t uint64
@@ -3571,9 +3571,10 @@ func (m *Machine) Import(data *Serialized) error {
 	m.stateNames = data.StateNames
 	m.stateNamesExport = nil
 	m.id = data.ID
+	m.queueTick = data.QueueTick
 	m.statesVerified.Store(true)
 
-	// TODO optionally run handlers for active states?
+	// TODO trigger MachineRestoredState
 	m.log(LogChanges, "[import] imported to %d ticks", t)
 
 	return nil

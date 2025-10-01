@@ -28,8 +28,8 @@ import (
 const (
 	// DbgAddr is the default address of the am-dbg server.
 	DbgAddr = "localhost:6831"
-	// EnvAmDbgAddr set the address of a running am-dbg instance.
-	// "localhost:6831" | "" (default)
+	// EnvAmDbgAddr is the address of a running am-dbg instance.
+	// "1" expands to "localhost:6831"
 	EnvAmDbgAddr = "AM_DBG_ADDR"
 )
 

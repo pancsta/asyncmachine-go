@@ -188,10 +188,12 @@ type CheckDone struct {
 	Canceled bool
 }
 
-const argErr = "_am_err"
-const argErrTrace = "_am_errTrace"
-const argPanic = "_am_panic"
-const argCheckDone = "_am_checkDone"
+const (
+	argErr       = "_am_err"
+	argErrTrace  = "_am_errTrace"
+	argPanic     = "_am_panic"
+	argCheckDone = "_am_checkDone"
+)
 
 // ParseArgs extracts AT from A.
 func ParseArgs(args A) *AT {
