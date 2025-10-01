@@ -454,7 +454,6 @@ func (c *Client) HandshakingState(e *am.Event) {
 }
 
 func (c *Client) updateSchema(resp *RespHandshake) {
-
 	// TODO move to Worker.SetSchema???
 	w := c.Worker
 	w.schemaMx.Lock()
@@ -469,6 +468,9 @@ func (c *Client) updateSchema(resp *RespHandshake) {
 	w.stateNames = resp.Serialized.StateNames
 	w.queueTick = resp.Serialized.QueueTick
 	w.machTime = resp.Serialized.Time
+	for idx, state := range w.stateNames {
+		w.machClock[state] = w.machTime[idx]
+	}
 }
 
 func (c *Client) HandshakeDoneEnter(e *am.Event) bool {
@@ -670,7 +672,9 @@ func (c *Client) bindRpcHandlers(conn net.Conn) {
 	c.rpc.SetBlocking(true)
 }
 
-func (c *Client) updateClock(msg *ClockMsg, fullTime am.Time, fullQTick uint64) {
+func (c *Client) updateClock(
+	msg *ClockMsg, fullTime am.Time, fullQTick uint64,
+) {
 	if c.Mach.Not1(ssC.HandshakeDone) {
 		return
 	}
@@ -678,7 +682,7 @@ func (c *Client) updateClock(msg *ClockMsg, fullTime am.Time, fullQTick uint64) 
 	// lock the worker TODO not great
 	c.Worker.clockMx.Lock()
 	var clock am.Time
-	qTick := c.Worker.queueTick
+	var qTick uint64
 
 	// diff update
 	if msg != nil {

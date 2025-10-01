@@ -509,9 +509,7 @@ func (s *Server) genClockUpdate(skipTimeCheck bool) *ClockMsg {
 	for _, v := range mTime {
 		tSum += v
 	}
-	// update only on state change, ignoring queue ticks (for canceled and empty)
-	// TODO support queuetick-only updates (always 1 off)
-	// if tSum == s.lastClockSum.Load() && qTick == s.lastQueueTick {
+	// update on a state change and queue tick change
 	if tSum == s.lastClockSum.Load() && qTick == s.lastQueueTick {
 		s.log("genClockUpdate: no change t%d q%d", tSum, qTick)
 		return nil
@@ -538,7 +536,6 @@ func (s *Server) genClockUpdate(skipTimeCheck bool) *ClockMsg {
 func (s *Server) RemoteHello(
 	client *rpc2.Client, req *ArgsHello, resp *RespHandshake,
 ) error {
-
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
 	}

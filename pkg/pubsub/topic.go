@@ -802,7 +802,7 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 			if w, ok := t.workers[peerId][machIdx]; ok {
 				// update to the newest clock
 				if info.MTime.Sum() > w.TimeSum(nil) {
-					w.InternalUpdateClock(info.MTime, true)
+					w.InternalUpdateClock(info.MTime, 0, true)
 				}
 				// TODO check schema?
 				continue
@@ -836,7 +836,7 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 			// check for ahead-of-time MsgUpdates
 			// add ctx to go-s
 			if mtime, ok := t.pendingMachUpdates[peerId][machIdx]; ok {
-				worker.InternalUpdateClock(mtime, true)
+				worker.InternalUpdateClock(mtime, 0, true)
 				// GC
 				delete(t.pendingMachUpdates[peerId], machIdx)
 				if len(t.pendingMachUpdates[peerId]) == 0 {
@@ -845,7 +845,7 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 				t.Mach.EvRemove1(e, ss.MissPeersByUpdates, nil)
 
 			} else {
-				worker.InternalUpdateClock(info.MTime, true)
+				worker.InternalUpdateClock(info.MTime, 0, true)
 			}
 
 			t.workers[peerId][machIdx] = worker
@@ -1176,7 +1176,7 @@ func (t *Topic) MsgUpdatesState(e *am.Event) {
 
 			// skip old updates
 			if mtime.Sum() > w.TimeSum(nil) {
-				w.InternalUpdateClock(mtime, true)
+				w.InternalUpdateClock(mtime, 0, true)
 			}
 
 			// clean up

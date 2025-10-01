@@ -333,8 +333,8 @@ type Api interface {
     Remove(states S, args A) Result
     AddErr(err error, args A) Result
     AddErrState(state string, err error, args A) Result
-	Toggle(states S, args A) Result
-	Toggle1(state string, args A) Result
+    Toggle(states S, args A) Result
+    Toggle1(state string, args A) Result
     Set(states S, args A) Result
 
     // Traced mutations (remote)
@@ -345,8 +345,8 @@ type Api interface {
     EvRemove(event *Event, states S, args A) Result
     EvAddErr(event *Event, err error, args A) Result
     EvAddErrState(event *Event, state string, err error, args A) Result
-	EvToggle(event *Event, states S, args A) Result
-	EvToggle1(event *Event, state string, args A) Result
+    EvToggle(event *Event, states S, args A) Result
+    EvToggle1(event *Event, state string, args A) Result
 
     // Waiting (remote)
 
@@ -427,7 +427,7 @@ type Api interface {
     Tracers() []Tracer
     DetachTracer(tracer Tracer) error
     BindTracer(tracer Tracer) error
-	AddBreakpoint1(added string, removed string, strict bool)
+    AddBreakpoint1(added string, removed string, strict bool)
     AddBreakpoint(added S, removed S, strict bool)
     Dispose()
     WhenDisposed() <-chan struct{}
