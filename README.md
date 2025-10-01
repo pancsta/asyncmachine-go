@@ -77,84 +77,6 @@ Besides workflows, it can be used for **stateful applications of any size** - da
 synchronization consensus, games, smart graphs, microservice orchestration, robots, contracts, streams, DI containers,
 test scenarios, simulators, as well as **"real-time" systems** which rely on instant cancelation.
 
-## Stack
-
-The top layers depend on the bottom ones.
-
-<table>
-  <tr>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td colspan="1" align=center><a href="pkg/pubsub">PubSub</a></td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-  </tr>
-
-  <tr>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td colspan="3" align=center><a href="pkg/node">Workers</a></td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-  </tr>
-
-  <tr>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td colspan="5" align=center><a href="pkg/rpc">RPC</a></td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-  </tr>
-
-  <tr>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-    <td colspan="7" align=center><a href="pkg/machine/README.md#aop-handlers">Handlers</a></td>
-    <td>.</td>
-    <td>.</td>
-    <td>.</td>
-  </tr>
-
-  <tr>
-    <td>.</td>
-    <td>.</td>
-    <td colspan="9" align=center>🐇 <a href="pkg/machine">Machine pkg</a></td>
-    <td>.</td>
-    <td>.</td>
-  </tr>
-
-  <tr>
-    <td>.</td>
-    <td colspan="11" align=center><a href="pkg/machine/README.md#relations">Relations</a></td>
-    <td>.</td>
-  </tr>
-
-  <tr>
-    <td colspan="13" align=center><a href="pkg/machine/README.md#multi-state"><b><u>
-        States
-    </u></b></a></td>
-  </tr>
-</table>
-
 ![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)
 
 ## Samples
@@ -372,7 +294,7 @@ State is a binary name as in status / switch / flag, eg "process RUNNING" or "ca
 ### What does "clock-based" mean?
 
 Each state has a counter of activations & deactivations, and all state counters create "machine time". These are logical
-clocks. The queue is also counted.
+clocks, and the queue is also (partially) counted.
 
 ### What's the difference between states and events?
 
@@ -385,6 +307,7 @@ The complete FAQ is available at [FAQ.md](/FAQ.md).
 - [Changelog](CHANGELOG.md)
 - [Breaking Changes](BREAKING.md)
 - [Roadmap](ROADMAP.md)
+- [Feed](https://github.com/pancsta/asyncmachine-go/pulse)
 
 <div align="center">
     <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video.gif?raw=true" alt="TUI Debugger" />

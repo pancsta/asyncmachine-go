@@ -12,7 +12,7 @@ State is a binary name as in status / switch / flag, eg "process RUNNING" or "ca
 ## What does "clock-based" mean?
 
 Each state has a counter of activations & deactivations, and all state counters create "machine time". These are logical
-clocks. The queue is also counted.
+clocks, and the queue is also (partially) counted.
 
 ## What's the difference between states and events?
 

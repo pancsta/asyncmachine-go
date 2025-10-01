@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.15.1](https://github.com/pancsta/asyncmachine-go/tree/v0.15.1) (2025-10-02)
+
+- feat\(rpc\): inherit Subscriptions from pkg/machine [\#299](https://github.com/pancsta/asyncmachine-go/pull/299)
+  (@pancsta)
+- feat\(machine\): optimize ctx-based GC [\#298](https://github.com/pancsta/asyncmachine-go/pull/298)
+  (@pancsta)
+- feat\(rpc\): support queue ticks and checksums [\#297](https://github.com/pancsta/asyncmachine-go/pull/297)
+  (@pancsta)
+
 ## [v0.15.0](https://github.com/pancsta/asyncmachine-go/tree/v0.15.0) (2025-09-23)
 
 - docs: release v0.15 [\#296](https://github.com/pancsta/asyncmachine-go/pull/296)

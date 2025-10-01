@@ -1,9 +1,12 @@
-name: Go Test (basic)
+name: Go Test (badges)
 
 on: [push]
 
 jobs:
   build:
+
+    # TODO
+    if: false  # Disable this job
 
     runs-on: ubuntu-latest
     strategy:

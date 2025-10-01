@@ -234,7 +234,10 @@ tasks:
     env:
       AM_TEST_RUNNER: 1
     cmds:
-      - task test -- -coverprofile=coverage.txt -covermode=atomic
+      - task test --  
+          -p 1 --parallel 1
+          -coverprofile=coverage.txt -covermode=atomic >
+            coverage.sum.txt
       - go tool cover -func=coverage.txt | grep total | awk '{print $3}' >
           coverage.sum.txt
 
@@ -243,7 +246,8 @@ tasks:
       AM_TEST_RUNNER: 1
     cmds:
       - task: clean-test
-      - go test ./pkg/... -coverprofile=coverage-pkg.txt -covermode=atomic
+      - go test -p 1 --parallel 1 ./pkg/... 
+          -coverprofile=coverage-pkg.txt -covermode=atomic
       - go tool cover -func=coverage-pkg.txt | grep total | awk '{print $3}' >
           coverage-pkg.sum.txt
 
@@ -417,7 +421,8 @@ tasks:
   install-deps:
     cmds:
       - go mod tidy
-      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.5
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh 
+          | sh -s -- -b $(go env GOPATH)/bin v2.5.0
       - go install mvdan.cc/gofumpt@latest
       - go install golang.org/x/tools/cmd/goimports@latest
       - go install github.com/mattn/goreman@latest
