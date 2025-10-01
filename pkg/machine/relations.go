@@ -9,6 +9,7 @@ import (
 // RelationsResolver is an interface for parsing relations between states.
 // Not thread-safe.
 // TODO support custom relation types and additional state properties.
+// TODO refac Relations
 type RelationsResolver interface {
 	// TargetStates returns the target states after parsing the relations.
 	TargetStates(t *Transition, calledStates, index S) S
@@ -34,6 +35,7 @@ type RelationsResolver interface {
 // DefaultRelationsResolver is the default implementation of the
 // RelationsResolver with Add, Remove, Require and After. It can be overridden
 // using Opts.Resolver.
+// TODO refac RelationsDefault
 type DefaultRelationsResolver struct {
 	Machine      *Machine
 	Transition   *Transition

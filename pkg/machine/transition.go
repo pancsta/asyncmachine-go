@@ -74,8 +74,8 @@ type Transition struct {
 
 // newTransition creates a new transition for the given mutation.
 func newTransition(m *Machine, mut *Mutation) *Transition {
-	m.activeStatesLock.RLock()
-	defer m.activeStatesLock.RUnlock()
+	m.activeStatesMx.RLock()
+	defer m.activeStatesMx.RUnlock()
 
 	index := m.StateNames()
 	schema := m.Schema()
@@ -121,14 +121,14 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	m.t.Store(t)
 
 	// tracers
-	m.tracersLock.RLock()
+	m.tracersMx.RLock()
 	for _, tracer := range m.tracers {
 		if t.Machine.IsDisposed() {
 			break
 		}
 		tracer.TransitionInit(t)
 	}
-	m.tracersLock.RUnlock()
+	m.tracersMx.RUnlock()
 
 	// log stuff
 	called := t.CalledStates()
@@ -577,11 +577,11 @@ func (t *Transition) emitEvents() Result {
 	logEverything := m.semLogger.Level() == LogEverything
 
 	// tracers
-	m.tracersLock.RLock()
+	m.tracersMx.RLock()
 	for i := 0; !t.Machine.IsDisposed() && i < len(t.Machine.tracers); i++ {
 		t.Machine.tracers[i].TransitionStart(t)
 	}
-	m.tracersLock.RUnlock()
+	m.tracersMx.RUnlock()
 
 	// NEGOTIATION CALLS PHASE (cancellable)
 
@@ -639,15 +639,15 @@ func (t *Transition) emitEvents() Result {
 		if result != Canceled {
 
 			// mutate the clocks
-			m.activeStatesLock.Lock()
+			m.activeStatesMx.Lock()
 			m.setActiveStates(called, t.TargetStates(), t.IsAuto())
 			// gather new clock values, overwrite fake TimeAfter
-			m.activeStatesLock.Unlock()
+			m.activeStatesMx.Unlock()
 
 			// always correct TimeAfter
 			t.TimeAfter = m.time(nil)
 
-			if hasHandlers || logEverything || len(m.indexWhenArgs) > 0 {
+			if hasHandlers || logEverything || m.subs.HasWhenArgs() {
 				// FooState
 				// FooEnd
 				result = t.emitFinalEvents()
@@ -707,11 +707,11 @@ func (t *Transition) emitEvents() Result {
 	t.IsCompleted.Store(true)
 
 	// tracers
-	m.tracersLock.RLock()
+	m.tracersMx.RLock()
 	for i := 0; !t.Machine.IsDisposed() && i < len(t.Machine.tracers); i++ {
 		t.Machine.tracers[i].TransitionEnd(t)
 	}
-	m.tracersLock.RUnlock()
+	m.tracersMx.RUnlock()
 
 	if result == Canceled {
 		return Canceled

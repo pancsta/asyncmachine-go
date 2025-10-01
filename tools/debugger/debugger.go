@@ -34,7 +34,6 @@ import (
 	"golang.org/x/text/message"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
-	"github.com/pancsta/asyncmachine-go/pkg/graph"
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -95,7 +94,7 @@ type Debugger struct {
 	// repaintPending indicates a skipped repaint
 	repaintPending atomic.Bool
 	genGraphsLast  time.Time
-	graph          *graph.Graph
+	graph          *amgraph.Graph
 	// update client list scheduled
 	updateCLScheduled atomic.Bool
 	buildCLScheduled  atomic.Bool
@@ -218,7 +217,7 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		"err", "_am_err",
 	}, 20))
 
-	d.graph, err = graph.New(d.Mach)
+	d.graph, err = amgraph.New(d.Mach)
 	if err != nil {
 		mach.AddErr(fmt.Errorf("graph init: %w", err), nil)
 	}
@@ -668,7 +667,7 @@ func (d *Debugger) hImportData(filename string) {
 	var res []*Exportable
 	err = decoder.Decode(&res)
 	if err != nil {
-		d.Mach.AddErr(fmt.Errorf("Error: import failed %w", err), nil)
+		d.Mach.AddErr(fmt.Errorf("import failed %w", err), nil)
 		return
 	}
 
@@ -686,7 +685,7 @@ func (d *Debugger) hImportData(filename string) {
 		if d.graph != nil {
 			err := d.graph.AddClient(data.MsgStruct)
 			if err != nil {
-				d.Mach.AddErr(fmt.Errorf("Error: import failed %w", err), nil)
+				d.Mach.AddErr(fmt.Errorf("import failed %w", err), nil)
 				return
 			}
 		}
@@ -712,9 +711,10 @@ func (d *Debugger) hUpdateToolbar() {
 	// tx filters
 	for i, row := range d.toolbarItems {
 		focused := d.Mach.Is1(ss.Toolbar1Focused)
-		if i == 1 {
+		switch i {
+		case 1:
 			focused = d.Mach.Is1(ss.Toolbar2Focused)
-		} else if i == 2 {
+		case 2:
 			focused = d.Mach.Is1(ss.Toolbar3Focused)
 		}
 
@@ -1808,7 +1808,7 @@ func (d *Debugger) hGetParentTags(c *Client, tags []string) []string {
 }
 
 func (d *Debugger) initGraphGen(
-	snapshot *graph.Graph, id string, detailsLvl, numClients int, outDir,
+	snapshot *amgraph.Graph, id string, detailsLvl, numClients int, outDir,
 	svgName string, statesAllowlist S,
 ) []*amvis.Visualizer {
 	var vizs []*amvis.Visualizer

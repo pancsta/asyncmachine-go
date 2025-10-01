@@ -122,7 +122,7 @@ func Add1Block(
 // but at the moment it is not compatible with RPC. This method checks
 // expiration ctx and returns as [am.Canceled].
 func Add1Sync(
-	ctx context.Context, mach *am.Machine, state string, args am.A,
+	ctx context.Context, mach am.Api, state string, args am.A,
 ) am.Result {
 	res := mach.Add1(state, args)
 	switch res {
@@ -161,7 +161,6 @@ func Add1Async(
 	ctxWhen, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// TODO use WhenQueue
 	when := mach.WhenTicks(waitState, ticks, ctxWhen)
 	res := mach.Add1(addState, args)
 	if res == am.Canceled {

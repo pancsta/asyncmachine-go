@@ -569,7 +569,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 		if existing.connId != "" && existing.connId == connId {
 			d.Mach.Log("schema changed for %s", msg.ID)
 			// TODO use MsgStructPatch
-			existing.Exportable.MsgStruct = msg
+			existing.MsgStruct = msg
 			c = existing
 			c.parseSchema()
 
@@ -1564,7 +1564,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 			break
 		}
 		if round > 100 {
-			d.Mach.AddErr(errors.New("Too many GC rounds"), nil)
+			d.Mach.AddErr(errors.New("too many GC rounds"), nil)
 			break
 		}
 		d.Mach.Log("GC tx round %d", round)
@@ -1841,12 +1841,12 @@ func (d *Debugger) UpdateFocusState(e *am.Event) {
 	var box *cview.Box
 	// change focus (or not) when changing view types
 	switch d.Mach.Switch(ss.GroupFocused) {
-	case ss.AddressFocused:
-		focused = d.addressBar
-		box = d.addressBar.Box
 	default:
 		focused = d.clientList
 		box = d.clientList.Box
+	case ss.AddressFocused:
+		focused = d.addressBar
+		box = d.addressBar.Box
 	case ss.TreeFocused:
 		focused = d.tree
 		box = d.tree.Box

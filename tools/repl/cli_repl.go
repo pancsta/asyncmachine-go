@@ -299,8 +299,7 @@ func addrsFromDir(dirpath string) ([]string, error) {
 			if !d.IsDir() && strings.HasSuffix(path, ".addr") {
 				content, err := os.ReadFile(path)
 				if err != nil {
-					return fmt.Errorf(
-						"%s: %w\n", path, err)
+					return fmt.Errorf("%s: %w\n", path, err)
 				}
 				addrs = append(addrs, strings.TrimSpace(string(content)))
 			}
