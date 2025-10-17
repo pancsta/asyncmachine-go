@@ -51,11 +51,12 @@ It's built around a timeline of transitions and allows for precise searches and 
   highlighting, and remaining transitions marker.
 - **fast jumps**: jump by 100 transitions, or select a state from the tree and jump to its next occurrence.
 - **keyboard navigation**: the UI is keyboard accessible, just press the **? key**.
-- **mouse support**: most elements can be clicked and some scrolled.
+- **mouse support**: most elements can be clicked and scrolled.
 - **SSH access**: an instance of the debugger can be shared directly from an edge server via a built-in SSH server.
 - **log rotation**: older entries will be automatically discarded in order.
-- **log reader**: extract entries from **LogOps** into a dedicated pane.
+- **log reader**: extract entries from **LogOps** and **SemLogger** into a dedicated pane.
   - **source event**: navigate to source events, internal or external.
+  - **queue**: shows the full queue, queued and executed times for this mutation.
   - **handlers**: list executed handlers.
   - **contexts**: list state contexts and mach time.
   - **subscriptions**: list awaited clocks.
@@ -67,30 +68,37 @@ Usage:
   am-dbg [flags]
 
 Flags:
-      --am-dbg-addr string      Debug this instance of am-dbg with another one
-      --clean-on-connect        Clean up disconnected clients on the 1st connection
-  -d, --dir string              Output directory for generated files (default ".")
-      --enable-mouse            Enable mouse support (experimental) (default true)
-  -f, --fwd-data string         Forward incoming data to other instances (eg addr1,addr2)
-      --diagrams int            Level of details for diagrams (svg, d2, mermaid) in --dir (0-3)
-  -h, --help                    help for am-dbg
-  -i, --import-data string      Import an exported gob.bt file
-  -l, --listen-on string        Host and port for the debugger to listen on (default "localhost:6831")
-      --log-2-ttl string        Max time to live for logs level 2 (default "24h")
-      --log-level int           Log level, 0-5 (silent-everything)
-      --max-mem int             Max memory usage (in MB) to flush old transitions (default 100)
-      --output-clients          Write a detailed client list into in am-dbg-clients.txt inside --dir
-      --prof-srv string         Start pprof server
-  -c, --select-connected        Select the newly connected machine, if no other is connected
-  -m, --select-machine string   Select a machine by (partial) ID on startup (requires --import-data)
-  -t, --select-transition int   Select a transaction by _number_ on startup (requires --select-machine)
-      --tail                    Start from the last tx (default true)
-      --version                 Print version and exit
-  -v, --view string             Initial view (tree-log, tree-matrix, matrix) (default "tree-log")
-      --view-narrow             Force a narrow view, independently of the viewport size
-      --view-rain               Show the rain view
-  -r, --view-reader             Enable Log Reader
-      --view-timelines int      Number of timelines to show (0-2) (default 2)
+      --clean-on-connect         Clean up disconnected clients on the 1st connection
+      --dbg-am-dbg-addr string   Debug this instance of am-dbg with another one
+      --dbg-go-race              Go race detector is enabled
+      --dbg-id string            ID of this instance (default "am-dbg")
+      --dbg-log-level int        Log level produced by this instance, 0-5 (silent-everything)
+      --dbg-prof-srv string      Start pprof server
+  -d, --dir string               Output directory for generated files (default ".")
+      --enable-mouse             Enable mouse support (experimental) (default true)
+      --filter-group             Filter transitions by a selected group (default true)
+      --filter-log-level int     Filter transitions to this log level produced by this instance, 0-5 (silent-everything) (default 2)
+  -f, --fwd-data string          Forward incoming data to other instances (eg addr1,addr2)
+  -h, --help                     help for am-dbg
+  -i, --import-data string       Import an exported gob.br file
+  -l, --listen-on string         Host and port for the debugger to listen on (default "localhost:6831")
+      --log-ops-ttl string       Max time to live for logs level LogOps (default "24h")
+      --max-mem int              Max memory usage (in MB) to flush old transitions (default 1000)
+      --output-clients           Write a detailed client list into am-dbg-clients.txt inside --dir
+      --output-diagrams int      Level of details for diagrams (svg, d2, mermaid) in --dir (0 off, 1-3 on). EXPERIMENTAL
+      --output-tx                Write the current transition with steps into am-dbg-tx.md inside --dir
+  -c, --select-connected         Select the newly connected machine, if no other is connected
+      --select-group string      Startup group
+  -m, --select-machine string    Select a machine by (partial) ID on startup (requires --import-data)
+  -t, --select-transition int    Select a transaction by _number_ on startup (requires --select-machine)
+      --tail                     Start from the lastest tx (default true)
+      --ui-diagrams              Start a web diagrams viewer on a +1 port (EXPERIMENTAL) (default true)
+      --version                  Print version and exit
+  -v, --view string              Initial view (tree-log, tree-matrix, matrix) (default "tree-log")
+      --view-narrow              Force a narrow view, independently of the viewport size
+      --view-rain                Show the rain view
+  -r, --view-reader              Enable Log Reader
+      --view-timelines int       Number of timelines to show (0-2) (default 2)
 ```
 
 ![legend](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-legend.png)
@@ -109,13 +117,17 @@ Flags:
 3. Run your code with
 
     ```bash
-    AM_DBG_ADDR=localhost:6831
+    # localhost:6831
+    AM_DBG_ADDR=1
     AM_LOG=2
+    AM_LOG_FULL=1
     ```
 
 4. Your machine should show up in the debugger
 
 ## Demos
+
+Demos are outdated.
 
 Interactively use the TUI debugger with data pre-generated by **libp2p-pubsub-simulator** or **remote integration tests**
 in one of the available ways below.
@@ -152,7 +164,7 @@ Tests:
 - web browser: [http://188.166.101.108:8081/wetty/ssh](http://188.166.101.108:8081/wetty/ssh/am-dbg?pass=am-dbg:8081/wetty/ssh/am-dbg?pass=am-dbg)
 - terminal: `ssh 188.166.101.108 -p 4445`
 
-## Dashbaboard
+## Dashboard
 
 ![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)
 
@@ -174,29 +186,6 @@ You can connect to a running instance with any SSH client.
 Usage:
   am-dbg-ssh -s localhost:4444 [flags]
 ```
-
-## FAQ
-
-### How to debug steps of a transition?
-
-Go to the steps timelines (bottom one) using the Tab key, then press left/right like before.
-
-### How to find transitions affecting a specific state?
-
-Select the state from the Structure pane and press `alt+h` to **state-jump**
-to previous transitons, or `alt+l` to further ones.
-
-### How to export data?
-
-Press `alt+s` and Enter.
-
-### How to filter out canceled transitions?
-
-Press `alt+f` or `Tab` until the bottom filter bar receives focus. Now select "Skip Canceled".
-
-### How to access the help screen?
-
-Press `?` to show the help popup.
 
 ## monorepo
 

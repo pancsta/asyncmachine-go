@@ -79,6 +79,9 @@ test scenarios, simulators, as well as **"real-time" systems** which rely on ins
 
 ![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)
 
+> [!NOTE]
+> Flow is state and state is flow, in a graph.
+
 ## Samples
 
 **Minimal** - an untyped definition of 2 states and 1 relation, then 1 mutation and a check.
@@ -129,6 +132,9 @@ if err != nil {
     <img src="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif" alt="REPL" />
     </a>
 </div>
+
+> [!NOTE]
+> Clock-based navigation in time.
 
 **Handlers** - [Aspect Oriented](https://en.wikipedia.org/wiki/Aspect-oriented_programming) transition handlers.
 
@@ -229,6 +235,9 @@ Other packages:
 
 [![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)](/tools/cmd/am-dbg)
 
+> [!NOTE]
+> Inspect cause-and-effect in distributed systems.
+
 ## Apps
 
 - [secai](https://github.com/pancsta/secai) AI Agents framework.
@@ -267,6 +276,9 @@ Other packages:
 Under development, status depends on each package. The bottom layers seem prod grade, the top ones are alpha or testing.
 
 ![grafana](https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png)
+
+> [!NOTE]
+> Manage distributed concurrency.
 
 ## Development
 
@@ -307,8 +319,12 @@ The complete FAQ is available at [FAQ.md](/FAQ.md).
 - [Changelog](CHANGELOG.md)
 - [Breaking Changes](BREAKING.md)
 - [Roadmap](ROADMAP.md)
-- [Feed](https://github.com/pancsta/asyncmachine-go/pulse)
+- [New stuff](https://github.com/pancsta/asyncmachine-go/pulse)
+- [Release feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
 <div align="center">
     <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video.gif?raw=true" alt="TUI Debugger" />
 </div>
+
+> [!NOTE]
+> Don't lose your sync.
