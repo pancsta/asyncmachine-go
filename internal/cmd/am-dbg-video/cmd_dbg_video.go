@@ -69,14 +69,15 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		Filters: &debugger.OptsFilters{
 			LogLevel: filterLogLevel,
 		},
-		ImportData:  p.ImportData,
-		DbgLogLevel: p.LogLevel,
-		DbgLogger:   cli.GetLogger(&p, ""),
-		AddrRpc:     p.ListenAddr,
-		EnableMouse: p.EnableMouse,
-		Version:     utils.GetVersion(),
-		Id:          "video",
-		MaxMemMb:    1000,
+		ImportData:      p.ImportData,
+		DbgLogLevel:     p.LogLevel,
+		DbgLogger:       cli.GetLogger(&p, ""),
+		AddrRpc:         p.ListenAddr,
+		EnableMouse:     p.EnableMouse,
+		EnableClipboard: p.EnableClipboard,
+		Version:         utils.GetVersion(),
+		Id:              "video",
+		MaxMemMb:        1000,
 	})
 	if err != nil {
 		panic(err)

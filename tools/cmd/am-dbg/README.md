@@ -68,16 +68,17 @@ Usage:
   am-dbg [flags]
 
 Flags:
-      --clean-on-connect         Clean up disconnected clients on the 1st connection
+      --clean-on-connect         Clean up disconnected clients on the 1st connection (default true)
       --dbg-am-dbg-addr string   Debug this instance of am-dbg with another one
       --dbg-go-race              Go race detector is enabled
       --dbg-id string            ID of this instance (default "am-dbg")
       --dbg-log-level int        Log level produced by this instance, 0-5 (silent-everything)
       --dbg-prof-srv string      Start pprof server
   -d, --dir string               Output directory for generated files (default ".")
+      --enable-clipboard         Enable clipboard support (default true)
       --enable-mouse             Enable mouse support (experimental) (default true)
       --filter-group             Filter transitions by a selected group (default true)
-      --filter-log-level int     Filter transitions to this log level produced by this instance, 0-5 (silent-everything) (default 2)
+      --filter-log-level int     Filter transitions to this log level, 0-5 (silent-everything) (default 2)
   -f, --fwd-data string          Forward incoming data to other instances (eg addr1,addr2)
   -h, --help                     help for am-dbg
   -i, --import-data string       Import an exported gob.br file
@@ -119,7 +120,7 @@ Flags:
     ```bash
     # localhost:6831
     AM_DBG_ADDR=1
-    AM_LOG=2
+    AM_LOG=3
     AM_LOG_FULL=1
     ```
 

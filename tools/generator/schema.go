@@ -16,7 +16,6 @@ import (
 	"unicode"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/tools/generator/cli"
@@ -366,7 +365,8 @@ func NewSFGenerator(
 	if err != nil {
 		return nil, err
 	}
-	amhelp.MachDebugEnv(mach)
+	// TODO env var?
+	// amhelp.MachDebugEnv(mach)
 
 	g.Mach = mach
 	g.parseParams(param)

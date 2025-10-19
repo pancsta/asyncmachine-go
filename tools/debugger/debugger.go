@@ -232,11 +232,13 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	}
 
 	// clipboard
-	clip, err := clipper.GetClipboard(clipper.Clipboards...)
-	if err != nil {
-		mach.AddErr(fmt.Errorf("clipboard init: %w", err), nil)
+	if d.Opts.EnableClipboard {
+		clip, err := clipper.GetClipboard(clipper.Clipboards...)
+		if err != nil {
+			mach.AddErr(fmt.Errorf("clipboard init: %w", err), nil)
+		}
+		d.clip = clip
 	}
-	d.clip = clip
 
 	// ensure output directory exists
 	if d.Opts.OutputDir != "" && d.Opts.OutputDir != "." {
