@@ -220,6 +220,9 @@ Subscriptions do not allocate goroutines.
 // wait for DownloadingFile to have a tick increased by 2 since now
 <-mach.WhenTicks("DownloadingFile", 2, nil)
 
+// wait for a mutation to execute
+<-mach.WhenQueue(mach.Add1("Foo", nil), nil)
+
 // wait for an error
 <-mach.WhenErr(nil)
 ```

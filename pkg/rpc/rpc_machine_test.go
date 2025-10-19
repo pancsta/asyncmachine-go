@@ -1220,7 +1220,6 @@ func (tr *TestWhenQueueTracer) TransitionEnd(tx *am.Transition) {
 	// res := m.Add1("D", nil)
 	res := am.Result(5)
 	m.Add1("D", nil)
-	tr.done = make(chan struct{})
 
 	go func() {
 		<-m.WhenQueue(res)
@@ -1246,7 +1245,8 @@ func TestWhenQueue(t *testing.T) {
 
 	// test
 	tr := &TestWhenQueueTracer{
-		t: t,
+		t:    t,
+		done: make(chan struct{}),
 	}
 	require.NoError(t, w.BindTracer(tr))
 

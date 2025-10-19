@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.15.2](https://github.com/pancsta/asyncmachine-go/tree/v0.15.2) (2025-10-19)
+
+- fix\(machine\): fix empty args map [\#302](https://github.com/pancsta/asyncmachine-go/pull/302) (@pancsta)
+- fix\(rpc\): fix queue ticks and tracers [\#301](https://github.com/pancsta/asyncmachine-go/pull/301) (@pancsta)
+- feat\(am-dbg\): add `--enable-clipboard=false` [\#300](https://github.com/pancsta/asyncmachine-go/pull/300) (@pancsta)
+
 ## [v0.15.1](https://github.com/pancsta/asyncmachine-go/tree/v0.15.1) (2025-10-02)
 
 - feat\(rpc\): inherit Subscriptions from pkg/machine [\#299](https://github.com/pancsta/asyncmachine-go/pull/299)
