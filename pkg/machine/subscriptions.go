@@ -413,6 +413,7 @@ func (sm *Subscriptions) ProcessWhenQueue(queueTick uint64) []chan struct{} {
 	}
 
 	// GC
+	slices.Reverse(toCloseIdx)
 	for _, idx := range toCloseIdx {
 		sm.whenQueue = slices.Delete(sm.whenQueue, idx, idx+1)
 	}

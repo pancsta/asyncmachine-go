@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -58,6 +60,9 @@ type Worker struct {
 	logEntriesLock sync.Mutex
 	logEntries     []*am.LogEntry
 	semLogger      *semLogger
+	// execQueue executed handlers and tracers
+	// TODO tracers should be synchronous like in pkg/machine
+	execQueue errgroup.Group
 }
 
 // Worker implements MachineApi
@@ -114,6 +119,9 @@ func NewWorker(
 	parent.HandleDispose(func(id string, ctx context.Context) {
 		w.Dispose()
 	})
+
+	// init queue
+	w.execQueue.SetLimit(1)
 
 	return w, nil
 }
@@ -748,6 +756,20 @@ func (w *Worker) WhenTicks(
 	return w.WhenTime(am.S{state}, am.Time{uint64(ticks) + w.Tick(state)}, ctx)
 }
 
+// WhenQueue waits until the passed queueTick gets processed.
+func (w *Worker) WhenQueue(tick am.Result) <-chan struct{} {
+	// locks
+	w.clockMx.Lock()
+	defer w.clockMx.Unlock()
+
+	// finish early
+	if w.queueTick >= uint64(tick) {
+		return newClosedChan()
+	}
+
+	return w.subs.WhenQueue(tick)
+}
+
 // ///// Waiting (remote)
 
 // WhenArgs returns a channel that will be closed when the passed state
@@ -1140,7 +1162,10 @@ func (w *Worker) Dispose() {
 
 	utils.CloseSafe(w.whenDisposed)
 	for _, t := range w.tracers {
-		t.MachineDispose(w.id)
+		go w.execQueue.Go(func() error {
+			t.MachineDispose(w.id)
+			return nil
+		})
 	}
 
 	// TODO push remotely?
@@ -1299,76 +1324,72 @@ func (w *Worker) InternalUpdateClock(now am.Time, qTick uint64, lock bool) {
 		w.clockMx.Lock()
 	}
 
+	w.tracersMx.Lock()
+	defer w.tracersMx.Unlock()
+
 	timeBefore := w.machTime
 	clockBefore := maps.Clone(w.machClock)
-	var activated am.S
-	var deactivated am.S
-	var activeBefore am.S
-	var tx *am.Transition
-	// time changes
-	if now.Sum() != timeBefore.Sum() {
-		activeBefore = w.ActiveStates()
-		active := am.S{}
-		index := w.StateNames()
-		for i, state := range index {
-			if am.IsActiveTick(now[i]) {
-				active = append(active, state)
-			}
+
+	activeBefore := w.ActiveStates()
+	active := am.S{}
+	index := w.StateNames()
+	for i, state := range index {
+		if am.IsActiveTick(now[i]) {
+			active = append(active, state)
 		}
-		activated = am.DiffStates(active, activeBefore)
-		deactivated = am.DiffStates(activeBefore, active)
-
-		tx = &am.Transition{
-			Api: w,
-
-			TimeBefore: timeBefore,
-			TimeAfter:  now,
-			Mutation: &am.Mutation{
-				Type:   am.MutationSet,
-				Called: w.Index(active),
-				Args:   nil,
-				Auto:   false,
-			},
-			LogEntries: w.logEntries,
-		}
-		// TODO may not be true for qticks only updates
-		tx.IsAccepted.Store(true)
-		w.logEntries = nil
-		// TODO fire handlers if set
-
-		// call tracers
-		for _, t := range w.tracers {
-			// TODO deadlock on method using w.clockMx
-			t.TransitionInit(tx)
-		}
-		for _, t := range w.tracers {
-			// TODO deadlock on method using w.clockMx
-			t.TransitionStart(tx)
-		}
-
-		// set active states
-		w.machTime = now
-		for idx, tick := range w.machTime {
-			w.machClock[index[idx]] = tick
-		}
-		w.queueTick = qTick
-		w.activeState.Store(&active)
-
-		// queue tick changed
-	} else if w.queueTick != qTick {
-		w.queueTick = qTick
-
-		// no change
-	} else {
-		w.clockMx.Unlock()
-		return
 	}
+	activated := am.DiffStates(active, activeBefore)
+	deactivated := am.DiffStates(activeBefore, active)
+
+	tx := &am.Transition{
+		Api: w,
+
+		TimeBefore: timeBefore,
+		TimeAfter:  now,
+		Mutation: &am.Mutation{
+			// TODO use add and remove when all ticks passed
+			Type:   am.MutationSet,
+			Called: w.Index(active),
+			Args:   nil,
+			Auto:   false,
+		},
+		LogEntries: w.logEntries,
+	}
+	// TODO may not be true for qticks only updates
+	tx.IsAccepted.Store(true)
+	w.logEntries = nil
+	// TODO fire handlers if set
+
+	// call tracers
+	for _, t := range w.tracers {
+		go w.execQueue.Go(func() error {
+			t.TransitionInit(tx)
+			return nil
+		})
+	}
+	for _, t := range w.tracers {
+		go w.execQueue.Go(func() error {
+			t.TransitionStart(tx)
+			return nil
+		})
+	}
+
+	// set active states
+	w.machTime = now
+	for idx, tick := range w.machTime {
+		w.machClock[index[idx]] = tick
+	}
+	w.queueTick = qTick
+	w.activeState.Store(&active)
 
 	// clockMx locked by RPC [Client]
 	w.clockMx.Unlock()
 
 	for _, t := range w.tracers {
-		t.TransitionEnd(tx)
+		go w.execQueue.Go(func() error {
+			t.TransitionEnd(tx)
+			return nil
+		})
 	}
 
 	// subscriptions
@@ -1446,11 +1467,6 @@ func (w *Worker) CountActive(states am.S) int {
 	}
 
 	return c
-}
-
-func (w *Worker) WhenQueue(tick am.Result) <-chan struct{} {
-	// TODO implement me
-	panic("implement WhenQueue")
 }
 
 func (w *Worker) QueueTick() uint64 {

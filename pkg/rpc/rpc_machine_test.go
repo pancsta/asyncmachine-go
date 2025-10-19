@@ -5,6 +5,7 @@ package rpc
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1189,7 +1190,6 @@ func TestIsTime(t *testing.T) {
 //	defer m1.Dispose()
 //
 //	// change clocks
-//	m1.Remove1("B", nil)
 //	m1.Add1("A", nil)
 //	m1.Add1("B", nil)
 //	m1.Add1("C", nil)
@@ -1204,43 +1204,60 @@ func TestIsTime(t *testing.T) {
 type TestWhenQueueTracer struct {
 	*am.NoOpTracer
 	done chan struct{}
+	t    *testing.T
 }
 
 func (tr *TestWhenQueueTracer) TransitionEnd(tx *am.Transition) {
-	m := tx.Machine
-	if !tx.Mutation.CalledIndex(m.StateNames()).Is1("A") {
+	m := tx.Api
+	// only when setting A
+	if tx.TimeBefore.Is1(m.Index1("A")) {
 		return
 	}
 
-	t := tx.Mutation.Args["t"].(*testing.T)
-
 	m.Add1("B", nil)
 	m.Add1("C", nil)
-	res := m.Add1("D", nil)
+	// TODO pause queue in the source machine's handler
+	// res := m.Add1("D", nil)
+	res := am.Result(5)
+	m.Add1("D", nil)
 	tr.done = make(chan struct{})
 
-	waiting := make(chan struct{})
 	go func() {
-		go close(waiting)
 		<-m.WhenQueue(res)
-		assertStates(t, m, S{"A", "B", "C", "D"})
+		assertStates(tr.t, m, S{"A", "B", "C", "D"})
 		close(tr.done)
 	}()
-	<-waiting
 }
 
 // TODO bind via handlers
 func TestWhenQueue(t *testing.T) {
 	t.Parallel()
-	// init
-	m := utils.NewNoRels(t, nil)
-	tr := &TestWhenQueueTracer{}
-	require.NoError(t, m.BindTracer(tr))
 
-	m.Add1("A", am.A{"t": t})
-	<-tr.done
+	// init
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// machine
+	mach := utils.NewNoRelsRpcWorker(t, nil)
+
+	// worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
+	w := c.Worker
+
+	// test
+	tr := &TestWhenQueueTracer{
+		t: t,
+	}
+	require.NoError(t, w.BindTracer(tr))
+
+	w.Add1("A", nil)
+	// TODO weird close-doesnt-unblock bug in go1.25
+	select {
+	case <-tr.done:
+	case <-time.After(time.Second):
+		<-tr.done
+	}
 
 	// dispose
-	m.Dispose()
-	<-m.WhenDisposed()
+	disposeTest(t, c, s, true)
 }

@@ -511,7 +511,8 @@ func (s *Server) genClockUpdate(skipTimeCheck bool) *ClockMsg {
 	}
 	// update on a state change and queue tick change
 	if tSum == s.lastClockSum.Load() && qTick == s.lastQueueTick {
-		s.log("genClockUpdate: no change t%d q%d", tSum, qTick)
+		// flooooood
+		// s.log("genClockUpdate: no change t%d q%d", tSum, qTick)
 		return nil
 	}
 

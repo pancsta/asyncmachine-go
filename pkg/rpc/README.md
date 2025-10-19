@@ -15,12 +15,13 @@ and [integration tests tutorial](/pkg/rpc/HOWTO.md).
 
 - mutation methods
 - wait methods
-- clock pushes (from worker-side mutations)
+- clock pushes (from source mutations)
 - remote contexts
 - multiplexing
 - reconnect / fail-safety
 - worker sending payloads to the client
 - [REPL](/tools/cmd/arpc/README.md)
+- queue ticks support
 - initial optimizations
 
 Not implemented (yet):
@@ -145,7 +146,7 @@ worker.Add1("Bar", nil)
 
 State schema from [/pkg/rpc/states/ss_rpc_server.go](/pkg/rpc/states/ss_rpc_server.go).
 
-![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-server.svg)
+![worker schema](https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-server.svg)
 
 ### Client
 
@@ -388,6 +389,7 @@ type Api interface {
     WhenTime(states S, times Time, ctx context.Context) <-chan struct{}
     WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
     WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
+    WhenQuery(query func(clock Clock) bool, ctx context.Context) <-chan struct{}
     WhenErr(ctx context.Context) <-chan struct{}
     WhenQueue(tick Result) <-chan struct{}
 
