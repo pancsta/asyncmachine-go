@@ -32,17 +32,22 @@ AM_DEBUG=1
 # defaults to ""
 AM_DBG_ADDR=1
 
-# enables a healthcheck ticker for every debugged machine
+# enable a healthcheck ticker for every debugged machine
 # defaults to ""
 AM_HEALTHCHECK=1
 
-# enables all the features of semantic logging and transition steps
+# machine text log level
+# "0" | "" LogNothing (default)
+# "1" LogExternal
+# "2" LogChanges
+# "3" LogOps (needed by am-dbg)
+# "4" LogDecisions
+# "5" LogEverything
+AM_LOG=3
+
+# enable all the features of semantic logging and transition steps, excluding the log level
 # "1" | "" (default)
 AM_LOG_FULL=1
-
-# machine text log level
-# "0"-"5" | "0" (default)
-AM_LOG=3
 
 # log transition steps
 # "1" | "" (default)
@@ -155,8 +160,7 @@ AM_RPC_LOG_CLIENT=1
 # defaults to ""
 AM_RPC_LOG_MUX=1
 
-# expose RPC components via am-dbg (requires AM_DBG_ADDR)
-# and Otel (requires AM_OTEL_TRACE)
+# expose RPC components via am-dbg (requires AM_DBG_ADDR) and Otel (requires AM_OTEL_TRACE)
 # defaults to ""
 AM_RPC_DBG=1
 
