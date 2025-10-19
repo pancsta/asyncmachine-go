@@ -142,13 +142,14 @@ type Opts struct {
 	// Debugger's ID
 	Id string
 	// version of this instance
-	Version    string
-	MaxMemMb   int
-	Log2Ttl    time.Duration
-	ViewNarrow bool
-	ViewRain   bool
-	TailMode   bool
-	OutputTx   bool
+	Version         string
+	MaxMemMb        int
+	Log2Ttl         time.Duration
+	ViewNarrow      bool
+	ViewRain        bool
+	TailMode        bool
+	OutputTx        bool
+	EnableClipboard bool
 }
 
 type OptsFilters struct {

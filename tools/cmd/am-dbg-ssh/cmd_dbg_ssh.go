@@ -107,9 +107,10 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 			DbgLogger:   cli.GetLogger(&par.Params, par.OutputDir),
 			ImportData:  par.ImportData,
 			// ServerAddr is disabled
-			AddrRpc:     par.ListenAddr,
-			EnableMouse: par.EnableMouse,
-			Version:     ver,
+			AddrRpc:         par.ListenAddr,
+			EnableMouse:     par.EnableMouse,
+			EnableClipboard: par.EnableClipboard,
+			Version:         ver,
 		})
 		if err != nil {
 			_, _ = fmt.Fprintln(sess.Stderr(), "error: dbg", err)

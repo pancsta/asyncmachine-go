@@ -667,7 +667,7 @@ tasks:
     env:
       AM_REPL_DIR: "{{.AM_REPL_DIR}}"
       AM_DBG_ADDR: "{{.AM_DBG_ADDR}}"
-    desc: Start a web dashboard with am-dbg and a REPL
+    desc: Start a web dashboard with am-dbg and a REPL (to be ran in Docker)
     requires:
       vars: [AM_REPL_DIR]
     ignore_error: true
@@ -679,5 +679,5 @@ tasks:
       - stty cols 200
       - stty rows 100
       - zellij --session am-dashboard 
-        --new-session-with-layout ./config/dashboards/dash-repl.kdl
+        --new-session-with-layout ./config/dashboards/dash-repl-web.kdl
       - task: dashboard-exit

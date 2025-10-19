@@ -152,7 +152,7 @@ func TestFork5Warm2Min2(t *testing.T) {
 // TestFork5Warm2Min2 tests a pool of 15 with 0 warm workers and 7 min workers.
 func TestFork15Warm0Min7(t *testing.T) {
 	// t.Parallel()
-	amhelp.EnableDebugging(false)
+	// amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

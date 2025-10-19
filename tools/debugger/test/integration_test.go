@@ -33,7 +33,7 @@ func init() {
 	_ = godotenv.Load()
 
 	// uncomment to debug
-	amhelp.EnableDebugging(false)
+	// amhelp.EnableDebugging(false)
 
 	// worker uses env debugging
 	if os.Getenv(am.EnvAmTestDebug) != "" {
@@ -120,7 +120,7 @@ func TestTailModeFLAKY(t *testing.T) {
 
 	// TODO fix schema delivery (cmux issue?)
 	// t.Skip(true)
-	amhelp.EnableDebugging(false)
+	// amhelp.EnableDebugging(false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

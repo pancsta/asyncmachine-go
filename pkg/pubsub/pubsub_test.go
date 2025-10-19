@@ -117,7 +117,7 @@ func Test1Peer(t *testing.T) {
 
 func Test2Peers(t *testing.T) {
 	// t.Parallel()
-	amhelp.EnableDebugging(false)
+	// amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -173,7 +173,7 @@ func TestExposing(t *testing.T) {
 	}
 
 	// t.Parallel()
-	amhelp.EnableDebugging(false)
+	// amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -257,7 +257,7 @@ func TestExposingMany(t *testing.T) {
 
 	// TODO DEBUG
 	// IPFS_LOGGING=info;AM_PUBSUB_LOG=1
-	amhelp.EnableDebugging(false)
+	// amhelp.EnableDebugging(false)
 	// os.Setenv(amtele.EnvAmDbgAddr, "localhost:6831")
 	// os.Setenv("IPFS_LOGGING", "info")
 	// os.Setenv(EnvAmPubsubLog, "1")

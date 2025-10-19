@@ -283,7 +283,7 @@ func TestAddManyInstantClock(t *testing.T) {
 func TestManyStates(t *testing.T) {
 	t.Parallel()
 
-	amhelp.EnableDebugging(true)
+	// amhelp.EnableDebugging(true)
 
 	// config
 	ctx, cancel := context.WithCancel(context.Background())

@@ -548,7 +548,7 @@ func (g *Graph) parseMsgReader(
 			_ = g.gMap.AddEdge(sourceMachId, targetMachId)
 		}
 
-		// REMVOE PIPE
+		// REMOVE PIPE
 	} else if strings.HasPrefix(log.Text, "[pipe:gc] ") {
 		l := strings.Split(log.Text, " ")
 		id := l[1]

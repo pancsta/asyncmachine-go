@@ -28,6 +28,7 @@ const (
 	pServerAddr       = "listen-on"
 	pServerAddrShort  = "l"
 	pEnableMouse      = "enable-mouse"
+	pEnableClipboard  = "enable-clipboard"
 	pCleanOnConnect   = "clean-on-connect"
 	pVersion          = "version"
 	pImport           = "import-data"
@@ -88,6 +89,7 @@ type Params struct {
 	RaceDetector    bool
 	ImportData      string
 	EnableMouse     bool
+	EnableClipboard bool
 	CleanOnConnect  bool
 	SelectConnected bool
 	ProfMem         bool
@@ -160,16 +162,15 @@ func AddFlags(rootCmd *cobra.Command) {
 		"Select a transaction by _number_ on startup (requires --"+
 			pStartupMach+")")
 	f.String(pStartupGroup, "", "Startup group")
-	f.Bool(pEnableMouse, true,
-		"Enable mouse support (experimental)")
-	f.Bool(pCleanOnConnect, false,
+	f.Bool(pEnableMouse, true, "Enable mouse support (experimental)")
+	f.Bool(pEnableClipboard, true, "Enable clipboard support")
+	f.Bool(pCleanOnConnect, true,
 		"Clean up disconnected clients on the 1st connection")
 	f.BoolP(pSelectConn, pSelectConnShort, false,
 		"Select the newly connected machine, if no other is connected")
 	f.Bool(pViewNarrow, false,
 		"Force a narrow view, independently of the viewport size")
-	f.StringP(pImport, pImportShort, "",
-		"Import an exported gob.br file")
+	f.StringP(pImport, pImportShort, "", "Import an exported gob.br file")
 	f.BoolP(pViewReader, pReaderShort, false, "Enable Log Reader")
 	f.StringP(pFwdData, pFwdDataShort, "",
 		"Forward incoming data to other instances (eg addr1,addr2)")
@@ -178,7 +179,7 @@ func AddFlags(rootCmd *cobra.Command) {
 
 	f.Bool(pFilterGroup, true, "Filter transitions by a selected group")
 	f.Int(pFilterLogLevel, int(am.LogChanges), "Filter transitions to this log "+
-		"level produced by this instance, 0-5 (silent-everything)")
+		"level, 0-5 (silent-everything)")
 
 	// MISC
 
@@ -304,6 +305,11 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 		panic(err)
 	}
 
+	enableClipboard, err := cmd.Flags().GetBool(pEnableClipboard)
+	if err != nil {
+		panic(err)
+	}
+
 	cleanOnConnect, err := cmd.Flags().GetBool(pCleanOnConnect)
 	if err != nil {
 		panic(err)
@@ -350,12 +356,13 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 
 		// UI
 
-		EnableMouse:  enableMouse,
-		Reader:       reader,
-		StartupView:  startupView,
-		StartupGroup: startupGroup,
-		ViewNarrow:   viewNarrow,
-		ViewRain:     rain,
+		EnableMouse:     enableMouse,
+		EnableClipboard: enableClipboard,
+		Reader:          reader,
+		StartupView:     startupView,
+		StartupGroup:    startupGroup,
+		ViewNarrow:      viewNarrow,
+		ViewRain:        rain,
 
 		// filters
 
