@@ -513,12 +513,17 @@ func (m *Mutation) StringFromIndex(index S) string {
 }
 
 // MapArgs returns arguments of this Mutation which match the passed [mapper].
+// The returned map is never nil.
 func (m *Mutation) MapArgs(mapper LogArgsMapperFn) map[string]string {
 	if mapper == nil {
 		return map[string]string{}
 	}
 
-	return mapper(m.Args)
+	if ret := mapper(m.Args); ret == nil {
+		return map[string]string{}
+	} else {
+		return ret
+	}
 }
 
 // LogArgs returns a text snippet with arguments which should be logged for this

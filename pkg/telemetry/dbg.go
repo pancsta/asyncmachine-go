@@ -498,6 +498,9 @@ func (t *DbgTracer) MutationQueued(mach am.Api, mut *am.Mutation) {
 		msg.Args = mut.MapArgs(semlog.ArgsMapper())
 	}
 	if err := am.ParseArgs(mut.Args).Err; err != nil {
+		if msg.Args == nil {
+			msg.Args = make(map[string]string)
+		}
 		msg.Args["err"] = err.Error()
 	}
 	t.queued++
