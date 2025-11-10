@@ -3152,3 +3152,48 @@ func TestCanAdd(t *testing.T) {
 	m.Dispose()
 	<-m.WhenDisposed()
 }
+
+func TestWhenQuery(t *testing.T) {
+	t.Parallel()
+	m := NewNoRels(t, S{"A"})
+	query1 := func(c Clock) bool {
+		return c["A"] > c["B"]*4
+	}
+	query2 := func(c Clock) bool {
+		return c["A"] < c["B"]
+	}
+	when1 := m.WhenQuery(query1, nil)
+	when2 := m.WhenQuery(query2, nil)
+
+	// 1, 0
+	m.Add1("B", nil)
+	// 1, 1
+	m.Remove1("A", nil)
+	// 2, 1
+	m.Add1("A", nil)
+	// 3, 1
+	m.Remove1("A", nil)
+	// 4, 1
+	select {
+	case <-when2:
+		assert.Fail(t, "should NOT match")
+	case <-when1:
+		assert.Fail(t, "should NOT match")
+	default:
+		// ok
+	}
+	m.Add1("A", nil)
+	// 5, 1 = match
+	select {
+	case <-when1:
+	// ok
+	case <-when2:
+		assert.Fail(t, "should NOT match")
+	default:
+		assert.Fail(t, "should match")
+	}
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}

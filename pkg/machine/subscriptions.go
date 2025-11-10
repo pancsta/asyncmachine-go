@@ -25,13 +25,17 @@ type Subscriptions struct {
 	not   InternalCheckFunc
 	log   InternalLogFunc
 
-	stateCtx      IndexStateCtx
-	when          IndexWhen
-	whenCtx       map[context.Context][]*WhenBinding
-	whenTime      IndexWhenTime
-	whenTimeCtx   map[context.Context][]*WhenTimeBinding
-	whenArgs      IndexWhenArgs
-	whenArgsCtx   map[context.Context][]*WhenArgsBinding
+	stateCtx IndexStateCtx
+
+	when         IndexWhen
+	whenCtx      map[context.Context][]*WhenBinding
+	whenTime     IndexWhenTime
+	whenTimeCtx  map[context.Context][]*WhenTimeBinding
+	whenArgs     IndexWhenArgs
+	whenArgsCtx  map[context.Context][]*WhenArgsBinding
+	whenQuery    []*whenQueryBinding
+	whenQueryCtx map[context.Context][]*whenQueryBinding
+
 	whenQueueEnds []*whenQueueEndsBinding
 	whenQueue     []*whenQueueBinding
 }
@@ -97,7 +101,8 @@ func (sm *Subscriptions) ProcessWhen(activated, deactivated S) []chan struct{} {
 	// collect matched bindings
 	all := slices.Concat(activated, deactivated)
 	for _, s := range all {
-		for _, binding := range sm.when[s] {
+		// TODO optimize clone
+		for _, binding := range slices.Clone(sm.when[s]) {
 
 			if slices.Contains(activated, s) {
 
@@ -225,7 +230,8 @@ func (sm *Subscriptions) ProcessWhenTime(before Clock) []chan struct{} {
 
 	// check all the bindings for all the ticked states
 	for _, s := range allTicked {
-		for _, binding := range sm.whenTime[s] {
+		// TODO optimize clone
+		for _, binding := range slices.Clone(sm.whenTime[s]) {
 
 			// check if the requested time has passed
 			if !binding.Completed[s] &&
@@ -312,7 +318,7 @@ func (sm *Subscriptions) ProcessWhenArgs(e *Event) []chan struct{} {
 	ret := sm.processWhenArgsCtx()
 
 	// collect arg matches
-	for _, binding := range sm.whenArgs[e.Name] {
+	for _, binding := range slices.Clone(sm.whenArgs[e.Name]) {
 		expired := binding.ctx != nil && binding.ctx.Err() != nil
 		// TODO better comparison
 		if !compareArgs(e.Args, binding.args) && !expired {
@@ -372,6 +378,75 @@ func (sm *Subscriptions) gcWhenArgsBinding(
 	// FooState -> Foo
 	name, _ := strings.CutSuffix(binding.handler, SuffixState)
 	sm.log(LogOps, "[whenArgs:match] %s (%s)", name, argNames)
+}
+
+func (sm *Subscriptions) ProcessWhenQuery() []chan struct{} {
+	// locks
+	sm.Mx.Lock()
+	defer sm.Mx.Unlock()
+
+	// collect ctx expirations
+	// TODO optimize by skipping
+	ret := sm.processWhenQueryCtx()
+
+	// collect arg matches TODO optimize clone
+	for _, binding := range slices.Clone(sm.whenQuery) {
+		expired := binding.ctx != nil && binding.ctx.Err() != nil
+		if !binding.fn(sm.clock) && !expired {
+			continue
+		}
+
+		// completed - rm binding and collect ch
+		sm.gcWhenQueryBinding(binding, true)
+		ret = append(ret, binding.ch)
+	}
+
+	return ret
+}
+
+func (sm *Subscriptions) processWhenQueryCtx() []chan struct{} {
+	var ret []chan struct{}
+
+	// find expired ctxs
+	for ctx, bindings := range sm.whenQueryCtx {
+		if ctx.Err() == nil {
+			continue
+		}
+
+		// delete the ctx and all the bindings
+		delete(sm.whenArgsCtx, ctx)
+		for _, binding := range bindings {
+			sm.gcWhenQueryBinding(binding, false)
+		}
+	}
+
+	return ret
+}
+
+func (sm *Subscriptions) gcWhenQueryBinding(
+	binding *whenQueryBinding, gcCtx bool,
+) {
+	// remove GC ctx
+	if binding.ctx != nil && gcCtx {
+		sm.whenQueryCtx[binding.ctx] = slicesWithout(
+			sm.whenQueryCtx[binding.ctx], binding)
+
+		if len(sm.whenQueryCtx[binding.ctx]) == 0 {
+			delete(sm.whenQueryCtx, binding.ctx)
+		}
+	}
+
+	// GC
+	idx := 0
+	if len(sm.whenQuery) == 1 {
+		sm.whenQuery = nil
+	} else {
+		idx = slices.Index(sm.whenQuery, binding)
+		sm.whenQuery = slices.Delete(sm.whenQuery, idx, idx+1)
+	}
+
+	// log TODO sem logger
+	sm.log(LogOps, "[whenQuery:match] %d", idx)
 }
 
 // ProcessWhenQueueEnds collects all queue-end subscriptions, and
@@ -681,6 +756,31 @@ func (sm *Subscriptions) WhenTime(
 	return ch
 }
 
+func (sm *Subscriptions) WhenQuery(
+	fn func(clock Clock) bool, ctx context.Context,
+) <-chan struct{} {
+	// locks
+	sm.Mx.Lock()
+	defer sm.Mx.Unlock()
+
+	// add the binding to an index of each state
+	ch := make(chan struct{})
+	binding := &whenQueryBinding{
+		ch:  ch,
+		ctx: ctx,
+		fn:  fn,
+	}
+
+	// insert the binding
+	sm.log(LogOps, "[whenQuery:new] %d", len(sm.whenQuery))
+	sm.whenQuery = append(sm.whenQuery, binding)
+	if ctx != nil {
+		sm.whenQueryCtx[ctx] = append(sm.whenQueryCtx[ctx], binding)
+	}
+
+	return ch
+}
+
 // WhenQueueEnds closes every time the queue ends, or the optional ctx expires.
 // This function assumes the queue is running, and wont close early.
 //
@@ -718,7 +818,7 @@ func (sm *Subscriptions) WhenQueueEnds(
 
 // WhenQueue waits until the passed queueTick gets processed.
 func (sm *Subscriptions) WhenQueue(tick Result) <-chan struct{} {
-	// TODO add gc ctx? use cases?
+	// TODO add gc ctx (just in case)
 	// locks
 	sm.Mx.Lock()
 	defer sm.Mx.Unlock()
