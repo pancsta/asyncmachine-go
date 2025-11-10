@@ -2895,7 +2895,7 @@ func TestCountActive(t *testing.T) {
 	m := NewNoRels(t, nil)
 	m.Add1("A", nil)
 
-	assert.Equal(t, m.CountActive(S{"A", "B"}), 1)
+	assert.Len(t, m.ActiveStates(S{"A", "B"}), 1)
 }
 
 func TestAddErr(t *testing.T) {
@@ -3000,7 +3000,7 @@ func TestDisposedNoOp(t *testing.T) {
 
 	// states
 	assert.Len(t, m.Queue(), 0)
-	assert.Len(t, m.ActiveStates(), 0)
+	assert.Len(t, m.ActiveStates(nil), 0)
 	assert.Len(t, m.Clock(nil), 0)
 
 	// when
