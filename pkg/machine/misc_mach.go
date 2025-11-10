@@ -17,95 +17,30 @@ import (
 	"time"
 )
 
+// ///// ///// /////
+
+// ///// TIME
+
+// ///// ///// /////
+
+// Time
+
 // Time is machine time, an ordered list of state ticks. It's like Clock, but
 // indexed by int, instead of string.
 // TODO use math/big?
 type Time []uint64
 
-// Time TODO Any, Any1, Not, Not1
-
-// Get returns the tick at the given index, or 0 if out of bounds (for old
-// schemas).
-func (t Time) Get(idx int) uint64 {
-	// out of bound falls back to 0
-	if len(t) <= idx {
-		return 0
+// Increment adds 1 to a state's tick value
+func (t Time) Increment(idx int) Time {
+	ret := make(Time, len(t))
+	copy(ret, t)
+	if idx < len(ret) {
+		ret[idx]++
 	}
-
-	return t[idx]
+	return ret
 }
 
-// Is1 checks if a state is active at a given time, via its index. See
-// Machine.Index().
-func (t Time) Is1(idx int) bool {
-	if idx == -1 || idx >= len(t) {
-		return false
-	}
-	return IsActiveTick(t[idx])
-}
-
-// Is checks if all the passed states were active at a given time, via indexes.
-// See Machine.Index().
-func (t Time) Is(idxs []int) bool {
-	if len(idxs) == 0 {
-		return false
-	}
-
-	for _, idx := range idxs {
-		// -1 is not found or mach disposed
-		if idx == -1 {
-			return false
-		}
-		if !IsActiveTick(t[idx]) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// TODO docs
-func (t Time) Not(idxs []int) bool {
-	if len(idxs) == 0 {
-		return true
-	}
-
-	for _, idx := range idxs {
-		// -1 is not found or mach disposed
-		if idx != -1 && IsActiveTick(t[idx]) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// TODO docs
-func (t Time) Not1(idx int) bool {
-	if idx == -1 || idx >= len(t) {
-		return false
-	}
-
-	return !IsActiveTick(t[idx])
-}
-
-// TODO Any
-
-// Any1 see Machine.Any1.
-func (t Time) Any1(idxs ...int) bool {
-	if len(idxs) == 0 {
-		return false
-	}
-
-	for _, idx := range idxs {
-		if IsActiveTick(t[idx]) {
-			return true
-		}
-	}
-
-	return false
-}
-
+// String returns an integer representation of the time slice.
 func (t Time) String() string {
 	ret := ""
 	for _, tick := range t {
@@ -113,78 +48,6 @@ func (t Time) String() string {
 			ret += " "
 		}
 		ret += strconv.Itoa(int(tick))
-	}
-
-	return ret
-}
-
-// ActiveStates returns a list of active state names in this machine time slice.
-func (t Time) ActiveStates(index S) S {
-	ret := S{}
-	for i, tick := range t {
-		if !IsActiveTick(tick) {
-			continue
-		}
-		name := "unknown" + strconv.Itoa(i)
-		if len(index) > i {
-			name = index[i]
-		}
-		ret = append(ret, name)
-	}
-
-	return ret
-}
-
-// ActiveIndex returns a list of active state indexes in this machine time
-// slice.
-func (t Time) ActiveIndex() []int {
-	ret := []int{}
-	for i, tick := range t {
-		if !IsActiveTick(tick) {
-			continue
-		}
-		ret = append(ret, i)
-	}
-
-	return ret
-}
-
-// Sum returns the sum of all the ticks in Time.
-func (t Time) Sum() uint64 {
-	var sum uint64
-	for _, idx := range t {
-		sum += idx
-	}
-
-	return sum
-}
-
-// TODO Time(states) - part of [Api]
-
-func (t Time) TimeSum(idxs []int) uint64 {
-	if len(idxs) == 0 {
-		return t.Sum()
-	}
-
-	var sum uint64
-	for _, idx := range idxs {
-		sum += t[idx]
-	}
-
-	return sum
-}
-
-// DiffSince returns the number of ticks for each state in Time since the
-// passed machine time.
-func (t Time) DiffSince(before Time) Time {
-	// TODO: optimize, add index-based diffs
-	ret := make(Time, len(t))
-	if len(t) != len(before) {
-		return ret
-	}
-
-	for i := range before {
-		ret[i] = t[i] - before[i]
 	}
 
 	return ret
@@ -204,10 +67,238 @@ func (t Time) Add(t2 Time) Time {
 	return ret
 }
 
+// ToIndex returns a string-indexed version of Time.
+func (t Time) ToIndex(index S) *TimeIndex {
+	return &TimeIndex{
+		Time:  t,
+		Index: index,
+	}
+}
+
+// Filter returns a subset of the Time slice for the given state indexes.
+// It's not advised to slice an already sliced time slice.
+func (t Time) Filter(idxs []int) Time {
+	ret := make(Time, len(idxs))
+	for i, idx := range idxs {
+		if idx >= len(t) {
+			continue
+		}
+		ret[i] = t[idx]
+	}
+
+	return ret
+}
+
+// Sum returns a sum of ticks for each state in Time, or narrowed down to
+// [idxs].
+func (t Time) Sum(idxs []int) uint64 {
+	// total sum
+	if idxs == nil {
+		var sum uint64
+		for _, idx := range t {
+			sum += idx
+		}
+		return sum
+	}
+
+	// selective sum
+	var sum uint64
+	for _, idx := range idxs {
+		if idx >= len(t) {
+			continue
+		}
+		sum += t[idx]
+	}
+
+	return sum
+}
+
+// DiffSince returns the number of ticks for each state in Time since the
+// passed machine time.
+func (t Time) DiffSince(before Time) Time {
+	ret := make(Time, len(t))
+	if len(t) != len(before) {
+		return ret
+	}
+
+	for i := range before {
+		ret[i] = t[i] - before[i]
+	}
+
+	return ret
+}
+
+// NonZeroStates returns a list of state indexes with non-zero ticks in this
+// machine time slice.
+func (t Time) NonZeroStates() []int {
+	ret := make([]int, 0, len(t))
+
+	for i, tick := range t {
+		if tick != 0 {
+			ret = append(ret, i)
+		}
+	}
+
+	return ret
+}
+
+// After returns true if at least 1 tick in time1 is after time2, optionally
+// accepting equal values for true. Requires a deterministic states
+// order, eg by using [Machine.VerifyStates].
+func (t Time) After(orEqual bool, time2 Time) bool {
+	l2 := len(time2)
+	for i, t1 := range t {
+		// shorter time2 cant be after time1
+		if l2 <= i {
+			break
+		}
+		if t1 < time2[i] || (t1 == time2[i] && !orEqual) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Before returns true if at least 1 tick in time1 is before time2, optionally
+// accepting equal values for true. Requires a deterministic states
+// order, eg by using [Machine.VerifyStates].
+func (t Time) Before(orEqual bool, time2 Time) bool {
+	l2 := len(time2)
+	for i, t1 := range t {
+		// shorter time2 cant be after time1
+		if l2 <= i {
+			break
+		}
+		if t1 > time2[i] || (t1 == time2[i] && !orEqual) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Equal checks if time1 is equal to time2. Requires a deterministic states
+// order, eg by using [Machine.VerifyStates].
+func (t Time) Equal(strict bool, time2 Time) bool {
+	if strict && len(t) != len(time2) {
+		return false
+	}
+
+	for i, t1 := range t {
+		if t1 != time2[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Time - state checking
+
+// Tick is [Machine.Tick] but for an int-based time slice.
+func (t Time) Tick(idx int) uint64 {
+	// out of bound falls back to 0
+	if len(t) <= idx {
+		return 0
+	}
+
+	return t[idx]
+}
+
+// Is1 is [Machine.Is1] but for an int-based time slice.
+func (t Time) Is1(idx int) bool {
+	if idx == -1 || idx >= len(t) {
+		return false
+	}
+	return IsActiveTick(t[idx])
+}
+
+// Is is [Machine.Is] but for an int-based time slice.
+func (t Time) Is(idxs []int) bool {
+	if len(idxs) == 0 {
+		return false
+	}
+
+	for _, idx := range idxs {
+		// -1 is not found or mach disposed
+		if idx == -1 {
+			return false
+		}
+		if !IsActiveTick(t[idx]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Not is [Machine.Not] but for an int-based time slice.
+func (t Time) Not(idxs []int) bool {
+	if len(idxs) == 0 {
+		return true
+	}
+
+	for _, idx := range idxs {
+		// -1 is not found or mach disposed
+		if idx != -1 && IsActiveTick(t[idx]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Not1 is [Machine.Not1] but for an int-based time slice.
+func (t Time) Not1(idx int) bool {
+	if idx == -1 || idx >= len(t) {
+		return false
+	}
+
+	return !IsActiveTick(t[idx])
+}
+
+// Any is [Machine.Any] but for an int-based time slice.
+func (t Time) Any(idxs ...[]int) bool {
+	for _, list := range idxs {
+		if t.Is(list) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Any1 is [Machine.Any1] but for an int-based time slice.
+func (t Time) Any1(idxs ...int) bool {
+	for _, idx := range idxs {
+		if t.Is1(idx) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// ActiveStates returns a list of active state indexes in this machine time
+// slice. When idxs isn't nil, only the passed indexes are considered.
+func (t Time) ActiveStates(idxs []int) []int {
+	ret := make([]int, 0, len(idxs))
+	for i, tick := range t {
+		if !IsActiveTick(tick) {
+			continue
+		}
+		ret = append(ret, i)
+	}
+
+	return ret
+}
+
 // TimeIndex
 
-// TimeIndex is Time with a bound state index (list of state names). It's not
-// suitable for storage, use Time instead.
+// TimeIndex is [Time] with a bound state index (list of state names). It's not
+// suitable for storage, use [Time] instead. See [Clock] for a simpler type with
+// ticks indexes by state names.
 type TimeIndex struct {
 	Time
 	Index S
@@ -225,6 +316,12 @@ func NewTimeIndex(index S, activeStates []int) *TimeIndex {
 	return ret
 }
 
+// String returns a string representation of the time slice.
+func (t TimeIndex) String() string {
+	return j(t.ActiveStates(nil))
+}
+
+// StateName returns the name of the state at the given index.
 func (t TimeIndex) StateName(idx int) string {
 	if idx >= len(t.Index) {
 		return ""
@@ -233,38 +330,77 @@ func (t TimeIndex) StateName(idx int) string {
 	return t.Index[idx]
 }
 
-// all methods from Time
+// Sum is [Time.Sum] but for a sting-based time slice.
+func (t TimeIndex) Sum(states S) uint64 {
+	return t.Time.Sum(StatesToIndex(t.Index, states))
+}
 
+// Filter is [Time.Filter] but for a sting-based time slice.
+func (t TimeIndex) Filter(states S) *TimeIndex {
+	return t.Time.Filter(StatesToIndex(t.Index, states)).ToIndex(states)
+}
+
+// NonZeroStates is [Time.NonZeroStates] but for a sting-based time slice.
+func (t TimeIndex) NonZeroStates() S {
+	return IndexToStates(t.Index, t.Time.NonZeroStates())
+}
+
+// TimeIndex - state checking
+
+// Is is [Machine.Is] but for a sting-based time slice.
 func (t TimeIndex) Is(states S) bool {
 	return t.Time.Is(StatesToIndex(t.Index, states))
 }
 
+// Is1 is [Machine.Is1] but for a sting-based time slice.
 func (t TimeIndex) Is1(state string) bool {
 	return t.Time.Is(StatesToIndex(t.Index, S{state}))
 }
 
+// Not is [Machine.Not] but for a sting-based time slice.
 func (t TimeIndex) Not(states S) bool {
 	return t.Time.Not(StatesToIndex(t.Index, states))
 }
 
+// Not1 is [Machine.Not1] but for a sting-based time slice.
 func (t TimeIndex) Not1(state string) bool {
 	return t.Time.Not(StatesToIndex(t.Index, S{state}))
 }
 
+// Any is [Machine.Any] but for a sting-based time slice.
+func (t TimeIndex) Any(states ...string) bool {
+	params := make([][]int, len(states))
+	for i, state := range states {
+		params[i] = StatesToIndex(t.Index, S{state})
+	}
+
+	return t.Time.Any(params...)
+}
+
+// Any1 is [Machine.Any1] but for a sting-based time slice.
 func (t TimeIndex) Any1(states ...string) bool {
 	return t.Time.Any1(StatesToIndex(t.Index, states)...)
 }
 
-func (t TimeIndex) String() string {
-	return j(t.ActiveStates())
-}
+// ActiveStates is [Machine.ActiveStates] but for a sting-based time slice.
+func (t TimeIndex) ActiveStates(states S) S {
+	ret := S{}
+	for i, tick := range t.Time {
+		if !IsActiveTick(tick) {
+			continue
+		}
+		name := "unknown" + strconv.Itoa(i)
+		if len(t.Index) > i {
+			name = t.Index[i]
+		}
+		if states != nil && !slices.Contains(states, name) {
+			continue
+		}
 
-func (t TimeIndex) ActiveStates() S {
-	return t.Time.ActiveStates(t.Index)
-}
+		ret = append(ret, name)
+	}
 
-func (t TimeIndex) TimeSum(states S) uint64 {
-	return t.Time.TimeSum(StatesToIndex(t.Index, states))
+	return ret
 }
 
 // Context
