@@ -575,6 +575,28 @@ func (m *Machine) WhenTicks(
 	return m.WhenTime(S{state}, Time{uint64(ticks) + m.Tick(state)}, ctx)
 }
 
+// WhenQuery returns a channel that will be closed when the passed [clockCheck]
+// function returns true. [clockCheck] should be a pure function and
+// non-blocking.`
+//
+// ctx: optional context that will close the channel early.
+func (m *Machine) WhenQuery(
+	clockCheck func(clock Clock) bool, ctx context.Context,
+) <-chan struct{} {
+	// TODO test case
+	// TODO add to Api
+
+	if m.disposed.Load() {
+		return newClosedChan()
+	}
+
+	// locks
+	m.activeStatesMx.Lock()
+	defer m.activeStatesMx.Unlock()
+
+	return m.subs.WhenQuery(clockCheck, ctx)
+}
+
 // WhenQueueEnds closes every time the queue ends, or the optional ctx expires.
 //
 // ctx: optional context that will close the channel early.
@@ -1945,6 +1967,7 @@ func (m *Machine) processSubscriptions(t *Transition) {
 		m.subs.ProcessWhen(t.cacheActivated, t.cacheDeactivated),
 		m.subs.ProcessWhenTime(t.ClockBefore()),
 		m.subs.ProcessWhenQueue(m.queueTick),
+		m.subs.ProcessWhenQuery(),
 	)
 
 	// unlock

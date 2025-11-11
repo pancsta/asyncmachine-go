@@ -756,7 +756,21 @@ func (w *Worker) WhenTicks(
 	return w.WhenTime(am.S{state}, am.Time{uint64(ticks) + w.Tick(state)}, ctx)
 }
 
-// WhenQueue waits until the passed queueTick gets processed.
+// WhenQuery returns a channel that will be closed when the passed [clockCheck]
+// function returns true. [clockCheck] should be a pure function and
+// non-blocking.`
+//
+// ctx: optional context that will close the channel early.
+func (w *Worker) WhenQuery(
+	clockCheck func(clock am.Clock) bool, ctx context.Context,
+) <-chan struct{} {
+	// locks
+	w.clockMx.Lock()
+	defer w.clockMx.Unlock()
+
+	return w.subs.WhenQuery(clockCheck, ctx)
+}
+
 func (w *Worker) WhenQueue(tick am.Result) <-chan struct{} {
 	// locks
 	w.clockMx.Lock()

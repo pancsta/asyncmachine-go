@@ -1261,3 +1261,61 @@ func TestWhenQueue(t *testing.T) {
 	// dispose
 	disposeTest(t, c, s, true)
 }
+
+func TestWhenQuery(t *testing.T) {
+	t.Parallel()
+
+	// init
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// machine
+	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
+
+	// worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
+	w := c.Worker
+
+	// test
+	query1 := func(c am.Clock) bool {
+		return c["A"] > c["B"]*4
+	}
+	query2 := func(c am.Clock) bool {
+		return c["A"] < c["B"]
+	}
+	when1 := w.WhenQuery(query1, nil)
+	when2 := w.WhenQuery(query2, nil)
+
+	// 1, 0
+	w.Add1("B", nil)
+	// 1, 1
+	w.Remove1("A", nil)
+	// 2, 1
+	w.Add1("A", nil)
+	// 3, 1
+
+	w.Remove1("A", nil)
+	// 4, 1
+	select {
+	case <-when2:
+		assert.Fail(t, "should NOT match")
+	case <-when1:
+		assert.Fail(t, "should NOT match")
+	default:
+		// ok
+	}
+
+	w.Add1("A", nil)
+	// 5, 1 = match
+	select {
+	case <-when1:
+	// ok
+	case <-when2:
+		assert.Fail(t, "should NOT match")
+	default:
+		assert.Fail(t, "should match")
+	}
+
+	// dispose
+	disposeTest(t, c, s, true)
+}
