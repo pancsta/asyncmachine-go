@@ -1799,15 +1799,16 @@ func (h *TestQueueCheckableHandlers) AState(e *Event) {
 	assert.Len(t, m.queue, 3, "queue should have 3 mutations scheduled")
 	h.assertsCount++
 
-	assert.Equal(t, int16(1),
-		m.IsQueued(MutationAdd, S{"C"}, false, false, 0, false, PositionAny),
-		"C should be queued")
+	idx, found := m.IsQueued(MutationAdd, S{"C"}, false, false, 0, false,
+		PositionAny)
+	assert.Equal(t, uint16(1), idx, "C should be queued")
+	assert.True(t, found, "C should be queued")
 	assert.True(t, m.WillBe1("C"), "A should NOT be queued")
 	h.assertsCount++
 
-	assert.Equal(t, int16(-1),
-		m.IsQueued(MutationAdd, S{"A"}, false, false, 0, false, PositionAny),
-		"A should NOT be queued")
+	_, found = m.IsQueued(MutationAdd, S{"A"}, false, false, 0, false,
+		PositionAny)
+	assert.False(t, found, "A should NOT be queued")
 	assert.False(t, m.WillBe1("A"), "A should NOT be queued")
 	h.assertsCount++
 
@@ -2969,7 +2970,7 @@ func TestOpts(t *testing.T) {
 	assert.Equal(t, m.Id(), m2.ParentId())
 	assert.Equal(t, false, m2.LogStackTrace)
 	assert.Equal(t, tags, m2.Tags())
-	assert.Equal(t, 10, m2.QueueLimit)
+	assert.Equal(t, uint16(10), m2.QueueLimit)
 	assert.Equal(t, LogChanges, m2.SemLogger().Level())
 
 	tags2 := []string{"c"}

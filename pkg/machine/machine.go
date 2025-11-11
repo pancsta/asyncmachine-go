@@ -26,7 +26,7 @@ var _ Api = &Machine{}
 // mutations to execute.
 type Machine struct {
 	// Maximum number of mutations that can be queued. Default: 1000.
-	QueueLimit int
+	QueueLimit uint16
 	// HandlerTimeout defined the time for a handler to execute before it causes
 	// StateException. Default: 1s. See also Opts.HandlerTimeout.
 	// Using HandlerTimeout can cause race conditions, see Event.IsValid().
@@ -102,8 +102,9 @@ type Machine struct {
 	queueToken        atomic.Uint64
 	queueMx           sync.RWMutex
 	queueProcessing   atomic.Bool
-	// total len of the queue (ticking and prepended0
-	queueLen atomic.Int32
+	// total len of the queue, both appended (with queue ticks) and prepended.
+	// TODO should be uint16
+	queueLen atomic.Uint32
 	// length of the ticking mutations
 	// Relation resolver, used to produce target schema of a transition.
 	// Default: *DefaultRelationsResolver.
@@ -757,7 +758,7 @@ func (m *Machine) PrependMut(mut *Mutation) Result {
 	}
 	m.queue = append([]*Mutation{mut}, m.queue...)
 	lenQ := len(m.queue)
-	m.queueLen.Store(int32(lenQ))
+	m.queueLen.Store(uint32(lenQ))
 	if !isEval {
 		mut.QueueLen = int32(lenQ)
 		mut.QueueToken = m.queueToken.Add(1)
@@ -788,7 +789,7 @@ func (m *Machine) Add(states S, args A) Result {
 	}
 
 	// let Exception in even with a full queue, but only once
-	if int(m.queueLen.Load()) >= m.QueueLimit {
+	if uint16(m.queueLen.Load()) >= m.QueueLimit {
 		if !slices.Contains(states, StateException) || m.IsErr() {
 			return Canceled
 		}
@@ -1005,7 +1006,7 @@ func (m *Machine) Remove(states S, args A) Result {
 	}
 
 	// let Exception in even with a full queue, but only once
-	if int(m.queueLen.Load()) >= m.QueueLimit {
+	if uint16(m.queueLen.Load()) >= m.QueueLimit {
 		if !slices.Contains(states, StateException) || !m.IsErr() {
 			return Canceled
 		}
@@ -1051,7 +1052,7 @@ func (m *Machine) Remove1(state string, args A) Result {
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (m *Machine) Set(states S, args A) Result {
-	if m.disposed.Load() || int(m.queueLen.Load()) >= m.QueueLimit {
+	if m.disposed.Load() || uint16(m.queueLen.Load()) >= m.QueueLimit {
 		return Canceled
 	}
 	queueTick := m.queueMutation(MutationSet, states, args, nil)
@@ -2433,7 +2434,7 @@ func (m *Machine) Tick(state string) uint64 {
 }
 
 // IsQueued checks if a particular mutation has been queued. Returns
-// an index of the match or -1 if not found.
+// an index (idx, true), or (0, false), if not found.
 //
 // mutType: add, remove, set
 //
@@ -2450,22 +2451,22 @@ func (m *Machine) Tick(state string) uint64 {
 //
 // position: position in the queue, after applying the [startIndex]
 func (m *Machine) IsQueued(mutType MutationType, states S,
-	withoutArgsOnly bool, statesStrictEqual bool, startIndex int16, isCheck bool,
+	withoutArgsOnly bool, statesStrictEqual bool, startIndex uint16, isCheck bool,
 	position Position,
-) int16 {
+) (uint16, bool) {
 	// TODO add QueueQuery with all the params
 	// TODO test case
 
 	if m.disposed.Load() {
-		return -1
+		return 0, false
 	}
 	m.queueMx.RLock()
 	defer m.queueMx.RUnlock()
 
 	// start index
-	qLen := int16(m.queueLen.Load())
+	qLen := uint16(m.queueLen.Load())
 	if qLen == 0 || qLen-startIndex < 1 {
-		return -1
+		return 0, false
 	}
 	iter := m.queue[startIndex:]
 
@@ -2490,16 +2491,16 @@ func (m *Machine) IsQueued(mutType MutationType, states S,
 			// and all the checked ones have to be included in the target ones
 			slicesEvery(mut.Called, m.Index(states)) {
 
-			return int16(i)
+			return uint16(i), true
 		}
 	}
 
-	return -1
+	return 0, false
 }
 
 // IsQueuedAbove allows for rate-limiting of mutations for a specific state.
 func (m *Machine) IsQueuedAbove(threshold int, mutationType MutationType,
-	states S, withoutArgsOnly bool, statesStrictEqual bool, startIndex int,
+	states S, withoutArgsOnly bool, statesStrictEqual bool, startIndex uint16,
 ) bool {
 	if m.disposed.Load() {
 		return false
@@ -2511,7 +2512,7 @@ func (m *Machine) IsQueuedAbove(threshold int, mutationType MutationType,
 	c := 0
 
 	for i, item := range m.queue {
-		if i >= startIndex &&
+		if uint16(i) >= startIndex &&
 			item.Type == mutationType &&
 			((withoutArgsOnly && len(item.Args) == 0) || !withoutArgsOnly) &&
 			// target states have to be at least as long as the checked ones
@@ -2533,8 +2534,8 @@ func (m *Machine) IsQueuedAbove(threshold int, mutationType MutationType,
 	return false
 }
 
-func (m *Machine) QueueLen() int {
-	return int(m.queueLen.Load())
+func (m *Machine) QueueLen() uint16 {
+	return uint16(m.queueLen.Load())
 }
 
 // WillBe returns true if the passed states are scheduled to be activated.
@@ -2548,14 +2549,15 @@ func (m *Machine) WillBe(states S, position ...Position) bool {
 	if len(position) == 0 {
 		position = []Position{PositionAny}
 	}
-	idx := m.IsQueued(MutationAdd, states, false, false, 0, false, position[0])
+	idx, found := m.IsQueued(MutationAdd, states, false, false, 0, false,
+		position[0])
 
 	switch {
-	case idx == -1:
+	case !found:
 		return false
 	case idx == 0 && position[0] == PositionFirst:
 		return true
-	case int32(idx) == m.queueLen.Load()-1 && position[0] == PositionLast:
+	case idx == uint16(m.queueLen.Load())-1 && position[0] == PositionLast:
 		return true
 	default:
 		return true
@@ -2580,14 +2582,15 @@ func (m *Machine) WillBeRemoved(states S, position ...Position) bool {
 	if len(position) == 0 {
 		position = []Position{PositionAny}
 	}
-	idx := m.IsQueued(MutationRemove, states, false, false, 0, false, position[0])
+	idx, found := m.IsQueued(MutationRemove, states, false, false, 0, false,
+		position[0])
 
 	switch {
-	case idx == -1:
+	case !found:
 		return false
 	case idx == 0 && position[0] == PositionFirst:
 		return true
-	case int32(idx) == m.queueLen.Load()-1 && position[0] == PositionLast:
+	case idx == uint16(m.queueLen.Load())-1 && position[0] == PositionLast:
 		return true
 	default:
 		return true
