@@ -189,11 +189,12 @@ different instances of the same state. It's most commonly used in the form of `c
 but it also provides methods on its own data type [`am.Time`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Time).
 An instance of state context gets canceled once the state becomes inactive.
 
+TODO MachineTick
+
 Other related methods and functions:
 
 - [`Machine.Clock(state string) uint64`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Clock)
 - [`Machine.Time(states S) Time`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Time)
-- [`Machine.TimeSum(states S) Time`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum)
 - [`Machine.IsTime(time Time) bool`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.IsTime)
 - [`Machine.IsClock(clock Clock) bool`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.IsClock)
 - [`IsTimeAfter(t1 Time, t2 Time)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#IsTimeAfter)
@@ -1215,8 +1216,8 @@ Error handling methods:
 ```go
 var States = am.Schema{
 
-    ErrWorker:  {Require: am.S{am.Exception}},
-    ErrPool:    {Require: am.S{am.Exception}},
+    ErrWorker:  {Require: am.S{am.StateException}},
+    ErrPool:    {Require: am.S{am.StateException}},
 
     // ...
 }

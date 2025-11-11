@@ -93,8 +93,8 @@ var ss = states.TopicStates
 
 // ...
 
-var remotePeerId string
-var ps *ampusub.Topic
+// var remotePeerId string
+// var ps *ampusub.Topic
 
 // list machines exported by [remotePeerId]
 ch := make(chan []*rpc.Worker, 1)

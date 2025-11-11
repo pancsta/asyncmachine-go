@@ -121,10 +121,10 @@ import (
 
 // ...
 
-var ssNames am.S
-var ssStruct am.Schema
-var workerKind string
-var workerBin []string
+// var ssNames am.S
+// var ssStruct am.Schema
+// var workerKind string
+// var workerBin []string
 
 // supervisor
 super, err := amnode.NewSupervisor(ctx, workerKind, workerBin, ssStruct, ssNames, nil)
@@ -164,10 +164,10 @@ import (
 
 // ...
 
-var ssWorkerNames am.S
-var ssWorkerStruct am.Schema
-var workerKind string
-var superAddrs []string
+// var ssWorkerNames am.S
+// var ssWorkerStruct am.Schema
+// var workerKind string
+// var superAddrs []string
 
 // inherit from Node client
 ssStruct := am.SchemaMerge(ssnode.ClientStruct, am.Schema{

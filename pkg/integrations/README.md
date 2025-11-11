@@ -44,9 +44,9 @@ import nats "github.com/pancsta/asyncmachine-go/pkg/integration/nats"
 
 // ...
 
-var mach *am.Machine
-var ctx context.Context
-var nc *nats.Conn
+// var mach *am.Machine
+// var ctx context.Context
+// var nc *nats.Conn
 
 // expose mach under mytopic
 _ = nats.ExposeMachine(ctx, mach, nc, "mytopic", "")

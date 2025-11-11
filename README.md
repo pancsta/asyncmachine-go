@@ -47,13 +47,7 @@ tool with acceptable performance.
 
 **asyncmachine-go** takes care of `context`, `select`, and `panic`, while allowing for graph-structured concurrency
 with [goroutine cancelation](https://github.com/pancsta/asyncmachine-go/pull/261). The history log and relations have
-vector formats.
-
-It aims to create **autonomous** workflows with **organic** control flow and **stateful** APIs:
-
-- **autonomous** - automatic states, relations, context-based decisions
-- **organic** - relations, negotiation, cancelation
-- **stateful** - maintaining context, responsive, atomic
+vector formats. It aims to create **autonomous** workflows with **organic** control flow and **stateful** APIs.
 
 <div align="center">
     <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/am-dbg/README.md">
@@ -73,9 +67,10 @@ It aims to create **autonomous** workflows with **organic** control flow and **s
 - lock
 - breakpoint
 
-Besides workflows, it can be used for **stateful applications of any size** - daemons, UIs, configs, bots, firewalls,
-synchronization consensus, games, smart graphs, microservice orchestration, robots, contracts, streams, DI containers,
-test scenarios, simulators, as well as **"real-time" systems** which rely on instant cancelation.
+Besides the main use-case of workflows, it can be used for **stateful applications of any size** - daemons, UIs,
+configs, bots, firewalls, synchronization consensus, games, smart graphs, microservice orchestration, robots, contracts,
+streams, DI containers, test scenarios, simulators, as well as **"real-time" systems** which rely on instant
+cancelation.
 
 ![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)
 
@@ -220,7 +215,7 @@ This monorepo offers the following importable packages, especially:
 Other packages:
 
 - [`/pkg/rpc`](/pkg/rpc) Remote state machines, with the same API as local ones.
-- [`/pkg/history`](/pkg/history) History tracking and traversal.
+- [`/pkg/history`](/pkg/history) History tracking and traversal, including KV and SQL.
 - [`/pkg/integrations`](/pkg/integrations) NATS and other JSON integrations.
 - [`/pkg/graph`](/pkg/graph) Multigraph of interconnected state machines.
 - [`/pkg/node`](/pkg/node) Distributed worker pools with supervisors.
@@ -230,13 +225,13 @@ Other packages:
 
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) Multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) Generates schema files and Grafana dashboards.
-- [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates D2 diagrams.
 - [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
+- [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates D2 diagrams.
 
 [![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)](/tools/cmd/am-dbg)
 
 > [!NOTE]
-> Inspect cause-and-effect in distributed systems.
+> Inspecting cause-and-effect in distributed systems.
 
 ## Apps
 
@@ -271,6 +266,13 @@ Other packages:
 - [GitHub discussions](https://github.com/pancsta/asyncmachine-go/discussions)
 - [Matrix chat](https://matrix.to/#/#room:asyncmachine)
 
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://asyncmachine.dev/chart_dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://asyncmachine.dev/chart_light.png">
+  <img alt="OpenTelemetry traces in Jaeger" src="https://asyncmachine.dev/chart_light.png">
+</picture></div>
+
 ## Status
 
 Under development, status depends on each package. The bottom layers seem prod grade, the top ones are alpha or testing.
@@ -278,7 +280,7 @@ Under development, status depends on each package. The bottom layers seem prod g
 ![grafana](https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png)
 
 > [!NOTE]
-> Manage distributed concurrency.
+> Managing distributed concurrency.
 
 ## Development
 
@@ -291,6 +293,12 @@ Under development, status depends on each package. The bottom layers seem prod g
     - `task lint`
     - `task precommit`
 - [good first issues](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
+
+### [Roadmap](ROADMAP.md)
+
+- history layer - SQL, KV, ...
+- `am-relay` tool for proxying, conversions, duck-taping
+- RPC handlers for distributed state-machines
 
 ## [FAQ](./FAQ.md)
 
@@ -318,7 +326,6 @@ The complete FAQ is available at [FAQ.md](/FAQ.md).
 
 - [Changelog](CHANGELOG.md)
 - [Breaking Changes](BREAKING.md)
-- [Roadmap](ROADMAP.md)
 - [New stuff](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
@@ -327,4 +334,4 @@ The complete FAQ is available at [FAQ.md](/FAQ.md).
 </div>
 
 > [!NOTE]
-> Don't lose your sync.
+> Staying in sync.

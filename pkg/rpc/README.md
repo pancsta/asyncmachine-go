@@ -116,8 +116,8 @@ import (
 
 // ...
 
-var addr string
-var worker *am.Machine
+// var addr string
+// var worker *am.Machine
 
 // init
 s, err := arpc.NewServer(ctx, addr, worker.ID, worker, nil)

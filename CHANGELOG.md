@@ -1,5 +1,20 @@
 # Changelog
 
+## [v0.16.0](https://github.com/pancsta/asyncmachine-go/tree/v0.15.2) (2025-11-11)
+
+- feat: release v0.16 [\#312](https://github.com/pancsta/asyncmachine-go/pull/312) (@pancsta)
+- feat\(machine\): add filtering to `ActiveStates` [\#311](https://github.com/pancsta/asyncmachine-go/pull/311)
+  (@pancsta)
+- refac\(machine\): limit queue len to `uint16` [\#310](https://github.com/pancsta/asyncmachine-go/pull/310) (@pancsta)
+- feat\(machine\): add new Time methods [\#309](https://github.com/pancsta/asyncmachine-go/pull/309) (@pancsta)
+- feat: add WhenQuery for time queries [\#308](https://github.com/pancsta/asyncmachine-go/pull/308) (@pancsta)
+- feat\(machine\): add machine ticks [\#307](https://github.com/pancsta/asyncmachine-go/pull/307) (@pancsta)
+- feat\(history\): add columnar backend experiment [\#306](https://github.com/pancsta/asyncmachine-go/pull/306)
+  (@pancsta)
+- feat\(history\): add KV backend [\#305](https://github.com/pancsta/asyncmachine-go/pull/305) (@pancsta)
+- feat\(history\): add SQL backend [\#304](https://github.com/pancsta/asyncmachine-go/pull/304) (@pancsta)
+- feat\(history\): add memory backend [\#303](https://github.com/pancsta/asyncmachine-go/pull/303) (@pancsta)
+
 ## [v0.15.2](https://github.com/pancsta/asyncmachine-go/tree/v0.15.2) (2025-10-19)
 
 - fix\(machine\): fix empty args map [\#302](https://github.com/pancsta/asyncmachine-go/pull/302) (@pancsta)

@@ -48,7 +48,11 @@ the CPU overhead is around 15-20%, while the memory ceiling remains the same.
 
 ## Does aRPC auto sync data?
 
-aRPC auto syncs only clock values, which technically is `[n]uint64` (`n` = number of states).
+aRPC auto syncs only clock values, which technically is `[n]uint64` (`n` = number of states), plus other minor clocks.
+
+## What's the main use case?
+
+Modeling non-deterministic logic at scale.
 
 ## Does asyncmachine return data?
 
@@ -74,9 +78,10 @@ Yes, all the public methods of `pkg/machine` are thread safe.
 
 ## Is asyncmachine single-threaded?
 
-The queue executes on the thread which caused the mutation, while handlers execute serialy in separate goroutines each.
-Each handler usually forks another goroutine to unblock the next handler. The amount of active goroutines can be limited
-with `amhelp.Pool` (`errgroup`) per a state, machine, or both. It's a form of structured concurrency.
+The queue executes on the thread which caused the mutation, until fully drained. The handlers execute serially in
+separate goroutines each. Each handler usually forks another goroutine to unblock the next handler. The amount of active
+goroutines can be limited with `amhelp.Pool` (`errgroup`) per a state, machine, or both. It's a form of structured
+concurrency.
 
 ## What should be a "state"?
 

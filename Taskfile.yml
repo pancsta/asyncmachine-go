@@ -416,6 +416,8 @@ tasks:
   gen-changelog:
     cmds:
       - gem install github_changelog_generator
+      - gem install faraday-retry
+      - gem install erb
       - github_changelog_generator --token $GITHUB_TOKEN
       - head -n -4 CHANGELOG.md > CHANGELOG-tmp.md
       - mv CHANGELOG-tmp.md CHANGELOG.md
