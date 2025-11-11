@@ -40,23 +40,6 @@ func StatesEqual(states1 S, states2 S) bool {
 	return slicesEvery(states1, states2) && slicesEvery(states2, states1)
 }
 
-// IsTimeAfter checks if time1 is after time2. Requires a deterministic states
-// order, e.g. by using Machine.VerifyStates.
-func IsTimeAfter(time1, time2 Time) bool {
-	// TODO move to Time.IsAfter
-	after := false
-	for i, t1 := range time1 {
-		if t1 < time2[i] {
-			return false
-		}
-		if t1 > time2[i] {
-			after = true
-		}
-	}
-
-	return after
-}
-
 // CloneSchema deep clones the states struct and returns a copy.
 func CloneSchema(stateStruct Schema) Schema {
 	ret := make(Schema)
@@ -429,12 +412,13 @@ func padString(str string, length int, pad string) string {
 	}
 }
 
-func ParseSchema(schema Schema) Schema {
+func ParseSchema(schema Schema) (Schema, error) {
 	// TODO move to Resolver
 	// TODO capitalize states
 
 	parsed := CloneSchema(schema)
 	states := slices.Collect(maps.Keys(schema))
+	var errs error
 	for name, state := range schema {
 
 		// avoid self removal
@@ -458,6 +442,15 @@ func ParseSchema(schema Schema) Schema {
 			state.After = slicesWithout(state.After, name)
 		}
 
+		// detect require-remove conflicts
+		for _, required := range state.Require {
+			if slices.Contains(state.Remove, required) {
+				errs = errors.Join(errs, fmt.Errorf(
+					"%w: require-remove conflict for %s to %s",
+					ErrSchema, name, required))
+			}
+		}
+
 		// remove references to non-existing states
 		for _, n := range state.Remove {
 			if !slices.Contains(states, n) {
@@ -478,7 +471,7 @@ func ParseSchema(schema Schema) Schema {
 		parsed[name] = state
 	}
 
-	return parsed
+	return parsed, errs
 }
 
 // compareArgs return true if args2 is a subset of args1.

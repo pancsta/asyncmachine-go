@@ -20,6 +20,7 @@ import (
 
 // Worker is a subset of `pkg/machine#Machine` for RPC. Lacks the queue and
 // other local methods. Most methods are clock-based, thus executed locally.
+// TODO rename to NetworkMachine (netMach)
 type Worker struct {
 	// RPC client parenting this Worker. If nil, worker is read-only and won't
 	// allow for mutations / network calls.
@@ -63,12 +64,14 @@ type Worker struct {
 	// execQueue executed handlers and tracers
 	// TODO tracers should be synchronous like in pkg/machine
 	execQueue errgroup.Group
+	machTick  uint32
 }
 
 // Worker implements MachineApi
 var _ am.Api = &Worker{}
 
 // NewWorker creates a new instance of a Worker.
+// TODO link godoc to pkg/machine
 func NewWorker(
 	ctx context.Context, id string, c *Client, schema am.Schema, stateNames am.S,
 	parent *am.Machine, tags []string,
@@ -116,7 +119,7 @@ func NewWorker(
 	lvl := am.LogNothing
 	w.logLevel.Store(&lvl)
 	w.activeState.Store(&am.S{})
-	parent.HandleDispose(func(id string, ctx context.Context) {
+	parent.OnDispose(func(id string, ctx context.Context) {
 		w.Dispose()
 	})
 
@@ -140,7 +143,7 @@ func (w *Worker) Sync() am.Time {
 	// call rpc
 	resp := &RespSync{}
 	ok := w.c.callFailsafe(w.c.Mach.Ctx(), ServerSync.Value,
-		w.TimeSum(nil), resp)
+		w.Time(nil).Sum(nil), resp)
 	if !ok {
 		return nil
 	}
@@ -229,7 +232,7 @@ func (w *Worker) Add1NS(state string, args am.A) am.Result {
 	return w.AddNS(am.S{state}, args)
 }
 
-// Remove de-activates a list of states in the machine, returning the result of
+// Remove deactivates a list of states in the machine, returning the result of
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (w *Worker) Remove(states am.S, args am.A) am.Result {
@@ -266,7 +269,7 @@ func (w *Worker) Remove1(state string, args am.A) am.Result {
 	return w.Remove(am.S{state}, args)
 }
 
-// Set de-activates a list of states in the machine, returning the result of
+// Set deactivates a list of states in the machine, returning the result of
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (w *Worker) Set(states am.S, args am.A) am.Result {
@@ -314,7 +317,6 @@ func (w *Worker) AddErrState(state string, err error, args am.A) am.Result {
 		return am.Canceled
 	}
 
-	w.MustParseStates(am.S{state})
 	// TODO remove once remote errors are implemented
 	w.err = err
 
@@ -325,6 +327,7 @@ func (w *Worker) AddErrState(state string, err error, args am.A) am.Result {
 	// }
 
 	// build args
+	// TODO use typed args
 	if args == nil {
 		args = am.A{}
 	} else {
@@ -363,7 +366,7 @@ func (w *Worker) EvAdd(event *am.Event, states am.S, args am.A) am.Result {
 	return resp.Result
 }
 
-// Add1 is a shorthand method to add a single state with the passed args.
+// EvAdd1 is a shorthand method to add a single state with the passed args.
 func (w *Worker) EvAdd1(event *am.Event, state string, args am.A) am.Result {
 	if w.c == nil {
 		return am.Canceled
@@ -389,7 +392,7 @@ func (w *Worker) EvAddErr(event *am.Event, err error, args am.A) am.Result {
 	if w.c == nil {
 		return am.Canceled
 	}
-	return am.Canceled // TODO
+	return w.EvAddErrState(event, am.StateException, err, args)
 }
 
 func (w *Worker) EvAddErrState(
@@ -398,7 +401,28 @@ func (w *Worker) EvAddErrState(
 	if w.c == nil {
 		return am.Canceled
 	}
-	return am.Canceled // TODO
+
+	// TODO remove once remote errors are implemented
+	w.err = err
+
+	// TODO stack traces, use am.AT
+	// var trace string
+	// if m.LogStackTrace {
+	// 	trace = captureStackTrace()
+	// }
+
+	// build args
+	// TODO use typed args
+	if args == nil {
+		args = am.A{}
+	} else {
+		args = maps.Clone(args)
+	}
+	args["err"] = err
+	// args["err.trace"] = trace
+
+	// mark errors added locally with ErrOnClient
+	return w.EvAdd(event, am.S{ssS.ErrOnClient, state, am.StateException}, args)
 }
 
 // Toggle deactivates a list of states in case all are active, or activates
@@ -471,7 +495,7 @@ func (w *Worker) Is1(state string) bool {
 }
 
 func (w *Worker) is(states am.S) bool {
-	activeStates := w.ActiveStates()
+	activeStates := w.ActiveStates(nil)
 	for _, state := range w.MustParseStates(states) {
 		if !slices.Contains(activeStates, state) {
 			return false
@@ -507,7 +531,7 @@ func (w *Worker) Not(states am.S) bool {
 }
 
 func (w *Worker) not(states am.S) bool {
-	return utils.SlicesNone(w.MustParseStates(states), w.ActiveStates())
+	return utils.SlicesNone(w.MustParseStates(states), w.ActiveStates(nil))
 }
 
 // Not1 is a shorthand method to check if a single state is currently inactive.
@@ -639,7 +663,7 @@ func (w *Worker) WasTime(t am.Time, states am.S) bool {
 //	case "Stopped":
 //	}
 func (w *Worker) Switch(groups ...am.S) string {
-	activeStates := w.ActiveStates()
+	activeStates := w.ActiveStates(nil)
 	for _, states := range groups {
 		for _, state := range states {
 			if slices.Contains(activeStates, state) {
@@ -829,11 +853,23 @@ func (w *Worker) StateNamesMatch(re *regexp.Regexp) am.S {
 }
 
 // ActiveStates returns a copy of the currently active states.
-func (w *Worker) ActiveStates() am.S {
-	return *w.activeState.Load()
+func (w *Worker) ActiveStates(states am.S) am.S {
+	active := *w.activeState.Load()
+	if states == nil {
+		return slices.Clone(active)
+	}
+
+	ret := make(am.S, 0, len(states))
+	for _, state := range active {
+		if slices.Contains(active, state) {
+			ret = append(ret, state)
+		}
+	}
+
+	return ret
 }
 
-// Tick return the current tick for a given state.
+// Tick returns the current tick for a given state.
 func (w *Worker) Tick(state string) uint64 {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
@@ -887,29 +923,6 @@ func (w *Worker) time(states am.S) am.Time {
 	}
 
 	return ret
-}
-
-// TimeSum returns the sum of machine's time (ticks per state).
-// Returned value includes the specified states, or all the states if nil.
-// It's a very inaccurate, yet simple way to measure the machine's
-// time.
-// TODO handle overflow
-func (w *Worker) TimeSum(states am.S) uint64 {
-	w.clockMx.RLock()
-	defer w.clockMx.RUnlock()
-
-	index := w.StateNames()
-	if states == nil {
-		states = index
-	}
-
-	var sum uint64
-	for _, state := range states {
-		idx := slices.Index(index, state)
-		sum += w.machTime[idx]
-	}
-
-	return sum
 }
 
 // NewStateCtx returns a new sub-context, bound to the current clock's tick of
@@ -1016,7 +1029,7 @@ func (w *Worker) String() string {
 	defer w.clockMx.RUnlock()
 
 	index := w.StateNames()
-	active := w.ActiveStates()
+	active := w.ActiveStates(nil)
 	ret := "("
 	for _, state := range index {
 		if !slices.Contains(active, state) {
@@ -1041,7 +1054,7 @@ func (w *Worker) StringAll() string {
 	defer w.clockMx.RUnlock()
 
 	index := w.StateNames()
-	activeStates := w.ActiveStates()
+	activeStates := w.ActiveStates(nil)
 	ret := "("
 	ret2 := "["
 	for _, state := range index {
@@ -1076,7 +1089,7 @@ func (w *Worker) Inspect(states am.S) string {
 		states = index
 	}
 
-	activeStates := w.ActiveStates()
+	activeStates := w.ActiveStates(nil)
 	ret := ""
 	for _, name := range states {
 
@@ -1344,7 +1357,7 @@ func (w *Worker) InternalUpdateClock(now am.Time, qTick uint64, lock bool) {
 	timeBefore := w.machTime
 	clockBefore := maps.Clone(w.machClock)
 
-	activeBefore := w.ActiveStates()
+	activeBefore := w.ActiveStates(nil)
 	active := am.S{}
 	index := w.StateNames()
 	for i, state := range index {
@@ -1422,6 +1435,7 @@ func (w *Worker) processSubscriptions(
 		w.subs.ProcessWhen(activated, deactivated),
 		w.subs.ProcessWhenTime(clockBefore),
 		w.subs.ProcessWhenQueue(w.queueTick),
+		w.subs.ProcessWhenQuery(),
 	)
 
 	// unlock
@@ -1472,7 +1486,7 @@ func (w *Worker) CanRemove1(state string, args am.A) am.Result {
 // CountActive returns the number of active states from a passed list. Useful
 // for state groups.
 func (w *Worker) CountActive(states am.S) int {
-	activeStates := w.ActiveStates()
+	activeStates := w.ActiveStates(nil)
 	c := 0
 	for _, state := range states {
 		if slices.Contains(activeStates, state) {
@@ -1483,11 +1497,52 @@ func (w *Worker) CountActive(states am.S) int {
 	return c
 }
 
+func (w *Worker) QueueLen() uint16 {
+	return 0
+}
+
 func (w *Worker) QueueTick() uint64 {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
 
 	return w.queueTick
+}
+
+func (w *Worker) MachineTick() uint32 {
+	w.clockMx.RLock()
+	defer w.clockMx.RUnlock()
+
+	return w.machTick
+}
+
+func (w *Worker) ParseStates(states am.S) am.S {
+	w.schemaMx.Lock()
+	defer w.schemaMx.Unlock()
+
+	// check if all states are defined in the schema
+	seen := make(map[string]struct{})
+	dups := false
+	for i := range states {
+		if _, ok := w.schema[states[i]]; !ok {
+			continue
+		}
+		if _, ok := seen[states[i]]; !ok {
+			seen[states[i]] = struct{}{}
+		} else {
+			// mark as duplicated
+			dups = true
+		}
+	}
+
+	if dups {
+		return utils.SlicesUniq(states)
+	}
+	return slices.Collect(maps.Keys(seen))
+}
+
+func (w *Worker) OnDispose(fn am.HandlerDispose) {
+	// TODO implement me
+	panic("implement me")
 }
 
 // debug

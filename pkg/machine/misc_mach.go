@@ -6,15 +6,12 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"reflect"
 	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
-	"time"
 )
 
 // ///// ///// /////
@@ -403,6 +400,12 @@ func (t TimeIndex) ActiveStates(states S) S {
 	return ret
 }
 
+// ///// ///// /////
+
+// ///// LOGGING, TRACING
+
+// ///// ///// /////
+
 // Context
 
 type (
@@ -415,33 +418,6 @@ type (
 )
 
 var CtxKey = &CtxKeyName{}
-
-// Options
-
-// OptsWithDebug returns Opts with debug settings (DontPanicToException,
-// long HandlerTimeout).
-func OptsWithDebug(opts *Opts) *Opts {
-	opts.DontPanicToException = true
-	opts.HandlerTimeout = 10 * time.Minute
-
-	return opts
-}
-
-// OptsWithTracers returns Opts with the given tracers. Tracers are inherited
-// by submachines (via Opts.Parent) when env.AM_DEBUG is set.
-func OptsWithTracers(opts *Opts, tracers ...Tracer) *Opts {
-	if tracers != nil {
-		opts.Tracers = tracers
-	}
-
-	return opts
-}
-
-// ///// ///// /////
-
-// ///// LOGGING, TRACING
-
-// ///// ///// /////
 
 // LoggerFn is a logging function for the machine.
 type LoggerFn func(level LogLevel, msg string, args ...any)
@@ -492,8 +468,11 @@ func (l LogLevel) String() string {
 	}
 }
 
-// SemLogger is a semantic logger for structured events. It's useful for graph
-// info and configuring the text logger.
+// SemLogger is a semantic logger for structured events. It's consist of:
+// - enable / enabled methods
+// - text logger utils
+// - setters for external semantics (eg pipes)
+// It's WIP, and eventually it will replace (but not remove) the text logger.
 type SemLogger interface {
 	// TODO implement empty methods
 	// TODO add SetTag, RemoveTag, JoinTopic, LeaveTopic, custom graph
@@ -960,90 +939,6 @@ func (e *Event) String() string {
 	}
 
 	return e.Mutation().StringFromIndex(mach.StateNames())
-}
-
-type (
-	// IndexWhen is a map of (single) state names to a list of activation or
-	// de-activation bindings
-	IndexWhen map[string][]*WhenBinding
-	// IndexWhenTime is a map of (single) state names to a list of time bindings
-	IndexWhenTime map[string][]*WhenTimeBinding
-	// IndexWhenArgs is a map of (single) state names to a list of args value
-	// bindings
-	IndexWhenArgs map[string][]*WhenArgsBinding
-	// IndexStateCtx is a map of (single) state names to a context cancel function
-	IndexStateCtx map[string]*CtxBinding
-)
-
-type CtxBinding struct {
-	Ctx    context.Context
-	Cancel context.CancelFunc
-}
-
-type WhenBinding struct {
-	Ch chan struct{}
-	// means states are required to NOT be active
-	Negation bool
-	States   StateIsActive
-	Matched  int
-	Total    int
-	Ctx      context.Context
-}
-
-type WhenTimeBinding struct {
-	Ch chan struct{}
-	// map of matched to their index positions
-	// TODO optimize indexes
-	Index map[string]int
-	// number of matches so far TODO len(Index) ?
-	Matched int
-	// number of total matches needed
-	Total int // TODO len(Times) ?
-	// optional Time to match for completed from Index
-	Times     Time
-	Completed StateIsActive
-	Ctx       context.Context
-}
-
-type WhenArgsBinding struct {
-	ch      chan struct{}
-	handler string
-	args    A
-	ctx     context.Context
-}
-
-type whenQueueEndsBinding struct {
-	ch  chan struct{}
-	ctx context.Context
-}
-
-type whenQueueBinding struct {
-	ch   chan struct{}
-	tick Result
-}
-
-// TODO optimize with indexes
-type StateIsActive map[string]bool
-
-// handler represents a single event consumer, synchronized by channels.
-type handler struct {
-	h    any
-	name string
-	mx   sync.Mutex
-	// disposed     bool
-	methods      *reflect.Value
-	methodNames  []string
-	methodCache  map[string]reflect.Value
-	missingCache map[string]struct{}
-}
-
-func (e *handler) dispose() {
-	// TODO check if this leaks
-	// e.disposed = true
-	// e.methods = nil
-	// e.methodCache = nil
-	// e.methodNames = nil
-	// e.h = nil
 }
 
 // ///// ///// /////

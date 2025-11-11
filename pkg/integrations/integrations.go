@@ -293,7 +293,7 @@ func HandlerGetter(
 		resp.Clocks = mach.Clock(req.Clocks)
 	}
 	if len(req.TimeSum) > 0 {
-		resp.TimeSum = int(mach.TimeSum(req.TimeSum))
+		resp.TimeSum = int(mach.Time(req.TimeSum).Sum(nil))
 	}
 
 	return resp, nil

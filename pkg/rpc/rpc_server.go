@@ -136,7 +136,7 @@ func NewServer(
 		return nil, err
 	}
 	mach.SemLogger().SetArgsMapper(LogArgs)
-	mach.HandleDispose(func(id string, ctx context.Context) {
+	mach.OnDispose(func(id string, ctx context.Context) {
 		if l := s.Listener.Load(); l != nil {
 			_ = (*l).Close()
 			s.Listener.Store(nil)
@@ -179,7 +179,7 @@ func NewServer(
 		if err != nil {
 			return nil, err
 		}
-		mach.HandleDispose(func(id string, ctx context.Context) {
+		mach.OnDispose(func(id string, ctx context.Context) {
 			_ = sourceMach.DetachHandlers(h)
 		})
 	}
@@ -523,7 +523,7 @@ func (s *Server) genClockUpdate(skipTimeCheck bool) *ClockMsg {
 	s.lastQueueTick = qTick
 	s.lastClockSum.Store(tSum)
 	s.log("genClockUpdate: t%d q%d ch%d (%s)", tSum, qTick,
-		s.lastClockMsg.Checksum, s.Source.ActiveStates())
+		s.lastClockMsg.Checksum, s.Source.ActiveStates(nil))
 
 	return s.lastClockMsg
 }
@@ -557,7 +557,7 @@ func (s *Server) RemoteHello(
 		resp.Schema = schema
 	}
 
-	sum := export.Time.Sum()
+	sum := export.Time.Sum(nil)
 	s.log("RemoteHello: t%v q%d", sum, export.QueueTick)
 	s.Mach.Add1(ssS.Handshaking, nil)
 	s.lastClock = export.Time
@@ -591,7 +591,7 @@ func (s *Server) RemoteHandshake(
 		return fmt.Errorf("%w: %s != %s", ErrNoAccess, *id, s.AllowId)
 	}
 
-	sum := s.Source.TimeSum(nil)
+	sum := s.Source.Time(nil).Sum(nil)
 	qTick := s.Source.QueueTick()
 	s.log("RemoteHandshake: t%v q%d", sum, qTick)
 
@@ -732,7 +732,7 @@ func (s *Server) RemoteSync(
 	}
 	s.log("RemoteSync")
 
-	if s.Source.TimeSum(nil) > sum {
+	if s.Source.Time(nil).Sum(nil) > sum {
 		*resp = RespSync{
 			Time:      s.Source.Time(nil),
 			QueueTick: s.Source.QueueTick(),

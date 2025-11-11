@@ -33,7 +33,7 @@ func TestAll(t *testing.T) {
 		Name:    "MyMach",
 	}
 
-	gen, err := NewSFGenerator(ctx, params)
+	gen, err := NewSchemaGenerator(ctx, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestBasicConnected(t *testing.T) {
 		Name:    "MyMach",
 	}
 
-	gen, err := NewSFGenerator(ctx, params)
+	gen, err := NewSchemaGenerator(ctx, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestMinimum(t *testing.T) {
 		Name:    "MyMach",
 	}
 
-	gen, err := NewSFGenerator(ctx, params)
+	gen, err := NewSchemaGenerator(ctx, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestRelations(t *testing.T) {
 		Name:    "MyMach",
 	}
 
-	gen, err := NewSFGenerator(ctx, params)
+	gen, err := NewSchemaGenerator(ctx, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +355,7 @@ func TestGroups(t *testing.T) {
 		Name:    "MyMach",
 	}
 
-	gen, err := NewSFGenerator(ctx, params)
+	gen, err := NewSchemaGenerator(ctx, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +428,7 @@ func TestGroupsStates(t *testing.T) {
 		Name:    "MyMach",
 	}
 
-	gen, err := NewSFGenerator(ctx, params)
+	gen, err := NewSchemaGenerator(ctx, params)
 	if err != nil {
 		t.Fatal(err)
 	}

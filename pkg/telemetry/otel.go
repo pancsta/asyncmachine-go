@@ -392,7 +392,7 @@ func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
 	// build a regular trace
 	ctx, span := mt.Tracer.Start(data.txGroup, name, trace.WithAttributes(
 		attribute.String("tx_id", tx.Id),
-		attribute.Int64("time_before", int64(tx.TimeBefore.Sum())),
+		attribute.Int64("time_before", int64(tx.TimeBefore.Sum(nil))),
 		attribute.String("mutation", mutLabel),
 	))
 
@@ -486,7 +486,7 @@ func (mt *OtelMachTracer) TransitionEnd(tx *am.Transition) {
 		txSpan = trace.SpanFromContext(data.txTrace)
 		txSpan.SetAttributes(
 			attribute.String("states_diff", strings.Trim(statesDiff, " ")),
-			attribute.Int64("time_after", int64(tx.TimeAfter.Sum())),
+			attribute.Int64("time_after", int64(tx.TimeAfter.Sum(nil))),
 			attribute.Bool("accepted", tx.IsAccepted.Load()),
 			attribute.Bool("auto", tx.IsAuto()),
 			attribute.Int("steps_count", len(tx.Steps)),

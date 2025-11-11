@@ -82,7 +82,7 @@ func (rr *DefaultRelationsResolver) TargetStates(
 	rr.statesBefore = t.StatesBefore()
 
 	m := t.Machine
-	statesToSet = m.MustParseStates(statesToSet)
+	statesToSet = m.mustParseStates(statesToSet)
 	statesToSet = rr.parseAdd(statesToSet)
 	statesToSet = slicesUniq(statesToSet)
 	statesToSet = rr.parseRequire(statesToSet)

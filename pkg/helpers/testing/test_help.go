@@ -114,22 +114,22 @@ func GroupWhen1(
 
 // AssertIs asserts that the machine is in the given states.
 func AssertIs(t *stdtest.T, mach am.Api, states am.S) {
-	assert.Subset(t, mach.ActiveStates(), states, "%s expected", states)
+	assert.Subset(t, mach.ActiveStates(nil), states, "%s expected", states)
 }
 
 // AssertIs1 asserts that the machine is in the given state.
 func AssertIs1(t *stdtest.T, mach am.Api, state string) {
-	assert.Subset(t, mach.ActiveStates(), am.S{state}, "%s expected", state)
+	assert.Subset(t, mach.ActiveStates(nil), am.S{state}, "%s expected", state)
 }
 
 // AssertNot asserts that the machine is not in the given states.
 func AssertNot(t *stdtest.T, mach am.Api, states am.S) {
-	assert.NotSubset(t, mach.ActiveStates(), states, "%s not expected", states)
+	assert.NotSubset(t, mach.ActiveStates(nil), states, "%s not expected", states)
 }
 
 // AssertNot1 asserts that the machine is not in the given state.
 func AssertNot1(t *stdtest.T, mach am.Api, state string) {
-	assert.NotSubset(t, mach.ActiveStates(), am.S{state}, "%s not expected",
+	assert.NotSubset(t, mach.ActiveStates(nil), am.S{state}, "%s not expected",
 		state)
 }
 

@@ -947,7 +947,7 @@ func (h *TestHandlerStateInfoHandlers) DEnter(e *Event) {
 	idxD := e.Machine().Index1("D")
 
 	t := e.Args["t"].(*testing.T)
-	assert.ElementsMatch(t, S{"A"}, e.Machine().ActiveStates(),
+	assert.ElementsMatch(t, S{"A"}, e.Machine().ActiveStates(nil),
 		"provide the previous states of the transition")
 	assert.ElementsMatch(t, S{"D"}, e.Transition().TargetStates(),
 		"provide the target states of the transition")
@@ -1045,7 +1045,7 @@ func TestDispose(t *testing.T) {
 	// init
 	m := NewNoRels(t, S{"A"})
 	ran := false
-	m.HandleDispose(func(id string, ctx context.Context) {
+	m.OnDispose(func(id string, ctx context.Context) {
 		ran = true
 	})
 
@@ -1062,7 +1062,7 @@ func TestDisposeForce(t *testing.T) {
 	// init
 	m := NewNoRels(t, S{"A"})
 	ran := false
-	m.HandleDispose(func(id string, ctx context.Context) {
+	m.OnDispose(func(id string, ctx context.Context) {
 		ran = true
 	})
 
@@ -2689,10 +2689,11 @@ func TestExportImport(t *testing.T) {
 
 	// import
 	m2 := NewNoRels(t, nil)
-	err = m2.Import(serial)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t,
+		m2.Import(serial))
+	m2.id = m1.id
+	require.NoError(t,
+		m2.Import(serial))
 
 	// assert
 	assert.True(t, m2.StatesVerified(),

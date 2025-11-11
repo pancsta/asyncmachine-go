@@ -488,7 +488,7 @@ func (c *Client) HandshakeDoneState(e *am.Event) {
 
 	c.log("connected to %s", c.Worker.id)
 	c.log("time t%d q%d: %v",
-		c.Worker.TimeSum(nil), c.Worker.QueueTick(), args.MachTime)
+		c.Worker.Time(nil).Sum(nil), c.Worker.QueueTick(), args.MachTime)
 }
 
 func (c *Client) CallRetryFailedState(e *am.Event) {
@@ -688,14 +688,14 @@ func (c *Client) updateClock(
 	if msg != nil {
 		// diff clock update
 		clock, qTick = ClockFromMsg(c.Worker.machTime, c.Worker.queueTick, msg)
-		check := Checksum(clock.Sum(), qTick)
+		check := Checksum(clock.Sum(nil), qTick)
 
 		// verify
 		if check != msg.Checksum {
 			// TODO request full update
 			c.Mach.Log("updateClock mismatch %d != %d", msg.Checksum, check)
 			c.log("msg q%d ch%d %+v", msg.QueueTick, msg.Checksum, msg.Updates)
-			c.log("clock t%d q%d ch%d (%+v)", clock.Sum(), qTick, check, clock)
+			c.log("clock t%d q%d ch%d (%+v)", clock.Sum(nil), qTick, check, clock)
 			c.Worker.clockMx.Unlock()
 
 			return

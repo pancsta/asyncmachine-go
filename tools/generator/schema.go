@@ -27,7 +27,7 @@ var (
 	sgG = states.GeneratorGroups
 )
 
-type Generator struct {
+type SchemaGenerator struct {
 	Mach *am.Machine
 
 	Name string
@@ -42,7 +42,7 @@ type Generator struct {
 }
 
 // TODO return err
-func (g *Generator) parseParams(p cli.SFParams) {
+func (g *SchemaGenerator) parseParams(p cli.SFParams) {
 	if p.Inherit != "" {
 		for _, inherit := range strings.Split(p.Inherit, ",") {
 			switch inherit {
@@ -118,15 +118,15 @@ func (g *Generator) parseParams(p cli.SFParams) {
 	g.N = string(g.Name[0])
 }
 
-func (g *Generator) InheritEnter(e *am.Event) bool {
+func (g *SchemaGenerator) InheritEnter(e *am.Event) bool {
 	return g.Mach.Any1(sgG.Inherit...)
 }
 
-func (g *Generator) GroupsEnter(e *am.Event) bool {
+func (g *SchemaGenerator) GroupsEnter(e *am.Event) bool {
 	return g.Mach.Any1(ssG.GroupsInherited, ssG.GroupsLocal)
 }
 
-func (g *Generator) Output() string {
+func (g *SchemaGenerator) Output() string {
 	// TODO switch to github.com/dave/jennifer
 
 	var impPkgStates string
@@ -356,10 +356,10 @@ func (g *Generator) Output() string {
 	return out
 }
 
-func NewSFGenerator(
+func NewSchemaGenerator(
 	ctx context.Context, param cli.SFParams,
-) (*Generator, error) {
-	g := &Generator{}
+) (*SchemaGenerator, error) {
+	g := &SchemaGenerator{}
 	mach, err := am.NewCommon(ctx, "gen", states.GeneratorSchema, ssG.Names(),
 		g, nil, nil)
 	if err != nil {

@@ -51,7 +51,7 @@ var (
 // handlers
 
 // DisposedArgHandler is the key for the disposal handler passed to the
-// RegisterDisposal state. It need to contain the EXPLICIT type of
+// RegisterDisposal state. It needs to contain the EXPLICIT type of
 // am.HandlerDispose, eg
 //
 //	var dispose am.HandlerDispose = func(id string, ctx *am.StateCtx) {

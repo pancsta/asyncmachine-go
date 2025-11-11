@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWithOpts(t *testing.T) {
@@ -120,7 +121,9 @@ func TestParseStruct(t *testing.T) {
 		"B": {},
 		"C": {},
 	}
-	assert.Equal(t, ex, ParseSchema(s))
+	p, err := ParseSchema(s)
+	require.NoError(t, err)
+	assert.Equal(t, ex, p)
 }
 
 func TestSMerge(t *testing.T) {

@@ -128,7 +128,7 @@ func (t *PromTracer) TransitionEnd(tx *am.Transition) {
 	t.m.statesTouchedLen++
 
 	// time sum
-	currTime := tx.Api.TimeSum(nil)
+	currTime := tx.Api.Time(nil).Sum(nil)
 	t.m.txTick += currTime - t.prevTime
 	t.m.txTickLen++
 	t.prevTime = currTime

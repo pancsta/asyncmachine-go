@@ -415,7 +415,7 @@ func (t *DbgTracer) TransitionEnd(tx *am.Transition) {
 		LogEntries:    removeLogPrefix(mach, tx.LogEntries),
 		PreLogEntries: removeLogPrefix(mach, tx.PreLogEntries),
 		IsAuto:        mut.Auto,
-		Queue:         tx.QueueLen,
+		Queue:         int(tx.QueueLen),
 		QueueTick:     mach.QueueTick(),
 		MutQueueToken: mut.QueueToken,
 		// debug
