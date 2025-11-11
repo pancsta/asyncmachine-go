@@ -2,6 +2,49 @@
 
 Only `pkg/machine` and `pkg/states` adhere to semver. Semver of other packages is not guaranteed at the moment.
 
+## v0.16
+
+- `IsTimeAfter` is now `Time.After`
+- `Time.Get` is now `Time.Tick`
+- `Machine.Sum()` takes a `states` param now
+- `Machine.TimeSum()` is now `Time(nil).Sum(nil)`
+- `Machine.HandleDispose` renamed to `Machine.OnDispose`
+- `Machine.MustParseStates` has been removed
+- queue length is now `uint16` and affects:
+  - `Machine.QueueLen`
+  - `Machine.QueueLimit`
+  - `Machine.IsQueued`
+  - `Machine.IsQueuedAbove`
+  - `Opts.QueueLimit`
+- `Machine.IsQueued` now returns `(uint16, bool)`
+- `ParseSchema()` now also returns `error`
+- `TimeIndex.ActiveStates()` now takes an optional states param
+- `Machine.ActiveStates()` now takes an optional states param
+- `Machine.CountActive()` has been removed
+- `Time.ActiveStates(index S) S` is now `Time.ActiveStates(idxs []int) []int`
+- `Time.ActiveIndex` has been removed
+
+## v0.15
+
+- `Exception` is now `StateException`
+- `Heartbeat` is now `StateHeartbeat`
+- `Healthcheck` is now `StateHealthcheck`
+- `Any` is now `StateAny`
+- `HandlerGlobal` is now `HandlerAnyEnter`
+- `EnvAmLog*` moved to `/pkg/helpers`
+- `SemLogger.SetArgs` is now `SemLogger.SetArgsMapper`
+- `SemLogger.Args` is now `SemLogger.ArgsMapper`
+- `Transition.LogArgs` is now `Mutation.LogArgs`
+- `IsQueued` now uses `int16`
+- `IsQueued` now has `isCheck` and `position` params
+- `Event.Clone` is now `Event.Export`
+- `ResultNoOp` has been removed
+- `WillBe*` has `position` param added
+
+## v0.14
+
+- unreleased
+
 ## v0.13
 
 - `LogSteps` has been removed
