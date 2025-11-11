@@ -1916,9 +1916,9 @@ func TestTime(t *testing.T) {
 	// assert
 	assertStates(t, m, S{"A", "B", "D", "C"})
 	assertTime(t, m, S{"A", "B", "C", "D"}, Time{3, 7, 5, 1})
-	assert.True(t, IsTimeAfter(now, before))
-	assert.False(t, IsTimeAfter(before, now))
-	assert.Equal(t, 16, int(m.TimeSum(nil)))
+	assert.True(t, now.After(true, before))
+	assert.False(t, before.After(true, now))
+	assert.Equal(t, 16, int(m.Time(nil).Sum(nil)))
 
 	// dispose
 	m.Dispose()
@@ -3017,8 +3017,8 @@ func TestDisposedNoOp(t *testing.T) {
 	assert.Equal(t, Canceled, res)
 
 	// others
-	assert.Equal(t, int16(-1), m.IsQueued(MutationAdd, s, false, false, 0, false,
-		PositionAny))
+	_, found := m.IsQueued(MutationAdd, s, false, false, 0, false, PositionAny)
+	assert.False(t, found)
 	assert.Equal(t, -1, m.Index1("A"))
 	assert.Empty(t, m.Has1("A"))
 	assert.Empty(t, m.IsClock(Clock{}))
@@ -3026,7 +3026,7 @@ func TestDisposedNoOp(t *testing.T) {
 	assert.Empty(t, m.String())
 	assert.Empty(t, m.Time(nil))
 	assert.Empty(t, m.time(nil))
-	assert.Empty(t, m.TimeSum(nil))
+	assert.Empty(t, m.Time(nil).Sum(nil))
 	assert.Empty(t, m.Tick("A"))
 	assert.Empty(t, m.StringAll())
 	assert.Empty(t, m.Inspect(nil))

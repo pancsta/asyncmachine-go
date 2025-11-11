@@ -710,33 +710,6 @@ func (m *Machine) time(states S) Time {
 	return ret
 }
 
-// TimeSum returns the sum of machine's time (ticks per state).
-// Returned value includes the specified states, or all the states if nil.
-// It's a very inaccurate, yet simple way to measure the machine's
-// time.
-func (m *Machine) TimeSum(states S) uint64 {
-	// TODO handle overflow
-
-	if m.disposed.Load() {
-		return 0
-	}
-	m.activeStatesMx.RLock()
-	defer m.activeStatesMx.RUnlock()
-	m.schemaLock.RLock()
-	defer m.schemaLock.RUnlock()
-
-	if states == nil {
-		states = m.stateNames
-	}
-
-	ret := uint64(0)
-	for _, s := range states {
-		ret += m.clock[s]
-	}
-
-	return ret
-}
-
 // PrependMut prepends the mutation to the front of the queue. This is a special
 // cases only method and should be used with caution, as it can create an
 // infinite loop. It's useful for postponing mutations inside a negotiation
@@ -1243,7 +1216,7 @@ func (m *Machine) queueMutation(
 			TxId:   event.TransitionId,
 		}
 		if tx != nil {
-			source.MachTime = tx.TimeBefore.Sum()
+			source.MachTime = tx.TimeBefore.Sum(nil)
 		}
 	}
 	mut := &Mutation{
@@ -3087,7 +3060,7 @@ func (m *Machine) Export() *Serialized {
 	}
 
 	t := m.time(nil)
-	m.log(LogOps, "[import] exported at %d ticks", t.Sum())
+	m.log(LogOps, "[import] exported at %d ticks", t.Sum(nil))
 
 	return &Serialized{
 		ID:          m.id,
