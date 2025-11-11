@@ -205,7 +205,9 @@ tasks:
           --dir tmp2
           {{.CLI_ARGS}}
 
-  am-dbg-install: go install ./tools/cmd/am-dbg
+  tui-db-sql: squall pkg/history/gorm/amhist.sqlite
+
+  tui-db-bolt: bboltEdit pkg/history/bbolt/amhist.db
 
   test:
     env:
@@ -418,7 +420,10 @@ tasks:
       - head -n -4 CHANGELOG.md > CHANGELOG-tmp.md
       - mv CHANGELOG-tmp.md CHANGELOG.md
 
+  install-am-dbg: go install ./tools/cmd/am-dbg
+
   install-deps:
+    desc: Install project dependencies
     cmds:
       - go mod tidy
       - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh 
@@ -431,7 +436,14 @@ tasks:
       - gem install mdl
       - go install github.com/hhatto/gocloc/cmd/gocloc@latest
 
+  install-deps-db:
+    desc: Install database tools
+    cmds:
+      - go install github.com/devilcove/bboltEdit@latest
+      - uv tool install squall_sql
+
   install-deps-video:
+    desc: Install promo video dependencies
     cmds:
       - npm install -g terminalizer
 
@@ -681,3 +693,6 @@ tasks:
       - zellij --session am-dashboard 
         --new-session-with-layout ./config/dashboards/dash-repl-web.kdl
       - task: dashboard-exit
+
+  db-bbolt: bboltEdit pkg/history/bbolt/amhist.db
+  db-sql: squall pkg/history/gorm/amhist.sqlite

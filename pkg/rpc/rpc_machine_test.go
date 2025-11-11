@@ -711,8 +711,8 @@ func TestTime(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"A", "B", "D", "C"})
 	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{3, 7, 5, 1})
-	assert.True(t, am.IsTimeAfter(now, before))
-	assert.False(t, am.IsTimeAfter(before, now))
+	assert.True(t, now.After(true, before))
+	assert.False(t, before.After(true, now))
 
 	disposeTest(t, c, s, true)
 }

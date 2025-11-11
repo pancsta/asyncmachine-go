@@ -23,10 +23,9 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
-	"github.com/pancsta/asyncmachine-go/pkg/states/pipes"
-
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
+	"github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
@@ -982,7 +981,7 @@ func GetTransitionStates(
 	after := tx.TimeAfter
 
 	is := func(time am.Time, i int) bool {
-		return time != nil && am.IsActiveTick(time.Get(i))
+		return time != nil && am.IsActiveTick(time.Tick(i))
 	}
 
 	for i, name := range index {
@@ -990,7 +989,7 @@ func GetTransitionStates(
 			removed = append(removed, name)
 		} else if !is(before, i) && is(after, i) {
 			added = append(added, name)
-		} else if before != nil && before.Get(i) != after.Get(i) {
+		} else if before != nil && before.Tick(i) != after.Tick(i) {
 			// treat multi states as added
 			added = append(added, name)
 		}
@@ -1152,7 +1151,7 @@ func (l *StateLoop) Break() {
 
 // Sum returns a sum of state time from all context states.
 func (l *StateLoop) Sum() uint64 {
-	return l.mach.TimeSum(l.ctxStates)
+	return l.mach.Time(l.ctxStates).Sum(nil)
 }
 
 // Ok returns true if the loop should continue.
@@ -1184,7 +1183,7 @@ func (l *StateLoop) Ok(ctx context.Context) bool {
 	}
 
 	// reset counters on a new interval window
-	sum := l.mach.TimeSum(l.ctxStates)
+	sum := l.mach.Time(l.ctxStates).Sum(nil)
 	if time.Since(l.lastHTime) > l.interval {
 		l.lastHTime = time.Now()
 		l.lastSTime = sum
@@ -1220,7 +1219,9 @@ func NewStateLoop(
 	mach *am.Machine, loopState string, optCheck func() bool,
 ) *StateLoop {
 	schema := mach.Schema()
-	mach.MustParseStates(S{loopState})
+	if !mach.Has1(loopState) {
+		return &StateLoop{ended: true}
+	}
 
 	// collect related states
 	ctxStates := S{loopState}
@@ -1243,7 +1244,7 @@ func NewStateLoop(
 		mach:       mach,
 		ctxStates:  ctxStates,
 		startHTime: time.Now(),
-		startSTime: mach.TimeSum(ctxStates),
+		startSTime: mach.Time(ctxStates).Sum(nil),
 		// TODO config
 		interval: time.Second,
 		// TODO config

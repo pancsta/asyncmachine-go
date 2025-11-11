@@ -935,8 +935,8 @@ func (d *Debugger) hParseMsg(c *Client, idx int) {
 	}
 
 	// err if TimeAfter < TimeBefore, fake the rest
-	after := fakeTx.TimeAfter.Sum()
-	before := fakeTx.TimeBefore.Sum()
+	after := fakeTx.TimeAfter.Sum(nil)
+	before := fakeTx.TimeBefore.Sum(nil)
 	if after < before {
 		d.Mach.AddErr(fmt.Errorf("time after < time before"), nil)
 		c.mTimeSum = sum

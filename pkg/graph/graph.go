@@ -280,7 +280,7 @@ func (g *Graph) ParseMsg(id string, msgTx *telemetry.DbgMsgTx) {
 	// 		break
 	// 	}
 	// }
-	// if isErr || msgTx.Is1(index, am.Exception) {
+	// if isErr || msgTx.Is1(index, am.StateException) {
 	// 	// prepend to errors TODO DB errors
 	// 	// idx := SQL COUNT
 	// 	c.errors = append([]int{idx}, c.errors...)

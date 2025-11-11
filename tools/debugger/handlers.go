@@ -2169,7 +2169,7 @@ func (d *Debugger) MatrixRainSelectedState(e *am.Event) {
 func (d *Debugger) ResizedState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.Resized)
 
-	d.lastResize = d.Mach.TimeSum(nil)
+	d.lastResize = d.Mach.Time(nil).Sum(nil)
 	d.hUpdateNarrowLayout()
 
 	// rebuild log

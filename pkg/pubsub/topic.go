@@ -21,7 +21,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	quicTransport "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	ma "github.com/multiformats/go-multiaddr"
-	"github.com/vmihailenco/msgpack"
+	"github.com/vmihailenco/msgpack/v5"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
@@ -81,7 +81,7 @@ type Topic struct {
 	SendInfoDebounceMs int
 	// Max allowed queue length to send MsgInfo to newly joned peers, as well as
 	// received msgs.
-	MaxQueueLen int
+	MaxQueueLen uint16
 	// Number of gossips to send in SendGossipsState
 	GossipAmount int
 
@@ -801,7 +801,7 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 			// check already exists
 			if w, ok := t.workers[peerId][machIdx]; ok {
 				// update to the newest clock
-				if info.MTime.Sum() > w.TimeSum(nil) {
+				if info.MTime.Sum(nil) > w.Time(nil).Sum(nil) {
 					w.InternalUpdateClock(info.MTime, 0, true)
 				}
 				// TODO check schema?
@@ -964,7 +964,7 @@ func (t *Topic) MissUpdatesByGossipEnter(e *am.Event) bool {
 			}
 
 			// accept when received time is higher
-			if mtime > m.TimeSum(nil) {
+			if mtime > m.Time(nil).Sum(nil) {
 				return true
 			}
 		}
@@ -1001,7 +1001,7 @@ func (t *Topic) MissUpdatesByGossipState(e *am.Event) {
 			}
 
 			// accept when received time is higher
-			if mtime > m.TimeSum(nil) {
+			if mtime > m.Time(nil).Sum(nil) {
 				t.missingUpdates[peerId][machIdx] = mtime
 				t.metric("Gossip", peerId)
 			}
@@ -1175,7 +1175,7 @@ func (t *Topic) MsgUpdatesState(e *am.Event) {
 			}
 
 			// skip old updates
-			if mtime.Sum() > w.TimeSum(nil) {
+			if mtime.Sum(nil) > w.Time(nil).Sum(nil) {
 				w.InternalUpdateClock(mtime, 0, true)
 			}
 
@@ -1186,7 +1186,7 @@ func (t *Topic) MsgUpdatesState(e *am.Event) {
 
 			// apply a newer update
 			if missingMTime, ok := missing[machIdx]; ok &&
-				missingMTime <= mtime.Sum() {
+				missingMTime <= mtime.Sum(nil) {
 
 				delete(missing, machIdx)
 				if len(missing) == 0 {
@@ -1362,7 +1362,7 @@ func (t *Topic) MissPeersByUpdatesState(e *am.Event) {
 	for machIdx, mtimeNew := range pending {
 		if mtimeOld, ok := t.pendingMachUpdates[peerId][machIdx]; ok {
 			// merge
-			if mtimeNew.Sum() > mtimeOld.Sum() {
+			if mtimeNew.Sum(nil) > mtimeOld.Sum(nil) {
 				t.pendingMachUpdates[peerId][machIdx] = mtimeNew
 				t.metric("Gossip", peerId)
 			}
@@ -1537,7 +1537,7 @@ func (t *Topic) SendGossipsState(e *am.Event) {
 		}
 		sums := map[int]uint64{}
 		for i, w := range t.workers[pid] {
-			sums[i] = w.Time(nil).Sum()
+			sums[i] = w.Time(nil).Sum(nil)
 		}
 		sendPids[pid] = sums
 	}
@@ -1763,7 +1763,7 @@ func (t *Topic) DoSendInfoState(e *am.Event) {
 		}
 		sums := map[int]uint64{}
 		for i, w := range t.workers[pid] {
-			sums[i] = w.Time(nil).Sum()
+			sums[i] = w.Time(nil).Sum(nil)
 		}
 		gossips[pid] = sums
 	}

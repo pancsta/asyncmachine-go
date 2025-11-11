@@ -25,6 +25,7 @@ linters:
       - third_party$
       - builtin$
       - ^examples
+      - ^scripts
 formatters:
   exclusions:
     generated: lax
@@ -32,3 +33,4 @@ formatters:
       - third_party$
       - builtin$
       - ^examples
+      - ^scripts

@@ -48,8 +48,8 @@ func add(
 	semLog.AddPipeIn(true, targetState, source.Id())
 
 	// TODO optimize
-	source.HandleDispose(gcHandler(target))
-	target.HandleDispose(gcHandler(source))
+	source.OnDispose(gcHandler(target))
+	target.OnDispose(gcHandler(source))
 	names := am.S{targetState}
 	// include Exception when adding errors
 	if strings.HasPrefix(targetState, am.PrefixErr) {
@@ -102,8 +102,8 @@ func remove(
 	semLog.AddPipeIn(false, targetState, source.Id())
 
 	// TODO optimize
-	source.HandleDispose(gcHandler(target))
-	target.HandleDispose(gcHandler(source))
+	source.OnDispose(gcHandler(target))
+	target.OnDispose(gcHandler(source))
 
 	return func(e *am.Event) {
 		// flat skips unnecessary mutations

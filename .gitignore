@@ -75,3 +75,10 @@ _py
 /demo
 /am-dbg.txt
 tools/visualizer/testdata/*
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+/pkg/history/frostdb/databases/
+/pkg/x/history/frostdb/databases/
+/pkg/history/bbolt/amhist.db

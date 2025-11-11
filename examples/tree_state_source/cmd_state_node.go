@@ -265,7 +265,7 @@ func blockEcho(ctx context.Context, node *Node, mach am.Api) {
 			if time.Since(lastPush) < promPushFreq {
 				continue
 			}
-			fmt.Printf("Time: %d\n", mach.TimeSum(nil))
+			fmt.Printf("Time: %d\n", mach.Time(nil).Sum(nil))
 			lastPush = time.Now()
 			if node.Prom == nil {
 				continue
@@ -317,7 +317,7 @@ func httpServer(ctx context.Context, node *Node, worker am.Api) {
 	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, worker.ActiveStates())
+		fmt.Fprintln(w, worker.ActiveStates(nil))
 	})
 
 	go func() {

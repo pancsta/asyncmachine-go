@@ -3,10 +3,9 @@ package machine
 import (
 	"context"
 	"errors"
-	"fmt"
+	"reflect"
 	"regexp"
-	"slices"
-	"sync/atomic"
+	"sync"
 	"time"
 )
 
@@ -70,11 +69,12 @@ type State struct {
 	Tags    []string `json:"tags,omitempty"`
 }
 
-// A (arguments) is a map of named arguments for a Mutation.
+// A (arguments) is a map of named arguments for a [Mutation].
 type A map[string]any
 
-// Clock is a map of state names to their tick values. It's like Time but
-// indexed by string, instead of int.
+// Clock is a map of state names to their tick values. It's like [Time] but
+// indexed by string, instead of int. See [TimeIndex] for a more advanced data
+// structure.
 type Clock map[string]uint64
 
 // HandlerFinal is a final transition handler func signature.
@@ -86,7 +86,7 @@ type HandlerNegotiation func(e *Event) bool
 // HandlerDispose is a machine disposal handler func signature.
 type HandlerDispose func(id string, ctx context.Context)
 
-// Opts struct is used to configure a new Machine.
+// Opts struct is used to configure a new [Machine].
 type Opts struct {
 	// Unique ID of this machine. Default: random ID.
 	Id string
@@ -99,11 +99,10 @@ type Opts struct {
 	// If true, the machine will die on panics.
 	DontPanicToException bool
 	// If true, the machine will NOT prefix its logs with its ID.
-	// TODO refac to DontLogId
 	DontLogId bool
-	// Custom relations resolver. Default: *DefaultRelationsResolver.
+	// Custom relations resolver. Default: *[DefaultRelationsResolver].
 	Resolver RelationsResolver
-	// Log level of the machine. Default: LogNothing.
+	// Log level of the machine. Default: [LogNothing].
 	LogLevel LogLevel
 	// Tracer for the machine. Default: nil.
 	Tracers []Tracer
@@ -118,8 +117,7 @@ type Opts struct {
 	Tags []string
 	// QueueLimit is the maximum number of mutations that can be queued.
 	// Default: 1000.
-	// TODO per-state QueueLimit
-	QueueLimit int
+	QueueLimit uint16
 	// DetectEval will detect Eval calls directly in handlers, which causes a
 	// deadlock. It works in similar way as -race flag in Go and can also be
 	// triggered by setting either env var: AM_DEBUG=1 or AM_DETECT_EVAL=1.
@@ -238,8 +236,6 @@ type Api interface {
 	CanRemove(states S, args A) Result
 	// CanRemove1 is [Machine.CanRemove1].
 	CanRemove1(state string, args A) Result
-	// CountActive is [Machine.CountActive].
-	CountActive(states S) int
 
 	// Waiting (local)
 
@@ -257,6 +253,8 @@ type Api interface {
 	WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
 	// WhenTicks is [Machine.WhenTicks].
 	WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
+	// WhenQuery is [Machine.WhenQuery].
+	WhenQuery(query func(clock Clock) bool, ctx context.Context) <-chan struct{}
 	// WhenErr is [Machine.WhenErr].
 	WhenErr(ctx context.Context) <-chan struct{}
 	// WhenQueue is [Machine.WhenQueue].
@@ -269,15 +267,13 @@ type Api interface {
 	// StateNamesMatch is [Machine.StateNamesMatch].
 	StateNamesMatch(re *regexp.Regexp) S
 	// ActiveStates is [Machine.ActiveStates].
-	ActiveStates() S
+	ActiveStates(states S) S
 	// Tick is [Machine.Tick].
 	Tick(state string) uint64
 	// Clock is [Machine.Clock].
 	Clock(states S) Clock
 	// Time is [Machine.Time].
 	Time(states S) Time
-	// TimeSum is [Machine.TimeSum].
-	TimeSum(states S) uint64
 	// QueueTick is [Machine.QueueTick].
 	QueueTick() uint64
 	// MachineTick is [Machine.MachineTick].
@@ -305,6 +301,8 @@ type Api interface {
 	Id() string
 	// ParentId is [Machine.ParentId].
 	ParentId() string
+	// ParseStates is [Machine.ParseStates].
+	ParseStates(states S) S
 	// Tags is [Machine.Tags].
 	Tags() []string
 	// Ctx is [Machine.Ctx].
@@ -343,8 +341,10 @@ type Api interface {
 	WhenDisposed() <-chan struct{}
 	// IsDisposed is [Machine.IsDisposed].
 	IsDisposed() bool
+	// OnDispose is [Machine.OnDispose].
+	OnDispose(fn HandlerDispose)
 
-	// TODO debug
+	// Debug
 
 	// QueueDump() []string
 }
@@ -353,6 +353,102 @@ type breakpoint struct {
 	Added   S
 	Removed S
 	Strict  bool
+}
+
+// ///// ///// /////
+
+// ///// SUBSCRIPTION
+
+// ///// ///// /////
+
+type (
+	// IndexWhen is a map of (single) state names to a list of activation or
+	// de-activation bindings
+	IndexWhen map[string][]*WhenBinding
+	// IndexWhenTime is a map of (single) state names to a list of time bindings
+	IndexWhenTime map[string][]*WhenTimeBinding
+	// IndexWhenArgs is a map of (single) state names to a list of args value
+	// bindings
+	IndexWhenArgs map[string][]*WhenArgsBinding
+	// IndexStateCtx is a map of (single) state names to a context cancel function
+	IndexStateCtx map[string]*CtxBinding
+)
+
+type CtxBinding struct {
+	Ctx    context.Context
+	Cancel context.CancelFunc
+}
+
+type WhenBinding struct {
+	Ch chan struct{}
+	// means states are required to NOT be active
+	Negation bool
+	States   StateIsActive
+	Matched  int
+	Total    int
+	Ctx      context.Context
+}
+
+type WhenTimeBinding struct {
+	Ch chan struct{}
+	// map of matched to their index positions
+	// TODO optimize indexes
+	Index map[string]int
+	// number of matches so far TODO len(Index) ?
+	Matched int
+	// number of total matches needed
+	Total int // TODO len(Times) ?
+	// optional Time to match for completed from Index
+	Times     Time
+	Completed StateIsActive
+	Ctx       context.Context
+}
+
+type WhenArgsBinding struct {
+	ch      chan struct{}
+	handler string
+	args    A
+	ctx     context.Context
+}
+
+type whenQueueEndsBinding struct {
+	ch  chan struct{}
+	ctx context.Context
+}
+
+type whenQueueBinding struct {
+	ch   chan struct{}
+	tick Result
+}
+
+type whenQueryBinding struct {
+	ch  chan struct{}
+	ctx context.Context
+	fn  func(clock Clock) bool
+}
+
+// TODO optimize with indexes
+type StateIsActive map[string]bool
+
+// handler represents a single event consumer, synchronized by channels.
+type handler struct {
+	h    any
+	name string
+	mx   sync.Mutex
+	// disposed     bool
+	methods      *reflect.Value
+	methodNames  []string
+	methodCache  map[string]reflect.Value
+	missingCache map[string]struct{}
+}
+
+func (e *handler) dispose() {
+	// TODO check if this leaks
+	// e.disposed = true
+	// e.methods = nil
+	// e.methodCache = nil
+	// e.methodNames = nil
+	// e.h = nil
 }
 
 // ///// ///// /////
@@ -395,8 +491,8 @@ var (
 	ErrStateInactive = errors.New("state not active")
 	// ErrCanceled indicates that a transition was canceled.
 	ErrCanceled = errors.New("transition canceled")
-	// ErrQueued indicates that a mutation was queued. Queuing is a feature, and
-	// not an error, but it may be considered as such in certain cases.
+	// ErrQueued indicates that a mutation was queued. Queuing is a feature, not
+	// an error, but it may be considered as such in certain cases.
 	ErrQueued = errors.New("transition queued")
 	// ErrInvalidArgs indicates that arguments are invalid.
 	ErrInvalidArgs = errors.New("invalid arguments")
@@ -461,268 +557,6 @@ func (m MutationType) String() string {
 	return ""
 }
 
-// Mutation represents an atomic change (or an attempt) of machine's active
-// states. Mutation causes a Transition.
-type Mutation struct {
-	// add, set, remove
-	Type MutationType
-	// States explicitly passed to the mutation method, as their indexes. Use
-	// Transition.CalledStates or IndexToStates to get the actual state names.
-	Called []int
-	// argument map passed to the mutation method (if any).
-	Args A
-	// this mutation has been triggered by an auto state
-	Auto bool
-	// Source is the source event for this mutation.
-	Source *MutSource
-	// IsCheck indicates that this mutation is a check, see [Machine.CanAdd].
-	IsCheck bool
-
-	// optional queue info
-
-	// QueueTickNow is the queue tick during which this mutation was scheduled.
-	QueueTickNow uint64
-	// QueueLen is the length of the queue at the time when the mutation was
-	// queued.
-	QueueLen int32
-	// QueueTokensLen is the amount of unexecuted queue tokens (priority queue).
-	// TODO impl
-	QueueTokensLen int32
-	// QueueTick is the assigned queue tick at the time when the mutation was
-	// queued. 0 for prepended mutations.
-	QueueTick uint64
-	// QueueToken is a unique ID, which is given to prepended mutations.
-	// Tokens are assigned in a series but executed in random order.
-	QueueToken uint64
-
-	// internals
-
-	// specific context for this mutation (optional)
-	ctx context.Context
-	// optional eval func, only for mutationEval
-	eval        func()
-	evalSource  string
-	cacheCalled atomic.Pointer[S]
-}
-
-func (m *Mutation) String() string {
-	return fmt.Sprintf("[%s] %v", m.Type, m.Called)
-}
-
-func (m *Mutation) IsCalled(idx int) bool {
-	return slices.Contains(m.Called, idx)
-}
-
-func (m *Mutation) CalledIndex(index S) *TimeIndex {
-	return NewTimeIndex(index, m.Called)
-}
-
-func (m *Mutation) StringFromIndex(index S) string {
-	called := NewTimeIndex(index, m.Called)
-	return "[" + m.Type.String() + "] " + j(called.ActiveStates())
-}
-
-// MapArgs returns arguments of this Mutation which match the passed [mapper].
-// The returned map is never nil.
-func (m *Mutation) MapArgs(mapper LogArgsMapperFn) map[string]string {
-	if mapper == nil {
-		return map[string]string{}
-	}
-
-	if ret := mapper(m.Args); ret == nil {
-		return map[string]string{}
-	} else {
-		return ret
-	}
-}
-
-// LogArgs returns a text snippet with arguments which should be logged for this
-// Mutation.
-func (m *Mutation) LogArgs(mapper LogArgsMapperFn) string {
-	return MutationFormatArgs(m.MapArgs(mapper))
-}
-
-// StepType enum
-type StepType int8
-
-const (
-	StepRelation StepType = 1 << iota
-	StepHandler
-	// TODO rename to StepActivate
-	StepSet
-	// StepRemove indicates a step where a state goes active->inactive
-	// TODO rename to StepDeactivate
-	StepRemove
-	// StepRemoveNotActive indicates a step where a state goes inactive->inactive
-	// TODO rename to StepDeactivatePassive
-	StepRemoveNotActive
-	StepRequested
-	StepCancel
-)
-
-func (tt StepType) String() string {
-	switch tt {
-	case StepRelation:
-		return "rel"
-	case StepHandler:
-		return "handler"
-	case StepSet:
-		return "activate"
-	case StepRemove:
-		return "deactivate"
-	case StepRemoveNotActive:
-		return "deactivate-passive"
-	case StepRequested:
-		return "requested"
-	case StepCancel:
-		return "cancel"
-	}
-	return ""
-}
-
-// Step struct represents a single step within a Transition, either a relation
-// resolving step or a handler call.
-type Step struct {
-	Type StepType
-	// Only for Type == StepRelation.
-	RelType Relation
-	// marks a final handler (FooState, FooEnd)
-	IsFinal bool
-	// marks a self handler (FooFoo)
-	IsSelf bool
-	// marks an enter handler (FooState, but not FooEnd). Requires IsFinal.
-	IsEnter bool
-	// Deprecated, use GetFromState(). TODO remove
-	FromState string
-	// TODO implement
-	FromStateIdx int
-	// Deprecated, use GetToState(). TODO remove
-	ToState string
-	// TODO implement
-	ToStateIdx int
-	// Deprecated, use RelType. TODO remove
-	Data any
-	// TODO emitter name and num
-}
-
-// GetFromState returns the source state of a step. Optional, unless no
-// GetToState().
-func (s *Step) GetFromState(index S) string {
-	// TODO rename to FromState
-	if s.FromState != "" {
-		return s.FromState
-	}
-	if s.FromStateIdx == -1 {
-		return ""
-	}
-	if s.FromStateIdx < len(index) {
-		return index[s.FromStateIdx]
-	}
-
-	return ""
-}
-
-// GetToState returns the target state of a step. Optional, unless no
-// GetFromState().
-func (s *Step) GetToState(index S) string {
-	// TODO rename to ToState
-	if s.ToState != "" {
-		return s.ToState
-	}
-	if s.ToStateIdx == -1 {
-		return ""
-	}
-	if s.ToStateIdx < len(index) {
-		return index[s.ToStateIdx]
-	}
-
-	return ""
-}
-
-func (s *Step) StringFromIndex(idx S) string {
-	var line string
-
-	// collect
-	from := s.GetFromState(idx)
-	to := s.GetToState(idx)
-	if from == "" && to == "" {
-		to = StateAny
-	}
-
-	// format TODO markdown?
-	if from != "" {
-		from = "**" + from + "**"
-	}
-	if to != "" {
-		to = "**" + to + "**"
-	}
-
-	// output
-	if from != "" && to != "" {
-		line += from + " " + s.RelType.String() + " " + to
-	} else {
-		line = from
-	}
-	if line == "" {
-		line = to
-	}
-
-	if s.Type == StepRelation {
-		return line
-	}
-
-	suffix := ""
-	if s.Type == StepHandler {
-		if s.IsSelf {
-			suffix = line
-		} else if s.IsFinal && s.IsEnter {
-			suffix = SuffixState
-		} else if s.IsFinal && !s.IsEnter {
-			suffix = SuffixEnd
-		} else if !s.IsFinal && s.IsEnter {
-			suffix = SuffixEnter
-		} else if !s.IsFinal && !s.IsEnter {
-			suffix = SuffixExit
-		}
-	}
-
-	// TODO infer handler names
-	return s.Type.String() + " " + line + suffix
-}
-
-func newStep(from string, to string, stepType StepType,
-	relType Relation,
-) *Step {
-	ret := &Step{
-		// TODO refac with the new dbg protocol, use indexes only
-		FromState: from,
-		ToState:   to,
-		Type:      stepType,
-		RelType:   relType,
-	}
-	// default values TODO use real values
-	if from == "" {
-		ret.FromStateIdx = -1
-	}
-	if to == "" {
-		ret.ToStateIdx = -1
-	}
-
-	return ret
-}
-
-func newSteps(from string, toStates S, stepType StepType,
-	relType Relation,
-) []*Step {
-	// TODO optimize, only use during debug
-	var ret []*Step
-	for _, to := range toStates {
-		ret = append(ret, newStep(from, to, stepType, relType))
-	}
-
-	return ret
-}
-
 // Relation enum
 type Relation int8
 
@@ -763,3 +597,24 @@ type (
 	HandlerError  func(mach *Machine, err error)
 	HandlerChange func(mach *Machine, err error)
 )
+
+// Options
+
+// OptsWithDebug returns Opts with debug settings (DontPanicToException,
+// long HandlerTimeout).
+func OptsWithDebug(opts *Opts) *Opts {
+	opts.DontPanicToException = true
+	opts.HandlerTimeout = 10 * time.Minute
+
+	return opts
+}
+
+// OptsWithTracers returns Opts with the given tracers. Tracers are inherited
+// by submachines (via Opts.Parent) when env.AM_DEBUG is set.
+func OptsWithTracers(opts *Opts, tracers ...Tracer) *Opts {
+	if tracers != nil {
+		opts.Tracers = tracers
+	}
+
+	return opts
+}

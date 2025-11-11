@@ -339,7 +339,7 @@ func FanOutIn(
 				}
 
 				// start N threads
-				running := mach.CountActive(groupTasks)
+				running := len(mach.ActiveStates(groupTasks))
 				// TODO check against running via mach.CountActive
 				for i := running; i < h.Concurrency && len(remaining) > 0; i++ {
 

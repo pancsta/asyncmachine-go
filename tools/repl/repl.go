@@ -541,11 +541,11 @@ func (r *Repl) ListMachinesState(e *am.Event) {
 		// mtime
 
 		// min
-		if filters.MtimeMin > 0 && filters.MtimeMin > w.TimeSum(nil) {
+		if filters.MtimeMin > 0 && filters.MtimeMin > w.Time(nil).Sum(nil) {
 			continue
 		}
 		// max
-		if filters.MtimeMax > 0 && filters.MtimeMax < w.TimeSum(nil) {
+		if filters.MtimeMax > 0 && filters.MtimeMax < w.Time(nil).Sum(nil) {
 			continue
 		}
 

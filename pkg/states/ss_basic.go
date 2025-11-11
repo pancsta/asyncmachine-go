@@ -20,7 +20,8 @@ type BasicStatesDef struct {
 
 	// ErrNetwork indicates a generic network error.
 	ErrNetwork string
-	// ErrHandlerTimeout indicates one of state machine handlers has timed out.
+	// ErrHandlerTimeout indicates one of the state machine handlers has timed
+	// out.
 	ErrHandlerTimeout string
 
 	// Start indicates the machine should be working. Removing start can force
@@ -31,7 +32,7 @@ type BasicStatesDef struct {
 	// Healthcheck is a periodic request making sure that the machine is still
 	// alive.
 	Healthcheck string
-	// Heartbeat is a periodic state which ensures integrity of the machine.
+	// Heartbeat is a periodic state that ensures the integrity of the machine.
 	Heartbeat string
 }
 

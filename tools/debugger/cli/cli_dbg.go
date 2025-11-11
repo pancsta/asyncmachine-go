@@ -159,7 +159,7 @@ func AddFlags(rootCmd *cobra.Command) {
 
 	// TODO parse copy-paste commas, eg 1,001
 	f.IntP(pStartupTx, pStartupTxShort, 0,
-		"Select a transaction by _number_ on startup (requires --"+
+		"Select a transition by _number_ on startup (requires --"+
 			pStartupMach+")")
 	f.String(pStartupGroup, "", "Startup group")
 	f.Bool(pEnableMouse, true, "Enable mouse support (experimental)")

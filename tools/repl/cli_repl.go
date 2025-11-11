@@ -338,7 +338,7 @@ func initWatcher(
 	if err != nil {
 		return nil, err
 	}
-	mach.HandleDispose(func(id string, ctx context.Context) {
+	mach.OnDispose(func(id string, ctx context.Context) {
 		_ = watcher.Close()
 	})
 
@@ -1003,7 +1003,7 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 			}
 
 			if sum {
-				ret := w.TimeSum(nil)
+				ret := w.Time(nil).Sum(nil)
 				repl.Print("%d", ret)
 
 				return nil
@@ -1132,8 +1132,8 @@ func listRun(repl *Repl, cmd *cobra.Command, args []string) error {
 		}
 
 		// TODO conns since time in htime
-		repl.Print("%d. %s %s t%d %s", i+1, conn, w.RemoteId(), w.TimeSum(nil),
-			str)
+		sum := w.Time(nil).Sum(nil)
+		repl.Print("%d. %s %s t%d %s", i+1, conn, w.RemoteId(), sum, str)
 	}
 
 	return nil

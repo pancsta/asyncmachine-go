@@ -86,7 +86,7 @@ func main() {
 		params.Groups = strings.TrimRight(params.Groups, ";") + "),"
 	}
 
-	gen, err := generator.NewSFGenerator(ctx, params)
+	gen, err := generator.NewSchemaGenerator(ctx, params)
 	if err != nil {
 		panic(err)
 	}

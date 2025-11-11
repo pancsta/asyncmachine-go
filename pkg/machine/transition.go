@@ -43,7 +43,7 @@ type Transition struct {
 	// PreLogEntries are log msgs produced before during the transition.
 	PreLogEntries []*LogEntry
 	// QueueLen is the length of the queue after the transition.
-	QueueLen int
+	QueueLen uint16
 	// InternalLogEntriesLock is used to lock the logs to be collected by Tracers.
 	// TODO getter?
 	InternalLogEntriesLock sync.Mutex
@@ -701,7 +701,7 @@ func (t *Transition) emitEvents() Result {
 	// collect previous log entries
 	m.logEntriesLock.Lock()
 	t.PreLogEntries = m.logEntries
-	t.QueueLen = int(m.queueLen.Load())
+	t.QueueLen = uint16(m.queueLen.Load())
 	m.logEntries = nil
 	m.logEntriesLock.Unlock()
 	t.IsCompleted.Store(true)
