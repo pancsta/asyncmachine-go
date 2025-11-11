@@ -2810,8 +2810,7 @@ func (m *Machine) Inspect(states S) string {
 //	case "Stopped":
 //	}
 func (m *Machine) Switch(groups ...S) string {
-	// TODO replace with ActiveState(states S...) S
-	activeStates := m.ActiveStates()
+	activeStates := m.ActiveStates(nil)
 	for _, states := range groups {
 		for _, state := range states {
 			if slices.Contains(activeStates, state) {
@@ -2823,42 +2822,27 @@ func (m *Machine) Switch(groups ...S) string {
 	return ""
 }
 
-// CountActive returns the number of active states from a passed list. Useful
-// for state groups.
-func (m *Machine) CountActive(states S) int {
-	// TODO replace with ActiveState(states S...) S
-	activeStates := m.ActiveStates()
-	c := 0
-	for _, state := range states {
-		if slices.Contains(activeStates, state) {
-			c++
-		}
-	}
-
-	return c
-}
-
-// HandleDispose adds a function to be called after the machine gets disposed.
-// These functions will run synchronously just before WhenDisposed() channel
-// gets closed. Considering it's a low-level feature, it's advised to handle
-// disposal via dedicated states.
-func (m *Machine) HandleDispose(fn HandlerDispose) {
-	m.handlersMx.Lock()
-	defer m.handlersMx.Unlock()
-
-	m.disposeHandlers = append(m.disposeHandlers, fn)
-}
-
-// ActiveStates returns a copy of the currently active states.
-func (m *Machine) ActiveStates() S {
-	// TODO merge with Switch, accept optional `states S...` param
+// ActiveStates returns a copy of the currently active states when states is
+// nil, optionally limiting the results to a subset of states.
+func (m *Machine) ActiveStates(states S) S {
 	if m.disposed.Load() {
 		return S{}
 	}
 	m.activeStatesMx.RLock()
 	defer m.activeStatesMx.RUnlock()
 
-	return slices.Clone(m.activeStates)
+	if states == nil {
+		return slices.Clone(m.activeStates)
+	}
+
+	ret := make(S, 0, len(states))
+	for _, state := range states {
+		if slices.Contains(m.activeStates, state) {
+			ret = append(ret, state)
+		}
+	}
+
+	return ret
 }
 
 // StateNames returns a SHARED copy of all the state names.
