@@ -48,6 +48,8 @@ const (
 	StateStart = "Start"
 	// StateReady is the name of the predefined Ready state.
 	StateReady = "Ready"
+	// StateMachineRestored is the name of the predefined MachineRestored state.
+	StateMachineRestored = "MachineRestored"
 )
 
 type (
@@ -131,13 +133,17 @@ type Opts struct {
 type Serialized struct {
 	// ID is the ID of a state machine.
 	ID string `json:"id" yaml:"id" toml:"id"`
-	// Time is the [Machine.Time] value.
-	Time Time `json:"time" yaml:"time" toml:"time"`
-	// QueueTick is the [Machine.QueueTick] value.
-	QueueTick uint64 `json:"queue_tick" yaml:"queue_tick" toml:"queue_tick"`
 	// StateNames is an ordered list of state names.
 	StateNames S `json:"state_names" yaml:"state_names" toml:"state_names"`
 	// TODO schema hash
+
+	// Time is the [Machine.Time] value.
+	Time Time `json:"time" yaml:"time" toml:"time"`
+	// QueueTick is a value of [Machine.QueueTick].
+	QueueTick uint64 `json:"queue_tick" yaml:"queue_tick" toml:"queue_tick"`
+	// MachineTick is a value of [Machine.MachineTick].
+	// nolint:lll
+	MachineTick uint32 `json:"machine_tick" yaml:"machine_tick" toml:"machine_tick"`
 }
 
 // Api is a subset of Machine for alternative implementations.
@@ -274,6 +280,10 @@ type Api interface {
 	TimeSum(states S) uint64
 	// QueueTick is [Machine.QueueTick].
 	QueueTick() uint64
+	// MachineTick is [Machine.MachineTick].
+	MachineTick() uint32
+	// QueueLen is [Machine.QueueLen].
+	QueueLen() uint16
 	// NewStateCtx is [Machine.NewStateCtx].
 	NewStateCtx(state string) context.Context
 	// Export is [Machine.Export].

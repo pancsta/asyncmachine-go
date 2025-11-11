@@ -93,9 +93,10 @@ type Machine struct {
 	activeStatesMx sync.RWMutex
 	// queue of mutations to be executed.
 	queue []*Mutation
-	// queueTick is the number of times the queue has processed a mutation. Starts
-	// from [1], for easy comparison with [Result].
-	queueTick uint64
+	// queueTick is the number of times the queue has processed an appended
+	// mutation. Starts from [1], for easy comparison with [Result].
+	queueTick   uint64
+	machineTick uint32
 	// queueTicksPending is the part of the queue with queue ticks assigned.
 	queueTicksPending uint64
 	queueToken        atomic.Uint64
@@ -666,6 +667,15 @@ func (m *Machine) QueueTick() uint64 {
 	defer m.queueMx.Unlock()
 
 	return m.queueTick
+}
+
+// MachineTick is the number of times the machine has been started. Each start
+// means an empty queue. Only set by [Machine.Import].
+func (m *Machine) MachineTick() uint32 {
+	m.schemaMx.RLock()
+	defer m.schemaMx.RUnlock()
+
+	return m.machineTick
 }
 
 // Time returns machine's time, a list of ticks per state. Returned value
@@ -3077,10 +3087,14 @@ func (m *Machine) Export() *Serialized {
 	m.log(LogOps, "[import] exported at %d ticks", t.Sum())
 
 	return &Serialized{
-		ID:         m.id,
-		Time:       t,
-		QueueTick:  m.queueTick,
-		StateNames: m.stateNames,
+		ID:          m.id,
+		Time:        t,
+		MachineTick: m.machineTick,
+		StateNames:  m.stateNames,
+
+		// export only
+
+		QueueTick: m.queueTick,
 	}
 }
 
@@ -3120,12 +3134,15 @@ func (m *Machine) Import(data *Serialized) error {
 	// restore ID and state names
 	m.stateNames = data.StateNames
 	m.stateNamesExport = nil
-	m.id = data.ID
-	m.queueTick = data.QueueTick
 	m.statesVerified.Store(true)
+	m.machineTick = data.MachineTick + 1
 
-	// TODO trigger MachineRestoredState
-	m.log(LogChanges, "[import] imported to %d ticks", t)
+	// trigger MachineRestored, if defined
+	if m.Has1(StateMachineRestored) {
+		m.Add1(StateMachineRestored, nil)
+	}
+	m.log(LogChanges, "[import] imported %d times, now at %d ticks",
+		m.machineTick, sum)
 
 	return nil
 }
