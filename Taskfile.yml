@@ -396,6 +396,11 @@ tasks:
       - task: format
       - task: check-fmt
 
+  lint-ci:
+    cmds:
+      - task: lint-go
+      - task: lint-md
+
   lint-go:
     cmds:
       - $(go env GOPATH)/bin/golangci-lint run --fix --timeout 15m
@@ -428,14 +433,8 @@ tasks:
     desc: Install project dependencies
     cmds:
       - go mod tidy
-      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh 
-          | sh -s -- -b $(go env GOPATH)/bin v2.5.0
-      - go install mvdan.cc/gofumpt@latest
-      - go install golang.org/x/tools/cmd/goimports@latest
       - go install github.com/mattn/goreman@latest
       - go install github.com/itchyny/gojq/cmd/gojq@latest
-      # TODO switch to nodejs md linter
-      - gem install mdl
       - go install github.com/hhatto/gocloc/cmd/gocloc@latest
 
   install-deps-db:
@@ -448,6 +447,41 @@ tasks:
     desc: Install promo video dependencies
     cmds:
       - npm install -g terminalizer
+
+  install-deps-docs:
+    desc: Install docs dependencies
+    cmds:
+      - go install go101.org/golds@latest
+
+  install-deps-linter:
+    cmds:
+      - # TODO switch to quickmark-cli
+      - gem install mdl
+#      - cargo install quickmark-cli
+      - go install mvdan.cc/gofumpt@latest
+      - go install golang.org/x/tools/cmd/goimports@latest
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh 
+          | sh -s -- -b $(go env GOPATH)/bin v2.5.0
+
+  install-deps-linter-ci:
+    cmds:
+      - # TODO switch to quickmark-cli
+      - gem install mdl
+#      - cargo install quickmark-cli
+      - go install mvdan.cc/gofumpt@latest
+      - go install golang.org/x/tools/cmd/goimports@latest
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh 
+          | sh -s -- -b $(go env GOPATH)/bin v2.5.0
+
+  gen-docs:
+    cmds:
+      - golds -only-list-exporteds
+        -render-doclinks
+        -theme=dark
+        -gen -dir=docs/api
+        -source-code-reading rich
+        -wdpkgs-listing solo
+        ./...
 
   am-gen-states:
     desc: Generate a states file in ROOT DIR for provided state names, eg "task am-gen-states -- -s Foo,Bar -n MyMach"

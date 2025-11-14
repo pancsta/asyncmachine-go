@@ -5,8 +5,8 @@ on: [push]
 jobs:
   build:
 
-    # TODO fix timeouts
-    if: false  # Disable this job
+    # Disable this job
+#    if: false
 
     runs-on: ubuntu-latest
     strategy:
@@ -23,6 +23,7 @@ jobs:
 
       # set up
       - uses: actions/checkout@v4
+      # TODO no ruby
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
@@ -63,7 +64,7 @@ jobs:
       - name: Install Task
         run: ./scripts/dep-taskfile.sh
       - name: Install dependencies
-        run: task install-deps
+        run: task install-deps-linter-ci
 
       # run
       - name: Run linters

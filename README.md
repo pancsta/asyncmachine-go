@@ -75,7 +75,7 @@ cancelation.
 ![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)
 
 > [!NOTE]
-> Flow is state and state is flow, in a graph.
+> Flow is state, and state is flow, in a graph.
 
 ## Samples
 
@@ -287,6 +287,7 @@ Under development, status depends on each package. The bottom layers seem prod g
 - before
     - `./scripts/dep-taskfile.sh`
     - `task install-deps`
+    - `task install-deps-linter`
 - after
     - `task test`
     - `task format`
@@ -294,11 +295,12 @@ Under development, status depends on each package. The bottom layers seem prod g
     - `task precommit`
 - [good first issues](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
 
-### [Roadmap](ROADMAP.md)
+### Roadmap
 
 - history layer - SQL, KV, ...
 - `am-relay` tool for proxying, conversions, duck-taping
 - RPC handlers for distributed state-machines
+- [ROADMAP.md](ROADMAP.md)
 
 ## [FAQ](./FAQ.md)
 

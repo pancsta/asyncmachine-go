@@ -805,6 +805,7 @@ func (sm *Subscriptions) WhenQueueEnds(
 	if ctx != nil {
 		// fork in this special case
 		go func() {
+			// TODO race, mutex for closing
 			<-ctx.Done()
 			mx.Lock()
 			defer mx.Unlock()

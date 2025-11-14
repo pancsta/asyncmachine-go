@@ -1,5 +1,9 @@
 # Changelog
 
+- [Breaking Changes](BREAKING.md)
+- [New stuff](https://github.com/pancsta/asyncmachine-go/pulse)
+- [Release feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
+
 ## [v0.16.0](https://github.com/pancsta/asyncmachine-go/tree/v0.15.2) (2025-11-11)
 
 - feat: release v0.16 [\#312](https://github.com/pancsta/asyncmachine-go/pull/312) (@pancsta)

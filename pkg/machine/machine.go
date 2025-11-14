@@ -2521,6 +2521,7 @@ func (m *Machine) IsQueued(mutType MutationType, states S,
 	if qLen == 0 || qLen-startIndex < 1 {
 		return 0, false
 	}
+	// TODO out of range 2:1
 	iter := m.queue[startIndex:]
 
 	// position TODO test case
