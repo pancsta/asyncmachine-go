@@ -802,16 +802,17 @@ func (sm *Subscriptions) WhenQueueEnds(
 	// insert the binding
 	sm.whenQueueEnds = append(sm.whenQueueEnds, binding)
 
-	if ctx != nil {
-		// fork in this special case
-		go func() {
-			<-ctx.Done()
-			mx.Lock()
-			defer mx.Unlock()
-			sm.whenQueueEnds = slicesWithout(sm.whenQueueEnds, binding)
-			close(ch)
-		}()
-	}
+	// TODO remove ctx
+	// if ctx != nil {
+	// 	// fork in this special case
+	// 	go func() {
+	// 		<-ctx.Done()
+	// 		mx.Lock()
+	// 		defer mx.Unlock()
+	// 		sm.whenQueueEnds = slicesWithout(sm.whenQueueEnds, binding)
+	// 		close(ch)
+	// 	}()
+	// }
 
 	return ch
 }
