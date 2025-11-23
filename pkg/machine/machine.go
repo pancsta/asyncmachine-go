@@ -3353,8 +3353,8 @@ func (m *Machine) SetGroupsString(groups map[string]S, order []string) {
 }
 
 func (m *Machine) Groups() (map[string][]int, []string) {
-	m.schemaMx.Lock()
-	defer m.schemaMx.Unlock()
+	m.schemaMx.RLock()
+	defer m.schemaMx.RUnlock()
 
 	return m.groups, m.groupsOrder
 }
