@@ -33,6 +33,9 @@ import (
 	"github.com/zyedidia/clipper"
 	"golang.org/x/text/message"
 
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
+
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -66,7 +69,7 @@ type Debugger struct {
 	// printer for numbers TODO global
 	P *message.Printer
 	// TODO GC removed machines
-	History       []*MachAddress
+	History       []*types.MachAddress
 	HistoryCursor int
 
 	// UI is currently being drawn
@@ -163,7 +166,7 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		d.Opts.Log2Ttl = time.Hour
 	}
 
-	gob.Register(Exportable{})
+	gob.Register(server.Exportable{})
 	gob.Register(am.Relation(0))
 
 	id := utils.RandId(0)
@@ -212,7 +215,7 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	}
 	semLog.SetArgsMapper(am.NewArgsMapper([]string{
 		// TODO extract
-		"Machine.id", "conn_id", "cursorTx1", "amount", "Client.id",
+		"Client.id", "conn_id", "cursorTx1", "amount", "Client.id",
 		"state", "fwd", "filter", "ToolName", "uri", "addr", "url",
 		"err", "_am_err",
 	}, 20))
@@ -277,14 +280,14 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 // ///// ///// /////
 
 // hGetMachAddress returns the address of the currently visible view (mach, tx).
-func (d *Debugger) hGetMachAddress() *MachAddress {
+func (d *Debugger) hGetMachAddress() *types.MachAddress {
 	c := d.C
 	if c == nil {
 		return nil
 	}
-	a := &MachAddress{
-		MachId:   c.id,
-		MachTime: c.mTimeSum,
+	a := &types.MachAddress{
+		MachId:   c.Id,
+		MachTime: c.MTimeSum,
 	}
 	if c.CursorTx1 > 0 {
 		a.TxId = c.MsgTxs[c.CursorTx1-1].ID
@@ -298,7 +301,9 @@ func (d *Debugger) hGetMachAddress() *MachAddress {
 
 // hGoToMachAddress tries to render a view of the provided address (mach, tx).
 // Blocks. TODO state: GoToMachAddr, MachAddr
-func (d *Debugger) hGoToMachAddress(addr *MachAddress, skipHistory bool) bool {
+func (d *Debugger) hGoToMachAddress(
+	addr *types.MachAddress, skipHistory bool,
+) bool {
 	// TODO should be an async state
 
 	if addr.MachId == "" {
@@ -309,7 +314,7 @@ func (d *Debugger) hGoToMachAddress(addr *MachAddress, skipHistory bool) bool {
 	mach := d.Mach
 
 	// select the target mach, if not selected
-	if d.C == nil || d.C.id != addr.MachId {
+	if d.C == nil || d.C.Id != addr.MachId {
 		// TODO ctx
 		// TODO extract as amhelp.WhenNextActive
 		if mach.Is1(ss.ClientSelected) {
@@ -337,10 +342,10 @@ func (d *Debugger) hGoToMachAddress(addr *MachAddress, skipHistory bool) bool {
 		}
 		mach.Add1(ss.ScrollToTx, args)
 	} else if addr.MachTime != 0 {
-		tx := d.C.tx(d.C.txByMachTime(addr.MachTime))
+		tx := d.C.Tx(d.C.TxByMachTime(addr.MachTime))
 		mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
 	} else if !addr.HumanTime.IsZero() {
-		tx := d.C.tx(d.C.lastTxTill(addr.HumanTime))
+		tx := d.C.Tx(d.C.LastTxTill(addr.HumanTime))
 		mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
 	}
 	if !skipHistory {
@@ -406,7 +411,7 @@ func (d *Debugger) hGoToMachAddress(addr *MachAddress, skipHistory bool) bool {
 // }
 
 func (d *Debugger) hRemoveHistory(clientId string) {
-	hist := make([]*MachAddress, 0)
+	hist := make([]*types.MachAddress, 0)
 	for i, item := range d.History {
 		if i <= d.HistoryCursor && d.HistoryCursor > 0 {
 			d.HistoryCursor--
@@ -421,8 +426,8 @@ func (d *Debugger) hRemoveHistory(clientId string) {
 	d.History = hist
 }
 
-func (d *Debugger) hPrependHistory(addr *MachAddress) {
-	d.History = slices.Concat([]*MachAddress{addr}, d.History)
+func (d *Debugger) hPrependHistory(addr *types.MachAddress) {
+	d.History = slices.Concat([]*types.MachAddress{addr}, d.History)
 	d.hTrimHistory()
 }
 
@@ -468,11 +473,11 @@ func (d *Debugger) hGetClientTx(
 	if c == nil {
 		return nil, nil
 	}
-	idx := c.txIndex(txId)
+	idx := c.TxIndex(txId)
 	if idx < 0 {
 		return nil, nil
 	}
-	tx := c.tx(idx)
+	tx := c.Tx(idx)
 	if tx == nil {
 		return nil, nil
 	}
@@ -585,7 +590,7 @@ func (d *Debugger) hConnectedClients() int {
 	// if only 1 client connected, select it (if SelectConnected == true)
 	var conns int
 	for _, c := range d.Clients {
-		if c.connected.Load() {
+		if c.Connected.Load() {
 			conns++
 		}
 	}
@@ -666,7 +671,7 @@ func (d *Debugger) hImportData(filename string) {
 
 	// decode gob
 	decoder := gob.NewDecoder(brReader)
-	var res []*Exportable
+	var res []*server.Exportable
 	err = decoder.Decode(&res)
 	if err != nil {
 		d.Mach.AddErr(fmt.Errorf("import failed %w", err), nil)
@@ -676,14 +681,8 @@ func (d *Debugger) hImportData(filename string) {
 	// parse the data
 	for _, data := range res {
 		id := data.MsgStruct.ID
-		c := &Client{
-			id:         id,
-			schemaHash: amhelp.SchemaHash((*data).MsgStruct.States),
-			Exportable: *data,
-			logReader:  make(map[string][]*logReaderEntry),
-		}
-		c.parseSchema()
-		d.Clients[id] = c
+		hash := amhelp.SchemaHash((*data).MsgStruct.States)
+		d.Clients[id] = newClient(id, id, hash, data)
 		if d.graph != nil {
 			err := d.graph.AddClient(data.MsgStruct)
 			if err != nil {
@@ -771,7 +770,7 @@ func (d *Debugger) hUpdateAddressBar() {
 	txId := ""
 	stepId := ""
 	if d.C != nil {
-		machId = d.C.id
+		machId = d.C.Id
 		if d.C.CursorTx1 > 0 {
 			// TODO conflict with GC?
 			txId = d.C.MsgTxs[d.C.CursorTx1-1].ID
@@ -780,7 +779,7 @@ func (d *Debugger) hUpdateAddressBar() {
 			// TODO conflict with GC?
 			stepId = strconv.Itoa(d.C.CursorStep1)
 		}
-		machConn = d.C.connected.Load()
+		machConn = d.C.Connected.Load()
 	}
 
 	// copy
@@ -921,10 +920,10 @@ func (d *Debugger) hParseMsg(c *Client, idx int) {
 	}
 	index := c.MsgStruct.StatesIndex
 	prevTx := &telemetry.DbgMsgTx{}
-	prevTxParsed := &MsgTxParsed{}
+	prevTxParsed := &types.MsgTxParsed{}
 	if len(c.MsgTxs) > 1 && idx > 0 {
 		prevTx = c.MsgTxs[idx-1]
-		prevTxParsed = c.msgTxsParsed[idx-1]
+		prevTxParsed = c.MsgTxsParsed[idx-1]
 	}
 
 	// cast to Transition
@@ -939,21 +938,21 @@ func (d *Debugger) hParseMsg(c *Client, idx int) {
 	before := fakeTx.TimeBefore.Sum(nil)
 	if after < before {
 		d.Mach.AddErr(fmt.Errorf("time after < time before"), nil)
-		c.mTimeSum = sum
-		c.msgTxsParsed = append(c.msgTxsParsed, &MsgTxParsed{TimeSum: sum})
-		c.logMsgs = append(c.logMsgs, make([]*am.LogEntry, 0))
+		c.MTimeSum = sum
+		c.MsgTxsParsed = append(c.MsgTxsParsed, &types.MsgTxParsed{TimeSum: sum})
+		c.LogMsgs = append(c.LogMsgs, make([]*am.LogEntry, 0))
 
 		return
 	}
 
 	added, removed, touched := amhelp.GetTransitionStates(fakeTx, index)
-	msgTxParsed := &MsgTxParsed{
+	msgTxParsed := &types.MsgTxParsed{
 		TimeSum: sum,
 		// TODO use in tx info bars
 		TimeDiff:      sum - prevTxParsed.TimeSum,
-		StatesAdded:   c.statesToIndexes(added),
-		StatesRemoved: c.statesToIndexes(removed),
-		StatesTouched: c.statesToIndexes(touched),
+		StatesAdded:   c.StatesToIndexes(added),
+		StatesRemoved: c.StatesToIndexes(removed),
+		StatesTouched: c.StatesToIndexes(touched),
 	}
 
 	// optimize space
@@ -988,17 +987,17 @@ func (d *Debugger) hParseMsg(c *Client, idx int) {
 	}
 	if isErr || msgTx.Is1(index, am.StateException) {
 		// prepend to errors
-		c.errors = append([]int{idx}, c.errors...)
+		c.Errors = append([]int{idx}, c.Errors...)
 	}
 
 	// store the parsed msg
-	c.msgTxsParsed = append(c.msgTxsParsed, msgTxParsed)
-	c.mTimeSum = sum
+	c.MsgTxsParsed = append(c.MsgTxsParsed, msgTxParsed)
+	c.MTimeSum = sum
 
 	// logs and graph
 	d.hParseMsgLog(c, msgTx, idx)
 	if d.graph != nil {
-		d.graph.ParseMsg(c.id, msgTx)
+		d.graph.ParseMsg(c.Id, msgTx)
 	}
 
 	// rebuild the log to trim the head (unless importing)
@@ -1086,7 +1085,7 @@ func (d *Debugger) hUpdateTxBars() {
 			title = formatTxBarTitle("Paused") + " "
 		}
 
-		left, right := d.hGetTxInfo(c.CursorTx1, tx, c.msgTxsParsed[c.CursorTx1-1],
+		left, right := d.hGetTxInfo(c.CursorTx1, tx, c.MsgTxsParsed[c.CursorTx1-1],
 			title)
 		d.currTxBarLeft.SetText(left)
 		d.currTxBarRight.SetText(right)
@@ -1096,7 +1095,7 @@ func (d *Debugger) hUpdateTxBars() {
 	if nextTx != nil && c != nil {
 		title := "Next   "
 		left, right := d.hGetTxInfo(c.CursorTx1+1, nextTx,
-			c.msgTxsParsed[c.CursorTx1], title)
+			c.MsgTxsParsed[c.CursorTx1], title)
 		d.nextTxBarLeft.SetText(left)
 		d.nextTxBarRight.SetText(right)
 	}
@@ -1171,7 +1170,8 @@ func (d *Debugger) hUpdateBorderColor() {
 }
 
 // TODO state: ExportingData, DataExported
-func (d *Debugger) hExportData(filename string) {
+// TODO remove log.
+func (d *Debugger) hExportData(filename string, snapshot bool) {
 	// validate the input
 	if filename == "" {
 		log.Printf("Error: export failed no filename")
@@ -1192,10 +1192,15 @@ func (d *Debugger) hExportData(filename string) {
 	defer fw.Close()
 
 	// prepare the format
-	data := make([]*Exportable, len(d.Clients))
+	now := *d.C.Tx(max(0, d.C.CursorTx1)).Time
+	data := make([]*server.Exportable, len(d.Clients))
 	i := 0
 	for _, c := range d.Clients {
-		data[i] = &c.Exportable
+		data[i] = c.Exportable
+		// snapshot limits to a single tx
+		if snapshot {
+			data[i].MsgTxs = []*telemetry.DbgMsgTx{c.Tx(c.LastTxTill(now))}
+		}
 		i++
 	}
 
@@ -1212,7 +1217,7 @@ func (d *Debugger) hExportData(filename string) {
 }
 
 func (d *Debugger) hGetTxInfo(txIndex1 int,
-	tx *telemetry.DbgMsgTx, parsed *MsgTxParsed, title string,
+	tx *telemetry.DbgMsgTx, parsed *types.MsgTxParsed, title string,
 ) (string, string) {
 	left := title
 	right := " "
@@ -1289,7 +1294,7 @@ func (d *Debugger) hCleanOnConnect() bool {
 	}
 	var disconns []*Client
 	for _, c := range d.Clients {
-		if !c.connected.Load() {
+		if !c.Connected.Load() {
 			disconns = append(disconns, c)
 		}
 	}
@@ -1299,8 +1304,8 @@ func (d *Debugger) hCleanOnConnect() bool {
 		for _, c := range d.Clients {
 			// TODO cant be scheduled, as the client can connect in the meantime
 			// d.Add1(ss.RemoveClient, am.A{"Client.id": c.id})
-			delete(d.Clients, c.id)
-			d.hRemoveHistory(c.id)
+			delete(d.Clients, c.Id)
+			d.hRemoveHistory(c.Id)
 		}
 		if d.graph != nil {
 			d.graph.Clear()
@@ -1337,7 +1342,7 @@ func (d *Debugger) hUpdateMatrixRelations() {
 
 	index := c.MsgStruct.StatesIndex
 	if c.SelectedGroup != "" {
-		index = c.msgSchemaParsed.Groups[c.SelectedGroup]
+		index = c.MsgSchemaParsed.Groups[c.SelectedGroup]
 	}
 	var tx *telemetry.DbgMsgTx
 	var prevTx *telemetry.DbgMsgTx
@@ -1456,7 +1461,7 @@ func (d *Debugger) hUpdateMatrixRelations() {
 
 	title := " Matrix:" + strconv.Itoa(sum) + " "
 	if c.CursorTx1 > 0 {
-		t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx1-1].TimeSum))
+		t := strconv.Itoa(int(c.MsgTxsParsed[c.CursorTx1-1].TimeSum))
 		title += "Time:" + t + " "
 	}
 	d.matrix.SetTitle(title)
@@ -1489,7 +1494,7 @@ func (d *Debugger) hUpdateMatrixRain() {
 
 	index := c.MsgStruct.StatesIndex
 	if g := c.SelectedGroup; g != "" {
-		index = c.msgSchemaParsed.Groups[g]
+		index = c.MsgSchemaParsed.Groups[g]
 	}
 	tx := d.hCurrentTx()
 	prevTx := d.hPrevTx()
@@ -1507,7 +1512,7 @@ func (d *Debugger) hUpdateMatrixRain() {
 	// TODO collect rows-amount before and after (always) and display, then fill
 	//  the missing rows from previously collected
 
-	cur := c.filterIndexByCursor1(c.CursorTx1)
+	cur := c.FilterIndexByCursor1(c.CursorTx1)
 	var curLast int
 
 	// ahead
@@ -1541,7 +1546,7 @@ func (d *Debugger) hUpdateMatrixRain() {
 			currTxRow = rowIdx
 		}
 		tx := c.MsgTxs[txIdx1-1]
-		txParsed := c.msgTxsParsed[txIdx1-1]
+		txParsed := c.MsgTxsParsed[txIdx1-1]
 		calledStates := tx.CalledStateNames(c.MsgStruct.StatesIndex)
 
 		for ii, name := range index {
@@ -1638,7 +1643,7 @@ func (d *Debugger) hUpdateMatrixRain() {
 
 	title := " Matrix:" + strconv.Itoa(diffT) + " "
 	if c.CursorTx1 > 0 {
-		t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx1-1].TimeSum))
+		t := strconv.Itoa(int(c.MsgTxsParsed[c.CursorTx1-1].TimeSum))
 		title += "Time:" + t + " "
 	}
 	d.matrix.SetTitle(title)
@@ -1684,7 +1689,7 @@ func (d *Debugger) hGetSidebarCurrClientIdx() int {
 	i := 0
 	for _, item := range d.clientList.GetItems() {
 		ref := item.GetReference().(*sidebarRef)
-		if ref.name == d.C.id {
+		if ref.name == d.C.Id {
 			return i
 		}
 		i++
@@ -1732,7 +1737,7 @@ func (d *Debugger) filtersActive() bool {
 // hFilterTx returns true when a TX passes selected toolbarItems.
 func (d *Debugger) hFilterTx(c *Client, idx int, filters *OptsFilters) bool {
 	tx := c.MsgTxs[idx]
-	parsed := c.msgTxsParsed[idx]
+	parsed := c.MsgTxsParsed[idx]
 	called := tx.CalledStateNames(c.MsgStruct.StatesIndex)
 	group := c.SelectedGroup
 	f := filters
@@ -1755,7 +1760,7 @@ func (d *Debugger) hFilterTx(c *Client, idx int, filters *OptsFilters) bool {
 
 	// filter out txs without called from the group (if any)
 	if f.SkipOutGroup && group != "" {
-		groupStates := c.msgSchemaParsed.Groups[group]
+		groupStates := c.MsgSchemaParsed.Groups[group]
 		if len(am.SameStates(called, groupStates)) == 0 {
 			return false
 		}
@@ -1783,7 +1788,7 @@ func (d *Debugger) hScrollToTime(
 	if d.C == nil {
 		return false
 	}
-	latestTx := d.C.lastTxTill(hTime)
+	latestTx := d.C.LastTxTill(hTime)
 	if latestTx == -1 {
 		return false
 	}
@@ -1812,11 +1817,11 @@ func (d *Debugger) hGetParentTags(c *Client, tags []string) []string {
 func (d *Debugger) initGraphGen(
 	snapshot *amgraph.Graph, id string, detailsLvl, numClients int, outDir,
 	svgName string, statesAllowlist S,
-) []*amvis.Visualizer {
-	var vizs []*amvis.Visualizer
+) []*amvis.Renderer {
+	var vizs []*amvis.Renderer
 
 	// render single (current one)
-	vis := amvis.New(d.Mach, snapshot)
+	vis := amvis.NewRenderer(snapshot, d.Mach.Log)
 	amvis.PresetSingle(vis)
 	// TODO enum
 	switch detailsLvl {
@@ -1868,7 +1873,7 @@ func (d *Debugger) initGraphGen(
 	// 	for _, p := range strings.Split(d.Opts.Graph, ",") {
 	//
 	// 		// vis
-	// 		vis := amvis.New(d.Mach, shot)
+	// 		vis := amvis.NewRenderer(d.Mach, shot)
 	// 		if p == "1" || p == "true" {
 	// 			// render single (current one)
 	// 			amvis.PresetSingle(vis)
@@ -1899,7 +1904,7 @@ func (d *Debugger) initGraphGen(
 	// map renderer, check cache
 	mapPath := fmt.Sprintf("am-vis-map-%d", numClients)
 	if _, err := os.Stat(mapPath); err != nil {
-		vis = amvis.New(d.Mach, snapshot)
+		vis = amvis.NewRenderer(snapshot, d.Mach.Log)
 		amvis.PresetMap(vis)
 		vis.OutputFilename = path.Join(outDir, mapPath)
 	}
@@ -1936,7 +1941,9 @@ func (d *Debugger) diagramsRender(
 	pool := amhelp.Pool(2)
 
 	for _, vis := range vizs {
-		pool.Go(vis.GenDiagrams)
+		pool.Go(func() error {
+			return vis.GenDiagrams(ctx)
+		})
 	}
 
 	err := pool.Wait()
@@ -1988,7 +1995,7 @@ func (d *Debugger) diagramsMemCache(
 
 	// update cache DOM
 	states := d.C.MsgStruct.StatesIndex
-	sel := amvis.Selection{
+	sel := amvis.Fragment{
 		MachId: id,
 		States: states,
 		Active: tx.ActiveStates(states),
@@ -2041,7 +2048,7 @@ func (d *Debugger) diagramsFileCache(
 	// update cache DOM
 	// TODO support groups
 	states := d.C.MsgStruct.StatesIndex
-	sel := amvis.Selection{
+	sel := amvis.Fragment{
 		MachId: id,
 		States: states,
 	}

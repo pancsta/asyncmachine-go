@@ -13,8 +13,15 @@ import (
 	"github.com/pancsta/cview"
 	"github.com/zyedidia/clipper"
 
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+)
+
+const (
+	DialogExport = "export"
+	DialogHelp   = "help"
 )
 
 func (d *Debugger) hInitUiComponents() {
@@ -60,7 +67,7 @@ func (d *Debugger) hInitUiComponents() {
 		// unblock
 		go func() {
 			// scroll to tx
-			txIdx := d.C.txIndex(txId)
+			txIdx := d.C.TxIndex(txId)
 			d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": txId})
 
 			// select the clicked state
@@ -271,7 +278,7 @@ func (d *Debugger) hInitAddressBar() {
 			}
 			txt, _ := d.clip.ReadAll(clipper.RegClipboard)
 			if u, err := url.Parse(string(txt)); err == nil && u.Scheme == "mach" {
-				addr := &MachAddress{MachId: u.Host}
+				addr := &types.MachAddress{MachId: u.Host}
 				if u.Path != "" {
 					addr.TxId = strings.TrimLeft(u.Path, "/")
 				}
@@ -451,22 +458,30 @@ func (d *Debugger) initExportDialog() *cview.Modal {
 	exportDialog := cview.NewModal()
 	form := exportDialog.GetForm()
 	form.AddInputField("Filename", "am-dbg-dump", 20, nil, nil)
+	form.AddCheckBox("Single Frame", "", false, func(checked bool) {})
 
 	exportDialog.SetText("Export to a file")
 	// exportDialog.AddButtons([]string{"Save"})
 	exportDialog.AddButtons([]string{"Save", "Cancel"})
 	exportDialog.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-		field, ok := form.GetFormItemByLabel("Filename").(*cview.InputField)
+		fieldName, ok := form.GetFormItem(0).(*cview.InputField)
 		if !ok {
 			d.Mach.Log("Error: export dialog field not found")
 			return
 		}
-		filename := field.GetText()
+		fieldSnap, ok := form.GetFormItem(1).(*cview.CheckBox)
+		if !ok {
+			d.Mach.Log("Error: export dialog single frame checkbox not found")
+		}
+
+		// form data
+		filename := fieldName.GetText()
+		moment := fieldSnap.IsChecked()
 
 		if buttonLabel == "Save" && filename != "" {
 			form.GetButton(0).SetLabel("Saving...")
 			form.Draw(d.App.GetScreen())
-			d.hExportData(filename)
+			d.hExportData(filename, moment)
 			d.Mach.Remove1(ss.ExportDialog, nil)
 			form.GetButton(0).SetLabel("Save")
 		} else if buttonLabel == "Cancel" {
@@ -694,8 +709,8 @@ func (d *Debugger) hInitLayout() {
 	d.hUpdateLayout()
 
 	panels := cview.NewPanels()
-	panels.AddPanel("export", d.exportDialog, false, true)
-	panels.AddPanel("help", d.helpDialog, true, true)
+	panels.AddPanel(DialogExport, d.exportDialog, false, true)
+	panels.AddPanel(DialogHelp, d.helpDialog, true, true)
 	panels.AddPanel("main", d.mainGrid, true, true)
 
 	d.LayoutRoot = panels

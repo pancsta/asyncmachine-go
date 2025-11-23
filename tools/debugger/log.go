@@ -12,6 +12,8 @@ import (
 	"github.com/pancsta/cview"
 	"golang.org/x/exp/maps"
 
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
+
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -164,7 +166,7 @@ func (d *Debugger) LogUpdatedState(e *am.Event) {
 	if c.MsgStruct != nil {
 		title := " Log:" + d.Opts.Filters.LogLevel.String() + " "
 		if tx != nil && c.CursorTx1 != 0 {
-			t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx1-1].TimeSum))
+			t := strconv.Itoa(int(c.MsgTxsParsed[c.CursorTx1-1].TimeSum))
 			title += "Time:" + t + " "
 		}
 		d.log.SetTitle(title)
@@ -230,11 +232,11 @@ func (d *Debugger) hParseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
 	logEntries := make([]*am.LogEntry, 0)
 
 	tx := c.MsgTxs[idx]
-	txParsed := c.msgTxsParsed[idx]
-	var readerEntries []*logReaderEntryPtr
+	txParsed := c.MsgTxsParsed[idx]
+	var readerEntries []*types.LogReaderEntryPtr
 	if idx > 0 {
 		// copy from previous msg
-		readerEntries = slices.Clone(c.msgTxsParsed[idx-1].ReaderEntries)
+		readerEntries = slices.Clone(c.MsgTxsParsed[idx-1].ReaderEntries)
 	}
 
 	// synthetic log for queued, canceled, and empty
@@ -288,8 +290,8 @@ func (d *Debugger) hParseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
 	}
 
 	// store the parsed log
-	c.logMsgs = append(c.logMsgs, logEntries)
-	c.msgTxsParsed[idx].ReaderEntries = readerEntries
+	c.LogMsgs = append(c.LogMsgs, logEntries)
+	c.MsgTxsParsed[idx].ReaderEntries = readerEntries
 }
 
 func (d *Debugger) hParseMsgLogEntry(
@@ -342,8 +344,8 @@ func (d *Debugger) hAppendLogEntry(index int) error {
 func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 	empty = true
 
-	if index < 0 || index >= len(d.C.MsgTxs) || index >= len(d.C.msgTxsParsed) ||
-		index >= len(d.C.logMsgs) {
+	if index < 0 || index >= len(d.C.MsgTxs) || index >= len(d.C.MsgTxsParsed) ||
+		index >= len(d.C.LogMsgs) {
 
 		d.Mach.AddErr(fmt.Errorf("invalid log index %d", index), nil)
 		return "", true
@@ -352,8 +354,8 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 	c := d.C
 	ret := ""
 	tx := c.MsgTxs[index]
-	txParsed := c.msgTxsParsed[index]
-	entries := c.logMsgs[index]
+	txParsed := c.MsgTxsParsed[index]
+	entries := c.LogMsgs[index]
 
 	// confirm visibility
 	if d.hIsTxSkipped(c, index) {
@@ -602,50 +604,11 @@ func fmtLogEntry(
 	return ret + "\n"
 }
 
+// ///// ///// /////
+
 // ///// LOG READER
 
-type logReaderKind int
-
-const (
-	logReaderCtx logReaderKind = iota + 1
-	logReaderWhen
-	logReaderWhenNot
-	logReaderWhenTime
-	logReaderWhenArgs
-	logReaderWhenQueue
-	logReaderPipeIn
-	logReaderPipeOut
-	// TODO mentions of machine IDs
-	// logReaderMention
-)
-
-type logReaderEntry struct {
-	kind logReaderKind
-	// states are empty for logReaderWhenQueue
-	states []int
-	// createdAt is machine time when this entry was created
-	createdAt uint64
-	// closedAt is human time when this entry was closed, so it can be disposed.
-	closedAt time.Time
-
-	// per-type fields
-
-	// pipe is for logReaderPipeIn, logReaderPipeOut
-	pipe am.MutationType
-	// mach is for logReaderPipeIn, logReaderPipeOut, logReaderMention
-	mach string
-	// ticks is for logReaderWhenTime only
-	ticks am.Time
-	// args is for logReaderWhenArgs only
-	args string
-	// queueTick is for logReaderWhenQueue only
-	queueTick int
-}
-
-type logReaderEntryPtr struct {
-	txId     string
-	entryIdx int
-}
+// ///// ///// /////
 
 type logReaderTreeRef struct {
 	// refs
@@ -656,8 +619,8 @@ type logReaderTreeRef struct {
 	machTime uint64
 
 	// position
-	entry *logReaderEntryPtr
-	addr  *MachAddress
+	entry *types.LogReaderEntryPtr
+	addr  *types.MachAddress
 
 	isQueueRoot bool
 }
@@ -721,7 +684,7 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 		// mach URL
 		addr := ref.addr
 		if addr == nil {
-			addr = &MachAddress{
+			addr = &types.MachAddress{
 				MachId:   ref.machId,
 				TxId:     ref.txId,
 				MachTime: ref.machTime,
@@ -772,7 +735,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 	}
 
 	tx := c.MsgTxs[c.CursorTx1-1]
-	txParsed := c.msgTxsParsed[c.CursorTx1-1]
+	txParsed := c.MsgTxsParsed[c.CursorTx1-1]
 	statesIndex := c.MsgStruct.StatesIndex
 
 	var (
@@ -797,89 +760,89 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 
 	// parsed log entries
 	for _, ptr := range txParsed.ReaderEntries {
-		entries, ok := c.logReader[ptr.txId]
+		entries, ok := c.LogReader[ptr.TxId]
 		var node *cview.TreeNode
 		// gc
-		if !ok || ptr.entryIdx >= len(entries) {
+		if !ok || ptr.EntryIdx >= len(entries) {
 			node = cview.NewTreeNode("err:GCed entry")
 			node.SetIndent(1)
 		} else {
 
-			entry := entries[ptr.entryIdx]
+			entry := entries[ptr.EntryIdx]
 			nodeRef := &logReaderTreeRef{
-				stateNames: c.indexesToStates(entry.states),
-				machId:     entry.mach,
+				stateNames: c.IndexesToStates(entry.States),
+				machId:     entry.Mach,
 				entry:      ptr,
 			}
 
 			// create nodes and parents
-			switch entry.kind {
+			switch entry.Kind {
 
-			case logReaderCtx:
+			case types.LogReaderCtx:
 				if parentCtx == nil {
 					parentCtx = cview.NewTreeNode("StateCtx")
 				}
-				states := amhelp.IndexesToStates(statesIndex, entry.states)
+				states := amhelp.IndexesToStates(statesIndex, entry.States)
 				node = cview.NewTreeNode(d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
-					utils.J(states), entry.createdAt))
+					utils.J(states), entry.CreatedAt))
 				parentCtx.AddChild(node)
 				if slices.Contains(states, selState) {
 					node.SetHighlighted(true)
 				}
 
-			case logReaderWhen:
+			case types.LogReaderWhen:
 				if parentWhen == nil {
 					parentWhen = cview.NewTreeNode("When")
 				}
-				states := amhelp.IndexesToStates(statesIndex, entry.states)
+				states := amhelp.IndexesToStates(statesIndex, entry.States)
 				node = cview.NewTreeNode(d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
-					utils.J(states), entry.createdAt))
+					utils.J(states), entry.CreatedAt))
 				parentWhen.AddChild(node)
 				if slices.Contains(states, selState) {
 					node.SetHighlighted(true)
 				}
 
-			case logReaderWhenNot:
+			case types.LogReaderWhenNot:
 				if parentWhenNot == nil {
 					parentWhenNot = cview.NewTreeNode("WhenNot")
 				}
-				states := amhelp.IndexesToStates(statesIndex, entry.states)
+				states := amhelp.IndexesToStates(statesIndex, entry.States)
 				node = cview.NewTreeNode(d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
-					utils.J(states), entry.createdAt))
+					utils.J(states), entry.CreatedAt))
 				parentWhenNot.AddChild(node)
 				if slices.Contains(states, selState) {
 					node.SetHighlighted(true)
 				}
 
-			case logReaderWhenTime:
+			case types.LogReaderWhenTime:
 				if parentWhenTime == nil {
 					parentWhenTime = cview.NewTreeNode("WhenTime")
 				}
 				txt := ""
 				highlight := false
-				for i, idx := range entry.states {
+				for i, idx := range entry.States {
 					txt += fmt.Sprintf("[::b]%s[::-]:%d ", statesIndex[idx],
-						entry.ticks[i])
+						entry.Ticks[i])
 					if statesIndex[idx] == selState {
 						highlight = true
 					}
 				}
 				node = cview.NewTreeNode(d.P.Sprintf("%s[grey]t%d[-]", txt,
-					entry.createdAt))
+					entry.CreatedAt))
 				parentWhenTime.AddChild(node)
 				if highlight {
 					node.SetHighlighted(true)
 				}
 
-			case logReaderWhenArgs:
+			case types.LogReaderWhenArgs:
 				if parentWhenArgs == nil {
 					parentWhenArgs = cview.NewTreeNode("WhenArgs")
 				}
-				states := amhelp.IndexesToStates(statesIndex, entry.states)
+				states := amhelp.IndexesToStates(statesIndex, entry.States)
 				node = cview.NewTreeNode(d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
-					utils.J(states), entry.createdAt))
+					utils.J(states), entry.CreatedAt))
 				// TODO node with key = val for each arg
-				node2 := cview.NewTreeNode(d.P.Sprintf("%s", entry.args))
+				node2 := cview.NewTreeNode(d.P.Sprintf("%s", entry.Args))
 				node2.SetIndent(1)
 				node2.SetReference(&logReaderTreeRef{entry: ptr})
 				node.AddChild(node2)
@@ -888,19 +851,19 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 					node.SetHighlighted(true)
 				}
 
-			case logReaderWhenQueue:
+			case types.LogReaderWhenQueue:
 				if parentWhenQueue == nil {
 					parentWhenQueue = cview.NewTreeNode("WhenQueue")
 				}
-				node = cview.NewTreeNode(d.P.Sprintf("%v", entry.queueTick))
+				node = cview.NewTreeNode(d.P.Sprintf("%v", entry.QueueTick))
 				parentWhenQueue.AddChild(node)
 
-			case logReaderPipeIn:
-				states := amhelp.IndexesToStates(statesIndex, entry.states)
+			case types.LogReaderPipeIn:
+				states := amhelp.IndexesToStates(statesIndex, entry.States)
 
 				// state name redirs to the moment of piping
-				nodeRef.machId = c.id
-				nodeRef.machTime = entry.createdAt
+				nodeRef.machId = c.Id
+				nodeRef.machTime = entry.CreatedAt
 
 				// find the piped state parent or create a new one
 				if parentPipeIn == nil {
@@ -915,8 +878,8 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 				}
 
 				// convert entry.createdAt to human time
-				txIdx := c.txByMachTime(entry.createdAt)
-				pipeTime := *c.tx(txIdx).Time
+				txIdx := c.TxByMachTime(entry.CreatedAt)
+				pipeTime := *c.Tx(txIdx).Time
 
 				if node == nil {
 					node = cview.NewTreeNode(states[0])
@@ -924,14 +887,14 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 					parentPipeIn.AddChild(node)
 				}
 				node2 := cview.NewTreeNode(d.P.Sprintf("%-6s | [grey]t%d[-] %s",
-					capitalizeFirst(entry.pipe.String()), entry.createdAt, entry.mach))
+					capitalizeFirst(entry.Pipe.String()), entry.CreatedAt, entry.Mach))
 				node2.SetIndent(1)
 				node2.SetReference(&logReaderTreeRef{
-					stateNames: c.indexesToStates(entry.states),
+					stateNames: c.IndexesToStates(entry.States),
 					entry:      ptr,
-					machId:     entry.mach,
-					addr: &MachAddress{
-						MachId:    entry.mach,
+					machId:     entry.Mach,
+					addr: &types.MachAddress{
+						MachId:    entry.Mach,
 						HumanTime: pipeTime,
 					},
 				})
@@ -941,12 +904,12 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 					node2.SetHighlighted(true)
 				}
 
-			case logReaderPipeOut:
-				states := amhelp.IndexesToStates(statesIndex, entry.states)
+			case types.LogReaderPipeOut:
+				states := amhelp.IndexesToStates(statesIndex, entry.States)
 
 				// state name redirs to the moment of piping
-				nodeRef.machId = c.id
-				nodeRef.machTime = entry.createdAt
+				nodeRef.machId = c.Id
+				nodeRef.machTime = entry.CreatedAt
 
 				// find the piped state parent or create a new one
 				if parentPipeOut == nil {
@@ -968,19 +931,19 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 				}
 
 				// convert entry.createdAt to human time
-				txIdx := c.txByMachTime(entry.createdAt)
-				pipeTime := *c.tx(txIdx).Time
+				txIdx := c.TxByMachTime(entry.CreatedAt)
+				pipeTime := *c.Tx(txIdx).Time
 
 				// pipe-out node
 				node2 := cview.NewTreeNode(d.P.Sprintf("%-6s | [grey]t%d[-] %s",
-					capitalizeFirst(entry.pipe.String()), entry.createdAt, entry.mach))
+					capitalizeFirst(entry.Pipe.String()), entry.CreatedAt, entry.Mach))
 				node2.SetIndent(1)
 				node2.SetReference(&logReaderTreeRef{
-					stateNames: c.indexesToStates(entry.states),
+					stateNames: c.IndexesToStates(entry.States),
 					entry:      ptr,
-					machId:     entry.mach,
-					addr: &MachAddress{
-						MachId:    entry.mach,
+					machId:     entry.Mach,
+					addr: &types.MachAddress{
+						MachId:    entry.Mach,
 						HumanTime: pipeTime,
 					},
 				})
@@ -999,7 +962,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 			node.SetReference(nodeRef)
 
 			sel := c.SelectedReaderEntry
-			if sel != nil && ptr.txId == sel.txId && ptr.entryIdx == sel.entryIdx {
+			if sel != nil && ptr.TxId == sel.TxId && ptr.EntryIdx == sel.EntryIdx {
 				d.logReader.SetCurrentNode(node)
 			}
 		}
@@ -1020,7 +983,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		// source machine
 		node := cview.NewTreeNode("self")
 		node.SetIndent(1)
-		if source[0] != c.id {
+		if source[0] != c.Id {
 			node = cview.NewTreeNode(d.P.Sprintf("%s [grey]t%v[-]", source[0],
 				source[2]))
 			node.SetReference(&logReaderTreeRef{
@@ -1057,7 +1020,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 
 		// tags (only for external machines)
 		if sourceMach := d.hGetClient(source[0]); sourceMach != nil &&
-			source[0] != c.id {
+			source[0] != c.Id {
 
 			if tags := sourceMach.MsgStruct.Tags; len(tags) > 0 {
 				node2 := cview.NewTreeNode("[grey]#" + strings.Join(tags, " #"))
@@ -1123,7 +1086,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 				label = d.P.Sprintf("t%v", executed.TimeSum())
 				ref = &logReaderTreeRef{
 					stateNames: tx.CalledStateNames(statesIndex),
-					machId:     c.id,
+					machId:     c.Id,
 					txId:       executed.ID,
 				}
 			}
@@ -1181,7 +1144,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 				label = d.P.Sprintf("t%v", queued.TimeSum())
 				ref = &logReaderTreeRef{
 					stateNames: tx.CalledStateNames(statesIndex),
-					machId:     c.id,
+					machId:     c.Id,
 					txId:       queued.ID,
 				}
 			}
@@ -1226,7 +1189,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 
 		// collect the reported queue amount
 		for ii := max(0, c.CursorTx1-1); ii >= 0; ii-- {
-			past := c.tx(ii)
+			past := c.Tx(ii)
 			if past == nil {
 				d.Mach.AddErr(fmt.Errorf("tx missing: %d", ii), nil)
 				break
@@ -1292,7 +1255,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 
 			// link
 			mutNode.SetReference(&logReaderTreeRef{
-				machId:     c.id,
+				machId:     c.Id,
 				txId:       past.ID,
 				stateNames: past.CalledStateNames(statesIndex),
 			})
@@ -1335,17 +1298,17 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 	for _, link := range txParsed.Forks {
 
 		targetMach := d.hGetClient(link.MachId)
-		targetTxIdx := targetMach.txIndex(link.TxId)
+		targetTxIdx := targetMach.TxIndex(link.TxId)
 		highlight := false
 
 		label := d.P.Sprintf("%s#%s", link.MachId, link.TxId)
 		// internal tx
-		if link.MachId == c.id {
+		if link.MachId == c.Id {
 			label = d.P.Sprintf("#%s", link.TxId)
 		}
 
 		if targetTxIdx != -1 {
-			targetTx := targetMach.tx(targetTxIdx)
+			targetTx := targetMach.Tx(targetTxIdx)
 			calledStates := targetTx.CalledStateNames(
 				targetMach.MsgStruct.StatesIndex)
 			label = capitalizeFirst(tx.Type.String()) + " [::b]" +
@@ -1369,12 +1332,12 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		}
 
 		// details (only for external machines)
-		if link.MachId != c.id && targetMach != nil {
+		if link.MachId != c.Id && targetMach != nil {
 			// label
 			label2 := d.P.Sprintf("%s#%s", link.MachId,
 				link.TxId)
 			if targetTxIdx != -1 {
-				targetTx := targetMach.tx(targetTxIdx)
+				targetTx := targetMach.Tx(targetTxIdx)
 				label2 = d.P.Sprintf("%s [grey]t%v[-]", link.MachId,
 					targetTx.TimeSum())
 			}
@@ -1419,25 +1382,25 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		if sTx == nil {
 			break
 		}
-		sTxParsed := sC.txParsed(sC.txIndex(sTx.ID))
+		sTxParsed := sC.TxParsed(sC.TxIndex(sTx.ID))
 
 		for _, link := range sTxParsed.Forks {
-			if link.MachId == c.id && link.TxId == tx.ID {
+			if link.MachId == c.Id && link.TxId == tx.ID {
 				continue
 			}
 
 			targetMach := d.hGetClient(link.MachId)
-			targetTxIdx := targetMach.txIndex(link.TxId)
+			targetTxIdx := targetMach.TxIndex(link.TxId)
 			highlight := false
 
 			label := d.P.Sprintf("%s#%s", link.MachId, link.TxId)
 			// internal tx
-			if link.MachId == c.id {
+			if link.MachId == c.Id {
 				label = d.P.Sprintf("#%s", link.TxId)
 			}
 
 			if targetTxIdx != -1 {
-				targetTx := targetMach.tx(targetTxIdx)
+				targetTx := targetMach.Tx(targetTxIdx)
 				calledStates := targetTx.CalledStateNames(
 					targetMach.MsgStruct.StatesIndex)
 				label = capitalizeFirst(tx.Type.String()) + " [::b]" +
@@ -1461,12 +1424,12 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 			}
 
 			// details (only for external machines)
-			if link.MachId != c.id && targetMach != nil {
+			if link.MachId != c.Id && targetMach != nil {
 				// label
 				label2 := d.P.Sprintf("%s#%s", link.MachId,
 					link.TxId)
 				if targetTxIdx != -1 {
-					targetTx := targetMach.tx(targetTxIdx)
+					targetTx := targetMach.Tx(targetTxIdx)
 					label2 = d.P.Sprintf("%s [grey]t%v[-]", link.MachId,
 						targetTx.TimeSum())
 				}
@@ -1615,9 +1578,9 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 }
 
 func (d *Debugger) parseMsgReader(
-	c *Client, log *am.LogEntry, txEntries []*logReaderEntryPtr,
+	c *Client, log *am.LogEntry, txEntries []*types.LogReaderEntryPtr,
 	tx *telemetry.DbgMsgTx,
-) []*logReaderEntryPtr {
+) []*types.LogReaderEntryPtr {
 	// TODO get data from SemLogger
 	// TODO add errs to machine (not log)
 
@@ -1628,11 +1591,11 @@ func (d *Debugger) parseMsgReader(
 		source := strings.Split(log.Text[len("[source] "):], "/")
 
 		if sourceMach := d.hGetClient(source[0]); sourceMach != nil {
-			txIdx := sourceMach.txIndex(source[1])
+			txIdx := sourceMach.TxIndex(source[1])
 			if txIdx != -1 {
-				srcTxParsed := sourceMach.txParsed(txIdx)
-				srcTxParsed.Forks = append(srcTxParsed.Forks, MachAddress{
-					MachId: c.id,
+				srcTxParsed := sourceMach.TxParsed(txIdx)
+				srcTxParsed.Forks = append(srcTxParsed.Forks, types.MachAddress{
+					MachId: c.Id,
 					TxId:   tx.ID,
 				})
 			}
@@ -1642,24 +1605,30 @@ func (d *Debugger) parseMsgReader(
 		// [when:new] Foo,Bar
 		states := strings.Split(log.Text[len("[when:new] "):], " ")
 
-		idx := c.addReaderEntry(tx.ID, &logReaderEntry{
-			kind:      logReaderWhen,
-			states:    c.statesToIndexes(states),
-			createdAt: c.mTimeSum,
+		idx := c.AddReaderEntry(tx.ID, &types.LogReaderEntry{
+			Kind:      types.LogReaderWhen,
+			States:    c.StatesToIndexes(states),
+			CreatedAt: c.MTimeSum,
 		})
-		txEntries = append(txEntries, &logReaderEntryPtr{tx.ID, idx})
+		txEntries = append(txEntries, &types.LogReaderEntryPtr{
+			TxId:     tx.ID,
+			EntryIdx: idx,
+		})
 
 	} else if strings.HasPrefix(log.Text, "[whenNot:new] ") {
 
 		// [when:new] Foo,Bar
 		states := strings.Split(log.Text[len("[whenNot:new] "):], " ")
 
-		idx := c.addReaderEntry(tx.ID, &logReaderEntry{
-			kind:      logReaderWhenNot,
-			states:    c.statesToIndexes(states),
-			createdAt: c.mTimeSum,
+		idx := c.AddReaderEntry(tx.ID, &types.LogReaderEntry{
+			Kind:      types.LogReaderWhenNot,
+			States:    c.StatesToIndexes(states),
+			CreatedAt: c.MTimeSum,
 		})
-		txEntries = append(txEntries, &logReaderEntryPtr{tx.ID, idx})
+		txEntries = append(txEntries, &types.LogReaderEntryPtr{
+			TxId:     tx.ID,
+			EntryIdx: idx,
+		})
 
 	} else if strings.HasPrefix(log.Text, "[whenTime:new] ") {
 
@@ -1668,25 +1637,31 @@ func (d *Debugger) parseMsgReader(
 		states := strings.Split(msg[0], ",")
 		ticksStr := strings.Split(msg[1], ",")
 
-		idx := c.addReaderEntry(tx.ID, &logReaderEntry{
-			kind:      logReaderWhenTime,
-			states:    c.statesToIndexes(states),
-			ticks:     tickStrToTime(d.Mach, ticksStr),
-			createdAt: c.mTimeSum,
+		idx := c.AddReaderEntry(tx.ID, &types.LogReaderEntry{
+			Kind:      types.LogReaderWhenTime,
+			States:    c.StatesToIndexes(states),
+			Ticks:     tickStrToTime(d.Mach, ticksStr),
+			CreatedAt: c.MTimeSum,
 		})
-		txEntries = append(txEntries, &logReaderEntryPtr{tx.ID, idx})
+		txEntries = append(txEntries, &types.LogReaderEntryPtr{
+			TxId:     tx.ID,
+			EntryIdx: idx,
+		})
 
 	} else if strings.HasPrefix(log.Text, "[ctx:new] ") {
 
 		// [ctx:new] Foo
 		state := log.Text[len("[ctx:new] "):]
 
-		idx := c.addReaderEntry(tx.ID, &logReaderEntry{
-			kind:      logReaderCtx,
-			states:    c.statesToIndexes(am.S{state}),
-			createdAt: c.mTimeSum,
+		idx := c.AddReaderEntry(tx.ID, &types.LogReaderEntry{
+			Kind:      types.LogReaderCtx,
+			States:    c.StatesToIndexes(am.S{state}),
+			CreatedAt: c.MTimeSum,
 		})
-		txEntries = append(txEntries, &logReaderEntryPtr{tx.ID, idx})
+		txEntries = append(txEntries, &types.LogReaderEntryPtr{
+			TxId:     tx.ID,
+			EntryIdx: idx,
+		})
 
 	} else if strings.HasPrefix(log.Text, "[whenArgs:new] ") {
 
@@ -1694,13 +1669,16 @@ func (d *Debugger) parseMsgReader(
 		msg := strings.Split(log.Text[len("[whenArgs:new] "):], " ")
 		args := strings.Trim(msg[1], "()")
 
-		idx := c.addReaderEntry(tx.ID, &logReaderEntry{
-			kind:      logReaderWhenArgs,
-			states:    c.statesToIndexes(am.S{msg[0]}),
-			createdAt: c.mTimeSum,
-			args:      args,
+		idx := c.AddReaderEntry(tx.ID, &types.LogReaderEntry{
+			Kind:      types.LogReaderWhenArgs,
+			States:    c.StatesToIndexes(am.S{msg[0]}),
+			CreatedAt: c.MTimeSum,
+			Args:      args,
 		})
-		txEntries = append(txEntries, &logReaderEntryPtr{tx.ID, idx})
+		txEntries = append(txEntries, &types.LogReaderEntryPtr{
+			TxId:     tx.ID,
+			EntryIdx: idx,
+		})
 
 	} else if strings.HasPrefix(log.Text, "[pipe-in:add] ") ||
 		strings.HasPrefix(log.Text, "[pipe-in:remove] ") ||
@@ -1722,9 +1700,9 @@ func (d *Debugger) parseMsgReader(
 		} else if !isOut && !isAdd {
 			msg = strings.Split(log.Text[len("[pipe-in:remove] "):], " from ")
 		}
-		kind := logReaderPipeIn
+		kind := types.LogReaderPipeIn
 		if isOut {
-			kind = logReaderPipeOut
+			kind = types.LogReaderPipeOut
 		}
 		mut := am.MutationRemove
 		if isAdd {
@@ -1732,25 +1710,29 @@ func (d *Debugger) parseMsgReader(
 		}
 
 		states := strings.Split(strings.Trim(msg[0], "[]"), " ")
-		idx := c.addReaderEntry(tx.ID, &logReaderEntry{
-			kind:      kind,
-			pipe:      mut,
-			states:    c.statesToIndexes(states),
-			createdAt: c.mTimeSum,
-			mach:      msg[1],
+		idx := c.AddReaderEntry(tx.ID, &types.LogReaderEntry{
+			Kind:      kind,
+			Pipe:      mut,
+			States:    c.StatesToIndexes(states),
+			CreatedAt: c.MTimeSum,
+			Mach:      msg[1],
 		})
-		txEntries = append(txEntries, &logReaderEntryPtr{tx.ID, idx})
+		txEntries = append(txEntries, &types.LogReaderEntryPtr{
+			TxId:     tx.ID,
+			EntryIdx: idx,
+		})
 
 		// remove GCed machines
 	} else if strings.HasPrefix(log.Text, "[pipe:gc] ") {
 		l := strings.Split(log.Text, " ")
 		id := l[1]
-		var entries2 []*logReaderEntryPtr
+		var entries2 []*types.LogReaderEntryPtr
 
 		for _, ptr := range txEntries {
-			e := c.getReaderEntry(ptr.txId, ptr.entryIdx)
-			if (e.kind == logReaderPipeIn || e.kind == logReaderPipeOut) &&
-				e.mach == id {
+			e := c.GetReaderEntry(ptr.TxId, ptr.EntryIdx)
+			isPipe := e.Kind == types.LogReaderPipeIn ||
+				e.Kind == types.LogReaderPipeOut
+			if isPipe && e.Mach == id {
 				continue
 			}
 
@@ -1768,12 +1750,15 @@ func (d *Debugger) parseMsgReader(
 			return txEntries
 		}
 
-		idx := c.addReaderEntry(tx.ID, &logReaderEntry{
-			kind:      logReaderWhenQueue,
-			createdAt: c.mTimeSum,
-			queueTick: tick,
+		idx := c.AddReaderEntry(tx.ID, &types.LogReaderEntry{
+			Kind:      types.LogReaderWhenQueue,
+			CreatedAt: c.MTimeSum,
+			QueueTick: tick,
 		})
-		txEntries = append(txEntries, &logReaderEntryPtr{tx.ID, idx})
+		txEntries = append(txEntries, &types.LogReaderEntryPtr{
+			TxId:     tx.ID,
+			EntryIdx: idx,
+		})
 
 	} else
 
@@ -1790,14 +1775,14 @@ func (d *Debugger) parseMsgReader(
 		found := false
 
 		for i, ptr := range txEntries {
-			entry := c.getReaderEntry(ptr.txId, ptr.entryIdx)
+			entry := c.GetReaderEntry(ptr.TxId, ptr.EntryIdx)
 
 			// matched, delete and mark
-			if entry != nil && entry.kind == logReaderWhen &&
-				am.StatesEqual(states, c.indexesToStates(entry.states)) {
+			if entry != nil && entry.Kind == types.LogReaderWhen &&
+				am.StatesEqual(states, c.IndexesToStates(entry.States)) {
 
 				txEntries = slices.Delete(txEntries, i, i+1)
-				entry.closedAt = *tx.Time
+				entry.ClosedAt = *tx.Time
 				found = true
 				break
 			}
@@ -1814,14 +1799,14 @@ func (d *Debugger) parseMsgReader(
 		found := false
 
 		for i, ptr := range txEntries {
-			entry := c.getReaderEntry(ptr.txId, ptr.entryIdx)
+			entry := c.GetReaderEntry(ptr.TxId, ptr.EntryIdx)
 
 			// matched, delete and mark
-			if entry != nil && entry.kind == logReaderWhenNot &&
-				am.StatesEqual(states, c.indexesToStates(entry.states)) {
+			if entry != nil && entry.Kind == types.LogReaderWhenNot &&
+				am.StatesEqual(states, c.IndexesToStates(entry.States)) {
 
 				txEntries = slices.Delete(txEntries, i, i+1)
-				entry.closedAt = *tx.Time
+				entry.ClosedAt = *tx.Time
 				found = true
 				break
 			}
@@ -1841,15 +1826,15 @@ func (d *Debugger) parseMsgReader(
 		found := false
 
 		for i, ptr := range txEntries {
-			entry := c.getReaderEntry(ptr.txId, ptr.entryIdx)
+			entry := c.GetReaderEntry(ptr.TxId, ptr.EntryIdx)
 
 			// matched, delete and mark
-			if entry != nil && entry.kind == logReaderWhenTime &&
-				am.StatesEqual(states, c.indexesToStates(entry.states)) &&
-				slices.Equal(ticks, entry.ticks) {
+			if entry != nil && entry.Kind == types.LogReaderWhenTime &&
+				am.StatesEqual(states, c.IndexesToStates(entry.States)) &&
+				slices.Equal(ticks, entry.Ticks) {
 
 				txEntries = slices.Delete(txEntries, i, i+1)
-				entry.closedAt = *tx.Time
+				entry.ClosedAt = *tx.Time
 				found = true
 				break
 			}
@@ -1866,14 +1851,14 @@ func (d *Debugger) parseMsgReader(
 		found := false
 
 		for i, ptr := range txEntries {
-			entry := c.getReaderEntry(ptr.txId, ptr.entryIdx)
+			entry := c.GetReaderEntry(ptr.TxId, ptr.EntryIdx)
 
 			// matched, delete and mark
-			if entry != nil && entry.kind == logReaderCtx &&
-				am.StatesEqual(am.S{state}, c.indexesToStates(entry.states)) {
+			if entry != nil && entry.Kind == types.LogReaderCtx &&
+				am.StatesEqual(am.S{state}, c.IndexesToStates(entry.States)) {
 
 				txEntries = slices.Delete(txEntries, i, i+1)
-				entry.closedAt = *tx.Time
+				entry.ClosedAt = *tx.Time
 				found = true
 				break
 			}
@@ -1890,16 +1875,16 @@ func (d *Debugger) parseMsgReader(
 		found := false
 
 		for i, ptr := range txEntries {
-			entry := c.getReaderEntry(ptr.txId, ptr.entryIdx)
+			entry := c.GetReaderEntry(ptr.TxId, ptr.EntryIdx)
 
 			// matched, delete and mark
 			// TODO match arg names
-			if entry != nil && entry.kind == logReaderWhenArgs &&
-				am.StatesEqual(am.S{msg[0]}, c.indexesToStates(entry.states)) &&
-				entry.args == args {
+			if entry != nil && entry.Kind == types.LogReaderWhenArgs &&
+				am.StatesEqual(am.S{msg[0]}, c.IndexesToStates(entry.States)) &&
+				entry.Args == args {
 
 				txEntries = slices.Delete(txEntries, i, i+1)
-				entry.closedAt = *tx.Time
+				entry.ClosedAt = *tx.Time
 				found = true
 				break
 			}
@@ -1920,14 +1905,14 @@ func (d *Debugger) parseMsgReader(
 		found := false
 
 		for i, ptr := range txEntries {
-			entry := c.getReaderEntry(ptr.txId, ptr.entryIdx)
+			entry := c.GetReaderEntry(ptr.TxId, ptr.EntryIdx)
 
 			// matched, delete and mark
-			if entry != nil && entry.kind == logReaderWhenQueue &&
-				entry.queueTick == tick {
+			if entry != nil && entry.Kind == types.LogReaderWhenQueue &&
+				entry.QueueTick == tick {
 
 				txEntries = slices.Delete(txEntries, i, i+1)
-				entry.closedAt = *tx.Time
+				entry.ClosedAt = *tx.Time
 				found = true
 				break
 			}

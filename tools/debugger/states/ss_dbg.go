@@ -1,7 +1,10 @@
 package states
 
+// TODO migrate to v2 schemas
+
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	ss "github.com/pancsta/asyncmachine-go/pkg/states"
 	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
@@ -292,10 +295,7 @@ var (
 	// GroupDebug contains states useful when debugging the debugger in another
 	// debugger.
 	GroupDebug = S{
-		Fwd, Back, Playing, TailMode, LogBuilt, UpdatingLog, LogUpdated,
-		BuildingLog, GcMsgs, ScrollToTx, ScrollToStep, ToggleTool, ToolToggled,
-		SelectingClient, ClientSelected, StateNameSelected, DiagramsScheduled,
-		SetGroup,
+		DialogFocused, ExportDialog, UpdateFocus,
 	}
 )
 
@@ -540,3 +540,50 @@ var Names = S{
 }
 
 // #endregion
+
+// DBG SERVER MIXIN
+// TODO use in the debugger
+
+// ServerStatesDef contains all the states of the dbg server state machine,
+// used to listen for RPC connections and msgs.
+type ServerStatesDef struct {
+	*am.StatesBase
+
+	ConnectEvent    string
+	ClientMsg       string
+	DisconnectEvent string
+
+	InitClient string
+}
+
+// ServerGroupsDef contains all the state groups Server state machine.
+type ServerGroupsDef struct {
+}
+
+// ServerSchema represents all relations and properties of ServerStates.
+var ServerSchema = am.Schema{
+	ssV.ConnectEvent: {
+		Multi:   true,
+		Require: S{ss.BasicStates.Start}},
+	ssV.ClientMsg: {
+		Multi:   true,
+		Require: S{ss.BasicStates.Start}},
+	ssV.DisconnectEvent: {
+		Multi:   true,
+		Require: S{ss.BasicStates.Start}},
+	ssV.InitClient: {
+		Multi:   true,
+		Require: S{ss.BasicStates.Start}},
+}
+
+// EXPORTS AND GROUPS
+
+var (
+	ssV = am.NewStates(ServerStatesDef{})
+	sgV = am.NewStateGroups(ServerGroupsDef{})
+
+	// ServerStates contains all the states for the Server machine.
+	ServerStates = ssV
+	// ServerGroups contains all the state groups for the Server machine.
+	ServerGroups = sgV
+)

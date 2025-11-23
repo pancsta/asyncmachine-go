@@ -9,18 +9,18 @@ import (
 	"strings"
 	"syscall"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	"github.com/spf13/cobra"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
 func main() {
-	rootCmd := cli.RootCmd(cliRun)
+	rootCmd := types.RootCmd(cliRun)
 	err := rootCmd.Execute()
 	if err != nil {
 		panic(err)
@@ -28,7 +28,7 @@ func main() {
 }
 
 // TODO error msgs
-func cliRun(c *cobra.Command, _ []string, p cli.Params) {
+func cliRun(c *cobra.Command, _ []string, p types.Params) {
 	ctx := context.Background()
 
 	// print the version
@@ -39,9 +39,9 @@ func cliRun(c *cobra.Command, _ []string, p cli.Params) {
 	}
 
 	// logger and profiler
-	logger := cli.GetLogger(&p, p.OutputDir)
-	cli.StartCpuProfileSrv(ctx, logger, &p)
-	stopProfile := cli.StartCpuProfile(logger, &p)
+	logger := types.GetLogger(&p, p.OutputDir)
+	types.StartCpuProfileSrv(ctx, logger, &p)
+	stopProfile := types.StartCpuProfile(logger, &p)
 	if stopProfile != nil {
 		defer stopProfile()
 	}
@@ -127,7 +127,7 @@ func cliRun(c *cobra.Command, _ []string, p cli.Params) {
 	dbg.Dispose()
 
 	// pprof memory profile
-	cli.HandleProfMem(logger, &p)
+	types.HandleProfMem(logger, &p)
 }
 
 func printStats(dbg *debugger.Debugger) {

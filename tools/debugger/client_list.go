@@ -10,6 +10,8 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
+
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
@@ -62,7 +64,7 @@ func (d *Debugger) hBuildClientList(selectedIndex int) {
 	d.clientList.Clear()
 	var list []string
 	for _, c := range d.Clients {
-		list = append(list, c.id)
+		list = append(list, c.Id)
 	}
 
 	// sort a-z, with value numbers
@@ -80,7 +82,7 @@ func (d *Debugger) hBuildClientList(selectedIndex int) {
 		item.SetReference(&sidebarRef{name: parent, lvl: 0})
 		d.clientList.AddItem(item)
 
-		if selected == "" && d.C != nil && d.C.id == parent {
+		if selected == "" && d.C != nil && d.C.Id == parent {
 			// pre-select the current machine
 			d.clientList.SetCurrentItem(pos)
 		} else if selected == parent {
@@ -95,7 +97,7 @@ func (d *Debugger) hBuildClientList(selectedIndex int) {
 
 	var totalSum uint64
 	for _, c := range d.Clients {
-		totalSum += c.mTimeSum
+		totalSum += c.MTimeSum
 	}
 
 	d.clientList.SetTitle(d.P.Sprintf(
@@ -180,7 +182,7 @@ func (d *Debugger) hUpdateClientList() {
 
 		spacePre := ""
 		spacePost := " "
-		hasParent := d.hClientHasParent(c.id)
+		hasParent := d.hClientHasParent(c.Id)
 		if hasParent {
 			spacePre = " "
 		}
@@ -212,7 +214,7 @@ func (d *Debugger) hUpdateClientList() {
 	if len(d.Clients) > 0 {
 		var totalSum uint64
 		for _, c := range d.Clients {
-			totalSum += c.mTimeSum
+			totalSum += c.MTimeSum
 		}
 
 		d.clientList.SetTitle(d.P.Sprintf(
@@ -251,7 +253,7 @@ func (d *Debugger) hClientListChild(
 		item.SetReference(&sidebarRef{name: child, lvl: lvl})
 		d.clientList.AddItem(item)
 
-		if selected == "" && d.C != nil && d.C.id == child {
+		if selected == "" && d.C != nil && d.C.Id == child {
 			// pre-select the current machine
 			d.clientList.SetCurrentItem(pos)
 		} else if selected == child {
@@ -289,7 +291,7 @@ func (d *Debugger) hGetClientListLabel(
 		if currTime.IsZero() {
 			currTime = *currSelTx.Time
 		}
-		currCTxIdx = c.lastTxTill(currTime)
+		currCTxIdx = c.LastTxTill(currTime)
 		if currCTxIdx != -1 {
 			currCTx = c.MsgTxs[currCTxIdx]
 		}
@@ -323,15 +325,15 @@ func (d *Debugger) hGetClientListLabel(
 	}
 
 	// mark selected
-	if d.C != nil && c.id == d.C.id {
+	if d.C != nil && c.Id == d.C.Id {
 		label = "[::bu]" + label
 	}
 
 	if isErrNow {
 		label = "[red]" + label
-	} else if c.hadErrSinceTx(currCTxIdx, 100) {
+	} else if c.HadErrSinceTx(currCTxIdx, 100) {
 		label = "[orangered]" + label
-	} else if !c.connected.Load() {
+	} else if !c.Connected.Load() {
 		if isHovered && !hasFocus {
 			label = "[grey]" + label
 		} else if !isHovered {
@@ -361,7 +363,7 @@ func (d *Debugger) initClientList() {
 			return
 		}
 		client := listItem.GetReference().(*sidebarRef)
-		if client.name == d.C.id {
+		if client.name == d.C.Id {
 			return
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -376,7 +378,7 @@ func (d *Debugger) initClientList() {
 		}
 		// TODO do these in ClientSelectedState
 		d.Mach.Eval("clientList.SetSelectedFunc", func() {
-			d.hPrependHistory(&MachAddress{MachId: client.name})
+			d.hPrependHistory(&types.MachAddress{MachId: client.name})
 			d.hUpdateAddressBar()
 			d.draw(d.addressBar)
 		}, nil)

@@ -715,6 +715,16 @@ func (d *Debugger) hThrottleKey(ev *tcell.EventKey, ms int) bool {
 func (d *Debugger) hUpdateFocusable() {
 	var prims []cview.Primitive
 
+	// dialogs
+	if d.Mach.Is1(ss.ExportDialog) {
+		d.focusable = []*cview.Box{d.exportDialog.Box}
+		prims = []cview.Primitive{d.exportDialog}
+		d.focusManager.Reset()
+		d.focusManager.Add(prims...)
+
+		return
+	}
+
 	d.focusable = []*cview.Box{
 		d.addressBar.Box, d.clientList.Box, d.treeGroups.Box, d.tree.Box,
 	}

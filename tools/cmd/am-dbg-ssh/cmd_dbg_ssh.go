@@ -21,12 +21,12 @@ import (
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
 type Params struct {
-	cli.Params
+	types.Params
 
 	SshAddr string
 }
@@ -47,25 +47,27 @@ var cliParamServerAddrShort = "s"
 func rootCmd(fn rootFn) *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use: "am-dbg-ssh -s localhost:4444",
+		// nolint:lll
 		Long: dedent.Dedent(`
-			am-dbg-ssh is an SSH version of asyncmachine-go debugger.
+			am-dbg-ssh is an SSH version of asyncmachine-go debugger serving local
+			dumps via --import-file.
 	
 			You can connect to a running instance with any SSH client.
 		`),
 		Run: func(cmd *cobra.Command, args []string) {
-			fn(cmd, args, parseParams(cmd, cli.ParseParams(cmd, args)))
+			fn(cmd, args, parseParams(cmd, types.ParseParams(cmd, args)))
 		},
 	}
 
 	rootCmd.Flags().StringP(cliParamServerAddr, cliParamServerAddrShort,
 		"localhost:4444", "SSH host:port to listen on")
-	cli.AddFlags(rootCmd)
+	types.AddFlags(rootCmd)
 	// TODO validate --import-file passed
 
 	return rootCmd
 }
 
-func parseParams(cmd *cobra.Command, p cli.Params) Params {
+func parseParams(cmd *cobra.Command, p types.Params) Params {
 	sshAddr := cmd.Flag(cliParamServerAddr).Value.String()
 	return Params{
 		Params:  p,
@@ -80,6 +82,9 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 	if par.Version {
 		println(ver)
 		os.Exit(0)
+	} else if par.ImportData == "" {
+		println("error: --import-file is required")
+		os.Exit(1)
 	}
 
 	// init the debugger
@@ -104,7 +109,7 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 			Screen:      screen,
 			DbgLogLevel: par.LogLevel,
 			DbgRace:     par.RaceDetector,
-			DbgLogger:   cli.GetLogger(&par.Params, par.OutputDir),
+			DbgLogger:   types.GetLogger(&par.Params, par.OutputDir),
 			ImportData:  par.ImportData,
 			// ServerAddr is disabled
 			AddrRpc:         par.ListenAddr,
