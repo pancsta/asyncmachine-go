@@ -10,12 +10,13 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
-// TOOD use /internal
+// TODO use /internal
 
 func assertStates(t *testing.T, m am.Api, expected am.S,
 	msgAndArgs ...interface{},
 ) {
-	assert.ElementsMatch(t, expected, m.ActiveStates(), msgAndArgs...)
+	// TODO ignore Healthcheck
+	assert.ElementsMatch(t, expected, m.ActiveStates(nil), msgAndArgs...)
 }
 
 func assertTime(t *testing.T, m am.Api, states am.S, time am.Time,

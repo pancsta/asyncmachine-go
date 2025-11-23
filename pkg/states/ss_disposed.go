@@ -1,10 +1,14 @@
 package states
 
 import (
+	"fmt"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
 // DisposedStatesDef contains all the states of the Disposed state machine.
+// Required states:
+// - Start
 type DisposedStatesDef struct {
 	*am.StatesBase
 
@@ -23,11 +27,11 @@ type DisposedGroupsDef struct {
 	Disposed S
 }
 
-// DisposedStruct represents all relations and properties of DisposedStates.
-var DisposedStruct = am.Struct{
-	ssD.RegisterDisposal: {},
+// DisposedSchema represents all relations and properties of DisposedStates.
+var DisposedSchema = am.Schema{
+	ssD.RegisterDisposal: {Multi: true},
 	ssD.Disposing:        {Remove: sgD.Disposed},
-	ssD.Disposed:         {Remove: sgD.Disposed},
+	ssD.Disposed:         {Remove: SAdd(sgD.Disposed, S{ssB.Start})},
 }
 
 // EXPORTS AND GROUPS
@@ -46,6 +50,13 @@ var (
 
 // handlers
 
+// DisposedArgHandler is the key for the disposal handler passed to the
+// RegisterDisposal state. It needs to contain the EXPLICIT type of
+// am.HandlerDispose, eg
+//
+//	var dispose am.HandlerDispose = func(id string, ctx *am.StateCtx) {
+//		// ...
+//	}
 var DisposedArgHandler = "DisposedArgHandler"
 
 type DisposedHandlers struct {
@@ -55,16 +66,24 @@ type DisposedHandlers struct {
 
 func (h *DisposedHandlers) RegisterDisposalEnter(e *am.Event) bool {
 	fn, ok := e.Args[DisposedArgHandler].(am.HandlerDispose)
-	return ok && fn != nil
+	ret := ok && fn != nil
+	// avoid errs on check mutations
+	if !ret && !e.IsCheck {
+		err := fmt.Errorf("%w: DisposedArgHandler invalid", am.ErrInvalidArgs)
+		e.Machine().AddErr(err, nil)
+	}
+
+	return ret
 }
 
 func (h *DisposedHandlers) RegisterDisposalState(e *am.Event) {
-	e.Machine().Remove1(ssD.RegisterDisposal, nil)
-
+	// TODO ability to deregister a disposal handler (by ref)
 	fn := e.Args[DisposedArgHandler].(am.HandlerDispose)
 	h.DisposedHandlers = append(h.DisposedHandlers, fn)
 }
 
+// DisposingState triggers a disposal procedure, but does NOT dispose the
+// machine.
 func (h *DisposedHandlers) DisposingState(e *am.Event) {
 	mach := e.Machine()
 	ctx := mach.NewStateCtx(ssD.Disposing)

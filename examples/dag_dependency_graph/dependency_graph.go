@@ -22,7 +22,7 @@ func init() {
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(false)
-	// amhelp.SetLogLevel(am.LogChanges)
+	// amhelp.SetEnvLogLevel(am.LogOps)
 }
 
 func main() {
@@ -33,7 +33,7 @@ func main() {
 // SYNC
 func depGraph() {
 	// init the state machine
-	mach := am.New(nil, am.Struct{
+	mach := am.New(nil, am.Schema{
 		"A": {
 			Auto:    true,
 			Require: am.S{"B", "C"},
@@ -45,7 +45,7 @@ func depGraph() {
 		"C":     {Auto: true},
 		"D":     {Auto: true},
 		"Start": {},
-	}, &am.Opts{LogLevel: am.LogChanges, ID: "sync"})
+	}, &am.Opts{LogLevel: am.LogChanges, Id: "sync"})
 	amhelp.MachDebugEnv(mach)
 	_ = mach.BindHandlers(&handlers{})
 	mach.Add1("Start", nil)
@@ -73,7 +73,7 @@ func (h *handlers) DState(e *am.Event) {
 
 func asyncDepGraph() {
 	// init the state machine
-	mach := am.New(nil, am.Struct{
+	mach := am.New(nil, am.Schema{
 		"AInit": {
 			Auto:    true,
 			Require: am.S{"B", "C"},
@@ -94,7 +94,7 @@ func asyncDepGraph() {
 		"D":     {},
 
 		"Start": {},
-	}, &am.Opts{LogLevel: am.LogChanges, ID: "async"})
+	}, &am.Opts{LogLevel: am.LogChanges, Id: "async"})
 	amhelp.MachDebugEnv(mach)
 	_ = mach.BindHandlers(&asyncHandlers{})
 	mach.Add1("Start", nil)

@@ -5,7 +5,14 @@
 // - disposed
 package states
 
-import am "github.com/pancsta/asyncmachine-go/pkg/machine"
+import (
+	_ "embed"
+
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+)
+
+//go:embed states_utils.go
+var StatesUtilsFile string
 
 // BasicStatesDef contains all the basic states.
 type BasicStatesDef struct {
@@ -13,7 +20,8 @@ type BasicStatesDef struct {
 
 	// ErrNetwork indicates a generic network error.
 	ErrNetwork string
-	// ErrHandlerTimeout indicates one of state machine handlers has timed out.
+	// ErrHandlerTimeout indicates one of the state machine handlers has timed
+	// out.
 	ErrHandlerTimeout string
 
 	// Start indicates the machine should be working. Removing start can force
@@ -24,16 +32,22 @@ type BasicStatesDef struct {
 	// Healthcheck is a periodic request making sure that the machine is still
 	// alive.
 	Healthcheck string
-	// Heartbeat is a periodic state which ensures integrity of the machine.
+	// Heartbeat is a periodic state that ensures the integrity of the machine.
 	Heartbeat string
 }
 
-var BasicStruct = am.Struct{
+var BasicSchema = am.Schema{
 	// Errors
 
-	ssB.Exception:         {Multi: true},
-	ssB.ErrNetwork:        {Require: S{Exception}},
-	ssB.ErrHandlerTimeout: {Require: S{Exception}},
+	ssB.Exception: {Multi: true},
+	ssB.ErrNetwork: {
+		Multi:   true,
+		Require: S{Exception},
+	},
+	ssB.ErrHandlerTimeout: {
+		Multi:   true,
+		Require: S{Exception},
+	},
 
 	// Basics
 

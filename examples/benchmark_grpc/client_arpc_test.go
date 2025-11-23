@@ -49,15 +49,16 @@ func BenchmarkClientArpc(b *testing.B) {
 	go arpc.TrafficMeter(counterListener, serverAddr, counter, end)
 
 	// init client
-	c, err := arpc.NewClient(ctx, connAddr, "worker", states.WorkerStruct,
+	c, err := arpc.NewClient(ctx, connAddr, "worker", states.WorkerSchema,
 		ss.Names(), nil)
 	if err != nil {
 		b.Fatal(err)
 	}
-	c.Mach.SetLoggerSimple(func(msg string, args ...any) {
+	c.Mach.SemLogger().SetSimple(func(msg string, args ...any) {
 		l("arpc-client", msg, args...)
 	}, logLvl)
-	amhelp.MachDebug(c.Mach, amDbgAddr, logLvl, false)
+	amhelp.MachDebug(c.Mach, amDbgAddr, logLvl, false,
+		amhelp.SemConfig(true))
 
 	// tear down
 	b.Cleanup(func() {
@@ -86,7 +87,7 @@ func BenchmarkClientArpc(b *testing.B) {
 	ticks := c.Worker.Tick(ss.Event)
 	go func() {
 		for {
-			<-c.Worker.WhenTicksEq(ss.Event, ticks+2, nil)
+			<-c.Worker.WhenTime1(ss.Event, ticks+2, nil)
 			ticks += 2
 
 			// loop

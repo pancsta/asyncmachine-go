@@ -1,0 +1,132 @@
+name: Go Test (badges)
+
+on: [push]
+
+jobs:
+  build:
+
+    # TODO
+    if: false  # Disable this job
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [ '1.23' ]
+
+    steps:
+      # Get values for cache paths to be used in later steps
+      - id: go-cache-paths
+        run: |
+          echo "::set-output name=go-build::$(go env GOCACHE)"
+          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+
+      # set up
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      # Cache
+      - name: Clear cache directory first before trying to restore from cache
+        run: sudo rm -rf $(go env GOMODCACHE) && sudo rm -rf $(go env GOCACHE)
+        shell: bash
+      - name: Go Build Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-build }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
+      - name: Go Mod Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-mod }}
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+      - name: Task Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/task
+          key: ${{ runner.os }}
+
+      # deps
+      - name: Install Task
+        run: ./scripts/dep-taskfile.sh
+      - name: Install dependencies
+        run: task install-deps
+
+      # run
+
+      - name: Test
+        run: task test-coverage
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Test coverage pkg
+        run: task test-coverage-pkg
+      - name: Test count
+        run: task test-count
+      - name: Test count pkg
+        run: task test-count-pkg
+
+      - name: Numbers to env
+        run: |
+          echo "LOC_TOOLS=$(task cloc-go-tools)" >> $GITHUB_ENV
+          echo "LOC_PKG=$(task cloc-go-pkg)" >> $GITHUB_ENV
+          echo "LOC_INTERNAL=$(task cloc-go-internal)" >> $GITHUB_ENV
+          echo "COVERAGE=$(cat coverage.sum.txt)" >> $GITHUB_ENV
+          echo "COVERAGE_PKG=$(cat coverage-pkg.sum.txt)" >> $GITHUB_ENV
+          echo "TESTS=$(cat tests.txt)" >> $GITHUB_ENV
+          echo "TESTS_PKG=$(cat tests-pkg.txt)" >> $GITHUB_ENV
+
+      - name: Badge - LoC /tools
+        uses: schneegans/dynamic-badges-action@v1.3.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: c6032233dc1d632732ecdc1a4c119850
+          filename: loc-tools.json
+          label: LoC /tools
+          message: ${{ env.LOC_TOOLS }}
+          color: orange
+
+      - name: Badge - LoC /pkg
+        uses: schneegans/dynamic-badges-action@v1.3.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: c6032233dc1d632732ecdc1a4c119850
+          filename: loc-pkg.json
+          label: LoC /pkg
+          message: ${{ env.LOC_PKG }}
+          color: orange
+
+      - name: Badge - LoC /internal
+        uses: schneegans/dynamic-badges-action@v1.3.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: c6032233dc1d632732ecdc1a4c119850
+          filename: loc-internal.json
+          label: LoC /internal
+          message: ${{ env.LOC_INTERNAL }}
+          color: orange
+
+      - name: Badge - tests
+        uses: schneegans/dynamic-badges-action@v1.3.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: c6032233dc1d632732ecdc1a4c119850
+          filename: tests.json
+          label: tests
+          message: ${{ env.TESTS }}
+          color: blue
+
+      - name: Badge - tests /pkg
+        uses: schneegans/dynamic-badges-action@v1.3.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: c6032233dc1d632732ecdc1a4c119850
+          filename: tests-pkg.json
+          label: tests /pkg
+          message: ${{ env.TESTS_PKG }}
+          color: blue

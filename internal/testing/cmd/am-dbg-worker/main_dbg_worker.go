@@ -9,7 +9,7 @@ import (
 	"time"
 
 	amtest "github.com/pancsta/asyncmachine-go/internal/testing"
-	"github.com/pancsta/asyncmachine-go/pkg/helpers"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
@@ -35,9 +35,9 @@ func main() {
 	flag.Parse()
 
 	// worker init
-	os.Setenv(am.EnvAmLogFile, "1")
+	os.Setenv(amhelp.EnvAmLogFile, "1")
 	dbg, err := amtest.NewDbgWorker(true, debugger.Opts{
-		ServerAddr: *serverAddr,
+		AddrRpc: *serverAddr,
 	})
 	if err != nil {
 		panic(err)
@@ -48,7 +48,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	helpers.MachDebug(s.Mach, amDbgAddr, logLvl, false)
+	amhelp.MachDebug(s.Mach, amDbgAddr, logLvl, false,
+		amhelp.SemConfig(true))
 
 	// tear down
 	defer func() {
@@ -60,7 +61,7 @@ func main() {
 
 	// am-dbg server (used for testing live connections)
 	if *serverAddr != "" {
-		go server.StartRpc(dbg.Mach, *serverAddr, nil, nil)
+		go server.StartRpc(dbg.Mach, *serverAddr, nil, nil, false)
 	}
 
 	// start with a timeout

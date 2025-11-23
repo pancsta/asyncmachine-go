@@ -20,14 +20,20 @@ func MachDebug(t *stdtest.T, mach am.Api, amDbgAddr string,
 	logLvl am.LogLevel, stdout bool,
 ) {
 	if stdout {
-		mach.SetLoggerSimple(t.Logf, logLvl)
+		mach.SemLogger().SetSimple(t.Logf, logLvl)
 	} else if amDbgAddr == "" {
-		mach.SetLoggerSimple(t.Logf, logLvl)
+		mach.SemLogger().SetSimple(t.Logf, logLvl)
 
 		return
 	}
 
-	amhelp.MachDebug(mach, amDbgAddr, logLvl, stdout)
+	// expand the default addr
+	if amDbgAddr == "1" {
+		amDbgAddr = telemetry.DbgAddr
+	}
+
+	amhelp.MachDebug(mach, amDbgAddr, logLvl, stdout,
+		amhelp.SemConfig(true))
 }
 
 // MachDebugEnv sets up a machine for debugging in tests, based on env vars
@@ -46,7 +52,9 @@ func Wait(
 	t *stdtest.T, errMsg string, ctx context.Context, length time.Duration,
 ) {
 	if !amhelp.Wait(ctx, length) {
-		t.Fatal("ctx expired")
+		if t.Context().Err() == nil {
+			t.Fatal("ctx expired")
+		}
 	}
 }
 
@@ -57,18 +65,22 @@ func WaitForAll(
 	chans ...<-chan struct{},
 ) {
 	if err := amhelp.WaitForAll(ctx, timeout, chans...); err != nil {
-		t.Fatal("error for " + source + ": " + err.Error())
+		if t.Context().Err() == nil {
+			t.Fatal("error for " + source + ": " + err.Error())
+		}
 	}
 }
 
 // WaitForErrAll is a test version of [amhelp.WaitForErrAll], which errors
 // instead of returning an error.
 func WaitForErrAll(
-	t *stdtest.T, source string, ctx context.Context, mach *am.Machine,
+	t *stdtest.T, source string, ctx context.Context, mach am.Api,
 	timeout time.Duration, chans ...<-chan struct{},
 ) {
 	if err := amhelp.WaitForErrAll(ctx, timeout, mach, chans...); err != nil {
-		t.Fatal("error for " + source + ": " + err.Error())
+		if t.Context().Err() == nil {
+			t.Fatal("error for " + source + ": " + err.Error())
+		}
 	}
 }
 
@@ -79,7 +91,9 @@ func WaitForAny(
 	chans ...<-chan struct{},
 ) {
 	if err := amhelp.WaitForAny(ctx, timeout, chans...); err != nil {
-		t.Fatal("error for " + source + ": " + err.Error())
+		if t.Context().Err() == nil {
+			t.Fatal("error for " + source + ": " + err.Error())
+		}
 	}
 }
 
@@ -90,60 +104,62 @@ func GroupWhen1(
 ) []<-chan struct{} {
 	chs, err := amhelp.GroupWhen1(mach, state, ctx)
 	if err != nil {
-		t.Fatal(err)
+		if t.Context().Err() == nil {
+			t.Fatal(err)
+		}
 	}
 
 	return chs
 }
 
 // AssertIs asserts that the machine is in the given states.
-func AssertIs(t *stdtest.T, mach *am.Machine, states am.S) {
-	assert.Subset(t, mach.ActiveStates(), states, "%s expected", states)
+func AssertIs(t *stdtest.T, mach am.Api, states am.S) {
+	assert.Subset(t, mach.ActiveStates(nil), states, "%s expected", states)
 }
 
 // AssertIs1 asserts that the machine is in the given state.
-func AssertIs1(t *stdtest.T, mach *am.Machine, state string) {
-	assert.Subset(t, mach.ActiveStates(), am.S{state}, "%s expected", state)
+func AssertIs1(t *stdtest.T, mach am.Api, state string) {
+	assert.Subset(t, mach.ActiveStates(nil), am.S{state}, "%s expected", state)
 }
 
 // AssertNot asserts that the machine is not in the given states.
-func AssertNot(t *stdtest.T, mach *am.Machine, states am.S) {
-	assert.NotSubset(t, mach.ActiveStates(), states, "%s not expected", states)
+func AssertNot(t *stdtest.T, mach am.Api, states am.S) {
+	assert.NotSubset(t, mach.ActiveStates(nil), states, "%s not expected", states)
 }
 
 // AssertNot1 asserts that the machine is not in the given state.
-func AssertNot1(t *stdtest.T, mach *am.Machine, state string) {
-	assert.NotSubset(t, mach.ActiveStates(), am.S{state}, "%s not expected",
+func AssertNot1(t *stdtest.T, mach am.Api, state string) {
+	assert.NotSubset(t, mach.ActiveStates(nil), am.S{state}, "%s not expected",
 		state)
 }
 
 // AssertNoErrNow asserts that the machine is not in the Exception state.
-func AssertNoErrNow(t *stdtest.T, mach *am.Machine) {
-	if mach.IsErr() {
+func AssertNoErrNow(t *stdtest.T, mach am.Api) {
+	if mach.IsErr() && t.Context().Err() == nil {
 		err := mach.Err()
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("Unexpected error in %s: %s", mach.Id(), err.Error())
 		} else {
-			t.Fatal(am.Exception + " not expected ")
+			t.Fatalf("Unexpected error in %s", mach.Id())
 		}
 	}
 }
 
 // AssertNoErrEver asserts that the machine never was in the Exception state.
-func AssertNoErrEver(t *stdtest.T, mach *am.Machine) {
-	if mach.Tick(am.Exception) > 0 {
+func AssertNoErrEver(t *stdtest.T, mach am.Api) {
+	if mach.Tick(am.StateException) > 0 && t.Context().Err() == nil {
 		err := mach.Err()
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("Unexpected error in %s", mach.Id())
 		} else {
-			t.Fatal(am.Exception + " not expected ")
+			t.Fatalf("Unexpected PAST error in %s", mach.Id())
 		}
 	}
 }
 
 // AssertErr asserts that the machine is in the Exception state.
-func AssertErr(t *stdtest.T, mach *am.Machine) {
-	if !mach.IsErr() {
-		t.Fatal("expected " + am.Exception)
+func AssertErr(t *stdtest.T, mach am.Api) {
+	if !mach.IsErr() && t.Context().Err() == nil {
+		t.Fatal("expected " + am.StateException)
 	}
 }

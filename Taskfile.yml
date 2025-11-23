@@ -10,21 +10,80 @@ tasks:
   build:
     ignore_error: true
     cmds:
-      - go build ./examples/...
-      - go build ./pkg/...
-      - go build ./internal/...
-      - go build ./tools/...
+      - go build -o dist ./examples/...
+      - go build -o dist ./pkg/...
+      - go build -o dist ./internal/...
+      - go build -o dist ./tools/...
 
-  release:
-    cmd: goreleaser release --clean --skip-publish --skip-validate
+  build-am-dbg:
+    ignore_error: true
+    cmd: go build -o dist ./tools/cmd/am-dbg
 
-  assets:
-    cmd: git submodule update --init --recursive
+  build-am-dbg-wasm:
+    env:
+      GOOS: js
+      GOARCH: wasm
+    cmd: go build -o ./dist/webfiles/main.wasm ./tools/cmd/am-dbg
+
+  build-arpc:
+    ignore_error: true
+    cmd: go build -o dist ./tools/cmd/arpc
+
+  docker-web-am-dbg:
+    env:
+      DOCKER_BUILDKIT: 1
+    cmd: docker build -t asyncmachine/web-am-dbg
+      -f deploy/web-am-dbg/Dockerfile ..
+
+  docker-web-am-dbg-start:
+    env:
+      AM_REPL_DIR: /data
+    vars:
+      AM_REPL_DIR: '{{.AM_REPL_DIR | default "./tmp"}}'
+      AM_DBG_BASE_PATH: '{{.AM_DBG_BASE_PATH | default "/"}}'
+    ignore_error: true
+    cmds:
+      - task: docker-web-am-dbg-stop
+      - docker run
+          --volume {{.AM_REPL_DIR}}:/data
+          -e AM_REPL_DIR=/data
+          -e AM_DBG_ADDR=0.0.0.0:6831
+          -e AM_DBG_BASE_PATH={{.AM_DBG_BASE_PATH}}
+          --name am-dbg
+          --publish 7681:7681
+          --publish 6831:6831
+          -it
+          asyncmachine/web-am-dbg
+
+  docker-web-am-dbg-stop:
+    ignore_error: true
+    cmds:
+      - docker stop am-dbg
+      - docker rm am-dbg
+
+  release: goreleaser release --clean --skip-publish --skip-validate
+
+  assets: git submodule update --init --recursive
 
   am-dbg:
     silent: false
     cmds:
-      - go run ./tools/cmd/am-dbg --clean-on-connect --max-mem 1000 {{.CLI_ARGS}}
+      - go run ./tools/cmd/am-dbg --clean-on-connect --max-mem 1000
+        --dir tmp
+        {{.CLI_ARGS}}
+
+  am-dbg-narrow: task am-dbg -- --view-narrow
+
+  am-dbg-reader: task am-dbg -- --view-narrow --view-reader
+
+  am-dbg-race:
+    silent: false
+    env:
+      GORACE: "log_path=tmp/am-dbg-race.log"
+    cmds:
+      - go run -race ./tools/cmd/am-dbg --clean-on-connect --max-mem 1000
+        --dir tmp --dbg-race
+        {{.CLI_ARGS}}
 
   am-dbg-prof:
     desc: Profile am-dbg
@@ -33,6 +92,7 @@ tasks:
       - go run ./tools/cmd/am-dbg
         --clean-on-connect
         --prof-srv :6060
+        --dir tmp
         {{.CLI_ARGS}}
 
   am-dbg-prof2:
@@ -42,7 +102,8 @@ tasks:
       - go run ./tools/cmd/am-dbg
         --clean-on-connect
         --prof-srv :6060
-        --am-dbg-addr localhost:9913
+        --dbg-am-dbg-addr localhost:9913
+        --dir tmp
         {{.CLI_ARGS}}
 
   am-dbg-asset:
@@ -53,6 +114,8 @@ tasks:
           --import-data assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
           --select-machine sim-p0
           --select-transition 20
+          --max-mem 1000
+          --dir tmp
           -l -1
           {{.CLI_ARGS}}
 
@@ -64,6 +127,8 @@ tasks:
           --import-data assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
           --select-machine sim-p0
           --select-transition 20
+          --max-mem 1000
+          --dir tmp
           {{.CLI_ARGS}}
 
   am-dbg-ssh-connect:
@@ -77,60 +142,79 @@ tasks:
     silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
-          --import-data am-dbg-dump.gob.br
-          {{.CLI_ARGS}}
-
-  am-dbg-demo:
-    desc: Start am-dbg with a recent dump file
-    silent: false
-    cmd: go run ./tools/cmd/am-dbg 
-           --import-data am-dbg-dump.gob.br
-           --listen-on -1
+        --import-data tmp/am-dbg-dump.gob.br
+        --dir tmp
+        {{.CLI_ARGS}}
 
   am-dbg-dbg:
-    desc: Start am-dbg on port 9913, so it can debug other instances via --am-dbg-addr
+    desc: Start am-dbg on port 9913, so it can debug other instances via --dbg-am-dbg-addr
     silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
-          --listen-on localhost:9913
-          --select-connected
-          --log-2-ttl 5m
-          {{.CLI_ARGS}}
+        --listen-on localhost:9913
+        --select-connected
+        --log-ops-ttl 5m
+        --max-mem 2000
+        --dir tmp2
+        {{.CLI_ARGS}}
 
   am-dbg-dbg-prof:
     desc: Profile am-dbg-dbg
     cmds:
       - go run ./tools/cmd/am-dbg
-          --listen-on localhost:9913
-          --select-connected
-          --log-2-ttl 5m
-          --prof-srv :6050
-          {{.CLI_ARGS}}
+        --listen-on localhost:9913
+        --select-connected
+        --log-ops-ttl 5m
+        --prof-srv :6050
+        {{.CLI_ARGS}}
 
   am-dbg-worker:
     desc: Run am-dbg as an RPC worker, optionally starting the dbg RPC server via -server-addr
     silent: false
     cmds:
       - go run ./internal/testing/cmd/am-dbg-worker
-          -server-addr=localhost:53470
-          -worker-addr=localhost:53480
+        -server-addr=localhost:53470
+        -worker-addr=localhost:53480
 
   am-dbg-delve:
     silent: false
     env:
       AM_DEBUG: 1
     cmds:
-      - dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient
+      - dlv debug --headless
+        --listen=:2345 --api-version=2 --accept-multiclient
         ./tools/cmd/am-dbg -- 
           --clean-on-connect 
+          --dbg-log-level 3
+          --dbg-am-dbg-addr localhost:9913
+          --dir tmp
           {{.CLI_ARGS}}
+
+  am-dbg-dbg-delve:
+    silent: false
+    env:
+      AM_DEBUG: 1
+    cmds:
+      - dlv debug --headless
+        --listen=:2346 --api-version=2 --accept-multiclient
+        ./tools/cmd/am-dbg -- 
+          --listen-on localhost:9913
+          --select-connected
+          --log-ops-ttl 5m
+          --max-mem 2000
+          --dir tmp2
+          {{.CLI_ARGS}}
+
+  tui-db-sql: squall pkg/history/gorm/amhist.sqlite
+
+  tui-db-bolt: bboltEdit pkg/history/bbolt/amhist.db
 
   test:
     env:
       AM_TEST_RUNNER: 1
     desc: Run all local tests
     cmds:
-      - task: clean
+      - task: clean-test
       - go test ./... {{.CLI_ARGS}}
 
   test-path:
@@ -138,7 +222,7 @@ tasks:
       AM_TEST_RUNNER: 1
     desc: Run tests for a provided path
     cmds:
-      - task: clean
+      - task: clean-test
       - go test {{.CLI_ARGS}}
       - go test -race {{.CLI_ARGS}}
 
@@ -163,7 +247,7 @@ tasks:
     env:
       AM_TEST_RUNNER: 1
     cmds:
-      - task: clean
+      - task: clean-test
       - go test -p 1 --parallel 1 ./pkg/... 
           -coverprofile=coverage-pkg.txt -covermode=atomic
       - go tool cover -func=coverage-pkg.txt | grep total | awk '{print $3}' >
@@ -174,7 +258,7 @@ tasks:
       AM_TEST_RUNNER: 1
     desc: Run all local tests in a series
     cmds:
-      - task: clean
+      - task: clean-test
       - go test -p 1 --parallel 1 ./... {{.CLI_ARGS}}
 
   test-race:
@@ -183,13 +267,13 @@ tasks:
       AM_DETECT_EVAL: 1
     desc: Run all local tests with -race
     cmds:
-      - task: clean
+      - task: clean-test
       - go test -v -race ./... {{.CLI_ARGS}}
 
   test-debugger:
     desc: Run local am-dbg integration tests
     cmds:
-      - task: clean
+      - task: clean-test
       - go test
         ./tools/debugger/test {{.CLI_ARGS}}
 
@@ -198,27 +282,63 @@ tasks:
       - config/env/tests-remote.env
     desc: Run remote am-dbg integration tests against a running worker (see task am-dbg-worker)
     cmds:
-      - task: clean
+      - task: clean-test
       - go test -tags test_worker
           ./tools/debugger/test/remote {{.CLI_ARGS}}
 
+  test-pubsub-trace:
+    desc: Run the pubsub load test with tracing
+    cmds:
+      - task: clean-test
+      - go test -trace=trace.out ./pkg/pubsub/ -test.run '^\QTestExposingMany\E$' -v
+      - go tool trace trace.out
+
   precommit:
     cmds:
+      - go mod tidy
+      - task: clean
       - task: format
       - .git/hooks/pre-commit
+      - task: test-race
 
-  clean:
+  clean-lint:
+    cmd: golangci-lint cache clean
+
+  clean-test:
     cmd: go clean -testcache
 
-  cloc-go:
-    cmd: gocloc --output-type json . |
+  clean:
+    cmds:
+      - task: clean-test
+      - task: clean-lint
+
+  cloc-go-total: gocloc --output-type json
+      . |
       jq '.languages[] | select(.name == "Go").code' |
       go run ./scripts/compact_number
 
-  cloc-go-pkg:
-    cmd: gocloc --output-type json pkg |
-      jq '.languages[] | select(.name == "Go").code' |
-      go run ./scripts/compact_number
+  cloc-go-internal: gocloc --output-type json
+    --not-match=_test\.go
+    internal |
+    jq '.languages[] | select(.name == "Go").code' |
+    go run ./scripts/compact_number
+
+  cloc-go-tools: gocloc --output-type json
+    --not-match=_test\.go
+    tools |
+    jq '.languages[] | select(.name == "Go").code' |
+    go run ./scripts/compact_number
+
+  cloc-go-pkg: gocloc --output-type json
+    --not-match=_test\.go
+    pkg |
+    jq '.languages[] | select(.name == "Go").code' |
+    go run ./scripts/compact_number
+
+  cloc-go-examples: gocloc --output-type json
+    examples |
+    jq '.languages[] | select(.name == "Go").code' |
+    go run ./scripts/compact_number
 
   cloc:
     cmds:
@@ -273,11 +393,12 @@ tasks:
           echo "Error: Empty links" >&2
           exit 1
         fi
+      - task: format
       - task: check-fmt
 
   lint-go:
     cmds:
-      - $(go env GOPATH)/bin/golangci-lint run --fix
+      - $(go env GOPATH)/bin/golangci-lint run --fix --timeout 15m
 
   lint-md:
     cmds:
@@ -295,14 +416,20 @@ tasks:
   gen-changelog:
     cmds:
       - gem install github_changelog_generator
+      - gem install faraday-retry
+      - gem install erb
       - github_changelog_generator --token $GITHUB_TOKEN
       - head -n -4 CHANGELOG.md > CHANGELOG-tmp.md
       - mv CHANGELOG-tmp.md CHANGELOG.md
 
+  install-am-dbg: go install ./tools/cmd/am-dbg
+
   install-deps:
+    desc: Install project dependencies
     cmds:
       - go mod tidy
-      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.62.0
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh 
+          | sh -s -- -b $(go env GOPATH)/bin v2.5.0
       - go install mvdan.cc/gofumpt@latest
       - go install golang.org/x/tools/cmd/goimports@latest
       - go install github.com/mattn/goreman@latest
@@ -311,7 +438,20 @@ tasks:
       - gem install mdl
       - go install github.com/hhatto/gocloc/cmd/gocloc@latest
 
+  install-deps-db:
+    desc: Install database tools
+    cmds:
+      - go install github.com/devilcove/bboltEdit@latest
+      - uv tool install squall_sql
+
+  install-deps-website:
+    cmds:
+      - curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
+      - chmod +x tailwindcss-linux-x64
+      - sudo mv tailwindcss-linux-x64 /usr/local/bin/tailwindcss
+
   install-deps-video:
+    desc: Install promo video dependencies
     cmds:
       - npm install -g terminalizer
 
@@ -342,19 +482,20 @@ tasks:
       - convert assets/asyncmachine-go/video.gif -delete 0 assets/asyncmachine-go/video.gif
 
   video:
-    desc: Record a video
+    desc: Record a video with a preview
     cmds:
       - terminalizer record
         --config config/terminalizer.yml assets/asyncmachine-go/video.cast
         --skip-sharing
       # delete first 1 record (each has 2 lines)
       - sed -i '/^records:/{n;N;d;}' assets/asyncmachine-go/video.cast.yml
+      - task: video-gif-quick
 
   video-run:
     cmds:
       - go run ./internal/cmd/am-dbg-video
 
-  video-all:
+  gen-video:
     desc: Create assets/asyncmachine-go/video.gif using internal/cmd/video
     cmds:
       - task: video
@@ -366,9 +507,7 @@ tasks:
 
   gen-manual-pdf:
     cmds:
-      - pandoc -f markdown-implicit_figures
-          -V geometry:margin=0.5in
-          docs/manual.md -o assets/asyncmachine-go/manual.pdf
+      - pandoc -f markdown-implicit_figures docs/manual.md -o assets/asyncmachine-go/manual.pdf
 
   prof-cpu-img:
     cmds:
@@ -418,27 +557,12 @@ tasks:
       - echo "Running 10_000 server events"
       - go test -bench=. -benchtime=10000x -v
 
-  website:
-    dir: website
-    cmd: npm run preview
-
-  website-build:
-    dir: website
-    cmd: npm run build
-
-  website-serve:
-    dir: website
-    cmds:
-      - task: website-build
-      - cd build && simple-http-server -p 5000 -i
-
   web-metrics:
     cmds:
       - docker-compose -f deploy/web-metrics/docker-compose.yml up -d --force-recreate
       - |
         echo Grafana: http://localhost:3000
         echo Jaeger: http://localhost:16686
-
 
   web-metrics-clean:
     cmd: docker-compose -f deploy/web-metrics/docker-compose.yml down -v
@@ -458,6 +582,168 @@ tasks:
       - go run ./scripts/extract_mermaid docs/diagrams.md "$NUMS"
       - | 
         for N in $NUMS; do
-          mmdc -i diagram_$N.mmd -o $DIR/diagram_$N.svg -w 800 -b transparent -t dark
+          mmdc -i diagram_$N.mmd -o $DIR/diagram_$N.dark.svg -w 800 -b transparent -t dark
+          mmdc -i diagram_$N.mmd -o $DIR/diagram_$N.light.svg -w 800 -b transparent
           rm diagram_$N.mmd
         done
+
+  arpc:
+    silent: true
+    desc: Start an aRPC REPL
+    cmd: go run ./tools/cmd/arpc
+        {{.CLI_ARGS}}
+
+  dashboard-full:
+    vars:
+      AM_REPL_DIR: '{{.AM_REPL_DIR | default "./tmp"}}'
+      AM_DBG_ADDR: '{{.AM_DBG_ADDR | default ":6831"}}'
+    env:
+      AM_REPL_DIR: "{{.AM_REPL_DIR}}"
+      AM_DBG_ADDR: "{{.AM_DBG_ADDR}}"
+    desc: Start a dashboard with 4 instances of am-dbg
+    ignore_error: true
+    cmds:
+      - task: build-am-dbg
+      - task: build-arpc
+      - task: dashboard-exit
+      - zellij --session am-dashboard 
+          --new-session-with-layout ./config/dashboards/dash-full.kdl
+      - task: dashboard-exit
+
+  dashboard-wide-narrow:
+    vars:
+      AM_DBG_ADDR: '{{.AM_DBG_ADDR | default ":6831"}}'
+    env:
+      AM_DBG_ADDR: "{{.AM_DBG_ADDR}}"
+    desc: Start a dashboard with 2 instances of am-dbg
+    ignore_error: true
+    cmds:
+      - task: build-am-dbg
+      - task: dashboard-exit
+      - zellij --session am-dashboard 
+        --new-session-with-layout ./config/dashboards/dash-wide-narrow.kdl
+      - task: dashboard-exit
+
+  dashboard-repl:
+    silent: false
+    vars:
+      AM_REPL_DIR: '{{.AM_REPL_DIR | default "./tmp"}}'
+      AM_DBG_ADDR: '{{.AM_DBG_ADDR | default ":6831"}}'
+    env:
+      AM_REPL_DIR: "{{.AM_REPL_DIR}}"
+      AM_DBG_ADDR: "{{.AM_DBG_ADDR}}"
+    desc: Start a dashboard with am-dbg and a REPL
+    ignore_error: true
+    cmds:
+      - task: build-am-dbg
+      - task: build-arpc
+      - echo $AM_DBG_ADDR
+      - task: dashboard-exit
+      - zellij --session am-dashboard 
+          --new-session-with-layout ./config/dashboards/dash-repl.kdl
+      - task: dashboard-exit
+
+  dashboard-wn-repl:
+    vars:
+      AM_REPL_DIR: '{{.AM_REPL_DIR | default "./tmp"}}'
+      AM_DBG_ADDR: '{{.AM_DBG_ADDR | default ":6831"}}'
+    env:
+      AM_REPL_DIR: "{{.AM_REPL_DIR}}"
+      AM_DBG_ADDR: "{{.AM_DBG_ADDR}}"
+    desc: Start a dashboard with 2 instances of am-dbg and a REPL
+    ignore_error: true
+    cmds:
+      - task: build-am-dbg
+      - task: build-arpc
+      - task: dashboard-exit
+      - zellij --session am-dashboard 
+          --new-session-with-layout ./config/dashboards/dash-wide-narrow-repl.kdl
+      - task: dashboard-exit
+
+  dashboard-exit:
+    desc: Exit Zellij dashboard
+    cmd: zellij delete-session am-dashboard --force
+
+  gen-jsonschema:
+    desc: Generate JSON schemas for pkg/integrations
+    cmd: go run ./scripts/gen_jsonschema
+
+  web-dashboard-ttyd:
+    silent: false
+    env:
+      AM_REPL_DIR: "{{.AM_REPL_DIR}}"
+    requires:
+      vars: [AM_REPL_DIR, AM_DBG_BASE_PATH]
+    cmds:
+      - ttyd --writable
+          -t titleFixed="am-dbg"
+          -t disableLeaveAlert=true
+          -t disableResizeOverlay=true
+          --base-path {{.AM_DBG_BASE_PATH}}
+          zellij attach am-dashboard
+
+  web-dashboard-repl:
+    silent: false
+    env:
+      AM_REPL_DIR: "{{.AM_REPL_DIR}}"
+      AM_DBG_ADDR: "{{.AM_DBG_ADDR}}"
+    desc: Start a web dashboard with am-dbg and a REPL (to be ran in Docker)
+    requires:
+      vars: [AM_REPL_DIR]
+    ignore_error: true
+    cmds:
+#      - task: build-am-dbg
+      - task: dashboard-exit
+      - task web-dashboard-ttyd &
+      # set term size
+      - stty cols 200
+      - stty rows 100
+      - zellij --session am-dashboard 
+        --new-session-with-layout ./config/dashboards/dash-repl-web.kdl
+      - task: dashboard-exit
+
+  db-bbolt: bboltEdit pkg/history/bbolt/amhist.db
+  db-sql: squall pkg/history/gorm/amhist.sqlite
+
+  am-vis: go run ./tools/cmd/am-vis {{.CLI_ARGS}}
+  am-relay: go run ./tools/cmd/am-relay {{.CLI_ARGS}}
+  gen-docs-api:
+    cmds:
+    - golds 
+      -nouses
+      -only-list-exporteds 
+      -render-doclinks 
+      -theme=dark 
+      -gen 
+      -dir=docs/api 
+      -source-code-reading rich 
+      -wdpkgs-listing solo 
+      ./...
+    - sed -i 's|>github.com/pancsta/asyncmachine-go|>|g' docs/api/index.html
+    - magick assets/asyncmachine-go/logo.png
+      -background transparent -flatten
+      -define icon:auto-resize=256,128,64,48,32,16 docs/api/favicon.ico
+
+  gen-docs-website:
+    cmds:
+      - go run ./scripts/gen_website
+      - tailwindcss -i docs/website/templates/input.css -o docs/website/output.css
+      - magick assets/asyncmachine-go/logo.png
+        -background transparent -flatten
+        -define icon:auto-resize=256,128,64,48,32,16 docs/website/favicon.ico
+
+  deploy-docs-website:
+    requires:
+      vars: [AM_DEPLOY_API_DIR]
+    cmds:
+      - mv docs/website/* {{.AM_DEPLOY_WEBSITE_DIR}}
+      - rm -R {{.AM_DEPLOY_WEBSITE_DIR}}/templates
+      - cp -R scripts/gen_website/sitemap {{.AM_DEPLOY_WEBSITE_CODE_DIR}}/sitemap_am
+
+  deploy-docs-api:
+    requires:
+      vars: [AM_DEPLOY_API_DIR]
+    cmd: mv docs/api/* {{.AM_DEPLOY_API_DIR}}
+
+  docs-api: static-server -addr localhost:7324 docs/api
+  docs-website: static-server -addr localhost:1293 docs/website

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pancsta/asyncmachine-go/pkg/integrations/mutation-req",
+  "$ref": "#/$defs/MutationReq",
+  "$defs": {
+    "Kind": {
+      "properties": {
+        "Value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Value"
+      ]
+    },
+    "MutationReq": {
+      "oneOf": [
+        {
+          "required": [
+            "add"
+          ],
+          "title": "add"
+        },
+        {
+          "required": [
+            "remove"
+          ],
+          "title": "remove"
+        }
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/Kind",
+          "description": "The kind of the request."
+        },
+        "add": {
+          "$ref": "#/$defs/S",
+          "description": "The states to add to the state machine."
+        },
+        "remove": {
+          "$ref": "#/$defs/S",
+          "description": "The states to remove from the state machine."
+        },
+        "args": {
+          "type": "object",
+          "description": "Arguments passed to transition handlers."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind"
+      ]
+    },
+    "S": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  }
+}

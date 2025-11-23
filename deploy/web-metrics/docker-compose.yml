@@ -13,7 +13,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana-oss:v10.3
+    image: grafana/grafana-oss:latest
     container_name: grafana
     ports:
       - "3000:3000"
@@ -61,8 +61,10 @@ services:
       - "9091:9091"
     restart: unless-stopped
 
+  # TODO update https://docs.google.com/document/d/18B1yTMewRft2N0nW9K-ecVRTt5VaNgnrPTW1eL236t4/edit?tab=t.0#heading=h.5j21da1bep6t
+
   jaeger:
-    image: jaegertracing/all-in-one:1.26
+    image: jaegertracing/all-in-one:1.71.0
     container_name: jaeger
     environment:
       - COLLECTOR_OTLP_ENABLED=true
@@ -95,4 +97,3 @@ services:
 
 volumes:
   grafana_data: { }
-  perses: { }

@@ -20,7 +20,7 @@ func TestLog(t *testing.T) {
 	}
 	logProvider := NewOtelLoggerProvider(logExporter)
 	mach := testutils.NewRels(t, nil)
-	mach.SetLogLevel(am.LogDecisions)
+	mach.SemLogger().SetLevel(am.LogDecisions)
 	BindOtelLogger(mach, logProvider, "")
 
 	mach.Add1(ss.C, nil)
@@ -35,5 +35,5 @@ func TestLog(t *testing.T) {
 
 	assert.Contains(t, out, `"Value":"t-TestLog"`)
 	assert.Contains(t, out, "[queue:add] C")
-	assert.Contains(t, out, "[state:auto] +A")
+	assert.Contains(t, out, "[auto_] +A")
 }

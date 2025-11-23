@@ -12,3 +12,7 @@ tasks:
   start:
     desc: Start the example
     cmd: goreman start
+
+  deps:
+    desc: Install dependencies
+    cmd: go install github.com/mattn/goreman@latest

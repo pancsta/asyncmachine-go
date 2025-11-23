@@ -149,7 +149,7 @@ func assertTime(t *testing.T, m *Machine, states S, times Time,
 }
 
 func assertNoException(t *testing.T, m *Machine) {
-	assert.False(t, m.Is1(Exception), "Exception state active")
+	assert.False(t, m.Is1(StateException), "Exception state active")
 }
 
 func assertEventCounts(t *testing.T, history *History, expected int) {
@@ -181,8 +181,8 @@ func assertEventCountsMin(t *testing.T, history *History, expected int) {
 
 func captureLog(t *testing.T, m *Machine, log *string) {
 	mx := sync.Mutex{}
-	m.SetLogLevel(LogEverything)
-	m.SetLogger(func(i LogLevel, msg string, args ...any) {
+	m.SemLogger().SetLevel(LogEverything)
+	m.SemLogger().SetLogger(func(i LogLevel, msg string, args ...any) {
 		if m.IsDisposed() {
 			return
 		}
@@ -200,4 +200,49 @@ func assertString(t *testing.T, m *Machine, expected string, states S) {
 	assert.Equal(t,
 		strings.Trim(dedent.Dedent(expected), "\n"),
 		strings.Trim(m.Inspect(states), "\n"))
+}
+
+func TestEnv(t *testing.T) {
+	t.Setenv(EnvAmLog, "1")
+	assert.Equal(t, LogExternal, EnvLogLevel(""))
+}
+
+func TestAMerge(t *testing.T) {
+	t.Parallel()
+
+	a1 := A{"a": 1}
+	a2 := A{"b": 2}
+
+	m := AMerge(a1, a2)
+	assert.Equal(t, 1, m["a"])
+	assert.Equal(t, 2, m["b"])
+}
+
+func TestStateUtils(t *testing.T) {
+	t.Parallel()
+
+	s := State{
+		Auto:   true,
+		Remove: S{"A"},
+		Add:    S{"B"},
+	}
+
+	add := StateAdd(s, State{
+		Multi:  true,
+		Remove: S{"C"},
+	})
+	set := StateSet(s, false, true, State{
+		Remove: S{"C"},
+	})
+
+	// assert
+	assert.Equal(t, S{"A", "C"}, add.Remove)
+	assert.Equal(t, S{"C"}, set.Remove)
+
+	assert.True(t, add.Auto)
+	assert.False(t, set.Auto)
+
+	assert.False(t, StatesEqual(S{"A"}, S{"B"}))
+	assert.False(t, StatesEqual(S{"A"}, S{"A", "B"}))
+	assert.True(t, StatesEqual(S{"A"}, S{"A"}))
 }

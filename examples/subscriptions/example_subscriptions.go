@@ -20,18 +20,18 @@ func init() {
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(false)
-	// amhelp.SetLogLevel(am.LogChanges)
+	// amhelp.SetEnvLogLevel(am.LogOps)
 }
 
 func main() {
 	ctx := context.Background()
 
 	// init state machines
-	mach := am.New(ctx, am.Struct{
+	mach := am.New(ctx, am.Schema{
 		"Foo":         {},
 		"Bar":         {},
 		"Healthcheck": {Multi: true},
-	}, &am.Opts{LogLevel: am.LogOps, ID: "source"})
+	}, &am.Opts{LogLevel: am.LogOps, Id: "source"})
 	amhelp.MachDebugEnv(mach)
 
 	wg := sync.WaitGroup{}

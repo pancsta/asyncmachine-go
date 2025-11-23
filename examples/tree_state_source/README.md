@@ -3,18 +3,17 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 State source of flight statuses - in the real world this data-oriented problem should be modelled using composition and
 handler delegation, but it's flat in this example for simplicity and research purposes.
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_ex_1.svg)
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_ex_1.svg?raw=true)
 
 ## States
 
 The repo version has 5 flights and 3 gates (149 states). The amount of flights and gates can be adjusted and
-re-generated using `go run ./gen_states`. Full states file is available at [`./states/ss_flights.go`](./states/ss_flights.go).
+re-generated using `go run ./gen_states`. Full states file is available at [`states/ss_flights.go`](/examples/tree_state_source/states/ss_flights.go).
 Sample definition without relations can be found below.
 
 ```go
@@ -39,6 +38,8 @@ type FlightsStatesDef struct {
 
     // ...
 
+    // inherit from BasicStatesDef
+    *ssam.BasicStatesDef
     // inherit from rpc/WorkerStatesDef
     *ssrpc.WorkerStatesDef
 }
@@ -46,9 +47,9 @@ type FlightsStatesDef struct {
 
 ## Actors
 
-- [root](./state_root/state_root.go)
-- [replicant L1](./state_root/state_root.go)
-- [replicant L2](./state_root/state_root.go)
+- root
+- replicant L1
+- replicant L2
 
 Scenario:
 
@@ -65,7 +66,7 @@ From the monorepo root:
 
 1. `task web-metrics`
 2. `task gen-grafana-tree-state-source`
-3. `task tree-state-source`
+3. `task start`
 4. [http://localhost:3000](http://localhost:3000) -> Dashboards -> tree-state-source
 
 ## Possibilities
@@ -80,6 +81,8 @@ for more info.
 
 ## Config
 
+Config available in the `.env` file.
+
 ```bash
 # grafana sync
 
@@ -90,7 +93,7 @@ GRAFANA_URL=http://localhost:3000
 
 PUSH_GATEWAY_URL=http://localhost:9091
 LOKI_ADDR=localhost:3100
-AM_LOG=2
+AM_LOG=3
 
 # AM debugging
 

@@ -1,13 +1,36 @@
-run:
-  exclude-files:
-    - "examples/.*"
-    - "scripts/.*"
-
+version: "2"
 linters:
   enable:
     - lll
-
-linters-settings:
-  lll:
-    line-length: 80
-    tab-width: 2
+  settings:
+    lll:
+      line-length: 80
+      tab-width: 2
+    staticcheck:
+      dot-import-whitelist:
+        - "github.com/pancsta/asyncmachine-go/pkg/states/global"
+      checks:
+        - '-SA1000' # err comments
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - vendor
+      - third_party
+      - pkg/pubsub/uds
+      - third_party$
+      - builtin$
+      - ^examples
+      - ^scripts
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - ^examples
+      - ^scripts

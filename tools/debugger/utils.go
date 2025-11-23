@@ -20,10 +20,11 @@ type Focusable struct {
 }
 
 type toolbarItem struct {
-	id     ToolName
-	label  string
-	icon   string
-	active func() bool
+	id          ToolName
+	label       string
+	icon        string
+	active      func() bool
+	activeLabel func() string
 }
 
 // TODO migrate to Provide-Delivered
@@ -36,7 +37,7 @@ func RpcGetter(d *Debugger) func(string) any {
 			return d.C.CursorTx1
 
 		case server.GetCursorStep.Encode():
-			return d.C.CursorStep
+			return d.C.CursorStep1
 
 		case server.GetMsgCount.Encode():
 			return len(d.C.MsgTxs)

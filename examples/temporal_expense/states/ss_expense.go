@@ -8,7 +8,7 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 type S = am.S
 
 // States map defines relations and properties of states.
-var States = am.Struct{
+var States = am.Schema{
 	CreatingExpense: {Remove: GroupExpense},
 	ExpenseCreated:  {Remove: GroupExpense},
 	WaitingForApproval: {
@@ -31,7 +31,7 @@ var (
 	GroupPayment  = S{PaymentInProgress, PaymentCompleted}
 )
 
-//#region boilerplate defs
+// #region boilerplate defs
 
 // Names of all the states (pkg enum).
 
@@ -47,4 +47,4 @@ const (
 // Names is an ordered list of all the state names.
 var Names = S{CreatingExpense, ExpenseCreated, WaitingForApproval, ApprovalGranted, PaymentInProgress, PaymentCompleted}
 
-//#endregion
+// #endregion

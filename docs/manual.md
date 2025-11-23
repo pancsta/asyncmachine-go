@@ -2,7 +2,7 @@
 
 <!-- TOC -->
 
-- version `v0.10.0`
+- version `v0.10.3`
 - [Legend](#legend)
 - [Machine and States](#machine-and-states)
   - [Defining States](#defining-states)
@@ -69,14 +69,14 @@ aliased as `am`.
 
 ### Defining States
 
-**States** are defined using [`am.Struct`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Struct),
+**States** are defined using [`am.Schema`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Struct),
 a string-keyed map of [`am.State` struct](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#State),
 which consists of **properties and [relations](#relations)**. List of **state names** have a readability shorthand
 of [`am.S`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#S)
 and lists can be combined using [`am.SMerge`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SMerge).
 
 ```go
-am.Struct{
+am.Schema{
     "StateName": {
 
         // properties
@@ -92,7 +92,7 @@ am.Struct{
 }
 ```
 
-State names have a predefined **naming convention** which is `CamelCase`.
+State names have a predefined [naming convention](#naming-convention) which is `CamelCase`.
 
 **Example** - synchronous state
 
@@ -155,7 +155,7 @@ There are two ways to initialize a machine - using
 [`am.New`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#New) or [`am.NewCommon`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#NewCommon)
 . The former one always returns an instance of
 [`Machine`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine), but it's limited to only
-initializing the states structure and basic customizations via
+initializing the machine schema and basic customizations via
 [`Opts`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Opts). The latter one is more feature-rich
 and provides [states verification](#typesafe-states), [handler binding](#transition-handlers), and
 [debugging](#debugging). It may also return an error.
@@ -166,7 +166,7 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 // ...
 
 ctx := context.Background()
-states := am.Struct{"Foo":{}, "Bar":{}}
+states := am.Schema{"Foo":{}, "Bar":{}}
 mach := am.New(ctx, states, &am.Opts{
     ID: "foo1",
     LogLevel: am.LogChanges,
@@ -179,7 +179,7 @@ or a random one) and the build-in [Exception](#error-handling) state.
 ### Clock and Context
 
 **Every state has a tick value**, which
-increments ("ticks") every time a state gets activated or de-activated. **Odd ticks mean active, while even ticks mean
+increments ("ticks") every time a state gets activated or deactivated. **Odd ticks mean active, while even ticks mean
 inactive**. A list (slice) of state ticks forms a **machine clock**. The sum of all the state ticks represents the
 current **machine time**.
 
@@ -187,12 +187,14 @@ Machine clock is a [logical clock](https://en.wikipedia.org/wiki/Logical_clock),
 different instances of the same state. It's most commonly used in the form of `context.Context` via
 [`Machine.NewStateCtx(state string)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.NewStateCtx),
 but it also provides methods on its own data type [`am.Time`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Time).
+An instance of state context gets canceled once the state becomes inactive.
+
+TODO MachineTick
 
 Other related methods and functions:
 
 - [`Machine.Clock(state string) uint64`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Clock)
 - [`Machine.Time(states S) Time`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Time)
-- [`Machine.TimeSum(states S) Time`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum)
 - [`Machine.IsTime(time Time) bool`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.IsTime)
 - [`Machine.IsClock(clock Clock) bool`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.IsClock)
 - [`IsTimeAfter(t1 Time, t2 Time)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#IsTimeAfter)
@@ -215,7 +217,7 @@ mach.Remove1("Foo", nil)
 mach.Add1("Foo", nil)
 // (Foo:3) [Bar:0 Baz:0 Exception:0]
 mach.Clock("Foo") // ->3
-````
+```
 
 **Example** - state context
 
@@ -372,12 +374,16 @@ active themselves via an auto mutation.
 
 ### Multi States
 
-Multi-state (`Multi` property) describes a state which can be activated many times, without being de-activated in the
+Multi-state (`Multi` property) describes a state which can be activated many times, without being deactivated in the
 meantime. It always triggers `Enter` and `State` [transition handlers](#transition-handlers), plus the
 [clock](#clock-and-context) is always incremented. It's useful for describing many instances of the same event
 (e.g. network input) without having to define more than one transition handler. [`Exception`](#error-handling) is a good
 example of a `Multi` state (many errors can happen, and we want to know all of them). The downside is that `Multi`
 states don't have [state contexts](#clock-and-context).
+
+Side effects:
+
+- spawning goroutines in a Multi state handler may lead to an overflow, use `errgroup`
 
 ### Categories of States
 
@@ -389,7 +395,7 @@ States usually belong to one of these categories:
 4. Background tasks (e.g. Processing)
 5. Joining states (e.g. ProcessingDone)
 
-_Action states_ often de-activate themselves after they are done, as a part of their [final handler](#final-handlers). _Joining
+_Action states_ often deactivate themselves after they are done, as a part of their [final handler](#final-handlers). _Joining
 states_ are used for relations with other states, as relations to an inactive state are not possible.
 
 **Example** - self removal
@@ -398,6 +404,24 @@ states_ are used for relations with other states, as relations to an inactive st
 func (h *Handlers) ClickState(e *am.Event) {
     // add removal to the queue
     e.Machine.Remove1("Click")
+}
+```
+
+**Example** - clock-based self removal
+
+```go
+func (h *Handlers) ClickState(e *am.Event) {
+    mach := e.Machine
+    tick := mach.Tick("Click")
+
+    go func() {
+        // ... blocking calls
+
+        // last one deactivates
+        if tick == mach.Tick("Click") {
+            mach.Remove1("Click", nil)
+        }
+    }()
 }
 ```
 
@@ -446,7 +470,7 @@ mach.Add1("Bar", nil)
 ```
 
 [`Machine.Remove(states, args)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Remove)
-deactivates only the specified states. Each de-activation increases the [states' clock](#clock-and-context) to an
+deactivates only the specified states. Each deactivation increases the [states' clock](#clock-and-context) to an
 even number.
 
 **Example** - Remove mutation
@@ -465,7 +489,7 @@ mach.Remove1("Bar", nil)
 ```
 
 [`Machine.Set(states, args)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Set)
-de-activates all but the passed states and activates the remaining ones.
+deactivates all but the passed states and activates the remaining ones.
 
 **Example** - Set mutation
 
@@ -525,13 +549,14 @@ Once a transition begins to execute, it goes through the following steps:
 
 ### Transition Handlers
 
-**Asyncmachine** implements **AOP** ([Aspect Oriented Programming](https://en.wikipedia.org/wiki/Aspect-oriented_programming))
-through a handler naming convention. Use [`LogEverything`](#logging) to see a full list of each transition's handlers.
+The **asyncmachine** implements **AOP** ([Aspect Oriented Programming](https://en.wikipedia.org/wiki/Aspect-oriented_programming))
+through a handler naming convention (either via a suffix or concatenation). Use [`LogEverything`](#logging) to see a
+full list of each transition's handlers.
 
 **State handler** is a struct method with a predefined suffix or prefix, which receives an [Event struct](#event-struct).
 There are [negotiation handlers](#negotiation-handlers) (returning a `bool`) and [final handlers](#final-handlers) (with
 no return). Order of the handlers depends on currently [active states](#active-states) and relations of
-[active](#active-states) and [target states](#calculating-target-states). Handlers executed each in a separate
+[active](#active-states) and [target states](#calculating-target-states). Handlers are executed in a dedicated
 goroutine, with a timeout of [`Machine.HandlerTimeout`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine).
 
 **Example** - handlers for the state Foo
@@ -543,9 +568,9 @@ func (h *Handlers) FooEnter(e *am.Event) bool {}
 func (h *Handlers) FooBar(e *am.Event) {}
 // Foo activates
 func (h *Handlers) FooState(e *am.Event) {}
-// can Foo de-activate?
+// can Foo deactivate?
 func (h *Handlers) FooExit(e *am.Event) bool {}
-// Foo de-activates
+// Foo deactivates
 func (h *Handlers) FooEnd(e *am.Event) {}
 ```
 
@@ -574,6 +599,32 @@ List of handlers during a transition from `Foo` to `Foo Bar`, in the order of ex
 - `BarState` - [final handler](#final-handlers)
 
 Self handlers provide a simple alternative to [`Multi` states](#multi-states), while fully maintaining [state clocks](#clock-and-context).
+
+#### Transition Sub-Handler
+
+**Transition sub-handler** ("H method") is a struct method which does not get called directly by the machine, but like
+regular handlers, it doesn't require locking. Because of which, they can only be called by other handlers (either
+top-level or other sub-handlers). There is a [naming convention](#naming-convention) for these handlers, as well as a
+suggested signature. Sub-handlers have Inversion of Control, while transition handlers remain in control. Sub-handler
+scan block, but need `e.Ctx != nil`. Arguments from the original event can be replaced with `Event.SwapArgs`.
+
+**Example** - sub-handler methods:
+
+- `hSetCursor(e *am.Event) error` (suggested)
+- `hListProcesses(name string) ([]string, error)`
+- `hDoFoo()`
+
+Sub-handlers are useful when combined with `EvalToGetter` from `pkg/helpers`, as well as for sharing code between
+handlers, without worrying about calling it from a non-handler code-path.
+
+// TODO more examples
+
+```go
+d.hScrollToTx(e.SwapArgs(am.A{
+    "cursorTx1":   row,
+    "trimHistory": true,
+}))
+```
 
 ### Defining Handlers
 
@@ -651,7 +702,7 @@ Transition exposes the currently called, target and previous states using:
 
 ```go
 // machine
-mach := am.New(ctx, am.Struct{
+mach := am.New(ctx, am.Schema{
     "Foo": {
         Add: am.S{"Bar"},
     },
@@ -708,13 +759,13 @@ end
 ```go
 // can Foo activate?
 func (h *Handlers) FooEnter(e *am.Event) bool {}
-// can Foo de-activate?
+// can Foo deactivate?
 func (h *Handlers) FooExit(e *am.Event) bool {}
 // with Bar active, can Foo activate?
 func (h *Handlers) BarFoo(e *am.Event) bool {}
 ```
 
-**Negotiation handlers** `Enter` and `Exit` are called for every state which is going to be activated or de-activated.
+**Negotiation handlers** `Enter` and `Exit` are called for every state which is going to be activated or deactivated.
 State-state handler (eg `FooBar`) are `Foo` is active and `Bar` wants to activate. They are allowed to cancel a
 transition by optionally returning `false`. **Negotiation handlers** are limited to read-only operations, or at least to
 side effects free ones. Their purpose is to make sure that
@@ -735,7 +786,7 @@ func (h *Handlers) ProcessingFileEnter(e *am.Event) bool {
 
 ```go
 // machine
-mach := am.New(ctx, am.Struct{
+mach := am.New(ctx, am.Schema{
     "Foo": {
         Add: am.S{"Bar"},
     },
@@ -774,7 +825,7 @@ func (h *Handlers) FooEnd(e *am.Event) {}
 Final handlers `State` and `End` are where the main handler logic resides. After the transition gets accepted by
 relations and negotiation handlers, final handlers will allocate and dispose resources, call APIs, and perform other
 blocking actions with side effects. Just like [negotiation handlers](#negotiation-handlers), they are called for every
-state which is going to be activated or de-activated. Additionally, the [Self handlers](#self-handlers) are called for
+state which is going to be activated or deactivated. Additionally, the [Self handlers](#self-handlers) are called for
 states which remained active.
 
 Like any handler, final handlers cannot block the mutation. That's why they need to start a goroutine and continue their
@@ -849,8 +900,9 @@ Side effects:
 define the rules of the flow. Each [state](#defining-states) can have 4 types of **relations**. Each relation accepts a
 list of state names. Relations guarantee consistency among [active states](#active-states).
 
-Relations form a Directed Cyclic Graph (DCG), but are not Turing complete, as they guarantee termination. Only
-[auto states](#auto-states) trigger a single, automatic mutation attempt.
+Relations form a [multigraph (with identity edges)](https://en.wikipedia.org/wiki/Multigraph) of state nodes,
+but are not Turing complete, as they guarantee termination. Only [auto states](#auto-states) trigger a single,
+automatic mutation attempt.
 
 #### `Add` relation
 
@@ -860,7 +912,7 @@ Their activation is optional, meaning if any of those won't get accepted, the tr
 
 ```go
 // machine
-mach := am.New(ctx, am.Struct{
+mach := am.New(ctx, am.Schema{
     "Foo": {
         Add: am.S{"Bar"},
     },
@@ -891,7 +943,7 @@ Example of an [accepted transition](#transition-lifecycle) involving a `Remove` 
 
 ```go
 // machine
-mach := am.New(ctx, am.Struct{
+mach := am.New(ctx, am.Schema{
     "Foo": {
         Remove: am.S{"Bar"},
     },
@@ -917,7 +969,7 @@ Example of a [canceled transition](#transition-lifecycle) involving a `Remove` r
 
 ```go
 // machine
-mach := am.New(ctx, am.Struct{
+mach := am.New(ctx, am.Schema{
     "Foo": {},
     "Bar": {
         Remove: am.S{"Foo"},
@@ -941,7 +993,7 @@ Example of a [canceled transition](#transition-lifecycle) involving a `Remove` r
 
 ```go
 // machine
-mach := am.New(ctx, am.Struct{
+mach := am.New(ctx, am.Schema{
     "Foo": {},
     "Bar": {
         Remove: am.S{"Foo"},
@@ -970,7 +1022,7 @@ Example of an [accepted transition](#transition-lifecycle) involving a `Require`
 
 ```go
 // machine
-mach := am.New(ctx, am.Struct{
+mach := am.New(ctx, am.Schema{
     "Foo": {},
     "Bar": {
         Require: am.S{"Foo"},
@@ -995,7 +1047,7 @@ Example of a [canceled transition](#transition-lifecycle) involving a `Require` 
 
 ```go
 // machine
-mach := am.New(ctx, am.Struct{
+mach := am.New(ctx, am.Schema{
     "Foo": {},
     "Bar": {
         Require: am.S{"Foo"},
@@ -1021,7 +1073,7 @@ the defined state will be executed **after** handlers from listed states.
 
 ```go
 // machine
-mach := am.New(ctx, am.Struct{
+mach := am.New(ctx, am.Schema{
     "Foo": {
         After: am.S{"Bar"},
     },
@@ -1089,8 +1141,8 @@ these channels will be reused and should scale way better.
 - [`Machine.WhenNot1(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenNot1)
 - [`Machine.WhenArgs(state, args, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenArgs)
 - [`Machine.WhenTime(states, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTime)
+- [`Machine.WhenTime1(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTime1)
 - [`Machine.WhenTicks(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTick)
-- [`Machine.WhenTicksEq(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTickEq)
 - [`Machine.WhenQueueEnds(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenQueueEnds)
 - [`Machine.WhenErr(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenErr)
 
@@ -1098,7 +1150,7 @@ these channels will be reused and should scale way better.
 
 ```go
 // machine
-mach := am.New(ctx, am.Struct{
+mach := am.New(ctx, am.Schema{
     "Foo": {
         Add: am.S{"Bar"},
     },
@@ -1143,9 +1195,12 @@ which can be embedded into [handler structs](#defining-handlers).
 
 Advised error handling strategy (used by [`/pkg/node`](/pkg/node)):
 
-- create more detailed error states with a [`Require` relation](#relations) to the `Exception` state, like `ErrNetwork`
+- create more detailed error states like `ErrNetwork`
+  - with a [`Require` relation](#relations) to the `Exception` state
+  - but without being a [`Multi` state](#multi-states), so it has [state context](#clock-and-context)
 - create regular sentinel errors, like `ErrRpc`
-- create separate mutation function per each sentinel error, like `AddErrRpc`
+- create separate mutation function for each sentinel error, like
+  - `func AddErrWorker(event *am.Event, mach *am.Machine, err error, args am.A) error`
 - one error state can be responsible for many sentinel errors
 
 Error handling methods:
@@ -1159,10 +1214,10 @@ Error handling methods:
 **Example** - detailed error states
 
 ```go
-var States = am.Struct{
+var States = am.Schema{
 
-    ErrWorker:  {Require: am.S{am.Exception}},
-    ErrPool:    {Require: am.S{am.Exception}},
+    ErrWorker:  {Require: am.S{am.StateException}},
+    ErrPool:    {Require: am.S{am.StateException}},
 
     // ...
 }
@@ -1298,7 +1353,7 @@ Both sources can help to make informed decisions based on scheduled and past act
 
 ```go
 // machine
-mach := am.New(ctx, am.Struct{
+mach := am.New(ctx, am.Schema{
     "Foo": {},
     "Bar": {}
 }, nil)
@@ -1332,12 +1387,20 @@ Side effects:
 
 - all state additions without arguments, for non-multi states, are reduced into 1 to avoid polluting the queue.
 
+#### Queue Ticks
+
+Eg `q342` is a queue clock's tick and triggers `<-mach.WhenQueued(queueTick)`. All the transitions with a queu
+tick will be executed in that order.
+
+// TODO example
+
 ### Logging
 
-Besides [inspecting methods](#inspecting-states), **asyncmachine-go** offers a very verbose logging system with 4
+Besides [inspecting methods](#inspecting-states), **asyncmachine-go** offers a very verbose logging system with 6
 levels of granularity:
 
 - `LogNothing` (default)
+- `LogExternal` external log msgs, not made by the machine
 - `LogChanges` state changes and important messages
 - `LogOps` detailed relations resolution, called handlers, queued and rejected mutations
 - `LogDecisions` more verbose variant of Ops, explaining the reasoning behind
@@ -1347,7 +1410,7 @@ Example of all log levels for the same code snippet:
 
 ```go
 // machine
-mach := am.New(ctx, am.Struct{
+mach := am.New(ctx, am.Schema{
     "Foo": {},
     "Bar": {
         Auto: true,
@@ -1469,7 +1532,7 @@ mach.SetLogger(func(level LogLevel, msg string, args ...any) {
 state machine on a [transition's](#transition-lifecycle) step-level, and retain [state machine's log](#logging). It
 also combines very well with the Golang debugger when stepping through code.
 
-Environment variables used for debugging can be found in [config/env/README.md](/config/env/README.md).
+Environment variables used for debugging can be found in [/docs/env-configs.md](/docs/env-configs.md).
 
 #### Steps To Debug
 
@@ -1526,11 +1589,11 @@ worker.AddBreakpoint(am.S{"Healthcheck"}, nil)
 
 While it's perfectly possible to operate on pure string names for state names (e.g. for prototyping), it's not type
 safe, leads to errors, doesn't support godoc, nor looking for references in IDEs. [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md)
-will generate a conventional type-safe states file, along with inheriting from predefined state machines. It also
+will generate a conventional type-safe schema file, along with inheriting from predefined state machines. It also
 aliases common functions to manipulates state lists, relations, and structure. After the initial bootstrapping, the file
 should be edited manually.
 
-**Example** - using am-gen to bootstrap a states file
+**Example** - using am-gen to bootstrap a schema file
 
 ```go
 package states
@@ -1555,8 +1618,8 @@ type MyMachStatesDef struct {
 type MyMachGroupsDef struct {
 }
 
-// MyMachStruct represents all relations and properties of MyMachStates.
-var MyMachStruct = am.Struct{
+// MyMachSchema represents all relations and properties of MyMachStates.
+var MyMachSchema = am.Schema{
 
     ssM.State1: {},
     ssM.State2: {},
@@ -1576,10 +1639,10 @@ var (
 ```
 
 States are commonly aliased as `ss` (first-last rune), as they are constantly being referenced, while imports of
-external states files have the package name added, eg `ssrpc`. It's also crucial to ["verify" states](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.VerifyStates),
+external schema files have the package name added, eg `ssrpc`. It's also crucial to ["verify" states](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.VerifyStates),
 as map keys have a random order.
 
-**Example** - importing a states file
+**Example** - importing a schema file
 
 ```go
 import (
@@ -1592,7 +1655,7 @@ var ss := states.MyMachStates
 
 // ...
 
-mach := am.New(ctx, states.MyMachStruct, nil)
+mach := am.New(ctx, states.MyMachSchema, nil)
 err := mach.VerifyStates(ss.Names())
 mach.Add1(ss.State1, nil)
 ```
@@ -1710,7 +1773,11 @@ func LogArgs(args am.A) map[string]string {
 ### Tracing and Metrics
 
 Asyncmachine offers several telemetry exporters for logging, tracing, and metrics. Please refer to [`pkg/telemetry`](/pkg/telemetry/README.md)
-for detailed information.
+for detailed information. There're traceable versions of mutation methods available, which accept `*am.Event` as the
+first param and decorate telemetry messages with MachineID, TransitionID, and Machine Time as the source. It's currently
+supported by the [am-dbg debugger](#debugging).
+
+// TOOD list EvAdd, EvAdd1, EvRemove, ... +example
 
 ### Optimizing Data Input
 
@@ -1758,13 +1825,22 @@ func Msg(msgTx *Msg) {
 - wait contexts
 - Dispose
 - WhenDisposed
-- RegisterDisposalHandler
+- HandleDispose
 
 ### Dynamically Generating States
 
 // TODO
 
-- Machine.SetStrcut
+- Machine.SetSchema
+- schema versions
+
+### Naming Convention
+
+- states: CamelCase, eg `ProcessRunning`
+- handlers: CamelCase, eg `ProcessRunningState`
+- sub-handlers: CamelCase, eg `hListRunning`
+  - TODO dedicated section with examples
+- regular methods: none, eg `privMethod`, `PubMethod`
 
 ## Cheatsheet
 
@@ -1807,5 +1883,8 @@ Each of them has a readme with examples:
 - [`/pkg/rpc`](/pkg/rpc/README.md) Remote state machines, with the same API as local ones.
 - [`/pkg/states`](/pkg/states/README.md) Reusable state definitions and piping.
 - [`/pkg/telemetry`](/pkg/telemetry/README.md) Telemetry exporters for metrics, traces, and logs.
+- [`/pkg/pubsub`](/pkg/pubsub/README.md) Decentralized PubSub based on libp2p gossipsub.
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) am-dbg is a multi-client TUI debugger.
-- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) am-gen generates states files and Grafana dashboards.
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) am-gen generates schema files and Grafana dashboards.
+- [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates diagrams of interconnected state machines.
+- [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.

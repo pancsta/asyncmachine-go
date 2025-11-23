@@ -2,13 +2,16 @@ package machine
 
 import (
 	"context"
+	"errors"
 	"os"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/maps"
 )
 
@@ -19,7 +22,7 @@ func init() {
 
 func ExampleNew() {
 	ctx := context.TODO()
-	mach := New(ctx, Struct{
+	mach := New(ctx, Schema{
 		"Foo": {Require: S{"Bar"}},
 		"Bar": {},
 	}, nil)
@@ -29,7 +32,7 @@ func ExampleNew() {
 
 func ExampleNewCommon() {
 	// define (tip: use am-gen instead)
-	stateStruct := Struct{
+	stateStruct := Schema{
 		"Foo": {Require: S{"Bar"}},
 		"Bar": {},
 	}
@@ -60,7 +63,7 @@ func ExampleNewCommon() {
 	if err != nil {
 		panic(err)
 	}
-	mach.SetLogLevel(LogOps)
+	mach.SemLogger().SetLevel(LogOps)
 
 	// debug
 	// import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -70,18 +73,18 @@ func ExampleNewCommon() {
 
 // NewNoRels creates a new machine with no relations between states.
 func NewNoRels(t *testing.T, initialState S) *Machine {
-	m := New(context.Background(), Struct{
+	m := New(context.Background(), Schema{
 		"A": {},
 		"B": {},
 		"C": {},
 		"D": {},
 	}, nil)
 
-	m.SetLogger(func(i LogLevel, msg string, args ...any) {
+	m.SemLogger().SetLogger(func(i LogLevel, msg string, args ...any) {
 		t.Logf(msg, args...)
 	})
 	if os.Getenv(EnvAmDebug) != "" && os.Getenv("AM_TEST_RUNNER") == "" {
-		m.SetLogLevel(LogEverything)
+		m.SemLogger().SetLevel(LogEverything)
 		m.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
@@ -93,7 +96,7 @@ func NewNoRels(t *testing.T, initialState S) *Machine {
 
 // NewRels creates a new machine with basic relations between states.
 func NewRels(t *testing.T, initialState S) *Machine {
-	m := New(context.Background(), Struct{
+	m := New(context.Background(), Schema{
 		"A": {
 			Auto:    true,
 			Require: S{"C"},
@@ -110,11 +113,11 @@ func NewRels(t *testing.T, initialState S) *Machine {
 		},
 	}, nil)
 
-	m.SetLogger(func(i LogLevel, msg string, args ...any) {
+	m.SemLogger().SetLogger(func(i LogLevel, msg string, args ...any) {
 		t.Logf(msg, args...)
 	})
 	if os.Getenv(EnvAmDebug) != "" && os.Getenv("AM_TEST_RUNNER") == "" {
-		m.SetLogLevel(LogEverything)
+		m.SemLogger().SetLevel(LogEverything)
 		m.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
@@ -125,15 +128,16 @@ func NewRels(t *testing.T, initialState S) *Machine {
 }
 
 // NewNoRels creates a new machine with no relations between states.
-func NewCustomStates(t *testing.T, states Struct) *Machine {
+func NewCustomStates(t *testing.T, states Schema) *Machine {
 	m := New(context.Background(), states, nil)
-	m.SetLogger(func(i LogLevel, msg string, args ...any) {
+	m.SemLogger().SetLogger(func(i LogLevel, msg string, args ...any) {
 		t.Logf(msg, args...)
 	})
 	if os.Getenv(EnvAmDebug) != "" && os.Getenv("AM_TEST_RUNNER") == "" {
-		m.SetLogLevel(LogEverything)
+		m.SemLogger().SetLevel(LogEverything)
 		m.HandlerTimeout = 2 * time.Minute
 	}
+
 	return m
 }
 
@@ -215,7 +219,7 @@ func TestPanicWhenStateIsUnknown(t *testing.T) {
 
 func TestGetStateRelations(t *testing.T) {
 	t.Parallel()
-	m := New(context.Background(), Struct{
+	m := New(context.Background(), Schema{
 		"A": {
 			Add:     S{"B"},
 			Require: S{"B"},
@@ -224,7 +228,7 @@ func TestGetStateRelations(t *testing.T) {
 		"B": {},
 	}, nil)
 
-	of, err := m.resolver.GetRelationsOf("A")
+	of, err := m.resolver.RelationsOf("A")
 
 	assert.NoErrorf(t, err, "all states are known")
 	assert.Nil(t, err)
@@ -238,7 +242,7 @@ func TestGetStateRelations(t *testing.T) {
 
 func TestGetRelationsBetweenStates(t *testing.T) {
 	t.Parallel()
-	m := New(context.Background(), Struct{
+	m := New(context.Background(), Schema{
 		"A": {
 			Add:     S{"B"},
 			Require: S{"C"},
@@ -248,7 +252,7 @@ func TestGetRelationsBetweenStates(t *testing.T) {
 		"C": {},
 	}, nil)
 
-	between, err := m.resolver.GetRelationsBetween("A", "B")
+	between, err := m.resolver.RelationsBetween("A", "B")
 
 	assert.NoError(t, err)
 	assert.Equal(t, []Relation{RelationAdd},
@@ -391,8 +395,8 @@ func TestAfterRelationWhenEntering(t *testing.T) {
 	m := NewNoRels(t, S{"A", "B"})
 
 	// relations
-	m.states["C"] = State{After: S{"D"}}
-	m.states["A"] = State{After: S{"B"}}
+	m.schema["C"] = State{After: S{"D"}}
+	m.schema["A"] = State{After: S{"B"}}
 
 	// history
 	events := []string{"DEnter", "CEnter", "AD", "AC"}
@@ -419,8 +423,8 @@ func TestAfterRelationWhenExiting(t *testing.T) {
 	m := NewNoRels(t, S{"A", "B"})
 
 	// relations
-	m.states["C"] = State{After: S{"D"}}
-	m.states["A"] = State{After: S{"B"}}
+	m.schema["C"] = State{After: S{"D"}}
+	m.schema["A"] = State{After: S{"B"}}
 
 	// history
 	events := []string{"BExit", "AExit", "AD", "AC", "BD", "BC"}
@@ -444,7 +448,7 @@ func TestAfterRelationWhenExiting(t *testing.T) {
 
 func TestRequireOrder(t *testing.T) {
 	t.Parallel()
-	m := NewCustomStates(t, Struct{
+	m := NewCustomStates(t, Schema{
 		"A": {
 			Auto:    true,
 			Require: S{"B", "C"},
@@ -474,8 +478,8 @@ func TestRequireOrder(t *testing.T) {
 	assertStates(t, m, S{"A", "B", "C", "D", "Start"})
 	// assert event counts
 	for s, count := range history.Counter {
-		if strings.HasPrefix(s, Any) {
-			// global handelrs run for auto transitions
+		if strings.HasPrefix(s, StateAny) {
+			// global handlers run for auto transitions
 			assert.Equal(t, 2, count)
 		} else {
 			assert.Equal(t, 1, count)
@@ -508,7 +512,7 @@ func TestRemoveRelation(t *testing.T) {
 	m := NewNoRels(t, S{"D"})
 
 	// relations
-	m.states["C"] = State{Remove: S{"D"}}
+	m.schema["C"] = State{Remove: S{"D"}}
 
 	// C deactivates D
 	m.Add(S{"C"}, nil)
@@ -529,7 +533,7 @@ func TestRemoveRelationSimultaneous(t *testing.T) {
 	captureLog(t, m, &log)
 
 	// relations
-	m.states["C"] = State{Remove: S{"D"}}
+	m.schema["C"] = State{Remove: S{"D"}}
 
 	// test
 	r := m.Set(S{"C", "D"}, nil)
@@ -593,8 +597,8 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 			t.Parallel()
 			m := NewNoRels(t, S{"D"})
 			// C and D are cross blocking each other via Remove
-			m.states["C"] = State{Remove: S{"D"}}
-			m.states["D"] = State{Remove: S{"C"}}
+			m.schema["C"] = State{Remove: S{"D"}}
+			m.schema["D"] = State{Remove: S{"C"}}
 			test.fn(t, m)
 		})
 	}
@@ -605,8 +609,8 @@ func TestAddRelation(t *testing.T) {
 	m := NewNoRels(t, nil)
 
 	// relations
-	m.states["A"] = State{Remove: S{"D"}}
-	m.states["C"] = State{Add: S{"D"}}
+	m.schema["A"] = State{Remove: S{"D"}}
+	m.schema["C"] = State{Add: S{"D"}}
 
 	// test
 	m.Set(S{"C"}, nil)
@@ -614,7 +618,7 @@ func TestAddRelation(t *testing.T) {
 	// assert
 	assertStates(t, m, S{"C", "D"}, "state should be activated")
 	m.Set(S{"A", "C"}, nil)
-	assertStates(t, m, S{"A", "C"}, "state should be skipped if "+
+	assertStates(t, m, S{"A", "C"}, "state D should be skipped if "+
 		"blocked at the same time")
 
 	// dispose
@@ -628,7 +632,7 @@ func TestRequireRelation(t *testing.T) {
 	m := NewNoRels(t, S{"A"})
 
 	// relations
-	m.states["C"] = State{Require: S{"D"}}
+	m.schema["C"] = State{Require: S{"D"}}
 
 	// test
 	m.Set(S{"C", "D"}, nil)
@@ -646,7 +650,7 @@ func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
 	m := NewNoRels(t, S{"A"})
 
 	// relations
-	m.states["C"] = State{Require: S{"D"}}
+	m.schema["C"] = State{Require: S{"D"}}
 
 	// logger
 	log := ""
@@ -670,12 +674,12 @@ func TestRemoveMultiImplied(t *testing.T) {
 	m := NewNoRels(t, S{"A", "B", "C"})
 
 	// relations
-	m.states["A"] = State{
+	m.schema["A"] = State{
 		Multi:   true,
 		Add:     S{"B"},
 		Require: S{"C"},
 	}
-	m.states["B"] = State{Require: S{"C"}}
+	m.schema["B"] = State{Require: S{"C"}}
 
 	// remove implied state
 	m.Remove1("B", nil)
@@ -690,7 +694,11 @@ func TestRemoveMultiImplied(t *testing.T) {
 type TestQueueHandlers struct{}
 
 func (h *TestQueueHandlers) BEnter(e *Event) bool {
-	e.Machine().Add(S{"C"}, nil)
+	t := e.Args["t"].(*testing.T)
+	res := e.Machine().Add(S{"C"}, nil)
+	assert.Equal(t, uint64(4), uint64(res),
+		"nested Add:C is the 3rd mutation (counting from 2)")
+
 	return true
 }
 
@@ -707,12 +715,12 @@ func TestQueue(t *testing.T) {
 	assert.NoError(t, err)
 
 	// triggers Add(C) from BEnter
-	m.Set(S{"B"}, nil)
+	m.Set(S{"B"}, A{"t": t})
 
 	// assert event counts
 	for s, count := range history.Counter {
-		if strings.HasPrefix(s, Any) {
-			// global handelrs run for auto transitions
+		if strings.HasPrefix(s, StateAny) {
+			// global handlers run for auto transitions
 			assert.Equal(t, 2, count)
 		} else {
 			assert.Equal(t, 1, count)
@@ -796,7 +804,7 @@ func TestAutoStates(t *testing.T) {
 	m := NewNoRels(t, nil)
 
 	// relations
-	m.states["B"] = State{
+	m.schema["B"] = State{
 		Auto:    true,
 		Require: S{"A"},
 	}
@@ -814,6 +822,11 @@ func TestAutoStates(t *testing.T) {
 	assert.Contains(t, log, "[auto] B", "log should mention the auto state")
 }
 
+func TestAutoStatesHeartbeat(t *testing.T) {
+	// TODO assert no auto tx for Heartbeat, Healthcheck
+	t.Skip("TODO")
+}
+
 func TestPartialAutoStates(t *testing.T) {
 	t.Parallel()
 
@@ -821,10 +834,10 @@ func TestPartialAutoStates(t *testing.T) {
 	m := NewNoRels(t, nil)
 
 	// relations
-	m.states["A"] = State{
+	m.schema["A"] = State{
 		Auto: true,
 	}
-	m.states["B"] = State{
+	m.schema["B"] = State{
 		Auto:    true,
 		After:   S{"A"},
 		Require: S{"C"},
@@ -840,7 +853,7 @@ func TestPartialAutoStates(t *testing.T) {
 	// assert
 	assert.Equal(t, Executed, result, "transition should be executed")
 	assertStates(t, m, S{"A", "D"}, "dependant auto state should be set")
-	assert.Contains(t, log, "[state:auto] +A",
+	assert.Contains(t, log, "[auto_] +A",
 		"log should mention the auto state")
 }
 
@@ -848,7 +861,7 @@ func TestPartialAutoStatesByStateState(t *testing.T) {
 	t.Parallel()
 
 	// init
-	m := NewCustomStates(t, Struct{
+	m := NewCustomStates(t, Schema{
 		"A": {Auto: true},
 		"B": {Auto: true},
 		"C": {},
@@ -863,17 +876,21 @@ func TestPartialAutoStatesByStateState(t *testing.T) {
 
 	// trigger auto
 	m.Add1("C", nil)
-	assertStates(t, m, S{"C", "A"}, "only A auto state should be active")
+	assertStates(t, m, S{"C", "A"}, "only C and A auto state should be active")
 }
 
 func TestPartialAutoStatesByEnter(t *testing.T) {
 	t.Parallel()
 
 	// init
-	m := NewCustomStates(t, Struct{
+	m := NewCustomStates(t, Schema{
 		"A": {Auto: true},
-		"B": {Auto: true},
+		"B": {
+			Auto: true,
+			Add:  S{"D"},
+		},
 		"C": {},
+		"D": {},
 	})
 
 	// BEnter cancels
@@ -927,20 +944,28 @@ func TestNegotiationRemove(t *testing.T) {
 type TestHandlerStateInfoHandlers struct{}
 
 func (h *TestHandlerStateInfoHandlers) DEnter(e *Event) {
+	idxD := e.Machine().Index1("D")
+
 	t := e.Args["t"].(*testing.T)
-	assert.ElementsMatch(t, S{"A"}, e.Machine().ActiveStates(),
+	assert.ElementsMatch(t, S{"A"}, e.Machine().ActiveStates(nil),
 		"provide the previous states of the transition")
 	assert.ElementsMatch(t, S{"D"}, e.Transition().TargetStates(),
 		"provide the target states of the transition")
-	assert.True(t, e.Mutation().StateWasCalled("D"),
+	assert.True(t, e.Mutation().IsCalled(idxD),
 		"provide the called states of the transition")
-	txStrExp := "D (requested)\nD (set)\nA (remove)\nA (handler)"
+	txStrExp := "tx#" + e.TransitionId + "\n[set] D\n- requested **D**\n" +
+		"- activate **D**\n- deactivate **A**\n- handler **A**Exit"
 	txStr := e.Transition().String()
 	assert.Equal(t, txStrExp, txStr,
 		"provide a string version of the transition")
 }
 
 func TestHandlerStateInfo(t *testing.T) {
+	if os.Getenv("AM_TEST_RUNNER") != "" {
+		t.Skip("debug only")
+		return
+	}
+
 	t.Parallel()
 	// init
 	m := NewNoRels(t, S{"A"})
@@ -948,6 +973,7 @@ func TestHandlerStateInfo(t *testing.T) {
 	if err != nil {
 		assert.NoError(t, err)
 	}
+	m.SemLogger().EnableSteps(true)
 
 	// bind history
 	events := []string{"DEnter"}
@@ -975,11 +1001,11 @@ func TestGetters(t *testing.T) {
 	// init
 	m := NewNoRels(t, S{"A"})
 	mapper := NewArgsMapper([]string{"arg", "arg2"}, 5)
-	m.SetLogArgs(mapper)
-	m.SetLogLevel(LogEverything)
+	m.SemLogger().SetArgsMapper(mapper)
+	m.SemLogger().SetLevel(LogEverything)
 
 	// assert
-	assert.Equal(t, LogEverything, m.GetLogLevel())
+	assert.Equal(t, LogEverything, m.SemLogger().Level())
 	assert.Equal(t, 0, len(m.Queue()))
 
 	// dispose
@@ -1015,10 +1041,11 @@ func TestSwitch(t *testing.T) {
 
 func TestDispose(t *testing.T) {
 	t.Parallel()
+
 	// init
 	m := NewNoRels(t, S{"A"})
 	ran := false
-	m.HandleDispose(func(id string, ctx context.Context) {
+	m.OnDispose(func(id string, ctx context.Context) {
 		ran = true
 	})
 
@@ -1031,10 +1058,11 @@ func TestDispose(t *testing.T) {
 
 func TestDisposeForce(t *testing.T) {
 	t.Parallel()
+
 	// init
 	m := NewNoRels(t, S{"A"})
 	ran := false
-	m.HandleDispose(func(id string, ctx context.Context) {
+	m.OnDispose(func(id string, ctx context.Context) {
 		ran = true
 	})
 
@@ -1049,10 +1077,11 @@ func TestDisposeForce(t *testing.T) {
 
 func TestLogArgs(t *testing.T) {
 	t.Parallel()
+
 	// init
 	m := NewNoRels(t, S{"A"})
 	mapper := NewArgsMapper([]string{"arg", "arg2"}, 5)
-	m.SetLogArgs(mapper)
+	m.SemLogger().SetArgsMapper(mapper)
 
 	// bind logger
 	log := ""
@@ -1111,6 +1140,93 @@ func TestHandlerArgs(t *testing.T) {
 
 	// assert
 	assertEventCountsMin(t, history, 1)
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+// TestEvMutations
+type TestEvH struct{}
+
+func (h *TestEvH) AState(e *Event) {
+	e.Machine().EvAdd1(e, "B", e.Args)
+	e.Machine().EvRemove1(e, "A", nil)
+}
+
+func (h *TestEvH) BState(e *Event) {
+	t := e.Args["t"].(*testing.T)
+	assert.Equal(t, e.MachineId, e.Mutation().Source.MachId)
+}
+
+func TestEvMutations(t *testing.T) {
+	t.Parallel()
+	// init
+	m := NewNoRels(t, nil)
+
+	// bind history
+	history := trackTransitions(m)
+
+	// bind handlers
+	err := m.BindHandlers(&TestEvH{})
+	assert.NoError(t, err)
+
+	// test
+	// handlers will assert
+	m.Add1("A", A{"t": t})
+	// m.When1("B", nil)
+
+	// assert
+	assertEventCountsMin(t, history, 1)
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+func TestEval(t *testing.T) {
+	// init
+
+	t.Setenv(EnvAmDetectEval, "1")
+	m := NewNoRels(t, nil)
+	_ = m.BindHandlers(&struct {
+		AB HandlerNegotiation
+		BA HandlerNegotiation
+	}{
+		AB: func(e *Event) bool {
+			return true
+		},
+		BA: func(e *Event) bool {
+			return true
+		},
+	})
+	m.detectEval = true
+
+	// test
+	a := 0
+	m.Eval(t.Name(), func() {
+		a = 1
+	}, nil)
+
+	// assert
+	assert.Equal(t, 1, a)
+
+	// TOOD test timeout, mach ctx, eval ctx
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+func TestBreakpoints(t *testing.T) {
+	t.Parallel()
+	// init
+	m := NewNoRels(t, nil)
+
+	// test
+	m.LogStackTrace = true
+	m.AddBreakpoint(S{"A"}, S{"B"}, false)
+	m.Add1("A", nil)
 
 	// dispose
 	m.Dispose()
@@ -1307,7 +1423,7 @@ func TestSelfHandlersForCalledOnly(t *testing.T) {
 func TestRegressionRemoveCrossBlockedByImplied(t *testing.T) {
 	t.Parallel()
 	// init
-	m := NewCustomStates(t, Struct{
+	m := NewCustomStates(t, Schema{
 		"A": {Remove: S{"B"}},
 		"B": {Remove: S{"A"}},
 		"Z": {Add: S{"B"}},
@@ -1327,7 +1443,7 @@ func TestRegressionRemoveCrossBlockedByImplied(t *testing.T) {
 func TestRegressionImpliedBlockByBeingRemoved(t *testing.T) {
 	t.Parallel()
 	// init
-	m := NewCustomStates(t, Struct{
+	m := NewCustomStates(t, Schema{
 		"Wet":   {Require: S{"Water"}},
 		"Dry":   {Remove: S{"Wet"}},
 		"Water": {Add: S{"Wet"}, Remove: S{"Dry"}},
@@ -1470,6 +1586,7 @@ func TestWhenNot(t *testing.T) {
 	// test
 	m.Add(S{"A"}, nil)
 	<-m.WhenNot(S{"B", "C"}, nil)
+	<-m.WhenNot1("B", nil)
 
 	// assert
 	assertStates(t, m, S{"A"})
@@ -1613,16 +1730,20 @@ type TestStateCtxHandlers struct {
 }
 
 func (h *TestStateCtxHandlers) AState(e *Event) {
+	mach := e.Machine()
 	t := e.Args["t"].(*testing.T)
 	stepCh := e.Args["stepCh"].(chan bool)
-	stateCtx := e.Machine().NewStateCtx("A")
+	stateCtx := mach.NewStateCtx("A")
+
 	h.callbackCh = make(chan struct{})
 	go func() {
 		<-stepCh
-		assertStates(t, e.Machine(), S{})
+		assertStates(t, mach, S{})
 		assert.Error(t, stateCtx.Err(), "state context should be canceled")
 		close(h.callbackCh)
 	}()
+
+	assert.Equal(t, "A", e.Transition().latestHandlerToState)
 }
 
 func TestStateCtx(t *testing.T) {
@@ -1649,6 +1770,15 @@ func TestStateCtx(t *testing.T) {
 	// assert
 	assertStates(t, m, S{})
 
+	// test early cancel
+	ctx := m.NewStateCtx("B")
+	select {
+	case <-ctx.Done():
+		// pass
+	default:
+		t.Fatal("expected cancel")
+	}
+
 	// dispose
 	m.Dispose()
 	<-m.WhenDisposed()
@@ -1657,24 +1787,34 @@ func TestStateCtx(t *testing.T) {
 // TestQueueCheckable
 type TestQueueCheckableHandlers struct {
 	*ExceptionHandler
-	assertsCount int
+	assertsCount int16
 }
 
 func (h *TestQueueCheckableHandlers) AState(e *Event) {
 	t := e.Args["t"].(*testing.T)
-	e.Machine().Add(S{"B"}, nil)
-	e.Machine().Add(S{"C"}, nil)
-	e.Machine().Add(S{"D"}, nil)
-	assert.Len(t, e.Machine().queue, 3, "queue should have 3 mutations scheduled")
+	m := e.Machine()
+	m.Add(S{"B"}, nil)
+	m.Add(S{"C"}, nil)
+	m.Add(S{"D"}, nil)
+	assert.Len(t, m.queue, 3, "queue should have 3 mutations scheduled")
 	h.assertsCount++
-	assert.Equal(t, 1,
-		e.Machine().IsQueued(MutationAdd, S{"C"}, false, false, 0),
-		"C should be queued")
+
+	idx, found := m.IsQueued(MutationAdd, S{"C"}, false, false, 0, false,
+		PositionAny)
+	assert.Equal(t, uint16(1), idx, "C should be queued")
+	assert.True(t, found, "C should be queued")
+	assert.True(t, m.WillBe1("C"), "A should NOT be queued")
 	h.assertsCount++
-	assert.Equal(t, -1,
-		e.Machine().IsQueued(MutationAdd, S{"A"}, false, false, 0),
-		"A should NOT be queued")
+
+	_, found = m.IsQueued(MutationAdd, S{"A"}, false, false, 0, false,
+		PositionAny)
+	assert.False(t, found, "A should NOT be queued")
+	assert.False(t, m.WillBe1("A"), "A should NOT be queued")
 	h.assertsCount++
+
+	// coverage
+	assert.False(t, m.WillBeRemoved1("A"), "No removal should be queued")
+	assert.False(t, m.WillBeRemoved1("A"), "No removal should be queued")
 }
 
 func TestQueueCheckable(t *testing.T) {
@@ -1684,14 +1824,13 @@ func TestQueueCheckable(t *testing.T) {
 
 	// bind handlers
 	handlers := &TestQueueCheckableHandlers{}
-	err := m.BindHandlers(handlers)
-	assert.NoError(t, err)
+	m.MustBindHandlers(handlers)
 
 	// test
 	m.Add(S{"A"}, A{"t": t})
 
 	// assert
-	assert.Equal(t, 3, handlers.assertsCount, "asserts executed")
+	assert.Equal(t, int16(3), handlers.assertsCount, "asserts executed")
 	assertNoException(t, m)
 
 	// dispose
@@ -1705,11 +1844,11 @@ func TestPartialAuto(t *testing.T) {
 	m := NewNoRels(t, nil)
 
 	// relations
-	m.states["C"] = State{
+	m.schema["C"] = State{
 		Auto:    true,
 		Require: S{"B"},
 	}
-	m.states["D"] = State{
+	m.schema["D"] = State{
 		Auto:    true,
 		Require: S{"B"},
 	}
@@ -1736,7 +1875,7 @@ func TestTime(t *testing.T) {
 	m := NewNoRels(t, nil)
 
 	// relations
-	m.states["B"] = State{Multi: true}
+	m.schema["B"] = State{Multi: true}
 
 	// test 1
 	// ()[]
@@ -1777,8 +1916,9 @@ func TestTime(t *testing.T) {
 	// assert
 	assertStates(t, m, S{"A", "B", "D", "C"})
 	assertTime(t, m, S{"A", "B", "C", "D"}, Time{3, 7, 5, 1})
-	assert.True(t, IsTimeAfter(now, before))
-	assert.False(t, IsTimeAfter(before, now))
+	assert.True(t, now.After(true, before))
+	assert.False(t, before.After(true, now))
+	assert.Equal(t, 16, int(m.Time(nil).Sum(nil)))
 
 	// dispose
 	m.Dispose()
@@ -1790,16 +1930,18 @@ func TestWhenCtx(t *testing.T) {
 	// init
 	m := NewNoRels(t, S{"A", "B"})
 
-	// wait on 2 Whens with a step context
+	// wait on "when" methods with a "step" context
 	ctx, cancel := context.WithCancel(context.Background())
 	whenTimeCh := m.WhenTime(S{"A", "B"}, Time{3, 3}, ctx)
+	whenTicks1Ch := m.WhenTicks("A", 2, ctx)
+	whenTicks2Ch := m.WhenTime1("B", 3, ctx)
 	whenArgsCh := m.WhenArgs("B", A{"foo": "bar"}, ctx)
 	whenCh := m.When1("C", ctx)
 
 	// assert
-	assert.Greater(t, len(m.indexWhenTime), 0)
-	assert.Greater(t, len(m.indexWhen), 0)
-	assert.Greater(t, len(m.indexWhenArgs), 0)
+	assert.Greater(t, len(m.subs.whenTime), 0)
+	assert.Greater(t, len(m.subs.when), 0)
+	assert.Greater(t, len(m.subs.whenArgs), 0)
 
 	go func() {
 		time.Sleep(10 * time.Millisecond)
@@ -1813,21 +1955,31 @@ func TestWhenCtx(t *testing.T) {
 		t.Fatal("when shouldnt be resolved")
 	case <-whenTimeCh:
 		t.Fatal("when shouldnt be resolved")
+	case <-whenTicks1Ch:
+		t.Fatal("when shouldnt be resolved")
+	case <-whenTicks2Ch:
+		t.Fatal("when shouldnt be resolved")
 	case <-ctx.Done():
+		// resolved
 	}
 
-	// wait for the context to be canceled and cleanups happen
-	time.Sleep(10 * time.Millisecond)
+	// GC contexts via another mutation
+	m.Add(S{"D"}, nil)
 
 	// assert
-	// use internal locks to avoid races
-	m.activeStatesLock.Lock()
-	m.indexWhenArgsLock.Lock()
-	assert.Equal(t, len(m.indexWhenTime), 0)
-	assert.Equal(t, len(m.indexWhen), 0)
-	assert.Equal(t, len(m.indexWhenArgs), 0)
-	m.activeStatesLock.Unlock()
-	m.indexWhenArgsLock.Unlock()
+	assert.Equal(t, 0, len(m.subs.whenTime))
+	assert.Equal(t, 0, len(m.subs.when))
+	assert.Equal(t, 0, len(m.subs.whenArgs))
+
+	// test validation
+	whenTimeCh = m.WhenTime(S{"A", "B"}, Time{1}, nil)
+	assert.True(t, m.IsErr())
+	<-whenTimeCh // TODO timeout
+
+	// test passed
+	whenTimeCh = m.WhenTime(S{"A"}, Time{1}, nil)
+	assert.True(t, m.IsErr())
+	<-whenTimeCh // TODO timeout
 
 	// dispose
 	m.Dispose()
@@ -1919,14 +2071,35 @@ func (h *TestNewCommonHandlers) AState(e *Event) {}
 
 func TestNewCommon(t *testing.T) {
 	t.Parallel()
+
 	// init
-	s := Struct{"A": {}, Exception: {}}
+	s := Schema{"A": {}, StateException: {}}
 	m, err := NewCommon(context.TODO(), "foo", s, maps.Keys(s),
 		&TestNewCommonHandlers{}, nil, nil)
 
 	// assert
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(m.handlers))
+}
+
+func TestNewCommonLessCommon(t *testing.T) {
+	t.Setenv("AM_TEST_RUNNER", "1")
+
+	m := NewNoRels(t, S{"A", "C"})
+
+	// init
+	s := Schema{"A": {}, StateException: {}}
+	m2, err := NewCommon(context.TODO(), "foo", s, maps.Keys(s),
+		&TestNewCommonHandlers{}, m, &Opts{LogLevel: LogChanges})
+
+	// assert
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(m2.handlers))
+	assert.Greater(t, m2.HandlerTimeout, m.HandlerTimeout)
+
+	_, err = NewCommon(context.TODO(), "foo", s, S{"A", "B"},
+		&TestNewCommonHandlers{}, m, &Opts{LogLevel: LogChanges})
+	assert.Error(t, err)
 }
 
 // TestTracers
@@ -1936,20 +2109,36 @@ type TestTracersHandlers struct {
 
 func (h *TestTracersHandlers) AState(e *Event) {}
 
+type TestTracersTracer struct {
+	*NoOpTracer
+}
+
+func (t *TestTracersTracer) MachineInit(m Api) context.Context {
+	// unittest only, this should always inherit
+	return context.Background()
+}
+
 func TestTracers(t *testing.T) {
 	t.Parallel()
-	tNoop := &NoOpTracer{}
-	m := New(context.TODO(), Struct{"A": {}}, &Opts{
+
+	// init
+	tNoop := &TestTracersTracer{}
+	m := NewNoRels(t, nil)
+	m2 := New(context.TODO(), Schema{"A": {}}, &Opts{
 		Tracers: []Tracer{tNoop},
+		Parent:  m,
 	})
-	_ = m.BindHandlers(&TestTracersHandlers{})
-	assert.Equal(t, 1, len(m.tracers))
-	assert.False(t, m.tracers[0].Inheritable())
-	m.Add1("A", nil)
+	_ = m2.BindHandlers(&TestTracersHandlers{})
+	assert.Equal(t, 1, len(m2.tracers))
+	assert.False(t, m2.tracers[0].Inheritable())
+	m2.Add1("A", nil)
+
+	// assert
+	assert.Len(t, m2.Tracers(), 1)
 
 	// dispose
-	m.Dispose()
-	<-m.WhenDisposed()
+	m2.Dispose()
+	<-m2.WhenDisposed()
 }
 
 func TestQueueLimit(t *testing.T) {
@@ -1964,29 +2153,28 @@ func TestSubmachines(t *testing.T) {
 	t.Skip()
 }
 
-func TestEval(t *testing.T) {
-	t.Parallel()
-	// TODO TestEval
-	t.Skip()
-}
-
 func TestSetStates(t *testing.T) {
 	t.Parallel()
+
 	// init
 	m := NewNoRels(t, S{"A", "C"})
 
 	// add relations and states
-	s := m.GetStruct()
+	s := m.Schema()
+	index := m.StateNames()
 	s["A"] = State{Multi: true}
 	s["B"] = State{Remove: S{"C"}}
 	s["D"] = State{Add: S{"E"}}
 	s["E"] = State{}
+	index = append(index, "E")
 
 	// update states
-	err := m.SetStruct(s, S{"A", "B", "C", "D", "E"})
+	rev := m.SchemaVer()
+	err := m.SetSchema(s, index)
 	if err != nil {
 		t.Fatal(err)
 	}
+	assert.NotEqual(t, rev, m.SchemaVer())
 
 	// test
 	m.Set(S{"A", "B", "D"}, nil)
@@ -2036,6 +2224,9 @@ func TestAny(t *testing.T) {
 	// test
 	assert.True(t, m.Any(S{"A", "B"}, S{"C"}), "A B should be active")
 	assert.True(t, m.Any(S{"A", "B", "C"}, S{"A"}), "A B C is partially active")
+	assert.True(t, m.Any1("A", "B"), "A B is fully active")
+	assert.False(t, m.Any(S{"C"}), "C should not be active")
+	assert.False(t, m.Any1("C"), "C should not be active")
 
 	// dispose
 	m.Dispose()
@@ -2048,7 +2239,7 @@ func TestClock(t *testing.T) {
 	m := NewNoRels(t, nil)
 	_ = m.VerifyStates(S{"A", "B", "C", "D", "Exception"})
 	// relations
-	m.states["B"] = State{Multi: true}
+	m.schema["B"] = State{Multi: true}
 
 	// test 1
 	// ()[]
@@ -2101,28 +2292,24 @@ func TestInspect(t *testing.T) {
 	// (A:1 C:1)[B:0 D:0 Exception:0]
 	names := S{"A", "B", "C", "D", "Exception"}
 	expected := `
-		A:
-		  State:   true 1
-		  Auto:    true
-		  Require: C
-		
-		B:
-		  State:   false 0
-		  Multi:   true
-		  Add:     C
-		
-		C:
-		  State:   true 1
-		  After:   D
-		
-		D:
-		  State:   false 0
-		  Add:     C B
-	
-		Exception:
-		  State:   false 0
-		  Multi:   true
-		`
+		1 A
+		    |Time     1
+		    |Auto     true
+		    |Require  C
+		0 B
+		    |Time     0
+		    |Multi    true
+		    |Add      C
+		1 C
+		    |Time     1
+		    |After    D
+		0 D
+		    |Time     0
+		    |Add      C B
+		0 Exception
+		    |Time     0
+		    |Multi    true
+    `
 	assertString(t, m, expected, names)
 	// (A:1 C:1)[B:0 D:0 Exception:0]
 	m.Remove(S{"C"}, nil)
@@ -2132,28 +2319,24 @@ func TestInspect(t *testing.T) {
 	m.Add(S{"D"}, nil)
 	// (A:3 B:1 C:3 D:1)[Exception:0]
 	expected = `
-		Exception:
-		  State:   false 0
-		  Multi:   true
-	
-		A:
-		  State:   true 3
-		  Auto:    true
-		  Require: C
-		
-		B:
-		  State:   true 1
-		  Multi:   true
-		  Add:     C
-		
-		C:
-		  State:   true 3
-		  After:   D
-		
-		D:
-		  State:   true 1
-		  Add:     C B
-		`
+		0 Exception
+		    |Time     0
+		    |Multi    true
+		1 A
+		    |Time     3
+		    |Auto     true
+		    |Require  C
+		1 B
+		    |Time     1
+		    |Multi    true
+		    |Add      C
+		1 C
+		    |Time     3
+		    |After    D
+		1 D
+		    |Time     1
+		    |Add      C B
+    `
 	err := m.VerifyStates(S{"Exception", "A", "B", "C", "D"})
 	assert.NoError(t, err)
 	assertString(t, m, expected, nil)
@@ -2165,7 +2348,7 @@ func TestInspect(t *testing.T) {
 
 func TestNilCtx(t *testing.T) {
 	t.Parallel()
-	m := New(nil, Struct{"A": {}}, nil) //nolint:all
+	m := New(nil, Schema{"A": {}}, nil) //nolint:all
 	assert.Greater(t, len(m.id), 5)
 
 	// dispose
@@ -2180,7 +2363,10 @@ type TestWhenQueueEndsHandlers struct {
 
 func (h *TestWhenQueueEndsHandlers) AState(e *Event) {
 	close(e.Args["readyMut"].(chan struct{}))
-	<-e.Args["readyGo"].(chan struct{})
+	readyGo, ok := e.Args["readyGo"].(chan struct{})
+	if ok {
+		<-readyGo
+	}
 	e.Machine().Add1("B", nil)
 }
 
@@ -2213,6 +2399,65 @@ func TestWhenQueueEnds(t *testing.T) {
 	m.Add1("A", A{"readyMut": readyMut, "readyGo": readyGo})
 	// confirm the queue wait is closed
 	<-queueEnds
+	m.Remove1("A", nil)
+
+	// test with ctx race
+	ctx, cancel := context.WithCancel(context.Background())
+	readyMut = make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		<-readyMut
+		queueEnds = m.WhenQueueEnds(ctx)
+		cancel()
+		// confirm the queue wait is closed
+		<-queueEnds
+		close(done)
+	}()
+	m.Add1("A", A{"readyMut": readyMut})
+	<-done
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+// TestWhenQueue
+type TestWhenQueueHandlers struct {
+	*ExceptionHandler
+	done chan struct{}
+}
+
+func (h *TestWhenQueueHandlers) AState(e *Event) {
+	m := e.Machine()
+	t := e.Args["t"].(*testing.T)
+
+	m.Add1("B", nil)
+	m.Add1("C", nil)
+	res := m.Add1("D", nil)
+	h.done = make(chan struct{})
+
+	waiting := make(chan struct{})
+	go func() {
+		go close(waiting)
+		<-m.WhenQueue(res)
+		assertStates(t, m, S{"A", "B", "C", "D"})
+		close(h.done)
+	}()
+	<-waiting
+}
+
+func TestWhenQueue(t *testing.T) {
+	t.Parallel()
+	// init
+	m := NewNoRels(t, nil)
+
+	// bind handlers
+	h := &TestWhenQueueHandlers{}
+	err := m.BindHandlers(h)
+	require.NoError(t, err)
+
+	m.Add1("A", A{"t": t})
+	<-h.done
 
 	// dispose
 	m.Dispose()
@@ -2225,19 +2470,19 @@ func TestGetRelationsBetween(t *testing.T) {
 	m := NewNoRels(t, nil)
 
 	// relations
-	m.states["A"] = State{
+	m.schema["A"] = State{
 		Add:   S{"B", "C"},
 		After: S{"B"},
 	}
-	m.states["B"] = State{
+	m.schema["B"] = State{
 		Remove: S{"C"},
 		Add:    S{"A"},
 	}
-	m.states["C"] = State{After: S{"D"}}
-	m.states["D"] = State{Require: S{"A"}}
+	m.schema["C"] = State{After: S{"D"}}
+	m.schema["D"] = State{Require: S{"A"}}
 
 	getRels := func(from, to string) []Relation {
-		relations, err := m.resolver.GetRelationsBetween(from, to)
+		relations, err := m.resolver.RelationsBetween(from, to)
 		assert.NoError(t, err)
 		return relations
 	}
@@ -2253,10 +2498,10 @@ func TestGetRelationsBetween(t *testing.T) {
 	rels = getRels("D", "A")
 	assert.Equal(t, RelationRequire, rels[0])
 
-	_, err := m.resolver.GetRelationsBetween("Unknown1", "A")
+	_, err := m.resolver.RelationsBetween("Unknown1", "A")
 	assert.Error(t, err)
 
-	_, err = m.resolver.GetRelationsBetween("A", "Unknown1")
+	_, err = m.resolver.RelationsBetween("A", "Unknown1")
 	assert.Error(t, err)
 
 	// dispose
@@ -2360,15 +2605,18 @@ func TestLogger(t *testing.T) {
 	m := NewNoRels(t, nil)
 
 	// test
-	m.SetLoggerSimple(t.Logf, LogEverything)
-	assert.NotNil(t, m.GetLogger())
+	m.SemLogger().SetSimple(t.Logf, LogEverything)
+	assert.NotNil(t, m.SemLogger().Logger())
 	assert.Panics(t, func() {
-		m.SetLoggerSimple(nil, LogEverything)
+		m.SemLogger().SetSimple(nil, LogEverything)
 	})
 	// coverage
 	m.Add1("A", nil)
-	m.SetLogger(nil)
+	m.SemLogger().SetLogger(nil)
 	m.Add1("A", nil)
+	m.SemLogger().EnableId(!m.SemLogger().IsId())
+	m.Log("foo")
+	m.SemLogger().SetEmpty(LogChanges)
 
 	// dispose
 	m.Dispose()
@@ -2387,6 +2635,8 @@ func TestIsClock(t *testing.T) {
 	// test
 	assert.False(t, m.IsClock(cAll))
 	assert.False(t, m.IsClock(cA))
+	cA["A"]++
+	assert.True(t, m.IsClock(cA))
 
 	// dispose
 	m.Dispose()
@@ -2439,10 +2689,11 @@ func TestExportImport(t *testing.T) {
 
 	// import
 	m2 := NewNoRels(t, nil)
-	err = m2.Import(serial)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t,
+		m2.Import(serial))
+	m2.id = m1.id
+	require.NoError(t,
+		m2.Import(serial))
 
 	// assert
 	assert.True(t, m2.StatesVerified(),
@@ -2468,6 +2719,7 @@ func TestHandlerTimeout(t *testing.T) {
 	// init
 	m := NewNoRels(t, nil)
 	m.HandlerTimeout = 450 * time.Millisecond
+	m.HandlerDeadline = time.Second
 
 	// bind handlers
 	err := m.BindHandlers(&TestHandlerTimeoutHandlers{})
@@ -2477,11 +2729,33 @@ func TestHandlerTimeout(t *testing.T) {
 	res := m.Add1("A", nil)
 
 	// assert TODO assert log
-	assert.Equal(t, Canceled, res)
+	assert.Equal(t, Canceled, res, "expecting Canceled")
 
 	// dispose
 	m.Dispose()
 	<-m.WhenDisposed()
+}
+
+// TestNestedMutation
+type TestHandlerAcceptTimeoutHandlers struct {
+	*ExceptionHandler
+}
+
+func (h *TestHandlerAcceptTimeoutHandlers) AState(e *Event) {
+	// wait longer then the timeout
+	time.Sleep(500 * time.Millisecond)
+
+	// TODO assert pre-err
+
+	if !e.IsValid() {
+		return
+	}
+	panic("should not reach here")
+}
+
+func TestHandlerDeadline(t *testing.T) {
+	t.Skip("TODO")
+	// TODO assert new event loop and backoff
 }
 
 // TestBindTracer
@@ -2495,15 +2769,18 @@ func TestBindTracer(t *testing.T) {
 
 	// init
 	m := NewNoRels(t, nil)
-	trace := &TestBindTracerTracer{}
+	trace := TestBindTracerTracer{}
 
 	// test
-	_ = m.BindTracer(trace)
-	removed := m.DetachTracer(trace)
+	err := m.BindTracer(&trace)
+	assert.NoError(t, err)
+	removed := m.DetachTracer(&trace)
+	err = m.BindTracer(trace)
+	assert.Error(t, err)
 
 	// assert
 	assert.Len(t, m.tracers, 0)
-	assert.True(t, removed)
+	assert.NoError(t, removed)
 
 	// dispose
 	m.Dispose()
@@ -2565,7 +2842,7 @@ func TestListHandlers(t *testing.T) {
 
 	// assert
 	assert.Len(t, names, 4)
-	assert.ElementsMatch(t, []string{"AEnter", "AState", "AnyB", HandlerGlobal},
+	assert.ElementsMatch(t, []string{"AEnter", "AState", "AnyB", HandlerAnyEnter},
 		names)
 
 	// anon handlers
@@ -2589,7 +2866,7 @@ func TestListHandlers(t *testing.T) {
 
 	// assert
 	assert.Len(t, names, 4)
-	assert.ElementsMatch(t, []string{"AEnter", "AState", "AnyB", HandlerGlobal},
+	assert.ElementsMatch(t, []string{"AEnter", "AState", "AnyB", HandlerAnyEnter},
 		names)
 
 	// anon handlers for non-existing states
@@ -2612,3 +2889,313 @@ func TestListHandlers(t *testing.T) {
 }
 
 // TODO TestResolverDagSort
+
+func TestCountActive(t *testing.T) {
+	t.Parallel()
+
+	// init
+	m := NewNoRels(t, nil)
+	m.Add1("A", nil)
+
+	assert.Len(t, m.ActiveStates(S{"A", "B"}), 1)
+}
+
+func TestAddErr(t *testing.T) {
+	t.Parallel()
+
+	// add err
+	m := NewNoRels(t, nil)
+	err := errors.New("test")
+	m.AddErrState("B", err, nil)
+	m.AddErr(err, nil)
+	assert.True(t, m.Is1("B"))
+	assert.True(t, m.IsErr())
+
+	// panic to state
+	m = NewNoRels(t, nil)
+	go func() {
+		defer m.PanicToErrState("B", nil)
+
+		panic("test")
+	}()
+	<-m.WhenErr(context.TODO())
+	assert.True(t, m.Is1("B"))
+	assert.True(t, m.IsErr())
+
+	// panic to err
+	m = NewNoRels(t, nil)
+	go func() {
+		defer m.PanicToErr(nil)
+
+		panic("test")
+	}()
+	<-m.WhenErr(context.TODO())
+	assert.True(t, m.IsErr())
+}
+
+func TestToggle(t *testing.T) {
+	t.Parallel()
+
+	m := NewNoRels(t, nil)
+	m.Toggle1("A", nil)
+	assert.True(t, m.Is1("A"))
+	m.Toggle1("A", nil)
+	assert.False(t, m.Is1("A"))
+
+	m = NewNoRels(t, nil)
+	m.Toggle(S{"A"}, nil)
+	assert.True(t, m.Is1("A"))
+	m.Toggle(S{"A"}, nil)
+	assert.False(t, m.Is1("A"))
+
+	// TODO test params
+}
+
+func TestOpts(t *testing.T) {
+	t.Parallel()
+
+	// TODO test parent tracer
+
+	m := NewNoRels(t, nil)
+
+	tags := []string{"a", "b"}
+	m2 := New(m.Ctx(), Schema{}, &Opts{
+		Parent:            m,
+		DontLogId:         true,
+		DontLogStackTrace: true,
+		LogLevel:          LogChanges,
+		QueueLimit:        10,
+		Tags:              tags,
+		Resolver:          &DefaultRelationsResolver{},
+	})
+	assert.Equal(t, m.Id(), m2.ParentId())
+	assert.Equal(t, false, m2.LogStackTrace)
+	assert.Equal(t, tags, m2.Tags())
+	assert.Equal(t, uint16(10), m2.QueueLimit)
+	assert.Equal(t, LogChanges, m2.SemLogger().Level())
+
+	tags2 := []string{"c"}
+	m2.SetTags(tags2)
+	assert.Equal(t, tags2, m2.Tags())
+}
+
+func TestDisposedNoOp(t *testing.T) {
+	t.Parallel()
+
+	m := NewNoRels(t, nil)
+	m.Dispose()
+	<-m.WhenDisposed()
+	e := &Event{}
+	s := S{"A"}
+
+	// mutations
+	assert.Equal(t, Canceled, m.Set(s, nil))
+	assert.Equal(t, Canceled, m.Add1("A", nil))
+	assert.Equal(t, Canceled, m.Remove1("A", nil))
+	assert.Equal(t, Canceled, m.Toggle1("A", nil))
+	assert.Equal(t, Canceled, m.Toggle(s, nil))
+	assert.Equal(t, Canceled, m.AddErrState("A", errors.New("e"), nil))
+	assert.Equal(t, Canceled, m.EvAdd1(e, "A", nil))
+	assert.Equal(t, Canceled, m.EvRemove1(e, "A", nil))
+	assert.Equal(t, Canceled, m.EvAddErrState(e, "A", errors.New("e"), nil))
+	assert.Equal(t, Canceled, m.processQueue())
+
+	// states
+	assert.Len(t, m.Queue(), 0)
+	assert.Len(t, m.ActiveStates(nil), 0)
+	assert.Len(t, m.Clock(nil), 0)
+
+	// when
+	<-m.When1("A", nil)
+	<-m.WhenNot1("A", nil)
+	<-m.WhenArgs("A", A{}, nil)
+	<-m.WhenTime(s, Time{}, nil)
+	<-m.WhenQueueEnds(context.TODO())
+
+	res, _ := m.processHandlers(e)
+	assert.Equal(t, Canceled, res)
+	res, _ = m.handle("test", A{}, false, false, false)
+	assert.Equal(t, Canceled, res)
+
+	// others
+	_, found := m.IsQueued(MutationAdd, s, false, false, 0, false, PositionAny)
+	assert.False(t, found)
+	assert.Equal(t, -1, m.Index1("A"))
+	assert.Empty(t, m.Has1("A"))
+	assert.Empty(t, m.IsClock(Clock{}))
+	assert.Empty(t, m.IsTime(Time{}, s))
+	assert.Empty(t, m.String())
+	assert.Empty(t, m.Time(nil))
+	assert.Empty(t, m.time(nil))
+	assert.Empty(t, m.Time(nil).Sum(nil))
+	assert.Empty(t, m.Tick("A"))
+	assert.Empty(t, m.StringAll())
+	assert.Empty(t, m.Inspect(nil))
+	assert.Empty(t, m.detectQueueDuplicates(MutationAdd, s, false))
+	assert.Empty(t, m.Eval("test", func() {}, nil))
+	assert.Empty(t, m.BindHandlers(struct{}{}))
+	assert.Empty(t, m.DetachHandlers(struct{}{}))
+	assert.Empty(t, m.VerifyStates(s))
+	assert.Empty(t, m.NewStateCtx("A"))
+	assert.Empty(t, m.newHandler(struct{}{}, "test", &reflect.Value{},
+		[]string{"test"}))
+	assert.Empty(t, m.setActiveStates(s, s, false))
+	m.log(LogChanges, "")
+	m.Log("")
+	m.doDispose(false)
+	m.PanicToErr(A{})
+	m.PanicToErrState("A", A{})
+	m.queueMutation(MutationAdd, s, A{}, nil)
+}
+
+// SCHEMA GROUPS
+
+type TestGroups0Def struct {
+	// shadow duplicated StatesBase
+	*StatesBase
+
+	State00 string
+	State01 string
+}
+type TestGroups1Def struct {
+	// shadow duplicated StatesBase
+	*TestGroups0Def
+
+	State10 string
+	State11 string
+}
+type TestGroups2Def struct {
+	// shadow duplicated StatesBase
+	*TestGroups1Def
+
+	State20 string
+	State21 string
+}
+
+type TestGroupsBaseGroupsDef struct {
+	BaseGroup0 S
+	BaseGroup1 S
+}
+
+type TestGroups2GroupsDef struct {
+	*TestGroupsBaseGroupsDef
+	Group0           S
+	GroupTestNameBar S
+}
+
+var testGroups0Schema = Schema{
+	testGroups2S.State00: {},
+	testGroups2S.State01: {},
+}
+
+var testGroups1Schema = SchemaMerge(
+	testGroups0Schema,
+	Schema{
+		testGroups2S.State10: {},
+		testGroups2S.State11: {},
+	})
+
+var testGroups2Schema = SchemaMerge(
+	testGroups1Schema,
+	Schema{
+		testGroups2S.State20: {},
+		testGroups2S.State21: {},
+	})
+
+// EXPORTS AND GROUPS
+
+var (
+	testGroups2S   = NewStates(TestGroups2Def{})
+	testGroupsBase = NewStateGroups(TestGroupsBaseGroupsDef{
+		BaseGroup0: S{"State10", "State11"},
+		BaseGroup1: S{"State21", "State10"},
+	})
+	testGroupsG = NewStateGroups(TestGroups2GroupsDef{
+		Group0:           S{"State20", "State21"},
+		GroupTestNameBar: S{"State11", "State20"},
+	}, testGroupsBase)
+)
+
+func TestGroups(t *testing.T) {
+	t.Parallel()
+
+	m := NewCustomStates(t, testGroups2Schema)
+	m.SetGroups(testGroupsG, testGroups2S)
+	groups, order := m.Groups()
+
+	assert.Equal(t, groups, map[string][]int{
+		// groups TODO inherited
+		// "BaseGroup0":       {3, 4},
+		// "BaseGroup1":       {6, 3},
+		"Group0":           {5, 6},
+		"GroupTestNameBar": {4, 5},
+
+		// schema
+		"self":           {5, 6},
+		"TestGroups1Def": {3, 4},
+		"TestGroups0Def": {1, 2},
+	})
+	assert.Equal(t, order, []string{
+		"Group0", "GroupTestNameBar", "self", "TestGroups1Def", "TestGroups0Def",
+	})
+}
+
+func TestCanAdd(t *testing.T) {
+	t.Parallel()
+	m := NewRels(t, nil)
+	// m.semLogger.SetLevel(LogDecisions)
+	m.AddBreakpoint1("C", "", true)
+	assert.Equal(t, Canceled, m.CanAdd(S{"A"}, nil), "Cant add A")
+	assert.Equal(t, Executed, m.CanAdd(S{"C"}, nil), "Can add C")
+
+	// TODO test handler negotiation
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+func TestWhenQuery(t *testing.T) {
+	t.Parallel()
+	m := NewNoRels(t, S{"A"})
+	query1 := func(c Clock) bool {
+		return c["A"] > c["B"]*4
+	}
+	query2 := func(c Clock) bool {
+		return c["A"] < c["B"]
+	}
+	when1 := m.WhenQuery(query1, nil)
+	when2 := m.WhenQuery(query2, nil)
+
+	// 1, 0
+	m.Add1("B", nil)
+	// 1, 1
+	m.Remove1("A", nil)
+	// 2, 1
+	m.Add1("A", nil)
+	// 3, 1
+	m.Remove1("A", nil)
+	// 4, 1
+	select {
+	case <-when2:
+		assert.Fail(t, "should NOT match")
+	case <-when1:
+		assert.Fail(t, "should NOT match")
+	default:
+		// ok
+	}
+	m.Add1("A", nil)
+	// 5, 1 = match
+	select {
+	case <-when1:
+	// ok
+	case <-when2:
+		assert.Fail(t, "should NOT match")
+	default:
+		assert.Fail(t, "should match")
+	}
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}

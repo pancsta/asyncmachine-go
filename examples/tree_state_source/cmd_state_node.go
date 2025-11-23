@@ -32,7 +32,10 @@ const (
 	serviceName = "tree_state_source"
 	// promPushFreq is the frequency of pushing metrics to Prometheus.
 	promPushFreq = 15 * time.Second
-	mutationFreq = 500 * time.Millisecond
+	// casual viewing
+	mutationFreq = 1 * time.Second
+	// load testing
+	// mutationFreq = 5 * time.Millisecond
 )
 
 type Node struct {
@@ -59,7 +62,7 @@ func init() {
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(false)
-	// amhelp.SetLogLevel(am.LogChanges)
+	// amhelp.SetEnvLogLevel(am.LogOps)
 }
 
 func main() {
@@ -150,7 +153,7 @@ func ReadEnv(ctx context.Context) *Node {
 
 func localWorker(ctx context.Context, node *Node) (*am.Machine, error) {
 	// worker state machine
-	worker, err := am.NewCommon(ctx, node.Name, states.FlightsStruct,
+	worker, err := am.NewCommon(ctx, node.Name, states.FlightsSchema,
 		ss.Names(), nil, nil, nil)
 	if err != nil {
 		panic(err)
@@ -163,7 +166,7 @@ func localWorker(ctx context.Context, node *Node) (*am.Machine, error) {
 
 func replicant(ctx context.Context, node *Node) (*arpc.Client, error) {
 	// RPC client
-	client, err := arpc.NewClient(ctx, node.ParentAddr, node.Name, states.FlightsStruct, states.FlightsStates.Names(), nil)
+	client, err := arpc.NewClient(ctx, node.ParentAddr, node.Name, states.FlightsSchema, states.FlightsStates.Names(), nil)
 	if err != nil {
 		panic(err)
 	}
@@ -265,7 +268,7 @@ func blockEcho(ctx context.Context, node *Node, mach am.Api) {
 			if time.Since(lastPush) < promPushFreq {
 				continue
 			}
-			fmt.Printf("Time: %d\n", mach.TimeSum(nil))
+			fmt.Printf("Time: %d\n", mach.Time(nil).Sum(nil))
 			lastPush = time.Now()
 			if node.Prom == nil {
 				continue
@@ -292,7 +295,7 @@ func randMut(mach am.Api) {
 	pick = rand.Intn(amount)
 	state3 := ss.Names()[pick]
 
-	skip := am.S{am.Exception, ssrpc.WorkerStates.SendPayload}
+	skip := am.S{am.StateException, ssrpc.WorkerStates.SendPayload}
 	for _, s := range skip {
 		if state1 == s || state2 == s || state3 == s {
 			return
@@ -302,7 +305,7 @@ func randMut(mach am.Api) {
 	mach.Add(am.S{state1, state2, state3}, nil)
 	if mach.IsErr() {
 		fmt.Printf("Error: %s", mach.Err())
-		mach.Remove1(am.Exception, nil)
+		mach.Remove1(am.StateException, nil)
 	}
 }
 
@@ -317,7 +320,7 @@ func httpServer(ctx context.Context, node *Node, worker am.Api) {
 	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, worker.ActiveStates())
+		fmt.Fprintln(w, worker.ActiveStates(nil))
 	})
 
 	go func() {

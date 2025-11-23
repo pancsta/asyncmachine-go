@@ -3,8 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 ## aRPC Integration Tests Tutorial
 
@@ -14,7 +13,7 @@ This tutorial will present how to set up, work, and debug asyncmachine RPC (aRPC
 tests. It will use [am-dbg](/tools/debugger/README.md) as an example - both an in-memory instance (no UI), and an RPC
 worker showing a regular TUI. Code for running both versions will be almost identical, thanks to network transparency.
 
-[![Video Walkthrough](https://pancsta.github.io/assets/asyncmachine-go/rpc-demo1.png)](https://pancsta.github.io/assets/asyncmachine-go/rpc-demo1.mkv)
+[![Video Walkthrough](https://pancsta.github.io/assets/asyncmachine-go/videos/rpc-demo1.png)](https://pancsta.github.io/assets/asyncmachine-go/videos/rpc-demo1.mp4)
 
 - top left: worker instance
   - manipulated by the test suite

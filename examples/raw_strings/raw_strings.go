@@ -17,12 +17,12 @@ func init() {
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(false)
-	// amhelp.SetLogLevel(am.LogChanges)
+	// amhelp.SetEnvLogLevel(am.LogOps)
 }
 
 func main() {
 	// init the state machine
-	mach := am.New(nil, am.Struct{
+	mach := am.New(nil, am.Schema{
 		"ProcessingFile": { // async
 			Remove: am.S{"FileProcessed"},
 		},
@@ -33,7 +33,7 @@ func main() {
 			Auto:    true,
 			Require: am.S{"ProcessingFile"},
 		},
-	}, &am.Opts{LogLevel: am.LogOps, ID: "raw-strings"})
+	}, &am.Opts{LogLevel: am.LogOps, Id: "raw-strings"})
 	amhelp.MachDebugEnv(mach)
 	mach.BindHandlers(&Handlers{
 		Filename: "README.md",

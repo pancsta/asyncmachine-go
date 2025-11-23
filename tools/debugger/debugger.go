@@ -2,360 +2,79 @@
 // command can be found in tools/cmd/am-dbg.
 package debugger
 
+// TODO
+//  - ProcessFilterChange state
+//  - DoUpdateLog state
+//  - refac WalkUnsage to Walk via delayed writes, to fix races
+//  - use the `hMethod` convention and impl Eval2Getter
+
 import (
 	"bufio"
 	"context"
+	_ "embed"
 	"encoding/gob"
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"runtime"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/andybalholm/brotli"
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 	"github.com/zyedidia/clipper"
 	"golang.org/x/text/message"
 
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
+
 	"github.com/pancsta/asyncmachine-go/internal/utils"
+	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	amvis "github.com/pancsta/asyncmachine-go/tools/visualizer"
 )
 
-const (
-	// TODO light mode
-	colorActive     = tcell.ColorOlive
-	colorInactive   = tcell.ColorLimeGreen
-	colorHighlight  = tcell.ColorDarkSlateGray
-	colorHighlight2 = tcell.ColorDimGray
-	colorHighlight3 = tcell.Color233
-	colorErr        = tcell.ColorRed
-	// TODO customize
-	playInterval = 500 * time.Millisecond
-	// TODO add param --max-clients
-	maxClients            = 1000
-	timeFormat            = "15:04:05.000000000"
-	fastJumpAmount        = 50
-	arrowThrottleMs       = 200
-	logUpdateDebounce     = 300 * time.Millisecond
-	sidebarUpdateDebounce = time.Second
-	searchAsTypeWindow    = 1500 * time.Millisecond
-	healthcheckInterval   = 1 * time.Minute
-	// msgMaxAge             = 0
+type S = am.S
 
-	// maxMemMb = 100
-	maxMemMb        = 50
-	msgMaxThreshold = 300
-)
-
-var colorDefault = cview.Styles.PrimaryTextColor
-
-type Exportable struct {
-	MsgStruct *telemetry.DbgMsgStruct
-	MsgTxs    []*telemetry.DbgMsgTx
+type cache struct {
+	diagramId  string
+	diagramLvl int
+	diagramDom *goquery.Document
 }
-
-type MachAddress struct {
-	MachId    string
-	TxId      string
-	MachTime  uint64
-	HumanTime time.Time
-	// TODO support step
-	Step int
-}
-
-func (ma *MachAddress) Clone() *MachAddress {
-	return &MachAddress{
-		MachId:   ma.MachId,
-		TxId:     ma.TxId,
-		Step:     ma.Step,
-		MachTime: ma.MachTime,
-	}
-}
-
-func (a *MachAddress) String() string {
-	if a.TxId != "" {
-		return fmt.Sprintf("mach://%s/%s", a.MachId, a.TxId)
-	}
-	if a.MachTime != 0 {
-		return fmt.Sprintf("mach://%s/t%d", a.MachId, a.MachTime)
-	}
-	if !a.HumanTime.IsZero() {
-		return fmt.Sprintf("mach://%s/%s", a.MachId, a.HumanTime)
-	}
-
-	return fmt.Sprintf("mach://%s", a.MachId)
-}
-
-type Client struct {
-	// bits which get saved into the go file
-	Exportable
-	// current transition, 1-based, mirrors the slider
-	CursorTx1 int
-	// current step, 1-based, mirrors the slider
-	CursorStep          int
-	SelectedState       string
-	SelectedReaderEntry *logReaderEntryPtr
-	ReaderCollapsed     bool
-
-	txCache   map[string]int
-	id        string
-	connID    string
-	connected atomic.Bool
-	// processed
-	msgTxsParsed []*MsgTxParsed
-	// processed list of filtered tx indexes
-	msgTxsFiltered []int
-	// cache of processed log entries
-	logMsgs [][]*am.LogEntry
-	// extracted log entries per tx ID
-	// TODO GC when all entries are closedAt and the first client's tx is later
-	//  than the latest closedAt; whole tx needs to be disposed at the same time
-	logReader map[string][]*logReaderEntry
-	// indexes of txs with errors, desc order for bisects
-	// TOOD refresh on GC
-	errors   []int
-	mTimeSum uint64
-}
-
-func (c *Client) lastActive() time.Time {
-	if len(c.MsgTxs) == 0 {
-		return time.Time{}
-	}
-
-	return *c.MsgTxs[len(c.MsgTxs)-1].Time
-}
-
-func (c *Client) hadErrSinceTx(tx, distance int) bool {
-	if slices.Contains(c.errors, tx) {
-		return true
-	}
-
-	// see TestHadErrSince
-	index := sort.Search(len(c.errors), func(i int) bool {
-		return c.errors[i] < tx
-	})
-
-	if index >= len(c.errors) {
-		return false
-	}
-
-	return tx-c.errors[index] < distance
-}
-
-func (c *Client) lastTxTill(hTime time.Time) int {
-	l := len(c.MsgTxs)
-	if l == 0 {
-		return -1
-	}
-
-	i := sort.Search(l, func(i int) bool {
-		t := c.MsgTxs[i].Time
-		return t.After(hTime) || t.Equal(hTime)
-	})
-
-	if i == l {
-		i = l - 1
-	}
-	tx := c.MsgTxs[i]
-
-	// pick the closer one
-	if i > 0 && tx.Time.Sub(hTime) > hTime.Sub(*c.MsgTxs[i-1].Time) {
-		return i
-	} else {
-		return i
-	}
-}
-
-func (c *Client) addReaderEntry(txId string, entry *logReaderEntry) int {
-	if c.logReader == nil {
-		c.logReader = make(map[string][]*logReaderEntry)
-	}
-	c.logReader[txId] = append(c.logReader[txId], entry)
-
-	return len(c.logReader[txId]) - 1
-}
-
-func (c *Client) getReaderEntry(txId string, idx int) *logReaderEntry {
-	if c.logReader == nil {
-		c.logReader = make(map[string][]*logReaderEntry)
-	}
-	ptrTx, ok := c.logReader[txId]
-	if !ok || idx >= len(ptrTx) {
-		return nil
-	}
-
-	return ptrTx[idx]
-}
-
-func (c *Client) statesToIndexes(states am.S) []int {
-	return amhelp.StatesToIndexes(c.MsgStruct.StatesIndex, states)
-}
-
-func (c *Client) indexesToStates(indexes []int) am.S {
-	return amhelp.IndexesToStates(c.MsgStruct.StatesIndex, indexes)
-}
-
-func (c *Client) txIndex(id string) int {
-	if c.txCache == nil {
-		c.txCache = make(map[string]int)
-	}
-	if idx, ok := c.txCache[id]; ok {
-		return idx
-	}
-
-	for i, tx := range c.MsgTxs {
-		if tx.ID == id {
-			c.txCache[id] = i
-			return i
-		}
-	}
-
-	return -1
-}
-
-func (c *Client) tx(idx int) *telemetry.DbgMsgTx {
-	if idx < 0 || idx >= len(c.MsgTxs) {
-		return nil
-	}
-
-	return c.MsgTxs[idx]
-}
-
-func (c *Client) txByMachTime(sum uint64) int {
-	idx, ok := slices.BinarySearchFunc(c.msgTxsParsed,
-		&MsgTxParsed{TimeSum: sum}, func(i, j *MsgTxParsed) int {
-			if i.TimeSum < j.TimeSum {
-				return -1
-			} else if i.TimeSum > j.TimeSum {
-				return 1
-			}
-
-			return 0
-		})
-
-	if !ok {
-		return 0
-	}
-
-	return idx
-}
-
-func (c *Client) filterIndexByCursor1(cursor1 int) int {
-	if cursor1 == 0 {
-		return 0
-	}
-	return slices.Index(c.msgTxsFiltered, cursor1-1)
-}
-
-// TODO
-// func NewClient()
-
-type MsgTxParsed struct {
-	StatesAdded   []int
-	StatesRemoved []int
-	StatesTouched []int
-	// TimeSum is machine time.
-	TimeSum       uint64
-	ReaderEntries []*logReaderEntryPtr
-}
-
-type Opts struct {
-	SelectConnected bool
-	CleanOnConnect  bool
-	EnableMouse     bool
-	ShowReader      bool
-	// MachAddress to listen on
-	ServerAddr string
-	// Log level of the debugger's machine
-	DbgLogLevel am.LogLevel
-	DbgLogger   *log.Logger
-	// Filters for the transitions and logging
-	Filters *OptsFilters
-	// File path to import (brotli)
-	ImportData string
-	// Screen overload for tests & ssh
-	Screen tcell.Screen
-	// Debugger's ID
-	ID string
-	// version of this instance
-	Version  string
-	MaxMemMb int
-	Log2Ttl  time.Duration
-}
-
-type OptsFilters struct {
-	SkipCanceledTx  bool
-	SkipAutoTx      bool
-	SkipEmptyTx     bool
-	SkipHealthcheck bool
-	LogLevel        am.LogLevel
-}
-
-type ToolName string
-
-const (
-	// row 1
-	toolFilterCanceledTx  ToolName = "skip-canceled"
-	toolFilterAutoTx      ToolName = "skip-auto"
-	toolFilterEmptyTx     ToolName = "skip-empty"
-	toolFilterHealthcheck ToolName = "skip-healthcheck"
-	ToolFilterSummaries   ToolName = "hide-summaries"
-	toolLog0              ToolName = "log-0"
-	toolLog1              ToolName = "log-1"
-	toolLog2              ToolName = "log-2"
-	toolLog3              ToolName = "log-3"
-	toolLog4              ToolName = "log-4"
-	toolReader            ToolName = "reader"
-	toolRain              ToolName = "rain"
-
-	// row 2
-
-	toolHelp     ToolName = "help"
-	toolPlay     ToolName = "play"
-	toolTail     ToolName = "tail"
-	toolPrev     ToolName = "prev"
-	toolNext     ToolName = "next"
-	toolJumpNext ToolName = "jump-next"
-	toolJumpPrev ToolName = "jump-prev"
-	toolFirst    ToolName = "first"
-	toolLast     ToolName = "last"
-	toolExpand   ToolName = "expand"
-	toolMatrix   ToolName = "matrix"
-	toolExport   ToolName = "export"
-)
 
 type Debugger struct {
 	*am.ExceptionHandler
 	Mach *am.Machine
 
-	Clients    map[string]*Client
+	Clients map[string]*Client
+	// TODO make threadsafe
 	Opts       Opts
 	LayoutRoot *cview.Panels
-	Disposed   bool
 	// selected client
 	// TODO atomic, drop eval
 	C   *Client
 	App *cview.Application
-	// printer for numbers
+	// printer for numbers TODO global
 	P *message.Printer
 	// TODO GC removed machines
-	History       []*MachAddress
+	History       []*types.MachAddress
 	HistoryCursor int
 
+	// UI is currently being drawn
+	drawing            atomic.Bool
+	cache              cache
 	tree               *cview.TreeView
 	treeRoot           *cview.TreeNode
 	log                *cview.TextView
@@ -373,38 +92,63 @@ type Debugger struct {
 	mainGrid           *cview.Grid
 	logRebuildEnd      int
 	lastScrolledTxTime time.Time
-	repaintScheduled   atomic.Bool
+	// repaintScheduled controls the UI paint debounce
+	repaintScheduled atomic.Bool
+	// repaintPending indicates a skipped repaint
+	repaintPending atomic.Bool
+	genGraphsLast  time.Time
+	graph          *amgraph.Graph
 	// update client list scheduled
-	updateMLScheduled  atomic.Bool
-	lastKeystroke      tcell.Key
-	lastKeystrokeTime  time.Time
-	updateLogScheduled atomic.Bool
-	matrix             *cview.Table
-	focusManager       *cview.FocusManager
-	exportDialog       *cview.Modal
-	contentPanels      *cview.Panels
-	toolbars           [2]*cview.Table
-	treeLogGrid        *cview.Grid
-	treeMatrixGrid     *cview.Grid
-	lastSelectedState  string
+	updateCLScheduled atomic.Bool
+	buildCLScheduled  atomic.Bool
+	lastKeystroke     tcell.Key
+	lastKeystrokeTime time.Time
+	matrix            *cview.Table
+	focusManager      *cview.FocusManager
+	exportDialog      *cview.Modal
+	contentPanels     *cview.Panels
+	toolbars          [3]*cview.Table
+	schemaLogGrid     *cview.Grid
+	treeMatrixGrid    *cview.Grid
+	lastSelectedState string
 	// TODO should be after a redraw, not before
 	// redrawCallback is auto-disposed in draw()
 	redrawCallback  func()
-	healthcheck     *time.Ticker
+	heartbeatT      *time.Ticker
 	logReader       *cview.TreeView
 	helpDialogRight *cview.TextView
 	addressBar      *cview.Table
 	tagsBar         *cview.TextView
 	clip            clipper.Clipboard
 	// toolbarItems is a list of row of toolbars items
-	toolbarItems [][]toolbarItem
+	toolbarItems     [][]toolbarItem
+	clientListFile   *os.File
+	txListFile       *os.File
+	msgsDelayed      []*telemetry.DbgMsgTx
+	msgsDelayedConns []string
+	currTxBar        *cview.Flex
+	nextTxBar        *cview.Flex
+	mainGridCols     []int
+	readerExpanded   map[string]bool
+	treeGroups       *cview.DropDown
+	treeLayout       *cview.Flex
+	// list of states to show, bypassing other ones from the schema
+	schemaTreeStates  am.S
+	lastSelectedGroup string
+	// number of appended log msgs without a rebuild
+	logAppends        int
+	logRenderedClient string
+	lastResize        uint64
+	logLastResize     uint64
 }
 
 // New creates a new debugger instance and optionally import a data file.
 func New(ctx context.Context, opts Opts) (*Debugger, error) {
+	var err error
 	// init the debugger
 	d := &Debugger{
-		Clients: make(map[string]*Client),
+		Clients:        make(map[string]*Client),
+		readerExpanded: make(map[string]bool),
 	}
 
 	d.Opts = opts
@@ -422,52 +166,109 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		d.Opts.Log2Ttl = time.Hour
 	}
 
-	gob.Register(Exportable{})
+	gob.Register(server.Exportable{})
 	gob.Register(am.Relation(0))
 
-	id := utils.RandID(0)
-	if opts.ID != "" {
-		id = opts.ID
+	id := utils.RandId(0)
+	if opts.Id != "" {
+		id = opts.Id
 	}
-	mach, err := am.NewCommon(ctx, "", ss.States, ss.Names, d, nil, &am.Opts{
-		DontLogID:      true,
-		HandlerTimeout: 1 * time.Second,
-		ID:             "td-" + id,
+	mach, err := am.NewCommon(ctx, "d-"+id, ss.States, ss.Names, d, nil, &am.Opts{
+		DontLogId: true,
+		Tags:      []string{"am-dbg"},
 	})
 	if err != nil {
 		return nil, err
 	}
 	d.Mach = mach
+	// mach.AddBreakpoint1(ss.BuildingLog, "", false)
+	// mach.AddBreakpoint1(ss.BuildingLog, "", true)
+	// TODO update to schemas
+	mach.SetGroupsString(map[string]am.S{
+		"Dialog":           ss.GroupDialog,
+		"Playing":          ss.GroupPlaying,
+		"Focused":          ss.GroupFocused,
+		"Views":            ss.GroupViews,
+		"SwitchedClientTx": ss.GroupSwitchedClientTx,
+		"Filters":          ss.GroupFilters,
+		"Debug":            ss.GroupDebug,
+	}, []string{
+		"Dialog",
+		"Playing",
+		"Focused",
+		"Views",
+		"SwitchedClientTx",
+		"Filters",
+		"Debug",
+	})
 
 	if d.Opts.Version == "" {
 		d.Opts.Version = "(devel)"
 	}
 
 	// logging
+	semLog := mach.SemLogger()
 	if opts.DbgLogger != nil {
-		mach.SetLoggerSimple(opts.DbgLogger.Printf, opts.DbgLogLevel)
+		semLog.SetSimple(opts.DbgLogger.Printf, opts.DbgLogLevel)
 	} else {
-		mach.SetLoggerSimple(log.Printf, opts.DbgLogLevel)
+		semLog.SetSimple(log.Printf, opts.DbgLogLevel)
 	}
-	mach.SetLogArgs(am.NewArgsMapper([]string{
-		"Machine.id", "conn_id", "Client.cursorTx", "amount", "Client.id",
-		"state", "fwd", "filter",
+	semLog.SetArgsMapper(am.NewArgsMapper([]string{
+		// TODO extract
+		"Client.id", "conn_id", "cursorTx1", "amount", "Client.id",
+		"state", "fwd", "filter", "ToolName", "uri", "addr", "url",
+		"err", "_am_err",
 	}, 20))
 
-	// import data
+	d.graph, err = amgraph.New(d.Mach)
+	if err != nil {
+		mach.AddErr(fmt.Errorf("graph init: %w", err), nil)
+	}
+
+	// import data TODO state
 	if opts.ImportData != "" {
+		fmt.Printf("Importing data from %s\nPlease wait...\n", opts.ImportData)
 		start := time.Now()
 		mach.Log("Importing data from %s", opts.ImportData)
-		d.ImportData(opts.ImportData)
+		d.hImportData(opts.ImportData)
 		mach.Log("Imported data in %s", time.Since(start))
 	}
 
 	// clipboard
-	clip, err := clipper.GetClipboard(clipper.Clipboards...)
-	if err != nil {
-		mach.AddErr(fmt.Errorf("clipboard init: %w", err), nil)
+	if d.Opts.EnableClipboard {
+		clip, err := clipper.GetClipboard(clipper.Clipboards...)
+		if err != nil {
+			mach.AddErr(fmt.Errorf("clipboard init: %w", err), nil)
+		}
+		d.clip = clip
 	}
-	d.clip = clip
+
+	// ensure output directory exists
+	if d.Opts.OutputDir != "" && d.Opts.OutputDir != "." {
+		if err := os.MkdirAll(d.Opts.OutputDir, 0o755); err != nil {
+			mach.AddErr(fmt.Errorf("create output dir: %w", err), nil)
+		}
+	}
+
+	// client list file
+	if d.Opts.OutputClients {
+		p := path.Join(d.Opts.OutputDir, "am-dbg-clients.txt")
+		clientListFile, err := os.Create(p)
+		if err != nil {
+			mach.AddErr(fmt.Errorf("client list file open: %w", err), nil)
+		}
+		d.clientListFile = clientListFile
+	}
+
+	// tx file
+	if d.Opts.OutputTx {
+		p := path.Join(d.Opts.OutputDir, "am-dbg-tx.md")
+		txListFile, err := os.Create(p)
+		if err != nil {
+			mach.AddErr(fmt.Errorf("tx list file open: %w", err), nil)
+		}
+		d.txListFile = txListFile
+	}
 
 	return d, nil
 }
@@ -478,97 +279,139 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 
 // ///// ///// /////
 
-// GetMachAddress returns the address of the currently visible view (mach, tx).
-func (d *Debugger) GetMachAddress() *MachAddress {
-	if d.C == nil {
+// hGetMachAddress returns the address of the currently visible view (mach, tx).
+func (d *Debugger) hGetMachAddress() *types.MachAddress {
+	c := d.C
+	if c == nil {
 		return nil
 	}
-	a := &MachAddress{
-		MachId: d.C.id,
+	a := &types.MachAddress{
+		MachId:   c.Id,
+		MachTime: c.MTimeSum,
 	}
-	if d.C.CursorTx1 > 0 {
-		a.TxId = d.C.MsgTxs[d.C.CursorTx1-1].ID
+	if c.CursorTx1 > 0 {
+		a.TxId = c.MsgTxs[c.CursorTx1-1].ID
 	}
-	// TODO mach time
+	if c.CursorStep1 > 0 {
+		a.Step = c.CursorStep1
+	}
 
 	return a
 }
 
-// GoToMachAddress tries to render a view of the provided address (mach, tx).
-func (d *Debugger) GoToMachAddress(addr *MachAddress, skipHistory bool) bool {
-	// TODO should be ana async state, always change the view via this state
+// hGoToMachAddress tries to render a view of the provided address (mach, tx).
+// Blocks. TODO state: GoToMachAddr, MachAddr
+func (d *Debugger) hGoToMachAddress(
+	addr *types.MachAddress, skipHistory bool,
+) bool {
+	// TODO should be an async state
 
 	if addr.MachId == "" {
 		return false
 	}
 
-	// select mach, if not selected
-	if d.C == nil || d.C.id != addr.MachId {
-		res := d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": addr.MachId})
+	var wait <-chan struct{}
+	mach := d.Mach
+
+	// select the target mach, if not selected
+	if d.C == nil || d.C.Id != addr.MachId {
+		// TODO ctx
+		// TODO extract as amhelp.WhenNextActive
+		if mach.Is1(ss.ClientSelected) {
+			wait = mach.WhenTicks(ss.ClientSelected, 2, nil)
+		} else {
+			wait = mach.When1(ss.ClientSelected, nil)
+		}
+		res := mach.Add1(ss.SelectingClient, am.A{"Client.id": addr.MachId})
 		if res == am.Canceled {
 			return false
 		}
+	} else {
+		// TODO ctx
+		wait = mach.When1(ss.ClientSelected, nil)
 	}
 
-	// TODO ctx
-	<-d.Mach.When1(ss.ClientSelected, nil)
+	// TODO DONT BLOCK
+	<-wait
 	if addr.TxId != "" {
-		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": addr.TxId})
+		// TODO typed args
+		args := am.A{"Client.txId": addr.TxId}
+		if addr.Step != 0 {
+			args["cursorStep1"] = addr.Step
+			mach.Add1(ss.ScrollToStep, args)
+		}
+		mach.Add1(ss.ScrollToTx, args)
 	} else if addr.MachTime != 0 {
-		tx := d.C.tx(d.C.txByMachTime(addr.MachTime))
-		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
+		tx := d.C.Tx(d.C.TxByMachTime(addr.MachTime))
+		mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
 	} else if !addr.HumanTime.IsZero() {
-		tx := d.C.tx(d.C.lastTxTill(addr.HumanTime))
-		d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
+		tx := d.C.Tx(d.C.LastTxTill(addr.HumanTime))
+		mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
 	}
 	if !skipHistory {
-		d.prependHistory(addr)
-		d.updateAddressBar()
+		d.hPrependHistory(addr)
+		d.hUpdateAddressBar()
+		// TODO only if main panel visible
 		d.draw(d.addressBar)
 	}
 
 	return true
 }
 
-func (d *Debugger) SetCursor1(cursor int, skipHistory bool) {
-	// TODO validate
-	d.C.CursorTx1 = cursor
+// func (d *Debugger) hSetCursor1(
+//   cursor int, cursorStep int, skipHistory bool,
+// ) {
+// 	if d.C.CursorTx1 == cursor {
+// 		return
+// 	}
+//
+// 	// TODO validate
+// 	d.C.CursorTx1 = cursor
+//
+// 	if d.HistoryCursor == 0 && !skipHistory {
+// 		// add current mach if needed
+// 		if len(d.History) > 0 && d.History[0].MachId != d.C.id {
+// 			d.hPrependHistory(d.hGetMachAddress())
+// 		}
+// 		// keeping the current tx as history head
+// 		if tx := d.C.tx(d.C.CursorTx1 - 1); tx != nil {
+// 			// dup the current machine if tx differs
+// 			if len(d.History) > 1 && d.History[1].MachId == d.C.id &&
+// 				d.History[1].TxId != tx.ID {
+//
+// 				d.hPrependHistory(d.History[0].Clone())
+// 			}
+// 			if len(d.History) > 0 {
+// 				d.History[0].TxId = tx.ID
+// 			}
+// 		}
+// 	}
+//
+// 	// debug
+// 	// d.Opts.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
+// 	// d.Opts.DbgLogger.Printf("History: %v\n", d.History)
+//
+// 	if cursor == 0 {
+// 		d.lastScrolledTxTime = time.Time{}
+// 	} else {
+// 		tx := d.hCurrentTx()
+// 		d.lastScrolledTxTime = *tx.Time
+//
+// 		// tx file
+// 		if d.Opts.OutputTx {
+// 			index := d.C.MsgStruct.StatesIndex
+// 			_, _ = d.txListFile.WriteAt([]byte(tx.TxString(index)), 0)
+// 		}
+// 	}
+//
+// 	// reset the step timeline
+// 	// TODO validate
+// 	d.C.CursorStep1 = cursorStep
+// 	d.Mach.Remove1(ss.TimelineStepsScrolled, nil)
+// }
 
-	if d.HistoryCursor == 0 && !skipHistory {
-		// add current mach if needed
-		if len(d.History) > 0 && d.History[0].MachId != d.C.id {
-			d.prependHistory(d.GetMachAddress())
-		}
-		// keeping the curent tx as history head
-		if tx := d.C.tx(d.C.CursorTx1 - 1); tx != nil {
-			// dup the current machine if tx differs
-			if len(d.History) > 1 && d.History[1].MachId == d.C.id &&
-				d.History[1].TxId != tx.ID {
-
-				d.prependHistory(d.History[0].Clone())
-			}
-			if len(d.History) > 0 {
-				d.History[0].TxId = tx.ID
-			}
-		}
-	}
-
-	// debug
-	// d.Opts.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
-	// d.Opts.DbgLogger.Printf("History: %v\n", d.History)
-
-	if cursor == 0 {
-		d.lastScrolledTxTime = time.Time{}
-	} else {
-		d.lastScrolledTxTime = *d.currentTx().Time
-	}
-
-	// reset the step timeline
-	d.C.CursorStep = 0
-}
-
-func (d *Debugger) removeHistory(clientId string) {
-	hist := make([]*MachAddress, 0)
+func (d *Debugger) hRemoveHistory(clientId string) {
+	hist := make([]*types.MachAddress, 0)
 	for i, item := range d.History {
 		if i <= d.HistoryCursor && d.HistoryCursor > 0 {
 			d.HistoryCursor--
@@ -583,14 +426,14 @@ func (d *Debugger) removeHistory(clientId string) {
 	d.History = hist
 }
 
-func (d *Debugger) prependHistory(addr *MachAddress) {
-	d.History = slices.Concat([]*MachAddress{addr}, d.History)
-	d.trimHistory()
+func (d *Debugger) hPrependHistory(addr *types.MachAddress) {
+	d.History = slices.Concat([]*types.MachAddress{addr}, d.History)
+	d.hTrimHistory()
 }
 
-// trimHistory will trim the head to the current position, making it the newest
+// hTrimHistory will trim the head to the current position, making it the newest
 // entry
-func (d *Debugger) trimHistory() {
+func (d *Debugger) hTrimHistory() {
 	// remove head
 	if d.HistoryCursor > 0 {
 		rm := d.HistoryCursor
@@ -611,7 +454,7 @@ func (d *Debugger) trimHistory() {
 	// d.Opts.DbgLogger.Printf("History: %v\n", d.History)
 }
 
-func (d *Debugger) getClient(machId string) *Client {
+func (d *Debugger) hGetClient(machId string) *Client {
 	if d.Clients == nil {
 		return nil
 	}
@@ -623,18 +466,18 @@ func (d *Debugger) getClient(machId string) *Client {
 	return c
 }
 
-func (d *Debugger) getClientTx(
+func (d *Debugger) hGetClientTx(
 	machId, txId string,
 ) (*Client, *telemetry.DbgMsgTx) {
-	c := d.getClient(machId)
+	c := d.hGetClient(machId)
 	if c == nil {
 		return nil, nil
 	}
-	idx := c.txIndex(txId)
+	idx := c.TxIndex(txId)
 	if idx < 0 {
 		return nil, nil
 	}
-	tx := c.tx(idx)
+	tx := c.Tx(idx)
 	if tx == nil {
 		return nil, nil
 	}
@@ -646,13 +489,15 @@ func (d *Debugger) getClientTx(
 func (d *Debugger) Client() *Client {
 	var c *Client
 
-	// SelectingClient locks d.C TODO timeout?
+	// SelectingClient locks d.C TODO amhelp.WaitForAll
 	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
 
+	// TODO eval to getter
 	d.Mach.Eval("Client", func() {
 		c = d.C
 	}, nil)
 
+	// TODO confirm c != nil, return err
 	return c
 }
 
@@ -663,14 +508,16 @@ func (d *Debugger) NextTx() *telemetry.DbgMsgTx {
 	// SelectingClient locks d.C
 	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
 
+	// TODO eval to getter
 	d.Mach.Eval("NextTx", func() {
-		tx = d.nextTx()
+		tx = d.hNextTx()
 	}, nil)
 
+	// TODO confirm tx != nil, return err
 	return tx
 }
 
-func (d *Debugger) nextTx() *telemetry.DbgMsgTx {
+func (d *Debugger) hNextTx() *telemetry.DbgMsgTx {
 	c := d.C
 	if c == nil {
 		return nil
@@ -690,14 +537,16 @@ func (d *Debugger) CurrentTx() *telemetry.DbgMsgTx {
 	// SelectingClient locks d.C
 	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
 
+	// TODO eval to getter
 	d.Mach.Eval("CurrentTx", func() {
-		tx = d.currentTx()
+		tx = d.hCurrentTx()
 	}, nil)
 
+	// TODO confirm tx != nil, return err
 	return tx
 }
 
-func (d *Debugger) currentTx() *telemetry.DbgMsgTx {
+func (d *Debugger) hCurrentTx() *telemetry.DbgMsgTx {
 	c := d.C
 	if c == nil {
 		return nil
@@ -717,14 +566,16 @@ func (d *Debugger) PrevTx() *telemetry.DbgMsgTx {
 	// SelectingClient locks d.C
 	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
 
+	// TODO eval to getter
 	d.Mach.Eval("PrevTx", func() {
-		tx = d.prevTx()
+		tx = d.hPrevTx()
 	}, nil)
 
+	// TODO confirm tx != nil, return err
 	return tx
 }
 
-func (d *Debugger) prevTx() *telemetry.DbgMsgTx {
+func (d *Debugger) hPrevTx() *telemetry.DbgMsgTx {
 	c := d.C
 	if c == nil {
 		return nil
@@ -735,11 +586,11 @@ func (d *Debugger) prevTx() *telemetry.DbgMsgTx {
 	return c.MsgTxs[c.CursorTx1-2]
 }
 
-func (d *Debugger) ConnectedClients() int {
+func (d *Debugger) hConnectedClients() int {
 	// if only 1 client connected, select it (if SelectConnected == true)
 	var conns int
 	for _, c := range d.Clients {
-		if c.connected.Load() {
+		if c.Connected.Load() {
 			conns++
 		}
 	}
@@ -748,41 +599,9 @@ func (d *Debugger) ConnectedClients() int {
 }
 
 func (d *Debugger) Dispose() {
-	d.Disposed = true
-
-	// machine
-
+	// TODO switch to Disposed mixin
 	d.Mach.Dispose()
 	<-d.Mach.WhenDisposed()
-
-	// data
-	d.Clients = nil
-	d.C = nil
-
-	// app, give it some time to stop rendering
-	time.Sleep(100 * time.Millisecond)
-	if d.App.GetScreen() != nil {
-		d.App.Stop()
-	}
-	d.App = nil
-
-	// UI
-	d.helpDialog = nil
-	d.statusBar = nil
-	d.currTxBarLeft = nil
-	d.currTxBarRight = nil
-	d.nextTxBarLeft = nil
-	d.nextTxBarRight = nil
-	d.matrix = nil
-	d.focusManager = nil
-	d.exportDialog = nil
-	d.contentPanels = nil
-	for i := range d.toolbars {
-		d.toolbars[i] = nil
-	}
-	d.tree = nil
-	d.clientList = nil
-	d.log = nil
 
 	// logger
 	logger := d.Opts.DbgLogger
@@ -794,24 +613,33 @@ func (d *Debugger) Dispose() {
 	}
 }
 
-func (d *Debugger) Start(clientID string, txNum int, uiView string) {
+// TODO config param to New(
+func (d *Debugger) Start(
+	clientID string, txNum int, uiView string, group string,
+) {
 	d.Mach.Add1(ss.Start, am.A{
-		"Client.id":       clientID,
-		"Client.cursorTx": txNum,
+		"Client.id": clientID,
+		"cursorTx1": txNum,
 		// TODO rename to uiView
 		"dbgView": uiView,
+		"group":   group,
 	})
 }
 
+// TODO state: SetOptsState
 func (d *Debugger) SetFilterLogLevel(lvl am.LogLevel) {
-	d.Opts.Filters.LogLevel = lvl
+	d.Mach.Eval("SetFilterLogLevel", func() {
+		d.Opts.Filters.LogLevel = lvl
 
-	// process filters
-	d.Mach.Add1(ss.ProcessingFilters, nil)
+		// process the toolbarItem change
+		d.Mach.Add1(ss.ToolToggled, nil)
+		d.hUpdateSchemaLogGrid()
+		d.hRedrawFull(false)
+	}, nil)
 }
 
-func (d *Debugger) ImportData(filename string) {
-	// TODO async state
+// TODO state: ImportingData, DataImported
+func (d *Debugger) hImportData(filename string) {
 	// TODO show error msg (for dump old formats)
 
 	// support URLs
@@ -843,22 +671,28 @@ func (d *Debugger) ImportData(filename string) {
 
 	// decode gob
 	decoder := gob.NewDecoder(brReader)
-	var res []*Exportable
+	var res []*server.Exportable
 	err = decoder.Decode(&res)
 	if err != nil {
-		log.Printf("Error: import failed %s", err)
+		d.Mach.AddErr(fmt.Errorf("import failed %w", err), nil)
 		return
 	}
 
 	// parse the data
 	for _, data := range res {
 		id := data.MsgStruct.ID
-		d.Clients[id] = &Client{
-			id:         id,
-			Exportable: *data,
+		hash := amhelp.SchemaHash((*data).MsgStruct.States)
+		d.Clients[id] = newClient(id, id, hash, data)
+		if d.graph != nil {
+			err := d.graph.AddClient(data.MsgStruct)
+			if err != nil {
+				d.Mach.AddErr(fmt.Errorf("import failed %w", err), nil)
+				return
+			}
 		}
+		d.Mach.Add1(ss.InitClient, am.A{"id": id})
 		for i := range data.MsgTxs {
-			d.parseMsg(d.Clients[id], i)
+			d.hParseMsg(d.Clients[id], i)
 		}
 	}
 
@@ -872,14 +706,17 @@ func (d *Debugger) ImportData(filename string) {
 
 // ///// ///// /////
 
-func (d *Debugger) updateToolbar() {
+func (d *Debugger) hUpdateToolbar() {
 	f := fmt.Sprintf
 
 	// tx filters
 	for i, row := range d.toolbarItems {
 		focused := d.Mach.Is1(ss.Toolbar1Focused)
-		if i == 1 {
+		switch i {
+		case 1:
 			focused = d.Mach.Is1(ss.Toolbar2Focused)
+		case 2:
+			focused = d.Mach.Is1(ss.Toolbar3Focused)
 		}
 
 		for ii, item := range row {
@@ -887,18 +724,31 @@ func (d *Debugger) updateToolbar() {
 			_, sel := d.toolbars[i].GetSelection()
 
 			// checked
+			esc := cview.Escape
 			if item.active != nil && item.active() {
-				text += f(" [::b]%s[::-]", cview.Escape("[X]"))
+				if item.activeLabel != nil {
+					text += f(" [::b]%s[::-]", esc("["+item.activeLabel()+"]"))
+				} else {
+					text += f(" [::b]%s[::-]", esc("[X]"))
+				}
+
+				// button - dedicated icon
 			} else if item.active == nil && item.icon != "" {
-				text += f(" [grey]%s[-]", cview.Escape("["+item.icon+"]"))
+				text += f(" [gray]%s[-]%s[gray]%s[-]", esc("["), item.icon, esc("]"))
+
+				// unchecked
 			} else if item.active == nil {
 				text += f(" [grey][ ][-]")
+
+				// button - default icon
 			} else {
 				text += f(" [ ]")
 			}
 
 			// focused
-			if d.toolbarItems[i][sel].id == ToolName(item.id) && focused {
+			if sel != -1 && d.toolbarItems[i][sel].id == ToolName(item.id) &&
+				focused {
+
 				text += "[white]" + item.label
 			} else if !focused {
 				text += f("[%s]%s", colorHighlight2, item.label)
@@ -914,16 +764,22 @@ func (d *Debugger) updateToolbar() {
 	}
 }
 
-func (d *Debugger) updateAddressBar() {
+func (d *Debugger) hUpdateAddressBar() {
 	machId := ""
 	machConn := false
 	txId := ""
+	stepId := ""
 	if d.C != nil {
-		machId = d.C.id
+		machId = d.C.Id
 		if d.C.CursorTx1 > 0 {
+			// TODO conflict with GC?
 			txId = d.C.MsgTxs[d.C.CursorTx1-1].ID
 		}
-		machConn = d.C.connected.Load()
+		if d.C.CursorStep1 > 0 {
+			// TODO conflict with GC?
+			stepId = strconv.Itoa(d.C.CursorStep1)
+		}
+		machConn = d.C.Connected.Load()
 	}
 
 	// copy
@@ -979,8 +835,12 @@ func (d *Debugger) updateAddressBar() {
 	}
 	addrCell := d.addressBar.GetCell(0, 4)
 	if machId != "" && txId != "" {
+		s := ""
+		if stepId != "" {
+			s = "/" + stepId
+		}
 		addrCell.SetText(machColor + "mach://[-][::u]" + machId +
-			"[::-][grey]/[-]" + txId)
+			"[::-][grey]/" + txId + s)
 	} else if machId != "" {
 		addrCell.SetText(machColor + "mach://[-][::u]" + machId)
 	} else {
@@ -993,7 +853,7 @@ func (d *Debugger) updateAddressBar() {
 		if len(d.C.MsgStruct.Tags) > 0 {
 			tags += "[::b]#[::-]" + strings.Join(d.C.MsgStruct.Tags, " [::b]#[::-]")
 		}
-		parentTags := d.GetParentTags(d.C, nil)
+		parentTags := d.hGetParentTags(d.C, nil)
 		if len(parentTags) > 0 {
 			if tags != "" {
 				tags += " ... "
@@ -1004,19 +864,20 @@ func (d *Debugger) updateAddressBar() {
 	d.tagsBar.SetText(tags)
 }
 
-func (d *Debugger) updateViews(immediate bool) {
+// hUpdateViews updates the contents of the currentl visible view.
+func (d *Debugger) hUpdateViews(immediate bool) {
 	switch d.Mach.Switch(ss.GroupViews) {
 
 	case ss.MatrixView:
-		d.updateMatrix()
+		d.hUpdateMatrix()
 		d.contentPanels.HidePanel("tree-log")
 		d.contentPanels.HidePanel("tree-matrix")
 
 		d.contentPanels.ShowPanel("matrix")
 
 	case ss.TreeMatrixView:
-		d.updateMatrix()
-		d.updateTree()
+		d.hUpdateMatrix()
+		d.hUpdateSchemaTree()
 		d.contentPanels.HidePanel("matrix")
 		d.contentPanels.HidePanel("tree-log")
 
@@ -1025,8 +886,12 @@ func (d *Debugger) updateViews(immediate bool) {
 	case ss.TreeLogView:
 		fallthrough
 	default:
-		d.updateTree()
-		d.updateLog(immediate)
+		d.hUpdateSchemaTree()
+		if immediate {
+			d.Mach.Add1(ss.UpdateLogScheduled, nil)
+		} else {
+			d.Mach.Add1(ss.UpdateLogScheduled, nil)
+		}
 		d.contentPanels.HidePanel("matrix")
 		d.contentPanels.HidePanel("tree-matrix")
 
@@ -1034,72 +899,19 @@ func (d *Debugger) updateViews(immediate bool) {
 	}
 }
 
-// TODO state
-func (d *Debugger) jumpBack(ev *tcell.EventKey) *tcell.EventKey {
-	if ev != nil && d.throttleKey(ev, arrowThrottleMs) {
-		return nil
-	}
+// TODO remove?
+// hMemorizeTxTime will memorize the current tx time
+// func (d *Debugger) hMemorizeTxTime(c *Client) {
+// 	if c.CursorTx1 > 0 && c.CursorTx1 <= len(c.MsgTxs) {
+// 		d.lastScrolledTxTime = *c.MsgTxs[c.CursorTx1-1].Time
+// 	}
+// }
 
-	ctx := context.TODO()
-	d.Mach.Remove(am.S{ss.Playing, ss.TailMode}, nil)
-
-	if d.Mach.Is1(ss.StateNameSelected) {
-		// state jump
-		amhelp.Add1Block(ctx, d.Mach, ss.ScrollToMutTx, am.A{
-			"state": d.C.SelectedState,
-			"fwd":   false,
-		})
-		// sidebar for errs
-		d.updateClientList(true)
-	} else {
-		// fast jump
-		amhelp.Add1Block(ctx, d.Mach, ss.Back, am.A{
-			"amount": min(fastJumpAmount, d.C.CursorTx1),
-		})
-	}
-
-	return nil
-}
-
-// TODO state
-func (d *Debugger) jumpFwd(ev *tcell.EventKey) *tcell.EventKey {
-	if ev != nil && d.throttleKey(ev, arrowThrottleMs) {
-		return nil
-	}
-
-	ctx := context.TODO()
-	d.Mach.Remove(am.S{ss.Playing, ss.TailMode}, nil)
-
-	if d.Mach.Is1(ss.StateNameSelected) {
-		// state jump
-		amhelp.Add1Block(ctx, d.Mach, ss.ScrollToMutTx, am.A{
-			"state": d.C.SelectedState,
-			"fwd":   true,
-		})
-		// sidebar for errs
-		d.updateClientList(true)
-	} else {
-		// fast jump
-		amhelp.Add1Block(ctx, d.Mach, ss.Fwd, am.A{
-			"amount": min(fastJumpAmount, len(d.C.MsgTxs)-d.C.CursorTx1),
-		})
-	}
-
-	return nil
-}
-
-// memorizeTxTime will memorize the current tx time
-func (d *Debugger) memorizeTxTime(c *Client) {
-	if c.CursorTx1 > 0 && c.CursorTx1 <= len(c.MsgTxs) {
-		d.lastScrolledTxTime = *c.MsgTxs[c.CursorTx1-1].Time
-	}
-}
-
-func (d *Debugger) parseMsg(c *Client, idx int) {
+func (d *Debugger) hParseMsg(c *Client, idx int) {
 	// TODO handle panics from wrongly indexed msgs
 	// defer d.Mach.PanicToErr(nil)
 
-	// TODO verify hosts by token, to distinguish 2 hosts with the same ID
+	// TODO verify connId
 	msgTx := c.MsgTxs[idx]
 
 	var sum uint64
@@ -1108,29 +920,49 @@ func (d *Debugger) parseMsg(c *Client, idx int) {
 	}
 	index := c.MsgStruct.StatesIndex
 	prevTx := &telemetry.DbgMsgTx{}
+	prevTxParsed := &types.MsgTxParsed{}
 	if len(c.MsgTxs) > 1 && idx > 0 {
 		prevTx = c.MsgTxs[idx-1]
+		prevTxParsed = c.MsgTxsParsed[idx-1]
 	}
 
+	// cast to Transition
 	fakeTx := &am.Transition{
 		TimeBefore: prevTx.Clocks,
 		TimeAfter:  msgTx.Clocks,
-	}
-	added, removed, touched := amhelp.GetTransitionStates(fakeTx, index)
-	msgTxParsed := &MsgTxParsed{
-		TimeSum:       sum,
-		StatesAdded:   c.statesToIndexes(added),
-		StatesRemoved: c.statesToIndexes(removed),
-		StatesTouched: c.statesToIndexes(touched),
+		Steps:      msgTx.Steps,
 	}
 
-	// optimize space TODO remove with SQL
+	// err if TimeAfter < TimeBefore, fake the rest
+	after := fakeTx.TimeAfter.Sum(nil)
+	before := fakeTx.TimeBefore.Sum(nil)
+	if after < before {
+		d.Mach.AddErr(fmt.Errorf("time after < time before"), nil)
+		c.MTimeSum = sum
+		c.MsgTxsParsed = append(c.MsgTxsParsed, &types.MsgTxParsed{TimeSum: sum})
+		c.LogMsgs = append(c.LogMsgs, make([]*am.LogEntry, 0))
+
+		return
+	}
+
+	added, removed, touched := amhelp.GetTransitionStates(fakeTx, index)
+	msgTxParsed := &types.MsgTxParsed{
+		TimeSum: sum,
+		// TODO use in tx info bars
+		TimeDiff:      sum - prevTxParsed.TimeSum,
+		StatesAdded:   c.StatesToIndexes(added),
+		StatesRemoved: c.StatesToIndexes(removed),
+		StatesTouched: c.StatesToIndexes(touched),
+	}
+
+	// optimize space
 	if len(msgTx.CalledStates) > 0 {
 		msgTx.CalledStatesIdxs = amhelp.StatesToIndexes(index,
 			msgTx.CalledStates)
 		msgTx.MachineID = ""
 		msgTx.CalledStates = nil
 	}
+	// TODO refac when dbg@v2 lands
 	for _, step := range msgTx.Steps {
 		if step.FromState != "" || step.ToState != "" {
 			step.FromStateIdx = slices.Index(index, step.FromState)
@@ -1148,86 +980,98 @@ func (d *Debugger) parseMsg(c *Client, idx int) {
 	// errors
 	var isErr bool
 	for _, name := range index {
-		if strings.HasPrefix(name, "Err") && msgTx.Is1(index, name) {
+		if strings.HasPrefix(name, am.PrefixErr) && msgTx.Is1(index, name) {
 			isErr = true
 			break
 		}
 	}
-	if isErr || msgTx.Is1(index, am.Exception) {
+	if isErr || msgTx.Is1(index, am.StateException) {
 		// prepend to errors
-		c.errors = append([]int{idx}, c.errors...)
+		c.Errors = append([]int{idx}, c.Errors...)
 	}
 
 	// store the parsed msg
-	c.msgTxsParsed = append(c.msgTxsParsed, msgTxParsed)
-	c.mTimeSum = sum
+	c.MsgTxsParsed = append(c.MsgTxsParsed, msgTxParsed)
+	c.MTimeSum = sum
 
-	d.parseMsgLog(c, msgTx, idx)
+	// logs and graph
+	d.hParseMsgLog(c, msgTx, idx)
+	if d.graph != nil {
+		d.graph.ParseMsg(c.Id, msgTx)
+	}
+
+	// rebuild the log to trim the head (unless importing)
+	if d.Mach.Is1(ss.Start) {
+		d.Mach.Add1(ss.BuildingLog, nil)
+	}
+
+	// TODO DEBUG
+	msgTx.CalledStates = amhelp.IndexesToStates(index, msgTx.CalledStatesIdxs)
 }
 
-// isTxSkipped checks if the tx at the given index is skipped by toolbarItems
+// hIsTxSkipped checks if the tx at the given index is skipped by toolbarItems
 // idx is 0-based
-func (d *Debugger) isTxSkipped(c *Client, idx int) bool {
-	if !d.isFiltered() {
+func (d *Debugger) hIsTxSkipped(c *Client, idx int) bool {
+	if !d.filtersActive() {
 		return false
 	}
-	return slices.Index(c.msgTxsFiltered, idx) == -1
+	return slices.Index(c.MsgTxsFiltered, idx) == -1
 }
 
-// filterTxCursor fixes the current cursor according to toolbarItems
+// hFilterTxCursor1 fixes the current cursor according to toolbarItems
 // by skipping filtered out txs. If none found, returns the current cursor.
-func (d *Debugger) filterTxCursor(c *Client, newCursor int, fwd bool) int {
-	if !d.isFiltered() {
-		return newCursor
+func (d *Debugger) hFilterTxCursor1(c *Client, newCursor1 int, back bool) int {
+	if !d.filtersActive() {
+		return newCursor1
 	}
 
 	// skip filtered out txs
 	for {
-		if newCursor < 1 {
+		if newCursor1 < 1 {
 			return 0
-		} else if newCursor > len(c.MsgTxs) {
+		} else if newCursor1 > len(c.MsgTxs) {
 			// not found
-			if !d.isTxSkipped(c, c.CursorTx1-1) {
+			if !d.hIsTxSkipped(c, c.CursorTx1-1) {
 				return c.CursorTx1
 			} else {
 				return 0
 			}
 		}
 
-		if d.isTxSkipped(c, newCursor-1) {
-			if fwd {
-				newCursor++
+		if d.hIsTxSkipped(c, newCursor1-1) {
+			if back {
+				newCursor1--
 			} else {
-				newCursor--
+				newCursor1++
 			}
 		} else {
 			break
 		}
 	}
 
-	return newCursor
+	return newCursor1
 }
 
 // TODO highlight selected state names, extract common logic
-func (d *Debugger) updateTxBars() {
+func (d *Debugger) hUpdateTxBars() {
 	d.currTxBarLeft.Clear()
 	d.currTxBarRight.Clear()
 	d.nextTxBarLeft.Clear()
 	d.nextTxBarRight.Clear()
 
 	if d.Mach.Not(am.S{ss.SelectingClient, ss.ClientSelected}) {
-		d.currTxBarLeft.SetText("Listening for connections on " + d.Opts.ServerAddr)
+		d.currTxBarLeft.SetText("Listening for connections on " + d.Opts.AddrRpc)
 		return
 	}
 
 	c := d.C
-	tx := d.currentTx()
+	tx := d.hCurrentTx()
 	if tx == nil {
 		// c is nil when switching clients
 		if c == nil || len(c.MsgTxs) == 0 {
 			d.currTxBarLeft.SetText("No transitions yet...")
 		} else {
-			d.currTxBarLeft.SetText("Initial structure")
+			d.currTxBarLeft.SetText("Initial machine schema")
 		}
 	} else {
 
@@ -1241,23 +1085,23 @@ func (d *Debugger) updateTxBars() {
 			title = formatTxBarTitle("Paused") + " "
 		}
 
-		left, right := d.getTxInfo(c.CursorTx1, tx, c.msgTxsParsed[c.CursorTx1-1],
+		left, right := d.hGetTxInfo(c.CursorTx1, tx, c.MsgTxsParsed[c.CursorTx1-1],
 			title)
 		d.currTxBarLeft.SetText(left)
 		d.currTxBarRight.SetText(right)
 	}
 
-	nextTx := d.nextTx()
+	nextTx := d.hNextTx()
 	if nextTx != nil && c != nil {
 		title := "Next   "
-		left, right := d.getTxInfo(c.CursorTx1+1, nextTx,
-			c.msgTxsParsed[c.CursorTx1], title)
+		left, right := d.hGetTxInfo(c.CursorTx1+1, nextTx,
+			c.MsgTxsParsed[c.CursorTx1], title)
 		d.nextTxBarLeft.SetText(left)
 		d.nextTxBarRight.SetText(right)
 	}
 }
 
-func (d *Debugger) updateTimelines() {
+func (d *Debugger) hUpdateTimelines() {
 	// check for a ready client
 	c := d.C
 	if c == nil {
@@ -1265,7 +1109,7 @@ func (d *Debugger) updateTimelines() {
 	}
 
 	txCount := len(c.MsgTxs)
-	nextTx := d.nextTx()
+	nextTx := d.hNextTx()
 	d.timelineSteps.SetTitleColor(cview.Styles.PrimaryTextColor)
 	d.timelineSteps.SetBorderColor(cview.Styles.PrimaryTextColor)
 	d.timelineSteps.SetFilledColor(cview.Styles.PrimaryTextColor)
@@ -1275,8 +1119,8 @@ func (d *Debugger) updateTimelines() {
 		d.timelineSteps.SetFilledColor(tcell.ColorGray)
 	}
 
-	// mark last step of a cancelled tx in red
-	if nextTx != nil && c.CursorStep == len(nextTx.Steps) && !nextTx.Accepted {
+	// mark the last step of a canceled tx in red
+	if nextTx != nil && c.CursorStep1 == len(nextTx.Steps) && !nextTx.Accepted {
 		d.timelineSteps.SetFilledColor(tcell.ColorRed)
 	}
 
@@ -1293,13 +1137,13 @@ func (d *Debugger) updateTimelines() {
 
 	// title
 	var title string
-	if d.isFiltered() {
-		pos := slices.Index(c.msgTxsFiltered, c.CursorTx1-1) + 1
+	if d.filtersActive() {
+		pos := slices.Index(c.MsgTxsFiltered, c.CursorTx1-1) + 1
 		if c.CursorTx1 == 0 {
 			pos = 0
 		}
 		title = d.P.Sprintf(" Transition %d / %d [%s]%d / %d[-] ",
-			pos, len(c.msgTxsFiltered), colorHighlight2, c.CursorTx1, txCount)
+			pos, len(c.MsgTxsFiltered), colorHighlight2, c.CursorTx1, txCount)
 	} else {
 		title = d.P.Sprintf(" Transition %d / %d ", c.CursorTx1, txCount)
 	}
@@ -1309,286 +1153,13 @@ func (d *Debugger) updateTimelines() {
 	// progressbar cant be max==0
 	d.timelineSteps.SetMax(max(stepsCount, 1))
 	// progress <= max
-	d.timelineSteps.SetProgress(c.CursorStep)
+	d.timelineSteps.SetProgress(c.CursorStep1)
 	d.timelineSteps.SetTitle(fmt.Sprintf(
-		" Next mutation step %d / %d ", c.CursorStep, stepsCount))
+		" Next mutation step %d / %d ", c.CursorStep1, stepsCount))
 	d.timelineSteps.SetEmptyRune(' ')
 }
 
-func (d *Debugger) updateClientList(immediate bool) {
-	if immediate {
-		d.doUpdateClientList(true)
-		return
-	}
-
-	if !d.updateMLScheduled.CompareAndSwap(false, true) {
-		// debounce non-forced updates
-		return
-	}
-
-	go func() {
-		time.Sleep(sidebarUpdateDebounce)
-		d.doUpdateClientList(false)
-	}()
-}
-
-// TODO rewrite, update via a state
-func (d *Debugger) doUpdateClientList(immediate bool) {
-	if d.Mach.IsDisposed() || d.Mach.Is1(ss.SelectingClient) ||
-		d.Mach.Is1(ss.HelpDialog) {
-		return
-	}
-
-	update := func() {
-		_, _, width, _ := d.clientList.GetRect()
-		maxLen := width - 13
-		if maxLen < 5 {
-			maxLen = 15
-		}
-
-		// count
-		longestName := 0
-		for _, item := range d.clientList.GetItems() {
-			ref := item.GetReference().(*sidebarRef)
-			l := len(ref.name) + ref.lvl
-			if l > longestName {
-				longestName = l
-			}
-		}
-		if longestName > maxLen {
-			longestName = maxLen
-		}
-
-		// update
-		for i, item := range d.clientList.GetItems() {
-			ref := item.GetReference().(*sidebarRef)
-			c := d.Clients[ref.name]
-
-			spacePre := ""
-			spacePost := " "
-			if d.clientHasParent(c.id) {
-				spacePre = " "
-			}
-
-			name := strings.Repeat("-", ref.lvl) + spacePre + ref.name
-			if len(name) > maxLen {
-				name = name[:maxLen-2] + ".."
-			}
-
-			spaceCount := int(math.Max(0, float64(longestName+1-len(name))))
-			namePad := name +
-				strings.Repeat(" ", spaceCount) + spacePost
-			label := d.getClientListLabel(namePad, c, i)
-			item.SetMainText(label)
-		}
-
-		if len(d.Clients) > 0 {
-			var totalSum uint64
-			for _, c := range d.Clients {
-				totalSum += c.mTimeSum
-			}
-
-			d.clientList.SetTitle(d.P.Sprintf(
-				" Machines:%d T:%v ", len(d.Clients), totalSum))
-		} else {
-			d.clientList.SetTitle(" Machines ")
-		}
-
-		// render if delayed
-		if !immediate {
-			d.draw(d.clientList)
-		}
-	}
-
-	// avoid eval in handlers
-	if immediate {
-		update()
-	} else {
-		d.Mach.Eval("doUpdateClientList", update, nil)
-	}
-
-	d.updateMLScheduled.Store(false)
-}
-
-// buildClientList builds the clientList with the list of clients.
-// selectedIndex: index of the selected item, -1 for the current one.
-func (d *Debugger) buildClientList(selectedIndex int) {
-	// prev state
-	selected := ""
-	var item *cview.ListItem
-	if selectedIndex == -1 {
-		item = d.clientList.GetCurrentItem()
-	} else if selectedIndex > -1 {
-		item = d.clientList.GetItem(selectedIndex)
-	}
-	if item != nil {
-		selected = item.GetReference().(*sidebarRef).name
-	}
-
-	// re-gen all
-	d.clientList.Clear()
-	var list []string
-	for _, c := range d.Clients {
-		list = append(list, c.id)
-	}
-
-	// sort a-z, with value numbers
-	humanSort(list)
-
-	pos := 0
-	// TODO REWRITE
-	for _, parent := range list {
-		if d.clientHasParent(parent) {
-			continue
-		}
-
-		// create list item
-		item := cview.NewListItem(parent)
-		item.SetReference(&sidebarRef{name: parent, lvl: 0})
-		d.clientList.AddItem(item)
-
-		if selected == "" && d.C != nil && d.C.id == parent {
-			// pre-select the current machine
-			d.clientList.SetCurrentItem(pos)
-		} else if selected == parent {
-			// select the previously selected one
-			d.clientList.SetCurrentItem(pos)
-		}
-
-		pos = d.clientListChild(list, parent, pos, selected, 1)
-
-		pos++
-	}
-
-	var totalSum uint64
-	for _, c := range d.Clients {
-		totalSum += c.mTimeSum
-	}
-
-	d.clientList.SetTitle(d.P.Sprintf(
-		" Machines:%d T:%v ", len(d.Clients), totalSum))
-
-	// sort TODO blinks anyway
-	d.doUpdateClientList(true)
-}
-
-type sidebarRef struct {
-	name string
-	lvl  int
-}
-
-func (d *Debugger) clientListChild(
-	list []string, parent string, pos int, selected string,
-	lvl int,
-) int {
-	for _, child := range list {
-		cc := d.Clients[child]
-
-		if !d.clientHasParent(child) || cc.MsgStruct.Parent != parent {
-			continue
-		}
-
-		// create list item
-		item := cview.NewListItem(child)
-		item.SetReference(&sidebarRef{name: child, lvl: lvl})
-		d.clientList.AddItem(item)
-
-		if selected == "" && d.C != nil && d.C.id == child {
-			// pre-select the current machine
-			d.clientList.SetCurrentItem(pos)
-		} else if selected == child {
-			// select the previously selected one
-			d.clientList.SetCurrentItem(pos)
-		}
-
-		pos = d.clientListChild(list, child, pos, selected, lvl+1)
-
-		pos++
-	}
-	return pos
-}
-
-func (d *Debugger) clientHasParent(cid string) bool {
-	c, ok := d.Clients[cid]
-	if !ok || c.MsgStruct.Parent == "" {
-		return false
-	}
-	_, ok = d.Clients[c.MsgStruct.Parent]
-
-	return ok
-}
-
-func (d *Debugger) getClientListLabel(
-	name string, c *Client, index int,
-) string {
-	isHovered := d.clientList.GetCurrentItemIndex() == index
-	hasFocus := d.Mach.Is1(ss.SidebarFocused)
-
-	var currCTxIdx int
-	var currCTx *telemetry.DbgMsgTx
-	// current tx of the selected client
-	currSelTx := d.currentTx()
-	if currSelTx != nil {
-		currTime := d.lastScrolledTxTime
-		if currTime.IsZero() {
-			currTime = *currSelTx.Time
-		}
-		currCTxIdx = c.lastTxTill(currTime)
-		if currCTxIdx != -1 {
-			currCTx = c.MsgTxs[currCTxIdx]
-		}
-	}
-
-	// Ready, Start, Error states indicators
-	var state string
-	isErrNow := false
-	if currCTx != nil {
-		readyIdx := slices.Index(c.MsgStruct.StatesIndex, ssam.BasicStates.Ready)
-		startIdx := slices.Index(c.MsgStruct.StatesIndex, ssam.BasicStates.Start)
-		errIdx := slices.Index(c.MsgStruct.StatesIndex, am.Exception)
-		isErrNow = errIdx != -1 && am.IsActiveTick(currCTx.Clocks[errIdx])
-		if readyIdx != -1 && am.IsActiveTick(currCTx.Clocks[readyIdx]) {
-			state = "R"
-		} else if startIdx != -1 && am.IsActiveTick(currCTx.Clocks[startIdx]) {
-			state = "S"
-		}
-		// push to the front
-		if isErrNow {
-			state = "E" + state
-		}
-	}
-	if state == "" {
-		state = " "
-	}
-
-	label := d.P.Sprintf("%s %s|%d", name, state, currCTxIdx+1)
-	if currCTxIdx+1 < len(c.MsgTxs) {
-		label += "+"
-	}
-
-	// mark selected
-	if d.C != nil && c.id == d.C.id {
-		label = "[::bu]" + label
-	}
-
-	if isErrNow {
-		label = "[red]" + label
-	} else if c.hadErrSinceTx(currCTxIdx, 100) {
-		label = "[orangered]" + label
-	} else if !c.connected.Load() {
-		if isHovered && !hasFocus {
-			label = "[grey]" + label
-		} else if !isHovered {
-			label = "[grey]" + label
-		} else {
-			label = "[black]" + label
-		}
-	}
-
-	return label
-}
-
-func (d *Debugger) updateBorderColor() {
+func (d *Debugger) hUpdateBorderColor() {
 	color := colorInactive
 	if d.Mach.IsErr() {
 		color = tcell.ColorRed
@@ -1598,8 +1169,9 @@ func (d *Debugger) updateBorderColor() {
 	}
 }
 
-// TODO should be an async state
-func (d *Debugger) exportData(filename string) {
+// TODO state: ExportingData, DataExported
+// TODO remove log.
+func (d *Debugger) hExportData(filename string, snapshot bool) {
 	// validate the input
 	if filename == "" {
 		log.Printf("Error: export failed no filename")
@@ -1610,13 +1182,8 @@ func (d *Debugger) exportData(filename string) {
 		return
 	}
 
-	// validate the path
-	cwd, err := os.Getwd()
-	if err != nil {
-		log.Printf("Error: export failed %s", err)
-		return
-	}
-	gobPath := path.Join(cwd, filename+".gob.br")
+	// create file
+	gobPath := path.Join(d.Opts.OutputDir, filename+".gob.br")
 	fw, err := os.Create(gobPath)
 	if err != nil {
 		log.Printf("Error: export failed %s", err)
@@ -1625,10 +1192,15 @@ func (d *Debugger) exportData(filename string) {
 	defer fw.Close()
 
 	// prepare the format
-	data := make([]*Exportable, len(d.Clients))
+	now := *d.C.Tx(max(0, d.C.CursorTx1)).Time
+	data := make([]*server.Exportable, len(d.Clients))
 	i := 0
 	for _, c := range d.Clients {
-		data[i] = &c.Exportable
+		data[i] = c.Exportable
+		// snapshot limits to a single tx
+		if snapshot {
+			data[i].MsgTxs = []*telemetry.DbgMsgTx{c.Tx(c.LastTxTill(now))}
+		}
 		i++
 	}
 
@@ -1644,30 +1216,33 @@ func (d *Debugger) exportData(filename string) {
 	}
 }
 
-func (d *Debugger) getTxInfo(txIndex int,
-	tx *telemetry.DbgMsgTx, parsed *MsgTxParsed, title string,
+func (d *Debugger) hGetTxInfo(txIndex1 int,
+	tx *telemetry.DbgMsgTx, parsed *types.MsgTxParsed, title string,
 ) (string, string) {
 	left := title
 	right := " "
-
 	if tx == nil {
 		return left, right
 	}
 
 	// left side
-	prevT := uint64(0)
-	if txIndex > 1 {
-		prevT = d.C.MsgTxs[txIndex-2].TimeSum()
+	var prev *telemetry.DbgMsgTx
+	if txIndex1 > 1 {
+		prev = d.C.MsgTxs[txIndex1-2]
 	}
+	// TODO limit state names to a group when [2]group
 	calledStates := tx.CalledStateNames(d.C.MsgStruct.StatesIndex)
 
-	left += d.P.Sprintf(" | tx: %d", txIndex)
-	left += d.P.Sprintf(" | Time: +%d", tx.TimeSum()-prevT)
+	left += d.P.Sprintf(" | tx: %d", txIndex1)
+	if parsed.TimeDiff == 0 {
+		left += " | Time: [gray] 0[-]"
+	} else {
+		left += d.P.Sprintf(" | Time: +%d", parsed.TimeDiff)
+	}
 	left += " |"
 
 	multi := ""
-	if len(calledStates) == 1 &&
-		d.C.MsgStruct.States[calledStates[0]].Multi {
+	if len(calledStates) == 1 && d.C.MsgStruct.States[calledStates[0]].Multi {
 		multi += " multi"
 	}
 
@@ -1682,28 +1257,44 @@ func (d *Debugger) getTxInfo(txIndex int,
 	}
 
 	// right side
-	// TODO time to execute
+
 	if tx.IsAuto {
 		right += "auto | "
 	}
-	if !tx.Accepted {
-		right += "canceled | "
+	if tx.IsCheck {
+		right += "check | "
 	}
-	right += fmt.Sprintf("add: %d | rm: %d | touch: %d | %s",
+	if tx.IsQueued {
+		right += "[grey]queued[-] | "
+	} else if !tx.Accepted {
+		right += "[grey]canceled[-] | "
+	}
+
+	// format time
+	tStamp := tx.Time.Format(timeFormat)
+	if prev != nil {
+		prevTStamp := prev.Time.Format(timeFormat)
+		if idx := findFirstDiff(prevTStamp, tStamp); idx != -1 {
+			tStamp = tStamp[:idx] + "[white]" + tStamp[idx:idx+1] + "[grey]" +
+				tStamp[idx+1:]
+		}
+	}
+
+	right += fmt.Sprintf("add: %d | rm: %d | touch: %3s | [grey]%s",
 		len(parsed.StatesAdded), len(parsed.StatesRemoved),
-		len(parsed.StatesTouched), tx.Time.Format(timeFormat),
+		strconv.Itoa(len(parsed.StatesTouched)), tStamp,
 	)
 
 	return left, right
 }
 
-func (d *Debugger) doCleanOnConnect() bool {
+func (d *Debugger) hCleanOnConnect() bool {
 	if len(d.Clients) == 0 {
 		return false
 	}
 	var disconns []*Client
 	for _, c := range d.Clients {
-		if !c.connected.Load() {
+		if !c.Connected.Load() {
 			disconns = append(disconns, c)
 		}
 	}
@@ -1713,28 +1304,34 @@ func (d *Debugger) doCleanOnConnect() bool {
 		for _, c := range d.Clients {
 			// TODO cant be scheduled, as the client can connect in the meantime
 			// d.Add1(ss.RemoveClient, am.A{"Client.id": c.id})
-			delete(d.Clients, c.id)
-			d.removeHistory(c.id)
-			// c.msgTxsParsed = nil
-			// c.logMsgs = nil
-			// c.MsgTxs = nil
-			// c.MsgStruct = nil
+			delete(d.Clients, c.Id)
+			d.hRemoveHistory(c.Id)
 		}
+		if d.graph != nil {
+			d.graph.Clear()
+		}
+
 		return true
 	}
+
 	return false
 }
 
-func (d *Debugger) updateMatrix() {
+func (d *Debugger) hUpdateMatrix() {
+	if !d.Mach.Any1(ss.MatrixView, ss.TreeMatrixView) {
+		return
+	}
+
 	if d.Mach.Is1(ss.MatrixRain) {
-		d.updateMatrixRain()
+		d.hUpdateMatrixRain()
 	} else {
-		d.updateMatrixRelations()
+		d.hUpdateMatrixRelations()
 	}
 }
 
-func (d *Debugger) updateMatrixRelations() {
+func (d *Debugger) hUpdateMatrixRelations() {
 	// TODO optimize: re-use existing cells or gen txt
+	// TODO switch to rel matrix from helpers
 	d.matrix.Clear()
 	d.matrix.SetTitle(" Matrix ")
 
@@ -1744,21 +1341,24 @@ func (d *Debugger) updateMatrixRelations() {
 	}
 
 	index := c.MsgStruct.StatesIndex
+	if c.SelectedGroup != "" {
+		index = c.MsgSchemaParsed.Groups[c.SelectedGroup]
+	}
 	var tx *telemetry.DbgMsgTx
 	var prevTx *telemetry.DbgMsgTx
-	if c.CursorStep == 0 {
-		tx = d.currentTx()
-		prevTx = d.prevTx()
+	if c.CursorStep1 == 0 {
+		tx = d.hCurrentTx()
+		prevTx = d.hPrevTx()
 	} else {
-		tx = d.nextTx()
-		prevTx = d.currentTx()
+		tx = d.hNextTx()
+		prevTx = d.hCurrentTx()
 	}
 	steps := tx.Steps
 	calledStates := tx.CalledStateNames(c.MsgStruct.StatesIndex)
 
 	// show the current tx summary on step 0, and partial if cursor > 0
-	if c.CursorStep > 0 {
-		steps = steps[:c.CursorStep]
+	if c.CursorStep1 > 0 {
+		steps = steps[:c.CursorStep1]
 	}
 
 	highlightIndex := -1
@@ -1861,13 +1461,13 @@ func (d *Debugger) updateMatrixRelations() {
 
 	title := " Matrix:" + strconv.Itoa(sum) + " "
 	if c.CursorTx1 > 0 {
-		t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx1-1].TimeSum))
+		t := strconv.Itoa(int(c.MsgTxsParsed[c.CursorTx1-1].TimeSum))
 		title += "Time:" + t + " "
 	}
 	d.matrix.SetTitle(title)
 }
 
-func (d *Debugger) updateMatrixRain() {
+func (d *Debugger) hUpdateMatrixRain() {
 	if d.Mach.Not1(ss.MatrixRain) {
 		return
 	}
@@ -1881,46 +1481,30 @@ func (d *Debugger) updateMatrixRain() {
 		return
 	}
 
-	// TODO extract, mind currTxRow
 	currTxRow := -1
 	d.matrix.SetSelectionChangedFunc(func(row, column int) {
-		if d.Mach.Not1(ss.MatrixRain) {
-			return
-		}
-
-		if currTxRow == -1 {
-			d.Mach.Add1(ss.ScrollToTx, am.A{
-				"Client.cursorTx": row,
-				"trimHistory":     true,
-			})
-		} else if row != currTxRow {
-			diff := row - currTxRow
-			idx := c.filterIndexByCursor1(c.CursorTx1) + diff
-			cur1 := c.msgTxsFiltered[idx] + 1
-			d.Mach.Log("diff %s", diff)
-			d.Mach.Add1(ss.ScrollToTx, am.A{
-				"Client.cursorTx": cur1,
-				"trimHistory":     true,
-			})
-		}
-
-		// select state name
-		if column >= 0 && column < len(c.MsgStruct.StatesIndex) {
-			d.Mach.Add1(ss.StateNameSelected, am.A{
-				"state": c.MsgStruct.StatesIndex[column],
-			})
-		}
+		d.Mach.Add1(ss.MatrixRainSelected, am.A{
+			// TODO typed args
+			"row":       row,
+			"column":    column,
+			"currTxRow": currTxRow,
+		})
 	})
 	d.matrix.SetSelectable(true, true)
 
 	index := c.MsgStruct.StatesIndex
-	tx := d.currentTx()
-	prevTx := d.prevTx()
-	_, _, _, rows := d.matrix.GetRect()
+	if g := c.SelectedGroup; g != "" {
+		index = c.MsgSchemaParsed.Groups[g]
+	}
+	tx := d.hCurrentTx()
+	prevTx := d.hPrevTx()
+	_, _, _, height := d.matrix.GetInnerRect()
+	height -= 1
 
 	// collect tx to show, starting from the end (timeline 1-based index)
+	// TODO renders rows 1 too many
 	toShow := []int{}
-	ahead := rows / 2
+	ahead := height / 2
 	if d.Mach.Is1(ss.TailMode) {
 		ahead = 0
 	}
@@ -1928,41 +1512,41 @@ func (d *Debugger) updateMatrixRain() {
 	// TODO collect rows-amount before and after (always) and display, then fill
 	//  the missing rows from previously collected
 
-	cur := c.filterIndexByCursor1(c.CursorTx1)
+	cur := c.FilterIndexByCursor1(c.CursorTx1)
 	var curLast int
 
 	// ahead
 	aheadOk := func(i int, max int) bool {
-		return i < len(c.msgTxsFiltered) && len(toShow) <= max
+		return i < len(c.MsgTxsFiltered) && len(toShow) <= max
 	}
 	for i := cur; aheadOk(i, ahead); i++ {
-		toShow = append(toShow, c.msgTxsFiltered[i])
+		toShow = append(toShow, c.MsgTxsFiltered[i])
 		curLast = i
 	}
 
 	// behind
 	behindOk := func(i int) bool {
-		return i >= 0 && i < len(c.msgTxsFiltered) && len(toShow) <= rows
+		return i >= 0 && i < len(c.MsgTxsFiltered) && len(toShow) <= height
 	}
 	for i := cur - 1; behindOk(i); i-- {
-		toShow = slices.Concat([]int{c.msgTxsFiltered[i]}, toShow)
+		toShow = slices.Concat([]int{c.MsgTxsFiltered[i]}, toShow)
 	}
 
 	// ahead again
-	for i := curLast + 1; aheadOk(i, rows); i++ {
-		toShow = append(toShow, c.msgTxsFiltered[i])
+	for i := curLast + 1; aheadOk(i, height); i++ {
+		toShow = append(toShow, c.MsgTxsFiltered[i])
 	}
 
-	for i, idx := range toShow {
+	for rowIdx, txIdx1 := range toShow {
 
 		row := ""
-		idx = idx + 1
-		if idx == c.CursorTx1 {
+		txIdx1 = txIdx1 + 1
+		if txIdx1 == c.CursorTx1 {
 			// TODO keep idx using cell.SetReference(...) for the 1st cell in each row
-			currTxRow = i
+			currTxRow = rowIdx
 		}
-		tx := c.MsgTxs[idx-1]
-		txParsed := c.msgTxsParsed[idx-1]
+		tx := c.MsgTxs[txIdx1-1]
+		txParsed := c.MsgTxsParsed[txIdx1-1]
 		calledStates := tx.CalledStateNames(c.MsgStruct.StatesIndex)
 
 		for ii, name := range index {
@@ -1987,8 +1571,8 @@ func (d *Debugger) updateMatrixRain() {
 			row += v
 
 			// init table
-			d.matrix.SetCellSimple(i, ii, v)
-			cell := d.matrix.GetCell(i, ii)
+			d.matrix.SetCellSimple(rowIdx, ii, v)
+			cell := d.matrix.GetCell(rowIdx, ii)
 			cell.SetSelectable(true)
 
 			// gray out some
@@ -2001,7 +1585,7 @@ func (d *Debugger) updateMatrixRain() {
 				cell.SetAttributes(tcell.AttrUnderline)
 			}
 
-			if idx == c.CursorTx1 {
+			if txIdx1 == c.CursorTx1 {
 				// current tx
 				cell.SetBackgroundColor(colorHighlight3)
 			} else if d.C.SelectedState == name {
@@ -2009,7 +1593,7 @@ func (d *Debugger) updateMatrixRain() {
 				cell.SetBackgroundColor(colorHighlight3)
 			}
 
-			if (sIsErr || name == am.Exception) && tx.Is1(index, name) {
+			if (sIsErr || name == am.StateException) && tx.Is1(index, name) {
 				// mark exceptions
 				if tx.Accepted {
 					cell.SetBackgroundColor(tcell.ColorIndianRed)
@@ -2023,8 +1607,8 @@ func (d *Debugger) updateMatrixRain() {
 		tStamp := tx.Time.Format(timeFormat)
 		tStampFmt := tStamp
 		// highlight first diff number since prev timestamp
-		if idx > 1 {
-			prevTStamp := c.MsgTxs[idx-2].Time.Format(timeFormat)
+		if txIdx1 > 1 {
+			prevTStamp := c.MsgTxs[txIdx1-2].Time.Format(timeFormat)
 			if idx := findFirstDiff(prevTStamp, tStamp); idx != -1 {
 				tStampFmt = tStamp[:idx] + "[white]" + tStamp[idx:idx+1] + "[gray]" +
 					tStamp[idx+1:]
@@ -2032,12 +1616,13 @@ func (d *Debugger) updateMatrixRain() {
 		}
 
 		// tail cell
-		d.matrix.SetCellSimple(i, len(index), fmt.Sprintf(
-			"  [gray]%d | %s[-]", idx, tStampFmt))
+		d.matrix.SetCellSimple(rowIdx, len(index), fmt.Sprintf(
+			"  [gray]%d | %s[-]", txIdx1, tStampFmt))
+		tailCell := d.matrix.GetCell(rowIdx, len(index))
 
 		// current tx
-		if idx == c.CursorTx1 {
-			d.matrix.GetCell(i, len(index)).SetBackgroundColor(colorHighlight3)
+		if txIdx1 == c.CursorTx1 {
+			tailCell.SetBackgroundColor(colorHighlight3)
 		}
 	}
 
@@ -2058,14 +1643,45 @@ func (d *Debugger) updateMatrixRain() {
 
 	title := " Matrix:" + strconv.Itoa(diffT) + " "
 	if c.CursorTx1 > 0 {
-		t := strconv.Itoa(int(c.msgTxsParsed[c.CursorTx1-1].TimeSum))
+		t := strconv.Itoa(int(c.MsgTxsParsed[c.CursorTx1-1].TimeSum))
 		title += "Time:" + t + " "
 	}
 	d.matrix.SetTitle(title)
-	d.matrix.ScrollToBeginning()
+
+	if d.Mach.Is1(ss.TailMode) {
+		// TODO restore column scroll
+		d.matrix.ScrollToEnd()
+	}
 }
 
-func (d *Debugger) getSidebarCurrClientIdx() int {
+func (d *Debugger) hUpdateStatusBar() {
+	c := d.C
+	if c == nil {
+		d.statusBar.SetText("")
+		return
+	}
+
+	txt := ""
+	if c.CursorStep1 > 0 {
+		tx := c.MsgTxs[c.CursorTx1]
+		step := tx.Steps[c.CursorStep1-1]
+		txt = step.StringFromIndex(c.MsgStruct.StatesIndex)
+	}
+
+	// markdown to cview
+	i := 0
+	for strings.Contains(txt, "**") {
+		rep := "[::b]"
+		if i%2 == 1 {
+			rep = "[::-]"
+		}
+		i++
+		txt = strings.Replace(txt, "**", rep, 1)
+	}
+	d.statusBar.SetText(txt)
+}
+
+func (d *Debugger) hGetSidebarCurrClientIdx() int {
 	if d.C == nil {
 		return -1
 	}
@@ -2073,7 +1689,7 @@ func (d *Debugger) getSidebarCurrClientIdx() int {
 	i := 0
 	for _, item := range d.clientList.GetItems() {
 		ref := item.GetReference().(*sidebarRef)
-		if ref.name == d.C.id {
+		if ref.name == d.C.Id {
 			return i
 		}
 		i++
@@ -2082,79 +1698,83 @@ func (d *Debugger) getSidebarCurrClientIdx() int {
 	return -1
 }
 
-// filterClientTxs toolbarItems client's txs according the selected
+// hFilterClientTxs filters client's txs according the selected
 // toolbarItems. Called by toolbarItem states, not directly.
-func (d *Debugger) filterClientTxs(ctx context.Context) {
-	if d.C == nil || !d.isFiltered() {
+func (d *Debugger) hFilterClientTxs() {
+	if d.C == nil || !d.filtersActive() {
 		return
 	}
 
-	auto := d.Mach.Is1(ss.FilterAutoTx)
-	empty := d.Mach.Is1(ss.FilterEmptyTx)
-	canceled := d.Mach.Is1(ss.FilterCanceledTx)
-	healthcheck := d.Mach.Is1(ss.FilterHealthcheck)
-
-	d.C.msgTxsFiltered = nil
+	d.C.MsgTxsFiltered = nil
 	for i := range d.C.MsgTxs {
-		if ctx.Err() != nil {
-			return // expired
-		}
-		if d.filterTx(d.C, i, auto, empty, canceled, healthcheck) {
-			d.C.msgTxsFiltered = append(d.C.msgTxsFiltered, i)
+		match := d.hFilterTx(d.C, i, d.filtersFromStates())
+		if match {
+			d.C.MsgTxsFiltered = append(d.C.MsgTxsFiltered, i)
 		}
 	}
 }
 
-// isFiltered checks if any toolbarItem is active.
-func (d *Debugger) isFiltered() bool {
+func (d *Debugger) filtersFromStates() *OptsFilters {
+	is := d.Mach.Is1
+
+	return &OptsFilters{
+		SkipCanceledTx:     is(ss.FilterCanceledTx),
+		SkipAutoTx:         is(ss.FilterAutoTx),
+		SkipAutoCanceledTx: is(ss.FilterAutoCanceledTx),
+		SkipEmptyTx:        is(ss.FilterEmptyTx),
+		SkipHealthTx:       is(ss.FilterHealth),
+		SkipQueuedTx:       is(ss.FilterQueuedTx),
+		SkipOutGroup:       is(ss.FilterOutGroup),
+		SkipChecks:         is(ss.FilterChecks),
+	}
+}
+
+// filtersActive checks if any filters are active.
+func (d *Debugger) filtersActive() bool {
 	return d.Mach.Any1(ss.GroupFilters...)
 }
 
-// filterTx returns true when a TX passed the passed toolbarItems.
-func (d *Debugger) filterTx(
-	c *Client, idx int, auto, empty, canceled, healthcheck bool,
-) bool {
+// hFilterTx returns true when a TX passes selected toolbarItems.
+func (d *Debugger) hFilterTx(c *Client, idx int, filters *OptsFilters) bool {
 	tx := c.MsgTxs[idx]
+	parsed := c.MsgTxsParsed[idx]
+	called := tx.CalledStateNames(c.MsgStruct.StatesIndex)
+	group := c.SelectedGroup
+	f := filters
 
-	if auto && tx.IsAuto {
+	// basic filters
+	if f.SkipAutoTx && tx.IsAuto {
+		return false
+	} else if f.SkipAutoCanceledTx && tx.IsAuto && !tx.Accepted {
 		return false
 	}
-	if canceled && !tx.Accepted {
+	if f.SkipCanceledTx && !tx.Accepted {
+		return false
+	}
+	if f.SkipQueuedTx && tx.IsQueued {
+		return false
+	}
+	if f.SkipChecks && tx.IsCheck {
 		return false
 	}
 
-	// empty
-	parsed := c.msgTxsParsed[idx]
-	txEmpty := true
-	if empty && len(parsed.StatesAdded) == 0 &&
-		len(parsed.StatesRemoved) == 0 {
-		for _, step := range tx.Steps {
-			// running a handler is not empty
-			// TODO test running a handler is not empty
-			if step.Type == am.StepHandler {
-				txEmpty = false
-			}
-		}
-
-		if txEmpty {
+	// filter out txs without called from the group (if any)
+	if f.SkipOutGroup && group != "" {
+		groupStates := c.MsgSchemaParsed.Groups[group]
+		if len(am.SameStates(called, groupStates)) == 0 {
 			return false
 		}
+	}
+
+	// skip empty (except queued and canceled)
+	if f.SkipEmptyTx && parsed.TimeDiff == 0 && !tx.IsQueued && tx.Accepted {
+		return false
 	}
 
 	// healthcheck
-	hCheck := ssam.BasicStates.Healthcheck
-	hBeat := ssam.BasicStates.Heartbeat
-	if healthcheck && len(parsed.StatesAdded) == 1 &&
-		len(parsed.StatesRemoved) == 0 {
-		if c.indexesToStates(parsed.StatesAdded)[0] == hCheck ||
-			c.indexesToStates(parsed.StatesAdded)[0] == hBeat {
-			return false
-		}
-	}
-	if healthcheck && len(parsed.StatesRemoved) == 1 &&
-		len(parsed.StatesAdded) == 0 {
-		if c.indexesToStates(parsed.StatesRemoved)[0] == hCheck ||
-			c.indexesToStates(parsed.StatesRemoved)[0] == hBeat {
+	if f.SkipHealthTx {
+		health := S{ssam.BasicStates.Healthcheck, ssam.BasicStates.Heartbeat}
+		if len(called) == 1 && slices.Contains(health, called[0]) {
 			return false
 		}
 	}
@@ -2162,65 +1782,309 @@ func (d *Debugger) filterTx(
 	return true
 }
 
-func (d *Debugger) scrollToTime(hT time.Time, filter bool) bool {
-	latestTx := d.C.lastTxTill(hT)
+func (d *Debugger) hScrollToTime(
+	e *am.Event, hTime time.Time, filter bool,
+) bool {
+	if d.C == nil {
+		return false
+	}
+	latestTx := d.C.LastTxTill(hTime)
 	if latestTx == -1 {
 		return false
 	}
 
 	if filter {
-		latestTx = d.filterTxCursor(d.C, latestTx, true)
+		latestTx = d.hFilterTxCursor1(d.C, latestTx, true)
 	}
-	d.SetCursor1(latestTx, true)
+	d.hSetCursor1(e, am.A{
+		"cursor1":    latestTx,
+		"filterBack": true,
+	})
 
 	return true
 }
 
-func (d *Debugger) ProcessingFiltersState(e *am.Event) {
-	ctx := d.Mach.NewStateCtx(ss.ProcessingFilters)
-	filterTxs, _ := e.Args["filterTxs"].(bool)
-
-	go func() {
-		defer d.Mach.EvRemove1(e, ss.ProcessingFilters, nil)
-		if ctx.Err() != nil {
-			return // expired
-		}
-
-		if filterTxs {
-			d.filterClientTxs(ctx)
-			cursor1 := d.C.CursorTx1
-			if d.Mach.Is1(ss.TailMode) {
-				cursor1 = len(d.C.MsgTxs)
-			}
-			d.SetCursor1(d.filterTxCursor(d.C, cursor1, false), false)
-		}
-
-		// rebuild the whole log to reflect the UI changes
-		err := d.rebuildLog(ctx, len(d.C.MsgTxs))
-		if err != nil {
-			d.Mach.AddErr(err, nil)
-		}
-		d.updateLog(false)
-		if ctx.Err() != nil {
-			return // expired
-		}
-
-		// udpate and redraw
-		d.updateClientList(false)
-		d.updateToolbar()
-		d.updateTimelines()
-		d.updateMatrixRain()
-		d.updateLog(false)
-		d.draw()
-	}()
-}
-
-func (d *Debugger) GetParentTags(c *Client, tags []string) []string {
+func (d *Debugger) hGetParentTags(c *Client, tags []string) []string {
 	parent, ok := d.Clients[c.MsgStruct.Parent]
 	if !ok {
 		return tags
 	}
 	tags = slices.Concat(tags, parent.MsgStruct.Tags)
 
-	return d.GetParentTags(parent, tags)
+	return d.hGetParentTags(parent, tags)
+}
+
+func (d *Debugger) initGraphGen(
+	snapshot *amgraph.Graph, id string, detailsLvl, numClients int, outDir,
+	svgName string, statesAllowlist S,
+) []*amvis.Renderer {
+	var vizs []*amvis.Renderer
+
+	// render single (current one)
+	vis := amvis.NewRenderer(snapshot, d.Mach.Log)
+	amvis.PresetSingle(vis)
+	// TODO enum
+	switch detailsLvl {
+	default:
+		return vizs
+
+		// single (simple)
+	case 1:
+		vis.RenderNestSubmachines = false
+		vis.RenderStart = false
+		vis.RenderInherited = false
+		vis.RenderPipes = false
+		vis.RenderHalfPipes = false
+		vis.RenderHalfConns = false
+		vis.RenderHalfHierarchy = false
+		vis.RenderParentRel = false
+
+		// single (detailed)
+	case 2:
+		vis.RenderNestSubmachines = false
+		vis.RenderStart = true
+		vis.RenderInherited = true
+		vis.RenderPipes = false
+		vis.RenderHalfPipes = false
+		vis.RenderHalfConns = false
+		vis.RenderHalfHierarchy = false
+
+		// single (external)
+	case 3:
+		vis.RenderNestSubmachines = true
+		vis.RenderStart = true
+		vis.RenderInherited = true
+		vis.RenderPipes = true
+	}
+
+	d.Mach.Log("rendering graphs lvl %d", detailsLvl)
+
+	// machine diagram
+	vis.RenderMachs = []string{id}
+	vis.OutputFilename = path.Join(outDir, svgName)
+	if len(statesAllowlist) > 0 {
+		vis.RenderAllowlist = statesAllowlist
+	}
+
+	vizs = append(vizs, vis)
+
+	// TODO render by prefixes
+	// } else {
+	// 	for _, p := range strings.Split(d.Opts.Graph, ",") {
+	//
+	// 		// vis
+	// 		vis := amvis.NewRenderer(d.Mach, shot)
+	// 		if p == "1" || p == "true" {
+	// 			// render single (current one)
+	// 			amvis.PresetSingle(vis)
+	// 			vis.RenderMachs = []string{p}
+	// 			vis.RenderNestSubmachines = true
+	// 			vis.RenderStart = true
+	// 		} else {
+	// 			// render by prefix
+	// 			prefix := regexp.MustCompile("^" + p)
+	// 			amvis.PresetNeighbourhood(vis)
+	// 			vis.RenderMachsRe = []*regexp.Regexp{prefix}
+	// 			vis.RenderDistance = 1
+	// 			vis.RenderDepth = 1
+	// 		}
+	// 		// prefix with am-vis
+	// 		vis.OutputFilename = path.Join(d.Opts.OutputDir, "am-vis-"+p)
+	//
+	// 		vizs = append(vizs, vis)
+	// 	}
+	// }
+
+	// TODO render a mutation
+
+	// map
+	// TODO skip if there was no change in schemas
+	//  hash schemas and schema's hashes, then compare
+
+	// map renderer, check cache
+	mapPath := fmt.Sprintf("am-vis-map-%d", numClients)
+	if _, err := os.Stat(mapPath); err != nil {
+		vis = amvis.NewRenderer(snapshot, d.Mach.Log)
+		amvis.PresetMap(vis)
+		vis.OutputFilename = path.Join(outDir, mapPath)
+	}
+
+	return append(vizs, vis)
+}
+
+func (d *Debugger) hSyncOptsTimelines() {
+	switch d.Opts.Timelines {
+	case 0:
+		d.Mach.Add(S{ss.TimelineTxHidden, ss.TimelineStepsHidden}, nil)
+	case 1:
+		d.Mach.Add1(ss.TimelineStepsHidden, nil)
+		d.Mach.Remove1(ss.TimelineTxHidden, nil)
+	case 2:
+		d.Mach.Remove(S{ss.TimelineStepsHidden, ss.TimelineTxHidden}, nil)
+	}
+}
+
+func (d *Debugger) diagramsRender(
+	e *am.Event, shot *amgraph.Graph, id string, details, clients int,
+	outDir string, svgName string, states S,
+) {
+	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	// mark rendering as in-progress
+	d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
+
+	// create the visualizer
+	vizs := d.initGraphGen(shot, id, details, clients, outDir, svgName, states)
+	// TODO config
+	pool := amhelp.Pool(2)
+
+	for _, vis := range vizs {
+		pool.Go(func() error {
+			return vis.GenDiagrams(ctx)
+		})
+	}
+
+	err := pool.Wait()
+	if err != nil {
+		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+		return
+	}
+
+	// link
+	d.diagramLink(outDir, svgName)
+	if ctx.Err() != nil {
+		return // expired
+	}
+
+	// symlink am-vis-map.svg -> am-vis-map-CLIENTS.svg
+	source := path.Join(outDir, "am-vis-map.svg")
+	target := fmt.Sprintf("am-vis-map-%d.svg", clients)
+	_ = os.Remove(source)
+	err = os.Symlink(target, source)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	d.Mach.EvAddErr(e, err, nil)
+
+	// next
+	d.Mach.EvAdd1(e, ss.DiagramsReady, nil)
+}
+
+func (d *Debugger) diagramLink(outDir string, svgName string) {
+	// symlink am-vis.svg -> ID-LVL-HASH.svg
+	source := path.Join(outDir, "am-vis.svg")
+	target := fmt.Sprintf("%s.svg", svgName)
+	_ = os.Remove(source)
+	err := os.Symlink(target, source)
+	d.Mach.AddErr(err, nil)
+}
+
+func (d *Debugger) diagramsMemCache(
+	e *am.Event, id string, cache *goquery.Document, tx *telemetry.DbgMsgTx,
+	outDir, svgName string,
+) {
+	svgPath := path.Join(outDir, svgName+".svg")
+	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	// mark rendering as in-progress
+	d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
+
+	// update cache DOM
+	states := d.C.MsgStruct.StatesIndex
+	sel := amvis.Fragment{
+		MachId: id,
+		States: states,
+		Active: tx.ActiveStates(states),
+	}
+	err := amvis.UpdateCache(ctx, svgPath, cache, &sel)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	if err != nil {
+		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+		return
+	}
+
+	// link
+	d.diagramLink(outDir, svgName)
+	if ctx.Err() != nil {
+		return // expired
+	}
+
+	// next
+	d.Mach.EvAdd1(e, ss.DiagramsReady, nil)
+}
+
+func (d *Debugger) diagramsFileCache(
+	e *am.Event, id string, tx *telemetry.DbgMsgTx, lvl int, outDir,
+	svgName string,
+) {
+	defer d.Mach.PanicToErrState(ss.ErrDiagrams, nil)
+
+	svgPath := path.Join(outDir, svgName+".svg")
+	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	// mark rendering as in-progress
+	d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
+
+	// read cache from a file
+	file, err := os.Open(svgPath)
+	if err != nil {
+		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+		return
+	}
+	cache, err := goquery.NewDocumentFromReader(file)
+	if err != nil {
+		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+		return
+	}
+
+	// update cache DOM
+	// TODO support groups
+	states := d.C.MsgStruct.StatesIndex
+	sel := amvis.Fragment{
+		MachId: id,
+		States: states,
+	}
+	if tx != nil {
+		sel.Active = tx.ActiveStates(states)
+	}
+
+	err = amvis.UpdateCache(ctx, svgPath, cache, &sel)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	if err != nil {
+		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+		return
+	}
+
+	// link
+	d.diagramLink(outDir, svgName)
+	if ctx.Err() != nil {
+		return // expired
+	}
+
+	// next
+	d.Mach.EvAdd1(e, ss.DiagramsReady, am.A{
+		// TODO typed args
+		"Diagram.cache": cache,
+		"Diagram.id":    id,
+		"Diagram.lvl":   lvl,
+	})
+}
+
+func (d *Debugger) getFocusColor() tcell.Color {
+	color := cview.Styles.MoreContrastBackgroundColor
+	if d.Mach.IsErr() {
+		color = tcell.ColorRed
+	}
+
+	return color
 }

@@ -4,31 +4,23 @@ package rpc
 
 import (
 	"context"
-	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
-	sstest "github.com/pancsta/asyncmachine-go/internal/testing/states"
+	sst "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
-	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
 type S = am.S
 
-// type A = am.A
 type (
-	State  = am.State
-	Struct = am.Struct
+	Schema = am.Schema
 )
-
-func init() {
-	if os.Getenv(am.EnvAmTestDebug) != "" {
-		helpers.EnableDebugging(true)
-	}
-}
 
 func TestSingleStateActive(t *testing.T) {
 	t.Parallel()
@@ -90,6 +82,7 @@ func TestExposeAllStateNames(t *testing.T) {
 
 func TestStateSet(t *testing.T) {
 	t.Parallel()
+	// amhelp.EnableDebugging(true)
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
@@ -156,10 +149,13 @@ func TestRemoveRelation(t *testing.T) {
 	defer cancel()
 
 	// relations
-	m := utils.NewNoRelsRpcWorker(t, S{"D"})
-	rels := m.GetStruct()
-	rels["C"] = State{Remove: S{"D"}}
-	_ = m.SetStruct(rels, sstest.Names)
+	m := utils.NewCustomRpcWorker(t, am.Schema{
+		sst.A: {},
+		sst.B: {},
+		sst.C: {Remove: S{sst.D}},
+		sst.D: {},
+	})
+	m.Add1(sst.D, nil)
 	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
@@ -177,12 +173,13 @@ func TestRemoveRelationSimultaneous(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsRpcWorker(t, S{"D"})
-
-	// relations
-	rels := m.GetStruct()
-	rels["C"] = State{Remove: S{"D"}}
-	_ = m.SetStruct(rels, sstest.Names)
+	m := utils.NewCustomRpcWorker(t, am.Schema{
+		sst.A: {},
+		sst.B: {},
+		sst.C: {Remove: S{sst.D}},
+		sst.D: {},
+	})
+	m.Add1(sst.D, nil)
 	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 	w := c.Worker
 
@@ -249,12 +246,13 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			m := utils.NewNoRelsRpcWorker(t, S{"D"})
-			rels := m.GetStruct()
-			// C and D are cross blocking each other via Remove
-			rels["C"] = State{Remove: S{"D"}}
-			rels["D"] = State{Remove: S{"C"}}
-			_ = m.SetStruct(rels, sstest.Names)
+			m := utils.NewCustomRpcWorker(t, am.Schema{
+				sst.A: {},
+				sst.B: {},
+				sst.C: {Remove: S{sst.D}},
+				sst.D: {Remove: S{sst.C}},
+			})
+			m.Add1(sst.D, nil)
 			_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
 			w := c.Worker
 
@@ -285,11 +283,12 @@ func TestAddRelation(t *testing.T) {
 	defer cancel()
 
 	// machine
-	m := utils.NewNoRelsRpcWorker(t, nil)
-	rels := m.GetStruct()
-	rels["A"] = State{Remove: S{"D"}}
-	rels["C"] = State{Add: S{"D"}}
-	_ = m.SetStruct(rels, sstest.Names)
+	m := utils.NewCustomRpcWorker(t, am.Schema{
+		sst.A: {Remove: S{sst.D}},
+		sst.B: {},
+		sst.C: {Add: S{sst.D}},
+		sst.D: {},
+	})
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
@@ -301,7 +300,7 @@ func TestAddRelation(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"C", "D"}, "state should be activated")
 	w.Set(S{"A", "C"}, nil)
-	assertStates(t, w, S{"A", "C"}, "state should be skipped if "+
+	assertStates(t, w, S{"A", "C"}, "state D should be skipped if "+
 		"blocked at the same time")
 
 	disposeTest(t, c, s, true)
@@ -315,10 +314,12 @@ func TestRequireRelation(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, nil)
-	rels := mach.GetStruct()
-	rels["A"] = State{Require: S{"D"}}
-	_ = mach.SetStruct(rels, sstest.Names)
+	mach := utils.NewCustomRpcWorker(t, am.Schema{
+		sst.A: {Require: S{sst.D}},
+		sst.B: {},
+		sst.C: {},
+		sst.D: {},
+	})
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -341,10 +342,13 @@ func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
-	rels := mach.GetStruct()
-	rels["C"] = State{Require: S{"D"}}
-	_ = mach.SetStruct(rels, sstest.Names)
+	mach := utils.NewCustomRpcWorker(t, am.Schema{
+		sst.A: {},
+		sst.B: {},
+		sst.C: {Require: S{sst.D}},
+		sst.D: {},
+	})
+	mach.Add1(sst.A, nil)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -367,13 +371,15 @@ func TestAutoStates(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, nil)
-	rels := mach.GetStruct()
-	rels["B"] = State{
-		Auto:    true,
-		Require: S{"A"},
-	}
-	_ = mach.SetStruct(rels, sstest.Names)
+	mach := utils.NewCustomRpcWorker(t, am.Schema{
+		sst.A: {},
+		sst.B: {
+			Auto:    true,
+			Require: S{sst.A},
+		},
+		sst.C: {Require: S{sst.D}},
+		sst.D: {},
+	})
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -397,10 +403,13 @@ func TestSwitch(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
-	rels := mach.GetStruct()
-	rels["C"] = State{Require: S{"D"}}
-	_ = mach.SetStruct(rels, sstest.Names)
+	mach := utils.NewCustomRpcWorker(t, am.Schema{
+		sst.A: {},
+		sst.B: {},
+		sst.C: {Require: S{sst.D}},
+		sst.D: {},
+	})
+	mach.Add1(sst.A, nil)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -433,7 +442,7 @@ func TestRegressionRemoveCrossBlockedByImplied(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, Struct{
+	mach := utils.NewCustomRpcWorker(t, Schema{
 		"A": {Remove: S{"B"}},
 		"B": {Remove: S{"A"}},
 		"Z": {Add: S{"B"}},
@@ -460,7 +469,7 @@ func TestRegressionImpliedBlockByBeingRemoved(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, Struct{
+	mach := utils.NewCustomRpcWorker(t, Schema{
 		"Wet":   {Require: S{"Water"}},
 		"Dry":   {Remove: S{"Wet"}},
 		"Water": {Add: S{"Wet"}, Remove: S{"Dry"}},
@@ -617,18 +626,19 @@ func TestPartialAuto(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
-	rels := mach.GetStruct()
-	// relations
-	rels["C"] = State{
-		Auto:    true,
-		Require: S{"B"},
-	}
-	rels["D"] = State{
-		Auto:    true,
-		Require: S{"B"},
-	}
-	_ = mach.SetStruct(rels, sstest.Names)
+	mach := utils.NewCustomRpcWorker(t, am.Schema{
+		sst.A: {},
+		sst.B: {},
+		sst.C: {
+			Auto:    true,
+			Require: S{sst.B},
+		},
+		sst.D: {
+			Auto:    true,
+			Require: S{sst.B},
+		},
+	})
+	mach.Add1(sst.A, nil)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -651,10 +661,12 @@ func TestTime(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
-	rels := mach.GetStruct()
-	rels["B"] = State{Multi: true}
-	_ = mach.SetStruct(rels, sstest.Names)
+	mach := utils.NewCustomRpcWorker(t, am.Schema{
+		sst.A: {},
+		sst.B: {Multi: true},
+		sst.C: {},
+		sst.D: {},
+	})
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -699,8 +711,8 @@ func TestTime(t *testing.T) {
 	// assert
 	assertStates(t, w, S{"A", "B", "D", "C"})
 	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{3, 7, 5, 1})
-	assert.True(t, am.IsTimeAfter(now, before))
-	assert.False(t, am.IsTimeAfter(before, now))
+	assert.True(t, now.After(true, before))
+	assert.False(t, before.After(true, now))
 
 	disposeTest(t, c, s, true)
 }
@@ -838,13 +850,16 @@ func TestIs(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
-	rels := mach.GetStruct()
-	rels["B"] = State{
-		Auto:    true,
-		Require: S{"A"},
-	}
-	_ = mach.SetStruct(rels, sstest.Names)
+	mach := utils.NewCustomRpcWorker(t, am.Schema{
+		sst.A: {},
+		sst.B: {
+			Auto:    true,
+			Require: S{sst.A},
+		},
+		sst.C: {},
+		sst.D: {},
+	})
+	mach.Add(S{sst.A, sst.B}, nil)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -865,13 +880,16 @@ func TestNot(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
-	rels := mach.GetStruct()
-	rels["B"] = State{
-		Auto:    true,
-		Require: S{"A"},
-	}
-	_ = mach.SetStruct(rels, sstest.Names)
+	mach := utils.NewCustomRpcWorker(t, am.Schema{
+		sst.A: {},
+		sst.B: {
+			Auto:    true,
+			Require: S{sst.A},
+		},
+		sst.C: {},
+		sst.D: {},
+	})
+	mach.Add(S{sst.A, sst.B}, nil)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -893,13 +911,16 @@ func TestAny(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
-	rels := mach.GetStruct()
-	rels["B"] = State{
-		Auto:    true,
-		Require: S{"A"},
-	}
-	_ = mach.SetStruct(rels, sstest.Names)
+	mach := utils.NewCustomRpcWorker(t, am.Schema{
+		sst.A: {},
+		sst.B: {
+			Auto:    true,
+			Require: S{sst.A},
+		},
+		sst.C: {},
+		sst.D: {},
+	})
+	mach.Add(S{sst.A, sst.B}, nil)
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -921,11 +942,12 @@ func TestClock(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, nil)
-	rels := mach.GetStruct()
-	// relations
-	rels["B"] = State{Multi: true}
-	_ = mach.SetStruct(rels, sstest.Names)
+	mach := utils.NewCustomRpcWorker(t, am.Schema{
+		sst.A: {},
+		sst.B: {Multi: true},
+		sst.C: {},
+		sst.D: {},
+	})
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
@@ -991,27 +1013,23 @@ func TestInspect(t *testing.T) {
 	// (A:1 C:1)[B:0 D:0 Exception:0]
 	names := S{"A", "B", "C", "D", "Exception"}
 	expected := `
-		A:
-		  State:   true 1
-		  Auto:    true
-		  Require: C
-
-		B:
-		  State:   false 0
-		  Multi:   true
-		  Add:     C
-
-		C:
-		  State:   true 1
-		  After:   D
-
-		D:
-		  State:   false 0
-		  Add:     C B
-
-		Exception:
-		  State:   false 0
-		  Multi:   true
+    1 A
+        |Time     1
+        |Auto     true
+        |Require  C
+    0 B
+        |Time     0
+        |Multi    true
+        |Add      C
+    1 C
+        |Time     1
+        |After    D
+    0 D
+        |Time     0
+        |Add      C B
+    0 Exception
+        |Time     0
+        |Multi    true
 		`
 	assertString(t, w, expected, names)
 	// (A:1 C:1)[B:0 D:0 Exception:0]
@@ -1022,61 +1040,32 @@ func TestInspect(t *testing.T) {
 	w.Add(S{"D"}, nil)
 	// (A:3 B:1 C:3 D:1)[Exception:0]
 	expected = `
-		Exception:
-		  State:   false 0
-		  Multi:   true
-		
-		A:
-		  State:   true 3
-		  Auto:    true
-		  Require: C
-		
-		B:
-		  State:   true 1
-		  Multi:   true
-		  Add:     C
-		
-		C:
-		  State:   true 3
-		  After:   D
-		
-		D:
-		  State:   true 1
-		  Add:     C B
-		
-		ErrProviding:
-		  State:   false 0
-		  Require: Exception
-		
-		ErrSendPayload:
-		  State:   false 0
-		  Require: Exception
-		
-		SendPayload:
-		  State:   false 0
-		  Multi:   true
-		
-		ErrNetwork:
-		  State:   false 0
-		  Require: Exception
-		
-		ErrHandlerTimeout:
-		  State:   false 0
-		  Require: Exception
-		
-		Start:
-		  State:   false 0
-		
-		Ready:
-		  State:   false 0
-		  Require: Start
-		
-		Healthcheck:
-		  State:   false 0
-		  Multi:   true
-		
-		Heartbeat:
-		  State:   false 0
+		0 Exception
+		    |Time     0
+		    |Multi    true
+		1 A
+		    |Time     3
+		    |Auto     true
+		    |Require  C
+		1 B
+		    |Time     1
+		    |Multi    true
+		    |Add      C
+		1 C
+		    |Time     3
+		    |After    D
+		1 D
+		    |Time     1
+		    |Add      C B
+		0 ErrProviding
+		    |Time     0
+		    |Require  Exception
+		0 ErrSendPayload
+		    |Time     0
+		    |Require  Exception
+		0 SendPayload
+		    |Time     0
+		    |Multi    true
 	`
 	assertString(t, w, expected, nil)
 
@@ -1100,8 +1089,7 @@ func TestString(t *testing.T) {
 	// test
 	assert.Equal(t, "(A:1 B:1)", w.String())
 	assert.Equal(t, "(A:1 B:1) [Exception:0 C:0 D:0 ErrProviding:0"+
-		" ErrSendPayload:0 SendPayload:0 ErrNetwork:0"+
-		" ErrHandlerTimeout:0 Start:0 Ready:0 Healthcheck:0 Heartbeat:0]",
+		" ErrSendPayload:0 SendPayload:0]",
 		w.StringAll())
 
 	disposeTest(t, c, s, true)
@@ -1202,13 +1190,132 @@ func TestIsTime(t *testing.T) {
 //	defer m1.Dispose()
 //
 //	// change clocks
-//	m1.Remove1("B", nil)
 //	m1.Add1("A", nil)
 //	m1.Add1("B", nil)
 //	m1.Add1("C", nil)
 //	m1Str := m1.Encode()
 //
 //	// export
-//	jsonPath := path.Join(os.TempDir(), "am-TestExportImport.json")
+//	jsonPath := path.Join(os.Te1mpDir(), "am-TestExportImport.json")
 //	err := m1.Export()
 // }
+
+// TestWhenQueue
+type TestWhenQueueTracer struct {
+	*am.NoOpTracer
+	done chan struct{}
+	t    *testing.T
+}
+
+func (tr *TestWhenQueueTracer) TransitionEnd(tx *am.Transition) {
+	m := tx.Api
+	// only when setting A
+	if tx.TimeBefore.Is1(m.Index1("A")) {
+		return
+	}
+
+	m.Add1("B", nil)
+	m.Add1("C", nil)
+	// TODO pause queue in the source machine's handler
+	// res := m.Add1("D", nil)
+	res := am.Result(5)
+	m.Add1("D", nil)
+
+	go func() {
+		<-m.WhenQueue(res)
+		assertStates(tr.t, m, S{"A", "B", "C", "D"})
+		close(tr.done)
+	}()
+}
+
+// TODO bind via handlers
+func TestWhenQueue(t *testing.T) {
+	t.Parallel()
+
+	// init
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// machine
+	mach := utils.NewNoRelsRpcWorker(t, nil)
+
+	// worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
+	w := c.Worker
+
+	// test
+	tr := &TestWhenQueueTracer{
+		t:    t,
+		done: make(chan struct{}),
+	}
+	require.NoError(t, w.BindTracer(tr))
+
+	w.Add1("A", nil)
+	// TODO weird close-doesnt-unblock bug in go1.25
+	select {
+	case <-tr.done:
+	case <-time.After(time.Second):
+		<-tr.done
+	}
+
+	// dispose
+	disposeTest(t, c, s, true)
+}
+
+func TestWhenQuery(t *testing.T) {
+	t.Parallel()
+
+	// init
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// machine
+	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
+
+	// worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
+	w := c.Worker
+
+	// test
+	query1 := func(c am.Clock) bool {
+		return c["A"] > c["B"]*4
+	}
+	query2 := func(c am.Clock) bool {
+		return c["A"] < c["B"]
+	}
+	when1 := w.WhenQuery(query1, nil)
+	when2 := w.WhenQuery(query2, nil)
+
+	// 1, 0
+	w.Add1("B", nil)
+	// 1, 1
+	w.Remove1("A", nil)
+	// 2, 1
+	w.Add1("A", nil)
+	// 3, 1
+
+	w.Remove1("A", nil)
+	// 4, 1
+	select {
+	case <-when2:
+		assert.Fail(t, "should NOT match")
+	case <-when1:
+		assert.Fail(t, "should NOT match")
+	default:
+		// ok
+	}
+
+	w.Add1("A", nil)
+	// 5, 1 = match
+	select {
+	case <-when1:
+	// ok
+	case <-when2:
+		assert.Fail(t, "should NOT match")
+	default:
+		assert.Fail(t, "should match")
+	}
+
+	// dispose
+	disposeTest(t, c, s, true)
+}

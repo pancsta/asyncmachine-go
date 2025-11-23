@@ -31,7 +31,7 @@ func NewWorkerArpcServer(
 	// init
 	w := &WorkerArpcServer{
 		Worker: worker,
-		Mach:   am.New(ctx, states.WorkerStruct, &am.Opts{ID: "worker"}),
+		Mach:   am.New(ctx, states.WorkerSchema, &am.Opts{Id: "worker"}),
 	}
 
 	// verify states and bind to methods
@@ -58,8 +58,8 @@ func NewWorkerArpcServer(
 
 	// logging
 	logLvl := am.EnvLogLevel("")
-	w.RPC.Mach.SetLoggerSimple(w.log, logLvl)
-	w.Mach.SetLoggerSimple(w.log, logLvl)
+	w.RPC.Mach.SemLogger().SetSimple(w.log, logLvl)
+	w.Mach.SemLogger().SetSimple(w.log, logLvl)
 
 	// telemetry debug
 	helpers.MachDebugEnv(w.RPC.Mach)

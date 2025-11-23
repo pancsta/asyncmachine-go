@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type A struct {
+type Args struct {
 	Local struct{}
 	Log   string `log:"log1"`
 	Plain string
@@ -18,7 +18,7 @@ type ARpc struct {
 }
 
 func TestArgsRpc(t *testing.T) {
-	a := &A{
+	a := &Args{
 		Local: struct{}{},
 		Log:   "log",
 		Plain: "plain",
@@ -36,7 +36,7 @@ func TestArgsRpc(t *testing.T) {
 }
 
 func TestArgsToLogMap(t *testing.T) {
-	a := &A{
+	a := &Args{
 		Local: struct{}{},
 		Log:   "log",
 		Plain: "plain",
@@ -46,7 +46,7 @@ func TestArgsToLogMap(t *testing.T) {
 		"log1": "log",
 	}
 
-	logMap := ArgsToLogMap(a)
+	logMap := ArgsToLogMap(a, 0)
 
 	assert.Equal(t, expected["log1"], logMap["log1"])
 	assert.Len(t, logMap, 1)

@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,7 +17,6 @@ import (
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/rpc/rpcnames"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 )
 
@@ -25,6 +25,8 @@ var (
 	ssCo = states.ConsumerStates
 )
 
+// Client is a type representing an RPC client that interacts with a remote
+// am.Machine instance.
 type Client struct {
 	*ExceptionHandler
 
@@ -33,6 +35,8 @@ type Client struct {
 
 	// Addr is the address the Client will connect to.
 	Addr string
+	// Request the state schema from the server.
+	RequestSchema bool
 	// Worker is a remote am.Machine instance
 	Worker *Worker
 	// Consumer is the optional consumer for deliveries.
@@ -86,11 +90,11 @@ type Client struct {
 
 	// internal
 
-	callLock    sync.Mutex
-	rpc         *rpc2.Client
-	stateNames  am.S
-	stateStruct am.Struct
-	conn        net.Conn
+	callLock     sync.Mutex
+	rpc          *rpc2.Client
+	workerStates am.S
+	workerSchema am.Schema
+	conn         net.Conn
 	// tmpTestErr is an error to return on the next call or notify, only for
 	// testing.
 	tmpTestErr error
@@ -111,7 +115,7 @@ var (
 // takes a consumer, which is a state machine with a WorkerPayload state. See
 // states.ConsumerStates.
 func NewClient(
-	ctx context.Context, workerAddr string, name string, stateStruct am.Struct,
+	ctx context.Context, workerAddr string, name string, stateStruct am.Schema,
 	stateNames am.S, opts *ClientOpts,
 ) (*Client, error) {
 	// validate
@@ -153,8 +157,8 @@ func NewClient(
 		CallRetryDelay:   100 * time.Millisecond,
 		CallRetryBackoff: 3 * time.Second,
 
-		stateNames:  slices.Clone(stateNames),
-		stateStruct: maps.Clone(stateStruct),
+		workerStates: slices.Clone(stateNames),
+		workerSchema: maps.Clone(stateStruct),
 	}
 
 	if amhelp.IsDebug() {
@@ -162,7 +166,7 @@ func NewClient(
 	}
 
 	// state machine
-	mach, err := am.NewCommon(ctx, GetClientId(name), states.ClientStruct,
+	mach, err := am.NewCommon(ctx, GetClientId(name), states.ClientSchema,
 		ssC.Names(), c, opts.Parent, &am.Opts{Tags: []string{
 			"rpc-client",
 			"addr:" + workerAddr,
@@ -170,11 +174,15 @@ func NewClient(
 	if err != nil {
 		return nil, err
 	}
-	mach.SetLogArgs(LogArgs)
+	mach.SemLogger().SetArgsMapper(LogArgs)
 	c.Mach = mach
+	// optional env debug
+	if os.Getenv(EnvAmRpcDbg) != "" {
+		amhelp.MachDebugEnv(mach)
+	}
 
 	// TODO debug
-	mach.AddBreakpoint(nil, am.S{ssC.Disconnected})
+	// mach.AddBreakpoint(nil, am.S{ssC.Disconnected})
 
 	if opts.Consumer != nil {
 
@@ -198,32 +206,23 @@ func NewClient(
 // ///// ///// /////
 
 func (c *Client) StartState(e *am.Event) {
-	// TODO extract NewWorker
-	c.Worker = &Worker{
-		c:             c,
-		ctx:           c.Mach.Ctx(),
-		states:        c.stateStruct,
-		stateNames:    c.stateNames,
-		indexWhen:     am.IndexWhen{},
-		indexStateCtx: am.IndexStateCtx{},
-		indexWhenTime: am.IndexWhenTime{},
-		whenDisposed:  make(chan struct{}),
-		machTime:      make(am.Time, len(c.stateNames)),
-		parentId:      c.Mach.Id(),
-		tags:          []string{"rpc-worker", "src-id:"},
+	ctx := c.Mach.NewStateCtx(ssC.Start)
+	worker, err := NewWorker(ctx, "", c, c.workerSchema, c.workerStates, c.Mach,
+		nil)
+	if err != nil {
+		c.Mach.AddErr(err, nil)
 	}
-	lvl := am.LogNothing
-	c.Worker.logLevel.Store(&lvl)
-	c.Worker.activeState.Store(&am.S{})
-	c.Mach.HandleDispose(func(id string, ctx context.Context) {
-		c.Worker.Dispose()
-	})
+	c.Worker = worker
+	// optional env debug
+	if os.Getenv(EnvAmRpcDbg) != "" {
+		amhelp.MachDebugEnv(worker)
+	}
 }
 
 func (c *Client) StartEnd(e *am.Event) {
 	// gather state from before the transition
 	before := e.Transition().TimeBefore
-	idx := e.Machine().Index
+	idx := e.Machine().Index1
 
 	// if never connected, stop here
 	if before.Is([]int{idx(ssC.Connecting), idx(ssC.Exception)}) {
@@ -288,7 +287,7 @@ func (c *Client) DisconnectingState(e *am.Event) {
 		}
 
 		// notify the server and wait a bit
-		c.notify(ctx, rpcnames.Bye.Encode(), &Empty{})
+		c.notify(ctx, ServerBye.Value, &Empty{})
 		if !amhelp.Wait(ctx, c.DisconnCooldown) {
 			c.ensureGroupConnected(e)
 
@@ -345,7 +344,7 @@ func (c *Client) DisconnectedEnter(e *am.Event) bool {
 func (c *Client) DisconnectedState(e *am.Event) {
 	// try to reconnect
 	wasAny := e.Transition().TimeBefore.Any1
-	if wasAny(c.Mach.Index(ssC.Connected), c.Mach.Index(ssC.Connecting)) &&
+	if wasAny(c.Mach.Index1(ssC.Connected), c.Mach.Index1(ssC.Connecting)) &&
 		c.ReconnectOn {
 
 		c.Mach.EvAdd1(e, ssC.RetryingConn, nil)
@@ -363,6 +362,10 @@ func (c *Client) HandshakingState(e *am.Event) {
 
 	// unblock
 	go func() {
+		if ctx.Err() != nil {
+			return // expired
+		}
+
 		// send hello or retry conn
 		resp := &RespHandshake{}
 		if c.HelloDelay > 0 {
@@ -378,7 +381,8 @@ func (c *Client) HandshakingState(e *am.Event) {
 		timeout := c.CallTimeout / 2
 		for i := 0; i < c.ConnRetries; i++ {
 			// TODO pass ID and key here
-			if c.call(ctx, rpcnames.Hello.Encode(), Empty{}, resp, timeout) {
+			rcpArgs := ArgsHello{ReqSchema: c.RequestSchema}
+			if c.call(ctx, ServerHello.Value, rcpArgs, resp, timeout) {
 				ok = true
 				c.log("hello ok on %d try", i+1)
 
@@ -402,43 +406,76 @@ func (c *Client) HandshakingState(e *am.Event) {
 		}
 
 		// validate
-		if len(resp.StateNames) == 0 {
+		stateNames := resp.Serialized.StateNames
+		if len(stateNames) == 0 {
 			AddErrRpcStr(e, c.Mach, "states missing")
 			return
 		}
-		if resp.ID == "" {
+		if resp.Serialized.ID == "" {
 			AddErrRpcStr(e, c.Mach, "ID missing")
 			return
 		}
+		if c.RequestSchema && resp.Schema == nil {
+			AddErrRpcStr(e, c.Mach, "schema missing")
+			return
+		}
 
-		// ID as tag TODO find-n-replace, not via index
-		c.Worker.tags[1] = "src-id:" + resp.ID
+		// schema
+		c.RequestSchema = false
+		if resp.Schema != nil {
+			c.updateSchema(resp)
+		}
+
+		// ID as tag TODO find-n-replace the tag, not via index [1]
+		c.Worker.tags[1] = "src-id:" + resp.Serialized.ID
+		// TODO setter
+		c.Worker.remoteId = resp.Serialized.ID
 
 		// compare states
-		diff := am.DiffStates(c.stateNames, resp.StateNames)
-		if len(diff) > 0 || len(resp.StateNames) != len(c.stateNames) {
+		if !am.StatesEqual(c.workerStates, stateNames) {
 			AddErrRpcStr(e, c.Mach, "States differ on client/server")
 			return
 		}
 
 		// confirm the handshake or retry conn
 		// TODO pass ID and key here
-		if !c.call(ctx, rpcnames.Handshake.Encode(), c.Mach.Id(), &Empty{}, 0) {
+		if !c.call(ctx, ServerHandshake.Value, c.Mach.Id(), &Empty{}, 0) {
 			c.Mach.EvAdd1(e, ssC.RetryingConn, nil)
 			return
 		}
 
 		// finalize
 		c.Mach.EvAdd1(e, ssC.HandshakeDone, Pass(&A{
-			Id:       resp.ID,
-			MachTime: resp.Time,
+			Id:        resp.Serialized.ID,
+			MachTime:  resp.Serialized.Time,
+			QueueTick: resp.Serialized.QueueTick,
 		}))
 	}()
 }
 
+func (c *Client) updateSchema(resp *RespHandshake) {
+	// TODO move to Worker.SetSchema???
+	w := c.Worker
+	w.schemaMx.Lock()
+	defer w.schemaMx.Unlock()
+	w.clockMx.Lock()
+	defer w.clockMx.Unlock()
+	c.workerSchema = resp.Schema
+	c.workerStates = resp.Serialized.StateNames
+
+	// save in the client
+	w.schema = resp.Schema
+	w.stateNames = resp.Serialized.StateNames
+	w.queueTick = resp.Serialized.QueueTick
+	w.machTime = resp.Serialized.Time
+	for idx, state := range w.stateNames {
+		w.machClock[state] = w.machTime[idx]
+	}
+}
+
 func (c *Client) HandshakeDoneEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
-	return a.Id != "" && a.MachTime != nil
+	return a.Id != "" && a.MachTime != nil && a.QueueTick > 0
 }
 
 func (c *Client) HandshakeDoneState(e *am.Event) {
@@ -446,13 +483,12 @@ func (c *Client) HandshakeDoneState(e *am.Event) {
 
 	// finalize the worker init
 	w := c.Worker
-	w.ID = "rw-" + c.Name
-	w.machTime = args.MachTime
+	w.id = "rw-" + c.Name
+	c.updateClock(nil, args.MachTime, args.QueueTick)
 
-	c.updateClock(nil, args.MachTime)
-
-	c.log("connected to %s", c.Worker.ID)
-	c.log("time t%d: %v", c.Worker.TimeSum(nil), args.MachTime)
+	c.log("connected to %s", c.Worker.id)
+	c.log("time t%d q%d: %v",
+		c.Worker.Time(nil).Sum(nil), c.Worker.QueueTick(), args.MachTime)
 }
 
 func (c *Client) CallRetryFailedState(e *am.Event) {
@@ -470,7 +506,10 @@ func (c *Client) RetryingCallEnter(e *am.Event) bool {
 func (c *Client) ExceptionState(e *am.Event) {
 	// call super
 	c.ExceptionHandler.ExceptionState(e)
-	c.Mach.EvRemove1(e, am.Exception, nil)
+	c.Mach.EvRemove1(e, am.StateException, nil)
+	// TODO handle am.ErrSchema:
+	//  "worker has to implement pkg/rpc/states/WorkerStatesDef"
+	//  only for nondeterministic machs
 }
 
 // RetryingConnState should be set without Connecting in the same tx
@@ -592,7 +631,7 @@ func (c *Client) Stop(waitTillExit context.Context, dispose bool) am.Result {
 	return res
 }
 
-// GetKind returns a kind of RPC component (server / client).
+// GetKind returns a kind of the RPC component (server / client).
 func (c *Client) GetKind() Kind {
 	return KindClient
 }
@@ -623,31 +662,49 @@ func (c *Client) bindRpcHandlers(conn net.Conn) {
 	c.log("new rpc2 client")
 
 	c.rpc = rpc2.NewClient(conn)
-	c.rpc.Handle(rpcnames.ClientSetClock.Encode(), c.RemoteSetClock)
-	c.rpc.Handle(rpcnames.ClientPushAllTicks.Encode(), c.RemotePushAllTicks)
-	c.rpc.Handle(rpcnames.ClientSendPayload.Encode(), c.RemoteSendPayload)
-	c.rpc.Handle(rpcnames.ClientBye.Encode(), c.RemoteBye)
+	c.rpc.Handle(ClientSetClock.Value, c.RemoteSetClock)
+	c.rpc.Handle(ClientPushAllTicks.Value, c.RemotePushAllTicks)
+	c.rpc.Handle(ClientSendPayload.Value, c.RemoteSendPayload)
+	c.rpc.Handle(ClientBye.Value, c.RemoteBye)
+	c.rpc.Handle(ClientSchemaChange.Value, c.RemoteSchemaChange)
 
 	// wait for reply on each req
 	c.rpc.SetBlocking(true)
 }
 
-func (c *Client) updateClock(msg ClockMsg, t am.Time) {
+func (c *Client) updateClock(
+	msg *ClockMsg, fullTime am.Time, fullQTick uint64,
+) {
 	if c.Mach.Not1(ssC.HandshakeDone) {
 		return
 	}
 
-	c.log("updateClock %v %v", msg, t)
-
-	// lock the worker
+	// lock the worker TODO not great
 	c.Worker.clockMx.Lock()
 	var clock am.Time
+	var qTick uint64
+
+	// diff update
 	if msg != nil {
 		// diff clock update
-		clock = ClockFromMsg(c.Worker.machTime, msg)
+		clock, qTick = ClockFromMsg(c.Worker.machTime, c.Worker.queueTick, msg)
+		check := Checksum(clock.Sum(nil), qTick)
+
+		// verify
+		if check != msg.Checksum {
+			// TODO request full update
+			c.Mach.Log("updateClock mismatch %d != %d", msg.Checksum, check)
+			c.log("msg q%d ch%d %+v", msg.QueueTick, msg.Checksum, msg.Updates)
+			c.log("clock t%d q%d ch%d (%+v)", clock.Sum(nil), qTick, check, clock)
+			c.Worker.clockMx.Unlock()
+
+			return
+		}
+
+		// full update
 	} else {
-		// full clock update
-		clock = t
+		clock = fullTime
+		qTick = fullQTick
 	}
 
 	// err
@@ -662,18 +719,18 @@ func (c *Client) updateClock(msg ClockMsg, t am.Time) {
 	}
 
 	if msg != nil {
-		c.log("updateClock from msg %dt: %v", sum, msg)
+		c.log("updateClock diff OK t%d q%d", sum, qTick)
 	} else {
-		c.log("updateClock full %d: %v", sum, t)
+		c.log("updateClock full OK t%d q%d", sum, fullQTick)
 	}
 
-	c.Worker.updateClock(clock)
+	c.Worker.InternalUpdateClock(clock, qTick, false)
 }
 
 func (c *Client) callFailsafe(
 	ctx context.Context, method string, args, resp any,
 ) bool {
-	mName := rpcnames.Decode(method).String()
+	mName := ServerMethods.Parse(method).Value
 
 	// validate
 	if c.rpc == nil {
@@ -748,7 +805,7 @@ func (c *Client) call(
 	ctx context.Context, method string, args, resp any, timeout time.Duration,
 ) bool {
 	defer c.Mach.PanicToErr(nil)
-	mName := rpcnames.Decode(method).String()
+	mName := ServerMethods.Parse(method).Value
 
 	// call
 	c.CallCount++
@@ -780,6 +837,7 @@ func (c *Client) call(
 	}
 	// err
 	if err != nil {
+		// TODO specific err?
 		AddErr(nil, c.Mach, mName, err)
 		return false
 	}
@@ -790,7 +848,7 @@ func (c *Client) call(
 func (c *Client) notifyFailsafe(
 	ctx context.Context, method string, args any,
 ) bool {
-	mName := rpcnames.Decode(method).String()
+	mName := ServerMethods.Parse(method).Value
 
 	// validate
 	if c.rpc == nil {
@@ -855,7 +913,7 @@ func (c *Client) notify(
 	ctx context.Context, method string, args any,
 ) bool {
 	defer c.Mach.PanicToErr(nil)
-	mName := rpcnames.Decode(method).String()
+	mName := ServerMethods.Parse(method).Value
 
 	// timeout
 	err := c.conn.SetDeadline(time.Now().Add(c.CallTimeout))
@@ -895,7 +953,7 @@ func (c *Client) notify(
 
 // RemoteSetClock updates the client's clock. Only called by the server.
 func (c *Client) RemoteSetClock(
-	_ *rpc2.Client, clock ClockMsg, _ *Empty,
+	_ *rpc2.Client, clock *ClockMsg, _ *Empty,
 ) error {
 	// validate
 	if clock == nil {
@@ -904,28 +962,28 @@ func (c *Client) RemoteSetClock(
 	}
 
 	// execute
-	c.updateClock(clock, nil)
+	c.updateClock(clock, nil, 0)
 
 	return nil
 }
 
 // RemotePushAllTicks log all the machine clock's ticks, so all final handlers
-// can be executed in order. Only called by the server.
+// can be executed in order. Only called by the server. TODO
 func (c *Client) RemotePushAllTicks(
 	_ *rpc2.Client, clocks []PushAllTicks, _ *Empty,
 ) error {
 	// TODO implement, test
 
-	for _, push := range clocks {
-		// validate
-		if push.ClockMsg == nil || push.Mutation == nil {
-			AddErrParams(nil, c.Mach, nil)
-			return nil
-		}
-
-		// execute TODO
-		// c.updateClock(clock, nil)
-	}
+	// for _, push := range clocks {
+	// 	// validate
+	// 	if push.ClockMsg == nil || push.Mutation == nil {
+	// 		AddErrParams(nil, c.Mach, nil)
+	// 		return nil
+	// 	}
+	//
+	// 	// execute TODO
+	// 	// c.InternalUpdateClock(clock, nil)
+	// }
 
 	return nil
 }
@@ -963,10 +1021,21 @@ func (c *Client) RemoteSendPayload(
 }
 
 // RemoteBye is called by the server on a planned disconnect.
-// TODO take a reason / source state.
+// TODO take a reason / source event?
 func (c *Client) RemoteBye(
 	_ *rpc2.Client, _ *Empty, _ *Empty,
 ) error {
+	// TODO check if this expected / covers all scenarios
+	c.Mach.Remove1(ssC.Start, nil)
+	return nil
+}
+
+// RemoteSchemaChange is called by the server on a source machine schema change.
+func (c *Client) RemoteSchemaChange(
+	_ *rpc2.Client, msg *RespHandshake, _ *Empty,
+) error {
+	c.log("new schema v" + strconv.Itoa(len(msg.Serialized.StateNames)))
+	c.updateSchema(msg)
 	return nil
 }
 

@@ -1,6 +1,8 @@
 package main
 
-import am "github.com/pancsta/asyncmachine-go/pkg/machine"
+import (
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+)
 
 const log = am.LogOps
 
@@ -9,7 +11,7 @@ func init() {
 	// import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(false)
-	// amhelp.SetLogLevel(am.LogChanges)
+	// amhelp.SetEnvLogLevel(am.LogOps)
 }
 
 func main() {
@@ -23,7 +25,7 @@ func main() {
 }
 
 func FooBar() {
-	mach := newMach("FooBar", am.Struct{
+	mach := newMach("FooBar", am.Schema{
 		"Foo": {Require: am.S{"Bar"}},
 		"Bar": {},
 	})
@@ -32,7 +34,7 @@ func FooBar() {
 }
 
 func FileProcessed() {
-	mach := newMach("FileProcessed", am.Struct{
+	mach := newMach("FileProcessed", am.Schema{
 		"ProcessingFile": { // async
 			Remove: am.S{"FileProcessed"},
 		},
@@ -44,13 +46,21 @@ func FileProcessed() {
 			Require: am.S{"ProcessingFile"},
 		},
 	})
+	lastTx := am.NewLastTxTracer()
+	err := mach.BindTracer(lastTx)
+	if err != nil {
+		panic(err)
+	}
+
 	mach.Add1("ProcessingFile", nil)
 	// TODO quiz: is InProgress active?
 	mach.Add1("FileProcessed", nil)
+
+	println(lastTx)
 }
 
 func DryWaterWet() {
-	mach := newMach("DryWaterWet", am.Struct{
+	mach := newMach("DryWaterWet", am.Schema{
 		"Wet": {
 			Require: am.S{"Water"},
 		},
@@ -69,7 +79,7 @@ func DryWaterWet() {
 }
 
 func RemoveByAdd() {
-	mach := newMach("RemoveByNonCalled", am.Struct{
+	mach := newMach("RemoveByNonCalled", am.Schema{
 		"A": {Add: am.S{"B"}},
 		"B": {Remove: am.S{"C"}},
 		"C": {},
@@ -80,7 +90,7 @@ func RemoveByAdd() {
 }
 
 func AddOptionalRemoveMandatory() {
-	mach := newMach("AddIsOptional", am.Struct{
+	mach := newMach("AddIsOptional", am.Schema{
 		"A": {Add: am.S{"B"}},
 		"B": {},
 		"C": {Remove: am.S{"B"}},
@@ -90,7 +100,7 @@ func AddOptionalRemoveMandatory() {
 }
 
 func Mutex() {
-	mach := newMach("Mutex", am.Struct{
+	mach := newMach("Mutex", am.Schema{
 		"A": {Remove: am.S{"A", "B", "C"}},
 		"B": {Remove: am.S{"A", "B", "C"}},
 		"C": {Remove: am.S{"A", "B", "C"}},
@@ -102,7 +112,7 @@ func Mutex() {
 }
 
 func Quiz() {
-	mach := newMach("Quiz", am.Struct{
+	mach := newMach("Quiz", am.Schema{
 		"A": {Add: am.S{"B"}},
 		"B": {
 			Require: am.S{"D"},
@@ -118,10 +128,10 @@ func Quiz() {
 
 // playground helpers
 
-func newMach(id string, machStruct am.Struct) *am.Machine {
-	mach := am.New(nil, machStruct, &am.Opts{
-		ID:        id,
-		DontLogID: true,
+func newMach(id string, machSchema am.Schema) *am.Machine {
+	mach := am.New(nil, machSchema, &am.Opts{
+		Id:        id,
+		DontLogId: true,
 		Tracers:   []am.Tracer{&Tracer{}},
 		LogLevel:  log,
 	})
@@ -141,5 +151,5 @@ type Tracer struct {
 }
 
 func (t *Tracer) TransitionEnd(tx *am.Transition) {
-	println("=> " + tx.Machine.String())
+	// println("=> " + tx.Machine.MutString())
 }

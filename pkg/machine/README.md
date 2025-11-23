@@ -3,13 +3,12 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
-**/pkg/machine** is a nondeterministic, multi-state, clock-based, relational, optionally accepting, and non-blocking
-state machine. It's a form of a rules engine that can orchestrate blocking APIs into fully controllable async state
-machines. Write ops are [state mutations](/docs/manual.md#mutations), read ops are [state checking](/docs/manual.md#active-states),
-and subscriptions are [state waiting](/docs/manual.md#waiting).
+**`/pkg/machine`** is a nondeterministic, multi-state, clock-based, relational, optionally accepting, and non-blocking
+**state machine**. It's a form of a _rules engine_ that can orchestrate blocking APIs into fully controllable async
+state-machines. Write ops are [state mutations](/docs/manual.md#mutations), read ops are [state checking](/docs/manual.md#active-states),
+and subscriptions are [state waiting](/docs/manual.md#waiting). It's dependency-free and a building block of a [larger project](https://asyncmachine.dev).
 
 ## Installation
 
@@ -19,50 +18,79 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
 ## Features
 
-Features are explained using [Mermaid flow diagrams](../../docs/diagrams.md), and headers link to relevant sections of
+Features are explained using [Mermaid flow diagrams](/docs/diagrams.md), and headers link to relevant sections of
 the [manual](/docs/manual.md).
 
 ### [Multi-state](/docs/manual.md#mutations)
 
 Many states can be active at the same time.
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_1.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_1.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_1.light.svg">
+  <img style="min-height: 94px" alt="Diagram showing multi-state capability" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_1.light.svg">
+</picture>
 
 ### [Clock and state contexts](/docs/manual.md#clock-and-context)
 
 States have clocks that produce contexts (odd = active; even = inactive).
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_2.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_2.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_2.light.svg">
+  <img style="min-height: 117px" alt="Diagram showing state clocks and contexts" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_2.light.svg">
+</picture>
 
 ### [Queue](/docs/manual.md#queue-and-history)
 
-Queue of mutations enable lock-free [Actor Model](https://en.wikipedia.org/wiki/Actor_model).
+Queue of mutations enables lock-free [Actor Model](https://en.wikipedia.org/wiki/Actor_model).
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_3.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_3.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_3.light.svg">
+  <img style="min-height: 187px" alt="Diagram showing queue and mutations" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_3.light.svg">
+</picture>
 
 ### [AOP handlers](/docs/manual.md#transition-handlers)
 
-States are [Aspects](https://en.wikipedia.org/wiki/Aspect-oriented_programming) with Enter, State, Exit, and End handlers.
+States are [Aspects](https://en.wikipedia.org/wiki/Aspect-oriented_programming) with Enter, State, Exit, and End
+handlers.
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_4.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_4.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_4.light.svg">
+  <img style="min-height: 325px" alt="Diagram showing AOP handlers" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_4.light.svg">
+</picture>
 
 ### [Negotiation](/docs/manual.md#transition-lifecycle)
 
 Transitions are cancellable (during the negotiation phase).
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_5.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_5.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_5.light.svg">
+  <img style="min-height: 257px" alt="Diagram showing negotiation phase" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_5.light.svg">
+</picture>
 
 ### [Relations](/docs/manual.md#relations)
 
 States are connected via Require, Remove, and Add relations.
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_6.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_6.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_6.light.svg">
+  <img style="min-height: 114px" alt="Diagram showing state relations" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_6.light.svg">
+</picture>
 
 ### [Subscriptions](/docs/manual.md#waiting)
 
-Channel-broadcast waiting on clock values.
+Channel-based broadcast for waiting on clock values.
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_7.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_7.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_7.light.svg">
+  <img style="min-height: 196px" alt="Diagram showing subscriptions" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_7.light.svg">
+</picture>
 
 ### [Error handling](/docs/manual.md#error-handling)
 
@@ -72,17 +100,17 @@ Error is a state, handled just like any other mutation.
 val, err := someOp()
 if err != nil {
     mach.AddErr(err, nil)
-    return
+    return // no err needed
 }
 ```
 
 ### [Tracers](/docs/manual.md#tracing-and-metrics)
 
-Synchronouse tracers for internal events.
+Synchronous tracers for internal events.
 
 ```text
 TransitionInit TransitionStart TransitionEnd HandlerStart HandlerEnd
-MachineInit MachineDispose NewSubmachine QueueEnd StructChange VerifyStates
+MachineInit MachineDispose NewSubmachine QueueEnd SchemaChange VerifyStates
 ```
 
 ## Usage
@@ -98,7 +126,7 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
 func main() {
     // init the state machine
-    mach := am.New(nil, am.Struct{
+    mach := am.New(nil, am.Schema{
         "ProcessingFile": { // async
             Remove: am.S{"FileProcessed"},
         },
@@ -145,23 +173,23 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
     // no blocking
     // lock-free critical section
     mach := e.Machine
-    // tick-based context
+    // clock-based expiration context
     stateCtx := mach.NewStateCtx("ProcessingFile")
     // unblock
     go func() {
-        // re-check the tick ctx
+        // re-check the state ctx
         if stateCtx.Err() != nil {
             return // expired
         }
         // blocking call
         err := processFile(h.Filename, stateCtx)
+        // re-check the state ctx after a blocking call
+        if stateCtx.Err() != nil {
+            return // expired
+        }
         if err != nil {
             mach.AddErr(err, nil)
             return
-        }
-        // re-check the tick ctx after a blocking call
-        if stateCtx.Err() != nil {
-            return // expired
         }
         // move to the next state in the flow
         mach.Add1("FileProcessed", nil)
@@ -170,6 +198,8 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 ```
 
 ### [Waiting](/examples/subscriptions/example_subscriptions.go)
+
+Subscriptions do not allocate goroutines.
 
 ```go
 // wait until FileDownloaded becomes active
@@ -181,17 +211,23 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 // wait for EventConnected to be activated with an arg ID=123
 <-mach.WhenArgs("EventConnected", am.A{"ID": 123}, nil)
 
+// wait for Foo to have a tick >= 6
+<-mach.WhenTime1("Foo", 6, nil)
+
 // wait for Foo to have a tick >= 6 and Bar tick >= 10
 <-mach.WhenTime(am.S{"Foo", "Bar"}, am.Time{6, 10}, nil)
 
 // wait for DownloadingFile to have a tick increased by 2 since now
 <-mach.WhenTicks("DownloadingFile", 2, nil)
 
+// wait for a mutation to execute
+<-mach.WhenQueue(mach.Add1("Foo", nil), nil)
+
 // wait for an error
 <-mach.WhenErr(nil)
 ```
 
-### States File
+### Schema File
 
 ```go
 // BasicStatesDef contains all the states of the Basic state machine.
@@ -214,7 +250,7 @@ type BasicStatesDef struct {
     Healthcheck string
 }
 
-var BasicStruct = am.Struct{
+var BasicSchema = am.Schema{
 
     // Errors
 
@@ -241,17 +277,17 @@ mach.Add1(ssS.KillingWorker, Pass(&A{
 
 ### Mutations and Relations
 
-[Mutations](/docs/manual.md#mutations) are the heartbeat of asyncmachine, while [relations](/docs/manual.md#relations)
-define the rules of the flow. Check out the [relations playground](https://play.golang.com/p/c89OjCUMxW-) and quiz
-yourself (or a [fancier playground](https://goplay.tools/snippet/c89OjCUMxW-)).
+While [mutations](/docs/manual.md#mutations) are the heartbeat of asyncmachine, it's the [relations](/docs/manual.md#relations)
+which define the **rules of the flow**. Check out the [relations playground](https://play.golang.com/p/c89OjCUMxW-) and
+quiz yourself (maybe a [fancier playground](https://goplay.tools/snippet/c89OjCUMxW-)).
 
 ```go
-mach := newMach("DryWaterWet", am.Struct{
+mach := newMach("DryWaterWet", am.Schema{
     "Wet": {
         Require: am.S{"Water"},
     },
     "Dry": {
-        Remove: am.S{"Wet"},
+        Remove: am.S{"Water"},
     },
     "Water": {
         Add:    am.S{"Wet"},
@@ -266,30 +302,36 @@ mach.Add1("Water", nil)
 ## Demos
 
 - [Relations playground](https://play.golang.com/p/c89OjCUMxW-)
-- Interactively use the [TUI debugger](/tools/cmd/am-dbg) with data pre-generated by
-  - **libp2p-pubsub-simulator** in
-    - web terminal: [http://188.166.101.108:8080/wetty/ssh](http://188.166.101.108:8080/wetty/ssh/am-dbg?pass=am-dbg:8080/wetty/ssh/am-dbg?pass=am-dbg)
-    - remote terminal: `ssh 188.166.101.108 -p 4444`
-    - local terminal: `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest --import-data https://pancsta.github.io/assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br`
-  - **remote integration tests** in
-    - web terminal: [http://188.166.101.108:8081/wetty/ssh](http://188.166.101.108:8081/wetty/ssh/am-dbg?pass=am-dbg:8081/wetty/ssh/am-dbg?pass=am-dbg)
-    - remote terminal: `ssh 188.166.101.108 -p 4445`
-    - local terminal: `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest --import-data https://pancsta.github.io/assets/asyncmachine-go/am-dbg-exports/remote-tests.gob.br`
+- Interactively use the [TUI debugger](/tools/cmd/am-dbg) with data pre-generated by a [secai bot](https://github.com/pancsta/secai):
+
+```bash
+go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
+  --import-data https://assets.asyncmachine.dev/am-dbg-exports/secai-cook.gob.br \
+  mach://cook
+```
 
 ## [Examples](/examples/README.md)
 
 All examples and benchmarks can be found in [/examples](/examples/README.md).
 
-## Tools
+## Dev Tools
 
-[![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png)](/tools/cmd/am-dbg/README.md)
+<div align="center">
+    <a href="/tools/cmd/am-dbg/README.md">
+        <img style="min-height: 335px" src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png"
+            alt="am-dbg"></a>
+</div>
 
-- **[`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md)** Multi-client TUI debugger.
-- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates states files and Grafana dashboards.
-- `/tools/cmd/am-vis` Planned.
+- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) Multi-client TUI debugger.
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen) Generates schema files and Grafana dashboards.
+- [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
+- [`/tools/cmd/am-vis`](/tools/cmd/am-vis) Generates D2 diagrams.
+- [`/tools/cmd/am-relay`](/tools/cmd/am-relay) Rotates logs.
 
-## Case Studies
+## Apps
 
+- [secai](https://github.com/pancsta/secai) AI Agents framework.
+- [arpc REPL](/tools/repl) Cobra-based REPL.
 - [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
   simulator for libp2p-pubsub.
@@ -312,6 +354,7 @@ The most common API methods are listed below. There's more for [local state mach
 but all of these are also implemented in the [transparent RPC layer](/pkg/rpc/README.md).
 
 ```go
+// TODO update
 // A (arguments) is a map of named arguments for a Mutation.
 type A map[string]any
 // S (state names) is a string list of state names.
@@ -319,7 +362,7 @@ type S []string
 type Time []uint64
 type Clock map[string]uint64
 type Result int
-type Struct = map[string]State
+type Schema = map[string]State
 
 // Api is a subset of Machine for alternative implementations.
 type Api interface {
@@ -331,9 +374,13 @@ type Api interface {
     Add(states S, args A) Result
     Remove1(state string, args A) Result
     Remove(states S, args A) Result
-    Set(states S, args A) Result
     AddErr(err error, args A) Result
     AddErrState(state string, err error, args A) Result
+    Toggle(states S, args A) Result
+    Toggle1(state string, args A) Result
+    Set(states S, args A) Result
+
+    // Traced mutations (remote)
 
     EvAdd1(event *Event, state string, args A) Result
     EvAdd(event *Event, states S, args A) Result
@@ -341,6 +388,8 @@ type Api interface {
     EvRemove(event *Event, states S, args A) Result
     EvAddErr(event *Event, err error, args A) Result
     EvAddErrState(event *Event, state string, err error, args A) Result
+    EvToggle(event *Event, states S, args A) Result
+    EvToggle1(event *Event, state string, args A) Result
 
     // Waiting (remote)
 
@@ -357,14 +406,21 @@ type Api interface {
     IsErr() bool
     Is(states S) bool
     Is1(state string) bool
-    Not(states S) bool
-    Not1(state string) bool
     Any(states ...S) bool
     Any1(state ...string) bool
+    Not(states S) bool
+    Not1(state string) bool
+    IsTime(time Time, states S) bool
+    WasTime(time Time, states S) bool
+    IsClock(clock Clock) bool
+    WasClock(clock Clock) bool
     Has(states S) bool
     Has1(state string) bool
-    IsTime(time Time, states S) bool
-    IsClock(clock Clock) bool
+    CanAdd(states S, args A) Result
+    CanAdd1(state string, args A) Result
+    CanRemove(states S, args A) Result
+    CanRemove1(state string, args A) Result
+    CountActive(states S) int
 
     // Waiting (local)
 
@@ -372,48 +428,51 @@ type Api interface {
     When1(state string, ctx context.Context) <-chan struct{}
     WhenNot(states S, ctx context.Context) <-chan struct{}
     WhenNot1(state string, ctx context.Context) <-chan struct{}
-    WhenTime(
-        states S, times Time, ctx context.Context) <-chan struct{}
+    WhenTime(states S, times Time, ctx context.Context) <-chan struct{}
+    WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
     WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
-    WhenTicksEq(state string, tick uint64, ctx context.Context) <-chan struct{}
+    WhenQuery(query func(clock Clock) bool, ctx context.Context) <-chan struct{}
     WhenErr(ctx context.Context) <-chan struct{}
+    WhenQueue(tick Result) <-chan struct{}
 
     // Getters (local)
 
     StateNames() S
+    StateNamesMatch(re *regexp.Regexp) S
     ActiveStates() S
     Tick(state string) uint64
     Clock(states S) Clock
     Time(states S) Time
     TimeSum(states S) uint64
+    QueueTick() uint64
     NewStateCtx(state string) context.Context
     Export() *Serialized
-    GetStruct() Struct
+    Schema() Schema
     Switch(groups ...S) string
+    Groups() (map[string][]int, []string)
+    Index(states S) []int
+    Index1(state string) int
 
     // Misc (local)
 
-    Log(msg string, args ...any)
     Id() string
     ParentId() string
     Tags() []string
-    SetLogId(val bool)
-    GetLogId() bool
-    SetLogger(logger Logger)
-    SetLogLevel(lvl LogLevel)
-    SetLoggerEmpty(lvl LogLevel)
-    SetLoggerSimple(logf func(format string, args ...any), level LogLevel)
     Ctx() context.Context
     String() string
     StringAll() string
+    Log(msg string, args ...any)
+    SemLogger() SemLogger
     Inspect(states S) string
-    Index(state string) int
     BindHandlers(handlers any) error
     DetachHandlers(handlers any) error
+    HasHandlers() bool
     StatesVerified() bool
     Tracers() []Tracer
-    DetachTracer(tracer Tracer) bool
+    DetachTracer(tracer Tracer) error
     BindTracer(tracer Tracer) error
+    AddBreakpoint1(added string, removed string, strict bool)
+    AddBreakpoint(added S, removed S, strict bool)
     Dispose()
     WhenDisposed() <-chan struct{}
     IsDisposed() bool
@@ -459,22 +518,23 @@ func TestWhenArgs(t *testing.T) {
 
 ## Status
 
-Release Candidate, semantically versioned, not optimized yet.
+Release Candidate, semantically versioned, partially optimized.
 
 ## Concepts
 
 **asyncmachine** is loosely based on the following concepts:
 
-- [NFA nondeterministic state machines](https://en.wikipedia.org/wiki/Nondeterministic_finite_automaton)
-- [EDA event emitters](https://en.wikipedia.org/wiki/Event-driven_architecture)
+- [dependency graph](https://en.wikipedia.org/wiki/Dependency_graph)
+- [async event emitter](https://en.wikipedia.org/wiki/Event-driven_architecture)
+- [nondeterministic state machine](https://en.wikipedia.org/wiki/Nondeterministic_finite_automaton)
 - [queue](https://en.wikipedia.org/wiki/Queue_(abstract_data_type))
-- [AOP aspect oriented programming](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
+- [aspect-oriented programming](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
 - [SQL relations](https://en.wikipedia.org/wiki/SQL)
 - [Paxos negotiation](https://en.wikipedia.org/wiki/Paxos_(computer_science))
-- [Non-blocking](https://en.wikipedia.org/wiki/Non-blocking_algorithm)
-- [Actor Model](https://en.wikipedia.org/wiki/Actor_model)
-- [DAG dependency graph](https://en.wikipedia.org/wiki/Dependency_graph)
 - [logical clock](https://en.wikipedia.org/wiki/Logical_clock)
+- [programming by contract](https://en.wikipedia.org/wiki/Design_by_contract)
+- [non-blocking](https://en.wikipedia.org/wiki/Non-blocking_algorithm)
+- [Actor Model](https://en.wikipedia.org/wiki/Actor_model)
 - [causal inference](https://en.wikipedia.org/wiki/Causal_inference)
 - [declarative logic](https://en.wikipedia.org/wiki/Declarative_programming)
 

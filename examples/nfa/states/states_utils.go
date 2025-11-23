@@ -18,8 +18,8 @@ var StateAdd = am.StateAdd
 // definition.
 var StateSet = am.StateSet
 
-// StructMerge is a func alias for extending an existing state structure.
-var StructMerge = am.StructMerge
+// SchemaMerge is a func alias for extending an existing state structure.
+var SchemaMerge = am.SchemaMerge
 
 // Exception is a type alias for the exception state.
-var Exception = am.Exception
+var Exception = am.StateException

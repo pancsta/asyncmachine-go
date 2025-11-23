@@ -8,6 +8,7 @@ import (
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	amxhelp "github.com/pancsta/asyncmachine-go/pkg/x/helpers"
 )
 
 func init() {
@@ -17,13 +18,13 @@ func init() {
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	amhelp.EnableDebugging(false)
-	amhelp.SetLogLevel(am.LogChanges)
+	amhelp.SetEnvLogLevel(am.LogChanges)
 }
 
 func main() {
 	ctx := context.Background()
 
-	states := am.Struct{
+	states := am.Schema{
 		// task start state
 		"Task": {Require: am.S{"Start"}},
 		// task done state
@@ -38,7 +39,7 @@ func main() {
 		},
 		"Healthcheck": {Multi: true},
 	}
-	names := am.S{"Start", "Task", "TaskDone", "Ready", "Healthcheck", am.Exception}
+	names := am.S{"Start", "Task", "TaskDone", "Ready", "Healthcheck", am.StateException}
 
 	// init state machine
 	mach, err := am.NewCommon(ctx, "fan", states, names, &am.ExceptionHandler{}, nil, &am.Opts{
@@ -66,7 +67,7 @@ func main() {
 
 	// create task states
 	// 10 tasks, 3 running concurrently
-	_, err = amhelp.FanOutIn(mach, "Task", 15, 3, fn)
+	_, err = amxhelp.FanOutIn(mach, "Task", 15, 3, fn)
 	if err != nil {
 		panic(err)
 	}

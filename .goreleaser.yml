@@ -31,6 +31,51 @@ builds:
     main: ./tools/cmd/am-dbg-ssh
     binary: am-dbg-ssh
 
+  -
+    id: "arpc"
+    env:
+      - CGO_ENABLED=0
+      - GO111MODULE=on
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    main: ./tools/cmd/arpc
+    binary: arpc
+
+  -
+    id: "am-relay"
+    env:
+      - CGO_ENABLED=0
+      - GO111MODULE=on
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    main: ./tools/cmd/am-relay
+    binary: am-relay
+
+  -
+    id: "am-vis"
+    env:
+      - CGO_ENABLED=0
+      - GO111MODULE=on
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    main: ./tools/cmd/am-vis
+    binary: am-vis
+
 archives:
   -
     id: "am-dbg"
@@ -50,6 +95,33 @@ archives:
     builds:
       - am-dbg
       - am-dbg-ssh
+
+  -
+    id: "arpc"
+    format: tar.gz
+    name_template: "arpc_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # dont add readmes etc
+    files: [""]
+    builds:
+      - arpc
+
+  -
+    id: "am-relay"
+    format: tar.gz
+    name_template: "am-relay_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # dont add readmes etc
+    files: [""]
+    builds:
+      - am-relay
+
+  -
+    id: "am-vis"
+    format: tar.gz
+    name_template: "am-relay_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # dont add readmes etc
+    files: [""]
+    builds:
+      - am-vis
 
 checksum:
   name_template: 'checksums.txt'

@@ -105,7 +105,7 @@ type Supervisor struct {
 	// workerSNames is a list of states for the worker.
 	workerSNames am.S
 	// workerStruct is the struct for the worker.
-	workerStruct am.Struct
+	workerStruct am.Schema
 
 	// in-memory workers
 
@@ -128,7 +128,7 @@ type Supervisor struct {
 // specified context, worker attributes, and options.
 func NewSupervisor(
 	ctx context.Context, workerKind string, workerBin []string,
-	workerStruct am.Struct, workerSNames am.S, opts *SupervisorOpts,
+	workerStruct am.Schema, workerSNames am.S, opts *SupervisorOpts,
 ) (*Supervisor, error) {
 	// validate
 	if len(workerBin) == 0 || workerBin[0] == "" {
@@ -199,7 +199,7 @@ func NewSupervisor(
 		s.OpTimeout = 10 * s.OpTimeout
 	}
 
-	mach, err := am.NewCommon(ctx, "ns-"+s.Name, states.SupervisorStruct,
+	mach, err := am.NewCommon(ctx, "ns-"+s.Name, states.SupervisorSchema,
 		ssS.Names(), s, opts.Parent, &am.Opts{Tags: []string{
 			"node-supervisor", "kind:" + workerKind,
 			"instance:" + strconv.Itoa(opts.InstanceNum),
@@ -209,10 +209,10 @@ func NewSupervisor(
 		return nil, err
 	}
 
-	mach.SetLogArgs(LogArgs)
+	mach.SemLogger().SetArgsMapper(LogArgs)
 	s.Mach = mach
 	amhelp.MachDebugEnv(mach)
-	mach.AddBreakpoint(am.S{ssS.ErrWorker}, nil)
+	mach.AddBreakpoint(am.S{ssS.ErrWorker}, nil, false)
 
 	// self removing multi handlers
 	s.WorkerReadyState = amhelp.RemoveMulti(mach, ssS.WorkerReady)
@@ -250,8 +250,8 @@ func (s *Supervisor) ErrWorkerState(e *am.Event) {
 
 	// possibly kill the worker
 	if !errors.Is(err, ErrWorkerKill) && w != nil {
-		err1 := w.errs.Add(utils.RandID(0), err, 0)
-		err2 := w.errsRecent.Add(utils.RandID(0), err, 0)
+		err1 := w.errs.Add(utils.RandId(0), err, 0)
+		err2 := w.errsRecent.Add(utils.RandId(0), err, 0)
 		if err := errors.Join(err1, err2); err != nil {
 			s.Mach.Log("failed to add error to worker %s: %v", args.LocalAddr, err)
 		}
@@ -316,7 +316,6 @@ func (s *Supervisor) StartState(e *am.Event) {
 		_ = AddErrRpc(s.Mach, err, nil)
 		return
 	}
-	amhelp.MachDebugEnv(s.PublicMux.Mach)
 
 	// local rpc TODO mux
 	opts := &rpc.ServerOpts{
@@ -329,7 +328,6 @@ func (s *Supervisor) StartState(e *am.Event) {
 		_ = AddErrRpc(s.Mach, err, nil)
 		return
 	}
-	amhelp.MachDebugEnv(s.LocalRpc.Mach)
 	s.LocalRpc.DeliveryTimeout = s.DeliveryTimeout
 	err = rpc.BindServerMulti(s.LocalRpc.Mach, s.Mach, ssS.LocalRpcReady,
 		ssS.SuperConnected, ssS.SuperDisconnected)
@@ -472,6 +470,7 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 		cmdArgs = s.WorkerBin[1:]
 	}
 	// TODO custom param name -a
+	// TODO store PIDs of workers, clean up old PIDs
 	cmdArgs = slices.Concat(cmdArgs, []string{"-a", bootAddr})
 	s.log("forking worker %s %s", s.WorkerBin[0], cmdArgs)
 	cmd := exec.CommandContext(ctx, s.WorkerBin[0], cmdArgs...)
@@ -549,7 +548,6 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 			_ = AddErrWorker(e, s.Mach, err, Pass(&argsOut))
 			return
 		}
-		amhelp.MachDebugEnv(wrpc.Mach)
 
 		// wait for client ready
 		wrpc.Start()
@@ -562,9 +560,6 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 			_ = AddErrWorker(e, s.Mach, wrpc.Mach.Err(), Pass(&argsOut))
 			return
 		}
-
-		// dbg the RPC worker
-		amhelp.MachDebugEnv(wrpc.Worker)
 
 		// next
 		argsOut.WorkerRpc = wrpc
@@ -703,7 +698,7 @@ func (s *Supervisor) HeartbeatState(e *am.Event) {
 	//
 	// 	// was Ready, but not anymore
 	// 	if w.Not1(ssW.Ready) && w.Tick(ssW.Ready) > 2 {
-	// 		s.Mach.Add1(ssS.KillingWorker, Pass(&A{
+	// 		s.Mach.Add(ssS.KillingWorker, Pass(&A{
 	// 			LocalAddr: info.localAddr,
 	// 		}))
 	// 	}
@@ -884,7 +879,7 @@ func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 				return // expired
 			}
 			if res != am.Executed {
-				s.log("worker %s rejected %s", info.rpc.Worker.ID, args.WorkerRpcId)
+				s.log("worker %s rejected %s", info.rpc.Worker.Id(), args.WorkerRpcId)
 				continue
 			}
 
@@ -899,7 +894,7 @@ func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 				},
 			}))
 
-			s.log("worker %s provided to %s", info.rpc.Worker.ID, args.SuperRpcId)
+			s.log("worker %s provided to %s", info.rpc.Worker.Id(), args.SuperRpcId)
 			break
 		}
 	}()
@@ -1115,7 +1110,6 @@ func (s *Supervisor) newClientConn(
 	if err != nil {
 		return nil, err
 	}
-	amhelp.MachDebugEnv(rpcS.Mach)
 
 	// set up
 	rpcS.DeliveryTimeout = s.DeliveryTimeout

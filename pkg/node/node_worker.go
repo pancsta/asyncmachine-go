@@ -54,7 +54,7 @@ type Worker struct {
 
 // NewWorker initializes a new Worker instance and returns it, or an error if
 // validation fails.
-func NewWorker(ctx context.Context, kind string, workerStruct am.Struct,
+func NewWorker(ctx context.Context, kind string, workerStruct am.Schema,
 	stateNames am.S, opts *WorkerOpts,
 ) (*Worker, error) {
 	// validate
@@ -71,7 +71,7 @@ func NewWorker(ctx context.Context, kind string, workerStruct am.Struct,
 		opts = &WorkerOpts{}
 	}
 
-	name := fmt.Sprintf("%s-%s-%s", kind, utils.Hostname(), utils.RandID(6))
+	name := fmt.Sprintf("%s-%s-%s", kind, utils.Hostname(), utils.RandId(6))
 
 	w := &Worker{
 		ConnTimeout:     5 * time.Second,
@@ -91,7 +91,7 @@ func NewWorker(ctx context.Context, kind string, workerStruct am.Struct,
 		return nil, err
 	}
 
-	mach.SetLogArgs(LogArgs)
+	mach.SemLogger().SetArgsMapper(LogArgs)
 	w.Mach = mach
 	amhelp.MachDebugEnv(mach)
 
@@ -138,7 +138,6 @@ func (w *Worker) StartState(e *am.Event) {
 		_ = AddErrRpc(w.Mach, err, nil)
 		return
 	}
-	amhelp.MachDebugEnv(w.LocalRpc.Mach)
 	w.LocalRpc.DeliveryTimeout = w.DeliveryTimeout
 	err = errors.Join(
 		// bind to Ready state
@@ -162,7 +161,6 @@ func (w *Worker) StartState(e *am.Event) {
 		_ = AddErrRpc(w.Mach, err, nil)
 		return
 	}
-	amhelp.MachDebugEnv(w.PublicRpc.Mach)
 	w.PublicRpc.DeliveryTimeout = w.DeliveryTimeout
 	err = errors.Join(
 		// bind to Ready state
@@ -220,7 +218,7 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 	// connect to the bootstrap machine
 	opts := &rpc.ClientOpts{Parent: w.Mach}
 	w.BootRpc, err = rpc.NewClient(ctx, w.BootAddr, "nw-"+w.Name,
-		states.BootstrapStruct, states.BootstrapStates.Names(), opts)
+		states.BootstrapSchema, states.BootstrapStates.Names(), opts)
 	if err != nil {
 		_ = AddErrRpc(w.Mach, err, nil)
 		return
@@ -230,7 +228,6 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 		_ = AddErrRpc(w.Mach, err, nil)
 		return
 	}
-	amhelp.MachDebugEnv(w.BootRpc.Mach)
 	w.BootRpc.Start()
 
 	// unblock

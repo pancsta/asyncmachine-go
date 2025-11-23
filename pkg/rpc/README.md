@@ -3,8 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 **aRPC** is a transparent RPC for state machines implemented using [asyncmachine-go](/). It's
 clock-based and features many optimizations, e.g. having most of the API methods executed locally (as state changes are
@@ -16,11 +15,13 @@ and [integration tests tutorial](/pkg/rpc/HOWTO.md).
 
 - mutation methods
 - wait methods
-- clock pushes (from worker-side mutations)
+- clock pushes (from source mutations)
 - remote contexts
 - multiplexing
 - reconnect / fail-safety
 - worker sending payloads to the client
+- [REPL](/tools/cmd/arpc/README.md)
+- queue ticks support
 - initial optimizations
 
 Not implemented (yet):
@@ -36,14 +37,20 @@ Each RPC server can handle 1 RPC client at a time, but 1 state source (asyncmach
 to itself (via [Tracer API](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Tracer)).
 Additionally, remote RPC workers can also have RPC servers attached to themselves, creating a tree structure (see [/examples/benchmark_state_source](/examples/benchmark_state_source/README.md)).
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_8.svg)
+<div align="center">
+    <a href="https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_8.svg?raw=true">
+        <img style="min-height: 135px"
+            src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_8.svg?raw=true"
+            alt="diagram" />
+    </a>
+</div>
 
 ## Components
 
 ### Worker
 
 Any state machine can be exposed as an RPC worker, as long as it implements [`/pkg/rpc/states/WorkerStructDef`](/pkg/rpc/states/ss_rpc_worker.go).
-This can be done either manually, or by using state helpers ([StructMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
+This can be done either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
 [SAdd](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SAdd)), or by generating a states file with
 [am-gen](/tools/cmd/am-gen/README.md). It's also required to have the states verified by [Machine.VerifyStates](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.VerifyStates).
 Worker can send data to the client via the `SendPayload` state.
@@ -60,7 +67,7 @@ import (
 // ...
 
 // inherit from RPC worker
-ssStruct := am.StructMerge(ssrpc.WorkerStruct, am.Struct{
+ssStruct := am.SchemaMerge(ssrpc.WorkerStruct, am.Schema{
     "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
 })
@@ -83,6 +90,18 @@ worker.Add1(ssrpc.WorkerStates.SendPayload, arpc.Pass(&arpc.A{
 }))
 ```
 
+#### Worker Schema
+
+State schema from [/pkg/rpc/states/ss_rpc_worker.go](/pkg/rpc/states/ss_rpc_worker.go).
+
+```go
+type WorkerStatesDef struct {
+    ErrProviding string
+    ErrSendPayload string
+    SendPayload string
+}
+```
+
 ### Server
 
 Each RPC server can handle 1 client at a time. Both client and server need the same worker states definition (structure
@@ -103,8 +122,8 @@ import (
 
 // ...
 
-var addr string
-var worker *am.Machine
+// var addr string
+// var worker *am.Machine
 
 // init
 s, err := arpc.NewServer(ctx, addr, worker.ID, worker, nil)
@@ -129,9 +148,21 @@ print("Client added Foo")
 worker.Add1("Bar", nil)
 ```
 
+#### Server Schema
+
+State schema from [/pkg/rpc/states/ss_rpc_server.go](/pkg/rpc/states/ss_rpc_server.go).
+
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-server.svg?raw=true">
+        <img style="min-height: 293px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-server.svg?raw=true"
+            alt="server schema" />
+    </a>
+</div>
+
 ### Client
 
-Each RPC client can connect to 1 server and needs to know worker's states structure and order. Data send by a worker via
+Each RPC client can connect to 1 server and needs to know worker's machine schema and order. Data send by a worker via
 `SendPayload` will be received by a [Consumer machine](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc/states#ConsumerStatesDef)
 (passed via [ClientOpts.Consumer](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#ClientOpts)) as an Add
 mutation of the `WorkerPayload` state (see a [detailed diagram](/docs/diagrams.md#rpc-getter-flow)). Client supports
@@ -159,7 +190,7 @@ import (
 
 var addr string
 // worker state structure
-var ssStruct am.Struct
+var ssStruct am.Schema
 // worker state names
 var ssNames am.S
 
@@ -190,6 +221,18 @@ c.Worker.Add1("Foo", nil)
 <-c.Worker.When1("Bar", nil)
 print("Server added Bar")
 ```
+
+#### Client Schema
+
+State schema from [/pkg/rpc/states/ss_rpc_client.go](/pkg/rpc/states/ss_rpc_client.go).
+
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-client.svg?raw=true">
+        <img style="min-height: 167px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-client.svg?raw=true"
+            alt="client schema" />
+    </a>
+</div>
 
 ### Multiplexer
 
@@ -236,8 +279,21 @@ if err != nil {
 }
 ```
 
+#### Multiplexer Schema
+
+State schema from [/pkg/rpc/states/ss_mux.go](/pkg/rpc/states/ss_mux.go).
+
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-mux.svg?raw=true">
+        <img style="min-height: 241px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-mux.svg?raw=true"
+            alt="multiplexer schema" />
+    </a>
+</div>
+
 ## Documentation
 
+- [api /pkg/rpc](https://code.asyncmachine.dev/pkg/github.com/pancsta/asyncmachine-go/pkg/rpc.html)
 - [godoc /pkg/rpc](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc)
 - [Example - Setup](/examples/arpc)
 - [Example - Tree State Source](/examples/tree_state_source/README.md)
@@ -248,7 +304,13 @@ if err != nil {
 A simple and opinionated benchmark showing a `subscribe-get-process` scenario, implemented in both gRPC and aRPC. See
 [/examples/benchmark_grpc](/examples/benchmark_grpc/README.md) for details and source code.
 
-![results - KiB transferred, number of calls](https://pancsta.github.io/assets/asyncmachine-go/arpc-vs-grpc.png)
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/arpc-vs-grpc.png?raw=true">
+        <img style="min-height: 319px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/arpc-vs-grpc.png?raw=true"
+            alt="results - KiB transferred, number of calls" />
+    </a>
+</div>
 
 ```text
 > task benchmark-grpc
@@ -281,6 +343,16 @@ ok      github.com/pancsta/asyncmachine-go/examples/benchmark_grpc      5.187s
 with distinction which methods happen where (locally or on remote).
 
 ```go
+// TODO update
+// A (arguments) is a map of named arguments for a Mutation.
+type A map[string]any
+// S (state names) is a string list of state names.
+type S []string
+type Time []uint64
+type Clock map[string]uint64
+type Result int
+type Schema = map[string]State
+
 // Api is a subset of Machine for alternative implementations.
 type Api interface {
     // ///// REMOTE
@@ -291,9 +363,13 @@ type Api interface {
     Add(states S, args A) Result
     Remove1(state string, args A) Result
     Remove(states S, args A) Result
-    Set(states S, args A) Result
     AddErr(err error, args A) Result
     AddErrState(state string, err error, args A) Result
+    Toggle(states S, args A) Result
+    Toggle1(state string, args A) Result
+    Set(states S, args A) Result
+
+    // Traced mutations (remote)
 
     EvAdd1(event *Event, state string, args A) Result
     EvAdd(event *Event, states S, args A) Result
@@ -301,6 +377,8 @@ type Api interface {
     EvRemove(event *Event, states S, args A) Result
     EvAddErr(event *Event, err error, args A) Result
     EvAddErrState(event *Event, state string, err error, args A) Result
+    EvToggle(event *Event, states S, args A) Result
+    EvToggle1(event *Event, state string, args A) Result
 
     // Waiting (remote)
 
@@ -317,14 +395,21 @@ type Api interface {
     IsErr() bool
     Is(states S) bool
     Is1(state string) bool
-    Not(states S) bool
-    Not1(state string) bool
     Any(states ...S) bool
     Any1(state ...string) bool
+    Not(states S) bool
+    Not1(state string) bool
+    IsTime(time Time, states S) bool
+    WasTime(time Time, states S) bool
+    IsClock(clock Clock) bool
+    WasClock(clock Clock) bool
     Has(states S) bool
     Has1(state string) bool
-    IsTime(time Time, states S) bool
-    IsClock(clock Clock) bool
+    CanAdd(states S, args A) Result
+    CanAdd1(state string, args A) Result
+    CanRemove(states S, args A) Result
+    CanRemove1(state string, args A) Result
+    CountActive(states S) int
 
     // Waiting (local)
 
@@ -332,48 +417,51 @@ type Api interface {
     When1(state string, ctx context.Context) <-chan struct{}
     WhenNot(states S, ctx context.Context) <-chan struct{}
     WhenNot1(state string, ctx context.Context) <-chan struct{}
-    WhenTime(
-        states S, times Time, ctx context.Context) <-chan struct{}
+    WhenTime(states S, times Time, ctx context.Context) <-chan struct{}
+    WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
     WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
-    WhenTicksEq(state string, tick uint64, ctx context.Context) <-chan struct{}
+    WhenQuery(query func(clock Clock) bool, ctx context.Context) <-chan struct{}
     WhenErr(ctx context.Context) <-chan struct{}
+    WhenQueue(tick Result) <-chan struct{}
 
     // Getters (local)
 
     StateNames() S
+    StateNamesMatch(re *regexp.Regexp) S
     ActiveStates() S
     Tick(state string) uint64
     Clock(states S) Clock
     Time(states S) Time
     TimeSum(states S) uint64
+    QueueTick() uint64
     NewStateCtx(state string) context.Context
     Export() *Serialized
-    GetStruct() Struct
+    Schema() Schema
     Switch(groups ...S) string
+    Groups() (map[string][]int, []string)
+    Index(states S) []int
+    Index1(state string) int
 
     // Misc (local)
 
-    Log(msg string, args ...any)
     Id() string
     ParentId() string
     Tags() []string
-    SetLogId(val bool)
-    GetLogId() bool
-    SetLogger(logger Logger)
-    SetLogLevel(lvl LogLevel)
-    SetLoggerEmpty(lvl LogLevel)
-    SetLoggerSimple(logf func(format string, args ...any), level LogLevel)
     Ctx() context.Context
     String() string
     StringAll() string
+    Log(msg string, args ...any)
+    SemLogger() SemLogger
     Inspect(states S) string
-    Index(state string) int
     BindHandlers(handlers any) error
     DetachHandlers(handlers any) error
+    HasHandlers() bool
     StatesVerified() bool
     Tracers() []Tracer
-    DetachTracer(tracer Tracer) bool
+    DetachTracer(tracer Tracer) error
     BindTracer(tracer Tracer) error
+    AddBreakpoint1(added string, removed string, strict bool)
+    AddBreakpoint(added S, removed S, strict bool)
     Dispose()
     WhenDisposed() <-chan struct{}
     IsDisposed() bool
@@ -411,5 +499,6 @@ Testing, not semantically versioned.
 - [`/examples/tree_state_source`](/examples/tree_state_source/README.md)
 - [`/pkg/rpc/HOWTO.md`](/pkg/rpc/HOWTO.md)
 - [`/examples/benchmark_grpc`](/examples/benchmark_grpc/README.md)
+- [`/tools/cmd/arpc`](/tools/cmd/arpc/README.mdhow )
 
 [Go back to the monorepo root](/README.md) to continue reading.

@@ -2,13 +2,18 @@
 
 package states
 
-import am "github.com/pancsta/asyncmachine-go/pkg/machine"
+import (
+	"context"
+
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+)
 
 // S is a type alias for a list of state names.
 type S = am.S
 
 // States map defines relations and properties of states.
-var States = am.Struct{
+// TODO rename to rel
+var States = am.Schema{
 	A: {
 		Auto:    true,
 		Require: S{C},
@@ -44,7 +49,7 @@ const (
 
 // Names is an ordered list of all the state names.
 var Names = S{
-	am.Exception,
+	am.StateException,
 	A,
 	B,
 	C,
@@ -52,3 +57,7 @@ var Names = S{
 }
 
 // #endregion
+
+func NewRel(ctx context.Context) *am.Machine {
+	return am.New(ctx, States, nil)
+}

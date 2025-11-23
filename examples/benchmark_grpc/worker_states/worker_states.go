@@ -9,7 +9,7 @@ type S = am.S
 type State = am.State
 
 // States structure defines relations and properties of states.
-var States = am.Struct{
+var States = am.Schema{
 	// toggle
 	Start: {},
 
@@ -37,7 +37,7 @@ var (
 	GroupValues = S{Value1, Value2, Value3}
 )
 
-//#region boilerplate defs
+// #region boilerplate defs
 
 // Names of all the states (pkg enum).
 
@@ -52,7 +52,7 @@ const (
 
 // Names is an ordered list of all the state names.
 var Names = S{
-	am.Exception,
+	am.StateException,
 	Start,
 	Event,
 	Value1,
@@ -61,4 +61,4 @@ var Names = S{
 	CallOp,
 }
 
-//#endregion
+// #endregion

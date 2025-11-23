@@ -50,6 +50,7 @@ go.work
 /*.gob
 /assets/*.cast.yml
 
+/tmp*
 _py
 /.run
 /*.bz2
@@ -71,3 +72,16 @@ _py
 /__*
 /trace*
 *.mmd
+/demo
+/am-dbg.txt
+tools/visualizer/testdata/*
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+/pkg/history/frostdb/databases/
+/pkg/x/history/frostdb/databases/
+/pkg/history/bbolt/amhist.db
+/*.d2
+/docs/api
+/docs/website

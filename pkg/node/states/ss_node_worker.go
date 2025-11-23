@@ -3,6 +3,8 @@ package states
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // WorkerStatesDef contains all the states of the Worker state machine.
@@ -46,6 +48,8 @@ type WorkerStatesDef struct {
 	Working       string
 	WorkReady     string
 
+	// inherit from BasicStatesDef
+	*ssam.BasicStatesDef
 	// inherit from WorkerStatesDef
 	*ssrpc.WorkerStatesDef
 }
@@ -59,11 +63,13 @@ type WorkerGroupsDef struct {
 	WorkStatus S
 }
 
-// WorkerStruct represents all relations and properties of WorkerStates.
-var WorkerStruct = StructMerge(
-	// inherit from BasicStruct
-	ssrpc.WorkerStruct,
-	am.Struct{
+// WorkerSchema represents all relations and properties of WorkerStates.
+var WorkerSchema = SchemaMerge(
+	// inherit from BasicSchema
+	ssam.BasicSchema,
+	// inherit from Worker
+	ssrpc.WorkerSchema,
+	am.Schema{
 
 		// errors
 

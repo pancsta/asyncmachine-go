@@ -194,16 +194,16 @@ func (h *MachineHandlers) UploadingFileEnd(e *am.Event) {
 func FileProcessingFlow(ctx context.Context, log Logger, filename string) (*am.Machine, error) {
 	// init
 	mach := am.New(ctx, ss.States, &am.Opts{
-		DontLogID: true,
+		DontLogId: true,
 	})
 	amhelp.MachDebugEnv(mach)
 
 	// different log granularity and a custom output
-	mach.SetLogLevel(am.LogChanges)
-	// machine.SetLogLevel(am.LogOps)
-	// machine.SetLogLevel(am.LogDecisions)
-	// machine.SetLogLevel(am.LogEverything)
-	mach.SetLogger(func(l am.LogLevel, msg string, args ...any) {
+	mach.SemLogger().SetLevel(am.LogChanges)
+	// machine.SemLogger().SetLevel(am.LogOps)
+	// machine.SemLogger().SetLevel(am.LogDecisions)
+	// machine.SemLogger().SetLevel(am.LogEverything)
+	mach.SemLogger().SetLogger(func(l am.LogLevel, msg string, args ...any) {
 		log(msg, args...)
 	})
 

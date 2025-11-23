@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/rpc2"
+	"github.com/orsinium-labs/enum"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -31,6 +34,15 @@ const (
 	EnvAmRpcLogServer = "AM_RPC_LOG_SERVER"
 	// EnvAmRpcLogClient enables machine logging for RPC client.
 	EnvAmRpcLogClient = "AM_RPC_LOG_CLIENT"
+	// EnvAmRpcLogMux enables machine logging for RPC multiplexers.
+	EnvAmRpcLogMux = "AM_RPC_LOG_MUX"
+	// EnvAmRpcDbg enables env-based debugging for RPC components.
+	EnvAmRpcDbg = "AM_RPC_DBG"
+	// EnvAmReplAddr is a REPL address to listen on. "1" expands to 127.0.0.1:0.
+	EnvAmReplAddr = "AM_REPL_ADDR"
+	// EnvAmReplDir is a dir path to save the address file as
+	// $AM_REPL_DIR/mach-id.addr. Optional.
+	EnvAmReplDir = "AM_REPL_DIR"
 )
 
 var ss = states.SharedStates
@@ -40,6 +52,45 @@ var ss = states.SharedStates
 // ///// TYPES
 
 // ///// ///// /////
+
+// RPC methods
+
+type (
+	ServerMethod enum.Member[string]
+	ClientMethod enum.Member[string]
+)
+
+var (
+	// methods define on the server
+
+	ServerAdd       = ServerMethod{"Add"}
+	ServerAddNS     = ServerMethod{"AddNS"}
+	ServerRemove    = ServerMethod{"Remove"}
+	ServerSet       = ServerMethod{"Set"}
+	ServerHello     = ServerMethod{"Hello"}
+	ServerHandshake = ServerMethod{"Handshake"}
+	ServerLog       = ServerMethod{"Log"}
+	ServerSync      = ServerMethod{"Sync"}
+	ServerBye       = ServerMethod{"Close"}
+
+	ServerMethods = enum.New(ServerAdd, ServerAddNS, ServerRemove, ServerSet,
+		ServerHello, ServerHandshake, ServerLog, ServerSync, ServerBye)
+
+	// methods define on the client
+
+	ClientSetClock     = ClientMethod{"ClientSetClock"}
+	ClientPushAllTicks = ClientMethod{"ClientPushAllTicks"}
+	ClientSendPayload  = ClientMethod{"ClientSendPayload"}
+	ClientBye          = ClientMethod{"ClientBye"}
+	ClientSchemaChange = ClientMethod{"SchemaChange"}
+
+	ClientMethods = enum.New(ClientSetClock, ClientPushAllTicks,
+		ClientSendPayload, ClientBye, ClientSchemaChange)
+)
+
+type ArgsHello struct {
+	ReqSchema bool
+}
 
 // ArgsMut is args for mutation methods.
 type ArgsMut struct {
@@ -73,15 +124,19 @@ type ArgsPayload struct {
 	Token string
 }
 
-type RespHandshake = am.Serialized
+type RespHandshake struct {
+	Schema     am.Schema
+	Serialized *am.Serialized
+}
 
 type RespResult struct {
-	Clock  ClockMsg
+	Clock  *ClockMsg
 	Result am.Result
 }
 
 type RespSync struct {
-	Time am.Time
+	Time      am.Time
+	QueueTick uint64
 }
 
 type RespGet struct {
@@ -90,12 +145,27 @@ type RespGet struct {
 
 type Empty struct{}
 
-type ClockMsg [][2]int
+type ClockMsg struct {
+	// Updates contain an incremental diffs of [stateIdx, diff].
+	Updates [][2]int
+	// QueueTick is an incremental diff for the queue tick.
+	QueueTick int
+	// Checksum is the last digit of (TimeSum + QueueTick)
+	Checksum uint8
+	// DBGSum       uint64
+	// DBGLastSum   uint64
+	// DBGQTick     uint64
+	// DBGLastQTick uint64
+}
 
+// PushAllTicks TODO implement
+// PushAllTicks should list all the mutations, with clocks and queue ticks
+// which then will be processed as a queue. The client reconstructs the tx on
+// his side. TODO mind partially accepted auto states (fake called states).
 type PushAllTicks struct {
-	// Mutation is 0:[am.MutationType] 1-n: called state index
-	Mutation []int
-	ClockMsg ClockMsg
+	MutationType []am.MutationType
+	CalledStates [][]int
+	ClockMsg     []*ClockMsg
 }
 
 // clientServerMethods is a shared interface for RPC client/server.
@@ -116,11 +186,15 @@ const (
 
 // ///// ///// /////
 
-// A represents typed arguments of the RPC package.
+const APrefix = "am_rpc"
+
+// A represents typed arguments of the RPC package. It's a typesafe alternative
+// to [am.A].
 type A struct {
 	Id        string `log:"id"`
 	Name      string `log:"name"`
 	MachTime  am.Time
+	QueueTick uint64
 	Payload   *ArgsPayload
 	Addr      string `log:"addr"`
 	Err       error
@@ -146,12 +220,12 @@ type ARpc struct {
 	Dispose   bool
 }
 
-// ParseArgs extracts A from [am.Event.Args]["am_rpc"].
+// ParseArgs extracts A from [am.Event.Args][APrefix].
 func ParseArgs(args am.A) *A {
-	if r, _ := args["am_rpc"].(*ARpc); r != nil {
+	if r, _ := args[APrefix].(*ARpc); r != nil {
 		return amhelp.ArgsToArgs(r, &A{})
 	}
-	if a, _ := args["am_rpc"].(*A); a != nil {
+	if a, _ := args[APrefix].(*A); a != nil {
 		return a
 	}
 	return &A{}
@@ -159,12 +233,12 @@ func ParseArgs(args am.A) *A {
 
 // Pass prepares [am.A] from A to pass to further mutations.
 func Pass(args *A) am.A {
-	return am.A{"am_rpc": args}
+	return am.A{APrefix: args}
 }
 
 // PassRpc prepares [am.A] from A to pass over RPC.
 func PassRpc(args *A) am.A {
-	return am.A{"am_rpc": amhelp.ArgsToArgs(args, &ARpc{})}
+	return am.A{APrefix: amhelp.ArgsToArgs(args, &ARpc{})}
 }
 
 // LogArgs is an args logger for A.
@@ -174,7 +248,7 @@ func LogArgs(args am.A) map[string]string {
 		return nil
 	}
 
-	return amhelp.ArgsToLogMap(a)
+	return amhelp.ArgsToLogMap(a, 0)
 }
 
 // // DEBUG for perf testing TODO tag
@@ -190,7 +264,7 @@ func LogArgs(args am.A) map[string]string {
 type serverRpcMethods interface {
 	// rpc
 
-	RemoteHello(client *rpc2.Client, args *Empty, resp *RespHandshake) error
+	RemoteHello(client *rpc2.Client, args *ArgsHello, resp *RespHandshake) error
 
 	// mutations
 
@@ -201,7 +275,7 @@ type serverRpcMethods interface {
 
 // clientRpcMethods is the RPC server exposed by the RPC client for bi-di comm.
 type clientRpcMethods interface {
-	RemoteSetClock(worker *rpc2.Client, args ClockMsg, resp *Empty) error
+	RemoteSetClock(worker *rpc2.Client, args *ClockMsg, resp *Empty) error
 	RemoteSendingPayload(
 		worker *rpc2.Client, file *ArgsPayload, resp *Empty,
 	) error
@@ -261,8 +335,9 @@ func AddErrNoConn(e *am.Event, mach *am.Machine, err error) {
 }
 
 // AddErr detects sentinels from error msgs and calls the proper error setter.
+// TODO also return error for compat
 func AddErr(e *am.Event, mach *am.Machine, msg string, err error) {
-	if msg == "" {
+	if msg != "" {
 		err = fmt.Errorf("%w: %s", err, msg)
 	}
 
@@ -308,31 +383,164 @@ func (h *ExceptionHandler) ExceptionEnter(e *am.Event) bool {
 
 // ///// ///// /////
 
-// ///// REMOTE HANDLERS
+// ///// LOGGER
 
 // ///// ///// /////
 
-// Event struct represents a single event of a Mutation within a Transition.
-// One event can have 0-n handlers. TODO remove?
-type Event struct {
-	// Name of the event / handler
-	Name string
-	// Machine is the machine that the event belongs to.
-	Machine am.Api
+type semLogger struct {
+	mach  *Worker
+	steps atomic.Bool
+	graph atomic.Bool
 }
 
-// Transition represents processing of a single mutation within a machine.
-type Transition struct {
-	// Machine is the parent machine of this transition.
-	Machine am.Api
-	// TimeBefore is the machine time from before the transition.
-	TimeBefore am.Time
-	// TimeAfter is the machine time from after the transition. If the transition
-	// has been canceled, this will be the same as TimeBefore.
-	TimeAfter am.Time
+// implement [SemLogger]
+var _ am.SemLogger = &semLogger{}
+
+func (s *semLogger) SetArgsMapper(mapper am.LogArgsMapperFn) {
+	// TODO
 }
 
-type HandlerFinal func(e *Event)
+func (s *semLogger) ArgsMapper() am.LogArgsMapperFn {
+	// TODO
+	return nil
+}
+
+func (s *semLogger) EnableId(val bool) {
+	// TODO
+}
+
+func (s *semLogger) IsId() bool {
+	return false
+}
+
+func (s *semLogger) SetLogger(fn am.LoggerFn) {
+	if fn == nil {
+		s.mach.logger.Store(nil)
+
+		return
+	}
+	s.mach.logger.Store(&fn)
+}
+
+func (s *semLogger) Logger() am.LoggerFn {
+	if l := s.mach.logger.Load(); l != nil {
+		return *l
+	}
+
+	return nil
+}
+
+func (s *semLogger) SetLevel(lvl am.LogLevel) {
+	s.mach.logLevel.Store(&lvl)
+}
+
+func (s *semLogger) Level() am.LogLevel {
+	return *s.mach.logLevel.Load()
+}
+
+func (s *semLogger) SetEmpty(lvl am.LogLevel) {
+	var logger am.LoggerFn = func(_ am.LogLevel, msg string, args ...any) {
+		// no-op
+	}
+	s.mach.logger.Store(&logger)
+	s.mach.logLevel.Store(&lvl)
+}
+
+func (s *semLogger) SetSimple(
+	logf func(format string, args ...any), level am.LogLevel,
+) {
+	var logger am.LoggerFn = func(_ am.LogLevel, msg string, args ...any) {
+		logf(msg, args...)
+	}
+	s.mach.logger.Store(&logger)
+	s.mach.logLevel.Store(&level)
+}
+
+func (s *semLogger) AddPipeOut(addMut bool, sourceState, targetMach string) {
+	kind := "remove"
+	if addMut {
+		kind = "add"
+	}
+	s.mach.log(am.LogOps, "[pipe-out:%s] %s to %s", kind, sourceState,
+		targetMach)
+}
+
+func (s *semLogger) AddPipeIn(addMut bool, targetState, sourceMach string) {
+	kind := "remove"
+	if addMut {
+		kind = "add"
+	}
+	s.mach.log(am.LogOps, "[pipe-in:%s] %s from %s", kind, targetState,
+		sourceMach)
+}
+
+func (s *semLogger) RemovePipes(machId string) {
+	s.mach.log(am.LogOps, "[pipe:gc] %s", machId)
+}
+
+func (s *semLogger) IsSteps() bool {
+	return s.steps.Load()
+}
+
+func (s *semLogger) EnableSteps(enable bool) {
+	s.steps.Store(enable)
+}
+
+func (s *semLogger) IsGraph() bool {
+	return s.graph.Load()
+}
+
+func (s *semLogger) EnableGraph(enable bool) {
+	s.graph.Store(enable)
+}
+
+// TODO more data types
+
+func (s *semLogger) EnableStateCtx(val bool) {
+	// TODO
+}
+
+func (s *semLogger) IsStateCtx() bool {
+	return true
+}
+
+func (s *semLogger) EnableWhen(val bool) {
+	// TODO
+}
+
+func (s *semLogger) IsWhen() bool {
+	return true
+}
+
+func (s *semLogger) EnableArgs(val bool) {
+	// TODO params for synthetic log
+}
+
+func (s *semLogger) IsArgs() bool {
+	return true
+}
+
+func (s *semLogger) EnableQueued(val bool) {
+	// TODO
+}
+
+func (s *semLogger) IsQueued() bool {
+	return true
+}
+
+func (s *semLogger) EnableCan(enable bool) {
+	// TODO
+}
+
+func (s *semLogger) IsCan() bool {
+	return true
+}
+
+// ///// ///// /////
+
+// ///// REMOTE HANDLERS
+
+// ///// ///// /////
 
 type remoteHandler struct {
 	h            any
@@ -366,13 +574,30 @@ type WorkerTracer struct {
 	s *Server
 }
 
-func (t *WorkerTracer) TransitionEnd(_ *am.Transition) {
+func (t *WorkerTracer) TransitionEnd(tx *am.Transition) {
 	// TODO channel and value in atomic, skip dups (smaller tick values)
 	go func() {
 		t.s.mutMx.Lock()
 		defer t.s.mutMx.Unlock()
 
 		t.s.pushClockUpdate(false)
+	}()
+}
+
+func (t *WorkerTracer) SchemaChange(mach am.Api, oldSchema am.Schema) {
+	go func() {
+		t.s.mutMx.Lock()
+		defer t.s.mutMx.Unlock()
+
+		if c := t.s.rpcClient.Load(); c != nil {
+			msg := &RespHandshake{
+				Schema:     mach.Schema(),
+				Serialized: mach.Export(),
+			}
+			err := c.CallWithContext(mach.Ctx(),
+				ClientSchemaChange.Value, msg, &Empty{})
+			mach.AddErr(err, nil)
+		}
 	}()
 }
 
@@ -387,6 +612,117 @@ func (t *WorkerTracer) TransitionEnd(_ *am.Transition) {
 
 // ///// ///// /////
 
+// MachReplEnv sets up a machine for a REPL connection in case AM_REPL_ADDR env
+// var is set. See MachRepl.
+func MachReplEnv(mach am.Api) <-chan error {
+	addr := os.Getenv(EnvAmReplAddr)
+	dir := os.Getenv(EnvAmReplDir)
+
+	err := make(chan error)
+	switch addr {
+	case "":
+		return err
+	case "1":
+		// expand 1 to default
+		addr = ""
+	}
+
+	MachRepl(mach, addr, dir, nil, nil)
+
+	return err
+}
+
+// MachRepl sets up a machine for a REPL connection, which allows for
+// mutations, like any other RPC connection. See [/tools/cmd/arpc] for usage.
+// This function is considered a debugging helper and can panic.
+//
+// addr: address to listen on, default to 127.0.0.1:0
+// addrDir: optional dir path to save the address file as addrDir/mach-id.addr.
+// addrCh: optional channel to send the address to, once ready
+// errCh: optional channel to send err to, once ready
+func MachRepl(
+	mach am.Api, addr, addrDir string, addrCh chan<- string, errCh chan<- error,
+) {
+	if amhelp.IsTestRunner() {
+		return
+	}
+
+	if addr == "" {
+		addr = "127.0.0.1:0"
+	}
+
+	if mach.HasHandlers() && !mach.Has(ssW.Names()) {
+		err := fmt.Errorf(
+			"%w: REPL source has to implement pkg/rpc/states/WorkerStatesDef",
+			am.ErrSchema)
+
+		// panic only early
+		panic(err)
+	}
+
+	mux, err := NewMux(mach.Ctx(), "repl-"+mach.Id(), nil, &MuxOpts{
+		Parent: mach,
+	})
+	// panic only early
+	if err != nil {
+		panic(err)
+	}
+	mux.Addr = addr
+	mux.Source = mach
+	mux.Start()
+
+	if addrCh == nil && addrDir == "" {
+		if errCh != nil {
+			close(errCh)
+		}
+		return
+	}
+
+	go func() {
+		// dispose ret channels
+		defer func() {
+			if errCh != nil {
+				close(errCh)
+			}
+			if addrCh != nil {
+				close(addrCh)
+			}
+		}()
+
+		// prep the dir
+		dirOk := false
+		if addrDir != "" {
+			if _, err := os.Stat(addrDir); os.IsNotExist(err) {
+				err := os.MkdirAll(addrDir, 0o755)
+				if err == nil {
+					dirOk = true
+				} else if errCh != nil {
+					errCh <- err
+				}
+			} else {
+				dirOk = true
+			}
+		}
+
+		// wait for an addr
+		<-mux.Mach.When1(ssM.Ready, nil)
+		if addrCh != nil {
+			addrCh <- mux.Addr
+		}
+
+		// save to dir
+		if dirOk && addrDir != "" {
+			err = os.WriteFile(
+				filepath.Join(addrDir, mach.Id()+".addr"),
+				[]byte(mux.Addr), 0o644,
+			)
+			if errCh != nil {
+				errCh <- err
+			}
+		}
+	}()
+}
+
 // // DEBUG for perf testing
 // func NewClockMsg(before, after am.Time) ClockMsg {
 //	return ClockMsg(after)
@@ -397,31 +733,62 @@ func (t *WorkerTracer) TransitionEnd(_ *am.Transition) {
 //	return am.Time(msg)
 // }
 
-func NewClockMsg(before, after am.Time) ClockMsg {
-	var val [][2]int
+func Checksum(mTime uint64, qTick uint64) uint8 {
+	return uint8(mTime+qTick) % 10
+}
 
-	for k := range after {
-		if before == nil {
-			// TODO test this path
-			val = append(val, [2]int{k, int(after[k])})
-		} else if before[k] != after[k] {
-			val = append(val, [2]int{k, int(after[k] - before[k])})
+// NewClockMsg create a new diff update based on the last and current machine
+// time, and last and current queue tick.
+func NewClockMsg(
+	tSum uint64, tBefore, tAfter am.Time, qBefore, qAfter uint64,
+) *ClockMsg {
+	ret := &ClockMsg{
+		QueueTick: int(qAfter) - int(qBefore),
+		Checksum:  Checksum(tSum, qAfter),
+
+		// debug
+		// DBGSum:       tSum,
+		// DBGQTick:     qAfter,
+		// DBGLastSum:   tBefore.Sum(),
+		// DBGLastQTick: qBefore,
+	}
+
+	for stateIdx := range tAfter {
+		// first call or new schema
+		if tBefore == nil || stateIdx >= len(tBefore) {
+			// TODO test this path, eg schema update
+			ret.Updates = append(ret.Updates,
+				[2]int{stateIdx, int(tAfter[stateIdx])})
+
+			// regular update
+		} else if tBefore[stateIdx] != tAfter[stateIdx] {
+			ret.Updates = append(ret.Updates,
+				[2]int{stateIdx, int(tAfter[stateIdx] - tBefore[stateIdx])})
 		}
 	}
 
-	return val
+	return ret
 }
 
-func ClockFromMsg(before am.Time, msg ClockMsg) am.Time {
-	after := slices.Clone(before)
+func ClockFromMsg(
+	timeBefore am.Time, qTickBefore uint64, msg *ClockMsg,
+) (am.Time, uint64) {
+	// calculate
+	timeAfter := slices.Clone(timeBefore)
+	l := len(timeAfter)
 
-	for _, v := range msg {
+	for _, v := range msg.Updates {
 		key := v[0]
 		val := v[1]
-		after[key] += uint64(val)
+		if key >= l {
+			// TODO
+			continue
+		}
+		timeAfter[key] += uint64(val)
 	}
+	qTickAfter := qTickBefore + uint64(msg.QueueTick)
 
-	return after
+	return timeAfter, qTickAfter
 }
 
 func TrafficMeter(
@@ -473,4 +840,10 @@ func TrafficMeter(
 	c := bytes.Load()
 	// fmt.Printf("Forwarded %d bytes\n", c)
 	counter <- c
+}
+
+func newClosedChan() chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/node/states"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc"
 )
+
 var ssW = states.WorkerStates
 
 func main() {
@@ -30,18 +31,18 @@ func main() {
 	// worker
 
 	// machine init
-	mach := am.New(context.Background(), testutils.RelsNodeWorkerStruct, &am.Opts{
-		ID: "t-worker-" + addr})
+	mach := am.New(context.Background(), testutils.RelsNodeWorkerSchema, &am.Opts{
+		Id: "t-worker-" + addr})
 	err := mach.VerifyStates(testutils.RelsNodeWorkerStates)
 	if err != nil {
 		panic(err)
 	}
 
 	if os.Getenv(am.EnvAmDebug) != "" {
-		mach.SetLogLevel(am.LogEverything)
+		mach.SemLogger().SetLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
-	worker, err := node.NewWorker(ctx, "NTW", mach.GetStruct(),
+	worker, err := node.NewWorker(ctx, "NTW", mach.Schema(),
 		mach.StateNames(), nil)
 	if err != nil {
 		panic(err)
@@ -68,7 +69,6 @@ func main() {
 	// block until disconnected
 	<-worker.Mach.WhenNot1(ssW.SuperConnected, nil)
 }
-
 
 type workerHandlers struct {
 	Mach *am.Machine

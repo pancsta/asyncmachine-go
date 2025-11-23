@@ -16,19 +16,19 @@ import (
 	"github.com/gdamore/tcell/v2/terminfo"
 	"github.com/gliderlabs/ssh"
 	"github.com/lithammer/dedent"
-	"github.com/pancsta/asyncmachine-go/internal/utils"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
 	"github.com/spf13/cobra"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
 type Params struct {
-	cli.Params
+	types.Params
 
-	SSHAddr string
+	SshAddr string
 }
 
 func main() {
@@ -47,29 +47,31 @@ var cliParamServerAddrShort = "s"
 func rootCmd(fn rootFn) *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use: "am-dbg-ssh -s localhost:4444",
+		// nolint:lll
 		Long: dedent.Dedent(`
-			am-dbg-ssh is an SSH version of asyncmachine-go debugger.
+			am-dbg-ssh is an SSH version of asyncmachine-go debugger serving local
+			dumps via --import-file.
 	
 			You can connect to a running instance with any SSH client.
 		`),
 		Run: func(cmd *cobra.Command, args []string) {
-			fn(cmd, args, parseParams(cmd, cli.ParseParams(cmd, args)))
+			fn(cmd, args, parseParams(cmd, types.ParseParams(cmd, args)))
 		},
 	}
 
 	rootCmd.Flags().StringP(cliParamServerAddr, cliParamServerAddrShort,
 		"localhost:4444", "SSH host:port to listen on")
-	cli.AddFlags(rootCmd)
+	types.AddFlags(rootCmd)
 	// TODO validate --import-file passed
 
 	return rootCmd
 }
 
-func parseParams(cmd *cobra.Command, p cli.Params) Params {
+func parseParams(cmd *cobra.Command, p types.Params) Params {
 	sshAddr := cmd.Flag(cliParamServerAddr).Value.String()
 	return Params{
 		Params:  p,
-		SSHAddr: sshAddr,
+		SshAddr: sshAddr,
 	}
 }
 
@@ -80,6 +82,9 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 	if par.Version {
 		println(ver)
 		os.Exit(0)
+	} else if par.ImportData == "" {
+		println("error: --import-file is required")
+		os.Exit(1)
 	}
 
 	// init the debugger
@@ -93,8 +98,7 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 			return
 		}
 
-		// tview says we don't have to do this
-		// when using SetScreen, but it lies
+		// Init is required for cview, but not for tview
 		if err := screen.Init(); err != nil {
 			_, _ = fmt.Fprintln(sess.Stderr(), "unable to init screen:", err)
 			return
@@ -104,13 +108,14 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 			// ssh screen
 			Screen:      screen,
 			DbgLogLevel: par.LogLevel,
-			DbgLogger:   cli.GetLogger(&par.Params),
-			// TODO cache import data and deep copy for new connections
-			ImportData: par.ImportData,
+			DbgRace:     par.RaceDetector,
+			DbgLogger:   types.GetLogger(&par.Params, par.OutputDir),
+			ImportData:  par.ImportData,
 			// ServerAddr is disabled
-			ServerAddr:  par.ServerAddr,
-			EnableMouse: par.EnableMouse,
-			Version:     ver,
+			AddrRpc:         par.ListenAddr,
+			EnableMouse:     par.EnableMouse,
+			EnableClipboard: par.EnableClipboard,
+			Version:         ver,
 		})
 		if err != nil {
 			_, _ = fmt.Fprintln(sess.Stderr(), "error: dbg", err)
@@ -128,7 +133,8 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 
 		// start and wait till the end
 
-		dbg.Start(par.StartupMachine, par.StartupTx, par.StartupView)
+		dbg.Start(par.StartupMachine, par.StartupTx, par.StartupView,
+			par.StartupGroup)
 
 		select {
 		// TODO handle timeouts better
@@ -159,8 +165,8 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 			return nil
 		}
 
-		fmt.Printf("SSH: listening on %s\n", par.SSHAddr)
-		err := ssh.ListenAndServe(par.SSHAddr, nil, optSrv)
+		fmt.Printf("SSH: listening on %s\n", par.SshAddr)
+		err := ssh.ListenAndServe(par.SshAddr, nil, optSrv)
 		if err != nil {
 			log.Printf("ssh.ListenAndServe: %v", err)
 			close(srvCh)
@@ -178,7 +184,9 @@ func cliRun(_ *cobra.Command, _ []string, par Params) {
 }
 
 // ///// ///// /////
+
 // ///// SSH
+
 // ///// ///// /////
 
 func NewSessionScreen(s ssh.Session) (tcell.Screen, error) {

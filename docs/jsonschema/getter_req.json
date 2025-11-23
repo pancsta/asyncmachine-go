@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pancsta/asyncmachine-go/pkg/integrations/getter-req",
+  "$ref": "#/$defs/GetterReq",
+  "$defs": {
+    "GetterReq": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/Kind",
+          "description": "The kind of the request."
+        },
+        "time": {
+          "$ref": "#/$defs/S",
+          "description": "Request ticks of the passed states"
+        },
+        "time_sum": {
+          "$ref": "#/$defs/S",
+          "description": "Request the sum of ticks of the passed states"
+        },
+        "clocks": {
+          "$ref": "#/$defs/S",
+          "description": "Request named clocks of the passed states"
+        },
+        "tags": {
+          "type": "boolean",
+          "description": "Request the tags of the state machine"
+        },
+        "export": {
+          "type": "boolean",
+          "description": "Request an importable version of the state machine"
+        },
+        "id": {
+          "type": "boolean",
+          "description": "Request the ID of the state machine"
+        },
+        "parent_id": {
+          "type": "boolean",
+          "description": "Request the ID of the parent state machine"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "description": "GetterReq is a generic request, which results in GetterResp with respective fields filled out."
+    },
+    "Kind": {
+      "properties": {
+        "Value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Value"
+      ]
+    },
+    "S": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  }
+}

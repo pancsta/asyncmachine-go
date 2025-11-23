@@ -1,0 +1,55 @@
+ignore:
+  - "pkg/pubsub/uds/**" # belongs to libp2p
+
+component_management:
+
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+        branches:
+          - "!main"
+
+  individual_components:
+    - component_id: machine
+      name: pkg/machine
+      paths:
+        - pkg/machine/**
+    - component_id: helpers
+      name: pkg/helpers
+      paths:
+        - pkg/helpers/**
+    - component_id: history
+      name: pkg/history
+      paths:
+        - pkg/history/**
+    - component_id: node
+      name: pkg/node
+      paths:
+        - pkg/node/**
+    - component_id: pubsub
+      name: pkg/pubsub
+      paths:
+        - pkg/pubsub/**
+    - component_id: rpc
+      name: pkg/rpc
+      paths:
+        - pkg/rpc/**
+    - component_id: states
+      name: pkg/states
+      paths:
+        - pkg/states/**
+    - component_id: telemetry
+      name: pkg/telemetry
+      paths:
+        - pkg/telemetry/**
+
+    - component_id: tools
+      name: tools
+      paths:
+        - tools/**
+
+    - component_id: internal
+      name: internal
+      paths:
+        - internal/**

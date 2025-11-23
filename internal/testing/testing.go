@@ -17,9 +17,9 @@ import (
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
 var (
@@ -67,7 +67,7 @@ func NewRpcTest(
 	time.Sleep(10 * time.Millisecond)
 
 	// Client init
-	c, err := rpc.NewClient(ctx, addr, t.Name(), worker.GetStruct(),
+	c, err := rpc.NewClient(ctx, addr, t.Name(), worker.Schema(),
 		worker.StateNames(), &rpc.ClientOpts{
 			Consumer: consumer,
 			Parent:   worker,
@@ -115,6 +115,7 @@ func NewDbgWorker(
 	if !realTty {
 		screen = tcell.NewSimulationScreen("utf8")
 		screen.SetSize(100, 50)
+		_ = screen.Init()
 		screen.Clear()
 	}
 
@@ -133,19 +134,18 @@ func NewDbgWorker(
 
 	// file logging
 	opts.DbgLogLevel = am.EnvLogLevel("")
-	if opts.DbgLogLevel > 0 && os.Getenv(am.EnvAmLogFile) != "" {
-		opts.DbgLogger = cli.GetLogger(&cli.Params{
+	if opts.DbgLogLevel > 0 && os.Getenv(amhelp.EnvAmLogFile) != "" {
+		opts.DbgLogger = types.GetLogger(&types.Params{
 			LogLevel: opts.DbgLogLevel,
-			LogFile:  opts.ID + ".log",
-		})
+		}, "")
 	}
 
 	// misc opts
 	if opts.Screen == nil {
 		opts.Screen = screen
 	}
-	if opts.ID == "" {
-		opts.ID = "rem-worker"
+	if opts.Id == "" {
+		opts.Id = "rem-worker"
 	}
 
 	// used for testing live connections (eg TailMode)
@@ -175,7 +175,7 @@ func NewDbgWorker(
 }
 
 func NewRpcClient(
-	t *testing.T, ctx context.Context, addr string, stateStruct am.Struct,
+	t *testing.T, ctx context.Context, addr string, stateStruct am.Schema,
 	stateNames am.S, consumer *am.Machine,
 ) *rpc.Client {
 

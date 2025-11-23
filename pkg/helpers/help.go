@@ -4,21 +4,28 @@ package helpers
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/rand"
+	"log/slog"
+	"maps"
 	"os"
 	"reflect"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
+	"golang.org/x/sync/errgroup"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
+	"github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
@@ -26,20 +33,56 @@ const (
 	// EnvAmHealthcheck enables a healthcheck ticker for every debugged machine.
 	EnvAmHealthcheck = "AM_HEALTHCHECK"
 	// EnvAmTestRunner indicates the main test tunner, disables any telemetry.
-	EnvAmTestRunner     = "AM_TEST_RUNNER"
+	EnvAmTestRunner = "AM_TEST_RUNNER"
+	// EnvAmLogFull enables all the features of [am.SemLogger].
+	EnvAmLogFull = "AM_LOG_FULL"
+	// EnvAmLogSteps logs transition steps.
+	// See [am.SemLogger.EnableSteps].
+	// "1" | "" (default)
+	EnvAmLogSteps = "AM_LOG_STEPS"
+	// EnvAmLogGraph logs the graph structure (mutation traces, pipes, RPC, etc).
+	// See [am.SemLogger.EnableGraph].
+	// "1" | "" (default)
+	EnvAmLogGraph = "AM_LOG_GRAPH"
+	// EnvAmLogChecks logs Can methods. See [am.SemLogger.EnableCan].
+	// "1" | "" (default)
+	EnvAmLogChecks = "AM_LOG_CHECKS"
+	// EnvAmLogQueued logs queued mutations. See [am.SemLogger.EnableQueued].
+	// "1" | "" (default)
+	EnvAmLogQueued = "AM_LOG_QUEUED"
+	// EnvAmLogArgs logs mutation args. See [am.SemLogger.EnableArgs].
+	// "1" | "" (default)
+	EnvAmLogArgs = "AM_LOG_ARGS"
+	// EnvAmLogWhen logs When methods. See [am.SemLogger.EnableWhen].
+	// "1" | "" (default)
+	EnvAmLogWhen = "AM_LOG_WHEN"
+	// EnvAmLogStateCtx logs state ctxs. See [am.SemLogger.EnableStateCtx].
+	// "1" | "" (default)
+	EnvAmLogStateCtx = "AM_LOG_STATE_CTX"
+	// EnvAmLogFile enables file logging (using machine ID as the name).
+	// "1" | "" (default)
+	EnvAmLogFile = "AM_LOG_FILE"
+
 	healthcheckInterval = 30 * time.Second
 )
 
+type (
+	S      = am.S
+	A      = am.A
+	Schema = am.Schema
+)
+
 // Add1Block activates a state and waits until it becomes active. If it's a
-// multi state, it also waits for it te de-activate. Returns early if a
-// non-multi state is already active. Useful to avoid the queue.
+// multi-state, it also waits for it to deactivate. Returns early if a
+// non-multi state is already active. Useful to avoid the queue but can't
+// handle a rejected negotiation.
+// Deprecated: use Add1Sync instead.
 func Add1Block(
 	ctx context.Context, mach am.Api, state string, args am.A,
 ) am.Result {
-	// TODO support args["sync_token"] via WhenArgs
+	// TODO remove once Add1Sync ready
 
-	// support for multi states
-
+	// support for multi-states
 	if IsMulti(mach, state) {
 		when := mach.WhenTicks(state, 2, ctx)
 		res := mach.Add1(state, args)
@@ -49,7 +92,7 @@ func Add1Block(
 	}
 
 	if mach.Is1(state) {
-		return am.ResultNoOp
+		return am.Executed
 	}
 
 	ctxWhen, cancel := context.WithCancel(ctx)
@@ -63,50 +106,48 @@ func Add1Block(
 
 		return res
 	}
-	<-when
 
-	return res
+	// wait
+	select {
+	case <-when:
+		return am.Executed
+	case <-ctx.Done():
+		return am.Canceled
+	}
 }
 
-// Add1BlockCh is like Add1Block, but returns a channel to compose with other
-// "when" methods.
-func Add1BlockCh(
+// Add1Sync activates a state and waits until it becomes activate, or canceled.
+// Add1Sync is a newer version of Add1Block that supports queued rejections,
+// but at the moment it is not compatible with RPC. This method checks
+// expiration ctx and returns as [am.Canceled].
+func Add1Sync(
 	ctx context.Context, mach am.Api, state string, args am.A,
-) <-chan struct{} {
-	// TODO support args["sync_token"] via WhenArgs
-
-	// support for multi states
-
-	if IsMulti(mach, state) {
-		when := mach.WhenTicks(state, 2, ctx)
-		_ = mach.Add1(state, args)
-
-		return when
-	}
-
-	if mach.Is1(state) {
-		return nil
-	}
-
-	ctxWhen, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	when := mach.WhenTicks(state, 1, ctxWhen)
+) am.Result {
 	res := mach.Add1(state, args)
-	if res == am.Canceled {
-		// dispose "when" ch early
-		cancel()
-
-		return nil
+	switch res {
+	case am.Executed:
+		return res
+	case am.Canceled:
+		return res
+	default:
+		// wait TODO select ctx.Done
+		select {
+		case <-ctx.Done():
+			return am.Canceled
+		case <-mach.WhenQueue(res):
+			if mach.Is1(state) {
+				return am.Executed
+			}
+			return am.Canceled
+		}
 	}
-
-	return when
 }
 
-// Add1AsyncBlock adds a state from an async op and waits for another one
+// Add1Async adds a state from an async op and waits for another one
 // from the op to become active. Theoretically, it should work with any state
-// pair, including Multi states (assuming they remove themselves).
-func Add1AsyncBlock(
+// pair, including Multi states (assuming they remove themselves). Not
+// compatible with queued negotiation at the moment.
+func Add1Async(
 	ctx context.Context, mach am.Api, waitState string,
 	addState string, args am.A,
 ) am.Result {
@@ -127,20 +168,30 @@ func Add1AsyncBlock(
 
 		return res
 	}
-	<-when
 
-	return res
+	// wait
+	select {
+	case <-when:
+		return am.Executed
+	case <-ctx.Done():
+		return am.Canceled
+	}
 }
 
 // TODO AddSync
+// TODO EvAdd1Async
+// TODO EvAdd1Sync
+// TODO EvAddSync
+//  Remove?
 
 // IsMulti returns true if a state is a multi state.
 func IsMulti(mach am.Api, state string) bool {
-	return mach.GetStruct()[state].Multi
+	// TODO safeguard
+	return mach.Schema()[state].Multi
 }
 
 // StatesToIndexes converts a list of state names to a list of state indexes,
-// for a given machine.
+// for the given machine. It returns -1 for unknown states.
 func StatesToIndexes(allStates am.S, states am.S) []int {
 	indexes := make([]int, len(states))
 	for i, state := range states {
@@ -155,36 +206,68 @@ func StatesToIndexes(allStates am.S, states am.S) []int {
 func IndexesToStates(allStates am.S, indexes []int) am.S {
 	states := make(am.S, len(indexes))
 	for i, idx := range indexes {
+		if idx == -1 {
+			states[i] = "unknown" + strconv.Itoa(i)
+			continue
+		}
 		states[i] = allStates[idx]
 	}
 
 	return states
 }
 
-// MachDebug sets up a machine for debugging, based on the AM_DEBUG env var,
-// passed am-dbg address, log level and stdout flag.
+// MachDebug exports transition telemetry to an am-dbg instance listening at
+// [amDbgAddr].
 func MachDebug(
 	mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout bool,
+	semConfig *am.SemConfig,
 ) {
+	// no debug for CI
 	if IsTestRunner() {
 		return
 	}
 
+	semlog := mach.SemLogger()
 	if stdout {
-		mach.SetLogLevel(logLvl)
+		semlog.SetLevel(logLvl)
 	} else {
-		mach.SetLoggerEmpty(logLvl)
+		semlog.SetEmpty(logLvl)
 	}
-
-	// TODO increate timeouts on AM_DEBUG
 
 	if amDbgAddr == "" {
 		return
 	}
 
-	// trace to telemetry
+	// semantic logging
+	if semConfig.Steps {
+		semlog.EnableSteps(true)
+	}
+	if semConfig.Graph {
+		semlog.EnableGraph(true)
+	}
+	if semConfig.Can {
+		semlog.EnableCan(true)
+	}
+	if semConfig.Queued {
+		semlog.EnableQueued(true)
+	}
+	if semConfig.StateCtx {
+		semlog.EnableStateCtx(true)
+	}
+	if semConfig.Can {
+		semlog.EnableCan(true)
+	}
+	if semConfig.When {
+		semlog.EnableWhen(true)
+	}
+	if semConfig.Args {
+		semlog.EnableArgs(true)
+	}
+
+	// tracer for telemetry
 	err := telemetry.TransitionsToDbg(mach, amDbgAddr)
 	if err != nil {
+		// TODO dont panic
 		panic(err)
 	}
 
@@ -193,8 +276,52 @@ func MachDebug(
 	}
 }
 
+// SemConfig returns a SemConfig based on env vars, or the [forceFull] flag.
+func SemConfig(forceFull bool) *am.SemConfig {
+	// full override
+	if os.Getenv(EnvAmLogFull) == "1" || forceFull {
+		return &am.SemConfig{
+			Steps:    true,
+			Graph:    true,
+			Can:      true,
+			Queued:   true,
+			StateCtx: true,
+			When:     true,
+			Args:     true,
+		}
+	}
+
+	// selective logging
+	return &am.SemConfig{
+		Steps:    os.Getenv(EnvAmLogSteps) == "1",
+		Graph:    os.Getenv(EnvAmLogGraph) == "1",
+		Can:      os.Getenv(EnvAmLogChecks) == "1",
+		Queued:   os.Getenv(EnvAmLogQueued) == "1",
+		StateCtx: os.Getenv(EnvAmLogStateCtx) == "1",
+		When:     os.Getenv(EnvAmLogWhen) == "1",
+		Args:     os.Getenv(EnvAmLogArgs) == "1",
+	}
+}
+
+// MachDebugEnv sets up a machine for debugging, based on env vars only:
+// AM_DBG_ADDR, AM_LOG, and AM_DEBUG. This function should be called right
+// after the machine is created, to catch all the log entries.
+func MachDebugEnv(mach am.Api) {
+	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
+	logLvl := am.EnvLogLevel("")
+	stdout := os.Getenv(am.EnvAmDebug) == "2"
+
+	// expand the default addr
+	if amDbgAddr == "1" {
+		amDbgAddr = telemetry.DbgAddr
+	}
+
+	MachDebug(mach, amDbgAddr, logLvl, stdout, SemConfig(false))
+}
+
 // Healthcheck adds a state to a machine every 5 seconds, until the context is
 // done. This makes sure all the logs are pushed to the telemetry server.
+// TODO use machine scheduler when ready
 func Healthcheck(mach am.Api) {
 	if !mach.Has1("Healthcheck") {
 		return
@@ -213,45 +340,29 @@ func Healthcheck(mach am.Api) {
 	}()
 }
 
-// MachDebugEnv sets up a machine for debugging, based on env vars only:
-// AM_DBG_ADDR, AM_LOG, and AM_DEBUG. This function should be called right
-// after the machine is created, to catch all the log entries.
-func MachDebugEnv(mach am.Api) {
-	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
-	logLvl := am.EnvLogLevel("")
-	stdout := os.Getenv(am.EnvAmDebug) == "2"
-
-	// inherit default
-	if amDbgAddr == "1" {
-		amDbgAddr = telemetry.DbgAddr
-	}
-
-	MachDebug(mach, amDbgAddr, logLvl, stdout)
-}
-
 // TODO StableWhen(dur, states, ctx) - like When, but makes sure the state is
-// stable for the duration.
+//  stable for the duration.
 
 // NewReqAdd creates a new failsafe request to add states to a machine. See
-// MutRequest and NewMutRequest for more info.
+// See MutRequest for more info and NewMutRequest for the defaults.
 func NewReqAdd(mach am.Api, states am.S, args am.A) *MutRequest {
 	return NewMutRequest(mach, am.MutationAdd, states, args)
 }
 
 // NewReqAdd1 creates a new failsafe request to add a single state to a machine.
-// See MutRequest and NewMutRequest for more info.
+// See MutRequest for more info and NewMutRequest for the defaults.
 func NewReqAdd1(mach am.Api, state string, args am.A) *MutRequest {
 	return NewReqAdd(mach, am.S{state}, args)
 }
 
 // NewReqRemove creates a new failsafe request to remove states from a machine.
-// See MutRequest and NewMutRequest for more info.
+// See MutRequest for more info and NewMutRequest for the defaults.
 func NewReqRemove(mach am.Api, states am.S, args am.A) *MutRequest {
 	return NewMutRequest(mach, am.MutationRemove, states, args)
 }
 
 // NewReqRemove1 creates a new failsafe request to remove a single state from a
-// machine. See MutRequest and NewMutRequest for more info.
+// machine. See MutRequest for more info and NewMutRequest for the defaults.
 func NewReqRemove1(mach am.Api, state string, args am.A) *MutRequest {
 	return NewReqRemove(mach, am.S{state}, args)
 }
@@ -354,15 +465,11 @@ func (r *MutRequest) Run(ctx context.Context) (am.Result, error) {
 
 func (r *MutRequest) get() (am.Result, error) {
 	res := r.Mach.Add(r.States, r.Args)
-	if res == am.Canceled {
-		return res, am.ErrCanceled
-	}
-
-	return res, nil
+	return res, ResultToErr(res)
 }
 
-// Wait waits for a duration, or until the context is done. Returns nil if the
-// duration has passed, or err is ctx is done.
+// Wait waits for a duration, or until the context is done. Returns true if the
+// duration has passed, or false if ctx is done.
 func Wait(ctx context.Context, length time.Duration) bool {
 	t := time.After(length)
 
@@ -449,9 +556,9 @@ func WaitForAll(
 
 // WaitForErrAll is like WaitForAll, but also waits on WhenErr of a passed
 // machine. For state machines with error handling (like retry) it's recommended
-// to measure machine time of [am.Exception] instead.
+// to measure machine time of [am.StateException] instead.
 func WaitForErrAll(
-	ctx context.Context, timeout time.Duration, mach *am.Machine,
+	ctx context.Context, timeout time.Duration, mach am.Api,
 	chans ...<-chan struct{},
 ) error {
 	// TODO test
@@ -478,7 +585,7 @@ func WaitForErrAll(
 			// TODO check and log state ctx name
 			return ctx.Err()
 		case <-whenErr:
-			return fmt.Errorf("WhenErr closed: %w", mach.Err())
+			return fmt.Errorf("%s: %w", am.StateException, mach.Err())
 		case <-t:
 			return am.ErrTimeout
 		case <-ch:
@@ -544,7 +651,7 @@ func WaitForAny(
 
 // WaitForErrAny is like WaitForAny, but also waits on WhenErr of a passed
 // machine. For state machines with error handling (like retry) it's recommended
-// to measure machine time of [am.Exception] instead.
+// to measure machine time of [am.StateException] instead.
 func WaitForErrAny(
 	ctx context.Context, timeout time.Duration, mach *am.Machine,
 	chans ...<-chan struct{},
@@ -598,7 +705,7 @@ func WaitForErrAny(
 	}
 }
 
-// Activations returns the number of state activations from an amount of ticks
+// Activations return the number of state activations from the number of ticks
 // passed.
 func Activations(u uint64) int {
 	return int((u + 1) / 2)
@@ -623,14 +730,15 @@ func EnableDebugging(stdout bool) {
 	} else {
 		_ = os.Setenv(am.EnvAmDebug, "1")
 	}
-	_ = os.Setenv(telemetry.EnvAmDbgAddr, "localhost:6831")
-	_ = os.Setenv(am.EnvAmLog, "2")
+	_ = os.Setenv(telemetry.EnvAmDbgAddr, "1")
+	_ = os.Setenv(EnvAmLogFull, "1")
+	SetEnvLogLevel(am.LogOps)
 	// _ = os.Setenv(EnvAmHealthcheck, "1")
 }
 
-// SetLogLevel sets AM_LOG env var to the passed log level. It will affect all
-// future state machines using MachDebugEnv.
-func SetLogLevel(level am.LogLevel) {
+// SetEnvLogLevel sets AM_LOG env var to the passed log level. It will affect
+// all future state machines using MachDebugEnv.
+func SetEnvLogLevel(level am.LogLevel) {
 	_ = os.Setenv(am.EnvAmLog, strconv.Itoa(int(level)))
 }
 
@@ -648,34 +756,159 @@ func Implements(statesChecked, statesNeeded am.S) error {
 
 // ArgsToLogMap converts an [A] (arguments) struct to a map of strings using
 // `log` tags as keys, and their cased string values.
-func ArgsToLogMap(s interface{}) map[string]string {
+func ArgsToLogMap(args interface{}, maxLen int) map[string]string {
+	if maxLen == 0 {
+		maxLen = max(4, am.LogArgsMaxLen)
+	}
+	skipMaxLen := false
 	result := make(map[string]string)
-	val := reflect.ValueOf(s).Elem()
+	val := reflect.ValueOf(args).Elem()
 	if !val.IsValid() {
 		return result
 	}
-	typ := reflect.TypeOf(s).Elem()
+	typ := reflect.TypeOf(args).Elem()
 
 	for i := 0; i < val.NumField(); i++ {
 		field := val.Field(i)
-		tag := typ.Field(i).Tag.Get("log")
+		key := typ.Field(i).Tag.Get("log")
+		if key == "" {
+			continue
+		}
 
-		if tag != "" {
-			v, _ := field.Interface().(string)
+		// check if the field is of a known type
+		switch v := field.Interface().(type) {
+		// strings
+		case string:
 			if v == "" {
 				continue
 			}
-			result[tag] = field.Interface().(string)
+			result[key] = v
+		case []string:
+			// combine []string into a single comma-separated string
+			if len(v) == 0 {
+				continue
+			}
+			skipMaxLen = true
+			txt := ""
+
+			ii := 0
+			for _, el := range v {
+				if reflect.ValueOf(v).IsNil() {
+					continue
+				}
+				if txt != "" {
+					txt += ", "
+				}
+
+				txt += `"` + am.TruncateStr(el, maxLen/2) + `"`
+				if ii >= maxLen/2 {
+					txt += fmt.Sprintf(" ... (%d more)", len(v)-ii)
+					break
+				}
+
+				ii++
+			}
+			if txt == "" {
+				continue
+			}
+			result[key] = txt
+
+		case bool:
+			// skip default
+			if !v {
+				continue
+			}
+			result[key] = fmt.Sprintf("%v", v)
+		case []bool:
+			// combine []bool into a single comma-separated string
+			if len(v) == 0 {
+				continue
+			}
+			result[key] = fmt.Sprintf("%v", v)
+			// TODO fix highlighting issues in am-dbg
+			result[key] = strings.Trim(result[key], "[]")
+
+		case int:
+			// skip default
+			if v == 0 {
+				continue
+			}
+			result[key] = fmt.Sprintf("%d", v)
+		case []int:
+			// combine []int into a single comma-separated string
+			if len(v) == 0 {
+				continue
+			}
+			result[key] = fmt.Sprintf("%d", v)
+			// TODO fix highlighting issues in am-dbg
+			result[key] = strings.Trim(result[key], "[]")
+
+			// duration
+		case time.Duration:
+			if v.Seconds() == 0 {
+				continue
+			}
+			result[key] = v.String()
+
+			// MutString() method
+		case fmt.Stringer:
+			if reflect.ValueOf(v).IsNil() {
+				continue
+			}
+			txt := v.String()
+			if txt == "" {
+				continue
+			}
+			result[key] = txt
+
+			// skip unknown types, besides []fmt.Stringer
+		default:
+			if field.Kind() != reflect.Slice {
+				continue
+			}
+
+			valLen := field.Len()
+			skipMaxLen = true
+			txt := ""
+			ii := 0
+
+			for i := 0; i < valLen; i++ {
+				el := field.Index(i).Interface()
+				s, ok := el.(fmt.Stringer)
+				if ok && s.String() != "" {
+					if txt != "" {
+						txt += ", "
+					}
+					txt += `"` + am.TruncateStr(s.String(), maxLen/2) + `"`
+					if i >= maxLen/2 {
+						txt += fmt.Sprintf(" ... (%d more)", valLen-ii)
+						break
+					}
+				}
+
+				ii++
+			}
+
+			if txt == "" {
+				continue
+			}
+			result[key] = txt
+		}
+
+		result[key] = strings.ReplaceAll(result[key], "\n", " ")
+		if !skipMaxLen && len(result[key]) > maxLen {
+			result[key] = am.TruncateStr(result[key], maxLen)
 		}
 	}
 
 	return result
 }
 
-// ArgsToArgs converts [A] (arguments) into an overlapping [A]. Useful for
+// ArgsToArgs converts [am.A] (arguments) into an overlapping [am.A]. Useful for
 // removing fields which can't be passed over RPC, and back. Both params should
-// be pointers to struct and share at least one field.
+// be pointers to a struct and share at least one field.
 func ArgsToArgs[T any](src interface{}, dest T) T {
+	// TODO test
 	srcVal := reflect.ValueOf(src).Elem()
 	destVal := reflect.ValueOf(dest).Elem()
 
@@ -691,7 +924,7 @@ func ArgsToArgs[T any](src interface{}, dest T) T {
 	return dest
 }
 
-// IsDebug returns true if the process is in simple debug mode.
+// IsDebug returns true if the process is in a "simple debug mode" via AM_DEBUG.
 func IsDebug() bool {
 	return os.Getenv(am.EnvAmDebug) != "" && !IsTestRunner()
 }
@@ -727,6 +960,9 @@ func GroupWhen1(
 	return chans, nil
 }
 
+// TODO func WhenAny1(mach am.Api, states am.S, ctx context.Context)
+//  []<-chan struct{}
+
 // RemoveMulti creates a final handler which removes a multi state from a
 // machine. Useful to avoid FooState-Remove1-Foo repetition.
 func RemoveMulti(mach am.Api, state string) am.HandlerFinal {
@@ -737,6 +973,7 @@ func RemoveMulti(mach am.Api, state string) am.HandlerFinal {
 
 // GetTransitionStates will extract added, removed, and touched states from
 // transition's clock values and steps. Requires a state names index.
+// Collecting touched states requires transition steps.
 func GetTransitionStates(
 	tx *am.Transition, index am.S,
 ) (added am.S, removed am.S, touched am.S) {
@@ -744,7 +981,7 @@ func GetTransitionStates(
 	after := tx.TimeAfter
 
 	is := func(time am.Time, i int) bool {
-		return time != nil && am.IsActiveTick(time[i])
+		return time != nil && am.IsActiveTick(time.Tick(i))
 	}
 
 	for i, name := range index {
@@ -752,7 +989,7 @@ func GetTransitionStates(
 			removed = append(removed, name)
 		} else if !is(before, i) && is(after, i) {
 			added = append(added, name)
-		} else if before != nil && before[i] != after[i] {
+		} else if before != nil && before.Tick(i) != after.Tick(i) {
 			// treat multi states as added
 			added = append(added, name)
 		}
@@ -761,156 +998,675 @@ func GetTransitionStates(
 	// touched
 	touched = am.S{}
 	for _, step := range tx.Steps {
-		if step.FromState != "" {
-			touched = append(touched, step.FromState)
+		if s := step.GetFromState(index); s != "" {
+			touched = append(touched, s)
 		}
-		if step.ToState != "" {
-			touched = append(touched, step.ToState)
+		if s := step.GetToState(index); s != "" {
+			touched = append(touched, s)
 		}
 	}
 
 	return added, removed, touched
 }
 
-// TODO
+// TODO batch and merge with am-dbg
 // func Batch(input <-chan any, state string, arg string, window time.Duration,
 //   maxElement int) {
 //
 // }
 
-type FanFn func(num int, state, stateDone string)
-
-type FanHandlers struct {
-	Concurrency int
-	AnyState    am.HandlerFinal
-	GroupTasks  am.S
-	GroupDone   am.S
+func ResultToErr(result am.Result) error {
+	switch result {
+	case am.Canceled:
+		return am.ErrCanceled
+	// case am.Queued:
+	// 	return am.ErrQueued
+	default:
+		return nil
+	}
 }
 
-// FanOutIn creates [total] numer of state pairs of "Name1" and "Name1Done", as
-// well as init and merge states ("Name", "NameDone"). [name] is treated as a
-// namespace and can't have other states within. Retry can be achieved by adding
-// the init state repetively. FanOutIn can be chained, but it should be called
-// before any mutations or telemetry (as it changes the state struct). The
-// returned handlers struct can be used to adjust concurrency level.
-func FanOutIn(
-	mach *am.Machine, name string, total, concurrency int,
-	fn FanFn,
-) (any, error) {
-	states := mach.GetStruct()
-	suffixDone := "Done"
+type MachGroup []am.Api
 
-	if !mach.Has(am.S{name, name + suffixDone}) {
-		return nil, fmt.Errorf("%w: %s", am.ErrStateMissing, name)
-	}
-	base := states[name]
-
-	// create task states
-	groupTasks := make(am.S, total)
-	groupDone := make(am.S, total)
-	for i := range total {
-		num := strconv.Itoa(i)
-		groupTasks[i] = name + num
-		groupDone[i] = name + num + suffixDone
-	}
-	for i := range total {
-		num := strconv.Itoa(i)
-		// task state
-		states[name+num] = base
-		// task completed state, removes task state
-		states[name+num+suffixDone] = am.State{Remove: am.S{name + num}}
+func (g *MachGroup) Is1(state string) bool {
+	if g == nil {
+		return false
 	}
 
-	// inject into a fan-in state
-	done := am.StateAdd(states[name+suffixDone], am.State{
-		Require: groupDone,
-		Remove:  am.S{name},
+	for _, m := range *g {
+		if m.Not1(state) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func Pool(limit int) *errgroup.Group {
+	g := &errgroup.Group{}
+	g.SetLimit(limit)
+	return g
+}
+
+// ///// ///// /////
+
+// ///// CONDITION
+
+// ///// ///// /////
+
+// Cond is a set of state conditions, which when all met make the condition
+// true.
+type Cond struct {
+	// TODO IsMatch, AnyMatch, ... for regexps
+
+	// Only if all these states are active.
+	Is S
+	// TODO implement
+	// Only if any of these groups of states are active.
+	Any []S
+	// Only if any of these states is active.
+	Any1 S
+	// Only if none of these states are active.
+	Not S
+	// Only if the clock is equal or higher then.
+	Clock am.Clock
+
+	// TODO time queries
+	// Query string
+	// AnyQuery string
+	// NotQuery string
+}
+
+func (c Cond) String() string {
+	return fmt.Sprintf("is: %s, any: %s, not: %s, clock: %v",
+		c.Is, c.Any1, c.Not, c.Clock)
+}
+
+// Check compares the specified conditions against the passed machine. When mach
+// is nil, Check returns false.
+func (c Cond) Check(mach am.Api) bool {
+	if mach == nil {
+		return false
+	}
+
+	if !mach.Is(c.Is) {
+		return false
+	}
+	if mach.Any1(c.Not...) {
+		return false
+	}
+	if len(c.Any1) > 0 && !mach.Any1(c.Any1...) {
+		return false
+	}
+	if !mach.WasClock(c.Clock) {
+		return false
+	}
+
+	return true
+}
+
+// IsEmpty returns false if no condition is defined.
+func (c Cond) IsEmpty() bool {
+	return c.Is == nil && c.Any1 == nil && c.Not == nil && c.Clock == nil
+}
+
+// ///// ///// /////
+
+// ///// STATE LOOP
+
+// ///// ///// /////
+
+// TODO thread safety via atomics
+type StateLoop struct {
+	loopState string
+	ctxStates am.S
+	mach      am.Api
+	ended     bool
+	interval  time.Duration
+	threshold int
+	check     func() bool
+
+	lastSTime uint64
+	lastHTime time.Time
+	// mach time of [ctxStates] when started
+	startSTime uint64
+	// Start Human Time
+	startHTime time.Time
+}
+
+func (l *StateLoop) String() string {
+	ok := "ok"
+	if l.ended {
+		ok = "ended"
+	}
+
+	return fmt.Sprintf("StateLoop: %s for %s/%s", ok, l.mach.Id(), l.loopState)
+}
+
+// Break breaks the loop.
+func (l *StateLoop) Break() {
+	l.ended = true
+	l.mach.Log(l.String())
+}
+
+// Sum returns a sum of state time from all context states.
+func (l *StateLoop) Sum() uint64 {
+	return l.mach.Time(l.ctxStates).Sum(nil)
+}
+
+// Ok returns true if the loop should continue.
+func (l *StateLoop) Ok(ctx context.Context) bool {
+	if l.ended {
+		return false
+	} else if ctx != nil && ctx.Err() != nil {
+		err := fmt.Errorf("loop: arg ctx expired for %s/%s", l.mach.Id(),
+			l.loopState)
+		l.mach.AddErr(err, nil)
+		l.ended = true
+
+		return false
+
+	} else if l.mach.Not1(l.loopState) {
+		err := fmt.Errorf("loop: state ctx expired for %s/%s", l.mach.Id(),
+			l.loopState)
+		l.mach.AddErr(err, nil)
+		l.ended = true
+
+		return false
+	}
+
+	// stop on a function check
+	if l.check != nil && !l.check() {
+		l.ended = true
+
+		return false
+	}
+
+	// reset counters on a new interval window
+	sum := l.mach.Time(l.ctxStates).Sum(nil)
+	if time.Since(l.lastHTime) > l.interval {
+		l.lastHTime = time.Now()
+		l.lastSTime = sum
+
+		return true
+
+		// check the current interval window
+	} else if int(sum) > l.threshold {
+		err := fmt.Errorf("loop: threshold exceeded for %s/%s", l.mach.Id(),
+			l.loopState)
+		l.mach.AddErr(err, nil)
+		l.ended = true
+
+		return false
+	}
+
+	l.lastSTime = sum
+
+	return true
+}
+
+// Ended returns the ended flag, but does not any context. Useful for
+// negotiation handles which don't have state context yet.
+func (l *StateLoop) Ended() bool {
+	return l.ended
+}
+
+// NewStateLoop helper creates a state loop guard bound to a specific state
+// (eg Heartbeat), preventing infinite loops. It monitors context, off states,
+// ticks of related "context states", and an optional check function.
+// Not thread safe ATM.
+func NewStateLoop(
+	mach *am.Machine, loopState string, optCheck func() bool,
+) *StateLoop {
+	schema := mach.Schema()
+	if !mach.Has1(loopState) {
+		return &StateLoop{ended: true}
+	}
+
+	// collect related states
+	ctxStates := S{loopState}
+
+	// collect dependencies of the loopState
+	ctxStates = append(ctxStates, schema[loopState].Require...)
+
+	// collect states adding the loop state
+	resolver := mach.Resolver()
+	inbound, _ := resolver.InboundRelationsOf(loopState)
+	for _, name := range inbound {
+		rels, _ := resolver.RelationsBetween(name, loopState)
+		if len(rels) > 0 {
+			ctxStates = append(ctxStates, name)
+		}
+	}
+
+	l := &StateLoop{
+		loopState:  loopState,
+		mach:       mach,
+		ctxStates:  ctxStates,
+		startHTime: time.Now(),
+		startSTime: mach.Time(ctxStates).Sum(nil),
+		// TODO config
+		interval: time.Second,
+		// TODO config
+		threshold: 500,
+		check:     optCheck,
+	}
+	mach.Log(l.String())
+
+	return l
+}
+
+// ///// ///// /////
+
+// ///// LOGGING
+
+// ///// ///// /////
+
+var SlogToMachLogOpts = &slog.HandlerOptions{
+	ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+		// omit these
+		if a.Key == slog.TimeKey || a.Key == slog.LevelKey {
+			return slog.Attr{}
+		}
+		return a
+	},
+}
+
+type SlogToMachLog struct {
+	Mach am.Api
+}
+
+func (l SlogToMachLog) Write(p []byte) (n int, err error) {
+	s, _ := strings.CutPrefix(string(p), "msg=")
+	l.Mach.Log(s)
+	return len(p), nil
+}
+
+// ///// ///// /////
+
+// ///// STATE UTILS
+
+// ///// ///// /////
+
+// TagValue returns the value part from a text tag "key:value". For tag without
+// value, it returns the tag name.
+func TagValue(tags []string, key string) string {
+	for _, t := range tags {
+		// no value
+		if t == key {
+			return key
+		}
+
+		// check value
+		p := key + ":"
+		if !strings.HasPrefix(t, p) {
+			continue
+		}
+
+		val, _ := strings.CutPrefix(t, p)
+		return val
+	}
+
+	return ""
+}
+
+// PrefixStates will prefix all state names with [prefix]. removeDups will skip
+// overlaps eg "FooFooName" will be "Foo".
+func PrefixStates(
+	schema am.Schema, prefix string, removeDups bool, optWhitelist,
+	optBlacklist S,
+) am.Schema {
+	schema = am.CloneSchema(schema)
+
+	for name, s := range schema {
+		if len(optWhitelist) > 0 && !slices.Contains(optWhitelist, name) {
+			continue
+		} else if len(optBlacklist) > 0 && slices.Contains(optBlacklist, name) {
+			continue
+		}
+
+		for i, r := range s.After {
+			newName := r
+			if !removeDups || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.After[i] = newName
+		}
+		for i, r := range s.Add {
+			newName := r
+			if !removeDups || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.Add[i] = newName
+		}
+		for i, r := range s.Remove {
+			newName := r
+			if !removeDups || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.Remove[i] = newName
+		}
+		for i, r := range s.Require {
+			newName := r
+			if !removeDups || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.Require[i] = newName
+		}
+
+		newName := name
+		if !removeDups || !strings.HasPrefix(name, prefix) {
+			newName = prefix + name
+		}
+
+		// replace
+		delete(schema, name)
+		schema[newName] = s
+	}
+
+	return schema
+}
+
+// CountRelations will count all referenced states in all relations of the
+// given state.
+func CountRelations(state *am.State) int {
+	return len(state.Remove) + len(state.Add) + len(state.Require) +
+		len(state.After)
+}
+
+// NewMirror creates a submachine which mirrors the given source machine. If
+// [flat] is true, only mutations changing the state will be propagated, along
+// with the currently active states.
+//
+// At this point, the handlers' struct needs to be defined manually with fields
+// of type `am.HandlerFinal`.
+//
+// [id] is optional.
+func NewMirror(
+	id string, flat bool, source *am.Machine, handlers any, states am.S,
+) (*am.Machine, error) {
+	// TODO create handlers
+	// TODO dont create a new machine, add to an existing one
+
+	v := reflect.ValueOf(handlers)
+	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+		return nil, errors.New("BindHandlers expects a pointer to a struct")
+	}
+	vElem := v.Elem()
+
+	// detect methods
+	var methodNames []string
+	methodNames, err := am.ListHandlers(handlers, states)
+	if err != nil {
+		return nil, fmt.Errorf("listing handlers: %w", err)
+	}
+
+	// TODO support am.Api
+	if id == "" {
+		id = "mirror-" + source.Id()
+	}
+	sourceSchema := source.Schema()
+	names := am.S{am.StateException}
+	schema := am.Schema{}
+	for _, name := range states {
+		schema[name] = am.State{
+			Multi: sourceSchema[name].Multi,
+		}
+		names = append(names, name)
+	}
+	mirror := am.New(source.Ctx(), schema, &am.Opts{
+		Id:     id,
+		Parent: source,
 	})
-	done.Auto = true
-	states[name+suffixDone] = done
 
-	names := slices.Concat(mach.StateNames(), groupTasks, groupDone)
-	err := mach.SetStruct(states, names)
-	if err != nil {
+	// set up pipes TODO loop over handlers
+	for _, method := range methodNames {
+		var state string
+		var isAdd bool
+		field := vElem.FieldByName(method)
+
+		// check handler method
+		if strings.HasSuffix(method, am.SuffixState) {
+			state = method[:len(method)-len(am.SuffixState)]
+			isAdd = true
+		} else if strings.HasSuffix(method, am.SuffixEnd) {
+			state = method[:len(method)-len(am.SuffixEnd)]
+		} else {
+			return nil, fmt.Errorf("unsupported handler %s for %s", method, id)
+		}
+
+		// pipe
+		var p am.HandlerFinal
+		if flat {
+			// sync active for flats
+			if source.Is1(state) {
+				mirror.Add1(state, nil)
+			}
+			if isAdd {
+				p = pipes.AddFlat(source, mirror, state, "")
+			} else {
+				p = pipes.RemoveFlat(source, mirror, state, "")
+			}
+
+		} else {
+			if isAdd {
+				p = pipes.Add(source, mirror, state, "")
+			} else {
+				p = pipes.Remove(source, mirror, state, "")
+			}
+		}
+
+		field.Set(reflect.ValueOf(p))
+	}
+
+	// bind pipe handlers
+	if err := source.BindHandlers(handlers); err != nil {
 		return nil, err
 	}
 
-	// handlers
-	h := FanHandlers{
-		Concurrency: concurrency,
-		GroupTasks:  groupTasks,
-		GroupDone:   groupDone,
+	return mirror, nil
+}
+
+// CopySchema copies states from the source to target schema, from the passed
+// list of states. Returns a list of copied states, and an error. CopySchema
+// verifies states.
+func CopySchema(source am.Schema, target *am.Machine, states am.S) error {
+	if len(states) == 0 {
+		return nil
 	}
 
-	// simulate fanout states and the init state
-	// Task(e)
-	// Task1(e)
-	// Task2(e)
-	h.AnyState = func(e *am.Event) {
-		// get tx info
-		called := e.Transition().CalledStates()
-		if len(called) < 1 {
-			return
+	newSchema := target.Schema()
+	for _, name := range states {
+		if _, ok := source[name]; !ok {
+			return fmt.Errorf("%w: state %s in source schema",
+				am.ErrStateMissing, name)
 		}
 
-		for _, state := range called {
+		newSchema[name] = source[name]
+	}
+	newStates := utils.SlicesUniq(slices.Concat(target.StateNames(), states))
 
-			// fan-out state handler, eg Task1
-			// TODO extract to IsFanOutHandler(called am.S, false) bool
-			if strings.HasPrefix(state, name) && len(state) > len(name) &&
-				!strings.HasSuffix(state, suffixDone) {
+	return target.SetSchema(newSchema, newStates)
+}
 
-				iStr, _ := strings.CutPrefix(state, name)
-				num, err := strconv.Atoi(iStr)
-				if err != nil {
-					// TODO
-					panic(err)
-				}
+// SchemaHash computes an MD5 hash of the passed schema. The order of states
+// is not important.
+func SchemaHash(schema am.Schema) string {
+	ret := ""
+	keys := slices.Collect(maps.Keys(schema))
+	sort.Strings(keys)
+	for _, k := range keys {
+		ret += k + ":"
 
-				// call the function and mark as done
-				fn(num, state, state+suffixDone)
-			}
+		// properties
+		if schema[k].Auto {
+			ret += "a,"
+		}
+		if schema[k].Multi {
+			ret += "m,"
+		}
 
-			// fan-out done handler, eg Task1Done
-			// TODO extract to IsFanOutHandler(called am.S, true) bool
-			if strings.HasPrefix(state, name) && len(state) > len(name) &&
-				strings.HasSuffix(state, suffixDone) {
+		// relations
+		after := slices.Clone(schema[k].After)
+		sort.Strings(after)
+		for _, r := range after {
+			ret += r + ","
+		}
+		ret += ";"
 
-				// call the init state
-				mach.Add1(name, nil)
-			}
+		remove := slices.Clone(schema[k].Remove)
+		sort.Strings(remove)
+		for _, r := range remove {
+			ret += r + ","
+		}
+		ret += ";"
 
-			// fan-out init handler, eg Task
-			if state == name {
+		add := slices.Clone(schema[k].Add)
+		sort.Strings(add)
+		for _, r := range add {
+			ret += r + ","
+		}
+		ret += ";"
 
-				// gather remaining ones
-				var remaining am.S
-				for _, name := range groupTasks {
-					// check if done or in progress
-					if mach.Any1(name+suffixDone, name) {
-						continue
-					}
-					remaining = append(remaining, name)
-				}
+		require := slices.Clone(schema[k].Require)
+		sort.Strings(require)
+		for _, r := range require {
+			ret += r + ","
+		}
+		ret += ";"
+	}
 
-				// start N threads
-				running := mach.CountActive(groupTasks)
-				// TODO check against running via mach.CountActive
-				for i := running; i < h.Concurrency && len(remaining) > 0; i++ {
+	hasher := md5.New()
+	hasher.Write([]byte(ret))
 
-					// add a random one
-					idx := rand.Intn(len(remaining))
-					mach.Add1(remaining[idx], nil)
-					remaining = slices.Delete(remaining, idx, idx+1)
-				}
-			}
+	hash := hex.EncodeToString(hasher.Sum(nil))
+	// short hash
+	return hash[:6]
+}
+
+// EvalGetter is a syntax sugar for creating getters via Eval functions. Like
+// any eval, it can end with ErrEvalTimeout. Getting values via channels passed
+// to mutations is recommended and allows for a custom timeout.
+func EvalGetter[T any](
+	ctx context.Context, source string, maxTries int, mach *am.Machine,
+	eval func() (T, error),
+) (T, error) {
+	var ret T
+	var retErr error
+	evalOuter := func() {
+		ret, retErr = eval()
+	}
+
+	// try at least once
+	for range min(maxTries, 1) {
+		if !mach.Eval("EvGe/"+source, evalOuter, ctx) {
+			retErr = fmt.Errorf("%w: EvGe/%s", am.ErrEvalTimeout, source)
+		} else {
+			break
 		}
 	}
 
-	err = mach.BindHandlers(&h)
-	if err != nil {
-		return nil, err
+	return ret, retErr
+}
+
+// TODO ChanGetter
+
+// ///// ///// /////
+
+// ///// CAN
+
+// ///// ///// /////
+
+// CantAdd will confirm that the mutation is impossible. Blocks.
+func CantAdd(mach am.Api, states am.S, args am.A) bool {
+	done := &am.CheckDone{
+		Ch: make(chan struct{}),
+	}
+	mach.CanAdd(states, am.PassMerge(args, &am.AT{
+		CheckDone: done,
+	}))
+	<-done.Ch
+
+	return !done.Canceled
+}
+
+// CantAdd1 is a single-state version of [CantAdd].
+func CantAdd1(mach am.Api, state string, args am.A) bool {
+	return mach.CanAdd(am.S{state}, args) == am.Canceled
+}
+
+// CantRemove will confirm that the mutation is impossible. Blocks.
+func CantRemove(mach am.Api, states am.S, args am.A) bool {
+	done := &am.CheckDone{
+		Ch: make(chan struct{}),
+	}
+	mach.CanRemove(states, am.PassMerge(args, &am.AT{
+		CheckDone: done,
+	}))
+	<-done.Ch
+
+	return done.Canceled
+}
+
+// CantRemove1 is a single-state version of [CantRemove].
+func CantRemove1(mach am.Api, state string, args am.A) bool {
+	return mach.CanRemove(am.S{state}, args) == am.Canceled
+}
+
+// AskAdd will first check if a mutation isn't impossible and only then try
+// to mutate the state machine. Causes the negotiation phase to execute twice.
+// AskAdd BLOCKS. Useful to avoid canceled transitions.
+//
+// See also [am.Machine.CanAdd] and [CantAdd].
+func AskAdd(mach am.Api, states am.S, args am.A) am.Result {
+	return AskEvAdd(nil, mach, states, args)
+}
+
+// AskEvAdd is a traced version of [AskAdd].
+func AskEvAdd(e *am.Event, mach am.Api, states am.S, args am.A) am.Result {
+	// only if not impossible
+	if !CantAdd(mach, states, args) {
+		return mach.EvAdd(e, states, args)
 	}
 
-	return h, nil
+	return am.Canceled
+}
+
+// AskAdd1 is a single-state version of [AskAdd].
+func AskAdd1(mach am.Api, state string, args am.A) am.Result {
+	return AskAdd(mach, S{state}, args)
+}
+
+// AskEvAdd1 is a traced version of [AskAdd] for a single state.
+func AskEvAdd1(e *am.Event, mach am.Api, state string, args am.A) am.Result {
+	return AskEvAdd(e, mach, S{state}, args)
+}
+
+// AskRemove will first check if a mutation isn't impossible and only then try
+// to mutate the state machine. Causes the negotiation phase to execute twice.
+// AskRemove BLOCKS. Useful to avoid canceled transitions.
+//
+// See also [am.Machine.CanRemove] and [CantRemove].
+func AskRemove(mach am.Api, states am.S, args am.A) am.Result {
+	return AskEvRemove(nil, mach, states, args)
+}
+
+// AskEvRemove is a traced version of [AskRemove].
+func AskEvRemove(e *am.Event, mach am.Api, states am.S, args am.A) am.Result {
+	// only if not impossible
+	if !CantRemove(mach, states, args) {
+		return mach.EvRemove(e, states, args)
+	}
+
+	return am.Canceled
+}
+
+// AskRemove1 is a single-state version of [AskRemove].
+func AskRemove1(mach am.Api, state string, args am.A) am.Result {
+	return AskRemove(mach, S{state}, args)
+}
+
+// AskEvRemove1 is a traced version of [AskRemove] for a single state.
+func AskEvRemove1(e *am.Event, mach am.Api, state string, args am.A) am.Result {
+	return AskEvRemove(e, mach, S{state}, args)
 }

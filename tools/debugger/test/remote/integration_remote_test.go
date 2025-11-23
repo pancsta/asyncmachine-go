@@ -52,8 +52,8 @@ func TestUserFwdRemote(t *testing.T) {
 
 	// fixtures
 	cursorTx := 20
-	amhelp.Add1AsyncBlock(ctx, c.Worker, ss.SwitchedClientTx, ss.SwitchingClientTx,
-		am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
+	amhelp.Add1Async(ctx, c.Worker, ss.SwitchedClientTx, ss.SwitchingClientTx,
+		am.A{"Client.id": "sim", "cursorTx1": cursorTx})
 
 	// test
 	res := amhelp.Add1Block(ctx, c.Worker, ss.UserFwd, nil)
@@ -74,8 +74,8 @@ func TestUserFwd100Remote(t *testing.T) {
 
 	// fixtures
 	cursorTx := 20
-	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
-		am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
+	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+		am.A{"Client.id": "sim", "cursorTx1": cursorTx})
 
 	// test
 	// add ss.UserFwd 100 times in a series
@@ -113,7 +113,7 @@ func TestTailModeRemote(t *testing.T) {
 	testing2.MachDebug(t, mach, amDbgAddr, logLvl, true)
 
 	// connect to the worker as a new telemetry client
-	mach.SetLogLevel(am.LogOps)
+	mach.SemLogger().SetLevel(am.LogOps)
 	err := telemetry.TransitionsToDbg(mach, workerTelemetryAddr)
 	if err != nil {
 		t.Fatal(err)
@@ -156,8 +156,8 @@ func TestUserBackRemote(t *testing.T) {
 
 	// fixtures
 	cursorTx := 20
-	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
-		am.A{"Client.id": "sim", "Client.cursorTx": cursorTx})
+	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+		am.A{"Client.id": "sim", "cursorTx1": cursorTx})
 
 	// test
 	res := amhelp.Add1Block(ctx, mach, ss.UserBack, nil)
@@ -179,8 +179,8 @@ func TestStepsResetAfterStateJumpRemote(t *testing.T) {
 
 	// fixtures
 	state := "PublishMessage"
-	amhelp.Add1AsyncBlock(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
-		am.A{"Client.id": "ps-2", "Client.cursorTx": 20})
+	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+		am.A{"Client.id": "ps-2", "cursorTx1": 20})
 
 	// test
 	amhelp.Add1Block(ctx, mach, ss.StateNameSelected, am.A{"state": state})
@@ -188,7 +188,7 @@ func TestStepsResetAfterStateJumpRemote(t *testing.T) {
 	amhelp.Add1Block(ctx, mach, ss.UserFwdStep, nil)
 
 	// trigger a state jump and wait for the next scroll
-	amhelp.Add1AsyncBlock(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
+	amhelp.Add1Async(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
 		"state": state,
 		"fwd":   true,
 	})
@@ -210,7 +210,7 @@ func TestUserFwdRemoteLoopback(t *testing.T) {
 	t.Skip("Debug only")
 
 	// init debugger
-	d, err := amtest.NewDbgWorker(false, debugger.Opts{ID: t.Name()})
+	d, err := amtest.NewDbgWorker(false, debugger.Opts{Id: t.Name()})
 	assert.NoError(t, err)
 
 	// init rpc (full client-server setup)

@@ -1,22 +1,22 @@
 // Based on https://en.wikipedia.org/wiki/Finite-state_machine
 //
-//=== RUN   TestTurnstile
-//[state] +Locked
+// === RUN   TestTurnstile
+// [state] +Locked
 //    fsm_test.go:74: Push into (Locked:1)
 //    fsm_test.go:79: Coin into (Locked:1)
-//[state] +InputCoin
-//[state] -InputCoin
-//[state] +Unlocked -Locked
+// [state] +InputCoin
+// [state] -InputCoin
+// [state] +Unlocked -Locked
 //    fsm_test.go:85: Coin into (Unlocked:1)
-//[state] +InputCoin
-//[state] -InputCoin
+// [state] +InputCoin
+// [state] -InputCoin
 //    fsm_test.go:91: Push into (Unlocked:1)
-//[state] +InputPush
-//[state] -InputPush
-//[state] +Locked -Unlocked
+// [state] +InputPush
+// [state] -InputPush
+// [state] +Locked -Unlocked
 //    fsm_test.go:96: End with (Locked:3)
-//--- PASS: TestTurnstile (0.00s)
-//PASS
+// --- PASS: TestTurnstile (0.00s)
+// PASS
 
 package fsm
 
@@ -38,13 +38,13 @@ func init() {
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(false)
-	// amhelp.SetLogLevel(am.LogChanges)
+	// amhelp.SetEnvLogLevel(am.LogOps)
 }
 
 // state enum pkg
 
 var (
-	states = am.Struct{
+	states = am.Schema{
 		// input states
 		InputPush: {},
 		InputCoin: {},
@@ -89,9 +89,9 @@ func (t *Turnstile) InputCoinState(e *am.Event) {
 
 func TestTurnstile(t *testing.T) {
 	mach := am.New(context.Background(), states, &am.Opts{
-		ID:                   "turnstile",
+		Id:                   "turnstile",
 		DontPanicToException: true,
-		DontLogID:            true,
+		DontLogId:            true,
 		LogLevel:             am.LogChanges,
 		HandlerTimeout:       time.Minute,
 	})

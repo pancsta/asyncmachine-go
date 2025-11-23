@@ -3,8 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 `am-gen` will quickly bootstrap a typesafe states file, or a Grafana dashboard for you.
 
@@ -23,13 +22,13 @@ for more info.
 
 `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-gen@latest`
 
-## States Files
+## Schema Files
 
 - define state names and properties (`:auto` and `:multi`)
 - easily inherit from `pkg/states`, `pkg/rpc/states`, and `pkg/node/states`
 - create own groups and inherit existing ones
 
-### Example States File
+### Example Schema File
 
 ```go
 package states
@@ -59,13 +58,13 @@ type MyMachGroupsDef struct {
     Group2 S
 }
 
-// MyMachStruct represents all relations and properties of MyMachStates.
-var MyMachStruct = StructMerge(
+// MyMachSchema represents all relations and properties of MyMachStates.
+var MyMachSchema = SchemaMerge(
     // inherit from BasicStruct
     ss.BasicStruct,
     // inherit from ConnectedStruct
     ss.ConnectedStruct,
-    am.Struct{
+    am.Schema{
 
         ssM.State1: {},
         ssM.State2: {
@@ -89,7 +88,7 @@ var (
 )
 ```
 
-### States File Help
+### Schema File Help
 
 ```bash
 $ am-gen states-file --help
@@ -107,23 +106,109 @@ Flags:
 
 ## Grafana Dashboard
 
-![grafana](https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png)
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png">
+        <img style="min-height: 397px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png"
+            alt="grafana dashboard" />
+    </a>
+</div>
+
+Grafana dashboards need to be generated per "source" (e.g. process), by passing all monitored machine IDs and the source
+name (`service_name` for Loki, `job` for Prometheus). It will
+optionally auto-sync the dashboard using [K-Phoen/grabana](https://github.com/K-Phoen/grabana) (requires
+`GRAFANA_TOKEN`).
 
 - generates separate dashboard per source (job)
 - supports [Loki and Prometheus](/pkg/telemetry/README.md)
 - can sync via `GRAFANA_TOKEN` with `--grafana-url`
+- automatically inherited by submachines (for automated setups)
+
+Panels:
+
+- Transitions
+  - Number of transitions
+- Errors
+  - Heatmap
+- Transition Mutations
+  - Queue size
+  - States added
+  - States removed
+  - States touched
+- Transition Details
+  - Transition ticks
+  - Number of steps
+  - Number of handlers
+- States and Relations
+  - Number of states
+  - Number of relations
+  - Referenced states
+  - Active states
+  - Inactive states
+- Average Transition Time
+  - Heatmap
+- Log view
+  - Loki logger
+
+### Automatic Grafana Setup
+
+See [/docs/env-configs.md](/docs/env-configs.md) for the required environment variables.
+
+```go
+import amgen "github.com/pancsta/asyncmachine-go/tools/generator"
+
+// ...
+
+var mach *am.Machine
+
+// create a dedicated dashboard for [mach] and submachines
+amgen.MachDashboardEnv(mach)
+```
+
+### Manual Grafana Setup
+
+```go
+import (
+    amgen "github.com/pancsta/asyncmachine-go/tools/generator"
+    amgencli "github.com/pancsta/asyncmachine-go/tools/generator/cli"
+)
+
+// ...
+
+var mach *am.Machine
+var service string
+var url string
+var token string
+
+p := amgencli.GrafanaParams{
+    Ids:        mach.Id(),
+    Name:       mach.Id(),
+    Folder:     "asyncmachine",
+    GrafanaUrl: url,
+    Token:      token,
+    Source:     service,
+}
+t := &amgen.SyncTracer{p: p}
+
+mach.BindTracer(t)
+```
+
+### Manual Grafana Setup (shell)
+
+The command below will create a dashboard for machines with IDs `root,_rm-root,_rs-root-0,_rs-root-1,_rs-root-2`.
+Without `--grafana-url`, it will output a JSON version of the same dashboard.
 
 ```bash
-am-gen grafana
-    --name tree_state_source_root
-    --ids root,_rm-root,_rs-root-0,_rs-root-1,_rs-root-2
-    --grafana-url http://localhost:3000
+am-gen grafana \
+    --name tree_state_source_root \
+    --ids root,_rm-root,_rs-root-0,_rs-root-1,_rs-root-2 \
+    --grafana-url http://localhost:3000 \
     --source tree_state_source_rep1
 ```
 
 ### Grafana Help
 
-```text
+```bash
 Usage:
   am-gen grafana --name MyDash --ids my-mach-1,my-mach-2 --source my-service [flags]
 

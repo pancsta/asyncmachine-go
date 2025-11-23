@@ -3,13 +3,12 @@
 - [cd /](/)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 [**go-libp2p-pubsub-benchmark**](https://github.com/pancsta/go-libp2p-pubsub-benchmark) compares the default
 [go-libp2p-pubsub](https://github.com/libp2p/go-libp2p-pubsub) implementation to the [asyncmachine version](https://github.com/pancsta/go-libp2p-pubsub/).
 It runs `TestSimpleDiscovery` for various host/msg configurations and presents a median for each iteration. The best
-way to view the results is [bench.md](bench.https://github.com/pancsta/go-libp2p-pubsub-benchmark/blob/main/bench.md),
+way to view the results is [bench.md](https://github.com/pancsta/go-libp2p-pubsub-benchmark/blob/main/bench.md),
 [bench.pdf](https://github.com/pancsta/go-libp2p-pubsub-benchmark/blob/main/assets/bench.pdf). Single runs can
 be viewed in Jaeger and am-dbg after `task test-discovery`. Benchmark uses go1.22 traces, thus needs at least this
 version.
@@ -28,7 +27,7 @@ version.
 
 <details>
 
-<summary>See states structure and relations (pubsub host)</summary>
+<summary>See machine schema and relations (pubsub host)</summary>
 
 ```go
 package states
@@ -36,7 +35,7 @@ package states
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
 // States define relations between states
-var States = am.Struct{
+var States = am.Schema{
     // peers
     PeersPending: {},
     PeersDead:    {},
@@ -73,7 +72,7 @@ var States = am.Struct{
 
 <details>
 
-<summary>See states structure and relations (discovery & bootstrap)</summary>
+<summary>See machine schema and relations (discovery & bootstrap)</summary>
 
 ```go
 package discovery
@@ -84,7 +83,7 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 type S = am.S
 
 // States define relations between states.
-var States = am.Struct{
+var States = am.Schema{
     Start: {
         Add: S{PoolTimer},
     },
@@ -121,7 +120,7 @@ var States = am.Struct{
 }
 
 // StatesBootstrapFlow define relations between states for the bootstrap flow.
-var StatesBootstrapFlow = am.Struct{
+var StatesBootstrapFlow = am.Schema{
     Start: {
         Add: S{BootstrapChecking},
     },

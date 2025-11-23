@@ -2,15 +2,18 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"net"
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/shirou/gopsutil/v3/process"
 	"golang.org/x/exp/maps"
 
 	ss "github.com/pancsta/asyncmachine-go/internal/testing/states"
@@ -39,7 +42,7 @@ func RandPort(min, max int) string {
 }
 
 // RandListener creates a new listener on an open port between 40000 and 50000.
-// It allows to avoid conflicts with other tests, using predefined addresses,
+// It allows avoiding conflicts with other tests, using predefined addresses,
 // unlike using port 0.
 func RandListener(host string) net.Listener {
 
@@ -68,19 +71,20 @@ func RandListener(host string) net.Listener {
 func NewRels(t *testing.T, initialState am.S) *am.Machine {
 	// machine init
 	mach := am.New(context.Background(), ss.States, &am.Opts{
-		ID: "t-" + t.Name()})
+		Id: "t-" + t.Name()})
 	err := mach.VerifyStates(ss.Names)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -93,19 +97,19 @@ func NewRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 
 	// TODO define these in /states using v2 as RelWorkerStruct and
 	//  RelWorkerStates, inheriting frm RelStructDef etc
-	ssStruct := am.StructMerge(ssrpc.WorkerStruct, ss.States)
+	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, ss.States)
 	ssNames := am.SAdd(ss.Names, ssrpc.WorkerStates.Names())
 
 	// machine init
 	mach := am.New(context.Background(), ssStruct, &am.Opts{
-		ID: "t-" + t.Name()})
+		Id: "t-" + t.Name()})
 	err := mach.VerifyStates(ssNames)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
@@ -118,7 +122,7 @@ func NewRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 // inherit from RPC worker
 
 var (
-	RelsNodeWorkerStruct = am.StructMerge(ssnode.WorkerStruct, ss.States)
+	RelsNodeWorkerSchema = am.SchemaMerge(ssnode.WorkerSchema, ss.States)
 	RelsNodeWorkerStates = am.SAdd(ss.Names, ssnode.WorkerStates.Names())
 )
 
@@ -127,20 +131,21 @@ var (
 func NewRelsNodeWorker(t *testing.T, initialState am.S) *am.Machine {
 
 	// machine init
-	mach := am.New(context.Background(), RelsNodeWorkerStruct, &am.Opts{
-		ID: "t-" + t.Name()})
+	mach := am.New(context.Background(), RelsNodeWorkerSchema, &am.Opts{
+		Id: "t-" + t.Name()})
 	err := mach.VerifyStates(RelsNodeWorkerStates)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -148,24 +153,25 @@ func NewRelsNodeWorker(t *testing.T, initialState am.S) *am.Machine {
 // NewNoRels creates a new machine without relations between states.
 func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
 	// machine init
-	mach := am.New(context.Background(), am.Struct{
+	mach := am.New(context.Background(), am.Schema{
 		ss.A: {},
 		ss.B: {},
 		ss.C: {},
 		ss.D: {},
-	}, &am.Opts{ID: "t-" + t.Name()})
+	}, &am.Opts{Id: "t-" + t.Name()})
 	err := mach.VerifyStates(ss.Names)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
@@ -174,8 +180,7 @@ func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
 func NewNoRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 
 	// inherit from RPC worker
-
-	ssStruct := am.StructMerge(ssrpc.WorkerStruct, am.Struct{
+	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, am.Schema{
 		ss.A: {},
 		ss.B: {},
 		ss.C: {},
@@ -184,59 +189,160 @@ func NewNoRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 	ssNames := am.SAdd(ss.Names, ssrpc.WorkerStates.Names())
 
 	// machine init
-	mach := am.New(context.Background(), ssStruct, &am.Opts{ID: "t-" + t.Name()})
+	mach := am.New(context.Background(), ssStruct, &am.Opts{Id: "t-" + t.Name()})
 	err := mach.VerifyStates(ssNames)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
 }
 
-// NewCustom creates a new machine with custom states.
-func NewCustom(t *testing.T, states am.Struct) *am.Machine {
-	mach := am.New(context.Background(), states, &am.Opts{
-		ID: "t-" + t.Name()})
-	err := mach.VerifyStates(append(maps.Keys(states), am.Exception))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
-		mach.HandlerTimeout = 2 * time.Minute
-	}
-
-	return mach
-}
-
-// NewCustomRpcWorker creates a new worker with custom states.
-func NewCustomRpcWorker(t *testing.T, states am.Struct) *am.Machine {
+// NewNoRelsRpcWorkerSchema creates a new RPC worker without relations between
+// states and applies a schema overlay.
+func NewNoRelsRpcWorkerSchema(
+	t *testing.T, initialState am.S, overlay am.Schema) *am.Machine {
 
 	// inherit from RPC worker
+	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, am.SchemaMerge(am.Schema{
+		ss.A: {},
+		ss.B: {},
+		ss.C: {},
+		ss.D: {},
+	}, overlay))
+	ssNames := am.SAdd(ss.Names, ssrpc.WorkerStates.Names())
 
-	ssStruct := am.StructMerge(ssrpc.WorkerStruct, states)
-	ssNames := am.SAdd(maps.Keys(states), ssrpc.WorkerStates.Names())
-
-	mach := am.New(context.Background(), ssStruct, &am.Opts{
-		ID: "t-" + t.Name()})
+	// machine init
+	mach := am.New(context.Background(), ssStruct, &am.Opts{Id: "t-" + t.Name()})
 	err := mach.VerifyStates(ssNames)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.SetLogLevel(am.LogEverything)
 		mach.HandlerTimeout = 2 * time.Minute
 	}
+	if initialState != nil {
+		mach.Set(initialState, nil)
+	}
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
 
 	return mach
+}
+
+// NewCustom creates a new machine with custom states.
+func NewCustom(t *testing.T, states am.Schema) *am.Machine {
+	mach := am.New(context.Background(), states, &am.Opts{
+		Id: "t-" + t.Name()})
+	err := mach.VerifyStates(append(maps.Keys(states), am.StateException))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
+	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
+		mach.HandlerTimeout = 2 * time.Minute
+	}
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
+
+	return mach
+}
+
+// NewCustomRpcWorker creates a new worker with custom states.
+func NewCustomRpcWorker(t *testing.T, states am.Schema) *am.Machine {
+
+	// inherit from RPC worker
+
+	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, states)
+	ssNames := am.SAdd(maps.Keys(states), ssrpc.WorkerStates.Names())
+
+	mach := am.New(context.Background(), ssStruct, &am.Opts{
+		Id: "t-" + t.Name()})
+	err := mach.VerifyStates(ssNames)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
+	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
+		mach.HandlerTimeout = 2 * time.Minute
+	}
+	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
+
+	return mach
+}
+
+// KillProcessesByName finds and attempts to terminate all processes with the
+// given name. It returns a slice of PIDs that were successfully terminated and
+// a slice of errors for any processes that could not be terminated.
+func KillProcessesByName(
+	processName string) (killedPIDs []int32, errs []error) {
+
+	processes, err := process.Processes()
+	if err != nil {
+		err := fmt.Errorf("failed to get process list: %w", err)
+		return nil, []error{err}
+	}
+
+	for _, p := range processes {
+		name, err := p.Name()
+		if err != nil {
+			// Skip processes whose names cannot be retrieved (e.g., transient or
+			// permission issues)
+			continue
+		}
+
+		// Use strings.EqualFold for case-insensitive comparison, or `==` for
+		// case-sensitive
+		if strings.EqualFold(name, processName) { // Use `name == processName` for
+			// exact case match
+			pid := p.Pid
+
+			// Try graceful termination first (SIGTERM)
+			if termErr := p.Terminate(); termErr != nil {
+				// If graceful termination fails, try forceful kill (SIGKILL)
+				if os.IsPermission(termErr) {
+					err := fmt.Errorf("permission denied for PID %d (%s): %w",
+						pid, name, termErr)
+					errs = append(errs, err)
+					continue // Cannot kill this one, move to next
+				}
+
+				if killErr := p.Kill(); killErr != nil {
+					killErr := fmt.Errorf("failed to force kill PID %d (%s): %w",
+						pid, name, killErr)
+					errs = append(errs, killErr)
+					continue // Failed to kill, move to next
+				}
+			}
+
+			// Give the process a very brief moment to react to the signal
+			time.Sleep(50 * time.Millisecond)
+
+			// Verify if the process is no longer running
+			stillRunning, checkErr := p.IsRunning()
+			if checkErr == nil && !stillRunning {
+				killedPIDs = append(killedPIDs, pid)
+			} else if checkErr != nil {
+				errs = append(errs, fmt.Errorf(
+					"could not verify status of PID %d (%s): %w", pid, name, checkErr))
+			} else { // stillRunning is true
+				errs = append(errs, fmt.Errorf(
+					"PID %d (%s) is still running after termination attempts",
+					pid, name))
+			}
+		}
+	}
+
+	return killedPIDs, errs
 }

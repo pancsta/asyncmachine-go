@@ -3,8 +3,7 @@
 - [cd /](/)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 Benchmark of [`/examples/tree_state_source`](/examples/tree_state_source/README.md) using [go-wrk](https://github.com/tsliwowicz/go-wrk)
 and [Caddy](https://caddyserver.com/) in various tree configurations. Every node is a resource limited container

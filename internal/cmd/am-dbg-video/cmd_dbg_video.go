@@ -9,15 +9,14 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 	"github.com/spf13/cobra"
 )
 
 var (
 	dataFile       = "assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br"
 	logLevel       = am.LogOps
-	logFile        = "am-dbg-video.log"
 	filterLogLevel = am.LogChanges
 	startupMachine = "sim-p1"
 	startupTx      = 27
@@ -43,25 +42,24 @@ var (
 		"SendingMsgs",
 		"MsgsSent",
 		"FwdToSim",
-		am.Exception,
+		am.StateException,
 	}
 )
 
 func main() {
-	rootCmd := cli.RootCmd(cliRun)
+	rootCmd := types.RootCmd(cliRun)
 	err := rootCmd.Execute()
 	if err != nil {
 		panic(err)
 	}
 }
 
-func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
+func cliRun(_ *cobra.Command, _ []string, p types.Params) {
 
 	// ctx
 	ctx := context.Background()
 
 	// overwrite params
-	p.LogFile = logFile
 	p.LogLevel = logLevel
 	p.ImportData = dataFile
 	p.DebugAddr = debugAddr
@@ -71,21 +69,23 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		Filters: &debugger.OptsFilters{
 			LogLevel: filterLogLevel,
 		},
-		ImportData:  p.ImportData,
-		DbgLogLevel: p.LogLevel,
-		DbgLogger:   cli.GetLogger(&p),
-		ServerAddr:  p.ServerAddr,
-		EnableMouse: p.EnableMouse,
-		Version:     utils.GetVersion(),
-		ID:          "video",
-		MaxMemMb:    1000,
+		ImportData:      p.ImportData,
+		DbgLogLevel:     p.LogLevel,
+		DbgLogger:       types.GetLogger(&p, ""),
+		AddrRpc:         p.ListenAddr,
+		EnableMouse:     p.EnableMouse,
+		EnableClipboard: p.EnableClipboard,
+		Version:         utils.GetVersion(),
+		Id:              "video",
+		MaxMemMb:        1000,
 	})
 	if err != nil {
 		panic(err)
 	}
-	helpers.MachDebug(dbg.Mach, debugAddr, logLevel, false)
+	helpers.MachDebug(dbg.Mach, debugAddr, logLevel, false,
+		&am.SemConfig{Full: true})
 
-	dbg.Start(startupMachine, startupTx, initialView)
+	dbg.Start(startupMachine, startupTx, initialView, "")
 	go render(dbg)
 
 	select {
@@ -144,7 +144,7 @@ func render(dbg *debugger.Debugger) {
 
 	mach.Remove1(ss.StateNameSelected, nil)
 	mach.Add(am.S{ss.TreeMatrixView, ss.MatrixRain}, nil)
-	mach.Add1(ss.SidebarFocused, nil)
+	mach.Add1(ss.ClientListFocused, nil)
 	goBack(mach, 14)
 
 	// go back with clean UI
@@ -153,11 +153,11 @@ func render(dbg *debugger.Debugger) {
 	goBack(mach, 14)
 
 	SkipEnd() // TODO
-	mach.Add1(ss.FilterSummaries, nil)
+	mach.Add1(ss.LogTimestamps, nil)
 	dbg.SetFilterLogLevel(am.LogChanges)
 	// TODO via state handlers, pass focused filter
-	mach.Add1(ss.Toolbar1Focused, am.A{"filter": debugger.ToolFilterSummaries})
-	dbg.Mach.Add1(ss.ProcessingFilters, nil)
+	mach.Add1(ss.Toolbar1Focused, am.A{"filter": debugger.ToolLogTimestamps})
+	// dbg.HProcessFilterChange(context.TODO(), false)
 	goBack(mach, 1)
 
 	// end screen

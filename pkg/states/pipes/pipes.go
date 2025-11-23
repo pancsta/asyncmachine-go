@@ -1,41 +1,39 @@
-// Package pipe provide helpers to pipe states from one machine to another.
+// Package pipes provide helpers to pipe states from one machine to another.
 package pipes
 
 // TODO register disposal handlers, detach from source machines
+// TODO implement removal of pipes via:
+//  - binding-struct
+//  - tagging of handler structs
 
 import (
 	"context"
+	"strings"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
-// Add adds a pipe for an Add mutation between source and target machines.
+// Add adds a pipe for an Add mutation between source and target machines, for
+// a single target state.
 //
-// targetState: default to sourceState
+// targetState: defaults to sourceState
 func Add(
 	source, target *am.Machine, sourceState string, targetState string,
 ) am.HandlerFinal {
-	if sourceState == "" {
-		panic(am.ErrStateMissing)
-	}
-	if targetState == "" {
-		targetState = sourceState
-	}
-	source.LogLvl(am.LogOps, "[pipe-out:add] %s to %s", sourceState, target.Id())
-	target.LogLvl(am.LogOps, "[pipe-in:add] %s from %s", targetState, source.Id())
-
-	// TODO optimize
-	source.HandleDispose(newGcNotif(target))
-	target.HandleDispose(newGcNotif(source))
-
-	return func(e *am.Event) {
-		target.EvAdd1(e, targetState, e.Args)
-	}
+	// TODO support am.Api
+	return add(false, source, target, sourceState, targetState)
 }
 
-func Remove(
+func AddFlat(
 	source, target *am.Machine, sourceState string, targetState string,
+) am.HandlerFinal {
+	// TODO support am.Api
+	return add(true, source, target, sourceState, targetState)
+}
+
+func add(
+	flat bool, source, target *am.Machine, sourceState string, targetState string,
 ) am.HandlerFinal {
 	if sourceState == "" {
 		panic(am.ErrStateMissing)
@@ -43,21 +41,83 @@ func Remove(
 	if targetState == "" {
 		targetState = sourceState
 	}
-	source.LogLvl(am.LogOps, "[pipe-out:remove] %s to %s", sourceState,
-		target.Id())
-	target.LogLvl(am.LogOps, "[pipe-in:remove] %s from %s", targetState,
-		source.Id())
+
+	// graph info
+	semLog := source.SemLogger()
+	semLog.AddPipeOut(true, sourceState, target.Id())
+	semLog.AddPipeIn(true, targetState, source.Id())
 
 	// TODO optimize
-	source.HandleDispose(newGcNotif(target))
-	target.HandleDispose(newGcNotif(source))
+	source.OnDispose(gcHandler(target))
+	target.OnDispose(gcHandler(source))
+	names := am.S{targetState}
+	// include Exception when adding errors
+	if strings.HasPrefix(targetState, am.PrefixErr) {
+		names = am.S{am.StateException, targetState}
+	}
 
 	return func(e *am.Event) {
-		target.EvRemove1(e, targetState, e.Args)
+		// flat skips unnecessary mutations
+		if flat && target.Is(names) {
+			return
+		} else if flat {
+			target.Add(names, nil)
+		} else {
+			target.EvAdd(e, names, e.Args)
+		}
 	}
 }
 
-// BindConnected binds a [ss.ConnectedStruct] machine to 4 custom states. Each
+// Remove adds a pipe for a Remove mutation between source and target
+// machines, for a single target state.
+//
+// targetState: defaults to sourceState
+func Remove(
+	source, target *am.Machine, sourceState string, targetState string,
+) am.HandlerFinal {
+	// TODO support am.Api
+	return remove(false, source, target, sourceState, targetState)
+}
+
+func RemoveFlat(
+	source, target *am.Machine, sourceState string, targetState string,
+) am.HandlerFinal {
+	// TODO support am.Api
+	return remove(true, source, target, sourceState, targetState)
+}
+
+func remove(
+	flat bool, source, target *am.Machine, sourceState string, targetState string,
+) am.HandlerFinal {
+	if sourceState == "" {
+		panic(am.ErrStateMissing)
+	}
+	if targetState == "" {
+		targetState = sourceState
+	}
+
+	// graph info
+	semLog := source.SemLogger()
+	semLog.AddPipeOut(false, sourceState, target.Id())
+	semLog.AddPipeIn(false, targetState, source.Id())
+
+	// TODO optimize
+	source.OnDispose(gcHandler(target))
+	target.OnDispose(gcHandler(source))
+
+	return func(e *am.Event) {
+		// flat skips unnecessary mutations
+		if flat && target.Not1(targetState) {
+			return
+		} else if flat {
+			target.Remove1(targetState, nil)
+		} else {
+			target.EvRemove1(e, targetState, e.Args)
+		}
+	}
+}
+
+// BindConnected binds a [ss.ConnectedSchema] machine to 4 custom states. Each
 // one is optional and bound with Add/Remove.
 func BindConnected(
 	source, target *am.Machine, disconnected, connecting, connected,
@@ -100,35 +160,42 @@ func BindConnected(
 }
 
 // BindErr binds Exception to a custom state using Add. Empty state defaults to
-// [am.Exception].
+// [am.StateException], and a custom state will also add [am.StateException].
 func BindErr(source, target *am.Machine, targetErr string) error {
-
 	if targetErr == "" {
-		targetErr = am.Exception
+		targetErr = am.StateException
 	}
 
 	h := &struct {
 		ExceptionState am.HandlerFinal
 	}{
-		ExceptionState: Add(source, target, am.Exception, targetErr),
+		ExceptionState: Add(source, target, am.StateException, targetErr),
 	}
 
 	return source.BindHandlers(h)
 }
 
-// BindReady binds Ready to custom states using Add/Remove. Empty state
+// BindStart binds Start to custom states using Add/Remove. Empty state
+// defaults to Start.
+func BindStart(
+	source, target *am.Machine, activeState, inactiveState string,
+) error {
+	h := &struct {
+		StartState am.HandlerFinal
+		StartEnd   am.HandlerFinal
+	}{
+		StartState: Add(source, target, ss.BasicStates.Start, activeState),
+		StartEnd:   Remove(source, target, ss.BasicStates.Start, inactiveState),
+	}
+
+	return source.BindHandlers(h)
+}
+
+// BindReady binds Ready to custom states using Add/. Empty state
 // defaults to Ready.
 func BindReady(
 	source, target *am.Machine, activeState, inactiveState string,
 ) error {
-
-	if activeState == "" {
-		activeState = ss.BasicStates.Ready
-	}
-	if inactiveState == "" {
-		inactiveState = ss.BasicStates.Ready
-	}
-
 	h := &struct {
 		ReadyState am.HandlerFinal
 		ReadyEnd   am.HandlerFinal
@@ -140,8 +207,37 @@ func BindReady(
 	return source.BindHandlers(h)
 }
 
-func newGcNotif(mach *am.Machine) am.HandlerDispose {
+// // Bind binds an arbitrary state to custom states using Add and Remove.
+// // Empty [activeState] and [inactiveState] defaults to [source].
+// // TODO
+// func Bind(
+// 	state string, source, target *am.Machine, activeState, inactiveState string
+// ) error {
+//
+// 	if state == "" {
+// 		return am.ErrStateMissing
+// 	}
+// 	if activeState == "" {
+// 		activeState = state
+// 	}
+// 	if inactiveState == "" {
+// 		inactiveState = state
+// 	}
+//
+// 	// TODO dynamic struct init, see pkg/rpc
+// 	h := &struct {
+// 		StartState am.HandlerFinal
+// 		StartEnd   am.HandlerFinal
+// 	}{
+// 		StartState: Add(source, target, ss.BasicStates.Start, activeState),
+// 		StartEnd:   Remove(source, target, ss.BasicStates.Start, inactiveState),
+// 	}
+//
+// 	return source.BindHandlers(h)
+// }
+
+func gcHandler(mach *am.Machine) am.HandlerDispose {
 	return func(id string, ctx context.Context) {
-		mach.LogLvl(am.LogOps, "[pipe:gc] %s", id)
+		mach.SemLogger().RemovePipes(id)
 	}
 }

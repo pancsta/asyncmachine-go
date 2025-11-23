@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"os"
@@ -110,7 +111,7 @@ func genStatesFile(ctx context.Context) func(
 		if !fileExists(name) || params.Force {
 
 			// generate
-			gen, err := generator.NewSFGenerator(ctx, params)
+			gen, err := generator.NewSchemaGenerator(ctx, params)
 			if err != nil {
 				panic(err)
 			}

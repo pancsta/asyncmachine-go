@@ -3,8 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 **/pkg/states** contains common state definitions to make state-based API easier to compose and exchange. Additionally it
 offers tooling for "piping" states between state machines.
@@ -27,7 +26,7 @@ import ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 
 ```go
 // inherit from RPC worker
-ssStruct := am.StructMerge(ssam.BasicStruct, am.Struct{
+ssStruct := am.SchemaMerge(ssam.BasicStruct, am.Schema{
     "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
 })
@@ -48,11 +47,11 @@ type MyMachStatesDef struct {
     *ss.BasicStatesDef
 }
 
-// MyMachStruct represents all relations and properties of MyMachStates.
-var MyMachStruct = StructMerge(
+// MyMachSchema represents all relations and properties of MyMachStates.
+var MyMachSchema = SchemaMerge(
     // inherit from BasicStruct
     ss.BasicStruct,
-    am.Struct{
+    am.Schema{
 
         ssM.State1: {},
         ssM.State2: {
@@ -126,7 +125,7 @@ import (
 
 // ...
 
-MyMychStruct = am.Struct{
+MyMychStruct = am.Schema{
 
     // inject Client states into Connected
     "Connected": StateAdd(
@@ -140,6 +139,7 @@ MyMychStruct = am.Struct{
 
 ## Documentation
 
+- [api /pkg/states](https://code.asyncmachine.dev/pkg/github.com/pancsta/asyncmachine-go/pkg/states.html)
 - [godoc /pkg/states](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/states)
 - [/examples/pipes](/examples/pipes/example_pipes.go)
 

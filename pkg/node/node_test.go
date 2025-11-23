@@ -41,7 +41,7 @@ func TestFork1(t *testing.T) {
 
 	// supervisor
 	s, err := NewSupervisor(ctx, getKind(t), []string{"test"},
-		testutils.RelsNodeWorkerStruct, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,6 +68,11 @@ func TestFork1Process(t *testing.T) {
 	// amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// kill the hanging node_test_worker
+	// TODO kill the pid from supervisor
+	t.Cleanup(func() {
+		testutils.KillProcessesByName("node_test_worker")
+	})
 
 	wd, err := os.Getwd()
 	if err != nil {
@@ -83,7 +88,7 @@ func TestFork1Process(t *testing.T) {
 	// supervisor
 	cmd := []string{"go", "run", wPath}
 	s, err := NewSupervisor(ctx, "NTW", cmd,
-		testutils.RelsNodeWorkerStruct, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +116,7 @@ func TestFork5Warm2Min2(t *testing.T) {
 
 	// supervisor
 	s, err := NewSupervisor(ctx, getKind(t), []string{"test"},
-		testutils.RelsNodeWorkerStruct, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +158,7 @@ func TestFork15Warm0Min7(t *testing.T) {
 
 	// supervisor
 	s, err := NewSupervisor(ctx, getKind(t), []string{"test"},
-		testutils.RelsNodeWorkerStruct, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +168,7 @@ func TestFork15Warm0Min7(t *testing.T) {
 	s.TestFork = newTestFork(ctx, t, "test")
 
 	s.Start(":0")
-	amhelpt.WaitForAll(t, "PoolReady", ctx, defTimeout,
+	amhelpt.WaitForAll(t, ssS.PoolReady, ctx, defTimeout,
 		s.Mach.When1(ssS.PoolReady, nil))
 
 	// assert
@@ -193,9 +198,9 @@ func TestClientSupervisor(t *testing.T) {
 	s := newSupervisor(t, ctx, getKind(t), 1)
 
 	cDeps := &ClientStateDeps{
-		WorkerSStruct: testutils.RelsNodeWorkerStruct,
+		WorkerSStruct: testutils.RelsNodeWorkerSchema,
 		WorkerSNames:  testutils.RelsNodeWorkerStates,
-		ClientSStruct: states.ClientStruct,
+		ClientSStruct: states.ClientSchema,
 		ClientSNames:  states.ClientStates.Names(),
 	}
 	c, err := NewClient(ctx, "cli", getKind(t), cDeps, nil)
@@ -286,7 +291,7 @@ func TestClientWorkerPayload(t *testing.T) {
 	}
 
 	// t.Parallel()
-	amhelp.EnableDebugging(false)
+	// amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -346,9 +351,9 @@ func newConnectedClient(t *testing.T, ctx context.Context) (
 
 func newClient(t *testing.T, ctx context.Context) *Client {
 	cDeps := &ClientStateDeps{
-		WorkerSStruct: testutils.RelsNodeWorkerStruct,
+		WorkerSStruct: testutils.RelsNodeWorkerSchema,
 		WorkerSNames:  testutils.RelsNodeWorkerStates,
-		ClientSStruct: states.ClientStruct,
+		ClientSStruct: states.ClientSchema,
 		ClientSNames:  states.ClientStates.Names(),
 	}
 	c, err := NewClient(ctx, "cli", getKind(t), cDeps, nil)
@@ -364,7 +369,7 @@ func newSupervisor(
 	t *testing.T, ctx context.Context, workerKind string, workers int,
 ) *Supervisor {
 	sup, err := NewSupervisor(ctx, workerKind, []string{"test"},
-		testutils.RelsNodeWorkerStruct, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +406,7 @@ func newTestFork(
 
 		// worker
 		mach := testutils.NewRelsNodeWorker(t, nil)
-		worker, err := NewWorker(ctx, workerKind, mach.GetStruct(),
+		worker, err := NewWorker(ctx, workerKind, mach.Schema(),
 			mach.StateNames(), nil)
 		if err != nil {
 			t.Fatal(err)

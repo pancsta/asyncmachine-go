@@ -3,13 +3,12 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 To read about **am-dbg**, go to [/tools/cmd/am-dbg](/tools/cmd/am-dbg/README.md). This package is about the
 implementation, not the end-user application.
 
-`/tools/debugger` is a [cview](https://code.rocket9labs.com/tslocum/cview) TUI app with a single state machine
+`/tools/debugger` is a [cview](https://code.rocket9labs.com/tslocum/cview) TUI app with a single state-machine
 consisting of:
 
 - input events (7 states)
@@ -21,11 +20,11 @@ good example to see how easily an AM-based program can be controller with a scri
 
 <details>
 
-<summary>See states structure and relations</summary>
+<summary>See machine schema and relations</summary>
 
 ```go
 // States map defines relations and properties of states.
-var States = am.Struct{
+var States = am.Schema{
 
     // ///// Input events
 
@@ -59,13 +58,29 @@ var States = am.Struct{
 
     TreeFocused:          {Remove: GroupFocused},
     LogFocused:           {Remove: GroupFocused},
-    SidebarFocused:       {Remove: GroupFocused},
+    ClientListFocused:    {Remove: GroupFocused},
     TimelineTxsFocused:   {Remove: GroupFocused},
     TimelineStepsFocused: {Remove: GroupFocused},
     MatrixFocused:        {Remove: GroupFocused},
     DialogFocused:        {Remove: GroupFocused},
-    FiltersFocused:       {Remove: GroupFocused},
+    Toolbar1Focused:      {Remove: GroupFocused},
+    Toolbar2Focused:      {Remove: GroupFocused},
+    LogReaderFocused: {
+        Require: S{LogReaderVisible},
+        Remove:  GroupFocused,
+    },
+    AddressFocused: {Remove: GroupFocused},
 
+    TimelineHidden:      {Require: S{TimelineStepsHidden}},
+    TimelineStepsHidden: {},
+    NarrowLayout: {
+        Require: S{Ready},
+        Remove:  S{ClientListVisible},
+    },
+    ClientListVisible: {
+        Require: S{Ready},
+        Auto:    true,
+    },
     StateNameSelected:     {Require: S{ClientSelected}},
     TimelineStepsScrolled: {Require: S{ClientSelected}},
     HelpDialog:            {Remove: GroupDialog},
@@ -75,21 +90,28 @@ var States = am.Struct{
     },
     LogUserScrolled: {
         Remove: S{Playing, TailMode},
-        // TODO remove the requirement once its possible to go back
-        //  to timeline-scroll somehow
         Require: S{LogFocused},
     },
-    Ready:            {Require: S{Start}},
-    FilterAutoTx:     {},
-    FilterCanceledTx: {},
-    FilterEmptyTx:    {},
+    Ready: {Require: S{Start}},
+    FilterAutoTx:      {},
+    FilterCanceledTx:  {},
+    FilterEmptyTx:     {},
+    FilterSummaries:   {},
+    FilterHealthcheck: {},
 
     // ///// Actions
 
-    Start: {},
+    Start: {Add: S{FilterSummaries, FilterHealthcheck, FilterEmptyTx}},
+    Healthcheck: {
+        Multi:   true,
+        Require: S{Start},
+    },
+    GcMsgs: {Remove: S{SelectingClient, SwitchedClientTx, ScrollToTx,
+        ScrollToMutTx}},
     TreeLogView: {
-        Auto:   true,
-        Remove: SAdd(GroupViews, S{MatrixRain}),
+        Auto:    true,
+        Require: S{Start},
+        Remove:  SAdd(GroupViews, S{TreeMatrixView, MatrixView, MatrixRain}),
     },
     MatrixView:     {Remove: GroupViews},
     TreeMatrixView: {Remove: GroupViews},
@@ -106,7 +128,7 @@ var States = am.Struct{
         Require: S{ClientSelected},
         Remove:  GroupPlaying,
     },
-    ToggleFilter: {},
+    ToggleTool: {},
     SwitchingClientTx: {
         Require: S{Ready},
         Remove:  GroupSwitchedClientTx,
@@ -116,7 +138,13 @@ var States = am.Struct{
         Remove:  GroupSwitchedClientTx,
     },
     ScrollToMutTx: {Require: S{ClientSelected}},
-    MatrixRain:    {},
+    MatrixRain: {},
+    LogReaderVisible: {
+        Auto:    true,
+        Require: S{TreeLogView, LogReaderEnabled},
+    },
+    LogReaderEnabled: {},
+    UpdateLogReader:  {Require: S{LogReaderEnabled}},
 
     // tx / steps back / fwd
 
@@ -135,6 +163,10 @@ var States = am.Struct{
 
     ScrollToTx: {
         Require: S{ClientSelected},
+        Remove:  S{TailMode, Playing, TimelineStepsScrolled},
+    },
+    ScrollToStep: {
+        Require: S{ClientSelected},
         Remove:  S{TailMode, Playing},
     },
 
@@ -149,6 +181,20 @@ var States = am.Struct{
         Remove:  S{SelectingClient},
     },
     RemoveClient: {Require: S{ClientSelected}},
+
+    SetCursor: {
+        Multi:   true,
+        Require: S{Ready},
+    },
+    GraphsScheduled: {
+        Multi:   true,
+        Require: S{Ready},
+    },
+    GraphsRendering: {
+        Require: S{Ready},
+    },
+
+    InitClient: {Multi: true},
 }
 ```
 
@@ -178,8 +224,16 @@ Because both local and remote workers are state machines, they can export teleme
 activate remote debugging, please set `AM_TEST_DEBUG=1` and run `task am-dbg-dbg` prior to tests. Remote tests are run
 via `task test-debugger-remote`.
 
-[![Video Walkthrough](https://pancsta.github.io/assets/asyncmachine-go/asyncmachine-go/rpc-demo1.png)](https://pancsta.github.io/assets/asyncmachine-go/asyncmachine-go/rpc-demo1.m4v)
+[![Video Walkthrough](https://pancsta.github.io/assets/asyncmachine-go/videos/rpc-demo1.png)](https://pancsta.github.io/assets/asyncmachine-go/videos/rpc-demo1.mp4)
+
+## Schema
+
+State schema from [/tools/debugger/states/ss_dbg.go](/tools/debugger/states/ss_dbg.go).
+
+![schema](https://pancsta.github.io/assets/asyncmachine-go/schemas/am-dbg.svg)
 
 ## monorepo
+
+- [`/pkg/rpc/HOWTO.md`](/pkg/rpc/HOWTO.md)
 
 [Go back to the monorepo root](/README.md) to continue reading.

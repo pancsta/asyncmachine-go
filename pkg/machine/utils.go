@@ -1,7 +1,6 @@
 package machine
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -12,7 +11,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 // ///// ///// /////
@@ -21,35 +19,30 @@ import (
 
 // ///// ///// /////
 
-// DiffStates returns the states that are in states1 but not in states2.
+// DiffStates returns the states that are in states1 but not in dbgtypes.
 func DiffStates(states1 S, states2 S) S {
+	// TODO optimize
 	return slicesFilter(states1, func(name string, i int) bool {
 		return !slices.Contains(states2, name)
 	})
 }
 
+// SameStates return states present in both states1 and dbgtypes.
+func SameStates(states1 S, states2 S) S {
+	return slicesFilter(states1, func(name string, i int) bool {
+		return slices.Contains(states2, name)
+	})
+}
+
+// StatesEqual returns true if states1 and states2 are equal, regardless of
+// order.
 func StatesEqual(states1 S, states2 S) bool {
 	return slicesEvery(states1, states2) && slicesEvery(states2, states1)
 }
 
-// IsTimeAfter checks if time1 is after time2. Requires a deterministic states
-// order, e.g. by using Machine.VerifyStates.
-func IsTimeAfter(time1, time2 Time) bool {
-	after := false
-	for i, t1 := range time1 {
-		if t1 < time2[i] {
-			return false
-		}
-		if t1 > time2[i] {
-			after = true
-		}
-	}
-	return after
-}
-
-// CloneStates deep clones the states struct and returns a copy.
-func CloneStates(stateStruct Struct) Struct {
-	ret := make(Struct)
+// CloneSchema deep clones the states struct and returns a copy.
+func CloneSchema(stateStruct Schema) Schema {
+	ret := make(Schema)
 
 	for name, state := range stateStruct {
 		ret[name] = cloneState(state)
@@ -78,6 +71,9 @@ func cloneState(state State) State {
 	if state.After != nil {
 		stateCopy.After = slices.Clone(state.After)
 	}
+	if state.Tags != nil {
+		stateCopy.Tags = slices.Clone(state.Tags)
+	}
 
 	return stateCopy
 }
@@ -86,6 +82,12 @@ func cloneState(state State) State {
 // (odd number).
 func IsActiveTick(tick uint64) bool {
 	return tick%2 == 1
+}
+
+// IsQueued returns true if the mutation has been queued, and the result
+// represents the queue time it will be processed.
+func IsQueued(result Result) bool {
+	return result > Canceled
 }
 
 // SAdd concatenates multiple state lists into one, removing duplicates.
@@ -106,15 +108,40 @@ func SAdd(states ...S) S {
 	return slicesUniq(s)
 }
 
+// SRem removes groups > 1 from nr 1.
+func SRem(src S, states ...S) S {
+	// TODO test
+	// TODO move to resolver
+	s := slices.Clone(src)
+	if len(states) == 0 {
+		return s
+	}
+
+	for i := 1; i < len(states); i++ {
+		for ii := 0; ii < len(states[i]); ii++ {
+			s = slicesWithout(s, states[i][ii])
+		}
+	}
+
+	return s
+}
+
 // StateAdd adds new states to relations of the source state, without
 // removing existing ones. Useful for adjusting shared stated to a specific
-// machine.
+// machine. Only "true" values for Auto and Multi are applied from [overlay].
 func StateAdd(source State, overlay State) State {
 	// TODO example
 	// TODO test
 	// TODO move to resolver?
 	s := cloneState(source)
 	o := cloneState(overlay)
+
+	if o.Auto {
+		s.Auto = true
+	}
+	if o.Multi {
+		s.Multi = true
+	}
 
 	// relations
 	if o.Add != nil {
@@ -164,51 +191,42 @@ func StateSet(source State, auto, multi bool, overlay State) State {
 	return s
 }
 
-// StructMerge merges multiple state structs into one, overriding the previous
+// SchemaMerge merges multiple state structs into one, overriding the previous
 // state definitions. No relation-level merging takes place.
-func StructMerge(stateStructs ...Struct) Struct {
+func SchemaMerge(schemas ...Schema) Schema {
+	// TODO mark all-but-last states as Inherited?
 	// TODO example
 	// TODO test
-	// TODO move to resolver?
 	// defaults
-	l := len(stateStructs)
-	if l == 0 {
-		return Struct{}
-	} else if l == 1 {
-		return stateStructs[0]
+	l := len(schemas)
+	switch l {
+	case 0:
+		return Schema{}
+	case 1:
+		return schemas[0]
 	}
 
-	ret := make(Struct)
+	ret := make(Schema)
 	for i := 0; i < l; i++ {
-		maps.Copy(ret, stateStructs[i])
+		maps.Copy(ret, schemas[i])
 	}
 
-	return CloneStates(ret)
-}
-
-// Serialized is a machine state serialized to a JSON/YAML/TOML compatible
-// struct. One also needs the state Struct to re-create a state machine.
-type Serialized struct {
-	// ID is the ID of a state machine.
-	ID string `json:"id" yaml:"id"`
-	// Time represents machine time - a list of state activation counters.
-	Time Time `json:"time" yaml:"time"`
-	// StateNames is an ordered list of state names.
-	StateNames S `json:"state_names" yaml:"state_names" toml:"state_names"`
+	return CloneSchema(ret)
 }
 
 // EnvLogLevel returns a log level from an environment variable, AM_LOG by
 // default.
 func EnvLogLevel(name string) LogLevel {
-	// TODO cookbook
 	if name == "" {
 		name = EnvAmLog
 	}
 	v, _ := strconv.Atoi(os.Getenv(name))
+
 	return LogLevel(v)
 }
 
-// ListHandlers returns a list of handler method names from a handlers struct.
+// ListHandlers returns a list of handler method names from a handler struct,
+// limited to [states].
 func ListHandlers(handlers any, states S) ([]string, error) {
 	var methodNames []string
 	var errs []error
@@ -224,18 +242,20 @@ func ListHandlers(handlers any, states S) ([]string, error) {
 				"%w: %s from handler %s", ErrStateMissing, s2, method))
 		}
 
-		if s1 != "" || method == HandlerGlobal {
+		if s1 != "" || (method == HandlerAnyEnter || method == HandlerAnyState) {
 			methodNames = append(methodNames, method)
 			// TODO verify method signatures early (returns and params)
 		}
 	}
 
+	// methods
 	t := reflect.TypeOf(handlers)
 	for i := 0; i < t.NumMethod(); i++ {
 		method := t.Method(i).Name
 		check(method)
 	}
 
+	// fields
 	val := reflect.ValueOf(handlers).Elem()
 	typ := val.Type()
 	for i := 0; i < val.NumField(); i++ {
@@ -252,28 +272,28 @@ func ListHandlers(handlers any, states S) ([]string, error) {
 
 // TODO prevent using these names as state names
 var handlerSuffixes = []string{
-	SuffixEnter, SuffixExit, SuffixState, SuffixEnd, Any,
+	SuffixEnter, SuffixExit, SuffixState, SuffixEnd, StateAny,
 }
 
 // IsHandler checks if a method name is a handler method, by returning a state
 // name.
 func IsHandler(states S, method string) (string, string) {
-	if method == HandlerGlobal {
+	if method == HandlerAnyEnter || method == HandlerAnyState {
 		return "", ""
 	}
 
 	// suffixes
 	for _, suffix := range handlerSuffixes {
 		if strings.HasSuffix(method, suffix) && len(method) != len(suffix) &&
-			method != Any+suffix {
+			method != StateAny+suffix {
 			return method[0 : len(method)-len(suffix)], ""
 		}
 	}
 
 	// AnyFoo
-	if strings.HasPrefix(method, Any) && len(method) != len(Any) &&
-		method != Any+SuffixState {
-		return method[len(Any):], ""
+	if strings.HasPrefix(method, StateAny) && len(method) != len(StateAny) &&
+		method != StateAny+SuffixState {
+		return method[len(StateAny):], ""
 	}
 
 	// FooBar
@@ -311,6 +331,54 @@ func AMerge[K comparable, V any](maps ...map[K]V) map[K]V {
 	return out
 }
 
+// TruncateStr with shorten the string and leave a tripedot suffix.
+func TruncateStr(s string, maxLength int) string {
+	if len(s) <= maxLength {
+		return s
+	}
+	if maxLength < 5 {
+		return s[:maxLength]
+	} else {
+		return s[:maxLength-3] + "..."
+	}
+}
+
+// IndexToTime returns "virtual time" with selected states active. It's useful
+// to use time methods on a list of states, eg the called ones.
+func IndexToTime(index S, active []int) Time {
+	ret := make(Time, len(index))
+	for _, i := range active {
+		ret[i] = 1
+	}
+
+	return ret
+}
+
+// IndexToStates decodes state indexes based on the provided index.
+func IndexToStates(index S, states []int) S {
+	ret := make(S, len(states))
+	for i := range states {
+		name := "unknown" + strconv.Itoa(states[i])
+		if len(index) > states[i] && states[i] != -1 {
+			name = index[states[i]]
+		}
+		ret[i] = name
+	}
+
+	return ret
+}
+
+// StatesToIndex returns a subset of [index] that matches [states]. Unknown
+// states are represented by -1.
+func StatesToIndex(index S, states S) []int {
+	ret := make([]int, len(states))
+	for i := range states {
+		ret[i] = slices.Index(index, states[i])
+	}
+
+	return ret
+}
+
 // ///// ///// /////
 
 // ///// UTILS
@@ -344,12 +412,14 @@ func padString(str string, length int, pad string) string {
 	}
 }
 
-func parseStruct(states Struct) Struct {
+func ParseSchema(schema Schema) (Schema, error) {
 	// TODO move to Resolver
 	// TODO capitalize states
 
-	parsedStates := CloneStates(states)
-	for name, state := range states {
+	parsed := CloneSchema(schema)
+	states := slices.Collect(maps.Keys(schema))
+	var errs error
+	for name, state := range schema {
 
 		// avoid self removal
 		if slices.Contains(state.Remove, name) {
@@ -360,6 +430,10 @@ func parseStruct(states Struct) Struct {
 		for _, add := range state.Add {
 			if slices.Contains(state.Remove, add) {
 				state.Remove = slicesWithout(state.Remove, add)
+
+				// check if exists
+			} else if !slices.Contains(states, add) {
+				state.Add = slicesWithout(state.Add, add)
 			}
 		}
 
@@ -368,10 +442,36 @@ func parseStruct(states Struct) Struct {
 			state.After = slicesWithout(state.After, name)
 		}
 
-		parsedStates[name] = state
+		// detect require-remove conflicts
+		for _, required := range state.Require {
+			if slices.Contains(state.Remove, required) {
+				errs = errors.Join(errs, fmt.Errorf(
+					"%w: require-remove conflict for %s to %s",
+					ErrSchema, name, required))
+			}
+		}
+
+		// remove references to non-existing states
+		for _, n := range state.Remove {
+			if !slices.Contains(states, n) {
+				state.Remove = slicesWithout(state.Remove, n)
+			}
+		}
+		for _, n := range state.After {
+			if !slices.Contains(states, n) {
+				state.After = slicesWithout(state.After, n)
+			}
+		}
+		for _, n := range state.Remove {
+			if !slices.Contains(states, n) {
+				state.Remove = slicesWithout(state.Remove, n)
+			}
+		}
+
+		parsed[name] = state
 	}
 
-	return parsedStates
+	return parsed, errs
 }
 
 // compareArgs return true if args2 is a subset of args1.
@@ -389,17 +489,6 @@ func compareArgs(args1, args2 A) bool {
 	return match
 }
 
-func truncateStr(s string, maxLength int) string {
-	if len(s) <= maxLength {
-		return s
-	}
-	if maxLength < 5 {
-		return s[:maxLength]
-	} else {
-		return s[:maxLength-3] + "..."
-	}
-}
-
 type handlerCall struct {
 	fn reflect.Value
 	// TODO debug only
@@ -408,7 +497,7 @@ type handlerCall struct {
 	timeout bool
 }
 
-func randID() string {
+func randId() string {
 	id := make([]byte, 16)
 	_, err := rand.Read(id)
 	if err != nil {
@@ -447,8 +536,9 @@ func slicesEvery[S1 ~[]E, S2 ~[]E, E comparable](col1 S1, col2 S2) bool {
 	return true
 }
 
+// TODO replace with slices.DeleteFunc
 func slicesFilter[S ~[]E, E any](coll S, fn func(item E, i int) bool) S {
-	var ret S
+	ret := make(S, 0, len(coll))
 	for i, el := range coll {
 		if fn(el, i) {
 			ret = append(ret, el)
@@ -465,75 +555,20 @@ func slicesReverse[S ~[]E, E any](coll S) S {
 	return ret
 }
 
-func slicesUniq[S ~[]E, E comparable](coll S) S {
-	dups := false
-	l := len(coll)
-	for i, el := range coll {
-		for ii := i; ii < len(coll)-1; ii++ {
-			if l > ii+1 && el == coll[ii+1] {
-				dups = true
-				break
-			}
+func slicesUniq[T comparable](coll []T) []T {
+	if len(coll) == 0 {
+		return []T{}
+	}
+	seen := make(map[T]struct{}, len(coll))
+	ret := make([]T, 0, len(coll))
+	for _, v := range coll {
+		if _, ok := seen[v]; !ok {
+			seen[v] = struct{}{}
+			ret = append(ret, v)
 		}
 	}
-	if !dups {
-		// return slices.Clone(coll)
-		return coll
-	}
-	var ret S
-	for _, el := range coll {
-		if !slices.Contains(ret, el) {
-			ret = append(ret, el)
-		}
-	}
+
 	return ret
-}
-
-// disposeWithCtx handles early binding disposal caused by a canceled context.
-// It's used by most of "when" methods.
-// TODO GC in the handler loop instead
-func disposeWithCtx[T comparable](
-	mach *Machine, ctx context.Context, ch chan struct{}, states S, binding T,
-	lock *sync.RWMutex, index map[string][]T, logMsg string,
-) {
-	// TODO groups waiting on the same context
-	// TODO close using the handler loop?
-	if ctx == nil {
-		return
-	}
-	go func() {
-		select {
-		case <-ch:
-			return
-		case <-mach.ctx.Done():
-			return
-		case <-ctx.Done():
-		}
-
-		// TODO track
-		closeSafe(ch)
-
-		// GC only if needed
-		if mach.disposed.Load() {
-			return
-		}
-		lock.Lock()
-		defer lock.Unlock()
-
-		for _, s := range states {
-			if _, ok := index[s]; ok {
-				if len(index[s]) == 1 {
-					delete(index, s)
-				} else {
-					index[s] = slicesWithout(index[s], binding)
-				}
-
-				if logMsg != "" {
-					mach.log(LogOps, logMsg)
-				}
-			}
-		}
-	}()
 }
 
 func cloneOptions(opts *Opts) *Opts {
@@ -542,18 +577,18 @@ func cloneOptions(opts *Opts) *Opts {
 	}
 
 	return &Opts{
-		ID:                   opts.ID,
+		Id:                   opts.Id,
 		HandlerTimeout:       opts.HandlerTimeout,
 		DontPanicToException: opts.DontPanicToException,
 		DontLogStackTrace:    opts.DontLogStackTrace,
-		DontLogID:            opts.DontLogID,
+		DontLogId:            opts.DontLogId,
 		Resolver:             opts.Resolver,
 		LogLevel:             opts.LogLevel,
 		Tracers:              opts.Tracers,
 		LogArgs:              opts.LogArgs,
 		QueueLimit:           opts.QueueLimit,
 		Parent:               opts.Parent,
-		ParentID:             opts.ParentID,
+		ParentId:             opts.ParentId,
 		Tags:                 opts.Tags,
 		DetectEval:           opts.DetectEval,
 	}

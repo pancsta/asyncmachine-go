@@ -108,7 +108,7 @@ func NewClient(ctx context.Context, id string, workerKind string,
 		return nil, err
 	}
 
-	mach.SetLogArgs(LogArgs)
+	mach.SemLogger().SetArgsMapper(LogArgs)
 	c.Mach = mach
 	amhelp.MachDebugEnv(mach)
 
@@ -143,7 +143,7 @@ func (c *Client) StartState(e *am.Event) {
 
 	// init super rpc (but dont connect just yet)
 	c.SuperRpc, err = rpc.NewClient(ctx, addr, GetSuperClientId(c.Name),
-		states.SupervisorStruct, ssS.Names(), &rpc.ClientOpts{
+		states.SupervisorSchema, ssS.Names(), &rpc.ClientOpts{
 			Parent:   c.Mach,
 			Consumer: c.Mach,
 		})
@@ -152,7 +152,6 @@ func (c *Client) StartState(e *am.Event) {
 		_ = AddErrRpc(c.Mach, err, nil)
 		return
 	}
-	amhelp.MachDebugEnv(c.SuperRpc.Mach)
 
 	// bind to super rpc
 	err = errors.Join(
@@ -177,7 +176,7 @@ func (c *Client) StartState(e *am.Event) {
 
 			// (re)start and wait
 			// TODO handle in ExceptionState when SuperConnecting active
-			c.Mach.Remove1(am.Exception, nil)
+			c.Mach.Remove1(am.StateException, nil)
 			c.SuperRpc.Addr = addr
 			// fewer retries, bc of fallbacks
 			// TODO config via a composable RetryPolicy from rpc-c
@@ -206,8 +205,6 @@ func (c *Client) StartState(e *am.Event) {
 
 				return
 			}
-
-			amhelp.MachDebugEnv(c.SuperRpc.Worker)
 		}
 	}()
 }
@@ -282,7 +279,6 @@ func (c *Client) WorkerPayloadState(e *am.Event) {
 		}
 		// delay for rpc/Mux
 		c.WorkerRpc.HelloDelay = 100 * time.Millisecond
-		amhelp.MachDebugEnv(c.WorkerRpc.Mach)
 
 		// bind to worker rpc
 		err = errors.Join(
@@ -308,10 +304,6 @@ func (c *Client) WorkerPayloadState(e *am.Event) {
 			return
 		}
 	}()
-}
-
-func (c *Client) WorkerReadyState(e *am.Event) {
-	amhelp.MachDebugEnv(c.WorkerRpc.Worker)
 }
 
 // ///// ///// /////
@@ -354,7 +346,7 @@ func (c *Client) ReqWorker(ctx context.Context) error {
 		return err
 	}
 
-	c.log("worker connected: %s", c.WorkerRpc.Worker.ID)
+	c.log("worker connected: %s", c.WorkerRpc.Worker.Id())
 	return nil
 }
 
@@ -382,9 +374,9 @@ func (c *Client) log(msg string, args ...any) {
 // ClientStateDeps contains the state definitions and names of the client and
 // worker machines, needed to create a new client.
 type ClientStateDeps struct {
-	ClientSStruct am.Struct
+	ClientSStruct am.Schema
 	ClientSNames  am.S
-	WorkerSStruct am.Struct
+	WorkerSStruct am.Schema
 	WorkerSNames  am.S
 }
 

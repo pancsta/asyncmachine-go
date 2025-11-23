@@ -2,11 +2,12 @@ package states
 
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/states"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // WorkerStatesDef contains all the states of the Worker state machine.
 type WorkerStatesDef struct {
+	*am.StatesBase
 
 	// errors
 
@@ -18,24 +19,19 @@ type WorkerStatesDef struct {
 
 	// rpc getter
 
-	// SendPayload - Worker delivered requested payload to the RPC server using
-	// rpc.Pass, rpc.A, and rpc.ArgsPayload.
+	// SendPayload - Worker delivered the requested payload to the RPC server
+	// using rpc.Pass, rpc.A, and rpc.ArgsPayload.
 	SendPayload string
-
-	// inherit from BasicStatesDef
-	*states.BasicStatesDef
 }
 
-// WorkerStruct represents all relations and properties of WorkerStates.
-var WorkerStruct = StructMerge(
-	// inherit from BasicStruct
-	states.BasicStruct,
-	am.Struct{
+// WorkerSchema represents all relations and properties of WorkerStates.
+var WorkerSchema = SchemaMerge(
+	am.Schema{
 
 		// errors
 
-		ssW.ErrProviding:   {Require: S{am.Exception}},
-		ssW.ErrSendPayload: {Require: S{am.Exception}},
+		ssW.ErrProviding:   {Require: S{am.StateException}},
+		ssW.ErrSendPayload: {Require: S{am.StateException}},
 
 		// rcp getter
 

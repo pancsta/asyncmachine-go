@@ -51,7 +51,7 @@ func init() {
 	// - enable stdout logging
 	//
 	// amhelp.EnableDebugging(true)
-	// amhelp.SetLogLevel(am.LogOps)
+	// amhelp.SemLogger().SetLevel(am.LogOps)
 }
 
 // handlers
@@ -158,11 +158,11 @@ func TestNfa(t *testing.T) {
 	// code
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mach, err := am.NewCommon(ctx, "nfa-"+tt.name, states.NfaStruct, ss.Names(), &Regexp{}, nil, nil)
+			mach, err := am.NewCommon(ctx, "nfa-"+tt.name, states.NfaSchema, ss.Names(), &Regexp{}, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			mach.SetLogId(false)
+			mach.SemLogger().EnableId(false)
 			amhelp.MachDebugEnv(mach)
 			mach.Add1(ss.Start, am.A{"input": tt.input})
 			<-mach.When1(ss.Ready, nil)

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pancsta/asyncmachine-go/pkg/integrations/msg-kind-req",
+  "$ref": "#/$defs/MsgKindReq",
+  "$defs": {
+    "Kind": {
+      "properties": {
+        "Value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Value"
+      ]
+    },
+    "MsgKindReq": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/Kind",
+          "description": "The kind of the request."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "description": "MsgKindReq is a decoding helper."
+    }
+  }
+}

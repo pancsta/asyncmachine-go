@@ -3,8 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a declarative control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-> and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state machine](/pkg/machine/README.md)**.
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 ## Benchmark: aRPC vs gRPC
 
@@ -85,8 +84,8 @@ ok      github.com/pancsta/asyncmachine-go/examples/benchmark_grpc      5.187s
 Worker's states can be found below. For handlers, please [refer to the source](/examples/benchmark_grpc/server_arpc.go).
 
 ```go
-// States structure defines relations and properties of states.
-var States = am.Struct{
+// Machine schema defines relations and properties of states.
+var States = am.Schema{
     // toggle
     Start: {},
 

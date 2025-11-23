@@ -6,30 +6,42 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
+	"regexp"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/rpc/rpcnames"
 )
 
 // Worker is a subset of `pkg/machine#Machine` for RPC. Lacks the queue and
 // other local methods. Most methods are clock-based, thus executed locally.
+// TODO rename to NetworkMachine (netMach)
 type Worker struct {
-	ID  string
-	ctx context.Context
-	// TODO remote push
-	Disposed atomic.Bool
+	// RPC client parenting this Worker. If nil, worker is read-only and won't
+	// allow for mutations / network calls.
+	c *Client
+	// remoteId is the ID of the remote state machine.
+	remoteId string
 
-	c             *Client
+	// machine
+
+	// embed and reuse subscriptions
+	subs          *am.Subscriptions
+	id            string
+	ctx           context.Context
+	disposed      atomic.Bool
 	err           error
-	states        am.Struct
+	schema        am.Schema
 	clockMx       sync.RWMutex
+	schemaMx      sync.RWMutex
 	machTime      am.Time
+	machClock     am.Clock
+	queueTick     uint64
 	stateNames    am.S
 	activeState   atomic.Pointer[am.S]
 	indexStateCtx am.IndexStateCtx
@@ -40,42 +52,111 @@ type Worker struct {
 	whenDisposed chan struct{}
 	// TODO bind
 	tracers        []am.Tracer
+	tracersMx      sync.Mutex
 	handlers       []*remoteHandler
 	parentId       string
 	tags           []string
 	logLevel       atomic.Pointer[am.LogLevel]
-	logger         atomic.Pointer[am.Logger]
+	logger         atomic.Pointer[am.LoggerFn]
 	logEntriesLock sync.Mutex
 	logEntries     []*am.LogEntry
+	semLogger      *semLogger
+	// execQueue executed handlers and tracers
+	// TODO tracers should be synchronous like in pkg/machine
+	execQueue errgroup.Group
+	machTick  uint32
 }
 
 // Worker implements MachineApi
 var _ am.Api = &Worker{}
+
+// NewWorker creates a new instance of a Worker.
+// TODO link godoc to pkg/machine
+func NewWorker(
+	ctx context.Context, id string, c *Client, schema am.Schema, stateNames am.S,
+	parent *am.Machine, tags []string,
+) (*Worker, error) {
+	// validate
+	if ctx == nil {
+		return nil, errors.New("ctx cannot be nil")
+	}
+	if schema == nil {
+		return nil, errors.New("schema cannot be nil")
+	}
+	if len(schema) != len(stateNames) {
+		return nil, errors.New("schema and stateNames must have the same length")
+	}
+	if parent == nil {
+		return nil, errors.New("parent cannot be nil")
+	}
+	if tags == nil {
+		tags = []string{"rpc-worker", "src-id:"}
+	}
+
+	w := &Worker{
+		c:             c,
+		id:            id,
+		ctx:           parent.Ctx(),
+		schema:        schema,
+		stateNames:    stateNames,
+		indexWhen:     am.IndexWhen{},
+		indexStateCtx: am.IndexStateCtx{},
+		indexWhenTime: am.IndexWhenTime{},
+		whenDisposed:  make(chan struct{}),
+		machTime:      make(am.Time, len(stateNames)),
+		machClock:     am.Clock{},
+		queueTick:     1,
+		parentId:      parent.Id(),
+		tags:          tags,
+	}
+
+	// init clock
+	for _, state := range stateNames {
+		w.machClock[state] = 0
+	}
+	w.subs = am.NewSubscriptionManager(w, w.machClock, w.is, w.not, w.log)
+	w.semLogger = &semLogger{mach: w}
+	lvl := am.LogNothing
+	w.logLevel.Store(&lvl)
+	w.activeState.Store(&am.S{})
+	parent.OnDispose(func(id string, ctx context.Context) {
+		w.Dispose()
+	})
+
+	// init queue
+	w.execQueue.SetLimit(1)
+
+	return w, nil
+}
 
 // ///// RPC methods
 
 // Sync requests fresh clock values from the remote machine. Useful to call
 // after a batch of no-sync methods, eg AddNS.
 func (w *Worker) Sync() am.Time {
+	if w.c == nil {
+		return nil
+	}
+
 	w.c.Mach.Log("Sync")
 
 	// call rpc
 	resp := &RespSync{}
-	ok := w.c.callFailsafe(w.c.Mach.Ctx(), rpcnames.Sync.Encode(),
-		w.TimeSum(nil), resp)
+	ok := w.c.callFailsafe(w.c.Mach.Ctx(), ServerSync.Value,
+		w.Time(nil).Sum(nil), resp)
 	if !ok {
 		return nil
 	}
 
 	// validate
-	if len(resp.Time) > 0 && len(resp.Time) != len(w.stateNames) {
+	if len(resp.Time) > 0 && len(resp.Time) != len(w.StateNames()) {
 		AddErrRpcStr(nil, w.c.Mach, "wrong clock len")
 		return nil
 	}
 
 	// process if time is returned
 	if len(resp.Time) > 0 {
-		w.c.updateClock(nil, resp.Time)
+		w.c.updateClock(nil, resp.Time, resp.QueueTick)
 	}
 
 	return w.machTime
@@ -87,6 +168,10 @@ func (w *Worker) Sync() am.Time {
 // transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (w *Worker) Add(states am.S, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
+
 	w.MustParseStates(states)
 
 	// call rpc
@@ -95,24 +180,23 @@ func (w *Worker) Add(states am.S, args am.A) am.Result {
 		States: amhelp.StatesToIndexes(w.StateNames(), states),
 		Args:   args,
 	}
-	if !w.c.callFailsafe(w.Ctx(), rpcnames.Add.Encode(), rpcArgs, resp) {
-		return am.ResultNoOp
+	if !w.c.callFailsafe(w.Ctx(), ServerAdd.Value, rpcArgs, resp) {
+		return am.Canceled
 	}
 
-	// validate
-	if resp.Result == 0 {
-		AddErrRpcStr(nil, w.c.Mach, "no Result")
-		return am.ResultNoOp
-	}
+	// TODO validate resp?
 
 	// process
-	w.c.updateClock(resp.Clock, nil)
+	w.c.updateClock(resp.Clock, nil, 0)
 
 	return resp.Result
 }
 
 // Add1 is a shorthand method to add a single state with the passed args.
 func (w *Worker) Add1(state string, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
 	return w.Add(am.S{state}, args)
 }
 
@@ -121,6 +205,10 @@ func (w *Worker) Add1(state string, args am.A) am.Result {
 // update the clock. Use Sync() to update the clock after a batch of AddNS
 // calls.
 func (w *Worker) AddNS(states am.S, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
+
 	w.c.log("AddNS")
 	w.MustParseStates(states)
 
@@ -129,8 +217,8 @@ func (w *Worker) AddNS(states am.S, args am.A) am.Result {
 		States: amhelp.StatesToIndexes(w.StateNames(), states),
 		Args:   args,
 	}
-	if !w.c.notifyFailsafe(w.Ctx(), rpcnames.AddNS.Encode(), rpcArgs) {
-		return am.ResultNoOp
+	if !w.c.notifyFailsafe(w.Ctx(), ServerAddNS.Value, rpcArgs) {
+		return am.Canceled
 	}
 
 	return am.Executed
@@ -138,13 +226,20 @@ func (w *Worker) AddNS(states am.S, args am.A) am.Result {
 
 // Add1NS is a single state version of AddNS.
 func (w *Worker) Add1NS(state string, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
 	return w.AddNS(am.S{state}, args)
 }
 
-// Remove de-activates a list of states in the machine, returning the result of
+// Remove deactivates a list of states in the machine, returning the result of
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (w *Worker) Remove(states am.S, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
+
 	w.MustParseStates(states)
 
 	// call rpc
@@ -153,18 +248,14 @@ func (w *Worker) Remove(states am.S, args am.A) am.Result {
 		States: amhelp.StatesToIndexes(w.StateNames(), states),
 		Args:   args,
 	}
-	if !w.c.callFailsafe(w.Ctx(), rpcnames.Remove.Encode(), rpcArgs, resp) {
-		return am.ResultNoOp
+	if !w.c.callFailsafe(w.Ctx(), ServerRemove.Value, rpcArgs, resp) {
+		return am.Canceled
 	}
 
-	// validate
-	if resp.Result == 0 {
-		AddErrRpcStr(nil, w.c.Mach, "no Result")
-		return am.ResultNoOp
-	}
+	// TODO validate resp?
 
 	// process
-	w.c.updateClock(resp.Clock, nil)
+	w.c.updateClock(resp.Clock, nil, 0)
 
 	return resp.Result
 }
@@ -172,13 +263,20 @@ func (w *Worker) Remove(states am.S, args am.A) am.Result {
 // Remove1 is a shorthand method to remove a single state with the passed args.
 // See Remove().
 func (w *Worker) Remove1(state string, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
 	return w.Remove(am.S{state}, args)
 }
 
-// Set de-activates a list of states in the machine, returning the result of
+// Set deactivates a list of states in the machine, returning the result of
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (w *Worker) Set(states am.S, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
+
 	w.MustParseStates(states)
 
 	// call rpc
@@ -187,18 +285,14 @@ func (w *Worker) Set(states am.S, args am.A) am.Result {
 		States: amhelp.StatesToIndexes(w.StateNames(), states),
 		Args:   args,
 	}
-	if !w.c.callFailsafe(w.Ctx(), rpcnames.Set.Encode(), rpcArgs, resp) {
-		return am.ResultNoOp
+	if !w.c.callFailsafe(w.Ctx(), ServerSet.Value, rpcArgs, resp) {
+		return am.Canceled
 	}
 
-	// validate
-	if resp.Result == 0 {
-		AddErrRpcStr(nil, w.c.Mach, "no Result")
-		return am.ResultNoOp
-	}
+	// TODO validate resp?
 
 	// process
-	w.c.updateClock(resp.Clock, nil)
+	w.c.updateClock(resp.Clock, nil, 0)
 
 	return resp.Result
 }
@@ -208,7 +302,10 @@ func (w *Worker) Set(states am.S, args am.A) am.Result {
 // Like every mutation method, it will resolve relations and trigger handlers.
 // AddErr produces a stack trace of the error, if LogStackTrace is enabled.
 func (w *Worker) AddErr(err error, args am.A) am.Result {
-	return w.AddErrState(am.Exception, err, args)
+	if w.c == nil {
+		return am.Canceled
+	}
+	return w.AddErrState(am.StateException, err, args)
 }
 
 // AddErrState adds a dedicated error state, along with the build in Exception
@@ -216,10 +313,10 @@ func (w *Worker) AddErr(err error, args am.A) am.Result {
 // Like every mutation method, it will resolve relations and trigger handlers.
 // AddErrState produces a stack trace of the error, if LogStackTrace is enabled.
 func (w *Worker) AddErrState(state string, err error, args am.A) am.Result {
-	if w.Disposed.Load() {
+	if w.c == nil || w.disposed.Load() {
 		return am.Canceled
 	}
-	w.MustParseStates(am.S{state})
+
 	// TODO remove once remote errors are implemented
 	w.err = err
 
@@ -230,6 +327,7 @@ func (w *Worker) AddErrState(state string, err error, args am.A) am.Result {
 	// }
 
 	// build args
+	// TODO use typed args
 	if args == nil {
 		args = am.A{}
 	} else {
@@ -239,10 +337,14 @@ func (w *Worker) AddErrState(state string, err error, args am.A) am.Result {
 	// args["err.trace"] = trace
 
 	// mark errors added locally with ErrOnClient
-	return w.Add(am.S{ssS.ErrOnClient, state, am.Exception}, args)
+	return w.Add(am.S{ssS.ErrOnClient, state, am.StateException}, args)
 }
 
 func (w *Worker) EvAdd(event *am.Event, states am.S, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
+
 	w.MustParseStates(states)
 
 	// call rpc
@@ -250,45 +352,128 @@ func (w *Worker) EvAdd(event *am.Event, states am.S, args am.A) am.Result {
 	rpcArgs := &ArgsMut{
 		States: amhelp.StatesToIndexes(w.StateNames(), states),
 		Args:   args,
-		Event:  event.Clone(),
+		Event:  event.Export(),
 	}
-	if !w.c.callFailsafe(w.Ctx(), rpcnames.Add.Encode(), rpcArgs, resp) {
-		return am.ResultNoOp
+	if !w.c.callFailsafe(w.Ctx(), ServerAdd.Value, rpcArgs, resp) {
+		return am.Canceled
 	}
 
-	// validate
-	if resp.Result == 0 {
-		AddErrRpcStr(nil, w.c.Mach, "no Result")
-		return am.ResultNoOp
-	}
+	// TODO validate resp?
 
 	// process
-	w.c.updateClock(resp.Clock, nil)
+	w.c.updateClock(resp.Clock, nil, 0)
 
 	return resp.Result
 }
 
-// Add1 is a shorthand method to add a single state with the passed args.
+// EvAdd1 is a shorthand method to add a single state with the passed args.
 func (w *Worker) EvAdd1(event *am.Event, state string, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
 	return w.EvAdd(event, am.S{state}, args)
 }
 
 func (w *Worker) EvRemove1(event *am.Event, state string, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
 	return w.EvRemove(event, am.S{state}, args)
 }
 
 func (w *Worker) EvRemove(event *am.Event, states am.S, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
 	return am.Canceled // TODO
 }
 
 func (w *Worker) EvAddErr(event *am.Event, err error, args am.A) am.Result {
-	return am.Canceled // TODO
+	if w.c == nil {
+		return am.Canceled
+	}
+	return w.EvAddErrState(event, am.StateException, err, args)
 }
 
 func (w *Worker) EvAddErrState(
 	event *am.Event, state string, err error, args am.A,
 ) am.Result {
-	return am.Canceled // TODO
+	if w.c == nil {
+		return am.Canceled
+	}
+
+	// TODO remove once remote errors are implemented
+	w.err = err
+
+	// TODO stack traces, use am.AT
+	// var trace string
+	// if m.LogStackTrace {
+	// 	trace = captureStackTrace()
+	// }
+
+	// build args
+	// TODO use typed args
+	if args == nil {
+		args = am.A{}
+	} else {
+		args = maps.Clone(args)
+	}
+	args["err"] = err
+	// args["err.trace"] = trace
+
+	// mark errors added locally with ErrOnClient
+	return w.EvAdd(event, am.S{ssS.ErrOnClient, state, am.StateException}, args)
+}
+
+// Toggle deactivates a list of states in case all are active, or activates
+// them otherwise. Returns the result of the transition (Executed, Queued,
+// Canceled).
+func (w *Worker) Toggle(states am.S, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
+	if w.Is(states) {
+		return w.Remove(states, args)
+	} else {
+		return w.Add(states, args)
+	}
+}
+
+// Toggle1 activates or deactivates a single state, depending on its current
+// state. Returns the result of the transition (Executed, Queued, Canceled).
+func (w *Worker) Toggle1(state string, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
+	if w.Is1(state) {
+		return w.Remove1(state, args)
+	} else {
+		return w.Add1(state, args)
+	}
+}
+
+// EvToggle is a traced version of [Machine.Toggle].
+func (w *Worker) EvToggle(e *am.Event, states am.S, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
+	if w.Is(states) {
+		return w.EvRemove(e, states, args)
+	} else {
+		return w.EvAdd(e, states, args)
+	}
+}
+
+// EvToggle1 is a traced version of [Machine.Toggle1].
+func (w *Worker) EvToggle1(e *am.Event, state string, args am.A) am.Result {
+	if w.c == nil {
+		return am.Canceled
+	}
+	if w.Is1(state) {
+		return w.EvRemove1(e, state, args)
+	} else {
+		return w.EvAdd1(e, state, args)
+	}
 }
 
 // ///// Checking (local)
@@ -310,7 +495,7 @@ func (w *Worker) Is1(state string) bool {
 }
 
 func (w *Worker) is(states am.S) bool {
-	activeStates := w.ActiveStates()
+	activeStates := w.ActiveStates(nil)
 	for _, state := range w.MustParseStates(states) {
 		if !slices.Contains(activeStates, state) {
 			return false
@@ -322,7 +507,7 @@ func (w *Worker) is(states am.S) bool {
 
 // IsErr checks if the machine has the Exception state currently active.
 func (w *Worker) IsErr() bool {
-	return w.Is1(am.Exception)
+	return w.Is1(am.StateException)
 }
 
 // Not checks if **none** of the passed states are currently active.
@@ -342,7 +527,11 @@ func (w *Worker) Not(states am.S) bool {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
 
-	return slicesNone(w.MustParseStates(states), w.ActiveStates())
+	return w.not(states)
+}
+
+func (w *Worker) not(states am.S) bool {
+	return utils.SlicesNone(w.MustParseStates(states), w.ActiveStates(nil))
 }
 
 // Not1 is a shorthand method to check if a single state is currently inactive.
@@ -382,7 +571,7 @@ func (w *Worker) Any1(states ...string) bool {
 
 // Has return true is passed states are registered in the machine.
 func (w *Worker) Has(states am.S) bool {
-	return slicesEvery(w.StateNames(), states)
+	return utils.SlicesEvery(w.StateNames(), states)
 }
 
 // Has1 is a shorthand for Has. It returns true if the passed state is
@@ -398,7 +587,22 @@ func (w *Worker) IsClock(clock am.Clock) bool {
 	defer w.clockMx.RUnlock()
 
 	for state, tick := range clock {
-		if w.machTime[w.Index(state)] != tick {
+		if w.machTime[w.Index1(state)] != tick {
+			return false
+		}
+	}
+
+	return true
+}
+
+// WasClock checks if the passed time has happened (or happening right now).
+// Returns false if at least one state is too early.
+func (w *Worker) WasClock(clock am.Clock) bool {
+	w.clockMx.RLock()
+	defer w.clockMx.RUnlock()
+
+	for state, tick := range clock {
+		if w.machTime[w.Index1(state)] < tick {
 			return false
 		}
 	}
@@ -414,12 +618,35 @@ func (w *Worker) IsTime(t am.Time, states am.S) bool {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
 
+	index := w.StateNames()
 	if states == nil {
-		states = w.stateNames
+		states = index
 	}
 
 	for i, tick := range t {
-		if w.machTime[w.Index(states[i])] != tick {
+		if w.machTime[slices.Index(index, states[i])] != tick {
+			return false
+		}
+	}
+
+	return true
+}
+
+// WasTime checks if the passed time has happened (or happening right now).
+// Returns false if at least one state is too early. The
+// states param is optional and can be used to check only a subset of states.
+func (w *Worker) WasTime(t am.Time, states am.S) bool {
+	w.MustParseStates(states)
+	w.clockMx.RLock()
+	defer w.clockMx.RUnlock()
+
+	index := w.StateNames()
+	if states == nil {
+		states = index
+	}
+
+	for i, tick := range t {
+		if w.machTime[slices.Index(index, states[i])] < tick {
 			return false
 		}
 	}
@@ -436,7 +663,7 @@ func (w *Worker) IsTime(t am.Time, states am.S) bool {
 //	case "Stopped":
 //	}
 func (w *Worker) Switch(groups ...am.S) string {
-	activeStates := w.ActiveStates()
+	activeStates := w.ActiveStates(nil)
 	for _, states := range groups {
 		for _, state := range states {
 			if slices.Contains(activeStates, state) {
@@ -450,61 +677,28 @@ func (w *Worker) Switch(groups ...am.S) string {
 
 // ///// Waiting (local)
 
+// WhenErr returns a channel that will be closed when the machine is in the
+// StateException state.
+//
+// ctx: optional context that will close the channel early.
+func (w *Worker) WhenErr(disposeCtx context.Context) <-chan struct{} {
+	return w.When([]string{am.StateException}, disposeCtx)
+}
+
 // When returns a channel that will be closed when all the passed states
 // become active or the machine gets disposed.
 //
-// ctx: optional context that will close the channel when done.
+// ctx: optional context that will close the channel early.
 func (w *Worker) When(states am.S, ctx context.Context) <-chan struct{} {
-	// TODO mixin from am.Subscription
-	// TODO re-use channels with the same state set and context
-	ch := make(chan struct{})
-	if w.Disposed.Load() {
-		close(ch)
-		return ch
+	if w.disposed.Load() {
+		return newClosedChan()
 	}
 
+	// locks
 	w.clockMx.Lock()
 	defer w.clockMx.Unlock()
 
-	// if all active, close early
-	if w.is(states) {
-		close(ch)
-		return ch
-	}
-
-	setMap := am.StateIsActive{}
-	matched := 0
-	for _, s := range states {
-		setMap[s] = w.is(am.S{s})
-		if setMap[s] {
-			matched++
-		}
-	}
-
-	// add the binding to an index of each state
-	binding := &am.WhenBinding{
-		Ch:       ch,
-		Negation: false,
-		States:   setMap,
-		Total:    len(states),
-		Matched:  matched,
-	}
-	w.log(am.LogOps, "[when:new] %s", j(states))
-
-	// dispose with context
-	disposeWithCtx(w, ctx, ch, states, binding, &w.clockMx, w.indexWhen,
-		fmt.Sprintf("[when:match] %s", j(states)))
-
-	// insert the binding
-	for _, s := range states {
-		if _, ok := w.indexWhen[s]; !ok {
-			w.indexWhen[s] = []*am.WhenBinding{binding}
-		} else {
-			w.indexWhen[s] = append(w.indexWhen[s], binding)
-		}
-	}
-
-	return ch
+	return w.subs.When(w.MustParseStates(states), ctx)
 }
 
 // When1 is an alias to When() for a single state.
@@ -516,56 +710,19 @@ func (w *Worker) When1(state string, ctx context.Context) <-chan struct{} {
 // WhenNot returns a channel that will be closed when all the passed states
 // become inactive or the machine gets disposed.
 //
-// ctx: optional context that will close the channel when done.
+// ctx: optional context that will close the channel early.
 func (w *Worker) WhenNot(states am.S, ctx context.Context) <-chan struct{} {
-	ch := make(chan struct{})
-	if w.Disposed.Load() {
+	if w.disposed.Load() {
+		ch := make(chan struct{})
 		close(ch)
 		return ch
 	}
 
+	// locks
 	w.clockMx.Lock()
 	defer w.clockMx.Unlock()
 
-	// if all inactive, close early
-	if !w.is(states) {
-		close(ch)
-		return ch
-	}
-
-	setMap := am.StateIsActive{}
-	matched := 0
-	for _, s := range states {
-		setMap[s] = w.is(am.S{s})
-		if !setMap[s] {
-			matched++
-		}
-	}
-
-	// add the binding to an index of each state
-	binding := &am.WhenBinding{
-		Ch:       ch,
-		Negation: true,
-		States:   setMap,
-		Total:    len(states),
-		Matched:  matched,
-	}
-	w.log(am.LogOps, "[whenNot:new] %s", j(states))
-
-	// dispose with context
-	disposeWithCtx(w, ctx, ch, states, binding, &w.clockMx, w.indexWhen,
-		fmt.Sprintf("[whenNot:match] %s", j(states)))
-
-	// insert the binding
-	for _, s := range states {
-		if _, ok := w.indexWhen[s]; !ok {
-			w.indexWhen[s] = []*am.WhenBinding{binding}
-		} else {
-			w.indexWhen[s] = append(w.indexWhen[s], binding)
-		}
-	}
-
-	return ch
+	return w.subs.WhenNot(w.MustParseStates(states), ctx)
 }
 
 // WhenNot1 is an alias to WhenNot() for a single state.
@@ -578,102 +735,77 @@ func (w *Worker) WhenNot1(state string, ctx context.Context) <-chan struct{} {
 // have passed the specified time. The time is a logical clock of the state.
 // Machine time can be sourced from [Machine.Time](), or [Machine.Clock]().
 //
-// ctx: optional context that will close the channel when done.
+// ctx: optional context that will close the channel early.
 func (w *Worker) WhenTime(
 	states am.S, times am.Time, ctx context.Context,
 ) <-chan struct{} {
-	ch := make(chan struct{})
-	valid := len(states) == len(times)
-	if w.Disposed.Load() || !valid {
-		if !valid {
-			// TODO local log
-			w.log(am.LogDecisions, "[when:time] times for all passed states required")
-		}
-		close(ch)
-		return ch
+	if w.disposed.Load() {
+		return newClosedChan()
 	}
 
+	// close early on invalid
+	if len(states) != len(times) {
+		err := fmt.Errorf(
+			"whenTime: states and times must have the same length (%s)",
+			utils.J(states))
+		w.AddErr(err, nil)
+
+		return newClosedChan()
+	}
+
+	// locks
 	w.clockMx.Lock()
 	defer w.clockMx.Unlock()
 
-	// if all times passed, close early
-	passed := true
-	for i, s := range states {
-		if w.tick(s) < times[i] {
-			passed = false
-			break
-		}
-	}
-	if passed {
-		close(ch)
-		return ch
-	}
+	return w.subs.WhenTime(states, times, ctx)
+}
 
-	completed := am.StateIsActive{}
-	matched := 0
-	index := map[string]int{}
-	for i, s := range states {
-		completed[s] = w.tick(s) >= times[i]
-		if completed[s] {
-			matched++
-		}
-		index[s] = i
-	}
-
-	// add the binding to an index of each state
-	binding := &am.WhenTimeBinding{
-		Ch:        ch,
-		Index:     index,
-		Completed: completed,
-		Total:     len(states),
-		Matched:   matched,
-		Times:     times,
-	}
-	w.log(am.LogOps, "[whenTime:new] %s %s", utils.Jw(states, ","), times)
-
-	// dispose with context
-	disposeWithCtx(w, ctx, ch, states, binding, &w.clockMx,
-		w.indexWhenTime, fmt.Sprintf("[whenTime:match] %s %s",
-			utils.Jw(states, ","), times))
-
-	// insert the binding
-	for _, s := range states {
-		if _, ok := w.indexWhenTime[s]; !ok {
-			w.indexWhenTime[s] = []*am.WhenTimeBinding{binding}
-		} else {
-			w.indexWhenTime[s] = append(w.indexWhenTime[s], binding)
-		}
-	}
-
-	return ch
+// WhenTime1 waits till ticks for a single state equal the given value (or
+// more).
+//
+// ctx: optional context that will close the channel early.
+func (w *Worker) WhenTime1(
+	state string, ticks uint64, ctx context.Context,
+) <-chan struct{} {
+	return w.WhenTime(am.S{state}, am.Time{ticks}, ctx)
 }
 
 // WhenTicks waits N ticks of a single state (relative to now). Uses WhenTime
 // underneath.
 //
-// ctx: optional context that will close the channel when done.
+// ctx: optional context that will close the channel early.
 func (w *Worker) WhenTicks(
 	state string, ticks int, ctx context.Context,
 ) <-chan struct{} {
 	return w.WhenTime(am.S{state}, am.Time{uint64(ticks) + w.Tick(state)}, ctx)
 }
 
-// WhenTicksEq waits till ticks for a single state equal the given absolute
-// value (or more). Uses WhenTime underneath.
+// WhenQuery returns a channel that will be closed when the passed [clockCheck]
+// function returns true. [clockCheck] should be a pure function and
+// non-blocking.`
 //
-// ctx: optional context that will close the channel when done.
-func (w *Worker) WhenTicksEq(
-	state string, ticks uint64, ctx context.Context,
+// ctx: optional context that will close the channel early.
+func (w *Worker) WhenQuery(
+	clockCheck func(clock am.Clock) bool, ctx context.Context,
 ) <-chan struct{} {
-	return w.WhenTime(am.S{state}, am.Time{ticks}, ctx)
+	// locks
+	w.clockMx.Lock()
+	defer w.clockMx.Unlock()
+
+	return w.subs.WhenQuery(clockCheck, ctx)
 }
 
-// WhenErr returns a channel that will be closed when the machine is in the
-// Exception state.
-//
-// ctx: optional context that will close the channel when done.
-func (w *Worker) WhenErr(ctx context.Context) <-chan struct{} {
-	return w.When([]string{am.Exception}, ctx)
+func (w *Worker) WhenQueue(tick am.Result) <-chan struct{} {
+	// locks
+	w.clockMx.Lock()
+	defer w.clockMx.Unlock()
+
+	// finish early
+	if w.queueTick >= uint64(tick) {
+		return newClosedChan()
+	}
+
+	return w.subs.WhenQueue(tick)
 }
 
 // ///// Waiting (remote)
@@ -687,8 +819,8 @@ func (w *Worker) WhenErr(ctx context.Context) <-chan struct{} {
 func (w *Worker) WhenArgs(
 	state string, args am.A, ctx context.Context,
 ) <-chan struct{} {
-	// TODO implement me
-	panic("implement me")
+	// TODO subscribe on the source via a uint8 token
+	return newClosedChan()
 }
 
 // ///// Getters (remote)
@@ -703,15 +835,41 @@ func (w *Worker) Err() error {
 
 // StateNames returns a copy of all the state names.
 func (w *Worker) StateNames() am.S {
-	return w.stateNames
+	w.schemaMx.Lock()
+	defer w.schemaMx.Unlock()
+
+	return slices.Clone(w.stateNames)
+}
+
+func (w *Worker) StateNamesMatch(re *regexp.Regexp) am.S {
+	ret := am.S{}
+	for _, name := range w.StateNames() {
+		if re.MatchString(name) {
+			ret = append(ret, name)
+		}
+	}
+
+	return ret
 }
 
 // ActiveStates returns a copy of the currently active states.
-func (w *Worker) ActiveStates() am.S {
-	return *w.activeState.Load()
+func (w *Worker) ActiveStates(states am.S) am.S {
+	active := *w.activeState.Load()
+	if states == nil {
+		return slices.Clone(active)
+	}
+
+	ret := make(am.S, 0, len(states))
+	for _, state := range active {
+		if slices.Contains(active, state) {
+			ret = append(ret, state)
+		}
+	}
+
+	return ret
 }
 
-// Tick return the current tick for a given state.
+// Tick returns the current tick for a given state.
 func (w *Worker) Tick(state string) uint64 {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
@@ -720,9 +878,8 @@ func (w *Worker) Tick(state string) uint64 {
 }
 
 func (w *Worker) tick(state string) uint64 {
-	idx := slices.Index(w.stateNames, state)
-
-	return w.machTime[idx]
+	// TODO validate
+	return w.machClock[state]
 }
 
 // Clock returns current machine's clock, a state-keyed map of ticks. If states
@@ -730,19 +887,15 @@ func (w *Worker) tick(state string) uint64 {
 func (w *Worker) Clock(states am.S) am.Clock {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
+	index := w.StateNames()
 
-	return w.clock(states)
-}
-
-func (w *Worker) clock(states am.S) am.Clock {
 	if states == nil {
-		states = w.stateNames
+		states = index
 	}
 
 	ret := am.Clock{}
 	for _, state := range states {
-		idx := slices.Index(w.stateNames, state)
-		ret[state] = w.machTime[idx]
+		ret[state] = w.machClock[state]
 	}
 
 	return ret
@@ -758,39 +911,18 @@ func (w *Worker) Time(states am.S) am.Time {
 }
 
 func (w *Worker) time(states am.S) am.Time {
+	index := w.StateNames()
 	if states == nil {
-		states = w.stateNames
+		states = index
 	}
 
 	ret := am.Time{}
 	for _, state := range states {
-		idx := slices.Index(w.stateNames, state)
+		idx := slices.Index(index, state)
 		ret = append(ret, w.machTime[idx])
 	}
 
 	return ret
-}
-
-// TimeSum returns the sum of machine's time (ticks per state).
-// Returned value includes the specified states, or all the states if nil.
-// It's a very inaccurate, yet simple way to measure the machine's
-// time.
-// TODO handle overflow
-func (w *Worker) TimeSum(states am.S) uint64 {
-	w.clockMx.RLock()
-	defer w.clockMx.RUnlock()
-
-	if states == nil {
-		states = w.stateNames
-	}
-
-	var sum uint64
-	for _, state := range states {
-		idx := slices.Index(w.stateNames, state)
-		sum += w.machTime[idx]
-	}
-
-	return sum
 }
 
 // NewStateCtx returns a new sub-context, bound to the current clock's tick of
@@ -812,9 +944,9 @@ func (w *Worker) NewStateCtx(state string) context.Context {
 	}
 
 	v := am.CtxValue{
-		Id:    w.ID,
+		Id:    w.id,
 		State: state,
-		Tick:  w.clock(am.S{state})[state],
+		Tick:  w.machClock[state],
 	}
 	stateCtx, cancel := context.WithCancel(context.WithValue(w.Ctx(),
 		am.CtxKey, v))
@@ -842,89 +974,20 @@ func (w *Worker) NewStateCtx(state string) context.Context {
 
 // Log logs is a remote logger.
 func (w *Worker) Log(msg string, args ...any) {
+	if w.c == nil {
+		return
+	}
 	// call rpc
 	resp := &RespResult{}
 	rpcArgs := &ArgsLog{Msg: msg, Args: args}
-	if !w.c.callFailsafe(w.Ctx(), rpcnames.Log.Encode(), rpcArgs, resp) {
+	if !w.c.callFailsafe(w.Ctx(), ServerLog.Value, rpcArgs, resp) {
 		return
 	}
 	// TODO local log?
 }
 
-// SetLogId enables or disables the logging of the machine's ID in log messages.
-func (w *Worker) SetLogId(val bool) {}
-
-// GetLogId returns the current state of the log id setting.
-func (w *Worker) GetLogId() bool {
-	// TODO
-	return false
-}
-
-// SetLoggerSimple takes log.Printf and sets the log level in one
-// call. Useful for testing. Requires LogChanges log level to produce any
-// output.
-func (w *Worker) SetLoggerSimple(
-	logf func(format string, args ...any), level am.LogLevel,
-) {
-	if logf == nil {
-		panic("logf cannot be nil")
-	}
-
-	var logger am.Logger = func(_ am.LogLevel, msg string, args ...any) {
-		logf(msg, args...)
-	}
-	w.logger.Store(&logger)
-	w.logLevel.Store(&level)
-}
-
-// SetLoggerEmpty creates an empty logger that does nothing and sets the log
-// level in one call. Useful when combined with am-dbg. Requires LogChanges log
-// level to produce any output.
-func (w *Worker) SetLoggerEmpty(level am.LogLevel) {
-	var logger am.Logger = func(_ am.LogLevel, msg string, args ...any) {
-		// no-op
-	}
-	w.logger.Store(&logger)
-	w.logLevel.Store(&level)
-}
-
-// SetLogger sets a custom logger function.
-func (w *Worker) SetLogger(fn am.Logger) {
-	if fn == nil {
-		w.logger.Store(nil)
-
-		return
-	}
-	w.logger.Store(&fn)
-}
-
-// GetLogger returns the current custom logger function, or nil.
-func (w *Worker) GetLogger() *am.Logger {
-	// TODO should return `Logger` not `*Logger`?
-	return w.logger.Load()
-}
-
-// SetLogLevel sets the log level of the machine.
-func (w *Worker) SetLogLevel(level am.LogLevel) {
-	w.logLevel.Store(&level)
-}
-
-// GetLogLevel returns the log level of the machine.
-func (w *Worker) GetLogLevel() am.LogLevel {
-	return *w.logLevel.Load()
-}
-
-// LogLvl adds an internal log entry from the outside. It should be used only
-// by packages extending pkg/machine. Use Log instead.
-func (w *Worker) LogLvl(lvl am.LogLevel, msg string, args ...any) {
-	if w.Disposed.Load() {
-		return
-	}
-
-	// single lines only
-	msg = strings.ReplaceAll(msg, "\n", " ")
-
-	w.log(lvl, msg, args...)
+func (w *Worker) SemLogger() am.SemLogger {
+	return w.semLogger
 }
 
 // StatesVerified returns true if the state names have been ordered
@@ -938,12 +1001,17 @@ func (w *Worker) Ctx() context.Context {
 	return w.ctx
 }
 
-// Id returns the machine's ID.
+// Id returns the machine's id.
 func (w *Worker) Id() string {
-	return w.ID
+	return w.id
 }
 
-// ParentId returns the ID of the parent machine (if any).
+// RemoteId returns the ID of the remote state machine.
+func (w *Worker) RemoteId() string {
+	return w.remoteId
+}
+
+// ParentId returns the id of the parent machine (if any).
 func (w *Worker) ParentId() string {
 	return w.parentId
 }
@@ -960,9 +1028,10 @@ func (w *Worker) String() string {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
 
-	active := w.ActiveStates()
+	index := w.StateNames()
+	active := w.ActiveStates(nil)
 	ret := "("
-	for _, state := range w.stateNames {
+	for _, state := range index {
 		if !slices.Contains(active, state) {
 			continue
 		}
@@ -970,7 +1039,7 @@ func (w *Worker) String() string {
 		if ret != "(" {
 			ret += " "
 		}
-		idx := slices.Index(w.stateNames, state)
+		idx := slices.Index(index, state)
 		ret += fmt.Sprintf("%s:%d", state, w.machTime[idx])
 	}
 
@@ -984,11 +1053,12 @@ func (w *Worker) StringAll() string {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
 
-	activeStates := w.ActiveStates()
+	index := w.StateNames()
+	activeStates := w.ActiveStates(nil)
 	ret := "("
 	ret2 := "["
-	for _, state := range w.stateNames {
-		idx := slices.Index(w.stateNames, state)
+	for _, state := range index {
+		idx := slices.Index(index, state)
 
 		if slices.Contains(activeStates, state) {
 			if ret != "(" {
@@ -1014,56 +1084,56 @@ func (w *Worker) Inspect(states am.S) string {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
 
+	index := w.StateNames()
 	if states == nil {
-		states = w.stateNames
+		states = index
 	}
 
-	activeStates := w.ActiveStates()
+	activeStates := w.ActiveStates(nil)
 	ret := ""
 	for _, name := range states {
 
-		state := w.states[name]
-		active := "false"
+		state := w.schema[name]
+		active := "0"
 		if slices.Contains(activeStates, name) {
-			active = "true"
+			active = "1"
 		}
 
-		idx := slices.Index(w.stateNames, name)
-		ret += name + ":\n"
-		ret += fmt.Sprintf("  State:   %s %d\n", active, w.machTime[idx])
+		idx := slices.Index(index, name)
+		ret += fmt.Sprintf("%s %s\n"+
+			"    |Time     %d\n", active, name, w.machTime[idx])
 		if state.Auto {
-			ret += "  Auto:    true\n"
+			ret += "    |Auto     true\n"
 		}
 		if state.Multi {
-			ret += "  Multi:   true\n"
+			ret += "    |Multi    true\n"
 		}
 		if state.Add != nil {
-			ret += "  Add:     " + j(state.Add) + "\n"
+			ret += "    |Add      " + utils.J(state.Add) + "\n"
 		}
 		if state.Require != nil {
-			ret += "  Require: " + j(state.Require) + "\n"
+			ret += "    |Require  " + utils.J(state.Require) + "\n"
 		}
 		if state.Remove != nil {
-			ret += "  Remove:  " + j(state.Remove) + "\n"
+			ret += "    |Remove   " + utils.J(state.Remove) + "\n"
 		}
 		if state.After != nil {
-			ret += "  After:   " + j(state.After) + "\n"
+			ret += "    |After    " + utils.J(state.After) + "\n"
 		}
-		ret += "\n"
 	}
 
 	return ret
 }
 
 func (w *Worker) log(level am.LogLevel, msg string, args ...any) {
-	if w.GetLogLevel() < level {
+	if w.semLogger.Level() < level {
 		return
 	}
 
 	out := fmt.Sprintf(msg, args...)
-	logger := w.GetLogger()
+	logger := w.semLogger.Logger()
 	if logger != nil {
-		(*logger)(level, msg, args...)
+		logger(level, msg, args...)
 	} else {
 		fmt.Println(out)
 	}
@@ -1080,210 +1150,57 @@ func (w *Worker) log(level am.LogLevel, msg string, args ...any) {
 // MustParseStates parses the states and returns them as a list.
 // Panics when a state is not defined. It's an usafe equivalent of VerifyStates.
 func (w *Worker) MustParseStates(states am.S) am.S {
-	// check if all states are defined in m.Struct
+	w.schemaMx.Lock()
+	defer w.schemaMx.Unlock()
+
+	// check if all states are defined in m.Schema
 	for _, s := range states {
-		// TODO lock
-		if _, ok := w.states[s]; !ok {
-			panic(fmt.Sprintf("state %s is not defined for %s", s, w.ID))
+		if _, ok := w.schema[s]; !ok {
+			panic(fmt.Sprintf("state %s is not defined for %s (via %s)", s,
+				w.remoteId, w.id))
 		}
 	}
 
-	return slicesUniq(states)
+	return utils.SlicesUniq(states)
 }
 
-func (w *Worker) processStateCtxBindings(statesBefore am.S) {
-	active := w.ActiveStates()
-
-	w.clockMx.RLock()
-	deactivated := am.DiffStates(statesBefore, active)
-
-	var toCancel []context.CancelFunc
-	for _, s := range deactivated {
-		if _, ok := w.indexStateCtx[s]; !ok {
-			continue
-		}
-
-		toCancel = append(toCancel, w.indexStateCtx[s].Cancel)
-		w.log(am.LogOps, "[ctx:match] %s", s)
-		delete(w.indexStateCtx, s)
-	}
-
-	w.clockMx.RUnlock()
-
-	// cancel all the state contexts outside the critical section
-	for _, cancel := range toCancel {
-		cancel()
-	}
+// Index1 returns the index of a state in the machine's StateNames() list.
+func (w *Worker) Index1(state string) int {
+	return slices.Index(w.StateNames(), state)
 }
 
-func (w *Worker) processWhenBindings(statesBefore am.S) {
-	active := w.ActiveStates()
-
-	w.clockMx.Lock()
-
-	// calculate activated and deactivated states
-	activated := am.DiffStates(active, statesBefore)
-	deactivated := am.DiffStates(statesBefore, active)
-
-	// merge all states
-	all := am.S{}
-	all = append(all, activated...)
-	all = append(all, deactivated...)
-
-	var toClose []chan struct{}
-	for _, s := range all {
-		for _, binding := range w.indexWhen[s] {
-
-			if slices.Contains(activated, s) {
-
-				// state activated, check the index
-				if !binding.Negation {
-					// match for When(
-					if !binding.States[s] {
-						binding.Matched++
-					}
-				} else {
-					// match for WhenNot(
-					if !binding.States[s] {
-						binding.Matched--
-					}
-				}
-
-				// update index: mark as active
-				binding.States[s] = true
-			} else {
-
-				// state deactivated
-				if !binding.Negation {
-					// match for When(
-					if binding.States[s] {
-						binding.Matched--
-					}
-				} else {
-					// match for WhenNot(
-					if binding.States[s] {
-						binding.Matched++
-					}
-				}
-
-				// update index: mark as inactive
-				binding.States[s] = false
-			}
-
-			// if not all matched, ignore for now
-			if binding.Matched < binding.Total {
-				continue
-			}
-
-			// completed - close and delete indexes for all involved states
-			var names []string
-			for state := range binding.States {
-				names = append(names, state)
-
-				if len(w.indexWhen[state]) == 1 {
-					delete(w.indexWhen, state)
-					continue
-				}
-
-				// delete with a lookup TODO optimize
-				w.indexWhen[state] = slicesWithout(w.indexWhen[state], binding)
-			}
-
-			if binding.Negation {
-				w.log(am.LogOps, "[whenNot:match] %s", j(names))
-			} else {
-				w.log(am.LogOps, "[when:match] %s", j(names))
-			}
-			// close outside the critical section
-			toClose = append(toClose, binding.Ch)
-		}
-	}
-	w.clockMx.Unlock()
-
-	// notifyFailsafe outside the critical section
-	for ch := range toClose {
-		closeSafe(toClose[ch])
-	}
-}
-
-func (w *Worker) processWhenTimeBindings(timeBefore am.Time) {
-	w.clockMx.Lock()
-	indexWhenTime := w.indexWhenTime
-	var toClose []chan struct{}
-
-	// collect all the ticked states
-	all := am.S{}
-	for idx, t := range timeBefore {
-		// if changed, collect to check
-		if w.machTime[idx] != t {
-			all = append(all, w.stateNames[idx])
-		}
+func (w *Worker) Index(states am.S) []int {
+	ret := make([]int, len(states))
+	for i, state := range states {
+		ret[i] = w.Index1(state)
 	}
 
-	// check all the bindings for all the ticked states
-	for _, s := range all {
-		for _, binding := range indexWhenTime[s] {
-
-			// check if the requested time has passed
-			if !binding.Completed[s] &&
-				w.machTime[w.Index(s)] >= binding.Times[binding.Index[s]] {
-				binding.Matched++
-				// mark in the index as completed
-				binding.Completed[s] = true
-			}
-
-			// if not all matched, ignore for now
-			if binding.Matched < binding.Total {
-				continue
-			}
-
-			// completed - close and delete indexes for all involved states
-			var names []string
-			for state := range binding.Index {
-				names = append(names, state)
-				if len(indexWhenTime[state]) == 1 {
-					delete(indexWhenTime, state)
-					continue
-				}
-
-				// delete with a lookup TODO optimize
-				w.indexWhenTime[state] = slicesWithout(w.indexWhenTime[state], binding)
-			}
-
-			w.log(am.LogOps, "[whenTime:match] %s %d", j(names), binding.Times)
-			// close outside the critical section
-			toClose = append(toClose, binding.Ch)
-		}
-	}
-	w.clockMx.Unlock()
-
-	// notifyFailsafe outside the critical section
-	for ch := range toClose {
-		closeSafe(toClose[ch])
-	}
-}
-
-// Index returns the index of a state in the machine's StateNames() list.
-func (w *Worker) Index(state string) int {
-	return slices.Index(w.stateNames, state)
+	return ret
 }
 
 // Dispose disposes the machine and all its emitters. You can wait for the
 // completion of the disposal with `<-mach.WhenDisposed`.
 func (w *Worker) Dispose() {
-	if !w.Disposed.CompareAndSwap(false, true) {
+	if !w.disposed.CompareAndSwap(false, true) {
 		return
 	}
-	closeSafe(w.whenDisposed)
+	w.tracersMx.Lock()
+	defer w.tracersMx.Unlock()
 
+	utils.CloseSafe(w.whenDisposed)
 	for _, t := range w.tracers {
-		t.MachineDispose(w.ID)
+		go w.execQueue.Go(func() error {
+			t.MachineDispose(w.id)
+			return nil
+		})
 	}
+
+	// TODO push remotely?
 }
 
 // IsDisposed returns true if the machine has been disposed.
 func (w *Worker) IsDisposed() bool {
-	return w.Disposed.Load()
+	return w.disposed.Load()
 }
 
 // WhenDisposed returns a channel that will be closed when the machine is
@@ -1293,7 +1210,7 @@ func (w *Worker) WhenDisposed() <-chan struct{} {
 	return w.whenDisposed
 }
 
-// Export exports the machine state: ID, time and state names.
+// Export exports the machine state: id, time and state names.
 func (w *Worker) Export() *am.Serialized {
 	w.clockMx.RLock()
 	defer w.clockMx.RUnlock()
@@ -1301,24 +1218,25 @@ func (w *Worker) Export() *am.Serialized {
 	w.log(am.LogChanges, "[import] exported at %d ticks", w.time(nil))
 
 	return &am.Serialized{
-		ID:         w.ID,
+		ID:         w.id,
 		Time:       w.time(nil),
-		StateNames: w.stateNames,
+		StateNames: w.StateNames(),
 	}
 }
 
-// GetStruct returns a copy of machine's state structure.
-func (w *Worker) GetStruct() am.Struct {
-	return w.states
+// Schema returns a copy of machine's state structure.
+func (w *Worker) Schema() am.Schema {
+	return w.schema
 }
 
 // BindHandlers binds a struct of handler methods to machine's states, based on
 // the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
-// optionall return bool.
+// optionally return bool.
 //
-// RPC worker will bind handelrs locally, not to the remote machine.
+// RPC worker will bind handlers locally, not to the remote machine.
+// RPC worker handlers are still TODO.
 func (w *Worker) BindHandlers(handlers any) error {
-	names, err := am.ListHandlers(handlers, w.stateNames)
+	names, err := am.ListHandlers(handlers, w.StateNames())
 	if err != nil {
 		return err
 	}
@@ -1342,13 +1260,23 @@ func (w *Worker) BindHandlers(handlers any) error {
 	return nil
 }
 
+// HasHandlers returns true if this machine has bound handlers, and thus an
+// allocated goroutine. It also makes it nondeterministic.
+func (w *Worker) HasHandlers() bool {
+	// TODO lock
+	// w.handlersLock.Lock()
+	// defer w.handlersLock.Unlock()
+
+	return len(w.handlers) > 0
+}
+
 // DetachHandlers detaches previously bound machine handlers.
 func (w *Worker) DetachHandlers(handlers any) error {
 	old := w.handlers
 
 	for _, h := range old {
 		if h.h == handlers {
-			w.handlers = slicesWithout(old, h)
+			w.handlers = utils.SlicesWithout(old, h)
 			// TODO
 			// h.dispose()
 
@@ -1361,8 +1289,8 @@ func (w *Worker) DetachHandlers(handlers any) error {
 
 // BindTracer binds a Tracer to the machine.
 func (w *Worker) BindTracer(tracer am.Tracer) error {
-	w.clockMx.Lock()
-	defer w.clockMx.Unlock()
+	w.tracersMx.Lock()
+	defer w.tracersMx.Unlock()
 
 	v := reflect.ValueOf(tracer)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
@@ -1378,26 +1306,27 @@ func (w *Worker) BindTracer(tracer am.Tracer) error {
 
 // DetachTracer tries to remove a tracer from the machine. Returns true if the
 // tracer was found and removed.
-func (w *Worker) DetachTracer(tracer am.Tracer) bool {
-	w.clockMx.Lock()
-	defer w.clockMx.Unlock()
+func (w *Worker) DetachTracer(tracer am.Tracer) error {
+	w.tracersMx.Lock()
+	defer w.tracersMx.Unlock()
 
 	v := reflect.ValueOf(tracer)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		return false
+		return errors.New("DetachTracer expects a pointer to a struct")
 	}
 	name := reflect.TypeOf(tracer).Elem().Name()
 
 	for i, t := range w.tracers {
 		if t == tracer {
-			w.tracers = append(w.tracers[:i], w.tracers[i+1:]...)
+			// TODO check
+			w.tracers = slices.Delete(w.tracers, i, i+1)
 			w.log(am.LogOps, "[tracers] detach %s", name)
 
-			return true
+			return nil
 		}
 	}
 
-	return false
+	return errors.New("tracer not bound")
 }
 
 // Tracers return a copy of currenty attached tracers.
@@ -1408,165 +1337,215 @@ func (w *Worker) Tracers() []am.Tracer {
 	return slices.Clone(w.tracers)
 }
 
-func (w *Worker) updateClock(now am.Time) {
+// InternalUpdateClock is an internal method to update the clock of this Worker.
+// It should NOT be called by anything else then a synchronization source (eg
+// RPC client, pubsub, etc).
+func (w *Worker) InternalUpdateClock(now am.Time, qTick uint64, lock bool) {
 	// TODO require mutType and called states for PushAllTicks and handlers
-	// clockMx locked by RPC client
+	// TODO pass tx ID
+	// clockMx already locked by RPC client (but not pkg/pubsub)
 	// w.clockMx.Lock()
 
-	before := w.machTime
-	activeBefore := w.ActiveStates()
+	// TODO this is terrible
+	if lock {
+		w.clockMx.Lock()
+	}
+
+	w.tracersMx.Lock()
+	defer w.tracersMx.Unlock()
+
+	timeBefore := w.machTime
+	clockBefore := maps.Clone(w.machClock)
+
+	activeBefore := w.ActiveStates(nil)
 	active := am.S{}
-	for i, state := range w.stateNames {
+	index := w.StateNames()
+	for i, state := range index {
 		if am.IsActiveTick(now[i]) {
 			active = append(active, state)
 		}
 	}
+	activated := am.DiffStates(active, activeBefore)
+	deactivated := am.DiffStates(activeBefore, active)
 
 	tx := &am.Transition{
-		Api:      w,
-		Accepted: true,
+		Api: w,
 
-		TimeBefore: before,
+		TimeBefore: timeBefore,
 		TimeAfter:  now,
 		Mutation: &am.Mutation{
-			Type:         am.MutationSet,
-			CalledStates: active,
-			Args:         nil,
-			Auto:         false,
+			// TODO use add and remove when all ticks passed
+			Type:   am.MutationSet,
+			Called: w.Index(active),
+			Args:   nil,
+			Auto:   false,
 		},
 		LogEntries: w.logEntries,
 	}
+	// TODO may not be true for qticks only updates
+	tx.IsAccepted.Store(true)
 	w.logEntries = nil
 	// TODO fire handlers if set
 
 	// call tracers
 	for _, t := range w.tracers {
-		// TODO deadlock on method using w.clockMx
-		t.TransitionInit(tx)
+		go w.execQueue.Go(func() error {
+			t.TransitionInit(tx)
+			return nil
+		})
 	}
 	for _, t := range w.tracers {
-		// TODO deadlock on method using w.clockMx
-		t.TransitionStart(tx)
+		go w.execQueue.Go(func() error {
+			t.TransitionStart(tx)
+			return nil
+		})
 	}
 
 	// set active states
 	w.machTime = now
+	for idx, tick := range w.machTime {
+		w.machClock[index[idx]] = tick
+	}
+	w.queueTick = qTick
 	w.activeState.Store(&active)
 
-	// clockMx locked by RPC client
+	// clockMx locked by RPC [Client]
 	w.clockMx.Unlock()
 
 	for _, t := range w.tracers {
-		t.TransitionEnd(tx)
+		go w.execQueue.Go(func() error {
+			t.TransitionEnd(tx)
+			return nil
+		})
 	}
 
-	// process clock-based indexes
-	w.processWhenBindings(activeBefore)
-	w.processWhenTimeBindings(before)
-	w.processStateCtxBindings(activeBefore)
+	// subscriptions
+	w.processSubscriptions(activated, deactivated, clockBefore)
 }
 
-// ///// ///// /////
-
-// ///// UTILS TODO move to /internal/utils
-
-// ///// ///// /////
-
-// j joins state names into a single string
-func j(states []string) string {
-	return strings.Join(states, " ")
-}
-
-// disposeWithCtx handles early binding disposal caused by a canceled context.
-// It's used by most of "when" methods.
-// TODO GC in the handler loop instead
-// TODO mixin from am.Subscription
-func disposeWithCtx[T comparable](
-	mach *Worker, ctx context.Context, ch chan struct{}, states am.S, binding T,
-	lock *sync.RWMutex, index map[string][]T, logMsg string,
+func (w *Worker) processSubscriptions(
+	activated, deactivated am.S, clockBefore am.Clock,
 ) {
-	if ctx == nil {
-		return
+	// lock
+	w.clockMx.RLock()
+
+	// collect
+	toCancel := w.subs.ProcessStateCtx(deactivated)
+	toClose := slices.Concat(
+		w.subs.ProcessWhen(activated, deactivated),
+		w.subs.ProcessWhenTime(clockBefore),
+		w.subs.ProcessWhenQueue(w.queueTick),
+		w.subs.ProcessWhenQuery(),
+	)
+
+	// unlock
+	w.clockMx.RUnlock()
+
+	// close outside the critical zone
+	for _, cancel := range toCancel {
+		cancel()
 	}
-	go func() {
-		select {
-		case <-ch:
-			return
-		case <-mach.Ctx().Done():
-			return
-		case <-ctx.Done():
-		}
-
-		// TODO track
-		closeSafe(ch)
-
-		// GC only if needed
-		if mach.Disposed.Load() {
-			return
-		}
-		lock.Lock()
-		defer lock.Unlock()
-
-		for _, s := range states {
-			if _, ok := index[s]; ok {
-				if len(index[s]) == 1 {
-					delete(index, s)
-				} else {
-					index[s] = slicesWithout(index[s], binding)
-				}
-
-				if logMsg != "" {
-					mach.log(am.LogOps, logMsg) //nolint:govet
-				}
-			}
-		}
-	}()
-}
-
-// TODO remove if that speeds things up
-func closeSafe[T any](ch chan T) {
-	select {
-	case <-ch:
-	default:
+	for _, ch := range toClose {
 		close(ch)
 	}
 }
 
-func slicesWithout[S ~[]E, E comparable](coll S, el E) S {
-	idx := slices.Index(coll, el)
-	ret := slices.Clone(coll)
-	if idx == -1 {
-		return ret
-	}
-	return slices.Delete(ret, idx, idx+1)
+func (w *Worker) AddBreakpoint1(added string, removed string, strict bool) {
+	// TODO
 }
 
-// slicesNone returns true if none of the elements of coll2 are in coll1.
-func slicesNone[S1 ~[]E, S2 ~[]E, E comparable](col1 S1, col2 S2) bool {
-	for _, el := range col2 {
-		if slices.Contains(col1, el) {
-			return false
-		}
-	}
-	return true
+func (w *Worker) AddBreakpoint(added am.S, removed am.S, strict bool) {
+	// TODO
 }
 
-// slicesEvery returns true if all elements of coll2 are in coll1.
-func slicesEvery[S1 ~[]E, S2 ~[]E, E comparable](col1 S1, col2 S2) bool {
-	for _, el := range col2 {
-		if !slices.Contains(col1, el) {
-			return false
-		}
-	}
-	return true
+func (w *Worker) Groups() (map[string][]int, []string) {
+	// TODO maybe sync along with schema?
+	return nil, nil
 }
 
-func slicesUniq[S ~[]E, E comparable](coll S) S {
-	var ret S
-	for _, el := range coll {
-		if !slices.Contains(ret, el) {
-			ret = append(ret, el)
+func (w *Worker) CanAdd(states am.S, args am.A) am.Result {
+	// TODO check relations
+	return am.Executed
+}
+
+func (w *Worker) CanAdd1(state string, args am.A) am.Result {
+	// TODO check relations
+	return am.Executed
+}
+
+func (w *Worker) CanRemove(states am.S, args am.A) am.Result {
+	// TODO check relations
+	return am.Executed
+}
+
+func (w *Worker) CanRemove1(state string, args am.A) am.Result {
+	// TODO check relations
+	return am.Executed
+}
+
+// CountActive returns the number of active states from a passed list. Useful
+// for state groups.
+func (w *Worker) CountActive(states am.S) int {
+	activeStates := w.ActiveStates(nil)
+	c := 0
+	for _, state := range states {
+		if slices.Contains(activeStates, state) {
+			c++
 		}
 	}
-	return ret
+
+	return c
 }
+
+func (w *Worker) QueueLen() uint16 {
+	return 0
+}
+
+func (w *Worker) QueueTick() uint64 {
+	w.clockMx.RLock()
+	defer w.clockMx.RUnlock()
+
+	return w.queueTick
+}
+
+func (w *Worker) MachineTick() uint32 {
+	w.clockMx.RLock()
+	defer w.clockMx.RUnlock()
+
+	return w.machTick
+}
+
+func (w *Worker) ParseStates(states am.S) am.S {
+	w.schemaMx.Lock()
+	defer w.schemaMx.Unlock()
+
+	// check if all states are defined in the schema
+	seen := make(map[string]struct{})
+	dups := false
+	for i := range states {
+		if _, ok := w.schema[states[i]]; !ok {
+			continue
+		}
+		if _, ok := seen[states[i]]; !ok {
+			seen[states[i]] = struct{}{}
+		} else {
+			// mark as duplicated
+			dups = true
+		}
+	}
+
+	if dups {
+		return utils.SlicesUniq(states)
+	}
+	return slices.Collect(maps.Keys(seen))
+}
+
+func (w *Worker) OnDispose(fn am.HandlerDispose) {
+	// TODO implement me
+	panic("implement me")
+}
+
+// debug
+// func (w *Worker) QueueDump() []string {
+// 	return nil
+// }

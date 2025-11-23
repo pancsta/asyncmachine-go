@@ -3,6 +3,7 @@ package states
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/states"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // MuxStatesDef contains all the states of the Mux state machine.
@@ -25,10 +26,10 @@ type MuxStatesDef struct {
 	*states.BasicStatesDef
 }
 
-// MuxStruct represents all relations and properties of MuxStatesDef.
-var MuxStruct = states.StructMerge(
-	states.BasicStruct,
-	am.Struct{
+// MuxSchema represents all relations and properties of MuxStatesDef.
+var MuxSchema = SchemaMerge(
+	states.BasicSchema,
+	am.Schema{
 		ssD.Exception: {
 			Multi:  true,
 			Remove: S{ssS.Ready},

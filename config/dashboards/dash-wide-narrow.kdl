@@ -1,0 +1,48 @@
+keybinds clear-defaults=true {
+  locked {
+  // navi
+    bind "Alt Left" {
+      MoveFocusOrTab "Left"; }
+    bind "Alt Right" {
+      MoveFocusOrTab "Right"; }
+    bind "Alt Down" {
+      MoveFocus "Down"; }
+    bind "Alt Up" {
+      MoveFocus "Up"; }
+    bind "Alt =" {
+      Resize "Increase"; }
+
+  // resize
+    bind "Alt =" "Alt +" {
+      Resize "Increase"; }
+    bind "Alt -" {
+      Resize "Decrease"; }
+
+
+    bind "Ctrl q" {
+      Quit ; }
+  }
+}
+
+pane_frames false
+copy_on_select false
+pane_frames false
+ui {
+  pane_frames {
+    hide_session_name true
+    rounded_corners true
+  }
+}
+show_release_notes false
+show_startup_tips false
+
+layout {
+  pane split_direction="vertical" {
+    pane size="75%" command="sh" {
+      args "-c" "sleep 2 && task am-dbg -- --dir tmp -l localhost:6831 --fwd-data localhost:6832 --output-diagrams 3 --tail --output-clients"
+    }
+    pane size="25%" command="sh" {
+      args "-c" "task am-dbg -- -l localhost:6832 --view-narrow --view-timelines 0 --tail --view-timelines 1"
+    }
+  }
+}

@@ -23,7 +23,7 @@ func init() {
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(false)
-	// amhelp.SetLogLevel(am.LogChanges)
+	// amhelp.SetEnvLogLevel(am.LogOps)
 }
 
 // PathWatcher watches all dirs in PATH for changes and returns a list
@@ -52,7 +52,7 @@ func New(ctx context.Context) (*PathWatcher, error) {
 		lastRefresh: make(map[string]time.Time),
 	}
 	opts := &am.Opts{
-		ID: "watcher",
+		Id: "watcher",
 	}
 
 	if os.Getenv("YASM_DEBUG") != "" {
@@ -272,7 +272,7 @@ func (w *PathWatcher) RefreshingExit(e *am.Event) bool {
 	mut := e.Mutation()
 
 	// removing Init is a force shutdown
-	removeInit := mut.Type == am.MutationRemove && mut.StateWasCalled(ss.Init)
+	removeInit := mut.Type == am.MutationRemove && mut.IsCalled(w.Mach.Index1(ss.Init))
 
 	return len(w.ongoing) == 0 || removeInit
 }

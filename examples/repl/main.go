@@ -1,0 +1,98 @@
+package main
+
+// Steps:
+// 1. go run .
+// 2. go run github.com/pancsta/asyncmachine-go/tools/cmd/arpc@latest -d tmp
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/pancsta/asyncmachine-go/examples/arpc/states"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+)
+
+var ss = states.ExampleStates
+
+func init() {
+	// am-dbg is required for debugging, go run it
+	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
+	// amhelp.EnableDebugging(true)
+	// amhelp.SetEnvLogLevel(am.LogOps)
+}
+
+func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// handle exit TODO not working
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// workers
+	for i := range 3 {
+		worker, err := newWorker(ctx, i)
+		if err != nil {
+			log.Print(err)
+		}
+
+		time.Sleep(100 * time.Millisecond)
+		fmt.Printf("start %d\n", i)
+		worker.Log("hello")
+	}
+
+	// wait
+	<-sigChan
+
+	fmt.Println("bye")
+}
+
+func newWorker(ctx context.Context, num int) (*am.Machine, error) {
+	// init
+
+	handlers := &workerHandlers{}
+	id := fmt.Sprintf("worker%d", num)
+	worker, err := am.NewCommon(ctx, id, states.ExampleSchema,
+		ss.Names(), handlers, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	handlers.Mach = worker
+
+	// telemetry
+
+	amhelp.MachDebugEnv(worker)
+	// worker.SemLogger().SetArgsMapper(am.NewArgsMapper([]string{"log"}, 0))
+	worker.SemLogger().SetLevel(am.LogChanges)
+	// start a REPL aRPC server, create an addr file
+	arpc.MachRepl(worker, "", "tmp", nil, nil)
+
+	return worker, nil
+}
+
+type workerHandlers struct {
+	*am.ExceptionHandler
+	Mach *am.Machine
+}
+
+func (h *workerHandlers) FooState(e *am.Event) {
+	fmt.Println("FooState")
+	h.Mach.Log("FooState")
+}
+
+func (h *workerHandlers) BarState(e *am.Event) {
+	fmt.Println("BarState")
+	h.Mach.Log("BarState")
+}
+
+func (h *workerHandlers) BazState(e *am.Event) {
+	fmt.Println("BazState")
+	h.Mach.Log("BarState")
+}
