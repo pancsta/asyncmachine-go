@@ -2069,12 +2069,14 @@ func (m *Machine) log(level LogLevel, msg string, args ...any) {
 		return
 	}
 
+	prefix := ""
 	if m.logId.Load() {
 		id := m.id
 		if len(id) > 5 {
 			id = id[:5]
 		}
-		msg = "[" + id + "] " + msg
+		prefix = "[" + id + "] "
+		msg = prefix + msg
 	}
 
 	out := fmt.Sprintf(msg, args...)
@@ -2099,8 +2101,10 @@ func (m *Machine) log(level LogLevel, msg string, args ...any) {
 		m.logEntriesLock.Lock()
 		defer m.logEntriesLock.Unlock()
 
-		// prevent dups
-		if len(m.logEntries) > 0 && m.logEntries[len(m.logEntries)-1].Text == out {
+		// prevent dups (except piping)
+		if len(m.logEntries) > 0 && m.logEntries[len(m.logEntries)-1].Text == out &&
+			!strings.HasPrefix(out, prefix+"[pipe-") {
+
 			return
 		}
 
@@ -2524,6 +2528,10 @@ func (m *Machine) IsQueued(mutType MutationType, states S,
 
 	// start index
 	qLen := uint16(m.queueLen.Load())
+	if int(qLen) != len(m.queue) {
+		// TODO not cool
+		print()
+	}
 	if qLen == 0 || qLen-startIndex < 1 {
 		return 0, false
 	}

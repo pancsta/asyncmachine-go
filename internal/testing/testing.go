@@ -17,9 +17,9 @@ import (
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
 var (
@@ -135,7 +135,7 @@ func NewDbgWorker(
 	// file logging
 	opts.DbgLogLevel = am.EnvLogLevel("")
 	if opts.DbgLogLevel > 0 && os.Getenv(amhelp.EnvAmLogFile) != "" {
-		opts.DbgLogger = cli.GetLogger(&cli.Params{
+		opts.DbgLogger = types.GetLogger(&types.Params{
 			LogLevel: opts.DbgLogLevel,
 		}, "")
 	}

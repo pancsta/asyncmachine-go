@@ -32,7 +32,10 @@ const (
 	serviceName = "tree_state_source"
 	// promPushFreq is the frequency of pushing metrics to Prometheus.
 	promPushFreq = 15 * time.Second
-	mutationFreq = 5 * time.Millisecond
+	// casual viewing
+	mutationFreq = 1 * time.Second
+	// load testing
+	// mutationFreq = 5 * time.Millisecond
 )
 
 type Node struct {
@@ -58,8 +61,8 @@ func init() {
 
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
-	amhelp.EnableDebugging(false)
-	amhelp.SetEnvLogLevel(am.LogOps)
+	// amhelp.EnableDebugging(false)
+	// amhelp.SetEnvLogLevel(am.LogOps)
 }
 
 func main() {

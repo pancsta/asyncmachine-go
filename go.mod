@@ -11,6 +11,8 @@ require (
 	code.rocketnine.space/tslocum/cbind v0.1.5
 	github.com/K-Phoen/grabana v0.22.2
 	github.com/PuerkitoBio/goquery v1.10.0
+	github.com/alecthomas/chroma/v2 v2.14.0
+	github.com/alexflint/go-arg v1.6.0
 	github.com/andybalholm/brotli v1.2.0
 	github.com/apache/arrow-go/v18 v18.4.1
 	github.com/cenkalti/rpc2 v1.0.4
@@ -20,6 +22,7 @@ require (
 	github.com/fsnotify/fsnotify v1.7.1-0.20240403050945-7086bea086b7
 	github.com/gdamore/tcell/v2 v2.9.0
 	github.com/gliderlabs/ssh v0.3.8
+	github.com/gomarkdown/markdown v0.0.0-20250810172220-2e2c11897d1a
 	github.com/hibiken/asynq v0.24.1
 	github.com/ic2hrmk/promtail v0.0.5
 	github.com/invopop/jsonschema v0.12.0
@@ -84,7 +87,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/RoaringBitmap/roaring v1.9.4 // indirect
 	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b // indirect
-	github.com/alecthomas/chroma/v2 v2.14.0 // indirect
+	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/apache/thrift v0.22.0 // indirect

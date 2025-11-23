@@ -16,6 +16,7 @@ import (
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
 type Vertex struct {
@@ -39,24 +40,24 @@ type EdgeData struct {
 	StateRelation []*StateRelation
 }
 
-// Machine:
+// Client:
 // - has State inherited:string auto:bool multi:bool
-// - connectedTo Machine addr:string
-// - pipeTo Machine states:map[string]string
-// - childOf Machine
+// - connectedTo Client addr:string
+// - pipeTo Client states:map[string]string
+// - childOf Client
 //
 // State:
 // - relation type:require|add|remove State
-// - pipeTo Machine|state add:bool
+// - pipeTo Client|state add:bool
 
 type MachineHas struct {
-	inherited string
-	auto      bool
-	multi     bool
+	Inherited string
+	Auto      bool
+	Multi     bool
 }
 
 type StateRelation struct {
-	relType am.Relation
+	RelType am.Relation
 }
 
 type MachPipeTo struct {
@@ -82,18 +83,16 @@ type Exportable struct {
 	MsgTxs []*telemetry.DbgMsgTx
 }
 
+// Client represents a single state machine withing the network graph.
 type Client struct {
-	// bits which get saved into the go file
-	// Exportable
-	MsgStruct *telemetry.DbgMsgStruct
-
 	Id string
+	// TODO version schemas
+	MsgSchema *telemetry.DbgMsgStruct
 
-	// indexes of txs with errors, desc order for bisects
-	// TODO refresh on GC
 	LatestMsgTx   *telemetry.DbgMsgTx
 	LatestTimeSum uint64
 	LatestClock   am.Time
+	ConnId        string
 }
 
 // ///// ///// /////
@@ -103,24 +102,30 @@ type Client struct {
 // ///// ///// /////
 
 type Graph struct {
-	Mach *am.Machine
+	Server  *am.Machine
+	Clients map[string]*Client
 
-	clients map[string]*Client
-	// g is a directed graph of machines and states with metadata.
-	g graph.Graph[string, *Vertex]
-	// gMap is a unidirectional mirror of g, without metadata.
-	gMap graph.Graph[string, *Vertex]
+	// TODO export G and Map
+
+	// G is a directed graph of machines and states with metadata.
+	G graph.Graph[string, *Vertex]
+	// Map is a unidirectional mirror of g, without metadata.
+	Map graph.Graph[string, *Vertex]
 }
 
-func New(m *am.Machine) (*Graph, error) {
-	g := &Graph{
-		g:       graph.New(hash, graph.Directed()),
-		gMap:    graph.New(hash),
-		Mach:    m,
-		clients: make(map[string]*Client),
+func New(server *am.Machine) (*Graph, error) {
+	if !server.Has(ssdbg.ServerStates.Names()) {
+		return nil, fmt.Errorf(
+			"Graph.New: server machine %s does not implement ssdbg.ServerStates",
+			server.Id())
 	}
 
-	// TODO state-check the machine for InitClient
+	g := &Graph{
+		Server:  server,
+		G:       graph.New(hash, graph.Directed()),
+		Map:     graph.New(hash),
+		Clients: make(map[string]*Client),
+	}
 
 	// err := m.BindHandlers(g)
 	// if err != nil {
@@ -132,26 +137,26 @@ func New(m *am.Machine) (*Graph, error) {
 
 // Clone returns a deep clone of the graph.
 func (g *Graph) Clone() (*Graph, error) {
-	c1, err := g.g.Clone()
+	c1, err := g.G.Clone()
 	if err != nil {
 		return nil, err
 	}
 
-	c2, err := g.gMap.Clone()
+	c2, err := g.Map.Clone()
 	if err != nil {
 		return nil, err
 	}
 
 	g2 := &Graph{
-		g:       c1,
-		gMap:    c2,
-		clients: make(map[string]*Client, len(g.clients)),
+		G:       c1,
+		Map:     c2,
+		Clients: make(map[string]*Client, len(g.Clients)),
 	}
 
-	for id, c := range g.clients {
-		g2.clients[id] = &Client{
+	for id, c := range g.Clients {
+		g2.Clients[id] = &Client{
 			Id:            id,
-			MsgStruct:     c.MsgStruct,
+			MsgSchema:     c.MsgSchema,
 			LatestClock:   c.LatestClock,
 			LatestTimeSum: c.LatestTimeSum,
 		}
@@ -160,36 +165,24 @@ func (g *Graph) Clone() (*Graph, error) {
 	return g2, nil
 }
 
-func (g *Graph) Clients() map[string]*Client {
-	return g.clients
-}
-
-func (g *Graph) G() graph.Graph[string, *Vertex] {
-	return g.g
-}
-
-func (g *Graph) Map() graph.Graph[string, *Vertex] {
-	return g.gMap
-}
-
 func (g *Graph) Clear() {
-	g.clients = make(map[string]*Client)
-	g.g = graph.New(hash, graph.Directed())
-	g.gMap = graph.New(hash)
+	g.Clients = make(map[string]*Client)
+	g.G = graph.New(hash, graph.Directed())
+	g.Map = graph.New(hash)
 }
 
 // Connection returns a Connection for the given source-target.
 func (g *Graph) Connection(source, target string) (*Connection, error) {
-	edge, err := g.g.Edge(source, target)
+	edge, err := g.G.Edge(source, target)
 	if err != nil {
 		return nil, err
 	}
 	data := edge.Properties.Data.(*EdgeData)
-	targetVert, err := g.g.Vertex(target)
+	targetVert, err := g.G.Vertex(target)
 	if err != nil {
 		return nil, err
 	}
-	sourceVert, err := g.g.Vertex(source)
+	sourceVert, err := g.G.Vertex(source)
 	if err != nil {
 		return nil, err
 	}
@@ -202,13 +195,13 @@ func (g *Graph) Connection(source, target string) (*Connection, error) {
 }
 
 func (g *Graph) ParseMsg(id string, msgTx *telemetry.DbgMsgTx) {
-	c := g.clients[id]
+	c := g.Clients[id]
 
 	var sum uint64
 	for _, v := range msgTx.Clocks {
 		sum += v
 	}
-	index := c.MsgStruct.StatesIndex
+	index := c.MsgSchema.StatesIndex
 
 	// optimize space
 	if len(msgTx.CalledStates) > 0 {
@@ -230,7 +223,7 @@ func (g *Graph) ParseMsg(id string, msgTx *telemetry.DbgMsgTx) {
 		added, _, _ := amhelp.GetTransitionStates(fakeTx, index)
 
 		// RPC conns (requires LogLevel2)
-		isRpcServer := slices.Contains(c.MsgStruct.Tags, "rpc-server")
+		isRpcServer := slices.Contains(c.MsgSchema.Tags, "rpc-server")
 		if slices.Contains(added, ssrpc.ServerStates.HandshakeDone) && isRpcServer {
 			for _, item := range msgTx.LogEntries {
 				if !strings.HasPrefix(item.Text, "[add] ") {
@@ -242,27 +235,27 @@ func (g *Graph) ParseMsg(id string, msgTx *telemetry.DbgMsgTx) {
 					a := strings.Split(arg, "=")
 					if a[0] == "id" {
 						data := graph.EdgeData(&EdgeData{MachConnectedTo: true})
-						err := g.g.AddEdge(a[1], c.Id, data)
+						err := g.G.AddEdge(a[1], c.Id, data)
 						if err != nil {
 
 							// wait for the other mach to show up TODO better approach
-							when := g.Mach.WhenArgs(ss.InitClient, am.A{"id": a[1]}, nil)
+							when := g.Server.WhenArgs(ss.InitClient, am.A{"id": a[1]}, nil)
 							go func() {
 								<-when
 
-								if err := g.g.AddEdge(a[1], c.Id, data); err != nil {
-									g.Mach.AddErr(fmt.Errorf("Graph.ParseMsg: %w", err), nil)
+								if err := g.G.AddEdge(a[1], c.Id, data); err != nil {
+									g.Server.AddErr(fmt.Errorf("Graph.ParseMsg: %w", err), nil)
 									return
 								}
-								if err = g.gMap.AddEdge(a[1], c.Id); err != nil {
-									g.Mach.AddErr(fmt.Errorf("Graph.ParseMsg: %w", err), nil)
+								if err = g.Map.AddEdge(a[1], c.Id); err != nil {
+									g.Server.AddErr(fmt.Errorf("Graph.ParseMsg: %w", err), nil)
 									return
 								}
 							}()
 
 						} else {
-							if err = g.gMap.AddEdge(a[1], c.Id); err != nil {
-								g.Mach.AddErr(fmt.Errorf("Graph.ParseMsg: %w", err), nil)
+							if err = g.Map.AddEdge(a[1], c.Id); err != nil {
+								g.Server.AddErr(fmt.Errorf("Graph.ParseMsg: %w", err), nil)
 								return
 							}
 						}
@@ -307,71 +300,71 @@ func (g *Graph) AddClient(msg *telemetry.DbgMsgStruct) error {
 	id := msg.ID
 	c := &Client{
 		Id:          id,
-		MsgStruct:   msg,
+		MsgSchema:   msg,
 		LatestClock: make(am.Time, len(msg.States)),
 	}
-	g.clients[id] = c
+	g.Clients[id] = c
 
 	// add machine
-	err := g.g.AddVertex(&Vertex{
+	err := g.G.AddVertex(&Vertex{
 		MachId: c.Id,
 	})
 	if err != nil {
 		return err
 	}
-	_ = g.gMap.AddVertex(&Vertex{
+	_ = g.Map.AddVertex(&Vertex{
 		MachId: c.Id,
 	})
 
 	// parent
-	if c.MsgStruct.Parent != "" {
+	if c.MsgSchema.Parent != "" {
 		data := graph.EdgeData(&EdgeData{MachChildOf: true})
-		err = g.g.AddEdge(c.Id, c.MsgStruct.Parent, data)
+		err = g.G.AddEdge(c.Id, c.MsgSchema.Parent, data)
 		if err != nil {
 
 			// wait for the parent to show up
-			when := g.Mach.WhenArgs(ss.InitClient,
-				am.A{"id": c.MsgStruct.Parent}, nil)
+			when := g.Server.WhenArgs(ss.InitClient,
+				am.A{"id": c.MsgSchema.Parent}, nil)
 			go func() {
 				<-when
-				err = g.g.AddEdge(c.Id, c.MsgStruct.Parent, data)
+				err = g.G.AddEdge(c.Id, c.MsgSchema.Parent, data)
 				if err == nil {
-					_ = g.gMap.AddEdge(c.Id, c.MsgStruct.Parent)
+					_ = g.Map.AddEdge(c.Id, c.MsgSchema.Parent)
 				}
 			}()
 		} else {
-			_ = g.gMap.AddEdge(c.Id, c.MsgStruct.Parent)
+			_ = g.Map.AddEdge(c.Id, c.MsgSchema.Parent)
 		}
 	}
 
 	// add states
-	for name, props := range c.MsgStruct.States {
+	for name, props := range c.MsgSchema.States {
 		// vertex
-		err = g.g.AddVertex(&Vertex{
+		err = g.G.AddVertex(&Vertex{
 			MachId:    id,
 			StateName: name,
 		})
 		if err != nil {
 			return err
 		}
-		_ = g.gMap.AddVertex(&Vertex{
+		_ = g.Map.AddVertex(&Vertex{
 			MachId:    id,
 			StateName: name,
 		})
 
 		// edge
-		err = g.g.AddEdge(id, id+":"+name, graph.EdgeData(&EdgeData{
+		err = g.G.AddEdge(id, id+":"+name, graph.EdgeData(&EdgeData{
 			MachHas: &MachineHas{
-				auto:  props.Auto,
-				multi: props.Multi,
+				Auto:  props.Auto,
+				Multi: props.Multi,
 				// TODO
-				inherited: "",
+				Inherited: "",
 			},
 		}))
 		if err != nil {
 			return err
 		}
-		_ = g.gMap.AddEdge(id, id+":"+name)
+		_ = g.Map.AddEdge(id, id+":"+name)
 	}
 
 	type relation struct {
@@ -380,7 +373,7 @@ func (g *Graph) AddClient(msg *telemetry.DbgMsgStruct) error {
 	}
 
 	// add relations
-	for name, state := range c.MsgStruct.States {
+	for name, state := range c.MsgSchema.States {
 
 		// define
 		toAdd := []relation{
@@ -397,12 +390,12 @@ func (g *Graph) AddClient(msg *telemetry.DbgMsgStruct) error {
 				to := id + ":" + relState
 
 				// update an existing edge
-				if edge, err := g.g.Edge(from, to); err == nil {
+				if edge, err := g.G.Edge(from, to); err == nil {
 					data := edge.Properties.Data.(*EdgeData)
 					data.StateRelation = append(data.StateRelation, &StateRelation{
-						relType: item.relType,
+						RelType: item.relType,
 					})
-					err = g.g.UpdateEdge(from, to, graph.EdgeData(data))
+					err = g.G.UpdateEdge(from, to, graph.EdgeData(data))
 					if err != nil {
 						panic(err)
 					}
@@ -411,21 +404,23 @@ func (g *Graph) AddClient(msg *telemetry.DbgMsgStruct) error {
 				}
 
 				// add if doesnt exist
-				err = g.g.AddEdge(from, to, graph.EdgeData(&EdgeData{
+				err = g.G.AddEdge(from, to, graph.EdgeData(&EdgeData{
 					StateRelation: []*StateRelation{
-						{relType: item.relType},
+						{RelType: item.relType},
 					},
 				}))
 				if err != nil {
 					panic(err)
 				}
-				_ = g.gMap.AddEdge(from, to)
+				_ = g.Map.AddEdge(from, to)
 			}
 		}
 	}
 
 	return nil
 }
+
+// private
 
 func (g *Graph) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx) error {
 	// pre-tx log entries
@@ -487,7 +482,7 @@ func (g *Graph) parseMsgReader(
 			sourceMachId = msg[1]
 			targetMachId = c.Id
 		}
-		link, linkErr := g.g.Edge(sourceMachId, targetMachId)
+		link, linkErr := g.G.Edge(sourceMachId, targetMachId)
 
 		// edge exists - update
 		if linkErr == nil {
@@ -541,11 +536,11 @@ func (g *Graph) parseMsgReader(
 				}
 			}
 			data := &EdgeData{MachPipesTo: []*MachPipeTo{pipe}}
-			err := g.g.AddEdge(sourceMachId, targetMachId, graph.EdgeData(data))
+			err := g.G.AddEdge(sourceMachId, targetMachId, graph.EdgeData(data))
 			if err != nil {
 				return err
 			}
-			_ = g.gMap.AddEdge(sourceMachId, targetMachId)
+			_ = g.Map.AddEdge(sourceMachId, targetMachId)
 		}
 
 		// REMOVE PIPE
@@ -555,29 +550,29 @@ func (g *Graph) parseMsgReader(
 		// TODO make it safe
 
 		// outbound
-		adjs, err := g.g.AdjacencyMap()
+		adjs, err := g.G.AdjacencyMap()
 		if err != nil {
 			panic(err)
 		}
 		for _, edge := range adjs[id] {
-			err := g.g.RemoveEdge(id, edge.Target)
+			err := g.G.RemoveEdge(id, edge.Target)
 			if err != nil {
 				panic(err)
 			}
-			_ = g.gMap.RemoveEdge(id, edge.Target)
+			_ = g.Map.RemoveEdge(id, edge.Target)
 		}
 
 		// inbound
-		preds, err := g.g.PredecessorMap()
+		preds, err := g.G.PredecessorMap()
 		if err != nil {
 			panic(err)
 		}
 		for _, edge := range preds[id] {
-			err := g.g.RemoveEdge(edge.Source, id)
+			err := g.G.RemoveEdge(edge.Source, id)
 			if err != nil {
 				panic(err)
 			}
-			_ = g.gMap.RemoveEdge(edge.Source, id)
+			_ = g.Map.RemoveEdge(edge.Source, id)
 		}
 	}
 
