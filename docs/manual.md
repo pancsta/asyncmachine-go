@@ -217,7 +217,7 @@ mach.Remove1("Foo", nil)
 mach.Add1("Foo", nil)
 // (Foo:3) [Bar:0 Baz:0 Exception:0]
 mach.Clock("Foo") // ->3
-````
+```
 
 **Example** - state context
 
@@ -1199,7 +1199,7 @@ Advised error handling strategy (used by [`/pkg/node`](/pkg/node)):
   - with a [`Require` relation](#relations) to the `Exception` state
   - but without being a [`Multi` state](#multi-states), so it has [state context](#clock-and-context)
 - create regular sentinel errors, like `ErrRpc`
-- create separate mutation function foc each sentinel error, like
+- create separate mutation function for each sentinel error, like
   - `func AddErrWorker(event *am.Event, mach *am.Machine, err error, args am.A) error`
 - one error state can be responsible for many sentinel errors
 
@@ -1532,7 +1532,7 @@ mach.SetLogger(func(level LogLevel, msg string, args ...any) {
 state machine on a [transition's](#transition-lifecycle) step-level, and retain [state machine's log](#logging). It
 also combines very well with the Golang debugger when stepping through code.
 
-Environment variables used for debugging can be found in [config/env/README.md](/config/env/README.md).
+Environment variables used for debugging can be found in [/docs/env-configs.md](/docs/env-configs.md).
 
 #### Steps To Debug
 

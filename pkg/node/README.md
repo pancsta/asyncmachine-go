@@ -40,7 +40,13 @@ import amnode "github.com/pancsta/asyncmachine-go/pkg/node"
 - supervisor maintains the worker, eg triggers log rotation, monitors errors and restarts
 - worker delivers payload to the client via ClientSendPayload
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_10.svg)
+<div align="center">
+    <a href="https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_10.svg?raw=true">
+        <img style="min-height: 244px"
+            src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_10.svg?raw=true"
+            alt="diagram" />
+    </a>
+</div>
 
 ## Components
 
@@ -104,7 +110,13 @@ worker, err := NewWorker(ctx, workerKind, mach.Schema(), mach.StateNames(), nil)
 
 State schema from [/pkg/node/states/ss_node_worker.go](/pkg/node/states/ss_node_worker.go).
 
-![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/node-worker.svg)
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/schemas/node-worker.svg?raw=true">
+        <img style="min-height: 201px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/schemas/node-worker.svg?raw=true"
+            alt="worker schema" />
+    </a>
+</div>
 
 ### Supervisor
 
@@ -140,7 +152,13 @@ err := amhelp.WaitForAll(ctx, 2*time.Second,
 
 State schema from [/pkg/node/states/ss_supervisor.go](/pkg/node/states/ss_supervisor.go).
 
-![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/node-supervisor.svg)
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/schemas/node-supervisor.svg?raw=true">
+        <img style="min-height: 302px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/schemas/node-supervisor.svg?raw=true"
+            alt="worker schema" />
+    </a>
+</div>
 
 ## Client
 
@@ -202,7 +220,13 @@ worker.Add1(ssnode.WorkerStates.WorkRequested, am.A{"input": 2})
 
 State schema from [/pkg/node/states/ss_node_client.go](/pkg/node/states/ss_node_client.go).
 
-![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/node-client.svg)
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/schemas/node-client.svg?raw=true">
+        <img style="min-height: 327px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/schemas/node-client.svg?raw=true"
+            alt="worker schema" />
+    </a>
+</div>
 
 ## TODO
 
@@ -211,6 +235,7 @@ State schema from [/pkg/node/states/ss_node_client.go](/pkg/node/states/ss_node_
 
 ## Documentation
 
+- [api /pkg/node](https://code.asyncmachine.dev/pkg/github.com/pancsta/asyncmachine-go/pkg/node.html)
 - [godoc /pkg/node](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/node)
 
 ## Tests
@@ -224,7 +249,7 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
   --select-machine ns-TCSF-dev-170605-0 \
   --select-transition 1 \
   --import-data https://pancsta.github.io/assets/asyncmachine-go/am-dbg-exports/worker-payload.gob.br
-````
+```
 
 ## Status
 

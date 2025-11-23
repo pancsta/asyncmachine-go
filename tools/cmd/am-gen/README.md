@@ -106,7 +106,13 @@ Flags:
 
 ## Grafana Dashboard
 
-![grafana](https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png)
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png">
+        <img style="min-height: 397px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png"
+            alt="grafana dashboard" />
+    </a>
+</div>
 
 Grafana dashboards need to be generated per "source" (e.g. process), by passing all monitored machine IDs and the source
 name (`service_name` for Loki, `job` for Prometheus). It will
@@ -193,16 +199,16 @@ The command below will create a dashboard for machines with IDs `root,_rm-root,_
 Without `--grafana-url`, it will output a JSON version of the same dashboard.
 
 ```bash
-am-gen grafana
-    --name tree_state_source_root
-    --ids root,_rm-root,_rs-root-0,_rs-root-1,_rs-root-2
-    --grafana-url http://localhost:3000
+am-gen grafana \
+    --name tree_state_source_root \
+    --ids root,_rm-root,_rs-root-0,_rs-root-1,_rs-root-2 \
+    --grafana-url http://localhost:3000 \
     --source tree_state_source_rep1
 ```
 
 ### Grafana Help
 
-```text
+```bash
 Usage:
   am-gen grafana --name MyDash --ids my-mach-1,my-mach-2 --source my-service [flags]
 

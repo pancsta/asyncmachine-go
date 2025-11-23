@@ -139,6 +139,7 @@ MyMychStruct = am.Schema{
 
 ## Documentation
 
+- [api /pkg/states](https://code.asyncmachine.dev/pkg/github.com/pancsta/asyncmachine-go/pkg/states.html)
 - [godoc /pkg/states](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/states)
 - [/examples/pipes](/examples/pipes/example_pipes.go)
 

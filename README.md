@@ -20,13 +20,13 @@
     <br />
 </div>
 
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> asyncmachine-go
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25" width="25" /> asyncmachine-go
 
 <div align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.dark.png">
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.light.png">
-  <img alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.light.png">
+  <img style="min-height: 139px" alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.light.png">
 </picture></div>
 
 > [!NOTE]
@@ -51,7 +51,10 @@ vector formats. It aims to create **autonomous** workflows with **organic** cont
 
 <div align="center">
     <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/am-dbg/README.md">
-    <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video-mouse.gif?raw=true" alt="TUI Debugger" /></a>
+        <img style="min-height: 820px"
+            src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video-mouse.gif?raw=true"
+            alt="TUI Debugger" />
+    </a>
 </div>
 
 #### Each state represents
@@ -72,10 +75,15 @@ configs, bots, firewalls, synchronization consensus, games, smart graphs, micros
 streams, DI containers, test scenarios, simulators, as well as **"real-time" systems** which rely on instant
 cancelation.
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true)
+<div align="center">
+    <a href="https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true">
+        <img style="min-height: 263px"
+            src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true" alt="am-vis" />
+    </a>
+</div>
 
 > [!NOTE]
-> Flow is state and state is flow, in a graph.
+> Flow is state, and state is flow, in a graph.
 
 ## Samples
 
@@ -124,7 +132,8 @@ if err != nil {
 
 <div align="center">
     <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/arpc/README.md">
-    <img src="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif" alt="REPL" />
+        <img style="min-height: 476px" src="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif"
+            alt="REPL" />
     </a>
 </div>
 
@@ -187,8 +196,9 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.dark.png">
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
-  <img alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
-</picture></a></div>
+  <img style="min-height: 392px" alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
+</picture>
+</a></div>
 
 ## Getting Started
 
@@ -226,9 +236,15 @@ Other packages:
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) Multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) Generates schema files and Grafana dashboards.
 - [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
-- [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates D2 diagrams.
+- [`/tools/cmd/am-vis`](/tools/cmd/am-vis) Generates D2 diagrams.
+- [`/tools/cmd/am-relay`](/tools/cmd/am-relay) Rotates logs.
 
-[![dashboard](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png)](/tools/cmd/am-dbg)
+<div align="center">
+    <a href="/tools/cmd/am-dbg/README.md">
+        <img style="min-height: 222px" src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png"
+            alt="am-dbg">
+    </a>
+</div>
 
 > [!NOTE]
 > Inspecting cause-and-effect in distributed systems.
@@ -270,14 +286,20 @@ Other packages:
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://asyncmachine.dev/chart_dark.png">
   <source media="(prefers-color-scheme: light)" srcset="https://asyncmachine.dev/chart_light.png">
-  <img alt="OpenTelemetry traces in Jaeger" src="https://asyncmachine.dev/chart_light.png">
+  <img style="min-height: 333px" alt="OpenTelemetry traces in Jaeger" src="https://asyncmachine.dev/chart_light.png">
 </picture></div>
 
 ## Status
 
 Under development, status depends on each package. The bottom layers seem prod grade, the top ones are alpha or testing.
 
-![grafana](https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png)
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png">
+        <img style="min-height: 397px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png"
+            alt="grafana dashboard" />
+    </a>
+</div>
 
 > [!NOTE]
 > Managing distributed concurrency.
@@ -292,15 +314,16 @@ Under development, status depends on each package. The bottom layers seem prod g
     - `task format`
     - `task lint`
     - `task precommit`
-- [good first issues](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
+    - [good first issues](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
 
-### [Roadmap](ROADMAP.md)
+### Roadmap
 
 - history layer - SQL, KV, ...
 - `am-relay` tool for proxying, conversions, duck-taping
 - RPC handlers for distributed state-machines
+- [ROADMAP.md](/ROADMAP.md)
 
-## [FAQ](./FAQ.md)
+## [FAQ](/FAQ.md)
 
 ### How does asyncmachine work?
 
@@ -309,7 +332,7 @@ It calls struct methods according to conventions, a schema, and currently active
 
 ### What is a "state" in asyncmachine?
 
-State is a binary name as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
+State is a binary id as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
 
 ### What does "clock-based" mean?
 
@@ -324,14 +347,15 @@ The complete FAQ is available at [FAQ.md](/FAQ.md).
 
 ## Changes
 
-- [Changelog](CHANGELOG.md)
-- [Breaking Changes](BREAKING.md)
+- [Changelog](/CHANGELOG.md)
+- [Breaking Changes](/BREAKING.md)
 - [New stuff](https://github.com/pancsta/asyncmachine-go/pulse)
-- [Release feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
+- [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
 <div align="center">
-    <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video.gif?raw=true" alt="TUI Debugger" />
+    <img style="min-height: 309px" src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video.gif?raw=true"
+        alt="TUI Debugger" />
 </div>
 
 > [!NOTE]
-> Staying in sync.
+> Don't lose your sync.

@@ -33,13 +33,25 @@ PubSub, also based on gossipping:
 
 [am-dbg](/tools/cmd/am-dbg/README.md) view of a PubSub with 6 peers, with p1-p5 exposing a single state machine each.
 
-![](https://pancsta.github.io/assets/asyncmachine-go/am-dbg/pubsub.png)
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/am-dbg/pubsub.png">
+        <img style="min-height: 257px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg/pubsub.png"
+            alt="worker schema" />
+    </a>
+</div>
 
 ## Schema
 
 State schema from [/pkg/pubsub/states/](/pkg/pubsub/states/ss_topic.go).
 
-![worker schema](https://pancsta.github.io/assets/asyncmachine-go/schemas/pubsub.svg)
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/schemas/pubsub.svg">
+        <img style="min-height: 257px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/schemas/pubsub.svg"
+            alt="schema" />
+    </a>
+</div>
 
 ## TODO
 

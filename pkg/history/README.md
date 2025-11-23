@@ -168,7 +168,7 @@ Cons:
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/history-gorm.dark.png">
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/history-gorm.light.png">
-  <img alt="SQL Schema Diagram" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/history-gorm.light.png">
+  <img style="min-height: 354px"  alt="SQL Schema Diagram" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/history-gorm.light.png">
 </picture></div>
 
 Example:
@@ -287,7 +287,7 @@ mem.ActivatedBetween(ctx, "A", now.Add(-time.Second), now) // true
 
 Benchmark:
 
-```text
+```bash
 === RUN   TestBboltTrackMany
     test_hist.go:27: rounds: 50000
     test_hist.go:34: mach: 227.534418ms
@@ -305,6 +305,9 @@ in [/pkg/x/history/frostdb](/pkg/x/history/frostdb).
 
 ## Documentation
 
+- [api /pkg/history](https://code.asyncmachine.dev/pkg/github.com/pancsta/asyncmachine-go/pkg/history.html)
+- [api /pkg/history/gorm](https://code.asyncmachine.dev/pkg/github.com/pancsta/asyncmachine-go/pkg/history/gorm.html)
+- [api /pkg/history/bbolt](https://code.asyncmachine.dev/pkg/github.com/pancsta/asyncmachine-go/pkg/history/bbolt.html)
 - [godoc /pkg/history](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/history)
 - [godoc /pkg/history/gorm](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/history/gorm)
 - [godoc /pkg/history/bbolt](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/history/bbolt)

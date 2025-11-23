@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.16.1](https://github.com/pancsta/asyncmachine-go/tree/v0.16.0) (2025-11-23)
+
+- feat: release v0.16.1 [\#317](https://github.com/pancsta/asyncmachine-go/pull/317) (@pancsta)
+- feat\(am-dbg\): release v0.16.1 [\#316](https://github.com/pancsta/asyncmachine-go/pull/316) (@pancsta)
+- feat\(am-relay\): add dbg protocol rotation server [\#315](https://github.com/pancsta/asyncmachine-go/pull/315)
+  (@pancsta)
+- fix\(machine\): fix Groups deadlock [\#314](https://github.com/pancsta/asyncmachine-go/pull/314) (@pancsta)
+- fix\(machine\): fix double disposal [\#313](https://github.com/pancsta/asyncmachine-go/pull/313) (@pancsta)
+- feat\(am-vis\): add diagram generator [\#216](https://github.com/pancsta/asyncmachine-go/pull/216) (@pancsta)
+
 ## [v0.16.0](https://github.com/pancsta/asyncmachine-go/tree/v0.15.2) (2025-11-11)
 
 - feat: release v0.16 [\#312](https://github.com/pancsta/asyncmachine-go/pull/312) (@pancsta)

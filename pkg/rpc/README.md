@@ -37,7 +37,13 @@ Each RPC server can handle 1 RPC client at a time, but 1 state source (asyncmach
 to itself (via [Tracer API](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Tracer)).
 Additionally, remote RPC workers can also have RPC servers attached to themselves, creating a tree structure (see [/examples/benchmark_state_source](/examples/benchmark_state_source/README.md)).
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_8.svg)
+<div align="center">
+    <a href="https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_8.svg?raw=true">
+        <img style="min-height: 135px"
+            src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_8.svg?raw=true"
+            alt="diagram" />
+    </a>
+</div>
 
 ## Components
 
@@ -146,7 +152,13 @@ worker.Add1("Bar", nil)
 
 State schema from [/pkg/rpc/states/ss_rpc_server.go](/pkg/rpc/states/ss_rpc_server.go).
 
-![worker schema](https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-server.svg)
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-server.svg?raw=true">
+        <img style="min-height: 293px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-server.svg?raw=true"
+            alt="server schema" />
+    </a>
+</div>
 
 ### Client
 
@@ -214,7 +226,13 @@ print("Server added Bar")
 
 State schema from [/pkg/rpc/states/ss_rpc_client.go](/pkg/rpc/states/ss_rpc_client.go).
 
-![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-client.svg)
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-client.svg?raw=true">
+        <img style="min-height: 167px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-client.svg?raw=true"
+            alt="client schema" />
+    </a>
+</div>
 
 ### Multiplexer
 
@@ -265,10 +283,17 @@ if err != nil {
 
 State schema from [/pkg/rpc/states/ss_mux.go](/pkg/rpc/states/ss_mux.go).
 
-![worker schena](https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-mux.svg)
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-mux.svg?raw=true">
+        <img style="min-height: 241px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/schemas/rpc-mux.svg?raw=true"
+            alt="multiplexer schema" />
+    </a>
+</div>
 
 ## Documentation
 
+- [api /pkg/rpc](https://code.asyncmachine.dev/pkg/github.com/pancsta/asyncmachine-go/pkg/rpc.html)
 - [godoc /pkg/rpc](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc)
 - [Example - Setup](/examples/arpc)
 - [Example - Tree State Source](/examples/tree_state_source/README.md)
@@ -279,7 +304,13 @@ State schema from [/pkg/rpc/states/ss_mux.go](/pkg/rpc/states/ss_mux.go).
 A simple and opinionated benchmark showing a `subscribe-get-process` scenario, implemented in both gRPC and aRPC. See
 [/examples/benchmark_grpc](/examples/benchmark_grpc/README.md) for details and source code.
 
-![results - KiB transferred, number of calls](https://pancsta.github.io/assets/asyncmachine-go/arpc-vs-grpc.png)
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/arpc-vs-grpc.png?raw=true">
+        <img style="min-height: 319px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/arpc-vs-grpc.png?raw=true"
+            alt="results - KiB transferred, number of calls" />
+    </a>
+</div>
 
 ```text
 > task benchmark-grpc

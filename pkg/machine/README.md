@@ -5,7 +5,7 @@
 > [!NOTE]
 > **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
-**/pkg/machine** is a nondeterministic, multi-state, clock-based, relational, optionally accepting, and non-blocking
+**`/pkg/machine`** is a nondeterministic, multi-state, clock-based, relational, optionally accepting, and non-blocking
 **state machine**. It's a form of a _rules engine_ that can orchestrate blocking APIs into fully controllable async
 state-machines. Write ops are [state mutations](/docs/manual.md#mutations), read ops are [state checking](/docs/manual.md#active-states),
 and subscriptions are [state waiting](/docs/manual.md#waiting). It's dependency-free and a building block of a [larger project](https://asyncmachine.dev).
@@ -18,7 +18,7 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
 ## Features
 
-Features are explained using [Mermaid flow diagrams](../../docs/diagrams.md), and headers link to relevant sections of
+Features are explained using [Mermaid flow diagrams](/docs/diagrams.md), and headers link to relevant sections of
 the [manual](/docs/manual.md).
 
 ### [Multi-state](/docs/manual.md#mutations)
@@ -28,7 +28,7 @@ Many states can be active at the same time.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_1.dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_1.light.svg">
-  <img alt="Diagram showing multi-state capability" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_1.light.svg">
+  <img style="min-height: 94px" alt="Diagram showing multi-state capability" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_1.light.svg">
 </picture>
 
 ### [Clock and state contexts](/docs/manual.md#clock-and-context)
@@ -38,7 +38,7 @@ States have clocks that produce contexts (odd = active; even = inactive).
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_2.dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_2.light.svg">
-  <img alt="Diagram showing state clocks and contexts" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_2.light.svg">
+  <img style="min-height: 117px" alt="Diagram showing state clocks and contexts" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_2.light.svg">
 </picture>
 
 ### [Queue](/docs/manual.md#queue-and-history)
@@ -48,7 +48,7 @@ Queue of mutations enables lock-free [Actor Model](https://en.wikipedia.org/wiki
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_3.dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_3.light.svg">
-  <img alt="Diagram showing queue and mutations" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_3.light.svg">
+  <img style="min-height: 187px" alt="Diagram showing queue and mutations" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_3.light.svg">
 </picture>
 
 ### [AOP handlers](/docs/manual.md#transition-handlers)
@@ -59,7 +59,7 @@ handlers.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_4.dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_4.light.svg">
-  <img alt="Diagram showing AOP handlers" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_4.light.svg">
+  <img style="min-height: 325px" alt="Diagram showing AOP handlers" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_4.light.svg">
 </picture>
 
 ### [Negotiation](/docs/manual.md#transition-lifecycle)
@@ -69,7 +69,7 @@ Transitions are cancellable (during the negotiation phase).
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_5.dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_5.light.svg">
-  <img alt="Diagram showing negotiation phase" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_5.light.svg">
+  <img style="min-height: 257px" alt="Diagram showing negotiation phase" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_5.light.svg">
 </picture>
 
 ### [Relations](/docs/manual.md#relations)
@@ -79,7 +79,7 @@ States are connected via Require, Remove, and Add relations.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_6.dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_6.light.svg">
-  <img alt="Diagram showing state relations" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_6.light.svg">
+  <img style="min-height: 114px" alt="Diagram showing state relations" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_6.light.svg">
 </picture>
 
 ### [Subscriptions](/docs/manual.md#waiting)
@@ -89,7 +89,7 @@ Channel-based broadcast for waiting on clock values.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_7.dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_7.light.svg">
-  <img alt="Diagram showing subscriptions" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_7.light.svg">
+  <img style="min-height: 196px" alt="Diagram showing subscriptions" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_7.light.svg">
 </picture>
 
 ### [Error handling](/docs/manual.md#error-handling)
@@ -316,12 +316,17 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 ## Dev Tools
 
-[![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png)](/tools/cmd/am-dbg/README.md)
+<div align="center">
+    <a href="/tools/cmd/am-dbg/README.md">
+        <img style="min-height: 335px" src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png"
+            alt="am-dbg"></a>
+</div>
 
-- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.
-- [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) Generates schema files and Grafana dashboards.
+- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) Multi-client TUI debugger.
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen) Generates schema files and Grafana dashboards.
 - [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
-- [`/tools/cmd/am-vis`](https://github.com/pancsta/asyncmachine-go/pull/216) Generates D2 diagrams.
+- [`/tools/cmd/am-vis`](/tools/cmd/am-vis) Generates D2 diagrams.
+- [`/tools/cmd/am-relay`](/tools/cmd/am-relay) Rotates logs.
 
 ## Apps
 
