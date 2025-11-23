@@ -1,4 +1,4 @@
-package cli
+package types
 
 import (
 	"context"
@@ -106,7 +106,7 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.StringP(pImport, pImportShort, "",
 		"Import an exported gob.bt file")
 	f.StringP(pFwdData, pFwdDataShort, "",
-		"Fordward incoming data to other instances (eg addr1,addr2)")
+		"Forward incoming data to other instances (eg addr1,addr2)")
 
 	// profile & mem
 	f.String(pProfSrv, "", "Start pprof server")
@@ -219,3 +219,5 @@ func StartCpuProfileSrv(ctx context.Context, logger *log.Logger, p *Params) {
 		}
 	}()
 }
+
+const CmdRenderDump = "render-dump"

@@ -3,79 +3,370 @@ package visualizer
 import (
 	"bufio"
 	"context"
+	_ "embed"
 	"encoding/gob"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/andybalholm/brotli"
 	"github.com/dominikbraun/graph"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
+
+	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
-	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/visualizer/states"
 )
 
 var ss = states.VisualizerStates
 
-type Client struct {
-	// bits which get saved into the go file
-	debugger.Exportable
+//go:embed diagram.html
+var HtmlDiagram []byte
 
-	id     string
-	connID string
+func PresetSingle(r *Renderer) {
+	r.RenderDefaults()
 
-	// indexes of txs with errors, desc order for bisects
-	// TODO refresh on GC
-	latestMsgTx   *telemetry.DbgMsgTx
-	latestTimeSum uint64
-	latestClock   am.Time
+	r.RenderStart = false
+	r.RenderDistance = 0
+	r.RenderDepth = 0
+	r.RenderStates = true
+	r.RenderDetailedPipes = true
+	r.RenderRelations = true
+	r.RenderInherited = true
+	r.RenderConns = true
+	r.RenderParentRel = true
+	r.RenderHalfConns = true
+	r.RenderHalfPipes = true
+}
+
+func PresetBird(r *Renderer) {
+	PresetSingle(r)
+
+	r.RenderDistance = 3
+	r.RenderInherited = false
+}
+
+func PresetMap(r *Renderer) {
+	r.RenderDefaults()
+
+	r.RenderNestSubmachines = true
+	r.RenderStates = false
+	r.RenderPipes = false
+	r.RenderStart = false
+	r.RenderReady = false
+	r.RenderException = false
+	r.RenderTags = false
+	r.RenderDepth = 0
+	r.RenderRelations = false
+	// TODO test
+	r.OutputElk = false
 }
 
 // ///// ///// /////
 
-// VISUALIZER
+// ///// VISUALIZER
 
 // ///// ///// /////
 
+type Visualizer struct {
+	Mach *am.Machine
+	R    *Renderer
+
+	graph *amgraph.Graph
+}
+
+// New creates a new Visualizer - state machine, RPC server, and a renderer.
+func New(ctx context.Context, name string) (*Visualizer, error) {
+	mach, err := am.NewCommon(ctx, "vis-"+name, states.VisualizerSchema,
+		ss.Names(), nil, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	// amhelp.MachDebugEnv(mach)
+
+	gob.Register(server.Exportable{})
+	gob.Register(am.Relation(0))
+
+	g, err := amgraph.New(mach)
+	if err != nil {
+		return nil, err
+	}
+
+	vis := &Visualizer{
+		R:    NewRenderer(g, mach.Log),
+		Mach: mach,
+
+		graph: g,
+	}
+
+	return vis, nil
+}
+
+func (v *Visualizer) ClientMsgEnter(e *am.Event) bool {
+	// TODO port from (d *Debugger) ClientMsgEnter
+	return true
+}
+
+func (v *Visualizer) ClientMsgState(e *am.Event) {
+	// TODO port from (d *Debugger) ClientMsgState
+}
+
+func (v *Visualizer) ConnectEventEnter(e *am.Event) bool {
+	// TODO port from (d *Debugger) ConnectEventEnter
+	return true
+}
+
+func (v *Visualizer) ConnectEventState(e *am.Event) {
+	// TODO port from (d *Debugger) ConnectEventState
+}
+
+func (v *Visualizer) InitClientState(e *am.Event) {
+	id := e.Args["id"].(string)
+
+	c, ok := v.graph.Clients[id]
+	if !ok {
+		panic("client not found " + id)
+	}
+	// add machine
+	err := v.graph.G.AddVertex(&amgraph.Vertex{
+		MachId: c.Id,
+	})
+	if err != nil {
+		panic(err)
+	}
+	_ = v.graph.Map.AddVertex(&amgraph.Vertex{
+		MachId: c.Id,
+	})
+
+	// parent
+	if c.MsgSchema.Parent != "" {
+		err = v.graph.G.AddEdge(c.Id, c.MsgSchema.Parent,
+			func(e *graph.EdgeProperties) {
+				e.Data = &amgraph.EdgeData{MachChildOf: true}
+			})
+		if err != nil {
+
+			// wait for the parent to show up
+			when := v.Mach.WhenArgs(ss.InitClient,
+				am.A{"id": c.MsgSchema.Parent}, nil)
+			go func() {
+				<-when
+				err = v.graph.G.AddEdge(c.Id, c.MsgSchema.Parent,
+					func(e *graph.EdgeProperties) {
+						e.Data = &amgraph.EdgeData{MachChildOf: true}
+					})
+				if err == nil {
+					_ = v.graph.Map.AddEdge(c.Id, c.MsgSchema.Parent)
+				}
+			}()
+		} else {
+			_ = v.graph.Map.AddEdge(c.Id, c.MsgSchema.Parent)
+		}
+	}
+
+	// add states
+	for name, props := range c.MsgSchema.States {
+		// vertex
+		err = v.graph.G.AddVertex(&amgraph.Vertex{
+			MachId:    id,
+			StateName: name,
+		})
+		if err != nil {
+			panic(err)
+		}
+		_ = v.graph.Map.AddVertex(&amgraph.Vertex{
+			MachId:    id,
+			StateName: name,
+		})
+
+		// edge
+		err = v.graph.G.AddEdge(id, id+":"+name,
+			func(e *graph.EdgeProperties) {
+				e.Data = &amgraph.EdgeData{
+					MachHas: &amgraph.MachineHas{
+						Auto:  props.Auto,
+						Multi: props.Multi,
+						// TODO
+						Inherited: "",
+					},
+				}
+			})
+		if err != nil {
+			panic(err)
+		}
+		_ = v.graph.Map.AddEdge(id, id+":"+name)
+	}
+
+	type relation struct {
+		States  am.S
+		RelType am.Relation
+	}
+
+	// add relations
+	for name, state := range c.MsgSchema.States {
+
+		// define
+		toAdd := []relation{
+			{States: state.Require, RelType: am.RelationRequire},
+			{States: state.Add, RelType: am.RelationAdd},
+			{States: state.Remove, RelType: am.RelationRemove},
+		}
+
+		// per relation
+		for _, item := range toAdd {
+			// per state
+			for _, relState := range item.States {
+				from := id + ":" + name
+				to := id + ":" + relState
+
+				// update an existing edge
+				if edge, err := v.graph.G.Edge(from, to); err == nil {
+					data := edge.Properties.Data.(*amgraph.EdgeData)
+					data.StateRelation = append(data.StateRelation,
+						&amgraph.StateRelation{
+							RelType: item.RelType,
+						})
+					err = v.graph.G.UpdateEdge(from, to, func(e *graph.EdgeProperties) {
+						e.Data = data
+					})
+					if err != nil {
+						panic(err)
+					}
+
+					continue
+				}
+
+				// add if doesnt exist
+				err = v.graph.G.AddEdge(from, to, func(e *graph.EdgeProperties) {
+					e.Data = &amgraph.EdgeData{
+						StateRelation: []*amgraph.StateRelation{
+							{RelType: item.RelType},
+						},
+					}
+				})
+				if err != nil {
+					// TODO panic
+					panic(err)
+				}
+				_ = v.graph.Map.AddEdge(from, to)
+			}
+		}
+	}
+}
+
+func (v *Visualizer) GoToMachAddrState(e *am.Event) {
+	// TODO GoToMachAddrState time travels to the given address, and optionally
+	// 	time. Without time, inherits the current time.
+	// TODO parse URL to dbgtypes.MachAddress via Debugger.ReadyState
+}
+
+func (v *Visualizer) HImportData(filename string) error {
+	// TODO async state
+	// TODO show error msg (for dump old formats)
+	v.Mach.Log("Importing data from %s\n", filename)
+
+	// support URLs
+	var reader *bufio.Reader
+	u, err := url.Parse(filename)
+	if err == nil && u.Host != "" {
+
+		// download
+		resp, err := http.Get(filename)
+		if err != nil {
+			return err
+		}
+		reader = bufio.NewReader(resp.Body)
+	} else {
+
+		// read from fs
+		fr, err := os.Open(filename)
+		if err != nil {
+			return err
+		}
+		defer fr.Close()
+		reader = bufio.NewReader(fr)
+	}
+
+	// decompress brotli
+	brReader := brotli.NewReader(reader)
+
+	// decode gob
+	decoder := gob.NewDecoder(brReader)
+	var res []*server.Exportable
+	err = decoder.Decode(&res)
+	if err != nil {
+		return err
+	}
+
+	// init clients
+	for _, data := range res {
+		err := v.graph.AddClient(data.MsgStruct)
+		if err != nil {
+			return err
+		}
+	}
+
+	// parse txs
+	for _, data := range res {
+		id := data.MsgStruct.ID
+		// parse msgs
+		for i := range data.MsgTxs {
+			v.graph.ParseMsg(id, data.MsgTxs[i])
+		}
+	}
+
+	return nil
+}
+
+func (v *Visualizer) Clients() map[string]amgraph.Client {
+	ret := make(map[string]amgraph.Client)
+	for k, c := range v.graph.Clients {
+		ret[k] = *c
+	}
+
+	return ret
+}
+
+// ///// ///// /////
+
+// ///// RENDERER
+
+// ///// ///// /////
+
+// list of predefined (inherited) states
 var pkgStates = []am.S{
 	ssam.BasicStates.Names(),
 	ssam.DisposedStates.Names(),
 	ssam.ConnectedStates.Names(),
+	ssam.DisposedStates.Names(),
 	ssrpc.SharedStates.Names(),
 }
 
-type Visualizer struct {
-	Mach *am.Machine
-
-	Clients map[string]*Client
-	// g is a directed graph of machines and states with metadata.
-	g graph.Graph[string, *Vertex]
-	// gMap is a unidirectional mirror of g, without metadata.
-	gMap graph.Graph[string, *Vertex]
+type Renderer struct {
+	graph *amgraph.Graph
 
 	// config TODO extract
 	// TODO add RenderLimit (hard limit on rendered machines, eg regexp +limit1)
+	// TODO dimmed active color for multi states
 
 	// Render only these machines as starting points.
 	RenderMachs []string
+	// Render only these states
+	RenderAllowlist am.S
 	// Render only machines matching the regular expressions as starting points.
 	RenderMachsRe []*regexp.Regexp
 	// Skip rendering of these machines.
 	RenderSkipMachs []string
-	// TODO
-	// RenderSkipMachsRe       []regexp.Regexp
+	// TODO RenderSkipMachsRe       []regexp.Regexp
 	// Distance to render from starting machines.
 	RenderDistance int
 	// How deep to render from starting machines. Same as RenderDistance, but only
@@ -126,8 +417,10 @@ type Visualizer struct {
 
 	// Filename without an extension.
 	OutputFilename string
-	// Render SVG in additiona to the plain text version.
-	OutputSvg bool
+	// Render a D2 SVG in addition to the plain text version.
+	OutputD2Svg bool
+	// Render a Mermaid SVG in addition to the plain text version.
+	OutputMermaidSvg bool
 	// Render edges using ELK.
 	OutputElk bool
 
@@ -152,427 +445,174 @@ type Visualizer struct {
 	renderedParents map[string]struct{}
 	// machine already rendered (full or half)
 	renderedMachs map[string]struct{}
-	// skipped adjecents to render as hgalf machines
+	// skipped adjacent machs to render as half machines
 	adjsMachsToRender []string
+	log               func(msg string, args ...any)
 }
 
-func New(ctx context.Context, name string) (*Visualizer, error) {
-	vis := &Visualizer{
-		Clients: make(map[string]*Client),
+func NewRenderer(
+	graph *amgraph.Graph, logger func(msg string, args ...any),
+) *Renderer {
+	vis := &Renderer{
+		log:   logger,
+		graph: graph,
 
 		// output defaults
-		OutputD2:  true,
-		OutputSvg: true,
-		OutputElk: true,
+		OutputD2:      true,
+		OutputMermaid: true,
+		OutputD2Svg:   true,
+		OutputElk:     true,
 	}
 
 	vis.RenderDefaults()
 
-	// TODO depth, mach_ids (whitelist), DontRenderMachs
-
-	mach, err := am.NewCommon(ctx, "vis-"+name, states.VisualizerStruct, ss.Names(),
-		vis, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	vis.Mach = mach
-	// amhelp.MachDebugEnv(mach)
-
-	gob.Register(debugger.Exportable{})
-	gob.Register(am.Relation(0))
-
-	return vis, nil
+	return vis
 }
 
-func (v *Visualizer) RenderDefaults() {
+func (r *Renderer) RenderDefaults() {
 	// ON
-	v.RenderReady = true
-	v.RenderStart = true
-	v.RenderException = true
-	v.RenderPipeStates = true
-	v.RenderActive = true
 
-	v.RenderStates = true
-	v.RenderRelations = true
-	v.RenderParentRel = true
-	v.RenderPipes = true
-	v.RenderTags = true
-	v.RenderConns = true
-	v.RenderInherited = true
-	v.RenderMarkInherited = true
+	r.RenderReady = true
+	r.RenderStart = true
+	r.RenderException = true
+	r.RenderPipeStates = true
+	r.RenderActive = true
 
-	v.RenderHalfConns = true
-	v.RenderHalfHierarchy = true
-	v.RenderHalfConns = true
+	r.RenderStates = true
+	r.RenderRelations = true
+	r.RenderParentRel = true
+	r.RenderPipes = true
+	r.RenderTags = true
+	r.RenderConns = true
+	r.RenderInherited = true
+	r.RenderMarkInherited = true
+
+	r.RenderHalfConns = true
+	r.RenderHalfHierarchy = true
+	r.RenderHalfConns = true
 
 	// OFF
 
-	v.RenderNestSubmachines = false
-	v.RenderDetailedPipes = false
-	v.RenderDistance = -1
-	v.RenderDepth = 10
+	r.RenderNestSubmachines = false
+	r.RenderDetailedPipes = false
+	r.RenderDistance = -1
+	r.RenderDepth = 10
 
-	v.RenderMachs = nil
-	v.RenderMachsRe = nil
+	r.RenderMachs = nil
+	r.RenderMachsRe = nil
 }
 
-func (v *Visualizer) ClientMsgEnter(e *am.Event) bool {
-	_, ok := e.Args["msgs_tx"].([]*telemetry.DbgMsgTx)
-	if !ok {
-		v.Mach.Log("Error: msg_tx malformed\n")
-		return false
+func (r *Renderer) shortId(longId string) string {
+	if _, ok := r.shortIdMap[longId]; ok {
+		return r.shortIdMap[longId]
 	}
 
-	return true
+	shortId := genId(r.lastId)
+	r.lastId = shortId
+	r.shortIdMap[longId] = shortId
+
+	return r.lastId
 }
 
-func (v *Visualizer) ClientMsgState(e *am.Event) {
-	v.Mach.Remove1(ss.ClientMsg, nil)
-
-	// TODO params
-	msgs := e.Args["msgs_tx"].([]*telemetry.DbgMsgTx)
-	connIds := e.Args["conn_ids"].([]string)
-
-	for i, msg := range msgs {
-
-		machId := msg.MachineID
-		c := v.Clients[machId]
-		if _, ok := v.Clients[machId]; !ok {
-			v.Mach.Log("Error: client not found: %s\n", machId)
-			continue
-		}
-
-		if c.MsgStruct == nil {
-			v.Mach.Log("Error: struct missing for %s, ignoring tx\n", machId)
-			continue
-		}
-
-		// verify it's from the same client
-		if c.connID != connIds[i] {
-			v.Mach.Log("Error: conn_id mismatch for %s, ignoring tx\n", machId)
-			continue
-		}
-
-		v.parseMsg(c, msg)
+func (r *Renderer) GenDiagrams(ctx context.Context) error {
+	if r.OutputFilename == "" {
+		r.OutputFilename = "am-vis"
 	}
+
+	r.log("DIAGRAM %s", r.OutputFilename)
+
+	if r.OutputMermaid {
+		if err := r.outputMermaid(ctx); err != nil {
+			return fmt.Errorf("failed to generate mermaid: %w", err)
+		}
+	}
+	if r.OutputD2 {
+		if err := r.outputD2(ctx); err != nil {
+			return fmt.Errorf("failed to generate D2: %w", err)
+		}
+	}
+
+	r.log("Done %s", r.OutputFilename)
+
+	return nil
 }
 
-func (v *Visualizer) ConnectEventEnter(e *am.Event) bool {
-	_, ok1 := e.Args["msg_struct"].(*telemetry.DbgMsgStruct)
-	_, ok2 := e.Args["conn_id"].(string)
-	if !ok1 || !ok2 {
-		v.Mach.Log("Error: msg_struct malformed\n")
-		return false
-	}
-	return true
-}
+func (r *Renderer) outputMermaid(ctx context.Context) error {
+	r.log("Generating mermaid\n")
 
-func (v *Visualizer) ConnectEventState(e *am.Event) {
-	v.Mach.Remove1(ss.ConnectEvent, nil)
-
-	// msg := e.Args["msg_struct"].(*telemetry.DbgMsgStruct)
-	// connID := e.Args["conn_id"].(string)
-
-	// TODO v.Clients
-}
-
-func (v *Visualizer) InitClientState(e *am.Event) {
-	id := e.Args["id"].(string)
-
-	c, ok := v.Clients[id]
-	if !ok {
-		panic("client not found " + id)
-	}
-	// add machine
-	err := v.g.AddVertex(&Vertex{
-		MachId: c.id,
-	})
-	if err != nil {
-		panic(err)
-	}
-	_ = v.gMap.AddVertex(&Vertex{
-		MachId: c.id,
-	})
-
-	// parent
-	if c.MsgStruct.Parent != "" {
-		data := graph.EdgeData(&EdgeData{MachChildOf: true})
-		err = v.g.AddEdge(c.id, c.MsgStruct.Parent, data)
-		if err != nil {
-
-			// wait for the parent to show up
-			when := v.Mach.WhenArgs(ss.InitClient,
-				am.A{"id": c.MsgStruct.Parent}, nil)
-			go func() {
-				<-when
-				err = v.g.AddEdge(c.id, c.MsgStruct.Parent, data)
-				if err == nil {
-					_ = v.gMap.AddEdge(c.id, c.MsgStruct.Parent)
-				}
-			}()
-		} else {
-			_ = v.gMap.AddEdge(c.id, c.MsgStruct.Parent)
-		}
-	}
-
-	// add states
-	for name, props := range c.MsgStruct.States {
-		// vertex
-		err = v.g.AddVertex(&Vertex{
-			MachId:    id,
-			StateName: name,
-		})
-		if err != nil {
-			panic(err)
-		}
-		_ = v.gMap.AddVertex(&Vertex{
-			MachId:    id,
-			StateName: name,
-		})
-
-		// edge
-		err = v.g.AddEdge(id, id+":"+name, graph.EdgeData(&EdgeData{
-			MachHas: &MachineHas{
-				auto:  props.Auto,
-				multi: props.Multi,
-				// TODO
-				inherited: "",
-			},
-		}))
-		if err != nil {
-			panic(err)
-		}
-		_ = v.gMap.AddEdge(id, id+":"+name)
-	}
-
-	type relation struct {
-		states  am.S
-		relType am.Relation
-	}
-
-	// add relations
-	for name, state := range c.MsgStruct.States {
-
-		// define
-		toAdd := []relation{
-			{states: state.Require, relType: am.RelationRequire},
-			{states: state.Add, relType: am.RelationAdd},
-			{states: state.Remove, relType: am.RelationRemove},
-		}
-
-		// per relation
-		for _, item := range toAdd {
-			// per state
-			for _, relState := range item.states {
-				from := id + ":" + name
-				to := id + ":" + relState
-
-				// update an existing edge
-				if edge, err := v.g.Edge(from, to); err == nil {
-					data := edge.Properties.Data.(*EdgeData)
-					data.StateRelation = append(data.StateRelation, &StateRelation{
-						relType: item.relType,
-					})
-					err = v.g.UpdateEdge(from, to, graph.EdgeData(data))
-					if err != nil {
-						panic(err)
-					}
-
-					continue
-				}
-
-				// add if doesnt exist
-				err = v.g.AddEdge(from, to, graph.EdgeData(&EdgeData{
-					StateRelation: []*StateRelation{
-						{relType: item.relType},
-					},
-				}))
-				if err != nil {
-					panic(err)
-				}
-				_ = v.gMap.AddEdge(from, to)
-			}
-		}
-	}
-}
-
-func (v *Visualizer) ImportData(filename string) {
-	// TODO async state
-	// TODO show error msg (for dump old formats)
-	log.Printf("Importing data from %s\n", filename)
-
-	// support URLs
-	var reader *bufio.Reader
-	u, err := url.Parse(filename)
-	if err == nil && u.Host != "" {
-
-		// download
-		resp, err := http.Get(filename)
-		if err != nil {
-			v.Mach.AddErr(err, nil)
-			return
-		}
-		reader = bufio.NewReader(resp.Body)
-	} else {
-
-		// read from fs
-		fr, err := os.Open(filename)
-		if err != nil {
-			v.Mach.AddErr(err, nil)
-			return
-		}
-		defer fr.Close()
-		reader = bufio.NewReader(fr)
-	}
-
-	// decompress brotli
-	brReader := brotli.NewReader(reader)
-
-	// decode gob
-	decoder := gob.NewDecoder(brReader)
-	var res []*debugger.Exportable
-	err = decoder.Decode(&res)
-	if err != nil {
-		log.Printf("Error: import failed %s", err)
-		return
-	}
-
-	// init clients
-	for _, data := range res {
-		// parse struct
-		id := data.MsgStruct.ID
-		v.Clients[id] = &Client{
-			id:         id,
-			Exportable: *data,
-		}
-		v.Mach.Add1(ss.InitClient, am.A{"id": id})
-	}
-
-	// parse txs
-	for _, data := range res {
-		id := data.MsgStruct.ID
-		// parse msgs
-		for i := range data.MsgTxs {
-			v.parseMsg(v.Clients[id], data.MsgTxs[i])
-		}
-	}
-
-	// GC
-	runtime.GC()
-}
-
-func (v *Visualizer) shortId(longId string) string {
-	if _, ok := v.shortIdMap[longId]; ok {
-		return v.shortIdMap[longId]
-	}
-
-	shortId := genId(v.lastId)
-	v.lastId = shortId
-	v.shortIdMap[longId] = shortId
-
-	return v.lastId
-}
-
-func (v *Visualizer) GenDiagrams() {
-	ctx := v.Mach.Ctx()
-
-	if v.OutputFilename == "" {
-		v.OutputFilename = "am-vis"
-	}
-
-	log.Printf("DIAGRAM %s", v.OutputFilename)
-
-	if v.OutputMermaid {
-		err := v.outputMermaid(ctx)
-		if err != nil {
-			log.Printf("Failed to generate mermaid: %v\n", err)
-		}
-	}
-	if v.OutputD2 {
-		err := v.outputD2(ctx)
-		if err != nil {
-			log.Printf("Failed to generate D2: %v\n", err)
-		}
-	}
-
-	log.Printf("Done %s", v.OutputFilename)
-}
-
-func (v *Visualizer) outputMermaid(ctx context.Context) error {
-	log.Printf("Generating mermaid\n")
-
-	v.cleanBuffer()
-	if v.OutputElk {
-		v.buf.WriteString(
+	r.cleanBuffer()
+	if r.OutputElk {
+		r.buf.WriteString(
 			"%%{init: {'flowchart': {'defaultRenderer': 'elk'}} }%%\n")
 	}
-	v.buf.WriteString("flowchart LR\n")
+	r.buf.WriteString("flowchart LR\n")
 
-	graphMap, err := v.g.AdjacencyMap()
+	graphMap, err := r.graph.G.AdjacencyMap()
 	if err != nil {
 		return fmt.Errorf("failed to get adjacency map: %w", err)
 	}
 
-	if v.RenderActive {
-		v.buf.WriteString("\tclassDef _active color:black,fill:yellow;\n")
+	if r.RenderActive {
+		r.buf.WriteString("\tclassDef _active color:black,fill:yellow;\n")
 	}
 
 	for src, targets := range graphMap {
-		src, err := v.g.Vertex(src)
+		src, err := r.graph.G.Vertex(src)
 		if err != nil {
 			return fmt.Errorf("failed to get vertex for source %s: %w", src, err)
 		}
 
 		// render machines
 		if src.StateName == "" {
-			v.outputMermaidMach(ctx, src.MachId, targets)
+			_ = r.outputMermaidMach(ctx, src.MachId, targets)
 		}
 	}
 
 	// generate mermaid
-	err = os.WriteFile(v.OutputFilename+".mermaid", []byte(v.buf.String()), 0o644)
+	err = os.WriteFile(r.OutputFilename+".mermaid", []byte(r.buf.String()), 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to write mermaid file: %w", err)
 	}
 
 	// render SVG
-	if v.OutputSvg {
-		log.Printf("Generating SVG\n%s\n")
-		cmd := exec.CommandContext(ctx, "mmdc", "-i", v.OutputFilename+".mermaid", "-o",
-			v.OutputFilename+".svg", "-b", "black", "-t", "dark", "-c", "am-vis.mermaid.json")
+	if r.OutputMermaidSvg {
+		r.log("Generating SVG\n%s\n")
+		cmd := exec.CommandContext(ctx, "mmdc", "-i", r.OutputFilename+".mermaid",
+			"-o", r.OutputFilename+".svg", "-b", "black", "-t", "dark", "-c",
+			"am-vis.mermaid.json")
 		err = cmd.Run()
 		if err != nil {
 			return fmt.Errorf("failed to execute mmdc command for SVG: %w", err)
 		}
 	}
 
-	log.Printf("Done")
+	r.log("Done")
 	return nil
 }
 
-func (v *Visualizer) outputMermaidMach(
+func (r *Renderer) outputMermaidMach(
 	ctx context.Context, machId string, targets map[string]graph.Edge[string],
 ) error {
 	// blacklist
-	if slices.Contains(v.RenderSkipMachs, machId) {
+	if slices.Contains(r.RenderSkipMachs, machId) {
 		return nil
 	}
 
 	// whitelist
-	if !v.isMachWhitelisted(machId) && !v.isMachCloseEnough(machId) {
+	if !r.isMachWhitelisted(machId) && !r.isMachCloseEnough(machId) {
 		return nil
 	}
 
-	c := v.Clients[machId]
+	c := r.graph.Clients[machId]
 	tags := ""
-	if v.RenderTags && len(c.MsgStruct.Tags) > 0 {
+	if r.RenderTags && len(c.MsgSchema.Tags) > 0 {
 		// TODO linebreaks sometimes
-		tags = "<br>#" + strings.Join(c.MsgStruct.Tags, " #")
+		tags = "<br>#" + strings.Join(c.MsgSchema.Tags, " #")
 	}
 
-	v.buf.WriteString("\tsubgraph " + v.shortId(machId) + "[" + machId +
+	r.buf.WriteString("\tsubgraph " + r.shortId(machId) + "[" + machId +
 		tags + "]\n")
-	v.buf.WriteString("\t\tdirection TB\n")
+	r.buf.WriteString("\t\tdirection TB\n")
 
 	parent := ""
 	pipes := ""
@@ -582,62 +622,64 @@ func (v *Visualizer) outputMermaidMach(
 			return nil // expired
 		}
 
-		target, err := v.g.Vertex(edge.Target)
+		target, err := r.graph.G.Vertex(edge.Target)
 		if err != nil {
-			return fmt.Errorf("failed to get vertex for target %s: %w", edge.Target, err)
+			return fmt.Errorf("failed to get vertex for target %s: %w", edge.Target,
+				err)
 		}
-		data := edge.Properties.Data.(*EdgeData)
-		shortIdTarget := v.shortId(edge.Target)
+		data := edge.Properties.Data.(*amgraph.EdgeData)
+		shortIdTarget := r.shortId(edge.Target)
 
 		// states
-		if v.RenderStates && data.MachHas != nil {
-			v.buf.WriteString("\t\t" + shortIdTarget + "([" + target.StateName + "])\n")
+		if r.RenderStates && data.MachHas != nil {
+			r.buf.WriteString("\t\t" + shortIdTarget + "([" + target.StateName +
+				"])\n")
 
 			// relations
-			if v.RenderRelations {
-				state := c.MsgStruct.States[target.StateName]
+			if r.RenderRelations {
+				state := c.MsgSchema.States[target.StateName]
 
 				for _, relState := range state.Require {
-					v.buf.WriteString("\t\t" + shortIdTarget + " --o " +
-						v.shortId(machId+":"+relState) + "\n")
+					r.buf.WriteString("\t\t" + shortIdTarget + " --o " +
+						r.shortId(machId+":"+relState) + "\n")
 				}
 				for _, relState := range state.Add {
-					v.buf.WriteString("\t\t" + shortIdTarget + " --> " +
-						v.shortId(machId+":"+relState) + "\n")
+					r.buf.WriteString("\t\t" + shortIdTarget + " --> " +
+						r.shortId(machId+":"+relState) + "\n")
 				}
 				for _, relState := range state.Remove {
-					shortRelId := v.shortId(machId + ":" + relState)
+					shortRelId := r.shortId(machId + ":" + relState)
 					if shortRelId == shortIdTarget {
 						continue
 					}
-					v.buf.WriteString("\t\t" + shortIdTarget + " --x " +
+					r.buf.WriteString("\t\t" + shortIdTarget + " --x " +
 						shortRelId + "\n")
 				}
 			}
 		}
 
 		// parent
-		if v.RenderParentRel && data.MachChildOf {
-			parent = "\t" + v.shortId(edge.Source) + " ==o " + shortIdTarget + "\n"
+		if r.RenderParentRel && data.MachChildOf {
+			parent = "\t" + r.shortId(edge.Source) + " ==o " + shortIdTarget + "\n"
 		}
 
 		// pipes
-		if v.RenderPipes {
+		if r.RenderPipes {
 			for _, mp := range data.MachPipesTo {
 				sym := ">"
-				if mp.mutType == am.MutationRemove {
+				if mp.MutType == am.MutationRemove {
 					sym = "x"
 				}
 
-				if v.RenderDetailedPipes {
+				if r.RenderDetailedPipes {
 					// TODO debug
-					pipes += "\t%% " + edge.Source + ":" + mp.fromState +
-						" --" + sym + " " + edge.Target + ":" + mp.toState + "\n"
-					pipes += "\t" + v.shortId(edge.Source+":"+mp.fromState) +
-						" --" + sym + " " + v.shortId(edge.Target+":"+mp.toState) + "\n"
+					pipes += "\t%% " + edge.Source + ":" + mp.FromState +
+						" --" + sym + " " + edge.Target + ":" + mp.ToState + "\n"
+					pipes += "\t" + r.shortId(edge.Source+":"+mp.FromState) +
+						" --" + sym + " " + r.shortId(edge.Target+":"+mp.ToState) + "\n"
 				} else {
-					tmp := "\t" + v.shortId(edge.Source) +
-						" --> " + v.shortId(edge.Target) + "\n"
+					tmp := "\t" + r.shortId(edge.Source) +
+						" --> " + r.shortId(edge.Target) + "\n"
 					if !strings.Contains(pipes, tmp) {
 						pipes += tmp
 					}
@@ -646,82 +688,58 @@ func (v *Visualizer) outputMermaidMach(
 		}
 
 		// RPC conns
-		if v.RenderConns && data.MachConnectedTo {
-			conns += "\t" + v.shortId(edge.Source) +
+		if r.RenderConns && data.MachConnectedTo {
+			conns += "\t" + r.shortId(edge.Source) +
 				" .-> " + shortIdTarget + "\n"
 		}
 	}
 
-	if v.RenderActive {
+	if r.RenderActive {
 		var active am.S
-		for idx, tick := range c.latestClock {
+		for idx, tick := range c.LatestClock {
 			if !am.IsActiveTick(tick) {
 				continue
 			}
-			name := c.MsgStruct.StatesIndex[idx]
-			shortId := v.shortId(machId + ":" + name)
+			name := c.MsgSchema.StatesIndex[idx]
+			shortId := r.shortId(machId + ":" + name)
 			active = append(active, shortId)
 		}
 
 		if len(active) > 0 {
-			v.buf.WriteString(
+			r.buf.WriteString(
 				"\t\tclass " + strings.Join(active, ",") + " _active;\n")
 		}
 	}
 
-	v.buf.WriteString("\tend\n")
+	r.buf.WriteString("\tend\n")
 
 	if parent != "" {
-		v.buf.WriteString(parent)
+		r.buf.WriteString(parent)
 	}
 
 	if pipes != "" {
-		v.buf.WriteString(pipes)
+		r.buf.WriteString(pipes)
 	}
 
 	if conns != "" {
-		v.buf.WriteString(conns)
+		r.buf.WriteString(conns)
 	}
 
-	v.buf.WriteString("\n\n")
+	r.buf.WriteString("\n\n")
+
 	return nil
 }
 
-// graphConnection returns GraphConnection for the given connection, or error.
-func (v *Visualizer) graphConnection(
-	source, target string,
-) (*GraphConnection, error) {
-	edge, err := v.g.Edge(source, target)
-	if err != nil {
-		return nil, err
-	}
-	data := edge.Properties.Data.(*EdgeData)
-	targetVert, err := v.g.Vertex(target)
-	if err != nil {
-		return nil, err
-	}
-	sourceVert, err := v.g.Vertex(source)
-	if err != nil {
-		return nil, err
-	}
-
-	return &GraphConnection{
-		Edge:   data,
-		Source: sourceVert,
-		Target: targetVert,
-	}, nil
-}
-
-func (v *Visualizer) stateHasRenderedPipes(machId, stateName string) bool {
-	if !v.RenderPipeStates || !v.RenderDetailedPipes {
+func (r *Renderer) stateHasRenderedPipes(machId, stateName string) bool {
+	if !r.RenderPipeStates || !r.RenderDetailedPipes {
 		return false
 	}
 
 	// all outbound links
-	for _, edge := range v.adjMap[machId] {
+	for _, edge := range r.adjMap[machId] {
 		// all pipes (mach -> mach)
-		for _, mp := range edge.Properties.Data.(*EdgeData).MachPipesTo {
-			if v.shouldRenderState(edge.Target, mp.toState) {
+		for _, mp := range edge.Properties.Data.(*amgraph.EdgeData).MachPipesTo {
+			if r.shouldRenderState(edge.Target, mp.ToState) {
 				return true
 			}
 		}
@@ -730,104 +748,115 @@ func (v *Visualizer) stateHasRenderedPipes(machId, stateName string) bool {
 	return false
 }
 
-func (v *Visualizer) cleanBuffer() {
-	v.buf = strings.Builder{}
-	v.lastId = ""
-	v.shortIdMap = make(map[string]string)
-	v.renderedPipes = map[string]struct{}{}
-	v.renderedConns = map[string]struct{}{}
-	v.renderedMachs = map[string]struct{}{}
-	v.renderedParents = map[string]struct{}{}
-	v.adjsMachsToRender = nil
+func (r *Renderer) cleanBuffer() {
+	r.buf = strings.Builder{}
+	r.lastId = ""
+	r.shortIdMap = make(map[string]string)
+	r.renderedPipes = map[string]struct{}{}
+	r.renderedConns = map[string]struct{}{}
+	r.renderedMachs = map[string]struct{}{}
+	r.renderedParents = map[string]struct{}{}
+	r.adjsMachsToRender = nil
 }
 
-// fullIdPath returns a slice of strings representing the complete hierarchy of IDs,
-// starting from the given machId and traversing through its parents.
-func (v *Visualizer) fullIdPath(machId string, shorten bool) []string {
+// fullIdPath returns a slice of strings representing the complete hierarchy of
+// IDs, starting from the given machId and traversing through its parents.
+// TODO suport errs
+func (r *Renderer) fullIdPath(machId string, shorten bool) []string {
 	ret := []string{machId}
 	if shorten {
-		ret[0] = v.shortId(machId)
+		ret[0] = r.shortId(machId)
 	}
-	mach := v.Clients[machId]
-	for mach.MsgStruct.Parent != "" {
-		parent := mach.MsgStruct.Parent
+	mach := r.graph.Clients[machId]
+	for mach != nil && mach.MsgSchema != nil && mach.MsgSchema.Parent != "" {
+		parent := mach.MsgSchema.Parent
 		if shorten {
-			parent = v.shortId(parent)
+			parent = r.shortId(parent)
 		}
 		// prepend
 		ret = slices.Concat([]string{parent}, ret)
-		mach = v.Clients[mach.MsgStruct.Parent]
+		// TODO check for mach is nil and log / err
+		mach = r.graph.Clients[mach.MsgSchema.Parent]
 	}
 
 	return ret
 }
 
-func (v *Visualizer) shouldRenderMach(machId string) bool {
-	if v.isMachWhitelisted(machId) {
+func (r *Renderer) shouldRenderMach(machId string) bool {
+	if r.isMachWhitelisted(machId) {
 		return true
 	}
 
-	if v.isMachCloseEnough(machId) {
+	if r.isMachCloseEnough(machId) {
 		return true
 	}
 
-	if v.isMachShallowEnough(machId) {
+	if r.isMachShallowEnough(machId) {
 		return true
 	}
 
 	return false
 }
 
-func (v *Visualizer) shouldRenderState(machId, state string) bool {
-	if !v.shouldRenderMach(machId) {
+// TODO RenderException renders on a map
+func (r *Renderer) shouldRenderState(machId, state string) bool {
+	if !r.shouldRenderMach(machId) {
 		return false
 	}
+	allow := r.RenderAllowlist
 
-	// whitelist
-	if !v.RenderStates {
+	// special states
+	if !r.RenderStates {
 		// Start
-		if v.RenderStart && state == ssam.BasicStates.Start {
+		if r.RenderStart && state == ssam.BasicStates.Start {
 			return true
 		}
 		// Ready
-		if v.RenderReady && state == ssam.BasicStates.Ready {
+		if r.RenderReady && state == ssam.BasicStates.Ready {
 			return true
 		}
 		// Exception
-		if v.RenderException && state == am.Exception {
+		if r.RenderException && state == am.StateException {
 			return true
 		}
 	}
 
-	// blacklist
-	if v.RenderStates {
+	// special states and allowlist
+	if r.RenderStates {
 		// Start
-		if !v.RenderStart && state == ssam.BasicStates.Start {
+		if !r.RenderStart && state == ssam.BasicStates.Start {
 			return false
 		}
 		// Ready
-		if !v.RenderReady && state == ssam.BasicStates.Ready {
+		if !r.RenderReady && state == ssam.BasicStates.Ready {
 			return false
 		}
 		// Exception
-		if !v.RenderException && state == am.Exception {
+		if !r.RenderException && state == am.StateException {
 			return false
 		}
+
+		// states allowlist
+		if len(allow) > 0 && !slices.Contains(allow, state) {
+			return false
+		}
+
+		// TODO states skiplist
 	}
 
 	// inherited
-	statesIndex := v.Clients[machId].MsgStruct.StatesIndex
-	if !v.RenderInherited && v.isStateInherited(state, statesIndex) {
+	statesIndex := r.graph.Clients[machId].MsgSchema.StatesIndex
+	if !r.RenderInherited && r.isStateInherited(state, statesIndex) {
 		// Start
-		if v.RenderStart && state == ssam.BasicStates.Start {
+		if r.RenderStart && state == ssam.BasicStates.Start {
 			return true
 		}
 		// Ready
-		if v.RenderReady && state == ssam.BasicStates.Ready {
+		if r.RenderReady && state == ssam.BasicStates.Ready {
 			return true
 		}
 		// Exception
-		if v.RenderException && state == am.Exception {
+		if r.RenderException && state == am.StateException {
 			return true
 		}
 
@@ -835,11 +864,11 @@ func (v *Visualizer) shouldRenderState(machId, state string) bool {
 		return false
 	}
 
-	return v.RenderStates
+	return r.RenderStates
 }
 
-func (v *Visualizer) isStateInherited(state string, machStates am.S) bool {
-	if state == am.Exception {
+func (r *Renderer) isStateInherited(state string, machStates am.S) bool {
+	if state == am.StateException {
 		return true
 	}
 
@@ -858,15 +887,15 @@ func (v *Visualizer) isStateInherited(state string, machStates am.S) bool {
 	return false
 }
 
-func (v *Visualizer) isMachCloseEnough(machId string) bool {
-	if v.RenderDistance == -1 {
+func (r *Renderer) isMachCloseEnough(machId string) bool {
+	if r.RenderDistance == -1 {
 		return true
 	}
 
-	for _, renderMachId := range v.renderMachIds() {
-		path, err := graph.ShortestPath(v.gMap, machId, renderMachId)
+	for _, renderMachId := range r.renderMachIds() {
+		path, err := graph.ShortestPath(r.graph.Map, machId, renderMachId)
 
-		if err == nil && len(path) <= v.RenderDistance+1 {
+		if err == nil && len(path) <= r.RenderDistance+1 {
 			return true
 		}
 	}
@@ -874,46 +903,46 @@ func (v *Visualizer) isMachCloseEnough(machId string) bool {
 	return false
 }
 
-func (v *Visualizer) isMachShallowEnough(machId string) bool {
-	if v.RenderDepth < 1 {
+func (r *Renderer) isMachShallowEnough(machId string) bool {
+	if r.RenderDepth < 1 {
 		return false
 	}
 
 	// check nesting in requested machines
-	for _, renderMachId := range v.renderMachIds() {
-		fullId := v.fullIdPath(machId, false)
+	for _, renderMachId := range r.renderMachIds() {
+		fullId := r.fullIdPath(machId, false)
 		idxRender := slices.Index(fullId, renderMachId)
 		idxMach := slices.Index(fullId, machId)
-		if idxRender != -1 && idxMach-idxRender <= v.RenderDepth {
+		if idxRender != -1 && idxMach-idxRender <= r.RenderDepth {
 			return true
 		}
 	}
-	if len(v.RenderMachs) > 0 || len(v.RenderMachsRe) > 0 {
+	if len(r.RenderMachs) > 0 || len(r.RenderMachsRe) > 0 {
 		return false
 	}
 
 	// check root level
-	depth := len(v.fullIdPath(machId, false))
-	return depth <= v.RenderDepth
+	depth := len(r.fullIdPath(machId, false))
+	return depth <= r.RenderDepth
 }
 
 // isMachWhitelisted checks if mach ID is in the whitelist.
-func (v *Visualizer) isMachWhitelisted(id string) bool {
-	if slices.Contains(v.renderMachIds(), id) {
+func (r *Renderer) isMachWhitelisted(id string) bool {
+	if slices.Contains(r.renderMachIds(), id) {
 		return true
 	}
 
 	// true when filters are nil
-	return len(v.RenderMachs) == 0 && len(v.RenderMachsRe) == 0
+	return len(r.RenderMachs) == 0 && len(r.RenderMachsRe) == 0
 }
 
-func (v *Visualizer) renderMachIds() []string {
-	ret := slices.Clone(v.RenderMachs)
+func (r *Renderer) renderMachIds() []string {
+	ret := slices.Clone(r.RenderMachs)
 
-	for _, re := range v.RenderMachsRe {
-		for _, client := range v.Clients {
-			if re.MatchString(client.id) {
-				ret = append(ret, client.id)
+	for _, re := range r.RenderMachsRe {
+		for _, client := range r.graph.Clients {
+			if re.MatchString(client.Id) {
+				ret = append(ret, client.Id)
 			}
 		}
 	}
@@ -922,240 +951,11 @@ func (v *Visualizer) renderMachIds() []string {
 	return ret
 }
 
-func (v *Visualizer) parseMsg(c *Client, msgTx *telemetry.DbgMsgTx) {
-	var sum uint64
-	for _, v := range msgTx.Clocks {
-		sum += v
-	}
-	index := c.MsgStruct.StatesIndex
+// ///// ///// /////
 
-	// optimize space TODO remove with SQL
-	if len(msgTx.CalledStates) > 0 {
-		msgTx.CalledStatesIdxs = amhelp.StatesToIndexes(index,
-			msgTx.CalledStates)
-		msgTx.MachineID = ""
-		msgTx.CalledStates = nil
-	}
+// ///// CACHE
 
-	// detect RPC connections - read arg "id" for HandshakeDone, being the ID of
-	// the RPC client
-	// TODO extract to a func
-	if c.latestMsgTx != nil {
-		prevTx := c.latestMsgTx
-		fakeTx := &am.Transition{
-			TimeBefore: prevTx.Clocks,
-			TimeAfter:  msgTx.Clocks,
-		}
-		added, _, _ := amhelp.GetTransitionStates(fakeTx, index)
-
-		// RPC conns (requires LogLevel2)
-		isRpcServer := slices.Contains(c.MsgStruct.Tags, "rpc-server")
-		if slices.Contains(added, ssrpc.ServerStates.HandshakeDone) && isRpcServer {
-			for _, item := range msgTx.LogEntries {
-				if !strings.HasPrefix(item.Text, "[add] ") {
-					continue
-				}
-
-				line := strings.Split(strings.TrimRight(item.Text, ")\n"), "(")
-				for _, arg := range strings.Split(line[1], " ") {
-					a := strings.Split(arg, "=")
-					if a[0] == "id" {
-						data := graph.EdgeData(&EdgeData{MachConnectedTo: true})
-						err := v.g.AddEdge(a[1], c.id, data)
-						if err != nil {
-
-							// wait for the other mach to show up
-							when := v.Mach.WhenArgs(ss.InitClient, am.A{"id": a[1]}, nil)
-							go func() {
-								<-when
-								err := v.g.AddEdge(a[1], c.id, data)
-								if err != nil {
-									panic(err)
-								}
-								err = v.gMap.AddEdge(a[1], c.id)
-								if err != nil {
-									panic(err)
-								}
-							}()
-						} else {
-							_ = v.gMap.AddEdge(a[1], c.id)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// TODO errors
-	// var isErr bool
-	// for _, name := range index {
-	// 	if strings.HasPrefix(name, "Err") && msgTx.Is1(index, name) {
-	// 		isErr = true
-	// 		break
-	// 	}
-	// }
-	// if isErr || msgTx.Is1(index, am.Exception) {
-	// 	// prepend to errors TODO DB errors
-	// 	// idx := SQL COUNT
-	// 	c.errors = append([]int{idx}, c.errors...)
-	// }
-
-	v.parseMsgLog(c, msgTx)
-	c.latestMsgTx = msgTx
-	c.latestClock = msgTx.Clocks
-	c.latestTimeSum = sum
-}
-
-func (v *Visualizer) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx) {
-	// pre-tx log entries
-	for _, entry := range msgTx.PreLogEntries {
-		v.parseMsgReader(c, entry, msgTx)
-	}
-
-	// tx log entries
-	for _, entry := range msgTx.LogEntries {
-		v.parseMsgReader(c, entry, msgTx)
-	}
-
-	// TODO DB readerEntries
-}
-
-func (v *Visualizer) parseMsgReader(
-	c *Client, log *am.LogEntry, tx *telemetry.DbgMsgTx,
-) {
-	// NEW
-
-	if strings.HasPrefix(log.Text, "[pipe-in:add] ") ||
-		strings.HasPrefix(log.Text, "[pipe-in:remove] ") ||
-		strings.HasPrefix(log.Text, "[pipe-out:add] ") ||
-		strings.HasPrefix(log.Text, "[pipe-out:remove] ") {
-
-		isAdd := strings.HasPrefix(log.Text, "[pipe-in:add] ") ||
-			strings.HasPrefix(log.Text, "[pipe-out:add] ")
-		isPipeOut := strings.HasPrefix(log.Text, "[pipe-out")
-
-		var msg []string
-		if isPipeOut && isAdd {
-			msg = strings.Split(log.Text[len("[pipe-out:add] "):], " to ")
-		} else if !isPipeOut && isAdd {
-			msg = strings.Split(log.Text[len("[pipe-in:add] "):], " from ")
-		} else if isPipeOut && !isAdd {
-			msg = strings.Split(log.Text[len("[pipe-out:remove] "):], " to ")
-		} else if !isPipeOut && !isAdd {
-			msg = strings.Split(log.Text[len("[pipe-in:remove] "):], " from ")
-		}
-		mut := am.MutationRemove
-		if isAdd {
-			mut = am.MutationAdd
-		}
-
-		// define what we know from this log line
-		state := msg[0]
-		var sourceMachId string
-		var targetMachId string
-		if isPipeOut {
-			sourceMachId = c.id
-			targetMachId = msg[1]
-		} else {
-			sourceMachId = msg[1]
-			targetMachId = c.id
-		}
-		link, linkErr := v.g.Edge(sourceMachId, targetMachId)
-
-		// edge exists - update
-		if linkErr == nil {
-			data := link.Properties.Data.(*EdgeData)
-			found := false
-
-			// update the missing state from the other side of the pipe
-			for _, pipe := range data.MachPipesTo {
-				if !isPipeOut && pipe.mutType == mut && pipe.toState == "" {
-
-					pipe.toState = state
-					found = true
-					break
-				}
-				if isPipeOut && pipe.mutType == mut && pipe.fromState == "" {
-
-					pipe.fromState = state
-					found = true
-					break
-				}
-			}
-
-			// add a new pipe to an existing edge TODO extract
-			if !found {
-				var pipe *MachPipeTo
-				if isPipeOut {
-					pipe = &MachPipeTo{
-						fromState: state,
-						mutType:   mut,
-					}
-				} else {
-					pipe = &MachPipeTo{
-						toState: state,
-						mutType: mut,
-					}
-				}
-
-				data.MachPipesTo = append(data.MachPipesTo, pipe)
-			}
-
-		} else {
-
-			// create a new edge with a single pipe
-			pipe := &MachPipeTo{
-				toState: state,
-				mutType: mut,
-			}
-			if isPipeOut {
-				pipe = &MachPipeTo{
-					fromState: state,
-				}
-			}
-			data := &EdgeData{MachPipesTo: []*MachPipeTo{pipe}}
-			err := v.g.AddEdge(sourceMachId, targetMachId, graph.EdgeData(data))
-			if err != nil {
-				panic(err)
-			}
-			_ = v.gMap.AddEdge(sourceMachId, targetMachId)
-		}
-
-		// remove GCed machines
-	} else if strings.HasPrefix(log.Text, "[pipe:gc] ") {
-		l := strings.Split(log.Text, " ")
-		id := l[1]
-		// TODO make it safe
-
-		// outbound
-		adjs, err := v.g.AdjacencyMap()
-		if err != nil {
-			panic(err)
-		}
-		for _, edge := range adjs[id] {
-			err := v.g.RemoveEdge(id, edge.Target)
-			if err != nil {
-				panic(err)
-			}
-			_ = v.gMap.RemoveEdge(id, edge.Target)
-		}
-
-		// inbound
-		preds, err := v.g.PredecessorMap()
-		if err != nil {
-			panic(err)
-		}
-		for _, edge := range preds[id] {
-			err := v.g.RemoveEdge(edge.Source, id)
-			if err != nil {
-				panic(err)
-			}
-			_ = v.gMap.RemoveEdge(edge.Source, id)
-		}
-	}
-
-	// TODO detached pipe handlers
-}
+// ///// ///// /////
 
 // Generates the characters used in the ID: "a-z" and "0-9".
 var characters = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -1187,4 +987,82 @@ func genId(lastId string) string {
 			return string(characters[0]) + string(runes)
 		}
 	}
+}
+
+type Fragment struct {
+	MachId string
+	States am.S
+	Active am.S
+}
+
+// UpdateCache updates [dom] according to [fragments], and saves to [filepath].
+func UpdateCache(
+	ctx context.Context, filepath string, dom *goquery.Document,
+	fragments ...*Fragment,
+) error {
+	for _, sel := range fragments {
+		for _, state := range sel.States {
+			if ctx.Err() != nil {
+				return nil
+			}
+
+			isActive := slices.Contains(sel.Active, state)
+			isStart := state == ssam.BasicStates.Start
+			isReady := state == ssam.BasicStates.Ready
+			isErr := state == am.StateException ||
+				strings.HasPrefix(state, am.PrefixErr)
+
+			fillOuter := "#CDD6F4"
+			classOuter := "text-bold fill-N1"
+
+			strokeInner := "white"
+			fillInner := "#45475A"
+			classInner := "fill-B5"
+
+			if isActive {
+				fillOuter = "black"
+				classOuter = "text-bold"
+
+				strokeInner = "#5F5C5C"
+				fillInner = "yellow"
+				classInner = "stroke-B1"
+
+				if isReady {
+					fillInner = "deepskyblue"
+				} else if isStart {
+					fillInner = "#329241"
+				} else if isErr {
+					fillInner = "red"
+				}
+			}
+
+			// update
+
+			root := dom.Find("g > text:contains(" + state + ")").
+				// exact text match
+				FilterFunction(func(i int, s *goquery.Selection) bool {
+					return s.Text() == state
+				})
+
+			root.
+				// outer
+				SetAttr("fill", fillOuter).
+				SetAttr("class", classOuter).
+				// inner
+				Prev().Children().SetAttr("stroke", strokeInner).
+				SetAttr("class", classInner).
+				First().SetAttr("fill", fillInner)
+		}
+	}
+
+	// save the result
+	if ctx.Err() != nil {
+		return nil
+	}
+	html, err := goquery.OuterHtml(dom.Selection)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(filepath, []byte(html), 0o644)
 }

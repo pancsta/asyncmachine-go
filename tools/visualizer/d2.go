@@ -3,7 +3,6 @@ package visualizer
 import (
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"maps"
 	"os"
@@ -21,6 +20,8 @@ import (
 	d2log "oss.terrastruct.com/d2/lib/log"
 	"oss.terrastruct.com/d2/lib/textmeasure"
 	"oss.terrastruct.com/util-go/go2"
+
+	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
@@ -119,34 +120,34 @@ const d2Header = `
 
 	`
 
-func (v *Visualizer) outputD2(ctx context.Context) error {
-	log.Printf("Generating D2 %s", v.OutputFilename)
+func (r *Renderer) outputD2(ctx context.Context) error {
+	r.log("Generating D2 %s", r.OutputFilename)
 
-	v.cleanBuffer()
+	r.cleanBuffer()
 
 	var err error
-	v.adjMap, err = v.g.AdjacencyMap()
+	r.adjMap, err = r.graph.G.AdjacencyMap()
 	if err != nil {
 		return fmt.Errorf("failed to get adjacency map: %w", err)
 	}
 
 	// header
-	v.buf.WriteString(dedent.Dedent(d2Header))
+	r.buf.WriteString(dedent.Dedent(d2Header))
 
 	// 1st pass - requested machs and neighbours
-	for src := range v.adjMap {
+	for src := range r.adjMap {
 		if ctx.Err() != nil {
 			return nil
 		}
 
-		srcVertex, err := v.g.Vertex(src)
+		srcVertex, err := r.graph.G.Vertex(src)
 		if err != nil {
 			return fmt.Errorf("failed to get vertex for source %s: %w", src, err)
 		}
 
 		// render machines
 		if srcVertex.StateName == "" {
-			err = v.outputD2Mach(ctx, srcVertex.MachId)
+			err = r.outputD2Mach(ctx, srcVertex.MachId)
 			if err != nil {
 				return fmt.Errorf("failed to render D2 mach %s: %w", src, err)
 			}
@@ -154,30 +155,30 @@ func (v *Visualizer) outputD2(ctx context.Context) error {
 	}
 
 	// collect what was rendered
-	renderedMachs := slices.Collect(maps.Keys(v.renderedMachs))
+	renderedMachs := slices.Collect(maps.Keys(r.renderedMachs))
 
 	// 2nd pass - render adjecents as halfs
-	adjs := v.adjsMachsToRender
+	adjs := r.adjsMachsToRender
 	for _, machId := range adjs {
 		// only not already rendered
-		if _, ok := v.renderedMachs[machId]; ok {
+		if _, ok := r.renderedMachs[machId]; ok {
 			continue
 		}
 
-		err = v.outputD2HalfMach(ctx, machId)
+		err = r.outputD2HalfMach(ctx, machId)
 		if err != nil {
 			return fmt.Errorf("failed to render D2 half mach %s: %w", machId, err)
 		}
 	}
 
 	// 3rd pass - render predecesors as halfs
-	machSelected := len(v.RenderMachs) > 0 || len(v.RenderMachsRe) > 0
-	renderHalfs := v.RenderPipes && v.RenderHalfPipes ||
-		v.RenderConns && v.RenderHalfConns ||
-		v.RenderParentRel && v.RenderHalfHierarchy
+	machSelected := len(r.RenderMachs) > 0 || len(r.RenderMachsRe) > 0
+	renderHalfs := r.RenderPipes && r.RenderHalfPipes ||
+		r.RenderConns && r.RenderHalfConns ||
+		r.RenderParentRel && r.RenderHalfHierarchy
 
 	if machSelected && renderHalfs {
-		predMap, err := v.g.PredecessorMap()
+		predMap, err := r.graph.G.PredecessorMap()
 		if err != nil {
 			return fmt.Errorf("failed to get predecessor map: %w", err)
 		}
@@ -187,7 +188,7 @@ func (v *Visualizer) outputD2(ctx context.Context) error {
 			}
 
 			for predId := range predMap[machId] {
-				target, err := v.g.Vertex(predId)
+				target, err := r.graph.G.Vertex(predId)
 				if err != nil {
 					return err
 				}
@@ -196,11 +197,11 @@ func (v *Visualizer) outputD2(ctx context.Context) error {
 					continue
 				}
 				// only if not already rendered
-				if _, ok := v.renderedMachs[predId]; ok {
+				if _, ok := r.renderedMachs[predId]; ok {
 					continue
 				}
 
-				err = v.outputD2HalfMach(ctx, predId)
+				err = r.outputD2HalfMach(ctx, predId)
 				if err != nil {
 					return fmt.Errorf("failed to render D2 half mach %s: %w", predId, err)
 				}
@@ -209,11 +210,11 @@ func (v *Visualizer) outputD2(ctx context.Context) error {
 	}
 
 	// build str diag
-	diagTxt := v.buf.String()
+	diagTxt := r.buf.String()
 
 	// generate D2
-	log.Printf("Generating %s.d2\n", v.OutputFilename)
-	err = os.WriteFile(v.OutputFilename+".d2", []byte(diagTxt), 0o644)
+	r.log("Generating %s.d2\n", r.OutputFilename)
+	err = os.WriteFile(r.OutputFilename+".d2", []byte(diagTxt), 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to write D2 file: %w", err)
 	}
@@ -229,7 +230,7 @@ func (v *Visualizer) outputD2(ctx context.Context) error {
 	ctx = d2log.With(ctx, slogLogger)
 	ruler, _ := textmeasure.NewRuler()
 	layoutResolver := func(engine string) (d2graph.LayoutGraph, error) {
-		if v.OutputElk {
+		if r.OutputElk {
 			return d2elklayout.DefaultLayout, nil
 		}
 		return d2dagrelayout.DefaultLayout, nil
@@ -242,66 +243,68 @@ func (v *Visualizer) outputD2(ctx context.Context) error {
 		LayoutResolver: layoutResolver,
 		Ruler:          ruler,
 	}
-	log.Printf("Generating %s.svg\n", v.OutputFilename)
+	r.log("Generating %s.svg\n", r.OutputFilename)
 	d2Diag, d2Graph, err := d2lib.Compile(ctx, diagTxt,
 		compileOpts, renderOpts)
 	if err != nil {
 		return fmt.Errorf("failed to compile D2: %w", err)
 	}
-	log.Printf("Edges: %d Objects: %d\n", len(d2Graph.Edges),
+	r.log("Edges: %d Objects: %d\n", len(d2Graph.Edges),
 		len(d2Graph.Objects))
 
 	// render SVG
-	out, err := d2svg.Render(d2Diag, renderOpts)
-	if err != nil {
-		return fmt.Errorf("failed to render D2: %w", err)
-	}
-	err = os.WriteFile(filepath.Join(v.OutputFilename+".svg"), out, 0o600)
-	if err != nil {
-		return fmt.Errorf("failed to write D2 file: %w", err)
+	if r.OutputD2Svg {
+		out, err := d2svg.Render(d2Diag, renderOpts)
+		if err != nil {
+			return fmt.Errorf("failed to render D2: %w", err)
+		}
+		err = os.WriteFile(filepath.Join(r.OutputFilename+".svg"), out, 0o600)
+		if err != nil {
+			return fmt.Errorf("failed to write D2 file: %w", err)
+		}
 	}
 
 	return nil
 }
 
-func (v *Visualizer) outputD2Mach(ctx context.Context, machId string) error {
+func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {
 	// blacklist
-	if slices.Contains(v.RenderSkipMachs, machId) {
+	if slices.Contains(r.RenderSkipMachs, machId) {
 		return nil
 	}
 
 	// whitelist & neighbours
-	if !v.shouldRenderMach(machId) {
+	if !r.shouldRenderMach(machId) {
 		return nil
 	}
 	// render once
-	if _, ok := v.renderedMachs[machId]; ok {
+	if _, ok := r.renderedMachs[machId]; ok {
 		return nil
 	}
-	v.renderedMachs[machId] = struct{}{}
+	r.renderedMachs[machId] = struct{}{}
 
 	// TAGS
-	c := v.Clients[machId]
+	c := r.graph.Clients[machId]
 	tags := "\n"
-	if v.RenderTags && len(c.MsgStruct.Tags) > 0 {
-		txt := "#" + strings.Join(c.MsgStruct.Tags, "\n#")
+	if r.RenderTags && len(c.MsgSchema.Tags) > 0 {
+		txt := "#" + strings.Join(c.MsgSchema.Tags, "\n#")
 		tags = "\texplanation: |text\n\t\tTags\n" + txt +
 			"\n\t| { style.stroke: transparent }\n\n"
 	}
 
 	// PARENT NESTING
-	shortMachId := v.shortId(machId)
-	if v.RenderNestSubmachines {
+	shortMachId := r.shortId(machId)
+	if r.RenderNestSubmachines {
 		// TODO fix non-rendered machines in the nested ID (remove? when?)
-		shortMachId = strings.Join(v.fullIdPath(machId, true), ".")
+		shortMachId = strings.Join(r.fullIdPath(machId, true), ".")
 	}
 	border := ""
-	if slices.Contains(v.renderMachIds(), machId) {
+	if slices.Contains(r.renderMachIds(), machId) {
 		border = "\tstyle.stroke: yellow\n"
-	} else if len(v.renderMachIds()) > 0 {
+	} else if len(r.renderMachIds()) > 0 {
 		border = "\tstyle.stroke: white\n"
 	}
-	v.buf.WriteString(shortMachId + ": " + machId + " {\n" +
+	r.buf.WriteString(shortMachId + ": " + machId + " {\n" +
 		"\tlabel.near: top-center\n" +
 		"\tstyle.font-size: 40\n" +
 		border + tags)
@@ -311,148 +314,149 @@ func (v *Visualizer) outputD2Mach(ctx context.Context, machId string) error {
 	conns := ""
 	removeRels := map[string]struct{}{}
 	// TODO extract & split
-	for _, edge := range v.adjMap[machId] {
+	for _, edge := range r.adjMap[machId] {
 		if ctx.Err() != nil {
 			return nil
 		}
 
-		target, err := v.g.Vertex(edge.Target)
+		target, err := r.graph.G.Vertex(edge.Target)
 		if err != nil {
 			return fmt.Errorf("failed to get vertex for target %s: %w",
 				edge.Target, err)
 		}
-		data := edge.Properties.Data.(*EdgeData)
+		data := edge.Properties.Data.(*amgraph.EdgeData)
 		stateName := target.StateName
 
 		// STATES TODO extract
-		if stateName != "" && (v.shouldRenderState(machId, stateName) ||
-			v.RenderPipeStates && v.stateHasRenderedPipes(machId, stateName)) {
+		if stateName != "" && (r.shouldRenderState(machId, stateName) ||
+			r.RenderPipeStates && r.stateHasRenderedPipes(machId, stateName)) {
 
-			shortStateId := v.shortId(stateName)
+			shortStateId := r.shortId(stateName)
 			class := "_0"
-			if v.RenderActive {
-				idx := slices.Index(c.MsgStruct.StatesIndex, stateName)
-				if c.latestClock.Is1(idx) {
+			if r.RenderActive {
+				idx := slices.Index(c.MsgSchema.StatesIndex, stateName)
+				if c.LatestClock.Is1(idx) {
 					class = "_1"
 				}
 			}
 
 			// INHERITED
-			inherited := v.isStateInherited(stateName, c.MsgStruct.StatesIndex)
+			inherited := r.isStateInherited(stateName, c.MsgSchema.StatesIndex)
 			classSuffix := ""
-			if v.RenderMarkInherited && inherited {
+			if r.RenderMarkInherited && inherited {
 				classSuffix += "i"
 			}
 
 			// START & READY
-			if v.RenderReady && stateName == ssam.BasicStates.Ready {
+			if r.RenderReady && stateName == ssam.BasicStates.Ready {
 				classSuffix = "r"
-			} else if v.RenderStart && stateName == ssam.BasicStates.Start {
+			} else if r.RenderStart && stateName == ssam.BasicStates.Start {
 				classSuffix = "s"
 			}
 
-			v.buf.WriteString("\t" + shortStateId + ":" + stateName + "\n")
-			v.buf.WriteString("\t" + shortStateId + ".class: " + class +
+			r.buf.WriteString("\t" + shortStateId + ":" + stateName + "\n")
+			r.buf.WriteString("\t" + shortStateId + ".class: " + class +
 				classSuffix + "\n")
 
-			v.renderD2Relations(machId, stateName, removeRels)
+			r.renderD2Relations(machId, stateName, removeRels)
 		}
 
-		parent += v.renderD2Parent(data, machId, target, v.RenderHalfHierarchy, false)
-		pipes += v.renderD2Pipes(data, machId, target, v.RenderHalfPipes, false)
-		conns += v.renderD2Conns(data, machId, target, v.RenderHalfConns, false)
+		parent += r.renderD2Parent(data, machId, target, r.RenderHalfHierarchy,
+			false)
+		pipes += r.renderD2Pipes(data, machId, target, r.RenderHalfPipes, false)
+		conns += r.renderD2Conns(data, machId, target, r.RenderHalfConns, false)
 	}
 
-	v.buf.WriteString("}\n")
+	r.buf.WriteString("}\n")
 
 	if parent != "" {
-		v.buf.WriteString(parent)
+		r.buf.WriteString(parent)
 	}
 
 	if pipes != "" {
-		v.buf.WriteString(pipes)
+		r.buf.WriteString(pipes)
 	}
 
 	if conns != "" {
-		v.buf.WriteString(conns)
+		r.buf.WriteString(conns)
 	}
 
-	v.buf.WriteString("\n\n")
+	r.buf.WriteString("\n\n")
 
 	return nil
 }
 
-func (v *Visualizer) outputD2HalfMach(
+func (r *Renderer) outputD2HalfMach(
 	ctx context.Context, machId string,
 ) error {
-	v.renderedMachs[machId] = struct{}{}
-	shortMachId := v.shortId(machId)
-	if v.RenderNestSubmachines {
-		shortMachId = strings.Join(v.fullIdPath(machId, true), ".")
+	r.renderedMachs[machId] = struct{}{}
+	shortMachId := r.shortId(machId)
+	if r.RenderNestSubmachines {
+		shortMachId = strings.Join(r.fullIdPath(machId, true), ".")
 	}
-	v.buf.WriteString(shortMachId + ": " + machId + " {\n" +
+	r.buf.WriteString(shortMachId + ": " + machId + " {\n" +
 		"\tlabel.near: top-center\n" +
 		"\tstyle.font-size: 40\n")
 
 	parent := ""
 	pipes := ""
 	conns := ""
-	for _, edge := range v.adjMap[machId] {
+	for _, edge := range r.adjMap[machId] {
 		if ctx.Err() != nil {
 			return nil
 		}
 
-		graphConn, err := v.graphConnection(machId, edge.Target)
+		graphConn, err := r.graph.Connection(machId, edge.Target)
 		if err != nil {
 			return err
 		}
 		target := graphConn.Target
 		data := graphConn.Edge
 
-		parent += v.renderD2Parent(data, machId, target, false, true)
-		pipes += v.renderD2Pipes(data, machId, target, false, true)
-		conns += v.renderD2Conns(data, machId, target, false, true)
+		parent += r.renderD2Parent(data, machId, target, false, true)
+		pipes += r.renderD2Pipes(data, machId, target, false, true)
+		conns += r.renderD2Conns(data, machId, target, false, true)
 	}
 
-	v.buf.WriteString("}\n")
+	r.buf.WriteString("}\n")
 
 	if parent != "" {
-		v.buf.WriteString(parent)
+		r.buf.WriteString(parent)
 	}
 
 	if pipes != "" {
-		v.buf.WriteString(pipes)
+		r.buf.WriteString(pipes)
 	}
 
 	if conns != "" {
-		v.buf.WriteString(conns)
+		r.buf.WriteString(conns)
 	}
 
-	v.buf.WriteString("\n\n")
+	r.buf.WriteString("\n\n")
 
 	return nil
 }
 
-func (v *Visualizer) renderD2Relations(
+func (r *Renderer) renderD2Relations(
 	machId string, stateName string, renderedRemoves map[string]struct{},
 ) {
-	shortStateId := v.shortId(stateName)
-	c := v.Clients[machId]
-	state := c.MsgStruct.States[stateName]
+	shortStateId := r.shortId(stateName)
+	c := r.graph.Clients[machId]
+	state := c.MsgSchema.States[stateName]
 
-	if !v.RenderRelations {
+	if !r.RenderRelations {
 		return
 	}
 
 	// require
 	for _, relState := range state.Require {
-		if !v.shouldRenderState(machId, relState) {
+		if !r.shouldRenderState(machId, relState) {
 			continue
 		}
 
 		// TODO class
-		v.buf.WriteString("\t" + shortStateId + " --> " +
-			v.shortId(relState) + ": require {\n" +
+		r.buf.WriteString("\t" + shortStateId + " --> " +
+			r.shortId(relState) + ": require {\n" +
 			"\t\tstyle.stroke: white\n" +
 			"\t\ttarget-arrowhead.style.filled: true\n" +
 			"\t\ttarget-arrowhead.shape: circle\n" +
@@ -461,13 +465,13 @@ func (v *Visualizer) renderD2Relations(
 
 	// add
 	for _, relState := range state.Add {
-		if !v.shouldRenderState(machId, relState) {
+		if !r.shouldRenderState(machId, relState) {
 			continue
 		}
 
 		// TODO class
-		v.buf.WriteString("\t" + shortStateId + " --> " +
-			v.shortId(relState) + ": add {\n" +
+		r.buf.WriteString("\t" + shortStateId + " --> " +
+			r.shortId(relState) + ": add {\n" +
 			"\t\tstyle.stroke: yellow\n" +
 			"\t\ttarget-arrowhead.shape: triangle\n" +
 			"\t\ttarget-arrowhead.style.filled: true\n" +
@@ -476,7 +480,7 @@ func (v *Visualizer) renderD2Relations(
 
 	// remove
 	for _, relState := range state.Remove {
-		if !v.shouldRenderState(machId, relState) {
+		if !r.shouldRenderState(machId, relState) {
 			continue
 		}
 
@@ -489,7 +493,7 @@ func (v *Visualizer) renderD2Relations(
 		edgeType := " --> "
 		label := "remove"
 		width := "2"
-		if slices.Contains(c.MsgStruct.States[relState].Remove, stateName) {
+		if slices.Contains(c.MsgSchema.States[relState].Remove, stateName) {
 			_, ok1 := renderedRemoves[stateName+":"+relState]
 			_, ok2 := renderedRemoves[relState+":"+stateName]
 			if ok1 || ok2 {
@@ -505,8 +509,8 @@ func (v *Visualizer) renderD2Relations(
 		}
 
 		// TODO class
-		v.buf.WriteString("\t" + shortStateId + edgeType +
-			v.shortId(relState) + ": " + label + " {\n\t\tstyle.stroke: red\n" +
+		r.buf.WriteString("\t" + shortStateId + edgeType +
+			r.shortId(relState) + ": " + label + " {\n\t\tstyle.stroke: red\n" +
 			"\t\tstyle.stroke-width: " + width + "\n" +
 			"\t\ttarget-arrowhead.style.filled: true\n" +
 			"\t\ttarget-arrowhead.shape: diamond\n" +
@@ -516,35 +520,36 @@ func (v *Visualizer) renderD2Relations(
 	}
 }
 
-func (v *Visualizer) renderD2Parent(
-	data *EdgeData, machId string, target *Vertex, renderHalfs, isHalfMach bool,
+func (r *Renderer) renderD2Parent(
+	data *amgraph.EdgeData, machId string, target *amgraph.Vertex, renderHalfs,
+	isHalfMach bool,
 ) string {
 	ret := ""
-	shortMachId := v.shortId(machId)
-	shortTargetMachId := v.shortId(target.MachId)
-	if v.RenderNestSubmachines {
-		shortTargetMachId = strings.Join(v.fullIdPath(target.MachId, true), ".")
-		shortMachId = strings.Join(v.fullIdPath(machId, true), ".")
+	shortMachId := r.shortId(machId)
+	shortTargetMachId := r.shortId(target.MachId)
+	if r.RenderNestSubmachines {
+		shortTargetMachId = strings.Join(r.fullIdPath(target.MachId, true), ".")
+		shortMachId = strings.Join(r.fullIdPath(machId, true), ".")
 	}
 
-	if v.RenderNestSubmachines || !v.RenderParentRel || !data.MachChildOf {
+	if r.RenderNestSubmachines || !r.RenderParentRel || !data.MachChildOf {
 		return ret
 	}
 
 	// render halfs
-	if !v.shouldRenderMach(target.MachId) && !renderHalfs {
+	if !r.shouldRenderMach(target.MachId) && !renderHalfs {
 		return ""
 	}
 
 	// render once
 	key := shortMachId + ":" + shortTargetMachId
-	if _, rendered := v.renderedParents[key]; rendered {
+	if _, rendered := r.renderedParents[key]; rendered {
 		return ""
 	}
-	v.renderedParents[key] = struct{}{}
+	r.renderedParents[key] = struct{}{}
 
 	// render this half later
-	v.adjsMachsToRender = append(v.adjsMachsToRender, target.MachId)
+	r.adjsMachsToRender = append(r.adjsMachsToRender, target.MachId)
 
 	return shortMachId + " -> " + shortTargetMachId +
 		": parent {\n" +
@@ -553,29 +558,30 @@ func (v *Visualizer) renderD2Parent(
 		"\ttarget-arrowhead.shape: circle\n}\n"
 }
 
-func (v *Visualizer) renderD2Conns(
-	data *EdgeData, machId string, target *Vertex, renderHalfs, isHalfMach bool,
+func (r *Renderer) renderD2Conns(
+	data *amgraph.EdgeData, machId string, target *amgraph.Vertex, renderHalfs,
+	isHalfMach bool,
 ) string {
 	ret := ""
-	shortMachId := v.shortId(machId)
-	shortTargetMachId := v.shortId(target.MachId)
-	if v.RenderNestSubmachines {
-		shortTargetMachId = strings.Join(v.fullIdPath(target.MachId, true), ".")
-		shortMachId = strings.Join(v.fullIdPath(machId, true), ".")
+	shortMachId := r.shortId(machId)
+	shortTargetMachId := r.shortId(target.MachId)
+	if r.RenderNestSubmachines {
+		shortTargetMachId = strings.Join(r.fullIdPath(target.MachId, true), ".")
+		shortMachId = strings.Join(r.fullIdPath(machId, true), ".")
 	}
 
-	if !v.RenderConns || !data.MachConnectedTo {
+	if !r.RenderConns || !data.MachConnectedTo {
 		return ret
 	}
 
 	// render halfs
-	if !v.shouldRenderMach(target.MachId) && !renderHalfs {
+	if !r.shouldRenderMach(target.MachId) && !renderHalfs {
 		return ""
 	}
 
 	// render once
 	key := shortMachId + ":" + shortTargetMachId
-	if _, rendered := v.renderedConns[key]; rendered {
+	if _, rendered := r.renderedConns[key]; rendered {
 		return ""
 	}
 	ret += shortMachId + " -> " + shortTargetMachId + ": rpc {\n" +
@@ -584,42 +590,43 @@ func (v *Visualizer) renderD2Conns(
 		"}\n"
 
 	// render this half later
-	v.adjsMachsToRender = append(v.adjsMachsToRender, target.MachId)
+	r.adjsMachsToRender = append(r.adjsMachsToRender, target.MachId)
 
 	// remember
-	v.renderedConns[key] = struct{}{}
+	r.renderedConns[key] = struct{}{}
 
 	return ret
 }
 
-func (v *Visualizer) renderD2Pipes(
-	data *EdgeData, machId string, target *Vertex, renderHalfs, isHalfMach bool,
+func (r *Renderer) renderD2Pipes(
+	data *amgraph.EdgeData, machId string, target *amgraph.Vertex, renderHalfs,
+	isHalfMach bool,
 ) string {
-	if !v.RenderPipes || machId == target.MachId {
+	if !r.RenderPipes || machId == target.MachId {
 		return ""
 	}
 
 	ret := ""
-	shortMachId := v.shortId(machId)
-	shortTargetMachId := v.shortId(target.MachId)
-	if v.RenderNestSubmachines {
-		shortTargetMachId = strings.Join(v.fullIdPath(target.MachId, true), ".")
-		shortMachId = strings.Join(v.fullIdPath(machId, true), ".")
+	shortMachId := r.shortId(machId)
+	shortTargetMachId := r.shortId(target.MachId)
+	if r.RenderNestSubmachines {
+		shortTargetMachId = strings.Join(r.fullIdPath(target.MachId, true), ".")
+		shortMachId = strings.Join(r.fullIdPath(machId, true), ".")
 	}
 
 	for _, mp := range data.MachPipesTo {
 		// mach.state -> mach.state
-		if v.RenderDetailedPipes {
-			sourceId := shortMachId + "." + v.shortId(mp.fromState)
-			targetId := shortTargetMachId + "." + v.shortId(mp.toState)
+		if r.RenderDetailedPipes {
+			sourceId := shortMachId + "." + r.shortId(mp.FromState)
+			targetId := shortTargetMachId + "." + r.shortId(mp.ToState)
 
 			// check the source state
-			if !v.shouldRenderState(machId, mp.fromState) &&
-				(!v.RenderPipeStates || isHalfMach ||
-					!v.shouldRenderMach(target.MachId)) {
+			if !r.shouldRenderState(machId, mp.FromState) &&
+				(!r.RenderPipeStates || isHalfMach ||
+					!r.shouldRenderMach(target.MachId)) {
 
-				if !renderHalfs && !v.shouldRenderMach(machId) &&
-					!v.shouldRenderMach(target.MachId) {
+				if !renderHalfs && !r.shouldRenderMach(machId) &&
+					!r.shouldRenderMach(target.MachId) {
 					continue
 				}
 
@@ -628,13 +635,13 @@ func (v *Visualizer) renderD2Pipes(
 			}
 
 			// check the target state
-			if !v.shouldRenderState(target.MachId, mp.toState) {
-				if v.shouldRenderState(machId, mp.fromState) &&
-					(!v.RenderPipeStates || isHalfMach) {
+			if !r.shouldRenderState(target.MachId, mp.ToState) {
+				if r.shouldRenderState(machId, mp.FromState) &&
+					(!r.RenderPipeStates || isHalfMach) {
 
 					// pass (full target render)
-				} else if !renderHalfs && !v.shouldRenderMach(target.MachId) &&
-					!v.shouldRenderMach(target.MachId) {
+				} else if !renderHalfs && !r.shouldRenderMach(target.MachId) &&
+					!r.shouldRenderMach(target.MachId) {
 
 					continue
 				} else {
@@ -642,12 +649,12 @@ func (v *Visualizer) renderD2Pipes(
 					targetId = shortTargetMachId
 
 					// render this half later
-					v.adjsMachsToRender = append(v.adjsMachsToRender, target.MachId)
+					r.adjsMachsToRender = append(r.adjsMachsToRender, target.MachId)
 				}
 			}
 
 			// render once
-			if _, rendered := v.renderedPipes[sourceId+":"+targetId]; rendered {
+			if _, rendered := r.renderedPipes[sourceId+":"+targetId]; rendered {
 				continue
 			}
 
@@ -656,7 +663,7 @@ func (v *Visualizer) renderD2Pipes(
 				"\tstyle.stroke-dash: 3\n" +
 				"\ttarget-arrowhead.style.filled: false\n"
 			label := "add"
-			if mp.mutType == am.MutationRemove {
+			if mp.MutType == am.MutationRemove {
 				style = "\tstyle.stroke: red\n" +
 					"\ttarget-arrowhead.shape: diamond\n" +
 					"\tstyle.stroke-dash: 3\n"
@@ -666,19 +673,19 @@ func (v *Visualizer) renderD2Pipes(
 				style + "}\n"
 
 			// remember
-			v.renderedPipes[sourceId+":"+targetId] = struct{}{}
+			r.renderedPipes[sourceId+":"+targetId] = struct{}{}
 
 		} else {
 			// mach -> mach
 			targetId := shortTargetMachId
-			if !v.shouldRenderMach(target.MachId) {
-				if !renderHalfs && !v.shouldRenderMach(target.MachId) {
+			if !r.shouldRenderMach(target.MachId) {
+				if !renderHalfs && !r.shouldRenderMach(target.MachId) {
 					continue
 				}
 			}
 
 			// render once
-			if _, rendered := v.renderedPipes[shortMachId+":"+targetId]; rendered {
+			if _, rendered := r.renderedPipes[shortMachId+":"+targetId]; rendered {
 				continue
 			}
 
@@ -687,7 +694,7 @@ func (v *Visualizer) renderD2Pipes(
 				"style.stroke: white }\n"
 
 			// remember
-			v.renderedPipes[shortMachId+":"+targetId] = struct{}{}
+			r.renderedPipes[shortMachId+":"+targetId] = struct{}{}
 		}
 	}
 
