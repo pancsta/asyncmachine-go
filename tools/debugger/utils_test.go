@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 )
 
 func TestHumanSort(t *testing.T) {
@@ -68,14 +70,16 @@ func TestHumanSort(t *testing.T) {
 
 func TestHadErrSince(t *testing.T) {
 	c := &Client{
-		errors: []int{100, 50, 5, 1},
+		Client: &server.Client{
+			Errors: []int{100, 50, 5, 1},
+		},
 	}
 
-	assert.False(t, c.hadErrSinceTx(300, 5), "tx: %d, dist: %d", 300, 5)
-	assert.False(t, c.hadErrSinceTx(105, 3), "tx: %d, dist: %d", 105, 3)
+	assert.False(t, c.HadErrSinceTx(300, 5), "tx: %d, dist: %d", 300, 5)
+	assert.False(t, c.HadErrSinceTx(105, 3), "tx: %d, dist: %d", 105, 3)
 
-	assert.True(t, c.hadErrSinceTx(55, 10), "tx: %d, dist: %d", 55, 10)
-	assert.True(t, c.hadErrSinceTx(6, 2), "tx: %d, dist: %d", 6, 2)
-	assert.True(t, c.hadErrSinceTx(100, 2), "tx: %d, dist: %d", 100, 2)
-	assert.True(t, c.hadErrSinceTx(1, 1), "tx: %d, dist: %d", 1, 1)
+	assert.True(t, c.HadErrSinceTx(55, 10), "tx: %d, dist: %d", 55, 10)
+	assert.True(t, c.HadErrSinceTx(6, 2), "tx: %d, dist: %d", 6, 2)
+	assert.True(t, c.HadErrSinceTx(100, 2), "tx: %d, dist: %d", 100, 2)
+	assert.True(t, c.HadErrSinceTx(1, 1), "tx: %d, dist: %d", 1, 1)
 }

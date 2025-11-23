@@ -1,21 +1,17 @@
 package debugger
 
 import (
-	"fmt"
 	"log"
-	"slices"
-	"sort"
-	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
 const (
@@ -90,26 +86,6 @@ const (
 	toolPrevStep ToolName = "prev-step"
 )
 
-type MsgTxParsed struct {
-	StatesAdded   []int
-	StatesRemoved []int
-	StatesTouched []int
-	// TimeSum is machine time after this transition.
-	TimeSum       uint64
-	TimeDiff      uint64
-	ReaderEntries []*logReaderEntryPtr
-	// Transitions which reported this one as their source
-	Forks       []MachAddress
-	ForksLabels []string
-	// QueueTick when this tx should be executed
-	ResultTick uint64
-}
-
-type MsgSchemaParsed struct {
-	Groups      map[string]S
-	GroupsOrder []string
-}
-
 type Opts struct {
 	MachUrl         string
 	SelectConnected bool
@@ -182,324 +158,58 @@ func (f *OptsFilters) Equal(filters *OptsFilters) bool {
 
 type ToolName string
 
-type Exportable struct {
-	// TODO refac MsgStruct
-	MsgStruct *telemetry.DbgMsgStruct
-	MsgTxs    []*telemetry.DbgMsgTx
-}
-
-type MachAddress struct {
-	MachId    string
-	TxId      string
-	MachTime  uint64
-	HumanTime time.Time
-	// TODO support step
-	Step int
-	// TODO support queue ticks
-	QueueTick uint64
-}
-
-type MachTime struct {
-	Id   string
-	Time uint64
-}
-
-func (ma *MachAddress) Clone() *MachAddress {
-	return &MachAddress{
-		MachId:   ma.MachId,
-		TxId:     ma.TxId,
-		Step:     ma.Step,
-		MachTime: ma.MachTime,
-	}
-}
-
-func (a *MachAddress) String() string {
-	if a.TxId != "" {
-		u := fmt.Sprintf("mach://%s/%s", a.MachId, a.TxId)
-		if a.Step != 0 {
-			u += fmt.Sprintf("/%d", a.Step)
-		}
-		if a.MachTime != 0 {
-			u += fmt.Sprintf("/t%d", a.MachTime)
-		}
-
-		return u
-	}
-	if a.MachTime != 0 {
-		return fmt.Sprintf("mach://%s/t%d", a.MachId, a.MachTime)
-	}
-	if !a.HumanTime.IsZero() {
-		return fmt.Sprintf("mach://%s/%s", a.MachId, a.HumanTime)
-	}
-
-	return fmt.Sprintf("mach://%s", a.MachId)
-}
-
 type Client struct {
-	// bits which get saved into the go file
-	Exportable
-	// current transition, 1-based, mirrors the slider (eg 1 means tx.ID == 0)
-	// TODO atomic
-	CursorTx1 int
-	// current step, 1-based, mirrors the slider
-	// TODO atomic
+	*server.Client
+
+	CursorTx1           int
+	ReaderCollapsed     bool
 	CursorStep1         int
 	SelectedState       string
-	SelectedReaderEntry *logReaderEntryPtr
-	ReaderCollapsed     bool
-
-	txCache    map[string]int
-	txCacheMx  sync.Mutex
-	id         string
-	connId     string
-	schemaHash string
-	connected  atomic.Bool
-	// processed
-	msgTxsParsed    []*MsgTxParsed
-	msgSchemaParsed *MsgSchemaParsed
-	// processed list of filtered tx _indexes_
-	MsgTxsFiltered []int
-	// cache of processed log entries
-	logMsgs [][]*am.LogEntry
+	SelectedReaderEntry *types.LogReaderEntryPtr
 	// extracted log entries per tx ID
 	// TODO GC when all entries are closedAt and the first client's tx is later
 	//  than the latest closedAt; whole tx needs to be disposed at the same time
-	logReader   map[string][]*logReaderEntry
-	logReaderMx sync.Mutex
-	// indexes of txs with errors, desc order for bisects
-	// TOOD refresh on GC
-	errors                []int
-	mTimeSum              uint64
-	SelectedGroup         string
+	LogReader map[string][]*types.LogReaderEntry
+
 	logRenderedCursor1    int
 	logRenderedLevel      am.LogLevel
 	logRenderedFilters    *OptsFilters
 	logRenderedTimestamps bool
+	logReaderMx           sync.Mutex
 }
 
-func (c *Client) lastActive() time.Time {
-	if len(c.MsgTxs) == 0 {
-		return time.Time{}
+func newClient(id, connId, schemaHash string, data *server.Exportable) *Client {
+	c := &Client{
+		Client: &server.Client{
+			Id:         id,
+			ConnId:     connId,
+			SchemaHash: schemaHash,
+			Exportable: data,
+		},
+		LogReader: make(map[string][]*types.LogReaderEntry),
 	}
+	c.ParseSchema()
 
-	return *c.MsgTxs[len(c.MsgTxs)-1].Time
+	return c
 }
 
-func (c *Client) hadErrSinceTx(tx, distance int) bool {
-	if slices.Contains(c.errors, tx) {
-		return true
-	}
-
-	// see TestHadErrSince
-	index := sort.Search(len(c.errors), func(i int) bool {
-		return c.errors[i] < tx
-	})
-
-	if index >= len(c.errors) {
-		return false
-	}
-
-	return tx-c.errors[index] < distance
-}
-
-func (c *Client) lastTxTill(hTime time.Time) int {
-	l := len(c.MsgTxs)
-	if l == 0 {
-		return -1
-	}
-
-	i := sort.Search(l, func(i int) bool {
-		t := c.MsgTxs[i].Time
-		return t.After(hTime) || t.Equal(hTime)
-	})
-
-	if i == l {
-		i = l - 1
-	}
-	tx := c.MsgTxs[i]
-
-	// pick the closer one
-	if i > 0 && tx.Time.Sub(hTime) > hTime.Sub(*c.MsgTxs[i-1].Time) {
-		return i
-	} else {
-		return i
-	}
-}
-
-func (c *Client) addReaderEntry(txId string, entry *logReaderEntry) int {
+func (c *Client) AddReaderEntry(txId string, entry *types.LogReaderEntry) int {
 	c.logReaderMx.Lock()
 	defer c.logReaderMx.Unlock()
 
-	c.logReader[txId] = append(c.logReader[txId], entry)
+	c.LogReader[txId] = append(c.LogReader[txId], entry)
 
-	return len(c.logReader[txId]) - 1
+	return len(c.LogReader[txId]) - 1
 }
 
-func (c *Client) getReaderEntry(txId string, idx int) *logReaderEntry {
+func (c *Client) GetReaderEntry(txId string, idx int) *types.LogReaderEntry {
 	c.logReaderMx.Lock()
 	defer c.logReaderMx.Unlock()
 
-	ptrTx, ok := c.logReader[txId]
+	ptrTx, ok := c.LogReader[txId]
 	if !ok || idx >= len(ptrTx) {
 		return nil
 	}
 
 	return ptrTx[idx]
 }
-
-func (c *Client) statesToIndexes(states am.S) []int {
-	return amhelp.StatesToIndexes(c.MsgStruct.StatesIndex, states)
-}
-
-func (c *Client) indexesToStates(indexes []int) am.S {
-	return amhelp.IndexesToStates(c.MsgStruct.StatesIndex, indexes)
-}
-
-// txIndex returns the index of transition ID [id] or -1 if not found.
-func (c *Client) txIndex(id string) int {
-	c.txCacheMx.Lock()
-	defer c.txCacheMx.Unlock()
-
-	if c.txCache == nil {
-		c.txCache = make(map[string]int)
-	}
-	if idx, ok := c.txCache[id]; ok {
-		return idx
-	}
-
-	for i, tx := range c.MsgTxs {
-		if tx.ID == id {
-			c.txCache[id] = i
-			return i
-		}
-	}
-
-	return -1
-}
-
-func (c *Client) tx(idx int) *telemetry.DbgMsgTx {
-	if idx < 0 || idx >= len(c.MsgTxs) {
-		return nil
-	}
-
-	return c.MsgTxs[idx]
-}
-
-func (c *Client) txParsed(idx int) *MsgTxParsed {
-	if idx < 0 || idx >= len(c.msgTxsParsed) {
-		return nil
-	}
-
-	return c.msgTxsParsed[idx]
-}
-
-func (c *Client) txByMachTime(sum uint64) int {
-	idx, ok := slices.BinarySearchFunc(c.msgTxsParsed,
-		&MsgTxParsed{TimeSum: sum}, func(i, j *MsgTxParsed) int {
-			if i.TimeSum < j.TimeSum {
-				return -1
-			} else if i.TimeSum > j.TimeSum {
-				return 1
-			}
-
-			return 0
-		})
-
-	if !ok {
-		return 0
-	}
-
-	return idx
-}
-
-func (c *Client) filterIndexByCursor1(cursor1 int) int {
-	if cursor1 == 0 {
-		return 0
-	}
-
-	return slices.Index(c.MsgTxsFiltered, cursor1-1)
-}
-
-func (c *Client) parseSchema() {
-	// defaults
-	schema := c.MsgStruct
-	sp := &MsgSchemaParsed{
-		GroupsOrder: []string{"all"},
-		Groups: map[string]S{
-			"all": schema.StatesIndex,
-		},
-	}
-	c.msgSchemaParsed = sp
-
-	if len(schema.GroupsOrder) == 0 {
-		return
-	}
-
-	// schema groups
-	pastSelf := false
-	prev := S{}
-	for _, g := range schema.GroupsOrder {
-		name := strings.TrimSuffix(g, "StatesDef")
-		if g == "self" {
-			name = "- self"
-		} else if pastSelf {
-			name = "- " + name
-		}
-		sp.GroupsOrder = append(sp.GroupsOrder, name)
-		sp.Groups[name] = c.indexesToStates(schema.Groups[g])
-
-		if pastSelf {
-			// merge with prev groups
-			sp.Groups[g] = slices.Concat(sp.Groups[name], prev)
-			prev = sp.Groups[name]
-		}
-
-		if g == "self" {
-			pastSelf = true
-		}
-	}
-}
-
-// TODO enable when needed
-// func (c *Client) txByQueueTick(qTick uint64) int {
-// 	idx, ok := slices.BinarySearchFunc(c.MsgTxs,
-// 		&telemetry.DbgMsgTx{QueueTick: qTick},
-// 		func(i, j *telemetry.DbgMsgTx) int {
-// 			if i.QueueTick < j.QueueTick {
-// 				return -1
-// 			} else if i.QueueTick > j.QueueTick {
-// 				return 1
-// 			}
-//
-// 			return 0
-// 		})
-//
-// 	if !ok {
-// 		return 0
-// 	}
-//
-// 	return idx
-// }
-//
-// func (c *Client) txByMutQueueTick(qTick uint64) int {
-// 	idx, ok := slices.BinarySearchFunc(c.MsgTxs,
-// 		&telemetry.DbgMsgTx{MutQueueTick: qTick},
-// 		func(i, j *telemetry.DbgMsgTx) int {
-// 			if i.MutQueueTick < j.MutQueueTick {
-// 				return -1
-// 			} else if i.MutQueueTick > j.MutQueueTick {
-// 				return 1
-// 			}
-//
-// 			return 0
-// 		})
-//
-// 	if !ok {
-// 		return 0
-// 	}
-//
-// 	return idx
-// }
-
-// TODO
-// func NewClient()

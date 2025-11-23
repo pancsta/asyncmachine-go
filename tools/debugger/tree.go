@@ -714,7 +714,7 @@ func (d *Debugger) hBuildSchemaTree() {
 	// pick states
 	states := msg.StatesIndex
 	if c.SelectedGroup != "" {
-		states = c.msgSchemaParsed.Groups[c.SelectedGroup]
+		states = c.MsgSchemaParsed.Groups[c.SelectedGroup]
 	}
 	d.schemaTreeStates = states
 
@@ -879,8 +879,8 @@ func (d *Debugger) hSortTree() {
 func (d *Debugger) hUpdateTreeGroups() {
 	var sel int
 	var opts []*cview.DropDownOption
-	for i, name := range d.C.msgSchemaParsed.GroupsOrder {
-		amount := len(d.C.msgSchemaParsed.Groups[name])
+	for i, name := range d.C.MsgSchemaParsed.GroupsOrder {
+		amount := len(d.C.MsgSchemaParsed.Groups[name])
 		label := "all"
 		if name != "all" {
 			label = fmt.Sprintf("%s:%d", name, amount)

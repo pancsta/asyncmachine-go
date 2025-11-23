@@ -8,13 +8,11 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +23,9 @@ import (
 	"golang.org/x/exp/maps"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
+
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -146,7 +147,7 @@ func (d *Debugger) StartState(e *am.Event) {
 		if !slices.Contains(ids, clientId) {
 			clientId = ids[0]
 		}
-		d.hPrependHistory(&MachAddress{MachId: clientId})
+		d.hPrependHistory(&types.MachAddress{MachId: clientId})
 		// TODO timeout
 		d.Mach.Add1(ss.SelectingClient, am.A{
 			"Client.id": clientId,
@@ -191,26 +192,10 @@ func (d *Debugger) ReadyState(e *am.Event) {
 		d.Mach.EvAdd1(e, ss.TailMode, nil)
 	}
 
-	// TODO extract march url parsing and merge with addr bar
-	if u := d.Opts.MachUrl; u != "" {
-		up, err := url.Parse(d.Opts.MachUrl)
-		if err != nil {
-			d.Mach.EvAddErr(e, err, nil)
-		} else if up.Host != "" {
-			addr := &MachAddress{
-				MachId: up.Host,
-			}
-			p := strings.Split(up.Path, "/")
-			if len(p) > 1 {
-				addr.TxId = p[1]
-			}
-			if len(p) > 2 {
-				if s, err := strconv.Atoi(p[2]); err == nil {
-					addr.Step = s
-				}
-			}
-			go d.hGoToMachAddress(addr, false)
-		}
+	// TODO merge parsing with addr bar
+	if addr, err := types.ParseMachUrl(d.Opts.MachUrl); err == nil {
+		// TODO race
+		go d.hGoToMachAddress(addr, false)
 	}
 
 	// unblock
@@ -566,36 +551,30 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 	// update existing client
 	if existing, ok := d.Clients[msg.ID]; ok {
-		if existing.connId != "" && existing.connId == connId {
+		if existing.ConnId != "" && existing.ConnId == connId {
 			d.Mach.Log("schema changed for %s", msg.ID)
 			// TODO use MsgStructPatch
+			// TODO keep old revisions
 			existing.MsgStruct = msg
 			c = existing
-			c.parseSchema()
+			c.ParseSchema()
 
 		} else {
-			// TODO rename and keep the old client when connId differs
-			d.Mach.Log("client %s already exists", msg.ID)
+			d.Mach.Log("client %s already exists, overriding", msg.ID)
 		}
 	}
 
 	// create a new client
 	if c == nil {
-		c = &Client{
-			id:         msg.ID,
-			connId:     connId,
-			schemaHash: amhelp.SchemaHash(msg.States),
-			Exportable: Exportable{
-				MsgStruct: msg,
-			},
-			logReader: make(map[string][]*logReaderEntry),
+		data := &server.Exportable{
+			MsgStruct: msg,
 		}
-		c.parseSchema()
-		c.connected.Store(true)
+		c = newClient(msg.ID, connId, amhelp.SchemaHash(msg.States), data)
+		c.Connected.Store(true)
 		d.Clients[msg.ID] = c
 	}
 
-	// re-select the last group
+	// re-select the last group TODO broken
 	if g := d.lastSelectedGroup; g != "" {
 		if _, ok := c.MsgStruct.Groups[g]; ok {
 			c.SelectedGroup = g
@@ -607,7 +586,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 	}
 
 	// rebuild the UI in case of a cleanup or connect under the same ID
-	if cleanup || (d.C != nil && d.C.id == msg.ID) {
+	if cleanup || (d.C != nil && d.C.Id == msg.ID) {
 		// select the new (and only) client
 		d.C = c
 		d.log.Clear()
@@ -630,7 +609,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 		)
 		// TODO get time from msgs
 		for id, c := range d.Clients {
-			active := c.lastActive()
+			active := c.LastActive()
 			if active.After(lastActiveTime) || lastActiveID == "" {
 				lastActiveTime = active
 				lastActiveID = id
@@ -649,7 +628,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 			// mark the origin
 			"from_connected": true,
 		})
-		d.hPrependHistory(&MachAddress{MachId: msg.ID})
+		d.hPrependHistory(&types.MachAddress{MachId: msg.ID})
 
 		// re-select the state
 		if d.lastSelectedState != "" {
@@ -690,10 +669,10 @@ func (d *Debugger) DisconnectEventEnter(e *am.Event) bool {
 func (d *Debugger) DisconnectEventState(e *am.Event) {
 	connID := e.Args["conn_id"].(string)
 	for _, c := range d.Clients {
-		if c.connId != "" && c.connId == connID {
+		if c.ConnId != "" && c.ConnId == connID {
 			// mark as disconnected
-			c.connected.Store(false)
-			d.Mach.Log("client %s disconnected", c.id)
+			c.Connected.Store(false)
+			d.Mach.Log("client %s disconnected", c.Id)
 			break
 		}
 	}
@@ -752,12 +731,12 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 		}
 
 		if c.MsgStruct == nil {
-			d.Mach.Log("Error: struct missing for %s, ignoring tx\n", machId)
+			d.Mach.Log("Error: schema missing for %s, ignoring tx\n", machId)
 			continue
 		}
 
 		// verify it's from the same client
-		if c.connId != connIds[i] {
+		if c.ConnId != connIds[i] {
 			d.Mach.Log("Error: conn_id mismatch for %s, ignoring tx\n", machId)
 			continue
 		}
@@ -832,7 +811,7 @@ func (d *Debugger) RemoveClientState(e *am.Event) {
 
 	// clean up
 	delete(d.Clients, cid)
-	d.hRemoveHistory(c.id)
+	d.hRemoveHistory(c.Id)
 
 	// if currently selected, switch to the first one
 	if c == d.C {
@@ -861,7 +840,7 @@ func (d *Debugger) SetGroupEnter(e *am.Event) bool {
 	// extract
 	group, _, _ = strings.Cut(group, ":")
 
-	_, ok = d.C.msgSchemaParsed.Groups[group]
+	_, ok = d.C.MsgSchemaParsed.Groups[group]
 	return group != "" && group != d.C.SelectedGroup && ok
 }
 
@@ -874,7 +853,7 @@ func (d *Debugger) SetGroupState(e *am.Event) {
 	} else {
 		c.SelectedGroup = strings.Split(group, ":")[0]
 	}
-	d.lastSelectedGroup = group
+	d.lastSelectedGroup = c.SelectedGroup
 	d.hBuildSchemaTree()
 	d.hUpdateSchemaTree()
 	go amhelp.AskEvAdd1(e, d.Mach, ss.DiagramsScheduled, nil)
@@ -890,7 +869,7 @@ func (d *Debugger) SetGroupState(e *am.Event) {
 func (d *Debugger) SelectingClientEnter(e *am.Event) bool {
 	cid, ok1 := e.Args["Client.id"].(string)
 	// same client
-	if d.C != nil && cid == d.C.id {
+	if d.C != nil && cid == d.C.Id {
 		return false
 	}
 	// does the client exist?
@@ -917,7 +896,7 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 	// select the new default client
 	d.C = d.Clients[clientID]
 	// re-feed the whole log and pass the context to allow cancelation
-	logRebuildEnd := len(d.C.logMsgs)
+	logRebuildEnd := len(d.C.LogMsgs)
 	// remain in TailMode after the selection
 	wasTailMode := slices.Contains(e.Transition().StatesBefore(), ss.TailMode)
 	d.C.SelectedGroup = group
@@ -989,7 +968,7 @@ func (d *Debugger) ClientSelectedState(e *am.Event) {
 	}
 
 	// catch up with new log msgs
-	for i := d.logRebuildEnd; i < len(d.C.logMsgs); i++ {
+	for i := d.logRebuildEnd; i < len(d.C.LogMsgs); i++ {
 		err := d.hAppendLogEntry(i)
 		if err != nil {
 			d.Mach.Log("Error: log rebuild %s\n", err)
@@ -1051,7 +1030,8 @@ func (d *Debugger) HelpDialogState(e *am.Event) {
 	d.hUpdateToolbar()
 	// TODO use Visibility instead of SendToFront
 	d.LayoutRoot.SendToFront("main")
-	d.LayoutRoot.SendToFront("help")
+	d.LayoutRoot.SendToFront(DialogHelp)
+	d.Mach.Add1(ss.AfterFocus, am.A{"cview.Primitive": d.helpDialog})
 }
 
 func (d *Debugger) HelpDialogEnd(e *am.Event) {
@@ -1072,13 +1052,22 @@ func (d *Debugger) ExportDialogState(_ *am.Event) {
 	d.hUpdateToolbar()
 	// TODO use Visibility instead of SendToFront
 	d.LayoutRoot.SendToFront("main")
-	d.LayoutRoot.SendToFront("export")
+	d.LayoutRoot.SendToFront(DialogExport)
+	d.exportDialog.SetFocus(0)
+	// TODO fix focus the first field
+	d.hUpdateFocusable()
+	d.Mach.Add1(ss.DialogFocused, nil)
+	d.Mach.Add1(ss.UpdateFocus, nil)
+	// d.exportDialog.GetForm().GetFormItem(0).Focus(nil)
+	// d.App.SetFocus(d.exportDialog.GetForm().GetFormItem(0))
+	// d.draw()
 }
 
 func (d *Debugger) ExportDialogEnd(e *am.Event) {
 	diff := am.DiffStates(ss.GroupDialog, e.Transition().TargetStates())
 	if len(diff) == len(ss.GroupDialog) {
 		// all dialogs closed, show main
+		d.hUpdateFocusable()
 		d.LayoutRoot.SendToFront("main")
 		d.Mach.Add1(ss.UpdateFocus, nil)
 		d.hUpdateToolbar()
@@ -1125,7 +1114,7 @@ func (d *Debugger) ScrollToTxEnter(e *am.Event) bool {
 	id, ok2 := e.Args["Client.txId"].(string)
 	c := d.C
 
-	return c != nil && (ok2 && c.txIndex(id) > -1 ||
+	return c != nil && (ok2 && c.TxIndex(id) > -1 ||
 		ok1 && len(c.MsgTxs) > cursor) && cursor >= 0
 }
 
@@ -1138,7 +1127,7 @@ func (d *Debugger) ScrollToTxState(e *am.Event) {
 	trim, _ := e.Args["trimHistory"].(bool)
 	id, ok2 := e.Args["Client.txId"].(string)
 	if ok2 {
-		cursor1 = d.C.txIndex(id) + 1
+		cursor1 = d.C.TxIndex(id) + 1
 	}
 
 	d.hSetCursor1(e, am.A{
@@ -1340,6 +1329,7 @@ func (d *Debugger) ToolToggledState(e *am.Event) {
 		d.hFilterClientTxs()
 	}
 
+	// TODO skip on dialogs
 	if d.C != nil {
 
 		// TODO scroll the log to prev position
@@ -1386,7 +1376,7 @@ func (d *Debugger) SwitchingClientTxState(e *am.Event) {
 			return // expired
 		}
 
-		if d.C != nil && d.C.id != clientID {
+		if d.C != nil && d.C.Id != clientID {
 			// TODO async helper
 			when := d.Mach.WhenTicks(ss.ClientSelected, 2, ctx)
 			d.Mach.Add1(ss.SelectingClient, am.A{"Client.id": clientID})
@@ -1435,12 +1425,12 @@ func (d *Debugger) ScrollToMutTxState(e *am.Event) {
 	for i := c.CursorTx1 + step; i > 0 && i < len(c.MsgTxs)+1; i = i + step {
 
 		msgIdx := i - 1
-		parsed := c.msgTxsParsed[msgIdx]
+		parsed := c.MsgTxsParsed[msgIdx]
 		tx := c.MsgTxs[msgIdx]
 
 		// check mutations and canceled
-		if !slices.Contains(c.indexesToStates(parsed.StatesAdded), state) &&
-			!slices.Contains(c.indexesToStates(parsed.StatesRemoved), state) &&
+		if !slices.Contains(c.IndexesToStates(parsed.StatesAdded), state) &&
+			!slices.Contains(c.IndexesToStates(parsed.StatesRemoved), state) &&
 			!slices.Contains(tx.CalledStateNames(c.MsgStruct.StatesIndex), state) {
 
 			continue
@@ -1529,7 +1519,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 	// TODO remember the tip of cleaning (date) and binary find it, then
 	//  continue
 	for _, c := range clients {
-		for i, logMsg := range c.logMsgs {
+		for i, logMsg := range c.LogMsgs {
 			htime := c.MsgTxs[i].Time
 			if htime.Add(d.Opts.Log2Ttl).After(time.Now()) {
 				continue
@@ -1547,7 +1537,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 			}
 
 			// override
-			c.logMsgs[i] = repl
+			c.LogMsgs[i] = repl
 		}
 	}
 
@@ -1578,11 +1568,11 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 			}
 			idx := len(c.MsgTxs) / 2
 			c.MsgTxs = c.MsgTxs[idx:]
-			c.msgTxsParsed = c.msgTxsParsed[idx:]
-			c.logMsgs = c.logMsgs[idx:]
+			c.MsgTxsParsed = c.MsgTxsParsed[idx:]
+			c.LogMsgs = c.LogMsgs[idx:]
 
 			// empty cache
-			c.txCache = nil
+			c.ClearCache()
 			// TODO GC c.logReader
 			// TODO refresh c.errors (extract from hParseMsg)s
 
@@ -1602,11 +1592,11 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 
 			// delete small clients
 			if len(c.MsgTxs) < msgMaxThreshold {
-				d.Mach.Add1(ss.RemoveClient, am.A{"Client.id": c.id})
+				d.Mach.Add1(ss.RemoveClient, am.A{"Client.id": c.Id})
 			} else {
-				c.mTimeSum = 0
-				for _, m := range c.msgTxsParsed {
-					c.mTimeSum += m.TimeSum
+				c.MTimeSum = 0
+				for _, m := range c.MsgTxsParsed {
+					c.MTimeSum += m.TimeSum
 				}
 			}
 		}
@@ -1659,13 +1649,13 @@ func (d *Debugger) hSetCursor1(e *am.Event, args am.A) {
 	// TODO dont create 2 entries on the first mach change
 	if d.HistoryCursor == 0 && !skipHistory {
 		// add current mach if needed
-		if len(d.History) > 0 && d.History[0].MachId != d.C.id {
+		if len(d.History) > 0 && d.History[0].MachId != d.C.Id {
 			d.hPrependHistory(d.hGetMachAddress())
 		}
 		// keeping the current tx as history head
-		if tx := d.C.tx(d.C.CursorTx1 - 1); tx != nil {
+		if tx := d.C.Tx(d.C.CursorTx1 - 1); tx != nil {
 			// dup the current machine if tx differs
-			if len(d.History) > 1 && d.History[1].MachId == d.C.id &&
+			if len(d.History) > 1 && d.History[1].MachId == d.C.Id &&
 				d.History[1].TxId != tx.ID {
 
 				d.hPrependHistory(d.History[0].Clone())
@@ -1685,11 +1675,12 @@ func (d *Debugger) hSetCursor1(e *am.Event, args am.A) {
 	// d.Opts.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
 	// d.Opts.DbgLogger.Printf("History: %v\n", d.History)
 
-	if cursor1 == 0 {
-		d.lastScrolledTxTime = time.Time{}
-	} else {
+	d.lastScrolledTxTime = time.Time{}
+	if cursor1 > 0 {
 		tx := d.hCurrentTx()
-		d.lastScrolledTxTime = *tx.Time
+		if tx != nil {
+			d.lastScrolledTxTime = *tx.Time
+		}
 
 		// tx file
 		if d.Opts.OutputTx {
@@ -1728,15 +1719,15 @@ func (d *Debugger) DiagramsRenderingState(e *am.Event) {
 	dir := path.Join(d.Opts.OutputDir, "diagrams")
 	c := d.C
 	tx := d.hCurrentTx()
-	svgName := fmt.Sprintf("%s-%d-%s", c.id, lvl, c.schemaHash)
+	svgName := fmt.Sprintf("%s-%d-%s", c.Id, lvl, c.SchemaHash)
 
 	// state groups
 	var states S
 	if g := c.SelectedGroup; g != "" {
-		states = c.msgSchemaParsed.Groups[g]
+		states = c.MsgSchemaParsed.Groups[g]
 		gg := strings.ReplaceAll(strings.ReplaceAll(g, "-", ""), " ", "")
 		svgName = fmt.Sprintf("%s-%s-%d-%s",
-			c.id, strings.ToLower(gg), lvl, c.schemaHash)
+			c.Id, strings.ToLower(gg), lvl, c.SchemaHash)
 	}
 	svgPath := filepath.Join(dir, svgName+".svg")
 
@@ -1749,14 +1740,14 @@ func (d *Debugger) DiagramsRenderingState(e *am.Event) {
 	// cached?
 
 	// mem cache
-	if d.cache.diagramId == c.id && d.cache.diagramLvl == lvl {
+	if d.cache.diagramId == c.Id && d.cache.diagramLvl == lvl {
 		cache := d.cache.diagramDom
-		go d.diagramsMemCache(e, c.id, cache, tx, dir, svgName)
+		go d.diagramsMemCache(e, c.Id, cache, tx, dir, svgName)
 		return
 
-		// file cache
+		// file cache, move to mem cache
 	} else if _, err := os.Stat(svgPath); err == nil {
-		go d.diagramsFileCache(e, c.id, tx, d.cache.diagramLvl, dir, svgName)
+		go d.diagramsFileCache(e, c.Id, tx, d.cache.diagramLvl, dir, svgName)
 		return
 	}
 
@@ -1770,7 +1761,7 @@ func (d *Debugger) DiagramsRenderingState(e *am.Event) {
 	}
 
 	// unblock
-	go d.diagramsRender(e, shot, c.id, lvl, len(d.Clients), dir, svgName, states)
+	go d.diagramsRender(e, shot, c.Id, lvl, len(d.Clients), dir, svgName, states)
 }
 
 func (d *Debugger) DiagramsReadyState(e *am.Event) {
@@ -1888,6 +1879,7 @@ func (d *Debugger) UpdateFocusState(e *am.Event) {
 	// move focus if invalid
 	if !slices.Contains(d.focusable, box) {
 		// TODO take prev el from GroupFocused (ordered visually)
+		// TODO fall back to addr bar if not client list
 		focused = d.clientList
 	}
 
@@ -2136,7 +2128,7 @@ func (d *Debugger) MatrixRainSelectedState(e *am.Event) {
 	}
 
 	diff := row - currTxRow
-	idx := c.filterIndexByCursor1(c.CursorTx1) + diff
+	idx := c.FilterIndexByCursor1(c.CursorTx1) + diff
 	if idx == -1 {
 		return
 	}
