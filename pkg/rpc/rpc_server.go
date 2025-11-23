@@ -803,6 +803,10 @@ func (s *Server) RemoteSetPushAllTicks(
 // BindServer binds RpcReady and ClientConnected with Add/Remove, to custom
 // states.
 func BindServer(source, target *am.Machine, rpcReady, clientConn string) error {
+	if rpcReady == "" || clientConn == "" {
+		return fmt.Errorf("rpcReady and clientConn must be set")
+	}
+
 	h := &struct {
 		RpcReadyState am.HandlerFinal
 		RpcReadyEnd   am.HandlerFinal
@@ -827,6 +831,10 @@ func BindServer(source, target *am.Machine, rpcReady, clientConn string) error {
 func BindServerMulti(
 	source, target *am.Machine, rpcReady, clientConn, clientDisconn string,
 ) error {
+	if rpcReady == "" || clientConn == "" || clientDisconn == "" {
+		return fmt.Errorf("rpcReady, clientConn, and clientDisconn must be set")
+	}
+
 	h := &struct {
 		RpcReadyState am.HandlerFinal
 		RpcReadyEnd   am.HandlerFinal

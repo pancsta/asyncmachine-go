@@ -82,3 +82,6 @@ tools/visualizer/testdata/*
 /pkg/history/frostdb/databases/
 /pkg/x/history/frostdb/databases/
 /pkg/history/bbolt/amhist.db
+/*.d2
+/docs/api
+/docs/website

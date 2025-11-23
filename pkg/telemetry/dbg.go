@@ -63,6 +63,9 @@ type DbgMsgStruct struct {
 	Parent string
 	// machine tags
 	Tags []string
+
+	// TODO include the current mach time
+	//  MTime am.Time
 }
 
 func (d *DbgMsgStruct) Clock(_ am.S, _ string) uint64 {

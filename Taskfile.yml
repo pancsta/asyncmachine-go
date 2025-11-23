@@ -444,6 +444,12 @@ tasks:
       - go install github.com/devilcove/bboltEdit@latest
       - uv tool install squall_sql
 
+  install-deps-website:
+    cmds:
+      - curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
+      - chmod +x tailwindcss-linux-x64
+      - sudo mv tailwindcss-linux-x64 /usr/local/bin/tailwindcss
+
   install-deps-video:
     desc: Install promo video dependencies
     cmds:
@@ -698,3 +704,46 @@ tasks:
 
   db-bbolt: bboltEdit pkg/history/bbolt/amhist.db
   db-sql: squall pkg/history/gorm/amhist.sqlite
+
+  am-vis: go run ./tools/cmd/am-vis {{.CLI_ARGS}}
+  am-relay: go run ./tools/cmd/am-relay {{.CLI_ARGS}}
+  gen-docs-api:
+    cmds:
+    - golds 
+      -nouses
+      -only-list-exporteds 
+      -render-doclinks 
+      -theme=dark 
+      -gen 
+      -dir=docs/api 
+      -source-code-reading rich 
+      -wdpkgs-listing solo 
+      ./...
+    - sed -i 's|>github.com/pancsta/asyncmachine-go|>|g' docs/api/index.html
+    - magick assets/asyncmachine-go/logo.png
+      -background transparent -flatten
+      -define icon:auto-resize=256,128,64,48,32,16 docs/api/favicon.ico
+
+  gen-docs-website:
+    cmds:
+      - go run ./scripts/gen_website
+      - tailwindcss -i docs/website/templates/input.css -o docs/website/output.css
+      - magick assets/asyncmachine-go/logo.png
+        -background transparent -flatten
+        -define icon:auto-resize=256,128,64,48,32,16 docs/website/favicon.ico
+
+  deploy-docs-website:
+    requires:
+      vars: [AM_DEPLOY_API_DIR]
+    cmds:
+      - mv docs/website/* {{.AM_DEPLOY_WEBSITE_DIR}}
+      - rm -R {{.AM_DEPLOY_WEBSITE_DIR}}/templates
+      - cp -R scripts/gen_website/sitemap {{.AM_DEPLOY_WEBSITE_CODE_DIR}}/sitemap_am
+
+  deploy-docs-api:
+    requires:
+      vars: [AM_DEPLOY_API_DIR]
+    cmd: mv docs/api/* {{.AM_DEPLOY_API_DIR}}
+
+  docs-api: static-server -addr localhost:7324 docs/api
+  docs-website: static-server -addr localhost:1293 docs/website

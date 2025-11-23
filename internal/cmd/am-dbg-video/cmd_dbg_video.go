@@ -9,8 +9,8 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/cli"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 	"github.com/spf13/cobra"
 )
 
@@ -47,14 +47,14 @@ var (
 )
 
 func main() {
-	rootCmd := cli.RootCmd(cliRun)
+	rootCmd := types.RootCmd(cliRun)
 	err := rootCmd.Execute()
 	if err != nil {
 		panic(err)
 	}
 }
 
-func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
+func cliRun(_ *cobra.Command, _ []string, p types.Params) {
 
 	// ctx
 	ctx := context.Background()
@@ -71,7 +71,7 @@ func cliRun(_ *cobra.Command, _ []string, p cli.Params) {
 		},
 		ImportData:      p.ImportData,
 		DbgLogLevel:     p.LogLevel,
-		DbgLogger:       cli.GetLogger(&p, ""),
+		DbgLogger:       types.GetLogger(&p, ""),
 		AddrRpc:         p.ListenAddr,
 		EnableMouse:     p.EnableMouse,
 		EnableClipboard: p.EnableClipboard,

@@ -19,7 +19,7 @@ import (
 
 // ///// ///// /////
 
-// DiffStates returns the states that are in states1 but not in states2.
+// DiffStates returns the states that are in states1 but not in dbgtypes.
 func DiffStates(states1 S, states2 S) S {
 	// TODO optimize
 	return slicesFilter(states1, func(name string, i int) bool {
@@ -27,7 +27,7 @@ func DiffStates(states1 S, states2 S) S {
 	})
 }
 
-// SameStates return states present in both states1 and states2.
+// SameStates return states present in both states1 and dbgtypes.
 func SameStates(states1 S, states2 S) S {
 	return slicesFilter(states1, func(name string, i int) bool {
 		return slices.Contains(states2, name)
