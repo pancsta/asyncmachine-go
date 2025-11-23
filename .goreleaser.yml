@@ -1,4 +1,9 @@
 # .goreleaser.yml
+# TODO
+#  • only version: 2 configuration files are supported, yours is version: 0, please update your configuration
+#    • DEPRECATED: snapshot.name_template should not be used anymore, check https://goreleaser.com/deprecations#snapshotname_template for more info
+#    • DEPRECATED: archives.format should not be used anymore, check https://goreleaser.com/deprecations#archivesformat for more info
+#    • DEPRECATED: archives.builds should not be used anymore, check https://goreleaser.com/deprecations#archivesbuilds for more info
 
 builds:
   -
@@ -117,7 +122,7 @@ archives:
   -
     id: "am-vis"
     format: tar.gz
-    name_template: "am-relay_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "am-vis_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     # dont add readmes etc
     files: [""]
     builds:

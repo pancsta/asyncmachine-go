@@ -61,7 +61,7 @@ tasks:
       - docker stop am-dbg
       - docker rm am-dbg
 
-  release: goreleaser release --clean --skip-publish --skip-validate
+  release: goreleaser release --clean --skip publish --skip validate
 
   assets: git submodule update --init --recursive
 

@@ -2530,11 +2530,12 @@ func (m *Machine) IsQueued(mutType MutationType, states S,
 	qLen := uint16(m.queueLen.Load())
 	if int(qLen) != len(m.queue) {
 		// TODO not cool
-		print()
+		// print()
 	}
 	if qLen == 0 || qLen-startIndex < 1 {
 		return 0, false
 	}
+	// TODO slice bounds out of range [2:1] in go test -race ./pkg/node/...
 	iter := m.queue[startIndex:]
 
 	// position TODO test case
