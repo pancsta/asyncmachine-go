@@ -7,12 +7,7 @@
 
 ## aRPC REPL
 
-<div align="center">
-    <a href="https://pancsta.github.io/assets/asyncmachine-go/arpc.png">
-        <img style="min-height: 325px" src="https://pancsta.github.io/assets/asyncmachine-go/arpc.png"
-            alt="arpc REPL" />
-    </a>
-</div>
+![am-dbg](https://pancsta.github.io/assets/asyncmachine-go/arpc.png)
 
 `arpc` is a [network-native](/pkg/rpc/README.md) REPL and CLI to manage one or many asyncmachines. Combined with
 `am-dbg` and a dedicated state machine, it can act as a debugging agent, showing results in the debugger, while
@@ -24,6 +19,9 @@ filtered group operations.
 - [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
 - Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/arpc@latest`
 - Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/arpc@latest`
+
+> [!NOTE]
+> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
 ## Features
 
@@ -98,7 +96,7 @@ Use "arpc [command] --help" for more information about a command.
 <details>
 <summary>$ arpc list --help</summary>
 
-```bash
+```text
 List connected machines
 
 Usage:
@@ -131,7 +129,7 @@ Flags:
 <details>
 <summary>$ arpc add --help</summary>
 
-```bash
+```text
 Add states to a single machine
 
 Usage:
@@ -153,7 +151,7 @@ Flags:
 <details>
 <summary>$ arpc when-time --help</summary>
 
-```bash
+```text
 Wait for a specific machine time of a single machine
 
 Usage:
@@ -187,10 +185,7 @@ Flags:
 ## Demo
 
 <div align="center">
-    <a href="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif">
-        <img style="min-height: 476px" src="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif"
-            alt="REPL" />
-    </a>
+    <img src="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif" alt="REPL" />
 </div>
 
 ## Credits

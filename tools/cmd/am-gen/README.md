@@ -119,6 +119,11 @@ name (`service_name` for Loki, `job` for Prometheus). It will
 optionally auto-sync the dashboard using [K-Phoen/grabana](https://github.com/K-Phoen/grabana) (requires
 `GRAFANA_TOKEN`).
 
+Grafana dashboards need to be generated per "source" (e.g. process), by passing all monitored machine IDs and the source
+name (`service_name` for Loki, `job` for Prometheus). It will
+optionally auto-sync the dashboard using [K-Phoen/grabana](https://github.com/K-Phoen/grabana) (requires
+`GRAFANA_TOKEN`).
+
 - generates separate dashboard per source (job)
 - supports [Loki and Prometheus](/pkg/telemetry/README.md)
 - can sync via `GRAFANA_TOKEN` with `--grafana-url`

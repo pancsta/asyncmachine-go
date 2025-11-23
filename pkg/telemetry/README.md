@@ -32,7 +32,7 @@ added as well.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.dark.png">
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
-  <img style="min-height: 451px" alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
+  <img alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
 </picture></a></div>
 
 ### Tree Structure
@@ -212,12 +212,7 @@ amtele.BindLokiLogger(mach, promtailClient)
 
 ## Grafana Dashboard
 
-<div align="center">
-    <a href="https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png">
-        <img style="min-height: 531px" src="https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png"
-            alt="grafana">
-    </a>
-</div> 
+![grafana](https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png)
 
 More info about Grafana dashboards can be found in [/tools/cmd/am-gen](/tools/cmd/am-gen/README.md#grafana-dashboard).
 
@@ -274,7 +269,6 @@ while initializing a machine. Alternatively, tracers can be copied using `OptsWi
 ## Documentation
 
 - [list of supported env vars](/docs/env-configs.md)
-- [api /pkg/telemetry](https://code.asyncmachine.dev/pkg/github.com/pancsta/asyncmachine-go/pkg/telemetry.html)
 - [godoc /pkg/telemetry](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/telemetry)
 
 ## Status
