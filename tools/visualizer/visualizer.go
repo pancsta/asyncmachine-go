@@ -1,9 +1,13 @@
 package visualizer
 
 import (
+	"bufio"
 	"context"
 	_ "embed"
+	"encoding/gob"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"regexp"
@@ -11,72 +15,344 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/andybalholm/brotli"
 	"github.com/dominikbraun/graph"
+
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
+	"github.com/pancsta/asyncmachine-go/tools/visualizer/states"
 )
+
+var ss = states.VisualizerStates
 
 //go:embed diagram.html
 var HtmlDiagram []byte
 
-func PresetSingle(vis *Visualizer) {
-	vis.RenderDefaults()
+func PresetSingle(r *Renderer) {
+	r.RenderDefaults()
 
-	vis.RenderStart = false
-	vis.RenderDistance = 0
-	vis.RenderDepth = 0
-	vis.RenderStates = true
-	vis.RenderDetailedPipes = true
-	vis.RenderRelations = true
-	vis.RenderInherited = true
-	vis.RenderConns = true
-	vis.RenderParentRel = true
-	vis.RenderHalfConns = true
-	vis.RenderHalfPipes = true
+	r.RenderStart = false
+	r.RenderDistance = 0
+	r.RenderDepth = 0
+	r.RenderStates = true
+	r.RenderDetailedPipes = true
+	r.RenderRelations = true
+	r.RenderInherited = true
+	r.RenderConns = true
+	r.RenderParentRel = true
+	r.RenderHalfConns = true
+	r.RenderHalfPipes = true
 }
 
-func PresetNeighbourhood(vis *Visualizer) {
-	PresetSingle(vis)
+func PresetBird(r *Renderer) {
+	PresetSingle(r)
 
-	vis.RenderDistance = 3
-	vis.RenderInherited = false
+	r.RenderDistance = 3
+	r.RenderInherited = false
 }
 
-func PresetMap(vis *Visualizer) {
-	vis.RenderDefaults()
+func PresetMap(r *Renderer) {
+	r.RenderDefaults()
 
-	vis.RenderNestSubmachines = true
-	vis.RenderStates = false
-	vis.RenderPipes = false
-	vis.RenderStart = false
-	vis.RenderReady = false
-	vis.RenderException = false
-	vis.RenderTags = false
-	vis.RenderDepth = 0
-	vis.RenderRelations = false
+	r.RenderNestSubmachines = true
+	r.RenderStates = false
+	r.RenderPipes = false
+	r.RenderStart = false
+	r.RenderReady = false
+	r.RenderException = false
+	r.RenderTags = false
+	r.RenderDepth = 0
+	r.RenderRelations = false
 	// TODO test
-	vis.OutputElk = false
+	r.OutputElk = false
 }
 
 // ///// ///// /////
 
-// VISUALIZER
+// ///// VISUALIZER
 
 // ///// ///// /////
 
+type Visualizer struct {
+	Mach *am.Machine
+	R    *Renderer
+
+	graph *amgraph.Graph
+}
+
+// New creates a new Visualizer - state machine, RPC server, and a renderer.
+func New(ctx context.Context, name string) (*Visualizer, error) {
+	mach, err := am.NewCommon(ctx, "vis-"+name, states.VisualizerSchema,
+		ss.Names(), nil, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	// amhelp.MachDebugEnv(mach)
+
+	gob.Register(server.Exportable{})
+	gob.Register(am.Relation(0))
+
+	g, err := amgraph.New(mach)
+	if err != nil {
+		return nil, err
+	}
+
+	vis := &Visualizer{
+		R:    NewRenderer(g, mach.Log),
+		Mach: mach,
+
+		graph: g,
+	}
+
+	return vis, nil
+}
+
+func (v *Visualizer) ClientMsgEnter(e *am.Event) bool {
+	// TODO port from (d *Debugger) ClientMsgEnter
+	return true
+}
+
+func (v *Visualizer) ClientMsgState(e *am.Event) {
+	// TODO port from (d *Debugger) ClientMsgState
+}
+
+func (v *Visualizer) ConnectEventEnter(e *am.Event) bool {
+	// TODO port from (d *Debugger) ConnectEventEnter
+	return true
+}
+
+func (v *Visualizer) ConnectEventState(e *am.Event) {
+	// TODO port from (d *Debugger) ConnectEventState
+}
+
+func (v *Visualizer) InitClientState(e *am.Event) {
+	id := e.Args["id"].(string)
+
+	c, ok := v.graph.Clients[id]
+	if !ok {
+		panic("client not found " + id)
+	}
+	// add machine
+	err := v.graph.G.AddVertex(&amgraph.Vertex{
+		MachId: c.Id,
+	})
+	if err != nil {
+		panic(err)
+	}
+	_ = v.graph.Map.AddVertex(&amgraph.Vertex{
+		MachId: c.Id,
+	})
+
+	// parent
+	if c.MsgSchema.Parent != "" {
+		err = v.graph.G.AddEdge(c.Id, c.MsgSchema.Parent,
+			func(e *graph.EdgeProperties) {
+				e.Data = &amgraph.EdgeData{MachChildOf: true}
+			})
+		if err != nil {
+
+			// wait for the parent to show up
+			when := v.Mach.WhenArgs(ss.InitClient,
+				am.A{"id": c.MsgSchema.Parent}, nil)
+			go func() {
+				<-when
+				err = v.graph.G.AddEdge(c.Id, c.MsgSchema.Parent,
+					func(e *graph.EdgeProperties) {
+						e.Data = &amgraph.EdgeData{MachChildOf: true}
+					})
+				if err == nil {
+					_ = v.graph.Map.AddEdge(c.Id, c.MsgSchema.Parent)
+				}
+			}()
+		} else {
+			_ = v.graph.Map.AddEdge(c.Id, c.MsgSchema.Parent)
+		}
+	}
+
+	// add states
+	for name, props := range c.MsgSchema.States {
+		// vertex
+		err = v.graph.G.AddVertex(&amgraph.Vertex{
+			MachId:    id,
+			StateName: name,
+		})
+		if err != nil {
+			panic(err)
+		}
+		_ = v.graph.Map.AddVertex(&amgraph.Vertex{
+			MachId:    id,
+			StateName: name,
+		})
+
+		// edge
+		err = v.graph.G.AddEdge(id, id+":"+name,
+			func(e *graph.EdgeProperties) {
+				e.Data = &amgraph.EdgeData{
+					MachHas: &amgraph.MachineHas{
+						Auto:  props.Auto,
+						Multi: props.Multi,
+						// TODO
+						Inherited: "",
+					},
+				}
+			})
+		if err != nil {
+			panic(err)
+		}
+		_ = v.graph.Map.AddEdge(id, id+":"+name)
+	}
+
+	type relation struct {
+		States  am.S
+		RelType am.Relation
+	}
+
+	// add relations
+	for name, state := range c.MsgSchema.States {
+
+		// define
+		toAdd := []relation{
+			{States: state.Require, RelType: am.RelationRequire},
+			{States: state.Add, RelType: am.RelationAdd},
+			{States: state.Remove, RelType: am.RelationRemove},
+		}
+
+		// per relation
+		for _, item := range toAdd {
+			// per state
+			for _, relState := range item.States {
+				from := id + ":" + name
+				to := id + ":" + relState
+
+				// update an existing edge
+				if edge, err := v.graph.G.Edge(from, to); err == nil {
+					data := edge.Properties.Data.(*amgraph.EdgeData)
+					data.StateRelation = append(data.StateRelation,
+						&amgraph.StateRelation{
+							RelType: item.RelType,
+						})
+					err = v.graph.G.UpdateEdge(from, to, func(e *graph.EdgeProperties) {
+						e.Data = data
+					})
+					if err != nil {
+						panic(err)
+					}
+
+					continue
+				}
+
+				// add if doesnt exist
+				err = v.graph.G.AddEdge(from, to, func(e *graph.EdgeProperties) {
+					e.Data = &amgraph.EdgeData{
+						StateRelation: []*amgraph.StateRelation{
+							{RelType: item.RelType},
+						},
+					}
+				})
+				if err != nil {
+					// TODO panic
+					panic(err)
+				}
+				_ = v.graph.Map.AddEdge(from, to)
+			}
+		}
+	}
+}
+
+func (v *Visualizer) GoToMachAddrState(e *am.Event) {
+	// TODO GoToMachAddrState time travels to the given address, and optionally
+	// 	time. Without time, inherits the current time.
+	// TODO parse URL to dbgtypes.MachAddress via Debugger.ReadyState
+}
+
+func (v *Visualizer) HImportData(filename string) error {
+	// TODO async state
+	// TODO show error msg (for dump old formats)
+	v.Mach.Log("Importing data from %s\n", filename)
+
+	// support URLs
+	var reader *bufio.Reader
+	u, err := url.Parse(filename)
+	if err == nil && u.Host != "" {
+
+		// download
+		resp, err := http.Get(filename)
+		if err != nil {
+			return err
+		}
+		reader = bufio.NewReader(resp.Body)
+	} else {
+
+		// read from fs
+		fr, err := os.Open(filename)
+		if err != nil {
+			return err
+		}
+		defer fr.Close()
+		reader = bufio.NewReader(fr)
+	}
+
+	// decompress brotli
+	brReader := brotli.NewReader(reader)
+
+	// decode gob
+	decoder := gob.NewDecoder(brReader)
+	var res []*server.Exportable
+	err = decoder.Decode(&res)
+	if err != nil {
+		return err
+	}
+
+	// init clients
+	for _, data := range res {
+		err := v.graph.AddClient(data.MsgStruct)
+		if err != nil {
+			return err
+		}
+	}
+
+	// parse txs
+	for _, data := range res {
+		id := data.MsgStruct.ID
+		// parse msgs
+		for i := range data.MsgTxs {
+			v.graph.ParseMsg(id, data.MsgTxs[i])
+		}
+	}
+
+	return nil
+}
+
+func (v *Visualizer) Clients() map[string]amgraph.Client {
+	ret := make(map[string]amgraph.Client)
+	for k, c := range v.graph.Clients {
+		ret[k] = *c
+	}
+
+	return ret
+}
+
+// ///// ///// /////
+
+// ///// RENDERER
+
+// ///// ///// /////
+
+// list of predefined (inherited) states
 var pkgStates = []am.S{
 	ssam.BasicStates.Names(),
 	ssam.DisposedStates.Names(),
 	ssam.ConnectedStates.Names(),
+	ssam.DisposedStates.Names(),
 	ssrpc.SharedStates.Names(),
 }
 
-type Visualizer struct {
-	Mach *am.Machine
-	g    *amgraph.Graph
+type Renderer struct {
+	graph *amgraph.Graph
 
 	// config TODO extract
 	// TODO add RenderLimit (hard limit on rendered machines, eg regexp +limit1)
@@ -90,8 +366,7 @@ type Visualizer struct {
 	RenderMachsRe []*regexp.Regexp
 	// Skip rendering of these machines.
 	RenderSkipMachs []string
-	// TODO
-	// RenderSkipMachsRe       []regexp.Regexp
+	// TODO RenderSkipMachsRe       []regexp.Regexp
 	// Distance to render from starting machines.
 	RenderDistance int
 	// How deep to render from starting machines. Same as RenderDistance, but only
@@ -172,12 +447,15 @@ type Visualizer struct {
 	renderedMachs map[string]struct{}
 	// skipped adjacent machs to render as half machines
 	adjsMachsToRender []string
+	log               func(msg string, args ...any)
 }
 
-func New(mach *am.Machine, graph *amgraph.Graph) *Visualizer {
-	vis := &Visualizer{
-		Mach: mach,
-		g:    graph,
+func NewRenderer(
+	graph *amgraph.Graph, logger func(msg string, args ...any),
+) *Renderer {
+	vis := &Renderer{
+		log:   logger,
+		graph: graph,
 
 		// output defaults
 		OutputD2:      true,
@@ -188,123 +466,119 @@ func New(mach *am.Machine, graph *amgraph.Graph) *Visualizer {
 
 	vis.RenderDefaults()
 
-	// TODO depth, mach_ids (whitelist), DontRenderMachs
-
 	return vis
 }
 
-func (v *Visualizer) RenderDefaults() {
+func (r *Renderer) RenderDefaults() {
 	// ON
 
-	v.RenderReady = true
-	v.RenderStart = true
-	v.RenderException = true
-	v.RenderPipeStates = true
-	v.RenderActive = true
+	r.RenderReady = true
+	r.RenderStart = true
+	r.RenderException = true
+	r.RenderPipeStates = true
+	r.RenderActive = true
 
-	v.RenderStates = true
-	v.RenderRelations = true
-	v.RenderParentRel = true
-	v.RenderPipes = true
-	v.RenderTags = true
-	v.RenderConns = true
-	v.RenderInherited = true
-	v.RenderMarkInherited = true
+	r.RenderStates = true
+	r.RenderRelations = true
+	r.RenderParentRel = true
+	r.RenderPipes = true
+	r.RenderTags = true
+	r.RenderConns = true
+	r.RenderInherited = true
+	r.RenderMarkInherited = true
 
-	v.RenderHalfConns = true
-	v.RenderHalfHierarchy = true
-	v.RenderHalfConns = true
+	r.RenderHalfConns = true
+	r.RenderHalfHierarchy = true
+	r.RenderHalfConns = true
 
 	// OFF
 
-	v.RenderNestSubmachines = false
-	v.RenderDetailedPipes = false
-	v.RenderDistance = -1
-	v.RenderDepth = 10
+	r.RenderNestSubmachines = false
+	r.RenderDetailedPipes = false
+	r.RenderDistance = -1
+	r.RenderDepth = 10
 
-	v.RenderMachs = nil
-	v.RenderMachsRe = nil
+	r.RenderMachs = nil
+	r.RenderMachsRe = nil
 }
 
-func (v *Visualizer) shortId(longId string) string {
-	if _, ok := v.shortIdMap[longId]; ok {
-		return v.shortIdMap[longId]
+func (r *Renderer) shortId(longId string) string {
+	if _, ok := r.shortIdMap[longId]; ok {
+		return r.shortIdMap[longId]
 	}
 
-	shortId := genId(v.lastId)
-	v.lastId = shortId
-	v.shortIdMap[longId] = shortId
+	shortId := genId(r.lastId)
+	r.lastId = shortId
+	r.shortIdMap[longId] = shortId
 
-	return v.lastId
+	return r.lastId
 }
 
-func (v *Visualizer) GenDiagrams() error {
-	ctx := v.Mach.Ctx()
-
-	if v.OutputFilename == "" {
-		v.OutputFilename = "am-vis"
+func (r *Renderer) GenDiagrams(ctx context.Context) error {
+	if r.OutputFilename == "" {
+		r.OutputFilename = "am-vis"
 	}
 
-	v.Mach.Log("DIAGRAM %s", v.OutputFilename)
+	r.log("DIAGRAM %s", r.OutputFilename)
 
-	if v.OutputMermaid {
-		if err := v.outputMermaid(ctx); err != nil {
+	if r.OutputMermaid {
+		if err := r.outputMermaid(ctx); err != nil {
 			return fmt.Errorf("failed to generate mermaid: %w", err)
 		}
 	}
-	if v.OutputD2 {
-		if err := v.outputD2(ctx); err != nil {
+	if r.OutputD2 {
+		if err := r.outputD2(ctx); err != nil {
 			return fmt.Errorf("failed to generate D2: %w", err)
 		}
 	}
 
-	v.Mach.Log("Done %s", v.OutputFilename)
+	r.log("Done %s", r.OutputFilename)
 
 	return nil
 }
 
-func (v *Visualizer) outputMermaid(ctx context.Context) error {
-	v.Mach.Log("Generating mermaid\n")
+func (r *Renderer) outputMermaid(ctx context.Context) error {
+	r.log("Generating mermaid\n")
 
-	v.cleanBuffer()
-	if v.OutputElk {
-		v.buf.WriteString(
+	r.cleanBuffer()
+	if r.OutputElk {
+		r.buf.WriteString(
 			"%%{init: {'flowchart': {'defaultRenderer': 'elk'}} }%%\n")
 	}
-	v.buf.WriteString("flowchart LR\n")
+	r.buf.WriteString("flowchart LR\n")
 
-	graphMap, err := v.g.G().AdjacencyMap()
+	graphMap, err := r.graph.G.AdjacencyMap()
 	if err != nil {
 		return fmt.Errorf("failed to get adjacency map: %w", err)
 	}
 
-	if v.RenderActive {
-		v.buf.WriteString("\tclassDef _active color:black,fill:yellow;\n")
+	if r.RenderActive {
+		r.buf.WriteString("\tclassDef _active color:black,fill:yellow;\n")
 	}
 
 	for src, targets := range graphMap {
-		src, err := v.g.G().Vertex(src)
+		src, err := r.graph.G.Vertex(src)
 		if err != nil {
 			return fmt.Errorf("failed to get vertex for source %s: %w", src, err)
 		}
 
 		// render machines
 		if src.StateName == "" {
-			_ = v.outputMermaidMach(ctx, src.MachId, targets)
+			_ = r.outputMermaidMach(ctx, src.MachId, targets)
 		}
 	}
 
 	// generate mermaid
-	err = os.WriteFile(v.OutputFilename+".mermaid", []byte(v.buf.String()), 0o644)
+	err = os.WriteFile(r.OutputFilename+".mermaid", []byte(r.buf.String()), 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to write mermaid file: %w", err)
 	}
 
 	// render SVG
-	if v.OutputMermaidSvg {
-		v.Mach.Log("Generating SVG\n%s\n")
-		cmd := exec.CommandContext(ctx, "mmdc", "-i", v.OutputFilename+".mermaid",
-			"-o", v.OutputFilename+".svg", "-b", "black", "-t", "dark", "-c",
+	if r.OutputMermaidSvg {
+		r.log("Generating SVG\n%s\n")
+		cmd := exec.CommandContext(ctx, "mmdc", "-i", r.OutputFilename+".mermaid",
+			"-o", r.OutputFilename+".svg", "-b", "black", "-t", "dark", "-c",
 			"am-vis.mermaid.json")
 		err = cmd.Run()
 		if err != nil {
@@ -312,33 +586,33 @@ func (v *Visualizer) outputMermaid(ctx context.Context) error {
 		}
 	}
 
-	v.Mach.Log("Done")
+	r.log("Done")
 	return nil
 }
 
-func (v *Visualizer) outputMermaidMach(
+func (r *Renderer) outputMermaidMach(
 	ctx context.Context, machId string, targets map[string]graph.Edge[string],
 ) error {
 	// blacklist
-	if slices.Contains(v.RenderSkipMachs, machId) {
+	if slices.Contains(r.RenderSkipMachs, machId) {
 		return nil
 	}
 
 	// whitelist
-	if !v.isMachWhitelisted(machId) && !v.isMachCloseEnough(machId) {
+	if !r.isMachWhitelisted(machId) && !r.isMachCloseEnough(machId) {
 		return nil
 	}
 
-	c := v.g.Clients()[machId]
+	c := r.graph.Clients[machId]
 	tags := ""
-	if v.RenderTags && len(c.MsgStruct.Tags) > 0 {
+	if r.RenderTags && len(c.MsgSchema.Tags) > 0 {
 		// TODO linebreaks sometimes
-		tags = "<br>#" + strings.Join(c.MsgStruct.Tags, " #")
+		tags = "<br>#" + strings.Join(c.MsgSchema.Tags, " #")
 	}
 
-	v.buf.WriteString("\tsubgraph " + v.shortId(machId) + "[" + machId +
+	r.buf.WriteString("\tsubgraph " + r.shortId(machId) + "[" + machId +
 		tags + "]\n")
-	v.buf.WriteString("\t\tdirection TB\n")
+	r.buf.WriteString("\t\tdirection TB\n")
 
 	parent := ""
 	pipes := ""
@@ -348,64 +622,64 @@ func (v *Visualizer) outputMermaidMach(
 			return nil // expired
 		}
 
-		target, err := v.g.G().Vertex(edge.Target)
+		target, err := r.graph.G.Vertex(edge.Target)
 		if err != nil {
 			return fmt.Errorf("failed to get vertex for target %s: %w", edge.Target,
 				err)
 		}
 		data := edge.Properties.Data.(*amgraph.EdgeData)
-		shortIdTarget := v.shortId(edge.Target)
+		shortIdTarget := r.shortId(edge.Target)
 
 		// states
-		if v.RenderStates && data.MachHas != nil {
-			v.buf.WriteString("\t\t" + shortIdTarget + "([" + target.StateName +
+		if r.RenderStates && data.MachHas != nil {
+			r.buf.WriteString("\t\t" + shortIdTarget + "([" + target.StateName +
 				"])\n")
 
 			// relations
-			if v.RenderRelations {
-				state := c.MsgStruct.States[target.StateName]
+			if r.RenderRelations {
+				state := c.MsgSchema.States[target.StateName]
 
 				for _, relState := range state.Require {
-					v.buf.WriteString("\t\t" + shortIdTarget + " --o " +
-						v.shortId(machId+":"+relState) + "\n")
+					r.buf.WriteString("\t\t" + shortIdTarget + " --o " +
+						r.shortId(machId+":"+relState) + "\n")
 				}
 				for _, relState := range state.Add {
-					v.buf.WriteString("\t\t" + shortIdTarget + " --> " +
-						v.shortId(machId+":"+relState) + "\n")
+					r.buf.WriteString("\t\t" + shortIdTarget + " --> " +
+						r.shortId(machId+":"+relState) + "\n")
 				}
 				for _, relState := range state.Remove {
-					shortRelId := v.shortId(machId + ":" + relState)
+					shortRelId := r.shortId(machId + ":" + relState)
 					if shortRelId == shortIdTarget {
 						continue
 					}
-					v.buf.WriteString("\t\t" + shortIdTarget + " --x " +
+					r.buf.WriteString("\t\t" + shortIdTarget + " --x " +
 						shortRelId + "\n")
 				}
 			}
 		}
 
 		// parent
-		if v.RenderParentRel && data.MachChildOf {
-			parent = "\t" + v.shortId(edge.Source) + " ==o " + shortIdTarget + "\n"
+		if r.RenderParentRel && data.MachChildOf {
+			parent = "\t" + r.shortId(edge.Source) + " ==o " + shortIdTarget + "\n"
 		}
 
 		// pipes
-		if v.RenderPipes {
+		if r.RenderPipes {
 			for _, mp := range data.MachPipesTo {
 				sym := ">"
 				if mp.MutType == am.MutationRemove {
 					sym = "x"
 				}
 
-				if v.RenderDetailedPipes {
+				if r.RenderDetailedPipes {
 					// TODO debug
 					pipes += "\t%% " + edge.Source + ":" + mp.FromState +
 						" --" + sym + " " + edge.Target + ":" + mp.ToState + "\n"
-					pipes += "\t" + v.shortId(edge.Source+":"+mp.FromState) +
-						" --" + sym + " " + v.shortId(edge.Target+":"+mp.ToState) + "\n"
+					pipes += "\t" + r.shortId(edge.Source+":"+mp.FromState) +
+						" --" + sym + " " + r.shortId(edge.Target+":"+mp.ToState) + "\n"
 				} else {
-					tmp := "\t" + v.shortId(edge.Source) +
-						" --> " + v.shortId(edge.Target) + "\n"
+					tmp := "\t" + r.shortId(edge.Source) +
+						" --> " + r.shortId(edge.Target) + "\n"
 					if !strings.Contains(pipes, tmp) {
 						pipes += tmp
 					}
@@ -414,58 +688,58 @@ func (v *Visualizer) outputMermaidMach(
 		}
 
 		// RPC conns
-		if v.RenderConns && data.MachConnectedTo {
-			conns += "\t" + v.shortId(edge.Source) +
+		if r.RenderConns && data.MachConnectedTo {
+			conns += "\t" + r.shortId(edge.Source) +
 				" .-> " + shortIdTarget + "\n"
 		}
 	}
 
-	if v.RenderActive {
+	if r.RenderActive {
 		var active am.S
 		for idx, tick := range c.LatestClock {
 			if !am.IsActiveTick(tick) {
 				continue
 			}
-			name := c.MsgStruct.StatesIndex[idx]
-			shortId := v.shortId(machId + ":" + name)
+			name := c.MsgSchema.StatesIndex[idx]
+			shortId := r.shortId(machId + ":" + name)
 			active = append(active, shortId)
 		}
 
 		if len(active) > 0 {
-			v.buf.WriteString(
+			r.buf.WriteString(
 				"\t\tclass " + strings.Join(active, ",") + " _active;\n")
 		}
 	}
 
-	v.buf.WriteString("\tend\n")
+	r.buf.WriteString("\tend\n")
 
 	if parent != "" {
-		v.buf.WriteString(parent)
+		r.buf.WriteString(parent)
 	}
 
 	if pipes != "" {
-		v.buf.WriteString(pipes)
+		r.buf.WriteString(pipes)
 	}
 
 	if conns != "" {
-		v.buf.WriteString(conns)
+		r.buf.WriteString(conns)
 	}
 
-	v.buf.WriteString("\n\n")
+	r.buf.WriteString("\n\n")
 
 	return nil
 }
 
-func (v *Visualizer) stateHasRenderedPipes(machId, stateName string) bool {
-	if !v.RenderPipeStates || !v.RenderDetailedPipes {
+func (r *Renderer) stateHasRenderedPipes(machId, stateName string) bool {
+	if !r.RenderPipeStates || !r.RenderDetailedPipes {
 		return false
 	}
 
 	// all outbound links
-	for _, edge := range v.adjMap[machId] {
+	for _, edge := range r.adjMap[machId] {
 		// all pipes (mach -> mach)
 		for _, mp := range edge.Properties.Data.(*amgraph.EdgeData).MachPipesTo {
-			if v.shouldRenderState(edge.Target, mp.ToState) {
+			if r.shouldRenderState(edge.Target, mp.ToState) {
 				return true
 			}
 		}
@@ -474,50 +748,50 @@ func (v *Visualizer) stateHasRenderedPipes(machId, stateName string) bool {
 	return false
 }
 
-func (v *Visualizer) cleanBuffer() {
-	v.buf = strings.Builder{}
-	v.lastId = ""
-	v.shortIdMap = make(map[string]string)
-	v.renderedPipes = map[string]struct{}{}
-	v.renderedConns = map[string]struct{}{}
-	v.renderedMachs = map[string]struct{}{}
-	v.renderedParents = map[string]struct{}{}
-	v.adjsMachsToRender = nil
+func (r *Renderer) cleanBuffer() {
+	r.buf = strings.Builder{}
+	r.lastId = ""
+	r.shortIdMap = make(map[string]string)
+	r.renderedPipes = map[string]struct{}{}
+	r.renderedConns = map[string]struct{}{}
+	r.renderedMachs = map[string]struct{}{}
+	r.renderedParents = map[string]struct{}{}
+	r.adjsMachsToRender = nil
 }
 
 // fullIdPath returns a slice of strings representing the complete hierarchy of
 // IDs, starting from the given machId and traversing through its parents.
 // TODO suport errs
-func (v *Visualizer) fullIdPath(machId string, shorten bool) []string {
+func (r *Renderer) fullIdPath(machId string, shorten bool) []string {
 	ret := []string{machId}
 	if shorten {
-		ret[0] = v.shortId(machId)
+		ret[0] = r.shortId(machId)
 	}
-	mach := v.g.Clients()[machId]
-	for mach != nil && mach.MsgStruct != nil && mach.MsgStruct.Parent != "" {
-		parent := mach.MsgStruct.Parent
+	mach := r.graph.Clients[machId]
+	for mach != nil && mach.MsgSchema != nil && mach.MsgSchema.Parent != "" {
+		parent := mach.MsgSchema.Parent
 		if shorten {
-			parent = v.shortId(parent)
+			parent = r.shortId(parent)
 		}
 		// prepend
 		ret = slices.Concat([]string{parent}, ret)
 		// TODO check for mach is nil and log / err
-		mach = v.g.Clients()[mach.MsgStruct.Parent]
+		mach = r.graph.Clients[mach.MsgSchema.Parent]
 	}
 
 	return ret
 }
 
-func (v *Visualizer) shouldRenderMach(machId string) bool {
-	if v.isMachWhitelisted(machId) {
+func (r *Renderer) shouldRenderMach(machId string) bool {
+	if r.isMachWhitelisted(machId) {
 		return true
 	}
 
-	if v.isMachCloseEnough(machId) {
+	if r.isMachCloseEnough(machId) {
 		return true
 	}
 
-	if v.isMachShallowEnough(machId) {
+	if r.isMachShallowEnough(machId) {
 		return true
 	}
 
@@ -525,40 +799,40 @@ func (v *Visualizer) shouldRenderMach(machId string) bool {
 }
 
 // TODO RenderException renders on a map
-func (v *Visualizer) shouldRenderState(machId, state string) bool {
-	if !v.shouldRenderMach(machId) {
+func (r *Renderer) shouldRenderState(machId, state string) bool {
+	if !r.shouldRenderMach(machId) {
 		return false
 	}
-	allow := v.RenderAllowlist
+	allow := r.RenderAllowlist
 
 	// special states
-	if !v.RenderStates {
+	if !r.RenderStates {
 		// Start
-		if v.RenderStart && state == ssam.BasicStates.Start {
+		if r.RenderStart && state == ssam.BasicStates.Start {
 			return true
 		}
 		// Ready
-		if v.RenderReady && state == ssam.BasicStates.Ready {
+		if r.RenderReady && state == ssam.BasicStates.Ready {
 			return true
 		}
 		// Exception
-		if v.RenderException && state == am.StateException {
+		if r.RenderException && state == am.StateException {
 			return true
 		}
 	}
 
 	// special states and allowlist
-	if v.RenderStates {
+	if r.RenderStates {
 		// Start
-		if !v.RenderStart && state == ssam.BasicStates.Start {
+		if !r.RenderStart && state == ssam.BasicStates.Start {
 			return false
 		}
 		// Ready
-		if !v.RenderReady && state == ssam.BasicStates.Ready {
+		if !r.RenderReady && state == ssam.BasicStates.Ready {
 			return false
 		}
 		// Exception
-		if !v.RenderException && state == am.StateException {
+		if !r.RenderException && state == am.StateException {
 			return false
 		}
 
@@ -571,18 +845,18 @@ func (v *Visualizer) shouldRenderState(machId, state string) bool {
 	}
 
 	// inherited
-	statesIndex := v.g.Clients()[machId].MsgStruct.StatesIndex
-	if !v.RenderInherited && v.isStateInherited(state, statesIndex) {
+	statesIndex := r.graph.Clients[machId].MsgSchema.StatesIndex
+	if !r.RenderInherited && r.isStateInherited(state, statesIndex) {
 		// Start
-		if v.RenderStart && state == ssam.BasicStates.Start {
+		if r.RenderStart && state == ssam.BasicStates.Start {
 			return true
 		}
 		// Ready
-		if v.RenderReady && state == ssam.BasicStates.Ready {
+		if r.RenderReady && state == ssam.BasicStates.Ready {
 			return true
 		}
 		// Exception
-		if v.RenderException && state == am.StateException {
+		if r.RenderException && state == am.StateException {
 			return true
 		}
 
@@ -590,10 +864,10 @@ func (v *Visualizer) shouldRenderState(machId, state string) bool {
 		return false
 	}
 
-	return v.RenderStates
+	return r.RenderStates
 }
 
-func (v *Visualizer) isStateInherited(state string, machStates am.S) bool {
+func (r *Renderer) isStateInherited(state string, machStates am.S) bool {
 	if state == am.StateException {
 		return true
 	}
@@ -613,15 +887,15 @@ func (v *Visualizer) isStateInherited(state string, machStates am.S) bool {
 	return false
 }
 
-func (v *Visualizer) isMachCloseEnough(machId string) bool {
-	if v.RenderDistance == -1 {
+func (r *Renderer) isMachCloseEnough(machId string) bool {
+	if r.RenderDistance == -1 {
 		return true
 	}
 
-	for _, renderMachId := range v.renderMachIds() {
-		path, err := graph.ShortestPath(v.g.Map(), machId, renderMachId)
+	for _, renderMachId := range r.renderMachIds() {
+		path, err := graph.ShortestPath(r.graph.Map, machId, renderMachId)
 
-		if err == nil && len(path) <= v.RenderDistance+1 {
+		if err == nil && len(path) <= r.RenderDistance+1 {
 			return true
 		}
 	}
@@ -629,44 +903,44 @@ func (v *Visualizer) isMachCloseEnough(machId string) bool {
 	return false
 }
 
-func (v *Visualizer) isMachShallowEnough(machId string) bool {
-	if v.RenderDepth < 1 {
+func (r *Renderer) isMachShallowEnough(machId string) bool {
+	if r.RenderDepth < 1 {
 		return false
 	}
 
 	// check nesting in requested machines
-	for _, renderMachId := range v.renderMachIds() {
-		fullId := v.fullIdPath(machId, false)
+	for _, renderMachId := range r.renderMachIds() {
+		fullId := r.fullIdPath(machId, false)
 		idxRender := slices.Index(fullId, renderMachId)
 		idxMach := slices.Index(fullId, machId)
-		if idxRender != -1 && idxMach-idxRender <= v.RenderDepth {
+		if idxRender != -1 && idxMach-idxRender <= r.RenderDepth {
 			return true
 		}
 	}
-	if len(v.RenderMachs) > 0 || len(v.RenderMachsRe) > 0 {
+	if len(r.RenderMachs) > 0 || len(r.RenderMachsRe) > 0 {
 		return false
 	}
 
 	// check root level
-	depth := len(v.fullIdPath(machId, false))
-	return depth <= v.RenderDepth
+	depth := len(r.fullIdPath(machId, false))
+	return depth <= r.RenderDepth
 }
 
 // isMachWhitelisted checks if mach ID is in the whitelist.
-func (v *Visualizer) isMachWhitelisted(id string) bool {
-	if slices.Contains(v.renderMachIds(), id) {
+func (r *Renderer) isMachWhitelisted(id string) bool {
+	if slices.Contains(r.renderMachIds(), id) {
 		return true
 	}
 
 	// true when filters are nil
-	return len(v.RenderMachs) == 0 && len(v.RenderMachsRe) == 0
+	return len(r.RenderMachs) == 0 && len(r.RenderMachsRe) == 0
 }
 
-func (v *Visualizer) renderMachIds() []string {
-	ret := slices.Clone(v.RenderMachs)
+func (r *Renderer) renderMachIds() []string {
+	ret := slices.Clone(r.RenderMachs)
 
-	for _, re := range v.RenderMachsRe {
-		for _, client := range v.g.Clients() {
+	for _, re := range r.RenderMachsRe {
+		for _, client := range r.graph.Clients {
 			if re.MatchString(client.Id) {
 				ret = append(ret, client.Id)
 			}
@@ -676,6 +950,12 @@ func (v *Visualizer) renderMachIds() []string {
 	// TODO cache
 	return ret
 }
+
+// ///// ///// /////
+
+// ///// CACHE
+
+// ///// ///// /////
 
 // Generates the characters used in the ID: "a-z" and "0-9".
 var characters = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -709,17 +989,18 @@ func genId(lastId string) string {
 	}
 }
 
-type Selection struct {
+type Fragment struct {
 	MachId string
 	States am.S
 	Active am.S
 }
 
+// UpdateCache updates [dom] according to [fragments], and saves to [filepath].
 func UpdateCache(
 	ctx context.Context, filepath string, dom *goquery.Document,
-	selections ...*Selection,
+	fragments ...*Fragment,
 ) error {
-	for _, sel := range selections {
+	for _, sel := range fragments {
 		for _, state := range sel.States {
 			if ctx.Err() != nil {
 				return nil

@@ -1,7 +1,7 @@
 package visualizer
 
 // func TestUpdates(t *testing.T) {
-// 	sel := &Selection{
+// 	sel := &Fragment{
 // 		MachId: "cook",
 // 		States: am.S{"Exception", "StoryCookingStarted", "StoryJoke", "Ready",
 // 			"Requesting", "StoryStartAgain", "Start", "BaseDBStarting",
