@@ -8,7 +8,7 @@
 [**go-libp2p-pubsub-benchmark**](https://github.com/pancsta/go-libp2p-pubsub-benchmark) compares the default
 [go-libp2p-pubsub](https://github.com/libp2p/go-libp2p-pubsub) implementation to the [asyncmachine version](https://github.com/pancsta/go-libp2p-pubsub/).
 It runs `TestSimpleDiscovery` for various host/msg configurations and presents a median for each iteration. The best
-way to view the results is [bench.md](https://github.com/pancsta/go-libp2p-pubsub-benchmark/blob/main/bench.md),
+way to view the results is [bench.md](bench.https://github.com/pancsta/go-libp2p-pubsub-benchmark/blob/main/bench.md),
 [bench.pdf](https://github.com/pancsta/go-libp2p-pubsub-benchmark/blob/main/assets/bench.pdf). Single runs can
 be viewed in Jaeger and am-dbg after `task test-discovery`. Benchmark uses go1.22 traces, thus needs at least this
 version.

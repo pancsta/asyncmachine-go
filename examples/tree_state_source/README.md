@@ -8,12 +8,12 @@
 State source of flight statuses - in the real world this data-oriented problem should be modelled using composition and
 handler delegation, but it's flat in this example for simplicity and research purposes.
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_ex_1.svg?raw=true)
+![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_ex_1.svg)
 
 ## States
 
 The repo version has 5 flights and 3 gates (149 states). The amount of flights and gates can be adjusted and
-re-generated using `go run ./gen_states`. Full states file is available at [`states/ss_flights.go`](/examples/tree_state_source/states/ss_flights.go).
+re-generated using `go run ./gen_states`. Full states file is available at [`./states/ss_flights.go`](./states/ss_flights.go).
 Sample definition without relations can be found below.
 
 ```go
@@ -47,9 +47,9 @@ type FlightsStatesDef struct {
 
 ## Actors
 
-- root
-- replicant L1
-- replicant L2
+- [root](./state_root/state_root.go)
+- [replicant L1](./state_root/state_root.go)
+- [replicant L2](./state_root/state_root.go)
 
 Scenario:
 
