@@ -1,12 +1,12 @@
-name: Go Test (badges)
+name: Badges
 
 on: [push]
 
 jobs:
   build:
 
-    # TODO
-    if: false  # Disable this job
+    # Disable this job
+#    if: false
 
     runs-on: ubuntu-latest
     strategy:
@@ -22,9 +22,6 @@ jobs:
 
       # set up
       - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3'
       - uses: actions/setup-go@v4
         with:
           go-version: ${{ matrix.go-version }}
@@ -53,7 +50,7 @@ jobs:
       - name: Install Task
         run: ./scripts/dep-taskfile.sh
       - name: Install dependencies
-        run: task install-deps
+        run: task install-deps-ci
 
       # run
 
@@ -75,7 +72,6 @@ jobs:
         run: |
           echo "LOC_TOOLS=$(task cloc-go-tools)" >> $GITHUB_ENV
           echo "LOC_PKG=$(task cloc-go-pkg)" >> $GITHUB_ENV
-          echo "LOC_INTERNAL=$(task cloc-go-internal)" >> $GITHUB_ENV
           echo "COVERAGE=$(cat coverage.sum.txt)" >> $GITHUB_ENV
           echo "COVERAGE_PKG=$(cat coverage-pkg.sum.txt)" >> $GITHUB_ENV
           echo "TESTS=$(cat tests.txt)" >> $GITHUB_ENV
@@ -99,16 +95,6 @@ jobs:
           filename: loc-pkg.json
           label: LoC /pkg
           message: ${{ env.LOC_PKG }}
-          color: orange
-
-      - name: Badge - LoC /internal
-        uses: schneegans/dynamic-badges-action@v1.3.0
-        with:
-          auth: ${{ secrets.GIST_SECRET }}
-          gistID: c6032233dc1d632732ecdc1a4c119850
-          filename: loc-internal.json
-          label: LoC /internal
-          message: ${{ env.LOC_INTERNAL }}
           color: orange
 
       - name: Badge - tests

@@ -5,8 +5,8 @@ on: [push]
 jobs:
   build:
 
-    # TODO fix timeouts
-    if: false  # Disable this job
+    # Disable this job
+#    if: false
 
     runs-on: ubuntu-latest
     strategy:
@@ -23,25 +23,13 @@ jobs:
 
       # set up
       - uses: actions/checkout@v4
+      # TODO no ruby
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
       - uses: actions/setup-go@v4
         with:
           go-version: ${{ matrix.go-version }}
-
-      # Cache
-      - name: Go Build Cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-
-      - name: Go Mod Cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
 
       - name: GolangCI-Lint Cache
         uses: actions/cache@v4
@@ -62,9 +50,9 @@ jobs:
       # deps
       - name: Install Task
         run: ./scripts/dep-taskfile.sh
-      - name: Install dependencies
-        run: task install-deps
+      - name: Install linter dependencies
+        run: task install-deps-linter
 
       # run
       - name: Run linters
-        run: task lint
+        run: task lint-ci
