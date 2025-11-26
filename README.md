@@ -1,5 +1,6 @@
 [![](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
 [![](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
+[![website](https://img.shields.io/badge/asyncmachine-.dev-blue)](https://asyncmachine.dev)
 ![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc-pkg.json)
 ![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc-tools.json)
 ![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/tests.json)
@@ -26,7 +27,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.dark.png">
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.light.png">
-  <img style="min-height: 139px" alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.light.png">
+  <img alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.light.png">
 </picture></div>
 
 > [!NOTE]
@@ -132,7 +133,7 @@ if err != nil {
 
 <div align="center">
     <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/arpc/README.md">
-        <img style="min-height: 476px" src="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif"
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif"
             alt="REPL" />
     </a>
 </div>
@@ -196,7 +197,7 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.dark.png">
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
-  <img style="min-height: 392px" alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
+  <img alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
 </picture>
 </a></div>
 
@@ -241,7 +242,7 @@ Other packages:
 
 <div align="center">
     <a href="/tools/cmd/am-dbg/README.md">
-        <img style="min-height: 222px" src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png"
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png"
             alt="am-dbg">
     </a>
 </div>
@@ -284,9 +285,9 @@ Other packages:
 
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://asyncmachine.dev/chart_dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://asyncmachine.dev/chart_light.png">
-  <img style="min-height: 333px" alt="OpenTelemetry traces in Jaeger" src="https://asyncmachine.dev/chart_light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://asyncmachine.dev/chart_dark.png?nocache">
+  <source media="(prefers-color-scheme: light)" srcset="https://asyncmachine.dev/chart_light.png?nocache">
+  <img alt="OpenTelemetry traces in Jaeger" src="https://asyncmachine.dev/chart_light.png?nocache">
 </picture></div>
 
 ## Status
@@ -332,7 +333,7 @@ It calls struct methods according to conventions, a schema, and currently active
 
 ### What is a "state" in asyncmachine?
 
-State is a binary id as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
+State is a binary ID as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
 
 ### What does "clock-based" mean?
 
@@ -353,7 +354,7 @@ The complete FAQ is available at [FAQ.md](/FAQ.md).
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
 <div align="center">
-    <img style="min-height: 309px" src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video.gif?raw=true"
+    <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video.gif?raw=true"
         alt="TUI Debugger" />
 </div>
 
