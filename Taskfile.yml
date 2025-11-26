@@ -396,6 +396,11 @@ tasks:
       - task: format
       - task: check-fmt
 
+  lint-ci:
+    cmds:
+      - task: lint-go
+      - task: lint-md
+
   lint-go:
     cmds:
       - $(go env GOPATH)/bin/golangci-lint run --fix --timeout 15m
@@ -424,19 +429,17 @@ tasks:
 
   install-am-dbg: go install ./tools/cmd/am-dbg
 
+  install-deps-ci:
+    - go mod tidy
+    - go install github.com/hhatto/gocloc/cmd/gocloc@latest
+
   install-deps:
     desc: Install project dependencies
     cmds:
       - go mod tidy
-      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh 
-          | sh -s -- -b $(go env GOPATH)/bin v2.5.0
-      - go install mvdan.cc/gofumpt@latest
-      - go install golang.org/x/tools/cmd/goimports@latest
       - go install github.com/mattn/goreman@latest
-      - go install github.com/itchyny/gojq/cmd/gojq@latest
-      # TODO switch to nodejs md linter
-      - gem install mdl
       - go install github.com/hhatto/gocloc/cmd/gocloc@latest
+      - task: install-deps-linter
 
   install-deps-db:
     desc: Install database tools
@@ -464,6 +467,16 @@ tasks:
     desc: Generate a Grafana dashboard, eg "task am-gen-grafana -- --ids mymach,rm-mymach --name mymach --source my-service"
     cmds:
       - go run ./tools/cmd/am-gen grafana {{.CLI_ARGS}}
+
+  install-deps-linter:
+    cmds:
+      - # TODO switch to quickmark-cli
+      - gem install mdl
+#      - cargo install quickmark-cli
+      - go install mvdan.cc/gofumpt@latest
+      - go install golang.org/x/tools/cmd/goimports@latest
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh 
+          | sh -s -- -b $(go env GOPATH)/bin v2.5.0
 
   video-gif:
     env:

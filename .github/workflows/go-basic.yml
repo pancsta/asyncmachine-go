@@ -19,9 +19,6 @@ jobs:
 
       # set up
       - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3'
       - uses: actions/setup-go@v4
         with:
           go-version: ${{ matrix.go-version }}
@@ -50,7 +47,7 @@ jobs:
       - name: Install Task
         run: ./scripts/dep-taskfile.sh
       - name: Install dependencies
-        run: task install-deps
+        run: task install-deps-ci
 
       # run
       - name: Test

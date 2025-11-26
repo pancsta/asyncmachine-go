@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 
 # check if installed
 if command -v task >/dev/null; then echo "OK" && exit; fi
