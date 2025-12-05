@@ -689,24 +689,6 @@ func (m *Machine) WhenDisposed() <-chan struct{} {
 // 	return false
 // }
 
-// debug
-// func (m *Machine) QueueDump() []string {
-// 	m.queueLock.Lock()
-// 	defer m.queueLock.Unlock()
-// 	ret := make([]string, 0)
-//
-// 	index := m.StateNames()
-// 	for _, mut := range m.queue {
-// 		if mut.Type == mutationEval {
-// 			continue
-// 		}
-//
-// 		ret = append(ret, mut.StringFromIndex(index))
-// 	}
-//
-// 	return ret
-// }
-
 // QueueTick is the number of times the queue has processed a mutation. Starts
 // from [1], for easy comparison with [Result].
 func (m *Machine) QueueTick() uint64 {
@@ -2517,7 +2499,8 @@ func (m *Machine) IsQueued(mutType MutationType, states S,
 	withoutArgsOnly bool, statesStrictEqual bool, startIndex uint16, isCheck bool,
 	position Position,
 ) (uint16, bool) {
-	// TODO add QueueQuery with all the params
+	// TODO combine params into a struct `QueueQuery`
+	// TODO return the found mutation, not the mutable index
 	// TODO test case
 
 	if m.disposing.Load() {
@@ -2528,14 +2511,13 @@ func (m *Machine) IsQueued(mutType MutationType, states S,
 
 	// start index
 	qLen := uint16(m.queueLen.Load())
-	if int(qLen) != len(m.queue) {
-		// TODO not cool
-		// print()
-	}
 	if qLen == 0 || qLen-startIndex < 1 {
 		return 0, false
 	}
-	// TODO slice bounds out of range [2:1] in go test -race ./pkg/node/...
+	if int(startIndex) >= len(m.queue) {
+		// TODO https://github.com/pancsta/asyncmachine-go/issues/326
+		return 0, false
+	}
 	iter := m.queue[startIndex:]
 
 	// position TODO test case
@@ -3372,4 +3354,42 @@ func (m *Machine) Groups() (map[string][]int, []string) {
 	defer m.schemaMx.RUnlock()
 
 	return m.groups, m.groupsOrder
+}
+
+// ----- DEBUGS
+
+// nolint:unused
+func (m *Machine) debugQueue() {
+	// req m.queueMx
+	m.Log("----- queue -----")
+	m.Log("len(queue): %d", len(m.queue))
+	m.Log("queueLen:   %d", m.queueLen.Load())
+	m.Log("queueRunning: %v", m.queueRunning.Load())
+	m.Log("queueTick: %d", m.queueTick)
+	m.Log("queueTicksPending: %d", m.queueTicksPending)
+	m.Log("queueToken: %d", m.queueToken.Load())
+	m.Log("queueProcessing: %v", m.queueProcessing.Load())
+
+	// dump queue when index value off
+	if m.queueLen.Load() != uint32(len(m.queue)) {
+		m.Log("----- DUMP -----")
+		m.Log("queue: %+v", m.debugDumpQueue())
+	}
+}
+
+// nolint:unused
+func (m *Machine) debugDumpQueue() []string {
+	// req m.queueMx
+	ret := make([]string, 0)
+
+	index := m.StateNames()
+	for _, mut := range m.queue {
+		if mut.Type == mutationEval {
+			continue
+		}
+
+		ret = append(ret, mut.StringFromIndex(index))
+	}
+
+	return ret
 }
