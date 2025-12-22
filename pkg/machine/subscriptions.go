@@ -851,6 +851,14 @@ func (sm *Subscriptions) HasWhenArgs() bool {
 	return len(sm.whenArgs) > 0
 }
 
+// SetClock sets a longer clock from an expanded schema.
+func (sm *Subscriptions) SetClock(clock Clock) {
+	sm.Mx.Lock()
+	defer sm.Mx.Unlock()
+
+	sm.clock = clock
+}
+
 func (sm *Subscriptions) dispose() {
 	// cancel ctx
 	for _, binding := range sm.stateCtx {
