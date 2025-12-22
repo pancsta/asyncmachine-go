@@ -7,7 +7,7 @@
 
 **/pkg/pubsub** is a trustful and decentralized synchronization network for asyncmachine-go. Each peer exposes several state
 machines, then starts gossiping about them and other ones known to him. Remote state machines are then visible to other
-peers as `/pkg/rpc.Worker`. PubSub can be used to match **Clients** with **Supervisors** from [/pkg/node](/pkg/node/README.md).
+peers as `/pkg/rpc.NetworkMachine`. PubSub can be used to match **Clients** with **Supervisors** from [/pkg/node](/pkg/node/README.md).
 
 Under the hood it's based on [**libp2p gossipsub**](https://github.com/libp2p/go-libp2p-pubsub), which is a mesh-based
 PubSub, also based on gossipping:
@@ -109,7 +109,7 @@ var ss = states.TopicStates
 // var ps *ampusub.Topic
 
 // list machines exported by [remotePeerId]
-ch := make(chan []*rpc.Worker, 1)
+ch := make(chan []*rpc.NetworkMachine, 1)
 args := &A{
     WorkersCh: ch,
     ListFilters: &ListFilters{

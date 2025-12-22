@@ -130,7 +130,7 @@ type MsgBye struct {
 // ///// ///// /////
 
 type Tracer struct {
-	*am.NoOpTracer
+	*am.TracerNoOp
 	// This machine's clock has been updated and needs to be synced.
 	dirty atomic.Bool
 }
@@ -181,9 +181,9 @@ type A struct {
 	HTime time.Time
 	// Addrs is a list of addresses.
 	Addrs []multiaddr.Multiaddr `log:"addrs"`
-	// WorkersCh is a return channel for a list of [rpc.Worker]. It has to be
-	// buffered or the mutation will fail.
-	WorkersCh   chan<- []*rpc.Worker
+	// NetMachs is a return channel for a list of [rpc.NetworkMachine]. It has to
+	// be buffered or the mutation will fail.
+	NetMachs    chan<- []*rpc.NetworkMachine
 	ListFilters *ListFilters
 	MachClocks  MachClocks
 	MsgType     string `log:"msg_type"`

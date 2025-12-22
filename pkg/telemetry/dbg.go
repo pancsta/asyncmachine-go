@@ -295,7 +295,7 @@ func (c *dbgClient) sendMsgSchema(msg *DbgMsgStruct) error {
 // ///// TRACER
 
 type DbgTracer struct {
-	*am.NoOpTracer
+	*am.TracerNoOp
 
 	Addr string
 	Mach am.Api
@@ -381,7 +381,7 @@ func (t *DbgTracer) SchemaChange(mach am.Api, _ am.Schema) {
 }
 
 func (t *DbgTracer) TransitionEnd(tx *am.Transition) {
-	mach := tx.Api
+	mach := tx.MachApi
 	if t.errCount.Load() > 10 && !t.exited.Load() {
 		t.exited.Store(true)
 		if os.Getenv(am.EnvAmLog) != "" {
@@ -420,7 +420,7 @@ func (t *DbgTracer) TransitionEnd(tx *am.Transition) {
 		// no locking necessary, as the tx is finalized (read-only)
 		LogEntries:    removeLogPrefix(mach, tx.LogEntries),
 		PreLogEntries: removeLogPrefix(mach, tx.PreLogEntries),
-		IsAuto:        mut.Auto,
+		IsAuto:        mut.IsAuto,
 		Queue:         int(tx.QueueLen),
 		QueueTick:     mach.QueueTick(),
 		MutQueueToken: mut.QueueToken,
@@ -488,7 +488,7 @@ func (t *DbgTracer) MutationQueued(mach am.Api, mut *am.Mutation) {
 		IsCheck:          mut.IsCheck,
 		Type:             mut.Type,
 		CalledStatesIdxs: mut.Called,
-		IsAuto:           mut.Auto,
+		IsAuto:           mut.IsAuto,
 		Queue:            int(mut.QueueLen),
 		IsQueued:         true,
 		QueueTick:        mach.QueueTick(),

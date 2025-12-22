@@ -101,7 +101,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		mach = client.Worker
+		mach = client.NetMach
 	}
 
 	// EXPORT
@@ -166,7 +166,7 @@ func localWorker(ctx context.Context, node *Node) (*am.Machine, error) {
 
 func replicant(ctx context.Context, node *Node) (*arpc.Client, error) {
 	// RPC client
-	client, err := arpc.NewClient(ctx, node.ParentAddr, node.Name, states.FlightsSchema, states.FlightsStates.Names(), nil)
+	client, err := arpc.NewClient(ctx, node.ParentAddr, node.Name, states.FlightsSchema, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -178,7 +178,7 @@ func replicant(ctx context.Context, node *Node) (*arpc.Client, error) {
 	if err != nil {
 		panic(err)
 	}
-	exportTelemetry(node, client.Worker)
+	exportTelemetry(node, client.NetMach)
 
 	return client, err
 }
@@ -295,7 +295,7 @@ func randMut(mach am.Api) {
 	pick = rand.Intn(amount)
 	state3 := ss.Names()[pick]
 
-	skip := am.S{am.StateException, ssrpc.WorkerStates.SendPayload}
+	skip := am.S{am.StateException, ssrpc.NetSourceStates.SendPayload}
 	for _, s := range skip {
 		if state1 == s || state2 == s || state3 == s {
 			return

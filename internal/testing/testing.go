@@ -34,7 +34,7 @@ var (
 // passed worker as a remote one, and binds payloads to the optional consumer.
 // TODO sync with rpc/rpc_test
 func NewRpcTest(
-	t *testing.T, ctx context.Context, worker *am.Machine,
+	t *testing.T, ctx context.Context, netSrc *am.Machine,
 	consumer *am.Machine,
 ) (*am.Machine, *rpc.Server, *rpc.Client) {
 	utils.ConnInit.Lock()
@@ -49,14 +49,14 @@ func NewRpcTest(
 	listener := utils.RandListener("localhost")
 	addr := listener.Addr().String()
 
-	// worker init
-	if worker == nil {
+	// netSrc init
+	if netSrc == nil {
 		t.Fatal("worker is nil")
 	}
 
 	// Server init
-	s, err := rpc.NewServer(ctx, addr, t.Name(), worker, &rpc.ServerOpts{
-		Parent: worker,
+	s, err := rpc.NewServer(ctx, addr, t.Name(), netSrc, &rpc.ServerOpts{
+		Parent: netSrc,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -67,11 +67,10 @@ func NewRpcTest(
 	time.Sleep(10 * time.Millisecond)
 
 	// Client init
-	c, err := rpc.NewClient(ctx, addr, t.Name(), worker.Schema(),
-		worker.StateNames(), &rpc.ClientOpts{
-			Consumer: consumer,
-			Parent:   worker,
-		})
+	c, err := rpc.NewClient(ctx, addr, t.Name(), netSrc.Schema(), &rpc.ClientOpts{
+		Consumer: consumer,
+		Parent:   netSrc,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +101,7 @@ func NewRpcTest(
 	amhelpt.WaitForErrAll(t, "server Ready", ctx, s.Mach, timeout,
 		s.Mach.When1(ssrpc.ServerStates.Ready, nil))
 
-	return worker, s, c
+	return netSrc, s, c
 }
 
 // NewDbgWorker creates a new worker instance of the am-dbg.
@@ -175,12 +174,12 @@ func NewDbgWorker(
 }
 
 func NewRpcClient(
-	t *testing.T, ctx context.Context, addr string, stateStruct am.Schema,
-	stateNames am.S, consumer *am.Machine,
+	t *testing.T, ctx context.Context, addr string, netSrcSchema am.Schema,
+	consumer *am.Machine,
 ) *rpc.Client {
 
 	// Client init
-	c, err := rpc.NewClient(ctx, addr, t.Name(), stateStruct, stateNames,
+	c, err := rpc.NewClient(ctx, addr, t.Name(), netSrcSchema,
 		&rpc.ClientOpts{Consumer: consumer})
 	if err != nil {
 		t.Fatal(err)

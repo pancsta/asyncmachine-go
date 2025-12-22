@@ -785,19 +785,14 @@ func (sm *Subscriptions) WhenQuery(
 // This function assumes the queue is running, and wont close early.
 //
 // ctx: optional context that will close the channel early.
-func (sm *Subscriptions) WhenQueueEnds(
-	ctx context.Context, mx *sync.RWMutex,
-) <-chan struct{} {
+func (sm *Subscriptions) WhenQueueEnds() <-chan struct{} {
 	// locks
 	sm.Mx.Lock()
 	defer sm.Mx.Unlock()
 
 	// add the binding to an index of each state
 	ch := make(chan struct{})
-	binding := &whenQueueEndsBinding{
-		ch:  ch,
-		ctx: ctx,
-	}
+	binding := &whenQueueEndsBinding{ch: ch}
 
 	// insert the binding
 	sm.whenQueueEnds = append(sm.whenQueueEnds, binding)
@@ -836,6 +831,17 @@ func (sm *Subscriptions) WhenQueue(tick Result) <-chan struct{} {
 	sm.whenQueue = append(sm.whenQueue, binding)
 
 	return ch
+}
+
+// QueueFlush means a new queue, and all the queue-related subs are expired and
+// have to be closed.
+func (sm *Subscriptions) QueueFlush() {
+	for _, binding := range sm.whenQueueEnds {
+		closeSafe(binding.ch)
+	}
+	for _, binding := range sm.whenQueue {
+		closeSafe(binding.ch)
+	}
 }
 
 // ///// ///// /////

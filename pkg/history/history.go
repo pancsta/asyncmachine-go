@@ -260,7 +260,7 @@ type TransitionRecord struct {
 // ///// ///// /////
 
 type tracer struct {
-	*am.NoOpTracer
+	*am.TracerNoOp
 
 	mem *Memory
 }
@@ -390,7 +390,7 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 		record.Transition = &TransitionRecord{
 			TransitionId: tx.Id,
 			Called:       m.Index(called),
-			IsAuto:       mut.Auto,
+			IsAuto:       mut.IsAuto,
 			IsAccepted:   tx.IsAccepted.Load(),
 			IsCheck:      mut.IsCheck,
 			IsBroken:     tx.IsBroken.Load(),

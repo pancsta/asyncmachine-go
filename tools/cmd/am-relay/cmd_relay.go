@@ -27,7 +27,6 @@ func main() {
 			_ = p.FailSubcommand(err.Error(), types.CmdRotateDbg)
 		}
 	}
-
 }
 
 func rotateDbg(ctx context.Context, args *types.Args) error {

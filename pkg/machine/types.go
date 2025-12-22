@@ -26,15 +26,13 @@ const (
 	EnvAmTraceFilter = "AM_TRACE_FILTER"
 	// EnvAmTestDebug activates debugging in tests.
 	EnvAmTestDebug = "AM_TEST_DEBUG"
-	// HandlerAnyEnter is the name of the global negotiation transition handler.
-	HandlerAnyEnter = "AnyEnter"
-	// HandlerAnyState is the name of the global final transition handler.
-	HandlerAnyState = "AnyState"
-	SuffixEnter     = "Enter"
-	SuffixExit      = "Exit"
-	SuffixState     = "State"
-	SuffixEnd       = "End"
-	PrefixErr       = "Err"
+	// EnvAmTestDbgAddr enables test loop integration (no parallel and dbg relay)
+	EnvAmTestDbgAddr = "AM_TEST_DBG_ADDR"
+	SuffixEnter      = "Enter"
+	SuffixExit       = "Exit"
+	SuffixState      = "State"
+	SuffixEnd        = "End"
+	PrefixErr        = "Err"
 	// StateAny is a name of a meta-state used in catch-all handlers.
 	StateAny = "Any"
 	// StateException is the name of the predefined Exception state.
@@ -57,6 +55,19 @@ type (
 	// Schema is a map of state names to state definitions.
 	Schema = map[string]State
 )
+
+// Filter returns a subset of S from specified indexes.
+func (s S) Filter(idxs []int) S {
+	ret := make(S, len(idxs))
+	for i, idx := range idxs {
+		if idx >= len(s) {
+			continue
+		}
+		ret[i] = s[idx]
+	}
+
+	return ret
+}
 
 // State defines a single state of a machine, its properties and relations.
 type State struct {
@@ -130,11 +141,10 @@ type Opts struct {
 // struct. One also needs the state Struct to re-create a state machine.
 type Serialized struct {
 	// ID is the ID of a state machine.
+	// TODO refac to Id with the new dbg telemetry protocol
 	ID string `json:"id" yaml:"id" toml:"id"`
 	// StateNames is an ordered list of state names.
 	StateNames S `json:"state_names" yaml:"state_names" toml:"state_names"`
-	// TODO schema hash
-
 	// Time is the [Machine.Time] value.
 	Time Time `json:"time" yaml:"time" toml:"time"`
 	// QueueTick is a value of [Machine.QueueTick].
@@ -236,6 +246,8 @@ type Api interface {
 	CanRemove(states S, args A) Result
 	// CanRemove1 is [Machine.CanRemove1].
 	CanRemove1(state string, args A) Result
+	// Transition is [Machine.Transition].
+	Transition() *Transition
 
 	// Waiting (local)
 
@@ -283,7 +295,7 @@ type Api interface {
 	// NewStateCtx is [Machine.NewStateCtx].
 	NewStateCtx(state string) context.Context
 	// Export is [Machine.Export].
-	Export() *Serialized
+	Export() (*Serialized, Schema, error)
 	// Schema is [Machine.Schema].
 	Schema() Schema
 	// Switch is [Machine.Switch].
@@ -412,8 +424,7 @@ type WhenArgsBinding struct {
 }
 
 type whenQueueEndsBinding struct {
-	ch  chan struct{}
-	ctx context.Context
+	ch chan struct{}
 }
 
 type whenQueueBinding struct {

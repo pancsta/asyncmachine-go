@@ -21,14 +21,14 @@ func removeEmptyLines(input string) string {
 func TestAll(t *testing.T) {
 	ctx := context.Background()
 	// --states State1,State2:multi \
-	//				--inherit basic,connected,node/worker,rpc/worker \
+	//				--inherit basic,connected,node/worker,rpc/netsrc \
 	//				--groups Group1,Group2 \
 	//				--name MyMach
 
 	params := cli.SFParams{
 		Version: false,
 		States:  "State1,State2:multi",
-		Inherit: "basic,connected,node/worker,rpc/worker",
+		Inherit: "basic,connected,node/worker,rpc/netsrc",
 		Groups:  "Group1,Group2",
 		Name:    "MyMach",
 	}
@@ -61,8 +61,8 @@ func TestAll(t *testing.T) {
 			*ss.BasicStatesDef
 			// inherit from ConnectedStatesDef
 			*ss.ConnectedStatesDef
-			// inherit from node/WorkerStatesDef
-			*ssnode.WorkerStatesDef
+			// inherit from node/NetSourceStatesDef
+			*ssnode.NetSourceStatesDef
 		}
 		
 		// MyMachGroupsDef contains all the state groups MyMach state-machine.

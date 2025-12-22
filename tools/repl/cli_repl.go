@@ -323,7 +323,7 @@ func handleDebug(cmd *cobra.Command, mach *am.Machine) (string, error) {
 	}
 	if dbgAddr != "" {
 		amhelp.MachDebug(mach, dbgAddr, logLevel, false,
-			amhelp.SemConfig(true))
+			amhelp.SemConfigEnv(true))
 	}
 
 	return dbgAddr, nil
@@ -520,7 +520,7 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 			}
 			ws := make([]string, len(rpcs))
 			for i, c := range rpcs {
-				ws[i] = c.Worker.RemoteId()
+				ws[i] = c.NetMach.RemoteId()
 			}
 
 			// mutation
@@ -573,7 +573,7 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 			}
 			ws := make([]string, len(rpcs))
 			for i, c := range rpcs {
-				ws[i] = c.Worker.RemoteId()
+				ws[i] = c.NetMach.RemoteId()
 			}
 
 			// mutation
@@ -1110,7 +1110,7 @@ func listRun(repl *Repl, cmd *cobra.Command, args []string) error {
 	}
 
 	for i, c := range rpcs {
-		w := c.Worker
+		w := c.NetMach
 
 		str := ""
 		if states {

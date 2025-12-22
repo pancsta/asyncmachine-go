@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/gob"
 	"os"
-	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/andybalholm/brotli"
@@ -210,22 +210,40 @@ func (r *Relay) DisconnectEventState(e *am.Event) {
 			break
 		}
 	}
+
+	// export on last client
+	if len(r.clients) == 0 {
+		if err := r.hExportData(); err != nil {
+			// TODO err handler
+			r.out("Error: export failed %s\n", err)
+			r.Mach.AddErr(err, nil)
+		}
+	}
 }
 
+// TODO SetArgs
+
+// methods
+
+// TODO ExportDataState
 func (r *Relay) hExportData() error {
+	// TODO export text logs
+	// TODO configurable suffix
 	count := r.msgsCount()
 	r.out("exporting %d transitions for %d clients\n", count, len(r.clients))
 
 	a := r.Args.RotateDbg
-	filename := a.Filename + "-" + time.Now().Format("2006-01-02_15-04-05")
+	filename := a.Filename + "-" + time.Now().Format("2006-01-02T15-04-05")
 
 	// create file
-	gobPath := path.Join(a.Dir, filename+".gob.br")
-	fw, err := os.Create(gobPath)
+	gobPath := filepath.Join(a.Dir, filename+".gob.br")
+	fh, err := os.Create(gobPath)
 	if err != nil {
 		return err
 	}
-	defer fw.Close()
+	defer func() {
+		r.Mach.AddErr(fh.Close(), nil)
+	}()
 
 	// prepare the format
 	data := make([]*server.Exportable, len(r.clients))
@@ -236,8 +254,10 @@ func (r *Relay) hExportData() error {
 	}
 
 	// create a new brotli writer
-	brCompress := brotli.NewWriter(fw)
-	defer brCompress.Close()
+	brCompress := brotli.NewWriter(fh)
+	defer func() {
+		r.Mach.AddErr(brCompress.Close(), nil)
+	}()
 
 	// encode
 	encoder := gob.NewEncoder(brCompress)
@@ -259,5 +279,6 @@ func (r *Relay) msgsCount() int {
 	for _, c := range r.clients {
 		count += len(c.MsgTxs)
 	}
+
 	return count
 }

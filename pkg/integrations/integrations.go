@@ -284,7 +284,7 @@ func HandlerGetter(
 		resp.Tags = mach.Tags()
 	}
 	if req.Export {
-		resp.Export = mach.Export()
+		resp.Export, _, _ = mach.Export()
 	}
 	if len(req.Time) > 0 {
 		resp.Time = mach.Time(req.Time)

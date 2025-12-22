@@ -1,4 +1,4 @@
-// am-gen generates states files and Grafana dashboards.
+// am-gen generates schema files and Grafana dashboards.
 package main
 
 import (

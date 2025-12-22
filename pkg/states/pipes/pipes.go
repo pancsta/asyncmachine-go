@@ -8,34 +8,39 @@ package pipes
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"strings"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
-// Add adds a pipe for an Add mutation between source and target machines, for
-// a single target state.
+// Add adds a pipe for an Add mutation between [source] and [target] machines,
+// for a single target state.
 //
 // targetState: defaults to sourceState
 func Add(
-	source, target *am.Machine, sourceState string, targetState string,
+	source, target am.Api, sourceState string, targetState string,
 ) am.HandlerFinal {
-	// TODO support am.Api
+
 	return add(false, source, target, sourceState, targetState)
 }
 
+// AddFlat is like [Add], but skips unnecessary mutations.
 func AddFlat(
-	source, target *am.Machine, sourceState string, targetState string,
+	source, target am.Api, sourceState string, targetState string,
 ) am.HandlerFinal {
-	// TODO support am.Api
+
 	return add(true, source, target, sourceState, targetState)
 }
 
 func add(
-	flat bool, source, target *am.Machine, sourceState string, targetState string,
+	flat bool, source, target am.Api, sourceState string, targetState string,
 ) am.HandlerFinal {
+
 	if sourceState == "" {
+		// TODO log, dont panic?
 		panic(am.ErrStateMissing)
 	}
 	if targetState == "" {
@@ -59,6 +64,7 @@ func add(
 	return func(e *am.Event) {
 		// flat skips unnecessary mutations
 		if flat && target.Is(names) {
+
 			return
 		} else if flat {
 			target.Add(names, nil)
@@ -73,22 +79,23 @@ func add(
 //
 // targetState: defaults to sourceState
 func Remove(
-	source, target *am.Machine, sourceState string, targetState string,
+	source, target am.Api, sourceState string, targetState string,
 ) am.HandlerFinal {
-	// TODO support am.Api
+
 	return remove(false, source, target, sourceState, targetState)
 }
 
 func RemoveFlat(
-	source, target *am.Machine, sourceState string, targetState string,
+	source, target am.Api, sourceState string, targetState string,
 ) am.HandlerFinal {
-	// TODO support am.Api
+
 	return remove(true, source, target, sourceState, targetState)
 }
 
 func remove(
-	flat bool, source, target *am.Machine, sourceState string, targetState string,
+	flat bool, source, target am.Api, sourceState string, targetState string,
 ) am.HandlerFinal {
+
 	if sourceState == "" {
 		panic(am.ErrStateMissing)
 	}
@@ -163,7 +170,7 @@ func BindAny(source, target am.Api) error {
 // BindConnected binds a [ss.ConnectedSchema] machine to 4 custom states. Each
 // one is optional and bound with Add/Remove.
 func BindConnected(
-	source, target *am.Machine, disconnected, connecting, connected,
+	source, target am.Api, disconnected, connecting, connected,
 	disconnecting string,
 ) error {
 
@@ -204,7 +211,7 @@ func BindConnected(
 
 // BindErr binds Exception to a custom state using Add. Empty state defaults to
 // [am.StateException], and a custom state will also add [am.StateException].
-func BindErr(source, target *am.Machine, targetErr string) error {
+func BindErr(source, target am.Api, targetErr string) error {
 	if targetErr == "" {
 		targetErr = am.StateException
 	}
@@ -221,7 +228,7 @@ func BindErr(source, target *am.Machine, targetErr string) error {
 // BindStart binds Start to custom states using Add/Remove. Empty state
 // defaults to Start.
 func BindStart(
-	source, target *am.Machine, activeState, inactiveState string,
+	source, target am.Api, activeState, inactiveState string,
 ) error {
 	h := &struct {
 		StartState am.HandlerFinal
@@ -237,7 +244,7 @@ func BindStart(
 // BindReady binds Ready to custom states using Add/. Empty state
 // defaults to Ready.
 func BindReady(
-	source, target *am.Machine, activeState, inactiveState string,
+	source, target am.Api, activeState, inactiveState string,
 ) error {
 	h := &struct {
 		ReadyState am.HandlerFinal
@@ -250,36 +257,100 @@ func BindReady(
 	return source.BindHandlers(h)
 }
 
-// // Bind binds an arbitrary state to custom states using Add and Remove.
-// // Empty [activeState] and [inactiveState] defaults to [source].
-// // TODO
-// func Bind(
-// 	state string, source, target *am.Machine, activeState, inactiveState string
-// ) error {
-//
-// 	if state == "" {
-// 		return am.ErrStateMissing
-// 	}
-// 	if activeState == "" {
-// 		activeState = state
-// 	}
-// 	if inactiveState == "" {
-// 		inactiveState = state
-// 	}
-//
-// 	// TODO dynamic struct init, see pkg/rpc
-// 	h := &struct {
-// 		StartState am.HandlerFinal
-// 		StartEnd   am.HandlerFinal
-// 	}{
-// 		StartState: Add(source, target, ss.BasicStates.Start, activeState),
-// 		StartEnd:   Remove(source, target, ss.BasicStates.Start, inactiveState),
-// 	}
-//
-// 	return source.BindHandlers(h)
-// }
+// Bind binds an arbitrary state to custom states using Add and Remove.
+// Empty [activeState] and [inactiveState] defaults to [source]. Each binding
+// creates a separate handler struct, unlike in BindMany.
+func Bind(
+	source, target am.Api, state string, activeState, inactiveState string,
+) error {
 
-func gcHandler(mach *am.Machine) am.HandlerDispose {
+	if activeState == "" {
+		activeState = state
+	}
+	if inactiveState == "" {
+		inactiveState = activeState
+	}
+
+	// TODO assert source has state
+	// TODO assert target has activeState and inactiveState
+
+	// define handlers for each mutation
+	var fields []reflect.StructField
+	add := Add(source, target, state, activeState)
+	remove := Remove(source, target, state, inactiveState)
+	fields = append(fields, reflect.StructField{
+		Name: state + am.SuffixState,
+		Type: reflect.TypeOf(add),
+	})
+	fields = append(fields, reflect.StructField{
+		Name: state + am.SuffixEnd,
+		Type: reflect.TypeOf(remove),
+	})
+
+	// define a struct with handlers
+	structType := reflect.StructOf(fields)
+	val := reflect.New(structType).Elem()
+
+	// set handlers
+	val.Field(0).Set(reflect.ValueOf(add))
+	val.Field(1).Set(reflect.ValueOf(remove))
+
+	// bind handlers
+	handlers := val.Addr().Interface()
+
+	return source.BindHandlers(handlers)
+}
+
+// TODO godoc
+func BindMany(
+	source, target am.Api, states, targetStates am.S,
+) error {
+
+	if len(states) != len(targetStates) {
+		return fmt.Errorf("%w: source and target states len mismatch",
+			am.ErrStateMissing)
+	}
+
+	var fields []reflect.StructField
+	var fns []am.HandlerFinal
+
+	// define handlers for each state
+	for i, name := range states {
+		add := Add(source, target, name, targetStates[i])
+		remove := Remove(source, target, name, targetStates[i])
+		fields = append(fields, reflect.StructField{
+			Name: name + am.SuffixState,
+			Type: reflect.TypeOf(add),
+		})
+		fields = append(fields, reflect.StructField{
+			Name: name + am.SuffixEnd,
+			Type: reflect.TypeOf(remove),
+		})
+		fns = append(fns, add, remove)
+	}
+
+	// define a struct with handlers
+	structType := reflect.StructOf(fields)
+	val := reflect.New(structType).Elem()
+
+	// set handlers
+	for i, fn := range fns {
+		val.Field(i).Set(reflect.ValueOf(fn))
+	}
+
+	// bind handlers
+	handlers := val.Addr().Interface()
+
+	return source.BindHandlers(handlers)
+}
+
+// ///// ///// /////
+
+// ///// INTERNAL
+
+// ///// ///// /////
+
+func gcHandler(mach am.Api) am.HandlerDispose {
 	return func(id string, ctx context.Context) {
 		mach.SemLogger().RemovePipes(id)
 	}

@@ -26,9 +26,9 @@ the [manual](/docs/manual.md).
 Many states can be active at the same time.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_1.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_1.light.svg">
-  <img style="min-height: 94px" alt="Diagram showing multi-state capability" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_1.light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_1.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_1.light.svg">
+  <img alt="Diagram showing multi-state capability" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_1.light.svg">
 </picture>
 
 ### [Clock and state contexts](/docs/manual.md#clock-and-context)
@@ -36,9 +36,9 @@ Many states can be active at the same time.
 States have clocks that produce contexts (odd = active; even = inactive).
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_2.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_2.light.svg">
-  <img style="min-height: 117px" alt="Diagram showing state clocks and contexts" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_2.light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_2.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_2.light.svg">
+  <img alt="Diagram showing state clocks and contexts" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_2.light.svg">
 </picture>
 
 ### [Queue](/docs/manual.md#queue-and-history)
@@ -46,9 +46,9 @@ States have clocks that produce contexts (odd = active; even = inactive).
 Queue of mutations enables lock-free [Actor Model](https://en.wikipedia.org/wiki/Actor_model).
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_3.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_3.light.svg">
-  <img style="min-height: 187px" alt="Diagram showing queue and mutations" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_3.light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_3.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_3.light.svg">
+  <img alt="Diagram showing queue and mutations" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_3.light.svg">
 </picture>
 
 ### [AOP handlers](/docs/manual.md#transition-handlers)
@@ -57,9 +57,9 @@ States are [Aspects](https://en.wikipedia.org/wiki/Aspect-oriented_programming) 
 handlers.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_4.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_4.light.svg">
-  <img style="min-height: 325px" alt="Diagram showing AOP handlers" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_4.light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_4.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_4.light.svg">
+  <img alt="Diagram showing AOP handlers" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_4.light.svg">
 </picture>
 
 ### [Negotiation](/docs/manual.md#transition-lifecycle)
@@ -67,9 +67,9 @@ handlers.
 Transitions are cancellable (during the negotiation phase).
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_5.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_5.light.svg">
-  <img style="min-height: 257px" alt="Diagram showing negotiation phase" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_5.light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_5.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_5.light.svg">
+  <img alt="Diagram showing negotiation phase" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_5.light.svg">
 </picture>
 
 ### [Relations](/docs/manual.md#relations)
@@ -77,9 +77,9 @@ Transitions are cancellable (during the negotiation phase).
 States are connected via Require, Remove, and Add relations.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_6.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_6.light.svg">
-  <img style="min-height: 114px" alt="Diagram showing state relations" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_6.light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_6.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_6.light.svg">
+  <img alt="Diagram showing state relations" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_6.light.svg">
 </picture>
 
 ### [Subscriptions](/docs/manual.md#waiting)
@@ -87,9 +87,9 @@ States are connected via Require, Remove, and Add relations.
 Channel-based broadcast for waiting on clock values.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_7.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_7.light.svg">
-  <img style="min-height: 196px" alt="Diagram showing subscriptions" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/diagrams/diagram_7.light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_7.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_7.light.svg">
+  <img alt="Diagram showing subscriptions" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_7.light.svg">
 </picture>
 
 ### [Error handling](/docs/manual.md#error-handling)
@@ -306,7 +306,7 @@ mach.Add1("Water", nil)
 
 ```bash
 go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
-  --import-data https://assets.asyncmachine.dev/am-dbg-exports/secai-cook.gob.br \
+  --import-data https://pancsta.github.io/assets/asyncmachine-go/am-dbg-exports/secai-cook.gob.br \
   mach://cook
 ```
 
@@ -318,7 +318,7 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 <div align="center">
     <a href="/tools/cmd/am-dbg/README.md">
-        <img style="min-height: 335px" src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png"
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png"
             alt="am-dbg"></a>
 </div>
 

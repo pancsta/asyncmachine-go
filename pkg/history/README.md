@@ -166,9 +166,9 @@ Cons:
 
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/history-gorm.dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/history-gorm.light.png">
-  <img style="min-height: 354px"  alt="SQL Schema Diagram" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/history-gorm.light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/history-gorm.dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/history-gorm.light.png">
+  <img  alt="SQL Schema Diagram" src="https://pancsta.github.io/assets/asyncmachine-go/history-gorm.light.png">
 </picture></div>
 
 Example:

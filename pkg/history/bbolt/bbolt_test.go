@@ -5,17 +5,17 @@ import (
 	"os"
 	"testing"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhist "github.com/pancsta/asyncmachine-go/pkg/history"
 	testhist "github.com/pancsta/asyncmachine-go/pkg/history/test"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	amss "github.com/pancsta/asyncmachine-go/pkg/states"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
-var ss = amss.BasicStates
+var ss = ssam.BasicStates
 
 func TestBboltRead(t *testing.T) {
 	if amhelp.IsTestRunner() {
@@ -68,7 +68,7 @@ func TestBboltTrack(t *testing.T) {
 
 	// init basic machine
 	ctx := context.Background()
-	mach := am.New(ctx, amss.BasicSchema, &am.Opts{Id: "MyMach1"})
+	mach := am.New(ctx, ssam.BasicSchema, &am.Opts{Id: "MyMach1"})
 
 	// init memory
 	db, err := NewDb("")
@@ -112,7 +112,7 @@ func TestBboltTrackMany(t *testing.T) {
 
 	// init basic machine
 	ctx := context.Background()
-	mach := am.New(ctx, amss.BasicSchema, &am.Opts{Id: "MyMach1"})
+	mach := am.New(ctx, ssam.BasicSchema, &am.Opts{Id: "MyMach1"})
 
 	// init memory
 	db, err := NewDb("")

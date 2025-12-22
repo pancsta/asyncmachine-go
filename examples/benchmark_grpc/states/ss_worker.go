@@ -18,8 +18,8 @@ type WorkerStatesDef struct {
 
 	// inherit from BasicSchema
 	*ssam.BasicStatesDef
-	// inherit from WorkerStatesDef
-	*ssrpc.WorkerStatesDef
+	// inherit from NetSourceStatesDef
+	*ssrpc.NetSourceStatesDef
 }
 
 // WorkerGroupsDef contains all the state groups of the Worker state machine.
@@ -33,8 +33,8 @@ type WorkerGroupsDef struct {
 var WorkerSchema = SchemaMerge(
 	// inherit from BasicSchema
 	ssam.BasicSchema,
-	// inherit from WorkerSchema
-	ssrpc.WorkerSchema,
+	// inherit from NetSourceSchema
+	ssrpc.NetSourceSchema,
 	am.Schema{
 
 		// ops

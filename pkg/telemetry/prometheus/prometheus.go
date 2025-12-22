@@ -24,14 +24,14 @@ import (
 const EnvPromPushUrl = "AM_PROM_PUSH_URL"
 
 type PromInheritTracer struct {
-	*am.NoOpTracer
+	*am.TracerNoOp
 
 	m *Metrics
 }
 
 // PromTracer is [am.Tracer] for tracing state machines.
 type PromTracer struct {
-	*am.NoOpTracer
+	*am.TracerNoOp
 
 	m           *Metrics
 	txStartTime time.Time
@@ -86,7 +86,7 @@ func (t *PromTracer) TransitionEnd(tx *am.Transition) {
 		return
 	}
 
-	statesIndex := tx.Api.StateNames()
+	statesIndex := tx.MachApi.StateNames()
 	t.m.mx.Lock()
 	defer t.m.mx.Unlock()
 
@@ -128,7 +128,7 @@ func (t *PromTracer) TransitionEnd(tx *am.Transition) {
 	t.m.statesTouchedLen++
 
 	// time sum
-	currTime := tx.Api.Time(nil).Sum(nil)
+	currTime := tx.MachApi.Time(nil).Sum(nil)
 	t.m.txTick += currTime - t.prevTime
 	t.m.txTickLen++
 	t.prevTime = currTime

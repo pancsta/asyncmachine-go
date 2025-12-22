@@ -58,6 +58,12 @@ func init() {
 		panic(err)
 	}
 
+	// debug test loop
+	if addr := os.Getenv(am.EnvAmTestDbgAddr); addr != "" {
+		amhelp.MachDebug(worker.Mach, addr, am.LogOps, false,
+			amhelp.SemConfigEnv(true))
+	}
+
 	// init am-dbg telemetry server
 	muxCh := make(chan cmux.CMux, 1)
 	defer close(muxCh)

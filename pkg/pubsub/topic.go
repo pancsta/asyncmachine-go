@@ -73,9 +73,9 @@ type Topic struct {
 	// Maximum msgs per minute sent to the network. Does not include MsgInfo,
 	// which are debounced.
 	MaxMsgsPerWin int
-	// DebugWorkerTelemetry exposes local workers to am-dbg
-	DebugWorkerTelemetry bool
-	ConnectionsToReady   int
+	// DbgNetMachs exposes local network machines via to am-dbg
+	DbgNetMachs        bool
+	ConnectionsToReady int
 	// all amounts and delayes are multiplied by this factor
 	Multiplayer        int
 	SendInfoDebounceMs int
@@ -104,19 +104,21 @@ type Topic struct {
 
 	// OTHER PEERS
 
-	// workers is a list of machines from other peers, indexed by peer ID and
+	// netMachs is a list of machines from other peers, indexed by peer ID and
 	// [Info.Index1]. Use [states.TopicStatesDef.ListMachines] to list
 	// them.
-	workers map[string]map[int]*rpc.Worker
-	info    map[string]map[int]*Info
-	pool    *errgroup.Group
-	// gossips about local workers heard from other peers
+	netMachs map[string]map[int]*rpc.NetworkMachine
+	// internal methods of instances from netMachs
+	netMachsIntApi map[string]map[int]*rpc.NetMachInternal
+	info           map[string]map[int]*Info
+	pool           *errgroup.Group
+	// gossips about local netMachs heard from other peers
 	missingUpdates PeerGossips
 	// tracers attached to ExposedMachs.
 	tracers []*Tracer
 	// clock updates which arrived before MsgInfo TODO GC
 	pendingMachUpdates map[string]map[int]am.Time
-	// TODO verify number of exposed workers
+	// TODO verify number of exposed netMachs
 	missingPeers  map[string]struct{}
 	lastReqHello  time.Time
 	lastReqUpdate time.Time
@@ -143,20 +145,21 @@ func NewTopic(
 	}
 
 	t := &Topic{
-		Multiplayer:          5,
-		MaxQueueLen:          10,
-		GossipAmount:         5,
-		Name:                 name,
-		ExposedMachs:         exposedMachs,
-		LogEnabled:           os.Getenv(EnvAmPubsubLog) != "",
-		DebugWorkerTelemetry: os.Getenv(EnvAmPubsubDbg) != "",
-		HeartbeatFreq:        time.Second,
-		MaxMsgsPerWin:        10,
-		ConnectionsToReady:   5,
-		SendInfoDebounceMs:   500,
+		Multiplayer:        5,
+		MaxQueueLen:        10,
+		GossipAmount:       5,
+		Name:               name,
+		ExposedMachs:       exposedMachs,
+		LogEnabled:         os.Getenv(EnvAmPubsubLog) != "",
+		DbgNetMachs:        os.Getenv(EnvAmPubsubDbg) != "",
+		HeartbeatFreq:      time.Second,
+		MaxMsgsPerWin:      10,
+		ConnectionsToReady: 5,
+		SendInfoDebounceMs: 500,
 
-		tracers: make([]*Tracer, len(exposedMachs)),
-		workers: make(map[string]map[int]*rpc.Worker),
+		tracers:        make([]*Tracer, len(exposedMachs)),
+		netMachs:       make(map[string]map[int]*rpc.NetworkMachine),
+		netMachsIntApi: make(map[string]map[int]*rpc.NetMachInternal),
 		// TODO config
 		pool:               amhelp.Pool(10),
 		info:               make(map[string]map[int]*Info),
@@ -185,7 +188,7 @@ func NewTopic(
 		ss.Names(), t, opts.Parent, &am.Opts{
 			Tags: []string{"pubsub:" + name},
 
-			// TODO DEBUG
+			// DEBUG
 			// HandlerTimeout:  time.Minute,
 			// HandlerDeadline: 10 * time.Minute,
 			// QueueLimit:     10,
@@ -754,13 +757,13 @@ func (t *Topic) MsgInfoEnter(e *am.Event) bool {
 		if _, ok := t.missingPeers[peerId]; ok {
 			return true
 		}
-		if _, ok := t.workers[peerId]; !ok {
+		if _, ok := t.netMachs[peerId]; !ok {
 			return true
 		}
 
 		// check if theres a new one
 		for machIdx := range machs {
-			if _, ok := t.workers[peerId][machIdx]; !ok {
+			if _, ok := t.netMachs[peerId][machIdx]; !ok {
 				t.log("Missing mach %d for peer %s", machIdx, peerId)
 				return true
 			}
@@ -783,8 +786,9 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 		}
 
 		// init peer
-		if _, ok := t.workers[peerId]; !ok {
-			t.workers[peerId] = make(map[int]*rpc.Worker)
+		if _, ok := t.netMachs[peerId]; !ok {
+			t.netMachs[peerId] = make(map[int]*rpc.NetworkMachine)
+			t.netMachsIntApi[peerId] = make(map[int]*rpc.NetMachInternal)
 			t.info[peerId] = make(map[int]*Info)
 		}
 
@@ -799,10 +803,13 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 		// create local workers
 		for machIdx, info := range machs {
 			// check already exists
-			if w, ok := t.workers[peerId][machIdx]; ok {
+			if nm, ok := t.netMachs[peerId][machIdx]; ok {
+				intApi := t.netMachsIntApi[peerId][machIdx]
 				// update to the newest clock
-				if info.MTime.Sum(nil) > w.Time(nil).Sum(nil) {
-					w.InternalUpdateClock(info.MTime, 0, true)
+				if info.MTime.Sum(nil) > nm.Time(nil).Sum(nil) {
+					// TOOD machTick
+					intApi.Lock()
+					intApi.UpdateClock(info.MTime, 0, 0)
 				}
 				// TODO check schema?
 				continue
@@ -820,23 +827,26 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 			if t.TestStates != nil {
 				names = t.TestStates
 			}
-			worker, err := rpc.NewWorker(ctx, id, nil, schema, names, t.Mach, tags)
+			netMach, nmIntApi, err := rpc.NewNetworkMachine(ctx, id, nil, schema,
+				names, t.Mach, tags, false)
 			if err != nil {
 				// TODO custom error?
 				t.Mach.EvAddErr(e, err, nil)
 				continue
 			}
-			if t.DebugWorkerTelemetry {
-				// TODO DEBUG
+			if t.DbgNetMachs {
+				// DEBUG
 				if t.peerName(peerId) == "P5" {
-					amhelp.MachDebugEnv(worker)
+					amhelp.MachDebugEnv(netMach)
 				}
 			}
 
 			// check for ahead-of-time MsgUpdates
 			// add ctx to go-s
+			intApi := t.netMachsIntApi[peerId][machIdx]
 			if mtime, ok := t.pendingMachUpdates[peerId][machIdx]; ok {
-				worker.InternalUpdateClock(mtime, 0, true)
+				intApi.Lock()
+				intApi.UpdateClock(mtime, 0, 0)
 				// GC
 				delete(t.pendingMachUpdates[peerId], machIdx)
 				if len(t.pendingMachUpdates[peerId]) == 0 {
@@ -845,10 +855,12 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 				t.Mach.EvRemove1(e, ss.MissPeersByUpdates, nil)
 
 			} else {
-				worker.InternalUpdateClock(info.MTime, 0, true)
+				intApi.Lock()
+				intApi.UpdateClock(info.MTime, 0, 0)
 			}
 
-			t.workers[peerId][machIdx] = worker
+			t.netMachs[peerId][machIdx] = netMach
+			t.netMachsIntApi[peerId][machIdx] = nmIntApi
 			// save the info for re-broadcast
 			t.info[peerId][machIdx] = info
 			added++
@@ -857,15 +869,15 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 
 	// confirm we know the sender
 	fromPeerId := args.PeerId
-	if _, ok := t.workers[fromPeerId]; !ok {
+	if _, ok := t.netMachs[fromPeerId]; !ok {
 		t.missingPeers[fromPeerId] = struct{}{}
 		t.metric("Gossip", fromPeerId)
 	}
 
 	if added > 0 {
-		t.log("Added %d new workers (total %d)", added, t.workersCount())
+		t.log("Added %d new workers (total %d)", added, t.netMachsCount())
 		t.log("Known peers == %d (missing == %d)",
-			len(t.workers), len(t.missingPeers))
+			len(t.netMachs), len(t.missingPeers))
 
 		for pid := range t.missingPeers {
 			name := t.peerName(pid)
@@ -897,7 +909,9 @@ func (t *Topic) MissPeersByGossipEnter(e *am.Event) bool {
 		}
 
 		// pass if unknown or the amount of exposed machs differs
-		if _, ok := t.workers[peerId]; !ok || len(machs) != len(t.workers[peerId]) {
+		if _, ok := t.netMachs[peerId]; !ok ||
+			len(machs) != len(t.netMachs[peerId]) {
+
 			return true
 		}
 	}
@@ -922,7 +936,7 @@ func (t *Topic) MissPeersByGossipState(e *am.Event) {
 
 		// TODO support `count` from gossip
 		// if p, ok := t.workers[peerId]; !ok || len(p) != count {
-		if _, ok := t.workers[peerId]; !ok {
+		if _, ok := t.netMachs[peerId]; !ok {
 			t.missingPeers[peerId] = struct{}{}
 			name := t.peerName(peerId)
 			if name == "" {
@@ -930,7 +944,7 @@ func (t *Topic) MissPeersByGossipState(e *am.Event) {
 			}
 			t.log("New missing %s", name)
 			t.log("Known: %d; Missing: %d",
-				len(t.workers), len(t.missingPeers))
+				len(t.netMachs), len(t.missingPeers))
 		}
 	}
 }
@@ -953,12 +967,12 @@ func (t *Topic) MissUpdatesByGossipEnter(e *am.Event) bool {
 			continue
 		}
 		// skip missing
-		if _, ok := t.workers[peerId]; !ok {
+		if _, ok := t.netMachs[peerId]; !ok {
 			continue
 		}
 
 		for machIdx, mtime := range machs {
-			m, ok := t.workers[peerId][machIdx]
+			m, ok := t.netMachs[peerId][machIdx]
 			if !ok {
 				continue
 			}
@@ -984,7 +998,7 @@ func (t *Topic) MissUpdatesByGossipState(e *am.Event) {
 			continue
 		}
 		// skip missing
-		if _, ok := t.workers[peerId]; !ok {
+		if _, ok := t.netMachs[peerId]; !ok {
 			continue
 		}
 		// init
@@ -993,7 +1007,7 @@ func (t *Topic) MissUpdatesByGossipState(e *am.Event) {
 		}
 
 		for machIdx, mtime := range machs {
-			m, ok := t.workers[peerId][machIdx]
+			m, ok := t.netMachs[peerId][machIdx]
 			if !ok {
 				t.missingUpdates[peerId][machIdx] = mtime
 				t.metric("Gossip", peerId)
@@ -1149,7 +1163,7 @@ func (t *Topic) MsgUpdatesState(e *am.Event) {
 		}
 
 		// delay if peer unknown
-		workers, ok := t.workers[peerId]
+		nms, ok := t.netMachs[peerId]
 		if !ok {
 			t.Mach.EvAdd1(e, ss.MissPeersByUpdates, Pass(&A{
 				MachClocks: machs,
@@ -1167,7 +1181,7 @@ func (t *Topic) MsgUpdatesState(e *am.Event) {
 		// for all updated machines
 		for machIdx, mtime := range machs {
 
-			w, ok := workers[machIdx]
+			nm, ok := nms[machIdx]
 			if !ok {
 				// TODO missing schema per peer
 				t.log("worker %s:%d not found, delaying..", peerId, machIdx)
@@ -1175,8 +1189,10 @@ func (t *Topic) MsgUpdatesState(e *am.Event) {
 			}
 
 			// skip old updates
-			if mtime.Sum(nil) > w.Time(nil).Sum(nil) {
-				w.InternalUpdateClock(mtime, 0, true)
+			if mtime.Sum(nil) > nm.Time(nil).Sum(nil) {
+				intApi := t.netMachsIntApi[peerId][machIdx]
+				intApi.Lock()
+				intApi.UpdateClock(mtime, 0, 0)
 			}
 
 			// clean up
@@ -1198,7 +1214,7 @@ func (t *Topic) MsgUpdatesState(e *am.Event) {
 
 	// confirm we know the sender
 	fromPeerId := args.PeerId
-	if _, ok := t.workers[fromPeerId]; !ok {
+	if _, ok := t.netMachs[fromPeerId]; !ok {
 		t.missingPeers[fromPeerId] = struct{}{}
 	}
 }
@@ -1210,10 +1226,10 @@ func (t *Topic) MsgReqInfoEnter(e *am.Event) bool {
 	}
 
 	// check if we know any of the requested peers
-	wCount := len(t.workers)
+	wCount := len(t.netMachs)
 	self := t.host.ID().String()
 	for _, peerId := range a.MsgReqInfo.PeerIds {
-		if _, ok := t.workers[peerId]; ok || peerId == self {
+		if _, ok := t.netMachs[peerId]; ok || peerId == self {
 			// only 1 known peer answers (randomly)
 			// TODO increase the probability with repeated requests
 			return wCount == 0 || rand.Intn(wCount) != 0
@@ -1231,7 +1247,7 @@ func (t *Topic) MsgReqInfoState(e *am.Event) {
 	pids := []string{}
 	for _, peerId := range args.MsgReqInfo.PeerIds {
 		// TODO skip info for peers we just sent out / received
-		if _, ok := t.workers[peerId]; ok || peerId == self {
+		if _, ok := t.netMachs[peerId]; ok || peerId == self {
 			pids = append(pids, peerId)
 		}
 
@@ -1241,7 +1257,7 @@ func (t *Topic) MsgReqInfoState(e *am.Event) {
 
 	// confirm we know the sender
 	fromPeerId := args.PeerId
-	if _, ok := t.workers[fromPeerId]; !ok {
+	if _, ok := t.netMachs[fromPeerId]; !ok {
 		t.missingPeers[fromPeerId] = struct{}{}
 	}
 
@@ -1259,10 +1275,10 @@ func (t *Topic) MsgReqUpdatesEnter(e *am.Event) bool {
 	// check if we know any the requested peers
 	self := t.host.ID().String()
 	for _, peerId := range a.MsgReqInfo.PeerIds {
-		if _, ok := t.workers[peerId]; ok || peerId == self {
+		if _, ok := t.netMachs[peerId]; ok || peerId == self {
 			// TODO increase the probability with repeated requests
 			// return rand.Intn(t.Multiplayer) != 0
-			return rand.Intn(len(t.workers)) != 0
+			return rand.Intn(len(t.netMachs)) != 0
 		}
 	}
 
@@ -1296,7 +1312,7 @@ func (t *Topic) MsgReqUpdatesState(e *am.Event) {
 		t.reqUpdate[peerId] = time.Now()
 
 		// remote peer
-		if machs, ok := t.workers[peerId]; ok {
+		if machs, ok := t.netMachs[peerId]; ok {
 			update.PeerClocks[peerId] = make(MachClocks)
 			for i, mach := range machs {
 				update.PeerClocks[peerId][i] = mach.Time(nil)
@@ -1306,7 +1322,7 @@ func (t *Topic) MsgReqUpdatesState(e *am.Event) {
 
 	// confirm we know the sender
 	fromPeerId := args.PeerId
-	if _, ok := t.workers[fromPeerId]; !ok {
+	if _, ok := t.netMachs[fromPeerId]; !ok {
 		t.missingPeers[fromPeerId] = struct{}{}
 	}
 
@@ -1380,9 +1396,9 @@ func (t *Topic) MissPeersByUpdatesExit(e *am.Event) bool {
 
 func (t *Topic) ListMachinesEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
-	return a != nil && a.WorkersCh != nil &&
+	return a != nil && a.NetMachs != nil &&
 		// check buffered channel
-		cap(a.WorkersCh) > 0
+		cap(a.NetMachs) > 0
 }
 
 // ACTIONS
@@ -1395,11 +1411,11 @@ func (t *Topic) ListMachinesState(e *am.Event) {
 	if filters == nil {
 		filters = &ListFilters{}
 	}
-	retCh := args.WorkersCh
-	ret := make([]*rpc.Worker, 0)
+	retCh := args.NetMachs
+	ret := make([]*rpc.NetworkMachine, 0)
 
 	// TODO use amhelp.Group
-	for peerId, workers := range t.workers {
+	for peerId, workers := range t.netMachs {
 		for _, w := range workers {
 
 			// ID
@@ -1511,13 +1527,13 @@ func (t *Topic) SendUpdatesState(e *am.Event) {
 }
 
 func (t *Topic) SendGossipsEnter(e *am.Event) bool {
-	if len(t.workers) == 0 {
+	if len(t.netMachs) == 0 {
 		return false
 	}
 	// randomize gossip per 1 Heartbeat
 	// TODO config
 	// if rand.Intn(t.Multiplayer) != 0 {
-	if rand.Intn(len(t.workers)) != 0 {
+	if rand.Intn(len(t.netMachs)) != 0 {
 		return false
 	}
 
@@ -1527,16 +1543,16 @@ func (t *Topic) SendGossipsEnter(e *am.Event) bool {
 func (t *Topic) SendGossipsState(e *am.Event) {
 	ctx := t.Mach.NewStateCtx(ss.SendGossips)
 
-	allPids := slices.Collect(maps.Keys(t.workers))
+	allPids := slices.Collect(maps.Keys(t.netMachs))
 	sendPids := PeerGossips{}
 	for range t.GossipAmount {
 		pid := allPids[rand.Intn(len(allPids))]
 		// skip empty peers
-		if len(t.workers[pid]) == 0 {
+		if len(t.netMachs[pid]) == 0 {
 			continue
 		}
 		sums := map[int]uint64{}
-		for i, w := range t.workers[pid] {
+		for i, w := range t.netMachs[pid] {
 			sums[i] = w.Time(nil).Sum(nil)
 		}
 		sendPids[pid] = sums
@@ -1754,15 +1770,15 @@ func (t *Topic) DoSendInfoState(e *am.Event) {
 	exposed := slices.Clone(t.ExposedMachs)
 
 	// gossip about 5 random peers
-	for range min(t.GossipAmount, len(t.workers)) {
-		ids := slices.Collect(maps.Keys(t.workers))
-		pid := ids[rand.Intn(len(t.workers))]
+	for range min(t.GossipAmount, len(t.netMachs)) {
+		ids := slices.Collect(maps.Keys(t.netMachs))
+		pid := ids[rand.Intn(len(t.netMachs))]
 		// skip empty peers
-		if len(t.workers[pid]) == 0 {
+		if len(t.netMachs[pid]) == 0 {
 			continue
 		}
 		sums := map[int]uint64{}
-		for i, w := range t.workers[pid] {
+		for i, w := range t.netMachs[pid] {
 			sums[i] = w.Time(nil).Sum(nil)
 		}
 		gossips[pid] = sums
@@ -1900,9 +1916,9 @@ func (t *Topic) GetPeerAddrs() ([]ma.Multiaddr, error) {
 	return peerAddrs, nil
 }
 
-func (t *Topic) workersCount() int {
+func (t *Topic) netMachsCount() int {
 	ret := 0
-	for _, workers := range t.workers {
+	for _, workers := range t.netMachs {
 		ret += len(workers)
 	}
 	return ret

@@ -7,17 +7,22 @@ import (
 )
 
 // DisposedStatesDef contains all the states of the Disposed state machine.
+// One a machine implements this state mixing, it HAS TO be disposed using the
+// Disposing state (instead of [am.Machine.Dispose]).
+//
 // Required states:
 // - Start
 type DisposedStatesDef struct {
 	*am.StatesBase
 
 	// RegisterDisposal registers a disposal handler passed under the
-	// DisposedArgHandler key.
+	// DisposedArgHandler key. Requires [DisposedHandlers] to be bound prior to
+	// the registration. Handlers registered via RegisterDisposal can block.
 	RegisterDisposal string
-	// Disposing indicates that the machine is during the disposal process.
+	// Disposing starts the machine disposal - first state-based and then calls
+	// [am.Machine.Dispose].
 	Disposing string
-	// Disposed indicates that the machine has disposed allocated resoruces
+	// Disposed indicates that the machine has disposed allocated resources
 	// and is ready to be garbage collected by calling [am.Machine.Dispose].
 	Disposed string
 }
@@ -30,7 +35,7 @@ type DisposedGroupsDef struct {
 // DisposedSchema represents all relations and properties of DisposedStates.
 var DisposedSchema = am.Schema{
 	ssD.RegisterDisposal: {Multi: true},
-	ssD.Disposing:        {Remove: sgD.Disposed},
+	ssD.Disposing:        {Remove: SAdd(sgD.Disposed, S{ssB.Start})},
 	ssD.Disposed:         {Remove: SAdd(sgD.Disposed, S{ssB.Start})},
 }
 
@@ -78,12 +83,11 @@ func (h *DisposedHandlers) RegisterDisposalEnter(e *am.Event) bool {
 
 func (h *DisposedHandlers) RegisterDisposalState(e *am.Event) {
 	// TODO ability to deregister a disposal handler (by ref)
+	// TODO typed args?
 	fn := e.Args[DisposedArgHandler].(am.HandlerDispose)
 	h.DisposedHandlers = append(h.DisposedHandlers, fn)
 }
 
-// DisposingState triggers a disposal procedure, but does NOT dispose the
-// machine.
 func (h *DisposedHandlers) DisposingState(e *am.Event) {
 	mach := e.Machine()
 	ctx := mach.NewStateCtx(ssD.Disposing)
@@ -97,6 +101,11 @@ func (h *DisposedHandlers) DisposingState(e *am.Event) {
 			fn(mach.Id(), ctx)
 		}
 
+		// TODO retries?
 		mach.Add1(ssD.Disposed, nil)
 	}()
+}
+
+func (h *DisposedHandlers) DisposedState(e *am.Event) {
+	go e.Machine().Dispose()
 }

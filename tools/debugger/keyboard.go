@@ -533,15 +533,15 @@ func (d *Debugger) hJumpBackKey(ev *tcell.EventKey) *tcell.EventKey {
 		// 	state = ss.ScrollToTouchTx
 		// }
 
-		// state jump
+		// state jump TODO dont block
 		amhelp.Add1Block(ctx, d.Mach, state, am.A{
 			"state": d.C.SelectedState,
 			"fwd":   false,
 		})
-		// sidebar for errs
+		// sidebar for errs TODO update in [state]
 		d.hUpdateClientList()
 	} else {
-		// fast jump
+		// fast jump TODO dont block
 		amhelp.Add1Block(ctx, d.Mach, ss.Back, am.A{
 			"amount": min(fastJumpAmount, d.C.CursorTx1),
 		})
@@ -568,15 +568,15 @@ func (d *Debugger) hJumpFwdKey(ev *tcell.EventKey) *tcell.EventKey {
 		// 	state = ss.ScrollToTouchTx
 		// }
 
-		// state jump
+		// state jump TODO dont block
 		amhelp.Add1Block(ctx, d.Mach, state, am.A{
 			"state": d.C.SelectedState,
 			"fwd":   true,
 		})
-		// sidebar for errs
+		// sidebar for errs TODO update in [state]
 		d.hUpdateClientList()
 	} else {
-		// fast jump
+		// fast jump TODO dont block
 		amhelp.Add1Block(ctx, d.Mach, ss.Fwd, am.A{
 			"amount": min(fastJumpAmount, len(d.C.MsgTxs)-d.C.CursorTx1),
 		})
