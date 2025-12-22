@@ -117,6 +117,49 @@ func remove(
 	}
 }
 
+// ///// ///// /////
+
+// ///// BINDS
+
+// ///// ///// /////
+
+// BindAny binds a whole machine via the global AnyState handler and Set
+// mutation. The target mutates the same number of times as the source.
+func BindAny(source, target am.Api) error {
+
+	// TODO assert target has all the source states
+
+	fn := func(e *am.Event) {
+		tx := e.Transition()
+
+		// set if not set
+		states := tx.TargetStates()
+		if target.Is(states) {
+
+			return
+		}
+		target.Set(states, e.Args)
+	}
+	h := &struct {
+		AnyState am.HandlerFinal
+	}{
+		AnyState: fn,
+	}
+
+	// graph info TODO? optimize in bulk
+	semLog := source.SemLogger()
+	for _, sourceState := range source.StateNames() {
+		semLog.AddPipeOut(true, sourceState, target.Id())
+		semLog.AddPipeIn(true, sourceState, source.Id())
+	}
+
+	// TODO optimize
+	source.OnDispose(gcHandler(target))
+	target.OnDispose(gcHandler(source))
+
+	return source.BindHandlers(h)
+}
+
 // BindConnected binds a [ss.ConnectedSchema] machine to 4 custom states. Each
 // one is optional and bound with Add/Remove.
 func BindConnected(

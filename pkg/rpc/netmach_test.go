@@ -4,16 +4,20 @@ package rpc
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+
 	sst "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 )
 
 type S = am.S
@@ -23,56 +27,62 @@ type (
 )
 
 func TestSingleStateActive(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsRpcWorker(t, nil)
-	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
-	w := c.Worker
+	m := utils.NewNoRelsNetSrc(t, nil)
+	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	w.Add1("A", nil)
 
 	// assert
-	assertStates(t, c.Worker, S{"A"})
+	assertStates(t, c.NetMach, S{"A"})
 
 	disposeTest(t, c, s, true)
 }
 
 func TestMultipleStatesActive(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsRpcWorker(t, nil)
-	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
-	w := c.Worker
+	m := utils.NewNoRelsNetSrc(t, nil)
+	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	w.Add(S{"A"}, nil)
 	w.Add(S{"B"}, nil)
 
 	// assert
-	assertStates(t, c.Worker, S{"A", "B"})
+	assertStates(t, c.NetMach, S{"A", "B"})
 
 	disposeTest(t, c, s, true)
 }
 
 func TestExposeAllStateNames(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsRpcWorker(t, S{"A"})
-	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
-	w := c.Worker
+	m := utils.NewNoRelsNetSrc(t, S{"A"})
+	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// assert
 	assert.Subset(t, w.StateNames(), S{"A", "B", "C", "D"})
@@ -81,16 +91,18 @@ func TestExposeAllStateNames(t *testing.T) {
 }
 
 func TestStateSet(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// amhelp.EnableDebugging(true)
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsRpcWorker(t, S{"A"})
-	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
-	w := c.Worker
+	m := utils.NewNoRelsNetSrc(t, S{"A"})
+	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	w.Set(S{"B"}, nil)
@@ -102,15 +114,17 @@ func TestStateSet(t *testing.T) {
 }
 
 func TestStateAdd(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsRpcWorker(t, S{"A"})
-	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
-	w := c.Worker
+	m := utils.NewNoRelsNetSrc(t, S{"A"})
+	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	w.Add(S{"B"}, nil)
@@ -122,18 +136,20 @@ func TestStateAdd(t *testing.T) {
 }
 
 func TestStateRemove(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsRpcWorker(t, S{"B", "C"})
-	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
+	m := utils.NewNoRelsNetSrc(t, S{"B", "C"})
+	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
 
 	// test
-	c.Worker.Remove(S{"C"}, nil)
-	w := c.Worker
+	c.NetMach.Remove(S{"C"}, nil)
+	w := c.NetMach
 
 	// assert
 	assertStates(t, w, S{"B"})
@@ -142,22 +158,24 @@ func TestStateRemove(t *testing.T) {
 }
 
 func TestRemoveRelation(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// relations
-	m := utils.NewCustomRpcWorker(t, am.Schema{
+	m := utils.NewCustomNetSrc(t, am.Schema{
 		sst.A: {},
 		sst.B: {},
 		sst.C: {Remove: S{sst.D}},
 		sst.D: {},
 	})
 	m.Add1(sst.D, nil)
-	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// C deactivates D
 	w.Add(S{"C"}, nil)
@@ -167,21 +185,23 @@ func TestRemoveRelation(t *testing.T) {
 }
 
 func TestRemoveRelationSimultaneous(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewCustomRpcWorker(t, am.Schema{
+	m := utils.NewCustomNetSrc(t, am.Schema{
 		sst.A: {},
 		sst.B: {},
 		sst.C: {Remove: S{sst.D}},
 		sst.D: {},
 	})
 	m.Add1(sst.D, nil)
-	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	r := w.Set(S{"C", "D"}, nil)
@@ -196,11 +216,11 @@ func TestRemoveRelationSimultaneous(t *testing.T) {
 func TestRemoveRelationCrossBlocking(t *testing.T) {
 	tests := []struct {
 		name string
-		fn   func(t *testing.T, w *Worker)
+		fn   func(t *testing.T, w *NetworkMachine)
 	}{
 		{
 			"using Set should de-activate the old one",
-			func(t *testing.T, w *Worker) {
+			func(t *testing.T, w *NetworkMachine) {
 				// (D:1)[A:0 B:0 C:0]
 				w.Set(S{"C"}, nil)
 				assertStates(t, w, S{"C"})
@@ -208,7 +228,7 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 		},
 		{
 			"using Set should work both ways",
-			func(t *testing.T, w *Worker) {
+			func(t *testing.T, w *NetworkMachine) {
 				// (D:1)[A:0 B:0 C:0]
 				w.Set(S{"C"}, nil)
 				assertStates(t, w, S{"C"})
@@ -218,7 +238,7 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 		},
 		{
 			"using Add should de-activate the old one",
-			func(t *testing.T, w *Worker) {
+			func(t *testing.T, w *NetworkMachine) {
 				// (D:1)[A:0 B:0 C:0]
 				w.Add(S{"C"}, nil)
 				assertStates(t, w, S{"C"})
@@ -226,7 +246,7 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 		},
 		{
 			"using Add should work both ways",
-			func(t *testing.T, w *Worker) {
+			func(t *testing.T, w *NetworkMachine) {
 				// (D:1)[A:0 B:0 C:0]
 				w.Add(S{"C"}, nil)
 				assertStates(t, w, S{"C"})
@@ -240,21 +260,23 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 		test := tests[i]
 
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+			if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+				t.Parallel()
+			}
 
 			// init
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			m := utils.NewCustomRpcWorker(t, am.Schema{
+			m := utils.NewCustomNetSrc(t, am.Schema{
 				sst.A: {},
 				sst.B: {},
 				sst.C: {Remove: S{sst.D}},
 				sst.D: {Remove: S{sst.C}},
 			})
 			m.Add1(sst.D, nil)
-			_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
-			w := c.Worker
+			_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+			w := c.NetMach
 
 			// test
 			test.fn(t, w)
@@ -276,14 +298,16 @@ func disposeTest(t *testing.T, c *Client, s *Server, checkErrs bool) {
 }
 
 func TestAddRelation(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	m := utils.NewCustomRpcWorker(t, am.Schema{
+	m := utils.NewCustomNetSrc(t, am.Schema{
 		sst.A: {Remove: S{sst.D}},
 		sst.B: {},
 		sst.C: {Add: S{sst.D}},
@@ -291,8 +315,8 @@ func TestAddRelation(t *testing.T) {
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	w.Set(S{"C"}, nil)
@@ -307,14 +331,16 @@ func TestAddRelation(t *testing.T) {
 }
 
 func TestRequireRelation(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, am.Schema{
+	mach := utils.NewCustomNetSrc(t, am.Schema{
 		sst.A: {Require: S{sst.D}},
 		sst.B: {},
 		sst.C: {},
@@ -322,8 +348,8 @@ func TestRequireRelation(t *testing.T) {
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	w.Set(S{"C", "D"}, nil)
@@ -335,14 +361,16 @@ func TestRequireRelation(t *testing.T) {
 }
 
 func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, am.Schema{
+	mach := utils.NewCustomNetSrc(t, am.Schema{
 		sst.A: {},
 		sst.B: {},
 		sst.C: {Require: S{sst.D}},
@@ -351,8 +379,8 @@ func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
 	mach.Add1(sst.A, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	w.Set(S{"C", "A"}, nil)
@@ -364,14 +392,16 @@ func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
 }
 
 func TestAutoStates(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, am.Schema{
+	mach := utils.NewCustomNetSrc(t, am.Schema{
 		sst.A: {},
 		sst.B: {
 			Auto:    true,
@@ -382,8 +412,8 @@ func TestAutoStates(t *testing.T) {
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	result := w.Add(S{"A"}, nil)
@@ -396,14 +426,16 @@ func TestAutoStates(t *testing.T) {
 }
 
 func TestSwitch(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, am.Schema{
+	mach := utils.NewCustomNetSrc(t, am.Schema{
 		sst.A: {},
 		sst.B: {},
 		sst.C: {Require: S{sst.D}},
@@ -412,8 +444,8 @@ func TestSwitch(t *testing.T) {
 	mach.Add1(sst.A, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	caseA := false
 	switch w.Switch(S{"A", "B"}) {
@@ -435,22 +467,24 @@ func TestSwitch(t *testing.T) {
 }
 
 func TestRegressionRemoveCrossBlockedByImplied(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, Schema{
+	mach := utils.NewCustomNetSrc(t, Schema{
 		"A": {Remove: S{"B"}},
 		"B": {Remove: S{"A"}},
 		"Z": {Add: S{"B"}},
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	w.Set(S{"Z"}, nil)
@@ -462,22 +496,24 @@ func TestRegressionRemoveCrossBlockedByImplied(t *testing.T) {
 }
 
 func TestRegressionImpliedBlockByBeingRemoved(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, Schema{
+	mach := utils.NewCustomNetSrc(t, Schema{
 		"Wet":   {Require: S{"Water"}},
 		"Dry":   {Remove: S{"Wet"}},
 		"Water": {Add: S{"Wet"}, Remove: S{"Dry"}},
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	w.Set(S{"Dry"}, nil)
@@ -490,18 +526,20 @@ func TestRegressionImpliedBlockByBeingRemoved(t *testing.T) {
 }
 
 func TestWhen2(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, nil)
+	mach := utils.NewNoRelsNetSrc(t, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 
@@ -533,17 +571,19 @@ func TestWhen2(t *testing.T) {
 }
 
 func TestWhenActive(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
+	mach := utils.NewNoRelsNetSrc(t, S{"A"})
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	<-w.When(S{"A"}, nil)
@@ -555,17 +595,19 @@ func TestWhenActive(t *testing.T) {
 }
 
 func TestWhenNot2(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
+	mach := utils.NewNoRelsNetSrc(t, S{"A", "B"})
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 
@@ -597,17 +639,19 @@ func TestWhenNot2(t *testing.T) {
 }
 
 func TestWhenNotActive(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
+	mach := utils.NewNoRelsNetSrc(t, S{"A"})
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	<-w.WhenNot(S{"B"}, nil)
@@ -619,14 +663,16 @@ func TestWhenNotActive(t *testing.T) {
 }
 
 func TestPartialAuto(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, am.Schema{
+	mach := utils.NewCustomNetSrc(t, am.Schema{
 		sst.A: {},
 		sst.B: {},
 		sst.C: {
@@ -641,8 +687,8 @@ func TestPartialAuto(t *testing.T) {
 	mach.Add1(sst.A, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	w.Add(S{"A"}, nil)
@@ -654,14 +700,16 @@ func TestPartialAuto(t *testing.T) {
 }
 
 func TestTime(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, am.Schema{
+	mach := utils.NewCustomNetSrc(t, am.Schema{
 		sst.A: {},
 		sst.B: {Multi: true},
 		sst.C: {},
@@ -669,8 +717,8 @@ func TestTime(t *testing.T) {
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test 1
 	// ()[]
@@ -719,7 +767,10 @@ func TestTime(t *testing.T) {
 
 // TODO WhenArgs
 // func TestWhenCtx(t *testing.T) {
-//	t.Parallel()
+//
+// 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+// 		t.Parallel()
+// 	}
 
 // init
 //	ctx, cancel := context.WithCancel(context.Background())
@@ -729,7 +780,7 @@ func TestTime(t *testing.T) {
 //	mach := amtest.NewNoRels(t, S{"A", "B"})
 //	// worker
 //	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-//	w := c.Worker
+//	w := c.NetworkMachine
 //	disposeTest(t, c, s, true)
 //
 //	// wait on 2 Whens with a step context
@@ -768,7 +819,10 @@ func TestTime(t *testing.T) {
 // }
 //
 // func TestWhenArgs(t *testing.T) {
-//	t.Parallel()
+//
+// 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+// 		t.Parallel()
+// 	}
 
 // init
 //	m := NewRels(t, nil)
@@ -801,17 +855,19 @@ func TestTime(t *testing.T) {
 // }
 
 func TestWhenTime(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
+	mach := utils.NewNoRelsNetSrc(t, S{"A", "B"})
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// bind
 	// (A:1 B:1)
@@ -843,14 +899,16 @@ func TestWhenTime(t *testing.T) {
 }
 
 func TestIs(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, am.Schema{
+	mach := utils.NewCustomNetSrc(t, am.Schema{
 		sst.A: {},
 		sst.B: {
 			Auto:    true,
@@ -862,8 +920,8 @@ func TestIs(t *testing.T) {
 	mach.Add(S{sst.A, sst.B}, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	assert.True(t, w.Is(S{"A", "B"}), "A B should be active")
@@ -873,14 +931,16 @@ func TestIs(t *testing.T) {
 }
 
 func TestNot(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, am.Schema{
+	mach := utils.NewCustomNetSrc(t, am.Schema{
 		sst.A: {},
 		sst.B: {
 			Auto:    true,
@@ -892,8 +952,8 @@ func TestNot(t *testing.T) {
 	mach.Add(S{sst.A, sst.B}, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	assert.False(t, w.Not(S{"A", "B"}), "A B should be active")
@@ -904,14 +964,16 @@ func TestNot(t *testing.T) {
 }
 
 func TestAny(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, am.Schema{
+	mach := utils.NewCustomNetSrc(t, am.Schema{
 		sst.A: {},
 		sst.B: {
 			Auto:    true,
@@ -923,8 +985,8 @@ func TestAny(t *testing.T) {
 	mach.Add(S{sst.A, sst.B}, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	assert.True(t, w.Any(S{"A", "B"}, S{"C"}), "A B should be active")
@@ -935,14 +997,16 @@ func TestAny(t *testing.T) {
 }
 
 func TestClock(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewCustomRpcWorker(t, am.Schema{
+	mach := utils.NewCustomNetSrc(t, am.Schema{
 		sst.A: {},
 		sst.B: {Multi: true},
 		sst.C: {},
@@ -950,8 +1014,8 @@ func TestClock(t *testing.T) {
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test 1
 	// ()[]
@@ -997,38 +1061,40 @@ func TestClock(t *testing.T) {
 }
 
 func TestInspect(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewRelsRpcWorker(t, S{"A", "C"})
+	mach := utils.NewRelsNetSrc(t, S{"A", "C"})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// (A:1 C:1)[B:0 D:0 Exception:0]
 	names := S{"A", "B", "C", "D", "Exception"}
 	expected := `
     1 A
-        |Time     1
+        |Tick     1
         |Auto     true
         |Require  C
     0 B
-        |Time     0
+        |Tick     0
         |Multi    true
         |Add      C
     1 C
-        |Time     1
+        |Tick     1
         |After    D
     0 D
-        |Time     0
+        |Tick     0
         |Add      C B
     0 Exception
-        |Time     0
+        |Tick     0
         |Multi    true
 		`
 	assertString(t, w, expected, names)
@@ -1041,30 +1107,33 @@ func TestInspect(t *testing.T) {
 	// (A:3 B:1 C:3 D:1)[Exception:0]
 	expected = `
 		0 Exception
-		    |Time     0
+		    |Tick     0
 		    |Multi    true
 		1 A
-		    |Time     3
+		    |Tick     3
 		    |Auto     true
 		    |Require  C
 		1 B
-		    |Time     1
+		    |Tick     1
 		    |Multi    true
 		    |Add      C
 		1 C
-		    |Time     3
+		    |Tick     3
 		    |After    D
 		1 D
-		    |Time     1
+		    |Tick     1
 		    |Add      C B
+		0 ErrOnClient
+		    |Tick     0
+		    |Require  Exception
 		0 ErrProviding
-		    |Time     0
+		    |Tick     0
 		    |Require  Exception
 		0 ErrSendPayload
-		    |Time     0
+		    |Tick     0
 		    |Require  Exception
 		0 SendPayload
-		    |Time     0
+		    |Tick     0
 		    |Multi    true
 	`
 	assertString(t, w, expected, nil)
@@ -1073,23 +1142,25 @@ func TestInspect(t *testing.T) {
 }
 
 func TestString(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, S{"A", "B"})
+	mach := utils.NewNoRelsNetSrc(t, S{"A", "B"})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	assert.Equal(t, "(A:1 B:1)", w.String())
-	assert.Equal(t, "(A:1 B:1) [Exception:0 C:0 D:0 ErrProviding:0"+
-		" ErrSendPayload:0 SendPayload:0]",
+	assert.Equal(t, "(A:1 B:1) [Exception:0 C:0 D:0 ErrOnClient:0 "+
+		"ErrProviding:0 ErrSendPayload:0 SendPayload:0]",
 		w.StringAll())
 
 	disposeTest(t, c, s, true)
@@ -1110,21 +1181,23 @@ func (h *TestNestedMutationHandlers) AState(e *am.Event) {
 }
 
 func TestNestedMutation(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, nil)
+	mach := utils.NewNoRelsNetSrc(t, nil)
 	// bind handlers
 	err := mach.BindHandlers(&TestNestedMutationHandlers{})
 	assert.NoError(t, err)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	w.Add1("A", nil)
@@ -1136,15 +1209,17 @@ func TestNestedMutation(t *testing.T) {
 }
 
 func TestIsClock(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsRpcWorker(t, nil)
-	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
-	w := c.Worker
+	m := utils.NewNoRelsNetSrc(t, nil)
+	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	cA := w.Clock(S{"A"})
@@ -1159,15 +1234,17 @@ func TestIsClock(t *testing.T) {
 }
 
 func TestIsTime(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsRpcWorker(t, nil)
-	_, _, s, c := NewTest(t, ctx, m, nil, nil, nil, false)
-	w := c.Worker
+	m := utils.NewNoRelsNetSrc(t, nil)
+	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	tA := w.Time(S{"A"})
@@ -1183,7 +1260,10 @@ func TestIsTime(t *testing.T) {
 
 // TODO
 // func TestExport(t *testing.T) {
-//	t.Parallel()
+//
+// 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+// 		t.Parallel()
+// 	}
 
 // init
 //	m1 := NewNoRels(t, S{"A"})
@@ -1202,55 +1282,57 @@ func TestIsTime(t *testing.T) {
 
 // TestWhenQueue
 type TestWhenQueueTracer struct {
-	*am.NoOpTracer
+	*am.TracerNoOp
 	done chan struct{}
 	t    *testing.T
 }
 
 func (tr *TestWhenQueueTracer) TransitionEnd(tx *am.Transition) {
-	m := tx.Api
-	// only when setting A
-	if tx.TimeBefore.Is1(m.Index1("A")) {
-		return
-	}
-
-	m.Add1("B", nil)
-	m.Add1("C", nil)
-	// TODO pause queue in the source machine's handler
-	// res := m.Add1("D", nil)
-	res := am.Result(5)
-	m.Add1("D", nil)
-
+	// dont mutate in a tracer
 	go func() {
+		m := tx.MachApi
+		// only when setting A
+		if tx.TimeBefore.Is1(m.Index1("A")) {
+			return
+		}
+
+		m.Add1("B", nil)
+		m.Add1("C", nil)
+		// TODO pause queue in the source machine's handler
+		// res := m.Add1("D", nil)
+		res := am.Result(5)
+		m.Add1("D", nil)
+
 		<-m.WhenQueue(res)
 		assertStates(tr.t, m, S{"A", "B", "C", "D"})
 		close(tr.done)
 	}()
 }
 
-// TODO bind via handlers
 func TestWhenQueue(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, nil)
+	mach := utils.NewNoRelsNetSrc(t, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	nm := c.NetMach
 
 	// test
 	tr := &TestWhenQueueTracer{
 		t:    t,
 		done: make(chan struct{}),
 	}
-	require.NoError(t, w.BindTracer(tr))
+	require.NoError(t, nm.BindTracer(tr))
 
-	w.Add1("A", nil)
+	nm.Add1("A", nil)
 	// TODO weird close-doesnt-unblock bug in go1.25
 	select {
 	case <-tr.done:
@@ -1263,18 +1345,20 @@ func TestWhenQueue(t *testing.T) {
 }
 
 func TestWhenQuery(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsRpcWorker(t, S{"A"})
+	mach := utils.NewNoRelsNetSrc(t, S{"A"})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, nil, nil, false)
-	w := c.Worker
+	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	w := c.NetMach
 
 	// test
 	query1 := func(c am.Clock) bool {
@@ -1317,5 +1401,41 @@ func TestWhenQuery(t *testing.T) {
 	}
 
 	// dispose
+	disposeTest(t, c, s, true)
+}
+
+func TestPipes(t *testing.T) {
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+	// amhelp.EnableDebugging(true)
+
+	// machine
+	ctx := context.Background()
+	netSrc := utils.NewNoRelsNetSrc(t, S{"A"})
+	local := utils.NewNoRels(t, nil, "-local")
+	amhelp.MachDebugEnv(local)
+
+	// connect
+	_, _, s, c := NewTest(t, ctx, netSrc, nil, 0, false, nil, nil)
+	amhelp.MachDebug(c.NetMach, "localhost:6831", am.LogOps, true,
+		amhelp.SemConfigEnv(true))
+
+	local.AddBreakpoint1("A", "", false)
+	local.AddBreakpoint1("B", "", false)
+
+	// sync and pipe from network version to a full local
+	// TODO pause RPC client?
+	local.Set(c.NetMach.ActiveStates(nil), nil)
+	require.NoError(t, ampipe.BindAny(c.NetMach, local))
+
+	// mutate
+	netSrc.Add(S{"A", "B"}, nil)
+	amhelpt.WaitForAll(t, t.Name(), ctx, time.Second,
+		local.When(am.S{"A", "B"}, nil))
+
+	t.Log("OK")
+
+	local.Dispose()
 	disposeTest(t, c, s, true)
 }
