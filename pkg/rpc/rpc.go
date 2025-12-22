@@ -2,6 +2,7 @@
 package rpc
 
 import (
+	"bufio"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -43,6 +44,8 @@ const (
 	// EnvAmReplDir is a dir path to save the address file as
 	// $AM_REPL_DIR/mach-id.addr. Optional.
 	EnvAmReplDir = "AM_REPL_DIR"
+
+	PrefixNetMach = "rnm-"
 )
 
 var ss = states.SharedStates
@@ -78,37 +81,60 @@ var (
 
 	// methods define on the client
 
-	ClientSetClock     = ClientMethod{"ClientSetClock"}
-	ClientPushAllTicks = ClientMethod{"ClientPushAllTicks"}
-	ClientSendPayload  = ClientMethod{"ClientSendPayload"}
-	ClientBye          = ClientMethod{"ClientBye"}
-	ClientSchemaChange = ClientMethod{"SchemaChange"}
+	ClientUpdate          = ClientMethod{"ClientSetClock"}
+	ClientUpdateMutations = ClientMethod{"ClientSetClockMany"}
+	ClientPushAllTicks    = ClientMethod{"ClientPushAllTicks"}
+	ClientSendPayload     = ClientMethod{"ClientSendPayload"}
+	ClientBye             = ClientMethod{"ClientBye"}
+	ClientSchemaChange    = ClientMethod{"SchemaChange"}
 
-	ClientMethods = enum.New(ClientSetClock, ClientPushAllTicks,
+	ClientMethods = enum.New(ClientUpdate, ClientPushAllTicks,
 		ClientSendPayload, ClientBye, ClientSchemaChange)
 )
 
-type ArgsHello struct {
-	ReqSchema bool
+// MSGS TODO migrate to msgpack, shorten names
+
+// MsgCliHello is the client saying hello to the server.
+type MsgCliHello struct {
+	// ID of the client saying Hello.
+	Id string
+	// Client wants to synchronize the schema.
+	SyncSchema bool
+	// Hash of the current schema, or "". Schema is always full and not affected
+	// by [MsgCliHello.AllowedStates] or [MsgCliHello.SkippedStates].
+	SchemaHash    string
+	SyncMutations bool
+	AllowedStates am.S
+	SkippedStates am.S
+	ShallowClocks bool
+	// TODO WhenArgs: []{ map[string]string: token }
 }
 
-// ArgsMut is args for mutation methods.
-type ArgsMut struct {
+// MsgSrvHello is the server saying hello to the client.
+type MsgSrvHello struct {
+	Schema     am.Schema
+	Serialized *am.Serialized
+	// total source states count
+	StatesCount uint32
+}
+
+// MsgCliMutation is the client requesting a mutation from the server.
+type MsgCliMutation struct {
 	States []int
 	Args   am.A
 	Event  *am.Event
 }
 
-type ArgsGet struct {
-	Name string
+// MsgSrvMutation is the server replying to a mutation request for the client.
+type MsgSrvMutation struct {
+	Update    *MsgSrvUpdate
+	Mutations *MsgSrvUpdateMuts
+	Result    am.Result
 }
 
-type ArgsLog struct {
-	Msg  string
-	Args []any
-}
-
-type ArgsPayload struct {
+// MsgSrvPayload is the server sending a payload to the client.
+type MsgSrvPayload struct {
+	// Name is used to distinguish different payload types at the destination.
 	Name string
 	// Source is the machine ID that sent the payload.
 	Source string
@@ -120,37 +146,38 @@ type ArgsPayload struct {
 	// Data is the payload data. The Consumer has to know the type.
 	Data any
 
+	// internal
+
 	// Token is a unique random ID for the payload. Autofilled by the server.
 	Token string
 }
 
-type RespHandshake struct {
-	Schema     am.Schema
-	Serialized *am.Serialized
-}
-
-type RespResult struct {
-	Clock  *ClockMsg
-	Result am.Result
-}
-
-type RespSync struct {
+// MsgSrvSync is the server replying to a full sync request from the client.
+type MsgSrvSync struct {
 	Time      am.Time
 	QueueTick uint64
+	MachTick  uint32
 }
 
-type RespGet struct {
-	Value any
-}
+// TODO type MsgCliWhenArgs struct {}
 
-type Empty struct{}
+// MsgEmpty is an empty message of either the server or client.
+type MsgEmpty struct{}
 
-type ClockMsg struct {
-	// Updates contain an incremental diffs of [stateIdx, diff].
-	Updates [][2]int
+// MsgSrvUpdate is the server telling the client about a net source's update.
+type MsgSrvUpdate struct {
+	// Indexes of incremented states.
+	Indexes []uint16
+	// Clock diffs of incremented states.
+	// TODO optimize: []uint16 and send 2 updates when needed
+	Ticks []uint32
+	// TODO optimize: for shallow clocks
+	// Active []bool
 	// QueueTick is an incremental diff for the queue tick.
-	QueueTick int
-	// Checksum is the last digit of (TimeSum + QueueTick)
+	QueueTick uint16
+	// MachTick is an incremental diff for the machine tick.
+	MachTick uint8
+	// Checksum is the last digit of (TimeSum + QueueTick + MachTick)
 	Checksum uint8
 	// DBGSum       uint64
 	// DBGLastSum   uint64
@@ -158,14 +185,14 @@ type ClockMsg struct {
 	// DBGLastQTick uint64
 }
 
-// PushAllTicks TODO implement
-// PushAllTicks should list all the mutations, with clocks and queue ticks
-// which then will be processed as a queue. The client reconstructs the tx on
-// his side. TODO mind partially accepted auto states (fake called states).
-type PushAllTicks struct {
+// MsgSrvUpdateMuts is like [MsgSrvUpdate] but contains several clock updates
+// (one for each mutation), as well as extra mutation info.
+type MsgSrvUpdateMuts struct {
+	// TODO mind partially accepted auto states (fake called states).
+	// Auto         bool
 	MutationType []am.MutationType
-	CalledStates [][]int
-	ClockMsg     []*ClockMsg
+	CalledStates [][]uint16
+	Updates      []MsgSrvUpdate
 }
 
 // clientServerMethods is a shared interface for RPC client/server.
@@ -173,6 +200,7 @@ type clientServerMethods interface {
 	GetKind() Kind
 }
 
+// Kind of the RCP component.
 type Kind string
 
 const (
@@ -195,7 +223,8 @@ type A struct {
 	Name      string `log:"name"`
 	MachTime  am.Time
 	QueueTick uint64
-	Payload   *ArgsPayload
+	MachTick  uint32
+	Payload   *MsgSrvPayload
 	Addr      string `log:"addr"`
 	Err       error
 	Method    string `log:"addr"`
@@ -212,7 +241,9 @@ type ARpc struct {
 	Id        string `log:"id"`
 	Name      string `log:"name"`
 	MachTime  am.Time
-	Payload   *ArgsPayload
+	QueueTick uint64
+	MachTick  uint32
+	Payload   *MsgSrvPayload
 	Addr      string `log:"addr"`
 	Err       error
 	Method    string `log:"addr"`
@@ -252,7 +283,7 @@ func LogArgs(args am.A) map[string]string {
 }
 
 // // DEBUG for perf testing TODO tag
-// type ClockMsg am.Time
+// type MsgSrvUpdate am.Time
 
 // ///// ///// /////
 
@@ -264,22 +295,27 @@ func LogArgs(args am.A) map[string]string {
 type serverRpcMethods interface {
 	// rpc
 
-	RemoteHello(client *rpc2.Client, args *ArgsHello, resp *RespHandshake) error
+	RemoteHello(client *rpc2.Client, args *MsgCliHello, resp *MsgSrvHello) error
 
 	// mutations
 
-	RemoteAdd(client *rpc2.Client, args *ArgsMut, resp *RespResult) error
-	RemoteRemove(client *rpc2.Client, args *ArgsMut, resp *RespResult) error
-	RemoteSet(client *rpc2.Client, args *ArgsMut, reply *RespResult) error
+	RemoteAdd(
+		client *rpc2.Client, args *MsgCliMutation, resp *MsgSrvMutation) error
+	RemoteRemove(
+		client *rpc2.Client, args *MsgCliMutation, resp *MsgSrvMutation) error
+	RemoteSet(
+		client *rpc2.Client, args *MsgCliMutation, reply *MsgSrvMutation) error
 }
 
 // clientRpcMethods is the RPC server exposed by the RPC client for bi-di comm.
 type clientRpcMethods interface {
-	RemoteSetClock(worker *rpc2.Client, args *ClockMsg, resp *Empty) error
+	RemoteUpdate(worker *rpc2.Client, args *MsgSrvUpdate, resp *MsgEmpty) error
+	RemoteUpdateMutations(
+		worker *rpc2.Client, args *MsgSrvUpdateMuts, resp *MsgEmpty) error
 	RemoteSendingPayload(
-		worker *rpc2.Client, file *ArgsPayload, resp *Empty,
-	) error
-	RemoteSendPayload(worker *rpc2.Client, file *ArgsPayload, resp *Empty) error
+		worker *rpc2.Client, file *MsgSrvPayload, resp *MsgEmpty) error
+	RemoteSendPayload(
+		worker *rpc2.Client, file *MsgSrvPayload, resp *MsgEmpty) error
 }
 
 // ///// ///// /////
@@ -388,7 +424,7 @@ func (h *ExceptionHandler) ExceptionEnter(e *am.Event) bool {
 // ///// ///// /////
 
 type semLogger struct {
-	mach  *Worker
+	mach  *NetworkMachine
 	steps atomic.Bool
 	graph atomic.Bool
 }
@@ -541,22 +577,24 @@ func (s *semLogger) IsCan() bool {
 // ///// REMOTE HANDLERS
 
 // ///// ///// /////
-
-type remoteHandler struct {
+// handler represents a single event consumer, synchronized by channels.
+type handler struct {
 	h            any
-	funcNames    []string
-	funcCache    map[string]reflect.Value
+	name         string
+	mx           sync.Mutex
+	methods      *reflect.Value
+	methodCache  map[string]reflect.Value
 	missingCache map[string]struct{}
 }
 
-func newRemoteHandler(
-	h any,
-	funcNames []string,
-) *remoteHandler {
-	return &remoteHandler{
-		h:            h,
-		funcNames:    funcNames,
-		funcCache:    make(map[string]reflect.Value),
+func newHandler(
+	handlers any, name string, methods *reflect.Value,
+) *handler {
+	return &handler{
+		name:         name,
+		h:            handlers,
+		methods:      methods,
+		methodCache:  make(map[string]reflect.Value),
 		missingCache: make(map[string]struct{}),
 	}
 }
@@ -567,44 +605,324 @@ func newRemoteHandler(
 
 // ///// ///// /////
 
-// WorkerTracer is a tracer for local worker machines (event source).
-type WorkerTracer struct {
-	*am.NoOpTracer
+type tracerData struct {
+	mTrackedTimeSum uint64
+	// time is either source-bound or client-bound (if no schema)
+	mTime     am.Time
+	queueTick uint64
+	machTick  uint32
+	// tracked-states-only checksum
+	checksum uint8
+	tracked  am.S
+	// tracked idx -> machine idx
+	trackedIdxs []int
+	// mach time on the client according to tracked states
+	// mTimeSumClient uint64
+}
+
+type tracerMutation struct {
+	mutType    am.MutationType
+	calledIdxs []int
+	data       tracerData
+}
+
+// sourceTracer is a tracer for source state-machines, used by the RPC server
+// to produce updates for the RPC client.
+type sourceTracer struct {
+	*am.TracerNoOp
 
 	s *Server
+	// tracer needs explicit activation
+	active bool
+	// latest data, possibly already sent
+	dataLatest *tracerData
+	// unsent data generated for each mutations
+	dataQueue []tracerMutation
+
+	// list of states this tracer is syncing
+	trackedStates am.S
+	// tracked idx -> machine idx
+	trackedStateIdxs []int
 }
 
-func (t *WorkerTracer) TransitionEnd(tx *am.Transition) {
-	// TODO channel and value in atomic, skip dups (smaller tick values)
-	go func() {
-		t.s.mutMx.Lock()
-		defer t.s.mutMx.Unlock()
+// getters
 
-		t.s.pushClockUpdate(false)
+func (t *sourceTracer) DataLatest() *tracerData {
+	// lock
+	t.s.lockCollection.Lock()
+	defer t.s.lockCollection.Unlock()
+
+	// copy
+	data := t.dataLatest
+	if data == nil {
+		return nil
+	}
+	ret := *data
+
+	return &ret
+}
+
+func (t *sourceTracer) DataQueue() []tracerMutation {
+	// lock
+	t.s.lockCollection.Lock()
+	defer t.s.lockCollection.Unlock()
+
+	// copy and flush
+	ret := t.dataQueue
+	t.dataLatest = nil
+
+	return ret
+}
+
+// tracing
+
+func (t *sourceTracer) TransitionEnd(tx *am.Transition) {
+	s := t.s
+	srcMach := s.Source
+
+	// lock
+	s.lockCollection.Lock()
+	defer s.lockCollection.Unlock()
+
+	if !t.active {
+		return
+	}
+
+	// init cache
+	allStates := tx.Machine.StateNames()
+	if t.trackedStates == nil {
+		t.calcTrackedStates(allStates)
+	}
+
+	qTick := srcMach.QueueTick()
+	machTick := srcMach.MachineTick()
+	mTime := srcMach.Time(nil)
+	trackedTSum := mTime.Filter(t.trackedStateIdxs).Sum(nil)
+
+	// filter the time slice
+	if !s.syncSchema {
+		mTime = mTime.Filter(t.trackedStateIdxs)
+	}
+	if s.syncShallowClocks {
+		mTime = am.NewTime(mTime, mTime.ActiveStates(nil))
+		trackedTSum = mTime.Sum(nil)
+	}
+
+	// update
+	d := &tracerData{
+		mTime:           mTime,
+		mTrackedTimeSum: trackedTSum,
+		// mTimeSumClient: mTimeClient.Sum(nil),
+		queueTick:   qTick,
+		machTick:    machTick,
+		checksum:    Checksum(trackedTSum, qTick, machTick),
+		tracked:     t.trackedStates,
+		trackedIdxs: t.trackedStateIdxs,
+	}
+	t.dataLatest = d
+
+	// DEBUG
+	// if srcMach.Id() == "ns-TestPartial" {
+	// 	fmt.Printf("[T] [%+v] %d %d\n", d.mTime, qTick, machTick)
+	// 	fmt.Printf("[T] check %d\n", d.checksum)
+	// }
+
+	// mutations
+	if s.syncMutations {
+		mut := tx.Mutation
+		// skip non-tracked called states
+		called := slices.DeleteFunc(mut.Called, func(idx int) bool {
+			return !slices.Contains(t.trackedStateIdxs, idx)
+		})
+		t.dataQueue = append(t.dataQueue, tracerMutation{
+			mutType:    mut.Type,
+			calledIdxs: called,
+			data:       *d,
+		})
+	}
+
+	calledTracked := am.StatesShared(tx.TargetStates(), t.trackedStates)
+
+	// TODO optimize: fork max 1?
+	go func() {
+		s.log("tracer push: tt%d q%d (check:%d) %s", trackedTSum, qTick,
+			d.checksum, calledTracked)
+
+		// try to push this tx to the client
+		t.s.pushClient()
 	}()
 }
 
-func (t *WorkerTracer) SchemaChange(mach am.Api, oldSchema am.Schema) {
-	go func() {
-		t.s.mutMx.Lock()
-		defer t.s.mutMx.Unlock()
+func (t *sourceTracer) SchemaChange(mach am.Api, oldSchema am.Schema) {
+	s := t.s
 
-		if c := t.s.rpcClient.Load(); c != nil {
-			msg := &RespHandshake{
-				Schema:     mach.Schema(),
-				Serialized: mach.Export(),
+	// lock
+	s.lockCollection.Lock()
+	defer s.lockCollection.Unlock()
+
+	if !t.active {
+		return
+	}
+
+	msg := &MsgSrvHello{}
+	msg.Serialized, msg.Schema, _ = mach.Export()
+	msg.StatesCount = uint32(len(msg.Serialized.StateNames))
+	allStates := msg.Serialized.StateNames
+
+	// client-bound indexes when no schema synced
+	export := msg.Serialized
+	if !s.syncSchema {
+		export.StateNames = am.StatesShared(export.StateNames,
+			s.tracer.trackedStates)
+		export.Time = export.Time.Filter(s.tracer.trackedStateIdxs)
+
+		// zero non-tracked for consistent checksums
+	} else {
+		for i := range allStates {
+			if slices.Contains(s.tracer.trackedStateIdxs, i) {
+				continue
 			}
-			err := c.CallWithContext(mach.Ctx(),
-				ClientSchemaChange.Value, msg, &Empty{})
-			mach.AddErr(err, nil)
+			export.Time[i] = 0
 		}
+	}
+
+	// init cache
+	if t.trackedStates == nil {
+		t.calcTrackedStates(allStates)
+	}
+
+	// memorize
+	d := s.lastPushData
+	d.mTime = export.Time
+	d.queueTick = export.QueueTick
+	d.mTrackedTimeSum = export.Time.Sum(nil)
+	d.checksum = Checksum(d.mTrackedTimeSum, d.queueTick, d.machTick)
+
+	// fork and push
+	go func() {
+		client := t.s.rpcClient.Load()
+		if client == nil {
+			return
+		}
+
+		s.lockExport.Lock()
+		defer s.lockExport.Unlock()
+
+		// send
+		err := client.CallWithContext(mach.Ctx(), ClientSchemaChange.Value, msg,
+			&MsgEmpty{})
+		mach.AddErr(err, nil)
 	}()
 }
 
-// TODO implement as an optimization
-// func (t *WorkerTracer) QueueEnd(_ *am.Transition) {
-//	t.s.pushClockUpdate()
-// }
+// internal
+
+func (t *sourceTracer) calcTrackedStates(states am.S) {
+	s := t.s
+
+	t.trackedStates = states
+	if s.syncAllowedStates != nil {
+		t.trackedStates = am.StatesShared(t.trackedStates, s.syncAllowedStates)
+	}
+	t.trackedStates = am.StatesDiff(t.trackedStates, s.syncSkippedStates)
+	t.trackedStateIdxs = make([]int, len(t.trackedStates))
+	for i, name := range t.trackedStates {
+		t.trackedStateIdxs[i] = slices.Index(states, name)
+	}
+}
+
+// ///// ///// /////
+
+// ///// MSGPACK
+
+// ///// ///// /////
+// TODO
+
+type msgpackCoded struct {
+	rwc io.ReadWriteCloser
+	// TODO
+	dec    *gob.Decoder
+	enc    *gob.Encoder
+	encBuf *bufio.Writer
+	mutex  sync.Mutex
+}
+
+type msgpackMsg struct {
+	Seq    uint64
+	Method string
+	Error  string
+}
+
+// TODO optimize with msgpack
+func NewMsgpackCodec(conn io.ReadWriteCloser) rpc2.Codec {
+	buf := bufio.NewWriter(conn)
+	return &msgpackCoded{
+		rwc: conn,
+		// TODO
+		dec:    gob.NewDecoder(conn),
+		enc:    gob.NewEncoder(buf),
+		encBuf: buf,
+	}
+}
+
+func (c *msgpackCoded) ReadHeader(
+	req *rpc2.Request, resp *rpc2.Response,
+) error {
+	var msg msgpackMsg
+	if err := c.dec.Decode(&msg); err != nil {
+		return err
+	}
+
+	if msg.Method != "" {
+		req.Seq = msg.Seq
+		req.Method = msg.Method
+	} else {
+		resp.Seq = msg.Seq
+		resp.Error = msg.Error
+	}
+	return nil
+}
+
+func (c *msgpackCoded) ReadRequestBody(body interface{}) error {
+	return c.dec.Decode(body)
+}
+
+func (c *msgpackCoded) ReadResponseBody(body interface{}) error {
+	return c.dec.Decode(body)
+}
+
+func (c *msgpackCoded) WriteRequest(
+	r *rpc2.Request, body interface{},
+) (err error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if err = c.enc.Encode(r); err != nil {
+		return
+	}
+	if err = c.enc.Encode(body); err != nil {
+		return
+	}
+
+	return c.encBuf.Flush()
+}
+
+func (c *msgpackCoded) WriteResponse(
+	r *rpc2.Response, body interface{},
+) (err error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if err = c.enc.Encode(r); err != nil {
+		return
+	}
+	if err = c.enc.Encode(body); err != nil {
+		return
+	}
+	return c.encBuf.Flush()
+}
+
+func (c *msgpackCoded) Close() error {
+	return c.rwc.Close()
+}
 
 // ///// ///// /////
 
@@ -653,7 +971,7 @@ func MachRepl(
 
 	if mach.HasHandlers() && !mach.Has(ssW.Names()) {
 		err := fmt.Errorf(
-			"%w: REPL source has to implement pkg/rpc/states/WorkerStatesDef",
+			"%w: REPL source has to implement pkg/rpc/states/NetSourceStatesDef",
 			am.ErrSchema)
 
 		// panic only early
@@ -724,73 +1042,23 @@ func MachRepl(
 }
 
 // // DEBUG for perf testing
-// func NewClockMsg(before, after am.Time) ClockMsg {
-//	return ClockMsg(after)
+// func NewClockMsg(before, after am.Time) MsgSrvUpdate {
+//	return MsgSrvUpdate(after)
 // }
 //
 // // DEBUG for perf testing
-// func ClockFromMsg(before am.Time, msg ClockMsg) am.Time {
+// func clockFromUpdate(before am.Time, msg MsgSrvUpdate) am.Time {
 //	return am.Time(msg)
 // }
 
-func Checksum(mTime uint64, qTick uint64) uint8 {
-	return uint8(mTime+qTick) % 10
+// Checksum calculates a short checksum of current machine time and ticks.
+func Checksum(mTime uint64, qTick uint64, machTick uint32) uint8 {
+	return uint8(mTime + qTick + uint64(machTick))
 }
 
-// NewClockMsg create a new diff update based on the last and current machine
-// time, and last and current queue tick.
-func NewClockMsg(
-	tSum uint64, tBefore, tAfter am.Time, qBefore, qAfter uint64,
-) *ClockMsg {
-	ret := &ClockMsg{
-		QueueTick: int(qAfter) - int(qBefore),
-		Checksum:  Checksum(tSum, qAfter),
-
-		// debug
-		// DBGSum:       tSum,
-		// DBGQTick:     qAfter,
-		// DBGLastSum:   tBefore.Sum(),
-		// DBGLastQTick: qBefore,
-	}
-
-	for stateIdx := range tAfter {
-		// first call or new schema
-		if tBefore == nil || stateIdx >= len(tBefore) {
-			// TODO test this path, eg schema update
-			ret.Updates = append(ret.Updates,
-				[2]int{stateIdx, int(tAfter[stateIdx])})
-
-			// regular update
-		} else if tBefore[stateIdx] != tAfter[stateIdx] {
-			ret.Updates = append(ret.Updates,
-				[2]int{stateIdx, int(tAfter[stateIdx] - tBefore[stateIdx])})
-		}
-	}
-
-	return ret
-}
-
-func ClockFromMsg(
-	timeBefore am.Time, qTickBefore uint64, msg *ClockMsg,
-) (am.Time, uint64) {
-	// calculate
-	timeAfter := slices.Clone(timeBefore)
-	l := len(timeAfter)
-
-	for _, v := range msg.Updates {
-		key := v[0]
-		val := v[1]
-		if key >= l {
-			// TODO
-			continue
-		}
-		timeAfter[key] += uint64(val)
-	}
-	qTickAfter := qTickBefore + uint64(msg.QueueTick)
-
-	return timeAfter, qTickAfter
-}
-
+// TrafficMeter measures the traffic of a listener and forwards it to a
+// destination. Results are sent to the [counter] channel. Useful for testing
+// and benchmarking.
 func TrafficMeter(
 	listener net.Listener, fwdTo string, counter chan<- int64,
 	end <-chan struct{},

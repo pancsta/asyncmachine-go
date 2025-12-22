@@ -23,6 +23,7 @@ var ssM = states.MuxStates
 // Mux creates a new RPC server for each incoming connection.
 type Mux struct {
 	*am.ExceptionHandler
+
 	Mach *am.Machine
 	// Source is the state source to expose via RPC. Required if NewServerFn
 	// isnt provided.
@@ -226,7 +227,7 @@ func (m *Mux) accept(l net.Listener) {
 		server.Conn = conn
 		server.Start()
 
-		// TODO re-use old instances
+		// TODO optimize: re-use old instances?
 		// TODO handle with a state, not a goroutine
 		go func() {
 			// dispose on disconnect

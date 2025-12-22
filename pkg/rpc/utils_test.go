@@ -32,3 +32,5 @@ func assertString(
 		strings.Trim(dedent.Dedent(expected), "\n"),
 		strings.Trim(m.Inspect(states), "\n"))
 }
+
+// TODO testing.T-bound TimeIndex for assertions

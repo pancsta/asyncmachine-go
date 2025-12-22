@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,7 +24,7 @@ import (
 
 var (
 	ssS = states.ServerStates
-	ssW = states.WorkerStates
+	ssW = states.NetSourceStates
 )
 
 // Server is an RPC server that can be bound to a worker machine and provide
@@ -38,47 +39,57 @@ type Server struct {
 	Addr string
 	// DeliveryTimeout is a timeout for SendPayload to the client.
 	DeliveryTimeout time.Duration
-	// PushInterval is the interval for clock updates, effectively throttling
-	// the number of updates sent to the client within the interval window.
-	// 0 means pushes are disabled. Setting to a very small value will make
-	// pushes instant.
-	PushInterval time.Duration
-	// PushAllTicks will push all ticks to the client, enabling client-side
-	// final handlers. TODO more info, implement via a queue
-	PushAllTicks bool
 	// Listener can be set manually before starting the server.
 	Listener atomic.Pointer[net.Listener]
 	// Conn can be set manually before starting the server.
 	Conn net.Conn
 	// NoNewListener will prevent the server from creating a new listener if
-	// one is not provided, or has been closed. Useful for cmux.
+	// one is not provided or has been closed. Useful for cmux.
 	NoNewListener bool
 	LogEnabled    bool
 	CallCount     uint64
 
+	// sync settings
+
+	// PushInterval is the interval for clock updates, effectively throttling
+	// the number of updates sent to the client within the interval window.
+	// 0 means pushes are disabled. Setting to a very small value will make
+	// pushes instant.
+	PushInterval time.Duration
+	// syncMutations will push all clock changes for each mutation, enabling
+	// client-side mutation filtering.
+	syncMutations     bool
+	syncAllowedStates am.S
+	syncSkippedStates am.S
+	syncSchema        bool
+	syncShallowClocks bool
+
+	// security
+
 	// AllowId will limit clients to a specific ID, if set.
 	AllowId string
+
+	// internal
 
 	rpcServer *rpc2.Server
 	// rpcClient is the internal rpc2 client.
 	rpcClient atomic.Pointer[rpc2.Client]
-	clockMx   sync.Mutex
-	ticker    *time.Ticker
-	// mutMx is a lock preventing mutation methods from racing each other.
-	mutMx         sync.Mutex
-	skipClockPush atomic.Bool
-	tracer        *WorkerTracer
+	tracer    *sourceTracer
+	// TODO bind the a machine ticker (if handlers bound)
+	ticker *time.Ticker
+
+	// lock data collection (RemoteHello and tracer data)
+	lockCollection sync.Mutex
+	// lock exporting updates (pushClient and responses to mutations)
+	lockExport sync.Mutex
+	// server is currently responding to a client, and pushing should be skipped
+	// respInProgress atomic.Bool
+
 	// ID of the currently connected client.
 	clientId         atomic.Pointer[string]
 	deliveryHandlers any
-
-	// lastClockHTime is the last (human) time a clock update was sent to the
-	// client.
-	lastClockHTime time.Time
-	lastClock      am.Time
-	lastClockSum   atomic.Uint64
-	lastClockMsg   *ClockMsg
-	lastQueueTick  uint64
+	lastPush         time.Time
+	lastPushData     *tracerData
 }
 
 // interfaces
@@ -88,9 +99,9 @@ var (
 )
 
 // NewServer creates a new RPC server, bound to a worker machine.
-// The source machine has to implement am/rpc/states/WorkerStatesDef interface.
+// The source machine has to implement [states.NetSourceStatesDef] interface.
 func NewServer(
-	ctx context.Context, addr string, name string, sourceMach am.Api,
+	ctx context.Context, addr string, name string, netSrcMach am.Api,
 	opts *ServerOpts,
 ) (*Server, error) {
 	if name == "" {
@@ -100,20 +111,23 @@ func NewServer(
 		opts = &ServerOpts{}
 	}
 
-	// check the worker
-	if !sourceMach.StatesVerified() {
-		return nil, fmt.Errorf("worker states not verified, call VerifyStates()")
+	// check the source
+	if !netSrcMach.StatesVerified() {
+		return nil, fmt.Errorf(
+			"net source states not verified, call VerifyStates()")
 	}
-	hasHandlers := sourceMach.HasHandlers()
-	if hasHandlers && !sourceMach.Has(ssW.Names()) {
+	hasHandlers := netSrcMach.HasHandlers()
+	if hasHandlers && !netSrcMach.Has(ssW.Names()) {
 		// error only when some handlers bound, skip deterministic machines
 		err := fmt.Errorf(
-			"%w: RPC worker with handlers has to implement "+
-				"pkg/rpc/states/WorkerStatesDef",
+			"%w: NetSourceMach with handlers has to implement "+
+				"pkg/rpc/states/NetSourceStatesDef",
 			am.ErrSchema)
 
 		return nil, err
 	}
+
+	// TODO validate state names
 
 	s := &Server{
 		ExceptionHandler: &ExceptionHandler{},
@@ -121,13 +135,10 @@ func NewServer(
 		PushInterval:     250 * time.Millisecond,
 		DeliveryTimeout:  5 * time.Second,
 		LogEnabled:       os.Getenv(EnvAmRpcLogServer) != "",
-		Source:           sourceMach,
+		Source:           netSrcMach,
 
-		// queue ticks start at 1
-		lastQueueTick: 1,
+		lastPushData: &tracerData{},
 	}
-	var sum uint64
-	s.lastClockSum.Store(sum)
 
 	// state machine
 	mach, err := am.NewCommon(ctx, "rs-"+name, states.ServerSchema, ssS.Names(),
@@ -151,9 +162,22 @@ func NewServer(
 		amhelp.MachDebugEnv(mach)
 	}
 
-	// bind to worker via Tracer API
-	s.tracer = &WorkerTracer{s: s}
-	_ = sourceMach.BindTracer(s.tracer)
+	// bind to source via Tracer API (inactive until activated)
+	s.tracer = &sourceTracer{
+		s: s,
+		dataLatest: &tracerData{
+			// queue ticks start at 1
+			queueTick: 1,
+		},
+	}
+	// queue ticks start at 1
+	s.tracer.dataLatest.queueTick = 1
+	if err = netSrcMach.BindTracer(s.tracer); err != nil {
+		return nil, err
+	}
+	netSrcMach.OnDispose(func(id string, ctx context.Context) {
+		_ = netSrcMach.DetachTracer(s.tracer)
+	})
 
 	// handle payload
 	if hasHandlers {
@@ -172,15 +196,15 @@ func NewServer(
 				SendPayloadState: getSendPayloadState(s, ssW.SendPayload),
 			}
 		} else {
-			// dynamic handlers
+			// dynamic handlers TODO use ampipe.Bind
 			h = createSendPayloadHandlers(s, payloadState)
 		}
-		err = sourceMach.BindHandlers(h)
+		err = netSrcMach.BindHandlers(h)
 		if err != nil {
 			return nil, err
 		}
 		mach.OnDispose(func(id string, ctx context.Context) {
-			_ = sourceMach.DetachHandlers(h)
+			_ = netSrcMach.DetachHandlers(h)
 		})
 	}
 
@@ -319,7 +343,7 @@ func (s *Server) RpcReadyState(e *am.Event) {
 			return // expired
 		}
 
-		// push clock updates, debounced by genClockUpdate
+		// push clock updates, debounced by getLatestUpdate
 		for {
 			select {
 			case <-ctx.Done():
@@ -327,7 +351,7 @@ func (s *Server) RpcReadyState(e *am.Event) {
 				return
 
 			case <-t.C:
-				s.pushClockUpdate(false)
+				s.pushClient()
 			}
 		}
 	}()
@@ -371,9 +395,9 @@ func (s *Server) Stop(dispose bool) am.Result {
 }
 
 // SendPayload sends a payload to the client. It's usually called by a handler
-// for SendPayload.
+// for SendPayload. [event] is optional.
 func (s *Server) SendPayload(
-	ctx context.Context, event *am.Event, payload *ArgsPayload,
+	ctx context.Context, event *am.Event, payload *MsgSrvPayload,
 ) error {
 	// TODO add SendPayloadAsync calling RemoteSendingPayload first
 	// TODO bind to an async state
@@ -400,7 +424,7 @@ func (s *Server) SendPayload(
 
 	// TODO failsafe
 	return s.rpcClient.Load().CallWithContext(ctx,
-		ClientSendPayload.Value, payload, &Empty{})
+		ClientSendPayload.Value, payload, &MsgEmpty{})
 }
 
 func (s *Server) ClientId() string {
@@ -443,89 +467,139 @@ func (s *Server) bindRpcHandlers() {
 	// s.rpcServer.Handle("RemoteWhenArgs", s.RemoteWhenArgs)
 }
 
-func (s *Server) pushClockUpdate(force bool) {
+// pushClient pushes an update to the client. It can be either a single or a
+// multi update. It can also be throttled and happen later.
+func (s *Server) pushClient() {
 	c := s.rpcClient.Load()
 	if c == nil {
 		return
 	}
-	if s.skipClockPush.Load() && !force {
-		// TODO log lvl 2
-		// s.log("force-skip clock push")
+
+	// push disabled or not ready
+	if s.PushInterval == 0 || s.Mach.Not1(ssS.HandshakeDone) {
 		return
 	}
 
-	if s.Mach.Not1(ssS.ClientConnected) ||
-		s.Mach.Not1(ssS.HandshakeDone) {
-		// TODO log lvl 2
-		// s.log("skip clock push")
+	// skip if currently exporting
+	if !s.lockExport.TryLock() {
+		s.log("skip parallel export")
+		return
+	}
+	defer s.lockExport.Unlock()
+
+	// collect
+	data := s.tracer.DataLatest()
+	if data == nil {
 		return
 	}
 
-	// disabled
-	if s.PushInterval == 0 && !force {
+	// no change
+	if s.lastPushData.mTrackedTimeSum == data.mTrackedTimeSum &&
+		s.lastPushData.queueTick == data.queueTick {
+
+		// s.log("skip no diff")
 		return
 	}
 
-	// push all ticks
-	// TODO PushAllTicks
-	// if s.PushAllTicks {
-	// }
-
-	// push the latest clock only
-	clock := s.genClockUpdate(false)
-	// debounce
-	if clock == nil {
+	// too often
+	if time.Since(s.lastPush) < s.PushInterval {
+		// s.log("update too soon")
 		return
+	}
+
+	// sync
+	s.log("pushClient:try t%d", data.mTrackedTimeSum)
+	var err error
+	if s.syncMutations {
+		err = s.pushUpdateMutations(s.tracer.DataQueue())
+	} else {
+		err = s.pushUpdateLatest(data)
+	}
+	if err != nil {
+		s.Mach.Remove1(ssS.ClientConnected, nil)
+		AddErr(nil, s.Mach, "pushClient", err)
+
+		return
+	}
+	s.log("pushClient:ok t%d", data.mTrackedTimeSum)
+
+	s.storeLastPush(data)
+}
+
+// call via by pushClient
+func (s *Server) pushUpdateMutations(muts []tracerMutation) error {
+	c := s.rpcClient.Load()
+	if c == nil {
+		return nil
+	}
+	defer s.Mach.PanicToErr(nil)
+
+	// calculate diffs
+	updateMuts := calcUpdateMutations(s.syncSchema, muts, s.lastPushData)
+
+	// nothing to push
+	if len(updateMuts.MutationType) == 0 {
+		return nil
 	}
 
 	// notify without a response
-	defer s.Mach.PanicToErr(nil)
-	s.log("pushClockUpdate %d", s.lastClockSum.Load())
 	s.CallCount++
 
-	// TODO failsafe retry
-	err := c.Notify(ClientSetClock.Value, clock)
-	if err != nil {
-		s.Mach.Remove1(ssS.ClientConnected, nil)
-		AddErr(nil, s.Mach, "pushClockUpdate", err)
-	}
+	// TODO failsafe retry (stateful)
+	return c.Notify(ClientUpdateMutations.Value, updateMuts)
 }
 
-func (s *Server) genClockUpdate(skipTimeCheck bool) *ClockMsg {
-	s.clockMx.Lock()
-	defer s.clockMx.Unlock()
-
-	// exit if too often
-	if !skipTimeCheck && (time.Since(s.lastClockHTime) < s.PushInterval) {
-		// s.log("genClockUpdate: too soon")
+// call via by pushClient
+func (s *Server) pushUpdateLatest(data *tracerData) error {
+	c := s.rpcClient.Load()
+	if c == nil {
 		return nil
 	}
-	hTime := time.Now()
-	qTick := s.Source.QueueTick()
-	mTime := s.Source.Time(nil)
+	defer s.Mach.PanicToErr(nil)
 
-	// exit if no change since the last sync
-	var tSum uint64
-	for _, v := range mTime {
-		tSum += v
-	}
-	// update on a state change and queue tick change
-	if tSum == s.lastClockSum.Load() && qTick == s.lastQueueTick {
-		// flooooood
-		// s.log("genClockUpdate: no change t%d q%d", tSum, qTick)
+	// calculate diff
+	update := calcUpdate(s.syncSchema, data, s.lastPushData, s.syncShallowClocks)
+
+	// nothing to push
+	if len(update.Indexes) == 0 {
 		return nil
 	}
 
-	// proceed - valid clock update
-	s.lastClockMsg = NewClockMsg(tSum, s.lastClock, mTime, s.lastQueueTick, qTick)
-	s.lastClock = mTime
-	s.lastClockHTime = hTime
-	s.lastQueueTick = qTick
-	s.lastClockSum.Store(tSum)
-	s.log("genClockUpdate: t%d q%d ch%d (%s)", tSum, qTick,
-		s.lastClockMsg.Checksum, s.Source.ActiveStates(nil))
+	// notify without a response
+	s.CallCount++
+	// fmt.Printf("[S] update %v\n", update)
+	// fmt.Printf("[S] time %v\n", data.mTime)
 
-	return s.lastClockMsg
+	// TODO failsafe retry (stateful)
+	return c.Notify(ClientUpdate.Value, update)
+}
+
+// newMsgMutation creates a new response to a mutation call from the client.
+// Requires [s.lockExport]
+func (s *Server) newMsgMutation(
+	mut am.Result, data *tracerData,
+) *MsgSrvMutation {
+	r := MsgSrvMutation{Result: mut}
+	// calculate diff
+	if s.syncMutations {
+		r.Mutations = calcUpdateMutations(s.syncSchema, s.tracer.DataQueue(),
+			s.lastPushData)
+	} else {
+		r.Update = calcUpdate(s.syncSchema, data, s.lastPushData,
+			s.syncShallowClocks)
+	}
+
+	// fmt.Printf("[S] QueueTick: %d - %d\n", data.queueTick, s.lastPushQTick)
+	// fmt.Printf("[S] MachTick: %d - %d\n", data.machTick, s.lastPushMachTick)
+
+	s.storeLastPush(data)
+
+	return &r
+}
+
+func (s *Server) storeLastPush(data *tracerData) {
+	s.lastPush = time.Now()
+	s.lastPushData = data
 }
 
 // ///// ///// /////
@@ -535,88 +609,119 @@ func (s *Server) genClockUpdate(skipTimeCheck bool) *ClockMsg {
 // ///// ///// /////
 
 func (s *Server) RemoteHello(
-	client *rpc2.Client, req *ArgsHello, resp *RespHandshake,
+	client *rpc2.Client, req *MsgCliHello, resp *MsgSrvHello,
 ) error {
+	// validate
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
 	}
-	s.clockMx.Lock()
-	defer s.clockMx.Unlock()
-	// TODO pass ID and key here
-	// TODO check if client here is the same as RespHandshakeAck
-
-	export := s.Source.Export()
-	*resp = RespHandshake{
-		Serialized: export,
-	}
-
-	// return the schema if requested
-	if req.ReqSchema {
-		// TODO get via Api.Export to avoid races
-		schema := s.Source.Schema()
-		resp.Schema = schema
-	}
-
-	sum := export.Time.Sum(nil)
-	s.log("RemoteHello: t%v q%d", sum, export.QueueTick)
-	s.Mach.Add1(ssS.Handshaking, nil)
-	s.lastClock = export.Time
-	s.lastQueueTick = export.QueueTick
-	s.lastClockSum.Store(sum)
-	s.lastClockHTime = time.Now()
-
-	// TODO timeout for RemoteHandshake
-
-	return nil
-}
-
-func (s *Server) RemoteHandshake(
-	client *rpc2.Client, id *string, _ *Empty,
-) error {
-	if s.Mach.Not1(ssS.Start) {
-		return am.ErrCanceled
-	}
-	// TODO pass ID and key here
-	if id == nil || *id == "" {
+	if req == nil || req.Id == "" {
 		s.Mach.Remove1(ssS.Handshaking, nil)
 		AddErrRpcStr(nil, s.Mach, "handshake failed: ID missing")
 
 		return ErrInvalidParams
 	}
 
+	// locks
+	s.lockCollection.Lock()
+	defer s.lockCollection.Unlock()
+
 	// check access TODO test
-	if s.AllowId != "" && *id != s.AllowId {
+	if s.AllowId != "" && req.Id != s.AllowId {
 		s.Mach.Remove1(ssS.Handshaking, nil)
 
-		return fmt.Errorf("%w: %s != %s", ErrNoAccess, *id, s.AllowId)
+		return fmt.Errorf("%w: %s != %s", ErrNoAccess, req.Id, s.AllowId)
 	}
 
+	// set up sync
+	s.syncAllowedStates = req.AllowedStates
+	s.syncSkippedStates = req.SkippedStates
+	s.syncShallowClocks = req.ShallowClocks
+	s.syncMutations = req.SyncMutations
+
+	// prep the mach msg
+	export, schema, _ := s.Source.Export()
+	s.tracer.calcTrackedStates(export.StateNames)
+	s.tracer.active = true
+	statesCount := len(export.StateNames)
+	tTrackedSum := export.Time.Filter(s.tracer.trackedStateIdxs).Sum(nil)
+
+	// client-bound indexes when no schema synced
+	if !req.SyncSchema {
+		export.StateNames = am.StatesShared(export.StateNames,
+			s.tracer.trackedStates)
+		export.Time = export.Time.Filter(s.tracer.trackedStateIdxs)
+
+		// zero non-tracked for consistent checksums
+	} else {
+		for i := range export.StateNames {
+			if slices.Contains(s.tracer.trackedStateIdxs, i) {
+				continue
+			}
+			export.Time[i] = 0
+		}
+	}
+	*resp = MsgSrvHello{
+		Serialized:  export,
+		StatesCount: uint32(statesCount),
+	}
+
+	// return the schema if requested
+	if req.SyncSchema {
+		s.syncSchema = true
+		if req.SchemaHash == "" ||
+			req.SchemaHash != amhelp.SchemaHash(schema) {
+
+			resp.Schema = schema
+		}
+	}
+
+	// memorize
+	s.lastPushData.mTime = export.Time
+	s.lastPushData.queueTick = export.QueueTick
+	s.lastPushData.mTrackedTimeSum = tTrackedSum
+	s.lastPush = time.Now()
+	s.clientId.Store(&req.Id)
+
+	s.log("RemoteHello: t%v q%d", tTrackedSum, export.QueueTick)
+	s.Mach.Add1(ssS.Handshaking, nil)
+
+	// TODO timeout for RemoteHandshake via push loop
+
+	return nil
+}
+
+func (s *Server) RemoteHandshake(
+	client *rpc2.Client, _ *MsgEmpty, _ *MsgEmpty,
+) error {
+	if s.Mach.Not1(ssS.Start) {
+		return am.ErrCanceled
+	}
+	id := s.clientId.Load()
+	if id == nil {
+		return ErrNoConn
+	}
 	sum := s.Source.Time(nil).Sum(nil)
 	qTick := s.Source.QueueTick()
 	s.log("RemoteHandshake: t%v q%d", sum, qTick)
 
 	// accept the client
 	s.rpcClient.Store(client)
-	s.clientId.Store(id)
-	s.Mach.Add1(ssS.HandshakeDone, Pass(&A{Id: *id}))
-
-	// state changed during the handshake, push manually
-	if s.lastClockSum.Load() != sum || s.lastQueueTick != qTick &&
-		s.PushInterval == 0 {
-		s.pushClockUpdate(true)
-	}
+	s.Mach.Add1(ssS.HandshakeDone, Pass(&A{
+		Id: *id,
+	}))
 
 	return nil
 }
 
 func (s *Server) RemoteAdd(
-	_ *rpc2.Client, args *ArgsMut, resp *RespResult,
+	_ *rpc2.Client, args *MsgCliMutation, resp *MsgSrvMutation,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
 	}
-	s.mutMx.Lock()
-	defer s.mutMx.Unlock()
+	s.lockExport.Lock()
+	defer s.lockExport.Unlock()
 
 	// validate
 	if args.States == nil {
@@ -625,7 +730,6 @@ func (s *Server) RemoteAdd(
 
 	// execute
 	var val am.Result
-	s.skipClockPush.Store(true)
 	if args.Event != nil {
 		val = s.Source.EvAdd(args.Event, amhelp.IndexesToStates(
 			s.Source.StateNames(), args.States), args.Args)
@@ -636,23 +740,20 @@ func (s *Server) RemoteAdd(
 	}
 
 	// return
-	*resp = RespResult{
-		Result: val,
-		Clock:  s.genClockUpdate(true),
-	}
-	s.skipClockPush.Store(false)
+	data := s.tracer.DataLatest()
+	*resp = *s.newMsgMutation(val, data)
 
 	return nil
 }
 
 func (s *Server) RemoteAddNS(
-	_ *rpc2.Client, args *ArgsMut, _ *Empty,
+	_ *rpc2.Client, args *MsgCliMutation, _ *MsgEmpty,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
 	}
-	s.mutMx.Lock()
-	defer s.mutMx.Unlock()
+	s.lockExport.Lock()
+	defer s.lockExport.Unlock()
 
 	// validate
 	if args.States == nil {
@@ -660,22 +761,20 @@ func (s *Server) RemoteAddNS(
 	}
 
 	// execute
-	s.skipClockPush.Store(true)
 	_ = s.Source.Add(amhelp.IndexesToStates(s.Source.StateNames(), args.States),
 		args.Args)
-	s.skipClockPush.Store(false)
 
 	return nil
 }
 
 func (s *Server) RemoteRemove(
-	_ *rpc2.Client, args *ArgsMut, resp *RespResult,
+	_ *rpc2.Client, args *MsgCliMutation, resp *MsgSrvMutation,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
 	}
-	s.mutMx.Lock()
-	defer s.mutMx.Unlock()
+	s.lockExport.Lock()
+	defer s.lockExport.Unlock()
 
 	// validate
 	if args.States == nil {
@@ -683,27 +782,24 @@ func (s *Server) RemoteRemove(
 	}
 
 	// execute
-	s.skipClockPush.Store(true)
 	val := s.Source.Remove(amhelp.IndexesToStates(s.Source.StateNames(),
 		args.States), args.Args)
-	s.skipClockPush.Store(false)
 
 	// return
-	*resp = RespResult{
-		Result: val,
-		Clock:  s.genClockUpdate(true),
-	}
+	data := s.tracer.DataLatest()
+	*resp = *s.newMsgMutation(val, data)
+
 	return nil
 }
 
 func (s *Server) RemoteSet(
-	_ *rpc2.Client, args *ArgsMut, resp *RespResult,
+	_ *rpc2.Client, args *MsgCliMutation, resp *MsgSrvMutation,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
 	}
-	s.mutMx.Lock()
-	defer s.mutMx.Unlock()
+	s.lockExport.Lock()
+	defer s.lockExport.Unlock()
 
 	// validate
 	if args.States == nil {
@@ -711,44 +807,36 @@ func (s *Server) RemoteSet(
 	}
 
 	// execute
-	s.skipClockPush.Store(true)
 	val := s.Source.Set(amhelp.IndexesToStates(s.Source.StateNames(),
 		args.States), args.Args)
-	s.skipClockPush.Store(false)
 
 	// return
-	*resp = RespResult{
-		Result: val,
-		Clock:  s.genClockUpdate(true),
-	}
+	data := s.tracer.DataLatest()
+	*resp = *s.newMsgMutation(val, data)
+
 	return nil
 }
 
 func (s *Server) RemoteSync(
-	_ *rpc2.Client, sum uint64, resp *RespSync,
+	_ *rpc2.Client, _ *MsgEmpty, resp *MsgSrvSync,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
 	}
-	s.log("RemoteSync")
+	s.Mach.Add1(ssS.MetricSync, nil)
 
-	if s.Source.Time(nil).Sum(nil) > sum {
-		*resp = RespSync{
-			Time:      s.Source.Time(nil),
-			QueueTick: s.Source.QueueTick(),
-		}
-	} else {
-		*resp = RespSync{}
+	*resp = MsgSrvSync{
+		Time:      s.Source.Time(nil),
+		QueueTick: s.Source.QueueTick(),
 	}
-
-	s.log("RemoteSync: %v", resp.Time)
+	s.log("RemoteSync: [%v]", resp.Time)
 
 	return nil
 }
 
 // RemoteBye means the client says goodbye and will disconnect shortly.
 func (s *Server) RemoteBye(
-	_ *rpc2.Client, _ *Empty, _ *Empty,
+	_ *rpc2.Client, _ *MsgEmpty, _ *MsgEmpty,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
@@ -777,19 +865,6 @@ func (s *Server) RemoteBye(
 	// forget client
 	s.rpcClient.Store(nil)
 	s.clientId.Store(nil)
-
-	return nil
-}
-
-func (s *Server) RemoteSetPushAllTicks(
-	_ *rpc2.Client, val bool, _ *Empty,
-) error {
-	if s.Mach.Not1(ssS.Start) {
-		return am.ErrCanceled
-	}
-	s.log("RemoteSetPushAllTicks")
-
-	s.PushAllTicks = val
 
 	return nil
 }
@@ -827,7 +902,7 @@ func BindServer(source, target *am.Machine, rpcReady, clientConn string) error {
 }
 
 // BindServerMulti binds RpcReady, ClientConnected, and ClientDisconnected.
-// RpcReady is Add/Remove, other two are Add-only to passed multi states.
+// RpcReady is Add/Remove, the other two are Add-only to passed multi states.
 func BindServerMulti(
 	source, target *am.Machine, rpcReady, clientConn, clientDisconn string,
 ) error {
@@ -922,12 +997,13 @@ func getSendPayloadState(s *Server, stateName string) am.HandlerFinal {
 // createSendPayloadHandlers creates SendPayload handlers for a custom (dynamic)
 // state name. Useful when binding >1 RPC server into the same state source.
 func createSendPayloadHandlers(s *Server, stateName string) any {
+	// TODO migrate to ampipe.Bind
 	fn := getSendPayloadState(s, stateName)
 
 	// define a struct with the handler
 	structType := reflect.StructOf([]reflect.StructField{
 		{
-			Name: stateName + "State",
+			Name: stateName + am.SuffixState,
 			Type: reflect.TypeOf(fn),
 		},
 	})
@@ -938,4 +1014,122 @@ func createSendPayloadHandlers(s *Server, stateName string) any {
 	ret := val.Addr().Interface()
 
 	return ret
+}
+
+// calcUpdate calculates a new update based on previously pushed data.
+func calcUpdate(
+	syncSchema bool, data, lastPush *tracerData, shallowClocks bool,
+) *MsgSrvUpdate {
+	var idxs []uint16
+	var ticks []uint32
+	if shallowClocks {
+		idxs, ticks = genShallowUpdate(syncSchema, data, lastPush)
+	} else {
+		idxs, ticks = genDeepUpdate(syncSchema, data, lastPush)
+	}
+
+	return &MsgSrvUpdate{
+		QueueTick: uint16(data.queueTick - lastPush.queueTick),
+		MachTick:  uint8(data.machTick - lastPush.machTick),
+		Indexes:   idxs,
+		Ticks:     ticks,
+		Checksum:  data.checksum,
+	}
+}
+
+// calcUpdate calculates a new mutation update based on the queue and previously
+// pushed data.
+func calcUpdateMutations(
+	syncSchema bool, muts []tracerMutation, prev *tracerData,
+) *MsgSrvUpdateMuts {
+	ret := &MsgSrvUpdateMuts{}
+	for i := range muts {
+		mut := &muts[i]
+		ret.MutationType = append(ret.MutationType, mut.mutType)
+		called := make([]uint16, len(mut.calledIdxs))
+		for ii := range mut.calledIdxs {
+			called[ii] = uint16(mut.calledIdxs[ii])
+		}
+		ret.CalledStates = append(ret.CalledStates, called)
+		ret.Updates = append(ret.Updates, *calcUpdate(syncSchema, &mut.data, prev,
+			false))
+
+		prev = &mut.data
+	}
+
+	return ret
+}
+
+func genDeepUpdate(
+	syncSchema bool, data, lastPush *tracerData,
+) (indexes []uint16, ticks []uint32) {
+	indexes = make([]uint16, 0, len(data.tracked))
+	ticks = make([]uint32, 0, len(data.tracked))
+
+	for trackedIdx := range data.tracked {
+		stateIdx := data.trackedIdxs[trackedIdx]
+		prev := lastPush.mTime
+		now := data.mTime
+
+		// client has shorter state names
+		pushedIdx := uint16(stateIdx)
+		if !syncSchema {
+			pushedIdx = uint16(trackedIdx)
+		}
+
+		// first call or new schema
+		if prev == nil || trackedIdx >= len(prev) {
+			if now[trackedIdx] == 0 {
+				continue
+			}
+			indexes = append(indexes, pushedIdx)
+			ticks = append(ticks, uint32(now[pushedIdx]))
+
+			// regular update
+		} else if prev[pushedIdx] != now[pushedIdx] {
+			indexes = append(indexes, pushedIdx)
+			ticks = append(ticks, uint32(now[pushedIdx]-prev[pushedIdx]))
+		}
+	}
+
+	return indexes, ticks
+}
+
+func genShallowUpdate(
+	syncSchema bool, data, lastPush *tracerData,
+) (indexes []uint16, ticks []uint32) {
+	indexes = make([]uint16, 0, len(data.tracked))
+	ticks = make([]uint32, 0, len(data.tracked))
+
+	for trackedIdx := range data.tracked {
+		stateIdx := data.trackedIdxs[trackedIdx]
+		prev := lastPush.mTime
+		now := data.mTime
+
+		// client has shorter state names
+		pushedIdx := uint16(stateIdx)
+		if !syncSchema {
+			pushedIdx = uint16(trackedIdx)
+		}
+
+		// first call or new schema
+		if prev == nil || int(pushedIdx) >= len(prev) {
+			if now[pushedIdx] == 0 {
+				continue
+			}
+			indexes = append(indexes, pushedIdx)
+			tick := 0
+			if am.IsActiveTick(now[pushedIdx]) {
+				tick = 1
+			}
+			ticks = append(ticks, uint32(tick))
+
+			// regular update
+		} else if prev[pushedIdx]%2 != now[pushedIdx]%2 {
+			indexes = append(indexes, pushedIdx)
+			ticks = append(ticks, uint32(1))
+		}
+	}
+
+	return indexes, ticks
 }
