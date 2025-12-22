@@ -53,7 +53,7 @@ type ClientGroupsDef struct {
 var ClientSchema = SchemaMerge(
 	// inherit from BasicStruct
 	states.BasicSchema,
-	// inherit from ConsumerStruct
+	// inherit from ConsumerSchema
 	ssrpc.ConsumerSchema,
 	am.Schema{
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -34,14 +35,15 @@ type Client struct {
 
 	// network
 
-	SuperRpc  *rpc.Client
-	WorkerRpc *rpc.Client
+	RpcSuper  *rpc.Client
+	RpcWorker *rpc.Client
 
 	// internal
 
 	// current nodes list (set by Start)
-	nodeList  []string
-	stateDeps *ClientStateDeps
+	nodeList     []string
+	schemaClient am.Schema
+	schemaWorker am.Schema
 }
 
 // implement ConsumerHandlers
@@ -50,59 +52,55 @@ var _ ssrpc.ConsumerHandlers = &Client{}
 // NewClient creates a new Client instance with the provided context, id,
 // workerKind, state dependencies, and options. Returns a pointer to the Client
 // instance and an error if any validation or initialization fails.
-func NewClient(ctx context.Context, id string, workerKind string,
-	stateDeps *ClientStateDeps, opts *ClientOpts,
+//
+// workerKind: any string used to build IDs and address workers
+func NewClient(ctx context.Context, clientId string, workerKind string,
+	workerSchema am.Schema, opts *ClientOpts,
 ) (*Client, error) {
+	// defaults
+	if opts == nil {
+		opts = &ClientOpts{}
+	}
+	if opts.ClientSchema == nil {
+		opts.ClientSchema = states.ClientSchema
+	}
+	if opts.ClientStates == nil {
+		opts.ClientStates = states.ClientStates.Names()
+	}
+
 	// validate
-	if id == "" {
-		return nil, errors.New("client: workerStruct required")
+	if clientId == "" {
+		return nil, errors.New("client: clientId required")
 	}
-	if stateDeps == nil {
-		return nil, errors.New("client: stateNames required")
-	}
-	if stateDeps.WorkerSStruct == nil {
-		return nil, errors.New("client: workerStruct required")
-	}
-	if stateDeps.WorkerSNames == nil {
-		return nil, errors.New("client: stateNames required")
-	}
-	// TODO defaults
-	if stateDeps.ClientSStruct == nil {
-		return nil, errors.New("client: workerStruct required")
-	}
-	// TODO defaults
-	if stateDeps.ClientSNames == nil {
-		return nil, errors.New("client: stateNames required")
+	if workerSchema == nil {
+		return nil, errors.New("client: workerSchema required")
 	}
 	if workerKind == "" {
 		return nil, errors.New("client: workerKind required")
 	}
-	if opts == nil {
-		opts = &ClientOpts{}
-	}
-
-	err := amhelp.Implements(stateDeps.WorkerSNames, states.WorkerStates.Names())
+	err := amhelp.SchemaImplements(workerSchema, states.WorkerStates.Names())
 	if err != nil {
 		err := fmt.Errorf(
 			"worker has to implement am/node/states/WorkerStates: %w", err)
 		return nil, err
 	}
 
-	name := fmt.Sprintf("%s-%s-%s", workerKind, id,
+	name := fmt.Sprintf("%s-%s-%s", workerKind, clientId,
 		time.Now().Format("150405"))
 
 	c := &Client{
-		Name:        name,
-		ConnTimeout: 5 * time.Second,
-		LogEnabled:  os.Getenv(EnvAmNodeLogClient) != "",
-		stateDeps:   stateDeps,
+		Name:         name,
+		ConnTimeout:  5 * time.Second,
+		LogEnabled:   os.Getenv(EnvAmNodeLogClient) != "",
+		schemaClient: opts.ClientSchema,
+		schemaWorker: workerSchema,
 	}
 	if amhelp.IsDebug() {
 		c.ConnTimeout = 10 * c.ConnTimeout
 	}
-	mach, err := am.NewCommon(ctx, "nc-"+name, stateDeps.ClientSStruct,
-		stateDeps.ClientSNames, c, opts.Parent, &am.Opts{
-			Tags: []string{"node-client"},
+	mach, err := am.NewCommon(ctx, "nc-"+name, c.schemaClient,
+		opts.ClientStates, c, opts.Parent, &am.Opts{
+			Tags: slices.Concat([]string{"node-client"}, opts.Tags),
 		})
 	if err != nil {
 		return nil, err
@@ -142,8 +140,8 @@ func (c *Client) StartState(e *am.Event) {
 	c.nodeList = args.NodesList
 
 	// init super rpc (but dont connect just yet)
-	c.SuperRpc, err = rpc.NewClient(ctx, addr, GetSuperClientId(c.Name),
-		states.SupervisorSchema, ssS.Names(), &rpc.ClientOpts{
+	c.RpcSuper, err = rpc.NewClient(ctx, addr, GetSuperClientId(c.Name),
+		states.SupervisorSchema, &rpc.ClientOpts{
 			Parent:   c.Mach,
 			Consumer: c.Mach,
 		})
@@ -155,10 +153,10 @@ func (c *Client) StartState(e *am.Event) {
 
 	// bind to super rpc
 	err = errors.Join(
-		ampipe.BindConnected(c.SuperRpc.Mach, c.Mach, ssC.SuperDisconnected,
+		ampipe.BindConnected(c.RpcSuper.Mach, c.Mach, ssC.SuperDisconnected,
 			ssC.SuperConnecting, ssC.SuperConnected, ssC.SuperDisconnecting),
-		ampipe.BindErr(c.SuperRpc.Mach, c.Mach, ssC.ErrSupervisor),
-		ampipe.BindReady(c.SuperRpc.Mach, c.Mach, ssC.SuperReady, ""),
+		ampipe.BindErr(c.RpcSuper.Mach, c.Mach, ssC.ErrSupervisor),
+		ampipe.BindReady(c.RpcSuper.Mach, c.Mach, ssC.SuperReady, ""),
 	)
 	if err != nil {
 		c.Mach.AddErr(err, nil)
@@ -177,30 +175,30 @@ func (c *Client) StartState(e *am.Event) {
 			// (re)start and wait
 			// TODO handle in ExceptionState when SuperConnecting active
 			c.Mach.Remove1(am.StateException, nil)
-			c.SuperRpc.Addr = addr
+			c.RpcSuper.Addr = addr
 			// fewer retries, bc of fallbacks
 			// TODO config via a composable RetryPolicy from rpc-c
-			c.SuperRpc.ConnRetries = 3
-			c.SuperRpc.Start()
+			c.RpcSuper.ConnRetries = 3
+			c.RpcSuper.Start()
 			err := amhelp.WaitForAny(ctx, c.ConnTimeout,
 				c.Mach.When1(ssC.SuperReady, nil),
-				c.SuperRpc.Mach.WhenNot1(ssrpc.ClientStates.Start, nil),
+				c.RpcSuper.Mach.WhenNot1(ssrpc.ClientStates.Start, nil),
 			)
 			if ctx.Err() != nil {
 				return // expired
 			}
 
 			// stopped rpc client is an error
-			if c.SuperRpc.Mach.Not1(ssrpc.ClientStates.Start) {
+			if c.RpcSuper.Mach.Not1(ssrpc.ClientStates.Start) {
 				// TODO blacklist the node for X time
 				// re-start
-				c.SuperRpc.Stop(ctx, false)
+				c.RpcSuper.Stop(ctx, false)
 				c.Mach.Remove1(ssC.Exception, nil)
 				continue
 			}
 
 			if err != nil {
-				err := errors.Join(err, c.SuperRpc.Mach.Err())
+				err := errors.Join(err, c.RpcSuper.Mach.Err())
 				_ = AddErrRpc(c.Mach, err, nil)
 
 				return
@@ -210,22 +208,22 @@ func (c *Client) StartState(e *am.Event) {
 }
 
 func (c *Client) StartEnd(e *am.Event) {
-	if c.SuperRpc != nil {
-		c.SuperRpc.Stop(context.TODO(), true)
+	if c.RpcSuper != nil {
+		c.RpcSuper.Stop(context.TODO(), true)
 	}
-	if c.WorkerRpc != nil {
-		c.WorkerRpc.Stop(context.TODO(), true)
+	if c.RpcWorker != nil {
+		c.RpcWorker.Stop(context.TODO(), true)
 	}
 }
 
 func (c *Client) WorkerRequestedEnter(e *am.Event) bool {
-	return c.SuperRpc.Worker.Is1(ssS.WorkersAvailable)
+	return c.RpcSuper.NetMach.Is1(ssS.WorkersAvailable)
 }
 
 func (c *Client) WorkerRequestedState(e *am.Event) {
 	// supervisor needs IDs of RPC clients for routing and ACL
-	c.SuperRpc.Worker.Add1(ssS.ProvideWorker, PassRpc(&A{
-		SuperRpcId:  c.SuperRpc.Mach.Id(),
+	c.RpcSuper.NetMach.Add1(ssS.ProvideWorker, PassRpc(&A{
+		SuperRpcId:  c.RpcSuper.Mach.Id(),
 		WorkerRpcId: rpc.GetClientId(GetWorkerClientId(c.Name)),
 	}))
 }
@@ -267,25 +265,25 @@ func (c *Client) WorkerPayloadState(e *am.Event) {
 	go func() {
 		// connect to the worker
 		var err error
-		c.WorkerRpc, err = rpc.NewClient(ctxStart, addr, GetWorkerClientId(c.Name),
-			c.stateDeps.WorkerSStruct, c.stateDeps.WorkerSNames, &rpc.ClientOpts{
+		c.RpcWorker, err = rpc.NewClient(ctxStart, addr, GetWorkerClientId(c.Name),
+			c.schemaWorker, &rpc.ClientOpts{
 				Parent:   c.Mach,
 				Consumer: c.Mach,
 			})
 		if err != nil {
-			err := fmt.Errorf("failed to connect to the Worker: %w", err)
+			err := fmt.Errorf("failed to connect to the NetworkMachine: %w", err)
 			_ = AddErrRpc(c.Mach, err, nil)
 			return
 		}
 		// delay for rpc/Mux
-		c.WorkerRpc.HelloDelay = 100 * time.Millisecond
+		c.RpcWorker.HelloDelay = 100 * time.Millisecond
 
 		// bind to worker rpc
 		err = errors.Join(
-			ampipe.BindConnected(c.WorkerRpc.Mach, c.Mach, ssC.WorkerDisconnected,
+			ampipe.BindConnected(c.RpcWorker.Mach, c.Mach, ssC.WorkerDisconnected,
 				ssC.WorkerConnecting, ssC.WorkerConnected, ssC.WorkerDisconnecting),
-			ampipe.BindErr(c.WorkerRpc.Mach, c.Mach, ssC.ErrWorker),
-			ampipe.BindReady(c.WorkerRpc.Mach, c.Mach, ssC.WorkerReady, ""),
+			ampipe.BindErr(c.RpcWorker.Mach, c.Mach, ssC.ErrWorker),
+			ampipe.BindReady(c.RpcWorker.Mach, c.Mach, ssC.WorkerReady, ""),
 		)
 		if err != nil {
 			c.Mach.AddErr(err, nil)
@@ -293,10 +291,10 @@ func (c *Client) WorkerPayloadState(e *am.Event) {
 		}
 
 		// start and wait
-		c.WorkerRpc.Start()
+		c.RpcWorker.Start()
 		err = amhelp.WaitForAny(ctx, c.ConnTimeout,
 			c.Mach.When1(ssC.WorkerReady, nil),
-			c.WorkerRpc.Mach.WhenErr(ctxStart),
+			c.RpcWorker.Mach.WhenErr(ctxStart),
 		)
 		// TODO retry
 		if err != nil {
@@ -322,11 +320,11 @@ func (c *Client) Start(nodesList []string) {
 // Stop halts the client's connection to both the supervisor and worker RPCs,
 // and removes the client state from the state machine.
 func (c *Client) Stop(ctx context.Context) {
-	if c.SuperRpc != nil {
-		c.SuperRpc.Stop(ctx, false)
+	if c.RpcSuper != nil {
+		c.RpcSuper.Stop(ctx, false)
 	}
-	if c.WorkerRpc != nil {
-		c.WorkerRpc.Stop(ctx, false)
+	if c.RpcWorker != nil {
+		c.RpcWorker.Stop(ctx, false)
 	}
 	c.Mach.Remove1(ssC.Start, nil)
 }
@@ -346,15 +344,15 @@ func (c *Client) ReqWorker(ctx context.Context) error {
 		return err
 	}
 
-	c.log("worker connected: %s", c.WorkerRpc.Worker.Id())
+	c.log("worker connected: %s", c.RpcWorker.NetMach.Id())
 	return nil
 }
 
 // Dispose deallocates resources and stops the client's RPC connections.
 func (c *Client) Dispose(ctx context.Context) {
 	c.Stop(ctx)
-	c.SuperRpc = nil
-	c.WorkerRpc = nil
+	c.RpcSuper = nil
+	c.RpcWorker = nil
 	c.Mach.Dispose()
 }
 
@@ -371,23 +369,17 @@ func (c *Client) log(msg string, args ...any) {
 
 // ///// ///// /////
 
-// ClientStateDeps contains the state definitions and names of the client and
-// worker machines, needed to create a new client.
-type ClientStateDeps struct {
-	ClientSStruct am.Schema
-	ClientSNames  am.S
-	WorkerSStruct am.Schema
-	WorkerSNames  am.S
-}
-
 // ClientOpts provides configuration options for creating a new client state
 // machine.
 type ClientOpts struct {
 	// Parent is a parent state machine for a new client state machine. See
 	// [am.Opts].
 	Parent am.Api
-	// TODO
-	Tags []string
+	Tags   []string
+	// Optional schema for the client. Should extend [states.ClientStatesDef].
+	ClientSchema am.Schema
+	// Optional state names for ClientSchema.
+	ClientStates am.S
 }
 
 // GetWorkerClientId returns a Node Client machine ID from a name.
@@ -395,7 +387,7 @@ func GetWorkerClientId(name string) string {
 	return "nc-worker-" + name
 }
 
-// GetClientId returns a Node Client machine ID from a name.
+// GetSuperClientId returns a Node Supervisor machine ID from a name.
 func GetSuperClientId(name string) string {
 	return "nc-super-" + name
 }

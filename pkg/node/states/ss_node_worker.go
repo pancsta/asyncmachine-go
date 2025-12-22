@@ -38,7 +38,9 @@ type WorkerStatesDef struct {
 	ServeClient string
 	// ClientConnected - Worker is connected to a client.
 	ClientConnected   string
+	// Send payload to the client
 	ClientSendPayload string
+	// Send payload to the supervisor
 	SuperSendPayload  string
 
 	// work
@@ -50,8 +52,8 @@ type WorkerStatesDef struct {
 
 	// inherit from BasicStatesDef
 	*ssam.BasicStatesDef
-	// inherit from WorkerStatesDef
-	*ssrpc.WorkerStatesDef
+	// inherit from NetSourceStatesDef
+	*ssrpc.NetSourceStatesDef
 }
 
 // WorkerGroupsDef contains all the state groups of the Worker state machine.
@@ -68,7 +70,7 @@ var WorkerSchema = SchemaMerge(
 	// inherit from BasicSchema
 	ssam.BasicSchema,
 	// inherit from Worker
-	ssrpc.WorkerSchema,
+	ssrpc.NetSourceSchema,
 	am.Schema{
 
 		// errors
