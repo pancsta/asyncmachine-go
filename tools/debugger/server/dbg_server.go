@@ -308,8 +308,9 @@ func StartRpc(
 	if err != nil {
 		log.Println(err)
 		mach.AddErr(err, nil)
-		// TODO nice err msg
-		panic(err)
+		fmt.Println(err)
+		// TODO ret err
+		os.Exit(1)
 	}
 	mach.Log("dbg server started at %s", addr)
 

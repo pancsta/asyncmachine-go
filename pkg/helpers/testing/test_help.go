@@ -33,7 +33,7 @@ func MachDebug(t *stdtest.T, mach am.Api, amDbgAddr string,
 	}
 
 	amhelp.MachDebug(mach, amDbgAddr, logLvl, stdout,
-		amhelp.SemConfig(true))
+		amhelp.SemConfigEnv(true))
 }
 
 // MachDebugEnv sets up a machine for debugging in tests, based on env vars

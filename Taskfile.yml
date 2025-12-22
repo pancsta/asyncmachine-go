@@ -140,17 +140,25 @@ tasks:
   am-dbg-dump:
     desc: Start am-dbg with a recent dump file
     silent: false
-    cmds:
-      - go run ./tools/cmd/am-dbg
+    cmd:  go run ./tools/cmd/am-dbg
         --import-data tmp/am-dbg-dump.gob.br
         --dir tmp
+        {{.CLI_ARGS}}
+
+  am-dbg-import:
+    silent: false
+    requires:
+      vars: [ FILE ]
+    cmd: go run ./tools/cmd/am-dbg
+        --dir tmp
+        -l -1
+        --import-data {{.FILE}}
         {{.CLI_ARGS}}
 
   am-dbg-dbg:
     desc: Start am-dbg on port 9913, so it can debug other instances via --dbg-am-dbg-addr
     silent: false
-    cmds:
-      - go run ./tools/cmd/am-dbg
+    cmd: go run ./tools/cmd/am-dbg
         --listen-on localhost:9913
         --select-connected
         --log-ops-ttl 5m
@@ -160,8 +168,7 @@ tasks:
 
   am-dbg-dbg-prof:
     desc: Profile am-dbg-dbg
-    cmds:
-      - go run ./tools/cmd/am-dbg
+    cmd: go run ./tools/cmd/am-dbg
         --listen-on localhost:9913
         --select-connected
         --log-ops-ttl 5m
@@ -171,8 +178,7 @@ tasks:
   am-dbg-worker:
     desc: Run am-dbg as an RPC worker, optionally starting the dbg RPC server via -server-addr
     silent: false
-    cmds:
-      - go run ./internal/testing/cmd/am-dbg-worker
+    cmd: go run ./internal/testing/cmd/am-dbg-worker
         -server-addr=localhost:53470
         -worker-addr=localhost:53480
 
@@ -194,8 +200,7 @@ tasks:
     silent: false
     env:
       AM_DEBUG: 1
-    cmds:
-      - dlv debug --headless
+    cmd: dlv debug --headless
         --listen=:2346 --api-version=2 --accept-multiclient
         ./tools/cmd/am-dbg -- 
           --listen-on localhost:9913
@@ -204,10 +209,6 @@ tasks:
           --max-mem 2000
           --dir tmp2
           {{.CLI_ARGS}}
-
-  tui-db-sql: squall pkg/history/gorm/amhist.sqlite
-
-  tui-db-bolt: bboltEdit pkg/history/bbolt/amhist.db
 
   test:
     env:
@@ -396,14 +397,10 @@ tasks:
       - task: format
       - task: check-fmt
 
-  lint-ci:
-    cmds:
-      - task: lint-go
-      - task: lint-md
-
   lint-go:
     cmds:
       - $(go env GOPATH)/bin/golangci-lint run --fix --timeout 15m
+      - '! grep -rn --include="*.go" "TODO DEBUG" .'
 
   lint-md:
     cmds:
@@ -429,17 +426,19 @@ tasks:
 
   install-am-dbg: go install ./tools/cmd/am-dbg
 
-  install-deps-ci:
-    - go mod tidy
-    - go install github.com/hhatto/gocloc/cmd/gocloc@latest
-
   install-deps:
     desc: Install project dependencies
     cmds:
       - go mod tidy
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh 
+          | sh -s -- -b $(go env GOPATH)/bin v2.5.0
+      - go install mvdan.cc/gofumpt@latest
+      - go install golang.org/x/tools/cmd/goimports@latest
       - go install github.com/mattn/goreman@latest
+      - go install github.com/itchyny/gojq/cmd/gojq@latest
+      # TODO switch to nodejs md linter
+      - gem install mdl
       - go install github.com/hhatto/gocloc/cmd/gocloc@latest
-      - task: install-deps-linter
 
   install-deps-db:
     desc: Install database tools
@@ -447,8 +446,10 @@ tasks:
       - go install github.com/devilcove/bboltEdit@latest
       - uv tool install squall_sql
 
-  install-deps-website:
+  install-deps-docs:
+    desc: Install documentation dependencies
     cmds:
+      - go install go101.org/golds@latest
       - curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
       - chmod +x tailwindcss-linux-x64
       - sudo mv tailwindcss-linux-x64 /usr/local/bin/tailwindcss
@@ -459,7 +460,7 @@ tasks:
       - npm install -g terminalizer
 
   am-gen-states:
-    desc: Generate a states file in ROOT DIR for provided state names, eg "task am-gen-states -- -s Foo,Bar -n MyMach"
+    desc: Generate a schema file in ROOT DIR for provided state names, eg "task am-gen-states -- -s Foo,Bar -n MyMach"
     cmds:
       - go run ./tools/cmd/am-gen states-file {{.CLI_ARGS}}
 
@@ -467,16 +468,6 @@ tasks:
     desc: Generate a Grafana dashboard, eg "task am-gen-grafana -- --ids mymach,rm-mymach --name mymach --source my-service"
     cmds:
       - go run ./tools/cmd/am-gen grafana {{.CLI_ARGS}}
-
-  install-deps-linter:
-    cmds:
-      - # TODO switch to quickmark-cli
-      - gem install mdl
-#      - cargo install quickmark-cli
-      - go install mvdan.cc/gofumpt@latest
-      - go install golang.org/x/tools/cmd/goimports@latest
-      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh 
-          | sh -s -- -b $(go env GOPATH)/bin v2.5.0
 
   video-gif:
     env:
@@ -582,23 +573,6 @@ tasks:
 
   gen-grafana-tree-state-source:
     cmd: ./examples/tree_state_source/gen-grafana.sh
-
-  gen-diagram-svgs-deps:
-    cmd: npm install -g @mermaid-js/mermaid-cli
-
-  gen-diagram-svgs:
-    env:
-      # 1-based indexes of diagrams to make SVGs of
-      NUMS: 1 2 3 4 5 6 7
-      DIR: assets/asyncmachine-go/diagrams
-    cmds:
-      - go run ./scripts/extract_mermaid docs/diagrams.md "$NUMS"
-      - | 
-        for N in $NUMS; do
-          mmdc -i diagram_$N.mmd -o $DIR/diagram_$N.dark.svg -w 800 -b transparent -t dark
-          mmdc -i diagram_$N.mmd -o $DIR/diagram_$N.light.svg -w 800 -b transparent
-          rm diagram_$N.mmd
-        done
 
   arpc:
     silent: true
@@ -747,16 +721,45 @@ tasks:
 
   deploy-docs-website:
     requires:
-      vars: [AM_DEPLOY_API_DIR]
+      vars: [AM_DEPLOY_WEBSITE_DIR, AM_DEPLOY_WEBSITE_CODE_DIR]
     cmds:
-      - mv docs/website/* {{.AM_DEPLOY_WEBSITE_DIR}}
-      - rm -R {{.AM_DEPLOY_WEBSITE_DIR}}/templates
+      - mv docs/website/*.{html,css} {{.AM_DEPLOY_WEBSITE_DIR}}
       - cp -R scripts/gen_website/sitemap {{.AM_DEPLOY_WEBSITE_CODE_DIR}}/sitemap_am
 
   deploy-docs-api:
     requires:
       vars: [AM_DEPLOY_API_DIR]
-    cmd: mv docs/api/* {{.AM_DEPLOY_API_DIR}}
+    cmds:
+      # TODO mv: cannot overwrite 'servers/code.asyncmachine.dev/css': Directory not empty
+#      - rm -R {{.AM_DEPLOY_API_DIR}}/*
+      - mv docs/api/* {{.AM_DEPLOY_API_DIR}}
+
+  deploy-assets:
+    requires:
+      vars: [AM_DEPLOY_ASSETS_DIR]
+    cmds:
+      - cp -R assets/asyncmachine-go/* {{.AM_DEPLOY_ASSETS_DIR}}
 
   docs-api: static-server -addr localhost:7324 docs/api
   docs-website: static-server -addr localhost:1293 docs/website
+  script-gh-stats:
+    requires:
+      vars: [AM_DEPLOY_WEBSITE_DIR]
+    cmds:
+      - go run ./scripts/gh_stats
+      - cp data/stats.light.png {{.AM_DEPLOY_WEBSITE_DIR}}/chart_light.png
+      - cp data/stats.dark.png {{.AM_DEPLOY_WEBSITE_DIR}}/chart_dark.png
+
+  gen-diagrams:
+    dir: docs/diagrams
+    cmds:
+      - find . -name "*.d2" -exec d2 --theme=201 --layout=elk {} {}.dark.svg \;
+      - d2 --theme=201 --layout=dagre tx-lifecycle.d2 tx-lifecycle.d2.dark.svg
+      - find . -name "*.mermaid" -exec mmdc --input {}
+          --theme=forest --output={}.light.svg --backgroundColor=transparent \;
+      - find . -name "*.mermaid" -exec mmdc --input {}
+          --theme=dark --output={}.dark.svg --backgroundColor=transparent \;
+      - mv *.svg ../../assets/asyncmachine-go/diagrams
+
+
+  gen-diagrams-watch: go run ./scripts/watch_diagrams

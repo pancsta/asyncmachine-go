@@ -1,4 +1,3 @@
-// script/website/main.go
 package main
 
 import (
@@ -31,6 +30,8 @@ func init() {
 }
 
 var apiUrl = os.Getenv("AM_DEPLOY_API_URL")
+var assetsUrl = os.Getenv("AM_DEPLOY_ASSETS_URL")
+var ghAssets = "https://pancsta.github.io/assets/asyncmachine-go"
 
 var amMainMenu = sitemap.MainMenu
 
@@ -47,7 +48,6 @@ func main() {
 	}
 
 	fmt.Printf("Rendering README.md files...\n")
-	os.MkdirAll(outputDir, 0755)
 
 	for _, e := range amMainMenu {
 		if e.Path == "" {
@@ -106,9 +106,11 @@ func renderFile(e sitemap.Entry, outputDir string) error {
 
 	outputPath := filepath.Join(outputDir, flatName)
 
-	// fix ULs
+	// fix lists
 	ret := strings.ReplaceAll(string(htmlContent), "<ul>",
 		`<ul class="ps-5 list-disc list-outside">`)
+	ret = strings.ReplaceAll(ret, "<ol>",
+		`<ol class="ps-5 list-decimal list-outside">`)
 
 	// fix <code> color
 	ret = strings.ReplaceAll(ret, "<code>", `<code class="dark:bg-slate-700 p-1 rounded-sm">`)
@@ -166,7 +168,7 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 	})
 	doc.Find("pre > code").Parent().AddClass("p-2 rounded-lg overflow-x-auto")
 
-	// fix ULs
+	// fix ULs and H1
 	doc.Find("#page-content > ul").RemoveClass("ps-5")
 
 	// fix readme prefix
@@ -181,16 +183,14 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 	} else {
 		// nested readmes
 		doc.Find("#page-content > blockquote").PrevAll().Remove().End().Remove()
+		doc.Find("#page-content > h1").Remove()
 		doc.Find("h1").SetText("/" + e.Path)
 	}
 
 	// fix readme suffix
 	doc.Find("#monorepo").NextAll().Remove().End().Remove()
 
-	// TODO rewrite links
-	//  - .md files to slugs (find missing slugs)
-	//  - dir links with README.md to slugs
-	//  - other links to code.am.dev
+	// rewrite links
 	doc.Find("#page-content a[href]").Each(func(i int, s *goquery.Selection) {
 		href := s.AttrOr("href", "")
 
@@ -234,6 +234,13 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 			}
 		}
 
+		// to assets
+		if strings.HasPrefix(href, ghAssets) {
+			s.SetAttr("href", strings.Replace(href, ghAssets, assetsUrl, 1))
+			// fmt.Printf("code link %s\n", href)
+			return
+		}
+
 		// some dirs to code
 		if !strings.Contains(href, ".") && (strings.HasPrefix(href, "/tools") || strings.HasPrefix(href, "/pkg")) {
 			s.SetAttr("href", fmt.Sprintf("%s/pkg/github.com/pancsta/asyncmachine-go%s.html", apiUrl, href))
@@ -256,6 +263,12 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		))
 	})
 	doc.Find("header a:contains(APIs)").SetAttr("href", apiUrl)
+	doc.Find("#page-content source[srcset^=" + ghAssets + "]").Each(func(i int, s *goquery.Selection) {
+		s.SetAttr("srcset", strings.Replace(s.AttrOr("srcset", ""), ghAssets, assetsUrl, 1))
+	})
+	doc.Find(fmt.Sprintf(`#page-content img[src^="%s"]`, ghAssets)).Each(func(i int, s *goquery.Selection) {
+		s.SetAttr("src", strings.Replace(s.AttrOr("src", ""), ghAssets, assetsUrl, 1))
+	})
 
 	// parse github alerts
 	doc.Find(`blockquote:contains("[!NOTE]")`).Each(func(i int, s *goquery.Selection) {
@@ -273,14 +286,26 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		s.ReplaceWithHtml(alert)
 	})
 
+	// TODO force dark imgs
+	doc.Find("picture").Each(func(i int, s *goquery.Selection) {
+		img := s.Find("img")
+		href := img.AttrOr("src", "")
+		img.SetAttr("src", strings.ReplaceAll(href, "light", "dark"))
+		s.ReplaceWithNodes(img.Nodes...)
+	})
+
 	// 6. output the modified HTML
 	// We use Find("html") to get the whole document string including <html> tags
-	result, err := doc.Find("html").Html()
+	htmlEl := doc.Find("html")
+	result, err := htmlEl.Html()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	return result, nil
+	return fmt.Sprintf(`<html lang="%s" class="%s">%s</html>`,
+		htmlEl.AttrOr("lang", ""),
+		htmlEl.AttrOr("class", ""),
+		result), nil
 }
 
 func highlightCode(s *goquery.Selection, lexerBash chroma.Lexer, formatter *html.Formatter, style *chroma.Style) {
@@ -310,17 +335,19 @@ func highlightCode(s *goquery.Selection, lexerBash chroma.Lexer, formatter *html
 
 func renderMainMenu(sourcePath string) string {
 	selected := "flex-shrink-0 px-4 py-2 text-sm font-semibold text-white bg-blue-600 dark:text-black dark:bg-sunlit-clay-400 rounded-full shadow-md"
-	normal := "flex-shrink-0 px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/80 dark:hover:bg-sunlit-clay-700/80 rounded-full transition-all duration-200"
+	normal := "flex-shrink-0 px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-700/80 dark:hover:bg-sunlit-clay-700/80 rounded-full transition-all duration-200"
 
 	ret := ""
 	for _, e := range amMainMenu {
 		if e.SkipMenu {
+
 			continue
 		}
 		// separator
 		if e.Path == "" {
 			ret += `<span class="p-1">•</span>`
 			ret += "\n"
+
 			continue
 		}
 		class := normal
@@ -330,6 +357,11 @@ func renderMainMenu(sourcePath string) string {
             const pageSlug = "%s";
 			</script>`, e.Url)
 			class = selected
+		}
+		if e.Bold {
+			class += " font-bold text-sunlit-clay-400"
+		} else {
+			class += " font-medium"
 		}
 		name := e.Url
 		if e.Url == "" {

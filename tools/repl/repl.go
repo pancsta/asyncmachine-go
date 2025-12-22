@@ -211,7 +211,7 @@ func (r *Repl) CmdAddEnter(e *am.Event) bool {
 	args := ParseArgs(e.Args)
 
 	// confirm theres a Ready worker
-	var mach *rpc.Worker
+	var mach *rpc.NetworkMachine
 	for _, c := range r.rpcClients {
 		if c == nil {
 			continue
@@ -219,8 +219,8 @@ func (r *Repl) CmdAddEnter(e *am.Event) bool {
 		if c.Mach.Not1(ssrpc.ClientStates.Ready) {
 			continue
 		}
-		if c.Worker.RemoteId() == args.MachId || args.MachId == "." {
-			mach = c.Worker
+		if c.NetMach.RemoteId() == args.MachId || args.MachId == "." {
+			mach = c.NetMach
 			break
 		}
 	}
@@ -241,7 +241,7 @@ func (r *Repl) CmdAddState(e *am.Event) {
 	args := ParseArgs(e.Args)
 
 	// confirm theres a Ready worker
-	var mach *rpc.Worker
+	var mach *rpc.NetworkMachine
 	for _, c := range r.rpcClients {
 		if c == nil {
 			continue
@@ -249,8 +249,8 @@ func (r *Repl) CmdAddState(e *am.Event) {
 		if c.Mach.Not1(ssrpc.ClientStates.Ready) {
 			continue
 		}
-		if c.Worker.RemoteId() == args.MachId || args.MachId == "." {
-			mach = c.Worker
+		if c.NetMach.RemoteId() == args.MachId || args.MachId == "." {
+			mach = c.NetMach
 			break
 		}
 	}
@@ -270,7 +270,7 @@ func (r *Repl) CmdRemoveEnter(e *am.Event) bool {
 	args := ParseArgs(e.Args)
 
 	// confirm theres a Ready worker
-	var mach *rpc.Worker
+	var mach *rpc.NetworkMachine
 	for _, c := range r.rpcClients {
 		if c == nil {
 			continue
@@ -278,8 +278,8 @@ func (r *Repl) CmdRemoveEnter(e *am.Event) bool {
 		if c.Mach.Not1(ssrpc.ClientStates.Ready) {
 			continue
 		}
-		if c.Worker.RemoteId() == args.MachId || args.MachId == "." {
-			mach = c.Worker
+		if c.NetMach.RemoteId() == args.MachId || args.MachId == "." {
+			mach = c.NetMach
 			break
 		}
 	}
@@ -300,7 +300,7 @@ func (r *Repl) CmdRemoveState(e *am.Event) {
 	args := ParseArgs(e.Args)
 
 	// confirm theres a Ready worker
-	var mach *rpc.Worker
+	var mach *rpc.NetworkMachine
 	for _, c := range r.rpcClients {
 		if c == nil {
 			continue
@@ -308,8 +308,8 @@ func (r *Repl) CmdRemoveState(e *am.Event) {
 		if c.Mach.Not1(ssrpc.ClientStates.Ready) {
 			continue
 		}
-		if c.Worker.RemoteId() == args.MachId || args.MachId == "." {
-			mach = c.Worker
+		if c.NetMach.RemoteId() == args.MachId || args.MachId == "." {
+			mach = c.NetMach
 			break
 		}
 	}
@@ -335,8 +335,8 @@ func (r *Repl) CmdGroupAddEnter(e *am.Event) bool {
 	// TODO --strict
 	var match bool
 	for _, c := range r.rpcClients {
-		if slices.Contains(args.MachIds, c.Worker.RemoteId()) &&
-			amhelp.Implements(c.Worker.StateNames(), args.States) == nil {
+		if slices.Contains(args.MachIds, c.NetMach.RemoteId()) &&
+			amhelp.Implements(c.NetMach.StateNames(), args.States) == nil {
 
 			match = true
 			break
@@ -366,14 +366,14 @@ func (r *Repl) CmdGroupAddState(e *am.Event) {
 		if c == nil {
 			continue
 		}
-		if !slices.Contains(args.MachIds, c.Worker.RemoteId()) ||
-			amhelp.Implements(c.Worker.StateNames(), args.States) != nil {
+		if !slices.Contains(args.MachIds, c.NetMach.RemoteId()) ||
+			amhelp.Implements(c.NetMach.StateNames(), args.States) != nil {
 
 			continue
 		}
 
 		// count results
-		switch c.Worker.Add(args.States, mutArgs) {
+		switch c.NetMach.Add(args.States, mutArgs) {
 		case am.Executed:
 			se++
 		case am.Canceled:
@@ -403,8 +403,8 @@ func (r *Repl) CmdGroupRemoveEnter(e *am.Event) bool {
 		if c == nil {
 			continue
 		}
-		if slices.Contains(args.MachIds, c.Worker.RemoteId()) &&
-			amhelp.Implements(c.Worker.StateNames(), args.States) == nil {
+		if slices.Contains(args.MachIds, c.NetMach.RemoteId()) &&
+			amhelp.Implements(c.NetMach.StateNames(), args.States) == nil {
 
 			match = true
 			break
@@ -434,14 +434,14 @@ func (r *Repl) CmdGroupRemoveState(e *am.Event) {
 		if c == nil {
 			continue
 		}
-		if !slices.Contains(args.MachIds, c.Worker.RemoteId()) ||
-			amhelp.Implements(c.Worker.StateNames(), args.States) != nil {
+		if !slices.Contains(args.MachIds, c.NetMach.RemoteId()) ||
+			amhelp.Implements(c.NetMach.StateNames(), args.States) != nil {
 
 			continue
 		}
 
 		// count results
-		switch c.Worker.Add(args.States, mutArgs) {
+		switch c.NetMach.Add(args.States, mutArgs) {
 		case am.Executed:
 			se++
 		case am.Canceled:
@@ -508,7 +508,7 @@ func (r *Repl) ListMachinesState(e *am.Event) {
 			continue
 		}
 
-		w := c.Worker
+		w := c.NetMach
 		remId := w.RemoteId()
 
 		// ID
@@ -758,7 +758,7 @@ func (r *Repl) ListMachines(filters *ListFilters) ([]*rpc.Client, error) {
 }
 
 // Worker returns an RPC worker with a given ID, or nil.
-func (r *Repl) Worker(machId string) *rpc.Worker {
+func (r *Repl) Worker(machId string) *rpc.NetworkMachine {
 	// first connected TODO document
 	if machId == "." {
 		for _, c := range r.rpcClients {
@@ -766,7 +766,7 @@ func (r *Repl) Worker(machId string) *rpc.Worker {
 				continue
 			}
 			if c.Mach.Is1(ssrpc.ClientStates.Ready) {
-				return c.Worker
+				return c.NetMach
 			}
 		}
 
@@ -779,7 +779,7 @@ func (r *Repl) Worker(machId string) *rpc.Worker {
 		return nil
 	}
 
-	return rpcs[0].Worker
+	return rpcs[0].NetMach
 }
 
 func (r *Repl) newRpcClient(addr, idSuffix string) (*rpc.Client, error) {
@@ -787,16 +787,15 @@ func (r *Repl) newRpcClient(addr, idSuffix string) (*rpc.Client, error) {
 
 	// empty schema RPC client
 	client, err := rpc.NewClient(ctx, addr, "repl-"+idSuffix,
-		am.Schema{}, S{}, &rpc.ClientOpts{Parent: r.Mach})
+		am.Schema{}, &rpc.ClientOpts{Parent: r.Mach})
 	if err != nil {
 		return nil, err
 	}
-	client.RequestSchema = true
 
 	// telemetry
 	if r.DbgAddr != "" {
 		amhelp.MachDebug(client.Mach, r.DbgAddr, r.Mach.SemLogger().Level(),
-			false, amhelp.SemConfig(true))
+			false, amhelp.SemConfigEnv(true))
 		client.LogEnabled = true
 	}
 
@@ -871,19 +870,19 @@ func (r *Repl) completeStates(
 	}
 
 	// states
-	var mach *rpc.Worker
+	var mach *rpc.NetworkMachine
 	for _, c := range r.rpcClients {
 		if c == nil {
 			continue
 		}
 		// dotmach
 		if args[0] == "." {
-			mach = c.Worker
+			mach = c.NetMach
 			break
 		}
 
-		if c.Worker.RemoteId() == args[0] {
-			mach = c.Worker
+		if c.NetMach.RemoteId() == args[0] {
+			mach = c.NetMach
 			break
 		}
 	}
@@ -908,7 +907,7 @@ func (r *Repl) completeAllStatesFlags(
 		if c == nil {
 			continue
 		}
-		allStates = append(allStates, c.Worker.StateNames()...)
+		allStates = append(allStates, c.NetMach.StateNames()...)
 	}
 
 	// flags completion when mach and states are passed
@@ -929,7 +928,7 @@ func (r *Repl) completeAllStates(
 		if c == nil {
 			continue
 		}
-		allStates = append(allStates, c.Worker.StateNames()...)
+		allStates = append(allStates, c.NetMach.StateNames()...)
 	}
 
 	allStates = utils.SlicesUniq(allStates)
@@ -950,26 +949,26 @@ func (r *Repl) completeMachStates(
 		machs, _ := r.ListMachines(nil)
 		resources = make([]string, len(machs))
 		for i, c := range machs {
-			resources[i] = c.Worker.RemoteId()
+			resources[i] = c.NetMach.RemoteId()
 		}
 		// dotmach is the first connected machine
 		resources = append(resources, ".")
 
 	default:
 		// states
-		var mach *rpc.Worker
+		var mach *rpc.NetworkMachine
 		for _, c := range r.rpcClients {
 			if c == nil {
 				continue
 			}
 			// dotmach
 			if args[0] == "." {
-				mach = c.Worker
+				mach = c.NetMach
 				break
 			}
 
-			if c.Worker.RemoteId() == args[0] {
-				mach = c.Worker
+			if c.NetMach.RemoteId() == args[0] {
+				mach = c.NetMach
 				break
 			}
 		}
@@ -1000,7 +999,7 @@ func (r *Repl) completeMach(
 			if c == nil {
 				continue
 			}
-			resources[i] = c.Worker.RemoteId()
+			resources[i] = c.NetMach.RemoteId()
 		}
 		// . is the first connected machine
 		resources = append(resources, ".")

@@ -89,21 +89,21 @@ func NewRels(t *testing.T, initialState am.S) *am.Machine {
 	return mach
 }
 
-// NewRelsRpcWorker creates a new RPC worker machine with basic relations
+// NewRelsNetSrc creates a new network source machine with basic relations
 // between ABCD states.
-func NewRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
+func NewRelsNetSrc(t *testing.T, initialState am.S) *am.Machine {
 
 	// inherit from RPC worker
 
 	// TODO define these in /states using v2 as RelWorkerStruct and
 	//  RelWorkerStates, inheriting frm RelStructDef etc
-	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, ss.States)
-	ssNames := am.SAdd(ss.Names, ssrpc.WorkerStates.Names())
+	schema := am.SchemaMerge(ssrpc.NetSourceSchema, ss.States)
+	names := am.SAdd(ss.Names, ssrpc.NetSourceStates.Names())
 
 	// machine init
-	mach := am.New(context.Background(), ssStruct, &am.Opts{
-		Id: "t-" + t.Name()})
-	err := mach.VerifyStates(ssNames)
+	mach := am.New(context.Background(), schema, &am.Opts{
+		Id: "ns-" + t.Name()})
+	err := mach.VerifyStates(names)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,14 +151,16 @@ func NewRelsNodeWorker(t *testing.T, initialState am.S) *am.Machine {
 }
 
 // NewNoRels creates a new machine without relations between states.
-func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
+func NewNoRels(t *testing.T, initialState am.S, suffix string) *am.Machine {
+	id := t.Name() + suffix
+
 	// machine init
 	mach := am.New(context.Background(), am.Schema{
 		ss.A: {},
 		ss.B: {},
 		ss.C: {},
 		ss.D: {},
-	}, &am.Opts{Id: "t-" + t.Name()})
+	}, &am.Opts{Id: "t-" + id})
 	err := mach.VerifyStates(ss.Names)
 	if err != nil {
 		t.Fatal(err)
@@ -176,21 +178,21 @@ func NewNoRels(t *testing.T, initialState am.S) *am.Machine {
 	return mach
 }
 
-// NewNoRelsRpcWorker creates a new RPC worker without relations between states.
-func NewNoRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
+// NewNoRelsNetSrc creates a new RPC worker without relations between states.
+func NewNoRelsNetSrc(t *testing.T, initialState am.S) *am.Machine {
 
 	// inherit from RPC worker
-	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, am.Schema{
+	schema := am.SchemaMerge(ssrpc.NetSourceSchema, am.Schema{
 		ss.A: {},
 		ss.B: {},
 		ss.C: {},
 		ss.D: {},
 	})
-	ssNames := am.SAdd(ss.Names, ssrpc.WorkerStates.Names())
+	names := am.SAdd(ss.Names, ssrpc.NetSourceStates.Names())
 
 	// machine init
-	mach := am.New(context.Background(), ssStruct, &am.Opts{Id: "t-" + t.Name()})
-	err := mach.VerifyStates(ssNames)
+	mach := am.New(context.Background(), schema, &am.Opts{Id: "ns-" + t.Name()})
+	err := mach.VerifyStates(names)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,23 +209,23 @@ func NewNoRelsRpcWorker(t *testing.T, initialState am.S) *am.Machine {
 	return mach
 }
 
-// NewNoRelsRpcWorkerSchema creates a new RPC worker without relations between
+// NewNoRelsNetSrcSchema creates a new RPC worker without relations between
 // states and applies a schema overlay.
-func NewNoRelsRpcWorkerSchema(
+func NewNoRelsNetSrcSchema(
 	t *testing.T, initialState am.S, overlay am.Schema) *am.Machine {
 
 	// inherit from RPC worker
-	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, am.SchemaMerge(am.Schema{
+	schema := am.SchemaMerge(ssrpc.NetSourceSchema, am.SchemaMerge(am.Schema{
 		ss.A: {},
 		ss.B: {},
 		ss.C: {},
 		ss.D: {},
 	}, overlay))
-	ssNames := am.SAdd(ss.Names, ssrpc.WorkerStates.Names())
+	names := am.SAdd(ss.Names, ssrpc.NetSourceStates.Names())
 
 	// machine init
-	mach := am.New(context.Background(), ssStruct, &am.Opts{Id: "t-" + t.Name()})
-	err := mach.VerifyStates(ssNames)
+	mach := am.New(context.Background(), schema, &am.Opts{Id: "t-" + t.Name()})
+	err := mach.VerifyStates(names)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,17 +260,17 @@ func NewCustom(t *testing.T, states am.Schema) *am.Machine {
 	return mach
 }
 
-// NewCustomRpcWorker creates a new worker with custom states.
-func NewCustomRpcWorker(t *testing.T, states am.Schema) *am.Machine {
+// NewCustomNetSrc creates a new worker with custom states.
+func NewCustomNetSrc(t *testing.T, states am.Schema) *am.Machine {
 
 	// inherit from RPC worker
 
-	ssStruct := am.SchemaMerge(ssrpc.WorkerSchema, states)
-	ssNames := am.SAdd(maps.Keys(states), ssrpc.WorkerStates.Names())
+	schema := am.SchemaMerge(ssrpc.NetSourceSchema, states)
+	names := am.SAdd(maps.Keys(states), ssrpc.NetSourceStates.Names())
 
-	mach := am.New(context.Background(), ssStruct, &am.Opts{
+	mach := am.New(context.Background(), schema, &am.Opts{
 		Id: "t-" + t.Name()})
-	err := mach.VerifyStates(ssNames)
+	err := mach.VerifyStates(names)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -49,8 +49,7 @@ func BenchmarkClientArpc(b *testing.B) {
 	go arpc.TrafficMeter(counterListener, serverAddr, counter, end)
 
 	// init client
-	c, err := arpc.NewClient(ctx, connAddr, "worker", states.WorkerSchema,
-		ss.Names(), nil)
+	c, err := arpc.NewClient(ctx, connAddr, "worker", states.WorkerSchema, nil)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -58,7 +57,7 @@ func BenchmarkClientArpc(b *testing.B) {
 		l("arpc-client", msg, args...)
 	}, logLvl)
 	amhelp.MachDebug(c.Mach, amDbgAddr, logLvl, false,
-		amhelp.SemConfig(true))
+		amhelp.SemConfigEnv(true))
 
 	// tear down
 	b.Cleanup(func() {
@@ -84,10 +83,10 @@ func BenchmarkClientArpc(b *testing.B) {
 	// 1. subscription: wait for notifications
 	// 2. getter: get a value from the worker
 	// 3. processing: call an operation based on the value
-	ticks := c.Worker.Tick(ss.Event)
+	ticks := c.NetMach.Tick(ss.Event)
 	go func() {
 		for {
-			<-c.Worker.WhenTime1(ss.Event, ticks+2, nil)
+			<-c.NetMach.WhenTime1(ss.Event, ticks+2, nil)
 			ticks += 2
 
 			// loop
@@ -99,24 +98,24 @@ func BenchmarkClientArpc(b *testing.B) {
 			}
 
 			// value (getter)
-			value := c.Worker.Switch(states.WorkerGroups.Values)
+			value := c.NetMach.Switch(states.WorkerGroups.Values)
 
 			// call op from value (processing)
 
 			var res am.Result
 			switch value {
 			case ss.Value1:
-				res = c.Worker.Add1(ss.CallOp, am.A{"Op": Op1})
+				res = c.NetMach.Add1(ss.CallOp, am.A{"Op": Op1})
 			case ss.Value2:
-				res = c.Worker.Add1(ss.CallOp, am.A{"Op": Op2})
+				res = c.NetMach.Add1(ss.CallOp, am.A{"Op": Op2})
 			case ss.Value3:
-				res = c.Worker.Add1(ss.CallOp, am.A{"Op": Op3})
+				res = c.NetMach.Add1(ss.CallOp, am.A{"Op": Op3})
 			default:
 				// err
 				b.Fatalf("Unknown value: %v", value)
 			}
 			if res != am.Executed {
-				b.Fatalf("CallOp failed: %v", c.Worker.Err())
+				b.Fatalf("CallOp failed: %v", c.NetMach.Err())
 			}
 		}
 	}()
@@ -125,7 +124,7 @@ func BenchmarkClientArpc(b *testing.B) {
 	b.ResetTimer()
 
 	// start, wait and report
-	c.Worker.Add1(ss.Start, nil)
+	c.NetMach.Add1(ss.Start, nil)
 	<-end
 
 	b.ReportAllocs()

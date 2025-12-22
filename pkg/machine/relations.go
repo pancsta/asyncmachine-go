@@ -37,6 +37,9 @@ type RelationsResolver interface {
 // using Opts.Resolver.
 // TODO refac RelationsDefault
 type DefaultRelationsResolver struct {
+	// TODO replace with TimeIndex, log(), Schema
+	//   - for netmach mut filtering
+	//   - for alternative impls
 	Machine      *Machine
 	Transition   *Transition
 	Index        S
@@ -185,7 +188,7 @@ func (rr *DefaultRelationsResolver) NewAutoMutation() (*Mutation, S) {
 	mut := Mutation{
 		Type:   MutationAdd,
 		Called: m.Index(toAdd),
-		Auto:   true,
+		IsAuto: true,
 	}
 	mut.cacheCalled.Store(&toAdd)
 
@@ -371,7 +374,7 @@ func (rr *DefaultRelationsResolver) getMissingRequires(
 	return ret
 }
 
-// GetRelationsBetween returns a list of outbound relations between
+// RelationsBetween returns a list of outbound relations between
 // fromState -> toState. Not thread safe.
 func (rr *DefaultRelationsResolver) RelationsBetween(
 	fromState, toState string,
@@ -407,7 +410,7 @@ func (rr *DefaultRelationsResolver) RelationsBetween(
 	return relations, nil
 }
 
-// GetRelationsOf returns a list of relation types of the given state.
+// RelationsOf returns a list of relation types of the given state.
 // Not thread safe.
 func (rr *DefaultRelationsResolver) RelationsOf(fromState string) (
 	[]Relation, error,
@@ -481,7 +484,7 @@ type graph struct {
 	vertices map[string][]string
 }
 
-// newGraph creates a new graph.
+// newGraph creates a new states graph.
 func newGraph() *graph {
 	return &graph{vertices: make(map[string][]string)}
 }
@@ -513,6 +516,7 @@ func (g *graph) TopologicalSort() ([]string, error) {
 			visited[node] = true
 			stack = append(stack, node)
 		}
+
 		return nil
 	}
 

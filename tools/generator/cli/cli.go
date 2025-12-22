@@ -127,7 +127,7 @@ func ParseGrafanaParams(cmd *cobra.Command, _ []string) GrafanaParams {
 
 // ///// ///// /////
 
-// ///// STATES FILE
+// ///// SCHEMA FILE
 
 // ///// ///// /////
 
@@ -142,7 +142,7 @@ type SFParams struct {
 	States string
 	// Inherit - Inherit from built-in states machines (comma separated):
 	// - basic,connected
-	// - rpc/worker
+	// - rpc/netsrc
 	// - node/worker
 	Inherit string
 	// Groups - Groups to generate. Eg: Group1,Group2
@@ -178,8 +178,8 @@ func AddStatesFlags(cmd *cobra.Command) {
 	f.StringP(pSFStates, pSFStatesShort, "",
 		"State names to generate. Eg: State1,State2")
 	f.StringP(pSFInherit, pSFInheritShort, "",
-		"Inherit from a built-in states machine: " +
-		"basic,connected,rpc/worker,node/worker")
+		"Inherit from built-in state-machines: "+
+			"basic,connected,rpc/netsrc,node/worker")
 	f.StringP(pSFGroups, pSFGroupsShort, "",
 		"Groups to generate. Eg: Group1,Group2")
 	f.StringP(pSFName, pSFNameShort, "",

@@ -167,7 +167,7 @@ func (d *Debugger) LogUpdatedState(e *am.Event) {
 		title := " Log:" + d.Opts.Filters.LogLevel.String() + " "
 		if tx != nil && c.CursorTx1 != 0 {
 			t := strconv.Itoa(int(c.MsgTxsParsed[c.CursorTx1-1].TimeSum))
-			title += "Time:" + t + " "
+			title += "[gray]([-]t" + t + "[gray])[-] "
 		}
 		d.log.SetTitle(title)
 	}
@@ -1050,7 +1050,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		if tx.IsQueued {
 			var executed *telemetry.DbgMsgTx
 
-			// // TODO DEBUG
+			// DEBUG
 			// // look into the future TODO links to the wrong one
 			// for iii := c.CursorTx1; iii < len(c.MsgTxs); iii++ {
 			// 	check := c.MsgTxs[iii]
@@ -1095,7 +1095,8 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 			executedNode.SetReference(ref)
 			executedNode.SetIndent(1)
 			parentQueue.AddChild(executedNode)
-			queuedNode := cview.NewTreeNode("queued   at [::b]...")
+			queuedNode := cview.NewTreeNode(fmt.Sprintf("queued   at [::b]t%d",
+				tx.TimeSum()))
 			queuedNode.SetIndent(1)
 			parentQueue.AddChild(queuedNode)
 			queuedForLabel := "..."
@@ -1119,7 +1120,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 					continue
 				}
 
-				// // TODO DEBUG
+				// DEBUG
 				// txCalled := tx.CalledStateNames(statesIndex)
 				// checkCalled := check.CalledStateNames(statesIndex)
 				// if check.IsQueued && am.StatesEqual(txCalled, checkCalled) {

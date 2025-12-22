@@ -132,6 +132,8 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 		return nil, err
 	}
 
+	// TODO history
+
 	return mach, nil
 }
 
@@ -213,7 +215,7 @@ func (h *TemplateHandlers) ChannelState(e *am.Event) {
 // ///// ///// /////
 // TODO add RPC args example from pkg/node
 
-const APrefix = "am_node"
+const APrefix = "template"
 
 // A is a struct for node arguments. It's a typesafe alternative to [am.A].
 type A struct {
@@ -250,7 +252,7 @@ func Pass(args *A) am.A {
 }
 
 // PassRpc prepares [am.A] from A to pass over RPC.
-func PassRpc(args *A) am.A {
+func PassRpc(args *ARpc) am.A {
 	return am.A{APrefix: amhelp.ArgsToArgs(args, &ARpc{})}
 }
 
@@ -296,7 +298,7 @@ func AddErrExample(
 // ///// ///// /////
 
 type Tracer struct {
-	*am.NoOpTracer
+	*am.TracerNoOp
 	// This machine's clock has been updated and needs to be synced.
 	dirty atomic.Bool
 }

@@ -1,27 +1,28 @@
 package sitemap
 
 type Entry struct {
-	Url  string
+	Url      string
 	Path     string
 	SkipMenu bool
+	Bold     bool
 }
 
 var MainMenu = []Entry{
 	{Url: "", Path: "README.md"},
 	{Url: "examples", Path: "examples/README.md"},
 	{Url: "manual", Path: "docs/manual.md"},
-	{"", "", false},
-	{Url: "machine", Path: "pkg/machine/README.md"},
+	{"", "", false, false},
+	{Url: "machine", Path: "pkg/machine/README.md", Bold: true},
 	{Url: "states", Path: "pkg/states/README.md"},
 	{Url: "helpers", Path: "pkg/helpers/README.md"},
 	{Url: "telemetry", Path: "pkg/telemetry/README.md"},
 	{Url: "history", Path: "pkg/history/README.md"},
-	{"", "", false},
+	{"", "", false, false},
 	{Url: "rpc", Path: "pkg/rpc/README.md"},
 	{Url: "integrations", Path: "pkg/integrations/README.md"},
 	{Url: "node", Path: "pkg/node/README.md"},
 	{Url: "pubsub", Path: "pkg/pubsub/README.md"},
-	{"", "", false},
+	{"", "", false, false},
 	{Url: "am-gen", Path: "tools/cmd/am-gen/README.md"},
 	{Url: "am-dbg", Path: "tools/cmd/am-dbg/README.md"},
 	{Url: "arpc", Path: "tools/cmd/arpc/README.md"},

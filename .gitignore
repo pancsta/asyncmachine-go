@@ -85,3 +85,6 @@ tools/visualizer/testdata/*
 /*.d2
 /docs/api
 /docs/website
+/docs/diagrams/*.svg
+/data/
+*.gob.br

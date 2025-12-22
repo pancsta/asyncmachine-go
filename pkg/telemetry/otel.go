@@ -73,9 +73,9 @@ type OtelMachTracerOpts struct {
 	// if true, auto transitions won't be traced
 	SkipAuto bool
 	// TODO
-	WhitelistStates am.S
+	AllowStates am.S
 	// TODO
-	BlacklistStates am.S
+	SkipStates am.S
 
 	// TODO skipping empty and canceled txs requires a custom Processor to
 	//  discard an open span
@@ -89,7 +89,7 @@ type OtelMachTracerOpts struct {
 // of multiple state machines, resulting in a single trace. This tracer is
 // automatically bound to new sub-machines.
 type OtelMachTracer struct {
-	*am.NoOpTracer
+	*am.TracerNoOp
 
 	// TODO rewrite with better locking
 
@@ -459,8 +459,8 @@ func (mt *OtelMachTracer) TransitionEnd(tx *am.Transition) {
 	defer data.mx.Unlock()
 
 	// parse states collected from resolving relations
-	statesAdded := am.DiffStates(target, tx.StatesBefore())
-	statesRemoved := am.DiffStates(tx.StatesBefore(), target)
+	statesAdded := am.StatesDiff(target, tx.StatesBefore())
+	statesRemoved := am.StatesDiff(tx.StatesBefore(), target)
 
 	// support multi states
 	before := tx.ClockBefore()
@@ -722,7 +722,7 @@ func MachBindOtelEnv(mach am.Api) error {
 		}
 	}
 
-	// dispose somehow
+	// dispose somehow TODO use amhelp.OnDispose
 	register := ssam.DisposedStates.RegisterDisposal
 	if mach.Has1(register) {
 		mach.Add1(register, am.A{

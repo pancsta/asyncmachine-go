@@ -24,9 +24,9 @@ import (
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	ss "github.com/pancsta/asyncmachine-go/pkg/states"
-	"github.com/pancsta/asyncmachine-go/pkg/states/pipes"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
+	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
+	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
 const (
@@ -267,7 +267,7 @@ func MachDebug(
 	}
 
 	// tracer for telemetry
-	err := telemetry.TransitionsToDbg(mach, amDbgAddr)
+	err := amtele.TransitionsToDbg(mach, amDbgAddr)
 	if err != nil {
 		// TODO dont panic
 		panic(err)
@@ -278,10 +278,13 @@ func MachDebug(
 	}
 }
 
-// SemConfig returns a SemConfig based on env vars, or the [forceFull] flag.
-func SemConfig(forceFull bool) *am.SemConfig {
+// SemConfigEnv returns a SemConfigEnv based on env vars, or the [forceFull]
+// flag.
+func SemConfigEnv(forceFull bool) *am.SemConfig {
+	// TODO rename to SemConfigEnv
+
 	// full override
-	if os.Getenv(EnvAmLogFull) == "1" || forceFull {
+	if os.Getenv(EnvAmLogFull) != "" || forceFull {
 		return &am.SemConfig{
 			Steps:    true,
 			Graph:    true,
@@ -295,30 +298,30 @@ func SemConfig(forceFull bool) *am.SemConfig {
 
 	// selective logging
 	return &am.SemConfig{
-		Steps:    os.Getenv(EnvAmLogSteps) == "1",
-		Graph:    os.Getenv(EnvAmLogGraph) == "1",
-		Can:      os.Getenv(EnvAmLogChecks) == "1",
-		Queued:   os.Getenv(EnvAmLogQueued) == "1",
-		StateCtx: os.Getenv(EnvAmLogStateCtx) == "1",
-		When:     os.Getenv(EnvAmLogWhen) == "1",
-		Args:     os.Getenv(EnvAmLogArgs) == "1",
+		Steps:    os.Getenv(EnvAmLogSteps) != "",
+		Graph:    os.Getenv(EnvAmLogGraph) != "",
+		Can:      os.Getenv(EnvAmLogChecks) != "",
+		Queued:   os.Getenv(EnvAmLogQueued) != "",
+		StateCtx: os.Getenv(EnvAmLogStateCtx) != "",
+		When:     os.Getenv(EnvAmLogWhen) != "",
+		Args:     os.Getenv(EnvAmLogArgs) != "",
 	}
 }
 
 // MachDebugEnv sets up a machine for debugging, based on env vars only:
-// AM_DBG_ADDR, AM_LOG, and AM_DEBUG. This function should be called right
-// after the machine is created, to catch all the log entries.
+// AM_DBG_ADDR, AM_LOG, AM_LOG_*, and AM_DEBUG. This function should be called
+// right after the machine is created (to catch all the log entries).
 func MachDebugEnv(mach am.Api) {
-	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
+	amDbgAddr := os.Getenv(amtele.EnvAmDbgAddr)
 	logLvl := am.EnvLogLevel("")
 	stdout := os.Getenv(EnvAmLogPrint) != ""
 
 	// expand the default addr
 	if amDbgAddr == "1" {
-		amDbgAddr = telemetry.DbgAddr
+		amDbgAddr = amtele.DbgAddr
 	}
 
-	MachDebug(mach, amDbgAddr, logLvl, stdout, SemConfig(false))
+	MachDebug(mach, amDbgAddr, logLvl, stdout, SemConfigEnv(false))
 }
 
 // Healthcheck adds a state to a machine every 5 seconds, until the context is
@@ -334,7 +337,7 @@ func Healthcheck(mach am.Api) {
 		for {
 			select {
 			case <-t.C:
-				mach.Add1(ss.BasicStates.Healthcheck, nil)
+				mach.Add1(ssam.BasicStates.Healthcheck, nil)
 			case <-mach.Ctx().Done():
 				t.Stop()
 			}
@@ -732,7 +735,7 @@ func EnableDebugging(stdout bool) {
 	} else {
 		_ = os.Setenv(am.EnvAmDebug, "1")
 	}
-	_ = os.Setenv(telemetry.EnvAmDbgAddr, "1")
+	_ = os.Setenv(amtele.EnvAmDbgAddr, "1")
 	_ = os.Setenv(EnvAmLogFull, "1")
 	SetEnvLogLevel(am.LogOps)
 	// _ = os.Setenv(EnvAmHealthcheck, "1")
@@ -802,7 +805,7 @@ func ArgsToLogMap(args interface{}, maxLen int) map[string]string {
 					txt += ", "
 				}
 
-				txt += `"` + am.TruncateStr(el, maxLen/2) + `"`
+				txt += `"` + utils.TruncateStr(el, maxLen/2) + `"`
 				if ii >= maxLen/2 {
 					txt += fmt.Sprintf(" ... (%d more)", len(v)-ii)
 					break
@@ -881,7 +884,7 @@ func ArgsToLogMap(args interface{}, maxLen int) map[string]string {
 					if txt != "" {
 						txt += ", "
 					}
-					txt += `"` + am.TruncateStr(s.String(), maxLen/2) + `"`
+					txt += `"` + utils.TruncateStr(s.String(), maxLen/2) + `"`
 					if i >= maxLen/2 {
 						txt += fmt.Sprintf(" ... (%d more)", valLen-ii)
 						break
@@ -899,7 +902,7 @@ func ArgsToLogMap(args interface{}, maxLen int) map[string]string {
 
 		result[key] = strings.ReplaceAll(result[key], "\n", " ")
 		if !skipMaxLen && len(result[key]) > maxLen {
-			result[key] = am.TruncateStr(result[key], maxLen)
+			result[key] = utils.TruncateStr(result[key], maxLen)
 		}
 	}
 
@@ -933,7 +936,7 @@ func IsDebug() bool {
 
 // IsTelemetry returns true if the process is in telemetry debug mode.
 func IsTelemetry() bool {
-	return os.Getenv(telemetry.EnvAmDbgAddr) != "" && !IsTestRunner()
+	return os.Getenv(amtele.EnvAmDbgAddr) != "" && !IsTestRunner()
 }
 
 func IsTestRunner() bool {
@@ -1445,16 +1448,16 @@ func NewMirror(
 				mirror.Add1(state, nil)
 			}
 			if isAdd {
-				p = pipes.AddFlat(source, mirror, state, "")
+				p = ampipe.AddFlat(source, mirror, state, "")
 			} else {
-				p = pipes.RemoveFlat(source, mirror, state, "")
+				p = ampipe.RemoveFlat(source, mirror, state, "")
 			}
 
 		} else {
 			if isAdd {
-				p = pipes.Add(source, mirror, state, "")
+				p = ampipe.Add(source, mirror, state, "")
 			} else {
-				p = pipes.Remove(source, mirror, state, "")
+				p = ampipe.Remove(source, mirror, state, "")
 			}
 		}
 
@@ -1495,8 +1498,13 @@ func CopySchema(source am.Schema, target *am.Machine, states am.S) error {
 // is not important.
 func SchemaHash(schema am.Schema) string {
 	ret := ""
+	if schema == nil {
+		return ""
+	}
+
 	keys := slices.Collect(maps.Keys(schema))
 	sort.Strings(keys)
+
 	for _, k := range keys {
 		ret += k + ":"
 
@@ -1545,6 +1553,8 @@ func SchemaHash(schema am.Schema) string {
 	// short hash
 	return hash[:6]
 }
+
+// TODO MachHash(...)
 
 // EvalGetter is a syntax sugar for creating getters via Eval functions. Like
 // any eval, it can end with ErrEvalTimeout. Getting values via channels passed

@@ -91,7 +91,7 @@ func cliRun(c *cobra.Command, _ []string, p types.Params) {
 	// rpc client
 	if p.DebugAddr != "" {
 		amhelp.MachDebug(dbg.Mach, p.DebugAddr, p.LogLevel, false,
-			amhelp.SemConfig(true))
+			amhelp.SemConfigEnv(true))
 
 		// TODO --otel flag
 		// os.Setenv(telemetry.EnvService, "dbg")

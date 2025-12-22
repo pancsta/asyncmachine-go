@@ -79,7 +79,7 @@ type A struct {
 	MutArgs [2][]string
 	// Arguments passed to the CLI from the shell
 	CliArgs []string
-	// RpcCh is a return channel for a list of [rpc.Worker]. It has to be
+	// RpcCh is a return channel for a list of [rpc.NetworkMachine]. It has to be
 	// buffered or the mutation will fail.
 	RpcCh       chan<- []*rpc.Client
 	ListFilters *ListFilters

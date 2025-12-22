@@ -208,7 +208,9 @@ func TestEnv(t *testing.T) {
 }
 
 func TestAMerge(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	a1 := A{"a": 1}
 	a2 := A{"b": 2}
@@ -219,7 +221,9 @@ func TestAMerge(t *testing.T) {
 }
 
 func TestStateUtils(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	s := State{
 		Auto:   true,

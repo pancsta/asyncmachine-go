@@ -19,16 +19,16 @@ import (
 
 // ///// ///// /////
 
-// DiffStates returns the states that are in states1 but not in dbgtypes.
-func DiffStates(states1 S, states2 S) S {
+// StatesDiff returns the states that are in states1 but not in states2.
+func StatesDiff(states1 S, states2 S) S {
 	// TODO optimize
 	return slicesFilter(states1, func(name string, i int) bool {
 		return !slices.Contains(states2, name)
 	})
 }
 
-// SameStates return states present in both states1 and dbgtypes.
-func SameStates(states1 S, states2 S) S {
+// StatesShared return states present in both states1 and states2.
+func StatesShared(states1 S, states2 S) S {
 	return slicesFilter(states1, func(name string, i int) bool {
 		return slices.Contains(states2, name)
 	})
@@ -242,7 +242,9 @@ func ListHandlers(handlers any, states S) ([]string, error) {
 				"%w: %s from handler %s", ErrStateMissing, s2, method))
 		}
 
-		if s1 != "" || (method == HandlerAnyEnter || method == HandlerAnyState) {
+		if s1 != "" || method == StateAny+SuffixEnter ||
+			method == StateAny+SuffixState {
+
 			methodNames = append(methodNames, method)
 			// TODO verify method signatures early (returns and params)
 		}
@@ -278,7 +280,7 @@ var handlerSuffixes = []string{
 // IsHandler checks if a method name is a handler method, by returning a state
 // name.
 func IsHandler(states S, method string) (string, string) {
-	if method == HandlerAnyEnter || method == HandlerAnyState {
+	if method == StateAny+SuffixEnter || method == StateAny+SuffixState {
 		return "", ""
 	}
 
@@ -293,6 +295,7 @@ func IsHandler(states S, method string) (string, string) {
 	// AnyFoo
 	if strings.HasPrefix(method, StateAny) && len(method) != len(StateAny) &&
 		method != StateAny+SuffixState {
+
 		return method[len(StateAny):], ""
 	}
 
@@ -329,18 +332,6 @@ func AMerge[K comparable, V any](maps ...map[K]V) map[K]V {
 	}
 
 	return out
-}
-
-// TruncateStr with shorten the string and leave a tripedot suffix.
-func TruncateStr(s string, maxLength int) string {
-	if len(s) <= maxLength {
-		return s
-	}
-	if maxLength < 5 {
-		return s[:maxLength]
-	} else {
-		return s[:maxLength-3] + "..."
-	}
 }
 
 // IndexToTime returns "virtual time" with selected states active. It's useful
@@ -384,6 +375,18 @@ func StatesToIndex(index S, states S) []int {
 // ///// UTILS
 
 // ///// ///// /////
+
+// truncateStr with shorten the string and leave a tripedot suffix.
+func truncateStr(s string, maxLength int) string {
+	if len(s) <= maxLength {
+		return s
+	}
+	if maxLength < 5 {
+		return s[:maxLength]
+	} else {
+		return s[:maxLength-3] + "..."
+	}
+}
 
 // j joins state names into a single string
 func j(states []string) string {

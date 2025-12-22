@@ -49,7 +49,7 @@ func main() {
 		panic(err)
 	}
 	amhelp.MachDebug(s.Mach, amDbgAddr, logLvl, false,
-		amhelp.SemConfig(true))
+		amhelp.SemConfigEnv(true))
 
 	// tear down
 	defer func() {

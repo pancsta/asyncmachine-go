@@ -1036,7 +1036,7 @@ func (d *Debugger) HelpDialogState(e *am.Event) {
 
 func (d *Debugger) HelpDialogEnd(e *am.Event) {
 	tx := e.Transition()
-	diff := am.DiffStates(ss.GroupDialog, tx.TargetStates())
+	diff := am.StatesDiff(ss.GroupDialog, tx.TargetStates())
 	if len(diff) == len(ss.GroupDialog) {
 		// all dialogs closed, show main
 		d.LayoutRoot.SendToFront("main")
@@ -1064,7 +1064,7 @@ func (d *Debugger) ExportDialogState(_ *am.Event) {
 }
 
 func (d *Debugger) ExportDialogEnd(e *am.Event) {
-	diff := am.DiffStates(ss.GroupDialog, e.Transition().TargetStates())
+	diff := am.StatesDiff(ss.GroupDialog, e.Transition().TargetStates())
 	if len(diff) == len(ss.GroupDialog) {
 		// all dialogs closed, show main
 		d.hUpdateFocusable()

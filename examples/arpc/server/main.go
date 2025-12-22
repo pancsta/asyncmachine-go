@@ -39,13 +39,13 @@ func main() {
 	}()
 
 	// worker
-	worker, err := newWorker(ctx)
+	netSourceMach, err := newNetSource(ctx)
 	if err != nil {
 		panic(err)
 	}
 
 	// arpc
-	server, err := newServer(ctx, addr, worker)
+	server, err := newServer(ctx, addr, netSourceMach)
 	if err != nil {
 		panic(err)
 	}
@@ -69,11 +69,11 @@ func main() {
 		exit := false
 		select {
 		case <-t.C:
-			worker.Add1(ssrpc.WorkerStates.SendPayload, arpc.Pass(&arpc.A{
+			netSourceMach.Add1(ssrpc.NetSourceStates.SendPayload, arpc.Pass(&arpc.A{
 				Name: "mypayload",
-				Payload: &arpc.ArgsPayload{
+				Payload: &arpc.MsgSrvPayload{
 					Name:   "mypayload",
-					Source: "worker1",
+					Source: "netSrc1",
 					Data:   "Hello aRPC",
 				},
 			}))
@@ -88,22 +88,22 @@ func main() {
 	fmt.Println("bye")
 }
 
-func newWorker(ctx context.Context) (*am.Machine, error) {
+func newNetSource(ctx context.Context) (*am.Machine, error) {
 
 	// init
-	worker, err := am.NewCommon(ctx, "worker", states.ExampleSchema, ss.Names(), &workerHandlers{}, nil, nil)
+	netSource, err := am.NewCommon(ctx, "netSrc1", states.ExampleSchema, ss.Names(), &workerHandlers{}, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	amhelp.MachDebugEnv(worker)
+	amhelp.MachDebugEnv(netSource)
 
-	return worker, nil
+	return netSource, nil
 }
 
-func newServer(ctx context.Context, addr string, worker *am.Machine) (*arpc.Server, error) {
+func newServer(ctx context.Context, addr string, netSource *am.Machine) (*arpc.Server, error) {
 
 	// init
-	s, err := arpc.NewServer(ctx, addr, worker.Id(), worker, nil)
+	s, err := arpc.NewServer(ctx, addr, netSource.Id(), netSource, nil)
 	if err != nil {
 		panic(err)
 	}

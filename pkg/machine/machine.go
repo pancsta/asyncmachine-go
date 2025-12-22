@@ -28,25 +28,26 @@ type Machine struct {
 	// Maximum number of mutations that can be queued. Default: 1000.
 	QueueLimit uint16
 	// HandlerTimeout defined the time for a handler to execute before it causes
-	// StateException. Default: 1s. See also Opts.HandlerTimeout.
-	// Using HandlerTimeout can cause race conditions, see Event.IsValid().
+	// StateException. Default: 1s. See also [Opts.HandlerTimeout].
+	// Using HandlerTimeout can cause race conditions, unless paired with
+	// [Event.IsValid].
 	HandlerTimeout time.Duration
 	// HandlerDeadline is a grace period after a handler timeout, before the
 	// machine moves on.
 	HandlerDeadline time.Duration
 	// LastHandlerDeadline stores when the last HandlerDeadline was hit.
 	LastHandlerDeadline atomic.Pointer[time.Time]
-	// HandlerBackoff is the time after a HandlerDeadline, during which the
+	// HandlerBackoff is the time after a [HandlerDeadline], during which the
 	// machine will return [Canceled] to any mutation.
 	HandlerBackoff time.Duration
 	// EvalTimeout is the time the machine will try to execute an eval func.
-	// Like any other handler, eval func also has HandlerTimeout. Default: 1s.
+	// Like any other handler, eval func also has [HandlerTimeout]. Default: 1s.
 	EvalTimeout time.Duration
-	// If true, the machine will print all exceptions to stdout. Default: true.
-	// Requires an ExceptionHandler binding and Machine.PanicToException set.
+	// If true, the machine will log stack traces of errors. Default: true.
+	// Requires an ExceptionHandler binding and [Machine.PanicToException] set.
 	LogStackTrace bool
-	// If true, the machine will catch panic and trigger the StateException state.
-	// Default: true.
+	// If true, the machine will catch panic and trigger the [StateException]
+	// state. Default: true.
 	PanicToException bool
 	// DisposeTimeout specifies the duration to wait for the queue to drain during
 	// disposal. Default 1s.
@@ -59,7 +60,8 @@ type Machine struct {
 	// If true, logs will start with the machine's id (5 chars).
 	// Default: true.
 	logId atomic.Bool
-	// statesVerified assures the state names have been ordered using VerifyStates
+	// statesVerified assures the state names have been ordered using
+	// [Machine.VerifyStates].
 	statesVerified atomic.Bool
 	// Unique ID of this machine. Default: random.
 	id string
@@ -112,9 +114,9 @@ type Machine struct {
 	// List of all the registered state names.
 	stateNames       S
 	stateNamesExport S
-	handlersMx       sync.RWMutex
 	loopLock         sync.Mutex
 	handlers         []*handler
+	handlersMx       sync.RWMutex
 	clock            Clock
 	cancel           context.CancelFunc
 	logLevel         atomic.Pointer[LogLevel]
@@ -131,6 +133,7 @@ type Machine struct {
 	disposeHandlers  []HandlerDispose
 	timeLast         atomic.Pointer[Time]
 	// Channel closing when the machine finished disposal. Read-only.
+	// TODO replace with Ctx.Done() ?
 	whenDisposed       chan struct{}
 	handlerLoopRunning atomic.Bool
 	handlerLoopVer     atomic.Int32
@@ -386,7 +389,7 @@ func (m *Machine) doDispose(force bool) {
 	}
 	m.cancel()
 	if !force {
-		whenIdle := m.WhenQueueEnds(context.Background())
+		whenIdle := m.WhenQueueEnds()
 		select {
 		case <-time.After(m.DisposeTimeout):
 			m.log(LogDecisions, "[doDispose] timeout waiting for queue to drain")
@@ -622,8 +625,7 @@ func (m *Machine) WhenQuery(
 // WhenQueueEnds closes every time the queue ends, or the optional ctx expires.
 //
 // ctx: optional context that will close the channel early.
-func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan struct{} {
-	// TODO remove ctx param
+func (m *Machine) WhenQueueEnds() <-chan struct{} {
 	// finish early
 	if m.disposed.Load() || !m.queueRunning.Load() {
 		return newClosedChan()
@@ -633,7 +635,7 @@ func (m *Machine) WhenQueueEnds(ctx context.Context) <-chan struct{} {
 	m.queueMx.Lock()
 	defer m.queueMx.Unlock()
 
-	return m.subs.WhenQueueEnds(ctx, &m.queueMx)
+	return m.subs.WhenQueueEnds()
 }
 
 // WhenQueue waits until the passed queueTick gets processed.
@@ -687,6 +689,24 @@ func (m *Machine) WhenDisposed() <-chan struct{} {
 // TODO implement +rpc worker
 // func (m *Machine) SetArgsComp(comp func(args A, match A) bool) {
 // 	return false
+// }
+
+// debug
+// func (m *Machine) QueueDump() []string {
+// 	m.queueLock.Lock()
+// 	defer m.queueLock.Unlock()
+// 	ret := make([]string, 0)
+//
+// 	index := m.StateNames()
+// 	for _, mut := range m.queue {
+// 		if mut.Type == mutationEval {
+// 			continue
+// 		}
+//
+// 		ret = append(ret, mut.StringFromIndex(index))
+// 	}
+//
+// 	return ret
 // }
 
 // QueueTick is the number of times the queue has processed a mutation. Starts
@@ -757,6 +777,9 @@ func (m *Machine) PrependMut(mut *Mutation) Result {
 	if !isEval {
 		mut.cacheCalled.Store(&statesParsed)
 	}
+	if m.id == "ns-TestManyStates" {
+		print()
+	}
 	m.queue = append([]*Mutation{mut}, m.queue...)
 	lenQ := len(m.queue)
 	m.queueLen.Store(uint32(lenQ))
@@ -788,6 +811,9 @@ func (m *Machine) Add(states S, args A) Result {
 	if m.disposing.Load() || m.Backoff() {
 		return Canceled
 	}
+	if m.id == "ns-TestManyStates" {
+		print()
+	}
 
 	// let Exception in even with a full queue, but only once
 	if uint16(m.queueLen.Load()) >= m.QueueLimit {
@@ -811,6 +837,7 @@ func (m *Machine) Add(states S, args A) Result {
 }
 
 // Add1 is a shorthand method to add a single state with the passed args.
+// See Add().
 func (m *Machine) Add1(state string, args A) Result {
 	return m.Add(S{state}, args)
 }
@@ -824,9 +851,9 @@ func (m *Machine) Toggle(states S, args A) Result {
 	}
 	if m.Is(states) {
 		return m.Remove(states, args)
-	} else {
-		return m.Add(states, args)
 	}
+
+	return m.Add(states, args)
 }
 
 // Toggle1 activates or deactivates a single state, depending on its current
@@ -837,9 +864,9 @@ func (m *Machine) Toggle1(state string, args A) Result {
 	}
 	if m.Is1(state) {
 		return m.Remove1(state, args)
-	} else {
-		return m.Add1(state, args)
 	}
+
+	return m.Add1(state, args)
 }
 
 // EvToggle is a traced version of [Machine.Toggle].
@@ -849,9 +876,9 @@ func (m *Machine) EvToggle(e *Event, states S, args A) Result {
 	}
 	if m.Is(states) {
 		return m.EvRemove(e, states, args)
-	} else {
-		return m.EvAdd(e, states, args)
 	}
+
+	return m.EvAdd(e, states, args)
 }
 
 // EvToggle1 is a traced version of [Machine.Toggle1].
@@ -864,9 +891,9 @@ func (m *Machine) EvToggle1(e *Event, state string, args A) Result {
 	}
 	if m.Is1(state) {
 		return m.EvRemove1(e, state, args)
-	} else {
-		return m.EvAdd1(e, state, args)
 	}
+
+	return m.EvAdd1(e, state, args)
 }
 
 // AddErr is a dedicated method to add the StateException state with the passed
@@ -1042,14 +1069,13 @@ func (m *Machine) Remove(states S, args A) Result {
 	return res
 }
 
-// Remove1 is a shorthand method to remove a single state with the passed args.
-// See Remove().
+// Remove1 is [Machine.Remove1] for a single state.
 func (m *Machine) Remove1(state string, args A) Result {
 	return m.Remove(S{state}, args)
 }
 
 // Set deactivates a list of states in the machine, returning the result of
-// the transition (Executed, Queued, Canceled).
+// the transition (Executed, Canceled, Queued).
 // Like every mutation method, it will resolve relations and trigger handlers.
 func (m *Machine) Set(states S, args A) Result {
 	if m.disposing.Load() || uint16(m.queueLen.Load()) >= m.QueueLimit {
@@ -1059,6 +1085,8 @@ func (m *Machine) Set(states S, args A) Result {
 	if queueTick == uint64(Executed) {
 		return Executed
 	}
+
+	// TODO breakpoints from states-stateNames() as added, and the rest as removed
 
 	res := m.processQueue()
 	if res == Queued {
@@ -1111,8 +1139,7 @@ func (m *Machine) Is(states S) bool {
 	return m.is(states)
 }
 
-// Is1 is a shorthand method to check if a single state is currently active.
-// See Is().
+// Is1 is [Machine.Is] for a single state.
 func (m *Machine) Is1(state string) bool {
 	return m.Is(S{state})
 }
@@ -1165,8 +1192,7 @@ func (m *Machine) not(states S) bool {
 	return slicesNone(m.mustParseStates(states), m.activeStates)
 }
 
-// Not1 is a shorthand method to check if a single state is currently inactive.
-// See Not().
+// Not1 is [Machine.Not] for a single state.
 func (m *Machine) Not1(state string) bool {
 	return m.Not(S{state})
 }
@@ -1190,8 +1216,8 @@ func (m *Machine) Any(states ...S) bool {
 	return false
 }
 
-// Any1 is group call to Is1(), returns true if any of the params return true
-// from Is1().
+// Any1 is group call to [Machine.Is1], returns true if any of the params return
+// true from [Machine.Is1].
 func (m *Machine) Any1(states ...string) bool {
 	for _, s := range states {
 		if m.Is1(s) {
@@ -1256,6 +1282,9 @@ func (m *Machine) queueMutation(
 
 	// work the queue and persist in the mutation
 	m.queueMx.Lock()
+	if m.id == "ns-TestManyStates" {
+		print()
+	}
 	m.queue = append(m.queue, mut)
 	lenQ := len(m.queue)
 	m.queueLen.Store(uint32(lenQ))
@@ -1461,6 +1490,7 @@ func (m *Machine) BindHandlers(handlers any) error {
 		// index for anon handlers
 		m.log(LogOps, "[handlers] bind %d", len(old))
 	}
+	// TODO sem logger for handlers
 
 	// if already in Exception when 1st handler group is bound, re-add the err
 	if first && m.IsErr() {
@@ -1716,7 +1746,7 @@ func (m *Machine) verifyStates(states S) error {
 	}
 
 	if len(m.stateNames) > len(states) {
-		missing := DiffStates(m.stateNames, checked)
+		missing := StatesDiff(m.stateNames, checked)
 		return fmt.Errorf(
 			"error: trying to verify less states than registered: %s", j(missing))
 	}
@@ -1753,9 +1783,9 @@ func (m *Machine) setActiveStates(
 	}
 
 	previous := m.activeStates
-	newStates := DiffStates(targetStates, m.activeStates)
-	removedStates := DiffStates(m.activeStates, targetStates)
-	noChangeStates := DiffStates(targetStates, newStates)
+	newStates := StatesDiff(targetStates, m.activeStates)
+	removedStates := StatesDiff(m.activeStates, targetStates)
+	noChangeStates := StatesDiff(targetStates, newStates)
 	m.activeStates = slices.Clone(targetStates)
 
 	// Tick all new states by +1 and already active and called multi states by +2
@@ -1819,10 +1849,16 @@ func (m *Machine) AddBreakpoint1(added string, removed string, strict bool) {
 }
 
 // AddBreakpoint adds a breakpoint for an outcome of mutation (added and
-// removed states). Once such mutation happens, a log message will be printed
-// out. You can set an IDE's breakpoint on this line and see the mutation's sync
-// stack trace. When Machine.LogStackTrace is set, the stack trace will be
-// printed out as well. Many breakpoints can be added, but none removed.
+// removed states) checked by mutation equality. Once such a mutation happens,
+// a log message will be printed out. We can set an IDE's breakpoint on this
+// line and see the mutation's sync stack trace. If [Machine.LogStackTrace] is
+// set, the stack trace will be printed out as well. Many breakpoints can be
+// added, but none removed.
+//
+// Breakpoints are useful to find the caller of a mutation, but don't work with
+// [Machine.Set].
+//
+// strict: strict skips already active / inactive (for strict of diff equality).
 func (m *Machine) AddBreakpoint(added S, removed S, strict bool) {
 	// TODO strict: dont breakpoint added states when already active
 	m.breakpointsMx.Lock()
@@ -2115,6 +2151,7 @@ func (m *Machine) handle(
 	e := &Event{
 		Name:         name,
 		machine:      m,
+		machApi:      m,
 		Args:         args,
 		TransitionId: t.Id,
 		MachineId:    m.Id(),
@@ -2173,7 +2210,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		handlerName := strconv.Itoa(i) + ":" + h.name
 
 		if m.semLogger.Level() >= LogEverything {
-			emitterID := TruncateStr(handlerName, 15)
+			emitterID := truncateStr(handlerName, 15)
 			emitterID = padString(strings.ReplaceAll(emitterID, " ", "_"), 15, "_")
 			m.log(LogEverything, "[handle:%-15s] %s", emitterID, methodName)
 		}
@@ -2182,6 +2219,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		_, ok := h.missingCache[methodName]
 		if ok {
 			h.mx.Unlock()
+
 			continue
 		}
 		method, ok := h.methodCache[methodName]
@@ -2195,6 +2233,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 			if !method.IsValid() {
 				h.missingCache[methodName] = struct{}{}
 				h.mx.Unlock()
+
 				continue
 			}
 			h.methodCache[methodName] = method
@@ -2410,11 +2449,13 @@ func (m *Machine) handlerLoopDone() {
 func (m *Machine) detectQueueDuplicates(mutationType MutationType,
 	states S, isCheck bool,
 ) bool {
+	// TODO test qTick and counterMutFound
+
 	if m.disposing.Load() {
 		return false
 	}
 	// check if this mutation is already scheduled
-	index, found := m.IsQueued(mutationType, states, true, true, 0, isCheck,
+	found, idx, qTick := m.IsQueued(mutationType, states, true, true, 0, isCheck,
 		PositionAny)
 	if !found {
 		return false
@@ -2430,14 +2471,14 @@ func (m *Machine) detectQueueDuplicates(mutationType MutationType,
 	default:
 
 		// avoid duplicating `set` only if at the end of the queue
-		return index > 0 && len(m.queue)-1 > 0
+		return idx > 0 && len(m.queue)-1 > 0
 	}
 
 	// Check if a counter-mutation is scheduled and broaden the match
 	// - with or without params
 	// - state sets same or bigger than `states`
-	_, counterMutFound := m.IsQueued(counterMutType, states,
-		false, false, index+1, isCheck, PositionAny)
+	counterMutFound, _, _ := m.IsQueued(counterMutType, states,
+		false, false, qTick+1, isCheck, PositionAny)
 
 	return !counterMutFound
 }
@@ -2490,37 +2531,27 @@ func (m *Machine) Tick(state string) uint64 {
 // statesStrictEqual: states of the mutation have to be exactly like `states`
 // and not a superset.
 //
-// startIndex: start later than 0
+// minQueueTick: minimal queue tick assigned to the matched mutation
 //
 // isCheck: the mutation has to be a [Mutation.IsCheck]
 //
 // position: position in the queue, after applying the [startIndex]
 func (m *Machine) IsQueued(mutType MutationType, states S,
-	withoutArgsOnly bool, statesStrictEqual bool, startIndex uint16, isCheck bool,
-	position Position,
-) (uint16, bool) {
+	withoutArgsOnly bool, statesStrictEqual bool, minQueueTick uint64,
+	isCheck bool, position Position,
+) (found bool, idx uint16, qTick uint64) {
 	// TODO combine params into a struct `QueueQuery`
 	// TODO return the found mutation, not the mutable index
 	// TODO test case
 
 	if m.disposing.Load() {
-		return 0, false
+		return false, 0, 0
 	}
 	m.queueMx.RLock()
 	defer m.queueMx.RUnlock()
 
-	// start index
-	qLen := uint16(m.queueLen.Load())
-	if qLen == 0 || qLen-startIndex < 1 {
-		return 0, false
-	}
-	if int(startIndex) >= len(m.queue) {
-		// TODO https://github.com/pancsta/asyncmachine-go/issues/326
-		return 0, false
-	}
-	iter := m.queue[startIndex:]
-
 	// position TODO test case
+	iter := m.queue
 	switch position {
 	case PositionLast:
 		iter = iter[len(iter)-1:]
@@ -2529,6 +2560,11 @@ func (m *Machine) IsQueued(mutType MutationType, states S,
 	}
 
 	for i, mut := range iter {
+		// start index via qticks #326
+		if minQueueTick > 0 && mut.QueueTick < minQueueTick {
+			continue
+		}
+
 		if mut.IsCheck == isCheck &&
 			mut.Type == mutType &&
 			((withoutArgsOnly && len(mut.Args) == 0) || !withoutArgsOnly) &&
@@ -2541,16 +2577,18 @@ func (m *Machine) IsQueued(mutType MutationType, states S,
 			// and all the checked ones have to be included in the target ones
 			slicesEvery(mut.Called, m.Index(states)) {
 
-			return uint16(i), true
+			// return queueTick
+			return true, uint16(i), mut.QueueTick
 		}
 	}
 
-	return 0, false
+	return false, 0, 0
 }
 
-// IsQueuedAbove allows for rate-limiting of mutations for a specific state.
-func (m *Machine) IsQueuedAbove(threshold int, mutationType MutationType,
-	states S, withoutArgsOnly bool, statesStrictEqual bool, startIndex uint16,
+// IsQueuedAbove... N times. This method allows for rate-limiting of
+// mutations for specific states and threshold.
+func (m *Machine) IsQueuedAbove(threshold int, mutType MutationType,
+	states S, withoutArgsOnly bool, statesStrictEqual bool, minQueueTick uint64,
 ) bool {
 	if m.disposing.Load() {
 		return false
@@ -2560,19 +2598,24 @@ func (m *Machine) IsQueuedAbove(threshold int, mutationType MutationType,
 	defer m.queueMx.RUnlock()
 
 	c := 0
+	for _, mut := range m.queue {
+		// start index via qticks #326
+		if minQueueTick > 0 && mut.QueueTick < minQueueTick {
+			continue
+		}
 
-	for i, item := range m.queue {
-		if uint16(i) >= startIndex &&
-			item.Type == mutationType &&
-			((withoutArgsOnly && len(item.Args) == 0) || !withoutArgsOnly) &&
+		// no rate limiting for checks
+		if mut.IsCheck == false &&
+			mut.Type == mutType &&
+			((withoutArgsOnly && len(mut.Args) == 0) || !withoutArgsOnly) &&
 			// target states have to be at least as long as the checked ones
 			// or exactly the same in case of a strict_equal
 			((statesStrictEqual &&
-				len(item.Called) == len(states)) ||
+				len(mut.Called) == len(states)) ||
 				(!statesStrictEqual &&
-					len(item.Called) >= len(states))) &&
+					len(mut.Called) >= len(states))) &&
 			// and all the checked ones have to be included in the target ones
-			slicesEvery(item.Called, m.Index(states)) {
+			slicesEvery(mut.Called, m.Index(states)) {
 
 			c++
 			if c >= threshold {
@@ -2599,7 +2642,7 @@ func (m *Machine) WillBe(states S, position ...Position) bool {
 	if len(position) == 0 {
 		position = []Position{PositionAny}
 	}
-	idx, found := m.IsQueued(MutationAdd, states, false, false, 0, false,
+	found, idx, _ := m.IsQueued(MutationAdd, states, false, false, 0, false,
 		position[0])
 
 	switch {
@@ -2632,7 +2675,7 @@ func (m *Machine) WillBeRemoved(states S, position ...Position) bool {
 	if len(position) == 0 {
 		position = []Position{PositionAny}
 	}
-	idx, found := m.IsQueued(MutationRemove, states, false, false, 0, false,
+	found, idx, _ := m.IsQueued(MutationRemove, states, false, false, 0, false,
 		position[0])
 
 	switch {
@@ -2663,7 +2706,7 @@ func (m *Machine) Has(states S) bool {
 	return slicesEvery(m.stateNames, states)
 }
 
-// Has1 is a shorthand for Has. It returns true if the passed state is
+// Has1 is shorthand for Has. It returns true if the passed state is
 // registered in the machine.
 func (m *Machine) Has1(state string) bool {
 	return m.Has(S{state})
@@ -2831,7 +2874,7 @@ func (m *Machine) Inspect(states S) string {
 		}
 
 		ret += fmt.Sprintf("%s %s\n"+
-			"    |Time     %d\n", active, name, m.clock[name])
+			"    |Tick     %d\n", active, name, m.clock[name])
 		if state.Auto {
 			ret += "    |Auto     true\n"
 		}
@@ -3119,15 +3162,16 @@ func (m *Machine) EvAddErrState(
 
 // Export exports the machine state as Serialized: ID, machine time, and
 // state names.
-func (m *Machine) Export() *Serialized {
-	// TODO return (*Serialized, Schema) to be sure it didnt race
+func (m *Machine) Export() (*Serialized, Schema, error) {
 	m.activeStatesMx.RLock()
 	defer m.activeStatesMx.RUnlock()
-	m.queueMx.Lock()
-	defer m.queueMx.Unlock()
+	m.queueMx.RLock()
+	defer m.queueMx.RUnlock()
+	m.schemaMx.RLock()
+	defer m.schemaMx.RUnlock()
 
 	if !m.statesVerified.Load() {
-		panic("can't export - call VerifyStates first")
+		return nil, nil, fmt.Errorf("%w: call VerifyStates first", ErrSchema)
 	}
 
 	t := m.time(nil)
@@ -3142,17 +3186,17 @@ func (m *Machine) Export() *Serialized {
 		// export only
 
 		QueueTick: m.queueTick,
-	}
+	}, CloneSchema(m.schema), nil
 }
 
 // Import imports the machine state from Serialized. It's not safe to import
 // into a machine which has already produces transitions and/or
-// has telemetry connected.
+// has telemetry connected (use [Machine.SetSchema] instead).
 func (m *Machine) Import(data *Serialized) error {
 	m.activeStatesMx.RLock()
 	defer m.activeStatesMx.RUnlock()
-	m.queueMx.Lock()
-	defer m.queueMx.Unlock()
+	m.queueMx.RLock()
+	defer m.queueMx.RUnlock()
 	m.schemaMx.Lock()
 	defer m.schemaMx.Unlock()
 
@@ -3356,42 +3400,4 @@ func (m *Machine) Groups() (map[string][]int, []string) {
 	defer m.schemaMx.RUnlock()
 
 	return m.groups, m.groupsOrder
-}
-
-// ----- DEBUGS
-
-// nolint:unused
-func (m *Machine) debugQueue() {
-	// req m.queueMx
-	m.Log("----- queue -----")
-	m.Log("len(queue): %d", len(m.queue))
-	m.Log("queueLen:   %d", m.queueLen.Load())
-	m.Log("queueRunning: %v", m.queueRunning.Load())
-	m.Log("queueTick: %d", m.queueTick)
-	m.Log("queueTicksPending: %d", m.queueTicksPending)
-	m.Log("queueToken: %d", m.queueToken.Load())
-	m.Log("queueProcessing: %v", m.queueProcessing.Load())
-
-	// dump queue when index value off
-	if m.queueLen.Load() != uint32(len(m.queue)) {
-		m.Log("----- DUMP -----")
-		m.Log("queue: %+v", m.debugDumpQueue())
-	}
-}
-
-// nolint:unused
-func (m *Machine) debugDumpQueue() []string {
-	// req m.queueMx
-	ret := make([]string, 0)
-
-	index := m.StateNames()
-	for _, mut := range m.queue {
-		if mut.Type == mutationEval {
-			continue
-		}
-
-		ret = append(ret, mut.StringFromIndex(index))
-	}
-
-	return ret
 }

@@ -52,11 +52,11 @@ func TestUserFwdRemote(t *testing.T) {
 
 	// fixtures
 	cursorTx := 20
-	amhelp.Add1Async(ctx, c.Worker, ss.SwitchedClientTx, ss.SwitchingClientTx,
+	amhelp.Add1Async(ctx, c.NetMach, ss.SwitchedClientTx, ss.SwitchingClientTx,
 		am.A{"Client.id": "sim", "cursorTx1": cursorTx})
 
 	// test
-	res := amhelp.Add1Block(ctx, c.Worker, ss.UserFwd, nil)
+	res := amhelp.Add1Block(ctx, c.NetMach, ss.UserFwd, nil)
 
 	// assert
 	assert.NotEqual(t, res, am.Canceled)
@@ -70,7 +70,7 @@ func TestUserFwd100Remote(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	c := amtest.NewRpcClient(t, ctx, workerRpcAddr, ss.States, ss.Names)
-	mach := c.Worker
+	mach := c.NetMach
 
 	// fixtures
 	cursorTx := 20
@@ -106,7 +106,7 @@ func TestTailModeRemote(t *testing.T) {
 	c := amtest.NewRpcClient(t, ctx, workerRpcAddr, ss.States, ss.Names)
 
 	// create a listener for ConnectEvent
-	whenConn := c.Worker.WhenTicks(ss.ConnectEvent, 1, ctx)
+	whenConn := c.NetMach.WhenTicks(ss.ConnectEvent, 1, ctx)
 
 	// fixture machine
 	mach := utils.NewRels(t, nil)
@@ -120,8 +120,8 @@ func TestTailModeRemote(t *testing.T) {
 	}
 
 	<-whenConn
-	whenDelivered := c.Worker.WhenTicks(ss.ClientMsg, 2, nil)
-	c.Worker.Add1(ss.TailMode, nil)
+	whenDelivered := c.NetMach.WhenTicks(ss.ClientMsg, 2, nil)
+	c.NetMach.Add1(ss.TailMode, nil)
 
 	// generate fixture events
 	mach.Add1(ssTest.C, nil)
@@ -132,10 +132,10 @@ func TestTailModeRemote(t *testing.T) {
 	<-whenDelivered
 
 	// go back 2 txs
-	c.Worker.Add1(ss.UserBack, nil)
-	c.Worker.Add1(ss.UserBack, nil)
+	c.NetMach.Add1(ss.UserBack, nil)
+	c.NetMach.Add1(ss.UserBack, nil)
 
-	c.Worker.Add1(ss.TailMode, nil)
+	c.NetMach.Add1(ss.TailMode, nil)
 
 	// assert.NotEqual(t, res, am.Canceled)
 	assert.Equal(t, 4, get(t, c, server.GetMsgCount, 0))
@@ -152,7 +152,7 @@ func TestUserBackRemote(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	c := amtest.NewRpcClient(t, ctx, workerRpcAddr, ss.States, ss.Names)
-	mach := c.Worker
+	mach := c.NetMach
 
 	// fixtures
 	cursorTx := 20
@@ -175,7 +175,7 @@ func TestStepsResetAfterStateJumpRemote(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	c := amtest.NewRpcClient(t, ctx, workerRpcAddr, ss.States, ss.Names)
-	mach := c.Worker
+	mach := c.NetMach
 
 	// fixtures
 	state := "PublishMessage"
@@ -220,8 +220,8 @@ func TestUserFwdRemoteLoopback(t *testing.T) {
 
 	cursor := get(t, c, server.GetCursorTx, 0)
 
-	when := c.Worker.WhenTicks(ss.UserFwd, 1, nil)
-	res := c.Worker.Add1(ss.UserFwd, nil)
+	when := c.NetMach.WhenTicks(ss.UserFwd, 1, nil)
+	res := c.NetMach.Add1(ss.UserFwd, nil)
 
 	<-when
 	assert.NotEqual(t, res, am.Canceled)

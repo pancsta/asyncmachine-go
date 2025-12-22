@@ -237,8 +237,8 @@ func TestExposing(t *testing.T) {
 	// TODO list machs and assert clocks
 	amhelpt.AssertNoErrEver(t, p0.Mach)
 	amhelpt.AssertNoErrEver(t, p1.Mach)
-	assert.Len(t, p0.workers[p1.host.ID().String()], 1)
-	assert.Len(t, p1.workers[p0.host.ID().String()], 1)
+	assert.Len(t, p0.netMachs[p1.host.ID().String()], 1)
+	assert.Len(t, p1.netMachs[p0.host.ID().String()], 1)
 }
 
 // https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes
@@ -255,7 +255,7 @@ func TestExposingMany(t *testing.T) {
 
 	reg := trace.StartRegion(ctx, "init")
 
-	// TODO DEBUG
+	// DEBUG
 	// IPFS_LOGGING=info;AM_PUBSUB_LOG=1
 	// amhelp.EnableDebugging(false)
 	// os.Setenv(amtele.EnvAmDbgAddr, "localhost:6831")
@@ -315,7 +315,7 @@ func TestExposingMany(t *testing.T) {
 			ps.Mach.OnError(func(mach *am.Machine, err error) {
 				t.Logf("error: %s", err)
 			})
-			// TODO DEBUG make it faster
+			// DEBUG make it faster
 			// ps.Multiplayer = 1
 
 			mx.Lock()
@@ -362,7 +362,7 @@ func TestExposingMany(t *testing.T) {
 
 			// TODO add groups to metrics
 
-			// TODO DEBUG
+			// DEBUG
 			// mirror.SemLogger().SetLevel(0)
 			err = amtele.TransitionsToDbg(mirror, "")
 			if err != nil {
@@ -437,8 +437,8 @@ func TestExposingMany(t *testing.T) {
 			// wait for others to join this peer
 			t.Logf("Peer %d: wait for %d workers...", i, expLocalWorkers)
 			// get ALL local workers
-			ch := make(chan []*rpc.Worker, 1)
-			args := &A{WorkersCh: ch}
+			ch := make(chan []*rpc.NetworkMachine, 1)
+			args := &A{NetMachs: ch}
 			reqListMachs := amhelp.NewReqAdd1(ps.Mach, ss.ListMachines, Pass(args))
 
 			// execute
@@ -480,9 +480,9 @@ func TestExposingMany(t *testing.T) {
 		t.Logf("Waiting for Peer %d", i)
 
 		// get remote workers from peer5
-		ch := make(chan []*rpc.Worker, 1)
+		ch := make(chan []*rpc.NetworkMachine, 1)
 		args := &A{
-			WorkersCh: ch,
+			NetMachs: ch,
 			ListFilters: &ListFilters{
 				PeerId: p5Id,
 			},
@@ -700,7 +700,7 @@ func RandMach(
 	if err := m.VerifyStates(workerStates); err != nil {
 		panic(err)
 	}
-	// TODO DEBUG
+	// DEBUG
 	if strings.HasPrefix(suffix, "p5") {
 		amhelp.MachDebugEnv(m)
 		// amtele.TransitionsToDbg(m, "")

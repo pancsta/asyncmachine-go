@@ -26,11 +26,11 @@ import ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 
 ```go
 // inherit from RPC worker
-ssStruct := am.SchemaMerge(ssam.BasicStruct, am.Schema{
+schema := am.SchemaMerge(ssam.BasicStruct, am.Schema{
     "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
 })
-ssNames := am.SAdd(ssam.BasicStates.Names(), am.S{"Foo", "Bar"})
+names := am.SAdd(ssam.BasicStates.Names(), am.S{"Foo", "Bar"})
 ```
 
 ### Inherit from BasicStatesDef via a definition
@@ -70,8 +70,10 @@ $ am-gen --name MyMach \
 
 ## Piping
 
-A "pipe" binds a handler of a source machine, to a mutation in a target machine. Currently, only [final handlers](/docs/manual.md#final-handlers)
-are supported.
+A "pipe" binds a handler of a source machine, to a mutation in a target machine. Only [final handlers](/docs/manual.md#final-handlers)
+are supported, to block the source mutation.
+
+// TODO Machine.Hash
 
 Each module can export their own pipes, like [`/pkg/rpc`](/pkg/rpc) and [`/pkg/node`](/pkg/node).
 
@@ -103,8 +105,8 @@ h := &struct {
     ReadyState am.HandlerFinal
     ReadyEnd   am.HandlerFinal
 }{
-    ReadyState: Add1(source, target, "Ready", "RpcReady"),
-    ReadyEnd:   Remove1(source, target, "Ready", "RpcReady"),
+    ReadyState: ampipe.Add(source, target, "Ready", "RpcReady"),
+    ReadyEnd:   ampipe.Remove(source, target, "Ready", "RpcReady"),
 }
 
 source.BindHandlers(h)

@@ -76,7 +76,7 @@ func TestMutation(t *testing.T) {
 	nc := initServerConn(ctx, t)
 
 	// init machine and handlers
-	mach := testutils.NewNoRels(t, nil)
+	mach := testutils.NewNoRels(t, nil, "")
 	err := ExposeMachine(ctx, mach, nc, topic, "")
 	if err != nil {
 		t.Fatal(err)
@@ -143,7 +143,7 @@ func TestWaiting(t *testing.T) {
 	nc := initServerConn(ctx, t)
 
 	// init machine and handlers
-	mach := testutils.NewNoRels(t, nil)
+	mach := testutils.NewNoRels(t, nil, "")
 	amhelpt.MachDebugEnv(t, mach)
 	err := ExposeMachine(ctx, mach, nc, topic, "")
 	if err != nil {

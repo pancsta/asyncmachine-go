@@ -5,11 +5,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"runtime"
 	"runtime/debug"
 	"slices"
 	"strings"
 
 	"github.com/lithammer/dedent"
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
 // EnvAmHostname will override the hostname in all machine names.
@@ -92,6 +94,7 @@ func RandId(strLen int) string {
 	if strLen == 0 {
 		strLen = 16
 	}
+	strLen++
 	strLen = strLen / 2
 
 	id := make([]byte, strLen)
@@ -121,4 +124,68 @@ func Sp(txt string, args ...any) string {
 
 func P(txt string, args ...any) {
 	fmt.Printf(dedent.Dedent(strings.Trim(txt, "\n")), args...)
+}
+
+// TruncateStr with shorten the string and leave a tripedot suffix.
+func TruncateStr(s string, maxLength int) string {
+	if len(s) <= maxLength {
+		return s
+	}
+	if maxLength < 5 {
+		return s[:maxLength]
+	} else {
+		return s[:maxLength-3] + "..."
+	}
+}
+
+func PadString(str string, length int, pad string) string {
+	for {
+		str += pad
+		if len(str) > length {
+			return str[0:length]
+		}
+	}
+}
+
+func CaptureStackTrace() string {
+	buf := make([]byte, 4024)
+	n := runtime.Stack(buf, false)
+	stack := string(buf[:n])
+	lines := strings.Split(stack, "\n")
+	isPanic := strings.Contains(stack, "panic")
+	slices.Reverse(lines)
+
+	heads := []string{
+		"AddErr", "AddErrState", "Remove", "Remove1", "Add", "Add1", "Set",
+	}
+	// TODO trim tails start at reflect.Value.Call({
+	//  with asyncmachine 2 frames down
+
+	// trim the head, remove junk
+	stop := false
+	for i, line := range lines {
+		if isPanic && strings.HasPrefix(line, "panic(") {
+			lines = lines[:i-1]
+			break
+		}
+
+		for _, head := range heads {
+			if strings.Contains("machine.(*Machine)."+line+"(", head) {
+				lines = lines[:i-1]
+				stop = true
+				break
+			}
+		}
+		if stop {
+			break
+		}
+	}
+	slices.Reverse(lines)
+	join := strings.Join(lines, "\n")
+
+	if filter := os.Getenv(am.EnvAmTraceFilter); filter != "" {
+		join = strings.ReplaceAll(join, filter, "")
+	}
+
+	return join
 }

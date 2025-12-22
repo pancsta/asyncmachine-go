@@ -52,8 +52,8 @@ func (g *SchemaGenerator) parseParams(p cli.SFParams) {
 				g.Mach.Add1(ssG.InheritConnected, nil)
 			case "disposed":
 				g.Mach.Add1(ssG.InheritDisposed, nil)
-			case "rpc/worker":
-				g.Mach.Add1(ssG.InheritRpcWorker, nil)
+			case "rpc/netsrc":
+				g.Mach.Add1(ssG.InheritRpcNetSource, nil)
 			case "node/worker":
 				g.Mach.Add1(ssG.InheritNodeWorker, nil)
 			default:
@@ -144,7 +144,7 @@ func (g *SchemaGenerator) Output() string {
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"%s
 	`, impPkgStates)
 
-	if g.Mach.Is1(ssG.InheritRpcWorker) {
+	if g.Mach.Is1(ssG.InheritRpcNetSource) {
 		out += "\tssrpc \"github.com/pancsta/asyncmachine-go/pkg/rpc/states\"\n"
 	}
 	if g.Mach.Is1(ssG.InheritNodeWorker) {
@@ -173,14 +173,16 @@ func (g *SchemaGenerator) Output() string {
 		out += "\t// inherit from BasicStatesDef\n\t*ss.BasicStatesDef\n"
 	}
 	if g.Mach.Is1(ssG.InheritConnected) {
-		out += "\t// inherit from ConnectedStatesDef\n\t*ss.ConnectedStatesDef\n"
+		out += "\t// inherit from ConnectedStatesDef\n" +
+			"\t*ss.ConnectedStatesDef\n"
 	}
-	if g.Mach.Is1(ssG.InheritRpcWorker) {
-		out += "\t// inherit from rpc/WorkerStatesDef\n\t*ssrpc.WorkerStatesDef\n"
+	if g.Mach.Is1(ssG.InheritRpcNetSource) {
+		out += "\t// inherit from rpc/NetSourceStatesDef\n" +
+			"\t*ssrpc.NetSourceStatesDef\n"
 	}
 	if g.Mach.Is1(ssG.InheritNodeWorker) {
-		out += "\t// inherit from node/WorkerStatesDef\n" +
-			"\t*ssnode.WorkerStatesDef\n"
+		out += "\t// inherit from node/NetSourceStatesDef\n" +
+			"\t*ssnode.NetSourceStatesDef\n"
 	}
 
 	out += "}\n\n"
@@ -222,7 +224,7 @@ func (g *SchemaGenerator) Output() string {
 		out += fmt.Sprintf("\t// inherit from ConnectedSchema\n" +
 			"\tss.ConnectedSchema,\n")
 	}
-	if g.Mach.Is1(ssG.InheritRpcWorker) {
+	if g.Mach.Is1(ssG.InheritRpcNetSource) {
 		out += fmt.Sprintf("\t// inherit from rpc/WorkerSchema\n" +
 			"\tssrpc.WorkerSchema,\n")
 	}

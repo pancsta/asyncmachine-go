@@ -27,6 +27,17 @@ import (
 // TODO use math/big?
 type Time []uint64
 
+// NewTime returns a Time of the same len as [index] with active
+// states marked by indexes in [activeStates].
+func NewTime(index Time, activeStates []int) Time {
+	ret := make(Time, len(index))
+	for _, idx := range activeStates {
+		ret[idx] = 1
+	}
+
+	return ret
+}
+
 // Increment adds 1 to a state's tick value
 func (t Time) Increment(idx int) Time {
 	ret := make(Time, len(t))
@@ -301,6 +312,8 @@ type TimeIndex struct {
 	Index S
 }
 
+// NewTimeIndex returns a TimeIndex of the same len as [index] with active
+// states marked by indexes in [activeStates].
 func NewTimeIndex(index S, activeStates []int) *TimeIndex {
 	ret := &TimeIndex{
 		Index: index,
@@ -327,44 +340,44 @@ func (t TimeIndex) StateName(idx int) string {
 	return t.Index[idx]
 }
 
-// Sum is [Time.Sum] but for a sting-based time slice.
+// Sum is [Time.Sum] but for a string-based time slice.
 func (t TimeIndex) Sum(states S) uint64 {
 	return t.Time.Sum(StatesToIndex(t.Index, states))
 }
 
-// Filter is [Time.Filter] but for a sting-based time slice.
+// Filter is [Time.Filter] but for a string-based time slice.
 func (t TimeIndex) Filter(states S) *TimeIndex {
 	return t.Time.Filter(StatesToIndex(t.Index, states)).ToIndex(states)
 }
 
-// NonZeroStates is [Time.NonZeroStates] but for a sting-based time slice.
+// NonZeroStates is [Time.NonZeroStates] but for a string-based time slice.
 func (t TimeIndex) NonZeroStates() S {
 	return IndexToStates(t.Index, t.Time.NonZeroStates())
 }
 
 // TimeIndex - state checking
 
-// Is is [Machine.Is] but for a sting-based time slice.
+// Is is [Machine.Is] but for a string-based time slice.
 func (t TimeIndex) Is(states S) bool {
 	return t.Time.Is(StatesToIndex(t.Index, states))
 }
 
-// Is1 is [Machine.Is1] but for a sting-based time slice.
+// Is1 is [Machine.Is1] but for a string-based time slice.
 func (t TimeIndex) Is1(state string) bool {
 	return t.Time.Is(StatesToIndex(t.Index, S{state}))
 }
 
-// Not is [Machine.Not] but for a sting-based time slice.
+// Not is [Machine.Not] but for a string-based time slice.
 func (t TimeIndex) Not(states S) bool {
 	return t.Time.Not(StatesToIndex(t.Index, states))
 }
 
-// Not1 is [Machine.Not1] but for a sting-based time slice.
+// Not1 is [Machine.Not1] but for a string-based time slice.
 func (t TimeIndex) Not1(state string) bool {
 	return t.Time.Not(StatesToIndex(t.Index, S{state}))
 }
 
-// Any is [Machine.Any] but for a sting-based time slice.
+// Any is [Machine.Any] but for a string-based time slice.
 func (t TimeIndex) Any(states ...string) bool {
 	params := make([][]int, len(states))
 	for i, state := range states {
@@ -374,12 +387,12 @@ func (t TimeIndex) Any(states ...string) bool {
 	return t.Time.Any(params...)
 }
 
-// Any1 is [Machine.Any1] but for a sting-based time slice.
+// Any1 is [Machine.Any1] but for a string-based time slice.
 func (t TimeIndex) Any1(states ...string) bool {
 	return t.Time.Any1(StatesToIndex(t.Index, states)...)
 }
 
-// ActiveStates is [Machine.ActiveStates] but for a sting-based time slice.
+// ActiveStates is [Machine.ActiveStates] but for a string-based time slice.
 func (t TimeIndex) ActiveStates(states S) S {
 	ret := S{}
 	for i, tick := range t.Time {
@@ -757,7 +770,7 @@ func NewArgsMapper(names []string, maxLen int) func(args A) map[string]string {
 			if !oks[i] {
 				continue
 			}
-			ret[name] = TruncateStr(fmt.Sprintf("%v", args[name]), maxLen)
+			ret[name] = truncateStr(fmt.Sprintf("%v", args[name]), maxLen)
 		}
 
 		return ret
@@ -784,6 +797,8 @@ func MutationFormatArgs(matched map[string]string) string {
 // Tracer is an interface for logging machine transitions and events, used by
 // Opts.Tracers and Machine.BindTracer.
 type Tracer interface {
+	// TODO godoc
+
 	TransitionInit(transition *Transition)
 	TransitionStart(transition *Transition)
 	TransitionEnd(transition *Transition)
@@ -801,34 +816,33 @@ type Tracer interface {
 	VerifyStates(machine Api)
 }
 
-// NoOpTracer is a no-op implementation of Tracer, used for embedding.
-// TODO rename to TracerNoOp
-type NoOpTracer struct{}
+// TracerNoOp is a no-op implementation of Tracer, used for embedding.
+type TracerNoOp struct{}
 
-func (t *NoOpTracer) TransitionInit(transition *Transition)          {}
-func (t *NoOpTracer) TransitionStart(transition *Transition)         {}
-func (t *NoOpTracer) TransitionEnd(transition *Transition)           {}
-func (t *NoOpTracer) MutationQueued(machine Api, mutation *Mutation) {}
-func (t *NoOpTracer) HandlerStart(
+func (t *TracerNoOp) TransitionInit(transition *Transition)          {}
+func (t *TracerNoOp) TransitionStart(transition *Transition)         {}
+func (t *TracerNoOp) TransitionEnd(transition *Transition)           {}
+func (t *TracerNoOp) MutationQueued(machine Api, mutation *Mutation) {}
+func (t *TracerNoOp) HandlerStart(
 	transition *Transition, emitter string, handler string) {
 }
 
-func (t *NoOpTracer) HandlerEnd(
+func (t *TracerNoOp) HandlerEnd(
 	transition *Transition, emitter string, handler string) {
 }
 
-func (t *NoOpTracer) MachineInit(machine Api) context.Context {
+func (t *TracerNoOp) MachineInit(machine Api) context.Context {
 	return nil
 }
-func (t *NoOpTracer) MachineDispose(machID string)      {}
-func (t *NoOpTracer) NewSubmachine(parent, machine Api) {}
-func (t *NoOpTracer) QueueEnd(machine Api)              {}
+func (t *TracerNoOp) MachineDispose(machID string)      {}
+func (t *TracerNoOp) NewSubmachine(parent, machine Api) {}
+func (t *TracerNoOp) QueueEnd(machine Api)              {}
 
-func (t *NoOpTracer) SchemaChange(machine Api, old Schema) {}
-func (t *NoOpTracer) VerifyStates(machine Api)             {}
-func (t *NoOpTracer) Inheritable() bool                    { return false }
+func (t *TracerNoOp) SchemaChange(machine Api, old Schema) {}
+func (t *TracerNoOp) VerifyStates(machine Api)             {}
+func (t *TracerNoOp) Inheritable() bool                    { return false }
 
-var _ Tracer = &NoOpTracer{}
+var _ Tracer = &TracerNoOp{}
 
 // ///// ///// /////
 
@@ -843,7 +857,7 @@ var emitterNameRe = regexp.MustCompile(`/\w+\.go:\d+`)
 type Event struct {
 	// Ctx is an optional context this event is constrained by.
 	Ctx context.Context
-	// Name of the event / handler
+	// Name of the handler method (eg FooState).
 	Name string
 	// MachineId is the ID of the parent machine.
 	MachineId string
@@ -858,6 +872,15 @@ type Event struct {
 	// Machine is the machine that the event belongs to. It can be used to access
 	// the current Transition and Mutation.
 	machine *Machine
+	machApi Api
+}
+
+// NewEvent creates a new Event struct with private fields initialized.
+func NewEvent(mach *Machine, machApi Api) *Event {
+	return &Event{
+		machine: mach,
+		machApi: machApi,
+	}
 }
 
 // Mutation returns the Mutation of an Event.
@@ -875,11 +898,11 @@ func (e *Event) Machine() *Machine {
 
 // Transition returns the Transition of an Event.
 func (e *Event) Transition() *Transition {
-	if e.machine == nil {
+	if e.machApi == nil {
 		return nil
 	}
 
-	return e.Machine().t.Load()
+	return e.machApi.Transition()
 }
 
 // IsValid confirm this event should still be processed. Useful for negotiation
@@ -1060,7 +1083,7 @@ func NewLastTxTracer() *LastTxTracer {
 
 // TODO add TTL, ctx
 type LastTxTracer struct {
-	*NoOpTracer
+	*TracerNoOp
 	lastTx atomic.Pointer[Transition]
 }
 

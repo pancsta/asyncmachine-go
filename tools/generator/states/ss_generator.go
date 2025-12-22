@@ -15,8 +15,8 @@ type GeneratorStatesDef struct {
 	InheritDisposed  string
 
 	// pkg/*
-	InheritRpcWorker  string
-	InheritNodeWorker string
+	InheritRpcNetSource string
+	InheritNodeWorker   string
 
 	// rest
 	Inherit         string
@@ -37,10 +37,10 @@ var GeneratorSchema = am.Schema{
 	ssG.InheritConnected: {Add: S{ssG.GroupsInherited}},
 	ssG.InheritDisposed:  {},
 
-	ssG.InheritRpcWorker: {},
+	ssG.InheritRpcNetSource: {},
 	ssG.InheritNodeWorker: {
 		Add:    S{ssG.GroupsInherited},
-		Remove: S{ssG.InheritRpcWorker},
+		Remove: S{ssG.InheritRpcNetSource},
 	},
 
 	ssG.Inherit:         {Auto: true},
@@ -54,7 +54,7 @@ var GeneratorSchema = am.Schema{
 var (
 	ssG = am.NewStates(GeneratorStatesDef{})
 	sgG = am.NewStateGroups(GeneratorGroupsDef{
-		Inherit: S{ssG.InheritBasic, ssG.InheritConnected, ssG.InheritRpcWorker,
+		Inherit: S{ssG.InheritBasic, ssG.InheritConnected, ssG.InheritRpcNetSource,
 			ssG.InheritNodeWorker, ssG.InheritDisposed},
 	})
 

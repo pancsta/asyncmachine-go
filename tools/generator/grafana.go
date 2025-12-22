@@ -243,7 +243,7 @@ func MachDashboardEnv(mach *am.Machine) error {
 // SyncTracer is [am.Tracer] for tracing new submachines and syncing the Grafana
 // dashboard.
 type SyncTracer struct {
-	*am.NoOpTracer
+	*am.TracerNoOp
 
 	p  cli.GrafanaParams
 	mx sync.Mutex

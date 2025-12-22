@@ -88,7 +88,7 @@ func (m *Memory) Track(
 ) (*Tracer, error) {
 
 	t := &Tracer{
-		NoOpTracer:       &am.NoOpTracer{},
+		TracerNoOp:       &am.TracerNoOp{},
 		loop:             &errgroup.Group{},
 		db:               m.Db,
 		lastActivated:    make(map[string]time.Time),
@@ -107,7 +107,7 @@ func (m *Memory) Track(
 }
 
 type Tracer struct {
-	*am.NoOpTracer
+	*am.TracerNoOp
 
 	StoreChecks bool
 	Active      atomic.Int32
@@ -167,7 +167,7 @@ func (t *Tracer) TransitionEnd(tx *am.Transition) {
 	}
 	recTx := &Transition{
 		Id:         tx.Id,
-		IsAuto:     tx.Mutation.Auto,
+		IsAuto:     tx.Mutation.IsAuto,
 		IsAccepted: tx.IsAccepted.Load(),
 		IsCheck:    tx.Mutation.IsCheck,
 		IsBroken:   tx.IsBroken.Load(),

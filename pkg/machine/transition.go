@@ -34,10 +34,10 @@ type Transition struct {
 	Mutation *Mutation
 	// Machine is the parent machine of this transition.
 	Machine *Machine
-	// Api is a subset of Machine.
+	// MachApi is a subset of Machine.
 	// TODO call when applicable instead of calling Machine
 	// TODO rename to MachApi
-	Api Api
+	MachApi Api
 	// LogEntries are log msgs produced during the transition.
 	LogEntries []*LogEntry
 	// PreLogEntries are log msgs produced before during the transition.
@@ -107,7 +107,7 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 		TimeBefore:  tNow,
 		TimeAfter:   tAfter,
 		Machine:     m,
-		Api:         m,
+		MachApi:     m,
 		cacheSchema: schema,
 	}
 
@@ -140,7 +140,7 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	if t.isLogSteps() {
 		t.addSteps(newSteps("", called, StepRequested, 0)...)
 	}
-	if mut.Auto {
+	if mut.IsAuto {
 		m.log(LogDecisions, "[%s:auto] %s%s", mutType, j(called), logArgs)
 	} else {
 		m.log(LogOps, "[%s] %s%s", mutType, j(called), logArgs)
@@ -158,7 +158,7 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	t.TargetIndexes = m.Index(targetStates)
 	t.cacheTargetStates.Store(&targetStates)
 
-	impliedStates := DiffStates(targetStates, statesToSet)
+	impliedStates := StatesDiff(targetStates, statesToSet)
 	if len(impliedStates) > 0 {
 		m.log(LogOps, "[implied] %s", j(impliedStates))
 	}
@@ -189,7 +189,7 @@ func (t *Transition) statesToSet(mutType MutationType, states S) S {
 	case MutationAdd:
 		statesToSet := slices.Concat(states, m.activeStates)
 		if t.isLogSteps() {
-			t.addSteps(newSteps("", DiffStates(statesToSet, m.activeStates),
+			t.addSteps(newSteps("", StatesDiff(statesToSet, m.activeStates),
 				StepSet, 0)...)
 		}
 
@@ -198,9 +198,9 @@ func (t *Transition) statesToSet(mutType MutationType, states S) S {
 	case MutationSet:
 		statesToSet := states
 		if t.isLogSteps() {
-			t.addSteps(newSteps("", DiffStates(statesToSet, m.activeStates),
+			t.addSteps(newSteps("", StatesDiff(statesToSet, m.activeStates),
 				StepSet, 0)...)
-			t.addSteps(newSteps("", DiffStates(m.activeStates, statesToSet),
+			t.addSteps(newSteps("", StatesDiff(m.activeStates, statesToSet),
 				StepRemove, 0)...)
 		}
 
@@ -252,9 +252,9 @@ func (t *Transition) TargetStates() S {
 	}
 
 	ret := make(S, len(t.TargetIndexes))
-	mach := t.Machine
+	mach := t.MachApi
 	if mach == nil {
-		return ret
+		return nil
 	}
 	states := mach.StateNames()
 	for i, idx := range t.TargetIndexes {
@@ -271,7 +271,7 @@ func (t *Transition) TargetStates() S {
 // IsAuto returns true if the transition was triggered by an auto state.
 // Thus, it cant trigger any other auto state mutations.
 func (t *Transition) IsAuto() bool {
-	return t.Mutation.Auto
+	return t.Mutation.IsAuto
 }
 
 // IsHealth returns true if the transition was health-related (StateHealthcheck,
@@ -293,14 +293,14 @@ func (t *Transition) CalledStates() S {
 		return *v
 	}
 
-	return IndexToStates(t.Api.StateNames(), t.Mutation.Called)
+	return IndexToStates(t.MachApi.StateNames(), t.Mutation.Called)
 }
 
 // TimeIndexAfter return TimeAfter bound to an index, for easy quering.
 func (t *Transition) TimeIndexAfter() TimeIndex {
 	return TimeIndex{
 		Time:  t.TimeAfter,
-		Index: t.Api.StateNames(),
+		Index: t.MachApi.StateNames(),
 	}
 }
 
@@ -375,7 +375,7 @@ func (t *Transition) setupExitEnter() {
 
 	// collect the exit handlers
 	targetStates := t.TargetStates()
-	exits := DiffStates(m.activeStates, targetStates)
+	exits := StatesDiff(m.activeStates, targetStates)
 	m.resolver.SortStates(exits)
 
 	// collect the enters handlers
@@ -614,8 +614,8 @@ func (t *Transition) emitEvents() Result {
 
 		// global AnyEnter handler
 		if result != Canceled {
-			result = t.emitHandler(StateAny, StateAny, false, true, HandlerAnyEnter,
-				t.Mutation.Args)
+			result = t.emitHandler(StateAny, StateAny, false, true,
+				StateAny+SuffixEnter, t.Mutation.Args)
 		}
 	}
 
@@ -626,8 +626,8 @@ func (t *Transition) emitEvents() Result {
 		// recheck auto txs for canceled handlers, remove direct and transitive Add
 		// relation
 		if t.IsAuto() {
-			rejected := DiffStates(called, t.TargetStates())
-			calledClean := DiffStates(called, rejected)
+			rejected := StatesDiff(called, t.TargetStates())
+			calledClean := StatesDiff(called, rejected)
 			toSet := t.statesToSet(MutationAdd, calledClean)
 			targetStates := m.resolver.TargetStates(t, toSet, m.StateNames())
 			t.TargetIndexes = m.Index(targetStates)
@@ -668,8 +668,8 @@ func (t *Transition) emitEvents() Result {
 
 		// global AnyState handler
 		if result != Canceled && (hasHandlers || logEverything) {
-			result = t.emitHandler(StateAny, StateAny, true, true, HandlerAnyState,
-				t.Mutation.Args)
+			result = t.emitHandler(StateAny, StateAny, true, true,
+				StateAny+SuffixState, t.Mutation.Args)
 		}
 
 		// AUTO STATES
@@ -688,8 +688,8 @@ func (t *Transition) emitEvents() Result {
 		// cache for subscriptions, mind partially accepted auto states
 		if t.IsAuto() {
 			before := t.StatesBefore()
-			t.cacheActivated = DiffStates(m.activeStates, before)
-			t.cacheDeactivated = DiffStates(before, m.activeStates)
+			t.cacheActivated = StatesDiff(m.activeStates, before)
+			t.cacheDeactivated = StatesDiff(before, m.activeStates)
 		} else {
 			t.cacheActivated = t.Enters
 			t.cacheDeactivated = t.Exits
@@ -744,7 +744,7 @@ func (t *Transition) setupAccepted() {
 		return
 	}
 	called := t.CalledStates()
-	notAccepted := DiffStates(called, t.TargetStates())
+	notAccepted := StatesDiff(called, t.TargetStates())
 	// Auto-states can be set partially
 	if t.IsAuto() {
 		// partially accepted

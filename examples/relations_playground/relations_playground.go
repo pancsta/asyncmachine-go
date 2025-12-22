@@ -147,7 +147,7 @@ func newMach(id string, machSchema am.Schema) *am.Machine {
 }
 
 type Tracer struct {
-	*am.NoOpTracer
+	*am.TracerNoOp
 }
 
 func (t *Tracer) TransitionEnd(tx *am.Transition) {

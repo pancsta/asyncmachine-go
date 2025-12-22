@@ -200,7 +200,7 @@ type Tick struct {
 // ///// ///// /////
 
 type tracer struct {
-	*am.NoOpTracer
+	*am.TracerNoOp
 
 	mem *Memory
 }
@@ -443,7 +443,7 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 	if cfg.StoreTransitions {
 		timeRec.TxId = tx.Id
 		timeRec.TxCalled = calledBt
-		timeRec.TxIsAuto = mut.Auto
+		timeRec.TxIsAuto = mut.IsAuto
 		timeRec.TxIsAccepted = tx.IsAccepted.Load()
 		timeRec.TxIsCheck = mut.IsCheck
 		timeRec.TxIsBroken = tx.IsBroken.Load()

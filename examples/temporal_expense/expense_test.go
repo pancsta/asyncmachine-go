@@ -350,5 +350,5 @@ func TestExpense(t *testing.T) {
 
 	t.Log(mach.String())
 	t.Log(mach.StringAll())
-	t.Log(mach.Inspect(nil))
+	t.Log("\n" + mach.Inspect(nil))
 }

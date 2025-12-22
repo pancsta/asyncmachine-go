@@ -879,7 +879,7 @@ func (r *Renderer) isStateInherited(state string, machStates am.S) bool {
 			continue
 		}
 		// check if all present in mach
-		if len(am.DiffStates(states, machStates)) == 0 {
+		if len(am.StatesDiff(states, machStates)) == 0 {
 			return true
 		}
 	}

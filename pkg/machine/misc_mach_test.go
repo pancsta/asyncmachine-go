@@ -2,6 +2,7 @@ package machine
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -10,7 +11,9 @@ import (
 )
 
 func TestWithOpts(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// OptsWithDebug
 	opts := &Opts{
@@ -22,7 +25,7 @@ func TestWithOpts(t *testing.T) {
 	assert.Greater(t, opts.HandlerTimeout, time.Duration(0))
 
 	// OptsWithTracers
-	tracer := &NoOpTracer{}
+	tracer := &TracerNoOp{}
 	OptsWithTracers(opts, tracer)
 
 	assert.Equal(t, tracer, opts.Tracers[0])
@@ -33,14 +36,18 @@ func TestWithOpts(t *testing.T) {
 }
 
 func TestResultString(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	assert.Equal(t, "executed", Executed.String())
 	assert.Equal(t, "canceled", Canceled.String())
 }
 
 func TestMutationTypeString(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	assert.Equal(t, "add", MutationAdd.String())
 	assert.Equal(t, "remove", MutationRemove.String())
@@ -49,7 +56,9 @@ func TestMutationTypeString(t *testing.T) {
 }
 
 func TestStepTypeString(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	assert.Equal(t, "rel", StepRelation.String())
 	assert.Equal(t, "handler", StepHandler.String())
@@ -62,7 +71,9 @@ func TestStepTypeString(t *testing.T) {
 }
 
 func TestRelationString(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	assert.Equal(t, "after", RelationAfter.String())
 	assert.Equal(t, "add", RelationAdd.String())
@@ -71,7 +82,9 @@ func TestRelationString(t *testing.T) {
 }
 
 func TestLogLevelString(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	assert.Equal(t, "nothing", LogNothing.String())
 	assert.Equal(t, "nothing", LogLevel(0).String())
@@ -83,7 +96,9 @@ func TestLogLevelString(t *testing.T) {
 }
 
 func TestNewArgsMapper(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// short
 	mapper := NewArgsMapper([]string{"arg", "arg2"}, 2)
@@ -101,7 +116,9 @@ func TestNewArgsMapper(t *testing.T) {
 }
 
 func TestParseStruct(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	s := Schema{
 		"A": {
@@ -127,7 +144,9 @@ func TestParseStruct(t *testing.T) {
 }
 
 func TestSMerge(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	s := S{"A", "B", "C"}
 	s2 := S{"C", "D", "E"}
@@ -137,7 +156,9 @@ func TestSMerge(t *testing.T) {
 }
 
 func TestIsActiveTick(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	assert.True(t, IsActiveTick(1))
 	assert.False(t, IsActiveTick(0))
@@ -201,7 +222,9 @@ var (
 )
 
 func TestStatesFile(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	assert.Equal(t, testStates.Foo, "Foo")
 	assert.Equal(t, testStates.Bar, "Bar")
@@ -211,7 +234,9 @@ func TestStatesFile(t *testing.T) {
 }
 
 func TestTimeMethods(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	mt := Time{2, 1, 3}
 	assert.Equal(t, mt.Is1(1), true)

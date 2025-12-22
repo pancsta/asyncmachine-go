@@ -17,7 +17,7 @@ import (
 
 func init() {
 	// debug
-	os.Setenv(EnvAmDebug, "1")
+	// os.Setenv(EnvAmDebug, "1")
 }
 
 func ExampleNew() {
@@ -142,7 +142,9 @@ func NewCustomStates(t *testing.T, states Schema) *Machine {
 }
 
 func TestSingleStateActive(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A"})
 	assertStates(t, m, S{"A"})
 
@@ -152,7 +154,9 @@ func TestSingleStateActive(t *testing.T) {
 }
 
 func TestMultipleStatesActive(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A"})
 	m.Add(S{"B"}, nil)
 	assertStates(t, m, S{"A", "B"})
@@ -163,7 +167,9 @@ func TestMultipleStatesActive(t *testing.T) {
 }
 
 func TestExposeAllStateNames(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A"})
 	assert.ElementsMatch(t, S{"A", "B", "C", "D", "Exception"}, m.StateNames())
 
@@ -173,7 +179,9 @@ func TestExposeAllStateNames(t *testing.T) {
 }
 
 func TestStateSet(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A"})
 	m.Set(S{"B"}, nil)
 	assertStates(t, m, S{"B"})
@@ -184,7 +192,9 @@ func TestStateSet(t *testing.T) {
 }
 
 func TestStateAdd(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A"})
 	m.Add(S{"B"}, nil)
 	assertStates(t, m, S{"A", "B"})
@@ -195,7 +205,9 @@ func TestStateAdd(t *testing.T) {
 }
 
 func TestStateRemove(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"B", "C"})
 	m.Remove(S{"C"}, nil)
 	assertStates(t, m, S{"B"})
@@ -206,7 +218,9 @@ func TestStateRemove(t *testing.T) {
 }
 
 func TestPanicWhenStateIsUnknown(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A"})
 	assert.Panics(t, func() {
 		m.Set(S{"E"}, nil)
@@ -218,7 +232,9 @@ func TestPanicWhenStateIsUnknown(t *testing.T) {
 }
 
 func TestGetStateRelations(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := New(context.Background(), Schema{
 		"A": {
 			Add:     S{"B"},
@@ -241,7 +257,9 @@ func TestGetStateRelations(t *testing.T) {
 }
 
 func TestGetRelationsBetweenStates(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := New(context.Background(), Schema{
 		"A": {
 			Add:     S{"B"},
@@ -264,7 +282,9 @@ func TestGetRelationsBetweenStates(t *testing.T) {
 }
 
 func TestSingleToSingleStateTransition(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A", "B"})
 
 	// expectations
@@ -293,7 +313,9 @@ func TestSingleToSingleStateTransition(t *testing.T) {
 }
 
 func TestSingleToMultiStateTransition(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A"})
 	events := []string{
 		"AExit", "BEnter", "CEnter", "AB", "AC", "BState", "CState",
@@ -318,7 +340,9 @@ func TestSingleToMultiStateTransition(t *testing.T) {
 }
 
 func TestMultiToMultiStateTransition(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A", "B"})
 	events := []string{
 		"AExit", "BExit", "DEnter", "CEnter", "AD", "AC", "BD", "BC", "CState",
@@ -343,7 +367,9 @@ func TestMultiToMultiStateTransition(t *testing.T) {
 }
 
 func TestMultiToSingleStateTransition(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A", "B"})
 	events := []string{
 		"AExit", "BExit", "CEnter", "AC", "BC", "AnyEnter", "AEnd", "BEnd",
@@ -369,7 +395,9 @@ func TestMultiToSingleStateTransition(t *testing.T) {
 }
 
 func TestTransitionToActiveState(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A", "B"})
 
 	// history
@@ -391,7 +419,9 @@ func TestTransitionToActiveState(t *testing.T) {
 }
 
 func TestAfterRelationWhenEntering(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A", "B"})
 
 	// relations
@@ -419,7 +449,9 @@ func TestAfterRelationWhenEntering(t *testing.T) {
 }
 
 func TestAfterRelationWhenExiting(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A", "B"})
 
 	// relations
@@ -447,7 +479,9 @@ func TestAfterRelationWhenExiting(t *testing.T) {
 }
 
 func TestRequireOrder(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewCustomStates(t, Schema{
 		"A": {
 			Auto:    true,
@@ -508,7 +542,9 @@ func TestRequireOrder(t *testing.T) {
 }
 
 func TestRemoveRelation(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"D"})
 
 	// relations
@@ -524,7 +560,9 @@ func TestRemoveRelation(t *testing.T) {
 }
 
 func TestRemoveRelationSimultaneous(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"D"})
 
@@ -549,7 +587,9 @@ func TestRemoveRelationSimultaneous(t *testing.T) {
 }
 
 func TestRemoveRelationCrossBlocking(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	tests := []struct {
 		name string
 		fn   func(t *testing.T, m *Machine)
@@ -594,7 +634,9 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+			if os.Getenv(EnvAmTestDbgAddr) == "" {
+				t.Parallel()
+			}
 			m := NewNoRels(t, S{"D"})
 			// C and D are cross blocking each other via Remove
 			m.schema["C"] = State{Remove: S{"D"}}
@@ -605,7 +647,9 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 }
 
 func TestAddRelation(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, nil)
 
 	// relations
@@ -627,7 +671,9 @@ func TestAddRelation(t *testing.T) {
 }
 
 func TestRequireRelation(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 
@@ -646,7 +692,9 @@ func TestRequireRelation(t *testing.T) {
 }
 
 func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A"})
 
 	// relations
@@ -670,7 +718,9 @@ func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
 }
 
 func TestRemoveMultiImplied(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A", "B", "C"})
 
 	// relations
@@ -703,7 +753,9 @@ func (h *TestQueueHandlers) BEnter(e *Event) bool {
 }
 
 func TestQueue(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 
@@ -741,7 +793,9 @@ func (h *TestNegotiationCancelHandlers) DEnter(_ *Event) bool {
 }
 
 func TestNegotiationCancel(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	tests := []struct {
 		name string
 		fn   func(t *testing.T, m *Machine) Result
@@ -769,7 +823,9 @@ func TestNegotiationCancel(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+			if os.Getenv(EnvAmTestDbgAddr) == "" {
+				t.Parallel()
+			}
 			// init
 			m := NewNoRels(t, S{"A"})
 
@@ -798,7 +854,9 @@ func TestNegotiationCancel(t *testing.T) {
 }
 
 func TestAutoStates(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	m := NewNoRels(t, nil)
@@ -828,7 +886,9 @@ func TestAutoStatesHeartbeat(t *testing.T) {
 }
 
 func TestPartialAutoStates(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	m := NewNoRels(t, nil)
@@ -858,7 +918,9 @@ func TestPartialAutoStates(t *testing.T) {
 }
 
 func TestPartialAutoStatesByStateState(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	m := NewCustomStates(t, Schema{
@@ -880,7 +942,9 @@ func TestPartialAutoStatesByStateState(t *testing.T) {
 }
 
 func TestPartialAutoStatesByEnter(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	m := NewCustomStates(t, Schema{
@@ -913,7 +977,9 @@ func (h *TestNegotiationRemoveHandlers) AExit(_ *Event) bool {
 }
 
 func TestNegotiationRemove(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 
@@ -966,7 +1032,9 @@ func TestHandlerStateInfo(t *testing.T) {
 		return
 	}
 
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 	err := m.VerifyStates(S{"A", "B", "C", "D", "Exception"})
@@ -997,7 +1065,9 @@ func TestHandlerStateInfo(t *testing.T) {
 }
 
 func TestGetters(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 	mapper := NewArgsMapper([]string{"arg", "arg2"}, 5)
@@ -1014,7 +1084,9 @@ func TestGetters(t *testing.T) {
 }
 
 func TestSwitch(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 
@@ -1040,7 +1112,9 @@ func TestSwitch(t *testing.T) {
 }
 
 func TestDispose(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	m := NewNoRels(t, S{"A"})
@@ -1057,7 +1131,9 @@ func TestDispose(t *testing.T) {
 }
 
 func TestDisposeForce(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	m := NewNoRels(t, S{"A"})
@@ -1076,7 +1152,9 @@ func TestDisposeForce(t *testing.T) {
 }
 
 func TestLogArgs(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	m := NewNoRels(t, S{"A"})
@@ -1121,7 +1199,9 @@ func (h *TestHandlerArgsHandlers) CState(e *Event) {
 }
 
 func TestHandlerArgs(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 
@@ -1160,7 +1240,9 @@ func (h *TestEvH) BState(e *Event) {
 }
 
 func TestEvMutations(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -1219,7 +1301,9 @@ func TestEval(t *testing.T) {
 }
 
 func TestBreakpoints(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -1234,7 +1318,9 @@ func TestBreakpoints(t *testing.T) {
 }
 
 func TestHandlerStateState(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// spies
 	ab := false
@@ -1269,7 +1355,9 @@ func TestHandlerStateState(t *testing.T) {
 }
 
 func TestHandlerNegotiationStateState(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	m := NewNoRels(t, S{"A"})
@@ -1297,7 +1385,9 @@ func TestHandlerNegotiationStateState(t *testing.T) {
 }
 
 func TestAnonHandlers(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 	ok := false
@@ -1338,7 +1428,9 @@ func (h *TestSelfHandlersCancellableHandlers) AA(e *Event) bool {
 }
 
 func TestSelfHandlersCancellable(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 
@@ -1366,7 +1458,9 @@ func TestSelfHandlersCancellable(t *testing.T) {
 }
 
 func TestSelfHandlersOrder(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 
@@ -1390,13 +1484,17 @@ func TestSelfHandlersOrder(t *testing.T) {
 }
 
 func TestDoubleHandlers(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// TODO bind 2 handlers and check for dups
 	t.Skip("TODO")
 }
 
 func TestSelfHandlersForCalledOnly(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 
@@ -1421,7 +1519,9 @@ func TestSelfHandlersForCalledOnly(t *testing.T) {
 }
 
 func TestRegressionRemoveCrossBlockedByImplied(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewCustomStates(t, Schema{
 		"A": {Remove: S{"B"}},
@@ -1441,7 +1541,9 @@ func TestRegressionRemoveCrossBlockedByImplied(t *testing.T) {
 }
 
 func TestRegressionImpliedBlockByBeingRemoved(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewCustomStates(t, Schema{
 		"Wet":   {Require: S{"Water"}},
@@ -1474,7 +1576,9 @@ func (h *TestWhenHandlers) AState(e *Event) {
 }
 
 func TestWhen(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -1495,7 +1599,9 @@ func TestWhen(t *testing.T) {
 }
 
 func TestWhen2(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -1530,7 +1636,9 @@ func TestWhen2(t *testing.T) {
 }
 
 func TestWhenActive(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 
@@ -1546,7 +1654,9 @@ func TestWhenActive(t *testing.T) {
 }
 
 func TestWhenDups(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -1575,7 +1685,9 @@ func (h *TestWhenNotHandlers) AState(e *Event) {
 }
 
 func TestWhenNot(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"B", "C"})
 
@@ -1598,7 +1710,9 @@ func TestWhenNot(t *testing.T) {
 }
 
 func TestWhenNot2(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A", "B"})
 
@@ -1634,7 +1748,9 @@ func TestWhenNot2(t *testing.T) {
 }
 
 func TestWhenNotActive(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 
@@ -1659,7 +1775,9 @@ func (h *TestPartialNegotiationPanicHandlers) BEnter(_ *Event) {
 }
 
 func TestPartialNegotiationPanic(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A"})
 
@@ -1693,7 +1811,9 @@ func (h *TestPartialFinalPanicHandlers) BState(_ *Event) {
 }
 
 func TestPartialFinalPanic(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -1747,7 +1867,9 @@ func (h *TestStateCtxHandlers) AState(e *Event) {
 }
 
 func TestStateCtx(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -1799,14 +1921,14 @@ func (h *TestQueueCheckableHandlers) AState(e *Event) {
 	assert.Len(t, m.queue, 3, "queue should have 3 mutations scheduled")
 	h.assertsCount++
 
-	idx, found := m.IsQueued(MutationAdd, S{"C"}, false, false, 0, false,
+	found, idx, _ := m.IsQueued(MutationAdd, S{"C"}, false, false, 0, false,
 		PositionAny)
 	assert.Equal(t, uint16(1), idx, "C should be queued")
 	assert.True(t, found, "C should be queued")
 	assert.True(t, m.WillBe1("C"), "A should NOT be queued")
 	h.assertsCount++
 
-	_, found = m.IsQueued(MutationAdd, S{"A"}, false, false, 0, false,
+	found, _, _ = m.IsQueued(MutationAdd, S{"A"}, false, false, 0, false,
 		PositionAny)
 	assert.False(t, found, "A should NOT be queued")
 	assert.False(t, m.WillBe1("A"), "A should NOT be queued")
@@ -1818,7 +1940,9 @@ func (h *TestQueueCheckableHandlers) AState(e *Event) {
 }
 
 func TestQueueCheckable(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -1839,7 +1963,9 @@ func TestQueueCheckable(t *testing.T) {
 }
 
 func TestPartialAuto(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -1870,7 +1996,9 @@ func TestPartialAuto(t *testing.T) {
 }
 
 func TestTime(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -1926,7 +2054,9 @@ func TestTime(t *testing.T) {
 }
 
 func TestWhenCtx(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A", "B"})
 
@@ -1987,7 +2117,9 @@ func TestWhenCtx(t *testing.T) {
 }
 
 func TestWhenArgs(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewRels(t, nil)
 
@@ -2018,7 +2150,9 @@ func TestWhenArgs(t *testing.T) {
 }
 
 func TestWhenTime(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A", "B"})
 
@@ -2070,7 +2204,9 @@ type TestNewCommonHandlers struct {
 func (h *TestNewCommonHandlers) AState(e *Event) {}
 
 func TestNewCommon(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	s := Schema{"A": {}, StateException: {}}
@@ -2110,7 +2246,7 @@ type TestTracersHandlers struct {
 func (h *TestTracersHandlers) AState(e *Event) {}
 
 type TestTracersTracer struct {
-	*NoOpTracer
+	*TracerNoOp
 }
 
 func (t *TestTracersTracer) MachineInit(m Api) context.Context {
@@ -2119,7 +2255,9 @@ func (t *TestTracersTracer) MachineInit(m Api) context.Context {
 }
 
 func TestTracers(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	tNoop := &TestTracersTracer{}
@@ -2142,19 +2280,25 @@ func TestTracers(t *testing.T) {
 }
 
 func TestQueueLimit(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// TODO TestQueueLimit
 	t.Skip()
 }
 
 func TestSubmachines(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// TODO TestSubmachines
 	t.Skip()
 }
 
 func TestSetStates(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	m := NewNoRels(t, S{"A", "C"})
@@ -2188,7 +2332,9 @@ func TestSetStates(t *testing.T) {
 }
 
 func TestIs(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A", "B"})
 
@@ -2202,7 +2348,9 @@ func TestIs(t *testing.T) {
 }
 
 func TestNot(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A", "B"})
 
@@ -2217,7 +2365,9 @@ func TestNot(t *testing.T) {
 }
 
 func TestAny(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A", "B"})
 
@@ -2234,7 +2384,9 @@ func TestAny(t *testing.T) {
 }
 
 func TestClock(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 	_ = m.VerifyStates(S{"A", "B", "C", "D", "Exception"})
@@ -2287,27 +2439,29 @@ func TestClock(t *testing.T) {
 }
 
 func TestInspect(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewRels(t, S{"A", "C"})
 	// (A:1 C:1)[B:0 D:0 Exception:0]
 	names := S{"A", "B", "C", "D", "Exception"}
 	expected := `
 		1 A
-		    |Time     1
+		    |Tick     1
 		    |Auto     true
 		    |Require  C
 		0 B
-		    |Time     0
+		    |Tick     0
 		    |Multi    true
 		    |Add      C
 		1 C
-		    |Time     1
+		    |Tick     1
 		    |After    D
 		0 D
-		    |Time     0
+		    |Tick     0
 		    |Add      C B
 		0 Exception
-		    |Time     0
+		    |Tick     0
 		    |Multi    true
     `
 	assertString(t, m, expected, names)
@@ -2320,21 +2474,21 @@ func TestInspect(t *testing.T) {
 	// (A:3 B:1 C:3 D:1)[Exception:0]
 	expected = `
 		0 Exception
-		    |Time     0
+		    |Tick     0
 		    |Multi    true
 		1 A
-		    |Time     3
+		    |Tick     3
 		    |Auto     true
 		    |Require  C
 		1 B
-		    |Time     1
+		    |Tick     1
 		    |Multi    true
 		    |Add      C
 		1 C
-		    |Time     3
+		    |Tick     3
 		    |After    D
 		1 D
-		    |Time     1
+		    |Tick     1
 		    |Add      C B
     `
 	err := m.VerifyStates(S{"Exception", "A", "B", "C", "D"})
@@ -2347,7 +2501,9 @@ func TestInspect(t *testing.T) {
 }
 
 func TestNilCtx(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := New(nil, Schema{"A": {}}, nil) //nolint:all
 	assert.Greater(t, len(m.id), 5)
 
@@ -2371,7 +2527,9 @@ func (h *TestWhenQueueEndsHandlers) AState(e *Event) {
 }
 
 func TestWhenQueueEnds(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -2393,28 +2551,13 @@ func TestWhenQueueEnds(t *testing.T) {
 		<-readyMut
 		assert.NotNil(t, m.Transition(),
 			"Machine should be during a transition")
-		queueEnds = m.WhenQueueEnds(context.TODO())
+		queueEnds = m.WhenQueueEnds()
 		close(readyGo)
 	}()
 	m.Add1("A", A{"readyMut": readyMut, "readyGo": readyGo})
 	// confirm the queue wait is closed
 	<-queueEnds
 	m.Remove1("A", nil)
-
-	// test with ctx race
-	ctx, cancel := context.WithCancel(context.Background())
-	readyMut = make(chan struct{})
-	done := make(chan struct{})
-	go func() {
-		<-readyMut
-		queueEnds = m.WhenQueueEnds(ctx)
-		cancel()
-		// confirm the queue wait is closed
-		<-queueEnds
-		close(done)
-	}()
-	m.Add1("A", A{"readyMut": readyMut})
-	<-done
 
 	// dispose
 	m.Dispose()
@@ -2447,7 +2590,9 @@ func (h *TestWhenQueueHandlers) AState(e *Event) {
 }
 
 func TestWhenQueue(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -2465,7 +2610,9 @@ func TestWhenQueue(t *testing.T) {
 }
 
 func TestGetRelationsBetween(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -2510,7 +2657,9 @@ func TestGetRelationsBetween(t *testing.T) {
 }
 
 func TestString(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A", "B"})
 	_ = m.VerifyStates(S{"A", "B", "C", "D", "Exception"})
@@ -2544,7 +2693,9 @@ func (h *TestNestedMutationHandlers) AState(e *Event) {
 }
 
 func TestNestedMutation(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"B"})
 
@@ -2564,7 +2715,9 @@ func TestNestedMutation(t *testing.T) {
 }
 
 func TestVerifyStates(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, S{"A", "B"})
 
@@ -2582,7 +2735,9 @@ func TestVerifyStates(t *testing.T) {
 }
 
 func TestHas(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -2600,7 +2755,9 @@ func TestHas(t *testing.T) {
 }
 
 func TestLogger(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 
@@ -2624,7 +2781,9 @@ func TestLogger(t *testing.T) {
 }
 
 func TestIsClock(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 	cA := m.Clock(S{"A"})
@@ -2644,7 +2803,9 @@ func TestIsClock(t *testing.T) {
 }
 
 func TestIsTime(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m := NewNoRels(t, nil)
 	tA := m.Time(S{"A"})
@@ -2663,12 +2824,16 @@ func TestIsTime(t *testing.T) {
 
 // TODO TestAnyEnterHandler
 func TestAnyEnterHandler(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	t.Skip()
 }
 
 func TestExportImport(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	// init
 	m1 := NewNoRels(t, S{"A"})
 	defer m1.Dispose()
@@ -2685,7 +2850,7 @@ func TestExportImport(t *testing.T) {
 	m1Str := m1.String()
 
 	// export
-	serial := m1.Export()
+	serial, _, _ := m1.Export()
 
 	// import
 	m2 := NewNoRels(t, nil)
@@ -2714,7 +2879,9 @@ func (h *TestHandlerTimeoutHandlers) AState(e *Event) {
 }
 
 func TestHandlerTimeout(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	m := NewNoRels(t, nil)
@@ -2761,11 +2928,13 @@ func TestHandlerDeadline(t *testing.T) {
 // TestBindTracer
 
 type TestBindTracerTracer struct {
-	*NoOpTracer
+	*TracerNoOp
 }
 
 func TestBindTracer(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	m := NewNoRels(t, nil)
@@ -2794,7 +2963,9 @@ type TestUnbindHandlersHandlers struct {
 }
 
 func TestUnbindHandlers(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	m := NewNoRels(t, nil)
@@ -2831,7 +3002,9 @@ func (h *TestListHandlersHandlers) AnyB(e *Event)      {}
 func (h *TestListHandlersHandlers) Unrelated(e *Event) {}
 
 func TestListHandlers(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// defined handlers
 	h1 := &TestListHandlersHandlers{}
@@ -2842,8 +3015,10 @@ func TestListHandlers(t *testing.T) {
 
 	// assert
 	assert.Len(t, names, 4)
-	assert.ElementsMatch(t, []string{"AEnter", "AState", "AnyB", HandlerAnyEnter},
-		names)
+	assert.ElementsMatch(t, []string{
+		"AEnter", "AState", "AnyB",
+		StateAny + SuffixEnter,
+	}, names)
 
 	// anon handlers
 	h2 := &struct {
@@ -2866,8 +3041,10 @@ func TestListHandlers(t *testing.T) {
 
 	// assert
 	assert.Len(t, names, 4)
-	assert.ElementsMatch(t, []string{"AEnter", "AState", "AnyB", HandlerAnyEnter},
-		names)
+	assert.ElementsMatch(t, []string{
+		"AEnter", "AState", "AnyB",
+		StateAny + SuffixEnter,
+	}, names)
 
 	// anon handlers for non-existing states
 	h3 := &struct {
@@ -2891,7 +3068,9 @@ func TestListHandlers(t *testing.T) {
 // TODO TestResolverDagSort
 
 func TestCountActive(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// init
 	m := NewNoRels(t, nil)
@@ -2901,7 +3080,9 @@ func TestCountActive(t *testing.T) {
 }
 
 func TestAddErr(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// add err
 	m := NewNoRels(t, nil)
@@ -2934,7 +3115,9 @@ func TestAddErr(t *testing.T) {
 }
 
 func TestToggle(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	m := NewNoRels(t, nil)
 	m.Toggle1("A", nil)
@@ -2952,7 +3135,9 @@ func TestToggle(t *testing.T) {
 }
 
 func TestOpts(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	// TODO test parent tracer
 
@@ -2980,7 +3165,9 @@ func TestOpts(t *testing.T) {
 }
 
 func TestDisposedNoOp(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	m := NewNoRels(t, nil)
 	m.Dispose()
@@ -3010,7 +3197,7 @@ func TestDisposedNoOp(t *testing.T) {
 	<-m.WhenNot1("A", nil)
 	<-m.WhenArgs("A", A{}, nil)
 	<-m.WhenTime(s, Time{}, nil)
-	<-m.WhenQueueEnds(context.TODO())
+	<-m.WhenQueueEnds()
 
 	res, _ := m.processHandlers(e)
 	assert.Equal(t, Canceled, res)
@@ -3018,7 +3205,7 @@ func TestDisposedNoOp(t *testing.T) {
 	assert.Equal(t, Canceled, res)
 
 	// others
-	_, found := m.IsQueued(MutationAdd, s, false, false, 0, false, PositionAny)
+	found, _, _ := m.IsQueued(MutationAdd, s, false, false, 0, false, PositionAny)
 	assert.False(t, found)
 	assert.Equal(t, -1, m.Index1("A"))
 	assert.Empty(t, m.Has1("A"))
@@ -3117,7 +3304,9 @@ var (
 )
 
 func TestGroups(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 
 	m := NewCustomStates(t, testGroups2Schema)
 	m.SetGroups(testGroupsG, testGroups2S)
@@ -3141,7 +3330,9 @@ func TestGroups(t *testing.T) {
 }
 
 func TestCanAdd(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewRels(t, nil)
 	// m.semLogger.SetLevel(LogDecisions)
 	m.AddBreakpoint1("C", "", true)
@@ -3156,7 +3347,9 @@ func TestCanAdd(t *testing.T) {
 }
 
 func TestWhenQuery(t *testing.T) {
-	t.Parallel()
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
 	m := NewNoRels(t, S{"A"})
 	query1 := func(c Clock) bool {
 		return c["A"] > c["B"]*4

@@ -25,6 +25,9 @@ func init() {
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(true)
 	// amhelp.SetEnvLogLevel(am.LogOps)
+
+	// TODO register args
+	// gob.Register(&types.ARpc{})
 }
 
 func main() {
@@ -40,7 +43,7 @@ func main() {
 	}()
 
 	// worker
-	client, err := newClient(ctx, addr, states.ExampleSchema, ss.Names())
+	client, err := newClient(ctx, addr, states.ExampleSchema)
 	if err != nil {
 		panic(err)
 	}
@@ -59,11 +62,11 @@ func main() {
 		case <-t.C:
 			switch rand.Intn(2) {
 			case 0:
-				client.Worker.Add1(ss.Foo, nil)
+				client.NetMach.Add1(ss.Foo, nil)
 			case 1:
-				client.Worker.Add1(ss.Bar, nil)
+				client.NetMach.Add1(ss.Bar, nil)
 			case 2:
-				client.Worker.Add1(ss.Baz, nil)
+				client.NetMach.Add1(ss.Baz, nil)
 			}
 		case <-ctx.Done():
 			exit = true
@@ -77,7 +80,7 @@ func main() {
 }
 
 func newClient(
-	ctx context.Context, addr string, ssSchema am.Schema, ssNames am.S,
+	ctx context.Context, addr string, netSrcSchema am.Schema,
 ) (*arpc.Client, error) {
 
 	// consumer
@@ -88,7 +91,7 @@ func newClient(
 	}
 
 	// init
-	c, err := arpc.NewClient(ctx, addr, "clientid", ssSchema, ssNames, &arpc.ClientOpts{
+	c, err := arpc.NewClient(ctx, addr, "clientid", netSrcSchema, &arpc.ClientOpts{
 		Consumer: consumer,
 	})
 	if err != nil {

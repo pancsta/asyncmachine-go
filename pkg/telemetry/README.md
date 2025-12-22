@@ -30,9 +30,9 @@ added as well.
 <div align="center">
     <a href="https://github.com/pancsta/asyncmachine-go/blob/main/pkg/telemetry/README.md#open-telemetry-traces">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
-  <img style="min-height: 451px" alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.light.png">
+  <img alt="OpenTelemetry traces in Jaeger" src="https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.light.png">
 </picture></a></div>
 
 ### Tree Structure
@@ -214,7 +214,7 @@ amtele.BindLokiLogger(mach, promtailClient)
 
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png">
-        <img style="min-height: 531px" src="https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png"
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/grafana.dark.png"
             alt="grafana">
     </a>
 </div>

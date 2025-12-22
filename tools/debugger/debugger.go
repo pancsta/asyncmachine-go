@@ -1005,7 +1005,7 @@ func (d *Debugger) hParseMsg(c *Client, idx int) {
 		d.Mach.Add1(ss.BuildingLog, nil)
 	}
 
-	// TODO DEBUG
+	// DEBUG
 	msgTx.CalledStates = amhelp.IndexesToStates(index, msgTx.CalledStatesIdxs)
 }
 
@@ -1462,7 +1462,7 @@ func (d *Debugger) hUpdateMatrixRelations() {
 	title := " Matrix:" + strconv.Itoa(sum) + " "
 	if c.CursorTx1 > 0 {
 		t := strconv.Itoa(int(c.MsgTxsParsed[c.CursorTx1-1].TimeSum))
-		title += "Time:" + t + " "
+		title += "Time:t" + t + " "
 	}
 	d.matrix.SetTitle(title)
 }
@@ -1644,7 +1644,7 @@ func (d *Debugger) hUpdateMatrixRain() {
 	title := " Matrix:" + strconv.Itoa(diffT) + " "
 	if c.CursorTx1 > 0 {
 		t := strconv.Itoa(int(c.MsgTxsParsed[c.CursorTx1-1].TimeSum))
-		title += "Time:" + t + " "
+		title += "Time:t" + t + " "
 	}
 	d.matrix.SetTitle(title)
 
@@ -1761,7 +1761,7 @@ func (d *Debugger) hFilterTx(c *Client, idx int, filters *OptsFilters) bool {
 	// filter out txs without called from the group (if any)
 	if f.SkipOutGroup && group != "" {
 		groupStates := c.MsgSchemaParsed.Groups[group]
-		if len(am.SameStates(called, groupStates)) == 0 {
+		if len(am.StatesShared(called, groupStates)) == 0 {
 			return false
 		}
 	}

@@ -1,4 +1,4 @@
-// TODO update to v2 states file
+// TODO update to v2 schema file
 
 package states
 

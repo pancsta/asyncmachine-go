@@ -83,7 +83,7 @@ func BindLokiEnv(mach am.Api) error {
 		pt.Close()
 	}
 
-	// dispose somehow
+	// dispose somehow TODO use amhelp.OnDispose()
 	register := ssam.DisposedStates.RegisterDisposal
 	if mach.Has1(register) {
 		mach.Add1(register, am.A{

@@ -19,7 +19,7 @@ type Mutation struct {
 	Args A
 	// this mutation has been triggered by an auto state
 	// TODO rename to IsAuto
-	Auto bool
+	IsAuto bool
 	// Source is the source event for this mutation.
 	Source *MutSource
 	// IsCheck indicates that this mutation is a check, see [Machine.CanAdd].
