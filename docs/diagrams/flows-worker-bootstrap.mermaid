@@ -1,0 +1,29 @@
+flowchart TB
+
+    subgraph SupervisorMach [Supervisor State Mach]
+        ForkWorker([ForkWorker])
+        ForkingWorker([ForkingWorker])
+        AwaitingWorker([AwaitingWorker])
+        WorkerForked([WorkerForked])
+        exec["exec.Command()"]
+        newBootstrap["newBootstrap()"]
+        whenWorkerAddr[["when:WorkerAddr"]]
+
+        ForkWorker == handle ==> ForkWorkerState["ForkWorkerState()"] -. call .->  newBootstrap
+        ForkWorker -- Add --> ForkingWorker
+        ForkingWorker == handle ==> ForkingWorkerState["ForkingWorkerState()"] -. call .-> exec
+        ForkingWorker -- Add --> AwaitingWorker
+        AwaitingWorker -- wait --> whenWorkerAddr
+        whenWorkerAddr --> WorkerForked
+    end
+    exec .-> Worker
+    newBootstrap .-> BootstrapMach
+    subgraph BootstrapMach [Bootstrap State Mach]
+        WorkerAddr([WorkerAddr])
+        WorkerAddr -- tick --> whenWorkerAddr
+    end
+    subgraph Worker [Worker State Mach]
+        RpcReadyState["RpcReadyState()"]
+        RpcReady([RpcReady])  == handle ==> RpcReadyState
+    end
+    RpcReadyState -- aRPC Add --> WorkerAddr

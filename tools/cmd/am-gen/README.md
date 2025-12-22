@@ -5,7 +5,7 @@
 > [!NOTE]
 > **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
-`am-gen` will quickly bootstrap a typesafe states file, or a Grafana dashboard for you.
+`am-gen` will quickly bootstrap a typesafe schema file, or a Grafana dashboard for you.
 
 ```bash
 $ am-gen states-file --states State1,State2:multi \
@@ -98,7 +98,7 @@ Usage:
 Flags:
   -g, --groups string    Groups to generate. Eg: Group1,Group2
   -h, --help             help for states-file
-  -i, --inherit string   Inherit from a built-in states machine: basic,connected,rpc/worker,node/worker
+  -i, --inherit string   Inherit from a built-in states machine: basic,connected,disposed,rpc/netsrc,node/worker
   -n, --name string      Name of the state machine. Eg: MyMach
   -s, --states string    State names to generate. Eg: State1,State2
       --utils            Generate states_utils.go in CWD. Overrides files. (default true)

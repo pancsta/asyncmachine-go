@@ -1,0 +1,107 @@
+direction: right
+
+classes: {
+  link-rel: {
+    style: {
+      stroke-dash: 3
+    }
+  }
+  link-handler:{
+    style: {
+      stroke-dash: 3
+    }
+  }
+  link-sync: {
+    style: {
+      stroke: yellow
+      stroke-dash: 3
+    }
+  }
+  link-conn: {
+    style: {
+      stroke: yellow
+    }
+  }
+
+  state: {
+    style: {
+      stroke: white
+      border-radius: 999
+      fill: "#45475A"
+      font-size: 20
+    }
+  }
+  mach: {
+    style: {
+      stroke: "#5F5C5C"
+      fill: "#262424"
+      font-size: 30
+    }
+  }
+  host: {
+    style: {
+      stroke: "#5F5C5C"
+      fill: "#302E2E"
+      font-size: 30
+    }
+  }
+  handler: {
+    style: {
+      fill: "black"
+    }
+  }
+  struct: {
+    style: {
+      fill: "#262424"
+      font-size: 30
+    }
+  }
+
+  transparent: {
+    style: {
+      opacity: 0
+    }
+  }
+  sequence: {
+    style: {
+     font-size: 16
+     stroke: "#7E7878"
+   }
+  }
+}
+
+title: |md
+  # aRPC distributed machine example
+  1. when Bar activates
+  2. Bar adds Foo
+  3. Foo adds Baz
+| {near: top-center}
+
+s: Net Source {
+  Foo: Foo: 5
+  Bar: Bar: 5
+  Baz: Baz: 1
+
+  Foo.class: state
+  Bar.class: state
+  Baz.class: state
+
+  Foo -> Bar: Require {class: link-rel}
+}
+s.class: mach
+
+nm1: Net Handler 1 {
+  Foo: Foo: 5
+  Foo.class: state
+}
+s.Foo -> nm1.Foo: aRPC sync {class: link-conn}
+nm1.Foo -> s.Baz: aRPC mutation {class: link-sync}
+nm1.class: mach
+
+nm2: Net Handler 2 {
+  Bar: Bar: 5
+  Bar.class: state
+}
+nm2.class: mach
+s.Bar -> nm2.Bar: aRPC sync {class: link-conn}
+nm2.Bar -> s.Foo: aRPC mutation {class: link-sync}

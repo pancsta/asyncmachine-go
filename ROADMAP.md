@@ -1,11 +1,16 @@
 # Roadmap
 
-- history layer - SQL, KV, ...
-- am-relay tool for proxying, conversions, duck-taping
-- RPC handlers for distributed state-machines
+- live `am-vis` server
+- more types of generated diagrams
 - scheduler via the handler loop
-- go1.22 traces
-- inference
+- custom relation resolvers
+- msgpack for aRPC
+- more integrations and WASM
+- `go1.22` traces
+- large simulation loop
+- network security
+- shaders backend
+- ML inference
 - optimizations
 - tutorials
 

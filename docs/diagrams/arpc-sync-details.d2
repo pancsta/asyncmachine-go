@@ -1,0 +1,109 @@
+classes: {
+  rel: {
+    style: {
+      stroke-dash: 3
+    }
+  }
+  link-sync: {
+    style: {
+      stroke: yellow
+      stroke-dash: 3
+    }
+  }
+  state: {
+    style: {
+      stroke: white
+      border-radius: 999
+      fill: "#45475A"
+      font-size: 20
+    }
+  }
+  mach: {
+    style: {
+      stroke: "#5F5C5C"
+      fill: "#262424"
+      font-size: 30
+    }
+  }
+}
+
+title: |md
+  # aRPC synchronization scenarios (details)
+  - any state-machine can be a Network Source (including Network Machines)
+  - scenarios can be mixed (to a degree)
+  - diagram limited to read-only ops
+| {near: top-center}
+
+direction: down
+
+s: Net Source Mach {
+
+  Foo: Foo: 5
+  Bar: Bar: 5
+
+  Foo.class: state
+  Bar.class: state
+
+  Foo -> Bar: Require {class: rel}
+}
+s.class: mach
+
+nm1: Net Mach\nSingle State {
+  Foo: Foo: 5
+  Bar: Bar: 1 (inferred)
+
+  Foo.class: state
+  Bar.class: state
+
+  Foo -> Bar: Require {class: rel}
+}
+nm1.class: mach
+s -> nm1: aRPC sync:\n- state names\n- schema
+s.Foo -> nm1.Foo: Tick Sync {class: link-sync}
+
+nm2: Net Mach\nSingle State {
+  Foo: Foo: 0
+  Bar: Bar: 5
+
+  Foo.class: state
+  Bar.class: state
+
+  Foo -> Bar: Require {class: rel}
+}
+nm2.class: mach
+s -> nm2: aRPC sync:\n- state names\n- schema
+s.Bar -> nm2.Bar: Tick Sync {class: link-sync}
+
+nm3: Net Mach\nFull {
+  Foo: Foo: 5
+  Bar: Bar: 5
+
+  Foo.class: state
+  Bar.class: state
+
+  Foo -> Bar: Require {class: rel}
+}
+nm3.class: mach
+s -> nm3: aRPC sync:\n- state names\n- schema\n- machine time
+
+nm4: Net Mach\nNo Schema {
+  Foo: Foo: 5
+  Bar: Bar: 5
+
+  Foo.class: state
+  Bar.class: state
+}
+nm4.class: mach
+s -> nm4: aRPC sync:\n- state names\n- machine time
+
+nm5: Net Mach\nShallow Clocks {
+  Foo: Foo: 1
+  Bar: Bar: 1
+
+  Foo.class: state
+  Bar.class: state
+
+  Foo -> Bar: Require {class: rel}
+}
+nm5.class: mach
+s -> nm5: aRPC sync:\n- state names\n- schema\n- active states

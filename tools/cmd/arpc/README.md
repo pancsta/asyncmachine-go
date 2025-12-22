@@ -9,7 +9,7 @@
 
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/arpc.png">
-        <img style="min-height: 325px" src="https://pancsta.github.io/assets/asyncmachine-go/arpc.png"
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/arpc.png"
             alt="arpc REPL" />
     </a>
 </div>
@@ -188,7 +188,7 @@ Flags:
 
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif">
-        <img style="min-height: 476px" src="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif"
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/videos/repl-demo1.gif"
             alt="REPL" />
     </a>
 </div>

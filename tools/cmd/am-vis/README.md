@@ -21,11 +21,11 @@ machines, based on fragmented data they provide via:
   - active states
 
 The rendering uses [Eclipse Layout Kernel](https://eclipse.dev/elk/) (ELK) and is done by [D2](https://d2lang.com/)
-(shipped). At the moment it can only render form file dump, with the live-server version yet to come.
+(shipped). At the moment it can only render from file dumps, with the live-server version yet to come.
 
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-1.svg">
-        <img style="min-height: 264px" alt="single machine"
+        <img alt="single machine"
             src="https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-1.svg">
     </a>
 </div>
@@ -37,65 +37,6 @@ The rendering uses [Eclipse Layout Kernel](https://eclipse.dev/elk/) (ELK) and i
 - Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest`
 
 ## Features
-
-Graphs can be filtered using the rendering config:
-
-```go
-type Renderer struct {
-    // Render only these machines as starting points.
-    RenderMachs []string
-    // Render only machines matching the regular expressions as starting points.
-    RenderMachsRe []*regexp.Regexp
-    // Skip rendering of these machines.
-    RenderSkipMachs []string
-    // Distance to render from starting machines.
-    RenderDistance int
-    // How deep to render from starting machines. Same as RenderDistance, but only
-    // for submachines.
-    RenderDepth int
-
-    // Render states bubbles.
-    RenderStates bool
-    // With RenderStates, false will hide Start, and without RenderStates true
-    // will render Start.
-    RenderStart bool
-    // With RenderStates, false will hide Exception, and without RenderStates true
-    // will render Exception.
-    RenderException bool
-    // With RenderStates, false will hide Ready, and without RenderStates true
-    // will render Ready.
-    RenderReady bool
-    // Render states which have pipes being rendered, even if the state should
-    // not be rendered.
-    RenderPipeStates bool
-    // Render group of pipes as mach->mach
-    RenderPipes bool
-    // Render pipes to non-rendered machines / states.
-    RenderHalfPipes bool
-    // Render detailed pipes as state -> state
-    RenderDetailedPipes bool
-    // Render relation between states.
-    RenderRelations bool
-    // Style currently active states.
-    RenderActive bool
-    // Render the parent relation. Ignored when RenderNestSubmachines.
-    RenderParentRel bool
-    // Render submachines nested inside their parents. See also RenderDepth.
-    RenderNestSubmachines bool
-    // Render a tags box for machines having some.
-    RenderTags bool
-    // Render RPC connections
-    RenderConns bool
-    // Render RPC connections to non-rendered machines.
-    RenderHalfConns bool
-    // Render a parent relation to and from non-rendered machines.
-    RenderHalfHierarchy bool
-    // Render inherited states.
-    RenderInherited bool
-    // Mark inherited states.
-    RenderMarkInherited bool
-}
-```
 
 `$ am-vis render-dump --help`
 
@@ -153,6 +94,65 @@ Global options:
   --output-elk           Use ELK layout [default: true]
   --output-filename OUTPUT-FILENAME, -o OUTPUT-FILENAME [default: am-vis]
   --help, -h             display this help and exit
+```
+
+Graphs can be programmatically filtered using the rendering config:
+
+```go
+type Renderer struct {
+    // Render only these machines as starting points.
+    RenderMachs []string
+    // Render only machines matching the regular expressions as starting points.
+    RenderMachsRe []*regexp.Regexp
+    // Skip rendering of these machines.
+    RenderSkipMachs []string
+    // Distance to render from starting machines.
+    RenderDistance int
+    // How deep to render from starting machines. Same as RenderDistance, but only
+    // for submachines.
+    RenderDepth int
+
+    // Render states bubbles.
+    RenderStates bool
+    // With RenderStates, false will hide Start, and without RenderStates true
+    // will render Start.
+    RenderStart bool
+    // With RenderStates, false will hide Exception, and without RenderStates true
+    // will render Exception.
+    RenderException bool
+    // With RenderStates, false will hide Ready, and without RenderStates true
+    // will render Ready.
+    RenderReady bool
+    // Render states which have pipes being rendered, even if the state should
+    // not be rendered.
+    RenderPipeStates bool
+    // Render group of pipes as mach->mach
+    RenderPipes bool
+    // Render pipes to non-rendered machines / states.
+    RenderHalfPipes bool
+    // Render detailed pipes as state -> state
+    RenderDetailedPipes bool
+    // Render relation between states.
+    RenderRelations bool
+    // Style currently active states.
+    RenderActive bool
+    // Render the parent relation. Ignored when RenderNestSubmachines.
+    RenderParentRel bool
+    // Render submachines nested inside their parents. See also RenderDepth.
+    RenderNestSubmachines bool
+    // Render a tags box for machines having some.
+    RenderTags bool
+    // Render RPC connections
+    RenderConns bool
+    // Render RPC connections to non-rendered machines.
+    RenderHalfConns bool
+    // Render a parent relation to and from non-rendered machines.
+    RenderHalfHierarchy bool
+    // Render inherited states.
+    RenderInherited bool
+    // Mark inherited states.
+    RenderMarkInherited bool
+}
 ```
 
 ## TODO

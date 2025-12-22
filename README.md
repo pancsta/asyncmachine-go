@@ -23,11 +23,10 @@
 
 # <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25" width="25" /> asyncmachine-go
 
-<div align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.light.png">
-  <img alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/lifecycle.light.png">
+<div align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/lifecycle.dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/lifecycle.light.png">
+  <img alt="OpenTelemetry traces in Jaeger" src="https://pancsta.github.io/assets/asyncmachine-go/lifecycle.light.png">
 </picture></div>
 
 > [!NOTE]
@@ -37,8 +36,8 @@
 and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state-machine](/pkg/machine/README.md)**.
 It features [atomic transitions](/docs/manual.md#transition-lifecycle), [relations with consensus](/docs/manual.md#relations),
 [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
-[telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md), [remote workers](/pkg/node/README.md),
-and [diagrams](https://github.com/pancsta/asyncmachine-go/pull/216).
+[telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md), [selective distribution](/pkg/rpc/README.md#selective-distribution),
+[remote workers](/pkg/node/README.md), and [diagrams](/tools/cmd/am-vis).
 
 As a control flow library, it decides about running of predefined bits of code (transition handlers) - their order and
 which ones to run, according to currently active states (flags). Thanks to a [novel state machine](/pkg/machine/README.md),
@@ -58,12 +57,12 @@ vector formats. It aims to create **autonomous** workflows with **organic** cont
     </a>
 </div>
 
-#### Each state represents
+#### *Each state represents*
 
 - binary flag
 - node with relations
 - AOP aspect
-- **logical clock**
+- ***logical clock***
 - subscription topic
 - multiple methods
 - metric
@@ -71,7 +70,7 @@ vector formats. It aims to create **autonomous** workflows with **organic** cont
 - lock
 - breakpoint
 
-Besides the main use-case of workflows, it can be used for **stateful applications of any size** - daemons, UIs,
+Besides the main use-case of **workflows**, it can be used for **stateful applications of any size** - daemons, UIs,
 configs, bots, firewalls, synchronization consensus, games, smart graphs, microservice orchestration, robots, contracts,
 streams, DI containers, test scenarios, simulators, as well as **"real-time" systems** which rely on instant
 cancelation.
@@ -110,7 +109,7 @@ ctx := client.Mach.NewStateCtx(ssC.WorkerReady)
 // clock-based subscription
 whenPayload := client.Mach.WhenTicks(ssC.WorkerPayload, 1, ctx)
 // state mutation
-client.WorkerRpc.Worker.Add1(ssW.WorkRequested, Pass(&A{
+client.RpcWorker.NetMach.Add1(ssW.WorkRequested, Pass(&A{
     Input: 2}))
 // WaitFor* wraps select statements
 err := amhelp.WaitForAll(ctx, time.Second,
@@ -186,7 +185,7 @@ type WorkerStatesDef struct {
     WorkReady     string
 
     // inherit from rpc worker
-    *ssrpc.WorkerStatesDef
+    *ssrpc.NetMachStatesDef
 }
 ```
 
@@ -195,20 +194,20 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 <div align="center">
     <a href="https://github.com/pancsta/asyncmachine-go/blob/main/pkg/telemetry/README.md#open-telemetry-traces">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
-  <img alt="OpenTelemetry traces in Jaeger" src="https://github.com/pancsta/assets/raw/main/asyncmachine-go/otel-jaeger.light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.light.png">
+  <img alt="OpenTelemetry traces in Jaeger" src="https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.light.png">
 </picture>
 </a></div>
 
 ## Getting Started
 
 - 🦾 **[`/pkg/machine`](pkg/machine/README.md)** is the main package
+- [`/docs/diagrams.md`](/docs/diagrams.md) try to explain things visually
 - [`/pkg/node`](pkg/node) shows a high-level usage
 - examples in [`/examples`](/examples/README.md) are good for a general grasp
     - with [`/examples/mach_template`](/examples/mach_template) being ready for copy-paste
-- [`/docs/manual.md`](/docs/manual.md)
-  and [`/docs/diagrams.md`](/docs/diagrams.md) go deeper into implementation details
+- [`/docs/manual.md`](/docs/manual.md) is the go-to
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) will bootstrap
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) will record every detail
 - and [reading tests](https://github.com/search?q=repo%3Apancsta%2Fasyncmachine-go+path%3A%2F.*_test.go%2F&type=code)
@@ -226,9 +225,9 @@ This monorepo offers the following importable packages, especially:
 Other packages:
 
 - [`/pkg/rpc`](/pkg/rpc) Remote state machines, with the same API as local ones.
-- [`/pkg/history`](/pkg/history) History tracking and traversal, including KV and SQL.
-- [`/pkg/integrations`](/pkg/integrations) NATS and other JSON integrations.
-- [`/pkg/graph`](/pkg/graph) Multigraph of interconnected state machines.
+- [`/pkg/history`](/pkg/history) History tracking and traversal, including Key-Value and SQL.
+- [`/pkg/integrations`](/pkg/integrations) Integrations with NATS and JSON.
+- [`/pkg/graph`](/pkg/graph) Directional multigraph of connected state machines.
 - [`/pkg/node`](/pkg/node) Distributed worker pools with supervisors.
 - [`/pkg/pubsub`](/pkg/pubsub) Decentralized PubSub based on libp2p gossipsub.
 
@@ -262,9 +261,9 @@ Other packages:
 
 ## Documentation
 
-- [API](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine)
+- [API go.dev](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine) \| [API asyncmachine.dev](https://code.asyncmachine.dev)
 - [diagrams](/docs/diagrams.md) \| [cookbook](/docs/cookbook.md)
-- [manual.md](/docs/manual.md) \| [manual.pdf](https://pancsta.github.io/assets/asyncmachine-go/manual.pdf)
+- [manual](/docs/manual.md) \([PDF](https://pancsta.github.io/assets/asyncmachine-go/manual.pdf)\)
     - [Machine and States](/docs/manual.md#machine-and-states)
     - [Changing State](/docs/manual.md#changing-state)
     - [Advanced Topics](/docs/manual.md#advanced-topics)
@@ -289,6 +288,9 @@ Other packages:
   <source media="(prefers-color-scheme: light)" srcset="https://asyncmachine.dev/chart_light.png?nocache">
   <img alt="OpenTelemetry traces in Jaeger" src="https://asyncmachine.dev/chart_light.png?nocache">
 </picture></div>
+
+> [!NOTE]
+> Hundreds of clones.
 
 ## Status
 
@@ -315,7 +317,7 @@ Under development, status depends on each package. The bottom layers seem prod g
     - `task format`
     - `task lint`
     - `task precommit`
-    - [good first issues](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
+- [good first issues](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
 
 ### Roadmap
 
@@ -350,7 +352,7 @@ The complete FAQ is available at [FAQ.md](/FAQ.md).
 
 - [Changelog](/CHANGELOG.md)
 - [Breaking Changes](/BREAKING.md)
-- [New stuff](https://github.com/pancsta/asyncmachine-go/pulse)
+- [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
 <div align="center">

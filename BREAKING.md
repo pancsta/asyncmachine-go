@@ -2,6 +2,18 @@
 
 Only `pkg/machine` and `pkg/states` adhere to semver. Semver of other packages is not guaranteed at the moment.
 
+## v0.17
+
+- `Transition.Api` is now `Transition.MachApi`
+- `HandlerAny*` have been removed
+- `NoOpTracer` is now `TracerNoOp`
+- `SameStates()` is now `StatesShared()`
+- `DiffStates()` is now `StatesDiff()`
+- `Machine.Export()` now returns `(*Serialized, Schema, err)`
+- `Machine.IsQueued()` now accepts and returns queue ticks
+- `WhenQueueEnds()` is now params-free
+- `Mutation.Auto` is now `Mutation.IsAuto`
+
 ## v0.16
 
 - `IsTimeAfter` is now `Time.After`

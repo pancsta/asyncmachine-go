@@ -9,7 +9,7 @@
 
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-reader.png/arpc.png">
-        <img style="min-height: 289px" src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-reader.png"
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-reader.png"
             alt="arpc REPL" />
     </a>
 </div>
@@ -20,13 +20,13 @@ It's built around a timeline of transitions and allows for precise searches and 
 <table style="border-spacing: 10px; border-collapse: separate;">
   <tr>
     <td>
-        <img style="min-height: 88px" src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png" />
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png" />
     </td>
     <td>
-        <img style="min-height: 88px" src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-steps.png" />
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-steps.png" />
     </td>
     <td>
-        <img style="min-height: 88px" src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-rain.png" />
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-rain.png" />
     </td>
   </tr>
 </table>

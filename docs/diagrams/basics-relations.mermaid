@@ -1,0 +1,8 @@
+flowchart LR
+    Wet(Wet)
+    Dry(Dry)
+    Water(Water)
+    Wet -- Require --> Water
+    Water -- Add --> Wet
+    Water -- Remove --> Dry
+    Dry -- Remove --> Water

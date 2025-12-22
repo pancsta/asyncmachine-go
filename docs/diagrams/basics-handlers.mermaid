@@ -1,0 +1,24 @@
+flowchart LR
+    subgraph HandlersBefore[ ]
+        A1([A:1])
+        B1[B:0]
+        C1[C:0]
+    end
+    subgraph HandlersAfter[ ]
+        A2([A:1])
+        B2([B:1])
+        C2[C:0]
+    end
+    HandlersMutation([add B])
+    HandlersBefore --> HandlersMutation
+    HandlersMutation --> HandlersAfter
+    HandlersMutation --> AnyB
+    HandlersMutation --> BEnter
+    HandlersMutation --> AB
+    HandlersMutation --> BState
+    subgraph Handlers
+        AnyB[["AnyB()"]]
+        BEnter[["BEnter()"]]
+        AB[["AB()"]]
+        BState[["BState()"]]
+    end

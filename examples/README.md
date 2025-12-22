@@ -35,6 +35,14 @@ Table of contents:
 - #rpc #client #server
 - [origin](/pkg/rpc/README.md)
 
+### [CLI](/examples/cli/main.go)
+
+- #relations #handlers
+
+### [CLI Daemon](/examples/cli_daemon/main.go)
+
+- #relations #handlers #arpc #payload
+
 ### [DAG Dependency Graph](/examples/dag_dependency_graph/dependency_graph.go)
 
 - #relations #handlers #async #auto #dependency-graph
@@ -102,6 +110,10 @@ Table of contents:
 - #relations #negotiation #auto #arpc #otel #metrics #grafana #generator #data
 - [origin](/pkg/rpc/README.md)
 
+### [TUI](/examples/tui/main.go)
+
+- #relations #handlers #cview #ui #global-handlers
+
 ## Benchmarks
 
 ### [Benchmark gRPC](/examples/benchmark_grpc/README.md)
@@ -130,7 +142,7 @@ Interactively use the [TUI debugger](/tools/cmd/am-dbg) with data pre-generated 
 
 ```bash
 go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
-  --import-data https://assets.asyncmachine.dev/am-dbg-exports/secai-cook.gob.br \
+  --import-data https://pancsta.github.io/assets/asyncmachine-go/am-dbg-exports/secai-cook.gob.br \
   mach://cook
 ```
 

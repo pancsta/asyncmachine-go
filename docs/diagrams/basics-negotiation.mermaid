@@ -1,0 +1,26 @@
+flowchart LR
+    subgraph NegotiationBefore[ ]
+        A1([A:1])
+        B1[B:0]
+        C1[C:0]
+    end
+    subgraph NegotiationAfter[ ]
+        A2([A:1])
+        B2[B:0]
+        C2[C:0]
+    end
+    NegotiationMutation([add B])
+    NegotiationBefore --> NegotiationMutation
+    NegotiationMutation --> NegotiationAfter
+    NegotiationMutation --> AnyB
+    NegotiationMutation --> BEnter
+    BEnter == return ==> false
+    NegotiationMutation  -. canceled .-x  AB
+    NegotiationMutation -. canceled .-x BState
+    subgraph Negotiation
+        false[[false]]
+        AnyB[["AnyB()"]]
+        BEnter[["BEnter()"]]
+        AB[["AB()"]]
+        BState[["BState()"]]
+    end

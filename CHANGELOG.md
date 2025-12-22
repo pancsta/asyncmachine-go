@@ -1,6 +1,27 @@
 # Changelog
 
-## [v0.16.1](https://github.com/pancsta/asyncmachine-go/tree/v0.16.0) (2025-11-23)
+- [Breaking Changes](/BREAKING.md)
+- [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
+- [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
+
+## [v0.17.0](https://github.com/pancsta/asyncmachine-go/tree/v0.17.0) (2025-12-22)
+
+- feat\(node\): add defaults to constructors, align with `pkg/rpc` [\#334](https://github.com/pancsta/asyncmachine-go/pull/334)
+  (@pancsta)
+- feat\(rpc\): add partial, shallow, and mutation-clock syncing, also handler piping [\#333](https://github.com/pancsta/asyncmachine-go/pull/333)
+  (@pancsta)
+- feat\(helpers\): add SchemaStates, SchemaImplements, Dispose, DisposeBind [\#332](https://github.com/pancsta/asyncmachine-go/pull/332)
+  (@pancsta)
+- feat\(helpers\): add `AM_LOG_PRINT` [\#331](https://github.com/pancsta/asyncmachine-go/pull/331) (@pancsta)
+- docs\(examples\): add CLI, CLI Daemon, and TUI examples [\#330](https://github.com/pancsta/asyncmachine-go/pull/330)
+  (@pancsta)
+- test: add `scripts/test_loop` with artifacts [\#329](https://github.com/pancsta/asyncmachine-go/pull/329) (@pancsta)
+- fix\(telemetry\): fix race for queued mutations [\#328](https://github.com/pancsta/asyncmachine-go/pull/328)
+  (@pancsta)
+- fix\(machine\): fix subscription clock on schema changes [\#327](https://github.com/pancsta/asyncmachine-go/pull/327)
+  (@pancsta)
+
+## [v0.16.1](https://github.com/pancsta/asyncmachine-go/tree/v0.16.1) (2025-11-23)
 
 - feat: release v0.16.1 [\#317](https://github.com/pancsta/asyncmachine-go/pull/317) (@pancsta)
 - feat\(am-dbg\): release v0.16.1 [\#316](https://github.com/pancsta/asyncmachine-go/pull/316) (@pancsta)
@@ -10,7 +31,7 @@
 - fix\(machine\): fix double disposal [\#313](https://github.com/pancsta/asyncmachine-go/pull/313) (@pancsta)
 - feat\(am-vis\): add diagram generator [\#216](https://github.com/pancsta/asyncmachine-go/pull/216) (@pancsta)
 
-## [v0.16.0](https://github.com/pancsta/asyncmachine-go/tree/v0.15.2) (2025-11-11)
+## [v0.16.0](https://github.com/pancsta/asyncmachine-go/tree/v0.16.0) (2025-11-11)
 
 - feat: release v0.16 [\#312](https://github.com/pancsta/asyncmachine-go/pull/312) (@pancsta)
 - feat\(machine\): add filtering to `ActiveStates` [\#311](https://github.com/pancsta/asyncmachine-go/pull/311)
@@ -52,7 +73,7 @@
    (@pancsta)
 - feat\(am-dbg\): add queue section to log reader [\#291](https://github.com/pancsta/asyncmachine-go/pull/291)
    (@pancsta)
-- feat\(am-dbg\): add queued and canceled txs to log view [\#290](https://github.com/pancsta/asyncmachine-go/pull/290)
+- feat\(am-dbg\): add queued and canceled txs to log view [\#290](https://github.com/pancsta/asyncmachine-go/pull/290)q
    (@pancsta)
 - feat\(am-dbg\): progressive log rendering [\#289](https://github.com/pancsta/asyncmachine-go/pull/289)
    (@pancsta)
@@ -326,7 +347,7 @@
   (@pancsta)
 - feat\(machine\): add WillBe, WillBeRemoved [\#134](https://github.com/pancsta/asyncmachine-go/pull/134)
   (@pancsta)
-- feat: add states file v2 format [\#133](https://github.com/pancsta/asyncmachine-go/pull/133)
+- feat: add schema file v2 format [\#133](https://github.com/pancsta/asyncmachine-go/pull/133)
   (@pancsta)
 
 ## [v0.7.1](https://github.com/pancsta/asyncmachine-go/tree/v0.7.1) (2024-11-13)

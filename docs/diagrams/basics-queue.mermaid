@@ -1,0 +1,16 @@
+flowchart LR
+    Machine[[Machine]]
+    Add1([add A])
+    Add2([add A])
+    Add3([add B])
+    Add1 -- 1 --> Machine
+    Add2 -- 2 --> Machine
+    Add3 -- 3 --> Machine
+    subgraph Queue
+        direction LR
+        QAdd1([add A])
+        QAdd2([add A])
+        QAdd3([add B])
+        QAdd1 --> QAdd2 --> QAdd3
+    end
+    Machine --> Queue

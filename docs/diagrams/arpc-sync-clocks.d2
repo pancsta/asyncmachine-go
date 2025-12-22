@@ -1,0 +1,87 @@
+# TODO styles from main page / am-vis
+
+classes: {
+  rel: {
+    style: {
+      stroke-dash: 3
+    }
+  }
+  state: {
+    style.border-radius: 10
+  }
+  link-sync: {
+    style: {
+      stroke: yellow
+    }
+  }
+}
+
+title: |md
+  # aRPC synchronization scenarios (clocks)
+
+  Any state-machine can be a Network Source
+  - including Network Machines
+| {near: top-center}
+
+s: {
+  shape: sql_table
+  label: Net Source
+  Schema: {constraint: "Foo:req:Bar"}
+  "-"
+
+  Foo: 5 {constraint: "Active"}
+  Bar: 5 {constraint: "Active"}
+}
+
+ssf: {
+  shape: sql_table
+  label: SingleState (Foo)
+  Schema: {constraint: "Foo:req:Bar"}
+  "-"
+
+  Foo: 5 {constraint: "Active"}
+  Bar: 1 {constraint: "Active (inferred)"}
+}
+s -> ssf
+
+ssb: {
+  label: "SingleState (Bar)"
+  shape: sql_table
+  Schema: {constraint: "Foo:req:Bar"}
+  "-"
+
+  Foo: 0
+  Bar: 5 {constraint: "Active"}
+}
+s -> ssb
+
+f: {
+  label: "Full"
+  shape: sql_table
+  Schema: {constraint: "Foo:req:Bar"}
+  "-"
+
+  Foo: 5 {constraint: "Active"}
+  Bar: 5 {constraint: "Active"}
+}
+s -> f
+
+ns: {
+  label: "No Schema"
+  shape: sql_table
+
+  Foo: 5 {constraint: "Active"}
+  Bar: 5 {constraint: "Active"}
+}
+s -> ns
+
+ao: {
+  label: "Active Only"
+  shape: sql_table
+  Schema: {constraint: "Foo:req:Bar"}
+  "-"
+
+  Foo: 1 {constraint: "Active"}
+  Bar: 1 {constraint: "Active"}
+}
+s -> ao

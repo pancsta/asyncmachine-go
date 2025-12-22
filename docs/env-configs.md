@@ -23,8 +23,6 @@ env (cat config/env/debug-tests.env) task test-debugger-remote
 ### ### ###
 
 # enable a simple debugging mode (eg long timeouts)
-# "2" logs to stdout (where applicable)
-# "1", "2", "" (default)
 AM_DEBUG=1
 
 # address of a running am-dbg instance
@@ -44,6 +42,10 @@ AM_HEALTHCHECK=1
 # "4" LogDecisions
 # "5" LogEverything
 AM_LOG=3
+
+# print machine log to stdout
+# defaults to ""
+AM_LOG_PRINT=1
 
 # enable all the features of semantic logging and transition steps, excluding the log level
 # "1" | "" (default)

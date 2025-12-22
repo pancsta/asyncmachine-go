@@ -7,7 +7,7 @@ It calls struct methods according to conventions, a schema, and currently active
 
 ## What is a "state" in asyncmachine?
 
-State is a binary name as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
+State is a binary ID as in status / switch / flag, eg "process RUNNING" or "car BROKEN".
 
 ## What does "clock-based" mean?
 

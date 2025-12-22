@@ -1,0 +1,16 @@
+flowchart
+        leg-State([State])
+        leg-HandlerOrMethod["HandlerOrMethod()"]
+        subscription[["subscription to A"]]
+
+        subgraph LegendAdd [State A adds state B]
+            leg-A1([A]) -- Add --> leg-B1([B])
+        end
+
+        subgraph LegendCall [Method call]
+            leg-HandlerOrMethod21["HandlerOrMethod1()"] -. call .-> leg-MethodName22["HandlerOrMethod2()"]
+        end
+
+        subgraph LegendHandle [State handler]
+            leg-A3([A]) == handle ==> leg-HandlerOrMethod3["AState()"]
+        end

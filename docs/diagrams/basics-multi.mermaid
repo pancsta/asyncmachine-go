@@ -1,0 +1,14 @@
+flowchart LR
+    subgraph ActiveBefore[Before]
+        A1([A:1])
+        B1[B:0]
+        C1[C:0]
+    end
+    ActiveMutation([add B])
+    subgraph ActiveAfter[After]
+        A2([A:1])
+        B2([B:1])
+        C2[C:0]
+    end
+    ActiveBefore --> ActiveMutation
+    ActiveMutation --> ActiveAfter
