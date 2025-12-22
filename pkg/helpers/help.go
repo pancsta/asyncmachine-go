@@ -30,6 +30,8 @@ import (
 )
 
 const (
+	// EnvAmLogPrint prints machine log to stdout.
+	EnvAmLogPrint = "AM_LOG_PRINT"
 	// EnvAmHealthcheck enables a healthcheck ticker for every debugged machine.
 	EnvAmHealthcheck = "AM_HEALTHCHECK"
 	// EnvAmTestRunner indicates the main test tunner, disables any telemetry.
@@ -309,7 +311,7 @@ func SemConfig(forceFull bool) *am.SemConfig {
 func MachDebugEnv(mach am.Api) {
 	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
 	logLvl := am.EnvLogLevel("")
-	stdout := os.Getenv(am.EnvAmDebug) == "2"
+	stdout := os.Getenv(EnvAmLogPrint) != ""
 
 	// expand the default addr
 	if amDbgAddr == "1" {
