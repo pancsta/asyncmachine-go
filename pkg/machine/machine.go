@@ -2988,6 +2988,8 @@ func (m *Machine) SetSchema(newSchema Schema, names S) error {
 		m.schemaMx.Unlock()
 		return err
 	}
+	// TODO is this safe?
+	m.subs.SetClock(m.Clock(nil))
 	m.schemaMx.Unlock()
 
 	// notify the resolver and tracers
