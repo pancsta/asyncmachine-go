@@ -1670,3 +1670,45 @@ func AskRemove1(mach am.Api, state string, args am.A) am.Result {
 func AskEvRemove1(e *am.Event, mach am.Api, state string, args am.A) am.Result {
 	return AskEvRemove(e, mach, S{state}, args)
 }
+
+// DisposeBind registers a disposal handler, using either the dedicated state
+// set or the machine directly.
+func DisposeBind(mach am.Api, handler am.HandlerDispose) {
+	// via DisposedStates
+	state := ssam.DisposedStates.RegisterDisposal
+	if mach.Has1(state) {
+		mach.Add1(state, am.A{
+			ssam.DisposedArgHandler: handler,
+		})
+
+		return
+	}
+
+	// directly
+	mach.OnDispose(handler)
+}
+
+// Dispose triggers a machine disposal, using either the dedicated state set
+// or the machine directly.
+func Dispose(mach am.Api) {
+	// via DisposedStates
+	state := ssam.DisposedStates.Disposing
+	if mach.Has1(state) {
+		mach.Add1(state, nil)
+
+		return
+	}
+
+	// directly
+	mach.Dispose()
+}
+
+// SchemaStates returns state names from a schema struct in a random order.
+func SchemaStates(schema am.Schema) am.S {
+	return slices.Collect(maps.Keys(schema))
+}
+
+// SchemaImplements checks if a given schema implements a certain set of states.
+func SchemaImplements(schema am.Schema, states am.S) error {
+	return Implements(SchemaStates(schema), states)
+}
