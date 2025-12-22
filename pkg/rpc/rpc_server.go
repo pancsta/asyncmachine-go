@@ -55,7 +55,7 @@ type Server struct {
 	// the number of updates sent to the client within the interval window.
 	// 0 means pushes are disabled. Setting to a very small value will make
 	// pushes instant.
-	PushInterval time.Duration
+	PushInterval atomic.Pointer[time.Duration]
 	// syncMutations will push all clock changes for each mutation, enabling
 	// client-side mutation filtering.
 	syncMutations     bool
@@ -132,13 +132,14 @@ func NewServer(
 	s := &Server{
 		ExceptionHandler: &ExceptionHandler{},
 		Addr:             addr,
-		PushInterval:     250 * time.Millisecond,
 		DeliveryTimeout:  5 * time.Second,
 		LogEnabled:       os.Getenv(EnvAmRpcLogServer) != "",
 		Source:           netSrcMach,
 
 		lastPushData: &tracerData{},
 	}
+	interval := 250 * time.Millisecond
+	s.PushInterval.Store(&interval)
 
 	// state machine
 	mach, err := am.NewCommon(ctx, "rs-"+name, states.ServerSchema, ssS.Names(),
@@ -326,13 +327,13 @@ func (s *Server) RpcReadyEnter(e *am.Event) bool {
 // RpcReadyState starts a ticker to compensate for clock push debounces.
 func (s *Server) RpcReadyState(e *am.Event) {
 	// no ticker for instant clocks
-	if s.PushInterval == 0 {
+	if *s.PushInterval.Load() == 0 {
 		return
 	}
 
 	ctx := s.Mach.NewStateCtx(ssS.RpcReady)
 	if s.ticker == nil {
-		s.ticker = time.NewTicker(s.PushInterval)
+		s.ticker = time.NewTicker(*s.PushInterval.Load())
 	}
 
 	// avoid dispose
@@ -476,7 +477,7 @@ func (s *Server) pushClient() {
 	}
 
 	// push disabled or not ready
-	if s.PushInterval == 0 || s.Mach.Not1(ssS.HandshakeDone) {
+	if *s.PushInterval.Load() == 0 || s.Mach.Not1(ssS.HandshakeDone) {
 		return
 	}
 
@@ -502,7 +503,7 @@ func (s *Server) pushClient() {
 	}
 
 	// too often
-	if time.Since(s.lastPush) < s.PushInterval {
+	if time.Since(s.lastPush) < *s.PushInterval.Load() {
 		// s.log("update too soon")
 		return
 	}

@@ -1047,7 +1047,8 @@ func TestMutationsSync(t *testing.T) {
 	// let the source tracer finish
 	time.Sleep(100 * time.Millisecond)
 	// force push
-	s.PushInterval = time.Nanosecond
+	intNano := time.Nanosecond
+	s.PushInterval.Store(&intNano)
 	s.pushClient()
 	amhelpt.WaitForAll(t, "mutations pushed", ctx, time.Second,
 		c.NetMach.When1(sst.D, nil))
@@ -1123,7 +1124,7 @@ func NewTest(t *testing.T, ctx context.Context, netSrc *am.Machine,
 	s.Listener.Store(&listener)
 	amhelpt.MachDebugEnv(t, s.Mach)
 	if pushInterval > 0 {
-		s.PushInterval = pushInterval
+		s.PushInterval.Store(&pushInterval)
 	}
 	// let it settle
 	time.Sleep(10 * time.Millisecond)

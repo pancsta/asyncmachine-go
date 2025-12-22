@@ -400,6 +400,7 @@ tasks:
         fi
       - task: format
       - task: check-fmt
+      - '! grep -rn --include="*.go" "TODO DEBUG" .'
 
   lint-ci:
     cmds:
@@ -409,8 +410,6 @@ tasks:
   lint-go:
     cmds:
       - $(go env GOPATH)/bin/golangci-lint run --fix --timeout 15m
-      # TODO gh actions
-#      - '! grep -rn --include="*.go" "TODO DEBUG" .'
 
   lint-md:
     cmds:
