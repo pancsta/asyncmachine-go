@@ -154,7 +154,7 @@ type workerInfo struct {
 	rpc *rpc.Client
 	// w is the RPC worker of this node worker. It locally represents the remote
 	// node worker.
-	w          *rpc.Worker
+	w          *rpc.NetworkMachine
 	publicAddr string
 	localAddr  string
 	errs       *cache.Cache

@@ -52,7 +52,7 @@ func main() {
 		panic(err)
 	}
 
-	// connect Worker to the bootstrap machine
+	// connect NetworkMachine to the bootstrap machine
 	res := worker.Start(addr)
 	if res != am.Executed {
 		panic(worker.Mach.Err())
@@ -77,7 +77,7 @@ type workerHandlers struct {
 func (w *workerHandlers) WorkRequestedState(e *am.Event) {
 	input := e.Args["input"].(int)
 
-	payload := &rpc.ArgsPayload{
+	payload := &rpc.MsgSrvPayload{
 		Name:   w.Mach.Id(),
 		Data:   input * input,
 		Source: e.Machine().Id(),

@@ -41,7 +41,7 @@ func TestFork1(t *testing.T) {
 
 	// supervisor
 	s, err := NewSupervisor(ctx, getKind(t), []string{"test"},
-		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestFork1Process(t *testing.T) {
 	// supervisor
 	cmd := []string{"go", "run", wPath}
 	s, err := NewSupervisor(ctx, "NTW", cmd,
-		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestFork5Warm2Min2(t *testing.T) {
 
 	// supervisor
 	s, err := NewSupervisor(ctx, getKind(t), []string{"test"},
-		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestFork15Warm0Min7(t *testing.T) {
 
 	// supervisor
 	s, err := NewSupervisor(ctx, getKind(t), []string{"test"},
-		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,13 +197,9 @@ func TestClientSupervisor(t *testing.T) {
 	// supervisor
 	s := newSupervisor(t, ctx, getKind(t), 1)
 
-	cDeps := &ClientStateDeps{
-		WorkerSStruct: testutils.RelsNodeWorkerSchema,
-		WorkerSNames:  testutils.RelsNodeWorkerStates,
-		ClientSStruct: states.ClientSchema,
-		ClientSNames:  states.ClientStates.Names(),
-	}
-	c, err := NewClient(ctx, "cli", getKind(t), cDeps, nil)
+	opts := &ClientOpts{ClientSchema: states.ClientSchema}
+	c, err := NewClient(ctx, "cli", getKind(t),
+		testutils.RelsNodeWorkerSchema, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,14 +254,14 @@ func TestClientWorker(t *testing.T) {
 
 	// get worker
 	amhelpt.WaitForAll(t, "WorkersAvailable", ctx, defTimeout,
-		c.SuperRpc.Worker.When1(ssS.WorkersAvailable, nil))
+		c.RpcSuper.NetMach.When1(ssS.WorkersAvailable, nil))
 	err := c.ReqWorker(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	amhelpt.WaitForAll(t, "WorkerReady", ctx, defTimeout,
 		c.Mach.When1(ssC.WorkerReady, nil))
-	w := getWorker(t, c.WorkerRpc.Addr)
+	w := getWorker(t, c.RpcWorker.Addr)
 
 	amhelpt.WaitForAll(t, "ClientConnected", ctx, defTimeout,
 		w.Mach.When1(ssW.ClientConnected, nil))
@@ -291,7 +287,7 @@ func TestClientWorkerPayload(t *testing.T) {
 	}
 
 	// t.Parallel()
-	// amhelp.EnableDebugging(false)
+	amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -300,14 +296,14 @@ func TestClientWorkerPayload(t *testing.T) {
 
 	// get worker
 	amhelpt.WaitForAll(t, "WorkersAvailable", ctx, defTimeout,
-		c.SuperRpc.Worker.When1(ssS.WorkersAvailable, nil))
+		c.RpcSuper.NetMach.When1(ssS.WorkersAvailable, nil))
 	err := c.ReqWorker(ctx)
 	if err != nil {
 		t.Fatal(err, "error requesting worker")
 	}
 	amhelpt.WaitForAll(t, "WorkerReady", ctx, defTimeout,
 		c.Mach.When1(ssC.WorkerReady, nil))
-	w := getWorker(t, c.WorkerRpc.Addr)
+	w := getWorker(t, c.RpcWorker.Addr)
 
 	// bind payload handler
 	h := &clientHandlers{t: t}
@@ -317,7 +313,7 @@ func TestClientWorkerPayload(t *testing.T) {
 	}
 
 	whenPayload := c.Mach.WhenTicks(ssC.WorkerPayload, 1, nil)
-	c.WorkerRpc.Worker.Add1(ssW.WorkRequested, am.A{"input": 2})
+	c.RpcWorker.NetMach.Add1(ssW.WorkRequested, am.A{"input": 2})
 	amhelpt.WaitForAll(t, "ClientConnected", ctx, defTimeout,
 		whenPayload,
 		w.Mach.When1(ssW.ClientConnected, nil))
@@ -350,16 +346,16 @@ func newConnectedClient(t *testing.T, ctx context.Context) (
 }
 
 func newClient(t *testing.T, ctx context.Context) *Client {
-	cDeps := &ClientStateDeps{
-		WorkerSStruct: testutils.RelsNodeWorkerSchema,
-		WorkerSNames:  testutils.RelsNodeWorkerStates,
-		ClientSStruct: states.ClientSchema,
-		ClientSNames:  states.ClientStates.Names(),
+	opts := &ClientOpts{
+		ClientSchema: states.ClientSchema,
 	}
-	c, err := NewClient(ctx, "cli", getKind(t), cDeps, nil)
+
+	c, err := NewClient(ctx, "cli", getKind(t),
+		testutils.RelsNodeWorkerSchema, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return c
 }
 
@@ -369,7 +365,7 @@ func newSupervisor(
 	t *testing.T, ctx context.Context, workerKind string, workers int,
 ) *Supervisor {
 	sup, err := NewSupervisor(ctx, workerKind, []string{"test"},
-		testutils.RelsNodeWorkerSchema, testutils.RelsNodeWorkerStates, nil)
+		testutils.RelsNodeWorkerSchema, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,7 +412,7 @@ func newTestFork(
 			t.Fatal(err)
 		}
 
-		// connect Worker to the bootstrap machine
+		// connect NetworkMachine to the bootstrap machine
 		worker.Start(addr)
 		err = amhelp.WaitForAll(ctx, defTimeout,
 			worker.Mach.When1(ssW.RpcReady, nil))
@@ -478,7 +474,7 @@ type workerHandlers struct {
 func (w *workerHandlers) WorkRequestedState(e *am.Event) {
 	input := e.Args["input"].(int)
 
-	payload := &rpc.ArgsPayload{
+	payload := &rpc.MsgSrvPayload{
 		Name:   w.t.Name(),
 		Data:   input * input,
 		Source: e.Machine().Id(),
@@ -492,7 +488,7 @@ func (w *workerHandlers) WorkRequestedState(e *am.Event) {
 
 type clientHandlers struct {
 	t       *testing.T
-	payload *rpc.ArgsPayload
+	payload *rpc.MsgSrvPayload
 }
 
 // implement ssrpc.ConsumerHandlers

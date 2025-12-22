@@ -89,8 +89,8 @@ type SupervisorStatesDef struct {
 
 	// inherit from BasicStatesDef
 	*ssam.BasicStatesDef
-	// inherit from WorkerStatesDef
-	*ssrpc.WorkerStatesDef
+	// inherit from NetSourceStatesDef
+	*ssrpc.NetSourceStatesDef
 }
 
 // SupervisorGroupsDef contains all the state groups of the Supervisor state
@@ -111,7 +111,7 @@ var SupervisorSchema = SchemaMerge(
 	// inherit from BasicSchema
 	ssam.BasicSchema,
 	// inherit from WorkerStruct
-	ssrpc.WorkerSchema,
+	ssrpc.NetSourceSchema,
 	am.Schema{
 
 		// errors

@@ -102,10 +102,8 @@ type Supervisor struct {
 	// workers is a map of local RPC addresses to workerInfo data.
 	workers map[string]*workerInfo
 
-	// workerSNames is a list of states for the worker.
-	workerSNames am.S
-	// workerStruct is the struct for the worker.
-	workerStruct am.Schema
+	// schemaWorker is the struct for the worker.
+	schemaWorker am.Schema
 
 	// in-memory workers
 
@@ -126,25 +124,24 @@ type Supervisor struct {
 
 // NewSupervisor initializes and returns a new Supervisor instance with
 // specified context, worker attributes, and options.
+//
+// workerBin: path to run the worker binary file (for [exec.CommandContext]).
 func NewSupervisor(
 	ctx context.Context, workerKind string, workerBin []string,
-	workerStruct am.Schema, workerSNames am.S, opts *SupervisorOpts,
+	workerSchema am.Schema, opts *SupervisorOpts,
 ) (*Supervisor, error) {
 	// validate
 	if len(workerBin) == 0 || workerBin[0] == "" {
 		return nil, errors.New("super: workerBin required")
 	}
-	if workerStruct == nil {
-		return nil, errors.New("super: workerStruct required")
-	}
-	if workerSNames == nil {
-		return nil, errors.New("super: workerSNames required")
+	if workerSchema == nil {
+		return nil, errors.New("super: workerSchema required")
 	}
 	if opts == nil {
 		opts = &SupervisorOpts{}
 	}
 
-	err := amhelp.Implements(workerSNames, states.WorkerStates.Names())
+	err := amhelp.SchemaImplements(workerSchema, states.WorkerStates.Names())
 	if err != nil {
 		err := fmt.Errorf(
 			"worker has to implement am/node/states/WorkerStates: %w", err)
@@ -187,8 +184,7 @@ func NewSupervisor(
 
 		// internals
 
-		workerSNames: workerSNames,
-		workerStruct: workerStruct,
+		schemaWorker: workerSchema,
 		workers:      map[string]*workerInfo{},
 	}
 
@@ -543,7 +539,7 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 			return
 		}
 		wrpc, err := rpc.NewClient(ctx, workerAddr, s.Name+"-"+port,
-			s.workerStruct, s.workerSNames, &rpc.ClientOpts{Parent: s.Mach})
+			s.schemaWorker, &rpc.ClientOpts{Parent: s.Mach})
 		if err != nil {
 			_ = AddErrWorker(e, s.Mach, err, Pass(&argsOut))
 			return
@@ -594,7 +590,7 @@ func (s *Supervisor) WorkerForkedState(e *am.Event) {
 
 	// update worker info
 	info.rpc = wrpc
-	info.w = wrpc.Worker
+	info.w = wrpc.NetMach
 	info.publicAddr = args.PublicAddr
 	info.localAddr = addr
 	s.workers[addr] = info
@@ -621,7 +617,7 @@ func (s *Supervisor) WorkerForkedState(e *am.Event) {
 	}
 
 	// ping and re-check the pool status
-	wrpc.Worker.Add1(ssW.Healthcheck, nil)
+	wrpc.NetMach.Add1(ssW.Healthcheck, nil)
 	s.Mach.Add1(ssS.PoolReady, nil)
 }
 
@@ -694,7 +690,7 @@ func (s *Supervisor) HeartbeatState(e *am.Event) {
 
 	// clear gone workers TODO check if binding is enough
 	// for _, info := range s.StartedWorkers() {
-	// 	w := info.rpc.Worker
+	// 	w := info.rpc.NetworkMachine
 	//
 	// 	// was Ready, but not anymore
 	// 	if w.Not1(ssW.Ready) && w.Tick(ssW.Ready) > 2 {
@@ -872,21 +868,20 @@ func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 		for _, info := range idle {
 
 			// confirm with the worker
-			res := amhelp.Add1Block(ctx, info.rpc.Worker, ssW.ServeClient, PassRpc(&A{
-				Id: args.WorkerRpcId,
-			}))
+			res := amhelp.Add1Sync(ctx, info.rpc.NetMach, ssW.ServeClient,
+				PassRpc(&A{Id: args.WorkerRpcId}))
 			if ctx.Err() != nil {
 				return // expired
 			}
 			if res != am.Executed {
-				s.log("worker %s rejected %s", info.rpc.Worker.Id(), args.WorkerRpcId)
+				s.log("worker %s rejected %s", info.rpc.NetMach.Id(), args.WorkerRpcId)
 				continue
 			}
 
 			// send the addr to the client via RPC SendPayload
 			s.Mach.Add1(ssS.ClientSendPayload, rpc.PassRpc(&rpc.A{
 				Name: "worker_addr",
-				Payload: &rpc.ArgsPayload{
+				Payload: &rpc.MsgSrvPayload{
 					Name:        ssS.ProvideWorker,
 					Source:      s.Mach.Id(),
 					Destination: args.SuperRpcId,
@@ -894,7 +889,7 @@ func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 				},
 			}))
 
-			s.log("worker %s provided to %s", info.rpc.Worker.Id(), args.SuperRpcId)
+			s.log("worker %s provided to %s", info.rpc.NetMach.Id(), args.SuperRpcId)
 			break
 		}
 	}()
@@ -1028,7 +1023,7 @@ func (s *Supervisor) initingWorkers() []*workerInfo {
 func (s *Supervisor) rpcWorkers() []*workerInfo {
 	var ret []*workerInfo
 	for _, info := range s.workers {
-		if info.rpc != nil && info.rpc.Worker != nil {
+		if info.rpc != nil && info.rpc.NetMach != nil {
 			ret = append(ret, info)
 		}
 	}
@@ -1041,7 +1036,7 @@ func (s *Supervisor) rpcWorkers() []*workerInfo {
 func (s *Supervisor) idleWorkers() []*workerInfo {
 	var ret []*workerInfo
 	for _, info := range s.rpcWorkers() {
-		w := info.rpc.Worker
+		w := info.rpc.NetMach
 		if !info.hasErrs() && w.Is1(ssW.Idle) {
 			ret = append(ret, info)
 		}
@@ -1055,7 +1050,7 @@ func (s *Supervisor) idleWorkers() []*workerInfo {
 func (s *Supervisor) busyWorkers() []*workerInfo {
 	var ret []*workerInfo
 	for _, info := range s.rpcWorkers() {
-		w := info.rpc.Worker
+		w := info.rpc.NetMach
 		if !info.hasErrs() && info.rpc != nil &&
 			w.Any1(sgW.WorkStatus...) && !w.Is1(ssW.Idle) {
 			ret = append(ret, info)
@@ -1070,7 +1065,7 @@ func (s *Supervisor) busyWorkers() []*workerInfo {
 func (s *Supervisor) readyWorkers() []*workerInfo {
 	var ret []*workerInfo
 	for _, info := range s.rpcWorkers() {
-		w := info.rpc.Worker
+		w := info.rpc.NetMach
 		if !info.hasErrs() && info.rpc != nil && w.Is1(ssW.Ready) {
 			ret = append(ret, info)
 		}

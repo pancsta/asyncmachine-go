@@ -17,8 +17,8 @@ type BootstrapStatesDef struct {
 
 	// inherit from BasicStatesDef
 	*ssam.BasicStatesDef
-	// inherit from WorkerStatesDef
-	*ssrpc.WorkerStatesDef
+	// inherit from NetSourceStatesDef
+	*ssrpc.NetSourceStatesDef
 }
 
 // BootstrapSchema represents all relations and properties of
@@ -27,7 +27,7 @@ var BootstrapSchema = SchemaMerge(
 	// inherit from BasicSchema
 	ssam.BasicSchema,
 	// inherit from WorkerStruct
-	ssrpc.WorkerSchema,
+	ssrpc.NetSourceSchema,
 	am.Schema{
 		cos.WorkerAddr: {},
 	})

@@ -218,7 +218,7 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 	// connect to the bootstrap machine
 	opts := &rpc.ClientOpts{Parent: w.Mach}
 	w.BootRpc, err = rpc.NewClient(ctx, w.BootAddr, "nw-"+w.Name,
-		states.BootstrapSchema, states.BootstrapStates.Names(), opts)
+		states.BootstrapSchema, opts)
 	if err != nil {
 		_ = AddErrRpc(w.Mach, err, nil)
 		return
@@ -244,7 +244,7 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 		}
 
 		// pass the local port to [bootstrap.WorkerAddState] via RPC
-		w.BootRpc.Worker.EvAdd1(e, ssB.WorkerAddr, PassRpc(&A{
+		w.BootRpc.NetMach.EvAdd1(e, ssB.WorkerAddr, PassRpc(&A{
 			LocalAddr:  w.LocalAddr,
 			PublicAddr: w.PublicAddr,
 			Id:         w.Mach.Id(),
