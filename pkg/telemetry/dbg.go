@@ -337,6 +337,9 @@ func NewDbgTracer(mach am.Api, addr string) *DbgTracer {
 }
 
 func (t *DbgTracer) MachineInit(mach am.Api) context.Context {
+	t.mx.Lock()
+	defer t.mx.Unlock()
+
 	gob.Register(am.Relation(0))
 	var err error
 	t.Mach = mach
