@@ -672,6 +672,11 @@ func (t *Transition) emitEvents() Result {
 				StateAny+SuffixState, t.Mutation.Args)
 		}
 
+		// basic OnChange handler
+		if onChange := m.onChange.Load(); onChange != nil {
+			(*onChange)(m, t.TimeBefore, t.TimeAfter)
+		}
+
 		// AUTO STATES
 		if result == Canceled {
 			t.IsAccepted.Store(false)
