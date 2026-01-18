@@ -6,10 +6,12 @@
 - custom relation resolvers
 - msgpack for aRPC
 - more integrations and WASM
+- more type safety via codegen
 - `go1.22` traces
 - large simulation loop
 - network security
 - shaders backend
+- tinygo support
 - ML inference
 - optimizations
 - tutorials

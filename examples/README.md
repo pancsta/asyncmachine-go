@@ -9,6 +9,8 @@ Table of contents:
 
 - [Examples](#examples)
   - [aRPC Setup](#arpc-setup)
+  - [CLI](#cli)
+  - [CLI Daemon](#cli-daemon)
   - [DAG Dependency Graph](#dag-dependency-graph)
   - [FSM - Finite State Machine](#fsm---finite-state-machine)
   - [NFA - Nondeterministic Finite Automaton](#nfa---nondeterministic-finite-automaton)
@@ -20,6 +22,7 @@ Table of contents:
   - [Temporal Expense Workflow](#temporal-expense-workflow)
   - [Temporal FileProcessing Workflow](#temporal-fileprocessing-workflow)
   - [Tree State Source](#tree-state-source)
+  - [TUI](#tui)
 - [Benchmarks](#benchmarks)
   - [Benchmark gRPC](#benchmark-grpc)
   - [Benchmark libp2p PubSub](#benchmark-libp2p-pubsub)
@@ -30,18 +33,20 @@ Table of contents:
 
 ## Examples
 
-### [aRPC Setup](/examples/arpc/arpc_setup.go)
+Headers link more info about each example.
+
+### [aRPC Setup](/examples/arpc)
 
 - #rpc #client #server
 - [origin](/pkg/rpc/README.md)
 
 ### [CLI](/examples/cli/main.go)
 
-- #relations #handlers
+- #template #relations #handlers
 
-### [CLI Daemon](/examples/cli_daemon/main.go)
+### [CLI Daemon](/examples/cli_daemon)
 
-- #relations #handlers #arpc #payload
+- #template #relations #handlers #arpc #payload
 
 ### [DAG Dependency Graph](/examples/dag_dependency_graph/dependency_graph.go)
 
@@ -66,7 +71,7 @@ Table of contents:
 - #relations #handlers #async #negotiation #multi
 - [origin](https://github.com/pancsta/sway-yasm/)
 
-### [Pipes](/examples/subscriptions/example_pipes.go)
+### [Pipes](/examples/pipes/example_pipes.go)
 
 - #handlers #composition
 - [origin](/pkg/states/README.md#piping)
@@ -88,6 +93,7 @@ Table of contents:
 ### [REPL](/examples/repl/main.go)
 
 - #arpc #repl
+- [origin](/tools/cmd/arpc/README.md)
 
 ### [Subscriptions](/examples/subscriptions/example_subscriptions.go)
 
@@ -124,9 +130,8 @@ Table of contents:
 ### [Benchmark libp2p PubSub](/examples/benchmark_libp2p_pubsub/README.md)
 
 - #relations #handlers #async #negotiation #libp2p
-- [origin](/tools/cmd/arpc/README.md)
 
-### [Benchmark State Source](/examples/benchmark_libp2p_pubsub/README.md)
+### [Benchmark State Source](/examples/benchmark_state_source/README.md)
 
 - #docker #go-wrt #caddy
 - [origin](/examples/tree_state_source/README.md)
@@ -148,8 +153,9 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 
 ## Apps
 
+- [secai](https://github.com/pancsta/secai) AI Agents framework.
 - [arpc REPL](/tools/repl) Cobra-based REPL.
-- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state-machine TUI app.
+- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
   simulator for libp2p-pubsub.
 - [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)

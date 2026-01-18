@@ -5,8 +5,8 @@ on: [push]
 jobs:
   build:
 
-    # TODO Disable this job
-    if: false
+    # Disable this job
+    #if: false
 
     runs-on: ubuntu-latest
     strategy:

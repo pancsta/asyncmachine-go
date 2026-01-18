@@ -28,7 +28,7 @@ to the states with [logged arguments](/docs/manual.md#arguments-logging) are add
 added as well.
 
 <div align="center">
-    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/pkg/telemetry/README.md#open-telemetry-traces">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/pkg/telemetry/README.md#open-telemetry-traces">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.dark.png">
   <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/otel-jaeger.light.png">

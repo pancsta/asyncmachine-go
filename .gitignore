@@ -51,6 +51,7 @@ go.work
 /assets/*.cast.yml
 
 /tmp*
+/examples/repl/tmp
 _py
 /.run
 /*.bz2

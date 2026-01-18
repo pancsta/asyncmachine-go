@@ -25,72 +25,71 @@ the [manual](/docs/manual.md).
 
 Many states can be active at the same time.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_1.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_1.light.svg">
-  <img alt="Diagram showing multi-state capability" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_1.light.svg">
-</picture>
+<div align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-multi.mermaid.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-multi.mermaid.light.svg">
+  <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-multi.mermaid.light.svg">
+</picture></div>
 
 ### [Clock and state contexts](/docs/manual.md#clock-and-context)
 
 States have clocks that produce contexts (odd = active; even = inactive).
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_2.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_2.light.svg">
-  <img alt="Diagram showing state clocks and contexts" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_2.light.svg">
-</picture>
+<div align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-clocks.mermaid.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-clocks.mermaid.light.svg">
+  <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-clocks.mermaid.light.svg">
+</picture></div>
 
 ### [Queue](/docs/manual.md#queue-and-history)
 
-Queue of mutations enables lock-free [Actor Model](https://en.wikipedia.org/wiki/Actor_model).
+Queue of mutations enable lock-free [Actor Model](https://en.wikipedia.org/wiki/Actor_model).
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_3.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_3.light.svg">
-  <img alt="Diagram showing queue and mutations" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_3.light.svg">
-</picture>
+<div align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-queue.mermaid.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-queue.mermaid.light.svg">
+  <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-queue.mermaid.light.svg">
+</picture></div>
 
 ### [AOP handlers](/docs/manual.md#transition-handlers)
 
-States are [Aspects](https://en.wikipedia.org/wiki/Aspect-oriented_programming) with Enter, State, Exit, and End
-handlers.
+States are [Aspects](https://en.wikipedia.org/wiki/Aspect-oriented_programming) with Enter, State, Exit, and End handlers.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_4.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_4.light.svg">
-  <img alt="Diagram showing AOP handlers" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_4.light.svg">
-</picture>
+<div align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-handlers.mermaid.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-handlers.mermaid.light.svg">
+  <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-handlers.mermaid.light.svg">
+</picture></div>
 
 ### [Negotiation](/docs/manual.md#transition-lifecycle)
 
 Transitions are cancellable (during the negotiation phase).
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_5.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_5.light.svg">
-  <img alt="Diagram showing negotiation phase" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_5.light.svg">
-</picture>
+<div align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-negotiation.mermaid.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-negotiation.mermaid.light.svg">
+  <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-negotiation.mermaid.light.svg">
+</picture></div>
 
 ### [Relations](/docs/manual.md#relations)
 
 States are connected via Require, Remove, and Add relations.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_6.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_6.light.svg">
-  <img alt="Diagram showing state relations" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_6.light.svg">
-</picture>
+<div align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-relations.mermaid.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-relations.mermaid.light.svg">
+  <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-relations.mermaid.light.svg">
+</picture></div>
 
 ### [Subscriptions](/docs/manual.md#waiting)
 
-Channel-based broadcast for waiting on clock values.
+Channel-broadcast waiting on clock values.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_7.dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_7.light.svg">
-  <img alt="Diagram showing subscriptions" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/diagram_7.light.svg">
-</picture>
+<div align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-subscriptions.mermaid.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-subscriptions.mermaid.light.svg">
+  <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-subscriptions.mermaid.light.svg">
+</picture></div>
 
 ### [Error handling](/docs/manual.md#error-handling)
 
@@ -221,7 +220,7 @@ Subscriptions do not allocate goroutines.
 <-mach.WhenTicks("DownloadingFile", 2, nil)
 
 // wait for a mutation to execute
-<-mach.WhenQueue(mach.Add1("Foo", nil), nil)
+<-mach.WhenQueue(mach.Add1("Foo", nil))
 
 // wait for an error
 <-mach.WhenErr(nil)

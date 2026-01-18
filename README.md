@@ -52,7 +52,7 @@ vector formats. It aims to create **autonomous** workflows with **organic** cont
 <div align="center">
     <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/am-dbg/README.md">
         <img style="min-height: 820px"
-            src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video-mouse.gif?raw=true"
+            src="https://pancsta.github.io/assets/asyncmachine-go/video-mouse.gif?raw=true"
             alt="TUI Debugger" />
     </a>
 </div>
@@ -78,7 +78,7 @@ cancelation.
 <div align="center">
     <a href="https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true">
         <img style="min-height: 263px"
-            src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true" alt="am-vis" />
+            src="https://pancsta.github.io/assets/asyncmachine-go/am-vis.svg?raw=true" alt="am-vis" />
     </a>
 </div>
 
@@ -261,9 +261,9 @@ Other packages:
 
 ## Documentation
 
-- [API go.dev](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine) \| [API asyncmachine.dev](https://code.asyncmachine.dev)
-- [diagrams](/docs/diagrams.md) \| [cookbook](/docs/cookbook.md)
-- [manual](/docs/manual.md) \([PDF](https://pancsta.github.io/assets/asyncmachine-go/manual.pdf)\)
+- API: [go.dev](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine) / [code.asyncmachine.dev](https://code.asyncmachine.dev)
+- [diagrams](/docs/diagrams.md) / [cookbook](/docs/cookbook.md)
+- [manual MD](/docs/manual.md) / [manual PDF](https://pancsta.github.io/assets/asyncmachine-go/manual.pdf)
     - [Machine and States](/docs/manual.md#machine-and-states)
     - [Changing State](/docs/manual.md#changing-state)
     - [Advanced Topics](/docs/manual.md#advanced-topics)
@@ -281,6 +281,7 @@ Other packages:
 
 - [GitHub discussions](https://github.com/pancsta/asyncmachine-go/discussions)
 - [Matrix chat](https://matrix.to/#/#room:asyncmachine)
+- [Author's Feed](https://blogic.tech/feed)
 
 <div align="center">
 <picture>
@@ -309,6 +310,7 @@ Under development, status depends on each package. The bottom layers seem prod g
 
 ## Development
 
+- [good first issues](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
 - before
     - `./scripts/dep-taskfile.sh`
     - `task install-deps`
@@ -317,13 +319,11 @@ Under development, status depends on each package. The bottom layers seem prod g
     - `task format`
     - `task lint`
     - `task precommit`
-- [good first issues](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
 
 ### Roadmap
 
-- history layer - SQL, KV, ...
-- `am-relay` tool for proxying, conversions, duck-taping
-- RPC handlers for distributed state-machines
+- more tooling
+- bug fixes and optimizations
 - [ROADMAP.md](/ROADMAP.md)
 
 ## [FAQ](/FAQ.md)
@@ -356,7 +356,7 @@ The complete FAQ is available at [FAQ.md](/FAQ.md).
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
 <div align="center">
-    <img src="https://github.com/pancsta/assets/blob/main/asyncmachine-go/video.gif?raw=true"
+    <img src="https://pancsta.github.io/assets/asyncmachine-go/video.gif?raw=true"
         alt="TUI Debugger" />
 </div>
 

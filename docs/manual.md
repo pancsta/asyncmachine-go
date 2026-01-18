@@ -5,7 +5,7 @@
 - version `v0.17.0`
 - [Legend](#legend)
 - [Machine and States](#machine-and-states)
-  - [Defining States](#defining-states)
+  - [Machine Schema](#machine-schema)
   - [Asynchronous States](#asynchronous-states)
   - [Machine Init](#machine-init)
   - [Clock and Context](#clock-and-context)
@@ -72,7 +72,7 @@ used:
 
 ## Machine and States
 
-### Defining States
+### Machine Schema
 
 **States** are defined using [`am.Schema`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Struct),
 a string-keyed map of the [`am.State` struct](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#State),
@@ -109,16 +109,16 @@ Ready: {},
 
 If a state represents a change from `A` to `B`, then it's considered as an **asynchronous state**. Async states can be
 represented **by 2 to 4 states**, depending on how granular information we need from them. More than 4
-states representing a single abstraction in time is called a Flow.
+states representing a single abstraction in time are called a Flow.
 
 **Example** - asynchronous state (double)
 
 ```go
 DownloadingFile: {
-    Remove: groupFileDownloaded,
+    Remove: S{ss.DownloadingFile},
 },
 FileDownloaded: {
-    Remove: groupFileDownloaded,
+    Remove: S{ss.FileDownloaded},
 },
 ```
 
@@ -171,14 +171,14 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 // ...
 
 ctx := context.Background()
-states := am.Schema{"Foo":{}, "Bar":{}}
-mach := am.New(ctx, states, &am.Opts{
+schema := am.Schema{"Foo":{}, "Bar":{}}
+mach := am.New(ctx, schema, &am.Opts{
     Id: "foo1",
     LogLevel: am.LogChanges,
 })
 ```
 
-Each machine has an [Id](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Id) (via [`Opts.Id`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Opts.Id)
+Each machine has an [ID](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Id) (via [`Opts.Id`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Opts.Id)
 or a random one) and the build-in [Exception](#error-handling) state.
 
 ### Clock and Context
@@ -186,15 +186,16 @@ or a random one) and the build-in [Exception](#error-handling) state.
 **Every state has a tick value**, which
 increments ("ticks") every time a state gets activated or deactivated. **Odd ticks mean active, while even ticks mean
 inactive**. A list (slice) of state ticks forms a **machine time** (`am.Time`), while a map of state names to clock
-values is **machine clock** (`am.Clock`).
+values is a **machine clock** (`am.Clock`).
 
-Machine clock is a [logical clock](https://en.wikipedia.org/wiki/Logical_clock), which purpose is to distinguish
+Machine time is a [logical clock](https://en.wikipedia.org/wiki/Logical_clock), which purpose is to distinguish
 different instances of the same state. It's most commonly used in the form of `context.Context` via
 [`Machine.NewStateCtx(state string)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.NewStateCtx),
-but it also provides methods on its own data type [`am.Time`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Time).
+but it also provides methods on its own data types [`am.Time`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Time)
+and [`am.TimeIndex`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#TimeIndex).
 An instance of state context gets canceled once the state becomes inactive.
 
-TODO MachineTick, Time slice methods
+// TODO MachineTick, Time slice methods +TimeIndex
 
 Other related methods and functions:
 
@@ -246,7 +247,7 @@ Side effects:
 
 ### Active States
 
-Each state can be **active** or **inactive**, determined by its [state clock](#clock-and-context). You can check
+Each state can be **active** or **inactive**, determined by its [tick](#clock-and-context). We can check
 the current state at any time, [without a long delay](#transition-handlers), which makes it a dependable source of
 decisions.
 
@@ -307,7 +308,7 @@ mach.Any(am.S{"Foo"}, am.S{"Bar"}) // true
 
 ### Inspecting States
 
-Being able to inspect your machine at any given step is VERY important. These are the basic method which don't require
+Being able to inspect our machine at any given step is VERY important. These are the basic method which don't require
 any additional [debugging tools](#debugging).
 
 **Example** - inspecting active states and their [clocks](#clock-and-context)
@@ -364,11 +365,11 @@ active themselves via an auto mutation.
 - auto mutation is **prepended** to the [queue](#queue-and-history)
 - `Remove` relation of `Auto` states isn't enforced within the auto mutation
 
-**Example** - log for FileProcessed causes an `Auto` state UploadingFile to activate
+**Example** - Log level `LogOps` for: FileProcessed causes an `Auto` state UploadingFile to activate
 
 ```text
 // [state] +FileProcessed -ProcessingFile
-// [external] cleanup /tmp/temporal_sample1133869176
+// [exter] cleanup /tmp/temporal_sample1133869176
 // [state:auto] +UploadingFile
 ```
 
@@ -377,7 +378,7 @@ active themselves via an auto mutation.
 Multi-state (`Multi` property) describes a state which can be activated many times, without being deactivated in the
 meantime. It always triggers `Enter` and `State` [transition handlers](#transition-handlers), plus the
 [clock](#clock-and-context) is always incremented - `+1` for inactive to active, and `+2` for active to active. It's
-useful for describing many instances of the same event (e.g. network input) without having to define more than one
+useful for describing many instances of the same event (e.g., network input) without having to define more than one
 transition handler. [`Exception`](#error-handling) is a good example of a `Multi` state (many errors can happen, and we
 want to know all of them).
 
@@ -1133,7 +1134,8 @@ Foo
 
 ### Waiting
 
-We can subscribe to almost any state permutation using "when methods". Subscriptions do not allocate goroutines.
+We can subscribe to almost any state mutation using the "when methods". Subscriptions do not allocate goroutines, as
+they use [machine time](#clock-and-context) to push.
 
 ```go
 // wait until FileDownloaded becomes active
@@ -1155,14 +1157,14 @@ We can subscribe to almost any state permutation using "when methods". Subscript
 <-mach.WhenTicks("DownloadingFile", 2, nil)
 
 // wait for a mutation to execute
-<-mach.WhenQueue(mach.Add1("Foo", nil), nil)
+<-mach.WhenQueue(mach.Add1("Foo", nil))
 
 // wait for an error
 <-mach.WhenErr(nil)
 ```
 
 Almost all "when methods" return a shared channel which closes when an event happens (or the optionally passed context is
-canceled). They are used to wait until a certain moment, when we know the execution can proceed. Using "when methods"
+canceled). These are used to wait until a certain moment, when we know the execution can proceed. Using "when methods"
 creates new channels and should be used with caution, possibly making use of the early disposal context. In the future,
 these channels will be reused and should scale way better.
 
@@ -1176,11 +1178,11 @@ these channels will be reused and should scale way better.
 - [`Machine.WhenTime(states, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTime)
 - [`Machine.WhenTime1(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTime1)
 - [`Machine.WhenTicks(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTick)
-- [`Machine.WhenQueueEnds(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenQueueEnds)
-- [`Machine.WhenQueue(queueTick, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenQueue)
+- [`Machine.WhenQueue(queueTick)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenQueue)
+- [`Machine.WhenQueueEnds()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenQueueEnds)
 - [`Machine.WhenErr(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenErr)
 
-**Example** - waiting for states `Foo` and `Bar` to being active at the same time:
+**Example** - waiting for states `Foo` and `Bar` to become active at the same time:
 
 ```go
 // machine
@@ -1224,8 +1226,8 @@ Side effects:
 ### Error Handling
 
 Considering that everything meaningful can be a state, so can errors. Every machine has a predefined [`Exception`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Exception)
-state (which is a [`Multi` state](#multi-states)), and an optional [`ExceptionHandler`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#ExceptionHandler),
-which can be embedded into [handler structs](#defining-handlers).
+state (which is a [`Multi` state](#multi-states)), and an optional [`ExceptionHandler`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#ExceptionHandler)
+method, which can be embedded into [handler structs](#defining-handlers).
 
 Advised error handling strategy (used by [`/pkg/node`](/pkg/node)):
 
@@ -1241,6 +1243,8 @@ Error handling methods:
 
 - [`Machine.AddErr(error, Args)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.AddErr)
 - [`Machine.AddErrState(string, error, Args)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.AddErrState)
+- [`Machine.EvAddErr(error, Args)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.EvAddErr)
+- [`Machine.EvAddErrState(string, error, Args)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.EvAddErrState)
 - [`Machine.WhenErr(ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenErr)
 - [`Machine.Err()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Err)
 - [`Machine.IsErr()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.IsErr)

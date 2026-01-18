@@ -308,10 +308,10 @@ optimizations.
 
 ## Network Handlers
 
-Locally piped Network Machine can then run local handlers (via a local [`/pkg/machine.Machine`]() instance) and mutate
-itself, which will effectively mutate the Network Source. Combining network handlers with selective distribution can
-lead to large network coverage (number of hosts) consuming a tiny bandwidth usage. The structure of the network has to
-be fixed, unlike in case of [`/pkg/pubsub`]().
+Locally piped Network Machine can then run local handlers (via a local [`/pkg/machine.Machine`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine)
+instance) and mutate itself, which will effectively mutate the Network Source. Combining network handlers with selective
+distribution can lead to large network coverage (number of hosts) consuming a tiny bandwidth usage. The structure of the
+network has to be fixed, unlike in case of [`/pkg/pubsub`](/pkg/pubsub/README.md).
 
 By combining **Network Handlers** with **Selective Distribution** received by a redundant number of clients (per state),
 we can create multidimensional graphs. Those could be developed further with "voting receivers" (vote-based firewalls)

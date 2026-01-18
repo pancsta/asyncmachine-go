@@ -22,7 +22,9 @@ env (cat config/env/debug-tests.env) task test-debugger-remote
 ### MACHINE
 ### ### ###
 
-# enable a simple debugging mode (eg long timeouts)
+# enable a simple debugging mode:
+# - long timeouts
+# - disables panicking to Exception
 AM_DEBUG=1
 
 # address of a running am-dbg instance

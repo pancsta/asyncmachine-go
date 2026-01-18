@@ -19,6 +19,8 @@ Steps:
 2. **getter**: get a value from the worker
 3. **processing**: call an operation based on the value
 
+Source available at [`/examples/benchmark_grpc`](/examples/benchmark_grpc).
+
 ### Plain Go Implementation
 
 ```go

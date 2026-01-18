@@ -73,8 +73,6 @@ $ am-gen --name MyMach \
 A "pipe" binds a handler of a source machine, to a mutation in a target machine. Only [final handlers](/docs/manual.md#final-handlers)
 are supported, to block the source mutation.
 
-// TODO Machine.Hash
-
 Each module can export their own pipes, like [`/pkg/rpc`](/pkg/rpc) and [`/pkg/node`](/pkg/node).
 
 ### Available Pipes
@@ -143,6 +141,8 @@ MyMychStruct = am.Schema{
 
 - [api /pkg/states](https://code.asyncmachine.dev/pkg/github.com/pancsta/asyncmachine-go/pkg/states.html)
 - [godoc /pkg/states](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/states)
+- [api /pkg/states/pipes](https://code.asyncmachine.dev/pkg/github.com/pancsta/asyncmachine-go/pkg/states/pipes.html)
+- [godoc /pkg/states/pipes](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/states/pipes)
 - [/examples/pipes](/examples/pipes/example_pipes.go)
 
 ## Status

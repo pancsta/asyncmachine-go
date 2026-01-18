@@ -1,5 +1,29 @@
 # Diagrams
 
+* [Machine Basics](#machine-basics)
+  * [Multi-state](#multi-state)
+  * [Clock and state contexts](#clock-and-state-contexts)
+  * [Queue](#queue)
+  * [AOP handlers](#aop-handlers)
+  * [Negotiation](#negotiation)
+  * [Relations](#relations)
+  * [Subscriptions](#subscriptions)
+* [Transition Lifecycle](#transition-lifecycle)
+* [aRPC](#arpc)
+  * [aRPC Architecture](#arpc-architecture)
+  * [aRPC Sync (Details)](#arpc-sync-details)
+  * [aRPC Sync (Clocks)](#arpc-sync-clocks)
+  * [aRPC Partial Distribution](#arpc-partial-distribution)
+  * [aRPC Handler Mutations](#arpc-handler-mutations)
+* [Worker Pool Architecture](#worker-pool-architecture)
+* [Flows](#flows)
+  * [Legend](#legend)
+  * [RPC Getter Flow](#rpc-getter-flow)
+  * [Worker Bootstrap](#worker-bootstrap)
+* [Examples](#examples)
+  * [Tree State Source](#tree-state-source)
+  * [Benchmark State Source](#benchmark-state-source)
+
 ## Machine Basics
 
 Features are explained using Mermaid flow diagrams, and headers link to relevant sections of the [manual](/docs/manual.md).
@@ -136,4 +160,22 @@ Consumer requests payload from a remote worker.
   <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/flows-worker-bootstrap.mermaid.dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/flows-worker-bootstrap.mermaid.light.svg">
   <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/flows-worker-bootstrap.mermaid.light.svg">
+</picture></div>
+
+## Examples
+
+### [Tree State Source](/examples/tree_state_source/README.md)
+
+<div align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-tree-state-source.mermaid.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-tree-state-source.mermaid.light.svg">
+  <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-tree-state-source.mermaid.light.svg">
+</picture></div>
+
+### [Benchmark State Source](/examples/benchmark_grpc/README.md)
+
+<div align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-bench-state-source.mermaid.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-bench-state-source.mermaid.light.svg">
+  <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-bench-state-source.mermaid.light.svg">
 </picture></div>

@@ -8,7 +8,13 @@
 State source of flight statuses - in the real world this data-oriented problem should be modelled using composition and
 handler delegation, but it's flat in this example for simplicity and research purposes.
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_ex_1.svg?raw=true)
+<div align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-tree-state-source.mermaid.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-tree-state-source.mermaid.light.svg">
+  <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-tree-state-source.mermaid.light.svg">
+</picture></div>
+
+Source available at [`/examples/tree_state_source`](/examples/tree_state_source).
 
 ## States
 

@@ -4,6 +4,17 @@
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
+## [v0.17.1](https://github.com/pancsta/asyncmachine-go/tree/v0.17.1) (2025-01-18)
+
+- chore: add dedicated go.mod for `/scripts` [\#344](https://github.com/pancsta/asyncmachine-go/pull/344) (@pancsta)
+- feat\(repl\): add typed args support with completion [\#343](https://github.com/pancsta/asyncmachine-go/pull/343)
+  (@pancsta)
+- feat\(am-dbg\): add disconnected filter [\#342](https://github.com/pancsta/asyncmachine-go/pull/342) (@pancsta)
+- feat\(machine\): add OnChange handler [\#341](https://github.com/pancsta/asyncmachine-go/pull/341) (@pancsta)
+- fix\(machine\): fix IsQueued for `PositionLast` [\#340](https://github.com/pancsta/asyncmachine-go/pull/340)
+  (@pancsta)
+- fix\(machine\): fix SetSchema err handling [\#339](https://github.com/pancsta/asyncmachine-go/pull/339) (@pancsta)
+
 ## [v0.17.0](https://github.com/pancsta/asyncmachine-go/tree/v0.17.0) (2025-12-22)
 
 - feat\(node\): add defaults to constructors, align with `pkg/rpc` [\#334](https://github.com/pancsta/asyncmachine-go/pull/334)

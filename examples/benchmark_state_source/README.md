@@ -9,7 +9,13 @@ Benchmark of [`/examples/tree_state_source`](/examples/tree_state_source/README.
 and [Caddy](https://caddyserver.com/) in various tree configurations. Every node is a resource limited container
 (0.1cpu, 64mb). Each run starts with a restart of the load balancer and a 1s warmup.
 
-![diagram](https://github.com/pancsta/assets/blob/main/asyncmachine-go/diagrams/diagram_ex_2.svg)
+<div align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-bench-state-source.mermaid.dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-bench-state-source.mermaid.light.svg">
+  <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-bench-state-source.mermaid.light.svg">
+</picture></div>
+
+Source available at [`/examples/benchmark_state_source`](/examples/benchmark_state_source).
 
 ## Results
 
