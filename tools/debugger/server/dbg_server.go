@@ -229,7 +229,7 @@ func (c *Client) ParseSchema() {
 		sp.Groups[name] = c.IndexesToStates(schema.Groups[g])
 
 		if pastSelf {
-			// merge with prev groups
+			// merge with prev groups TODO why? breaks inheriting from 2 sources
 			sp.Groups[g] = slices.Concat(sp.Groups[name], prev)
 			prev = sp.Groups[name]
 		}

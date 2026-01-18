@@ -475,6 +475,8 @@ var (
 func fmtLogEntry(
 	entry string, calledStates []string, machStruct am.Schema,
 ) string {
+	// TODO catch panics
+
 	if entry == "" {
 		return entry
 	}
@@ -570,7 +572,7 @@ func fmtLogEntry(
 			}
 			// filter out machine lines
 			if strings.Contains(line, "machine.(*Machine).handlerLoop(") {
-				linesNew = linesNew[0 : len(linesNew)-4]
+				linesNew = linesNew[0:max(0, len(linesNew)-4)]
 				skipNext = true
 				continue
 			}

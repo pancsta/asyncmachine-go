@@ -673,13 +673,18 @@ func (d *Debugger) DisconnectEventState(e *am.Event) {
 			// mark as disconnected
 			c.Connected.Store(false)
 			d.Mach.Log("client %s disconnected", c.Id)
+
 			break
 		}
 	}
 
 	d.hUpdateBorderColor()
 	d.hUpdateAddressBar()
-	d.hUpdateClientList()
+	if d.Mach.Is1(ss.FilterDisconn) {
+		d.buildClientList(-1)
+	} else {
+		d.hUpdateClientList()
+	}
 	d.draw()
 }
 
@@ -1194,6 +1199,7 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 
 	// tool is a filter and needs re-filter txs
 	filterTxs := false
+	buildClientList := false
 
 	switch tool {
 	// TODO move logic after toggle to handlers
@@ -1233,6 +1239,10 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 	case toolFilterChecks:
 		d.Mach.EvToggle1(e, ss.FilterChecks, nil)
 		filterTxs = true
+
+	case toolFilterDisconn:
+		d.Mach.EvToggle1(e, ss.FilterDisconn, nil)
+		buildClientList = true
 
 	case ToolLogTimestamps:
 		d.Mach.EvToggle1(e, ss.LogTimestamps, nil)
@@ -1318,12 +1328,16 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 	}
 
 	// TODO typed args
-	d.Mach.EvAdd1(e, ss.ToolToggled, am.A{"filterTxs": filterTxs})
+	d.Mach.EvAdd1(e, ss.ToolToggled, am.A{
+		"filterTxs":       filterTxs,
+		"buildClientList": buildClientList,
+	})
 }
 
 func (d *Debugger) ToolToggledState(e *am.Event) {
 	defer d.Mach.Remove1(ss.ToolToggled, nil)
 	filterTxs, _ := e.Args["filterTxs"].(bool)
+	buildClientList, _ := e.Args["buildClientList"].(bool)
 
 	if filterTxs {
 		d.hFilterClientTxs()
@@ -1357,7 +1371,12 @@ func (d *Debugger) ToolToggledState(e *am.Event) {
 		}
 	}
 
-	d.updateClientList()
+	if buildClientList {
+		// TODO immediate via i
+		d.buildClientList(-1)
+	} else {
+		d.updateClientList()
+	}
 	d.hUpdateToolbar()
 	d.hUpdateTimelines()
 	d.hUpdateMatrix()

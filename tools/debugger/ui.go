@@ -394,6 +394,9 @@ func (d *Debugger) hInitToolbar() {
 			{id: toolFilterOutGroup, label: "group", active: func() bool {
 				return d.Mach.Is1(ss.FilterOutGroup)
 			}},
+			{id: toolFilterDisconn, label: "disconn", active: func() bool {
+				return d.Mach.Not1(ss.FilterDisconn)
+			}},
 			{id: toolFilterChecks, label: "checks", active: func() bool {
 				return d.Mach.Not1(ss.FilterChecks)
 			}},
@@ -416,7 +419,7 @@ func (d *Debugger) hInitToolbar() {
 			{id: toolHelp, label: "[yellow::b]help[-]", active: func() bool {
 				return d.Mach.Is1(ss.HelpDialog)
 			}},
-			{id: toolTail, label: "[::b]tail[-::-]", active: func() bool {
+			{id: toolTail, label: "[yellow::b]tail[-::-]", active: func() bool {
 				return d.Mach.Is1(ss.TailMode)
 			}},
 			{id: toolReader, label: "reader", active: func() bool {
@@ -504,9 +507,6 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	left.SetDynamicColors(true)
 	left.SetPadding(1, 1, 1, 1)
 	left.SetText(fmt.Sprintf(dedent.Dedent(strings.Trim(`
-		[::b]### [::u]client list legend[::-]
-		[::b]T:123[-]        total network time
-	
 		[::b]### [::u]schema legend[::-]
 		[%s::b]state[-]        active state
 		[red::b]state[-]        active state (error)
@@ -636,27 +636,42 @@ func (d *Debugger) hUpdateHelpDialog() {
 		[::b]alt r[::-]              rain view
 		[::b]alt m[::-]              matrix views
 		[::b]alt o[::-]              log reader
-		[::b]home/end[::-]           struct / last tx
+		[::b]home/end[::-]           schema / last tx
 		[::b]alt s[::-]              export data
 		[::b]backspace[::-]          remove machine
 		[::b]esc[::-]                focus mach list
 		[::b]ctrl q[::-]             quit
 		[::b]?[::-]                  show help
 	
-		[::b]### [::u]toolbar legend[::-]
-		TODO
-	
 		[::b]### [::u]machine list legend[::-]
-		T:123              total received machine time
-		[%s]client-id[-]          connected
-		[grey]client-id[-]          disconnected
-		[red]client-id[-]          current error
-		[orangered]client-id[-]          recent error
-		[::u]client-id[::-]          selected machine
-		|123               transitions till now
-		|123+              more transitions left
-		S|                 Start active
-		R|                 Ready active
+		[::b]T:123[::-]              total received machine time
+		[%s::b]client-id[-::-]          connected
+		[grey::b]client-id[-::-]          disconnected
+		[red::b]client-id[-::-]          current error
+		[orangered::b]client-id[-::-]          recent error
+		[::bu]client-id[::-]          selected machine
+		[::b]|123[::-]               transitions till now
+		[::b]|123+[::-]              more transitions left
+		[::b]S|[::-]                 Start active
+		[::b]R|[::-]                 Ready active
+	
+		[::b]### [::u]toolbar legend[::-]
+		[::b]auto *[::-]        skip auto and canceled mutations
+		[::b]auto x[::-]        skip all auto mutations
+		[::b]traces[::-]        show stack traced in the log
+		[::b]times[::-]         show timestamps in the log
+		[::b]health[::-]        include Healthcheck and Heartbeat
+		[::b]group[::-]         show transition only from the 
+		              selected group
+		[::b]disconn[::-]        show disconnected clients
+		[::b]checks[::-]        include check mutations
+		[::b]expand[::-]        expand tree in the currently 
+		              focused tile
+		[::b]diagrams N[::-]    render a diagram with N level
+		              of detail
+		[::b]rain[::-]          transition per line with 1 char
+		              per state
+		[::b]matrix[::-]        transition vectors
 	
 		[::b]### [::u]about am-dbg[::-]
 		%-15s    version

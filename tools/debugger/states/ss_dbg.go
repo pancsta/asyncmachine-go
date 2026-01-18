@@ -115,6 +115,7 @@ var States = am.Schema{
 	FilterCanceledTx:     {},
 	FilterQueuedTx:       {},
 	FilterEmptyTx:        {},
+	FilterDisconn:        {},
 	LogTimestamps:        {},
 	FilterTraces:         {},
 	FilterHealth:         {},
@@ -398,6 +399,8 @@ const (
 	// FilterEmptyTx is a filter for txs which didn't change state and didn't
 	// run any self handler either
 	FilterEmptyTx = "FilterEmptyTx"
+	// FilterDisconn filters out disconnected clients
+	FilterDisconn = "FilterDisconn"
 	LogTimestamps = "LogTimestamps"
 	FilterTraces  = "FilterTraces"
 	ToggleTool    = "ToggleTool"
@@ -478,6 +481,7 @@ var Names = S{
 	FilterCanceledTx,
 	FilterQueuedTx,
 	FilterEmptyTx,
+	FilterDisconn,
 	LogTimestamps,
 	FilterTraces,
 	FilterHealth,
