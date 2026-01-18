@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"os"
 	"reflect"
 	"regexp"
@@ -2554,7 +2555,8 @@ func (m *Machine) IsQueued(mutType MutationType, states S,
 	iter := m.queue
 	switch position {
 	case PositionLast:
-		iter = iter[len(iter)-1:]
+		idx := math.Max(0, float64(len(iter)-1))
+		iter = iter[int(idx):]
 	case PositionFirst:
 		iter = iter[0:1]
 	}
