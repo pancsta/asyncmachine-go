@@ -31,6 +31,9 @@ type Mux struct {
 	// NewServerFn creates a new instance of Server and is called for every new
 	// connection.
 	NewServerFn MuxNewServerFn
+	// Typed arguments struct pointer
+	Args       any
+	ArgsPrefix string
 
 	Name string
 	Addr string
@@ -53,13 +56,16 @@ type Mux struct {
 func NewMux(
 	ctx context.Context, name string, newServerFn MuxNewServerFn, opts *MuxOpts,
 ) (*Mux, error) {
+
+	if opts == nil {
+		opts = &MuxOpts{}
+	}
 	d := &Mux{
 		Name:        name,
 		LogEnabled:  os.Getenv(EnvAmRpcLogMux) != "",
 		NewServerFn: newServerFn,
-	}
-	if opts == nil {
-		opts = &MuxOpts{}
+		Args:        opts.Args,
+		ArgsPrefix:  opts.ArgsPrefix,
 	}
 
 	mach, err := am.NewCommon(ctx, "rm-"+name, states.MuxSchema, ssM.Names(),
@@ -68,6 +74,7 @@ func NewMux(
 		return nil, err
 	}
 	mach.SemLogger().SetArgsMapper(LogArgs)
+	mach.SetGroups(states.MuxGroups, ssC)
 	d.Mach = mach
 	// optional env debug
 	if os.Getenv(EnvAmRpcDbg) != "" {
@@ -211,7 +218,9 @@ func (m *Mux) accept(l net.Listener) {
 		if m.NewServerFn == nil {
 			server, err = NewServer(m.Mach.Ctx(), ":0",
 				m.Name+"-"+strconv.Itoa(int(num)), m.Source, &ServerOpts{
-					Parent: m.Mach,
+					Parent:     m.Mach,
+					Args:       m.Args,
+					ArgsPrefix: m.ArgsPrefix,
 				})
 		} else {
 			server, err = m.NewServerFn(int(num), conn)
@@ -269,4 +278,7 @@ type MuxOpts struct {
 	// Parent is a parent state machine for a new Mux state machine. See
 	// [am.Opts].
 	Parent am.Api
+	// Typed arguments struct pointer
+	Args       any
+	ArgsPrefix string
 }

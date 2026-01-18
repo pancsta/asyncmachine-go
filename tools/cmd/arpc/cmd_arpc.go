@@ -6,7 +6,6 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/repl"
@@ -14,7 +13,8 @@ import (
 )
 
 var ss = states.ReplStates
-var randomId = false
+
+// var randomId = false
 
 func init() {
 	// amhelp.EnableDebugging(false)
@@ -40,10 +40,11 @@ func main() {
 	}
 
 	// repl
-	id := "repl"
-	if randomId {
-		id = "repl-" + utils.RandId(4)
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
 	}
+	id := "repl-" + amhelp.Hash(wd, 6)
 	r, err := repl.New(ctx, id)
 	if err != nil {
 		panic(err)

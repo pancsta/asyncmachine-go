@@ -345,7 +345,6 @@ func initWatcher(
 	// watch for changes and trigger AddrChanged
 	go func() {
 		var running atomic.Bool
-		var pending atomic.Bool
 
 		// TODO how very (not) nice
 		var restart func()
@@ -372,10 +371,6 @@ func initWatcher(
 				Addrs: addrs,
 			}))
 			running.Store(false)
-			if pending.CompareAndSwap(true, false) {
-				// TODO lets go deeper!
-				restart()
-			}
 		}
 
 		for {
@@ -395,8 +390,7 @@ func initWatcher(
 					}
 
 					if !running.CompareAndSwap(false, true) {
-						// already running, mark for later
-						pending.Store(true)
+						// already scheduled
 						continue
 					}
 
@@ -450,7 +444,7 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 			return nil
 		},
 	}
-	MutationFlags(addCmd, false)
+	MutationFlags(repl, addCmd, false)
 
 	// Remove command
 	removeCmd := &cobra.Command{
@@ -482,7 +476,7 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 			return amhelp.ResultToErr(res)
 		},
 	}
-	MutationFlags(removeCmd, false)
+	MutationFlags(repl, removeCmd, false)
 
 	// TODO cmd: set
 
@@ -537,7 +531,7 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 			return nil
 		},
 	}
-	MutationFlags(groupAddCmd, true)
+	MutationFlags(repl, groupAddCmd, true)
 
 	// Group Add command
 	groupRemoveCmd := &cobra.Command{
@@ -590,7 +584,7 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 			return nil
 		},
 	}
-	MutationFlags(groupRemoveCmd, true)
+	MutationFlags(repl, groupRemoveCmd, true)
 
 	return []*cobra.Command{addCmd, removeCmd, groupAddCmd, groupRemoveCmd}
 }
@@ -710,15 +704,31 @@ func mutationGetArgs(cmd *cobra.Command) ([2][]string, error) {
 	return [2][]string{argsFlags, valFlags}, nil
 }
 
-func MutationFlags(cmd *cobra.Command, groupCmd bool) {
+type ReplApi interface {
+	NetMachArgs(machId string) []string
+}
+
+func MutationFlags(repl ReplApi, cmd *cobra.Command, groupCmd bool) {
 	cmd.Flags().StringArray("arg", []string{},
 		"Argument name (repeatable)")
 	cmd.Flags().StringArray("val", []string{},
 		"Argument value (repeatable)")
 
+	// completion TODO groups
+	err := cmd.RegisterFlagCompletionFunc("arg", func(
+		cmd *cobra.Command, args []string, toComplete string,
+	) ([]string, cobra.ShellCompDirective) {
+
+		return repl.NetMachArgs(args[0]), cobra.ShellCompDirectiveDefault
+	})
+	if err != nil {
+		// TODO DEBUG
+		panic(err)
+	}
+
 	if groupCmd {
 		ListingFlags(cmd)
-		// TODO --done and --parallel "Pass a done state to controll a pool of async
+		// TODO --done and --parallel "Pass a done state to control a pool of async
 		//  mutations"
 		// TODO --strict "Makes sure all matched machines implement passed states"
 	}
@@ -823,7 +833,7 @@ func WaitingCmds(repl *Repl) []*cobra.Command {
 				return fmt.Errorf("not connected\n")
 			}
 
-			w := repl.Worker(args[0])
+			w := repl.NetMach(args[0])
 			if w == nil {
 				return nil
 			}
@@ -851,7 +861,7 @@ func WaitingCmds(repl *Repl) []*cobra.Command {
 				return fmt.Errorf("not connected\n")
 			}
 
-			w := repl.Worker(args[0])
+			w := repl.NetMach(args[0])
 			if w == nil {
 				return nil
 			}
@@ -879,7 +889,7 @@ func WaitingCmds(repl *Repl) []*cobra.Command {
 				return fmt.Errorf("not connected\n")
 			}
 
-			w := repl.Worker(args[0])
+			w := repl.NetMach(args[0])
 			if w == nil {
 				return nil
 			}
@@ -938,7 +948,7 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 	listCmd := &cobra.Command{
 		Use:     "list",
 		Example: "list -a Foo -a Bar --mtime-min 1631",
-		Short:   "List handshooked machines",
+		Short:   "List handshaked machines",
 		GroupID: "repl",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return listRun(repl, cmd, args)
@@ -965,7 +975,7 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 		GroupID: "inspecting",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			w := repl.Worker(args[0])
+			w := repl.NetMach(args[0])
 			if w == nil {
 				repl.PrintErr("mach ID unknown")
 				return nil
@@ -991,7 +1001,7 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 		GroupID: "inspecting",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			w := repl.Worker(args[0])
+			w := repl.NetMach(args[0])
 			if w == nil {
 				repl.PrintErr("mach ID unknown")
 				return nil
@@ -1025,7 +1035,7 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 		GroupID: "inspecting",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			w := repl.Worker(args[0])
+			w := repl.NetMach(args[0])
 			if w == nil {
 				repl.PrintErr("mach ID unknown")
 				return nil
@@ -1133,7 +1143,7 @@ func listRun(repl *Repl, cmd *cobra.Command, args []string) error {
 
 		// TODO conns since time in htime
 		sum := w.Time(nil).Sum(nil)
-		repl.Print("%d. %s %s t%d %s", i+1, conn, w.RemoteId(), sum, str)
+		repl.Print("%d. %s t%d\n   %s: %s", i+1, w.RemoteId(), sum, conn, str)
 	}
 
 	return nil

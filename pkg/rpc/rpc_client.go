@@ -145,13 +145,13 @@ func NewClient(
 	if opts == nil {
 		opts = &ClientOpts{}
 	}
+	if !opts.NoSchema && netSrcSchema == nil {
+		netSrcSchema = am.Schema{}
+	}
 
 	// validate
 	if netSrcAddr == "" {
 		return nil, errors.New("rpcc: workerAddr required")
-	}
-	if len(netSrcSchema) == 0 && !opts.NoSchema {
-		return nil, errors.New("rpcc: schema or opts.NoSchema required")
 	}
 
 	c := &Client{
@@ -199,6 +199,7 @@ func NewClient(
 		return nil, err
 	}
 	mach.SemLogger().SetArgsMapper(LogArgs)
+	mach.SetGroups(states.ClientGroups, ssC)
 	c.Mach = mach
 	// optional env debug
 	if os.Getenv(EnvAmRpcDbg) != "" {
@@ -682,6 +683,20 @@ func (c *Client) Sync() am.Time {
 	c.clockSet(resp.Time, resp.QueueTick, resp.MachTick)
 
 	return c.NetMach.machTime
+}
+
+// Args returns a list of registered typed args for a given machine.
+func (c *Client) Args() []string {
+	// TODO cache
+
+	// call rpc
+	resp := &MsgSrvArgs{}
+	ok := c.callFailsafe(c.Mach.Ctx(), ServerArgs.Value, &MsgEmpty{}, resp)
+	if !ok {
+		return nil
+	}
+
+	return (*resp).Args
 }
 
 // ///// ///// /////

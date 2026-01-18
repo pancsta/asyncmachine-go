@@ -101,7 +101,7 @@ type NetSourceStatesDef struct {
 
 	// ErrOnClient indicates an error added on the Network Machine.
 	ErrOnClient string
-	// ErrProviding - Worker had issues providing the requested payload.
+	// ErrProviding - NetMach had issues providing the requested payload.
 	ErrProviding string
 	// ErrSendPayload - RPC server had issues sending the requested payload to
 	// the RPC client.
@@ -400,6 +400,11 @@ type MuxStatesDef struct {
 	*states.BasicStatesDef
 }
 
+// MuxGroupsDef contains all the state groups of the Mux state machine.
+type MuxGroupsDef struct {
+	// TODO remove when InferStructure lands
+}
+
 // MuxSchema represents all relations and properties of MuxStatesDef.
 var MuxSchema = SchemaMerge(
 	states.BasicSchema,
@@ -425,9 +430,12 @@ var MuxSchema = SchemaMerge(
 
 var (
 	ssD = am.NewStates(MuxStatesDef{})
+	sgD = am.NewStateGroups(MuxGroupsDef{})
 
 	// MuxStates contains all the states for the Mux machine.
 	MuxStates = ssD
+	// MuxGroups contains all the state groups for the Mux machine.
+	MuxGroups = sgD
 )
 
 // ///// ///// /////

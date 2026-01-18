@@ -74,10 +74,11 @@ var (
 	ServerHandshake = ServerMethod{"Handshake"}
 	ServerLog       = ServerMethod{"Log"}
 	ServerSync      = ServerMethod{"Sync"}
+	ServerArgs      = ServerMethod{"Args"}
 	ServerBye       = ServerMethod{"Close"}
 
 	ServerMethods = enum.New(ServerAdd, ServerAddNS, ServerRemove, ServerSet,
-		ServerHello, ServerHandshake, ServerLog, ServerSync, ServerBye)
+		ServerHello, ServerHandshake, ServerLog, ServerSync, ServerArgs, ServerBye)
 
 	// methods define on the client
 
@@ -159,6 +160,10 @@ type MsgSrvSync struct {
 	MachTick  uint32
 }
 
+type MsgSrvArgs struct {
+	Args []string
+}
+
 // TODO type MsgCliWhenArgs struct {}
 
 // MsgEmpty is an empty message of either the server or client.
@@ -207,6 +212,19 @@ const (
 	KindClient Kind = "client"
 	KindServer Kind = "server"
 )
+
+type ReplOpts struct {
+	// optional dir path to save the address file as addrDir/mach-id.addr
+	AddrDir string
+	// optional channel to send err to, once ready
+	ErrCh chan<- error
+	// optional channel to send the address to, once ready
+	AddrCh chan<- string
+	// optional prefix for typesafe args. Requires Args.
+	ArgsPrefix string
+	// optional typed args instance. Requires ArgsPrefix
+	Args any
+}
 
 // ///// ///// /////
 
@@ -932,22 +950,29 @@ func (c *msgpackCoded) Close() error {
 
 // MachReplEnv sets up a machine for a REPL connection in case AM_REPL_ADDR env
 // var is set. See MachRepl.
-func MachReplEnv(mach am.Api) <-chan error {
+func MachReplEnv(mach am.Api) (error, <-chan error) {
 	addr := os.Getenv(EnvAmReplAddr)
 	dir := os.Getenv(EnvAmReplDir)
 
-	err := make(chan error)
 	switch addr {
 	case "":
-		return err
+		return nil, nil
 	case "1":
 		// expand 1 to default
 		addr = ""
 	}
 
-	MachRepl(mach, addr, dir, nil, nil)
+	// MachRepl closes errCh
+	errCh := make(chan error, 1)
+	opts := &ReplOpts{
+		AddrDir: dir,
+		ErrCh:   errCh,
+	}
+	if err := MachRepl(mach, addr, opts); err != nil {
+		return err, errCh
+	}
 
-	return err
+	return nil, errCh
 }
 
 // MachRepl sets up a machine for a REPL connection, which allows for
@@ -955,14 +980,19 @@ func MachReplEnv(mach am.Api) <-chan error {
 // This function is considered a debugging helper and can panic.
 //
 // addr: address to listen on, default to 127.0.0.1:0
-// addrDir: optional dir path to save the address file as addrDir/mach-id.addr.
+// addrDir: optional dir path to save the address file as addrDir/mach-id.addr
 // addrCh: optional channel to send the address to, once ready
-// errCh: optional channel to send err to, once ready
-func MachRepl(
-	mach am.Api, addr, addrDir string, addrCh chan<- string, errCh chan<- error,
-) {
+// errCh: optional channel for errors
+func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
+	if opts == nil {
+		opts = &ReplOpts{}
+	}
+	addrDir := opts.AddrDir
+	addrCh := opts.AddrCh
+	errCh := opts.ErrCh
+
 	if amhelp.IsTestRunner() {
-		return
+		return amhelp.ErrTestAutoDisable
 	}
 
 	if addr == "" {
@@ -974,16 +1004,24 @@ func MachRepl(
 			"%w: REPL source has to implement pkg/rpc/states/NetSourceStatesDef",
 			am.ErrSchema)
 
-		// panic only early
-		panic(err)
+		return err
+	}
+
+	// verify args is a value struct
+	if opts.Args != nil {
+		t := reflect.TypeOf(opts.Args)
+		if t.Kind() != reflect.Struct {
+			return fmt.Errorf("expected a struct, got %s", t.Kind())
+		}
 	}
 
 	mux, err := NewMux(mach.Ctx(), "repl-"+mach.Id(), nil, &MuxOpts{
-		Parent: mach,
+		Parent:     mach,
+		Args:       opts.Args,
+		ArgsPrefix: opts.ArgsPrefix,
 	})
-	// panic only early
 	if err != nil {
-		panic(err)
+		return err
 	}
 	mux.Addr = addr
 	mux.Source = mach
@@ -993,7 +1031,8 @@ func MachRepl(
 		if errCh != nil {
 			close(errCh)
 		}
-		return
+
+		return nil
 	}
 
 	go func() {
@@ -1039,6 +1078,8 @@ func MachRepl(
 			}
 		}
 	}()
+
+	return nil
 }
 
 // // DEBUG for perf testing

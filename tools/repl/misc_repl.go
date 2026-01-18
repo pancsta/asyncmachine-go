@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/reeflective/console"
 	"github.com/reeflective/readline"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -155,6 +157,7 @@ func completionsNarrowDown(
 	toComplete string, resources []string,
 ) ([]string, cobra.ShellCompDirective) {
 	// prefix-filtering (case insensitive)
+	// TODO update mutation args
 	if toComplete != "" {
 		filtered := []string{}
 		for _, resource := range resources {
@@ -294,4 +297,40 @@ func (h *History) Len() int {
 // Dump returns the entire history file.
 func (h *History) Dump() interface{} {
 	return h.lines
+}
+
+// ///// ///// /////
+
+// ///// FUNCS
+
+// ///// ///// /////
+
+// setupPrompt is a function which sets up the prompts for the main menu.
+func setupPrompt(m *console.Menu) {
+	p := m.Prompt()
+
+	p.Primary = func() string {
+		// TODO color per connection status (yellow all, green some, grey none)
+		return "\x1b[33marpc>\x1b[0m "
+	}
+
+	// p.Right = func() string {
+	// 	return "\x1b[1;30m" + time.Now().Format("03:04:05.000") + "\x1b[0m"
+	// }
+
+	// p.Transient = func() string { return "\x1b[1;30m" + ">> " + "\x1b[0m" }
+}
+
+func listCmdFlags(cmd *cobra.Command) []string {
+	flags := []string{}
+	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
+		// skip some
+		if flag.Name == "help" || flag.Name == "completion" {
+			return
+		}
+
+		flags = append(flags, "--"+flag.Name)
+	})
+
+	return flags
 }
