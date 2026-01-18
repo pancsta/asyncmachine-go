@@ -55,6 +55,7 @@ const (
 	toolFilterHealth     ToolName = "skip-health"
 	toolFilterOutGroup   ToolName = "skip-outgroup"
 	toolFilterChecks     ToolName = "skip-checks"
+	toolFilterDisconn    ToolName = "skip-disconn"
 	ToolLogTimestamps    ToolName = "hide-timestamps"
 	ToolFilterTraces     ToolName = "hide-traces"
 	toolLog              ToolName = "log"

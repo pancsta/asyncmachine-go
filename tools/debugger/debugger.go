@@ -1192,7 +1192,7 @@ func (d *Debugger) hExportData(filename string, snapshot bool) {
 	defer fw.Close()
 
 	// prepare the format
-	now := *d.C.Tx(max(0, d.C.CursorTx1)).Time
+	now := *d.C.Tx(max(0, d.C.CursorTx1-1)).Time
 	data := make([]*server.Exportable, len(d.Clients))
 	i := 0
 	for _, c := range d.Clients {
@@ -1270,7 +1270,7 @@ func (d *Debugger) hGetTxInfo(txIndex1 int,
 		right += "[grey]canceled[-] | "
 	}
 
-	// format time
+	// format time TODO against the prev filter-matched tx
 	tStamp := tx.Time.Format(timeFormat)
 	if prev != nil {
 		prevTStamp := prev.Time.Format(timeFormat)

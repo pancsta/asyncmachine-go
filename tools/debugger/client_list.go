@@ -21,7 +21,7 @@ import (
 
 // buildClientList builds the clientList with the list of clients.
 // selectedIndex: index of the selected item, -1 for the current one.
-// TODO state
+// TODO ReqBuildClientListState
 func (d *Debugger) buildClientList(selectedIndex int) {
 	if d.Mach.Not1(ss.ClientListVisible) {
 		return
@@ -35,12 +35,15 @@ func (d *Debugger) buildClientList(selectedIndex int) {
 		time.Sleep(sidebarUpdateDebounce)
 		update := func() {
 			d.hBuildClientList(selectedIndex)
+			// draw after a debounce
+			d.draw(d.clientList)
 		}
 		// TODO avoid eval
 		go d.Mach.Eval("hBuildClientList", update, nil)
 	}()
 }
 
+// TODO BuildClientListState
 func (d *Debugger) hBuildClientList(selectedIndex int) {
 	defer d.buildCLScheduled.Store(false)
 
@@ -74,6 +77,11 @@ func (d *Debugger) hBuildClientList(selectedIndex int) {
 	// TODO REWRITE to states
 	for _, parent := range list {
 		if d.hClientHasParent(parent) {
+			continue
+		}
+		// skip disconns
+		c := d.Clients[parent]
+		if !c.Connected.Load() && d.Mach.Is1(ss.FilterDisconn) {
 			continue
 		}
 
@@ -242,9 +250,14 @@ func (d *Debugger) hClientListChild(
 	lvl int,
 ) int {
 	for _, child := range list {
-		cc := d.Clients[child]
+		c := d.Clients[child]
 
-		if !d.hClientHasParent(child) || cc.MsgStruct.Parent != parent {
+		// skip parents
+		if !d.hClientHasParent(child) || c.MsgStruct.Parent != parent {
+			continue
+		}
+		// skip disconns
+		if !c.Connected.Load() && d.Mach.Is1(ss.FilterDisconn) {
 			continue
 		}
 
