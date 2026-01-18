@@ -7,7 +7,7 @@ import (
 	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
-// WorkerStatesDef contains all the states of the Worker state machine.
+// WorkerStatesDef contains all the states of the NetMach state machine.
 type WorkerStatesDef struct {
 	*am.StatesBase
 
@@ -20,7 +20,7 @@ type WorkerStatesDef struct {
 
 	// basics
 
-	// Ready - Worker is able to perform work.
+	// Ready - NetMach is able to perform work.
 	Ready string
 
 	// rpc
@@ -31,17 +31,17 @@ type WorkerStatesDef struct {
 	PublicRpcReady string
 	// RpcReady - both RPC servers are ready.
 	RpcReady string
-	// SuperConnected - Worker is connected to the Supervisor.
+	// SuperConnected - NetMach is connected to the Supervisor.
 	SuperConnected string
-	// ServeClient - Worker is requested to accept a connection from client
+	// ServeClient - NetMach is requested to accept a connection from client
 	// am.A["id"].
 	ServeClient string
-	// ClientConnected - Worker is connected to a client.
-	ClientConnected   string
+	// ClientConnected - NetMach is connected to a client.
+	ClientConnected string
 	// Send payload to the client
 	ClientSendPayload string
 	// Send payload to the supervisor
-	SuperSendPayload  string
+	SuperSendPayload string
 
 	// work
 
@@ -56,7 +56,7 @@ type WorkerStatesDef struct {
 	*ssrpc.NetSourceStatesDef
 }
 
-// WorkerGroupsDef contains all the state groups of the Worker state machine.
+// WorkerGroupsDef contains all the state groups of the NetMach state machine.
 type WorkerGroupsDef struct {
 
 	// WorkStatus represents work-related states, 1 active at a time. This group
@@ -69,7 +69,7 @@ type WorkerGroupsDef struct {
 var WorkerSchema = SchemaMerge(
 	// inherit from BasicSchema
 	ssam.BasicSchema,
-	// inherit from Worker
+	// inherit from NetMach
 	ssrpc.NetSourceSchema,
 	am.Schema{
 
@@ -140,9 +140,9 @@ var (
 		WorkStatus: S{ssW.WorkRequested, ssW.Working, ssW.WorkReady, ssW.Idle},
 	})
 
-	// WorkerStates contains all the states for the Worker machine.
+	// WorkerStates contains all the states for the NetMach machine.
 	WorkerStates = ssW
 
-	// WorkerGroups contains all the state groups for the Worker machine.
+	// WorkerGroups contains all the state groups for the NetMach machine.
 	WorkerGroups = sgW
 )

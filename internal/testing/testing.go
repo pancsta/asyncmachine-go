@@ -155,7 +155,7 @@ func NewDbgWorker(
 	if err != nil {
 		return nil, err
 	}
-	amhelp.MachDebugEnv(dbg.Mach)
+	_ = amhelp.MachDebugEnv(dbg.Mach)
 
 	// start at the same place
 	res := dbg.Mach.Add1(ssdbg.Start, am.A{

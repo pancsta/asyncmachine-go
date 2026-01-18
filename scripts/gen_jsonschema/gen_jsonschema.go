@@ -7,9 +7,14 @@ import (
 	"path/filepath"
 
 	"github.com/invopop/jsonschema"
+	"github.com/pancsta/asyncmachine-go/scripts/shared"
 
 	"github.com/pancsta/asyncmachine-go/pkg/integrations"
 )
+
+func init() {
+	shared.GoToRootDir()
+}
 
 func main() {
 	r := new(jsonschema.Reflector)

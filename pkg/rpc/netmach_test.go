@@ -11,8 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
-
 	sst "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
@@ -1414,12 +1412,12 @@ func TestPipes(t *testing.T) {
 	ctx := context.Background()
 	netSrc := utils.NewNoRelsNetSrc(t, S{"A"})
 	local := utils.NewNoRels(t, nil, "-local")
-	amhelp.MachDebugEnv(local)
+	// amhelp.MachDebugEnv(local)
 
 	// connect
 	_, _, s, c := NewTest(t, ctx, netSrc, nil, 0, false, nil, nil)
-	amhelp.MachDebug(c.NetMach, "localhost:6831", am.LogOps, true,
-		amhelp.SemConfigEnv(true))
+	// amhelp.MachDebug(c.NetMach, "localhost:6831", am.LogOps, true,
+	// 	amhelp.SemConfigEnv(true))
 
 	local.AddBreakpoint1("A", "", false)
 	local.AddBreakpoint1("B", "", false)

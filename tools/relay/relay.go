@@ -53,7 +53,7 @@ func New(
 		return nil, err
 	}
 	if args.Debug {
-		amhelp.MachDebugEnv(mach)
+		_ = amhelp.MachDebugEnv(mach)
 	}
 	r.Mach = mach
 

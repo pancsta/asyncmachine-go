@@ -26,6 +26,16 @@ type Args struct {
 	Debug    bool          `default:"true" help:"Enable debugging for asyncmachine"`
 }
 
+// TODO subcommand "daemon" which fwd args to the daemon
+
+type cli struct {
+	*am.ExceptionHandler
+
+	Mach      *am.Machine
+	DaemonRpc *arpc.Client
+	Args      *Args
+}
+
 var args Args
 
 func main() {
@@ -35,7 +45,7 @@ func main() {
 	if err != nil {
 		p.Fail(err.Error())
 	}
-	netmach := cli.C.NetMach
+	netmach := cli.DaemonRpc.NetMach
 
 	if args.Foo1 {
 		netmach.Add1(ss.OpFoo1, types.PassRpc(&types.ARpc{
@@ -84,9 +94,9 @@ func newCli(ctx context.Context, args *Args) (*cli, error) {
 	fmt.Printf("Connected to aRPC %s\n", c.Addr)
 
 	return &cli{
-		Mach: consumer,
-		C:    c,
-		Args: args,
+		Mach:      consumer,
+		DaemonRpc: c,
+		Args:      args,
 	}, nil
 }
 
@@ -105,14 +115,6 @@ func newClient(
 	amhelp.MachDebugEnv(c.Mach)
 
 	return c, nil
-}
-
-type cli struct {
-	*am.ExceptionHandler
-
-	Mach *am.Machine
-	C    *arpc.Client
-	Args *Args
 }
 
 func (c *cli) WorkerPayloadState(e *am.Event) {

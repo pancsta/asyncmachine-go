@@ -93,7 +93,7 @@ func NewWorker(ctx context.Context, kind string, workerStruct am.Schema,
 
 	mach.SemLogger().SetArgsMapper(LogArgs)
 	w.Mach = mach
-	amhelp.MachDebugEnv(mach)
+	_ = amhelp.MachDebugEnv(mach)
 
 	// check base states
 	err = amhelp.Implements(mach.StateNames(), ssW.Names())

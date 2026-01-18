@@ -1,8 +1,5 @@
 package states
 
-// TODO rename to Schem
-// TODO rename to Schema
-
 import (
 	"errors"
 	"fmt"
@@ -14,8 +11,8 @@ import (
 
 // ///// CONECTED
 
-// TODO document both
 // ///// ///// /////
+// TODO godoc
 
 type ConnectedState = string
 

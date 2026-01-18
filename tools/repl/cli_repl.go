@@ -322,8 +322,11 @@ func handleDebug(cmd *cobra.Command, mach *am.Machine) (string, error) {
 		return "", err
 	}
 	if dbgAddr != "" {
-		amhelp.MachDebug(mach, dbgAddr, logLevel, false,
+		err := amhelp.MachDebug(mach, dbgAddr, logLevel, false,
 			amhelp.SemConfigEnv(true))
+		if err != nil {
+			return "", err
+		}
 	}
 
 	return dbgAddr, nil
@@ -715,16 +718,15 @@ func MutationFlags(repl ReplApi, cmd *cobra.Command, groupCmd bool) {
 		"Argument value (repeatable)")
 
 	// completion TODO groups
-	err := cmd.RegisterFlagCompletionFunc("arg", func(
+	_ = cmd.RegisterFlagCompletionFunc("arg", func(
 		cmd *cobra.Command, args []string, toComplete string,
 	) ([]string, cobra.ShellCompDirective) {
-
 		return repl.NetMachArgs(args[0]), cobra.ShellCompDirectiveDefault
 	})
-	if err != nil {
-		// TODO DEBUG
-		panic(err)
-	}
+	// if err != nil {
+	// 	// DEBUG
+	// 	panic(err)
+	// }
 
 	if groupCmd {
 		ListingFlags(cmd)

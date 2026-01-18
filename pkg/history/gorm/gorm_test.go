@@ -40,7 +40,7 @@ func TestGormSchema(t *testing.T) {
 	onErr := func(err error) {
 		t.Error(err)
 	}
-	db, _, err := NewSqlite("", false)
+	db, _, err := NewDb("", false)
 	require.NoError(t, err)
 	cfg := Config{
 		BaseConfig: amhist.BaseConfig{
@@ -65,10 +65,10 @@ func TestGormTrack(t *testing.T) {
 		t.Error(err)
 	}
 	cfg := Config{
-		QueueBatch: 10,
 		BaseConfig: amhist.BaseConfig{
 			TrackedStates: am.S{ss.Start},
 		},
+		QueueBatch: 10,
 	}
 
 	// init basic machine
@@ -76,7 +76,7 @@ func TestGormTrack(t *testing.T) {
 	mach := am.New(ctx, amss.BasicSchema, &am.Opts{Id: "MyMach2"})
 
 	// init memory
-	db, _, err := NewSqlite(t.Name(), debug)
+	db, _, err := NewDb(t.Name(), debug)
 	require.NoError(t, err)
 	mem, err := NewMemory(ctx, db, mach, cfg, onErr)
 	require.NoError(t, err)
@@ -103,6 +103,7 @@ func TestGormTrackMany(t *testing.T) {
 			TrackedStates: am.S{ss.Start},
 			MaxRecords:    10e6,
 		},
+		QueueBatch: 1000,
 	}
 
 	// init basic machine
@@ -110,7 +111,7 @@ func TestGormTrackMany(t *testing.T) {
 	mach := am.New(ctx, amss.BasicSchema, &am.Opts{Id: "MyMach2"})
 
 	// init memory
-	db, _, err := NewSqlite(t.Name(), debug)
+	db, _, err := NewDb(t.Name(), debug)
 	require.NoError(t, err)
 	mem, err := NewMemory(ctx, db, mach, cfg, onErr)
 	require.NoError(t, err)
@@ -190,4 +191,30 @@ func TestGormPostgresTrackMany(t *testing.T) {
 
 	// common test
 	testhist.AssertBasics(t, mem, rounds)
+}
+
+func ExampleNewMemory() {
+
+	// configs
+	onErr := func(err error) {
+		panic(err)
+	}
+	cfg := Config{
+		QueueBatch: 10,
+		BaseConfig: amhist.BaseConfig{
+			TrackedStates: am.S{ss.Start},
+		},
+	}
+
+	// init basic machine
+	ctx := context.Background()
+	mach := am.New(ctx, amss.BasicSchema, &am.Opts{Id: "MyMach2"})
+
+	// init memory
+	db, _, _ := NewDb("mydb", false)
+	mem, _ := NewMemory(ctx, db, mach, cfg, onErr)
+
+	// query etc
+
+	_ = mem.Dispose()
 }

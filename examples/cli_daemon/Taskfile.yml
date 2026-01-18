@@ -1,0 +1,8 @@
+version: '3'
+dotenv: [".env"]
+
+tasks:
+  repl: arpc -w 
+      -d .
+      --am-dbg-addr localhost:6831 --log-level 3
+

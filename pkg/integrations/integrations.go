@@ -23,7 +23,8 @@ var (
 	KindRespGetter   = Kind{"am_resp_getter"}
 	KindRespMutation = Kind{"am_resp_mutation"}
 	KindRespWaiting  = Kind{"am_resp_waiting"}
-	KindEnum         = enum.New(KindReqGetter, KindReqMutation, KindReqWaiting,
+
+	KindEnum = enum.New(KindReqGetter, KindReqMutation, KindReqWaiting,
 		KindRespGetter, KindRespMutation, KindRespWaiting)
 )
 

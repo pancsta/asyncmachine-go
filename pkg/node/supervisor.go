@@ -207,7 +207,7 @@ func NewSupervisor(
 
 	mach.SemLogger().SetArgsMapper(LogArgs)
 	s.Mach = mach
-	amhelp.MachDebugEnv(mach)
+	_ = amhelp.MachDebugEnv(mach)
 	mach.AddBreakpoint(am.S{ssS.ErrWorker}, nil, false)
 
 	// self removing multi handlers

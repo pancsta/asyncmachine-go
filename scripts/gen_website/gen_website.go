@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/alecthomas/chroma/v2"
@@ -18,16 +22,10 @@ import (
 	"github.com/gomarkdown/markdown/ast"
 	md2html "github.com/gomarkdown/markdown/html"
 	"github.com/gomarkdown/markdown/parser"
-	"github.com/joho/godotenv"
+	"github.com/pancsta/asyncmachine-go/scripts/shared"
 
 	"github.com/pancsta/asyncmachine-go/scripts/gen_website/sitemap"
 )
-
-func init() {
-	if err := godotenv.Load(); err != nil {
-		log.Printf("Warning: Error loading .env file: %v", err)
-	}
-}
 
 var apiUrl = os.Getenv("AM_DEPLOY_API_URL")
 var assetsUrl = os.Getenv("AM_DEPLOY_ASSETS_URL")
@@ -38,6 +36,11 @@ var amMainMenu = sitemap.MainMenu
 const infoIcon = `<svg class=align-bottom xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6" style="width: 25px;display: inline;">
   <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"></path>
 </svg>`
+
+func init() {
+	shared.GoToRootDir()
+	// TODO check apiUrl, assetsUrl
+}
 
 func main() {
 	outputDir := filepath.Join("docs", "website")
@@ -100,6 +103,7 @@ func renderFile(e sitemap.Entry, outputDir string) error {
 
 	// E. Generate Flat Filename
 	flatName := e.Url + ".html"
+	// main page /
 	if sourcePath == "README.md" {
 		flatName = "index.html"
 	}
@@ -133,10 +137,23 @@ func renderFile(e sitemap.Entry, outputDir string) error {
 
 func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 	sourcePath := e.Path
+
+	// update footer dates
+	htmlContent = strings.ReplaceAll(htmlContent, "&copy; 2024-2026", "&copy; 2024-"+time.Now().Format("2006"))
+
 	// 2. Load the HTML into goquery
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// latest release
+	latestVer, err := getLastPathOfRedirect(
+		"https://github.com/pancsta/asyncmachine-go/releases/latest")
+	if err == nil {
+		doc.Find(".latest-release").SetText(latestVer)
+	} else {
+		fmt.Printf("Error getting latest release: %v\n", err)
 	}
 
 	// 3. Configure Chroma
@@ -158,6 +175,13 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 	// WithClasses(false) puts CSS styles inline (style="color:...")
 	// If you want to use a separate CSS file, set this to true.
 	formatter := html.New(html.WithClasses(false), html.TabWidth(4))
+
+	// sort by longest
+	menuSorted := make([]sitemap.Entry, len(amMainMenu))
+	copy(menuSorted, amMainMenu)
+	sort.Slice(menuSorted, func(i, j int) bool {
+		return len(menuSorted[i].Path) > len(menuSorted[j].Path)
+	})
 
 	// highlight code
 	doc.Find("pre > code.language-go").Each(func(i int, s *goquery.Selection) {
@@ -199,13 +223,16 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 			return
 		}
 
-		for _, e := range amMainMenu {
+		for _, e := range menuSorted {
 			if e.Path == "" {
 				continue
 			}
 
 			// to github
-			if strings.HasSuffix(href, "_test.go") && strings.HasPrefix(href, "/") {
+			if (strings.HasSuffix(href, "_test.go") && strings.HasPrefix(href, "/")) ||
+				// code exceptions (no Go code)
+				href == "/examples/benchmark_state_source" {
+
 				s.SetAttr("href", fmt.Sprintf("https://github.com/pancsta/asyncmachine-go/blob/main%s", href))
 				// fmt.Printf("github link %s\n", href)
 				return
@@ -222,8 +249,18 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 
 			// to slugs
 			href2 := strings.TrimPrefix(href, "/")
-			path2 := strings.TrimSuffix(e.Path, "README.md")
-			if strings.HasPrefix(e.Path, href2) || (strings.HasPrefix(href2, path2) && path2 != "") {
+			path2 := e.Path
+			// no readme magic for examples
+			isExample := strings.HasPrefix(e.Path, "examples")
+			if !isExample {
+				path2 = strings.TrimSuffix(path2, "README.md")
+			}
+			if (strings.HasPrefix(e.Path, href2) && !isExample) ||
+				(strings.HasPrefix(href2, path2) && path2 != "") {
+
+				if strings.Contains(href2, "tree_state") {
+					print()
+				}
 				newHref := "/" + e.Url
 				if strings.Contains(href2, "#") {
 					newHref += href2[strings.Index(href2, "#"):]
@@ -242,7 +279,11 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		}
 
 		// some dirs to code
-		if !strings.Contains(href, ".") && (strings.HasPrefix(href, "/tools") || strings.HasPrefix(href, "/pkg")) {
+		if !strings.Contains(href, ".") &&
+			(strings.HasPrefix(href, "/tools") ||
+				strings.HasPrefix(href, "/pkg") ||
+				strings.HasPrefix(href, "/examples")) {
+
 			s.SetAttr("href", fmt.Sprintf("%s/pkg/github.com/pancsta/asyncmachine-go%s.html", apiUrl, href))
 			// fmt.Printf("code dir link %s\n", href)
 			return
@@ -432,4 +473,24 @@ func renderDetails(w io.Writer, details *Details, entering bool) {
 	} else {
 		io.WriteString(w, detailsEnd)
 	}
+}
+
+func getLastPathOfRedirect(targetURL string) (string, error) {
+	// 1. Make the GET request
+	// http.Get automatically follows up to 10 redirects
+	resp, err := http.Get(targetURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	// 2. Extract the final URL from the response
+	// resp.Request.URL is the final URL object after all redirects
+	finalURL := resp.Request.URL
+
+	// 3. Get the last element of the path using path.Base
+	// Example: /kubernetes/kubernetes -> "kubernetes"
+	lastPart := path.Base(finalURL.Path)
+
+	return lastPart, nil
 }

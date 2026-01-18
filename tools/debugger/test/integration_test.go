@@ -60,7 +60,7 @@ func init() {
 
 	// debug test loop
 	if addr := os.Getenv(am.EnvAmTestDbgAddr); addr != "" {
-		amhelp.MachDebug(worker.Mach, addr, am.LogOps, false,
+		_ = amhelp.MachDebug(worker.Mach, addr, am.LogOps, false,
 			amhelp.SemConfigEnv(true))
 	}
 

@@ -468,9 +468,9 @@ func (e *handler) dispose() {
 
 // ///// ///// /////
 
-// Result enum is the result of a state Transition. [Queue] is a virtual value
-// and everything >= Queue represents a queue tick on which the mutation will
-// be processed. It's useful for queued negotiations.
+// Result enum is the result of a state [Transition]. [Queued] is a virtual
+// value and everything >= Queued (2) represents a queue tick on which the
+// mutation will be processed. It's useful for queued negotiations.
 type Result uint64
 
 const (
@@ -481,7 +481,7 @@ const (
 	// negotiation handler.
 	Canceled Result = 1
 	// Queued means that the transition was queued for later execution. Everything
-	// above 3 also means Queued. The following methods can be used to wait for
+	// above 2 also means Queued. The following methods can be used to wait for
 	// the results:
 	// - Machine.When
 	// - Machine.WhenNot
@@ -491,7 +491,7 @@ const (
 	// - Machine.WhenTicks
 	// - Machine.WhenQueue
 	// - Machine.WhenQueueEnds
-	// See [Machine.queueTick].
+	// See [Machine.QueueTick].
 	Queued Result = 2
 )
 

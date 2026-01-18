@@ -203,7 +203,7 @@ func NewClient(
 	c.Mach = mach
 	// optional env debug
 	if os.Getenv(EnvAmRpcDbg) != "" {
-		amhelp.MachDebugEnv(mach)
+		_ = amhelp.MachDebugEnv(mach)
 	}
 
 	// TODO debug
@@ -466,7 +466,7 @@ func (c *Client) HandshakingState(e *am.Event) {
 
 		// optional env debug on 1st call
 		if c.Mach.Tick(ssC.Handshaking) == 1 && os.Getenv(EnvAmRpcDbg) != "" {
-			amhelp.MachDebugEnv(c.NetMach)
+			_ = amhelp.MachDebugEnv(c.NetMach)
 		}
 
 		// ID as tag TODO find-n-replace the tag, not via index [1]

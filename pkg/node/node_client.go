@@ -108,7 +108,7 @@ func NewClient(ctx context.Context, clientId string, workerKind string,
 
 	mach.SemLogger().SetArgsMapper(LogArgs)
 	c.Mach = mach
-	amhelp.MachDebugEnv(mach)
+	_ = amhelp.MachDebugEnv(mach)
 
 	// check base states
 	err = amhelp.Implements(mach.StateNames(), ssC.Names())

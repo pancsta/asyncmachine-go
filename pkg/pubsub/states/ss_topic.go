@@ -54,7 +54,7 @@ type TopicStatesDef struct {
 	// actions
 
 	// ListMachines is a request to return the filtered list of connected machines
-	// via chan, as [rpc.Worker].
+	// via chan, as [rpc.NetMach].
 	ListMachines string
 	SendMsg      string
 	ProcessMsgs  string

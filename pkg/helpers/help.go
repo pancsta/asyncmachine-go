@@ -68,6 +68,8 @@ const (
 	healthcheckInterval = 30 * time.Second
 )
 
+var ErrTestAutoDisable = errors.New("feature disabled when AM_TEST_RUNNER")
+
 type (
 	S      = am.S
 	A      = am.A
@@ -208,7 +210,7 @@ func StatesToIndexes(allStates am.S, states am.S) []int {
 func IndexesToStates(allStates am.S, indexes []int) am.S {
 	states := make(am.S, len(indexes))
 	for i, idx := range indexes {
-		if idx == -1 {
+		if idx == -1 || idx >= len(allStates) {
 			states[i] = "unknown" + strconv.Itoa(i)
 			continue
 		}
@@ -223,10 +225,10 @@ func IndexesToStates(allStates am.S, indexes []int) am.S {
 func MachDebug(
 	mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout bool,
 	semConfig *am.SemConfig,
-) {
+) error {
 	// no debug for CI
 	if IsTestRunner() {
-		return
+		return nil
 	}
 
 	semlog := mach.SemLogger()
@@ -237,7 +239,7 @@ func MachDebug(
 	}
 
 	if amDbgAddr == "" {
-		return
+		return nil
 	}
 
 	// semantic logging
@@ -269,13 +271,14 @@ func MachDebug(
 	// tracer for telemetry
 	err := amtele.TransitionsToDbg(mach, amDbgAddr)
 	if err != nil {
-		// TODO dont panic
-		panic(err)
+		return err
 	}
 
 	if os.Getenv(EnvAmHealthcheck) != "" {
 		Healthcheck(mach)
 	}
+
+	return nil
 }
 
 // SemConfigEnv returns a SemConfigEnv based on env vars, or the [forceFull]
@@ -311,7 +314,7 @@ func SemConfigEnv(forceFull bool) *am.SemConfig {
 // MachDebugEnv sets up a machine for debugging, based on env vars only:
 // AM_DBG_ADDR, AM_LOG, AM_LOG_*, and AM_DEBUG. This function should be called
 // right after the machine is created (to catch all the log entries).
-func MachDebugEnv(mach am.Api) {
+func MachDebugEnv(mach am.Api) error {
 	amDbgAddr := os.Getenv(amtele.EnvAmDbgAddr)
 	logLvl := am.EnvLogLevel("")
 	stdout := os.Getenv(EnvAmLogPrint) != ""
@@ -321,7 +324,7 @@ func MachDebugEnv(mach am.Api) {
 		amDbgAddr = amtele.DbgAddr
 	}
 
-	MachDebug(mach, amDbgAddr, logLvl, stdout, SemConfigEnv(false))
+	return MachDebug(mach, amDbgAddr, logLvl, stdout, SemConfigEnv(false))
 }
 
 // Healthcheck adds a state to a machine every 5 seconds, until the context is
@@ -909,9 +912,10 @@ func ArgsToLogMap(args interface{}, maxLen int) map[string]string {
 	return result
 }
 
-// ArgsToArgs converts [am.A] (arguments) into an overlapping [am.A]. Useful for
-// removing fields which can't be passed over RPC, and back. Both params should
-// be pointers to a struct and share at least one field.
+// ArgsToArgs converts a typed arguments struct into an overlapping typed
+// arguments struct. Useful for removing fields which can't be passed over RPC,
+// and back. Both params should be pointers to a struct and share at least one
+// field.
 func ArgsToArgs[T any](src interface{}, dest T) T {
 	// TODO test
 	srcVal := reflect.ValueOf(src).Elem()
@@ -923,6 +927,29 @@ func ArgsToArgs[T any](src interface{}, dest T) T {
 
 		if destField.IsValid() && destField.CanSet() {
 			destField.Set(srcField)
+		}
+	}
+
+	return dest
+}
+
+// ArgsFromMap takes an arguments map [am.A] and copies the fields into a typed
+// argument struct value. Useful for typed args via RPC.
+func ArgsFromMap[T any](args am.A, dest T) T {
+	// TODO support nesting: de-ref any non-nil pointers and re-ref
+	destVal := reflect.ValueOf(dest)
+
+	for field, val := range args {
+		destField := destVal.FieldByName(field)
+
+		if destField.IsValid() && destField.CanSet() {
+			valReflect := reflect.ValueOf(val)
+			if valReflect.Type().AssignableTo(destField.Type()) {
+				destField.Set(valReflect)
+			} else if valReflect.Type().ConvertibleTo(destField.Type()) {
+				destField.Set(valReflect.Convert(destField.Type()))
+			}
+			// TODO else, for struct{} and *struct{}, try to de-serialize JSON
 		}
 	}
 
@@ -1123,12 +1150,13 @@ func (c Cond) IsEmpty() bool {
 
 // TODO thread safety via atomics
 type StateLoop struct {
+	ResetInterval time.Duration
+	Threshold     int
+
 	loopState string
 	ctxStates am.S
 	mach      am.Api
 	ended     bool
-	interval  time.Duration
-	threshold int
 	check     func() bool
 
 	lastSTime uint64
@@ -1189,14 +1217,14 @@ func (l *StateLoop) Ok(ctx context.Context) bool {
 
 	// reset counters on a new interval window
 	sum := l.mach.Time(l.ctxStates).Sum(nil)
-	if time.Since(l.lastHTime) > l.interval {
+	if time.Since(l.lastHTime) > l.ResetInterval {
 		l.lastHTime = time.Now()
 		l.lastSTime = sum
 
 		return true
 
 		// check the current interval window
-	} else if int(sum) > l.threshold {
+	} else if int(sum) > l.Threshold {
 		err := fmt.Errorf("loop: threshold exceeded for %s/%s", l.mach.Id(),
 			l.loopState)
 		l.mach.AddErr(err, nil)
@@ -1218,7 +1246,8 @@ func (l *StateLoop) Ended() bool {
 
 // NewStateLoop helper creates a state loop guard bound to a specific state
 // (eg Heartbeat), preventing infinite loops. It monitors context, off states,
-// ticks of related "context states", and an optional check function.
+// ticks of related "context states", and an optional check function. We can
+// adjust Threshold and ResetInterval.
 // Not thread safe ATM.
 func NewStateLoop(
 	mach *am.Machine, loopState string, optCheck func() bool,
@@ -1234,7 +1263,7 @@ func NewStateLoop(
 	// collect dependencies of the loopState
 	ctxStates = append(ctxStates, schema[loopState].Require...)
 
-	// collect states adding the loop state
+	// collect states adding the loop state TODO auto states from the tx?
 	resolver := mach.Resolver()
 	inbound, _ := resolver.InboundRelationsOf(loopState)
 	for _, name := range inbound {
@@ -1245,16 +1274,15 @@ func NewStateLoop(
 	}
 
 	l := &StateLoop{
+		ResetInterval: time.Second,
+		Threshold:     500,
+
 		loopState:  loopState,
 		mach:       mach,
 		ctxStates:  ctxStates,
 		startHTime: time.Now(),
 		startSTime: mach.Time(ctxStates).Sum(nil),
-		// TODO config
-		interval: time.Second,
-		// TODO config
-		threshold: 500,
-		check:     optCheck,
+		check:      optCheck,
 	}
 	mach.Log(l.String())
 
@@ -1267,6 +1295,7 @@ func NewStateLoop(
 
 // ///// ///// /////
 
+// SlogToMachLogOpts complements SlogToMachLog.
 var SlogToMachLogOpts = &slog.HandlerOptions{
 	ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 		// omit these
@@ -1277,6 +1306,10 @@ var SlogToMachLogOpts = &slog.HandlerOptions{
 	},
 }
 
+// SlogToMachLog allows to use the machine logger as a slog sink.
+//
+//	a.loggerMach = slog.New(slog.NewTextHandler(
+//		amhelp.SlogToMachLog{Mach: mach}, amhelp.SlogToMachLogOpts))
 type SlogToMachLog struct {
 	Mach am.Api
 }
@@ -1315,12 +1348,23 @@ func TagValue(tags []string, key string) string {
 	return ""
 }
 
+// TagValueInt is like TagValue, but returns a formatted int.
+func TagValueInt(tags []string, key string) int {
+	v := TagValue(tags, key)
+	if v == "" {
+		return 0
+	}
+	i, _ := strconv.Atoi(v)
+	return i
+}
+
 // PrefixStates will prefix all state names with [prefix]. removeDups will skip
 // overlaps eg "FooFooName" will be "Foo".
 func PrefixStates(
 	schema am.Schema, prefix string, removeDups bool, optWhitelist,
 	optBlacklist S,
 ) am.Schema {
+	// TODO rename to SchemaPrefix
 	schema = am.CloneSchema(schema)
 
 	for name, s := range schema {
@@ -1546,12 +1590,20 @@ func SchemaHash(schema am.Schema) string {
 		ret += ";"
 	}
 
+	return Hash(ret, 6)
+}
+
+// Hash is a general hashing function. TODO move to pkg/machine
+func Hash(in string, l int) string {
 	hasher := md5.New()
-	hasher.Write([]byte(ret))
+	hasher.Write([]byte(in))
+	if l == 0 {
+		l = 6
+	}
 
 	hash := hex.EncodeToString(hasher.Sum(nil))
 	// short hash
-	return hash[:6]
+	return hash[:l]
 }
 
 // TODO MachHash(...)

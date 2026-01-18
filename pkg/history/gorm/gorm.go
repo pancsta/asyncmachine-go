@@ -123,8 +123,9 @@ type Time struct {
 	// MTime is a machine time for tracked states after this mutation.
 	MTimeTracked datatypes.JSON
 	// MTimeTrackedDiff is a machine time diff compared to the previous mutation
-	// (not a record).
+	// (not a record). TODO make optional? can be generated
 	MTimeTrackedDiff datatypes.JSON
+	// TODO MTimeTrackedDiffCompact arpc-like clock encoding
 	// MachTick is the machine tick at the time of this transition.
 	MachTick uint32
 
@@ -351,6 +352,7 @@ func (t *tracer) SchemaChange(machine am.Api, old am.Schema) {
 }
 
 func (t *tracer) TransitionEnd(tx *am.Transition) {
+	// TODO SPLIT
 	m := t.mem
 	if m.Ctx.Err() != nil {
 		_ = m.Dispose()
@@ -555,6 +557,8 @@ type Memory struct {
 	cacheDbIdxs      map[string]uint
 	tr               *tracer
 	lastRec          *Time
+	// TODO fix sqlite3: constraint failed:
+	//  UNIQUE constraint failed: times.id, times.machine_id
 	nextId           atomic.Uint64
 }
 
@@ -595,7 +599,7 @@ func NewMemory(
 		c.MaxRecords = 1000
 	}
 	if c.QueueBatch <= 0 {
-		c.QueueBatch = 1000
+		c.QueueBatch = 10
 	}
 	if c.SavePool <= 0 {
 		c.SavePool = 10
@@ -1055,8 +1059,8 @@ func (m *Memory) log(msg string, args ...any) {
 
 // ///// ///// /////
 
-// NewSqlite returns a new SQLite DB for GORM.
-func NewSqlite(name string, debug bool) (*gorm.DB, *sql.DB, error) {
+// NewDb returns a new SQLite DB for GORM.
+func NewDb(name string, debug bool) (*gorm.DB, *sql.DB, error) {
 	// TODO logger
 	if name == "" {
 		name = "amhist"

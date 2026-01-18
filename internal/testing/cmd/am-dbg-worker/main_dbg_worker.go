@@ -48,7 +48,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	amhelp.MachDebug(s.Mach, amDbgAddr, logLvl, false,
+	_ = amhelp.MachDebug(s.Mach, amDbgAddr, logLvl, false,
 		amhelp.SemConfigEnv(true))
 
 	// tear down

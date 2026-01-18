@@ -44,6 +44,7 @@ func (b *StatesBase) SetStateGroups(groups map[string][]int, order []string) {
 type States interface {
 	// Names returns the state names of the state machine.
 	Names() S
+	// TODO
 	StateGroups() (map[string][]int, []string)
 	SetNames(S)
 	SetStateGroups(map[string][]int, []string)
@@ -179,6 +180,17 @@ type AT struct {
 	// MutDone chan gets closed by the machine once it's processed. Can cause chan
 	// leaks when misused. Only for Can* checks.
 	CheckDone *CheckDone
+}
+
+type ATRpc struct {
+	Err          error
+	ErrTrace     string
+	Panic        *ExceptionArgsPanic
+	TargetStates S
+	CalledStates S
+	TimeBefore   Time
+	TimeAfter    Time
+	Event        *Event
 }
 
 type CheckDone struct {
