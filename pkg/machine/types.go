@@ -606,7 +606,7 @@ const (
 
 type (
 	HandlerError  func(mach *Machine, err error)
-	HandlerChange func(mach *Machine, err error)
+	HandlerChange func(mach *Machine, before, after Time)
 )
 
 // Options

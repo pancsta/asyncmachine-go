@@ -145,6 +145,7 @@ type Machine struct {
 	breakpointsMx sync.Mutex
 	breakpoints   []*breakpoint
 	onError       atomic.Pointer[HandlerError]
+	onChange       atomic.Pointer[HandlerChange]
 }
 
 // NewCommon creates a new Machine instance with all the common options set.
@@ -3340,8 +3341,7 @@ func (m *Machine) Backoff() bool {
 // OnChange is the most basic state-change handler, useful for machines without
 // any handlers.
 func (m *Machine) OnChange(fn HandlerChange) {
-	// TODO #262
-	panic("OnChange not implemented")
+	m.onChange.Store(&fn)
 }
 
 func (m *Machine) SetGroups(groups any, optStates States) {
