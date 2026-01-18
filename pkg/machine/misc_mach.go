@@ -444,7 +444,7 @@ type LogEntry struct {
 	Text  string
 }
 
-// LogLevel enum
+// LogLevel defines the level of details in the produced log (0-5).
 type LogLevel int
 
 const (
@@ -744,10 +744,11 @@ var LogArgs = []string{"name", "id", "port", "addr", "err"}
 // representation.
 var LogArgsMaxLen = 20
 
-// NewArgsMapper returns a matcher function for LogArgs. Useful for debugging
-// untyped argument maps.
+// NewArgsMapper returns a matcher function for [Opts.LogArgs]. Useful for
+// debugging untyped argument maps. Usually [names] extend defaults from
+// [LogArgs].
 //
-// maxLen: maximum length of the arg's string representation). Default to
+// maxLen: maximum length of the arg's string representation). Defaults to
 // LogArgsMaxLen,
 func NewArgsMapper(names []string, maxLen int) func(args A) map[string]string {
 	if maxLen == 0 {

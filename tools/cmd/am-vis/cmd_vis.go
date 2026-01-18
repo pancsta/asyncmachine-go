@@ -87,7 +87,7 @@ func (Args) Description() string {
 
 // nolint:lll
 type RenderDumpCmd struct {
-	DumpFilename string `arg:"-f,--dump-file" help:"Input dbg dump file" default:"am-dbg-dump.gob.br"`
+	DumpFilename string `arg:"-f,--dump-file,positional" help:"Input dbg dump file" default:"am-dbg-dump.gob.br"`
 	MachUrl      string `arg:"positional"`
 }
 

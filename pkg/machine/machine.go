@@ -48,7 +48,7 @@ type Machine struct {
 	// Requires an ExceptionHandler binding and [Machine.PanicToException] set.
 	LogStackTrace bool
 	// If true, the machine will catch panic and trigger the [StateException]
-	// state. Default: true.
+	// state. Default: true. Can be disabled via AM_DEBUG=1.
 	PanicToException bool
 	// DisposeTimeout specifies the duration to wait for the queue to drain during
 	// disposal. Default 1s.
@@ -145,7 +145,7 @@ type Machine struct {
 	breakpointsMx sync.Mutex
 	breakpoints   []*breakpoint
 	onError       atomic.Pointer[HandlerError]
-	onChange       atomic.Pointer[HandlerChange]
+	onChange      atomic.Pointer[HandlerChange]
 }
 
 // NewCommon creates a new Machine instance with all the common options set.
@@ -929,9 +929,8 @@ func (m *Machine) AddErrState(state string, err error, args A) Result {
 		ErrTrace: trace,
 	}
 
-	// error handler
-	onErr := m.onError.Load()
-	if onErr != nil {
+	// OnError handler
+	if onErr := m.onError.Load(); onErr != nil {
 		(*onErr)(m, err)
 	}
 
@@ -939,6 +938,9 @@ func (m *Machine) AddErrState(state string, err error, args A) Result {
 	return m.Add(S{state, StateException}, PassMerge(args, argsT))
 }
 
+// CanAdd checks if [states] can be added and returns Executed or
+// [AT.CheckDone] if a dry run mutation passes. Useful for reducing failed
+// negotiations.
 func (m *Machine) CanAdd(states S, args A) Result {
 	if m.disposing.Load() || m.Backoff() {
 		return Canceled
@@ -952,10 +954,14 @@ func (m *Machine) CanAdd(states S, args A) Result {
 	})
 }
 
+// CanAdd1 is [Machine.CanAdd] for a single state.
 func (m *Machine) CanAdd1(state string, args A) Result {
 	return m.CanAdd(S{state}, args)
 }
 
+// CanRemove checks if [states] can be removed and returns Executed or
+// [AT.CheckDone] if a dry run mutation passes. Useful for reducing failed
+// negotiations.
 func (m *Machine) CanRemove(states S, args A) Result {
 	if m.disposing.Load() || m.Backoff() {
 		return Canceled
@@ -969,6 +975,7 @@ func (m *Machine) CanRemove(states S, args A) Result {
 	})
 }
 
+// CanRemove1 is [Machine.CanRemove] for a single state.
 func (m *Machine) CanRemove1(state string, args A) Result {
 	return m.CanRemove(S{state}, nil)
 }
@@ -2588,8 +2595,8 @@ func (m *Machine) IsQueued(mutType MutationType, states S,
 	return false, 0, 0
 }
 
-// IsQueuedAbove... N times. This method allows for rate-limiting of
-// mutations for specific states and threshold.
+// IsQueuedAbove ... N times. This method allows for rate-limiting of
+// mutations for specific states and a threshold.
 func (m *Machine) IsQueuedAbove(threshold int, mutType MutationType,
 	states S, withoutArgsOnly bool, statesStrictEqual bool, minQueueTick uint64,
 ) bool {
@@ -2988,7 +2995,7 @@ func (m *Machine) Schema() Schema {
 	m.schemaMx.RLock()
 	defer m.schemaMx.RUnlock()
 
-	return maps.Clone(m.schema)
+	return CloneSchema(m.schema)
 }
 
 // SchemaVer return the current version of the schema.
@@ -3344,7 +3351,11 @@ func (m *Machine) OnChange(fn HandlerChange) {
 	m.onChange.Store(&fn)
 }
 
+// SetGroups organizes the schema into a tree using schema-v2 structs.
 func (m *Machine) SetGroups(groups any, optStates States) {
+	// TODO rename to SchemaOrganize(optGroups, optStates, ...)
+	// TODO call VerifyStates from optStates.Names()
+
 	m.schemaMx.Lock()
 	defer m.schemaMx.Unlock()
 	list := map[string][]int{}
@@ -3352,20 +3363,22 @@ func (m *Machine) SetGroups(groups any, optStates States) {
 	index := m.stateNames
 
 	// add all the groups
-	// TODO recursive for inherited groups
-	val := reflect.ValueOf(groups)
-	typ := val.Type()
-	for i := 0; i < val.NumField(); i++ {
-		field := typ.Field(i)
-		kind := field.Type.Kind()
-		if kind != reflect.Slice {
-			continue
-		}
-		name := field.Name
-		value := val.Field(i).Interface()
-		if states, ok := value.(S); ok {
-			list[name] = StatesToIndex(index, states)
-			order = append(order, name)
+	if groups != nil {
+		// TODO recursive for inherited groups
+		val := reflect.ValueOf(groups)
+		typ := val.Type()
+		for i := 0; i < val.NumField(); i++ {
+			field := typ.Field(i)
+			kind := field.Type.Kind()
+			if kind != reflect.Slice {
+				continue
+			}
+			name := field.Name
+			value := val.Field(i).Interface()
+			if states, ok := value.(S); ok {
+				list[name] = StatesToIndex(index, states)
+				order = append(order, name)
+			}
 		}
 	}
 
@@ -3384,7 +3397,9 @@ func (m *Machine) SetGroups(groups any, optStates States) {
 	m.groupsOrder = order
 }
 
+// SetGroupsString is like SetGroups, but work with the schema-v1 format.
 func (m *Machine) SetGroupsString(groups map[string]S, order []string) {
+	// TODO rename to SchemaOrganizeSimple(optGroups, optStates, ...)
 	m.schemaMx.Lock()
 	defer m.schemaMx.Unlock()
 	list := map[string][]int{}
@@ -3398,6 +3413,8 @@ func (m *Machine) SetGroupsString(groups map[string]S, order []string) {
 }
 
 func (m *Machine) Groups() (map[string][]int, []string) {
+	// TODO rename to SchemaTree(optGroups, optStates, ...)
+	//  return a CLEAR tree (groups, inherited) per each mach
 	m.schemaMx.RLock()
 	defer m.schemaMx.RUnlock()
 

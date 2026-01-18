@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/orsinium-labs/enum"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
@@ -162,6 +164,17 @@ type BaseConfig struct {
 
 // Config for the in-process memory.
 type Config = BaseConfig
+
+// Backend enumerates all available asyncmachine history backends.
+type Backend enum.Member[string]
+
+var (
+	BackendMemory = Backend{"memory"}
+	BackendSqlite = Backend{"sqlite"}
+	BackendBbolt  = Backend{"bbolt"}
+
+	BackendEnum = enum.New(BackendMemory, BackendSqlite, BackendBbolt)
+)
 
 // ///// ///// /////
 

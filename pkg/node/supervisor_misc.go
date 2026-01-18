@@ -57,7 +57,7 @@ func newBootstrap(ctx context.Context, super *Supervisor) (*bootstrap, error) {
 
 	// prefix the random ID
 	b.Mach = mach
-	amhelp.MachDebugEnv(mach)
+	_ = amhelp.MachDebugEnv(mach)
 
 	return b, nil
 }
@@ -73,7 +73,7 @@ func (b *bootstrap) StartState(e *am.Event) {
 		b.Mach.AddErrState(ssB.ErrNetwork, err, nil)
 		return
 	}
-	amhelp.MachDebugEnv(b.server.Mach)
+	_ = amhelp.MachDebugEnv(b.server.Mach)
 	err = ampipe.BindErr(b.server.Mach, b.Mach, ssB.ErrNetwork)
 	if err != nil {
 		b.Mach.AddErr(err, nil)

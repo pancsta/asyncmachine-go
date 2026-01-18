@@ -34,7 +34,7 @@ type ClientStatesDef struct {
 	SuperDisconnecting string
 	// SuperReady - Client is fully connected to the Supervisor.
 	SuperReady string
-	// WorkerRequested - Client has requested a Worker from the Supervisor.
+	// WorkerRequested - Client has requested a NetMach from the Supervisor.
 	WorkerRequested string
 
 	// inherit from BasicStatesDef

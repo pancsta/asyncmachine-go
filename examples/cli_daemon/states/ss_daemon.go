@@ -16,6 +16,9 @@ type DaemonStatesDef struct {
 	OpFoo1 string
 	OpBar2 string
 
+	// Cmd send a cobra command to the daemon. TODO
+	Cmd string
+
 	// inherit from BasicStatesDef
 	*ss.BasicStatesDef
 	// inherit from DisposedStatesDef
@@ -46,6 +49,7 @@ var DaemonSchema = SchemaMerge(
 			Require: S{ssD.Start},
 			Remove:  sgD.Ops,
 		},
+		ssD.Cmd: {},
 	})
 
 // EXPORTS AND GROUPS

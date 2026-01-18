@@ -6,7 +6,7 @@ import (
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
-// WorkerStatesDef contains all the states of the Worker state machine.
+// WorkerStatesDef contains all the states of the NetMach state machine.
 type WorkerStatesDef struct {
 	*am.StatesBase
 
@@ -22,7 +22,7 @@ type WorkerStatesDef struct {
 	*ssrpc.NetSourceStatesDef
 }
 
-// WorkerGroupsDef contains all the state groups of the Worker state machine.
+// WorkerGroupsDef contains all the state groups of the NetMach state machine.
 type WorkerGroupsDef struct {
 
 	// Values group contains mutually exclusive values.
@@ -66,9 +66,9 @@ var (
 		Values: S{ws.Value1, ws.Value2, ws.Value3},
 	})
 
-	// WorkerStates contains all the states for the Worker machine.
+	// WorkerStates contains all the states for the NetMach machine.
 	WorkerStates = ws
 
-	// WorkerGroups contains all the state groups for the Worker machine.
+	// WorkerGroups contains all the state groups for the NetMach machine.
 	WorkerGroups = wg
 )

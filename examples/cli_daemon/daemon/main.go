@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
 	"time"
 
 	"github.com/alexflint/go-arg"
@@ -83,7 +85,23 @@ func newDaemon(ctx context.Context, args *Args) (*daemon, error) {
 	if err != nil {
 		return nil, err
 	}
+	// TODO print when ready
 	fmt.Printf("listening on %s\n", args.Addr)
+
+	// REPL on port+1
+	host, port, _ := net.SplitHostPort(args.Addr)
+	portNum, _ := strconv.Atoi(port)
+	addrRepl := host + ":" + strconv.Itoa(portNum+1)
+	err = arpc.MachRepl(mach, addrRepl, &arpc.ReplOpts{
+		AddrDir:    ".",
+		ArgsPrefix: types.APrefix,
+		Args:       &types.ARpc{},
+	})
+	if err != nil {
+		return nil, err
+	}
+	// TODO print when ready
+	fmt.Printf("REPL listening on %s\n", addrRepl)
 
 	return d, nil
 }

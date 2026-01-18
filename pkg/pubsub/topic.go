@@ -290,7 +290,7 @@ func (t *Topic) StartState(e *am.Event) {
 		tags := t.Mach.Tags()
 		tags = append(tags, "peer:"+pid)
 		t.Mach.SetTags(tags)
-		amhelp.MachDebugEnv(t.Mach)
+		_ = amhelp.MachDebugEnv(t.Mach)
 
 		// resources := relayv2.DefaultResources()
 		// resources.MaxReservations = 256
@@ -837,7 +837,7 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 			if t.DbgNetMachs {
 				// DEBUG
 				if t.peerName(peerId) == "P5" {
-					amhelp.MachDebugEnv(netMach)
+					_ = amhelp.MachDebugEnv(netMach)
 				}
 			}
 

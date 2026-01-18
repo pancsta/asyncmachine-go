@@ -6,7 +6,12 @@ import (
 	"strconv"
 
 	"github.com/nkall/compactnumber"
+	"github.com/pancsta/asyncmachine-go/scripts/shared"
 )
+
+func init() {
+	shared.GoToRootDir()
+}
 
 func main() {
 	var input string

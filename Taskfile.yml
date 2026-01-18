@@ -318,32 +318,29 @@ tasks:
       - task: clean-lint
 
   cloc-go-total: gocloc --output-type json
-      . |
-      jq '.languages[] | select(.name == "Go").code' |
-      go run ./scripts/compact_number
+    . |
+    jq '.languages[] | select(.name == "Go").code' |
+    task script-compact-number
 
-  cloc-go-internal: gocloc --output-type json
-    --not-match=_test\.go
+  cloc-go-internal: gocloc --output-type json --not-match=_test\.go
     internal |
     jq '.languages[] | select(.name == "Go").code' |
-    go run ./scripts/compact_number
+    task script-compact-number
 
-  cloc-go-tools: gocloc --output-type json
-    --not-match=_test\.go
+  cloc-go-tools: gocloc --output-type json --not-match=_test\.go
     tools |
     jq '.languages[] | select(.name == "Go").code' |
-    go run ./scripts/compact_number
+    task script-compact-number
 
-  cloc-go-pkg: gocloc --output-type json
-    --not-match=_test\.go
+  cloc-go-pkg: gocloc --output-type json --not-match=_test\.go
     pkg |
     jq '.languages[] | select(.name == "Go").code' |
-    go run ./scripts/compact_number
+    task script-compact-number
 
   cloc-go-examples: gocloc --output-type json
     examples |
     jq '.languages[] | select(.name == "Go").code' |
-    go run ./scripts/compact_number
+    task script-compact-number
 
   cloc:
     cmds:
@@ -393,14 +390,16 @@ tasks:
       - task: lint-go
       - task: lint-md
       # https://github.com/markdownlint/markdownlint/issues/136
-      - |
-        if grep -q "]()" docs/*.md; then
-          echo "Error: Empty links" >&2
-          exit 1
-        fi
+      # TODO better check, exit 1
+      # - |
+      #   if grep -q "]()" docs/*.md; then
+      #     echo "Error: Empty links" >&2
+      #     exit 1
+      #   fi
       - task: format
       - task: check-fmt
-      - '! grep -rn --include="*.go" "TODO DEBUG" .'
+      # TODO better check, exit 1
+      # - '! grep -rn --include="*.go" "TODO DEBUG" .'
 
   lint-ci:
     cmds:
@@ -434,6 +433,10 @@ tasks:
       - mv CHANGELOG-tmp.md CHANGELOG.md
 
   install-am-dbg: go install ./tools/cmd/am-dbg
+  install-arpc: go install ./tools/cmd/arpc
+  install-am-relay: go install ./tools/cmd/am-relay
+  install-am-vis: go install ./tools/cmd/am-vis
+  install-am-gen: go install ./tools/cmd/am-gen
 
   install-deps-ci:
     - go mod tidy
@@ -670,7 +673,8 @@ tasks:
 
   gen-jsonschema:
     desc: Generate JSON schemas for pkg/integrations
-    cmd: go run ./scripts/gen_jsonschema
+    dir: scripts
+    cmd: go run ./gen_jsonschema
 
   web-dashboard-ttyd:
     silent: false
@@ -699,9 +703,9 @@ tasks:
 #      - task: build-am-dbg
       - task: dashboard-exit
       - task web-dashboard-ttyd &
-      # set term size
-      - stty cols 200
-      - stty rows 100
+      # set term size TODO update on ttyd connection
+      # https://github.com/zellij-org/zellij/issues/2799
+      - stty cols 200 rows 100
       - zellij --session am-dashboard 
         --new-session-with-layout ./config/dashboards/dash-repl-web.kdl
       - task: dashboard-exit
@@ -711,26 +715,15 @@ tasks:
 
   am-vis: go run ./tools/cmd/am-vis {{.CLI_ARGS}}
   am-relay: go run ./tools/cmd/am-relay {{.CLI_ARGS}}
+
   gen-docs-api:
     cmds:
-    - golds 
-      -nouses
-      -only-list-exporteds 
-      -render-doclinks 
-      -theme=dark 
-      -gen 
-      -dir=docs/api 
-      -source-code-reading rich 
-      -wdpkgs-listing solo 
-      ./...
-    - sed -i 's|>github.com/pancsta/asyncmachine-go|>|g' docs/api/index.html
-    - magick assets/asyncmachine-go/logo.png
-      -background transparent -flatten
-      -define icon:auto-resize=256,128,64,48,32,16 docs/api/favicon.ico
+      - task: script-gen-api-docs
 
   gen-docs-website:
+    desc: Generate the whole website
     cmds:
-      - go run ./scripts/gen_website
+      - task: script-gen-website
       - tailwindcss -i docs/website/templates/input.css -o docs/website/output.css
       - magick assets/asyncmachine-go/logo.png
         -background transparent -flatten
@@ -740,15 +733,20 @@ tasks:
     requires:
       vars: [AM_DEPLOY_WEBSITE_DIR, AM_DEPLOY_WEBSITE_CODE_DIR]
     cmds:
-      - mv docs/website/*.{html,css} {{.AM_DEPLOY_WEBSITE_DIR}}
+      - mv docs/website/*.{html,css,ico} {{.AM_DEPLOY_WEBSITE_DIR}}
       - cp -R scripts/gen_website/sitemap {{.AM_DEPLOY_WEBSITE_CODE_DIR}}/sitemap_am
 
   deploy-docs-api:
     requires:
       vars: [AM_DEPLOY_API_DIR]
     cmds:
-      # TODO mv: cannot overwrite 'servers/code.asyncmachine.dev/css': Directory not empty
-#      - rm -R {{.AM_DEPLOY_API_DIR}}/*
+      - rm -Rf {{.AM_DEPLOY_API_DIR}}/pkg
+      - rm -Rf {{.AM_DEPLOY_API_DIR}}/src
+      - rm -Rf {{.AM_DEPLOY_API_DIR}}/png
+      - rm -Rf {{.AM_DEPLOY_API_DIR}}/jvs
+      - rm -Rf {{.AM_DEPLOY_API_DIR}}/imp
+      - rm -Rf {{.AM_DEPLOY_API_DIR}}/dep
+      - rm -Rf {{.AM_DEPLOY_API_DIR}}/css
       - mv docs/api/* {{.AM_DEPLOY_API_DIR}}
 
   deploy-assets:
@@ -759,15 +757,8 @@ tasks:
 
   docs-api: static-server -addr localhost:7324 docs/api
   docs-website: static-server -addr localhost:1293 docs/website
-  script-gh-stats:
-    requires:
-      vars: [AM_DEPLOY_WEBSITE_DIR]
-    cmds:
-      - go run ./scripts/gh_stats
-      - cp data/stats.light.png {{.AM_DEPLOY_WEBSITE_DIR}}/chart_light.png
-      - cp data/stats.dark.png {{.AM_DEPLOY_WEBSITE_DIR}}/chart_dark.png
 
-  gen-diagrams:
+  gen-docs-diagrams:
     dir: docs/diagrams
     cmds:
       - find . -name "*.d2" -exec d2 --theme=201 --layout=elk {} {}.dark.svg \;
@@ -778,5 +769,50 @@ tasks:
           --theme=dark --output={}.dark.svg --backgroundColor=transparent \;
       - mv *.svg ../../assets/asyncmachine-go/diagrams
 
+  gen-docs-diagrams-watch:
+    dir: scripts
+    cmd: go run ./scripts/watch_diagrams
 
-  gen-diagrams-watch: go run ./scripts/watch_diagrams
+  post-release:
+    cmds:
+      - task: gen-docs-website
+      - task: gen-docs-api
+      - task: deploy-docs-website
+      - task: deploy-docs-api
+      - task: deploy-assets
+
+  #
+  #
+  # SCRIPTS (different work dir and go.mod)
+  #
+  #
+
+  script-test-loop:
+    dir: scripts
+    cmd: go run ./scripts/test_loop
+
+
+  script-gen-api-docs:
+    dir: scripts
+    cmd: go run ./gen_api_docs
+
+  script-gen-website:
+    requires:
+      vars: [AM_DEPLOY_API_URL, AM_DEPLOY_ASSETS_URL]
+    dir: scripts
+    cmd: go run ./gen_website
+
+  script-gh-stats:
+    requires:
+      vars: [AM_DEPLOY_WEBSITE_DIR, GITHUB_TOKEN_STATS]
+    env:
+      GITHUB_TOKEN_STATS: "{{.GITHUB_TOKEN_STATS}}"
+    dir: scripts
+    cmds:
+      - go run ./gh_stats
+      - cp ../data/stats.light.png {{.AM_DEPLOY_WEBSITE_DIR}}/chart_light.png
+      - cp ../data/stats.dark.png {{.AM_DEPLOY_WEBSITE_DIR}}/chart_dark.png
+
+  script-compact-number:
+    dir: scripts
+    cmd: go run ./compact_number

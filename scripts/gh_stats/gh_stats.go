@@ -16,7 +16,7 @@ import (
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/google/go-github/v66/github"
-	"github.com/joho/godotenv"
+	"github.com/pancsta/asyncmachine-go/scripts/shared"
 	"golang.org/x/oauth2"
 )
 
@@ -27,7 +27,7 @@ const (
 	repo        = "asyncmachine-go" // e.g. "go-github"
 )
 
-var token = ""
+var token = os.Getenv("GITHUB_TOKEN_STATS")
 
 // DailyStat represents one row in our CSV
 type DailyStat struct {
@@ -40,8 +40,11 @@ type DailyStat struct {
 }
 
 func init() {
-	godotenv.Load()
-	token = os.Getenv("GITHUB_TOKEN_STATS")
+	shared.GoToRootDir()
+
+	if token == "" {
+		panic("GITHUB_TOKEN_STATS required")
+	}
 }
 
 func main() {
@@ -80,6 +83,11 @@ func getStats(ctx context.Context) {
 	} else {
 		for _, v := range views.Views {
 			dateStr := v.GetTimestamp().Format("2006-01-02")
+			// skip today
+			if dateStr == time.Now().Format("2006-01-02") {
+				continue
+			}
+
 			entry := getOrCreate(statsMap, dateStr)
 			entry.Views = v.GetCount()
 			entry.UniqueViews = v.GetUniques()
@@ -94,6 +102,11 @@ func getStats(ctx context.Context) {
 	} else {
 		for _, c := range clones.Clones {
 			dateStr := c.GetTimestamp().Format("2006-01-02")
+			// skip today
+			if dateStr == time.Now().Format("2006-01-02") {
+				continue
+			}
+
 			entry := getOrCreate(statsMap, dateStr)
 			entry.Clones = c.GetCount()
 			entry.UniqueClones = c.GetUniques()
@@ -102,7 +115,7 @@ func getStats(ctx context.Context) {
 
 	// 5. Fetch Release Downloads (Snapshot)
 	// TODO wrong number (min 2 per each)
-	totalDownloads := 0
+	// totalDownloads := 0
 	// We assign the current total of *all* releases to "Today's" entry
 	// fmt.Println("Fetching Release Downloads...")
 	// opts := &github.ListOptions{PerPage: 100}
@@ -124,9 +137,9 @@ func getStats(ctx context.Context) {
 	// }
 
 	// Update Today's record with the cumulative download count
-	todayStr := time.Now().Format("2006-01-02")
-	todayEntry := getOrCreate(statsMap, todayStr)
-	todayEntry.ReleaseDownloads = totalDownloads
+	// todayStr := time.Now().Format("2006-01-02")
+	// todayEntry := getOrCreate(statsMap, todayStr)
+	// todayEntry.ReleaseDownloads = totalDownloads
 
 	// 6. Save merged data back to CSV
 	if err := saveCSV(csvFilename, statsMap); err != nil {

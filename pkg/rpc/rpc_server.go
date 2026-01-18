@@ -167,7 +167,7 @@ func NewServer(
 	s.Mach = mach
 	// optional env debug
 	if os.Getenv(EnvAmRpcDbg) != "" {
-		amhelp.MachDebugEnv(mach)
+		_ = amhelp.MachDebugEnv(mach)
 	}
 
 	// bind to source via Tracer API (inactive until activated)

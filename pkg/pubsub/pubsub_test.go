@@ -702,7 +702,7 @@ func RandMach(
 	}
 	// DEBUG
 	if strings.HasPrefix(suffix, "p5") {
-		amhelp.MachDebugEnv(m)
+		_ = amhelp.MachDebugEnv(m)
 		// amtele.TransitionsToDbg(m, "")
 	}
 	return m

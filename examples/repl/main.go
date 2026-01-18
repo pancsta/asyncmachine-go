@@ -38,7 +38,7 @@ func main() {
 
 	// workers
 	for i := range 3 {
-		worker, err := newWorker(ctx, i)
+		worker, err := newStateSource(ctx, i)
 		if err != nil {
 			log.Print(err)
 		}
@@ -54,45 +54,48 @@ func main() {
 	fmt.Println("bye")
 }
 
-func newWorker(ctx context.Context, num int) (*am.Machine, error) {
+func newStateSource(ctx context.Context, num int) (*am.Machine, error) {
 	// init
-
-	handlers := &workerHandlers{}
+	handlers := &handlers{}
 	id := fmt.Sprintf("worker%d", num)
-	worker, err := am.NewCommon(ctx, id, states.ExampleSchema,
+	source, err := am.NewCommon(ctx, id, states.ExampleSchema,
 		ss.Names(), handlers, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	handlers.Mach = worker
+	handlers.Mach = source
 
 	// telemetry
 
-	amhelp.MachDebugEnv(worker)
+	amhelp.MachDebugEnv(source)
 	// worker.SemLogger().SetArgsMapper(am.NewArgsMapper([]string{"log"}, 0))
-	worker.SemLogger().SetLevel(am.LogChanges)
-	// start a REPL aRPC server, create an addr file
-	arpc.MachRepl(worker, "", "tmp", nil, nil)
+	source.SemLogger().SetLevel(am.LogChanges)
+	source.SetGroups(states.ExampleGroups, states.ExampleStates)
+	// start a REPL aRPC server, create an addr file of a rand addr
+	err = arpc.MachRepl(source, "", &arpc.ReplOpts{AddrDir: "tmp"})
+	if err != nil {
+		return nil, err
+	}
 
-	return worker, nil
+	return source, nil
 }
 
-type workerHandlers struct {
+type handlers struct {
 	*am.ExceptionHandler
 	Mach *am.Machine
 }
 
-func (h *workerHandlers) FooState(e *am.Event) {
+func (h *handlers) FooState(e *am.Event) {
 	fmt.Println("FooState")
 	h.Mach.Log("FooState")
 }
 
-func (h *workerHandlers) BarState(e *am.Event) {
+func (h *handlers) BarState(e *am.Event) {
 	fmt.Println("BarState")
 	h.Mach.Log("BarState")
 }
 
-func (h *workerHandlers) BazState(e *am.Event) {
+func (h *handlers) BazState(e *am.Event) {
 	fmt.Println("BazState")
 	h.Mach.Log("BarState")
 }

@@ -7,10 +7,15 @@ import (
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/pancsta/asyncmachine-go/scripts/shared"
 )
 
 var dir = "docs/diagrams"
 var target = "assets/asyncmachine-go/diagrams/"
+
+func init() {
+	shared.GoToRootDir()
+}
 
 func main() {
 	// 1. Create a new watcher

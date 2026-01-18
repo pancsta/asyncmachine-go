@@ -96,10 +96,10 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 	}
 	handlers.Mach = mach
 
+	// telemetry
+
 	// inject groups and infer parents tree
 	mach.SetGroups(states.MachTemplateGroups, states.MachTemplateStates)
-
-	// telemetry
 
 	mach.SemLogger().SetLevel(am.LogChanges)
 	mach.SemLogger().SetArgsMapper(LogArgs)

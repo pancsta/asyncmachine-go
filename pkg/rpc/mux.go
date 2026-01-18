@@ -56,7 +56,6 @@ type Mux struct {
 func NewMux(
 	ctx context.Context, name string, newServerFn MuxNewServerFn, opts *MuxOpts,
 ) (*Mux, error) {
-
 	if opts == nil {
 		opts = &MuxOpts{}
 	}
@@ -78,7 +77,7 @@ func NewMux(
 	d.Mach = mach
 	// optional env debug
 	if os.Getenv(EnvAmRpcDbg) != "" {
-		amhelp.MachDebugEnv(mach)
+		_ = amhelp.MachDebugEnv(mach)
 	}
 
 	return d, nil

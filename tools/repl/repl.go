@@ -822,7 +822,7 @@ func (r *Repl) newRpcClient(addr, idSuffix string) (*rpc.Client, error) {
 
 	// telemetry
 	if r.DbgAddr != "" {
-		amhelp.MachDebug(client.Mach, r.DbgAddr, r.Mach.SemLogger().Level(),
+		_ = amhelp.MachDebug(client.Mach, r.DbgAddr, r.Mach.SemLogger().Level(),
 			false, amhelp.SemConfigEnv(true))
 		client.LogEnabled = true
 	}

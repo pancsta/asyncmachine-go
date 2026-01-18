@@ -41,10 +41,11 @@ func StatesEqual(states1 S, states2 S) bool {
 }
 
 // CloneSchema deep clones the states struct and returns a copy.
-func CloneSchema(stateStruct Schema) Schema {
+func CloneSchema(schema Schema) Schema {
+	// TODO rename to SchemaClone
 	ret := make(Schema)
 
-	for name, state := range stateStruct {
+	for name, state := range schema {
 		ret[name] = cloneState(state)
 	}
 
@@ -208,6 +209,7 @@ func SchemaMerge(schemas ...Schema) Schema {
 
 	ret := make(Schema)
 	for i := 0; i < l; i++ {
+		// TODO clone?
 		maps.Copy(ret, schemas[i])
 	}
 
