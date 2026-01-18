@@ -24,6 +24,14 @@ jobs:
           go-version: ${{ matrix.go-version }}
 
       # Cache
+      - name: Fix Permissions for Go Cache # TODO still errs
+        continue-on-error: true
+        run: |
+          chmod -R 0755 \
+            ~/go/pkg/mod \
+            ~/.cache/go-build \
+            ~/.cache/golangci-lint \
+            ~/.cache/buf/ || true
       - name: Clear cache directory first before trying to restore from cache
         run: sudo rm -rf $(go env GOMODCACHE) && sudo rm -rf $(go env GOCACHE)
         shell: bash

@@ -273,7 +273,9 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 
 		// to assets
 		if strings.HasPrefix(href, ghAssets) {
-			s.SetAttr("href", strings.Replace(href, ghAssets, assetsUrl, 1))
+			s.SetAttr("href", strings.Replace(strings.Replace(
+				href, "?raw=true", "", 1),
+				ghAssets, assetsUrl, 1))
 			// fmt.Printf("code link %s\n", href)
 			return
 		}
