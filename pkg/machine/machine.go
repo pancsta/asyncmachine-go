@@ -3010,10 +3010,9 @@ func (m *Machine) SetSchema(newSchema Schema, names S) error {
 	// validate
 	if len(newSchema) <= len(m.schema) {
 		m.schemaMx.Unlock()
-		return fmt.Errorf("%w: new schema has to be longer than the old one",
-			ErrSchema)
+		return fmt.Errorf("%w: new schema too short (> %d states)",
+			ErrSchema, len(m.schema))
 	}
-	names = slicesUniq(names)
 	if len(newSchema) != len(names) {
 		m.schemaMx.Unlock()
 		return fmt.Errorf("%w: new schema has to be the same length as"+
@@ -3022,11 +3021,12 @@ func (m *Machine) SetSchema(newSchema Schema, names S) error {
 
 	// replace and unlock
 	old := m.schema
-	var err error
-	if m.schema, err = ParseSchema(newSchema); err != nil {
+	parsed, err := ParseSchema(newSchema)
+	if err != nil {
 		m.schemaMx.Unlock()
 		return err
 	}
+	m.schema = parsed
 	if err = m.verifyStates(names); err != nil {
 		m.schemaMx.Unlock()
 		return err
