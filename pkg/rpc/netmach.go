@@ -336,8 +336,12 @@ func (m *NetworkMachine) AddErrState(
 	// build args
 	argsT := &am.AT{Err: err}
 
+	errStates := am.S{state, am.StateException}
 	// mark errors added locally with ErrOnClient
-	errStates := am.S{ssNS.ErrOnClient, state, am.StateException}
+	if m.Has1(ssNS.ErrOnClient) {
+		errStates = append(errStates, ssNS.ErrOnClient)
+	}
+
 	return m.Add(errStates, am.PassMerge(args, argsT))
 }
 
@@ -445,8 +449,12 @@ func (m *NetworkMachine) EvAddErrState(
 	// build args
 	argsT := &am.AT{Err: err}
 
+	errStates := am.S{state, am.StateException}
 	// mark errors added locally with ErrOnClient
-	errStates := am.S{ssNS.ErrOnClient, state, am.StateException}
+	if m.Has1(ssNS.ErrOnClient) {
+		errStates = append(errStates, ssNS.ErrOnClient)
+	}
+
 	return m.EvAdd(event, errStates, am.PassMerge(args, argsT))
 }
 

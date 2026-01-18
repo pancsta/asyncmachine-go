@@ -14,7 +14,6 @@ import (
 	"github.com/reeflective/console"
 	"github.com/reeflective/readline/inputrc"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -40,8 +39,9 @@ type Repl struct {
 	DbgAddr string
 
 	// TODO avoid empty entries
-	rpcClients []*rpc.Client
-	lastMsg    string
+	rpcClients   []*rpc.Client
+	lastMsg      string
+	selectedMach string
 }
 
 func New(ctx context.Context, id string) (*Repl, error) {
@@ -58,6 +58,7 @@ func New(ctx context.Context, id string) (*Repl, error) {
 	if err != nil {
 		return nil, err
 	}
+	mach.SetGroups(states.ReplGroups, ss)
 
 	// add Disposed handlers
 	disposed := ssam.DisposedHandlers{}
@@ -598,6 +599,7 @@ func (r *Repl) ConnectedFullyEnter(e *am.Event) bool {
 
 func (r *Repl) ConnectedFullyExit(e *am.Event) bool {
 	// exit if going to Disconnecting / Disconnected
+	// TODO use TimeIndex
 	t := e.Transition().TargetStates()
 	mut := e.Mutation()
 	iStart := e.Machine().Index1(ss.Start)
@@ -757,8 +759,8 @@ func (r *Repl) ListMachines(filters *ListFilters) ([]*rpc.Client, error) {
 	return <-rpcCh, nil
 }
 
-// Worker returns an RPC worker with a given ID, or nil.
-func (r *Repl) Worker(machId string) *rpc.NetworkMachine {
+// NetMach returns an RPC worker with a given ID, or nil.
+func (r *Repl) NetMach(machId string) *rpc.NetworkMachine {
 	// first connected TODO document
 	if machId == "." {
 		for _, c := range r.rpcClients {
@@ -782,11 +784,37 @@ func (r *Repl) Worker(machId string) *rpc.NetworkMachine {
 	return rpcs[0].NetMach
 }
 
+// NetMachArgs returns a list of registered typed args for a given machine.
+func (r *Repl) NetMachArgs(machId string) []string {
+	// first connected TODO document
+	if machId == "." {
+		for _, c := range r.rpcClients {
+			if c == nil {
+				continue
+			}
+			if c.Mach.Is1(ssrpc.ClientStates.Ready) {
+				return c.Args()
+			}
+		}
+
+		return nil
+	}
+
+	rpcs, _ := r.ListMachines(&ListFilters{IdExact: machId})
+	if len(rpcs) == 0 {
+		r.PrintErr("mach ID unknown")
+		return nil
+	}
+
+	return rpcs[0].Args()
+}
+
 func (r *Repl) newRpcClient(addr, idSuffix string) (*rpc.Client, error) {
 	ctx := r.Mach.NewStateCtx(ss.Start)
 
-	// empty schema RPC client
-	client, err := rpc.NewClient(ctx, addr, "repl-"+idSuffix,
+	// empty schema RPC client (`rc-WDHASH-0` for 1st client)
+	id := strings.Replace(r.Mach.Id(), "repl-", "", 1) + "-" + idSuffix
+	client, err := rpc.NewClient(ctx, addr, id,
 		am.Schema{}, &rpc.ClientOpts{Parent: r.Mach})
 	if err != nil {
 		return nil, err
@@ -812,6 +840,29 @@ func (r *Repl) newRpcClient(addr, idSuffix string) (*rpc.Client, error) {
 	return client, nil
 }
 
+func (r *Repl) exitCtrlD(c *console.Console) {
+	r.Mach.Add1(ss.Disposing, nil)
+	// TODO fix console ctx not being honored
+	os.Exit(0)
+	// reader := bufio.NewReader(os.Stdin)
+	//
+	// fmt.Print("Confirm exit (Y/y): ")
+	//
+	// text, _ := reader.ReadString('\n')
+	// answer := strings.TrimSpace(text)
+	//
+	// if (answer == "Y") || (answer == "y") {
+	// 	r.Mach.Add(ss.Disposing, nil)
+	// }
+}
+
+// ///// ///// /////
+
+// ///// COMPLETION
+
+// ///// ///// /////
+
+// injectCompletions switches completion types.
 func (r *Repl) injectCompletions() {
 	for _, cmd := range r.Cmd.Commands() {
 		switch cmd.Name() {
@@ -936,14 +987,15 @@ func (r *Repl) completeAllStates(
 	return completionsNarrowDown(toComplete, allStates)
 }
 
-// completeMachStates returns a list of completion for a positional arguments
+// completeMachStates returns a list of completions for positional arguments
 // and flags for MACH STATE commands.
 func (r *Repl) completeMachStates(
 	cmd *cobra.Command, args []string, toComplete string,
 ) ([]string, cobra.ShellCompDirective) {
 	var resources []string
+	l := len(args)
 
-	switch len(args) {
+	switch l {
 	case 0:
 		// mach
 		machs, _ := r.ListMachines(nil)
@@ -976,10 +1028,86 @@ func (r *Repl) completeMachStates(
 			return []string{}, cobra.ShellCompDirectiveNoFileComp
 		}
 		resources = mach.StateNames()
+		r.selectedMach = mach.RemoteId()
+
+		// filter available states
+		if cmd.Name() == "add" {
+			resources = slices.DeleteFunc(resources, func(s string) bool {
+				return mach.Is1(s) && !amhelp.IsMulti(mach, s)
+			})
+		} else if cmd.Name() == "remove" {
+			resources = slices.DeleteFunc(resources, func(s string) bool {
+				return mach.Not1(s)
+			})
+		}
 
 		// flags completion when mach and states are passed
-		if len(args) == 2 {
+		if l == 2 {
 			resources = append(resources, listCmdFlags(cmd)...)
+		}
+	}
+
+	// either --arg or --var, but only when a state name present
+	if l == 1 {
+		resources = slices.DeleteFunc(resources, func(s string) bool {
+			return s == "--val" || s == "--arg"
+		})
+
+		// states present
+	} else if l > 1 {
+		words, _, _ := r.C.Shell().Line().TokenizeSpace(0)
+
+		// TODO fix missing --arg --val
+		if !slices.Contains(resources, "--arg") {
+			resources = append(resources, "--arg")
+		}
+		if !slices.Contains(resources, "--val") {
+			resources = append(resources, "--val")
+		}
+
+		// TODO complete --val with example tags
+
+		countArg := 0
+		countVal := 0
+		lineHasArgs := false
+		states := []string{}
+		for _, w := range words {
+			w = strings.TrimSpace(w)
+			if w == "--arg" {
+				countArg++
+			} else if w == "--val" {
+				countVal++
+			}
+			if strings.HasPrefix(w, "--") {
+				lineHasArgs = true
+			} else {
+				states = append(states, w)
+			}
+		}
+
+		// rm already present
+		resources = slices.DeleteFunc(resources, func(s string) bool {
+			return slices.Contains(states, s)
+		})
+
+		// --arg first, then --val
+		if countArg != countVal {
+			resources = slices.DeleteFunc(resources, func(s string) bool {
+				return s == "--arg"
+			})
+		} else {
+			resources = slices.DeleteFunc(resources, func(s string) bool {
+				return s == "--val"
+			})
+		}
+
+		// TODO remove duped arg names
+
+		// args only after args
+		if lineHasArgs {
+			resources = slices.DeleteFunc(resources, func(s string) bool {
+				return !strings.HasPrefix(s, "--")
+			})
 		}
 	}
 
@@ -1017,50 +1145,4 @@ func (r *Repl) completeFlags(
 	cmd *cobra.Command, args []string, toComplete string,
 ) ([]string, cobra.ShellCompDirective) {
 	return listCmdFlags(cmd), cobra.ShellCompDirectiveNoFileComp
-}
-
-func listCmdFlags(cmd *cobra.Command) []string {
-	flags := []string{}
-	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
-		// skip some
-		if flag.Name == "help" || flag.Name == "completion" {
-			return
-		}
-
-		flags = append(flags, "--"+flag.Name)
-	})
-
-	return flags
-}
-
-func (r *Repl) exitCtrlD(c *console.Console) {
-	r.Mach.Add1(ss.Disposing, nil)
-	// TODO fix console ctx not being honored
-	os.Exit(0)
-	// reader := bufio.NewReader(os.Stdin)
-	//
-	// fmt.Print("Confirm exit (Y/y): ")
-	//
-	// text, _ := reader.ReadString('\n')
-	// answer := strings.TrimSpace(text)
-	//
-	// if (answer == "Y") || (answer == "y") {
-	// 	r.Mach.Add(ss.Disposing, nil)
-	// }
-}
-
-// setupPrompt is a function which sets up the prompts for the main menu.
-func setupPrompt(m *console.Menu) {
-	p := m.Prompt()
-
-	p.Primary = func() string {
-		// TODO color per connection status (yellow all, green some, grey none)
-		return "\x1b[33marpc>\x1b[0m "
-	}
-
-	// p.Right = func() string {
-	// 	return "\x1b[1;30m" + time.Now().Format("03:04:05.000") + "\x1b[0m"
-	// }
-
-	// p.Transient = func() string { return "\x1b[1;30m" + ">> " + "\x1b[0m" }
 }

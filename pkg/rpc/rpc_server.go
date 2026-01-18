@@ -48,6 +48,10 @@ type Server struct {
 	NoNewListener bool
 	LogEnabled    bool
 	CallCount     uint64
+	// Typed arguments struct value with defaults
+	Args any
+	// Typed arguments prefix in a resulting [am.A] map.
+	ArgsPrefix string
 
 	// sync settings
 
@@ -135,6 +139,8 @@ func NewServer(
 		DeliveryTimeout:  5 * time.Second,
 		LogEnabled:       os.Getenv(EnvAmRpcLogServer) != "",
 		Source:           netSrcMach,
+		Args:             opts.Args,
+		ArgsPrefix:       opts.ArgsPrefix,
 
 		lastPushData: &tracerData{},
 	}
@@ -148,6 +154,7 @@ func NewServer(
 		return nil, err
 	}
 	mach.SemLogger().SetArgsMapper(LogArgs)
+	mach.SetGroups(states.ServerGroups, ssS)
 	mach.OnDispose(func(id string, ctx context.Context) {
 		if l := s.Listener.Load(); l != nil {
 			_ = (*l).Close()
@@ -460,9 +467,10 @@ func (s *Server) bindRpcHandlers() {
 	s.rpcServer.Handle(ServerRemove.Value, s.RemoteRemove)
 	s.rpcServer.Handle(ServerSet.Value, s.RemoteSet)
 	s.rpcServer.Handle(ServerSync.Value, s.RemoteSync)
+	s.rpcServer.Handle(ServerArgs.Value, s.RemoteArgs)
 	s.rpcServer.Handle(ServerBye.Value, s.RemoteBye)
 
-	// TODO RemoteLog, RemoteWhenArgs, RemoteGetMany
+	// TODO RemoteWhenArgs
 
 	// s.rpcServer.Handle("RemoteLog", s.RemoteLog)
 	// s.rpcServer.Handle("RemoteWhenArgs", s.RemoteWhenArgs)
@@ -608,6 +616,7 @@ func (s *Server) storeLastPush(data *tracerData) {
 // ///// REMOTE METHODS
 
 // ///// ///// /////
+// TODO add local errs
 
 func (s *Server) RemoteHello(
 	client *rpc2.Client, req *MsgCliHello, resp *MsgSrvHello,
@@ -716,7 +725,7 @@ func (s *Server) RemoteHandshake(
 }
 
 func (s *Server) RemoteAdd(
-	_ *rpc2.Client, args *MsgCliMutation, resp *MsgSrvMutation,
+	_ *rpc2.Client, req *MsgCliMutation, resp *MsgSrvMutation,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
@@ -725,19 +734,27 @@ func (s *Server) RemoteAdd(
 	defer s.lockExport.Unlock()
 
 	// validate
-	if args.States == nil {
+	if req.States == nil {
 		return ErrInvalidParams
+	}
+
+	// typed args
+	args := req.Args
+	if s.ArgsPrefix != "" && s.Args != nil {
+		args = am.A{
+			s.ArgsPrefix: amhelp.ArgsFromMap(req.Args, s.Args),
+		}
 	}
 
 	// execute
 	var val am.Result
-	if args.Event != nil {
-		val = s.Source.EvAdd(args.Event, amhelp.IndexesToStates(
-			s.Source.StateNames(), args.States), args.Args)
+	if req.Event != nil {
+		val = s.Source.EvAdd(req.Event, amhelp.IndexesToStates(
+			s.Source.StateNames(), req.States), args)
 	} else {
 		// TODO eval
 		val = s.Source.Add(amhelp.IndexesToStates(s.Source.StateNames(),
-			args.States), args.Args)
+			req.States), args)
 	}
 
 	// return
@@ -748,7 +765,7 @@ func (s *Server) RemoteAdd(
 }
 
 func (s *Server) RemoteAddNS(
-	_ *rpc2.Client, args *MsgCliMutation, _ *MsgEmpty,
+	_ *rpc2.Client, req *MsgCliMutation, _ *MsgEmpty,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
@@ -757,19 +774,27 @@ func (s *Server) RemoteAddNS(
 	defer s.lockExport.Unlock()
 
 	// validate
-	if args.States == nil {
+	if req.States == nil {
 		return ErrInvalidParams
 	}
 
-	// execute
-	_ = s.Source.Add(amhelp.IndexesToStates(s.Source.StateNames(), args.States),
-		args.Args)
+	// typed args
+	args := req.Args
+	if s.ArgsPrefix != "" && s.Args != nil {
+		args = am.A{
+			s.ArgsPrefix: amhelp.ArgsFromMap(req.Args, s.Args),
+		}
+	}
+
+	// execute TODO event trace
+	_ = s.Source.Add(amhelp.IndexesToStates(s.Source.StateNames(), req.States),
+		args)
 
 	return nil
 }
 
 func (s *Server) RemoteRemove(
-	_ *rpc2.Client, args *MsgCliMutation, resp *MsgSrvMutation,
+	_ *rpc2.Client, req *MsgCliMutation, resp *MsgSrvMutation,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
@@ -778,13 +803,21 @@ func (s *Server) RemoteRemove(
 	defer s.lockExport.Unlock()
 
 	// validate
-	if args.States == nil {
+	if req.States == nil {
 		return ErrInvalidParams
 	}
 
-	// execute
+	// typed args
+	args := req.Args
+	if s.ArgsPrefix != "" && s.Args != nil {
+		args = am.A{
+			s.ArgsPrefix: amhelp.ArgsFromMap(req.Args, s.Args),
+		}
+	}
+
+	// execute TODO event trace
 	val := s.Source.Remove(amhelp.IndexesToStates(s.Source.StateNames(),
-		args.States), args.Args)
+		req.States), args)
 
 	// return
 	data := s.tracer.DataLatest()
@@ -794,7 +827,7 @@ func (s *Server) RemoteRemove(
 }
 
 func (s *Server) RemoteSet(
-	_ *rpc2.Client, args *MsgCliMutation, resp *MsgSrvMutation,
+	_ *rpc2.Client, req *MsgCliMutation, resp *MsgSrvMutation,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
@@ -803,13 +836,21 @@ func (s *Server) RemoteSet(
 	defer s.lockExport.Unlock()
 
 	// validate
-	if args.States == nil {
+	if req.States == nil {
 		return ErrInvalidParams
 	}
 
-	// execute
+	// typed args
+	args := req.Args
+	if s.ArgsPrefix != "" && s.Args != nil {
+		args = am.A{
+			s.ArgsPrefix: amhelp.ArgsFromMap(req.Args, s.Args),
+		}
+	}
+
+	// execute TODO event trace
 	val := s.Source.Set(amhelp.IndexesToStates(s.Source.StateNames(),
-		args.States), args.Args)
+		req.States), args)
 
 	// return
 	data := s.tracer.DataLatest()
@@ -831,6 +872,26 @@ func (s *Server) RemoteSync(
 		QueueTick: s.Source.QueueTick(),
 	}
 	s.log("RemoteSync: [%v]", resp.Time)
+
+	return nil
+}
+
+func (s *Server) RemoteArgs(
+	_ *rpc2.Client, _ *MsgEmpty, resp *MsgSrvArgs,
+) error {
+	if s.Mach.Not1(ssS.Start) {
+		return am.ErrCanceled
+	}
+	s.Mach.Add1(ssS.MetricSync, nil)
+
+	// args TODO cache
+	if s.Args != nil {
+		args, err := utils.StructFields(s.Args)
+		if err != nil {
+			return err
+		}
+		(*resp).Args = args
+	}
 
 	return nil
 }
@@ -955,13 +1016,16 @@ type ServerOpts struct {
 	// Parent is a parent state machine for a new Server state machine. See
 	// [am.Opts].
 	Parent am.Api
+	// Typed arguments struct pointer
+	Args       any
+	ArgsPrefix string
 }
 
 type SendPayloadHandlers struct {
 	SendPayloadState am.HandlerFinal
 }
 
-// getSendPayloadState returns a handler (usually SendPayloadState), that will
+// getSendPayloadState returns a handler (usually SendPayloadState) that will
 // deliver a payload to the RPC client. The resulting function can be bound in
 // anon handlers.
 func getSendPayloadState(s *Server, stateName string) am.HandlerFinal {
