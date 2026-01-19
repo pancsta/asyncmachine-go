@@ -49,10 +49,10 @@ tool with acceptable performance.
 with [goroutine cancelation](https://github.com/pancsta/asyncmachine-go/pull/261). The history log and relations have
 vector formats. It aims to create **autonomous** workflows with **organic** control flow and **stateful** APIs.
 
-<div align="center">
+<div align="center" class="video">
     <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/am-dbg/README.md">
         <img style="min-height: 820px"
-            src="https://pancsta.github.io/assets/asyncmachine-go/video-mouse.gif?raw=true"
+            src="https://github.com/user-attachments/assets/84613447-87dc-48da-9e76-7b4c76705fd3"
             alt="TUI Debugger" />
     </a>
 </div>
