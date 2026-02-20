@@ -632,6 +632,7 @@ func (t *Transition) emitEvents() Result {
 			targetStates := m.resolver.TargetStates(t, toSet, m.StateNames())
 			t.TargetIndexes = m.Index(targetStates)
 			t.cacheTargetStates.Store(&targetStates)
+			t.setupExitEnter()
 			// TODO cache states before?
 		}
 
