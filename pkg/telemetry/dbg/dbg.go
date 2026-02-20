@@ -1,12 +1,9 @@
-// Package telemetry provides telemetry exporters for asyncmachine: am-dbg,
-// Prometheus, and OpenTelemetry.
-package telemetry
+package dbg
 
 import (
 	"context"
 	"encoding/gob"
 	"fmt"
-	"log"
 	"net/rpc"
 	"os"
 	"slices"
@@ -15,46 +12,42 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/pancsta/asyncmachine-go/internal/utils"
-	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	"github.com/pancsta/asyncmachine-go/pkg/machine"
 )
-
-// ///// ///// /////
-
-// ///// AM-DBG
-
-// ///// ///// /////
 
 const (
 	// DbgAddr is the default address of the am-dbg server.
-	DbgAddr = "localhost:6831"
+	DbgAddr    = "localhost:6831"
+	DbgAddrWeb = "localhost:6832"
 	// EnvAmDbgAddr is the address of a running am-dbg instance.
 	// "1" expands to "localhost:6831"
 	EnvAmDbgAddr = "AM_DBG_ADDR"
 )
 
 // DbgMsg is the interface for the messages to be sent to the am-dbg server.
+// TODO refac Msg
 type DbgMsg interface {
 	// Clock returns the state's clock, using the passed index
-	Clock(statesIndex am.S, state string) uint64
+	Clock(statesIndex machine.S, state string) uint64
 	// Is returns true if the state is active, using the passed index
-	Is(statesIndex am.S, states am.S) bool
+	Is(statesIndex machine.S, states machine.S) bool
 }
 
 // ///// STRUCT
 
 // DbgMsgStruct contains the state and relations data.
+// TODO refac: MsgSchema
 type DbgMsgStruct struct {
-	// TODO refac: DbgMsgSchema
-	// TODO add schema ver
 
 	// Machine ID
 	ID string
 	// state names defining the indexes for diffs
-	StatesIndex am.S
+	StatesIndex machine.S
 	// all the states with relations
 	// TODO refac: Schema
-	States am.Schema
+	States machine.Schema
 	// list of group names and state indexes
 	Groups map[string][]int
 	// order of groups
@@ -68,19 +61,13 @@ type DbgMsgStruct struct {
 	//  MTime am.Time
 }
 
-func (d *DbgMsgStruct) Clock(_ am.S, _ string) uint64 {
+func (d *DbgMsgStruct) Clock(_ machine.S, _ string) uint64 {
 	return 0
 }
 
-func (d *DbgMsgStruct) Is(_ am.S, _ am.S) bool {
+func (d *DbgMsgStruct) Is(_ machine.S, _ machine.S) bool {
 	return false
 }
-
-// ///// QUEUE
-
-// type DbgMsgQueue struct {
-// 	Mutation *am.Mutation
-// }
 
 // ///// TRANSITION
 
@@ -93,7 +80,7 @@ type DbgMsgTx struct {
 	// Clocks is represents the machine time [am.Time] from after the current
 	// transition.
 	// TODO refac to TimeAfter, re-gen all the assets
-	Clocks am.Time
+	Clocks machine.Time
 	// QueueTick is the current queue tick in the machine.
 	// transition.
 	QueueTick uint64
@@ -105,18 +92,18 @@ type DbgMsgTx struct {
 	// Only for IsQueued.
 	MutQueueTick uint64
 	// mutation type
-	Type am.MutationType
+	Type machine.MutationType
 	// called states
 	// TODO remove. Deprecated use CalledStateNames(index)
 	CalledStates []string
 	// TODO rename to CalledStates, re-gen all assets
 	CalledStatesIdxs []int
 	// all the transition steps
-	Steps []*am.Step
+	Steps []*machine.Step
 	// log entries created during the transition
-	LogEntries []*am.LogEntry
+	LogEntries []*machine.LogEntry
 	// log entries before the transition, which happened after the prev one
-	PreLogEntries []*am.LogEntry
+	PreLogEntries []*machine.LogEntry
 	// queue length at the start of the transition
 	// TODO rename to QueueLen
 	// TODO change to int32
@@ -148,7 +135,7 @@ type DbgMsgTx struct {
 	// TODO add time taken via tracer
 }
 
-func (m *DbgMsgTx) Clock(statesIndex am.S, state string) uint64 {
+func (m *DbgMsgTx) Clock(statesIndex machine.S, state string) uint64 {
 	idx := slices.Index(statesIndex, state)
 	if len(m.Clocks) <= idx {
 		return 0
@@ -156,7 +143,7 @@ func (m *DbgMsgTx) Clock(statesIndex am.S, state string) uint64 {
 	return m.Clocks[idx]
 }
 
-func (m *DbgMsgTx) Is(statesIndex am.S, states am.S) bool {
+func (m *DbgMsgTx) Is(statesIndex machine.S, states machine.S) bool {
 	for _, state := range states {
 		idx := m.Index(statesIndex, state)
 
@@ -165,7 +152,7 @@ func (m *DbgMsgTx) Is(statesIndex am.S, states am.S) bool {
 			return false
 		}
 
-		if len(m.Clocks) <= idx || !am.IsActiveTick(m.Clocks[idx]) {
+		if len(m.Clocks) <= idx || !machine.IsActiveTick(m.Clocks[idx]) {
 			return false
 		}
 	}
@@ -173,20 +160,20 @@ func (m *DbgMsgTx) Is(statesIndex am.S, states am.S) bool {
 	return true
 }
 
-func (m *DbgMsgTx) Index(statesIndex am.S, state string) int {
+func (m *DbgMsgTx) Index(statesIndex machine.S, state string) int {
 	idx := slices.Index(statesIndex, state) //nolint:typecheck
 	return idx
 }
 
-func (m *DbgMsgTx) ActiveStates(statesIndex am.S) am.S {
-	ret := am.S{}
+func (m *DbgMsgTx) ActiveStates(statesIndex machine.S) machine.S {
+	ret := machine.S{}
 
 	for _, state := range statesIndex {
 		idx := slices.Index(statesIndex, state)
 		if len(m.Clocks) <= idx {
 			continue
 		}
-		if am.IsActiveTick(m.Clocks[idx]) {
+		if machine.IsActiveTick(m.Clocks[idx]) {
 			ret = append(ret, state)
 		}
 	}
@@ -194,13 +181,13 @@ func (m *DbgMsgTx) ActiveStates(statesIndex am.S) am.S {
 	return ret
 }
 
-func (m *DbgMsgTx) CalledStateNames(statesIndex am.S) am.S {
+func (m *DbgMsgTx) CalledStateNames(statesIndex machine.S) machine.S {
 	// old compat
 	if m.CalledStates != nil {
 		return m.CalledStates
 	}
 
-	ret := make(am.S, len(m.CalledStatesIdxs))
+	ret := make(machine.S, len(m.CalledStatesIdxs))
 
 	for i, idx := range m.CalledStatesIdxs {
 		ret[i] = statesIndex[idx]
@@ -210,21 +197,25 @@ func (m *DbgMsgTx) CalledStateNames(statesIndex am.S) am.S {
 }
 
 // TODO unify with Tx String
-func (m *DbgMsgTx) TxString(statesIndex am.S) string {
-	ret := "tx#" + m.ID + "\n[" + m.Type.String() + "] " +
+func (m *DbgMsgTx) TxString(statesIndex machine.S) string {
+	info := "mach://" + m.MachineID + "/" + m.ID + "\n"
+	info += m.Time.UTC().Format(time.RFC3339Nano) + "\n\n"
+	tx := "[" + m.Type.String() + "] " +
 		utils.J(m.CalledStateNames(statesIndex)) + "\n"
-	// TODO add source from mutation
+	// TODO add source from mutation, stats, mark queued muts
+
+	steps := ""
 	for _, step := range m.Steps {
-		ret += "- " + step.StringFromIndex(statesIndex) + "\n"
+		steps += "- " + step.StringFromIndex(statesIndex) + "\n"
 	}
 
-	return ret
+	return info + tx + steps
 }
 
 // TODO unify with Mut String
-func (m *DbgMsgTx) MutString(statesIndex am.S) string {
+func (m *DbgMsgTx) MutString(statesIndex machine.S) string {
 	ret := "+"
-	if m.Type == am.MutationRemove {
+	if m.Type == machine.MutationRemove {
 		ret = "-"
 	}
 	ret += utils.J(m.CalledStateNames(statesIndex))
@@ -232,8 +223,8 @@ func (m *DbgMsgTx) MutString(statesIndex am.S) string {
 	return ret
 }
 
-func (m *DbgMsgTx) Is1(statesIndex am.S, state string) bool {
-	return m.Is(statesIndex, am.S{state})
+func (m *DbgMsgTx) Is1(statesIndex machine.S, state string) bool {
+	return m.Is(statesIndex, machine.S{state})
 }
 
 // TODO Sum() and TimeSum(idxs []int)
@@ -248,22 +239,38 @@ func (m *DbgMsgTx) TimeSum() uint64 {
 
 // ///// CLIENT
 
-type dbgClient struct {
+type client struct {
 	addr string
 	rpc  *rpc.Client
 }
 
-func newDbgClient(addr string) (*dbgClient, error) {
-	// log.Printf("Connecting to %s", url)
-	client, err := rpc.Dial("tcp4", addr)
-	if err != nil {
-		return nil, err
+func newDbgClient(ctx context.Context, addr string, ws bool) (*client, error) {
+	var cli *rpc.Client
+	var err error
+	if ws {
+		// log.Printf("[dbg] dialing...")
+		ws, _, err := websocket.Dial(ctx,
+			"ws://"+addr+"/dbg.ws", &websocket.DialOptions{})
+		if err != nil {
+			// log.Printf("[dbg] err %v", err)
+			return nil, fmt.Errorf("websocket.Dial failed %w", err)
+		}
+		// log.Printf("[dbg] conn...")
+		conn := websocket.NetConn(ctx, ws, websocket.MessageBinary)
+		cli = rpc.NewClient(conn)
+		// log.Printf("[dbg] client...")
+
+	} else {
+		cli, err = rpc.Dial("tcp4", addr)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return &dbgClient{addr: addr, rpc: client}, nil
+	return &client{addr: addr, rpc: cli}, nil
 }
 
-func (c *dbgClient) sendMsgTx(msg *DbgMsgTx) error {
+func (c *client) sendMsgTx(msg *DbgMsgTx) error {
 	var reply string
 	// DEBUG
 	// fmt.Printf("sendMsgTx %v\n", msg.CalledStates)
@@ -276,7 +283,7 @@ func (c *dbgClient) sendMsgTx(msg *DbgMsgTx) error {
 	return nil
 }
 
-func (c *dbgClient) sendMsgSchema(msg *DbgMsgStruct) error {
+func (c *client) sendMsgSchema(msg *DbgMsgStruct) error {
 	if c == nil {
 		return nil
 	}
@@ -284,42 +291,47 @@ func (c *dbgClient) sendMsgSchema(msg *DbgMsgStruct) error {
 	var reply string
 	// TODO use Go() to not block
 	// TODO const name
+	// log.Printf("[dbg] rpc.Call")
 	err := c.rpc.Call("RPCServer.DbgMsgSchema", msg, &reply)
 	if err != nil {
+		// log.Printf("[dbg] rpc.Call err %v", err)
 		return err
 	}
+	// log.Printf("[dbg] schema sent: %s", reply)
 
 	return nil
 }
 
 // ///// TRACER
 
-type DbgTracer struct {
-	*am.TracerNoOp
+type Tracer struct {
+	*machine.TracerNoOp
 
+	Mach machine.Api
 	Addr string
-	Mach am.Api
+	// connect to a websocket
+	Ws bool
 
 	outbox   chan func()
-	c        *dbgClient
+	c        *client
 	errCount atomic.Int32
 	exited   atomic.Bool
 	mx       sync.Mutex
 	lastTx   string
 	// number of queued mutations since lastTx
 	queued    int
-	lastMTime am.Time
+	lastMTime machine.Time
 }
 
-var _ am.Tracer = &DbgTracer{}
+var _ machine.Tracer = &Tracer{}
 
-func NewDbgTracer(mach am.Api, addr string) *DbgTracer {
-	t := &DbgTracer{
+func NewTracer(mach machine.Api, addr string) *Tracer {
+	t := &Tracer{
 		Addr:   addr,
 		Mach:   mach,
 		outbox: make(chan func(), 1000),
 	}
-	ctx := t.Mach.Ctx()
+	ctx := t.Mach.Context()
 
 	// process the queue
 	go func() {
@@ -336,11 +348,11 @@ func NewDbgTracer(mach am.Api, addr string) *DbgTracer {
 	return t
 }
 
-func (t *DbgTracer) MachineInit(mach am.Api) context.Context {
+func (t *Tracer) MachineInit(mach machine.Api) context.Context {
 	t.mx.Lock()
 	defer t.mx.Unlock()
 
-	gob.Register(am.Relation(0))
+	gob.Register(machine.Relation(0))
 	var err error
 	t.Mach = mach
 	t.lastMTime = mach.Time(nil)
@@ -350,15 +362,15 @@ func (t *DbgTracer) MachineInit(mach am.Api) context.Context {
 		if mach.IsDisposed() {
 			return
 		}
-		t.c, err = newDbgClient(t.Addr)
-		if err != nil && os.Getenv(am.EnvAmLog) != "" {
-			log.Printf("%s: failed to connect to am-dbg: %s\n", mach.Id(), err)
+		t.c, err = newDbgClient(mach.Context(), t.Addr, t.Ws)
+		if err != nil && os.Getenv(machine.EnvAmLog) != "" {
+			// log.Printf("%s: failed to connect to am-dbg: %s\n", mach.Id(), err)
 			return
 		}
 
 		err = sendMsgSchema(mach, t.c)
-		if err != nil && os.Getenv(am.EnvAmLog) != "" {
-			log.Println(err, nil)
+		if err != nil && os.Getenv(machine.EnvAmLog) != "" {
+			// log.Println(err, nil)
 			return
 		}
 	}
@@ -366,7 +378,7 @@ func (t *DbgTracer) MachineInit(mach am.Api) context.Context {
 	return nil
 }
 
-func (t *DbgTracer) SchemaChange(mach am.Api, _ am.Schema) {
+func (t *Tracer) SchemaChange(mach machine.Api, _ machine.Schema) {
 	t.lastMTime = mach.Time(nil)
 
 	// add to the queue
@@ -380,17 +392,17 @@ func (t *DbgTracer) SchemaChange(mach am.Api, _ am.Schema) {
 	}
 }
 
-func (t *DbgTracer) TransitionEnd(tx *am.Transition) {
+func (t *Tracer) TransitionEnd(tx *machine.Transition) {
 	mach := tx.MachApi
 	if t.errCount.Load() > 10 && !t.exited.Load() {
 		t.exited.Store(true)
-		if os.Getenv(am.EnvAmLog) != "" {
-			log.Println(mach.Id() + ": too many errors - detaching dbg tracer")
+		if os.Getenv(machine.EnvAmLog) != "" {
+			// log.Println(mach.Id() + ": too many errors - detaching dbg tracer")
 		}
 		go func() {
 			err := mach.DetachTracer(t)
-			if err != nil && os.Getenv(am.EnvAmLog) != "" {
-				log.Printf(mach.Id()+": failed to detach dbg tracer: %s\n", err)
+			if err != nil && os.Getenv(machine.EnvAmLog) != "" {
+				// log.Printf(mach.Id()+": failed to detach dbg tracer: %s\n", err)
 			}
 		}()
 
@@ -441,8 +453,8 @@ func (t *DbgTracer) TransitionEnd(tx *am.Transition) {
 	// add to the queue
 	t.outbox <- func() {
 		if t.c == nil {
-			if os.Getenv(am.EnvAmLog) != "" {
-				log.Println(mach.Id() + ": no connection to am-dbg")
+			if os.Getenv(machine.EnvAmLog) != "" {
+				// log.Println(mach.Id() + ": no connection to am-dbg")
 			}
 			t.errCount.Add(1)
 
@@ -450,15 +462,15 @@ func (t *DbgTracer) TransitionEnd(tx *am.Transition) {
 		}
 		err := t.c.sendMsgTx(msg)
 		if err != nil {
-			if os.Getenv(am.EnvAmLog) != "" {
-				log.Printf(mach.Id()+":failed to send a msg to am-dbg: %s", err)
+			if os.Getenv(machine.EnvAmLog) != "" {
+				// log.Printf(mach.Id()+":failed to send a msg to am-dbg: %s", err)
 			}
 			t.errCount.Add(1)
 		}
 	}
 }
 
-func (t *DbgTracer) MachineDispose(id string) {
+func (t *Tracer) MachineDispose(id string) {
 	// TODO lock & dispose?
 	// t.Mach = nil
 
@@ -471,7 +483,7 @@ func (t *DbgTracer) MachineDispose(id string) {
 	}()
 }
 
-func (t *DbgTracer) MutationQueued(mach am.Api, mut *am.Mutation) {
+func (t *Tracer) MutationQueued(mach machine.Api, mut *machine.Mutation) {
 	// skip check mutations when not logging them
 	if mut.IsCheck && !mach.SemLogger().IsCan() {
 		return
@@ -496,6 +508,7 @@ func (t *DbgTracer) MutationQueued(mach am.Api, mut *am.Mutation) {
 		MutQueueToken:    mut.QueueToken,
 		// debug
 		// QueueDump: mach.QueueDump(),
+		// TODO Source
 	}
 
 	// collect args
@@ -503,7 +516,7 @@ func (t *DbgTracer) MutationQueued(mach am.Api, mut *am.Mutation) {
 	if semlog.IsArgs() {
 		msg.Args = mut.MapArgs(semlog.ArgsMapper())
 	}
-	if err := am.ParseArgs(mut.Args).Err; err != nil {
+	if err := machine.ParseArgs(mut.Args).Err; err != nil {
 		if msg.Args == nil {
 			msg.Args = make(map[string]string)
 		}
@@ -514,8 +527,8 @@ func (t *DbgTracer) MutationQueued(mach am.Api, mut *am.Mutation) {
 	// add to the queue
 	t.outbox <- func() {
 		if t.c == nil {
-			if os.Getenv(am.EnvAmLog) != "" {
-				log.Println(mach.Id() + ": no connection to am-dbg")
+			if os.Getenv(machine.EnvAmLog) != "" {
+				// log.Println(mach.Id() + ": no connection to am-dbg")
 			}
 			t.errCount.Add(1)
 
@@ -523,8 +536,8 @@ func (t *DbgTracer) MutationQueued(mach am.Api, mut *am.Mutation) {
 		}
 		err := t.c.sendMsgTx(msg)
 		if err != nil {
-			if os.Getenv(am.EnvAmLog) != "" {
-				log.Printf(mach.Id()+":failed to send a msg to am-dbg: %s", err)
+			if os.Getenv(machine.EnvAmLog) != "" {
+				// log.Printf(mach.Id()+":failed to send a msg to am-dbg: %s", err)
 			}
 			t.errCount.Add(1)
 		}
@@ -533,8 +546,14 @@ func (t *DbgTracer) MutationQueued(mach am.Api, mut *am.Mutation) {
 
 // ///// FUNCS
 
+type Opts struct {
+	WebSocket bool
+}
+
 // TransitionsToDbg sends transitions to the am-dbg server.
-func TransitionsToDbg(mach am.Api, addr string) error {
+//
+// opts: single optional opts struct.
+func TransitionsToDbg(mach machine.Api, addr string, opts ...*Opts) error {
 	if addr == "" {
 		addr = DbgAddr
 	}
@@ -542,16 +561,19 @@ func TransitionsToDbg(mach am.Api, addr string) error {
 	// prevent double debugging
 	tracers := mach.Tracers()
 	for _, tracer := range tracers {
-		if t, ok := tracer.(*DbgTracer); ok && t.Addr == addr {
+		if t, ok := tracer.(*Tracer); ok && t.Addr == addr {
 			return nil
 		}
 	}
 
 	// add the tracer
-	tracer := NewDbgTracer(mach, addr)
+	tracer := NewTracer(mach, addr)
 	err := mach.BindTracer(tracer)
 	if err != nil {
 		return err
+	}
+	if len(opts) > 0 && opts[0].WebSocket {
+		tracer.Ws = true
 	}
 
 	// call manually for existing machines
@@ -561,7 +583,7 @@ func TransitionsToDbg(mach am.Api, addr string) error {
 }
 
 // sendMsgSchema sends the machine's states and relations
-func sendMsgSchema(mach am.Api, client *dbgClient) error {
+func sendMsgSchema(mach machine.Api, client *client) error {
 	groups, order := mach.Groups()
 	msg := &DbgMsgStruct{
 		ID:          mach.Id(),
@@ -574,6 +596,7 @@ func sendMsgSchema(mach am.Api, client *dbgClient) error {
 	}
 
 	// TODO retries
+	// log.Printf("[dbg] Schema...")
 	err := client.sendMsgSchema(msg)
 	if err != nil {
 		return fmt.Errorf("failed to send a msg to am-dbg: %w", err)
@@ -582,7 +605,9 @@ func sendMsgSchema(mach am.Api, client *dbgClient) error {
 	return nil
 }
 
-func removeLogPrefix(mach am.Api, entries []*am.LogEntry) []*am.LogEntry {
+func removeLogPrefix(
+	mach machine.Api, entries []*machine.LogEntry,
+) []*machine.LogEntry {
 	clone := slices.Clone(entries)
 	if !mach.SemLogger().IsId() {
 		return clone
@@ -592,13 +617,13 @@ func removeLogPrefix(mach am.Api, entries []*am.LogEntry) []*am.LogEntry {
 	addChars := 3 // "[] "
 	prefixLen := min(len(mach.Id())+addChars, maxIdLen+addChars)
 
-	ret := make([]*am.LogEntry, len(clone))
+	ret := make([]*machine.LogEntry, len(clone))
 	for i, le := range clone {
 		if le == nil || len(le.Text) < prefixLen {
 			continue
 		}
 
-		ret[i] = &am.LogEntry{
+		ret[i] = &machine.LogEntry{
 			Level: le.Level,
 			Text:  le.Text[prefixLen:],
 		}
