@@ -30,6 +30,10 @@ type (
 	T = am.Time
 )
 
+type ReplApi interface {
+	NetMachArgs(machId string) []string
+}
+
 var Sp = utils.Sp
 
 var (
@@ -50,6 +54,7 @@ var (
 	- CLI add states to a group of machines
 	  $ arpc localhost:6452 -- group-add -r ma.\* Foo Bar
 `)
+	arrFlags []*[]string
 )
 
 func NewRootCommand(repl *Repl, cliArgs, osArgs []string) *cobra.Command {
@@ -147,270 +152,6 @@ func NewRootCommand(repl *Repl, cliArgs, osArgs []string) *cobra.Command {
 	return rootCmd
 }
 
-func rootRun(
-	repl *Repl, cmd *cobra.Command, args []string, cliArgs []string,
-	cliCmd *cobra.Command,
-) error {
-	var watcher *fsnotify.Watcher
-	var addrs []string
-	mach := repl.Mach
-
-	// CLI mode
-	l := len(args)
-
-	// help screen
-	if l == 0 {
-		return nil
-	}
-
-	// flags
-	isWatch, err := cmd.Flags().GetBool("watch")
-	if err != nil {
-		return err
-	}
-	isDir, err := cmd.Flags().GetBool("dir")
-	if err != nil {
-		return err
-	}
-	isFile, err := cmd.Flags().GetBool("file")
-	if err != nil {
-		return err
-	}
-
-	// validate flags
-	if isDir && isFile {
-		return fmt.Errorf("cannot use both --dir and --file")
-	}
-	if isWatch && !isDir && !isFile {
-		return fmt.Errorf("--file or --dir required for --watch")
-	}
-	clipath := args[0]
-
-	// debug
-	dbgAddr, err := handleDebug(cmd, mach)
-	if err != nil {
-		return err
-	}
-
-	// init fs watcher
-	if isWatch {
-		watcher, err = initWatcher(mach, clipath, isDir)
-		if err != nil {
-			return err
-		}
-	}
-
-	// addr from a file
-	if isFile {
-
-		content, err := os.ReadFile(clipath)
-		if err != nil {
-			return fmt.Errorf("%w\n", err)
-		}
-		addrs = []string{strings.TrimSpace(string(content))}
-
-		// watch
-		if isWatch {
-			err = watcher.Add(clipath)
-			if err != nil {
-				return fmt.Errorf("failed to watch file: %w", err)
-			}
-		}
-
-		// addrs from a dir
-	} else if isDir {
-		addrs, err = addrsFromDir(clipath)
-		if err != nil {
-			return fmt.Errorf("failed to scan directory: %w", err)
-		}
-		if len(addrs) == 0 {
-			return fmt.Errorf("no .addr files found in %s", clipath)
-		}
-
-		// watch
-		if isWatch {
-			err = watcher.Add(clipath)
-			if err != nil {
-				return fmt.Errorf("failed to watch dir: %w", err)
-			}
-		}
-
-		// addr from CLI
-	} else {
-		addrs = []string{clipath}
-	}
-
-	// collected addresses
-	repl.Addrs = addrs
-	repl.DbgAddr = dbgAddr
-
-	// CLI mode
-	if len(cliArgs) > 0 {
-
-		// parse dedicated CLI flags
-		reqAll, err := cmd.Flags().GetBool("req-all")
-		if err != nil {
-			return err
-		}
-
-		// start and try to connect
-		mach.Add1(ss.Start, nil)
-		err = amhelp.WaitForAll(mach.Ctx(), time.Second,
-			mach.When1(ss.ConnectedFully, nil))
-		if errors.Is(err, am.ErrTimeout) {
-			if mach.Is1(ss.Connected) && mach.Not1(ss.ConnectedFully) {
-				if reqAll {
-					repl.Print("Error: Partial connection and --req-all")
-
-					return nil
-				}
-				repl.Print("Partial connection, executing...")
-
-			} else if mach.Not1(ss.Connected) {
-				repl.Print("Error: not connected")
-
-				return nil
-			}
-		}
-
-		// exec the CLI cmd
-		cliCmd.SetArgs(cliArgs)
-
-		return cliCmd.Execute()
-	}
-
-	// TUI mode
-	for _, c := range ReplCmds(repl) {
-		cmd.AddCommand(c)
-	}
-	res := mach.Add(am.S{ss.Start, ss.ReplMode}, nil)
-
-	return amhelp.ResultToErr(res)
-}
-
-func addrsFromDir(dirpath string) ([]string, error) {
-	var addrs []string
-
-	err := filepath.WalkDir(dirpath,
-		func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if !d.IsDir() && strings.HasSuffix(path, ".addr") {
-				content, err := os.ReadFile(path)
-				if err != nil {
-					return fmt.Errorf("%s: %w\n", path, err)
-				}
-				addrs = append(addrs, strings.TrimSpace(string(content)))
-			}
-
-			return nil
-		})
-
-	return addrs, err
-}
-
-func handleDebug(cmd *cobra.Command, mach *am.Machine) (string, error) {
-	logLevelInt, err := cmd.Flags().GetInt("log-level")
-	if err != nil {
-		return "", err
-	}
-	logLevelInt = min(4, logLevelInt)
-	logLevel := am.LogLevel(logLevelInt)
-	dbgAddr, err := cmd.Flags().GetString("am-dbg-addr")
-	if err != nil {
-		return "", err
-	}
-	if dbgAddr != "" {
-		err := amhelp.MachDebug(mach, dbgAddr, logLevel, false,
-			amhelp.SemConfigEnv(true))
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return dbgAddr, nil
-}
-
-// TODO watch in a state, handle filenames other then *.addr, add/remove
-//   - only affected clients, dont re-start
-func initWatcher(
-	mach *am.Machine, watchpath string, isDir bool,
-) (*fsnotify.Watcher, error) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil, err
-	}
-	mach.OnDispose(func(id string, ctx context.Context) {
-		_ = watcher.Close()
-	})
-
-	// watch for changes and trigger AddrChanged
-	go func() {
-		var running atomic.Bool
-
-		// TODO how very (not) nice
-		var restart func()
-		restart = func() {
-			mach.Log("watcher: restarting")
-			time.Sleep(time.Second)
-			var addrs []string
-			if isDir {
-				addrs, err = addrsFromDir(watchpath)
-				if err != nil {
-					mach.AddErr(err, nil)
-					return
-				}
-			} else {
-				content, err := os.ReadFile(watchpath)
-				if err != nil {
-					mach.AddErr(err, nil)
-				}
-				addrs = []string{string(content)}
-			}
-			mach.Log("watcher: collected %d addresses", len(addrs))
-
-			mach.Add1(ss.AddrChanged, Pass(&A{
-				Addrs: addrs,
-			}))
-			running.Store(false)
-		}
-
-		for {
-			select {
-			case <-mach.Ctx().Done():
-				return
-
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-
-				// change
-				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
-					if !strings.HasSuffix(event.Name, ".addr") {
-						continue
-					}
-
-					if !running.CompareAndSwap(false, true) {
-						// already scheduled
-						continue
-					}
-
-					// debounce and re-start
-					go restart()
-				}
-
-				// removed TODO handle better
-				// if event.Op&fsnotify.Remove == fsnotify.Remove {
-				// }
-			}
-		}
-	}()
-
-	return watcher, nil
-}
-
 func MutationCmds(repl *Repl) []*cobra.Command {
 	mach := repl.Mach
 
@@ -424,6 +165,8 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 		Args:    cobra.MinimumNArgs(2),
 		GroupID: "mutating",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			defer resetArrFlags(cmd)
+
 			if repl.Mach.Not1(ss.Connected) {
 				return fmt.Errorf("not connected\n")
 			}
@@ -459,6 +202,8 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 		Args:    cobra.MinimumNArgs(2),
 		GroupID: "mutating",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			defer resetArrFlags(cmd)
+
 			if repl.Mach.Not1(ss.Connected) {
 				return fmt.Errorf("not connected\n")
 			}
@@ -493,6 +238,8 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 		Args:    cobra.MinimumNArgs(1),
 		GroupID: "mutating",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			defer resetArrFlags(cmd)
+
 			if repl.Mach.Not1(ss.Connected) {
 				return fmt.Errorf("not connected\n")
 			}
@@ -546,6 +293,8 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 		Args:    cobra.MinimumNArgs(1),
 		GroupID: "mutating",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			defer resetArrFlags(cmd)
+
 			if repl.Mach.Not1(ss.Connected) {
 				return fmt.Errorf("not connected\n")
 			}
@@ -592,130 +341,11 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 	return []*cobra.Command{addCmd, removeCmd, groupAddCmd, groupRemoveCmd}
 }
 
-func listFlagsToFilters(cmd *cobra.Command) (*ListFilters, error) {
-	filters := &ListFilters{}
-
-	// id-regexp
-	if idReg, err := cmd.Flags().GetString("id-regexp"); err != nil {
-		return nil, err
-	} else if idReg != "" {
-		reg, err := regexp.Compile(idReg)
-		if err != nil {
-			return nil, err
-		}
-		filters.IdRegexp = reg
-	}
-
-	// id-partial
-	if idPartial, err := cmd.Flags().GetString("id-partial"); err != nil {
-		return nil, err
-	} else if idPartial != "" {
-		filters.IdSubstr = idPartial
-	}
-
-	if idPrefix, err := cmd.Flags().GetString("id-prefix"); err != nil {
-		return nil, err
-	} else if idPrefix != "" {
-		filters.IdPrefix = idPrefix
-	}
-
-	// id-suffix
-	if idSuffix, err := cmd.Flags().GetString("id-suffix"); err != nil {
-		return nil, err
-	} else if idSuffix != "" {
-		filters.IdSuffix = idSuffix
-	}
-
-	// parent
-	if parent, err := cmd.Flags().GetString("parent"); err != nil {
-		return nil, err
-	} else if parent != "" {
-		filters.Parent = parent
-	}
-
-	// limit
-	if limit, err := cmd.Flags().GetInt("limit"); err != nil {
-		return nil, err
-	} else if limit > 0 {
-		filters.Limit = limit
-	}
-
-	// from
-	if from, err := cmd.Flags().GetInt("from"); err != nil {
-		return nil, err
-	} else if from > 0 {
-		filters.StartIdx = from
-	}
-
-	// active
-	if activeStates, err := cmd.Flags().GetStringArray("active"); err != nil {
-		return nil, err
-	} else if len(activeStates) > 0 {
-		filters.StatesActive = activeStates
-	}
-
-	// inactive
-	if inactiveStates, err := cmd.Flags().GetStringArray(
-		"inactive"); err != nil {
-		return nil, err
-	} else if len(inactiveStates) > 0 {
-		filters.StatesInactive = inactiveStates
-	}
-
-	// mtime-min
-	if mtimeMin, err := cmd.Flags().GetUint64("mtime-min"); err != nil {
-		return nil, err
-	} else if mtimeMin > 0 {
-		filters.MtimeMin = mtimeMin
-	}
-
-	// mtime-max
-	if mtimeMax, err := cmd.Flags().GetUint64("mtime-max"); err != nil {
-		return nil, err
-	} else if mtimeMax > 0 {
-		filters.MtimeMax = mtimeMax
-	}
-
-	// mtime-states
-	if mtimeStates, err := cmd.Flags().GetStringArray(
-		"mtime-states"); err != nil {
-		return nil, err
-	} else if len(mtimeStates) > 0 {
-		filters.MtimeStates = mtimeStates
-	}
-
-	return filters, nil
-}
-
-func mutationGetArgs(cmd *cobra.Command) ([2][]string, error) {
-	var empty [2][]string
-
-	// check flags
-	argsFlags, err := cmd.Flags().GetStringArray("arg")
-	if err != nil {
-		return empty, err
-	}
-	valFlags, err := cmd.Flags().GetStringArray("val")
-	if err != nil {
-		return empty, err
-	}
-	if len(argsFlags) != len(valFlags) {
-		return empty, fmt.Errorf(
-			"the number of arguments (--arg) and values (--val) must match")
-	}
-
-	return [2][]string{argsFlags, valFlags}, nil
-}
-
-type ReplApi interface {
-	NetMachArgs(machId string) []string
-}
-
 func MutationFlags(repl ReplApi, cmd *cobra.Command, groupCmd bool) {
-	cmd.Flags().StringArray("arg", []string{},
-		"Argument name (repeatable)")
-	cmd.Flags().StringArray("val", []string{},
-		"Argument value (repeatable)")
+	registerArrFlag(cmd.Flags().StringArray("arg", []string{},
+		"Argument name (repeatable)"))
+	registerArrFlag(cmd.Flags().StringArray("val", []string{},
+		"Argument value (repeatable)"))
 
 	// completion TODO groups
 	_ = cmd.RegisterFlagCompletionFunc("arg", func(
@@ -737,12 +367,12 @@ func MutationFlags(repl ReplApi, cmd *cobra.Command, groupCmd bool) {
 }
 
 func ListingFlags(cmd *cobra.Command) {
-	cmd.Flags().StringArrayP("active", "a", []string{},
-		"Filter by an active state (repeatable)")
-	cmd.Flags().StringArrayP("inactive", "i", []string{},
-		"Filter by an inactive state (repeatable)")
-	cmd.Flags().StringArrayP("mtime-states", "m", []string{},
-		"Take machine time only from these states (repeatable)")
+	registerArrFlag(cmd.Flags().StringArrayP("active", "a", []string{},
+		"Filter by an active state (repeatable)"))
+	registerArrFlag(cmd.Flags().StringArrayP("inactive", "i", []string{},
+		"Filter by an inactive state (repeatable)"))
+	registerArrFlag(cmd.Flags().StringArrayP("mtime-states", "m", []string{},
+		"Take machine time only from these states (repeatable)"))
 	cmd.Flags().Uint64P("mtime-min", "t", 0,
 		"Min machine time, e.g. \"1631616000\"")
 	cmd.Flags().Uint64P("mtime-max", "T", 0,
@@ -887,6 +517,8 @@ func WaitingCmds(repl *Repl) []*cobra.Command {
 		GroupID: "waiting",
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			defer resetArrFlags(cmd)
+
 			if repl.Mach.Not1(ss.Connected) {
 				return fmt.Errorf("not connected\n")
 			}
@@ -933,10 +565,10 @@ func WaitingCmds(repl *Repl) []*cobra.Command {
 			return nil
 		},
 	}
-	whenTimeCmd.Flags().StringArrayP("time", "t", []string{},
-		"Machine time (repeatable)")
-	whenTimeCmd.Flags().StringArrayP("state", "s", []string{},
-		"State name (repeatable)")
+	registerArrFlag(whenTimeCmd.Flags().StringArrayP("time", "t", []string{},
+		"Machine time (repeatable)"))
+	registerArrFlag(whenTimeCmd.Flags().StringArrayP("state", "s", []string{},
+		"State name (repeatable)"))
 	// TODO timeout
 
 	// TODO when-args
@@ -1090,9 +722,402 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 	return []*cobra.Command{listCmd, stateCmd, timeCmd, inspectCmd, statusCmd}
 }
 
+func rootRun(
+	repl *Repl, cmd *cobra.Command, args []string, cliArgs []string,
+	cliCmd *cobra.Command,
+) error {
+	var watcher *fsnotify.Watcher
+	var addrs []string
+	mach := repl.Mach
+
+	// CLI mode
+	l := len(args)
+
+	// help screen
+	if l == 0 {
+		return nil
+	}
+
+	// flags
+	isWatch, err := cmd.Flags().GetBool("watch")
+	if err != nil {
+		return err
+	}
+	isDir, err := cmd.Flags().GetBool("dir")
+	if err != nil {
+		return err
+	}
+	isFile, err := cmd.Flags().GetBool("file")
+	if err != nil {
+		return err
+	}
+
+	// validate flags
+	if isDir && isFile {
+		return fmt.Errorf("cannot use both --dir and --file")
+	}
+	if isWatch && !isDir && !isFile {
+		return fmt.Errorf("--file or --dir required for --watch")
+	}
+	clipath := args[0]
+
+	// debug
+	dbgAddr, err := handleDebug(cmd, mach)
+	if err != nil {
+		return err
+	}
+
+	// init fs watcher
+	if isWatch {
+		watcher, err = initWatcher(mach, clipath, isDir)
+		if err != nil {
+			return err
+		}
+	}
+
+	// addr from a file
+	if isFile {
+
+		content, err := os.ReadFile(clipath)
+		if err != nil {
+			return fmt.Errorf("%w\n", err)
+		}
+		addrs = []string{strings.TrimSpace(string(content))}
+
+		// watch
+		if isWatch {
+			err = watcher.Add(clipath)
+			if err != nil {
+				return fmt.Errorf("failed to watch file: %w", err)
+			}
+		}
+
+		// addrs from a dir
+	} else if isDir {
+		addrs, err = addrsFromDir(clipath)
+		if err != nil {
+			return fmt.Errorf("failed to scan directory: %w", err)
+		}
+		if len(addrs) == 0 {
+			return fmt.Errorf("no .addr files found in %s", clipath)
+		}
+
+		// watch
+		if isWatch {
+			err = watcher.Add(clipath)
+			if err != nil {
+				return fmt.Errorf("failed to watch dir: %w", err)
+			}
+		}
+
+		// addr from CLI
+	} else {
+		addrs = []string{clipath}
+	}
+
+	// collected addresses
+	repl.Addrs = addrs
+	repl.DbgAddr = dbgAddr
+
+	// CLI mode
+	if len(cliArgs) > 0 {
+
+		// parse dedicated CLI flags
+		reqAll, err := cmd.Flags().GetBool("req-all")
+		if err != nil {
+			return err
+		}
+
+		// start and try to connect
+		mach.Add1(ss.Start, nil)
+		err = amhelp.WaitForAll(mach.Context(), time.Second,
+			mach.When1(ss.ConnectedFully, nil))
+		if errors.Is(err, am.ErrTimeout) {
+			if mach.Is1(ss.Connected) && mach.Not1(ss.ConnectedFully) {
+				if reqAll {
+					repl.Print("Error: Partial connection and --req-all")
+
+					return nil
+				}
+				repl.Print("Partial connection, executing...")
+
+			} else if mach.Not1(ss.Connected) {
+				repl.Print("Error: not connected")
+
+				return nil
+			}
+		}
+
+		// exec the CLI cmd
+		cliCmd.SetArgs(cliArgs)
+
+		return cliCmd.Execute()
+	}
+
+	// TUI mode
+	for _, c := range ReplCmds(repl) {
+		cmd.AddCommand(c)
+	}
+	res := mach.Add(am.S{ss.Start, ss.ReplMode}, nil)
+
+	return amhelp.ResultToErr(res)
+}
+
+func addrsFromDir(dirpath string) ([]string, error) {
+	var addrs []string
+
+	err := filepath.WalkDir(dirpath,
+		func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() && strings.HasSuffix(path, ".addr") {
+				content, err := os.ReadFile(path)
+				if err != nil {
+					return fmt.Errorf("%s: %w\n", path, err)
+				}
+				addrs = append(addrs, strings.TrimSpace(string(content)))
+			}
+
+			return nil
+		})
+
+	return addrs, err
+}
+
+func handleDebug(cmd *cobra.Command, mach *am.Machine) (string, error) {
+	logLevelInt, err := cmd.Flags().GetInt("log-level")
+	if err != nil {
+		return "", err
+	}
+	logLevelInt = min(3, logLevelInt)
+	logLevel := am.LogLevel(logLevelInt)
+	dbgAddr, err := cmd.Flags().GetString("am-dbg-addr")
+	if err != nil {
+		return "", err
+	}
+	if dbgAddr != "" {
+		err := amhelp.MachDebug(mach, dbgAddr, logLevel, false,
+			amhelp.SemConfigEnv(true))
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return dbgAddr, nil
+}
+
+// TODO watch in a state, handle filenames other then *.addr, add/remove
+//   - only affected clients, dont re-start
+func initWatcher(
+	mach *am.Machine, watchpath string, isDir bool,
+) (*fsnotify.Watcher, error) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, err
+	}
+	mach.OnDispose(func(id string, ctx context.Context) {
+		_ = watcher.Close()
+	})
+
+	// watch for changes and trigger AddrChanged
+	go func() {
+		var running atomic.Bool
+
+		// TODO how very (not) nice
+		var restart func()
+		restart = func() {
+			mach.Log("watcher: restarting")
+			time.Sleep(time.Second)
+			var addrs []string
+			if isDir {
+				addrs, err = addrsFromDir(watchpath)
+				if err != nil {
+					mach.AddErr(err, nil)
+					return
+				}
+			} else {
+				content, err := os.ReadFile(watchpath)
+				if err != nil {
+					mach.AddErr(err, nil)
+				}
+				addrs = []string{string(content)}
+			}
+			mach.Log("watcher: collected %d addresses", len(addrs))
+
+			mach.Add1(ss.AddrChanged, Pass(&A{
+				Addrs: addrs,
+			}))
+			running.Store(false)
+		}
+
+		for {
+			select {
+			case <-mach.Context().Done():
+				return
+
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+
+				// change
+				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
+					if !strings.HasSuffix(event.Name, ".addr") {
+						continue
+					}
+
+					if !running.CompareAndSwap(false, true) {
+						// already scheduled
+						continue
+					}
+
+					// debounce and re-start
+					go restart()
+				}
+
+				// removed TODO handle better
+				// if event.Op&fsnotify.Remove == fsnotify.Remove {
+				// }
+			}
+		}
+	}()
+
+	return watcher, nil
+}
+
+func listFlagsToFilters(cmd *cobra.Command) (*ListFilters, error) {
+	filters := &ListFilters{}
+
+	// id-regexp
+	if idReg, err := cmd.Flags().GetString("id-regexp"); err != nil {
+		return nil, err
+	} else if idReg != "" {
+		reg, err := regexp.Compile(idReg)
+		if err != nil {
+			return nil, err
+		}
+		filters.IdRegexp = reg
+	}
+
+	// id-partial
+	if idPartial, err := cmd.Flags().GetString("id-partial"); err != nil {
+		return nil, err
+	} else if idPartial != "" {
+		filters.IdSubstr = idPartial
+	}
+
+	if idPrefix, err := cmd.Flags().GetString("id-prefix"); err != nil {
+		return nil, err
+	} else if idPrefix != "" {
+		filters.IdPrefix = idPrefix
+	}
+
+	// id-suffix
+	if idSuffix, err := cmd.Flags().GetString("id-suffix"); err != nil {
+		return nil, err
+	} else if idSuffix != "" {
+		filters.IdSuffix = idSuffix
+	}
+
+	// parent
+	if parent, err := cmd.Flags().GetString("parent"); err != nil {
+		return nil, err
+	} else if parent != "" {
+		filters.Parent = parent
+	}
+
+	// limit
+	if limit, err := cmd.Flags().GetInt("limit"); err != nil {
+		return nil, err
+	} else if limit > 0 {
+		filters.Limit = limit
+	}
+
+	// from
+	if from, err := cmd.Flags().GetInt("from"); err != nil {
+		return nil, err
+	} else if from > 0 {
+		filters.StartIdx = from
+	}
+
+	// active
+	if activeStates, err := cmd.Flags().GetStringArray("active"); err != nil {
+		return nil, err
+	} else if len(activeStates) > 0 {
+		filters.StatesActive = activeStates
+	}
+
+	// inactive
+	if inactiveStates, err := cmd.Flags().GetStringArray(
+		"inactive"); err != nil {
+		return nil, err
+	} else if len(inactiveStates) > 0 {
+		filters.StatesInactive = inactiveStates
+	}
+
+	// mtime-min
+	if mtimeMin, err := cmd.Flags().GetUint64("mtime-min"); err != nil {
+		return nil, err
+	} else if mtimeMin > 0 {
+		filters.MtimeMin = mtimeMin
+	}
+
+	// mtime-max
+	if mtimeMax, err := cmd.Flags().GetUint64("mtime-max"); err != nil {
+		return nil, err
+	} else if mtimeMax > 0 {
+		filters.MtimeMax = mtimeMax
+	}
+
+	// mtime-states
+	if mtimeStates, err := cmd.Flags().GetStringArray(
+		"mtime-states"); err != nil {
+		return nil, err
+	} else if len(mtimeStates) > 0 {
+		filters.MtimeStates = mtimeStates
+	}
+
+	return filters, nil
+}
+
+func mutationGetArgs(cmd *cobra.Command) ([2][]string, error) {
+	var empty [2][]string
+
+	// check flags
+	argsFlags, err := cmd.Flags().GetStringArray("arg")
+	if err != nil {
+		return empty, err
+	}
+	valFlags, err := cmd.Flags().GetStringArray("val")
+	if err != nil {
+		return empty, err
+	}
+	if len(argsFlags) != len(valFlags) {
+		return empty, fmt.Errorf(
+			"the number of arguments (--arg) and values (--val) must match")
+	}
+
+	return [2][]string{argsFlags, valFlags}, nil
+}
+
+func registerArrFlag(val *[]string) {
+	arrFlags = append(arrFlags, val)
+}
+
+// resetArrFlags resets all the array flags (StringArray, StringArrayP). Cobra
+// should, but it does not.
+func resetArrFlags(cmd *cobra.Command) {
+	for _, v := range arrFlags {
+		*v = nil
+	}
+}
+
 func listRun(repl *Repl, cmd *cobra.Command, args []string) error {
 	// -> 1. C ns_id123 22d t6,7234,234 (Foo:1 Bar:1)
 	// mach := repl.Mach
+
+	defer resetArrFlags(cmd)
 
 	filters, err := listFlagsToFilters(cmd)
 	if err != nil {
