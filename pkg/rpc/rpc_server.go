@@ -50,8 +50,7 @@ type Server struct {
 	CallCount     uint64
 	// Typed arguments struct value with defaults
 	Args any
-	// Typed arguments prefix in a resulting [am.A] map.
-	ArgsPrefix string
+	Opts ServerOpts
 
 	// sync settings
 
@@ -740,10 +739,8 @@ func (s *Server) RemoteAdd(
 
 	// typed args
 	args := req.Args
-	if s.ArgsPrefix != "" && s.Args != nil {
-		args = am.A{
-			s.ArgsPrefix: amhelp.ArgsFromMap(req.Args, s.Args),
-		}
+	if s.Opts.ParseRpc != nil {
+		args = s.Opts.ParseRpc(args)
 	}
 
 	// execute
@@ -780,10 +777,8 @@ func (s *Server) RemoteAddNS(
 
 	// typed args
 	args := req.Args
-	if s.ArgsPrefix != "" && s.Args != nil {
-		args = am.A{
-			s.ArgsPrefix: amhelp.ArgsFromMap(req.Args, s.Args),
-		}
+	if s.Opts.ParseRpc != nil {
+		args = s.Opts.ParseRpc(args)
 	}
 
 	// execute TODO event trace
@@ -809,10 +804,8 @@ func (s *Server) RemoteRemove(
 
 	// typed args
 	args := req.Args
-	if s.ArgsPrefix != "" && s.Args != nil {
-		args = am.A{
-			s.ArgsPrefix: amhelp.ArgsFromMap(req.Args, s.Args),
-		}
+	if s.Opts.ParseRpc != nil {
+		args = s.Opts.ParseRpc(args)
 	}
 
 	// execute TODO event trace
@@ -842,10 +835,8 @@ func (s *Server) RemoteSet(
 
 	// typed args
 	args := req.Args
-	if s.ArgsPrefix != "" && s.Args != nil {
-		args = am.A{
-			s.ArgsPrefix: amhelp.ArgsFromMap(req.Args, s.Args),
-		}
+	if s.Opts.ParseRpc != nil {
+		args = s.Opts.ParseRpc(args)
 	}
 
 	// execute TODO event trace
@@ -1013,12 +1004,17 @@ type ServerOpts struct {
 	// to the client. The client activates this state to request a payload from
 	// the worker. Default: am/rpc/states/WorkerStates.SendPayload.
 	PayloadState string
-	// Parent is a parent state machine for a new Server state machine. See
-	// [am.Opts].
-	Parent am.Api
-	// Typed arguments struct pointer
-	Args       any
-	ArgsPrefix string
+	// Parent is a parent state machine for a new Server state machine.
+	Parent am.Api // Typed arguments struct pointer
+	// optional typed args struct value
+	Args any
+	// optional RPC args parser
+	ParseRpc func(args am.A) am.A
+	// Listen on a WebSocket connection instead of TCP.
+	WebSocket bool
+	// HTTP URL without proto to tunnel the TCP listen over a WebSocket conn.
+	// See WsListenPath.
+	WebSocketTunnel string
 }
 
 type SendPayloadHandlers struct {
