@@ -403,6 +403,7 @@ func (t *Transition) emitSelfEvents() Result {
 			continue
 		}
 
+		autoState := t.cacheSchema[s].Auto
 		name := s + s
 		t.latestHandlerToState = s
 		ret, handlerCalled = m.handle(name, t.Mutation.Args, false, false, true)
@@ -412,7 +413,16 @@ func (t *Transition) emitSelfEvents() Result {
 			t.addSteps(step)
 		}
 		if ret == Canceled {
-			break
+			// partial auto state acceptance
+			if t.IsAuto() && autoState {
+				targetStates := t.TargetStates()
+				idx := slices.Index(targetStates, s)
+				t.TargetIndexes = slices.Delete(t.TargetIndexes, idx, idx+1)
+				targetStates = slices.Delete(targetStates, idx, idx+1)
+				t.cacheTargetStates.Store(&targetStates)
+			} else {
+				return ret
+			}
 		}
 	}
 
@@ -422,11 +432,12 @@ func (t *Transition) emitSelfEvents() Result {
 func (t *Transition) emitEnterEvents() Result {
 	for _, toState := range t.Enters {
 		args := t.Mutation.Args
+		autoState := t.cacheSchema[toState].Auto
 
 		// FooEnter
 		ret := t.emitHandler("", toState, false, true, toState+SuffixEnter, args)
 		if ret == Canceled {
-			if t.IsAuto() {
+			if t.IsAuto() && autoState {
 				// partial auto state acceptance
 				targetStates := t.TargetStates()
 				idx := slices.Index(targetStates, toState)
@@ -444,11 +455,14 @@ func (t *Transition) emitEnterEvents() Result {
 
 func (t *Transition) emitExitEvents() Result {
 	for _, fromState := range t.Exits {
+		args := t.Mutation.Args
+		autoState := t.cacheSchema[fromState].Auto
+
 		// FooExit
 		ret := t.emitHandler(fromState, "", false, false, fromState+SuffixExit,
-			t.Mutation.Args)
+			args)
 		if ret == Canceled {
-			if t.IsAuto() {
+			if t.IsAuto() && autoState {
 				// partial auto state acceptance
 				targetStates := t.TargetStates()
 				idx := slices.Index(targetStates, fromState)
@@ -524,6 +538,7 @@ func (t *Transition) emitStateStateEvents() Result {
 				continue
 			}
 
+			autoState := t.cacheSchema[after[ii]].Auto
 			handler := before[i] + after[ii]
 			t.latestHandlerToState = ""
 			ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args, false,
@@ -538,8 +553,8 @@ func (t *Transition) emitStateStateEvents() Result {
 				continue
 			}
 
-			// negotiation canceled
-			if t.IsAuto() {
+			// partial auto state acceptance
+			if t.IsAuto() && autoState {
 				if newAfter == nil {
 					newAfter = slices.Clone(after)
 				}
@@ -556,6 +571,7 @@ func (t *Transition) emitStateStateEvents() Result {
 				newAfter = slices.Delete(newAfter, idx, idx+1)
 				t.cacheTargetStates.Store(&newAfter)
 
+				// negotiation canceled
 			} else {
 				return ret
 			}
