@@ -3,7 +3,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -127,12 +126,12 @@ func renderDump(ctx context.Context, args Args, cliArgs []string) error {
 	}
 
 	// parse mach URL
-	if args.RenderDump.MachUrl == "" && !args.Map {
-		return errors.New("machine URL is required when not using --map")
-	}
-	addr, err := dbgtypes.ParseMachUrl(args.RenderDump.MachUrl)
-	if err != nil {
-		return err
+	var addr *dbgtypes.MachAddress
+	if args.RenderDump.MachUrl != "" {
+		addr, err = dbgtypes.ParseMachUrl(args.RenderDump.MachUrl)
+		if err != nil {
+			return err
+		}
 	}
 
 	// init & import
@@ -144,11 +143,20 @@ func renderDump(ctx context.Context, args Args, cliArgs []string) error {
 	}
 	clients := slices.Collect(maps.Values(vis.Clients()))
 	fmt.Printf("Imported %d clients\n", len(clients))
-	found := slices.ContainsFunc(clients, func(c amgraph.Client) bool {
-		return c.Id == addr.MachId
-	})
-	if !found {
-		return fmt.Errorf("machine %s not found in the dump file", addr.MachId)
+
+	// check target
+	if addr != nil {
+		found := slices.ContainsFunc(clients, func(c amgraph.Client) bool {
+			return c.Id == addr.MachId
+		})
+		if !found {
+			return fmt.Errorf("machine %s not found in the dump file", addr.MachId)
+		}
+		vis.R.RenderMachs = []string{addr.MachId}
+
+		// render all
+	} else {
+		vis.R.RenderMachs = slices.Collect(maps.Keys(vis.Clients()))
 	}
 
 	// presets
@@ -163,7 +171,6 @@ func renderDump(ctx context.Context, args Args, cliArgs []string) error {
 	applyOverrides(args, cliArgs, vis.R)
 
 	// render
-	vis.R.RenderMachs = []string{addr.MachId}
 	vis.R.OutputFilename = args.OutputFilename
 	vis.R.OutputMermaid = false
 	fmt.Printf("Rendering... please wait\n")
