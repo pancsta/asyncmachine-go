@@ -296,12 +296,84 @@ func (t *Transition) CalledStates() S {
 	return IndexToStates(t.MachApi.StateNames(), t.Mutation.Called)
 }
 
-// TimeIndexAfter return TimeAfter bound to an index, for easy quering.
-func (t *Transition) TimeIndexAfter() TimeIndex {
-	return TimeIndex{
+// TimeIndexAfter return TimeAfter bound to an index, for easy querying.
+func (t *Transition) TimeIndexAfter() *TimeIndex {
+	// TODO test
+	return &TimeIndex{
 		Time:  t.TimeAfter,
 		Index: t.MachApi.StateNames(),
 	}
+}
+
+// TimeIndexBefore return TimeIndexBefore bound to an index, for easy querying.
+func (t *Transition) TimeIndexBefore() *TimeIndex {
+	// TODO test
+	return &TimeIndex{
+		Time:  t.TimeBefore,
+		Index: t.MachApi.StateNames(),
+	}
+}
+
+// TimeIndexCalled return CalledStates bound to an index, for easy querying.
+func (t *Transition) TimeIndexCalled() *TimeIndex {
+	// TODO test
+	return NewTimeIndex(t.MachApi.StateNames(), t.Mutation.Called)
+}
+
+// TimeIndexDiff return 2 time indexes of added and removed states by this
+// transition. Added include Multi states.
+func (t *Transition) TimeIndexDiff() (*TimeIndex, *TimeIndex) {
+	// TODO test
+
+	added := S{}
+	removed := S{}
+	before := t.TimeBefore
+	after := t.TimeAfter
+
+	is := func(time Time, i int) bool {
+		return time != nil && IsActiveTick(time.Tick(i))
+	}
+
+	index := t.MachApi.StateNames()
+	for i, name := range index {
+		if is(before, i) && !is(after, i) {
+			removed = append(removed, name)
+		} else if !is(before, i) && is(after, i) {
+			added = append(added, name)
+		} else if before != nil && before.Tick(i) != after.Tick(i) {
+			// treat multi states as added
+			added = append(added, name)
+		}
+	}
+
+	// create the virtual index
+	virtIdx := make([]uint64, len(added)+len(removed))
+	for i := range added {
+		virtIdx[i] = 1
+	}
+
+	return NewTimeIndex(index, t.Machine.Index(added)),
+		NewTimeIndex(index, t.Machine.Index(removed))
+}
+
+// TimeIndexTouched return all the touched states as active. Requires
+// [SemLogger.IsSteps] to be true.
+func (t *Transition) TimeIndexTouched() *TimeIndex {
+	// TODO test
+	touched := S{}
+	index := t.MachApi.StateNames()
+
+	// collect
+	for _, step := range t.Steps {
+		if s := step.GetFromState(index); s != "" {
+			touched = append(touched, s)
+		}
+		if s := step.GetToState(index); s != "" {
+			touched = append(touched, s)
+		}
+	}
+
+	return NewTimeIndex(t.MachApi.StateNames(), t.MachApi.Index(touched))
 }
 
 // ClockBefore return the Clock from before the transition.
