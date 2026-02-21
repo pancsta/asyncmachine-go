@@ -90,6 +90,7 @@ tools/visualizer/testdata/*
 /data/
 *.gob.br
 /examples/wasm/client/wasm_exec.js
+/examples/wasm/client/main.wasm
 /examples/wasm/deps-graph.svg
 /examples/wasm/deps.md
 /examples/wasm/tmp/
