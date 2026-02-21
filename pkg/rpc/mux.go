@@ -31,9 +31,8 @@ type Mux struct {
 	// NewServerFn creates a new instance of Server and is called for every new
 	// connection.
 	NewServerFn MuxNewServerFn
-	// Typed arguments struct pointer
-	Args       any
-	ArgsPrefix string
+	// Typed arguments struct value
+	Args any
 
 	Name string
 	Addr string
@@ -42,6 +41,7 @@ type Mux struct {
 	LogEnabled bool
 	// The last error returned by NewServerFn.
 	NewServerErr error
+	Opts         MuxOpts
 
 	clients   []net.Conn
 	cmux      cmux.CMux
@@ -64,7 +64,7 @@ func NewMux(
 		LogEnabled:  os.Getenv(EnvAmRpcLogMux) != "",
 		NewServerFn: newServerFn,
 		Args:        opts.Args,
-		ArgsPrefix:  opts.ArgsPrefix,
+		Opts:        *opts,
 	}
 
 	mach, err := am.NewCommon(ctx, "rm-"+name, states.MuxSchema, ssM.Names(),
@@ -217,9 +217,9 @@ func (m *Mux) accept(l net.Listener) {
 		if m.NewServerFn == nil {
 			server, err = NewServer(m.Mach.Ctx(), ":0",
 				m.Name+"-"+strconv.Itoa(int(num)), m.Source, &ServerOpts{
-					Parent:     m.Mach,
-					Args:       m.Args,
-					ArgsPrefix: m.ArgsPrefix,
+					Parent:   m.Mach,
+					Args:     m.Args,
+					ParseRpc: m.Opts.ParseRpc,
 				})
 		} else {
 			server, err = m.NewServerFn(int(num), conn)
@@ -277,7 +277,14 @@ type MuxOpts struct {
 	// Parent is a parent state machine for a new Mux state machine. See
 	// [am.Opts].
 	Parent am.Api
-	// Typed arguments struct pointer
-	Args       any
-	ArgsPrefix string
+	// Typed arguments struct value
+	Args any
+	// optional RPC args parser
+	ParseRpc func(args am.A) am.A
+
+	// Listen on a WebSocket connection instead of TCP.
+	// WebSocket bool
+	// // HTTP URL without proto to tunnel the TCP listen over a WebSocket conn.
+	// // See WsListenPath.
+	// WebSocketTunnel string
 }
