@@ -7,6 +7,7 @@ package server
 import (
 	"encoding/gob"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -21,14 +22,13 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/soheilhy/cmux"
-
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
+	"github.com/soheilhy/cmux"
 )
 
 // ///// ///// /////
@@ -40,8 +40,8 @@ import (
 type Exportable struct {
 	// TODO refac to MsgSchema
 	// TODO version schemas
-	MsgStruct *telemetry.DbgMsgStruct
-	MsgTxs    []*telemetry.DbgMsgTx
+	MsgStruct *dbg.DbgMsgStruct
+	MsgTxs    []*dbg.DbgMsgTx
 }
 
 type Client struct {
@@ -157,7 +157,7 @@ func (c *Client) TxIndex(id string) int {
 	return -1
 }
 
-func (c *Client) Tx(idx int) *telemetry.DbgMsgTx {
+func (c *Client) Tx(idx int) *dbg.DbgMsgTx {
 	if idx < 0 || idx >= len(c.MsgTxs) {
 		return nil
 	}
@@ -291,8 +291,7 @@ func (c *Client) ParseSchema() {
 // ///// ///// /////
 
 func StartRpc(
-	mach *am.Machine, addr string, mux chan<- cmux.CMux, fwdAdds []string,
-	enableHttp bool,
+	mach *am.Machine, addr string, mux chan<- cmux.CMux, p types.Params,
 ) {
 	// TODO dont listen in WASM
 
@@ -300,7 +299,7 @@ func StartRpc(
 	gob.Register(am.Relation(0))
 	gob.Register(Exportable{})
 	if addr == "" {
-		addr = telemetry.DbgAddr
+		addr = dbg.DbgAddr
 	}
 	_, addrPort, _ := net.SplitHostPort(addr)
 	port, _ := strconv.Atoi(addrPort)
@@ -314,9 +313,9 @@ func StartRpc(
 	}
 	mach.Log("dbg server started at %s", addr)
 
-	// connect to another instances
-	fwdTo := make([]*rpc.Client, len(fwdAdds))
-	for i, a := range fwdAdds {
+	// connect to other instances
+	fwdTo := make([]*rpc.Client, len(p.FwdData))
+	for i, a := range p.FwdData {
 		fwdTo[i], err = rpc.Dial("tcp", a)
 		if err != nil {
 			fmt.Printf("Cant fwd to %s: %s\n", a, err)
@@ -329,37 +328,42 @@ func StartRpc(
 	tcpL := mux1.Match(cmux.Any())
 	go tcpAccept(tcpL, mach, fwdTo)
 
-	// second cmux for http/ws on port+1
-	if enableHttp {
+	// HTTP and WS on port+1
+	if p.UiWeb {
 		httpAddr := fmt.Sprintf("%s:%d",
 			addr[:strings.LastIndex(addr, ":")], port+1)
-		httpLis, err := net.Listen("tcp", httpAddr)
-		if err != nil {
-			log.Println(err)
-			mach.AddErr(err, nil)
-			panic(err)
+		httpMux := http.ServeMux{}
+		httpMux.HandleFunc("/{$}", func(w http.ResponseWriter, r *http.Request) {
+			httpHandlerIndex(w, r, mach, p)
+		})
+		httpMux.Handle("/", http.FileServer(http.Dir(p.OutputDir)))
+		httpMux.HandleFunc("/diagrams/mach", func(
+			w http.ResponseWriter, r *http.Request,
+		) {
+
+			httpHandlerDiagMach(w, r, mach)
+		})
+		httpMux.HandleFunc("/diagrams/mach.svg", func(
+			w http.ResponseWriter, r *http.Request,
+		) {
+
+			httpHandlerDiagMach(w, r, mach)
+		})
+		httpMux.HandleFunc("/diagrams/mach.ws",
+			func(w http.ResponseWriter, r *http.Request) {
+				wsDiagHandler(w, r, mach)
+			})
+		httpMux.HandleFunc("/dbg.ws", func(w http.ResponseWriter, r *http.Request) {
+			wsDbgHandler(w, r, mach, fwdTo)
+		})
+		httpSrv := &http.Server{
+			Handler: &httpMux,
+			Addr:    httpAddr,
 		}
-		mux2 := cmux.New(httpLis)
-		httpL := mux2.Match(cmux.HTTP1())
-		httpS := &http.Server{
-			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-				if r.RequestURI == "/diagrams/mach.ws" {
-					wsHandler(w, r, mach)
-					return
-				}
-				httpHandler(w, r, mach)
-			})}
-
+		// listen
 		go func() {
-			mach.AddErr(httpS.Serve(httpL), nil)
-		}()
-		go func() {
-			if err := mux2.Serve(); err != nil {
-				fmt.Println(err)
-				mach.AddErr(err, nil)
-				os.Exit(1)
-			}
+			mach.AddErr(httpSrv.ListenAndServe(), nil)
 		}()
 	}
 
@@ -378,15 +382,16 @@ func StartRpc(
 	}
 }
 
-// TODO rename to RpcServer (compat break)
+// TODO rename to RPCServer (compat break)
 type RPCServer struct {
-	Mach   *am.Machine
+	Mach *am.Machine
+	// TODO ConnId
 	ConnID string
 	FwdTo  []*rpc.Client
 }
 
 type DbgMsgSchemaFwd struct {
-	MsgStruct *telemetry.DbgMsgStruct
+	MsgStruct *dbg.DbgMsgStruct
 	ConnId    string
 }
 
@@ -406,7 +411,7 @@ func (r *RPCServer) DbgMsgSchemaFwd(
 }
 
 func (r *RPCServer) DbgMsgSchema(
-	msgSchema *telemetry.DbgMsgStruct, _ *string,
+	msgSchema *dbg.DbgMsgStruct, _ *string,
 ) error {
 
 	r.Mach.Add1(ss.ConnectEvent, am.A{
@@ -433,13 +438,13 @@ func (r *RPCServer) DbgMsgSchema(
 }
 
 var (
-	queue       []*telemetry.DbgMsgTx
+	queue       []*dbg.DbgMsgTx
 	queueConnId []string
 	queueMx     sync.Mutex
 	scheduled   bool
 )
 
-func (r *RPCServer) DbgMsgTx(msgTx *telemetry.DbgMsgTx, _ *string) error {
+func (r *RPCServer) DbgMsgTx(msgTx *dbg.DbgMsgTx, _ *string) error {
 	queueMx.Lock()
 	defer queueMx.Unlock()
 
@@ -486,7 +491,7 @@ func (r *RPCServer) DbgMsgTx(msgTx *telemetry.DbgMsgTx, _ *string) error {
 }
 
 type DbgMsgTx struct {
-	MsgTx  *telemetry.DbgMsgTx
+	MsgTx  *dbg.DbgMsgTx
 	ConnId string
 }
 
@@ -552,28 +557,33 @@ func tcpAccept(l net.Listener, mach *am.Machine, fwdTo []*rpc.Client) {
 		}
 
 		// handle the client
-		go func() {
-			server := rpc.NewServer()
-			connID := utils.RandId(8)
-			rcvr := &RPCServer{
-				Mach:   mach,
-				ConnID: connID,
-				FwdTo:  fwdTo,
-			}
-
-			err = server.Register(rcvr)
-			if err != nil {
-				rcvr.Mach.AddErr(err, nil)
-				// TODO err msg
-				fmt.Println(err)
-				os.Exit(1)
-			}
-			server.ServeConn(conn)
-
-			// TODO pass to range fwdTo (dedicated RPC method)
-			rcvr.Mach.Add1(ss.DisconnectEvent, am.A{"conn_id": connID})
-		}()
+		go AcceptConn(conn, mach, fwdTo)
 	}
+}
+
+// AcceptConn accepts a std rpc connection, or alike.
+func AcceptConn(
+	conn io.ReadWriteCloser, mach *am.Machine, fwdTo []*rpc.Client,
+) {
+	server := rpc.NewServer()
+	connId := utils.RandId(8)
+	rcvr := &RPCServer{
+		Mach:   mach,
+		ConnID: connId,
+		FwdTo:  fwdTo,
+	}
+
+	err := server.Register(rcvr)
+	if err != nil {
+		rcvr.Mach.AddErr(err, nil)
+		// TODO err msg
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	server.ServeConn(conn)
+
+	// TODO pass to range fwdTo (dedicated RPC method)
+	rcvr.Mach.Add1(ss.DisconnectEvent, am.A{"conn_id": connId})
 }
 
 // ///// ///// /////
@@ -582,8 +592,54 @@ func tcpAccept(l net.Listener, mach *am.Machine, fwdTo []*rpc.Client) {
 
 // ///// ///// /////
 
-// httpHandler serves plain HTTP requests.
-func httpHandler(w http.ResponseWriter, r *http.Request, mach *am.Machine) {
+// httpHandlerIndex lists --dir
+func httpHandlerIndex(
+	w http.ResponseWriter, r *http.Request, mach *am.Machine, p types.Params,
+) {
+	middleware(w)
+
+	// Read directory contents
+	entries, err := os.ReadDir(p.OutputDir)
+	if err != nil {
+		mach.AddErr(err, nil)
+		http.Error(w, "Failed to read directory", http.StatusInternalServerError)
+		return
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].IsDir() != entries[j].IsDir() {
+			return entries[i].IsDir()
+		}
+		return entries[i].Name() < entries[j].Name()
+	})
+
+	// Build HTML response
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, "<html><head><title>am-dbg --dir %s</title></head><body>",
+		p.OutputDir)
+	fmt.Fprintf(w, "<h1>am-dbg</h1><hr>")
+
+	fmt.Fprintf(w, "<h2>Pages</h2><hr><ul>")
+	// TODO read from state and hide
+	fmt.Fprintf(w, `<li><a href="/diagrams/mach">/diagrams/mach</a></li>`)
+	fmt.Fprintf(w, `</ul>`)
+
+	fmt.Fprintf(w, "<h2>--dir %s</h2><hr><ul>", p.OutputDir)
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() {
+			name += "/"
+		}
+		fmt.Fprintf(w, `<li><a href="%s">%s</a></li>`, name, name)
+	}
+
+	fmt.Fprintf(w, "</ul><hr></body></html>")
+}
+
+// httpHandlerDiagMach serve the diagram website.
+func httpHandlerDiagMach(
+	w http.ResponseWriter, r *http.Request, mach *am.Machine,
+) {
 	done := make(chan struct{})
 
 	middleware(w)
@@ -593,6 +649,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request, mach *am.Machine) {
 		return
 	}
 
+	// TODO WebDiagReq
 	mach.Add1(ss.WebReq, am.A{
 		// TODO typed params
 		"uri":                 r.RequestURI,
@@ -605,34 +662,37 @@ func httpHandler(w http.ResponseWriter, r *http.Request, mach *am.Machine) {
 	<-done
 }
 
-// wsHandler handles WebSocket upgrade requests and echoes messages.
-func wsHandler(w http.ResponseWriter, r *http.Request, mach *am.Machine) {
+// wsDiagHandler handles diagram updates.
+func wsDiagHandler(w http.ResponseWriter, r *http.Request, mach *am.Machine) {
 	middleware(w)
 
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		InsecureSkipVerify: true,
 	})
 	if err != nil {
 		mach.AddErrState(ss.ErrWeb, err, nil)
 		return
 	}
-	defer c.Close(websocket.StatusInternalError, "internal error")
+	defer conn.Close(websocket.StatusInternalError, "internal error")
+	// TODO remove?
 	done := make(chan struct{})
-	mach.Add1(ss.WebSocket, am.A{
+	mach.Add1(ss.WebSocketDiag, am.A{
 		// TODO typed params
-		"*websocket.Conn":     c,
+		"*websocket.Conn":     conn,
 		"*http.Request":       r,
 		"http.ResponseWriter": w,
 		"doneChan":            done,
 		"addr":                r.RemoteAddr,
 	})
 	// TODO timeout
+	// TODO r.Context()?
 	<-done
 }
 
 func middleware(w http.ResponseWriter) {
+	// TODO add security
 	// CORS
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", "localhost")
 	w.Header().Set("Access-Control-Allow-Methods",
 		"POST, GET, OPTIONS, PUT, DELETE")
 	w.Header().Set("Access-Control-Allow-Headers",
@@ -643,6 +703,22 @@ func middleware(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
+}
+
+// wsDbgHandler handles dbg protocol over WS.
+func wsDbgHandler(
+	w http.ResponseWriter, r *http.Request, mach *am.Machine, fwdTo []*rpc.Client,
+) {
+
+	connWs, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		log.Printf("Upgrade error: %v", err)
+		return
+	}
+	conn := websocket.NetConn(mach.Context(), connWs, websocket.MessageBinary)
+	AcceptConn(conn, mach, fwdTo)
 }
 
 // ///// ///// /////

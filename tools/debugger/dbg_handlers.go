@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -14,23 +15,24 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/charmbracelet/ssh"
 	"github.com/coder/websocket"
-	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
+	"github.com/pancsta/tcell-v2"
 	"golang.org/x/exp/maps"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
-	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
-
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 	"github.com/pancsta/asyncmachine-go/tools/visualizer"
 )
 
@@ -46,6 +48,11 @@ func (d *Debugger) StartState(e *am.Event) {
 	d.App = cview.NewApplication()
 	if d.Opts.Screen != nil {
 		d.App.SetScreen(d.Opts.Screen)
+
+		// headless mode
+	} else if d.Opts.UiSsh {
+		d.Mach.Add1(ss.SshServer, nil)
+		d.App.SetScreen(tcell.NewSimulationScreen("UTF-8"))
 	}
 
 	// forceful race solving
@@ -205,7 +212,7 @@ func (d *Debugger) ReadyState(e *am.Event) {
 			case <-d.heartbeatT.C:
 				d.Mach.Add1(ss.Heartbeat, nil)
 
-			case <-d.Mach.Ctx().Done():
+			case <-d.Mach.Context().Done():
 				d.heartbeatT.Stop()
 			}
 		}
@@ -526,7 +533,7 @@ func (d *Debugger) TreeGroupsFocusedEnd(_ *am.Event) {
 // ///// CONNECTION
 
 func (d *Debugger) ConnectEventEnter(e *am.Event) bool {
-	msg, ok1 := e.Args["msg_struct"].(*telemetry.DbgMsgStruct)
+	msg, ok1 := e.Args["msg_struct"].(*dbg.DbgMsgStruct)
 	_, ok2 := e.Args["conn_id"].(string)
 	if !ok1 || !ok2 || msg.ID == "" {
 		d.Mach.Log("Error: msg_struct malformed\n")
@@ -538,7 +545,7 @@ func (d *Debugger) ConnectEventEnter(e *am.Event) bool {
 
 func (d *Debugger) ConnectEventState(e *am.Event) {
 	// initial structure data
-	msg := e.Args["msg_struct"].(*telemetry.DbgMsgStruct)
+	msg := e.Args["msg_struct"].(*dbg.DbgMsgStruct)
 	connId := e.Args["conn_id"].(string)
 	var c *Client
 
@@ -691,7 +698,7 @@ func (d *Debugger) DisconnectEventState(e *am.Event) {
 // ///// CLIENTS
 
 func (d *Debugger) ClientMsgEnter(e *am.Event) bool {
-	_, ok1 := e.Args["msgs_tx"].([]*telemetry.DbgMsgTx)
+	_, ok1 := e.Args["msgs_tx"].([]*dbg.DbgMsgTx)
 	_, ok2 := e.Args["conn_ids"].([]string)
 	return ok1 && ok2
 }
@@ -702,7 +709,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	// TODO make it async via a dedicated goroutine, pushing results to
 	//  async multi state ClientMsgDone (if possible)
 
-	msgs := e.Args["msgs_tx"].([]*telemetry.DbgMsgTx)
+	msgs := e.Args["msgs_tx"].([]*dbg.DbgMsgTx)
 	connIds := e.Args["conn_ids"].([]string)
 	mach := d.Mach
 
@@ -1289,6 +1296,14 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 
 	case toolTail:
 		d.Mach.EvToggle1(e, ss.TailMode, nil)
+
+	case toolWeb:
+		go func() {
+			err := openURL("http://" + d.Opts.AddrHttp)
+			if err != nil {
+				d.Mach.EvAddErr(e, err, nil)
+			}
+		}()
 
 	case toolPrev:
 		d.Mach.EvAdd1(e, ss.UserBack, nil)
@@ -2083,12 +2098,15 @@ func (d *Debugger) WebReqState(e *am.Event) {
 		if err != nil {
 			return
 		}
+
+		// send
+		w.Header().Set("Content-Type", "image/svg+xml")
 		_, err = w.Write(b)
 		d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
 	}
 }
 
-func (d *Debugger) WebSocketState(e *am.Event) {
+func (d *Debugger) WebSocketDiagState(e *am.Event) {
 	// TODO TYPED PARAMS
 	ws := e.Args["*websocket.Conn"].(*websocket.Conn)
 	r := e.Args["*http.Request"].(*http.Request)
@@ -2227,4 +2245,71 @@ func (d *Debugger) ResizedState(e *am.Event) {
 		// force a redraw TODO bug?
 		d.draw()
 	}()
+}
+
+func (d *Debugger) SshServerEnter(e *am.Event) bool {
+	return d.Opts.UiSsh && d.Opts.AddrSsh != ""
+}
+
+func (d *Debugger) SshServerState(e *am.Event) {
+	ctx := d.Mach.NewStateCtx(ss.SshServer)
+	// TODO SshClientState
+	busy := atomic.Bool{}
+	handler := func(sess ssh.Session) {
+		d.Mach.Log("new SSH session " + sess.RemoteAddr().String())
+		if busy.Load() {
+			_, _ = sess.Write([]byte("am-dbg server busy...\n"))
+			_ = sess.Close()
+			return
+		}
+		// TODO prevent double conns via SshServerConnectedState
+
+		_, _, isPty := sess.Pty()
+		if !isPty {
+			return
+		}
+		screen, err := NewSessionScreen(sess)
+		if err != nil {
+			d.Mach.AddErr(err, nil)
+			return
+		}
+		d.App.SetScreen(screen)
+		busy.Store(true)
+
+		// wait till end
+		select {
+		// TODO SshClientState
+		case <-d.Mach.WhenTicks(ss.SshDisconn, 1, nil):
+		case <-ctx.Done():
+		}
+
+		// restore sim screen
+		busy.Store(false)
+		d.App.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	}
+
+	go func() {
+		if ctx.Err() != nil {
+			return // expired
+		}
+		optSrv := func(s *ssh.Server) error {
+			d.sshSrv = s
+			return nil
+		}
+
+		// show banner TODO optional
+		host, port, _ := net.SplitHostPort(d.Opts.AddrSsh)
+		p := d.Opts.Print
+		p("SSH: listening on %s\n", d.Opts.AddrSsh)
+		p("\n")
+		p("Connect via:\n")
+		p("$ ssh %s -p %s -o UserKnownHostsFile=/dev/null "+
+			"-o StrictHostKeyChecking=no\n", host, port)
+		d.Mach.AddErr(
+			ssh.ListenAndServe(d.Opts.AddrSsh, handler, optSrv), nil)
+	}()
+}
+
+func (d *Debugger) SshServerEnd(e *am.Event) {
+	d.sshSrv.Close()
 }

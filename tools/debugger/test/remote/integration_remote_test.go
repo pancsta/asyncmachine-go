@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	testing2 "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/stretchr/testify/assert"
 
 	amtest "github.com/pancsta/asyncmachine-go/internal/testing"
@@ -18,7 +19,6 @@ import (
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
@@ -114,7 +114,7 @@ func TestTailModeRemote(t *testing.T) {
 
 	// connect to the worker as a new telemetry client
 	mach.SemLogger().SetLevel(am.LogOps)
-	err := telemetry.TransitionsToDbg(mach, workerTelemetryAddr)
+	err := dbg.TransitionsToDbg(mach, workerTelemetryAddr)
 	if err != nil {
 		t.Fatal(err)
 	}

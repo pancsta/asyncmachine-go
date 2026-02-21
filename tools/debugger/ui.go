@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/lithammer/dedent"
 	"github.com/pancsta/cview"
+	"github.com/pancsta/tcell-v2"
 	"github.com/zyedidia/clipper"
 
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
@@ -316,6 +317,7 @@ func (d *Debugger) hInitToolbar() {
 		d.toolbars[i].SetSelectedStyle(colorActive,
 			cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
 		d.toolbars[i].SetSelectable(true, true)
+		// TODO remove empty space
 		d.toolbars[i].SetBorders(false)
 
 		// click effect
@@ -452,6 +454,14 @@ func (d *Debugger) hInitToolbar() {
 				return d.Mach.Any1(ss.MatrixView, ss.TreeMatrixView)
 			}},
 		},
+	}
+
+	if d.Opts.AddrHttp != "" {
+		d.toolbarItems[2] = slices.Insert(d.toolbarItems[2], 3,
+			toolbarItem{id: toolWeb, label: "web", active: func() bool {
+				return false
+			}},
+		)
 	}
 
 	d.hUpdateToolbar()
@@ -638,7 +648,8 @@ func (d *Debugger) hUpdateHelpDialog() {
 		[::b]alt o[::-]              log reader
 		[::b]home/end[::-]           schema / last tx
 		[::b]alt s[::-]              export data
-		[::b]backspace[::-]          remove machine
+		[::b]backspace[::-]          remove client
+		[::b]alt-d[::-]              remove client
 		[::b]esc[::-]                focus mach list
 		[::b]ctrl q[::-]             quit
 		[::b]?[::-]                  show help
@@ -675,11 +686,12 @@ func (d *Debugger) hUpdateHelpDialog() {
 	
 		[::b]### [::u]about am-dbg[::-]
 		%-15s    version
-		%-15s    server DBG addr
-		%-15s    server HTTP addr
+		%-15s    DBG server addr
+		%-15s    HTTP server addr
+		%-15s    SSH server addr
 		%-15s    mem usage
 	`, "\n ")), colorActive, d.Opts.Version, d.Opts.AddrRpc,
-		d.Opts.AddrHttp, strconv.Itoa(mem)+"mb"))
+		d.Opts.AddrHttp, d.Opts.AddrSsh, strconv.Itoa(mem)+"mb"))
 }
 
 func (d *Debugger) hInitLayout() {
@@ -832,7 +844,7 @@ func (d *Debugger) draw(components ...cview.Primitive) {
 
 	go func() {
 		select {
-		case <-d.Mach.Ctx().Done():
+		case <-d.Mach.Context().Done():
 			return
 
 		// debounce every 16msec

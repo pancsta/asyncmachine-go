@@ -23,26 +23,27 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/andybalholm/brotli"
-	"github.com/gdamore/tcell/v2"
+	"github.com/charmbracelet/ssh"
 	"github.com/pancsta/cview"
+	"github.com/pancsta/tcell-v2"
 	"github.com/zyedidia/clipper"
 	"golang.org/x/text/message"
-
-	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 	amvis "github.com/pancsta/asyncmachine-go/tools/visualizer"
 )
 
@@ -59,7 +60,7 @@ type Debugger struct {
 	Mach *am.Machine
 
 	Clients map[string]*Client
-	// TODO make threadsafe
+	// TODO go-arg and inherit from RWMutex
 	Opts       Opts
 	LayoutRoot *cview.Panels
 	// selected client
@@ -144,10 +145,16 @@ type Debugger struct {
 	logRenderedClient string
 	lastResize        uint64
 	logLastResize     uint64
+	sshSrv            *ssh.Server
+	logFile           *os.File
+	// TODO handle in LogBuiltState
+	logFileMx sync.Mutex
 }
 
 // New creates a new debugger instance and optionally import a data file.
 func New(ctx context.Context, opts Opts) (*Debugger, error) {
+	// TODO default options
+
 	var err error
 	// init the debugger
 	d := &Debugger{
@@ -169,6 +176,11 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	if d.Opts.Log2Ttl == 0 {
 		d.Opts.Log2Ttl = time.Hour
 	}
+	if d.Opts.Print == nil {
+		d.Opts.Print = func(txt string, args ...any) {
+			fmt.Printf(txt, args...)
+		}
+	}
 
 	gob.Register(server.Exportable{})
 	gob.Register(am.Relation(0))
@@ -185,8 +197,8 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		return nil, err
 	}
 	d.Mach = mach
-	// mach.AddBreakpoint1(ss.BuildingLog, "", false)
-	// mach.AddBreakpoint1(ss.BuildingLog, "", true)
+	// mach.AddBreakpoint1("", ss.Start, false)
+	// mach.AddBreakpoint1("", ss.Start, true)
 	// TODO update to schemas
 	mach.SetGroupsString(map[string]am.S{
 		"Dialog":           ss.GroupDialog,
@@ -217,12 +229,12 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	} else {
 		semLog.SetSimple(log.Printf, opts.DbgLogLevel)
 	}
-	semLog.SetArgsMapper(am.NewArgsMapper([]string{
+	semLog.SetArgsMapper(am.NewLogArgsMapper(20, []string{
 		// TODO extract
 		"Client.id", "conn_id", "cursorTx1", "amount", "Client.id",
 		"state", "fwd", "filter", "ToolName", "uri", "addr", "url",
 		"err", "_am_err",
-	}, 20))
+	}))
 
 	d.graph, err = amgraph.New(d.Mach)
 	if err != nil {
@@ -259,12 +271,22 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		p := path.Join(d.Opts.OutputDir, "am-dbg-clients.txt")
 		clientListFile, err := os.Create(p)
 		if err != nil {
-			mach.AddErr(fmt.Errorf("client list file open: %w", err), nil)
+			mach.AddErr(err, nil)
 		}
 		d.clientListFile = clientListFile
 	}
 
-	// tx file
+	// log file
+	if d.Opts.OutputLog {
+		p := path.Join(d.Opts.OutputDir, "log.txt")
+		logFile, err := os.Create(p)
+		if err != nil {
+			mach.AddErr(err, nil)
+		}
+		d.logFile = logFile
+	}
+
+	// tx files
 	if d.Opts.OutputTx {
 		p := path.Join(d.Opts.OutputDir, "tx.md")
 		txFile, err := os.Create(p)
@@ -294,9 +316,8 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		txMermaidAsciiFile := path.Join(d.Opts.OutputDir, "tx.mermaid.txt")
 		d.txFileMermaidAscii, err = os.Create(txMermaidAsciiFile)
 		if err != nil {
-			mach.AddErr(fmt.Errorf("tx list file open: %w", err), nil)
+			mach.AddErr(err, nil)
 		}
-		d.txListFile = txListFile
 	}
 
 	return d, nil
@@ -497,7 +518,7 @@ func (d *Debugger) hGetClient(machId string) *Client {
 
 func (d *Debugger) hGetClientTx(
 	machId, txId string,
-) (*Client, *telemetry.DbgMsgTx) {
+) (*Client, *dbg.DbgMsgTx) {
 	c := d.hGetClient(machId)
 	if c == nil {
 		return nil, nil
@@ -531,8 +552,8 @@ func (d *Debugger) Client() *Client {
 }
 
 // NextTx returns the next transition. Thread safe via Eval().
-func (d *Debugger) NextTx() *telemetry.DbgMsgTx {
-	var tx *telemetry.DbgMsgTx
+func (d *Debugger) NextTx() *dbg.DbgMsgTx {
+	var tx *dbg.DbgMsgTx
 
 	// SelectingClient locks d.C
 	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
@@ -546,7 +567,7 @@ func (d *Debugger) NextTx() *telemetry.DbgMsgTx {
 	return tx
 }
 
-func (d *Debugger) hNextTx() *telemetry.DbgMsgTx {
+func (d *Debugger) hNextTx() *dbg.DbgMsgTx {
 	c := d.C
 	if c == nil {
 		return nil
@@ -560,8 +581,8 @@ func (d *Debugger) hNextTx() *telemetry.DbgMsgTx {
 }
 
 // CurrentTx returns the current transition. Thread safe via Eval().
-func (d *Debugger) CurrentTx() *telemetry.DbgMsgTx {
-	var tx *telemetry.DbgMsgTx
+func (d *Debugger) CurrentTx() *dbg.DbgMsgTx {
+	var tx *dbg.DbgMsgTx
 
 	// SelectingClient locks d.C
 	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
@@ -575,7 +596,7 @@ func (d *Debugger) CurrentTx() *telemetry.DbgMsgTx {
 	return tx
 }
 
-func (d *Debugger) hCurrentTx() *telemetry.DbgMsgTx {
+func (d *Debugger) hCurrentTx() *dbg.DbgMsgTx {
 	c := d.C
 	if c == nil {
 		return nil
@@ -589,8 +610,8 @@ func (d *Debugger) hCurrentTx() *telemetry.DbgMsgTx {
 }
 
 // PrevTx returns the previous transition. Thread safe via Eval().
-func (d *Debugger) PrevTx() *telemetry.DbgMsgTx {
-	var tx *telemetry.DbgMsgTx
+func (d *Debugger) PrevTx() *dbg.DbgMsgTx {
+	var tx *dbg.DbgMsgTx
 
 	// SelectingClient locks d.C
 	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
@@ -604,7 +625,7 @@ func (d *Debugger) PrevTx() *telemetry.DbgMsgTx {
 	return tx
 }
 
-func (d *Debugger) hPrevTx() *telemetry.DbgMsgTx {
+func (d *Debugger) hPrevTx() *dbg.DbgMsgTx {
 	c := d.C
 	if c == nil {
 		return nil
@@ -948,7 +969,7 @@ func (d *Debugger) hParseMsg(c *Client, idx int) {
 		sum += v
 	}
 	index := c.MsgStruct.StatesIndex
-	prevTx := &telemetry.DbgMsgTx{}
+	prevTx := &dbg.DbgMsgTx{}
 	prevTxParsed := &types.MsgTxParsed{}
 	if len(c.MsgTxs) > 1 && idx > 0 {
 		prevTx = c.MsgTxs[idx-1]
@@ -988,7 +1009,8 @@ func (d *Debugger) hParseMsg(c *Client, idx int) {
 	if len(msgTx.CalledStates) > 0 {
 		msgTx.CalledStatesIdxs = amhelp.StatesToIndexes(index,
 			msgTx.CalledStates)
-		msgTx.MachineID = ""
+		// TODO optimize: ID registry
+		// msgTx.MachineID = ""
 		msgTx.CalledStates = nil
 	}
 	// TODO refac when dbg@v2 lands
@@ -1225,10 +1247,13 @@ func (d *Debugger) hExportData(filename string, snapshot bool) {
 	data := make([]*server.Exportable, len(d.Clients))
 	i := 0
 	for _, c := range d.Clients {
-		data[i] = c.Exportable
+		data[i] = &server.Exportable{
+			MsgStruct: c.Exportable.MsgStruct,
+			MsgTxs:    c.Exportable.MsgTxs,
+		}
 		// snapshot limits to a single tx
 		if snapshot {
-			data[i].MsgTxs = []*telemetry.DbgMsgTx{c.Tx(c.LastTxTill(now))}
+			data[i].MsgTxs = []*dbg.DbgMsgTx{c.Tx(c.LastTxTill(now))}
 		}
 		i++
 	}
@@ -1246,7 +1271,7 @@ func (d *Debugger) hExportData(filename string, snapshot bool) {
 }
 
 func (d *Debugger) hGetTxInfo(txIndex1 int,
-	tx *telemetry.DbgMsgTx, parsed *types.MsgTxParsed, title string,
+	tx *dbg.DbgMsgTx, parsed *types.MsgTxParsed, title string,
 ) (string, string) {
 	left := title
 	right := " "
@@ -1255,7 +1280,7 @@ func (d *Debugger) hGetTxInfo(txIndex1 int,
 	}
 
 	// left side
-	var prev *telemetry.DbgMsgTx
+	var prev *dbg.DbgMsgTx
 	if txIndex1 > 1 {
 		prev = d.C.MsgTxs[txIndex1-2]
 	}
@@ -1278,7 +1303,11 @@ func (d *Debugger) hGetTxInfo(txIndex1 int,
 	if !tx.Accepted {
 		left += "[grey]"
 	}
-	left += fmt.Sprintf(" %s%s: [::b]%s[::-]", tx.Type, multi,
+	queued := ""
+	if tx.IsQueued {
+		queued = "q"
+	}
+	left += fmt.Sprintf(" %s%s%s: [::b]%s[::-]", queued, tx.Type, multi,
 		strings.Join(calledStates, ", "))
 
 	if !tx.Accepted {
@@ -1293,9 +1322,7 @@ func (d *Debugger) hGetTxInfo(txIndex1 int,
 	if tx.IsCheck {
 		right += "check | "
 	}
-	if tx.IsQueued {
-		right += "[grey]queued[-] | "
-	} else if !tx.Accepted {
+	if !tx.Accepted {
 		right += "[grey]canceled[-] | "
 	}
 
@@ -1373,8 +1400,8 @@ func (d *Debugger) hUpdateMatrixRelations() {
 	if c.SelectedGroup != "" {
 		index = c.MsgSchemaParsed.Groups[c.SelectedGroup]
 	}
-	var tx *telemetry.DbgMsgTx
-	var prevTx *telemetry.DbgMsgTx
+	var tx *dbg.DbgMsgTx
+	var prevTx *dbg.DbgMsgTx
 	if c.CursorStep1 == 0 {
 		tx = d.hCurrentTx()
 		prevTx = d.hPrevTx()
@@ -2011,7 +2038,7 @@ func (d *Debugger) diagramLink(outDir string, svgName string) {
 }
 
 func (d *Debugger) diagramsMemCache(
-	e *am.Event, id string, cache *goquery.Document, tx *telemetry.DbgMsgTx,
+	e *am.Event, id string, cache *goquery.Document, tx *dbg.DbgMsgTx,
 	outDir, svgName string,
 ) {
 	svgPath := path.Join(outDir, svgName+".svg")
@@ -2049,7 +2076,7 @@ func (d *Debugger) diagramsMemCache(
 }
 
 func (d *Debugger) diagramsFileCache(
-	e *am.Event, id string, tx *telemetry.DbgMsgTx, lvl int, outDir,
+	e *am.Event, id string, tx *dbg.DbgMsgTx, lvl int, outDir,
 	svgName string,
 ) {
 	defer d.Mach.PanicToErrState(ss.ErrDiagrams, nil)

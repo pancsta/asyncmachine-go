@@ -1,12 +1,18 @@
 package debugger
 
 import (
+	"errors"
 	"log"
+	"os/exec"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/charmbracelet/ssh"
 	"github.com/pancsta/cview"
+	"github.com/pancsta/tcell-v2"
+	"github.com/pancsta/tcell-v2/terminfo"
 
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
@@ -68,6 +74,7 @@ const (
 	// toolLog4              ToolName = "log-4"
 	toolReader ToolName = "reader"
 	toolRain   ToolName = "rain"
+	toolWeb    ToolName = "web"
 
 	// row 2
 
@@ -96,6 +103,7 @@ type Opts struct {
 	// MachAddress to listen on
 	AddrRpc  string
 	AddrHttp string
+	AddrSsh  string
 	// Log level of the debugger's machine
 	DbgLogLevel am.LogLevel
 	// Go race detector is enabled
@@ -107,7 +115,7 @@ type Opts struct {
 	Timelines int
 	// File path to import (brotli)
 	ImportData string
-	// File to dump client list into.
+	// Dump client list into a txt file.
 	OutputClients bool
 	// Root dir for output files
 	OutputDir string
@@ -127,6 +135,10 @@ type Opts struct {
 	TailMode        bool
 	OutputTx        bool
 	EnableClipboard bool
+	UiSsh           bool
+	UiWeb           bool
+	Print           func(txt string, args ...any)
+	OutputLog       bool
 }
 
 type OptsFilters struct {
@@ -213,4 +225,135 @@ func (c *Client) GetReaderEntry(txId string, idx int) *types.LogReaderEntry {
 	}
 
 	return ptrTx[idx]
+}
+
+// ///// ///// /////
+
+// ///// SSH
+
+// ///// ///// /////
+
+func NewSessionScreen(s ssh.Session) (tcell.Screen, error) {
+	pi, ch, ok := s.Pty()
+	if !ok {
+		return nil, errors.New("no pty requested")
+	}
+	ti, err := terminfo.LookupTerminfo(pi.Term)
+	if err != nil {
+		return nil, err
+	}
+	screen, err := tcell.NewTerminfoScreenFromTtyTerminfo(&tty{
+		Session: s,
+		size:    pi.Window,
+		ch:      ch,
+	}, ti)
+	if err != nil {
+		return nil, err
+	}
+	return screen, nil
+}
+
+type tty struct {
+	ssh.Session
+	size     ssh.Window
+	ch       <-chan ssh.Window
+	resizecb func()
+	mu       sync.Mutex
+}
+
+func (t *tty) Start() error {
+	go func() {
+		for win := range t.ch {
+			t.mu.Lock()
+			t.size = win
+			t.notifyResize()
+			t.mu.Unlock()
+		}
+	}()
+	return nil
+}
+
+func (t *tty) Stop() error {
+	return nil
+}
+
+func (t *tty) Drain() error {
+	return nil
+}
+
+func (t *tty) WindowSize() (window tcell.WindowSize, err error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return tcell.WindowSize{
+		Width:  t.size.Width,
+		Height: t.size.Height,
+	}, nil
+}
+
+func (t *tty) NotifyResize(cb func()) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.resizecb = cb
+}
+
+func (t *tty) notifyResize() {
+	if t.resizecb != nil {
+		t.resizecb()
+	}
+}
+
+// ///// ///// /////
+
+// ///// MISC
+
+// ///// ///// /////
+
+// openURL opens the specified URL in the default browser of the user.
+// https://gist.github.com/sevkin/9798d67b2cb9d07cb05f89f14ba682f8
+func openURL(url string) error {
+	var cmd string
+	var args []string
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = "cmd.exe"
+		args = []string{
+			"/c", "rundll32", "url.dll,FileProtocolHandler",
+			strings.ReplaceAll(url, "&", "^&"),
+		}
+	case "darwin":
+		cmd = "open"
+		args = []string{url}
+	default:
+		if isWSL() {
+			cmd = "cmd.exe"
+			args = []string{"start", url}
+		} else {
+			cmd = "xdg-open"
+			args = []string{url}
+		}
+	}
+
+	e := exec.Command(cmd, args...)
+	err := e.Start()
+	if err != nil {
+		return err
+	}
+	err = e.Wait()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// isWSL checks if the Go program is running inside Windows Subsystem for Linux
+func isWSL() bool {
+	releaseData, err := exec.Command("uname", "-r").Output()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(releaseData)), "microsoft")
 }

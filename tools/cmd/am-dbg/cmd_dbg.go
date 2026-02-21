@@ -3,10 +3,11 @@ package main
 
 import (
 	"context"
+	"log"
+	"net"
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -28,7 +29,7 @@ func main() {
 }
 
 // TODO error msgs
-func cliRun(c *cobra.Command, _ []string, p types.Params) {
+func cliRun(_ *cobra.Command, _ []string, p types.Params) {
 	ctx := context.Background()
 
 	// print the version
@@ -45,33 +46,53 @@ func cliRun(c *cobra.Command, _ []string, p types.Params) {
 	if stopProfile != nil {
 		defer stopProfile()
 	}
+	log.SetOutput(logger.Writer())
 
 	httpAddr := ""
+	sshAddr := ""
 	if p.ListenAddr != "-1" {
-		addr := strings.Split(p.ListenAddr, ":")
-		httpPort, _ := strconv.Atoi(addr[1])
-		httpPort += 1
-		httpAddr = addr[0] + ":" + strconv.Itoa(httpPort)
+		host, port, err := net.SplitHostPort(p.ListenAddr)
+		if err != nil {
+			panic(err)
+		}
+		dbgPort, _ := strconv.Atoi(port)
+		httpPort := dbgPort + 1
+		sshPort := httpPort + 1
+		httpAddr = host + ":" + strconv.Itoa(httpPort)
+		sshAddr = host + ":" + strconv.Itoa(sshPort)
+	}
+
+	if !p.UiSsh {
+		sshAddr = ""
+	}
+	if !p.UiWeb {
+		httpAddr = ""
 	}
 
 	// init the debugger
 	dbg, err := debugger.New(ctx, debugger.Opts{
-		Id:             p.Id,
-		DbgLogLevel:    p.LogLevel,
-		DbgLogger:      logger,
-		ImportData:     p.ImportData,
-		OutputClients:  p.OutputClients,
+		Id:            p.Id,
+		DbgLogLevel:   p.LogLevel,
+		DbgLogger:     logger,
+		ImportData:    p.ImportData,
+		OutputClients: p.OutputClients,
+		// TODO expose levels as states
 		OutputDiagrams: p.OutputDiagrams,
-		Timelines:      p.Timelines,
+		OutputTx:       p.OutputTx,
+		OutputLog:      p.OutputLog,
+		Timelines:      p.ViewTimelines,
 		// ...:           p.FilterLogLevel,
 		OutputDir:       p.OutputDir,
 		AddrRpc:         p.ListenAddr,
 		AddrHttp:        httpAddr,
+		AddrSsh:         sshAddr,
+		UiSsh:           p.UiSsh && sshAddr != "",
+		UiWeb:           p.UiWeb && httpAddr != "",
 		EnableMouse:     p.EnableMouse,
 		EnableClipboard: p.EnableClipboard,
 		MachUrl:         p.MachUrl,
 		SelectConnected: p.SelectConnected,
-		ShowReader:      p.Reader,
+		ShowReader:      p.ViewReader,
 		CleanOnConnect:  p.CleanOnConnect,
 		MaxMemMb:        p.MaxMemMb,
 		Log2Ttl:         p.LogOpsTtl,
@@ -105,13 +126,14 @@ func cliRun(c *cobra.Command, _ []string, p types.Params) {
 
 	// rpc server
 	if p.ListenAddr != "-1" {
-		go server.StartRpc(dbg.Mach, p.ListenAddr, nil, p.FwdData,
-			p.UiDiagrams)
+		go server.StartRpc(dbg.Mach, p.ListenAddr, nil, p)
 	}
 
 	// start and wait till the end
+	// TODO move to params
 	dbg.Start(p.StartupMachine, p.StartupTx, p.StartupView, p.StartupGroup)
 
+	// TODO notify ctx
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
