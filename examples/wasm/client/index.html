@@ -1,0 +1,39 @@
+<html>
+<head>
+  <script src="wasm_exec.js"></script>
+  <script>
+      function onDomReady(callback) {
+          if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', callback);
+          } else {
+              callback();
+          }
+      }
+
+      const go = new Go();
+      WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((result) => {
+          onDomReady(() => {
+              go.run(result.instance);
+          })
+      });
+  </script>
+  <style>
+      .inline-pre {
+          font-family: monospace;
+          white-space: pre;
+      }
+      body {
+          background-color: black;
+          color: white;
+      }
+  </style>
+</head>
+<body>
+
+<h1>asyncmachine-go WASM demo</h1>
+<p>See <span class="inline-pre">README.md</span> for the list of commands.</p>
+<input id="input" type="text" placeholder="msg input">
+<ul id="list"></ul>
+
+</body>
+</html>
