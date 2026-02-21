@@ -786,7 +786,6 @@ tasks:
     dir: scripts
     cmd: go run ./test_loop
 
-
   script-gen-api-docs:
     dir: scripts
     cmd: go run ./gen_api_docs

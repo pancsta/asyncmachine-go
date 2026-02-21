@@ -86,8 +86,8 @@ func main() {
 			panic(err)
 		}
 
-		// inject the connection, store and start
-		bar.Conn = conn
+		// inject the connection, store and start TODO atomic
+		bar.Conn.Store(&conn)
 		handlers.rpcBar.Store(bar)
 		bar.Start(nil)
 		go func() {

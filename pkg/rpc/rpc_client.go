@@ -55,8 +55,8 @@ type Client struct {
 	// ReconnectOn decides if the client will try to [RetryingConn] after a
 	// clean [Disconnect].
 	ReconnectOn bool
-	// Custom connection (wg WebSocket)
-	Conn net.Conn
+	// Custom connection (wg WebSocket) TODO handle better in notif
+	Conn atomic.Pointer[net.Conn]
 	Opts ClientOpts
 
 	// sync settings (read-only)
@@ -286,7 +286,7 @@ func (c *Client) ConnectingState(e *am.Event) {
 		if amhelp.IsDebug() {
 			timeout = 100 * time.Second
 		}
-		if c.Conn == nil && c.Opts.WebSocket != "" {
+		if c.Conn.Load() == nil && c.Opts.WebSocket != "" {
 			mach.Log("dialing WS %s", c.Addr)
 			wsConn, _, err := websocket.Dial(ctx,
 				"ws://"+c.Addr+c.Opts.WebSocket, nil)
@@ -295,9 +295,10 @@ func (c *Client) ConnectingState(e *am.Event) {
 				AddErrNetwork(e, mach, err)
 				return
 			}
-			c.Conn = websocket.NetConn(ctxStart, wsConn, websocket.MessageBinary)
+			conn := websocket.NetConn(ctxStart, wsConn, websocket.MessageBinary)
+			c.Conn.Store(&conn)
 
-		} else if c.Conn == nil {
+		} else if c.Conn.Load() == nil {
 			d := net.Dialer{
 				Timeout: timeout,
 			}
@@ -311,11 +312,11 @@ func (c *Client) ConnectingState(e *am.Event) {
 				AddErrNetwork(e, mach, err)
 				return
 			}
-			c.Conn = conn
+			c.Conn.Store(&conn)
 		}
 
 		// rpc
-		client := c.bindRpcHandlers(c.Conn)
+		client := c.bindRpcHandlers(*c.Conn.Load())
 		mach.Go(ctx, func() {
 			go mach.EvAdd1(e, ssC.Connected, nil)
 			// block
@@ -325,7 +326,7 @@ func (c *Client) ConnectingState(e *am.Event) {
 }
 
 func (c *Client) DisconnectingEnter(e *am.Event) bool {
-	return c.rpc.Load() != nil && c.Conn != nil
+	return c.rpc.Load() != nil && c.Conn.Load() != nil
 }
 
 func (c *Client) DisconnectingState(e *am.Event) {
@@ -335,12 +336,12 @@ func (c *Client) DisconnectingState(e *am.Event) {
 		if ctx.Err() != nil {
 			return // expired
 		}
+		defer c.ensureGroupConnected(e)
 
 		// notify the server and wait a bit
+		// TODO race
 		c.notify(ctx, ServerBye.Value, &MsgEmpty{})
 		if !amhelp.Wait(ctx, c.DisconnCooldown) {
-			c.ensureGroupConnected(e)
-
 			return // expired
 		}
 
@@ -358,8 +359,6 @@ func (c *Client) DisconnectingState(e *am.Event) {
 			}
 		}
 		if ctx.Err() != nil {
-			c.ensureGroupConnected(e)
-
 			return // expired
 		}
 
@@ -397,7 +396,7 @@ func (c *Client) DisconnectedEnter(e *am.Event) bool {
 }
 
 func (c *Client) DisconnectedState(e *am.Event) {
-	c.Conn = nil
+	c.Conn.Store(nil)
 
 	// try to reconnect
 	wasAny := e.Transition().TimeBefore.Any1
@@ -406,11 +405,6 @@ func (c *Client) DisconnectedState(e *am.Event) {
 
 		c.Mach.EvAdd1(e, ssC.RetryingConn, nil)
 		return
-	}
-
-	// ignore error when disconnecting
-	if c.Conn != nil {
-		_ = c.Conn.Close()
 	}
 }
 
@@ -1130,7 +1124,8 @@ func (c *Client) notify(
 	mName := ServerMethods.Parse(method).Value
 
 	// timeout
-	err := c.Conn.SetDeadline(time.Now().Add(c.CallTimeout))
+	conn := *c.Conn.Load()
+	err := conn.SetDeadline(time.Now().Add(c.CallTimeout))
 	if err != nil {
 		AddErr(nil, c.Mach, mName, err)
 		return false
@@ -1150,7 +1145,7 @@ func (c *Client) notify(
 	}
 
 	// remove timeout
-	err = c.Conn.SetDeadline(time.Time{})
+	err = conn.SetDeadline(time.Time{})
 	if err != nil {
 		AddErr(nil, c.Mach, mName, err)
 		return false

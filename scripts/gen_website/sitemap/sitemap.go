@@ -43,6 +43,8 @@ var MainMenu = []Entry{
 		Path: "tools/debugger/README.md", SkipMenu: true},
 	{Url: "benchmark-state-source",
 		Path: "examples/benchmark_state_source/README.md", SkipMenu: true},
+	{Url: "wasm",
+		Path: "examples/wasm/README.md", SkipMenu: true},
 	{Url: "arpc-howto", Path: "pkg/rpc/HOWTO.md", SkipMenu: true},
 	{Url: "cookbook", Path: "docs/cookbook.md", SkipMenu: true},
 	{Url: "diagrams", Path: "docs/diagrams.md", SkipMenu: true},
