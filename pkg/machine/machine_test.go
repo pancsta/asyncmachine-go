@@ -931,13 +931,25 @@ func TestPartialAutoStatesByStateState(t *testing.T) {
 
 	// CB cancels
 	_ = m.BindHandlers(&struct {
-		CB HandlerNegotiation
+		CB     HandlerNegotiation
+		BState HandlerFinal
 	}{
-		CB: func(e *Event) bool { return false },
+		CB:     func(e *Event) bool { return false },
+		BState: func(e *Event) { t.Log("BState should not be called") },
 	})
 
-	// trigger auto
-	m.Add1("C", nil)
+	// trigger mut
+	go m.Add1("C", nil)
+	select {
+	case <-m.When(S{"C"}, nil):
+	case <-time.After(200 * time.Millisecond):
+	}
+	// wait for auto
+	select {
+	case <-m.WhenQueueEnds():
+	case <-time.After(200 * time.Millisecond):
+	}
+
 	assertStates(t, m, S{"C", "A"}, "only C and A auto state should be active")
 }
 
@@ -960,13 +972,66 @@ func TestPartialAutoStatesByEnter(t *testing.T) {
 	// BEnter cancels
 	_ = m.BindHandlers(&struct {
 		BEnter HandlerNegotiation
+		BState HandlerFinal
 	}{
 		BEnter: func(e *Event) bool { return false },
+		BState: func(e *Event) { t.Log("BState should not be called") },
 	})
 
-	// trigger auto
-	m.Add1("C", nil)
+	// trigger mut
+	go m.Add1("C", nil)
+	select {
+	case <-m.When(S{"C"}, nil):
+	case <-time.After(200 * time.Millisecond):
+	}
+	// wait for auto
+	select {
+	case <-m.WhenQueueEnds():
+	case <-time.After(200 * time.Millisecond):
+	}
+
 	assertStates(t, m, S{"C", "A"}, "only A auto state should be active")
+}
+
+func TestPartialAutoStatesBySelfHandler(t *testing.T) {
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+
+	enableDebugging()
+
+	// init
+	m := NewCustomStates(t, Schema{
+		"A": {Auto: true},
+		"B": {Auto: true},
+		"C": {},
+	})
+
+	// CB cancels
+	_ = m.BindHandlers(&struct {
+		CC     HandlerNegotiation
+		BState HandlerFinal
+	}{
+		// C rejects the 2nd auto tx
+		CC: func(e *Event) bool { return false },
+		BState: func(e *Event) {
+			t.Log("BState should not be called")
+		},
+	})
+
+	// trigger mut
+	go m.Add1("C", nil)
+	select {
+	case <-m.When(S{"C"}, nil):
+	case <-time.After(200 * time.Millisecond):
+	}
+	// wait for auto
+	select {
+	case <-m.WhenQueueEnds():
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	assertStates(t, m, S{"C"}, "only C, auto cancelled by CC")
 }
 
 // TestNegotiationRemove
