@@ -18,27 +18,29 @@ into chunked file dumps.
 
 ## Installation
 
-- [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
-- Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-relay@latest`
-- Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-relay@latest`
+1. [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
+2. Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-relay@latest`
+3. Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-relay@latest`
 
 ## Features
 
 - rotate dbg telemetry
-- TODO websocket-to-tcp
+- websocket-to-tcp
 - TODO convert gob to JSON
 
 `$ am-relay --help`
 
 ```bash
-Usage: am-relay [--debug] <command> [<args>]
+Usage: am-relay [--debug] [--name NAME] <command> [<args>]
 
 Options:
   --debug                Enable debugging for asyncmachine
+  --name NAME, -n NAME   Name of this relay
   --help, -h             display this help and exit
 
 Commands:
   rotate-dbg             Rotate dbg protocol with fragmented dump files
+  wasm                   WebSockets to local TCP listeners for WASM
 ```
 
 `$ am-relay rotate-dbg --help`
@@ -65,6 +67,29 @@ Global options:
   --help, -h             display this help and exit
 ```
 
+`$ am-relay wasm --help`
+
+WASM relay is also usable as a library - this allows to pass the connection directly to an aRPC client.
+
+```text
+Usage: am-relay wasm [--listen-addr LISTEN-ADDR] [--static-dir STATIC-DIR] [--repl-addr-dir REPL-ADDR-DIR]
+
+Options:
+  --listen-addr LISTEN-ADDR, -l LISTEN-ADDR
+                         Listen address for HTTP server [default: localhost:12733]
+  --static-dir STATIC-DIR, -s STATIC-DIR
+                         Directory with static files to serve (optional)
+  --repl-addr-dir REPL-ADDR-DIR, -r REPL-ADDR-DIR
+                         Directory for creating REPL addr files (optional)
+
+Global options:
+  --debug                Enable debugging for asyncmachine
+  --name NAME, -n NAME   Name of this relay
+  --help, -h             display this help and exit
+```
+
 ## monorepo
+
+- [`/examples/wasm`](/examples/wasm)
 
 [Go back to the monorepo root](/README.md) to continue reading.

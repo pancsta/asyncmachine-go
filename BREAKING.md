@@ -2,6 +2,14 @@
 
 Only `pkg/machine` and `pkg/states` adhere to semver. Semver of other packages is not guaranteed at the moment.
 
+## v0.18
+
+- `Transition.TimeIndexAfter()` now returns `*TimeIndex`
+- `Machine.Ctx()` is now `Machine.Context()`
+- `SchemaClone()` is now `CloneSchema()`
+- `SemLogger.SetArgsMapperDef` added
+- `NewArgsMapper(names, maxLen)` is now `NewLogArgsMapper(maxLen, names)`
+
 ## v0.17
 
 - `Transition.Api` is now `Transition.MachApi`

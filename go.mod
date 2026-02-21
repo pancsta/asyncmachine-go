@@ -10,12 +10,13 @@ go 1.24.1
 //replace github.com/cenkalti/rpc2 => ../rpc2
 
 //replace github.com/AlexanderGrooff/mermaid-ascii => ../mermaid-ascii
-//replace github.com/pancsta/mermaid-ascii => ../mermaid-ascii
+//replace github.com/AlexanderGrooff/mermaid-ascii => ../mermaid-ascii
 
 //replace github.com/gdamore/tcell/v2 => ../tcell
 //replace github.com/pancsta/tcell-v2 => ../tcell-v2
 
 require (
+	github.com/AlexanderGrooff/mermaid-ascii v0.0.0-20260221123917-b5d02c35decf
 	github.com/K-Phoen/grabana v0.22.2
 	github.com/PuerkitoBio/goquery v1.10.0
 	github.com/alexflint/go-arg v1.6.0
@@ -42,7 +43,6 @@ require (
 	github.com/ncruces/go-sqlite3/gormlite v0.30.2
 	github.com/orsinium-labs/enum v1.4.0
 	github.com/pancsta/cview v1.5.21
-	github.com/pancsta/mermaid-ascii v0.0.0-20260220125943-d0f2c97b147c
 	github.com/pancsta/tcell-v2 v0.0.1-fork1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/polarsignals/frostdb v0.0.0-20250728125857-906ebbaef267

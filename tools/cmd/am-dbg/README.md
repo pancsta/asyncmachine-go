@@ -43,9 +43,11 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 
 ## Installation
 
-- [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
-- Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
-- Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
+Available options:
+
+1. [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
+2. Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
+3. Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
 
 ## Features
 
@@ -74,6 +76,9 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
   - **subscriptions**: list awaited clocks.
   - **piped states**: list all inbound and outbound pipes.
 - **partial layout**: some elements of the UI can be hidden, so many instances can create dashboards
+- **headless mode**: the UI can be requested via SSH, allowing the debugger to start without PTY.
+- **files**: various files are created in `--dir`.
+- **diagrams**: live machine diagram viewer and static transaction diagrams.
 
 ```bash
 Usage:
@@ -148,7 +153,7 @@ Flags:
 
 4. Your machine should show up in the debugger
 
-## Dashboard
+## Dashboards
 
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-dashboard.png">
@@ -158,29 +163,9 @@ Flags:
     </a>
 </div>
 
-Small-scale dashboards can be achieved by using the `--fwd-data` param, with multiple instances **am-dbg** as
+Small-scale dashboards can be achieved by using the `--fwd-data` param, with multiple instances of **am-dbg** as
 destinations. It will duplicate all the memory allocations and won't scale far, but it will work. Check out
 [`/config/dashboards`](/config/dashboards) directory for preconfigured [zellij layouts](https://zellij.dev/).
-
-## Steps for SSH Server
-
-[Download an SSH release binary](https://github.com/pancsta/asyncmachine-go/releases/latest) or use `go install`:
-
-- `go install github.com/pancsta/asyncmachine-go/tools/am-dbg-ssh@latest`
-
-```bash
-am-dbg-ssh is an SSH version of asyncmachine-go debugger serving local
-dumps via --import-file.
-
-You can connect to a running instance with any SSH client.
-
-Usage:
-  am-dbg-ssh -s localhost:4444 [flags]
-
-Flags:
-  ... (same am-dbg)
-  -s, --ssh-addr string          SSH host:port to listen on (default "localhost:4444")
-```
 
 ## monorepo
 

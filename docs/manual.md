@@ -2,7 +2,7 @@
 
 <!-- TOC -->
 
-- version `v0.17.0`
+- version `v0.18.0`
 - [Legend](#legend)
 - [Machine and States](#machine-and-states)
   - [Machine Schema](#machine-schema)
@@ -361,9 +361,11 @@ Automatic states (`Auto` property) are one of the most important concepts of **a
 [transition](#transition-lifecycle) with a [clock change](#clock-and-context) (tick), `Auto` states will try to
 active themselves via an auto mutation.
 
-- `Auto` states can be set partially (within the same [mutation](#mutations))
+- `Auto` states can be set partially (within the same [auto mutation](#mutations))
+  - as long as **only auto states** rejected the negotiation phase
+  - target states are then re-calculated
+  - if a non-auto state rejected, the whole transition is canceled
 - auto mutation is **prepended** to the [queue](#queue-and-history)
-- `Remove` relation of `Auto` states isn't enforced within the auto mutation
 
 **Example** - Log level `LogOps` for: FileProcessed causes an `Auto` state UploadingFile to activate
 
@@ -595,7 +597,8 @@ handler timeout), which can be set via [`am.Opts`](https://pkg.go.dev/github.com
 ### Self Handlers
 
 Self handler is a negotiation handler for states which were active **before and after** a transition (all no-change
-active states). The name is a doubled name of the state (eg `FooFoo`).
+active states). The name is a doubled name of the state (eg `FooFoo`). Self-handlers are useful for canceling unwanted
+auto transitions.
 
 List of handlers during a transition from `Foo` to `Foo Bar`, in the order of execution:
 
@@ -1235,7 +1238,7 @@ Advised error handling strategy (used by [`/pkg/node`](/pkg/node)):
   - with a [`Require` relation](#relations) to the `Exception` state
   - but without being a [`Multi` state](#multi-states), so it has [state context](#clock-and-context)
 - create regular sentinel errors, like `ErrRpc`
-- create separate mutation function for each sentinel error, like
+- create a separate mutation function for each sentinel error, like
   - `func AddErrWorker(event *am.Event, mach *am.Machine, err error, args am.A) error`
 - one error state can be responsible for many sentinel errors
 

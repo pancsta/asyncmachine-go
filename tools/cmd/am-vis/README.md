@@ -7,21 +7,21 @@
 
 ## am-vis
 
-`am-vis` renders diagrams from [dbg telemetry](/pkg/telemetry/README.md#dbg). It creates a graph of interconnected
-machines, based on fragmented data they provide via:
+`am-vis` renders diagrams from [dbg telemetry](/pkg/telemetry/README.md#dbg) by creating a graph of interconnected
+state machines. The graph is based on fragmented data they provide via:
 
 - state schema
   - states
   - relations
   - tags
-- logOps (level 3)
+- `LogOps` (level `3`)
   - pipes
   - RPC connections
 - transitions
   - active states
 
-The rendering uses [Eclipse Layout Kernel](https://eclipse.dev/elk/) (ELK) and is done by [D2](https://d2lang.com/)
-(shipped). At the moment it can only render from file dumps, with the live-server version yet to come.
+The rendering uses ELK ([Eclipse Layout Kernel](https://eclipse.dev/elk/)) and is done by [D2](https://d2lang.com/)
+(embedded). At the moment it can only render from file dumps, with the `live-server` version is yet to come.
 
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-1.svg">
@@ -32,9 +32,11 @@ The rendering uses [Eclipse Layout Kernel](https://eclipse.dev/elk/) (ELK) and i
 
 ## Installation
 
-- [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
-- Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest`
-- Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest`
+Available options:
+
+1. [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
+2. Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest`
+3. Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest`
 
 ## Features
 
@@ -184,9 +186,53 @@ It's recommended to view the SVGs using [SVG Navigator](https://github.com/pRizz
 ![diagram4](https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-4.svg)
 ![diagram5](https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-5.svg)
 
+## Transition Sequence
+
+Transitions can be plotted as sequence diagrams and rendered to SVG and ASCII. Currently [`am-dbg`](/tools/cmd/am-dbg)
+does it automatically with `--output-tx` and places files inside `--dir`. Support in `am-vis` CLI coming soon.
+
+This is the same steps diagram as the second timeline of `am-dbg` and includes:
+
+- all called and touched states
+- called steps
+- relation steps
+- handler calls
+- cancellations
+
+![large transition](./assets/asyncmachine-go/am-vis/tx.svg)
+
+```text
+┌────────────────┐     ┌───────┐     ┌───────┐
+│ ReplaceStories │     │ Start │     │ Ready │
+└────────┬───────┘     └───┬───┘     └───┬───┘
+         │                 │             │
+         │ called          │             │
+         ├──┐              │             │
+         │  │              │             │
+         │◄─┘              │             │
+         │                 │             │
+         │ activate        │             │
+         ├──┐              │             │
+         │  │              │             │
+         │◄─┘              │             │
+         │                 │             │
+         │                 │ require     │
+         │                 │◄────────────┤
+         │                 │             │
+         │                 │ require     │
+         │                 │◄────────────┤
+         │                 │             │
+         │ ReplaceStoriesState           │
+         ├──┐              │             │
+         │  │              │             │
+         │◄─┘              │             │
+         │                 │             │
+```
+
 ## Credits
 
 - [D2](https://d2lang.com/)
+- [mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii)
 
 ## monorepo
 

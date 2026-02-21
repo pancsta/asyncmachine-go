@@ -15,6 +15,8 @@ git.sr.ht/~sbinet/gg v0.5.0 h1:6V43j30HM623V329xA9Ntq+WJrMjDxRjuAB1LFWF5m8=
 git.sr.ht/~sbinet/gg v0.5.0/go.mod h1:G2C0eRESqlKhS7ErsNey6HHrqU1PwsnCQlekFi9Q2Oo=
 github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6 h1:He8afgbRMd7mFxO99hRNu+6tazq8nFF9lIwo9JFroBk=
 github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6/go.mod h1:8o94RPi1/7XTJvwPpRSzSUedZrtlirdB3r9Z20bi2f8=
+github.com/AlexanderGrooff/mermaid-ascii v0.0.0-20260221123917-b5d02c35decf h1:lfDGVhCNEsq5Cn84gaJXRoc0Je1Pmsk4M91t2+QdRuM=
+github.com/AlexanderGrooff/mermaid-ascii v0.0.0-20260221123917-b5d02c35decf/go.mod h1:/PCdSApxWTzGRV848zKB+0ZYm8DBiDq+G8KsEquXOZs=
 github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 h1:UQHMgLO+TxOElx5B5HZ4hJQsoJ/PvUvKRhJHDQXO8P8=
 github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
@@ -484,8 +486,6 @@ github.com/orsinium-labs/enum v1.4.0 h1:3NInlfV76kuAg0kq2FFUondmg3WO7gMEgrPPrlzL
 github.com/orsinium-labs/enum v1.4.0/go.mod h1:Qj5IK2pnElZtkZbGDxZMjpt7SUsn4tqE5vRelmWaBbc=
 github.com/pancsta/cview v1.5.21 h1:1DwSV73gIdGRxgmOqoFJjp6FagNp8f4Tl1AFkZ+8IKo=
 github.com/pancsta/cview v1.5.21/go.mod h1:H5j2xIAdRRYMlEBxfRN3jb+Cyb3Mi66Uh3Mrbre6yJM=
-github.com/pancsta/mermaid-ascii v0.0.0-20260220125943-d0f2c97b147c h1:wF21V8Ws4D7n/tnArGokePUCWqG6TQhSQokzpuaN86o=
-github.com/pancsta/mermaid-ascii v0.0.0-20260220125943-d0f2c97b147c/go.mod h1:s8Lbgx1q/OHHzxeO1bBiMdyG+YVpe2z0U56mF4vswCg=
 github.com/pancsta/tcell-v2 v0.0.1-fork1 h1:ZmBCBVVYto5GIF28FFUIBdZS5pAnmLZ6Ww4/yQngehE=
 github.com/pancsta/tcell-v2 v0.0.1-fork1/go.mod h1:vg2NrucL/pqvaVYJrO1BZT1k0xrIUFmSmf3GgoBQcTc=
 github.com/parquet-go/parquet-go v0.24.0 h1:VrsifmLPDnas8zpoHmYiWDZ1YHzLmc7NmNwPGkI2JM4=

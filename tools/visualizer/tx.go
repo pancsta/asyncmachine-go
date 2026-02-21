@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	merascii "github.com/pancsta/mermaid-ascii/pkg/sequence"
+	merascii "github.com/AlexanderGrooff/mermaid-ascii/pkg/sequence"
 	"oss.terrastruct.com/d2/d2graph"
 	"oss.terrastruct.com/d2/d2layouts/d2dagrelayout"
 	"oss.terrastruct.com/d2/d2lib"

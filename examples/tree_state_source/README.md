@@ -1,4 +1,4 @@
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /example/tree_state_source
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /examples/tree_state_source
 
 [`cd /`](/README.md)
 
@@ -117,5 +117,8 @@ AM_LOG=3
 ```
 
 ## monorepo
+
+- [`/examples/benchmark_state_source`](/examples/benchmark_state_source)
+- [`/examples/arpc`](/examples/arpc)
 
 [Go back to the monorepo root](/README.md) to continue reading.

@@ -37,7 +37,7 @@ and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-
 It features [atomic transitions](/docs/manual.md#transition-lifecycle), [relations with consensus](/docs/manual.md#relations),
 [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
 [telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md), [selective distribution](/pkg/rpc/README.md#selective-distribution),
-[remote workers](/pkg/node/README.md), and [diagrams](/tools/cmd/am-vis).
+[remote workers](/pkg/node/README.md), [diagrams](/tools/cmd/am-vis), and [WASM](/tools/cmd/am-relay) support.
 
 As a control flow library, it decides about running of predefined bits of code (transition handlers) - their order and
 which ones to run, according to currently active states (flags). Thanks to a [novel state machine](/pkg/machine/README.md),
@@ -261,7 +261,7 @@ Other packages:
 
 ## Documentation
 
-- API: [go.dev](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine) / [code.asyncmachine.dev](https://code.asyncmachine.dev)
+- API: [pkg.go.dev](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine) / [code.asyncmachine.dev](https://code.asyncmachine.dev)
 - [diagrams](/docs/diagrams.md) / [cookbook](/docs/cookbook.md)
 - [manual MD](/docs/manual.md) / [manual PDF](https://pancsta.github.io/assets/asyncmachine-go/manual.pdf)
     - [Machine and States](/docs/manual.md#machine-and-states)
@@ -281,7 +281,7 @@ Other packages:
 
 - [GitHub discussions](https://github.com/pancsta/asyncmachine-go/discussions)
 - [Matrix chat](https://matrix.to/#/#room:asyncmachine)
-- [Author's Feed](https://blogic.tech/feed)
+- [Author's RSS](https://blogic.tech/feed)
 
 <div align="center">
 <picture>
@@ -326,6 +326,17 @@ Under development, status depends on each package. The bottom layers seem prod g
 - bug fixes and optimizations
 - [ROADMAP.md](/ROADMAP.md)
 
+<div align="center">
+    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/visualizer/README.md#transition-sequence">
+        <img style="min-height: 397px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/am-vis/tx.svg"
+            alt="tx sequence diagram" />
+    </a>
+</div>
+
+> [!NOTE]
+> Step by step.
+
 ## [FAQ](/FAQ.md)
 
 ### How does asyncmachine work?
@@ -351,9 +362,9 @@ The complete FAQ is available at [FAQ.md](/FAQ.md).
 ## Changes
 
 - [Changelog](/CHANGELOG.md)
-- [Breaking Changes](/BREAKING.md)
-- [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
-- [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
+- [Breaking changes](/BREAKING.md)
+- [Repo traffic](https://github.com/pancsta/asyncmachine-go/pulse)
+- [Release feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
 <div align="center">
     <img src="https://pancsta.github.io/assets/asyncmachine-go/video.gif?raw=true"

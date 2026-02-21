@@ -120,6 +120,10 @@ Headers link more info about each example.
 
 - #relations #handlers #cview #ui #global-handlers
 
+### [WASM](/examples/wasm/README.md)
+
+- #relations #handlers #arpc-handlers #arpc #relay #ui #websocket
+
 ## Benchmarks
 
 ### [Benchmark gRPC](/examples/benchmark_grpc/README.md)
