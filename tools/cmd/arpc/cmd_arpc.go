@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -30,10 +32,13 @@ func main() {
 	var cliArgs []string
 	var connArgs []string
 
+	// all OS args
 	osArgs := os.Args[1:]
 	for i, v := range osArgs {
 		if v == "--" && len(os.Args) > i+1 {
+			// args for REPL to execute as CLI
 			cliArgs = os.Args[i+2:]
+			// args to config REPL
 			connArgs = os.Args[1 : i+1]
 			break
 		}
@@ -60,12 +65,14 @@ func main() {
 	if err != nil {
 		if amhelp.IsTelemetry() {
 			time.Sleep(time.Second)
-			os.Exit(1)
 		}
+		fmt.Printf("Error: %s\n", err)
+		os.Exit(1)
 	}
 
+	// TODO NotifyContext
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	// waits
 	select {
