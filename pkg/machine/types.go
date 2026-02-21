@@ -320,7 +320,7 @@ type Api interface {
 	// Tags is [Machine.Tags].
 	Tags() []string
 	// Ctx is [Machine.Ctx].
-	Ctx() context.Context
+	Context() context.Context
 	// String is [Machine.String].
 	String() string
 	// StringAll is [Machine.StringAll].

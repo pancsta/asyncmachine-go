@@ -45,6 +45,7 @@ type SchemaGenerator struct {
 func (g *SchemaGenerator) parseParams(p cli.SFParams) {
 	if p.Inherit != "" {
 		for _, inherit := range strings.Split(p.Inherit, ",") {
+			// TODO enum
 			switch inherit {
 			case "basic":
 				g.Mach.Add1(ssG.InheritBasic, nil)
@@ -52,8 +53,8 @@ func (g *SchemaGenerator) parseParams(p cli.SFParams) {
 				g.Mach.Add1(ssG.InheritConnected, nil)
 			case "disposed":
 				g.Mach.Add1(ssG.InheritDisposed, nil)
-			case "rpc/netsrc":
-				g.Mach.Add1(ssG.InheritRpcNetSource, nil)
+			case "rpc/statesrc":
+				g.Mach.Add1(ssG.InheritRpcStateSource, nil)
 			case "node/worker":
 				g.Mach.Add1(ssG.InheritNodeWorker, nil)
 			default:
@@ -144,7 +145,7 @@ func (g *SchemaGenerator) Output() string {
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"%s
 	`, impPkgStates)
 
-	if g.Mach.Is1(ssG.InheritRpcNetSource) {
+	if g.Mach.Is1(ssG.InheritRpcStateSource) {
 		out += "\tssrpc \"github.com/pancsta/asyncmachine-go/pkg/rpc/states\"\n"
 	}
 	if g.Mach.Is1(ssG.InheritNodeWorker) {
@@ -155,7 +156,7 @@ func (g *SchemaGenerator) Output() string {
 	out += utils.Sp(`
 		)
 		
-		// %sStatesDef contains all the states of the %s state-machine.
+		// %sStatesDef contains all the states of the [%s] state-machine.
 		type %sStatesDef struct {
 			*am.StatesBase
 	
@@ -176,20 +177,20 @@ func (g *SchemaGenerator) Output() string {
 		out += "\t// inherit from ConnectedStatesDef\n" +
 			"\t*ss.ConnectedStatesDef\n"
 	}
-	if g.Mach.Is1(ssG.InheritRpcNetSource) {
-		out += "\t// inherit from rpc/NetSourceStatesDef\n" +
-			"\t*ssrpc.NetSourceStatesDef\n"
+	if g.Mach.Is1(ssG.InheritRpcStateSource) {
+		out += "\t// inherit from rpc/StateSourceStatesDef\n" +
+			"\t*ssrpc.StateSourceStatesDef\n"
 	}
 	if g.Mach.Is1(ssG.InheritNodeWorker) {
-		out += "\t// inherit from node/NetSourceStatesDef\n" +
-			"\t*ssnode.NetSourceStatesDef\n"
+		out += "\t// inherit from node/StateSourceStatesDef\n" +
+			"\t*ssnode.StateSourceStatesDef\n"
 	}
 
 	out += "}\n\n"
 
 	// groups def
 	out += utils.Sp(`
-			// %sGroupsDef contains all the state groups %s state-machine.
+			// %sGroupsDef contains all the state groups [%s] state-machine.
 			type %sGroupsDef struct {
 		`, g.Name, g.Name, g.Name)
 	if g.Mach.Is1(ssG.InheritConnected) {
@@ -206,7 +207,7 @@ func (g *SchemaGenerator) Output() string {
 
 	// struct
 	out += fmt.Sprintf(
-		"// %sSchema represents all relations and properties of %sStates.\n",
+		"// %sSchema represents all relations and properties of [%sStates].\n",
 		g.Name, g.Name)
 	var indent string
 	if g.Mach.Is1(ssG.Inherit) {
@@ -224,9 +225,9 @@ func (g *SchemaGenerator) Output() string {
 		out += fmt.Sprintf("\t// inherit from ConnectedSchema\n" +
 			"\tss.ConnectedSchema,\n")
 	}
-	if g.Mach.Is1(ssG.InheritRpcNetSource) {
-		out += fmt.Sprintf("\t// inherit from rpc/WorkerSchema\n" +
-			"\tssrpc.WorkerSchema,\n")
+	if g.Mach.Is1(ssG.InheritRpcStateSource) {
+		out += fmt.Sprintf("\t// inherit from rpc/StateSourceSchema\n" +
+			"\tssrpc.StateSourceSchema,\n")
 	}
 	if g.Mach.Is1(ssG.InheritNodeWorker) {
 		out += fmt.Sprintf("\t// inherit from node/WorkerSchema\n" +
@@ -342,13 +343,13 @@ func (g *SchemaGenerator) Output() string {
 	out += utils.Sp(`
 		)
 
-			// %sStates contains all the states for the %s state-machine.
+			// %sStates contains all the states for the [%s] state-machine.
 			%sStates = ss%s
-			// %sGroups contains all the state groups for the %s state-machine.
+			// %sGroups contains all the state groups for the [%s] state-machine.
 			%sGroups = sg%s
 		)
 	
-		// New%s creates a new %s state-machine in the most basic form.
+		// New%s creates a new [%s] state-machine in the most basic form.
 		func New%s(ctx context.Context) *am.Machine {
 			return am.New(ctx, %sSchema, nil)
 		}

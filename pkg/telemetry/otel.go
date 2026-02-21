@@ -1,3 +1,5 @@
+// Package telemetry provides telemetry exporters: am-dbg, Prometheus,
+// OpenTelemetry.
 package telemetry
 
 // TODO OTEL support groups and allow lists. When groups are on, they replace
@@ -186,7 +188,7 @@ func (mt *OtelMachTracer) MachineInit(mach am.Api) context.Context {
 	mt.Logf("[otel] MachineInit: trace %s", id)
 
 	// nest under parent
-	ctx := mach.Ctx()
+	ctx := mach.Context()
 	pid, ok := mt.parents[id]
 	if ok {
 		if parentSpan, ok := mt.parentSpans[pid]; ok {
@@ -659,7 +661,7 @@ func BindOtelLogger(
 			olog.String("asyncmachine.id", mach.Id()),
 		)
 
-		l.Emit(mach.Ctx(), r)
+		l.Emit(mach.Context(), r)
 	}
 
 	mach.SemLogger().SetLogger(amlog)
@@ -686,12 +688,12 @@ func MachBindOtelEnv(mach am.Api) error {
 	}
 
 	// init the tracer and provider
-	ctx := mach.Ctx()
+	ctx := mach.Context()
 	t, p, err := NewOtelProvider(service, ctx)
 	if err != nil {
 		return err
 	}
-	_, rootSpan := t.Start(mach.Ctx(), "root")
+	_, rootSpan := t.Start(mach.Context(), "root")
 
 	// dedicated machine tracer
 	mt := NewOtelMachTracer(mach, rootSpan, t, &OtelMachTracerOpts{

@@ -153,8 +153,8 @@ type FlightsStatesDef struct {
 
 	// inherit from BasicStatesDef
 	*ssam.BasicStatesDef
-	// inherit from rpc/NetSourceStatesDef
-	*ssrpc.NetSourceStatesDef
+	// inherit from rpc/StateSourceStatesDef
+	*ssrpc.StateSourceStatesDef
 }
 
 // FlightsGroupsDef contains all the state groups Flights state machine.
@@ -196,7 +196,7 @@ var FlightsSchema = SchemaMerge(
 	// inherit from BasicSchema
 	ssam.BasicSchema,
 	// inherit from rpc/WorkerSchema
-	ssrpc.NetSourceSchema,
+	ssrpc.StateSourceSchema,
 	am.Schema{
 
 		ssF.Flight1OnTime: {

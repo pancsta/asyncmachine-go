@@ -8,6 +8,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	_ ""
+
+	_ "go101.org/golds/code"
 )
 
 var gen = true
@@ -104,7 +108,7 @@ func replaceInFile(path string) error {
 			print()
 		}
 		newContent = strings.ReplaceAll(newContent,
-			`<pre id="footer">`, `         
+			`<pre id="footer">`, `
 				<script src="https://giscus.app/client.js"
 					data-repo="pancsta/asyncmachine-go"
 					data-repo-id="R_kgDOLDLcZQ"

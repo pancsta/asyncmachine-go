@@ -42,10 +42,12 @@ var BasicSchema = am.Schema{
 	ssB.Exception: {Multi: true},
 	ssB.ErrNetwork: {
 		Multi:   true,
+		Add:     S{Exception},
 		Require: S{Exception},
 	},
 	ssB.ErrHandlerTimeout: {
 		Multi:   true,
+		Add:     S{Exception},
 		Require: S{Exception},
 	},
 

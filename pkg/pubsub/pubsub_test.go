@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/sync/errgroup"
 
-	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
@@ -364,7 +364,7 @@ func TestExposingMany(t *testing.T) {
 
 			// DEBUG
 			// mirror.SemLogger().SetLevel(0)
-			err = amtele.TransitionsToDbg(mirror, "")
+			err = dbg.TransitionsToDbg(mirror, "")
 			if err != nil {
 				t.Fatal(err)
 			}

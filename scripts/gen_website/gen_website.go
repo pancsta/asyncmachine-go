@@ -1,3 +1,4 @@
+// TODO use github.com/hookenz/gotailwind/v4
 package main
 
 import (
@@ -273,8 +274,7 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 
 		// to assets
 		if strings.HasPrefix(href, ghAssets) {
-			s.SetAttr("href", strings.Replace(strings.Replace(
-				href, "?raw=true", "", 1),
+			s.SetAttr("href", strings.Replace(href,
 				ghAssets, assetsUrl, 1))
 			// fmt.Printf("code link %s\n", href)
 			return
@@ -306,10 +306,15 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		))
 	})
 	doc.Find("header a:contains(APIs)").SetAttr("href", apiUrl)
+
+	// redir images to assets
 	doc.Find("#page-content source[srcset^=" + ghAssets + "]").Each(func(i int, s *goquery.Selection) {
+		// TODO strings.Replace(href, "?raw=true", "", 1)
 		s.SetAttr("srcset", strings.Replace(s.AttrOr("srcset", ""), ghAssets, assetsUrl, 1))
 	})
 	doc.Find(fmt.Sprintf(`#page-content img[src^="%s"]`, ghAssets)).Each(func(i int, s *goquery.Selection) {
+		// TODO gif via alt="TUI Debugger"
+		// TODO strings.Replace(href, "?raw=true", "", 1)
 		s.SetAttr("src", strings.Replace(s.AttrOr("src", ""), ghAssets, assetsUrl, 1))
 	})
 
@@ -351,12 +356,15 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		result), nil
 }
 
-func highlightCode(s *goquery.Selection, lexerBash chroma.Lexer, formatter *html.Formatter, style *chroma.Style) {
+func highlightCode(
+	s *goquery.Selection, lexer chroma.Lexer, formatter *html.Formatter,
+	style *chroma.Style,
+) {
 	// Get the raw source code text inside the <code> block
 	sourceCode := s.Text()
 
 	// Highlight the code using Chroma
-	iterator, err := lexerBash.Tokenise(nil, sourceCode)
+	iterator, err := lexer.Tokenise(nil, sourceCode)
 	if err != nil {
 		log.Printf("Tokenization error: %v", err)
 		return

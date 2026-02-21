@@ -20,6 +20,10 @@ func init() {
 	// os.Setenv(EnvAmDebug, "1")
 }
 
+func enableDebugging() {
+	os.Setenv(EnvAmDebug, "1")
+}
+
 func ExampleNew() {
 	ctx := context.TODO()
 	mach := New(ctx, Schema{
@@ -64,11 +68,6 @@ func ExampleNewCommon() {
 		panic(err)
 	}
 	mach.SemLogger().SetLevel(LogOps)
-
-	// debug
-	// import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
-	// amhelp.EnableDebugging(false)
-	// amhelp.MachDebugEnv(mach)
 }
 
 // NewNoRels creates a new machine with no relations between states.
@@ -1072,23 +1071,42 @@ func TestNegotiationRemove(t *testing.T) {
 }
 
 // TestHandlerStateInfo
-type TestHandlerStateInfoHandlers struct{}
+type TestHandlerStateInfoHandlers struct {
+	t *testing.T
+}
 
-func (h *TestHandlerStateInfoHandlers) DEnter(e *Event) {
+func (h *TestHandlerStateInfoHandlers) DEnter(e *Event) bool {
 	idxD := e.Machine().Index1("D")
+	tx := e.Transition()
+	t := h.t
 
-	t := e.Args["t"].(*testing.T)
 	assert.ElementsMatch(t, S{"A"}, e.Machine().ActiveStates(nil),
 		"provide the previous states of the transition")
-	assert.ElementsMatch(t, S{"D"}, e.Transition().TargetStates(),
+	assert.ElementsMatch(t, S{"D"}, tx.TargetStates(),
 		"provide the target states of the transition")
 	assert.True(t, e.Mutation().IsCalled(idxD),
 		"provide the called states of the transition")
-	txStrExp := "tx#" + e.TransitionId + "\n[set] D\n- requested **D**\n" +
+	txStrExp := "tx#" + e.TransitionId + "\n[set] D\n- called **D**\n" +
 		"- activate **D**\n- deactivate **A**\n- handler **A**Exit"
-	txStr := e.Transition().String()
+	txStr := tx.String()
 	assert.Equal(t, txStrExp, txStr,
 		"provide a string version of the transition")
+
+	return true
+}
+
+func (h *TestHandlerStateInfoHandlers) DState(e *Event) {
+	tx := e.Transition()
+	t := h.t
+	added, removed := tx.TimeIndexDiff()
+	called := tx.TimeIndexCalled()
+
+	// assert time indexes
+	assert.True(t, added.Is1("D"))
+	assert.True(t, added.Not1("C"))
+	assert.True(t, removed.Not1("C"))
+	assert.True(t, called.Is1("D"))
+	assert.True(t, called.Not1("C"))
 }
 
 func TestHandlerStateInfo(t *testing.T) {
@@ -1113,12 +1131,14 @@ func TestHandlerStateInfo(t *testing.T) {
 	history := trackTransitions(m)
 
 	// bind handlers
-	err = m.BindHandlers(&TestHandlerStateInfoHandlers{})
+	err = m.BindHandlers(&TestHandlerStateInfoHandlers{
+		t: t,
+	})
 	assert.NoError(t, err)
 
 	// test
 	// DEnter will assert
-	m.Set(S{"D"}, A{"t": t})
+	m.Set(S{"D"}, nil)
 
 	// assert
 	assertOrder(t, history, events)
@@ -1135,7 +1155,7 @@ func TestGetters(t *testing.T) {
 	}
 	// init
 	m := NewNoRels(t, S{"A"})
-	mapper := NewArgsMapper([]string{"arg", "arg2"}, 5)
+	mapper := NewLogArgsMapper(5, []string{"arg", "arg2"})
 	m.SemLogger().SetArgsMapper(mapper)
 	m.SemLogger().SetLevel(LogEverything)
 
@@ -1223,7 +1243,7 @@ func TestLogArgs(t *testing.T) {
 
 	// init
 	m := NewNoRels(t, S{"A"})
-	mapper := NewArgsMapper([]string{"arg", "arg2"}, 5)
+	mapper := NewLogArgsMapper(5, []string{"arg", "arg2"})
 	m.SemLogger().SetArgsMapper(mapper)
 
 	// bind logger
@@ -1556,7 +1576,7 @@ func TestDoubleHandlers(t *testing.T) {
 	t.Skip("TODO")
 }
 
-func TestSelfHandlersForCalledOnly(t *testing.T) {
+func TestSelfHandlersForAllNoChangeStates(t *testing.T) {
 	if os.Getenv(EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1575,8 +1595,8 @@ func TestSelfHandlersForCalledOnly(t *testing.T) {
 
 	// assert
 	counter := history.Counter
-	assert.Equal(t, 1, counter["AA"], "AA call count")
-	assert.Equal(t, 0, counter["BB"], "BB call count")
+	assert.Equal(t, 2, counter["AA"], "AA call count")
+	assert.Equal(t, 1, counter["BB"], "BB call count")
 
 	// dispose
 	m.Dispose()
@@ -3209,7 +3229,7 @@ func TestOpts(t *testing.T) {
 	m := NewNoRels(t, nil)
 
 	tags := []string{"a", "b"}
-	m2 := New(m.Ctx(), Schema{}, &Opts{
+	m2 := New(m.Context(), Schema{}, &Opts{
 		Parent:            m,
 		DontLogId:         true,
 		DontLogStackTrace: true,

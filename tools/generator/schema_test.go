@@ -21,14 +21,14 @@ func removeEmptyLines(input string) string {
 func TestAll(t *testing.T) {
 	ctx := context.Background()
 	// --states State1,State2:multi \
-	//				--inherit basic,connected,node/worker,rpc/netsrc \
+	//				--inherit basic,connected,node/worker,rpc/statesrc \
 	//				--groups Group1,Group2 \
 	//				--name MyMach
 
 	params := cli.SFParams{
 		Version: false,
 		States:  "State1,State2:multi",
-		Inherit: "basic,connected,node/worker,rpc/netsrc",
+		Inherit: "basic,connected,node/worker,rpc/statesrc",
 		Groups:  "Group1,Group2",
 		Name:    "MyMach",
 	}
@@ -50,7 +50,7 @@ func TestAll(t *testing.T) {
 			ssnode "github.com/pancsta/asyncmachine-go/pkg/node/states"
 		)
 		
-		// MyMachStatesDef contains all the states of the MyMach state-machine.
+		// MyMachStatesDef contains all the states of the [MyMach] state-machine.
 		type MyMachStatesDef struct {
 			*am.StatesBase
 		
@@ -61,11 +61,11 @@ func TestAll(t *testing.T) {
 			*ss.BasicStatesDef
 			// inherit from ConnectedStatesDef
 			*ss.ConnectedStatesDef
-			// inherit from node/NetSourceStatesDef
-			*ssnode.NetSourceStatesDef
+			// inherit from node/StateSourceStatesDef
+			*ssnode.StateSourceStatesDef
 		}
 		
-		// MyMachGroupsDef contains all the state groups MyMach state-machine.
+		// MyMachGroupsDef contains all the state groups [MyMach] state-machine.
 		type MyMachGroupsDef struct {
 			*ss.ConnectedGroupsDef
 			*ssnode.WorkerGroupsDef
@@ -73,7 +73,7 @@ func TestAll(t *testing.T) {
 			Group2 S
 		}
 		
-		// MyMachSchema represents all relations and properties of MyMachStates.
+		// MyMachSchema represents all relations and properties of [MyMachStates].
 		var MyMachSchema = SchemaMerge(
 			// inherit from BasicSchema
 			ss.BasicSchema,
@@ -98,13 +98,13 @@ func TestAll(t *testing.T) {
 				Group2: S{},
 			}, ss.ConnectedGroups, ssnode.WorkerGroups)
 		
-			// MyMachStates contains all the states for the MyMach state-machine.
+			// MyMachStates contains all the states for the [MyMach] state-machine.
 			MyMachStates = ssM
-			// MyMachGroups contains all the state groups for the MyMach state-machine.
+			// MyMachGroups contains all the state groups for the [MyMach] state-machine.
 			MyMachGroups = sgM
 		)
 	
-		// NewMyMach creates a new MyMach state-machine in the most basic form.
+		// NewMyMach creates a new [MyMach] state-machine in the most basic form.
 		func NewMyMach(ctx context.Context) *am.Machine {
 			return am.New(ctx, MyMachSchema, nil)
 		}
@@ -144,7 +144,7 @@ func TestBasicConnected(t *testing.T) {
 			ss "github.com/pancsta/asyncmachine-go/pkg/states"
 		)
 		
-		// MyMachStatesDef contains all the states of the MyMach state-machine.
+		// MyMachStatesDef contains all the states of the [MyMach] state-machine.
 		type MyMachStatesDef struct {
 			*am.StatesBase
 		
@@ -157,14 +157,14 @@ func TestBasicConnected(t *testing.T) {
 			*ss.ConnectedStatesDef
 		}
 		
-		// MyMachGroupsDef contains all the state groups MyMach state-machine.
+		// MyMachGroupsDef contains all the state groups [MyMach] state-machine.
 		type MyMachGroupsDef struct {
 			*ss.ConnectedGroupsDef
 			Group1 S
 			Group2 S
 		}
 		
-		// MyMachSchema represents all relations and properties of MyMachStates.
+		// MyMachSchema represents all relations and properties of [MyMachStates].
 		var MyMachSchema = SchemaMerge(
 			// inherit from BasicSchema
 			ss.BasicSchema,
@@ -187,13 +187,13 @@ func TestBasicConnected(t *testing.T) {
 				Group2: S{},
 			}, ss.ConnectedGroups)
 		
-			// MyMachStates contains all the states for the MyMach state-machine.
+			// MyMachStates contains all the states for the [MyMach] state-machine.
 			MyMachStates = ssM
-			// MyMachGroups contains all the state groups for the MyMach state-machine.
+			// MyMachGroups contains all the state groups for the [MyMach] state-machine.
 			MyMachGroups = sgM
 		)
 	
-		// NewMyMach creates a new MyMach state-machine in the most basic form.
+		// NewMyMach creates a new [MyMach] state-machine in the most basic form.
 		func NewMyMach(ctx context.Context) *am.Machine {
 			return am.New(ctx, MyMachSchema, nil)
 		}
@@ -228,7 +228,7 @@ func TestMinimum(t *testing.T) {
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 		)
 		
-		// MyMachStatesDef contains all the states of the MyMach state-machine.
+		// MyMachStatesDef contains all the states of the [MyMach] state-machine.
 		type MyMachStatesDef struct {
 			*am.StatesBase
 		
@@ -237,11 +237,11 @@ func TestMinimum(t *testing.T) {
 		
 		}
 		
-		// MyMachGroupsDef contains all the state groups MyMach state-machine.
+		// MyMachGroupsDef contains all the state groups [MyMach] state-machine.
 		type MyMachGroupsDef struct {
 		}
 		
-		// MyMachSchema represents all relations and properties of MyMachStates.
+		// MyMachSchema represents all relations and properties of [MyMachStates].
 		var MyMachSchema = am.Schema{
 		
 			ssM.State1: {},
@@ -254,13 +254,13 @@ func TestMinimum(t *testing.T) {
 			ssM = am.NewStates(MyMachStatesDef{})
 			sgM = am.NewStateGroups(MyMachGroupsDef{})
 		
-			// MyMachStates contains all the states for the MyMach state-machine.
+			// MyMachStates contains all the states for the [MyMach] state-machine.
 			MyMachStates = ssM
-			// MyMachGroups contains all the state groups for the MyMach state-machine.
+			// MyMachGroups contains all the state groups for the [MyMach] state-machine.
 			MyMachGroups = sgM
 		)
 	
-		// NewMyMach creates a new MyMach state-machine in the most basic form.
+		// NewMyMach creates a new [MyMach] state-machine in the most basic form.
 		func NewMyMach(ctx context.Context) *am.Machine {
 			return am.New(ctx, MyMachSchema, nil)
 		}
@@ -295,7 +295,7 @@ func TestRelations(t *testing.T) {
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 		)
 		
-		// MyMachStatesDef contains all the states of the MyMach state-machine.
+		// MyMachStatesDef contains all the states of the [MyMach] state-machine.
 		type MyMachStatesDef struct {
 			*am.StatesBase
 		
@@ -305,11 +305,11 @@ func TestRelations(t *testing.T) {
 		
 		}
 		
-		// MyMachGroupsDef contains all the state groups MyMach state-machine.
+		// MyMachGroupsDef contains all the state groups [MyMach] state-machine.
 		type MyMachGroupsDef struct {
 		}
 		
-		// MyMachSchema represents all relations and properties of MyMachStates.
+		// MyMachSchema represents all relations and properties of [MyMachStates].
 		var MyMachSchema = am.Schema{
 		
 			ssM.State1: {
@@ -328,13 +328,13 @@ func TestRelations(t *testing.T) {
 			ssM = am.NewStates(MyMachStatesDef{})
 			sgM = am.NewStateGroups(MyMachGroupsDef{})
 		
-			// MyMachStates contains all the states for the MyMach state-machine.
+			// MyMachStates contains all the states for the [MyMach] state-machine.
 			MyMachStates = ssM
-			// MyMachGroups contains all the state groups for the MyMach state-machine.
+			// MyMachGroups contains all the state groups for the [MyMach] state-machine.
 			MyMachGroups = sgM
 		)
 	
-		// NewMyMach creates a new MyMach state-machine in the most basic form.
+		// NewMyMach creates a new [MyMach] state-machine in the most basic form.
 		func NewMyMach(ctx context.Context) *am.Machine {
 			return am.New(ctx, MyMachSchema, nil)
 		}
@@ -370,7 +370,7 @@ func TestGroups(t *testing.T) {
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 		)
 		
-		// MyMachStatesDef contains all the states of the MyMach state-machine.
+		// MyMachStatesDef contains all the states of the [MyMach] state-machine.
 		type MyMachStatesDef struct {
 			*am.StatesBase
 		
@@ -379,13 +379,13 @@ func TestGroups(t *testing.T) {
 	
 		}
 		
-		// MyMachGroupsDef contains all the state groups MyMach state-machine.
+		// MyMachGroupsDef contains all the state groups [MyMach] state-machine.
 		type MyMachGroupsDef struct {
 			Group1 S
 			Group2 S
 		}
 		
-		// MyMachSchema represents all relations and properties of MyMachStates.
+		// MyMachSchema represents all relations and properties of [MyMachStates].
 		var MyMachSchema = am.Schema{
 	
 			ssM.State1: {},
@@ -401,13 +401,13 @@ func TestGroups(t *testing.T) {
 				Group2: S{},
 			})
 		
-			// MyMachStates contains all the states for the MyMach state-machine.
+			// MyMachStates contains all the states for the [MyMach] state-machine.
 			MyMachStates = ssM
-			// MyMachGroups contains all the state groups for the MyMach state-machine.
+			// MyMachGroups contains all the state groups for the [MyMach] state-machine.
 			MyMachGroups = sgM
 		)
 	
-		// NewMyMach creates a new MyMach state-machine in the most basic form.
+		// NewMyMach creates a new [MyMach] state-machine in the most basic form.
 		func NewMyMach(ctx context.Context) *am.Machine {
 			return am.New(ctx, MyMachSchema, nil)
 		}
@@ -443,7 +443,7 @@ func TestGroupsStates(t *testing.T) {
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
 		)
 		
-		// MyMachStatesDef contains all the states of the MyMach state-machine.
+		// MyMachStatesDef contains all the states of the [MyMach] state-machine.
 		type MyMachStatesDef struct {
 			*am.StatesBase
 		
@@ -452,13 +452,13 @@ func TestGroupsStates(t *testing.T) {
 	
 		}
 		
-		// MyMachGroupsDef contains all the state groups MyMach state-machine.
+		// MyMachGroupsDef contains all the state groups [MyMach] state-machine.
 		type MyMachGroupsDef struct {
 			Group1 S
 			Group2 S
 		}
 		
-		// MyMachSchema represents all relations and properties of MyMachStates.
+		// MyMachSchema represents all relations and properties of [MyMachStates].
 		var MyMachSchema = am.Schema{
 	
 			ssM.State1: {
@@ -476,13 +476,13 @@ func TestGroupsStates(t *testing.T) {
 				Group2: S{},
 			})
 		
-			// MyMachStates contains all the states for the MyMach state-machine.
+			// MyMachStates contains all the states for the [MyMach] state-machine.
 			MyMachStates = ssM
-			// MyMachGroups contains all the state groups for the MyMach state-machine.
+			// MyMachGroups contains all the state groups for the [MyMach] state-machine.
 			MyMachGroups = sgM
 		)
 		
-		// NewMyMach creates a new MyMach state-machine in the most basic form.
+		// NewMyMach creates a new [MyMach] state-machine in the most basic form.
 		func NewMyMach(ctx context.Context) *am.Machine {
 			return am.New(ctx, MyMachSchema, nil)
 		}

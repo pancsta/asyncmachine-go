@@ -89,3 +89,8 @@ tools/visualizer/testdata/*
 /docs/diagrams/*.svg
 /data/
 *.gob.br
+/examples/wasm/client/wasm_exec.js
+/examples/wasm/deps-graph.svg
+/examples/wasm/deps.md
+/examples/wasm/tmp/
+/examples/wasm/client/prod.wasm

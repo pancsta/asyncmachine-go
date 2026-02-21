@@ -51,7 +51,7 @@ func main() {
 	}
 
 	// server start
-	server.Start()
+	server.Start(nil)
 	err = amhelp.WaitForAll(ctx, 3*time.Second,
 		server.Mach.When1(ssrpc.ServerStates.RpcReady, ctx))
 	if err != nil {
@@ -69,7 +69,7 @@ func main() {
 		exit := false
 		select {
 		case <-t.C:
-			netSourceMach.Add1(ssrpc.NetSourceStates.SendPayload, arpc.Pass(&arpc.A{
+			netSourceMach.Add1(ssrpc.StateSourceStates.SendPayload, arpc.Pass(&arpc.A{
 				Name: "mypayload",
 				Payload: &arpc.MsgSrvPayload{
 					Name:   "mypayload",
@@ -110,7 +110,7 @@ func newServer(ctx context.Context, addr string, netSource *am.Machine) (*arpc.S
 	amhelp.MachDebugEnv(s.Mach)
 
 	// start
-	s.Start()
+	s.Start(nil)
 	err = amhelp.WaitForAll(ctx, 2*time.Second,
 		s.Mach.When1(ssrpc.ServerStates.RpcReady, ctx))
 	if err != nil {

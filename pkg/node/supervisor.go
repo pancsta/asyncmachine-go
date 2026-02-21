@@ -293,7 +293,7 @@ func (s *Supervisor) ClientDisconnectedState(e *am.Event) {
 	if !ok {
 		s.log("client %s disconnected, but not found", addr)
 	}
-	srv.Stop(true)
+	srv.Stop(e, true)
 	delete(s.PublicRpcs, addr)
 }
 
@@ -333,8 +333,8 @@ func (s *Supervisor) StartState(e *am.Event) {
 	}
 
 	// start
-	s.PublicMux.Start()
-	s.LocalRpc.Start()
+	s.PublicMux.Start(e)
+	s.LocalRpc.Start(e)
 
 	// unblock
 	go func() {
@@ -376,10 +376,10 @@ func (s *Supervisor) StartState(e *am.Event) {
 func (s *Supervisor) StartEnd(e *am.Event) {
 	// TODO stop all rpc servers
 	if s.PublicMux != nil {
-		s.PublicMux.Stop(true)
+		s.PublicMux.Stop(e, true)
 	}
 	if s.LocalRpc != nil {
-		s.LocalRpc.Stop(true)
+		s.LocalRpc.Stop(e, true)
 	}
 }
 
@@ -546,7 +546,7 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 		}
 
 		// wait for client ready
-		wrpc.Start()
+		wrpc.Start(e)
 		err = amhelp.WaitForErrAny(ctx, s.ConnTimeout, wrpc.Mach,
 			wrpc.Mach.When1(ssC.Ready, ctx))
 		if ctx.Err() != nil {

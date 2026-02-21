@@ -279,7 +279,7 @@ func TestClientWorker(t *testing.T) {
 
 // TODO Test2ClientsWorker
 
-func TestClientWorkerPayload(t *testing.T) {
+func TestClientServerPayload(t *testing.T) {
 	// TODO flaky
 	if os.Getenv(amhelp.EnvAmTestRunner) != "" {
 		t.Skip("FLAKY")
@@ -312,7 +312,7 @@ func TestClientWorkerPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	whenPayload := c.Mach.WhenTicks(ssC.WorkerPayload, 1, nil)
+	whenPayload := c.Mach.WhenTicks(ssC.ServerPayload, 1, nil)
 	c.RpcWorker.NetMach.Add1(ssW.WorkRequested, am.A{"input": 2})
 	amhelpt.WaitForAll(t, "ClientConnected", ctx, defTimeout,
 		whenPayload,
@@ -494,7 +494,7 @@ type clientHandlers struct {
 // implement ssrpc.ConsumerHandlers
 var _ ssrpc.ConsumerHandlers = &clientHandlers{}
 
-func (c *clientHandlers) WorkerPayloadState(e *am.Event) {
+func (c *clientHandlers) ServerPayloadState(e *am.Event) {
 	args := rpc.ParseArgs(e.Args)
 
 	if args.Name != ssS.ProvideWorker {

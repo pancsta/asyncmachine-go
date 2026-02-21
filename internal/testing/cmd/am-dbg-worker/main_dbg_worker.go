@@ -13,10 +13,11 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	dbg2 "github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
 func main() {
@@ -24,7 +25,7 @@ func main() {
 	defer cancel()
 
 	// read env
-	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
+	amDbgAddr := os.Getenv(dbg2.EnvAmDbgAddr)
 	logLvl := am.EnvLogLevel("")
 
 	// test worker has its own flags
@@ -61,7 +62,7 @@ func main() {
 
 	// am-dbg server (used for testing live connections)
 	if *serverAddr != "" {
-		go server.StartRpc(dbg.Mach, *serverAddr, nil, nil, false)
+		go server.StartRpc(dbg.Mach, *serverAddr, nil, types.Params{})
 	}
 
 	// start with a timeout
@@ -69,7 +70,7 @@ func main() {
 	defer cancel()
 
 	// server start
-	s.Start()
+	s.Start(nil)
 	select {
 	case <-s.Mach.WhenErr(readyCtx):
 		err := s.Mach.Err()

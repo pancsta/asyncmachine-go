@@ -11,7 +11,7 @@ import (
 
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/relay"
 	"github.com/pancsta/asyncmachine-go/tools/relay/states"
 	"github.com/pancsta/asyncmachine-go/tools/relay/types"
@@ -113,7 +113,7 @@ func runTestIteration(ctx context.Context, dbgAddr, outDir string) {
 
 	cmd.Env = append(os.Environ(),
 		am.EnvAmTestDbgAddr+"="+dbgAddr,
-		amtele.EnvAmDbgAddr+"=",
+		dbg.EnvAmDbgAddr+"=",
 	)
 	// Pipe stdout and stderr to the log file
 	cmd.Stdout = logFile

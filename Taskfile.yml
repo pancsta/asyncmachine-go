@@ -111,7 +111,7 @@ tasks:
     silent: false
     cmds:
       - go run ./tools/cmd/am-dbg
-          --import-data assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
+          --import-data assets/asyncmachine-go/am-dbg-exports/secai-cook.gob.br
           --select-machine sim-p0
           --select-transition 20
           --max-mem 1000
@@ -120,22 +120,17 @@ tasks:
           {{.CLI_ARGS}}
 
   am-dbg-ssh:
-    silent: false
-    desc: Run am-dbg-ssh with sample data on localhost:4444
-    cmds:
-      - go run ./tools/cmd/am-dbg-ssh
-          --import-data assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br
-          --select-machine sim-p0
-          --select-transition 20
-          --max-mem 1000
-          --dir tmp
-          {{.CLI_ARGS}}
+    ignore_error: true
+    cmd: ssh localhost -p 6833 -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
 
-  am-dbg-ssh-connect:
-    silent: false
-    desc: Connect to a running am-dbg-ssh at localhost:4444
-    cmds:
-      - ssh localhost -p 4444 -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
+  am-dbg-ssh-auto:
+    ignore_error: true
+    desc: Connect to am-dbg via SSH and keep reconnecting
+    cmd: |
+      while true; do
+        task am-dbg-ssh
+        sleep 3
+      done
 
   am-dbg-dump:
     desc: Start am-dbg with a recent dump file
@@ -769,10 +764,6 @@ tasks:
           --theme=dark --output={}.dark.svg --backgroundColor=transparent \;
       - mv *.svg ../../assets/asyncmachine-go/diagrams
 
-  gen-docs-diagrams-watch:
-    dir: scripts
-    cmd: go run ./scripts/watch_diagrams
-
   post-release:
     cmds:
       - task: gen-docs-website
@@ -787,9 +778,13 @@ tasks:
   #
   #
 
+  script-gen-docs-diagrams-watch:
+    dir: scripts
+    cmd: go run ./watch_diagrams
+
   script-test-loop:
     dir: scripts
-    cmd: go run ./scripts/test_loop
+    cmd: go run ./test_loop
 
 
   script-gen-api-docs:

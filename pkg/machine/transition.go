@@ -78,6 +78,7 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	defer m.activeStatesMx.RUnlock()
 
 	index := m.StateNames()
+	// TODO optimize: schemaSafe()?
 	schema := m.Schema()
 	tNow := m.time(nil)
 	tAfter := slices.Clone(tNow)
@@ -119,8 +120,9 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 
 	// assign early to catch the logs
 	m.t.Store(t)
+	m.tDbg = t
 
-	// tracers
+	// tracerssh
 	m.tracersMx.RLock()
 	for _, tracer := range m.tracers {
 		if t.Machine.IsDisposed() {
@@ -469,7 +471,7 @@ func (t *Transition) emitSelfEvents() Result {
 	m := t.Machine
 	ret := Executed
 	var handlerCalled bool
-	for _, s := range t.CalledStates() {
+	for _, s := range t.TargetStates() {
 		// only the active states
 		if !t.Machine.Is(S{s}) {
 			continue
@@ -856,7 +858,7 @@ func (t *Transition) setupAccepted() {
 	// accept if check and one of called is multi
 	isMulti := false
 	for _, s := range called {
-		if m.schema[s].Multi {
+		if t.cacheSchema[s].Multi {
 			isMulti = true
 			break
 		}

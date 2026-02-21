@@ -92,6 +92,7 @@ func (m *Mutation) LogArgs(mapper LogArgsMapperFn) string {
 // StepType enum
 type StepType int8
 
+// TODO refac with dbg-proto-v2
 const (
 	StepRelation StepType = 1 << iota
 	StepHandler
@@ -103,6 +104,7 @@ const (
 	// StepRemoveNotActive indicates a step where a state goes inactive->inactive
 	// TODO rename to StepDeactivatePassive
 	StepRemoveNotActive
+	// TODO refac to StepCalled
 	StepRequested
 	StepCancel
 )
@@ -120,7 +122,7 @@ func (tt StepType) String() string {
 	case StepRemoveNotActive:
 		return "deactivate-passive"
 	case StepRequested:
-		return "requested"
+		return "called"
 	case StepCancel:
 		return "cancel"
 	}
@@ -196,7 +198,7 @@ func (s *Step) StringFromIndex(idx S) string {
 		to = StateAny
 	}
 
-	// format TODO markdown?
+	// markdown
 	if from != "" {
 		from = "**" + from + "**"
 	}

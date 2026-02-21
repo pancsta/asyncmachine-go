@@ -40,9 +40,8 @@ func StatesEqual(states1 S, states2 S) bool {
 	return slicesEvery(states1, states2) && slicesEvery(states2, states1)
 }
 
-// CloneSchema deep clones the states struct and returns a copy.
-func CloneSchema(schema Schema) Schema {
-	// TODO rename to SchemaClone
+// SchemaClone deep clones the states struct and returns a copy.
+func SchemaClone(schema Schema) Schema {
 	ret := make(Schema)
 
 	for name, state := range schema {
@@ -109,7 +108,7 @@ func SAdd(states ...S) S {
 	return slicesUniq(s)
 }
 
-// SRem removes groups > 1 from nr 1.
+// SRem removes groups > 1 from nr 1. TODO docs
 func SRem(src S, states ...S) S {
 	// TODO test
 	// TODO move to resolver
@@ -130,6 +129,13 @@ func SRem(src S, states ...S) S {
 // StateAdd adds new states to relations of the source state, without
 // removing existing ones. Useful for adjusting shared stated to a specific
 // machine. Only "true" values for Auto and Multi are applied from [overlay].
+//
+//	ssS.HandshakeDone: StateAdd(
+//		SharedSchema[ssS.HandshakeDone],
+//		am.State{
+//			Require: S{ssS.ClientConnected},
+//			Remove: S{Exception},
+//		}),
 func StateAdd(source State, overlay State) State {
 	// TODO example
 	// TODO test
@@ -164,6 +170,10 @@ func StateAdd(source State, overlay State) State {
 // StateSet replaces passed relations and properties of the source state.
 // Only relations in the overlay state are replaced, the rest is preserved.
 // If [overlay] has all fields `nil`, then only [auto] and [multi] get applied.
+//
+//	 ssS.HandshakeDone: StateSet(s, false, true, State{
+//			Remove: S{"C"},
+//		})
 func StateSet(source State, auto, multi bool, overlay State) State {
 	// TODO example
 	// TODO test
@@ -213,7 +223,7 @@ func SchemaMerge(schemas ...Schema) Schema {
 		maps.Copy(ret, schemas[i])
 	}
 
-	return CloneSchema(ret)
+	return SchemaClone(ret)
 }
 
 // EnvLogLevel returns a log level from an environment variable, AM_LOG by
@@ -420,8 +430,9 @@ func padString(str string, length int, pad string) string {
 func ParseSchema(schema Schema) (Schema, error) {
 	// TODO move to Resolver
 	// TODO capitalize states
+	// TODO ErrFoo must require Exception
 
-	parsed := CloneSchema(schema)
+	parsed := SchemaClone(schema)
 	states := slices.Collect(maps.Keys(schema))
 	var errs error
 	for name, state := range schema {

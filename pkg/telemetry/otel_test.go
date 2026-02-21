@@ -26,7 +26,7 @@ func TestLog(t *testing.T) {
 	mach.Add1(ss.C, nil)
 	mach.Remove1(ss.A, nil)
 
-	err = logProvider.ForceFlush(mach.Ctx())
+	err = logProvider.ForceFlush(mach.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

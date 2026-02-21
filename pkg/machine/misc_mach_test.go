@@ -32,7 +32,7 @@ func TestWithOpts(t *testing.T) {
 
 	// OptsWithParentTracers
 	mach := New(context.TODO(), nil, opts)
-	mach.SemLogger().SetArgsMapper(NewArgsMapper([]string{"arg"}, 10))
+	mach.SemLogger().SetArgsMapper(NewLogArgsMapper(10, []string{"arg"}))
 }
 
 func TestResultString(t *testing.T) {
@@ -65,7 +65,7 @@ func TestStepTypeString(t *testing.T) {
 	assert.Equal(t, "activate", StepSet.String())
 	assert.Equal(t, "deactivate", StepRemove.String())
 	assert.Equal(t, "deactivate-passive", StepRemoveNotActive.String())
-	assert.Equal(t, "requested", StepRequested.String())
+	assert.Equal(t, "called", StepRequested.String())
 	assert.Equal(t, "cancel", StepCancel.String())
 	assert.Equal(t, "", StepType(0).String())
 }
@@ -101,7 +101,7 @@ func TestNewArgsMapper(t *testing.T) {
 	}
 
 	// short
-	mapper := NewArgsMapper([]string{"arg", "arg2"}, 2)
+	mapper := NewLogArgsMapper(2, []string{"arg", "arg2"})
 	res := mapper(A{"arg": "foo"})
 	assert.Equal(t, "fo", res["arg"])
 	res = mapper(A{"arg": "foo", "arg2": "bar"})
@@ -109,7 +109,7 @@ func TestNewArgsMapper(t *testing.T) {
 	assert.Equal(t, "ba", res["arg2"])
 
 	// long
-	mapper = NewArgsMapper([]string{"arg", "arg2"}, 5)
+	mapper = NewLogArgsMapper(5, []string{"arg", "arg2"})
 	args := A{"arg": "foofoofoo"}
 	res = mapper(args)
 	assert.Equal(t, "fo...", res["arg"])

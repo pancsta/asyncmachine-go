@@ -7,12 +7,12 @@ import (
 	stdtest "testing"
 	"time"
 
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
 // MachDebug sets up a machine for debugging in tests, based on the AM_DEBUG
@@ -30,7 +30,7 @@ func MachDebug(t *stdtest.T, mach am.Api, amDbgAddr string,
 
 	// expand the default addr
 	if amDbgAddr == "1" {
-		amDbgAddr = telemetry.DbgAddr
+		amDbgAddr = dbg.DbgAddr
 	}
 
 	err := amhelp.MachDebug(mach, amDbgAddr, logLvl, stdout,
@@ -41,7 +41,7 @@ func MachDebug(t *stdtest.T, mach am.Api, amDbgAddr string,
 // MachDebugEnv sets up a machine for debugging in tests, based on env vars
 // only: AM_DBG_ADDR, AM_LOG, and AM_DEBUG.
 func MachDebugEnv(t *stdtest.T, mach am.Api) {
-	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
+	amDbgAddr := os.Getenv(dbg.EnvAmDbgAddr)
 	logLvl := am.EnvLogLevel("")
 	stdout := os.Getenv(amhelp.EnvAmLogPrint) != ""
 

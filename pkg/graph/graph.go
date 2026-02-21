@@ -11,10 +11,11 @@ import (
 
 	"github.com/dominikbraun/graph"
 
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
@@ -80,16 +81,16 @@ func hash(c *Vertex) string {
 }
 
 type Exportable struct {
-	MsgTxs []*telemetry.DbgMsgTx
+	MsgTxs []*dbg.DbgMsgTx
 }
 
 // Client represents a single state machine withing the network graph.
 type Client struct {
 	Id string
 	// TODO version schemas
-	MsgSchema *telemetry.DbgMsgStruct
+	MsgSchema *dbg.DbgMsgStruct
 
-	LatestMsgTx   *telemetry.DbgMsgTx
+	LatestMsgTx   *dbg.DbgMsgTx
 	LatestTimeSum uint64
 	LatestClock   am.Time
 	ConnId        string
@@ -194,7 +195,7 @@ func (g *Graph) Connection(source, target string) (*Connection, error) {
 	}, nil
 }
 
-func (g *Graph) ParseMsg(id string, msgTx *telemetry.DbgMsgTx) {
+func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 	c := g.Clients[id]
 
 	var sum uint64
@@ -295,7 +296,7 @@ func (g *Graph) RemoveClient(id string) error {
 	return nil
 }
 
-func (g *Graph) AddClient(msg *telemetry.DbgMsgStruct) error {
+func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 	// init
 	id := msg.ID
 	c := &Client{
@@ -422,7 +423,7 @@ func (g *Graph) AddClient(msg *telemetry.DbgMsgStruct) error {
 
 // private
 
-func (g *Graph) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx) error {
+func (g *Graph) parseMsgLog(c *Client, msgTx *dbg.DbgMsgTx) error {
 	// pre-tx log entries
 	for _, entry := range msgTx.PreLogEntries {
 		err := g.parseMsgReader(c, entry, msgTx)
@@ -443,7 +444,7 @@ func (g *Graph) parseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx) error {
 }
 
 func (g *Graph) parseMsgReader(
-	c *Client, log *am.LogEntry, tx *telemetry.DbgMsgTx,
+	c *Client, log *am.LogEntry, tx *dbg.DbgMsgTx,
 ) error {
 	// NEW PIPE
 
