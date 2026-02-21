@@ -3462,3 +3462,25 @@ func (m *Machine) Groups() (map[string][]int, []string) {
 
 	return m.groups, m.groupsOrder
 }
+
+// Fork is a syntax sugar method for a handler unblocking boilerplate. Fork can
+// only by used in the handler body (while the event is valid). See
+// [Machine.Go] for nested forking.
+func (m *Machine) Fork(ctx context.Context, e *Event, fn func()) {
+	if !e.IsValid() {
+		return
+	}
+
+	m.Go(ctx, fn)
+}
+
+// Go is a syntax sugar method for a nested handler unblocking boilerplate.
+func (m *Machine) Go(ctx context.Context, fn func()) {
+	go func() {
+		if ctx.Err() != nil {
+			return // expired
+		}
+
+		fn()
+	}()
+}
