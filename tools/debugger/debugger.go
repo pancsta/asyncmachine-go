@@ -121,17 +121,21 @@ type Debugger struct {
 	tagsBar         *cview.TextView
 	clip            clipper.Clipboard
 	// toolbarItems is a list of row of toolbars items
-	toolbarItems     [][]toolbarItem
-	clientListFile   *os.File
-	txListFile       *os.File
-	msgsDelayed      []*telemetry.DbgMsgTx
-	msgsDelayedConns []string
-	currTxBar        *cview.Flex
-	nextTxBar        *cview.Flex
-	mainGridCols     []int
-	readerExpanded   map[string]bool
-	treeGroups       *cview.DropDown
-	treeLayout       *cview.Flex
+	toolbarItems       [][]toolbarItem
+	clientListFile     *os.File
+	txFileMd           *os.File
+	txFileD2           *os.File
+	txFileD2Svg        *os.File
+	txFileMermaid      *os.File
+	txFileMermaidAscii *os.File
+	msgsDelayed        []*dbg.DbgMsgTx
+	msgsDelayedConns   []string
+	currTxBar          *cview.Flex
+	nextTxBar          *cview.Flex
+	mainGridCols       []int
+	readerExpanded     map[string]bool
+	treeGroups         *cview.DropDown
+	treeLayout         *cview.Flex
 	// list of states to show, bypassing other ones from the schema
 	schemaTreeStates  am.S
 	lastSelectedGroup string
@@ -262,8 +266,33 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 
 	// tx file
 	if d.Opts.OutputTx {
-		p := path.Join(d.Opts.OutputDir, "am-dbg-tx.md")
-		txListFile, err := os.Create(p)
+		p := path.Join(d.Opts.OutputDir, "tx.md")
+		txFile, err := os.Create(p)
+		if err != nil {
+			mach.AddErr(err, nil)
+		}
+		d.txFileMd = txFile
+
+		// D2
+		txD2File := path.Join(d.Opts.OutputDir, "tx.d2")
+		d.txFileD2, err = os.Create(txD2File)
+		if err != nil {
+			mach.AddErr(err, nil)
+		}
+		txD2SvgFile := path.Join(d.Opts.OutputDir, "tx.d2.svg")
+		d.txFileD2Svg, err = os.Create(txD2SvgFile)
+		if err != nil {
+			mach.AddErr(err, nil)
+		}
+
+		// mermaid
+		txMermaidFile := path.Join(d.Opts.OutputDir, "tx.mermaid")
+		d.txFileMermaid, err = os.Create(txMermaidFile)
+		if err != nil {
+			mach.AddErr(err, nil)
+		}
+		txMermaidAsciiFile := path.Join(d.Opts.OutputDir, "tx.mermaid.txt")
+		d.txFileMermaidAscii, err = os.Create(txMermaidAsciiFile)
 		if err != nil {
 			mach.AddErr(fmt.Errorf("tx list file open: %w", err), nil)
 		}

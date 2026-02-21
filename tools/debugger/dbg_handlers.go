@@ -1702,9 +1702,38 @@ func (d *Debugger) hSetCursor1(e *am.Event, args am.A) {
 		}
 
 		// tx file
-		if d.Opts.OutputTx {
+		if d.Opts.OutputTx && tx != nil {
 			index := d.C.MsgStruct.StatesIndex
-			_, _ = d.txListFile.WriteAt([]byte(tx.TxString(index)), 0)
+			_ = d.txFileMd.Truncate(0)
+			_ = d.txFileD2.Truncate(0)
+			_ = d.txFileD2Svg.Truncate(0)
+			_ = d.txFileMermaid.Truncate(0)
+			_ = d.txFileMermaidAscii.Truncate(0)
+			_, _ = d.txFileMd.WriteAt([]byte(tx.TxString(index)), 0)
+
+			// TODO move to diagrams state
+			if tx.Steps != nil {
+				visTx := visualizer.Transition{Tx: tx}
+
+				// D2
+				d2Diag, d2Svg, err := visTx.D2(d.Mach.Context(),
+					amhelp.MachToSlog(d.Mach), index)
+				_, _ = d.txFileD2.WriteAt([]byte(d2Diag), 0)
+				if err != nil {
+					d.Mach.Log(err.Error())
+				} else {
+					_, _ = d.txFileD2Svg.WriteAt([]byte(d2Svg), 0)
+				}
+
+				// mermaid
+				mermaid, ascii, err := visTx.Mermaid(index)
+				_, _ = d.txFileMermaid.WriteAt([]byte(mermaid), 0)
+				if err != nil {
+					d.Mach.AddErr(err, nil)
+				} else {
+					_, _ = d.txFileMermaidAscii.WriteAt([]byte(ascii), 0)
+				}
+			}
 		}
 	}
 
