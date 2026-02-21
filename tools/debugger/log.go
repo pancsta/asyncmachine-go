@@ -12,12 +12,13 @@ import (
 	"github.com/pancsta/cview"
 	"golang.org/x/exp/maps"
 
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
@@ -84,8 +85,16 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 			return // expired
 		}
 
-		// cview is safe
 		d.log.Clear()
+		if d.Opts.OutputLog {
+			go func() {
+				// TODO handle in LogBuiltState
+				d.logFileMx.Lock()
+				defer d.logFileMx.Unlock()
+				_, _ = d.logFile.Write(cview.StripTags([]byte(buf), true, true))
+			}()
+		}
+		// cview is thread safe
 		_, err := d.log.Write([]byte(buf))
 		// d.Mach.Log("writting %d", len(buf))
 		// d.Mach.Log(buf)
@@ -228,7 +237,7 @@ func (d *Debugger) handleLogScroll() {
 	d.log.ScrollTo(row, 0)
 }
 
-func (d *Debugger) hParseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
+func (d *Debugger) hParseMsgLog(c *Client, msgTx *dbg.DbgMsgTx, idx int) {
 	logEntries := make([]*am.LogEntry, 0)
 
 	tx := c.MsgTxs[idx]
@@ -295,7 +304,7 @@ func (d *Debugger) hParseMsgLog(c *Client, msgTx *telemetry.DbgMsgTx, idx int) {
 }
 
 func (d *Debugger) hParseMsgLogEntry(
-	c *Client, tx *telemetry.DbgMsgTx, entry *am.LogEntry,
+	c *Client, tx *dbg.DbgMsgTx, entry *am.LogEntry,
 ) *am.LogEntry {
 	lvl := entry.Level
 
@@ -1050,7 +1059,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 
 		// queued tx
 		if tx.IsQueued {
-			var executed *telemetry.DbgMsgTx
+			var executed *dbg.DbgMsgTx
 
 			// DEBUG
 			// // look into the future TODO links to the wrong one
@@ -1112,7 +1121,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 
 			// executed tx
 		} else {
-			var queued *telemetry.DbgMsgTx
+			var queued *dbg.DbgMsgTx
 
 			// look into the past
 			for iii := c.CursorTx1 - 2; iii >= 0; iii-- {
@@ -1582,7 +1591,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 
 func (d *Debugger) parseMsgReader(
 	c *Client, log *am.LogEntry, txEntries []*types.LogReaderEntryPtr,
-	tx *telemetry.DbgMsgTx,
+	tx *dbg.DbgMsgTx,
 ) []*types.LogReaderEntryPtr {
 	// TODO get data from SemLogger
 	// TODO add errs to machine (not log)

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"code.rocketnine.space/tslocum/cbind"
-	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
+	"github.com/pancsta/cview/cbind"
+	"github.com/pancsta/tcell-v2"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -227,6 +227,7 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 	// TODO add state deps to the keystrokes structure
 	// TODO use tcell.KeyNames instead of strings as keys
 	// TODO rate limit
+	keys := tcell.KeyNames
 	return map[string]func(ev *tcell.EventKey) *tcell.EventKey{
 		// play/pause
 		"space": func(ev *tcell.EventKey) *tcell.EventKey {
@@ -271,6 +272,7 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 
 		// expand / collapse trees
 		"alt+e": func(ev *tcell.EventKey) *tcell.EventKey {
+			// TODO race
 			d.hToolExpand()
 
 			return nil
@@ -305,6 +307,7 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 
 		// scroll to the first tx
 		"home": func(ev *tcell.EventKey) *tcell.EventKey {
+			// TODO race
 			d.hToolFirstTx(nil)
 
 			return nil
@@ -312,6 +315,7 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 
 		// scroll to the last tx
 		"end": func(ev *tcell.EventKey) *tcell.EventKey {
+			// TODO race
 			d.hToolLastTx(nil)
 
 			return nil
@@ -319,8 +323,14 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 
 		// quit the app
 		"ctrl+q": func(ev *tcell.EventKey) *tcell.EventKey {
-			d.Mach.Remove1(ss.Start, nil)
+			// SSH PTY
+			if d.Mach.Is1(ss.SshServer) {
+				d.Mach.Add1(ss.SshDisconn, nil)
+				return nil
+			}
 
+			// local PTY
+			d.Mach.Remove1(ss.Start, nil)
 			return nil
 		},
 
@@ -371,19 +381,24 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 		},
 
 		// remove client (sidebar)
-		"backspace": func(ev *tcell.EventKey) *tcell.EventKey {
+		keys[tcell.KeyBackspace]: func(ev *tcell.EventKey) *tcell.EventKey {
 			if d.Mach.Not1(ss.ClientListFocused) {
 				return ev
 			}
 
-			sel := d.clientList.GetCurrentItem()
-			if sel == nil || d.Mach.Not1(ss.ClientListFocused) {
-				return nil
+			// TODO race
+			d.hDeleteClient()
+			return nil
+		},
+
+		// remove client (sidebar)
+		"alt+d": func(ev *tcell.EventKey) *tcell.EventKey {
+			if d.Mach.Not1(ss.ClientListFocused) {
+				return ev
 			}
 
-			ref := sel.GetReference().(*sidebarRef)
-			d.Mach.Add1(ss.RemoveClient, am.A{"Client.id": ref.name})
-
+			// TODO race
+			d.hDeleteClient()
 			return nil
 		},
 
@@ -408,6 +423,16 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 			return ev
 		},
 	}
+}
+
+func (d *Debugger) hDeleteClient() {
+	sel := d.clientList.GetCurrentItem()
+	if sel == nil || d.Mach.Not1(ss.ClientListFocused) {
+		return
+	}
+
+	ref := sel.GetReference().(*sidebarRef)
+	d.Mach.Add1(ss.RemoveClient, am.A{"Client.id": ref.name})
 }
 
 func (d *Debugger) focusDefault() {
@@ -534,7 +559,7 @@ func (d *Debugger) hJumpBackKey(ev *tcell.EventKey) *tcell.EventKey {
 		// }
 
 		// state jump TODO dont block
-		amhelp.Add1Block(ctx, d.Mach, state, am.A{
+		amhelp.Add1Sync(ctx, d.Mach, state, am.A{
 			"state": d.C.SelectedState,
 			"fwd":   false,
 		})
@@ -542,7 +567,7 @@ func (d *Debugger) hJumpBackKey(ev *tcell.EventKey) *tcell.EventKey {
 		d.hUpdateClientList()
 	} else {
 		// fast jump TODO dont block
-		amhelp.Add1Block(ctx, d.Mach, ss.Back, am.A{
+		amhelp.Add1Sync(ctx, d.Mach, ss.Back, am.A{
 			"amount": min(fastJumpAmount, d.C.CursorTx1),
 		})
 	}
@@ -569,7 +594,7 @@ func (d *Debugger) hJumpFwdKey(ev *tcell.EventKey) *tcell.EventKey {
 		// }
 
 		// state jump TODO dont block
-		amhelp.Add1Block(ctx, d.Mach, state, am.A{
+		amhelp.Add1Sync(ctx, d.Mach, state, am.A{
 			"state": d.C.SelectedState,
 			"fwd":   true,
 		})
@@ -577,7 +602,7 @@ func (d *Debugger) hJumpFwdKey(ev *tcell.EventKey) *tcell.EventKey {
 		d.hUpdateClientList()
 	} else {
 		// fast jump TODO dont block
-		amhelp.Add1Block(ctx, d.Mach, ss.Fwd, am.A{
+		amhelp.Add1Sync(ctx, d.Mach, ss.Fwd, am.A{
 			"amount": min(fastJumpAmount, len(d.C.MsgTxs)-d.C.CursorTx1),
 		})
 	}

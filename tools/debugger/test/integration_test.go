@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 	"github.com/soheilhy/cmux"
 	"github.com/stretchr/testify/assert"
 
@@ -67,7 +68,7 @@ func init() {
 	// init am-dbg telemetry server
 	muxCh := make(chan cmux.CMux, 1)
 	defer close(muxCh)
-	go server.StartRpc(worker.Mach, workerAddr, muxCh, nil, false)
+	go server.StartRpc(worker.Mach, workerAddr, muxCh, types.Params{})
 	// wait for mux
 	<-muxCh
 }

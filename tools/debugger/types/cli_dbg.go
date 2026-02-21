@@ -12,21 +12,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/spf13/cobra"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
 // TODO enum
-// TODO cobra groups
+// TODO refac to go-arg
 const (
 	pDbgLogLevel      = "dbg-log-level"
 	pDbgAmDbgAddr     = "dbg-am-dbg-addr"
 	pGoRace           = "dbg-go-race"
 	pId               = "dbg-id"
-	pServerAddr       = "listen-on"
-	pServerAddrShort  = "l"
+	pListenAddr       = "listen-addr"
+	pListenAddrShort  = "l"
 	pEnableMouse      = "enable-mouse"
 	pEnableClipboard  = "enable-clipboard"
 	pCleanOnConnect   = "clean-on-connect"
@@ -42,10 +42,11 @@ const (
 	pStartupTxShort   = "t"
 	pTail             = "tail"
 	// TODO AM_DBG_PROF
-	pProfSrv      = "dbg-prof-srv"
-	pMaxMem       = "max-mem"
-	pLogOpsTtl    = "log-ops-ttl"
-	pReaderShort  = "r"
+	pProfSrv     = "dbg-prof-srv"
+	pMaxMem      = "max-mem"
+	pLogOpsTtl   = "log-ops-ttl"
+	pReaderShort = "r"
+	// TODO refac fwd-addr
 	pFwdData      = "fwd-data"
 	pFwdDataShort = "f"
 	// TODO --filters + loglevel, eg canceled,L1,empty
@@ -57,17 +58,19 @@ const (
 	pOutputDirShort = "d"
 	pOutputClients  = "output-clients"
 	pOutputTx       = "output-tx"
+	pOutputLog      = "output-log"
 	pOutputDiagrams = "output-diagrams"
-	pUiDiagrams     = "ui-diagrams"
 
 	// UI
 
-	pView       = "view"
-	pViewShort  = "v"
-	pViewNarrow = "view-narrow"
-	pViewReader = "view-reader"
-	pTimelines  = "view-timelines"
-	pRain       = "view-rain"
+	pView          = "view"
+	pViewShort     = "v"
+	pViewNarrow    = "view-narrow"
+	pViewReader    = "view-reader"
+	pViewTimelines = "view-timelines"
+	pViewRain      = "view-rain"
+	pUiWeb         = "ui-web"
+	pUiSsh         = "ui-ssh"
 
 	// filters
 
@@ -89,6 +92,7 @@ type Params struct {
 	RaceDetector    bool
 	ImportData      string
 	EnableMouse     bool
+	UiSsh           bool
 	EnableClipboard bool
 	CleanOnConnect  bool
 	SelectConnected bool
@@ -97,7 +101,7 @@ type Params struct {
 	ProfSrv         string
 	MaxMemMb        int
 	LogOpsTtl       time.Duration
-	Reader          bool
+	ViewReader      bool
 	FwdData         []string
 
 	StartupMachine string
@@ -113,13 +117,14 @@ type Params struct {
 
 	OutputDir      string
 	OutputDiagrams int
-	UiDiagrams     bool
+	UiWeb          bool
 	OutputClients  bool
-	Timelines      int
+	ViewTimelines  int
 	Rain           bool
 	TailMode       bool
 	OutputTx       bool
 	MachUrl        string
+	OutputLog      bool
 }
 
 type RootFn func(cmd *cobra.Command, args []string, params Params)
@@ -146,7 +151,7 @@ func AddFlags(rootCmd *cobra.Command) {
 	// TODO understand string names like Changes, Ops
 	f.Int(pDbgLogLevel, int(am.LogNothing),
 		"Log level produced by this instance, 0-5 (silent-everything)")
-	f.StringP(pServerAddr, pServerAddrShort, telemetry.DbgAddr,
+	f.StringP(pListenAddr, pListenAddrShort, dbg.DbgAddr,
 		"Host and port for the debugger to listen on")
 	f.String(pId, "am-dbg", "ID of this instance")
 	f.String(pDbgAmDbgAddr, "", "Debug this instance of am-dbg with another one")
@@ -162,7 +167,9 @@ func AddFlags(rootCmd *cobra.Command) {
 		"Select a transition by _number_ on startup (requires --"+
 			pStartupMach+")")
 	f.String(pStartupGroup, "", "Startup group")
-	f.Bool(pEnableMouse, true, "Enable mouse support (experimental)")
+	f.Bool(pEnableMouse, true, "Enable mouse support")
+	f.Bool(pUiSsh, false,
+		"Enable SSH headless mode on port --listen-addr +2. EXPERIMENTAL")
 	f.Bool(pEnableClipboard, true, "Enable clipboard support")
 	f.Bool(pCleanOnConnect, true,
 		"Clean up disconnected clients on the 1st connection")
@@ -178,8 +185,8 @@ func AddFlags(rootCmd *cobra.Command) {
 	// FILTERS
 
 	f.Bool(pFilterGroup, true, "Filter transitions by a selected group")
-	f.Int(pFilterLogLevel, int(am.LogChanges), "Filter transitions to this log "+
-		"level, 0-5 (silent-everything)")
+	f.Int(pFilterLogLevel, int(am.LogChanges), "Filter transitions up to this"+
+		" log level, 0-5 (silent-everything)")
 
 	// MISC
 
@@ -194,15 +201,19 @@ func AddFlags(rootCmd *cobra.Command) {
 		"Output directory for generated files")
 	f.Bool(pOutputClients, false,
 		"Write a detailed client list into am-dbg-clients.txt inside --dir")
-	f.Bool(pOutputTx, false,
-		"Write the current transition with steps into am-dbg-tx.md inside --dir")
+	f.Bool(pOutputTx, true,
+		"Write the current transition with steps into tx.md / d2 / mermaid"+
+			" / txt inside --dir. EXPERIMENTAL")
+	f.Bool(pOutputLog, false,
+		"Write the current log buffer to log.txt inside --dir.")
 	f.Int(pOutputDiagrams, 0,
-		"Level of details for diagrams (svg, d2, mermaid) in "+
+		"Level of details for machine graph diagrams (svg, d2, mermaid) in "+
 			"--dir (0 off, 1-3 on). EXPERIMENTAL")
-	f.Bool(pUiDiagrams, true,
-		"Start a web diagrams viewer on a +1 port (EXPERIMENTAL)")
-	f.Int(pTimelines, 2, "Number of timelines to show (0-2)")
-	f.Bool(pRain, false, "Show the rain view")
+	f.Bool(pUiWeb, true,
+		"Start a web server for --dir and diagrams on --listen-addr +1 "+
+			"(EXPERIMENTAL)")
+	f.Int(pViewTimelines, 2, "Number of timelines to show (0-2)")
+	f.Bool(pViewRain, false, "Show the rain view")
 	f.Bool(pTail, true, "Start from the lastest tx")
 }
 
@@ -234,7 +245,7 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 	}
 	filterLogLevel := am.LogLevel(min(5, filterLogLevelInt))
 
-	serverAddr := cmd.Flag(pServerAddr).Value.String()
+	serverAddr := cmd.Flag(pListenAddr).Value.String()
 	debugAddr := cmd.Flag(pDbgAmDbgAddr).Value.String()
 	importData := cmd.Flag(pImport).Value.String()
 	startupGroup := cmd.Flag(pStartupGroup).Value.String()
@@ -250,13 +261,13 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 		panic(err)
 	}
 	outputDiagrams = min(3, outputDiagrams)
-	uiDiagrams, err := cmd.Flags().GetBool(pUiDiagrams)
+	uiWeb, err := cmd.Flags().GetBool(pUiWeb)
 	if err != nil {
 		panic(err)
 	}
 
 	// timelines
-	timelines, err := cmd.Flags().GetInt(pTimelines)
+	timelines, err := cmd.Flags().GetInt(pViewTimelines)
 	if err != nil {
 		panic(err)
 	}
@@ -267,6 +278,10 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 		panic(err)
 	}
 	outputTx, err := cmd.Flags().GetBool(pOutputTx)
+	if err != nil {
+		panic(err)
+	}
+	outputLog, err := cmd.Flags().GetBool(pOutputLog)
 	if err != nil {
 		panic(err)
 	}
@@ -287,7 +302,7 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 		panic(err)
 	}
 
-	rain, err := cmd.Flags().GetBool(pRain)
+	rain, err := cmd.Flags().GetBool(pViewRain)
 	if err != nil {
 		panic(err)
 	}
@@ -301,6 +316,11 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 	}
 
 	enableMouse, err := cmd.Flags().GetBool(pEnableMouse)
+	if err != nil {
+		panic(err)
+	}
+
+	uiSsh, err := cmd.Flags().GetBool(pUiSsh)
 	if err != nil {
 		panic(err)
 	}
@@ -358,11 +378,14 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 
 		EnableMouse:     enableMouse,
 		EnableClipboard: enableClipboard,
-		Reader:          reader,
 		StartupView:     startupView,
 		StartupGroup:    startupGroup,
 		ViewNarrow:      viewNarrow,
 		ViewRain:        rain,
+		ViewReader:      reader,
+		ViewTimelines:   timelines,
+		UiWeb:           uiWeb,
+		UiSsh:           uiSsh,
 
 		// filters
 
@@ -373,10 +396,9 @@ func ParseParams(cmd *cobra.Command, args []string) Params {
 
 		OutputClients:  outputClients,
 		OutputTx:       outputTx,
+		OutputLog:      outputLog,
 		OutputDir:      outputDir,
 		OutputDiagrams: outputDiagrams,
-		UiDiagrams:     uiDiagrams,
-		Timelines:      timelines,
 
 		// misc
 

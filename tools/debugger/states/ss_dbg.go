@@ -32,10 +32,11 @@ var States = am.Schema{
 		Multi:   true,
 		Require: S{Start},
 	},
-	WebSocket: {
+	WebSocketDiag: {
 		Multi:   true,
 		Require: S{Start},
 	},
+	WebSocketDbg: {Require: S{Start}},
 
 	// user scrolling tx / steps
 	UserFwd: {
@@ -261,6 +262,11 @@ var States = am.Schema{
 	DiagramsReady: {Remove: S{DiagramsRendering}},
 
 	InitClient: {Multi: true},
+	SshServer:  {Require: S{Start}},
+	SshDisconn: {
+		Multi:   true,
+		Require: S{SshServer},
+	},
 }
 
 // Groups of states.
@@ -362,7 +368,8 @@ const (
 	ConnectEvent       = "ConnectEvent"
 	DisconnectEvent    = "DisconnectEvent"
 	WebReq             = "WebReq"
-	WebSocket          = "WebSocket"
+	WebSocketDiag      = "WebSocketDiag"
+	WebSocketDbg       = "WebSocketDbg"
 	RemoveClient       = "RemoveClient"
 	ClientSelected     = "ClientSelected"
 	BuildingLog        = "BuildingLog"
@@ -424,6 +431,8 @@ const (
 	ErrDiagrams        = "ErrDiagrams"
 	ErrWeb             = "ErrWeb"
 	InitClient         = "InitClient"
+	SshServer          = "SshServer"
+	SshDisconn         = "SshDisconn"
 )
 
 // Names of all the states (pkg enum).
@@ -438,7 +447,8 @@ var Names = S{
 	ConnectEvent,
 	DisconnectEvent,
 	WebReq,
-	WebSocket,
+	WebSocketDiag,
+	WebSocketDbg,
 
 	// user scrolling
 	UserFwd,
@@ -541,6 +551,8 @@ var Names = S{
 	ErrWeb,
 
 	InitClient,
+	SshServer,
+	SshDisconn,
 }
 
 // #endregion

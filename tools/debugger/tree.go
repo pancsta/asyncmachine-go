@@ -9,11 +9,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
+	"github.com/pancsta/tcell-v2"
+
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
@@ -116,7 +117,7 @@ func (d *Debugger) hInitSchemaTree() *cview.TreeView {
 func (d *Debugger) hUpdateSchemaTree() {
 	// TODO refac to updateSchema (state)
 
-	var msg telemetry.DbgMsg
+	var msg dbg.DbgMsg
 	c := d.C
 	if c == nil {
 		return
@@ -151,7 +152,7 @@ func (d *Debugger) hUpdateSchemaTree() {
 // returns the length of the longest row
 // TODO refactor
 func (d *Debugger) hUpdateTreeDefaultsHighlights(
-	msg telemetry.DbgMsg, idx int,
+	msg dbg.DbgMsg, idx int,
 ) int {
 	c := d.C
 	if c == nil {
@@ -303,7 +304,7 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 }
 
 func (d *Debugger) hUpdateTreeTxSteps(
-	steps []*am.Step, tx *telemetry.DbgMsgTx,
+	steps []*am.Step, tx *dbg.DbgMsgTx,
 ) int {
 	c := d.C
 	if c == nil {
@@ -486,7 +487,7 @@ func (d *Debugger) hUpdateTreeTxSteps(
 var reTreeStateColorFix = regexp.MustCompile(`\[white\](M?\|\d+)(\.*)`)
 
 func (d *Debugger) hUpdateTreeRelCols(
-	colStartIdx int, steps []*am.Step, msg telemetry.DbgMsg,
+	colStartIdx int, steps []*am.Step, msg dbg.DbgMsg,
 ) {
 	c := d.C
 	if c == nil {

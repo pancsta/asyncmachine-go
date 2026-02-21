@@ -7,15 +7,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
+	"github.com/pancsta/tcell-v2"
+
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
@@ -296,7 +297,7 @@ func (d *Debugger) hGetClientListLabel(
 	hasFocus := d.Mach.Is1(ss.ClientListFocused)
 
 	var currCTxIdx int
-	var currCTx *telemetry.DbgMsgTx
+	var currCTx *dbg.DbgMsgTx
 	// current tx of the selected client
 	currSelTx := d.hCurrentTx()
 	if currSelTx != nil {
