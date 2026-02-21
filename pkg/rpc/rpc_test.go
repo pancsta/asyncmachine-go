@@ -13,13 +13,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+
 	sst "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
 func init() {
@@ -27,9 +28,6 @@ func init() {
 
 	if os.Getenv(am.EnvAmTestDebug) != "" {
 		amhelp.EnableDebugging(true)
-		_ = os.Setenv(EnvAmRpcLogClient, "1")
-		_ = os.Setenv(EnvAmRpcLogServer, "1")
-		_ = os.Setenv(EnvAmRpcLogMux, "1")
 	}
 }
 
@@ -44,11 +42,11 @@ func TestBasic(t *testing.T) {
 	defer cancel()
 
 	// init worker
-	schema := am.SchemaMerge(ssrpc.NetSourceSchema, am.Schema{
+	schema := am.SchemaMerge(ssrpc.StateSourceSchema, am.Schema{
 		"Foo": {},
 		"Bar": {Require: am.S{"Foo"}},
 	})
-	names := am.SAdd(ssrpc.NetSourceStates.Names(), am.S{"Foo", "Bar"})
+	names := am.SAdd(ssrpc.StateSourceStates.Names(), am.S{"Foo", "Bar"})
 	netSrc := am.New(ctx, schema, &am.Opts{Id: "ns-" + t.Name()})
 	err := netSrc.VerifyStates(names)
 	if err != nil {
@@ -87,7 +85,7 @@ func TestTypeSafe(t *testing.T) {
 	}
 
 	// read env
-	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
+	amDbgAddr := os.Getenv(dbg.EnvAmDbgAddr)
 	logLvl := am.EnvLogLevel("")
 
 	// config
@@ -308,8 +306,8 @@ func TestManyStates(t *testing.T) {
 	end := make(chan struct{})
 
 	// reuse the net src and add many rand states
-	schema := am.SchemaMerge(ssrpc.NetSourceSchema, sst.States)
-	names := am.SAdd(ssrpc.NetSourceStates.Names(), sst.Names)
+	schema := am.SchemaMerge(ssrpc.StateSourceSchema, sst.States)
+	names := am.SAdd(ssrpc.StateSourceStates.Names(), sst.Names)
 	randAmount := 100
 	for i := 0; i < randAmount; i++ {
 		n := fmt.Sprintf("State%d", i)
@@ -484,7 +482,7 @@ func TestRetryConn(t *testing.T) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
-	// amhelp.EnableDebugging(true)
+	// EnableDebuggingRpc(true)
 
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
@@ -500,12 +498,12 @@ func TestRetryConn(t *testing.T) {
 	go func() {
 		// wait for client to reconnect and then start the server
 		<-c.Mach.WhenTime1(ssC.Connecting, 3, nil)
-		s.Start()
+		s.Start(nil)
 	}()
 
 	// client ready
-	c.Start()
-	amhelpt.WaitForAll(t, "client-server Ready", ctx, 3*time.Second,
+	c.Start(nil)
+	amhelpt.WaitForAll(t, "client-server Ready", ctx, 5*time.Second,
 		c.Mach.When1(ssC.Ready, ctx),
 		s.Mach.When1(ssS.Ready, ctx))
 
@@ -641,8 +639,8 @@ type TestPayloadConsumer struct {
 	delivered bool
 }
 
-func (c *TestPayloadConsumer) WorkerPayloadState(e *am.Event) {
-	e.Machine().Remove1(ssCo.WorkerPayload, nil)
+func (c *TestPayloadConsumer) ServerPayloadState(e *am.Event) {
+	e.Machine().Remove1(ssCo.ServerPayload, nil)
 
 	args := ParseArgs(e.Args)
 	assert.Equal(c.t, "TestPayload", args.Name)
@@ -670,19 +668,19 @@ func TestPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// worker
-	worker := utils.NewNoRelsNetSrc(t, nil)
-	err = worker.BindHandlers(&TestPayloadHandlers{})
+	// source mach
+	source := utils.NewNoRelsNetSrc(t, nil, "")
+	err = source.BindHandlers(&TestPayloadHandlers{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// init RPC
-	_, _, s, c := NewTest(t, ctx, worker, nil, 0, false, &ClientOpts{
+	_, _, s, c := NewTest(t, ctx, source, nil, 0, false, &ClientOpts{
 		Consumer: consMach,
 	}, nil)
 
-	whenDelivered := consMach.When1(ssCo.WorkerPayload, nil)
+	whenDelivered := consMach.When1(ssCo.ServerPayload, nil)
 	// Consumer requests a payload from the remote worker
 	c.NetMach.Add1(sst.C, PassRpc(&A{Name: "TestPayload"}))
 	// Consumer waits for WorkerDelivered
@@ -759,7 +757,7 @@ func TestMux(t *testing.T) {
 	}
 	amhelpt.MachDebugEnv(t, mux.Mach)
 	mux.Listener = listener
-	mux.Start()
+	mux.Start(nil)
 	amhelpt.WaitForAll(t, "mux Ready", ctx, 2*time.Second,
 		mux.Mach.When1(ssM.Ready, nil))
 
@@ -770,7 +768,7 @@ func TestMux(t *testing.T) {
 	// connect 10 clients to the worker
 	for i := 0; i < numClients; i++ {
 		c := newC(i)
-		c.Start()
+		c.Start(nil)
 		clients = append(clients, c)
 		netMachs = append(netMachs, c.NetMach)
 		clientsApi = append(clientsApi, c.Mach)
@@ -811,7 +809,7 @@ func TestPartial(t *testing.T) {
 	defer cancel()
 
 	// net source mach with non-zero clocks
-	source := utils.NewNoRelsNetSrc(t, nil)
+	source := utils.NewNoRelsNetSrc(t, nil, "")
 	source.Add1(sst.C, nil)
 	source.Remove1(sst.C, nil)
 
@@ -1152,7 +1150,7 @@ func NewTest(t *testing.T, ctx context.Context, netSrc *am.Machine,
 		<-s.Mach.WhenDisposed()
 		<-c.Mach.WhenDisposed()
 		// cool off am-dbg and free the ports
-		if os.Getenv(telemetry.EnvAmDbgAddr) != "" {
+		if os.Getenv(dbg.EnvAmDbgAddr) != "" {
 			time.Sleep(100 * time.Millisecond)
 		}
 	})
@@ -1162,12 +1160,12 @@ func NewTest(t *testing.T, ctx context.Context, netSrc *am.Machine,
 	}
 
 	// server start
-	s.Start()
+	s.Start(nil)
 	amhelpt.WaitForAll(t, "RpcReady", ctx, 3*time.Second,
 		s.Mach.When1(ssS.RpcReady, ctx))
 
 	// client ready
-	c.Start()
+	c.Start(nil)
 	amhelpt.WaitForAll(t, "client-server Ready", ctx, 3*time.Second,
 		c.Mach.When1(ssC.Ready, ctx),
 		s.Mach.When1(ssS.Ready, ctx))

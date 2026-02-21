@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+
 	sst "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
@@ -33,7 +35,7 @@ func TestSingleStateActive(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsNetSrc(t, nil)
+	m := utils.NewNoRelsNetSrc(t, nil, "")
 	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
@@ -55,7 +57,7 @@ func TestMultipleStatesActive(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsNetSrc(t, nil)
+	m := utils.NewNoRelsNetSrc(t, nil, "")
 	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
@@ -78,7 +80,7 @@ func TestExposeAllStateNames(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsNetSrc(t, S{"A"})
+	m := utils.NewNoRelsNetSrc(t, S{"A"}, "")
 	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
@@ -98,7 +100,7 @@ func TestStateSet(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsNetSrc(t, S{"A"})
+	m := utils.NewNoRelsNetSrc(t, S{"A"}, "")
 	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
@@ -120,7 +122,7 @@ func TestStateAdd(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsNetSrc(t, S{"A"})
+	m := utils.NewNoRelsNetSrc(t, S{"A"}, "")
 	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
@@ -142,7 +144,7 @@ func TestStateRemove(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsNetSrc(t, S{"B", "C"})
+	m := utils.NewNoRelsNetSrc(t, S{"B", "C"}, "")
 	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
 
 	// test
@@ -290,9 +292,12 @@ func disposeTest(t *testing.T, c *Client, s *Server, checkErrs bool) {
 		amhelpt.AssertNoErrEver(t, c.Mach)
 		amhelpt.AssertNoErrEver(t, s.Mach)
 	}
-	c.Stop(context.TODO(), true)
+	if os.Getenv(dbg.EnvAmDbgAddr) != "" {
+		time.Sleep(time.Second)
+	}
+	c.Stop(context.TODO(), nil, true)
 	<-c.Mach.WhenDisposed()
-	s.Stop(true)
+	s.Stop(nil, true)
 }
 
 func TestAddRelation(t *testing.T) {
@@ -533,7 +538,7 @@ func TestWhen2(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsNetSrc(t, nil)
+	mach := utils.NewNoRelsNetSrc(t, nil, "")
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
@@ -578,7 +583,7 @@ func TestWhenActive(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsNetSrc(t, S{"A"})
+	mach := utils.NewNoRelsNetSrc(t, S{"A"}, "")
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
@@ -602,7 +607,7 @@ func TestWhenNot2(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsNetSrc(t, S{"A", "B"})
+	mach := utils.NewNoRelsNetSrc(t, S{"A", "B"}, "")
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
@@ -646,7 +651,7 @@ func TestWhenNotActive(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsNetSrc(t, S{"A"})
+	mach := utils.NewNoRelsNetSrc(t, S{"A"}, "")
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
@@ -862,7 +867,7 @@ func TestWhenTime(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsNetSrc(t, S{"A", "B"})
+	mach := utils.NewNoRelsNetSrc(t, S{"A", "B"}, "")
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
@@ -1149,7 +1154,7 @@ func TestString(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsNetSrc(t, S{"A", "B"})
+	mach := utils.NewNoRelsNetSrc(t, S{"A", "B"}, "")
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
@@ -1188,7 +1193,7 @@ func TestNestedMutation(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsNetSrc(t, nil)
+	mach := utils.NewNoRelsNetSrc(t, nil, "")
 	// bind handlers
 	err := mach.BindHandlers(&TestNestedMutationHandlers{})
 	assert.NoError(t, err)
@@ -1215,7 +1220,7 @@ func TestIsClock(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsNetSrc(t, nil)
+	m := utils.NewNoRelsNetSrc(t, nil, "")
 	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
@@ -1240,7 +1245,7 @@ func TestIsTime(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := utils.NewNoRelsNetSrc(t, nil)
+	m := utils.NewNoRelsNetSrc(t, nil, "")
 	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
@@ -1317,7 +1322,7 @@ func TestWhenQueue(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsNetSrc(t, nil)
+	mach := utils.NewNoRelsNetSrc(t, nil, "")
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
@@ -1352,7 +1357,7 @@ func TestWhenQuery(t *testing.T) {
 	defer cancel()
 
 	// machine
-	mach := utils.NewNoRelsNetSrc(t, S{"A"})
+	mach := utils.NewNoRelsNetSrc(t, S{"A"}, "")
 
 	// worker
 	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
@@ -1410,8 +1415,8 @@ func TestPipes(t *testing.T) {
 
 	// machine
 	ctx := context.Background()
-	netSrc := utils.NewNoRelsNetSrc(t, S{"A"})
-	local := utils.NewNoRels(t, nil, "-local")
+	netSrc := utils.NewNoRelsNetSrc(t, S{"A"}, "")
+	local := utils.NewNoRelsNetSrc(t, nil, "-local")
 	// amhelp.MachDebugEnv(local)
 
 	// connect

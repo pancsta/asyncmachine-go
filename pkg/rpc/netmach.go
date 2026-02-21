@@ -25,6 +25,7 @@ type ClockUpdateFunc func(now am.Time, qTick uint64, machTick uint32)
 // It's meant to be (optionally) injected by whatever creates network machines,
 // so they can communicate with the server (or another source).
 type NetMachConn interface {
+	// TODO take event for tracing errors
 	Call(ctx context.Context, method ServerMethod, args any, resp any) bool
 	Notify(ctx context.Context, method ServerMethod, args any) bool
 }
@@ -111,7 +112,7 @@ type NetworkMachine struct {
 	filterMutations bool
 }
 
-var ssNS = states.NetSourceStates
+var ssNS = states.StateSourceStates
 
 var _ am.Api = &NetworkMachine{}
 
@@ -140,7 +141,7 @@ func NewNetworkMachine(
 
 		conn:            conn,
 		id:              id,
-		ctx:             parent.Ctx(),
+		ctx:             parent.Context(),
 		schema:          schema,
 		stateNames:      stateNames,
 		indexWhen:       am.IndexWhen{},
@@ -197,7 +198,7 @@ func (m *NetworkMachine) Add(states am.S, args am.A) am.Result {
 		States: amhelp.StatesToIndexes(m.StateNames(), states),
 		Args:   args,
 	}
-	if !m.conn.Call(m.Ctx(), ServerAdd, rpcArgs, resp) {
+	if !m.conn.Call(m.Context(), ServerAdd, rpcArgs, resp) {
 		return am.Canceled
 	}
 
@@ -233,7 +234,7 @@ func (m *NetworkMachine) AddNS(states am.S, args am.A) am.Result {
 		States: amhelp.StatesToIndexes(m.StateNames(), states),
 		Args:   args,
 	}
-	if !m.conn.Notify(m.Ctx(), ServerAddNS, rpcArgs) {
+	if !m.conn.Notify(m.Context(), ServerAddNS, rpcArgs) {
 		return am.Canceled
 	}
 
@@ -267,7 +268,7 @@ func (m *NetworkMachine) Remove(states am.S, args am.A) am.Result {
 		States: amhelp.StatesToIndexes(m.StateNames(), states),
 		Args:   args,
 	}
-	if !m.conn.Call(m.Ctx(), ServerRemove, rpcArgs, resp) {
+	if !m.conn.Call(m.Context(), ServerRemove, rpcArgs, resp) {
 		return am.Canceled
 	}
 
@@ -301,7 +302,7 @@ func (m *NetworkMachine) Set(states am.S, args am.A) am.Result {
 		States: amhelp.StatesToIndexes(m.StateNames(), states),
 		Args:   args,
 	}
-	if !m.conn.Call(m.Ctx(), ServerSet, rpcArgs, resp) {
+	if !m.conn.Call(m.Context(), ServerSet, rpcArgs, resp) {
 		return am.Canceled
 	}
 
@@ -364,7 +365,8 @@ func (m *NetworkMachine) EvAdd(
 		Args:   args,
 		Event:  event.Export(),
 	}
-	if !m.conn.Call(m.Ctx(), ServerAdd, rpcArgs, resp) {
+	// TODO pass event for tracing
+	if !m.conn.Call(m.Context(), ServerAdd, rpcArgs, resp) {
 		return am.Canceled
 	}
 
@@ -412,7 +414,7 @@ func (m *NetworkMachine) EvRemove(
 		Args:   args,
 		Event:  event.Export(),
 	}
-	if !m.conn.Call(m.Ctx(), ServerRemove, rpcArgs, resp) {
+	if !m.conn.Call(m.Context(), ServerRemove, rpcArgs, resp) {
 		return am.Canceled
 	}
 
@@ -874,7 +876,7 @@ func (m *NetworkMachine) Tick(state string) uint64 {
 }
 
 func (m *NetworkMachine) tick(state string) uint64 {
-	// TODO validate
+	m.MustParseStates(am.S{state})
 	return m.machClock[state]
 }
 
@@ -944,7 +946,7 @@ func (m *NetworkMachine) NewStateCtx(state string) context.Context {
 		State: state,
 		Tick:  m.machClock[state],
 	}
-	stateCtx, cancel := context.WithCancel(context.WithValue(m.Ctx(),
+	stateCtx, cancel := context.WithCancel(context.WithValue(m.Context(),
 		am.CtxKey, v))
 
 	// cancel early
@@ -984,7 +986,7 @@ func (m *NetworkMachine) StatesVerified() bool {
 }
 
 // Ctx return worker's root context.
-func (m *NetworkMachine) Ctx() context.Context {
+func (m *NetworkMachine) Context() context.Context {
 	return m.ctx
 }
 
@@ -1227,7 +1229,7 @@ func (m *NetworkMachine) Export() (*am.Serialized, am.Schema, error) {
 		StateNames:  m.StateNames(),
 		MachineTick: m.machTick,
 		QueueTick:   m.queueTick,
-	}, am.CloneSchema(m.schema), nil
+	}, am.SchemaClone(m.schema), nil
 }
 
 // Schema returns a copy of machine's state structure.

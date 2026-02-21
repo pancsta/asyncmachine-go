@@ -14,6 +14,7 @@ import (
 
 // SharedStatesDef contains all the states of the Shared state machine.
 type SharedStatesDef struct {
+	*am.StatesBase
 
 	// errors
 
@@ -28,6 +29,8 @@ type SharedStatesDef struct {
 
 	// inherit from BasicStatesDef
 	*states.BasicStatesDef
+	// inherit from rpc/StateSourceStatesDef
+	*StateSourceStatesDef
 }
 
 // SharedGroupsDef contains all the state groups of the Shared state machine.
@@ -37,25 +40,20 @@ type SharedGroupsDef struct {
 	Handshake S
 }
 
-// SharedSchema represents all relations and properties of NetSourceStates.
+// SharedSchema represents all relations and properties of StateSourceStates.
 var SharedSchema = SchemaMerge(
 	// inherit from BasicStruct
 	states.BasicSchema,
+	// inherit from rpc/WorkerSchema
+	StateSourceSchema,
 	am.Schema{
 
 		// Errors
-		s.ErrNetworkTimeout: {
-			Add:     S{s.Exception},
-			Require: S{s.Exception},
-		},
-		s.ErrRpc: {
-			Add:     S{s.Exception},
-			Require: S{s.Exception},
-		},
-		s.ErrDelivery: {
-			Add:     S{s.Exception},
-			Require: S{s.Exception},
-		},
+		// ErrNetwork is nota Multi (needs handling)
+		s.ErrNetwork:        {Require: S{s.Exception}},
+		s.ErrNetworkTimeout: {Require: S{s.Exception}},
+		s.ErrRpc:            {Require: S{s.Exception}},
+		s.ErrDelivery:       {Require: S{s.Exception}},
 
 		// Handshake
 		s.Handshaking: {
@@ -71,10 +69,10 @@ var SharedSchema = SchemaMerge(
 // EXPORTS AND GROUPS
 
 var (
-	// ws is worker states from SharedStatesDef.
+	// s is shared states from SharedStatesDef.
 	s = am.NewStates(SharedStatesDef{})
 
-	// wg is worker groups from SharedGroupsDef.
+	// g is shared groups from SharedGroupsDef.
 	g = am.NewStateGroups(SharedGroupsDef{
 		Handshake: S{s.Handshaking, s.HandshakeDone},
 	})
@@ -88,13 +86,13 @@ var (
 
 // ///// ///// /////
 
-// ///// NETWORK SOURCE
+// ///// STATE SOURCE
 
 // ///// ///// /////
 
-// NetSourceStatesDef contains all the states of the Network Source state
+// StateSourceStatesDef contains all the states of the Network Source state
 // machine.
-type NetSourceStatesDef struct {
+type StateSourceStatesDef struct {
 	*am.StatesBase
 
 	// errors
@@ -114,29 +112,30 @@ type NetSourceStatesDef struct {
 	SendPayload string
 }
 
-// NetSourceSchema represents all relations and properties of NetSourceStates.
-var NetSourceSchema = SchemaMerge(
+// StateSourceSchema represents all relations and properties of
+// [StateSourceStates].
+var StateSourceSchema = SchemaMerge(
 	am.Schema{
 
 		// errors
 
-		ssNS.ErrOnClient:    {Require: S{Exception}},
-		ssNS.ErrProviding:   {Require: S{Exception}},
-		ssNS.ErrSendPayload: {Require: S{Exception}},
+		ssSS.ErrOnClient:    {Require: S{Exception}},
+		ssSS.ErrProviding:   {Require: S{Exception}},
+		ssSS.ErrSendPayload: {Require: S{Exception}},
 
 		// RPC getter
 
-		ssNS.SendPayload: {Multi: true},
+		ssSS.SendPayload: {Multi: true},
 	})
 
 // EXPORTS AND GROUPS
 
 var (
-	// ssNS are states from NetSourceStatesDef.
-	ssNS = am.NewStates(NetSourceStatesDef{})
+	// ssSS are states from [StateSourceStatesDef].
+	ssSS = am.NewStates(StateSourceStatesDef{})
 
-	// NetSourceStates contains all the states for the Network Source machine.
-	NetSourceStates = ssNS
+	// StateSourceStates contains all the states for the Network Source machine.
+	StateSourceStates = ssSS
 )
 
 // ///// ///// /////
@@ -147,6 +146,7 @@ var (
 
 // ServerStatesDef contains all the states of the Client state machine.
 type ServerStatesDef struct {
+	*am.StatesBase
 
 	// basics
 
@@ -155,19 +155,26 @@ type ServerStatesDef struct {
 
 	// rpc
 
+	// Starting listening
 	RpcStarting string
-	RpcReady    string
+	// setting up RPC accepting
+	RpcAccepting string
+	// RPC is accepting or has accepted connections
+	RpcReady string
 
 	// TODO failsafe
 	// RetryingCall    string
 	// CallRetryFailed string
 
+	// RPC client connected (technically)
 	ClientConnected string
-	// overrides shared HandshakeDone
+	// RPC client fully ysable
 	HandshakeDone string
 
 	// How many times the client requested a full sync.
 	MetricSync string
+	// TCP tunneled over websocket
+	WebSocketTunnel string
 
 	// inherit from SharedStatesDef
 	*SharedStatesDef
@@ -213,17 +220,20 @@ var ServerSchema = SchemaMerge(
 			Require: S{ssS.Start},
 			Remove:  sgS.Rpc,
 		},
+		ssS.RpcAccepting: {
+			Require: S{ssS.Start},
+			Remove:  sgS.Rpc,
+		},
 		ssS.RpcReady: {
 			Require: S{ssS.Start},
 			Remove:  sgS.Rpc,
 		},
-
 		ssS.ClientConnected: {
 			Require: S{ssS.RpcReady},
 		},
-		// TODO ClientBye for graceful shutdowns
 
-		ssS.MetricSync: {Multi: true},
+		ssS.MetricSync:      {Multi: true},
+		ssS.WebSocketTunnel: {},
 	})
 
 // EXPORTS AND GROUPS
@@ -232,7 +242,7 @@ var (
 	ssS = am.NewStates(ServerStatesDef{})
 	sgS = am.NewStateGroups(ServerGroupsDef{
 		// TODO remove 2-state group?
-		Rpc: S{ssS.RpcStarting, ssS.RpcReady},
+		Rpc: S{ssS.RpcStarting, ssS.RpcAccepting, ssS.RpcReady},
 	}, SharedGroups)
 
 	// ServerStates contains all the states for the Client machine.
@@ -263,18 +273,18 @@ type ClientStatesDef struct {
 
 	// local overrides
 
-	// Ready indicates the remote worker is ready to be used.
+	// Ready indicates the remote source (worker) is ready to be used.
 	Ready         string
 	HandshakeDone string
 
 	// worker delivers
 
-	// WorkerDelivering is an optional indication that the server has started a
+	// ServerDelivering is an optional indication that the server has started a
 	// data transmission to the Client.
-	WorkerDelivering string
-	// WorkPayload allows the Consumer to bind his handlers and receive data
-	// from the Client.
-	WorkerPayload string
+	ServerDelivering string
+	// ServerPayload allows the Consumer to bind his handlers and receive data
+	// from the Server via the Client.
+	ServerPayload string
 
 	// How many times the client requested a full sync.
 	MetricSync string
@@ -298,6 +308,7 @@ var ClientSchema = SchemaMerge(
 	SharedSchema,
 	// inherit from ConnectedStruct
 	states.ConnectedSchema,
+
 	am.Schema{
 
 		// Try to RetryingConn on ErrNetwork.
@@ -349,11 +360,11 @@ var ClientSchema = SchemaMerge(
 
 		// worker delivers
 
-		ssC.WorkerDelivering: {
+		ssC.ServerDelivering: {
 			Multi:   true,
 			Require: S{ssC.Connected},
 		},
-		ssC.WorkerPayload: {
+		ssC.ServerPayload: {
 			Multi:   true,
 			Require: S{ssC.Connected},
 		},
@@ -449,18 +460,18 @@ type ConsumerStatesDef struct {
 	*am.StatesBase
 	Exception string
 
-	// WorkerPayload RPC server delivers the requested payload to the Client.
-	WorkerPayload string
+	// ServerPayload RPC server delivers the requested payload to the Client.
+	ServerPayload string
 }
 
 // ConsumerSchema represents all relations and properties of ConsumerStates.
 var ConsumerSchema = am.Schema{
-	ssCo.WorkerPayload: {Multi: true},
+	ssCo.ServerPayload: {Multi: true},
 }
 
 // ConsumerHandlers is the required interface for Consumer's state handlers.
 type ConsumerHandlers interface {
-	WorkerPayloadState(e *am.Event)
+	ServerPayloadState(e *am.Event)
 }
 
 // EXPORTS AND GROUPS
