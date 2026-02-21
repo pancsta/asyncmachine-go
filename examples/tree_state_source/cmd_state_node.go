@@ -172,7 +172,7 @@ func replicant(ctx context.Context, node *Node) (*arpc.Client, error) {
 	}
 	exportTelemetry(node, client.Mach)
 	fmt.Println("Connecting to " + node.ParentAddr)
-	client.Start()
+	client.Start(nil)
 	err = amhelp.WaitForAll(ctx, 5*time.Second,
 		client.Mach.When1(ssrpc.ClientStates.Ready, ctx))
 	if err != nil {
@@ -240,7 +240,7 @@ func exportState(ctx context.Context, node *Node, mach am.Api) {
 	mux.Addr = node.Addr
 	exportTelemetry(node, mux.Mach)
 	fmt.Println("Starting on " + node.Addr)
-	mux.Start()
+	mux.Start(nil)
 }
 
 // blockEcho blocks and:
@@ -295,7 +295,7 @@ func randMut(mach am.Api) {
 	pick = rand.Intn(amount)
 	state3 := ss.Names()[pick]
 
-	skip := am.S{am.StateException, ssrpc.NetSourceStates.SendPayload}
+	skip := am.S{am.StateException, ssrpc.StateSourceStates.SendPayload}
 	for _, s := range skip {
 		if state1 == s || state2 == s || state3 == s {
 			return

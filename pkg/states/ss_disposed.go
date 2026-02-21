@@ -28,24 +28,20 @@ type DisposedStatesDef struct {
 }
 
 // DisposedGroupsDef contains all the state groups Disposed state machine.
-type DisposedGroupsDef struct {
-	Disposed S
-}
+type DisposedGroupsDef struct{}
 
 // DisposedSchema represents all relations and properties of DisposedStates.
 var DisposedSchema = am.Schema{
 	ssD.RegisterDisposal: {Multi: true},
-	ssD.Disposing:        {Remove: SAdd(sgD.Disposed, S{ssB.Start})},
-	ssD.Disposed:         {Remove: SAdd(sgD.Disposed, S{ssB.Start})},
+	ssD.Disposing:        {Remove: S{ssB.Start}},
+	ssD.Disposed:         {Remove: S{ssD.Disposing, ssB.Start}},
 }
 
 // EXPORTS AND GROUPS
 
 var (
 	ssD = am.NewStates(DisposedStatesDef{})
-	sgD = am.NewStateGroups(DisposedGroupsDef{
-		Disposed: S{ssD.RegisterDisposal, ssD.Disposing, ssD.Disposed},
-	})
+	sgD = am.NewStateGroups(DisposedGroupsDef{})
 
 	// DisposedStates contains all the states for the Disposed machine.
 	DisposedStates = ssD
@@ -64,6 +60,7 @@ var (
 //	}
 var DisposedArgHandler = "DisposedArgHandler"
 
+// DisposedHandlers handle disposal and need to be initialized manually.
 type DisposedHandlers struct {
 	// DisposedHandlers is a list of handler for pkg/states.DisposedStates
 	DisposedHandlers []am.HandlerDispose
@@ -102,7 +99,7 @@ func (h *DisposedHandlers) DisposingState(e *am.Event) {
 		}
 
 		// TODO retries?
-		mach.Add1(ssD.Disposed, nil)
+		mach.EvAdd1(e, ssD.Disposed, nil)
 	}()
 }
 

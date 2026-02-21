@@ -8,18 +8,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
+	"github.com/pancsta/tcell-v2"
 )
 
 var (
@@ -41,7 +41,7 @@ func NewRpcTest(
 	defer utils.ConnInit.Unlock()
 
 	// read env
-	amDbgAddr := os.Getenv(telemetry.EnvAmDbgAddr)
+	amDbgAddr := os.Getenv(dbg.EnvAmDbgAddr)
 	stdout := os.Getenv(am.EnvAmDebug) == "2"
 	logLvl := am.EnvLogLevel("")
 
@@ -93,7 +93,7 @@ func NewRpcTest(
 	}
 
 	// server start
-	s.Start()
+	s.Start(nil)
 	amhelpt.WaitForErrAll(t, "server RpcReady", ctx, s.Mach, timeout,
 		s.Mach.When1(ssrpc.ServerStates.RpcReady, nil))
 	amhelpt.WaitForErrAll(t, "client Ready", ctx, s.Mach, timeout,
@@ -190,7 +190,7 @@ func NewRpcClient(
 	t.Cleanup(func() {
 		<-c.Mach.WhenDisposed()
 		// cool off am-dbg and free the ports
-		if os.Getenv(telemetry.EnvAmDbgAddr) != "" {
+		if os.Getenv(dbg.EnvAmDbgAddr) != "" {
 			time.Sleep(100 * time.Millisecond)
 		}
 	})
@@ -204,7 +204,7 @@ func NewRpcClient(
 	defer cancel()
 
 	// client ready
-	c.Start()
+	c.Start(nil)
 	select {
 	case <-c.Mach.WhenErr(readyCtx):
 		err := c.Mach.Err()
@@ -234,7 +234,7 @@ func RpcShutdown(ctx context.Context, c *rpc.Client, s *rpc.Server) {
 func RpcGet[G any](
 	t *testing.T, c *rpc.Client, name server.GetField, defVal G,
 ) G {
-	// TODO rewrite to SendPayload-WorkerPayload state flow
+	// TODO rewrite to SendPayload-ServerPayload state flow
 	// resp, err := c.Get(context.TODO(), name.Encode())
 	// assert.NoError(t, err)
 	//

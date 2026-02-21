@@ -21,13 +21,14 @@ import (
 	"oss.terrastruct.com/d2/lib/textmeasure"
 	"oss.terrastruct.com/util-go/go2"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
+
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
-const d2Header = `
+var d2Header = utils.Sp(`
 	vars: {
 		d2-config: {
 			theme-id: 201
@@ -118,7 +119,7 @@ const d2Header = `
 	}
 	direction: right
 
-	`
+	`)
 
 func (r *Renderer) outputD2(ctx context.Context) error {
 	r.log("Generating D2 %s", r.OutputFilename)
@@ -331,6 +332,7 @@ func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {
 		if stateName != "" && (r.shouldRenderState(machId, stateName) ||
 			r.RenderPipeStates && r.stateHasRenderedPipes(machId, stateName)) {
 
+			// TODO enum for classes
 			shortStateId := r.shortId(stateName)
 			class := "_0"
 			if r.RenderActive {
@@ -341,16 +343,16 @@ func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {
 			}
 
 			// INHERITED
-			inherited := r.isStateInherited(stateName, c.MsgSchema.StatesIndex)
+			inherited := IsStateInherited(stateName, c.MsgSchema.StatesIndex)
 			classSuffix := ""
 			if r.RenderMarkInherited && inherited {
 				classSuffix += "i"
 			}
 
 			// START & READY
-			if r.RenderReady && stateName == ssam.BasicStates.Ready {
+			if r.RenderReady && stateName == am.StateReady {
 				classSuffix = "r"
-			} else if r.RenderStart && stateName == ssam.BasicStates.Start {
+			} else if r.RenderStart && stateName == am.StateStart {
 				classSuffix = "s"
 			}
 

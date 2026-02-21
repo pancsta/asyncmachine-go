@@ -174,11 +174,11 @@ func (w *Worker) StartState(e *am.Event) {
 	}
 
 	// start
-	if w.LocalRpc.Start() != am.Executed {
+	if w.LocalRpc.Start(e) != am.Executed {
 		_ = AddErrRpc(w.Mach, nil, nil)
 		return
 	}
-	if w.PublicRpc.Start() != am.Executed {
+	if w.PublicRpc.Start(e) != am.Executed {
 		_ = AddErrRpc(w.Mach, nil, nil)
 		return
 	}
@@ -188,14 +188,14 @@ func (w *Worker) StartEnd(e *am.Event) {
 	args := ParseArgs(e.Args)
 
 	if w.PublicRpc != nil {
-		w.PublicRpc.Stop(true)
+		w.PublicRpc.Stop(e, true)
 	}
 	if w.LocalRpc != nil {
-		w.LocalRpc.Stop(true)
+		w.LocalRpc.Stop(e, true)
 	}
 	if w.BootRpc != nil {
 		// TODO ctx
-		go w.BootRpc.Stop(context.TODO(), true)
+		go w.BootRpc.Stop(context.TODO(), e, true)
 	}
 	if args.Dispose {
 		w.Mach.Dispose()
@@ -228,7 +228,7 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 		_ = AddErrRpc(w.Mach, err, nil)
 		return
 	}
-	w.BootRpc.Start()
+	w.BootRpc.Start(e)
 
 	// unblock
 	go func() {
@@ -251,7 +251,7 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 		}))
 		w.Mach.Log("Passed the local port to the bootstrap machine")
 		// dispose
-		go w.BootRpc.Stop(w.Mach.Ctx(), true)
+		go w.BootRpc.Stop(w.Mach.Context(), e, true)
 	}()
 }
 

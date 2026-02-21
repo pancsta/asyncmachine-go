@@ -23,8 +23,8 @@ type DaemonStatesDef struct {
 	*ss.BasicStatesDef
 	// inherit from DisposedStatesDef
 	*ss.DisposedStatesDef
-	// inherit from NetSourceStatesDef
-	*ssrpc.NetSourceStatesDef
+	// inherit from StateSourceStatesDef
+	*ssrpc.StateSourceStatesDef
 }
 
 // DaemonGroupsDef contains all the state groups Daemon state machine.
@@ -39,7 +39,7 @@ var DaemonSchema = SchemaMerge(
 	// inherit from DisposedStruct
 	ss.DisposedSchema,
 	// inherit from WorkerSchema
-	ssrpc.NetSourceSchema,
+	ssrpc.StateSourceSchema,
 	am.Schema{
 		ssD.OpFoo1: {
 			Require: S{ssD.Start},

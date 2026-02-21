@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/gob"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -103,9 +105,14 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 
 	mach.SemLogger().SetLevel(am.LogChanges)
 	mach.SemLogger().SetArgsMapper(LogArgs)
+	// connect to am-dbg
 	amhelp.MachDebugEnv(mach)
 	// start a dedicated aRPC server for the REPL, create an addr file
-	arpc.MachReplEnv(mach)
+	arpc.MachReplEnv(mach, &arpc.ReplOpts{
+		AddrDir:  ".",
+		Args:     ARpc{},
+		ParseRpc: ParseRpc,
+	})
 
 	// parent-only exporters
 
@@ -215,6 +222,10 @@ func (h *TemplateHandlers) ChannelState(e *am.Event) {
 // ///// ///// /////
 // TODO add RPC args example from pkg/node
 
+func init() {
+	gob.Register(ARpc{})
+}
+
 const APrefix = "template"
 
 // A is a struct for node arguments. It's a typesafe alternative to [am.A].
@@ -252,7 +263,7 @@ func Pass(args *A) am.A {
 }
 
 // PassRpc prepares [am.A] from A to pass over RPC.
-func PassRpc(args *ARpc) am.A {
+func PassRpc(args *A) am.A {
 	return am.A{APrefix: amhelp.ArgsToArgs(args, &ARpc{})}
 }
 
@@ -264,6 +275,17 @@ func LogArgs(args am.A) map[string]string {
 	}
 
 	return amhelp.ArgsToLogMap(a, 0)
+}
+
+// ParseRpc parses [am.A] to *ARpc namespaced in [am.A]. Useful for REPLs.
+func ParseRpc(args am.A) am.A {
+	ret := am.A{APrefix: &ARpc{}}
+	jsonArgs, err := json.Marshal(args)
+	if err == nil {
+		json.Unmarshal(jsonArgs, ret[APrefix])
+	}
+
+	return ret
 }
 
 // ///// ///// /////

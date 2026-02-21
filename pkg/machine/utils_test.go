@@ -10,6 +10,7 @@ import (
 
 	"github.com/lithammer/dedent"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TODO bind via Tracer, not handlers
@@ -139,17 +140,17 @@ func trackTransitions(mach *Machine) *History {
 func assertStates(t *testing.T, m *Machine, expected S,
 	msgAndArgs ...interface{},
 ) {
-	assert.ElementsMatch(t, expected, m.activeStates, msgAndArgs...)
+	require.ElementsMatch(t, expected, m.activeStates, msgAndArgs...)
 }
 
 func assertTime(t *testing.T, m *Machine, states S, times Time,
 	msgAndArgs ...interface{},
 ) {
-	assert.Equal(t, m.Time(states), times, msgAndArgs...)
+	require.Equal(t, m.Time(states), times, msgAndArgs...)
 }
 
 func assertNoException(t *testing.T, m *Machine) {
-	assert.False(t, m.Is1(StateException), "Exception state active")
+	require.False(t, m.Is1(StateException), "Exception state active")
 }
 
 func assertEventCounts(t *testing.T, history *History, expected int) {
@@ -168,7 +169,7 @@ func assertOrder(t *testing.T, history *History, handlers []string) {
 		idx := slices.Index(history.Order, name)
 		nextIdx := slices.Index(history.Order, next)
 
-		assert.Greater(t, nextIdx, idx, "expected %s before %s", name, next)
+		require.Greater(t, nextIdx, idx, "expected %s before %s", name, next)
 	}
 }
 

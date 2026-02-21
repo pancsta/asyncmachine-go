@@ -403,6 +403,7 @@ type Renderer struct {
 	// Render submachines nested inside their parents. See also RenderDepth.
 	RenderNestSubmachines bool
 	// Render a tags box for machines having some.
+	// TODO doesnt work?
 	RenderTags bool
 	// Render RPC connections
 	RenderConns bool
@@ -846,7 +847,7 @@ func (r *Renderer) shouldRenderState(machId, state string) bool {
 
 	// inherited
 	statesIndex := r.graph.Clients[machId].MsgSchema.StatesIndex
-	if !r.RenderInherited && r.isStateInherited(state, statesIndex) {
+	if !r.RenderInherited && IsStateInherited(state, statesIndex) {
 		// Start
 		if r.RenderStart && state == ssam.BasicStates.Start {
 			return true
@@ -865,26 +866,6 @@ func (r *Renderer) shouldRenderState(machId, state string) bool {
 	}
 
 	return r.RenderStates
-}
-
-func (r *Renderer) isStateInherited(state string, machStates am.S) bool {
-	if state == am.StateException {
-		return true
-	}
-
-	// check if all present from a group
-	for _, states := range pkgStates {
-		// check if the right group
-		if !slices.Contains(states, state) {
-			continue
-		}
-		// check if all present in mach
-		if len(am.StatesDiff(states, machStates)) == 0 {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (r *Renderer) isMachCloseEnough(machId string) bool {
@@ -949,6 +930,32 @@ func (r *Renderer) renderMachIds() []string {
 
 	// TODO cache
 	return ret
+}
+
+// ///// ///// /////
+
+// ///// FUNCS
+
+// ///// ///// /////
+
+func IsStateInherited(state string, machStates am.S) bool {
+	if state == am.StateException {
+		return true
+	}
+
+	// check if all present from a group
+	for _, states := range pkgStates {
+		// check if the right group
+		if !slices.Contains(states, state) {
+			continue
+		}
+		// check if all present in mach
+		if len(am.StatesDiff(states, machStates)) == 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 // ///// ///// /////

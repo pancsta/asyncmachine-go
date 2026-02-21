@@ -5,6 +5,7 @@ package helpers
 import (
 	"context"
 	"crypto/md5"
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"maps"
 	"os"
 	"reflect"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -22,11 +24,12 @@ import (
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
-	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
 const (
@@ -76,50 +79,6 @@ type (
 	Schema = am.Schema
 )
 
-// Add1Block activates a state and waits until it becomes active. If it's a
-// multi-state, it also waits for it to deactivate. Returns early if a
-// non-multi state is already active. Useful to avoid the queue but can't
-// handle a rejected negotiation.
-// Deprecated: use Add1Sync instead.
-func Add1Block(
-	ctx context.Context, mach am.Api, state string, args am.A,
-) am.Result {
-	// TODO remove once Add1Sync ready
-
-	// support for multi-states
-	if IsMulti(mach, state) {
-		when := mach.WhenTicks(state, 2, ctx)
-		res := mach.Add1(state, args)
-		<-when
-
-		return res
-	}
-
-	if mach.Is1(state) {
-		return am.Executed
-	}
-
-	ctxWhen, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	when := mach.WhenTicks(state, 1, ctxWhen)
-	res := mach.Add1(state, args)
-	if res == am.Canceled {
-		// dispose "when" ch early
-		cancel()
-
-		return res
-	}
-
-	// wait
-	select {
-	case <-when:
-		return am.Executed
-	case <-ctx.Done():
-		return am.Canceled
-	}
-}
-
 // Add1Sync activates a state and waits until it becomes activate, or canceled.
 // Add1Sync is a newer version of Add1Block that supports queued rejections,
 // but at the moment it is not compatible with RPC. This method checks
@@ -134,7 +93,31 @@ func Add1Sync(
 	case am.Canceled:
 		return res
 	default:
-		// wait TODO select ctx.Done
+		// wait
+		select {
+		case <-ctx.Done():
+			return am.Canceled
+		case <-mach.WhenQueue(res):
+			if mach.Is1(state) {
+				return am.Executed
+			}
+			return am.Canceled
+		}
+	}
+}
+
+// EvAdd1Sync is Add1Sync with an [am.Event] trace.
+func EvAdd1Sync(
+	ctx context.Context, e *am.Event, mach am.Api, state string, args am.A,
+) am.Result {
+	res := mach.EvAdd1(e, state, args)
+	switch res {
+	case am.Executed:
+		return res
+	case am.Canceled:
+		return res
+	default:
+		// wait
 		select {
 		case <-ctx.Done():
 			return am.Canceled
@@ -226,12 +209,75 @@ func MachDebug(
 	mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout bool,
 	semConfig *am.SemConfig,
 ) error {
+	// expand the default addr to TCP port
+	if amDbgAddr == "1" {
+		amDbgAddr = dbg.DbgAddr
+	}
+
 	// no debug for CI
 	if IsTestRunner() {
 		return nil
 	}
 
-	semlog := mach.SemLogger()
+	err, done := semLogInit(mach.SemLogger(), amDbgAddr, logLvl, stdout,
+		semConfig)
+	if done {
+		return err
+	}
+
+	err = dbg.TransitionsToDbg(mach, amDbgAddr)
+	if err != nil {
+		return err
+	}
+
+	if os.Getenv(EnvAmHealthcheck) != "" {
+		Healthcheck(mach)
+	}
+
+	return nil
+}
+
+// MachDebugWs exports transition telemetry to an am-dbg instance
+// listening on a WebSicjet at [amDbgAddr]. Useful for WASM.
+func MachDebugWs(
+	mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout bool,
+	semConfig *am.SemConfig,
+) error {
+	// expand the default addr to HTTP port
+	if amDbgAddr == "1" {
+		amDbgAddr = dbg.DbgAddrWeb
+	}
+
+	// no debug for CI
+	if IsTestRunner() {
+		return nil
+	}
+
+	err, done := semLogInit(mach.SemLogger(), amDbgAddr, logLvl, stdout,
+		semConfig)
+	if done {
+		return err
+	}
+
+	// tracer for telemetry
+	err = dbg.TransitionsToDbg(mach, amDbgAddr, &dbg.Opts{
+		WebSocket: true,
+	})
+	if err != nil {
+		return err
+	}
+
+	if os.Getenv(EnvAmHealthcheck) != "" {
+		Healthcheck(mach)
+	}
+
+	return nil
+}
+
+func semLogInit(
+	semlog am.SemLogger, amDbgAddr string, logLvl am.LogLevel, stdout bool,
+	semConfig *am.SemConfig,
+) (error, bool) {
 	if stdout {
 		semlog.SetLevel(logLvl)
 	} else {
@@ -239,7 +285,7 @@ func MachDebug(
 	}
 
 	if amDbgAddr == "" {
-		return nil
+		return nil, true
 	}
 
 	// semantic logging
@@ -267,18 +313,7 @@ func MachDebug(
 	if semConfig.Args {
 		semlog.EnableArgs(true)
 	}
-
-	// tracer for telemetry
-	err := amtele.TransitionsToDbg(mach, amDbgAddr)
-	if err != nil {
-		return err
-	}
-
-	if os.Getenv(EnvAmHealthcheck) != "" {
-		Healthcheck(mach)
-	}
-
-	return nil
+	return nil, false
 }
 
 // SemConfigEnv returns a SemConfigEnv based on env vars, or the [forceFull]
@@ -315,13 +350,12 @@ func SemConfigEnv(forceFull bool) *am.SemConfig {
 // AM_DBG_ADDR, AM_LOG, AM_LOG_*, and AM_DEBUG. This function should be called
 // right after the machine is created (to catch all the log entries).
 func MachDebugEnv(mach am.Api) error {
-	amDbgAddr := os.Getenv(amtele.EnvAmDbgAddr)
+	amDbgAddr := os.Getenv(dbg.EnvAmDbgAddr)
 	logLvl := am.EnvLogLevel("")
 	stdout := os.Getenv(EnvAmLogPrint) != ""
 
-	// expand the default addr
-	if amDbgAddr == "1" {
-		amDbgAddr = amtele.DbgAddr
+	if IsWasm() {
+		return MachDebugWs(mach, amDbgAddr, logLvl, stdout, SemConfigEnv(false))
 	}
 
 	return MachDebug(mach, amDbgAddr, logLvl, stdout, SemConfigEnv(false))
@@ -331,19 +365,20 @@ func MachDebugEnv(mach am.Api) error {
 // done. This makes sure all the logs are pushed to the telemetry server.
 // TODO use machine scheduler when ready
 func Healthcheck(mach am.Api) {
-	if !mach.Has1("Healthcheck") {
+	if !mach.Has1(ssam.BasicStates.Healthcheck) {
 		return
 	}
 
 	go func() {
-		t := time.NewTicker(healthcheckInterval)
 		for {
-			select {
-			case <-t.C:
-				mach.Add1(ssam.BasicStates.Healthcheck, nil)
-			case <-mach.Ctx().Done():
-				t.Stop()
+			// static delay
+			time.Sleep(healthcheckInterval)
+			if mach.Context().Err() != nil {
+				break
 			}
+
+			// ping
+			mach.Add1(ssam.BasicStates.Healthcheck, nil)
 		}
 	}()
 }
@@ -498,22 +533,20 @@ func Interval(
 ) error {
 	end := time.Now().Add(length)
 	t := time.NewTicker(interval)
+	defer t.Stop()
 
 	for {
 		select {
 
 		case <-ctx.Done():
-			t.Stop()
 			return ctx.Err()
 
 		case <-t.C:
 			if time.Now().After(end) {
-				t.Stop()
 				return nil
 			}
 
 			if !fn() {
-				t.Stop()
 				return nil
 			}
 		}
@@ -738,7 +771,7 @@ func EnableDebugging(stdout bool) {
 	} else {
 		_ = os.Setenv(am.EnvAmDebug, "1")
 	}
-	_ = os.Setenv(amtele.EnvAmDbgAddr, "1")
+	_ = os.Setenv(dbg.EnvAmDbgAddr, "1")
 	_ = os.Setenv(EnvAmLogFull, "1")
 	SetEnvLogLevel(am.LogOps)
 	// _ = os.Setenv(EnvAmHealthcheck, "1")
@@ -933,37 +966,18 @@ func ArgsToArgs[T any](src interface{}, dest T) T {
 	return dest
 }
 
-// ArgsFromMap takes an arguments map [am.A] and copies the fields into a typed
-// argument struct value. Useful for typed args via RPC.
-func ArgsFromMap[T any](args am.A, dest T) T {
-	// TODO support nesting: de-ref any non-nil pointers and re-ref
-	destVal := reflect.ValueOf(dest)
-
-	for field, val := range args {
-		destField := destVal.FieldByName(field)
-
-		if destField.IsValid() && destField.CanSet() {
-			valReflect := reflect.ValueOf(val)
-			if valReflect.Type().AssignableTo(destField.Type()) {
-				destField.Set(valReflect)
-			} else if valReflect.Type().ConvertibleTo(destField.Type()) {
-				destField.Set(valReflect.Convert(destField.Type()))
-			}
-			// TODO else, for struct{} and *struct{}, try to de-serialize JSON
-		}
-	}
-
-	return dest
-}
-
 // IsDebug returns true if the process is in a "simple debug mode" via AM_DEBUG.
 func IsDebug() bool {
 	return os.Getenv(am.EnvAmDebug) != "" && !IsTestRunner()
 }
 
+func IsWasm() bool {
+	return runtime.GOARCH == "wasm"
+}
+
 // IsTelemetry returns true if the process is in telemetry debug mode.
 func IsTelemetry() bool {
-	return os.Getenv(amtele.EnvAmDbgAddr) != "" && !IsTestRunner()
+	return os.Getenv(dbg.EnvAmDbgAddr) != "" && !IsTestRunner()
 }
 
 func IsTestRunner() bool {
@@ -1006,6 +1020,9 @@ func RemoveMulti(mach am.Api, state string) am.HandlerFinal {
 // GetTransitionStates will extract added, removed, and touched states from
 // transition's clock values and steps. Requires a state names index.
 // Collecting touched states requires transition steps.
+//
+// See also [am.Transition.TimeIndexDiff] and
+// [am.Transition.TimeIndexTouched].
 func GetTransitionStates(
 	tx *am.Transition, index am.S,
 ) (added am.S, removed am.S, touched am.S) {
@@ -1151,7 +1168,8 @@ func (c Cond) IsEmpty() bool {
 // TODO thread safety via atomics
 type StateLoop struct {
 	ResetInterval time.Duration
-	Threshold     int
+	// max ticks
+	Threshold int
 
 	loopState string
 	ctxStates am.S
@@ -1159,10 +1177,11 @@ type StateLoop struct {
 	ended     bool
 	check     func() bool
 
-	lastSTime uint64
+	// last seen machine time
+	lastMTime uint64
 	lastHTime time.Time
-	// mach time of [ctxStates] when started
-	startSTime uint64
+	// machine time of [ctxStates] when started
+	startMTime uint64
 	// Start Human Time
 	startHTime time.Time
 }
@@ -1219,7 +1238,7 @@ func (l *StateLoop) Ok(ctx context.Context) bool {
 	sum := l.mach.Time(l.ctxStates).Sum(nil)
 	if time.Since(l.lastHTime) > l.ResetInterval {
 		l.lastHTime = time.Now()
-		l.lastSTime = sum
+		l.lastMTime = sum
 
 		return true
 
@@ -1233,7 +1252,7 @@ func (l *StateLoop) Ok(ctx context.Context) bool {
 		return false
 	}
 
-	l.lastSTime = sum
+	l.lastMTime = sum
 
 	return true
 }
@@ -1281,7 +1300,7 @@ func NewStateLoop(
 		mach:       mach,
 		ctxStates:  ctxStates,
 		startHTime: time.Now(),
-		startSTime: mach.Time(ctxStates).Sum(nil),
+		startMTime: mach.Time(ctxStates).Sum(nil),
 		check:      optCheck,
 	}
 	mach.Log(l.String())
@@ -1318,6 +1337,12 @@ func (l SlogToMachLog) Write(p []byte) (n int, err error) {
 	s, _ := strings.CutPrefix(string(p), "msg=")
 	l.Mach.Log(s)
 	return len(p), nil
+}
+
+// MachToSlog exposes machine logger as [slog.Logger].
+func MachToSlog(mach am.Api) *slog.Logger {
+	return slog.New(slog.NewTextHandler(
+		SlogToMachLog{Mach: mach}, SlogToMachLogOpts))
 }
 
 // ///// ///// /////
@@ -1365,7 +1390,7 @@ func PrefixStates(
 	optBlacklist S,
 ) am.Schema {
 	// TODO rename to SchemaPrefix
-	schema = am.CloneSchema(schema)
+	schema = am.SchemaClone(schema)
 
 	for name, s := range schema {
 		if len(optWhitelist) > 0 && !slices.Contains(optWhitelist, name) {
@@ -1463,7 +1488,7 @@ func NewMirror(
 		}
 		names = append(names, name)
 	}
-	mirror := am.New(source.Ctx(), schema, &am.Opts{
+	mirror := am.New(source.Context(), schema, &am.Opts{
 		Id:     id,
 		Parent: source,
 	})
@@ -1767,6 +1792,20 @@ func Dispose(mach am.Api) {
 	mach.Dispose()
 }
 
+// DisposeEv is like [DisposeEv], but accepts a source event.
+func DisposeEv(mach am.Api, e *am.Event) {
+	// via DisposedStates
+	state := ssam.DisposedStates.Disposing
+	if mach.Has1(state) {
+		mach.EvAdd1(e, state, nil)
+
+		return
+	}
+
+	// directly
+	mach.Dispose()
+}
+
 // SchemaStates returns state names from a schema struct in a random order.
 func SchemaStates(schema am.Schema) am.S {
 	return slices.Collect(maps.Keys(schema))
@@ -1775,4 +1814,30 @@ func SchemaStates(schema am.Schema) am.S {
 // SchemaImplements checks if a given schema implements a certain set of states.
 func SchemaImplements(schema am.Schema, states am.S) error {
 	return Implements(SchemaStates(schema), states)
+}
+
+// HandlerToState returns a state name from a handler name.
+func HandlerToState(handler string) string {
+	return strings.TrimSuffix(
+		strings.TrimSuffix(
+			strings.TrimSuffix(
+				strings.TrimSuffix(handler,
+					am.SuffixState), am.SuffixEnter), am.SuffixEnd), am.SuffixExit)
+}
+
+// RandId generates a random ID of the given length (defaults to 8).
+func RandId(strLen int) string {
+	if strLen == 0 {
+		strLen = 16
+	}
+	strLen++
+	strLen = strLen / 2
+
+	id := make([]byte, strLen)
+	_, err := rand.Read(id)
+	if err != nil {
+		return "error"
+	}
+
+	return hex.EncodeToString(id)
 }

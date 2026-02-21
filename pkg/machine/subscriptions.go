@@ -526,7 +526,7 @@ func (sm *Subscriptions) NewStateCtx(state string) context.Context {
 		State: state,
 		Tick:  sm.clock[state],
 	}
-	stateCtx, cancel := context.WithCancel(context.WithValue(sm.mach.Ctx(),
+	stateCtx, cancel := context.WithCancel(context.WithValue(sm.mach.Context(),
 		CtxKey, v))
 
 	// cancel early

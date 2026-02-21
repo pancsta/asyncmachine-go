@@ -61,8 +61,8 @@ func BenchmarkClientArpc(b *testing.B) {
 
 	// tear down
 	b.Cleanup(func() {
-		c.Stop(ctx, true)
-		s.RPC.Stop(true)
+		c.Stop(ctx, nil, true)
+		s.RPC.Stop(nil, true)
 
 		<-c.Mach.WhenDisposed()
 		<-s.RPC.Mach.WhenDisposed()
@@ -74,7 +74,7 @@ func BenchmarkClientArpc(b *testing.B) {
 	})
 
 	// start client
-	c.Start()
+	c.Start(nil)
 	<-c.Mach.When1(ss.Ready, nil)
 	<-s.RPC.Mach.When1(ss.Ready, nil)
 

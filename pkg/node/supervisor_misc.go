@@ -81,7 +81,7 @@ func (b *bootstrap) StartState(e *am.Event) {
 	}
 
 	// start
-	b.server.Start()
+	b.server.Start(e)
 
 	// timeout
 	go func() {
@@ -98,7 +98,7 @@ func (b *bootstrap) StartState(e *am.Event) {
 
 func (b *bootstrap) StartEnd(e *am.Event) {
 	if b.server != nil {
-		b.server.Stop(true)
+		b.server.Stop(e, true)
 	}
 	b.Mach.Dispose()
 }

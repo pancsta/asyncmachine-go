@@ -60,7 +60,7 @@ func main() {
 	}
 
 	err = amhelp.WaitForAll(ctx, 5*time.Second,
-		cli.Mach.When1(ssrpc.ConsumerStates.WorkerPayload, nil))
+		cli.Mach.When1(ssrpc.ConsumerStates.ServerPayload, nil))
 	if err != nil {
 		p.Fail(err.Error())
 	}
@@ -88,7 +88,7 @@ func newCli(ctx context.Context, args *Args) (*cli, error) {
 	}
 
 	// connect
-	c.Start()
+	c.Start(nil)
 	err = amhelp.WaitForAll(ctx, 3*time.Second,
 		c.Mach.When1(ssrpc.ClientStates.Ready, ctx))
 	fmt.Printf("Connected to aRPC %s\n", c.Addr)
@@ -117,8 +117,8 @@ func newClient(
 	return c, nil
 }
 
-func (c *cli) WorkerPayloadState(e *am.Event) {
-	e.Machine().Remove1(ssrpc.ConsumerStates.WorkerPayload, nil)
+func (c *cli) ServerPayloadState(e *am.Event) {
+	e.Machine().Remove1(ssrpc.ConsumerStates.ServerPayload, nil)
 
 	args := arpc.ParseArgs(e.Args)
 	println("Payload: " + args.Payload.Data.(string))

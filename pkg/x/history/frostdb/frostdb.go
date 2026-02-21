@@ -196,16 +196,16 @@ func (t *Tracer) TransitionEnd(tx *am.Transition) {
 	t.Active.Add(1)
 	go t.loop.Go(func() error {
 		// create
-		// err := gorm.G[TimeMyMach1](t.db).Create(mach.Ctx(), record)
+		// err := gorm.G[TimeMyMach1](t.db).Create(mach.Context(), record)
 		// if err != nil {
 		// 	t.onErr(err)
 		// }
-		_, err := t.tTransitions[mach.Id()].Write(mach.Ctx(), recTx)
+		_, err := t.tTransitions[mach.Id()].Write(mach.Context(), recTx)
 		if err != nil {
 			t.onErr(err)
 			return err
 		}
-		_, err = t.tTimes[mach.Id()].Write(mach.Ctx(), recTime)
+		_, err = t.tTimes[mach.Id()].Write(mach.Context(), recTime)
 		if err != nil {
 			t.onErr(err)
 			return err

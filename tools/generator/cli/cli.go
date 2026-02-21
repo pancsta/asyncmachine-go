@@ -47,9 +47,6 @@ func GetVersion() string {
 // ///// ///// /////
 
 const (
-
-	// grafana
-
 	pGIds             = "ids"
 	pGIdsShort        = "i"
 	pGGrafanaUrl      = "grafana-url"
@@ -142,7 +139,7 @@ type SFParams struct {
 	States string
 	// Inherit - Inherit from built-in states machines (comma separated):
 	// - basic,connected
-	// - rpc/netsrc
+	// - rpc/statesrc
 	// - node/worker
 	Inherit string
 	// Groups - Groups to generate. Eg: Group1,Group2
@@ -156,9 +153,6 @@ type SFParams struct {
 }
 
 const (
-
-	// states-file
-
 	pSFStates       = "states"
 	pSFStatesShort  = "s"
 	pSFInherit      = "inherit"
@@ -179,7 +173,7 @@ func AddStatesFlags(cmd *cobra.Command) {
 		"State names to generate. Eg: State1,State2")
 	f.StringP(pSFInherit, pSFInheritShort, "",
 		"Inherit from built-in state-machines: "+
-			"basic,connected,rpc/netsrc,node/worker")
+			"basic,connected,rpc/statesrc,node/worker")
 	f.StringP(pSFGroups, pSFGroupsShort, "",
 		"Groups to generate. Eg: Group1,Group2")
 	f.StringP(pSFName, pSFNameShort, "",

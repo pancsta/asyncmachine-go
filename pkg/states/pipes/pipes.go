@@ -1,7 +1,6 @@
 // Package pipes provide helpers to pipe states from one machine to another.
 package pipes
 
-// TODO register disposal handlers, detach from source machines
 // TODO implement removal of pipes via:
 //  - binding-struct
 //  - tagging of handler structs
@@ -64,7 +63,6 @@ func add(
 	return func(e *am.Event) {
 		// flat skips unnecessary mutations
 		if flat && target.Is(names) {
-
 			return
 		} else if flat {
 			target.Add(names, nil)
@@ -134,15 +132,20 @@ func remove(
 // mutation. The target mutates the same number of times as the source.
 func BindAny(source, target am.Api) error {
 
-	// TODO assert target has all the source states
+	// validate
+	missing := am.StatesDiff(source.StateNames(), target.StateNames())
+	if len(missing) > 0 {
 
+		return fmt.Errorf("BindAny: %w in target: %s", am.ErrStateMissing, missing)
+	}
+
+	// AnyState
 	fn := func(e *am.Event) {
 		tx := e.Transition()
 
 		// set if not set
 		states := tx.TargetStates()
 		if target.Is(states) {
-
 			return
 		}
 		target.Set(states, e.Args)

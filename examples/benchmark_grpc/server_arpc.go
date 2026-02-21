@@ -66,7 +66,7 @@ func NewWorkerArpcServer(
 	helpers.MachDebugEnv(w.Mach)
 
 	// server start
-	w.RPC.Start()
+	w.RPC.Start(nil)
 	<-w.RPC.Mach.When1(ssrpc.ServerStates.RpcReady, nil)
 
 	return w, nil

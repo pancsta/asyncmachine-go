@@ -84,7 +84,7 @@ func NewRels(t *testing.T, initialState am.S) *am.Machine {
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewLogArgsMapper(50, am.LogArgs))
 
 	return mach
 }
@@ -97,8 +97,8 @@ func NewRelsNetSrc(t *testing.T, initialState am.S) *am.Machine {
 
 	// TODO define these in /states using v2 as RelWorkerStruct and
 	//  RelWorkerStates, inheriting frm RelStructDef etc
-	schema := am.SchemaMerge(ssrpc.NetSourceSchema, ss.States)
-	names := am.SAdd(ss.Names, ssrpc.NetSourceStates.Names())
+	schema := am.SchemaMerge(ssrpc.StateSourceSchema, ss.States)
+	names := am.SAdd(ss.Names, ssrpc.StateSourceStates.Names())
 
 	// machine init
 	mach := am.New(context.Background(), schema, &am.Opts{
@@ -145,7 +145,7 @@ func NewRelsNodeWorker(t *testing.T, initialState am.S) *am.Machine {
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewLogArgsMapper(50, am.LogArgs))
 
 	return mach
 }
@@ -173,25 +173,29 @@ func NewNoRels(t *testing.T, initialState am.S, suffix string) *am.Machine {
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewLogArgsMapper(50, am.LogArgs))
 
 	return mach
 }
 
 // NewNoRelsNetSrc creates a new RPC worker without relations between states.
-func NewNoRelsNetSrc(t *testing.T, initialState am.S) *am.Machine {
+func NewNoRelsNetSrc(
+	t *testing.T, initialState am.S, suffix string,
+) *am.Machine {
+	
+	id := "ns-" + t.Name() + suffix
 
 	// inherit from RPC worker
-	schema := am.SchemaMerge(ssrpc.NetSourceSchema, am.Schema{
+	schema := am.SchemaMerge(ssrpc.StateSourceSchema, am.Schema{
 		ss.A: {},
 		ss.B: {},
 		ss.C: {},
 		ss.D: {},
 	})
-	names := am.SAdd(ss.Names, ssrpc.NetSourceStates.Names())
+	names := am.SAdd(ss.Names, ssrpc.StateSourceStates.Names())
 
 	// machine init
-	mach := am.New(context.Background(), schema, &am.Opts{Id: "ns-" + t.Name()})
+	mach := am.New(context.Background(), schema, &am.Opts{Id: id})
 	err := mach.VerifyStates(names)
 	if err != nil {
 		t.Fatal(err)
@@ -204,7 +208,7 @@ func NewNoRelsNetSrc(t *testing.T, initialState am.S) *am.Machine {
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewLogArgsMapper(50, am.LogArgs))
 
 	return mach
 }
@@ -215,13 +219,13 @@ func NewNoRelsNetSrcSchema(
 	t *testing.T, initialState am.S, overlay am.Schema) *am.Machine {
 
 	// inherit from RPC worker
-	schema := am.SchemaMerge(ssrpc.NetSourceSchema, am.SchemaMerge(am.Schema{
+	schema := am.SchemaMerge(ssrpc.StateSourceSchema, am.SchemaMerge(am.Schema{
 		ss.A: {},
 		ss.B: {},
 		ss.C: {},
 		ss.D: {},
 	}, overlay))
-	names := am.SAdd(ss.Names, ssrpc.NetSourceStates.Names())
+	names := am.SAdd(ss.Names, ssrpc.StateSourceStates.Names())
 
 	// machine init
 	mach := am.New(context.Background(), schema, &am.Opts{Id: "t-" + t.Name()})
@@ -237,7 +241,7 @@ func NewNoRelsNetSrcSchema(
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewLogArgsMapper(50, am.LogArgs))
 
 	return mach
 }
@@ -255,7 +259,7 @@ func NewCustom(t *testing.T, states am.Schema) *am.Machine {
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
 		mach.HandlerTimeout = 2 * time.Minute
 	}
-	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewLogArgsMapper(50, am.LogArgs))
 
 	return mach
 }
@@ -265,8 +269,8 @@ func NewCustomNetSrc(t *testing.T, states am.Schema) *am.Machine {
 
 	// inherit from RPC worker
 
-	schema := am.SchemaMerge(ssrpc.NetSourceSchema, states)
-	names := am.SAdd(maps.Keys(states), ssrpc.NetSourceStates.Names())
+	schema := am.SchemaMerge(ssrpc.StateSourceSchema, states)
+	names := am.SAdd(maps.Keys(states), ssrpc.StateSourceStates.Names())
 
 	mach := am.New(context.Background(), schema, &am.Opts{
 		Id: "t-" + t.Name()})
@@ -279,7 +283,7 @@ func NewCustomNetSrc(t *testing.T, states am.Schema) *am.Machine {
 	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
 		mach.HandlerTimeout = 2 * time.Minute
 	}
-	mach.SemLogger().SetArgsMapper(am.NewArgsMapper(am.LogArgs, 50))
+	mach.SemLogger().SetArgsMapper(am.NewLogArgsMapper(50, am.LogArgs))
 
 	return mach
 }

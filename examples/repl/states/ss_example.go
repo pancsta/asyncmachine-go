@@ -13,8 +13,8 @@ type ExampleStatesDef struct {
 	Bar string
 	Baz string
 
-	// inherit from rpc/NetSourceStatesDef
-	*ssrpc.NetSourceStatesDef
+	// inherit from rpc/StateSourceStatesDef
+	*ssrpc.StateSourceStatesDef
 }
 
 // ExampleGroupsDef contains all the state groups Example state machine.
@@ -25,7 +25,7 @@ type ExampleGroupsDef struct {
 // ExampleSchema represents all relations and properties of ExampleStates.
 var ExampleSchema = SchemaMerge(
 	// inherit from rpc/WorkerSchema
-	ssrpc.NetSourceSchema,
+	ssrpc.StateSourceSchema,
 	am.Schema{
 
 		ssE.Foo: {Remove: sgE.Mutex},

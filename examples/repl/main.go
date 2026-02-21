@@ -68,7 +68,7 @@ func newStateSource(ctx context.Context, num int) (*am.Machine, error) {
 	// telemetry
 
 	amhelp.MachDebugEnv(source)
-	// worker.SemLogger().SetArgsMapper(am.NewArgsMapper([]string{"log"}, 0))
+	// worker.SemLogger().SetArgsMapper(am.NewLogArgsMapper([]string{"log"}, 0))
 	source.SemLogger().SetLevel(am.LogChanges)
 	source.SetGroups(states.ExampleGroups, states.ExampleStates)
 	// start a REPL aRPC server, create an addr file of a rand addr

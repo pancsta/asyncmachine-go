@@ -81,7 +81,7 @@ func newDaemon(ctx context.Context, args *Args) (*daemon, error) {
 		amhelp.MachDebugEnv(s.Mach)
 	}
 	d.S = s
-	s.Start()
+	s.Start(nil)
 	if err != nil {
 		return nil, err
 	}
@@ -93,9 +93,9 @@ func newDaemon(ctx context.Context, args *Args) (*daemon, error) {
 	portNum, _ := strconv.Atoi(port)
 	addrRepl := host + ":" + strconv.Itoa(portNum+1)
 	err = arpc.MachRepl(mach, addrRepl, &arpc.ReplOpts{
-		AddrDir:    ".",
-		ArgsPrefix: types.APrefix,
-		Args:       &types.ARpc{},
+		AddrDir:  ".",
+		Args:     types.ARpc{},
+		ParseRpc: types.ParseRpc,
 	})
 	if err != nil {
 		return nil, err
@@ -132,7 +132,6 @@ func (d *daemon) hOp(e *am.Event) {
 		}
 
 		fmt.Printf("op done\n")
-		// TODO
 		d.Mach.AddErr(d.S.SendPayload(ctx, e, &arpc.MsgSrvPayload{
 			Name: "opdone",
 			Data: fmt.Sprintf("done for %s", called),

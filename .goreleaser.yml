@@ -22,21 +22,6 @@ builds:
     binary: am-dbg
 
   -
-    id: "am-dbg-ssh"
-    env:
-      - CGO_ENABLED=0
-      - GO111MODULE=on
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    main: ./tools/cmd/am-dbg-ssh
-    binary: am-dbg-ssh
-
-  -
     id: "arpc"
     env:
       - CGO_ENABLED=0
@@ -90,16 +75,6 @@ archives:
     files: [""]
     builds:
       - am-dbg
-
-  -
-    id: "am-dbg-ssh"
-    format: tar.gz
-    name_template: "am-dbg-ssh_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    # dont add readmes etc
-    files: [""]
-    builds:
-      - am-dbg
-      - am-dbg-ssh
 
   -
     id: "arpc"

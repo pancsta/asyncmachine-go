@@ -279,7 +279,7 @@ func (t *SyncTracer) updateDashboard(mach am.Api) {
 		return
 	}
 
-	if err := SyncDashboard(mach.Ctx(), t.p, b); err != nil {
+	if err := SyncDashboard(mach.Context(), t.p, b); err != nil {
 		mach.AddErr(err, nil)
 	}
 }

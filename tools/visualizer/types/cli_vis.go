@@ -9,10 +9,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/spf13/cobra"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
 
 const (
@@ -87,7 +87,7 @@ func AddFlags(rootCmd *cobra.Command) {
 	f := rootCmd.Flags()
 	f.String(pLogFile, "", "Log file path")
 	f.Int(pLogLevel, 0, "Log level, 0-5 (silent-everything)")
-	f.StringP(pServerAddr, pServerAddrShort, telemetry.DbgAddr,
+	f.StringP(pServerAddr, pServerAddrShort, dbg.DbgAddr,
 		"Host and port for the debugger to listen on")
 	f.StringP(pStartupMach,
 		pStartupMachShort, "",

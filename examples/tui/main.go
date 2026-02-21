@@ -5,9 +5,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/joho/godotenv"
 	"github.com/pancsta/cview"
+	"github.com/pancsta/tcell-v2"
 
 	"github.com/pancsta/asyncmachine-go/examples/tui/states"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -183,7 +183,7 @@ func (t *tui) draw(components ...cview.Primitive) {
 
 	go func() {
 		select {
-		case <-t.Mach.Ctx().Done():
+		case <-t.Mach.Context().Done():
 			return
 
 		// debounce every 16msec

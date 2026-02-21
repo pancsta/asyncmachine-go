@@ -87,7 +87,8 @@ type Machine struct {
 	// Err is the last error that occurred.
 	err atomic.Pointer[error]
 	// Currently executing transition (if any).
-	t atomic.Pointer[Transition]
+	t    atomic.Pointer[Transition]
+	tDbg *Transition
 	// schema is a map of state names to state definitions.
 	// TODO atomic?
 	schema      Schema
@@ -137,7 +138,7 @@ type Machine struct {
 	disposeHandlers  []HandlerDispose
 	timeLast         atomic.Pointer[Time]
 	// Channel closing when the machine finished disposal. Read-only.
-	// TODO replace with Ctx.Done() ?
+	// TODO replace with Context.Done() ?
 	whenDisposed       chan struct{}
 	handlerLoopRunning atomic.Bool
 	handlerLoopVer     atomic.Int32
@@ -174,7 +175,7 @@ func NewCommon(
 	}
 
 	if machOpts.LogArgs == nil {
-		machOpts.LogArgs = NewArgsMapper(LogArgs, 0)
+		machOpts.LogArgs = NewLogArgsMapper(0, LogArgs)
 	}
 
 	mach := New(ctx, stateSchema, machOpts)
@@ -1246,7 +1247,7 @@ func (m *Machine) queueMutation(
 	statesParsed := m.mustParseStates(states)
 	multi := false
 	for _, state := range statesParsed {
-		if m.schema[state].Multi {
+		if m.schemaSafe()[state].Multi {
 			multi = true
 			break
 		}
@@ -1334,7 +1335,8 @@ func (m *Machine) queueMutation(
 //
 // Note: usage of Eval is discouraged. But if you have to, use AM_DETECT_EVAL in
 // tests for deadlock detection. Most usages of eval can be replaced with
-// atomics or returning from mutation via channels.
+// atomics or returning from mutation via channels. Evals can be better then
+// Multi states in some cases.
 func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	if m.disposing.Load() {
 		return false
@@ -1673,7 +1675,7 @@ func (m *Machine) mustParseStates(states S) S {
 	seen := make(map[string]struct{})
 	dups := false
 	for i := range states {
-		if _, ok := m.schema[states[i]]; !ok {
+		if _, ok := m.schemaSafe()[states[i]]; !ok {
 			panic(fmt.Errorf(
 				"%w: %s not defined in schema for %s", ErrStateMissing,
 				states[i], m.id))
@@ -1704,7 +1706,7 @@ func (m *Machine) ParseStates(states S) S {
 	seen := make(map[string]struct{})
 	dups := false
 	for i := range states {
-		if _, ok := m.schema[states[i]]; !ok {
+		if _, ok := m.schemaSafe()[states[i]]; !ok {
 			continue
 		}
 		if _, ok := seen[states[i]]; !ok {
@@ -1758,7 +1760,8 @@ func (m *Machine) verifyStates(states S) error {
 	if len(m.stateNames) > len(states) {
 		missing := StatesDiff(m.stateNames, checked)
 		return fmt.Errorf(
-			"error: trying to verify less states than registered: %s", j(missing))
+			"error: trying to verify less states than registered for %s; "+
+				"missing: %s", m.id, j(missing))
 	}
 
 	// memorize the state names order
@@ -1801,7 +1804,7 @@ func (m *Machine) setActiveStates(
 	// Tick all new states by +1 and already active and called multi states by +2
 	for _, state := range targetStates {
 
-		data := m.schema[state]
+		data := m.schemaSafe()[state]
 		if !slices.Contains(previous, state) {
 			// tick by +1
 			// TODO wrap on overflow
@@ -2066,7 +2069,7 @@ func (m *Machine) processSubscriptions(t *Transition) {
 	}
 }
 
-// TODO implement +rpc worker
+// TODO implement +netmach
 // func (m *Subscriptions) SetArgsComp(comp func(args A, match A) bool) {
 // 	return false
 // }
@@ -2919,7 +2922,7 @@ func (m *Machine) Inspect(states S) string {
 	ret := ""
 	for _, name := range states {
 
-		state := m.schema[name]
+		state := m.schemaSafe()[name]
 		active := "0"
 		if slices.Contains(m.activeStates, name) {
 			active = "1"
@@ -3037,7 +3040,14 @@ func (m *Machine) Schema() Schema {
 	m.schemaMx.RLock()
 	defer m.schemaMx.RUnlock()
 
-	return CloneSchema(m.schema)
+	return SchemaClone(m.schema)
+}
+
+func (m *Machine) schemaSafe() Schema {
+	m.schemaMx.RLock()
+	defer m.schemaMx.RUnlock()
+
+	return m.schema
 }
 
 // SchemaVer return the current version of the schema.
@@ -3238,7 +3248,7 @@ func (m *Machine) Export() (*Serialized, Schema, error) {
 		// export only
 
 		QueueTick: m.queueTick,
-	}, CloneSchema(m.schema), nil
+	}, SchemaClone(m.schema), nil
 }
 
 // Import imports the machine state from Serialized. It's not safe to import

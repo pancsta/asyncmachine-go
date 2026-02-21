@@ -100,7 +100,7 @@ func render(dbg *debugger.Debugger) {
 	// SkipStart() // TODO
 
 	mach := dbg.Mach
-	// ctx := mach.Ctx
+	// ctx := mach.Context
 	<-mach.When1(ss.Ready, nil)
 	time.Sleep(100 * time.Millisecond)
 

@@ -179,7 +179,7 @@ func (c *Client) StartState(e *am.Event) {
 			// fewer retries, bc of fallbacks
 			// TODO config via a composable RetryPolicy from rpc-c
 			c.RpcSuper.ConnRetries = 3
-			c.RpcSuper.Start()
+			c.RpcSuper.Start(e)
 			err := amhelp.WaitForAny(ctx, c.ConnTimeout,
 				c.Mach.When1(ssC.SuperReady, nil),
 				c.RpcSuper.Mach.WhenNot1(ssrpc.ClientStates.Start, nil),
@@ -192,7 +192,7 @@ func (c *Client) StartState(e *am.Event) {
 			if c.RpcSuper.Mach.Not1(ssrpc.ClientStates.Start) {
 				// TODO blacklist the node for X time
 				// re-start
-				c.RpcSuper.Stop(ctx, false)
+				c.RpcSuper.Stop(ctx, e, false)
 				c.Mach.Remove1(ssC.Exception, nil)
 				continue
 			}
@@ -209,10 +209,10 @@ func (c *Client) StartState(e *am.Event) {
 
 func (c *Client) StartEnd(e *am.Event) {
 	if c.RpcSuper != nil {
-		c.RpcSuper.Stop(context.TODO(), true)
+		c.RpcSuper.Stop(context.TODO(), e, true)
 	}
 	if c.RpcWorker != nil {
-		c.RpcWorker.Stop(context.TODO(), true)
+		c.RpcWorker.Stop(context.TODO(), e, true)
 	}
 }
 
@@ -228,15 +228,15 @@ func (c *Client) WorkerRequestedState(e *am.Event) {
 	}))
 }
 
-func (c *Client) WorkerPayloadEnter(e *am.Event) bool {
+func (c *Client) ServerPayloadEnter(e *am.Event) bool {
 	a := rpc.ParseArgs(e.Args)
 	return a != nil && a.Name != "" && a.Payload != nil
 }
 
-// WorkerPayloadState handles both Supervisor and Worker inbound payloads, but
+// ServerPayloadState handles both Supervisor and Worker inbound payloads, but
 // this shared code only deals with [states.ClientStatesDef.WorkerRequested].
-func (c *Client) WorkerPayloadState(e *am.Event) {
-	c.Mach.Remove1(ssC.WorkerPayload, nil)
+func (c *Client) ServerPayloadState(e *am.Event) {
+	c.Mach.Remove1(ssC.ServerPayload, nil)
 	args := rpc.ParseArgs(e.Args)
 	c.log("worker %s delivered: %s", args.Payload.Source, args.Name)
 
@@ -291,7 +291,7 @@ func (c *Client) WorkerPayloadState(e *am.Event) {
 		}
 
 		// start and wait
-		c.RpcWorker.Start()
+		c.RpcWorker.Start(e)
 		err = amhelp.WaitForAny(ctx, c.ConnTimeout,
 			c.Mach.When1(ssC.WorkerReady, nil),
 			c.RpcWorker.Mach.WhenErr(ctxStart),
@@ -312,6 +312,7 @@ func (c *Client) WorkerPayloadState(e *am.Event) {
 
 // Start initializes the client with a list of node addresses to connect to.
 func (c *Client) Start(nodesList []string) {
+	// TODO event
 	c.Mach.Add1(ssC.Start, Pass(&A{
 		NodesList: nodesList,
 	}))
@@ -320,11 +321,12 @@ func (c *Client) Start(nodesList []string) {
 // Stop halts the client's connection to both the supervisor and worker RPCs,
 // and removes the client state from the state machine.
 func (c *Client) Stop(ctx context.Context) {
+	// TODO event
 	if c.RpcSuper != nil {
-		c.RpcSuper.Stop(ctx, false)
+		c.RpcSuper.Stop(ctx, nil, false)
 	}
 	if c.RpcWorker != nil {
-		c.RpcWorker.Stop(ctx, false)
+		c.RpcWorker.Stop(ctx, nil, false)
 	}
 	c.Mach.Remove1(ssC.Start, nil)
 }

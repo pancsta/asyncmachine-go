@@ -49,7 +49,7 @@ func main() {
 	}
 
 	// connect
-	client.Start()
+	client.Start(nil)
 	err = amhelp.WaitForAll(ctx, 3*time.Second,
 		client.Mach.When1(ssrpc.ClientStates.Ready, ctx))
 	fmt.Printf("Connected to aRPC %s\n", client.Addr)
@@ -92,12 +92,16 @@ func newClient(
 
 	// init
 	c, err := arpc.NewClient(ctx, addr, "clientid", netSrcSchema, &arpc.ClientOpts{
+		// optional consumer mach for push data
 		Consumer: consumer,
 	})
 	if err != nil {
 		panic(err)
 	}
 	amhelp.MachDebugEnv(c.Mach)
+
+	// TODO local handler mach
+	// ampipe.BindAny(c.NetMach, local)
 
 	return c, nil
 }
@@ -106,8 +110,8 @@ type clientHandlers struct {
 	*am.ExceptionHandler
 }
 
-func (h *clientHandlers) WorkerPayloadState(e *am.Event) {
-	e.Machine().Remove1(ssrpc.ConsumerStates.WorkerPayload, nil)
+func (h *clientHandlers) ServerPayloadState(e *am.Event) {
+	e.Machine().Remove1(ssrpc.ConsumerStates.ServerPayload, nil)
 
 	args := arpc.ParseArgs(e.Args)
 	println("Payload: " + args.Payload.Data.(string))

@@ -436,7 +436,7 @@ var CtxKey = &CtxKeyName{}
 type LoggerFn func(level LogLevel, msg string, args ...any)
 
 // LogArgsMapperFn is a function that maps arguments to be logged. Useful for
-// debugging. See NewArgsMapper.
+// debugging. See NewLogArgsMapper.
 type LogArgsMapperFn func(args A) map[string]string
 
 type LogEntry struct {
@@ -462,6 +462,7 @@ const (
 	LogEverything
 )
 
+// String returns a human form of a log level.
 func (l LogLevel) String() string {
 	switch l {
 	case LogNothing:
@@ -479,6 +480,11 @@ func (l LogLevel) String() string {
 	case LogEverything:
 		return "everything"
 	}
+}
+
+// Level returns a number form of a log level.
+func (l LogLevel) Level() string {
+	return strconv.Itoa(int(l))
 }
 
 // SemLogger is a semantic logger for structured events. It's consist of:
@@ -558,8 +564,11 @@ type SemLogger interface {
 	// output.
 	SetSimple(logf func(format string, args ...any), level LogLevel)
 	// SetArgsMapper accepts a function which decides which mutation arguments
-	// to log. See NewArgsMapper or create your own manually.
+	// to log. See NewLogArgsMapper or create one.
 	SetArgsMapper(mapper LogArgsMapperFn)
+	// SetArgsMapperDef binds and extends the default NewLogArgsMapper and LogArgs
+	// with [additional] arguments to be logged.
+	SetArgsMapperDef(additional ...string)
 	// ArgsMapper returns the current log args mapper function.
 	ArgsMapper() LogArgsMapperFn
 }
@@ -593,6 +602,11 @@ func (s *semLogger) SetArgsMapper(mapper LogArgsMapperFn) {
 	s.mach.logArgs.Store(&mapper)
 }
 
+func (s *semLogger) SetArgsMapperDef(additional ...string) {
+	logArgs := NewLogArgsMapper(0, slices.Concat(LogArgs, additional))
+	s.SetArgsMapper(logArgs)
+}
+
 func (s *semLogger) ArgsMapper() LogArgsMapperFn {
 	fn := s.mach.logArgs.Load()
 	if fn == nil {
@@ -612,7 +626,6 @@ func (s *semLogger) IsId() bool {
 func (s *semLogger) SetLogger(fn LoggerFn) {
 	if fn == nil {
 		s.mach.logger.Store(nil)
-
 		return
 	}
 	s.mach.logger.Store(&fn)
@@ -738,19 +751,24 @@ func (s *semLogger) EnableWhen(enable bool) {
 
 // LogArgs is a list of common argument names to be logged. Useful for
 // debugging.
-var LogArgs = []string{"name", "id", "port", "addr", "err"}
+var LogArgs = []string{
+	"name", "id", "port", "addr", "err", "path", "url",
+	"uri",
+}
 
 // LogArgsMaxLen is the default maximum length of the arg's string
 // representation.
 var LogArgsMaxLen = 20
 
-// NewArgsMapper returns a matcher function for [Opts.LogArgs]. Useful for
+// NewLogArgsMapper returns a matcher function for [Opts.LogArgs]. Useful for
 // debugging untyped argument maps. Usually [names] extend defaults from
 // [LogArgs].
 //
 // maxLen: maximum length of the arg's string representation). Defaults to
 // LogArgsMaxLen,
-func NewArgsMapper(names []string, maxLen int) func(args A) map[string]string {
+func NewLogArgsMapper(
+	maxLen int, names []string,
+) func(args A) map[string]string {
 	if maxLen == 0 {
 		maxLen = LogArgsMaxLen
 	}

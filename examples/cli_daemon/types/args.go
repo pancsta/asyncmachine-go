@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/gob"
+	"encoding/json"
 	"time"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -64,3 +65,15 @@ func LogArgs(args am.A) map[string]string {
 
 	return amhelp.ArgsToLogMap(a, 0)
 }
+
+// ParseRpc parses am.A to *ARpc wrapped in am.A. Useful for REPLs.
+func ParseRpc(args am.A) am.A {
+	ret := am.A{APrefix: &ARpc{}}
+	jsonArgs, err := json.Marshal(args)
+	if err == nil {
+		json.Unmarshal(jsonArgs, ret[APrefix])
+	}
+
+	return ret
+}
+

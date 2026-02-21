@@ -98,8 +98,8 @@ func AddErrConnecting(
 
 // ///// CONNECTION POOL
 
-// Connection to multiple hosts, states aggregating a pool of connections.
 // ///// ///// /////
+// Connection to multiple hosts, states aggregating a pool of connections.
 
 type ConnPoolState = string
 

@@ -568,7 +568,7 @@ func MachMetricsEnv(mach am.Api) *Metrics {
 					mach.AddErr(err, nil)
 				}
 
-			case <-mach.Ctx().Done():
+			case <-mach.Context().Done():
 				// pass
 			}
 		}

@@ -318,7 +318,7 @@ func (t *tracer) SchemaChange(machine am.Api, old am.Schema) {
 	// 	}
 	//
 	// 	// insert
-	// 	err = db.Create(m.Mach.Ctx(), &State{
+	// 	err = db.Create(m.Mach.Context(), &State{
 	// 		MachineID: machine.Id(),
 	// 		Index:     idx,
 	// 		Name:      state,
@@ -546,7 +546,7 @@ type Memory struct {
 	syncMx sync.RWMutex
 	// garbage collector lock (read: query, write: GC)
 	gcMx sync.RWMutex
-	// TODO use Ctx
+	// TODO use Context
 	disposed atomic.Bool
 	machRec  *Machine
 	queue    *queue
@@ -559,7 +559,7 @@ type Memory struct {
 	lastRec          *Time
 	// TODO fix sqlite3: constraint failed:
 	//  UNIQUE constraint failed: times.id, times.machine_id
-	nextId           atomic.Uint64
+	nextId atomic.Uint64
 }
 
 func NewMemory(
@@ -1027,7 +1027,7 @@ func (m *Memory) writeDb(rLocked bool) {
 		// TODO optimize: parallel save?
 		// times
 		dbTimes := gorm.G[Time](m.Db)
-		err := dbTimes.CreateInBatches(m.Mach.Ctx(), &times, 100)
+		err := dbTimes.CreateInBatches(m.Mach.Context(), &times, 100)
 		if err != nil {
 			m.onErr(err)
 			return err
@@ -1035,7 +1035,7 @@ func (m *Memory) writeDb(rLocked bool) {
 
 		// ticks
 		dbTicks := gorm.G[Tick](m.Db)
-		err = dbTicks.CreateInBatches(m.Mach.Ctx(), &ticks, 100)
+		err = dbTicks.CreateInBatches(m.Mach.Context(), &ticks, 100)
 		if err != nil {
 			m.onErr(err)
 			return err

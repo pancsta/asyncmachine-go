@@ -1,3 +1,5 @@
+//go:build !wasm
+
 // Package bbolt provides machine history tracking and traversal using
 // the bbolt K/V database.
 package bbolt
@@ -335,7 +337,7 @@ type Memory struct {
 	nextId atomic.Uint64
 	// garbage collector lock (read: query, write: GC)
 	gcMx sync.RWMutex
-	// TODO use Ctx
+	// TODO use Context
 	disposed    atomic.Bool
 	queue       *queue
 	queueWorker *errgroup.Group
