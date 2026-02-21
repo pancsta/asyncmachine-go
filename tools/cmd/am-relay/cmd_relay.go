@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os/signal"
+	"syscall"
 
 	"github.com/alexflint/go-arg"
 
@@ -16,23 +18,27 @@ var args types.Args
 
 func main() {
 	p := arg.MustParse(&args)
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(),
+		syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
 	if p.Subcommand() == nil {
 		p.Fail("missing subcommand (" + types.CmdRotateDbg + ")")
 	}
 
 	switch {
 	case args.RotateDbg != nil:
-		if err := rotateDbg(ctx, &args); err != nil {
+		if err := run(ctx, args); err != nil {
+			_ = p.FailSubcommand(err.Error(), types.CmdRotateDbg)
+		}
+	case args.Wasm != nil:
+		if err := run(ctx, args); err != nil {
 			_ = p.FailSubcommand(err.Error(), types.CmdRotateDbg)
 		}
 	}
 }
 
-func rotateDbg(ctx context.Context, args *types.Args) error {
-	r, err := relay.New(ctx, args, func(msg string, args ...any) {
-		fmt.Printf(msg, args...)
-	})
+func run(ctx context.Context, args types.Args) error {
+	r, err := relay.New(ctx, args)
 	if err != nil {
 		return err
 	}
