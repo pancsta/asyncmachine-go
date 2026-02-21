@@ -43,6 +43,8 @@ const (
 	StateHealthcheck = "Healthcheck"
 	// StateStart is the name of the predefined Start state.
 	StateStart = "Start"
+	// StateDisposing is the name of the predefined Disposing state.
+	StateDisposing = "Disposing"
 	// StateReady is the name of the predefined Ready state.
 	StateReady = "Ready"
 	// StateMachineRestored is the name of the predefined MachineRestored state.

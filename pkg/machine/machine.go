@@ -66,8 +66,11 @@ type Machine struct {
 	statesVerified atomic.Bool
 	// Unique ID of this machine. Default: random.
 	id string
-	// ctx is the context of the machine.
+	// ctx is the internal context of the machine and lives longer then ctxParent
+	// for graceful shutdowns.
 	ctx context.Context
+	// ctxParent is the context the machine was created with.
+	ctxParent context.Context
 	// parentId is the id of the parent machine (if any).
 	parentId string
 	// disposing disabled auto schema
@@ -308,7 +311,8 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 	if ctx == nil {
 		ctx = context.TODO()
 	}
-	m.ctx, m.cancel = context.WithCancel(ctx)
+	m.ctxParent = ctx
+	m.ctx, m.cancel = context.WithCancel(context.Background())
 
 	if parent != nil {
 		m.parentId = parent.Id()
@@ -349,15 +353,16 @@ func (m *Machine) OnDispose(fn HandlerDispose) {
 }
 
 // Dispose disposes the machine and all its emitters. You can wait for the
-// completion of the disposal with `<-mach.WhenDisposed`.
+// completion of the disposal with `<-mach.WhenDisposed()`. It's advised to use
+// Dispose() func from pkg/helpers instead, which handles Disposed state mixing.
 func (m *Machine) Dispose() {
-	// doDispose in a goroutine to avoid a deadlock when called from within a
-	// handler
-	// TODO var
 	if m.Has1(StateStart) {
 		m.Remove1(StateStart, nil)
+		time.Sleep(100 * time.Millisecond)
 	}
 
+	// doDispose in a goroutine to avoid a deadlock when called from within a
+	// handler
 	go func() {
 		if m.disposing.Load() {
 			m.log(LogDecisions, "[Dispose] already disposed")
@@ -389,7 +394,6 @@ func (m *Machine) doDispose(force bool) {
 		// already disposing
 		return
 	}
-	m.cancel()
 	if !force {
 		whenIdle := m.WhenQueueEnds()
 		select {
@@ -402,9 +406,6 @@ func (m *Machine) doDispose(force bool) {
 		// already disposed
 		return
 	}
-
-	// TODO needed?
-	// time.Sleep(100 * time.Millisecond)
 
 	m.tracersMx.RLock()
 	for i := range m.tracers {
@@ -456,6 +457,8 @@ func (m *Machine) doDispose(force bool) {
 			closeSafe(done.Ch)
 		}
 	}
+	// let it settle
+	time.Sleep(100 * time.Millisecond)
 
 	if m.handlerTimer != nil {
 		m.handlerTimer.Stop()
@@ -468,8 +471,6 @@ func (m *Machine) doDispose(force bool) {
 		m.queueProcessing.Store(false)
 	}
 
-	// TODO close all the CheckDone chans in the queue
-
 	// run doDispose handlers
 	// TODO timeouts?
 	for _, fn := range m.disposeHandlers {
@@ -479,6 +480,7 @@ func (m *Machine) doDispose(force bool) {
 	// m.disposeHandlers = nil
 
 	// the end
+	m.cancel()
 	closeSafe(m.whenDisposed)
 }
 
@@ -682,8 +684,7 @@ func (m *Machine) WhenArgs(
 }
 
 // WhenDisposed returns a channel that will be closed when the machine is
-// disposed. Requires bound handlers. Use Machine.disposed in case no handlers
-// have been bound.
+// disposed.
 func (m *Machine) WhenDisposed() <-chan struct{} {
 	return m.whenDisposed
 }
@@ -2070,9 +2071,10 @@ func (m *Machine) processSubscriptions(t *Transition) {
 // 	return false
 // }
 
-// Ctx return machine's root context.
-func (m *Machine) Ctx() context.Context {
-	return m.ctx
+// Context returns the machine's parent context. This context lives longer then
+// the internal graceful dispose context.
+func (m *Machine) Context() context.Context {
+	return m.ctxParent
 }
 
 // Log logs an [extern] message unless LogNothing is set.
@@ -2379,6 +2381,7 @@ func (m *Machine) handlerLoop() {
 			return
 		}
 
+		// TODO prevent inf loop
 		if !m.disposing.Load() {
 			m.handlerPanic <- recoveryData{
 				err:   err,
@@ -2392,54 +2395,93 @@ func (m *Machine) handlerLoop() {
 		defer catch()
 	}
 
+	// handleCall returns true to continue, or false to return
+	handleCall := func(call *handlerCall) bool {
+		ret := true
+
+		// handler signature: FooState(e *am.Event)
+		// TODO optimize https://github.com/golang/go/issues/7818
+		if call.event.IsValid() {
+			callRet := call.fn.Call([]reflect.Value{reflect.ValueOf(call.event)})
+			if len(callRet) > 0 {
+				// TODO log err, dont panic
+				ret = callRet[0].Interface().(bool)
+			}
+		} else {
+			m.log(LogDecisions, "[handler:invalid] %s", call.name)
+			ret = false
+		}
+
+		// exit, a new clone is running
+		currVer := m.handlerLoopVer.Load()
+		if currVer != ver {
+			m.AddErr(fmt.Errorf(
+				"deadlined handler finished, theoretical leak: %s", call.name), nil)
+
+			return false
+		}
+
+		m.loopLock.Lock()
+
+		// pass the result to handlerLoop
+		select {
+		case <-m.ctx.Done():
+			m.handlerLoopDone()
+			m.loopLock.Unlock()
+
+			return false
+
+		case m.handlerEnd <- ret:
+			m.loopLock.Unlock()
+		}
+
+		return true
+	}
+
 	// wait for a handler call or context
+grace:
 	for {
 		select {
 
+		// graceful shutdown start
+		case <-m.ctxParent.Done():
+			if m.Has1(StateDisposing) {
+				m.Add1(StateDisposing, nil)
+			} else {
+				m.Dispose()
+			}
+			break grace
+
+		case call, ok := <-m.handlerStart:
+			if !ok || !handleCall(call) {
+				return
+			}
+		}
+	}
+
+	// TODO config, test
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// wait for a handler call or context
+	for {
+		select {
+		// timeout
+		case <-ctx.Done():
+			m.handlerLoopDone()
+
+			return
+
+		// graceful shutdown end
 		case <-m.ctx.Done():
 			m.handlerLoopDone()
 
 			return
 
+		// regular handlers
 		case call, ok := <-m.handlerStart:
-			if !ok {
+			if !ok || !handleCall(call) {
 				return
-			}
-			ret := true
-
-			// handler signature: FooState(e *am.Event)
-			// TODO optimize https://github.com/golang/go/issues/7818
-			if call.event.IsValid() {
-				callRet := call.fn.Call([]reflect.Value{reflect.ValueOf(call.event)})
-				if len(callRet) > 0 {
-					ret = callRet[0].Interface().(bool)
-				}
-			} else {
-				m.log(LogDecisions, "[handler:invalid] %s", call.name)
-				ret = false
-			}
-
-			// exit, a new clone is running
-			currVer := m.handlerLoopVer.Load()
-			if currVer != ver {
-				m.AddErr(fmt.Errorf(
-					"deadlined handler finished, theoretical leak: %s", call.name), nil)
-
-				return
-			}
-
-			m.loopLock.Lock()
-
-			// pass the result to handlerLoop
-			select {
-			case <-m.ctx.Done():
-				m.handlerLoopDone()
-				m.loopLock.Unlock()
-
-				return
-
-			case m.handlerEnd <- ret:
-				m.loopLock.Unlock()
 			}
 		}
 	}
