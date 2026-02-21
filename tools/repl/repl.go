@@ -18,7 +18,7 @@ import (
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/rpc"
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/pkg/states/pipes"
@@ -30,6 +30,7 @@ type Repl struct {
 	*am.ExceptionHandler
 
 	Mach *am.Machine
+	// Addrs ending with /* are WebSockets
 	// TODO keep NAMED addresses eg CLI0, filename1, filename2, CLI1
 	//  and manipulate when watching for changes, keeping the prev ones
 	Addrs []string
@@ -39,7 +40,7 @@ type Repl struct {
 	DbgAddr string
 
 	// TODO avoid empty entries
-	rpcClients   []*rpc.Client
+	rpcClients   []*arpc.Client
 	lastMsg      string
 	selectedMach string
 }
@@ -84,7 +85,7 @@ func (r *Repl) StartEnter(e *am.Event) bool {
 
 func (r *Repl) StartState(e *am.Event) {
 	// init clients TODO avoid empty entries
-	r.rpcClients = make([]*rpc.Client, len(r.Addrs))
+	r.rpcClients = make([]*arpc.Client, len(r.Addrs))
 	for i, addr := range r.Addrs {
 
 		// create
@@ -112,7 +113,7 @@ func (r *Repl) ConnectingState(e *am.Event) {
 			continue
 		}
 		if c.Mach.Not1(ss.Start) {
-			c.Start()
+			c.Start(e)
 		} else {
 			c.Mach.Add1(ssrpc.ClientStates.Connecting, nil)
 		}
@@ -212,7 +213,7 @@ func (r *Repl) CmdAddEnter(e *am.Event) bool {
 	args := ParseArgs(e.Args)
 
 	// confirm theres a Ready worker
-	var mach *rpc.NetworkMachine
+	var mach *arpc.NetworkMachine
 	for _, c := range r.rpcClients {
 		if c == nil {
 			continue
@@ -242,7 +243,7 @@ func (r *Repl) CmdAddState(e *am.Event) {
 	args := ParseArgs(e.Args)
 
 	// confirm theres a Ready worker
-	var mach *rpc.NetworkMachine
+	var mach *arpc.NetworkMachine
 	for _, c := range r.rpcClients {
 		if c == nil {
 			continue
@@ -271,7 +272,7 @@ func (r *Repl) CmdRemoveEnter(e *am.Event) bool {
 	args := ParseArgs(e.Args)
 
 	// confirm theres a Ready worker
-	var mach *rpc.NetworkMachine
+	var mach *arpc.NetworkMachine
 	for _, c := range r.rpcClients {
 		if c == nil {
 			continue
@@ -301,7 +302,7 @@ func (r *Repl) CmdRemoveState(e *am.Event) {
 	args := ParseArgs(e.Args)
 
 	// confirm theres a Ready worker
-	var mach *rpc.NetworkMachine
+	var mach *arpc.NetworkMachine
 	for _, c := range r.rpcClients {
 		if c == nil {
 			continue
@@ -477,7 +478,7 @@ func (r *Repl) ListMachinesState(e *am.Event) {
 		filters = &ListFilters{}
 	}
 	retCh := args.RpcCh
-	ret := make([]*rpc.Client, 0)
+	ret := make([]*arpc.Client, 0)
 
 	for i, c := range r.rpcClients {
 		if c == nil {
@@ -637,7 +638,7 @@ func (r *Repl) DisconnectingState(e *am.Event) {
 			if c == nil {
 				continue
 			}
-			c.Stop(ctx, false)
+			c.Stop(ctx, e, false)
 		}
 
 		r.Mach.Add1(ss.Disconnected, nil)
@@ -649,7 +650,7 @@ func (r *Repl) DisconnectedState(e *am.Event) {
 		if c == nil {
 			continue
 		}
-		c.Stop(context.Background(), false)
+		c.Stop(context.Background(), e, false)
 	}
 }
 
@@ -746,8 +747,8 @@ func (r *Repl) PrintMsg(txt string, args ...any) {
 	_, _ = r.C.TransientPrintf("%s", txt)
 }
 
-func (r *Repl) ListMachines(filters *ListFilters) ([]*rpc.Client, error) {
-	rpcCh := make(chan []*rpc.Client, 1)
+func (r *Repl) ListMachines(filters *ListFilters) ([]*arpc.Client, error) {
+	rpcCh := make(chan []*arpc.Client, 1)
 	res := r.Mach.Add1(ss.ListMachines, Pass(&A{
 		RpcCh:       rpcCh,
 		ListFilters: filters,
@@ -760,7 +761,7 @@ func (r *Repl) ListMachines(filters *ListFilters) ([]*rpc.Client, error) {
 }
 
 // NetMach returns an RPC worker with a given ID, or nil.
-func (r *Repl) NetMach(machId string) *rpc.NetworkMachine {
+func (r *Repl) NetMach(machId string) *arpc.NetworkMachine {
 	// first connected TODO document
 	if machId == "." {
 		for _, c := range r.rpcClients {
@@ -809,13 +810,19 @@ func (r *Repl) NetMachArgs(machId string) []string {
 	return rpcs[0].Args()
 }
 
-func (r *Repl) newRpcClient(addr, idSuffix string) (*rpc.Client, error) {
+func (r *Repl) newRpcClient(addr, idSuffix string) (*arpc.Client, error) {
 	ctx := r.Mach.NewStateCtx(ss.Start)
 
-	// empty schema RPC client (`rc-WDHASH-0` for 1st client)
+	parsed := strings.Split(addr, "/")
+	// empty schema RPC client (`rc-WDHASH-0` for 1st client) TODO what?
 	id := strings.Replace(r.Mach.Id(), "repl-", "", 1) + "-" + idSuffix
-	client, err := rpc.NewClient(ctx, addr, id,
-		am.Schema{}, &rpc.ClientOpts{Parent: r.Mach})
+	opts := &arpc.ClientOpts{
+		Parent: r.Mach,
+	}
+	if len(parsed) > 1 {
+		opts.WebSocket = parsed[1]
+	}
+	client, err := arpc.NewClient(ctx, addr, id, am.Schema{}, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -921,7 +928,7 @@ func (r *Repl) completeStates(
 	}
 
 	// states
-	var mach *rpc.NetworkMachine
+	var mach *arpc.NetworkMachine
 	for _, c := range r.rpcClients {
 		if c == nil {
 			continue
@@ -1008,7 +1015,7 @@ func (r *Repl) completeMachStates(
 
 	default:
 		// states
-		var mach *rpc.NetworkMachine
+		var mach *arpc.NetworkMachine
 		for _, c := range r.rpcClients {
 			if c == nil {
 				continue
