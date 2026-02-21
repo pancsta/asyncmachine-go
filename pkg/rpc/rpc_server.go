@@ -5,7 +5,9 @@ package rpc
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
+	"net/http"
 	"os"
 	"reflect"
 	"slices"
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/rpc2"
+	"github.com/coder/websocket"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -24,7 +27,7 @@ import (
 
 var (
 	ssS = states.ServerStates
-	ssW = states.NetSourceStates
+	ssW = states.StateSourceStates
 )
 
 // Server is an RPC server that can be bound to a worker machine and provide
@@ -37,17 +40,14 @@ type Server struct {
 	Source am.Api
 	// Addr is the address of the server on the network.
 	Addr string
-	// DeliveryTimeout is a timeout for SendPayload to the client.
+	// DeliveryTimeout is a timeout to SendPayload to the client.
 	DeliveryTimeout time.Duration
 	// Listener can be set manually before starting the server.
 	Listener atomic.Pointer[net.Listener]
-	// Conn can be set manually before starting the server.
-	Conn net.Conn
-	// NoNewListener will prevent the server from creating a new listener if
-	// one is not provided or has been closed. Useful for cmux.
-	NoNewListener bool
-	LogEnabled    bool
-	CallCount     uint64
+	// Conn can be set manually before starting the server. TODO atomic?
+	Conn       net.Conn
+	LogEnabled bool
+	CallCount  uint64
 	// Typed arguments struct value with defaults
 	Args any
 	Opts ServerOpts
@@ -59,6 +59,25 @@ type Server struct {
 	// 0 means pushes are disabled. Setting to a very small value will make
 	// pushes instant.
 	PushInterval atomic.Pointer[time.Duration]
+	// AllowId will limit clients to a specific ID, if set.
+	AllowId string
+
+	// failsafe - connection (writable when stopped)
+
+	// WsTunConnTimeout is the maximum time to wait for a WebSocket tunnel
+	// connection to be established.
+	WsTunConnTimeout time.Duration
+	// WsTunConnRetries is the number of retries for a connection.
+	WsTunConnRetries int
+	// WsTunConnRetryTimeout is the maximum time to retry a connection.
+	WsTunConnRetryTimeout time.Duration
+	// WsTunConnRetryDelay is the time to wait between retries. If
+	// WsTunConnRetryBackoff is set, this is the initial delay and doubles on each
+	// retry.
+	WsTunConnRetryDelay time.Duration
+	// WsTunConnRetryBackoff is the maximum time to wait between retries.
+	WsTunConnRetryBackoff time.Duration
+
 	// syncMutations will push all clock changes for each mutation, enabling
 	// client-side mutation filtering.
 	syncMutations     bool
@@ -68,9 +87,6 @@ type Server struct {
 	syncShallowClocks bool
 
 	// security
-
-	// AllowId will limit clients to a specific ID, if set.
-	AllowId string
 
 	// internal
 
@@ -93,6 +109,9 @@ type Server struct {
 	deliveryHandlers any
 	lastPush         time.Time
 	lastPushData     *tracerData
+	httpSrv          *http.Server
+	wsTunRetryRound  atomic.Int32
+	wsConn           *websocket.Conn
 }
 
 // interfaces
@@ -102,19 +121,28 @@ var (
 )
 
 // NewServer creates a new RPC server, bound to a worker machine.
-// The source machine has to implement [states.NetSourceStatesDef] interface.
+// The source machine has to implement [states.StateSourceStatesDef] interface.
 func NewServer(
 	ctx context.Context, addr string, name string, netSrcMach am.Api,
 	opts *ServerOpts,
 ) (*Server, error) {
+	// TODO SPLIT
+
 	if name == "" {
 		name = "rpc"
 	}
 	if opts == nil {
 		opts = &ServerOpts{}
 	}
+	// TODO WASM auto-tunnel
+	if opts.WebSocketTunnel != "" && addr == "" {
+		return nil, fmt.Errorf("addr required for WebSocketTunnel")
+	}
 
 	// check the source
+	if netSrcMach == nil {
+		return nil, fmt.Errorf("netSrcMach required")
+	}
 	if !netSrcMach.StatesVerified() {
 		return nil, fmt.Errorf(
 			"net source states not verified, call VerifyStates()")
@@ -124,7 +152,7 @@ func NewServer(
 		// error only when some handlers bound, skip deterministic machines
 		err := fmt.Errorf(
 			"%w: NetSourceMach with handlers has to implement "+
-				"pkg/rpc/states/NetSourceStatesDef",
+				"pkg/rpc/states/StateSourceStatesDef",
 			am.ErrSchema)
 
 		return nil, err
@@ -139,7 +167,13 @@ func NewServer(
 		LogEnabled:       os.Getenv(EnvAmRpcLogServer) != "",
 		Source:           netSrcMach,
 		Args:             opts.Args,
-		ArgsPrefix:       opts.ArgsPrefix,
+		Opts:             *opts,
+
+		WsTunConnTimeout:      3 * time.Second,
+		WsTunConnRetryTimeout: 5 * time.Minute,
+		WsTunConnRetries:      50,
+		WsTunConnRetryDelay:   time.Second,
+		WsTunConnRetryBackoff: 10 * time.Second,
 
 		lastPushData: &tracerData{},
 	}
@@ -148,7 +182,9 @@ func NewServer(
 
 	// state machine
 	mach, err := am.NewCommon(ctx, "rs-"+name, states.ServerSchema, ssS.Names(),
-		s, opts.Parent, &am.Opts{Tags: []string{"rpc-server"}})
+		s, opts.Parent, &am.Opts{
+			Tags: []string{TagRpcServer},
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +203,11 @@ func NewServer(
 	// optional env debug
 	if os.Getenv(EnvAmRpcDbg) != "" {
 		_ = amhelp.MachDebugEnv(mach)
+	}
+
+	// states
+	if opts.WebSocketTunnel != "" {
+		mach.Add1(ssS.WebSocketTunnel, nil)
 	}
 
 	// bind to source via Tracer API (inactive until activated)
@@ -215,6 +256,16 @@ func NewServer(
 		})
 	}
 
+	// longer timeouts
+	if amhelp.IsDebug() {
+		s.log("debug, extending timeouts")
+		s.WsTunConnRetryTimeout *= 10
+	}
+
+	// debug
+	// mach.AddBreakpoint1("", ssS.RpcReady, true)
+	// mach.AddBreakpoint1("", ssS.RpcReady, false)
+
 	return s, nil
 }
 
@@ -224,17 +275,79 @@ func NewServer(
 
 // ///// ///// /////
 
+func (s *Server) ExceptionState(e *am.Event) {
+	// call super
+	s.ExceptionHandler.ExceptionState(e)
+
+	// WebsocketTunnel
+	if s.Mach.Is1(ssS.WebSocketTunnel) {
+		// clean up on errs
+		if s.wsConn != nil {
+			_ = s.wsConn.Close(websocket.StatusInternalError, "")
+		}
+		if s.Conn != nil {
+			_ = s.Conn.Close()
+		}
+
+		// retry?
+		add, _ := e.Transition().TimeIndexDiff()
+		shouldRetry := s.wsTunRetryRound.Load() < int32(s.WsTunConnRetries)
+		if add.Is1(ssS.ErrNetwork) && shouldRetry {
+			s.log("WebSocket exception retry")
+			s.Mach.Remove1(ssS.Exception, nil)
+			s.Mach.Add1(ssS.RpcStarting, nil)
+		}
+	}
+}
+
+func (s *Server) StartState(e *am.Event) {
+	ctx := s.Mach.NewStateCtx(ssS.Start)
+
+	// start websocket server early
+	if s.Opts.WebSocket {
+		s.httpSrv = &http.Server{
+			Addr: s.Addr,
+			Handler: &wsHandlerServer{
+				s:     s,
+				event: e.Export(),
+			},
+		}
+
+		// fork2
+		go func() {
+			if ctx.Err() != nil {
+				return // expired
+			}
+
+			err := s.httpSrv.ListenAndServe()
+			if err != nil {
+				// add err to mach
+				AddErrNetwork(e, s.Mach, err)
+				// add outcome to mach
+				s.Mach.Remove1(ssS.RpcStarting, nil)
+
+				return
+			}
+		}()
+	}
+}
+
 func (s *Server) StartEnd(e *am.Event) {
+	if s.Opts.WebSocket {
+		go func() {
+			_ = s.httpSrv.Shutdown(s.Mach.Context())
+		}()
+	} else if s.Mach.Is1(ssS.WebSocketTunnel) && s.wsConn != nil {
+		_ = s.wsConn.Close(websocket.StatusNormalClosure, "")
+	}
 	if ParseArgs(e.Args).Dispose {
 		s.Mach.Dispose()
 	}
 }
 
 func (s *Server) RpcStartingEnter(e *am.Event) bool {
-	if s.Listener.Load() == nil && s.NoNewListener {
-		return false
-	}
-	if s.Addr == "" {
+	// check listening
+	if s.Addr == "" && s.Listener.Load() == nil && s.Conn == nil {
 		return false
 	}
 
@@ -242,24 +355,104 @@ func (s *Server) RpcStartingEnter(e *am.Event) bool {
 }
 
 func (s *Server) RpcStartingState(e *am.Event) {
-	ctxRpcStarting := s.Mach.NewStateCtx(ssS.RpcStarting)
 	ctxStart := s.Mach.NewStateCtx(ssS.Start)
 	s.log("Starting RPC on %s", s.Addr)
 	s.bindRpcHandlers()
-	srv := s.rpcServer
 
-	// unblock
+	// skip for websocket server
+	if s.Opts.WebSocket {
+		return
+	}
+
+	// fork1 TODO mach.Fork
 	go func() {
-		// has to be ctxStart, not ctxRpcStarting TODO why?
+		// has to be ctxStart, not ctxRpcStarting TODO why? reconns?
 		if ctxStart.Err() != nil {
 			return // expired
 		}
 
-		if s.Conn != nil {
+		// websocket listener (HTTP)
+		if s.Opts.WebSocketTunnel != "" {
+			addr := "ws://" + s.Addr + s.Opts.WebSocketTunnel
+			delay := s.WsTunConnRetryDelay
+			start := time.Now()
+
+			// TODO WsTunConnectingState
+			// go func() {
+			// retry loop
+			for ctxStart.Err() == nil &&
+				s.wsTunRetryRound.Load() < int32(s.WsTunConnRetries) {
+
+				// wait for time or exit
+				s.wsTunRetryRound.Add(1)
+				if !amhelp.Wait(ctxStart, delay) {
+					return // expired
+				}
+
+				// dial
+				ctxWs, cancel := context.WithTimeout(ctxStart, s.WsTunConnTimeout)
+				// ctxWs, _ := context.WithTimeout(ctxStart, s.WsTunConnTimeout)
+				s.log("Dialing (round %d) %s", s.wsTunRetryRound.Load(), addr)
+				ws, _, err := websocket.Dial(ctxWs, addr, nil)
+				if err != nil {
+					s.log("WebSocket err")
+					if ctxStart.Err() == nil && ctxWs.Err() != nil {
+						AddErrNetworkTimeout(e, s.Mach, err)
+					} else {
+						AddErrNetwork(e, s.Mach, err)
+					}
+
+				} else {
+					s.log("WebSocket OK")
+					s.wsConn = ws
+					if err != nil {
+						AddErrNetwork(e, s.Mach, err)
+					} else {
+						s.log("Tunnel OK")
+						s.Conn = websocket.NetConn(ctxStart, ws, websocket.MessageBinary)
+						// reset the retry counter
+						s.wsTunRetryRound.Store(0)
+					}
+					cancel()
+					break
+				}
+				cancel()
+
+				// double the delay when backoff set
+				if s.WsTunConnRetryBackoff > 0 {
+					delay *= 2
+					if delay > s.WsTunConnRetryBackoff {
+						delay = s.WsTunConnRetryBackoff
+					}
+				}
+
+				// last try?
+				if t := s.WsTunConnRetryTimeout; t > 0 && time.Since(start) > t {
+					s.log("WebSocket RetryTimeout")
+					break
+				}
+
+				// try again
+			}
+
+			// failed?
+			if s.Conn == nil {
+				s.log("WebSocket tunnel failure")
+				s.Mach.EvRemove1(e, ssS.RpcStarting, nil)
+				return
+			}
+
+			// existing connection
+		} else if s.Conn != nil {
+			s.log("Using existing connection %s", s.Conn.LocalAddr())
 			s.Addr = s.Conn.LocalAddr().String()
+
+			// existing listener
 		} else if l := s.Listener.Load(); l != nil {
 			// update Addr from listener (support for external and :0)
 			s.Addr = (*l).Addr().String()
+
+			// new listener
 		} else {
 			// create a listener if not provided
 			// use Start as the context
@@ -269,7 +462,7 @@ func (s *Server) RpcStartingState(e *am.Event) {
 				// add err to mach
 				AddErrNetwork(e, s.Mach, err)
 				// add outcome to mach
-				s.Mach.Remove1(ssS.RpcStarting, nil)
+				s.Mach.EvRemove1(e, ssS.RpcStarting, nil)
 
 				return
 			}
@@ -279,29 +472,54 @@ func (s *Server) RpcStartingState(e *am.Event) {
 			s.Addr = lis.Addr().String()
 		}
 
-		s.log("RPC started on %s", s.Addr)
+		// next
+		s.Mach.EvAdd1(e, ssS.RpcAccepting, nil)
+	}()
+}
 
-		// fork to accept
+func (s *Server) RpcAcceptingEnter(e *am.Event) bool {
+	return s.Listener.Load() != nil || s.Conn != nil
+}
+
+func (s *Server) RpcAcceptingState(e *am.Event) {
+	ctxRpcAccepting := s.Mach.NewStateCtx(ssS.RpcAccepting)
+	ctxStart := s.Mach.NewStateCtx(ssS.Start)
+	srv := s.rpcServer
+
+	s.log("RPC started on %s", s.Addr)
+
+	// unblock
+	go func() {
+		if ctxRpcAccepting.Err() != nil {
+			return // expired
+		}
+
+		// fork to accept TODO state?
 		go func() {
-			if ctxRpcStarting.Err() != nil {
+			if ctxRpcAccepting.Err() != nil {
 				return // expired
 			}
 			s.Mach.EvAdd1(e, ssS.RpcReady, Pass(&A{Addr: s.Addr}))
 
 			// accept (block)
-			lisP := s.Listener.Load()
+			lis := s.Listener.Load()
 			if s.Conn != nil {
 				srv.ServeConn(s.Conn)
+			} else if lis != nil {
+				srv.Accept(*lis)
 			} else {
-				srv.Accept(*lisP)
+				AddErrNetwork(e, s.Mach, fmt.Errorf("no listener"))
+				s.Mach.EvRemove1(e, ssS.RpcReady, nil)
+
+				return
 			}
 			if ctxStart.Err() != nil {
 				return // expired
 			}
 
 			// clean up
-			if lisP != nil {
-				(*lisP).Close()
+			if lis != nil {
+				(*lis).Close()
 				s.Listener.Store(nil)
 			}
 			if ctxStart.Err() != nil {
@@ -310,12 +528,13 @@ func (s *Server) RpcStartingState(e *am.Event) {
 
 			// restart on failed listener
 			if s.Mach.Is1(ssS.Start) {
+				s.log("restarting on failed listener")
 				s.Mach.EvRemove1(e, ssS.RpcReady, nil)
 				s.Mach.EvAdd1(e, ssS.RpcStarting, nil)
 			}
 		}()
 
-		// bind to client events
+		// bind to RPC server events (or override)
 		srv.OnDisconnect(func(client *rpc2.Client) {
 			s.Mach.EvRemove1(e, ssS.ClientConnected, Pass(&A{Client: client}))
 		})
@@ -326,12 +545,16 @@ func (s *Server) RpcStartingState(e *am.Event) {
 }
 
 func (s *Server) RpcReadyEnter(e *am.Event) bool {
-	// only from RpcStarting
-	return s.Mach.Is1(ssS.RpcStarting)
+	// only from RpcAccepting
+	return s.Mach.Is1(ssS.RpcAccepting)
 }
 
 // RpcReadyState starts a ticker to compensate for clock push debounces.
 func (s *Server) RpcReadyState(e *am.Event) {
+	if s.Opts.WebSocketTunnel != "" {
+		s.log("ws tunnel ok: %s", s.Opts.WebSocketTunnel)
+	}
+
 	// no ticker for instant clocks
 	if *s.PushInterval.Load() == 0 {
 		return
@@ -381,30 +604,29 @@ func (s *Server) HandshakeDoneEnd(e *am.Event) {
 
 // Start starts the server, optionally creating a Listener (if Addr provided).
 // Results in either RpcReady or Exception.
-func (s *Server) Start() am.Result {
-	return s.Mach.Add1(ssS.Start, nil)
+func (s *Server) Start(e *am.Event) am.Result {
+	return s.Mach.EvAdd1(e, ssS.Start, nil)
 }
 
 // Stop stops the server, and optionally disposes resources.
-func (s *Server) Stop(dispose bool) am.Result {
+func (s *Server) Stop(e *am.Event, dispose bool) am.Result {
+	// TODO waitTillCtx?
 	if s.Mach == nil {
 		return am.Canceled
 	}
 	if dispose {
 		s.log("disposing")
 	}
-	// TODO use Disposing
-	res := s.Mach.Remove1(ssS.Start, Pass(&A{
-		Dispose: dispose,
-	}))
+	amhelp.DisposeEv(s.Mach, e)
 
-	return res
+	return am.Executed
 }
 
-// SendPayload sends a payload to the client. It's usually called by a handler
-// for SendPayload. [event] is optional.
+// SendPayload sends a payload to the client.
+//
+// srcEvent: optional event for tracing.
 func (s *Server) SendPayload(
-	ctx context.Context, event *am.Event, payload *MsgSrvPayload,
+	ctx context.Context, srcEvent *am.Event, payload *MsgSrvPayload,
 ) error {
 	// TODO add SendPayloadAsync calling RemoteSendingPayload first
 	// TODO bind to an async state
@@ -422,9 +644,9 @@ func (s *Server) SendPayload(
 	defer s.Mach.PanicToErr(nil)
 
 	payload.Token = utils.RandId(0)
-	if event != nil {
-		payload.Source = event.MachineId
-		payload.SourceTx = event.TransitionId
+	if srcEvent != nil {
+		payload.Source = srcEvent.MachineId
+		payload.SourceTx = srcEvent.TransitionId
 	}
 	s.log("sending payload %s from %s to %s", payload.Name, payload.Source,
 		payload.Destination)
@@ -458,6 +680,9 @@ func (s *Server) log(msg string, args ...any) {
 func (s *Server) bindRpcHandlers() {
 	// new RPC instance, release prev resources
 	s.rpcServer = rpc2.NewServer()
+	if os.Getenv(EnvAmRpcLogServer) != "" {
+		rpc2.DebugLog = true
+	}
 
 	s.rpcServer.Handle(ServerHello.Value, s.RemoteHello)
 	s.rpcServer.Handle(ServerHandshake.Value, s.RemoteHandshake)
@@ -873,10 +1098,10 @@ func (s *Server) RemoteArgs(
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
 	}
-	s.Mach.Add1(ssS.MetricSync, nil)
 
 	// args TODO cache
 	if s.Args != nil {
+		// TODO use JSON field names
 		args, err := utils.StructFields(s.Args)
 		if err != nil {
 			return err
@@ -928,10 +1153,12 @@ func (s *Server) RemoteBye(
 
 // ///// ///// /////
 
-// BindServer binds RpcReady and ClientConnected with Add/Remove, to custom
+// BindServer binds RpcReady and HandshakeDone with Add/Remove, to custom
 // states.
-func BindServer(source, target *am.Machine, rpcReady, clientConn string) error {
-	if rpcReady == "" || clientConn == "" {
+func BindServer(
+	source, target *am.Machine, rpcReady, clientReady string,
+) error {
+	if rpcReady == "" || clientReady == "" {
 		return fmt.Errorf("rpcReady and clientConn must be set")
 	}
 
@@ -946,9 +1173,9 @@ func BindServer(source, target *am.Machine, rpcReady, clientConn string) error {
 		RpcReadyEnd:   ampipe.Remove(source, target, ssS.RpcReady, rpcReady),
 
 		HandshakeDoneState: ampipe.Add(source, target, ssS.ClientConnected,
-			clientConn),
+			clientReady),
 		HandshakeDoneEnd: ampipe.Remove(source, target, ssS.ClientConnected,
-			clientConn),
+			clientReady),
 	}
 
 	return source.BindHandlers(h)
@@ -1193,4 +1420,34 @@ func genShallowUpdate(
 	}
 
 	return indexes, ticks
+}
+
+// WEBSOCKET SERVER (not tunnel)
+
+type wsHandlerServer struct {
+	s     *Server
+	event *am.Event
+}
+
+// ServeHTTP continues [Server.RpcStartingState].
+func (h *wsHandlerServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	mach := h.s.Mach
+
+	connWs, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		// TODO security
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		log.Printf("Upgrade error: %v", err)
+		return
+	}
+	conn := websocket.NetConn(mach.Context(), connWs, websocket.MessageBinary)
+	h.s.Conn = conn
+
+	// next and stay alive
+	mach.EvAdd1(h.event, ssS.RpcAccepting, nil)
+	select {
+	case <-mach.WhenNot1(ss.Start, nil):
+	case <-r.Context().Done():
+	}
 }

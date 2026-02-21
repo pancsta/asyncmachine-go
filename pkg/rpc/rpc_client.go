@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/rpc2"
+	"github.com/coder/websocket"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 
@@ -54,6 +55,9 @@ type Client struct {
 	// ReconnectOn decides if the client will try to [RetryingConn] after a
 	// clean [Disconnect].
 	ReconnectOn bool
+	// Custom connection (wg WebSocket)
+	Conn net.Conn
+	Opts ClientOpts
 
 	// sync settings (read-only)
 
@@ -74,30 +78,30 @@ type Client struct {
 	// ConnTimeout is the maximum time to wait for a connection to be established.
 	// Default 3s.
 	ConnTimeout time.Duration
-	// ConnRetries is the number of retries for a connection. Default 15.
+	// ConnRetries is the number of retries for a connection.
 	ConnRetries int
-	// ConnRetryTimeout is the maximum time to retry a connection. Default 1m.
+	// ConnRetryTimeout is the maximum time to retry a connection.
 	ConnRetryTimeout time.Duration
-	// ConnRetryDelay is the time to wait between retries. Default 100ms. If
-	// ConnRetryBackoff is set, this is the initial delay, and doubles on each
+	// ConnRetryDelay is the time to wait between retries. If
+	// ConnRetryBackoff is set, this is the initial delay and doubles on each
 	// retry.
 	ConnRetryDelay time.Duration
-	// ConnRetryBackoff is the maximum time to wait between retries. Default 3s.
+	// ConnRetryBackoff is the maximum time to wait between retries.
 	ConnRetryBackoff time.Duration
 
 	// failsafe - calls (writable when stopped)
 
-	// CallTimeout is the maximum time to wait for a call to complete. Default 3s.
+	// CallTimeout is the maximum time to wait for a call to complete.
 	CallTimeout time.Duration
-	// CallRetries is the number of retries for a call. Default 15.
+	// CallRetries is the number of retries for a call.
 	CallRetries int
-	// CallRetryTimeout is the maximum time to retry a call. Default 1m.
+	// CallRetryTimeout is the maximum time to retry a call.
 	CallRetryTimeout time.Duration
-	// CallRetryDelay is the time to wait between retries. Default 100ms. If
-	// CallRetryBackoff is set, this is the initial delay, and doubles on each
+	// CallRetryDelay is the time to wait between retries. If
+	// CallRetryBackoff is set, this is the initial delay and doubles on each
 	// retry.
 	CallRetryDelay time.Duration
-	// CallRetryBackoff is the maximum time to wait between retries. Default 3s.
+	// CallRetryBackoff is the maximum time to wait between retries.
 	CallRetryBackoff time.Duration
 	DisconnTimeout   time.Duration
 
@@ -111,7 +115,6 @@ type Client struct {
 	rpc      atomic.Pointer[rpc2.Client]
 	// schema of the network machine
 	schema am.Schema
-	conn   net.Conn
 	// tmpTestErr is an error to return on the next call or notify, only for
 	// testing.
 	tmpTestErr error
@@ -122,6 +125,7 @@ type Client struct {
 	trackedStates  am.S
 	// tracked idx -> machine idx
 	trackedStateIdxs []int
+	// connect via WebSocket
 }
 
 // interfaces
@@ -132,7 +136,7 @@ var (
 
 // NewClient creates a new RPC client and exposes a remote state machine as
 // a remote worker, with a subst of the API under Client.NetMach. Optionally
-// takes a consumer, which is a state machine with a WorkerPayload state. See
+// takes a consumer, which is a state machine with a ServerPayload state. See
 // states.ConsumerStates.
 func NewClient(
 	ctx context.Context, netSrcAddr string, name string, netSrcSchema am.Schema,
@@ -148,10 +152,13 @@ func NewClient(
 	if !opts.NoSchema && netSrcSchema == nil {
 		netSrcSchema = am.Schema{}
 	}
+	if amhelp.IsWasm() {
+		opts.WebSocket = "/"
+	}
 
 	// validate
 	if netSrcAddr == "" {
-		return nil, errors.New("rpcc: workerAddr required")
+		return nil, errors.New("rpcc: netSrcAddr required")
 	}
 
 	c := &Client{
@@ -164,6 +171,7 @@ func NewClient(
 		DisconnTimeout:   3 * time.Second,
 		DisconnCooldown:  10 * time.Millisecond,
 		ReconnectOn:      true,
+		Opts:             *opts,
 
 		SyncNoSchema:          opts.NoSchema,
 		SyncAllowedStates:     opts.AllowedStates,
@@ -172,27 +180,23 @@ func NewClient(
 		SyncShallowClocks:     opts.SyncShallowClocks,
 		SyncMutationFiltering: opts.MutationFiltering,
 
-		ConnRetryTimeout: 1 * time.Minute,
-		ConnRetries:      15,
-		ConnRetryDelay:   100 * time.Millisecond,
-		ConnRetryBackoff: 3 * time.Second,
+		ConnRetryTimeout: 5 * time.Minute,
+		ConnRetries:      50,
+		ConnRetryDelay:   time.Second,
+		ConnRetryBackoff: 10 * time.Second,
 
 		CallRetryTimeout: 1 * time.Minute,
 		CallRetries:      15,
 		CallRetryDelay:   100 * time.Millisecond,
-		CallRetryBackoff: 3 * time.Second,
+		CallRetryBackoff: 10 * time.Second,
 
-		schema: am.CloneSchema(netSrcSchema),
-	}
-
-	if amhelp.IsDebug() {
-		c.CallTimeout = 100 * time.Second
+		schema: am.SchemaClone(netSrcSchema),
 	}
 
 	// state machine
 	mach, err := am.NewCommon(ctx, GetClientId(name), states.ClientSchema,
 		ssC.Names(), c, opts.Parent, &am.Opts{Tags: []string{
-			"rpc-client",
+			TagRpcClient,
 			"addr:" + netSrcAddr,
 		}})
 	if err != nil {
@@ -219,6 +223,11 @@ func NewClient(
 			return nil, err
 		}
 		c.Consumer = opts.Consumer
+	}
+
+	if amhelp.IsDebug() {
+		c.log("debug enabled, increasing some timeouts")
+		c.CallTimeout = 10 * c.CallTimeout
 	}
 
 	return c, nil
@@ -266,45 +275,57 @@ func (c *Client) StartEnd(e *am.Event) {
 }
 
 func (c *Client) ConnectingState(e *am.Event) {
-	ctx := c.Mach.NewStateCtx(ssC.Connecting)
+	mach := c.Mach
+	ctx := mach.NewStateCtx(ssC.Connecting)
+	ctxStart := mach.NewStateCtx(ssC.Start)
 
 	// async
-	go func() {
-		if ctx.Err() != nil {
-			return // expired
-		}
-
-		// net dial
+	mach.Fork(ctx, e, func() {
+		// net dial TODO TLS
 		timeout := c.ConnTimeout
 		if amhelp.IsDebug() {
 			timeout = 100 * time.Second
 		}
-		// TODO TLS
-		d := net.Dialer{
-			Timeout: timeout,
+		if c.Conn == nil && c.Opts.WebSocket != "" {
+			mach.Log("dialing WS %s", c.Addr)
+			wsConn, _, err := websocket.Dial(ctx,
+				"ws://"+c.Addr+c.Opts.WebSocket, nil)
+			if err != nil {
+				mach.EvAdd1(e, ssC.Disconnected, nil)
+				AddErrNetwork(e, mach, err)
+				return
+			}
+			c.Conn = websocket.NetConn(ctxStart, wsConn, websocket.MessageBinary)
+
+		} else if c.Conn == nil {
+			d := net.Dialer{
+				Timeout: timeout,
+			}
+			mach.Log("dialing TCP %s", c.Addr)
+			conn, err := d.DialContext(ctx, "tcp4", c.Addr)
+			if ctx.Err() != nil {
+				return // expired
+			}
+			if err != nil {
+				mach.EvAdd1(e, ssC.Disconnected, nil)
+				AddErrNetwork(e, mach, err)
+				return
+			}
+			c.Conn = conn
 		}
-		c.Mach.Log("dialing %s", c.Addr)
-		conn, err := d.DialContext(ctx, "tcp4", c.Addr)
-		if ctx.Err() != nil {
-			return // expired
-		}
-		if err != nil {
-			c.Mach.EvAdd1(e, ssC.Disconnected, nil)
-			AddErrNetwork(e, c.Mach, err)
-			return
-		}
-		c.conn = conn
 
 		// rpc
-		client := c.bindRpcHandlers(conn)
-		go client.Run()
-
-		c.Mach.EvAdd1(e, ssC.Connected, nil)
-	}()
+		client := c.bindRpcHandlers(c.Conn)
+		mach.Go(ctx, func() {
+			go mach.EvAdd1(e, ssC.Connected, nil)
+			// block
+			client.Run()
+		})
+	})
 }
 
 func (c *Client) DisconnectingEnter(e *am.Event) bool {
-	return c.rpc.Load() != nil && c.conn != nil
+	return c.rpc.Load() != nil && c.Conn != nil
 }
 
 func (c *Client) DisconnectingState(e *am.Event) {
@@ -354,6 +375,10 @@ func (c *Client) ConnectedState(e *am.Event) {
 
 	// loop
 	go func() {
+		if ctx.Err() != nil {
+			return // expired
+		}
+
 		select {
 
 		case <-ctx.Done():
@@ -372,6 +397,8 @@ func (c *Client) DisconnectedEnter(e *am.Event) bool {
 }
 
 func (c *Client) DisconnectedState(e *am.Event) {
+	c.Conn = nil
+
 	// try to reconnect
 	wasAny := e.Transition().TimeBefore.Any1
 	if wasAny(c.Mach.Index1(ssC.Connected), c.Mach.Index1(ssC.Connecting)) &&
@@ -382,8 +409,8 @@ func (c *Client) DisconnectedState(e *am.Event) {
 	}
 
 	// ignore error when disconnecting
-	if c.conn != nil {
-		_ = c.conn.Close()
+	if c.Conn != nil {
+		_ = c.Conn.Close()
 	}
 }
 
@@ -464,11 +491,6 @@ func (c *Client) HandshakingState(e *am.Event) {
 		// set schema and states
 		c.updateStatesSchema(resp)
 
-		// optional env debug on 1st call
-		if c.Mach.Tick(ssC.Handshaking) == 1 && os.Getenv(EnvAmRpcDbg) != "" {
-			_ = amhelp.MachDebugEnv(c.NetMach)
-		}
-
 		// ID as tag TODO find-n-replace the tag, not via index [1]
 		c.NetMach.tags[1] = "src-id:" + resp.Serialized.ID
 		// TODO setter
@@ -502,6 +524,11 @@ func (c *Client) HandshakeDoneState(e *am.Event) {
 	netMach.id = PrefixNetMach + c.Name
 	c.clockSet(args.MachTime, args.QueueTick, args.MachTick)
 
+	// optional env debug on 1st call
+	if c.Mach.Tick(ssC.HandshakeDone) == 1 && os.Getenv(EnvAmRpcDbg) != "" {
+		_ = amhelp.MachDebugEnv(c.NetMach)
+	}
+
 	c.log("connected to %s", netMach.remoteId)
 	c.log("time t%d q%d: %v",
 		netMach.Time(nil).Sum(nil), netMach.QueueTick(), args.MachTime)
@@ -523,12 +550,10 @@ func (c *Client) ExceptionState(e *am.Event) {
 	// call super
 	c.ExceptionHandler.ExceptionState(e)
 	c.Mach.EvRemove1(e, am.StateException, nil)
-	// TODO handle am.ErrSchema:
-	//  "worker has to implement pkg/rpc/states/NetSourceStatesDef"
-	//  only for nondeterministic machs
 }
 
-// RetryingConnState should be set without Connecting in the same tx
+// RetryingConnState should be set without [ssC.Connecting] in the same
+// mutation.
 func (c *Client) RetryingConnState(e *am.Event) {
 	ctx := c.Mach.NewStateCtx(ssC.RetryingConn)
 	delay := c.ConnRetryDelay
@@ -567,6 +592,7 @@ func (c *Client) RetryingConnState(e *am.Event) {
 				}
 			}
 
+			// timeout
 			if c.ConnRetryTimeout > 0 && time.Since(start) > c.ConnRetryTimeout {
 				break
 			}
@@ -581,7 +607,7 @@ func (c *Client) RetryingConnState(e *am.Event) {
 	}()
 }
 
-func (c *Client) WorkerPayloadEnter(e *am.Event) bool {
+func (c *Client) ServerPayloadEnter(e *am.Event) bool {
 	if c.Consumer == nil {
 		return false
 	}
@@ -598,14 +624,14 @@ func (c *Client) WorkerPayloadEnter(e *am.Event) bool {
 	return true
 }
 
-func (c *Client) WorkerPayloadState(e *am.Event) {
+func (c *Client) ServerPayloadState(e *am.Event) {
 	args := ParseArgs(e.Args)
 	argsOut := &A{
 		Name:    args.Name,
 		Payload: args.Payload,
 	}
 
-	c.Consumer.EvAdd1(e, ssCo.WorkerPayload, Pass(argsOut))
+	c.Consumer.EvAdd1(e, ssCo.ServerPayload, Pass(argsOut))
 }
 
 func (c *Client) HealthcheckState(e *am.Event) {
@@ -621,21 +647,26 @@ func (c *Client) HealthcheckState(e *am.Event) {
 
 // Start connects the client to the server and initializes the worker.
 // Results in the Ready state.
-func (c *Client) Start() am.Result {
-	return c.Mach.Add(am.S{ssC.Start, ssC.Connecting}, nil)
+func (c *Client) Start(e *am.Event) am.Result {
+	return c.Mach.EvAdd(e, am.S{ssC.Start, ssC.Connecting}, nil)
 }
 
 // Stop disconnects the client from the server and disposes the worker.
 //
 // waitTillExit: if passed, waits for the client to disconnect using the
 // context.
-func (c *Client) Stop(waitTillExit context.Context, dispose bool) am.Result {
-	res := c.Mach.Remove1(ssC.Start, nil)
+func (c *Client) Stop(
+	waitTillExit context.Context, e *am.Event, dispose bool,
+) am.Result {
+	res := c.Mach.EvAdd1(e, ssC.Disconnecting, nil)
 	// wait for the client to disconnect
 	if res != am.Canceled && waitTillExit != nil {
 		// TODO timeout config
-		_ = amhelp.WaitForAll(waitTillExit, 2*time.Second,
-			c.Mach.When1(ssC.Disconnected, nil))
+		err := amhelp.WaitForAll(waitTillExit, 2*time.Second,
+			c.Mach.When1(ssC.Disconnected, waitTillExit))
+		if err != nil {
+			c.Mach.EvRemove1(e, ssC.Start, nil)
+		}
 	}
 
 	if dispose {
@@ -667,7 +698,7 @@ func (c *Client) Sync() am.Time {
 
 	// call rpc
 	resp := &MsgSrvSync{}
-	ok := c.callFailsafe(c.Mach.Ctx(), ServerSync.Value, &MsgEmpty{}, resp)
+	ok := c.callFailsafe(c.Mach.Context(), ServerSync.Value, &MsgEmpty{}, resp)
 	if !ok {
 		return nil
 	}
@@ -691,7 +722,7 @@ func (c *Client) Args() []string {
 
 	// call rpc
 	resp := &MsgSrvArgs{}
-	ok := c.callFailsafe(c.Mach.Ctx(), ServerArgs.Value, &MsgEmpty{}, resp)
+	ok := c.callFailsafe(c.Mach.Context(), ServerArgs.Value, &MsgEmpty{}, resp)
 	if !ok {
 		return nil
 	}
@@ -1099,7 +1130,7 @@ func (c *Client) notify(
 	mName := ServerMethods.Parse(method).Value
 
 	// timeout
-	err := c.conn.SetDeadline(time.Now().Add(c.CallTimeout))
+	err := c.Conn.SetDeadline(time.Now().Add(c.CallTimeout))
 	if err != nil {
 		AddErr(nil, c.Mach, mName, err)
 		return false
@@ -1119,7 +1150,7 @@ func (c *Client) notify(
 	}
 
 	// remove timeout
-	err = c.conn.SetDeadline(time.Time{})
+	err = c.Conn.SetDeadline(time.Time{})
 	if err != nil {
 		AddErr(nil, c.Mach, mName, err)
 		return false
@@ -1179,7 +1210,7 @@ func (c *Client) RemoteSendingPayload(
 ) error {
 	// TODO test
 	c.log("RemoteSendingPayload %s", payload.Name)
-	c.Mach.Add1(ssC.WorkerDelivering, Pass(&A{
+	c.Mach.Add1(ssC.ServerDelivering, Pass(&A{
 		Payload: payload,
 		Name:    payload.Name,
 	}))
@@ -1188,13 +1219,13 @@ func (c *Client) RemoteSendingPayload(
 }
 
 // RemoteSendPayload receives a payload from the server and triggers
-// WorkerPayload. The Consumer should bind his handlers and handle this state to
-// receive the data.
+// [states.ClientStatesDef.ServerPayload]. The Consumer should bind his
+// handlers and handle this state to receive the data.
 func (c *Client) RemoteSendPayload(
 	_ *rpc2.Client, payload *MsgSrvPayload, _ *MsgEmpty,
 ) error {
 	c.log("RemoteSendPayload %s:%s", payload.Name, payload.Token)
-	c.Mach.Add1(ssC.WorkerPayload, Pass(&A{
+	c.Mach.Add1(ssC.ServerPayload, Pass(&A{
 		Payload: payload,
 		Name:    payload.Name,
 	}))
@@ -1248,6 +1279,8 @@ type ClientOpts struct {
 	// based on locally active states. Doesn't work with [ClientOpts.NoSchema].
 	// TODO not implemented yet
 	MutationFiltering bool
+	// Connect via WebSocket using path, eg "/" (default for WASM).
+	WebSocket string
 }
 
 // GetClientId returns an RPC Client machine ID from a name. This ID will be

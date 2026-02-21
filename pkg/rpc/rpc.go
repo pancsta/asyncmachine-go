@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -45,7 +46,12 @@ const (
 	// $AM_REPL_DIR/mach-id.addr. Optional.
 	EnvAmReplDir = "AM_REPL_DIR"
 
+	TagRpcHandler = "rpc-handler"
+	TagRpcClient  = "rpc-client"
+	TagRpcServer  = "rpc-server"
+
 	PrefixNetMach = "rnm-"
+	WsPathListen  = "/listen/"
 )
 
 var ss = states.SharedStates
@@ -220,10 +226,17 @@ type ReplOpts struct {
 	ErrCh chan<- error
 	// optional channel to send the address to, once ready
 	AddrCh chan<- string
-	// optional prefix for typesafe args. Requires Args.
-	ArgsPrefix string
-	// optional typed args instance. Requires ArgsPrefix
+	// optional typed args struct value
 	Args any
+	// optional RPC args parser
+	ParseRpc func(args am.A) am.A
+	// Listen on a WebSocket connection instead of TCP.
+	WebSocket bool
+	// HTTP URL without proto to tunnel the TCP listen over a WebSocket conn.
+	// See WsListenPath.
+	WebSocketTunnel string
+
+	// TODO accept Name
 }
 
 // ///// ///// /////
@@ -383,6 +396,10 @@ func AddErrNetwork(e *am.Event, mach *am.Machine, err error) {
 	mach.AddErrState(ss.ErrNetwork, err, nil)
 }
 
+func AddErrNetworkTimeout(e *am.Event, mach *am.Machine, err error) {
+	mach.AddErrState(ss.ErrNetworkTimeout, err, nil)
+}
+
 func AddErrNoConn(e *am.Event, mach *am.Machine, err error) {
 	err = fmt.Errorf("%w: %w", ErrNoConn, err)
 	mach.AddErrState(ss.ErrNetwork, err, nil)
@@ -451,6 +468,10 @@ type semLogger struct {
 var _ am.SemLogger = &semLogger{}
 
 func (s *semLogger) SetArgsMapper(mapper am.LogArgsMapperFn) {
+	// TODO
+}
+
+func (s *semLogger) SetArgsMapperDef(additional ...string) {
 	// TODO
 }
 
@@ -827,7 +848,7 @@ func (t *sourceTracer) SchemaChange(mach am.Api, oldSchema am.Schema) {
 		defer s.lockExport.Unlock()
 
 		// send
-		err := client.CallWithContext(mach.Ctx(), ClientSchemaChange.Value, msg,
+		err := client.CallWithContext(mach.Context(), ClientSchemaChange.Value, msg,
 			&MsgEmpty{})
 		mach.AddErr(err, nil)
 	}()
@@ -948,9 +969,19 @@ func (c *msgpackCoded) Close() error {
 
 // ///// ///// /////
 
+func EnableDebuggingRpc(stdout bool) {
+	amhelp.EnableDebugging(stdout)
+	_ = os.Setenv(EnvAmRpcLogClient, "1")
+	_ = os.Setenv(EnvAmRpcLogServer, "1")
+	_ = os.Setenv(EnvAmRpcLogMux, "1")
+}
+
 // MachReplEnv sets up a machine for a REPL connection in case AM_REPL_ADDR env
 // var is set. See MachRepl.
-func MachReplEnv(mach am.Api) (error, <-chan error) {
+func MachReplEnv(mach am.Api, opts *ReplOpts) (error, <-chan error) {
+	if opts == nil {
+		opts = &ReplOpts{}
+	}
 	addr := os.Getenv(EnvAmReplAddr)
 	dir := os.Getenv(EnvAmReplDir)
 
@@ -964,22 +995,27 @@ func MachReplEnv(mach am.Api) (error, <-chan error) {
 
 	// MachRepl closes errCh
 	errCh := make(chan error, 1)
-	opts := &ReplOpts{
-		AddrDir: dir,
-		ErrCh:   errCh,
+	opts2 := &ReplOpts{
+		AddrDir:  dir,
+		ErrCh:    errCh,
+		Args:     opts.Args,
+		ParseRpc: opts.ParseRpc,
 	}
-	if err := MachRepl(mach, addr, opts); err != nil {
-		return err, errCh
+	var err error
+	if runtime.GOOS == "wasm" {
+		err = MachReplWs(mach, addr, opts2)
+	} else {
+		err = MachRepl(mach, addr, opts2)
 	}
 
-	return nil, errCh
+	return err, errCh
 }
 
 // MachRepl sets up a machine for a REPL connection, which allows for
 // mutations, like any other RPC connection. See [/tools/cmd/arpc] for usage.
 // This function is considered a debugging helper and can panic.
 //
-// addr: address to listen on, default to 127.0.0.1:0
+// addr: address to listen on, defaults to 127.0.0.1:0
 // addrDir: optional dir path to save the address file as addrDir/mach-id.addr
 // addrCh: optional channel to send the address to, once ready
 // errCh: optional channel for errors
@@ -1001,7 +1037,7 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 
 	if mach.HasHandlers() && !mach.Has(ssW.Names()) {
 		err := fmt.Errorf(
-			"%w: REPL source has to implement pkg/rpc/states/NetSourceStatesDef",
+			"%w: REPL source has to implement pkg/rpc/states/StateSourceStatesDef",
 			am.ErrSchema)
 
 		return err
@@ -1015,17 +1051,17 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 		}
 	}
 
-	mux, err := NewMux(mach.Ctx(), "repl-"+mach.Id(), nil, &MuxOpts{
-		Parent:     mach,
-		Args:       opts.Args,
-		ArgsPrefix: opts.ArgsPrefix,
+	mux, err := NewMux(mach.Context(), "repl-"+mach.Id(), nil, &MuxOpts{
+		Parent:   mach,
+		Args:     opts.Args,
+		ParseRpc: opts.ParseRpc,
 	})
 	if err != nil {
 		return err
 	}
 	mux.Addr = addr
 	mux.Source = mach
-	mux.Start()
+	mux.Start(nil)
 
 	if addrCh == nil && addrDir == "" {
 		if errCh != nil {
@@ -1072,6 +1108,110 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 			err = os.WriteFile(
 				filepath.Join(addrDir, mach.Id()+".addr"),
 				[]byte(mux.Addr), 0o644,
+			)
+			if errCh != nil {
+				errCh <- err
+			}
+		}
+	}()
+
+	return nil
+}
+
+// MachReplWs is a non-muxed REPL over WebSocket, See [MachRepl].
+func MachReplWs(mach am.Api, addr string, opts *ReplOpts) error {
+	if opts == nil {
+		opts = &ReplOpts{}
+	}
+	addrDir := opts.AddrDir
+	addrCh := opts.AddrCh
+	errCh := opts.ErrCh
+
+	if amhelp.IsTestRunner() {
+		return amhelp.ErrTestAutoDisable
+	}
+
+	if addr == "" {
+		addr = "127.0.0.1:0"
+	}
+
+	if mach.HasHandlers() && !mach.Has(ssW.Names()) {
+		err := fmt.Errorf(
+			"%w: REPL source has to implement pkg/rpc/states/StateSourceStatesDef",
+			am.ErrSchema)
+
+		return err
+	}
+
+	// verify args is a value struct
+	if opts.Args != nil {
+		t := reflect.TypeOf(opts.Args)
+		if t.Kind() != reflect.Struct {
+			return fmt.Errorf("expected a struct, got %s", t.Kind())
+		}
+	}
+
+	s, err := NewServer(mach.Context(), addr, "repl-"+mach.Id(), mach,
+		&ServerOpts{
+			Parent:          mach,
+			Args:            opts.Args,
+			ParseRpc:        opts.ParseRpc,
+			WebSocket:       opts.WebSocket,
+			WebSocketTunnel: opts.WebSocketTunnel,
+		})
+	if err != nil {
+		return err
+	}
+	s.Addr = addr
+	s.Source = mach
+	s.Start(nil)
+
+	if addrCh == nil && addrDir == "" {
+		if errCh != nil {
+			close(errCh)
+		}
+
+		return nil
+	}
+
+	go func() {
+		// dispose ret channels
+		defer func() {
+			if errCh != nil {
+				close(errCh)
+			}
+			if addrCh != nil {
+				close(addrCh)
+			}
+		}()
+
+		// prep the dir
+		dirOk := false
+		if addrDir != "" {
+			if _, err := os.Stat(addrDir); os.IsNotExist(err) {
+				err := os.MkdirAll(addrDir, 0o755)
+				if err == nil {
+					dirOk = true
+				} else if errCh != nil {
+					errCh <- err
+				}
+			} else {
+				dirOk = true
+			}
+		}
+
+		// wait for an addr
+		<-s.Mach.When1(ssS.Ready, nil)
+		if addrCh != nil {
+			addrCh <- s.Addr
+		}
+
+		// save to dir
+		if dirOk && addrDir != "" {
+			err = os.WriteFile(
+				filepath.Join(addrDir, mach.Id()+".addr"),
+				// add / HTTP path suffix (mark as WS)
+				[]byte(s.Addr+"/"), 0o644,
 			)
 			if errCh != nil {
 				errCh <- err
@@ -1155,4 +1295,10 @@ func newClosedChan() chan struct{} {
 	ch := make(chan struct{})
 	close(ch)
 	return ch
+}
+
+// WsListenPath creates a WebSocket remote listen URL path.
+// Eg /listen/MyMach/localhost:1234
+func WsListenPath(machId, addr string) string {
+	return WsPathListen + machId + "/" + addr
 }

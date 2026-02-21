@@ -115,12 +115,15 @@ func (m *Mux) StartState(e *am.Event) {
 	addr := m.Addr
 	mach := m.Mach
 
+	// TODO websocket srv, RpcMuxState
+
 	// unblock
 	go func() {
 		if ctx.Err() != nil {
 			return // expired
 		}
-		// create a listener if not provided
+
+		// create a listener if not provided TODO websockets
 		if m.Listener == nil {
 			// use Start as the context
 			cfg := net.ListenConfig{}
@@ -146,7 +149,7 @@ func (m *Mux) StartState(e *am.Event) {
 
 		// fork
 		l := m.cmux.Match(cmux.Any())
-		go m.accept(l)
+		go m.accept(e, l)
 
 		// TODO healthcheck loop
 
@@ -183,7 +186,8 @@ func (m *Mux) HealthcheckState(e *am.Event) {
 
 // ///// ///// /////
 
-func (m *Mux) accept(l net.Listener) {
+// TODO RpcAcceptingState
+func (m *Mux) accept(e *am.Event, l net.Listener) {
 	mach := m.Mach
 	defer mach.PanicToErr(nil)
 
@@ -215,7 +219,7 @@ func (m *Mux) accept(l net.Listener) {
 		// new instance
 		var server *Server
 		if m.NewServerFn == nil {
-			server, err = NewServer(m.Mach.Ctx(), ":0",
+			server, err = NewServer(m.Mach.Context(), ":0",
 				m.Name+"-"+strconv.Itoa(int(num)), m.Source, &ServerOpts{
 					Parent:   m.Mach,
 					Args:     m.Args,
@@ -233,7 +237,7 @@ func (m *Mux) accept(l net.Listener) {
 
 		// inject net.Conn
 		server.Conn = conn
-		server.Start()
+		server.Start(e)
 
 		// TODO optimize: re-use old instances?
 		// TODO handle with a state, not a goroutine
@@ -242,17 +246,17 @@ func (m *Mux) accept(l net.Listener) {
 			muxCtx := m.Mach.NewStateCtx(ssM.Start)
 			<-server.Mach.When1(ssS.ClientConnected, muxCtx)
 			<-server.Mach.WhenNot1(ssS.ClientConnected, muxCtx)
-			server.Stop(true)
+			server.Stop(e, true)
 		}()
 	}
 }
 
-func (m *Mux) Start() am.Result {
-	return m.Mach.Add1(ssM.Start, nil)
+func (m *Mux) Start(e *am.Event) am.Result {
+	return m.Mach.EvAdd1(e, ssM.Start, nil)
 }
 
-func (m *Mux) Stop(dispose bool) am.Result {
-	res := m.Mach.Remove1(ssM.Start, nil)
+func (m *Mux) Stop(e *am.Event, dispose bool) am.Result {
+	res := m.Mach.EvRemove1(e, ssM.Start, nil)
 	if dispose {
 		m.Mach.Dispose()
 	}
@@ -269,7 +273,7 @@ func (m *Mux) log(msg string, args ...any) {
 
 // ///// ///// /////
 
-// ///// MUX
+// ///// MISC
 
 // ///// ///// /////
 
@@ -288,3 +292,31 @@ type MuxOpts struct {
 	// // See WsListenPath.
 	// WebSocketTunnel string
 }
+
+// WEBSOCKET
+
+// type wsHandlerMux struct {
+// 	m     *Mux
+// 	event *am.Event
+// }
+//
+// // ServeHTTP continues [Server.RpcStartingState].
+// func (h *wsHandlerMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// 	mach := h.m.Mach
+//
+// 	connWs, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+// 		// TODO security
+// 		InsecureSkipVerify: true,
+// 	})
+// 	if err != nil {
+// 		log.Printf("Upgrade error: %v", err)
+// 		return
+// 	}
+// 	conn := websocket.NetConn(mach.Context(), connWs, websocket.MessageBinary)
+//
+// 	// TODO RpcAcceptingState
+// 	// next and stay alive
+// 	mach.EvAdd1(h.event, ssM.RpcAccepting, nil)
+// 	<-mach.WhenNot1(ss.Start, nil)
+// 	print()
+// }
