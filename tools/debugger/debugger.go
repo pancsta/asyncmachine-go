@@ -320,6 +320,10 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		}
 	}
 
+	mach.OnDispose(func(id string, ctx context.Context) {
+		d.Dispose()
+	})
+
 	return d, nil
 }
 
@@ -650,9 +654,6 @@ func (d *Debugger) hConnectedClients() int {
 
 func (d *Debugger) Dispose() {
 	// TODO switch to Disposed mixin
-	d.Mach.Dispose()
-	<-d.Mach.WhenDisposed()
-
 	// logger
 	logger := d.Opts.DbgLogger
 	if logger != nil {

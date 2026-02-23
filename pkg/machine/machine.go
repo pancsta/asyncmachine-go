@@ -313,7 +313,7 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 		ctx = context.TODO()
 	}
 	m.ctxParent = ctx
-	m.ctx, m.cancel = context.WithCancel(context.Background())
+	m.ctx, m.cancel = context.WithCancel(m.ctxParent)
 
 	if parent != nil {
 		m.parentId = parent.Id()
@@ -3333,6 +3333,10 @@ func (m *Machine) Resolver() RelationsResolver {
 // submachines, before any handlers are bound. Use the Err() getter to examine
 // such errors.
 func (m *Machine) BindTracer(tracer Tracer) error {
+	if m.disposing.Load() {
+		return nil
+	}
+
 	m.tracersMx.Lock()
 	defer m.tracersMx.Unlock()
 
@@ -3354,6 +3358,7 @@ func (m *Machine) DetachTracer(tracer Tracer) error {
 	if m.disposing.Load() {
 		return nil
 	}
+
 	m.tracersMx.Lock()
 	defer m.tracersMx.Unlock()
 
