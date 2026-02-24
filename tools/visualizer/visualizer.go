@@ -18,12 +18,12 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/dominikbraun/graph"
 
-	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
-
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	"github.com/pancsta/asyncmachine-go/tools/visualizer/states"
 )
 
@@ -81,17 +81,18 @@ type Visualizer struct {
 	Mach *am.Machine
 	R    *Renderer
 
-	graph *amgraph.Graph
+	Graph *amgraph.Graph
 }
 
 // New creates a new Visualizer - state machine, RPC server, and a renderer.
 func New(ctx context.Context, name string) (*Visualizer, error) {
+	vis := &Visualizer{}
 	mach, err := am.NewCommon(ctx, "vis-"+name, states.VisualizerSchema,
-		ss.Names(), nil, nil, nil)
+		ss.Names(), vis, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	// amhelp.MachDebugEnv(mach)
+	_ = amhelp.MachDebugEnv(mach)
 
 	gob.Register(server.Exportable{})
 	gob.Register(am.Relation(0))
@@ -101,12 +102,10 @@ func New(ctx context.Context, name string) (*Visualizer, error) {
 		return nil, err
 	}
 
-	vis := &Visualizer{
-		R:    NewRenderer(g, mach.Log),
-		Mach: mach,
-
-		graph: g,
-	}
+	// bind
+	vis.R = NewRenderer(g, mach.Log)
+	vis.Mach = mach
+	vis.Graph = g
 
 	return vis, nil
 }
@@ -129,145 +128,11 @@ func (v *Visualizer) ConnectEventState(e *am.Event) {
 	// TODO port from (d *Debugger) ConnectEventState
 }
 
-func (v *Visualizer) InitClientState(e *am.Event) {
-	id := e.Args["id"].(string)
-
-	c, ok := v.graph.Clients[id]
-	if !ok {
-		panic("client not found " + id)
-	}
-	// add machine
-	err := v.graph.G.AddVertex(&amgraph.Vertex{
-		MachId: c.Id,
-	})
-	if err != nil {
-		panic(err)
-	}
-	_ = v.graph.Map.AddVertex(&amgraph.Vertex{
-		MachId: c.Id,
-	})
-
-	// parent
-	if c.MsgSchema.Parent != "" {
-		err = v.graph.G.AddEdge(c.Id, c.MsgSchema.Parent,
-			func(e *graph.EdgeProperties) {
-				e.Data = &amgraph.EdgeData{MachChildOf: true}
-			})
-		if err != nil {
-
-			// wait for the parent to show up
-			when := v.Mach.WhenArgs(ss.InitClient,
-				am.A{"id": c.MsgSchema.Parent}, nil)
-			go func() {
-				<-when
-				err = v.graph.G.AddEdge(c.Id, c.MsgSchema.Parent,
-					func(e *graph.EdgeProperties) {
-						e.Data = &amgraph.EdgeData{MachChildOf: true}
-					})
-				if err == nil {
-					_ = v.graph.Map.AddEdge(c.Id, c.MsgSchema.Parent)
-				}
-			}()
-		} else {
-			_ = v.graph.Map.AddEdge(c.Id, c.MsgSchema.Parent)
-		}
-	}
-
-	// add states
-	for name, props := range c.MsgSchema.States {
-		// vertex
-		err = v.graph.G.AddVertex(&amgraph.Vertex{
-			MachId:    id,
-			StateName: name,
-		})
-		if err != nil {
-			panic(err)
-		}
-		_ = v.graph.Map.AddVertex(&amgraph.Vertex{
-			MachId:    id,
-			StateName: name,
-		})
-
-		// edge
-		err = v.graph.G.AddEdge(id, id+":"+name,
-			func(e *graph.EdgeProperties) {
-				e.Data = &amgraph.EdgeData{
-					MachHas: &amgraph.MachineHas{
-						Auto:  props.Auto,
-						Multi: props.Multi,
-						// TODO
-						Inherited: "",
-					},
-				}
-			})
-		if err != nil {
-			panic(err)
-		}
-		_ = v.graph.Map.AddEdge(id, id+":"+name)
-	}
-
-	type relation struct {
-		States  am.S
-		RelType am.Relation
-	}
-
-	// add relations
-	for name, state := range c.MsgSchema.States {
-
-		// define
-		toAdd := []relation{
-			{States: state.Require, RelType: am.RelationRequire},
-			{States: state.Add, RelType: am.RelationAdd},
-			{States: state.Remove, RelType: am.RelationRemove},
-		}
-
-		// per relation
-		for _, item := range toAdd {
-			// per state
-			for _, relState := range item.States {
-				from := id + ":" + name
-				to := id + ":" + relState
-
-				// update an existing edge
-				if edge, err := v.graph.G.Edge(from, to); err == nil {
-					data := edge.Properties.Data.(*amgraph.EdgeData)
-					data.StateRelation = append(data.StateRelation,
-						&amgraph.StateRelation{
-							RelType: item.RelType,
-						})
-					err = v.graph.G.UpdateEdge(from, to, func(e *graph.EdgeProperties) {
-						e.Data = data
-					})
-					if err != nil {
-						panic(err)
-					}
-
-					continue
-				}
-
-				// add if doesnt exist
-				err = v.graph.G.AddEdge(from, to, func(e *graph.EdgeProperties) {
-					e.Data = &amgraph.EdgeData{
-						StateRelation: []*amgraph.StateRelation{
-							{RelType: item.RelType},
-						},
-					}
-				})
-				if err != nil {
-					// TODO panic
-					panic(err)
-				}
-				_ = v.graph.Map.AddEdge(from, to)
-			}
-		}
-	}
-}
-
-func (v *Visualizer) GoToMachAddrState(e *am.Event) {
-	// TODO GoToMachAddrState time travels to the given address, and optionally
-	// 	time. Without time, inherits the current time.
-	// TODO parse URL to dbgtypes.MachAddress via Debugger.ReadyState
-}
+// func (v *Visualizer) GoToMachAddrState(e *am.Event) {
+// 	// TODO GoToMachAddrState time travels to the given address, and optionally
+// 	// 	time. Without time, inherits the current time.
+// 	// TODO parse URL to dbgtypes.MachAddress via Debugger.ReadyState
+// }
 
 func (v *Visualizer) HImportData(filename string) error {
 	// TODO async state
@@ -309,10 +174,11 @@ func (v *Visualizer) HImportData(filename string) error {
 
 	// init clients
 	for _, data := range res {
-		err := v.graph.AddClient(data.MsgStruct)
+		err := v.Graph.AddClient(data.MsgStruct)
 		if err != nil {
 			return err
 		}
+		v.Mach.Add1(ss.InitClient, am.A{"id": data.MsgStruct.ID})
 	}
 
 	// parse txs
@@ -320,7 +186,7 @@ func (v *Visualizer) HImportData(filename string) error {
 		id := data.MsgStruct.ID
 		// parse msgs
 		for i := range data.MsgTxs {
-			v.graph.ParseMsg(id, data.MsgTxs[i])
+			v.Graph.ParseMsg(id, data.MsgTxs[i])
 		}
 	}
 
@@ -329,7 +195,7 @@ func (v *Visualizer) HImportData(filename string) error {
 
 func (v *Visualizer) Clients() map[string]amgraph.Client {
 	ret := make(map[string]amgraph.Client)
-	for k, c := range v.graph.Clients {
+	for k, c := range v.Graph.Clients {
 		ret[k] = *c
 	}
 
@@ -673,7 +539,6 @@ func (r *Renderer) outputMermaidMach(
 				}
 
 				if r.RenderDetailedPipes {
-					// TODO debug
 					pipes += "\t%% " + edge.Source + ":" + mp.FromState +
 						" --" + sym + " " + edge.Target + ":" + mp.ToState + "\n"
 					pipes += "\t" + r.shortId(edge.Source+":"+mp.FromState) +

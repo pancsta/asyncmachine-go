@@ -6,16 +6,17 @@ package graph
 
 import (
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 
 	"github.com/dominikbraun/graph"
-
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+	"github.com/dominikbraun/graph/draw"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
@@ -235,11 +236,14 @@ func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 				for _, arg := range strings.Split(line[1], " ") {
 					a := strings.Split(arg, "=")
 					if a[0] == "id" {
+						id := a[1]
 						data := graph.EdgeData(&EdgeData{MachConnectedTo: true})
-						err := g.G.AddEdge(a[1], c.Id, data)
+						err := g.G.AddEdge(id, c.Id, data)
 						if err != nil {
 
 							// wait for the other mach to show up TODO better approach
+
+							g.Server.Log("waiting for RPC conn %s to show up", id)
 							when := g.Server.WhenArgs(ss.InitClient, am.A{"id": a[1]}, nil)
 							go func() {
 								<-when
@@ -324,6 +328,7 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 		if err != nil {
 
 			// wait for the parent to show up
+			g.Server.Log("waiting for parent %s to show up", c.MsgSchema.Parent)
 			when := g.Server.WhenArgs(ss.InitClient,
 				am.A{"id": c.MsgSchema.Parent}, nil)
 			go func() {
@@ -332,6 +337,7 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 				if err == nil {
 					_ = g.Map.AddEdge(c.Id, c.MsgSchema.Parent)
 				}
+				g.Server.AddErr(err, nil)
 			}()
 		} else {
 			_ = g.Map.AddEdge(c.Id, c.MsgSchema.Parent)
@@ -419,6 +425,17 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 	}
 
 	return nil
+}
+
+// DumpGv will create a dot-format *.gv file of the graph. To create an SVG:
+//
+//	dot -Tsvg -O path
+func (g *Graph) DumpGv(path string) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	return draw.DOT(g.G, file)
 }
 
 // private
