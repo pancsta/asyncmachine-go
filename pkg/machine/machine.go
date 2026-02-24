@@ -815,9 +815,6 @@ func (m *Machine) Add(states S, args A) Result {
 	if m.disposing.Load() || m.Backoff() {
 		return Canceled
 	}
-	if m.id == "ns-TestManyStates" {
-		print()
-	}
 
 	// let Exception in even with a full queue, but only once
 	if uint16(m.queueLen.Load()) >= m.QueueLimit {

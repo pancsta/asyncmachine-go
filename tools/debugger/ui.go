@@ -145,10 +145,12 @@ func (d *Debugger) hInitUiComponents() {
 	// toolbar
 	d.hInitToolbar()
 
-	// TODO status bar (keystrokes, msgs), step info bar (type, from, to, data)
-	d.statusBar = cview.NewTextView()
-	d.statusBar.SetTextAlign(cview.AlignRight)
-	d.statusBar.SetDynamicColors(true)
+	d.statusBarLeft = cview.NewTextView()
+	d.statusBarLeft.SetTextAlign(cview.AlignLeft)
+	d.statusBarLeft.SetDynamicColors(true)
+	d.statusBarRight = cview.NewTextView()
+	d.statusBarRight.SetTextAlign(cview.AlignRight)
+	d.statusBarRight.SetDynamicColors(true)
 
 	// update models
 	d.hUpdateTimelines()
@@ -809,7 +811,9 @@ func (d *Debugger) hUpdateLayout() {
 	row++
 	d.mainGrid.AddItem(d.toolbars[2], row, 0, 1, len(cols), 0, 0, false)
 	row++
-	d.mainGrid.AddItem(d.statusBar, row, 0, 1, len(cols), 0, 0, false)
+	d.mainGrid.AddItem(d.statusBarLeft, row, 0, 1, len(cols)/2, 0, 0, false)
+	d.mainGrid.AddItem(d.statusBarRight, row, len(cols)/2, 1,
+		len(cols)-len(cols)/2, 0, 0, false)
 
 	d.hUpdateFocusable()
 	// TODO UpdateFocus?

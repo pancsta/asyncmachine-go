@@ -217,6 +217,15 @@ tasks:
       - task: clean-test
       - go test ./... {{.CLI_ARGS}}
 
+  test-integration:
+    env:
+      AM_TEST_RUNNER: 1
+    desc: Run all local tests
+    cmds:
+      - task: clean-test
+      - go test -tags integration
+        ./tools/debugger/test {{.CLI_ARGS}}
+
   test-path:
     env:
       AM_TEST_RUNNER: 1
@@ -482,7 +491,7 @@ tasks:
       - go install mvdan.cc/gofumpt@latest
       - go install golang.org/x/tools/cmd/goimports@latest
       - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh 
-          | sh -s -- -b $(go env GOPATH)/bin v2.5.0
+          | sh -s -- -b $(go env GOPATH)/bin v2.10.1
 
   video-gif:
     env:
@@ -750,8 +759,13 @@ tasks:
     cmds:
       - cp -R assets/asyncmachine-go/* {{.AM_DEPLOY_ASSETS_DIR}}
 
-  docs-api: static-server -addr localhost:7324 docs/api
-  docs-website: static-server -addr localhost:1293 docs/website
+  docs-api:
+    desc: Serve local API docs
+    cmd: static-server -addr localhost:7324 docs/api
+
+  docs-website:
+    desc: Serve local website
+    cmd: static-server -addr localhost:1293 docs/website
 
   gen-docs-diagrams:
     dir: docs/diagrams

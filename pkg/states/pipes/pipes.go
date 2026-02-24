@@ -2,6 +2,7 @@
 package pipes
 
 // TODO implement removal of pipes via:
+//  - dispose source handlers when target mach disposes
 //  - binding-struct
 //  - tagging of handler structs
 
@@ -304,7 +305,8 @@ func Bind(
 	return source.BindHandlers(handlers)
 }
 
-// TODO godoc
+// BindMany binds arbitrary states to a mirrored list of states using Add and
+// Remove. Only one handler struct is created for all the bindings.
 func BindMany(
 	source, target am.Api, states, targetStates am.S,
 ) error {

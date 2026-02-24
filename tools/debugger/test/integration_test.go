@@ -1,3 +1,5 @@
+//go:build integration
+
 package integration
 
 import (
@@ -52,8 +54,9 @@ func init() {
 	// worker
 	// TODO get opt defaults from the CLI
 	worker, err = amtest.NewDbgWorker(false, debugger.Opts{
-		Id:        "loc-worker",
-		Timelines: 2,
+		Id:              "loc-worker",
+		Timelines:       2,
+		EnableClipboard: false,
 	})
 	if err != nil {
 		panic(err)

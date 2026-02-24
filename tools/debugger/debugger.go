@@ -88,7 +88,7 @@ type Debugger struct {
 	nextTxBarLeft      *cview.TextView
 	nextTxBarRight     *cview.TextView
 	helpDialog         *cview.Flex
-	statusBar          *cview.TextView
+	statusBarRight     *cview.TextView
 	clientList         *cview.List
 	mainGrid           *cview.Grid
 	logRebuildEnd      int
@@ -148,7 +148,8 @@ type Debugger struct {
 	sshSrv            *ssh.Server
 	logFile           *os.File
 	// TODO handle in LogBuiltState
-	logFileMx sync.Mutex
+	logFileMx     sync.Mutex
+	statusBarLeft *cview.TextView
 }
 
 // New creates a new debugger instance and optionally import a data file.
@@ -1712,11 +1713,24 @@ func (d *Debugger) hUpdateMatrixRain() {
 }
 
 func (d *Debugger) hUpdateStatusBar() {
+	d.statusBarLeft.SetText("")
+	d.statusBarRight.SetText("")
+
 	c := d.C
 	if c == nil {
-		d.statusBar.SetText("")
 		return
 	}
+
+	// left
+	idx := slices.Index(c.MsgStruct.StatesIndex, c.SelectedState)
+	if idx != -1 {
+		// TODO show schema group / inheritance
+		// TODO add (current) global mach time, below
+		d.statusBarLeft.SetText(fmt.Sprintf("[::b]%s[::-] (idx: %d)",
+			c.SelectedState, idx))
+	}
+
+	// right
 
 	txt := ""
 	if c.CursorStep1 > 0 {
@@ -1735,7 +1749,7 @@ func (d *Debugger) hUpdateStatusBar() {
 		i++
 		txt = strings.Replace(txt, "**", rep, 1)
 	}
-	d.statusBar.SetText(txt)
+	d.statusBarRight.SetText(txt)
 }
 
 func (d *Debugger) hGetSidebarCurrClientIdx() int {

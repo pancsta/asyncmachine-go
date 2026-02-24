@@ -21,3 +21,5 @@ exclude_rule 'MD026'
 exclude_rule 'MD001'
 # Spaces inside emphasis markers (buggy)
 exclude_rule 'MD037'
+# false-positives in collapsable sections
+exclude_rule 'MD034'

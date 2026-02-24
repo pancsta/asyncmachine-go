@@ -1003,7 +1003,9 @@ func MachReplEnv(mach am.Api, opts *ReplOpts) (error, <-chan error) {
 	}
 	var err error
 	if runtime.GOOS == "wasm" {
-		err = MachReplWs(mach, addr, opts2)
+		var s *Server
+		s, err = MachReplWs(mach, addr, opts2)
+		s.Start(nil)
 	} else {
 		err = MachRepl(mach, addr, opts2)
 	}
@@ -1118,8 +1120,9 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 	return nil
 }
 
-// MachReplWs is a non-muxed REPL over WebSocket, See [MachRepl].
-func MachReplWs(mach am.Api, addr string, opts *ReplOpts) error {
+// MachReplWs is a non-muxed REPL over WebSocket, See [MachRepl]. The returned
+// server has to be started manually (and can be configured beforehand).
+func MachReplWs(mach am.Api, addr string, opts *ReplOpts) (*Server, error) {
 	if opts == nil {
 		opts = &ReplOpts{}
 	}
@@ -1128,7 +1131,7 @@ func MachReplWs(mach am.Api, addr string, opts *ReplOpts) error {
 	errCh := opts.ErrCh
 
 	if amhelp.IsTestRunner() {
-		return amhelp.ErrTestAutoDisable
+		return nil, amhelp.ErrTestAutoDisable
 	}
 
 	if addr == "" {
@@ -1140,14 +1143,14 @@ func MachReplWs(mach am.Api, addr string, opts *ReplOpts) error {
 			"%w: REPL source has to implement pkg/rpc/states/StateSourceStatesDef",
 			am.ErrSchema)
 
-		return err
+		return nil, err
 	}
 
 	// verify args is a value struct
 	if opts.Args != nil {
 		t := reflect.TypeOf(opts.Args)
 		if t.Kind() != reflect.Struct {
-			return fmt.Errorf("expected a struct, got %s", t.Kind())
+			return nil, fmt.Errorf("expected a struct, got %s", t.Kind())
 		}
 	}
 
@@ -1160,18 +1163,17 @@ func MachReplWs(mach am.Api, addr string, opts *ReplOpts) error {
 			WebSocketTunnel: opts.WebSocketTunnel,
 		})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	s.Addr = addr
 	s.Source = mach
-	s.Start(nil)
 
 	if addrCh == nil && addrDir == "" {
 		if errCh != nil {
 			close(errCh)
 		}
 
-		return nil
+		return s, nil
 	}
 
 	go func() {
@@ -1219,7 +1221,7 @@ func MachReplWs(mach am.Api, addr string, opts *ReplOpts) error {
 		}
 	}()
 
-	return nil
+	return s, nil
 }
 
 // // DEBUG for perf testing
