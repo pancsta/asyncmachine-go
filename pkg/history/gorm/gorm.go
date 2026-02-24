@@ -355,7 +355,10 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 	// TODO SPLIT
 	m := t.mem
 	if m.Ctx.Err() != nil {
-		_ = m.Dispose()
+		// no nesting in tracers
+		go func() {
+			_ = m.Dispose()
+		}()
 		return
 	}
 	if (!tx.IsAccepted.Load() && !m.Cfg.TrackRejected) || tx.Mutation.IsCheck {

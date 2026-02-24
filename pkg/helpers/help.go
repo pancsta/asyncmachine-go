@@ -372,8 +372,7 @@ func Healthcheck(mach am.Api) {
 	go func() {
 		for {
 			// static delay
-			time.Sleep(healthcheckInterval)
-			if mach.Context().Err() != nil {
+			if !Wait(mach.Context(), healthcheckInterval) {
 				break
 			}
 

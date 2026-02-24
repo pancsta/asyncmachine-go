@@ -191,6 +191,7 @@ func NewServer(
 	mach.SemLogger().SetArgsMapper(LogArgs)
 	mach.SetGroups(states.ServerGroups, ssS)
 	mach.OnDispose(func(id string, ctx context.Context) {
+		netSrcMach.Dispose()
 		if l := s.Listener.Load(); l != nil {
 			_ = (*l).Close()
 			s.Listener.Store(nil)
@@ -223,9 +224,6 @@ func NewServer(
 	if err = netSrcMach.BindTracer(s.tracer); err != nil {
 		return nil, err
 	}
-	netSrcMach.OnDispose(func(id string, ctx context.Context) {
-		_ = netSrcMach.DetachTracer(s.tracer)
-	})
 
 	// handle payload
 	if hasHandlers {
@@ -251,9 +249,6 @@ func NewServer(
 		if err != nil {
 			return nil, err
 		}
-		mach.OnDispose(func(id string, ctx context.Context) {
-			_ = netSrcMach.DetachHandlers(h)
-		})
 	}
 
 	// longer timeouts

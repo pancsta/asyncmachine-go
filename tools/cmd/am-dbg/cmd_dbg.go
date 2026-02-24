@@ -30,7 +30,8 @@ func main() {
 
 // TODO error msgs
 func cliRun(_ *cobra.Command, _ []string, p types.Params) {
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
 
 	// print the version
 	ver := utils.GetVersion()
@@ -133,20 +134,13 @@ func cliRun(_ *cobra.Command, _ []string, p types.Params) {
 	// TODO move to params
 	dbg.Start(p.StartupMachine, p.StartupTx, p.StartupView, p.StartupGroup)
 
-	// TODO notify ctx
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
 	select {
 	case <-dbg.Mach.WhenDisposed():
-	case <-sigChan:
 	case <-dbg.Mach.WhenNot1(ss.Start, nil):
 	}
 
 	// show footer stats
 	printStats(dbg)
-
-	dbg.Dispose()
 
 	// pprof memory profile
 	types.HandleProfMem(logger, &p)
