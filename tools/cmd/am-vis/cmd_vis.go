@@ -7,10 +7,13 @@ import (
 	"maps"
 	"os"
 	"slices"
+	"time"
 
 	"github.com/alexflint/go-arg"
+	"github.com/joho/godotenv"
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	dbgtypes "github.com/pancsta/asyncmachine-go/tools/debugger/types"
 	"github.com/pancsta/asyncmachine-go/tools/visualizer"
 	"github.com/pancsta/asyncmachine-go/tools/visualizer/states"
@@ -56,6 +59,10 @@ type Args struct {
 
 	OutputElk      bool   `arg:"--output-elk" default:"true" help:"Use ELK layout"`
 	OutputFilename string `arg:"-o,--output-filename" default:"am-vis"`
+
+	// misc
+
+	Debug bool `arg:"--debug" help:"Enable debugging for asyncmachine"`
 }
 
 func (Args) Description() string {
@@ -105,6 +112,11 @@ func main() {
 	p := arg.MustParse(&args)
 	if p.Subcommand() == nil {
 		p.Fail("missing subcommand (" + types.CmdRenderDump + ")")
+	}
+
+	// load .env
+	if args.Debug {
+		_ = godotenv.Load()
 	}
 
 	switch {
@@ -179,6 +191,13 @@ func renderDump(ctx context.Context, args Args, cliArgs []string) error {
 	}
 	fmt.Printf("Rendered %s\n", args.OutputFilename+".svg")
 	fmt.Printf("Rendered %s\n", args.OutputFilename+".d2")
+	// vis.Graph.DumpGv(args.OutputFilename + ".gv")
+
+	// push debug
+	if args.Debug {
+		vis.Mach.Add1(am.StateHealthcheck, nil)
+		time.Sleep(time.Second)
+	}
 
 	return nil
 }
