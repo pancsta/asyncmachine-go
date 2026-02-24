@@ -380,6 +380,7 @@ func (s *Server) RpcStartingState(e *am.Event) {
 			// TODO WsTunConnectingState
 			// go func() {
 			// retry loop
+			s.Conn = nil
 			for ctxStart.Err() == nil &&
 				s.wsTunRetryRound.Load() < int32(s.WsTunConnRetries) {
 
