@@ -209,7 +209,7 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
     - with [`/examples/mach_template`](/examples/mach_template) being ready for copy-paste
 - [`/docs/manual.md`](/docs/manual.md) is the go-to
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) will bootstrap
-- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) will record every detail
+- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) will record every detail
 - and [reading tests](https://github.com/search?q=repo%3Apancsta%2Fasyncmachine-go+path%3A%2F.*_test.go%2F&type=code)
   is always a good idea
 
@@ -233,7 +233,7 @@ Other packages:
 
 ## [Devtools](/tools)
 
-- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) Multi-client TUI debugger.
+- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) Generates schema files and Grafana dashboards.
 - [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
 - [`/tools/cmd/am-vis`](/tools/cmd/am-vis) Generates D2 diagrams.
@@ -327,7 +327,7 @@ Under development, status depends on each package. The bottom layers seem prod g
 - [ROADMAP.md](/ROADMAP.md)
 
 <div align="center">
-    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/visualizer/README.md#transition-sequence">
+    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/am-vis/README.md#transition-sequence">
         <img style="min-height: 397px"
             src="https://pancsta.github.io/assets/asyncmachine-go/am-vis/tx.svg"
             alt="tx sequence diagram" />

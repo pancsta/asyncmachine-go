@@ -169,7 +169,7 @@ func AddFlags(rootCmd *cobra.Command) {
 	f.String(pStartupGroup, "", "Startup group")
 	f.Bool(pEnableMouse, true, "Enable mouse support")
 	f.Bool(pUiSsh, false,
-		"Enable SSH headless mode on port --listen-addr +2. EXPERIMENTAL")
+		"Enable SSH headless mode on port --listen-addr +2 (EXPERIMENTAL)")
 	f.Bool(pEnableClipboard, true, "Enable clipboard support")
 	f.Bool(pCleanOnConnect, true,
 		"Clean up disconnected clients on the 1st connection")
@@ -203,12 +203,12 @@ func AddFlags(rootCmd *cobra.Command) {
 		"Write a detailed client list into am-dbg-clients.txt inside --dir")
 	f.Bool(pOutputTx, true,
 		"Write the current transition with steps into tx.md / d2 / mermaid"+
-			" / txt inside --dir. EXPERIMENTAL")
+			" / txt inside --dir (EXPERIMENTAL)")
 	f.Bool(pOutputLog, false,
 		"Write the current log buffer to log.txt inside --dir.")
 	f.Int(pOutputDiagrams, 0,
 		"Level of details for machine graph diagrams (svg, d2, mermaid) in "+
-			"--dir (0 off, 1-3 on). EXPERIMENTAL")
+			"--dir (0 off, 1-3 on) (EXPERIMENTAL)")
 	f.Bool(pUiWeb, true,
 		"Start a web server for --dir and diagrams on --listen-addr +1 "+
 			"(EXPERIMENTAL)")

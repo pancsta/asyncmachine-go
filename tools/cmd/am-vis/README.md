@@ -188,7 +188,7 @@ It's recommended to view the SVGs using [SVG Navigator](https://github.com/pRizz
 
 ## Transition Sequence
 
-Transitions can be plotted as sequence diagrams and rendered to SVG and ASCII. Currently [`am-dbg`](/tools/cmd/am-dbg)
+Transitions can be plotted as sequence diagrams and rendered to SVG and ASCII. Currently [`am-dbg`](/tools/cmd/am-dbg/README.md)
 does it automatically with `--output-tx` and places files inside `--dir`. Support in `am-vis` CLI coming soon.
 
 This is the same steps diagram as the second timeline of `am-dbg` and includes:
@@ -199,7 +199,7 @@ This is the same steps diagram as the second timeline of `am-dbg` and includes:
 - handler calls
 - cancellations
 
-![large transition](./assets/asyncmachine-go/am-vis/tx.svg)
+![large transition](https://pancsta.github.io/assets/asyncmachine-go/am-vis/tx.svg)
 
 ```text
 ┌────────────────┐     ┌───────┐     ┌───────┐

@@ -1569,9 +1569,9 @@ mach.SetLogger(func(level LogLevel, msg string, args ...any) {
 
 ### Debugging
 
-**asyncmachine-go** comes with a [`TUI debugger (am-dbg)`](/tools/cmd/am-dbg), which makes it very easy to hook into any
-state machine on a [transition's](#transition-lifecycle) step-level, and retain [state machine's log](#logging). It
-also combines very well with the Golang debugger when stepping through code.
+**asyncmachine-go** comes with a [`TUI debugger (am-dbg)`](/tools/cmd/am-dbg/README.md), which makes it very easy to
+hook into any state machine on a [transition's](#transition-lifecycle) step-level, and retain [state machine's log](#logging).
+It also combines very well with the Golang debugger when stepping through code.
 
 Environment variables used for debugging can be found in [/docs/env-configs.md](/docs/env-configs.md).
 
@@ -1927,7 +1927,7 @@ Each of them has a readme with examples:
 - [`/pkg/graph`](/pkg/graph) Directional multigraph of connected state machines.
 - [`/pkg/node`](/pkg/node) Distributed worker pools with supervisors.
 - [`/pkg/pubsub`](/pkg/pubsub) Decentralized PubSub based on libp2p gossipsub.
-- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg) Multi-client TUI debugger.
+- [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) Generates schema files and Grafana dashboards.
 - [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
 - [`/tools/cmd/am-vis`](/tools/cmd/am-vis) Generates D2 diagrams.

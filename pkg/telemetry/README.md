@@ -16,7 +16,7 @@
 
 ## dbg
 
-`dbg` is simple telemetry used by [am-dbg TUI Debugger](/tools/cmd/am-dbg).
+`dbg` is simple telemetry used by [am-dbg TUI Debugger](/tools/cmd/am-dbg/README.md).
 It delivers `DbgMsg` and `DbgMsgStruct` via standard `net/rpc`. It can also be consumed by a custom client.
 
 ## OpenTelemetry Traces
