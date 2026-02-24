@@ -52,9 +52,9 @@ type Client struct {
 	// HelloDelay between Connected and Handshaking. Default 0, useful for
 	// rpc/Mux.
 	HelloDelay time.Duration
-	// ReconnectOn decides if the client will try to [RetryingConn] after a
+	// ReconnectOnDisconn decides if the client will try to [RetryingConn] after a
 	// clean [Disconnect].
-	ReconnectOn bool
+	ReconnectOnDisconn bool
 	// Custom connection (wg WebSocket) TODO handle better in notif
 	Conn atomic.Pointer[net.Conn]
 	Opts ClientOpts
@@ -162,16 +162,16 @@ func NewClient(
 	}
 
 	c := &Client{
-		Name:             name,
-		ExceptionHandler: &ExceptionHandler{},
-		LogEnabled:       os.Getenv(EnvAmRpcLogClient) != "",
-		Addr:             netSrcAddr,
-		CallTimeout:      3 * time.Second,
-		ConnTimeout:      3 * time.Second,
-		DisconnTimeout:   3 * time.Second,
-		DisconnCooldown:  10 * time.Millisecond,
-		ReconnectOn:      true,
-		Opts:             *opts,
+		Name:               name,
+		ExceptionHandler:   &ExceptionHandler{},
+		LogEnabled:         os.Getenv(EnvAmRpcLogClient) != "",
+		Addr:               netSrcAddr,
+		CallTimeout:        3 * time.Second,
+		ConnTimeout:        3 * time.Second,
+		DisconnTimeout:     3 * time.Second,
+		DisconnCooldown:    10 * time.Millisecond,
+		ReconnectOnDisconn: true,
+		Opts:               *opts,
 
 		SyncNoSchema:          opts.NoSchema,
 		SyncAllowedStates:     opts.AllowedStates,
@@ -247,8 +247,13 @@ func (c *Client) StartState(e *am.Event) {
 	// tmp state names
 	stateNames := slices.Collect(maps.Keys(c.schema))
 	id := PrefixNetMach + utils.RandId(5)
+	// RPC parent or actual parent
+	var parent am.Api = c.Mach
+	if os.Getenv(EnvAmRpcDbg) == "" {
+		parent = c.Opts.Parent
+	}
 	netMach, nmInternal, err := NewNetworkMachine(ctx, id, nmConn, c.schema,
-		stateNames, c.Mach, nil, c.SyncMutationFiltering)
+		stateNames, parent, nil, c.SyncMutationFiltering)
 	if err != nil {
 		c.Mach.AddErr(err, nil)
 		return
@@ -401,7 +406,7 @@ func (c *Client) DisconnectedState(e *am.Event) {
 	// try to reconnect
 	wasAny := e.Transition().TimeBefore.Any1
 	if wasAny(c.Mach.Index1(ssC.Connected), c.Mach.Index1(ssC.Connecting)) &&
-		c.ReconnectOn {
+		c.ReconnectOnDisconn {
 
 		c.Mach.EvAdd1(e, ssC.RetryingConn, nil)
 		return
@@ -518,8 +523,8 @@ func (c *Client) HandshakeDoneState(e *am.Event) {
 	netMach.id = PrefixNetMach + c.Name
 	c.clockSet(args.MachTime, args.QueueTick, args.MachTick)
 
-	// optional env debug on 1st call
-	if c.Mach.Tick(ssC.HandshakeDone) == 1 && os.Getenv(EnvAmRpcDbg) != "" {
+	// netmach env debug on 1st call
+	if c.Mach.Tick(ssC.HandshakeDone) == 1 {
 		_ = amhelp.MachDebugEnv(c.NetMach)
 	}
 
@@ -675,7 +680,7 @@ func (c *Client) Stop(
 // IsPartial is true for NetMachs syncing only a subset of the Net Source's
 // states.
 func (c *Client) IsPartial() bool {
-	return len(c.SyncSkippedStates) > 0 || len(c.SyncSkippedStates) > 0
+	return len(c.SyncSkippedStates) > 0
 }
 
 // GetKind returns a kind of the RPC component (server / client).

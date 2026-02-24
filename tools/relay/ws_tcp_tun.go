@@ -30,8 +30,7 @@ type WsTcpTun struct {
 
 func NewWsTcpTun(
 	ctx context.Context, wsConn *websocket.Conn, idRemote, addr, remoteAddr,
-	idTun string,
-	parent am.Api, debug bool,
+	idTun string, parent am.Api, debug bool,
 ) (*WsTcpTun, error) {
 	t := &WsTcpTun{
 		DisposedHandlers: &ssam.DisposedHandlers{},
@@ -50,7 +49,9 @@ func NewWsTcpTun(
 		return nil, err
 	}
 	t.Mach = mach
-	_ = amhelp.MachDebugEnv(mach)
+	if debug {
+		_ = amhelp.MachDebugEnv(mach)
+	}
 
 	// register disposal
 	var dispose am.HandlerDispose = func(id string, ctx context.Context) {

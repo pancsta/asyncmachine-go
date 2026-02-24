@@ -30,7 +30,8 @@ func main() {
 
 // TODO error msgs
 func cliRun(_ *cobra.Command, _ []string, p types.Params) {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(context.Background(),
+		syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	// print the version

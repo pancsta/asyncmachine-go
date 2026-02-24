@@ -173,7 +173,7 @@ func (r *Relay) HttpReadyState(e *am.Event) {
 	// TODO /dial - RPC clients (WS to TCP dial)
 	// ctx := r.Mach.NewStateCtx(ssR.HttpReady)
 
-	r.out("WASM relay listening on %s\n", r.Args.Wasm.ListenAddr)
+	r.out("WASM relay listening on http://%s\n", r.Args.Wasm.ListenAddr)
 
 	// static
 	if dir := r.Args.Wasm.StaticDir; dir != "" {

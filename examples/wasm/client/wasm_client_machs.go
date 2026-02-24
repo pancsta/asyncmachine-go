@@ -1,3 +1,6 @@
+// See wasm+js files at:
+// https://github.com/pancsta/asyncmachine-go/tree/v0.18.0/examples/wasm/client
+
 package main
 
 import (
@@ -39,12 +42,15 @@ func initMachines(
 	}
 	barMach.SemLogger().SetArgsMapper(example.LogArgs)
 	amhelp.MachDebugEnv(barMach)
-	arpc.MachReplWs(barMach, example.EnvRelayHttpAddr, &arpc.ReplOpts{
+	repl, err := arpc.MachReplWs(barMach, example.EnvRelayHttpAddr, &arpc.ReplOpts{
 		// TODO should be automatic in WASM
 		WebSocketTunnel: arpc.WsListenPath("repl-"+barMach.Id(), example.EnvBarReplAddr),
 		Args:            ARpc{},
 		ParseRpc:        example.ParseRpc,
 	})
+	if err == nil {
+		repl.Start(nil)
+	}
 
 	// RPC Server
 

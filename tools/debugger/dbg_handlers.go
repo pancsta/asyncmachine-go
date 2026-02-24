@@ -2276,10 +2276,15 @@ func (d *Debugger) SshServerState(e *am.Event) {
 		d.App.SetScreen(screen)
 		busy.Store(true)
 
+		// TODO https://github.com/gliderlabs/ssh/issues/226
+		sigCh := make(chan ssh.Signal, 1)
+		sess.Signals(sigCh)
+		defer close(sigCh)
+
 		// wait till end
 		select {
-		// TODO SshClientState
 		case <-d.Mach.WhenTicks(ss.SshDisconn, 1, nil):
+		case <-sigCh: // TODO
 		case <-ctx.Done():
 		}
 

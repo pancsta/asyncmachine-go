@@ -183,7 +183,7 @@ func (r *Repl) ReplModeState(e *am.Event) {
 		inputrc.Unescape(`\C-x`), "copy", false)
 	if err != nil {
 		// TODO debug
-		println("ERROR: ", err)
+		// println("ERROR: ", err)
 	}
 
 	// TODO bind chained complete (always open)

@@ -11,16 +11,16 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
-	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
-	amrelay "github.com/pancsta/asyncmachine-go/tools/relay"
-	amrelayt "github.com/pancsta/asyncmachine-go/tools/relay/types"
 
 	example "github.com/pancsta/asyncmachine-go/examples/wasm"
 	"github.com/pancsta/asyncmachine-go/examples/wasm/states"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
+	amrelay "github.com/pancsta/asyncmachine-go/tools/relay"
+	amrelayt "github.com/pancsta/asyncmachine-go/tools/relay/types"
 )
 
 var ssF = states.FooStates

@@ -64,6 +64,8 @@ type Server struct {
 
 	// failsafe - connection (writable when stopped)
 
+	// WsTunReconn enables retrying the WebSocket tunnel.
+	WsTunReconn bool
 	// WsTunConnTimeout is the maximum time to wait for a WebSocket tunnel
 	// connection to be established.
 	WsTunConnTimeout time.Duration
@@ -286,7 +288,8 @@ func (s *Server) ExceptionState(e *am.Event) {
 
 		// retry?
 		add, _ := e.Transition().TimeIndexDiff()
-		shouldRetry := s.wsTunRetryRound.Load() < int32(s.WsTunConnRetries)
+		shouldRetry := s.wsTunRetryRound.Load() < int32(s.WsTunConnRetries) &&
+			s.WsTunReconn
 		if add.Is1(ssS.ErrNetwork) && shouldRetry {
 			s.log("WebSocket exception retry")
 			s.Mach.Remove1(ssS.Exception, nil)
@@ -377,6 +380,7 @@ func (s *Server) RpcStartingState(e *am.Event) {
 			// retry loop
 			s.Conn = nil
 			for ctxStart.Err() == nil &&
+				(s.WsTunReconn || s.wsTunRetryRound.Load() == 0) &&
 				s.wsTunRetryRound.Load() < int32(s.WsTunConnRetries) {
 
 				// wait for time or exit

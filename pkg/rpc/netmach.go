@@ -119,7 +119,7 @@ var _ am.Api = &NetworkMachine{}
 // NewNetworkMachine creates a new instance of a NetworkMachine.
 func NewNetworkMachine(
 	ctx context.Context, id string, conn NetMachConn, schema am.Schema,
-	stateNames am.S, parent *am.Machine, tags []string, filterMutations bool,
+	stateNames am.S, parent am.Api, tags []string, filterMutations bool,
 ) (*NetworkMachine, *NetMachInternal, error) {
 	// validate
 	if ctx == nil {
