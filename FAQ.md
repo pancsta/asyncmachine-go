@@ -83,6 +83,11 @@ separate goroutines each. Each handler usually forks another goroutine to unbloc
 goroutines can be limited with `amhelp.Pool` (`errgroup`) per a state, machine, or both. It's a form of structured
 concurrency.
 
+## What are the downsides?
+
+High abstraction, boilerplate, stack traces split into state-traces, reduced type safety, incomplete documentation, TUI
+devtools, not a mainstream paradigm.
+
 ## What should be a "state"?
 
 Only interesting things - if we don't care about something to be a separate entity, there's no need to orchestrate it

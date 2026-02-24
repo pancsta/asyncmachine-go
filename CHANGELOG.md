@@ -4,6 +4,15 @@
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
+## [v0.18.1](https://github.com/pancsta/asyncmachine-go/tree/v0.18.1) (2026-02-24)
+
+- feat: release `v0.18.1` [\#371](https://github.com/pancsta/asyncmachine-go/pull/371) (@pancsta)
+- fix\(rpc\): fix WASM reconns hang the browser [\#370](https://github.com/pancsta/asyncmachine-go/pull/370) (@pancsta)
+- fix: fix disposal in mach, rpc, history, debugger [\#369](https://github.com/pancsta/asyncmachine-go/pull/369)
+ (@pancsta)
+- fix\(am-vis\): fix parent and RPC graph linking [\#368](https://github.com/pancsta/asyncmachine-go/pull/368)
+ (@pancsta)
+
 ## [v0.18.0](https://github.com/pancsta/asyncmachine-go/tree/v0.18.0) (2026-02-21)
 
 - feat: release `v0.18.0` [\#365](https://github.com/pancsta/asyncmachine-go/pull/365)

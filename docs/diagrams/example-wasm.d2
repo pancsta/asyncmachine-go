@@ -1,0 +1,226 @@
+direction: up
+
+classes: {
+  link-rel: {
+    style: {
+      stroke-dash: 3
+    }
+  }
+  link-handler: {
+    style: {
+      stroke-dash: 3
+    }
+  }
+  link-sync: {
+    style: {
+      stroke: yellow
+      stroke-dash: 3
+    }
+  }
+  link-push: {
+    style: {
+      stroke: yellow
+    }
+  }
+  state: {
+    style: {
+      stroke: white
+      border-radius: 999
+      fill: "#45475A"
+      font-size: 20
+    }
+  }
+  mach-net: {
+    style: {
+      stroke: "#5F5C5C"
+      fill: "#243d04"
+      font-size: 30
+    }
+  }
+  mach-source: {
+    style {
+      stroke: "#ec7639"
+      stroke-width: 5
+      fill: "#074985"
+      font-size: 30
+    }
+  }
+  mach-handler: {
+    style {
+      stroke-width: 0
+      fill: "#074985"
+      font-size: 30
+    }
+  }
+  host: {
+    style: {
+      stroke: "#5F5C5C"
+      fill: "#302E2E"
+      font-size: 30
+    }
+  }
+  handler: {
+    style: {
+      fill: "black"
+    }
+  }
+  struct: {
+    style: {
+      fill: "#262424"
+      font-size: 30
+    }
+  }
+  transparent: {
+    style: {
+      opacity: 0
+    }
+  }
+  sequence: {
+    style: {
+      font-size: 16
+      stroke: "#7E7878"
+    }
+  }
+}
+
+title: |md
+  # WASM Example
+
+  Logical view of two state machines, *server-foo* and *browser-bar*, distributed across the server and browser using WebAssembly.
+
+  Ommitted in this diagram:
+  - RPC servers, clients, muxer
+  - Relay
+  - REPLs
+  - WS-TCP tunnels
+
+  Source: *asyncmachine.dev*
+
+| {near: top-center}
+
+"": {
+
+  # SERVER
+
+  h1: Server {
+    s: server-foo {
+      explanation: |md
+        State Source Machine
+
+        RPC server
+      |
+
+      Start.class: state
+      Msg.class: state
+      Bored.class: state
+    }
+    s.class: mach-source
+
+    nm: rnm-server-bar {
+      explanation: |md
+        Net Machine
+
+        RPC client
+      |
+
+      Start.class: state
+      Msg.class: state
+      SubmitMsg.class: state
+    }
+    nm.class: mach-net
+    s -> nm: Mutations
+
+    h: "HandlersFoo{}" {
+      StartState: MsgEnter()
+      StartState.class: handler
+      MsgEnter: MsgEnter()
+      MsgEnter.class: handler
+      MsgState: MsgState()
+      MsgState.class: handler
+      BoredState: BoredState()
+      BoredState.class: handler
+    }
+    h.class: struct
+    s.Msg -> h.MsgEnter: {class: link-handler}
+    s.Msg -> h.MsgState: {class: link-handler}
+    s.Bored -> h.BoredState: {class: link-handler}
+    s.Start -> h.StartState: {class: link-handler}
+  }
+
+  # NETWORK
+
+  h1.class: host
+  h1.s -> h2.nm: State Sync {class: link-sync}
+  h2.nm -> h1.s: Mutations {class: link-push}
+  h2.s -> h1.nm: State Sync {class: link-sync}
+  h1.nm -> h2.s: Mutations {class: link-push}
+
+  # BROWSER
+
+  h2: Browser {
+    nm: rnm-browser-foo {
+      explanation: |md
+        Net Machine
+
+        RPC client
+      |
+
+      Start.class: state
+      Msg.class: state
+      Bored.class: state
+    }
+    nm.class: mach-net
+
+    nhm: browser-foo {
+      explanation: |md
+        Net Handler Machine
+      |
+
+      Start.class: state
+      Msg.class: state
+      Bored.class: state
+    }
+    nhm.class: mach-handler
+    nm -> nhm: State Sync
+
+    h: "HandlersFoo{}" {
+      BoredState: BoredState()
+      BoredState.class: handler
+    }
+    h.class: struct
+    nhm.Bored -> h.BoredState: {class: link-handler}
+
+    s: browser-bar {
+      explanation: |md
+        State Source Machine
+
+        RPC server
+      |
+
+      Start.class: state
+      Msg.class: state
+      SubmitMsg.class: state
+    }
+    s.class: mach-source
+    s -> nm: Mutations
+
+    hs: "HandlersBar{}" {
+      StartState: StartState()
+      StartState.class: handler
+      MsgEnter: MsgEnter()
+      MsgEnter.class: handler
+      MsgState: MsgState()
+      MsgState.class: handler
+      SubmitMsgState: SubmitMsgState()
+      SubmitMsgState.class: handler
+    }
+    hs.class: struct
+    s.Start -> hs.StartState: {class: link-handler}
+    s.Msg -> hs.MsgEnter: {class: link-handler}
+    s.Msg -> hs.MsgState: {class: link-handler}
+    s.SubmitMsg -> hs.SubmitMsgState: {class: link-handler}
+  }
+  h2.class: host
+  #   h2.h.Handler -> h1.s.Bar: Indirect Add {class: link-sync}
+}
+"".class: transparent

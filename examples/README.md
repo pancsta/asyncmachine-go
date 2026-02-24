@@ -8,10 +8,11 @@
 Table of contents:
 
 - [Examples](#examples)
-  - [aRPC Setup](#arpc-setup)
+  - [aRPC](#arpc)
   - [CLI](#cli)
   - [CLI Daemon](#cli-daemon)
   - [DAG Dependency Graph](#dag-dependency-graph)
+  - [Fan Out Fan In](#fan-out-fan-in)
   - [FSM - Finite State Machine](#fsm---finite-state-machine)
   - [NFA - Nondeterministic Finite Automaton](#nfa---nondeterministic-finite-automaton)
   - [PATH Watcher](#path-watcher)
@@ -23,6 +24,7 @@ Table of contents:
   - [Temporal FileProcessing Workflow](#temporal-fileprocessing-workflow)
   - [Tree State Source](#tree-state-source)
   - [TUI](#tui)
+  - [WASM](#wasm)
 - [Benchmarks](#benchmarks)
   - [Benchmark gRPC](#benchmark-grpc)
   - [Benchmark libp2p PubSub](#benchmark-libp2p-pubsub)
@@ -35,7 +37,7 @@ Table of contents:
 
 Headers link more info about each example.
 
-### [aRPC Setup](/examples/arpc)
+### [aRPC](/examples/arpc)
 
 - #rpc #client #server
 - [origin](/pkg/rpc/README.md)

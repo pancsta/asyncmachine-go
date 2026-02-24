@@ -93,24 +93,29 @@ Flags:
       --dbg-prof-srv string      Start pprof server
   -d, --dir string               Output directory for generated files (default ".")
       --enable-clipboard         Enable clipboard support (default true)
-      --enable-mouse             Enable mouse support (experimental) (default true)
+      --enable-mouse             Enable mouse support (default true)
       --filter-group             Filter transitions by a selected group (default true)
-      --filter-log-level int     Filter transitions to this log level, 0-5 (silent-everything) (default 2)
+      --filter-log-level int     Filter transitions up to this log level, 0-5 (silent-everything) (default 2)
   -f, --fwd-data string          Forward incoming data to other instances (eg addr1,addr2)
   -h, --help                     help for am-dbg
   -i, --import-data string       Import an exported gob.br file
-  -l, --listen-on string         Host and port for the debugger to listen on (default "localhost:6831")
+  -l, --listen-addr string       Host and port for the debugger to listen on (default "localhost:6831")
       --log-ops-ttl string       Max time to live for logs level LogOps (default "24h")
       --max-mem int              Max memory usage (in MB) to flush old transitions (default 1000)
       --output-clients           Write a detailed client list into am-dbg-clients.txt inside --dir
-      --output-diagrams int      Level of details for diagrams (svg, d2, mermaid) in --dir (0 off, 1-3 on). EXPERIMENTAL
-      --output-tx                Write the current transition with steps into am-dbg-tx.md inside --dir
+      --output-diagrams int      Level of details for machine graph diagrams (svg, d2, mermaid) in --dir
+         (0 off, 1-3 on). EXPERIMENTAL
+      --output-log               Write the current log buffer to log.txt inside --dir.
+      --output-tx                Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir.
+         EXPERIMENTAL (default true)
   -c, --select-connected         Select the newly connected machine, if no other is connected
       --select-group string      Startup group
   -m, --select-machine string    Select a machine by (partial) ID on startup (requires --import-data)
-  -t, --select-transition int    Select a transaction by _number_ on startup (requires --select-machine)
+  -t, --select-transition int    Select a transition by _number_ on startup (requires --select-machine)
       --tail                     Start from the lastest tx (default true)
-      --ui-diagrams              Start a web diagrams viewer on a +1 port (EXPERIMENTAL) (default true)
+      --ui-ssh                   Enable SSH headless mode on port --listen-addr +2. EXPERIMENTAL
+      --ui-web                   Start a web server for --dir and diagrams on --listen-addr +1 (EXPERIMENTAL)
+         (default true)
       --version                  Print version and exit
   -v, --view string              Initial view (tree-log, tree-matrix, matrix) (default "tree-log")
       --view-narrow              Force a narrow view, independently of the viewport size

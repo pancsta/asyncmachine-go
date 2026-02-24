@@ -5,10 +5,10 @@
 > [!NOTE]
 > **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
-**/pkg/states** contains common state definitions to make state-based API easier to compose and exchange. Additionally it
-offers tooling for "piping" states between state machines.
+**/pkg/states** contains common state schema mixins to make state-based APIs easier to compose and exchange. It
+also offers tooling for [piping](#piping) states between state machines.
 
-## Available State Definitions
+## Available State Schemas
 
 - [BasicStatesDef](/pkg/states/ss_basic.go): Start, Ready, Healthcheck
 - [ConnectedStatesDef](/pkg/states/ss_connected.go): Client connection in 4 states
@@ -25,15 +25,15 @@ import ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 ### Inherit from BasicStatesDef manually
 
 ```go
-// inherit from RPC worker
-schema := am.SchemaMerge(ssam.BasicStruct, am.Schema{
+// inherit BasicSchema
+schema := am.SchemaMerge(ssam.BasicSchema, am.Schema{
     "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
 })
 names := am.SAdd(ssam.BasicStates.Names(), am.S{"Foo", "Bar"})
 ```
 
-### Inherit from BasicStatesDef via a definition
+### Inherit from BasicStatesDef via a schema definition
 
 ```go
 // MyMachStatesDef contains all the states of the MyMach state machine.
@@ -49,8 +49,8 @@ type MyMachStatesDef struct {
 
 // MyMachSchema represents all relations and properties of MyMachStates.
 var MyMachSchema = SchemaMerge(
-    // inherit from BasicStruct
-    ss.BasicStruct,
+    // inherit from BasicSchema
+    ss.BasicSchema,
     am.Schema{
 
         ssM.State1: {},
@@ -70,16 +70,14 @@ $ am-gen --name MyMach \
 
 ## Piping
 
-A "pipe" binds a handler of a source machine, to a mutation in a target machine. Only [final handlers](/docs/manual.md#final-handlers)
-are supported, to block the source mutation.
+A "pipe" binds a [transition handler](/docs/manual.md#transition-handlers) to a source state-machine and [mutates](/docs/manual.md#mutations)
+the target state-machine. Only [final handlers](/docs/manual.md#final-handlers) are subject to piping and the resulting
+mutation won't block the source transition (it will be [queued instead](/docs/manual.md#queue-and-history)). The target
+state-machine can reject the mutation, as a part of the [negotiation phase](/docs/manual.md#negotiation-handlers).
 
-Each module can export their own pipes, like [`/pkg/rpc`](/pkg/rpc) and [`/pkg/node`](/pkg/node).
-
-### Available Pipes
-
-- `BindConnected`
-- `BindErr`
-- `BindReady`
+Pipes work only within the same Golang process, but when combined with [`/pkg/rpc`](/pkg/rpc), we can effectively pipe
+states over the network. Some packages export predefined pipes for their state machines (eg [`/pkg/rpc`](/pkg/rpc) and
+[`/pkg/node`](/pkg/node)).
 
 ### Installation Pipes
 
@@ -87,10 +85,25 @@ Each module can export their own pipes, like [`/pkg/rpc`](/pkg/rpc) and [`/pkg/n
 import ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 ```
 
+### Predefined Pipes
+
+These predefined functions should cover most of the use cases:
+
+- `BindErr`
+- `BindReady`
+- `BindConnected`
+- `Bind`
+- `BindMany`
+- `BindAny`
+
 ### Using Pipes
 
 ```go
+// pipe RpcReady to RpcReady from rpcClient.Mach to myMach
 ampipe.BindReady(rpcClient.Mach, myMach, "RpcReady", "")
+
+// pipe Foo to FooActive and FooInactive from myMach1 to myMach2
+ampipe.Bind(myMach1, myMach2, "Foo", "FooActive", "FooInactive")
 ```
 
 ### Piping Manually
@@ -112,7 +125,7 @@ source.BindHandlers(h)
 
 ## Extending States
 
-The purpose of this package is to share reusable states, but inheriting a definition isn't enough. States can also be
+The purpose of this package is to share reusable schemas, but inheriting a full schema isn't enough. States can also be
 extended on relations-level using helpers from `states_utils.go` (generated), although sometimes it's better to override
 a state (eg Ready).
 
@@ -135,6 +148,8 @@ MyMychStruct = am.Schema{
             Add:    S{"Handshaking"},
     }),
 }
+
+// see state_utils.go
 ```
 
 ## Documentation
