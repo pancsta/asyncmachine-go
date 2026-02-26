@@ -113,7 +113,7 @@ Headers link more info about each example.
 - [origin](https://github.com/temporalio/samples-go/blob/main/fileprocessing/)
 - [Asynq worker version](/examples/asynq_fileprocessing/fileprocessing_task.go)
 
-### [Tree State Source](/examples/tree_state_source/README.md)
+### [Tree State Source](/examples/tree_state_source)
 
 - #relations #negotiation #auto #arpc #otel #metrics #grafana #generator #data
 - [origin](/pkg/rpc/README.md)
@@ -122,25 +122,25 @@ Headers link more info about each example.
 
 - #relations #handlers #cview #ui #global-handlers
 
-### [WASM](/examples/wasm/README.md)
+### [WASM](/examples/wasm)
 
 - #relations #handlers #arpc-handlers #arpc #relay #ui #websocket
 
 ## Benchmarks
 
-### [Benchmark gRPC](/examples/benchmark_grpc/README.md)
+### [Benchmark gRPC](/examples/benchmark_grpc)
 
 - #relations #handlers #negotiation #arpc #grpc
 - [origin](/pkg/rpc/README.md#benchmark-arpc-vs-grpc)
 
-### [Benchmark libp2p PubSub](/examples/benchmark_libp2p_pubsub/README.md)
+### [Benchmark libp2p PubSub](/examples/benchmark_libp2p_pubsub)
 
 - #relations #handlers #async #negotiation #libp2p
 
-### [Benchmark State Source](/examples/benchmark_state_source/README.md)
+### [Benchmark State Source](/examples/benchmark_state_source)
 
 - #docker #go-wrt #caddy
-- [origin](/examples/tree_state_source/README.md)
+- [origin](/examples/tree_state_source)
 
 ## Demos
 
@@ -159,7 +159,7 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 
 ## Apps
 
-- [secai](https://github.com/pancsta/secai) AI Agents framework.
+- [secai](https://github.com/pancsta/secai) AI Workflows framework.
 - [arpc REPL](/tools/repl) Cobra-based REPL.
 - [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox

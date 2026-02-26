@@ -56,6 +56,8 @@ func main() {
 //
 
 type FooHandlers struct {
+	*am.ExceptionHandler
+
 	uiDoc  dom.Document
 	uiList dom.Element
 
@@ -76,6 +78,8 @@ func (h *FooHandlers) BoredState(e *am.Event) {
 //
 
 type BarHandlers struct {
+	*am.ExceptionHandler
+
 	uiDoc   dom.Document
 	uiList  dom.Element
 	uiInput *dom.HTMLInputElement

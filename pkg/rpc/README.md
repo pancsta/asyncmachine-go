@@ -8,7 +8,7 @@
 **aRPC** is a transparent RPC for state machines implemented using [asyncmachine-go](/). It's
 clock-based and features many optimizations, e.g. having most of the API methods executed locally (as state changes are
 regularly pushed to the client). It's built on top of [cenkalti/rpc2](https://github.com/cenkalti/rpc2), `net/rpc`,
-and [soheilhy/cmux](https://github.com/soheilhy/cmux). Check out a [dedicated example](/examples/arpc/), [gRPC benchmark](/examples/benchmark_grpc/README.md),
+and [soheilhy/cmux](https://github.com/soheilhy/cmux). Check out a [dedicated example](/examples/arpc), [gRPC benchmark](/examples/benchmark_grpc),
 and an [integration tests tutorial](/pkg/rpc/HOWTO.md).
 
 ## Features
@@ -36,7 +36,7 @@ Not implemented (yet):
 Each RPC server can handle 1 RPC client at a time, but 1 state source (asyncmachine) can have many RPC servers attached
 to itself (via [Tracer API](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Tracer)).
 Additionally, remote RPC network-machines can also have RPC servers attached to themselves, creating a tree structure
-(see [/examples/benchmark_state_source](/examples/benchmark_state_source/README.md)).
+(see [/examples/benchmark_state_source](/examples/benchmark_state_source)).
 
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc.d2.dark.svg">
@@ -346,13 +346,13 @@ to create more organic systems.
 - [api /pkg/rpc](https://code.asyncmachine.dev/pkg/github.com/pancsta/asyncmachine-go/pkg/rpc.html)
 - [godoc /pkg/rpc](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc)
 - [Example - Setup](/examples/arpc)
-- [Example - Tree State Source](/examples/tree_state_source/README.md)
+- [Example - Tree State Source](/examples/tree_state_source)
 - [diagrams](/docs/diagrams.md#arpc)
 
 ## Benchmark: aRPC vs gRPC
 
 A simple and opinionated benchmark showing a `subscribe-get-process` scenario, implemented in both gRPC and aRPC. See
-[/examples/benchmark_grpc](/examples/benchmark_grpc/README.md) for details and source code.
+[/examples/benchmark_grpc](/examples/benchmark_grpc) for details and source code.
 
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/arpc-vs-grpc.png?raw=true">
@@ -531,9 +531,9 @@ Testing, not semantically versioned.
 ## monorepo
 
 - [`/examples/arpc`](/examples/arpc)
-- [`/examples/tree_state_source`](/examples/tree_state_source/README.md)
+- [`/examples/tree_state_source`](/examples/tree_state_source)
 - [`/pkg/rpc/HOWTO.md`](/pkg/rpc/HOWTO.md)
-- [`/examples/benchmark_grpc`](/examples/benchmark_grpc/README.md)
-- [`/tools/cmd/arpc`](/tools/cmd/arpc/README.mdhow )
+- [`/examples/benchmark_grpc`](/examples/benchmark_grpc)
+- [`/tools/cmd/arpc`](/tools/cmd/arpc/README.md)
 
 [Go back to the monorepo root](/README.md) to continue reading.

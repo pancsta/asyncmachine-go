@@ -33,13 +33,13 @@ import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 Synchronous wrappers of async state machine calls, which assume a single, blocking scenario controlled with context.
 [Multi states](/docs/manual.md#multi-states) are handled automatically.
 
-- Add1Block
-- Add1AsyncBlock
+- Add1Sync
+- Add1Async
 
 **Example** - add state `StateNameSelected` and wait until it becomes active
 
 ```go
-res := amhelp.Add1Block(ctx, mach, ss.StateNameSelected, am.A{"state": state})
+res := amhelp.Add1Sync(ctx, mach, ss.StateNameSelected, am.A{"state": state})
 print(mach.Is1(ss.StateNameSelected)) // true
 print(res) // am.Executed or am.Canceled, never am.Queued
 ```
@@ -47,7 +47,7 @@ print(res) // am.Executed or am.Canceled, never am.Queued
 **Example** - wait for `ScrollToTx`, triggered by `ScrollToMutTx`
 
 ```go
-res := amhelp.Add1AsyncBlock(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
+res := amhelp.Add1Async(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
     "state": state,
     "fwd":   true,
 })
@@ -203,7 +203,6 @@ Package-Level Functions (total 56)
 
      func Activations(u uint64) int
      func Add1Async(ctx context.Context, mach am.Api, waitState string, addState string, args am.A) am.Result
-     func Add1Block(ctx context.Context, mach am.Api, state string, args am.A) am.Result
      func Add1Sync(ctx context.Context, mach am.Api, state string, args am.A) am.Result
      func ArgsToArgs[T](src interface{}, dest T) T
      func ArgsToLogMap(args interface{}, maxLen int) map[string]string

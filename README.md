@@ -37,7 +37,7 @@ and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-
 It features [atomic transitions](/docs/manual.md#transition-lifecycle), [relations with consensus](/docs/manual.md#relations),
 [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
 [telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md), [selective distribution](/pkg/rpc/README.md#selective-distribution),
-[remote workers](/pkg/node/README.md), [diagrams](/tools/cmd/am-vis/README.md), and [WASM](/examples/wasm/README.md) support.
+[remote workers](/pkg/node/README.md), [diagrams](/tools/cmd/am-vis/README.md), and [WASM](/examples/wasm) support.
 
 As a control flow library, it decides about running of predefined bits of code (transition handlers) - their order and
 which ones to run, according to currently active states (flags). Thanks to a [novel state machine](/pkg/machine/README.md),
@@ -251,7 +251,7 @@ Other packages:
 
 ## Apps
 
-- [secai](https://github.com/pancsta/secai) AI Agents framework.
+- [secai](https://github.com/pancsta/secai) AI Workflows framework.
 - [arpc REPL](/tools/repl) Cobra-based REPL.
 - [am-dbg TUI Debugger](/tools/debugger) Single state-machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox

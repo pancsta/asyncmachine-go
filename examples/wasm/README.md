@@ -5,13 +5,9 @@
 > [!NOTE]
 > **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
 
-A simple example of WASM interop and communication between two distributed async state machines.
-
-Source files:
-
-- shared [wasm_example.go](/examples/wasm/wasm_example.go)
-- client [wasm_client_machs.go](/examples/wasm/client/wasm_client_machs.go)
-- server [wasm_server.go](/examples/wasm/server/wasm_server.go)
+This is a simple example of WASM interop and communication between two distributed async state machines
+(`foo` and `bar`). The complete WASM support allows having a single state-machine which is fully (or selectively)
+distributed across _n_ servers and _m_ browsers, using efficient diff-based synchronization.
 
 Actors (server):
 
@@ -96,6 +92,18 @@ task: Available tasks for this project:
 * repl:             Start REPL for both server and browser
 * start:            Build and start server
 ```
+
+## Further Work
+
+The current implementation covers the server-browser network boundary being synchronized using **aRPC**, but **WebWorkers**
+require additional bindings. This includes exposing [ports, channels](https://developer.mozilla.org/en-US/docs/Web/API/Channel_Messaging_API),
+and [ArrayBuffer](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer) as a
+regular `net/Conn`. Because WebWorkers have access to WebSockets and `fetch()`, the main thread can be left to executing
+UI changes only, while _n_ workers (_n_ == CPU cores - 1) will:
+
+- process handlers for the same async state machine
+- run a KV cache store
+- run a DB via [File System API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API)
 
 ## monorepo
 

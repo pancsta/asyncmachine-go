@@ -181,6 +181,6 @@ func startClient(ctx context.Context, addr string) (*Client) {
 
 - [`/examples/arpc`](/examples/arpc)
 - [`/pkg/rpc/README.md`](/pkg/rpc/README.md)
-- [`/examples/benchmark_grpc/README.md`](/examples/benchmark_grpc/README.md)
+- [`/examples/benchmark_grpc`](/examples/benchmark_grpc)
 
 [Go back to the monorepo root](/README.md) to continue reading.

@@ -122,6 +122,8 @@ func main() {
 }
 
 type HandlersFoo struct {
+	*am.ExceptionHandler
+
 	machFoo *am.Machine
 	// last connected browser machine
 	rpcBar atomic.Pointer[arpc.Client]

@@ -329,7 +329,7 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 ## Apps
 
-- [secai](https://github.com/pancsta/secai) AI Agents framework.
+- [secai](https://github.com/pancsta/secai) AI Workflows framework.
 - [arpc REPL](/tools/repl) Cobra-based REPL.
 - [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox

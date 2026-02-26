@@ -1,11 +1,12 @@
 // See wasm+js files at:
-// https://github.com/pancsta/asyncmachine-go/tree/v0.18.0/examples/wasm/client
+// https://github.com/pancsta/asyncmachine-go/tree/main/examples/wasm/client
 
 package main
 
 import (
 	"context"
 	"log"
+	"time"
 
 	example "github.com/pancsta/asyncmachine-go/examples/wasm"
 	"github.com/pancsta/asyncmachine-go/examples/wasm/states"
@@ -63,6 +64,12 @@ func initMachines(
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+	// auto reconnects
+	srv.WsTunReconn = true
+	// quick pushes
+	interval := 250 * time.Millisecond
+	srv.PushInterval.Store(&interval)
+	// start
 	srv.Start(nil)
 
 	//

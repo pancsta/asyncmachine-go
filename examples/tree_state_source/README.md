@@ -82,7 +82,7 @@ From the monorepo root:
 
 ## Benchmark
 
-HTTP endpoints have been benchmarked using [go-wrk](https://github.com/tsliwowicz/go-wrk), see [/examples/benchmark_state_source](/examples/benchmark_state_source/README.md)
+HTTP endpoints have been benchmarked using [go-wrk](https://github.com/tsliwowicz/go-wrk), see [/examples/benchmark_state_source](/examples/benchmark_state_source)
 for more info.
 
 ## Config

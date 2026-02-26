@@ -85,8 +85,8 @@ concurrency.
 
 ## What are the downsides?
 
-High abstraction, boilerplate, stack traces split into state-traces, reduced type safety, incomplete documentation, TUI
-devtools, not a mainstream paradigm.
+High abstraction, boilerplate, reflection, stack traces split into state-traces, reduced type safety, incomplete
+documentation, TUI devtools, as well as using a non-mainstream paradigm.
 
 ## What should be a "state"?
 

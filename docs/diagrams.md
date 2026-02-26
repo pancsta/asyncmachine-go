@@ -164,7 +164,7 @@ Consumer requests payload from a remote worker.
 
 ## Examples
 
-### [Tree State Source](/examples/tree_state_source/README.md)
+### [Tree State Source](/examples/tree_state_source)
 
 <div align="center"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-tree-state-source.mermaid.dark.svg">
@@ -172,7 +172,7 @@ Consumer requests payload from a remote worker.
   <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-tree-state-source.mermaid.light.svg">
 </picture></div>
 
-### [Benchmark State Source](/examples/benchmark_grpc/README.md)
+### [Benchmark State Source](/examples/benchmark_grpc)
 
 <div align="center"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-bench-state-source.mermaid.dark.svg">
