@@ -623,6 +623,7 @@ func fmtLogEntry(
 
 type logReaderTreeRef struct {
 	// refs
+
 	stateNames am.S
 	// TODO embed MachAddress, support queue ticks
 	machId   string
@@ -630,6 +631,7 @@ type logReaderTreeRef struct {
 	machTime uint64
 
 	// position
+
 	entry *types.LogReaderEntryPtr
 	addr  *types.MachAddress
 
@@ -659,10 +661,31 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 		}
 
 		d.Mach.Eval("initLogReader", func() {
-			if d.C != nil {
-				// TODO needed? works?
-				d.C.SelectedReaderEntry = ref.entry
-			}
+			// semantic selection restore
+			d.logReaderSelected = node.GetText()
+			d.logReaderSelectedLevel = node.GetIndent()
+			d.logReaderSelectedParent = node.GetParent().GetText()
+			d.logReaderScroll = d.logReader.GetScrollOffset()
+
+			// fallback for Y-based selection restore
+			posY := -1
+			root.Walk(func(n, parent *cview.TreeNode, depth int) bool {
+				// skip root
+				if posY == -1 {
+					posY++
+					return true
+				}
+
+				// found
+				if n == node {
+					d.logReaderSelectedY = posY
+					return false
+				}
+
+				// next
+				posY++
+				return true
+			})
 		}, nil)
 
 		// state name
@@ -677,6 +700,12 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 
 	// click / enter
 	tree.SetSelectedFunc(func(node *cview.TreeNode) {
+		// TODO this is a joke
+		if !tree.TryRLock() {
+			return
+		}
+		tree.RUnlock()
+
 		// TODO support extMachTime
 		ref, ok := node.GetReference().(*logReaderTreeRef)
 		if !ok || ref == nil {
@@ -689,7 +718,7 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 		if isTop || ref.isQueueRoot {
 			name := strings.Split(node.GetText(), " ")[0]
 			name = removeStyleBracketsRe.ReplaceAllString(name, "")
-			d.readerExpanded[name] = node.IsExpanded()
+			d.logReaderExpanded[name] = node.IsExpanded()
 		}
 
 		// mach URL
@@ -971,11 +1000,6 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 			node.SetIndent(1)
 			node.SetSelectable(true)
 			node.SetReference(nodeRef)
-
-			sel := c.SelectedReaderEntry
-			if sel != nil && ptr.TxId == sel.TxId && ptr.EntryIdx == sel.EntryIdx {
-				d.logReader.SetCurrentNode(node)
-			}
 		}
 	}
 
@@ -1183,7 +1207,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		lenNode.SetReference(&logReaderTreeRef{
 			isQueueRoot: true,
 		})
-		if expanded, ok := d.readerExpanded["length"]; ok {
+		if expanded, ok := d.logReaderExpanded["length"]; ok {
 			lenNode.SetExpanded(expanded)
 		}
 		parentQueue.AddChild(lenNode)
@@ -1515,7 +1539,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 	// TODO extract
 	addParent := func(parent *cview.TreeNode) {
 		name := parent.GetText()
-		if expanded, ok := d.readerExpanded[name]; ok {
+		if expanded, ok := d.logReaderExpanded[name]; ok {
 			parent.SetExpanded(expanded)
 		}
 
@@ -1539,8 +1563,6 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 	// append parents
 	if parentSource != nil {
 		addParent(parentSource)
-		// need bc the root is hidden
-		d.logReader.SetCurrentNode(parentSource)
 	}
 	if parentQueue != nil {
 		addParent(parentQueue)
@@ -1582,11 +1604,58 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		addParent(parentPipeOut)
 	}
 
-	// expand all nodes
-	go d.App.QueueUpdateDraw(func() {
-		root.CollapseAll()
-		root.Expand()
-	})
+	// restore selection, or 1st one TODO per client
+	selected := parentSource
+	if d.logReaderSelected != "" {
+		root.Walk(func(node, parent *cview.TreeNode, depth int) bool {
+			// already found
+			if selected != parentSource {
+				return false
+			}
+
+			if node.GetText() == d.logReaderSelected &&
+				node.GetIndent() == d.logReaderSelectedLevel &&
+				node.GetParent().GetText() == d.logReaderSelectedParent {
+				selected = node
+				return false
+			}
+
+			return true
+		})
+
+		// Y-based restore (fallback) TODO improve
+		if selected == parentSource {
+			posY := -1
+			root.Walk(func(node, parent *cview.TreeNode, depth int) bool {
+				// already found
+				if selected != parentSource {
+					return false
+				}
+
+				// skip root
+				if posY == -1 {
+					posY++
+					return true
+				}
+
+				if posY == d.logReaderSelectedY {
+					selected = node
+					return false
+				}
+
+				posY++
+				// select the last one
+				selected = node
+				return true
+			})
+		}
+	}
+
+	d.logReader.SetScrollOffset(d.logReaderScroll)
+	d.logReader.SetCurrentNode(selected)
+	d.logReader.SetScrollOffset(d.logReaderScroll)
+	// TODO great...
+	go d.draw(d.logReader)
 }
 
 func (d *Debugger) parseMsgReader(
