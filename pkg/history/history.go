@@ -345,11 +345,11 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 
 	// process called
 	for _, name := range cfg.Called {
-		listed := slices.Contains(called, name)
-		if listed && cfg.CalledExclude {
+		wasCalled := slices.Contains(called, name)
+		if wasCalled && cfg.CalledExclude {
 			match = false
 			break
-		} else if !listed && !cfg.CalledExclude {
+		} else if wasCalled && !cfg.CalledExclude {
 			match = true
 			break
 		}
@@ -357,11 +357,11 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 
 	// process changed
 	for _, name := range cfg.Changed {
-		listed := slices.Contains(changed, name)
-		if listed && cfg.ChangedExclude {
+		hadChanged := slices.Contains(changed, name)
+		if hadChanged && cfg.ChangedExclude {
 			match = false
 			break
-		} else if !listed && !cfg.ChangedExclude {
+		} else if hadChanged && !cfg.ChangedExclude {
 			match = true
 			break
 		}
@@ -444,6 +444,7 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 // ///// ///// /////
 
 type MemoryApi interface {
+	// TODO move godoc
 	// predefined queries
 
 	// ActivatedBetween returns true if the state become active withing the
