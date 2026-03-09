@@ -171,6 +171,7 @@ func NewServer(
 		Args:             opts.Args,
 		Opts:             *opts,
 
+		WsTunReconn:           true,
 		WsTunConnTimeout:      3 * time.Second,
 		WsTunConnRetryTimeout: 5 * time.Minute,
 		WsTunConnRetries:      50,
@@ -193,7 +194,6 @@ func NewServer(
 	mach.SemLogger().SetArgsMapper(LogArgs)
 	mach.SetGroups(states.ServerGroups, ssS)
 	mach.OnDispose(func(id string, ctx context.Context) {
-		netSrcMach.Dispose()
 		if l := s.Listener.Load(); l != nil {
 			_ = (*l).Close()
 			s.Listener.Store(nil)

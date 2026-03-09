@@ -738,6 +738,15 @@ func (c *Client) Args() []string {
 func (c *Client) updateStatesSchema(resp *MsgSrvHello) {
 	netMach := c.NetMach
 
+	l1 := len(resp.Serialized.StateNames)
+	l2 := len(resp.Serialized.Time)
+	if l1 != l2 {
+		c.Mach.AddErr(fmt.Errorf(
+			"resp.Serialized len invalid: %d != %d", l1, l2), nil)
+		// TODO ret err
+		return
+	}
+
 	// locks
 	netMach.schemaMx.Lock()
 	defer netMach.schemaMx.Unlock()
@@ -946,7 +955,7 @@ func (c *Client) callFailsafe(
 	mName := ServerMethods.Parse(method).Value
 
 	// validate
-	if c.rpc.Load() == nil {
+	if c.rpc.Load() == nil || c.Mach.Not1(ssC.Ready) {
 		AddErrNoConn(nil, c.Mach, errors.New(mName))
 		return false
 	}
