@@ -426,8 +426,8 @@ github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJw
 github.com/opencontainers/image-spec v1.1.1/go.mod h1:qpqAh3Dmcf36wStyyWU+kCeDgrGnAve2nCC8+7h8Q0M=
 github.com/orsinium-labs/enum v1.4.0 h1:3NInlfV76kuAg0kq2FFUondmg3WO7gMEgrPPrlzLDUM=
 github.com/orsinium-labs/enum v1.4.0/go.mod h1:Qj5IK2pnElZtkZbGDxZMjpt7SUsn4tqE5vRelmWaBbc=
-github.com/pancsta/cview v1.5.21 h1:1DwSV73gIdGRxgmOqoFJjp6FagNp8f4Tl1AFkZ+8IKo=
-github.com/pancsta/cview v1.5.21/go.mod h1:H5j2xIAdRRYMlEBxfRN3jb+Cyb3Mi66Uh3Mrbre6yJM=
+github.com/pancsta/cview v1.5.22-0.20260308120046-97d519652c66 h1:9/SwGffDFOWV3vQXbHa+moPEf0DR4MUZr3HT5S7H0e4=
+github.com/pancsta/cview v1.5.22-0.20260308120046-97d519652c66/go.mod h1:H5j2xIAdRRYMlEBxfRN3jb+Cyb3Mi66Uh3Mrbre6yJM=
 github.com/pancsta/tcell-v2 v0.0.1-fork1 h1:ZmBCBVVYto5GIF28FFUIBdZS5pAnmLZ6Ww4/yQngehE=
 github.com/pancsta/tcell-v2 v0.0.1-fork1/go.mod h1:vg2NrucL/pqvaVYJrO1BZT1k0xrIUFmSmf3GgoBQcTc=
 github.com/parquet-go/parquet-go v0.24.0 h1:VrsifmLPDnas8zpoHmYiWDZ1YHzLmc7NmNwPGkI2JM4=

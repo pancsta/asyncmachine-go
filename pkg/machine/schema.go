@@ -41,6 +41,7 @@ func (b *StatesBase) SetStateGroups(groups map[string][]int, order []string) {
 	b.groupsOrder = order
 }
 
+// States is the vase interface for schema states.
 type States interface {
 	// Names returns the state names of the state machine.
 	Names() S

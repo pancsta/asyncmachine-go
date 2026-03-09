@@ -71,15 +71,16 @@ func (s S) Filter(idxs []int) S {
 	return ret
 }
 
-// State defines a single state of a machine, its properties and relations.
+// State defines a single state of a machine, its properties, relations, and tags.
+// nolint:lll
 type State struct {
-	Auto    bool     `json:"auto,omitempty"`
-	Multi   bool     `json:"multi,omitempty"`
-	Require S        `json:"require,omitempty"`
-	Add     S        `json:"add,omitempty"`
-	Remove  S        `json:"remove,omitempty"`
-	After   S        `json:"after,omitempty"`
-	Tags    []string `json:"tags,omitempty"`
+	Auto    bool     `json:"auto,omitempty" yaml:"auto,omitempty" toml:"auto,omitempty"`
+	Multi   bool     `json:"multi,omitempty" yaml:"multi,omitempty" toml:"multi,omitempty"`
+	Require S        `json:"require,omitempty" yaml:"require,omitempty" toml:"require,omitempty"`
+	Add     S        `json:"add,omitempty" yaml:"add,omitempty" toml:"add,omitempty"`
+	Remove  S        `json:"remove,omitempty" yaml:"remove,omitempty" toml:"remove,omitempty"`
+	After   S        `json:"after,omitempty" yaml:"after,omitempty" toml:"after,omitempty"`
+	Tags    []string `json:"tags,omitempty" yaml:"tags,omitempty" toml:"tags,omitempty"`
 }
 
 // A (arguments) is a map of named arguments for a [Mutation].

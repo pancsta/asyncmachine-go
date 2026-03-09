@@ -79,7 +79,7 @@ func (Args) Description() string {
 			render-dump mymach.gob.br mach://MyMach1/TX-ID
 	
 		# bird's view with detailed pipes
-		am-vis --bird --render-detailed-pipes \
+		am-vis --bird --render-pipes --render-detailed-pipes \
 			render-dump mymach.gob.br mach://MyMach1/TX-ID
 	
 		# map view with inherited states

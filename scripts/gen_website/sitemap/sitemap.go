@@ -33,18 +33,24 @@ var MainMenu = []Entry{
 	{Url: "faq", Path: "FAQ.md", SkipMenu: true},
 	{Url: "changelog", Path: "CHANGELOG.md", SkipMenu: true},
 	{Url: "env-configs", Path: "docs/env-configs.md", SkipMenu: true},
+
+	// examples
+
 	{Url: "tree-state-source",
-		Path: "examples/tree_state_source/README.md", SkipMenu: true},
+		Path: "examples/tree_state_source", SkipMenu: true},
 	{Url: "benchmark-grpc",
-		Path: "examples/benchmark_grpc/README.md", SkipMenu: true},
+		Path: "examples/benchmark_grpc", SkipMenu: true},
 	{Url: "benchmark-libp2p-pubsub",
-		Path: "examples/benchmark_libp2p_pubsub/README.md", SkipMenu: true},
+		Path: "examples/benchmark_libp2p_pubsub", SkipMenu: true},
 	{Url: "tools-debugger",
-		Path: "tools/debugger/README.md", SkipMenu: true},
+		Path: "tools/debugger", SkipMenu: true},
 	{Url: "benchmark-state-source",
-		Path: "examples/benchmark_state_source/README.md", SkipMenu: true},
+		Path: "examples/benchmark_state_source", SkipMenu: true},
 	{Url: "wasm",
-		Path: "examples/wasm/README.md", SkipMenu: true},
+		Path: "examples/wasm", SkipMenu: true},
+
+	// docs
+
 	{Url: "arpc-howto", Path: "pkg/rpc/HOWTO.md", SkipMenu: true},
 	{Url: "cookbook", Path: "docs/cookbook.md", SkipMenu: true},
 	{Url: "diagrams", Path: "docs/diagrams.md", SkipMenu: true},

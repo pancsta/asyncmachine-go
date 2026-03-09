@@ -1603,10 +1603,17 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 	t.IsAccepted.Store(false)
 	t.IsCompleted.Store(true)
 
+	src := &MutSource{}
+	if r.event != nil {
+		src.MachId = r.event.MachineId
+		src.TxId = r.event.TransitionId
+	}
+
 	// prepend add:Exception to the beginning of the queue
 	errMut := &Mutation{
 		Type:   MutationAdd,
 		Called: m.Index(S{StateException}),
+		Source: src,
 		Args: Pass(&AT{
 			Err:      err,
 			ErrTrace: r.stack,
@@ -2375,16 +2382,18 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 
 func (m *Machine) handlerLoop() {
 	ver := m.handlerLoopVer.Add(1)
+	var event *Event
 	catch := func() {
 		err := recover()
 		if err == nil {
 			return
 		}
 
-		// TODO prevent inf loop
+		// TODO prevent inf loop with a guard
 		if !m.disposing.Load() {
 			m.handlerPanic <- recoveryData{
 				err:   err,
+				event: event,
 				stack: captureStackTrace(),
 			}
 		}
@@ -2453,7 +2462,11 @@ grace:
 			break grace
 
 		case call, ok := <-m.handlerStart:
-			if !ok || !handleCall(call) {
+			if !ok {
+				return
+			}
+			event = call.event
+			if !handleCall(call) {
 				return
 			}
 		}

@@ -487,6 +487,21 @@ func (l LogLevel) Level() string {
 	return strconv.Itoa(int(l))
 }
 
+// LogArgsMapperMerge returns a single log args mapper from many log arg
+// mappers.
+func LogArgsMapperMerge(mappers ...LogArgsMapperFn) LogArgsMapperFn {
+	return func(args A) map[string]string {
+		ret := make(map[string]string, 0)
+		for _, m := range mappers {
+			for k, v := range m(args) {
+				ret[k] = v
+			}
+		}
+
+		return ret
+	}
+}
+
 // SemLogger is a semantic logger for structured events. It's consist of:
 // - enable / enabled methods
 // - text logger utils
@@ -1008,6 +1023,7 @@ type ExceptionHandler struct{}
 type recoveryData struct {
 	err   any
 	stack string
+	event *Event
 }
 
 func captureStackTrace() string {

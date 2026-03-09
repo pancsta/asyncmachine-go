@@ -4,6 +4,16 @@
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
+## [v0.18.2](https://github.com/pancsta/asyncmachine-go/tree/v0.18.2) (2026-03-09)
+
+- fix\(states\): fix piping log directions, RPC deadlocks [\#375](https://github.com/pancsta/asyncmachine-go/pull/375)
+ (@pancsta)
+- fix\(rpc\): dont dispose state source on server dispose [\#374](https://github.com/pancsta/asyncmachine-go/pull/374)
+ (@pancsta)
+- fix\(history\): fix SQL diffs, mach IDs, tracking matches [\#373](https://github.com/pancsta/asyncmachine-go/pull/373)
+ (@pancsta)
+- fix\(am-dbg\): preserve log reader selection [\#372](https://github.com/pancsta/asyncmachine-go/pull/372) (@pancsta)
+
 ## [v0.18.1](https://github.com/pancsta/asyncmachine-go/tree/v0.18.1) (2026-02-24)
 
 - feat: release `v0.18.1` [\#371](https://github.com/pancsta/asyncmachine-go/pull/371) (@pancsta)

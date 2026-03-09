@@ -13,6 +13,7 @@ tasks:
       GOOS: js
       GOARCH: wasm
     cmds:
+      - go mod tidy
       - cp $(go env GOROOT)/lib/wasm/wasm_exec.js ./client
       - go build -o client/main.wasm ./client
 

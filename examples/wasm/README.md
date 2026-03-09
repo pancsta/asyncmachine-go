@@ -24,6 +24,13 @@ Actors (browser):
   - `rnm-browser-foo` network mach
   - `browser-foo` net handler mach
 
+## Running
+
+1. `git clone https://github.com/pancsta/asyncmachine-go.git`
+2. `cd asyncmachine-go/examples/wasm`
+3. `task start`
+  - no `task`? https://taskfile.dev/docs/installation
+
 ## Implementation
 
 `net/rpc`, [cenkalti/rpc2](https://github.com/cenkalti/rpc2), and [coder/websocket](https://github.com/coder/websocket)
