@@ -385,11 +385,11 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 
 	// process called
 	for _, name := range cfg.Called {
-		listed := slices.Contains(called, name)
-		if listed && cfg.CalledExclude {
+		wasCalled := slices.Contains(called, name)
+		if wasCalled && cfg.CalledExclude {
 			match = false
 			break
-		} else if !listed && !cfg.CalledExclude {
+		} else if !wasCalled && !cfg.CalledExclude {
 			match = true
 			break
 		}
@@ -397,11 +397,11 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 
 	// process changed
 	for _, name := range cfg.Changed {
-		listed := slices.Contains(changed, name)
-		if listed && cfg.ChangedExclude {
+		hadChanged := slices.Contains(changed, name)
+		if hadChanged && cfg.ChangedExclude {
 			match = false
 			break
-		} else if !listed && !cfg.ChangedExclude {
+		} else if hadChanged && !cfg.ChangedExclude {
 			match = true
 			break
 		}
@@ -841,7 +841,7 @@ func (m *Memory) JoinTransition(query *gorm.DB) *gorm.DB {
 // 	return m.Db.Debug().Model(&Time{})
 // }
 
-// Match returns the latest record that matches the given matcher function.
+// Match returns the latest records that matches the given matcher function.
 func (m *Memory) Match(
 	ctx context.Context, limit int, matcherFn MatcherFn,
 ) ([]*amhist.MemoryRecord, error) {
@@ -850,6 +850,7 @@ func (m *Memory) Match(
 	var rows = []Time{}
 	q := m.Db.Model(&Time{})
 	mTime := m.Mach.Time(nil).ToIndex(m.Mach.StateNames())
+	q = q.Where("times.machine_id = ?", m.machRec.ID)
 	q = matcherFn(mTime, q)
 	if limit > 0 {
 		q = q.Limit(limit)
@@ -874,7 +875,7 @@ func (m *Memory) Match(
 			return nil, err
 		}
 		tTrackedDiff := am.Time{}
-		if err := json.Unmarshal(r.MTimeTracked, &tTrackedDiff); err != nil {
+		if err := json.Unmarshal(r.MTimeTrackedDiff, &tTrackedDiff); err != nil {
 			return nil, err
 		}
 
@@ -1005,9 +1006,9 @@ func (m *Memory) writeDb(rLocked bool) {
 	// copy
 	machRec := *m.machRec
 	// TODO schema race?
-	times := q.times
+	times := slices.Clone(q.times)
 	q.times = nil
-	ticks := q.ticks
+	ticks := slices.Clone(q.ticks)
 	q.ticks = nil
 	m.log("writeDb for %d record", len(times))
 	l := len(times)
