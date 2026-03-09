@@ -48,9 +48,8 @@ func add(
 	}
 
 	// graph info
-	semLog := source.SemLogger()
-	semLog.AddPipeOut(true, sourceState, target.Id())
-	semLog.AddPipeIn(true, targetState, source.Id())
+	source.SemLogger().AddPipeOut(true, sourceState, target.Id())
+	target.SemLogger().AddPipeIn(true, targetState, source.Id())
 
 	// TODO optimize
 	source.OnDispose(gcHandler(target))
@@ -66,9 +65,10 @@ func add(
 		if flat && target.Is(names) {
 			return
 		} else if flat {
-			target.Add(names, nil)
+			// TODO optimize: fork only for non-local
+			go target.EvAdd(e, names, nil)
 		} else {
-			target.EvAdd(e, names, e.Args)
+			go target.EvAdd(e, names, e.Args)
 		}
 	}
 }
@@ -103,9 +103,8 @@ func remove(
 	}
 
 	// graph info
-	semLog := source.SemLogger()
-	semLog.AddPipeOut(false, sourceState, target.Id())
-	semLog.AddPipeIn(false, targetState, source.Id())
+	source.SemLogger().AddPipeOut(false, sourceState, target.Id())
+	target.SemLogger().AddPipeIn(false, targetState, source.Id())
 
 	// TODO optimize
 	source.OnDispose(gcHandler(target))
@@ -116,9 +115,10 @@ func remove(
 		if flat && target.Not1(targetState) {
 			return
 		} else if flat {
-			target.Remove1(targetState, nil)
+			// TODO optimize: fork only for non-local
+			go target.EvRemove1(e, targetState, nil)
 		} else {
-			target.EvRemove1(e, targetState, e.Args)
+			go target.EvRemove1(e, targetState, e.Args)
 		}
 	}
 }
@@ -310,6 +310,10 @@ func Bind(
 func BindMany(
 	source, target am.Api, states, targetStates am.S,
 ) error {
+
+	if targetStates == nil {
+		targetStates = states
+	}
 
 	if len(states) != len(targetStates) {
 		return fmt.Errorf("%w: source and target states len mismatch",

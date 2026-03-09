@@ -60,7 +60,11 @@ var (
 //	}
 var DisposedArgHandler = "DisposedArgHandler"
 
-// DisposedHandlers handle disposal and need to be initialized manually.
+// DisposedHandlers handle disposal and NEEDS to be initialized manually.
+//
+//	  h := &Handlers{
+//			DisposedHandlers: &ssam.DisposedHandlers{},
+//	  }
 type DisposedHandlers struct {
 	// DisposedHandlers is a list of handler for pkg/states.DisposedStates
 	DisposedHandlers []am.HandlerDispose
@@ -78,6 +82,8 @@ func (h *DisposedHandlers) RegisterDisposalEnter(e *am.Event) bool {
 	return ret
 }
 
+// RegisterDisposalState registers an external / dynamic disposal handler.
+// Machine handlers should overload DisposingState and call super instead.
 func (h *DisposedHandlers) RegisterDisposalState(e *am.Event) {
 	// TODO ability to deregister a disposal handler (by ref)
 	// TODO typed args?
