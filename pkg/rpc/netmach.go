@@ -365,7 +365,6 @@ func (m *NetworkMachine) EvAdd(
 		Args:   args,
 		Event:  event.Export(),
 	}
-	// TODO pass event for tracing
 	if !m.conn.Call(m.Context(), ServerAdd, rpcArgs, resp) {
 		return am.Canceled
 	}
