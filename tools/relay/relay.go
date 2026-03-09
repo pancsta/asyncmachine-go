@@ -281,12 +281,14 @@ func (r *Relay) HandleWsTcpListen(
 	}
 
 	// REPL addr file
+	addrFile := ""
 	if d := r.Args.Wasm.ReplAddrDir; d != "" &&
 		strings.HasPrefix(id, "repl-") {
 
 		name := id + ".addr"
 		r.Mach.Log("REPL detected, creating %s", name)
-		err := os.WriteFile(filepath.Join(d, name), []byte(tcpAddr), 0o644)
+		addrFile = filepath.Join(d, name)
+		err := os.WriteFile(addrFile, []byte(tcpAddr), 0o644)
 		if err != nil {
 			r.Mach.EvAddErr(e, fmt.Errorf(
 				"failed to write REPL addr file %s: %s", name, err), nil)
@@ -301,6 +303,9 @@ func (r *Relay) HandleWsTcpListen(
 	r.Mach.Eval("listen_end", func() {
 		amhelp.Dispose(tunMach)
 		r.Mach.EvAdd1(e, ssR.WsTunListenDisconn, nil)
+		if addrFile != "" {
+			_ = os.Remove(addrFile)
+		}
 	}, ctx)
 }
 

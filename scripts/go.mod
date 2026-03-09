@@ -1,12 +1,12 @@
 module github.com/pancsta/asyncmachine-go/scripts
 
-go 1.24.1
+go 1.24.6
 
 tool go101.org/golds
 
 replace github.com/pancsta/asyncmachine-go => ..
 
-replace github.com/pancsta/cview => ../../cview
+//replace github.com/pancsta/cview => ../../cview
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0

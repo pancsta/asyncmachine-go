@@ -95,3 +95,4 @@ tools/visualizer/testdata/*
 /examples/wasm/deps.md
 /examples/wasm/tmp/
 /examples/wasm/client/prod.wasm
+/am-vis.gv

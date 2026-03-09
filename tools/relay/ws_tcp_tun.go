@@ -32,6 +32,8 @@ func NewWsTcpTun(
 	ctx context.Context, wsConn *websocket.Conn, idRemote, addr, remoteAddr,
 	idTun string, parent am.Api, debug bool,
 ) (*WsTcpTun, error) {
+	// TODO validate wsConn
+
 	t := &WsTcpTun{
 		DisposedHandlers: &ssam.DisposedHandlers{},
 
@@ -52,16 +54,16 @@ func NewWsTcpTun(
 	if debug {
 		_ = amhelp.MachDebugEnv(mach)
 	}
-
-	// register disposal
-	var dispose am.HandlerDispose = func(id string, ctx context.Context) {
-		_ = t.WsConn.Close(websocket.StatusNormalClosure, "")
-	}
-	t.Mach.Add1(ssT.RegisterDisposal, am.A{
-		ssam.DisposedArgHandler: dispose,
-	})
+	// debug
+	// mach.AddBreakpoint1(ssT.Disposing, "", true)
+	// mach.AddBreakpoint1(ssT.Disposing, "", false)
 
 	return t, nil
+}
+
+func (t *WsTcpTun) DisposingState(e *am.Event) {
+	_ = t.WsConn.Close(websocket.StatusNormalClosure, "")
+	t.DisposedHandlers.DisposingState(e)
 }
 
 func (t *WsTcpTun) StartEnter(e *am.Event) bool {

@@ -363,7 +363,7 @@ func MachDebugEnv(mach am.Api) error {
 
 // Healthcheck adds a state to a machine every 5 seconds, until the context is
 // done. This makes sure all the logs are pushed to the telemetry server.
-// TODO use machine scheduler when ready
+// TODO use machine scheduler (once available))
 func Healthcheck(mach am.Api) {
 	if !mach.Has1(ssam.BasicStates.Healthcheck) {
 		return
@@ -1109,7 +1109,6 @@ type Cond struct {
 
 	// Only if all these states are active.
 	Is S
-	// TODO implement
 	// Only if any of these groups of states are active.
 	Any []S
 	// Only if any of these states is active.
@@ -1144,6 +1143,9 @@ func (c Cond) Check(mach am.Api) bool {
 		return false
 	}
 	if len(c.Any1) > 0 && !mach.Any1(c.Any1...) {
+		return false
+	}
+	if len(c.Any) > 0 && !mach.Any(c.Any...) {
 		return false
 	}
 	if !mach.WasClock(c.Clock) {

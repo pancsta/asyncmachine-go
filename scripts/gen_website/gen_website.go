@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -33,6 +34,7 @@ var assetsUrl = os.Getenv("AM_DEPLOY_ASSETS_URL")
 var ghAssets = "https://pancsta.github.io/assets/asyncmachine-go"
 
 var amMainMenu = sitemap.MainMenu
+var slugRe = regexp.MustCompile(`[^a-zA-Z0-9]+`)
 
 const infoIcon = `<svg class=align-bottom xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6" style="width: 25px;display: inline;">
   <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"></path>
@@ -68,7 +70,13 @@ func main() {
 }
 
 func renderFile(e sitemap.Entry, outputDir string) error {
-	// A. Read the Markdown file
+	// add README.md to examples with readmes
+	if !strings.HasSuffix(e.Path, ".md") {
+		e.Path += "/README.md"
+	}
+
+	// readme MD
+
 	sourcePath := e.Path
 	content, err := os.ReadFile(sourcePath)
 	if err != nil {
@@ -196,7 +204,7 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 	// fix ULs and H1
 	doc.Find("#page-content > ul").RemoveClass("ps-5")
 
-	// fix readme prefix
+	// fix readme headers
 	if !strings.Contains(sourcePath, "/") {
 		// main readme
 		doc.Find("#page-content > h1").PrevAll().Remove().End().Remove()
@@ -212,12 +220,46 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		doc.Find("h1").SetText("/" + e.Path)
 	}
 
+	// example source links
+	if strings.HasPrefix(sourcePath, "examples/") && strings.HasSuffix(sourcePath, "README.md") &&
+		sourcePath != "examples/README.md" {
+
+		suffix := strings.TrimSuffix(sourcePath, "/README.md")
+		ghUrl := "https://github.com/pancsta/asyncmachine-go/tree/main/" + suffix
+		cAmUrl := fmt.Sprintf("%s/pkg/github.com/pancsta/asyncmachine-go/%s.html", apiUrl, suffix)
+		// http://code.asyncmachine.dev.local:15834/pkg/github.com/pancsta/asyncmachine-go/examples/wasm.html
+		doc.Find("h1 + div").PrependHtml(`
+		  <ul class="ps-5 list-disc list-outside">
+				<li>Code: <a href="` + cAmUrl + `">code.asyncmachine.dev</a></li>
+				<li>Code: <a href="` + ghUrl + `">GitHub</a></li>
+			</ul>
+		`)
+	}
+
 	// fix readme suffix
 	doc.Find("#monorepo").NextAll().Remove().End().Remove()
 
+	// fix H3 > A IDs (examples)
+	doc.Find("h3 > a").Each(func(i int, s *goquery.Selection) {
+		text := s.Text()
+		// change non a-z to -
+		id := slugRe.ReplaceAllString(text, "-")
+		s.Parent().SetAttr("id", strings.ToLower(id))
+	})
+
 	// rewrite links
-	doc.Find("#page-content a[href]").Each(func(i int, s *goquery.Selection) {
+	doc.Find("#page-content a[href]:not(.skip)").Each(func(i int, s *goquery.Selection) {
 		href := s.AttrOr("href", "")
+
+		// imgs to github
+		ghUrl := "https://github.com/pancsta/asyncmachine-go/blob/main"
+		if strings.HasPrefix(href, ghUrl) {
+			href = strings.TrimPrefix(href, ghUrl)
+		}
+
+		// if strings.Contains(href, "expense_test") {
+		// 	print()
+		// }
 
 		// skip external and local
 		if strings.HasPrefix(href, "http") || strings.HasPrefix(href, "#") {
@@ -234,7 +276,7 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 				// code exceptions (no Go code)
 				href == "/examples/benchmark_state_source" {
 
-				s.SetAttr("href", fmt.Sprintf("https://github.com/pancsta/asyncmachine-go/blob/main%s", href))
+				s.SetAttr("href", fmt.Sprintf(ghUrl+"%s", href))
 				// fmt.Printf("github link %s\n", href)
 				return
 			}
@@ -259,9 +301,9 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 			if (strings.HasPrefix(e.Path, href2) && !isExample) ||
 				(strings.HasPrefix(href2, path2) && path2 != "") {
 
-				if strings.Contains(href2, "tree_state") {
-					print()
-				}
+				// if strings.Contains(href2, "tree_state") {
+				// 	print()
+				// }
 				newHref := "/" + e.Url
 				if strings.Contains(href2, "#") {
 					newHref += href2[strings.Index(href2, "#"):]

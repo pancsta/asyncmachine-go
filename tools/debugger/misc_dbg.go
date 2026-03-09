@@ -174,11 +174,10 @@ type ToolName string
 type Client struct {
 	*server.Client
 
-	CursorTx1           int
-	ReaderCollapsed     bool
-	CursorStep1         int
-	SelectedState       string
-	SelectedReaderEntry *types.LogReaderEntryPtr
+	CursorTx1       int
+	ReaderCollapsed bool
+	CursorStep1     int
+	SelectedState   string
 	// extracted log entries per tx ID
 	// TODO GC when all entries are closedAt and the first client's tx is later
 	//  than the latest closedAt; whole tx needs to be disposed at the same time

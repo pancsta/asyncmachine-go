@@ -77,9 +77,10 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	m.activeStatesMx.RLock()
 	defer m.activeStatesMx.RUnlock()
 
-	index := m.StateNames()
-	// TODO optimize: schemaSafe()?
-	schema := m.Schema()
+	m.schemaMx.RLock()
+	index := m.stateNames
+	schema := m.schema
+	m.schemaMx.RUnlock()
 	tNow := m.time(nil)
 	tAfter := slices.Clone(tNow)
 	semlog := m.SemLogger()
@@ -320,6 +321,13 @@ func (t *Transition) TimeIndexBefore() *TimeIndex {
 func (t *Transition) TimeIndexCalled() *TimeIndex {
 	// TODO test
 	return NewTimeIndex(t.MachApi.StateNames(), t.Mutation.Called)
+}
+
+// TimeIndexTimeDiff return a time index of states with tick changes as active
+// states.
+func (t *Transition) TimeIndexTimeDiff() *TimeIndex {
+	diff := t.TimeAfter.DiffSince(t.TimeBefore).NonZeroStates()
+	return NewTimeIndex(t.MachApi.StateNames(), diff)
 }
 
 // TimeIndexDiff return 2 time indexes of added and removed states by this

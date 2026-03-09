@@ -343,7 +343,7 @@ func (d *Debugger) hGetClientListLabel(
 		label = "[::bu]" + label
 	}
 
-	if isErrNow {
+	if isErrNow && c.Connected.Load() {
 		label = "[red]" + label
 	} else if c.HadErrSinceTx(currCTxIdx, 100) {
 		label = "[orangered]" + label

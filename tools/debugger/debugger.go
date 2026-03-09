@@ -134,9 +134,17 @@ type Debugger struct {
 	currTxBar          *cview.Flex
 	nextTxBar          *cview.Flex
 	mainGridCols       []int
-	readerExpanded     map[string]bool
-	treeGroups         *cview.DropDown
-	treeLayout         *cview.Flex
+	// reader tree root node names to expanded state
+	logReaderExpanded map[string]bool
+	logReaderScroll   int
+	// fallback for Y-based selection restore
+	logReaderSelectedY int
+	// semantic selection restore
+	logReaderSelected       string
+	logReaderSelectedLevel  int
+	logReaderSelectedParent string
+	treeGroups              *cview.DropDown
+	treeLayout              *cview.Flex
 	// list of states to show, bypassing other ones from the schema
 	schemaTreeStates  am.S
 	lastSelectedGroup string
@@ -159,8 +167,8 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	var err error
 	// init the debugger
 	d := &Debugger{
-		Clients:        make(map[string]*Client),
-		readerExpanded: make(map[string]bool),
+		Clients:           make(map[string]*Client),
+		logReaderExpanded: make(map[string]bool),
 	}
 
 	d.Opts = opts
@@ -1720,15 +1728,20 @@ func (d *Debugger) hUpdateStatusBar() {
 	if c == nil {
 		return
 	}
+	tx := d.hCurrentTx()
 
-	// left
+	// left TODO add (current) global mach time
+	left := []string{}
 	idx := slices.Index(c.MsgStruct.StatesIndex, c.SelectedState)
 	if idx != -1 {
+		left = append(left, "[::b]"+c.SelectedState+"[::-]",
+			fmt.Sprintf("idx: %d", idx))
+		if tx != nil && len(tx.Clocks) > idx {
+			left = append(left, fmt.Sprintf("tick: %d", tx.Clocks[idx]))
+		}
 		// TODO show schema group / inheritance
-		// TODO add (current) global mach time, below
-		d.statusBarLeft.SetText(fmt.Sprintf("[::b]%s[::-] (idx: %d)",
-			c.SelectedState, idx))
 	}
+	d.statusBarLeft.SetText(strings.Join(left, " [grey]|[-] "))
 
 	// right
 
