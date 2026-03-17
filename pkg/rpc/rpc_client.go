@@ -139,9 +139,11 @@ var (
 // takes a consumer, which is a state machine with a ServerPayload state. See
 // states.ConsumerStates.
 func NewClient(
-	ctx context.Context, netSrcAddr string, name string, netSrcSchema am.Schema,
+	ctx context.Context, addr string, name string, netSrcSchema am.Schema,
 	opts *ClientOpts,
 ) (*Client, error) {
+	//
+
 	// defaults
 	if name == "" {
 		name = "rpc"
@@ -152,20 +154,15 @@ func NewClient(
 	if !opts.NoSchema && netSrcSchema == nil {
 		netSrcSchema = am.Schema{}
 	}
-	if amhelp.IsWasm() {
+	if amhelp.IsWasm() && opts.WebSocket == "" {
 		opts.WebSocket = "/"
-	}
-
-	// validate
-	if netSrcAddr == "" {
-		return nil, errors.New("rpcc: netSrcAddr required")
 	}
 
 	c := &Client{
 		Name:               name,
 		ExceptionHandler:   &ExceptionHandler{},
 		LogEnabled:         os.Getenv(EnvAmRpcLogClient) != "",
-		Addr:               netSrcAddr,
+		Addr:               addr,
 		CallTimeout:        3 * time.Second,
 		ConnTimeout:        3 * time.Second,
 		DisconnTimeout:     3 * time.Second,
@@ -197,7 +194,7 @@ func NewClient(
 	mach, err := am.NewCommon(ctx, GetClientId(name), states.ClientSchema,
 		ssC.Names(), c, opts.Parent, &am.Opts{Tags: []string{
 			TagRpcClient,
-			"addr:" + netSrcAddr,
+			"addr:" + addr,
 		}})
 	if err != nil {
 		return nil, err
@@ -277,6 +274,11 @@ func (c *Client) StartEnd(e *am.Event) {
 	if wasConn {
 		c.Mach.EvAdd1(e, ssC.Disconnecting, nil)
 	}
+}
+
+func (c *Client) ConnectingEnter(e *am.Event) bool {
+	// require either the addr or a conn
+	return c.Addr != "" || c.Conn.Load() != nil
 }
 
 func (c *Client) ConnectingState(e *am.Event) {

@@ -124,8 +124,10 @@ var (
 
 // NewServer creates a new RPC server, bound to a worker machine.
 // The source machine has to implement [states.StateSourceStatesDef] interface.
+//
+// addr: can be empty if [Server.Listener] or [Server.Conn] is set later.
 func NewServer(
-	ctx context.Context, addr string, name string, netSrcMach am.Api,
+	ctx context.Context, addr string, name string, stateSource am.Api,
 	opts *ServerOpts,
 ) (*Server, error) {
 	// TODO SPLIT
@@ -142,15 +144,15 @@ func NewServer(
 	}
 
 	// check the source
-	if netSrcMach == nil {
+	if stateSource == nil {
 		return nil, fmt.Errorf("netSrcMach required")
 	}
-	if !netSrcMach.StatesVerified() {
+	if !stateSource.StatesVerified() {
 		return nil, fmt.Errorf(
 			"net source states not verified, call VerifyStates()")
 	}
-	hasHandlers := netSrcMach.HasHandlers()
-	if hasHandlers && !netSrcMach.Has(ssW.Names()) {
+	hasHandlers := stateSource.HasHandlers()
+	if hasHandlers && !stateSource.Has(ssW.Names()) {
 		// error only when some handlers bound, skip deterministic machines
 		err := fmt.Errorf(
 			"%w: NetSourceMach with handlers has to implement "+
@@ -167,7 +169,7 @@ func NewServer(
 		Addr:             addr,
 		DeliveryTimeout:  5 * time.Second,
 		LogEnabled:       os.Getenv(EnvAmRpcLogServer) != "",
-		Source:           netSrcMach,
+		Source:           stateSource,
 		Args:             opts.Args,
 		Opts:             *opts,
 
@@ -223,7 +225,7 @@ func NewServer(
 	}
 	// queue ticks start at 1
 	s.tracer.dataLatest.queueTick = 1
-	if err = netSrcMach.BindTracer(s.tracer); err != nil {
+	if err = stateSource.BindTracer(s.tracer); err != nil {
 		return nil, err
 	}
 
@@ -247,7 +249,7 @@ func NewServer(
 			// dynamic handlers TODO use ampipe.Bind
 			h = createSendPayloadHandlers(s, payloadState)
 		}
-		err = netSrcMach.BindHandlers(h)
+		err = stateSource.BindHandlers(h)
 		if err != nil {
 			return nil, err
 		}
@@ -610,7 +612,7 @@ func (s *Server) Start(e *am.Event) am.Result {
 
 // Stop stops the server, and optionally disposes resources.
 func (s *Server) Stop(e *am.Event, dispose bool) am.Result {
-	// TODO waitTillCtx?
+	// TODO waitTillCtx
 	if s.Mach == nil {
 		return am.Canceled
 	}
@@ -1153,7 +1155,7 @@ func (s *Server) RemoteBye(
 
 // ///// ///// /////
 
-// ///// BINDINGS
+// ///// MISC
 
 // ///// ///// /////
 
@@ -1162,6 +1164,7 @@ func (s *Server) RemoteBye(
 func BindServer(
 	source, target *am.Machine, rpcReady, clientReady string,
 ) error {
+	// TODO use ampipe.BindMany
 	if rpcReady == "" || clientReady == "" {
 		return fmt.Errorf("rpcReady and clientConn must be set")
 	}
@@ -1193,6 +1196,7 @@ func BindServerMulti(
 	if rpcReady == "" || clientConn == "" || clientDisconn == "" {
 		return fmt.Errorf("rpcReady, clientConn, and clientDisconn must be set")
 	}
+	// TODO use ampipe.BindMany
 
 	h := &struct {
 		RpcReadyState am.HandlerFinal
@@ -1215,6 +1219,7 @@ func BindServerMulti(
 
 // BindServerRpcReady bind RpcReady using Add to a custom multi state.
 func BindServerRpcReady(source, target *am.Machine, rpcReady string) error {
+	// TODO use ampipe.Bind
 	h := &struct {
 		RpcReadyState am.HandlerFinal
 	}{
@@ -1223,12 +1228,6 @@ func BindServerRpcReady(source, target *am.Machine, rpcReady string) error {
 
 	return source.BindHandlers(h)
 }
-
-// ///// ///// /////
-
-// ///// MISC
-
-// ///// ///// /////
 
 type ServerOpts struct {
 	// PayloadState is a state for the server to listen on, to deliver payloads

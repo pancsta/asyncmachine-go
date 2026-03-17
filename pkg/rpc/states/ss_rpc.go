@@ -168,7 +168,7 @@ type ServerStatesDef struct {
 
 	// RPC client connected (technically)
 	ClientConnected string
-	// RPC client fully ysable
+	// RPC client fully usable
 	HandshakeDone string
 
 	// How many times the client requested a full sync.
@@ -402,9 +402,11 @@ type MuxStatesDef struct {
 	// Ready - mux is ready to accept new clients.
 	Ready string
 
+	// stateless event
 	ClientConnected string
 	HasClients      string
 	// NewServerErr - new server returned an error. The mux is still running.
+	// TODO refac
 	NewServerErr string
 
 	// inherit from BasicStatesDef
