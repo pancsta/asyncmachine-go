@@ -223,13 +223,9 @@ func initTelemetry(node *Node) {
 
 func exportState(ctx context.Context, node *Node, mach am.Api) {
 	// RPC repeater via mux
-	mux, err := arpc.NewMux(ctx, node.Name, nil, &arpc.MuxOpts{Parent: mach})
-	if err != nil {
-		panic(err)
-	}
-	mux.NewServerFn = func(num int, conn net.Conn) (*arpc.Server, error) {
-		srvName := fmt.Sprintf("%s-%d", node.Name, num)
-		s, err := arpc.NewServer(ctx, node.Addr, srvName, mach, &arpc.ServerOpts{Parent: mux.Mach})
+	newServerFn := func(mux *arpc.Mux, id string, conn net.Conn) (*arpc.Server, error) {
+		s, err := arpc.NewServer(ctx, node.Addr, node.Name+"-"+id, mach,
+			&arpc.ServerOpts{Parent: mux.Mach})
 		if err != nil {
 			return nil, err
 		}
@@ -237,7 +233,13 @@ func exportState(ctx context.Context, node *Node, mach am.Api) {
 
 		return s, nil
 	}
-	mux.Addr = node.Addr
+	mux, err := arpc.NewMux(ctx, node.Addr, node.Name, nil, &arpc.MuxOpts{
+		Parent:      mach,
+		NewServerFn: newServerFn,
+	})
+	if err != nil {
+		panic(err)
+	}
 	exportTelemetry(node, mux.Mach)
 	fmt.Println("Starting on " + node.Addr)
 	mux.Start(nil)

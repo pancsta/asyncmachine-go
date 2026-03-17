@@ -943,6 +943,7 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 
 		} else {
 			// [hSetCursor1] triggers DiagramsScheduled, so do we
+			// TODO optimize: push diagram after the initial rendering
 			go amhelp.AskEvAdd1(e, d.Mach, ss.DiagramsScheduled, nil)
 		}
 

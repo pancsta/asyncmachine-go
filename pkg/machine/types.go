@@ -206,15 +206,12 @@ type Api interface {
 	// WhenArgs is [Machine.WhenArgs].
 	WhenArgs(state string, args A, ctx context.Context) <-chan struct{}
 
-	// Getters (remote)
-
-	// Err is [Machine.Err].
-	Err() error
-
 	// ///// LOCAL
 
 	// Checking (local)
 
+	// Err is [Machine.Err].
+	Err() error
 	// IsErr is [Machine.IsErr].
 	IsErr() bool
 	// Is is [Machine.Is].
