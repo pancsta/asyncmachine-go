@@ -1,6 +1,6 @@
 module github.com/pancsta/asyncmachine-go/scripts
 
-go 1.24.6
+go 1.25.0
 
 tool go101.org/golds
 
@@ -63,13 +63,13 @@ require (
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	// TODO max v0.8.2 for go <1.26
-	go101.org/golds v0.8.2 // indirect
+	go101.org/golds v0.8.2
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
-	golang.org/x/mod v0.31.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
+	golang.org/x/mod v0.32.0 // indirect
+	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
-	golang.org/x/text v0.33.0 // indirect
-	golang.org/x/tools v0.40.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/tools v0.41.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

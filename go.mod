@@ -1,6 +1,6 @@
 module github.com/pancsta/asyncmachine-go
 
-go 1.24.6
+go 1.25.0
 
 // replace libp2p's prom with no-op to prevent a goroutine leak in load tests
 //replace github.com/prometheus/client_golang => github.com/pancsta/prom_client_golang v0.0.0-20250629100015-513d4c0bdd5e
@@ -61,19 +61,19 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/zyedidia/clipper v0.1.1
 	go.etcd.io/bbolt v1.3.6
-	go.opentelemetry.io/otel v1.38.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.38.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.38.0
-	go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.14.0
-	go.opentelemetry.io/otel/log v0.14.0
-	go.opentelemetry.io/otel/sdk v1.38.0
-	go.opentelemetry.io/otel/sdk/log v0.14.0
-	go.opentelemetry.io/otel/trace v1.38.0
+	go.opentelemetry.io/otel v1.42.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.42.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.42.0
+	go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.18.0
+	go.opentelemetry.io/otel/log v0.18.0
+	go.opentelemetry.io/otel/sdk v1.42.0
+	go.opentelemetry.io/otel/sdk/log v0.18.0
+	go.opentelemetry.io/otel/trace v1.42.0
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476
 	golang.org/x/sync v0.19.0
-	golang.org/x/text v0.33.0
-	google.golang.org/grpc v1.75.0
-	google.golang.org/protobuf v1.36.8
+	golang.org/x/text v0.34.0
+	google.golang.org/grpc v1.79.2
+	google.golang.org/protobuf v1.36.11
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
@@ -157,7 +157,7 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/gosimple/slug v1.13.1 // indirect
 	github.com/gosimple/unidecode v1.0.1 // indirect
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/hamba/avro/v2 v2.29.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
@@ -280,28 +280,28 @@ require (
 	github.com/yuin/goldmark v1.7.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
-	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
+	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect
-	go.opentelemetry.io/otel/metric v1.38.0 // indirect
-	go.opentelemetry.io/proto/otlp v1.7.1 // indirect
+	go.opentelemetry.io/otel/metric v1.42.0 // indirect
+	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/fx v1.24.0 // indirect
 	go.uber.org/mock v0.5.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/image v0.20.0 // indirect
-	golang.org/x/mod v0.31.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
-	golang.org/x/telemetry v0.0.0-20251203150158-8fff8a5912fc // indirect
-	golang.org/x/term v0.39.0 // indirect
+	golang.org/x/mod v0.32.0 // indirect
+	golang.org/x/net v0.51.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260109210033-bd525da824e2 // indirect
+	golang.org/x/term v0.40.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
-	golang.org/x/tools v0.40.0 // indirect
+	golang.org/x/tools v0.41.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	gonum.org/v1/plot v0.14.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250825161204-c5933d9347a5 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260209200024-4cfbd4190f57 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260209200024-4cfbd4190f57 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/mysql v1.5.6 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect

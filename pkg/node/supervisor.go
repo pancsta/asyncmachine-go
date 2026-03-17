@@ -305,9 +305,11 @@ func (s *Supervisor) StartState(e *am.Event) {
 	s.PublicAddr = args.PublicAddr
 
 	// public rpc (muxed)
-	s.PublicMux, err = rpc.NewMux(ctx, "ns-pub-"+s.Name, s.newClientConn,
-		&rpc.MuxOpts{Parent: s.Mach})
-	s.PublicMux.Addr = s.PublicAddr
+	s.PublicMux, err = rpc.NewMux(ctx, s.PublicAddr, "ns-pub-"+s.Name, nil,
+		&rpc.MuxOpts{
+			Parent:      s.Mach,
+			NewServerFn: s.newClientConn,
+		})
 	if err != nil {
 		_ = AddErrRpc(s.Mach, err, nil)
 		return
@@ -1091,14 +1093,16 @@ func (s *Supervisor) min() int {
 // newClientConn creates a new RPC server for a client.
 // TODO keep one forked and bind immediately
 func (s *Supervisor) newClientConn(
-	num int, conn net.Conn,
+	mux *rpc.Mux, id string, conn net.Conn,
 ) (*rpc.Server, error) {
-	s.log("new client connection %d", num)
+	//
+
+	s.log("new client connection %s", id)
 	ctx := s.Mach.NewStateCtx(ssS.Start)
-	name := fmt.Sprintf("ns-pub-%d-%s", num, s.Name)
+	name := fmt.Sprintf("ns-pub-%s-%s", id, s.Name)
 
 	opts := &rpc.ServerOpts{
-		Parent:       s.PublicMux.Mach,
+		Parent:       mux.Mach,
 		PayloadState: ssS.ClientSendPayload,
 	}
 	rpcS, err := rpc.NewServer(ctx, s.PublicAddr, name, s.Mach, opts)
@@ -1123,6 +1127,6 @@ func (s *Supervisor) newClientConn(
 		return nil, am.ErrHandlerTimeout
 	}
 
-	s.log("new client connection %d ready", num)
+	s.log("new client connection %s ready", id)
 	return rpcS, nil
 }

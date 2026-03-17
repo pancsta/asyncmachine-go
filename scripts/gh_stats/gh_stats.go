@@ -301,7 +301,8 @@ func genCharts(ctx context.Context) {
 
 		// Parse Unique_Clones (Column Index 4)
 		// CSV Format: Date,Views,Unique_Views,Clones,Unique_Clones,Total_Release_Downloads
-		val, err := strconv.Atoi(record[4])
+		// TODO named index
+		val, err := strconv.Atoi(record[3])
 		if err != nil {
 			log.Printf("Skipping row %d due to invalid number: %v", i, err)
 			continue
@@ -337,7 +338,7 @@ func genCharts(ctx context.Context) {
 
 		// Set X-Axis and Add Series
 		line.SetXAxis(dates).
-			AddSeries("Unique Clones", uniqueClones).
+			AddSeries("Clones", uniqueClones).
 			SetSeriesOptions(
 				charts.WithLineChartOpts(opts.LineChart{
 					Smooth: opts.Bool(true), // Makes the line curved instead of jagged

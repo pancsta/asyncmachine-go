@@ -759,6 +759,8 @@ func (sm *Subscriptions) WhenTime(
 func (sm *Subscriptions) WhenQuery(
 	fn func(clock Clock) bool, ctx context.Context,
 ) <-chan struct{} {
+	// TODO test
+
 	// locks
 	sm.Mx.Lock()
 	defer sm.Mx.Unlock()

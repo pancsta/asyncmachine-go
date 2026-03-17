@@ -116,15 +116,21 @@ func cliRun(_ *cobra.Command, _ []string, p types.Params) {
 		_ = amhelp.MachDebug(dbg.Mach, p.DebugAddr, p.LogLevel, false,
 			amhelp.SemConfigEnv(true))
 
-		// TODO --otel flag
-		// os.Setenv(telemetry.EnvService, "dbg")
-		// os.Setenv(telemetry.EnvOtelTrace, "1")
-		// os.Setenv(telemetry.EnvOtelTraceTxs, "1")
-		// err = telemetry.MachBindOtelEnv(dbg.Mach)
-		// if err != nil {
-		// 	panic(err)
-		// }
 	}
+
+	// TODO --otel flag
+	// dbg.Mach.SemLogger().EnableSteps(true)
+	// os.Setenv(amtele.EnvService, "dbg")
+	// os.Setenv(amtele.EnvOtelTrace, "1")
+	// os.Setenv(amtele.EnvOtelTraceTxs, "1")
+	// os.Setenv(amtele.EnvOtelTraceArgs, "1")
+	// os.Setenv(amtele.EnvOtelTraceAllowStates,
+	// 	"ClientSelected,SelectingClient,RemoveClient,BuildingLog,LogBuilt")
+	// os.Setenv(amtele.EnvOtelTraceAllowStatesRe, "^Diagrams")
+	// err = amtele.MachBindOtelEnv(dbg.Mach)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	// rpc server
 	if p.ListenAddr != "-1" {

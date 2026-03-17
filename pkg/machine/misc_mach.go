@@ -775,7 +775,7 @@ var LogArgs = []string{
 // representation.
 var LogArgsMaxLen = 20
 
-// NewLogArgsMapper returns a matcher function for [Opts.LogArgs]. Useful for
+// NewLogArgsMapper returns a mapper function for [Opts.LogArgs]. Useful for
 // debugging untyped argument maps. Usually [names] extend defaults from
 // [LogArgs].
 //
