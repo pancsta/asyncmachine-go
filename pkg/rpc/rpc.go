@@ -52,6 +52,7 @@ const (
 
 	PrefixNetMach = "rnm-"
 	WsPathListen  = "/listen/"
+	WsPathDial    = "/dial/"
 )
 
 var ss = states.SharedStates
@@ -1053,7 +1054,7 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 		}
 	}
 
-	mux, err := NewMux(mach.Context(), "repl-"+mach.Id(), nil, &MuxOpts{
+	mux, err := NewMux(mach.Context(), addr, "repl-"+mach.Id(), mach, &MuxOpts{
 		Parent:   mach,
 		Args:     opts.Args,
 		ParseRpc: opts.ParseRpc,
@@ -1061,8 +1062,6 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 	if err != nil {
 		return err
 	}
-	mux.Addr = addr
-	mux.Source = mach
 	mux.Start(nil)
 
 	if addrCh == nil && addrDir == "" {
@@ -1303,4 +1302,10 @@ func newClosedChan() chan struct{} {
 // Eg /listen/MyMach/localhost:1234
 func WsListenPath(machId, addr string) string {
 	return WsPathListen + machId + "/" + addr
+}
+
+// WsDialPath creates a WebSocket dial listen URL path.
+// Eg /dial/MyMach/localhost:1234
+func WsDialPath(machId, addr string) string {
+	return WsPathDial + machId + "/" + addr
 }

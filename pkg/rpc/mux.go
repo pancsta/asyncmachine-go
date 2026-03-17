@@ -2,11 +2,13 @@ package rpc
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"strconv"
 	"sync/atomic"
 
+	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 	"github.com/soheilhy/cmux"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -16,7 +18,7 @@ import (
 
 // MuxNewServerFn is a function to create a new RPC server for each incoming
 // connection.
-type MuxNewServerFn func(num int, conn net.Conn) (*Server, error)
+type MuxNewServerFn func(mux *Mux, id string, conn net.Conn) (*Server, error)
 
 var ssM = states.MuxStates
 
@@ -28,43 +30,44 @@ type Mux struct {
 	// Source is the state source to expose via RPC. Required if NewServerFn
 	// isnt provided.
 	Source am.Api
-	// NewServerFn creates a new instance of Server and is called for every new
-	// connection.
-	NewServerFn MuxNewServerFn
 	// Typed arguments struct value
 	Args any
 
 	Name string
 	Addr string
-	// The listener used by this Mux, can be set manually before Start().
+	// Listener used by this [Mux], can be set manually before Start().
 	Listener   net.Listener
 	LogEnabled bool
 	// The last error returned by NewServerFn.
 	NewServerErr error
 	Opts         MuxOpts
 
-	clients   []net.Conn
-	cmux      cmux.CMux
-	connCount atomic.Int64
+	cmux          cmux.CMux
+	countConns    atomic.Int64
+	countDisconns atomic.Int64
 }
 
 // NewMux initializes a Mux instance to handle RPC server creation for incoming
 // connections with the given parameters.
 //
-// newServerFn: when nil, [Mux.Source] needs to be set manually before calling
-// [Mux.Start].
+// addr: can be empty if [Mux.Listener] is set later.
+// stateSource: optional, can be replaced with [opts.NewServerFn].
 func NewMux(
-	ctx context.Context, name string, newServerFn MuxNewServerFn, opts *MuxOpts,
+	ctx context.Context, addr string, name string, stateSource am.Api,
+	opts *MuxOpts,
 ) (*Mux, error) {
+	// TODO allow muxers without listening on a port (for relay matchers)
+
 	if opts == nil {
 		opts = &MuxOpts{}
 	}
 	d := &Mux{
-		Name:        name,
-		LogEnabled:  os.Getenv(EnvAmRpcLogMux) != "",
-		NewServerFn: newServerFn,
-		Args:        opts.Args,
-		Opts:        *opts,
+		Name:       name,
+		LogEnabled: os.Getenv(EnvAmRpcLogMux) != "",
+		Source:     stateSource,
+		Addr:       addr,
+		Args:       opts.Args,
+		Opts:       *opts,
 	}
 
 	mach, err := am.NewCommon(ctx, "rm-"+name, states.MuxSchema, ssM.Names(),
@@ -107,7 +110,8 @@ func (m *Mux) NewServerErrState(e *am.Event) {
 }
 
 func (m *Mux) StartEnter(e *am.Event) bool {
-	return m.NewServerFn != nil || m.Source != nil
+	// require either a source or factory
+	return m.Opts.NewServerFn != nil || m.Source != nil
 }
 
 func (m *Mux) StartState(e *am.Event) {
@@ -173,7 +177,7 @@ func (m *Mux) ClientConnectedState(e *am.Event) {
 }
 
 func (m *Mux) HasClientsEnd(e *am.Event) bool {
-	return len(m.clients) == 0
+	return m.countConns.Load() == m.countDisconns.Load()
 }
 
 func (m *Mux) HealthcheckState(e *am.Event) {
@@ -199,7 +203,6 @@ func (m *Mux) accept(e *am.Event, l net.Listener) {
 		// TODO handle ErrListenerClosed and ErrServerClosed
 		conn, err := l.Accept()
 		if err != nil {
-
 			mach.AddErr(err, nil)
 			continue
 		}
@@ -208,36 +211,18 @@ func (m *Mux) accept(e *am.Event, l net.Listener) {
 		}))
 
 		// get a new conn number
-		var num int64 = -1
-		for {
-			num = m.connCount.Load()
-			if m.connCount.CompareAndSwap(num, num+1) {
-				break
-			}
-		}
+		nextId := m.countConns.Add(1)
 
 		// new instance
-		var server *Server
-		if m.NewServerFn == nil {
-			server, err = NewServer(m.Mach.Context(), ":0",
-				m.Name+"-"+strconv.Itoa(int(num)), m.Source, &ServerOpts{
-					Parent:   m.Mach,
-					Args:     m.Args,
-					ParseRpc: m.Opts.ParseRpc,
-				})
-		} else {
-			server, err = m.NewServerFn(int(num), conn)
-		}
+		server, err := m.NewServer(e, strconv.Itoa(int(nextId)), conn)
 		// TODO return this err to the RPC client
 		if err != nil {
 			_ = conn.Close()
 			mach.Log("failed to create a new server: %s", err)
+			m.countDisconns.Add(1)
 			continue
 		}
-
-		// inject net.Conn
-		server.Conn = conn
-		server.Start(e)
+		mach.EvAdd1(e, ssM.HasClients, nil)
 
 		// TODO optimize: re-use old instances?
 		// TODO handle with a state, not a goroutine
@@ -247,8 +232,40 @@ func (m *Mux) accept(e *am.Event, l net.Listener) {
 			<-server.Mach.When1(ssS.ClientConnected, muxCtx)
 			<-server.Mach.WhenNot1(ssS.ClientConnected, muxCtx)
 			server.Stop(e, true)
+			m.countDisconns.Add(1)
+			mach.EvRemove1(e, ssM.HasClients, nil)
 		}()
 	}
+}
+
+// NewServer creates a new server instance for this muxer.
+func (m *Mux) NewServer(
+	e *am.Event, id string, conn net.Conn,
+) (*Server, error) {
+	var srv *Server
+	var err error
+	if m.Opts.NewServerFn == nil {
+		srv, err = m.NewDefaultServer(id)
+	} else {
+		srv, err = m.Opts.NewServerFn(m, id, conn)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	srv.Conn = conn
+	srv.Start(e)
+
+	return srv, nil
+}
+
+func (m *Mux) NewDefaultServer(id string) (*Server, error) {
+	return NewServer(m.Mach.Context(), "",
+		m.Name+"-"+id, m.Source, &ServerOpts{
+			Parent:   m.Mach,
+			Args:     m.Args,
+			ParseRpc: m.Opts.ParseRpc,
+		})
 }
 
 func (m *Mux) Start(e *am.Event) am.Result {
@@ -278,6 +295,9 @@ func (m *Mux) log(msg string, args ...any) {
 // ///// ///// /////
 
 type MuxOpts struct {
+	// NewServerFn is a function to create a new RPC server for each incoming
+	// connection. Optional.
+	NewServerFn MuxNewServerFn
 	// Parent is a parent state machine for a new Mux state machine. See
 	// [am.Opts].
 	Parent am.Api
@@ -285,16 +305,23 @@ type MuxOpts struct {
 	Args any
 	// optional RPC args parser
 	ParseRpc func(args am.A) am.A
-
-	// Listen on a WebSocket connection instead of TCP.
-	// WebSocket bool
-	// // HTTP URL without proto to tunnel the TCP listen over a WebSocket conn.
-	// // See WsListenPath.
-	// WebSocketTunnel string
 }
 
-// WEBSOCKET
+// BindMux binds the HasClients state with Add/Remove to custom states.
+func BindMux(
+	source, target *am.Machine, activeState, inactiveState string,
+) error {
+	if activeState == "" {
+		return fmt.Errorf("active state must be set")
+	}
+	if inactiveState == "" {
+		inactiveState = activeState
+	}
 
+	return ampipe.Bind(source, target, ssM.HasClients, activeState, inactiveState)
+}
+
+// TODO
 // type wsHandlerMux struct {
 // 	m     *Mux
 // 	event *am.Event

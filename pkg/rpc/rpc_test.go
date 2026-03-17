@@ -720,8 +720,20 @@ func TestMux(t *testing.T) {
 	// init source & mux
 	netSrc := utils.NewRelsNetSrc(t, nil)
 	amhelpt.MachDebugEnv(t, netSrc)
-	mux, err := NewMux(ctx, t.Name(), nil, &MuxOpts{
-		Parent: netSrc,
+	newServerFn := func(mux *Mux, id string, _ net.Conn) (*Server, error) {
+		s, err := NewServer(ctx, serverAddr, t.Name()+"-"+id, netSrc, &ServerOpts{
+			Parent: mux.Mach,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		amhelpt.MachDebugEnv(t, s.Mach)
+
+		return s, nil
+	}
+	mux, err := NewMux(ctx, "", t.Name(), nil, &MuxOpts{
+		Parent:      netSrc,
+		NewServerFn: newServerFn,
 	})
 
 	// client fac
@@ -735,20 +747,6 @@ func TestMux(t *testing.T) {
 		amhelpt.MachDebugEnv(t, c.Mach)
 
 		return c
-	}
-
-	// server fac
-	mux.NewServerFn = func(num int, _ net.Conn) (*Server, error) {
-		name := fmt.Sprintf("%s-%d", t.Name(), num)
-		s, err := NewServer(ctx, serverAddr, name, netSrc, &ServerOpts{
-			Parent: mux.Mach,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		amhelpt.MachDebugEnv(t, s.Mach)
-
-		return s, nil
 	}
 
 	// start cmux
