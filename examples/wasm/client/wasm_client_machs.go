@@ -92,10 +92,10 @@ func initMachines(
 	// RPC Client (Net Machine)
 
 	// TODO enable
-	foo, err := arpc.NewClient(ctx, example.EnvFooWsAddr, fooHandlerMach.Id(), states.FooSchema, &arpc.ClientOpts{
+	foo, err := arpc.NewClient(ctx, example.EnvRelayHttpAddr, fooHandlerMach.Id(), states.FooSchema, &arpc.ClientOpts{
 		Parent: fooHandlerMach,
-		// automatic in WASM
-		WebSocket: "/",
+		// TODO should be the default for WASM
+		WebSocket: arpc.WsDialPath(fooHandlerMach.Id(), example.EnvFooTcpAddr),
 	})
 	if err != nil {
 		log.Fatal(err.Error())

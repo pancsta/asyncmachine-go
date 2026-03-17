@@ -6,7 +6,6 @@ import (
 	"net"
 
 	"github.com/coder/websocket"
-
 	"github.com/pancsta/asyncmachine-go/tools/relay/states"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -33,6 +32,7 @@ func NewWsTcpTun(
 	idTun string, parent am.Api, debug bool,
 ) (*WsTcpTun, error) {
 	// TODO validate wsConn
+	// TODO generate ID
 
 	t := &WsTcpTun{
 		DisposedHandlers: &ssam.DisposedHandlers{},

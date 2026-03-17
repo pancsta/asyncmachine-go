@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -171,6 +173,7 @@ func (r *Relay) HttpStartingState(e *am.Event) {
 
 func (r *Relay) HttpReadyState(e *am.Event) {
 	// TODO /dial - RPC clients (WS to TCP dial)
+
 	// ctx := r.Mach.NewStateCtx(ssR.HttpReady)
 
 	r.out("WASM relay listening on http://%s\n", r.Args.Wasm.ListenAddr)
@@ -186,13 +189,124 @@ func (r *Relay) HttpReadyState(e *am.Event) {
 		func(w http.ResponseWriter, req *http.Request) {
 			r.HandleWsTcpListen(e, w, req)
 		})
+
+	// WS->TCP dial
+	r.HttpMux.HandleFunc("/dial/",
+		func(w http.ResponseWriter, req *http.Request) {
+			r.HandleWsTcpDial(e, w, req)
+		})
+}
+
+func (r *Relay) HandleWsTcpDial(
+	e *am.Event, w http.ResponseWriter, req *http.Request,
+) {
+	// TODO state
+	// TODO loop guard to detect flood (fix thread safety)
+
+	// TODO req.Context() needs body to be read to close
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+
+	// metric
+	r.Mach.EvAdd1(e, ssR.WsDialConn, nil)
+
+	// parse "localhost:1234"
+	uri, ok := strings.CutPrefix(req.URL.Path, arpc.WsPathDial)
+	if !ok {
+		r.Mach.EvAddErrState(e, ssR.ErrNetwork, fmt.Errorf(
+			"invalid %s path: %s", arpc.WsPathDial, req.URL.Path), nil)
+		return
+	}
+	id, tcpAddr := path.Split(uri)
+	id = strings.TrimSuffix(id, "/")
+	r.Mach.Log("WS TCP dial from %s to %s", id, tcpAddr)
+
+	// TODO origin security
+	// TODO ID security
+
+	// websocket
+	wsConn, err := websocket.Accept(w, req, &websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		r.Mach.EvAddErrState(e, ssR.ErrNetwork, err, Pass(&A{
+			Addr: tcpAddr,
+		}))
+		return
+	}
+
+	// check server matchers
+	for _, m := range r.Args.Wasm.DialMatchers {
+		if !m.Id.MatchString(id) {
+			continue
+		}
+		r.Mach.Log("WS dial for %s accepted by dial matcher", id)
+
+		netConn := websocket.NetConn(ctx, wsConn, websocket.MessageBinary)
+		srv, err := m.NewServer(ctx, id, netConn)
+		if err != nil {
+			r.Mach.EvAddErr(e,
+				fmt.Errorf("failed to create RPC server for %s: %s", id, err), nil)
+		} else {
+			// stay alive until disconn
+			<-srv.Mach.When1(ssrpc.ServerStates.ClientConnected, ctx)
+			<-srv.Mach.WhenNot1(ssrpc.ServerStates.ClientConnected, ctx)
+			srv.Stop(e, true)
+			return
+		}
+	}
+
+	// dial
+	tcpConn, err := net.Dial("tcp", tcpAddr)
+	if err != nil {
+		r.Mach.EvAddErrState(e, ssR.ErrNetwork, err, Pass(&A{
+			Addr: tcpAddr,
+			Id:   id,
+		}))
+		wsConn.Close(websocket.StatusInternalError, "dial failed")
+		return
+	}
+	defer tcpConn.Close()
+	defer r.Mach.EvAdd1(e, ssR.WsDialDisconn, nil)
+
+	// start
+	wsNetConn := websocket.NetConn(ctx, wsConn, websocket.MessageBinary)
+
+	// TCP -> WebSocket (WASM)
+	errClient := make(chan error, 1)
+	errServer := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(wsNetConn, tcpConn)
+		if err != nil {
+			errServer <- err
+		}
+	}()
+
+	// WebSocket (WASM) -> TCP
+	go func() {
+		_, err := io.Copy(tcpConn, wsNetConn)
+		if err != nil {
+			errClient <- err
+		}
+	}()
+
+	// wait
+	select {
+	case <-ctx.Done():
+	case <-errClient:
+		r.Mach.Log("WS TCP dial from %s to %s client err: %s",
+			id, tcpAddr, errClient)
+	case <-errServer:
+		r.Mach.Log("WS TCP dial from %s to %s server err: %s",
+			id, tcpAddr, errServer)
+	}
 }
 
 func (r *Relay) HandleWsTcpListen(
 	e *am.Event, w http.ResponseWriter, req *http.Request,
 ) {
+	// TODO state
 	// TODO loop guard to detect flood (fix thread safety)
-	// TODO create a REPL file for repl- machs
 
 	// TODO req.Context() needs body to be read to close
 	ctx, cancel := context.WithCancel(req.Context())
@@ -205,7 +319,7 @@ func (r *Relay) HandleWsTcpListen(
 	uri, ok := strings.CutPrefix(req.URL.Path, arpc.WsPathListen)
 	if !ok {
 		r.Mach.EvAddErrState(e, ssR.ErrNetwork, fmt.Errorf(
-			"invalid /listen path: %s", req.URL.Path), nil)
+			"invalid %s path: %s", arpc.WsPathListen, req.URL.Path), nil)
 		return
 	}
 	id, tcpAddr := path.Split(uri)
@@ -228,11 +342,11 @@ func (r *Relay) HandleWsTcpListen(
 	}
 
 	// check client matchers
-	for _, m := range r.Args.Wasm.ClientMatchers {
+	for _, m := range r.Args.Wasm.TunnelMatchers {
 		if !m.Id.MatchString(id) {
 			continue
 		}
-		r.Mach.Log("WS tunnel for %s accepted by client matcher", id)
+		r.Mach.Log("WS tunnel for %s accepted by tunnel matcher", id)
 
 		netConn := websocket.NetConn(ctx, conn, websocket.MessageBinary)
 		client, err := m.NewClient(ctx, id, netConn)
@@ -260,7 +374,7 @@ func (r *Relay) HandleWsTcpListen(
 		}
 
 		// init mach
-		idTun := fmt.Sprintf("%s-wtt-%d", r.Mach.Id(), r.cWsTcpTuns)
+		idTun := fmt.Sprintf("%s-wt-%d", r.Mach.Id(), r.cWsTcpTuns)
 		r.cWsTcpTuns++
 		tun, err := NewWsTcpTun(ctx, conn, id, tcpAddr, req.RemoteAddr, idTun,
 			r.Mach, r.Args.Debug)

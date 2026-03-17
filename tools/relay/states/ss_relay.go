@@ -24,6 +24,8 @@ type RelayStatesDef struct {
 	// New WebSocket to TCP-listen tunnel req
 	WsTunListenConn    string
 	WsTunListenDisconn string
+	WsDialConn         string
+	WsDialDisconn      string
 
 	// inherit from BasicStatesDef
 	*ssam.BasicStatesDef
@@ -59,6 +61,14 @@ var RelaySchema = SchemaMerge(
 			Require: S{ss.HttpReady},
 		},
 		ss.WsTunListenDisconn: {
+			Multi:   true,
+			Require: S{ss.HttpReady},
+		},
+		ss.WsDialConn: {
+			Multi:   true,
+			Require: S{ss.HttpReady},
+		},
+		ss.WsDialDisconn: {
 			Multi:   true,
 			Require: S{ss.HttpReady},
 		},
