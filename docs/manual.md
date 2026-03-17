@@ -1931,4 +1931,4 @@ Each of them has a readme with examples:
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) Generates schema files and Grafana dashboards.
 - [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
 - [`/tools/cmd/am-vis`](/tools/cmd/am-vis) Generates D2 diagrams.
-- [`/tools/cmd/am-relay`](/tools/cmd/am-relay) Rotates logs.
+- [`/tools/cmd/am-relay`](/tools/cmd/am-relay) Rotates logs and relays WASM.

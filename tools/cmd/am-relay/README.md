@@ -25,7 +25,8 @@ into chunked file dumps.
 ## Features
 
 - rotate dbg telemetry
-- websocket-to-tcp
+- websocket-to-tcp listen
+- websocket-to-tcp dial
 - TODO convert gob to JSON
 
 `$ am-relay --help`
@@ -42,6 +43,8 @@ Commands:
   rotate-dbg             Rotate dbg protocol with fragmented dump files
   wasm                   WebSockets to local TCP listeners for WASM
 ```
+
+### `dbg` protocol rotation
 
 `$ am-relay rotate-dbg --help`
 
@@ -67,9 +70,9 @@ Global options:
   --help, -h             display this help and exit
 ```
 
-`$ am-relay wasm --help`
+### Relay of WebAssembly
 
-WASM relay is also usable as a library - this allows to pass the connection directly to an aRPC client.
+`$ am-relay wasm --help`
 
 ```text
 Usage: am-relay wasm [--listen-addr LISTEN-ADDR] [--static-dir STATIC-DIR] [--repl-addr-dir REPL-ADDR-DIR]
@@ -88,8 +91,46 @@ Global options:
   --help, -h             display this help and exit
 ```
 
+WASM relay is also usable as a library - this allows passing the connection directly to aRPC clients and servers within
+the same process.
+
+```go
+import (
+    amrelay "github.com/pancsta/asyncmachine-go/tools/relay"
+    amrelayt "github.com/pancsta/asyncmachine-go/tools/relay/types"
+)
+
+// ...
+
+relay, err := amrelay.New(ctx, amrelayt.Args{
+    Name:   "wasm-demo",
+    Debug:  true,
+    Parent: fooMach,
+    Wasm: &amrelayt.ArgsWasm{
+        ListenAddr: example.EnvRelayHttpAddr,
+        StaticDir:  "./client",
+        ReplAddrDir: "tmp",
+        TunnelMatchers: []amrelayt.TunnelMatcher{{
+            Id:        regexp.MustCompile("^browser-bar-"),
+            NewClient: newClient,
+        }},
+        DialMatchers: []amrelayt.DialMatcher{{
+            Id: regexp.MustCompile("^browser-foo-"),
+            NewServer: func(ctx context.Context, id string, conn net.Conn) (*arpc.Server, error) {
+                return mux.NewServer(nil, id, conn)
+            },
+        }},
+    },
+})
+if err != nil {
+    panic(err)
+}
+relay.Start(nil)
+```
+
 ## monorepo
 
 - [`/examples/wasm`](/examples/wasm)
+- [`/pkg/rpc`](/pkg/rpc)
 
 [Go back to the monorepo root](/README.md) to continue reading.

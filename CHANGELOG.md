@@ -4,6 +4,13 @@
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
+## [v0.18.3](https://github.com/pancsta/asyncmachine-go/tree/v0.18.3) (2026-03-17)
+
+- feat: release v0.18.3 [\#381](https://github.com/pancsta/asyncmachine-go/pull/381) (@pancsta)
+- feat\(telemetry\): add selective Otel traces [\#380](https://github.com/pancsta/asyncmachine-go/pull/380) (@pancsta)
+- feat\(relay\): add WebSocket-to-TCP dial [\#379](https://github.com/pancsta/asyncmachine-go/pull/379) (@pancsta)
+- refac\(rpc\): improve Mux APIs [\#378](https://github.com/pancsta/asyncmachine-go/pull/378) (@pancsta)
+
 ## [v0.18.2](https://github.com/pancsta/asyncmachine-go/tree/v0.18.2) (2026-03-09)
 
 - fix\(states\): fix piping log directions, RPC deadlocks [\#375](https://github.com/pancsta/asyncmachine-go/pull/375)

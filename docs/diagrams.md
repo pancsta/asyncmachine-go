@@ -23,6 +23,7 @@
 * [Examples](#examples)
   * [Tree State Source](#tree-state-source)
   * [Benchmark State Source](#benchmark-state-source)
+* [Debugging](#debugging)
 
 ## Machine Basics
 
@@ -179,3 +180,12 @@ Consumer requests payload from a remote worker.
   <source media="(prefers-color-scheme: light)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-bench-state-source.mermaid.light.svg">
   <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-bench-state-source.mermaid.light.svg">
 </picture></div>
+
+### [Debugging](/tools/cmd/am-vis/README.md)
+
+![diagram1](https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-1.svg)
+![diagram2](https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-2.svg)
+![diagram3](https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-3.svg)
+![diagram4](https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-4.svg)
+![diagram5](https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-5.svg)
+![](https://pancsta.github.io/assets/asyncmachine-go/am-vis/tx.svg)

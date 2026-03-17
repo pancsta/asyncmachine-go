@@ -201,14 +201,14 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 Subscriptions do not allocate goroutines.
 
 ```go
-// wait until FileDownloaded becomes active
-<-mach.When1("FileDownloaded", nil)
+// wait until Foo becomes active
+<-mach.When1("Foo", nil)
 
-// wait until FileDownloaded becomes inactive
-<-mach.WhenNot1("DownloadingFile", nil)
+// wait until Foo becomes inactive
+<-mach.WhenNot1("Foo", nil)
 
-// wait for EventConnected to be activated with an arg ID=123
-<-mach.WhenArgs("EventConnected", am.A{"ID": 123}, nil)
+// wait for Foo to be activated with an arg ID=123
+<-mach.WhenArgs("Foo", am.A{"ID": 123}, nil)
 
 // wait for Foo to have a tick >= 6
 <-mach.WhenTime1("Foo", 6, nil)
@@ -216,14 +216,52 @@ Subscriptions do not allocate goroutines.
 // wait for Foo to have a tick >= 6 and Bar tick >= 10
 <-mach.WhenTime(am.S{"Foo", "Bar"}, am.Time{6, 10}, nil)
 
-// wait for DownloadingFile to have a tick increased by 2 since now
-<-mach.WhenTicks("DownloadingFile", 2, nil)
+// wait for Foo to have a tick increased by 2
+<-mach.WhenTicks("Foo", 2, nil)
 
 // wait for a mutation to execute
 <-mach.WhenQueue(mach.Add1("Foo", nil))
 
 // wait for an error
 <-mach.WhenErr(nil)
+
+// wait on a time query
+<-mach.WhenQuery(func(c am.Clock) bool {
+    // Foo activated >5 times and Bar activated twice as much
+    return c["Foo"] > 10 && c["Bar"] > 2*c["Foo"]
+}, nil)
+```
+
+### State Targeting
+
+```go
+var (
+    tx am.Transition
+    t1 am.Time
+    t2 am.Time
+)
+
+// was Foo added and Bar removed?
+added, removed := tx.TimeIndexDiff()
+added.Is1("Foo") && removed.Is1("Bar")
+
+// was Foo called?
+tx.TimeIndexCalled().Is1("Foo")
+
+// was Foo active before?
+tx.TimeIndexBefore().Is1("Foo")
+
+// is Foo active after?
+tx.TimeIndexAfter().Is1("Foo")
+
+// is Foo queued?
+mach.WillBe1("Foo")
+
+// number of states which ticked
+len(tx.TimeIndexTimeDiff().ActiveStates())
+
+// did Foo tick between t1 and t2?
+t2.DiffSince(t1).NonZeroStates().Is1("Foo")
 ```
 
 ### Schema File
@@ -267,8 +305,8 @@ var BasicSchema = am.Schema{
 ### Passing Args
 
 ```go
-// Example with typed state names (ssS) and typed arguments (A).
-mach.Add1(ssS.KillingWorker, Pass(&A{
+// Example with typed state names (ss) and typed arguments (A).
+mach.Add1(ss.KillingWorker, Pass(&A{
     ConnAddr:   ":5555",
     WorkerAddr: ":5556",
 }))
@@ -313,7 +351,7 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 
 All examples and benchmarks can be found in [/examples](/examples/README.md).
 
-## Dev Tools
+## Devtools
 
 <div align="center">
     <a href="/tools/cmd/am-dbg/README.md">
@@ -325,7 +363,7 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) Generates schema files and Grafana dashboards.
 - [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
 - [`/tools/cmd/am-vis`](/tools/cmd/am-vis) Generates D2 diagrams.
-- [`/tools/cmd/am-relay`](/tools/cmd/am-relay) Rotates logs.
+- [`/tools/cmd/am-relay`](/tools/cmd/am-relay) Rotates logs and relays WASM.
 
 ## Apps
 
@@ -394,14 +432,11 @@ type Api interface {
 
     WhenArgs(state string, args A, ctx context.Context) <-chan struct{}
 
-    // Getters (remote)
-
-    Err() error
-
     // ///// LOCAL
 
     // Checking (local)
 
+    Err() error
     IsErr() bool
     Is(states S) bool
     Is1(state string) bool
@@ -419,7 +454,7 @@ type Api interface {
     CanAdd1(state string, args A) Result
     CanRemove(states S, args A) Result
     CanRemove1(state string, args A) Result
-    CountActive(states S) int
+    Transition() *Transition
 
     // Waiting (local)
 
@@ -438,14 +473,15 @@ type Api interface {
 
     StateNames() S
     StateNamesMatch(re *regexp.Regexp) S
-    ActiveStates() S
+    ActiveStates(states S) S
     Tick(state string) uint64
     Clock(states S) Clock
     Time(states S) Time
-    TimeSum(states S) uint64
     QueueTick() uint64
+    MachineTick() uint32
+    QueueLen() uint16
     NewStateCtx(state string) context.Context
-    Export() *Serialized
+    Export() (*Serialized, Schema, error)
     Schema() Schema
     Switch(groups ...S) string
     Groups() (map[string][]int, []string)
@@ -456,8 +492,9 @@ type Api interface {
 
     Id() string
     ParentId() string
+    ParseStates(states S) S
     Tags() []string
-    Ctx() context.Context
+    Context() context.Context
     String() string
     StringAll() string
     Log(msg string, args ...any)
@@ -470,11 +507,12 @@ type Api interface {
     Tracers() []Tracer
     DetachTracer(tracer Tracer) error
     BindTracer(tracer Tracer) error
-    AddBreakpoint1(added string, removed string, strict bool)
     AddBreakpoint(added S, removed S, strict bool)
+    AddBreakpoint1(added string, removed string, strict bool)
     Dispose()
     WhenDisposed() <-chan struct{}
     IsDisposed() bool
+    OnDispose(fn HandlerDispose)
 }
 ```
 

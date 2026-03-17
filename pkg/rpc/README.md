@@ -19,15 +19,16 @@ and an [integration tests tutorial](/pkg/rpc/HOWTO.md).
 - remote contexts
 - multiplexing
 - reconnect / fail-safety
-- network machine sending payloads to the client
+- state source machine sending payloads to the client
 - [REPL](/tools/cmd/arpc/README.md)
 - queue ticks support
 - initial optimizations
+- web sockets
+- checksums
 
 Not implemented (yet):
 
-- `WhenArgs`, `Err()`
-- `PushAllTicks`
+- `WhenArgs`
 - chunked payloads
 - TLS
 - compression
@@ -48,10 +49,10 @@ Additionally, remote RPC network-machines can also have RPC servers attached to 
 
 ## Components
 
-### Network Machine
+### Network State Source
 
-Any state machine can be exposed as an RPC network machine, as long as it implements [`/pkg/rpc/states/Network MachineStructDef`](/pkg/rpc/states/ss_rpc.go).
-This can be done either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
+Any state machine can be exposed as an RPC state source, as long as it implements [`/pkg/rpc/states/StateSourceSchemaDef`](/pkg/rpc/states/ss_rpc.go).
+This can be done either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.SchemaMerge),
 [SAdd](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SAdd)), or by generating a schema file with
 [am-gen](/tools/cmd/am-gen/README.md). It's also required to have the states verified by [Machine.VerifyStates](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.VerifyStates).
 Network Machine can send data to the client via the `SendPayload` state.
@@ -68,20 +69,20 @@ import (
 // ...
 
 // inherit from RPC network machine
-schema := am.SchemaMerge(ssrpc.Network MachineStruct, am.Schema{
+schema := am.SchemaMerge(ssrpc.StateSourceSchema, am.Schema{
     "Foo": {Require: am.S{"Bar"}},
     "Bar": {},
 })
-name := am.SAdd(ssrpc.Network MachineStates.Names(), am.S{"Foo", "Bar"})
+name := am.SAdd(ssrpc.StateSourceStates.Names(), am.S{"Foo", "Bar"})
 
 // init
-network machine := am.New(ctx, schema, nil)
+netMach := am.New(ctx, schema, nil)
 netMach.VerifyStates(name)
 
 // ...
 
 // send data to the client
-netMach.Add1(ssrpc.Network MachineStates.SendPayload, arpc.Pass(&arpc.A{
+netMach.Add1(ssrpc.StateSourceStates.SendPayload, arpc.Pass(&arpc.A{
     Name: "mypayload",
     Payload: &arpc.ArgsPayload{
         Name: "mypayload",
@@ -106,10 +107,14 @@ type NetMachStatesDef struct {
 ### Server
 
 Each RPC server can handle 1 client at a time. Both client and server need the same network machine states definition (structure
-map and ordered list of states). After the initial handshake, server will be pushing local state changes every [PushInterval](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server),
-while state changes made by an RPC client are delivered synchronously. Server starts listening on either
-[Addr](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server), [Listener](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server),
-or [Conn](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server). Basic ACL is possible via [AllowId](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server).
+map and ordered list of states). After the initial handshake, the server will be pushing **local machine time changes**
+every [PushInterval](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server), while state changes made by
+an RPC client are delivered synchronously. Server starts listening on either [Addr](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server),
+[Listener](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server), or [Conn](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server).
+Basic ACL is possible via [AllowId](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Server).
+The server doesn't emit mutation arguments, use [state piping](/pkg/rpc/states) from state source to an
+[RPC client Network Machine](#client) to receive arguments over the network. Server can listen on a WebSocket, including
+relayed TCP-over-WebSocket listening (useful for WASM).
 
 - [schema file](/pkg/rpc/states/ss_rpc.go)
 
@@ -164,19 +169,22 @@ State schema from [/pkg/rpc/states/ss_rpc.go](/pkg/rpc/states/ss_rpc.go).
 ### Client
 
 Each RPC client can connect to 1 server and needs to know network machine's machine schema and order. Data send by a
-network machine via `SendPayload` will be received by a [Consumer machine](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc/states#ConsumerStatesDef)
+network machine via `ServerPayload` will be received by a [Consumer machine](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc/states#ConsumerStatesDef)
 (passed via [ClientOpts.Consumer](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#ClientOpts)) as an Add
-mutation of the `Network MachinePayload` state (see a [detailed diagram](/docs/diagrams.md#rpc-getter-flow)). Client supports
+mutation of the `ServerPayload` state (see a [detailed diagram](/docs/diagrams.md#rpc-getter-flow)). Client supports
 fail-safety for both connection (eg [ConnRetries](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Client),
 [ConnRetryBackoff](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Client)) and calls (eg [CallRetries](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Client),
 [CallRetryBackoff](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Client)).
 
-After the client's `Ready` state becomes active, it exposes a remote network machine at `client.Network Machine`. Remote
-network machine implements most of
+After the client's `Ready` state becomes active, it exposes a remote **network machine** at `client.NetMach`. Remote
+network machine implements most of the
 [Machine](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine)'s methods, many of which
 are evaluated locally (like [Is](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#NetMach.Is), [When](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#NetMach.When),
 [NewStateCtx](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#NetMach.NewStateCtx)). See [machine.Api](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Api)
 for a full list.
+
+Time diffs received by the RPC cliebt are merged (contain multiple mutations in one diff), but can be split
+per-mutation using `opts.SyncMutations`. Client can connect to WebSockets (useful for WASM).
 
 - [schema file](/pkg/rpc/states/ss_rpc.go)
 
@@ -349,7 +357,15 @@ to create more organic systems.
 - [Example - Tree State Source](/examples/tree_state_source)
 - [diagrams](/docs/diagrams.md#arpc)
 
+## Debugging
+
+`/pkg/rpc` is immune to `AM_DBG_ADDR` env-based debugging, unless special variables are **also** active. This is to
+avoid noise, but sometimes it's useful to check for network errors (which should actually be [piped](/pkg/states/README.md#piping)
+to parent machines). Refer to [/docs/env-configs.md](/docs/env-configs.md) for details.
+
 ## Benchmark: aRPC vs gRPC
+
+Results for version `v0.7.0` (outdated).
 
 A simple and opinionated benchmark showing a `subscribe-get-process` scenario, implemented in both gRPC and aRPC. See
 [/examples/benchmark_grpc](/examples/benchmark_grpc) for details and source code.
@@ -434,14 +450,11 @@ type Api interface {
 
     WhenArgs(state string, args A, ctx context.Context) <-chan struct{}
 
-    // Getters (remote)
-
-    Err() error
-
     // ///// LOCAL
 
     // Checking (local)
 
+    Err() error
     IsErr() bool
     Is(states S) bool
     Is1(state string) bool
@@ -459,7 +472,7 @@ type Api interface {
     CanAdd1(state string, args A) Result
     CanRemove(states S, args A) Result
     CanRemove1(state string, args A) Result
-    CountActive(states S) int
+    Transition() *Transition
 
     // Waiting (local)
 
@@ -478,14 +491,15 @@ type Api interface {
 
     StateNames() S
     StateNamesMatch(re *regexp.Regexp) S
-    ActiveStates() S
+    ActiveStates(states S) S
     Tick(state string) uint64
     Clock(states S) Clock
     Time(states S) Time
-    TimeSum(states S) uint64
     QueueTick() uint64
+    MachineTick() uint32
+    QueueLen() uint16
     NewStateCtx(state string) context.Context
-    Export() *Serialized
+    Export() (*Serialized, Schema, error)
     Schema() Schema
     Switch(groups ...S) string
     Groups() (map[string][]int, []string)
@@ -496,8 +510,9 @@ type Api interface {
 
     Id() string
     ParentId() string
+    ParseStates(states S) S
     Tags() []string
-    Ctx() context.Context
+    Context() context.Context
     String() string
     StringAll() string
     Log(msg string, args ...any)
@@ -510,11 +525,12 @@ type Api interface {
     Tracers() []Tracer
     DetachTracer(tracer Tracer) error
     BindTracer(tracer Tracer) error
-    AddBreakpoint1(added string, removed string, strict bool)
     AddBreakpoint(added S, removed S, strict bool)
+    AddBreakpoint1(added string, removed string, strict bool)
     Dispose()
     WhenDisposed() <-chan struct{}
     IsDisposed() bool
+    OnDispose(fn HandlerDispose)
 }
 ```
 
@@ -532,6 +548,7 @@ Testing, not semantically versioned.
 
 - [`/examples/arpc`](/examples/arpc)
 - [`/examples/tree_state_source`](/examples/tree_state_source)
+- [`/examples/wasm`](/examples/wasm)
 - [`/pkg/rpc/HOWTO.md`](/pkg/rpc/HOWTO.md)
 - [`/examples/benchmark_grpc`](/examples/benchmark_grpc)
 - [`/tools/cmd/arpc`](/tools/cmd/arpc/README.md)

@@ -1,9 +1,10 @@
 name: Coverage
 
-on:
-  push:
-    tags:
-      - 'v*'
+# TODO Disable this job https://github.com/golang/go/issues/75031
+#on:
+#  push:
+#    tags:
+#      - 'v*'
 
 jobs:
   build:

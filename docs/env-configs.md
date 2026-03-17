@@ -133,6 +133,16 @@ AM_OTEL_TRACE_ARGS=1
 # skip traces for auto transitions
 # defaults to ""
 AM_OTEL_TRACE_NOAUTO=
+# limit traced states to allowlist
+# eg "machId:StateName,StateName2"
+AM_OTEL_TRACE_ALLOW_STATES=
+# single regexp to allow tracing states, eg "^Foo"
+AM_OTEL_TRACE_ALLOW_STATES_RE=
+# skip tracing states, takes preceding before [AllowStates]
+# eg "machId:StateName,StateName2"
+AM_OTEL_TRACE_SKIP_STATES=
+# single regexp to skip tracing states, eg "^Foo"
+AM_OTEL_TRACE_SKIP_STATES_RE=
 # prefix of stack traces to remove
 # defaults to ""
 AM_TRACE_FILTER=

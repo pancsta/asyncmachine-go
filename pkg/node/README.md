@@ -51,7 +51,7 @@ import amnode "github.com/pancsta/asyncmachine-go/pkg/node"
 ### Worker
 
 Any state machine can be exposed as a Node Worker, as long as it implements `/pkg/node/states.WorkerStructDef`. This can
-be done either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
+be done either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.SchemaMerge),
 [SAdd](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SAdd)), or by generating a schema file with [am-gen](/tools/cmd/am-gen/README.md).
 It's also required to have the states verified by [Machine.VerifyStates](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.VerifyStates).
 Worker should respond to `WorkRequested` and produce `ClientSendPayload` to send data to the client.
@@ -161,7 +161,7 @@ State schema from [/pkg/node/states/ss_supervisor.go](/pkg/node/states/ss_superv
 ## Client
 
 Any state machine can be a Node Client, as long as it implements `/pkg/node/states.ClientStructDef`. This can be done
-either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.TimeSum),
+either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.SchemaMerge),
 [SAdd](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SAdd)), or by generating a schema file with [am-gen](/tools/cmd/am-gen/README.md).
 Client also needs to know his worker's machine schema. To connect to the worker pool, client accepts a list
 of supervisor addresses (PubSub discovery in on the roadmap), and will be trying to connect to them in order. After
