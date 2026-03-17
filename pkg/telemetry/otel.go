@@ -2,17 +2,14 @@
 // OpenTelemetry.
 package telemetry
 
-// TODO OTEL support groups and allow lists. When groups are on, they replace
-//  the flat state list. Transitions are filtered to a group / allowlist.
-//  - AM_OTEL_GROUPS=1
-//  - AM_OTEL_GROUPS_ALLOWLIST=1
-//  - AM_OTEL_STATES_ALLOWLIST=1
+// TODO OTEL support nesting states in groups via AM_OTEL_GROUPS=1
 
 import (
 	"context"
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -36,8 +33,23 @@ import (
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
-// TODO config
-const maxHist = 300
+const (
+	// TODO config
+	maxHist = 300
+
+	// export Otel traces for states and submachines, requires AM_SERVICE
+	EnvOtelTrace = "AM_OTEL_TRACE"
+	// create additional Otel traces for transitions
+	EnvOtelTraceTxs = "AM_OTEL_TRACE_TXS"
+	// include logged arguments as traces tags
+	EnvOtelTraceArgs = "AM_OTEL_TRACE_ARGS"
+	// skip traces for auto transitions
+	EnvOtelTraceNoauto        = "AM_OTEL_TRACE_NOAUTO"
+	EnvOtelTraceAllowStates   = "AM_OTEL_TRACE_ALLOW_STATES"
+	EnvOtelTraceAllowStatesRe = "AM_OTEL_TRACE_ALLOW_STATES_RE"
+	EnvOtelTraceSkipStates    = "AM_OTEL_TRACE_SKIP_STATES"
+	EnvOtelTraceSkipStatesRe  = "AM_OTEL_TRACE_SKIP_STATES_RE"
+)
 
 type OtelMachineData struct {
 	ID string
@@ -74,10 +86,13 @@ type OtelMachTracerOpts struct {
 	SkipLogArgs bool
 	// if true, auto transitions won't be traced
 	SkipAuto bool
-	// TODO
-	AllowStates am.S
-	// TODO
-	SkipStates am.S
+	// eg []string{"machId:StateName", "StateName2"}
+	AllowStates   []string
+	AllowStatesRe *regexp.Regexp
+	// SkipStates take preceding before [AllowStates]
+	// eg []string{"machId:StateName", "StateName2"}
+	SkipStates   []string
+	SkipStatesRe *regexp.Regexp
 
 	// TODO skipping empty and canceled txs requires a custom Processor to
 	//  discard an open span
@@ -391,7 +406,7 @@ func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
 		errAttr = am.ParseArgs(tx.Args()).Err
 	}
 
-	// build a regular trace
+	// build a transition trace
 	ctx, span := mt.Tracer.Start(data.txGroup, name, trace.WithAttributes(
 		attribute.String("tx_id", tx.Id),
 		attribute.Int64("time_before", int64(tx.TimeBefore.Sum(nil))),
@@ -406,9 +421,9 @@ func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
 	}
 
 	// trace logged args, if any and enabled
-	argsMatcher := tx.Machine.SemLogger().ArgsMapper()
-	if !mt.opts.SkipLogArgs && argsMatcher != nil {
-		for param, val := range argsMatcher(tx.Args()) {
+	argsMapper := tx.Machine.SemLogger().ArgsMapper()
+	if !mt.opts.SkipLogArgs && argsMapper != nil {
+		for param, val := range argsMapper(tx.Args()) {
 			span.SetAttributes(
 				attribute.String("args."+param, val),
 			)
@@ -461,8 +476,20 @@ func (mt *OtelMachTracer) TransitionEnd(tx *am.Transition) {
 	defer data.mx.Unlock()
 
 	// parse states collected from resolving relations
+	index := tx.Machine.StateNames()
 	statesAdded := am.StatesDiff(target, tx.StatesBefore())
 	statesRemoved := am.StatesDiff(tx.StatesBefore(), target)
+
+	skip := true
+	for _, state := range slices.Concat(statesAdded, statesRemoved) {
+		if mt.allowedState(tx.MachApi.Id(), state) {
+			skip = false
+			break
+		}
+	}
+	if skip {
+		return
+	}
 
 	// support multi states
 	before := tx.ClockBefore()
@@ -496,6 +523,10 @@ func (mt *OtelMachTracer) TransitionEnd(tx *am.Transition) {
 
 		// link to old states
 		for _, state := range statesRemoved {
+			if !mt.allowedState(tx.MachApi.Id(), state) {
+				continue
+			}
+
 			if ctx, ok := data.stateInstances[state]; ok {
 				txSpan.AddLink(trace.Link{
 					SpanContext: trace.SpanFromContext(ctx).SpanContext(),
@@ -515,6 +546,10 @@ func (mt *OtelMachTracer) TransitionEnd(tx *am.Transition) {
 
 	// remove old states
 	for _, state := range statesRemoved {
+		if !mt.allowedState(tx.MachApi.Id(), state) {
+			continue
+		}
+
 		if ctx, ok := data.stateInstances[state]; ok {
 			trace.SpanFromContext(ctx).End()
 			delete(data.stateInstances, state)
@@ -526,6 +561,10 @@ func (mt *OtelMachTracer) TransitionEnd(tx *am.Transition) {
 		if data.Ended {
 			mt.Logf("[otel] TransitionEnd: machine %s already ended", tx.Machine.Id())
 			break
+		}
+
+		if !mt.allowedState(tx.MachApi.Id(), state) {
+			continue
 		}
 
 		// name group
@@ -545,14 +584,14 @@ func (mt *OtelMachTracer) TransitionEnd(tx *am.Transition) {
 		var instanceSpan trace.Span
 		if ok {
 			instanceSpan = trace.SpanFromContext(data.stateInstances[state])
-			instanceSpan.AddEvent(tx.Mutation.String())
+			instanceSpan.AddEvent(tx.Mutation.StringFromIndex(index))
 		} else {
 			ctx, instanceSpan = mt.Tracer.Start(nameCtx,
 				strconv.Itoa(data.Index)+":"+state, trace.WithAttributes(
 					attribute.String("tx_id", tx.Id),
 				))
 			data.stateInstances[state] = ctx
-			instanceSpan.AddEvent(tx.Mutation.String())
+			instanceSpan.AddEvent(tx.Mutation.StringFromIndex(index))
 		}
 
 		// link with the source tx
@@ -563,6 +602,49 @@ func (mt *OtelMachTracer) TransitionEnd(tx *am.Transition) {
 			})
 		}
 	}
+}
+
+func (mt *OtelMachTracer) allowedState(machID string, state string) bool {
+	// skip first, strings
+	for _, allowed := range mt.opts.SkipStates {
+		machState := strings.Split(allowed, ":")
+		// "machId:stateName"
+		if len(machState) == 2 && machState[0] == machID && machState[1] == state {
+			return false
+			// "stateName"
+		} else if len(machState) == 1 && machState[0] == state {
+			return false
+		}
+	}
+
+	// regexp skip
+	if mt.opts.SkipStatesRe != nil {
+		return !mt.opts.SkipStatesRe.MatchString(state)
+	}
+
+	// allowlist?
+	if len(mt.opts.AllowStates) == 0 && mt.opts.AllowStatesRe == nil {
+		return true
+	}
+
+	// string allows
+	for _, allowed := range mt.opts.AllowStates {
+		machState := strings.Split(allowed, ":")
+		// "machId:stateName"
+		if len(machState) == 2 && machState[0] == machID && machState[1] == state {
+			return true
+			// "stateName"
+		} else if len(machState) == 1 && machState[0] == state {
+			return true
+		}
+	}
+
+	// regexp allow
+	if mt.opts.AllowStatesRe != nil {
+		return mt.opts.AllowStatesRe.MatchString(state)
+	}
+
+	return false
 }
 
 func (mt *OtelMachTracer) HandlerEnd(
@@ -696,12 +778,25 @@ func MachBindOtelEnv(mach am.Api) error {
 	_, rootSpan := t.Start(mach.Context(), "root")
 
 	// dedicated machine tracer
-	mt := NewOtelMachTracer(mach, rootSpan, t, &OtelMachTracerOpts{
+	opts := &OtelMachTracerOpts{
 		SkipTransitions: os.Getenv(EnvOtelTraceTxs) == "",
 		SkipLogArgs:     os.Getenv(EnvOtelTraceArgs) == "",
 
-		SkipAuto: os.Getenv(EnvOtelTraceNoauto) != "",
-	})
+		SkipAuto:    os.Getenv(EnvOtelTraceNoauto) != "",
+		AllowStates: strings.Split(os.Getenv(EnvOtelTraceAllowStates), ","),
+		SkipStates:  strings.Split(os.Getenv(EnvOtelTraceSkipStates), ","),
+	}
+	if re := os.Getenv(EnvOtelTraceAllowStatesRe); re != "" {
+		if opts.AllowStatesRe, err = regexp.Compile(re); err != nil {
+			return err
+		}
+	}
+	if re := os.Getenv(EnvOtelTraceSkipStatesRe); re != "" {
+		if opts.SkipStatesRe, err = regexp.Compile(re); err != nil {
+			return err
+		}
+	}
+	mt := NewOtelMachTracer(mach, rootSpan, t, opts)
 
 	// flush and close
 	var dispose am.HandlerDispose = func(id string, _ context.Context) {
