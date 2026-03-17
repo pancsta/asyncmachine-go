@@ -11,7 +11,7 @@
       }
 
       const go = new Go();
-      WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((result) => {
+      WebAssembly.instantiateStreaming(fetch("main.wasm?"+Date.now()), go.importObject).then((result) => {
           onDomReady(() => {
               go.run(result.instance);
           })

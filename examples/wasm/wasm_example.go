@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	EnvFooWsAddr   string
+	EnvFooTcpAddr  string
 	EnvFooReplAddr string
 )
 
@@ -23,7 +23,10 @@ var (
 	EnvBarReplAddr string
 )
 
-var EnvRelayHttpAddr string
+var (
+	EnvRelayHttpAddr string
+	EnvReplDir       string
+)
 
 //go:embed .env
 var env string
@@ -37,11 +40,12 @@ func init() {
 		}
 	}
 
-	EnvFooWsAddr = os.Getenv("FOO_WS_ADDR")
+	EnvFooTcpAddr = os.Getenv("FOO_TCP_ADDR")
 	EnvFooReplAddr = os.Getenv("FOO_REPL_ADDR")
 	EnvBarTcpAddr = os.Getenv("BAR_TCP_ADDR")
 	EnvBarReplAddr = os.Getenv("BAR_REPL_ADDR")
 	EnvRelayHttpAddr = os.Getenv("RELAY_HTTP_ADDR")
+	EnvReplDir = os.Getenv("REPL_DIR")
 }
 
 // ///// ///// /////

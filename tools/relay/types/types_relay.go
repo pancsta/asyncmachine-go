@@ -37,17 +37,28 @@ type ArgsRotateDbg struct {
 	Dir          string        `arg:"-d,--dir" default:"." help:"Output directory"`
 }
 
-// ArgsWasm TODO
+// ArgsWasm
 // nolint:lll
 type ArgsWasm struct {
 	ListenAddr  string `arg:"-l,--listen-addr" default:"localhost:12733" help:"Listen address for HTTP server"`
 	StaticDir   string `arg:"-s,--static-dir" help:"Directory with static files to serve (optional)"`
 	ReplAddrDir string `arg:"-r,--repl-addr-dir" help:"Directory for creating REPL addr files (optional)"`
-	// match incoming tunnels by mach IDs and pass directly to clients
-	ClientMatchers []ClientMatcher `arg:"-"`
+	// Match incoming tunnels by mach IDs and pass directly to new RPC clients
+	TunnelMatchers []TunnelMatcher `arg:"-"`
+	// Match incoming TCP dials by mach IDs and pass directly to new RPC servers
+	DialMatchers []DialMatcher `arg:"-"`
 }
 
-type ClientMatcher struct {
+type DialMatcher struct {
+	Id        *regexp.Regexp
+	NewServer NewServerFunc
+}
+
+type NewServerFunc func(
+	ctx context.Context, id string, conn net.Conn,
+) (*arpc.Server, error)
+
+type TunnelMatcher struct {
 	Id        *regexp.Regexp
 	NewClient NewClientFunc
 }

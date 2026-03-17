@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"net/http"
 	_ "net/http/pprof"
 	"regexp"
 	"sync/atomic"
@@ -36,11 +35,10 @@ func init() {
 func main() {
 	ctx := context.Background()
 
-	// debug
-
-	go func() {
-		http.ListenAndServe("localhost:6060", nil)
-	}()
+	// pprof debug
+	// go func() {
+	// 	http.ListenAndServe("localhost:6060", nil)
+	// }()
 
 	// net source machine
 
@@ -55,31 +53,28 @@ func main() {
 	fooMach.SemLogger().SetArgsMapper(example.LogArgs)
 	handlers.machFoo = fooMach
 	arpc.MachRepl(fooMach, example.EnvFooReplAddr, &arpc.ReplOpts{
-		// TODO config
-		AddrDir:  "tmp",
+		AddrDir:  example.EnvReplDir,
 		Args:     ARpc{},
 		ParseRpc: example.ParseRpc,
 	})
 	fooMach.Add1(ssF.Start, nil)
 
-	// RPC Server
+	// RPC Muxer
 
-	s, err := arpc.NewServer(ctx, example.EnvFooWsAddr, "server-foo", fooMach, &arpc.ServerOpts{
-		// manual web socket, no tcp, not relayed
-		WebSocket: true,
-		Parent:    fooMach,
+	mux, err := arpc.NewMux(ctx, example.EnvFooTcpAddr, "server-foo", fooMach, &arpc.MuxOpts{
+		Parent: fooMach,
 	})
 	if err != nil {
 		panic(err)
 	}
-	s.Start(nil)
-	handlers.s = s
+	mux.Start(nil)
+	handlers.mux = mux
 
 	// websocket relay
 
 	newClient := func(ctx context.Context, id string, conn net.Conn) (*arpc.Client, error) {
 		// RPC Client (Net Machine)
-		bar, err := arpc.NewClient(ctx, "localhost:0", "server-bar", states.BarSchema, &arpc.ClientOpts{
+		bar, err := arpc.NewClient(ctx, "", "server-bar", states.BarSchema, &arpc.ClientOpts{
 			Parent: fooMach,
 		})
 		if err != nil {
@@ -102,13 +97,19 @@ func main() {
 		Debug:  true,
 		Parent: fooMach,
 		Wasm: &amrelayt.ArgsWasm{
-			ListenAddr: example.EnvRelayHttpAddr,
-			StaticDir:  "./client",
-			// TODO config
-			ReplAddrDir: "tmp",
-			ClientMatchers: []amrelayt.ClientMatcher{{
+			ListenAddr:  example.EnvRelayHttpAddr,
+			StaticDir:   "./client",
+			ReplAddrDir: example.EnvReplDir,
+			TunnelMatchers: []amrelayt.TunnelMatcher{{
 				Id:        regexp.MustCompile("^browser-bar-"),
 				NewClient: newClient,
+			}},
+			DialMatchers: []amrelayt.DialMatcher{{
+				Id: regexp.MustCompile("^browser-foo-"),
+				NewServer: func(ctx context.Context, id string, conn net.Conn) (*arpc.Server, error) {
+					// TODO ctx to Event
+					return mux.NewServer(nil, id, conn)
+				},
 			}},
 		},
 	})
@@ -127,7 +128,7 @@ type HandlersFoo struct {
 	machFoo *am.Machine
 	// last connected browser machine
 	rpcBar atomic.Pointer[arpc.Client]
-	s      *arpc.Server
+	mux    *arpc.Mux
 
 	lastMsg   time.Time
 	lastHello time.Time
