@@ -8,18 +8,13 @@ import (
 
 	"github.com/ic2hrmk/promtail"
 
-	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
-
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
 const (
-	EnvService         = "AM_SERVICE"
-	EnvLokiAddr        = "AM_LOKI_ADDR"
-	EnvOtelTrace       = "AM_OTEL_TRACE"
-	EnvOtelTraceTxs    = "AM_OTEL_TRACE_TXS"
-	EnvOtelTraceArgs   = "AM_OTEL_TRACE_ARGS"
-	EnvOtelTraceNoauto = "AM_OTEL_TRACE_NOAUTO"
+	EnvService  = "AM_SERVICE"
+	EnvLokiAddr = "AM_LOKI_ADDR"
 )
 
 func BindLokiLogger(mach am.Api, client promtail.Client) {
