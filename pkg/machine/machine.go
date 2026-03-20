@@ -9,9 +9,7 @@ import (
 	"maps"
 	"math"
 	"os"
-	"reflect"
 	"regexp"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -1445,10 +1443,14 @@ func (m *Machine) MustBindHandlers(handlers any) {
 	}
 }
 
-// BindHandlers binds a struct of handler methods to machine's states, based on
-// the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
-// optionally return bool.
-func (m *Machine) BindHandlers(handlers any) error {
+// BindHandlerMaps is like [Machine.BindHandlers] but accepts a struct of maps of
+// handlers to bypass reflecting structs. It may lead to higher performance but
+// requires codegen.
+func (m *Machine) BindHandlerMaps(name string,
+	negotiations map[string]HandlerNegotiation, finals map[string]HandlerFinal,
+) error {
+	//
+
 	if m.disposing.Load() {
 		return nil
 	}
@@ -1461,36 +1463,7 @@ func (m *Machine) BindHandlers(handlers any) error {
 		go m.handlerLoop()
 	}
 
-	v := reflect.ValueOf(handlers)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		return errors.New("BindHandlers expects a pointer to a struct")
-	}
-
-	// extract the name
-	name := reflect.TypeOf(handlers).Elem().Name()
-	if name == "" {
-		name = "anon"
-		if os.Getenv(EnvAmDebug) != "" {
-			buf := make([]byte, 4024)
-			n := runtime.Stack(buf, false)
-			stack := string(buf[:n])
-			lines := strings.Split(stack, "\n")
-			name = lines[len(lines)-2]
-			name = strings.TrimLeft(emitterNameRe.FindString(name), "/")
-		}
-	}
-
-	// detect methods
-	var methodNames []string
-	if m.detectEval || os.Getenv(EnvAmDebug) != "" {
-		var err error
-		methodNames, err = ListHandlers(handlers, m.stateNames)
-		if err != nil {
-			return fmt.Errorf("listing handlers: %w", err)
-		}
-	}
-
-	h := m.newHandler(handlers, name, &v, methodNames)
+	h := m.newHandlerMap(name, negotiations, finals)
 	old := m.getHandlers(false)
 	m.setHandlers(false, append(old, h))
 	if name != "" {
@@ -1509,37 +1482,6 @@ func (m *Machine) BindHandlers(handlers any) error {
 	return nil
 }
 
-// DetachHandlers detaches previously bound machine handlers.
-func (m *Machine) DetachHandlers(handlers any) error {
-	if m.disposing.Load() {
-		return nil
-	}
-
-	m.handlersMx.Lock()
-	defer m.handlersMx.Unlock()
-
-	old := m.getHandlers(true)
-	var match *handler
-	var matchIndex int
-	for i, h := range old {
-		if h.h == handlers {
-			match = h
-			matchIndex = i
-			break
-		}
-	}
-
-	if match == nil {
-		return errors.New("handlers not bound")
-	}
-
-	m.setHandlers(true, slices.Delete(old, matchIndex, matchIndex+1))
-	match.dispose()
-	m.log(LogOps, "[handlers] detach %s", match.name)
-
-	return nil
-}
-
 // HasHandlers returns true if this machine has bound handlers, and thus an
 // allocated goroutine. It also makes it nondeterministic.
 func (m *Machine) HasHandlers() bool {
@@ -1553,19 +1495,18 @@ func (m *Machine) HasHandlers() bool {
 // newHandler creates a new handler for Machine.
 // Each handler should be consumed by one receiver only to guarantee the
 // delivery of all events.
-func (m *Machine) newHandler(
-	handlers any, name string, methods *reflect.Value, methodNames []string,
+func (m *Machine) newHandlerMap(name string,
+	negotiations map[string]HandlerNegotiation, finals map[string]HandlerFinal,
 ) *handler {
 	if m.disposing.Load() {
 		return &handler{}
 	}
 	e := &handler{
 		name:         name,
-		h:            handlers,
-		methods:      methods,
-		methodNames:  methodNames,
-		methodCache:  make(map[string]reflect.Value),
-		missingCache: make(map[string]struct{}),
+		finals:       finals,
+		negotiations: negotiations,
+		methodNames: slices.Concat(slices.Collect(maps.Keys(negotiations)),
+			slices.Collect(maps.Keys(finals))),
 	}
 
 	return e
@@ -1997,7 +1938,6 @@ func (m *Machine) processQueue() Result {
 
 			continue
 		}
-		// TODO race in relations.go:79; m.queueProcessing failing?
 		t := newTransition(m, mut)
 
 		// execute the transition and set active states
@@ -2224,6 +2164,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		}
 		h.mx.Lock()
 		methodName := e.Name
+		handlerCalled = true
 		// TODO descriptive name
 		handlerName := strconv.Itoa(i) + ":" + h.name
 
@@ -2232,51 +2173,11 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 			emitterID = padString(strings.ReplaceAll(emitterID, " ", "_"), 15, "_")
 			m.log(LogEverything, "[handle:%-15s] %s", emitterID, methodName)
 		}
-
-		// cache
-		_, ok := h.missingCache[methodName]
-		if ok {
-			h.mx.Unlock()
-
-			continue
-		}
-		method, ok := h.methodCache[methodName]
-		if !ok {
-			method = h.methods.MethodByName(methodName)
-
-			// support field handlers
-			if !method.IsValid() {
-				method = h.methods.Elem().FieldByName(methodName)
-			}
-			if !method.IsValid() {
-				h.missingCache[methodName] = struct{}{}
-				h.mx.Unlock()
-
-				continue
-			}
-			h.methodCache[methodName] = method
-		}
-		h.mx.Unlock()
-
-		// call the handler
-		m.log(LogOps, "[handler:%d] %s", i, methodName)
-		m.currentHandler.Store(methodName)
-		var ret bool
-		var timeout bool
-		handlerCalled = true
-
-		// tracers
-		m.tracersMx.RLock()
 		tx := m.t.Load()
-		for i := range m.tracers {
-			m.tracers[i].HandlerStart(tx, handlerName, methodName)
-		}
-		m.tracersMx.RUnlock()
-		handlerCall := &handlerCall{
-			fn:      method,
-			name:    methodName,
-			event:   e,
-			timeout: false,
+
+		handlerCall := newHandlerCall(e, h, methodName, m, i, handlerName)
+		if handlerCall == nil {
+			continue
 		}
 
 		select {
@@ -2287,6 +2188,8 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 
 		// reuse the timer each time
 		m.handlerTimer.Reset(m.HandlerTimeout)
+		var ret bool
+		var timeout bool
 
 		// wait on the result / timeout / context
 		select {
@@ -2411,11 +2314,7 @@ func (m *Machine) handlerLoop() {
 		// handler signature: FooState(e *am.Event)
 		// TODO optimize https://github.com/golang/go/issues/7818
 		if call.event.IsValid() {
-			callRet := call.fn.Call([]reflect.Value{reflect.ValueOf(call.event)})
-			if len(callRet) > 0 {
-				// TODO log err, dont panic
-				ret = callRet[0].Interface().(bool)
-			}
+			ret = call.Exec()
 		} else {
 			m.log(LogDecisions, "[handler:invalid] %s", call.name)
 			ret = false
@@ -3339,58 +3238,6 @@ func (m *Machine) Resolver() RelationsResolver {
 	return m.resolver
 }
 
-// BindTracer binds a Tracer to the machine. Tracers can cause StateException in
-// submachines, before any handlers are bound. Use the Err() getter to examine
-// such errors.
-func (m *Machine) BindTracer(tracer Tracer) error {
-	if m.disposing.Load() {
-		return nil
-	}
-
-	m.tracersMx.Lock()
-	defer m.tracersMx.Unlock()
-
-	v := reflect.ValueOf(tracer)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		return errors.New("BindTracer expects a pointer to a struct")
-	}
-	name := reflect.TypeOf(tracer).Elem().Name()
-
-	m.tracers = append(m.tracers, tracer)
-	m.log(LogOps, "[tracers] bind %s", name)
-
-	return nil
-}
-
-// DetachTracer tries to remove a tracer from the machine. Returns an error in
-// case the tracer wasn't bound.
-func (m *Machine) DetachTracer(tracer Tracer) error {
-	if m.disposing.Load() {
-		return nil
-	}
-
-	m.tracersMx.Lock()
-	defer m.tracersMx.Unlock()
-
-	v := reflect.ValueOf(tracer)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		return errors.New("DetachTracer expects a pointer to a struct")
-	}
-	name := reflect.TypeOf(tracer).Elem().Name()
-
-	for i, t := range m.tracers {
-		if t == tracer {
-			// TODO check
-			m.tracers = slices.Delete(m.tracers, i, i+1)
-			m.log(LogOps, "[tracers] detach %s", name)
-
-			return nil
-		}
-	}
-
-	return errors.New("tracer not bound")
-}
-
 // Tracers return a copy of currenty attached tracers.
 func (m *Machine) Tracers() []Tracer {
 	m.tracersMx.Lock()
@@ -3416,52 +3263,6 @@ func (m *Machine) Backoff() bool {
 // any handlers.
 func (m *Machine) OnChange(fn HandlerChange) {
 	m.onChange.Store(&fn)
-}
-
-// SetGroups organizes the schema into a tree using schema-v2 structs.
-func (m *Machine) SetGroups(groups any, optStates States) {
-	// TODO rename to SchemaOrganize(optGroups, optStates, ...)
-	// TODO call VerifyStates from optStates.Names()
-
-	m.schemaMx.Lock()
-	defer m.schemaMx.Unlock()
-	list := map[string][]int{}
-	order := []string{}
-	index := m.stateNames
-
-	// add all the groups
-	if groups != nil {
-		// TODO recursive for inherited groups
-		val := reflect.ValueOf(groups)
-		typ := val.Type()
-		for i := 0; i < val.NumField(); i++ {
-			field := typ.Field(i)
-			kind := field.Type.Kind()
-			if kind != reflect.Slice {
-				continue
-			}
-			name := field.Name
-			value := val.Field(i).Interface()
-			if states, ok := value.(S); ok {
-				list[name] = StatesToIndex(index, states)
-				order = append(order, name)
-			}
-		}
-	}
-
-	// add all the schemas (nested)
-
-	// state schema structure
-	if optStates != nil {
-		groups, order2 := optStates.StateGroups()
-		for _, name := range order2 {
-			list[name] = groups[name]
-			order = append(order, name)
-		}
-	}
-
-	m.groups = list
-	m.groupsOrder = order
 }
 
 // SetGroupsString is like SetGroups, but work with the schema-v1 format.
@@ -3505,6 +3306,7 @@ func (m *Machine) Go(ctx context.Context, fn func()) {
 		if ctx.Err() != nil {
 			return // expired
 		}
+		defer m.PanicToErr(nil)
 
 		fn()
 	}()

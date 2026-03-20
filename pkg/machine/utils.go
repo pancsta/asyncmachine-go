@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -237,53 +236,6 @@ func EnvLogLevel(name string) LogLevel {
 	return LogLevel(v)
 }
 
-// ListHandlers returns a list of handler method names from a handler struct,
-// limited to [states].
-func ListHandlers(handlers any, states S) ([]string, error) {
-	var methodNames []string
-	var errs []error
-
-	check := func(method string) {
-		s1, s2 := IsHandler(states, method)
-		if s1 != "" && !slices.Contains(states, s1) {
-			errs = append(errs, fmt.Errorf(
-				"%w: %s from handler %s", ErrStateMissing, s1, method))
-		}
-		if s2 != "" && !slices.Contains(states, s2) {
-			errs = append(errs, fmt.Errorf(
-				"%w: %s from handler %s", ErrStateMissing, s2, method))
-		}
-
-		if s1 != "" || method == StateAny+SuffixEnter ||
-			method == StateAny+SuffixState {
-
-			methodNames = append(methodNames, method)
-			// TODO verify method signatures early (returns and params)
-		}
-	}
-
-	// methods
-	t := reflect.TypeOf(handlers)
-	for i := 0; i < t.NumMethod(); i++ {
-		method := t.Method(i).Name
-		check(method)
-	}
-
-	// fields
-	val := reflect.ValueOf(handlers).Elem()
-	typ := val.Type()
-	for i := 0; i < val.NumField(); i++ {
-		kind := typ.Field(i).Type.Kind()
-		if kind != reflect.Func {
-			continue
-		}
-		method := typ.Field(i).Name
-		check(method)
-	}
-
-	return methodNames, errors.Join(errs...)
-}
-
 // TODO prevent using these names as state names
 var handlerSuffixes = []string{
 	SuffixEnter, SuffixExit, SuffixState, SuffixEnd, StateAny,
@@ -503,14 +455,6 @@ func compareArgs(args1, args2 A) bool {
 	}
 
 	return match
-}
-
-type handlerCall struct {
-	fn reflect.Value
-	// TODO debug only
-	name    string
-	event   *Event
-	timeout bool
 }
 
 func randId() string {

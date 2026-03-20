@@ -1,3 +1,6 @@
+// Package pubsub is a trustful and decentralized synchronization network for asyncmachine-go.
+
+//go:generate go run ./gen
 package pubsub
 
 import (

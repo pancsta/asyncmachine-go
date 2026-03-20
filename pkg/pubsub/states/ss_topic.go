@@ -1,5 +1,9 @@
+//go:build !tinygo
+
 // Package states contains a stateful schema-v2 for Topic.
 // Bootstrapped with am-gen. Edit manually or re-gen & merge.
+//
+//go:generate go run ./gen
 package states
 
 import (

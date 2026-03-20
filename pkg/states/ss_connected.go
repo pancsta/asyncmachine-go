@@ -1,3 +1,5 @@
+//go:build !tinygo
+
 package states
 
 import (
@@ -5,30 +7,29 @@ import (
 	"fmt"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // ///// ///// /////
 
-// ///// CONECTED
+// ///// CONNECTED
 
 // ///// ///// /////
 // TODO godoc
-
-type ConnectedState = string
 
 // ConnectedStatesDef contains states for a connection status.
 // Required states:
 // - Start
 type ConnectedStatesDef struct {
-	// ErrConnecting is a detailed connection error, eg no access.
-	ErrConnecting ConnectedState
-
-	Connecting    ConnectedState
-	Connected     ConnectedState
-	Disconnecting ConnectedState
-	Disconnected  ConnectedState
-
 	*am.StatesBase
+	
+	// ErrConnecting is a detailed connection error, eg no access.
+	ErrConnecting string
+
+	Connecting    string
+	Connected     string
+	Disconnecting string
+	Disconnected  string
 }
 
 // ConnectedGroupsDef contains all the state groups of the Connected state

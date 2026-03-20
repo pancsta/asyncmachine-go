@@ -27,11 +27,11 @@ type SupervisorOpts struct {
 	Tags []string
 }
 
-// bootstrap is a bootstrap machine for a worker to connect to the supervisor,
+// Bootstrap is a Bootstrap machine for a worker to connect to the supervisor,
 // after forking.
 //
 // Flow: Start to WorkerLocalAddr.
-type bootstrap struct {
+type Bootstrap struct {
 	*am.ExceptionHandler
 	Mach  *am.Machine
 	Super *Supervisor
@@ -43,15 +43,18 @@ type bootstrap struct {
 	server *rpc.Server
 }
 
-func newBootstrap(ctx context.Context, super *Supervisor) (*bootstrap, error) {
-	b := &bootstrap{
+func newBootstrap(ctx context.Context, super *Supervisor) (*Bootstrap, error) {
+	b := &Bootstrap{
 		Super:      super,
 		Name:       super.Name + utils.RandId(6),
 		LogEnabled: os.Getenv(EnvAmNodeLogSupervisor) != "",
 	}
 	mach, err := am.NewCommon(ctx, "nb-"+b.Name, states.BootstrapSchema,
-		ssB.Names(), b, super.Mach, &am.Opts{Tags: []string{"node-bootstrap"}})
+		ssB.Names(), nil, super.Mach, &am.Opts{Tags: []string{"node-bootstrap"}})
 	if err != nil {
+		return nil, err
+	}
+	if err = BindHandlersBootstrap(b, mach); err != nil {
 		return nil, err
 	}
 
@@ -62,7 +65,7 @@ func newBootstrap(ctx context.Context, super *Supervisor) (*bootstrap, error) {
 	return b, nil
 }
 
-func (b *bootstrap) StartState(e *am.Event) {
+func (b *Bootstrap) StartState(e *am.Event) {
 	var err error
 	ctx := b.Mach.NewStateCtx(ssB.Start)
 
@@ -96,19 +99,19 @@ func (b *bootstrap) StartState(e *am.Event) {
 	}()
 }
 
-func (b *bootstrap) StartEnd(e *am.Event) {
+func (b *Bootstrap) StartEnd(e *am.Event) {
 	if b.server != nil {
 		b.server.Stop(e, true)
 	}
 	b.Mach.Dispose()
 }
 
-func (b *bootstrap) WorkerAddrEnter(e *am.Event) bool {
+func (b *Bootstrap) WorkerAddrEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	return a != nil && a.LocalAddr != "" && a.PublicAddr != "" && a.Id != ""
 }
 
-func (b *bootstrap) WorkerAddrState(e *am.Event) {
+func (b *Bootstrap) WorkerAddrState(e *am.Event) {
 	args := ParseArgs(e.Args)
 	// copy
 	argsOut := *args
@@ -124,14 +127,14 @@ func (b *bootstrap) WorkerAddrState(e *am.Event) {
 	}()
 }
 
-func (b *bootstrap) Dispose() {
+func (b *Bootstrap) Dispose() {
 	// TODO send bye to rpc-c
 	b.log("disposing bootstrap")
 	b.Mach.Remove1(ssB.Start, nil)
 }
 
 // Addr returns the address of the bootstrap server.
-func (b *bootstrap) Addr() string {
+func (b *Bootstrap) Addr() string {
 	if b.server == nil {
 		return ""
 	}
@@ -139,7 +142,7 @@ func (b *bootstrap) Addr() string {
 	return b.server.Addr
 }
 
-func (b *bootstrap) log(msg string, args ...any) {
+func (b *Bootstrap) log(msg string, args ...any) {
 	if !b.LogEnabled {
 		return
 	}

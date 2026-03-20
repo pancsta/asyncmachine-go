@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	mux2 "github.com/pancsta/asyncmachine-go/pkg/rpc/mux"
+	"github.com/pancsta/asyncmachine-go/pkg/rpc/repl"
 
 	example "github.com/pancsta/asyncmachine-go/examples/wasm"
 	"github.com/pancsta/asyncmachine-go/examples/wasm/states"
@@ -52,7 +54,7 @@ func main() {
 	amhelp.MachDebugEnv(fooMach)
 	fooMach.SemLogger().SetArgsMapper(example.LogArgs)
 	handlers.machFoo = fooMach
-	arpc.MachRepl(fooMach, example.EnvFooReplAddr, &arpc.ReplOpts{
+	repl.MachRepl(fooMach, example.EnvFooReplAddr, &repl.ReplOpts{
 		AddrDir:  example.EnvReplDir,
 		Args:     ARpc{},
 		ParseRpc: example.ParseRpc,
@@ -61,7 +63,7 @@ func main() {
 
 	// RPC Muxer
 
-	mux, err := arpc.NewMux(ctx, example.EnvFooTcpAddr, "server-foo", fooMach, &arpc.MuxOpts{
+	mux, err := mux2.NewMux(ctx, example.EnvFooTcpAddr, "server-foo", fooMach, &mux2.MuxOpts{
 		Parent: fooMach,
 	})
 	if err != nil {
@@ -128,7 +130,7 @@ type HandlersFoo struct {
 	machFoo *am.Machine
 	// last connected browser machine
 	rpcBar atomic.Pointer[arpc.Client]
-	mux    *arpc.Mux
+	mux    *mux2.Mux
 
 	lastMsg   time.Time
 	lastHello time.Time

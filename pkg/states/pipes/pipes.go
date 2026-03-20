@@ -9,9 +9,9 @@ package pipes
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
 )
@@ -40,7 +40,7 @@ func add(
 ) am.HandlerFinal {
 
 	if sourceState == "" {
-		// TODO log, dont panic?
+		// TODO add err to source
 		panic(am.ErrStateMissing)
 	}
 	if targetState == "" {
@@ -96,6 +96,7 @@ func remove(
 ) am.HandlerFinal {
 
 	if sourceState == "" {
+		// TODO add err to source
 		panic(am.ErrStateMissing)
 	}
 	if targetState == "" {
@@ -177,40 +178,19 @@ func BindConnected(
 	source, target am.Api, disconnected, connecting, connected,
 	disconnecting string,
 ) error {
-
-	h := &struct {
-		DisconnectedState am.HandlerFinal
-		DisconnectedEnd   am.HandlerFinal
-
-		ConnectingState am.HandlerFinal
-		ConnectingEnd   am.HandlerFinal
-
-		ConnectedState am.HandlerFinal
-		ConnectedEnd   am.HandlerFinal
-
-		DisconnectingState am.HandlerFinal
-		DisconnectingEnd   am.HandlerFinal
-	}{}
-
+	// TODO
+	id := "TODO" + utils.RandId(5)
 	s := ss.ConnectedStates
-	if disconnected != "" {
-		h.DisconnectedState = Add(source, target, s.Disconnected, disconnected)
-		h.DisconnectedEnd = Remove(source, target, s.Disconnected, disconnected)
-	}
-	if connecting != "" {
-		h.ConnectingState = Add(source, target, s.Connecting, connecting)
-		h.ConnectingEnd = Remove(source, target, s.Connecting, connecting)
-	}
-	if connected != "" {
-		h.ConnectedState = Add(source, target, s.Connected, connected)
-		h.ConnectedEnd = Remove(source, target, s.Connected, connected)
-	}
-	if disconnecting != "" {
-		h.DisconnectingState = Add(source, target, s.Disconnecting, disconnecting)
-		h.DisconnectingEnd = Remove(source, target, s.Disconnecting, disconnecting)
-	}
-
-	return source.BindHandlers(h)
+	return source.BindHandlerMaps(id, nil, map[string]am.HandlerFinal{
+		"DisconnectedState":  Add(source, target, s.Disconnected, disconnected),
+		"DisconnectedEnd":    Remove(source, target, s.Disconnected, disconnected),
+		"ConnectingState":    Add(source, target, s.Connecting, connecting),
+		"ConnectingEnd":      Remove(source, target, s.Connecting, connecting),
+		"ConnectedState":     Add(source, target, s.Connected, connected),
+		"ConnectedEnd":       Remove(source, target, s.Connected, connected),
+		"DisconnectingState": Add(source, target, s.Disconnecting, disconnecting),
+		"DisconnectingEnd":   Remove(source, target, s.Disconnecting, disconnecting),
+	})
 }
 
 // BindErr binds Exception to a custom state using Add. Empty state defaults to
@@ -219,14 +199,11 @@ func BindErr(source, target am.Api, targetErr string) error {
 	if targetErr == "" {
 		targetErr = am.StateException
 	}
-
-	h := &struct {
-		ExceptionState am.HandlerFinal
-	}{
-		ExceptionState: Add(source, target, am.StateException, targetErr),
-	}
-
-	return source.BindHandlers(h)
+	// TODO
+	id := "TODO" + utils.RandId(5)
+	return source.BindHandlerMaps(id, nil, map[string]am.HandlerFinal{
+		"ExceptionState": Add(source, target, am.StateException, targetErr),
+	})
 }
 
 // BindStart binds Start to custom states using Add/Remove. Empty state
@@ -234,15 +211,12 @@ func BindErr(source, target am.Api, targetErr string) error {
 func BindStart(
 	source, target am.Api, activeState, inactiveState string,
 ) error {
-	h := &struct {
-		StartState am.HandlerFinal
-		StartEnd   am.HandlerFinal
-	}{
-		StartState: Add(source, target, ss.BasicStates.Start, activeState),
-		StartEnd:   Remove(source, target, ss.BasicStates.Start, inactiveState),
-	}
-
-	return source.BindHandlers(h)
+	// TODO
+	id := "TODO" + utils.RandId(5)
+	return source.BindHandlerMaps(id, nil, map[string]am.HandlerFinal{
+		"StartState": Add(source, target, ss.BasicStates.Start, activeState),
+		"StartEnd":   Remove(source, target, ss.BasicStates.Start, inactiveState),
+	})
 }
 
 // BindReady binds Ready to custom states using Add/. Empty state
@@ -250,15 +224,12 @@ func BindStart(
 func BindReady(
 	source, target am.Api, activeState, inactiveState string,
 ) error {
-	h := &struct {
-		ReadyState am.HandlerFinal
-		ReadyEnd   am.HandlerFinal
-	}{
-		ReadyState: Add(source, target, ss.BasicStates.Ready, activeState),
-		ReadyEnd:   Remove(source, target, ss.BasicStates.Ready, inactiveState),
-	}
-
-	return source.BindHandlers(h)
+	// TODO
+	id := "TODO" + utils.RandId(5)
+	return source.BindHandlerMaps(id, nil, map[string]am.HandlerFinal{
+		"ReadyState": Add(source, target, ss.BasicStates.Ready, activeState),
+		"ReadyEnd":   Remove(source, target, ss.BasicStates.Ready, inactiveState),
+	})
 }
 
 // Bind binds an arbitrary state to custom states using Add and Remove.
@@ -267,6 +238,7 @@ func BindReady(
 func Bind(
 	source, target am.Api, state string, activeState, inactiveState string,
 ) error {
+	// TODO use BindHandlerMaps
 
 	if activeState == "" {
 		activeState = state
@@ -278,31 +250,12 @@ func Bind(
 	// TODO assert source has state
 	// TODO assert target has activeState and inactiveState
 
-	// define handlers for each mutation
-	var fields []reflect.StructField
-	add := Add(source, target, state, activeState)
-	remove := Remove(source, target, state, inactiveState)
-	fields = append(fields, reflect.StructField{
-		Name: state + am.SuffixState,
-		Type: reflect.TypeOf(add),
+	// TODO
+	id := "TODO" + utils.RandId(5)
+	return source.BindHandlerMaps(id, nil, map[string]am.HandlerFinal{
+		state + am.SuffixState: Add(source, target, state, activeState),
+		state + am.SuffixEnd:   Remove(source, target, state, inactiveState),
 	})
-	fields = append(fields, reflect.StructField{
-		Name: state + am.SuffixEnd,
-		Type: reflect.TypeOf(remove),
-	})
-
-	// define a struct with handlers
-	structType := reflect.StructOf(fields)
-	val := reflect.New(structType).Elem()
-
-	// set handlers
-	val.Field(0).Set(reflect.ValueOf(add))
-	val.Field(1).Set(reflect.ValueOf(remove))
-
-	// bind handlers
-	handlers := val.Addr().Interface()
-
-	return source.BindHandlers(handlers)
 }
 
 // BindMany binds arbitrary states to a mirrored list of states using Add and
@@ -310,6 +263,7 @@ func Bind(
 func BindMany(
 	source, target am.Api, states, targetStates am.S,
 ) error {
+	// TODO use BindHandlerMaps
 
 	if targetStates == nil {
 		targetStates = states
@@ -320,37 +274,17 @@ func BindMany(
 			am.ErrStateMissing)
 	}
 
-	var fields []reflect.StructField
-	var fns []am.HandlerFinal
+	// TODO
+	id := "TODO" + utils.RandId(5)
 
 	// define handlers for each state
+	finals := map[string]am.HandlerFinal{}
 	for i, name := range states {
-		add := Add(source, target, name, targetStates[i])
-		remove := Remove(source, target, name, targetStates[i])
-		fields = append(fields, reflect.StructField{
-			Name: name + am.SuffixState,
-			Type: reflect.TypeOf(add),
-		})
-		fields = append(fields, reflect.StructField{
-			Name: name + am.SuffixEnd,
-			Type: reflect.TypeOf(remove),
-		})
-		fns = append(fns, add, remove)
+		finals[name+am.SuffixState] = Add(source, target, name, targetStates[i])
+		finals[name+am.SuffixEnd] = Remove(source, target, name, targetStates[i])
 	}
 
-	// define a struct with handlers
-	structType := reflect.StructOf(fields)
-	val := reflect.New(structType).Elem()
-
-	// set handlers
-	for i, fn := range fns {
-		val.Field(i).Set(reflect.ValueOf(fn))
-	}
-
-	// bind handlers
-	handlers := val.Addr().Interface()
-
-	return source.BindHandlers(handlers)
+	return source.BindHandlerMaps(id, nil, finals)
 }
 
 // ///// ///// /////

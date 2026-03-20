@@ -3,7 +3,6 @@ package rpc
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"sync"
 	"testing"
@@ -628,10 +627,10 @@ func (w *TestPayloadHandlers) CState(e *am.Event) {
 	args := ParseArgs(e.Args)
 	argsOut := &A{
 		Name:    args.Name,
-		Payload: &MsgSrvPayload{Data: "Hello", Name: args.Name},
+		Payload: &MsgSrvPayload{Data: []byte("Hello"), Name: args.Name},
 	}
 
-	e.Machine().Add1(ssW.SendPayload, Pass(argsOut))
+	e.Machine().Add1(ssSS.SendPayload, Pass(argsOut))
 }
 
 type TestPayloadConsumer struct {
@@ -644,7 +643,7 @@ func (c *TestPayloadConsumer) ServerPayloadState(e *am.Event) {
 
 	args := ParseArgs(e.Args)
 	assert.Equal(c.t, "TestPayload", args.Name)
-	assert.Equal(c.t, "Hello", args.Payload.Data.(string))
+	assert.Equal(c.t, []byte("Hello"), args.Payload.Data)
 
 	c.delivered = true
 }
@@ -694,103 +693,6 @@ func TestPayload(t *testing.T) {
 }
 
 // TODO test gob errors (although not user-facing)
-
-func TestMux(t *testing.T) {
-	// numClients := 10
-	numClients := 3
-
-	// TODO flaky
-	//  test_help.go:60: error for cWorkers A: timeout
-	//  --- FAIL: TestMux (2.04s)
-	if os.Getenv(amhelp.EnvAmTestRunner) != "" {
-		t.Skip("FLAKY")
-		return
-	}
-	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
-		t.Parallel()
-	}
-	// amhelp.EnableDebugging(false)
-	ctx := context.Background()
-
-	// bind to an open port
-	listener := utils.RandListener("localhost")
-	serverAddr := listener.Addr().String()
-	connAddr := serverAddr
-
-	// init source & mux
-	netSrc := utils.NewRelsNetSrc(t, nil)
-	amhelpt.MachDebugEnv(t, netSrc)
-	newServerFn := func(mux *Mux, id string, _ net.Conn) (*Server, error) {
-		s, err := NewServer(ctx, serverAddr, t.Name()+"-"+id, netSrc, &ServerOpts{
-			Parent: mux.Mach,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		amhelpt.MachDebugEnv(t, s.Mach)
-
-		return s, nil
-	}
-	mux, err := NewMux(ctx, "", t.Name(), nil, &MuxOpts{
-		Parent:      netSrc,
-		NewServerFn: newServerFn,
-	})
-
-	// client fac
-	newC := func(num int) *Client {
-		name := fmt.Sprintf("%s-%d", t.Name(), num)
-		c, err := NewClient(ctx, connAddr, name, netSrc.Schema(),
-			&ClientOpts{Parent: mux.Mach})
-		if err != nil {
-			t.Fatal(err)
-		}
-		amhelpt.MachDebugEnv(t, c.Mach)
-
-		return c
-	}
-
-	// start cmux
-	if err != nil {
-		t.Fatal(err)
-	}
-	amhelpt.MachDebugEnv(t, mux.Mach)
-	mux.Listener = listener
-	mux.Start(nil)
-	amhelpt.WaitForAll(t, "mux Ready", ctx, 2*time.Second,
-		mux.Mach.When1(ssM.Ready, nil))
-
-	var clients []*Client
-	var clientsApi []am.Api
-	var netMachs []am.Api
-
-	// connect 10 clients to the worker
-	for i := 0; i < numClients; i++ {
-		c := newC(i)
-		c.Start(nil)
-		clients = append(clients, c)
-		netMachs = append(netMachs, c.NetMach)
-		clientsApi = append(clientsApi, c.Mach)
-	}
-
-	// wait for all clients to be ready
-	amhelpt.WaitForAll(t, "group Ready", ctx, 2*time.Second,
-		amhelpt.GroupWhen1(t, clientsApi, ssC.Ready, nil)...)
-
-	for _, w := range netMachs {
-		amhelpt.MachDebugEnv(t, w)
-	}
-
-	// start mutating (C adds auto A)
-	clients[0].NetMach.Add1(sst.C, nil)
-
-	// wait for all clients to get the new state
-	amhelpt.WaitForAll(t, "netMachs A", ctx, 2*time.Second,
-		amhelpt.GroupWhen1(t, netMachs, sst.A, nil)...)
-
-	if amhelp.IsTelemetry() {
-		time.Sleep(1 * time.Second)
-	}
-}
 
 func TestRetryingConnState(t *testing.T) {
 	t.Skip("TODO")

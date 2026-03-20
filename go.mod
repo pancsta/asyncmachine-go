@@ -7,7 +7,7 @@ go 1.25.0
 
 //replace github.com/pancsta/cview => ../cview
 
-//replace github.com/cenkalti/rpc2 => ../rpc2
+//replace github.com/cenkalti/rpc2 => ../rpc2-gjson
 
 //replace github.com/AlexanderGrooff/mermaid-ascii => ../mermaid-ascii
 //replace github.com/AlexanderGrooff/mermaid-ascii => ../mermaid-ascii
@@ -25,6 +25,7 @@ require (
 	github.com/cenkalti/rpc2 v1.0.4
 	github.com/charmbracelet/ssh v0.0.0-20250826160808-ebfa259c7309
 	github.com/coder/websocket v1.8.12
+	github.com/dave/jennifer v1.7.0
 	github.com/dominikbraun/graph v0.23.0
 	github.com/failsafe-go/failsafe-go v0.6.8
 	github.com/fsnotify/fsnotify v1.7.1-0.20240403050945-7086bea086b7
@@ -59,6 +60,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.40.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
+	github.com/wapc/tinygo-msgpack v0.2.1
 	github.com/zyedidia/clipper v0.1.1
 	go.etcd.io/bbolt v1.3.6
 	go.opentelemetry.io/otel v1.42.0

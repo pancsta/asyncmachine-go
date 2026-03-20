@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"reflect"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -26,8 +25,8 @@ import (
 )
 
 var (
-	ssS = states.ServerStates
-	ssW = states.StateSourceStates
+	ssS  = states.ServerStates
+	ssSS = states.StateSourceStates
 )
 
 // Server is an RPC server that can be bound to a worker machine and provide
@@ -152,7 +151,7 @@ func NewServer(
 			"net source states not verified, call VerifyStates()")
 	}
 	hasHandlers := stateSource.HasHandlers()
-	if hasHandlers && !stateSource.Has(ssW.Names()) {
+	if hasHandlers && !stateSource.Has(ssSS.Names()) {
 		// error only when some handlers bound, skip deterministic machines
 		err := fmt.Errorf(
 			"%w: NetSourceMach with handlers has to implement "+
@@ -187,10 +186,13 @@ func NewServer(
 
 	// state machine
 	mach, err := am.NewCommon(ctx, "rs-"+name, states.ServerSchema, ssS.Names(),
-		s, opts.Parent, &am.Opts{
+		nil, opts.Parent, &am.Opts{
 			Tags: []string{TagRpcServer},
 		})
 	if err != nil {
+		return nil, err
+	}
+	if err = BindHandlersServer(s, mach); err != nil {
 		return nil, err
 	}
 	mach.SemLogger().SetArgsMapper(LogArgs)
@@ -233,24 +235,22 @@ func NewServer(
 	if hasHandlers {
 
 		// payload state
-		payloadState := ssW.SendPayload
+		payloadState := ssSS.SendPayload
 		if opts.PayloadState != "" {
 			payloadState = opts.PayloadState
 		}
 
 		// payload handlers
-		var h any
-		if payloadState == ssW.SendPayload {
+		if payloadState == ssSS.SendPayload {
 			// default handlers
-			h = &SendPayloadHandlers{
-				SendPayloadState: getSendPayloadState(s, ssW.SendPayload),
+			h := &SendPayloadHandlers{
+				SendPayloadState: newSendPayloadState(s, ssSS.SendPayload),
 			}
-		} else {
-			// dynamic handlers TODO use ampipe.Bind
-			h = createSendPayloadHandlers(s, payloadState)
-		}
-		err = stateSource.BindHandlers(h)
-		if err != nil {
+			if err = BindStateSourcePayload(h, stateSource); err != nil {
+				return nil, err
+			}
+		} else if err = bindCustomSendPayload(s, stateSource, payloadState); err != nil {
+
 			return nil, err
 		}
 	}
@@ -1098,26 +1098,6 @@ func (s *Server) RemoteSync(
 	return nil
 }
 
-func (s *Server) RemoteArgs(
-	_ *rpc2.Client, _ *MsgEmpty, resp *MsgSrvArgs,
-) error {
-	if s.Mach.Not1(ssS.Start) {
-		return am.ErrCanceled
-	}
-
-	// args TODO cache
-	if s.Args != nil {
-		// TODO use JSON field names
-		args, err := utils.StructFields(s.Args)
-		if err != nil {
-			return err
-		}
-		(*resp).Args = args
-	}
-
-	return nil
-}
-
 // RemoteBye means the client says goodbye and will disconnect shortly.
 func (s *Server) RemoteBye(
 	_ *rpc2.Client, _ *MsgEmpty, _ *MsgEmpty,
@@ -1251,10 +1231,10 @@ type SendPayloadHandlers struct {
 	SendPayloadState am.HandlerFinal
 }
 
-// getSendPayloadState returns a handler (usually SendPayloadState) that will
+// newSendPayloadState returns a handler (usually SendPayloadState) that will
 // deliver a payload to the RPC client. The resulting function can be bound in
 // anon handlers.
-func getSendPayloadState(s *Server, stateName string) am.HandlerFinal {
+func newSendPayloadState(s *Server, stateName string) am.HandlerFinal {
 	return func(e *am.Event) {
 		// self-remove
 		e.Machine().EvRemove1(e, stateName, nil)
@@ -1266,7 +1246,7 @@ func getSendPayloadState(s *Server, stateName string) am.HandlerFinal {
 		// side-effect error handling
 		if args.Payload == nil || args.Name == "" {
 			err := fmt.Errorf("invalid payload args [name, payload]")
-			e.Machine().EvAddErrState(e, ssW.ErrSendPayload, err, Pass(argsOut))
+			e.Machine().EvAddErrState(e, ssSS.ErrSendPayload, err, Pass(argsOut))
 
 			return
 		}
@@ -1279,32 +1259,10 @@ func getSendPayloadState(s *Server, stateName string) am.HandlerFinal {
 
 			err := s.SendPayload(ctx, e, args.Payload)
 			if err != nil {
-				e.Machine().EvAddErrState(e, ssW.ErrSendPayload, err, Pass(argsOut))
+				e.Machine().EvAddErrState(e, ssSS.ErrSendPayload, err, Pass(argsOut))
 			}
 		}()
 	}
-}
-
-// createSendPayloadHandlers creates SendPayload handlers for a custom (dynamic)
-// state name. Useful when binding >1 RPC server into the same state source.
-func createSendPayloadHandlers(s *Server, stateName string) any {
-	// TODO migrate to ampipe.Bind
-	fn := getSendPayloadState(s, stateName)
-
-	// define a struct with the handler
-	structType := reflect.StructOf([]reflect.StructField{
-		{
-			Name: stateName + am.SuffixState,
-			Type: reflect.TypeOf(fn),
-		},
-	})
-
-	// new instance and set handler
-	val := reflect.New(structType).Elem()
-	val.Field(0).Set(reflect.ValueOf(fn))
-	ret := val.Addr().Interface()
-
-	return ret
 }
 
 // calcUpdate calculates a new update based on previously pushed data.

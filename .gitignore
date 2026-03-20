@@ -96,3 +96,4 @@ tools/visualizer/testdata/*
 /examples/wasm/tmp/
 /examples/wasm/client/prod.wasm
 /am-vis.gv
+/tiny.json

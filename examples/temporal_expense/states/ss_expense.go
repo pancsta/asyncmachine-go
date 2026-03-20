@@ -7,8 +7,8 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 // S is a type alias for a list of state names.
 type S = am.S
 
-// States map defines relations and properties of states.
-var States = am.Schema{
+// Schema map defines relations and properties of states.
+var Schema = am.Schema{
 	CreatingExpense: {Remove: GroupExpense},
 	ExpenseCreated:  {Remove: GroupExpense},
 	WaitingForApproval: {

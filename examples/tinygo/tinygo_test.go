@@ -1,0 +1,37 @@
+package tinygo
+
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+	"testing"
+
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	// "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+)
+
+func TestFileProcessing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// handle OS exit signals
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		cancel()
+	}()
+
+	// start the flow and wait for the result
+	mach, err := FileProcessingFlow(ctx, t.Logf, "foo.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !mach.Is(am.S{"FileUploaded"}) {
+		t.Fatal("not FileUploaded")
+	}
+
+	t.Log(mach.String())
+	t.Log(mach.StringAll())
+	t.Log("\n" + mach.Inspect(nil))
+}

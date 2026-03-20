@@ -99,10 +99,13 @@ func NewClient(ctx context.Context, clientId string, workerKind string,
 		c.ConnTimeout = 10 * c.ConnTimeout
 	}
 	mach, err := am.NewCommon(ctx, "nc-"+name, c.schemaClient,
-		opts.ClientStates, c, opts.Parent, &am.Opts{
+		opts.ClientStates, nil, opts.Parent, &am.Opts{
 			Tags: slices.Concat([]string{"node-client"}, opts.Tags),
 		})
 	if err != nil {
+		return nil, err
+	}
+	if err = BindHandlersClient(c, mach); err != nil {
 		return nil, err
 	}
 

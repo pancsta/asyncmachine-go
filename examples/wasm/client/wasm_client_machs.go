@@ -14,6 +14,7 @@ import (
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+	repl2 "github.com/pancsta/asyncmachine-go/pkg/rpc/repl"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 )
@@ -43,7 +44,7 @@ func initMachines(
 	}
 	barMach.SemLogger().SetArgsMapper(example.LogArgs)
 	amhelp.MachDebugEnv(barMach)
-	repl, err := arpc.MachReplWs(barMach, example.EnvRelayHttpAddr, &arpc.ReplOpts{
+	repl, err := repl2.MachReplWs(barMach, example.EnvRelayHttpAddr, &repl2.ReplOpts{
 		// TODO should be automatic in WASM
 		WebSocketTunnel: arpc.WsListenPath("repl-"+barMach.Id(), example.EnvBarReplAddr),
 		Args:            ARpc{},

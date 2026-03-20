@@ -203,9 +203,13 @@ func ExpenseFlow(
 	ctx context.Context, log Logger, approvalCh chan string, expenseID string,
 ) (*am.Machine, error) {
 	// init
-	mach := am.New(ctx, ss.States, &am.Opts{
+	h := &MachineHandlers{}
+	mach, err := am.NewCommon(ctx, "expense", ss.Schema, ss.Names, h, nil, &am.Opts{
 		DontLogId: true,
 	})
+	if err != nil {
+		return nil, err
+	}
 	amhelp.MachDebugEnv(mach)
 
 	// different log granularity and a custom output
@@ -216,12 +220,6 @@ func ExpenseFlow(
 	mach.SemLogger().SetLogger(func(l am.LogLevel, msg string, args ...any) {
 		log(msg, args...)
 	})
-
-	// bind handlers
-	err := mach.BindHandlers(&MachineHandlers{})
-	if err != nil {
-		return mach, err
-	}
 
 	// reusable error channel
 	errCh := mach.WhenErr(nil)
