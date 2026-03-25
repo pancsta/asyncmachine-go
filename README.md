@@ -32,17 +32,17 @@
 > [!NOTE]
 > State machines communicate through states.
 
-**asyncmachine-go** is a batteries-included graph control flow library implementing [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming)
-and [Actor Model](https://en.wikipedia.org/wiki/Actor_model) through a **[clock-based state-machine](/pkg/machine/README.md)**.
-It features [atomic transitions](/docs/manual.md#transition-lifecycle), [relations with consensus](/docs/manual.md#relations),
-[transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
+**asyncmachine-go** is a distributed workflow engine (technically a pathless control-flow graph with a consensus),
+which implements [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming) and [actor model](https://en.wikipedia.org/wiki/Actor_model)
+through a **[clock-based state-machine](/pkg/machine/README.md)**. It features [atomic transitions](/docs/manual.md#transition-lifecycle),
+[relations](/docs/manual.md#relations), [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
 [telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md), [selective distribution](/pkg/rpc/README.md#selective-distribution),
 [remote workers](/pkg/node/README.md), [diagrams](/tools/cmd/am-vis/README.md), and [WASM](/examples/wasm) support.
 
 As a control flow library, it decides about running of predefined bits of code (transition handlers) - their order and
 which ones to run, according to currently active states (flags). Thanks to a [novel state machine](/pkg/machine/README.md),
 the number of handlers can be minimized while maximizing scenario coverage. It's lightweight, fault-tolerant by design,
-has rule-based mutations, and can be used to target virtually *any* step-in-time, in *any* workflow. It's a low-level
+has rule-based mutations, and can target virtually *any* step-in-time, in *any* workflow. It's a low-level
 tool with acceptable performance.
 
 **asyncmachine-go** takes care of `context`, `select`, and `panic`, while allowing for graph-structured concurrency
@@ -72,8 +72,8 @@ vector formats. It aims to create **autonomous** workflows with **organic** cont
 
 Besides the main use-case of **workflows**, it can be used for **stateful applications of any size** - daemons, UIs,
 configs, bots, firewalls, synchronization consensus, games, smart graphs, microservice orchestration, robots, contracts,
-streams, DI containers, test scenarios, simulators, as well as **"real-time" systems** which rely on instant
-cancelation.
+streams, DI containers, message broking, test scenarios, simulators, as well as **"real-time" systems** which rely on
+instant cancelation.
 
 <div align="center">
     <a href="https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true">
@@ -161,31 +161,57 @@ func (h *Handlers) FooEnd(e *am.Event) {
 }
 ```
 
-**Schema** - states of a [node worker](/pkg/node/README.md).
+**Schemas** - relational schemas ([aRPC server](/pkg/rpc/states/ss_rpc.go)).
 
 ```go
-type WorkerStatesDef struct {
-    ErrWork        string
-    ErrWorkTimeout string
-    ErrClient      string
-    ErrSupervisor  string
-
-    LocalRpcReady     string
-    PublicRpcReady    string
-    RpcReady          string
-    SuperConnected    string
-    ServeClient       string
-    ClientConnected   string
-    ClientSendPayload string
-    SuperSendPayload  string
-
-    Idle          string
-    WorkRequested string
-    Working       string
-    WorkReady     string
-
-    // inherit from rpc worker
-    *ssrpc.NetMachStatesDef
+var ServerSchema = am.Schema{
+    ssF.ClientConnected: {Require: S{ssS.RpcReady}},
+    ssF.ErrDelivery:     {Require: S{ssS.Exception}},
+    ssF.ErrHandlerTimeout: {
+        Add:     S{ssS.Exception},
+        Multi:   true,
+        Require: S{ssS.Exception},
+    },
+    ssF.ErrNetwork: {
+        Remove:  S{ssS.ClientConnected},
+        Require: S{ssS.Exception},
+    },
+    ssF.ErrNetworkTimeout: {Require: S{ssS.Exception}},
+    ssF.ErrOnClient:       {Require: S{ssS.Exception}},
+    ssF.ErrProviding:      {Require: S{ssS.Exception}},
+    ssF.ErrRpc:            {Require: S{ssS.Exception}},
+    ssF.ErrSendPayload:    {Require: S{ssS.Exception}},
+    ssF.Exception:         {Multi: true},
+    ssF.HandshakeDone: {
+        Remove:  S{ssS.Handshaking, ssS.HandshakeDone, ssS.Exception},
+        Require: S{ssS.Start, ssS.ClientConnected},
+    },
+    ssF.Handshaking: {
+        Remove:  S{ssS.Handshaking, ssS.HandshakeDone},
+        Require: S{ssS.Start},
+    },
+    ssF.Healthcheck: {Multi: true},
+    ssF.Heartbeat:   {},
+    ssF.MetricSync:  {Multi: true},
+    ssF.Ready: {
+        Auto:    true,
+        Require: S{ssS.HandshakeDone, ssS.RpcReady},
+    },
+    ssF.RpcAccepting: {
+        Remove:  S{ssS.RpcStarting, ssS.RpcAccepting, ssS.RpcReady},
+        Require: S{ssS.Start},
+    },
+    ssF.RpcReady: {
+        Remove:  S{ssS.RpcStarting, ssS.RpcAccepting, ssS.RpcReady},
+        Require: S{ssS.Start},
+    },
+    ssF.RpcStarting: {
+        Remove:  S{ssS.RpcStarting, ssS.RpcAccepting, ssS.RpcReady},
+        Require: S{ssS.Start},
+    },
+    ssF.SendPayload:     {Multi: true},
+    ssF.Start:           {Add: S{ssS.RpcStarting}},
+    ssF.WebSocketTunnel: {},
 }
 ```
 
@@ -252,8 +278,10 @@ Other packages:
 ## Apps
 
 - [secai](https://github.com/pancsta/secai) AI Workflows framework.
-- [arpc REPL](/tools/repl) Cobra-based REPL.
-- [am-dbg TUI Debugger](/tools/debugger) Single state-machine TUI app.
+- Self-hosting of [pkg/rpc](pkg/rpc/states), [pkg/node](pkg/node/states), [pkg/pubsub](pkg/pubsub/states)
+- [arpc REPL](/tools/repl/states) Cobra-based REPL.
+- [am-dbg TUI Debugger](/tools/debugger/states) Single state-machine TUI app.
+- [am-relay Tunnels](/tools/relay/states) CLI with TCP over WebSocket tunnels.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
   simulator for libp2p-pubsub.
 - [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
@@ -307,6 +335,13 @@ Under development, status depends on each package. The bottom layers seem prod g
 
 > [!NOTE]
 > Managing distributed concurrency.
+
+### AI Policy
+
+This project is written by a human, but some dependencies and code generation have been contributed by AI:
+
+- `pkg/pubsub/uds`
+- `rpc2-msgpack-tinygo`
 
 ## Development
 

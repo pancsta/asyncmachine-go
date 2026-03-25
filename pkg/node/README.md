@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
+> **asyncmachine-go** is a pathless control-flow graph with a consensus (AOP, actor model, state-machine).
 
 **/pkg/node** provides distributed workflows via state-based orchestration of worker pools. Features a failsafe
 supervision, as well as state machines for workers and clients. All actors communicate via [aRPC](/pkg/rpc/README.md),

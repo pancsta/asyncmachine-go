@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
+> **asyncmachine-go** is a pathless control-flow graph with a consensus (AOP, actor model, state-machine).
 
 To read about **am-dbg**, go to [/tools/cmd/am-dbg](/tools/cmd/am-dbg/README.md). This package is about the
 implementation, not the end-user application.

@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
+> **asyncmachine-go** is a pathless control-flow graph with a consensus (AOP, actor model, state-machine).
 
 **`/pkg/machine`** is a nondeterministic, multi-state, clock-based, relational, optionally accepting, and non-blocking
 **state machine**. It's a form of a _rules engine_ that can orchestrate blocking APIs into fully controllable async
@@ -43,7 +43,7 @@ States have clocks that produce contexts (odd = active; even = inactive).
 
 ### [Queue](/docs/manual.md#queue-and-history)
 
-Queue of mutations enable lock-free [Actor Model](https://en.wikipedia.org/wiki/Actor_model).
+Queue of mutations enable lock-free [actor model](https://en.wikipedia.org/wiki/Actor_model).
 
 <div align="center"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-queue.mermaid.dark.svg">
@@ -228,7 +228,7 @@ Subscriptions do not allocate goroutines.
 // wait on a time query
 <-mach.WhenQuery(func(c am.Clock) bool {
     // Foo activated >5 times and Bar activated twice as much
-    return c["Foo"] > 10 && c["Bar"] > 2*c["Foo"]
+    return c["Foo"] >= 10 && c["Bar"] >= 2*c["Foo"]
 }, nil)
 ```
 
@@ -251,7 +251,7 @@ tx.TimeIndexCalled().Is1("Foo")
 // was Foo active before?
 tx.TimeIndexBefore().Is1("Foo")
 
-// is Foo active after?
+// will Foo be active after?
 tx.TimeIndexAfter().Is1("Foo")
 
 // is Foo queued?
@@ -368,8 +368,10 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 ## Apps
 
 - [secai](https://github.com/pancsta/secai) AI Workflows framework.
-- [arpc REPL](/tools/repl) Cobra-based REPL.
-- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
+- Self-hosting of [pkg/rpc](pkg/rpc/states), [pkg/node](pkg/node/states), [pkg/pubsub](pkg/pubsub/states)
+- [arpc REPL](/tools/repl/states) Cobra-based REPL.
+- [am-dbg TUI Debugger](/tools/debugger/states) Single state-machine TUI app.
+- [am-relay Tunnels](/tools/relay/states) CLI with TCP over WebSocket tunnels.
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
   simulator for libp2p-pubsub.
 - [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
@@ -571,7 +573,7 @@ Release Candidate, semantically versioned, partially optimized.
 - [logical clock](https://en.wikipedia.org/wiki/Logical_clock)
 - [programming by contract](https://en.wikipedia.org/wiki/Design_by_contract)
 - [non-blocking](https://en.wikipedia.org/wiki/Non-blocking_algorithm)
-- [Actor Model](https://en.wikipedia.org/wiki/Actor_model)
+- [actor model](https://en.wikipedia.org/wiki/Actor_model)
 - [causal inference](https://en.wikipedia.org/wiki/Causal_inference)
 - [declarative logic](https://en.wikipedia.org/wiki/Declarative_programming)
 

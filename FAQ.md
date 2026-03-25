@@ -50,10 +50,6 @@ the CPU overhead is around 15-20%, while the memory ceiling remains the same.
 
 aRPC auto syncs only clock values, which technically is `[n]uint64` (`n` = number of states), plus other minor clocks.
 
-## What's the main use case?
-
-Modeling non-deterministic logic at scale.
-
 ## Does asyncmachine return data?
 
 No, just yes/no/later (`Executed`, `Canceled`, `Queued`). Use channels in mutation args for returning local data and
@@ -70,7 +66,8 @@ The lack of blocking allows for immediate adjustments to incoming changes and is
 
 ## What's the purpose of asyncmachine?
 
-The purpose of asyncmachine is a **total** control of the flow, in a declarative and network transparent way.
+The purpose of asyncmachine is a **total** control of the flow, in a declarative and network transparent way. It should
+allow modeling of nondeterministic logic at scale.
 
 ## Is asyncmachine thread safe?
 
@@ -86,7 +83,7 @@ concurrency.
 ## What are the downsides?
 
 High abstraction, boilerplate, reflection, stack traces split into state-traces, reduced type safety, incomplete
-documentation, TUI devtools, as well as using a non-mainstream paradigm.
+documentation, TUI devtools, using a non-mainstream paradigm.
 
 ## What should be a "state"?
 

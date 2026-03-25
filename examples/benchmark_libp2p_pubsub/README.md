@@ -3,7 +3,7 @@
 - [cd /](/)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
+> **asyncmachine-go** is a pathless control-flow graph with a consensus (AOP, actor model, state-machine).
 
 [**go-libp2p-pubsub-benchmark**](https://github.com/pancsta/go-libp2p-pubsub-benchmark) compares the default
 [go-libp2p-pubsub](https://github.com/libp2p/go-libp2p-pubsub) implementation to the [asyncmachine version](https://github.com/pancsta/go-libp2p-pubsub/).

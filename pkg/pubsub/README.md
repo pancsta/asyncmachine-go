@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
+> **asyncmachine-go** is a pathless control-flow graph with a consensus (AOP, actor model, state-machine).
 
 **/pkg/pubsub** is a trustful and decentralized synchronization network for asyncmachine-go. Each peer exposes several state
 machines, then starts gossiping about them and other ones known to him. Remote state machines are then visible to other

@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a batteries-included graph control flow library (AOP, actor model, state-machine).
+> **asyncmachine-go** is a pathless control-flow graph with a consensus (AOP, actor model, state-machine).
 
 **/pkg/telemetry** provides several telemetry exporters and is accompanied by [generated Grafana dashboards](/tools/cmd/am-gen/README.md#grafana-dashboard):
 
