@@ -16,6 +16,7 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/coder/websocket"
 	"github.com/joho/godotenv"
+	"github.com/pancsta/asyncmachine-go/pkg/rpc/repl"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -89,7 +90,7 @@ func New(ctx context.Context, args types.Args) (*Relay, error) {
 		_ = amhelp.MachDebugEnv(mach)
 	}
 	r.Mach = mach
-	_, _ = arpc.MachReplEnv(mach, &arpc.ReplOpts{
+	_, _ = repl.MachReplEnv(mach, &repl.ReplOpts{
 		Args: types.ARpc{},
 		// TODO ParseRpc
 	})

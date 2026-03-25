@@ -33,8 +33,6 @@ var (
 	GroupFileUploaded   = S{UploadingFile, FileUploaded}
 )
 
-// #region boilerplate defs
-
 // Names of all the states (pkg enum).
 
 const (
@@ -48,5 +46,3 @@ const (
 
 // Names is an ordered list of all the state names.
 var Names = S{DownloadingFile, FileDownloaded, ProcessingFile, FileProcessed, UploadingFile, FileUploaded}
-
-// #endregion

@@ -2,8 +2,6 @@ package machine
 
 import (
 	"maps"
-	"reflect"
-	"slices"
 )
 
 // ///// ///// /////
@@ -24,141 +22,30 @@ type StatesBase struct {
 
 var _ States = &StatesBase{}
 
-func (b *StatesBase) Names() S {
-	return b.names
+func (s *StatesBase) Names() S {
+	return s.names
 }
 
-func (b *StatesBase) StateGroups() (map[string][]int, []string) {
-	return b.groups, b.groupsOrder
+func (s *StatesBase) StateGroups() (map[string][]int, []string) {
+	return s.groups, s.groupsOrder
 }
 
-func (b *StatesBase) SetNames(names S) {
-	b.names = slicesUniq(names)
+func (s *StatesBase) SetNames(names S) {
+	s.names = slicesUniq(names)
 }
 
-func (b *StatesBase) SetStateGroups(groups map[string][]int, order []string) {
-	b.groups = groups
-	b.groupsOrder = order
+func (s *StatesBase) SetStateGroups(groups map[string][]int, order []string) {
+	s.groups = groups
+	s.groupsOrder = order
 }
 
 // States is the vase interface for schema states.
 type States interface {
 	// Names returns the state names of the state machine.
 	Names() S
-	// TODO
 	StateGroups() (map[string][]int, []string)
 	SetNames(S)
 	SetStateGroups(map[string][]int, []string)
-}
-
-func NewStates[G States](states G) G {
-	// read and assign names of all the embedded structs
-	names := S{}
-	groups := map[string][]int{}
-	v := reflect.ValueOf(&states).Elem()
-	order := []string{}
-	parseStateNames(v, &names, "self", groups, &order)
-	states.SetNames(names)
-	states.SetStateGroups(groups, order)
-
-	return states
-}
-
-func parseStateNames(
-	v reflect.Value, names *S, group string, groups map[string][]int,
-	order *[]string,
-) {
-	if group != "StatesBase" {
-		groups[group] = []int{}
-		*order = append(*order, group)
-	}
-	t := v.Type()
-	for i := 0; i < t.NumField(); i++ {
-
-		field := t.Field(i)
-		value := v.Field(i)
-		kind := field.Type.Kind()
-
-		if field.Anonymous && kind == reflect.Ptr &&
-			// embedded struct (inherit states)
-			field.Type.Elem().Kind() == reflect.Struct {
-
-			if value.IsNil() {
-				elem := reflect.New(field.Type.Elem())
-				value.Set(elem)
-			}
-			parseStateNames(value.Elem(), names, field.Name, groups, order)
-
-		} else if value.CanSet() && kind == reflect.String {
-			// local state name
-			value.SetString(field.Name)
-			if !slices.Contains(*names, field.Name) {
-				if group != "StatesBase" {
-					groups[group] = append(groups[group], len(*names))
-				}
-				*names = append(*names, field.Name)
-			}
-		}
-	}
-}
-
-func NewStateGroups[G any](groups G, mixins ...any) G {
-	// init nil embeds
-	v := reflect.ValueOf(&groups).Elem()
-	initNilEmbeds(v)
-
-	// assign values from parent mixins into the local instance
-	for i := range mixins {
-		copyFields(mixins[i], &groups)
-	}
-
-	return groups
-}
-
-func initNilEmbeds(v reflect.Value) {
-	t := v.Type()
-	for i := 0; i < t.NumField(); i++ {
-
-		field := t.Field(i)
-		value := v.Field(i)
-		kind := field.Type.Kind()
-
-		if field.Anonymous && kind == reflect.Ptr &&
-			field.Type.Elem().Kind() == reflect.Struct {
-
-			if value.IsNil() {
-				elem := reflect.New(field.Type.Elem())
-				value.Set(elem)
-			}
-			initNilEmbeds(value.Elem())
-		}
-	}
-}
-
-func copyFields(src, dst interface{}) {
-	srcVal := reflect.ValueOf(src)
-	dstVal := reflect.ValueOf(dst)
-
-	if srcVal.Kind() == reflect.Ptr {
-		srcVal = srcVal.Elem()
-	}
-	if dstVal.Kind() == reflect.Ptr {
-		dstVal = dstVal.Elem()
-	}
-
-	for i := 0; i < srcVal.NumField(); i++ {
-		name := srcVal.Type().Field(i).Name
-		srcField := srcVal.Field(i)
-		dstField := dstVal.FieldByName(name)
-
-		if srcField.Kind() == reflect.Struct {
-			copyFields(srcField.Addr().Interface(), dstField.Addr().Interface())
-		} else {
-			if dstField.CanSet() {
-				dstField.Set(srcField)
-			}
-		}
-	}
 }
 
 // ///// ///// /////
@@ -166,6 +53,8 @@ func copyFields(src, dst interface{}) {
 // ///// ARGS
 
 // ///// ///// /////
+
+const APrefix = "_am"
 
 // AT represents typed arguments of pkg/machine, extracted from Event.Args
 // via ParseArgs, or created manually to for Pass.
@@ -225,6 +114,8 @@ func ParseArgs(args A) *AT {
 		ret.CheckDone = val.(*CheckDone)
 	}
 
+	// TODO missing fields
+
 	return ret
 }
 
@@ -244,6 +135,8 @@ func Pass(args *AT) A {
 	if args.CheckDone != nil {
 		a[argCheckDone] = args.CheckDone
 	}
+
+	// TODO missing fields
 
 	return a
 }

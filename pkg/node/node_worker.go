@@ -85,9 +85,12 @@ func NewWorker(ctx context.Context, kind string, workerStruct am.Schema,
 		w.DeliveryTimeout = 10 * w.DeliveryTimeout
 	}
 
-	mach, err := am.NewCommon(ctx, "nw-"+w.Name, workerStruct, stateNames, w,
+	mach, err := am.NewCommon(ctx, "nw-"+w.Name, workerStruct, stateNames, nil,
 		opts.Parent, &am.Opts{Tags: []string{"node-worker"}})
 	if err != nil {
+		return nil, err
+	}
+	if err = BindHandlersWorker(w, mach); err != nil {
 		return nil, err
 	}
 

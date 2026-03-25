@@ -215,7 +215,10 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		doc.Find("h1").SetText(title)
 	} else {
 		// nested readmes
-		doc.Find("#page-content > blockquote").PrevAll().Remove().End().Remove()
+		// TOOD :first
+		doc.Find("#page-content > blockquote").First().
+			PrevAll().Remove().
+			End().Remove()
 		doc.Find("#page-content > h1").Remove()
 		doc.Find("h1").SetText("/" + e.Path)
 	}
@@ -364,6 +367,7 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 	doc.Find(`blockquote:contains("[!NOTE]")`).Each(func(i int, s *goquery.Selection) {
 		s.Prev().AddClass("mb-1")
 		text := strings.ReplaceAll(strings.TrimSpace(s.Text()), "[!NOTE]\n", "")
+		text = strings.ReplaceAll(text, "\n", "<br />")
 
 		alert := `
 		<blockquote class="border-l-3 border-blue-500 pl-3 pb-2">

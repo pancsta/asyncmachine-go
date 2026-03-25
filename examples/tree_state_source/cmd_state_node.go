@@ -14,6 +14,7 @@ import (
 
 	"github.com/ic2hrmk/promtail"
 	"github.com/joho/godotenv"
+	"github.com/pancsta/asyncmachine-go/pkg/rpc/mux"
 	"github.com/prometheus/client_golang/prometheus/push"
 	"github.com/sethvargo/go-envconfig"
 
@@ -223,7 +224,7 @@ func initTelemetry(node *Node) {
 
 func exportState(ctx context.Context, node *Node, mach am.Api) {
 	// RPC repeater via mux
-	newServerFn := func(mux *arpc.Mux, id string, conn net.Conn) (*arpc.Server, error) {
+	newServerFn := func(mux *mux.Mux, id string, conn net.Conn) (*arpc.Server, error) {
 		s, err := arpc.NewServer(ctx, node.Addr, node.Name+"-"+id, mach,
 			&arpc.ServerOpts{Parent: mux.Mach})
 		if err != nil {
@@ -233,7 +234,7 @@ func exportState(ctx context.Context, node *Node, mach am.Api) {
 
 		return s, nil
 	}
-	mux, err := arpc.NewMux(ctx, node.Addr, node.Name, nil, &arpc.MuxOpts{
+	mux, err := mux.NewMux(ctx, node.Addr, node.Name, nil, &mux.MuxOpts{
 		Parent:      mach,
 		NewServerFn: newServerFn,
 	})

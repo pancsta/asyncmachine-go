@@ -3,9 +3,7 @@ package machine
 import (
 	"context"
 	"errors"
-	"reflect"
 	"regexp"
-	"sync"
 	"time"
 )
 
@@ -49,6 +47,8 @@ const (
 	StateReady = "Ready"
 	// StateMachineRestored is the name of the predefined MachineRestored state.
 	StateMachineRestored = "MachineRestored"
+	// GroupSelf is a built-in group for direct states of a machine.
+	GroupSelf = "self"
 )
 
 type (
@@ -317,7 +317,7 @@ type Api interface {
 	ParseStates(states S) S
 	// Tags is [Machine.Tags].
 	Tags() []string
-	// Ctx is [Machine.Ctx].
+	// Context is [Machine.Context].
 	Context() context.Context
 	// String is [Machine.String].
 	String() string
@@ -331,6 +331,9 @@ type Api interface {
 	Inspect(states S) string
 	// BindHandlers is [Machine.BindHandlers].
 	BindHandlers(handlers any) error
+	// BindHandlerMaps is [Machine.BindHandlerMaps].
+	BindHandlerMaps(name string, negotiations map[string]HandlerNegotiation,
+		finals map[string]HandlerFinal) error
 	// DetachHandlers is [Machine.DetachHandlers].
 	DetachHandlers(handlers any) error
 	// HasHandlers is [Machine.HasHandlers].
@@ -440,27 +443,6 @@ type whenQueryBinding struct {
 
 // TODO optimize with indexes
 type StateIsActive map[string]bool
-
-// handler represents a single event consumer, synchronized by channels.
-type handler struct {
-	h    any
-	name string
-	mx   sync.Mutex
-	// disposed     bool
-	methods      *reflect.Value
-	methodNames  []string
-	methodCache  map[string]reflect.Value
-	missingCache map[string]struct{}
-}
-
-func (e *handler) dispose() {
-	// TODO check if this leaks
-	// e.disposed = true
-	// e.methods = nil
-	// e.methodCache = nil
-	// e.methodNames = nil
-	// e.h = nil
-}
 
 // ///// ///// /////
 

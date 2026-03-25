@@ -1,4 +1,6 @@
 // Package node provides distributed worker pools with supervisors.
+
+//go:generate go run ./gen
 package node
 
 import (
@@ -130,7 +132,7 @@ type A struct {
 	// WorkerRpc is the RPC client connected to a WorkerRpc.
 	WorkerRpc *rpc.Client
 	// Bootstrap is the RPC machine used to connect WorkerRpc to the Supervisor.
-	Bootstrap *bootstrap
+	Bootstrap *Bootstrap
 	// Dispose the worker.
 	Dispose bool
 	// WorkerAddr is an index for WorkerInfo.

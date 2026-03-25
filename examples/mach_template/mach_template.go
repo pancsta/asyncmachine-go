@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pancsta/asyncmachine-go/pkg/rpc/repl"
 	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	amprom "github.com/pancsta/asyncmachine-go/pkg/telemetry/prometheus"
 	amgen "github.com/pancsta/asyncmachine-go/tools/generator"
@@ -17,7 +18,6 @@ import (
 	"github.com/pancsta/asyncmachine-go/examples/mach_template/states"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 )
 
 var ss = states.MachTemplateStates
@@ -108,7 +108,7 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 	// connect to am-dbg
 	amhelp.MachDebugEnv(mach)
 	// start a dedicated aRPC server for the REPL, create an addr file
-	arpc.MachReplEnv(mach, &arpc.ReplOpts{
+	repl.MachReplEnv(mach, &repl.ReplOpts{
 		AddrDir:  ".",
 		Args:     ARpc{},
 		ParseRpc: ParseRpc,

@@ -192,11 +192,14 @@ func NewClient(
 
 	// state machine
 	mach, err := am.NewCommon(ctx, GetClientId(name), states.ClientSchema,
-		ssC.Names(), c, opts.Parent, &am.Opts{Tags: []string{
+		ssC.Names(), nil, opts.Parent, &am.Opts{Tags: []string{
 			TagRpcClient,
 			"addr:" + addr,
 		}})
 	if err != nil {
+		return nil, err
+	}
+	if err = BindHandlersClient(c, mach); err != nil {
 		return nil, err
 	}
 	mach.SemLogger().SetArgsMapper(LogArgs)

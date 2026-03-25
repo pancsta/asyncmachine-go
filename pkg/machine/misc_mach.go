@@ -1026,6 +1026,7 @@ type recoveryData struct {
 	event *Event
 }
 
+// TODO update for tinygo
 func captureStackTrace() string {
 	buf := make([]byte, 4024)
 	n := runtime.Stack(buf, false)

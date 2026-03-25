@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/pancsta/asyncmachine-go/pkg/rpc/mux"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
@@ -84,7 +85,7 @@ type Supervisor struct {
 	// effective address is at [PublicMux.Addr].
 	PublicAddr string
 	// PublicMux is the public listener to create RPC servers for each client.
-	PublicMux *rpc.Mux
+	PublicMux *mux.Mux
 	// PublicRpc are the public RPC servers of connected clients, indexed by
 	// remote addresses.
 	PublicRpcs map[string]*rpc.Server
@@ -196,12 +197,15 @@ func NewSupervisor(
 	}
 
 	mach, err := am.NewCommon(ctx, "ns-"+s.Name, states.SupervisorSchema,
-		ssS.Names(), s, opts.Parent, &am.Opts{Tags: []string{
+		ssS.Names(), nil, opts.Parent, &am.Opts{Tags: []string{
 			"node-supervisor", "kind:" + workerKind,
 			"instance:" + strconv.Itoa(opts.InstanceNum),
 			"host:" + utils.Hostname(),
 		}})
 	if err != nil {
+		return nil, err
+	}
+	if err = BindHandlersSupervisor(s, mach); err != nil {
 		return nil, err
 	}
 
@@ -305,8 +309,8 @@ func (s *Supervisor) StartState(e *am.Event) {
 	s.PublicAddr = args.PublicAddr
 
 	// public rpc (muxed)
-	s.PublicMux, err = rpc.NewMux(ctx, s.PublicAddr, "ns-pub-"+s.Name, nil,
-		&rpc.MuxOpts{
+	s.PublicMux, err = mux.NewMux(ctx, s.PublicAddr, "ns-pub-"+s.Name, nil,
+		&mux.MuxOpts{
 			Parent:      s.Mach,
 			NewServerFn: s.newClientConn,
 		})
@@ -1093,7 +1097,7 @@ func (s *Supervisor) min() int {
 // newClientConn creates a new RPC server for a client.
 // TODO keep one forked and bind immediately
 func (s *Supervisor) newClientConn(
-	mux *rpc.Mux, id string, conn net.Conn,
+	mux *mux.Mux, id string, conn net.Conn,
 ) (*rpc.Server, error) {
 	//
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/alexflint/go-arg"
 	"github.com/joho/godotenv"
+	"github.com/pancsta/asyncmachine-go/pkg/rpc/repl"
 	"github.com/teivah/onecontext"
 
 	"github.com/pancsta/asyncmachine-go/examples/cli_daemon/states"
@@ -92,7 +93,7 @@ func newDaemon(ctx context.Context, args *Args) (*daemon, error) {
 	host, port, _ := net.SplitHostPort(args.Addr)
 	portNum, _ := strconv.Atoi(port)
 	addrRepl := host + ":" + strconv.Itoa(portNum+1)
-	err = arpc.MachRepl(mach, addrRepl, &arpc.ReplOpts{
+	err = repl.MachRepl(mach, addrRepl, &repl.ReplOpts{
 		AddrDir:  ".",
 		Args:     types.ARpc{},
 		ParseRpc: types.ParseRpc,

@@ -1,3 +1,6 @@
+//go:build !tinygo
+
+//go:generate go run ./gen
 package states
 
 import (
@@ -298,8 +301,8 @@ type ClientStatesDef struct {
 // ClientGroupsDef contains all the state groups of the Client state machine.
 type ClientGroupsDef struct {
 	*SharedGroupsDef
+
 	*states.ConnectedGroupsDef
-	// TODO
 }
 
 // ClientSchema represents all relations and properties of ClientStates.
@@ -433,9 +436,9 @@ var MuxSchema = SchemaMerge(
 
 		ssD.ClientConnected: {
 			Multi:   true,
-			Require: states.S{ssD.Start},
+			Require: S{ssD.Start},
 		},
-		ssD.HasClients:   {Require: states.S{ssD.Start}},
+		ssD.HasClients:   {Require: S{ssD.Start}},
 		ssD.NewServerErr: {},
 	})
 
@@ -460,6 +463,7 @@ var (
 // ConsumerStatesDef contains all the states of the Consumer state machine.
 type ConsumerStatesDef struct {
 	*am.StatesBase
+
 	Exception string
 
 	// ServerPayload RPC server delivers the requested payload to the Client.

@@ -16,7 +16,7 @@ import (
 	"github.com/pancsta/asyncmachine-go/examples/arpc/states"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+	"github.com/pancsta/asyncmachine-go/pkg/rpc/repl"
 )
 
 var ss = states.ExampleStates
@@ -72,7 +72,7 @@ func newStateSource(ctx context.Context, num int) (*am.Machine, error) {
 	source.SemLogger().SetLevel(am.LogChanges)
 	source.SetGroups(states.ExampleGroups, states.ExampleStates)
 	// start a REPL aRPC server, create an addr file of a rand addr
-	err = arpc.MachRepl(source, "", &arpc.ReplOpts{AddrDir: "tmp"})
+	err = repl.MachRepl(source, "", &repl.ReplOpts{AddrDir: "tmp"})
 	if err != nil {
 		return nil, err
 	}
