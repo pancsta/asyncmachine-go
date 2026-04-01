@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"reflect"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -26,8 +25,8 @@ import (
 )
 
 var (
-	ssS = states.ServerStates
-	ssW = states.StateSourceStates
+	ssS  = states.ServerStates
+	ssSs = states.StateSourceStates
 )
 
 // Server is an RPC server that can be bound to a worker machine and provide
@@ -152,7 +151,7 @@ func NewServer(
 			"net source states not verified, call VerifyStates()")
 	}
 	hasHandlers := stateSource.HasHandlers()
-	if hasHandlers && !stateSource.Has(ssW.Names()) {
+	if hasHandlers && !stateSource.Has(ssSs.Names()) {
 		// error only when some handlers bound, skip deterministic machines
 		err := fmt.Errorf(
 			"%w: NetSourceMach with handlers has to implement "+
@@ -227,32 +226,6 @@ func NewServer(
 	s.tracer.dataLatest.queueTick = 1
 	if err = stateSource.BindTracer(s.tracer); err != nil {
 		return nil, err
-	}
-
-	// handle payload
-	if hasHandlers {
-
-		// payload state
-		payloadState := ssW.SendPayload
-		if opts.PayloadState != "" {
-			payloadState = opts.PayloadState
-		}
-
-		// payload handlers
-		var h any
-		if payloadState == ssW.SendPayload {
-			// default handlers
-			h = &SendPayloadHandlers{
-				SendPayloadState: getSendPayloadState(s, ssW.SendPayload),
-			}
-		} else {
-			// dynamic handlers TODO use ampipe.Bind
-			h = createSendPayloadHandlers(s, payloadState)
-		}
-		err = stateSource.BindHandlers(h)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// longer timeouts
@@ -1230,10 +1203,6 @@ func BindServerRpcReady(source, target *am.Machine, rpcReady string) error {
 }
 
 type ServerOpts struct {
-	// PayloadState is a state for the server to listen on, to deliver payloads
-	// to the client. The client activates this state to request a payload from
-	// the worker. Default: am/rpc/states/WorkerStates.SendPayload.
-	PayloadState string
 	// Parent is a parent state machine for a new Server state machine.
 	Parent am.Api // Typed arguments struct pointer
 	// optional typed args struct value
@@ -1245,66 +1214,6 @@ type ServerOpts struct {
 	// HTTP URL without proto to tunnel the TCP listen over a WebSocket conn.
 	// See WsListenPath.
 	WebSocketTunnel string
-}
-
-type SendPayloadHandlers struct {
-	SendPayloadState am.HandlerFinal
-}
-
-// getSendPayloadState returns a handler (usually SendPayloadState) that will
-// deliver a payload to the RPC client. The resulting function can be bound in
-// anon handlers.
-func getSendPayloadState(s *Server, stateName string) am.HandlerFinal {
-	return func(e *am.Event) {
-		// self-remove
-		e.Machine().EvRemove1(e, stateName, nil)
-
-		ctx := s.Mach.NewStateCtx(ssS.Start)
-		args := ParseArgs(e.Args)
-		argsOut := &A{Name: args.Name}
-
-		// side-effect error handling
-		if args.Payload == nil || args.Name == "" {
-			err := fmt.Errorf("invalid payload args [name, payload]")
-			e.Machine().EvAddErrState(e, ssW.ErrSendPayload, err, Pass(argsOut))
-
-			return
-		}
-
-		// unblock and forward to the client
-		go func() {
-			// timeout context
-			ctx, cancel := context.WithTimeout(ctx, s.DeliveryTimeout)
-			defer cancel()
-
-			err := s.SendPayload(ctx, e, args.Payload)
-			if err != nil {
-				e.Machine().EvAddErrState(e, ssW.ErrSendPayload, err, Pass(argsOut))
-			}
-		}()
-	}
-}
-
-// createSendPayloadHandlers creates SendPayload handlers for a custom (dynamic)
-// state name. Useful when binding >1 RPC server into the same state source.
-func createSendPayloadHandlers(s *Server, stateName string) any {
-	// TODO migrate to ampipe.Bind
-	fn := getSendPayloadState(s, stateName)
-
-	// define a struct with the handler
-	structType := reflect.StructOf([]reflect.StructField{
-		{
-			Name: stateName + am.SuffixState,
-			Type: reflect.TypeOf(fn),
-		},
-	})
-
-	// new instance and set handler
-	val := reflect.New(structType).Elem()
-	val.Field(0).Set(reflect.ValueOf(fn))
-	ret := val.Addr().Interface()
-
-	return ret
 }
 
 // calcUpdate calculates a new update based on previously pushed data.
