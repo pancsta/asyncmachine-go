@@ -16,7 +16,6 @@ import (
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 	"github.com/pancsta/tcell-v2"
@@ -37,6 +36,8 @@ func NewRpcTest(
 	t *testing.T, ctx context.Context, netSrc *am.Machine,
 	consumer *am.Machine,
 ) (*am.Machine, *rpc.Server, *rpc.Client) {
+	//
+
 	utils.ConnInit.Lock()
 	defer utils.ConnInit.Unlock()
 
@@ -106,20 +107,20 @@ func NewRpcTest(
 
 // NewDbgWorker creates a new worker instance of the am-dbg.
 func NewDbgWorker(
-	realTty bool, opts debugger.Opts,
+	realTty bool, p types.Params,
 ) (*debugger.Debugger, error) {
 
 	// mock screen
-	var screen tcell.Screen
-	if !realTty {
-		screen = tcell.NewSimulationScreen("utf8")
+	if !realTty && p.Screen == nil {
+		screen := tcell.NewSimulationScreen("utf8")
 		screen.SetSize(100, 50)
 		_ = screen.Init()
 		screen.Clear()
+		p.Screen = screen
 	}
 
 	// fixtures
-	if opts.ImportData == "" {
+	if p.ImportData == "" {
 		dirPrefix := ""
 		wd, err := os.Getwd()
 		if err != nil {
@@ -128,49 +129,42 @@ func NewDbgWorker(
 		if strings.HasSuffix(wd, "tools/debugger/test") {
 			dirPrefix = "../../../"
 		}
-		opts.ImportData = dirPrefix + "tools/debugger/testdata/am-dbg-sim.gob.br"
+		p.ImportData = dirPrefix + "tools/debugger/testdata/am-dbg-sim.gob.br"
 	}
 
 	// file logging
-	opts.DbgLogLevel = am.EnvLogLevel("")
-	if opts.DbgLogLevel > 0 && os.Getenv(amhelp.EnvAmLogFile) != "" {
-		opts.DbgLogger = types.GetLogger(&types.Params{
-			LogLevel: opts.DbgLogLevel,
-		}, "")
+	p.LogLevel = am.EnvLogLevel("")
+	if p.LogLevel > 0 && os.Getenv(amhelp.EnvAmLogFile) != "" {
+		p.DbgLogger = types.GetLogger(&p, "")
 	}
 
 	// misc opts
-	if opts.Screen == nil {
-		opts.Screen = screen
-	}
-	if opts.Id == "" {
-		opts.Id = "rem-worker"
+	if p.Id == "" {
+		p.Id = "rem-worker"
 	}
 
 	// used for testing live connections (eg TailMode)
-	opts.SelectConnected = true
+	p.SelectConnected = true
+	p.MachUrl = "mach://ps-2/a59d994dd6efb726a1cd3ef1b7f384fd"
 
 	// create a debugger
-	dbg, err := debugger.New(context.TODO(), opts)
+	d, err := debugger.New(context.TODO(), p)
 	if err != nil {
 		return nil, err
 	}
-	_ = amhelp.MachDebugEnv(dbg.Mach)
+	_ = amhelp.MachDebugEnv(d.Mach)
 
 	// start at the same place
-	res := dbg.Mach.Add1(ssdbg.Start, am.A{
-		"Client.id":       "ps-2",
-		"Client.cursorTx": 20,
-	})
+	res := d.Mach.Add1(ssdbg.Start, nil)
 	if res == am.Canceled {
-		return nil, errors.New("failed to start am-dbg")
+		return nil, errors.New("failed to start am-d")
 	}
-	<-dbg.Mach.When1(ssdbg.Ready, nil)
-	<-dbg.Mach.WhenNot1(ssdbg.ScrollToTx, nil)
+	<-d.Mach.When1(ssdbg.Ready, nil)
+	<-d.Mach.WhenNot1(ssdbg.ScrollToTx, nil)
 
-	dbg.Mach.Log("NewDbgWorker ready")
+	d.Mach.Log("NewDbgWorker ready")
 
-	return dbg, nil
+	return d, nil
 }
 
 func NewRpcClient(
@@ -228,23 +222,4 @@ func RpcShutdown(ctx context.Context, c *rpc.Client, s *rpc.Server) {
 	}
 	<-c.Mach.When1(ssrpc.ClientStates.Disconnected, ctx)
 	// server disconnects synchronously
-}
-
-// RpcGet retrieves a value from the RPC server.
-func RpcGet[G any](
-	t *testing.T, c *rpc.Client, name server.GetField, defVal G,
-) G {
-	// TODO rewrite to SendPayload-ServerPayload state flow
-	// resp, err := c.Get(context.TODO(), name.Encode())
-	// assert.NoError(t, err)
-	//
-	// // default values
-	// if resp.Value == nil {
-	// 	t.Fatal("nil response")
-	// 	return defVal
-	// }
-	//
-	// return resp.Value.(G)
-
-	panic("not implemented")
 }

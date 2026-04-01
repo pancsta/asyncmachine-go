@@ -39,18 +39,15 @@ import (
 // TODO Enter
 
 func (d *Debugger) StartState(e *am.Event) {
-	clientId, _ := e.Args["Client.id"].(string)
-	cursorTx1, _ := e.Args["cursorTx1"].(int)
-	group, _ := e.Args["group"].(string)
-	view, _ := e.Args["dbgView"].(string)
+	view := d.Params.StartupView
 
 	// cview TUI app
 	d.App = cview.NewApplication()
-	if d.Opts.Screen != nil {
-		d.App.SetScreen(d.Opts.Screen)
+	if d.Params.Screen != nil {
+		d.App.SetScreen(d.Params.Screen)
 
 		// headless mode
-	} else if d.Opts.UiSsh {
+	} else if d.Params.UiSsh {
 		d.Mach.Add1(ss.SshServer, nil)
 		d.App.SetScreen(tcell.NewSimulationScreen("UTF-8"))
 	}
@@ -86,16 +83,16 @@ func (d *Debugger) StartState(e *am.Event) {
 	d.hInitUiComponents()
 	d.hInitLayout()
 	d.hUpdateFocusable()
-	if d.Opts.EnableMouse {
+	if d.Params.EnableMouse {
 		d.App.EnableMouse(true)
 	}
-	if d.Opts.ShowReader {
+	if d.Params.ViewReader {
 		d.Mach.Add1(ss.LogReaderEnabled, nil)
 	}
 
 	// default filters TODO sync filter from CLI
 	filters := S{ss.FilterChecks}
-	if d.Opts.Filters.SkipOutGroup {
+	if d.Params.Filters.SkipOutGroup {
 		filters = append(filters, ss.FilterOutGroup)
 	}
 	d.Mach.Add(filters, nil)
@@ -140,36 +137,6 @@ func (d *Debugger) StartState(e *am.Event) {
 
 		// init imported data
 		d.buildClientList(-1)
-		ids := maps.Keys(d.Clients)
-		if clientId != "" {
-			// partial match available client IDs
-			for _, id := range ids {
-				if strings.Contains(id, clientId) {
-					clientId = id
-					break
-				}
-			}
-		}
-		// default selected ID
-		if !slices.Contains(ids, clientId) {
-			clientId = ids[0]
-		}
-		d.hPrependHistory(&types.MachAddress{MachId: clientId})
-		// TODO timeout
-		d.Mach.Add1(ss.SelectingClient, am.A{
-			"Client.id": clientId,
-			"group":     group,
-		})
-		<-d.Mach.When1(ss.ClientSelected, nil)
-
-		if stateCtx.Err() != nil {
-			return // expired
-		}
-
-		if cursorTx1 != 0 {
-			d.Mach.Add1(ss.ScrollToTx, am.A{"cursorTx1": cursorTx1})
-		}
-
 		d.Mach.Add1(ss.Ready, nil)
 	}()
 }
@@ -185,22 +152,22 @@ func (d *Debugger) ReadyState(e *am.Event) {
 
 	// late options
 	// TODO migrate args from Start() method
-	if d.Opts.ViewNarrow {
+	if d.Params.ViewNarrow {
 		d.Mach.EvAdd1(e, ss.NarrowLayout, nil)
 	}
 	d.hSyncOptsTimelines()
-	if d.Opts.OutputDiagrams > 0 {
+	if d.Params.OutputDiagrams > 0 {
 		d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
 	}
-	if d.Opts.ViewRain {
+	if d.Params.ViewRain {
 		d.Mach.EvAdd1(e, ss.MatrixRain, nil)
 	}
-	if d.Opts.TailMode {
+	if d.Params.TailMode {
 		d.Mach.EvAdd1(e, ss.TailMode, nil)
 	}
 
 	// TODO merge parsing with addr bar
-	if addr, err := types.ParseMachUrl(d.Opts.MachUrl); err == nil {
+	if addr, err := types.ParseMachUrl(d.Params.MachUrl); err == nil {
 		// TODO race
 		go d.hGoToMachAddress(addr, false)
 	}
@@ -551,7 +518,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 	// cleanup removes all previous clients if all are disconnected
 	cleanup := false
-	if d.Opts.CleanOnConnect {
+	if d.Params.CleanOnConnect {
 		// remove old clients
 		cleanup = d.hCleanOnConnect()
 	}
@@ -627,7 +594,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 	// if only 1 client connected, select it
 	// if the only client in total, select it
-	if len(d.Clients) == 1 || (d.Opts.SelectConnected &&
+	if len(d.Clients) == 1 || (d.Params.SelectConnected &&
 		d.hConnectedClients() == 1) {
 
 		d.Mach.Add1(ss.SelectingClient, am.A{
@@ -1158,7 +1125,7 @@ func (d *Debugger) NarrowLayoutExit(e *am.Event) bool {
 		return true
 	}
 
-	return !d.Opts.ViewNarrow
+	return !d.Params.ViewNarrow
 }
 
 func (d *Debugger) NarrowLayoutState(e *am.Event) {
@@ -1260,15 +1227,15 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		d.Mach.EvToggle1(e, ss.FilterTraces, nil)
 
 	case toolLog:
-		d.Opts.Filters.LogLevel = (d.Opts.Filters.LogLevel + 1) % 6
+		d.Params.Filters.LogLevel = (d.Params.Filters.LogLevel + 1) % 6
 		d.hUpdateSchemaLogGrid()
 
 	case toolDiagrams:
-		d.Opts.OutputDiagrams = (d.Opts.OutputDiagrams + 1) % 4
+		d.Params.OutputDiagrams = (d.Params.OutputDiagrams + 1) % 4
 		d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
 
 	case toolTimelines:
-		d.Opts.Timelines = (d.Opts.Timelines + 1) % 3
+		d.Params.ViewTimelines = (d.Params.ViewTimelines + 1) % 3
 		d.hSyncOptsTimelines()
 
 	case toolReader:
@@ -1300,7 +1267,7 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 
 	case toolWeb:
 		go func() {
-			err := openURL("http://" + d.Opts.AddrHttp)
+			err := openURL("http://" + d.Params.AddrHttp)
 			if err != nil {
 				d.Mach.EvAddErr(e, err, nil)
 			}
@@ -1509,7 +1476,7 @@ func (d *Debugger) ExceptionState(e *am.Event) {
 
 	// create / append the err log file
 	s := fmt.Sprintf("\n\n%s\n%s\n\n%s", time.Now(), args.Err, args.ErrTrace)
-	path := filepath.Join(d.Opts.OutputDir, "am-dbg-err.log")
+	path := filepath.Join(d.Params.OutputDir, "am-dbg-err.log")
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
 		d.Mach.Log("Error: %s\n", err)
@@ -1523,7 +1490,7 @@ func (d *Debugger) ExceptionState(e *am.Event) {
 }
 
 func (d *Debugger) GcMsgsEnter(e *am.Event) bool {
-	return AllocMem() > uint64(d.Opts.MaxMemMb)*1024*1024
+	return AllocMem() > uint64(d.Params.MaxMemMb)*1024*1024
 }
 
 func (d *Debugger) GcMsgsState(e *am.Event) {
@@ -1556,7 +1523,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 	for _, c := range clients {
 		for i, logMsg := range c.LogMsgs {
 			htime := c.MsgTxs[i].Time
-			if htime.Add(d.Opts.Log2Ttl).After(time.Now()) {
+			if htime.Add(d.Params.LogOpsTtl).After(time.Now()) {
 				continue
 			}
 
@@ -1583,7 +1550,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 	}
 
 	round := 0
-	for AllocMem() > uint64(d.Opts.MaxMemMb)*1024*1024 {
+	for AllocMem() > uint64(d.Params.MaxMemMb)*1024*1024 {
 		if ctx.Err() != nil {
 			d.Mach.Log("GC: context expired")
 			break
@@ -1707,8 +1674,8 @@ func (d *Debugger) hSetCursor1(e *am.Event, args am.A) {
 	d.hHandleTStepsScrolled()
 
 	// debug
-	// d.Opts.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
-	// d.Opts.DbgLogger.Printf("History: %v\n", d.History)
+	// d.State.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
+	// d.State.DbgLogger.Printf("History: %v\n", d.History)
 
 	d.lastScrolledTxTime = time.Time{}
 	if cursor1 > 0 {
@@ -1718,7 +1685,7 @@ func (d *Debugger) hSetCursor1(e *am.Event, args am.A) {
 		}
 
 		// tx file
-		if d.Opts.OutputTx && tx != nil {
+		if d.Params.OutputTx && tx != nil {
 			index := d.C.MsgStruct.StatesIndex
 			_ = d.txFileMd.Truncate(0)
 			_ = d.txFileD2.Truncate(0)
@@ -1763,7 +1730,7 @@ func (d *Debugger) hSetCursor1(e *am.Event, args am.A) {
 
 func (d *Debugger) DiagramsScheduledEnter(e *am.Event) bool {
 	// TODO refuse on too many ErrDiagrams, remove ErrDiagrams in ErrDiagramsState
-	return d.C != nil && d.Opts.OutputDiagrams > 0
+	return d.C != nil && d.Params.OutputDiagrams > 0
 }
 
 func (d *Debugger) DiagramsScheduledState(e *am.Event) {
@@ -1775,12 +1742,12 @@ func (d *Debugger) DiagramsScheduledState(e *am.Event) {
 }
 
 func (d *Debugger) DiagramsRenderingEnter(e *am.Event) bool {
-	return d.Opts.OutputDiagrams > 0 && d.C != nil
+	return d.Params.OutputDiagrams > 0 && d.C != nil
 }
 
 func (d *Debugger) DiagramsRenderingState(e *am.Event) {
-	lvl := d.Opts.OutputDiagrams
-	dir := path.Join(d.Opts.OutputDir, "diagrams")
+	lvl := d.Params.OutputDiagrams
+	dir := path.Join(d.Params.OutputDir, "diagrams")
 	c := d.C
 	tx := d.hCurrentTx()
 	svgName := fmt.Sprintf("%s-%d-%s", c.Id, lvl, c.SchemaHash)
@@ -2039,7 +2006,7 @@ func (d *Debugger) AnyEnter(e *am.Event) bool {
 		}
 
 		// delay, but avoid the race detector which gets stuck here
-		if !d.Opts.DbgRace {
+		if !d.Params.RaceDetector {
 			time.Sleep(delay)
 		}
 
@@ -2087,13 +2054,13 @@ func (d *Debugger) WebReqState(e *am.Event) {
 		fallthrough
 	case u == "/diagrams/mach":
 		html := string(visualizer.HtmlDiagram)
-		html = strings.ReplaceAll(html, "localhost:6831", d.Opts.AddrHttp)
+		html = strings.ReplaceAll(html, "localhost:6831", d.Params.AddrHttp)
 		_, err := w.Write([]byte(html))
 		d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
 
 	// default svg symlink
 	case strings.HasPrefix(u, "/diagrams/mach.svg"):
-		svgPath := filepath.Join(d.Opts.OutputDir, "diagrams", "am-vis.svg")
+		svgPath := filepath.Join(d.Params.OutputDir, "diagrams", "am-vis.svg")
 		b, err := os.ReadFile(svgPath)
 		d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
 		if err != nil {
@@ -2249,7 +2216,7 @@ func (d *Debugger) ResizedState(e *am.Event) {
 }
 
 func (d *Debugger) SshServerEnter(e *am.Event) bool {
-	return d.Opts.UiSsh && d.Opts.AddrSsh != ""
+	return d.Params.UiSsh && d.Params.AddrSsh != ""
 }
 
 func (d *Debugger) SshServerState(e *am.Event) {
@@ -2304,15 +2271,15 @@ func (d *Debugger) SshServerState(e *am.Event) {
 		}
 
 		// show banner TODO optional
-		host, port, _ := net.SplitHostPort(d.Opts.AddrSsh)
-		p := d.Opts.Print
-		p("SSH: listening on %s\n", d.Opts.AddrSsh)
+		host, port, _ := net.SplitHostPort(d.Params.AddrSsh)
+		p := d.Params.Print
+		p("SSH: listening on %s\n", d.Params.AddrSsh)
 		p("\n")
 		p("Connect via:\n")
 		p("$ ssh %s -p %s -o UserKnownHostsFile=/dev/null "+
 			"-o StrictHostKeyChecking=no\n", host, port)
 		d.Mach.AddErr(
-			ssh.ListenAndServe(d.Opts.AddrSsh, handler, optSrv), nil)
+			ssh.ListenAndServe(d.Params.AddrSsh, handler, optSrv), nil)
 	}()
 }
 

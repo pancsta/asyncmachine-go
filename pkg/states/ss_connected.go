@@ -9,7 +9,7 @@ import (
 
 // ///// ///// /////
 
-// ///// CONECTED
+// ///// CONNECTED
 
 // ///// ///// /////
 // TODO godoc
@@ -42,11 +42,11 @@ var ConnectedSchema = am.Schema{
 	ssC.ErrConnecting: {Require: S{Exception}},
 
 	ssC.Connecting: {
-		Require: S{ssB.Start},
+		Require: S{Start},
 		Remove:  sgC.Connected,
 	},
 	ssC.Connected: {
-		Require: S{ssB.Start},
+		Require: S{Start},
 		Remove:  sgC.Connected,
 	},
 	ssC.Disconnecting: {Remove: sgC.Connected},
@@ -132,11 +132,11 @@ var ConnPoolSchema = am.Schema{
 		Remove: S{ssPc.Connecting, ssPc.ConnectedFully, ssPc.Disconnecting},
 	},
 	ssPc.Connecting: {
-		Require: S{ssB.Start},
+		Require: S{Start},
 		Remove:  S{ssPc.Disconnecting},
 	},
 	ssPc.Connected: {
-		Require: S{ssB.Start},
+		Require: S{Start},
 		Remove:  S{ssPc.Disconnected},
 	},
 	ssPc.ConnectedFully: {

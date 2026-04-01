@@ -1,0 +1,18 @@
+services:
+
+  jaeger-prod:
+    image: jaegertracing/jaeger:2.16.0
+    container_name: jaeger-prod
+    user: root
+    command: [ "--config", "/etc/jaeger/jaeger-config.yaml" ]
+    volumes:
+      - ./jaeger-config.prod.yaml:/etc/jaeger/jaeger-config.yaml
+      - ./jaeger-data:/data/jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      # TODO close for loki
+      - "4318:4318"
+    restart: unless-stopped

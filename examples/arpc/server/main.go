@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -24,19 +23,12 @@ func init() {
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(true)
 	// amhelp.SetEnvLogLevel(am.LogOps)
+	// os.Setenv(arpc.EnvAmRpcLogServer, "1")
 }
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-
-	// handle exit
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		cancel()
-	}()
 
 	// worker
 	netSourceMach, err := newNetSource(ctx)
@@ -60,8 +52,11 @@ func main() {
 	fmt.Printf("Started aRPC server on %s\n", server.Addr)
 
 	// wait for a client
-	err = amhelp.WaitForAll(ctx, 3*time.Second,
-		server.Mach.When1(ssrpc.ServerStates.Ready, ctx))
+	select {
+	case <-server.Mach.When1(ssrpc.ServerStates.Ready, ctx):
+		fmt.Printf("Client connected\n")
+	case <-ctx.Done():
+	}
 
 	// periodically send data to the client
 	t := time.NewTicker(3 * time.Second)
@@ -69,14 +64,14 @@ func main() {
 		exit := false
 		select {
 		case <-t.C:
-			netSourceMach.Add1(ssrpc.StateSourceStates.SendPayload, arpc.Pass(&arpc.A{
-				Name: "mypayload",
-				Payload: &arpc.MsgSrvPayload{
-					Name:   "mypayload",
-					Source: "netSrc1",
-					Data:   "Hello aRPC",
-				},
-			}))
+			err := server.SendPayload(ctx, nil, &arpc.MsgSrvPayload{
+				Name:   "mypayload",
+				Source: "netSrc1",
+				Data:   "Hello aRPC",
+			})
+			if err != nil {
+				panic(err)
+			}
 		case <-ctx.Done():
 			exit = true
 		}
@@ -125,13 +120,13 @@ type workerHandlers struct {
 }
 
 func (h *workerHandlers) FooState(e *am.Event) {
-	fmt.Print("FooState")
+	fmt.Println("FooState")
 }
 
 func (h *workerHandlers) BarState(e *am.Event) {
-	fmt.Print("BarState")
+	fmt.Println("BarState")
 }
 
 func (h *workerHandlers) BazState(e *am.Event) {
-	fmt.Print("BazState")
+	fmt.Println("BazState")
 }

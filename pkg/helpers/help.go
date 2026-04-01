@@ -24,12 +24,11 @@ import (
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
-
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 )
 
 const (
@@ -970,8 +969,15 @@ func IsDebug() bool {
 	return os.Getenv(am.EnvAmDebug) != "" && !IsTestRunner()
 }
 
+// IsWasm is true for browser WASM.
 func IsWasm() bool {
-	return runtime.GOARCH == "wasm"
+	return runtime.GOARCH == "wasm" && runtime.GOOS == "js"
+}
+
+// IsWasi is true for WASI envs.
+func IsWasi() bool {
+	return runtime.GOARCH == "wasm" &&
+		(runtime.GOOS == "wasip1" || runtime.GOOS == "wasip2")
 }
 
 // IsTelemetry returns true if the process is in telemetry debug mode.
@@ -1382,64 +1388,6 @@ func TagValueInt(tags []string, key string) int {
 	}
 	i, _ := strconv.Atoi(v)
 	return i
-}
-
-// PrefixStates will prefix all state names with [prefix]. removeDups will skip
-// overlaps eg "FooFooName" will be "Foo".
-func PrefixStates(
-	schema am.Schema, prefix string, removeDups bool, optWhitelist,
-	optBlacklist S,
-) am.Schema {
-	// TODO rename to SchemaPrefix
-	schema = am.SchemaClone(schema)
-
-	for name, s := range schema {
-		if len(optWhitelist) > 0 && !slices.Contains(optWhitelist, name) {
-			continue
-		} else if len(optBlacklist) > 0 && slices.Contains(optBlacklist, name) {
-			continue
-		}
-
-		for i, r := range s.After {
-			newName := r
-			if !removeDups || !strings.HasPrefix(name, prefix) {
-				newName = prefix + r
-			}
-			s.After[i] = newName
-		}
-		for i, r := range s.Add {
-			newName := r
-			if !removeDups || !strings.HasPrefix(name, prefix) {
-				newName = prefix + r
-			}
-			s.Add[i] = newName
-		}
-		for i, r := range s.Remove {
-			newName := r
-			if !removeDups || !strings.HasPrefix(name, prefix) {
-				newName = prefix + r
-			}
-			s.Remove[i] = newName
-		}
-		for i, r := range s.Require {
-			newName := r
-			if !removeDups || !strings.HasPrefix(name, prefix) {
-				newName = prefix + r
-			}
-			s.Require[i] = newName
-		}
-
-		newName := name
-		if !removeDups || !strings.HasPrefix(name, prefix) {
-			newName = prefix + name
-		}
-
-		// replace
-		delete(schema, name)
-		schema[newName] = s
-	}
-
-	return schema
 }
 
 // CountRelations will count all referenced states in all relations of the

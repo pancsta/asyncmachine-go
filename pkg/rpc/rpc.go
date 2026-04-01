@@ -38,7 +38,7 @@ const (
 	EnvAmRpcLogClient = "AM_RPC_LOG_CLIENT"
 	// EnvAmRpcLogMux enables machine logging for RPC multiplexers.
 	EnvAmRpcLogMux = "AM_RPC_LOG_MUX"
-	// EnvAmRpcDbg enables env-based debugging for RPC components.
+	// EnvAmRpcDbg enables env-based debugging for RPC and am-relay components.
 	EnvAmRpcDbg = "AM_RPC_DBG"
 	// EnvAmReplAddr is a REPL address to listen on. "1" expands to 127.0.0.1:0.
 	EnvAmReplAddr = "AM_REPL_ADDR"
@@ -144,10 +144,6 @@ type MsgSrvMutation struct {
 type MsgSrvPayload struct {
 	// Name is used to distinguish different payload types at the destination.
 	Name string
-	// Source is the machine ID that sent the payload.
-	Source string
-	// SourceTx is transition ID.
-	SourceTx string
 	// Destination is an optional machine ID that is supposed to receive the
 	// payload. Useful when using rpc.Mux.
 	Destination string
@@ -158,6 +154,10 @@ type MsgSrvPayload struct {
 
 	// Token is a unique random ID for the payload. Autofilled by the server.
 	Token string
+	// Source is the machine ID that sent the payload. Autofilled by the server.
+	Source string
+	// SourceTx is transition ID. Autofilled by the server.
+	SourceTx string
 }
 
 // MsgSrvSync is the server replying to a full sync request from the client.
@@ -1038,7 +1038,7 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 		addr = "127.0.0.1:0"
 	}
 
-	if mach.HasHandlers() && !mach.Has(ssW.Names()) {
+	if mach.HasHandlers() && !mach.Has(ssSs.Names()) {
 		err := fmt.Errorf(
 			"%w: REPL source has to implement pkg/rpc/states/StateSourceStatesDef",
 			am.ErrSchema)
@@ -1137,7 +1137,7 @@ func MachReplWs(mach am.Api, addr string, opts *ReplOpts) (*Server, error) {
 		addr = "127.0.0.1:0"
 	}
 
-	if mach.HasHandlers() && !mach.Has(ssW.Names()) {
+	if mach.HasHandlers() && !mach.Has(ssSs.Names()) {
 		err := fmt.Errorf(
 			"%w: REPL source has to implement pkg/rpc/states/StateSourceStatesDef",
 			am.ErrSchema)

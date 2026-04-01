@@ -79,7 +79,8 @@ func (rr *DefaultRelationsResolver) NewSchema(schema Schema, states S) {
 func (rr *DefaultRelationsResolver) TargetStates(
 	t *Transition, statesToSet, index S,
 ) S {
-	// TODO race from queue
+	// TODO should calculate target ticks, not states
+
 	rr.Transition = t
 	rr.Machine = t.Machine
 	rr.Index = index

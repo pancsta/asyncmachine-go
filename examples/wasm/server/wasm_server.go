@@ -27,6 +27,7 @@ var ssB = states.BarStates
 var PassRpc = example.PassRpc
 
 type ARpc = example.ARpc
+type A = example.A
 
 func init() {
 	_ = godotenv.Load()
@@ -160,7 +161,7 @@ func (h *HandlersFoo) StartState(e *am.Event) {
 					bar.NetMach.Tick(ssB.Msg) < 20 {
 
 					// instant sync with args
-					args := PassRpc(&ARpc{
+					args := PassRpc(&A{
 						Msg: "hello",
 					})
 					bar.NetMach.EvAdd1(e, ssF.Msg, args)

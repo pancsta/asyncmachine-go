@@ -61,16 +61,19 @@ services:
       - "9091:9091"
     restart: unless-stopped
 
-  # TODO update https://docs.google.com/document/d/18B1yTMewRft2N0nW9K-ecVRTt5VaNgnrPTW1eL236t4/edit?tab=t.0#heading=h.5j21da1bep6t
-
   jaeger:
     image: jaegertracing/jaeger:2.16.0
     container_name: jaeger
+    command: [ "--config", "/etc/jaeger/jaeger-config.yaml" ]
+    volumes:
+      - ./jaeger-config.yaml:/etc/jaeger/jaeger-config.yaml
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     ports:
       - "16686:16686"
       - "4317:4317"
+      # TODO close for loki
+      - "4318:4318"
     restart: unless-stopped
 
   loki:
@@ -88,7 +91,8 @@ services:
     container_name: otel-collector
     ports:
 #      - "4317:4317"
-      - "4318:4318"
+      # TODO open for loki
+#      - "4318:4318"
       - "55681:55681"
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro

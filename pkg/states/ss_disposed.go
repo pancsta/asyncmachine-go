@@ -33,8 +33,8 @@ type DisposedGroupsDef struct{}
 // DisposedSchema represents all relations and properties of DisposedStates.
 var DisposedSchema = am.Schema{
 	ssD.RegisterDisposal: {Multi: true},
-	ssD.Disposing:        {Remove: S{ssB.Start}},
-	ssD.Disposed:         {Remove: S{ssD.Disposing, ssB.Start}},
+	ssD.Disposing:        {Remove: S{Start}},
+	ssD.Disposed:         {Remove: S{ssD.Disposing, Start}},
 }
 
 // EXPORTS AND GROUPS

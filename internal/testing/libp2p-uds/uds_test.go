@@ -1,6 +1,6 @@
 // Package uds was auto-translated from rust-libp2p.
 // https://github.com/libp2p/rust-libp2p/blob/master/transports/uds/src/lib.rs
-package uds
+package libp2p_uds
 
 // import (
 // 	"context"
@@ -32,7 +32,8 @@ package uds
 // var muxers = []tptu.StreamMuxer{} // No muxers for UDS in this test
 //
 // func randomSocketPath() string {
-// 	return filepath.Join(os.TempDir(), fmt.Sprintf("amtest-%d-%d.sock", os.Getpid(), rand.Intn(1e6)))
+// 	return filepath.Join(os.TempDir(),
+// 		fmt.Sprintf("amtest-%d-%d.sock", os.Getpid(), rand.Intn(1e6)))
 // }
 //
 // func TestUdsTransport(t *testing.T) {
@@ -81,7 +82,8 @@ package uds
 //
 // 	t.Run("success", func(t *testing.T) {
 // 		scope := mocknetwork.NewMockConnManagementScope(ctrl)
-// 		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true, ln.Multiaddr()).Return(scope, nil)
+// 		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true, ln.Multiaddr()).
+// 			Return(scope, nil)
 // 		scope.EXPECT().SetPeer(peerA)
 // 		scope.EXPECT().PeerScope().Return(&network.NullScope{}).AnyTimes()
 // 		conn, err := tb.Dial(context.Background(), ln.Multiaddr(), peerA)
@@ -92,14 +94,16 @@ package uds
 //
 // 	t.Run("connection denied", func(t *testing.T) {
 // 		rerr := errors.New("nope")
-// 		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true, ln.Multiaddr()).Return(nil, rerr)
+// 		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true, ln.Multiaddr()).
+// 			Return(nil, rerr)
 // 		_, err = tb.Dial(context.Background(), ln.Multiaddr(), peerA)
 // 		require.ErrorIs(t, err, rerr)
 // 	})
 //
 // 	t.Run("peer denied", func(t *testing.T) {
 // 		scope := mocknetwork.NewMockConnManagementScope(ctrl)
-// 		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true, ln.Multiaddr()).Return(scope, nil)
+// 		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true, ln.Multiaddr()).
+// 			Return(scope, nil)
 // 		rerr := errors.New("nope")
 // 		scope.EXPECT().SetPeer(peerA).Return(rerr)
 // 		scope.EXPECT().Done()
@@ -144,7 +148,8 @@ package uds
 // 	require.NoError(t, err)
 //
 // 	updCh := make(chan transport.DialUpdate, 1)
-// 	conn, err := tb.DialWithUpdates(context.Background(), ln.Multiaddr(), peerA, updCh)
+// 	conn, err := tb.DialWithUpdates(
+// 		context.Background(), ln.Multiaddr(), peerA, updCh)
 // 	upd := <-updCh
 // 	require.Equal(t, transport.UpdateKindHandshakeProgressed, upd.Kind)
 // 	require.NotNil(t, conn)
@@ -168,7 +173,8 @@ package uds
 // 	li := acceptAndClose()
 // 	defer li.Close()
 // 	// This dial will fail as acceptAndClose will not upgrade the connection
-// 	conn, err = tb.DialWithUpdates(context.Background(), li.Multiaddr(), peerA, updCh)
+// 	conn, err = tb.DialWithUpdates(
+// 		context.Background(), li.Multiaddr(), peerA, updCh)
 // 	upd = <-updCh
 // 	require.Equal(t, transport.UpdateKindHandshakeProgressed, upd.Kind)
 // 	require.Nil(t, conn)
@@ -182,14 +188,17 @@ package uds
 // 	require.NoError(t, err)
 // 	id, err := peer.IDFromPrivateKey(priv)
 // 	require.NoError(t, err)
-// 	return id, []sec.SecureTransport{insecure.NewWithIdentity(insecure.ID, id, priv)}
+// 	return id, []sec.SecureTransport{
+// 		insecure.NewWithIdentity(insecure.ID, id, priv)}
 // }
 //
 // type errDialer struct {
 // 	err error
 // }
 //
-// func (d errDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+// func (d errDialer) DialContext(
+// 	ctx context.Context, network, address string,
+// ) (net.Conn, error) {
 // 	return nil, d.err
 // }
 //
@@ -213,7 +222,8 @@ package uds
 // 		// 	called = true
 // 		// 	return &net.Dialer{}, nil
 // 		// }
-// 		tb, err := NewUDSTransport(ub, nil /*, WithDialerForAddr(customDialer) */)
+// 		tb, err := NewUDSTransport(
+// 			ub, nil /*, WithDialerForAddr(customDialer) */)
 // 		// TODO: implement WithDialerForAddr for UDS if needed
 // 		require.NoError(t, err)
 //
@@ -235,7 +245,8 @@ package uds
 // 		require.NoError(t, err)
 // 		defer ln.Close()
 //
-// 		for _, test := range []string{"error in factory", "error in custom dialer"} {
+// 		for _, test := range []string{
+// 			"error in factory", "error in custom dialer"} {
 // 			t.Run(test, func(t *testing.T) {
 // 				_, ib := makeInsecureMuxer(t)
 // 				ub, err := tptu.New(ib, muxers, nil, nil, nil)
@@ -248,7 +259,8 @@ package uds
 // 				// 		return errDialer{err: customErr}, nil
 // 				// 	}
 // 				// }
-// 				tb, err := NewUDSTransport(ub, nil /*, WithDialerForAddr(customDialer) */)
+// 				tb, err := NewUDSTransport(
+// 					ub, nil /*, WithDialerForAddr(customDialer) */)
 // 				// TODO: implement WithDialerForAddr for UDS if needed
 // 				require.NoError(t, err)
 //

@@ -80,7 +80,7 @@ func (h *BarHandlersMock) StartState(e *am.Event) {
 
 func (h *BarHandlersMock) SubmitMsgState(e *am.Event) {
 	txt := "mock msg"
-	args := PassRpc(&ARpc{
+	args := PassRpc(&A{
 		Msg: txt,
 	})
 

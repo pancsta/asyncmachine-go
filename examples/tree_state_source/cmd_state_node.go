@@ -297,7 +297,7 @@ func randMut(mach am.Api) {
 	pick = rand.Intn(amount)
 	state3 := ss.Names()[pick]
 
-	skip := am.S{am.StateException, ssrpc.StateSourceStates.SendPayload}
+	skip := am.S{am.StateException}
 	for _, s := range skip {
 		if state1 == s || state2 == s || state3 == s {
 			return

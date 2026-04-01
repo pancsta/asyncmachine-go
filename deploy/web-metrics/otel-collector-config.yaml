@@ -20,6 +20,10 @@ exporters:
     endpoint: http://loki:3100/otlp
     tls:
       insecure: true
+#  otlp/jaeger:
+#    endpoint: jaeger:4317
+#    tls:
+#      insecure: true
 
 service:
 #  telemetry:
@@ -29,4 +33,5 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch]
+#      exporters: [otlphttp, otlp/jaeger]
       exporters: [otlphttp]

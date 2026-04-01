@@ -1,8 +1,8 @@
 package debugger
 
 import (
+	"encoding/gob"
 	"errors"
-	"log"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -94,81 +94,6 @@ const (
 	toolPrevStep ToolName = "prev-step"
 )
 
-type Opts struct {
-	MachUrl         string
-	SelectConnected bool
-	CleanOnConnect  bool
-	EnableMouse     bool
-	ShowReader      bool
-	// MachAddress to listen on
-	AddrRpc  string
-	AddrHttp string
-	AddrSsh  string
-	// Log level of the debugger's machine
-	DbgLogLevel am.LogLevel
-	// Go race detector is enabled
-	DbgRace   bool
-	DbgLogger *log.Logger
-	// Filters for the transitions and logging
-	Filters *OptsFilters
-	// Timelines is the number of timelines to show (0-2).
-	Timelines int
-	// File path to import (brotli)
-	ImportData string
-	// Dump client list into a txt file.
-	OutputClients bool
-	// Root dir for output files
-	OutputDir string
-	// OutputDiagrams is the details level of the current machine's diagram (0-3).
-	// 0 - off, 3 - most detailed
-	OutputDiagrams int
-	// Screen overload for tests & ssh
-	Screen tcell.Screen
-	// Debugger's ID
-	Id string
-	// version of this instance
-	Version         string
-	MaxMemMb        int
-	Log2Ttl         time.Duration
-	ViewNarrow      bool
-	ViewRain        bool
-	TailMode        bool
-	OutputTx        bool
-	EnableClipboard bool
-	UiSsh           bool
-	UiWeb           bool
-	Print           func(txt string, args ...any)
-	OutputLog       bool
-}
-
-type OptsFilters struct {
-	SkipCanceledTx     bool
-	SkipAutoTx         bool
-	SkipAutoCanceledTx bool
-	SkipEmptyTx        bool
-	SkipHealthTx       bool
-	SkipQueuedTx       bool
-	SkipOutGroup       bool
-	SkipChecks         bool
-	LogLevel           am.LogLevel
-}
-
-func (f *OptsFilters) Equal(filters *OptsFilters) bool {
-	if filters == nil {
-		return false
-	}
-
-	return f.SkipCanceledTx == filters.SkipCanceledTx &&
-		f.SkipAutoTx == filters.SkipAutoTx &&
-		f.SkipAutoCanceledTx == filters.SkipAutoCanceledTx &&
-		f.SkipEmptyTx == filters.SkipEmptyTx &&
-		f.SkipHealthTx == filters.SkipHealthTx &&
-		f.SkipQueuedTx == filters.SkipQueuedTx &&
-		f.SkipOutGroup == filters.SkipOutGroup &&
-		f.SkipChecks == filters.SkipChecks &&
-		f.LogLevel == filters.LogLevel
-}
-
 type ToolName string
 
 type Client struct {
@@ -185,9 +110,14 @@ type Client struct {
 
 	logRenderedCursor1    int
 	logRenderedLevel      am.LogLevel
-	logRenderedFilters    *OptsFilters
+	logRenderedFilters    *types.Filters
 	logRenderedTimestamps bool
 	logReaderMx           sync.Mutex
+}
+
+func init() {
+	gob.Register(server.Exportable{})
+	gob.Register(am.Relation(0))
 }
 
 func newClient(id, connId, schemaHash string, data *server.Exportable) *Client {

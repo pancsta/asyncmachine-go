@@ -67,7 +67,7 @@ func initMachines(
 	// auto reconnects
 	srv.WsTunReconn = true
 	// quick pushes
-	interval := 250 * time.Millisecond
+	interval := time.Millisecond
 	srv.PushInterval.Store(&interval)
 	// start
 	srv.Start(nil)

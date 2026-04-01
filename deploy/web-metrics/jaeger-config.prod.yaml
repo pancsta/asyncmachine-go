@@ -1,0 +1,45 @@
+extensions:
+  # 1. Define the storage backends
+  jaeger_storage:
+    backends:
+      my_memory_store:  # We name our backend here
+        badger:
+          ephemeral: false
+          directories:
+            keys: /data/jaeger/keys
+            values: /data/jaeger/values
+
+  # 2. Tell the Jaeger UI (Query) which backend to read from
+  jaeger_query:
+    # TODO hosting
+#    base_path: /demo-traces
+    storage:
+      traces: my_memory_store
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - "http://localhost:*"
+            - "http://127.0.0.1:*"
+#            - "*"
+          allowed_headers:
+            - "*"
+
+exporters:
+  # 3. Tell the exporter which backend to write to
+  jaeger_storage_exporter:
+    trace_storage: my_memory_store
+
+service:
+  # 4. Boot up the storage and the UI alongside the pipeline
+  extensions: [jaeger_storage, jaeger_query]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [jaeger_storage_exporter]

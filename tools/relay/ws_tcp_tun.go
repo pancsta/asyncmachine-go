@@ -6,11 +6,11 @@ import (
 	"net"
 
 	"github.com/coder/websocket"
-	"github.com/pancsta/asyncmachine-go/tools/relay/states"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
+	"github.com/pancsta/asyncmachine-go/tools/relay/states"
 	"github.com/pancsta/asyncmachine-go/tools/relay/types"
 )
 

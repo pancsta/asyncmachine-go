@@ -768,7 +768,7 @@ func (d *Debugger) hUpdateFocusable() {
 		prims = append(prims, d.matrix)
 
 		// log
-	} else if d.Opts.Filters.LogLevel != am.LogNothing {
+	} else if d.Params.Filters.LogLevel != am.LogNothing {
 		d.focusable = append(d.focusable, d.log.Box)
 		prims = append(prims, d.log)
 	}
@@ -780,7 +780,7 @@ func (d *Debugger) hUpdateFocusable() {
 	}
 
 	// add timelines
-	switch d.Opts.Timelines {
+	switch d.Params.ViewTimelines {
 	case 2:
 		d.focusable = append(d.focusable, d.timelineTxs.Box, d.timelineSteps.Box)
 		prims = append(prims, d.timelineTxs, d.timelineSteps)

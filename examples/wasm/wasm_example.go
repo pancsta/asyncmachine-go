@@ -93,7 +93,7 @@ func Pass(args *A) am.A {
 }
 
 // PassRpc prepares [am.A] from A to pass over RPC.
-func PassRpc(args *ARpc) am.A {
+func PassRpc(args *A) am.A {
 	return am.A{APrefix: amhelp.ArgsToArgs(args, &ARpc{})}
 }
 

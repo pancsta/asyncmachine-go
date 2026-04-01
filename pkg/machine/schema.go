@@ -102,6 +102,8 @@ func parseStateNames(
 	}
 }
 
+// NewStateGroups accepts the target group with values (FooGroupsDef) and
+// inherited GroupsDefs (optionally).
 func NewStateGroups[G any](groups G, mixins ...any) G {
 	// init nil embeds
 	v := reflect.ValueOf(&groups).Elem()

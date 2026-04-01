@@ -152,11 +152,6 @@ var SupervisorSchema = SchemaMerge(
 			ssS.LocalRpcReady, ssS.PublicRpcReady, ssS.PoolReady}},
 		ssS.Heartbeat: {Require: S{ssS.Start}},
 
-		// rpc
-
-		// disable SendPayload
-		ssW.SendPayload: {Add: S{ssW.ErrSendPayload, ssW.Exception}},
-
 		// worker pool
 
 		ssS.PoolStarting: {

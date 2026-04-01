@@ -1,43 +1,42 @@
 package cli
 
 import (
-	"fmt"
-	"os"
-	"runtime/debug"
 	"strings"
 
-	"github.com/spf13/cobra"
+	"github.com/lithammer/dedent"
 )
 
-const pVersion = "version"
+// ///// ///// /////
 
-// RootParams are params for the root command.
-type RootParams struct {
-	// Version - print version
-	Version bool
+// ///// ARGS
+
+// ///// ///// /////
+
+// Args is the top-level args struct for am-gen.
+//
+//nolint:lll
+type Args struct {
+	StatesFile *SFParams      `arg:"subcommand:states-file" help:"Generate state schema files"`
+	Grafana    *GrafanaParams `arg:"subcommand:grafana" help:"Generate Grafana dashboards"`
+	Version    bool           `arg:"-v,--version" help:"Print version and exit"`
 }
 
-func ParseRootParams(cmd *cobra.Command, _ []string) RootParams {
-	version, _ := cmd.Flags().GetBool(pVersion)
-
-	return RootParams{
-		Version: version,
-	}
-}
-
-// TODO move to /internal
-func GetVersion() string {
-	build, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "(devel)"
-	}
-
-	ver := build.Main.Version
-	if ver == "" {
-		return "(devel)"
-	}
-
-	return ver
+// TODO dedicated descriptions
+func (Args) Description() string {
+	//nolint:lll
+	return strings.TrimLeft(dedent.Dedent(`
+			am-gen generates state files and Grafana dashboards for asyncmachine-go state machines.
+	
+			Example:
+			$ am-gen states-file --states State1,State2:multi \
+				--inherit basic,connected \
+				--groups Group1,Group2 \
+				--name MyMach
+	
+			Example:
+			$ am-gen grafana --IDs MyMach1,MyMach2 \
+				--sync grafana-host.com
+		`), "\n")
 }
 
 // ///// ///// /////
@@ -46,80 +45,18 @@ func GetVersion() string {
 
 // ///// ///// /////
 
-const (
-	pGIds             = "ids"
-	pGIdsShort        = "i"
-	pGGrafanaUrl      = "grafana-url"
-	pGGrafanaUrlShort = "g"
-	pGName            = "name"
-	pGNameShort       = "n"
-	pGFolder          = "folder"
-	pGFolderShort     = "f"
-	pGSource          = "source"
-	pGSourceShort     = "s"
-)
-
-func AddGrafanaFlags(cmd *cobra.Command) {
-	f := cmd.Flags()
-	f.StringP(pGIds, pGIdsShort, "",
-		"Machines IDs (comma separated). Required.")
-	f.StringP(pGGrafanaUrl, pGGrafanaUrlShort, "",
-		"Grafana URL to sync. Requires GRAFANA_TOKEN in CWD/.env")
-	f.StringP(pGFolder, pGFolderShort, "",
-		"Dashboard folder. Optional. Requires --"+pGGrafanaUrl)
-	f.StringP(pGName, pGNameShort, "",
-		"Dashboard name. Required.")
-	f.StringP(pGSource, pGSourceShort, "",
-		"$source variable (service_name or job). Required.")
-
-}
-
-// GrafanaParams are params for the grafana command.
+// GrafanaParams are params for the grafana subcommand.
+//
+//nolint:lll
 type GrafanaParams struct {
-	Ids        string
-	GrafanaUrl string
-	Folder     string
-	Name       string
-	Token      string
-	Source     string
+	Ids        string `arg:"-i,--ids,required" help:"Machine IDs (comma separated)"`
+	GrafanaUrl string `arg:"-g,--grafana-url" help:"Grafana URL to sync. Requires GRAFANA_TOKEN in CWD/.env"`
+	Folder     string `arg:"-f,--folder" help:"Dashboard folder (optional, requires --grafana-url)"`
+	Name       string `arg:"-n,--name,required" help:"Dashboard name"`
+	Source     string `arg:"-s,--source,required" help:"$source variable (service_name or job)"`
+	Token      string `arg:"-"`
 	// TODO interval
-	// Interval   string
-}
-
-func ParseGrafanaParams(cmd *cobra.Command, _ []string) GrafanaParams {
-	ids := strings.Trim(cmd.Flag(pGIds).Value.String(), "\n ")
-	sync := strings.Trim(cmd.Flag(pGGrafanaUrl).Value.String(), "\n ")
-	folder := strings.Trim(cmd.Flag(pGFolder).Value.String(), "\n ")
-	name := strings.Trim(cmd.Flag(pGName).Value.String(), "\n ")
-	source := strings.Trim(cmd.Flag(pGSource).Value.String(), "\n ")
-
-	if ids == "" || strings.Contains(ids, " ") || strings.Contains(ids, ",,") {
-		fmt.Println("Error: ids invalid")
-		os.Exit(1)
-	}
-
-	if sync == "" || strings.Contains(sync, " ") {
-		fmt.Println("Error: sync invalid")
-		os.Exit(1)
-	}
-
-	if name == "" || strings.Contains(name, " ") {
-		fmt.Println("Error: name invalid")
-		os.Exit(1)
-	}
-
-	if source == "" || strings.Contains(source, " ") {
-		fmt.Println("Error: source invalid")
-		os.Exit(1)
-	}
-
-	return GrafanaParams{
-		Ids:        ids,
-		GrafanaUrl: sync,
-		Folder:     folder,
-		Name:       name,
-		Source:     source,
-	}
+	// Interval string
 }
 
 // ///// ///// /////
@@ -131,98 +68,25 @@ func ParseGrafanaParams(cmd *cobra.Command, _ []string) GrafanaParams {
 // TODO validate param
 // var inherits = []string{"basic", "connected", "rpc/worker", "node/worker"}
 
-// SFParams are params for the states-file command.
+// SFParams are params for the states-file subcommand.
+//
+//nolint:lll
 type SFParams struct {
 	// Version - print version
 	Version bool
 	// States - State names to generate. Eg: State1,State2
-	States string
+	States string `arg:"-s,--states,required" help:"State names to generate. Eg: State1,State2"`
 	// Inherit - Inherit from built-in states machines (comma separated):
 	// - basic,connected
 	// - rpc/statesrc
 	// - node/worker
-	Inherit string
+	Inherit string `arg:"-i,--inherit" help:"Inherit from built-in state-machines: basic,connected,rpc/statesrc,node/worker"`
 	// Groups - Groups to generate. Eg: Group1,Group2
-	Groups string
+	Groups string `arg:"-g,--groups" help:"Groups to generate. Eg: Group1,Group2"`
 	// Name - Name of the state machine.
-	Name string
+	Name string `arg:"-n,--name,required" help:"Name of the state machine. Eg: MyMach"`
 	// Force - Overwrite existing files.
-	Force bool
+	Force bool `arg:"-f,--force" help:"Override output file (if any)"`
 	// Utils - Generate states_utils.go in CWD. Overrides files.
-	Utils bool
-}
-
-const (
-	pSFStates       = "states"
-	pSFStatesShort  = "s"
-	pSFInherit      = "inherit"
-	pSFInheritShort = "i"
-	pSFGroups       = "groups"
-	pSFGroupsShort  = "g"
-	pSFName         = "name"
-	pSFNameShort    = "n"
-	pSFForce        = "force"
-	pSFForceShort   = "f"
-	pSFUtils        = "utils"
-	pSFUtilsShort   = "u"
-)
-
-func AddStatesFlags(cmd *cobra.Command) {
-	f := cmd.Flags()
-	f.StringP(pSFStates, pSFStatesShort, "",
-		"State names to generate. Eg: State1,State2")
-	f.StringP(pSFInherit, pSFInheritShort, "",
-		"Inherit from built-in state-machines: "+
-			"basic,connected,rpc/statesrc,node/worker")
-	f.StringP(pSFGroups, pSFGroupsShort, "",
-		"Groups to generate. Eg: Group1,Group2")
-	f.StringP(pSFName, pSFNameShort, "",
-		"Name of the state machine. Eg: MyMach")
-	f.BoolP(pSFUtils, pSFUtilsShort, true,
-		"Generate states_utils.go in CWD. Overrides files.")
-	f.Bool(pVersion, false,
-		"Print version and exit")
-	f.BoolP(pSFForce, pSFForceShort, false,
-		"Override output file (if any)")
-}
-
-func ParseSFParams(cmd *cobra.Command, _ []string) SFParams {
-
-	states := strings.Trim(cmd.Flag(pSFStates).Value.String(), "\n ")
-	inherit := strings.Trim(cmd.Flag(pSFInherit).Value.String(), "\n ")
-	groups := strings.Trim(cmd.Flag(pSFGroups).Value.String(), "\n ")
-	name := strings.Trim(cmd.Flag(pSFName).Value.String(), "\n ")
-	force, _ := cmd.Flags().GetBool(pSFForce)
-	utils, _ := cmd.Flags().GetBool(pSFUtils)
-
-	if states == "" || strings.Contains(states, " ") ||
-		strings.Contains(states, ",,") {
-		fmt.Println("Error: states invalid")
-		os.Exit(1)
-	}
-
-	if strings.Contains(groups, " ") || strings.Contains(groups, ",,") {
-		fmt.Println("Error: groups invalid")
-		os.Exit(1)
-	}
-
-	if strings.Contains(inherit, " ") || strings.Contains(inherit, ",,") {
-		fmt.Println("Error: inherit invalid")
-		os.Exit(1)
-	}
-
-	if name == "" || strings.Contains(name, " ") {
-		fmt.Println("Error: name invalid")
-		os.Exit(1)
-	}
-
-	return SFParams{
-		// Version: version,
-		States:  states,
-		Inherit: inherit,
-		Groups:  groups,
-		Name:    name,
-		Force:   force,
-		Utils:   utils,
-	}
+	Utils bool `arg:"-u,--utils" default:"true" help:"Generate states_utils.go in CWD. Overrides files."`
 }

@@ -24,11 +24,11 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 	"golang.org/x/sync/errgroup"
 
+	udsTransport "github.com/pancsta/asyncmachine-go/internal/testing/libp2p-uds"
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/pubsub/states"
-	udsTransport "github.com/pancsta/asyncmachine-go/pkg/pubsub/uds"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )

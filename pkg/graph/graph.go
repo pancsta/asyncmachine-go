@@ -404,7 +404,7 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 					})
 					err = g.G.UpdateEdge(from, to, graph.EdgeData(data))
 					if err != nil {
-						panic(err)
+						return err
 					}
 
 					continue
@@ -417,7 +417,7 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 					},
 				}))
 				if err != nil {
-					panic(err)
+					return err
 				}
 				_ = g.Map.AddEdge(from, to)
 			}
@@ -570,12 +570,12 @@ func (g *Graph) parseMsgReader(
 		// outbound
 		adjs, err := g.G.AdjacencyMap()
 		if err != nil {
-			panic(err)
+			return err
 		}
 		for _, edge := range adjs[id] {
 			err := g.G.RemoveEdge(id, edge.Target)
 			if err != nil {
-				panic(err)
+				return err
 			}
 			_ = g.Map.RemoveEdge(id, edge.Target)
 		}
@@ -583,12 +583,12 @@ func (g *Graph) parseMsgReader(
 		// inbound
 		preds, err := g.G.PredecessorMap()
 		if err != nil {
-			panic(err)
+			return err
 		}
 		for _, edge := range preds[id] {
 			err := g.G.RemoveEdge(edge.Source, id)
 			if err != nil {
-				panic(err)
+				return err
 			}
 			_ = g.Map.RemoveEdge(edge.Source, id)
 		}

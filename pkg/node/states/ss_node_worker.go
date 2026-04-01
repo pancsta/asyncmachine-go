@@ -105,9 +105,6 @@ var WorkerSchema = SchemaMerge(
 			Require: S{ssW.LocalRpcReady},
 		},
 
-		// disable SendPayload
-		ssW.SendPayload: {Add: S{ssW.ErrSendPayload, ssW.Exception}},
-
 		// work
 
 		ssW.Idle: {

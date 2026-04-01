@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // ///// ///// /////
@@ -224,6 +225,72 @@ func SchemaMerge(schemas ...Schema) Schema {
 	}
 
 	return SchemaClone(ret)
+}
+
+// StatesPrefix prefixes all the states with a prefix.
+func StatesPrefix(prefix string, states S) S {
+	ret := make(S, len(states))
+	for i, name := range states {
+		ret[i] = prefix + name
+	}
+
+	return ret
+}
+
+// SchemaPrefix will prefix all state names with [prefix]. removeDups will skip
+// overlaps eg "FooFooName" will be "Foo".
+func SchemaPrefix(
+	schema Schema, prefix string, removeDups bool, optAllowlist, optSkiplist S,
+) Schema {
+	ret := SchemaClone(schema)
+	for name, s := range schema {
+		s = cloneState(s)
+
+		if len(optAllowlist) > 0 && !slices.Contains(optAllowlist, name) {
+			continue
+		} else if len(optSkiplist) > 0 && slices.Contains(optSkiplist, name) {
+			continue
+		}
+
+		for i, r := range s.After {
+			newName := r
+			if !removeDups || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.After[i] = newName
+		}
+		for i, r := range s.Add {
+			newName := r
+			if !removeDups || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.Add[i] = newName
+		}
+		for i, r := range s.Remove {
+			newName := r
+			if !removeDups || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.Remove[i] = newName
+		}
+		for i, r := range s.Require {
+			newName := r
+			if !removeDups || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.Require[i] = newName
+		}
+
+		newName := name
+		if !removeDups || !strings.HasPrefix(name, prefix) {
+			newName = prefix + name
+		}
+
+		// build
+		ret[newName] = s
+	}
+
+	return ret
 }
 
 // EnvLogLevel returns a log level from an environment variable, AM_LOG by
@@ -608,4 +675,16 @@ func cloneOptions(opts *Opts) *Opts {
 		Tags:                 opts.Tags,
 		DetectEval:           opts.DetectEval,
 	}
+}
+
+func Capitalize(s string) string {
+	if s == "" {
+		return ""
+	}
+
+	// Decode the first character to find out exactly how many bytes it uses
+	r, size := utf8.DecodeRuneInString(s)
+
+	// Uppercase the first character, then append the rest of the original string
+	return strings.ToUpper(string(r)) + s[size:]
 }

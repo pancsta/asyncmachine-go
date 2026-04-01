@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	olog "go.opentelemetry.io/otel/log"
 	ologsdk "go.opentelemetry.io/otel/sdk/log"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"

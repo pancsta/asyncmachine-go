@@ -11,7 +11,7 @@ tasks:
 
   start:
     desc: Start the example
-    cmd: goreman start
+    deps: [ client, server ]
 
   deps:
     desc: Install dependencies

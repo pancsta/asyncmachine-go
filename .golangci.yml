@@ -21,7 +21,6 @@ linters:
     paths:
       - vendor
       - third_party
-      - pkg/pubsub/uds
       - third_party$
       - builtin$
       - ^examples
