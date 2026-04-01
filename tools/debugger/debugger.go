@@ -60,8 +60,8 @@ type Debugger struct {
 	Mach *am.Machine
 
 	Clients map[string]*Client
-	// TODO go-arg and inherit from RWMutex
-	Opts       Opts
+	// TODO make private, pass via state
+	Params     types.Params
 	LayoutRoot *cview.Panels
 	// selected client
 	// TODO atomic, drop eval
@@ -160,10 +160,7 @@ type Debugger struct {
 	statusBarLeft *cview.TextView
 }
 
-// New creates a new debugger instance and optionally import a data file.
-func New(ctx context.Context, opts Opts) (*Debugger, error) {
-	// TODO default options
-
+func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	var err error
 	// init the debugger
 	d := &Debugger{
@@ -171,32 +168,9 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		logReaderExpanded: make(map[string]bool),
 	}
 
-	d.Opts = opts
-
-	// default opts
-	if d.Opts.Filters == nil {
-		d.Opts.Filters = &OptsFilters{
-			LogLevel: am.LogChanges,
-		}
-	}
-	if d.Opts.MaxMemMb == 0 {
-		d.Opts.MaxMemMb = maxMemMb
-	}
-	if d.Opts.Log2Ttl == 0 {
-		d.Opts.Log2Ttl = time.Hour
-	}
-	if d.Opts.Print == nil {
-		d.Opts.Print = func(txt string, args ...any) {
-			fmt.Printf(txt, args...)
-		}
-	}
-
-	gob.Register(server.Exportable{})
-	gob.Register(am.Relation(0))
-
 	id := utils.RandId(0)
-	if opts.Id != "" {
-		id = opts.Id
+	if p.Id != "" {
+		id = p.Id
 	}
 	mach, err := am.NewCommon(ctx, "d-"+id, ss.States, ss.Names, d, nil, &am.Opts{
 		DontLogId: true,
@@ -227,16 +201,20 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		"Debug",
 	})
 
-	if d.Opts.Version == "" {
-		d.Opts.Version = "(devel)"
+	err = d.setParams(p)
+	if err != nil {
+		return nil, err
+	}
+	if d.Params.Version == "" {
+		d.Params.Version = "(devel)"
 	}
 
 	// logging
 	semLog := mach.SemLogger()
-	if opts.DbgLogger != nil {
-		semLog.SetSimple(opts.DbgLogger.Printf, opts.DbgLogLevel)
+	if d.Params.DbgLogger != nil {
+		semLog.SetSimple(d.Params.DbgLogger.Printf, d.Params.LogLevel)
 	} else {
-		semLog.SetSimple(log.Printf, opts.DbgLogLevel)
+		semLog.SetSimple(log.Printf, d.Params.LogLevel)
 	}
 	semLog.SetArgsMapper(am.NewLogArgsMapper(20, []string{
 		// TODO extract
@@ -251,16 +229,21 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	}
 
 	// import data TODO state
-	if opts.ImportData != "" {
-		fmt.Printf("Importing data from %s\nPlease wait...\n", opts.ImportData)
+	if d.Params.ImportData != "" {
+		d.Params.Print("Importing data from %s\nPlease wait...\n",
+			d.Params.ImportData)
 		start := time.Now()
-		mach.Log("Importing data from %s", opts.ImportData)
-		d.hImportData(opts.ImportData)
-		mach.Log("Imported data in %s", time.Since(start))
+		mach.Log("Importing data from %s", d.Params.ImportData)
+		d.hImportData(d.Params.ImportData)
+		if d.Mach.IsErr() {
+			d.Params.Print("ERROR: %s", d.Mach.Err())
+		} else {
+			mach.Log("Imported data in %s", time.Since(start))
+		}
 	}
 
 	// clipboard
-	if d.Opts.EnableClipboard {
+	if d.Params.EnableClipboard {
 		clip, err := clipper.GetClipboard(clipper.Clipboards...)
 		if err != nil {
 			mach.AddErr(fmt.Errorf("clipboard init: %w", err), nil)
@@ -269,15 +252,15 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	}
 
 	// ensure output directory exists
-	if d.Opts.OutputDir != "" && d.Opts.OutputDir != "." {
-		if err := os.MkdirAll(d.Opts.OutputDir, 0o755); err != nil {
+	if d.Params.OutputDir != "" && d.Params.OutputDir != "." {
+		if err := os.MkdirAll(d.Params.OutputDir, 0o755); err != nil {
 			mach.AddErr(fmt.Errorf("create output dir: %w", err), nil)
 		}
 	}
 
 	// client list file
-	if d.Opts.OutputClients {
-		p := path.Join(d.Opts.OutputDir, "am-dbg-clients.txt")
+	if d.Params.OutputClients {
+		p := path.Join(d.Params.OutputDir, "am-dbg-clients.txt")
 		clientListFile, err := os.Create(p)
 		if err != nil {
 			mach.AddErr(err, nil)
@@ -286,8 +269,8 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	}
 
 	// log file
-	if d.Opts.OutputLog {
-		p := path.Join(d.Opts.OutputDir, "log.txt")
+	if d.Params.OutputLog {
+		p := path.Join(d.Params.OutputDir, "log.txt")
 		logFile, err := os.Create(p)
 		if err != nil {
 			mach.AddErr(err, nil)
@@ -296,8 +279,8 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	}
 
 	// tx files
-	if d.Opts.OutputTx {
-		p := path.Join(d.Opts.OutputDir, "tx.md")
+	if d.Params.OutputTx {
+		p := path.Join(d.Params.OutputDir, "tx.md")
 		txFile, err := os.Create(p)
 		if err != nil {
 			mach.AddErr(err, nil)
@@ -305,24 +288,24 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 		d.txFileMd = txFile
 
 		// D2
-		txD2File := path.Join(d.Opts.OutputDir, "tx.d2")
+		txD2File := path.Join(d.Params.OutputDir, "tx.d2")
 		d.txFileD2, err = os.Create(txD2File)
 		if err != nil {
 			mach.AddErr(err, nil)
 		}
-		txD2SvgFile := path.Join(d.Opts.OutputDir, "tx.d2.svg")
+		txD2SvgFile := path.Join(d.Params.OutputDir, "tx.d2.svg")
 		d.txFileD2Svg, err = os.Create(txD2SvgFile)
 		if err != nil {
 			mach.AddErr(err, nil)
 		}
 
 		// mermaid
-		txMermaidFile := path.Join(d.Opts.OutputDir, "tx.mermaid")
+		txMermaidFile := path.Join(d.Params.OutputDir, "tx.mermaid")
 		d.txFileMermaid, err = os.Create(txMermaidFile)
 		if err != nil {
 			mach.AddErr(err, nil)
 		}
-		txMermaidAsciiFile := path.Join(d.Opts.OutputDir, "tx.mermaid.txt")
+		txMermaidAsciiFile := path.Join(d.Params.OutputDir, "tx.mermaid.txt")
 		d.txFileMermaidAscii, err = os.Create(txMermaidAsciiFile)
 		if err != nil {
 			mach.AddErr(err, nil)
@@ -334,6 +317,90 @@ func New(ctx context.Context, opts Opts) (*Debugger, error) {
 	})
 
 	return d, nil
+}
+
+func (d *Debugger) setParams(p types.Params) error {
+	// validate
+	if p.LogLevel > am.LogEverything {
+		p.LogLevel = am.LogEverything
+	}
+	if p.FilterLogLevel > am.LogEverything {
+		p.FilterLogLevel = am.LogEverything
+	}
+	if p.OutputDiagrams > 3 {
+		p.OutputDiagrams = 3
+	}
+	if p.ViewTimelines > 2 {
+		p.ViewTimelines = 2
+	}
+
+	// rain adjusts the default view
+	if p.ViewRain && p.StartupView == "tree-log" {
+		p.StartupView = "tree-matrix"
+	}
+
+	// compute addr
+	httpAddr := ""
+	sshAddr := ""
+	if p.ListenAddr != "-1" && p.ListenAddr != "" {
+		host, port, err := net.SplitHostPort(p.ListenAddr)
+		if err == nil {
+			dbgPort, _ := strconv.Atoi(port)
+			httpAddr = host + ":" + strconv.Itoa(dbgPort+1)
+			sshAddr = host + ":" + strconv.Itoa(dbgPort+2)
+		}
+	}
+	if !p.UiSsh {
+		sshAddr = ""
+	}
+	if !p.UiWeb {
+		httpAddr = ""
+	}
+	p.AddrRpc = p.ListenAddr
+	p.AddrHttp = httpAddr
+	p.AddrSsh = sshAddr
+	p.UiSsh = p.UiSsh && sshAddr != ""
+	p.UiWeb = p.UiWeb && httpAddr != ""
+	p.TailMode = p.TailMode && p.MachUrl == ""
+	p.Version = utils.GetVersion()
+
+	// default filters
+	if p.Filters == nil {
+		p.Filters = &types.Filters{
+			LogLevel:           p.FilterLogLevel,
+			SkipOutGroup:       p.FilterGroup,
+			SkipCanceledTx:     p.FilterCanceledTx,
+			SkipAutoTx:         p.FilterAutoTx,
+			SkipAutoCanceledTx: p.FilterAutoCanceledTx,
+			SkipEmptyTx:        p.FilterEmptyTx,
+			SkipHealthTx:       p.FilterHealthTx,
+			SkipQueuedTx:       p.FilterQueuedTx,
+			SkipChecks:         p.FilterChecks,
+		}
+	}
+	d.statesFromFilters(p.Filters)
+
+	// other defaults
+	if p.MaxMemMb == 0 {
+		p.MaxMemMb = maxMemMb
+	}
+	if p.LogOpsTtl == 0 {
+		p.LogOpsTtl = time.Hour
+	}
+	if p.Print == nil {
+		p.Print = func(txt string, args ...any) {
+			fmt.Printf(txt, args...)
+		}
+	}
+	if p.FilterDisconn {
+		d.Mach.Add1(ss.FilterDisconn, nil)
+	} else {
+		d.Mach.Remove1(ss.FilterDisconn, nil)
+	}
+	d.lastSelectedGroup = p.SelectGroup
+
+	d.Params = p
+	return nil
 }
 
 // ///// ///// /////

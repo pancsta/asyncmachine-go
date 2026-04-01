@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
-	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/repl"
 	"github.com/pancsta/asyncmachine-go/tools/repl/states"
 )
@@ -23,14 +23,16 @@ func init() {
 	// amhelp.EnableDebugging(true)
 }
 
-type S = am.S
-type T = am.Time
-
 func main() {
 	ctx := context.Background()
 
 	var cliArgs []string
 	var connArgs []string
+
+	if os.Args[1] == "--version" {
+		fmt.Println(utils.GetVersion())
+		os.Exit(0)
+	}
 
 	// all OS args
 	osArgs := os.Args[1:]

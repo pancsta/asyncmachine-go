@@ -29,7 +29,7 @@ type SharedStatesDef struct {
 
 	// inherit from BasicStatesDef
 	*states.BasicStatesDef
-	// inherit from rpc/StateSourceStatesDef
+	// inherit from rpc/StateSourceStatesDef (for REPL)
 	*StateSourceStatesDef
 }
 
@@ -44,7 +44,7 @@ type SharedGroupsDef struct {
 var SharedSchema = SchemaMerge(
 	// inherit from BasicStruct
 	states.BasicSchema,
-	// inherit from rpc/WorkerSchema
+	// inherit from rpc/WorkerSchema (for REPL)
 	StateSourceSchema,
 	am.Schema{
 
@@ -99,17 +99,6 @@ type StateSourceStatesDef struct {
 
 	// ErrOnClient indicates an error added on the Network Machine.
 	ErrOnClient string
-	// ErrProviding - NetMach had issues providing the requested payload.
-	ErrProviding string
-	// ErrSendPayload - RPC server had issues sending the requested payload to
-	// the RPC client.
-	ErrSendPayload string
-
-	// rpc getter
-
-	// SendPayload - Net Source has delivered the requested payload to the RPC
-	// server (not the Consumer) using rpc.Pass, rpc.A, and rpc.MsgSrvPayload.
-	SendPayload string
 }
 
 // StateSourceSchema represents all relations and properties of
@@ -119,13 +108,7 @@ var StateSourceSchema = SchemaMerge(
 
 		// errors
 
-		ssSS.ErrOnClient:    {Require: S{Exception}},
-		ssSS.ErrProviding:   {Require: S{Exception}},
-		ssSS.ErrSendPayload: {Require: S{Exception}},
-
-		// RPC getter
-
-		ssSS.SendPayload: {Multi: true},
+		ssSS.ErrOnClient: {Require: S{Exception}},
 	})
 
 // EXPORTS AND GROUPS
@@ -456,6 +439,7 @@ var (
 // ///// CONSUMER
 
 // ///// ///// /////
+// Consumer is a contract to consumer server payload from an RPC client.
 
 // ConsumerStatesDef contains all the states of the Consumer state machine.
 type ConsumerStatesDef struct {

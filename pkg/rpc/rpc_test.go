@@ -153,9 +153,9 @@ func TestWaiting(t *testing.T) {
 	assert.Equal(t, 3, int(c.CallCount),
 		"Client called RemoteHello, RemoteHandshake, RemoteAdd")
 	bytesCount := <-counter
-	assert.LessOrEqual(t, 1_400, int(bytesCount),
+	assert.LessOrEqual(t, 1_300, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 1_500, int(bytesCount),
+	assert.GreaterOrEqual(t, 1_400, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
@@ -619,19 +619,20 @@ func TestRetryClosedListener(t *testing.T) {
 
 // TestPayload
 
-type TestPayloadHandlers struct{}
+type TestPayloadHandlers struct {
+	srv *Server
+}
 
 // CState will trigger SendPayload
 func (w *TestPayloadHandlers) CState(e *am.Event) {
 	// TODO use v2 state def
 	e.Machine().Remove1(sst.C, nil)
 	args := ParseArgs(e.Args)
-	argsOut := &A{
-		Name:    args.Name,
-		Payload: &MsgSrvPayload{Data: "Hello", Name: args.Name},
-	}
 
-	e.Machine().Add1(ssW.SendPayload, Pass(argsOut))
+	_ = w.srv.SendPayload(context.Background(), e, &MsgSrvPayload{
+		Data: "Hello",
+		Name: args.Name,
+	})
 }
 
 type TestPayloadConsumer struct {
@@ -670,7 +671,8 @@ func TestPayload(t *testing.T) {
 
 	// source mach
 	source := utils.NewNoRelsNetSrc(t, nil, "")
-	err = source.BindHandlers(&TestPayloadHandlers{})
+	handlers := &TestPayloadHandlers{}
+	err = source.BindHandlers(handlers)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -679,6 +681,7 @@ func TestPayload(t *testing.T) {
 	_, _, s, c := NewTest(t, ctx, source, nil, 0, false, &ClientOpts{
 		Consumer: consMach,
 	}, nil)
+	handlers.srv = s
 
 	whenDelivered := consMach.When1(ssCo.ServerPayload, nil)
 	// Consumer requests a payload from the remote worker

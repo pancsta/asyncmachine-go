@@ -16,15 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	olog "go.opentelemetry.io/otel/log"
-	"go.opentelemetry.io/otel/propagation"
 	ologsdk "go.opentelemetry.io/otel/sdk/log"
-	"go.opentelemetry.io/otel/sdk/resource"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
@@ -937,41 +931,4 @@ func MachBindOtelEnv(mach am.Api) error {
 	// run the root init manually
 	mt.MachineInit(mach)
 	return nil
-}
-
-func NewOtelProvider(
-	source string, ctx context.Context,
-) (trace.Tracer, *sdktrace.TracerProvider, error) {
-	otel.SetTextMapPropagator(
-		propagation.NewCompositeTextMapPropagator(
-			propagation.TraceContext{},
-			propagation.Baggage{},
-		))
-
-	exporter, err := otlptrace.New(ctx,
-		otlptracegrpc.NewClient(
-			otlptracegrpc.WithInsecure(),
-		),
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	serviceName := source
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter,
-			sdktrace.WithMaxExportBatchSize(50),
-			sdktrace.WithBatchTimeout(100*time.Millisecond),
-		),
-		sdktrace.WithResource(resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceNameKey.String(serviceName),
-		)),
-	)
-
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.TraceContext{})
-
-	// Create a named tracer with package path as its name.
-	return otel.Tracer(source), tp, nil
 }

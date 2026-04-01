@@ -313,7 +313,8 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 		ctx = context.TODO()
 	}
 	m.ctxParent = ctx
-	m.ctx, m.cancel = context.WithCancel(m.ctxParent)
+	// graceful internal context
+	m.ctx, m.cancel = context.WithCancel(context.Background())
 
 	if parent != nil {
 		m.parentId = parent.Id()
@@ -357,18 +358,24 @@ func (m *Machine) OnDispose(fn HandlerDispose) {
 // completion of the disposal with `<-mach.WhenDisposed()`. It's advised to use
 // Dispose() func from pkg/helpers instead, which handles Disposed state mixing.
 func (m *Machine) Dispose() {
-	if m.Has1(StateStart) {
+	// fmt.Println("Dispose1 " + m.Id())
+	// grace when called manually
+	if m.Has1(StateStart) && m.ctxParent.Err() == nil {
+		// fmt.Println("Dispose2 " + m.Id())
 		m.Remove1(StateStart, nil)
 		time.Sleep(100 * time.Millisecond)
 	}
+	// fmt.Println("Dispose3 " + m.Id())
 
 	// doDispose in a goroutine to avoid a deadlock when called from within a
 	// handler
 	go func() {
 		if m.disposing.Load() {
 			m.log(LogDecisions, "[Dispose] already disposed")
+			// fmt.Println("[Dispose] already disposed " + m.Id())
 			return
 		}
+		// fmt.Println("dispose locals " + m.Id())
 		m.queueProcessing.Store(false)
 		m.unlockDisposed.Store(true)
 		m.doDispose(false)
@@ -387,6 +394,7 @@ func (m *Machine) DisposeForce() {
 }
 
 func (m *Machine) doDispose(force bool) {
+	// fmt.Println("doDispose " + m.Id())
 	if m.disposed.Load() {
 		// already disposed
 		return
@@ -482,6 +490,7 @@ func (m *Machine) doDispose(force bool) {
 
 	// the end
 	m.cancel()
+	// fmt.Println("DISPOSED " + m.Id())
 	closeSafe(m.whenDisposed)
 }
 
@@ -2078,10 +2087,12 @@ func (m *Machine) processSubscriptions(t *Transition) {
 // 	return false
 // }
 
-// Context returns the machine's parent context. This context lives longer then
-// the internal graceful dispose context.
+// Context returns the machine's context. This context lives longer than
+// the parent context and allows for graceful shutdown. This is the context
+// which should be used to create submachines. See also
+// [Machine.DisposeTimeout].
 func (m *Machine) Context() context.Context {
-	return m.ctxParent
+	return m.ctx
 }
 
 // Log logs an [extern] message unless LogNothing is set.
@@ -2454,6 +2465,7 @@ grace:
 
 		// graceful shutdown start
 		case <-m.ctxParent.Done():
+			// fmt.Println("CTX DONE " + m.Id())
 			if m.Has1(StateDisposing) {
 				m.Add1(StateDisposing, nil)
 			} else {
@@ -2472,8 +2484,8 @@ grace:
 		}
 	}
 
-	// TODO config, test
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	// TODO test
+	ctx, cancel := context.WithTimeout(context.Background(), 2*m.DisposeTimeout)
 	defer cancel()
 
 	// wait for a handler call or context
@@ -2482,6 +2494,7 @@ grace:
 		// timeout
 		case <-ctx.Done():
 			m.handlerLoopDone()
+			m.cancel()
 
 			return
 

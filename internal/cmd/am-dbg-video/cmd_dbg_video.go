@@ -5,13 +5,13 @@ import (
 	"math"
 	"time"
 
-	"github.com/pancsta/asyncmachine-go/internal/utils"
+	"github.com/alexflint/go-arg"
+
 	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
-	"github.com/spf13/cobra"
 )
 
 var (
@@ -19,10 +19,11 @@ var (
 	logLevel       = am.LogOps
 	filterLogLevel = am.LogChanges
 	startupMachine = "sim-p1"
-	startupTx      = 27
-	initialView    = "matrix"
-	playInterval   = 200 * time.Millisecond
-	debugAddr      = ""
+	// startupTx      = 27
+	startupTx    = "TODO:ID"
+	initialView  = "matrix"
+	playInterval = 200 * time.Millisecond
+	debugAddr    = ""
 	// debugAddr  = "localhost:6831"
 	stateNames = am.S{
 		"Start",
@@ -47,14 +48,12 @@ var (
 )
 
 func main() {
-	rootCmd := types.RootCmd(cliRun)
-	err := rootCmd.Execute()
-	if err != nil {
-		panic(err)
-	}
+	var p types.Params
+	arg.MustParse(&p)
+	cliRun(p)
 }
 
-func cliRun(_ *cobra.Command, _ []string, p types.Params) {
+func cliRun(p types.Params) {
 
 	// ctx
 	ctx := context.Background()
@@ -63,29 +62,22 @@ func cliRun(_ *cobra.Command, _ []string, p types.Params) {
 	p.LogLevel = logLevel
 	p.ImportData = dataFile
 	p.DebugAddr = debugAddr
+	p.FilterLogLevel = filterLogLevel
+	p.DbgLogger = types.GetLogger(&p, "")
+	p.Id = "video"
+	p.MaxMemMb = 1000
+	p.StartupView = initialView
+	p.MachUrl = "mach://" + startupMachine + "/" + startupTx
 
 	// init the debugger
-	dbg, err := debugger.New(ctx, debugger.Opts{
-		Filters: &debugger.OptsFilters{
-			LogLevel: filterLogLevel,
-		},
-		ImportData:      p.ImportData,
-		DbgLogLevel:     p.LogLevel,
-		DbgLogger:       types.GetLogger(&p, ""),
-		AddrRpc:         p.ListenAddr,
-		EnableMouse:     p.EnableMouse,
-		EnableClipboard: p.EnableClipboard,
-		Version:         utils.GetVersion(),
-		Id:              "video",
-		MaxMemMb:        1000,
-	})
+	dbg, err := debugger.New(ctx, p)
 	if err != nil {
 		panic(err)
 	}
 	_ = helpers.MachDebug(dbg.Mach, debugAddr, logLevel, false,
 		&am.SemConfig{Full: true})
 
-	dbg.Start(startupMachine, startupTx, initialView, "")
+	dbg.Start()
 	go render(dbg)
 
 	select {
