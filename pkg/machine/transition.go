@@ -746,6 +746,13 @@ func (t *Transition) emitEvents() Result {
 			// always correct TimeAfter
 			t.TimeAfter = m.time(nil)
 
+			// tracers
+			m.tracersMx.RLock()
+			for i := 0; !t.Machine.IsDisposed() && i < len(t.Machine.tracers); i++ {
+				t.Machine.tracers[i].TransitionFinals(t)
+			}
+			m.tracersMx.RUnlock()
+
 			if hasHandlers || logEverything || m.subs.HasWhenArgs() {
 				// FooState
 				// FooEnd

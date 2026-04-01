@@ -835,6 +835,7 @@ type Tracer interface {
 
 	TransitionInit(transition *Transition)
 	TransitionStart(transition *Transition)
+	TransitionFinals(transition *Transition)
 	TransitionEnd(transition *Transition)
 	MutationQueued(machine Api, mutation *Mutation)
 	HandlerStart(transition *Transition, emitter string, handler string)
@@ -855,6 +856,7 @@ type TracerNoOp struct{}
 
 func (t *TracerNoOp) TransitionInit(transition *Transition)          {}
 func (t *TracerNoOp) TransitionStart(transition *Transition)         {}
+func (t *TracerNoOp) TransitionFinals(transition *Transition)        {}
 func (t *TracerNoOp) TransitionEnd(transition *Transition)           {}
 func (t *TracerNoOp) MutationQueued(machine Api, mutation *Mutation) {}
 func (t *TracerNoOp) HandlerStart(
