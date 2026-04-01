@@ -4,7 +4,7 @@ package pipes
 // TODO implement removal of pipes via:
 //  - dispose source handlers when target mach disposes
 //  - binding-struct
-//  - tagging of handler structs
+//  - pass binding IDs, so its possible to unbind
 
 import (
 	"context"
@@ -68,6 +68,7 @@ func add(
 			// TODO optimize: fork only for non-local
 			go target.EvAdd(e, names, nil)
 		} else {
+			// TODO source tx ID missings
 			go target.EvAdd(e, names, e.Args)
 		}
 	}
@@ -118,6 +119,7 @@ func remove(
 			// TODO optimize: fork only for non-local
 			go target.EvRemove1(e, targetState, nil)
 		} else {
+			// TODO source tx ID missing
 			go target.EvRemove1(e, targetState, e.Args)
 		}
 	}
@@ -234,6 +236,14 @@ func BindErr(source, target am.Api, targetErr string) error {
 func BindStart(
 	source, target am.Api, activeState, inactiveState string,
 ) error {
+
+	if activeState == "" {
+		activeState = am.StateStart
+	}
+	if inactiveState == "" {
+		inactiveState = activeState
+	}
+
 	h := &struct {
 		StartState am.HandlerFinal
 		StartEnd   am.HandlerFinal
@@ -250,6 +260,14 @@ func BindStart(
 func BindReady(
 	source, target am.Api, activeState, inactiveState string,
 ) error {
+
+	if activeState == "" {
+		activeState = am.StateReady
+	}
+	if inactiveState == "" {
+		inactiveState = activeState
+	}
+
 	h := &struct {
 		ReadyState am.HandlerFinal
 		ReadyEnd   am.HandlerFinal
@@ -351,6 +369,32 @@ func BindMany(
 	handlers := val.Addr().Interface()
 
 	return source.BindHandlers(handlers)
+}
+
+// Sync synchronizes states from source to target and returns the number of
+// synced states. Useful when re-connecting a pipe source.
+func Sync(
+	source, target am.Api, states, targetStates am.S,
+) int {
+	var add am.S
+	var remove am.S
+
+	for i, state := range states {
+		if source.Is1(state) {
+			add = append(add, targetStates[i])
+		} else {
+			remove = append(remove, targetStates[i])
+		}
+	}
+
+	if len(add) > 0 {
+		target.Add(add, nil)
+	}
+	if len(remove) > 0 {
+		target.Remove(remove, nil)
+	}
+
+	return len(add) + len(remove)
 }
 
 // ///// ///// /////
