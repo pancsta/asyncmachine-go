@@ -7,8 +7,8 @@
 
 **aRPC** is a transparent RPC for state machines implemented using [asyncmachine-go](/). It's
 clock-based and features many optimizations, e.g. having most of the API methods executed locally (as state changes are
-regularly pushed to the client). It's built on top of [cenkalti/rpc2](https://github.com/cenkalti/rpc2), `net/rpc`,
-and [soheilhy/cmux](https://github.com/soheilhy/cmux). Check out a [dedicated example](/examples/arpc), [gRPC benchmark](/examples/benchmark_grpc),
+regularly pushed to the client). It's built on top of [cenkalti/rpc2](https://github.com/cenkalti/rpc2) (fork of `net/rpc`),
+and [soheilhy/cmux](https://github.com/soheilhy/cmux). Check out the [dedicated example](/examples/arpc), [gRPC benchmark](/examples/benchmark_grpc),
 and an [integration tests tutorial](/pkg/rpc/HOWTO.md).
 
 ## Features
@@ -546,6 +546,7 @@ Testing, not semantically versioned.
 
 ## monorepo
 
+- [`/docs/wasm.md`](/docs/wasm.md)
 - [`/examples/arpc`](/examples/arpc)
 - [`/examples/tree_state_source`](/examples/tree_state_source)
 - [`/examples/wasm`](/examples/wasm)

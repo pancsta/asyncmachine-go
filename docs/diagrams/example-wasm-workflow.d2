@@ -1,0 +1,57 @@
+direction: up
+
+# Define a class for nodes with Auto: true
+classes: {
+  host: {
+    style: {
+      stroke: "#5F5C5C"
+      fill: "#302E2E"
+    }
+  }
+}
+
+title: |md
+  # WASM Workflow Example
+  An example workflow with 4 browser threads and 1 external orchestrator, performing hashing computations.
+
+  Each component has it's own REPL available over TCP.
+
+  *asyncmachine.dev*
+| {near: top-center}
+
+nt: Network Topology {
+
+  o: orchestrator\nDesktop OS
+  o.class: host
+  b1: browser1\nUI thread
+  b1.class: host
+  b2: browser2\nWebWorker (Dispatcher)
+  b2.class: host
+  b3: browser3\nWebWorker
+  b3.class: host
+  b4: browser4\nWebWorker
+  b4.class: host
+
+  b1 <- o: aRPC
+  b2 <- o: aRPC
+  b3 <- b2: aRPC
+  b4 <- b2: aRPC
+}
+nt.style.fill: black
+
+Data Flow DAG: {
+  shape: sequence_diagram
+
+  # Define the actors and apply the class
+  orchestrator.class: host
+  browser1.class: host
+  browser2.class: host
+  browser3.class: host
+  browser4.class: host
+
+  # Define the chronological sequence of events
+  orchestrator -> browser1
+  orchestrator -> browser2
+  browser1 -> browser3
+  browser2 -> browser4
+}

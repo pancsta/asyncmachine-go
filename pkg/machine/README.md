@@ -367,15 +367,17 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 ## Apps
 
-- [secai](https://github.com/pancsta/secai) AI Workflows framework.
+**asyncmachine-go** synchronizes state for the following projects:
+
+- [secai](https://github.com/pancsta/secai) - AI Workflows framework
+- [secai Web UI](https://github.com/pancsta/secai/tree/main/web) - WebAssembly [go-app](https://go-app.dev/) PWA
 - Self-hosting of [pkg/rpc](pkg/rpc/states), [pkg/node](pkg/node/states), [pkg/pubsub](pkg/pubsub/states)
-- [arpc REPL](/tools/repl/states) Cobra-based REPL.
-- [am-dbg TUI Debugger](/tools/debugger/states) Single state-machine TUI app.
-- [am-relay Tunnels](/tools/relay/states) CLI with TCP over WebSocket tunnels.
-- [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
-  simulator for libp2p-pubsub.
-- [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
-  Benchmark of libp2p-pubsub ported to asyncmachine-go.
+- [arpc REPL](/tools/repl/states) - Cobra-based REPL
+- [am-dbg TUI Debugger](/tools/debugger/states) - Single state-machine TUI app
+- [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) - Sandbox
+  simulator for libp2p-pubsub
+- [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark) -
+  Benchmark of libp2p-pubsub ported to asyncmachine-go
 
 ## Documentation
 

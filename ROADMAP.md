@@ -5,7 +5,7 @@
 - live `am-vis` server
   - more types of generated diagrams
 - time scheduler via the handler loop
-- custom relation resolvers
+- security
 - less boilerplate (args, etc)
 - msgpack for aRPC
 - `WhenArgs` for typed args and aRPC
@@ -18,6 +18,7 @@
 - large simulation test loop
 - network security
 - shaders / SIMD
+- custom relation resolvers
 - ML inference
 - optimizations
 - tutorials

@@ -181,6 +181,14 @@ Consumer requests payload from a remote worker.
   <img alt="" src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-bench-state-source.mermaid.light.svg">
 </picture></div>
 
+### [WASM](/examples/wasm)
+
+![WASM](https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-wasm.d2.dark.svg)
+
+### [WASM Workflow](/examples/wasm_workflow)
+
+![WASM Workflow](https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-wasm-workflow.d2.dark.svg)
+
 ### [Debugging](/tools/cmd/am-vis/README.md)
 
 ![diagram1](https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-1.svg)

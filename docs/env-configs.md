@@ -136,19 +136,19 @@ AM_OTEL_TRACE_NOAUTO=
 # limit traced states to allowlist
 # eg "machId:StateName,StateName2"
 AM_OTEL_TRACE_ALLOW_STATES=
-# single regexp to allow tracing states, eg "^Foo"
+# single regexp to allow tracing states, eg "^mach-id:Foo"
 AM_OTEL_TRACE_ALLOW_STATES_RE=
 # skip tracing states, takes preceding before [AllowStates]
 # eg "machId:StateName,StateName2"
 AM_OTEL_TRACE_SKIP_STATES=
-# single regexp to skip tracing states, eg "^Foo"
+# single regexp to skip tracing states, eg "^mach-id:Foo"
 AM_OTEL_TRACE_SKIP_STATES_RE=
 # prefix of stack traces to remove
 # defaults to ""
 AM_TRACE_FILTER=
 # destination address for Otel traces
 # defaults to "localhost:4317"
-# OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=localhost:4317
+# OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4317
 
 # export logs to Loki, requires AM_SERVICE
 # defaults to ""
@@ -174,7 +174,7 @@ AM_RPC_LOG_CLIENT=1
 # defaults to ""
 AM_RPC_LOG_MUX=1
 
-# expose RPC components via am-dbg (requires AM_DBG_ADDR) and Otel (requires AM_OTEL_TRACE)
+# expose RPC and am-relay components via am-dbg (requires AM_DBG_ADDR) and Otel (requires AM_OTEL_TRACE)
 # defaults to ""
 AM_RPC_DBG=1
 

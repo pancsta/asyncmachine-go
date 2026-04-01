@@ -90,47 +90,66 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 - **diagrams**: live machine diagram viewer and static transaction diagrams.
 
 ```bash
-Usage:
-  am-dbg [flags]
+Usage: am-dbg [--listen-addr LISTEN-ADDR] [--dir DIR] [--clean-on-connect] [--import-data IMPORT-DATA] [--fwd-data FWD-DATA] [--select-connected] [--select-group SELECT-GROUP] [--enable-clipboard] [--enable-mouse] [--filter-auto] [--filter-auto-canceled] [--filter-canceled] [--filter-checks] [--filter-disconn] [--filter-empty] [--filter-group] [--filter-health] [--filter-log-level FILTER-LOG-LEVEL] [--filter-queued] [--output-clients] [--output-diagrams OUTPUT-DIAGRAMS] [--output-log] [--output-tx] [--ui-ssh] [--ui-web] [--version] [--view VIEW] [--view-narrow] [--view-rain] [--view-reader] [--view-tail] [--view-timelines VIEW-TIMELINES] [--log-ops-ttl LOG-OPS-TTL] [--max-mem MAX-MEM] [--dbg-am-dbg-addr DBG-AM-DBG-ADDR] [--dbg-go-race] [--dbg-id DBG-ID] [--dbg-log-level DBG-LOG-LEVEL] [--dbg-otel] [--dbg-prof-srv DBG-PROF-SRV] [MACHURL]
 
-Flags:
-      --clean-on-connect         Clean up disconnected clients on the 1st connection (default true)
-      --dbg-am-dbg-addr string   Debug this instance of am-dbg with another one
-      --dbg-go-race              Go race detector is enabled
-      --dbg-id string            ID of this instance (default "am-dbg")
-      --dbg-log-level int        Log level produced by this instance, 0-5 (silent-everything)
-      --dbg-prof-srv string      Start pprof server
-  -d, --dir string               Output directory for generated files (default ".")
-      --enable-clipboard         Enable clipboard support (default true)
-      --enable-mouse             Enable mouse support (default true)
-      --filter-group             Filter transitions by a selected group (default true)
-      --filter-log-level int     Filter transitions up to this log level, 0-5 (silent-everything) (default 2)
-  -f, --fwd-data string          Forward incoming data to other instances (eg addr1,addr2)
-  -h, --help                     help for am-dbg
-  -i, --import-data string       Import an exported gob.br file
-  -l, --listen-addr string       Host and port for the debugger to listen on (default "localhost:6831")
-      --log-ops-ttl string       Max time to live for logs level LogOps (default "24h")
-      --max-mem int              Max memory usage (in MB) to flush old transitions (default 1000)
-      --output-clients           Write a detailed client list into am-dbg-clients.txt inside --dir
-      --output-diagrams int      Level of details for machine graph diagrams (svg, d2, mermaid) in --dir (0 off, 1-3 on)
-         (EXPERIMENTAL)
-      --output-log               Write the current log buffer to log.txt inside --dir.
-      --output-tx                Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir
-         (EXPERIMENTAL) (default true)
-  -c, --select-connected         Select the newly connected machine, if no other is connected
-      --select-group string      Startup group
-  -m, --select-machine string    Select a machine by (partial) ID on startup (requires --import-data)
-  -t, --select-transition int    Select a transition by _number_ on startup (requires --select-machine)
-      --tail                     Start from the lastest tx (default true)
-      --ui-ssh                   Enable SSH headless mode on port --listen-addr +2 (EXPERIMENTAL)
-      --ui-web                   Start a web server for --dir and diagrams on --listen-addr +1 (EXPERIMENTAL) (default
-         true)
-      --version                  Print version and exit
-  -v, --view string              Initial view (tree-log, tree-matrix, matrix) (default "tree-log")
-      --view-narrow              Force a narrow view, independently of the viewport size
-      --view-rain                Show the rain view
-  -r, --view-reader              Enable Log Reader
-      --view-timelines int       Number of timelines to show (0-2) (default 2)
+Positional arguments:
+  MACHURL                Machine URL to connect to
+
+Options:
+  --listen-addr LISTEN-ADDR, -l LISTEN-ADDR
+                         Host and port for the debugger to listen on [default: localhost:6831]
+  --dir DIR, -d DIR      Output directory for generated files [default: .]
+  --clean-on-connect     Clean up disconnected clients on the 1st connection [default: true]
+  --import-data IMPORT-DATA, -i IMPORT-DATA
+                         Import an exported gob.br file
+  --fwd-data FWD-DATA, -f FWD-DATA
+                         Forward incoming data to other instances (repeatable)
+  --select-connected, -c
+                         Select the newly connected machine, if no other is connected
+  --select-group SELECT-GROUP
+                         Default group to select
+  --enable-clipboard     Enable clipboard support [default: true]
+  --enable-mouse         Enable mouse support [default: true]
+  --filter-auto          Filter automatic transitions
+  --filter-auto-canceled
+                         Filter automatic canceled transitions
+  --filter-canceled      Filter canceled transitions
+  --filter-checks        Filter check (read-only) transitions
+  --filter-disconn       Filter disconnected clients
+  --filter-empty         Filter empty transitions
+  --filter-group         Filter transitions by a selected group [default: true]
+  --filter-health        Filter health-check transitions
+  --filter-log-level FILTER-LOG-LEVEL
+                         Filter transitions up to this log level, 0-5 (silent-everything) [default: 2]
+  --filter-queued        Filter queued transitions
+  --output-clients       Write a detailed client list into am-dbg-clients.txt inside --dir
+  --output-diagrams OUTPUT-DIAGRAMS
+                         Level of details for machine graph diagrams (svg, d2, mermaid) in --dir (0 off, 1-3 on) (EXPERIMENTAL)
+  --output-log           Write the current log buffer to log.txt inside --dir
+  --output-tx            Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir (EXPERIMENTAL) [default: true]
+  --ui-ssh               Enable SSH headless mode on port --listen-addr +2 (EXPERIMENTAL)
+  --ui-web               Start a web server for --dir and diagrams on --listen-addr +1 (EXPERIMENTAL) [default: true]
+  --version              Print version and exit
+  --view VIEW, -v VIEW   Initial view (tree-log, tree-matrix, matrix) [default: tree-log]
+  --view-narrow          Force a narrow view, independently of the viewport size
+  --view-rain            Show the rain view
+  --view-reader, -r      Show the log reader view
+  --view-tail            Start from the latest tx [default: true]
+  --view-timelines VIEW-TIMELINES
+                         Number of timelines to show (0-2) [default: 2]
+  --log-ops-ttl LOG-OPS-TTL
+                         Max time to live for logs level LogOps [default: 24h]
+  --max-mem MAX-MEM      Max memory usage (in MB) to flush old transitions [default: 1000]
+  --dbg-am-dbg-addr DBG-AM-DBG-ADDR
+                         Debug this instance of am-dbg with another one
+  --dbg-go-race          Go race detector is enabled
+  --dbg-id DBG-ID        ID of this instance [default: am-dbg]
+  --dbg-log-level DBG-LOG-LEVEL
+                         Log level produced by this instance, 0-5 (silent-everything) [default: 0]
+  --dbg-otel             Enable OpenTelemetry tracing for this instance
+  --dbg-prof-srv DBG-PROF-SRV
+                         Start pprof server
+  --help, -h             display this help and exit
 ```
 
 <div align="center">

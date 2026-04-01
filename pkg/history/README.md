@@ -20,6 +20,8 @@ can optionally store also the full schema and ordered list of state names, to re
 This layer works with both local and network machines via the [Tracer API](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Tracer).
 All times are in UTC, methods thread-safe, and IDs deterministic.
 
+![SQL view](https://pancsta.github.io/assets/asyncmachine-go/pkg-history.png)
+
 ### History Backends
 
 - [In-process](#in-process-history)

@@ -37,7 +37,7 @@ which implements [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming
 through a **[clock-based state-machine](/pkg/machine/README.md)**. It features [atomic transitions](/docs/manual.md#transition-lifecycle),
 [relations](/docs/manual.md#relations), [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
 [telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md), [selective distribution](/pkg/rpc/README.md#selective-distribution),
-[remote workers](/pkg/node/README.md), [diagrams](/tools/cmd/am-vis/README.md), and [WASM](/examples/wasm) support.
+[diagrams](/tools/cmd/am-vis/README.md), and [WASM](/docs/wasm.md) support.
 
 As a control flow library, it decides about running of predefined bits of code (transition handlers) - their order and
 which ones to run, according to currently active states (flags). Thanks to a [novel state machine](/pkg/machine/README.md),
@@ -229,13 +229,15 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 ## Getting Started
 
 - 🦾 **[`/pkg/machine`](pkg/machine/README.md)** is the main package
-- [`/docs/diagrams.md`](/docs/diagrams.md) try to explain things visually
-- [`/pkg/node`](pkg/node) shows a high-level usage
-- examples in [`/examples`](/examples/README.md) are good for a general grasp
-    - with [`/examples/mach_template`](/examples/mach_template) being ready for copy-paste
 - [`/docs/manual.md`](/docs/manual.md) is the go-to
+- [`/docs/diagrams.md`](/docs/diagrams.md) try to explain things visually
+- [`/examples`](/examples/README.md) show use cases and integrations
+    - with [`/examples/mach_template`](/examples/mach_template) being ready for copy-paste
+    - also [DAG](/examples/dag_dependency_graph), [CLI Daemon](/examples/cli_daemon), [aRPC](/examples/arpc), [WASM](/examples/wasm),
+      [WASM Workflow](/examples/wasm_workflow), [TUI](/examples/tui)
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) will bootstrap
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) will record every detail
+- [`/pkg/node`](pkg/node) shows a high-level usage
 - and [reading tests](https://github.com/search?q=repo%3Apancsta%2Fasyncmachine-go+path%3A%2F.*_test.go%2F&type=code)
   is always a good idea
 
@@ -277,15 +279,17 @@ Other packages:
 
 ## Apps
 
-- [secai](https://github.com/pancsta/secai) AI Workflows framework.
+**asyncmachine-go** synchronizes state for the following projects:
+
+- [secai](https://github.com/pancsta/secai) - AI Workflows framework
+- [secai Web UI](https://github.com/pancsta/secai/tree/main/web) - WebAssembly [go-app](https://go-app.dev/) PWA
 - Self-hosting of [pkg/rpc](pkg/rpc/states), [pkg/node](pkg/node/states), [pkg/pubsub](pkg/pubsub/states)
-- [arpc REPL](/tools/repl/states) Cobra-based REPL.
-- [am-dbg TUI Debugger](/tools/debugger/states) Single state-machine TUI app.
-- [am-relay Tunnels](/tools/relay/states) CLI with TCP over WebSocket tunnels.
-- [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
-  simulator for libp2p-pubsub.
-- [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
-  Benchmark of libp2p-pubsub ported to asyncmachine-go.
+- [arpc REPL](/tools/repl/states) - Cobra-based REPL
+- [am-dbg TUI Debugger](/tools/debugger/states) - Single state-machine TUI app
+- [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) - Sandbox
+  simulator for libp2p-pubsub
+- [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark) -
+  Benchmark of libp2p-pubsub ported to asyncmachine-go
 
 ## Documentation
 
@@ -336,13 +340,6 @@ Under development, status depends on each package. The bottom layers seem prod g
 > [!NOTE]
 > Managing distributed concurrency.
 
-### AI Policy
-
-This project is written by a human, but some dependencies and code generation have been contributed by AI:
-
-- `pkg/pubsub/uds`
-- `rpc2-msgpack-tinygo`
-
 ## Development
 
 - [good first issues](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
@@ -357,8 +354,9 @@ This project is written by a human, but some dependencies and code generation ha
 
 ### Roadmap
 
-- more tooling
-- bug fixes and optimizations
+- more tooling and diagrams
+- bug fixes, optimizations
+- network security, ACLs
 - [ROADMAP.md](/ROADMAP.md)
 
 <div align="center">

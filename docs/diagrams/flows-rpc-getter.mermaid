@@ -3,7 +3,7 @@ flowchart TB
     subgraph ClientHost [Client Host]
         subgraph Consumer
             con-MethodOrHandler["MethodOrHandler()"]
-            con-WorkerPayload(["WorkerPayload"])
+            con-WorkerPayload(["ServerPayload"])
         end
 
         subgraph RemoteWorkerMach [Remote Worker Mach]
@@ -12,9 +12,9 @@ flowchart TB
         end
 
         subgraph RPCClientMach [RPC Client Mach]
-            c-WorkerPayload([WorkerPayload])
+            c-WorkerPayload([ServerPayload])
             c-RemoteSendPayload["RemoteSendPayload()"]
-            c-WorkerPayloadState["WorkerPayloadState()"]
+            c-WorkerPayloadState["ServerPayloadState()"]
         end
     end
 
@@ -27,7 +27,6 @@ flowchart TB
         %% Provide Worker is requested to provide some (named) data.
             sw-Provide([ProvideABC])
             sw-ProvideState["ProvideABCState()"]
-            sw-SendPayload(["SendPayload"])
         end
     end
 
@@ -35,8 +34,7 @@ flowchart TB
     con-MethodOrHandler -- Add --> rw-Provide
     rw-Provide -- Add --> sw-Provide
     sw-Provide == handle ==> sw-ProvideState
-    sw-ProvideState -- Add --> sw-SendPayload
-    sw-SendPayload == handle ==> srv-SendPayloadState
+    sw-ProvideState == handle ==> srv-SendPayloadState
     srv-SendPayloadState -. call .-> c-RemoteSendPayload
     c-RemoteSendPayload -- Add --> c-WorkerPayload
     c-WorkerPayload == handle ==> c-WorkerPayloadState

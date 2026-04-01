@@ -8,9 +8,13 @@
 Table of contents:
 
 - [Examples](#examples)
-  - [aRPC](#arpc)
-  - [CLI](#cli)
-  - [CLI Daemon](#cli-daemon)
+  - [**aRPC**](#arpc)
+  - [**CLI**](#cli)
+  - [**CLI Daemon**](#cli-daemon)
+  - [**Tree State Source**](#tree-state-source)
+  - [**TUI**](#tui)
+  - [**WASM**](#wasm)
+  - [**WASM Workflow**](#wasm-workflow)
   - [DAG Dependency Graph](#dag-dependency-graph)
   - [Fan Out Fan In](#fan-out-fan-in)
   - [FSM - Finite State Machine](#fsm---finite-state-machine)
@@ -22,13 +26,10 @@ Table of contents:
   - [Subscriptions](#subscriptions)
   - [Temporal Expense Workflow](#temporal-expense-workflow)
   - [Temporal FileProcessing Workflow](#temporal-fileprocessing-workflow)
-  - [Tree State Source](#tree-state-source)
-  - [TUI](#tui)
-  - [WASM](#wasm)
 - [Benchmarks](#benchmarks)
+  - [**Benchmark State Source**](#benchmark-state-source)
   - [Benchmark gRPC](#benchmark-grpc)
   - [Benchmark libp2p PubSub](#benchmark-libp2p-pubsub)
-  - [Benchmark State Source](#benchmark-state-source)
 - [Demos](#demos)
   - [`am-dbg` Debugger](#am-dbg-debugger)
 - [Apps](#apps)
@@ -49,6 +50,23 @@ Headers link more info about each example.
 ### [CLI Daemon](/examples/cli_daemon)
 
 - #template #relations #handlers #arpc #payload
+
+### [Tree State Source](/examples/tree_state_source)
+
+- #relations #negotiation #auto #arpc #otel #metrics #grafana #generator #data
+- [origin](/pkg/rpc/README.md)
+
+### [TUI](/examples/tui/main.go)
+
+- #relations #handlers #cview #ui #global-handlers
+
+### [WASM](/examples/wasm)
+
+- #relations #handlers #arpc-handlers #arpc #relay #ui #websocket
+
+### [WASM Workflow](/examples/wasm_workflow)
+
+- #relations #handlers #arpc-handlers #arpc #relay #websocket #webworkers #payload
 
 ### [DAG Dependency Graph](/examples/dag_dependency_graph/dependency_graph.go)
 
@@ -113,20 +131,12 @@ Headers link more info about each example.
 - [origin](https://github.com/temporalio/samples-go/blob/main/fileprocessing/)
 - [Asynq worker version](/examples/asynq_fileprocessing/fileprocessing_task.go)
 
-### [Tree State Source](/examples/tree_state_source)
-
-- #relations #negotiation #auto #arpc #otel #metrics #grafana #generator #data
-- [origin](/pkg/rpc/README.md)
-
-### [TUI](/examples/tui/main.go)
-
-- #relations #handlers #cview #ui #global-handlers
-
-### [WASM](/examples/wasm)
-
-- #relations #handlers #arpc-handlers #arpc #relay #ui #websocket
-
 ## Benchmarks
+
+### [Benchmark State Source](/examples/benchmark_state_source)
+
+- #docker #go-wrt #caddy
+- [origin](/examples/tree_state_source)
 
 ### [Benchmark gRPC](/examples/benchmark_grpc)
 
@@ -136,11 +146,6 @@ Headers link more info about each example.
 ### [Benchmark libp2p PubSub](/examples/benchmark_libp2p_pubsub)
 
 - #relations #handlers #async #negotiation #libp2p
-
-### [Benchmark State Source](/examples/benchmark_state_source)
-
-- #docker #go-wrt #caddy
-- [origin](/examples/tree_state_source)
 
 ## Demos
 
@@ -159,13 +164,17 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 
 ## Apps
 
-- [secai](https://github.com/pancsta/secai) AI Workflows framework.
-- [arpc REPL](/tools/repl) Cobra-based REPL.
-- [am-dbg TUI Debugger](/tools/debugger/README.md) Single state machine TUI app.
-- [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) Sandbox
-  simulator for libp2p-pubsub.
-- [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark)
-  Benchmark of libp2p-pubsub ported to asyncmachine-go.
+**asyncmachine-go** synchronizes state for the following projects:
+
+- [secai](https://github.com/pancsta/secai) - AI Workflows framework
+- [secai Web UI](https://github.com/pancsta/secai/tree/main/web) - WebAssembly [go-app](https://go-app.dev/) PWA
+- Self-hosting of [pkg/rpc](pkg/rpc/states), [pkg/node](pkg/node/states), [pkg/pubsub](pkg/pubsub/states)
+- [arpc REPL](/tools/repl/states) - Cobra-based REPL
+- [am-dbg TUI Debugger](/tools/debugger/states) - Single state-machine TUI app
+- [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) - Sandbox
+  simulator for libp2p-pubsub
+- [libp2p PubSub Benchmark](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-benchmark) -
+  Benchmark of libp2p-pubsub ported to asyncmachine-go
 
 ## monorepo
 

@@ -20,7 +20,35 @@ for more info.
 
 ## Installation
 
-`go install github.com/pancsta/asyncmachine-go/tools/cmd/am-gen@latest`
+```bash
+go install github.com/pancsta/asyncmachine-go/tools/cmd/am-gen@latest
+```
+
+### Usage
+
+```bash
+am-gen generates state files and Grafana dashboards for asyncmachine-go state machines.
+
+Example:
+$ am-gen states-file --states State1,State2:multi \
+        --inherit basic,connected \
+        --groups Group1,Group2 \
+        --name MyMach
+
+Example:
+$ am-gen grafana --IDs MyMach1,MyMach2 \
+        --sync grafana-host.com
+
+Usage: am-gen [--version] <command> [<args>]
+
+Options:
+  --version, -v          Print version and exit
+  --help, -h             display this help and exit
+
+Commands:
+  states-file            Generate state schema files
+  grafana                Generate Grafana dashboards
+```
 
 ## Schema Files
 
@@ -91,17 +119,23 @@ var (
 ### Schema File Help
 
 ```bash
-$ am-gen states-file --help
-Usage:
-  am-gen states-file --name MyMach --states State1,State2:multi [flags]
+Usage: am-gen states-file [--version] --states STATES [--inherit INHERIT] [--groups GROUPS] --name NAME [--force] [--utils]
 
-Flags:
-  -g, --groups string    Groups to generate. Eg: Group1,Group2
-  -h, --help             help for states-file
-  -i, --inherit string   Inherit from a built-in states machine: basic,connected,disposed,rpc/netsrc,node/worker
-  -n, --name string      Name of the state machine. Eg: MyMach
-  -s, --states string    State names to generate. Eg: State1,State2
-      --utils            Generate states_utils.go in CWD. Overrides files. (default true)
+Options:
+  --version
+  --states STATES, -s STATES
+                         State names to generate. Eg: State1,State2
+  --inherit INHERIT, -i INHERIT
+                         Inherit from built-in state-machines: basic,connected,rpc/statesrc,node/worker
+  --groups GROUPS, -g GROUPS
+                         Groups to generate. Eg: Group1,Group2
+  --name NAME, -n NAME   Name of the state machine. Eg: MyMach
+  --force, -f            Override output file (if any)
+  --utils, -u            Generate states_utils.go in CWD. Overrides files. [default: true]
+
+Global options:
+  --version, -v          Print version and exit
+  --help, -h             display this help and exit
 ```
 
 ## Grafana Dashboard
@@ -209,16 +243,21 @@ am-gen grafana \
 ### Grafana Help
 
 ```bash
-Usage:
-  am-gen grafana --name MyDash --ids my-mach-1,my-mach-2 --source my-service [flags]
+Usage: am-gen grafana --ids IDS [--grafana-url GRAFANA-URL] [--folder FOLDER] --name NAME --source SOURCE
 
-Flags:
-  -f, --folder string        Dashboard folder. Optional. Requires --grafana-url
-  -g, --grafana-url string   Grafana URL to sync. Requires GRAFANA_TOKEN in CWD/.env
-  -h, --help                 help for grafana
-  -i, --ids string           Machines IDs (comma separated). Required.
-  -n, --name string          Dashboard name. Required.
-  -s, --source string        $source variable (service_name or job). Required.
+Options:
+  --ids IDS, -i IDS      Machine IDs (comma separated)
+  --grafana-url GRAFANA-URL, -g GRAFANA-URL
+                         Grafana URL to sync. Requires GRAFANA_TOKEN in CWD/.env
+  --folder FOLDER, -f FOLDER
+                         Dashboard folder (optional, requires --grafana-url)
+  --name NAME, -n NAME   Dashboard name
+  --source SOURCE, -s SOURCE
+                         $source variable (service_name or job)
+
+Global options:
+  --version, -v          Print version and exit
+  --help, -h             display this help and exit
 ```
 
 ## monorepo

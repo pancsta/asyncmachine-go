@@ -382,7 +382,7 @@ meantime. It always triggers `Enter` and `State` [transition handlers](#transiti
 [clock](#clock-and-context) is always incremented - `+1` for inactive to active, and `+2` for active to active. It's
 useful for describing many instances of the same event (e.g., network input) without having to define more than one
 transition handler. [`Exception`](#error-handling) is a good example of a `Multi` state (many errors can happen, and we
-want to know all of them).
+want to know all of them). `Multi` is only honored in directly **called states**, not from `Add` relation nor `Auto` states.
 
 Side effects:
 
@@ -1700,6 +1700,8 @@ mach := am.New(ctx, states.MyMachSchema, nil)
 err := mach.VerifyStates(ss.Names())
 mach.Add1(ss.State1, nil)
 ```
+
+Read more about schemas in [`/docs/schema.md`](/docs/schema.md)
 
 ### Typesafe Arguments
 

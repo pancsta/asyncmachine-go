@@ -9,7 +9,7 @@ jobs:
   build:
 
     # TODO Disable this job https://github.com/golang/go/issues/75031
-    #if: false
+    if: false
 
     runs-on: ubuntu-latest
     strategy:
