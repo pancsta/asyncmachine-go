@@ -1,15 +1,14 @@
 name: Coverage
 
-# TODO Disable this job https://github.com/golang/go/issues/75031
-#on:
-#  push:
-#    tags:
-#      - 'v*'
+on:
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   build:
 
-    # Disable this job
+    # TODO Disable this job https://github.com/golang/go/issues/75031
     #if: false
 
     runs-on: ubuntu-latest
