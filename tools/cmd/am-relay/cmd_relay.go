@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/alexflint/go-arg"
+	"github.com/pancsta/asyncmachine-go/internal/utils"
 
 	"github.com/pancsta/asyncmachine-go/tools/relay"
 	"github.com/pancsta/asyncmachine-go/tools/relay/states"
@@ -21,6 +23,12 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(),
 		syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+
+	if args.Version {
+		fmt.Println(utils.GetVersion())
+		os.Exit(0)
+	}
+
 	if p.Subcommand() == nil {
 		p.Fail("missing subcommand (" + types.CmdRotateDbg + ")")
 	}

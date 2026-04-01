@@ -14,7 +14,6 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	dbg2 "github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
-	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
@@ -37,8 +36,8 @@ func main() {
 
 	// worker init
 	os.Setenv(amhelp.EnvAmLogFile, "1")
-	dbg, err := amtest.NewDbgWorker(true, debugger.Opts{
-		AddrRpc: *serverAddr,
+	dbg, err := amtest.NewDbgWorker(true, types.Params{
+		ListenAddr: *serverAddr,
 	})
 	if err != nil {
 		panic(err)
