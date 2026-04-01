@@ -1,0 +1,65 @@
+version: '3'
+
+dotenv:
+  - .env
+
+vars:
+  PKG: "github.com/pancsta/asyncmachine-go/examples/wasm"
+
+tasks:
+  build:
+    deps: [build-orchestrator, build-browser]
+
+  build-orchestrator:
+    env:
+      GOOS: js
+      GOARCH: wasm
+    cmds:
+      - go mod tidy
+      - go build -o web/main.wasm ./cmd/orchestrator
+
+  build-browser:
+    env:
+      GOOS: js
+      GOARCH: wasm
+    cmds:
+      - go mod tidy
+      - cp $(go env GOROOT)/lib/wasm/wasm_exec.js ./web
+      - go build -o web/main.wasm ./cmd/browser
+
+  start:
+    desc: Build and start server
+    silent: true
+    deps:
+      - build
+    cmds:
+      - rm tmp/*.addr
+      - echo "Open http://{{.RELAY_HTTP_ADDR}}"
+      - echo ""
+      - go run ./server
+
+  repl:
+    desc: Start REPL
+    dir: ../../
+    cmd: task arpc -- --dir examples/wasm_workflow/tmp
+
+  pprof: go tool pprof -http=:8081 http://localhost:6060/debug/pprof/profile?seconds=10
+
+  build-browser-prod:
+    env:
+      GOOS: js
+      GOARCH: wasm
+    cmds:
+      - go build -ldflags="-s -w" -o web/prod.wasm ./cmd/browser
+      - wasm-opt -O3 web/prod.wasm -o web/prod.wasm --enable-bulk-memory-opt
+
+  deps-graph:
+    desc: Render dependencies graph in deps-graph.svg
+    cmd: godepgraph -tags "wasm,js" -s . | dot -Tsvg -o deps-graph.svg
+
+  deps:
+    desc: List dependencies in deps.md
+    cmd: go list -deps 
+      -f '{{ "{{" }}.ImportPath{{ "}}" }} {{ "{{" }}.Imports{{ "}}" }}'
+      -tags wasm,js ./cmd/browser 
+        > deps.md
