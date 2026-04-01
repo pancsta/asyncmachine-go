@@ -1,6 +1,6 @@
 // Package uds was auto-translated from rust-libp2p.
 // https://github.com/libp2p/rust-libp2p/blob/master/transports/uds/src/lib.rs
-package uds
+package libp2p_uds
 
 import (
 	"context"
@@ -35,7 +35,10 @@ var _ transport.Transport = &UdsTransport{}
 var _ transport.DialUpdater = &UdsTransport{}
 
 // NewUDSTransport creates a UDS transport object.
-func NewUDSTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager, opts ...func(*UdsTransport) error) (*UdsTransport, error) {
+func NewUDSTransport(
+	upgrader transport.Upgrader, rcmgr network.ResourceManager,
+	opts ...func(*UdsTransport) error,
+) (*UdsTransport, error) {
 	if rcmgr == nil {
 		rcmgr = &network.NullResourceManager{}
 	}
@@ -54,7 +57,8 @@ func NewUDSTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager,
 
 var udsMatcher = mafmt.Base(ma.P_UNIX)
 
-// CanDial returns true if this transport believes it can dial the given multiaddr.
+// CanDial returns true if this transport believes it can dial the given
+// multiaddr.
 func (t *UdsTransport) CanDial(addr ma.Multiaddr) bool {
 	return udsMatcher.Matches(addr)
 }
@@ -75,7 +79,9 @@ func multiaddrToPath(addr ma.Multiaddr) (string, error) {
 	return "", errors.New("not a unix multiaddr")
 }
 
-func (t *UdsTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (manet.Conn, error) {
+func (t *UdsTransport) maDial(
+	ctx context.Context, raddr ma.Multiaddr,
+) (manet.Conn, error) {
 	if t.connectTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, t.connectTimeout)
@@ -94,14 +100,20 @@ func (t *UdsTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (manet.Co
 }
 
 // Dial dials the peer at the remote address.
-func (t *UdsTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
+func (t *UdsTransport) Dial(
+	ctx context.Context, raddr ma.Multiaddr, p peer.ID,
+) (transport.CapableConn, error) {
 	return t.DialWithUpdates(ctx, raddr, p, nil)
 }
 
-func (t *UdsTransport) DialWithUpdates(ctx context.Context, raddr ma.Multiaddr, p peer.ID, updateChan chan<- transport.DialUpdate) (transport.CapableConn, error) {
+func (t *UdsTransport) DialWithUpdates(
+	ctx context.Context, raddr ma.Multiaddr, p peer.ID,
+	updateChan chan<- transport.DialUpdate,
+) (transport.CapableConn, error) {
 	connScope, err := t.rcmgr.OpenConnection(network.DirOutbound, true, raddr)
 	if err != nil {
-		log.Debugw("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
+		log.Debugw("resource manager blocked outgoing connection",
+			"peer", p, "addr", raddr, "error", err)
 		return nil, err
 	}
 
@@ -113,9 +125,14 @@ func (t *UdsTransport) DialWithUpdates(ctx context.Context, raddr ma.Multiaddr, 
 	return c, nil
 }
 
-func (t *UdsTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, connScope network.ConnManagementScope, updateChan chan<- transport.DialUpdate) (transport.CapableConn, error) {
+func (t *UdsTransport) dialWithScope(
+	ctx context.Context, raddr ma.Multiaddr, p peer.ID,
+	connScope network.ConnManagementScope,
+	updateChan chan<- transport.DialUpdate,
+) (transport.CapableConn, error) {
 	if err := connScope.SetPeer(p); err != nil {
-		log.Debugw("resource manager blocked outgoing connection for peer", "peer", p, "addr", raddr, "error", err)
+		log.Debugw("resource manager blocked outgoing connection for peer",
+			"peer", p, "addr", raddr, "error", err)
 		return nil, err
 	}
 	conn, err := t.maDial(ctx, raddr)
@@ -124,7 +141,9 @@ func (t *UdsTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p 
 	}
 	if updateChan != nil {
 		select {
-		case updateChan <- transport.DialUpdate{Kind: transport.UpdateKindHandshakeProgressed, Addr: raddr}:
+		case updateChan <- transport.DialUpdate{
+			Kind: transport.UpdateKindHandshakeProgressed, Addr: raddr,
+		}:
 		default:
 		}
 	}

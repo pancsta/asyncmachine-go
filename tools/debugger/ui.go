@@ -365,10 +365,9 @@ func (d *Debugger) hInitToolbar() {
 		// row 2
 		{
 			{id: toolLog, label: "log", active: func() bool {
-				return d.Opts.Filters.LogLevel > am.LogNothing
+				return d.Params.Filters.LogLevel > am.LogNothing
 			}, activeLabel: func() string {
-				// TODO make Opts threadsafe
-				return strconv.Itoa(int(d.Opts.Filters.LogLevel))
+				return strconv.Itoa(int(d.Params.Filters.LogLevel))
 			}},
 			{id: toolFilterCanceledTx, label: "canceled", active: func() bool {
 				return d.Mach.Not1(ss.FilterCanceledTx)
@@ -437,17 +436,15 @@ func (d *Debugger) hInitToolbar() {
 				},
 			},
 			{id: toolTimelines, label: "timelines", active: func() bool {
-				return d.Opts.Timelines > 0
+				return d.Params.ViewTimelines > 0
 			}, activeLabel: func() string {
-				// TODO make Opts threadsafe
-				return strconv.Itoa(d.Opts.Timelines)
+				return strconv.Itoa(d.Params.ViewTimelines)
 			}},
 			// TODO make it an anchor for file://...svg
 			{id: toolDiagrams, label: "diagrams", active: func() bool {
-				return d.Opts.OutputDiagrams > 0
+				return d.Params.OutputDiagrams > 0
 			}, activeLabel: func() string {
-				// TODO make Opts threadsafe
-				return strconv.Itoa(d.Opts.OutputDiagrams)
+				return strconv.Itoa(d.Params.OutputDiagrams)
 			}},
 			{id: toolRain, label: "rain", active: func() bool {
 				return d.Mach.Is1(ss.MatrixRain)
@@ -458,7 +455,7 @@ func (d *Debugger) hInitToolbar() {
 		},
 	}
 
-	if d.Opts.AddrHttp != "" {
+	if d.Params.AddrHttp != "" {
 		d.toolbarItems[2] = slices.Insert(d.toolbarItems[2], 3,
 			toolbarItem{id: toolWeb, label: "web", active: func() bool {
 				return false
@@ -692,8 +689,8 @@ func (d *Debugger) hUpdateHelpDialog() {
 		%-15s    HTTP server addr
 		%-15s    SSH server addr
 		%-15s    mem usage
-	`, "\n ")), colorActive, d.Opts.Version, d.Opts.AddrRpc,
-		d.Opts.AddrHttp, d.Opts.AddrSsh, strconv.Itoa(mem)+"mb"))
+	`, "\n ")), colorActive, d.Params.Version, d.Params.AddrRpc,
+		d.Params.AddrHttp, d.Params.AddrSsh, strconv.Itoa(mem)+"mb"))
 }
 
 func (d *Debugger) hInitLayout() {
@@ -875,14 +872,14 @@ func (d *Debugger) hUpdateNarrowLayout() {
 
 	if width < 100 {
 		d.Mach.Add1(ss.NarrowLayout, nil)
-	} else if !d.Opts.ViewNarrow {
+	} else if !d.Params.ViewNarrow {
 		// remove if not forced
 		d.Mach.Remove1(ss.NarrowLayout, nil)
 	}
 }
 
 func (d *Debugger) hUpdateSchemaLogGrid() {
-	lvl := d.Opts.Filters.LogLevel
+	lvl := d.Params.Filters.LogLevel
 
 	d.schemaLogGrid.RemoveItem(d.log)
 	d.schemaLogGrid.RemoveItem(d.logReader)

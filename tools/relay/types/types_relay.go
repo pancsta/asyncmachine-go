@@ -23,6 +23,7 @@ type Args struct {
 	Name      string         `arg:"-n,--name" help:"Name of this relay"`
 	Output    OutputFunc     `arg:"-"`
 	Parent    am.Api         `arg:"-"`
+	Version   bool           `arg:"-v,--version" help:"Print version and exit"`
 }
 
 // ArgsRotateDbg converts dbg dumps to other formats / versions.

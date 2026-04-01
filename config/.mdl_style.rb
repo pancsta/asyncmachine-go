@@ -1,5 +1,5 @@
 all
-rule 'MD013', :line_length => 120
+rule 'MD013', :line_length => 120, :ignore_code_blocks => true
 # list style
 rule 'MD029', :style => :ordered
 # dollar sign

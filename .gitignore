@@ -95,4 +95,9 @@ tools/visualizer/testdata/*
 /examples/wasm/deps.md
 /examples/wasm/tmp/
 /examples/wasm/client/prod.wasm
+/examples/wasm_workflow/**/wasm_exec.js
+/examples/wasm_workflow/**/*.wasm
+/examples/wasm_workflow/deps-graph.svg
+/examples/wasm_workflow/deps.md
+/examples/wasm_workflow/tmp/
 /am-vis.gv

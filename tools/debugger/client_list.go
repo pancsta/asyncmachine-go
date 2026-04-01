@@ -208,7 +208,7 @@ func (d *Debugger) hUpdateClientList() {
 		item.SetMainText(label)
 
 		// txt file
-		if d.Opts.OutputClients {
+		if d.Params.OutputClients {
 			if !hasParent {
 				txtFile += "\n"
 			}
@@ -233,7 +233,7 @@ func (d *Debugger) hUpdateClientList() {
 	}
 
 	// save to a file TODO skipped when file list not rendered
-	if d.Opts.OutputClients {
+	if d.Params.OutputClients {
 		_, _ = d.clientListFile.Seek(0, 0)
 		_ = d.clientListFile.Truncate(0)
 		_, _ = d.clientListFile.Write([]byte(txtFile))
@@ -343,11 +343,7 @@ func (d *Debugger) hGetClientListLabel(
 		label = "[::bu]" + label
 	}
 
-	if isErrNow && c.Connected.Load() {
-		label = "[red]" + label
-	} else if c.HadErrSinceTx(currCTxIdx, 100) {
-		label = "[orangered]" + label
-	} else if !c.Connected.Load() {
+	if !c.Connected.Load() {
 		if isHovered && !hasFocus {
 			label = "[grey]" + label
 		} else if !isHovered {
@@ -355,6 +351,11 @@ func (d *Debugger) hGetClientListLabel(
 		} else {
 			label = "[black]" + label
 		}
+	} else if isErrNow && c.Connected.Load() {
+		label = "[red]" + label
+	} else if c.HadErrSinceTx(currCTxIdx, 100) {
+		// TODO link to color 205
+		label = "[#FF5FAF]" + label
 	}
 
 	return label

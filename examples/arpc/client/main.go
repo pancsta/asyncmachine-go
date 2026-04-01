@@ -25,6 +25,7 @@ func init() {
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	// amhelp.EnableDebugging(true)
 	// amhelp.SetEnvLogLevel(am.LogOps)
+	// os.Setenv(arpc.EnvAmRpcLogClient, "1")
 
 	// TODO register args
 	// gob.Register(&types.ARpc{})

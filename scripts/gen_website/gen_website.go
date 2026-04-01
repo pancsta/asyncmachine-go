@@ -177,6 +177,11 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		lexerBash = lexers.Fallback
 	}
 	lexerBash = chroma.Coalesce(lexerBash)
+	// lexerDotenv := lexers.Get("dotenv")
+	// if lexerDotenv == nil {
+	// 	lexerDotenv = lexers.Fallback
+	// }
+	// lexerDotenv = chroma.Coalesce(lexerDotenv)
 	style := styles.Get("monokai")
 	if style == nil {
 		style = styles.Fallback
@@ -197,6 +202,9 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		highlightCode(s, lexerGo, formatter, style)
 	})
 	doc.Find("pre > code.language-bash").Each(func(i int, s *goquery.Selection) {
+		highlightCode(s, lexerBash, formatter, style)
+	})
+	doc.Find("pre > code.language-dotenv").Each(func(i int, s *goquery.Selection) {
 		highlightCode(s, lexerBash, formatter, style)
 	})
 	doc.Find("pre > code").Parent().AddClass("p-2 rounded-lg overflow-x-auto")
@@ -237,7 +245,7 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 	}
 
 	// fix readme suffix
-	doc.Find("#monorepo").NextAll().Remove().End().Remove()
+	doc.Find("#monorepo").NextFiltered("ul").Next().NextAll().Remove().End().Remove()
 
 	// fix H3 > A IDs (examples)
 	doc.Find("h3 > a").Each(func(i int, s *goquery.Selection) {

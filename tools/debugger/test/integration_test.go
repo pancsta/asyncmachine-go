@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"encoding/gob"
 	"os"
 	"testing"
 	"time"
@@ -49,13 +48,12 @@ func init() {
 	// amhelp.SetEnvLogLevel(am.LogOps)
 
 	var err error
-	gob.Register(server.GetField(0))
 
 	// worker
 	// TODO get opt defaults from the CLI
-	worker, err = amtest.NewDbgWorker(false, debugger.Opts{
+	worker, err = amtest.NewDbgWorker(false, types.Params{
 		Id:              "loc-worker",
-		Timelines:       2,
+		ViewTimelines:   2,
 		EnableClipboard: false,
 	})
 	if err != nil {

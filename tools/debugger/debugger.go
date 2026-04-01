@@ -15,6 +15,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -64,7 +65,6 @@ type Debugger struct {
 	Params     types.Params
 	LayoutRoot *cview.Panels
 	// selected client
-	// TODO atomic, drop eval
 	C   *Client
 	App *cview.Application
 	// printer for numbers TODO global
@@ -146,7 +146,8 @@ type Debugger struct {
 	treeGroups              *cview.DropDown
 	treeLayout              *cview.Flex
 	// list of states to show, bypassing other ones from the schema
-	schemaTreeStates  am.S
+	schemaTreeStates am.S
+	// TODO per-client
 	lastSelectedGroup string
 	// number of appended log msgs without a rebuild
 	logAppends        int
@@ -518,8 +519,8 @@ func (d *Debugger) hGoToMachAddress(
 // 	}
 //
 // 	// debug
-// 	// d.Opts.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
-// 	// d.Opts.DbgLogger.Printf("History: %v\n", d.History)
+// 	// d.Params.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
+// 	// d.Params.DbgLogger.Printf("History: %v\n", d.History)
 //
 // 	if cursor == 0 {
 // 		d.lastScrolledTxTime = time.Time{}
@@ -528,7 +529,7 @@ func (d *Debugger) hGoToMachAddress(
 // 		d.lastScrolledTxTime = *tx.Time
 //
 // 		// tx file
-// 		if d.Opts.OutputTx {
+// 		if d.Params.OutputTx {
 // 			index := d.C.MsgStruct.StatesIndex
 // 			_, _ = d.txListFile.WriteAt([]byte(tx.TxString(index)), 0)
 // 		}
@@ -580,8 +581,8 @@ func (d *Debugger) hTrimHistory() {
 	}
 
 	// debug
-	// d.Opts.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
-	// d.Opts.DbgLogger.Printf("History: %v\n", d.History)
+	// d.Params.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
+	// d.Params.DbgLogger.Printf("History: %v\n", d.History)
 }
 
 func (d *Debugger) hGetClient(machId string) *Client {
@@ -731,7 +732,7 @@ func (d *Debugger) hConnectedClients() int {
 func (d *Debugger) Dispose() {
 	// TODO switch to Disposed mixin
 	// logger
-	logger := d.Opts.DbgLogger
+	logger := d.Params.DbgLogger
 	if logger != nil {
 		// check if the logger is writing to a file
 		if file, ok := logger.Writer().(*os.File); ok {
@@ -740,23 +741,14 @@ func (d *Debugger) Dispose() {
 	}
 }
 
-// TODO config param to New(
-func (d *Debugger) Start(
-	clientID string, txNum int, uiView string, group string,
-) {
-	d.Mach.Add1(ss.Start, am.A{
-		"Client.id": clientID,
-		"cursorTx1": txNum,
-		// TODO rename to uiView
-		"dbgView": uiView,
-		"group":   group,
-	})
+func (d *Debugger) Start() {
+	d.Mach.Add1(ss.Start, nil)
 }
 
 // TODO state: SetOptsState
 func (d *Debugger) SetFilterLogLevel(lvl am.LogLevel) {
 	d.Mach.Eval("SetFilterLogLevel", func() {
-		d.Opts.Filters.LogLevel = lvl
+		d.Params.Filters.LogLevel = lvl
 
 		// process the toolbarItem change
 		d.Mach.Add1(ss.ToolToggled, nil)
@@ -1188,7 +1180,7 @@ func (d *Debugger) hUpdateTxBars() {
 	d.nextTxBarRight.Clear()
 
 	if d.Mach.Not(am.S{ss.SelectingClient, ss.ClientSelected}) {
-		d.currTxBarLeft.SetText("Listening for connections on " + d.Opts.AddrRpc)
+		d.currTxBarLeft.SetText("Listening for connections on " + d.Params.AddrRpc)
 		return
 	}
 
@@ -1311,7 +1303,7 @@ func (d *Debugger) hExportData(filename string, snapshot bool) {
 	}
 
 	// create file
-	gobPath := path.Join(d.Opts.OutputDir, filename+".gob.br")
+	gobPath := path.Join(d.Params.OutputDir, filename+".gob.br")
 	fw, err := os.Create(gobPath)
 	if err != nil {
 		log.Printf("Error: export failed %s", err)
@@ -1321,13 +1313,16 @@ func (d *Debugger) hExportData(filename string, snapshot bool) {
 
 	// prepare the format
 	now := *d.C.Tx(max(0, d.C.CursorTx1-1)).Time
-	data := make([]*server.Exportable, len(d.Clients))
+	data := make([]*server.Exportable, 0, len(d.Clients))
 	i := 0
 	for _, c := range d.Clients {
-		data[i] = &server.Exportable{
+		if d.Mach.Is1(ss.FilterDisconn) && !c.Connected.Load() {
+			continue
+		}
+		data = append(data, &server.Exportable{
 			MsgStruct: c.Exportable.MsgStruct,
 			MsgTxs:    c.Exportable.MsgTxs,
-		}
+		})
 		// snapshot limits to a single tx
 		if snapshot {
 			data[i].MsgTxs = []*dbg.DbgMsgTx{c.Tx(c.LastTxTill(now))}
@@ -1865,10 +1860,10 @@ func (d *Debugger) hFilterClientTxs() {
 	}
 }
 
-func (d *Debugger) filtersFromStates() *OptsFilters {
+func (d *Debugger) filtersFromStates() *types.Filters {
 	is := d.Mach.Is1
 
-	return &OptsFilters{
+	return &types.Filters{
 		SkipCanceledTx:     is(ss.FilterCanceledTx),
 		SkipAutoTx:         is(ss.FilterAutoTx),
 		SkipAutoCanceledTx: is(ss.FilterAutoCanceledTx),
@@ -1880,13 +1875,59 @@ func (d *Debugger) filtersFromStates() *OptsFilters {
 	}
 }
 
+func (d *Debugger) statesFromFilters(filters *types.Filters) {
+	add := d.Mach.Add1
+	rm := d.Mach.Remove1
+
+	if filters.SkipCanceledTx {
+		add(ss.FilterCanceledTx, nil)
+	} else {
+		rm(ss.FilterCanceledTx, nil)
+	}
+	if filters.SkipAutoTx {
+		add(ss.FilterAutoTx, nil)
+	} else {
+		rm(ss.FilterAutoTx, nil)
+	}
+	if filters.SkipAutoCanceledTx {
+		add(ss.FilterAutoCanceledTx, nil)
+	} else {
+		rm(ss.FilterAutoCanceledTx, nil)
+	}
+	if filters.SkipEmptyTx {
+		add(ss.FilterEmptyTx, nil)
+	} else {
+		rm(ss.FilterEmptyTx, nil)
+	}
+	if filters.SkipHealthTx {
+		add(ss.FilterHealth, nil)
+	} else {
+		rm(ss.FilterHealth, nil)
+	}
+	if filters.SkipQueuedTx {
+		add(ss.FilterQueuedTx, nil)
+	} else {
+		rm(ss.FilterQueuedTx, nil)
+	}
+	if filters.SkipOutGroup {
+		add(ss.FilterOutGroup, nil)
+	} else {
+		rm(ss.FilterOutGroup, nil)
+	}
+	if filters.SkipChecks {
+		add(ss.FilterChecks, nil)
+	} else {
+		rm(ss.FilterChecks, nil)
+	}
+}
+
 // filtersActive checks if any filters are active.
 func (d *Debugger) filtersActive() bool {
 	return d.Mach.Any1(ss.GroupFilters...)
 }
 
 // hFilterTx returns true when a TX passes selected toolbarItems.
-func (d *Debugger) hFilterTx(c *Client, idx int, filters *OptsFilters) bool {
+func (d *Debugger) hFilterTx(c *Client, idx int, filters *types.Filters) bool {
 	tx := c.MsgTxs[idx]
 	parsed := c.MsgTxsParsed[idx]
 	called := tx.CalledStateNames(c.MsgStruct.StatesIndex)
@@ -2021,7 +2062,7 @@ func (d *Debugger) initGraphGen(
 
 	// TODO render by prefixes
 	// } else {
-	// 	for _, p := range strings.Split(d.Opts.Graph, ",") {
+	// 	for _, p := range strings.Split(d.Params.Graph, ",") {
 	//
 	// 		// vis
 	// 		vis := amvis.NewRenderer(d.Mach, shot)
@@ -2040,7 +2081,7 @@ func (d *Debugger) initGraphGen(
 	// 			vis.RenderDepth = 1
 	// 		}
 	// 		// prefix with am-vis
-	// 		vis.OutputFilename = path.Join(d.Opts.OutputDir, "am-vis-"+p)
+	// 		vis.OutputFilename = path.Join(d.Params.OutputDir, "am-vis-"+p)
 	//
 	// 		vizs = append(vizs, vis)
 	// 	}
@@ -2064,7 +2105,7 @@ func (d *Debugger) initGraphGen(
 }
 
 func (d *Debugger) hSyncOptsTimelines() {
-	switch d.Opts.Timelines {
+	switch d.Params.ViewTimelines {
 	case 0:
 		d.Mach.Add(S{ss.TimelineTxHidden, ss.TimelineStepsHidden}, nil)
 	case 1:

@@ -19,7 +19,7 @@ import (
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/node/states"
-	"github.com/pancsta/asyncmachine-go/pkg/rpc"
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 )
@@ -84,17 +84,17 @@ type Supervisor struct {
 	// effective address is at [PublicMux.Addr].
 	PublicAddr string
 	// PublicMux is the public listener to create RPC servers for each client.
-	PublicMux *rpc.Mux
+	PublicMux *arpc.Mux
 	// PublicRpc are the public RPC servers of connected clients, indexed by
 	// remote addresses.
-	PublicRpcs map[string]*rpc.Server
+	PublicRpcs map[string]*arpc.Server
 
 	// LocalAddr is the address for the local RPC server to listen on. The
 	// effective address is at [LocalRpc.Addr].
 	LocalAddr string
 	// LocalRpc is the local RPC server, used by other supervisors to connect.
 	// TODO rpc/mux
-	LocalRpc *rpc.Server
+	LocalRpc *arpc.Server
 
 	// TODO healthcheck endpoint
 	// HttpAddr string
@@ -114,12 +114,10 @@ type Supervisor struct {
 
 	// self removing multi handlers
 
-	WorkerReadyState       am.HandlerFinal
-	WorkerGoneState        am.HandlerFinal
-	KillWorkerState        am.HandlerFinal
-	ClientSendPayloadState am.HandlerFinal
-	SuperSendPayloadState  am.HandlerFinal
-	HealthcheckState       am.HandlerFinal
+	WorkerReadyState am.HandlerFinal
+	WorkerGoneState  am.HandlerFinal
+	KillWorkerState  am.HandlerFinal
+	HealthcheckState am.HandlerFinal
 }
 
 // NewSupervisor initializes and returns a new Supervisor instance with
@@ -180,7 +178,7 @@ func NewSupervisor(
 
 		// rpc
 
-		PublicRpcs: make(map[string]*rpc.Server),
+		PublicRpcs: make(map[string]*arpc.Server),
 
 		// internals
 
@@ -214,8 +212,6 @@ func NewSupervisor(
 	s.WorkerReadyState = amhelp.RemoveMulti(mach, ssS.WorkerReady)
 	s.WorkerGoneState = amhelp.RemoveMulti(mach, ssS.WorkerGone)
 	s.KillWorkerState = amhelp.RemoveMulti(mach, ssS.KillWorker)
-	s.ClientSendPayloadState = amhelp.RemoveMulti(mach, ssS.ClientSendPayload)
-	s.SuperSendPayloadState = amhelp.RemoveMulti(mach, ssS.SuperSendPayload)
 	s.HealthcheckState = amhelp.RemoveMulti(mach, ssS.Healthcheck)
 
 	// check base states
@@ -281,14 +277,14 @@ func (s *Supervisor) ClientConnectedState(e *am.Event) {
 }
 
 func (s *Supervisor) ClientDisconnectedEnter(e *am.Event) bool {
-	a := rpc.ParseArgs(e.Args)
+	a := arpc.ParseArgs(e.Args)
 	return a != nil && a.Addr != ""
 }
 
 func (s *Supervisor) ClientDisconnectedState(e *am.Event) {
 	s.Mach.Remove1(ssS.ClientDisconnected, nil)
 
-	addr := rpc.ParseArgs(e.Args).Addr
+	addr := arpc.ParseArgs(e.Args).Addr
 	srv, ok := s.PublicRpcs[addr]
 	if !ok {
 		s.log("client %s disconnected, but not found", addr)
@@ -305,8 +301,8 @@ func (s *Supervisor) StartState(e *am.Event) {
 	s.PublicAddr = args.PublicAddr
 
 	// public rpc (muxed)
-	s.PublicMux, err = rpc.NewMux(ctx, s.PublicAddr, "ns-pub-"+s.Name, nil,
-		&rpc.MuxOpts{
+	s.PublicMux, err = arpc.NewMux(ctx, s.PublicAddr, "ns-pub-"+s.Name, nil,
+		&arpc.MuxOpts{
 			Parent:      s.Mach,
 			NewServerFn: s.newClientConn,
 		})
@@ -316,18 +312,17 @@ func (s *Supervisor) StartState(e *am.Event) {
 	}
 
 	// local rpc TODO mux
-	opts := &rpc.ServerOpts{
-		Parent:       s.Mach,
-		PayloadState: ssS.SuperSendPayload,
+	opts := &arpc.ServerOpts{
+		Parent: s.Mach,
 	}
-	s.LocalRpc, err = rpc.NewServer(ctx, s.LocalAddr, "ns-loc-"+s.Name, s.Mach,
+	s.LocalRpc, err = arpc.NewServer(ctx, s.LocalAddr, "ns-loc-"+s.Name, s.Mach,
 		opts)
 	if err != nil {
 		_ = AddErrRpc(s.Mach, err, nil)
 		return
 	}
 	s.LocalRpc.DeliveryTimeout = s.DeliveryTimeout
-	err = rpc.BindServerMulti(s.LocalRpc.Mach, s.Mach, ssS.LocalRpcReady,
+	err = arpc.BindServerMulti(s.LocalRpc.Mach, s.Mach, ssS.LocalRpcReady,
 		ssS.SuperConnected, ssS.SuperDisconnected)
 	if err != nil {
 		_ = AddErrRpc(s.Mach, err, nil)
@@ -540,8 +535,8 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 			_ = AddErrWorker(e, s.Mach, err, Pass(&argsOut))
 			return
 		}
-		wrpc, err := rpc.NewClient(ctx, workerAddr, s.Name+"-"+port,
-			s.schemaWorker, &rpc.ClientOpts{Parent: s.Mach})
+		wrpc, err := arpc.NewClient(ctx, workerAddr, s.Name+"-"+port,
+			s.schemaWorker, &arpc.ClientOpts{Parent: s.Mach})
 		if err != nil {
 			_ = AddErrWorker(e, s.Mach, err, Pass(&argsOut))
 			return
@@ -880,19 +875,21 @@ func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 				continue
 			}
 
-			// send the addr to the client via RPC SendPayload
-			s.Mach.Add1(ssS.ClientSendPayload, rpc.PassRpc(&rpc.A{
-				Name: "worker_addr",
-				Payload: &rpc.MsgSrvPayload{
-					Name:        ssS.ProvideWorker,
-					Source:      s.Mach.Id(),
-					Destination: args.SuperRpcId,
-					Data:        info.publicAddr,
-				},
-			}))
+			// TODO refac to SendPayload() method
+			// var nodeClientRpcSrv *arpc.Server
+			return
 
-			s.log("worker %s provided to %s", info.rpc.NetMach.Id(), args.SuperRpcId)
-			break
+			// send the addr to the client via RPC SendPayload
+			// _ = nodeClientRpcSrv.SendPayload(ctx, e, &arpc.MsgSrvPayload{
+			// 	Name:        ssS.ProvideWorker,
+			// 	Source:      s.Mach.Id(),
+			// 	Destination: args.SuperRpcId,
+			// 	Data:        info.publicAddr,
+			// })
+			//
+			// s.log("worker %s provided to %s", info.rpc.NetMach.Id(),
+			//   args.SuperRpcId)
+			// break
 		}
 	}()
 }
@@ -1093,26 +1090,25 @@ func (s *Supervisor) min() int {
 // newClientConn creates a new RPC server for a client.
 // TODO keep one forked and bind immediately
 func (s *Supervisor) newClientConn(
-	mux *rpc.Mux, id string, conn net.Conn,
-) (*rpc.Server, error) {
+	mux *arpc.Mux, id string, conn net.Conn,
+) (*arpc.Server, error) {
 	//
 
 	s.log("new client connection %s", id)
 	ctx := s.Mach.NewStateCtx(ssS.Start)
 	name := fmt.Sprintf("ns-pub-%s-%s", id, s.Name)
 
-	opts := &rpc.ServerOpts{
-		Parent:       mux.Mach,
-		PayloadState: ssS.ClientSendPayload,
+	opts := &arpc.ServerOpts{
+		Parent: mux.Mach,
 	}
-	rpcS, err := rpc.NewServer(ctx, s.PublicAddr, name, s.Mach, opts)
+	rpcS, err := arpc.NewServer(ctx, s.PublicAddr, name, s.Mach, opts)
 	if err != nil {
 		return nil, err
 	}
 
 	// set up
 	rpcS.DeliveryTimeout = s.DeliveryTimeout
-	err = rpc.BindServerMulti(rpcS.Mach, s.Mach, ssS.PublicRpcReady,
+	err = arpc.BindServerMulti(rpcS.Mach, s.Mach, ssS.PublicRpcReady,
 		ssS.ClientConnected, ssS.ClientDisconnected)
 	if err != nil {
 		return nil, err

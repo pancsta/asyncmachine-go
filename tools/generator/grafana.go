@@ -258,7 +258,7 @@ func (t *SyncTracer) NewSubmachine(parent, mach am.Api) {
 	// skip RPC machines
 	dbgRpc := os.Getenv("AM_RPC_DBG") != ""
 	for _, tag := range mach.Tags() {
-		if strings.HasPrefix(tag, "rpc-") && !dbgRpc {
+		if (strings.HasPrefix(tag, "rpc-") || tag == "relay") && !dbgRpc {
 			return
 		}
 	}

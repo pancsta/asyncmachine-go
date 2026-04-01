@@ -129,8 +129,7 @@ func (w *Worker) StartState(e *am.Event) {
 
 	// local RPC
 	opts := &rpc.ServerOpts{
-		PayloadState: ssW.SuperSendPayload,
-		Parent:       w.Mach,
+		Parent: w.Mach,
 	}
 	w.LocalRpc, err = rpc.NewServer(ctx, "localhost:0", "nw-loc-"+w.Name, w.Mach,
 		opts)
@@ -152,8 +151,7 @@ func (w *Worker) StartState(e *am.Event) {
 
 	// public RPC
 	opts = &rpc.ServerOpts{
-		PayloadState: ssW.ClientSendPayload,
-		Parent:       w.Mach,
+		Parent: w.Mach,
 	}
 	w.PublicRpc, err = rpc.NewServer(ctx, "0.0.0.0:0", "nw-pub-"+w.Name,
 		w.Mach, opts)
@@ -270,11 +268,6 @@ func (w *Worker) ServeClientState(e *am.Event) {
 	args := ParseArgs(e.Args)
 	w.AcceptClient = args.Id
 	w.PublicRpc.AllowId = w.AcceptClient
-}
-
-func (w *Worker) SendPayloadEnter(e *am.Event) bool {
-	// use SuperSendPayload and ClientSendPayload instead
-	return false
 }
 
 // ///// ///// /////

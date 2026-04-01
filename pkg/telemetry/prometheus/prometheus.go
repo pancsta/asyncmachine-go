@@ -51,7 +51,7 @@ func (t *PromTracer) NewSubmachine(parent, mach am.Api) {
 	// skip RPC machines
 	dbgRpc := os.Getenv("AM_RPC_DBG") != ""
 	for _, tag := range mach.Tags() {
-		if strings.HasPrefix(tag, "rpc-") && !dbgRpc {
+		if (strings.HasPrefix(tag, "rpc-") || tag == "relay") && !dbgRpc {
 			return
 		}
 	}
@@ -95,7 +95,7 @@ func (t *PromTracer) TransitionEnd(tx *am.Transition) {
 	t.m.queueSizeLen++
 	t.m.stepsAmount += uint64(len(tx.Steps))
 	t.m.stepsAmountLen++
-	// TODO log slow txs (Opts and default to 1ms)
+	// TODO log slow txs (Params and default to 1ms)
 	t.m.txTime += uint64(time.Since(t.txStartTime).Microseconds())
 	t.m.txTimeLen++
 

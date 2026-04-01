@@ -8,8 +8,9 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 	"github.com/soheilhy/cmux"
+
+	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"

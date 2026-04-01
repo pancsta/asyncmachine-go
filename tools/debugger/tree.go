@@ -217,7 +217,8 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 		}
 
 		stateName := ref.stateName
-		stateNamePad := stateName + strings.Repeat(" ", maxNameLen-len(stateName))
+		stateNamePad := stateName + strings.Repeat(" ",
+			max(0, maxNameLen-len(stateName)))
 		color := colorInactive
 
 		if msg.Is(index, am.S{stateName}) {

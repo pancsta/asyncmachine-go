@@ -1,0 +1,3 @@
+jaeger-data/**/*
+!jaeger-data/**/.gitkeep
+/jaeger-data.tar.gz

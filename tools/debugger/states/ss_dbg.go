@@ -5,7 +5,6 @@ package states
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
-	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // States map defines relations and properties of states.
@@ -342,7 +341,6 @@ const (
 	// NarrowLayout activates when resized or started in a narrow TUI viewport.
 	NarrowLayout      = "NarrowLayout"
 	ClientListVisible = "ClientListVisible"
-	Start             = "Start"
 	Heartbeat         = "Heartbeat"
 	GcMsgs            = "GcMsgs"
 	Playing           = "Playing"
@@ -391,10 +389,8 @@ const (
 	ToolRain           = "ToolRain"
 	LogUserScrolled    = "LogUserScrolled"
 	// ScrollToTx scrolls to a specific transition.
-	ScrollToTx   = "ScrollToTx"
-	ScrollToStep = "ScrollToStep"
-	// Ready is an async result of start
-	Ready                = "Ready"
+	ScrollToTx           = "ScrollToTx"
+	ScrollToStep         = "ScrollToStep"
 	FilterCanceledTx     = "FilterCanceledTx"
 	FilterQueuedTx       = "FilterQueuedTx"
 	FilterAutoTx         = "FilterAutoTx"

@@ -128,7 +128,7 @@ type SharedGroupsDef struct {
 var SharedSchema = SchemaMerge(
 	// inherit from BasicSchema
 	ss.BasicSchema,
-	// inherit from rpc/WorkerSchema
+	// inherit from rpc/StateSourceSchema
 	ssrpc.StateSourceSchema,
 	am.Schema{
 

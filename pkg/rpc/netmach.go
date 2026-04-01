@@ -121,6 +121,8 @@ func NewNetworkMachine(
 	ctx context.Context, id string, conn NetMachConn, schema am.Schema,
 	stateNames am.S, parent am.Api, tags []string, filterMutations bool,
 ) (*NetworkMachine, *NetMachInternal, error) {
+	//
+
 	// validate
 	if ctx == nil {
 		return nil, nil, errors.New("ctx cannot be nil")
@@ -133,7 +135,7 @@ func NewNetworkMachine(
 		return nil, nil, errors.New("parent cannot be nil")
 	}
 	if tags == nil {
-		tags = []string{"rpc-worker", "src-id:"}
+		tags = []string{"rpc-netmach", "src-id:"}
 	}
 
 	netMach := &NetworkMachine{
@@ -179,7 +181,7 @@ func NewNetworkMachine(
 
 // ///// Mutations (remote)
 
-// Add is [am.Api.Add].
+// Add is [am.Api.Add], but BLOCKING.
 func (m *NetworkMachine) Add(states am.S, args am.A) am.Result {
 	if m.conn == nil {
 		return am.Canceled
@@ -205,7 +207,7 @@ func (m *NetworkMachine) Add(states am.S, args am.A) am.Result {
 	return resp.Result
 }
 
-// Add1 is [am.Api.Add1].
+// Add1 is [am.Api.Add1], but BLOCKING.
 func (m *NetworkMachine) Add1(state string, args am.A) am.Result {
 	if m.conn == nil {
 		return am.Canceled
@@ -249,7 +251,7 @@ func (m *NetworkMachine) Add1NS(state string, args am.A) am.Result {
 	return m.AddNS(am.S{state}, args)
 }
 
-// Remove is [am.Api.Remove].
+// Remove is [am.Api.Remove], but BLOCKING.
 func (m *NetworkMachine) Remove(states am.S, args am.A) am.Result {
 	if m.conn == nil {
 		return am.Canceled
@@ -275,7 +277,7 @@ func (m *NetworkMachine) Remove(states am.S, args am.A) am.Result {
 	return resp.Result
 }
 
-// Remove1 is [am.Api.Remove1].
+// Remove1 is [am.Api.Remove1], but BLOCKING.
 func (m *NetworkMachine) Remove1(state string, args am.A) am.Result {
 	if m.conn == nil {
 		return am.Canceled
@@ -283,7 +285,7 @@ func (m *NetworkMachine) Remove1(state string, args am.A) am.Result {
 	return m.Remove(am.S{state}, args)
 }
 
-// Set is [am.Api.Set].
+// Set is [am.Api.Set], but BLOCKING.
 func (m *NetworkMachine) Set(states am.S, args am.A) am.Result {
 	if m.conn == nil {
 		return am.Canceled
@@ -346,7 +348,7 @@ func (m *NetworkMachine) AddErrState(
 	return m.Add(errStates, am.PassMerge(args, argsT))
 }
 
-// EvAdd is [am.Api.EvAdd].
+// EvAdd is [am.Api.EvAdd], but BLOCKING.
 func (m *NetworkMachine) EvAdd(
 	event *am.Event, states am.S, args am.A,
 ) am.Result {
@@ -376,7 +378,7 @@ func (m *NetworkMachine) EvAdd(
 	return resp.Result
 }
 
-// EvAdd1 is [am.Api.EvAdd1].
+// EvAdd1 is [am.Api.EvAdd1], but BLOCKING.
 func (m *NetworkMachine) EvAdd1(
 	event *am.Event, state string, args am.A,
 ) am.Result {
@@ -388,7 +390,7 @@ func (m *NetworkMachine) EvAdd1(
 
 // TODO EvAddNS
 
-// EvRemove1 is [am.Api.EvRemove1].
+// EvRemove1 is [am.Api.EvRemove1], but BLOCKING.
 func (m *NetworkMachine) EvRemove1(
 	event *am.Event, state string, args am.A,
 ) am.Result {
@@ -398,7 +400,7 @@ func (m *NetworkMachine) EvRemove1(
 	return m.EvRemove(event, am.S{state}, args)
 }
 
-// EvRemove is [am.Api.EvRemove].
+// EvRemove is [am.Api.EvRemove], but BLOCKING.
 func (m *NetworkMachine) EvRemove(
 	event *am.Event, states am.S, args am.A,
 ) am.Result {
@@ -424,7 +426,7 @@ func (m *NetworkMachine) EvRemove(
 	return resp.Result
 }
 
-// EvAddErr is [am.Api.EvAddErr].
+// EvAddErr is [am.Api.EvAddErr], but BLOCKING.
 func (m *NetworkMachine) EvAddErr(
 	event *am.Event, err error, args am.A,
 ) am.Result {
@@ -434,7 +436,7 @@ func (m *NetworkMachine) EvAddErr(
 	return m.EvAddErrState(event, am.StateException, err, args)
 }
 
-// EvAddErrState is [am.Api.EvAddErrState].
+// EvAddErrState is [am.Api.EvAddErrState], but BLOCKING.
 func (m *NetworkMachine) EvAddErrState(
 	event *am.Event, state string, err error, args am.A,
 ) am.Result {
@@ -463,7 +465,7 @@ func (m *NetworkMachine) EvAddErrState(
 	return m.EvAdd(event, errStates, am.PassMerge(args, argsT))
 }
 
-// Toggle is [am.Api.Toggle].
+// Toggle is [am.Api.Toggle], but BLOCKING.
 func (m *NetworkMachine) Toggle(states am.S, args am.A) am.Result {
 	if m.conn == nil {
 		return am.Canceled
@@ -475,7 +477,7 @@ func (m *NetworkMachine) Toggle(states am.S, args am.A) am.Result {
 	}
 }
 
-// Toggle1 is [am.Api.Toggle1].
+// Toggle1 is [am.Api.Toggle1], but BLOCKING.
 func (m *NetworkMachine) Toggle1(state string, args am.A) am.Result {
 	if m.conn == nil {
 		return am.Canceled
@@ -487,7 +489,7 @@ func (m *NetworkMachine) Toggle1(state string, args am.A) am.Result {
 	}
 }
 
-// EvToggle is [am.Api.EvToggle].
+// EvToggle is [am.Api.EvToggle], but BLOCKING.
 func (m *NetworkMachine) EvToggle(
 	e *am.Event, states am.S, args am.A,
 ) am.Result {
@@ -501,7 +503,7 @@ func (m *NetworkMachine) EvToggle(
 	}
 }
 
-// EvToggle1 is [am.Api.EvToggle1].
+// EvToggle1 is [am.Api.EvToggle1], but BLOCKING.
 func (m *NetworkMachine) EvToggle1(
 	e *am.Event, state string, args am.A,
 ) am.Result {
@@ -1210,9 +1212,11 @@ func (m *NetworkMachine) IsDisposed() bool {
 	return m.disposed.Load()
 }
 
-// WhenDisposed returns a channel that will be closed when the machine is
-// disposed. Requires bound handlers. Use Machine.Disposed in case no handlers
-// have been bound.
+// WhenDisposed returns a channel that will be closed when the NETWORK machine
+// is disposed. Requires bound handlers. Use Machine.Disposed in case no
+// handlers have been bound.
+//
+// For state source machines, listed to Disposed state.
 func (m *NetworkMachine) WhenDisposed() <-chan struct{} {
 	return m.whenDisposed
 }

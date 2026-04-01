@@ -942,7 +942,7 @@ func (m *Machine) AddErrState(state string, err error, args A) Result {
 		(*onErr)(m, err)
 	}
 
-	// TODO prepend to the queue? what effects / benefits
+	// add normally, dont prepend
 	return m.Add(S{state, StateException}, PassMerge(args, argsT))
 }
 
@@ -1495,7 +1495,7 @@ func (m *Machine) BindHandlers(handlers any) error {
 		var err error
 		methodNames, err = ListHandlers(handlers, m.stateNames)
 		if err != nil {
-			return fmt.Errorf("listing handlers: %w", err)
+			return fmt.Errorf("listing handlers for %s: %w", m.Id(), err)
 		}
 	}
 
@@ -3518,7 +3518,20 @@ func (m *Machine) Go(ctx context.Context, fn func()) {
 		if ctx.Err() != nil {
 			return // expired
 		}
+		defer m.PanicToErr(nil)
 
 		fn()
 	}()
+}
+
+// TODO GoErr
+// func (m *Machine) Go(ctx context.Context, fn func()) {
+
+// EvSource is sugar for creating an event for Ev* methods without having an
+// event. TODO add to Api
+func (m *Machine) EvSource(transitionId string) *Event {
+	return &Event{
+		MachineId:    m.Id(),
+		TransitionId: transitionId,
+	}
 }

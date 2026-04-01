@@ -65,6 +65,8 @@ tasks:
 
   assets: git submodule update --init --recursive
 
+  am-gen: go run ./tools/cmd/am-gen {{.CLI_ARGS}}
+
   am-dbg:
     silent: false
     cmds:

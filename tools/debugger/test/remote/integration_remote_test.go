@@ -9,16 +9,16 @@ import (
 	"os"
 	"testing"
 
-	testing2 "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/stretchr/testify/assert"
 
 	amtest "github.com/pancsta/asyncmachine-go/internal/testing"
 	ssTest "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
@@ -93,7 +93,7 @@ func TestUserFwd100Remote(t *testing.T) {
 }
 
 // TestTailModeRemote requires a worker started with --select-connected.
-// TODO check select-connected via Opts getter
+// TODO check select-connected via State getter
 func TestTailModeRemote(t *testing.T) {
 
 	// read env
@@ -110,7 +110,7 @@ func TestTailModeRemote(t *testing.T) {
 
 	// fixture machine
 	mach := utils.NewRels(t, nil)
-	testing2.MachDebug(t, mach, amDbgAddr, logLvl, true)
+	amhelpt.MachDebug(t, mach, amDbgAddr, logLvl, true)
 
 	// connect to the worker as a new telemetry client
 	mach.SemLogger().SetLevel(am.LogOps)
@@ -210,7 +210,7 @@ func TestUserFwdRemoteLoopback(t *testing.T) {
 	t.Skip("Debug only")
 
 	// init debugger
-	d, err := amtest.NewDbgWorker(false, debugger.Opts{Id: t.Name()})
+	d, err := amtest.NewDbgWorker(false, debugger.State{Id: t.Name()})
 	assert.NoError(t, err)
 
 	// init rpc (full client-server setup)
@@ -235,10 +235,41 @@ func TestUserFwdRemoteLoopback(t *testing.T) {
 func get[G any](
 	t *testing.T, c *arpc.Client, name server.GetField, defVal G,
 ) G {
-	return amtest.RpcGet(t, c, name, defVal)
+	// TODO rewrite to SendPayload-ServerPayload state flow
+	return defVal
+}
+
+// TODO rewrite to SendPayload-ServerPayload state flow
+func RpcGetter(d *Debugger) func(string) any {
+	return func(name string) any {
+		switch name {
+
+		case server.GetCursorTx.Encode():
+			return d.C.CursorTx1
+
+		case server.GetCursorStep.Encode():
+			return d.C.CursorStep1
+
+		case server.GetMsgCount.Encode():
+			return len(d.C.MsgTxs)
+
+		case server.GetClientCount.Encode():
+			return len(d.Clients)
+
+		case server.GetOpts.Encode():
+			return d.Params
+
+		case server.GetSelectedState.Encode():
+			return d.C.SelectedState
+
+		}
+
+		return nil
+	}
 }
 
 // enableTestDebugRemote sets env vars for debugging of remote workers.
+// TODO imported names
 func enableTestDebugRemote() {
 	os.Setenv("AM_DEBUG", "1")
 	os.Setenv("AM_DBG_ADDR", "localhost:9913")

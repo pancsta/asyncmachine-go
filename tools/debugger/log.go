@@ -39,7 +39,7 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 	// TODO handle logRebuildEnd by observing ClientMsg state clock, dont req
 	endIndex := e.Args["logRebuildEnd"].(int)
 	cursorTx1 := d.C.CursorTx1
-	level := d.Opts.Filters.LogLevel
+	level := d.Params.Filters.LogLevel
 	ctx := d.Mach.NewStateCtx(ss.BuildingLog)
 	var buf string
 	// TODO compare memorized maxVisible (support resizing)
@@ -86,7 +86,7 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 		}
 
 		d.log.Clear()
-		if d.Opts.OutputLog {
+		if d.Params.OutputLog {
 			go func() {
 				// TODO handle in LogBuiltState
 				d.logFileMx.Lock()
@@ -173,7 +173,7 @@ func (d *Debugger) LogUpdatedState(e *am.Event) {
 	d.hUpdateLogReader(e)
 
 	if c.MsgStruct != nil {
-		title := " Log:" + d.Opts.Filters.LogLevel.String() + " "
+		title := " Log:" + d.Params.Filters.LogLevel.String() + " "
 		if tx != nil && c.CursorTx1 != 0 {
 			t := strconv.Itoa(int(c.MsgTxsParsed[c.CursorTx1-1].TimeSum))
 			title += "[gray]([-]t" + t + "[gray])[-] "
@@ -374,7 +374,7 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 	for _, le := range entries {
 		logStr := le.Text
 		logLvl := le.Level
-		if logStr == "" || logLvl > d.Opts.Filters.LogLevel {
+		if logStr == "" || logLvl > d.Params.Filters.LogLevel {
 			continue
 		}
 
@@ -394,13 +394,13 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 	if ret != "" {
 		empty = false
 
-		if d.Opts.Filters.LogLevel == am.LogExternal {
+		if d.Params.Filters.LogLevel == am.LogExternal {
 			ret = strings.ReplaceAll(ret, "[yellow][extern[][white] [darkgrey]", "")
 		}
 
 		// prefix if showing canceled or queued (gutter)
 		if (d.Mach.Not1(ss.FilterCanceledTx) || d.Mach.Not1(ss.FilterQueuedTx)) &&
-			d.Opts.Filters.LogLevel >= am.LogChanges {
+			d.Params.Filters.LogLevel >= am.LogChanges {
 
 			p := ""
 			switch {
@@ -1019,7 +1019,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		node := cview.NewTreeNode("self")
 		node.SetIndent(1)
 		if source[0] != c.Id {
-			node = cview.NewTreeNode(d.P.Sprintf("%s [grey]t%v[-]", source[0],
+			node.SetText(d.P.Sprintf("%s [grey]t%v[-]", source[0],
 				source[2]))
 			node.SetReference(&logReaderTreeRef{
 				machId:   source[0],

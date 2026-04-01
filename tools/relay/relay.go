@@ -16,6 +16,7 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/coder/websocket"
 	"github.com/joho/godotenv"
+	"github.com/teivah/onecontext"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -81,6 +82,7 @@ func New(ctx context.Context, args types.Args) (*Relay, error) {
 	mach, err := am.NewCommon(ctx, id, states.RelaySchema, ssR.Names(),
 		r, args.Parent, &am.Opts{
 			DontPanicToException: args.Debug,
+			Tags:                 []string{"relay"},
 		})
 	if err != nil {
 		return nil, err
@@ -204,7 +206,7 @@ func (r *Relay) HandleWsTcpDial(
 	// TODO loop guard to detect flood (fix thread safety)
 
 	// TODO req.Context() needs body to be read to close
-	ctx, cancel := context.WithCancel(req.Context())
+	ctx, cancel := onecontext.Merge(r.Mach.Context(), req.Context())
 	defer cancel()
 
 	// metric
@@ -309,7 +311,7 @@ func (r *Relay) HandleWsTcpListen(
 	// TODO loop guard to detect flood (fix thread safety)
 
 	// TODO req.Context() needs body to be read to close
-	ctx, cancel := context.WithCancel(req.Context())
+	ctx, cancel := onecontext.Merge(r.Mach.Context(), req.Context())
 	defer cancel()
 
 	// metric

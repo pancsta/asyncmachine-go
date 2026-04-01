@@ -48,11 +48,15 @@ var MainMenu = []Entry{
 		Path: "examples/benchmark_state_source", SkipMenu: true},
 	{Url: "wasm",
 		Path: "examples/wasm", SkipMenu: true},
+	{Url: "wasm-workflow",
+		Path: "examples/wasm_workflow", SkipMenu: true},
 
 	// docs
 
 	{Url: "arpc-howto", Path: "pkg/rpc/HOWTO.md", SkipMenu: true},
 	{Url: "cookbook", Path: "docs/cookbook.md", SkipMenu: true},
+	{Url: "docs-wasm", Path: "docs/wasm.md", SkipMenu: true},
+	{Url: "docs-schema", Path: "docs/schema.md", SkipMenu: true},
 	{Url: "diagrams", Path: "docs/diagrams.md", SkipMenu: true},
 	{Url: "roadmap", Path: "ROADMAP.md", SkipMenu: true},
 	{Url: "breaking-changes", Path: "BREAKING.md", SkipMenu: true},
