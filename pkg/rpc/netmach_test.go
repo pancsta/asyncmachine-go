@@ -1129,15 +1129,6 @@ func TestInspect(t *testing.T) {
 		0 ErrOnClient
 		    |Tick     0
 		    |Require  Exception
-		0 ErrProviding
-		    |Tick     0
-		    |Require  Exception
-		0 ErrSendPayload
-		    |Tick     0
-		    |Require  Exception
-		0 SendPayload
-		    |Tick     0
-		    |Multi    true
 	`
 	assertString(t, w, expected, nil)
 
@@ -1162,8 +1153,7 @@ func TestString(t *testing.T) {
 
 	// test
 	assert.Equal(t, "(A:1 B:1)", w.String())
-	assert.Equal(t, "(A:1 B:1) [Exception:0 C:0 D:0 ErrOnClient:0 "+
-		"ErrProviding:0 ErrSendPayload:0 SendPayload:0]",
+	assert.Equal(t, "(A:1 B:1) [Exception:0 C:0 D:0 ErrOnClient:0]",
 		w.StringAll())
 
 	disposeTest(t, c, s, true)

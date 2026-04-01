@@ -38,7 +38,8 @@ type Client struct {
 
 	// Addr is the address the Client will connect to.
 	Addr string
-	// NetMach is a remote am.Machine instance
+	// NetMach is a remote am.Machine instance. It's available after the Start
+	// state settles.
 	NetMach *NetworkMachine
 	// Consumer is the optional consumer for deliveries.
 	Consumer   *am.Machine
@@ -246,15 +247,18 @@ func (c *Client) StartState(e *am.Event) {
 	id := PrefixNetMach + utils.RandId(5)
 	// RPC parent or actual parent
 	var parent am.Api = c.Mach
-	if os.Getenv(EnvAmRpcDbg) == "" {
+	if os.Getenv(EnvAmRpcDbg) == "" && c.Opts.Parent != nil {
 		parent = c.Opts.Parent
 	}
 	netMach, nmInternal, err := NewNetworkMachine(ctx, id, nmConn, c.schema,
 		stateNames, parent, nil, c.SyncMutationFiltering)
 	if err != nil {
-		c.Mach.AddErr(err, nil)
+		// TODO handle better
+		c.Mach.EvAddErr(e, err, nil)
+		c.Mach.EvRemove1(e, ss.Start, nil)
 		return
 	}
+	// TODO make it available earlier
 	c.NetMach = netMach
 	c.netMachInt = nmInternal
 }
@@ -419,11 +423,7 @@ func (c *Client) HandshakingState(e *am.Event) {
 	ctx := c.Mach.NewStateCtx(ssC.Connected)
 
 	// unblock
-	go func() {
-		if ctx.Err() != nil {
-			return // expired
-		}
-
+	c.Mach.Fork(ctx, e, func() {
 		// send hello or retry conn
 		resp := &MsgSrvHello{}
 		if c.HelloDelay > 0 {
@@ -509,7 +509,7 @@ func (c *Client) HandshakingState(e *am.Event) {
 			MachTime:  resp.Serialized.Time,
 			QueueTick: resp.Serialized.QueueTick,
 		}))
-	}()
+	})
 }
 
 func (c *Client) HandshakeDoneEnter(e *am.Event) bool {
@@ -962,7 +962,7 @@ func (c *Client) callFailsafe(
 		return false
 	}
 
-	// locks
+	// locks TODO delays exit
 	c.callLock.Lock()
 	defer c.callLock.Unlock()
 
@@ -1028,6 +1028,10 @@ func (c *Client) callFailsafe(
 func (c *Client) call(
 	ctx context.Context, method string, args, resp any, timeout time.Duration,
 ) bool {
+	// debug
+	// c.log("call %s", method)
+
+	// TODO use Fork everywhere
 	defer c.Mach.PanicToErr(nil)
 	mName := ServerMethods.Parse(method).Value
 
@@ -1283,6 +1287,7 @@ type ClientOpts struct {
 	SkippedStates am.S
 	// Sync machine time for every mutation. Disables
 	// [ClientOpts.SyncShallowClocks].
+	// TODO de-activates states for no reason
 	SyncMutations bool
 	// Only activete/deactivate (0-1) clock values will be sent.
 	SyncShallowClocks bool
