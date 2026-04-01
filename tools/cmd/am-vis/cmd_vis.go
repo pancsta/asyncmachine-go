@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"os/signal"
 	"slices"
+	"syscall"
 	"time"
 
 	"github.com/alexflint/go-arg"
@@ -17,7 +19,6 @@ import (
 	dbgtypes "github.com/pancsta/asyncmachine-go/tools/debugger/types"
 	"github.com/pancsta/asyncmachine-go/tools/visualizer"
 	"github.com/pancsta/asyncmachine-go/tools/visualizer/states"
-	"github.com/pancsta/asyncmachine-go/tools/visualizer/types"
 )
 
 // const CmdDbgServer = "dbg-server"
@@ -62,7 +63,8 @@ type Args struct {
 
 	// misc
 
-	Debug bool `arg:"--debug" help:"Enable debugging for asyncmachine"`
+	Debug   bool `arg:"--debug" help:"Enable debugging for asyncmachine"`
+	Version bool `arg:"-v,--version" help:"Print version and exit"`
 }
 
 func (Args) Description() string {
@@ -97,6 +99,8 @@ type RenderDumpCmd struct {
 	MachUrl      string `arg:"positional"`
 }
 
+const CmdRenderDump = "render-dump"
+
 // TODO DbgServerCmd
 // nolint:lll
 // type DbgServerCmd struct {
@@ -108,10 +112,18 @@ type RenderDumpCmd struct {
 var args Args
 
 func main() {
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(),
+		syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
 	p := arg.MustParse(&args)
+	if args.Version {
+		fmt.Println(utils.GetVersion())
+		os.Exit(0)
+	}
+
 	if p.Subcommand() == nil {
-		p.Fail("missing subcommand (" + types.CmdRenderDump + ")")
+		p.Fail("missing subcommand (" + CmdRenderDump + ")")
 	}
 
 	// load .env
@@ -122,7 +134,7 @@ func main() {
 	switch {
 	case args.RenderDump != nil:
 		if err := renderDump(ctx, args, os.Args[1:]); err != nil {
-			_ = p.FailSubcommand(err.Error(), types.CmdRenderDump)
+			_ = p.FailSubcommand(err.Error(), CmdRenderDump)
 		}
 	}
 }

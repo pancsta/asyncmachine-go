@@ -4,13 +4,12 @@ package main
 import (
 	"context"
 	"log"
-	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 
-	"github.com/spf13/cobra"
+	"github.com/alexflint/go-arg"
+	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -21,94 +20,39 @@ import (
 )
 
 func main() {
-	rootCmd := types.RootCmd(cliRun)
-	err := rootCmd.Execute()
-	if err != nil {
-		panic(err)
-	}
-}
+	var p types.Params
+	parser := arg.MustParse(&p)
 
-// TODO error msgs
-func cliRun(_ *cobra.Command, _ []string, p types.Params) {
 	ctx, cancel := signal.NotifyContext(context.Background(),
 		syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	if err := cliRun(ctx, p); err != nil {
+		parser.Fail(err.Error())
+	}
+}
+
+func cliRun(ctx context.Context, p types.Params) error {
 	// print the version
 	ver := utils.GetVersion()
-	if p.Version {
+	if p.PrintVersion {
 		println(ver)
-		os.Exit(0)
+		return nil
 	}
 
 	// logger and profiler
-	logger := types.GetLogger(&p, p.OutputDir)
-	types.StartCpuProfileSrv(ctx, logger, &p)
-	stopProfile := types.StartCpuProfile(logger, &p)
+	p.DbgLogger = types.GetLogger(&p, p.OutputDir)
+	types.StartCpuProfileSrv(ctx, p.DbgLogger, &p)
+	stopProfile := types.StartCpuProfile(p.DbgLogger, &p)
 	if stopProfile != nil {
 		defer stopProfile()
 	}
-	log.SetOutput(logger.Writer())
-
-	httpAddr := ""
-	sshAddr := ""
-	if p.ListenAddr != "-1" {
-		host, port, err := net.SplitHostPort(p.ListenAddr)
-		if err != nil {
-			panic(err)
-		}
-		dbgPort, _ := strconv.Atoi(port)
-		httpPort := dbgPort + 1
-		sshPort := httpPort + 1
-		httpAddr = host + ":" + strconv.Itoa(httpPort)
-		sshAddr = host + ":" + strconv.Itoa(sshPort)
-	}
-
-	if !p.UiSsh {
-		sshAddr = ""
-	}
-	if !p.UiWeb {
-		httpAddr = ""
-	}
+	log.SetOutput(p.DbgLogger.Writer())
 
 	// init the debugger
-	dbg, err := debugger.New(ctx, debugger.Opts{
-		Id:            p.Id,
-		DbgLogLevel:   p.LogLevel,
-		DbgLogger:     logger,
-		ImportData:    p.ImportData,
-		OutputClients: p.OutputClients,
-		// TODO expose levels as states
-		OutputDiagrams: p.OutputDiagrams,
-		OutputTx:       p.OutputTx,
-		OutputLog:      p.OutputLog,
-		Timelines:      p.ViewTimelines,
-		// ...:           p.FilterLogLevel,
-		OutputDir:       p.OutputDir,
-		AddrRpc:         p.ListenAddr,
-		AddrHttp:        httpAddr,
-		AddrSsh:         sshAddr,
-		UiSsh:           p.UiSsh && sshAddr != "",
-		UiWeb:           p.UiWeb && httpAddr != "",
-		EnableMouse:     p.EnableMouse,
-		EnableClipboard: p.EnableClipboard,
-		MachUrl:         p.MachUrl,
-		SelectConnected: p.SelectConnected,
-		ShowReader:      p.ViewReader,
-		CleanOnConnect:  p.CleanOnConnect,
-		MaxMemMb:        p.MaxMemMb,
-		Log2Ttl:         p.LogOpsTtl,
-		ViewNarrow:      p.ViewNarrow,
-		ViewRain:        p.ViewRain,
-		TailMode:        p.TailMode && p.StartupTx == 0,
-		Version:         ver,
-		Filters: &debugger.OptsFilters{
-			SkipOutGroup: p.FilterGroup,
-			LogLevel:     p.FilterLogLevel,
-		},
-	})
+	dbg, err := debugger.New(ctx, p)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	// rpc client
@@ -118,19 +62,22 @@ func cliRun(_ *cobra.Command, _ []string, p types.Params) {
 
 	}
 
-	// TODO --otel flag
-	// dbg.Mach.SemLogger().EnableSteps(true)
-	// os.Setenv(amtele.EnvService, "dbg")
-	// os.Setenv(amtele.EnvOtelTrace, "1")
-	// os.Setenv(amtele.EnvOtelTraceTxs, "1")
-	// os.Setenv(amtele.EnvOtelTraceArgs, "1")
-	// os.Setenv(amtele.EnvOtelTraceAllowStates,
-	// 	"ClientSelected,SelectingClient,RemoveClient,BuildingLog,LogBuilt")
-	// os.Setenv(amtele.EnvOtelTraceAllowStatesRe, "^Diagrams")
-	// err = amtele.MachBindOtelEnv(dbg.Mach)
-	// if err != nil {
-	// 	panic(err)
-	// }
+	if p.DbgOtel {
+		dbg.Mach.SemLogger().EnableSteps(true)
+		os.Setenv(amtele.EnvService, "dbg")
+		os.Setenv(amtele.EnvOtelTrace, "1")
+		os.Setenv(amtele.EnvOtelTraceTxs, "1")
+		os.Setenv(amtele.EnvOtelTraceArgs, "1")
+		// AM_OTEL_TRACE_ALLOW_STATES=ClientSelected,SelectingClient,RemoveClient,
+		// BuildingLog,LogBuilt
+		// AM_OTEL_TRACE_ALLOW_STATES_RE=^Diagrams
+		// os.Setenv(amtele.EnvOtelTraceAllowStates,
+		// 	"ClientSelected,SelectingClient,RemoveClient,BuildingLog,LogBuilt")
+		// os.Setenv(amtele.EnvOtelTraceAllowStatesRe, "^Diagrams")
+		if err := amtele.MachBindOtelEnv(dbg.Mach); err != nil {
+			return err
+		}
+	}
 
 	// rpc server
 	if p.ListenAddr != "-1" {
@@ -138,9 +85,7 @@ func cliRun(_ *cobra.Command, _ []string, p types.Params) {
 	}
 
 	// start and wait till the end
-	// TODO move to params
-	dbg.Start(p.StartupMachine, p.StartupTx, p.StartupView, p.StartupGroup)
-
+	dbg.Start()
 	select {
 	case <-dbg.Mach.WhenDisposed():
 	case <-dbg.Mach.WhenNot1(ss.Start, nil):
@@ -150,7 +95,9 @@ func cliRun(_ *cobra.Command, _ []string, p types.Params) {
 	printStats(dbg)
 
 	// pprof memory profile
-	types.HandleProfMem(logger, &p)
+	types.HandleProfMem(p.DbgLogger, &p)
+
+	return nil
 }
 
 func printStats(dbg *debugger.Debugger) {
