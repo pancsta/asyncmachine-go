@@ -374,29 +374,34 @@ func (d *Debugger) initClientList() {
 	d.clientList.SetHighlightFullLine(true)
 	// switch clients and handle history
 	d.clientList.SetSelectedFunc(func(i int, listItem *cview.ListItem) {
-		if d.C == nil {
-			return
-		}
 		client := listItem.GetReference().(*sidebarRef)
-		if client.name == d.C.Id {
+		clickedId := client.name
+		selectedId := ""
+		// TODO getter
+		d.Mach.Eval("clientList.SetSelectedFunc1", func() {
+			if d.C != nil {
+				selectedId = d.C.Id
+			}
+		}, nil)
+		if clickedId == selectedId {
 			return
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		amhelp.Add1Async(ctx, d.Mach, ss.ClientSelected, ss.SelectingClient,
-			am.A{"Client.id": client.name},
+			am.A{"Client.id": clickedId},
 		)
 		if ctx.Err() != nil {
-			d.Mach.Log("timeout when selecting client %s", client.name)
+			d.Mach.Log("timeout when selecting client %s", clickedId)
 			return
 		}
 		// TODO do these in ClientSelectedState
-		d.Mach.Eval("clientList.SetSelectedFunc", func() {
-			d.hPrependHistory(&types.MachAddress{MachId: client.name})
+		d.Mach.Eval("clientList.SetSelectedFunc2", func() {
+			d.hPrependHistory(&types.MachAddress{MachId: clickedId})
 			d.hUpdateAddressBar()
 			d.draw(d.addressBar)
-		}, nil)
+		}, ctx)
 	})
 	d.clientList.SetSelectedAlwaysVisible(true)
 	d.clientList.SetScrollBarColor(colorHighlight2)

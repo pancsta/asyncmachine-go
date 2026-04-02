@@ -1,7 +1,7 @@
 version: '3'
 
 dotenv:
-  - .env
+  - config.env
 
 vars:
   PKG: "github.com/pancsta/asyncmachine-go/examples/wasm"
@@ -9,6 +9,7 @@ vars:
 tasks:
   build:
     deps: [build-orchestrator, build-browser]
+    cmd: go mod tidy
 
   build-orchestrator:
     env:
@@ -28,15 +29,15 @@ tasks:
       - go build -o web/main.wasm ./cmd/browser
 
   start:
-    desc: Build and start server
+    desc: Build everything and start orchestrator
     silent: true
     deps:
       - build
     cmds:
-      - rm tmp/*.addr
-      - echo "Open http://{{.RELAY_HTTP_ADDR}}"
+      - rm -f tmp/*.addr
+      - echo "Open http://{{.RELAY_ADDR}}"
       - echo ""
-      - go run ./server
+      - go run ./cmd/orchestrator
 
   repl:
     desc: Start REPL

@@ -23,7 +23,7 @@ tasks:
     deps:
       - build
     cmds:
-      - rm tmp/*.addr
+      - rm -f tmp/*.addr
       - echo "Open http://{{.RELAY_HTTP_ADDR}}"
       - echo ""
       - go run ./server

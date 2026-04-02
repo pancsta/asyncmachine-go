@@ -493,8 +493,8 @@ func (mt *OtelMachTracer) TransitionFinals(tx *am.Transition) {
 	if slices.Contains(called, "BrowserConn") {
 		print()
 	}
-	isHealth := slices.Contains(called, "Healthcheck") ||
-		slices.Contains(called, "Heartbeat")
+	isHealth := slices.Contains(called, am.StateHealthcheck) ||
+		slices.Contains(called, am.StateHeartbeat)
 	if !mt.opts.IncludeHealth && isHealth {
 		return
 	}
@@ -893,7 +893,7 @@ func MachBindOtelEnv(mach am.Api) error {
 	mt := NewOtelMachTracer(mach, rootSpan, tracer, opts)
 
 	// flush and close
-	var dispose am.HandlerDispose = func(id string, _ context.Context) {
+	var dispose am.HandlerDispose = func(id string, ctx context.Context) {
 		tracerCooldown := 100 * time.Millisecond
 
 		mt.dispose()

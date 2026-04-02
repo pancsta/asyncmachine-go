@@ -2,18 +2,22 @@ module github.com/pancsta/asyncmachine-go
 
 go 1.25.0
 
+// FORK REPLACES
+
 // replace libp2p's prom with no-op to prevent a goroutine leak in load tests
 //replace github.com/prometheus/client_golang => github.com/pancsta/prom_client_golang v0.0.0-20250629100015-513d4c0bdd5e
+
+// https://github.com/open-telemetry/opentelemetry-go/pull/8120
+//replace go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp => github.com/pancsta/opentelemetry-go/exporters/otlp/otlptrace/otlptracehttp v0.0.0-20260331193851-f087fcb1fc48
+
+// DEV REPLACES
 
 //replace github.com/pancsta/cview => ../cview
 
 //replace github.com/cenkalti/rpc2 => ../rpc2
 
-replace go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp => github.com/pancsta/opentelemetry-go/exporters/otlp/otlptrace/otlptracehttp v0.0.0-20260331193851-f087fcb1fc48
-
 //replace go.opentelemetry.io => ../opentelemetry-go
 
-//replace github.com/AlexanderGrooff/mermaid-ascii => ../mermaid-ascii
 //replace github.com/AlexanderGrooff/mermaid-ascii => ../mermaid-ascii
 
 //replace github.com/gdamore/tcell/v2 => ../tcell
@@ -32,7 +36,6 @@ require (
 	github.com/dominikbraun/graph v0.23.0
 	github.com/failsafe-go/failsafe-go v0.6.8
 	github.com/fsnotify/fsnotify v1.7.1-0.20240403050945-7086bea086b7
-	github.com/gookit/goutil v0.7.4
 	github.com/hibiken/asynq v0.24.1
 	github.com/ic2hrmk/promtail v0.0.5
 	github.com/ipfs/go-log/v2 v2.6.0
