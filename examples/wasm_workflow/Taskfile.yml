@@ -12,12 +12,9 @@ tasks:
     cmd: go mod tidy
 
   build-orchestrator:
-    env:
-      GOOS: js
-      GOARCH: wasm
     cmds:
       - go mod tidy
-      - go build -o web/main.wasm ./cmd/orchestrator
+      - go build ./cmd/orchestrator
 
   build-browser:
     env:
@@ -37,12 +34,28 @@ tasks:
       - rm -f tmp/*.addr
       - echo "Open http://{{.RELAY_ADDR}}"
       - echo ""
-      - go run ./cmd/orchestrator
+      - ./orchestrator
 
   repl:
     desc: Start REPL
     dir: ../../
-    cmd: task arpc -- --dir examples/wasm_workflow/tmp
+    cmd: task arpc -- --watch --dir examples/wasm_workflow/tmp
+
+  traces:
+    desc: Start Jaeger at http://localhost:16686
+    dir: ../../deploy/web-metrics
+    silent: true
+    cmds:
+      - echo "Open http://localhost:16686"
+      - docker compose up jaeger
+
+  dbg:
+    desc: Start am-dbg
+    cmd: go tool am-dbg --dir tmp
+
+  diagram:
+    desc: Generate am-vis diagram (required a dbg export)
+    cmd: go tool am-vis --bird --render-detailed-pipes --render-pipes render-dump tmp/am-dbg-dump.gob.br
 
   pprof: go tool pprof -http=:8081 http://localhost:6060/debug/pprof/profile?seconds=10
 

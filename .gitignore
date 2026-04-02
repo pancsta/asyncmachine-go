@@ -101,3 +101,4 @@ tools/visualizer/testdata/*
 /examples/wasm_workflow/deps.md
 /examples/wasm_workflow/tmp/
 /am-vis.gv
+/examples/wasm_workflow/orchestrator

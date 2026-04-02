@@ -62,6 +62,18 @@ All the browser threads run the same Golang binary.
  291     └── worker.js
 ```
 
+## Start Demo
+
+```bash
+git clone https://github.com/pancsta/asyncmachine-go.git
+./scripts/dep-taskfile.sh
+go mod tidy
+cd examples/wasm_workflow
+task dbg #tty1
+task traces #tty2
+task start #tty3
+```
+
 ## Traces
 
 OpenTelemetry traces are generated automatically for each state-machine, with nonimportant ones being filtered out.
@@ -138,7 +150,7 @@ This diagram was generated with `am-vis` and contains minor errors (eg missing p
 debugger as the source of truth until fixed.
 
 ```bash
-am-vis --bird --render-detailed-pipes --render-pipes render-dump tmp/am-dbg-dump.gob.br
+task diagram
 ```
 
 ![Machine Diagram](https://pancsta.github.io/assets/asyncmachine-go/examples/wasm-workflow-am-vis.svg)
