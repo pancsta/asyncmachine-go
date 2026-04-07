@@ -24,6 +24,16 @@ var ss = states.MachTemplateStates
 type S = am.S
 
 func init() {
+	// load dotenv
+	// err := godotenv.Load("./examples/mach_template/example.env")
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// manual logging
+	// amhelp.SetEnvLogLevel(am.LogOps)
+	// os.Setenv(amhelp.EnvAmLogPrint, "2")
+
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 	amhelp.EnableDebugging(true)
@@ -47,9 +57,8 @@ func main() {
 	mach.Add1(ss.Channel, Pass(&A{
 		ReturnCh: ch,
 	}))
-	fmt.Printf("%v", <-ch)
+	fmt.Printf("%v\n", <-ch)
 
-	bazDone := make(chan struct{})
 	go func() {
 		// wait for 100 BazDone
 		done := mach.WhenTicks(ss.BazDone, 100, nil)
@@ -60,7 +69,6 @@ func main() {
 			}))
 		}
 		<-done
-		close(bazDone)
 	}()
 
 	// wait until Bar deactivates
@@ -71,6 +79,7 @@ func main() {
 	<-mach.When1(ss.Disposed, nil)
 	// soft dispose done
 	<-mach.WhenDisposed()
+	fmt.Printf("done")
 	// fully disposed
 }
 

@@ -2,9 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
-
-	"github.com/joho/godotenv"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -12,8 +11,9 @@ import (
 )
 
 func init() {
-	// load .env
-	_ = godotenv.Load()
+	// manual logging
+	// amhelp.SetEnvLogLevel(am.LogOps)
+	// os.Setenv(amhelp.EnvAmLogPrint, "2")
 
 	// am-dbg is required for debugging, go run it
 	// go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
@@ -34,6 +34,8 @@ func main() {
 	}, &am.Opts{LogLevel: am.LogOps, Id: "source"})
 	mach2 := am.New(ctx, am.Schema{
 		"Ready":       {},
+		"Foo":         {},
+		"Bar":         {},
 		"Custom":      {},
 		"Healthcheck": {Multi: true},
 	}, &am.Opts{LogLevel: am.LogOps, Id: "destination"})
@@ -50,20 +52,26 @@ func main() {
 		panic(err)
 	}
 
-	// pipe custom states (anon handlers)
-	pipeCustom := &struct {
-		CustomState am.HandlerFinal
-		CustomEnd   am.HandlerFinal
-	}{
-		CustomState: ampipe.Add(mach1, mach2, "Custom", ""),
-		CustomEnd:   ampipe.Remove(mach1, mach2, "Custom", ""),
-	}
-
-	// bind and handle dispose
-	if err := mach1.BindHandlers(pipeCustom); err != nil {
+	// bind single
+	err = ampipe.Bind(mach1, mach2, "Custom", "", "")
+	if err != nil {
 		panic(err)
 	}
 
-	// debug
-	time.Sleep(time.Second)
+	// bind many
+	err = ampipe.BindMany(mach1, mach2, am.S{"Foo", "Bar"}, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	mach1.Add1("Ready", nil)
+	mach1.Add(am.S{"Foo", "Bar"}, nil)
+
+	// pipes are async, wait needed
+	err = amhelp.WaitForAll(ctx, time.Second, mach2.When(am.S{"Foo", "Bar", "Ready"}, nil))
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("done")
 }

@@ -9,8 +9,9 @@ import (
 	"time"
 )
 
-func TestRawStrings(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func TestFanOutIn(t *testing.T) {
+	// 15 tasks, 3 concurrent, 1s each = ~5s plus overhead
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "go", "run", ".")

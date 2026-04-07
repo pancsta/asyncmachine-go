@@ -153,7 +153,7 @@ type Machine struct {
 	poolMx          sync.Mutex
 	pools           map[string]*atomic.Int32
 	poolLimits      map[string]int32
-	poolGlobal      *atomic.Int32
+	poolGlobal      atomic.Int32
 	poolGlobalLimit int32
 }
 
@@ -225,7 +225,9 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 		handlerTimer: time.NewTimer(24 * time.Hour),
 		whenDisposed: make(chan struct{}),
 		// queue ticks start from 1 to align with the [Result] enum
-		queueTick: 1,
+		queueTick:  1,
+		pools:      map[string]*atomic.Int32{},
+		poolLimits: map[string]int32{},
 	}
 
 	m.subs = NewSubscriptionManager(m, m.clock, m.is, m.not, m.log)
@@ -3541,7 +3543,7 @@ func (m *Machine) PoolFork(ctx context.Context, e *Event, fn func()) bool {
 	}
 
 	// global limit
-	if m.poolGlobal.Load()+1 >= m.poolGlobalLimit {
+	if m.poolGlobal.Load()+1 >= m.poolGlobalLimit && m.poolGlobalLimit > 0 {
 		// skip
 		return false
 	}
