@@ -53,9 +53,45 @@ tasks:
     desc: Start am-dbg
     cmd: go tool am-dbg --dir tmp
 
+  graph:
+    desc: Generate a network graph as markdown (requires am-dbg export)
+    cmd: go tool am-vis inspect-dump tmp/am-dbg-dump.gob.br
+
   diagram:
-    desc: Generate am-vis diagram (required a dbg export)
-    cmd: go tool am-vis --bird --render-detailed-pipes --render-pipes render-dump tmp/am-dbg-dump.gob.br
+    desc: Generate am-vis diagram (requires am-dbg export)
+    cmd: go tool am-vis --bird 
+      --render-pipes
+      --render-detailed-pipes=false
+      render-dump tmp/am-dbg-dump.gob.br
+
+  diagram-orchestrator:
+    desc: Generate am-vis diagram for Orchestrator's pipes (requires am-dbg export)
+    cmd: go tool am-vis --bird 
+      --render-pipes
+      --output-filename am-vis-orchestrator
+      --render-distance 1
+      --render-relations=false
+      render-dump tmp/am-dbg-dump.gob.br
+      mach://orchestrator
+
+  diagram-dispatcher:
+    desc: Generate am-vis diagram for Dispatchers's pipes (requires am-dbg export)
+    cmd: go tool am-vis --bird 
+      --render-pipes
+      --output-filename am-vis-dispatcher
+      --render-distance 1
+      --render-relations=false
+      render-dump tmp/am-dbg-dump.gob.br
+      mach://browser2
+
+  diagram-map:
+    desc: Generate am-vis map diagram (requires am-dbg export)
+    cmd: go tool am-vis --map 
+      --render-pipes
+      --output-filename am-vis-map
+      --render-start=false
+      --render-ready=false
+      render-dump tmp/am-dbg-dump.gob.br
 
   pprof: go tool pprof -http=:8081 http://localhost:6060/debug/pprof/profile?seconds=10
 

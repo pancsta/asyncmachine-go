@@ -245,7 +245,7 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 	}
 
 	// fix readme suffix
-	doc.Find("#monorepo").NextFiltered("ul").Next().NextAll().Remove().End().Remove()
+	// doc.Find("#monorepo").NextFiltered("ul").Next().NextAll().Remove().End().Remove()
 
 	// fix H3 > A IDs (examples)
 	doc.Find("h3 > a").Each(func(i int, s *goquery.Selection) {

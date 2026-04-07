@@ -655,7 +655,9 @@ func (s *Server) log(msg string, args ...any) {
 func (s *Server) bindRpcHandlers() {
 	// new RPC instance, release prev resources
 	s.rpcServer = rpc2.NewServer()
-	if os.Getenv(EnvAmRpcLogServer) != "" {
+	if os.Getenv(EnvAmRpcLogServer) != "" &&
+		os.Getenv(am.EnvAmTestRunner) == "" {
+
 		rpc2.DebugLog = true
 	}
 
@@ -926,10 +928,8 @@ func (s *Server) RemoteHandshake(
 func (s *Server) RemoteAdd(
 	_ *rpc2.Client, req *MsgCliMutation, resp *MsgSrvMutation,
 ) error {
-	// TODO DEBUG
-	if s.Source.Id() == "browser-agentui-cook" {
-		print()
-	}
+	//
+
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
 	}

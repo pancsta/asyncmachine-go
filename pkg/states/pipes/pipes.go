@@ -372,7 +372,8 @@ func BindMany(
 }
 
 // Sync synchronizes states from source to target and returns the number of
-// synced states. Useful when re-connecting a pipe source.
+// synced states. Useful when re-connecting a pipe source. When mixed with
+// piping, Sync should be called inside rpc.Client.Eval().
 func Sync(
 	source, target am.Api, states, targetStates am.S,
 ) int {

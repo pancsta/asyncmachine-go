@@ -56,7 +56,7 @@ func init() {
 	EnvBrowser4ReplAddr = os.Getenv("BROWSER_4_REPL_ADDR")
 	v, _ := strconv.Atoi(os.Getenv("HASH_ITERATIONS"))
 	EnvHashIterations = v
-	EnvExitOnCompleted = os.Getenv("EXIT_ON_COMPLETED") != ""
+	EnvExitOnCompleted = os.Getenv("EXIT_ON_COMPLETED") == "1"
 	v, _ = strconv.Atoi(os.Getenv("SUCCESS_RATE"))
 	EnvSuccessRate = v
 }

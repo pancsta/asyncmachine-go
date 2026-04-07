@@ -15,6 +15,7 @@ import (
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 )
@@ -90,26 +91,33 @@ func newDispatcherMach(
 		client.Mach.WhenQueue(
 			client.Start(nil))
 
-		// pipe everything into the Dispatcher (directly)
-		err = ampipe.BindMany(client.NetMach, mach, ssW.Names(),
-			am.StatesPrefix(am.Capitalize(leafId), ssW.Names()))
-		if err != nil {
-			return nil, nil, nil, err
-		}
+		// when connected, pipe everything into the Dispatcher (directly)
+		func() {
+			<-client.Mach.When1(ssrpc.ClientStates.Ready, ctx)
+			target := am.StatesPrefix(am.Capitalize(leafId), ssW.Names())
+			err = ampipe.BindMany(client.NetMach, mach, ssW.Names(), target)
+			if err != nil {
+				mach.AddErr(err, nil)
+				return
+			}
+			ampipe.Sync(client.NetMach, mach, ssW.Names(), target)
 
-		// pipe out Start, Work, and Retry to leaf workers
-		pipeSrc := am.S{ssD.Start}
-		pipeDest := am.S{ssD.Start, ssW.Working, ssW.Retrying}
-		switch leafId {
-		case "browser3":
-			pipeSrc = append(pipeSrc, ssD.Browser3Work, ssD.Browser3Retry)
-		case "browser4":
-			pipeSrc = append(pipeSrc, ssD.Browser4Work, ssD.Browser4Retry)
-		}
-		err = ampipe.BindMany(mach, client.NetMach, pipeSrc, pipeDest)
-		if err != nil {
-			return nil, nil, nil, err
-		}
+			// pipe out Start, Work, and Retry to leaf workers
+			pipeSrc := am.S{ssD.Start}
+			pipeDest := am.S{ssD.Start, ssW.Working, ssW.Retrying}
+			switch leafId {
+			case "browser3":
+				pipeSrc = append(pipeSrc, ssD.Browser3Work, ssD.Browser3Retry)
+			case "browser4":
+				pipeSrc = append(pipeSrc, ssD.Browser4Work, ssD.Browser4Retry)
+			}
+			err = ampipe.BindMany(mach, client.NetMach, pipeSrc, pipeDest)
+			if err != nil {
+				mach.AddErr(err, nil)
+				return
+			}
+			ampipe.Sync(mach, client.NetMach, pipeSrc, pipeDest)
+		}()
 
 		clients = append(clients, client)
 	}

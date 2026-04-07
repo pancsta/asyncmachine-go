@@ -16,7 +16,7 @@ import (
 //
 //nolint:lll
 type Args struct {
-	StatesFile *SFParams      `arg:"subcommand:states-file" help:"Generate state schema files"`
+	StatesFile *StatesParams  `arg:"subcommand:states-file" help:"Generate state schema files"`
 	Grafana    *GrafanaParams `arg:"subcommand:grafana" help:"Generate Grafana dashboards"`
 	Version    bool           `arg:"-v,--version" help:"Print version and exit"`
 }
@@ -68,10 +68,10 @@ type GrafanaParams struct {
 // TODO validate param
 // var inherits = []string{"basic", "connected", "rpc/worker", "node/worker"}
 
-// SFParams are params for the states-file subcommand.
+// StatesParams are params for the states-file subcommand.
 //
 //nolint:lll
-type SFParams struct {
+type StatesParams struct {
 	// Version - print version
 	Version bool
 	// States - State names to generate. Eg: State1,State2

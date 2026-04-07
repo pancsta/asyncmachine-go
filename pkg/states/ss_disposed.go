@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 // DisposedStatesDef contains all the states of the Disposed state machine.

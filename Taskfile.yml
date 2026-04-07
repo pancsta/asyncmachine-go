@@ -405,7 +405,7 @@ tasks:
       - task: format
       - task: check-fmt
       # TODO better check, exit 1
-      # - '! grep -rn --include="*.go" "TODO DEBUG" .'
+      - '! grep -rn --include="*.go" "TODO DEBUG" .'
 
   lint-ci:
     cmds:
@@ -417,8 +417,13 @@ tasks:
       - $(go env GOPATH)/bin/golangci-lint run --fix --timeout 15m
 
   lint-md:
-    cmds:
-      - mdl -g -c config/mdlrc .
+    cmd: find . -type f -path '**/*.md'
+          -not -path '*am-vis.md'
+          -not -path '*deps.md'
+          -not -path './\.*'
+          -not -path './tmp*'
+          -not -path './dist*' |
+            xargs mdl -g -c config/mdlrc
 
   check-fmt:
     silent: false

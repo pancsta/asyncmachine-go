@@ -1,3 +1,5 @@
+// Package main is an educational example of a state machine operating on string-based states.
+// See /examples/basic for a modern example with typed states and schema.
 package main
 
 import (

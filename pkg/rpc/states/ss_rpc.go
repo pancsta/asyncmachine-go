@@ -2,7 +2,7 @@ package states
 
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/pkg/states"
+	ss "github.com/pancsta/asyncmachine-go/pkg/states"
 	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
@@ -28,7 +28,7 @@ type SharedStatesDef struct {
 	Handshaking   string
 
 	// inherit from BasicStatesDef
-	*states.BasicStatesDef
+	*ss.BasicStatesDef
 	// inherit from rpc/StateSourceStatesDef (for REPL)
 	*StateSourceStatesDef
 }
@@ -43,7 +43,7 @@ type SharedGroupsDef struct {
 // SharedSchema represents all relations and properties of StateSourceStates.
 var SharedSchema = SchemaMerge(
 	// inherit from BasicStruct
-	states.BasicSchema,
+	ss.BasicSchema,
 	// inherit from rpc/WorkerSchema (for REPL)
 	StateSourceSchema,
 	am.Schema{
@@ -275,13 +275,13 @@ type ClientStatesDef struct {
 	// inherit from SharedStatesDef
 	*SharedStatesDef
 	// inherit from ConnectedStatesDef
-	*states.ConnectedStatesDef
+	*ss.ConnectedStatesDef
 }
 
 // ClientGroupsDef contains all the state groups of the Client state machine.
 type ClientGroupsDef struct {
 	*SharedGroupsDef
-	*states.ConnectedGroupsDef
+	*ss.ConnectedGroupsDef
 	// TODO
 }
 
@@ -290,7 +290,7 @@ var ClientSchema = SchemaMerge(
 	// inherit from SharedStruct
 	SharedSchema,
 	// inherit from ConnectedStruct
-	states.ConnectedSchema,
+	ss.ConnectedSchema,
 
 	am.Schema{
 
@@ -311,7 +311,7 @@ var ClientSchema = SchemaMerge(
 
 		// inject Client states into Connected
 		ssC.Connected: StateAdd(
-			states.ConnectedSchema[states.ConnectedStates.Connected],
+			ss.ConnectedSchema[ss.ConnectedStates.Connected],
 			am.State{
 				Remove: S{ssC.RetryingConn},
 				Add:    S{ssC.Handshaking},
@@ -359,7 +359,7 @@ var ClientSchema = SchemaMerge(
 
 var (
 	ssC = am.NewStates(ClientStatesDef{})
-	sgC = am.NewStateGroups(ClientGroupsDef{}, states.ConnectedGroups,
+	sgC = am.NewStateGroups(ClientGroupsDef{}, ss.ConnectedGroups,
 		SharedGroups)
 
 	// ClientStates contains all the states for the Client machine.
@@ -393,7 +393,7 @@ type MuxStatesDef struct {
 	NewServerErr string
 
 	// inherit from BasicStatesDef
-	*states.BasicStatesDef
+	*ss.BasicStatesDef
 }
 
 // MuxGroupsDef contains all the state groups of the Mux state machine.
@@ -403,7 +403,7 @@ type MuxGroupsDef struct {
 
 // MuxSchema represents all relations and properties of MuxStatesDef.
 var MuxSchema = SchemaMerge(
-	states.BasicSchema,
+	ss.BasicSchema,
 	am.Schema{
 		ssD.Exception: {
 			Multi:  true,
@@ -416,9 +416,9 @@ var MuxSchema = SchemaMerge(
 
 		ssD.ClientConnected: {
 			Multi:   true,
-			Require: states.S{ssD.Start},
+			Require: S{ssD.Start},
 		},
-		ssD.HasClients:   {Require: states.S{ssD.Start}},
+		ssD.HasClients:   {Require: S{ssD.Start}},
 		ssD.NewServerErr: {},
 	})
 
