@@ -688,3 +688,11 @@ func Capitalize(s string) string {
 	// Uppercase the first character, then append the rest of the original string
 	return strings.ToUpper(string(r)) + s[size:]
 }
+
+// OptArgs will read the first A from an optional list.
+func OptArgs(args []A) A {
+	if len(args) > 0 {
+		return args[0]
+	}
+	return nil
+}

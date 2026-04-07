@@ -460,9 +460,11 @@ func (h *ExceptionHandler) ExceptionEnter(e *am.Event) bool {
 // ///// ///// /////
 
 type semLogger struct {
-	mach  *NetworkMachine
-	steps atomic.Bool
-	graph atomic.Bool
+	mach    *NetworkMachine
+	steps   atomic.Bool
+	graph   atomic.Bool
+	pipes   []am.Pipe
+	pipesMx sync.Mutex
 }
 
 // implement [SemLogger]
@@ -482,11 +484,11 @@ func (s *semLogger) ArgsMapper() am.LogArgsMapperFn {
 }
 
 func (s *semLogger) EnableId(val bool) {
-	// TODO
+	s.mach.logId.Store(val)
 }
 
 func (s *semLogger) IsId() bool {
-	return false
+	return s.mach.logId.Load()
 }
 
 func (s *semLogger) SetLogger(fn am.LoggerFn) {
@@ -532,26 +534,82 @@ func (s *semLogger) SetSimple(
 	s.mach.logLevel.Store(&level)
 }
 
-func (s *semLogger) AddPipeOut(addMut bool, sourceState, targetMach string) {
+func (s *semLogger) AddPipeOut(isAdd bool, sourceState, targetMach string) {
 	kind := "remove"
-	if addMut {
+	if isAdd {
 		kind = "add"
 	}
 	s.mach.log(am.LogOps, "[pipe-out:%s] %s to %s", kind, sourceState,
 		targetMach)
+
+	// store
+	s.pipesMx.Lock()
+	defer s.pipesMx.Unlock()
+	s.pipes = append(s.pipes, am.Pipe{
+		IsAdd:       isAdd,
+		SourceState: sourceState,
+		TargetMach:  targetMach,
+	})
 }
 
-func (s *semLogger) AddPipeIn(addMut bool, targetState, sourceMach string) {
+func (s *semLogger) AddPipeIn(isAdd bool, targetState, sourceMach string) {
 	kind := "remove"
-	if addMut {
+	if isAdd {
 		kind = "add"
 	}
 	s.mach.log(am.LogOps, "[pipe-in:%s] %s from %s", kind, targetState,
 		sourceMach)
+
+	// store
+	s.pipesMx.Lock()
+	defer s.pipesMx.Unlock()
+	s.pipes = append(s.pipes, am.Pipe{
+		IsAdd:       isAdd,
+		TargetState: targetState,
+		SourceMach:  sourceMach,
+	})
 }
 
 func (s *semLogger) RemovePipes(machId string) {
 	s.mach.log(am.LogOps, "[pipe:gc] %s", machId)
+
+	s.pipesMx.Lock()
+	defer s.pipesMx.Unlock()
+	s.pipes = slices.DeleteFunc(s.pipes, func(p am.Pipe) bool {
+		return p.SourceMach == machId || p.TargetMach == machId
+	})
+}
+
+func (s *semLogger) Pipes() []*am.LogEntry {
+	s.pipesMx.Lock()
+	defer s.pipesMx.Unlock()
+	if len(s.pipes) == 0 {
+		return nil
+	}
+
+	ret := make([]*am.LogEntry, len(s.pipes))
+	for i, p := range s.pipes {
+		kind := "remove"
+		if p.IsAdd {
+			kind = "add"
+		}
+
+		// outbound
+		var text string
+		if p.SourceState != "" {
+			text = fmt.Sprintf("[pipe-out:%s] %s to %s", kind, p.SourceState,
+				p.TargetMach)
+		} else {
+			text = fmt.Sprintf("[pipe-in:%s] %s from %s", kind, p.TargetState,
+				p.SourceMach)
+		}
+		ret[i] = &am.LogEntry{
+			Level: am.LogOps,
+			Text:  text,
+		}
+	}
+
+	return ret
 }
 
 func (s *semLogger) IsSteps() bool {
