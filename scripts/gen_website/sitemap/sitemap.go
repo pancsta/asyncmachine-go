@@ -9,10 +9,12 @@ type Entry struct {
 
 var MainMenu = []Entry{
 	{Url: "", Path: "README.md"},
+	{Url: "machine", Path: "pkg/machine/README.md", Bold: true},
+	{"", "", false, false},
 	{Url: "examples", Path: "examples/README.md"},
 	{Url: "manual", Path: "docs/manual.md"},
+	{Url: "cookbook", Path: "docs/cookbook.md", SkipMenu: false},
 	{"", "", false, false},
-	{Url: "machine", Path: "pkg/machine/README.md", Bold: true},
 	{Url: "states", Path: "pkg/states/README.md"},
 	{Url: "helpers", Path: "pkg/helpers/README.md"},
 	{Url: "telemetry", Path: "pkg/telemetry/README.md"},
@@ -23,10 +25,10 @@ var MainMenu = []Entry{
 	{Url: "node", Path: "pkg/node/README.md"},
 	{Url: "pubsub", Path: "pkg/pubsub/README.md"},
 	{"", "", false, false},
-	{Url: "am-gen", Path: "tools/cmd/am-gen/README.md"},
 	{Url: "am-dbg", Path: "tools/cmd/am-dbg/README.md"},
 	{Url: "arpc", Path: "tools/cmd/arpc/README.md"},
 	{Url: "am-vis", Path: "tools/cmd/am-vis/README.md"},
+	{Url: "am-gen", Path: "tools/cmd/am-gen/README.md"},
 	{Url: "am-relay", Path: "tools/cmd/am-relay/README.md"},
 
 	// rest (non-menu)
@@ -54,7 +56,6 @@ var MainMenu = []Entry{
 	// docs
 
 	{Url: "arpc-howto", Path: "pkg/rpc/HOWTO.md", SkipMenu: true},
-	{Url: "cookbook", Path: "docs/cookbook.md", SkipMenu: true},
 	{Url: "docs-wasm", Path: "docs/wasm.md", SkipMenu: true},
 	{Url: "docs-schema", Path: "docs/schema.md", SkipMenu: true},
 	{Url: "diagrams", Path: "docs/diagrams.md", SkipMenu: true},

@@ -42,7 +42,7 @@ type SchemaGenerator struct {
 }
 
 // TODO return err
-func (g *SchemaGenerator) parseParams(p cli.SFParams) {
+func (g *SchemaGenerator) parseParams(p cli.StatesParams) {
 	if p.Inherit != "" {
 		for _, inherit := range strings.Split(p.Inherit, ",") {
 			// TODO enum
@@ -360,7 +360,7 @@ func (g *SchemaGenerator) Output() string {
 }
 
 func NewSchemaGenerator(
-	ctx context.Context, param cli.SFParams,
+	ctx context.Context, param cli.StatesParams,
 ) (*SchemaGenerator, error) {
 	g := &SchemaGenerator{}
 	mach, err := am.NewCommon(ctx, "gen", states.GeneratorSchema, ssG.Names(),

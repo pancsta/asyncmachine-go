@@ -34,7 +34,7 @@ type Client struct {
 	*ExceptionHandler
 
 	Mach *am.Machine
-	Name string
+	Id   string
 
 	// Addr is the address the Client will connect to.
 	Addr string
@@ -140,14 +140,14 @@ var (
 // takes a consumer, which is a state machine with a ServerPayload state. See
 // states.ConsumerStates.
 func NewClient(
-	ctx context.Context, addr string, name string, netSrcSchema am.Schema,
+	ctx context.Context, addr string, id string, netSrcSchema am.Schema,
 	opts *ClientOpts,
 ) (*Client, error) {
 	//
 
 	// defaults
-	if name == "" {
-		name = "rpc"
+	if id == "" {
+		id = utils.RandId(5)
 	}
 	if opts == nil {
 		opts = &ClientOpts{}
@@ -160,7 +160,7 @@ func NewClient(
 	}
 
 	c := &Client{
-		Name:               name,
+		Id:                 id,
 		ExceptionHandler:   &ExceptionHandler{},
 		LogEnabled:         os.Getenv(EnvAmRpcLogClient) != "",
 		Addr:               addr,
@@ -192,7 +192,7 @@ func NewClient(
 	}
 
 	// state machine
-	mach, err := am.NewCommon(ctx, GetClientId(name), states.ClientSchema,
+	mach, err := am.NewCommon(ctx, GetClientId(id), states.ClientSchema,
 		ssC.Names(), c, opts.Parent, &am.Opts{Tags: []string{
 			TagRpcClient,
 			"addr:" + addr,
@@ -244,7 +244,7 @@ func (c *Client) StartState(e *am.Event) {
 	nmConn := &clientNetMachConn{rpc: c}
 	// tmp state names
 	stateNames := slices.Collect(maps.Keys(c.schema))
-	id := PrefixNetMach + utils.RandId(5)
+	id := PrefixNetMach + c.Id
 	// RPC parent or actual parent
 	var parent am.Api = c.Mach
 	if os.Getenv(EnvAmRpcDbg) == "" && c.Opts.Parent != nil {
@@ -522,7 +522,6 @@ func (c *Client) HandshakeDoneState(e *am.Event) {
 
 	// finalize the worker init
 	netMach := c.NetMach
-	netMach.id = PrefixNetMach + c.Name
 	c.clockSet(args.MachTime, args.QueueTick, args.MachTick)
 
 	// netmach env debug on 1st call

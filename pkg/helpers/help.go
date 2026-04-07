@@ -595,7 +595,7 @@ func WaitForAll(
 
 // WaitForErrAll is like WaitForAll, but also waits on WhenErr of a passed
 // machine. For state machines with error handling (like retry) it's recommended
-// to measure machine time of [am.StateException] instead.
+// to use [WaitForAll] and measure ticks of [am.StateException] instead.
 func WaitForErrAll(
 	ctx context.Context, timeout time.Duration, mach am.Api,
 	chans ...<-chan struct{},
@@ -634,6 +634,8 @@ func WaitForErrAll(
 
 	return nil
 }
+
+// WaitForErrStateAll
 
 // WaitForAny waits for any of the channels to close, or until the context is
 // done, or until the timeout is reached. Returns nil if any channel is
@@ -690,7 +692,7 @@ func WaitForAny(
 
 // WaitForErrAny is like WaitForAny, but also waits on WhenErr of a passed
 // machine. For state machines with error handling (like retry) it's recommended
-// to measure machine time of [am.StateException] instead.
+// to use [WaitForAny] and measure ticks of [am.StateException] instead.
 func WaitForErrAny(
 	ctx context.Context, timeout time.Duration, mach *am.Machine,
 	chans ...<-chan struct{},
@@ -743,6 +745,8 @@ func WaitForErrAny(
 		return nil
 	}
 }
+
+// TODO WaitForErrStateAny
 
 // Activations return the number of state activations from the number of ticks
 // passed.
@@ -1096,6 +1100,7 @@ func (g *MachGroup) Is1(state string) bool {
 	return true
 }
 
+// Pool creates a blocking pool. Don't use directly in the handler body.
 func Pool(limit int) *errgroup.Group {
 	g := &errgroup.Group{}
 	g.SetLimit(limit)

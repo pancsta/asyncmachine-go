@@ -6,8 +6,10 @@ package graph
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/dominikbraun/graph"
@@ -62,6 +64,7 @@ type StateRelation struct {
 	RelType am.Relation
 }
 
+// TODO use am.Pipe
 type MachPipeTo struct {
 	FromState string
 	ToState   string
@@ -79,10 +82,6 @@ func hash(c *Vertex) string {
 		return c.MachId + ":" + c.StateName
 	}
 	return c.MachId
-}
-
-type Exportable struct {
-	MsgTxs []*dbg.DbgMsgTx
 }
 
 // Client represents a single state machine withing the network graph.
@@ -106,8 +105,6 @@ type Client struct {
 type Graph struct {
 	Server  *am.Machine
 	Clients map[string]*Client
-
-	// TODO export G and Map
 
 	// G is a directed graph of machines and states with metadata.
 	G graph.Graph[string, *Vertex]
@@ -247,6 +244,7 @@ func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 							when := g.Server.WhenArgs(ss.InitClient, am.A{"id": a[1]}, nil)
 							go func() {
 								<-when
+								g.Server.Log("Resuming RPC for %s", id)
 
 								if err := g.G.AddEdge(a[1], c.Id, data); err != nil {
 									g.Server.AddErr(fmt.Errorf("Graph.ParseMsg: %w", err), nil)
@@ -284,7 +282,10 @@ func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 	// 	c.errors = append([]int{idx}, c.errors...)
 	// }
 
-	_ = g.parseMsgLog(c, msgTx)
+	err := g.parseMsgLog(c, msgTx)
+	if err != nil {
+		g.Server.AddErr(fmt.Errorf("Graph.parseMsgLog: %w", err), nil)
+	}
 	// TODO dedicated error state, enable once stable
 	// if err != nil {
 	// g.Mach.AddErr(fmt.Errorf("Graph.parseMsgLog: %w", err), nil)
@@ -333,6 +334,7 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 				am.A{"id": c.MsgSchema.Parent}, nil)
 			go func() {
 				<-when
+				g.Server.Log("resuming for %s", c.MsgSchema.Parent)
 				err = g.G.AddEdge(c.Id, c.MsgSchema.Parent, data)
 				if err == nil {
 					_ = g.Map.AddEdge(c.Id, c.MsgSchema.Parent)
@@ -373,6 +375,13 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 		}
 		_ = g.Map.AddEdge(id, id+":"+name)
 	}
+
+	// DEBUG
+	// if c.Id == "rc-srv-browser2" {
+	// 	ver, _ := g.G.Vertex("rc-srv-browser2")
+	// 	ver = ver
+	// 	print()
+	// }
 
 	type relation struct {
 		states  am.S
@@ -598,50 +607,53 @@ func (g *Graph) parseMsgReader(
 			sourceMachId = msg[1]
 			targetMachId = c.Id
 		}
+
+		// get edge
 		link, linkErr := g.G.Edge(sourceMachId, targetMachId)
-
-		// edge exists - update
-		if linkErr == nil {
-			data := link.Properties.Data.(*EdgeData)
-			found := false
-
-			// update the missing state from the other side of the pipe
-			for _, pipe := range data.MachPipesTo {
-				if !isPipeOut && pipe.MutType == mut && pipe.ToState == "" {
-
-					pipe.ToState = state
-					found = true
-					break
-				}
-				if isPipeOut && pipe.MutType == mut && pipe.FromState == "" {
-
-					pipe.FromState = state
-					found = true
-					break
-				}
+		var data *EdgeData
+		if linkErr != nil {
+			data = &EdgeData{}
+			err := g.G.AddEdge(sourceMachId, targetMachId, graph.EdgeData(data))
+			if err != nil {
+				return err
 			}
-
-			// add a new pipe to an existing edge TODO extract
-			if !found {
-				var pipe *MachPipeTo
-				if isPipeOut {
-					pipe = &MachPipeTo{
-						FromState: state,
-						MutType:   mut,
-					}
-				} else {
-					pipe = &MachPipeTo{
-						ToState: state,
-						MutType: mut,
-					}
-				}
-
-				data.MachPipesTo = append(data.MachPipesTo, pipe)
-			}
-
+			_ = g.Map.AddEdge(sourceMachId, targetMachId)
 		} else {
+			data = link.Properties.Data.(*EdgeData)
+		}
 
-			// create a new edge with a single pipe
+		// update the missing state from the other side of the pipe
+		found := false
+		for _, pipe := range data.MachPipesTo {
+			// IN
+			if !isPipeOut && pipe.MutType == mut && pipe.ToState == "" {
+
+				pipe.ToState = state
+				found = true
+
+				// DUP
+			} else if !isPipeOut && pipe.MutType == mut && pipe.ToState == state {
+				found = true
+			}
+
+			// OUT
+			if isPipeOut && pipe.MutType == mut && pipe.FromState == "" {
+
+				pipe.FromState = state
+				found = true
+
+				// DUP
+			} else if isPipeOut && pipe.MutType == mut && pipe.FromState == state {
+				found = true
+			}
+
+			if found {
+				break
+			}
+		}
+
+		// add a new pipe to an existing edge
+		if !found {
 			pipe := &MachPipeTo{
 				ToState: state,
 				MutType: mut,
@@ -649,14 +661,11 @@ func (g *Graph) parseMsgReader(
 			if isPipeOut {
 				pipe = &MachPipeTo{
 					FromState: state,
+					MutType:   mut,
 				}
 			}
-			data := &EdgeData{MachPipesTo: []*MachPipeTo{pipe}}
-			err := g.G.AddEdge(sourceMachId, targetMachId, graph.EdgeData(data))
-			if err != nil {
-				return err
-			}
-			_ = g.Map.AddEdge(sourceMachId, targetMachId)
+
+			data.MachPipesTo = append(data.MachPipesTo, pipe)
 		}
 
 		// REMOVE PIPE

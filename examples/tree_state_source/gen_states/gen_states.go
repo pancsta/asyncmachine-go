@@ -41,8 +41,8 @@ const (
 func main() {
 	ctx := context.Background()
 
-	// TODO am.Schema to cli.SFParams converter
-	params := cli.SFParams{
+	// TODO am.Schema to cli.StatesParams converter
+	params := cli.StatesParams{
 		Name:    "Flights",
 		Inherit: "rpc/worker,basic",
 	}

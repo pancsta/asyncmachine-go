@@ -25,7 +25,7 @@ func TestAll(t *testing.T) {
 	//				--groups Group1,Group2 \
 	//				--name MyMach
 
-	params := cli.SFParams{
+	params := cli.StatesParams{
 		Version: false,
 		States:  "State1,State2:multi",
 		Inherit: "basic,connected,node/worker,rpc/statesrc",
@@ -120,7 +120,7 @@ func TestBasicConnected(t *testing.T) {
 	//				--groups Group1,Group2 \
 	//				--name MyMach
 
-	params := cli.SFParams{
+	params := cli.StatesParams{
 		Version: false,
 		States:  "State1,State2:multi",
 		Inherit: "basic,connected",
@@ -207,7 +207,7 @@ func TestMinimum(t *testing.T) {
 	// --states State1,State2
 	//				--name MyMach
 
-	params := cli.SFParams{
+	params := cli.StatesParams{
 		Version: false,
 		States:  "State1,State2",
 		Name:    "MyMach",
@@ -274,7 +274,7 @@ func TestRelations(t *testing.T) {
 	// --states State1:Require(State2,State3),State2:Add(State1),State3
 	//				--name MyMach
 
-	params := cli.SFParams{
+	params := cli.StatesParams{
 		Version: false,
 		States:  "State1:auto:Require(State2;State3),State2:Add(State3),State3",
 		Name:    "MyMach",
@@ -348,7 +348,7 @@ func TestGroups(t *testing.T) {
 	// --states State1,State2
 	//				--name MyMach
 
-	params := cli.SFParams{
+	params := cli.StatesParams{
 		Version: false,
 		States:  "State1,State2",
 		Groups:  "Group1,Group2",
@@ -421,7 +421,7 @@ func TestGroupsStates(t *testing.T) {
 	// --states State1,State2
 	//				--name MyMach
 
-	params := cli.SFParams{
+	params := cli.StatesParams{
 		Version: false,
 		States:  "State1:remove(_Group1),State2",
 		Groups:  "Group1(State1;State2),Group2",

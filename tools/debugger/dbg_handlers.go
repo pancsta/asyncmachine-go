@@ -535,6 +535,12 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 		} else {
 			d.Mach.Log("client %s already exists, overriding", msg.ID)
+			// TODO remove old pipes?
+			// for _, c2 := range d.Clients {
+			//   entries := c2.MsgTxsParsed[len(c2.MsgTxsParsed)-1].ReaderEntries
+			// 	for _, entry := range entries {
+			//    // ...
+			// }
 		}
 	}
 

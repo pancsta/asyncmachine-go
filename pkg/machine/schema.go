@@ -138,6 +138,9 @@ func initNilEmbeds(v reflect.Value) {
 }
 
 func copyFields(src, dst interface{}) {
+	if src == nil {
+		return
+	}
 	srcVal := reflect.ValueOf(src)
 	dstVal := reflect.ValueOf(dst)
 

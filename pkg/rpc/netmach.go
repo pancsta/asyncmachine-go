@@ -355,10 +355,6 @@ func (m *NetworkMachine) EvAdd(
 	if m.conn == nil {
 		return am.Canceled
 	}
-	// TODO DEBUG
-	if m.Id() == "rnm-server-agentui-cook-0" {
-		print()
-	}
 
 	m.MustParseStates(states)
 

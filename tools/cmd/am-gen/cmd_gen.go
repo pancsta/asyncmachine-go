@@ -67,7 +67,7 @@ func genGrafana(ctx context.Context, params *cli.GrafanaParams) error {
 	return nil
 }
 
-func genStatesFile(ctx context.Context, params *cli.SFParams) error {
+func genStatesFile(ctx context.Context, params *cli.StatesParams) error {
 	name := fmt.Sprintf("ss_%s.go", camelToSnake(params.Name))
 
 	if !fileExists(name) || params.Force {

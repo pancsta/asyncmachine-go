@@ -1,10 +1,4 @@
-// Package global should be imported into the package's global scope with:
-//
-//	import _ "github.com/pancsta/asyncmachine-go/pkg/states/global"
-//
-// This removes the need for manual updates, with the cost of an implicit
-// import.
-package global
+package states
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
@@ -29,3 +23,9 @@ var SchemaMerge = am.SchemaMerge
 
 // Exception is a type alias for the exception state.
 var Exception = am.StateException
+
+// Start is a type alias for the Start state.
+var Start = am.StateStart
+
+// Ready is a type alias for the Ready state.
+var Ready = am.StateReady

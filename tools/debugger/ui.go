@@ -625,6 +625,7 @@ func (d *Debugger) hUpdateHelpDialog() {
 	d.helpDialogRight.SetDynamicColors(true)
 	d.helpDialogRight.SetPadding(1, 1, 1, 1)
 
+	// TODO link[#FF5FAF]  to color 205
 	d.helpDialogRight.SetText(fmt.Sprintf(dedent.Dedent(strings.Trim(`
 		[::b]### [::u]keystrokes[::-]
 		[::b]tab[::-]                change focus
@@ -658,7 +659,7 @@ func (d *Debugger) hUpdateHelpDialog() {
 		[%s::b]client-id[-::-]          connected
 		[grey::b]client-id[-::-]          disconnected
 		[red::b]client-id[-::-]          current error
-		[orangered::b]client-id[-::-]          recent error
+		[#FF5FAF::b]client-id[-::-]          recent error
 		[::bu]client-id[::-]          selected machine
 		[::b]|123[::-]               transitions till now
 		[::b]|123+[::-]              more transitions left
