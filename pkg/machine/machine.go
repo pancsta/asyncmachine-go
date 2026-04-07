@@ -2101,7 +2101,7 @@ func (m *Machine) Context() context.Context {
 }
 
 // Log logs an [extern] message unless LogNothing is set.
-// Optionally redirects to a custom logger from SemLogger().SetLogger.
+// Optionally redirects to a custom logger from [SemLogger.SetLogger].
 func (m *Machine) Log(msg string, args ...any) {
 	if m.disposing.Load() {
 		return
@@ -2115,7 +2115,7 @@ func (m *Machine) Log(msg string, args ...any) {
 }
 
 // log logs a message if the log level is high enough.
-// Optionally redirects to a custom logger from SemLogger().SetLogger.
+// Optionally redirects to a custom logger from [SemLogger.SetLogger].
 func (m *Machine) log(level LogLevel, msg string, args ...any) {
 	if level > m.semLogger.Level() || m.disposing.Load() {
 		return
