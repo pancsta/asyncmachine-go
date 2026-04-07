@@ -193,11 +193,11 @@ task: Available tasks for this project:
 * dbg:                        Start am-dbg
 * deps:                       List dependencies in deps.md
 * deps-graph:                 Render dependencies graph in deps-graph.svg
-* diagram:                    Generate am-vis diagram (requires a dbg export)
-* diagram-dispatcher:         Generate am-vis diagram for Dispatchers's pipes (requires a dbg export)
-* diagram-map:                Generate am-vis map diagram (requires a dbg export)
-* diagram-orchestrator:       Generate am-vis diagram for Orchestrator's pipes (requires a dbg export)
-* graph:                      Generate a network graph as markdown (requires a dbg export)
+* diagram:                    Generate am-vis diagram (requires am-dbg export)
+* diagram-dispatcher:         Generate am-vis diagram for Dispatchers's pipes (requires am-dbg export)
+* diagram-map:                Generate am-vis map diagram (requires am-dbg export)
+* diagram-orchestrator:       Generate am-vis diagram for Orchestrator's pipes (requires am-dbg export)
+* graph:                      Generate a network graph as markdown (requires am-dbg export)
 * pprof:
 * repl:                       Start REPL
 * start:                      Build everything and start orchestrator

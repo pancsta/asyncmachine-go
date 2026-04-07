@@ -396,16 +396,15 @@ tasks:
       - task: lint-go
       - task: lint-md
       # https://github.com/markdownlint/markdownlint/issues/136
-      # TODO better check, exit 1
-      # - |
-      #   if grep -q "]()" docs/*.md; then
-      #     echo "Error: Empty links" >&2
-      #     exit 1
-      #   fi
+      - |
+        if grep -q "]()" docs/*.md; then
+          echo "Error: Empty links" >&2
+          exit 1
+        fi
       - task: format
       - task: check-fmt
-      # TODO better check, exit 1
       - '! grep -rn --include="*.go" "TODO DEBUG" .'
+      - '! grep -rn --include="*.go" --exclude-dir="examples" "github.com/gookit/goutil/dump" .'
 
   lint-ci:
     cmds:

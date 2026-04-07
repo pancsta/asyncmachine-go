@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/gookit/goutil/dump"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -606,8 +605,6 @@ func sendMsgSchema(mach am.Api, t *Tracer, sendSemloger bool) error {
 
 	// fake tx msg from semlogger
 	if pipes := mach.SemLogger().Pipes(); sendSemloger && len(pipes) > 0 {
-
-		dump.Println(pipes)
 
 		msg := &DbgMsgTx{
 			MachineID:  mach.Id(),
