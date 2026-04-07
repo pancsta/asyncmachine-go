@@ -1707,7 +1707,7 @@ Read more about schemas in [`/docs/schema.md`](/docs/schema.md)
 
 The default format of arguments in asyncmachine is `map[string]any`, which is very KISS, but not very practical long
 term. Because of that, it's advised to structure arguments into a single struct and Parse-Pass helpers, ideally with a
-package namespace.
+package namespace. Refer to [/examples/mach_template](/examples/mach_template) for the full boilerplate.
 
 **Example** - define pkg-level args and helpers (from [`pkg/node`](/pkg/node/node.go))
 

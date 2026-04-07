@@ -83,7 +83,7 @@ concurrency.
 ## What are the downsides?
 
 High abstraction, boilerplate, reflection, stack traces split into state-traces, reduced type safety, incomplete
-documentation, TUI devtools, using a non-mainstream paradigm.
+documentation, TUI devtools, using a [non-mainstream paradigm](/pkg/machine/README.md#state-oriented-programming).
 
 ## What should be a "state"?
 

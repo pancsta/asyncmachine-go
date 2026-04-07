@@ -132,7 +132,9 @@ var addr string
 var netMach *am.Machine
 
 // init
-s, err := arpc.NewServer(ctx, addr, netMach.ID, network machine, nil)
+s, err := arpc.NewServer(ctx, addr, "server", sourceMach, &arpc.ServerOpts{
+    Parent: machParent,
+})
 if err != nil {
     panic(err)
 }
@@ -258,12 +260,14 @@ import (
 var ctx context.Context
 
 // new server per each new client (optional)
-var newServer arpc.MuxNewServer = func(num int64, _ net.Conn) (*Server, error) {
-    name := fmt.Sprintf("%s-%d", t.Name(), num)
-    s, err := NewServer(ctx, "", name, w, nil)
+var newServer arpc.MuxNewServer = func(mux *arpc.Mux, id string, conn net.Conn) (*Server, error) {
+    s, err := mux.NewDefaultServer(id)
     if err != nil {
-        t.Fatal(err)
+        return nil, err
     }
+
+    srv.Conn = conn
+    srv.Start(e)
 
     return s, nil
 }

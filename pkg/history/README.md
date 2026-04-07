@@ -318,7 +318,7 @@ in [/pkg/x/history/frostdb](/pkg/x/history/frostdb).
 
 ## Status
 
-Alpha, not semantically versioned.
+Testing, not semantically versioned.
 
 ## monorepo
 

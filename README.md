@@ -57,6 +57,9 @@ vector formats. It aims to create **autonomous** workflows with **organic** cont
     </a>
 </div>
 
+> [!NOTE]
+> `git clone https://github.com/pancsta/asyncmachine-go.git`
+
 #### *Each state represents*
 
 - binary flag
@@ -233,11 +236,11 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 - [`/docs/diagrams.md`](/docs/diagrams.md) try to explain things visually
 - [`/examples`](/examples/README.md) show use cases and integrations
     - with [`/examples/mach_template`](/examples/mach_template) being ready for copy-paste
-    - also [DAG](/examples/dag_dependency_graph), [CLI Daemon](/examples/cli_daemon), [aRPC](/examples/arpc), [WASM](/examples/wasm),
+    - also [Basic](/examples/basic), [CLI Daemon](/examples/cli_daemon), [aRPC](/examples/arpc), [WASM](/examples/wasm),
       [WASM Workflow](/examples/wasm_workflow), [TUI](/examples/tui)
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) will bootstrap
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) will record every detail
-- [`/pkg/node`](pkg/node) shows a high-level usage
+- code in [`/pkg/node`](pkg/node) shows a high-level usage
 - and [reading tests](https://github.com/search?q=repo%3Apancsta%2Fasyncmachine-go+path%3A%2F.*_test.go%2F&type=code)
   is always a good idea
 

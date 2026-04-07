@@ -162,7 +162,7 @@ Options:
 
 ## Steps to Debug
 
-1. Set up telemetry:
+1. Set up telemetry
 
     ```go
     import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -172,7 +172,12 @@ Options:
     amhelp.MachDebugEnv(myMach)
     ```
 
-2. Run `am-dbg`
+2. Start
+
+    ```bash
+    am-dbg --dir tmp
+    ```
+
 3. Run your code with
 
     ```bash

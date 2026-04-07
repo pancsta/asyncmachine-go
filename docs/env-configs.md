@@ -1,22 +1,8 @@
 # Env Configs
 
-## Example Usage
-
-Example from [am-dbg integration tests](/pkg/rpc/HOWTO.md). Commands below will start both the am-dbg test worker
-instance and tests in the debug mode via per-command env vars. Requires a running `task am-dbg-dbg` to receive
-telemetry (second debugger instance).
-
-```shell
-# tty1
-env (cat config/env/debug-telemetry.env) task am-dbg-worker
-
-## tty2
-env (cat config/env/debug-tests.env) task test-debugger-remote
-```
-
 ## Supported Env Variables
 
-```shell
+```bash
 
 ### ### ###
 ### MACHINE
@@ -25,6 +11,7 @@ env (cat config/env/debug-tests.env) task test-debugger-remote
 # enable a simple debugging mode:
 # - long timeouts
 # - disables panicking to Exception
+# - validate handler and state names
 AM_DEBUG=1
 
 # address of a running am-dbg instance
@@ -218,4 +205,10 @@ AM_REPL_ADDR=1
 # REPL address file dir path (for `$AM_REPL_DIR/mach-id.addr`). Optional.
 # defaults to ""
 AM_REPL_DIR=tmp
+```
+
+## Loading Configs
+
+```bash
+env (cat config/env/debug-telemetry.env) task my-task
 ```

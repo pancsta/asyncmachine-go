@@ -7,10 +7,12 @@
 
 - [Examples](#examples)
   - [**aRPC**](/examples/arpc)
-  - [**CLI**](/examples/cli/main.go)
+  - [**Basic**](/examples/basic)
+  - [**CLI**](/examples/cli)
   - [**CLI Daemon**](/examples/cli_daemon)
+  - [**Mach Template**](/examples/mach_template/mach_template.go)
   - [**Tree State Source**](/examples/tree_state_source)
-  - [**TUI**](/examples/tui/main.go)
+  - [**TUI**](/examples/tui)
   - [**WASM**](/examples/wasm)
   - [**WASM Workflow**](/examples/wasm_workflow)
   - [DAG Dependency Graph](/examples/dag_dependency_graph/dependency_graph.go)
@@ -21,6 +23,7 @@
   - [Pipes](/examples/pipes/example_pipes.go)
   - [Raw Strings](/examples/raw_strings/raw_strings.go)
   - [Relations Playground](/examples/relations_playground/relations_playground.go)
+  - [REPL](/examples/repl)
   - [Subscriptions](/examples/subscriptions/example_subscriptions.go)
   - [Temporal Expense Workflow](/examples/temporal_expense/expense_test.go)
   - [Temporal FileProcessing Workflow](/examples/temporal_fileprocessing/fileprocessing.go)
@@ -38,94 +41,98 @@ Headers link more info about each example.
 
 ### [aRPC](/examples/arpc)
 
-- #rpc #client #server
+- `#rpc #client #server`
 - [origin](/pkg/rpc/README.md)
 
-### [CLI](/examples/cli/main.go)
+### [Basic](/examples/basic)
 
-- #template #relations #handlers
+- `#relations #handlers #async #negotiation #auto`
+
+### [CLI](/examples/cli)
+
+- `#template #relations #handlers`
 
 ### [CLI Daemon](/examples/cli_daemon)
 
-- #template #relations #handlers #arpc #payload
+- `#template #relations #handlers #arpc #payload`
+
+### [Mach Template](/examples/mach_template/mach_template.go)
+
+- `#template #handlers #telemetry #repl #relations #generator #negotiation #multi`
 
 ### [Tree State Source](/examples/tree_state_source)
 
-- #relations #negotiation #auto #arpc #otel #metrics #grafana #generator #data
+- `#relations #negotiation #auto #arpc #otel #metrics #grafana #generator #data`
 - [origin](/pkg/rpc/README.md)
 
-### [TUI](/examples/tui/main.go)
+### [TUI](/examples/tui)
 
-- #relations #handlers #cview #ui #global-handlers
+- `#relations #handlers #cview #ui #global-handlers`
 
 ### [WASM](/examples/wasm)
 
-- #relations #handlers #arpc-handlers #arpc #relay #ui #websocket
+- `#relations #handlers #arpc-handlers #arpc #relay #ui #websocket`
 
 ### [WASM Workflow](/examples/wasm_workflow)
 
-- #relations #handlers #arpc-handlers #arpc #relay #websocket #webworkers #payload
+- `#relations #handlers #arpc-handlers #arpc #relay #websocket #webworkers #payload`
 
 ### [DAG Dependency Graph](/examples/dag_dependency_graph/dependency_graph.go)
 
-- #relations #handlers #async #auto #dependency-graph
+- `#relations #handlers #async #auto #dependency-graph`
 
 ### [Fan Out Fan In](/examples/fan_out_in/example_fan_out_in.go)
 
-- #relations #handlers #async #auto #concurrency
+- `#relations #handlers #async #auto #concurrency`
 
 ### [FSM - Finite State Machine](/examples/fsm/fsm_test.go)
 
-- #relations #handlers #negotiation #auto
+- `#relations #handlers #negotiation #auto`
 - [origin](https://en.wikipedia.org/wiki/Finite-state_machine)
 
 ### [NFA - Nondeterministic Finite Automaton](/examples/nfa/nfa_test.go)
 
-- #relations #handlers #async #multi
+- `#relations #handlers #async #multi`
 - [origin](https://en.wikipedia.org/wiki/Nondeterministic_finite_automaton)
 
 ### [PATH Watcher](/examples/path_watcher/watcher.go)
 
-- #relations #handlers #async #negotiation #multi
+- `#relations #handlers #async #negotiation #multi`
 - [origin](https://github.com/pancsta/sway-yasm/)
 
 ### [Pipes](/examples/pipes/example_pipes.go)
 
-- #handlers #composition
+- `#handlers #composition`
 - [origin](/pkg/states/README.md#piping)
-
-### [Mach Template](/examples/mach_template/mach_template.go)
-
-- #template #handlers #telemetry #repl #relations #generator #negotiation #multi
 
 ### [Raw Strings](/examples/raw_strings/raw_strings.go)
 
-- #relations #handlers #async #negotiation #auto
+- `#relations #handlers #async #negotiation #auto`
 - [origin](/pkg/machine/README.md#raw-strings)
 
 ### [Relations Playground](/examples/relations_playground/relations_playground.go)
 
-- #relations
+- `#relations`
 - [origin](/pkg/machine/README.md#mutations-and-relations)
 
-### [REPL](/examples/repl/main.go)
+### [REPL](/examples/repl)
 
-- #arpc #repl
+- `#arpc #repl`
 - [origin](/tools/cmd/arpc/README.md)
 
 ### [Subscriptions](/examples/subscriptions/example_subscriptions.go)
 
-- #waiting
+- `#waiting`
 - [origin](/pkg/machine/README.md#waiting)
 
 ### [Temporal Expense Workflow](/examples/temporal_expense/expense_test.go)
 
-- #relations #handlers #async #negotiation #auto #temporal
+- `#relations #handlers #async #negotiation #auto #temporal`
 - [origin](https://github.com/temporalio/samples-go/blob/main/expense/)
 
 ### [Temporal FileProcessing Workflow](/examples/temporal_fileprocessing/fileprocessing.go)
 
-- #relations #handlers #async #auto #temporal
+- `#relations #handlers #async #auto #temporal`
 - [origin](https://github.com/temporalio/samples-go/blob/main/fileprocessing/)
 - [Asynq worker version](/examples/asynq_fileprocessing/fileprocessing_task.go)
 
@@ -133,17 +140,17 @@ Headers link more info about each example.
 
 ### [Benchmark State Source](/examples/benchmark_state_source)
 
-- #docker #go-wrt #caddy
+- `#docker #go-wrt #caddy`
 - [origin](/examples/tree_state_source)
 
 ### [Benchmark gRPC](/examples/benchmark_grpc)
 
-- #relations #handlers #negotiation #arpc #grpc
+- `#relations #handlers #negotiation #arpc #grpc`
 - [origin](/pkg/rpc/README.md#benchmark-arpc-vs-grpc)
 
 ### [Benchmark libp2p PubSub](/examples/benchmark_libp2p_pubsub)
 
-- #relations #handlers #async #negotiation #libp2p
+- `#relations #handlers #async #negotiation #libp2p`
 
 ## Demos
 

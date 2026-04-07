@@ -4,6 +4,35 @@
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
+## [v0.18.6](https://github.com/pancsta/asyncmachine-go/tree/v0.18.6) (2026-04-07)
+
+- feat: release v0.18.6 [\#400](https://github.com/pancsta/asyncmachine-go/pull/400) (@pancsta)
+- feat\(am-vis\): add inspect-dump cmd producing a markdown version of th… [\#399](https://github.com/pancsta/asyncmachine-go/pull/399)
+  (@pancsta)
+- feat\(machine\): add SemLogger.Pipes\(\) returning currently bound pipes [\#398](https://github.com/pancsta/asyncmachine-go/pull/398)
+  (@pancsta)
+- feat\(machine\): add PoolFork, PoolSetLimit, PoolSetLimitGlobal for non-blocking pools [\#397](https://github.com/pancsta/asyncmachine-go/pull/397)
+  (@pancsta)
+
+## [v0.18.4](https://github.com/pancsta/asyncmachine-go/tree/v0.18.4) (2026-04-01)
+
+- feat: release v0.18.4 [\#392](https://github.com/pancsta/asyncmachine-go/pull/392) (@pancsta)
+- feat\(machine\): add Tracer.TransitionFinals for more detailed tracing [\#390](https://github.com/pancsta/asyncmachine-go/pull/390)
+  (@pancsta)
+- feat\(states\): add ampipe.Sync for re-connects [\#389](https://github.com/pancsta/asyncmachine-go/pull/389)
+  (@pancsta)
+- docs\(examples\): add WebWorker workflow example [\#388](https://github.com/pancsta/asyncmachine-go/pull/388)
+  (@pancsta)
+- feat\(telemetry\): auto exchange the root trace ID via env [\#387](https://github.com/pancsta/asyncmachine-go/pull/387)
+  (@pancsta)
+- feat\(telemetry\): add WASM support for Otel [\#386](https://github.com/pancsta/asyncmachine-go/pull/386)
+  (@pancsta)
+- refac\(am-dbg\): migrate to go-arg, add missing CLI filters [\#385](https://github.com/pancsta/asyncmachine-go/pull/385)
+  (@pancsta)
+- fix\(rpc\): remove SendPayload state [\#384](https://github.com/pancsta/asyncmachine-go/pull/384)
+  (@pancsta)
+- fix\(machine\): fix disposal with detached ctx [\#383](https://github.com/pancsta/asyncmachine-go/pull/383) (@pancsta)
+
 ## [v0.18.3](https://github.com/pancsta/asyncmachine-go/tree/v0.18.3) (2026-03-17)
 
 - feat: release v0.18.3 [\#381](https://github.com/pancsta/asyncmachine-go/pull/381) (@pancsta)

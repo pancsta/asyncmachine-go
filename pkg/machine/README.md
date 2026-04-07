@@ -198,7 +198,7 @@ func (h *Handlers) ProcessingFileState(e *am.Event) {
 
 ### [Waiting](/examples/subscriptions/example_subscriptions.go)
 
-Subscriptions do not allocate goroutines.
+Subscriptions do not allocate goroutines and channels are reused.
 
 ```go
 // wait until Foo becomes active
@@ -234,6 +234,8 @@ Subscriptions do not allocate goroutines.
 
 ### State Targeting
 
+[Transition](/docs/manual.md#transition-lifecycle) is available within [transition handlers](/docs/manual.md#transition-handlers).
+
 ```go
 var (
     tx am.Transition
@@ -264,7 +266,7 @@ len(tx.TimeIndexTimeDiff().ActiveStates())
 t2.DiffSince(t1).NonZeroStates().Is1("Foo")
 ```
 
-### Schema File
+### [Schema File](/docs/schema.md)
 
 ```go
 // BasicStatesDef contains all the states of the Basic state machine.
@@ -302,7 +304,7 @@ var BasicSchema = am.Schema{
 }
 ```
 
-### Passing Args
+### [Passing Args](/docs/manual.md#typesafe-arguments)
 
 ```go
 // Example with typed state names (ss) and typed arguments (A).
@@ -360,9 +362,9 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 </div>
 
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) Multi-client TUI debugger.
-- [`/tools/cmd/am-gen`](/tools/cmd/am-gen) Generates schema files and Grafana dashboards.
 - [`/tools/cmd/arpc`](/tools/cmd/arpc) Network-native REPL and CLI.
 - [`/tools/cmd/am-vis`](/tools/cmd/am-vis) Generates D2 diagrams.
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen) Generates schema files and Grafana dashboards.
 - [`/tools/cmd/am-relay`](/tools/cmd/am-relay) Rotates logs and relays WASM.
 
 ## Apps
@@ -391,7 +393,7 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 ## API
 
-The most common API methods are listed below. There's more for [local state machines](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine),
+The common API methods are listed below. There's more for [local state machines](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine),
 but all of these are also implemented in the [transparent RPC layer](/pkg/rpc/README.md).
 
 ```go
@@ -578,6 +580,14 @@ Release Candidate, semantically versioned, partially optimized.
 - [actor model](https://en.wikipedia.org/wiki/Actor_model)
 - [causal inference](https://en.wikipedia.org/wiki/Causal_inference)
 - [declarative logic](https://en.wikipedia.org/wiki/Declarative_programming)
+
+### State Oriented Programming
+
+This is a new term which could possibly encapsulate the unique way of modeling the flow using **asyncmachine**. Unlike
+common state machines, there are no transition paths between states, and the activation / deactivation is decided by the
+state consensus. Consensus is calculated from a mutation, active states, relations between states, and negotiating
+methods. Just like object-oriented programming solves domain complexity, state-oriented programming tries to solve
+unpredictability of the flow.
 
 ## monorepo
 

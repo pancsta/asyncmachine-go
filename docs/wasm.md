@@ -61,7 +61,7 @@ tools that can help today:
 
 ## Known Issues
 
-- stock HTTP Otel expoter is broken in WASM and needs a `replace` directive ([source](https://github.com/pancsta/opentelemetry-go/commit/f087fcb1fc48dbd66f1b06fdcc0262677e5684f2))
+- stock HTTP Otel expoter is broken in WASM and needs a `replace` directive (see [PR#8120](https://github.com/open-telemetry/opentelemetry-go/pull/8120))
 
 ```go
 replace go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp => github.com/pancsta/opentelemetry-go/exporters/otlp/otlptrace/otlptracehttp v0.0.0-20260331193851-f087fcb1fc48
