@@ -146,10 +146,15 @@ type Machine struct {
 	// unlockDisposed means that disposal is in progress and holding the queueMx
 	unlockDisposed atomic.Bool
 	// breakpoints are a list of breakpoints for debugging. [][added, removed]
-	breakpointsMx sync.Mutex
-	breakpoints   []*breakpoint
-	onError       atomic.Pointer[HandlerError]
-	onChange      atomic.Pointer[HandlerChange]
+	breakpointsMx   sync.Mutex
+	breakpoints     []*breakpoint
+	onError         atomic.Pointer[HandlerError]
+	onChange        atomic.Pointer[HandlerChange]
+	poolMx          sync.Mutex
+	pools           map[string]*atomic.Int32
+	poolLimits      map[string]int32
+	poolGlobal      *atomic.Int32
+	poolGlobalLimit int32
 }
 
 // NewCommon creates a new Machine instance with all the common options set.
@@ -3522,6 +3527,65 @@ func (m *Machine) Go(ctx context.Context, fn func()) {
 
 		fn()
 	}()
+}
+
+// PoolFork will try to fork [fn] within a pool limit. Calls [Machine.Go] if
+// the event is valid and within the limit (or no limit set), then returns true.
+// Otherwise [fn] is no-op.
+func (m *Machine) PoolFork(ctx context.Context, e *Event, fn func()) bool {
+	m.poolMx.Lock()
+	defer m.poolMx.Unlock()
+
+	if !e.IsValid() {
+		return false
+	}
+
+	// global limit
+	if m.poolGlobal.Load()+1 >= m.poolGlobalLimit {
+		// skip
+		return false
+	}
+
+	// read limit
+	c, ok1 := m.pools[e.Name]
+	cLimit, ok2 := m.poolLimits[e.Name]
+
+	// no pool, regular fork
+	if !ok1 || !ok2 {
+		m.Go(ctx, fn)
+	}
+
+	// pool limit
+	if c.Load()+1 >= cLimit {
+		// skip
+		return false
+	}
+
+	// run
+	c.Add(1)
+	m.Go(ctx, func() {
+		fn()
+		c.Add(-1)
+	})
+
+	return true
+}
+
+// PoolSetLimit sets a limit per handler (eg "FooState") for PoolFork calls.
+func (m *Machine) PoolSetLimit(handlerName string, limit int32) {
+	m.poolMx.Lock()
+	defer m.poolMx.Unlock()
+
+	m.pools[handlerName] = &atomic.Int32{}
+	m.poolLimits[handlerName] = limit
+}
+
+// PoolSetLimitGlobal sets a global limit for all PoolFork calls.
+func (m *Machine) PoolSetLimitGlobal(limit int32) {
+	m.poolMx.Lock()
+	defer m.poolMx.Unlock()
+
+	m.poolGlobalLimit = limit
 }
 
 // TODO GoErr

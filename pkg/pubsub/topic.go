@@ -111,7 +111,7 @@ type Topic struct {
 	// internal methods of instances from netMachs
 	netMachsIntApi map[string]map[int]*rpc.NetMachInternal
 	info           map[string]map[int]*Info
-	pool           *errgroup.Group
+	// pool           *errgroup.Group
 	// gossips about local netMachs heard from other peers
 	missingUpdates PeerGossips
 	// tracers attached to ExposedMachs.
@@ -157,11 +157,9 @@ func NewTopic(
 		ConnectionsToReady: 5,
 		SendInfoDebounceMs: 500,
 
-		tracers:        make([]*Tracer, len(exposedMachs)),
-		netMachs:       make(map[string]map[int]*rpc.NetworkMachine),
-		netMachsIntApi: make(map[string]map[int]*rpc.NetMachInternal),
-		// TODO config
-		pool:               amhelp.Pool(10),
+		tracers:            make([]*Tracer, len(exposedMachs)),
+		netMachs:           make(map[string]map[int]*rpc.NetworkMachine),
+		netMachsIntApi:     make(map[string]map[int]*rpc.NetMachInternal),
 		info:               make(map[string]map[int]*Info),
 		pendingMachUpdates: make(map[string]map[int]am.Time),
 		missingPeers:       make(map[string]struct{}),
@@ -196,6 +194,8 @@ func NewTopic(
 	if err != nil {
 		return nil, err
 	}
+	// TODO config
+	mach.PoolSetLimitGlobal(10)
 
 	mach.SemLogger().SetArgsMapper(LogArgs)
 	mach.SetGroups(states.TopicGroups, states.TopicStates)
@@ -1099,22 +1099,14 @@ func (t *Topic) SendMsgState(e *am.Event) {
 	}
 
 	// unblock
-	if !e.IsValid() {
-		return
-	}
-	t.pool.Go(func() error {
-		if ctx.Err() != nil {
-			return nil // expired
-		}
+	t.Mach.PoolFork(ctx, e, func() {
 		// TODO concurrent write to a map?!
 		//  ihave, ok := gs.gossip[p]
 		err := t.T.Publish(ctx, msg)
 		if ctx.Err() != nil {
-			return nil // expired
+			return // expired
 		}
 		t.Mach.EvAddErr(e, err, nil)
-
-		return nil
 	})
 }
 
@@ -1332,25 +1324,16 @@ func (t *Topic) MsgReqUpdatesState(e *am.Event) {
 	}
 
 	// unblock
-	if !e.IsValid() {
-		return
-	}
-	t.pool.Go(func() error {
-		if ctx.Err() != nil {
-			return nil // expired
-		}
-
+	t.Mach.PoolFork(ctx, e, func() {
 		encoded, err := msgpack.Marshal(update)
 		if err != nil {
 			t.Mach.EvAddErr(e, err, nil)
-			return nil
+			return
 		}
 		t.Mach.EvAdd1(e, ss.SendMsg, Pass(&A{
 			Msg:     encoded,
 			MsgType: string(MsgTypeUpdates),
 		}))
-
-		return nil
 	})
 }
 
@@ -1642,15 +1625,8 @@ func (t *Topic) ReqMissingPeersState(e *am.Event) {
 	t.log("missing peers: %d", len(reqPids))
 
 	// unblock
-	if !e.IsValid() {
-		mach.EvRemove1(e, ss.ReqMissingPeers, nil)
-		return
-	}
-	t.pool.Go(func() error {
+	ok := t.Mach.PoolFork(ctx, e, func() {
 		defer mach.EvRemove1(e, ss.ReqMissingPeers, nil)
-		if ctx.Err() != nil {
-			return nil // expired
-		}
 
 		// encode and send
 		reqHello := &MsgReqInfo{
@@ -1660,7 +1636,7 @@ func (t *Topic) ReqMissingPeersState(e *am.Event) {
 		encoded, err := msgpack.Marshal(reqHello)
 		if err != nil {
 			mach.EvAddErr(e, err, nil)
-			return nil
+			return
 		}
 		mach.EvAdd1(e, ss.SendMsg, Pass(&A{
 			Msg:     encoded,
@@ -1668,9 +1644,10 @@ func (t *Topic) ReqMissingPeersState(e *am.Event) {
 			PeerId:  reqPids[0],
 			Peer:    t.peerName(reqPids[0]),
 		}))
-
-		return nil
 	})
+	if !ok {
+		mach.EvRemove1(e, ss.ReqMissingPeers, nil)
+	}
 }
 
 // how often to look for missing updates
@@ -1728,11 +1705,8 @@ func (t *Topic) ReqMissingUpdatesState(e *am.Event) {
 		t.Mach.EvRemove1(e, ss.ReqMissingUpdates, nil)
 		return
 	}
-	t.pool.Go(func() error {
+	ok := t.Mach.PoolFork(ctx, e, func() {
 		defer t.Mach.EvRemove1(e, ss.ReqMissingUpdates, nil)
-		if ctx.Err() != nil {
-			return nil // expired
-		}
 
 		reqUpdate := &MsgReqUpdates{
 			Msg:     Msg{MsgTypeReqUpdates},
@@ -1741,7 +1715,7 @@ func (t *Topic) ReqMissingUpdatesState(e *am.Event) {
 		encoded, err := msgpack.Marshal(reqUpdate)
 		if err != nil {
 			t.Mach.EvAddErr(e, err, nil)
-			return nil
+			return
 		}
 		t.Mach.EvAdd1(e, ss.SendMsg, Pass(&A{
 			Msg: encoded,
@@ -1750,9 +1724,10 @@ func (t *Topic) ReqMissingUpdatesState(e *am.Event) {
 			PeerId:  reqPids[0],
 			Peer:    t.peerName(reqPids[0]),
 		}))
-
-		return nil
 	})
+	if !ok {
+		t.Mach.EvRemove1(e, ss.ReqMissingUpdates, nil)
+	}
 }
 
 func (t *Topic) DoSendInfoEnter(e *am.Event) bool {
