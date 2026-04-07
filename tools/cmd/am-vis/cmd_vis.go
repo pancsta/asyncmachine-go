@@ -8,14 +8,15 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/alexflint/go-arg"
 	"github.com/joho/godotenv"
+
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
-	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	dbgtypes "github.com/pancsta/asyncmachine-go/tools/debugger/types"
 	"github.com/pancsta/asyncmachine-go/tools/visualizer"
 	"github.com/pancsta/asyncmachine-go/tools/visualizer/states"
@@ -25,7 +26,8 @@ import (
 
 // nolint:lll
 type Args struct {
-	RenderDump *RenderDumpCmd `arg:"subcommand:render-dump" help:"Render from a debugger dump file"`
+	RenderDump  *RenderDumpCmd  `arg:"subcommand:render-dump" help:"Render from a debugger dump file"`
+	InspectDump *InspectDumpCmd `arg:"subcommand:inspect-dump" help:"Render text form from a debugger dump file"`
 	// DbgServer     *DbgServerCmd     `arg:"subcommand:dbg-server" help:"Render from live connections"`
 
 	// TODO RenderAllowlist
@@ -99,7 +101,16 @@ type RenderDumpCmd struct {
 	MachUrl      string `arg:"positional"`
 }
 
-const CmdRenderDump = "render-dump"
+// nolint:lll
+type InspectDumpCmd struct {
+	DumpFilename string `arg:"-f,--dump-file,positional" help:"Input dbg dump file" default:"am-dbg-dump.gob.br"`
+	MachUrl      string `arg:"positional"`
+}
+
+const (
+	CmdRenderDump  = "render-dump"
+	CmdInspectDump = "inspect-dump"
+)
 
 // TODO DbgServerCmd
 // nolint:lll
@@ -136,6 +147,10 @@ func main() {
 		if err := renderDump(ctx, args, os.Args[1:]); err != nil {
 			_ = p.FailSubcommand(err.Error(), CmdRenderDump)
 		}
+	case args.InspectDump != nil:
+		if err := inspectDump(ctx, args, os.Args[1:]); err != nil {
+			_ = p.FailSubcommand(err.Error(), CmdInspectDump)
+		}
 	}
 }
 
@@ -168,6 +183,17 @@ func renderDump(ctx context.Context, args Args, cliArgs []string) error {
 	clients := slices.Collect(maps.Values(vis.Clients()))
 	fmt.Printf("Imported %d clients\n", len(clients))
 
+	// presets
+	switch {
+	case args.Map:
+		visualizer.PresetMap(vis.R)
+	case args.Bird:
+		visualizer.PresetBird(vis.R)
+	default:
+		visualizer.PresetSingle(vis.R)
+	}
+	applyOverrides(args, cliArgs, vis.R)
+
 	// check target
 	if addr != nil {
 		found := slices.ContainsFunc(clients, func(c amgraph.Client) bool {
@@ -183,17 +209,6 @@ func renderDump(ctx context.Context, args Args, cliArgs []string) error {
 		vis.R.RenderMachs = slices.Collect(maps.Keys(vis.Clients()))
 	}
 
-	// presets
-	switch {
-	case args.Map:
-		visualizer.PresetMap(vis.R)
-	case args.Bird:
-		visualizer.PresetBird(vis.R)
-	default:
-		visualizer.PresetSingle(vis.R)
-	}
-	applyOverrides(args, cliArgs, vis.R)
-
 	// render
 	vis.R.OutputFilename = args.OutputFilename
 	vis.R.OutputMermaid = false
@@ -207,7 +222,58 @@ func renderDump(ctx context.Context, args Args, cliArgs []string) error {
 
 	// push debug
 	if args.Debug {
-		vis.Mach.Add1(am.StateHealthcheck, nil)
+		vis.Mach.Add1(ss.Healthcheck, nil)
+		time.Sleep(time.Second)
+	}
+
+	return nil
+}
+
+func inspectDump(
+	ctx context.Context, args Args, cliArgs []string,
+) error {
+	// go server.StartRpc(mach, p.ServerAddr, nil, p.FwdData)
+
+	vis, err := visualizer.New(ctx, "am-vis")
+	if err != nil {
+		return err
+	}
+
+	// init & import
+	vis.Mach.Add1(ss.Start, nil)
+	// TODO pass to StartState
+	err = vis.HImportData(args.InspectDump.DumpFilename)
+	if err != nil {
+		return err
+	}
+	clients := slices.Collect(maps.Values(vis.Clients()))
+	fmt.Printf("Imported %d clients\n", len(clients))
+
+	// presets
+	switch {
+	case args.Map:
+		visualizer.PresetMap(vis.R)
+	case args.Bird:
+		visualizer.PresetBird(vis.R)
+	default:
+		visualizer.PresetSingle(vis.R)
+	}
+	applyOverrides(args, cliArgs, vis.R)
+
+	// render
+	inspect, err := vis.Graph.Inspect()
+	if err != nil {
+		return err
+	}
+	err = os.WriteFile(args.OutputFilename+".md",
+		[]byte(amgraph.Markdown(inspect)), 0644)
+	if err != nil {
+		return err
+	}
+
+	// push debug
+	if args.Debug {
+		vis.Mach.Add1(ss.Healthcheck, nil)
 		time.Sleep(time.Second)
 	}
 
@@ -215,52 +281,69 @@ func renderDump(ctx context.Context, args Args, cliArgs []string) error {
 }
 
 func applyOverrides(args Args, cliArgs []string, vis *visualizer.Renderer) {
-	if slices.Contains(cliArgs, "--render-detailed-pipes") {
+	cliParam := func(param string) bool {
+		for _, n := range cliArgs {
+			if strings.HasPrefix(n, param) {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	if cliParam("--render-detailed-pipes") {
 		vis.RenderDetailedPipes = args.RenderDetailedPipes
 	}
-	if slices.Contains(cliArgs, "--render-pipes") {
+	if cliParam("--render-pipes") {
 		vis.RenderPipes = args.RenderPipes
 	}
-	if slices.Contains(cliArgs, "--render-exception") {
+	if cliParam("--render-exception") {
 		vis.RenderException = args.RenderException
 	}
-	if slices.Contains(cliArgs, "--render-tags") {
+	if cliParam("--render-tags") {
 		vis.RenderTags = args.RenderTags
 	}
-	if slices.Contains(cliArgs, "--render-inherited") {
+	if cliParam("--render-inherited") {
 		vis.RenderInherited = args.RenderInherited
 	}
-	if slices.Contains(cliArgs, "--render-relations") {
+	if cliParam("--render-relations") {
 		vis.RenderRelations = args.RenderRelations
 	}
-	if slices.Contains(cliArgs, "--render-conns") {
+	if cliParam("--render-conns") {
 		vis.RenderConns = args.RenderConns
 	}
-	if slices.Contains(cliArgs, "--render-parent-rel") {
+	if cliParam("--render-parent-rel") {
 		vis.RenderParentRel = args.RenderParentRel
 	}
-	if slices.Contains(cliArgs, "--render-half-conns") {
+	if cliParam("--render-half-conns") {
 		vis.RenderHalfConns = args.RenderHalfConns
 	}
-	if slices.Contains(cliArgs, "--render-half-pipes") {
+	if cliParam("--render-half-pipes") {
 		vis.RenderHalfPipes = args.RenderHalfPipes
 	}
-	if slices.Contains(cliArgs, "--render-nest-submachines") {
+	if cliParam("--render-nest-submachines") {
 		vis.RenderNestSubmachines = args.RenderNestSubmachines
 	}
-	if slices.Contains(cliArgs, "--render-start") {
+	if cliParam("--render-start") {
 		vis.RenderStart = args.RenderStart
 	}
-	if slices.Contains(cliArgs, "--render-ready") {
+	if cliParam("--render-ready") {
 		vis.RenderReady = args.RenderReady
 	}
-	if slices.Contains(cliArgs, "--render-depth") {
+	if cliParam("--render-depth") {
 		vis.RenderDepth = args.RenderDepth
 	}
-	if slices.Contains(cliArgs, "--render-states") {
+	if cliParam("--render-states") {
 		vis.RenderStates = args.RenderStates
 	}
-	if slices.Contains(cliArgs, "--output-elk") {
+
+	if cliParam("--render-distance") {
+		vis.RenderDistance = args.RenderDistance
+	}
+	if cliParam("--render-depth") {
+		vis.RenderDepth = args.RenderDepth
+	}
+	if cliParam("--output-elk") {
 		vis.OutputElk = args.OutputElk
 	}
 }
