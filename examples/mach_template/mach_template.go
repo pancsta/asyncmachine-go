@@ -9,15 +9,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
-	amprom "github.com/pancsta/asyncmachine-go/pkg/telemetry/prometheus"
-	amgen "github.com/pancsta/asyncmachine-go/tools/generator"
-	"golang.org/x/sync/errgroup"
-
 	"github.com/pancsta/asyncmachine-go/examples/mach_template/states"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+	amss "github.com/pancsta/asyncmachine-go/pkg/states"
+	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+	amprom "github.com/pancsta/asyncmachine-go/pkg/telemetry/prometheus"
+	amgen "github.com/pancsta/asyncmachine-go/tools/generator"
 )
 
 var ss = states.MachTemplateStates
@@ -64,16 +63,15 @@ func main() {
 		close(bazDone)
 	}()
 
-	// wait until Bar goes away
+	// wait until Bar deactivates
 	<-mach.WhenNot1(ss.Bar, nil)
 
-	// atomic dispose
+	// async dispose
 	mach.Add1(ss.Disposing, nil)
 	<-mach.When1(ss.Disposed, nil)
-
-	// release resources
-	mach.Dispose()
+	// soft dispose done
 	<-mach.WhenDisposed()
+	// fully disposed
 }
 
 // ///// ///// /////
@@ -88,8 +86,7 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 	// any struct can be used as handlers
 
 	handlers := &TemplateHandlers{
-		p:    amhelp.Pool(10),
-		bazP: amhelp.Pool(1),
+		DisposedHandlers: &amss.DisposedHandlers{},
 	}
 	mach, err := am.NewCommon(ctx, "templ", states.MachTemplateSchema, ss.Names(),
 		handlers, nil, &am.Opts{Tags: []string{"tag:val", "tag2"}})
@@ -97,6 +94,8 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 		return nil, err
 	}
 	handlers.Mach = mach
+	// max 10 concurrent forks in BazState
+	mach.PoolSetLimit(ss.Baz+am.SuffixState, 10)
 
 	// telemetry
 
@@ -152,24 +151,22 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 
 type TemplateHandlers struct {
 	*am.ExceptionHandler
-	Mach *am.Machine
+	*amss.DisposedHandlers
 
-	// general p for handlers
-	p *errgroup.Group
-	// multi states should be rate-limitted separately
-	bazP *errgroup.Group
+	Mach *am.Machine
 }
 
 func (h *TemplateHandlers) FooState(e *am.Event) {
 	ctx := h.Mach.NewStateCtx(ss.Bar)
 
 	// unblock
-	h.p.Go(func() error {
-		if ctx.Err() != nil {
-			return nil // expired
-		}
+	h.Mach.Fork(ctx, e, func() {
 		fmt.Println("FooState")
-		return nil
+
+		// nested unblocking goes without [e], which is not valid at this point
+		h.Mach.Go(ctx, func() {
+			fmt.Println("FooState.Go")
+		})
 	})
 }
 
@@ -185,17 +182,15 @@ func (h *TemplateHandlers) BazState(e *am.Event) {
 	// multi states rely on context of other states
 	ctx := h.Mach.NewStateCtx(ss.Start)
 
-	// multi states should be rate-limitted
-	h.bazP.Go(func() error {
+	// very frequent multi-states should be rate-limited
+	h.Mach.PoolFork(ctx, e, func() {
 		// like time.Wait, but with context
 		if !amhelp.Wait(ctx, time.Second) {
 			_ = AddErrExample(e, h.Mach, nil, nil)
-			return nil
+			return
 		}
 		fmt.Println("BazState: " + addr)
 		h.Mach.Add1(ss.BazDone, nil)
-
-		return nil
 	})
 }
 
@@ -220,7 +215,6 @@ func (h *TemplateHandlers) ChannelState(e *am.Event) {
 // ///// ARGS
 
 // ///// ///// /////
-// TODO add RPC args example from pkg/node
 
 func init() {
 	gob.Register(ARpc{})
@@ -299,18 +293,16 @@ var ErrExample = errors.New("error example")
 // error mutations
 
 // AddErrExample wraps an error in the ErrJoining sentinel and adds to a
-// machine.
+// machine. If no err was provided, the function is no-op.
 func AddErrExample(
 	event *am.Event, mach *am.Machine, err error, args am.A,
-) error {
-	if err != nil {
-		err = fmt.Errorf("%w: %w", ErrExample, err)
-	} else {
-		err = ErrExample
+) am.Result {
+	if err == nil {
+		return am.Executed
 	}
-	mach.EvAddErrState(event, ss.ErrExample, err, args)
+	err = fmt.Errorf("%w: %w", ErrExample, err)
 
-	return err
+	return mach.EvAddErrState(event, ss.ErrExample, err, args)
 }
 
 // ///// ///// /////
