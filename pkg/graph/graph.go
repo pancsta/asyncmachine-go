@@ -438,6 +438,104 @@ func (g *Graph) DumpGv(path string) error {
 	return draw.DOT(g.G, file)
 }
 
+type MachInspect struct {
+	Child  string
+	States []string
+	Conns  []string
+	Pipes  map[string][]string
+}
+
+func (g *Graph) Inspect() (map[string]*MachInspect, error) {
+	adjacencyMap, err := g.G.AdjacencyMap()
+	if err != nil {
+		return nil, err
+	}
+	inspect := make(map[string]*MachInspect)
+	for machId, adjs := range adjacencyMap {
+		if len(strings.Split(machId, ":")) == 2 {
+			continue
+		}
+		fmt.Println(machId)
+
+		// init
+		_, ok := inspect[machId]
+		if !ok {
+			inspect[machId] = &MachInspect{
+				Pipes: make(map[string][]string),
+			}
+		}
+
+		for _, edge := range adjs {
+			conn, _ := g.Connection(machId, edge.Target)
+
+			if conn.Edge.MachChildOf {
+				inspect[machId].Child = edge.Target
+			}
+			if conn.Edge.MachConnectedTo {
+				inspect[machId].Conns = append(inspect[machId].Conns, edge.Target)
+			}
+			if conn.Edge.MachHas != nil {
+				ids := strings.Split(edge.Target, ":")
+				inspect[machId].States = append(inspect[machId].States, ids[1])
+			}
+			if conn.Edge.MachPipesTo != nil {
+				if machId == "orchestrator" {
+					print()
+				}
+				for _, pipe := range conn.Edge.MachPipesTo {
+					inspect[machId].Pipes[edge.Target] = append(
+						inspect[machId].Pipes[edge.Target], fmt.Sprintf(
+							"[%s] %s -> %s", pipe.MutType, pipe.FromState, pipe.ToState,
+						))
+				}
+			}
+		}
+	}
+
+	return inspect, nil
+}
+
+func Markdown(inspect map[string]*MachInspect) string {
+	keys := slices.Collect(maps.Keys(inspect))
+	sort.Strings(keys)
+	ret := "# am-vis inspect-dump\n\n"
+	for _, machId := range keys {
+		data := inspect[machId]
+		ret += "## " + machId + "\n"
+		if data.Child != "" {
+			ret += fmt.Sprintf("Parent: %s\n\n", data.Child)
+		} else {
+			ret += "\n"
+		}
+		if len(data.States) > 0 {
+			sort.Strings(data.States)
+			ret += "### States\n"
+			ret += fmt.Sprintf("- %s\n", strings.Join(data.States, "\n- "))
+			ret += "\n"
+		}
+		if len(data.Conns) > 0 {
+			sort.Strings(data.Conns)
+			ret += "### RPC\n"
+			ret += fmt.Sprintf("- %s\n", strings.Join(data.Conns, "\n- "))
+			ret += "\n"
+		}
+		if len(data.Pipes) > 0 {
+			ret += "### Pipes\n\n"
+			keysPipes := slices.Collect(maps.Keys(data.Pipes))
+			sort.Strings(keysPipes)
+			for _, pipe := range keysPipes {
+				sort.Strings(data.Pipes[pipe])
+				ret += fmt.Sprintf("#### %s\n", pipe)
+				ret += fmt.Sprintf("- %s\n", strings.Join(data.Pipes[pipe], "\n- "))
+				ret += "\n"
+			}
+		}
+		ret += "-----\n\n"
+	}
+
+	return ret
+}
+
 // private
 
 func (g *Graph) parseMsgLog(c *Client, msgTx *dbg.DbgMsgTx) error {
