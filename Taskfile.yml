@@ -226,7 +226,19 @@ tasks:
     cmds:
       - task: clean-test
       - go test -tags integration
-        ./tools/debugger/test {{.CLI_ARGS}}
+        -p 1 --parallel 1
+        ./tools/debugger/test
+        ./examples/arpc
+        ./examples/basic
+        ./examples/cli
+        ./examples/cli_daemon
+        ./examples/dag_dependency_graph
+        ./examples/fan_out_in
+        ./examples/mach_template
+        ./examples/pipes
+        ./examples/raw_strings
+        ./examples/subscriptions
+        {{.CLI_ARGS}}
 
   test-path:
     env:

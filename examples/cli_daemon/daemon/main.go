@@ -92,14 +92,11 @@ func newDaemon(ctx context.Context, args *Args) (*daemon, error) {
 	host, port, _ := net.SplitHostPort(args.Addr)
 	portNum, _ := strconv.Atoi(port)
 	addrRepl := host + ":" + strconv.Itoa(portNum+1)
-	err = arpc.MachRepl(mach, addrRepl, &arpc.ReplOpts{
+	arpc.MachRepl(mach, addrRepl, &arpc.ReplOpts{
 		AddrDir:  ".",
 		Args:     types.ARpc{},
 		ParseRpc: types.ParseRpc,
 	})
-	if err != nil {
-		return nil, err
-	}
 	// TODO print when ready
 	fmt.Printf("REPL listening on %s\n", addrRepl)
 

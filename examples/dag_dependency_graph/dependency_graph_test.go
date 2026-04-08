@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestRawStrings(t *testing.T) {
+func TestDagDependencyGraph(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -18,7 +18,10 @@ func TestRawStrings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("example failed: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "done") {
-		t.Errorf("expected 'done' in output, got:\n%s", out)
+	outStr := string(out)
+	for _, want := range []string{"A ok", "B ok", "C ok", "D ok"} {
+		if !strings.Contains(outStr, want) {
+			t.Errorf("expected %q in output, got:\n%s", want, outStr)
+		}
 	}
 }
