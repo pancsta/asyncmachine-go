@@ -1,4 +1,5 @@
 //go:build integration
+
 package arpc_test
 
 import (

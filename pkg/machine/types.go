@@ -483,13 +483,13 @@ const (
 	// Queued means that the transition was queued for later execution. Everything
 	// above 2 also means Queued. The following methods can be used to wait for
 	// the results:
+	// - Machine.WhenQueue
 	// - Machine.When
 	// - Machine.WhenNot
 	// - Machine.WhenArgs
 	// - Machine.WhenTime
 	// - Machine.WhenTime1
 	// - Machine.WhenTicks
-	// - Machine.WhenQueue
 	// - Machine.WhenQueueEnds
 	// See [Machine.QueueTick].
 	Queued Result = 2
@@ -552,6 +552,7 @@ const (
 	MutationRemove
 	MutationSet
 	mutationEval
+	// TODO add MutationInternal for SemLogger data-only/event tx
 )
 
 func (m MutationType) String() string {
@@ -564,6 +565,20 @@ func (m MutationType) String() string {
 		return "set"
 	case mutationEval:
 		return "eval"
+	}
+	return ""
+}
+
+func (m MutationType) StringShort() string {
+	switch m {
+	case MutationAdd:
+		return " +"
+	case MutationRemove:
+		return "- "
+	case MutationSet:
+		return "= "
+	case mutationEval:
+		return "e "
 	}
 	return ""
 }
@@ -628,4 +643,25 @@ func OptsWithTracers(opts *Opts, tracers ...Tracer) *Opts {
 	}
 
 	return opts
+}
+
+// CallSignature binds states to args and optionally to enum values.
+type CallSignature struct {
+	// states to mutate (required)
+	States S
+
+	// true if not an Add mutation (optional)
+	IsRemove bool
+	// call name (optional)
+	Name string
+	// call description (optional)
+	Desc string
+	// required args (optional)
+	Needed []string
+	// optional args (optional)
+	Args []string
+	// value enums per arg name (optional)
+	Values map[string][]string
+	// JSON schemas per arg name (optional)
+	Schemas map[string][]string
 }

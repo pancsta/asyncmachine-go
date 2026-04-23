@@ -8,12 +8,13 @@ env:
 tasks:
 
   build:
+    desc: Build the project, but don't create files
     ignore_error: true
     cmds:
-      - go build -o dist ./examples/...
-      - go build -o dist ./pkg/...
-      - go build -o dist ./internal/...
-      - go build -o dist ./tools/...
+      - go build -o /dev/null ./examples/...
+      - go build -o /dev/null ./pkg/...
+      - go build -o /dev/null ./internal/...
+      - go build -o /dev/null ./tools/...
 
   build-am-dbg:
     ignore_error: true
@@ -156,7 +157,7 @@ tasks:
     desc: Start am-dbg on port 9913, so it can debug other instances via --dbg-am-dbg-addr
     silent: false
     cmd: go run ./tools/cmd/am-dbg
-        --listen-on localhost:9913
+        --listen-addr localhost:9913
         --select-connected
         --log-ops-ttl 5m
         --max-mem 2000
@@ -166,7 +167,7 @@ tasks:
   am-dbg-dbg-prof:
     desc: Profile am-dbg-dbg
     cmd: go run ./tools/cmd/am-dbg
-        --listen-on localhost:9913
+        --listen-addr localhost:9913
         --select-connected
         --log-ops-ttl 5m
         --prof-srv :6050
@@ -200,7 +201,7 @@ tasks:
     cmd: dlv debug --headless
         --listen=:2346 --api-version=2 --accept-multiclient
         ./tools/cmd/am-dbg -- 
-          --listen-on localhost:9913
+          --listen-addr localhost:9913
           --select-connected
           --log-ops-ttl 5m
           --max-mem 2000
@@ -214,7 +215,7 @@ tasks:
   test:
     env:
       AM_TEST_RUNNER: 1
-    desc: Run all local tests
+    desc: Run all regular tests
     cmds:
       - task: clean-test
       - go test ./... {{.CLI_ARGS}}
@@ -222,7 +223,7 @@ tasks:
   test-integration:
     env:
       AM_TEST_RUNNER: 1
-    desc: Run all local tests
+    desc: Run all integration tests
     cmds:
       - task: clean-test
       - go test -tags integration
@@ -238,6 +239,17 @@ tasks:
         ./examples/pipes
         ./examples/raw_strings
         ./examples/subscriptions
+        {{.CLI_ARGS}}
+
+  test-integration-dbg:
+    env:
+      AM_TEST_RUNNER: 1
+    desc: Run debugger integration tests
+    cmds:
+      - task: clean-test
+      - go test -tags integration
+        -p 1 --parallel 1
+        ./tools/debugger/test
         {{.CLI_ARGS}}
 
   test-path:
@@ -433,6 +445,7 @@ tasks:
           -not -path '*deps.md'
           -not -path './\.*'
           -not -path './tmp*'
+          -not -path './docs/editors*'
           -not -path './dist*' |
             xargs mdl -g -c config/mdlrc
 
@@ -490,6 +503,11 @@ tasks:
     desc: Install promo video dependencies
     cmds:
       - npm install -g terminalizer
+
+  install-deps-scripts:
+    desc: Install go.mod for /scripts
+    dir: scripts
+    cmd: go mod tidy
 
   am-gen-states:
     desc: Generate a schema file in ROOT DIR for provided state names, eg "task am-gen-states -- -s Foo,Bar -n MyMach"
@@ -812,20 +830,24 @@ tasks:
 
   script-gen-docs-diagrams-watch:
     dir: scripts
+    deps: [install-deps-scripts]
     cmd: go run ./watch_diagrams
 
   script-test-loop:
     dir: scripts
+    deps: [install-deps-scripts]
     cmd: go run ./test_loop
 
   script-gen-api-docs:
     dir: scripts
+    deps: [install-deps-scripts]
     cmd: go run ./gen_api_docs
 
   script-gen-website:
     requires:
       vars: [AM_DEPLOY_API_URL, AM_DEPLOY_ASSETS_URL]
     dir: scripts
+    deps: [install-deps-scripts]
     cmd: go run ./gen_website
 
   script-gh-stats:
@@ -834,6 +856,7 @@ tasks:
     env:
       GITHUB_TOKEN_STATS: "{{.GITHUB_TOKEN_STATS}}"
     dir: scripts
+    deps: [install-deps-scripts]
     cmds:
       - go run ./gh_stats
       - cp ../data/stats.light.png {{.AM_DEPLOY_WEBSITE_DIR}}/chart_light.png
@@ -841,4 +864,5 @@ tasks:
 
   script-compact-number:
     dir: scripts
+    deps: [install-deps-scripts]
     cmd: go run ./compact_number

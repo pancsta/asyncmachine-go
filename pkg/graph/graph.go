@@ -5,6 +5,7 @@ package graph
 // TODO fix GC
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -19,9 +20,24 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
+
+var ErrGraph = errors.New("graph error")
+
+// AddErrGraph adds [ErrGraph].
+func AddErrGraph(
+	event *am.Event, mach *am.Machine, err error, args ...am.A,
+) am.Result {
+	if err == nil {
+		return am.Executed
+	}
+	err = fmt.Errorf("%w: %w", ErrGraph, err)
+
+	return mach.EvAddErrState(event, ss.ErrGraph, err, am.OptArgs(args))
+}
+
+var ss = ssdbg.ServerStates
 
 type Vertex struct {
 	StateName string
@@ -247,18 +263,18 @@ func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 								g.Server.Log("Resuming RPC for %s", id)
 
 								if err := g.G.AddEdge(a[1], c.Id, data); err != nil {
-									g.Server.AddErr(fmt.Errorf("Graph.ParseMsg: %w", err), nil)
+									AddErrGraph(nil, g.Server, fmt.Errorf("ParseMsg: %w", err))
 									return
 								}
 								if err = g.Map.AddEdge(a[1], c.Id); err != nil {
-									g.Server.AddErr(fmt.Errorf("Graph.ParseMsg: %w", err), nil)
+									AddErrGraph(nil, g.Server, fmt.Errorf("ParseMsg: %w", err))
 									return
 								}
 							}()
 
 						} else {
 							if err = g.Map.AddEdge(a[1], c.Id); err != nil {
-								g.Server.AddErr(fmt.Errorf("Graph.ParseMsg: %w", err), nil)
+								AddErrGraph(nil, g.Server, fmt.Errorf("ParseMsg: %w", err))
 								return
 							}
 						}
@@ -284,7 +300,7 @@ func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 
 	err := g.parseMsgLog(c, msgTx)
 	if err != nil {
-		g.Server.AddErr(fmt.Errorf("Graph.parseMsgLog: %w", err), nil)
+		AddErrGraph(nil, g.Server, fmt.Errorf("parseMsgLog: %w", err))
 	}
 	// TODO dedicated error state, enable once stable
 	// if err != nil {
@@ -339,7 +355,7 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 				if err == nil {
 					_ = g.Map.AddEdge(c.Id, c.MsgSchema.Parent)
 				}
-				g.Server.AddErr(err, nil)
+				AddErrGraph(nil, g.Server, fmt.Errorf("AddClient: %w", err))
 			}()
 		} else {
 			_ = g.Map.AddEdge(c.Id, c.MsgSchema.Parent)

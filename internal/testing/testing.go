@@ -16,12 +16,14 @@ import (
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
-	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	statesdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 	"github.com/pancsta/tcell-v2"
 )
 
 var (
+	ssdbg = statesdbg.DebuggerStates
+
 	WorkerRpcAddr       = "localhost:53480"
 	WorkerTelemetryAddr = "localhost:53470"
 

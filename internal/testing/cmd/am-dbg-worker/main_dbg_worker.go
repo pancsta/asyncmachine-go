@@ -19,6 +19,8 @@ import (
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
+var ss = ssdbg.DebuggerStates
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -84,7 +86,7 @@ func main() {
 	select {
 	case <-dbg.Mach.WhenDisposed():
 		// user exit
-	case <-dbg.Mach.WhenNot1(ssdbg.Start, nil):
+	case <-dbg.Mach.WhenNot1(ss.Start, nil):
 		dbg.Dispose()
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -38,6 +37,7 @@ const (
 	// mutationFreq = 5 * time.Millisecond
 )
 
+// TODO replace with go-arg
 type Node struct {
 	// config
 	Name       string `env:"TST_NAME"`
@@ -66,21 +66,13 @@ func init() {
 }
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	node := ReadEnv(ctx)
 
 	if node.Addr == "" {
 		panic("TST_ADDR required")
 	}
-
-	// handle exit
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		cancel()
-	}()
 
 	initTelemetry(node)
 
