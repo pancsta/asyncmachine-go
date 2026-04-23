@@ -22,14 +22,21 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/soheilhy/cmux"
+
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
-	"github.com/soheilhy/cmux"
 )
+
+var ss = states.DebuggerStates
+var Pass = types.Pass
+var ParseArgs = types.ParseArgs
+
+type A = types.A
 
 // ///// ///// /////
 
@@ -400,12 +407,11 @@ func (r *RPCServer) DbgMsgSchemaFwd(
 	msg *DbgMsgSchemaFwd, _ *string,
 ) error {
 
-	r.Mach.Add1(ss.ConnectEvent, am.A{
-		// TODO typed args
-		"msg_struct": msg.MsgStruct,
-		"conn_id":    msg.ConnId,
-		"Client.id":  msg.MsgStruct.ID,
-	})
+	r.Mach.Add1(ss.ConnectEvent, Pass(&A{
+		MsgStruct: msg.MsgStruct,
+		ConnId:    msg.ConnId,
+		ClientId:  msg.MsgStruct.ID,
+	}))
 
 	return nil
 }
@@ -414,12 +420,11 @@ func (r *RPCServer) DbgMsgSchema(
 	msgSchema *dbg.DbgMsgStruct, _ *string,
 ) error {
 
-	r.Mach.Add1(ss.ConnectEvent, am.A{
-		// TODO typed args
-		"msg_struct": msgSchema,
-		"conn_id":    r.ConnID,
-		"Client.id":  msgSchema.ID,
-	})
+	r.Mach.Add1(ss.ConnectEvent, Pass(&A{
+		MsgStruct: msgSchema,
+		ConnId:    r.ConnID,
+		ClientId:  msgSchema.ID,
+	}))
 
 	// fwd to other instances
 	for _, host := range r.FwdTo {
@@ -457,10 +462,10 @@ func (r *RPCServer) DbgMsgTx(msgTx *dbg.DbgMsgTx, _ *string) error {
 			queueMx.Lock()
 			defer queueMx.Unlock()
 
-			r.Mach.Add1(ss.ClientMsg, am.A{
-				"msgs_tx":  queue,
-				"conn_ids": queueConnId,
-			})
+			r.Mach.Add1(ss.ClientMsg, Pass(&A{
+				MsgsTx:  queue,
+				ConnIds: queueConnId,
+			}))
 			// DEBUG
 			// println("sent", len(queue), "msgs")
 			queue = nil
@@ -512,10 +517,10 @@ func (r *RPCServer) DbgMsgTxFwd(msg *DbgMsgTx, _ *string) error {
 			queueMx.Lock()
 			defer queueMx.Unlock()
 
-			r.Mach.Add1(ss.ClientMsg, am.A{
-				"msgs_tx":  queue,
-				"conn_ids": queueConnId,
-			})
+			r.Mach.Add1(ss.ClientMsg, Pass(&A{
+				MsgsTx:  queue,
+				ConnIds: queueConnId,
+			}))
 			// DEBUG
 			// println("sent", len(queue), "msgs")
 			queue = nil
@@ -583,7 +588,9 @@ func AcceptConn(
 	server.ServeConn(conn)
 
 	// TODO pass to range fwdTo (dedicated RPC method)
-	rcvr.Mach.Add1(ss.DisconnectEvent, am.A{"conn_id": connId})
+	rcvr.Mach.Add1(ss.DisconnectEvent, Pass(&A{
+		ConnId: connId,
+	}))
 }
 
 // ///// ///// /////
@@ -650,14 +657,13 @@ func httpHandlerDiagMach(
 	}
 
 	// TODO WebDiagReq
-	mach.Add1(ss.WebReq, am.A{
-		// TODO typed params
-		"uri":                 r.RequestURI,
-		"*http.Request":       r,
-		"http.ResponseWriter": w,
-		"doneChan":            done,
-		"addr":                r.RemoteAddr,
-	})
+	mach.Add1(ss.WebReq, Pass(&A{
+		Uri:                r.RequestURI,
+		HttpRequest:        r,
+		HttpResponseWriter: w,
+		DoneChan:           done,
+		Addr:               r.RemoteAddr,
+	}))
 	// TODO timeout
 	<-done
 }
@@ -676,14 +682,13 @@ func wsDiagHandler(w http.ResponseWriter, r *http.Request, mach *am.Machine) {
 	defer conn.Close(websocket.StatusInternalError, "internal error")
 	// TODO remove?
 	done := make(chan struct{})
-	mach.Add1(ss.WebSocketDiag, am.A{
-		// TODO typed params
-		"*websocket.Conn":     conn,
-		"*http.Request":       r,
-		"http.ResponseWriter": w,
-		"doneChan":            done,
-		"addr":                r.RemoteAddr,
-	})
+	mach.Add1(ss.WebSocketDiag, Pass(&A{
+		WebSocketConn:      conn,
+		HttpRequest:        r,
+		HttpResponseWriter: w,
+		DoneChan:           done,
+		Addr:               r.RemoteAddr,
+	}))
 	// TODO timeout
 	// TODO r.Context()?
 	<-done

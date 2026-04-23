@@ -8,6 +8,9 @@ import (
 	"unicode"
 
 	"github.com/pancsta/cview"
+	"github.com/pancsta/tcell-v2"
+
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 
 	"github.com/pancsta/asyncmachine-go/pkg/machine"
 )
@@ -18,7 +21,7 @@ type Focusable struct {
 }
 
 type toolbarItem struct {
-	id          ToolName
+	id          types.ToolName
 	label       string
 	icon        string
 	active      func() bool
@@ -88,7 +91,8 @@ func matrixEmptyRow(d *Debugger, row, colsCount, highlightIndex int) {
 	for ii := 0; ii < colsCount; ii++ {
 		d.matrix.SetCellSimple(row, ii, "   ")
 		if ii == highlightIndex {
-			d.matrix.GetCell(row, ii).SetBackgroundColor(colorHighlight3)
+			d.matrix.GetCell(row, ii).SetBackgroundColor(
+				tcell.GetColor(theme.Highlight3))
 		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,10 +15,8 @@ import (
 	"github.com/pancsta/tcell-v2"
 	"github.com/zyedidia/clipper"
 
-	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
-
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
 const (
@@ -42,8 +41,14 @@ func (d *Debugger) hInitUiComponents() {
 	d.treeGroups.SetDropDownSelectedTextColor(cview.Styles.PrimaryTextColor)
 	d.treeGroups.SetDropDownTextColor(cview.Styles.PrimaryTextColor)
 	d.treeGroups.SetSelectedFunc(func(_ int, opt *cview.DropDownOption) {
-		// TODO typed args
-		d.Mach.Add1(ss.SetGroup, am.A{"group": opt.GetText()})
+		if !d.treeGroupSkip {
+			//
+			d.Mach.Add(
+				am.S{ss.SetGroup, ss.UpdateFocus, ss.TreeGroupsFocused},
+				Pass(&A{Group: opt.GetText()}))
+		}
+
+		d.treeGroupSkip = false
 	})
 
 	// sidebar
@@ -69,7 +74,9 @@ func (d *Debugger) hInitUiComponents() {
 		go func() {
 			// scroll to tx
 			txIdx := d.C.TxIndex(txId)
-			d.Mach.Add1(ss.ScrollToTx, am.A{"Client.txId": txId})
+			d.Mach.Add1(ss.ScrollToTx, Pass(&A{
+				TxId: txId,
+			}))
 
 			// select the clicked state
 			d.Mach.Eval("log.SetClickedFunc", func() {
@@ -80,13 +87,23 @@ func (d *Debugger) hInitUiComponents() {
 					for _, prefix := range statePrefixes {
 						if strings.HasPrefix(l.Text, prefix) {
 							state := strings.Split(l.Text[len(prefix)+1:], " ")[0]
-							d.Mach.Add1(ss.StateNameSelected, am.A{"state": state})
+							d.Mach.Add1(ss.StateNameSelected, Pass(&A{
+								State: state,
+							}))
 							break
 						}
 					}
 				}
 			}, nil)
 		}()
+	})
+
+	// TODO hacky
+	d.overlay = cview.NewTextView()
+	d.overlay.SetDynamicColors(true)
+	d.overlay.SetBorder(true)
+	d.overlay.SetClickedFunc(func(txId string) {
+		d.Mach.Remove1(ss.Overlay, nil)
 	})
 
 	// reader view
@@ -163,18 +180,22 @@ func (d *Debugger) hInitUiComponents() {
 func (d *Debugger) hInitTimelineSteps() {
 	d.timelineSteps = cview.NewProgressBar()
 	d.timelineSteps.SetBorder(true)
-	d.timelineSteps.SetFilledColor(tcell.ColorLightGray)
+	// d.timelineSteps.SetFilledColor(tcell.GetColor(theme.Highlight))
 	// timeline click
 	d.timelineSteps.SetMouseCapture(func(
 		action cview.MouseAction, event *tcell.EventMouse,
 	) (cview.MouseAction, *tcell.EventMouse) {
 		a := action
 		if a == cview.MouseScrollUp || a == cview.MouseScrollLeft {
-			d.Mach.Add1(ss.BackStep, am.A{"amount": 1})
+			d.Mach.Add1(ss.BackStep, Pass(&A{
+				Amount: 1,
+			}))
 
 			return a, event
 		} else if a == cview.MouseScrollDown || a == cview.MouseScrollRight {
-			d.Mach.Add1(ss.FwdStep, am.A{"amount": 1})
+			d.Mach.Add1(ss.FwdStep, Pass(&A{
+				Amount: 1,
+			}))
 
 			return a, event
 		} else if a != cview.MouseLeftClick {
@@ -186,7 +207,9 @@ func (d *Debugger) hInitTimelineSteps() {
 		x, _ := event.Position()
 		pos := float64(x) / float64(width)
 		txNum := math.Round(float64(d.timelineSteps.GetMax()) * pos)
-		d.Mach.Add1(ss.ScrollToStep, am.A{"cursorStep1": int(txNum)})
+		d.Mach.Add1(ss.ScrollToStep, Pass(&A{
+			CursorStep1: int(txNum),
+		}))
 
 		return a, event
 	})
@@ -195,7 +218,7 @@ func (d *Debugger) hInitTimelineSteps() {
 func (d *Debugger) hInitTimelineTx() {
 	d.timelineTxs = cview.NewProgressBar()
 	d.timelineTxs.SetBorder(true)
-	d.timelineTxs.SetFilledColor(tcell.ColorLightGray)
+	// d.timelineTxs.SetFilledColor(tcell.GetColor(theme.Highlight))
 	// support mouse TODO double click needed with progressive rendering
 	d.timelineTxs.SetMouseCapture(func(
 		action cview.MouseAction, event *tcell.EventMouse,
@@ -207,11 +230,15 @@ func (d *Debugger) hInitTimelineTx() {
 		}
 
 		if a == cview.MouseScrollUp || a == cview.MouseScrollLeft {
-			d.Mach.Add1(ss.Back, am.A{"amount": 5})
+			d.Mach.Add1(ss.Back, Pass(&A{
+				Amount: 5,
+			}))
 
 			return a, event
 		} else if a == cview.MouseScrollDown || a == cview.MouseScrollRight {
-			d.Mach.Add1(ss.Fwd, am.A{"amount": 5})
+			d.Mach.Add1(ss.Fwd, Pass(&A{
+				Amount: 5,
+			}))
 
 			return a, event
 		} else if a != cview.MouseLeftClick {
@@ -223,10 +250,10 @@ func (d *Debugger) hInitTimelineTx() {
 		pos := float64(x) / float64(width)
 		// TODO race: eval / lock / state
 		txNum := math.Round(float64(len(c.MsgTxs)) * pos)
-		d.Mach.Add1(ss.ScrollToTx, am.A{
-			"cursorTx1":   int(txNum),
-			"trimHistory": true,
-		})
+		d.Mach.Add1(ss.ScrollToTx, Pass(&A{
+			CursorTx1:   int(txNum),
+			TrimHistory: true,
+		}))
 
 		return a, event
 	})
@@ -236,7 +263,7 @@ func (d *Debugger) hInitAddressBar() {
 	// TODO enum for col indexes
 
 	d.addressBar = cview.NewTable()
-	d.addressBar.SetSelectedStyle(colorActive,
+	d.addressBar.SetSelectedStyle(tcell.GetColor(theme.Active),
 		cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
 	d.addressBar.SetCellSimple(0, 0, "◀ prev mach")
 	d.addressBar.SetCellSimple(0, 1, "")
@@ -260,14 +287,14 @@ func (d *Debugger) hInitAddressBar() {
 				return
 			}
 			d.HistoryCursor++
-			d.hGoToMachAddress(d.History[d.HistoryCursor], true)
+			d.GoToMachAddress(d.History[d.HistoryCursor], true)
 
 		case 2: // next mach
 			if d.HistoryCursor <= 0 {
 				return
 			}
 			d.HistoryCursor--
-			d.hGoToMachAddress(d.History[d.HistoryCursor], true)
+			d.GoToMachAddress(d.History[d.HistoryCursor], true)
 
 		case 6: // copy
 			if d.clip == nil {
@@ -286,16 +313,16 @@ func (d *Debugger) hInitAddressBar() {
 				if u.Path != "" {
 					addr.TxId = strings.TrimLeft(u.Path, "/")
 				}
-				d.hGoToMachAddress(addr, false)
+				d.GoToMachAddress(addr, false)
 			}
 		}
 
 		// TODO state for button down
-		d.addressBar.SetSelectedStyle(colorActive,
+		d.addressBar.SetSelectedStyle(tcell.GetColor(theme.Active),
 			cview.Styles.PrimitiveBackgroundColor, tcell.AttrUnderline)
 		go func() {
 			time.Sleep(time.Millisecond * 200)
-			d.addressBar.SetSelectedStyle(colorActive,
+			d.addressBar.SetSelectedStyle(tcell.GetColor(theme.Active),
 				cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
 			d.draw(d.addressBar)
 		}()
@@ -307,7 +334,7 @@ func (d *Debugger) hInitAddressBar() {
 	addr.SetAlign(cview.AlignCenter)
 
 	d.tagsBar = cview.NewTextView()
-	d.tagsBar.SetTextColor(tcell.ColorGrey)
+	d.tagsBar.SetTextColor(tcell.GetColor(theme.Grey))
 	d.tagsBar.SetDynamicColors(true)
 	d.hUpdateAddressBar()
 }
@@ -344,7 +371,7 @@ func (d *Debugger) hInitToolbar() {
 
 				// unclick
 				time.Sleep(time.Millisecond * 200)
-				d.toolbars[i].SetSelectedStyle(colorActive,
+				d.toolbars[i].SetSelectedStyle(tcell.GetColor(theme.Active),
 					cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
 				d.draw(d.toolbars[i])
 			}()
@@ -598,8 +625,8 @@ func (d *Debugger) initExportDialog() *cview.Modal {
 // TODO page up/down on tx timeline
 func (d *Debugger) initHelpDialog() *cview.Flex {
 	left := cview.NewTextView()
-	left.SetBackgroundColor(colorHighlight)
-	left.SetScrollBarColor(colorHighlight2)
+	left.SetBackgroundColor(tcell.GetColor(theme.Highlight))
+	left.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
 	left.SetTitle(" Legend ")
 	left.SetDynamicColors(true)
 	left.SetPadding(1, 1, 1, 1)
@@ -648,7 +675,7 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[:green] [:-]            Executed
 		[:yellow] [:-]            Queued
 		[:red] [:-]            Canceled
-	`, "\n ")), colorActive, colorActive2, colorInactive))
+	`, "\n ")), theme.Active, theme.Active2, theme.Inactive))
 
 	// render the right side separately
 	d.hUpdateHelpDialog()
@@ -659,6 +686,7 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	grid.SetRows(0)
 	grid.AddItem(left, 0, 0, 1, 1, 0, 0, false)
 	grid.AddItem(d.helpDialogRight, 0, 1, 1, 1, 0, 0, false)
+	d.helpDialogLeft = left
 
 	box1 := cview.NewBox()
 	box1.SetBackgroundTransparent(true)
@@ -707,8 +735,8 @@ func (d *Debugger) hUpdateHelpDialog() {
 	if d.helpDialogRight == nil {
 		d.helpDialogRight = cview.NewTextView()
 	}
-	d.helpDialogRight.SetBackgroundColor(colorHighlight)
-	d.helpDialogRight.SetScrollBarColor(colorHighlight2)
+	d.helpDialogRight.SetBackgroundColor(tcell.GetColor(theme.Highlight))
+	d.helpDialogRight.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
 	d.helpDialogRight.SetTitle(" Keystrokes ")
 	d.helpDialogRight.SetDynamicColors(true)
 	d.helpDialogRight.SetPadding(1, 1, 1, 1)
@@ -757,17 +785,21 @@ func (d *Debugger) hUpdateHelpDialog() {
 		[::b]### [::u]toolbar legend[::-]
 		[::b]auto *[::-]        skip auto and canceled mutations
 		[::b]auto x[::-]        skip all auto mutations
-		[::b]traces[::-]        show stack traced in the log
 		[::b]times[::-]         show timestamps in the log
 		[::b]health[::-]        include Healthcheck and Heartbeat
 		[::b]group[::-]         show transition only from the 
 		              selected group
 		[::b]disconn[::-]        show disconnected clients
-		[::b]checks[::-]        include check mutations
-		[::b]expand[::-]        expand tree in the currently 
+		[::b]checks[::-]        include Can* mutations
+		[::b]expand[::-]        expand tree in the currently
 		              focused tile
+		[::b]traces[::-]        show stack traced in the log
 		[::b]diagrams N[::-]    render a diagram with N level
 		              of detail
+		[::b]diag-tx[::-]       highlight transition related states
+		              (called, mutated, touched, relations)
+		[::b]diag-group[::-]    skip or hide states outside of the
+		              currently selected group
 		[::b]rain[::-]          transition per line with 1 char
 		              per state
 		[::b]matrix[::-]        transition vectors
@@ -778,7 +810,7 @@ func (d *Debugger) hUpdateHelpDialog() {
 		%-15s    HTTP server addr
 		%-15s    SSH server addr
 		%-15s    mem usage
-	`, "\n ")), colorActive, d.Params.Version, d.Params.AddrRpc,
+	`, "\n ")), theme.Active, d.Params.Version, d.Params.AddrRpc,
 		d.Params.AddrHttp, d.Params.AddrSsh, strconv.Itoa(mem)+"mb"))
 }
 
@@ -817,15 +849,15 @@ func (d *Debugger) hInitLayout() {
 	d.contentPanels.AddPanel("tree-log", d.schemaLogGrid, true, true)
 	d.contentPanels.AddPanel("tree-matrix", d.treeMatrixGrid, true, false)
 	d.contentPanels.AddPanel("matrix", d.matrix, true, false)
-	d.contentPanels.SetBackgroundColor(colorHighlight)
+	d.contentPanels.SetBackgroundColor(tcell.GetColor(theme.Highlight))
 
 	// main grid
 	d.mainGrid = cview.NewGrid()
-	d.hUpdateLayout()
 
 	panels := cview.NewPanels()
 	panels.AddPanel(DialogExport, d.exportDialog, false, true)
 	panels.AddPanel(DialogHelp, d.helpDialog, true, true)
+	panels.AddPanel("overlay", d.overlay, false, true)
 	panels.AddPanel("main", d.mainGrid, true, true)
 
 	d.LayoutRoot = panels
@@ -840,7 +872,7 @@ func (d *Debugger) hUpdateLayout() {
 	}
 
 	d.mainGrid.Clear()
-	d.mainGrid.SetRows(1, 1, -1, 1, 1, 1, 1)
+	d.mainGrid.SetRows(1, 1, -1, 1, 1, 1, 1, 1)
 
 	// columns
 	var cols []int
@@ -905,8 +937,7 @@ func (d *Debugger) hUpdateLayout() {
 	d.mainGrid.AddItem(d.statusBarRight, row, len(cols)/2, 1,
 		len(cols)-len(cols)/2, 0, 0, false)
 
-	d.hUpdateFocusable()
-	// TODO UpdateFocus?
+	d.hUpdateFocusableList()
 }
 
 func (d *Debugger) hDrawViews() {
@@ -963,7 +994,7 @@ func (d *Debugger) draw(components ...cview.Primitive) {
 func (d *Debugger) hUpdateNarrowLayout() {
 	_, _, width, _ := d.LayoutRoot.GetRect()
 
-	if width < 100 {
+	if width < 100 || d.Mach.Is1(ss.UserNarrowLayout) {
 		d.Mach.Add1(ss.NarrowLayout, nil)
 	} else if !d.Params.ViewNarrow {
 		// remove if not forced

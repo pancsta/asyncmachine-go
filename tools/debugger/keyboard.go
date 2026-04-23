@@ -13,9 +13,11 @@ import (
 	"github.com/pancsta/cview/cbind"
 	"github.com/pancsta/tcell-v2"
 
+	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
+
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
 // regexp removing [foo]
@@ -71,12 +73,12 @@ func (d *Debugger) hInitFocusManager() *cbind.Configuration {
 			defer d.Mach.PanicToErr(nil)
 
 			// keep Tab inside dialogs
-			if d.Mach.Any1(ss.GroupDialog...) {
+			if d.Mach.Any1(states.DebuggerGroups.Dialog...) {
 				return ev
 			}
 
-			// fwd to FocusManager
-			f()
+			// fwd to App
+			d.Mach.Add1(state, nil)
 			return nil
 		}
 	}
@@ -197,10 +199,9 @@ func (d *Debugger) hSearchSchemaClients(inputHandler *cbind.Configuration) {
 					// handle StateNameSelected
 					ref, ok := nodeMatch.GetReference().(*nodeRef)
 					if ok && ref != nil && ref.stateName != "" {
-						d.Mach.Add1(ss.StateNameSelected, am.A{
-							// TODO typed args
-							"state": ref.stateName,
-						})
+						d.Mach.Add1(ss.StateNameSelected, Pass(&A{
+							State: ref.stateName,
+						}))
 					} else {
 						d.Mach.Remove1(ss.StateNameSelected, nil)
 					}
@@ -230,7 +231,7 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 	// TODO rate limit
 	keys := tcell.KeyNames
 	return map[string]func(ev *tcell.EventKey) *tcell.EventKey{
-		// play/pause
+		// play/pause TODO select opt when toolbar focused
 		"space": func(ev *tcell.EventKey) *tcell.EventKey {
 			if d.Mach.Is1(ss.Paused) {
 				d.Mach.Add1(ss.Playing, nil)
@@ -338,9 +339,10 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 		// help modal
 		"?": func(ev *tcell.EventKey) *tcell.EventKey {
 			if d.Mach.Not1(ss.HelpDialog) {
+				d.preModalFocus = d.Focused
 				d.Mach.Add1(ss.HelpDialog, nil)
 			} else {
-				d.Mach.Remove(ss.GroupDialog, nil)
+				d.Mach.Remove(states.DebuggerGroups.Dialog, nil)
 			}
 
 			return ev
@@ -349,9 +351,9 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 		// focus filters bar
 		"alt+f": func(ev *tcell.EventKey) *tcell.EventKey {
 			if d.Mach.Not1(ss.Toolbar1Focused) {
-				d.focusManager.Focus(d.toolbars[0])
+				d.App.SetFocus(d.toolbars[0])
 			} else {
-				d.focusManager.Focus(d.clientList)
+				d.App.SetFocus(d.clientList)
 			}
 			d.draw()
 
@@ -363,7 +365,7 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 			if d.Mach.Not1(ss.ExportDialog) {
 				d.Mach.Add1(ss.ExportDialog, nil)
 			} else {
-				d.Mach.Remove(ss.GroupDialog, nil)
+				d.Mach.Remove(states.DebuggerGroups.Dialog, nil)
 			}
 
 			return ev
@@ -371,8 +373,11 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 
 		// exit modals
 		"esc": func(ev *tcell.EventKey) *tcell.EventKey {
-			if d.Mach.Any1(ss.GroupDialog...) {
-				d.Mach.Remove(ss.GroupDialog, nil)
+			if d.Mach.Is1(ss.Overlay) {
+				d.Mach.Remove1(ss.Overlay, nil)
+				return nil
+			} else if d.Mach.Any1(states.DebuggerGroups.Dialog...) {
+				d.Mach.Remove(states.DebuggerGroups.Dialog, nil)
 				return nil
 			}
 
@@ -433,7 +438,9 @@ func (d *Debugger) hDeleteClient() {
 	}
 
 	ref := sel.GetReference().(*sidebarRef)
-	d.Mach.Add1(ss.RemoveClient, am.A{"Client.id": ref.name})
+	d.Mach.Add1(ss.RemoveClient, Pass(&A{
+		ClientId: ref.name,
+	}))
 }
 
 func (d *Debugger) focusDefault() {
@@ -462,8 +469,8 @@ func (d *Debugger) focusDefault() {
 
 // these UI components can be navigated with keys
 var keyNavigable = am.S{
-	ss.AddressFocused, ss.Toolbar1Focused,
-	ss.Toolbar2Focused, ss.Toolbar3Focused,
+	ss.AddressFocused, ss.Toolbar1Focused, ss.Toolbar2Focused, ss.Toolbar3Focused,
+	ss.Toolbar4Focused,
 }
 
 func (d *Debugger) hNextTxKey() tcellKeyFn {
@@ -571,17 +578,17 @@ func (d *Debugger) hJumpBackKey(ev *tcell.EventKey) *tcell.EventKey {
 		// }
 
 		// state jump TODO dont block
-		amhelp.Add1Sync(ctx, d.Mach, state, am.A{
-			"state": d.C.SelectedState,
-			"fwd":   false,
-		})
+		amhelp.Add1Sync(ctx, d.Mach, state, Pass(&A{
+			State: d.C.SelectedState,
+			Fwd:   false,
+		}))
 		// sidebar for errs TODO update in [state]
 		d.hUpdateClientList()
 	} else {
 		// fast jump TODO dont block
-		amhelp.Add1Sync(ctx, d.Mach, ss.Back, am.A{
-			"amount": min(fastJumpAmount, d.C.CursorTx1),
-		})
+		amhelp.Add1Sync(ctx, d.Mach, ss.Back, Pass(&A{
+			Amount: min(fastJumpAmount, d.C.CursorTx1),
+		}))
 	}
 
 	return nil
@@ -606,17 +613,17 @@ func (d *Debugger) hJumpFwdKey(ev *tcell.EventKey) *tcell.EventKey {
 		// }
 
 		// state jump TODO dont block
-		amhelp.Add1Sync(ctx, d.Mach, state, am.A{
-			"state": d.C.SelectedState,
-			"fwd":   true,
-		})
+		amhelp.Add1Sync(ctx, d.Mach, state, Pass(&A{
+			State: d.C.SelectedState,
+			Fwd:   true,
+		}))
 		// sidebar for errs TODO update in [state]
 		d.hUpdateClientList()
 	} else {
 		// fast jump TODO dont block
-		amhelp.Add1Sync(ctx, d.Mach, ss.Fwd, am.A{
-			"amount": min(fastJumpAmount, len(d.C.MsgTxs)-d.C.CursorTx1),
-		})
+		amhelp.Add1Sync(ctx, d.Mach, ss.Fwd, Pass(&A{
+			Amount: min(fastJumpAmount, len(d.C.MsgTxs)-d.C.CursorTx1),
+		}))
 	}
 
 	return nil
@@ -656,11 +663,11 @@ func (d *Debugger) hToolLastTx(e *am.Event) {
 	if d.Mach.Not1(ss.ClientSelected) {
 		return
 	}
-	d.hSetCursor1(e, am.A{
-		"cursor1":    len(d.C.MsgTxs),
-		"filterBack": true,
+	d.hSetCursor1(e, &A{
+		Cursor1:    len(d.C.MsgTxs),
+		FilterBack: true,
 	})
-	d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
+	d.Mach.EvRemove(e, am.S{ss.TailMode, ss.Playing}, nil)
 	// sidebar for errs
 	d.hUpdateClientList()
 	d.hRedrawFull(true)
@@ -670,11 +677,9 @@ func (d *Debugger) hToolFirstTx(e *am.Event) {
 	if d.Mach.Not1(ss.ClientSelected) {
 		return
 	}
-	d.hSetCursor1(e, am.A{
-		"cursor1": 0,
-	})
+	d.hSetCursor1(e, &A{Cursor1: 0})
 
-	d.Mach.Remove(am.S{ss.TailMode, ss.Playing}, nil)
+	d.Mach.EvRemove(e, am.S{ss.TailMode, ss.Playing}, nil)
 	// sidebar for errs
 	d.hUpdateClientList()
 	d.hRedrawFull(true)

@@ -10,16 +10,14 @@ import (
 	"time"
 
 	"github.com/pancsta/cview"
+	"github.com/pancsta/tcell-v2"
 	"golang.org/x/exp/maps"
-
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
-
-	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
 // ///// ///// /////
@@ -28,19 +26,19 @@ import (
 
 // ///// ///// /////
 
-func (d *Debugger) BuildingLogEnter(e *am.Event) bool {
-	// TODO typed args
-	_, ok := e.Args["logRebuildEnd"].(int)
-	return ok && d.C != nil
-}
-
 func (d *Debugger) BuildingLogState(e *am.Event) {
-	// TODO typed args
+	// empty
+	if len(d.C.MsgTxs) == 0 {
+		d.log.Clear()
+		d.Mach.EvAdd1(e, ss.LogBuilt, nil)
+		return
+	}
+
 	// TODO handle logRebuildEnd by observing ClientMsg state clock, dont req
-	endIndex := e.Args["logRebuildEnd"].(int)
+	ctx := d.Mach.NewStateCtx(ss.BuildingLog)
+	endIndex := ParseArgs(e.Args).LogRebuildEnd
 	cursorTx1 := d.C.CursorTx1
 	level := d.Params.Filters.LogLevel
-	ctx := d.Mach.NewStateCtx(ss.BuildingLog)
 	var buf string
 	// TODO compare memorized maxVisible (support resizing)
 	_, _, _, maxVisible := d.log.GetRect()
@@ -51,6 +49,7 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 	if d.lastResize == d.logLastResize && d.C.logRenderedLevel == level &&
 		d.logRenderedClient == d.C.MsgStruct.ID &&
 		d.C.logRenderedFilters.Equal(d.filtersFromStates()) &&
+		d.C.logRenderedGroup == d.C.SelectedGroup &&
 		d.C.logRenderedTimestamps == d.Mach.Is1(ss.LogTimestamps) &&
 		math.Abs(float64(d.C.logRenderedCursor1)-float64(cursorTx1)) < maxDiff {
 
@@ -63,41 +62,57 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 	// collect TODO config for benchmarks
 	d.logRebuildEnd = endIndex
 	d.logLastResize = d.lastResize
+	group := d.C.SelectedGroup
 	// TODO traverse back and forth separately and collect log lines, skip empty
 	//  lines, limit only visible lines
-	start := max(0, cursorTx1-1-maxVisible*4)
-	end := min(endIndex, start+maxVisible*5)
-	for i := start; i < end && ctx.Err() == nil; i++ {
+
+	// TODO config
+	scrollback := maxVisible * 3
+
+	// visible lines from now and after TODO optimize: string builder
+	collected := 0
+	i := 0
+	doNext := func() bool {
+		return i < endIndex && ctx.Err() == nil && collected < scrollback
+	}
+	for i = max(0, cursorTx1-1); doNext(); i++ {
 		entry, empty := d.hGetLogEntryTxt(i)
-		if entry == "" {
+		if entry == "" || empty {
 			continue
 		}
-		if i > start && !empty {
+		if collected > 0 {
 			entry = "\n" + entry
 		}
 
 		buf += entry
+		collected++
+	}
+
+	// collect visible lines from before now
+	collected = 0
+	i = 0
+	doNext = func() bool {
+		return i >= 0 && ctx.Err() == nil && collected < scrollback
+	}
+	for i = max(0, cursorTx1-2); doNext(); i-- {
+		entry, empty := d.hGetLogEntryTxt(i)
+		if entry == "" || empty {
+			continue
+		}
+
+		buf = entry + "\n" + buf
+		collected++
 	}
 
 	// unblock
-	go func() {
+	d.Mach.Fork(ctx, e, func() {
 		if ctx.Err() != nil {
 			return // expired
 		}
 
-		d.log.Clear()
-		if d.Params.OutputLog {
-			go func() {
-				// TODO handle in LogBuiltState
-				d.logFileMx.Lock()
-				defer d.logFileMx.Unlock()
-				_, _ = d.logFile.Write(cview.StripTags([]byte(buf), true, true))
-			}()
-		}
 		// cview is thread safe
+		d.log.Clear()
 		_, err := d.log.Write([]byte(buf))
-		// d.Mach.Log("writting %d", len(buf))
-		// d.Mach.Log(buf)
 		if ctx.Err() != nil {
 			return // expired
 		}
@@ -106,21 +121,44 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 			return
 		}
 
-		// TODO handle in LogBuiltState
-		d.Mach.Eval("BuildingLog", func() {
-			d.C.logRenderedCursor1 = cursorTx1
-			d.C.logRenderedLevel = level
-			d.logRenderedClient = d.C.MsgStruct.ID
-			d.C.logRenderedFilters = d.filtersFromStates()
-			d.C.logRenderedTimestamps = d.Mach.Is1(ss.LogTimestamps)
-			d.logAppends = 0
-		}, ctx)
-
-		d.Mach.EvAdd1(e, ss.LogBuilt, nil)
-	}()
+		// next
+		d.Mach.EvAdd1(e, ss.LogBuilt, Pass(&A{
+			CursorTx1: cursorTx1,
+			LogLevel:  level,
+			LogBuffer: buf,
+			Group:     group,
+		}))
+	})
 }
 
 func (d *Debugger) LogBuiltState(e *am.Event) {
+	ctx := d.Mach.NewStateCtx(ss.LogBuilt)
+	lArgs := ParseArgs(e.Args)
+	cursorTx1 := lArgs.CursorTx1
+	updated := cursorTx1 > 0 // cursor is 1-based; 0 means not passed
+	level := lArgs.LogLevel
+	buf := lArgs.LogBuffer
+	group := lArgs.Group
+
+	// save to file
+	if d.Params.OutputLog {
+		d.Mach.Go(ctx, func() {
+			d.logFileMx.Lock()
+			defer d.logFileMx.Unlock()
+			_, _ = d.logFile.Write(cview.StripTags([]byte(buf), true, true))
+		})
+	}
+
+	// memorize
+	if updated {
+		d.C.logRenderedCursor1 = cursorTx1
+		d.C.logRenderedLevel = level
+		d.C.logRenderedGroup = group
+		d.logRenderedClient = d.C.MsgStruct.ID
+		d.C.logRenderedFilters = d.filtersFromStates()
+		d.C.logRenderedTimestamps = d.Mach.Is1(ss.LogTimestamps)
+		d.logAppends = 0
+	}
 	d.handleLogScroll()
 }
 
@@ -130,12 +168,12 @@ func (d *Debugger) UpdateLogScheduledState(e *am.Event) {
 		return
 	}
 
-	// unblock
-	go func() {
+	ctx := d.Mach.NewStateCtx(ss.UpdateLogScheduled)
+	d.Mach.Fork(ctx, e, func() {
 		d.Mach.EvRemove1(e, ss.UpdateLogScheduled, nil)
 		// start updating
 		d.Mach.EvAdd1(e, ss.UpdatingLog, nil)
-	}()
+	})
 }
 
 // TODO enter which checks that came from UpdateLogScheduled
@@ -144,19 +182,22 @@ func (d *Debugger) UpdateLogScheduledState(e *am.Event) {
 func (d *Debugger) UpdatingLogState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.UpdatingLog)
 	// rebuild if needed
-	d.Mach.EvAdd1(e, ss.BuildingLog, am.A{"logRebuildEnd": len(d.C.MsgTxs)})
+	d.Mach.EvAdd1(e, ss.BuildingLog, Pass(&A{
+		LogRebuildEnd: len(d.C.MsgTxs),
+	}))
 
 	// unblock
-	go func() {
-		res := amhelp.Add1Async(ctx, d.Mach, ss.LogBuilt, ss.BuildingLog, am.A{
-			"logRebuildEnd": len(d.C.MsgTxs),
-		})
+	d.Mach.Fork(ctx, e, func() {
+		res := amhelp.Add1Async(ctx, d.Mach, ss.LogBuilt, ss.BuildingLog,
+			Pass(&A{
+				LogRebuildEnd: len(d.C.MsgTxs),
+			}))
 		if am.Canceled == res {
 			return
 		}
 
 		d.Mach.EvAdd1(e, ss.LogUpdated, nil)
-	}()
+	})
 }
 
 func (d *Debugger) LogUpdatedState(e *am.Event) {
@@ -176,7 +217,7 @@ func (d *Debugger) LogUpdatedState(e *am.Event) {
 		title := " Log:" + d.Params.Filters.LogLevel.String() + " "
 		if tx != nil && c.CursorTx1 != 0 {
 			t := strconv.Itoa(int(c.MsgTxsParsed[c.CursorTx1-1].TimeSum))
-			title += "[gray]([-]t" + t + "[gray])[-] "
+			title += "[" + theme.Grey + "]([-]t" + t + "[" + theme.Grey + "])([-] "
 		}
 		d.log.SetTitle(title)
 	}
@@ -341,7 +382,9 @@ func (d *Debugger) hAppendLogEntry(index int) error {
 	// rebuild if needed
 	d.logAppends++
 	if d.logAppends > 100 {
-		d.Mach.Add1(ss.BuildingLog, am.A{"logRebuildEnd": index})
+		d.Mach.Add1(ss.BuildingLog, Pass(&A{
+			LogRebuildEnd: index,
+		}))
 		d.logAppends = 0
 	}
 
@@ -349,7 +392,7 @@ func (d *Debugger) hAppendLogEntry(index int) error {
 }
 
 // hGetLogEntryTxt prepares a log entry for UI rendering
-// index: 1-based
+// index: 0-based
 func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 	empty = true
 
@@ -366,7 +409,7 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 	txParsed := c.MsgTxsParsed[index]
 	entries := c.LogMsgs[index]
 
-	// confirm visibility
+	// confirm visibility TODO this should be outside
 	if d.hIsTxSkipped(c, index) {
 		return "", true
 	}
@@ -379,8 +422,8 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 		}
 
 		// stack traces removal
-		isErr := strings.HasPrefix(logStr, `[yellow][error[]`)
-		isBreakpoint := strings.HasPrefix(logStr, `[yellow][breakpoint[]`)
+		isErr := strings.HasPrefix(logStr, "["+theme.Yellow+"][error[]")
+		isBreakpoint := strings.HasPrefix(logStr, "["+theme.Yellow+"][breakpoint[]")
 		if (isErr || isBreakpoint) && strings.Contains(logStr, "\n") &&
 			d.Mach.Is1(ss.FilterTraces) {
 
@@ -395,7 +438,8 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 		empty = false
 
 		if d.Params.Filters.LogLevel == am.LogExternal {
-			ret = strings.ReplaceAll(ret, "[yellow][extern[][white] [darkgrey]", "")
+			ret = strings.ReplaceAll(ret,
+				"["+theme.Yellow+"][extern[]["+theme.White+"] ["+theme.DarkGrey+"]", "")
 		}
 
 		// prefix if showing canceled or queued (gutter)
@@ -405,13 +449,13 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 			p := ""
 			switch {
 			case tx.IsQueued:
-				p = "[-:yellow] [-:-]"
+				p = "[-:" + theme.Yellow + "] [-:-]"
 			case !tx.Accepted:
-				p = "[-:red] [-:-]"
+				p = "[-:" + theme.Err + "] [-:-]"
 			case txParsed.TimeDiff == 0:
-				p = "[-:grey] [-:-]"
+				p = "[-:" + theme.Grey + "] [-:-]"
 			default:
-				p = "[-:green] [-:-]"
+				p = "[-:" + theme.Green + "] [-:-]"
 			}
 
 			// prefix each line
@@ -454,7 +498,7 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 				msgTime.Sub(*prevMsg.Time) > time.Second {
 
 				// grouping labels (per second)
-				ret += `[grey]` + msgTime.Format(timeFormat) + "[-]\n"
+				ret += "[" + theme.Grey + "]" + msgTime.Format(timeFormat) + "[-]\n"
 			}
 		}
 
@@ -470,10 +514,12 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 }
 
 var logPrefixState = regexp.MustCompile(
-	`^\[yellow\]\[(state|queue|cance|empty)\[\]\[white\] .+\)\n$`)
+	// TODO `^\[yellow\]\[(state|queue|cance|empty)\[\]\[white\] .+\)\n$`)
+	`^\[[^\]]+\]\[(state|queue|cance|empty)\[\]\[[^\]]+\] .+\)\n$`)
 
 var logPrefixExtern = regexp.MustCompile(
-	`^\[yellow\]\[exter.+\n$`)
+	// TODO `^\[yellow\]\[exter.+\n$`)
+	`^\[[^\]]+\]\[exter.+\n$`)
 
 var (
 	filenamePattern = regexp.MustCompile(`/[a-z_]+\.go:\d+ \+(?i)`)
@@ -490,7 +536,7 @@ func fmtLogEntry(
 		return entry
 	}
 
-	prefixEnd := "[][white]"
+	prefixEnd := "[][" + theme.White + "]"
 
 	ret := ""
 	// format each line
@@ -499,7 +545,7 @@ func fmtLogEntry(
 		if i == 0 {
 			s = strings.Replace(strings.Replace(s,
 				"]", prefixEnd, 1),
-				"[", "[yellow][", 1)
+				"[", "["+theme.Yellow+"][", 1)
 			start := strings.Index(s, prefixEnd) + len(prefixEnd)
 			left, right := s[:start], s[start:]
 			// escape the rest
@@ -518,8 +564,8 @@ func fmtLogEntry(
 			if len(a) == 1 {
 				args += a[0] + " "
 			} else {
-				args += "[grey]" + a[0] + "=[" + colorInactive.String() + "]" + a[1] +
-					"[:] "
+				args += "[" + theme.Grey + "]" + a[0] +
+					"=[" + theme.Inactive + "]" + a[1] + "[:] "
 			}
 		}
 
@@ -530,7 +576,7 @@ func fmtLogEntry(
 	ret = logPrefixExtern.ReplaceAllStringFunc(ret, func(m string) string {
 		prefix, content, _ := strings.Cut(m, " ")
 
-		return prefix + " [darkgrey]" + content
+		return prefix + " [" + theme.DarkGrey + "]" + content
 	})
 
 	// highlight state names (in the msg body)
@@ -550,14 +596,16 @@ func fmtLogEntry(
 		if slices.Contains(calledStates, name) {
 			body = strings.ReplaceAll(body, " "+name, " [::bu]"+name+"[::-]")
 			body = strings.ReplaceAll(body, "+"+name, "+[::bu]"+name+"[::-]")
-			body = strings.ReplaceAll(body, "-"+name, "-[darkgrey::u]"+name+"[::-]")
+			body = strings.ReplaceAll(body, "-"+name,
+				"-["+theme.DarkGrey+"::u]"+name+"[::-]")
 			body = strings.ReplaceAll(body, ","+name, ",[::bu]"+name+"[::-]")
 			ret = prefix + strings.ReplaceAll(body, "("+name, "([::b]"+name+"[::-]")
 		} else {
 			// style all state names
 			body = strings.ReplaceAll(body, " "+name, " [::b]"+name+"[::-]")
 			body = strings.ReplaceAll(body, "+"+name, "+[::b]"+name+"[::-]")
-			body = strings.ReplaceAll(body, "-"+name, "-[darkgrey]"+name+"[::-]")
+			body = strings.ReplaceAll(body, "-"+name,
+				"-["+theme.DarkGrey+"]"+name+"[::-]")
 			body = strings.ReplaceAll(body, ","+name, ",[::b]"+name+"[::-]")
 			ret = prefix + strings.ReplaceAll(body, "("+name, "([::b]"+name+"[::-]")
 		}
@@ -566,53 +614,56 @@ func fmtLogEntry(
 	ret = strings.Trim(ret, " \n	")
 
 	// highlight stack traces
-	isErr := strings.HasPrefix(ret, `[yellow][error[]`)
-	isBreakpoint := strings.HasPrefix(ret, `[yellow][breakpoint[]`)
+	isErr := strings.HasPrefix(ret, "["+theme.Yellow+"][error[]")
+	isBreakpoint := strings.HasPrefix(ret, "["+theme.Yellow+"][breakpoint[]")
 	if (isErr || isBreakpoint) && strings.Contains(ret, "\n") {
-
 		// highlight
-		lines := strings.Split(ret, "\n")
-		linesNew := lines[0:1]
-		skipNext := false
-		for i, line := range lines {
-			if i == 0 || skipNext {
-				skipNext = false
-				continue
-			}
-			// filter out machine lines
-			if strings.Contains(line, "machine.(*Machine).handlerLoop(") {
-				linesNew = linesNew[0:max(0, len(linesNew)-4)]
-				skipNext = true
-				continue
-			}
-
-			// method line
-			if i%2 == 1 {
-				linesNew = append(linesNew, "[grey]"+
-					methodPattern.ReplaceAllStringFunc(line,
-						func(m string) string {
-							return "[white]" + m + "[grey]"
-						}))
-			} else {
-				// file line
-				linesNew = append(linesNew, "[grey]"+
-					filenamePattern.ReplaceAllStringFunc(line,
-						func(m string) string {
-							mspace := strings.Split(m, " ")
-							ret := "[white]" + mspace[0]
-							if len(mspace) > 1 {
-								ret += " [grey]" + mspace[1]
-							}
-
-							return ret
-						}))
-			}
-		}
-
-		ret = strings.Join(linesNew, "\n")
+		ret = highlightStackTrace(ret)
 	}
 
 	return ret + "\n"
+}
+
+func highlightStackTrace(ret string) string {
+	lines := strings.Split(ret, "\n")
+	linesNew := lines[0:1]
+	skipNext := false
+	for i, line := range lines {
+		if i == 0 || skipNext {
+			skipNext = false
+			continue
+		}
+		// filter out machine lines
+		if strings.Contains(line, "machine.(*Machine).handlerLoop(") {
+			linesNew = linesNew[0:max(0, len(linesNew)-4)]
+			skipNext = true
+			continue
+		}
+
+		// method line
+		if i%2 == 1 {
+			linesNew = append(linesNew, "["+theme.Grey+"]"+
+				methodPattern.ReplaceAllStringFunc(line,
+					func(m string) string {
+						return "[" + theme.White + "]" + m + "[" + theme.Grey + "]"
+					}))
+		} else {
+			// file line
+			linesNew = append(linesNew, "["+theme.Grey+"]"+
+				filenamePattern.ReplaceAllStringFunc(line,
+					func(m string) string {
+						mspace := strings.Split(m, " ")
+						ret := "[" + theme.White + "]" + mspace[0]
+						if len(mspace) > 1 {
+							ret += " [" + theme.Grey + "]" + mspace[1]
+						}
+
+						return ret
+					}))
+		}
+	}
+
+	return strings.Join(linesNew, "\n")
 }
 
 // ///// ///// /////
@@ -636,6 +687,7 @@ type logReaderTreeRef struct {
 	addr  *types.MachAddress
 
 	isQueueRoot bool
+	info        string
 }
 
 var removeStyleBracketsRe = regexp.MustCompile(`\[[^\]]*\]`)
@@ -648,9 +700,9 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 	tree := cview.NewTreeView()
 	tree.SetRoot(root)
 	tree.SetCurrentNode(root)
-	tree.SetSelectedBackgroundColor(colorHighlight2)
-	tree.SetSelectedTextColor(colorDefault)
-	tree.SetHighlightColor(colorHighlight)
+	tree.SetSelectedBackgroundColor(tcell.GetColor(theme.Highlight2))
+	tree.SetSelectedTextColor(tcell.GetColor(theme.White))
+	tree.SetHighlightColor(tcell.GetColor(theme.Highlight))
 	tree.SetTopLevel(1)
 
 	// focus change
@@ -703,9 +755,9 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 		if len(ref.stateNames) < 1 {
 			d.Mach.Remove1(ss.StateNameSelected, nil)
 		} else {
-			d.Mach.Add1(ss.StateNameSelected, am.A{
-				"state": ref.stateNames[0],
-			})
+			d.Mach.Add1(ss.StateNameSelected, Pass(&A{
+				State: ref.stateNames[0],
+			}))
 		}
 	})
 
@@ -745,13 +797,14 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 		// click effect
 		tick := d.Mach.Tick(ss.UpdateLogReader)
 		text := node.GetText()
-		node.SetText("[" + colorActive.String() + "::u]" +
+		node.SetText("[" + tcell.GetColor(theme.Active).String() + "::u]" +
 			removeStyleBracketsRe.ReplaceAllString(text, ""))
 		d.draw(d.logReader)
 
-		go func() {
+		ctx := d.Mach.NewStateCtx(ss.LogReaderVisible)
+		d.Mach.Go(ctx, func() {
 			time.Sleep(time.Millisecond * 200)
-			d.hGoToMachAddress(addr, false)
+			d.GoToMachAddress(addr, false)
 
 			// restore in case no redir
 			time.Sleep(time.Millisecond * 50)
@@ -760,7 +813,16 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 			}
 			node.SetText(text)
 			d.draw(d.logReader)
-		}()
+		})
+
+		// info overlay
+		if ref.info != "" {
+			d.Mach.Add1(ss.Overlay, Pass(&A{
+				Text: ref.info,
+			}))
+		} else if d.Mach.Is1(ss.Overlay) {
+			d.Mach.Remove1(ss.Overlay, nil)
+		}
 	})
 
 	return tree
@@ -778,12 +840,6 @@ func (d *Debugger) OverlayState(e *am.Event) {
 	x, y, _, h := d.logReader.GetRect()
 	d.overlay.SetRect(0, y, x, h)
 	d.LayoutRoot.SendToFront("overlay")
-	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
-}
-
-func (d *Debugger) OverlayEnd(e *am.Event) {
-	d.LayoutRoot.SendToBack("overlay")
-	d.overlay.SetVisible(false)
 	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
 }
 
@@ -916,7 +972,8 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 					parentCtx = cview.NewTreeNode("StateCtx")
 				}
 				states := amhelp.IndexesToStates(statesIndex, entry.States)
-				node = cview.NewTreeNode(d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
+				node = cview.NewTreeNode(d.P.Sprintf(
+					"[::b]%s[::-] ["+theme.Grey+"]t%d[-]",
 					utils.J(states), entry.CreatedAt))
 				parentCtx.AddChild(node)
 				if slices.Contains(states, selState) {
@@ -928,7 +985,8 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 					parentWhen = cview.NewTreeNode("When")
 				}
 				states := amhelp.IndexesToStates(statesIndex, entry.States)
-				node = cview.NewTreeNode(d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
+				node = cview.NewTreeNode(d.P.Sprintf(
+					"[::b]%s[::-] ["+theme.Grey+"]t%d[-]",
 					utils.J(states), entry.CreatedAt))
 				parentWhen.AddChild(node)
 				if slices.Contains(states, selState) {
@@ -940,7 +998,8 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 					parentWhenNot = cview.NewTreeNode("WhenNot")
 				}
 				states := amhelp.IndexesToStates(statesIndex, entry.States)
-				node = cview.NewTreeNode(d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
+				node = cview.NewTreeNode(d.P.Sprintf(
+					"[::b]%s[::-] ["+theme.Grey+"]t%d[-]",
 					utils.J(states), entry.CreatedAt))
 				parentWhenNot.AddChild(node)
 				if slices.Contains(states, selState) {
@@ -960,7 +1019,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 						highlight = true
 					}
 				}
-				node = cview.NewTreeNode(d.P.Sprintf("%s[grey]t%d[-]", txt,
+				node = cview.NewTreeNode(d.P.Sprintf("%s["+theme.Grey+"]t%d[-]", txt,
 					entry.CreatedAt))
 				parentWhenTime.AddChild(node)
 				if highlight {
@@ -972,7 +1031,8 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 					parentWhenArgs = cview.NewTreeNode("WhenArgs")
 				}
 				states := amhelp.IndexesToStates(statesIndex, entry.States)
-				node = cview.NewTreeNode(d.P.Sprintf("[::b]%s[::-] [grey]t%d[-]",
+				node = cview.NewTreeNode(d.P.Sprintf(
+					"[::b]%s[::-] ["+theme.Grey+"]t%d[-]",
 					utils.J(states), entry.CreatedAt))
 				// TODO node with key = val for each arg
 				node2 := cview.NewTreeNode(d.P.Sprintf("%s", entry.Args))
@@ -1019,7 +1079,8 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 					node.SetBold(true)
 					parentPipeIn.AddChild(node)
 				}
-				node2 := cview.NewTreeNode(d.P.Sprintf("%-6s | [grey]t%d[-] %s",
+				node2 := cview.NewTreeNode(d.P.Sprintf(
+					"%-6s | ["+theme.Grey+"]t%d[-] %s",
 					capitalizeFirst(entry.Pipe.String()), entry.CreatedAt, entry.Mach))
 				node2.SetIndent(1)
 				node2.SetReference(&logReaderTreeRef{
@@ -1068,7 +1129,8 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 				pipeTime := *c.Tx(txIdx).Time
 
 				// pipe-out node
-				node2 := cview.NewTreeNode(d.P.Sprintf("%-6s | [grey]t%d[-] %s",
+				node2 := cview.NewTreeNode(d.P.Sprintf(
+					"%-6s | ["+theme.Grey+"]t%d[-] %s",
 					capitalizeFirst(entry.Pipe.String()), entry.CreatedAt, entry.Mach))
 				node2.SetIndent(1)
 				node2.SetReference(&logReaderTreeRef{
@@ -1112,8 +1174,8 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		node := cview.NewTreeNode("self")
 		node.SetIndent(1)
 		if source[0] != c.Id {
-			node.SetText(d.P.Sprintf("%s [grey]t%v[-]", source[0],
-				source[2]))
+			node.SetText(d.P.Sprintf("%s ["+theme.Grey+"]t%v[-]", source[0],
+				machTime))
 			node.SetReference(&logReaderTreeRef{
 				machId:   source[0],
 				txId:     source[1],
@@ -1151,7 +1213,8 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 			source[0] != c.Id {
 
 			if tags := sourceMach.MsgStruct.Tags; len(tags) > 0 {
-				node2 := cview.NewTreeNode("[grey]#" + strings.Join(tags, " #"))
+				node2 := cview.NewTreeNode(
+					"[" + theme.Grey + "]#" + strings.Join(tags, " #"))
 				node2.SetIndent(1)
 				parentSource.AddChild(node2)
 			}
@@ -1263,7 +1326,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 			executedNode.SetReference(ref)
 			executedNode.SetIndent(1)
 			parentQueue.AddChild(executedNode)
-			queuedNode := cview.NewTreeNode(fmt.Sprintf("queued   at [::b]t%d",
+			queuedNode := cview.NewTreeNode(d.P.Sprintf("queued   at [::b]t%d",
 				tx.TimeSum()))
 			queuedNode.SetIndent(1)
 			parentQueue.AddChild(queuedNode)
@@ -1360,7 +1423,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		for ii := max(0, c.CursorTx1-1); ii >= 0; ii-- {
 			past := c.Tx(ii)
 			if past == nil {
-				d.Mach.AddErr(fmt.Errorf("tx missing: %d", ii), nil)
+				d.Mach.EvAddErr(e, fmt.Errorf("tx missing: %d", ii), nil)
 				break
 			}
 
@@ -1406,28 +1469,26 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 				break
 			}
 
-			label := past.MutString(statesIndex)
+			calledStates := past.CalledStateNames(statesIndex)
+			label := fmt.Sprintf("[::b]%s%s[::-]",
+				past.Type.StringShort(), utils.J(calledStates))
 
-			before := label[0:1]
-			after := label[1:]
 			if past.MutQueueTick > 0 {
-				after = after + " " + d.P.Sprintf("[gray]q%v", past.MutQueueTick)
+				label = label + " " +
+					d.P.Sprintf("["+theme.Grey+"]q%v", past.MutQueueTick)
 			}
-			switch before {
-			case "+":
-				before = " +"
-			case "-":
-				before = "- "
-			}
-			mutNode := cview.NewTreeNode("[::b]" + before + "[::-]" + after)
+			mutNode := cview.NewTreeNode(label)
 			mutNode.SetIndent(2)
 
 			// link
 			mutNode.SetReference(&logReaderTreeRef{
 				machId:     c.Id,
 				txId:       past.ID,
-				stateNames: past.CalledStateNames(statesIndex),
+				stateNames: calledStates,
 			})
+			if slices.Contains(calledStates, selState) {
+				mutNode.SetHighlighted(true)
+			}
 
 			// priority queue
 			if past.MutQueueToken > 0 {
@@ -1507,7 +1568,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 				link.TxId)
 			if targetTxIdx != -1 {
 				targetTx := targetMach.Tx(targetTxIdx)
-				label2 = d.P.Sprintf("%s [grey]t%v[-]", link.MachId,
+				label2 = d.P.Sprintf("%s ["+theme.Grey+"]t%v[-]", link.MachId,
 					targetTx.TimeSum())
 			}
 
@@ -1525,7 +1586,8 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 			// ID and tags (only for external machines)
 
 			if tags := targetMach.MsgStruct.Tags; len(tags) > 0 {
-				node3 := cview.NewTreeNode("[grey]#" + strings.Join(tags, " #"))
+				node3 := cview.NewTreeNode(
+					"[" + theme.Grey + "]#" + strings.Join(tags, " #"))
 				node3.SetIndent(1)
 				node.AddChild(node3)
 				if highlight {
@@ -1599,7 +1661,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 					link.TxId)
 				if targetTxIdx != -1 {
 					targetTx := targetMach.Tx(targetTxIdx)
-					label2 = d.P.Sprintf("%s [grey]t%v[-]", link.MachId,
+					label2 = d.P.Sprintf("%s ["+theme.Grey+"]t%v[-]", link.MachId,
 						targetTx.TimeSum())
 				}
 
@@ -1617,7 +1679,8 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 				// ID and tags (only for external machines)
 
 				if tags := targetMach.MsgStruct.Tags; len(tags) > 0 {
-					node3 := cview.NewTreeNode("[grey]#" + strings.Join(tags, " #"))
+					node3 := cview.NewTreeNode(
+						"[" + theme.Grey + "]#" + strings.Join(tags, " #"))
 					node3.SetIndent(1)
 					node.AddChild(node3)
 					if highlight {
@@ -1643,7 +1706,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		}
 		handlerIdx := entry.Text[len("[handler:"):idx]
 		name := entry.Text[idx+2:]
-		node := cview.NewTreeNode(d.P.Sprintf("%s[grey]:%s[-]", name,
+		node := cview.NewTreeNode(d.P.Sprintf("%s["+theme.Grey+"]:%s[-]", name,
 			handlerIdx))
 		node.SetIndent(1)
 		parentHandlers.AddChild(node)
@@ -1659,7 +1722,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		labels := []string{}
 		for k, v := range tx.Args {
 			labels = append(labels, d.P.Sprintf(
-				"[::b]%s[::-] [%s]%s", k, colorInactive, v))
+				"[::b]%s[::-] [%s]%s", k, theme.Inactive, v))
 		}
 		slices.Sort(labels)
 		for _, label := range labels {
@@ -1672,16 +1735,18 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 	// TODO extract
 	addParent := func(parent *cview.TreeNode) {
 		name := parent.GetText()
-		if expanded, ok := d.logReaderExpanded[name]; ok {
+		// TODO better
+		nameNormalized := strings.Split(name, " ")[0]
+		if expanded, ok := d.logReaderExpanded[nameNormalized]; ok {
 			parent.SetExpanded(expanded)
 		}
 
 		count := len(parent.GetChildren())
 		if count > 0 && parent != parentSource && parent != parentQueue {
-			parent.SetText(fmt.Sprintf("[%s]%s[-] (%d)", colorActive,
+			parent.SetText(fmt.Sprintf("[%s]%s[-] (%d)", theme.Active,
 				parent.GetText(), count))
 		} else {
-			parent.SetText(fmt.Sprintf("[%s]%s[-]", colorActive, parent.GetText()))
+			parent.SetText(fmt.Sprintf("[%s]%s[-]", theme.Active, parent.GetText()))
 		}
 		parent.SetIndent(0)
 		parent.SetReference(&logReaderTreeRef{})
@@ -1790,8 +1855,9 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 	d.logReader.SetScrollOffset(d.logReaderScroll)
 	d.logReader.SetCurrentNode(selected)
 	d.logReader.SetScrollOffset(d.logReaderScroll)
-	// TODO great...
-	go d.draw(d.logReader)
+
+	// TODO check if still needed
+	d.draw()
 }
 
 func (d *Debugger) parseMsgReader(

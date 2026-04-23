@@ -12,10 +12,8 @@ import (
 	"github.com/pancsta/cview"
 	"github.com/pancsta/tcell-v2"
 
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
-
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 )
 
 type nodeRef struct {
@@ -73,9 +71,9 @@ func (d *Debugger) hInitSchemaTree() *cview.TreeView {
 			return
 		}
 
-		d.Mach.Add1(ss.StateNameSelected, am.A{
-			"state": ref.stateName,
-		})
+		d.Mach.Add1(ss.StateNameSelected, Pass(&A{
+			State: ref.stateName,
+		}))
 		d.hUpdateLogReader(nil)
 		d.hUpdateMatrix()
 	})
@@ -135,6 +133,10 @@ func (d *Debugger) hUpdateSchemaTree() {
 
 	var steps []*am.Step
 	nextTx := d.hNextTx()
+	if nextTx == nil {
+		// TODO handle?
+		return
+	}
 	if c.CursorTx1 < len(c.MsgTxs) && c.CursorStep1 > 0 {
 		steps = nextTx.Steps
 	}
@@ -219,15 +221,15 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 		stateName := ref.stateName
 		stateNamePad := stateName + strings.Repeat(" ",
 			max(0, maxNameLen-len(stateName)))
-		color := colorInactive
+		nodeColor := theme.Inactive
 
 		if msg.Is(index, am.S{stateName}) {
 			if stateName == am.StateException ||
 				strings.HasPrefix(stateName, am.PrefixErr) {
 
-				color = colorErr
+				nodeColor = theme.Err
 			} else {
-				color = colorActive
+				nodeColor = theme.Active
 			}
 		}
 
@@ -237,8 +239,8 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 		multi := " "
 		if s, ok := schema[stateName]; ok && !ref.isRef && s.Multi {
 			multi = "M"
-			if color == colorActive {
-				color = colorActive2
+			if nodeColor == theme.Active {
+				nodeColor = theme.Active2
 			}
 		}
 
@@ -255,7 +257,7 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 
 				tick := d.P.Sprintf("%d", msg.Clock(index,
 					stateName))
-				node.SetColor(color)
+				node.SetColor(tcell.GetColor(nodeColor))
 				node.SetText(stateNamePad + " " + multi + "|" + tick)
 			}
 
@@ -280,7 +282,7 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 		// top-level state
 		tick := strconv.FormatUint(msg.Clock(index,
 			stateName), 10)
-		node.SetColor(color)
+		node.SetColor(tcell.GetColor(nodeColor))
 		node.SetText(stateNamePad + " " + multi + "|" + tick)
 
 		// get node text length
@@ -304,9 +306,7 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 	return maxLen
 }
 
-func (d *Debugger) hUpdateTreeTxSteps(
-	steps []*am.Step, tx *dbg.DbgMsgTx,
-) int {
+func (d *Debugger) hUpdateTreeTxSteps(steps []*am.Step, tx *dbg.DbgMsgTx) int {
 	c := d.C
 	if c == nil {
 		return 0
@@ -367,7 +367,8 @@ func (d *Debugger) hUpdateTreeTxSteps(
 				visibleLen := node.VisibleLength()
 				// TODO unified color
 				if maxLen+1-visibleLen > 0 {
-					textMargin = strings.Repeat(" ", maxLen+1-visibleLen) + "[white]"
+					textMargin = strings.Repeat(" ", maxLen+1-visibleLen) +
+						"[" + theme.White + "]"
 					// debug
 					// log.Printf("node: %s, textMargin: %d, depth: %d, visibleLen: %d",
 					//	node.GetText(), len(textMargin), depth, visibleLen)
@@ -896,6 +897,7 @@ func (d *Debugger) hUpdateTreeGroups() {
 	d.treeGroups.ClearOptions()
 	d.treeGroups.AddOptions(opts...)
 	// TODO not great
+	d.treeGroupSkip = true
 	go d.treeGroups.SetCurrentOption(sel)
 }
 

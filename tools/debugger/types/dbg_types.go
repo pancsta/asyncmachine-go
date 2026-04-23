@@ -2,6 +2,7 @@ package types
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,9 +15,25 @@ import (
 	"strings"
 	"time"
 
-	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	"github.com/PuerkitoBio/goquery"
+	"github.com/coder/websocket"
+	"github.com/orsinium-labs/enum"
+	"github.com/pancsta/cview"
 	"github.com/pancsta/tcell-v2"
+
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
+
+var ss = ssdbg.DebuggerStates
+
+// ///// ///// /////
+
+// ///// PARAMS
+
+// ///// ///// /////
 
 // Params are CLI params for am-dbg, also used as internal state via Debugger.Params.
 //
@@ -69,14 +86,15 @@ type Params struct {
 
 	// view
 
-	PrintVersion  bool   `arg:"--version" help:"Print version and exit"`
-	StartupView   string `arg:"-v,--view" default:"tree-log" help:"Initial view (tree-log, tree-matrix, matrix)"`
-	ViewNarrow    bool   `arg:"--view-narrow" help:"Force a narrow view, independently of the viewport size"`
-	ViewRain      bool   `arg:"--view-rain" help:"Show the rain view"`
-	ViewReader    bool   `arg:"-r,--view-reader" help:"Show the log reader view"`
-	TailMode      bool   `arg:"--view-tail" default:"true" help:"Start from the latest tx"`
-	ViewTheme     string `arg:"--view-theme" default:"dark" help:"Color theme (dark, light)"`
-	ViewTimelines int    `arg:"--view-timelines" default:"2" help:"Number of timelines to show (0-2)"`
+	PrintVersion  bool                `arg:"--version" help:"Print version and exit"`
+	StartupView   string              `arg:"-v,--view" default:"tree-log" help:"Initial view (tree-log, tree-matrix, matrix)"`
+	ViewLogWrap   bool                `arg:"--view-log-wrap" help:"Wrap log lines"`
+	ViewNarrow    bool                `arg:"--view-narrow" help:"Force a narrow view, independently of the viewport size"`
+	ViewRain      bool                `arg:"--view-rain" help:"Show the rain view"`
+	ViewReader    bool                `arg:"-r,--view-reader" help:"Show the log reader view"`
+	TailMode      bool                `arg:"--view-tail" default:"true" help:"Start from the latest tx"`
+	ViewTheme     string              `arg:"--view-theme" default:"dark" help:"Color theme (dark, light)"`
+	ViewTimelines ParamsViewTimelines `arg:"--view-timelines" default:"2" help:"Number of timelines to show (0-2)"`
 
 	// optimization
 
@@ -250,7 +268,7 @@ type Filters struct {
 }
 
 func (f *Filters) Equal(filters *Filters) bool {
-	if filters == nil {
+	if filters == nil || f == nil {
 		return false
 	}
 
@@ -344,10 +362,17 @@ type MachAddress struct {
 	TxId      string
 	MachTime  uint64
 	HumanTime time.Time
-	// TODO support step
-	Step int
-	// TODO support queue ticks
+	Step      int
+
+	// TODO
 	QueueTick uint64
+
+	// TODO support as GET param
+
+	Group    string
+	State    string
+	Relation string
+	RelState string
 }
 
 type MachTime struct {
@@ -365,6 +390,10 @@ func (a *MachAddress) Clone() *MachAddress {
 }
 
 func (a *MachAddress) String() string {
+	if a == nil {
+		return ""
+	}
+
 	if a.TxId != "" {
 		u := fmt.Sprintf("mach://%s/%s", a.MachId, a.TxId)
 		if a.Step != 0 {
@@ -373,6 +402,7 @@ func (a *MachAddress) String() string {
 		if a.MachTime != 0 {
 			u += fmt.Sprintf("/t%d", a.MachTime)
 		}
+		// TODO queue tick as q123
 
 		return u
 	}
@@ -474,3 +504,375 @@ const (
 	// TODO mentions of machine IDs
 	// logReaderMention
 )
+
+// ///// ///// /////
+
+// ///// TOOLS
+
+// ///// ///// /////
+
+// ToolName is a debugger's toolbar button.
+type ToolName enum.Member[string]
+
+var (
+	ToolFilterCanceledTx = ToolName{"skip-canceled"}
+	ToolFilterQueuedTx   = ToolName{"skip-queued"}
+	ToolFilterAutoTx     = ToolName{"skip-auto"}
+	ToolFilterEmptyTx    = ToolName{"skip-empty"}
+	ToolFilterHealth     = ToolName{"skip-health"}
+	ToolFilterOutGroup   = ToolName{"skip-outgroup"}
+	ToolFilterChecks     = ToolName{"skip-checks"}
+	ToolFilterDisconn    = ToolName{"skip-disconn"}
+	ToolLogTimestamps    = ToolName{"hide-timestamps"}
+	ToolFilterTraces     = ToolName{"hide-traces"}
+	ToolNarrowLayout     = ToolName{"narrow-layout"}
+	ToolLog              = ToolName{"log"}
+	ToolDiagrams         = ToolName{"diagrams"}
+	ToolDiagramsTx       = ToolName{"diag-tx"}
+	ToolDiagramsGroup    = ToolName{"diag-group"}
+	ToolTimelines        = ToolName{"timelines"}
+	ToolReader           = ToolName{"reader"}
+	ToolRain             = ToolName{"rain"}
+	ToolLogWrap          = ToolName{"log-wrap"}
+	ToolWeb              = ToolName{"web"}
+	ToolHelp             = ToolName{"help"}
+	ToolPlay             = ToolName{"play"}
+	ToolTail             = ToolName{"tail"}
+	ToolPrev             = ToolName{"prev"}
+	ToolNext             = ToolName{"next"}
+	ToolJumpNext         = ToolName{"jump-next"}
+	ToolJumpPrev         = ToolName{"jump-prev"}
+	ToolFirst            = ToolName{"first"}
+	ToolLast             = ToolName{"last"}
+	ToolExpand           = ToolName{"expand"}
+	ToolMatrix           = ToolName{"matrix"}
+	ToolExport           = ToolName{"export"}
+	ToolNextStep         = ToolName{"next-step"}
+	ToolPrevStep         = ToolName{"prev-step"}
+
+	ToolNames = enum.New(
+		ToolFilterCanceledTx,
+		ToolFilterQueuedTx,
+		ToolFilterAutoTx,
+		ToolFilterEmptyTx,
+		ToolFilterHealth,
+		ToolFilterOutGroup,
+		ToolFilterChecks,
+		ToolFilterDisconn,
+		ToolLogTimestamps,
+		ToolFilterTraces,
+		ToolNarrowLayout,
+		ToolLog,
+		ToolDiagrams,
+		ToolDiagramsTx,
+		ToolDiagramsGroup,
+		ToolTimelines,
+		ToolReader,
+		ToolRain,
+		ToolLogWrap,
+		ToolWeb,
+		ToolHelp,
+		ToolPlay,
+		ToolTail,
+		ToolPrev,
+		ToolNext,
+		ToolJumpNext,
+		ToolJumpPrev,
+		ToolFirst,
+		ToolLast,
+		ToolExpand,
+		ToolMatrix,
+		ToolExport,
+		ToolNextStep,
+		ToolPrevStep,
+	)
+)
+
+// ///// ///// /////
+
+// ///// ARGS
+
+// ///// ///// /////
+
+const APrefix = "dbg"
+
+// A is a struct for debugger arguments. It's a typesafe alternative to [am.A].
+type A struct {
+
+	// client identification
+
+	ClientId string `log:"client_id"`
+	TxId     string `log:"tx_id"`
+	ConnId   string `log:"conn_id"`
+	ConnIds  []string
+
+	// cursor positioning (1-based)
+
+	Cursor1     int `log:"cursor1"`
+	CursorStep1 int `log:"cursor_step1"`
+	// TODO merge with Cursor1
+	CursorTx1 int `log:"cursor_tx1"`
+
+	// navigation
+
+	Amount int  `log:"amount" json:",string"`
+	Fwd    bool `log:"fwd" json:",string"`
+
+	// state / group selection
+
+	State string `log:"state"`
+	Group string
+
+	// tool toggling
+
+	ToolName ToolName `log:"tool_name"`
+
+	// client init
+
+	Id string `log:"id"`
+
+	// log building
+
+	LogRebuildEnd int `json:",string"`
+	LogBuffer     string
+	LogLevel      am.LogLevel `json:",string"`
+
+	// cursor history / filtering
+
+	SkipHistory bool
+	TrimHistory bool
+	FilterBack  bool
+
+	// filter / update flags
+
+	FilterTxs       bool
+	BuildClientList bool
+	Immediate       bool
+	FromConnected   bool
+	FromPlaying     bool
+	MouseFocus      bool
+
+	// display / text
+
+	Text string `log:"text"`
+	Uri  string `log:"uri"`
+	Addr string `log:"addr"`
+
+	// matrix rain
+
+	Row       int `json:",string"`
+	Column    int `json:",string"`
+	CurrTxRow int `json:",string"`
+
+	// non-rpc / complex types
+
+	// FocusPrimitive is the UI element receiving focus.
+	FocusPrimitive cview.Primitive
+	// DiagramCache is parsed HTML for diagram generation.
+	DiagramCache *goquery.Document
+	// DiagramName is the name of the diagram being generated.
+	DiagramName string
+	// HttpRequest is for web server route handlers.
+	HttpRequest *http.Request
+	// HttpResponseWriter is for web server route handlers.
+	HttpResponseWriter http.ResponseWriter
+	// DoneChan signals completion of a web handler.
+	DoneChan chan struct{}
+	// WebSocketConn is for WebSocket handlers.
+	WebSocketConn *websocket.Conn
+	// MsgStruct is the schema message from am-dbg protocol.
+	MsgStruct *dbg.DbgMsgStruct
+	// MsgsTx is a batch of transaction messages.
+	MsgsTx []*dbg.DbgMsgTx
+	// Ctx is a context passed into handlers.
+	Ctx context.Context
+}
+
+// ARpc is a subset of A, that can be passed over RPC.
+type ARpc struct {
+
+	// client identification
+
+	ClientId string `log:"client_id"`
+	TxId     string `log:"tx_id"`
+	ConnId   string `log:"conn_id"`
+	ConnIds  []string
+
+	// cursor positioning (1-based)
+
+	Cursor1     int `log:"cursor1"`
+	CursorStep1 int `log:"cursor_step1"`
+	// TODO merge with Cursor1
+	CursorTx1 int `log:"cursor_tx1"`
+
+	// navigation
+
+	Amount int  `log:"amount" json:",string"`
+	Fwd    bool `log:"fwd" json:",string"`
+
+	// state / group selection
+
+	State string `log:"state"`
+	Group string
+
+	// tool toggling
+
+	ToolName ToolName `log:"tool_name"`
+
+	// client init
+
+	Id string `log:"id"`
+
+	// log building
+
+	LogRebuildEnd int `json:",string"`
+	LogBuffer     string
+	LogLevel      am.LogLevel `json:",string"`
+
+	// cursor history / filtering
+
+	SkipHistory bool
+	TrimHistory bool
+	FilterBack  bool
+
+	// filter / update flags
+
+	FilterTxs       bool
+	BuildClientList bool
+	Immediate       bool
+	FromConnected   bool
+	FromPlaying     bool
+	MouseFocus      bool
+
+	// display / text
+
+	Text string `log:"text"`
+	Uri  string `log:"uri"`
+	Addr string `log:"addr"`
+
+	// matrix rain
+
+	Row       int `json:",string"`
+	Column    int `json:",string"`
+	CurrTxRow int `json:",string"`
+}
+
+var StateCalls = []am.CallSignature{
+	{States: am.S{ss.StateNameSelected}, Needed: []string{"State"}},
+	{States: am.S{ss.Redraw}, Args: []string{"Immediate"}},
+	{States: am.S{ss.Fwd}, Args: []string{"Amount"}},
+	{States: am.S{ss.Back}, Args: []string{"Amount"}},
+	{States: am.S{ss.ConnectEvent}, Needed: []string{"MsgStruct", "ConnId"}},
+	{States: am.S{ss.DisconnectEvent}, Needed: []string{"ConnId"}},
+	{
+		States: am.S{ss.ClientMsg},
+		Needed: []string{"MsgsTx", "ConnIds"},
+	},
+	{
+		States: am.S{ss.RemoveClient},
+		Needed: []string{"ClientId"},
+	},
+	{
+		States: am.S{ss.SetGroup},
+		Needed: []string{"Group"},
+	},
+	{
+		States: am.S{ss.SelectingClient},
+		Needed: []string{"ClientId"},
+		Args:   []string{"Group", "FromConnected"},
+	},
+	{
+		States: am.S{ss.ClientSelected},
+		Args:   []string{"Ctx", "FromConnected", "FromPlaying"},
+	},
+	{
+		States: am.S{ss.ScrollToTx},
+		Args:   []string{"CursorTx1", "TxId", "CursorStep1", "TrimHistory"},
+	},
+	{
+		States: am.S{ss.ScrollToStep},
+		Needed: []string{"CursorStep1"},
+	},
+	{
+		States: am.S{ss.ToggleTool},
+		Needed: []string{"ToolName"},
+		Values: map[string][]string{
+			"ToolName": ToolNames.Values(),
+		},
+	},
+	{
+		States: am.S{ss.ToolToggled},
+		Args:   []string{"FilterTxs", "BuildClientList"},
+	},
+	{
+		States: am.S{ss.SwitchingClientTx},
+		Needed: []string{"ClientId", "CursorTx1"},
+	},
+	{
+		States: am.S{ss.ScrollToMutTx},
+		Needed: []string{"State"},
+		Args:   []string{"Fwd"},
+	},
+	{
+		States: am.S{ss.AfterFocus},
+		Needed: []string{"FocusPrimitive"},
+		Args:   []string{"MouseFocus"},
+	},
+	{
+		States: am.S{ss.Resized},
+		Args:   []string{"LogRebuildEnd"},
+	},
+	{
+		States: am.S{ss.WebReq},
+		Needed: []string{"HttpRequest", "HttpResponseWriter", "DoneChan"},
+		Args:   []string{"Uri", "Addr"},
+	},
+	{
+		States: am.S{ss.WebSocketDiag},
+		Needed: []string{"WebSocketConn", "HttpRequest", "HttpResponseWriter",
+			"DoneChan"},
+		Args: []string{"Addr"},
+	},
+	{
+		States: am.S{ss.MatrixRainSelected},
+		Needed: []string{"Row", "Column", "CurrTxRow"},
+	},
+}
+
+// ParseArgs extracts A from [am.Event.Args][APrefix].
+func ParseArgs(args am.A) *A {
+	if r, ok := args[APrefix].(*ARpc); ok {
+		return amhelp.ArgsToArgs(r, &A{})
+	} else if r, ok := args[APrefix].(ARpc); ok {
+		return amhelp.ArgsToArgs(&r, &A{})
+	}
+	if a, _ := args[APrefix].(*A); a != nil {
+		return a
+	}
+	return &A{}
+}
+
+// Pass prepares [am.A] from A to pass to further mutations.
+func Pass(args *A) am.A {
+	return am.A{APrefix: args}
+}
+
+// LogArgs is an args logger for A.
+func LogArgs(args am.A) map[string]string {
+	a := ParseArgs(args)
+	if a == nil {
+		return nil
+	}
+	return amhelp.ArgsToLogMap(a, 0)
+}
+
+// ParseRpc parses [am.A] to *ARpc namespaced in [am.A]. Useful for REPLs.
+func ParseRpc(args am.A) am.A {
+	ret := am.A{APrefix: &ARpc{}}
+	jsonArgs, err := json.Marshal(args)
+	if err == nil {
+		_ = json.Unmarshal(jsonArgs, ret[APrefix])
+	}
+
+	return ret
+}
