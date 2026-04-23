@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -725,10 +726,18 @@ func Capitalize(s string) string {
 	return strings.ToUpper(string(r)) + s[size:]
 }
 
-// OptArgs will read the first A from an optional list.
+// OptArgs will return the first [A] from a list.
 func OptArgs(args []A) A {
 	if len(args) > 0 {
 		return args[0]
+	}
+	return nil
+}
+
+// OptCtx will return the first [context.Context] from a list.
+func OptCtx(ctxs []context.Context) context.Context {
+	if len(ctxs) > 0 {
+		return ctxs[0]
 	}
 	return nil
 }

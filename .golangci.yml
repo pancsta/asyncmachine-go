@@ -24,6 +24,7 @@ linters:
       - third_party$
       - builtin$
       - ^examples
+      - ^docs
       - ^scripts
 formatters:
   exclusions:
@@ -32,4 +33,5 @@ formatters:
       - third_party$
       - builtin$
       - ^examples
+      - ^docs
       - ^scripts

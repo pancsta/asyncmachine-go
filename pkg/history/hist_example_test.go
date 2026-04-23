@@ -6,8 +6,10 @@ import (
 	amhist "github.com/pancsta/asyncmachine-go/pkg/history"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	amss "github.com/pancsta/asyncmachine-go/pkg/states"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
+
+var ss = ssdbg.DebuggerStates
 
 func ExampleNewMemory() {
 	ctx := context.Background()

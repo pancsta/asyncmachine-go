@@ -199,13 +199,15 @@ func (h *TemplateHandlers) BazState(e *am.Event) {
 			return
 		}
 		fmt.Println("BazState: " + addr)
-		h.Mach.Add1(ss.BazDone, nil)
+		// traced mutation
+		h.Mach.EvAdd1(e, ss.BazDone, nil)
 	})
 }
 
 func (h *TemplateHandlers) BazDoneState(e *am.Event) {
 	// new transition (will probably be canceled)
-	h.Mach.Remove1(ss.Bar, nil)
+	// traced mutation
+	h.Mach.EvRemove1(e, ss.Bar, nil)
 }
 
 func (h *TemplateHandlers) ChannelEnter(e *am.Event) bool {

@@ -165,18 +165,27 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		fmt.Printf("Error getting latest release: %v\n", err)
 	}
 
-	// 3. Configure Chroma
-	// We select the "go" lexer, "monokai" style, and HTML formatter
+	// golang
 	lexerGo := lexers.Get("go")
 	if lexerGo == nil {
 		lexerGo = lexers.Fallback
 	}
 	lexerGo = chroma.Coalesce(lexerGo)
+
+	// bash
 	lexerBash := lexers.Get("bash")
 	if lexerBash == nil {
 		lexerBash = lexers.Fallback
 	}
 	lexerBash = chroma.Coalesce(lexerBash)
+
+	// markdown
+	lexerMarkdown := lexers.Get("markdown")
+	if lexerMarkdown == nil {
+		lexerMarkdown = lexers.Fallback
+	}
+	lexerMarkdown = chroma.Coalesce(lexerMarkdown)
+
 	// lexerDotenv := lexers.Get("dotenv")
 	// if lexerDotenv == nil {
 	// 	lexerDotenv = lexers.Fallback
@@ -207,6 +216,9 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 	doc.Find("pre > code.language-dotenv").Each(func(i int, s *goquery.Selection) {
 		highlightCode(s, lexerBash, formatter, style)
 	})
+	doc.Find("pre > code.language-markdown").Each(func(i int, s *goquery.Selection) {
+		highlightCode(s, lexerMarkdown, formatter, style)
+	})
 	doc.Find("pre > code").Parent().AddClass("p-2 rounded-lg overflow-x-auto")
 
 	// fix ULs and H1
@@ -223,7 +235,7 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		doc.Find("h1").SetText(title)
 	} else {
 		// nested readmes
-		doc.Find("#page-content > blockquote").PrevAll().Remove().End().Remove()
+		doc.Find("#page-content > blockquote").First().PrevAll().Remove().End().Remove()
 		doc.Find("#page-content > h1").Remove()
 		doc.Find("h1").SetText("/" + e.Path)
 	}
@@ -371,7 +383,10 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 	// parse github alerts
 	doc.Find(`blockquote:contains("[!NOTE]")`).Each(func(i int, s *goquery.Selection) {
 		s.Prev().AddClass("mb-1")
-		text := strings.ReplaceAll(strings.TrimSpace(s.Text()), "[!NOTE]\n", "")
+		h, _ := s.Html()
+		text := strings.ReplaceAll(
+			strings.ReplaceAll(strings.TrimSpace(h), "[!NOTE]", ""),
+			"<p></p>", "")
 
 		alert := `
 		<blockquote class="border-l-3 border-blue-500 pl-3 pb-2">

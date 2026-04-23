@@ -82,8 +82,8 @@ func (Args) Description() string {
 		am-vis --bird -d 2 \
 			render-dump mymach.gob.br mach://MyMach1/TX-ID
 	
-		# bird's view with detailed pipes
-		am-vis --bird --render-pipes --render-detailed-pipes \
+		# bird's view with grouped pipes
+		am-vis --bird --render-pipes --render-detailed-pipes=false \
 			render-dump mymach.gob.br mach://MyMach1/TX-ID
 	
 		# map view with inherited states
@@ -92,6 +92,9 @@ func (Args) Description() string {
 	
 		# map view
 		am-vis --map render-dump mymach.gob.br
+	
+		# inspect dump as Markdown
+		am-vis inspect-dump mymach.gob.br
 	`)
 }
 

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"net/url"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -1162,8 +1161,3 @@ func (d *Debugger) hBoxFromPrimitive(p any) (*cview.Box, string) {
 
 	return box, state
 }
-
-var (
-	trimTailWhitespaceRe = regexp.MustCompile(` +\n`)
-	foldNewlinesRe       = regexp.MustCompile(`\n{3,}`)
-)

@@ -1,4 +1,5 @@
 //go:build integration
+
 package cli_daemon_test
 
 import (

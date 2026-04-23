@@ -1,4 +1,5 @@
 //go:build integration
+
 package main_test
 
 import (

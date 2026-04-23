@@ -1071,6 +1071,7 @@ func (s *Server) RemoteSync(
 	return nil
 }
 
+// RemoteArgs returns a list of registered arguments.
 func (s *Server) RemoteArgs(
 	_ *rpc2.Client, _ *MsgEmpty, resp *MsgSrvArgs,
 ) error {

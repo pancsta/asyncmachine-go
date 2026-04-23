@@ -469,7 +469,6 @@ func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
 		Ctx: ctx,
 	})
 	if len(data.txHist) > maxHist {
-		// TODO leak for canceled txs?
 		data.txHist = data.txHist[1:]
 	}
 }

@@ -10,11 +10,12 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
 var (
+	ss = ssdbg.DebuggerStates
 	dataFile       = "assets/asyncmachine-go/am-dbg-exports/pubsub-sim.gob.br"
 	logLevel       = am.LogOps
 	filterLogLevel = am.LogChanges
@@ -148,7 +149,7 @@ func render(dbg *debugger.Debugger) {
 	mach.Add1(ss.LogTimestamps, nil)
 	dbg.SetFilterLogLevel(am.LogChanges)
 	// TODO via state handlers, pass focused filter
-	mach.Add1(ss.Toolbar1Focused, am.A{"filter": debugger.ToolLogTimestamps})
+	mach.Add1(ss.Toolbar1Focused, am.A{"filter": types.ToolLogTimestamps})
 	// dbg.HProcessFilterChange(context.TODO(), false)
 	goBack(mach, 1)
 

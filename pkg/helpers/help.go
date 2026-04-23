@@ -768,10 +768,9 @@ func ExecAndClose(fn func()) <-chan struct{} {
 // EnableDebugging sets env vars for debugging tested machines with am-dbg on
 // port 6831.
 func EnableDebugging(stdout bool) {
+	_ = os.Setenv(am.EnvAmDebug, "1")
 	if stdout {
-		_ = os.Setenv(am.EnvAmDebug, "2")
-	} else {
-		_ = os.Setenv(am.EnvAmDebug, "1")
+		_ = os.Setenv(EnvAmLogPrint, "1")
 	}
 	_ = os.Setenv(dbg.EnvAmDbgAddr, "1")
 	_ = os.Setenv(EnvAmLogFull, "1")
@@ -1594,6 +1593,8 @@ func EvalGetter[T any](
 	ctx context.Context, source string, maxTries int, mach *am.Machine,
 	eval func() (T, error),
 ) (T, error) {
+	//
+
 	var ret T
 	var retErr error
 	evalOuter := func() {
@@ -1602,8 +1603,8 @@ func EvalGetter[T any](
 
 	// try at least once
 	for range min(maxTries, 1) {
-		if !mach.Eval("EvGe/"+source, evalOuter, ctx) {
-			retErr = fmt.Errorf("%w: EvGe/%s", am.ErrEvalTimeout, source)
+		if !mach.Eval("EvalGet/"+source, evalOuter, ctx) {
+			retErr = fmt.Errorf("%w: EvalGet/%s", am.ErrEvalTimeout, source)
 		} else {
 			break
 		}
