@@ -85,6 +85,42 @@ func IsActiveTick(tick uint64) bool {
 	return tick%2 == 1
 }
 
+// NextActive returns the absolute tick when the state will be active again
+// (excluding the currently active tick).
+func NextActive(tick uint64) uint64 {
+	if IsActiveTick(tick) {
+		return tick + 2
+	}
+	return tick + 1
+}
+
+// NextInactive returns the absolute tick when the state will be inactive again
+// (excluding the currently inactive tick).
+func NextInactive(tick uint64) uint64 {
+	if !IsActiveTick(tick) {
+		return tick + 2
+	}
+	return tick + 1
+}
+
+// NextActiveIn returns the number of ticks until the state will be active again
+// (excluding the currently active tick).
+func NextActiveIn(tick uint64) int {
+	if IsActiveTick(tick) {
+		return 2
+	}
+	return 1
+}
+
+// NextInactiveIn returns the number of ticks until the state will be inactive
+// again (excluding the currently inactive tick).
+func NextInactiveIn(tick uint64) int {
+	if !IsActiveTick(tick) {
+		return 2
+	}
+	return 1
+}
+
 // IsQueued returns true if the mutation has been queued, and the result
 // represents the queue time it will be processed.
 func IsQueued(result Result) bool {
