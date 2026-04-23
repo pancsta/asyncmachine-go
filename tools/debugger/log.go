@@ -755,6 +755,66 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 	return tree
 }
 
+func (d *Debugger) OverlayEnd(e *am.Event) {
+	d.LayoutRoot.SendToBack("overlay")
+	d.overlay.SetVisible(false)
+	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
+}
+
+type StateTraceItem struct {
+	Label      string
+	Source     *types.MachAddress
+	StateNames am.S
+}
+
+func (d *Debugger) hStateTrace(tx *dbg.DbgMsgTx) []*StateTraceItem {
+	// loop until source
+	var ret []*StateTraceItem
+	for _, entry := range tx.LogEntries {
+		if !strings.HasPrefix(entry.Text, "[source] ") {
+			continue
+		}
+
+		source := strings.Split(entry.Text[len("[source] "):], "/")
+		machTime, _ := strconv.ParseUint(source[2], 10, 64)
+		sC, sTx := d.hGetClientTx(source[0], source[1])
+
+		// only for known txs
+		if sTx == nil {
+			return nil
+		}
+
+		// highlight TODO line-highlight for the currently selected client states
+		calledStates := sTx.CalledStateNames(sC.MsgStruct.StatesIndex)
+		statesLabel := ""
+		for _, name := range calledStates {
+			if d.C.SelectedState == name {
+				statesLabel += " [::b]" + name + "[::-]"
+			} else {
+				statesLabel += " " + name
+			}
+		}
+
+		// add
+		label := fmt.Sprintf("[::b]%s%s",
+			sTx.Type.StringShort(), strings.TrimSpace(statesLabel))
+		ret = append(ret, &StateTraceItem{
+			Label:      label,
+			StateNames: calledStates,
+			Source: &types.MachAddress{
+				MachId:   source[0],
+				TxId:     source[1],
+				MachTime: machTime,
+			},
+		})
+
+		// TODO optimize: recursion
+		return slices.Concat(ret, d.hStateTrace(sTx))
+	}
+
+	return ret
+}
+
 func (d *Debugger) hUpdateLogReader(e *am.Event) {
 	// TODO! SPLIT this 700 LoC func
 	// TODO migrate to a state handler
@@ -791,6 +851,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		parentHandlers  *cview.TreeNode
 		parentArgs      *cview.TreeNode
 		parentSource    *cview.TreeNode
+		parentTrace     *cview.TreeNode
 		parentQueue     *cview.TreeNode
 		parentForks     *cview.TreeNode
 		parentSiblings  *cview.TreeNode
@@ -1073,6 +1134,36 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		node.SetIndent(1)
 		parentSource.AddChild(node)
 	}
+
+	// TRACE
+
+	// state trace
+	machUrlIdRe := regexp.MustCompile(`^mach://(.+?)/(.*)`)
+	parentTrace = cview.NewTreeNode("State Trace")
+	for _, item := range d.hStateTrace(tx) {
+		node := cview.NewTreeNode(item.Label)
+		node.SetIndent(1)
+		parentTrace.AddChild(node)
+		url := machUrlIdRe.FindStringSubmatch(item.Source.String())
+		color := theme.Grey
+		node2 := cview.NewTreeNode(fmt.Sprintf("[%s]mach://[%s]%s[%s]/%s",
+			color, theme.White, url[1], color, url[2]))
+		node2.SetIndent(2)
+		node2.SetReference(&logReaderTreeRef{
+			stateNames: item.StateNames,
+			machId:     item.Source.MachId,
+			txId:       item.Source.TxId,
+			machTime:   item.Source.MachTime,
+		})
+		node.AddChild(node2)
+
+		if slices.Contains(item.StateNames, selState) {
+			node.SetHighlighted(true)
+			node2.SetHighlighted(true)
+		}
+	}
+
+	// QUEUE
 
 	parentQueue = cview.NewTreeNode("Queue")
 	{
@@ -1563,6 +1654,9 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 	// append parents
 	if parentSource != nil {
 		addParent(parentSource)
+	}
+	if parentTrace != nil && parentTrace.GetChildren() != nil {
+		addParent(parentTrace)
 	}
 	if parentQueue != nil {
 		addParent(parentQueue)
