@@ -465,8 +465,8 @@ func (r *Renderer) outputMermaidMach(
 		return nil
 	}
 
-	// whitelist
-	if !r.isMachWhitelisted(machId) && !r.isMachCloseEnough(machId) {
+	// allowlist
+	if !r.isMachAllowed(machId) && !r.isMachCloseEnough(machId) {
 		return nil
 	}
 
@@ -649,7 +649,7 @@ func (r *Renderer) fullIdPath(machId string, shorten bool) []string {
 }
 
 func (r *Renderer) shouldRenderMach(machId string) bool {
-	if r.isMachWhitelisted(machId) {
+	if r.isMachAllowed(machId) {
 		return true
 	}
 
@@ -772,8 +772,8 @@ func (r *Renderer) isMachShallowEnough(machId string) bool {
 	return depth <= r.RenderDepth
 }
 
-// isMachWhitelisted checks if mach ID is in the whitelist.
-func (r *Renderer) isMachWhitelisted(id string) bool {
+// isMachAllowed checks if mach ID is in the allowlist.
+func (r *Renderer) isMachAllowed(id string) bool {
 	if slices.Contains(r.renderMachIds(), id) {
 		return true
 	}
@@ -861,69 +861,212 @@ func genId(lastId string) string {
 	}
 }
 
-type Fragment struct {
+// Filters filter a rendered graph for the desired output.
+type Filters struct {
+	// Machine to filter TODO inline as map[string] to other fields
 	MachId string
-	States am.S
+	// list of states to process
+	Index am.S
+	// currently active states (inactive = states - active)
 	Active am.S
+	// currently highlighted states (dimmed = states - highlighted)
+	Highlighted am.S
+	// currently visible states (hidden = states - visible)
+	Visible am.S
+	// currently selected states
+	Selected am.S
+	// {StateFrom, StateTo, [am.Relation.String()]}
+	HighlightedRels [][3]string
+}
+
+func (f *Filters) Empty() bool {
+	return f.Active == nil && f.Highlighted == nil &&
+		f.Visible == nil && f.Selected == nil && f.HighlightedRels == nil
 }
 
 // UpdateCache updates [dom] according to [fragments], and saves to [filepath].
+// Only single-machine diagrams are supported.
 func UpdateCache(
-	ctx context.Context, filepath string, dom *goquery.Document,
-	fragments ...*Fragment,
+	ctx context.Context, filepath string, dom *goquery.Document, filters *Filters,
 ) error {
-	for _, sel := range fragments {
-		for _, state := range sel.States {
-			if ctx.Err() != nil {
-				return nil
+	// TODO extract colors and join with D2 classes
+
+	for _, state := range filters.Index {
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		isActive := slices.Contains(filters.Active, state)
+		isStart := state == ssam.BasicStates.Start
+		isReady := state == ssam.BasicStates.Ready
+		isErr := state == am.StateException ||
+			strings.HasPrefix(state, am.PrefixErr)
+		isSelected := slices.Contains(filters.Selected, state)
+
+		fillTxt := "#CDD6F4"
+		classTxt := "text-bold fill-N1"
+
+		strokeInner := "white"
+		fillInner := "#45475A"
+		classInner := "fill-B5"
+
+		if isActive {
+			fillTxt = "black"
+			classTxt = "text-bold"
+
+			strokeInner = "#5F5C5C"
+			fillInner = "yellow"
+			classInner = "stroke-B1"
+
+			if isReady {
+				fillInner = "deepskyblue"
+			} else if isStart {
+				fillInner = "#329241"
+			} else if isErr {
+				fillInner = "red"
 			}
+		}
 
-			isActive := slices.Contains(sel.Active, state)
-			isStart := state == ssam.BasicStates.Start
-			isReady := state == ssam.BasicStates.Ready
-			isErr := state == am.StateException ||
-				strings.HasPrefix(state, am.PrefixErr)
+		cssTxt := "text-anchor: middle; font-size: 16px;"
+		cssInner := ""
+		if isSelected {
+			cssTxt += "fill: black;"
+			cssInner += "fill: limegreen;"
+		}
 
-			fillOuter := "#CDD6F4"
-			classOuter := "text-bold fill-N1"
+		// update
 
-			strokeInner := "white"
-			fillInner := "#45475A"
-			classInner := "fill-B5"
+		// query
+		txt := dom.Find("g > text:contains(" + state + ")").
+			// exact text match
+			FilterFunction(func(i int, s *goquery.Selection) bool {
+				return s.Text() == state
+			})
+		inner := txt.Prev()
+		root := txt.Parent()
 
-			if isActive {
-				fillOuter = "black"
-				classOuter = "text-bold"
+		// colors
+		txt.SetAttr("fill", fillTxt).
+			SetAttr("class", classTxt).
+			SetAttr("style", cssTxt)
+		inner.Children().
+			SetAttr("stroke", strokeInner).
+			SetAttr("class", classInner).
+			SetAttr("style", cssInner).
+			First().
+			SetAttr("fill", fillInner)
 
-				strokeInner = "#5F5C5C"
-				fillInner = "yellow"
-				classInner = "stroke-B1"
+		// CSS TODO use attrs
+		css := ""
+		if filters.Highlighted != nil &&
+			!slices.Contains(filters.Highlighted, state) {
+			css += "opacity: 0.4;"
+		}
+		if filters.Visible != nil && !slices.Contains(filters.Visible, state) {
+			css += "display: none;"
+		}
 
-				if isReady {
-					fillInner = "deepskyblue"
-				} else if isStart {
-					fillInner = "#329241"
-				} else if isErr {
-					fillInner = "red"
+		root.SetAttr("style", css)
+
+		// TODO apply fragments to relation lines
+		//  g > path.connection - attr "d" - start/end
+	}
+
+	// relations
+	qAllRels := "g.add, g.rem, g.rem2, g.req"
+
+	// highlight rels for highlited states
+	if filters.HighlightedRels != nil {
+		// dim all
+		dom.Find(qAllRels).SetAttr("opacity", "0.2")
+
+		// undim highlighted
+		for _, rel := range filters.HighlightedRels {
+			from := rel[0]
+			to := rel[1]
+			q := fmt.Sprintf("g.M_%s.F_%s.T_%s.", filters.MachId, from, to)
+			switch rel[2] {
+			case am.RelationAdd.String():
+				dom.Find(q + "add").RemoveAttr("opacity")
+			case am.RelationRemove.String():
+				dom.Find(q + "rem, " + q + "rem2").RemoveAttr("opacity")
+			case am.RelationRequire.String():
+				dom.Find(q + "req").RemoveAttr("opacity")
+			}
+		}
+	} else if filters.Highlighted != nil {
+		// dim all
+		dom.Find(qAllRels).SetAttr("opacity", "0.2")
+
+		// undim highlighted
+		for _, state := range filters.Highlighted {
+			q := fmt.Sprintf("g.M_%s.F_%s, g.M_%s.T_%s",
+				filters.MachId, state, filters.MachId, state)
+			dom.Find(q).Each(func(i int, selection *goquery.Selection) {
+				for _, state2 := range filters.Highlighted {
+					if state == state2 {
+						continue
+					}
+
+					if selection.HasClass("F_"+state2) ||
+						selection.HasClass("T_"+state2) {
+
+						selection.RemoveAttr("opacity")
+						break
+					}
 				}
-			}
+			})
+		}
+	} else {
+		// reset
+		dom.Find(qAllRels).RemoveAttr("opacity")
+	}
 
-			// update
+	// hide rels for non-visible states
+	if filters.Visible != nil {
+		// hide all
+		dom.Find(qAllRels).SetAttr("visibility", "hidden")
 
-			root := dom.Find("g > text:contains(" + state + ")").
-				// exact text match
-				FilterFunction(func(i int, s *goquery.Selection) bool {
-					return s.Text() == state
-				})
+		// show visible
+		for _, state := range filters.Visible {
+			q := fmt.Sprintf("g.M_%s.F_%s, g.M_%s.T_%s",
+				filters.MachId, state, filters.MachId, state)
+			dom.Find(q).Each(func(i int, selection *goquery.Selection) {
+				for _, state2 := range filters.Visible {
+					if state == state2 {
+						continue
+					}
 
-			root.
-				// outer
-				SetAttr("fill", fillOuter).
-				SetAttr("class", classOuter).
-				// inner
-				Prev().Children().SetAttr("stroke", strokeInner).
-				SetAttr("class", classInner).
-				First().SetAttr("fill", fillInner)
+					if selection.HasClass("F_"+state2) ||
+						selection.HasClass("T_"+state2) {
+
+						selection.RemoveAttr("visibility")
+						break
+					}
+				}
+			})
+		}
+	} else {
+		// reset
+		dom.Find(qAllRels).RemoveAttr("visibility")
+	}
+
+	// mark rels for selected states
+	// reset
+	dom.Find("g.rem2 > path").SetAttr("stroke", "red").
+		SetAttr("style", "stroke-width: 4")
+	dom.Find("g.rem > path").SetAttr("stroke", "red").
+		SetAttr("style", "stroke-width: 2")
+	dom.Find("g.req > path").SetAttr("stroke", "white").
+		SetAttr("style", "stroke-width: 2")
+	dom.Find("g.add > path").SetAttr("stroke", "yellow").
+		SetAttr("style", "stroke-width: 2")
+	if filters.Selected != nil {
+		for _, state := range filters.Selected {
+			q := fmt.Sprintf("g.M_%s.F_%s > path, g.M_%s.T_%s > path",
+				filters.MachId, state, filters.MachId, state)
+			dom.Find(q).SetAttr("stroke", "limegreen").
+				SetAttr("style", "stroke-width: 5")
 		}
 	}
 

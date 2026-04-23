@@ -51,9 +51,8 @@ import (
 type S = am.S
 
 type cache struct {
-	diagramId  string
-	diagramLvl int
-	diagramDom *goquery.Document
+	diagramName string
+	diagramDom  *goquery.Document
 }
 
 type Debugger struct {
@@ -328,12 +327,8 @@ func (d *Debugger) setParams(p types.Params) error {
 	if p.FilterLogLevel > am.LogEverything {
 		p.FilterLogLevel = am.LogEverything
 	}
-	if p.OutputDiagrams > 3 {
-		p.OutputDiagrams = 3
-	}
-	if p.ViewTimelines > 2 {
-		p.ViewTimelines = 2
-	}
+	p.OutputDiagrams.Value = max(p.OutputDiagrams.Value, p.OutputDiagrams.Value)
+	p.ViewTimelines.Value = max(p.ViewTimelines.Value, p.ViewTimelines.Value)
 
 	// rain adjusts the default view
 	if p.ViewRain && p.StartupView == "tree-log" {
@@ -2053,7 +2048,7 @@ func (d *Debugger) initGraphGen(
 
 	// machine diagram
 	vis.RenderMachs = []string{id}
-	vis.OutputFilename = path.Join(outDir, svgName)
+	vis.OutputFilename = path.Join(diagDir, svgName)
 	if len(statesAllowlist) > 0 {
 		vis.RenderAllowlist = statesAllowlist
 	}
@@ -2117,9 +2112,11 @@ func (d *Debugger) hSyncOptsTimelines() {
 }
 
 func (d *Debugger) diagramsRender(
-	e *am.Event, shot *amgraph.Graph, id string, details, clients int,
-	outDir string, svgName string, states S,
+	e *am.Event, shot *amgraph.Graph, id string, diagFilters *amvis.Filters,
+	details, clients int, diagDir string, svgName string, states S,
 ) {
+	//
+
 	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
 	if ctx.Err() != nil {
 		return // expired
@@ -2128,7 +2125,7 @@ func (d *Debugger) diagramsRender(
 	d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
 
 	// create the visualizer
-	vizs := d.initGraphGen(shot, id, details, clients, outDir, svgName, states)
+	vizs := d.initGraphGen(shot, id, details, clients, diagDir, svgName, states)
 	// TODO config
 	pool := amhelp.Pool(2)
 
@@ -2145,13 +2142,13 @@ func (d *Debugger) diagramsRender(
 	}
 
 	// link
-	d.diagramLink(outDir, svgName)
+	d.diagramLink(diagDir, svgName)
 	if ctx.Err() != nil {
 		return // expired
 	}
 
 	// symlink am-vis-map.svg -> am-vis-map-CLIENTS.svg
-	source := path.Join(outDir, "am-vis-map.svg")
+	source := path.Join(diagDir, "am-vis-map.svg")
 	target := fmt.Sprintf("am-vis-map-%d.svg", clients)
 	_ = os.Remove(source)
 	err = os.Symlink(target, source)
@@ -2161,23 +2158,31 @@ func (d *Debugger) diagramsRender(
 	d.Mach.EvAddErr(e, err, nil)
 
 	// next
-	d.Mach.EvAdd1(e, ss.DiagramsReady, nil)
+	if !diagFilters.Empty() {
+		// apply filters
+		go d.diagramsFileCache(e, diagFilters, details, diagDir, svgName)
+	} else {
+		d.Mach.EvAdd1(e, ss.DiagramsReady, nil)
+	}
 }
 
-func (d *Debugger) diagramLink(outDir string, svgName string) {
+func (d *Debugger) diagramLink(diagDir string, svgName string) {
 	// symlink am-vis.svg -> ID-LVL-HASH.svg
-	source := path.Join(outDir, "am-vis.svg")
-	target := fmt.Sprintf("%s.svg", svgName)
+	source := path.Join(diagDir, "am-vis.svg")
+	target := svgName + ".svg"
 	_ = os.Remove(source)
 	err := os.Symlink(target, source)
 	d.Mach.AddErr(err, nil)
 }
 
+// diagramsMemCache - update diagram from memory cache
 func (d *Debugger) diagramsMemCache(
-	e *am.Event, id string, cache *goquery.Document, tx *dbg.DbgMsgTx,
-	outDir, svgName string,
+	e *am.Event, cache *goquery.Document, diagFilters *amvis.Filters,
+	diagDir, svgName string,
 ) {
-	svgPath := path.Join(outDir, svgName+".svg")
+	//
+
+	svgPath := path.Join(diagDir, svgName+".svg")
 	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
 	if ctx.Err() != nil {
 		return // expired
@@ -2186,13 +2191,7 @@ func (d *Debugger) diagramsMemCache(
 	d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
 
 	// update cache DOM
-	states := d.C.MsgStruct.StatesIndex
-	sel := amvis.Fragment{
-		MachId: id,
-		States: states,
-		Active: tx.ActiveStates(states),
-	}
-	err := amvis.UpdateCache(ctx, svgPath, cache, &sel)
+	err := amvis.UpdateCache(ctx, svgPath, cache, diagFilters)
 	if ctx.Err() != nil {
 		return // expired
 	}
@@ -2202,7 +2201,7 @@ func (d *Debugger) diagramsMemCache(
 	}
 
 	// link
-	d.diagramLink(outDir, svgName)
+	d.diagramLink(diagDir, svgName)
 	if ctx.Err() != nil {
 		return // expired
 	}
@@ -2211,13 +2210,14 @@ func (d *Debugger) diagramsMemCache(
 	d.Mach.EvAdd1(e, ss.DiagramsReady, nil)
 }
 
+// diagramsFileCache - update diagram from file cache
 func (d *Debugger) diagramsFileCache(
-	e *am.Event, id string, tx *dbg.DbgMsgTx, lvl int, outDir,
+	e *am.Event, diagFilters *amvis.Filters, lvl int, diagDir,
 	svgName string,
 ) {
 	defer d.Mach.PanicToErrState(ss.ErrDiagrams, nil)
 
-	svgPath := path.Join(outDir, svgName+".svg")
+	svgPath := path.Join(diagDir, svgName+".svg")
 	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
 	if ctx.Err() != nil {
 		return // expired
@@ -2238,17 +2238,7 @@ func (d *Debugger) diagramsFileCache(
 	}
 
 	// update cache DOM
-	// TODO support groups
-	states := d.C.MsgStruct.StatesIndex
-	sel := amvis.Fragment{
-		MachId: id,
-		States: states,
-	}
-	if tx != nil {
-		sel.Active = tx.ActiveStates(states)
-	}
-
-	err = amvis.UpdateCache(ctx, svgPath, cache, &sel)
+	err = amvis.UpdateCache(ctx, svgPath, cache, diagFilters)
 	if ctx.Err() != nil {
 		return // expired
 	}
@@ -2258,24 +2248,22 @@ func (d *Debugger) diagramsFileCache(
 	}
 
 	// link
-	d.diagramLink(outDir, svgName)
+	d.diagramLink(diagDir, svgName)
 	if ctx.Err() != nil {
 		return // expired
 	}
 
 	// next
-	d.Mach.EvAdd1(e, ss.DiagramsReady, am.A{
-		// TODO typed args
-		"Diagram.cache": cache,
-		"Diagram.id":    id,
-		"Diagram.lvl":   lvl,
-	})
+	d.Mach.EvAdd1(e, ss.DiagramsReady, Pass(&A{
+		DiagramCache: cache,
+		DiagramName:  svgName,
+	}))
 }
 
 func (d *Debugger) getFocusColor() tcell.Color {
 	color := cview.Styles.MoreContrastBackgroundColor
 	if d.Mach.IsErr() {
-		color = tcell.ColorRed
+		color = tcell.GetColor(theme.Err)
 	}
 
 	return color
