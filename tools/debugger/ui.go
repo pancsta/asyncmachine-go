@@ -37,10 +37,10 @@ func (d *Debugger) hInitUiComponents() {
 	// groups dropdown
 	d.treeGroups = cview.NewDropDown()
 	d.treeGroups.SetLabel(" Group ")
-	d.treeGroups.SetFieldBackgroundColor(colorHighlight)
-	d.treeGroups.SetDropDownBackgroundColor(colorHighlight)
-	d.treeGroups.SetDropDownSelectedTextColor(colorDefault)
-	d.treeGroups.SetDropDownTextColor(colorDefault)
+	d.treeGroups.SetFieldBackgroundColor(tcell.GetColor(theme.Highlight))
+	d.treeGroups.SetDropDownBackgroundColor(tcell.GetColor(theme.Highlight))
+	d.treeGroups.SetDropDownSelectedTextColor(cview.Styles.PrimaryTextColor)
+	d.treeGroups.SetDropDownTextColor(cview.Styles.PrimaryTextColor)
 	d.treeGroups.SetSelectedFunc(func(_ int, opt *cview.DropDownOption) {
 		// TODO typed args
 		d.Mach.Add1(ss.SetGroup, am.A{"group": opt.GetText()})
@@ -59,9 +59,9 @@ func (d *Debugger) hInitUiComponents() {
 	d.log.SetWrap(false)
 	d.log.SetDynamicColors(true)
 	d.log.SetTitle(" Log ")
-	d.log.SetHighlightForegroundColor(tcell.ColorWhite)
-	d.log.SetHighlightBackgroundColor(colorHighlight2)
-	d.log.SetScrollBarColor(colorHighlight2)
+	d.log.SetHighlightForegroundColor(tcell.GetColor(theme.White))
+	d.log.SetHighlightBackgroundColor(tcell.GetColor(theme.Highlight2))
+	d.log.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
 	// log click
 	statePrefixes := []string{"[state] ", "[state:auto] "}
 	d.log.SetClickedFunc(func(txId string) {
@@ -93,7 +93,7 @@ func (d *Debugger) hInitUiComponents() {
 	d.logReader = d.initLogReader()
 	d.logReader.SetTitle(" Reader ")
 	d.logReader.SetBorder(true)
-	d.logReader.SetScrollBarColor(colorHighlight2)
+	d.logReader.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
 
 	// matrix
 	d.matrix = cview.NewTable()
@@ -101,15 +101,16 @@ func (d *Debugger) hInitUiComponents() {
 	d.matrix.SetTitle(" Matrix ")
 	d.matrix.SetScrollBarVisibility(cview.ScrollBarNever)
 	d.matrix.SetPadding(0, 0, 1, 0)
-	d.matrix.SetSelectedStyle(colorDefault, colorHighlight, tcell.AttrNone)
+	d.matrix.SetSelectedStyle(cview.Styles.PrimaryTextColor,
+		tcell.GetColor(theme.Highlight), tcell.AttrNone)
 
 	// current tx bar
 	d.currTxBarLeft = cview.NewTextView()
 	d.currTxBarLeft.SetDynamicColors(true)
-	d.currTxBarLeft.SetScrollBarColor(colorHighlight2)
+	d.currTxBarLeft.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
 	d.currTxBarRight = cview.NewTextView()
 	d.currTxBarRight.SetTextAlign(cview.AlignRight)
-	d.currTxBarRight.SetScrollBarColor(colorHighlight2)
+	d.currTxBarRight.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
 	d.currTxBarRight.SetDynamicColors(true)
 	d.currTxBarRight.SetClickedFunc(func(regionId string) {
 		d.Mach.Add1(ss.TimelineTxsFocused, nil)
@@ -121,10 +122,10 @@ func (d *Debugger) hInitUiComponents() {
 	// next tx bar
 	d.nextTxBarLeft = cview.NewTextView()
 	d.nextTxBarLeft.SetDynamicColors(true)
-	d.nextTxBarLeft.SetScrollBarColor(colorHighlight2)
+	d.nextTxBarLeft.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
 	d.nextTxBarRight = cview.NewTextView()
 	d.nextTxBarRight.SetTextAlign(cview.AlignRight)
-	d.nextTxBarRight.SetScrollBarColor(colorHighlight2)
+	d.nextTxBarRight.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
 	d.nextTxBarRight.SetDynamicColors(true)
 	d.nextTxBarRight.SetClickedFunc(func(regionId string) {
 		d.Mach.Add1(ss.TimelineStepsFocused, nil)
