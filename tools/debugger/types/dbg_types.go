@@ -55,10 +55,12 @@ type Params struct {
 	FilterLogLevel       am.LogLevel `arg:"--filter-log-level" default:"2" help:"Filter transitions up to this log level, 0-5 (silent-everything)"`
 	FilterQueuedTx       bool        `arg:"--filter-queued" help:"Filter queued transitions"`
 
-	OutputClients  bool `arg:"--output-clients" help:"Write a detailed client list into am-dbg-clients.txt inside --dir"`
-	OutputDiagrams int  `arg:"--output-diagrams" help:"Level of details for machine graph diagrams (svg, d2, mermaid) in --dir (0 off, 1-3 on) (EXPERIMENTAL)"`
-	OutputLog      bool `arg:"--output-log" help:"Write the current log buffer to log.txt inside --dir"`
-	OutputTx       bool `arg:"--output-tx" default:"true" help:"Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir (EXPERIMENTAL)"`
+	OutputClients   bool                 `arg:"--output-clients" help:"Write a detailed client list into am-dbg-clients.txt inside --dir"`
+	OutputDiagrams  ParamsOutputDiagrams `arg:"--output-diagrams" help:"Level of details for machine graph diagrams (svg, d2, mermaid) in --dir (0 off, 1-3 on) (EXPERIMENTAL)"`
+	OutputDiagGroup ParamsOutDiagGroup   `arg:"--output-diag-group" help:"Only show states from the selected group (valid: hide, skip)" default:"hide"`
+	OutputDiagTx    ParamsOutDiagTx      `arg:"--output-diag-tx" help:"Dim states and rels unrelated to a transition (valid: called, changed, touched, relations)" default:"relations"`
+	OutputLog       bool                 `arg:"--output-log" help:"Write the current log buffer to log.txt inside --dir"`
+	OutputTx        bool                 `arg:"--output-tx" default:"true" help:"Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir (EXPERIMENTAL)"`
 
 	// ui
 
@@ -112,6 +114,120 @@ type Params struct {
 	Screen tcell.Screen `arg:"-"`
 	// Version is the computed build version string.
 	Version string `arg:"-"`
+}
+
+// -----
+
+// ParamsOutputDiagrams is an enum for --output-diagrams
+type ParamsOutputDiagrams enum.Member[int]
+
+// 0, 1, 2, 3
+var (
+	ParamsOutputDiagramsNone  = ParamsOutputDiagrams{0}
+	ParamsOutputDiagramsOne   = ParamsOutputDiagrams{1}
+	ParamsOutputDiagramsTwo   = ParamsOutputDiagrams{2}
+	ParamsOutputDiagramsThree = ParamsOutputDiagrams{3}
+
+	ParamsOutputDiagramsEnum = enum.New(
+		ParamsOutputDiagramsNone,
+		ParamsOutputDiagramsOne,
+		ParamsOutputDiagramsTwo,
+		ParamsOutputDiagramsThree,
+	)
+)
+
+func (p *ParamsOutputDiagrams) UnmarshalText(b []byte) error {
+	value, err := strconv.Atoi(string(b))
+	if err != nil {
+		return fmt.Errorf("invalid value: %s", b)
+	}
+	res := ParamsOutputDiagramsEnum.Parse(value)
+	if res == nil {
+		return fmt.Errorf("invalid value: %s", b)
+	}
+	*p = *res
+	return nil
+}
+
+// -----
+
+// ParamsOutDiagTx is an enum for --output-diagrams-group
+type ParamsOutDiagTx enum.Member[string]
+
+// "", "called", "changed", "touched"
+var (
+	ParamsOutDiagTxNone      = ParamsOutDiagTx{""}
+	ParamsOutDiagTxCalled    = ParamsOutDiagTx{"called"}
+	ParamsOutDiagTxMutated   = ParamsOutDiagTx{"mutated"}
+	ParamsOutDiagTxTouched   = ParamsOutDiagTx{"touched"}
+	ParamsOutDiagTxRelations = ParamsOutDiagTx{"relations"}
+
+	ParamsOutDiagTxEnum = enum.New(ParamsOutDiagTxNone, ParamsOutDiagTxCalled,
+		ParamsOutDiagTxMutated, ParamsOutDiagTxTouched, ParamsOutDiagTxRelations)
+)
+
+func (p *ParamsOutDiagTx) UnmarshalText(b []byte) error {
+	res := ParamsOutDiagTxEnum.Parse(string(b))
+	if res == nil {
+		return fmt.Errorf("invalid value: %s", b)
+	}
+	*p = *res
+	return nil
+}
+
+// -----
+
+// ParamsOutDiagGroup is an enum for --output-diagrams-group
+type ParamsOutDiagGroup enum.Member[string]
+
+// "", "hide", "skip"
+var (
+	ParamsOutDiagGroupNone = ParamsOutDiagGroup{""}
+	ParamsOutDiagGroupHide = ParamsOutDiagGroup{"hide"}
+	ParamsOutDiagGroupSkip = ParamsOutDiagGroup{"skip"}
+
+	ParamsOutDiagGroupEnum = enum.New(ParamsOutDiagGroupNone,
+		ParamsOutDiagGroupHide, ParamsOutDiagGroupSkip)
+)
+
+func (p *ParamsOutDiagGroup) UnmarshalText(b []byte) error {
+	res := ParamsOutDiagGroupEnum.Parse(string(b))
+	if res == nil {
+		return fmt.Errorf("invalid value: %s", b)
+	}
+	*p = *res
+	return nil
+}
+
+// -----
+
+// ParamsViewTimelines is an enum for --view-timelines
+type ParamsViewTimelines enum.Member[int]
+
+// 0, 1, 2
+var (
+	ParamsViewTimelinesNone = ParamsViewTimelines{0}
+	ParamsViewTimelinesOne  = ParamsViewTimelines{1}
+	ParamsViewTimelinesTwo  = ParamsViewTimelines{2}
+
+	ParamsViewTimelinesEnum = enum.New(
+		ParamsViewTimelinesNone,
+		ParamsViewTimelinesOne,
+		ParamsViewTimelinesTwo,
+	)
+)
+
+func (p *ParamsViewTimelines) UnmarshalText(b []byte) error {
+	value, err := strconv.Atoi(string(b))
+	if err != nil {
+		return fmt.Errorf("invalid value: %s", b)
+	}
+	res := ParamsViewTimelinesEnum.Parse(value)
+	if res == nil {
+		return fmt.Errorf("invalid value: %s", b)
+	}
+	*p = *res
+	return nil
 }
 
 // ///// ///// /////

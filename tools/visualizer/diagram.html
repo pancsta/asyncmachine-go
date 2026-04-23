@@ -1,36 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>am-vis machine diagram</title>
     <style>
         /* Make the body and container fullscreen */
-        html, body {
+        html,
+        body {
             height: 100%;
             width: 100%;
             margin: 0;
             padding: 0;
-            overflow: hidden; /* Prevent scrollbars */
+            overflow: hidden;
+            /* Prevent scrollbars */
             background: black;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
         }
+
         #svg-container {
             width: 100%;
             height: 100%;
             border: none;
-            background-color: #fff;
+            background-color: black;
             cursor: grab;
         }
+
         #svg-container:active {
             cursor: grabbing;
         }
+
         svg {
             width: 100%;
             height: 100%;
             display: block;
             background: black;
         }
+
         /* Status bar for user feedback */
         #status-bar {
             position: fixed;
@@ -43,14 +50,17 @@
             padding: 8px;
             font-size: 14px;
             z-index: 1000;
-            display: none; /* Hidden by default */
+            display: none;
+            /* Hidden by default */
         }
+
         #status-bar.error {
             background-color: #dc3545;
             color: white;
         }
     </style>
 </head>
+
 <body>
 
     <div id="status-bar">Connecting...</div>
@@ -63,7 +73,7 @@
             // --- Configuration ---
             const SVG_URL = 'http://localhost:6831/diagrams/mach.svg';
             const WEBSOCKET_URL = 'ws://localhost:6831/diagrams/mach.ws';
-            const STORAGE_KEY = 'svg-viewbox-state';
+            let currentMemKey = 'svg-viewbox-state';
 
             const svgContainer = document.getElementById('svg-container');
             const statusBar = document.getElementById('status-bar');
@@ -82,7 +92,7 @@
              * Saves the current viewBox state to localStorage.
              */
             function saveViewBoxState() {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(viewBox));
+                localStorage.setItem(currentMemKey, JSON.stringify(viewBox));
             }
 
             /**
@@ -90,7 +100,7 @@
              * @returns {object|null} The saved viewBox object or null if not found.
              */
             function loadViewBoxState() {
-                const savedState = localStorage.getItem(STORAGE_KEY);
+                const savedState = localStorage.getItem(currentMemKey);
                 try {
                     if (savedState) {
                         return JSON.parse(savedState);
@@ -106,7 +116,7 @@
              * Fetches and displays the SVG from the URL.
              * @param {boolean} restoreState - If true, tries to load the view from localStorage.
              */
-            async function loadSVG(restoreState = false) {
+            async function loadSVG(restoreState = false, filename = "") {
                 console.log('Fetching SVG from:', SVG_URL);
                 try {
                     // Add a cache-busting parameter to ensure the latest version is always requested
@@ -177,11 +187,15 @@
                 };
 
                 socket.onmessage = (event) => {
-                    if (event.data === 'refresh') {
+                    msg = JSON.parse(event.data);
+                    if (msg.Type === 'refresh') {
                         console.log('Received "refresh" event, reloading SVG and restoring view.');
+                        currentMemKey = "svg-viewbox-state-" + msg.Addr.MachId + "-" + msg.Group;
                         loadSVG(true); // Pass true to restore state
+                    } else if (msg.Type == "loading") {
+                      svgContainer.innerHTML = `<p style="color: white; padding: 1rem;">Rendering...</p>`;
                     } else {
-                        console.log('Received message:', event.data);
+                        console.log('Received message:', msg);
                     }
                 };
 
@@ -191,6 +205,7 @@
                     const delay = Math.min(maxReconnectDelay, 1000 * Math.pow(2, reconnectAttempts));
                     reconnectAttempts++;
                     updateStatus(`Connection lost. Reconnecting in ${Math.round(delay / 1000)}s...`, true);
+                    svgContainer.innerHTML = ""
                     setTimeout(connectWebSocket, delay);
                 };
 
@@ -257,10 +272,11 @@
 
             // --- Initial Load ---
             // On initial load, don't restore state. This will use the SVG's default view.
-            loadSVG();
+            loadSVG(false, "");
             connectWebSocket();
         });
     </script>
 
 </body>
+
 </html>

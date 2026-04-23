@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/lithammer/dedent"
 	"oss.terrastruct.com/d2/d2graph"
 	"oss.terrastruct.com/d2/d2layouts/d2dagrelayout"
 	"oss.terrastruct.com/d2/d2layouts/d2elklayout"
@@ -116,6 +115,62 @@ var d2Header = utils.Sp(`
 				border-radius: 999
 			}
 		}
+
+		# require relation
+		req: {
+			style.stroke: white
+			target-arrowhead.style.filled: true
+			target-arrowhead.shape: circle
+		}
+		# add relation
+		add: {
+			style.stroke: yellow
+			target-arrowhead.shape: triangle
+			target-arrowhead.style.filled: true
+		}
+		# remove relation
+		rem: {
+			style.stroke: red
+			style.stroke-width: 2
+			target-arrowhead.style.filled: true
+			target-arrowhead.shape: diamond
+			source-arrowhead.style.filled: true
+			source-arrowhead.shape: diamond
+		}
+		# double remove relation
+		rem2: {
+			style.stroke: red
+			style.stroke-width: 4
+			target-arrowhead.style.filled: true
+			target-arrowhead.shape: diamond
+			source-arrowhead.style.filled: true
+			source-arrowhead.shape: diamond
+		}
+		# add pipe
+		pipe_add: {
+			style.stroke: yellow
+			style.stroke-dash: 3
+			target-arrowhead.style.filled: false
+		}
+		# remove pipe
+		pipe_rem: {
+			style.stroke: red
+			target-arrowhead.shape: diamond
+			style.stroke-dash: 3
+		}
+		# pipe (mach -> mach)
+		pipe: {
+			style.stroke: white
+		}
+
+		# parent hierarchy relation
+		parent: {
+			style.stroke: white
+			style.stroke-width: 8
+			target-arrowhead.shape: circle
+		}
+
+	${CLASSES}
 	}
 	direction: right
 
@@ -132,8 +187,22 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 		return fmt.Errorf("failed to get adjacency map: %w", err)
 	}
 
+	// state classes
+	classes := ""
+	for _, c := range r.graph.Clients {
+		if !r.shouldRenderMach(c.Id) {
+			continue
+		}
+		classes += "\tM_" + c.Id + ": {}\n"
+		for _, name := range c.MsgSchema.StatesIndex {
+			// TODO optimize: use short names, save index as *-index.txt
+			classes += "\tF_" + name + ": {}\n"
+			classes += "\tT_" + name + ": {}\n"
+		}
+	}
+
 	// header
-	r.buf.WriteString(dedent.Dedent(d2Header))
+	r.buf.WriteString(strings.ReplaceAll(d2Header, "${CLASSES}", classes))
 
 	// 1st pass - requested machs and neighbours
 	for src := range r.adjMap {
@@ -307,6 +376,7 @@ func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {
 	}
 	r.buf.WriteString(shortMachId + ": " + machId + " {\n" +
 		"\tlabel.near: top-center\n" +
+		"\tclass: [M_" + machId + "; mach]\n" +
 		"\tstyle.font-size: 40\n" +
 		border + tags)
 
@@ -398,6 +468,7 @@ func (r *Renderer) outputD2HalfMach(
 	}
 	r.buf.WriteString(shortMachId + ": " + machId + " {\n" +
 		"\tlabel.near: top-center\n" +
+		"\tclass: [M_" + machId + "; mach]\n" +
 		"\tstyle.font-size: 40\n")
 
 	parent := ""
@@ -450,18 +521,18 @@ func (r *Renderer) renderD2Relations(
 		return
 	}
 
+	classBase := fmt.Sprintf("[M_%s; F_%s; T_", c.Id, stateName)
+
 	// require
 	for _, relState := range state.Require {
 		if !r.shouldRenderState(machId, relState) {
 			continue
 		}
 
-		// TODO class
+		class := classBase + relState + "; " + "req]\n"
 		r.buf.WriteString("\t" + shortStateId + " --> " +
 			r.shortId(relState) + ": require {\n" +
-			"\t\tstyle.stroke: white\n" +
-			"\t\ttarget-arrowhead.style.filled: true\n" +
-			"\t\ttarget-arrowhead.shape: circle\n" +
+			"\t\tclass: " + class +
 			"\t}\n")
 	}
 
@@ -471,14 +542,14 @@ func (r *Renderer) renderD2Relations(
 			continue
 		}
 
-		// TODO class
+		class := classBase + relState + "; " + "add]\n"
 		r.buf.WriteString("\t" + shortStateId + " --> " +
 			r.shortId(relState) + ": add {\n" +
-			"\t\tstyle.stroke: yellow\n" +
-			"\t\ttarget-arrowhead.shape: triangle\n" +
-			"\t\ttarget-arrowhead.style.filled: true\n" +
+			"\t\tclass: " + class +
 			"\t}\n")
 	}
+
+	// TODO "after" relation
 
 	// remove
 	for _, relState := range state.Remove {
@@ -494,7 +565,7 @@ func (r *Renderer) renderD2Relations(
 		// merge double remove
 		edgeType := " --> "
 		label := "remove"
-		width := "2"
+		relClass := "rem"
 		if slices.Contains(c.MsgSchema.States[relState].Remove, stateName) {
 			_, ok1 := renderedRemoves[stateName+":"+relState]
 			_, ok2 := renderedRemoves[relState+":"+stateName]
@@ -503,21 +574,17 @@ func (r *Renderer) renderD2Relations(
 			}
 			edgeType = " <--> "
 			label = "double remove"
-			width = "4"
+			relClass = "rem2"
 
 			// mark
 			renderedRemoves[relState+":"+stateName] = struct{}{}
 			renderedRemoves[relState+":"+stateName] = struct{}{}
 		}
+		class := classBase + relState + "; " + relClass + "]\n"
 
-		// TODO class
 		r.buf.WriteString("\t" + shortStateId + edgeType +
-			r.shortId(relState) + ": " + label + " {\n\t\tstyle.stroke: red\n" +
-			"\t\tstyle.stroke-width: " + width + "\n" +
-			"\t\ttarget-arrowhead.style.filled: true\n" +
-			"\t\ttarget-arrowhead.shape: diamond\n" +
-			"\t\tsource-arrowhead.style.filled: true\n" +
-			"\t\tsource-arrowhead.shape: diamond\n" +
+			r.shortId(relState) + ": " + label + " {\n" +
+			"\t\tclass: " + class +
 			"\t}\n")
 	}
 }
@@ -554,12 +621,10 @@ func (r *Renderer) renderD2Parent(
 	r.adjsMachsToRender = append(r.adjsMachsToRender, target.MachId)
 
 	return shortMachId + " -> " + shortTargetMachId +
-		": parent {\n" +
-		"\tstyle.stroke: white\n" +
-		"\tstyle.stroke-width: 8\n" +
-		"\ttarget-arrowhead.shape: circle\n}\n"
+		": parent { class: parent }\n"
 }
 
+// RPC conns
 func (r *Renderer) renderD2Conns(
 	data *amgraph.EdgeData, machId string, target *amgraph.Vertex, renderHalfs,
 	isHalfMach bool,
@@ -660,19 +725,14 @@ func (r *Renderer) renderD2Pipes(
 				continue
 			}
 
-			// TODO class
-			style := "\tstyle.stroke: yellow\n" +
-				"\tstyle.stroke-dash: 3\n" +
-				"\ttarget-arrowhead.style.filled: false\n"
 			label := "add"
+			pipeClass := "pipe_add"
 			if mp.MutType == am.MutationRemove {
-				style = "\tstyle.stroke: red\n" +
-					"\ttarget-arrowhead.shape: diamond\n" +
-					"\tstyle.stroke-dash: 3\n"
 				label = "remove"
+				pipeClass = "pipe_rem"
 			}
 			ret += sourceId + " -> " + targetId + ":" + label + " {\n" +
-				style + "}\n"
+				"\tclass: " + pipeClass + "\n}\n"
 
 			// remember
 			r.renderedPipes[sourceId+":"+targetId] = struct{}{}
@@ -691,9 +751,7 @@ func (r *Renderer) renderD2Pipes(
 				continue
 			}
 
-			// TODO class, number of pipes
-			ret += shortMachId + " -> " + targetId + ": pipes { " +
-				"style.stroke: white }\n"
+			ret += shortMachId + " -> " + targetId + ": pipes { class: pipe }\n"
 
 			// remember
 			r.renderedPipes[shortMachId+":"+targetId] = struct{}{}
