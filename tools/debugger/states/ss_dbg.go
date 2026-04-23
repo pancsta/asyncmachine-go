@@ -198,6 +198,14 @@ var States = am.Schema{
 		Multi:   true,
 		Require: S{Ready},
 	},
+	ssD.FocusPrev: {
+		Multi:   true,
+		Require: S{Ready},
+	},
+	ssD.FocusNext: {
+		Multi:   true,
+		Require: S{Ready},
+	},
 
 	// tx / steps back / fwd
 

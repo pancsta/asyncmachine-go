@@ -42,13 +42,31 @@ func (d *Debugger) hBindKeyboard() {
 }
 
 func (d *Debugger) hInitFocusManager() *cbind.Configuration {
-	// focus manager
-	d.focusManager = cview.NewFocusManager(d.App.SetFocus)
-	d.focusManager.SetWrapAround(true)
+	// TODO remove?
 	inputHandler := cbind.NewConfiguration()
-	d.App.SetAfterFocusFunc(d.newAfterFocusFn())
 
-	focusChange := func(f func()) func(ev *tcell.EventKey) *tcell.EventKey {
+	d.App.SetAfterFocusFunc(func(p cview.Primitive) {
+		// add, but dont dup
+		if !d.Mach.WillBe1(ss.AfterFocus, am.PositionLast) {
+			d.Mach.Add1(ss.AfterFocus, Pass(&A{
+				FocusPrimitive: p,
+				MouseFocus:     d.mouseFocusChanged,
+			}))
+		}
+
+		d.mouseFocusChanged = false
+	})
+	d.App.SetMouseCapture(func(
+		event *tcell.EventMouse, action cview.MouseAction,
+	) (*tcell.EventMouse, cview.MouseAction) {
+		if event.Buttons() == tcell.ButtonPrimary {
+			d.mouseFocusChanged = true
+		}
+
+		return event, action
+	})
+
+	focusChange := func(state string) func(ev *tcell.EventKey) *tcell.EventKey {
 		return func(ev *tcell.EventKey) *tcell.EventKey {
 			defer d.Mach.PanicToErr(nil)
 
@@ -66,35 +84,18 @@ func (d *Debugger) hInitFocusManager() *cbind.Configuration {
 	// TODO stop accepting keys if the actions arent processed in time
 
 	// tab
-	for _, key := range cview.Keys.MovePreviousField {
-		err := inputHandler.Set(key, focusChange(d.focusManager.FocusPrevious))
-		if err != nil {
-			// TODO no log
-			log.Printf("Error: binding keys %s", err)
-		}
+	err := inputHandler.Set("Backtab", focusChange(ss.FocusPrev))
+	if err != nil {
+		// TODO no log
+		log.Printf("Error: binding keys %s", err)
 	}
-
-	// shift+tab
-	for _, key := range cview.Keys.MoveNextField {
-		err := inputHandler.Set(key, focusChange(d.focusManager.FocusNext))
-		if err != nil {
-			// TODO no log
-			log.Printf("Error: binding keys %s", err)
-		}
+	err = inputHandler.Set("Tab", focusChange(ss.FocusNext))
+	if err != nil {
+		// TODO no log
+		log.Printf("Error: binding keys %s", err)
 	}
 
 	return inputHandler
-}
-
-// newAfterFocusFn forwards focus events to machine states
-func (d *Debugger) newAfterFocusFn() func(p cview.Primitive) {
-	return func(p cview.Primitive) {
-		// add, but dont dup
-		if !d.Mach.WillBe1(ss.AfterFocus, am.PositionLast) {
-			d.Mach.Add1(ss.AfterFocus, am.A{"cview.Primitive": p})
-		}
-		// d.Mach.Log("after focus %s", p)
-	}
 }
 
 // hSearchSchemaClients does search-as-you-type for a-z, -, _ in the tree and
@@ -436,16 +437,27 @@ func (d *Debugger) hDeleteClient() {
 }
 
 func (d *Debugger) focusDefault() {
+	tick := false
+
 	// default focus element
 	if d.Mach.Is1(ss.ClientListVisible) {
-		d.Mach.Add1(ss.ClientListFocused, nil)
+		if d.Mach.Not1(ss.ClientListFocused) {
+			d.Mach.Add1(ss.ClientListFocused, nil)
+			tick = true
+		}
 	} else if d.Mach.Not1(ss.TimelineTxHidden) {
-		d.Mach.Add1(ss.TimelineTxsFocused, nil)
-	} else {
+		if d.Mach.Not1(ss.TimelineTxsFocused) {
+			d.Mach.Add1(ss.TimelineTxsFocused, nil)
+			tick = true
+		}
+	} else if d.Mach.Not1(ss.AddressFocused) {
 		d.Mach.Add1(ss.AddressFocused, nil)
+		tick = true
 	}
 
-	d.Mach.Add1(ss.UpdateFocus, nil)
+	if tick {
+		d.Mach.Add1(ss.UpdateFocus, nil)
+	}
 }
 
 // these UI components can be navigated with keys
@@ -737,15 +749,45 @@ func (d *Debugger) hThrottleKey(ev *tcell.EventKey, ms int) bool {
 	return false
 }
 
-func (d *Debugger) hUpdateFocusable() {
+// TODO move
+func (d *Debugger) FocusNextState(e *am.Event) {
+	idx := slices.Index(d.focusablePrims, d.Focused)
+	idx++
+	if idx >= len(d.focusablePrims) {
+		idx = 0
+	}
+	prim := d.focusablePrims[idx]
+	_, state := d.hBoxFromPrimitive(prim)
+	d.Mach.EvAdd1(e, state, nil)
+	d.App.SetFocus(prim)
+}
+
+// TODO move
+func (d *Debugger) FocusPrevState(e *am.Event) {
+	idx := slices.Index(d.focusablePrims, d.Focused)
+	idx--
+	// fallback to last one TODO log err
+	if idx < 0 {
+		idx = len(d.focusablePrims) - 1
+	}
+	prim := d.focusablePrims[idx]
+	_, state := d.hBoxFromPrimitive(prim)
+	d.Mach.EvAdd1(e, state, nil)
+	d.App.SetFocus(prim)
+}
+
+func (d *Debugger) hUpdateFocusableList() {
 	var prims []cview.Primitive
 
 	// dialogs
 	if d.Mach.Is1(ss.ExportDialog) {
 		d.focusable = []*cview.Box{d.exportDialog.Box}
-		prims = []cview.Primitive{d.exportDialog}
-		d.focusManager.Reset()
-		d.focusManager.Add(prims...)
+		d.focusablePrims = []cview.Primitive{d.exportDialog}
+
+		return
+	} else if d.Mach.Is1(ss.HelpDialog) {
+		d.focusable = []*cview.Box{d.helpDialogLeft.Box, d.helpDialogRight.Box}
+		d.focusablePrims = []cview.Primitive{d.helpDialogLeft, d.helpDialogRight}
 
 		return
 	}
@@ -781,22 +823,20 @@ func (d *Debugger) hUpdateFocusable() {
 
 	// add timelines
 	switch d.Params.ViewTimelines {
-	case 2:
+	case types.ParamsViewTimelinesTwo:
 		d.focusable = append(d.focusable, d.timelineTxs.Box, d.timelineSteps.Box)
-		prims = append(prims, d.timelineTxs, d.timelineSteps)
-	case 1:
+		prims = append(prims, d.timelineTxs.Box, d.timelineSteps.Box)
+	case types.ParamsViewTimelinesOne:
 		d.focusable = append(d.focusable, d.timelineTxs.Box)
-		prims = append(prims, d.timelineTxs)
+		prims = append(prims, d.timelineTxs.Box)
 
 	}
 
 	// add toolbars
 	d.focusable = append(d.focusable, d.toolbars[0].Box, d.toolbars[1].Box,
-		d.toolbars[2].Box)
-	prims = append(prims, d.toolbars[0], d.toolbars[1], d.toolbars[2])
+		d.toolbars[2].Box, d.toolbars[3].Box)
+	prims = append(prims,
+		d.toolbars[0], d.toolbars[1], d.toolbars[2], d.toolbars[3])
 
-	// unblock bc of locks
-	// TODO fix locks
-	d.focusManager.Reset()
-	d.focusManager.Add(prims...)
+	d.focusablePrims = prims
 }
