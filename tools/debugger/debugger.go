@@ -36,6 +36,8 @@ import (
 	"github.com/zyedidia/clipper"
 	"golang.org/x/text/message"
 
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -43,12 +45,21 @@ import (
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 	amvis "github.com/pancsta/asyncmachine-go/tools/visualizer"
 )
 
-type S = am.S
+type (
+	S = am.S
+	A = types.A
+)
+
+var (
+	Pass      = types.Pass
+	ParseArgs = types.ParseArgs
+	ss        = states.DebuggerStates
+)
 
 type cache struct {
 	diagramName string
@@ -107,24 +118,25 @@ type Debugger struct {
 	lastKeystroke     tcell.Key
 	lastKeystrokeTime time.Time
 	matrix            *cview.Table
-	focusManager      *cview.FocusManager
 	exportDialog      *cview.Modal
 	contentPanels     *cview.Panels
-	toolbars          [3]*cview.Table
+	toolbars          [4]*cview.Table
 	schemaLogGrid     *cview.Grid
 	treeMatrixGrid    *cview.Grid
 	lastSelectedState string
 	// TODO should be after a redraw, not before
 	// redrawCallback is auto-disposed in draw()
-	redrawCallback  func()
-	heartbeatT      *time.Ticker
-	logReader       *cview.TreeView
+	redrawCallback func()
+	heartbeatT     *time.Ticker
+	logReader      *cview.TreeView
+
+	helpDialogLeft  *cview.TextView
 	helpDialogRight *cview.TextView
 	addressBar      *cview.Table
 	tagsBar         *cview.TextView
 	clip            clipper.Clipboard
 	// toolbarItems is a list of row of toolbars items
-	toolbarItems       [][]toolbarItem
+	toolbarItems       [4][]toolbarItem
 	clientListFile     *os.File
 	txFileMd           *os.File
 	txFileD2           *os.File
@@ -159,8 +171,15 @@ type Debugger struct {
 	sshSrv            *ssh.Server
 	logFile           *os.File
 	// TODO handle in LogBuiltState
-	logFileMx     sync.Mutex
-	statusBarLeft *cview.TextView
+	logFileMx         sync.Mutex
+	statusBarLeft     *cview.TextView
+	focusablePrims    []cview.Primitive
+	mouseFocusChanged bool
+	Focused           cview.Primitive
+	// skip the next selection action
+	treeGroupSkip bool
+	preModalFocus cview.Primitive
+	overlay       *cview.TextView
 }
 
 func New(ctx context.Context, p types.Params) (*Debugger, error) {
@@ -175,33 +194,25 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	if p.Id != "" {
 		id = p.Id
 	}
-	mach, err := am.NewCommon(ctx, "d-"+id, ss.States, ss.Names, d, nil, &am.Opts{
-		DontLogId: true,
-		Tags:      []string{"am-dbg"},
-	})
+	mach, err := am.NewCommon(ctx, "d-"+id, states.DebuggerSchema,
+		ss.Names(), d, nil, &am.Opts{
+			DontLogId: true,
+			Tags:      []string{"am-dbg"},
+		})
 	if err != nil {
 		return nil, err
 	}
 	d.Mach = mach
-	// mach.AddBreakpoint1("", ss.Start, false)
-	// mach.AddBreakpoint1("", ss.Start, true)
-	// TODO update to schemas
-	mach.SetGroupsString(map[string]am.S{
-		"Dialog":           ss.GroupDialog,
-		"Playing":          ss.GroupPlaying,
-		"Focused":          ss.GroupFocused,
-		"Views":            ss.GroupViews,
-		"SwitchedClientTx": ss.GroupSwitchedClientTx,
-		"Filters":          ss.GroupFilters,
-		"Debug":            ss.GroupDebug,
-	}, []string{
-		"Dialog",
-		"Playing",
-		"Focused",
-		"Views",
-		"SwitchedClientTx",
-		"Filters",
-		"Debug",
+	// mach.AddBreakpoint1(ss.AddressFocused, "", false)
+	// mach.AddBreakpoint1(ss.AddressFocused, "", true)
+	// mach.AddBreakpoint1(ss.UpdateFocus, "", false)
+	// mach.AddBreakpoint1(ss.UpdateFocus, "", true)
+	mach.SetGroups(states.DebuggerGroups, ss)
+	// start a dedicated aRPC server for the REPL, create an addr file
+	_, _ = arpc.MachReplEnv(mach, &arpc.ReplOpts{
+		AddrDir:  p.OutputDir,
+		Args:     types.ARpc{},
+		ParseRpc: types.ParseRpc,
 	})
 
 	err = d.setParams(p)
@@ -219,12 +230,7 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	} else {
 		semLog.SetSimple(log.Printf, d.Params.LogLevel)
 	}
-	semLog.SetArgsMapper(am.NewLogArgsMapper(20, []string{
-		// TODO extract
-		"Client.id", "conn_id", "cursorTx1", "amount", "Client.id",
-		"state", "fwd", "filter", "ToolName", "uri", "addr", "url",
-		"err", "_am_err",
-	}))
+	semLog.SetArgsMapper(types.LogArgs)
 
 	d.graph, err = amgraph.New(d.Mach)
 	if err != nil {
@@ -239,7 +245,7 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 		mach.Log("Importing data from %s", d.Params.ImportData)
 		d.hImportData(d.Params.ImportData)
 		if d.Mach.IsErr() {
-			d.Params.Print("ERROR: %s", d.Mach.Err())
+			d.Params.Print("ERROR: %s\n", d.Mach.Err())
 		} else {
 			mach.Log("Imported data in %s", time.Since(start))
 		}
@@ -442,12 +448,14 @@ func (d *Debugger) hGetMachAddress() *types.MachAddress {
 	return a
 }
 
-// hGoToMachAddress tries to render a view of the provided address (mach, tx).
+// GoToMachAddress tries to render a view of the provided address (mach, tx).
 // Blocks. TODO state: GoToMachAddr, MachAddr
-func (d *Debugger) hGoToMachAddress(
+func (d *Debugger) GoToMachAddress(
 	addr *types.MachAddress, skipHistory bool,
 ) bool {
 	// TODO should be an async state
+	// TODO ctx
+	ctx := context.TODO()
 
 	if addr.MachId == "" {
 		return false
@@ -458,42 +466,46 @@ func (d *Debugger) hGoToMachAddress(
 
 	// select the target mach, if not selected
 	if d.C == nil || d.C.Id != addr.MachId {
-		// TODO ctx
 		// TODO extract as amhelp.WhenNextActive
 		if mach.Is1(ss.ClientSelected) {
-			wait = mach.WhenTicks(ss.ClientSelected, 2, nil)
+			wait = mach.WhenTicks(ss.ClientSelected, 2, ctx)
 		} else {
-			wait = mach.When1(ss.ClientSelected, nil)
+			wait = mach.When1(ss.ClientSelected, ctx)
 		}
-		res := mach.Add1(ss.SelectingClient, am.A{"Client.id": addr.MachId})
+		res := mach.Add1(ss.SelectingClient, Pass(&A{
+			ClientId: addr.MachId,
+		}))
 		if res == am.Canceled {
 			return false
 		}
 	} else {
-		// TODO ctx
-		wait = mach.When1(ss.ClientSelected, nil)
+		wait = mach.When1(ss.ClientSelected, ctx)
 	}
 
-	// TODO DONT BLOCK
 	<-wait
 	if addr.TxId != "" {
-		// TODO typed args
-		args := am.A{"Client.txId": addr.TxId}
+		scrollArgs := &A{TxId: addr.TxId}
 		if addr.Step != 0 {
-			args["cursorStep1"] = addr.Step
-			mach.Add1(ss.ScrollToStep, args)
+			scrollArgs.CursorStep1 = addr.Step
+			mach.Add1(ss.ScrollToStep, Pass(scrollArgs))
 		}
-		mach.Add1(ss.ScrollToTx, args)
+		mach.Add1(ss.ScrollToTx, Pass(scrollArgs))
 	} else if addr.MachTime != 0 {
 		tx := d.C.Tx(d.C.TxByMachTime(addr.MachTime))
-		mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
+		mach.Add1(ss.ScrollToTx, Pass(&A{
+			TxId: tx.ID,
+		}))
 	} else if !addr.HumanTime.IsZero() {
 		tx := d.C.Tx(d.C.LastTxTill(addr.HumanTime))
-		mach.Add1(ss.ScrollToTx, am.A{"Client.txId": tx.ID})
+		mach.Add1(ss.ScrollToTx, Pass(&A{
+			TxId: tx.ID,
+		}))
 	}
 	if !skipHistory {
-		d.hPrependHistory(addr)
-		d.hUpdateAddressBar()
+		mach.Eval("GoToMachAddress", func() {
+			d.hPrependHistory(addr)
+			d.hUpdateAddressBar()
+		}, ctx)
 		// TODO only if main panel visible
 		d.draw(d.addressBar)
 	}
@@ -646,31 +658,32 @@ func (d *Debugger) Client() *Client {
 
 // NextTx returns the next transition. Thread safe via Eval().
 func (d *Debugger) NextTx() *dbg.DbgMsgTx {
-	var tx *dbg.DbgMsgTx
-
 	// SelectingClient locks d.C
 	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
 
-	// TODO eval to getter
-	d.Mach.Eval("NextTx", func() {
-		tx = d.hNextTx()
-	}, nil)
+	tx, _ := amhelp.EvalGetter(d.Mach.Context(), "NextTx", 3, d.Mach,
+		func() (*dbg.DbgMsgTx, error) {
+			return d.hNextTx(), nil
+		})
 
-	// TODO confirm tx != nil, return err
 	return tx
 }
 
 func (d *Debugger) hNextTx() *dbg.DbgMsgTx {
+	idx := d.hNextTxIdx()
+	if idx < 0 {
+		return nil
+	}
+	return d.C.MsgTxs[idx]
+}
+
+func (d *Debugger) hNextTxIdx() int {
 	c := d.C
 	if c == nil {
-		return nil
-	}
-	onLastTx := c.CursorTx1 >= len(c.MsgTxs)
-	if onLastTx {
-		return nil
+		return -1
 	}
 
-	return c.MsgTxs[c.CursorTx1]
+	return d.hFilterTxCursor1(c, c.CursorTx1+1, false) - 1
 }
 
 // CurrentTx returns the current transition. Thread safe via Eval().
@@ -704,29 +717,32 @@ func (d *Debugger) hCurrentTx() *dbg.DbgMsgTx {
 
 // PrevTx returns the previous transition. Thread safe via Eval().
 func (d *Debugger) PrevTx() *dbg.DbgMsgTx {
-	var tx *dbg.DbgMsgTx
-
-	// SelectingClient locks d.C
 	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
 
-	// TODO eval to getter
-	d.Mach.Eval("PrevTx", func() {
-		tx = d.hPrevTx()
-	}, nil)
+	tx, _ := amhelp.EvalGetter(nil, "PrevTx", 3, d.Mach,
+		func() (*dbg.DbgMsgTx, error) {
+			return d.hPrevTx(), nil
+		})
 
 	// TODO confirm tx != nil, return err
 	return tx
 }
 
 func (d *Debugger) hPrevTx() *dbg.DbgMsgTx {
+	idx := d.hPrevTxIdx()
+	if idx < 0 {
+		return nil
+	}
+	return d.C.MsgTxs[idx]
+}
+
+func (d *Debugger) hPrevTxIdx() int {
 	c := d.C
 	if c == nil {
-		return nil
+		return -1
 	}
-	if c.CursorTx1 < 2 {
-		return nil
-	}
-	return c.MsgTxs[c.CursorTx1-2]
+
+	return d.hFilterTxCursor1(c, c.CursorTx1-1, true) - 1
 }
 
 func (d *Debugger) hConnectedClients() int {
@@ -739,6 +755,36 @@ func (d *Debugger) hConnectedClients() int {
 	}
 
 	return conns
+}
+
+func (d *Debugger) MachAddr() *types.MachAddress {
+	addr, _ := amhelp.EvalGetter(d.Mach.Context(), "MachAddr", 3, d.Mach,
+		func() (*types.MachAddress, error) {
+			if d.C == nil {
+				return nil, fmt.Errorf("no client selected")
+			}
+
+			ret := &types.MachAddress{
+				MachId: d.C.Id,
+			}
+			if d.C.CursorTx1 > 0 {
+				tx := d.C.MsgTxs[d.C.CursorTx1-1]
+				ret.TxId = tx.ID
+				ret.MachTime = d.C.MsgTxsParsed[d.C.CursorTx1-1].TimeSum
+				ret.HumanTime = *tx.Time
+				ret.QueueTick = tx.QueueTick
+			}
+			if d.C.CursorStep1 > 0 {
+				ret.Step = d.C.CursorStep1
+			}
+			if d.C.SelectedGroup != "" {
+				ret.Group = d.C.SelectedGroup
+			}
+
+			return ret, nil
+		})
+
+	return addr
 }
 
 func (d *Debugger) Dispose() {
@@ -805,7 +851,7 @@ func (d *Debugger) hImportData(filename string) {
 	var res []*server.Exportable
 	err = decoder.Decode(&res)
 	if err != nil {
-		d.Mach.AddErr(fmt.Errorf("import failed %w", err), nil)
+		d.Mach.AddErr(fmt.Errorf("import failed: %w", err), nil)
 		return
 	}
 
@@ -817,11 +863,13 @@ func (d *Debugger) hImportData(filename string) {
 		if d.graph != nil {
 			err := d.graph.AddClient(data.MsgStruct)
 			if err != nil {
-				d.Mach.AddErr(fmt.Errorf("import failed %w", err), nil)
+				d.Mach.AddErr(fmt.Errorf("import failed: %w", err), nil)
 				return
 			}
 		}
-		d.Mach.Add1(ss.InitClient, am.A{"id": id})
+		d.Mach.Add1(ss.InitClient, Pass(&A{
+			Id: id,
+		}))
 		for i := range data.MsgTxs {
 			d.hParseMsg(d.Clients[id], i)
 		}
@@ -867,11 +915,12 @@ func (d *Debugger) hUpdateToolbar() {
 
 				// button - dedicated icon
 			} else if item.active == nil && item.icon != "" {
-				text += f(" [gray]%s[-]%s[gray]%s[-]", esc("["), item.icon, esc("]"))
+				text += f(" ["+theme.Grey+"]%s[-]%s["+theme.Grey+"]%s[-]",
+					esc("["), item.icon, esc("]"))
 
 				// unchecked
 			} else if item.active == nil {
-				text += f(" [grey][ ][-]")
+				text += f(" [" + theme.Grey + "][ ][-]")
 
 				// button - default icon
 			} else {
@@ -879,19 +928,17 @@ func (d *Debugger) hUpdateToolbar() {
 			}
 
 			// focused
-			if sel != -1 && d.toolbarItems[i][sel].id == ToolName(item.id) &&
-				focused {
-
-				text += "[white]" + item.label
+			if sel != -1 && d.toolbarItems[i][sel].id == item.id && focused {
+				text += "[" + theme.White + "]" + item.label
 			} else if !focused {
-				text += f("[%s]%s", colorHighlight2, item.label)
+				text += f("[%s]%s", theme.Grey, item.label)
 			} else {
 				text += f("%s", item.label)
 			}
 
 			cell := d.toolbars[i].GetCell(0, ii)
 			cell.SetText(text)
-			cell.SetTextColor(tcell.ColorWhite)
+			cell.SetTextColor(tcell.GetColor(theme.White))
 			d.toolbars[i].SetCell(0, ii, cell)
 		}
 	}
@@ -917,8 +964,8 @@ func (d *Debugger) hUpdateAddressBar() {
 
 	// copy
 	copyCell := d.addressBar.GetCell(0, 6)
-	copyCell.SetBackgroundColor(tcell.ColorLightGray)
-	copyCell.SetTextColor(tcell.ColorBlack)
+	copyCell.SetBackgroundColor(tcell.GetColor(theme.LightGrey))
+	copyCell.SetTextColor(tcell.GetColor(theme.BgPrimary))
 	if machId == "" {
 		copyCell.SetSelectable(false)
 		copyCell.SetBackgroundColor(tcell.ColorDefault)
@@ -926,45 +973,45 @@ func (d *Debugger) hUpdateAddressBar() {
 		copyCell.SetSelectable(true)
 	}
 	pasteCell := d.addressBar.GetCell(0, 8)
-	pasteCell.SetTextColor(tcell.ColorBlack)
-	pasteCell.SetBackgroundColor(tcell.ColorLightGray)
+	pasteCell.SetTextColor(tcell.GetColor(theme.BgPrimary))
+	pasteCell.SetBackgroundColor(tcell.GetColor(theme.LightGrey))
 
 	// history
 	fwdCell := d.addressBar.GetCell(0, 2)
-	fwdCell.SetBackgroundColor(tcell.ColorLightGray)
-	fwdCell.SetTextColor(tcell.ColorBlack)
+	fwdCell.SetBackgroundColor(tcell.GetColor(theme.LightGrey))
+	fwdCell.SetTextColor(tcell.GetColor(theme.BgPrimary))
 	if d.HistoryCursor > 0 {
 		fwdCell.SetSelectable(true)
 	} else {
 		fwdCell.SetSelectable(false)
-		fwdCell.SetTextColor(tcell.ColorGray)
+		fwdCell.SetTextColor(tcell.GetColor(theme.Grey))
 		fwdCell.SetBackgroundColor(tcell.ColorDefault)
 	}
 	backCell := d.addressBar.GetCell(0, 0)
-	backCell.SetBackgroundColor(tcell.ColorLightGray)
-	backCell.SetTextColor(tcell.ColorBlack)
+	backCell.SetBackgroundColor(tcell.GetColor(theme.LightGrey))
+	backCell.SetTextColor(tcell.GetColor(theme.BgPrimary))
 	if d.HistoryCursor < len(d.History)-1 {
 		backCell.SetSelectable(true)
 	} else {
 		backCell.SetSelectable(false)
-		backCell.SetTextColor(tcell.ColorGray)
+		backCell.SetTextColor(tcell.GetColor(theme.Grey))
 		backCell.SetBackgroundColor(tcell.ColorDefault)
 	}
 
 	// detect clipboard
 	if d.clip == nil {
-		copyCell.SetTextColor(tcell.ColorGrey)
+		copyCell.SetTextColor(tcell.GetColor(theme.Grey))
 		copyCell.SetSelectable(false)
 		copyCell.SetBackgroundColor(tcell.ColorDefault)
-		pasteCell.SetTextColor(tcell.ColorGrey)
+		pasteCell.SetTextColor(tcell.GetColor(theme.Grey))
 		pasteCell.SetSelectable(false)
 		pasteCell.SetBackgroundColor(tcell.ColorDefault)
 	}
 
 	// address
-	machColor := "[grey]"
+	machColor := "[" + theme.Grey + "]"
 	if machConn {
-		machColor = "[" + colorActive.String() + "]"
+		machColor = "[" + theme.Active + "]"
 	}
 	addrCell := d.addressBar.GetCell(0, 4)
 	if machId != "" && txId != "" {
@@ -973,11 +1020,11 @@ func (d *Debugger) hUpdateAddressBar() {
 			s = "/" + stepId
 		}
 		addrCell.SetText(machColor + "mach://[-][::u]" + machId +
-			"[::-][grey]/" + txId + s)
+			"[::-][" + theme.Grey + "]/" + txId + s)
 	} else if machId != "" {
 		addrCell.SetText(machColor + "mach://[-][::u]" + machId)
 	} else {
-		addrCell.SetText("[grey]mach://[-]")
+		addrCell.SetText("[" + theme.Grey + "]mach://[-]")
 	}
 
 	// tags
@@ -999,7 +1046,10 @@ func (d *Debugger) hUpdateAddressBar() {
 
 // hUpdateViews updates the contents of the currentl visible view.
 func (d *Debugger) hUpdateViews(immediate bool) {
-	switch d.Mach.Switch(ss.GroupViews) {
+	if d.contentPanels == nil {
+		return
+	}
+	switch d.Mach.Switch(states.DebuggerGroups.Views) {
 
 	case ss.MatrixView:
 		d.hUpdateMatrix()
@@ -1210,7 +1260,7 @@ func (d *Debugger) hUpdateTxBars() {
 	} else {
 
 		var title string
-		switch d.Mach.Switch(ss.GroupPlaying) {
+		switch d.Mach.Switch(states.DebuggerGroups.Playing) {
 		case ss.Playing:
 			title = formatTxBarTitle("Playing")
 		case ss.TailMode:
@@ -1219,17 +1269,15 @@ func (d *Debugger) hUpdateTxBars() {
 			title = formatTxBarTitle("Paused") + " "
 		}
 
-		left, right := d.hGetTxInfo(c.CursorTx1, tx, c.MsgTxsParsed[c.CursorTx1-1],
-			title)
+		left, right := d.hGetTxInfo(c.CursorTx1-1, title)
 		d.currTxBarLeft.SetText(left)
 		d.currTxBarRight.SetText(right)
 	}
 
-	nextTx := d.hNextTx()
-	if nextTx != nil && c != nil {
+	nextTxIdx := d.hNextTxIdx()
+	if nextTxIdx > 0 && c != nil {
 		title := "Next   "
-		left, right := d.hGetTxInfo(c.CursorTx1+1, nextTx,
-			c.MsgTxsParsed[c.CursorTx1], title)
+		left, right := d.hGetTxInfo(nextTxIdx, title)
 		d.nextTxBarLeft.SetText(left)
 		d.nextTxBarRight.SetText(right)
 	}
@@ -1245,23 +1293,21 @@ func (d *Debugger) hUpdateTimelines() {
 	txCount := len(c.MsgTxs)
 	nextTx := d.hNextTx()
 	d.timelineSteps.SetTitleColor(cview.Styles.PrimaryTextColor)
-	d.timelineSteps.SetBorderColor(cview.Styles.PrimaryTextColor)
 	d.timelineSteps.SetFilledColor(cview.Styles.PrimaryTextColor)
 
 	// grey rejected bars
 	if nextTx != nil && !nextTx.Accepted {
-		d.timelineSteps.SetFilledColor(tcell.ColorGray)
+		d.timelineSteps.SetFilledColor(tcell.GetColor(theme.Grey))
 	}
 
 	// mark the last step of a canceled tx in red
 	if nextTx != nil && c.CursorStep1 == len(nextTx.Steps) && !nextTx.Accepted {
-		d.timelineSteps.SetFilledColor(tcell.ColorRed)
+		d.timelineSteps.SetFilledColor(tcell.GetColor(theme.Err))
 	}
 
 	stepsCount := 0
-	onLastTx := c.CursorTx1 >= txCount
-	if !onLastTx {
-		stepsCount = len(c.MsgTxs[c.CursorTx1].Steps)
+	if nextTx != nil {
+		stepsCount = len(nextTx.Steps)
 	}
 
 	// progressbar cant be max==0
@@ -1277,7 +1323,7 @@ func (d *Debugger) hUpdateTimelines() {
 			pos = 0
 		}
 		title = d.P.Sprintf(" Transition %d / %d [%s]%d / %d[-] ",
-			pos, len(c.MsgTxsFiltered), colorHighlight2, c.CursorTx1, txCount)
+			pos, len(c.MsgTxsFiltered), theme.Grey, c.CursorTx1, txCount)
 	} else {
 		title = d.P.Sprintf(" Transition %d / %d ", c.CursorTx1, txCount)
 	}
@@ -1294,10 +1340,11 @@ func (d *Debugger) hUpdateTimelines() {
 }
 
 func (d *Debugger) hUpdateBorderColor() {
-	color := colorInactive
+	colorStr := theme.Inactive
 	if d.Mach.IsErr() {
-		color = tcell.ColorRed
+		colorStr = theme.Err
 	}
+	color := tcell.GetColor(colorStr)
 	for _, box := range d.focusable {
 		box.SetBorderColorFocused(color)
 	}
@@ -1356,9 +1403,10 @@ func (d *Debugger) hExportData(filename string, snapshot bool) {
 	}
 }
 
-func (d *Debugger) hGetTxInfo(txIndex1 int,
-	tx *dbg.DbgMsgTx, parsed *types.MsgTxParsed, title string,
-) (string, string) {
+func (d *Debugger) hGetTxInfo(txIdx int, title string) (string, string) {
+	tx := d.C.MsgTxs[txIdx]
+	parsed := d.C.MsgTxsParsed[txIdx]
+
 	left := title
 	right := " "
 	if tx == nil {
@@ -1367,15 +1415,16 @@ func (d *Debugger) hGetTxInfo(txIndex1 int,
 
 	// left side
 	var prev *dbg.DbgMsgTx
-	if txIndex1 > 1 {
-		prev = d.C.MsgTxs[txIndex1-2]
+	prevIdx := d.hFilterTxCursor1(d.C, txIdx, true) - 1
+	if prevIdx > 0 {
+		prev = d.C.MsgTxs[prevIdx]
 	}
 	// TODO limit state names to a group when [2]group
 	calledStates := tx.CalledStateNames(d.C.MsgStruct.StatesIndex)
 
-	left += d.P.Sprintf(" | tx: %d", txIndex1)
+	left += d.P.Sprintf(" | tx: %d", txIdx)
 	if parsed.TimeDiff == 0 {
-		left += " | Time: [gray] 0[-]"
+		left += " | Time: [" + theme.Grey + "] 0[-]"
 	} else {
 		left += d.P.Sprintf(" | Time: +%d", parsed.TimeDiff)
 	}
@@ -1387,7 +1436,7 @@ func (d *Debugger) hGetTxInfo(txIndex1 int,
 	}
 
 	if !tx.Accepted {
-		left += "[grey]"
+		left += "[" + theme.Grey + "]"
 	}
 	queued := ""
 	if tx.IsQueued {
@@ -1409,20 +1458,20 @@ func (d *Debugger) hGetTxInfo(txIndex1 int,
 		right += "check | "
 	}
 	if !tx.Accepted {
-		right += "[grey]canceled[-] | "
+		right += "[" + theme.Grey + "]canceled[-] | "
 	}
 
-	// format time TODO against the prev filter-matched tx
+	// format time
 	tStamp := tx.Time.Format(timeFormat)
 	if prev != nil {
 		prevTStamp := prev.Time.Format(timeFormat)
 		if idx := findFirstDiff(prevTStamp, tStamp); idx != -1 {
-			tStamp = tStamp[:idx] + "[white]" + tStamp[idx:idx+1] + "[grey]" +
-				tStamp[idx+1:]
+			tStamp = tStamp[:idx] + "[" + theme.White + "]" +
+				tStamp[idx:idx+1] + "[" + theme.Grey + "]" + tStamp[idx+1:]
 		}
 	}
 
-	right += fmt.Sprintf("add: %d | rm: %d | touch: %3s | [grey]%s",
+	right += fmt.Sprintf("add: %d | rm: %d | touch: %3s | ["+theme.Grey+"]%s",
 		len(parsed.StatesAdded), len(parsed.StatesRemoved),
 		strconv.Itoa(len(parsed.StatesTouched)), tStamp,
 	)
@@ -1524,7 +1573,8 @@ func (d *Debugger) hUpdateMatrixRelations() {
 
 		// mark selected state
 		if d.C.SelectedState == name {
-			d.matrix.GetCell(0, i).SetBackgroundColor(colorHighlight3)
+			d.matrix.GetCell(0, i).SetBackgroundColor(
+				tcell.GetColor(theme.Highlight3))
 			highlightIndex = i
 		}
 	}
@@ -1546,7 +1596,7 @@ func (d *Debugger) hUpdateMatrixRelations() {
 		cell := d.matrix.GetCell(2, i)
 
 		if v == 0 {
-			cell.SetTextColor(tcell.ColorGrey)
+			cell.SetTextColor(tcell.GetColor(theme.Grey))
 		}
 
 		// mark called states
@@ -1557,7 +1607,7 @@ func (d *Debugger) hUpdateMatrixRelations() {
 
 		// mark selected state
 		if d.C.SelectedState == name {
-			cell.SetBackgroundColor(colorHighlight3)
+			cell.SetBackgroundColor(tcell.GetColor(theme.Highlight3))
 		}
 	}
 	matrixEmptyRow(d, 3, len(index), highlightIndex)
@@ -1583,11 +1633,11 @@ func (d *Debugger) hUpdateMatrixRelations() {
 
 				// mark selected state
 				if d.C.SelectedState == target || d.C.SelectedState == source {
-					cell.SetBackgroundColor(colorHighlight3)
+					cell.SetBackgroundColor(tcell.GetColor(theme.Highlight3))
 				}
 
 				if v == 0 {
-					cell.SetTextColor(tcell.ColorGrey)
+					cell.SetTextColor(tcell.GetColor(theme.Grey))
 					continue
 				}
 
@@ -1625,12 +1675,11 @@ func (d *Debugger) hUpdateMatrixRain() {
 
 	currTxRow := -1
 	d.matrix.SetSelectionChangedFunc(func(row, column int) {
-		d.Mach.Add1(ss.MatrixRainSelected, am.A{
-			// TODO typed args
-			"row":       row,
-			"column":    column,
-			"currTxRow": currTxRow,
-		})
+		d.Mach.Add1(ss.MatrixRainSelected, Pass(&A{
+			Row:       row,
+			Column:    column,
+			CurrTxRow: currTxRow,
+		}))
 	})
 	d.matrix.SetSelectable(true, true)
 
@@ -1719,7 +1768,7 @@ func (d *Debugger) hUpdateMatrixRain() {
 
 			// gray out some
 			if !tx.Accepted || v == "." || v == "|" || v == "c" || v == "*" {
-				cell.SetTextColor(colorHighlight)
+				cell.SetTextColor(tcell.GetColor(theme.Highlight))
 			}
 
 			// mark called states
@@ -1729,18 +1778,18 @@ func (d *Debugger) hUpdateMatrixRain() {
 
 			if txIdx1 == c.CursorTx1 {
 				// current tx
-				cell.SetBackgroundColor(colorHighlight3)
+				cell.SetBackgroundColor(tcell.GetColor(theme.Highlight3))
 			} else if d.C.SelectedState == name {
 				// mark selected state
-				cell.SetBackgroundColor(colorHighlight3)
+				cell.SetBackgroundColor(tcell.GetColor(theme.Highlight3))
 			}
 
 			if (sIsErr || name == am.StateException) && tx.Is1(index, name) {
 				// mark exceptions
 				if tx.Accepted {
-					cell.SetBackgroundColor(tcell.ColorIndianRed)
+					cell.SetBackgroundColor(tcell.GetColor(theme.ErrBg))
 				} else {
-					cell.SetBackgroundColor(colorHighlight3)
+					cell.SetBackgroundColor(tcell.GetColor(theme.Highlight3))
 				}
 			}
 		}
@@ -1752,19 +1801,19 @@ func (d *Debugger) hUpdateMatrixRain() {
 		if txIdx1 > 1 {
 			prevTStamp := c.MsgTxs[txIdx1-2].Time.Format(timeFormat)
 			if idx := findFirstDiff(prevTStamp, tStamp); idx != -1 {
-				tStampFmt = tStamp[:idx] + "[white]" + tStamp[idx:idx+1] + "[gray]" +
-					tStamp[idx+1:]
+				tStampFmt = tStamp[:idx] + "[" + theme.White + "]" +
+					tStamp[idx:idx+1] + "[" + theme.Grey + "]" + tStamp[idx+1:]
 			}
 		}
 
 		// tail cell
 		d.matrix.SetCellSimple(rowIdx, len(index), fmt.Sprintf(
-			"  [gray]%d | %s[-]", txIdx1, tStampFmt))
+			"  ["+theme.Grey+"]%d | %s[-]", txIdx1, tStampFmt))
 		tailCell := d.matrix.GetCell(rowIdx, len(index))
 
 		// current tx
 		if txIdx1 == c.CursorTx1 {
-			tailCell.SetBackgroundColor(colorHighlight3)
+			tailCell.SetBackgroundColor(tcell.GetColor(theme.Highlight3))
 		}
 	}
 
@@ -1817,15 +1866,18 @@ func (d *Debugger) hUpdateStatusBar() {
 		}
 		// TODO show schema group / inheritance
 	}
-	d.statusBarLeft.SetText(strings.Join(left, " [grey]|[-] "))
+	d.statusBarLeft.SetText(strings.Join(left, " ["+theme.Grey+"]|[-] "))
 
 	// right
 
 	txt := ""
 	if c.CursorStep1 > 0 {
-		tx := c.MsgTxs[c.CursorTx1]
-		step := tx.Steps[c.CursorStep1-1]
-		txt = step.StringFromIndex(c.MsgStruct.StatesIndex)
+		nextTx := d.hNextTx()
+		if nextTx != nil {
+			stepIdx := min(len(nextTx.Steps)-1, c.CursorStep1-1)
+			step := nextTx.Steps[stepIdx]
+			txt = step.StringFromIndex(c.MsgStruct.StatesIndex)
+		}
 	}
 
 	// markdown to cview
@@ -1937,7 +1989,7 @@ func (d *Debugger) statesFromFilters(filters *types.Filters) {
 
 // filtersActive checks if any filters are active.
 func (d *Debugger) filtersActive() bool {
-	return d.Mach.Any1(ss.GroupFilters...)
+	return d.Mach.Any1(states.DebuggerGroups.Filters...)
 }
 
 // hFilterTx returns true when a TX passes selected toolbarItems.
@@ -2002,9 +2054,9 @@ func (d *Debugger) hScrollToTime(
 	if filter {
 		latestTx = d.hFilterTxCursor1(d.C, latestTx, true)
 	}
-	d.hSetCursor1(e, am.A{
-		"cursor1":    latestTx,
-		"filterBack": true,
+	d.hSetCursor1(e, &A{
+		Cursor1:    latestTx,
+		FilterBack: true,
 	})
 
 	return true
@@ -2021,9 +2073,11 @@ func (d *Debugger) hGetParentTags(c *Client, tags []string) []string {
 }
 
 func (d *Debugger) initGraphGen(
-	snapshot *amgraph.Graph, id string, detailsLvl, numClients int, outDir,
+	snapshot *amgraph.Graph, id string, detailsLvl, numClients int, diagDir,
 	svgName string, statesAllowlist S,
 ) []*amvis.Renderer {
+	//
+
 	var vizs []*amvis.Renderer
 
 	// render single (current one)
@@ -2107,12 +2161,12 @@ func (d *Debugger) initGraphGen(
 	// TODO skip if there was no change in schemas
 	//  hash schemas and schema's hashes, then compare
 
-	// map renderer, check cache
+	// map renderer, check cache TODO extract
 	mapPath := fmt.Sprintf("am-vis-map-%d", numClients)
 	if _, err := os.Stat(mapPath); err != nil {
 		vis = amvis.NewRenderer(snapshot, d.Mach.Log)
 		amvis.PresetMap(vis)
-		vis.OutputFilename = path.Join(outDir, mapPath)
+		vis.OutputFilename = path.Join(diagDir, mapPath)
 	}
 
 	return append(vizs, vis)
@@ -2120,12 +2174,12 @@ func (d *Debugger) initGraphGen(
 
 func (d *Debugger) hSyncOptsTimelines() {
 	switch d.Params.ViewTimelines {
-	case 0:
+	case types.ParamsViewTimelinesNone:
 		d.Mach.Add(S{ss.TimelineTxHidden, ss.TimelineStepsHidden}, nil)
-	case 1:
+	case types.ParamsViewTimelinesOne:
 		d.Mach.Add1(ss.TimelineStepsHidden, nil)
 		d.Mach.Remove1(ss.TimelineTxHidden, nil)
-	case 2:
+	case types.ParamsViewTimelinesTwo:
 		d.Mach.Remove(S{ss.TimelineStepsHidden, ss.TimelineTxHidden}, nil)
 	}
 }

@@ -10,14 +10,11 @@ import (
 	"github.com/pancsta/cview"
 	"github.com/pancsta/tcell-v2"
 
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
-
-	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
-
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
 // buildClientList builds the clientList with the list of clients.
@@ -135,7 +132,7 @@ func (d *Debugger) updateClientList() {
 			return
 		}
 
-		d.Mach.Eval("doUpdateClientList", func() {
+		d.Mach.Eval("updateClientList", func() {
 			d.hUpdateClientList()
 			d.drawClientList()
 		}, nil)
@@ -143,6 +140,9 @@ func (d *Debugger) updateClientList() {
 }
 
 func (d *Debugger) drawClientList() {
+	if d.LayoutRoot == nil {
+		return
+	}
 	if n, _ := d.LayoutRoot.GetFrontPanel(); n == "main" {
 		d.draw(d.clientList)
 	}
@@ -345,17 +345,16 @@ func (d *Debugger) hGetClientListLabel(
 
 	if !c.Connected.Load() {
 		if isHovered && !hasFocus {
-			label = "[grey]" + label
+			label = "[" + theme.Grey + "]" + label
 		} else if !isHovered {
-			label = "[grey]" + label
+			label = "[" + theme.Grey + "]" + label
 		} else {
-			label = "[black]" + label
+			label = "[" + theme.BgPrimary + "]" + label
 		}
 	} else if isErrNow && c.Connected.Load() {
-		label = "[red]" + label
+		label = "[" + theme.Err + "]" + label
 	} else if c.HadErrSinceTx(currCTxIdx, 100) {
-		// TODO link to color 205
-		label = "[#FF5FAF]" + label
+		label = "[" + theme.ErrRecent + "]" + label
 	}
 
 	return label
@@ -368,9 +367,9 @@ func (d *Debugger) initClientList() {
 	d.clientList.SetBorder(true)
 	d.clientList.ShowSecondaryText(false)
 	d.clientList.SetSelectedFocusOnly(true)
-	d.clientList.SetMainTextColor(colorActive)
-	d.clientList.SetSelectedTextColor(tcell.ColorWhite)
-	d.clientList.SetSelectedBackgroundColor(colorHighlight2)
+	d.clientList.SetMainTextColor(tcell.GetColor(theme.Active))
+	d.clientList.SetSelectedTextColor(tcell.GetColor(theme.White))
+	d.clientList.SetSelectedBackgroundColor(tcell.GetColor(theme.Highlight2))
 	d.clientList.SetHighlightFullLine(true)
 	// switch clients and handle history
 	d.clientList.SetSelectedFunc(func(i int, listItem *cview.ListItem) {
@@ -386,11 +385,13 @@ func (d *Debugger) initClientList() {
 		if clickedId == selectedId {
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
-		amhelp.Add1Async(ctx, d.Mach, ss.ClientSelected, ss.SelectingClient,
-			am.A{"Client.id": clickedId},
+		amhelp.Add1Async(ctx, d.Mach, ss.ClientSelected,
+			ss.SelectingClient, Pass(&A{
+				ClientId: clickedId,
+			}),
 		)
 		if ctx.Err() != nil {
 			d.Mach.Log("timeout when selecting client %s", clickedId)
@@ -404,5 +405,5 @@ func (d *Debugger) initClientList() {
 		}, ctx)
 	})
 	d.clientList.SetSelectedAlwaysVisible(true)
-	d.clientList.SetScrollBarColor(colorHighlight2)
+	d.clientList.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
 }

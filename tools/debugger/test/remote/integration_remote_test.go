@@ -21,11 +21,12 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
 var workerRpcAddr = amtest.WorkerRpcAddr
 var workerTelemetryAddr = amtest.WorkerTelemetryAddr
+var ss = states.DebuggerStates
 
 func init() {
 	gob.Register(server.GetField(0))

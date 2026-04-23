@@ -97,7 +97,7 @@ type DbgMsgTx struct {
 	// mutation type
 	Type am.MutationType
 	// called states
-	// TODO remove. Deprecated use CalledStateNames(index)
+	// TODO remove. Deprecated use [CalledStatesIdxs]
 	CalledStates []string
 	// TODO rename to CalledStates, re-gen all assets
 	CalledStatesIdxs []int
@@ -359,7 +359,13 @@ func (t *Tracer) MachineInit(mach am.Api) context.Context {
 	gob.Register(am.Relation(0))
 	var err error
 	t.Mach = mach
-	t.lastMTime = mach.Time(nil)
+	mTime := mach.Time(nil)
+	t.lastMTime = mTime
+	pipes := mach.SemLogger().Pipes()
+	txId := "schema-semlogger"
+	if len(pipes) > 0 {
+		t.lastTx = txId
+	}
 
 	// add to the queue
 	t.outbox <- func() {
@@ -372,7 +378,25 @@ func (t *Tracer) MachineInit(mach am.Api) context.Context {
 			return
 		}
 
-		err = sendMsgSchema(mach, t, true)
+		// initial semlogger data
+		var semlogMsg *DbgMsgTx
+		if len(pipes) > 0 {
+			semlogMsg = &DbgMsgTx{
+				MachineID:  mach.Id(),
+				ID:         txId,
+				Clocks:     mTime,
+				Accepted:   true,
+				IsCheck:    true,
+				Type:       am.MutationSet,
+				LogEntries: pipes,
+				// Queue:         int(tx.QueueLen),
+				// QueueTick:     mach.QueueTick(),
+				// debug
+				// QueueDump: mach.QueueDump(),
+			}
+		}
+
+		err = sendMsgSchema(mach, t, semlogMsg)
 		if err != nil && os.Getenv(am.EnvAmLog) != "" {
 			// log.Println(err, nil)
 			return
@@ -387,7 +411,7 @@ func (t *Tracer) SchemaChange(mach am.Api, _ am.Schema) {
 
 	// add to the queue
 	t.outbox <- func() {
-		err := sendMsgSchema(mach, t, false)
+		err := sendMsgSchema(mach, t, nil)
 		if err != nil {
 			err = fmt.Errorf("failed to send new struct to am-dbg: %w", err)
 			mach.AddErr(err, nil)
@@ -591,7 +615,7 @@ func TransitionsToDbg(mach am.Api, addr string, opts ...*Opts) error {
 }
 
 // sendMsgSchema sends the am's states and relations
-func sendMsgSchema(mach am.Api, t *Tracer, sendSemloger bool) error {
+func sendMsgSchema(mach am.Api, t *Tracer, semlogMsg *DbgMsgTx) error {
 	groups, order := mach.Groups()
 	msg := &DbgMsgStruct{
 		ID:          mach.Id(),
@@ -611,22 +635,8 @@ func sendMsgSchema(mach am.Api, t *Tracer, sendSemloger bool) error {
 	}
 
 	// fake tx msg from semlogger
-	if pipes := mach.SemLogger().Pipes(); sendSemloger && len(pipes) > 0 {
-
-		msg := &DbgMsgTx{
-			MachineID:  mach.Id(),
-			ID:         "schema-semlogger",
-			Clocks:     mach.Time(nil),
-			Accepted:   true,
-			IsCheck:    true,
-			Type:       am.MutationSet,
-			LogEntries: pipes,
-			// Queue:         int(tx.QueueLen),
-			// QueueTick:     mach.QueueTick(),
-			// debug
-			// QueueDump: mach.QueueDump(),
-		}
-		err := t.c.sendMsgTx(msg)
+	if semlogMsg != nil {
+		err := t.c.sendMsgTx(semlogMsg)
 		if err != nil {
 			if os.Getenv(am.EnvAmLog) != "" {
 				// log.Printf(mach.Id()+":failed to send a msg to am-dbg: %s", err)

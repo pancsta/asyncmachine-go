@@ -9,13 +9,13 @@ import (
 	"syscall"
 
 	"github.com/alexflint/go-arg"
+	
 	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
-
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
@@ -88,7 +88,7 @@ func cliRun(ctx context.Context, p types.Params) error {
 	dbg.Start()
 	select {
 	case <-dbg.Mach.WhenDisposed():
-	case <-dbg.Mach.WhenNot1(ss.Start, nil):
+	case <-dbg.Mach.WhenNot1(states.DebuggerStates.Start, nil):
 	}
 
 	// show footer stats

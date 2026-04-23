@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/ssh"
-	"github.com/pancsta/cview"
 	"github.com/pancsta/tcell-v2"
 	"github.com/pancsta/tcell-v2/terminfo"
 
@@ -42,52 +41,6 @@ const (
 	scrollTxThrottle = 3
 )
 
-var colorDefault = cview.Styles.PrimaryTextColor
-
-const (
-	// row 1
-	toolFilterCanceledTx ToolName = "skip-canceled"
-	toolFilterQueuedTx   ToolName = "skip-queued"
-	toolFilterAutoTx     ToolName = "skip-auto"
-	toolFilterEmptyTx    ToolName = "skip-empty"
-	toolFilterHealth     ToolName = "skip-health"
-	toolFilterOutGroup   ToolName = "skip-outgroup"
-	toolFilterChecks     ToolName = "skip-checks"
-	toolFilterDisconn    ToolName = "skip-disconn"
-	ToolLogTimestamps    ToolName = "hide-timestamps"
-	ToolFilterTraces     ToolName = "hide-traces"
-	toolLog              ToolName = "log"
-	toolDiagrams         ToolName = "diagrams"
-	toolTimelines        ToolName = "timelines"
-	// toolLog0              ToolName = "log-0"
-	// toolLog1              ToolName = "log-1"
-	// toolLog2              ToolName = "log-2"
-	// toolLog3              ToolName = "log-3"
-	// toolLog4              ToolName = "log-4"
-	toolReader ToolName = "reader"
-	toolRain   ToolName = "rain"
-	toolWeb    ToolName = "web"
-
-	// row 2
-
-	toolHelp     ToolName = "help"
-	toolPlay     ToolName = "play"
-	toolTail     ToolName = "tail"
-	toolPrev     ToolName = "prev"
-	toolNext     ToolName = "next"
-	toolJumpNext ToolName = "jump-next"
-	toolJumpPrev ToolName = "jump-prev"
-	toolFirst    ToolName = "first"
-	toolLast     ToolName = "last"
-	toolExpand   ToolName = "expand"
-	toolMatrix   ToolName = "matrix"
-	toolExport   ToolName = "export"
-	toolNextStep ToolName = "next-step"
-	toolPrevStep ToolName = "prev-step"
-)
-
-type ToolName string
-
 type Client struct {
 	*server.Client
 
@@ -103,6 +56,7 @@ type Client struct {
 	logRenderedCursor1    int
 	logRenderedLevel      am.LogLevel
 	logRenderedFilters    *types.Filters
+	logRenderedGroup      string
 	logRenderedTimestamps bool
 	logReaderMx           sync.Mutex
 }

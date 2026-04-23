@@ -21,15 +21,21 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
-	ss "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
 // worker is a local worker with imported data, which listens for new
 // telemetry connections
 var worker *debugger.Debugger
+var ss = states.DebuggerStates
 
 // make sure these ports aren't used in other tests
 var workerAddr = "localhost:" + utils.RandPort(52001, 53000)
+
+type A = types.A
+
+var Pass = types.Pass
+var ParseArgs = types.ParseArgs
 
 func init() {
 	_ = godotenv.Load()
@@ -43,9 +49,8 @@ func init() {
 		os.Setenv(amhelp.EnvAmLogFile, "1")
 	}
 
-	// TODO quick debug
-	// _ = os.Setenv(telemetry.EnvAmDbgAddr, "localhost:6831")
-	// amhelp.SetEnvLogLevel(am.LogOps)
+	// quick debug
+	// amhelp.EnableDebugging(true)
 
 	var err error
 
@@ -53,7 +58,7 @@ func init() {
 	// TODO get opt defaults from the CLI
 	worker, err = amtest.NewDbgWorker(false, types.Params{
 		Id:              "loc-worker",
-		ViewTimelines:   2,
+		ViewTimelines:   types.ParamsViewTimelinesTwo,
 		EnableClipboard: false,
 	})
 	if err != nil {
@@ -82,11 +87,11 @@ func TestUserFwd(t *testing.T) {
 
 	// fixtures
 	cursorTx := 20
-	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx, am.A{
-		// TODO typed args
-		"Client.id": "sim",
-		"cursorTx1": cursorTx,
-	})
+	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
+		Pass(&A{
+			ClientId:  "sim",
+			CursorTx1: cursorTx,
+		}))
 
 	// test
 	res := amhelp.Add1Sync(ctx, mach, ss.UserFwd, nil)
@@ -105,7 +110,10 @@ func TestUserFwd100(t *testing.T) {
 	// fixtures
 	cursorTx := 20
 	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
-		am.A{"Client.id": "sim", "cursorTx1": cursorTx})
+		Pass(&A{
+			ClientId:  "sim",
+			CursorTx1: cursorTx,
+		}))
 
 	// test
 	// add ss.UserFwd 100 times in a series
@@ -194,7 +202,10 @@ func TestUserBack(t *testing.T) {
 	// fixtures
 	cursorTx := 20
 	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
-		am.A{"Client.id": "sim", "cursorTx1": cursorTx})
+		Pass(&A{
+			ClientId:  "sim",
+			CursorTx1: cursorTx,
+		}))
 
 	// test
 	res := amhelp.Add1Sync(ctx, mach, ss.UserBack, nil)
@@ -214,20 +225,26 @@ func TestStepsResetAfterStateJump(t *testing.T) {
 	state := "PublishMessage"
 	cursorTx := 20
 	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
-		am.A{"Client.id": "ps-2", "cursorTx1": cursorTx})
+		Pass(&A{
+			ClientId:  "ps-2",
+			CursorTx1: cursorTx,
+		}))
 
 	// test
 	mach.AddBreakpoint1(ss.StateNameSelected, "", false)
 	mach.AddBreakpoint1(ss.StateNameSelected, "", true)
-	amhelp.Add1Sync(ctx, mach, ss.StateNameSelected, am.A{"state": state})
+	amhelp.Add1Sync(ctx, mach, ss.StateNameSelected, Pass(&A{
+		State: state,
+	}))
 	amhelp.Add1Sync(ctx, mach, ss.UserFwdStep, nil)
 	amhelp.Add1Sync(ctx, mach, ss.UserFwdStep, nil)
 
 	// trigger a state jump and wait for the next scroll
-	amhelp.Add1Async(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
-		"state": state,
-		"fwd":   true,
-	})
+	amhelp.Add1Async(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx,
+		Pass(&A{
+			State: state,
+			Fwd:   true,
+		}))
 
 	// assert
 	assert.Equal(t, 0, worker.C.CursorStep1, "Steps timeline should reset")
