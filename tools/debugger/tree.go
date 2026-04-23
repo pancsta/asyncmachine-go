@@ -58,10 +58,10 @@ func (d *Debugger) hInitSchemaTree() *cview.TreeView {
 	tree := cview.NewTreeView()
 	tree.SetRoot(d.treeRoot)
 	tree.SetCurrentNode(d.treeRoot)
-	tree.SetSelectedBackgroundColor(colorHighlight2)
-	tree.SetSelectedTextColor(tcell.ColorWhite)
-	tree.SetHighlightColor(colorHighlight)
-	tree.SetScrollBarColor(colorHighlight2)
+	tree.SetSelectedBackgroundColor(tcell.GetColor(theme.Highlight2))
+	tree.SetSelectedTextColor(tcell.GetColor(theme.White))
+	tree.SetHighlightColor(tcell.GetColor(theme.Highlight))
+	tree.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
 
 	// focus change within the tree
 	tree.SetChangedFunc(func(node *cview.TreeNode) {
@@ -598,30 +598,30 @@ func (d *Debugger) hUpdateTreeRelCols(
 				if t == ' ' {
 					if !secondSpace {
 						secondSpace = true
-						dotted += "[grey]."
+						dotted += "[" + theme.Grey + "]."
 					} else if !thirdSpace {
 						thirdSpace = true
-						dotted += "[grey]."
+						dotted += "[" + theme.Grey + "]."
 					} else {
 						dotted += "."
 					}
 				} else if secondSpace && !white {
 					white = true
-					dotted += "[white]" + string(t)
+					dotted += "[" + theme.White + "]" + string(t)
 				} else {
 					// copy existing rune
 					dotted += string(t)
 				}
 			}
 
-			node.SetText(dotted + "[grey]")
+			node.SetText(dotted + "[" + theme.Grey + "]")
 			nodeCols = strings.Repeat(".", max(0, spaces))
 		} else {
 			nodeCols = strings.Repeat(" ", max(0, spaces))
 		}
 
 		if len(relCols) > 0 {
-			nodeCols += "[grey]"
+			nodeCols += "[" + theme.Grey + "]"
 		}
 
 		// draw columns
@@ -648,9 +648,9 @@ func (d *Debugger) hUpdateTreeRelCols(
 				// }
 
 				if isRelStart {
-					nodeCols += "[green::b]|[grey::-]"
+					nodeCols += "[" + theme.Green + "::b]|[" + theme.Grey + "::-]"
 				} else if isRelEnd {
-					nodeCols += "[red::b]|[grey::-]"
+					nodeCols += "[" + theme.Err + "::b]|[" + theme.Grey + "::-]"
 				} else {
 					nodeCols += "|"
 				}
@@ -677,10 +677,10 @@ func (d *Debugger) hUpdateTreeRelCols(
 		if ref.stateName != "" && !ref.isRef {
 			if !msg.Is(d.C.MsgStruct.StatesIndex, am.S{ref.stateName}) {
 				text = reTreeStateColorFix.ReplaceAllString(text,
-					"["+colorInactive.String()+"]$1[grey]$2")
+					"["+theme.Inactive+"]$1["+theme.Grey+"]$2")
 			} else {
 				text = reTreeStateColorFix.ReplaceAllString(text,
-					"["+colorActive.String()+"]$1[grey]$2")
+					"["+theme.Active+"]$1["+theme.Grey+"]$2")
 			}
 		}
 		node.SetText(text + suffix)
@@ -807,7 +807,7 @@ func (d *Debugger) hAddState(name string) {
 	stateNode := cview.NewTreeNode(name + " " + multi + "|0")
 	stateNode.SetSelectable(true)
 	stateNode.SetReference(&nodeRef{stateName: name})
-	stateNode.SetColor(colorInactive)
+	stateNode.SetColor(tcell.GetColor(theme.Inactive))
 	d.treeRoot.AddChild(stateNode)
 
 	if labels != "" {
@@ -838,7 +838,7 @@ func (d *Debugger) hAddState(name string) {
 
 		for _, tag := range state.Tags {
 			tagNode := cview.NewTreeNode("#" + tag)
-			tagNode.SetColor(tcell.ColorGrey)
+			tagNode.SetColor(tcell.GetColor(theme.Grey))
 			tagNode.SetReference(&nodeRef{
 				isTag: true,
 			})

@@ -21,14 +21,6 @@ import (
 )
 
 const (
-	// TODO light mode
-	colorActive     = tcell.ColorOlive
-	colorActive2    = tcell.ColorGreenYellow
-	colorInactive   = tcell.ColorLimeGreen
-	colorHighlight  = tcell.ColorDarkSlateGray
-	colorHighlight2 = tcell.ColorDimGray
-	colorHighlight3 = tcell.Color233
-	colorErr        = tcell.ColorRed
 	// TODO customize
 	playInterval = 500 * time.Millisecond
 	// TODO add param --max-clients

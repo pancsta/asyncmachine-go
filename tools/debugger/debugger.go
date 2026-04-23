@@ -56,6 +56,9 @@ type cache struct {
 	diagramDom *goquery.Document
 }
 
+// TODO avoid globals
+var theme Theme
+
 type Debugger struct {
 	*am.ExceptionHandler
 	Mach *am.Machine
@@ -399,6 +402,20 @@ func (d *Debugger) setParams(p types.Params) error {
 		d.Mach.Remove1(ss.FilterDisconn, nil)
 	}
 	d.lastSelectedGroup = p.SelectGroup
+
+	// TODO avoid globals
+	var err error
+	if p.ViewTheme == "light" {
+		theme, err = mapToTheme(themeLight, false)
+	} else {
+		theme, err = mapToTheme(themeDark, true)
+	}
+	if err != nil {
+		return err
+	}
+
+	// apply theme to defaults
+	theme.Apply()
 
 	d.Params = p
 	return nil

@@ -73,6 +73,7 @@ type Params struct {
 	ViewRain      bool   `arg:"--view-rain" help:"Show the rain view"`
 	ViewReader    bool   `arg:"-r,--view-reader" help:"Show the log reader view"`
 	TailMode      bool   `arg:"--view-tail" default:"true" help:"Start from the latest tx"`
+	ViewTheme     string `arg:"--view-theme" default:"dark" help:"Color theme (dark, light)"`
 	ViewTimelines int    `arg:"--view-timelines" default:"2" help:"Number of timelines to show (0-2)"`
 
 	// optimization
