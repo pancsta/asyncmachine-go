@@ -25,6 +25,8 @@ const (
 	// EnvAmDbgAddr is the address of a running am-dbg instance.
 	// "1" expands to "localhost:6831"
 	EnvAmDbgAddr = "AM_DBG_ADDR"
+	// EnvAmDbgNoTrace disables collecting stack traces
+	EnvAmDbgNoTrace = "AM_DBG_NO_TRACE"
 )
 
 // DbgMsg is the interface for the messages to be sent to the am-dbg server.
@@ -121,9 +123,10 @@ type DbgMsgTx struct {
 	// is this a check (Can*) tx or mutation?
 	IsCheck bool
 	// is this a queued mutation?
-	IsQueued  bool
-	Args      map[string]string
-	QueueDump []string
+	IsQueued   bool
+	Args       map[string]string
+	QueueDump  []string
+	StackTrace string
 
 	// TODO add Mutation.Source, only if semLogger.IsGraph() == true
 	// Source *am.MutSource
@@ -510,6 +513,10 @@ func (t *Tracer) MutationQueued(mach am.Api, mut *am.Mutation) {
 		// debug
 		// QueueDump: mach.QueueDump(),
 		// TODO Source
+	}
+
+	if os.Getenv(EnvAmDbgNoTrace) == "" {
+		msg.StackTrace = utils.CaptureStackTrace()
 	}
 
 	// collect args

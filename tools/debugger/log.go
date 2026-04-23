@@ -656,6 +656,17 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 	// focus change
 	tree.SetChangedFunc(func(node *cview.TreeNode) {
 		ref, ok := node.GetReference().(*logReaderTreeRef)
+
+		// info overlay
+		if ref != nil && ref.info != "" {
+			d.Mach.Add1(ss.Overlay, Pass(&A{
+				Text: ref.info,
+			}))
+		} else if d.Mach.Is1(ss.Overlay) {
+			d.Mach.Remove1(ss.Overlay, nil)
+		}
+
+		// exit when no ref
 		if !ok || ref == nil {
 			return
 		}
@@ -753,6 +764,27 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 	})
 
 	return tree
+}
+
+func (d *Debugger) OverlayEnter(e *am.Event) bool {
+	return ParseArgs(e.Args).Text != ""
+}
+
+func (d *Debugger) OverlayState(e *am.Event) {
+	txt := ParseArgs(e.Args).Text
+
+	d.overlay.SetText(txt)
+	d.overlay.SetVisible(true)
+	x, y, _, h := d.logReader.GetRect()
+	d.overlay.SetRect(0, y, x, h)
+	d.LayoutRoot.SendToFront("overlay")
+	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
+}
+
+func (d *Debugger) OverlayEnd(e *am.Event) {
+	d.LayoutRoot.SendToBack("overlay")
+	d.overlay.SetVisible(false)
+	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
 }
 
 func (d *Debugger) OverlayEnd(e *am.Event) {
@@ -1132,6 +1164,16 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		parentSource.AddChild(node)
 		node = cview.NewTreeNode("tx unknown")
 		node.SetIndent(1)
+		parentSource.AddChild(node)
+	}
+
+	// stack trace
+	if tx.StackTrace != "" {
+		node := cview.NewTreeNode("stack trace")
+		node.SetIndent(1)
+		node.SetReference(&logReaderTreeRef{
+			info: strings.TrimSpace(highlightStackTrace("\n" + tx.StackTrace)),
+		})
 		parentSource.AddChild(node)
 	}
 

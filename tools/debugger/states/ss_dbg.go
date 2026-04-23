@@ -190,6 +190,7 @@ var States = am.Schema{
 		Multi:   true,
 		Require: S{Ready},
 	},
+	ssD.Overlay: {Require: S{ssD.LogReaderFocused}},
 	AfterFocus: {
 		Multi:   true,
 		Require: S{Ready},
@@ -201,11 +202,13 @@ var States = am.Schema{
 
 	// tx / steps back / fwd
 
-	Fwd: {
-		Require: S{ClientSelected},
+	ssD.Fwd: {
+		Require: S{ssD.ClientSelected},
+		Remove:  S{ssD.Overlay},
 	},
-	Back: {
-		Require: S{ClientSelected},
+	ssD.Back: {
+		Require: S{ssD.ClientSelected},
+		Remove:  S{ssD.Overlay},
 	},
 	FwdStep: {
 		Require: S{ClientSelected},
