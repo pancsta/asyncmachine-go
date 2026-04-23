@@ -428,10 +428,24 @@ type (
 		Id    string
 		State string
 		Tick  uint64
+		Event *Event
 	}
 )
 
 var CtxKey = &CtxKeyName{}
+
+func CtxToEv(ctx context.Context) *Event {
+	v, _ := ctx.Value(CtxKey).(CtxValue)
+	return v.Event
+}
+
+// EvToCtx will inject *Event into [ctx] under [CtxKey]. Useful for passing
+// events for tracing.
+func EvToCtx(ctx context.Context, e *Event) context.Context {
+	v, _ := ctx.Value(CtxKey).(CtxValue)
+	v.Event = e.Export()
+	return context.WithValue(ctx, CtxKey, v)
+}
 
 // LoggerFn is a logging function for the machine.
 type LoggerFn func(level LogLevel, msg string, args ...any)
