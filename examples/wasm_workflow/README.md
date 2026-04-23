@@ -1,4 +1,4 @@
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /examples/WASM
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo-25.png" /> /examples/WASM
 
 [`cd /`](/README.md)
 
@@ -27,8 +27,8 @@ Single direction aRPC connections starting from the Orchestrator, which mutates 
 states piped from leaf workers. WebWorkers talk to each other over [MessageChannel](https://developer.mozilla.org/en-US/docs/Web/API/MessageChannel),
 ports, and transfered `ArrayBuffer` (copy-less). The data comes back to the Orchestrator via
 `SendPayload()-ServerPayloadState()` flow. Technically, the data retuned by each node always passes through the
-Orchestrator to simplify the example. In real world workflows, the connection would be full-duplex and data flow without
-detours.
+Orchestrator to simplify the example. In real world workflows, the connection would be [full-duplex](/examples/wasm) and
+data flow without detours.
 
 All the browser threads run the same Golang binary.
 

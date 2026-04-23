@@ -1,4 +1,4 @@
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /examples
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo-25.png" /> /examples
 
 [`cd /`](/README.md)
 
@@ -7,10 +7,12 @@
 
 - [Examples](#examples)
   - [**aRPC**](/examples/arpc)
-  - [**CLI**](/examples/cli/main.go)
+  - [**Basic**](/examples/basic)
+  - [**CLI**](/examples/cli)
   - [**CLI Daemon**](/examples/cli_daemon)
+  - [**Mach Template**](/examples/mach_template/mach_template.go)
   - [**Tree State Source**](/examples/tree_state_source)
-  - [**TUI**](/examples/tui/main.go)
+  - [**TUI**](/examples/tui)
   - [**WASM**](/examples/wasm)
   - [**WASM Workflow**](/examples/wasm_workflow)
   - [DAG Dependency Graph](/examples/dag_dependency_graph/dependency_graph.go)
@@ -21,6 +23,7 @@
   - [Pipes](/examples/pipes/example_pipes.go)
   - [Raw Strings](/examples/raw_strings/raw_strings.go)
   - [Relations Playground](/examples/relations_playground/relations_playground.go)
+  - [REPL](/examples/repl)
   - [Subscriptions](/examples/subscriptions/example_subscriptions.go)
   - [Temporal Expense Workflow](/examples/temporal_expense/expense_test.go)
   - [Temporal FileProcessing Workflow](/examples/temporal_fileprocessing/fileprocessing.go)
@@ -34,98 +37,144 @@
 
 ## Examples
 
-Headers link more info about each example.
+Headers link to actual examples.
 
 ### [aRPC](/examples/arpc)
 
-- #rpc #client #server
+aRPC client and server example.
+
+- `#rpc #client #server #template`
 - [origin](/pkg/rpc/README.md)
 
-### [CLI](/examples/cli/main.go)
+### [Basic](/examples/basic)
 
-- #template #relations #handlers
+Very basic, yet modern example of **asyncmachine-go**.
+
+- `#relations #handlers #async #negotiation #auto`
+
+### [CLI](/examples/cli)
+
+[go-arg](https://github.com/pancsta/go-arg) based CLI example.
+
+- `#template #relations #handlers #template`
 
 ### [CLI Daemon](/examples/cli_daemon)
 
-- #template #relations #handlers #arpc #payload
+[go-arg](https://github.com/pancsta/go-arg) based CLI with an aRPC daemon example.
+
+- `#template #relations #handlers #arpc #payload #template`
+
+### [Mach Template](/examples/mach_template/mach_template.go)
+
+Copy-paste boilerplate to set up a new machine.
+
+- `#template #handlers #telemetry #repl #relations #generator #negotiation #multi #template`
 
 ### [Tree State Source](/examples/tree_state_source)
 
-- #relations #negotiation #auto #arpc #otel #metrics #grafana #generator #data
+Single writer distributed to multiple readers in a tree structure.
+
+- `#relations #negotiation #auto #arpc #otel #metrics #grafana #generator #data`
 - [origin](/pkg/rpc/README.md)
 
-### [TUI](/examples/tui/main.go)
+### [TUI](/examples/tui)
 
-- #relations #handlers #cview #ui #global-handlers
+[cview](https://github.com/pancsta/cview) based TUI app example.
+
+- `#relations #handlers #cview #ui #global-handlers`
 
 ### [WASM](/examples/wasm)
 
-- #relations #handlers #arpc-handlers #arpc #relay #ui #websocket
+aRPC WASM architecture with a simple chat.
+
+- `#relations #handlers #arpc-handlers #arpc #relay #ui #websocket`
 
 ### [WASM Workflow](/examples/wasm_workflow)
 
-- #relations #handlers #arpc-handlers #arpc #relay #websocket #webworkers #payload
+WebWorker WASM workflow example.
+
+- `#relations #handlers #arpc-handlers #arpc #relay #websocket #webworkers #payload`
 
 ### [DAG Dependency Graph](/examples/dag_dependency_graph/dependency_graph.go)
 
-- #relations #handlers #async #auto #dependency-graph
+Sync and async DAG / dependency graph example.
+
+- `#relations #handlers #async #auto #dependency-graph`
 
 ### [Fan Out Fan In](/examples/fan_out_in/example_fan_out_in.go)
 
-- #relations #handlers #async #auto #concurrency
+Distributing work to multiple worker states and collecting the results.
+
+- `#relations #handlers #async #auto #concurrency`
 
 ### [FSM - Finite State Machine](/examples/fsm/fsm_test.go)
 
-- #relations #handlers #negotiation #auto
+Classic FSM example.
+
+- `#relations #handlers #negotiation #auto`
 - [origin](https://en.wikipedia.org/wiki/Finite-state_machine)
 
 ### [NFA - Nondeterministic Finite Automaton](/examples/nfa/nfa_test.go)
 
-- #relations #handlers #async #multi
+Classic NFA example.
+
+- `#relations #handlers #async #multi`
 - [origin](https://en.wikipedia.org/wiki/Nondeterministic_finite_automaton)
 
 ### [PATH Watcher](/examples/path_watcher/watcher.go)
 
-- #relations #handlers #async #negotiation #multi
+Watch file system paths for changes.
+
+- `#relations #handlers #async #negotiation #multi`
 - [origin](https://github.com/pancsta/sway-yasm/)
 
 ### [Pipes](/examples/pipes/example_pipes.go)
 
-- #handlers #composition
+How to pipe states between state machines.
+
+- `#handlers #composition`
 - [origin](/pkg/states/README.md#piping)
-
-### [Mach Template](/examples/mach_template/mach_template.go)
-
-- #template #handlers #telemetry #repl #relations #generator #negotiation #multi
 
 ### [Raw Strings](/examples/raw_strings/raw_strings.go)
 
-- #relations #handlers #async #negotiation #auto
+Very basic and old school example of **asyncmachine-go**.
+
+- `#relations #handlers #async #negotiation #auto`
 - [origin](/pkg/machine/README.md#raw-strings)
 
 ### [Relations Playground](/examples/relations_playground/relations_playground.go)
 
-- #relations
+Code from the relations playground.
+
+- `#relations`
 - [origin](/pkg/machine/README.md#mutations-and-relations)
 
-### [REPL](/examples/repl/main.go)
+### [REPL](/examples/repl)
 
-- #arpc #repl
+REPL boilerplate.
+
+- `#arpc #repl #template`
 - [origin](/tools/cmd/arpc/README.md)
 
 ### [Subscriptions](/examples/subscriptions/example_subscriptions.go)
 
-- #waiting
+Very basic example of waiting for states.
+
+- `#waiting`
 - [origin](/pkg/machine/README.md#waiting)
 
 ### [Temporal Expense Workflow](/examples/temporal_expense/expense_test.go)
 
-- #relations #handlers #async #negotiation #auto #temporal
+Workflow ported from Temporal.
+
+- `#relations #handlers #async #negotiation #auto #temporal`
 - [origin](https://github.com/temporalio/samples-go/blob/main/expense/)
 
 ### [Temporal FileProcessing Workflow](/examples/temporal_fileprocessing/fileprocessing.go)
 
-- #relations #handlers #async #auto #temporal
+Workflow ported from Temporal.
+
+- `#relations #handlers #async #auto #temporal`
 - [origin](https://github.com/temporalio/samples-go/blob/main/fileprocessing/)
 - [Asynq worker version](/examples/asynq_fileprocessing/fileprocessing_task.go)
 
@@ -133,17 +182,23 @@ Headers link more info about each example.
 
 ### [Benchmark State Source](/examples/benchmark_state_source)
 
-- #docker #go-wrt #caddy
+Benchmark adding tree nodes to the state source example.
+
+- `#docker #go-wrt #caddy`
 - [origin](/examples/tree_state_source)
 
 ### [Benchmark gRPC](/examples/benchmark_grpc)
 
-- #relations #handlers #negotiation #arpc #grpc
+Benchmark aRPC vs gRPC.
+
+- `#relations #handlers #negotiation #arpc #grpc`
 - [origin](/pkg/rpc/README.md#benchmark-arpc-vs-grpc)
 
 ### [Benchmark libp2p PubSub](/examples/benchmark_libp2p_pubsub)
 
-- #relations #handlers #async #negotiation #libp2p
+Very old benchmark of libp2p-pubsub ported to **asyncmachine-go**.
+
+- `#relations #handlers #async #negotiation #libp2p`
 
 ## Demos
 

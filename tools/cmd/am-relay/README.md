@@ -1,4 +1,4 @@
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /tools/cmd/arpc
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo-25.png" /> /tools/cmd/arpc
 
 [`cd /`](/README.md)
 

@@ -1,4 +1,4 @@
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /examples/WASM
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo-25.png" /> /examples/WASM
 
 [`cd /`](/README.md)
 
@@ -13,8 +13,8 @@ distributed across _n_ servers and _m_ browsers, using efficient diff-based sync
 
 1. `git clone https://github.com/pancsta/asyncmachine-go.git`
 2. `cd asyncmachine-go/examples/wasm`
-3. `task start`
-  - no `task`? https://taskfile.dev/docs/installation
+3. `../../scripts/dep-taskfile.sh`
+4. `task start`
 
 ## Implementation
 
@@ -27,10 +27,10 @@ sides.
 ![logical diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-wasm.d2.dark.svg)
 
 > [!NOTE]
-> Blue - real state machine
-> Blue+orange - real state machine and state source
-> Green - network state machine (mirror)
-> Grey - regular struct with methods
+> - Blue - real state machine
+> - Blue+orange - real state machine and state source
+> - Green - network state machine (mirror)
+> - Grey - regular struct with methods
 
 ## Debugging
 
@@ -93,6 +93,12 @@ task: Available tasks for this project:
 * repl:             Start REPL for both server and browser
 * start:            Build and start server
 ```
+
+## Practical Implementation
+
+This architecture was used to create an RPC-driven WASM PWA for the [secai project](https://github.com/pancsta/secai/tree/main/web).
+Opening the webapp in multiple tabs will keep all UI instances synchronized, driven by server's state mutations over
+aRPC.
 
 ## monorepo
 

@@ -4,6 +4,27 @@
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
+## [v0.18.8](https://github.com/pancsta/asyncmachine-go/tree/v0.18.8) (2026-04-23)
+
+- feat: release v0.18.8 [\#411](https://github.com/pancsta/asyncmachine-go/pull/411) (@pancsta)
+- feat\(am-dbg\): release am-dbg v0.18.8 [\#410](https://github.com/pancsta/asyncmachine-go/pull/410) (@pancsta)
+- feat\(am-dbg\): add diagram filtering \(group, called, changed, touched, relations, selected\) [\#409](https://github.com/pancsta/asyncmachine-go/pull/409)
+  (@pancsta)
+- feat\(am-dbg\): add light theme via `--view-theme light` [\#408](https://github.com/pancsta/asyncmachine-go/pull/408) (@pancsta)
+- feat\(am-dbg\): add explicit focus management [\#407](https://github.com/pancsta/asyncmachine-go/pull/407)
+  (@pancsta)
+- feat\(am-dbg\): add stack traces to queued mutations [\#406](https://github.com/pancsta/asyncmachine-go/pull/406)
+  (@pancsta)
+- feat\(am-dbg\): add state-trace to the reader [\#405](https://github.com/pancsta/asyncmachine-go/pull/405)
+  (@pancsta)
+- feat\(machine\): add `Next*Active*` tick helpers [\#404](https://github.com/pancsta/asyncmachine-go/pull/404)
+  (@pancsta)
+- feat\(machine\): add `CtxToEv` and `EvToCtx` [\#403](https://github.com/pancsta/asyncmachine-go/pull/403)
+  (@pancsta)
+- fix\(machine\): remove counter-mut duplicate detection [\#402](https://github.com/pancsta/asyncmachine-go/pull/402)
+  (@pancsta)
+- test: add tests for examples [\#401](https://github.com/pancsta/asyncmachine-go/pull/401) (@pancsta)
+
 ## [v0.18.6](https://github.com/pancsta/asyncmachine-go/tree/v0.18.6) (2026-04-07)
 
 - feat: release v0.18.6 [\#400](https://github.com/pancsta/asyncmachine-go/pull/400) (@pancsta)

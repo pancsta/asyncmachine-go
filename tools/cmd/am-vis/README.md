@@ -1,4 +1,4 @@
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /tools/cmd/arpc
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo-25.png" /> /tools/cmd/arpc
 
 [`cd /`](/README.md)
 
@@ -35,8 +35,17 @@ The rendering uses ELK ([Eclipse Layout Kernel](https://eclipse.dev/elk/)) and i
 Available options:
 
 1. [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
-2. Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest`
-3. Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest`
+2. Install with Go
+
+   ```bash
+   go install github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest
+   ```
+
+3. Run directly
+
+   ```bash
+   go run github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest
+   ```
 
 ## Features
 
@@ -54,8 +63,8 @@ am-vis render-dump mymach.gob.br mach://MyMach1/t234
 am-vis --bird -d 2 \
         render-dump mymach.gob.br mach://MyMach1/TX-ID
 
-# bird's view with detailed pipes
-am-vis --bird --render-detailed-pipes \
+# bird's view with grouped pipes
+am-vis --bird --render-pipes --render-detailed-pipes=false \
         render-dump mymach.gob.br mach://MyMach1/TX-ID
 
 # map view with inherited states
@@ -65,16 +74,12 @@ am-vis --render-inherited \
 # map view
 am-vis --map render-dump mymach.gob.br
 
-Usage: am-vis render-dump [--dump-file DUMP-FILE] [MACHURL]
+# inspect dump as Markdown
+am-vis inspect-dump mymach.gob.br
 
-Positional arguments:
-  MACHURL
+Usage: am-vis [--render-distance RENDER-DISTANCE] [--render-depth RENDER-DEPTH] [--render-start] [--render-ready] [--render-exception] [--render-states] [--render-inherited] [--render-pipes] [--render-detailed-pipes] [--render-relations] [--render-conns] [--render-parent-rel] [--render-half-conns] [--render-half-pipes] [--render-nest-submachines] [--render-tags] [--bird] [--map] [--output-elk] [--output-filename OUTPUT-FILENAME] [--debug] [--version] <command> [<args>]
 
 Options:
-  --dump-file DUMP-FILE, -f DUMP-FILE
-                         Input dbg dump file [default: am-dbg-dump.gob.br]
-
-Global options:
   --render-distance RENDER-DISTANCE, -d RENDER-DISTANCE [default: 0]
   --render-depth RENDER-DEPTH [default: 0]
   --render-start [default: false]
@@ -95,7 +100,13 @@ Global options:
   --map, -b              Use the map view preset
   --output-elk           Use ELK layout [default: true]
   --output-filename OUTPUT-FILENAME, -o OUTPUT-FILENAME [default: am-vis]
+  --debug                Enable debugging for asyncmachine
+  --version, -v          Print version and exit
   --help, -h             display this help and exit
+
+Commands:
+  render-dump            Render from a debugger dump file
+  inspect-dump           Render text form from a debugger dump file
 ```
 
 Graphs can be programmatically filtered using the rendering config:
@@ -228,6 +239,63 @@ This is the same steps diagram as the second timeline of `am-dbg` and includes:
          │◄─┘              │             │
          │                 │             │
 ```
+
+## Graphs as Markdown
+
+The `am-vis inspect-dump` command outputs a Markdown form of the graph, for easier processing.
+
+<details>
+
+<summary>See machine schema and relations</summary>
+
+```markdown
+-----
+
+## rc-srv-browser2
+Parent: orchestrator
+
+### States
+- CallRetryFailed
+- ConnRetryFailed
+- Connected
+- Connecting
+- Disconnected
+- Disconnecting
+- ErrConnecting
+- ErrDelivery
+- ErrHandlerTimeout
+- ErrNetwork
+- ErrNetworkTimeout
+- ErrOnClient
+- ErrRpc
+- Exception
+- HandshakeDone
+- Handshaking
+- Healthcheck
+- Heartbeat
+- MetricSync
+- Ready
+- RetryingCall
+- RetryingConn
+- ServerDelivering
+- ServerPayload
+- Start
+
+### RPC
+- rs-browser2
+
+### Pipes
+
+#### orchestrator
+- [add] Exception -> ErrRpc
+- [add] Ready -> Browser2Conn
+- [remove] Exception -> ErrRpc
+- [remove] Ready -> Browser2Conn
+
+-----
+```
+
+</details>
 
 ## Credits
 

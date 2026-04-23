@@ -21,7 +21,7 @@
     <br />
 </div>
 
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25" width="25" /> asyncmachine-go
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo-25.png" height="25" width="25" /> asyncmachine-go
 
 <div align="center"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/lifecycle.dark.png">
@@ -74,14 +74,13 @@ vector formats. It aims to create **autonomous** workflows with **organic** cont
 - breakpoint
 
 Besides the main use-case of **workflows**, it can be used for **stateful applications of any size** - daemons, UIs,
-configs, bots, firewalls, synchronization consensus, games, smart graphs, microservice orchestration, robots, contracts,
-streams, DI containers, message broking, test scenarios, simulators, as well as **"real-time" systems** which rely on
-instant cancelation.
+RPC UIs, configs, bots, firewalls, synchronization consensus, games, smart graphs, microservice orchestration, robots,
+contracts, streams, DI containers, message broking, test scenarios, simulators, as well as **"real-time" systems** which
+rely on instant cancelation.
 
 <div align="center">
     <a href="https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true">
-        <img style="min-height: 263px"
-            src="https://pancsta.github.io/assets/asyncmachine-go/am-vis.svg?raw=true" alt="am-vis" />
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-vis.svg?raw=true" alt="am-vis" />
     </a>
 </div>
 
@@ -236,11 +235,11 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 - [`/docs/diagrams.md`](/docs/diagrams.md) try to explain things visually
 - [`/examples`](/examples/README.md) show use cases and integrations
     - with [`/examples/mach_template`](/examples/mach_template) being ready for copy-paste
-    - also [Basic](/examples/basic), [CLI Daemon](/examples/cli_daemon), [aRPC](/examples/arpc), [WASM](/examples/wasm),
-      [WASM Workflow](/examples/wasm_workflow), [TUI](/examples/tui)
-- [`/tools/cmd/am-gen`](/tools/cmd/am-gen) will bootstrap
+    - also [Basic](/examples/basic), [CLI Daemon](/examples/cli_daemon/README.md), [aRPC](/examples/arpc),
+      [WASM Workflow](/examples/wasm_workflow/README.md), [TUI](/examples/tui)
+- [`/tools/cmd/am-gen`](/tools/cmd/am-gen) and [`/docs/editors`](/docs/editors/README.md) will bootstrap
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) will record every detail
-- code in [`/pkg/node`](pkg/node) shows a high-level usage
+- code in [`/pkg/node`](/pkg/node) shows a high-level usage
 - and [reading tests](https://github.com/search?q=repo%3Apancsta%2Fasyncmachine-go+path%3A%2F.*_test.go%2F&type=code)
   is always a good idea
 

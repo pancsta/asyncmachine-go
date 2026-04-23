@@ -19,6 +19,10 @@ AM_DEBUG=1
 # defaults to ""
 AM_DBG_ADDR=1
 
+# disable collecting stack traces
+# defaults to ""
+AM_DBG_NO_TRACE=1
+
 # enable a healthcheck ticker for every debugged machine
 # defaults to ""
 AM_HEALTHCHECK=1

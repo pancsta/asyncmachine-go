@@ -259,6 +259,9 @@ tx.TimeIndexAfter().Is1("Foo")
 // is Foo queued?
 mach.WillBe1("Foo")
 
+// is Foo queued at the end?
+mach.WillBe1("Foo", am.PositionLast)
+
 // number of states which ticked
 len(tx.TimeIndexTimeDiff().ActiveStates())
 

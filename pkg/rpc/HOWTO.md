@@ -1,4 +1,4 @@
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /pkg/rpc/HOWTO.md
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo-25.png" /> /pkg/rpc/HOWTO.md
 
 [`cd /`](/README.md)
 

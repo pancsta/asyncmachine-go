@@ -1,4 +1,4 @@
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /examples/benchmark_libp2p_pubsub
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo-25.png" /> /examples/benchmark_libp2p_pubsub
 
 - [cd /](/)
 

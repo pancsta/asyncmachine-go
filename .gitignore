@@ -104,8 +104,3 @@ tools/visualizer/testdata/*
 /am-vis.gv
 /examples/wasm_workflow/orchestrator
 /am-vis.md
-/examples/workflow/orchestrator
-/examples/workflow/worker
-/examples/workflow/tmp
-/examples/workflow/
-/docs/skills/gen/

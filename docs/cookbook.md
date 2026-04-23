@@ -938,3 +938,12 @@ func (a *Agent) StartState(e *am.Event) {
     mach.BindHandlers(a.handlersWeb), nil)
 }
 ```
+
+## Eval getter
+
+```go
+tx, err := amhelp.EvalGetter(ctx, "PrevTx", 3, mach,
+    func() (*dbg.DbgMsgTx, error) {
+        return d.hPrevTx(), nil
+    })
+```

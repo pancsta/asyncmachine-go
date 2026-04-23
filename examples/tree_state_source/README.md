@@ -1,4 +1,4 @@
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /examples/tree_state_source
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo-25.png" /> /examples/tree_state_source
 
 [`cd /`](/README.md)
 

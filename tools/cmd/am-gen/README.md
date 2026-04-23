@@ -1,4 +1,4 @@
-# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo.png" height="25"/> /tools/cmd/am-gen
+# <img src="https://pancsta.github.io/assets/asyncmachine-go/logo-25.png" /> /tools/cmd/am-gen
 
 [`cd /`](/README.md)
 
@@ -261,5 +261,7 @@ Global options:
 ```
 
 ## monorepo
+
+- [/docs/editors](/docs/editors/README.md)
 
 [Go back to the monorepo root](/README.md) to continue reading.
