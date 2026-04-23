@@ -2539,32 +2539,10 @@ func (m *Machine) detectQueueDuplicates(mutationType MutationType,
 		return false
 	}
 	// check if this mutation is already scheduled
-	found, idx, qTick := m.IsQueued(mutationType, states, true, true, 0, isCheck,
+	found, _, _ := m.IsQueued(mutationType, states, true, true, 0, isCheck,
 		PositionAny)
-	if !found {
-		return false
-	}
-	var counterMutType MutationType
-	switch mutationType {
-	case MutationAdd:
-		counterMutType = MutationRemove
-	case MutationRemove:
-		counterMutType = MutationAdd
-	case MutationSet:
-		fallthrough
-	default:
 
-		// avoid duplicating `set` only if at the end of the queue
-		return idx > 0 && len(m.queue)-1 > 0
-	}
-
-	// Check if a counter-mutation is scheduled and broaden the match
-	// - with or without params
-	// - state sets same or bigger than `states`
-	counterMutFound, _, _ := m.IsQueued(counterMutType, states,
-		false, false, qTick+1, isCheck, PositionAny)
-
-	return !counterMutFound
+	return found
 }
 
 // Transition returns the current transition, if any.
