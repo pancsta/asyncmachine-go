@@ -22,6 +22,7 @@ type toolbarItem struct {
 	label       string
 	icon        string
 	active      func() bool
+	skipFocus   bool
 	activeLabel func() string
 }
 

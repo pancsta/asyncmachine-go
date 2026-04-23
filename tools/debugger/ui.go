@@ -316,7 +316,7 @@ func (d *Debugger) hInitToolbar() {
 
 		d.toolbars[i] = cview.NewTable()
 		d.toolbars[i].ScrollToBeginning()
-		d.toolbars[i].SetSelectedStyle(colorActive,
+		d.toolbars[i].SetSelectedStyle(tcell.GetColor(theme.Active),
 			cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
 		d.toolbars[i].SetSelectable(true, true)
 		// TODO remove empty space
@@ -328,54 +328,105 @@ func (d *Debugger) hInitToolbar() {
 				return
 			}
 
-			d.toolbars[i].SetSelectedStyle(colorActive,
+			d.toolbars[i].SetSelectedStyle(tcell.GetColor(theme.Active),
 				cview.Styles.PrimitiveBackgroundColor, tcell.AttrUnderline)
-			d.Mach.Add1(ss.ToggleTool, am.A{"ToolName": d.toolbarItems[i][column].id})
+			item := d.toolbarItems[i][column]
+			d.Mach.Add1(ss.ToggleTool, Pass(&A{
+				ToolName: item.id,
+			}))
 			go func() {
+				// prevent toolbar stealing focus from dialogs
+				if item.skipFocus {
+					d.Mach.Add1(ss.UpdateFocus, nil)
+					d.hUpdateToolbar()
+				}
+
+				// unclick
 				time.Sleep(time.Millisecond * 200)
 				d.toolbars[i].SetSelectedStyle(colorActive,
 					cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
 				d.draw(d.toolbars[i])
 			}()
 		})
+
+		// key navi wrap around TODO move to keyboard
+		d.toolbars[i].SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			row, col := d.toolbars[i].GetSelection()
+
+			// left / right
+			if event.Key() == tcell.KeyRight && col == len(d.toolbarItems[i])-1 {
+				d.toolbars[i].Select(row, 0)
+				return nil
+			}
+			if event.Key() == tcell.KeyLeft && col == 0 {
+				d.toolbars[i].Select(row, len(d.toolbarItems[i])-1)
+				return nil
+			}
+
+			// up / down to other toolbars
+			nextI, nextFocus := -1, ""
+			if event.Key() == tcell.KeyDown && i < 3 {
+				nextI = i + 1
+				nextFocus = []string{
+					ss.Toolbar2Focused, ss.Toolbar3Focused, ss.Toolbar4Focused,
+				}[i]
+			} else if event.Key() == tcell.KeyUp && i > 0 {
+				nextI = i - 1
+				nextFocus = []string{
+					ss.Toolbar1Focused, ss.Toolbar2Focused, ss.Toolbar3Focused,
+				}[i-1]
+			}
+			if nextI != -1 {
+				d.toolbars[nextI].Select(
+					0, min(col, d.toolbars[nextI].GetColumnCount()-1))
+				d.Mach.Add1(nextFocus, nil)
+				d.Mach.Add1(ss.UpdateFocus, nil)
+				d.hUpdateToolbar()
+				return nil
+			}
+
+			// fwd
+			return event
+		})
 	}
 
 	// TODO light mode button
 	// TODO save filters per machine checkbox
 	// TODO next error
-	d.toolbarItems = [][]toolbarItem{
+	d.toolbarItems = [4][]toolbarItem{
 		// row 1
 		{
-			{id: toolJumpPrev, label: "jump", icon: "◀ "},
-			{id: toolPrevStep, label: "step", icon: "<"},
-			{id: toolPrev, label: "tx", icon: "◁ "},
-			{id: toolNext, label: "tx", icon: "▷ "},
-			{id: toolNextStep, label: "step", icon: ">"},
-			{id: toolJumpNext, label: "jump", icon: "▶ "},
-			{id: toolPlay, label: "play", active: func() bool {
+			{id: types.ToolJumpPrev, label: "jump", icon: "◀ "},
+			{id: types.ToolPrevStep, label: "step", icon: "<"},
+			{id: types.ToolPrev, label: "tx", icon: "◁ "},
+			{id: types.ToolNext, label: "tx", icon: "▷ "},
+			{id: types.ToolNextStep, label: "step", icon: ">"},
+			{id: types.ToolJumpNext, label: "jump", icon: "▶ "},
+			{id: types.ToolPlay, label: "play", active: func() bool {
 				return d.Mach.Is1(ss.Playing)
 			}},
-			{id: toolFirst, label: "first", icon: "1"},
-			{id: toolLast, label: "last", icon: "N"},
-			{id: toolExport, label: "export", active: func() bool {
-				return d.Mach.Is1(ss.ExportDialog)
-			}},
+			{id: types.ToolFirst, label: "first", icon: "1"},
+			{id: types.ToolLast, label: "last", icon: "N"},
+			{
+				id: types.ToolExport, label: "export", skipFocus: true,
+				active: func() bool { return d.Mach.Is1(ss.ExportDialog) },
+			},
 		},
 
 		// row 2
 		{
-			{id: toolLog, label: "log", active: func() bool {
+			{id: types.ToolLog, label: "log", active: func() bool {
 				return d.Params.Filters.LogLevel > am.LogNothing
 			}, activeLabel: func() string {
 				return strconv.Itoa(int(d.Params.Filters.LogLevel))
 			}},
-			{id: toolFilterCanceledTx, label: "canceled", active: func() bool {
+			{id: types.ToolFilterCanceledTx, label: "canceled", active: func() bool {
 				return d.Mach.Not1(ss.FilterCanceledTx)
 			}},
-			{id: toolFilterQueuedTx, label: "queued", active: func() bool {
+			{id: types.ToolFilterQueuedTx, label: "queued", active: func() bool {
 				return d.Mach.Not1(ss.FilterQueuedTx)
 			}},
-			{id: toolFilterAutoTx, label: "auto", active: func() bool {
+			{id: types.ToolFilterAutoTx, label: "auto", active: func() bool {
 				return d.Mach.Is1(ss.FilterAutoCanceledTx) ||
 					d.Mach.Not1(ss.FilterAutoTx)
 			}, activeLabel: func() string {
@@ -388,26 +439,23 @@ func (d *Debugger) hInitToolbar() {
 					return "X"
 				}
 			}},
-			{id: toolFilterEmptyTx, label: "empty", active: func() bool {
+			{id: types.ToolFilterEmptyTx, label: "empty", active: func() bool {
 				return d.Mach.Not1(ss.FilterEmptyTx)
 			}},
-			{id: toolFilterHealth, label: "health", active: func() bool {
+			{id: types.ToolFilterHealth, label: "health", active: func() bool {
 				return d.Mach.Not1(ss.FilterHealth)
 			}},
-			{id: toolFilterOutGroup, label: "group", active: func() bool {
+			{id: types.ToolFilterOutGroup, label: "group", active: func() bool {
 				return d.Mach.Is1(ss.FilterOutGroup)
 			}},
-			{id: toolFilterDisconn, label: "disconn", active: func() bool {
+			{id: types.ToolFilterDisconn, label: "disconn", active: func() bool {
 				return d.Mach.Not1(ss.FilterDisconn)
 			}},
-			{id: toolFilterChecks, label: "checks", active: func() bool {
+			{id: types.ToolFilterChecks, label: "checks", active: func() bool {
 				return d.Mach.Not1(ss.FilterChecks)
 			}},
-			{id: ToolLogTimestamps, label: "times", active: func() bool {
+			{id: types.ToolLogTimestamps, label: "times", active: func() bool {
 				return d.Mach.Not1(ss.LogTimestamps)
-			}},
-			{id: ToolFilterTraces, label: "traces", active: func() bool {
-				return d.Mach.Not1(ss.FilterTraces)
 			}},
 			// TODO values t / c / m
 			//  touch / called / mutation (change)
@@ -419,45 +467,85 @@ func (d *Debugger) hInitToolbar() {
 
 		// row 3
 		{
-			{id: toolHelp, label: "[yellow::b]help[-]", active: func() bool {
-				return d.Mach.Is1(ss.HelpDialog)
-			}},
-			{id: toolTail, label: "[yellow::b]tail[-::-]", active: func() bool {
-				return d.Mach.Is1(ss.TailMode)
-			}},
-			{id: toolReader, label: "reader", active: func() bool {
-				return d.Mach.Is1(ss.LogReaderVisible)
-			}},
 			{
-				id:    toolExpand,
+				id:    types.ToolExpand,
 				label: "expand", active: func() bool {
 					ch := d.treeRoot.GetChildren()
 					return len(ch) > 0 && ch[0].IsExpanded()
 				},
 			},
-			{id: toolTimelines, label: "timelines", active: func() bool {
-				return d.Params.ViewTimelines > 0
-			}, activeLabel: func() string {
-				return strconv.Itoa(d.Params.ViewTimelines)
+			{id: types.ToolFilterTraces, label: "traces", active: func() bool {
+				return d.Mach.Not1(ss.FilterTraces)
 			}},
-			// TODO make it an anchor for file://...svg
-			{id: toolDiagrams, label: "diagrams", active: func() bool {
-				return d.Params.OutputDiagrams > 0
+			{id: types.ToolDiagrams, label: "diagrams", active: func() bool {
+				return d.Params.OutputDiagrams.Value > 0
 			}, activeLabel: func() string {
-				return strconv.Itoa(d.Params.OutputDiagrams)
+				return strconv.Itoa(d.Params.OutputDiagrams.Value)
 			}},
-			{id: toolRain, label: "rain", active: func() bool {
+			{id: types.ToolDiagramsTx, label: "diag-tx", active: func() bool {
+				return d.Params.OutputDiagTx != types.ParamsOutDiagTxNone
+			}, activeLabel: func() string {
+				switch d.Params.OutputDiagTx {
+				default:
+					return " "
+				case types.ParamsOutDiagTxCalled:
+					return "C"
+				case types.ParamsOutDiagTxMutated:
+					return "M"
+				case types.ParamsOutDiagTxTouched:
+					return "T"
+				case types.ParamsOutDiagTxRelations:
+					return "R"
+				}
+			}},
+			{id: types.ToolDiagramsGroup, label: "diag-group", active: func() bool {
+				return d.Params.OutputDiagGroup != types.ParamsOutDiagGroupNone
+			}, activeLabel: func() string {
+				switch d.Params.OutputDiagGroup {
+				default:
+					return " "
+				case types.ParamsOutDiagGroupHide:
+					return "H"
+				case types.ParamsOutDiagGroupSkip:
+					return "S"
+				}
+			}},
+		},
+
+		// row 4
+		{
+			{id: types.ToolHelp, label: "[yellow::b]help[-]", active: func() bool {
+				return d.Mach.Is1(ss.HelpDialog)
+			}},
+			{id: types.ToolTail, label: "[yellow::b]tail[-::-]", active: func() bool {
+				return d.Mach.Is1(ss.TailMode)
+			}},
+			{id: types.ToolReader, label: "reader", active: func() bool {
+				return d.Mach.Is1(ss.LogReaderVisible)
+			}},
+			{id: types.ToolTimelines, label: "timelines", active: func() bool {
+				return d.Params.ViewTimelines.Value > 0
+			}, activeLabel: func() string {
+				return strconv.Itoa(d.Params.ViewTimelines.Value)
+			}},
+			{id: types.ToolLogWrap, label: "wrap", active: func() bool {
+				return d.Params.ViewLogWrap
+			}},
+			{id: types.ToolNarrowLayout, label: "narrow", active: func() bool {
+				return d.Mach.Is1(ss.NarrowLayout)
+			}},
+			{id: types.ToolRain, label: "rain", active: func() bool {
 				return d.Mach.Is1(ss.MatrixRain)
 			}},
-			{id: toolMatrix, label: "matrix", active: func() bool {
+			{id: types.ToolMatrix, label: "matrix", active: func() bool {
 				return d.Mach.Any1(ss.MatrixView, ss.TreeMatrixView)
 			}},
 		},
 	}
 
 	if d.Params.AddrHttp != "" {
-		d.toolbarItems[2] = slices.Insert(d.toolbarItems[2], 3,
-			toolbarItem{id: toolWeb, label: "web", active: func() bool {
+		d.toolbarItems[3] = slices.Insert(d.toolbarItems[3], 3,
+			toolbarItem{id: types.ToolWeb, label: "web", active: func() bool {
 				return false
 			}},
 		)
@@ -490,14 +578,13 @@ func (d *Debugger) initExportDialog() *cview.Modal {
 		filename := fieldName.GetText()
 		moment := fieldSnap.IsChecked()
 
+		defer d.Mach.Remove(am.S{ss.ExportDialog, ss.DialogFocused}, nil)
 		if buttonLabel == "Save" && filename != "" {
 			form.GetButton(0).SetLabel("Saving...")
-			form.Draw(d.App.GetScreen())
+			// form.Draw(d.App.GetScreen())
+			d.draw()
 			d.hExportData(filename, moment)
-			d.Mach.Remove1(ss.ExportDialog, nil)
 			form.GetButton(0).SetLabel("Save")
-		} else if buttonLabel == "Cancel" {
-			d.Mach.Remove1(ss.ExportDialog, nil)
 		}
 	})
 
@@ -741,6 +828,8 @@ func (d *Debugger) hInitLayout() {
 	panels.AddPanel("main", d.mainGrid, true, true)
 
 	d.LayoutRoot = panels
+
+	d.hUpdateLayout()
 	d.hUpdateBorderColor()
 }
 
@@ -786,7 +875,7 @@ func (d *Debugger) hUpdateLayout() {
 
 	// timelines
 	if d.Mach.Not1(ss.TimelineTxHidden) {
-		d.mainGrid.SetRows(1, 1, -1, 2, 3, 1, 1, 1, 1)
+		d.mainGrid.SetRows(1, 1, -1, 2, 3, 1, 1, 1, 1, 1)
 
 		d.mainGrid.AddItem(d.currTxBar, row, 0, 1, len(cols), 0, 0, false)
 		row++
@@ -794,7 +883,7 @@ func (d *Debugger) hUpdateLayout() {
 		row++
 	}
 	if d.Mach.Not1(ss.TimelineStepsHidden) {
-		d.mainGrid.SetRows(1, 1, -1, 2, 3, 2, 3, 1, 1, 1, 1)
+		d.mainGrid.SetRows(1, 1, -1, 2, 3, 2, 3, 1, 1, 1, 1, 1)
 
 		d.mainGrid.AddItem(d.nextTxBar, row, 0, 1, len(cols), 0, 0, false)
 		row++
@@ -808,6 +897,8 @@ func (d *Debugger) hUpdateLayout() {
 	d.mainGrid.AddItem(d.toolbars[1], row, 0, 1, len(cols), 0, 0, false)
 	row++
 	d.mainGrid.AddItem(d.toolbars[2], row, 0, 1, len(cols), 0, 0, false)
+	row++
+	d.mainGrid.AddItem(d.toolbars[3], row, 0, 1, len(cols), 0, 0, false)
 	row++
 	d.mainGrid.AddItem(d.statusBarLeft, row, 0, 1, len(cols)/2, 0, 0, false)
 	d.mainGrid.AddItem(d.statusBarRight, row, len(cols)/2, 1,
@@ -992,6 +1083,12 @@ func (d *Debugger) hBoxFromPrimitive(p any) (*cview.Box, string) {
 		box = d.toolbars[2].Box
 		state = ss.Toolbar3Focused
 
+	case d.toolbars[3]:
+		fallthrough
+	case d.toolbars[3].Box:
+		box = d.toolbars[3].Box
+		state = ss.Toolbar4Focused
+
 	case d.addressBar:
 		fallthrough
 	case d.addressBar.Box:
@@ -1012,10 +1109,16 @@ func (d *Debugger) hBoxFromPrimitive(p any) (*cview.Box, string) {
 
 	// DIALOGS
 
-	case d.helpDialog:
+	case d.helpDialogLeft:
 		fallthrough
-	case d.helpDialog.Box:
-		box = d.helpDialog.Box
+	case d.helpDialogLeft.Box:
+		box = d.helpDialogLeft.Box
+		state = ss.DialogFocused
+
+	case d.helpDialogRight:
+		fallthrough
+	case d.helpDialogRight.Box:
+		box = d.helpDialogRight.Box
 		state = ss.DialogFocused
 
 	case d.exportDialog:
@@ -1027,3 +1130,8 @@ func (d *Debugger) hBoxFromPrimitive(p any) (*cview.Box, string) {
 
 	return box, state
 }
+
+var (
+	trimTailWhitespaceRe = regexp.MustCompile(` +\n`)
+	foldNewlinesRe       = regexp.MustCompile(`\n{3,}`)
+)

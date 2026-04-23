@@ -836,6 +836,8 @@ func (d *Debugger) hUpdateToolbar() {
 			focused = d.Mach.Is1(ss.Toolbar2Focused)
 		case 2:
 			focused = d.Mach.Is1(ss.Toolbar3Focused)
+		case 3:
+			focused = d.Mach.Is1(ss.Toolbar4Focused)
 		}
 
 		for ii, item := range row {
