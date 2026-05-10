@@ -72,7 +72,8 @@ type Params struct {
 	FilterLogLevel       am.LogLevel `arg:"--filter-log-level" default:"2" help:"Filter transitions up to this log level, 0-5 (silent-everything)"`
 	FilterQueuedTx       bool        `arg:"--filter-queued" help:"Filter queued transitions"`
 
-	OutputClients   bool                 `arg:"--output-clients" help:"Write a detailed client list into am-dbg-clients.txt inside --dir"`
+	OutputCallLog   bool                 `arg:"--output-call-log" help:"Write called handlers as Go code into call-log/{mach-id}/{mtime}.go inside --dir (EXPERIMENTAL)"`
+	OutputClients   bool                 `arg:"--output-clients" help:"Write a detailed client list into clients.txt inside --dir"`
 	OutputDiagrams  ParamsOutputDiagrams `arg:"--output-diagrams" help:"Level of details for machine graph diagrams (svg, d2, mermaid) in --dir (0 off, 1-3 on) (EXPERIMENTAL)"`
 	OutputDiagGroup ParamsOutDiagGroup   `arg:"--output-diag-group" help:"Only show states from the selected group (valid: hide, skip)" default:"hide"`
 	OutputDiagTx    ParamsOutDiagTx      `arg:"--output-diag-tx" help:"Dim states and rels unrelated to a transition (valid: called, changed, touched, relations)" default:"relations"`
@@ -530,6 +531,7 @@ var (
 	ToolDiagrams         = ToolName{"diagrams"}
 	ToolDiagramsTx       = ToolName{"diag-tx"}
 	ToolDiagramsGroup    = ToolName{"diag-group"}
+	ToolCallLog          = ToolName{"call-log"}
 	ToolTimelines        = ToolName{"timelines"}
 	ToolReader           = ToolName{"reader"}
 	ToolRain             = ToolName{"rain"}
@@ -566,6 +568,7 @@ var (
 		ToolDiagrams,
 		ToolDiagramsTx,
 		ToolDiagramsGroup,
+		ToolCallLog,
 		ToolTimelines,
 		ToolReader,
 		ToolRain,
