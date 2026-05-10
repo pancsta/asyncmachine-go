@@ -435,15 +435,22 @@ func (d *Debugger) hGetMachAddress() *types.MachAddress {
 		return nil
 	}
 	a := &types.MachAddress{
-		MachId:   c.Id,
-		MachTime: c.MTimeSum,
+		MachId: c.Id,
 	}
+	// TODO getter
 	if c.CursorTx1 > 0 {
-		a.TxId = c.MsgTxs[c.CursorTx1-1].ID
+		tx := c.MsgTxs[c.CursorTx1-1]
+		a.TxId = tx.ID
+		a.MachTime = tx.TimeSum()
+		// TODO queue tick
 	}
 	if c.CursorStep1 > 0 {
 		a.Step = c.CursorStep1
 	}
+
+	// GET params
+	a.State = c.SelectedState
+	a.Group = c.SelectedGroup
 
 	return a
 }
@@ -468,6 +475,7 @@ func (d *Debugger) GoToMachAddress(
 	if d.C == nil || d.C.Id != addr.MachId {
 		// TODO extract as amhelp.WhenNextActive
 		if mach.Is1(ss.ClientSelected) {
+			// TODO next active in ()
 			wait = mach.WhenTicks(ss.ClientSelected, 2, ctx)
 		} else {
 			wait = mach.When1(ss.ClientSelected, ctx)
@@ -482,32 +490,73 @@ func (d *Debugger) GoToMachAddress(
 		wait = mach.When1(ss.ClientSelected, ctx)
 	}
 
+	// TODO timeout
 	<-wait
 	if addr.TxId != "" {
-		scrollArgs := &A{TxId: addr.TxId}
-		if addr.Step != 0 {
-			scrollArgs.CursorStep1 = addr.Step
-			mach.Add1(ss.ScrollToStep, Pass(scrollArgs))
+		scrollArgs := &A{
+			TxId:        addr.TxId,
+			CursorStep1: addr.Step,
 		}
 		mach.Add1(ss.ScrollToTx, Pass(scrollArgs))
+
 	} else if addr.MachTime != 0 {
-		tx := d.C.Tx(d.C.TxByMachTime(addr.MachTime))
+		tx := d.C.Tx(d.C.TxAtMachTime(addr.MachTime))
 		mach.Add1(ss.ScrollToTx, Pass(&A{
 			TxId: tx.ID,
 		}))
+
 	} else if !addr.HumanTime.IsZero() {
-		tx := d.C.Tx(d.C.LastTxTill(addr.HumanTime))
+		tx := d.C.Tx(d.C.TxAtHTime(addr.HumanTime))
+		mach.Add1(ss.ScrollToTx, Pass(&A{
+			TxId: tx.ID,
+		}))
+
+	} else if addr.QueueTick != 0 {
+		tx := d.C.Tx(d.C.TxAtQueueTick(addr.QueueTick))
 		mach.Add1(ss.ScrollToTx, Pass(&A{
 			TxId: tx.ID,
 		}))
 	}
-	if !skipHistory {
-		mach.Eval("GoToMachAddress", func() {
-			d.hPrependHistory(addr)
-			d.hUpdateAddressBar()
-		}, ctx)
-		// TODO only if main panel visible
-		d.draw(d.addressBar)
+	d.hUpdateAddressBar()
+
+	// GET params
+	if addr.State != "" {
+		d.Mach.Add1(ss.StateNameSelected, Pass(&A{
+			State: addr.State,
+		}))
+	}
+	if addr.Group != "" {
+		// TODO fix group IDs, merge with SetGroupState
+		d.Mach.Eval("GoToMachAddress", func() {
+			label := ""
+			for l := range d.C.MsgStruct.Groups {
+				if types.NormalizeGroupName(l) == types.NormalizeGroupName(addr.Group) {
+					label = l
+					break
+				}
+			}
+			d.lastSelectedGroup = label
+			d.C.SelectedGroup = label
+			d.hBuildSchemaTree()
+			d.hUpdateSchemaTree()
+			d.hUpdateTreeGroups()
+			go amhelp.AskAdd1(d.Mach, ss.DiagramsScheduled, nil)
+			d.Mach.Add(am.S{ss.ToolToggled, ss.UpdateLogScheduled}, Pass(&A{
+				FilterTxs:     true,
+				LogRebuildEnd: len(d.C.MsgTxs),
+			}))
+		}, nil)
+	} else {
+		d.Mach.Add1(ss.SetGroup, Pass(&A{
+			Group: "all",
+		}))
+	}
+
+	// TODO remove
+	if addr.Step != 0 {
+		mach.Add1(ss.ScrollToStep, Pass(&A{
+			CursorStep1: addr.Step,
+		}))
 	}
 
 	return true
