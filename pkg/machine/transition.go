@@ -82,32 +82,12 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	schema := m.schema
 	m.schemaMx.RUnlock()
 	tNow := m.time(nil)
-	tAfter := slices.Clone(tNow)
 	semlog := m.SemLogger()
-
-	// gather what we know about TimeAfter at this point (except for checks)
-	// TODO test case
-	if !mut.IsCheck {
-		is := IsActiveTick
-		for _, idx := range mut.Called {
-			name := index[idx]
-			switch {
-			case mut.Type == MutationAdd && is(tAfter[idx]) && schema[name].Multi:
-				tAfter[idx] += 2
-			case mut.Type == MutationAdd && !is(tAfter[idx]):
-				tAfter[idx] += 1
-			case mut.Type == MutationRemove && is(tAfter[idx]):
-				tAfter[idx] += 1
-			}
-			// TODO support [MutationSet]
-		}
-	}
 
 	t := &Transition{
 		Id:          randId(),
 		Mutation:    mut,
 		TimeBefore:  tNow,
-		TimeAfter:   tAfter,
 		Machine:     m,
 		MachApi:     m,
 		cacheSchema: schema,
@@ -122,16 +102,6 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	// assign early to catch the logs
 	m.t.Store(t)
 	m.tDbg = t
-
-	// tracerssh
-	m.tracersMx.RLock()
-	for _, tracer := range m.tracers {
-		if t.Machine.IsDisposed() {
-			break
-		}
-		tracer.TransitionInit(t)
-	}
-	m.tracersMx.RUnlock()
 
 	// log stuff
 	called := t.CalledStates()
@@ -157,6 +127,36 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	statesToSet := t.statesToSet(mutType, called)
 	targetStates := m.resolver.TargetStates(t, statesToSet, index)
 
+	// gather what we know about TimeAfter at this point (except for checks)
+	// TODO test case
+	// TODO keep in sync with setActiveStates
+	tAfter := slices.Clone(tNow)
+	if !mut.IsCheck {
+		removedStates := StatesDiff(activeStates, targetStates)
+		for _, name := range targetStates {
+			idx := slices.Index(index, name)
+
+			state := m.schemaSafe()[name]
+			if !slices.Contains(activeStates, name) {
+				// tick by +1
+				// TODO wrap on overflow
+				tAfter[idx]++
+			} else if slices.Contains(called, name) && state.Multi {
+				// tick by +2 to indicate a new instance
+				// TODO wrap on overflow
+				tAfter[idx] += 2
+			}
+		}
+
+		// tick deactivated states by +1
+		for _, name := range removedStates {
+			idx := slices.Index(index, name)
+			// m.log(LogOps, "deactivated: %s", name)
+			tAfter[idx]++
+		}
+	}
+	t.TimeAfter = tAfter
+
 	// simulate TimeAfter (temporarily)
 	t.TargetIndexes = m.Index(targetStates)
 	t.cacheTargetStates.Store(&targetStates)
@@ -170,6 +170,16 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	if t.IsAccepted.Load() {
 		t.setupExitEnter()
 	}
+
+	// tracer
+	m.tracersMx.RLock()
+	for _, tracer := range m.tracers {
+		if t.Machine.IsDisposed() {
+			break
+		}
+		tracer.TransitionInit(t)
+	}
+	m.tracersMx.RUnlock()
 
 	return t
 }
@@ -743,6 +753,21 @@ func (t *Transition) emitEvents() Result {
 			// gather new clock values, overwrite fake TimeAfter
 			m.activeStatesMx.Unlock()
 
+			// cache for subscriptions, mind partially accepted auto states
+			if t.IsAuto() {
+				before := t.StatesBefore()
+				t.cacheActivated = StatesDiff(m.activeStates, before)
+				t.cacheDeactivated = StatesDiff(before, m.activeStates)
+			} else {
+				t.cacheActivated = t.Enters
+				t.cacheDeactivated = t.Exits
+			}
+
+			// cancel contexts as soon as known
+			for _, cancel := range m.subs.ProcessStateCtx(t.cacheDeactivated) {
+				cancel()
+			}
+
 			// always correct TimeAfter
 			t.TimeAfter = m.time(nil)
 
@@ -794,16 +819,6 @@ func (t *Transition) emitEvents() Result {
 				m.log(LogOps, "[auto] %s", j(calledStates))
 				m.PrependMut(autoMut)
 			}
-		}
-
-		// cache for subscriptions, mind partially accepted auto states
-		if t.IsAuto() {
-			before := t.StatesBefore()
-			t.cacheActivated = StatesDiff(m.activeStates, before)
-			t.cacheDeactivated = StatesDiff(before, m.activeStates)
-		} else {
-			t.cacheActivated = t.Enters
-			t.cacheDeactivated = t.Exits
 		}
 	} else if result == Canceled {
 		t.IsAccepted.Store(false)
