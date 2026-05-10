@@ -5,6 +5,8 @@ import (
 	"errors"
 	"reflect"
 	"regexp"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -33,7 +35,7 @@ const (
 	SuffixState      = "State"
 	SuffixEnd        = "End"
 	PrefixErr        = "Err"
-	// StateAny is a name of a meta-state used in catch-all handlers.
+	// StateAny is a name of a meta-state used in catch-all global handlers.
 	StateAny = "Any"
 	// StateException is the name of the predefined Exception state.
 	StateException = "Exception"
@@ -265,6 +267,8 @@ type Api interface {
 	WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
 	// WhenTicks is [Machine.WhenTicks].
 	WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
+	// TODO WhenNextActive(state string, ctx context.Context) <-chan struct{}
+
 	// WhenQuery is [Machine.WhenQuery].
 	WhenQuery(query func(clock Clock) bool, ctx context.Context) <-chan struct{}
 	// WhenErr is [Machine.WhenErr].
@@ -659,9 +663,29 @@ type CallSignature struct {
 	// required args (optional)
 	Needed []string
 	// optional args (optional)
-	Args []string
+	Optional []string
 	// value enums per arg name (optional)
 	Values map[string][]string
 	// JSON schemas per arg name (optional)
 	Schemas map[string][]string
+}
+
+func (c *CallSignature) String() string {
+	label := c.Name
+	mut := "Add"
+	if c.IsRemove {
+		mut = "Remove"
+	}
+	if label == "" {
+		label = mut + ": " + strings.Join(c.States, " ")
+	}
+	if len(c.Needed) > 0 {
+		label += " [" + strings.Join(c.Needed, " ") + "]"
+	}
+
+	return label
+}
+
+func (c *CallSignature) Args() []string {
+	return slices.Concat(c.Needed, c.Optional)
 }

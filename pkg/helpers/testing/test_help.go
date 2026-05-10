@@ -165,3 +165,16 @@ func AssertErr(t *stdtest.T, mach am.Api) {
 		t.Fatal("expected " + am.StateException)
 	}
 }
+
+// LogToTestLog will fwd machine's log to `go test` log.
+func LogToTestLog(t *stdtest.T, mach am.Api, maxLvl am.LogLevel) {
+	logOld := mach.SemLogger().Logger()
+	mach.SemLogger().SetLogger(func(level am.LogLevel, msg string, args ...any) {
+		if level <= maxLvl {
+			t.Logf(msg, args...)
+		}
+		if logOld != nil {
+			logOld(level, msg, args...)
+		}
+	})
+}

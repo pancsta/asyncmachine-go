@@ -15,6 +15,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-echarts/go-echarts/v2 v2.6.7
 	github.com/gomarkdown/markdown v0.0.0-20250810172220-2e2c11897d1a
+	github.com/google/go-github/v60 v60.0.0
 	github.com/google/go-github/v66 v66.0.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/joho/godotenv v1.5.1
@@ -24,16 +25,20 @@ require (
 )
 
 require (
+	github.com/alitto/pond/v2 v2.7.1 // indirect
 	github.com/cenkalti/hub v1.0.2 // indirect
 	github.com/cenkalti/rpc2 v1.0.4 // indirect
+	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/gdamore/encoding v1.0.1 // indirect
+	github.com/gdamore/tcell/v2 v2.13.9 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
-	github.com/pancsta/tcell-v2 v0.0.1-fork1 // indirect
+	github.com/mattn/go-runewidth v0.0.19 // indirect
+	github.com/pancsta/cview v1.5.22 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/teivah/onecontext v1.3.0 // indirect
-	golang.org/x/term v0.41.0 // indirect
+	golang.org/x/term v0.42.0 // indirect
 )
 
 require (
@@ -68,11 +73,11 @@ require (
 	// TODO max v0.8.2 for go <1.26
 	go101.org/golds v0.8.2
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
-	golang.org/x/mod v0.33.0 // indirect
+	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
-	golang.org/x/tools v0.42.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/tools v0.43.0
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -442,6 +442,10 @@ func CtxToEv(ctx context.Context) *Event {
 // EvToCtx will inject *Event into [ctx] under [CtxKey]. Useful for passing
 // events for tracing.
 func EvToCtx(ctx context.Context, e *Event) context.Context {
+	if e == nil {
+		return ctx
+	}
+
 	v, _ := ctx.Value(CtxKey).(CtxValue)
 	v.Event = e.Export()
 	return context.WithValue(ctx, CtxKey, v)
@@ -540,6 +544,9 @@ type SemLogger interface {
 	// Pipes return log entries for currently bound pipes. Useful for late
 	// debugging.
 	Pipes() []*LogEntry
+	// TODO AddHandlerBinding
+	// TODO RemoveHandlerBinding
+	// TODO HandlerBindings
 
 	// details
 

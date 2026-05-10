@@ -111,6 +111,8 @@ type clientHandlers struct {
 	*am.ExceptionHandler
 }
 
+var _ = ssrpc.ConsumerStates.ServerPayload
+
 func (h *clientHandlers) ServerPayloadState(e *am.Event) {
 	e.Machine().Remove1(ssrpc.ConsumerStates.ServerPayload, nil)
 

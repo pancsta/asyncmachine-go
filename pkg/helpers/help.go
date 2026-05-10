@@ -20,9 +20,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alitto/pond/v2"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -78,38 +78,35 @@ type (
 	Schema = am.Schema
 )
 
-// Add1Sync activates a state and waits until it becomes activate, or canceled.
-// Add1Sync is a newer version of Add1Block that supports queued rejections,
-// but at the moment it is not compatible with RPC. This method checks
-// expiration ctx and returns as [am.Canceled].
+// sync add
+
+// Add1Sync is [AddSync] for a single state.
 func Add1Sync(
-	ctx context.Context, mach am.Api, state string, args am.A,
+	ctx context.Context, mach am.Api, state string, args ...am.A,
 ) am.Result {
-	res := mach.Add1(state, args)
-	switch res {
-	case am.Executed:
-		return res
-	case am.Canceled:
-		return res
-	default:
-		// wait
-		select {
-		case <-ctx.Done():
-			return am.Canceled
-		case <-mach.WhenQueue(res):
-			if mach.Is1(state) {
-				return am.Executed
-			}
-			return am.Canceled
-		}
-	}
+	return EvAddSync(ctx, nil, mach, S{state}, args...)
 }
 
-// EvAdd1Sync is Add1Sync with an [am.Event] trace.
+// AddSync activates a state and waits until it becomes activate, or canceled.
+// Supports queued rejections, expiration ctx and returns as [am.Canceled].
+func AddSync(
+	ctx context.Context, mach am.Api, states S, args ...am.A,
+) am.Result {
+	return EvAddSync(ctx, nil, mach, states, args...)
+}
+
+// EvAdd1Sync is [Add1Sync] with an [am.Event] trace.
 func EvAdd1Sync(
-	ctx context.Context, e *am.Event, mach am.Api, state string, args am.A,
+	ctx context.Context, e *am.Event, mach am.Api, state string, args ...am.A,
 ) am.Result {
-	res := mach.EvAdd1(e, state, args)
+	return EvAddSync(ctx, e, mach, S{state}, args...)
+}
+
+// EvAddSync is [AddSync] with an [am.Event] trace.
+func EvAddSync(
+	ctx context.Context, e *am.Event, mach am.Api, states S, args ...am.A,
+) am.Result {
+	res := mach.EvAdd(e, states, am.OptArgs(args))
 	switch res {
 	case am.Executed:
 		return res
@@ -121,7 +118,7 @@ func EvAdd1Sync(
 		case <-ctx.Done():
 			return am.Canceled
 		case <-mach.WhenQueue(res):
-			if mach.Is1(state) {
+			if mach.Is(states) {
 				return am.Executed
 			}
 			return am.Canceled
@@ -129,30 +126,43 @@ func EvAdd1Sync(
 	}
 }
 
-// Add1Async adds a state from an async op and waits for another one
-// from the op to become active. Theoretically, it should work with any state
-// pair, including Multi states (assuming they remove themselves). Not
-// compatible with queued negotiation at the moment.
+// Add1Async is [AddAsync] for a single state.
 func Add1Async(
 	ctx context.Context, mach am.Api, waitState string,
-	addState string, args am.A,
+	addState string, args ...am.A,
 ) am.Result {
-	ticks := 1
-	// wait 2 ticks for multi states
-	if IsMulti(mach, waitState) {
-		ticks = 2
-	}
+	return EvAddAsync(ctx, nil, mach, waitState, S{addState}, am.OptArgs(args))
+}
 
+// async add
+
+// AddAsync add initial states from an async op and waits for the final state
+// to become active (can be a Multi state).
+func AddAsync(
+	ctx context.Context, mach am.Api, waitState string,
+	addStates S, args ...am.A,
+) am.Result {
+	return EvAddAsync(ctx, nil, mach, waitState, addStates, am.OptArgs(args))
+}
+
+func EvAdd1Async(
+	ctx context.Context, e *am.Event, mach am.Api, waitState string,
+	addState string, args ...am.A,
+) am.Result {
+	return EvAddAsync(ctx, e, mach, waitState, S{addState}, am.OptArgs(args))
+}
+
+func EvAddAsync(
+	ctx context.Context, e *am.Event, mach am.Api, waitState string,
+	addStates S, args ...am.A,
+) am.Result {
 	ctxWhen, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	ticks := am.NextActiveIn(mach.Tick(waitState))
 	when := mach.WhenTicks(waitState, ticks, ctxWhen)
-	res := mach.Add1(addState, args)
-	if res == am.Canceled {
-		// dispose "when" ch early
-		cancel()
-
-		return res
+	if mach.EvAdd(e, addStates, am.OptArgs(args)) == am.Canceled {
+		return am.Canceled
 	}
 
 	// wait
@@ -164,11 +174,54 @@ func Add1Async(
 	}
 }
 
-// TODO AddSync
-// TODO EvAdd1Async
-// TODO EvAdd1Sync
-// TODO EvAddSync
-//  Remove?
+// sync remove
+
+// Remove1Sync is [RemoveSync] for a single state.
+func Remove1Sync(
+	ctx context.Context, mach am.Api, state string, args ...am.A,
+) am.Result {
+	return EvRemoveSync(ctx, nil, mach, S{state}, args...)
+}
+
+// RemoveSync activates a state and waits until it becomes activate, or
+// canceled. Supports queued rejections, expiration ctx and returns as
+// [am.Canceled].
+func RemoveSync(
+	ctx context.Context, mach am.Api, states S, args ...am.A,
+) am.Result {
+	return EvRemoveSync(ctx, nil, mach, states, args...)
+}
+
+// EvRemove1Sync is [Remove1Sync] with an [am.Event] trace.
+func EvRemove1Sync(
+	ctx context.Context, e *am.Event, mach am.Api, state string, args ...am.A,
+) am.Result {
+	return EvRemoveSync(ctx, e, mach, S{state}, args...)
+}
+
+// EvRemoveSync is [RemoveSync] with an [am.Event] trace.
+func EvRemoveSync(
+	ctx context.Context, e *am.Event, mach am.Api, states S, args ...am.A,
+) am.Result {
+	res := mach.EvRemove(e, states, am.OptArgs(args))
+	switch res {
+	case am.Executed:
+		return res
+	case am.Canceled:
+		return res
+	default:
+		// wait
+		select {
+		case <-ctx.Done():
+			return am.Canceled
+		case <-mach.WhenQueue(res):
+			if mach.Not(states) {
+				return am.Executed
+			}
+			return am.Canceled
+		}
+	}
+}
 
 // IsMulti returns true if a state is a multi state.
 func IsMulti(mach am.Api, state string) bool {
@@ -1063,7 +1116,7 @@ func GetTransitionStates(
 		}
 	}
 
-	return added, removed, touched
+	return added, removed, utils.SlicesUniq(touched)
 }
 
 // TODO batch and merge with am-dbg
@@ -1099,11 +1152,11 @@ func (g *MachGroup) Is1(state string) bool {
 	return true
 }
 
-// Pool creates a blocking pool. Don't use directly in the handler body.
-func Pool(limit int) *errgroup.Group {
-	g := &errgroup.Group{}
-	g.SetLimit(limit)
-	return g
+// Pool creates a highly configurable pond pool. Use SubmitErr or Submit on the
+// result.
+func Pool(ctx context.Context, limit int) pond.TaskGroup {
+	pool := pond.NewPool(limit)
+	return pool.NewGroupContext(ctx)
 }
 
 // ///// ///// /////
@@ -1598,12 +1651,14 @@ func EvalGetter[T any](
 	var ret T
 	var retErr error
 	evalOuter := func() {
+		// getter err
 		ret, retErr = eval()
 	}
 
 	// try at least once
 	for range min(maxTries, 1) {
-		if !mach.Eval("EvalGet/"+source, evalOuter, ctx) {
+		if !mach.Eval("Get/"+source, evalOuter, ctx) {
+			// eval err
 			retErr = fmt.Errorf("%w: EvalGet/%s", am.ErrEvalTimeout, source)
 		} else {
 			break
@@ -1611,6 +1666,31 @@ func EvalGetter[T any](
 	}
 
 	return ret, retErr
+}
+
+func EvalSetter(
+	ctx context.Context, source string, maxTries int, mach *am.Machine,
+	eval func() error,
+) error {
+	//
+
+	var retErr error
+	evalOuter := func() {
+		// setter err
+		retErr = eval()
+	}
+
+	// try at least once
+	for range min(maxTries, 1) {
+		if !mach.Eval("Set/"+source, evalOuter, ctx) {
+			// eval err
+			retErr = fmt.Errorf("%w: EvalSet/%s", am.ErrEvalTimeout, source)
+		} else {
+			break
+		}
+	}
+
+	return retErr
 }
 
 // TODO ChanGetter
@@ -1795,4 +1875,16 @@ func RandId(strLen int) string {
 	}
 
 	return hex.EncodeToString(id)
+}
+
+// BlockChan converts a blocking call to channel, which can be used in `select`.
+func BlockChan(fn func()) <-chan struct{} {
+	resChan := make(chan struct{})
+
+	go func() {
+		fn()
+		close(resChan)
+	}()
+
+	return resChan
 }

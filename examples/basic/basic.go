@@ -40,7 +40,12 @@ type Handlers struct {
 	Filename string
 }
 
+// state reference
+var _ = ss.ProcessingFile
+
 // negotiation handler
+var _ = ss.ProcessingFile
+
 func (h *Handlers) ProcessingFileEnter(e *am.Event) bool {
 	// read-only ops
 	// decide if moving fwd is ok
@@ -50,6 +55,8 @@ func (h *Handlers) ProcessingFileEnter(e *am.Event) bool {
 }
 
 // final handler
+var _ = ss.ProcessingFile
+
 func (h *Handlers) ProcessingFileState(e *am.Event) {
 	// read & write ops
 	// no blocking

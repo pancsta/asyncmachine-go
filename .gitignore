@@ -104,3 +104,13 @@ tools/visualizer/testdata/*
 /am-vis.gv
 /examples/wasm_workflow/orchestrator
 /am-vis.md
+/examples/workflow/orchestrator
+/examples/workflow/worker
+/examples/workflow/tmp
+/examples/workflow/
+/docs/editors/skills/am
+/docs/editors/skills/am-cook
+/docs/editors/skills/am-full
+/docs/editors/skills/am-mini
+/pkg/history/badger/amhist.badger
+/examples/wasm/client/amhist.badger/

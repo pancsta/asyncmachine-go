@@ -5,9 +5,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/joho/godotenv"
 	"github.com/pancsta/cview"
-	"github.com/pancsta/tcell-v2"
 
 	"github.com/pancsta/asyncmachine-go/examples/tui/states"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -56,6 +56,8 @@ type tui struct {
 }
 
 // handlers
+
+var _ = ss.Start
 
 func (t *tui) StartState(e *am.Event) {
 	// cview TUI app
@@ -114,6 +116,8 @@ func (t *tui) StartState(e *am.Event) {
 		// TODO
 	}()
 }
+
+var _ = am.StateAny
 
 // AnyEnter prevents most of mutations during a UI redraw (and vice versa)
 // forceful race solving

@@ -89,6 +89,26 @@ func (m *Mutation) LogArgs(mapper LogArgsMapperFn) string {
 	return MutationFormatArgs(m.MapArgs(mapper))
 }
 
+// Clone clones the mutation for further re-processing. Queue related fields are
+// removed.
+func (m *Mutation) Clone() *Mutation {
+	clone := &Mutation{
+		Type:       m.Type,
+		Called:     slices.Clone(m.Called),
+		Args:       m.Args,
+		IsAuto:     m.IsAuto,
+		Source:     m.Source,
+		IsCheck:    m.IsCheck,
+		ctx:        m.ctx,
+		eval:       m.eval,
+		evalSource: m.evalSource,
+	}
+	if ptr := m.cacheCalled.Load(); ptr != nil {
+		clone.cacheCalled.Store(ptr)
+	}
+	return clone
+}
+
 // StepType enum
 type StepType int8
 

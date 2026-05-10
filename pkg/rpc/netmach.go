@@ -776,6 +776,17 @@ func (m *NetworkMachine) WhenTicks(
 	return m.WhenTime(am.S{state}, am.Time{uint64(ticks) + m.Tick(state)}, ctx)
 }
 
+// WhenNextActive waits until the state becomes active, excluding the current
+// activity.
+//
+// ctx: optional context that will close the channel early.
+func (m *NetworkMachine) WhenNextActive(
+	state string, ctx context.Context,
+) <-chan struct{} {
+	// TODO add to API
+	return m.WhenTicks(state, am.NextActiveIn(m.Tick(state)), ctx)
+}
+
 // WhenQuery returns a channel that will be closed when the passed [clockCheck]
 // function returns true. [clockCheck] should be a pure function and
 // non-blocking.`

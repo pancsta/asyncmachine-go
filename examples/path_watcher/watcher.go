@@ -76,6 +76,8 @@ func New(ctx context.Context) (*PathWatcher, error) {
 	return w, nil
 }
 
+var _ = ss.Init
+
 func (w *PathWatcher) InitState(e *am.Event) {
 	var err error
 
@@ -89,6 +91,8 @@ func (w *PathWatcher) InitState(e *am.Event) {
 func (w *PathWatcher) InitEnd(e *am.Event) {
 	w.watcher.Close()
 }
+
+var _ = ss.Watching
 
 func (w *PathWatcher) WatchingState(e *am.Event) {
 	path := w.EnvPath
@@ -165,6 +169,8 @@ func (w *PathWatcher) watchLoop(ctx context.Context) {
 	}
 }
 
+var _ = ss.ChangeEvent
+
 func (w *PathWatcher) ChangeEventState(e *am.Event) {
 	defer e.Machine().Remove1(ss.ChangeEvent, nil)
 	event := e.Args["fsnotify.Event"].(fsnotify.Event)
@@ -184,9 +190,13 @@ func (w *PathWatcher) ChangeEventState(e *am.Event) {
 	})
 }
 
+var _ = ss.Exception
+
 func (w *PathWatcher) ExceptionState(e *am.Event) {
 	w.ExceptionHandler.ExceptionState(e)
 }
+
+var _ = ss.Refreshing
 
 func (w *PathWatcher) RefreshingEnter(e *am.Event) bool {
 	// validate req params
@@ -284,6 +294,8 @@ func (w *PathWatcher) RefreshingEnd(e *am.Event) {
 	}
 }
 
+var _ = ss.Refreshed
+
 func (w *PathWatcher) RefreshedEnter(e *am.Event) bool {
 	// validate req params
 	_, ok1 := e.Args["dirName"].(string)
@@ -306,6 +318,8 @@ func (w *PathWatcher) RefreshedState(e *am.Event) {
 	// try to finish the whole refresh
 	w.Mach.Add1(ss.AllRefreshed, nil)
 }
+
+var _ = ss.AllRefreshed
 
 func (w *PathWatcher) AllRefreshedEnter(e *am.Event) bool {
 	return len(w.ongoing) == 0

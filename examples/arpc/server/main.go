@@ -119,13 +119,19 @@ type workerHandlers struct {
 	*am.ExceptionHandler
 }
 
+var _ = ss.Foo
+
 func (h *workerHandlers) FooState(e *am.Event) {
 	fmt.Println("FooState")
 }
 
+var _ = ss.Bar
+
 func (h *workerHandlers) BarState(e *am.Event) {
 	fmt.Println("BarState")
 }
+
+var _ = ss.Baz
 
 func (h *workerHandlers) BazState(e *am.Event) {
 	fmt.Println("BazState")

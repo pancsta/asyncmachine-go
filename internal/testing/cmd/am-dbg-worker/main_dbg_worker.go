@@ -14,7 +14,6 @@ import (
 	"github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	dbg2 "github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
@@ -60,11 +59,6 @@ func main() {
 			time.Sleep(100 * time.Millisecond)
 		}
 	}()
-
-	// am-dbg server (used for testing live connections)
-	if *serverAddr != "" {
-		go server.StartRpc(dbg.Mach, *serverAddr, nil, types.Params{})
-	}
 
 	// start with a timeout
 	readyCtx, cancel := context.WithTimeout(ctx, 3*time.Second)

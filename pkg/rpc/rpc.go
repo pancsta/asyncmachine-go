@@ -36,6 +36,9 @@ const (
 	EnvAmRpcLogServer = "AM_RPC_LOG_SERVER"
 	// EnvAmRpcLogClient enables machine logging for RPC client.
 	EnvAmRpcLogClient = "AM_RPC_LOG_CLIENT"
+	// EnvAmRpcLogClientVerbose enables machine logging for RPC client in verbose
+	// mode.
+	EnvAmRpcLogClientVerbose = "AM_RPC_LOG_CLIENT_VERBOSE"
 	// EnvAmRpcLogMux enables machine logging for RPC multiplexers.
 	EnvAmRpcLogMux = "AM_RPC_LOG_MUX"
 	// EnvAmRpcDbg enables env-based debugging for RPC and am-relay components.
@@ -49,6 +52,7 @@ const (
 	TagRpcHandler = "rpc-handler"
 	TagRpcClient  = "rpc-client"
 	TagRpcServer  = "rpc-server"
+	TagRpcMux     = "rpc-mux"
 
 	PrefixNetMach = "rnm-"
 	WsPathListen  = "/listen/"
@@ -436,6 +440,8 @@ func AddErr(e *am.Event, mach *am.Machine, msg string, err error) {
 type ExceptionHandler struct {
 	*am.ExceptionHandler
 }
+
+var _ = ss.Exception
 
 func (h *ExceptionHandler) ExceptionEnter(e *am.Event) bool {
 	args := ParseArgs(e.Args)
@@ -1028,11 +1034,15 @@ func (c *msgpackCoded) Close() error {
 
 // ///// ///// /////
 
-func EnableDebuggingRpc(stdout bool) {
-	amhelp.EnableDebugging(stdout)
+func EnableDebuggingRpc(verbose bool) {
 	_ = os.Setenv(EnvAmRpcLogClient, "1")
 	_ = os.Setenv(EnvAmRpcLogServer, "1")
 	_ = os.Setenv(EnvAmRpcLogMux, "1")
+	_ = os.Setenv(EnvAmRpcDbg, "1")
+	_ = os.Setenv(amhelp.EnvAmHealthcheck, "1")
+	if verbose {
+		_ = os.Setenv(EnvAmRpcLogClientVerbose, "1")
+	}
 }
 
 // MachReplEnv sets up a machine for a REPL connection in case AM_REPL_ADDR env

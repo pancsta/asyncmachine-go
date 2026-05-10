@@ -78,12 +78,14 @@ func (w *WorkerArpcServer) log(msg string, args ...any) {
 	l("arpc-server", msg, args...)
 }
 
-// handlers
+var _ = ss.CallOp
 
 func (w *WorkerArpcServer) CallOpEnter(e *am.Event) bool {
 	_, ok := e.Args["Op"].(Op)
 	return ok
 }
+
+var _ = ss.CallOp
 
 func (w *WorkerArpcServer) CallOpState(e *am.Event) {
 	w.Mach.Remove1(ss.CallOp, nil)
@@ -91,6 +93,8 @@ func (w *WorkerArpcServer) CallOpState(e *am.Event) {
 	op := e.Args["Op"].(Op)
 	w.Worker.CallOp(op)
 }
+
+var _ = ss.Event
 
 func (w *WorkerArpcServer) EventState(_ *am.Event) {
 	w.Mach.Remove1(ss.Event, nil)
@@ -104,6 +108,8 @@ func (w *WorkerArpcServer) EventState(_ *am.Event) {
 		w.Mach.Add1(ss.Value3, nil)
 	}
 }
+
+var _ = ss.Start
 
 func (w *WorkerArpcServer) StartState(_ *am.Event) {
 	w.Worker.Start()

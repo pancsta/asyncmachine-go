@@ -72,7 +72,7 @@ func NewMux(
 	}
 
 	mach, err := am.NewCommon(ctx, "rm-"+name, states.MuxSchema, ssM.Names(),
-		d, opts.Parent, &am.Opts{Tags: []string{"rpc-mux"}})
+		d, opts.Parent, &am.Opts{Tags: []string{TagRpcMux}})
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +88,7 @@ func NewMux(
 }
 
 // ///// ///// /////
+var _ = am.StateException
 
 // ///// HANDLERS
 
@@ -100,15 +101,21 @@ func (m *Mux) ExceptionState(e *am.Event) {
 	// errors.Is(err, cmux.ErrServerClosed)
 }
 
+var _ = ssM.NewServerErr
+
 func (m *Mux) NewServerErrEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	return a != nil && a.Err != nil
 }
 
+var _ = ssM.NewServerErr
+
 func (m *Mux) NewServerErrState(e *am.Event) {
 	args := ParseArgs(e.Args)
 	m.NewServerErr = args.Err
 }
+
+var _ = ssM.Start
 
 func (m *Mux) StartEnter(e *am.Event) bool {
 	// require either a source or factory
@@ -166,6 +173,8 @@ func (m *Mux) StartState(e *am.Event) {
 	}()
 }
 
+var _ = ssM.Start
+
 func (m *Mux) StartEnd(e *am.Event) {
 	if m.Listener != nil {
 		_ = m.Listener.Close()
@@ -173,13 +182,19 @@ func (m *Mux) StartEnd(e *am.Event) {
 	}
 }
 
+var _ = ssM.ClientConnected
+
 func (m *Mux) ClientConnectedState(e *am.Event) {
 	m.Mach.EvRemove1(e, ssM.ClientConnected, nil)
 }
 
+var _ = ssM.HasClients
+
 func (m *Mux) HasClientsEnd(e *am.Event) bool {
 	return m.countConns.Load() == m.countDisconns.Load()
 }
+
+var _ = ssM.Healthcheck
 
 func (m *Mux) HealthcheckState(e *am.Event) {
 	// TODO remove stale clients

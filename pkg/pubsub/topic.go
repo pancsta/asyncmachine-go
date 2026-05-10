@@ -210,6 +210,8 @@ func NewTopic(
 
 // ///// ///// /////
 
+var _ = ss.Exception
+
 func (t *Topic) ExceptionEnter(e *am.Event) bool {
 	err := am.ParseArgs(e.Args).Err
 
@@ -233,9 +235,14 @@ func (t *Topic) ExceptionState(e *am.Event) {
 }
 
 // TODO exit
+
+var _ = ss.Ready
+
 func (t *Topic) ReadyEnter(e *am.Event) bool {
 	return t.ConnCount() >= t.ConnectionsToReady
 }
+
+var _ = ss.Start
 
 func (t *Topic) StartEnter(e *am.Event) bool {
 	return len(t.ListenAddrs) > 0
@@ -360,6 +367,8 @@ func (t *Topic) StartEnd(e *am.Event) {
 	t.ps = nil
 }
 
+var _ = ss.Connecting
+
 func (t *Topic) ConnectingEnter(e *am.Event) bool {
 	return len(t.ConnAddrs) > 0
 }
@@ -431,6 +440,8 @@ func (t *Topic) ConnectingState(e *am.Event) {
 // func (t *Topic) DisconnectingStart(e *am.Event) {
 // }
 
+var _ = ss.Joining
+
 func (t *Topic) JoiningState(e *am.Event) {
 	ctx := t.Mach.NewStateCtx(ss.Joining)
 
@@ -466,6 +477,8 @@ func (t *Topic) JoiningState(e *am.Event) {
 		t.Mach.EvAdd1(e, ss.Joined, nil)
 	}()
 }
+
+var _ = ss.ProcessMsgs
 
 func (t *Topic) ProcessMsgsState(e *am.Event) {
 	mach := t.Mach
@@ -580,6 +593,8 @@ func (t *Topic) ProcessMsgsState(e *am.Event) {
 		}
 	}
 }
+
+var _ = ss.Joined
 
 func (t *Topic) JoinedState(e *am.Event) {
 	mach := t.Mach
@@ -736,15 +751,17 @@ func (t *Topic) JoinedEnd(e *am.Event) {
 	}
 }
 
+var _ = ss.PeerLeft
+
 func (t *Topic) PeerLeftEnter(e *am.Event) bool {
 	return ParseArgs(e.Args).PeerId != ""
 }
 
-// EVENTS
-
 // func (t *Topic) PeerLeftState(e *am.Event) {
 // 	// TODO direct all owned local workers to MachLeft
 // }
+
+var _ = ss.MsgInfo
 
 func (t *Topic) MsgInfoEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
@@ -890,6 +907,8 @@ func (t *Topic) MsgInfoState(e *am.Event) {
 	}
 }
 
+var _ = ss.MissPeersByGossip
+
 func (t *Topic) MissPeersByGossipEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	if a == nil || a.PeersGossip == nil {
@@ -952,6 +971,8 @@ func (t *Topic) MissPeersByGossipState(e *am.Event) {
 func (t *Topic) MissPeersByGossipExit(e *am.Event) bool {
 	return len(t.missingPeers) == 0
 }
+
+var _ = ss.MissUpdatesByGossip
 
 func (t *Topic) MissUpdatesByGossipEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
@@ -1032,6 +1053,8 @@ func (t *Topic) MissUpdatesByGossipExit(e *am.Event) bool {
 	return len(t.missingUpdates) == 0
 }
 
+var _ = ss.PeerJoined
+
 func (t *Topic) PeerJoinedEnter(e *am.Event) bool {
 	return ParseArgs(e.Args).PeerId != ""
 }
@@ -1054,19 +1077,25 @@ func (t *Topic) PeerJoinedState(e *am.Event) {
 	}))
 }
 
+// MSGS
+
+var _ = ss.MsgBye
+
 func (t *Topic) MsgByeEnter(e *am.Event) bool {
 	return ParseArgs(e.Args).MsgBye != nil
 }
 
-// MSGS
+//	func (t *Topic) MsgByeState(e *am.Event) {
+//		// TODO
+//	}
 
-// func (t *Topic) MsgByeState(e *am.Event) {
-// 	// TODO
-// }
+var _ = ss.MsgReceived
 
 func (t *Topic) MsgReceivedEnter(e *am.Event) bool {
 	return ParseArgs(e.Args).Msgs != nil
 }
+
+var _ = ss.SendMsg
 
 func (t *Topic) SendMsgEnter(e *am.Event) bool {
 	// sec / multiplayer time window
@@ -1110,6 +1139,8 @@ func (t *Topic) SendMsgState(e *am.Event) {
 	})
 }
 
+var _ = ss.SendInfo
+
 func (t *Topic) SendInfoEnter(e *am.Event) bool {
 	return len(ParseArgs(e.Args).PeerIds) > 0
 }
@@ -1138,6 +1169,8 @@ func (t *Topic) SendInfoState(e *am.Event) {
 		}))
 	}()
 }
+
+var _ = ss.MsgUpdates
 
 func (t *Topic) MsgUpdatesEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
@@ -1211,6 +1244,8 @@ func (t *Topic) MsgUpdatesState(e *am.Event) {
 	}
 }
 
+var _ = ss.MsgReqInfo
+
 func (t *Topic) MsgReqInfoEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	if a == nil || a.MsgReqInfo == nil || a.PeerId == "" {
@@ -1257,6 +1292,8 @@ func (t *Topic) MsgReqInfoState(e *am.Event) {
 		PeerIds: pids,
 	}))
 }
+
+var _ = ss.MsgReqUpdates
 
 func (t *Topic) MsgReqUpdatesEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
@@ -1337,6 +1374,8 @@ func (t *Topic) MsgReqUpdatesState(e *am.Event) {
 	})
 }
 
+var _ = ss.MissPeersByUpdates
+
 func (t *Topic) MissPeersByUpdatesEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	return a != nil && a.MachClocks != nil && a.PeerId != ""
@@ -1376,6 +1415,8 @@ func (t *Topic) MissPeersByUpdatesState(e *am.Event) {
 func (t *Topic) MissPeersByUpdatesExit(e *am.Event) bool {
 	return len(t.pendingMachUpdates) == 0
 }
+
+var _ = ss.ListMachines
 
 func (t *Topic) ListMachinesEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
@@ -1439,6 +1480,8 @@ func (t *Topic) ListMachinesState(e *am.Event) {
 	retCh <- ret
 }
 
+var _ = ss.Heartbeat
+
 func (t *Topic) HeartbeatState(e *am.Event) {
 	mach := t.Mach
 	mach.EvRemove1(e, ss.Heartbeat, nil)
@@ -1476,6 +1519,8 @@ func (t *Topic) HeartbeatState(e *am.Event) {
 	}))
 }
 
+var _ = ss.SendUpdates
+
 func (t *Topic) SendUpdatesEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	return len(a.MachClocks) > 0
@@ -1508,6 +1553,8 @@ func (t *Topic) SendUpdatesState(e *am.Event) {
 		MsgType: string(MsgTypeUpdates),
 	}))
 }
+
+var _ = ss.SendGossips
 
 func (t *Topic) SendGossipsEnter(e *am.Event) bool {
 	if len(t.netMachs) == 0 {
@@ -1571,6 +1618,8 @@ func (t *Topic) SendGossipsState(e *am.Event) {
 // how often to look for missing peers
 // TODO config
 var reqMissPeersFreq = time.Second * 5
+
+var _ = ss.ReqMissingPeers
 
 func (t *Topic) ReqMissingPeersEnter(e *am.Event) bool {
 	// nothing is missing
@@ -1654,6 +1703,8 @@ func (t *Topic) ReqMissingPeersState(e *am.Event) {
 // TODO config
 var reqMissUpdatesFreq = time.Second * 5
 
+var _ = ss.ReqMissingUpdates
+
 func (t *Topic) ReqMissingUpdatesEnter(e *am.Event) bool {
 	// nothing is missing
 	if len(t.missingUpdates) == 0 {
@@ -1729,6 +1780,8 @@ func (t *Topic) ReqMissingUpdatesState(e *am.Event) {
 		t.Mach.EvRemove1(e, ss.ReqMissingUpdates, nil)
 	}
 }
+
+var _ = ss.DoSendInfo
 
 func (t *Topic) DoSendInfoEnter(e *am.Event) bool {
 	return len(ParseArgs(e.Args).PeerIds) > 0

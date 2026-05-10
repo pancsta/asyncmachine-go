@@ -203,6 +203,7 @@ func (sm *Subscriptions) gcWhenBinding(binding *WhenBinding, gcCtx bool) {
 	if binding.Negation {
 		sm.log(LogOps, "[whenNot:match] %s", j(names))
 	} else {
+		// TODO doesnt output and created false-positive in the debugger
 		sm.log(LogOps, "[when:match] %s", j(names))
 	}
 }

@@ -62,6 +62,8 @@ func newBootstrap(ctx context.Context, super *Supervisor) (*bootstrap, error) {
 	return b, nil
 }
 
+var _ = ssB.Start
+
 func (b *bootstrap) StartState(e *am.Event) {
 	var err error
 	ctx := b.Mach.NewStateCtx(ssB.Start)
@@ -102,6 +104,8 @@ func (b *bootstrap) StartEnd(e *am.Event) {
 	}
 	b.Mach.Dispose()
 }
+
+var _ = ssB.WorkerAddr
 
 func (b *bootstrap) WorkerAddrEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)

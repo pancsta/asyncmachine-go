@@ -247,6 +247,8 @@ func NewServer(
 
 // ///// ///// /////
 
+var _ = am.StateException
+
 func (s *Server) ExceptionState(e *am.Event) {
 	// call super
 	s.ExceptionHandler.ExceptionState(e)
@@ -272,6 +274,8 @@ func (s *Server) ExceptionState(e *am.Event) {
 		}
 	}
 }
+
+var _ = ssS.Start
 
 func (s *Server) StartState(e *am.Event) {
 	ctx := s.Mach.NewStateCtx(ssS.Start)
@@ -317,6 +321,8 @@ func (s *Server) StartEnd(e *am.Event) {
 		s.Mach.Dispose()
 	}
 }
+
+var _ = ssS.RpcStarting
 
 func (s *Server) RpcStartingEnter(e *am.Event) bool {
 	// check listening
@@ -452,6 +458,8 @@ func (s *Server) RpcStartingState(e *am.Event) {
 	}()
 }
 
+var _ = ssS.RpcAccepting
+
 func (s *Server) RpcAcceptingEnter(e *am.Event) bool {
 	return s.Listener.Load() != nil || s.Conn != nil
 }
@@ -519,6 +527,8 @@ func (s *Server) RpcAcceptingState(e *am.Event) {
 	}()
 }
 
+var _ = ssS.RpcReady
+
 func (s *Server) RpcReadyEnter(e *am.Event) bool {
 	// only from RpcAccepting
 	return s.Mach.Is1(ssS.RpcAccepting)
@@ -543,11 +553,7 @@ func (s *Server) RpcReadyState(e *am.Event) {
 	// avoid dispose
 	t := s.ticker
 
-	go func() {
-		if ctx.Err() != nil {
-			return // expired
-		}
-
+	s.Mach.Fork(ctx, e, func() {
 		// push clock updates, debounced by getLatestUpdate
 		for {
 			select {
@@ -559,10 +565,10 @@ func (s *Server) RpcReadyState(e *am.Event) {
 				s.pushClient()
 			}
 		}
-	}()
+	})
 }
 
-// TODO tell the client Bye to gracefully disconn
+var _ = ssS.HandshakeDone
 
 func (s *Server) HandshakeDoneEnd(e *am.Event) {
 	if c := s.rpcClient.Load(); c != nil {

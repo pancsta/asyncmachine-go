@@ -3,7 +3,12 @@ package main
 
 import (
 	"bytes"
+	"encoding/xml"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"log"
 	"net/http"
@@ -12,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,9 +38,11 @@ import (
 var apiUrl = os.Getenv("AM_DEPLOY_API_URL")
 var assetsUrl = os.Getenv("AM_DEPLOY_ASSETS_URL")
 var ghAssets = "https://pancsta.github.io/assets/asyncmachine-go"
+var assetFileLocation = "assets/asyncmachine-go"
 
 var amMainMenu = sitemap.MainMenu
 var slugRe = regexp.MustCompile(`[^a-zA-Z0-9]+`)
+var imgAspect = map[string]string{}
 
 const infoIcon = `<svg class=align-bottom xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6" style="width: 25px;display: inline;">
   <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"></path>
@@ -52,6 +60,41 @@ func main() {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		panic(fmt.Errorf("failed to create output directory: %w", err))
 	}
+
+	fmt.Printf("Reading image ratios...\n")
+
+	// build filename -> "aspect-[w/h]" class map from local asset files
+	filepath.WalkDir(assetFileLocation, func(fpath string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		name := d.Name()
+		ext := strings.ToLower(filepath.Ext(name))
+		var w, h int
+		switch ext {
+		case ".png", ".jpg", ".jpeg", ".gif":
+			f, err := os.Open(fpath)
+			if err != nil {
+				return nil
+			}
+			cfg, _, err := image.DecodeConfig(f)
+			f.Close()
+			if err != nil {
+				return nil
+			}
+			w, h = cfg.Width, cfg.Height
+		case ".svg":
+			w, h = svgSize(fpath)
+		default:
+			return nil
+		}
+		if w == 0 || h == 0 {
+			return nil
+		}
+		imgAspect[name] = "aspect-[" + strconv.Itoa(w) +
+			"/" + strconv.Itoa(h) + "]"
+		return nil
+	})
 
 	fmt.Printf("Rendering README.md files...\n")
 
@@ -233,6 +276,9 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 			title = "/"
 		}
 		doc.Find("h1").SetText(title)
+	} else if sourcePath == "docs/release-notes.md" {
+		doc.Find("#page-content > h1").Remove()
+		doc.Find("h1").SetText("/" + e.Path)
 	} else {
 		// nested readmes
 		doc.Find("#page-content > blockquote").First().PrevAll().Remove().End().Remove()
@@ -374,10 +420,16 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		// TODO strings.Replace(href, "?raw=true", "", 1)
 		s.SetAttr("srcset", strings.Replace(s.AttrOr("srcset", ""), ghAssets, assetsUrl, 1))
 	})
+	rmGetParams := regexp.MustCompile(`\?.*$`)
 	doc.Find(fmt.Sprintf(`#page-content img[src^="%s"]`, ghAssets)).Each(func(i int, s *goquery.Selection) {
 		// TODO gif via alt="TUI Debugger"
 		// TODO strings.Replace(href, "?raw=true", "", 1)
-		s.SetAttr("src", strings.Replace(s.AttrOr("src", ""), ghAssets, assetsUrl, 1))
+		src := s.AttrOr("src", "")
+		s.SetAttr("src", strings.Replace(src, ghAssets, assetsUrl, 1))
+		fname := rmGetParams.ReplaceAllString(path.Base(src), "")
+		if cls, ok := imgAspect[fname]; ok {
+			s.AddClass(cls)
+		}
 	})
 
 	// parse github alerts
@@ -568,4 +620,51 @@ func getLastPathOfRedirect(targetURL string) (string, error) {
 	lastPart := path.Base(finalURL.Path)
 
 	return lastPart, nil
+}
+
+// svgSize returns the width and height of an SVG file by parsing its root
+// element's width/height attributes, falling back to the viewBox.
+func svgSize(fpath string) (int, int) {
+	f, err := os.Open(fpath)
+	if err != nil {
+		return 0, 0
+	}
+	defer f.Close()
+
+	type svgElem struct {
+		Width   string `xml:"width,attr"`
+		Height  string `xml:"height,attr"`
+		ViewBox string `xml:"viewBox,attr"`
+	}
+	dec := xml.NewDecoder(f)
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			break
+		}
+		se, ok := tok.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		if se.Name.Local != "svg" {
+			break
+		}
+		var elem svgElem
+		if err := dec.DecodeElement(&elem, &se); err != nil {
+			break
+		}
+		w, _ := strconv.Atoi(strings.Split(elem.Width, ".")[0])
+		h, _ := strconv.Atoi(strings.Split(elem.Height, ".")[0])
+		if w > 0 && h > 0 {
+			return w, h
+		}
+		// fall back to viewBox: "minX minY width height"
+		parts := strings.Fields(elem.ViewBox)
+		if len(parts) == 4 {
+			w, _ = strconv.Atoi(strings.Split(parts[2], ".")[0])
+			h, _ = strconv.Atoi(strings.Split(parts[3], ".")[0])
+		}
+		return w, h
+	}
+	return 0, 0
 }

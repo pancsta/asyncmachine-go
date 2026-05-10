@@ -117,6 +117,8 @@ func newClient(
 	return c, nil
 }
 
+var _ = ssrpc.ConsumerStates.ServerPayload
+
 func (c *cli) ServerPayloadState(e *am.Event) {
 	e.Machine().Remove1(ssrpc.ConsumerStates.ServerPayload, nil)
 

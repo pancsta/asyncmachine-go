@@ -24,8 +24,9 @@ import (
 )
 
 var (
-	ssC  = states.ClientStates
-	ssCo = states.ConsumerStates
+	verboseClient = os.Getenv(EnvAmRpcLogClientVerbose) != ""
+	ssC           = states.ClientStates
+	ssCo          = states.ConsumerStates
 )
 
 // Client is a type representing an RPC client that interacts with a remote
@@ -237,6 +238,8 @@ func NewClient(
 
 // ///// ///// /////
 
+var _ = ssC.Start
+
 func (c *Client) StartState(e *am.Event) {
 	ctx := c.Mach.NewStateCtx(ssC.Start)
 
@@ -279,6 +282,8 @@ func (c *Client) StartEnd(e *am.Event) {
 		c.Mach.EvAdd1(e, ssC.Disconnecting, nil)
 	}
 }
+
+var _ = ssC.Connecting
 
 func (c *Client) ConnectingEnter(e *am.Event) bool {
 	// require either the addr or a conn
@@ -336,6 +341,8 @@ func (c *Client) ConnectingState(e *am.Event) {
 	})
 }
 
+var _ = ssC.Disconnecting
+
 func (c *Client) DisconnectingEnter(e *am.Event) bool {
 	return c.rpc.Load() != nil && c.Conn.Load() != nil
 }
@@ -377,6 +384,8 @@ func (c *Client) DisconnectingState(e *am.Event) {
 	}()
 }
 
+var _ = ssC.Connected
+
 func (c *Client) ConnectedState(e *am.Event) {
 	ctx := c.Mach.NewStateCtx(ssC.Connected)
 	disconnCh := c.rpc.Load().DisconnectNotify()
@@ -401,6 +410,8 @@ func (c *Client) ConnectedState(e *am.Event) {
 	}()
 }
 
+var _ = ssC.Disconnected
+
 func (c *Client) DisconnectedEnter(e *am.Event) bool {
 	// graceful disconnect
 	return !c.Mach.WillBe1(ssC.Disconnecting)
@@ -418,6 +429,8 @@ func (c *Client) DisconnectedState(e *am.Event) {
 		return
 	}
 }
+
+var _ = ssC.Handshaking
 
 func (c *Client) HandshakingState(e *am.Event) {
 	ctx := c.Mach.NewStateCtx(ssC.Connected)
@@ -512,6 +525,8 @@ func (c *Client) HandshakingState(e *am.Event) {
 	})
 }
 
+var _ = ssC.HandshakeDone
+
 func (c *Client) HandshakeDoneEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	return a.Id != "" && a.MachTime != nil && a.QueueTick > 0
@@ -525,7 +540,7 @@ func (c *Client) HandshakeDoneState(e *am.Event) {
 	c.clockSet(args.MachTime, args.QueueTick, args.MachTick)
 
 	// netmach env debug on 1st call
-	if c.Mach.Tick(ssC.HandshakeDone) == 1 {
+	if c.Mach.Tick(ssC.HandshakeDone) == 1 && !c.Opts.DebugDisable {
 		_ = amhelp.MachDebugEnv(c.NetMach)
 	}
 
@@ -534,6 +549,8 @@ func (c *Client) HandshakeDoneState(e *am.Event) {
 		netMach.Time(nil).Sum(nil), netMach.QueueTick(), args.MachTime)
 }
 
+var _ = ssC.CallRetryFailed
+
 func (c *Client) CallRetryFailedState(e *am.Event) {
 	c.Mach.EvRemove1(e, ssC.CallRetryFailed, nil)
 
@@ -541,16 +558,21 @@ func (c *Client) CallRetryFailedState(e *am.Event) {
 	// TODO backoff and reconnect (retry the whole connection)
 }
 
+var _ = ssC.RetryingCall
+
 func (c *Client) RetryingCallEnter(e *am.Event) bool {
 	return c.Mach.Any1(ssC.Connected, ssC.RetryingConn)
 }
 
-// ExceptionState handles network errors and retries the connection.
+var _ = ssC.Exception
+
 func (c *Client) ExceptionState(e *am.Event) {
 	// call super
 	c.ExceptionHandler.ExceptionState(e)
 	c.Mach.EvRemove1(e, am.StateException, nil)
 }
+
+var _ = ssC.RetryingConn
 
 // RetryingConnState should be set without [ssC.Connecting] in the same
 // mutation.
@@ -607,6 +629,8 @@ func (c *Client) RetryingConnState(e *am.Event) {
 	}()
 }
 
+var _ = ssC.ServerPayload
+
 func (c *Client) ServerPayloadEnter(e *am.Event) bool {
 	if c.Consumer == nil {
 		return false
@@ -633,6 +657,8 @@ func (c *Client) ServerPayloadState(e *am.Event) {
 
 	c.Consumer.EvAdd1(e, ssCo.ServerPayload, Pass(argsOut))
 }
+
+var _ = ssC.Healthcheck
 
 func (c *Client) HealthcheckState(e *am.Event) {
 	c.Mach.EvRemove1(e, ssC.Healthcheck, nil)
@@ -886,11 +912,15 @@ func (c *Client) clockUpdate(update *MsgSrvUpdate, queueLocked bool) bool {
 	c.netMachInt.Lock()
 
 	// diff clock update
-	// fmt.Printf("[C] update %v\n", update)
+	if verboseClient {
+		c.log("[C] update %v\n", update)
+	}
 	netMach := c.NetMach
 	mTime, qTick, machTick := c.clockFromUpdate(update, netMach.machTime,
 		netMach.queueTick, netMach.machTick)
-	// fmt.Printf("[C] time %v\n", mTime)
+	if verboseClient {
+		c.log("[C] time %v\n", mTime)
+	}
 
 	checksumTime := mTime
 	if c.SyncShallowClocks {
@@ -899,18 +929,24 @@ func (c *Client) clockUpdate(update *MsgSrvUpdate, queueLocked bool) bool {
 	check := Checksum(checksumTime.Sum(nil), qTick, machTick)
 
 	// verify
-	// fmt.Printf("[C:before] %d %d %d\n", netMach.machTime.Sum(nil),
-	//   netMach.queueTick, netMach.machTick)
-	// fmt.Printf("[C:after] %d %d %d\n", mTime.Sum(nil), qTick, machTick)
-	// fmt.Printf("[C:update] %v %d %d\n", update.Ticks, update.QueueTick,
-	//   update.MachTick)
+	if verboseClient {
+		c.log("[C:before] %d %d %d\n", netMach.machTime.Sum(nil),
+			netMach.queueTick, netMach.machTick)
+		c.log("[C:after] %d %d %d\n", mTime.Sum(nil), qTick, machTick)
+		c.log("[C:update] %v %d %d\n", update.Ticks, update.QueueTick,
+			update.MachTick)
+	}
 	if check != update.Checksum {
-		// fmt.Printf("[C] check %d != %d\n", update.Checksum, check)
-		c.Mach.Log("clockUpdate mismatch %d != %d", update.Checksum, check)
-		c.log("msg q%d m%d ch%d %+v", update.QueueTick, update.MachTick,
-			update.Checksum, update.Indexes)
-		c.log("clock t%d q%d m%d ch%d (%+v)", mTime.Sum(nil), qTick,
-			machTick, check, mTime)
+		if verboseClient {
+			c.log("[C] check %d != %d\n", update.Checksum, check)
+			c.Mach.Log("clockUpdate mismatch %d != %d", update.Checksum, check)
+		}
+		if verboseClient {
+			c.log("msg q%d m%d ch%d %+v", update.QueueTick, update.MachTick,
+				update.Checksum, update.Indexes)
+			c.log("clock t%d q%d m%d ch%d (%+v)", mTime.Sum(nil), qTick,
+				machTick, check, mTime)
+		}
 
 		// request full sync
 		netMach.clockMx.Unlock()
@@ -924,7 +960,7 @@ func (c *Client) clockUpdate(update *MsgSrvUpdate, queueLocked bool) bool {
 		return false
 	}
 
-	c.log("clockUpdate diff OK tt%d q%d", mTime.Sum(nil), qTick)
+	c.log("clockUpdate diff OK t%d q%d", mTime.Sum(nil), qTick)
 	// will unlock itself TODO pass mutType?
 	c.netMachInt.UpdateClock(mTime, qTick, machTick)
 
@@ -1296,6 +1332,8 @@ type ClientOpts struct {
 	MutationFiltering bool
 	// Connect via WebSocket using path, eg "/" (default for WASM).
 	WebSocket string
+	// Forcefully disable am-dbg conns for netmachs.
+	DebugDisable bool
 }
 
 // GetClientId returns an RPC Client machine ID from a name. This ID will be

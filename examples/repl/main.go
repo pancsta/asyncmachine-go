@@ -83,15 +83,21 @@ type handlers struct {
 	Mach *am.Machine
 }
 
+var _ = ss.Foo
+
 func (h *handlers) FooState(e *am.Event) {
 	fmt.Println("FooState")
 	h.Mach.Log("FooState")
 }
 
+var _ = ss.Bar
+
 func (h *handlers) BarState(e *am.Event) {
 	fmt.Println("BarState")
 	h.Mach.Log("BarState")
 }
+
+var _ = ss.Baz
 
 func (h *handlers) BazState(e *am.Event) {
 	fmt.Println("BazState")
