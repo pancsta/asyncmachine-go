@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
@@ -16,9 +17,9 @@ import (
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	statesdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
-	"github.com/pancsta/tcell-v2"
 )
 
 var (
@@ -156,6 +157,14 @@ func NewDbgWorker(
 	}
 	_ = amhelp.MachDebugEnv(d.Mach)
 
+	// am-dbg server (used for testing live connections)
+	if p.ListenAddr != "" {
+		d.ServerMux, d.ServerHttp, err = server.New(d.Mach, p.ListenAddr, p)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// start at the same place
 	res := d.Mach.Add1(ssdbg.Start, nil)
 	if res == am.Canceled {
@@ -163,6 +172,9 @@ func NewDbgWorker(
 	}
 	<-d.Mach.When1(ssdbg.Ready, nil)
 	<-d.Mach.WhenNot1(ssdbg.ScrollToTx, nil)
+
+	// wait for mux TODO remove?
+	time.Sleep(100 * time.Millisecond)
 
 	d.Mach.Log("NewDbgWorker ready")
 

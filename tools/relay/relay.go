@@ -3,6 +3,7 @@ package relay
 import (
 	"context"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +17,7 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/coder/websocket"
 	"github.com/joho/godotenv"
+	"github.com/soheilhy/cmux"
 	"github.com/teivah/onecontext"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -52,6 +54,8 @@ type Relay struct {
 	http       *http.Server
 }
 
+var TagRelay = "relay"
+
 // New creates a new Relay - state machine, RPC server.
 func New(ctx context.Context, args types.Args) (*Relay, error) {
 	out := args.Output
@@ -82,7 +86,7 @@ func New(ctx context.Context, args types.Args) (*Relay, error) {
 	mach, err := am.NewCommon(ctx, id, states.RelaySchema, ssR.Names(),
 		r, args.Parent, &am.Opts{
 			DontPanicToException: args.Debug,
-			Tags:                 []string{"relay"},
+			Tags:                 []string{TagRelay},
 		})
 	if err != nil {
 		return nil, err
@@ -107,8 +111,11 @@ func New(ctx context.Context, args types.Args) (*Relay, error) {
 
 // ///// ///// /////
 
+var _ = ssR.Start
+
 func (r *Relay) StartState(e *am.Event) {
 	a := r.Args
+	ctx := r.Mach.NewStateCtx(ssR.Start)
 
 	if a.RotateDbg != nil {
 		cmd := a.RotateDbg
@@ -119,7 +126,19 @@ func (r *Relay) StartState(e *am.Event) {
 		dbgParams := typesDbg.Params{
 			FwdData: cmd.FwdAddr,
 		}
-		go server.StartRpc(r.Mach, cmd.ListenAddr, nil, dbgParams)
+		srvMux, _, err := server.New(r.Mach, cmd.ListenAddr, dbgParams)
+		if err != nil {
+			r.Mach.EvAddErr(e, err, nil)
+			return
+		}
+		r.Mach.Go(ctx, func() {
+			if err := srvMux.Serve(); err != nil &&
+				!errors.Is(err, cmux.ErrListenerClosed) &&
+				!errors.Is(err, cmux.ErrServerClosed) {
+
+				r.Mach.EvAddErr(e, err, nil)
+			}
+		})
 	}
 
 	if a.Wasm != nil {
@@ -149,6 +168,8 @@ func (r *Relay) Stop(e *am.Event) am.Result {
 
 // ///// ///// /////
 
+var _ = ssR.HttpStarting
+
 func (r *Relay) HttpStartingState(e *am.Event) {
 	ctx := r.Mach.NewStateCtx(ssR.HttpStarting)
 
@@ -172,6 +193,8 @@ func (r *Relay) HttpStartingState(e *am.Event) {
 		r.Mach.Remove1(ssR.HttpReady, nil)
 	}()
 }
+
+var _ = ssR.HttpReady
 
 func (r *Relay) HttpReadyState(e *am.Event) {
 	// TODO /dial - RPC clients (WS to TCP dial)
@@ -438,6 +461,8 @@ func (r *Relay) HttpReadyEnd(e *am.Event) {
 // ///// ///// /////
 // TODO typed args for dbg server
 
+var _ = ssR.ClientMsg
+
 func (r *Relay) ClientMsgEnter(e *am.Event) bool {
 	_, ok1 := e.Args["msgs_tx"].([]*dbg.DbgMsgTx)
 	_, ok2 := e.Args["conn_ids"].([]string)
@@ -483,6 +508,8 @@ func (r *Relay) ClientMsgState(e *am.Event) {
 		}
 	}
 }
+
+var _ = ssR.ConnectEvent
 
 func (r *Relay) ConnectEventEnter(e *am.Event) bool {
 	msg, ok1 := e.Args["msg_struct"].(*dbg.DbgMsgStruct)
@@ -553,6 +580,8 @@ func (r *Relay) ConnectEventState(e *am.Event) {
 
 	r.Mach.Add1(ssR.InitClient, am.A{"id": msg.ID})
 }
+
+var _ = ssR.DisconnectEvent
 
 func (r *Relay) DisconnectEventEnter(e *am.Event) bool {
 	_, ok := e.Args["conn_id"].(string)

@@ -76,6 +76,8 @@ func newCli(ctx context.Context, args *Args) (*cli, error) {
 	return ret, nil
 }
 
+var _ = ss.Start
+
 func (c *cli) StartState(e *am.Event) {
 	ctx := c.Mach.NewStateCtx(ss.Start)
 	fmt.Printf("starting for %s\n", e.Transition().CalledStates())

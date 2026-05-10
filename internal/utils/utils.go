@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"os"
 	"reflect"
 	"runtime"
@@ -227,4 +228,21 @@ func StructFields(input interface{}) ([]string, error) {
 	}
 
 	return names, nil
+}
+
+func GetGlobalUnicastIP() (string, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", err
+	}
+
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+			if ipNet.IP.To4() != nil && ipNet.IP.IsGlobalUnicast() {
+				return ipNet.IP.String(), nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no global unicast IP found")
 }

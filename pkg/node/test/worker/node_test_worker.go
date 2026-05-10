@@ -74,6 +74,8 @@ type workerHandlers struct {
 	Mach *am.Machine
 }
 
+var _ = ssW.WorkRequested
+
 func (w *workerHandlers) WorkRequestedState(e *am.Event) {
 	input := e.Args["input"].(int)
 

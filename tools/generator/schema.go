@@ -119,9 +119,13 @@ func (g *SchemaGenerator) parseParams(p cli.StatesParams) {
 	g.N = string(g.Name[0])
 }
 
+var _ = ssG.Inherit
+
 func (g *SchemaGenerator) InheritEnter(e *am.Event) bool {
 	return g.Mach.Any1(sgG.Inherit...)
 }
+
+var _ = ssG.Groups
 
 func (g *SchemaGenerator) GroupsEnter(e *am.Event) bool {
 	return g.Mach.Any1(ssG.GroupsInherited, ssG.GroupsLocal)

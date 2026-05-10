@@ -1,0 +1,8 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "asyncmachine-go",
+  "description": "asyncmachine-go is a distributed workflow engine implementing aspect-oriented programming and actor models through clock-based state machines with atomic transitions, RPC, debugging, and telemetry support.",
+  "excludeFolders": ["/scripts", "/examples/benchmark_**"],
+  "url": "https://context7.com/pancsta/asyncmachine-go",
+  "public_key": "pk_DAGBACY9QNlVKBbmM5JlQ"
+}

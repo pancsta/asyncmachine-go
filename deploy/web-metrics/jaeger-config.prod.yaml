@@ -8,6 +8,9 @@ extensions:
           directories:
             keys: /data/jaeger/keys
             values: /data/jaeger/values
+          # Disable trace removal by setting TTL to 0 seconds
+          ttl:
+            spans: 99999d
 
   # 2. Tell the Jaeger UI (Query) which backend to read from
   jaeger_query:

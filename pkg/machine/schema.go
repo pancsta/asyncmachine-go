@@ -4,6 +4,7 @@ import (
 	"maps"
 	"reflect"
 	"slices"
+	"strings"
 )
 
 // ///// ///// /////
@@ -164,6 +165,21 @@ func copyFields(src, dst interface{}) {
 			}
 		}
 	}
+}
+
+// TODO refac to Schema.StatesByTag
+func StatesByTag(schema Schema, tag string) S {
+	ret := S{}
+	for name, s := range schema {
+		for _, t := range s.Tags {
+			if t == tag || strings.HasPrefix(t, tag+":") {
+				ret = append(ret, name)
+				break
+			}
+		}
+	}
+
+	return ret
 }
 
 // ///// ///// /////

@@ -88,6 +88,8 @@ type MachineHandlers struct {
 	ProcessedFileName string
 }
 
+var _ = ss.DownloadingFile
+
 // DownloadingFileState is a _final_ entry handler for the DownloadingFile
 // state.
 func (h *MachineHandlers) DownloadingFileState(e *am.Event) {
@@ -114,6 +116,8 @@ func (h *MachineHandlers) DownloadingFileState(e *am.Event) {
 		e.Machine().Add1(ss.FileDownloaded, nil)
 	}()
 }
+
+var _ = ss.ProcessingFile
 
 // ProcessingFileState is a _final_ entry handler for the ProcessingFile
 // state.
@@ -150,6 +154,8 @@ func (h *MachineHandlers) ProcessingFileState(e *am.Event) {
 	}()
 }
 
+var _ = ss.ProcessingFile
+
 // ProcessingFileEnd is a _final_ exit handler for the ProcessingFile
 // state.
 func (h *MachineHandlers) ProcessingFileEnd(e *am.Event) {
@@ -157,6 +163,8 @@ func (h *MachineHandlers) ProcessingFileEnd(e *am.Event) {
 	e.Machine().Log("cleanup %s", h.DownloadedName)
 	_ = os.Remove(h.DownloadedName)
 }
+
+var _ = ss.UploadingFile
 
 // UploadingFileState is a _final_ transition handler for the
 // UploadingFile state.
@@ -181,6 +189,8 @@ func (h *MachineHandlers) UploadingFileState(e *am.Event) {
 		e.Machine().Add1(ss.FileUploaded, nil)
 	}()
 }
+
+var _ = ss.UploadingFile
 
 // UploadingFileEnd is a _final_ exit handler for the UploadingFile
 // state.

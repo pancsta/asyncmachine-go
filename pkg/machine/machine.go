@@ -621,6 +621,17 @@ func (m *Machine) WhenTicks(
 	return m.WhenTime(S{state}, Time{uint64(ticks) + m.Tick(state)}, ctx)
 }
 
+// WhenNextActive waits until the state becomes active, excluding the current
+// activity.
+//
+// ctx: optional context that will close the channel early.
+func (m *Machine) WhenNextActive(
+	state string, ctx context.Context,
+) <-chan struct{} {
+	// TODO add to API
+	return m.WhenTicks(state, NextActiveIn(m.Tick(state)), ctx)
+}
+
 // WhenQuery returns a channel that will be closed when the passed [clockCheck]
 // function returns true. [clockCheck] should be a pure function and
 // non-blocking.`
@@ -1013,6 +1024,9 @@ func (m *Machine) PanicToErr(args A) {
 		m.AddErr(fmt.Errorf("%v", err), args)
 	}
 }
+
+// TODO EvPanicToErr
+// TODO EvPanicToErrState
 
 // PanicToErrState will catch a panic and add the StateException state, along
 // with the passed state. Needs to be called in a defer statement, just like a
@@ -1815,6 +1829,7 @@ func (m *Machine) setActiveStates(
 		return S{}
 	}
 
+	// TODO keep in sync with newTransition
 	previous := m.activeStates
 	newStates := StatesDiff(targetStates, m.activeStates)
 	removedStates := StatesDiff(m.activeStates, targetStates)
@@ -1822,20 +1837,20 @@ func (m *Machine) setActiveStates(
 	m.activeStates = slices.Clone(targetStates)
 
 	// Tick all new states by +1 and already active and called multi states by +2
-	for _, state := range targetStates {
+	for _, name := range targetStates {
 
-		data := m.schemaSafe()[state]
-		if !slices.Contains(previous, state) {
+		state := m.schemaSafe()[name]
+		if !slices.Contains(previous, name) {
 			// tick by +1
 			// TODO wrap on overflow
-			m.clock[state]++
-		} else if slices.Contains(calledStates, state) && data.Multi {
+			m.clock[name]++
+		} else if slices.Contains(calledStates, name) && state.Multi {
 
 			// tick by +2 to indicate a new instance
 			// TODO wrap on overflow
-			m.clock[state] += 2
+			m.clock[name] += 2
 			// treat prev active multi states as new states, for logging
-			newStates = append(newStates, state)
+			newStates = append(newStates, name)
 		}
 	}
 
@@ -2069,7 +2084,6 @@ func (m *Machine) processSubscriptions(t *Transition) {
 	m.activeStatesMx.RLock()
 
 	// collect
-	toCancel := m.subs.ProcessStateCtx(t.cacheDeactivated)
 	toClose := slices.Concat(
 		m.subs.ProcessWhen(t.cacheActivated, t.cacheDeactivated),
 		m.subs.ProcessWhenTime(t.ClockBefore()),
@@ -2081,9 +2095,6 @@ func (m *Machine) processSubscriptions(t *Transition) {
 	m.activeStatesMx.RUnlock()
 
 	// close outside the critical zone
-	for _, cancel := range toCancel {
-		cancel()
-	}
 	for _, ch := range toClose {
 		closeSafe(ch)
 	}
@@ -2101,6 +2112,8 @@ func (m *Machine) processSubscriptions(t *Transition) {
 func (m *Machine) Context() context.Context {
 	return m.ctx
 }
+
+// TODO add EvLog(e, ...) to output a state name
 
 // Log logs an [extern] message unless LogNothing is set.
 // Optionally redirects to a custom logger from [SemLogger.SetLogger].
@@ -2155,9 +2168,12 @@ func (m *Machine) log(level LogLevel, msg string, args ...any) {
 		m.logEntriesLock.Lock()
 		defer m.logEntriesLock.Unlock()
 
-		// prevent dups (except piping)
+		// prevent dups (except piping and subs) TODO semlogger
+		allowDups := strings.HasPrefix(out, prefix+"[pipe-") ||
+			strings.HasPrefix(out, prefix+"[ctx") ||
+			strings.HasPrefix(out, prefix+"[when")
 		if len(m.logEntries) > 0 && m.logEntries[len(m.logEntries)-1].Text == out &&
-			!strings.HasPrefix(out, prefix+"[pipe-") {
+			!allowDups {
 
 			return
 		}
@@ -2472,10 +2488,13 @@ grace:
 
 		// graceful shutdown start
 		case <-m.ctxParent.Done():
-			// fmt.Println("CTX DONE " + m.Id())
+			// fmt.Println("CTX DONE1 " + m.Id())
 			if m.Has1(StateDisposing) {
-				m.Add1(StateDisposing, nil)
+				m.log(LogOps, "[dispose] graceful shutdown via DisposingState")
+				// fork to handle calls below
+				go m.Add1(StateDisposing, nil)
 			} else {
+				m.log(LogOps, "[dispose] graceful shutdown via Dispose()")
 				m.Dispose()
 			}
 			break grace
@@ -2492,14 +2511,17 @@ grace:
 	}
 
 	// TODO test
+	// fmt.Println("tmp ctx")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*m.DisposeTimeout)
 	defer cancel()
 
 	// wait for a handler call or context
+	// fmt.Println("wait for a handler call or context")
 	for {
 		select {
 		// timeout
 		case <-ctx.Done():
+			m.log(LogChanges, "[dispose] graceful timeout")
 			m.handlerLoopDone()
 			m.cancel()
 
@@ -2507,17 +2529,20 @@ grace:
 
 		// graceful shutdown end
 		case <-m.ctx.Done():
+			m.log(LogEverything, "[dispose] graceful completed")
 			m.handlerLoopDone()
 
 			return
 
 		// regular handlers
 		case call, ok := <-m.handlerStart:
+			m.log(LogEverything, "[dispose] handling call")
 			if !ok || !handleCall(call) {
 				return
 			}
 		}
 	}
+	// fmt.Println("loop END")
 }
 
 func (m *Machine) handlerLoopDone() {
@@ -2694,9 +2719,24 @@ func (m *Machine) QueueLen() uint16 {
 	return uint16(m.queueLen.Load())
 }
 
-// WillBe returns true if the passed states are scheduled to be activated.
-// Does not cover implied states, only called ones.
-// See [Machine.IsQueued] to perform more detailed queries.
+// WillBeAny returns true if any of the passed states is scheduled to be
+// activated. See [Machine.IsQueued] to perform more detailed queries.
+//
+// position: optional position assertion
+func (m *Machine) WillBeAny(states S) bool {
+	// TODO API
+	for _, state := range states {
+		if m.WillBe1(state) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// WillBe returns true if the passed states are scheduled to be activated within
+// a single mutation. Does not cover implied states, only called ones. See
+// [Machine.IsQueued] to perform more detailed queries.
 //
 // position: optional position assertion
 func (m *Machine) WillBe(states S, position ...Position) bool {
@@ -3500,6 +3540,22 @@ func (m *Machine) Fork(ctx context.Context, e *Event, fn func()) {
 // Go is a syntax sugar method for a nested handler unblocking boilerplate.
 func (m *Machine) Go(ctx context.Context, fn func()) {
 	go func() {
+		if ctx.Err() != nil {
+			return // expired
+		}
+		defer m.PanicToErr(nil)
+
+		fn()
+	}()
+}
+
+// GoAfter is like [Go], but with a delay.
+func (m *Machine) GoAfter(ctx context.Context, delay time.Duration, fn func()) {
+	go func() {
+		if ctx.Err() != nil {
+			return // expired
+		}
+		time.Sleep(delay)
 		if ctx.Err() != nil {
 			return // expired
 		}

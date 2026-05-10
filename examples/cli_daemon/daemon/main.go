@@ -103,9 +103,14 @@ func newDaemon(ctx context.Context, args *Args) (*daemon, error) {
 	return d, nil
 }
 
+var _ = ss.OpFoo1
+
 func (d *daemon) OpFoo1State(e *am.Event) {
 	d.hOp(e)
 }
+
+var _ = ss.OpBar2
+
 func (d *daemon) OpBar2State(e *am.Event) {
 	d.hOp(e)
 }

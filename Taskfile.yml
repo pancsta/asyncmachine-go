@@ -161,6 +161,9 @@ tasks:
         --select-connected
         --log-ops-ttl 5m
         --max-mem 2000
+        --view-narrow
+        --filter-queued
+        --filter-canceled
         --dir tmp2
         {{.CLI_ARGS}}
 
@@ -421,7 +424,7 @@ tasks:
       - task: lint-md
       # https://github.com/markdownlint/markdownlint/issues/136
       - |
-        if grep -q "]()" docs/*.md; then
+        if grep -q "]()" --exclude="docs/release-notes.md" docs/*.md; then
           echo "Error: Empty links" >&2
           exit 1
         fi
@@ -445,7 +448,9 @@ tasks:
           -not -path '*deps.md'
           -not -path './\.*'
           -not -path './tmp*'
+          -not -path './CHANGELOG.md'
           -not -path './docs/editors*'
+          -not -path './docs/release-notes.md'
           -not -path './dist*' |
             xargs mdl -g -c config/mdlrc
 
@@ -760,6 +765,10 @@ tasks:
     cmds:
       - task: script-gen-api-docs
 
+  gen-docs-release-notes:
+    desc: Generate the release notes
+    cmd: task script-gen-release-notes
+
   gen-docs-website:
     desc: Generate the whole website
     cmds:
@@ -822,6 +831,61 @@ tasks:
       - task: deploy-docs-api
       - task: deploy-assets
 
+  gen-docs-skills:
+    desc: Generate AI skill in /docs/editors/skills
+    cmds:
+      - task: gen-docs-skill-mini
+      - task: gen-docs-skill-full
+
+  gen-docs-skill-am:
+    vars:
+      FILE: docs/editors/skills/am/SKILL.md
+    cmds:
+      - mkdir -p docs/editors/skills/am
+      - cp docs/editors/SKILL.md {{.FILE}}
+      - echo -e "\n\n## Example Schema\n\n\`\`\`go" >> {{.FILE}}
+      - cat docs/editors/schema.go >> {{.FILE}}
+      - echo -e "\`\`\`\n\n## Predefined States /pkg/states\n\n\`\`\`go" >> {{.FILE}}
+      - cat docs/editors/states.md >> {{.FILE}}
+      - echo -e "\`\`\`\n\n## Basic\n\n\`\`\`go" >> {{.FILE}}
+      - cat examples/basic/basic.go >> {{.FILE}}
+      - echo -e "\`\`\`\n\n## Machine Template\n\n\`\`\`go" >> {{.FILE}}
+      - cat examples/mach_template/mach_template.go >> {{.FILE}}
+
+  gen-docs-skill-cook:
+    vars:
+      FILE: docs/editors/skills/am-cook/SKILL.md
+    cmds:
+      - task: gen-docs-skill-am
+      - mkdir -p docs/editors/skills/am-cook
+      - cp docs/editors/skills/am/SKILL.md {{.FILE}}
+      - | 
+        sed -i 's/name: am/name: am-cook/' {{.FILE}}
+      - echo -e "\`\`\`\n\n## Cookbook\n\n" >> {{.FILE}}
+      - cat docs/cookbook.md >> {{.FILE}}
+
+  gen-docs-skill-full:
+    vars:
+      FILE: docs/editors/skills/am-full/SKILL.md
+    cmds:
+      - task: gen-docs-skill-cook
+      - mkdir -p docs/editors/skills/am-full
+      - cp docs/editors/skills/am-cook/SKILL.md {{.FILE}}
+      - | 
+        sed -i 's/name: am-cook/name: am-full/' {{.FILE}}
+      - echo -e "\n\n## Manual\n\n" >> {{.FILE}}
+      - cat docs/manual.md >> {{.FILE}}
+
+  gen-docs-skill-mini:
+    vars:
+      FILE: docs/editors/skills/am-mini/SKILL.md
+    cmds:
+      - mkdir -p docs/editors/skills/am-mini
+      - cp docs/editors/SKILL.md {{.FILE}}
+      - | 
+        sed -i 's/name: am/name: am-mini/' {{.FILE}}
+      - cat docs/editors/mini.md >> {{.FILE}}
+
   #
   #
   # SCRIPTS (different work dir and go.mod)
@@ -866,3 +930,8 @@ tasks:
     dir: scripts
     deps: [install-deps-scripts]
     cmd: go run ./compact_number
+
+  script-gen-release-notes:
+    dir: scripts
+    deps: [install-deps-scripts]
+    cmd: go run ./gen_release_notes

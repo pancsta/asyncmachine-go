@@ -107,6 +107,7 @@ func NewWorker(ctx context.Context, kind string, workerStruct am.Schema,
 }
 
 // ///// ///// /////
+var _ = ssW.ErrNetwork
 
 // ///// HANDLERS
 
@@ -116,10 +117,14 @@ func (w *Worker) ErrNetworkState(e *am.Event) {
 	// TODO handle RPC errors
 }
 
+var _ = ssW.Start
+
 func (w *Worker) StartEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	return a.LocalAddr != ""
 }
+
+var _ = ssW.Start
 
 func (w *Worker) StartState(e *am.Event) {
 	var err error
@@ -182,6 +187,8 @@ func (w *Worker) StartState(e *am.Event) {
 	}
 }
 
+var _ = ssW.Start
+
 func (w *Worker) StartEnd(e *am.Event) {
 	args := ParseArgs(e.Args)
 
@@ -200,13 +207,19 @@ func (w *Worker) StartEnd(e *am.Event) {
 	}
 }
 
+var _ = ssW.LocalRpcReady
+
 func (w *Worker) LocalRpcReadyState(e *am.Event) {
 	w.LocalAddr = w.LocalRpc.Addr
 }
 
+var _ = ssW.PublicRpcReady
+
 func (w *Worker) PublicRpcReadyState(e *am.Event) {
 	w.PublicAddr = w.PublicRpc.Addr
 }
+
+var _ = ssW.RpcReady
 
 func (w *Worker) RpcReadyState(e *am.Event) {
 	var err error
@@ -253,14 +266,20 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 	}()
 }
 
+var _ = ssW.Healthcheck
+
 func (w *Worker) HealthcheckState(e *am.Event) {
 	w.Mach.Remove1(ssW.Healthcheck, nil)
 }
+
+var _ = ssW.ServeClient
 
 func (w *Worker) ServeClientEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	return a != nil && a.Id != ""
 }
+
+var _ = ssW.ServeClient
 
 func (w *Worker) ServeClientState(e *am.Event) {
 	w.Mach.Remove1(ssW.ServeClient, nil)

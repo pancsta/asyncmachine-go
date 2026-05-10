@@ -61,10 +61,14 @@ func NewWsTcpTun(
 	return t, nil
 }
 
+var _ = ssT.Disposing
+
 func (t *WsTcpTun) DisposingState(e *am.Event) {
 	_ = t.WsConn.Close(websocket.StatusNormalClosure, "")
 	t.DisposedHandlers.DisposingState(e)
 }
+
+var _ = ssT.Start
 
 func (t *WsTcpTun) StartEnter(e *am.Event) bool {
 	return t.WsConn != nil && t.TcpAddr != ""
@@ -80,10 +84,14 @@ func (t *WsTcpTun) StartEnd(e *am.Event) {
 	}
 }
 
+var _ = ssT.WebSocket
+
 func (t *WsTcpTun) WebSocketEnd(e *am.Event) {
 	// dispose on WS disconn
 	t.Mach.EvAdd1(e, ssT.Disposing, nil)
 }
+
+var _ = ssT.TcpListen
 
 func (t *WsTcpTun) TcpListenState(e *am.Event) {
 	ctx := t.Mach.NewStateCtx(ssR.Start)
@@ -104,6 +112,8 @@ func (t *WsTcpTun) TcpListenState(e *am.Event) {
 		t.Mach.EvAdd1(e, ssT.TcpListening, nil)
 	})
 }
+
+var _ = ssT.TcpListening
 
 func (t *WsTcpTun) TcpListeningState(e *am.Event) {
 	ctx := t.Mach.NewStateCtx(ssR.Start)
@@ -129,6 +139,8 @@ func (t *WsTcpTun) TcpListeningState(e *am.Event) {
 		}
 	})
 }
+
+var _ = ssT.TcpAccepted
 
 func (t *WsTcpTun) TcpAcceptedState(e *am.Event) {
 	ctx := t.Mach.NewStateCtx(ssT.TcpAccepted)

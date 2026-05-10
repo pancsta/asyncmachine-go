@@ -122,6 +122,7 @@ func NewClient(ctx context.Context, clientId string, workerKind string,
 }
 
 // ///// ///// /////
+var _ = ssC.Start
 
 // ///// HANDLERS
 
@@ -207,6 +208,8 @@ func (c *Client) StartState(e *am.Event) {
 	}()
 }
 
+var _ = ssC.Start
+
 func (c *Client) StartEnd(e *am.Event) {
 	if c.RpcSuper != nil {
 		c.RpcSuper.Stop(context.TODO(), e, true)
@@ -215,6 +218,8 @@ func (c *Client) StartEnd(e *am.Event) {
 		c.RpcWorker.Stop(context.TODO(), e, true)
 	}
 }
+
+var _ = ssC.WorkerRequested
 
 func (c *Client) WorkerRequestedEnter(e *am.Event) bool {
 	return c.RpcSuper.NetMach.Is1(ssS.WorkersAvailable)
@@ -228,13 +233,15 @@ func (c *Client) WorkerRequestedState(e *am.Event) {
 	}))
 }
 
+var _ = ssC.ServerPayload
+
 func (c *Client) ServerPayloadEnter(e *am.Event) bool {
 	a := rpc.ParseArgs(e.Args)
 	return a != nil && a.Name != "" && a.Payload != nil
 }
 
 // ServerPayloadState handles both Supervisor and Worker inbound payloads, but
-// this shared code only deals with [states.ClientStatesDef.WorkerRequested].
+// this shared code only deals with [ssC.ClientStatesDef.WorkerRequested].
 func (c *Client) ServerPayloadState(e *am.Event) {
 	c.Mach.Remove1(ssC.ServerPayload, nil)
 	args := rpc.ParseArgs(e.Args)

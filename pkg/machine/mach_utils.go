@@ -274,6 +274,18 @@ func StatesPrefix(prefix string, states S) S {
 	return ret
 }
 
+// StatesWithPrefix lists all states with a prefix.
+func StatesWithPrefix(prefix string, states S) S {
+	ret := S{}
+	for _, name := range states {
+		if strings.HasPrefix(name, prefix) {
+			ret = append(ret, name)
+		}
+	}
+
+	return ret
+}
+
 // SchemaPrefix will prefix all state names with [prefix]. removeDups will skip
 // overlaps eg "FooFooName" will be "Foo".
 func SchemaPrefix(

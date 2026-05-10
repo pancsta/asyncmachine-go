@@ -34,6 +34,7 @@ var MainMenu = []Entry{
 	// rest (non-menu)
 	{Url: "faq", Path: "FAQ.md", SkipMenu: true},
 	{Url: "changelog", Path: "CHANGELOG.md", SkipMenu: true},
+	{Url: "release-notes", Path: "docs/release-notes.md", SkipMenu: true},
 	{Url: "env-configs", Path: "docs/env-configs.md", SkipMenu: true},
 
 	// examples
@@ -58,6 +59,8 @@ var MainMenu = []Entry{
 	{Url: "arpc-howto", Path: "pkg/rpc/HOWTO.md", SkipMenu: true},
 	{Url: "docs-wasm", Path: "docs/wasm.md", SkipMenu: true},
 	{Url: "docs-schema", Path: "docs/schema.md", SkipMenu: true},
+	{Url: "docs-ai", Path: "docs/ai.md", SkipMenu: true},
+	{Url: "docs-editors", Path: "docs/editors/README.md", SkipMenu: true},
 	{Url: "diagrams", Path: "docs/diagrams.md", SkipMenu: true},
 	{Url: "roadmap", Path: "ROADMAP.md", SkipMenu: true},
 	{Url: "breaking-changes", Path: "BREAKING.md", SkipMenu: true},

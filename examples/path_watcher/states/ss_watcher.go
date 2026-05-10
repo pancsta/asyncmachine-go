@@ -26,6 +26,7 @@ var States = am.Schema{
 		Multi: true,
 	},
 	AllRefreshed: {},
+	Exception:    {Multi: true},
 }
 
 // StatesDir map defines relations and properties of states (for directories).
@@ -57,6 +58,7 @@ const (
 	Refreshing   = "Refreshing"
 	Refreshed    = "Refreshed"
 	AllRefreshed = "AllRefreshed"
+	Exception    = "Exception"
 
 	// dir-only states
 
@@ -65,7 +67,7 @@ const (
 )
 
 // Names is an ordered list of all the state names for files.
-var Names = S{Init, Watching, ChangeEvent, Refreshing, Refreshed, AllRefreshed}
+var Names = S{Init, Watching, ChangeEvent, Refreshing, Refreshed, AllRefreshed, Exception}
 
 // NamesDir is an ordered list of all the state names for directories.
 var NamesDir = S{Refreshing, Refreshed, DirDebounced, DirCached}

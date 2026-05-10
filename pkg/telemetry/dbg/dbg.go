@@ -8,12 +8,12 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
-
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
@@ -69,6 +69,26 @@ func (d *DbgMsgStruct) Clock(_ am.S, _ string) uint64 {
 }
 
 func (d *DbgMsgStruct) Is(_ am.S, _ am.S) bool {
+	return false
+}
+
+func (d *DbgMsgStruct) HasTag(tag string, val string) bool {
+	for _, t := range d.Tags {
+		if t == tag {
+			return true
+		}
+
+		// value check
+		p := tag + ":"
+		if val == "" || !strings.HasPrefix(t, p) {
+			continue
+		}
+		tagVal, _ := strings.CutPrefix(t, p)
+		if val == tagVal {
+			return true
+		}
+	}
+
 	return false
 }
 
@@ -164,6 +184,21 @@ func (m *DbgMsgTx) Is(statesIndex am.S, states am.S) bool {
 	return true
 }
 
+func (m *DbgMsgTx) IsIdx(idxs []int) bool {
+	for _, idx := range idxs {
+		// new schema issue
+		if idx == -1 {
+			return false
+		}
+
+		if len(m.Clocks) <= idx || !am.IsActiveTick(m.Clocks[idx]) {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (m *DbgMsgTx) Index(statesIndex am.S, state string) int {
 	idx := slices.Index(statesIndex, state) //nolint:typecheck
 	return idx
@@ -202,7 +237,7 @@ func (m *DbgMsgTx) CalledStateNames(statesIndex am.S) am.S {
 
 // TODO unify with Tx String
 func (m *DbgMsgTx) TxString(statesIndex am.S) string {
-	info := "mach://" + m.MachineID + "/" + m.ID + "\n"
+	info := m.Url() + "\n"
 	info += m.Time.UTC().Format(time.RFC3339Nano) + "\n\n"
 	tx := "[" + m.Type.String() + "] " +
 		utils.J(m.CalledStateNames(statesIndex)) + "\n"
@@ -239,6 +274,14 @@ func (m *DbgMsgTx) TimeSum() uint64 {
 	}
 
 	return sum
+}
+
+func (m *DbgMsgTx) Url() string {
+	return "mach://" + m.MachineID + "/" + m.ID
+}
+
+func (m *DbgMsgTx) String() string {
+	return m.Url()
 }
 
 // ///// CLIENT
@@ -362,10 +405,11 @@ func (t *Tracer) MachineInit(mach am.Api) context.Context {
 	mTime := mach.Time(nil)
 	t.lastMTime = mTime
 	pipes := mach.SemLogger().Pipes()
-	txId := "schema-semlogger"
+	txId := "semlogger"
 	if len(pipes) > 0 {
 		t.lastTx = txId
 	}
+	// TODO handler binding
 
 	// add to the queue
 	t.outbox <- func() {

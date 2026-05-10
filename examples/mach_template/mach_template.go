@@ -165,6 +165,8 @@ type TemplateHandlers struct {
 	Mach *am.Machine
 }
 
+var _ = ss.Foo
+
 func (h *TemplateHandlers) FooState(e *am.Event) {
 	ctx := h.Mach.NewStateCtx(ss.Bar)
 
@@ -179,10 +181,14 @@ func (h *TemplateHandlers) FooState(e *am.Event) {
 	})
 }
 
+var _ = ss.Bar
+
 func (h *TemplateHandlers) BarExit(e *am.Event) bool {
 	// accept de-activation only if Baz happened 10x more
 	return h.Mach.Tick(ss.Baz) > h.Mach.Tick(ss.Bar)*10
 }
+
+var _ = ss.Baz
 
 func (h *TemplateHandlers) BazState(e *am.Event) {
 	args := ParseArgs(e.Args)
@@ -204,17 +210,23 @@ func (h *TemplateHandlers) BazState(e *am.Event) {
 	})
 }
 
+var _ = ss.BazDone
+
 func (h *TemplateHandlers) BazDoneState(e *am.Event) {
 	// new transition (will probably be canceled)
 	// traced mutation
 	h.Mach.EvRemove1(e, ss.Bar, nil)
 }
 
+var _ = ss.Channel
+
 func (h *TemplateHandlers) ChannelEnter(e *am.Event) bool {
 	args := ParseArgs(e.Args)
 	// only buffered channel can pass
 	return args != nil && cap(args.ReturnCh) > 0
 }
+
+var _ = ss.Channel
 
 func (h *TemplateHandlers) ChannelState(e *am.Event) {
 	// no validation needed

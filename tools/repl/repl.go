@@ -79,6 +79,8 @@ func New(ctx context.Context, id string) (*Repl, error) {
 
 // ///// ///// /////
 
+var _ = ss.Start
+
 func (r *Repl) StartEnter(e *am.Event) bool {
 	return len(r.Addrs) > 0
 }
@@ -101,6 +103,8 @@ func (r *Repl) StartState(e *am.Event) {
 
 	r.Mach.Add1(ss.Connecting, nil)
 }
+
+var _ = ss.Connecting
 
 func (r *Repl) ConnectingEnter(e *am.Event) bool {
 	return len(r.rpcClients) > 0
@@ -133,6 +137,8 @@ func (r *Repl) ConnectingExit(e *am.Event) bool {
 	return true
 }
 
+var _ = ss.RpcConn
+
 func (r *Repl) RpcConnEnter(e *am.Event) bool {
 	return e.Transition().Mutation.Source != nil
 }
@@ -144,6 +150,8 @@ func (r *Repl) RpcConnState(e *am.Event) {
 	r.Mach.Add1(ss.ConnectedFully, nil)
 }
 
+var _ = ss.RpcDisconn
+
 func (r *Repl) RpcDisconnEnter(e *am.Event) bool {
 	return e.Transition().Mutation.Source != nil
 }
@@ -154,6 +162,8 @@ func (r *Repl) RpcDisconnState(e *am.Event) {
 	r.Mach.Remove1(ss.Connected, nil)
 	r.Mach.Remove1(ss.ConnectedFully, nil)
 }
+
+var _ = ss.ReplMode
 
 func (r *Repl) ReplModeState(e *am.Event) {
 	ctx := r.Mach.NewStateCtx(ss.ReplMode)
@@ -208,6 +218,8 @@ func (r *Repl) ReplModeState(e *am.Event) {
 		}
 	}()
 }
+
+var _ = ss.CmdAdd
 
 func (r *Repl) CmdAddEnter(e *am.Event) bool {
 	args := ParseArgs(e.Args)
@@ -268,6 +280,8 @@ func (r *Repl) CmdAddState(e *am.Event) {
 	r.Print(res.String())
 }
 
+var _ = ss.CmdRemove
+
 func (r *Repl) CmdRemoveEnter(e *am.Event) bool {
 	args := ParseArgs(e.Args)
 
@@ -326,6 +340,8 @@ func (r *Repl) CmdRemoveState(e *am.Event) {
 	res := mach.Remove(args.States, mutArgs)
 	r.Print(res.String())
 }
+
+var _ = ss.CmdGroupAdd
 
 func (r *Repl) CmdGroupAddEnter(e *am.Event) bool {
 	args := ParseArgs(e.Args)
@@ -391,6 +407,8 @@ func (r *Repl) CmdGroupAddState(e *am.Event) {
 		Canceled: %d`,
 		se, sq, sc)
 }
+
+var _ = ss.CmdGroupRemove
 
 func (r *Repl) CmdGroupRemoveEnter(e *am.Event) bool {
 	args := ParseArgs(e.Args)
@@ -459,6 +477,8 @@ func (r *Repl) CmdGroupRemoveState(e *am.Event) {
 		Canceled: %d`,
 		se, sq, sc)
 }
+
+var _ = ss.ListMachines
 
 func (r *Repl) ListMachinesEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
@@ -583,6 +603,8 @@ func (r *Repl) ListMachinesState(e *am.Event) {
 	retCh <- ret
 }
 
+var _ = ss.ConnectedFully
+
 func (r *Repl) ConnectedFullyEnter(e *am.Event) bool {
 	// enter only if all ready
 	conns := 0
@@ -625,6 +647,8 @@ func (r *Repl) ConnectedFullyExit(e *am.Event) bool {
 	return conns == 0 && conns == len(r.rpcClients)
 }
 
+var _ = ss.Disconnecting
+
 func (r *Repl) DisconnectingState(e *am.Event) {
 	ctx := r.Mach.NewStateCtx(ss.Disconnecting)
 
@@ -645,6 +669,8 @@ func (r *Repl) DisconnectingState(e *am.Event) {
 	}()
 }
 
+var _ = ss.Disconnected
+
 func (r *Repl) DisconnectedState(e *am.Event) {
 	for _, c := range r.rpcClients {
 		if c == nil {
@@ -653,6 +679,8 @@ func (r *Repl) DisconnectedState(e *am.Event) {
 		c.Stop(context.Background(), e, false)
 	}
 }
+
+var _ = ss.Connected
 
 func (r *Repl) ConnectedState(e *am.Event) {
 	r.Mach.Remove1(ss.Connecting, nil)
@@ -681,6 +709,8 @@ func (r *Repl) ConnectedExit(e *am.Event) bool {
 	return conns == 0
 }
 
+var _ = ss.AddrChanged
+
 func (r *Repl) AddrChangedEnter(e *am.Event) bool {
 	return len(ParseArgs(e.Args).Addrs) > 0
 }
@@ -702,6 +732,8 @@ func (r *Repl) AddrChangedState(e *am.Event) {
 		mach.Add(S{ss.Start, ss.Connecting}, nil)
 	}()
 }
+
+var _ = ss.ErrNetwork
 
 func (r *Repl) ErrNetworkState(e *am.Event) {
 	mut := e.Mutation()
@@ -817,7 +849,8 @@ func (r *Repl) newRpcClient(addr, idSuffix string) (*arpc.Client, error) {
 	// empty schema RPC client (`rc-WDHASH-0` for 1st client) TODO what?
 	id := strings.Replace(r.Mach.Id(), "repl-", "", 1) + "-" + idSuffix
 	opts := &arpc.ClientOpts{
-		Parent: r.Mach,
+		Parent:       r.Mach,
+		DebugDisable: true,
 	}
 	if len(parsed) > 1 {
 		opts.WebSocket = parsed[1]
@@ -912,11 +945,14 @@ func (r *Repl) newCompletionFunc(complete completionFunc) completionFunc {
 	return func(
 		cmd *cobra.Command, args []string, toComplete string,
 	) ([]string, cobra.ShellCompDirective) {
+		resetArrFlags(nil)
 		if r.Mach.Not1(ss.Connected) {
 			r.PrintMsg("not connected")
 			return []string{}, cobra.ShellCompDirectiveNoFileComp
 		}
-		return complete(cmd, args, toComplete)
+		ret1, ret2 := complete(cmd, args, toComplete)
+		resetArrFlags(nil)
+		return ret1, ret2
 	}
 }
 
@@ -1129,12 +1165,11 @@ func (r *Repl) completeMach(
 	var resources []string
 
 	if len(args) == 0 {
-		resources = make([]string, len(r.rpcClients))
-		for i, c := range r.rpcClients {
-			if c == nil {
+		for _, c := range r.rpcClients {
+			if c == nil || c.NetMach == nil {
 				continue
 			}
-			resources[i] = c.NetMach.RemoteId()
+			resources = append(resources, c.NetMach.RemoteId())
 		}
 		// . is the first connected machine
 		resources = append(resources, ".")

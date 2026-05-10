@@ -18,21 +18,22 @@ type StatesDef struct {
 
 // Schema represents all relations and properties of States.
 var Schema = am.Schema{
-	"ProcessingFile": {
-		Remove: am.S{"FileProcessed"},
+	ss.ProcessingFile: {
+		Remove: am.S{ss.FileProcessed},
 	},
-	"FileProcessed": {
-		Remove: am.S{"ProcessingFile"},
+	ss.FileProcessed: {
+		Remove: am.S{ss.ProcessingFile},
 	},
-	"InProgress": {
+	ss.InProgress: {
 		Auto:    true,
-		Require: am.S{"ProcessingFile"},
+		Require: am.S{ss.ProcessingFile},
 	},
 }
 
 // EXPORTS
 
 var (
+	ss = am.NewStates(StatesDef{})
 	// States contains all the states for the machine.
-	States = am.NewStates(StatesDef{})
+	States = ss
 )

@@ -231,6 +231,8 @@ func NewSupervisor(
 
 // ///// ///// /////
 
+var _ = ssS.ErrWorker
+
 func (s *Supervisor) ErrWorkerState(e *am.Event) {
 	// remove err as handled, if the last err
 	if !s.Mach.WillBe1(ssS.Exception) {
@@ -267,14 +269,13 @@ func (s *Supervisor) ErrWorkerState(e *am.Event) {
 
 // TODO ErrPool
 
-func (s *Supervisor) StartEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
-	return a != nil && a.PublicAddr != "" && a.LocalAddr != ""
-}
+var _ = ssS.ClientConnected
 
 func (s *Supervisor) ClientConnectedState(e *am.Event) {
 	s.Mach.Remove1(ssS.ClientConnected, nil)
 }
+
+var _ = ssS.ClientDisconnected
 
 func (s *Supervisor) ClientDisconnectedEnter(e *am.Event) bool {
 	a := arpc.ParseArgs(e.Args)
@@ -291,6 +292,13 @@ func (s *Supervisor) ClientDisconnectedState(e *am.Event) {
 	}
 	srv.Stop(e, true)
 	delete(s.PublicRpcs, addr)
+}
+
+var _ = ssS.Start
+
+func (s *Supervisor) StartEnter(e *am.Event) bool {
+	a := ParseArgs(e.Args)
+	return a != nil && a.PublicAddr != "" && a.LocalAddr != ""
 }
 
 func (s *Supervisor) StartState(e *am.Event) {
@@ -380,6 +388,8 @@ func (s *Supervisor) StartEnd(e *am.Event) {
 	}
 }
 
+var _ = ssS.ForkWorker
+
 func (s *Supervisor) ForkWorkerEnter(e *am.Event) bool {
 	return len(s.workers) < s.Max
 }
@@ -397,7 +407,7 @@ func (s *Supervisor) ForkWorkerState(e *am.Event) {
 	argsOut := &A{Bootstrap: boot}
 
 	// start connection-bootstrap machine
-	res := boot.Mach.Add1(states.BootstrapStates.Start, nil)
+	res := boot.Mach.Add1(ssB.Start, nil)
 	if res != am.Executed || boot.Mach.IsErr() {
 		_ = AddErrWorker(e, s.Mach, ErrWorkerConn, Pass(argsOut))
 		return
@@ -420,6 +430,8 @@ func (s *Supervisor) ForkWorkerState(e *am.Event) {
 		s.Mach.Add1(ssS.ForkingWorker, Pass(argsOut))
 	}()
 }
+
+var _ = ssS.ForkingWorker
 
 func (s *Supervisor) ForkingWorkerEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
@@ -508,6 +520,8 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 	}()
 }
 
+var _ = ssS.WorkerConnected
+
 func (s *Supervisor) WorkerConnectedEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	return a != nil && a.LocalAddr != ""
@@ -559,6 +573,8 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 		s.Mach.Add1(ssS.WorkerForked, Pass(&argsOut))
 	}()
 }
+
+var _ = ssS.WorkerForked
 
 func (s *Supervisor) WorkerForkedEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
@@ -618,6 +634,8 @@ func (s *Supervisor) WorkerForkedState(e *am.Event) {
 	s.Mach.Add1(ssS.PoolReady, nil)
 }
 
+var _ = ssS.KillingWorker
+
 func (s *Supervisor) KillingWorkerEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	return a != nil && a.LocalAddr != ""
@@ -655,6 +673,8 @@ func (s *Supervisor) KillingWorkerState(e *am.Event) {
 	s.Mach.Add1(ssS.WorkerKilled, Pass(argsOut))
 }
 
+var _ = ssS.WorkerKilled
+
 func (s *Supervisor) WorkerKilledEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	return a != nil && a.LocalAddr != ""
@@ -670,6 +690,8 @@ func (s *Supervisor) WorkerKilledState(e *am.Event) {
 	s.Mach.Remove1(ssS.PoolReady, nil)
 }
 
+var _ = ssS.PoolReady
+
 func (s *Supervisor) PoolReadyEnter(e *am.Event) bool {
 	// TODO timeouts in tests
 	return len(s.readyWorkers()) >= s.min()
@@ -678,6 +700,8 @@ func (s *Supervisor) PoolReadyEnter(e *am.Event) bool {
 func (s *Supervisor) PoolReadyExit(e *am.Event) bool {
 	return len(s.readyWorkers()) < s.min()
 }
+
+var _ = ssS.Heartbeat
 
 func (s *Supervisor) HeartbeatState(e *am.Event) {
 	// TODO detect stuck NormalizingPool
@@ -770,6 +794,8 @@ func (s *Supervisor) HeartbeatState(e *am.Event) {
 	}()
 }
 
+var _ = ssS.NormalizingPool
+
 func (s *Supervisor) NormalizingPoolState(e *am.Event) {
 	ctx := s.Mach.NewStateCtx(ssS.NormalizingPool)
 	s.normalizeStart = time.Now()
@@ -844,6 +870,8 @@ func (s *Supervisor) NormalizingPoolState(e *am.Event) {
 	}()
 }
 
+var _ = ssS.ProvideWorker
+
 func (s *Supervisor) ProvideWorkerEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
 	return a.WorkerRpcId != "" && a.SuperRpcId != ""
@@ -894,6 +922,8 @@ func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 	}()
 }
 
+var _ = ssS.ListWorkers
+
 func (s *Supervisor) ListWorkersEnter(e *am.Event) bool {
 	ch := ParseArgs(e.Args).WorkersCh
 	// require a buffered channel
@@ -917,6 +947,8 @@ func (s *Supervisor) ListWorkersState(e *am.Event) {
 		args.WorkersCh <- slices.Collect(maps.Values(s.workers))
 	}
 }
+
+var _ = ssS.SetWorker
 
 func (s *Supervisor) SetWorkerEnter(e *am.Event) bool {
 	return ParseArgs(e.Args).WorkerAddr != ""
