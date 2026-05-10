@@ -1,14 +1,23 @@
 package visualizer
 
 import (
+	"bytes"
 	"context"
+	"encoding/xml"
 	"errors"
+	"fmt"
 	"log/slog"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	merascii "github.com/AlexanderGrooff/mermaid-ascii/pkg/sequence"
+	"github.com/alitto/pond/v2"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 	"oss.terrastruct.com/d2/d2graph"
 	"oss.terrastruct.com/d2/d2layouts/d2dagrelayout"
 	"oss.terrastruct.com/d2/d2lib"
@@ -17,22 +26,28 @@ import (
 	d2log "oss.terrastruct.com/d2/lib/log"
 	"oss.terrastruct.com/d2/lib/textmeasure"
 
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
-
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+	dbgtypes "github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
 var ErrEmptyTx = errors.New("empty tx")
 
 type Transition struct {
-	Tx *dbg.DbgMsgTx
+	Tx         *dbg.DbgMsgTx
+	PrevTx     *dbg.DbgMsgTx
+	TxParsed   *dbgtypes.MsgTxParsed
+	StateTrace []*dbgtypes.StateTraceItem
+	Log        *slog.Logger
 }
 
-// D2 will generate a D2 sequence diagram and an SVG of a given transition.
+var p = message.NewPrinter(language.English)
+
+// D2 will generate a D2 sequence diagram and an svg of a given transition.
 func (t *Transition) D2(
-	ctx context.Context, log *slog.Logger, statesIndex am.S,
+	ctx context.Context, statesIndex am.S,
 ) (string, []byte, error) {
 	// TODO accept prev tx, show activity from prev tx
 
@@ -40,19 +55,88 @@ func (t *Transition) D2(
 		return "", nil, ErrEmptyTx
 	}
 
-	// TODO extract, add stats, time, source, add machine time
+	// TODO extract
+	//  - add stack trace
+	//  - bg color like mach class
+	//  - mark handler ID on called handlers
+	//  - mark ticked multi states
+
+	// build fragments
+
+	info := t.info(statesIndex)
+	anyStep, steps := t.steps(statesIndex)
+	states := t.funcName(t.PrevTx, statesIndex, anyStep)
+	statesAfter := t.funcName(t.Tx, statesIndex, anyStep)
+
+	// generate
+
+	txtFull, svg, err := t.d2Gen(ctx, steps, info, states, statesAfter)
+	if err != nil {
+		return "", nil, err
+	}
+
+	// dump.Println(parts)
+
+	return txtFull, []byte(svg), err
+}
+
+func (t *Transition) info(statesIndex am.S) string {
 	info := ""
 	info += "**[" + t.Tx.Type.String() + "] " +
 		utils.J(t.Tx.CalledStateNames(statesIndex)) + "**\n\n"
-	info += "- mach://" + t.Tx.MachineID + "/" + t.Tx.ID + "\n"
+	info += fmt.Sprintf("- [%s](%s)\n", t.Tx.Url(), t.Tx.Url())
+
+	// result
+	if t.Tx.Accepted {
+		info += "- Executed "
+	} else {
+		info += "- Canceled "
+	}
+	info += p.Sprintf("(added: %d, removed: %d, touched: %d)\n",
+		len(t.TxParsed.StatesAdded), len(t.TxParsed.StatesRemoved),
+		len(t.TxParsed.StatesTouched),
+	)
+
+	// auto
+	if t.Tx.IsAuto {
+		info += "- Auto transition "
+		if !t.Tx.IsIdx(t.Tx.CalledStatesIdxs) && t.Tx.Accepted {
+			info += " (partially accepted)"
+		}
+		info += "\n"
+	}
+
+	// mach time
+	info += p.Sprintf("- Mach time +%v: t%v -> t%v\n",
+		t.TxParsed.TimeDiff,
+		t.TxParsed.TimeSum-t.TxParsed.TimeDiff,
+		t.TxParsed.TimeSum)
 	info += "- " + t.Tx.Time.UTC().Format(time.RFC3339Nano) + "\n"
 
+	// state trace
+	if len(t.StateTrace) > 0 {
+		info += "- State Trace:\n"
+		for _, trace := range t.StateTrace {
+			info += p.Sprintf("  - [%s](%s) t%v\n",
+				strings.ReplaceAll(strings.ReplaceAll(trace.Label,
+					"[::b]", ""), "[::-]", ""),
+				trace.Source.StringBase(),
+				trace.Source.MachTime,
+			)
+		}
+	}
+	info = strings.ReplaceAll(strings.ReplaceAll(info,
+		"\n", "\n\t"),
+		"|", "")
+	return info
+}
+
+func (t *Transition) steps(statesIndex am.S) (bool, string) {
+	anyStep := false
 	steps := ""
-	touched := make(map[string]bool)
-	touchedClean := am.S{}
 	for _, s := range t.Tx.Steps {
-		line := strings.Split(s.StringFromIndex(statesIndex), " ")
-		styles := []string{}
+		raw := strings.ReplaceAll(s.StringFromIndex(statesIndex), "**", "")
+		line := strings.Split(raw, " ")
 		op := ""
 
 		switch len(line) {
@@ -60,6 +144,9 @@ func (t *Transition) D2(
 		// "activate Requesting"
 		case 2:
 			op = line[0]
+			if op == "called" {
+				continue
+			}
 			state := line[1]
 			// handle "handler FooState" -> Foo
 			if op == "handler" {
@@ -69,13 +156,16 @@ func (t *Transition) D2(
 			} else {
 				steps += state + " -> " + state + ": " + line[0]
 			}
-			touched[state] = true
+			if state == am.StateAny {
+				anyStep = true
+			}
 
 		// "Foo require Bar"
 		case 3:
 			steps += line[0] + " -> " + line[2] + ": " + line[1]
-			touched[line[0]] = true
-			touched[line[2]] = true
+			if line[0] == am.StateAny || line[2] == am.StateAny {
+				anyStep = true
+			}
 			op = line[1]
 
 		default:
@@ -83,76 +173,89 @@ func (t *Transition) D2(
 			continue
 		}
 
-		// line style TODO extract, use enum
+		// line style
+		class := ""
 		switch op {
 		case "handler":
-			styles = append(styles, `style.stroke: "#2596be"`)
+			class = "handler"
 		case "requested":
 			fallthrough
 		case "require":
-			styles = append(styles, "style.stroke: lightblue")
+			class = "req"
 		case "activate":
 			fallthrough
 		case "add":
-			styles = append(styles, "style.stroke: green")
+			class = "add"
 		case "deactivate":
 			fallthrough
 		case "deactivate-passive":
 			fallthrough
 		case "remove":
-			styles = append(styles, "style.stroke: orange")
+			class = "rem"
 		case "cancel":
-			styles = append(styles, "style.stroke: red", "style.stroke-width: 5")
+			class = "cancel"
 		}
-		if len(styles) > 0 {
-			steps += " {\n\t" + strings.Join(styles, "\n\t") + "\n}\n"
+		if class != "" {
+			steps += " {\n\tclass: " + class + "\n}\n"
 		}
 
 		steps += "\n"
 	}
+	steps = strings.ReplaceAll(steps, "*", "")
+	return anyStep, steps
+}
 
-	// clean up
-	for s := range touched {
-		touchedClean = append(touchedClean, strings.ReplaceAll(s, "*", ""))
-	}
-
+func (t *Transition) funcName(
+	tx *dbg.DbgMsgTx, statesIndex am.S, anyStep bool,
+) string {
 	states := ""
-	for _, state := range slices.Concat(statesIndex, am.S{am.StateAny}) {
-		if !slices.Contains(touchedClean, state) {
+	for idx, state := range slices.Concat(statesIndex, am.S{am.StateAny}) {
+		if !slices.Contains(t.TxParsed.StatesTouched, idx) &&
+			!(anyStep && state == am.StateAny) {
+
 			continue
 		}
-		states += state + ".style: {stroke: grey}\n"
-		// TODO add multi, called, activity from prev tx
+		class := "; state"
+		if slices.Contains(t.Tx.CalledStatesIdxs, idx) {
+			class += "; called"
+		}
 		switch {
 		case state == am.StateStart:
-			if t.Tx.Is1(statesIndex, state) {
-				states += state + ".class: _1s\n"
+			if tx != nil && tx.Is1(statesIndex, state) {
+				states += state + ".class: [_1s" + class + "]\n"
 			} else {
-				states += state + ".class: _0s\n"
+				states += state + ".class: [_0s" + class + "]\n"
 			}
 		case state == am.StateReady:
-			if t.Tx.Is1(statesIndex, state) {
-				states += state + ".class: _1r\n"
+			if tx != nil && tx.Is1(statesIndex, state) {
+				states += state + ".class: [_1r" + class + "]\n"
 			} else {
-				states += state + ".class: _0r\n"
+				states += state + ".class: [_0r" + class + "]\n"
 			}
-		case t.Tx.Is1(statesIndex, state):
+		case tx != nil && tx.Is1(statesIndex, state):
 			if IsStateInherited(state, statesIndex) {
-				states += state + ".class: _1i\n"
+				states += state + ".class: [_1i" + class + "]\n"
 			} else {
-				states += state + ".class: _1\n"
+				states += state + ".class: [_1" + class + "]\n"
 			}
 		default:
 			if IsStateInherited(state, statesIndex) {
-				states += state + ".class: _0i\n"
+				states += state + ".class: [_0i" + class + "]\n"
 			} else {
-				states += state + ".class: _0\n"
+				states += state + ".class: [_0" + class + "]\n"
 			}
 		}
 	}
+	return states
+}
 
-	// D2 TODO style for states
-	txt := utils.Sp(`
+func (t *Transition) d2Gen(
+	ctx context.Context, steps string, info string, states string,
+	statesAfter string,
+) (string, string, error) {
+	// D2
+
+	txtFull := utils.Sp(`
 		shape: sequence_diagram
 		
 		%s
@@ -167,16 +270,107 @@ func (t *Transition) D2(
 		
 		%s
 		
-		`, d2Header, strings.ReplaceAll(strings.ReplaceAll(info,
-		"\n", "\n\t"),
-		"|", ""),
-		states,
-		strings.ReplaceAll(steps, "*", ""))
+		`, d2Header, info, states, steps,
+	)
 
-	// svg
-	svg, err := t.d2Svg(ctx, txt, log)
+	// svg (multi-part)
+	stepsParts := strings.Split(strings.Trim(steps, "\n"), "\n\n")
+	pool := pond.NewPool(10)
+	group := pool.NewGroupContext(ctx)
+	// TODO config, extract
+	stepsPerPart := 15
+	svgs := make([]string, 2+int(math.Ceil(
+		float64(len(stepsParts))/float64(stepsPerPart))))
+	mx := sync.Mutex{}
 
-	return txt, svg, err
+	// START
+	group.SubmitErr(func() error {
+		txtFirst := utils.Sp(`
+		shape: sequence_diagram
+		
+		%s
+		explanation: |md
+			%s
+		| {
+			near: top-center
+			style.font-size: 28
+		}
+		
+		%s
+		
+		`, d2Header, info, states)
+		svg, err := t.d2Svg(ctx, txtFirst, t.Log)
+		if err != nil {
+			return err
+		}
+		mx.Lock()
+		defer mx.Unlock()
+		svgs[0] = string(svg)
+
+		return nil
+	})
+
+	// STEPS
+	for i := 0; i < len(stepsParts); i += stepsPerPart {
+		group.SubmitErr(func() error {
+			part := stepsParts[i:min(i+stepsPerPart, len(stepsParts))]
+			partSteps := strings.Join(part, "\n\n")
+			if partSteps == "" {
+				return nil
+			}
+			partTxt := utils.Sp(`
+				shape: sequence_diagram
+				
+				%s
+				
+				%s
+				
+				%s
+				
+				`, d2Header, states, partSteps)
+			svg, err := t.d2Svg(ctx, partTxt, t.Log)
+			if err != nil {
+				return err
+			}
+			mx.Lock()
+			defer mx.Unlock()
+			svgs[i/stepsPerPart+1] = string(svg)
+
+			return nil
+		})
+	}
+
+	// END
+	group.SubmitErr(func() error {
+		txtLast := utils.Sp(`
+		shape: sequence_diagram
+		
+		%s
+		
+		%s
+		`, d2Header, statesAfter)
+		svg, err := t.d2Svg(ctx, txtLast, t.Log)
+		if err != nil {
+			return err
+		}
+		mx.Lock()
+		defer mx.Unlock()
+		svgs[len(svgs)-1] = string(svg)
+
+		return nil
+	})
+
+	err := group.Wait()
+	if err != nil {
+		return "", "", err
+	}
+
+	svg, err := mergeSvgs(ctx, svgs)
+	if err != nil {
+		return "", "", err
+	}
+
+	return txtFull, svg, nil
 }
 
 func (t *Transition) d2Svg(
@@ -186,8 +380,10 @@ func (t *Transition) d2Svg(
 	ruler, _ := textmeasure.NewRuler()
 	ctx = d2log.With(ctx, log)
 	diagram, _, err := d2lib.Compile(ctx, diag, &d2lib.CompileOptions{
-		Ruler:          ruler,
-		LayoutResolver: layoutResolver,
+		Ruler: ruler,
+		LayoutResolver: func(engine string) (d2graph.LayoutGraph, error) {
+			return d2dagrelayout.DefaultLayout, nil
+		},
 	}, &d2svg.RenderOpts{})
 	if err != nil {
 		return nil, err
@@ -279,10 +475,176 @@ func (t *Transition) Mermaid(statesIndex am.S) (string, string, error) {
 
 // ///// ///// /////
 
-// ///// MISC
+// ///// SVG merge
 
 // ///// ///// /////
 
-func layoutResolver(engine string) (d2graph.LayoutGraph, error) {
-	return d2dagrelayout.DefaultLayout, nil
+// svg represents the root svg element to extract attributes and inner content
+type svg struct {
+	XMLName xml.Name `xml:"svg"`
+	Width   string   `xml:"width,attr"`
+	Height  string   `xml:"height,attr"`
+	ViewBox string   `xml:"viewBox,attr"`
+	Content string   `xml:",innerxml"` // Grabs everything inside the <svg> tags
+}
+
+// parseDimension removes common suffixes and converts to float
+func parseDimension(dim string) float64 {
+	dim = strings.TrimSuffix(strings.TrimSpace(dim), "px")
+	val, _ := strconv.ParseFloat(dim, 64)
+	return val
+}
+
+// getDimensions tries to figure out the width and height of an svg
+func getDimensions(svg *svg) (float64, float64) {
+	w, h := parseDimension(svg.Width), parseDimension(svg.Height)
+
+	// If width/height aren't explicitly set, fallback to the viewBox
+	if w == 0 || h == 0 {
+		parts := strings.Fields(svg.ViewBox)
+		if len(parts) >= 4 {
+			w, _ = strconv.ParseFloat(parts[2], 64)
+			h, _ = strconv.ParseFloat(parts[3], 64)
+		}
+	}
+	return w, h
+}
+
+// mergeSvgs takes a slice of svg strings and stacks them
+func mergeSvgs(ctx context.Context, svgData []string) (string, error) {
+	// Helper struct to hold parsed data and viewBox coordinates
+	type parsedSVG struct {
+		svg  svg
+		w    float64
+		h    float64
+		minX float64
+		minY float64
+		vbW  float64
+		vbH  float64
+	}
+
+	parsedByIndex := make([]*parsedSVG, len(svgData))
+	pool := pond.NewPool(10)
+	group := pool.NewGroupContext(ctx)
+	mx := sync.Mutex{}
+
+	// 1. Parse all SVGs and extract dimensions and viewBoxes
+	for i, data := range svgData {
+		if data == "" {
+			continue
+		}
+		i, data := i, data
+		group.SubmitErr(func() error {
+			var s svg
+			err := xml.Unmarshal([]byte(data), &s)
+			if err != nil {
+				return fmt.Errorf("failed to parse svg: %w", err)
+			}
+
+			w, h := getDimensions(&s)
+
+			// Clean and parse the viewBox string to allow us to do math on it
+			cleanVB := strings.ReplaceAll(s.ViewBox, ",", " ")
+			var minX, minY, vbW, vbH float64
+			_, err = fmt.Sscanf(cleanVB, "%f %f %f %f", &minX, &minY, &vbW, &vbH)
+			if err != nil {
+				// Fallback if viewBox parsing fails or is missing
+				minX, minY, vbW, vbH = 0, 0, w, h
+			}
+
+			mx.Lock()
+			parsedByIndex[i] = &parsedSVG{
+				svg:  s,
+				w:    w,
+				h:    h,
+				minX: minX,
+				minY: minY,
+				vbW:  vbW,
+				vbH:  vbH,
+			}
+			mx.Unlock()
+
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return "", err
+	}
+
+	var parsed []parsedSVG
+	var maxWidth float64
+	var totalHeight float64
+	for _, p := range parsedByIndex {
+		if p == nil {
+			continue
+		}
+		parsed = append(parsed, *p)
+		if p.w > maxWidth {
+			maxWidth = p.w
+		}
+		totalHeight += p.h
+	}
+
+	// 2. Calculate the trimmed dimensions and write the outer wrapper
+	// Every join has two sides. (len(parsed) - 1) joins = that many * 200px
+	// removed.
+	// TODO config
+	trimAmount := 100.0
+	numJoins := float64(len(parsed) - 1)
+	if numJoins < 0 {
+		numJoins = 0
+	}
+	trimmedTotalHeight := totalHeight - (numJoins * (trimAmount * 2))
+
+	var buf bytes.Buffer
+	buf.WriteString(fmt.Sprintf(
+		"<svg xmlns=\"http://www.w3.org/2000/svg\" "+
+			"viewBox=\"0 0 %g %g\" width=\"%g\" height=\"%g\">\n",
+		maxWidth, trimmedTotalHeight, maxWidth, trimmedTotalHeight))
+
+	// 3. Insert each parsed svg, trimming joining edges and offsetting Y
+	currentY := 0.0
+	for i, p := range parsed {
+		trimTop := 0.0
+		trimBottom := 0.0
+
+		// If it's not the first svg, trim the top
+		if i > 0 {
+			trimTop = trimAmount
+		}
+		// If it's not the last svg, trim the bottom
+		if i < len(parsed)-1 {
+			trimBottom = trimAmount
+		}
+		// fix double header states
+		if i == 0 {
+			// TODO config
+			trimBottom = 260
+		}
+
+		// Calculate the new ViewBox and Height for this specific nested piece
+		newMinY := p.minY + trimTop
+		newVbH := p.vbH - trimTop - trimBottom
+		newH := p.h - trimTop - trimBottom
+
+		// Safety check to prevent negative heights if an svg is very small
+		if newVbH < 0 {
+			newVbH = 0
+		}
+		if newH < 0 {
+			newH = 0
+		}
+
+		buf.WriteString(fmt.Sprintf(
+			`  <svg y="%g" width="%g" height="%g" viewBox="%g %g %g %g">`+"\n",
+			currentY, p.w, newH, p.minX, newMinY, p.vbW, newVbH))
+		buf.WriteString(p.svg.Content)
+		buf.WriteString("\n  </svg>\n")
+
+		// Move the Y cursor down by the visible (trimmed) height of the current svg
+		currentY += newH
+	}
+
+	buf.WriteString("</svg>")
+	return buf.String(), nil
 }
