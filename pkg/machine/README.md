@@ -219,6 +219,9 @@ Subscriptions do not allocate goroutines and channels are reused.
 // wait for Foo to have a tick increased by 2
 <-mach.WhenTicks("Foo", 2, nil)
 
+// wait for next time Foo is active (even if currently active)
+<-mach.WhenNextActive("Foo", 2, nil)
+
 // wait for a mutation to execute
 <-mach.WhenQueue(mach.Add1("Foo", nil))
 

@@ -77,8 +77,12 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 - **mouse support**: most elements can be clicked and scrolled.
 - **SSH access**: an instance of the debugger can be shared directly from an edge server via a built-in SSH server.
 - **log rotation**: older entries will be automatically discarded in order.
+- **URLs and history**: URL support for locations and history
+- **MCP server**: the debugger can be controlled from an AI model, including TUI snapshots
+- **REPL access**: the debugger can be controlled from a readline REPL
 - **log reader**: extract entries from **LogOps** and **SemLogger** into a dedicated pane.
   - **source event**: navigate to source events, internal or external.
+  - **state trace**: state-based equivalent of stack traces
   - **queue**: shows the full queue, queued and executed times for this mutation.
   - **handlers**: list executed handlers.
   - **contexts**: list state contexts and mach time.
@@ -90,7 +94,7 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 - **diagrams**: live machine diagram viewer and static transaction diagrams.
 
 ```bash
-Usage: am-dbg [--listen-addr LISTEN-ADDR] [--dir DIR] [--clean-on-connect] [--import-data IMPORT-DATA] [--fwd-data FWD-DATA] [--select-connected] [--select-group SELECT-GROUP] [--enable-clipboard] [--enable-mouse] [--filter-auto] [--filter-auto-canceled] [--filter-canceled] [--filter-checks] [--filter-disconn] [--filter-empty] [--filter-group] [--filter-health] [--filter-log-level FILTER-LOG-LEVEL] [--filter-queued] [--output-clients] [--output-diagrams OUTPUT-DIAGRAMS] [--output-log] [--output-tx] [--ui-ssh] [--ui-web] [--version] [--view VIEW] [--view-narrow] [--view-rain] [--view-reader] [--view-tail] [--view-timelines VIEW-TIMELINES] [--log-ops-ttl LOG-OPS-TTL] [--max-mem MAX-MEM] [--dbg-am-dbg-addr DBG-AM-DBG-ADDR] [--dbg-go-race] [--dbg-id DBG-ID] [--dbg-log-level DBG-LOG-LEVEL] [--dbg-otel] [--dbg-prof-srv DBG-PROF-SRV] [MACHURL]
+Usage: am-dbg [--listen-addr LISTEN-ADDR] [--dir DIR] [--clean-on-connect] [--import-data IMPORT-DATA] [--fwd-data FWD-DATA] [--select-connected] [--enable-clipboard] [--enable-mouse] [--filter-auto] [--filter-auto-canceled] [--filter-canceled] [--filter-checks] [--filter-disconn] [--filter-empty] [--filter-group] [--filter-health] [--filter-log-level FILTER-LOG-LEVEL] [--filter-queued] [--output-clients] [--output-diagrams OUTPUT-DIAGRAMS] [--output-diag-group OUTPUT-DIAG-GROUP] [--output-diag-tx OUTPUT-DIAG-TX] [--output-graph] [--output-log] [--output-tx] [--ui-mcp] [--ui-ssh] [--ui-web] [--version] [--view VIEW] [--view-log-wrap] [--view-narrow] [--view-rain] [--view-reader] [--view-tail] [--view-theme VIEW-THEME] [--view-timelines VIEW-TIMELINES] [--log-ops-ttl LOG-OPS-TTL] [--max-mem MAX-MEM] [--dbg-am-dbg-addr DBG-AM-DBG-ADDR] [--dbg-go-race] [--dbg-id DBG-ID] [--dbg-log-level DBG-LOG-LEVEL] [--dbg-otel] [--dbg-prof-srv DBG-PROF-SRV] [--dbg-repl] [MACHURL]
 
 Positional arguments:
   MACHURL                Machine URL to connect to
@@ -106,8 +110,6 @@ Options:
                          Forward incoming data to other instances (repeatable)
   --select-connected, -c
                          Select the newly connected machine, if no other is connected
-  --select-group SELECT-GROUP
-                         Default group to select
   --enable-clipboard     Enable clipboard support [default: true]
   --enable-mouse         Enable mouse support [default: true]
   --filter-auto          Filter automatic transitions
@@ -122,23 +124,32 @@ Options:
   --filter-log-level FILTER-LOG-LEVEL
                          Filter transitions up to this log level, 0-5 (silent-everything) [default: 2]
   --filter-queued        Filter queued transitions
-  --output-clients       Write a detailed client list into am-dbg-clients.txt inside --dir
+  --output-clients       Write a detailed client list into clients.txt inside --dir
   --output-diagrams OUTPUT-DIAGRAMS
                          Level of details for machine graph diagrams (svg, d2, mermaid) in --dir (0 off, 1-3 on) (EXPERIMENTAL)
+  --output-diag-group OUTPUT-DIAG-GROUP
+                         Only show states from the selected group (valid: hide, skip) [default: hide]
+  --output-diag-tx OUTPUT-DIAG-TX
+                         Dim states and rels unrelated to a transition (valid: called, changed, touched, relations) [default: relations]
+  --output-graph         Write the current network graph as graph.(md|mgml) inside --dir (EXPERIMENTAL)
   --output-log           Write the current log buffer to log.txt inside --dir
   --output-tx            Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir (EXPERIMENTAL) [default: true]
+  --ui-mcp               Enable MCP server on port 62626 (EXPERIMENTAL)
   --ui-ssh               Enable SSH headless mode on port --listen-addr +2 (EXPERIMENTAL)
   --ui-web               Start a web server for --dir and diagrams on --listen-addr +1 (EXPERIMENTAL) [default: true]
   --version              Print version and exit
   --view VIEW, -v VIEW   Initial view (tree-log, tree-matrix, matrix) [default: tree-log]
+  --view-log-wrap        Wrap log lines
   --view-narrow          Force a narrow view, independently of the viewport size
   --view-rain            Show the rain view
   --view-reader, -r      Show the log reader view
   --view-tail            Start from the latest tx [default: true]
+  --view-theme VIEW-THEME
+                         Color theme (dark, light) [default: dark]
   --view-timelines VIEW-TIMELINES
                          Number of timelines to show (0-2) [default: 2]
   --log-ops-ttl LOG-OPS-TTL
-                         Max time to live for logs level LogOps [default: 24h]
+                         Max time to live for logs level LogOps [default: 1h]
   --max-mem MAX-MEM      Max memory usage (in MB) to flush old transitions [default: 1000]
   --dbg-am-dbg-addr DBG-AM-DBG-ADDR
                          Debug this instance of am-dbg with another one
@@ -149,6 +160,7 @@ Options:
   --dbg-otel             Enable OpenTelemetry tracing for this instance
   --dbg-prof-srv DBG-PROF-SRV
                          Start pprof server
+  --dbg-repl             Start a REPL server in --dir
   --help, -h             display this help and exit
 ```
 

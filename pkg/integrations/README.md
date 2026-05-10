@@ -57,10 +57,50 @@ if res == am.Executed {
 }
 ```
 
-## TODO
+### TODO
 
 - recipient matching (filters similar to the REPL ones)
 - better error handling (avoid overreporting)
+
+## MCP
+
+Every state machine with typed args (including network machines) can have an MCP
+server thanks to [`mcp-go`](https://github.com/mark3labs/mcp-go). See
+[`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) for how to extend it with
+custom getters (as **asyncmachine** does not return data).
+
+```go
+import ammcp "github.com/pancsta/asyncmachine-go/pkg/integrations/mcp"
+
+// ...
+
+var mach am.Api
+
+srv, err := ammcp.New(mach, ammcp.Opts{
+    Name: "am-dbg",
+    Desc: "MCP to control the asyncmachine-go TUI debugger." +
+        " The double-line border panel is currently focused. Most features are accessible via ToggleTool.",
+    MutCallback: func(ctx context.Context) error {
+        ok := d.Mach.Eval("MCPTool", func() {
+            d.hRedrawFull(false)
+        }, ctx)
+        if !ok {
+            return am.ErrEvalTimeout
+        }
+        return nil
+    },
+    StatesInclude:  states.DebuggerGroups.Mcp,
+    StatesReadonly: states.DebuggerGroups.McpReadonly,
+    Args:           types.ARpc{},
+    ParseRpc:       types.ParseRpc,
+    StateCalls:     types.StateCalls,
+    Version:        d.params.Version,
+})
+if err != nil {
+    return nil, err
+}
+srv.Http.Start(":8753")
+```
 
 ## Status
 

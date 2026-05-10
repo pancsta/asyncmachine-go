@@ -35,8 +35,8 @@ const (
 	prefixMachines = "_machines/"
 	suffixTimes    = "/times/"
 	suffixTxs      = "/txs/"
-	// gcBatchSize is the max number of deletes per GC transaction.
-	gcBatchSize = 1000
+	// gcSize is the max number of deletes per GC transaction.
+	gcSize = 1000
 )
 
 func machineKey(machId string) []byte {
@@ -768,8 +768,8 @@ func (m *Memory) checkGc() {
 		deleted := 0
 
 		// delete in batches to stay within transaction size limits
-		for batchStart := uint64(1); batchStart <= upper; batchStart += gcBatchSize {
-			batchEnd := min(batchStart+gcBatchSize, upper+1)
+		for batchStart := uint64(1); batchStart <= upper; batchStart += gcSize {
+			batchEnd := min(batchStart+gcSize, upper+1)
 
 			err := m.Db.Update(func(txn *badger.Txn) error {
 				for id := batchStart; id < batchEnd; id++ {

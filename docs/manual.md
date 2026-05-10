@@ -616,7 +616,8 @@ also **can't block**. Arguments from the original event can be replaced with `Ev
 
 **Example** - sub-handler methods:
 
-- `hSetCursor(e *am.Event) error` (suggested)
+- `hSetCursor(ctx context.Context) error` (suggested)
+- `hSetCursor(e *am.Even) error`
 - `hListProcesses(name string) ([]string, error)`
 - `hDoFoo()`
 
@@ -626,10 +627,23 @@ handlers, without worrying about calling it from a non-handler code-path.
 // TODO more examples
 
 ```go
-d.hScrollToTx(e.SwapArgs(am.A{
+// direct pass
+ctx := mach.NewStateCtx("Foo")
+d.hScrollToTx(am.EvToCtx(ctx, e))
+
+// args replaced
+ctx := mach.NewStateCtx("Foo")
+eSub := e.SwapArgs(am.A{
     "cursorTx1":   row,
     "trimHistory": true,
-}))
+})
+d.hScrollToTx(am.EvToCtx(ctx, eSub))
+
+// def
+
+func (h *Handler) hScrollToTx(ctx context.Context) error {
+    e := am.CtxToEv(ctx)
+}
 ```
 
 ### Defining Handlers
@@ -723,6 +737,7 @@ Transition exposes the currently called, target, and previous states using:
 - [`e.Transition.ClockAfter()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.ClockAfter)
 - [`e.Transition.CalledStates()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.CalledStates)
 - [`e.Transition.Args()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.Args)
+- // TODO list TimeIndex* methods
 
 ```go
 // machine
@@ -919,6 +934,18 @@ func (d *Debugger) AnyState(e *am.Event) {
 Side effects:
 
 - using a global handler makes the "Empty" filter useless in am-dbg, as every transition always triggers a handler.
+
+### State References
+
+It's optional yet beneficial to reference each group of handlers with the state being handled, like so:
+
+```go
+// reference for jumping to schema
+var _ = ss.Foo
+
+func (h *Handlers) FooEnter(e *am.Event) bool {}
+func (h *Handlers) FooState(e *am.Event) {}
+```
 
 ## Advanced Topics
 
@@ -1925,7 +1952,7 @@ Each of them has a readme with examples:
 - [`/pkg/telemetry`](/pkg/telemetry) Telemetry exporters for dbg, metrics, traces, and logs.
 - [`/pkg/rpc`](/pkg/rpc) Remote state machines, with the same API as local ones.
 - [`/pkg/history`](/pkg/history) History tracking and traversal, including Key-Value and SQL.
-- [`/pkg/integrations`](/pkg/integrations) Integrations with NATS and JSON.
+- [`/pkg/integrations`](/pkg/integrations) Integrations for JSON, NATS, MCP.
 - [`/pkg/graph`](/pkg/graph) Directional multigraph of connected state machines.
 - [`/pkg/node`](/pkg/node) Distributed worker pools with supervisors.
 - [`/pkg/pubsub`](/pkg/pubsub) Decentralized PubSub based on libp2p gossipsub.

@@ -37,7 +37,7 @@ which implements [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming
 through a **[clock-based state-machine](/pkg/machine/README.md)**. It features [atomic transitions](/docs/manual.md#transition-lifecycle),
 [relations](/docs/manual.md#relations), [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
 [telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md), [selective distribution](/pkg/rpc/README.md#selective-distribution),
-[diagrams](/tools/cmd/am-vis/README.md), and [WASM](/docs/wasm.md) support.
+and [diagrams](/tools/cmd/am-vis/README.md) (plus support for [WASM](/docs/wasm.md) and [AI](/docs/ai.md)).
 
 As a control flow library, it decides about running of predefined bits of code (transition handlers) - their order and
 which ones to run, according to currently active states (flags). Thanks to a [novel state machine](/pkg/machine/README.md),
@@ -52,7 +52,7 @@ vector formats. It aims to create **autonomous** workflows with **organic** cont
 <div align="center" class="video">
     <a href="https://github.com/pancsta/asyncmachine-go/blob/main/tools/cmd/am-dbg/README.md">
         <img style="min-height: 820px"
-            src="https://github.com/user-attachments/assets/84613447-87dc-48da-9e76-7b4c76705fd3"
+            src="https://pancsta.github.io/assets/asyncmachine-go/video-mouse.gif?raw=true"
             alt="TUI Debugger" />
     </a>
 </div>
@@ -74,9 +74,9 @@ vector formats. It aims to create **autonomous** workflows with **organic** cont
 - breakpoint
 
 Besides the main use-case of **workflows**, it can be used for **stateful applications of any size** - daemons, UIs,
-RPC UIs, configs, bots, firewalls, synchronization consensus, games, smart graphs, microservice orchestration, robots,
-contracts, streams, DI containers, message broking, test scenarios, simulators, as well as **"real-time" systems** which
-rely on instant cancelation.
+stateful RPC UIs, configs, bots, firewalls, synchronization consensus, games, smart graphs, microservice orchestration,
+robots, contracts, streams, DI containers, message broking, test scenarios, simulators, as well as **"real-time" systems**
+which rely on instant cancelation.
 
 <div align="center">
     <a href="https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true">
@@ -144,7 +144,7 @@ if err != nil {
 
 **Handlers** - [Aspect Oriented](https://en.wikipedia.org/wiki/Aspect-oriented_programming) transition handlers.
 
-```go
+```goz
 // can Foo activate?
 func (h *Handlers) FooEnter(e *am.Event) bool {
     return true
@@ -235,7 +235,7 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 - [`/docs/diagrams.md`](/docs/diagrams.md) try to explain things visually
 - [`/examples`](/examples/README.md) show use cases and integrations
     - with [`/examples/mach_template`](/examples/mach_template) being ready for copy-paste
-    - also [Basic](/examples/basic), [CLI Daemon](/examples/cli_daemon/README.md), [aRPC](/examples/arpc),
+    - also [Basic](/examples/basic), [CLI Daemon](/examples/cli_daemon), [aRPC](/examples/arpc),
       [WASM Workflow](/examples/wasm_workflow/README.md), [TUI](/examples/tui)
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) and [`/docs/editors`](/docs/editors/README.md) will bootstrap
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) will record every detail
@@ -256,7 +256,7 @@ Other packages:
 
 - [`/pkg/rpc`](/pkg/rpc) Remote state machines, with the same API as local ones.
 - [`/pkg/history`](/pkg/history) History tracking and traversal, including Key-Value and SQL.
-- [`/pkg/integrations`](/pkg/integrations) Integrations with NATS and JSON.
+- [`/pkg/integrations`](/pkg/integrations) Integrations for JSON, NATS, MCP.
 - [`/pkg/graph`](/pkg/graph) Directional multigraph of connected state machines.
 - [`/pkg/node`](/pkg/node) Distributed worker pools with supervisors.
 - [`/pkg/pubsub`](/pkg/pubsub) Decentralized PubSub based on libp2p gossipsub.

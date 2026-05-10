@@ -26,7 +26,8 @@ All times are in UTC, methods thread-safe, and IDs deterministic.
 
 - [In-process](#in-process-history)
 - [SQL](#sql-history)
-- [Key-Value](#key-value-history)
+- [Key-Value - BoltDB](#key-value-history---boltdb)
+- [Key-Value - BadgerDB](#key-value-history---badgerdb)
 - [Columnar](#columnar-history)
 
 ### TODO
@@ -103,6 +104,7 @@ Pros:
 - lightweight
 - concurrent reads
 - no encode/decode overhead
+- works in WASM
 
 Cons:
 
@@ -113,7 +115,7 @@ Cons:
 Example:
 
 ```go
-import amhist "github.com/pancsta/asyncmachine-go/pkg/states/history"
+import amhist "github.com/pancsta/asyncmachine-go/pkg/history"
 
 // ...
 
@@ -131,7 +133,9 @@ mem, err := NewMemory(ctx, nil, mach, cfg, onErr)
 mach.Add1("A", nil)
 
 // run a query
-now := time.Now()
+now := time.Now().UTC()
+mem.Sync()
+time.Sleep(100 * time.Millisecond)
 mem.ActivatedBetween(ctx, "A", now.Add(-time.Second), now) // true
 ```
 
@@ -140,10 +144,10 @@ Benchmark:
 ```bash
 === RUN   TestTrackMany
     test_hist.go:27: rounds: 50000
-    test_hist.go:34: mach: 218.917261ms
-    test_hist.go:38: db: 218.971242ms
-    test_hist.go:63: query: 219.027448ms
---- PASS: TestTrackMany (0.22s)
+    test_hist.go:34: mach: 147.189692ms
+    test_hist.go:38: db: 147.432228ms
+    test_hist.go:65: query: 147.689852ms
+--- PASS: TestTrackMany (0.15s)
 PASS
 ```
 
@@ -177,8 +181,8 @@ Example:
 
 ```go
 import (
-    amhist "github.com/pancsta/asyncmachine-go/pkg/states/history"
-    amhistg "github.com/pancsta/asyncmachine-go/pkg/states/history/gorm"
+    amhist "github.com/pancsta/asyncmachine-go/pkg/history"
+    amhistg "github.com/pancsta/asyncmachine-go/pkg/history/gorm"
 )
 
 // ...
@@ -193,7 +197,7 @@ onErr := func(err error) {
 
 // backend and base configs
 cfg := Config{
-    Config: amhist.Config{
+    BaseConfig: amhist.Config{
         MaxRecords: 10 ^ 6,
         TrackedStates: am.S{"A", "C"},
     },
@@ -208,7 +212,9 @@ mem, err := amhistg.NewMemory(ctx, db, mach, cfg, onErr)
 
 // mutate and query
 mach.Add1("A", nil)
-now := time.Now()
+now := time.Now().UTC()
+mem.Sync()
+time.Sleep(100 * time.Millisecond)
 mem.ActivatedBetween(ctx, "A", now.Add(-time.Second), now) // true
 ```
 
@@ -217,14 +223,14 @@ Benchmark:
 ```bash
 === RUN   TestGormTrackMany
     test_hist.go:27: rounds: 50000
-    test_hist.go:34: mach: 230.361104ms
-    test_hist.go:38: db: 801.976497ms
-    test_hist.go:63: query: 802.315625ms
---- PASS: TestGormTrackMany (1.28s)
+    test_hist.go:34: mach: 189.432252ms
+    test_hist.go:38: db: 998.199453ms
+    test_hist.go:65: query: 998.957906ms
+--- PASS: TestGormTrackMany (1.02s)
 PASS
 ```
 
-## Key-Value History
+## Key-Value History - BoltDB
 
 The Key-Value store backend uses [etcd-io/bbolt](https://github.com/etcd-io/bbolt) with [vmihailenco/msgpack](https://github.com/vmihailenco/msgpack)
 and writes to a single file. For debugging there's also JSON encoding, with 2x the size.
@@ -252,8 +258,8 @@ Example:
 
 ```go
 import (
-    amhist "github.com/pancsta/asyncmachine-go/pkg/states/history"
-    amhistb "github.com/pancsta/asyncmachine-go/pkg/states/history/bbolt"
+    amhist "github.com/pancsta/asyncmachine-go/pkg/history"
+    amhistbb "github.com/pancsta/asyncmachine-go/pkg/history/bbolt"
 )
 
 // ...
@@ -268,7 +274,86 @@ onErr := func(err error) {
 
 // backend and base configs
 cfg := Config{
-    Config: amhist.Config{
+    BaseConfig: amhist.Config{
+        MaxRecords: 10 ^ 6,
+        TrackedStates: am.S{"A", "C"},
+    },
+    EncJson: true,
+}
+
+// create amhist.db
+db, err := amhistbb.NewDb("")
+defer db.Close()
+
+mem, err := amhistbb.NewMemory(ctx, db, mach, cfg, onErr)
+
+// mutate and query
+mach.Add1("A", nil)
+now := time.Now().UTC()
+mem.Sync()
+time.Sleep(100 * time.Millisecond)
+mem.ActivatedBetween(ctx, "A", now.Add(-time.Second), now) // true
+```
+
+Benchmark:
+
+```bash
+=== RUN   TestBboltTrackMany
+    test_hist.go:27: rounds: 50000
+    test_hist.go:34: mach: 140.18248ms
+    test_hist.go:38: db: 154.976653ms
+    test_hist.go:65: query: 155.065849ms
+    bbolt_test.go:121: write time: 88.05461ms
+--- PASS: TestBboltTrackMany (0.17s)
+PASS
+```
+
+## Key-Value History - BadgerDB
+
+The Key-Value store backend uses [dgraph-io/badger](https://github.com/dgraph-io/badger) with [vmihailenco/msgpack](https://github.com/vmihailenco/msgpack)
+and writes to a single file. For debugging there's also JSON encoding, with 2x the size.
+
+Pros:
+
+- instant startup
+- small binary size
+- concurrent reads
+- works in WASM
+
+Cons:
+
+- abysmal tooling [[0]](https://github.com/Warp-net/badger-gui)
+- manual pattern queries via cursor scanning
+- single DB connection only
+
+Schema:
+
+- `_machines`
+- `MyMachId1`
+  - `Times`
+  - `Transitions`
+
+Example:
+
+```go
+import (
+    amhist "github.com/pancsta/asyncmachine-go/pkg/history"
+    amhistb "github.com/pancsta/asyncmachine-go/pkg/history/badger"
+)
+
+// ...
+
+// var mach *am.Machine
+// var ctx context.Context
+
+// injected err handler
+onErr := func(err error) {
+    log.Print(err.Error())
+}
+
+// backend and base configs
+cfg := Config{
+    BaseConfig: amhist.Config{
         MaxRecords: 10 ^ 6,
         TrackedStates: am.S{"A", "C"},
     },
@@ -283,20 +368,21 @@ mem, err := amhistb.NewMemory(ctx, db, mach, cfg, onErr)
 
 // mutate and query
 mach.Add1("A", nil)
-now := time.Now()
+now := time.Now().UTC()
+mem.Sync()
+time.Sleep(100 * time.Millisecond)
 mem.ActivatedBetween(ctx, "A", now.Add(-time.Second), now) // true
 ```
 
 Benchmark:
 
 ```bash
-=== RUN   TestBboltTrackMany
+=== RUN   TestBadgerTrackMany
     test_hist.go:27: rounds: 50000
-    test_hist.go:34: mach: 227.534418ms
-    test_hist.go:42: db: 249.641323ms
-    test_hist.go:66: query: 249.81ms
-    bbolt_test.go:116: write time: 156.384972ms
---- PASS: TestBboltTrackMany (0.26s)
+    test_hist.go:34: mach: 123.825858ms
+    test_hist.go:38: db: 124.52048ms
+    test_hist.go:65: query: 124.607522ms
+--- PASS: TestBadgerTrackMany (0.17s)
 PASS
 ```
 

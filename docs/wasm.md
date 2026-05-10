@@ -68,3 +68,4 @@ replace go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp => githu
 ```
 
 - `/pkg/rpc.(*Mux)` doesn't work in WASM, every clients needs a manual RPC server created
+- `/history/bbolt` doesn't compile in WASM

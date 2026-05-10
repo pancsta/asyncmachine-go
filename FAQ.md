@@ -23,21 +23,9 @@ The same event happening many times will cause only 1 state activation until the
 Event subscription will tigger as many times as the event, while waiting followed by a new waiting can miss some
 "state instances" (those can be inferred from the state's clock).
 
-## How does asyncmachine compare to [Temporal](https://github.com/temporalio/temporal)?
-
-Temporal is an all-in-one solution with data persistence, which is its limitation. Asyncmachine doesn't hold any data by
-itself and has progressive layers, making it usable in a wide variety of use cases (e.g. asyncmachine could do workflows
-for a desktop app).
-
-## How does asyncmachine compare to [Ergo](https://github.com/ergo-services/ergo)?
-
-Ergo is a great framework, but it leans on old ideas and has web-based tooling. It also isn't natively based on state
-machines. Asyncmachine provides productivity-focused TUI tooling and rich integrations while having every component
-natively state-based (even the [code generator](/tools/generator/states/ss_generator.go)).
-
 ## Can asyncmachine be integrated with other frameworks?
 
-Yes, asyncmachine is more of a set of libraries following the same conventions, than an actual framework. It can
+Yes, asyncmachine is more of a set of libraries built on top of the same engine, not an actual framework. It can
 integrate with anything via [state-based APIs](/pkg/machine/README.md#api) or [JSON](/pkg/integrations/README.md).
 
 ## What's the overhead?
@@ -66,8 +54,7 @@ The lack of blocking allows for immediate adjustments to incoming changes and is
 
 ## What's the purpose of asyncmachine?
 
-The purpose of asyncmachine is a **total** control of the flow, in a declarative and network transparent way. It should
-allow modeling of nondeterministic logic at scale.
+To create autonomous workflows with organic control flow and stateful APIs, while maintaining total control of the flow.
 
 ## Is asyncmachine thread safe?
 

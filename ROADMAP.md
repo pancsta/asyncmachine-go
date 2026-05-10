@@ -1,21 +1,19 @@
 # Roadmap
 
-- tinygo support (loose `reflect`)
+- `reflect` optional for handlers
+- nested schemas, define a "schema tree" with groups
+- more focus on stateful contracts
+- debugger support for large schemas
 - TTL for mutations
-- live `am-vis` server
-  - more types of generated diagrams
+- `am-vis` live server, time travel, network graph viewer
 - time scheduler via the handler loop
+- new dbg protocol via semlogger
+- arguments via generics
 - security
-- less boilerplate (args, etc)
-- msgpack for aRPC
+- msgpack for aRPC / tinyGo support
 - `WhenArgs` for typed args and aRPC
 - more integrations
-- more diagrams (eg state change diagram with aRPC)
 - more type safety via codegen
-  - typesafe call signatures (args per state)
-- `go1.22` traces
-- more Otel
-- large simulation test loop
 - network security
 - shaders / SIMD
 - custom relation resolvers

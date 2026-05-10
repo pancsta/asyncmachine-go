@@ -1,11 +1,11 @@
 # Cookbook
 
-This cookbook containing numerous copy-pasta snippets of common patterns for **asyncmachine-go**; version `v0.18.5`.
+This cookbook containing numerous copy-pasta snippets of common patterns for **asyncmachine-go** (version `v0.18.5`).
 See also:
 
-- [/examples/basic](/examples/basic/basic.go)
-- [/examples/mach_template](/examples/mach_template/mach_template.go)
-- [/docs/env-configs.md](/docs/env-configs.md)
+- [`/examples/basic`](/examples/basic/basic.go)
+- [`/examples/mach_template`](/examples/mach_template/mach_template.go)
+- [`/docs/env-configs.md`](/docs/env-configs.md)
 
 <!-- TOC -->
 
@@ -65,12 +65,17 @@ See also:
   - [Block until async state is added](#block-until-async-state-is-added)
   - [Async disposal handlers](#async-disposal-handlers)
   - [Traced mutations](#traced-mutations)
+  - [Eval getter](#eval-getter)
+  - [Wait on sync state via ticks](#wait-on-sync-state-via-ticks)
 
 <!-- TOC -->
 
 ## Activation handler with negotiation
 
 ```go
+// reference for schema jumps
+var _ = ss.Name
+
 // negotiation handler
 func (h *Handlers) NameEnter(e *am.Event) bool {}
 // final handler
@@ -80,6 +85,9 @@ func (h *Handlers) NameState(e *am.Event) {}
 ## De-activation handler with negotiation
 
 ```go
+// reference for schema jumps
+var _ = ss.Name
+
 // negotiation handler
 func (h *Handlers) NameExit(e *am.Event) bool {}
 // final handler
@@ -98,6 +106,8 @@ func (h *Handlers) BarBaz(e *am.Event) {}
 ## Global negotiation handler
 
 ```go
+var _ = am.StateAny
+
 // called at the end of negotiation
 func (h *Handlers) AnyEnter(e *am.Event) bool {}
 ```
@@ -105,6 +115,8 @@ func (h *Handlers) AnyEnter(e *am.Event) bool {}
 ## Global final handler
 
 ```go
+var _ = am.StateAny
+
 // called as the last final handler
 func (h *Handlers) AnyState(e *am.Event) {}
 ```
@@ -240,6 +252,9 @@ mach, err := am.NewCommon(ctx, "mach1", ss.Schema, ss.Names(), nil, nil, &am.Opt
 
 // wait for Foo to have a tick increased by 2
 <-mach.WhenTicks("Foo", 2, nil)
+
+// wait for next time Foo is active (even if currently active)
+<-mach.WhenNextActive("Foo", 2, nil)
 
 // wait for a mutation to execute
 <-mach.WhenQueue(mach.Add1("Foo", nil))
@@ -502,11 +517,11 @@ case resp := <-req.resp:
     return resp, nil
 case err := <-req.err:
     return nil, err
-case <-mach.Ctx.Done():
-    return nil, mach.Ctx.Err()
-```
+case <-ctx.Done():
+    return nil, ctx.Err()
 
-```go
+// ...
+
 func (p *PubSub) GetPeersState(e *am.Event) {
     p.Mach.Remove1(ss.GetPeers, nil)
 
@@ -946,4 +961,13 @@ tx, err := amhelp.EvalGetter(ctx, "PrevTx", 3, mach,
     func() (*dbg.DbgMsgTx, error) {
         return d.hPrevTx(), nil
     })
+```
+
+## Wait on sync state via ticks
+
+```go
+// click more and wait for unclick
+err = amhelp.WaitForErrAll(ctx, time.Second, mach,
+    mach.WhenQueue(mach.EvAdd1(e, ss.ClickingMore, nil)),
+    mach.WhenTicks(ss.ClickingMore, am.NextInactiveIn(mach.Tick(ss.ClickingMore)), ctx))
 ```
