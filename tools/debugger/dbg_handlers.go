@@ -1303,6 +1303,14 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		}
 		d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
 
+	case types.ToolCallLog:
+		d.params.OutputCallLog = !d.params.OutputCallLog
+		if !d.params.OutputCallLog {
+			d.hCloseOutputCallLogFiles()
+		} else {
+			// process whole call log
+		}
+
 	case types.ToolTimelines:
 		switch d.Params.ViewTimelines {
 		case types.ParamsViewTimelinesNone:

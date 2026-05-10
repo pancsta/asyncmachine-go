@@ -579,6 +579,9 @@ func (d *Debugger) hInitToolbar() {
 					return "S"
 				}
 			}},
+			{id: types.ToolCallLog, label: "call-log", active: func() bool {
+				return d.params.OutputCallLog
+			}},
 		},
 
 		// row 4
