@@ -5,7 +5,7 @@
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
-## [v0.18.9](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.18.9) (2026-05-10)
+## [v0.18.9](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.18.9) (2026-05-11)
 
 - feat: release v0.18.9 [\#424](https://github.com/pancsta/asyncmachine-go/pull/424) (@pancsta)
 - feat\(am-dbg\): release am-dbg v0.18.9 [\#423](https://github.com/pancsta/asyncmachine-go/pull/423) (@pancsta)

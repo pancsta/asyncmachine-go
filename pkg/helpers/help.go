@@ -107,6 +107,7 @@ func EvAddSync(
 	ctx context.Context, e *am.Event, mach am.Api, states S, args ...am.A,
 ) am.Result {
 	res := mach.EvAdd(e, states, am.OptArgs(args))
+	// fmt.Printf("wait on %d\n", res)
 	switch res {
 	case am.Executed:
 		return res
@@ -159,7 +160,8 @@ func EvAddAsync(
 	ctxWhen, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	ticks := am.NextActiveIn(mach.Tick(waitState))
+	tickBefore := mach.Tick(waitState)
+	ticks := am.NextActiveIn(tickBefore)
 	when := mach.WhenTicks(waitState, ticks, ctxWhen)
 	if mach.EvAdd(e, addStates, am.OptArgs(args)) == am.Canceled {
 		return am.Canceled

@@ -4,8 +4,7 @@ on: [push]
 
 jobs:
   build:
-    # TODO fix AddAsync
-    if: false
+#    if: false
 
     runs-on: ubuntu-latest
     strategy:

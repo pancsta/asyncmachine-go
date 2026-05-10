@@ -74,7 +74,8 @@ type Machine struct {
 	// parentId is the id of the parent machine (if any).
 	parentId string
 	// disposing disabled auto schema
-	disposing atomic.Bool
+	disposing   atomic.Bool
+	evalRunning atomic.Bool
 	// disposed tells if the machine has been disposed and is no-op.
 	disposed atomic.Bool
 	// queueRunning indicates the queue is currently being executed.
@@ -1101,7 +1102,7 @@ func (m *Machine) Remove(states S, args A) Result {
 
 	res := m.processQueue()
 	if res == Queued {
-		return Result(queueTick + 1)
+		return Result(queueTick)
 	}
 
 	return res
@@ -1128,7 +1129,7 @@ func (m *Machine) Set(states S, args A) Result {
 
 	res := m.processQueue()
 	if res == Queued {
-		return Result(queueTick + 1)
+		return Result(queueTick)
 	}
 
 	return res
@@ -1329,7 +1330,9 @@ func (m *Machine) queueMutation(
 	m.queueTicksPending += 1
 	mut.QueueLen = int32(lenQ)
 	mut.QueueTick = m.queueTicksPending + m.queueTick
+	// fmt.Printf("mut.QueueTick %d\n", mut.QueueTick)
 	mut.QueueTickNow = m.queueTick
+	// fmt.Printf("mut.QueueTickNow %d\n", mut.QueueTickNow)
 	m.queueMx.Unlock()
 
 	// tracers
@@ -1348,7 +1351,13 @@ func (m *Machine) queueMutation(
 		m.breakpoint(nil, statesParsed)
 	}
 
+	// fmt.Printf("mut.QueueTick2 %d", mut.QueueTick)
 	return mut.QueueTick
+}
+
+// EvalRunning helps preventing nested evals.
+func (m *Machine) EvalRunning() bool {
+	return m.evalRunning.Load()
 }
 
 // Eval executes a function on the machine's queue, allowing to avoid using
@@ -2023,8 +2032,10 @@ func (m *Machine) processQueue() Result {
 
 		// special case for Eval mutations
 		if mut.Type == mutationEval {
+			m.evalRunning.Store(true)
 			m.Log("eval: " + mut.evalSource)
 			mut.eval()
+			m.evalRunning.Store(false)
 
 			continue
 		}
@@ -2080,6 +2091,7 @@ func (m *Machine) processQueue() Result {
 }
 
 func (m *Machine) processSubscriptions(t *Transition) {
+	// fmt.Printf("process subs %d\n", m.queueTick)
 	// lock
 	m.activeStatesMx.RLock()
 
@@ -3172,7 +3184,7 @@ func (m *Machine) EvAdd(event *Event, states S, args A) Result {
 
 	res := m.processQueue()
 	if res == Queued {
-		return Result(queueTick + 1)
+		return Result(queueTick)
 	}
 
 	return res
@@ -3217,7 +3229,7 @@ func (m *Machine) EvRemove(event *Event, states S, args A) Result {
 
 	res := m.processQueue()
 	if res == Queued {
-		return Result(queueTick + 1)
+		return Result(queueTick)
 	}
 
 	return res

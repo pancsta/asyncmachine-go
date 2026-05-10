@@ -40,15 +40,14 @@ func init() {
 
 	// uncomment to debug
 	// amhelp.EnableDebugging(false)
+	amhelp.SetEnvLogLevel(am.LogOps)
+	// os.Setenv(am.EnvAmDetectEval, "1")
 
 	// worker uses env debugging
 	if os.Getenv(am.EnvAmTestDebug) != "" {
 		amhelp.EnableDebugging(false)
 		os.Setenv(amhelp.EnvAmLogFile, "1")
 	}
-
-	// quick debug
-	// amhelp.EnableDebugging(true)
 
 	var err error
 
@@ -59,6 +58,8 @@ func init() {
 		ViewTimelines:   types.ParamsViewTimelinesTwo,
 		EnableClipboard: false,
 	})
+
+	worker.Mach.EvalTimeout = time.Hour
 	if err != nil {
 		panic(err)
 	}
@@ -211,10 +212,12 @@ func TestStepsResetAfterStateJump(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	mach := worker.Mach
+	amhelpt.LogToTestLog(t, mach, am.LogOps)
 
 	// fixtures
 	state := "PublishMessage"
 	cursorTx := 20
+	// dump.Println(mach.Clock(nil))
 	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
 		Pass(&A{
 			ClientId:  "ps-2",

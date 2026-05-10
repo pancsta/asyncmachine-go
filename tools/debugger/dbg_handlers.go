@@ -1657,30 +1657,27 @@ func (d *Debugger) ToolToggledState(e *am.Event) {
 var _ = ss.SwitchingClientTx
 
 func (d *Debugger) SwitchingClientTxState(e *am.Event) {
-	scArgs := ParseArgs(e.Args)
-	clientID := scArgs.ClientId
-	cursorTx := scArgs.CursorTx1
+	mach := d.Mach
+	args := ParseArgs(e.Args)
+	clientID := args.ClientId
+	cursorTx := args.CursorTx1
 	ctx := d.Mach.NewStateCtx(ss.SwitchingClientTx)
 
 	d.Mach.Fork(ctx, e, func() {
 		if d.C != nil && d.C.Id != clientID {
-			// TODO async helper
-			when := d.Mach.WhenTicks(ss.ClientSelected, 2, ctx)
-			d.Mach.Add1(ss.SelectingClient, Pass(&A{
-				ClientId: clientID,
-			}))
-			<-when
+			amhelp.EvAdd1Async(ctx, e, mach, ss.ClientSelected,
+				ss.SelectingClient, Pass(&A{
+					ClientId: clientID,
+				}))
 			if ctx.Err() != nil {
 				return // expired
 			}
 		}
 
-		when := d.Mach.WhenTicks(ss.ScrollToTx, 2, ctx)
-		d.Mach.Add1(ss.ScrollToTx, Pass(&A{
+		amhelp.EvAdd1Sync(ctx, e, mach, ss.ScrollToTx, Pass(&A{
 			CursorTx1:   cursorTx,
 			TrimHistory: true,
 		}))
-		<-when
 		if ctx.Err() != nil {
 			return // expired
 		}

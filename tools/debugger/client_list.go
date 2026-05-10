@@ -394,7 +394,11 @@ func (d *Debugger) hInitClientList() {
 	d.clientList.SetSelectedBackgroundColor(tcell.GetColor(theme.Highlight2))
 	d.clientList.SetHighlightFullLine(true)
 	d.clientList.SetChangedFunc(func(index int, item *cview.ListItem) {
-		d.Mach.Eval("clientList.SetChangedFunc", d.hUpdateClientList, nil)
+		// TODO deadlock from hBuildClientList
+		// if d.Mach.EvalRunning() {
+		// 	return
+		// }
+		go d.Mach.Eval("clientList.SetChangedFunc", d.hUpdateClientList, nil)
 	})
 	// switch clients and handle history
 	d.clientList.SetSelectedFunc(func(i int, listItem *cview.ListItem) {

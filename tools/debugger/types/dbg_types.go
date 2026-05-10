@@ -750,8 +750,6 @@ type A struct {
 	MsgStruct *dbg.DbgMsgStruct
 	// MsgsTx is a batch of transaction messages.
 	MsgsTx []*dbg.DbgMsgTx
-	// Ctx is a context passed into handlers.
-	Ctx context.Context
 }
 
 // ARpc is a subset of A, that can be passed over RPC.

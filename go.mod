@@ -39,6 +39,7 @@ require (
 	github.com/failsafe-go/failsafe-go v0.6.8
 	github.com/fsnotify/fsnotify v1.7.1-0.20240403050945-7086bea086b7
 	github.com/gdamore/tcell/v2 v2.13.9
+	github.com/gookit/goutil v0.7.5
 	github.com/hibiken/asynq v0.24.1
 	github.com/ic2hrmk/promtail v0.0.5
 	github.com/ipfs/go-log/v2 v2.6.0
