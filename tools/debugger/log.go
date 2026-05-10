@@ -1,6 +1,7 @@
 package debugger
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"regexp"
@@ -9,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
-	"github.com/pancsta/tcell-v2"
 	"golang.org/x/exp/maps"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
@@ -22,9 +23,11 @@ import (
 
 // ///// ///// /////
 
-// ///// HANDLERS (LOG)
+// ///// HANDLERS
 
 // ///// ///// /////
+
+var _ = ss.BuildingLog
 
 func (d *Debugger) BuildingLogState(e *am.Event) {
 	// empty
@@ -36,9 +39,9 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 
 	// TODO handle logRebuildEnd by observing ClientMsg state clock, dont req
 	ctx := d.Mach.NewStateCtx(ss.BuildingLog)
-	endIndex := ParseArgs(e.Args).LogRebuildEnd
+	endIndex1 := ParseArgs(e.Args).LogRebuildEnd
 	cursorTx1 := d.C.CursorTx1
-	level := d.Params.Filters.LogLevel
+	level := d.params.Filters.LogLevel
 	var buf string
 	// TODO compare memorized maxVisible (support resizing)
 	_, _, _, maxVisible := d.log.GetRect()
@@ -60,7 +63,7 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 
 	// d.Mach.Log("building... at %d for %d", d.lastResize, maxVisible)
 	// collect TODO config for benchmarks
-	d.logRebuildEnd = endIndex
+	d.logRebuildEnd = endIndex1
 	d.logLastResize = d.lastResize
 	group := d.C.SelectedGroup
 	// TODO traverse back and forth separately and collect log lines, skip empty
@@ -73,7 +76,7 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 	collected := 0
 	i := 0
 	doNext := func() bool {
-		return i < endIndex && ctx.Err() == nil && collected < scrollback
+		return i < len(d.C.MsgTxs) && ctx.Err() == nil && collected < scrollback
 	}
 	for i = max(0, cursorTx1-1); doNext(); i++ {
 		entry, empty := d.hGetLogEntryTxt(i)
@@ -103,6 +106,7 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 		buf = entry + "\n" + buf
 		collected++
 	}
+	buf = strings.TrimRight(buf, "\n")
 
 	// unblock
 	d.Mach.Fork(ctx, e, func() {
@@ -125,11 +129,12 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 		d.Mach.EvAdd1(e, ss.LogBuilt, Pass(&A{
 			CursorTx1: cursorTx1,
 			LogLevel:  level,
-			LogBuffer: buf,
 			Group:     group,
 		}))
 	})
 }
+
+var _ = ss.LogBuilt
 
 func (d *Debugger) LogBuiltState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.LogBuilt)
@@ -137,15 +142,12 @@ func (d *Debugger) LogBuiltState(e *am.Event) {
 	cursorTx1 := lArgs.CursorTx1
 	updated := cursorTx1 > 0 // cursor is 1-based; 0 means not passed
 	level := lArgs.LogLevel
-	buf := lArgs.LogBuffer
 	group := lArgs.Group
 
 	// save to file
-	if d.Params.OutputLog {
+	if updated && d.params.OutputLog {
 		d.Mach.Go(ctx, func() {
-			d.logFileMx.Lock()
-			defer d.logFileMx.Unlock()
-			_, _ = d.logFile.Write(cview.StripTags([]byte(buf), true, true))
+			d.Mach.EvAddErr(e, d.outputLogFile(ctx), nil)
 		})
 	}
 
@@ -162,8 +164,25 @@ func (d *Debugger) LogBuiltState(e *am.Event) {
 	d.handleLogScroll()
 }
 
+func (d *Debugger) outputLogFile(ctx context.Context) error {
+	d.logFileMx.Lock()
+	defer d.logFileMx.Unlock()
+
+	if ctx.Err() != nil {
+		return nil // expired
+	}
+	if err := d.logFile.Truncate(0); err != nil {
+		return err
+	}
+	_, err := d.logFile.WriteAt(d.log.GetBytes(true), 0)
+
+	return err
+}
+
+var _ = ss.UpdateLogScheduled
+
 func (d *Debugger) UpdateLogScheduledState(e *am.Event) {
-	// accept and no-op when in progress
+	// accept and no-op when in progress TODO partial acceptance
 	if d.Mach.Is1(ss.UpdatingLog) {
 		return
 	}
@@ -179,26 +198,27 @@ func (d *Debugger) UpdateLogScheduledState(e *am.Event) {
 // TODO enter which checks that came from UpdateLogScheduled
 
 // UpdatingLogState decorates the rendered log, and rebuilds when needed.
+var _ = ss.UpdatingLog
+
 func (d *Debugger) UpdatingLogState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.UpdatingLog)
-	// rebuild if needed
-	d.Mach.EvAdd1(e, ss.BuildingLog, Pass(&A{
-		LogRebuildEnd: len(d.C.MsgTxs),
-	}))
 
 	// unblock
 	d.Mach.Fork(ctx, e, func() {
-		res := amhelp.Add1Async(ctx, d.Mach, ss.LogBuilt, ss.BuildingLog,
+		// rebuild if needed
+		res := amhelp.EvAdd1Async(ctx, e, d.Mach, ss.LogBuilt, ss.BuildingLog,
 			Pass(&A{
 				LogRebuildEnd: len(d.C.MsgTxs),
 			}))
 		if am.Canceled == res {
-			return
+			d.Mach.Log("err: LogBuilt canceled")
 		}
 
 		d.Mach.EvAdd1(e, ss.LogUpdated, nil)
 	})
 }
+
+var _ = ss.LogUpdated
 
 func (d *Debugger) LogUpdatedState(e *am.Event) {
 	tx := d.hCurrentTx()
@@ -214,10 +234,10 @@ func (d *Debugger) LogUpdatedState(e *am.Event) {
 	d.hUpdateLogReader(e)
 
 	if c.MsgStruct != nil {
-		title := " Log:" + d.Params.Filters.LogLevel.String() + " "
+		title := " Log:" + d.params.Filters.LogLevel.String() + " "
 		if tx != nil && c.CursorTx1 != 0 {
-			t := strconv.Itoa(int(c.MsgTxsParsed[c.CursorTx1-1].TimeSum))
-			title += "[" + theme.Grey + "]([-]t" + t + "[" + theme.Grey + "])([-] "
+			title += d.P.Sprintf("[%s]([-]t%v[%s])[-] ",
+				theme.Grey, c.MsgTxsParsed[c.CursorTx1-1].TimeSum, theme.Grey)
 		}
 		d.log.SetTitle(title)
 	}
@@ -260,9 +280,32 @@ func (d *Debugger) LogUpdatedState(e *am.Event) {
 	}
 }
 
+var _ = ss.Overlay
+
+func (d *Debugger) OverlayEnter(e *am.Event) bool {
+	return ParseArgs(e.Args).Text != ""
+}
+
+func (d *Debugger) OverlayState(e *am.Event) {
+	txt := ParseArgs(e.Args).Text
+
+	d.overlay.SetText(txt)
+	d.overlay.SetVisible(true)
+	x, y, _, h := d.logReader.GetRect()
+	d.overlay.SetRect(0, y, x, h)
+	d.LayoutRoot.SendToFront("overlay")
+	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
+}
+
+func (d *Debugger) OverlayEnd(e *am.Event) {
+	d.LayoutRoot.SendToBack("overlay")
+	d.overlay.SetVisible(false)
+	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
+}
+
 // ///// ///// /////
 
-// ///// METHODS (LOG)
+// ///// METHODS
 
 // ///// ///// /////
 
@@ -308,6 +351,8 @@ func (d *Debugger) hParseMsgLog(c *Client, msgTx *dbg.DbgMsgTx, idx int) {
 
 		// result prefix
 		switch {
+		case tx.IsAuto && tx.IsQueued:
+			entry.Text = "[aqueu] " + entry.Text
 		case tx.IsQueued:
 			entry.Text = "[queue] " + entry.Text
 		case !tx.Accepted:
@@ -356,12 +401,15 @@ func (d *Debugger) hParseMsgLogEntry(
 }
 
 func (d *Debugger) hAppendLogEntry(index int) error {
+	if d.Mach.Is1(ss.BuildingLog) {
+		return nil
+	}
 	if d.hIsTxSkipped(d.C, index) {
 		return nil
 	}
 
 	entry, empty := d.hGetLogEntryTxt(index)
-	if entry == "" {
+	if entry == "" || empty {
 		return nil
 	}
 
@@ -369,6 +417,7 @@ func (d *Debugger) hAppendLogEntry(index int) error {
 		entry = "\n" + entry
 	}
 
+	// TODO race with BuildingLog?
 	_, err := d.log.Write([]byte(entry))
 	if err != nil {
 		return err
@@ -383,7 +432,7 @@ func (d *Debugger) hAppendLogEntry(index int) error {
 	d.logAppends++
 	if d.logAppends > 100 {
 		d.Mach.Add1(ss.BuildingLog, Pass(&A{
-			LogRebuildEnd: index,
+			LogRebuildEnd: index + 1,
 		}))
 		d.logAppends = 0
 	}
@@ -417,7 +466,7 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 	for _, le := range entries {
 		logStr := le.Text
 		logLvl := le.Level
-		if logStr == "" || logLvl > d.Params.Filters.LogLevel {
+		if logStr == "" || logLvl > d.params.Filters.LogLevel {
 			continue
 		}
 
@@ -437,14 +486,15 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 	if ret != "" {
 		empty = false
 
-		if d.Params.Filters.LogLevel == am.LogExternal {
+		// rm extern prefix if only extern visible
+		if d.params.Filters.LogLevel == am.LogExternal {
 			ret = strings.ReplaceAll(ret,
 				"["+theme.Yellow+"][extern[]["+theme.White+"] ["+theme.DarkGrey+"]", "")
 		}
 
 		// prefix if showing canceled or queued (gutter)
 		if (d.Mach.Not1(ss.FilterCanceledTx) || d.Mach.Not1(ss.FilterQueuedTx)) &&
-			d.Params.Filters.LogLevel >= am.LogChanges {
+			d.params.Filters.LogLevel >= am.LogChanges {
 
 			p := ""
 			switch {
@@ -491,6 +541,7 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 			// }
 		}
 
+		// generate timestamps TODO also force after each 100 rendered lines
 		if d.Mach.Not1(ss.LogTimestamps) && index > 0 {
 			msgTime := tx.Time
 			prevMsg := c.MsgTxs[index-1]
@@ -498,7 +549,8 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 				msgTime.Sub(*prevMsg.Time) > time.Second {
 
 				// grouping labels (per second)
-				ret += "[" + theme.Grey + "]" + msgTime.Format(timeFormat) + "[-]\n"
+				ret += d.P.Sprintf("[%s]%s [::b]t%v[-]\n", theme.Grey,
+					msgTime.Format(timeFormat), txParsed.TimeSum)
 			}
 		}
 
@@ -514,8 +566,8 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 }
 
 var logPrefixState = regexp.MustCompile(
-	// TODO `^\[yellow\]\[(state|queue|cance|empty)\[\]\[white\] .+\)\n$`)
-	`^\[[^\]]+\]\[(state|queue|cance|empty)\[\]\[[^\]]+\] .+\)\n$`)
+	// TODO `^\[yellow\]\[(state|queue|aqueu|cance|empty)\[\]\[white\] .+\)\n$`)
+	`^\[[^\]]+\]\[(state|queue|aqueu|cance|empty)\[\]\[[^\]]+\] .+\)\n$`)
 
 var logPrefixExtern = regexp.MustCompile(
 	// TODO `^\[yellow\]\[exter.+\n$`)
@@ -677,9 +729,10 @@ type logReaderTreeRef struct {
 
 	stateNames am.S
 	// TODO embed MachAddress, support queue ticks
-	machId   string
-	txId     string
-	machTime uint64
+	machId    string
+	txId      string
+	machTime  uint64
+	queueTick uint64
 
 	// position
 
@@ -688,6 +741,7 @@ type logReaderTreeRef struct {
 
 	isQueueRoot bool
 	info        string
+	isLinkNode  bool
 }
 
 var removeStyleBracketsRe = regexp.MustCompile(`\[[^\]]*\]`)
@@ -705,159 +759,137 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 	tree.SetHighlightColor(tcell.GetColor(theme.Highlight))
 	tree.SetTopLevel(1)
 
-	// focus change
 	tree.SetChangedFunc(func(node *cview.TreeNode) {
-		ref, ok := node.GetReference().(*logReaderTreeRef)
-
-		// info overlay
-		if ref != nil && ref.info != "" {
-			d.Mach.Add1(ss.Overlay, Pass(&A{
-				Text: ref.info,
-			}))
-		} else if d.Mach.Is1(ss.Overlay) {
-			d.Mach.Remove1(ss.Overlay, nil)
-		}
-
-		// exit when no ref
-		if !ok || ref == nil {
-			return
-		}
-
-		d.Mach.Eval("initLogReader", func() {
-			// semantic selection restore
-			d.logReaderSelected = node.GetText()
-			d.logReaderSelectedLevel = node.GetIndent()
-			d.logReaderSelectedParent = node.GetParent().GetText()
-			d.logReaderScroll = d.logReader.GetScrollOffset()
-
-			// fallback for Y-based selection restore
-			posY := -1
-			root.Walk(func(n, parent *cview.TreeNode, depth int) bool {
-				// skip root
-				if posY == -1 {
-					posY++
-					return true
-				}
-
-				// found
-				if n == node {
-					d.logReaderSelectedY = posY
-					return false
-				}
-
-				// next
-				posY++
-				return true
-			})
-		}, nil)
-
-		// state name
-		if len(ref.stateNames) < 1 {
-			d.Mach.Remove1(ss.StateNameSelected, nil)
-		} else {
-			d.Mach.Add1(ss.StateNameSelected, Pass(&A{
-				State: ref.stateNames[0],
-			}))
-		}
+		d.onLogReaderChanged(root, node)
 	})
 
-	// click / enter
 	tree.SetSelectedFunc(func(node *cview.TreeNode) {
-		// TODO this is a joke
-		if !tree.TryRLock() {
-			return
-		}
-		tree.RUnlock()
-
-		// TODO support extMachTime
-		ref, ok := node.GetReference().(*logReaderTreeRef)
-		if !ok || ref == nil {
-			return
-		}
-
-		// expand and memorize
-		node.SetExpanded(!node.IsExpanded())
-		isTop := node.GetParent() == tree.GetRoot()
-		if isTop || ref.isQueueRoot {
-			name := strings.Split(node.GetText(), " ")[0]
-			name = removeStyleBracketsRe.ReplaceAllString(name, "")
-			d.logReaderExpanded[name] = node.IsExpanded()
-		}
-
-		// mach URL
-		addr := ref.addr
-		if addr == nil {
-			addr = &types.MachAddress{
-				MachId:   ref.machId,
-				TxId:     ref.txId,
-				MachTime: ref.machTime,
-			}
-		}
-
-		// click effect
-		tick := d.Mach.Tick(ss.UpdateLogReader)
-		text := node.GetText()
-		node.SetText("[" + tcell.GetColor(theme.Active).String() + "::u]" +
-			removeStyleBracketsRe.ReplaceAllString(text, ""))
-		d.draw(d.logReader)
-
-		ctx := d.Mach.NewStateCtx(ss.LogReaderVisible)
-		d.Mach.Go(ctx, func() {
-			time.Sleep(time.Millisecond * 200)
-			d.GoToMachAddress(addr, false)
-
-			// restore in case no redir
-			time.Sleep(time.Millisecond * 50)
-			if tick != d.Mach.Tick(ss.UpdateLogReader) {
-				return // expired
-			}
-			node.SetText(text)
-			d.draw(d.logReader)
-		})
-
-		// info overlay
-		if ref.info != "" {
-			d.Mach.Add1(ss.Overlay, Pass(&A{
-				Text: ref.info,
-			}))
-		} else if d.Mach.Is1(ss.Overlay) {
-			d.Mach.Remove1(ss.Overlay, nil)
-		}
+		d.onLogReaderSelected(tree, node)
 	})
 
 	return tree
 }
 
-func (d *Debugger) OverlayEnter(e *am.Event) bool {
-	return ParseArgs(e.Args).Text != ""
+func (d *Debugger) onLogReaderChanged(root, node *cview.TreeNode) {
+	ref, ok := node.GetReference().(*logReaderTreeRef)
+	d.updateLogReaderOverlay(ref)
+	if !ok || ref == nil {
+		return
+	}
+
+	d.rememberLogReaderSelection(root, node)
+	if len(ref.stateNames) < 1 {
+		d.Mach.Remove1(ss.StateNameSelected, nil)
+		return
+	}
+
+	d.Mach.Add1(ss.StateNameSelected, Pass(&A{
+		State: ref.stateNames[0],
+	}))
 }
 
-func (d *Debugger) OverlayState(e *am.Event) {
-	txt := ParseArgs(e.Args).Text
+func (d *Debugger) onLogReaderSelected(
+	tree *cview.TreeView, node *cview.TreeNode,
+) {
+	// TODO this is a joke
+	if !tree.TryRLock() {
+		return
+	}
+	tree.RUnlock()
 
-	d.overlay.SetText(txt)
-	d.overlay.SetVisible(true)
-	x, y, _, h := d.logReader.GetRect()
-	d.overlay.SetRect(0, y, x, h)
-	d.LayoutRoot.SendToFront("overlay")
-	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
+	// TODO support extMachTime
+	ref, ok := node.GetReference().(*logReaderTreeRef)
+	if !ok || ref == nil {
+		return
+	}
+
+	node.SetExpanded(!node.IsExpanded())
+	isTop := node.GetParent() == tree.GetRoot()
+	if isTop || ref.isQueueRoot {
+		name := strings.Split(node.GetText(), " ")[0]
+		name = removeStyleBracketsRe.ReplaceAllString(name, "")
+		d.logReaderExpanded[name] = node.IsExpanded()
+	}
+
+	focused := d.Mach.Is1(ss.LogReaderFocused)
+	// TODO disable for all initial mouse clicks
+	if ch := node.GetChildren(); len(ch) == 1 && focused {
+		refChild := ch[0].GetReference().(*logReaderTreeRef)
+		if refChild != nil && refChild.isLinkNode {
+			d.logReaderExpanded["__link_nodes"] = node.IsExpanded()
+			defer d.hUpdateLogReader(nil)
+		}
+	}
+
+	addr := ref.addr
+	if addr == nil {
+		addr = &types.MachAddress{
+			MachId:    ref.machId,
+			TxId:      ref.txId,
+			MachTime:  ref.machTime,
+			QueueTick: ref.queueTick,
+		}
+	}
+
+	tick := d.Mach.Tick(ss.UpdateLogReader)
+	text := node.GetText()
+	node.SetText("[" + tcell.GetColor(theme.Active).String() + "::u]" +
+		removeStyleBracketsRe.ReplaceAllString(text, ""))
+	d.draw(d.logReader)
+
+	ctx := d.Mach.NewStateCtx(ss.LogReaderVisible)
+	d.Mach.Go(ctx, func() {
+		time.Sleep(time.Millisecond * 200)
+		d.GoToMachAddress(addr, false)
+
+		time.Sleep(time.Millisecond * 50)
+		if tick != d.Mach.Tick(ss.UpdateLogReader) {
+			return
+		}
+		node.SetText(text)
+		d.draw(d.logReader)
+	})
+
+	d.updateLogReaderOverlay(ref)
 }
 
-func (d *Debugger) OverlayEnd(e *am.Event) {
-	d.LayoutRoot.SendToBack("overlay")
-	d.overlay.SetVisible(false)
-	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
+func (d *Debugger) updateLogReaderOverlay(ref *logReaderTreeRef) {
+	if ref != nil && ref.info != "" {
+		d.Mach.Add1(ss.Overlay, Pass(&A{
+			Text: ref.info,
+		}))
+	} else if d.Mach.Is1(ss.Overlay) {
+		d.Mach.Remove1(ss.Overlay, nil)
+	}
 }
 
-type StateTraceItem struct {
-	Label      string
-	Source     *types.MachAddress
-	StateNames am.S
+func (d *Debugger) rememberLogReaderSelection(root, node *cview.TreeNode) {
+	d.Mach.Eval("initLogReader", func() {
+		d.logReaderSelected = node.GetText()
+		d.logReaderSelectedLevel = node.GetIndent()
+		d.logReaderSelectedParent = node.GetParent().GetText()
+		d.logReaderScroll = d.logReader.GetScrollOffset()
+
+		posY := -1
+		root.Walk(func(n, parent *cview.TreeNode, depth int) bool {
+			if posY == -1 {
+				posY++
+				return true
+			}
+			if n == node {
+				d.logReaderSelectedY = posY
+				return false
+			}
+
+			posY++
+			return true
+		})
+	}, nil)
 }
 
-func (d *Debugger) hStateTrace(tx *dbg.DbgMsgTx) []*StateTraceItem {
+func (d *Debugger) hStateTrace(tx *dbg.DbgMsgTx) []*types.StateTraceItem {
 	// loop until source
-	var ret []*StateTraceItem
+	var ret []*types.StateTraceItem
 	for _, entry := range tx.LogEntries {
 		if !strings.HasPrefix(entry.Text, "[source] ") {
 			continue
@@ -886,7 +918,7 @@ func (d *Debugger) hStateTrace(tx *dbg.DbgMsgTx) []*StateTraceItem {
 		// add
 		label := fmt.Sprintf("[::b]%s%s",
 			sTx.Type.StringShort(), strings.TrimSpace(statesLabel))
-		ret = append(ret, &StateTraceItem{
+		ret = append(ret, &types.StateTraceItem{
 			Label:      label,
 			StateNames: calledStates,
 			Source: &types.MachAddress{
@@ -903,8 +935,29 @@ func (d *Debugger) hStateTrace(tx *dbg.DbgMsgTx) []*StateTraceItem {
 	return ret
 }
 
+var machUrlIdRe = regexp.MustCompile(`^mach://([^/]+)/?(.*)`)
+
+func newLinkNode(addr *types.MachAddress) *cview.TreeNode {
+	url := addr.StringBase()
+	if url == "" {
+		return nil
+	}
+	match := machUrlIdRe.FindStringSubmatch(url)
+	color := theme.Grey
+	node := cview.NewTreeNode(fmt.Sprintf("[%s]mach://[%s]%s[%s]/%s",
+		color, theme.White, match[1], color, match[2]))
+	node.SetIndent(2)
+	node.SetReference(&logReaderTreeRef{
+		machId:     addr.MachId,
+		txId:       addr.TxId,
+		machTime:   addr.MachTime,
+		isLinkNode: true,
+	})
+
+	return node
+}
+
 func (d *Debugger) hUpdateLogReader(e *am.Event) {
-	// TODO! SPLIT this 700 LoC func
 	// TODO migrate to a state handler
 	if d.Mach.Not1(ss.LogReaderVisible) {
 		return
@@ -917,903 +970,114 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 	root := d.logReader.GetRoot()
 	root.ClearChildren()
 
-	c := d.C
-	if c == nil || c.CursorTx1 < 1 {
+	u := d.newLogReaderUpdate(e, root)
+	if u == nil {
 		return
 	}
 
-	tx := c.MsgTxs[c.CursorTx1-1]
-	txParsed := c.MsgTxsParsed[c.CursorTx1-1]
-	statesIndex := c.MsgStruct.StatesIndex
-
-	var (
-		// parents
-		parentCtx       *cview.TreeNode
-		parentWhen      *cview.TreeNode
-		parentWhenNot   *cview.TreeNode
-		parentWhenTime  *cview.TreeNode
-		parentWhenArgs  *cview.TreeNode
-		parentWhenQueue *cview.TreeNode
-		parentPipeIn    *cview.TreeNode
-		parentPipeOut   *cview.TreeNode
-		parentHandlers  *cview.TreeNode
-		parentArgs      *cview.TreeNode
-		parentSource    *cview.TreeNode
-		parentTrace     *cview.TreeNode
-		parentQueue     *cview.TreeNode
-		parentForks     *cview.TreeNode
-		parentSiblings  *cview.TreeNode
-	)
-
-	selState := d.C.SelectedState
-
-	// parsed log entries
-	for _, ptr := range txParsed.ReaderEntries {
-		entries, ok := c.LogReader[ptr.TxId]
-		var node *cview.TreeNode
-		// gc
-		if !ok || ptr.EntryIdx >= len(entries) {
-			node = cview.NewTreeNode("err:GCed entry")
-			node.SetIndent(1)
-		} else {
-
-			entry := entries[ptr.EntryIdx]
-			nodeRef := &logReaderTreeRef{
-				stateNames: c.IndexesToStates(entry.States),
-				machId:     entry.Mach,
-				entry:      ptr,
-			}
-
-			// create nodes and parents
-			switch entry.Kind {
-
-			case types.LogReaderCtx:
-				if parentCtx == nil {
-					parentCtx = cview.NewTreeNode("StateCtx")
-				}
-				states := amhelp.IndexesToStates(statesIndex, entry.States)
-				node = cview.NewTreeNode(d.P.Sprintf(
-					"[::b]%s[::-] ["+theme.Grey+"]t%d[-]",
-					utils.J(states), entry.CreatedAt))
-				parentCtx.AddChild(node)
-				if slices.Contains(states, selState) {
-					node.SetHighlighted(true)
-				}
-
-			case types.LogReaderWhen:
-				if parentWhen == nil {
-					parentWhen = cview.NewTreeNode("When")
-				}
-				states := amhelp.IndexesToStates(statesIndex, entry.States)
-				node = cview.NewTreeNode(d.P.Sprintf(
-					"[::b]%s[::-] ["+theme.Grey+"]t%d[-]",
-					utils.J(states), entry.CreatedAt))
-				parentWhen.AddChild(node)
-				if slices.Contains(states, selState) {
-					node.SetHighlighted(true)
-				}
-
-			case types.LogReaderWhenNot:
-				if parentWhenNot == nil {
-					parentWhenNot = cview.NewTreeNode("WhenNot")
-				}
-				states := amhelp.IndexesToStates(statesIndex, entry.States)
-				node = cview.NewTreeNode(d.P.Sprintf(
-					"[::b]%s[::-] ["+theme.Grey+"]t%d[-]",
-					utils.J(states), entry.CreatedAt))
-				parentWhenNot.AddChild(node)
-				if slices.Contains(states, selState) {
-					node.SetHighlighted(true)
-				}
-
-			case types.LogReaderWhenTime:
-				if parentWhenTime == nil {
-					parentWhenTime = cview.NewTreeNode("WhenTime")
-				}
-				txt := ""
-				highlight := false
-				for i, idx := range entry.States {
-					txt += fmt.Sprintf("[::b]%s[::-]:%d ", statesIndex[idx],
-						entry.Ticks[i])
-					if statesIndex[idx] == selState {
-						highlight = true
-					}
-				}
-				node = cview.NewTreeNode(d.P.Sprintf("%s["+theme.Grey+"]t%d[-]", txt,
-					entry.CreatedAt))
-				parentWhenTime.AddChild(node)
-				if highlight {
-					node.SetHighlighted(true)
-				}
-
-			case types.LogReaderWhenArgs:
-				if parentWhenArgs == nil {
-					parentWhenArgs = cview.NewTreeNode("WhenArgs")
-				}
-				states := amhelp.IndexesToStates(statesIndex, entry.States)
-				node = cview.NewTreeNode(d.P.Sprintf(
-					"[::b]%s[::-] ["+theme.Grey+"]t%d[-]",
-					utils.J(states), entry.CreatedAt))
-				// TODO node with key = val for each arg
-				node2 := cview.NewTreeNode(d.P.Sprintf("%s", entry.Args))
-				node2.SetIndent(1)
-				node2.SetReference(&logReaderTreeRef{entry: ptr})
-				node.AddChild(node2)
-				parentWhenArgs.AddChild(node)
-				if slices.Contains(states, selState) {
-					node.SetHighlighted(true)
-				}
-
-			case types.LogReaderWhenQueue:
-				if parentWhenQueue == nil {
-					parentWhenQueue = cview.NewTreeNode("WhenQueue")
-				}
-				node = cview.NewTreeNode(d.P.Sprintf("%v", entry.QueueTick))
-				parentWhenQueue.AddChild(node)
-
-			case types.LogReaderPipeIn:
-				states := amhelp.IndexesToStates(statesIndex, entry.States)
-
-				// state name redirs to the moment of piping
-				nodeRef.machId = c.Id
-				nodeRef.machTime = entry.CreatedAt
-
-				// find the piped state parent or create a new one
-				if parentPipeIn == nil {
-					parentPipeIn = cview.NewTreeNode("Pipe-in")
-				} else {
-					for _, child := range parentPipeIn.GetChildren() {
-						if child.GetText() == states[0] {
-							node = child
-							break
-						}
-					}
-				}
-
-				// convert entry.createdAt to human time
-				txIdx := c.TxByMachTime(entry.CreatedAt)
-				pipeTime := *c.Tx(txIdx).Time
-
-				if node == nil {
-					node = cview.NewTreeNode(states[0])
-					node.SetBold(true)
-					parentPipeIn.AddChild(node)
-				}
-				node2 := cview.NewTreeNode(d.P.Sprintf(
-					"%-6s | ["+theme.Grey+"]t%d[-] %s",
-					capitalizeFirst(entry.Pipe.String()), entry.CreatedAt, entry.Mach))
-				node2.SetIndent(1)
-				node2.SetReference(&logReaderTreeRef{
-					stateNames: c.IndexesToStates(entry.States),
-					entry:      ptr,
-					machId:     entry.Mach,
-					addr: &types.MachAddress{
-						MachId:    entry.Mach,
-						HumanTime: pipeTime,
-					},
-				})
-				node.AddChild(node2)
-				if slices.Contains(states, selState) {
-					node.SetHighlighted(true)
-					node2.SetHighlighted(true)
-				}
-
-			case types.LogReaderPipeOut:
-				states := amhelp.IndexesToStates(statesIndex, entry.States)
-
-				// state name redirs to the moment of piping
-				nodeRef.machId = c.Id
-				nodeRef.machTime = entry.CreatedAt
-
-				// find the piped state parent or create a new one
-				if parentPipeOut == nil {
-					parentPipeOut = cview.NewTreeNode("Pipe-out")
-				} else {
-					for _, child := range parentPipeOut.GetChildren() {
-						if child.GetText() == states[0] {
-							node = child
-							break
-						}
-					}
-				}
-
-				// parent
-				if node == nil {
-					node = cview.NewTreeNode(states[0])
-					node.SetBold(true)
-					parentPipeOut.AddChild(node)
-				}
-
-				// convert entry.createdAt to human time
-				txIdx := c.TxByMachTime(entry.CreatedAt)
-				pipeTime := *c.Tx(txIdx).Time
-
-				// pipe-out node
-				node2 := cview.NewTreeNode(d.P.Sprintf(
-					"%-6s | ["+theme.Grey+"]t%d[-] %s",
-					capitalizeFirst(entry.Pipe.String()), entry.CreatedAt, entry.Mach))
-				node2.SetIndent(1)
-				node2.SetReference(&logReaderTreeRef{
-					stateNames: c.IndexesToStates(entry.States),
-					entry:      ptr,
-					machId:     entry.Mach,
-					addr: &types.MachAddress{
-						MachId:    entry.Mach,
-						HumanTime: pipeTime,
-					},
-				})
-				node.AddChild(node2)
-				if slices.Contains(states, selState) {
-					node.SetHighlighted(true)
-					node2.SetHighlighted(true)
-				}
-
-			default:
-				continue
-			}
-
-			node.SetIndent(1)
-			node.SetSelectable(true)
-			node.SetReference(nodeRef)
-		}
+	if err := u.buildParsedEntries(); err != nil {
+		d.Mach.EvAddErr(e, err, nil)
+		return
+	}
+	if err := u.buildStateTrace(); err != nil {
+		d.Mach.EvAddErr(e, err, nil)
+		return
+	}
+	if err := u.buildQueue(); err != nil {
+		d.Mach.EvAddErr(e, err, nil)
+		return
+	}
+	if err := u.buildForks(); err != nil {
+		d.Mach.EvAddErr(e, err, nil)
+		return
+	}
+	if err := u.buildExecutedArgs(); err != nil {
+		d.Mach.EvAddErr(e, err, nil)
+		return
 	}
 
-	// event source
-	parentSource = cview.NewTreeNode("Source")
-	sourceKnown := false
-	for _, entry := range tx.LogEntries {
-		if !strings.HasPrefix(entry.Text, "[source] ") {
-			continue
-		}
-
-		sourceKnown = true
-		source := strings.Split(entry.Text[len("[source] "):], "/")
-		machTime, _ := strconv.ParseUint(source[2], 10, 64)
-
-		// source machine
-		node := cview.NewTreeNode("self")
-		node.SetIndent(1)
-		if source[0] != c.Id {
-			node.SetText(d.P.Sprintf("%s ["+theme.Grey+"]t%v[-]", source[0],
-				machTime))
-			node.SetReference(&logReaderTreeRef{
-				machId:   source[0],
-				txId:     source[1],
-				machTime: machTime,
-			})
-		}
-		parentSource.AddChild(node)
-
-		// source tx
-		if sC, sTx := d.hGetClientTx(source[0], source[1]); sTx != nil {
-			stateNames := sTx.CalledStateNames(sC.MsgStruct.StatesIndex)
-			label := capitalizeFirst(sTx.Type.String()) + " [::b]" +
-				utils.J(stateNames)
-			node2 := cview.NewTreeNode(label)
-			node2.SetIndent(1)
-			node2.SetReference(&logReaderTreeRef{
-				stateNames: stateNames,
-				machId:     source[0],
-				txId:       source[1],
-				machTime:   machTime,
-			})
-			parentSource.AddChild(node2)
-
-			// highlight
-			if slices.Contains(stateNames, selState) {
-				if node != nil {
-					node.SetHighlighted(true)
-				}
-				node2.SetHighlighted(true)
-			}
-		}
-
-		// tags (only for external machines)
-		if sourceMach := d.hGetClient(source[0]); sourceMach != nil &&
-			source[0] != c.Id {
-
-			if tags := sourceMach.MsgStruct.Tags; len(tags) > 0 {
-				node2 := cview.NewTreeNode(
-					"[" + theme.Grey + "]#" + strings.Join(tags, " #"))
-				node2.SetIndent(1)
-				parentSource.AddChild(node2)
-			}
-		}
+	parents := []*cview.TreeNode{
+		u.parentSource, u.parentTrace, u.parentQueue,
+		u.parentForks, u.parentSiblings, u.parentExecuted, u.parentArgs,
+		u.parentCtx, u.parentWhen, u.parentWhenNot, u.parentWhenTime,
+		u.parentWhenArgs, u.parentWhenQueue, u.parentPipeIn, u.parentPipeOut,
 	}
 
-	if !sourceKnown {
-		node := cview.NewTreeNode("mach unknown")
-		node.SetIndent(1)
-		parentSource.AddChild(node)
-		node = cview.NewTreeNode("tx unknown")
-		node.SetIndent(1)
-		parentSource.AddChild(node)
+	for _, parent := range parents {
+		d.appendLogReaderParent(root, parent, u.parentSource, u.parentQueue)
+	}
+	d.logReader.SetScrollOffset(d.logReaderScroll)
+	d.logReader.SetCurrentNode(d.restoreLogReaderSelection(root, u.parentSource))
+	d.logReader.SetScrollOffset(d.logReaderScroll)
+
+	// TODO check if still needed
+	d.draw()
+}
+
+func (d *Debugger) newLogReaderUpdate(
+	e *am.Event, root *cview.TreeNode,
+) *logReaderUpdate {
+	c := d.C
+	if c == nil || c.CursorTx1 < 1 {
+		return nil
 	}
 
-	// stack trace
-	if tx.StackTrace != "" {
-		node := cview.NewTreeNode("stack trace")
-		node.SetIndent(1)
-		node.SetReference(&logReaderTreeRef{
-			info: strings.TrimSpace(highlightStackTrace("\n" + tx.StackTrace)),
-		})
-		parentSource.AddChild(node)
+	return &logReaderUpdate{
+		d:           d,
+		e:           e,
+		root:        root,
+		c:           c,
+		tx:          c.MsgTxs[c.CursorTx1-1],
+		txParsed:    c.MsgTxsParsed[c.CursorTx1-1],
+		statesIndex: c.MsgStruct.StatesIndex,
+		selState:    c.SelectedState,
+	}
+}
+
+func (d *Debugger) appendLogReaderParent(
+	root, parent, parentSource, parentQueue *cview.TreeNode,
+) {
+	if parent == nil {
+		return
+	}
+	if parent.GetText() == "State Trace" && len(parent.GetChildren()) == 0 {
+		return
 	}
 
-	// TRACE
-
-	// state trace
-	machUrlIdRe := regexp.MustCompile(`^mach://(.+?)/(.*)`)
-	parentTrace = cview.NewTreeNode("State Trace")
-	for _, item := range d.hStateTrace(tx) {
-		node := cview.NewTreeNode(item.Label)
-		node.SetIndent(1)
-		parentTrace.AddChild(node)
-		url := machUrlIdRe.FindStringSubmatch(item.Source.String())
-		color := theme.Grey
-		node2 := cview.NewTreeNode(fmt.Sprintf("[%s]mach://[%s]%s[%s]/%s",
-			color, theme.White, url[1], color, url[2]))
-		node2.SetIndent(2)
-		node2.SetReference(&logReaderTreeRef{
-			stateNames: item.StateNames,
-			machId:     item.Source.MachId,
-			txId:       item.Source.TxId,
-			machTime:   item.Source.MachTime,
-		})
-		node.AddChild(node2)
-
-		if slices.Contains(item.StateNames, selState) {
-			node.SetHighlighted(true)
-			node2.SetHighlighted(true)
-		}
+	name := parent.GetText()
+	nameNormalized := strings.Split(name, " ")[0]
+	if expanded, ok := d.logReaderExpanded[nameNormalized]; ok {
+		parent.SetExpanded(expanded)
 	}
 
-	// QUEUE
+	count := len(parent.GetChildren())
+	if count > 0 && parent != parentSource && parent != parentQueue {
+		parent.SetText(fmt.Sprintf("[%s]%s[-] (%d)", theme.Active,
+			parent.GetText(), count))
+	} else {
+		parent.SetText(fmt.Sprintf("[%s]%s[-]", theme.Active, parent.GetText()))
+	}
+	parent.SetIndent(0)
+	parent.SetReference(&logReaderTreeRef{})
+	root.AddChild(parent)
+	if d.C.ReaderCollapsed {
+		parent.SetExpanded(false)
+	}
+}
 
-	parentQueue = cview.NewTreeNode("Queue")
-	{
-		tickNode := cview.NewTreeNode(d.P.Sprintf("current     [::b]q%v",
-			tx.QueueTick))
-		tickNode.SetIndent(1)
-		parentQueue.AddChild(tickNode)
-
-		// queued tx
-		if tx.IsQueued {
-			var executed *dbg.DbgMsgTx
-
-			// DEBUG
-			// // look into the future TODO links to the wrong one
-			// for iii := c.CursorTx1; iii < len(c.MsgTxs); iii++ {
-			// 	check := c.MsgTxs[iii]
-			// 	txCalled := tx.CalledStateNames(statesIndex)
-			// 	checkCalled := check.CalledStateNames(statesIndex)
-			// 	if !check.IsQueued && am.StatesEqual(txCalled, checkCalled) {
-			// 		d.Mach.Log("exec tx.MQT: %d, check.QT: %d",
-			// 			tx.MutQueueTick, check.QueueTick)
-			// 		d.Mach.Log("exec tx.Called: %s, check.Called: %s",
-			// 			txCalled,
-			// 			checkCalled)
-			// 	}
-			// }
-
-			// look into the future TODO links to the wrong one
-			for iii := c.CursorTx1; iii < len(c.MsgTxs); iii++ {
-				check := c.MsgTxs[iii]
-
-				if check.IsQueued {
-					continue
-				}
-
-				if check.QueueTick == tx.MutQueueTick ||
-					(check.MutQueueToken > 0 && check.MutQueueToken == tx.MutQueueToken) {
-
-					executed = check
-					break
-				}
-			}
-			label := "???"
-			var ref *logReaderTreeRef
-			if executed != nil {
-				label = d.P.Sprintf("t%v", executed.TimeSum())
-				ref = &logReaderTreeRef{
-					stateNames: tx.CalledStateNames(statesIndex),
-					machId:     c.Id,
-					txId:       executed.ID,
-				}
-			}
-
-			executedNode := cview.NewTreeNode("executed at [::b]" + label)
-			executedNode.SetReference(ref)
-			executedNode.SetIndent(1)
-			parentQueue.AddChild(executedNode)
-			queuedNode := cview.NewTreeNode(d.P.Sprintf("queued   at [::b]t%d",
-				tx.TimeSum()))
-			queuedNode.SetIndent(1)
-			parentQueue.AddChild(queuedNode)
-			queuedForLabel := "..."
-			if tx.MutQueueTick > 0 {
-				queuedForLabel = d.P.Sprintf("q%v", tx.MutQueueTick)
-			}
-			queuedForNode := cview.NewTreeNode("queued  for [::b]" + queuedForLabel)
-			queuedForNode.SetIndent(1)
-			queuedForNode.SetReference(ref)
-			parentQueue.AddChild(queuedForNode)
-
-			// executed tx
-		} else {
-			var queued *dbg.DbgMsgTx
-
-			// look into the past
-			for iii := c.CursorTx1 - 2; iii >= 0; iii-- {
-				check := c.MsgTxs[iii]
-
-				if !check.IsQueued {
-					continue
-				}
-
-				// DEBUG
-				// txCalled := tx.CalledStateNames(statesIndex)
-				// checkCalled := check.CalledStateNames(statesIndex)
-				// if check.IsQueued && am.StatesEqual(txCalled, checkCalled) {
-				// 	d.Mach.Log("queued tx.QT: %d, check.MQT: %d",
-				// 		tx.QueueTick, check.MutQueueTick)
-				// 	d.Mach.Log("queued tx.Called: %s, check.Called: %s",
-				// 		txCalled,
-				// 		checkCalled)
-				// }
-
-				// TODO assert state names?
-				if check.MutQueueTick == tx.QueueTick ||
-					(check.MutQueueToken > 0 && check.MutQueueToken == tx.MutQueueToken) {
-
-					queued = check
-					break
-				}
-			}
-			label := "???"
-			var ref *logReaderTreeRef
-			if queued != nil {
-				label = d.P.Sprintf("t%v", queued.TimeSum())
-				ref = &logReaderTreeRef{
-					stateNames: tx.CalledStateNames(statesIndex),
-					machId:     c.Id,
-					txId:       queued.ID,
-				}
-			}
-
-			executedNode := cview.NewTreeNode("executed at [::b]...")
-			executedNode.SetIndent(1)
-			parentQueue.AddChild(executedNode)
-			queuedNode := cview.NewTreeNode("queued   at [::b]" + label)
-			queuedNode.SetReference(ref)
-			queuedNode.SetIndent(1)
-			parentQueue.AddChild(queuedNode)
-			queuedForNode := cview.NewTreeNode("queued  for [::b]...")
-			queuedForNode.SetIndent(1)
-			parentQueue.AddChild(queuedForNode)
-		}
-
-		// list of queued txs
-		lenNodeLabel := d.P.Sprintf("length [::b]%v[::-]", tx.Queue)
-		if tx.IsQueued {
-			lenNodeLabel += " (inferred)"
-		}
-		lenNode := cview.NewTreeNode(lenNodeLabel)
-		lenNode.SetIndent(1)
-		lenNode.SetReference(&logReaderTreeRef{
-			isQueueRoot: true,
-		})
-		if expanded, ok := d.logReaderExpanded["length"]; ok {
-			lenNode.SetExpanded(expanded)
-		}
-		parentQueue.AddChild(lenNode)
-
-		// list the queue
-
-		// list of executed tokens
-		executed := []uint64{tx.MutQueueToken}
-		// queued txs may be missing, depending on the start of the log
-		queue := []*cview.TreeNode{}
-		// toShow2 is the priority queue
-		queuePrio := []*cview.TreeNode{}
-		listLen := 0
-		checked := 0
-
-		// collect the reported queue amount
-		for ii := max(0, c.CursorTx1-1); ii >= 0; ii-- {
-			past := c.Tx(ii)
-			if past == nil {
-				d.Mach.EvAddErr(e, fmt.Errorf("tx missing: %d", ii), nil)
-				break
-			}
-
-			// end when queue collected
-			if listLen >= tx.Queue {
-				break
-			}
-
-			// check all executed, memorize tokens
-			if !past.IsQueued && past.MutQueueToken > 0 {
-				executed = append(executed, past.MutQueueToken)
-			}
-
-			if !past.IsQueued {
-				continue
-			}
-
-			// skip executed prepended (besides self)
-			if tx.ID != past.ID && past.MutQueueToken > 0 &&
-				slices.Contains(executed, past.MutQueueToken) {
-
-				continue
-			}
-
-			// skip checks TODO
-			// if past.IsCheck && d.Mach.Is1(ss.FilterChecks) {
-			// 	continue
-			// }
-
-			// skip self via queue tick
-			if tx.QueueTick == past.MutQueueTick {
-				continue
-			}
-
-			// skip executed by QueueTick
-			if past.MutQueueTick > 0 && past.MutQueueTick <= tx.QueueTick {
-				continue
-			}
-
-			// hard limit
-			checked++
-			if checked > 5000 {
-				break
-			}
-
-			calledStates := past.CalledStateNames(statesIndex)
-			label := fmt.Sprintf("[::b]%s%s[::-]",
-				past.Type.StringShort(), utils.J(calledStates))
-
-			if past.MutQueueTick > 0 {
-				label = label + " " +
-					d.P.Sprintf("["+theme.Grey+"]q%v", past.MutQueueTick)
-			}
-			mutNode := cview.NewTreeNode(label)
-			mutNode.SetIndent(2)
-
-			// link
-			mutNode.SetReference(&logReaderTreeRef{
-				machId:     c.Id,
-				txId:       past.ID,
-				stateNames: calledStates,
-			})
-			if slices.Contains(calledStates, selState) {
-				mutNode.SetHighlighted(true)
-			}
-
-			// priority queue
-			if past.MutQueueToken > 0 {
-				queuePrio = slices.Concat([]*cview.TreeNode{mutNode}, queuePrio)
-			} else {
-				queue = append(queue, mutNode)
-			}
-
-			listLen = len(queue) + len(queuePrio)
-
-			// limit
-			if listLen > 50 {
-				break
-			}
-		}
-
-		slices.Reverse(queuePrio)
-		slices.Reverse(queue)
-		for _, mutNode := range queuePrio {
-			lenNode.AddChild(mutNode)
-		}
-		for _, mutNode := range queue {
-			lenNode.AddChild(mutNode)
-		}
-		// overflow
-		if len(queue)+len(queuePrio) > 50 || checked > 5000 {
-			// TODO counter of remaining ones?
-			mutNode := cview.NewTreeNode("...")
-			mutNode.SetIndent(2)
-			lenNode.AddChild(mutNode)
-		}
+func (d *Debugger) restoreLogReaderSelection(
+	root, fallback *cview.TreeNode,
+) *cview.TreeNode {
+	selected := fallback
+	if selected == nil {
+		selected = root
 	}
 
-	// forked events
-	parentForks = cview.NewTreeNode("Forked")
-	parentForks.SetExpanded(false)
-	for _, link := range txParsed.Forks {
-
-		targetMach := d.hGetClient(link.MachId)
-		targetTxIdx := targetMach.TxIndex(link.TxId)
-		highlight := false
-
-		label := d.P.Sprintf("%s#%s", link.MachId, link.TxId)
-		// internal tx
-		if link.MachId == c.Id {
-			label = d.P.Sprintf("#%s", link.TxId)
-		}
-
-		if targetTxIdx != -1 {
-			targetTx := targetMach.Tx(targetTxIdx)
-			calledStates := targetTx.CalledStateNames(
-				targetMach.MsgStruct.StatesIndex)
-			label = capitalizeFirst(tx.Type.String()) + " [::b]" +
-				utils.J(calledStates)
-			if slices.Contains(calledStates, selState) {
-				highlight = true
-			}
-		}
-
-		node := cview.NewTreeNode(label)
-		node.SetIndent(1)
-		node.SetReference(&logReaderTreeRef{
-			machId: link.MachId,
-			txId:   link.TxId,
-		})
-		parentForks.AddChild(node)
-
-		// highlight
-		if highlight {
-			node.SetHighlighted(true)
-		}
-
-		// details (only for external machines)
-		if link.MachId != c.Id && targetMach != nil {
-			// label
-			label2 := d.P.Sprintf("%s#%s", link.MachId,
-				link.TxId)
-			if targetTxIdx != -1 {
-				targetTx := targetMach.Tx(targetTxIdx)
-				label2 = d.P.Sprintf("%s ["+theme.Grey+"]t%v[-]", link.MachId,
-					targetTx.TimeSum())
-			}
-
-			node2 := cview.NewTreeNode(label2)
-			node2.SetIndent(1)
-			node2.SetReference(&logReaderTreeRef{
-				machId: link.MachId,
-				txId:   link.TxId,
-			})
-			node.AddChild(node2)
-			if highlight {
-				node2.SetHighlighted(true)
-			}
-
-			// ID and tags (only for external machines)
-
-			if tags := targetMach.MsgStruct.Tags; len(tags) > 0 {
-				node3 := cview.NewTreeNode(
-					"[" + theme.Grey + "]#" + strings.Join(tags, " #"))
-				node3.SetIndent(1)
-				node.AddChild(node3)
-				if highlight {
-					node3.SetHighlighted(true)
-				}
-			}
-		}
-	}
-
-	// sibling events
-	parentSiblings = cview.NewTreeNode("Siblings")
-	parentSiblings.SetExpanded(false)
-	// get source tx
-	for _, entry := range tx.LogEntries {
-		if !strings.HasPrefix(entry.Text, "[source] ") {
-			continue
-		}
-
-		source := strings.Split(entry.Text[len("[source] "):], "/")
-
-		// source tx info
-		sC, sTx := d.hGetClientTx(source[0], source[1])
-		if sTx == nil {
-			break
-		}
-		sTxParsed := sC.TxParsed(sC.TxIndex(sTx.ID))
-
-		for _, link := range sTxParsed.Forks {
-			if link.MachId == c.Id && link.TxId == tx.ID {
-				continue
-			}
-
-			targetMach := d.hGetClient(link.MachId)
-			targetTxIdx := targetMach.TxIndex(link.TxId)
-			highlight := false
-
-			label := d.P.Sprintf("%s#%s", link.MachId, link.TxId)
-			// internal tx
-			if link.MachId == c.Id {
-				label = d.P.Sprintf("#%s", link.TxId)
-			}
-
-			if targetTxIdx != -1 {
-				targetTx := targetMach.Tx(targetTxIdx)
-				calledStates := targetTx.CalledStateNames(
-					targetMach.MsgStruct.StatesIndex)
-				label = capitalizeFirst(tx.Type.String()) + " [::b]" +
-					utils.J(calledStates)
-				if slices.Contains(calledStates, selState) {
-					highlight = true
-				}
-			}
-
-			node := cview.NewTreeNode(label)
-			node.SetIndent(1)
-			node.SetReference(&logReaderTreeRef{
-				machId: link.MachId,
-				txId:   link.TxId,
-			})
-			parentSiblings.AddChild(node)
-
-			// highlight
-			if highlight {
-				node.SetHighlighted(true)
-			}
-
-			// details (only for external machines)
-			if link.MachId != c.Id && targetMach != nil {
-				// label
-				label2 := d.P.Sprintf("%s#%s", link.MachId,
-					link.TxId)
-				if targetTxIdx != -1 {
-					targetTx := targetMach.Tx(targetTxIdx)
-					label2 = d.P.Sprintf("%s ["+theme.Grey+"]t%v[-]", link.MachId,
-						targetTx.TimeSum())
-				}
-
-				node2 := cview.NewTreeNode(label2)
-				node2.SetIndent(1)
-				node2.SetReference(&logReaderTreeRef{
-					machId: link.MachId,
-					txId:   link.TxId,
-				})
-				node.AddChild(node2)
-				if highlight {
-					node2.SetHighlighted(true)
-				}
-
-				// ID and tags (only for external machines)
-
-				if tags := targetMach.MsgStruct.Tags; len(tags) > 0 {
-					node3 := cview.NewTreeNode(
-						"[" + theme.Grey + "]#" + strings.Join(tags, " #"))
-					node3.SetIndent(1)
-					node.AddChild(node3)
-					if highlight {
-						node3.SetHighlighted(true)
-					}
-				}
-			}
-		}
-	}
-
-	// executed handlers for the curr tx
-	// TODO read from tx.Steps
-	parentHandlers = cview.NewTreeNode("Executed")
-	parentHandlers.SetExpanded(false)
-	for _, entry := range tx.LogEntries {
-		if !strings.HasPrefix(entry.Text, "[handler:") {
-			continue
-		}
-		// get name from after first "]"
-		idx := strings.Index(entry.Text, "]")
-		if idx == -1 {
-			continue
-		}
-		handlerIdx := entry.Text[len("[handler:"):idx]
-		name := entry.Text[idx+2:]
-		node := cview.NewTreeNode(d.P.Sprintf("%s["+theme.Grey+"]:%s[-]", name,
-			handlerIdx))
-		node.SetIndent(1)
-		parentHandlers.AddChild(node)
-		if selState != "" && strings.HasPrefix(name, selState) {
-			node.SetHighlighted(true)
-		}
-	}
-
-	// args for the curr tx
-	parentArgs = cview.NewTreeNode("Arguments")
-	parentArgs.SetExpanded(false)
-	{
-		labels := []string{}
-		for k, v := range tx.Args {
-			labels = append(labels, d.P.Sprintf(
-				"[::b]%s[::-] [%s]%s", k, theme.Inactive, v))
-		}
-		slices.Sort(labels)
-		for _, label := range labels {
-			node := cview.NewTreeNode(label)
-			node.SetIndent(1)
-			parentArgs.AddChild(node)
-		}
-	}
-
-	// TODO extract
-	addParent := func(parent *cview.TreeNode) {
-		name := parent.GetText()
-		// TODO better
-		nameNormalized := strings.Split(name, " ")[0]
-		if expanded, ok := d.logReaderExpanded[nameNormalized]; ok {
-			parent.SetExpanded(expanded)
-		}
-
-		count := len(parent.GetChildren())
-		if count > 0 && parent != parentSource && parent != parentQueue {
-			parent.SetText(fmt.Sprintf("[%s]%s[-] (%d)", theme.Active,
-				parent.GetText(), count))
-		} else {
-			parent.SetText(fmt.Sprintf("[%s]%s[-]", theme.Active, parent.GetText()))
-		}
-		parent.SetIndent(0)
-		parent.SetReference(&logReaderTreeRef{})
-
-		// append and collapse
-		root.AddChild(parent)
-		if d.C.ReaderCollapsed {
-			parent.SetExpanded(false)
-		}
-	}
-
-	// append parents
-	if parentSource != nil {
-		addParent(parentSource)
-	}
-	if parentTrace != nil && parentTrace.GetChildren() != nil {
-		addParent(parentTrace)
-	}
-	if parentQueue != nil {
-		addParent(parentQueue)
-	}
-	if parentForks != nil {
-		addParent(parentForks)
-	}
-	if parentSiblings != nil {
-		addParent(parentSiblings)
-	}
-	if parentHandlers != nil {
-		addParent(parentHandlers)
-	}
-	if parentArgs != nil {
-		addParent(parentArgs)
-	}
-	if parentCtx != nil {
-		addParent(parentCtx)
-	}
-	if parentWhen != nil {
-		addParent(parentWhen)
-	}
-	if parentWhenNot != nil {
-		addParent(parentWhenNot)
-	}
-	if parentWhenTime != nil {
-		addParent(parentWhenTime)
-	}
-	if parentWhenArgs != nil {
-		addParent(parentWhenArgs)
-	}
-	if parentWhenQueue != nil {
-		addParent(parentWhenQueue)
-	}
-	if parentPipeIn != nil {
-		addParent(parentPipeIn)
-	}
-	if parentPipeOut != nil {
-		addParent(parentPipeOut)
-	}
-
-	// restore selection, or 1st one TODO per client
-	selected := parentSource
 	if d.logReaderSelected != "" {
 		root.Walk(func(node, parent *cview.TreeNode, depth int) bool {
-			// already found
-			if selected != parentSource {
+			if selected != fallback {
 				return false
 			}
-
 			if node.GetText() == d.logReaderSelected &&
 				node.GetIndent() == d.logReaderSelectedLevel &&
 				node.GetParent().GetText() == d.logReaderSelectedParent {
@@ -1824,40 +1088,29 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 			return true
 		})
 
-		// Y-based restore (fallback) TODO improve
-		if selected == parentSource {
+		if selected == fallback {
 			posY := -1
 			root.Walk(func(node, parent *cview.TreeNode, depth int) bool {
-				// already found
-				if selected != parentSource {
+				if selected != fallback {
 					return false
 				}
-
-				// skip root
 				if posY == -1 {
 					posY++
 					return true
 				}
-
 				if posY == d.logReaderSelectedY {
 					selected = node
 					return false
 				}
 
 				posY++
-				// select the last one
 				selected = node
 				return true
 			})
 		}
 	}
 
-	d.logReader.SetScrollOffset(d.logReaderScroll)
-	d.logReader.SetCurrentNode(selected)
-	d.logReader.SetScrollOffset(d.logReaderScroll)
-
-	// TODO check if still needed
-	d.draw()
+	return selected
 }
 
 func (d *Debugger) parseMsgReader(
@@ -2209,4 +1462,733 @@ func (d *Debugger) parseMsgReader(
 	// TODO detached pipe handlers
 
 	return txEntries
+}
+
+// ///// ///// /////
+
+// ///// READER UPDATE
+
+// ///// ///// /////
+
+type logReaderUpdate struct {
+	d *Debugger
+	e *am.Event
+
+	root *cview.TreeNode
+	c    *Client
+	tx   *dbg.DbgMsgTx
+
+	txParsed    *types.MsgTxParsed
+	statesIndex am.S
+	selState    string
+
+	parentCtx       *cview.TreeNode
+	parentWhen      *cview.TreeNode
+	parentWhenNot   *cview.TreeNode
+	parentWhenTime  *cview.TreeNode
+	parentWhenArgs  *cview.TreeNode
+	parentWhenQueue *cview.TreeNode
+	parentPipeIn    *cview.TreeNode
+	parentPipeOut   *cview.TreeNode
+	parentExecuted  *cview.TreeNode
+	parentArgs      *cview.TreeNode
+	parentSource    *cview.TreeNode
+	parentTrace     *cview.TreeNode
+	parentQueue     *cview.TreeNode
+	parentForks     *cview.TreeNode
+	parentSiblings  *cview.TreeNode
+}
+
+func (u *logReaderUpdate) buildParsedEntries() error {
+	for _, ptr := range u.txParsed.ReaderEntries {
+		if err := u.buildParsedEntry(ptr); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (u *logReaderUpdate) buildParsedEntry(ptr *types.LogReaderEntryPtr) error {
+	entries, ok := u.c.LogReader[ptr.TxId]
+	var node *cview.TreeNode
+	if !ok || ptr.EntryIdx >= len(entries) {
+		node = cview.NewTreeNode("err:GCed entry")
+		node.SetIndent(1)
+		return nil
+	}
+
+	entry := entries[ptr.EntryIdx]
+	nodeRef := &logReaderTreeRef{
+		stateNames: u.c.IndexesToStates(entry.States),
+		machId:     entry.Mach,
+		entry:      ptr,
+	}
+
+	var err error
+	switch entry.Kind {
+	case types.LogReaderCtx:
+		u.parentCtx, node = u.buildTimedStateParent(u.parentCtx, "StateCtx", entry)
+	case types.LogReaderWhen:
+		u.parentWhen, node = u.buildTimedStateParent(u.parentWhen, "When", entry)
+	case types.LogReaderWhenNot:
+		u.parentWhenNot, node = u.buildTimedStateParent(
+			u.parentWhenNot, "WhenNot", entry)
+	case types.LogReaderWhenTime:
+		u.parentWhenTime, node = u.buildWhenTime(entry)
+	case types.LogReaderWhenArgs:
+		u.parentWhenArgs, node = u.buildWhenArgs(ptr, entry)
+	case types.LogReaderWhenQueue:
+		u.parentWhenQueue, node = u.buildWhenQueue(entry)
+	case types.LogReaderPipeIn:
+		u.parentPipeIn, node, err = u.buildPipeParent(
+			u.parentPipeIn, "Pipe-in", entry, ptr)
+	case types.LogReaderPipeOut:
+		u.parentPipeOut, node, err = u.buildPipeParent(
+			u.parentPipeOut, "Pipe-out", entry, ptr)
+	default:
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	node.SetIndent(1)
+	node.SetSelectable(true)
+	node.SetReference(nodeRef)
+
+	return nil
+}
+
+func (u *logReaderUpdate) buildTimedStateParent(
+	parent *cview.TreeNode, label string, entry *types.LogReaderEntry,
+) (*cview.TreeNode, *cview.TreeNode) {
+	if parent == nil {
+		parent = cview.NewTreeNode(label)
+	}
+	states := amhelp.IndexesToStates(u.statesIndex, entry.States)
+	node := cview.NewTreeNode(u.d.P.Sprintf(
+		"[::b]%s[::-] ["+theme.Grey+"]t%d[-]",
+		utils.J(states), entry.CreatedAt))
+	parent.AddChild(node)
+	nodeAddr := newLinkNode(&types.MachAddress{
+		MachId:   u.c.Id,
+		MachTime: entry.CreatedAt,
+	})
+	nodeAddr.SetIndent(1)
+	node.AddChild(nodeAddr)
+	node.SetExpanded(u.d.logReaderExpanded["__link_nodes"])
+	if slices.Contains(states, u.selState) {
+		node.SetHighlighted(true)
+		nodeAddr.SetHighlighted(true)
+	}
+
+	return parent, node
+}
+
+func (u *logReaderUpdate) buildWhenTime(
+	entry *types.LogReaderEntry,
+) (*cview.TreeNode, *cview.TreeNode) {
+	parent := u.parentWhenTime
+	if parent == nil {
+		parent = cview.NewTreeNode("WhenTime")
+	}
+	txt := ""
+	highlight := false
+	for i, idx := range entry.States {
+		txt += fmt.Sprintf("[::b]%s[::-]:%d ", u.statesIndex[idx], entry.Ticks[i])
+		if u.statesIndex[idx] == u.selState {
+			highlight = true
+		}
+	}
+	node := cview.NewTreeNode(u.d.P.Sprintf("%s["+theme.Grey+"]t%d[-]", txt,
+		entry.CreatedAt))
+	parent.AddChild(node)
+	nodeAddr := newLinkNode(&types.MachAddress{
+		MachId:   u.c.Id,
+		MachTime: entry.CreatedAt,
+	})
+	nodeAddr.SetIndent(1)
+	node.AddChild(nodeAddr)
+	node.SetExpanded(u.d.logReaderExpanded["__link_nodes"])
+	if highlight {
+		node.SetHighlighted(true)
+		nodeAddr.SetHighlighted(true)
+	}
+
+	return parent, node
+}
+
+func (u *logReaderUpdate) buildWhenArgs(
+	ptr *types.LogReaderEntryPtr, entry *types.LogReaderEntry,
+) (*cview.TreeNode, *cview.TreeNode) {
+	parent := u.parentWhenArgs
+	if parent == nil {
+		parent = cview.NewTreeNode("WhenArgs")
+	}
+	states := amhelp.IndexesToStates(u.statesIndex, entry.States)
+	node := cview.NewTreeNode(u.d.P.Sprintf(
+		"[::b]%s[::-] ["+theme.Grey+"]t%d[-]",
+		utils.J(states), entry.CreatedAt))
+	parent.AddChild(node)
+	nodeArgs := cview.NewTreeNode(u.d.P.Sprintf("%s", entry.Args))
+	nodeArgs.SetIndent(1)
+	nodeArgs.SetReference(&logReaderTreeRef{entry: ptr})
+	node.AddChild(nodeArgs)
+	nodeAddr := newLinkNode(&types.MachAddress{
+		MachId:   u.c.Id,
+		MachTime: entry.CreatedAt,
+	})
+	nodeAddr.SetIndent(1)
+	node.AddChild(nodeAddr)
+	node.SetExpanded(u.d.logReaderExpanded["__link_nodes"])
+	if slices.Contains(states, u.selState) {
+		node.SetHighlighted(true)
+		nodeAddr.SetHighlighted(true)
+		nodeArgs.SetHighlighted(true)
+	}
+
+	return parent, node
+}
+
+func (u *logReaderUpdate) buildWhenQueue(
+	entry *types.LogReaderEntry,
+) (*cview.TreeNode, *cview.TreeNode) {
+	parent := u.parentWhenQueue
+	if parent == nil {
+		parent = cview.NewTreeNode("WhenQueue")
+	}
+	node := cview.NewTreeNode(u.d.P.Sprintf("%v", entry.QueueTick))
+	nodeAddr := newLinkNode(&types.MachAddress{
+		MachId:    u.c.Id,
+		QueueTick: uint64(entry.QueueTick),
+	})
+	nodeAddr.SetIndent(1)
+	node.AddChild(nodeAddr)
+	node.SetExpanded(u.d.logReaderExpanded["__link_nodes"])
+	parent.AddChild(node)
+
+	return parent, node
+}
+
+func (u *logReaderUpdate) buildPipeParent(
+	parent *cview.TreeNode, label string, entry *types.LogReaderEntry,
+	ptr *types.LogReaderEntryPtr,
+) (*cview.TreeNode, *cview.TreeNode, error) {
+	if len(entry.States) == 0 {
+		return parent, nil, fmt.Errorf("pipe entry without states")
+	}
+	states := amhelp.IndexesToStates(u.statesIndex, entry.States)
+	if len(states) == 0 {
+		return parent, nil, fmt.Errorf("pipe states unresolved")
+	}
+	if parent == nil {
+		parent = cview.NewTreeNode(label)
+	}
+
+	var node *cview.TreeNode
+	for _, child := range parent.GetChildren() {
+		if child.GetText() == states[0] {
+			node = child
+			break
+		}
+	}
+
+	txIdx := u.c.TxAtMachTime(entry.CreatedAt)
+	if txIdx < 0 {
+		return parent, nil, fmt.Errorf(
+			"pipe tx missing for mach time %d", entry.CreatedAt)
+	}
+	pipeTx := u.c.Tx(txIdx)
+	if pipeTx == nil || pipeTx.Time == nil {
+		return parent, nil, fmt.Errorf(
+			"pipe tx time missing for mach time %d", entry.CreatedAt)
+	}
+	pipeTime := *pipeTx.Time
+
+	if node == nil {
+		node = cview.NewTreeNode(states[0])
+		node.SetBold(true)
+		parent.AddChild(node)
+	}
+	node2 := cview.NewTreeNode(u.d.P.Sprintf(
+		"%-6s | ["+theme.Grey+"]t%d[-] %s",
+		capitalizeFirst(entry.Pipe.String()), entry.CreatedAt, entry.Mach))
+	node2.SetIndent(1)
+	node2.SetReference(&logReaderTreeRef{
+		stateNames: u.c.IndexesToStates(entry.States),
+		entry:      ptr,
+		machId:     entry.Mach,
+		addr: &types.MachAddress{
+			MachId:    entry.Mach,
+			HumanTime: pipeTime,
+		},
+	})
+	node.AddChild(node2)
+	if slices.Contains(states, u.selState) {
+		node.SetHighlighted(true)
+		node2.SetHighlighted(true)
+	}
+
+	return parent, node, nil
+}
+
+func (u *logReaderUpdate) buildStateTrace() error {
+	if err := u.buildSource(); err != nil {
+		return err
+	}
+
+	u.parentTrace = cview.NewTreeNode("State Trace")
+	for _, item := range u.d.hStateTrace(u.tx) {
+		node := cview.NewTreeNode(item.Label)
+		node.SetIndent(1)
+		node.SetReference(&logReaderTreeRef{
+			stateNames: item.StateNames,
+		})
+		u.parentTrace.AddChild(node)
+		nodeAddr := newLinkNode(item.Source)
+		nodeAddr.SetIndent(1)
+		node.AddChild(nodeAddr)
+		node.SetExpanded(u.d.logReaderExpanded["__link_nodes"])
+
+		if slices.Contains(item.StateNames, u.selState) {
+			node.SetHighlighted(true)
+			nodeAddr.SetHighlighted(true)
+		}
+	}
+
+	return nil
+}
+
+func (u *logReaderUpdate) buildSource() error {
+	u.parentSource = cview.NewTreeNode("Source")
+	sourceKnown := false
+	for _, entry := range u.tx.LogEntries {
+		if !strings.HasPrefix(entry.Text, "[source] ") {
+			continue
+		}
+
+		sourceKnown = true
+		source := strings.Split(entry.Text[len("[source] "):], "/")
+		if len(source) < 3 {
+			return fmt.Errorf("invalid source entry: %s", entry.Text)
+		}
+		machTime, err := strconv.ParseUint(source[2], 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid source mach time %q: %w", source[2], err)
+		}
+
+		node := cview.NewTreeNode("self")
+		node.SetIndent(1)
+		if source[0] != u.c.Id {
+			node.SetText(u.d.P.Sprintf("%s [%s]t%v[-]",
+				theme.Grey, source[0], machTime))
+			node.SetReference(&logReaderTreeRef{
+				machId:   source[0],
+				txId:     source[1],
+				machTime: machTime,
+			})
+		}
+		u.parentSource.AddChild(node)
+
+		if sC, sTx := u.d.hGetClientTx(source[0], source[1]); sTx != nil {
+			stateNames := sTx.CalledStateNames(sC.MsgStruct.StatesIndex)
+			label := capitalizeFirst(sTx.Type.String()) +
+				" [::b]" + utils.J(stateNames)
+			node2 := cview.NewTreeNode(label)
+			node2.SetIndent(1)
+			node2.SetReference(&logReaderTreeRef{
+				stateNames: stateNames,
+				machId:     source[0],
+				txId:       source[1],
+				machTime:   machTime,
+			})
+			u.parentSource.AddChild(node2)
+
+			if slices.Contains(stateNames, u.selState) {
+				node.SetHighlighted(true)
+				node2.SetHighlighted(true)
+			}
+		}
+
+		if sourceMach := u.d.hGetClient(source[0]); sourceMach != nil &&
+			source[0] != u.c.Id {
+			if tags := sourceMach.MsgStruct.Tags; len(tags) > 0 {
+				node2 := cview.NewTreeNode(
+					"[" + theme.Grey + "]#" + strings.Join(tags, " #"))
+				node2.SetIndent(1)
+				u.parentSource.AddChild(node2)
+			}
+		}
+	}
+
+	if !sourceKnown {
+		node := cview.NewTreeNode("mach unknown")
+		node.SetIndent(1)
+		u.parentSource.AddChild(node)
+		node = cview.NewTreeNode("tx unknown")
+		node.SetIndent(1)
+		u.parentSource.AddChild(node)
+	}
+
+	if u.tx.StackTrace != "" {
+		node := cview.NewTreeNode("stack trace")
+		node.SetIndent(1)
+		node.SetReference(&logReaderTreeRef{
+			info: strings.TrimSpace(highlightStackTrace("\n" + u.tx.StackTrace)),
+		})
+		u.parentSource.AddChild(node)
+	}
+
+	return nil
+}
+
+func (u *logReaderUpdate) buildQueue() error {
+	u.parentQueue = cview.NewTreeNode("Queue")
+	tickNode := cview.NewTreeNode(
+		u.d.P.Sprintf("current     [::b]q%v", u.tx.QueueTick))
+	tickNode.SetIndent(1)
+	u.parentQueue.AddChild(tickNode)
+
+	if u.tx.IsQueued {
+		u.buildQueuedStatus()
+	} else {
+		u.buildQueueExecuted()
+	}
+
+	lenNode := cview.NewTreeNode(u.d.P.Sprintf("length [::b]%v[::-]", u.tx.Queue))
+	if u.tx.IsQueued {
+		lenNode.SetText(lenNode.GetText() + " (inferred)")
+	}
+	lenNode.SetIndent(1)
+	lenNode.SetReference(&logReaderTreeRef{isQueueRoot: true})
+	if expanded, ok := u.d.logReaderExpanded["length"]; ok {
+		lenNode.SetExpanded(expanded)
+	}
+	u.parentQueue.AddChild(lenNode)
+
+	return u.buildQueueList(lenNode)
+}
+
+func (u *logReaderUpdate) buildQueuedStatus() {
+	executed := u.c.TxExecutedBy(u.c.CursorTx1 - 1)
+	label := "???"
+	var ref *logReaderTreeRef
+	if executed != nil {
+		label = u.d.P.Sprintf("t%v", executed.TimeSum())
+		ref = &logReaderTreeRef{
+			stateNames: u.tx.CalledStateNames(u.statesIndex),
+			machId:     u.c.Id,
+			txId:       executed.ID,
+		}
+	}
+
+	executedNode := cview.NewTreeNode("executed at [::b]" + label)
+	executedNode.SetReference(ref)
+	executedNode.SetIndent(1)
+	u.parentQueue.AddChild(executedNode)
+	queuedNode := cview.NewTreeNode(
+		u.d.P.Sprintf("queued   at [::b]t%d", u.tx.TimeSum()))
+	queuedNode.SetIndent(1)
+	u.parentQueue.AddChild(queuedNode)
+	queuedForLabel := "..."
+	if u.tx.MutQueueTick > 0 {
+		queuedForLabel = u.d.P.Sprintf("q%v", u.tx.MutQueueTick)
+	}
+	queuedForNode := cview.NewTreeNode("queued  for [::b]" + queuedForLabel)
+	queuedForNode.SetIndent(1)
+	queuedForNode.SetReference(ref)
+	u.parentQueue.AddChild(queuedForNode)
+}
+
+func (u *logReaderUpdate) buildQueueExecuted() {
+	var queued *dbg.DbgMsgTx
+	for iii := u.c.CursorTx1 - 2; iii >= 0; iii-- {
+		check := u.c.MsgTxs[iii]
+		if !check.IsQueued {
+			continue
+		}
+		if check.MutQueueTick == u.tx.QueueTick ||
+			(check.MutQueueToken > 0 && check.MutQueueToken == u.tx.MutQueueToken) {
+			queued = check
+			break
+		}
+	}
+	label := "???"
+	var ref *logReaderTreeRef
+	if queued != nil {
+		label = u.d.P.Sprintf("t%v", queued.TimeSum())
+		ref = &logReaderTreeRef{
+			stateNames: u.tx.CalledStateNames(u.statesIndex),
+			machId:     u.c.Id,
+			txId:       queued.ID,
+		}
+	}
+
+	executedNode := cview.NewTreeNode("executed at [::b]...")
+	executedNode.SetIndent(1)
+	u.parentQueue.AddChild(executedNode)
+	queuedNode := cview.NewTreeNode("queued   at [::b]" + label)
+	queuedNode.SetReference(ref)
+	queuedNode.SetIndent(1)
+	u.parentQueue.AddChild(queuedNode)
+	queuedForNode := cview.NewTreeNode("queued  for [::b]...")
+	queuedForNode.SetIndent(1)
+	u.parentQueue.AddChild(queuedForNode)
+}
+
+func (u *logReaderUpdate) buildQueueList(lenNode *cview.TreeNode) error {
+	executed := []uint64{u.tx.MutQueueToken}
+	queue := []*cview.TreeNode{}
+	queuePrio := []*cview.TreeNode{}
+	listLen := 0
+	checked := 0
+
+	for ii := max(0, u.c.CursorTx1-1); ii >= 0; ii-- {
+		past := u.c.Tx(ii)
+		if past == nil {
+			return fmt.Errorf("tx missing: %d", ii)
+		}
+		if listLen >= u.tx.Queue {
+			break
+		}
+		if !past.IsQueued && past.MutQueueToken > 0 {
+			executed = append(executed, past.MutQueueToken)
+		}
+		if !past.IsQueued {
+			continue
+		}
+		if u.tx.ID != past.ID && past.MutQueueToken > 0 &&
+			slices.Contains(executed, past.MutQueueToken) {
+			continue
+		}
+		if u.tx.QueueTick == past.MutQueueTick {
+			continue
+		}
+		if past.MutQueueTick > 0 && past.MutQueueTick <= u.tx.QueueTick {
+			continue
+		}
+		checked++
+		if checked > 5000 {
+			break
+		}
+
+		mutNode := u.buildQueueTxNode(past)
+		if past.MutQueueToken > 0 {
+			queuePrio = slices.Concat([]*cview.TreeNode{mutNode}, queuePrio)
+		} else {
+			queue = append(queue, mutNode)
+		}
+
+		listLen = len(queue) + len(queuePrio)
+		if listLen > 50 {
+			break
+		}
+	}
+
+	slices.Reverse(queuePrio)
+	slices.Reverse(queue)
+	for _, mutNode := range queuePrio {
+		mutNode.SetIndent(1)
+		lenNode.AddChild(mutNode)
+	}
+	for _, mutNode := range queue {
+		mutNode.SetIndent(1)
+		lenNode.AddChild(mutNode)
+	}
+	if len(queue)+len(queuePrio) > 50 || checked > 5000 {
+		mutNode := cview.NewTreeNode("...")
+		mutNode.SetIndent(1)
+		lenNode.AddChild(mutNode)
+	}
+
+	return nil
+}
+
+func (u *logReaderUpdate) buildQueueTxNode(past *dbg.DbgMsgTx) *cview.TreeNode {
+	calledStates := past.CalledStateNames(u.statesIndex)
+	label := fmt.Sprintf("[::b]%s%s[::-]",
+		past.Type.StringShort(), utils.J(calledStates))
+	if past.MutQueueTick > 0 {
+		label += " " + u.d.P.Sprintf("["+theme.Grey+"]q%v", past.MutQueueTick)
+	}
+	mutNode := cview.NewTreeNode(label)
+	mutNode.SetIndent(2)
+	mutNode.SetReference(&logReaderTreeRef{stateNames: calledStates})
+	if slices.Contains(calledStates, u.selState) {
+		mutNode.SetHighlighted(true)
+	}
+
+	addr := &types.MachAddress{
+		MachId:    u.c.Id,
+		TxId:      past.ID,
+		QueueTick: past.MutQueueTick,
+	}
+	linkNode := newLinkNode(addr)
+	linkNode.SetIndent(1)
+	if linkNode != nil {
+		mutNode.AddChild(linkNode)
+		linkNode.SetReference(&logReaderTreeRef{
+			addr:       addr,
+			isLinkNode: true,
+		})
+		mutNode.SetExpanded(u.d.logReaderExpanded["__link_nodes"])
+		if slices.Contains(calledStates, u.selState) {
+			linkNode.SetHighlighted(true)
+		}
+	}
+
+	return mutNode
+}
+
+func (u *logReaderUpdate) buildForks() error {
+	u.parentForks = cview.NewTreeNode("Forked")
+	u.parentForks.SetExpanded(false)
+	for _, link := range u.txParsed.Forks {
+		if err := u.addRelatedNode(u.parentForks, link); err != nil {
+			return err
+		}
+	}
+
+	u.parentSiblings = cview.NewTreeNode("Siblings")
+	u.parentSiblings.SetExpanded(false)
+	for _, entry := range u.tx.LogEntries {
+		if !strings.HasPrefix(entry.Text, "[source] ") {
+			continue
+		}
+
+		source := strings.Split(entry.Text[len("[source] "):], "/")
+		if len(source) < 2 {
+			return fmt.Errorf("invalid source entry: %s", entry.Text)
+		}
+		sC, sTx := u.d.hGetClientTx(source[0], source[1])
+		if sTx == nil {
+			break
+		}
+		sTxParsed := sC.TxParsed(sC.TxIndex(sTx.ID))
+
+		for _, link := range sTxParsed.Forks {
+			if link.MachId == u.c.Id && link.TxId == u.tx.ID {
+				continue
+			}
+			if err := u.addRelatedNode(u.parentSiblings, link); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (u *logReaderUpdate) addRelatedNode(
+	parent *cview.TreeNode, link types.MachAddress,
+) error {
+	targetMach := u.d.hGetClient(link.MachId)
+	targetTxIdx := -1
+	if targetMach != nil {
+		targetTxIdx = targetMach.TxIndex(link.TxId)
+	}
+	highlight := false
+
+	label := u.d.P.Sprintf("%s#%s", link.MachId, link.TxId)
+	if link.MachId == u.c.Id {
+		label = u.d.P.Sprintf("#%s", link.TxId)
+	}
+	if targetMach != nil && targetTxIdx != -1 {
+		targetTx := targetMach.Tx(targetTxIdx)
+		if targetTx == nil {
+			return fmt.Errorf("target tx missing: %s#%s", link.MachId, link.TxId)
+		}
+		calledStates := targetTx.CalledStateNames(targetMach.MsgStruct.StatesIndex)
+		label = capitalizeFirst(u.tx.Type.String()) +
+			" [::b]" + utils.J(calledStates)
+		if slices.Contains(calledStates, u.selState) {
+			highlight = true
+		}
+	}
+
+	node := cview.NewTreeNode(label)
+	node.SetIndent(1)
+	node.SetReference(&logReaderTreeRef{
+		machId: link.MachId,
+		txId:   link.TxId,
+	})
+	parent.AddChild(node)
+	if highlight {
+		node.SetHighlighted(true)
+	}
+
+	if link.MachId != u.c.Id && targetMach != nil {
+		label2 := u.d.P.Sprintf("%s#%s", link.MachId, link.TxId)
+		if targetTxIdx != -1 {
+			targetTx := targetMach.Tx(targetTxIdx)
+			if targetTx == nil {
+				return fmt.Errorf("target tx missing: %s#%s", link.MachId, link.TxId)
+			}
+			label2 = u.d.P.Sprintf("%s ["+theme.Grey+"]t%v[-]", link.MachId,
+				targetTx.TimeSum())
+		}
+
+		node2 := cview.NewTreeNode(label2)
+		node2.SetIndent(1)
+		node2.SetReference(&logReaderTreeRef{
+			machId: link.MachId,
+			txId:   link.TxId,
+		})
+		node.AddChild(node2)
+		if highlight {
+			node2.SetHighlighted(true)
+		}
+
+		if tags := targetMach.MsgStruct.Tags; len(tags) > 0 {
+			node3 := cview.NewTreeNode(
+				"[" + theme.Grey + "]#" + strings.Join(tags, " #"))
+			node3.SetIndent(1)
+			node.AddChild(node3)
+			if highlight {
+				node3.SetHighlighted(true)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (u *logReaderUpdate) buildExecutedArgs() error {
+	u.parentExecuted = cview.NewTreeNode("Executed")
+	u.parentExecuted.SetExpanded(false)
+	for _, entry := range u.tx.LogEntries {
+		if !strings.HasPrefix(entry.Text, "[handler:") {
+			continue
+		}
+		idx := strings.Index(entry.Text, "]")
+		if idx == -1 {
+			return fmt.Errorf("invalid handler entry: %s", entry.Text)
+		}
+		handlerIdx := entry.Text[len("[handler:"):idx]
+		name := entry.Text[idx+2:]
+		node := cview.NewTreeNode(u.d.P.Sprintf("%s["+theme.Grey+"]:%s[-]", name,
+			handlerIdx))
+		node.SetIndent(1)
+		u.parentExecuted.AddChild(node)
+		if u.selState != "" && strings.HasPrefix(name, u.selState) {
+			node.SetHighlighted(true)
+		}
+	}
+
+	u.parentArgs = cview.NewTreeNode("Arguments")
+	u.parentArgs.SetExpanded(false)
+	labels := []string{}
+	for k, v := range u.tx.Args {
+		labels = append(labels, u.d.P.Sprintf(
+			"[::b]%s[::-] [%s]%s", k, theme.Inactive, v))
+	}
+	slices.Sort(labels)
+	for _, label := range labels {
+		node := cview.NewTreeNode(label)
+		node.SetIndent(1)
+		u.parentArgs.AddChild(node)
+	}
+
+	return nil
 }

@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"unicode"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
-	"github.com/pancsta/tcell-v2"
 
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 

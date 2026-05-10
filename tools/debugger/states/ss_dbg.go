@@ -2,7 +2,8 @@ package states
 
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	ss "github.com/pancsta/asyncmachine-go/pkg/states"
+	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
@@ -30,16 +31,16 @@ var ServerSchema = am.Schema{
 	ssV.ErrGraph: {Require: S{Exception}},
 	ssV.ConnectEvent: {
 		Multi:   true,
-		Require: S{ss.BasicStates.Start}},
+		Require: S{ssam.BasicStates.Start}},
 	ssV.ClientMsg: {
 		Multi:   true,
-		Require: S{ss.BasicStates.Start}},
+		Require: S{ssam.BasicStates.Start}},
 	ssV.DisconnectEvent: {
 		Multi:   true,
-		Require: S{ss.BasicStates.Start}},
+		Require: S{ssam.BasicStates.Start}},
 	ssV.InitClient: {
 		Multi:   true,
-		Require: S{ss.BasicStates.Start}},
+		Require: S{ssam.BasicStates.Start}},
 }
 
 // EXPORTS AND GROUPS
@@ -60,7 +61,6 @@ type DebuggerStatesDef struct {
 	*am.StatesBase
 
 	// errors
-
 	ErrDiagrams string
 	ErrWeb      string
 
@@ -114,23 +114,26 @@ type DebuggerStatesDef struct {
 	FilterTraces          string
 	FilterHealth          string
 	FilterChecks          string
+	FilterRpcMachs        string
 	FilterOutGroup        string
 	Redraw                string
 
 	// actions
-	Start              string
-	Heartbeat          string
-	GcMsgs             string
-	TreeLogView        string
-	MatrixView         string
-	TreeMatrixView     string
-	TailMode           string
-	Playing            string
-	Paused             string
-	ToggleTool         string
-	ToolToggled        string
-	SwitchingClientTx  string
-	SwitchedClientTx   string
+	Start             string
+	Heartbeat         string
+	GcMsgs            string
+	TreeLogView       string
+	MatrixView        string
+	TreeMatrixView    string
+	TailMode          string
+	Playing           string
+	Paused            string
+	ToggleTool        string
+	ToolToggled       string
+	SwitchingClientTx string
+	SwitchedClientTx  string
+	// ScrollToMutTxState scrolls to a transition which mutated the passed state,
+	// If fwd is true, it scrolls forward, otherwise backwards.
 	ScrollToMutTx      string
 	MatrixRain         string
 	MatrixRainSelected string
@@ -171,44 +174,18 @@ type DebuggerStatesDef struct {
 	SshServer         string
 	SshDisconn        string
 
-	*ss.BasicStatesDef
+	*ssam.BasicStatesDef
 	*ServerStatesDef
-}
-
-// DebuggerGroupsDef contains all the state groups of the debugger state
-// machine.
-type DebuggerGroupsDef struct {
-
-	// Focused represents focus-related states, 1 active at a time.
-	Focused S
-
-	// Views represents view-related states, 1 active at a time.
-	Views S
-
-	// Playing represents playback-related states, 1 active at a time.
-	Playing S
-
-	// ClientTx represents client transaction states, 1 active at a time.
-	ClientTx S
-
-	// Filters represents filter states.
-	Filters S
-
-	// Dialog represents dialog-related states.
-	Dialog S
-
-	// Debug contains states useful when debugging the debugger in another
-	// debugger.
-	Debug S
-
-	SwitchedClientTx S
+	*ssrpc.StateSourceStatesDef
+	*ssam.DisposedStatesDef
 }
 
 // DebuggerSchema represents all relations and properties of DebuggerStates.
 var DebuggerSchema = SchemaMerge(
-	// inherit from SharedStruct
-	ss.BasicSchema,
+	ssam.BasicSchema,
 	ServerSchema,
+	ssrpc.StateSourceSchema,
+	ssam.DisposedSchema,
 	am.Schema{
 
 		// Errors
@@ -320,6 +297,7 @@ var DebuggerSchema = SchemaMerge(
 		ssD.FilterTraces:         {},
 		ssD.FilterHealth:         {},
 		ssD.FilterChecks:         {},
+		ssD.FilterRpcMachs:       {},
 		ssD.FilterOutGroup:       {},
 		ssD.Redraw:               {},
 
@@ -360,11 +338,11 @@ var DebuggerSchema = SchemaMerge(
 		ssD.ToolToggled: {Remove: S{ssD.ToggleTool}},
 		ssD.SwitchingClientTx: {
 			Require: S{Ready},
-			Remove:  sgD.SwitchedClientTx,
+			Remove:  S{ssD.SwitchedClientTx},
 		},
 		ssD.SwitchedClientTx: {
 			Require: S{Ready},
-			Remove:  sgD.SwitchedClientTx,
+			Remove:  S{ssD.SwitchingClientTx},
 		},
 		ssD.ScrollToMutTx: {Require: S{ssD.ClientSelected}},
 		// TODO make it depend on a common MatrixVisible state
@@ -482,6 +460,36 @@ var DebuggerSchema = SchemaMerge(
 	},
 )
 
+// DebuggerGroupsDef contains all the state groups of the debugger state
+// machine.
+type DebuggerGroupsDef struct {
+
+	// Focused represents focus-related states, 1 active at a time.
+	Focused S
+
+	// Views represents view-related states, 1 active at a time.
+	Views S
+
+	// Playing represents playback-related states, 1 active at a time.
+	Playing S
+
+	// ClientTx represents client transaction states, 1 active at a time.
+	ClientTx S
+
+	// Filters represents filter states.
+	Filters S
+
+	// Dialog represents dialog-related states.
+	Dialog S
+
+	// Debug contains states useful when debugging the debugger in another
+	// debugger.
+	Debug S
+
+	Mcp         S
+	McpReadonly S
+}
+
 // EXPORTS AND GROUPS
 
 var (
@@ -498,6 +506,11 @@ var (
 
 		ssD.DialogFocused,
 	}
+	groupFilters = S{
+		ssD.FilterAutoTx, ssD.FilterCanceledTx, ssD.FilterEmptyTx,
+		ssD.FilterHealth, ssD.FilterOutGroup, ssD.FilterQueuedTx,
+		ssD.FilterAutoCanceledTx,
+	}
 	ssD = am.NewStates(DebuggerStatesDef{})
 	sgD = am.NewStateGroups(DebuggerGroupsDef{
 		// Focus
@@ -513,11 +526,7 @@ var (
 		ClientTx: S{ssD.SwitchingClientTx, ssD.SwitchedClientTx},
 
 		// Filters
-		Filters: S{
-			ssD.FilterAutoTx, ssD.FilterCanceledTx, ssD.FilterEmptyTx,
-			ssD.FilterHealth, ssD.FilterOutGroup, ssD.FilterQueuedTx,
-			ssD.FilterAutoCanceledTx,
-		},
+		Filters: groupFilters,
 
 		// Dialog
 		Dialog: S{ssD.HelpDialog, ssD.ExportDialog},
@@ -528,7 +537,15 @@ var (
 			ssD.Overlay, ssD.HelpDialog, ssD.ExportDialog,
 		}),
 
-		SwitchedClientTx: S{ssD.SwitchingClientTx, ssD.SwitchedClientTx},
+		Mcp: SAdd(groupFocus, S{ssD.UserFwd, ssD.UserBack, ssD.UserFwdStep,
+			ssD.UserBackStep, ssD.ScrollToMutTx, ssD.SwitchingClientTx,
+			ssD.SelectingClient, ssD.RemoveClient, ssD.SetCursor, ssD.SetGroup,
+			ssD.StateNameSelected, ssD.FocusNext, ssD.FocusPrev,
+			ssD.LogReaderEnabled, ssD.UserNarrowLayout, ssD.TimelineTxHidden,
+			ssD.TimelineStepsHidden}),
+
+		McpReadonly: SAdd(groupFilters, S{
+			ssD.SwitchedClientTx, ssD.ClientSelected}),
 	})
 
 	// DebuggerStates contains all the states for the debugger machine.

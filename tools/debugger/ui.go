@@ -3,15 +3,15 @@ package debugger
 import (
 	"fmt"
 	"math"
-	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/lithammer/dedent"
 	"github.com/pancsta/cview"
-	"github.com/pancsta/tcell-v2"
 	"github.com/zyedidia/clipper"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -51,7 +51,7 @@ func (d *Debugger) hInitUiComponents() {
 	})
 
 	// sidebar
-	d.initClientList()
+	d.hInitClientList()
 
 	// log view
 	d.log = cview.NewTextView()
@@ -465,6 +465,8 @@ func (d *Debugger) hInitToolbar() {
 	d.toolbarItems = [4][]toolbarItem{
 		// row 1
 		{
+			{id: types.ToolPrevClient, label: "", icon: "▲"},
+			{id: types.ToolNextClient, label: "", icon: "▼"},
 			{id: types.ToolJumpPrev, label: "jump", icon: "◀ "},
 			{id: types.ToolPrevStep, label: "step", icon: "<"},
 			{id: types.ToolPrev, label: "tx", icon: "◁ "},
@@ -476,18 +478,14 @@ func (d *Debugger) hInitToolbar() {
 			}},
 			{id: types.ToolFirst, label: "first", icon: "1"},
 			{id: types.ToolLast, label: "last", icon: "N"},
-			{
-				id: types.ToolExport, label: "export", skipFocus: true,
-				active: func() bool { return d.Mach.Is1(ss.ExportDialog) },
-			},
 		},
 
 		// row 2
 		{
 			{id: types.ToolLog, label: "log", active: func() bool {
-				return d.Params.Filters.LogLevel > am.LogNothing
+				return d.params.Filters.LogLevel > am.LogNothing
 			}, activeLabel: func() string {
-				return strconv.Itoa(int(d.Params.Filters.LogLevel))
+				return strconv.Itoa(int(d.params.Filters.LogLevel))
 			}},
 			{id: types.ToolFilterCanceledTx, label: "canceled", active: func() bool {
 				return d.Mach.Not1(ss.FilterCanceledTx)
@@ -526,6 +524,9 @@ func (d *Debugger) hInitToolbar() {
 			{id: types.ToolLogTimestamps, label: "times", active: func() bool {
 				return d.Mach.Not1(ss.LogTimestamps)
 			}},
+			{id: types.ToolFilterRpcMachs, label: "rpc", active: func() bool {
+				return d.Mach.Not1(ss.FilterRpcMachs)
+			}},
 			// TODO values t / c / m
 			//  touch / called / mutation (change)
 			//  eg "[call]jump"
@@ -537,6 +538,10 @@ func (d *Debugger) hInitToolbar() {
 		// row 3
 		{
 			{
+				id: types.ToolExport, label: "export", skipFocus: true,
+				active: func() bool { return d.Mach.Is1(ss.ExportDialog) },
+			},
+			{
 				id:    types.ToolExpand,
 				label: "expand", active: func() bool {
 					ch := d.treeRoot.GetChildren()
@@ -547,14 +552,14 @@ func (d *Debugger) hInitToolbar() {
 				return d.Mach.Not1(ss.FilterTraces)
 			}},
 			{id: types.ToolDiagrams, label: "diagrams", active: func() bool {
-				return d.Params.OutputDiagrams.Value > 0
+				return d.params.OutputDiagrams.Value > 0
 			}, activeLabel: func() string {
-				return strconv.Itoa(d.Params.OutputDiagrams.Value)
+				return strconv.Itoa(d.params.OutputDiagrams.Value)
 			}},
 			{id: types.ToolDiagramsTx, label: "diag-tx", active: func() bool {
-				return d.Params.OutputDiagTx != types.ParamsOutDiagTxNone
+				return d.params.OutputDiagTx != types.ParamsOutDiagTxNone
 			}, activeLabel: func() string {
-				switch d.Params.OutputDiagTx {
+				switch d.params.OutputDiagTx {
 				default:
 					return " "
 				case types.ParamsOutDiagTxCalled:
@@ -568,9 +573,9 @@ func (d *Debugger) hInitToolbar() {
 				}
 			}},
 			{id: types.ToolDiagramsGroup, label: "diag-group", active: func() bool {
-				return d.Params.OutputDiagGroup != types.ParamsOutDiagGroupNone
+				return d.params.OutputDiagGroup != types.ParamsOutDiagGroupNone
 			}, activeLabel: func() string {
-				switch d.Params.OutputDiagGroup {
+				switch d.params.OutputDiagGroup {
 				default:
 					return " "
 				case types.ParamsOutDiagGroupHide:
@@ -579,8 +584,14 @@ func (d *Debugger) hInitToolbar() {
 					return "S"
 				}
 			}},
+			{id: types.ToolDiagramsSteps, label: "diag-steps", active: func() bool {
+				return d.params.OutputTx
+			}},
 			{id: types.ToolCallLog, label: "call-log", active: func() bool {
 				return d.params.OutputCallLog
+			}},
+			{id: types.ToolOutputLog, label: "out-log", active: func() bool {
+				return d.params.OutputLog
 			}},
 		},
 
@@ -596,12 +607,12 @@ func (d *Debugger) hInitToolbar() {
 				return d.Mach.Is1(ss.LogReaderVisible)
 			}},
 			{id: types.ToolTimelines, label: "timelines", active: func() bool {
-				return d.Params.ViewTimelines.Value > 0
+				return d.params.ViewTimelines.Value > 0
 			}, activeLabel: func() string {
-				return strconv.Itoa(d.Params.ViewTimelines.Value)
+				return strconv.Itoa(d.params.ViewTimelines.Value)
 			}},
 			{id: types.ToolLogWrap, label: "wrap", active: func() bool {
-				return d.Params.ViewLogWrap
+				return d.params.ViewLogWrap
 			}},
 			{id: types.ToolNarrowLayout, label: "narrow", active: func() bool {
 				return d.Mach.Is1(ss.NarrowLayout)
@@ -615,7 +626,7 @@ func (d *Debugger) hInitToolbar() {
 		},
 	}
 
-	if d.Params.AddrHttp != "" {
+	if d.params.AddrHttp != "" {
 		d.toolbarItems[3] = slices.Insert(d.toolbarItems[3], 3,
 			toolbarItem{id: types.ToolWeb, label: "web", active: func() bool {
 				return false
@@ -719,7 +730,15 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[:green] [:-]            Executed
 		[:yellow] [:-]            Queued
 		[:red] [:-]            Canceled
-	`, "\n ")), theme.Active, theme.Active2, theme.Inactive))
+		%s               queued regular transition
+		%s               queued auto transition
+		%s               state diff after a reg transition
+		%s               state diff after an auto transition
+		%s               canceled transition (any)
+	`, "\n ")), theme.Active, theme.Active2, theme.Inactive,
+		cview.Escape("[queue]"), cview.Escape("[aqueu]"),
+		cview.Escape("[state]"), cview.Escape("[auto_]"),
+		cview.Escape("[cance]")))
 
 	// render the right side separately
 	d.hUpdateHelpDialog()
@@ -815,7 +834,7 @@ func (d *Debugger) hUpdateHelpDialog() {
 		[::b]?[::-]                  show help
 	
 		[::b]### [::u]machine list legend[::-]
-		[::b]T:123[::-]              total received machine time
+		[::b]T:t123[::-]              total received graph time
 		[%s::b]client-id[-::-]          connected
 		[grey::b]client-id[-::-]          disconnected
 		[red::b]client-id[-::-]          current error
@@ -827,7 +846,7 @@ func (d *Debugger) hUpdateHelpDialog() {
 		[::b]R|[::-]                 Ready active
 	
 		[::b]### [::u]toolbar legend[::-]
-		[::b]auto *[::-]        skip auto and canceled mutations
+		[::b]auto *[::-]        skip canceled auto mutations
 		[::b]auto x[::-]        skip all auto mutations
 		[::b]times[::-]         show timestamps in the log
 		[::b]health[::-]        include Healthcheck and Heartbeat
@@ -835,18 +854,26 @@ func (d *Debugger) hUpdateHelpDialog() {
 		              selected group
 		[::b]disconn[::-]        show disconnected clients
 		[::b]checks[::-]        include Can* mutations
+		[::b]rpc[::-]           show RPC machines
 		[::b]expand[::-]        expand tree in the currently
 		              focused tile
 		[::b]traces[::-]        show stack traced in the log
 		[::b]diagrams N[::-]    render a diagram with N level
 		              of detail
-		[::b]diag-tx[::-]       highlight transition related states
+		[::b]diag-tx[::-]       highlight transition-related states
 		              (called, mutated, touched, relations)
 		[::b]diag-group[::-]    skip or hide states outside of the
 		              currently selected group
+		[::b]diag-seq[::-]      generate transtion sequence diagrams
+		[::b]call-log[::-]      generate call-log/mach/*.go handler
+		              call files (for new msgs only)
+		[::b]out-log[::-]       dump log buffer into log.md
 		[::b]rain[::-]          transition per line with 1 char
 		              per state
 		[::b]matrix[::-]        transition vectors
+	
+		[::b]### [::u]status bar legend[::-]
+		[::b]Graph:t123[::-]        current graph time
 	
 		[::b]### [::u]about am-dbg[::-]
 		%-15s    version
@@ -854,8 +881,8 @@ func (d *Debugger) hUpdateHelpDialog() {
 		%-15s    HTTP server addr
 		%-15s    SSH server addr
 		%-15s    mem usage
-	`, "\n ")), theme.Active, d.Params.Version, d.Params.AddrRpc,
-		d.Params.AddrHttp, d.Params.AddrSsh, strconv.Itoa(mem)+"mb"))
+	`, "\n ")), theme.Active, d.params.Version, d.params.AddrRpc,
+		d.params.AddrHttp, d.params.AddrSsh, strconv.Itoa(mem)+"mb"))
 }
 
 func (d *Debugger) hInitLayout() {
@@ -977,9 +1004,10 @@ func (d *Debugger) hUpdateLayout() {
 	row++
 	d.mainGrid.AddItem(d.toolbars[3], row, 0, 1, len(cols), 0, 0, false)
 	row++
-	d.mainGrid.AddItem(d.statusBarLeft, row, 0, 1, len(cols)/2, 0, 0, false)
-	d.mainGrid.AddItem(d.statusBarRight, row, len(cols)/2, 1,
-		len(cols)-len(cols)/2, 0, 0, false)
+	d.mainGrid.AddItem(d.statusBarLeft, row, 0, 1,
+		len(cols)-len(cols)/3, 0, 0, false)
+	d.mainGrid.AddItem(d.statusBarRight, row, len(cols)-len(cols)/3, 1,
+		len(cols)/3, 0, 0, false)
 
 	d.hUpdateFocusableList()
 }
@@ -1040,14 +1068,14 @@ func (d *Debugger) hUpdateNarrowLayout() {
 
 	if width < 100 || d.Mach.Is1(ss.UserNarrowLayout) {
 		d.Mach.Add1(ss.NarrowLayout, nil)
-	} else if !d.Params.ViewNarrow {
+	} else if !d.params.ViewNarrow {
 		// remove if not forced
 		d.Mach.Remove1(ss.NarrowLayout, nil)
 	}
 }
 
 func (d *Debugger) hUpdateSchemaLogGrid() {
-	lvl := d.Params.Filters.LogLevel
+	lvl := d.params.Filters.LogLevel
 
 	d.schemaLogGrid.RemoveItem(d.log)
 	d.schemaLogGrid.RemoveItem(d.logReader)

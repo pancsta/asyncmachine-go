@@ -11,20 +11,20 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/coder/websocket"
+	"github.com/gdamore/tcell/v2"
 	"github.com/orsinium-labs/enum"
-	"github.com/pancsta/cview"
-	"github.com/pancsta/tcell-v2"
-
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+	"github.com/pancsta/cview"
 )
 
 var ss = ssdbg.DebuggerStates
@@ -46,16 +46,12 @@ type Params struct {
 
 	// main params
 
-	ListenAddr     string   `arg:"-l,--listen-addr" default:"localhost:6831" help:"Host and port for the debugger to listen on"`
-	OutputDir      string   `arg:"-d,--dir" default:"." help:"Output directory for generated files"`
-	CleanOnConnect bool     `arg:"--clean-on-connect" default:"true" help:"Clean up disconnected clients on the 1st connection"`
-	ImportData     string   `arg:"-i,--import-data" help:"Import an exported gob.br file"`
-	FwdData        []string `arg:"-f,--fwd-data,separate" help:"Forward incoming data to other instances (repeatable)"`
-
-	// select
-
-	SelectConnected bool   `arg:"-c,--select-connected" help:"Select the newly connected machine, if no other is connected"`
-	SelectGroup     string `arg:"--select-group" help:"Default group to select"`
+	ListenAddr      string   `arg:"-l,--listen-addr" default:"localhost:6831" help:"Host and port for the debugger to listen on"`
+	OutputDir       string   `arg:"-d,--dir" default:"." help:"Output directory for generated files"`
+	CleanOnConnect  bool     `arg:"--clean-on-connect" default:"true" help:"Clean up disconnected clients on the 1st connection"`
+	ImportData      string   `arg:"-i,--import-data" help:"Import an exported gob.br file"`
+	FwdData         []string `arg:"-f,--fwd-data,separate" help:"Forward incoming data to other instances (repeatable)"`
+	SelectConnected bool     `arg:"-c,--select-connected" help:"Select the newly connected machine, if no other is connected"`
 
 	// minor params
 
@@ -65,11 +61,12 @@ type Params struct {
 	FilterAutoCanceledTx bool        `arg:"--filter-auto-canceled" help:"Filter automatic canceled transitions"`
 	FilterCanceledTx     bool        `arg:"--filter-canceled" help:"Filter canceled transitions"`
 	FilterChecks         bool        `arg:"--filter-checks" help:"Filter check (read-only) transitions"`
-	FilterDisconn        bool        `arg:"--filter-disconn" help:"Filter disconnected clients"`
+	FilterDisconn        bool        `arg:"--filter-disconn" help:"Filter disconnected machines"`
 	FilterEmptyTx        bool        `arg:"--filter-empty" help:"Filter empty transitions"`
 	FilterGroup          bool        `arg:"--filter-group" default:"true" help:"Filter transitions by a selected group"`
 	FilterHealthTx       bool        `arg:"--filter-health" help:"Filter health-check transitions"`
 	FilterLogLevel       am.LogLevel `arg:"--filter-log-level" default:"2" help:"Filter transitions up to this log level, 0-5 (silent-everything)"`
+	FilterRpcMachs       bool        `arg:"--filter-rpc-machs" help:"Filter RPC machines"`
 	FilterQueuedTx       bool        `arg:"--filter-queued" help:"Filter queued transitions"`
 
 	OutputCallLog   bool                 `arg:"--output-call-log" help:"Write called handlers as Go code into call-log/{mach-id}/{mtime}.go inside --dir (EXPERIMENTAL)"`
@@ -78,30 +75,31 @@ type Params struct {
 	OutputDiagGroup ParamsOutDiagGroup   `arg:"--output-diag-group" help:"Only show states from the selected group (valid: hide, skip)" default:"hide"`
 	OutputDiagTx    ParamsOutDiagTx      `arg:"--output-diag-tx" help:"Dim states and rels unrelated to a transition (valid: called, changed, touched, relations)" default:"relations"`
 	OutputGraph     bool                 `arg:"--output-graph" help:"Write the current network graph as graph.(md|mgml) inside --dir (EXPERIMENTAL)"`
-	OutputLog       bool                 `arg:"--output-log" help:"Write the current log buffer to log.txt inside --dir"`
-	OutputTx        bool                 `arg:"--output-tx" default:"true" help:"Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir (EXPERIMENTAL)"`
+	OutputLog       bool                 `arg:"--output-log" help:"Write the current log buffer to log.md inside --dir"`
+	OutputTx        bool                 `arg:"--output-tx" default:"true" help:"Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir"`
 
 	// ui
 
 	UiMcp bool `arg:"--ui-mcp" help:"Enable MCP server on port --listen-addr +1 (requires --ui-web) (EXPERIMENTAL)" default:"true"`
 	UiSsh bool `arg:"--ui-ssh" help:"Enable SSH headless mode on port --listen-addr +2 (EXPERIMENTAL)"`
-	UiWeb bool `arg:"--ui-web" default:"true" help:"Start a web server for --dir and diagrams on --listen-addr +1 (EXPERIMENTAL)"`
+	UiWeb bool `arg:"--ui-web" default:"true" help:"Start a web server for --dir and diagrams on --listen-addr +1"`
 
 	// view
 
-	PrintVersion  bool                `arg:"--version" help:"Print version and exit"`
-	StartupView   string              `arg:"-v,--view" default:"tree-log" help:"Initial view (tree-log, tree-matrix, matrix)"`
-	ViewLogWrap   bool                `arg:"--view-log-wrap" help:"Wrap log lines"`
-	ViewNarrow    bool                `arg:"--view-narrow" help:"Force a narrow view, independently of the viewport size"`
-	ViewRain      bool                `arg:"--view-rain" help:"Show the rain view"`
-	ViewReader    bool                `arg:"-r,--view-reader" help:"Show the log reader view"`
-	TailMode      bool                `arg:"--view-tail" default:"true" help:"Start from the latest tx"`
-	ViewTheme     string              `arg:"--view-theme" default:"dark" help:"Color theme (dark, light)"`
-	ViewTimelines ParamsViewTimelines `arg:"--view-timelines" default:"2" help:"Number of timelines to show (0-2)"`
+	PrintVersion    bool                `arg:"--version" help:"Print version and exit"`
+	StartupView     string              `arg:"-v,--view" default:"tree-log" help:"Initial view (tree-log, tree-matrix, matrix)"`
+	ViewExpandLinks bool                `arg:"--view-expand-links" help:"Expand all tree links" default:"true"`
+	ViewLogWrap     bool                `arg:"--view-log-wrap" help:"Wrap log lines"`
+	ViewNarrow      bool                `arg:"--view-narrow" help:"Force a narrow view, independently of the viewport size"`
+	ViewRain        bool                `arg:"--view-rain" help:"Show the rain view"`
+	ViewReader      bool                `arg:"-r,--view-reader" help:"Show the log reader view" default:"true"`
+	TailMode        bool                `arg:"--view-tail" default:"true" help:"Show the most recent transition"`
+	ViewTheme       string              `arg:"--view-theme" default:"dark" help:"Color theme (dark, light)"`
+	ViewTimelines   ParamsViewTimelines `arg:"--view-timelines" default:"1" help:"Number of timelines to show (0-2)"`
 
 	// optimization
 
-	LogOpsTtl time.Duration `arg:"--log-ops-ttl" default:"24h" help:"Max time to live for logs level LogOps"`
+	LogOpsTtl time.Duration `arg:"--log-ops-ttl" default:"1h" help:"Max time to live for logs level LogOps"`
 	MaxMemMb  int           `arg:"--max-mem" default:"1000" help:"Max memory usage (in MB) to flush old transitions"`
 
 	// self-dbg
@@ -269,6 +267,7 @@ type Filters struct {
 	SkipOutGroup       bool
 	SkipChecks         bool
 	LogLevel           am.LogLevel
+	SkipRpcMach        bool
 }
 
 func (f *Filters) Equal(filters *Filters) bool {
@@ -284,7 +283,8 @@ func (f *Filters) Equal(filters *Filters) bool {
 		f.SkipQueuedTx == filters.SkipQueuedTx &&
 		f.SkipOutGroup == filters.SkipOutGroup &&
 		f.SkipChecks == filters.SkipChecks &&
-		f.LogLevel == filters.LogLevel
+		f.LogLevel == filters.LogLevel &&
+		f.SkipRpcMach == filters.SkipRpcMach
 }
 
 // ///// ///// /////
@@ -512,6 +512,7 @@ type MsgTxParsed struct {
 }
 
 type MsgSchemaParsed struct {
+	// TODO split to group ID, labels
 	Groups      map[string]am.S
 	GroupsOrder []string
 }
@@ -576,6 +577,7 @@ var (
 	ToolFilterHealth     = ToolName{"skip-health"}
 	ToolFilterOutGroup   = ToolName{"skip-outgroup"}
 	ToolFilterChecks     = ToolName{"skip-checks"}
+	ToolFilterRpcMachs   = ToolName{"skip-rpc-machs"}
 	ToolFilterDisconn    = ToolName{"skip-disconn"}
 	ToolLogTimestamps    = ToolName{"hide-timestamps"}
 	ToolFilterTraces     = ToolName{"hide-traces"}
@@ -584,7 +586,9 @@ var (
 	ToolDiagrams         = ToolName{"diagrams"}
 	ToolDiagramsTx       = ToolName{"diag-tx"}
 	ToolDiagramsGroup    = ToolName{"diag-group"}
+	ToolDiagramsSteps    = ToolName{"diag-seq"}
 	ToolCallLog          = ToolName{"call-log"}
+	ToolOutputLog        = ToolName{"out-log"}
 	ToolTimelines        = ToolName{"timelines"}
 	ToolReader           = ToolName{"reader"}
 	ToolRain             = ToolName{"rain"}
@@ -604,6 +608,8 @@ var (
 	ToolExport           = ToolName{"export"}
 	ToolNextStep         = ToolName{"next-step"}
 	ToolPrevStep         = ToolName{"prev-step"}
+	ToolPrevClient       = ToolName{"prev-client"}
+	ToolNextClient       = ToolName{"next-client"}
 
 	ToolNames = enum.New(
 		ToolFilterCanceledTx,
@@ -621,6 +627,7 @@ var (
 		ToolDiagrams,
 		ToolDiagramsTx,
 		ToolDiagramsGroup,
+		ToolDiagramsSteps,
 		ToolCallLog,
 		ToolTimelines,
 		ToolReader,
@@ -641,6 +648,8 @@ var (
 		ToolExport,
 		ToolNextStep,
 		ToolPrevStep,
+		ToolPrevClient,
+		ToolNextClient,
 	)
 )
 
@@ -664,10 +673,10 @@ type A struct {
 
 	// cursor positioning (1-based)
 
-	Cursor1     int `log:"cursor1"`
-	CursorStep1 int `log:"cursor_step1"`
+	Cursor1     int `log:"cursor1" json:",string"`
+	CursorStep1 int `log:"cursor_step1" json:",string"`
 	// TODO merge with Cursor1
-	CursorTx1 int `log:"cursor_tx1"`
+	CursorTx1 int `log:"cursor_tx1" json:",string"`
 
 	// navigation
 
@@ -689,6 +698,7 @@ type A struct {
 
 	// log building
 
+	// 1-based index
 	LogRebuildEnd int `json:",string"`
 	LogBuffer     string
 	LogLevel      am.LogLevel `json:",string"`
@@ -756,10 +766,10 @@ type ARpc struct {
 
 	// cursor positioning (1-based)
 
-	Cursor1     int `log:"cursor1"`
-	CursorStep1 int `log:"cursor_step1"`
+	Cursor1     int `log:"cursor1" json:",string"`
+	CursorStep1 int `log:"cursor_step1" json:",string"`
 	// TODO merge with Cursor1
-	CursorTx1 int `log:"cursor_tx1"`
+	CursorTx1 int `log:"cursor_tx1" json:",string"`
 
 	// navigation
 
@@ -813,11 +823,12 @@ type ARpc struct {
 	CurrTxRow int `json:",string"`
 }
 
+// StateCalls is a list binding args to state names.
 var StateCalls = []am.CallSignature{
 	{States: am.S{ss.StateNameSelected}, Needed: []string{"State"}},
-	{States: am.S{ss.Redraw}, Args: []string{"Immediate"}},
-	{States: am.S{ss.Fwd}, Args: []string{"Amount"}},
-	{States: am.S{ss.Back}, Args: []string{"Amount"}},
+	{States: am.S{ss.Redraw}, Optional: []string{"Immediate"}},
+	{States: am.S{ss.Fwd}, Optional: []string{"Amount"}},
+	{States: am.S{ss.Back}, Optional: []string{"Amount"}},
 	{States: am.S{ss.ConnectEvent}, Needed: []string{"MsgStruct", "ConnId"}},
 	{States: am.S{ss.DisconnectEvent}, Needed: []string{"ConnId"}},
 	{
@@ -833,17 +844,17 @@ var StateCalls = []am.CallSignature{
 		Needed: []string{"Group"},
 	},
 	{
-		States: am.S{ss.SelectingClient},
-		Needed: []string{"ClientId"},
-		Args:   []string{"Group", "FromConnected"},
+		States:   am.S{ss.SelectingClient},
+		Needed:   []string{"ClientId"},
+		Optional: []string{"Group", "FromConnected"},
 	},
 	{
-		States: am.S{ss.ClientSelected},
-		Args:   []string{"Ctx", "FromConnected", "FromPlaying"},
+		States:   am.S{ss.ClientSelected},
+		Optional: []string{"FromConnected", "FromPlaying"},
 	},
 	{
-		States: am.S{ss.ScrollToTx},
-		Args:   []string{"CursorTx1", "TxId", "CursorStep1", "TrimHistory"},
+		States:   am.S{ss.ScrollToTx},
+		Optional: []string{"CursorTx1", "TxId", "CursorStep1", "TrimHistory"},
 	},
 	{
 		States: am.S{ss.ScrollToStep},
@@ -857,37 +868,40 @@ var StateCalls = []am.CallSignature{
 		},
 	},
 	{
-		States: am.S{ss.ToolToggled},
-		Args:   []string{"FilterTxs", "BuildClientList"},
+		States:   am.S{ss.ToolToggled},
+		Optional: []string{"FilterTxs", "BuildClientList"},
 	},
 	{
 		States: am.S{ss.SwitchingClientTx},
+		Desc:   "Go to N-th transition of a client.",
 		Needed: []string{"ClientId", "CursorTx1"},
 	},
 	{
 		States: am.S{ss.ScrollToMutTx},
-		Needed: []string{"State"},
-		Args:   []string{"Fwd"},
+		Desc: "ScrollToMutTxState scrolls to a transition which mutated the " +
+			"passed state, If fwd is true, it scrolls forward, otherwise backwards.",
+		Needed:   []string{"State"},
+		Optional: []string{"Fwd"},
 	},
 	{
-		States: am.S{ss.AfterFocus},
-		Needed: []string{"FocusPrimitive"},
-		Args:   []string{"MouseFocus"},
+		States:   am.S{ss.AfterFocus},
+		Needed:   []string{"FocusPrimitive"},
+		Optional: []string{"MouseFocus"},
 	},
 	{
-		States: am.S{ss.Resized},
-		Args:   []string{"LogRebuildEnd"},
+		States:   am.S{ss.Resized},
+		Optional: []string{"LogRebuildEnd"},
 	},
 	{
-		States: am.S{ss.WebReq},
-		Needed: []string{"HttpRequest", "HttpResponseWriter", "DoneChan"},
-		Args:   []string{"Uri", "Addr"},
+		States:   am.S{ss.WebReq},
+		Needed:   []string{"HttpRequest", "HttpResponseWriter", "DoneChan"},
+		Optional: []string{"Uri", "Addr"},
 	},
 	{
 		States: am.S{ss.WebSocketDiag},
 		Needed: []string{"WebSocketConn", "HttpRequest", "HttpResponseWriter",
 			"DoneChan"},
-		Args: []string{"Addr"},
+		Optional: []string{"Addr"},
 	},
 	{
 		States: am.S{ss.MatrixRainSelected},
@@ -931,4 +945,19 @@ func ParseRpc(args am.A) am.A {
 	}
 
 	return ret
+}
+
+// TODO
+func NormalizeGroupName(name string) string {
+	name, _, _ = strings.Cut(name, ":")
+	return strings.TrimSuffix(strings.ReplaceAll(strings.ReplaceAll(name,
+		"-", ""),
+		" ", ""),
+		"StatesDef")
+}
+
+type StateTraceItem struct {
+	Label      string
+	Source     *MachAddress
+	StateNames am.S
 }

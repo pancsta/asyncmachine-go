@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 	"github.com/pancsta/cview/cbind"
-	"github.com/pancsta/tcell-v2"
 
 	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
@@ -171,7 +171,6 @@ func (d *Debugger) hSearchSchemaClients(inputHandler *cbind.Configuration) {
 							// minimal match and move to next matches for speed
 						} else if !currNodePassed {
 							currNodePassed = true
-							return true
 						}
 
 						text := normalizeText(node.GetText())
@@ -754,6 +753,8 @@ func (d *Debugger) hThrottleKey(ev *tcell.EventKey, ms int) bool {
 	return false
 }
 
+var _ = ss.FocusNext
+
 // TODO move
 func (d *Debugger) FocusNextState(e *am.Event) {
 	idx := slices.Index(d.focusablePrims, d.Focused)
@@ -766,6 +767,8 @@ func (d *Debugger) FocusNextState(e *am.Event) {
 	d.Mach.EvAdd1(e, state, nil)
 	d.App.SetFocus(prim)
 }
+
+var _ = ss.FocusPrev
 
 // TODO move
 func (d *Debugger) FocusPrevState(e *am.Event) {
@@ -815,7 +818,7 @@ func (d *Debugger) hUpdateFocusableList() {
 		prims = append(prims, d.matrix)
 
 		// log
-	} else if d.Params.Filters.LogLevel != am.LogNothing {
+	} else if d.params.Filters.LogLevel != am.LogNothing {
 		d.focusable = append(d.focusable, d.log.Box)
 		prims = append(prims, d.log)
 	}
@@ -827,7 +830,7 @@ func (d *Debugger) hUpdateFocusableList() {
 	}
 
 	// add timelines
-	switch d.Params.ViewTimelines {
+	switch d.params.ViewTimelines {
 	case types.ParamsViewTimelinesTwo:
 		d.focusable = append(d.focusable, d.timelineTxs.Box, d.timelineSteps.Box)
 		prims = append(prims, d.timelineTxs.Box, d.timelineSteps.Box)

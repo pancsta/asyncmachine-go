@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -31,17 +32,18 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/andybalholm/brotli"
 	"github.com/charmbracelet/ssh"
+	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
-	"github.com/pancsta/tcell-v2"
+	"github.com/soheilhy/cmux"
 	"github.com/zyedidia/clipper"
+	"golang.org/x/text/language"
 	"golang.org/x/text/message"
-
-	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
@@ -71,11 +73,12 @@ var theme Theme
 
 type Debugger struct {
 	*am.ExceptionHandler
-	Mach *am.Machine
+	*ssam.DisposedHandlers
 
+	Mach    *am.Machine
 	Clients map[string]*Client
 	// TODO make private, pass via state
-	Params     types.Params
+	params     types.Params
 	LayoutRoot *cview.Panels
 	// selected client
 	C   *Client
@@ -177,18 +180,41 @@ type Debugger struct {
 	mouseFocusChanged bool
 	Focused           cview.Primitive
 	// skip the next selection action
-	treeGroupSkip bool
-	preModalFocus cview.Primitive
-	overlay       *cview.TextView
+	treeGroupSkip   bool
+	preModalFocus   cview.Primitive
+	overlay         *cview.TextView
+	graphFileMd     *os.File
+	graphFileMgml   *os.File
+	ServerMux       cmux.CMux
+	ServerHttp      *http.Server
+	ctxCancelCursor context.CancelFunc
+	ctxCursor       context.Context
+	callLogFiles    map[string]*os.File
+	// length of the current file
+	callLogFilesLen map[string]int64
+	// num of calls in the current file
+	callLogCount map[string]int
+	// count value of the last active separator
+	callLogLastSep map[string]int
+	listenHost     string
+	httpPort       string
 }
 
+// TODO split to New and
 func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	var err error
+
 	// init the debugger
 	d := &Debugger{
+		DisposedHandlers:  &ssam.DisposedHandlers{},
 		Clients:           make(map[string]*Client),
 		logReaderExpanded: make(map[string]bool),
+		callLogFiles:      make(map[string]*os.File),
+		callLogFilesLen:   make(map[string]int64),
+		callLogCount:      make(map[string]int),
+		callLogLastSep:    make(map[string]int),
 	}
+	d.P = message.NewPrinter(language.English)
 
 	id := utils.RandId(0)
 	if p.Id != "" {
@@ -203,10 +229,6 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 		return nil, err
 	}
 	d.Mach = mach
-	// mach.AddBreakpoint1(ss.AddressFocused, "", false)
-	// mach.AddBreakpoint1(ss.AddressFocused, "", true)
-	// mach.AddBreakpoint1(ss.UpdateFocus, "", false)
-	// mach.AddBreakpoint1(ss.UpdateFocus, "", true)
 	mach.SetGroups(states.DebuggerGroups, ss)
 
 	// self debug
@@ -228,20 +250,20 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	// mach.AddBreakpoint1(ss.UpdateFocus, "", false)
 	// mach.AddBreakpoint1(ss.UpdateFocus, "", true)
 
-	err = d.setParams(p)
+	err = d.hSetParams(p)
 	if err != nil {
 		return nil, err
 	}
-	if d.Params.Version == "" {
-		d.Params.Version = "(devel)"
+	if d.params.Version == "" {
+		d.params.Version = "(devel)"
 	}
 
 	// logging
 	semLog := mach.SemLogger()
-	if d.Params.DbgLogger != nil {
-		semLog.SetSimple(d.Params.DbgLogger.Printf, d.Params.LogLevel)
+	if d.params.DbgLogger != nil {
+		semLog.SetSimple(d.params.DbgLogger.Printf, d.params.LogLevel)
 	} else {
-		semLog.SetSimple(log.Printf, d.Params.LogLevel)
+		semLog.SetSimple(log.Printf, d.params.LogLevel)
 	}
 	semLog.SetArgsMapper(types.LogArgs)
 
@@ -251,86 +273,16 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	}
 
 	// import data TODO state
-	if d.Params.ImportData != "" {
-		d.Params.Print("Importing data from %s\nPlease wait...\n",
-			d.Params.ImportData)
+	if d.params.ImportData != "" {
+		d.params.Print("Importing data from %s\nPlease wait...\n",
+			d.params.ImportData)
 		start := time.Now()
-		mach.Log("Importing data from %s", d.Params.ImportData)
-		d.hImportData(d.Params.ImportData)
+		mach.Log("Importing data from %s", d.params.ImportData)
+		d.hImportData(d.params.ImportData)
 		if d.Mach.IsErr() {
-			d.Params.Print("ERROR: %s\n", d.Mach.Err())
+			d.params.Print("ERROR: %s\n", d.Mach.Err())
 		} else {
 			mach.Log("Imported data in %s", time.Since(start))
-		}
-	}
-
-	// clipboard
-	if d.Params.EnableClipboard {
-		clip, err := clipper.GetClipboard(clipper.Clipboards...)
-		if err != nil {
-			mach.AddErr(fmt.Errorf("clipboard init: %w", err), nil)
-		}
-		d.clip = clip
-	}
-
-	// ensure output directory exists
-	if d.Params.OutputDir != "" && d.Params.OutputDir != "." {
-		if err := os.MkdirAll(d.Params.OutputDir, 0o755); err != nil {
-			mach.AddErr(fmt.Errorf("create output dir: %w", err), nil)
-		}
-	}
-
-	// client list file
-	if d.Params.OutputClients {
-		p := path.Join(d.Params.OutputDir, "am-dbg-clients.txt")
-		clientListFile, err := os.Create(p)
-		if err != nil {
-			mach.AddErr(err, nil)
-		}
-		d.clientListFile = clientListFile
-	}
-
-	// log file
-	if d.Params.OutputLog {
-		p := path.Join(d.Params.OutputDir, "log.txt")
-		logFile, err := os.Create(p)
-		if err != nil {
-			mach.AddErr(err, nil)
-		}
-		d.logFile = logFile
-	}
-
-	// tx files
-	if d.Params.OutputTx {
-		p := path.Join(d.Params.OutputDir, "tx.md")
-		txFile, err := os.Create(p)
-		if err != nil {
-			mach.AddErr(err, nil)
-		}
-		d.txFileMd = txFile
-
-		// D2
-		txD2File := path.Join(d.Params.OutputDir, "tx.d2")
-		d.txFileD2, err = os.Create(txD2File)
-		if err != nil {
-			mach.AddErr(err, nil)
-		}
-		txD2SvgFile := path.Join(d.Params.OutputDir, "tx.d2.svg")
-		d.txFileD2Svg, err = os.Create(txD2SvgFile)
-		if err != nil {
-			mach.AddErr(err, nil)
-		}
-
-		// mermaid
-		txMermaidFile := path.Join(d.Params.OutputDir, "tx.mermaid")
-		d.txFileMermaid, err = os.Create(txMermaidFile)
-		if err != nil {
-			mach.AddErr(err, nil)
-		}
-		txMermaidAsciiFile := path.Join(d.Params.OutputDir, "tx.mermaid.txt")
-		d.txFileMermaidAscii, err = os.Create(txMermaidAsciiFile)
-		if err != nil {
-			mach.AddErr(err, nil)
 		}
 	}
 
@@ -341,7 +293,9 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	return d, nil
 }
 
-func (d *Debugger) setParams(p types.Params) error {
+func (d *Debugger) hSetParams(p types.Params) error {
+	mach := d.Mach
+
 	// validate
 	if p.LogLevel > am.LogEverything {
 		p.LogLevel = am.LogEverything
@@ -360,11 +314,25 @@ func (d *Debugger) setParams(p types.Params) error {
 	// compute addr
 	httpAddr := ""
 	sshAddr := ""
+	rpcAddr := p.ListenAddr
 	if p.ListenAddr != "-1" && p.ListenAddr != "" {
 		host, port, err := net.SplitHostPort(p.ListenAddr)
+		d.listenHost = host
+
+		// global listen
+		if host == "0.0.0.0" {
+			listenHost, err := utils.GetGlobalUnicastIP()
+			if err != nil {
+				return err
+			}
+			d.listenHost = listenHost
+			mach.Log("public host: %s", listenHost)
+		}
+
 		if err == nil {
 			dbgPort, _ := strconv.Atoi(port)
-			httpAddr = host + ":" + strconv.Itoa(dbgPort+1)
+			d.httpPort = strconv.Itoa(dbgPort + 1)
+			httpAddr = host + ":" + d.httpPort
 			sshAddr = host + ":" + strconv.Itoa(dbgPort+2)
 		}
 	}
@@ -374,7 +342,7 @@ func (d *Debugger) setParams(p types.Params) error {
 	if !p.UiWeb {
 		httpAddr = ""
 	}
-	p.AddrRpc = p.ListenAddr
+	p.AddrRpc = rpcAddr
 	p.AddrHttp = httpAddr
 	p.AddrSsh = sshAddr
 	p.UiSsh = p.UiSsh && sshAddr != ""
@@ -394,17 +362,12 @@ func (d *Debugger) setParams(p types.Params) error {
 			SkipHealthTx:       p.FilterHealthTx,
 			SkipQueuedTx:       p.FilterQueuedTx,
 			SkipChecks:         p.FilterChecks,
+			SkipRpcMach:        p.FilterRpcMachs,
 		}
 	}
 	d.statesFromFilters(p.Filters)
 
 	// other defaults
-	if p.MaxMemMb == 0 {
-		p.MaxMemMb = maxMemMb
-	}
-	if p.LogOpsTtl == 0 {
-		p.LogOpsTtl = time.Hour
-	}
 	if p.Print == nil {
 		p.Print = func(txt string, args ...any) {
 			fmt.Printf(txt, args...)
@@ -415,7 +378,6 @@ func (d *Debugger) setParams(p types.Params) error {
 	} else {
 		d.Mach.Remove1(ss.FilterDisconn, nil)
 	}
-	d.lastSelectedGroup = p.SelectGroup
 
 	// TODO avoid globals
 	var err error
@@ -431,15 +393,264 @@ func (d *Debugger) setParams(p types.Params) error {
 	// apply theme to defaults
 	theme.Apply()
 
-	d.Params = p
+	// clipboard
+	if p.EnableClipboard {
+		clip, err := clipper.GetClipboard(clipper.Clipboards...)
+		if err != nil {
+			mach.AddErr(fmt.Errorf("clipboard init: %w", err), nil)
+		}
+		d.clip = clip
+	}
+
+	// TODO dispose old files
+
+	// ensure output directory exists
+	if p.OutputDir != "" && p.OutputDir != "." {
+		if err := os.MkdirAll(p.OutputDir, 0o755); err != nil {
+			mach.AddErr(fmt.Errorf("create output dir: %w", err), nil)
+		}
+	}
+
+	// client list file
+	if p.OutputClients {
+		p := path.Join(p.OutputDir, "clients.txt")
+		clientListFile, err := os.Create(p)
+		if err != nil {
+			mach.AddErr(err, nil)
+		}
+		d.clientListFile = clientListFile
+	}
+
+	// graph files
+	if p.OutputGraph {
+		loc := path.Join(p.OutputDir, "graph.md")
+		d.graphFileMd, err = os.Create(loc)
+		if err != nil {
+			mach.AddErr(err, nil)
+		}
+		loc = path.Join(p.OutputDir, "graph.xml")
+		d.graphFileMgml, err = os.Create(loc)
+		if err != nil {
+			mach.AddErr(err, nil)
+		}
+	}
+
+	// expand links
+	d.logReaderExpanded["__link_nodes"] = p.ViewExpandLinks
+
+	// save
+	d.params = p
+
+	// log file
+	if p.OutputLog {
+		d.hCreateOutputLogFile()
+	}
+
+	// tx files
+	if p.OutputTx {
+		d.hInitOutputTxFiles()
+	}
+
+	// init call-log TODO duplicate?
+	if p.OutputCallLog {
+		err := os.MkdirAll(path.Join(p.OutputDir, "call-log"), 0o755)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
-// ///// ///// /////
+func (d *Debugger) hCreateOutputLogFile() {
+	p := path.Join(d.params.OutputDir, logFile)
+	logFile, err := os.Create(p)
+	if err != nil {
+		d.Mach.AddErr(err, nil)
+		return
+	}
+	d.logFile = logFile
+}
 
-// ///// PUB
+func (d *Debugger) hCloseOutputTxFiles() {
+	if d.txFileMd == nil {
+		return
+	}
+	d.txFileMd.Close()
+	d.txFileD2Svg.Close()
+	d.txFileD2.Close()
+	d.txFileMermaid.Close()
+	d.txFileMermaidAscii.Close()
+}
 
-// ///// ///// /////
+func (d *Debugger) hCloseOutputCallLogFiles() {
+	for _, f := range d.callLogFiles {
+		f.Close()
+	}
+	d.callLogFiles = make(map[string]*os.File)
+}
+
+func (d *Debugger) hCloseOutputLog() {
+	d.logFileMx.Lock()
+	defer d.logFileMx.Unlock()
+	d.Mach.AddErr(d.logFile.Close(), nil)
+	d.logFile = nil
+}
+
+// TODO ret error
+func (d *Debugger) hInitOutputTxFiles() {
+	mach := d.Mach
+	dir := d.params.OutputDir
+
+	loc := path.Join(dir, "tx.md")
+	txFile, err := os.Create(loc)
+	if err != nil {
+		mach.AddErr(err, nil)
+	}
+	d.txFileMd = txFile
+
+	// D2
+	txD2File := path.Join(dir, "tx.d2")
+	d.txFileD2, err = os.Create(txD2File)
+	if err != nil {
+		mach.AddErr(err, nil)
+	}
+	txD2SvgFile := path.Join(dir, "tx.d2.svg")
+	d.txFileD2Svg, err = os.Create(txD2SvgFile)
+	if err != nil {
+		mach.AddErr(err, nil)
+	}
+
+	// mermaid
+	txMermaidFile := path.Join(dir, "tx.mermaid")
+	d.txFileMermaid, err = os.Create(txMermaidFile)
+	if err != nil {
+		mach.AddErr(err, nil)
+	}
+	txMermaidAsciiFile := path.Join(dir, "tx.mermaid.txt")
+	d.txFileMermaidAscii, err = os.Create(txMermaidAsciiFile)
+	if err != nil {
+		mach.AddErr(err, nil)
+	}
+}
+
+// hSetCursor1 sets both the tx and steps cursors, 1-based.
+func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
+	cursor1 := args.Cursor1
+	cursorStep1 := args.CursorStep1
+	skipHistory := args.SkipHistory
+	trimHistory := args.TrimHistory
+	filterBack := args.FilterBack
+
+	// ctx
+	if d.ctxCancelCursor != nil {
+		d.ctxCancelCursor()
+	}
+	d.ctxCursor, d.ctxCancelCursor = context.WithCancel(d.Mach.Context())
+
+	// TODO optimize for no-change?
+	d.C.CursorTx1 = d.hFilterTxCursor1(d.C, cursor1, filterBack)
+	// reset the step timeline
+	// TODO validate
+	d.C.CursorStep1 = cursorStep1
+
+	if d.HistoryCursor == 0 && !skipHistory {
+		d.hPrependHistory(d.hGetMachAddress())
+	} else if trimHistory {
+		d.hTrimHistory()
+	}
+	d.hHandleTStepsScrolled()
+
+	// debug
+	// d.State.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
+	// d.State.DbgLogger.Printf("History: %v\n", d.History)
+
+	d.lastScrolledTxTime = time.Time{}
+	if d.C.CursorTx1 > 0 {
+		tx := d.hCurrentTx()
+		if tx != nil {
+			d.lastScrolledTxTime = *tx.Time
+		}
+
+		// tx file
+		if d.params.OutputTx && tx != nil {
+			d.Mach.GoAfter(d.ctxCursor, time.Second/2, func() {
+				parsed := d.C.TxParsed(d.C.CursorTx1 - 1)
+				// TODO parsed msg nil
+				if parsed == nil {
+					err := fmt.Errorf("parsed tx missing for %s", tx.ID)
+					d.Mach.AddErrState(ss.ErrDiagrams, err, nil)
+					return
+				}
+				d.hGenSeqDiagram(am.EvToCtx(d.ctxCursor, e),
+					tx, parsed)
+			})
+		}
+	}
+
+	d.Mach.EvRemove1(e, ss.TimelineStepsScrolled, nil)
+	// optional diagrams
+	go amhelp.AskEvAdd1(e, d.Mach, ss.DiagramsScheduled, nil)
+}
+
+// TODO state
+func (d *Debugger) hGenSeqDiagram(
+	ctx context.Context, tx *dbg.DbgMsgTx, parsed *types.MsgTxParsed,
+) {
+	//
+
+	e := am.CtxToEv(ctx)
+	index := d.C.MsgStruct.StatesIndex
+	_ = d.txFileMd.Truncate(0)
+	_ = d.txFileD2.Truncate(0)
+	_ = d.txFileD2Svg.Truncate(0)
+	_ = d.txFileMermaid.Truncate(0)
+	_ = d.txFileMermaidAscii.Truncate(0)
+	_, _ = d.txFileMd.WriteAt([]byte(tx.TxString(index)), 0)
+
+	if tx.Steps == nil {
+		return
+	}
+
+	visTx := amvis.Transition{
+		Log:        amhelp.MachToSlog(d.Mach),
+		Tx:         tx,
+		TxParsed:   parsed,
+		PrevTx:     d.hPrevTx(),
+		StateTrace: d.hStateTrace(tx),
+		// add queue-tx with stack trace
+	}
+
+	// D2
+	d2Diag, d2Svg, err := visTx.D2(ctx, index)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	if err != nil {
+		d.Mach.Log("err: genSeqDiagram D2: %s", err)
+	}
+	_, _ = d.txFileD2.WriteAt([]byte(d2Diag), 0)
+	if err != nil {
+		d.Mach.EvAddErr(e, err, nil)
+	} else {
+		_, _ = d.txFileD2Svg.WriteAt([]byte(d2Svg), 0)
+	}
+
+	// mermaid
+	mermaid, ascii, err := visTx.Mermaid(index)
+	if ctx.Err() != nil {
+		return // expired
+	}
+	if err != nil {
+		d.Mach.Log("err: genSeqDiagram mermaid: %s", err)
+	}
+	_, _ = d.txFileMermaid.WriteAt([]byte(mermaid), 0)
+	if err != nil {
+		d.Mach.EvAddErr(e, err, nil)
+	} else {
+		_, _ = d.txFileMermaidAscii.WriteAt([]byte(ascii), 0)
+	}
+}
 
 // hGetMachAddress returns the address of the currently visible view (mach, tx).
 func (d *Debugger) hGetMachAddress() *types.MachAddress {
@@ -712,19 +923,19 @@ func (d *Debugger) hGetClientTx(
 }
 
 // Client returns the current Client. Thread safe via Eval().
-func (d *Debugger) Client() *Client {
-	var c *Client
-
+func (d *Debugger) Client() (*Client, error) {
 	// SelectingClient locks d.C TODO amhelp.WaitForAll
 	<-d.Mach.WhenNot1(ss.SelectingClient, nil)
 
-	// TODO eval to getter
-	d.Mach.Eval("Client", func() {
-		c = d.C
-	}, nil)
+	c, _ := amhelp.EvalGetter(nil, "Client", 3, d.Mach,
+		func() (*Client, error) {
+			return d.C, nil
+		})
 
-	// TODO confirm c != nil, return err
-	return c
+	if c == nil {
+		return nil, fmt.Errorf("no client selected")
+	}
+	return c, nil
 }
 
 // NextTx returns the next transition. Thread safe via Eval().
@@ -861,7 +1072,7 @@ func (d *Debugger) MachAddr() *types.MachAddress {
 func (d *Debugger) Dispose() {
 	// TODO switch to Disposed mixin
 	// logger
-	logger := d.Params.DbgLogger
+	logger := d.params.DbgLogger
 	if logger != nil {
 		// check if the logger is writing to a file
 		if file, ok := logger.Writer().(*os.File); ok {
@@ -877,7 +1088,7 @@ func (d *Debugger) Start() {
 // TODO state: SetOptsState
 func (d *Debugger) SetFilterLogLevel(lvl am.LogLevel) {
 	d.Mach.Eval("SetFilterLogLevel", func() {
-		d.Params.Filters.LogLevel = lvl
+		d.params.Filters.LogLevel = lvl
 
 		// process the toolbarItem change
 		d.Mach.Add1(ss.ToolToggled, nil)
@@ -945,6 +1156,10 @@ func (d *Debugger) hImportData(filename string) {
 			d.hParseMsg(d.Clients[id], i)
 		}
 	}
+
+	// update graph file
+	amgraph.AddErrGraph(nil, d.Mach,
+		d.hUpdateGraphFile(nil))
 
 	// GC
 	runtime.GC()
@@ -1559,7 +1774,7 @@ func (d *Debugger) hUpdateTxBars() {
 	d.nextTxBarRight.Clear()
 
 	if d.Mach.Not(am.S{ss.SelectingClient, ss.ClientSelected}) {
-		d.currTxBarLeft.SetText("Listening for connections on " + d.Params.AddrRpc)
+		d.currTxBarLeft.SetText("Listening for connections on " + d.params.AddrRpc)
 		return
 	}
 
@@ -1679,7 +1894,7 @@ func (d *Debugger) hExportData(filename string, snapshot bool) {
 	}
 
 	// create file
-	gobPath := path.Join(d.Params.OutputDir, filename+".gob.br")
+	gobPath := path.Join(d.params.OutputDir, filename+".gob.br")
 	fw, err := os.Create(gobPath)
 	if err != nil {
 		log.Printf("Error: export failed %s", err)
@@ -1692,16 +1907,22 @@ func (d *Debugger) hExportData(filename string, snapshot bool) {
 	data := make([]*server.Exportable, 0, len(d.Clients))
 	i := 0
 	for _, c := range d.Clients {
+		// omit disconnected
 		if d.Mach.Is1(ss.FilterDisconn) && !c.Connected.Load() {
+			continue
+		}
+		// omit rpc & relay
+		if d.Mach.Is1(ss.FilterRpcMachs) && machIsRpc(c.MsgStruct) {
 			continue
 		}
 		data = append(data, &server.Exportable{
 			MsgStruct: c.Exportable.MsgStruct,
 			MsgTxs:    c.Exportable.MsgTxs,
+			Version:   utils.GetVersion(),
 		})
 		// snapshot limits to a single tx
 		if snapshot {
-			data[i].MsgTxs = []*dbg.DbgMsgTx{c.Tx(c.LastTxTill(now))}
+			data[i].MsgTxs = []*dbg.DbgMsgTx{c.Tx(c.TxAtHTime(now))}
 		}
 		i++
 	}
@@ -1808,10 +2029,7 @@ func (d *Debugger) hCleanOnConnect() bool {
 	// if all disconnected, clean up
 	if len(disconns) == len(d.Clients) {
 		for _, c := range d.Clients {
-			// TODO cant be scheduled, as the client can connect in the meantime
-			// d.Add1(ss.RemoveClient, am.A{"Client.id": c.id})
-			delete(d.Clients, c.Id)
-			d.hRemoveHistory(c.Id)
+			d.hRemoveClient(c.Id)
 		}
 		if d.graph != nil {
 			d.graph.Clear()
@@ -2170,8 +2388,30 @@ func (d *Debugger) hUpdateStatusBar() {
 	}
 	tx := d.hCurrentTx()
 
-	// left TODO add (current) global mach time
-	left := []string{}
+	// left
+
+	// current) global mach time
+
+	var graphMTime uint64
+	var currHTime time.Time
+	// current tx of the selected client
+	currSelTx := d.hCurrentTx()
+	if currSelTx != nil {
+		currHTime = d.lastScrolledTxTime
+		if currHTime.IsZero() {
+			currHTime = *currSelTx.Time
+		}
+	}
+	for _, client := range d.Clients {
+		currCTxIdx := client.TxAtHTime(currHTime)
+		if currCTxIdx != -1 {
+			parsed := client.MsgTxsParsed[currCTxIdx]
+			graphMTime += parsed.TimeSum
+		}
+	}
+	left := []string{d.P.Sprintf("Graph:t%v", graphMTime)}
+
+	// selected state
 	idx := slices.Index(c.MsgStruct.StatesIndex, c.SelectedState)
 	if idx != -1 {
 		left = append(left, "[::b]"+c.SelectedState+"[::-]",
@@ -2188,14 +2428,14 @@ func (d *Debugger) hUpdateStatusBar() {
 	txt := ""
 	if c.CursorStep1 > 0 {
 		nextTx := d.hNextTx()
-		if nextTx != nil {
+		if nextTx != nil && nextTx.Steps != nil {
 			stepIdx := min(len(nextTx.Steps)-1, c.CursorStep1-1)
 			step := nextTx.Steps[stepIdx]
 			txt = step.StringFromIndex(c.MsgStruct.StatesIndex)
 		}
 	}
 
-	// markdown to cview
+	// markdown to cview TODO extract
 	i := 0
 	for strings.Contains(txt, "**") {
 		rep := "[::b]"
@@ -2253,6 +2493,7 @@ func (d *Debugger) filtersFromStates() *types.Filters {
 		SkipQueuedTx:       is(ss.FilterQueuedTx),
 		SkipOutGroup:       is(ss.FilterOutGroup),
 		SkipChecks:         is(ss.FilterChecks),
+		SkipRpcMach:        is(ss.FilterRpcMachs),
 	}
 }
 
@@ -2300,6 +2541,11 @@ func (d *Debugger) statesFromFilters(filters *types.Filters) {
 	} else {
 		rm(ss.FilterChecks, nil)
 	}
+	if filters.SkipRpcMach {
+		add(ss.FilterRpcMachs, nil)
+	} else {
+		rm(ss.FilterRpcMachs, nil)
+	}
 }
 
 // filtersActive checks if any filters are active.
@@ -2320,6 +2566,12 @@ func (d *Debugger) hFilterTx(c *Client, idx int, filters *types.Filters) bool {
 		return false
 	} else if f.SkipAutoCanceledTx && tx.IsAuto && !tx.Accepted {
 		return false
+	} else if f.SkipAutoCanceledTx && tx.IsAuto && tx.IsQueued {
+		// check if this queued tx got canceled later
+		executed := c.TxExecutedBy(idx)
+		if executed != nil && !executed.Accepted {
+			return false
+		}
 	}
 	if f.SkipCanceledTx && !tx.Accepted {
 		return false
@@ -2361,7 +2613,7 @@ func (d *Debugger) hScrollToTime(
 	if d.C == nil {
 		return false
 	}
-	latestTx := d.C.LastTxTill(hTime)
+	latestTx := d.C.TxAtHTime(hTime)
 	if latestTx == -1 {
 		return false
 	}
@@ -2488,7 +2740,7 @@ func (d *Debugger) initGraphGen(
 }
 
 func (d *Debugger) hSyncOptsTimelines() {
-	switch d.Params.ViewTimelines {
+	switch d.params.ViewTimelines {
 	case types.ParamsViewTimelinesNone:
 		d.Mach.Add(S{ss.TimelineTxHidden, ss.TimelineStepsHidden}, nil)
 	case types.ParamsViewTimelinesOne:
@@ -2500,12 +2752,11 @@ func (d *Debugger) hSyncOptsTimelines() {
 }
 
 func (d *Debugger) diagramsRender(
-	e *am.Event, shot *amgraph.Graph, id string, diagFilters *amvis.Filters,
-	details, clients int, diagDir string, svgName string, states S,
+	ctx context.Context, shot *amgraph.Graph, id string,
+	diagFilters *amvis.Filters, details, clients int, diagDir string,
+	svgName string, states S,
 ) {
-	//
-
-	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
+	e := am.CtxToEv(ctx)
 	if ctx.Err() != nil {
 		return // expired
 	}
@@ -2515,10 +2766,10 @@ func (d *Debugger) diagramsRender(
 	// create the visualizer
 	vizs := d.initGraphGen(shot, id, details, clients, diagDir, svgName, states)
 	// TODO config
-	pool := amhelp.Pool(2)
+	pool := amhelp.Pool(ctx, 2)
 
 	for _, vis := range vizs {
-		pool.Go(func() error {
+		pool.SubmitErr(func() error {
 			return vis.GenDiagrams(ctx)
 		})
 	}
@@ -2548,7 +2799,9 @@ func (d *Debugger) diagramsRender(
 	// next
 	if !diagFilters.Empty() {
 		// apply filters
-		go d.diagramsFileCache(e, diagFilters, details, diagDir, svgName)
+		d.Mach.Go(ctx, func() {
+			d.diagramsFileCache(ctx, diagFilters, details, diagDir, svgName)
+		})
 	} else {
 		d.Mach.EvAdd1(e, ss.DiagramsReady, nil)
 	}
@@ -2565,16 +2818,13 @@ func (d *Debugger) diagramLink(diagDir string, svgName string) {
 
 // diagramsMemCache - update diagram from memory cache
 func (d *Debugger) diagramsMemCache(
-	e *am.Event, cache *goquery.Document, diagFilters *amvis.Filters,
+	ctx context.Context, cache *goquery.Document, diagFilters *amvis.Filters,
 	diagDir, svgName string,
 ) {
 	//
 
+	e := am.CtxToEv(ctx)
 	svgPath := path.Join(diagDir, svgName+".svg")
-	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
-	if ctx.Err() != nil {
-		return // expired
-	}
 	// mark rendering as in-progress
 	d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
 
@@ -2600,16 +2850,11 @@ func (d *Debugger) diagramsMemCache(
 
 // diagramsFileCache - update diagram from file cache
 func (d *Debugger) diagramsFileCache(
-	e *am.Event, diagFilters *amvis.Filters, lvl int, diagDir,
+	ctx context.Context, diagFilters *amvis.Filters, lvl int, diagDir,
 	svgName string,
 ) {
-	defer d.Mach.PanicToErrState(ss.ErrDiagrams, nil)
-
+	e := am.CtxToEv(ctx)
 	svgPath := path.Join(diagDir, svgName+".svg")
-	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
-	if ctx.Err() != nil {
-		return // expired
-	}
 	// mark rendering as in-progress
 	d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
 
@@ -2655,4 +2900,69 @@ func (d *Debugger) getFocusColor() tcell.Color {
 	}
 
 	return color
+}
+
+func (d *Debugger) LogReaderText() string {
+	ctx := d.Mach.NewStateCtx(ss.LogReaderVisible)
+	ret, _ := amhelp.EvalGetter(ctx, "LogReaderText", 3, d.Mach,
+		func() (string, error) {
+			return treeToText(d.logReader), nil
+		})
+	return ret
+}
+
+func (d *Debugger) Params() types.Params {
+	ctx := d.Mach.NewStateCtx(ss.LogReaderVisible)
+	ret, _ := amhelp.EvalGetter(ctx, "Params", 3, d.Mach,
+		func() (types.Params, error) {
+			return d.params, nil
+		})
+	return ret
+}
+
+func (d *Debugger) hRemoveClient(id string) {
+	// TODO cant be scheduled, as the client can connect in the meantime
+	// d.Add1(ss.RemoveClient, am.A{"Client.id": c.id})
+	delete(d.Clients, id)
+	d.hRemoveHistory(id)
+	delete(d.callLogLastSep, id)
+	delete(d.callLogCount, id)
+	delete(d.callLogFiles, id)
+	delete(d.callLogFilesLen, id)
+	// TODO remove from graph?
+}
+
+func (d *Debugger) callLogBootstrap(dir string) error {
+	code := utils.Sp(`
+		package main
+		
+		import (
+			am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	
+			// TODO edit these
+			"Mach"
+			"Mach/states"
+		)
+		
+		var (
+			e *am.Event
+			active am.S
+	
+			// TODO import schema
+			ss states.MachStatesDef
+	
+			// TODO import handlers
+			h0 *MachHandlers
+			// h1 *MachHandlers2
+		)
+		`)
+
+	loc := filepath.Join(dir, "init.go")
+	if _, err := os.Stat(loc); err != nil && os.IsNotExist(err) {
+		return os.WriteFile(loc, []byte(code), 0o644)
+	} else if err != nil {
+		return err
+	}
+
+	return nil
 }
