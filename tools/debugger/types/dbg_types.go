@@ -81,6 +81,7 @@ type Params struct {
 
 	// ui
 
+	UiMcp bool `arg:"--ui-mcp" help:"Enable MCP server on port --listen-addr +1 (requires --ui-web) (EXPERIMENTAL)" default:"true"`
 	UiSsh bool `arg:"--ui-ssh" help:"Enable SSH headless mode on port --listen-addr +2 (EXPERIMENTAL)"`
 	UiWeb bool `arg:"--ui-web" default:"true" help:"Start a web server for --dir and diagrams on --listen-addr +1 (EXPERIMENTAL)"`
 
@@ -111,6 +112,7 @@ type Params struct {
 	LogLevel am.LogLevel `arg:"--dbg-log-level" default:"0" help:"Log level produced by this instance, 0-5 (silent-everything)"`
 	DbgOtel  bool        `arg:"--dbg-otel" help:"Enable OpenTelemetry tracing for this instance"`
 	ProfSrv  string      `arg:"--dbg-prof-srv" help:"Start pprof server"`
+	Repl     bool        `arg:"--dbg-repl" help:"Start a REPL server in --dir"`
 
 	// internal params
 
