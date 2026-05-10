@@ -21,12 +21,25 @@ import (
 	"oss.terrastruct.com/util-go/go2"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
-
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
-
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
+var (
+	colorRelRemove  = "#DA70D6"
+	colorRelAdd     = "orange"
+	colorRelRequire = "lightblue"
+	colorSelected   = "limegreen"
+	colorActiveBg   = "yellow"
+	// colorReadyFg    = "black"
+	colorReadyBg = "deepskyblue"
+	// colorStartFg    = "black"
+	colorStartBg = "#329241"
+	colorErrBg   = "red"
+	// colorErrFg      = "black"
+)
+
+// TODO color vars, use in update func
 var d2Header = utils.Sp(`
 	vars: {
 		d2-config: {
@@ -75,7 +88,7 @@ var d2Header = utils.Sp(`
 		_1i: {
 			style: {
 				font-color: black
-				fill: "yellow"
+				fill: "` + colorActiveBg + `"
 				border-radius: 999
 			}
 		}
@@ -90,7 +103,7 @@ var d2Header = utils.Sp(`
 		_1s: {
 			style: {
 				font-color: black
-				fill: "#329241"
+				fill: "` + colorStartBg + `"
 				border-radius: 999
 			}
 		}
@@ -105,7 +118,7 @@ var d2Header = utils.Sp(`
 		_1r: {
 			style: {
 				font-color: black
-				fill: deepskyblue
+				fill: "` + colorReadyBg + `"
 				border-radius: 999
 			}
 		}
@@ -118,19 +131,19 @@ var d2Header = utils.Sp(`
 
 		# require relation
 		req: {
-			style.stroke: white
+			style.stroke: "` + colorRelRequire + `"
 			target-arrowhead.style.filled: true
 			target-arrowhead.shape: circle
 		}
 		# add relation
 		add: {
-			style.stroke: yellow
+			style.stroke: "` + colorRelAdd + `"
 			target-arrowhead.shape: triangle
 			target-arrowhead.style.filled: true
 		}
 		# remove relation
 		rem: {
-			style.stroke: red
+			style.stroke: "` + colorRelRemove + `"
 			style.stroke-width: 2
 			target-arrowhead.style.filled: true
 			target-arrowhead.shape: diamond
@@ -139,8 +152,8 @@ var d2Header = utils.Sp(`
 		}
 		# double remove relation
 		rem2: {
-			style.stroke: red
-			style.stroke-width: 4
+			style.stroke: "` + colorRelRemove + `"
+			style.stroke-width: 3
 			target-arrowhead.style.filled: true
 			target-arrowhead.shape: diamond
 			source-arrowhead.style.filled: true
@@ -148,13 +161,13 @@ var d2Header = utils.Sp(`
 		}
 		# add pipe
 		pipe_add: {
-			style.stroke: yellow
+			style.stroke: "` + colorRelAdd + `"
 			style.stroke-dash: 3
 			target-arrowhead.style.filled: false
 		}
 		# remove pipe
 		pipe_rem: {
-			style.stroke: red
+			style.stroke: "` + colorRelRemove + `"
 			target-arrowhead.shape: diamond
 			style.stroke-dash: 3
 		}
@@ -169,8 +182,40 @@ var d2Header = utils.Sp(`
 			style.stroke-width: 8
 			target-arrowhead.shape: circle
 		}
+		mach: {
+      style: {
+				font-size: 50
+				fill: "black"
+			}
+			label.near: top-center
+		}
+		state: {
+      style.font-size: 30
+		}
+		called: {
+			style.underline: true
+		}
+		handler: {
+			style.stroke: "#2596be"
+		}
+		cancel: {
+			style: {
+				stroke: red
+				stroke-width: 5
+			}
+		}
+		selected: {
+			style.stroke: "` + colorSelected + `"
+		}
+		rpc: {
+			style: {
+				# TODO dedicated color
+				stroke: "` + colorRelAdd + `"
+				stroke-width: 4
+			}
+		}
 
-	${CLASSES}
+	#${CLASSES}
 	}
 	direction: right
 
@@ -202,7 +247,7 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 	}
 
 	// header
-	r.buf.WriteString(strings.ReplaceAll(d2Header, "${CLASSES}", classes))
+	r.buf.WriteString(strings.ReplaceAll(d2Header, "#${CLASSES}", classes))
 
 	// 1st pass - requested machs and neighbours
 	for src := range r.adjMap {
@@ -322,7 +367,7 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 	r.log("Edges: %d Objects: %d\n", len(d2Graph.Edges),
 		len(d2Graph.Objects))
 
-	// render SVG
+	// render svg
 	if r.OutputD2Svg {
 		out, err := d2svg.Render(d2Diag, renderOpts)
 		if err != nil {
@@ -369,15 +414,14 @@ func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {
 		shortMachId = strings.Join(r.fullIdPath(machId, true), ".")
 	}
 	border := ""
+	// TODO class
 	if slices.Contains(r.renderMachIds(), machId) {
 		border = "\tstyle.stroke: yellow\n"
 	} else if len(r.renderMachIds()) > 0 {
 		border = "\tstyle.stroke: white\n"
 	}
 	r.buf.WriteString(shortMachId + ": " + machId + " {\n" +
-		"\tlabel.near: top-center\n" +
 		"\tclass: [M_" + machId + "; mach]\n" +
-		"\tstyle.font-size: 40\n" +
 		border + tags)
 
 	parent := ""
@@ -407,7 +451,7 @@ func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {
 			class := "_0"
 			if r.RenderActive {
 				idx := slices.Index(c.MsgSchema.StatesIndex, stateName)
-				if c.LatestClock.Is1(idx) {
+				if c.LatestMTime.Is1(idx) {
 					class = "_1"
 				}
 			}
@@ -427,8 +471,8 @@ func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {
 			}
 
 			r.buf.WriteString("\t" + shortStateId + ":" + stateName + "\n")
-			r.buf.WriteString("\t" + shortStateId + ".class: " + class +
-				classSuffix + "\n")
+			r.buf.WriteString("\t" + shortStateId + ".class: [state; " +
+				class + classSuffix + "]" + "\n")
 
 			r.renderD2Relations(machId, stateName, removeRels)
 		}
@@ -467,9 +511,7 @@ func (r *Renderer) outputD2HalfMach(
 		shortMachId = strings.Join(r.fullIdPath(machId, true), ".")
 	}
 	r.buf.WriteString(shortMachId + ": " + machId + " {\n" +
-		"\tlabel.near: top-center\n" +
-		"\tclass: [M_" + machId + "; mach]\n" +
-		"\tstyle.font-size: 40\n")
+		"\tclass: [M_" + machId + "; mach]\n")
 
 	parent := ""
 	pipes := ""
@@ -652,8 +694,7 @@ func (r *Renderer) renderD2Conns(
 		return ""
 	}
 	ret += shortMachId + " -> " + shortTargetMachId + ": rpc {\n" +
-		"\tstyle.stroke: green\n" +
-		"\tstyle.stroke-width: 4\n" +
+		"\tclass: rpc\n" +
 		"}\n"
 
 	// render this half later

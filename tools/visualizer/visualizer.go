@@ -110,6 +110,8 @@ func New(ctx context.Context, name string) (*Visualizer, error) {
 	return vis, nil
 }
 
+var _ = ss.ClientMsg
+
 func (v *Visualizer) ClientMsgEnter(e *am.Event) bool {
 	// TODO port from (d *Debugger) ClientMsgEnter
 	return true
@@ -118,6 +120,8 @@ func (v *Visualizer) ClientMsgEnter(e *am.Event) bool {
 func (v *Visualizer) ClientMsgState(e *am.Event) {
 	// TODO port from (d *Debugger) ClientMsgState
 }
+
+var _ = ss.ConnectEvent
 
 func (v *Visualizer) ConnectEventEnter(e *am.Event) bool {
 	// TODO port from (d *Debugger) ConnectEventEnter
@@ -284,9 +288,9 @@ type Renderer struct {
 
 	// Filename without an extension.
 	OutputFilename string
-	// Render a D2 SVG in addition to the plain text version.
+	// Render a D2 svg in addition to the plain text version.
 	OutputD2Svg bool
-	// Render a Mermaid SVG in addition to the plain text version.
+	// Render a Mermaid svg in addition to the plain text version.
 	OutputMermaidSvg bool
 	// Render edges using ELK.
 	OutputElk bool
@@ -441,15 +445,15 @@ func (r *Renderer) outputMermaid(ctx context.Context) error {
 		return fmt.Errorf("failed to write mermaid file: %w", err)
 	}
 
-	// render SVG
+	// render svg
 	if r.OutputMermaidSvg {
-		r.log("Generating SVG\n%s\n")
+		r.log("Generating svg\n%s\n")
 		cmd := exec.CommandContext(ctx, "mmdc", "-i", r.OutputFilename+".mermaid",
 			"-o", r.OutputFilename+".svg", "-b", "black", "-t", "dark", "-c",
 			"am-vis.mermaid.json")
 		err = cmd.Run()
 		if err != nil {
-			return fmt.Errorf("failed to execute mmdc command for SVG: %w", err)
+			return fmt.Errorf("failed to execute mmdc command for svg: %w", err)
 		}
 	}
 
@@ -471,6 +475,9 @@ func (r *Renderer) outputMermaidMach(
 	}
 
 	c := r.graph.Clients[machId]
+	if c == nil {
+		return fmt.Errorf("no client for mach %s", machId)
+	}
 	tags := ""
 	if r.RenderTags && len(c.MsgSchema.Tags) > 0 {
 		// TODO linebreaks sometimes
@@ -562,7 +569,7 @@ func (r *Renderer) outputMermaidMach(
 
 	if r.RenderActive {
 		var active am.S
-		for idx, tick := range c.LatestClock {
+		for idx, tick := range c.LatestMTime {
 			if !am.IsActiveTick(tick) {
 				continue
 			}
@@ -889,7 +896,7 @@ func (f *Filters) Empty() bool {
 func UpdateCache(
 	ctx context.Context, filepath string, dom *goquery.Document, filters *Filters,
 ) error {
-	// TODO extract colors and join with D2 classes
+	// TODO refac to class changes only
 
 	for _, state := range filters.Index {
 		if ctx.Err() != nil {
@@ -915,28 +922,29 @@ func UpdateCache(
 			classTxt = "text-bold"
 
 			strokeInner = "#5F5C5C"
-			fillInner = "yellow"
+			fillInner = colorActiveBg
 			classInner = "stroke-B1"
 
 			if isReady {
-				fillInner = "deepskyblue"
+				fillInner = colorReadyBg
 			} else if isStart {
-				fillInner = "#329241"
+				fillInner = colorStartBg
 			} else if isErr {
-				fillInner = "red"
+				fillInner = colorErrBg
 			}
 		}
 
-		cssTxt := "text-anchor: middle; font-size: 16px;"
+		// TODO get from classes
+		cssTxt := "text-anchor: middle; font-size: 30px;"
 		cssInner := ""
 		if isSelected {
 			cssTxt += "fill: black;"
-			cssInner += "fill: limegreen;"
+			cssInner += "fill: " + colorSelected + ";"
 		}
 
 		// update
 
-		// query
+		// query TODO query class
 		txt := dom.Find("g > text:contains(" + state + ")").
 			// exact text match
 			FilterFunction(func(i int, s *goquery.Selection) bool {
@@ -1053,19 +1061,20 @@ func UpdateCache(
 
 	// mark rels for selected states
 	// reset
-	dom.Find("g.rem2 > path").SetAttr("stroke", "red").
+	dom.Find("g.rem2 > path").SetAttr("stroke", colorRelRemove).
 		SetAttr("style", "stroke-width: 4")
-	dom.Find("g.rem > path").SetAttr("stroke", "red").
+	dom.Find("g.rem > path").SetAttr("stroke", colorRelRemove).
 		SetAttr("style", "stroke-width: 2")
-	dom.Find("g.req > path").SetAttr("stroke", "white").
+	dom.Find("g.req > path").SetAttr("stroke", colorRelRequire).
 		SetAttr("style", "stroke-width: 2")
-	dom.Find("g.add > path").SetAttr("stroke", "yellow").
+	dom.Find("g.add > path").SetAttr("stroke", colorRelAdd).
 		SetAttr("style", "stroke-width: 2")
+	// selected state
 	if filters.Selected != nil {
 		for _, state := range filters.Selected {
 			q := fmt.Sprintf("g.M_%s.F_%s > path, g.M_%s.T_%s > path",
 				filters.MachId, state, filters.MachId, state)
-			dom.Find(q).SetAttr("stroke", "limegreen").
+			dom.Find(q).SetAttr("stroke", colorSelected).
 				SetAttr("style", "stroke-width: 5")
 		}
 	}
