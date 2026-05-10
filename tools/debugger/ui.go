@@ -258,60 +258,102 @@ func (d *Debugger) hInitTimelineTx() {
 	})
 }
 
-func (d *Debugger) hInitAddressBar() {
-	// TODO enum for col indexes
+// TODO enum for col indexes
+var (
+	colPrevMach = 0
+	colPrev     = 2
+	colNext     = 4
+	colNextMach = 6
+	colAddr     = 8
+	colCopy     = 10
+	colPaste    = 12
+)
 
+func (d *Debugger) hInitAddressBar() {
 	d.addressBar = cview.NewTable()
 	d.addressBar.SetSelectedStyle(tcell.GetColor(theme.Active),
 		cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
-	d.addressBar.SetCellSimple(0, 0, "◀ prev mach")
-	d.addressBar.SetCellSimple(0, 1, "")
-	d.addressBar.SetCellSimple(0, 2, " next mach▶ ")
-	d.addressBar.SetCellSimple(0, 3, "")
-	// addr
-	d.addressBar.SetCellSimple(0, 4, "")
-	d.addressBar.SetCellSimple(0, 5, "")
-	d.addressBar.SetCellSimple(0, 6, " copy")
+	d.addressBar.SetCellSimple(0, colPrevMach, "◀ mach")
+	d.addressBar.SetCellSimple(0, 1, " ")
+	d.addressBar.SetCellSimple(0, colPrev, "◀")
+	d.addressBar.SetCellSimple(0, 3, " ")
+	d.addressBar.SetCellSimple(0, colNext, "▶")
+	d.addressBar.SetCellSimple(0, 5, " ")
+	d.addressBar.SetCellSimple(0, colNextMach, " mach▶")
 	d.addressBar.SetCellSimple(0, 7, "")
-	d.addressBar.SetCellSimple(0, 8, " paste")
+	d.addressBar.SetCellSimple(0, colAddr, "") // addr
+	d.addressBar.SetCellSimple(0, 9, " ")
+	d.addressBar.SetCellSimple(0, colCopy, " copy")
+	d.addressBar.SetCellSimple(0, 11, " ")
+	d.addressBar.SetCellSimple(0, colPaste, " paste")
 	d.addressBar.SetSelectable(true, true)
 	d.addressBar.GetCell(0, 1).SetSelectable(false)
 	d.addressBar.GetCell(0, 3).SetSelectable(false)
 	d.addressBar.GetCell(0, 5).SetSelectable(false)
 	d.addressBar.GetCell(0, 7).SetSelectable(false)
+	d.addressBar.GetCell(0, 9).SetSelectable(false)
+	d.addressBar.GetCell(0, 11).SetSelectable(false)
 	d.addressBar.SetSelectedFunc(func(row, column int) {
 		switch column {
-		case 0: // prev mach
+		case colPrevMach:
+			if d.HistoryCursor >= len(d.History)-1 {
+				return
+			}
+			// scan until machId changes
+			for i := d.HistoryCursor; i < len(d.History)-1; i++ {
+				if d.History[i].MachId != d.History[i+1].MachId {
+					d.HistoryCursor = i + 1
+					break
+				}
+			}
+			addr := d.History[d.HistoryCursor]
+			// d.params.Print("go:\n" + addr.String() + "\n")
+			d.GoToMachAddress(addr, true)
+		case colPrev:
 			if d.HistoryCursor >= len(d.History)-1 {
 				return
 			}
 			d.HistoryCursor++
-			d.GoToMachAddress(d.History[d.HistoryCursor], true)
+			addr := d.History[d.HistoryCursor]
+			// d.params.Print("go:\n" + addr.String() + "\n")
+			d.GoToMachAddress(addr, true)
 
-		case 2: // next mach
+		case colNext:
 			if d.HistoryCursor <= 0 {
 				return
 			}
 			d.HistoryCursor--
-			d.GoToMachAddress(d.History[d.HistoryCursor], true)
+			addr := d.History[d.HistoryCursor]
+			// d.params.Print("go:\n" + addr.String() + "\n")
+			d.GoToMachAddress(addr, true)
+		case colNextMach:
+			if d.HistoryCursor <= 0 {
+				return
+			}
+			// scan until machId changes
+			for i := d.HistoryCursor; i > 0; i-- {
+				if d.History[i].MachId != d.History[i-1].MachId {
+					d.HistoryCursor = i - 1
+					break
+				}
+			}
+			addr := d.History[d.HistoryCursor]
+			// d.params.Print("go:\n" + addr.String() + "\n")
+			d.GoToMachAddress(addr, true)
 
-		case 6: // copy
+		case colCopy:
 			if d.clip == nil {
 				return
 			}
 			addr := d.hGetMachAddress().String()
 			_ = d.clip.WriteAll(clipper.RegClipboard, []byte(addr))
 
-		case 8: // paste
+		case colPaste:
 			if d.clip == nil {
 				return
 			}
 			txt, _ := d.clip.ReadAll(clipper.RegClipboard)
-			if u, err := url.Parse(string(txt)); err == nil && u.Scheme == "mach" {
-				addr := &types.MachAddress{MachId: u.Host}
-				if u.Path != "" {
-					addr.TxId = strings.TrimLeft(u.Path, "/")
-				}
+			if addr, err := types.ParseMachUrl(string(txt)); err == nil {
 				d.GoToMachAddress(addr, false)
 			}
 		}
@@ -327,7 +369,7 @@ func (d *Debugger) hInitAddressBar() {
 		}()
 	})
 
-	addr := d.addressBar.GetCell(0, 4)
+	addr := d.addressBar.GetCell(0, colAddr)
 	addr.SetExpansion(1)
 	addr.SetSelectable(false)
 	addr.SetAlign(cview.AlignCenter)

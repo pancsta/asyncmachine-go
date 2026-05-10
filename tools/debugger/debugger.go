@@ -595,7 +595,16 @@ func (d *Debugger) hRemoveHistory(clientId string) {
 }
 
 func (d *Debugger) hPrependHistory(addr *types.MachAddress) {
+	// add hist if URL changes (excl GET params)
+	if len(d.History) > 0 && d.History[0].StringBase() == addr.StringBase() {
+		return
+	}
 	d.History = slices.Concat([]*types.MachAddress{addr}, d.History)
+	// dbg := make([]string, len(d.History))
+	// for i := range d.History {
+	// 	dbg[i] = d.History[i].String()
+	// }
+	// dump.Println(dbg)
 	d.hTrimHistory()
 }
 
@@ -976,7 +985,7 @@ func (d *Debugger) hUpdateAddressBar() {
 	}
 
 	// copy
-	copyCell := d.addressBar.GetCell(0, 6)
+	copyCell := d.addressBar.GetCell(0, colCopy)
 	copyCell.SetBackgroundColor(tcell.GetColor(theme.LightGrey))
 	copyCell.SetTextColor(tcell.GetColor(theme.BgPrimary))
 	if machId == "" {
@@ -985,14 +994,18 @@ func (d *Debugger) hUpdateAddressBar() {
 	} else {
 		copyCell.SetSelectable(true)
 	}
-	pasteCell := d.addressBar.GetCell(0, 8)
+	pasteCell := d.addressBar.GetCell(0, colPaste)
 	pasteCell.SetTextColor(tcell.GetColor(theme.BgPrimary))
 	pasteCell.SetBackgroundColor(tcell.GetColor(theme.LightGrey))
 
-	// history
-	fwdCell := d.addressBar.GetCell(0, 2)
+	// history fwd
+	fwdCell := d.addressBar.GetCell(0, colNext)
 	fwdCell.SetBackgroundColor(tcell.GetColor(theme.LightGrey))
 	fwdCell.SetTextColor(tcell.GetColor(theme.BgPrimary))
+	fwdMachCell := d.addressBar.GetCell(0, colNextMach)
+	fwdMachCell.SetBackgroundColor(tcell.GetColor(theme.LightGrey))
+	fwdMachCell.SetTextColor(tcell.GetColor(theme.BgPrimary))
+	fwdMachCell.SetSelectable(true)
 	if d.HistoryCursor > 0 {
 		fwdCell.SetSelectable(true)
 	} else {
@@ -1000,15 +1013,49 @@ func (d *Debugger) hUpdateAddressBar() {
 		fwdCell.SetTextColor(tcell.GetColor(theme.Grey))
 		fwdCell.SetBackgroundColor(tcell.ColorDefault)
 	}
-	backCell := d.addressBar.GetCell(0, 0)
+
+	// scan until machId changes
+	nextMach := false
+	for i := d.HistoryCursor; i > 0; i-- {
+		if d.History[i].MachId != d.History[i-1].MachId {
+			nextMach = true
+			break
+		}
+	}
+	if !nextMach {
+		fwdMachCell.SetSelectable(false)
+		fwdMachCell.SetTextColor(tcell.GetColor(theme.Grey))
+		fwdMachCell.SetBackgroundColor(tcell.ColorDefault)
+	}
+
+	// history back
+	backCell := d.addressBar.GetCell(0, colPrev)
 	backCell.SetBackgroundColor(tcell.GetColor(theme.LightGrey))
 	backCell.SetTextColor(tcell.GetColor(theme.BgPrimary))
+	backMachCell := d.addressBar.GetCell(0, colPrevMach)
+	backMachCell.SetBackgroundColor(tcell.GetColor(theme.LightGrey))
+	backMachCell.SetTextColor(tcell.GetColor(theme.BgPrimary))
+	backMachCell.SetSelectable(true)
 	if d.HistoryCursor < len(d.History)-1 {
 		backCell.SetSelectable(true)
 	} else {
 		backCell.SetSelectable(false)
 		backCell.SetTextColor(tcell.GetColor(theme.Grey))
 		backCell.SetBackgroundColor(tcell.ColorDefault)
+	}
+
+	prevMach := false
+	// scan until machId changes
+	for i := d.HistoryCursor; i < len(d.History)-1; i++ {
+		if d.History[i].MachId != d.History[i+1].MachId {
+			prevMach = true
+			break
+		}
+	}
+	if !prevMach {
+		backMachCell.SetSelectable(false)
+		backMachCell.SetTextColor(tcell.GetColor(theme.Grey))
+		backMachCell.SetBackgroundColor(tcell.ColorDefault)
 	}
 
 	// detect clipboard
@@ -1026,7 +1073,7 @@ func (d *Debugger) hUpdateAddressBar() {
 	if machConn {
 		machColor = "[" + theme.Active + "]"
 	}
-	addrCell := d.addressBar.GetCell(0, 4)
+	addrCell := d.addressBar.GetCell(0, colAddr)
 	if machId != "" && txId != "" {
 		s := ""
 		if stepId != "" {
