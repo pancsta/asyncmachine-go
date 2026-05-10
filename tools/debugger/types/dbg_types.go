@@ -361,21 +361,21 @@ func StartCpuProfileSrv(ctx context.Context, logger *log.Logger, p *Params) {
 }
 
 type MachAddress struct {
-	MachId    string
-	TxId      string
+	MachId string
+	TxId   string
+	// TODO remove
+	Step int
+
+	// GET param
+
 	MachTime  uint64
-	HumanTime time.Time
-	Step      int
-
-	// TODO
 	QueueTick uint64
+	HumanTime time.Time
 
-	// TODO support as GET param
-
-	Group    string
-	State    string
-	Relation string
-	RelState string
+	// selected group
+	Group string
+	// selected state
+	State string
 }
 
 type MachTime struct {
@@ -392,47 +392,74 @@ func (a *MachAddress) Clone() *MachAddress {
 	}
 }
 
-func (a *MachAddress) String() string {
-	if a == nil {
+// StringBase returns a mach URL without GET params (unless no tx ID). Empty
+// string ret if no link.
+func (a *MachAddress) StringBase() string {
+	if a == nil || a.MachId == "" {
+		return ""
+	}
+	ret := "mach://" + a.MachId
+
+	if a.TxId != "" {
+		ret += "/" + a.TxId
+		if a.Step != 0 {
+			ret += fmt.Sprintf("/%d", a.Step)
+		}
+	} else if a.MachTime != 0 {
+		return ret + fmt.Sprintf("/?t=%d", a.MachTime)
+	} else if a.QueueTick != 0 {
+		return ret + fmt.Sprintf("/?q=%d", a.QueueTick)
+	} else if !a.HumanTime.IsZero() {
+		return ret + fmt.Sprintf("/?q=%s", a.HumanTime)
+	} else {
 		return ""
 	}
 
-	if a.TxId != "" {
-		u := fmt.Sprintf("mach://%s/%s", a.MachId, a.TxId)
-		if a.Step != 0 {
-			u += fmt.Sprintf("/%d", a.Step)
-		}
-		if a.MachTime != 0 {
-			u += fmt.Sprintf("/t%d", a.MachTime)
-		}
-		// TODO queue tick as q123
+	return ret
+}
 
-		return u
-	}
+// String returns a full mach URL.
+func (a *MachAddress) String() string {
+	ret := a.StringBase()
+	get := []string{}
 	if a.MachTime != 0 {
-		return fmt.Sprintf("mach://%s/t%d", a.MachId, a.MachTime)
+		get = append(get, fmt.Sprintf("t=%d", a.MachTime))
+	}
+	if a.QueueTick != 0 {
+		get = append(get, fmt.Sprintf("q=%d", a.QueueTick))
 	}
 	if !a.HumanTime.IsZero() {
-		return fmt.Sprintf("mach://%s/%s", a.MachId, a.HumanTime)
+		get = append(get, fmt.Sprintf("ht=%s", a.HumanTime))
+	}
+	if a.Group != "" {
+		get = append(get, fmt.Sprintf("group=%s", NormalizeGroupName(a.Group)))
+	}
+	if a.State != "" {
+		get = append(get, fmt.Sprintf("state=%s", a.State))
 	}
 
-	return fmt.Sprintf("mach://%s", a.MachId)
+	if len(get) == 0 {
+		return ret
+	}
+
+	slices.Sort(get)
+	return ret + "?" + strings.Join(get, "&")
 }
 
 func ParseMachUrl(u string) (*MachAddress, error) {
 	// TODO merge parsing with addr bar
 
-	up, err := url.Parse(u)
+	parsed, err := url.Parse(u)
 	if err != nil {
 		return nil, err
-	} else if up.Host == "" {
-		return nil, fmt.Errorf("host missing in: %s", u)
+	} else if parsed.Host == "" {
+		return nil, fmt.Errorf("mach ID missing in: %s", u)
 	}
 
 	addr := &MachAddress{
-		MachId: up.Host,
+		MachId: parsed.Host,
 	}
-	p := strings.Split(up.Path, "/")
+	p := strings.Split(parsed.Path, "/")
 	if len(p) > 1 {
 		addr.TxId = p[1]
 	}
@@ -441,6 +468,29 @@ func ParseMachUrl(u string) (*MachAddress, error) {
 			addr.Step = s
 		}
 	}
+
+	// get params
+	q, err := url.ParseQuery(parsed.RawQuery)
+	if err != nil {
+		return nil, err
+	}
+	if v := q.Get("t"); v != "" {
+		if s, err := strconv.ParseUint(v, 10, 64); err == nil {
+			addr.MachTime = s
+		}
+	}
+	if v := q.Get("q"); v != "" {
+		if s, err := strconv.ParseUint(v, 10, 64); err == nil {
+			addr.QueueTick = s
+		}
+	}
+	if v := q.Get("ht"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			addr.HumanTime = t
+		}
+	}
+	addr.State = q.Get("state")
+	addr.Group = q.Get("group")
 
 	return addr, nil
 }
