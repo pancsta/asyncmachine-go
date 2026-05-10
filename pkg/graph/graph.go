@@ -108,7 +108,7 @@ type Client struct {
 
 	LatestMsgTx   *dbg.DbgMsgTx
 	LatestTimeSum uint64
-	LatestClock   am.Time
+	LatestMTime   am.Time
 	ConnId        string
 }
 
@@ -172,7 +172,7 @@ func (g *Graph) Clone() (*Graph, error) {
 		g2.Clients[id] = &Client{
 			Id:            id,
 			MsgSchema:     c.MsgSchema,
-			LatestClock:   c.LatestClock,
+			LatestMTime:   c.LatestMTime,
 			LatestTimeSum: c.LatestTimeSum,
 		}
 	}
@@ -254,7 +254,7 @@ func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 						err := g.G.AddEdge(id, c.Id, data)
 						if err != nil {
 
-							// wait for the other mach to show up TODO better approach
+							// wait for the other mach to show up TODO use addMach()
 
 							g.Server.Log("waiting for RPC conn %s to show up", id)
 							when := g.Server.WhenArgs(ss.InitClient, am.A{"id": a[1]}, nil)
@@ -308,7 +308,7 @@ func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 	// }
 	c.LatestMsgTx = msgTx
 	// TODO assert clocks
-	c.LatestClock = msgTx.Clocks
+	c.LatestMTime = msgTx.Clocks
 	c.LatestTimeSum = sum
 }
 
@@ -323,20 +323,15 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 	c := &Client{
 		Id:          id,
 		MsgSchema:   msg,
-		LatestClock: make(am.Time, len(msg.States)),
+		LatestMTime: make(am.Time, len(msg.States)),
 	}
 	g.Clients[id] = c
 
 	// add machine
-	err := g.G.AddVertex(&Vertex{
-		MachId: c.Id,
-	})
-	if err != nil {
+	var err error
+	if err = g.addMach(c.Id); err != nil {
 		return err
 	}
-	_ = g.Map.AddVertex(&Vertex{
-		MachId: c.Id,
-	})
 
 	// parent
 	if c.MsgSchema.Parent != "" {
@@ -344,7 +339,7 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 		err = g.G.AddEdge(c.Id, c.MsgSchema.Parent, data)
 		if err != nil {
 
-			// wait for the parent to show up
+			// wait for the parent to show up TODO use addMach()
 			g.Server.Log("waiting for parent %s to show up", c.MsgSchema.Parent)
 			when := g.Server.WhenArgs(ss.InitClient,
 				am.A{"id": c.MsgSchema.Parent}, nil)
@@ -452,6 +447,22 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 	return nil
 }
 
+func (g *Graph) addMach(id string) error {
+	err := g.G.AddVertex(&Vertex{
+		MachId: id,
+	})
+	if errors.Is(err, graph.ErrVertexAlreadyExists) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_ = g.Map.AddVertex(&Vertex{
+		MachId: id,
+	})
+	return err
+}
+
 // DumpGv will create a dot-format *.gv file of the graph. To create an SVG:
 //
 //	dot -Tsvg -O path
@@ -468,6 +479,10 @@ type MachInspect struct {
 	States []string
 	Conns  []string
 	Pipes  map[string][]string
+	Time   uint64
+	Schema am.Schema
+	Tags   []string
+	MTime  am.Time
 }
 
 func (g *Graph) Inspect() (map[string]*MachInspect, error) {
@@ -480,13 +495,22 @@ func (g *Graph) Inspect() (map[string]*MachInspect, error) {
 		if len(strings.Split(machId, ":")) == 2 {
 			continue
 		}
-		fmt.Println(machId)
+		c, ok := g.Clients[machId]
+		if !ok {
+			// TODO err
+			continue
+		}
 
 		// init
-		_, ok := inspect[machId]
+		_, ok = inspect[machId]
 		if !ok {
 			inspect[machId] = &MachInspect{
-				Pipes: make(map[string][]string),
+				Pipes:  make(map[string][]string),
+				Time:   c.LatestTimeSum,
+				Schema: am.SchemaClone(c.MsgSchema.States),
+				Tags:   slices.Clone(c.MsgSchema.Tags),
+				MTime:  slices.Clone(c.LatestMTime),
+				States: slices.Clone(c.MsgSchema.StatesIndex),
 			}
 		}
 
@@ -499,14 +523,7 @@ func (g *Graph) Inspect() (map[string]*MachInspect, error) {
 			if conn.Edge.MachConnectedTo {
 				inspect[machId].Conns = append(inspect[machId].Conns, edge.Target)
 			}
-			if conn.Edge.MachHas != nil {
-				ids := strings.Split(edge.Target, ":")
-				inspect[machId].States = append(inspect[machId].States, ids[1])
-			}
 			if conn.Edge.MachPipesTo != nil {
-				if machId == "orchestrator" {
-					print()
-				}
 				for _, pipe := range conn.Edge.MachPipesTo {
 					inspect[machId].Pipes[edge.Target] = append(
 						inspect[machId].Pipes[edge.Target], fmt.Sprintf(
@@ -518,47 +535,6 @@ func (g *Graph) Inspect() (map[string]*MachInspect, error) {
 	}
 
 	return inspect, nil
-}
-
-func Markdown(inspect map[string]*MachInspect) string {
-	keys := slices.Collect(maps.Keys(inspect))
-	sort.Strings(keys)
-	ret := "# am-vis inspect-dump\n\n"
-	for _, machId := range keys {
-		data := inspect[machId]
-		ret += "## " + machId + "\n"
-		if data.Child != "" {
-			ret += fmt.Sprintf("Parent: %s\n\n", data.Child)
-		} else {
-			ret += "\n"
-		}
-		if len(data.States) > 0 {
-			sort.Strings(data.States)
-			ret += "### States\n"
-			ret += fmt.Sprintf("- %s\n", strings.Join(data.States, "\n- "))
-			ret += "\n"
-		}
-		if len(data.Conns) > 0 {
-			sort.Strings(data.Conns)
-			ret += "### RPC\n"
-			ret += fmt.Sprintf("- %s\n", strings.Join(data.Conns, "\n- "))
-			ret += "\n"
-		}
-		if len(data.Pipes) > 0 {
-			ret += "### Pipes\n\n"
-			keysPipes := slices.Collect(maps.Keys(data.Pipes))
-			sort.Strings(keysPipes)
-			for _, pipe := range keysPipes {
-				sort.Strings(data.Pipes[pipe])
-				ret += fmt.Sprintf("#### %s\n", pipe)
-				ret += fmt.Sprintf("- %s\n", strings.Join(data.Pipes[pipe], "\n- "))
-				ret += "\n"
-			}
-		}
-		ret += "-----\n\n"
-	}
-
-	return ret
 }
 
 // private
@@ -614,13 +590,14 @@ func (g *Graph) parseMsgReader(
 
 		// define what we know from this log line
 		state := msg[0]
+		otherMach := msg[1]
 		var sourceMachId string
 		var targetMachId string
 		if isPipeOut {
 			sourceMachId = c.Id
-			targetMachId = msg[1]
+			targetMachId = otherMach
 		} else {
-			sourceMachId = msg[1]
+			sourceMachId = otherMach
 			targetMachId = c.Id
 		}
 
@@ -631,12 +608,29 @@ func (g *Graph) parseMsgReader(
 			data = &EdgeData{}
 			err := g.G.AddEdge(sourceMachId, targetMachId, graph.EdgeData(data))
 			if err != nil {
-				return err
+				// too early, add a dummy mach
+				if err = g.addMach(otherMach); err != nil {
+					return err
+				}
+				err = g.G.AddEdge(sourceMachId, targetMachId, graph.EdgeData(data))
+				if err != nil {
+					return err
+				}
 			}
 			_ = g.Map.AddEdge(sourceMachId, targetMachId)
 		} else {
 			data = link.Properties.Data.(*EdgeData)
 		}
+
+		// debug
+		// stateDbg := state
+		// if isAdd {
+		// 	stateDbg += " add"
+		// }
+		// if isPipeOut {
+		// 	stateDbg += " out"
+		// }
+		// dump.Println(c.Id, stateDbg, sourceMachId+"->"+targetMachId, data)
 
 		// update the missing state from the other side of the pipe
 		found := false
@@ -720,4 +714,213 @@ func (g *Graph) parseMsgReader(
 	// TODO detached pipe handlers
 
 	return nil
+}
+
+// FUNCS
+
+// Markdown returns a Markdown format of the network graph, with state lists,
+// with a flat hierarchy. It's useful for debugging.
+func Markdown(inspect map[string]*MachInspect) string {
+	keys := slices.Collect(maps.Keys(inspect))
+	sort.Strings(keys)
+	ret := "# am-vis inspect-dump\n\n"
+	for _, machId := range keys {
+		data := inspect[machId]
+		ret += "## " + machId + "\n"
+		// TODO format
+		ret += fmt.Sprintf("Time: t%d\n", data.Time)
+		if data.Child != "" {
+			ret += fmt.Sprintf("Parent: %s\n\n", data.Child)
+		} else {
+			ret += "\n"
+		}
+		if len(data.States) > 0 {
+			sort.Strings(data.States)
+			ret += "### States\n"
+			ret += fmt.Sprintf("- %s\n", strings.Join(data.States, "\n- "))
+			ret += "\n"
+		}
+		if len(data.Conns) > 0 {
+			sort.Strings(data.Conns)
+			ret += "### RPC\n"
+			ret += fmt.Sprintf("- %s\n", strings.Join(data.Conns, "\n- "))
+			ret += "\n"
+		}
+		if len(data.Pipes) > 0 {
+			ret += "### Pipes\n\n"
+			keysPipes := slices.Collect(maps.Keys(data.Pipes))
+			sort.Strings(keysPipes)
+			for _, pipe := range keysPipes {
+				sort.Strings(data.Pipes[pipe])
+				ret += fmt.Sprintf("#### %s\n", pipe)
+				ret += fmt.Sprintf("- %s\n", strings.Join(data.Pipes[pipe], "\n- "))
+				ret += "\n"
+			}
+		}
+		ret += "-----\n\n"
+	}
+
+	return ret
+}
+
+// Markup returns an XML format of the network graph, including full schemas,
+// with a nested hierarchy. It's useful for CSS/XPath queries.
+func Markup(inspect map[string]*MachInspect) string {
+	// build parent -> []children map and collect roots
+	children := make(map[string][]string)
+	var roots []string
+	for id, data := range inspect {
+		if data.Child == "" {
+			roots = append(roots, id)
+		} else {
+			children[data.Child] = append(children[data.Child], id)
+		}
+	}
+	sort.Strings(roots)
+	for k := range children {
+		sort.Strings(children[k])
+	}
+
+	ret := "<graph>\n"
+	for _, id := range roots {
+		ret += "\n"
+		ret += writeMachine(inspect, children, id, 1)
+	}
+	ret += "</graph>\n"
+	return ret
+}
+
+func writePipe(target, pipe, pad string) string {
+	body := pipe
+	attrs := fmt.Sprintf(" to=%q", target)
+
+	if strings.HasPrefix(pipe, "[") {
+		if close := strings.Index(pipe, "]"); close > 1 {
+			mut := strings.TrimSpace(pipe[1:close])
+			rest := strings.TrimSpace(pipe[close+1:])
+			if mut == "remove" {
+				attrs += fmt.Sprintf(" add=\"0\"")
+			} else {
+				attrs += fmt.Sprintf(" add=\"1\"")
+			}
+
+			from, to, ok := strings.Cut(rest, " -> ")
+			if ok {
+				from = strings.TrimSpace(from)
+				to = strings.TrimSpace(to)
+				if from != "" {
+					attrs += fmt.Sprintf(" as=%q", from)
+				}
+				switch {
+				case to != "":
+					body = to
+				case from != "":
+					body = from
+				default:
+					body = rest
+				}
+			} else {
+				body = rest
+			}
+		}
+	}
+
+	return fmt.Sprintf("%s<pipe%s>%s</pipe>\n", pad, attrs, body)
+}
+
+func writeMachine(
+	inspect map[string]*MachInspect, children map[string][]string, id string,
+	indent int,
+) string {
+	//
+
+	data := inspect[id]
+	pad := strings.Repeat("    ", indent)
+	inner := pad + "    "
+	ret := fmt.Sprintf("%s<machine id=%q time=\"%d\">\n", pad, id, data.Time)
+
+	states := slices.Clone(data.States)
+	sort.Strings(states)
+	for _, s := range states {
+		ret += writeState(s, data, inner)
+	}
+
+	conns := slices.Clone(data.Conns)
+	sort.Strings(conns)
+	for _, c := range conns {
+		ret += fmt.Sprintf("%s<rpc>%s</rpc>\n", inner, c)
+	}
+
+	pipeKeys := slices.Collect(maps.Keys(data.Pipes))
+	sort.Strings(pipeKeys)
+	for _, target := range pipeKeys {
+		pipes := slices.Clone(data.Pipes[target])
+		sort.Strings(pipes)
+		for _, p := range pipes {
+			ret += writePipe(target, p, inner)
+		}
+	}
+
+	tags := slices.Clone(data.Tags)
+	sort.Strings(tags)
+	for _, tag := range tags {
+		ret += fmt.Sprintf("%s<tag>%s</tag>\n", inner, tag)
+	}
+
+	for _, childId := range children[id] {
+		ret += "\n"
+		ret += writeMachine(inspect, children, childId, indent+1)
+	}
+
+	ret += pad + "</machine>\n"
+	return ret
+}
+
+func writeState(name string, data *MachInspect, pad string) string {
+	state, ok := data.Schema[name]
+	if !ok {
+		return fmt.Sprintf("%s<state>%s</state>\n", pad, name)
+	}
+
+	attrs := ""
+	if idx := slices.Index(data.States, name); idx >= 0 && idx < len(data.MTime) {
+		attrs += fmt.Sprintf(` tick="%d"`, data.MTime[idx])
+		if am.IsActiveTick(data.MTime[idx]) {
+			attrs += fmt.Sprintf(` active="1"`)
+		}
+	}
+	if state.Auto {
+		attrs += ` auto="1"`
+	}
+	if state.Multi {
+		attrs += ` multi="1"`
+	}
+
+	hasRelations := len(state.Require) > 0 || len(state.Add) > 0 ||
+		len(state.Remove) > 0 || len(state.After) > 0
+	if !hasRelations {
+		return fmt.Sprintf("%s<state%s>%s</state>\n", pad, attrs, name)
+	}
+
+	ret := fmt.Sprintf("%s<state%s>\n", pad, attrs)
+	ret += fmt.Sprintf("%s    %s\n", pad, name)
+
+	writeRelations := func(tag string, rels am.S) {
+		if len(rels) == 0 {
+			return
+		}
+		items := slices.Clone(rels)
+		sort.Strings(items)
+		for _, rel := range items {
+			ret += fmt.Sprintf("%s    <%s>%s</%s>\n", pad, tag, rel, tag)
+		}
+	}
+
+	writeRelations("require", state.Require)
+	writeRelations("add", state.Add)
+	writeRelations("remove", state.Remove)
+	writeRelations("after", state.After)
+
+	ret += fmt.Sprintf("%s</state>\n", pad)
+	return ret
 }

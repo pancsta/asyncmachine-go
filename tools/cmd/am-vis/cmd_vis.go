@@ -93,7 +93,7 @@ func (Args) Description() string {
 		# map view
 		am-vis --map render-dump mymach.gob.br
 	
-		# inspect dump as Markdown
+		# inspect a dump file as Markdown and XML
 		am-vis inspect-dump mymach.gob.br
 	`)
 }
@@ -270,6 +270,11 @@ func inspectDump(
 	}
 	err = os.WriteFile(args.OutputFilename+".md",
 		[]byte(amgraph.Markdown(inspect)), 0644)
+	if err != nil {
+		return err
+	}
+	err = os.WriteFile(args.OutputFilename+".xml",
+		[]byte(amgraph.Markup(inspect)), 0644)
 	if err != nil {
 		return err
 	}

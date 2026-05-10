@@ -76,6 +76,7 @@ type Params struct {
 	OutputDiagrams  ParamsOutputDiagrams `arg:"--output-diagrams" help:"Level of details for machine graph diagrams (svg, d2, mermaid) in --dir (0 off, 1-3 on) (EXPERIMENTAL)"`
 	OutputDiagGroup ParamsOutDiagGroup   `arg:"--output-diag-group" help:"Only show states from the selected group (valid: hide, skip)" default:"hide"`
 	OutputDiagTx    ParamsOutDiagTx      `arg:"--output-diag-tx" help:"Dim states and rels unrelated to a transition (valid: called, changed, touched, relations)" default:"relations"`
+	OutputGraph     bool                 `arg:"--output-graph" help:"Write the current network graph as graph.(md|mgml) inside --dir (EXPERIMENTAL)"`
 	OutputLog       bool                 `arg:"--output-log" help:"Write the current log buffer to log.txt inside --dir"`
 	OutputTx        bool                 `arg:"--output-tx" default:"true" help:"Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir (EXPERIMENTAL)"`
 
