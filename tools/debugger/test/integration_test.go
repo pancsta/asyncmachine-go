@@ -10,7 +10,6 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
-	"github.com/soheilhy/cmux"
 	"github.com/stretchr/testify/assert"
 
 	amtest "github.com/pancsta/asyncmachine-go/internal/testing"
@@ -20,7 +19,6 @@ import (
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
@@ -70,13 +68,6 @@ func init() {
 		_ = amhelp.MachDebug(worker.Mach, addr, am.LogOps, false,
 			amhelp.SemConfigEnv(true))
 	}
-
-	// init am-dbg telemetry server
-	muxCh := make(chan cmux.CMux, 1)
-	defer close(muxCh)
-	go server.StartRpc(worker.Mach, workerAddr, muxCh, types.Params{})
-	// wait for mux
-	<-muxCh
 }
 
 func TestUserFwd(t *testing.T) {

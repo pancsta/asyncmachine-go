@@ -9,10 +9,9 @@ import (
 	"syscall"
 
 	"github.com/alexflint/go-arg"
-	
-	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
+
 	"github.com/pancsta/asyncmachine-go/internal/utils"
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	amtele "github.com/pancsta/asyncmachine-go/pkg/telemetry"
 	"github.com/pancsta/asyncmachine-go/tools/debugger"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
@@ -55,13 +54,6 @@ func cliRun(ctx context.Context, p types.Params) error {
 		return err
 	}
 
-	// rpc client
-	if p.DebugAddr != "" {
-		_ = amhelp.MachDebug(dbg.Mach, p.DebugAddr, p.LogLevel, false,
-			amhelp.SemConfigEnv(true))
-
-	}
-
 	if p.DbgOtel {
 		dbg.Mach.SemLogger().EnableSteps(true)
 		os.Setenv(amtele.EnvService, "dbg")
@@ -80,8 +72,11 @@ func cliRun(ctx context.Context, p types.Params) error {
 	}
 
 	// rpc server
-	if p.ListenAddr != "-1" {
-		go server.StartRpc(dbg.Mach, p.ListenAddr, nil, p)
+	if p.ListenAddr != "" && p.ListenAddr != "-1" {
+		dbg.ServerMux, dbg.ServerHttp, err = server.New(dbg.Mach, p.ListenAddr, p)
+		if err != nil {
+			return err
+		}
 	}
 
 	// start and wait till the end

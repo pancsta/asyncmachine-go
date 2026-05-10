@@ -9,11 +9,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
-	"github.com/pancsta/tcell-v2"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
 
 type nodeRef struct {
@@ -889,7 +890,8 @@ func (d *Debugger) hUpdateTreeGroups() {
 			label = fmt.Sprintf("%s:%d", name, amount)
 		}
 		opts = append(opts, cview.NewDropDownOption(label))
-		if name == d.C.SelectedGroup {
+		if types.NormalizeGroupName(name) ==
+			types.NormalizeGroupName(d.C.SelectedGroup) {
 			sel = i
 		}
 	}

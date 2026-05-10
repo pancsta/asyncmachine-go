@@ -1,22 +1,32 @@
 package debugger
 
 import (
+	"context"
 	"encoding/gob"
 	"errors"
+	"fmt"
+	"maps"
+	"os"
 	"os/exec"
+	"path"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/ssh"
-	"github.com/pancsta/tcell-v2"
-	"github.com/pancsta/tcell-v2/terminfo"
+	"github.com/gdamore/tcell/v2"
+	"github.com/gdamore/tcell/v2/terminfo"
+	"github.com/mark3labs/mcp-go/mcp"
 
+	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
+
+	ammcp "github.com/pancsta/asyncmachine-go/pkg/integrations/mcp"
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
-
-	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
 const (
@@ -39,6 +49,7 @@ const (
 	msgMaxThreshold = 300
 	// max txs queued for scrolling the timelines
 	scrollTxThrottle = 3
+	logFile          = "log.md"
 )
 
 type Client struct {

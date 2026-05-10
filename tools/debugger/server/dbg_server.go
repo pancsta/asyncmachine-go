@@ -49,6 +49,7 @@ type Exportable struct {
 	// TODO version schemas
 	MsgStruct *dbg.DbgMsgStruct
 	MsgTxs    []*dbg.DbgMsgTx
+	Version   string
 }
 
 type Client struct {
@@ -110,7 +111,24 @@ func (c *Client) HadErrSinceTx(tx, distance int) bool {
 	return tx-c.Errors[index] < distance
 }
 
-func (c *Client) LastTxTill(hTime time.Time) int {
+func (c *Client) TxAtQueueTick(qTick uint64) int {
+	l := len(c.MsgTxs)
+	if l == 0 {
+		return -1
+	}
+
+	i := sort.Search(l, func(i int) bool {
+		return c.MsgTxs[i].QueueTick >= qTick
+	})
+
+	if i == l {
+		i = l - 1
+	}
+
+	return i
+}
+
+func (c *Client) TxAtHTime(hTime time.Time) int {
 	l := len(c.MsgTxs)
 	if l == 0 {
 		return -1
@@ -180,7 +198,49 @@ func (c *Client) TxParsed(idx int) *types.MsgTxParsed {
 	return c.MsgTxsParsed[idx]
 }
 
-func (c *Client) TxByMachTime(sum uint64) int {
+// TxExecutedBy returns the execution transition for a queued transition
+func (c *Client) TxExecutedBy(idx int) *dbg.DbgMsgTx {
+	tx := c.MsgTxs[idx]
+	if tx == nil || !tx.IsQueued {
+		return nil
+	}
+	var executed *dbg.DbgMsgTx
+
+	// DEBUG
+	// // look into the future TODO links to the wrong one
+	// for iii := c.CursorTx1; iii < len(c.MsgTxs); iii++ {
+	// 	check := c.MsgTxs[iii]
+	// 	txCalled := tx.CalledStateNames(statesIndex)
+	// 	checkCalled := check.CalledStateNames(statesIndex)
+	// 	if !check.IsQueued && am.StatesEqual(txCalled, checkCalled) {
+	// 		d.Mach.Log("exec tx.MQT: %d, check.QT: %d",
+	// 			tx.MutQueueTick, check.QueueTick)
+	// 		d.Mach.Log("exec tx.Called: %s, check.Called: %s",
+	// 			txCalled,
+	// 			checkCalled)
+	// 	}
+	// }
+
+	// look into the future
+	for iii := idx + 1; iii < len(c.MsgTxs); iii++ {
+		check := c.MsgTxs[iii]
+
+		if check.IsQueued {
+			continue
+		}
+
+		if check.QueueTick == tx.MutQueueTick ||
+			(check.MutQueueToken > 0 && check.MutQueueToken == tx.MutQueueToken) {
+
+			executed = check
+			break
+		}
+	}
+
+	return executed
+}
+
+func (c *Client) TxAtMachTime(sum uint64) int {
 	idx, ok := slices.BinarySearchFunc(c.MsgTxsParsed,
 		&types.MsgTxParsed{TimeSum: sum}, func(i, j *types.MsgTxParsed) int {
 			if i.TimeSum < j.TimeSum {
@@ -226,6 +286,7 @@ func (c *Client) ParseSchema() {
 	pastSelf := false
 	prev := am.S{}
 	for _, g := range schema.GroupsOrder {
+		// TODO terrible
 		name := strings.TrimSuffix(g, "StatesDef")
 		if g == "self" {
 			name = "- self"
@@ -297,9 +358,11 @@ func (c *Client) ParseSchema() {
 
 // ///// ///// /////
 
-func StartRpc(
-	mach *am.Machine, addr string, mux chan<- cmux.CMux, p types.Params,
-) {
+// New initializes listeners, fwd conns, and returns unstated servers.
+func New(
+	mach *am.Machine, addr string, p types.Params,
+) (cmux.CMux, *http.Server, error) {
+	// TODO extract conns, refac to am
 	// TODO dont listen in WASM
 
 	var err error
@@ -312,11 +375,7 @@ func StartRpc(
 	port, _ := strconv.Atoi(addrPort)
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Println(err)
-		mach.AddErr(err, nil)
-		fmt.Println(err)
-		// TODO ret err
-		os.Exit(1)
+		return nil, nil, err
 	}
 	mach.Log("dbg server started at %s", addr)
 
@@ -325,17 +384,17 @@ func StartRpc(
 	for i, a := range p.FwdData {
 		fwdTo[i], err = rpc.Dial("tcp", a)
 		if err != nil {
-			fmt.Printf("Cant fwd to %s: %s\n", a, err)
-			os.Exit(1)
+			return nil, nil, fmt.Errorf("Cant fwd to %s: %s\n", a, err)
 		}
 	}
 
 	// first cmux for tcp
-	mux1 := cmux.New(lis)
-	tcpL := mux1.Match(cmux.Any())
+	mux := cmux.New(lis)
+	tcpL := mux.Match(cmux.Any())
 	go tcpAccept(tcpL, mach, fwdTo)
 
 	// HTTP and WS on port+1
+	var httpSrv *http.Server
 	if p.UiWeb {
 		httpAddr := fmt.Sprintf("%s:%d",
 			addr[:strings.LastIndex(addr, ":")], port+1)
@@ -363,30 +422,15 @@ func StartRpc(
 		httpMux.HandleFunc("/dbg.ws", func(w http.ResponseWriter, r *http.Request) {
 			wsDbgHandler(w, r, mach, fwdTo)
 		})
-		httpSrv := &http.Server{
+		// TODO handlers for text screens (reader, screen, log)
+
+		httpSrv = &http.Server{
 			Handler: &httpMux,
 			Addr:    httpAddr,
 		}
-
-		// listen
-		go func() {
-			mach.AddErr(httpSrv.ListenAndServe(), nil)
-		}()
 	}
 
-	// push out for IoC
-	if mux != nil {
-		go func() {
-			time.Sleep(100 * time.Millisecond)
-			mux <- mux1
-		}()
-	}
-
-	// start first cmux
-	if err := mux1.Serve(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	return mux, httpSrv, nil
 }
 
 // TODO rename to RPCServer (compat break)
@@ -613,6 +657,26 @@ func httpHandlerIndex(
 		return
 	}
 
+	// compute addr TODO take from dbg instance
+	httpAddr := ""
+	if p.ListenAddr != "-1" && p.ListenAddr != "" {
+		host, port, err := net.SplitHostPort(p.ListenAddr)
+		httpAddr = host
+
+		// global listen
+		if host == "0.0.0.0" {
+			listenHost, err := utils.GetGlobalUnicastIP()
+			if err == nil {
+				httpAddr = listenHost
+			}
+		}
+
+		if err == nil {
+			dbgPort, _ := strconv.Atoi(port)
+			httpAddr += fmt.Sprintf(":%d", dbgPort+1)
+		}
+	}
+
 	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].IsDir() != entries[j].IsDir() {
 			return entries[i].IsDir()
@@ -627,8 +691,17 @@ func httpHandlerIndex(
 	fmt.Fprintf(w, "<h1>am-dbg</h1><hr>")
 
 	fmt.Fprintf(w, "<h2>Pages</h2><hr><ul>")
-	// TODO read from state and hide
-	fmt.Fprintf(w, `<li><a href="/diagrams/mach">/diagrams/mach</a></li>`)
+	if p.OutputDiagrams != types.ParamsOutputDiagramsNone {
+		fmt.Fprintf(w, "<li><a href=\"/diagrams/mach\">"+
+			"Machine Diagram</a> (auto refresh)</li>")
+	}
+	if p.OutputTx {
+		fmt.Fprintf(w, "<li><a href=\"/tx.d2.svg\">"+
+			"Steps Diagram</a> (manual refresh)</li>")
+	}
+	if p.UiMcp {
+		fmt.Fprintf(w, `<li>http://%s/mcp</li>`, httpAddr)
+	}
 	fmt.Fprintf(w, `</ul>`)
 
 	fmt.Fprintf(w, "<h2>--dir %s</h2><hr><ul>", p.OutputDir)
@@ -697,7 +770,7 @@ func wsDiagHandler(w http.ResponseWriter, r *http.Request, mach *am.Machine) {
 func middleware(w http.ResponseWriter) {
 	// TODO add security
 	// CORS
-	w.Header().Set("Access-Control-Allow-Origin", "localhost")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods",
 		"POST, GET, OPTIONS, PUT, DELETE")
 	w.Header().Set("Access-Control-Allow-Headers",

@@ -2,19 +2,23 @@ package debugger
 
 import (
 	"context"
+	"maps"
 	"math"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
-	"github.com/pancsta/tcell-v2"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
+	amrelay "github.com/pancsta/asyncmachine-go/tools/relay"
 )
 
 // buildClientList builds the clientList with the list of clients.
@@ -77,9 +81,13 @@ func (d *Debugger) hBuildClientList(selectedIndex int) {
 		if d.hClientHasParent(parent) {
 			continue
 		}
-		// skip disconns
+		// skip disconns TODO dont skip children
 		c := d.Clients[parent]
 		if !c.Connected.Load() && d.Mach.Is1(ss.FilterDisconn) {
+			continue
+		}
+		// skip rpc & relay TODO dont skip children
+		if d.Mach.Is1(ss.FilterRpcMachs) && machIsRpc(c.MsgStruct) {
 			continue
 		}
 
@@ -140,7 +148,7 @@ func (d *Debugger) updateClientList() {
 }
 
 func (d *Debugger) drawClientList() {
-	if d.LayoutRoot == nil {
+	if d.LayoutRoot == nil || d.Mach.Not1(ss.ClientListVisible) {
 		return
 	}
 	if n, _ := d.LayoutRoot.GetFrontPanel(); n == "main" {
@@ -208,7 +216,7 @@ func (d *Debugger) hUpdateClientList() {
 		item.SetMainText(label)
 
 		// txt file
-		if d.Params.OutputClients {
+		if d.params.OutputClients {
 			if !hasParent {
 				txtFile += "\n"
 			}
@@ -233,7 +241,7 @@ func (d *Debugger) hUpdateClientList() {
 	}
 
 	// save to a file TODO skipped when file list not rendered
-	if d.Params.OutputClients {
+	if d.params.OutputClients {
 		_, _ = d.clientListFile.Seek(0, 0)
 		_ = d.clientListFile.Truncate(0)
 		_, _ = d.clientListFile.Write([]byte(txtFile))
@@ -244,6 +252,14 @@ func (d *Debugger) hUpdateClientList() {
 type sidebarRef struct {
 	name string
 	lvl  int
+}
+
+// TODO move
+func machIsRpc(schema *dbg.DbgMsgStruct) bool {
+	return schema.HasTag(arpc.TagRpcClient, "") ||
+		schema.HasTag(arpc.TagRpcServer, "") ||
+		schema.HasTag(arpc.TagRpcMux, "") ||
+		schema.HasTag(amrelay.TagRelay, "")
 }
 
 func (d *Debugger) hClientListChild(
@@ -259,6 +275,10 @@ func (d *Debugger) hClientListChild(
 		}
 		// skip disconns
 		if !c.Connected.Load() && d.Mach.Is1(ss.FilterDisconn) {
+			continue
+		}
+		// skip rpc & relay
+		if d.Mach.Is1(ss.FilterRpcMachs) && machIsRpc(c.MsgStruct) {
 			continue
 		}
 
@@ -294,7 +314,8 @@ func (d *Debugger) hGetClientListLabel(
 	name string, c *Client, index int,
 ) string {
 	isHovered := d.clientList.GetCurrentItemIndex() == index
-	hasFocus := d.Mach.Is1(ss.ClientListFocused)
+	hasFocus := d.Mach.Is1(ss.ClientListFocused) &&
+		!d.Mach.WillBeAny(states.DebuggerGroups.Focused)
 
 	var currCTxIdx int
 	var currCTx *dbg.DbgMsgTx
@@ -305,7 +326,7 @@ func (d *Debugger) hGetClientListLabel(
 		if currTime.IsZero() {
 			currTime = *currSelTx.Time
 		}
-		currCTxIdx = c.LastTxTill(currTime)
+		currCTxIdx = c.TxAtHTime(currTime)
 		if currCTxIdx != -1 {
 			currCTx = c.MsgTxs[currCTxIdx]
 		}
@@ -315,9 +336,10 @@ func (d *Debugger) hGetClientListLabel(
 	var state string
 	isErrNow := false
 	if currCTx != nil {
-		readyIdx := slices.Index(c.MsgStruct.StatesIndex, ssam.BasicStates.Ready)
-		startIdx := slices.Index(c.MsgStruct.StatesIndex, ssam.BasicStates.Start)
-		errIdx := slices.Index(c.MsgStruct.StatesIndex, am.StateException)
+		index := c.MsgStruct.StatesIndex
+		readyIdx := slices.Index(index, ssam.BasicStates.Ready)
+		startIdx := slices.Index(index, ssam.BasicStates.Start)
+		errIdx := slices.Index(index, am.StateException)
 		isErrNow = errIdx != -1 && am.IsActiveTick(currCTx.Clocks[errIdx])
 		if readyIdx != -1 && am.IsActiveTick(currCTx.Clocks[readyIdx]) {
 			state = "R"
@@ -360,7 +382,7 @@ func (d *Debugger) hGetClientListLabel(
 	return label
 }
 
-func (d *Debugger) initClientList() {
+func (d *Debugger) hInitClientList() {
 	// TODO refac to a tree component
 	d.clientList = cview.NewList()
 	d.clientList.SetTitle(" Machines ")
@@ -371,17 +393,17 @@ func (d *Debugger) initClientList() {
 	d.clientList.SetSelectedTextColor(tcell.GetColor(theme.White))
 	d.clientList.SetSelectedBackgroundColor(tcell.GetColor(theme.Highlight2))
 	d.clientList.SetHighlightFullLine(true)
+	d.clientList.SetChangedFunc(func(index int, item *cview.ListItem) {
+		d.Mach.Eval("clientList.SetChangedFunc", d.hUpdateClientList, nil)
+	})
 	// switch clients and handle history
 	d.clientList.SetSelectedFunc(func(i int, listItem *cview.ListItem) {
 		client := listItem.GetReference().(*sidebarRef)
 		clickedId := client.name
 		selectedId := ""
-		// TODO getter
-		d.Mach.Eval("clientList.SetSelectedFunc1", func() {
-			if d.C != nil {
-				selectedId = d.C.Id
-			}
-		}, nil)
+		if c, _ := d.Client(); c != nil {
+			selectedId = c.Id
+		}
 		if clickedId == selectedId {
 			return
 		}
@@ -406,4 +428,21 @@ func (d *Debugger) initClientList() {
 	})
 	d.clientList.SetSelectedAlwaysVisible(true)
 	d.clientList.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
+}
+
+// TODO should switch in displayed order, but list no rendered in narrow
+func (d *Debugger) hSwitchClient(e *am.Event, diff int) am.Result {
+	ids := slices.Collect(maps.Keys(d.Clients))
+	var i int
+	if d.C != nil {
+		i = slices.Index(ids, d.C.Id)
+	}
+	ii := (i + diff) % len(ids)
+	if ii < 0 {
+		ii = len(ids) - 1
+	}
+
+	return d.Mach.EvAdd1(e, ss.SelectingClient, Pass(&A{
+		ClientId: d.Clients[ids[ii]].Id,
+	}))
 }

@@ -3,11 +3,13 @@
 package debugger
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"net"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -19,21 +21,21 @@ import (
 
 	"github.com/charmbracelet/ssh"
 	"github.com/coder/websocket"
+	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
-	"github.com/pancsta/tcell-v2"
+	"github.com/soheilhy/cmux"
 	"golang.org/x/exp/maps"
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
 
-	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
-
+	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
+	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
-	"github.com/pancsta/asyncmachine-go/tools/visualizer"
 	amvis "github.com/pancsta/asyncmachine-go/tools/visualizer"
 )
+
+var _ = ss.ErrGraph
 
 func (d *Debugger) ErrGraphEnter(e *am.Event) bool {
 	// ignore graph errs
@@ -42,17 +44,19 @@ func (d *Debugger) ErrGraphEnter(e *am.Event) bool {
 
 // TODO Enter
 
+var _ = ss.Start
+
 func (d *Debugger) StartState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.Start)
-	view := d.Params.StartupView
+	view := d.params.StartupView
 
 	// cview TUI app
 	d.App = cview.NewApplication()
-	if d.Params.Screen != nil {
-		d.App.SetScreen(d.Params.Screen)
+	if d.params.Screen != nil {
+		d.App.SetScreen(d.params.Screen)
 
 		// headless mode
-	} else if d.Params.UiSsh {
+	} else if d.params.UiSsh {
 		d.Mach.EvAdd1(e, ss.SshServer, nil)
 		d.App.SetScreen(tcell.NewSimulationScreen("UTF-8"))
 	}
@@ -81,23 +85,31 @@ func (d *Debugger) StartState(e *am.Event) {
 			d.Mach.Add1(ss.Resized, nil)
 		})
 	})
+	// catch ctrl+c
+	// d.App.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	// 	if event.Key() == tcell.KeyCtrlC {
+	// 		_ = d.Mach.EvAdd1(e, ss.Disposing, nil)
+	// 		return nil
+	// 	}
+	//
+	// 	return event
+	// })
 
 	// init the rest
-	d.P = message.NewPrinter(language.English)
 	d.hBindKeyboard()
 	d.hInitUiComponents()
 	d.hInitLayout()
 	// d.hUpdateFocusableList()
-	if d.Params.EnableMouse {
+	if d.params.EnableMouse {
 		d.App.EnableMouse(true)
 	}
-	if d.Params.ViewReader {
+	if d.params.ViewReader {
 		d.Mach.EvAdd1(e, ss.LogReaderEnabled, nil)
 	}
 
-	// default filters TODO sync filter from CLI
+	// default filters
 	filters := S{ss.FilterChecks}
-	if d.Params.Filters.SkipOutGroup {
+	if d.params.Filters.SkipOutGroup {
 		filters = append(filters, ss.FilterOutGroup)
 	}
 	d.Mach.EvAdd(e, filters, nil)
@@ -110,7 +122,7 @@ func (d *Debugger) StartState(e *am.Event) {
 			d.Mach.AddErr(err, nil)
 		}
 
-		d.Dispose()
+		d.Mach.EvAdd1(e, ss.Disposing, nil)
 	})
 
 	// post-start ops
@@ -133,6 +145,38 @@ func (d *Debugger) StartState(e *am.Event) {
 		d.buildClientList(-1)
 		d.Mach.Add1(ss.Ready, nil)
 	})
+
+	// servers TODO extract
+
+	if d.ServerMux != nil {
+		d.Mach.Go(ctx, func() {
+			if err := d.ServerMux.Serve(); err != nil &&
+				!errors.Is(err, cmux.ErrListenerClosed) &&
+				!errors.Is(err, cmux.ErrServerClosed) {
+
+				d.Mach.EvAddErr(e, err, nil)
+			}
+		})
+	}
+
+	if d.ServerHttp != nil {
+		if d.params.UiMcp {
+			mcp, err := newMcpServer(d)
+			if err != nil {
+				d.Mach.Log("Error: %s", err)
+				return
+			}
+			d.ServerHttp.Handler.(*http.ServeMux).Handle("/mcp", mcp.Http)
+		}
+
+		d.Mach.Go(ctx, func() {
+			if err := d.ServerHttp.ListenAndServe(); err != nil &&
+				err != http.ErrServerClosed {
+
+				d.Mach.EvAddErr(e, err, nil)
+			}
+		})
+	}
 }
 
 func (d *Debugger) StartEnd(e *am.Event) {
@@ -141,32 +185,34 @@ func (d *Debugger) StartEnd(e *am.Event) {
 	}
 }
 
+var _ = ss.Ready
+
 func (d *Debugger) ReadyState(e *am.Event) {
 	d.heartbeatT = time.NewTicker(heartbeatInterval)
 	ctx := d.Mach.NewStateCtx(ss.Ready)
 
 	// late options
-	// TODO migrate args from Start() method
-	if d.Params.ViewNarrow {
-		d.Mach.EvAdd1(e, ss.NarrowLayout, nil)
+	// TODO move to hSetParams?
+	if d.params.ViewNarrow {
+		d.Mach.EvAdd1(e, ss.UserNarrowLayout, nil)
 	}
 	d.hSyncOptsTimelines()
-	if d.Params.OutputDiagrams.Value > 0 {
+	if d.params.OutputDiagrams.Value > 0 {
 		d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
 	}
-	if d.Params.ViewRain {
+	if d.params.ViewRain {
 		d.Mach.EvAdd1(e, ss.MatrixRain, nil)
 	}
-	if d.Params.TailMode {
+	if d.params.TailMode {
 		d.Mach.EvAdd1(e, ss.TailMode, nil)
 	}
 
 	// TODO merge parsing with addr bar
-	if addr, err := types.ParseMachUrl(d.Params.MachUrl); err == nil {
+	if addr, err := types.ParseMachUrl(d.params.MachUrl); err == nil {
 		go d.GoToMachAddress(addr, false)
 	}
 
-	// initial focus
+	// initial focus TODO def focus
 	d.Mach.EvAdd(e, S{ss.AfterFocus, ss.ClientListFocused}, Pass(&A{
 		FocusPrimitive: d.clientList,
 	}))
@@ -184,11 +230,24 @@ func (d *Debugger) ReadyState(e *am.Event) {
 			}
 		}
 	})
+
+	// select imported client TODO
+	if len(d.Clients) > 0 &&
+		!d.Mach.Any1(ss.ClientSelected, ss.SelectingClient) &&
+		d.params.MachUrl == "" {
+
+		c := d.Clients[maps.Keys(d.Clients)[0]]
+		d.Mach.EvAdd1(e, ss.SelectingClient, Pass(&A{
+			ClientId: c.Id,
+		}))
+	}
 }
 
 func (d *Debugger) ReadyEnd(e *am.Event) {
 	d.heartbeatT.Stop()
 }
+
+var _ = ss.Heartbeat
 
 func (d *Debugger) HeartbeatState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.Ready)
@@ -197,6 +256,8 @@ func (d *Debugger) HeartbeatState(e *am.Event) {
 		amhelp.AskEvAdd1(e, d.Mach, ss.GcMsgs, nil)
 	})
 }
+
+var _ = ss.StateNameSelected
 
 func (d *Debugger) StateNameSelectedEnter(e *am.Event) bool {
 	return ParseArgs(e.Args).State != ""
@@ -238,6 +299,8 @@ func (d *Debugger) StateNameSelectedEnd(e *am.Event) {
 	})
 }
 
+var _ = ss.Playing
+
 func (d *Debugger) PlayingState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.Playing)
 	if d.playTimer == nil {
@@ -277,11 +340,15 @@ func (d *Debugger) PlayingEnd(e *am.Event) {
 	d.hUpdateToolbar()
 }
 
+var _ = ss.Paused
+
 func (d *Debugger) PausedState(e *am.Event) {
 	// TODO stop scrolling the log when coming from TailMode (confirm)
 	d.hUpdateTxBars()
 	d.draw()
 }
+
+var _ = ss.TailMode
 
 func (d *Debugger) TailModeState(e *am.Event) {
 	d.hSetCursor1(e, &A{
@@ -301,6 +368,8 @@ func (d *Debugger) TailModeEnd(e *am.Event) {
 	d.hRedrawFull(true)
 }
 
+var _ = ss.Redraw
+
 func (d *Debugger) RedrawState(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.Redraw, nil)
 	immediate := ParseArgs(e.Args).Immediate
@@ -309,9 +378,13 @@ func (d *Debugger) RedrawState(e *am.Event) {
 
 // ///// FWD / BACK
 
+var _ = ss.UserFwd
+
 func (d *Debugger) UserFwdState(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.UserFwd, nil)
 }
+
+var _ = ss.Fwd
 
 func (d *Debugger) FwdEnter(e *am.Event) bool {
 	amount := max(ParseArgs(e.Args).Amount, 1)
@@ -336,9 +409,13 @@ func (d *Debugger) FwdState(e *am.Event) {
 	d.hRedrawFull(false)
 }
 
+var _ = ss.UserBack
+
 func (d *Debugger) UserBackState(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.UserBack, nil)
 }
+
+var _ = ss.Back
 
 func (d *Debugger) BackEnter(e *am.Event) bool {
 	amount := max(ParseArgs(e.Args).Amount, 1)
@@ -362,9 +439,13 @@ func (d *Debugger) BackState(e *am.Event) {
 
 // ///// STEP BACK / FWD
 
+var _ = ss.UserFwdStep
+
 func (d *Debugger) UserFwdStepState(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.UserFwdStep, nil)
 }
+
+var _ = ss.FwdStep
 
 func (d *Debugger) FwdStepEnter(e *am.Event) bool {
 	nextTx := d.hNextTx()
@@ -390,9 +471,13 @@ func (d *Debugger) FwdStepState(e *am.Event) {
 	d.hRedrawFull(false)
 }
 
+var _ = ss.UserBackStep
+
 func (d *Debugger) UserBackStepState(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.UserBackStep, nil)
 }
+
+var _ = ss.BackStep
 
 func (d *Debugger) BackStepEnter(e *am.Event) bool {
 	return d.C.CursorStep1 > 0 || d.C.CursorTx1 > 0
@@ -431,6 +516,8 @@ func (d *Debugger) hHandleTStepsScrolled() {
 	}
 }
 
+var _ = ss.TimelineStepsScrolled
+
 func (d *Debugger) TimelineStepsScrolledState(e *am.Event) {
 	d.hUpdateSchemaLogGrid()
 	d.hRedrawFull(false)
@@ -440,6 +527,8 @@ func (d *Debugger) TimelineStepsScrolledEnd(e *am.Event) {
 	d.hUpdateSchemaLogGrid()
 	d.hRedrawFull(false)
 }
+
+var _ = ss.TimelineStepsFocused
 
 func (d *Debugger) TimelineStepsFocusedState(e *am.Event) {
 	d.hUpdateSchemaLogGrid()
@@ -451,6 +540,8 @@ func (d *Debugger) TimelineStepsFocusedEnd(e *am.Event) {
 	d.hRedrawFull(false)
 }
 
+var _ = ss.Toolbar1Focused
+
 func (d *Debugger) Toolbar1FocusedState(e *am.Event) {
 	d.toolbars[0].SetBackgroundColor(d.getFocusColor())
 	d.hUpdateToolbar()
@@ -460,6 +551,8 @@ func (d *Debugger) Toolbar1FocusedEnd(e *am.Event) {
 	d.toolbars[0].SetBackgroundColor(cview.Styles.PrimitiveBackgroundColor)
 	d.hUpdateToolbar()
 }
+
+var _ = ss.Toolbar2Focused
 
 func (d *Debugger) Toolbar2FocusedState(e *am.Event) {
 	d.toolbars[1].SetBackgroundColor(d.getFocusColor())
@@ -471,6 +564,8 @@ func (d *Debugger) Toolbar2FocusedEnd(e *am.Event) {
 	d.hUpdateToolbar()
 }
 
+var _ = ss.Toolbar3Focused
+
 func (d *Debugger) Toolbar3FocusedState(e *am.Event) {
 	d.toolbars[2].SetBackgroundColor(d.getFocusColor())
 	d.hUpdateToolbar()
@@ -480,6 +575,8 @@ func (d *Debugger) Toolbar3FocusedEnd(e *am.Event) {
 	d.toolbars[2].SetBackgroundColor(cview.Styles.PrimitiveBackgroundColor)
 	d.hUpdateToolbar()
 }
+
+var _ = ss.Toolbar4Focused
 
 func (d *Debugger) Toolbar4FocusedState(e *am.Event) {
 	d.toolbars[3].SetBackgroundColor(d.getFocusColor())
@@ -491,6 +588,8 @@ func (d *Debugger) Toolbar4FocusedEnd(e *am.Event) {
 	d.hUpdateToolbar()
 }
 
+var _ = ss.AddressFocused
+
 func (d *Debugger) AddressFocusedState(e *am.Event) {
 	d.addressBar.SetBackgroundColor(d.getFocusColor())
 	d.hUpdateToolbar()
@@ -500,6 +599,8 @@ func (d *Debugger) AddressFocusedEnd(e *am.Event) {
 	d.addressBar.SetBackgroundColor(cview.Styles.PrimitiveBackgroundColor)
 	d.hUpdateToolbar()
 }
+
+var _ = ss.TreeGroupsFocused
 
 func (d *Debugger) TreeGroupsFocusedState(e *am.Event) {
 	d.treeGroups.SetBackgroundColor(d.getFocusColor())
@@ -512,6 +613,8 @@ func (d *Debugger) TreeGroupsFocusedEnd(e *am.Event) {
 }
 
 // ///// CONNECTION
+
+var _ = ss.ConnectEvent
 
 func (d *Debugger) ConnectEventEnter(e *am.Event) bool {
 	args := ParseArgs(e.Args)
@@ -532,7 +635,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 	// cleanup removes all previous clients if all are disconnected
 	cleanup := false
-	if d.Params.CleanOnConnect {
+	if d.params.CleanOnConnect {
 		// remove old clients
 		cleanup = d.hCleanOnConnect()
 	}
@@ -549,6 +652,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 		} else {
 			d.Mach.Log("client %s already exists, overriding", msg.ID)
+			d.hRemoveClient(existing.Id)
 		}
 	}
 
@@ -562,7 +666,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 		d.Clients[msg.ID] = c
 	}
 
-	// re-select the last group TODO broken
+	// re-select the last group
 	if g := d.lastSelectedGroup; g != "" {
 		if _, ok := c.MsgStruct.Groups[g]; ok {
 			c.SelectedGroup = g
@@ -610,7 +714,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 	// if only 1 client connected, select it
 	// if the only client in total, select it
-	if len(d.Clients) == 1 || (d.Params.SelectConnected &&
+	if len(d.Clients) == 1 || (d.params.SelectConnected &&
 		d.hConnectedClients() == 1) {
 
 		d.Mach.EvAdd1(e, ss.SelectingClient, Pass(&A{
@@ -648,6 +752,8 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 	d.draw()
 }
+
+var _ = ss.DisconnectEvent
 
 func (d *Debugger) DisconnectEventEnter(e *am.Event) bool {
 	if ParseArgs(e.Args).ConnId == "" {
@@ -697,6 +803,8 @@ func (d *Debugger) DisconnectEventState(e *am.Event) {
 }
 
 // ///// CLIENTS
+
+var _ = ss.ClientMsg
 
 func (d *Debugger) ClientMsgEnter(e *am.Event) bool {
 	a := ParseArgs(e.Args)
@@ -783,6 +891,10 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 		}
 	}
 
+	// update graph file
+	amgraph.AddErrGraph(e, d.Mach,
+		d.hUpdateGraphFile(e))
+
 	// UI updates for the selected client
 	if updateTailMode {
 		// force the latest tx
@@ -809,6 +921,32 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 		d.draw()
 	}
 }
+
+// TODO move
+func (d *Debugger) hUpdateGraphFile(e *am.Event) error {
+	if !d.params.OutputGraph || d.graphFileMgml == nil || d.graphFileMd == nil {
+		return nil
+	}
+
+	_ = d.graphFileMd.Truncate(0)
+	_ = d.graphFileMgml.Truncate(0)
+
+	// clone the current graph TODO optimize
+	shot, err := d.graph.Clone()
+	if err != nil {
+		return err
+	}
+	inspect, err := shot.Inspect()
+	if err != nil {
+		return err
+	}
+	_, _ = d.graphFileMd.WriteAt([]byte(amgraph.Markdown(inspect)), 0)
+	_, _ = d.graphFileMgml.WriteAt([]byte(amgraph.Markup(inspect)), 0)
+
+	return nil
+}
+
+var _ = ss.RemoveClient
 
 func (d *Debugger) RemoveClientEnter(e *am.Event) bool {
 	cid := ParseArgs(e.Args).ClientId
@@ -846,6 +984,8 @@ func (d *Debugger) RemoveClientState(e *am.Event) {
 	d.draw()
 }
 
+var _ = ss.SetGroup
+
 func (d *Debugger) SetGroupEnter(e *am.Event) bool {
 	group := ParseArgs(e.Args).Group
 	if group == "" {
@@ -879,6 +1019,8 @@ func (d *Debugger) SetGroupState(e *am.Event) {
 }
 
 // TODO SelectingClientSelectingClient (for?)
+
+var _ = ss.SelectingClient
 
 func (d *Debugger) SelectingClientEnter(e *am.Event) bool {
 	cid := ParseArgs(e.Args).ClientId
@@ -963,7 +1105,6 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 		}
 
 		d.Mach.EvAdd(e, target, Pass(&A{
-			Ctx:           ctx,
 			FromConnected: fromConnected,
 			FromPlaying:   fromPlaying,
 			LogRebuildEnd: logRebuildEnd,
@@ -971,18 +1112,21 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 	})
 }
 
+var _ = ss.ClientSelected
+
 func (d *Debugger) ClientSelectedState(e *am.Event) {
-	cArgs2 := ParseArgs(e.Args)
-	ctx := cArgs2.Ctx
-	fromConnected := cArgs2.FromConnected
-	fromPlaying := cArgs2.FromPlaying
+	args := ParseArgs(e.Args)
+	ctx := d.Mach.NewStateCtx(ss.ClientSelected)
+	fromConnected := args.FromConnected
+	fromPlaying := args.FromPlaying
+
 	if ctx.Err() != nil {
 		d.Mach.Log("Error: context expired\n")
 		return // expired
 	}
 
 	// catch up with new log msgs
-	for i := d.logRebuildEnd; i < len(d.C.LogMsgs); i++ {
+	for i := max(0, d.logRebuildEnd-1); i < len(d.C.LogMsgs); i++ {
 		err := d.hAppendLogEntry(i)
 		if err != nil {
 			d.Mach.Log("Error: log rebuild %s\n", err)
@@ -1040,6 +1184,8 @@ func (d *Debugger) ClientSelectedEnd(e *am.Event) {
 	d.hRedrawFull(true)
 }
 
+var _ = ss.HelpDialog
+
 func (d *Debugger) HelpDialogState(e *am.Event) {
 	// re-render for mem stats
 	d.hUpdateHelpDialog()
@@ -1057,6 +1203,8 @@ func (d *Debugger) HelpDialogEnd(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.DialogFocused, nil)
 }
 
+var _ = ss.ExportDialog
+
 func (d *Debugger) ExportDialogState(e *am.Event) {
 	// TODO use Visibility instead of SendToFront
 	d.LayoutRoot.SendToFront("main")
@@ -1067,6 +1215,8 @@ func (d *Debugger) ExportDialogState(e *am.Event) {
 func (d *Debugger) ExportDialogEnd(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.DialogFocused, nil)
 }
+
+var _ = ss.DialogFocused
 
 func (d *Debugger) DialogFocusedEnd(e *am.Event) {
 	tx := e.Transition()
@@ -1086,6 +1236,8 @@ func (d *Debugger) DialogFocusedEnd(e *am.Event) {
 	}
 }
 
+var _ = ss.MatrixView
+
 func (d *Debugger) MatrixViewState(e *am.Event) {
 	d.hDrawViews()
 	d.hUpdateToolbar()
@@ -1096,6 +1248,8 @@ func (d *Debugger) MatrixViewEnd(e *am.Event) {
 	d.hUpdateToolbar()
 }
 
+var _ = ss.TreeMatrixView
+
 func (d *Debugger) TreeMatrixViewState(e *am.Event) {
 	d.hDrawViews()
 	d.hUpdateToolbar()
@@ -1105,6 +1259,8 @@ func (d *Debugger) TreeMatrixViewEnd(e *am.Event) {
 	d.hDrawViews()
 	d.hUpdateToolbar()
 }
+
+var _ = ss.MatrixRain
 
 func (d *Debugger) MatrixRainEnter(e *am.Event) bool {
 	states := e.Transition().TimeIndexAfter()
@@ -1118,6 +1274,8 @@ func (d *Debugger) MatrixRainState(e *am.Event) {
 	d.hUpdateToolbar()
 }
 
+var _ = ss.ScrollToTx
+
 func (d *Debugger) ScrollToTxEnter(e *am.Event) bool {
 	stArgs := ParseArgs(e.Args)
 	cursor, id := stArgs.CursorTx1, stArgs.TxId
@@ -1128,6 +1286,7 @@ func (d *Debugger) ScrollToTxEnter(e *am.Event) bool {
 }
 
 // ScrollToTxState scrolls to a specific transition (cursor position 1-based).
+
 func (d *Debugger) ScrollToTxState(e *am.Event) {
 	defer d.Mach.EvRemove1(e, ss.ScrollToTx, nil)
 	args := ParseArgs(e.Args)
@@ -1148,16 +1307,20 @@ func (d *Debugger) ScrollToTxState(e *am.Event) {
 	d.hRedrawFull(false)
 }
 
+var _ = ss.NarrowLayout
+
 func (d *Debugger) NarrowLayoutExit(e *am.Event) bool {
 	// always allow to exit
-	if e.Transition().TimeIndexAfter().Not1(ss.Start) {
+	after := e.Transition().TimeIndexAfter()
+	if after.Not1(ss.Start) {
 		return true
 	}
 
-	return !d.Params.ViewNarrow
+	return after.Not1(ss.UserNarrowLayout)
 }
 
 func (d *Debugger) NarrowLayoutState(e *am.Event) {
+	d.hUpdateToolbar()
 	d.hUpdateLayout()
 	d.buildClientList(-1)
 	d.hRedrawFull(false)
@@ -1167,6 +1330,8 @@ func (d *Debugger) NarrowLayoutEnd(e *am.Event) {
 	d.Mach.EvAdd1(e, ss.ClientListVisible, nil)
 }
 
+var _ = ss.ScrollToStep
+
 func (d *Debugger) ScrollToStepEnter(e *am.Event) bool {
 	cursor := ParseArgs(e.Args).CursorStep1
 	c := d.C
@@ -1174,6 +1339,7 @@ func (d *Debugger) ScrollToStepEnter(e *am.Event) bool {
 }
 
 // ScrollToStepState scrolls to a specific transition (cursor position 1-based).
+
 func (d *Debugger) ScrollToStepState(e *am.Event) {
 	// TODO multi?
 	d.Mach.EvRemove1(e, ss.ScrollToStep, nil)
@@ -1189,6 +1355,8 @@ func (d *Debugger) ScrollToStepState(e *am.Event) {
 	d.hHandleTStepsScrolled()
 	d.hRedrawFull(false)
 }
+
+var _ = ss.ToggleTool
 
 func (d *Debugger) ToggleToolEnter(e *am.Event) bool {
 	return ParseArgs(e.Args).ToolName.Value != ""
@@ -1242,6 +1410,10 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		d.Mach.EvToggle1(e, ss.FilterChecks, nil)
 		filterTxs = true
 
+	case types.ToolFilterRpcMachs:
+		d.Mach.EvToggle1(e, ss.FilterRpcMachs, nil)
+		buildClientList = true
+
 	case types.ToolFilterDisconn:
 		d.Mach.EvToggle1(e, ss.FilterDisconn, nil)
 		buildClientList = true
@@ -1261,45 +1433,57 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		d.Mach.EvToggle1(e, ss.FilterTraces, nil)
 
 	case types.ToolLog:
-		d.Params.Filters.LogLevel = (d.Params.Filters.LogLevel + 1) % 6
+		d.params.Filters.LogLevel = (d.params.Filters.LogLevel + 1) % 6
 		d.hUpdateSchemaLogGrid()
 
 	case types.ToolDiagrams:
-		switch d.Params.OutputDiagrams {
+		switch d.params.OutputDiagrams {
 		case types.ParamsOutputDiagramsNone:
-			d.Params.OutputDiagrams = types.ParamsOutputDiagramsOne
+			d.params.OutputDiagrams = types.ParamsOutputDiagramsOne
 		case types.ParamsOutputDiagramsOne:
-			d.Params.OutputDiagrams = types.ParamsOutputDiagramsTwo
+			d.params.OutputDiagrams = types.ParamsOutputDiagramsTwo
 		case types.ParamsOutputDiagramsTwo:
-			d.Params.OutputDiagrams = types.ParamsOutputDiagramsThree
+			d.params.OutputDiagrams = types.ParamsOutputDiagramsThree
 		case types.ParamsOutputDiagramsThree:
-			d.Params.OutputDiagrams = types.ParamsOutputDiagramsNone
+			d.params.OutputDiagrams = types.ParamsOutputDiagramsNone
 		}
 		d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
 
+	case types.ToolDiagramsSteps:
+		d.params.OutputTx = !d.params.OutputTx
+		if d.params.OutputTx {
+			d.hInitOutputTxFiles()
+			if tx := d.hCurrentTx(); tx != nil {
+				d.hGenSeqDiagram(am.EvToCtx(d.Mach.Context(), e), tx,
+					d.C.MsgTxsParsed[d.C.CursorTx1-1])
+			}
+		} else {
+			d.hCloseOutputTxFiles()
+		}
+
 	case types.ToolDiagramsTx:
-		switch d.Params.OutputDiagTx {
+		switch d.params.OutputDiagTx {
 		case types.ParamsOutDiagTxNone:
-			d.Params.OutputDiagTx = types.ParamsOutDiagTxCalled
+			d.params.OutputDiagTx = types.ParamsOutDiagTxCalled
 		case types.ParamsOutDiagTxCalled:
-			d.Params.OutputDiagTx = types.ParamsOutDiagTxMutated
+			d.params.OutputDiagTx = types.ParamsOutDiagTxMutated
 		case types.ParamsOutDiagTxMutated:
-			d.Params.OutputDiagTx = types.ParamsOutDiagTxTouched
+			d.params.OutputDiagTx = types.ParamsOutDiagTxTouched
 		case types.ParamsOutDiagTxTouched:
-			d.Params.OutputDiagTx = types.ParamsOutDiagTxRelations
+			d.params.OutputDiagTx = types.ParamsOutDiagTxRelations
 		case types.ParamsOutDiagTxRelations:
-			d.Params.OutputDiagTx = types.ParamsOutDiagTxNone
+			d.params.OutputDiagTx = types.ParamsOutDiagTxNone
 		}
 		d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
 
 	case types.ToolDiagramsGroup:
-		switch d.Params.OutputDiagGroup {
+		switch d.params.OutputDiagGroup {
 		case types.ParamsOutDiagGroupNone:
-			d.Params.OutputDiagGroup = types.ParamsOutDiagGroupHide
+			d.params.OutputDiagGroup = types.ParamsOutDiagGroupHide
 		case types.ParamsOutDiagGroupHide:
-			d.Params.OutputDiagGroup = types.ParamsOutDiagGroupSkip
+			d.params.OutputDiagGroup = types.ParamsOutDiagGroupSkip
 		case types.ParamsOutDiagGroupSkip:
-			d.Params.OutputDiagGroup = types.ParamsOutDiagGroupNone
+			d.params.OutputDiagGroup = types.ParamsOutDiagGroupNone
 		}
 		d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
 
@@ -1311,14 +1495,23 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 			// process whole call log
 		}
 
+	case types.ToolOutputLog:
+		d.params.OutputLog = !d.params.OutputLog
+		if !d.params.OutputLog {
+			d.hCloseOutputLog()
+		} else {
+			d.hCreateOutputLogFile()
+			d.Mach.EvAddErr(e, d.outputLogFile(d.Mach.Context()), nil)
+		}
+
 	case types.ToolTimelines:
-		switch d.Params.ViewTimelines {
+		switch d.params.ViewTimelines {
 		case types.ParamsViewTimelinesNone:
-			d.Params.ViewTimelines = types.ParamsViewTimelinesOne
+			d.params.ViewTimelines = types.ParamsViewTimelinesOne
 		case types.ParamsViewTimelinesOne:
-			d.Params.ViewTimelines = types.ParamsViewTimelinesTwo
+			d.params.ViewTimelines = types.ParamsViewTimelinesTwo
 		case types.ParamsViewTimelinesTwo:
-			d.Params.ViewTimelines = types.ParamsViewTimelinesNone
+			d.params.ViewTimelines = types.ParamsViewTimelinesNone
 		}
 		d.hSyncOptsTimelines()
 
@@ -1337,8 +1530,8 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		d.Mach.EvAdd1(e, ss.ToolRain, nil)
 
 	case types.ToolLogWrap:
-		d.Params.ViewLogWrap = !d.Params.ViewLogWrap
-		d.log.SetWrap(d.Params.ViewLogWrap)
+		d.params.ViewLogWrap = !d.params.ViewLogWrap
+		d.log.SetWrap(d.params.ViewLogWrap)
 
 	case types.ToolHelp:
 		d.Mach.EvToggle1(e, ss.HelpDialog, nil)
@@ -1355,7 +1548,7 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 
 	case types.ToolWeb:
 		go func() {
-			err := openURL("http://" + d.Params.AddrHttp)
+			err := openURL("http://" + d.params.AddrHttp)
 			d.Mach.EvAddErr(e, err, nil)
 		}()
 
@@ -1374,6 +1567,12 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 	case types.ToolJumpPrev:
 		// TODO state
 		go d.hJumpBackKey(nil)
+
+	case types.ToolNextClient:
+		d.hSwitchClient(e, 1)
+
+	case types.ToolPrevClient:
+		d.hSwitchClient(e, -1)
 
 	case types.ToolJumpNext:
 		// TODO state
@@ -1401,6 +1600,8 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		BuildClientList: buildClientList,
 	}))
 }
+
+var _ = ss.ToolToggled
 
 func (d *Debugger) ToolToggledState(e *am.Event) {
 	defer d.Mach.EvRemove1(e, ss.ToolToggled, nil)
@@ -1453,6 +1654,8 @@ func (d *Debugger) ToolToggledState(e *am.Event) {
 	d.draw()
 }
 
+var _ = ss.SwitchingClientTx
+
 func (d *Debugger) SwitchingClientTxState(e *am.Event) {
 	scArgs := ParseArgs(e.Args)
 	clientID := scArgs.ClientId
@@ -1486,12 +1689,14 @@ func (d *Debugger) SwitchingClientTxState(e *am.Event) {
 	})
 }
 
+var _ = ss.SwitchedClientTx
+
 func (d *Debugger) SwitchedClientTxState(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.SwitchedClientTx, nil)
 }
 
-// ScrollToMutTxState scrolls to a transition which mutated the passed state,
-// If fwd is true, it scrolls forward, otherwise backwards.
+var _ = ss.ScrollToMutTx
+
 func (d *Debugger) ScrollToMutTxState(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.ScrollToMutTx, nil)
 
@@ -1537,6 +1742,8 @@ func (d *Debugger) ScrollToMutTxState(e *am.Event) {
 	}
 }
 
+var _ = ss.Exception
+
 func (d *Debugger) ExceptionEnter(e *am.Event) bool {
 	// ignore eval timeouts, but log them
 	a := am.ParseArgs(e.Args)
@@ -1563,7 +1770,7 @@ func (d *Debugger) ExceptionState(e *am.Event) {
 
 	// create / append the err log file
 	s := fmt.Sprintf("\n\n%s\n%s\n\n%s", time.Now(), args.Err, args.ErrTrace)
-	path := filepath.Join(d.Params.OutputDir, "am-dbg-err.log")
+	path := filepath.Join(d.params.OutputDir, "am-dbg-err.log")
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
 		d.Mach.Log("Error: %s\n", err)
@@ -1576,8 +1783,10 @@ func (d *Debugger) ExceptionState(e *am.Event) {
 	}
 }
 
+var _ = ss.GcMsgs
+
 func (d *Debugger) GcMsgsEnter(e *am.Event) bool {
-	return AllocMem() > uint64(d.Params.MaxMemMb)*1024*1024
+	return AllocMem() > uint64(d.params.MaxMemMb)*1024*1024
 }
 
 func (d *Debugger) GcMsgsState(e *am.Event) {
@@ -1610,7 +1819,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 	for _, c := range clients {
 		for i, logMsg := range c.LogMsgs {
 			htime := c.MsgTxs[i].Time
-			if htime.Add(d.Params.LogOpsTtl).After(time.Now()) {
+			if htime.Add(d.params.LogOpsTtl).After(time.Now()) {
 				continue
 			}
 
@@ -1637,7 +1846,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 	}
 
 	round := 0
-	for AllocMem() > uint64(d.Params.MaxMemMb)*1024*1024 {
+	for AllocMem() > uint64(d.params.MaxMemMb)*1024*1024 {
 		if ctx.Err() != nil {
 			d.Mach.Log("GC: context expired")
 			break
@@ -1670,7 +1879,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 
 				// rebuild the whole log
 				d.Mach.EvAdd1(e, ss.BuildingLog, Pass(&A{
-					LogRebuildEnd: len(c.MsgTxs) - 1,
+					LogRebuildEnd: len(c.MsgTxs),
 				}))
 				c.CursorTx1 = int(math.Max(0, float64(c.CursorTx1-idx)))
 				// re-filter
@@ -1702,6 +1911,8 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 	d.hRedrawFull(false)
 }
 
+var _ = ss.LogReaderVisible
+
 func (d *Debugger) LogReaderVisibleState(e *am.Event) {
 	d.hUpdateSchemaLogGrid()
 	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
@@ -1713,107 +1924,20 @@ func (d *Debugger) LogReaderVisibleEnd(e *am.Event) {
 }
 
 // TODO remove?
+var _ = ss.SetCursor
+
 func (d *Debugger) SetCursorState(e *am.Event) {
 	d.hSetCursor1(e, ParseArgs(e.Args))
-}
-
-// hSetCursor1 sets both the tx and steps cursors, 1-based.
-func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
-	cursor1 := args.Cursor1
-	cursorStep1 := args.CursorStep1
-	skipHistory := args.SkipHistory
-	trimHistory := args.TrimHistory
-	filterBack := args.FilterBack
-
-	// TODO optimize for no-change?
-	d.C.CursorTx1 = d.hFilterTxCursor1(d.C, cursor1, filterBack)
-	// reset the step timeline
-	// TODO validate
-	d.C.CursorStep1 = cursorStep1
-
-	// TODO ignore identical history entries when going back / fwd
-	if d.HistoryCursor == 0 && !skipHistory {
-		// add current mach if needed
-		if len(d.History) > 0 && d.History[0].MachId != d.C.Id {
-			d.hPrependHistory(d.hGetMachAddress())
-		}
-		// keeping the current tx as history head
-		if tx := d.C.Tx(d.C.CursorTx1 - 1); tx != nil {
-			// dup the current machine if tx differs
-			if len(d.History) > 1 && d.History[1].MachId == d.C.Id &&
-				d.History[1].TxId != tx.ID {
-
-				d.hPrependHistory(d.History[0].Clone())
-			}
-			if len(d.History) > 0 {
-				d.History[0].TxId = tx.ID
-			}
-		}
-		d.hTrimHistory()
-
-	} else if trimHistory {
-		d.hTrimHistory()
-	}
-	d.hHandleTStepsScrolled()
-
-	// debug
-	// d.State.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
-	// d.State.DbgLogger.Printf("History: %v\n", d.History)
-
-	d.lastScrolledTxTime = time.Time{}
-	if cursor1 > 0 {
-		tx := d.hCurrentTx()
-		if tx != nil {
-			d.lastScrolledTxTime = *tx.Time
-		}
-
-		// tx file
-		if d.Params.OutputTx && tx != nil {
-			index := d.C.MsgStruct.StatesIndex
-			_ = d.txFileMd.Truncate(0)
-			_ = d.txFileD2.Truncate(0)
-			_ = d.txFileD2Svg.Truncate(0)
-			_ = d.txFileMermaid.Truncate(0)
-			_ = d.txFileMermaidAscii.Truncate(0)
-			_, _ = d.txFileMd.WriteAt([]byte(tx.TxString(index)), 0)
-
-			// TODO move to diagrams state
-			if tx.Steps != nil {
-				visTx := visualizer.Transition{Tx: tx}
-
-				// D2
-				d2Diag, d2Svg, err := visTx.D2(d.Mach.Context(),
-					amhelp.MachToSlog(d.Mach), index)
-				_, _ = d.txFileD2.WriteAt([]byte(d2Diag), 0)
-				if err != nil {
-					d.Mach.Log(err.Error())
-				} else {
-					_, _ = d.txFileD2Svg.WriteAt([]byte(d2Svg), 0)
-				}
-
-				// mermaid
-				mermaid, ascii, err := visTx.Mermaid(index)
-				_, _ = d.txFileMermaid.WriteAt([]byte(mermaid), 0)
-				if err != nil {
-					d.Mach.EvAddErr(e, err, nil)
-				} else {
-					_, _ = d.txFileMermaidAscii.WriteAt([]byte(ascii), 0)
-				}
-			}
-		}
-	}
-
-	d.Mach.EvRemove1(e, ss.TimelineStepsScrolled, nil)
-	// optional diagrams
-	go amhelp.AskEvAdd1(e, d.Mach, ss.DiagramsScheduled, nil)
 }
 
 // func (d *Debugger) CursorSetState(e *am.Event) {
 // }
 
+var _ = ss.DiagramsScheduled
+
 func (d *Debugger) DiagramsScheduledEnter(e *am.Event) bool {
 	// TODO refuse on too many ErrDiagrams, remove ErrDiagrams in ErrDiagramsState
-	return d.C != nil && d.Params.OutputDiagrams.Value > 0
+	return d.C != nil && d.params.OutputDiagrams != types.ParamsOutputDiagramsNone
 }
 
 func (d *Debugger) DiagramsScheduledState(e *am.Event) {
@@ -1824,13 +1948,16 @@ func (d *Debugger) DiagramsScheduledState(e *am.Event) {
 	d.Mach.EvAdd1(e, ss.DiagramsRendering, nil)
 }
 
+var _ = ss.DiagramsRendering
+
 func (d *Debugger) DiagramsRenderingEnter(e *am.Event) bool {
-	return d.Params.OutputDiagrams.Value > 0 && d.C != nil
+	return d.params.OutputDiagrams.Value > 0 && d.C != nil
 }
 
 func (d *Debugger) DiagramsRenderingState(e *am.Event) {
-	lvl := d.Params.OutputDiagrams.Value
-	diagDir := path.Join(d.Params.OutputDir, "diagrams")
+	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
+	lvl := d.params.OutputDiagrams.Value
+	diagDir := path.Join(d.params.OutputDir, "diagrams")
 	c := d.C
 	tx := d.hCurrentTx()
 	svgName := fmt.Sprintf("%s-%d-%s", c.Id, lvl, c.SchemaHash)
@@ -1838,12 +1965,11 @@ func (d *Debugger) DiagramsRenderingState(e *am.Event) {
 	// state groups
 	var states S
 	if g := c.SelectedGroup; g != "" &&
-		d.Params.OutputDiagGroup == types.ParamsOutDiagGroupSkip {
+		d.params.OutputDiagGroup == types.ParamsOutDiagGroupSkip {
 
 		states = c.MsgSchemaParsed.Groups[g]
-		gg := strings.ReplaceAll(strings.ReplaceAll(g, "-", ""), " ", "")
 		svgName = fmt.Sprintf("%s-%s-%d-%s",
-			c.Id, strings.ToLower(gg), lvl, c.SchemaHash)
+			c.Id, types.NormalizeGroupName(g), lvl, c.SchemaHash)
 	}
 	svgPath := filepath.Join(diagDir, svgName+".svg")
 
@@ -1866,10 +1992,10 @@ func (d *Debugger) DiagramsRenderingState(e *am.Event) {
 		diagFilters.Active = tx.ActiveStates(index)
 
 		// dim
-		if d.Params.OutputDiagTx != types.ParamsOutDiagTxNone {
+		if d.params.OutputDiagTx != types.ParamsOutDiagTxNone {
 			parsed := c.MsgTxsParsed[c.CursorTx1-1]
 			showIdxs := tx.CalledStatesIdxs
-			switch d.Params.OutputDiagTx {
+			switch d.params.OutputDiagTx {
 			case types.ParamsOutDiagTxMutated:
 				showIdxs = slices.Concat(parsed.StatesAdded, parsed.StatesRemoved)
 			case types.ParamsOutDiagTxTouched:
@@ -1881,7 +2007,7 @@ func (d *Debugger) DiagramsRenderingState(e *am.Event) {
 		}
 
 		// collect touched rels TODO add to step timeline 1-by-1
-		if d.Params.OutputDiagTx == types.ParamsOutDiagTxRelations {
+		if d.params.OutputDiagTx == types.ParamsOutDiagTxRelations {
 			for _, step := range tx.Steps {
 				if step.Type != am.StepRelation {
 					continue
@@ -1896,7 +2022,7 @@ func (d *Debugger) DiagramsRenderingState(e *am.Event) {
 			}
 		}
 	}
-	if d.Params.OutputDiagGroup == types.ParamsOutDiagGroupHide &&
+	if d.params.OutputDiagGroup == types.ParamsOutDiagGroupHide &&
 		c.SelectedGroup != "" {
 
 		diagFilters.Visible = c.MsgSchemaParsed.Groups[c.SelectedGroup]
@@ -1905,12 +2031,18 @@ func (d *Debugger) DiagramsRenderingState(e *am.Event) {
 	// mem cache
 	if d.cache.diagramName == svgName {
 		cache := d.cache.diagramDom
-		go d.diagramsMemCache(e, cache, diagFilters, diagDir, svgName)
+		d.Mach.Fork(ctx, e, func() {
+			d.diagramsMemCache(am.EvToCtx(ctx, e), cache, diagFilters,
+				diagDir, svgName)
+		})
 		return
 
 		// file cache, move to mem cache
 	} else if _, err := os.Stat(svgPath); err == nil {
-		go d.diagramsFileCache(e, diagFilters, lvl, diagDir, svgName)
+		d.Mach.Fork(ctx, e, func() {
+			d.diagramsFileCache(am.EvToCtx(ctx, e), diagFilters, lvl,
+				diagDir, svgName)
+		})
 		return
 	}
 
@@ -1925,9 +2057,13 @@ func (d *Debugger) DiagramsRenderingState(e *am.Event) {
 
 	// unblock
 	d.Mach.EvAdd1(e, ss.DiagramsNoCache, nil)
-	go d.diagramsRender(e, shot, c.Id, diagFilters, lvl, len(d.Clients), diagDir,
-		svgName, states)
+	d.Mach.Fork(ctx, e, func() {
+		d.diagramsRender(am.EvToCtx(ctx, e), shot, c.Id, diagFilters, lvl,
+			len(d.Clients), diagDir, svgName, states)
+	})
 }
+
+var _ = ss.DiagramsReady
 
 func (d *Debugger) DiagramsReadyState(e *am.Event) {
 	defer d.Mach.EvRemove1(e, ss.DiagramsReady, nil)
@@ -1946,6 +2082,8 @@ func (d *Debugger) DiagramsReadyState(e *am.Event) {
 		d.Mach.EvAdd1(e, ss.DiagramsRendering, nil)
 	}
 }
+
+var _ = ss.ClientListVisible
 
 func (d *Debugger) ClientListVisibleState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.ClientListVisible)
@@ -1966,6 +2104,8 @@ func (d *Debugger) ClientListVisibleEnd(e *am.Event) {
 	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
 }
 
+var _ = ss.TimelineTxHidden
+
 func (d *Debugger) TimelineTxHiddenState(e *am.Event) {
 	// handled in TimelineStepsHiddenState
 	if e.Machine().Is1(ss.TimelineStepsHidden) {
@@ -1979,6 +2119,8 @@ func (d *Debugger) TimelineTxHiddenEnd(e *am.Event) {
 	d.hUpdateLayout()
 }
 
+var _ = ss.TimelineStepsHidden
+
 func (d *Debugger) TimelineStepsHiddenEnd(e *am.Event) {
 	d.hUpdateLayout()
 }
@@ -1986,6 +2128,8 @@ func (d *Debugger) TimelineStepsHiddenEnd(e *am.Event) {
 func (d *Debugger) TimelineStepsHiddenState(e *am.Event) {
 	d.hUpdateLayout()
 }
+
+var _ = ss.UpdateFocus
 
 func (d *Debugger) UpdateFocusState(e *am.Event) {
 	old := d.focusablePrims
@@ -2041,6 +2185,8 @@ func (d *Debugger) UpdateFocusState(e *am.Event) {
 	d.App.SetFocus(focused)
 }
 
+var _ = ss.AfterFocus
+
 func (d *Debugger) AfterFocusEnter(e *am.Event) bool {
 	p := ParseArgs(e.Args).FocusPrimitive
 	if p == nil {
@@ -2080,6 +2226,8 @@ func (d *Debugger) AfterFocusState(e *am.Event) {
 	d.hUpdateTimelines()
 }
 
+var _ = ss.ToolRain
+
 func (d *Debugger) ToolRainState(e *am.Event) {
 	if d.Mach.Is1(ss.MatrixRain) {
 		d.Mach.EvAdd1(e, ss.TreeLogView, nil)
@@ -2097,6 +2245,8 @@ func (d *Debugger) ToolRainState(e *am.Event) {
 
 // AnyEnter prevents most of mutations during a UI redraw (and vice versa)
 // forceful race solving
+var _ = am.StateAny
+
 func (d *Debugger) AnyEnter(e *am.Event) bool {
 	// always pass network traffic
 	mach := d.Mach
@@ -2125,7 +2275,7 @@ func (d *Debugger) AnyEnter(e *am.Event) bool {
 		}
 
 		// delay, but avoid the race detector which gets stuck here
-		if !d.Params.RaceDetector {
+		if !d.params.RaceDetector {
 			time.Sleep(delay)
 		}
 
@@ -2138,12 +2288,14 @@ func (d *Debugger) AnyEnter(e *am.Event) bool {
 
 	// prepend this mutation to the queue and try again TODO loop guard
 	// d.Mach.Log("postpone mut")
-	go mach.PrependMut(mut)
+	go mach.PrependMut(mut.Clone())
 
 	return false
 }
 
 // AnyState is a global final handler
+var _ = am.StateAny
+
 func (d *Debugger) AnyState(e *am.Event) {
 	tx := e.Transition()
 
@@ -2158,6 +2310,8 @@ func (d *Debugger) AnyState(e *am.Event) {
 	}
 }
 
+var _ = ss.WebReq
+
 func (d *Debugger) WebReqState(e *am.Event) {
 	wrArgs := ParseArgs(e.Args)
 	r := wrArgs.HttpRequest
@@ -2165,21 +2319,22 @@ func (d *Debugger) WebReqState(e *am.Event) {
 	done := wrArgs.DoneChan
 	defer close(done)
 
-	u := r.RequestURI
+	uri := r.RequestURI
 	switch {
 
 	// diagram viewer
-	case u == "/":
+	case uri == "/":
 		fallthrough
-	case u == "/diagrams/mach":
-		html := string(visualizer.HtmlDiagram)
-		html = strings.ReplaceAll(html, "localhost:6831", d.Params.AddrHttp)
+	case uri == "/diagrams/mach":
+		html := string(amvis.HtmlDiagram)
+		html = strings.ReplaceAll(html, "localhost:6831",
+			d.listenHost+":"+d.httpPort)
 		_, err := w.Write([]byte(html))
 		d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
 
 	// default svg symlink
-	case strings.HasPrefix(u, "/diagrams/mach.svg"):
-		svgPath := filepath.Join(d.Params.OutputDir, "diagrams", "am-vis.svg")
+	case strings.HasPrefix(uri, "/diagrams/mach.svg"):
+		svgPath := filepath.Join(d.params.OutputDir, "diagrams", "am-vis.svg")
 		b, err := os.ReadFile(svgPath)
 		d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
 		if err != nil {
@@ -2199,98 +2354,110 @@ type WsDiagMsg struct {
 	Group string
 }
 
+var _ = ss.WebSocketDiag
+
 func (d *Debugger) WebSocketDiagState(e *am.Event) {
-	ctx := d.Mach.NewStateCtx(ss.WebSocketDiag)
+	mach := d.Mach
+	ctx := mach.NewStateCtx(ss.WebSocketDiag)
 	wsdArgs := ParseArgs(e.Args)
 	ws := wsdArgs.WebSocketConn
 	r := wsdArgs.HttpRequest
 	done := wsdArgs.DoneChan
 	clientDone := make(chan struct{})
 
+	mach.EvAdd1(e, ss.DiagramsScheduled, nil)
+
 	// unblock
-	d.Mach.Fork(ctx, e, func() {
+	mach.Fork(ctx, e, func() {
+		defer close(done)
+		var ctxReq context.Context
+		var cancelReq context.CancelFunc
 		for {
+			// release prev run's wait chans
+			if cancelReq != nil {
+				cancelReq()
+			}
+
+			ctxReq, cancelReq = context.WithCancel(ctx)
+			defer cancelReq()
+
 			// wait for diagrams start
 			select {
 			case <-clientDone:
-				close(done)
 				return
-			case <-d.Mach.When1(ss.DiagramsScheduled, nil):
+			case <-mach.When1(ss.DiagramsScheduled, ctxReq):
 			}
 
 			// show progress
 			select {
 
 			case <-clientDone:
-				close(done)
 				return
 
-			case <-d.Mach.When1(ss.DiagramsNoCache, nil):
+			case <-mach.When1(ss.DiagramsNoCache, ctxReq):
 				// msg
 				msg, err := json.Marshal(WsDiagMsg{
 					Type: "loading",
 				})
 				if err != nil {
-					d.Mach.Log(err.Error())
+					mach.Log(err.Error())
 					continue
 				}
 
 				// send
 				err = ws.Write(r.Context(), websocket.MessageText, msg)
 				if err != nil {
-					d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
+					mach.EvAddErrState(e, ss.ErrWeb, err, nil)
 					return
 				}
 
-			case <-d.Mach.When1(ss.DiagramsReady, nil):
-				// next
+			case <-mach.When1(ss.DiagramsReady, ctxReq):
+				// ok
 			}
 
 			// wait for diagrams ready
 			select {
 
 			case <-clientDone:
-				close(done)
 				return
 
 			// TODO loop over WSs in DiagramsReady. no goroutine per each
-			case <-d.Mach.When1(ss.DiagramsReady, nil):
+			case <-mach.When1(ss.DiagramsReady, ctxReq):
 				// msg
 				msg := WsDiagMsg{
 					Type: "refresh",
 					Addr: d.MachAddr(),
 				}
-				d.Mach.Eval("WebSocketDiagState", func() {
-					if d.Params.OutputDiagGroup == types.ParamsOutDiagGroupHide {
+				mach.Eval("WebSocketDiagState", func() {
+					if d.params.OutputDiagGroup == types.ParamsOutDiagGroupSkip {
 						msg.Group = d.C.SelectedGroup
 					}
 				}, r.Context())
 				msgB, err := json.Marshal(msg)
 				if err != nil {
-					d.Mach.Log(err.Error())
+					mach.Log(err.Error())
 					continue
 				}
 
 				// send
 				err = ws.Write(r.Context(), websocket.MessageText, msgB)
 				if err != nil {
-					d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
+					mach.EvAddErrState(e, ss.ErrWeb, err, nil)
 					return
 				}
 			}
 		}
 	})
 
-	d.Mach.Fork(ctx, e, func() {
+	mach.Fork(ctx, e, func() {
 		for {
 			// msgType, msg, err := ws.Read(r.Context())
 			_, _, err := ws.Read(r.Context())
 			if err != nil {
-				if websocket.CloseStatus(err) != -1 {
-					d.Mach.Log("websocket closed")
-				} else {
+				mach.Log("websocket closed")
+				if websocket.CloseStatus(err) == -1 {
 					err = fmt.Errorf("websocket read: %w", err)
-					d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
+					mach.EvAddErrState(e, ss.ErrWeb, err, nil)
 				}
 
 				// close up
@@ -2301,15 +2468,21 @@ func (d *Debugger) WebSocketDiagState(e *am.Event) {
 	})
 }
 
+var _ = ss.FilterCanceledTx
+
 func (d *Debugger) FilterCanceledTxEnd(e *am.Event) {
 	// show empty when showing canceled
 	d.Mach.EvRemove1(e, ss.FilterEmptyTx, nil)
 }
 
+var _ = ss.FilterQueuedTx
+
 func (d *Debugger) FilterQueuedTxEnd(e *am.Event) {
 	// show empty when showing queued
 	d.Mach.EvRemove1(e, ss.FilterEmptyTx, nil)
 }
+
+var _ = ss.MatrixRainSelected
 
 func (d *Debugger) MatrixRainSelectedState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.MatrixRainSelected)
@@ -2364,6 +2537,8 @@ func (d *Debugger) MatrixRainSelectedState(e *am.Event) {
 	})
 }
 
+var _ = ss.Resized
+
 func (d *Debugger) ResizedState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.Resized)
 
@@ -2389,8 +2564,10 @@ func (d *Debugger) ResizedState(e *am.Event) {
 	})
 }
 
+var _ = ss.SshServer
+
 func (d *Debugger) SshServerEnter(e *am.Event) bool {
-	return d.Params.UiSsh && d.Params.AddrSsh != ""
+	return d.params.UiSsh && d.params.AddrSsh != ""
 }
 
 func (d *Debugger) SshServerState(e *am.Event) {
@@ -2445,15 +2622,15 @@ func (d *Debugger) SshServerState(e *am.Event) {
 		}
 
 		// show banner TODO optional
-		host, port, _ := net.SplitHostPort(d.Params.AddrSsh)
-		p := d.Params.Print
-		p("SSH: listening on %s\n", d.Params.AddrSsh)
+		host, port, _ := net.SplitHostPort(d.params.AddrSsh)
+		p := d.params.Print
+		p("SSH: listening on %s\n", d.params.AddrSsh)
 		p("\n")
 		p("Connect via:\n")
 		p("$ ssh %s -p %s -o UserKnownHostsFile=/dev/null "+
 			"-o StrictHostKeyChecking=no\n", host, port)
 		d.Mach.EvAddErr(
-			e, ssh.ListenAndServe(d.Params.AddrSsh, handler, optSrv), nil)
+			e, ssh.ListenAndServe(d.params.AddrSsh, handler, optSrv), nil)
 	})
 }
 
