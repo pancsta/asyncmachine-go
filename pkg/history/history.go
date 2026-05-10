@@ -172,8 +172,10 @@ var (
 	BackendMemory = Backend{"memory"}
 	BackendSqlite = Backend{"sqlite"}
 	BackendBbolt  = Backend{"bbolt"}
+	BackendBadger = Backend{"badger"}
 
-	BackendEnum = enum.New(BackendMemory, BackendSqlite, BackendBbolt)
+	BackendEnum = enum.New(BackendMemory, BackendSqlite, BackendBbolt,
+		BackendBadger)
 )
 
 // ///// ///// /////

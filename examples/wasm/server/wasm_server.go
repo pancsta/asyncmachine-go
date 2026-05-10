@@ -135,6 +135,8 @@ type HandlersFoo struct {
 	lastHello time.Time
 }
 
+var _ = ssF.Start
+
 func (h *HandlersFoo) StartState(e *am.Event) {
 	ctx := h.machFoo.NewStateCtx(ssF.Start)
 
@@ -173,6 +175,8 @@ func (h *HandlersFoo) StartState(e *am.Event) {
 	})
 }
 
+var _ = ssF.Msg
+
 func (h *HandlersFoo) MsgEnter(e *am.Event) bool {
 	return example.ParseArgs(e.Args).Msg != ""
 }
@@ -191,6 +195,8 @@ func (h *HandlersFoo) MsgState(e *am.Event) {
 	fmt.Print(msg)
 	h.lastMsg = time.Now()
 }
+
+var _ = ssF.Bored
 
 func (h *HandlersFoo) BoredState(e *am.Event) {
 	fmt.Println("foo is bored...")

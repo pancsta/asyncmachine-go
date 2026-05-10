@@ -37,7 +37,10 @@ func main() {
 
 	// machines
 
-	barMach, fooClient, fooHandMach := initMachines(ctx, barHandlers, fooHandlers)
+	barMach, fooClient, fooHandMach, err := initMachines(ctx, barHandlers, fooHandlers)
+	if err != nil {
+		panic("initMachines: " + err.Error())
+	}
 	barHandlers.rpcFoo = fooClient
 	barHandlers.machBar = barMach
 	barHandlers.machFooHand = fooHandMach
@@ -108,7 +111,7 @@ func (h *BarHandlers) StartState(e *am.Event) {
 func (h *BarHandlers) SubmitMsgState(e *am.Event) {
 	txt := h.uiInput.Value()
 	h.uiInput.SetValue("")
-	args := PassRpc(&ARpc{
+	args := PassRpc(&A{
 		Msg: txt,
 	})
 

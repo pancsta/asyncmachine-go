@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/pancsta/asyncmachine-go/examples/wasm/states"
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	amhist "github.com/pancsta/asyncmachine-go/pkg/history"
+	amhistb "github.com/pancsta/asyncmachine-go/pkg/history/badger"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
@@ -28,7 +31,7 @@ type ARpc = example.ARpc
 
 func initMachines(
 	ctx context.Context, barHandlers any, fooHandlers any,
-) (*am.Machine, *arpc.Client, *am.Machine) {
+) (*am.Machine, *arpc.Client, *am.Machine, error) {
 
 	//
 
@@ -72,6 +75,43 @@ func initMachines(
 	// start
 	srv.Start(nil)
 
+	// HISTORY
+
+	// injected err handler
+	onErr := func(err error) {
+		log.Print("err: ", err.Error())
+	}
+	// backend and base configs
+	cfg := amhistb.Config{
+		BaseConfig: amhist.Config{
+			MaxRecords:    10 ^ 6,
+			TrackedStates: ssB.Names(),
+		},
+		EncJson: true,
+	}
+	db, err := amhistb.NewDb("")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	barMach.OnDispose(func(id string, ctx context.Context) {
+		db.Close()
+	})
+	mem, err := amhistb.NewMemory(ctx, db, barMach, cfg, onErr)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// mutate and query
+	barMach.Add1(ssB.Heartbeat, nil)
+	now := time.Now().UTC()
+	err = mem.Sync()
+	time.Sleep(100 * time.Millisecond)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	ok := mem.ActivatedBetween(ctx, ssB.Heartbeat, now.Add(-time.Second), now)
+	fmt.Printf("Badger history: %v\n", ok)
+
 	//
 
 	// Server machine (remote)
@@ -114,5 +154,5 @@ func initMachines(
 	// start and wait
 	barMach.Add1(ssB.Start, nil)
 
-	return barMach, foo, fooHandlerMach
+	return barMach, foo, fooHandlerMach, nil
 }
