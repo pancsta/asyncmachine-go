@@ -1161,3 +1161,40 @@ func (d *Debugger) hBoxFromPrimitive(p any) (*cview.Box, string) {
 
 	return box, state
 }
+
+var (
+	trimTailWhitespaceRe = regexp.MustCompile(` +\n`)
+	foldNewlinesRe       = regexp.MustCompile(`\n{3,}`)
+)
+
+// treeToText will get a full render of a tree as text
+func treeToText(tree *cview.TreeView) string {
+	simscreen := tcell.NewSimulationScreen("UTF-8")
+	simscreen.SetSize(1000, 1000)
+	box := cview.NewBox()
+	box.SetRect(0, 0, 1000, 1000)
+	oldBox := tree.Box
+	tree.Box = box
+	tree.Draw(simscreen)
+	text := foldNewlinesRe.ReplaceAllString(
+		trimTailWhitespaceRe.ReplaceAllString(
+			cview.TextFromScreen(simscreen), "\n"), "\n")
+	tree.Box = oldBox
+	return text
+}
+
+// treeToText will get a full render of a tree as text
+func textViewToText(textView *cview.TextView) string {
+	simscreen := tcell.NewSimulationScreen("UTF-8")
+	simscreen.SetSize(1000, 1000)
+	box := cview.NewBox()
+	box.SetRect(0, 0, 1000, 1000)
+	oldBox := textView.Box
+	textView.Box = box
+	textView.Draw(simscreen)
+	text := foldNewlinesRe.ReplaceAllString(
+		trimTailWhitespaceRe.ReplaceAllString(
+			cview.TextFromScreen(simscreen), "\n"), "\n")
+	textView.Box = oldBox
+	return text
+}

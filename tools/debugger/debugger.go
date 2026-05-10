@@ -208,12 +208,25 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	// mach.AddBreakpoint1(ss.UpdateFocus, "", false)
 	// mach.AddBreakpoint1(ss.UpdateFocus, "", true)
 	mach.SetGroups(states.DebuggerGroups, ss)
-	// start a dedicated aRPC server for the REPL, create an addr file
-	_, _ = arpc.MachReplEnv(mach, &arpc.ReplOpts{
-		AddrDir:  p.OutputDir,
-		Args:     types.ARpc{},
-		ParseRpc: types.ParseRpc,
-	})
+
+	// self debug
+	if p.DebugAddr != "" {
+		_ = amhelp.MachDebug(mach, p.DebugAddr, p.LogLevel, false,
+			amhelp.SemConfigEnv(true))
+	}
+	if p.Repl {
+		// start a dedicated aRPC server for the REPL, create an addr file
+		err = arpc.MachRepl(mach, "", &arpc.ReplOpts{
+			AddrDir:  p.OutputDir,
+			Args:     types.ARpc{},
+			ParseRpc: types.ParseRpc,
+		})
+		mach.AddErr(err, nil)
+	}
+	// mach.AddBreakpoint1(ss.AddressFocused, "", false)
+	// mach.AddBreakpoint1(ss.AddressFocused, "", true)
+	// mach.AddBreakpoint1(ss.UpdateFocus, "", false)
+	// mach.AddBreakpoint1(ss.UpdateFocus, "", true)
 
 	err = d.setParams(p)
 	if err != nil {
