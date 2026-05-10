@@ -28,7 +28,10 @@ func TestWasmClient(t *testing.T) {
 
 	// machines
 
-	barMach, fooClient, fooHandMach := initMachines(ctx, barHandlers, fooHandlers)
+	barMach, fooClient, fooHandMach, err := initMachines(ctx, barHandlers, fooHandlers)
+	if err != nil {
+		t.Error(err)
+	}
 	barHandlers.rpcFoo = fooClient
 	barHandlers.machBar = barMach
 	barHandlers.machFooHand = fooHandMach

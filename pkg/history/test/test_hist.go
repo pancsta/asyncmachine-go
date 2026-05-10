@@ -38,11 +38,11 @@ func AssertBasics(t *testing.T, mem amhist.MemoryApi, rounds int) {
 	t.Logf("db: %s", time.Since(start))
 
 	// check conditions
-	// now := time.Now().UTC()
-	// require.True(t, mem.ActivatedBetween(ctx, ss.Start, start.UTC(), now),
-	// 	"Start was activated")
-	// require.False(t, mem.ActivatedBetween(ctx, ss.Ready, start.UTC(), now),
-	// 	"Ready isn't tracked")
+	now := time.Now().UTC()
+	require.True(t, mem.ActivatedBetween(ctx, ss.Start, start.UTC(), now),
+		"Start was activated")
+	require.False(t, mem.ActivatedBetween(ctx, ss.Ready, start.UTC(), now),
+		"Ready isn't tracked")
 
 	// machine record
 	machRec := mem.MachineRecord()
