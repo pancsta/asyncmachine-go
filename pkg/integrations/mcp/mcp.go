@@ -7,8 +7,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 
-	"github.com/pancsta/asyncmachine-go/internal/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
@@ -16,10 +16,11 @@ type Opts struct {
 	StatesInclude  am.S
 	StatesExclude  am.S
 	StatesReadonly am.S
-	// ARpc instance
-	Args           any
-	ParseRpc       func(args am.A) am.A
-	CallSignatures []am.CallSignature
+	// list of typed args
+	Args []am.ArgsApi
+	// RPC args parser
+	ArgsUnmarshaller amhelp.ArgsUnmarshallerFn
+	CallSignatures   []am.CallSignature
 	// optional func to call after a mutation
 	MutCallback func(ctx context.Context) error
 	Version     string
@@ -42,17 +43,17 @@ func New(mach am.Api, opts Opts) (*Server, error) {
 	var err error
 
 	// validate
-	if opts.ParseRpc == nil {
-		return nil, fmt.Errorf("field ParseRpc required")
-	}
 	if opts.Args == nil {
-		return nil, fmt.Errorf("field Args required")
+		return nil, fmt.Errorf("field ArgsBase required")
 	}
 	if opts.Name == "" {
 		return nil, fmt.Errorf("field Name required")
 	}
 	if opts.Version == "" {
 		return nil, fmt.Errorf("field Version required")
+	}
+	if opts.ArgsUnmarshaller == nil {
+		opts.ArgsUnmarshaller = amhelp.NewArgsUnmarshaller(opts.Args)
 	}
 
 	// Create a new MCP server
@@ -69,8 +70,8 @@ func New(mach am.Api, opts Opts) (*Server, error) {
 
 	// MACHINE
 
-	// collect arg names TODO use JSON field names
-	m.argNames, err = utils.StructFields(opts.Args)
+	// collect arg names
+	m.argNames, err = amhelp.ArgsNames(opts.Args)
 	if err != nil {
 		return nil, err
 	}
@@ -88,8 +89,8 @@ func New(mach am.Api, opts Opts) (*Server, error) {
 			mcp.Enum(m.StateNames()...),
 		),
 	}
-	toolOptsArgs = append(toolOpts, toolOpts...)
-	add := mcp.NewTool("Add", toolOptsArgs...)
+	toolOpts = append(toolOpts, toolOptsArgs...)
+	add := mcp.NewTool("Add", toolOpts...)
 
 	// Remove
 	toolOpts = []mcp.ToolOption{
@@ -101,8 +102,8 @@ func New(mach am.Api, opts Opts) (*Server, error) {
 			mcp.Enum(m.StateNames()...),
 		),
 	}
-	toolOptsArgs = append(toolOpts, toolOpts...)
-	remove := mcp.NewTool("Remove", toolOptsArgs...)
+	toolOpts = append(toolOpts, toolOptsArgs...)
+	remove := mcp.NewTool("Remove", toolOpts...)
 
 	// specified call signatures
 CALLS:
@@ -146,11 +147,13 @@ func (m *Server) mutAdd(
 	// parse args
 	args := am.A{"FromMCP": true}
 	for _, name := range m.argNames {
-		args[name] = req.GetString(name, "")
+		if v := req.GetString(name, ""); v != "" {
+			args[name] = v
+		}
 	}
 
 	// mutate
-	res := m.Mach.Add1(state, m.Opts.ParseRpc(args))
+	res := m.Mach.Add1(state, m.Opts.ArgsUnmarshaller(args))
 
 	// wait until processed
 	if res == am.Canceled {
@@ -259,9 +262,9 @@ func (m *Server) newCallSigHandler(
 		// mutate
 		var res am.Result
 		if sig.IsRemove {
-			res = m.Mach.Remove(sig.States, m.Opts.ParseRpc(args))
+			res = m.Mach.Remove(sig.States, m.Opts.ArgsUnmarshaller(args))
 		} else {
-			res = m.Mach.Add(sig.States, m.Opts.ParseRpc(args))
+			res = m.Mach.Add(sig.States, m.Opts.ArgsUnmarshaller(args))
 		}
 
 		// wait until processed
