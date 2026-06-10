@@ -15,9 +15,11 @@ type (
 
 // Subscriptions is an embed responsible for binding subscriptions,
 // managing their indexes, processing triggers, and garbage collection.
+// TODO stats: closed chans served, chans created, chans currently open
 type Subscriptions struct {
 	// Mx locks the subscription manager. TODO optimize?
-	Mx sync.Mutex
+	Mx     sync.Mutex
+	Closed chan struct{}
 
 	mach  Api
 	clock Clock
@@ -43,12 +45,17 @@ type Subscriptions struct {
 func NewSubscriptionManager(
 	mach Api, clock Clock, is, not InternalCheckFunc, log InternalLogFunc,
 ) *Subscriptions {
+
+	ch := make(chan struct{})
+	close(ch)
+
 	return &Subscriptions{
-		mach:  mach,
-		clock: clock,
-		is:    is,
-		not:   not,
-		log:   log,
+		mach:   mach,
+		clock:  clock,
+		is:     is,
+		not:    not,
+		log:    log,
+		Closed: ch,
 
 		when:        IndexWhen{},
 		whenTime:    IndexWhenTime{},
@@ -168,6 +175,7 @@ func (sm *Subscriptions) processWhenCtx() []chan struct{} {
 		delete(sm.whenCtx, ctx)
 		for _, binding := range bindings {
 			sm.gcWhenBinding(binding, false)
+			ret = append(ret, binding.Ch)
 		}
 	}
 
@@ -270,6 +278,7 @@ func (sm *Subscriptions) processWhenTimeCtx() []chan struct{} {
 		delete(sm.whenTimeCtx, ctx)
 		for _, binding := range bindings {
 			sm.gcWhenTimeBinding(binding, false)
+			ret = append(ret, binding.Ch)
 		}
 	}
 
@@ -347,6 +356,7 @@ func (sm *Subscriptions) processWhenArgsCtx() []chan struct{} {
 		delete(sm.whenArgsCtx, ctx)
 		for _, binding := range bindings {
 			sm.gcWhenArgsBinding(binding, false)
+			ret = append(ret, binding.ch)
 		}
 	}
 
@@ -418,6 +428,7 @@ func (sm *Subscriptions) processWhenQueryCtx() []chan struct{} {
 		delete(sm.whenArgsCtx, ctx)
 		for _, binding := range bindings {
 			sm.gcWhenQueryBinding(binding, false)
+			ret = append(ret, binding.ch)
 		}
 	}
 
@@ -553,13 +564,21 @@ func (sm *Subscriptions) When(states S, ctx context.Context) <-chan struct{} {
 	// TODO re-use channels with the same state set and context
 
 	// if all active, close early
-	if sm.is(states) {
-		return newClosedChan()
+	if sm.is(states) || (ctx != nil && ctx.Err() != nil) {
+		return sm.Closed
 	}
 
 	// locks
 	sm.Mx.Lock()
 	defer sm.Mx.Unlock()
+
+	// try to reuse an existing channel
+	for _, bind := range sm.when[states[0]] {
+		names := slices.Collect(maps.Keys(bind.States))
+		if !bind.Negation && StatesEqual(names, states) && bind.Ctx == ctx {
+			return bind.Ch
+		}
+	}
 
 	ch := make(chan struct{})
 
@@ -603,8 +622,16 @@ func (sm *Subscriptions) WhenNot(
 	states S, ctx context.Context,
 ) <-chan struct{} {
 	// if all inactive, close early
-	if sm.not(states) {
-		return newClosedChan()
+	if sm.not(states) || (ctx != nil && ctx.Err() != nil) {
+		return sm.Closed
+	}
+
+	// try to reuse an existing channel
+	for _, bind := range sm.when[states[0]] {
+		names := slices.Collect(maps.Keys(bind.States))
+		if bind.Negation && StatesEqual(names, states) && bind.Ctx == ctx {
+			return bind.Ch
+		}
 	}
 
 	// locks
@@ -648,7 +675,7 @@ func (sm *Subscriptions) WhenNot(
 }
 
 // WhenArgs returns a channel that will be closed when the passed state
-// becomes active with all the passed args. Args are compared using the native
+// becomes active with all the passed args. ArgsBase are compared using the native
 // '=='. It's meant to be used with async Multi states, to filter out
 // a specific call.
 //
@@ -662,6 +689,11 @@ func (sm *Subscriptions) WhenArgs(
 	// locks
 	sm.Mx.Lock()
 	defer sm.Mx.Unlock()
+
+	// close early
+	if ctx != nil && ctx.Err() != nil {
+		return sm.Closed
+	}
 
 	ch := make(chan struct{})
 	handler := state + SuffixState
@@ -694,6 +726,15 @@ func (sm *Subscriptions) WhenArgs(
 	return ch
 }
 
+// TODO move
+func statesToMapIndex(states S) map[string]int {
+	index := make(map[string]int)
+	for i, s := range states {
+		index[s] = i
+	}
+	return index
+}
+
 // WhenTime returns a channel that will be closed when all the passed states
 // have passed the specified time. The time is a logical clock of the state.
 // Machine time can be sourced from [Machine.Time](), or [Machine.Clock]().
@@ -706,10 +747,16 @@ func (sm *Subscriptions) WhenTime(
 	sm.Mx.Lock()
 	defer sm.Mx.Unlock()
 
-	ch := make(chan struct{})
-	indexWhenTime := sm.whenTime
+	// try to reuse an existing channel
+	for _, bind := range sm.whenTime[states[0]] {
+		if bind.Times.Equal(true, times) &&
+			maps.Equal(statesToMapIndex(states), bind.Index) && bind.Ctx == ctx {
 
-	// if all times passed, close early
+			return bind.Ch
+		}
+	}
+
+	// if all times passed, close early TODO optimize with always-closed chan
 	passed := true
 	for i, s := range states {
 		if sm.clock[s] < times[i] {
@@ -717,12 +764,12 @@ func (sm *Subscriptions) WhenTime(
 			break
 		}
 	}
-	if passed {
+	if passed || (ctx != nil && ctx.Err() != nil) {
 		// TODO decision msg
-		close(ch)
-		return ch
+		return sm.Closed
 	}
 
+	ch := make(chan struct{})
 	completed := StateIsActive{}
 	matched := 0
 	index := map[string]int{}
@@ -748,7 +795,7 @@ func (sm *Subscriptions) WhenTime(
 
 	// insert the binding
 	for _, s := range states {
-		indexWhenTime[s] = append(indexWhenTime[s], binding)
+		sm.whenTime[s] = append(sm.whenTime[s], binding)
 	}
 	if ctx != nil {
 		sm.whenTimeCtx[ctx] = append(sm.whenTimeCtx[ctx], binding)
@@ -760,12 +807,19 @@ func (sm *Subscriptions) WhenTime(
 func (sm *Subscriptions) WhenQuery(
 	fn func(clock Clock) bool, ctx context.Context,
 ) <-chan struct{} {
-	// TODO test
+
+	// close early
+	if ctx != nil && ctx.Err() != nil {
+		return sm.Closed
+	}
+
+	// TODO reuse existing chans
 
 	// locks
 	sm.Mx.Lock()
 	defer sm.Mx.Unlock()
 
+	// TODO reuse existing chans
 	// add the binding to an index of each state
 	ch := make(chan struct{})
 	binding := &whenQueryBinding{
@@ -793,6 +847,8 @@ func (sm *Subscriptions) WhenQueueEnds() <-chan struct{} {
 	sm.Mx.Lock()
 	defer sm.Mx.Unlock()
 
+	// TODO reuse existing chans
+
 	// add the binding to an index of each state
 	ch := make(chan struct{})
 	binding := &whenQueueEndsBinding{ch: ch}
@@ -800,28 +856,18 @@ func (sm *Subscriptions) WhenQueueEnds() <-chan struct{} {
 	// insert the binding
 	sm.whenQueueEnds = append(sm.whenQueueEnds, binding)
 
-	// TODO remove ctx
-	// if ctx != nil {
-	// 	// fork in this special case
-	// 	go func() {
-	// 		<-ctx.Done()
-	// 		mx.Lock()
-	// 		defer mx.Unlock()
-	// 		sm.whenQueueEnds = slicesWithout(sm.whenQueueEnds, binding)
-	// 		close(ch)
-	// 	}()
-	// }
-
 	return ch
 }
 
 // WhenQueue waits until the passed queueTick gets processed.
 func (sm *Subscriptions) WhenQueue(tick Result) <-chan struct{} {
-	// TODO add gc ctx (just in case)
 	// locks
 	sm.Mx.Lock()
 	defer sm.Mx.Unlock()
 
+	// TODO reuse existing chans
+
+	// TODO reuse existing chans
 	// add the binding to an index of each state
 	ch := make(chan struct{})
 	binding := &whenQueueBinding{
