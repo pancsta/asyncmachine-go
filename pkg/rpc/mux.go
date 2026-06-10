@@ -104,14 +104,14 @@ func (m *Mux) ExceptionState(e *am.Event) {
 var _ = ssM.NewServerErr
 
 func (m *Mux) NewServerErrEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a != nil && a.Err != nil
 }
 
 var _ = ssM.NewServerErr
 
 func (m *Mux) NewServerErrState(e *am.Event) {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	m.NewServerErr = args.Err
 }
 

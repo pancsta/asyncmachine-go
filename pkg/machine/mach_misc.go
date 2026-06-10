@@ -1106,16 +1106,6 @@ func (e *Event) String() string {
 
 // ///// ///// /////
 
-// ExceptionArgsPanic is an optional argument ["panic"] for the StateException
-// state which describes a panic within a Transition handler.
-type ExceptionArgsPanic struct {
-	CalledStates S
-	StatesBefore S
-	Transition   *Transition
-	LastStep     *Step
-	StackTrace   string
-}
-
 // ExceptionHandler provide a basic StateException state support, as should be
 // embedded into handler structs in most of the cases. Because ExceptionState
 // will be called after [Machine.HandlerDeadline], it should handle locks
@@ -1128,57 +1118,14 @@ type recoveryData struct {
 	event *Event
 }
 
-func captureStackTrace() string {
-	buf := make([]byte, 4024)
-	n := runtime.Stack(buf, false)
-	stack := string(buf[:n])
-	lines := strings.Split(stack, "\n")
-	isPanic := strings.Contains(stack, "panic")
-	slices.Reverse(lines)
-
-	heads := []string{
-		"AddErr", "AddErrState", "Remove", "Remove1", "Add", "Add1", "Set",
-	}
-	// TODO trim tails start at reflect.Value.Call({
-	//  with asyncmachine 2 frames down
-
-	// trim the head, remove junk
-	stop := false
-	for i, line := range lines {
-		if isPanic && strings.HasPrefix(line, "panic(") {
-			lines = lines[:i-1]
-			break
-		}
-
-		for _, head := range heads {
-			if strings.Contains("machine.(*Machine)."+line+"(", head) {
-				lines = lines[:i-1]
-				stop = true
-				break
-			}
-		}
-		if stop {
-			break
-		}
-	}
-	slices.Reverse(lines)
-	join := strings.Join(lines, "\n")
-
-	if filter := os.Getenv(EnvAmTraceFilter); filter != "" {
-		join = strings.ReplaceAll(join, filter, "")
-	}
-
-	return join
-}
-
 // ExceptionState is a final entry handler for the StateException state.
-// Args:
+// ArgsBase:
 // - err error: The error that caused the StateException state.
 // - panic *ExceptionArgsPanic: Optional details about the panic.
 func (eh *ExceptionHandler) ExceptionState(e *Event) {
 	// TODO handle ErrHandlerTimeout to ErrHandlerTimeoutState (if present)
 
-	args := ParseArgs(e.Args)
+	args := ParseArgs[AException](e.Args)
 	err := args.Err
 	trace := args.ErrTrace
 	mach := e.Machine()

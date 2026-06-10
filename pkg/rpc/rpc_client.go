@@ -528,12 +528,12 @@ func (c *Client) HandshakingState(e *am.Event) {
 var _ = ssC.HandshakeDone
 
 func (c *Client) HandshakeDoneEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a.Id != "" && a.MachTime != nil && a.QueueTick > 0
 }
 
 func (c *Client) HandshakeDoneState(e *am.Event) {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 
 	// finalize the worker init
 	netMach := c.NetMach
@@ -635,7 +635,7 @@ func (c *Client) ServerPayloadEnter(e *am.Event) bool {
 	if c.Consumer == nil {
 		return false
 	}
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[AServerPayload](e.Args)
 	argsOut := &A{Name: args.Name}
 
 	if args.Payload == nil {
@@ -649,8 +649,8 @@ func (c *Client) ServerPayloadEnter(e *am.Event) bool {
 }
 
 func (c *Client) ServerPayloadState(e *am.Event) {
-	args := ParseArgs(e.Args)
-	argsOut := &A{
+	args := am.ParseArgs[AServerPayload](e.Args)
+	argsOut := &AServerPayload{
 		Name:    args.Name,
 		Payload: args.Payload,
 	}
@@ -1260,7 +1260,7 @@ func (c *Client) RemoteSendingPayload(
 ) error {
 	// TODO test
 	c.log("RemoteSendingPayload %s", payload.Name)
-	c.Mach.Add1(ssC.ServerDelivering, Pass(&A{
+	c.Mach.Add1(ssC.ServerDelivering, Pass(&AServerPayload{
 		Payload: payload,
 		Name:    payload.Name,
 	}))
@@ -1275,7 +1275,7 @@ func (c *Client) RemoteSendPayload(
 	_ *rpc2.Client, payload *MsgSrvPayload, _ *MsgEmpty,
 ) error {
 	c.log("RemoteSendPayload %s:%s", payload.Name, payload.Token)
-	c.Mach.Add1(ssC.ServerPayload, Pass(&A{
+	c.Mach.Add1(ssC.ServerPayload, Pass(&AServerPayload{
 		Payload: payload,
 		Name:    payload.Name,
 	}))

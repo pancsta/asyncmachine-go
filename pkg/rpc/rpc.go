@@ -252,70 +252,67 @@ type ReplOpts struct {
 
 const APrefix = "am_rpc"
 
+type Args struct {
+	am.ArgsBase `json:"-"`
+}
+
+func (Args) ArgsPrefix() string {
+	return APrefix
+}
+
+// ----- TODO per-state args
+
 // A represents typed arguments of the RPC package. It's a typesafe alternative
 // to [am.A].
 type A struct {
+	Args `json:"-"`
+
 	Id        string `log:"id"`
 	Name      string `log:"name"`
 	MachTime  am.Time
 	QueueTick uint64
 	MachTick  uint32
-	Payload   *MsgSrvPayload
 	Addr      string `log:"addr"`
 	Err       error
 	Method    string `log:"addr"`
 	StartedAt time.Time
 	Dispose   bool
+}
 
-	// non-rpc fields
+// -----
+
+type AServerPayload struct {
+	Args `json:"-"`
+
+	Name    string `log:"name"`
+	Payload *MsgSrvPayload
+}
+
+func (AServerPayload) ArgsState() string {
+	return ssC.ServerPayload
+}
+
+// -----
+
+type AClientConnected struct {
+	Args `json:"-"`
 
 	Client *rpc2.Client
 }
 
-// ARpc is a subset of A, that can be passed over RPC.
-type ARpc struct {
-	Id        string `log:"id"`
-	Name      string `log:"name"`
-	MachTime  am.Time
-	QueueTick uint64
-	MachTick  uint32
-	Payload   *MsgSrvPayload
-	Addr      string `log:"addr"`
-	Err       error
-	Method    string `log:"addr"`
-	StartedAt time.Time
-	Dispose   bool
+func (AClientConnected) ArgsState() string {
+	return ssS.ClientConnected
 }
 
-// ParseArgs extracts A from [am.Event.Args][APrefix].
-func ParseArgs(args am.A) *A {
-	if r, _ := args[APrefix].(*ARpc); r != nil {
-		return amhelp.ArgsToArgs(r, &A{})
+// ----- RPC boilerplate
+
+// ArgsRpc will be available in the REPL.
+var ArgsRpc = []am.ArgsApi{A{}}
+
+func init() {
+	for _, arg := range ArgsRpc {
+		gob.Register(arg)
 	}
-	if a, _ := args[APrefix].(*A); a != nil {
-		return a
-	}
-	return &A{}
-}
-
-// Pass prepares [am.A] from A to pass to further mutations.
-func Pass(args *A) am.A {
-	return am.A{APrefix: args}
-}
-
-// PassRpc prepares [am.A] from A to pass over RPC.
-func PassRpc(args *A) am.A {
-	return am.A{APrefix: amhelp.ArgsToArgs(args, &ARpc{})}
-}
-
-// LogArgs is an args logger for A.
-func LogArgs(args am.A) map[string]string {
-	a := ParseArgs(args)
-	if a == nil {
-		return nil
-	}
-
-	return amhelp.ArgsToLogMap(a, 0)
 }
 
 // // DEBUG for perf testing TODO tag
@@ -444,7 +441,7 @@ type ExceptionHandler struct {
 var _ = ss.Exception
 
 func (h *ExceptionHandler) ExceptionEnter(e *am.Event) bool {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	mach := e.Machine()
 
 	isRpcClient := mach.Has(am.S{ssC.Disconnecting, ssC.Disconnected})
