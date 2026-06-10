@@ -1385,6 +1385,77 @@ func TestEval(t *testing.T) {
 	<-m.WhenDisposed()
 }
 
+func TestEvalNested(t *testing.T) {
+	// init
+
+	m := NewNoRels(t, nil)
+	m.detectEval = true
+
+	// test
+	a := 0
+	nested := false
+	ok := m.Eval(t.Name(), func() {
+		a++
+		nested = m.Eval(t.Name()+"Nested", func() {
+			a++
+		}, nil)
+	}, nil)
+
+	// assert
+	assert.True(t, ok, "outer eval should be true")
+	assert.False(t, nested, "nested eval should be false")
+	assert.Equal(t, 1, a)
+	// nested evals are OK to timeout
+	assert.False(t, m.IsErr())
+
+	// TOOD test timeout, mach ctx, eval ctx
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+func TestEvalNestedHandlers(t *testing.T) {
+	// init
+
+	a := 0
+	direct := false
+	forked := false
+	done := make(chan struct{})
+	m := NewNoRels(t, nil)
+	_, _ = m.HandlersBind(&struct {
+		AState HandlerFinal
+	}{
+		AState: func(e *Event) {
+			direct = m.Eval(t.Name(), func() {
+				a++
+			}, nil)
+			m.Fork(context.Background(), e, func() {
+				forked = m.Eval(t.Name(), func() {
+					a++
+				}, nil)
+				close(done)
+			})
+		},
+	})
+	m.detectEval = true
+
+	m.Add1("A", nil)
+	<-done
+
+	// assert
+	assert.False(t, direct, "direct eval should be false")
+	assert.True(t, forked, "forked eval should be true")
+	assert.Equal(t, 1, a)
+	assert.True(t, m.IsErr())
+
+	// TOOD test timeout, mach ctx, eval ctx
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
 func TestBreakpoints(t *testing.T) {
 	if os.Getenv(EnvAmTestDbgAddr) == "" {
 		t.Parallel()

@@ -144,6 +144,7 @@ type Machine struct {
 	handlerLoopRunning atomic.Bool
 	handlerLoopVer     atomic.Int32
 	detectEval         bool
+	handlerGoId        atomic.Int64
 	// unlockDisposed means that disposal is in progress and holding the queueMx
 	unlockDisposed atomic.Bool
 	// breakpoints are a list of breakpoints for debugging. [][added, removed]
@@ -156,6 +157,7 @@ type Machine struct {
 	poolLimits      map[string]int32
 	poolGlobal      atomic.Int32
 	poolGlobalLimit int32
+	nextHandlerNum  int
 }
 
 // NewCommon creates a new Machine instance with all the common options set.
@@ -237,6 +239,8 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 	m.timeLast.Store(&Time{})
 	lvl := LogNothing
 	m.logLevel.Store(&lvl)
+	m.currentHandler.Store("")
+	m.currentEval.Store("")
 
 	// parse opts
 	// TODO extract
@@ -1355,11 +1359,6 @@ func (m *Machine) queueMutation(
 	return mut.QueueTick
 }
 
-// EvalRunning helps preventing nested evals.
-func (m *Machine) EvalRunning() bool {
-	return m.evalRunning.Load()
-}
-
 // Eval executes a function on the machine's queue, allowing to avoid using
 // locks for non-handler code. Blocking code should NOT be scheduled here.
 // Eval cannot be called within a handler's critical zone, as both are using
@@ -1381,28 +1380,8 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 		panic("error: source of eval is required")
 	}
 
-	// check every method of every handler against the stack trace
-	if m.detectEval {
-		trace := captureStackTrace()
-
-		for i := 0; !m.disposing.Load() && i < len(m.handlers); i++ {
-			handler := m.handlers[i]
-
-			for _, method := range handler.methodNames {
-				// skip " in goroutine N" entries
-				match := fmt.Sprintf(".(*%s).%s(", handler.name, method)
-
-				for _, line := range strings.Split(trace, "\n") {
-					if !strings.Contains(line, match) {
-						continue
-					}
-					msg := fmt.Sprintf("error: Eval() called directly in handler %s.%s",
-						handler.name, method)
-					panic(msg)
-				}
-			}
-
-		}
+	if m.isNestedEval(source) {
+		return false
 	}
 	m.log(LogOps, "[eval] %s", source)
 
@@ -1438,7 +1417,11 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	case <-time.After(m.EvalTimeout):
 		canceled.Store(true)
 		m.log(LogOps, "[eval:timeout] %s", source)
-		m.AddErr(fmt.Errorf("%w: eval:%s", ErrEvalTimeout, source), nil)
+		err := fmt.Errorf("%w: eval:%s", ErrEvalTimeout, source)
+		select {
+		case m.errInternal <- err:
+		default:
+		}
 		return false
 
 	case <-m.ctx.Done():
@@ -2448,6 +2431,11 @@ func (m *Machine) handlerLoop() {
 	// catch panics and fwd
 	if m.PanicToException {
 		defer catch()
+	}
+
+	// memorize this goroutine
+	if m.detectEval {
+		m.handlerGoId.Store(goroutineNum())
 	}
 
 	// handleCall returns true to continue, or false to return
