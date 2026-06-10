@@ -472,6 +472,7 @@ type MutRequest struct {
 	MutType am.MutationType
 	States  am.S
 	Args    am.A
+	Event   *am.Event
 
 	// PolicyRetries is the max number of retries.
 	PolicyRetries int
@@ -541,6 +542,8 @@ func (r *MutRequest) Delay(delay time.Duration) *MutRequest {
 	return r
 }
 
+// Run blocks and executes the request. Returns when the transition wasn't
+// [am.Canceled], or until too many errors.
 func (r *MutRequest) Run(ctx context.Context) (am.Result, error) {
 	// policies
 	retry := retrypolicy.Builder[am.Result]().
@@ -560,7 +563,13 @@ func (r *MutRequest) Run(ctx context.Context) (am.Result, error) {
 }
 
 func (r *MutRequest) get() (am.Result, error) {
-	res := r.Mach.Add(r.States, r.Args)
+	var res am.Result
+	if r.MutType == am.MutationAdd {
+		res = r.Mach.EvAdd(r.Event, r.States, r.Args)
+	} else {
+		res = r.Mach.EvRemove(r.Event, r.States, r.Args)
+	}
+
 	return res, ResultToErr(res)
 }
 
