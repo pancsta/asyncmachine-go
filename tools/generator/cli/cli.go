@@ -16,7 +16,7 @@ import (
 //
 //nolint:lll
 type Args struct {
-	StatesFile *StatesParams  `arg:"subcommand:states-file" help:"Generate state schema files"`
+	StatesFile *StatesParams  `arg:"subcommand:states-file" help:"Generate state schema"`
 	Grafana    *GrafanaParams `arg:"subcommand:grafana" help:"Generate Grafana dashboards"`
 	Version    bool           `arg:"-v,--version" help:"Print version and exit"`
 }
@@ -89,4 +89,6 @@ type StatesParams struct {
 	Force bool `arg:"-f,--force" help:"Override output file (if any)"`
 	// Utils - Generate states_utils.go in CWD. Overrides files.
 	Utils bool `arg:"-u,--utils" default:"true" help:"Generate states_utils.go in CWD. Overrides files."`
+	// Global - Import pkg/states/global and skip generating states_utils.go.
+	Global bool `arg:"--global" help:"Import pkg/states/global and skip generating states_utils.go"`
 }
