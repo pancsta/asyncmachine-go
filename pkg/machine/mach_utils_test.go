@@ -129,7 +129,7 @@ func trackTransitions(mach *Machine) *History {
 		Order:   []string{},
 		Counter: map[string]int{},
 	}
-	err := mach.BindHandlers(history)
+	_, err := mach.HandlersBind(history)
 	if err != nil {
 		panic(err)
 	}

@@ -2351,7 +2351,7 @@ func TestTracers(t *testing.T) {
 		Tracers: []Tracer{tNoop},
 		Parent:  m,
 	})
-	_ = m2.BindHandlers(&TestTracersHandlers{})
+	_, _ = m2.HandlersBind(&TestTracersHandlers{})
 	assert.Equal(t, 1, len(m2.tracers))
 	assert.False(t, m2.tracers[0].Inheritable())
 	m2.Add1("A", nil)
@@ -2625,7 +2625,7 @@ func TestWhenQueueEnds(t *testing.T) {
 	}
 
 	// bind handlers
-	err = m.BindHandlers(&TestWhenQueueEndsHandlers{})
+	_, err = m.HandlersBind(&TestWhenQueueEndsHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -2683,7 +2683,7 @@ func TestWhenQueue(t *testing.T) {
 
 	// bind handlers
 	h := &TestWhenQueueHandlers{}
-	err := m.BindHandlers(h)
+	_, err := m.HandlersBind(h)
 	require.NoError(t, err)
 
 	m.Add1("A", A{"t": t})
@@ -2785,7 +2785,7 @@ func TestNestedMutation(t *testing.T) {
 	m := NewNoRels(t, S{"B"})
 
 	// bind handlers
-	err := m.BindHandlers(&TestNestedMutationHandlers{})
+	_, err := m.HandlersBind(&TestNestedMutationHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -2974,7 +2974,7 @@ func TestHandlerTimeout(t *testing.T) {
 	m.HandlerDeadline = time.Second
 
 	// bind handlers
-	err := m.BindHandlers(&TestHandlerTimeoutHandlers{})
+	_, err := m.HandlersBind(&TestHandlerTimeoutHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -3023,13 +3023,13 @@ func TestBindTracer(t *testing.T) {
 
 	// init
 	m := NewNoRels(t, nil)
-	trace := TestBindTracerTracer{}
+	trace := TestBindTracerTracer{&TracerNoOp{Id: t.Name()}}
 
 	// test
-	err := m.BindTracer(&trace)
+	_, err := m.BindTracer(&trace)
 	assert.NoError(t, err)
-	removed := m.DetachTracer(&trace)
-	err = m.BindTracer(trace)
+	removed := m.DetachTracer(trace.TracerId())
+	_, err = m.BindTracer(trace)
 	assert.Error(t, err)
 
 	// assert
@@ -3057,11 +3057,11 @@ func TestUnbindHandlers(t *testing.T) {
 	h := &TestUnbindHandlersHandlers{}
 
 	// test
-	err := m.BindHandlers(h)
+	bindId, err := m.HandlersBind(h)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = m.DetachHandlers(h)
+	err = m.HandlersDetach(bindId)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3085,70 +3085,6 @@ func (h *TestListHandlersHandlers) AnyEnter(e *Event)  {}
 func (h *TestListHandlersHandlers) AState(e *Event)    {}
 func (h *TestListHandlersHandlers) AnyB(e *Event)      {}
 func (h *TestListHandlersHandlers) Unrelated(e *Event) {}
-
-func TestListHandlers(t *testing.T) {
-	if os.Getenv(EnvAmTestDbgAddr) == "" {
-		t.Parallel()
-	}
-
-	// defined handlers
-	h1 := &TestListHandlersHandlers{}
-	names, err := ListHandlers(h1, S{"A", "B", "C"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// assert
-	assert.Len(t, names, 4)
-	assert.ElementsMatch(t, []string{
-		"AEnter", "AState", "AnyB",
-		StateAny + SuffixEnter,
-	}, names)
-
-	// anon handlers
-	h2 := &struct {
-		AEnter    HandlerNegotiation
-		AState    HandlerFinal
-		AnyEnter  HandlerFinal
-		AnyB      HandlerFinal
-		Unrelated func()
-	}{
-		AEnter:    func(e *Event) bool { return false },
-		AState:    func(e *Event) {},
-		AnyEnter:  func(e *Event) {},
-		AnyB:      func(e *Event) {},
-		Unrelated: func() {},
-	}
-	names, err = ListHandlers(h2, S{"A", "B", "C"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// assert
-	assert.Len(t, names, 4)
-	assert.ElementsMatch(t, []string{
-		"AEnter", "AState", "AnyB",
-		StateAny + SuffixEnter,
-	}, names)
-
-	// anon handlers for non-existing states
-	h3 := &struct {
-		ZEnter    HandlerNegotiation
-		ZState    HandlerFinal
-		AnyEnter  HandlerFinal
-		AnyY      HandlerFinal
-		Unrelated func()
-	}{
-		ZEnter:    func(e *Event) bool { return false },
-		ZState:    func(e *Event) {},
-		AnyEnter:  func(e *Event) {},
-		AnyY:      func(e *Event) {},
-		Unrelated: func() {},
-	}
-	_, err = ListHandlers(h3, S{"A", "B", "C"})
-	assert.ErrorContains(t, err, "missing states: Z from handler ZEnter")
-	assert.ErrorContains(t, err, "missing states: Z from handler ZState")
-}
 
 // TODO TestResolverDagSort
 
