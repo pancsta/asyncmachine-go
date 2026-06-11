@@ -577,14 +577,14 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 var _ = ssS.WorkerForked
 
 func (s *Supervisor) WorkerForkedEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a != nil && a.LocalAddr != "" && a.WorkerRpc != nil
 }
 
 func (s *Supervisor) WorkerForkedState(e *am.Event) {
 	s.Mach.Remove1(ssS.WorkerForked, nil)
 
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	addr := args.LocalAddr
 	bootAddr := args.BootAddr
 	wrpc := args.WorkerRpc
@@ -637,14 +637,14 @@ func (s *Supervisor) WorkerForkedState(e *am.Event) {
 var _ = ssS.KillingWorker
 
 func (s *Supervisor) KillingWorkerEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a != nil && a.LocalAddr != ""
 }
 
 func (s *Supervisor) KillingWorkerState(e *am.Event) {
 	s.Mach.Remove1(ssS.KillingWorker, nil)
 
-	addr := ParseArgs(e.Args).LocalAddr
+	addr := am.ParseArgs[A](e.Args).LocalAddr
 	argsOut := &A{LocalAddr: addr}
 
 	// fake kill in tests
@@ -676,14 +676,14 @@ func (s *Supervisor) KillingWorkerState(e *am.Event) {
 var _ = ssS.WorkerKilled
 
 func (s *Supervisor) WorkerKilledEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a != nil && a.LocalAddr != ""
 }
 
 func (s *Supervisor) WorkerKilledState(e *am.Event) {
 	s.Mach.Remove1(ssS.WorkerKilled, nil)
 
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	delete(s.workers, args.LocalAddr)
 
 	// re-check the pool status
@@ -879,7 +879,7 @@ func (s *Supervisor) ProvideWorkerEnter(e *am.Event) bool {
 
 func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 	s.Mach.Remove1(ssS.ProvideWorker, nil)
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	ctx := s.Mach.NewStateCtx(ssS.Start)
 	idle := s.idleWorkers()
 
@@ -925,14 +925,14 @@ func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 var _ = ssS.ListWorkers
 
 func (s *Supervisor) ListWorkersEnter(e *am.Event) bool {
-	ch := ParseArgs(e.Args).WorkersCh
+	ch := am.ParseArgs[A](e.Args).WorkersCh
 	// require a buffered channel
 	return ch != nil && cap(ch) > 0
 }
 
 func (s *Supervisor) ListWorkersState(e *am.Event) {
 	s.Mach.Remove1(ssS.ListWorkers, nil)
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 
 	switch args.WorkerState {
 	case StateReady:
@@ -951,12 +951,12 @@ func (s *Supervisor) ListWorkersState(e *am.Event) {
 var _ = ssS.SetWorker
 
 func (s *Supervisor) SetWorkerEnter(e *am.Event) bool {
-	return ParseArgs(e.Args).WorkerAddr != ""
+	return am.ParseArgs[A](e.Args).WorkerAddr != ""
 }
 
 func (s *Supervisor) SetWorkerState(e *am.Event) {
 	s.Mach.Remove1(ssS.SetWorker, nil)
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	addr := args.WorkerAddr
 
 	if args.WorkerInfo != nil {

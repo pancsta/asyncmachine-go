@@ -188,101 +188,154 @@ func StatesByTag(schema Schema, tag string) S {
 
 // ///// ///// /////
 
-// AT represents typed arguments of pkg/machine, extracted from Event.Args
-// via ParseArgs, or created manually to for Pass.
-type AT struct {
-	Err          error
-	ErrTrace     string
-	Panic        *ExceptionArgsPanic
+const APrefix = "_am"
+
+// ArgsApi is the base interface for typed arguments.
+type ArgsApi interface {
+	// ArgsPrefix returns the argument prefix inside the [A] map. Should be provided by the implementation.
+	ArgsPrefix() string
+	// ArgsState represents the state this argument struct belongs to. Defaults to [StateAny].
+	ArgsState() string
+	// TODO deep clone interface, optional
+	// ArgsClone() G
+}
+
+// ArgsBase is the base implementation of [ArgsApi] interface.
+type ArgsBase struct {
+	ArgsApi
+}
+
+// ArgsPrefix is a fallback to a stack trace hash of the implementation symbol. Each
+// pkg should overwrite this method.
+func (a ArgsBase) ArgsPrefix() string {
+	buf := make([]byte, 4024)
+	n := runtime.Stack(buf, false)
+	stack := string(buf[:n])
+	lines := strings.Split(stack, "\n")
+	hash := Hash(lines[3], 10)
+
+	return hash
+}
+
+// State is the default Any state.
+func (a ArgsBase) ArgsState() string {
+	return StateAny
+}
+
+// Clone for deep cloning.
+func (a ArgsBase) Clone() ArgsApi {
+	// shallow clone
+	return a
+}
+
+// pkg args
+
+// Args for this pkg. Do not reuse.
+type Args struct {
+	ArgsBase
+}
+
+func (Args) ArgsPrefix() string {
+	return APrefix
+}
+
+// -----
+
+// ExceptionArgsPanic is an optional argument ["panic"] for the StateException
+// state which describes a panic within a Transition handler.
+type ExceptionArgsPanic struct {
+	CalledStates S
+	StatesBefore S
+	Transition   *Transition
+	LastStep     *Step
+	StackTrace   string
+}
+
+type AException struct {
+	Args
+	Err      error `log:"err"`
+	ErrTrace string
+	Panic    *ExceptionArgsPanic
+
+	// TODO handle
+	Fn string `log:"fn"`
+
+	// deadline
+
 	TargetStates S
 	CalledStates S
 	TimeBefore   Time
 	TimeAfter    Time
 	Event        *Event
-	// MutDone chan gets closed by the machine once it's processed. Can cause chan
-	// leaks when misused. Only for Can* checks.
-	CheckDone *CheckDone
 }
 
-type ATRpc struct {
-	Err          error
-	ErrTrace     string
-	Panic        *ExceptionArgsPanic
-	TargetStates S
-	CalledStates S
-	TimeBefore   Time
-	TimeAfter    Time
-	Event        *Event
+func (AException) ArgsState() string {
+	return StateException
 }
 
-type CheckDone struct {
+// ACheck with a CheckDone chan which gets closed by the machine once it's
+// processed. Can cause chan leaks when misused. Only for Can* checks.
+type ACheck struct {
+	Args
 	// TODO close these on dispose and deadline
-	Ch chan struct{}
+	CheckDone chan struct{}
 	// Was the mutation canceled?
 	Canceled bool
 }
 
-const (
-	argErr       = "_am_err"
-	argErrTrace  = "_am_errTrace"
-	argPanic     = "_am_panic"
-	argCheckDone = "_am_checkDone"
-)
+// -----
 
-// ParseArgs extracts AT from A.
-func ParseArgs(args A) *AT {
-	ret := &AT{}
-
-	if val, ok := args[argErr]; ok {
-		ret.Err = val.(error)
-	}
-	if val, ok := args[argErrTrace]; ok {
-		ret.ErrTrace = val.(string)
-	}
-	if val, ok := args[argPanic]; ok {
-		ret.Panic = val.(*ExceptionArgsPanic)
-	}
-	if val, ok := args[argCheckDone]; ok {
-		ret.CheckDone = val.(*CheckDone)
+// PassMerge merged one or more [A] into [A]. Technically a `map[string]any`
+// merge.
+func PassMerge(args ...A) A {
+	ret := A{}
+	for _, set := range args {
+		for k, v := range set {
+			ret[k] = v
+		}
 	}
 
 	return ret
 }
 
-// Pass prepares A from AT, to pass to further mutations.
-func Pass(args *AT) A {
-	a := A{}
-
-	if args.Err != nil {
-		a[argErr] = args.Err
-	}
-	if args.ErrTrace != "" {
-		a[argErrTrace] = args.ErrTrace
-	}
-	if args.Panic != nil {
-		a[argPanic] = args.Panic
-	}
-	if args.CheckDone != nil {
-		a[argCheckDone] = args.CheckDone
+// Pass accepts pointers of [ArgsBase] to pass to the machine as [A].
+func Pass(args ...ArgsApi) A {
+	ret := A{}
+	for _, a := range args {
+		ret[ArgIndex(a)] = a
 	}
 
-	return a
+	return ret
 }
 
-// PassMerge prepares A from AT and existing A, to pass to further
-// mutations.
-func PassMerge(existing A, args *AT) A {
-	var a A
-	if existing == nil {
-		a = A{}
-	} else {
-		a = maps.Clone(existing)
+// ParseArgs is [ParseArgsCheck] but without the check.
+func ParseArgs[G ArgsApi](args A) *G {
+	v, _ := ParseArgsCheck[G](args)
+	return v
+}
+
+// ParseArgsCheck parses [A] into typed arguments described by the passed generic
+// type. Returns
+func ParseArgsCheck[G ArgsApi](args A) (*G, bool) {
+	var ret G
+	idx := ArgIndex(ret)
+	v, ok := args[idx].(*G)
+	if !ok {
+		// RPC support
+		v2, ok := args[idx].(G)
+		if !ok {
+			// fallback
+			return &ret, false
+		}
+		v = &v2
 	}
 
-	// unmarshal
-	for k, v := range Pass(args) {
-		a[k] = v
-	}
+	return v, true
+}
 
-	return a
+// ArgIndex return an index of [arg] inside [A].
+func ArgIndex(arg ArgsApi) string {
+	ns := arg.ArgsPrefix()
+	state := arg.ArgsState()
+	return ns + "__" + state
 }

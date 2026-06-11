@@ -213,7 +213,7 @@ func NewTopic(
 var _ = ss.Exception
 
 func (t *Topic) ExceptionEnter(e *am.Event) bool {
-	err := am.ParseArgs(e.Args).Err
+	err := am.ParseArgs[am.AException](e.Args).Err
 
 	// ignore ErrEvalTimeout
 	return !errors.Is(err, am.ErrEvalTimeout)
@@ -222,7 +222,7 @@ func (t *Topic) ExceptionEnter(e *am.Event) bool {
 func (t *Topic) ExceptionState(e *am.Event) {
 	// super
 	t.ExceptionHandler.ExceptionState(e)
-	args := am.ParseArgs(e.Args)
+	args := am.ParseArgs[am.AException](e.Args)
 	err := args.Err
 	target := args.TargetStates
 

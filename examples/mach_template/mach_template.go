@@ -54,7 +54,7 @@ func main() {
 
 	// getting data back via a channel (needs to be buffered)
 	ch := make(chan []string, 1)
-	mach.Add1(ss.Channel, Pass(&A{
+	mach.Add1(ss.Channel, am.Pass(&AChannel{
 		ReturnCh: ch,
 	}))
 	fmt.Printf("%v\n", <-ch)
@@ -64,7 +64,7 @@ func main() {
 		done := mach.WhenTicks(ss.BazDone, 100, nil)
 
 		for range 100 {
-			mach.Add1(ss.Baz, Pass(&A{
+			mach.Add1(ss.Baz, am.Pass(&ABaz{
 				Addr: "localhost:8090",
 			}))
 		}
@@ -191,7 +191,7 @@ func (h *TemplateHandlers) BarExit(e *am.Event) bool {
 var _ = ss.Baz
 
 func (h *TemplateHandlers) BazState(e *am.Event) {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[ABaz](e.Args)
 	addr := args.Addr
 
 	// multi states rely on context of other states
@@ -221,7 +221,7 @@ func (h *TemplateHandlers) BazDoneState(e *am.Event) {
 var _ = ss.Channel
 
 func (h *TemplateHandlers) ChannelEnter(e *am.Event) bool {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[AChannel](e.Args)
 	// only buffered channel can pass
 	return args != nil && cap(args.ReturnCh) > 0
 }
@@ -230,7 +230,7 @@ var _ = ss.Channel
 
 func (h *TemplateHandlers) ChannelState(e *am.Event) {
 	// no validation needed
-	ParseArgs(e.Args).ReturnCh <- []string{"hello", "machines"}
+	am.ParseArgs[AChannel](e.Args).ReturnCh <- []string{"hello", "machines"}
 }
 
 // ///// ///// /////
@@ -239,71 +239,53 @@ func (h *TemplateHandlers) ChannelState(e *am.Event) {
 
 // ///// ///// /////
 
-func init() {
-	gob.Register(ARpc{})
-}
-
 const APrefix = "template"
 
-// A is a struct for node arguments. It's a typesafe alternative to [am.A].
-type A struct {
-	Id   string `log:"id"`
-	Addr string `log:"addr"`
+// Args is shared pkg args for Any state
+type Args struct {
+	am.ArgsBase `json:"-"`
+}
 
-	// non-rpc fields
+func (Args) ArgsPrefix() string {
+	return APrefix
+}
 
+// -----
+
+type AChannel struct {
+	Args `json:"-"`
+
+	// Return chan.
 	ReturnCh chan<- []string
 }
 
-// ARpc is a subset of A, that can be passed over RPC.
-type ARpc struct {
-	Id   string `log:"id"`
+func (AChannel) ArgsState() string {
+	return ss.Channel
+}
+
+// -----
+
+type ABaz struct {
+	Args `json:"-"`
+
+	// Address with logging.
 	Addr string `log:"addr"`
 }
 
-// ParseArgs extracts A from [am.Event.Args][APrefix].
-func ParseArgs(args am.A) *A {
-	if r, ok := args[APrefix].(*ARpc); ok {
-		return amhelp.ArgsToArgs(r, &A{})
-	} else if r, ok := args[APrefix].(ARpc); ok {
-		return amhelp.ArgsToArgs(&r, &A{})
+func (ABaz) ArgsState() string {
+	return ss.Baz
+}
+
+// ----- RPC
+
+func init() {
+	for _, arg := range ArgsRpc {
+		gob.Register(arg)
 	}
-	if a, _ := args[APrefix].(*A); a != nil {
-		return a
-	}
-	return &A{}
 }
 
-// Pass prepares [am.A] from A to pass to further mutations.
-func Pass(args *A) am.A {
-	return am.A{APrefix: args}
-}
-
-// PassRpc prepares [am.A] from A to pass over RPC.
-func PassRpc(args *A) am.A {
-	return am.A{APrefix: amhelp.ArgsToArgs(args, &ARpc{})}
-}
-
-// LogArgs is an args logger for A.
-func LogArgs(args am.A) map[string]string {
-	a := ParseArgs(args)
-	if a == nil {
-		return nil
-	}
-
-	return amhelp.ArgsToLogMap(a, 0)
-}
-
-// ParseRpc parses [am.A] to *ARpc namespaced in [am.A]. Useful for REPLs.
-func ParseRpc(args am.A) am.A {
-	ret := am.A{APrefix: &ARpc{}}
-	jsonArgs, err := json.Marshal(args)
-	if err == nil {
-		json.Unmarshal(jsonArgs, ret[APrefix])
-	}
-
-	return ret
-}
+// ArgsRpc will be available in the REPL.
+var ArgsRpc = []am.ArgsApi{ABaz{}}
 
 // ///// ///// /////
 
