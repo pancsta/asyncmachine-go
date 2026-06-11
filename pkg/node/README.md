@@ -247,7 +247,7 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 
 ## Status
 
-Alpha, work in progress, not semantically versioned.
+Alpha, work on hold, not semantically versioned. Blocked by [#395](https://github.com/pancsta/asyncmachine-go/issues/395).
 
 ## monorepo
 

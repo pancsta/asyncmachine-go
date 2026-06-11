@@ -2,6 +2,29 @@
 
 Only `pkg/machine` and `pkg/states` adhere to semver. Semver of other packages is not guaranteed at the moment.
 
+## v0.19
+
+- `AddErrConnecting` now returns `am.Result`
+- `am.Pass` and `am.ParseArgs` migrated to generics
+- `Machine.MustBindHandlers` has been removed
+- `Machine.HasHandlers` now accepts returns `[]string`
+- `Machine.BindHandlers` now returns the binding ID
+- `pipes.Bind*` now returns the binding ID
+- `Machine.DetachHandlers` now accepts a binding ID
+- `Machine.DetachTracer` now takes `id string`
+- `Machine.HasTracers` now returns `[]string`
+- `Tracer.Id` added
+- `Machine.NewStateCtx` now accepts an optional `*Event`
+- `SchemaPrefix`, `SchemaMerge`, `SchemaClone`, `ParseSchema` are now
+  - `Schema.Prefix`, `Schema.Merge`, `Schema.Clone`, `Schema.Parse`
+- `ListHandlers` has been removed
+- `IndexToTime` has been removed
+- `Machine.StateNamesMatch` has been removed
+- Deprecations:
+  - `SAdd`, `SRem`, `StateSet`, `StateAdd`
+  - `BindHandlers`, `DetachHandlers`, `BindTracer`, `DetachTracer`
+  - `StatesPrefix`, `StatesWithPrefix`, `StatesEqual`, `StatesShared`, `StatesDiff`, `StatesToIndex`, `IndexToStates`
+
 ## v0.18
 
 - `Transition.TimeIndexAfter()` now returns `*TimeIndex`

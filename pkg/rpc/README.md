@@ -425,116 +425,212 @@ type Schema = map[string]State
 
 // Api is a subset of Machine for alternative implementations.
 type Api interface {
-    // ///// REMOTE
+  // ///// REMOTE
 
-    // Mutations (remote)
+  // Mutations (remote)
 
-    Add1(state string, args A) Result
-    Add(states S, args A) Result
-    Remove1(state string, args A) Result
-    Remove(states S, args A) Result
-    AddErr(err error, args A) Result
-    AddErrState(state string, err error, args A) Result
-    Toggle(states S, args A) Result
-    Toggle1(state string, args A) Result
-    Set(states S, args A) Result
+  // Add1 is [Machine.Add1].
+  Add1(state string, args A) Result
+  // Add is [Machine.Add].
+  Add(states S, args A) Result
+  // Remove1 is [Machine.Remove1].
+  Remove1(state string, args A) Result
+  // Remove is [Machine.Remove].
+  Remove(states S, args A) Result
+  // AddErr is [Machine.AddErr].
+  AddErr(err error, args A) Result
+  // AddErrState is [Machine.AddErrState].
+  AddErrState(state string, err error, args A) Result
+  // Toggle is [Machine.Toggle].
+  Toggle(states S, args A) Result
+  // Toggle1 is [Machine.Toggle1].
+  Toggle1(state string, args A) Result
+  // Set is [Machine.Set].
+  Set(states S, args A) Result
 
-    // Traced mutations (remote)
+  // Traced mutations (remote)
 
-    EvAdd1(event *Event, state string, args A) Result
-    EvAdd(event *Event, states S, args A) Result
-    EvRemove1(event *Event, state string, args A) Result
-    EvRemove(event *Event, states S, args A) Result
-    EvAddErr(event *Event, err error, args A) Result
-    EvAddErrState(event *Event, state string, err error, args A) Result
-    EvToggle(event *Event, states S, args A) Result
-    EvToggle1(event *Event, state string, args A) Result
+  // EvAdd1 is [Machine.EvAdd1].
+  EvAdd1(event *Event, state string, args A) Result
+  // EvAdd is [Machine.EvAdd].
+  EvAdd(event *Event, states S, args A) Result
+  // EvRemove1 is [Machine.EvRemove1].
+  EvRemove1(event *Event, state string, args A) Result
+  // EvRemove is [Machine.EvRemove].
+  EvRemove(event *Event, states S, args A) Result
+  // EvAddErr is [Machine.EvAddErr].
+  EvAddErr(event *Event, err error, args A) Result
+  // EvAddErrState is [Machine.EvAddErrState].
+  EvAddErrState(event *Event, state string, err error, args A) Result
+  // EvToggle is [Machine.Toggle].
+  EvToggle(event *Event, states S, args A) Result
+  // EvToggle1 is [Machine.Toggle1].
+  EvToggle1(event *Event, state string, args A) Result
 
-    // Waiting (remote)
+  // Waiting (remote)
 
-    WhenArgs(state string, args A, ctx context.Context) <-chan struct{}
+  // WhenArgs is [Machine.WhenArgs].
+  WhenArgs(state string, args A, ctx context.Context) <-chan struct{}
 
-    // ///// LOCAL
+  // ///// LOCAL
 
-    // Checking (local)
+  // Checking (local)
 
-    Err() error
-    IsErr() bool
-    Is(states S) bool
-    Is1(state string) bool
-    Any(states ...S) bool
-    Any1(state ...string) bool
-    Not(states S) bool
-    Not1(state string) bool
-    IsTime(time Time, states S) bool
-    WasTime(time Time, states S) bool
-    IsClock(clock Clock) bool
-    WasClock(clock Clock) bool
-    Has(states S) bool
-    Has1(state string) bool
-    CanAdd(states S, args A) Result
-    CanAdd1(state string, args A) Result
-    CanRemove(states S, args A) Result
-    CanRemove1(state string, args A) Result
-    Transition() *Transition
+  // Err is [Machine.Err].
+  Err() error
+  // IsErr is [Machine.IsErr].
+  IsErr() bool
+  // Is is [Machine.Is].
+  Is(states S) bool
+  // Is1 is [Machine.Is1].
+  Is1(state string) bool
+  // Any is [Machine.Any].
+  Any(states ...S) bool
+  // Any1 is [Machine.Any1].
+  Any1(state ...string) bool
+  // Not is [Machine.Not].
+  Not(states S) bool
+  // Not1 is [Machine.Not1].
+  Not1(state string) bool
+  // IsTime is [Machine.IsTime].
+  IsTime(time Time, states S) bool
+  // WasTime is [Machine.WasTime].
+  WasTime(time Time, states S) bool
+  // IsClock is [Machine.IsClock].
+  IsClock(clock Clock) bool
+  // WasClock is [Machine.WasClock].
+  WasClock(clock Clock) bool
+  // Has is [Machine.Has].
+  Has(states S) bool
+  // Has1 is [Machine.Has1].
+  Has1(state string) bool
+  // CanAdd is [Machine.CanAdd].
+  CanAdd(states S, args A) Result
+  // CanAdd1 is [Machine.CanAdd1].
+  CanAdd1(state string, args A) Result
+  // CanRemove is [Machine.CanRemove].
+  CanRemove(states S, args A) Result
+  // CanRemove1 is [Machine.CanRemove1].
+  CanRemove1(state string, args A) Result
+  // Transition is [Machine.Transition].
+  Transition() *Transition
+  // IsLocal is [Machine.IsLocal].
+  IsLocal() bool
+  // ErrInternal is [Machine.ErrInternal].
+  ErrInternal() <-chan error
 
-    // Waiting (local)
+  // Waiting (local)
 
-    When(states S, ctx context.Context) <-chan struct{}
-    When1(state string, ctx context.Context) <-chan struct{}
-    WhenNot(states S, ctx context.Context) <-chan struct{}
-    WhenNot1(state string, ctx context.Context) <-chan struct{}
-    WhenTime(states S, times Time, ctx context.Context) <-chan struct{}
-    WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
-    WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
-    WhenQuery(query func(clock Clock) bool, ctx context.Context) <-chan struct{}
-    WhenErr(ctx context.Context) <-chan struct{}
-    WhenQueue(tick Result) <-chan struct{}
+  // When is [Machine.When].
+  When(states S, ctx context.Context) <-chan struct{}
+  // When1 is [Machine.When1].
+  When1(state string, ctx context.Context) <-chan struct{}
+  // WhenNot is [Machine.WhenNot].
+  WhenNot(states S, ctx context.Context) <-chan struct{}
+  // WhenNot1 is [Machine.WhenNot1].
+  WhenNot1(state string, ctx context.Context) <-chan struct{}
+  // WhenTime is [Machine.WhenTime].
+  WhenTime(states S, times Time, ctx context.Context) <-chan struct{}
+  // WhenTime1 is [Machine.WhenTime1].
+  WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
+  // WhenTicks is [Machine.WhenTicks].
+  WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
+  // WhenNextActive is [Machine.WhenNextActive].
+  WhenNextActive(state string, ctx context.Context) <-chan struct{}
 
-    // Getters (local)
+  // WhenQuery is [Machine.WhenQuery].
+  WhenQuery(query func(clock Clock) bool, ctx context.Context) <-chan struct{}
+  // WhenErr is [Machine.WhenErr].
+  WhenErr(ctx context.Context) <-chan struct{}
+  // WhenQueue is [Machine.WhenQueue].
+  WhenQueue(tick Result) <-chan struct{}
 
-    StateNames() S
-    StateNamesMatch(re *regexp.Regexp) S
-    ActiveStates(states S) S
-    Tick(state string) uint64
-    Clock(states S) Clock
-    Time(states S) Time
-    QueueTick() uint64
-    MachineTick() uint32
-    QueueLen() uint16
-    NewStateCtx(state string) context.Context
-    Export() (*Serialized, Schema, error)
-    Schema() Schema
-    Switch(groups ...S) string
-    Groups() (map[string][]int, []string)
-    Index(states S) []int
-    Index1(state string) int
+  // Getters (local)
 
-    // Misc (local)
+  // StateNames is [Machine.StateNames].
+  StateNames() S
+  // ActiveStates is [Machine.ActiveStates].
+  ActiveStates(states S) S
+  // Tick is [Machine.Tick].
+  Tick(state string) uint64
+  // Clock is [Machine.Clock].
+  Clock(states S) Clock
+  // Time is [Machine.Time].
+  Time(states S) Time
+  // QueueTick is [Machine.QueueTick].
+  QueueTick() uint64
+  // MachineTick is [Machine.MachineTick].
+  MachineTick() uint32
+  // QueueLen is [Machine.QueueLen].
+  QueueLen() uint16
+  // NewStateCtx is [Machine.NewStateCtx].
+  NewStateCtx(state string, e ...*Event) context.Context
+  // Export is [Machine.Export].
+  Export() (*Serialized, Schema, error)
+  // Schema is [Machine.Schema].
+  Schema() Schema
+  // Switch is [Machine.Switch].
+  Switch(groups ...S) string
+  // Groups is [Machine.Groups].
+  Groups() (map[string][]int, []string)
+  // Index is [Machine.Index].
+  Index(states S) []int
+  // Index1 is [Machine.Index1].
+  Index1(state string) int
 
-    Id() string
-    ParentId() string
-    ParseStates(states S) S
-    Tags() []string
-    Context() context.Context
-    String() string
-    StringAll() string
-    Log(msg string, args ...any)
-    SemLogger() SemLogger
-    Inspect(states S) string
-    BindHandlers(handlers any) error
-    DetachHandlers(handlers any) error
-    HasHandlers() bool
-    StatesVerified() bool
-    Tracers() []Tracer
-    DetachTracer(tracer Tracer) error
-    BindTracer(tracer Tracer) error
-    AddBreakpoint(added S, removed S, strict bool)
-    AddBreakpoint1(added string, removed string, strict bool)
-    Dispose()
-    WhenDisposed() <-chan struct{}
-    IsDisposed() bool
-    OnDispose(fn HandlerDispose)
+  // Misc (local)
+
+  // Id is [Machine.Id].
+  Id() string
+  // ParentId is [Machine.ParentId].
+  ParentId() string
+  // ParseStates is [Machine.ParseStates].
+  ParseStates(states S) S
+  // Tags is [Machine.Tags].
+  Tags() []string
+  // Context is [Machine.Ctx].
+  Context() context.Context
+  // ContextParent is [Machine.ContextParent].
+  ContextParent() context.Context
+  // String is [Machine.String].
+  String() string
+  // StringAll is [Machine.StringAll].
+  StringAll() string
+  // Log is [Machine.Log].
+  Log(msg string, args ...any)
+  // SemLogger is [Machine.SemLogger].
+  SemLogger() SemLogger
+  // Inspect is [Machine.Inspect].
+  Inspect(states S) string
+  // HandlersBind is [Machine.BindHandlers].
+  HandlersBind(handlers any, opts ...BindOpts) (string, error)
+  // HandlersBindMaps is [Machine.HandlerBindMaps].
+  HandlersBindMaps(negotiations map[string]HandlerNegotiation,
+    finals map[string]HandlerFinal, opts ...BindOpts) (string, error)
+  // HandlersDetach is [Machine.DetachHandlers].
+  HandlersDetach(bindingId string) error
+  // Handlers is [Machine.Handlers].
+  Handlers() []string
+  // StatesVerified is [Machine.StatesVerified].
+  StatesVerified() bool
+  // Tracers is [Machine.Tracers].
+  Tracers() []Tracer
+  // TracerDetach is [Machine.TracerDetach].
+  TracerDetach(id string) error
+  // TracerBind is [Machine.TracerBind].
+  TracerBind(tracer Tracer) (string, error)
+  // AddBreakpoint is [Machine.AddBreakpoint].
+  AddBreakpoint(added S, removed S, strict bool)
+  // AddBreakpoint1 is [Machine.AddBreakpoint1].
+  AddBreakpoint1(added string, removed string, strict bool)
+  // Dispose is [Machine.Dispose].
+  Dispose()
+  // WhenDisposed is [Machine.WhenDisposed].
+  WhenDisposed() <-chan struct{}
+  // IsDisposed is [Machine.IsDisposed].
+  IsDisposed() bool
+  // OnDispose is [Machine.OnDispose].
+  OnDispose(fn HandlerDispose)
 }
 ```
 

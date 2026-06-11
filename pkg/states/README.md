@@ -120,7 +120,7 @@ h := &struct {
     ReadyEnd:   ampipe.Remove(source, target, "Ready", "RpcReady"),
 }
 
-source.BindHandlers(h)
+source.HandlersBind(h)
 ```
 
 ## Extending States

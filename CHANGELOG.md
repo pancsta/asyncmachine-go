@@ -1,9 +1,24 @@
 # Changelog
 
-- [Release Notes](./docs/release-notes.md)
-- [Breaking Changes](./BREAKING.md)
+- [Release Notes](/docs/release-notes.md)
+- [Breaking Changes](/BREAKING.md)
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
+
+## [v0.19.0](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.0) (2026-06-11)
+
+- feat: release v0.19.0 [\#442](https://github.com/pancsta/asyncmachine-go/pull/442) (@pancsta)
+- fix\(helpers\): fix NewReqRemove was adding not removing, add req.Event [\#441](https://github.com/pancsta/asyncmachine-go/pull/441) (@pancsta)
+- refac\(machine\): move funcs into methods of `S` and `Schema` [\#440](https://github.com/pancsta/asyncmachine-go/pull/440) (@pancsta)
+- chore: add badges generator [\#439](https://github.com/pancsta/asyncmachine-go/pull/439) (@pancsta)
+- feat\(machine\): reuse subscription channels [\#438](https://github.com/pancsta/asyncmachine-go/pull/438) (@pancsta)
+- feat\(machine\): add `ErrInternal()` channel [\#437](https://github.com/pancsta/asyncmachine-go/pull/437) (@pancsta)
+- fix\(machine\): partially accepted auto txs shown as Canceled [\#436](https://github.com/pancsta/asyncmachine-go/pull/436) (@pancsta)
+- feat\(machine\): improve nested eval detection [\#435](https://github.com/pancsta/asyncmachine-go/pull/435) (@pancsta)
+- feat\(machine\): add per-state generic typed args [\#434](https://github.com/pancsta/asyncmachine-go/pull/434) (@pancsta)
+- fix\(rpc\): fix state ctx never closed [\#433](https://github.com/pancsta/asyncmachine-go/pull/433) (@pancsta)
+- feat\(machine\): add BindHandlerMaps for reflection-less bindings [\#432](https://github.com/pancsta/asyncmachine-go/pull/432) (@pancsta)
+- fix\(integrations\): fix listing all args for untyped MCP mutations [\#430](https://github.com/pancsta/asyncmachine-go/pull/430) (@pancsta)
 
 ## [v0.18.9](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.18.9) (2026-05-11)
 

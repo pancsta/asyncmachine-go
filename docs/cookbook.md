@@ -56,8 +56,11 @@ See also:
   - [RPC Multiplexer](#rpc-multiplexer)
   - [RPC Multiplexer with custom server](#rpc-multiplexer-with-custom-server)
   - [RPC REPL with args name completion](#rpc-repl-with-args-name-completion)
+  - [Define typesafe args per state](#define-typesafe-args-per-state)
+  - [Expose typesafe args to aRPC](#expose-typesafe-args-to-arpc)
   - [Pass typesafe args](#pass-typesafe-args)
   - [Parse typesafe args](#parse-typesafe-args)
+  - [Pass typesafe args to multiple states](#pass-typesafe-args-to-multiple-states)
   - [Validate args in negotiation](#validate-args-in-negotiation)
   - [Error handling](#error-handling)
   - [Error setters](#error-setters)
@@ -204,7 +207,7 @@ mach.SemLogger().SetArgsMapper(am.NewLogArgsMapper(0, []string{"id", "name"}))
 // defaults + custom
 mach.SemLogger().SetArgsMapperDef("id", "name")
 // log typed args
-mach.SemLogger().SetArgsMapper(LogArgs)
+mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 ```
 
 ## Minimal machine init
@@ -254,7 +257,7 @@ mach, err := am.NewCommon(ctx, "mach1", ss.Schema, ss.Names(), nil, nil, &am.Opt
 <-mach.WhenTicks("Foo", 2, nil)
 
 // wait for next time Foo is active (even if currently active)
-<-mach.WhenNextActive("Foo", 2, nil)
+<-mach.WhenNextActive("Foo", nil)
 
 // wait for a mutation to execute
 <-mach.WhenQueue(mach.Add1("Foo", nil))
@@ -820,19 +823,59 @@ mux, err := arpc.NewMux(ctx, cfg.Web.AddrAgent(), "server-"+mach.Id(), mach, &ar
 
 ```go
 arpc.MachReplEnv(mach, &arpc.ReplOpts{
-    AddrDir:  "tmp",
-    Args:     ARpc{},
-    ParseRpc: ParseRpc,
+    AddrDir:   "tmp",
+    Args:      ArgsRpc,
 })
+```
+
+## Define typesafe args per state
+
+```go
+// common def
+
+const APrefix = "template"
+
+type Args struct {
+  am.ArgsBase `json:"-"`
+}
+
+func (Args) ArgsPrefix() string {
+  return APrefix
+}
+
+// ----- per state def
+
+type ABaz struct {
+  // shared pkg args
+  Args `json:"-"`
+  // Address with logging.
+  Addr string `log:"addr"`
+}
+
+func (ABaz) ArgsState() string {
+  return ss.Baz
+}
+```
+
+## Expose typesafe args to aRPC
+
+```go
+// ArgsRpc will be available in the REPL.
+var ArgsRpc = []am.ArgsApi{ABaz{}}
+
+func init() {
+  for _, arg := range ArgsRpc {
+    gob.Register(arg)
+  }
+}
 ```
 
 ## Pass typesafe args
 
 ```go
 // Example with typed state names (ss) and typed arguments (A).
-mach.Add1(ss.KillingWorker, Pass(&A{
-    ConnAddr:   ":5555",
-    WorkerAddr: ":5556",
+mach.Add1(ss.Baz, am.Pass(&ABaz{
+    Addr:   ":5555",
 }))
 ```
 
@@ -840,10 +883,20 @@ mach.Add1(ss.KillingWorker, Pass(&A{
 
 ```go
 func (p *BasePage) ConfigState(e *am.Event) {
-    args := ParseArgs(e.Args)
+    args := am.ParseArgs[ABaz](e.Args)
 
-    p.boot.Config = args.Config
+    p.boot.Addr = args.Addr
 }
+```
+
+## Pass typesafe args to multiple states
+
+```go
+// Example with typed state names (ss) and typed arguments (A).
+mach.Add1(ss.Baz, am.PassMerge(
+    am.Pass(&ABaz{Addr:  ":5555"}),
+    am.Pass(&ABar{Field: "..."}),
+))
 ```
 
 ## Validate args in negotiation
@@ -950,7 +1003,7 @@ func (a *Agent) StartState(e *am.Event) {
   mach.EvRemove1(e, s.State, nil)
   // only mutates if err != nil
   mach.EvAddErr(e,
-    mach.BindHandlers(a.handlersWeb), nil)
+    mach.HandlersBind(a.handlersWeb))
 }
 ```
 

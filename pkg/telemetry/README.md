@@ -91,7 +91,7 @@ var tracer trace.Tracer
 machTracer := amtele.NewOtelMachTracer(tracer, &amtele.OtelMachTracerOpts{
     SkipTransitions: false,
 })
-mach.BindTracer(machTracer)
+mach.TracerBind(machTracer)
 ```
 
 ## OpenTelemetry Logger
@@ -261,7 +261,7 @@ p := amgencli.GrafanaParams{
 }
 t := &amgen.SyncTracer{p: p}
 
-mach.BindTracer(t)
+mach.TracerBind(t)
 ```
 
 ## Inheritance

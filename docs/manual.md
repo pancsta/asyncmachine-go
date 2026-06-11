@@ -62,7 +62,7 @@
 ## Legend
 
 Examples here use a string representations of state machines in the format of [`(ActiveState:\d) [InactiveState:\d]`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.StringAll)
-, eg `(Foo:1) [Bar:0 Baz:0]`. Variables with state machines are called `mach` and the following package aliases are
+, eg `(Foo:1) [Bar:0 Baz:0]`. Variables with state machines are called `Mach` and the following package aliases are
 used:
 
 - `am` is [`pkg/machine`](/pkg/machine)
@@ -649,7 +649,7 @@ func (h *Handler) hScrollToTx(ctx context.Context) error {
 ### Defining Handlers
 
 Handlers are defined as struct methods. Each machine can have many handler structs bound to itself using
-[`Machine.BindHandlers`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.BindHandlers),
+[`Machine.HandlersBind`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.HandlersBind),
 although at least one of the structs should embed the provided `am.ExceptionHandler` (or provide its own). Any existing
 struct can be used for handlers, as long as there's no name conflict.
 
@@ -672,7 +672,7 @@ func (h *Handlers) FooEnter(e *am.Event) bool {
 
 func main() {
     // ...
-    err := mach.BindHandlers(&Handlers{})
+    err := mach.HandlersBind(&Handlers{})
 }
 ```
 
@@ -748,7 +748,7 @@ mach := am.New(ctx, am.Schema{
     },
     "Bar": {}
 }, nil)
-_ = mach.BindHandlers(&Handlers{})
+_ = mach.HandlersBind(&Handlers{})
 
 // ...
 
@@ -1165,7 +1165,7 @@ Foo
 ### Waiting
 
 We can subscribe to almost any state mutation using the "when methods". Subscriptions do not allocate goroutines, as
-they use [machine time](#clock-and-context) to push.
+they use [machine time](#clock-and-context) to push. The same wait channels are reused.
 
 ```go
 // wait until FileDownloaded becomes active
@@ -1250,7 +1250,7 @@ Foo Bar
 
 Side effects:
 
-- disposing the passed context will close a wait channel
+- disposing the passed context will close a wait channel, but only after the machine ticks
 - disposing a machine will close all wait channels
 
 ### Error Handling
@@ -1266,7 +1266,7 @@ Advised error handling strategy (used by [`/pkg/node`](/pkg/node)):
   - but without being a [`Multi` state](#multi-states), so it has [state context](#clock-and-context)
 - create regular sentinel errors, like `ErrRpc`
 - create a separate mutation function for each sentinel error, like
-  - `func AddErrWorker(event *am.Event, mach *am.Machine, err error, args am.A) error`
+  - `func AddErrWorker(event *am.Event, mach *am.Machine, err error, args ...am.A) am.Result`
 - one error state can be responsible for many sentinel errors
 
 Error handling methods:
@@ -1317,15 +1317,17 @@ err: fake err
 **Example** - AddErrRpc wraps an error in the ErrRpc sentinel and adds to a machine as ErrNetwork
 
 ```go
-func AddErrRpc(mach *am.Machine, err error, args am.A) {
+func AddErrRpc(mach *am.Machine, err error, args am.A) am.Result {
     err = fmt.Errorf("%w: %w", ErrRpc, err)
-    mach.AddErrState(states.BasicStates.ErrNetwork, err, args)
+    return mach.AddErrState(states.BasicStates.ErrNetwork, err, args)
 }
 ```
 
 Side effects:
 
 - it's not possible to use `Machine.AddErr*` methods inside `Exception*` handlers
+- `nil` errors don't trigger mutations via `Machine.*AddErr*()` methods
+- `context.Canceled` errors don't trigger mutations via `Machine.*AddErr*()` methods (unless wrapped)
 
 ### Catching Panics
 
@@ -1372,7 +1374,7 @@ func TestPartialFinalPanic(t *testing.T) {
     captureLog(t, m, &log)
 
     // bind handlers
-    err := m.BindHandlers(&TestPartialFinalPanicHandlers{})
+    err := m.HandlersBind(&TestPartialFinalPanicHandlers{})
     assert.NoError(t, err)
 
     // test
@@ -1706,7 +1708,7 @@ var (
 )
 ```
 
-States are commonly aliased as `ss` (first-last rune), as they are constantly being referenced, while imports of
+States are commonly aliased as `ssP` (first-last rune), as they are constantly being referenced, while imports of
 external schema files have the package name added, eg `ssrpc`. It's also crucial to ["verify" states](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.VerifyStates),
 as map keys have a random order.
 

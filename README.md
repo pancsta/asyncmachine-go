@@ -1,10 +1,13 @@
 [![](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
 [![](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
 [![website](https://img.shields.io/badge/asyncmachine-.dev-blue)](https://asyncmachine.dev)
-![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc-pkg.json)
-![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/loc-tools.json)
-![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/tests.json)
-![](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/pancsta/c6032233dc1d632732ecdc1a4c119850/raw/tests-pkg.json)
+![](https://pancsta.github.io/assets/asyncmachine-go/badges/loc-pkg.svg)
+![](https://pancsta.github.io/assets/asyncmachine-go/badges/loc-tools.svg)
+![](https://pancsta.github.io/assets/asyncmachine-go/badges/tests.svg)
+![](https://pancsta.github.io/assets/asyncmachine-go/badges/tests-pkg.svg)
+![](https://pancsta.github.io/assets/asyncmachine-go/badges/coverage-machine.svg)
+![](https://pancsta.github.io/assets/asyncmachine-go/badges/coverage-pkg.svg)
+![](https://pancsta.github.io/assets/asyncmachine-go/badges/coverage-tools.svg)
 ![](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
 [![](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
 [![](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
@@ -144,7 +147,7 @@ if err != nil {
 
 **Handlers** - [Aspect Oriented](https://en.wikipedia.org/wiki/Aspect-oriented_programming) transition handlers.
 
-```goz
+```go
 // can Foo activate?
 func (h *Handlers) FooEnter(e *am.Event) bool {
     return true

@@ -63,9 +63,9 @@ Yes, all the public methods of `pkg/machine` are thread safe.
 ## Is asyncmachine single-threaded?
 
 The queue executes on the thread which caused the mutation, until fully drained. The handlers execute serially in
-separate goroutines each. Each handler usually forks another goroutine to unblock the next handler. The amount of active
-goroutines can be limited with `amhelp.Pool` (`errgroup`) per a state, machine, or both. It's a form of structured
-concurrency.
+a dedicated goroutine (per machine). Each handler often forks a background goroutine to unblock the next handler. The
+amount of active goroutines can be limited with `Machine.PoolFork` per-state, machine, or both. It's a
+form of structured concurrency.
 
 ## What are the downsides?
 
@@ -79,7 +79,7 @@ as a separate state.
 
 ## What's the origin of asyncmachine?
 
-It was a [self-research prototype](https://github.com/TobiaszCudnik/asyncmachine) between 2012 and 2019. There's a
+It was a [solo-research prototype](https://github.com/TobiaszCudnik/asyncmachine) between 2012 and 2019. There's a
 [video demo](http://tobiaszcudnik.github.io/asyncmachine-inspector/sample.mp4).
 
 ## How do I do X/Y/Z in asyncmachine?

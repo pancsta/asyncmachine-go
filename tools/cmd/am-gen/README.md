@@ -225,7 +225,7 @@ p := amgencli.GrafanaParams{
 }
 t := &amgen.SyncTracer{p: p}
 
-mach.BindTracer(t)
+mach.TracerBind(t)
 ```
 
 ### Manual Grafana Setup (shell)
