@@ -850,14 +850,15 @@ func (t *Transition) emitEvents() Result {
 		if m.Not(called) {
 			return Executed
 		} else {
-			// TODO error?
 			return Canceled
 		}
 	} else {
-		if m.Is(t.TargetStates()) {
+		// partial auto acceptance
+		if t.IsAuto() && len(t.TargetStates()) > len(t.StatesBefore()) {
+			return Executed
+		} else if !t.IsAuto() && m.Is(t.TargetStates()) {
 			return Executed
 		} else {
-			// TODO error?
 			return Canceled
 		}
 	}
