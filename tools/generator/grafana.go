@@ -28,7 +28,8 @@ func GenDashboard(p cli.GrafanaParams) (*dashboard.Builder, error) {
 	for _, id := range strings.Split(p.Ids, ",") {
 		pId := telemetry.NormalizeId(id)
 
-		options = append(options, dashboard.Row("Mach: "+id,
+		options = append(options, dashboard.Row(
+			"Mach: "+id,
 
 			row.WithTimeSeries(
 				"Transitions",
@@ -146,7 +147,8 @@ func GenDashboard(p cli.GrafanaParams) (*dashboard.Builder, error) {
 				logs.Height("800px"),
 				logs.DataSource("Loki"),
 				logs.WithLokiTarget(
-					`{service_name="`+source+`", asyncmachine_id="`+id+`"}`),
+					`{service_name="`+source+`", asyncmachine_id="`+id+`"}`,
+				),
 			),
 		))
 	}

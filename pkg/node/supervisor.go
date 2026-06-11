@@ -142,7 +142,8 @@ func NewSupervisor(
 	err := amhelp.SchemaImplements(workerSchema, states.WorkerStates.Names())
 	if err != nil {
 		err := fmt.Errorf(
-			"worker has to implement am/node/states/WorkerStates: %w", err)
+			"worker has to implement am/node/states/WorkerStates: %w", err,
+		)
 		return nil, err
 	}
 
@@ -218,7 +219,8 @@ func NewSupervisor(
 	err = amhelp.Implements(mach.StateNames(), ssS.Names())
 	if err != nil {
 		err := fmt.Errorf(
-			"client has to implement am/node/states/SupervisorStates: %w", err)
+			"client has to implement am/node/states/SupervisorStates: %w", err,
+		)
 		return nil, err
 	}
 

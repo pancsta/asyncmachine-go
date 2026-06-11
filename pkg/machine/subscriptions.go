@@ -45,7 +45,6 @@ type Subscriptions struct {
 func NewSubscriptionManager(
 	mach Api, clock Clock, is, not InternalCheckFunc, log InternalLogFunc,
 ) *Subscriptions {
-
 	ch := make(chan struct{})
 	close(ch)
 
@@ -189,7 +188,8 @@ func (sm *Subscriptions) gcWhenBinding(binding *WhenBinding, gcCtx bool) {
 		// remove GC ctx
 		if binding.Ctx != nil && gcCtx {
 			sm.whenCtx[binding.Ctx] = slicesWithout(
-				sm.whenCtx[binding.Ctx], binding)
+				sm.whenCtx[binding.Ctx], binding,
+			)
 
 			if len(sm.whenCtx[binding.Ctx]) == 0 {
 				delete(sm.whenCtx, binding.Ctx)
@@ -294,7 +294,8 @@ func (sm *Subscriptions) gcWhenTimeBinding(
 		// remove GC ctx
 		if binding.Ctx != nil && gcCtx {
 			sm.whenTimeCtx[binding.Ctx] = slicesWithout(
-				sm.whenTimeCtx[binding.Ctx], binding)
+				sm.whenTimeCtx[binding.Ctx], binding,
+			)
 
 			if len(sm.whenTimeCtx[binding.Ctx]) == 0 {
 				delete(sm.whenTimeCtx, binding.Ctx)
@@ -369,7 +370,8 @@ func (sm *Subscriptions) gcWhenArgsBinding(
 	// remove GC ctx
 	if binding.ctx != nil && gcCtx {
 		sm.whenArgsCtx[binding.ctx] = slicesWithout(
-			sm.whenArgsCtx[binding.ctx], binding)
+			sm.whenArgsCtx[binding.ctx], binding,
+		)
 
 		if len(sm.whenArgsCtx[binding.ctx]) == 0 {
 			delete(sm.whenArgsCtx, binding.ctx)
@@ -381,7 +383,8 @@ func (sm *Subscriptions) gcWhenArgsBinding(
 		delete(sm.whenArgs, binding.handler)
 	} else {
 		sm.whenArgs[binding.handler] = slicesWithout(
-			sm.whenArgs[binding.handler], binding)
+			sm.whenArgs[binding.handler], binding,
+		)
 	}
 
 	// log TODO sem logger
@@ -441,7 +444,8 @@ func (sm *Subscriptions) gcWhenQueryBinding(
 	// remove GC ctx
 	if binding.ctx != nil && gcCtx {
 		sm.whenQueryCtx[binding.ctx] = slicesWithout(
-			sm.whenQueryCtx[binding.ctx], binding)
+			sm.whenQueryCtx[binding.ctx], binding,
+		)
 
 		if len(sm.whenQueryCtx[binding.ctx]) == 0 {
 			delete(sm.whenQueryCtx, binding.ctx)
@@ -675,7 +679,8 @@ func (sm *Subscriptions) WhenNot(
 }
 
 // WhenArgs returns a channel that will be closed when the passed state
-// becomes active with all the passed args. ArgsBase are compared using the native
+// becomes active with all the passed args. ArgsBase are compared using
+// the native
 // '=='. It's meant to be used with async Multi states, to filter out
 // a specific call.
 //
@@ -807,7 +812,6 @@ func (sm *Subscriptions) WhenTime(
 func (sm *Subscriptions) WhenQuery(
 	fn func(clock Clock) bool, ctx context.Context,
 ) <-chan struct{} {
-
 	// close early
 	if ctx != nil && ctx.Err() != nil {
 		return sm.Closed

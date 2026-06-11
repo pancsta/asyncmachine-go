@@ -150,7 +150,8 @@ func NewServer(
 	}
 	if !stateSource.StatesVerified() {
 		return nil, fmt.Errorf(
-			"net source states not verified, call VerifyStates()")
+			"net source states not verified, call VerifyStates()",
+		)
 	}
 	hasHandlers := len(stateSource.Handlers()) > 0
 
@@ -159,7 +160,8 @@ func NewServer(
 		err := fmt.Errorf(
 			"%w: NetSourceMach with handlers has to implement "+
 				"pkg/rpc/states/StateSourceStatesDef",
-			am.ErrSchema)
+			am.ErrSchema,
+		)
 
 		return nil, err
 	}
@@ -966,7 +968,8 @@ func (s *Server) RemoteAdd(
 	var val am.Result
 	if req.Event != nil {
 		val = s.Source.EvAdd(req.Event, amhelp.IndexesToStates(
-			s.Source.StateNames(), req.States), args)
+			s.Source.StateNames(), req.States,
+		), args)
 	} else {
 		// TODO eval
 		val = s.Source.Add(amhelp.IndexesToStates(s.Source.StateNames(),
@@ -1208,7 +1211,9 @@ func BindServerMulti(
 }
 
 // BindServerRpcReady bind RpcReady using Add to a custom multi state.
-func BindServerRpcReady(source, target *am.Machine, rpcReady string) (string, error) {
+func BindServerRpcReady(source, target *am.Machine,
+	rpcReady string,
+) (string, error) {
 	// TODO use ampipe.Bind
 	h := &struct {
 		RpcReadyState am.HandlerFinal

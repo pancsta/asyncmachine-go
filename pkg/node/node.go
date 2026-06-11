@@ -52,35 +52,45 @@ var (
 // error mutations
 
 // AddErrWorker wraps an error in the ErrWorker sentinel and adds to a machine.
-func AddErrWorker(event *am.Event, mach *am.Machine, err error, args am.A) am.Result {
+func AddErrWorker(event *am.Event, mach *am.Machine,
+	err error, args am.A,
+) am.Result {
 	err = fmt.Errorf("%w: %w", ErrWorker, err)
 	return mach.EvAddErrState(event, ssS.ErrWorker, err, args)
 }
 
 // AddErrWorkerStr wraps a msg in the ErrWorker sentinel and adds to a machine.
 // TODO add event param
-func AddErrWorkerStr(event *am.Event, mach *am.Machine, msg string, args am.A) am.Result {
+func AddErrWorkerStr(event *am.Event, mach *am.Machine,
+	msg string, args am.A,
+) am.Result {
 	err := fmt.Errorf("%w: %s", ErrWorker, msg)
 	return mach.EvAddErrState(event, ssS.ErrWorker, err, args)
 }
 
 // AddErrPool wraps an error in the ErrPool sentinel and adds to a machine.
 // TODO add event param
-func AddErrPool(event *am.Event, mach *am.Machine, err error, args am.A) am.Result {
+func AddErrPool(event *am.Event, mach *am.Machine,
+	err error, args am.A,
+) am.Result {
 	wrappedErr := fmt.Errorf("%w: %w", ErrPool, err)
 	return mach.EvAddErrState(event, ssS.ErrPool, wrappedErr, args)
 }
 
 // AddErrPoolStr wraps a msg in the ErrPool sentinel and adds to a machine.
 // TODO add event param
-func AddErrPoolStr(event *am.Event, mach *am.Machine, msg string, args am.A) am.Result {
+func AddErrPoolStr(event *am.Event, mach *am.Machine,
+	msg string, args am.A,
+) am.Result {
 	err := fmt.Errorf("%w: %s", ErrPool, msg)
 	return mach.EvAddErrState(event, ssS.ErrPool, err, args)
 }
 
 // AddErrRpc wraps an error in the ErrRpc sentinel and adds to a machine.
 // TODO add event param
-func AddErrRpc(event *am.Event, mach *am.Machine, err error, args am.A) am.Result {
+func AddErrRpc(event *am.Event, mach *am.Machine,
+	err error, args am.A,
+) am.Result {
 	wrappedErr := fmt.Errorf("%w: %w", ErrRpc, err)
 	return mach.EvAddErrState(event, ssS.ErrNetwork, wrappedErr, args)
 }

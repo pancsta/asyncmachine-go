@@ -167,6 +167,10 @@ func NewTopic(
 		reqInfo:            make(map[string]time.Time),
 		reqUpdate:          make(map[string]time.Time),
 	}
+	if suffix == "" {
+		suffix = utils.RandId(2)
+	}
+
 	id := "ps-" + name + "-" + suffix
 
 	// attach tracers
@@ -177,10 +181,6 @@ func NewTopic(
 			return nil, err
 		}
 		t.tracers[i] = tracer
-	}
-
-	if suffix == "" {
-		suffix = utils.RandId(2)
 	}
 
 	mach, err := am.NewCommon(ctx, id, states.TopicSchema,
@@ -274,7 +274,8 @@ func (t *Topic) StartState(e *am.Event) {
 			security = libp2p.Identity(privk)
 		}
 
-		host, err := libp2p.New(transport,
+		host, err := libp2p.New(
+			transport,
 			// libp2p.Transport(tcpTransport.NewTCPTransport),
 			// libp2p.Transport(webtransport.New),
 			// libp2p.Transport(webrtc.New),
@@ -1651,7 +1652,8 @@ func (t *Topic) ReqMissingPeersState(e *am.Event) {
 	reqPids := []string{}
 	pids := slices.Concat(
 		slices.Collect(maps.Keys(t.missingPeers)),
-		slices.Collect(maps.Keys(t.pendingMachUpdates)))
+		slices.Collect(maps.Keys(t.pendingMachUpdates)),
+	)
 	for i := 0; i < maxTries && len(reqPids) < amount; i++ {
 		// random
 		pid := pids[rand.Intn(len(pids))]

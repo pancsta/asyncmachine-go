@@ -414,7 +414,8 @@ func (r *Renderer) outputMermaid(ctx context.Context) error {
 	r.cleanBuffer()
 	if r.OutputElk {
 		r.buf.WriteString(
-			"%%{init: {'flowchart': {'defaultRenderer': 'elk'}} }%%\n")
+			"%%{init: {'flowchart': {'defaultRenderer': 'elk'}} }%%\n",
+		)
 	}
 	r.buf.WriteString("flowchart LR\n")
 
@@ -580,7 +581,8 @@ func (r *Renderer) outputMermaidMach(
 
 		if len(active) > 0 {
 			r.buf.WriteString(
-				"\t\tclass " + strings.Join(active, ",") + " _active;\n")
+				"\t\tclass " + strings.Join(active, ",") + " _active;\n",
+			)
 		}
 	}
 

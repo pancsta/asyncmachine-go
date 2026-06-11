@@ -283,9 +283,11 @@ func newMcpServer(d *Debugger) (*mcpServer, error) {
 	// bind keys from keyboard.go
 	keys := slices.Collect(maps.Keys(d.getKeystrokes()))
 	keys = append(keys, "enter", "tab", "shift+tab", "up", "down")
-	pressKey := mcp.NewTool("PressKey",
+	pressKey := mcp.NewTool(
+		"PressKey",
 		mcp.WithDescription("Press a key combination"),
-		mcp.WithString("key",
+		mcp.WithString(
+			"key",
 			mcp.Required(),
 			mcp.Description("Name of the state to add"),
 			mcp.Enum(keys...),
@@ -296,34 +298,43 @@ func newMcpServer(d *Debugger) (*mcpServer, error) {
 
 	// TUI
 
-	textScreen := mcp.NewTool("TextScreen",
+	textScreen := mcp.NewTool(
+		"TextScreen",
 		mcp.WithDescription("Get text content of the TUI screen"),
 	)
-	textReader := mcp.NewTool("TextLogReader",
+	textReader := mcp.NewTool(
+		"TextLogReader",
 		mcp.WithDescription("Get text content of the Log Reader pane"),
 	)
-	textHelp := mcp.NewTool("TextHelp",
+	textHelp := mcp.NewTool(
+		"TextHelp",
 		mcp.WithDescription("Get text content of the Help dialog"),
 	)
-	textLog := mcp.NewTool("TextLog",
+	textLog := mcp.NewTool(
+		"TextLog",
 		mcp.WithDescription("Get text content of the current log buffer"),
 	)
-	textClients := mcp.NewTool("TextClients",
+	textClients := mcp.NewTool(
+		"TextClients",
 		mcp.WithDescription("Get a full clients list"),
 	)
-	netGraph := mcp.NewTool("NetworkGraph",
+	netGraph := mcp.NewTool(
+		"NetworkGraph",
 		mcp.WithDescription("Get an XML of the network graph"),
 	)
-	txSteps := mcp.NewTool("Transition Steps",
+	txSteps := mcp.NewTool(
+		"Transition Steps",
 		mcp.WithDescription(
-			"Get a markdown sequence diagram of the transition steps"),
+			"Get a markdown sequence diagram of the transition steps",
+		),
 	)
 
 	// methods
 
 	goToMachAddr := mcp.NewTool("GoToMachAddr",
 		mcp.WithDescription("Show a specific machine, transition, or mach time"),
-		mcp.WithString("url",
+		mcp.WithString(
+			"url",
 			mcp.Required(),
 			mcp.Description("Address to go to"),
 		))
@@ -370,7 +381,8 @@ func (m *mcpServer) textReader(
 	// check if reader visible
 	if m.d.Mach.Not1(ss.LogReaderVisible) {
 		return mcp.NewToolResultError(fmt.Sprintf(
-			"state %s not active", ss.LogReaderVisible)), nil
+			"state %s not active", ss.LogReaderVisible,
+		)), nil
 	}
 
 	return mcp.NewToolResultText(m.d.LogReaderText()), nil

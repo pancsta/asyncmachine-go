@@ -320,7 +320,8 @@ func (mt *OtelMachTracer) NewSubmachine(parent, mach am.Api) {
 		// create a group span for submachines
 		_, submachGroupSpan := mt.Tracer.Start(
 			data.machTrace, strconv.Itoa(data.Index)+":submachines",
-			trace.WithAttributes(attribute.String("mach_id", parent.Id())))
+			trace.WithAttributes(attribute.String("mach_id", parent.Id())),
+		)
 		mt.parentSpans[parent.Id()] = submachGroupSpan
 		// groups are only for nesting, so end it right away
 		submachGroupSpan.End()

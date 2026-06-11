@@ -222,7 +222,8 @@ func (g *SchemaGenerator) Output() string {
 	// struct
 	out += fmt.Sprintf(
 		"// %sSchema represents all relations and properties of [%sStates].\n",
-		g.Name, g.Name)
+		g.Name, g.Name,
+	)
 	var indent string
 	if g.Mach.Is1(ssG.Inherit) {
 		indent = "\t"

@@ -92,7 +92,8 @@ func matrixEmptyRow(d *Debugger, row, colsCount, highlightIndex int) {
 		d.matrix.SetCellSimple(row, ii, "   ")
 		if ii == highlightIndex {
 			d.matrix.GetCell(row, ii).SetBackgroundColor(
-				tcell.GetColor(theme.Highlight3))
+				tcell.GetColor(theme.Highlight3),
+			)
 		}
 	}
 }

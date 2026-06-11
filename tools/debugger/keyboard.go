@@ -192,7 +192,8 @@ func (d *Debugger) hSearchSchemaClients(inputHandler *cbind.Configuration) {
 						}
 
 						return true
-					})
+					},
+				)
 
 				if nodeMatch != nil {
 					// handle StateNameSelected

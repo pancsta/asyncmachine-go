@@ -76,7 +76,6 @@ tasks:
         {{.CLI_ARGS}}
 
   am-dbg-narrow: task am-dbg -- --view-narrow
-
   am-dbg-reader: task am-dbg -- --view-narrow --view-reader
 
   am-dbg-race:
@@ -461,16 +460,17 @@ tasks:
       - $(go env GOPATH)/bin/golangci-lint run --fix --timeout 15m
 
   lint-md:
-    cmd: find . -type f -path '**/*.md'
-          -not -path '*am-vis.md'
-          -not -path '*deps.md'
-          -not -path './\.*'
-          -not -path './tmp*'
-          -not -path './CHANGELOG.md'
-          -not -path './docs/editors*'
-          -not -path './docs/release-notes.md'
-          -not -path './dist*' |
-            xargs mdl -g -c config/mdlrc
+    # TODO migrate to https://github.com/rvben/rumdl
+#    cmd: find . -type f -path '**/*.md'
+#          -not -path '*am-vis.md'
+#          -not -path '*deps.md'
+#          -not -path './\.*'
+#          -not -path './tmp*'
+#          -not -path './CHANGELOG.md'
+#          -not -path './docs/editors*'
+#          -not -path './docs/release-notes.md'
+#          -not -path './dist*' |
+#            xargs mdl -g -c config/mdlrc
 
   check-fmt:
     silent: false

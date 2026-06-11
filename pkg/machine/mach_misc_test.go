@@ -210,7 +210,8 @@ type TestStatesFileGroupsDef struct {
 var TestStatesFileStruct = TestStatesFileSuperSchema.Merge(
 	Schema{
 		testStates.Bar: {},
-	})
+	},
+)
 
 // exports and groups
 var (

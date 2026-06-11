@@ -627,7 +627,8 @@ func (s Schema) Parse() (Schema, error) {
 			if slices.Contains(state.Remove, required) {
 				errs = errors.Join(errs, fmt.Errorf(
 					"%w: require-remove conflict for %s to %s",
-					ErrSchema, name, required))
+					ErrSchema, name, required,
+				))
 			}
 		}
 
@@ -886,15 +887,6 @@ func closeSafe[T any](ch chan T) {
 	case <-ch:
 	default:
 		close(ch)
-	}
-}
-
-func padString(str string, length int, pad string) string {
-	for {
-		str += pad
-		if len(str) > length {
-			return str[0:length]
-		}
 	}
 }
 

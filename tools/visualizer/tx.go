@@ -16,7 +16,6 @@ import (
 
 	merascii "github.com/AlexanderGrooff/mermaid-ascii/pkg/sequence"
 	"github.com/alitto/pond/v2"
-	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 	"oss.terrastruct.com/d2/d2graph"
@@ -26,6 +25,8 @@ import (
 	"oss.terrastruct.com/d2/d2themes/d2themescatalog"
 	d2log "oss.terrastruct.com/d2/lib/log"
 	"oss.terrastruct.com/d2/lib/textmeasure"
+
+	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -92,7 +93,8 @@ func (t *Transition) info(statesIndex am.S) string {
 	} else {
 		info += "- Canceled "
 	}
-	info += p.Sprintf("(added: %d, removed: %d, touched: %d)\n",
+	info += p.Sprintf(
+		"(added: %d, removed: %d, touched: %d)\n",
 		len(t.TxParsed.StatesAdded), len(t.TxParsed.StatesRemoved),
 		len(t.TxParsed.StatesTouched),
 	)
@@ -117,7 +119,8 @@ func (t *Transition) info(statesIndex am.S) string {
 	if len(t.StateTrace) > 0 {
 		info += "- State Trace:\n"
 		for _, trace := range t.StateTrace {
-			info += p.Sprintf("  - [%s](%s) t%v\n",
+			info += p.Sprintf(
+				"  - [%s](%s) t%v\n",
 				strings.ReplaceAll(strings.ReplaceAll(trace.Label,
 					"[::b]", ""), "[::-]", ""),
 				trace.Source.StringBase(),
@@ -255,7 +258,8 @@ func (t *Transition) d2Gen(
 ) (string, string, error) {
 	// D2
 
-	txtFull := utils.Sp(`
+	txtFull := utils.Sp(
+		`
 		shape: sequence_diagram
 		style.fill: black
 		
@@ -281,7 +285,8 @@ func (t *Transition) d2Gen(
 	// TODO config, extract
 	stepsPerPart := 15
 	svgs := make([]string, 2+int(math.Ceil(
-		float64(len(stepsParts))/float64(stepsPerPart))))
+		float64(len(stepsParts))/float64(stepsPerPart),
+	)))
 	mx := sync.Mutex{}
 
 	// START
@@ -604,7 +609,8 @@ func mergeSvgs(ctx context.Context, svgData []string) (string, error) {
 	buf.WriteString(fmt.Sprintf(
 		"<svg xmlns=\"http://www.w3.org/2000/svg\" "+
 			"viewBox=\"0 0 %g %g\" width=\"%g\" height=\"%g\">\n",
-		maxWidth, trimmedTotalHeight, maxWidth, trimmedTotalHeight))
+		maxWidth, trimmedTotalHeight, maxWidth, trimmedTotalHeight,
+	))
 
 	// 3. Insert each parsed svg, trimming joining edges and offsetting Y
 	currentY := 0.0
@@ -641,7 +647,8 @@ func mergeSvgs(ctx context.Context, svgData []string) (string, error) {
 
 		buf.WriteString(fmt.Sprintf(
 			`  <svg y="%g" width="%g" height="%g" viewBox="%g %g %g %g">`+"\n",
-			currentY, p.w, newH, p.minX, newMinY, p.vbW, newVbH))
+			currentY, p.w, newH, p.minX, newMinY, p.vbW, newVbH,
+		))
 		buf.WriteString(p.svg.Content)
 		buf.WriteString("\n  </svg>\n")
 

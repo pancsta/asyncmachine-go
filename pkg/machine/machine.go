@@ -602,7 +602,9 @@ func (m *Machine) WhenTime(
 	// close early on invalid
 	if len(states) != len(times) || len(states) == 0 {
 		err := fmt.Errorf(
-			"whenTime: states and times must have the same length (%s) > 0", j(states))
+			"whenTime: states and times must have the "+
+				"same length (%s) > 0", j(states),
+		)
 		m.AddErr(err, nil)
 
 		return m.subs.Closed
@@ -703,7 +705,8 @@ func (m *Machine) WhenQueue(tick Result) <-chan struct{} {
 }
 
 // WhenArgs returns a channel that will be closed when the passed state
-// becomes active with all the passed args. ArgsBase are compared using the native
+// becomes active with all the passed args. ArgsBase are compared using
+// the native
 // '=='. It's meant to be used with async Multi states, to filter out
 // a specific call.
 //
@@ -1467,11 +1470,9 @@ func (m *Machine) isNestedEval(source string) bool {
 	if handler != "" {
 		err = fmt.Errorf("%w: eval:%s called directly in handler %s(),"+
 			" skipping", ErrNestedEval, source, handler)
-
 	} else if eval != "" {
 		err = fmt.Errorf("%w: eval:%s called directly in eval.%s, skipping",
 			ErrNestedEval, source, eval)
-
 	} else {
 		err = fmt.Errorf("%w: eval:%s called directly in ???, skipping",
 			ErrNestedEval, source)
@@ -1567,7 +1568,6 @@ func (m *Machine) HandlersBindMaps(
 	negotiations map[string]HandlerNegotiation, finals map[string]HandlerFinal,
 	opts ...BindOpts,
 ) (string, error) {
-
 	return m.bindHandlers(m.newHandlerMap(negotiations, finals),
 		optBindOpts(opts))
 }
@@ -1770,7 +1770,8 @@ func (m *Machine) mustParseStates(states S) S {
 		if _, ok := m.schemaSafe()[states[i]]; !ok {
 			panic(fmt.Errorf(
 				"%w: %s not defined in schema for %s", ErrStateMissing,
-				states[i], m.id))
+				states[i], m.id,
+			))
 		}
 		if _, ok := seen[states[i]]; !ok {
 			seen[states[i]] = struct{}{}
@@ -1853,7 +1854,8 @@ func (m *Machine) verifyStates(states S) error {
 		missing := StatesDiff(m.stateNames, checked)
 		return fmt.Errorf(
 			"error: trying to verify less states than registered for %s; "+
-				"missing: %s", m.id, j(missing))
+				"missing: %s", m.id, j(missing),
+		)
 	}
 
 	// memorize the state names order
@@ -2340,14 +2342,13 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 			continue
 		}
 		h.mx.Lock()
-		methodName := e.Name
 
 		// binding opts
 		if !strings.HasPrefix(e.Name, h.opts.StatePrefix) {
 			h.mx.Unlock()
 			continue
 		}
-		methodName = strings.TrimPrefix(e.Name, h.opts.StatePrefix)
+		methodName := strings.TrimPrefix(e.Name, h.opts.StatePrefix)
 
 		if m.semLogger.Level() >= LogEverything {
 			m.log(LogEverything, "[handle:%s] %s", h.id, methodName)
@@ -2505,21 +2506,21 @@ func (m *Machine) handlerLoop() {
 
 	// handleCall returns true to continue, or false to return
 	handleCall := func(call *handlerCall) bool {
-		ret := true
+		var ret bool
 
 		// handler signature: FooState(e *am.Event)
 		if call.event.IsValid() {
 			ret = call.Exec()
 		} else {
 			m.log(LogDecisions, "[handler:invalid] %s", call.name)
-			ret = false
 		}
 
 		// exit, a new clone is running
 		currVer := m.handlerLoopVer.Load()
 		if currVer != ver {
 			err := fmt.Errorf(
-				"deadlined handler finished, theoretical leak: %s", call.name)
+				"deadlined handler finished, theoretical leak: %s", call.name,
+			)
 			m.log(LogOps, "[error] %s", err)
 			// TODO option to disable muts
 			m.AddErr(err, nil)

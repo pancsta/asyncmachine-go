@@ -2631,7 +2631,8 @@ func (d *Debugger) SshServerState(e *am.Event) {
 		p("$ ssh %s -p %s -o UserKnownHostsFile=/dev/null "+
 			"-o StrictHostKeyChecking=no\n", d.listenHost, port)
 		d.Mach.EvAddErr(
-			e, ssh.ListenAndServe(d.params.AddrSsh, handler, optSrv), nil)
+			e, ssh.ListenAndServe(d.params.AddrSsh, handler, optSrv), nil,
+		)
 	})
 }
 

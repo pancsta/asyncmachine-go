@@ -217,7 +217,8 @@ func NewClient(
 		err := amhelp.Implements(opts.Consumer.StateNames(), ssCo.Names())
 		if err != nil {
 			err := fmt.Errorf(
-				"consumer has to implement pkg/rpc/states/ConsumerStatesDef: %w", err)
+				"consumer has to implement pkg/rpc/states/ConsumerStatesDef: %w", err,
+			)
 
 			return nil, err
 		}
@@ -769,7 +770,8 @@ func (c *Client) updateStatesSchema(resp *MsgSrvHello) {
 	l2 := len(resp.Serialized.Time)
 	if l1 != l2 {
 		c.Mach.AddErr(fmt.Errorf(
-			"resp.Serialized len invalid: %d != %d", l1, l2), nil)
+			"resp.Serialized len invalid: %d != %d", l1, l2,
+		), nil)
 		// TODO ret err
 		return
 	}

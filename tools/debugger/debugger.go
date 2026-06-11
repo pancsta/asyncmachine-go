@@ -1864,7 +1864,8 @@ func (d *Debugger) hUpdateTimelines() {
 	// progress <= max
 	d.timelineSteps.SetProgress(c.CursorStep1)
 	d.timelineSteps.SetTitle(fmt.Sprintf(
-		" Next mutation step %d / %d ", c.CursorStep1, stepsCount))
+		" Next mutation step %d / %d ", c.CursorStep1, stepsCount,
+	))
 	d.timelineSteps.SetEmptyRune(' ')
 }
 
@@ -2009,7 +2010,8 @@ func (d *Debugger) hGetTxInfo(txIdx int, title string) (string, string) {
 		}
 	}
 
-	right += fmt.Sprintf("add: %d | rm: %d | touch: %3s | ["+theme.Grey+"]%s",
+	right += fmt.Sprintf(
+		"add: %d | rm: %d | touch: %3s | ["+theme.Grey+"]%s",
 		len(parsed.StatesAdded), len(parsed.StatesRemoved),
 		strconv.Itoa(len(parsed.StatesTouched)), tStamp,
 	)
@@ -2109,7 +2111,8 @@ func (d *Debugger) hUpdateMatrixRelations() {
 		// mark selected state
 		if d.C.SelectedState == name {
 			d.matrix.GetCell(0, i).SetBackgroundColor(
-				tcell.GetColor(theme.Highlight3))
+				tcell.GetColor(theme.Highlight3),
+			)
 			highlightIndex = i
 		}
 	}
@@ -2137,7 +2140,8 @@ func (d *Debugger) hUpdateMatrixRelations() {
 		// mark called states
 		if slices.Contains(called, i) {
 			cell.SetAttributes(
-				tcell.AttrBold | tcell.AttrUnderline)
+				tcell.AttrBold | tcell.AttrUnderline,
+			)
 		}
 
 		// mark selected state
@@ -2343,7 +2347,8 @@ func (d *Debugger) hUpdateMatrixRain() {
 
 		// tail cell
 		d.matrix.SetCellSimple(rowIdx, len(index), fmt.Sprintf(
-			"  ["+theme.Grey+"]%d | %s[-]", txIdx1, tStampFmt))
+			"  ["+theme.Grey+"]%d | %s[-]", txIdx1, tStampFmt,
+		))
 		tailCell := d.matrix.GetCell(rowIdx, len(index))
 
 		// current tx

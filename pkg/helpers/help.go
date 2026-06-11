@@ -1046,7 +1046,8 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 
 type ArgsUnmarshallerFn func(args am.A) am.A
 
-// ArgsUnmarshal deserializes JSON [args] into an instance of [def] under a "State.Arg" index. Useful for REPLs.
+// ArgsUnmarshal deserializes JSON [args] into an instance of [def] under
+// a "State.Arg" index. Useful for REPLs.
 func ArgsUnmarshal[G am.ArgsApi](args am.A, def G) am.A {
 	ret := am.A{}
 	// for all registered types
@@ -1106,7 +1107,8 @@ func ArgsNames(args []am.ArgsApi) ([]string, error) {
 	return ret, nil
 }
 
-// NewArgsUnmarshaller creates a new unmarshalling function for the provided argument
+// NewArgsUnmarshaller creates a new unmarshalling function for the
+// provided argument
 // [defs].
 func NewArgsUnmarshaller(defs []am.ArgsApi) ArgsUnmarshallerFn {
 	return func(args am.A) am.A {
@@ -1154,7 +1156,8 @@ func GroupWhen1(
 	for _, mach := range machs {
 		if !mach.Has1(state) {
 			return nil, fmt.Errorf(
-				"%w: %s in machine %s", am.ErrStateMissing, state, mach.Id())
+				"%w: %s in machine %s", am.ErrStateMissing, state, mach.Id(),
+			)
 		}
 	}
 
@@ -1506,7 +1509,8 @@ func (l SlogToMachLog) Write(p []byte) (n int, err error) {
 // MachToSlog exposes machine logger as [slog.Logger].
 func MachToSlog(mach am.Api) *slog.Logger {
 	return slog.New(slog.NewTextHandler(
-		SlogToMachLog{Mach: mach}, SlogToMachLogOpts))
+		SlogToMachLog{Mach: mach}, SlogToMachLogOpts,
+	))
 }
 
 // ///// ///// /////
@@ -1657,11 +1661,13 @@ func listHandlers(handlers any, states S) ([]string, error) {
 		s1, s2 := am.IsHandler(states, method)
 		if s1 != "" && !slices.Contains(states, s1) {
 			errs = append(errs, fmt.Errorf(
-				"%w: %s from handler %s", am.ErrStateMissing, s1, method))
+				"%w: %s from handler %s", am.ErrStateMissing, s1, method,
+			))
 		}
 		if s2 != "" && !slices.Contains(states, s2) {
 			errs = append(errs, fmt.Errorf(
-				"%w: %s from handler %s", am.ErrStateMissing, s2, method))
+				"%w: %s from handler %s", am.ErrStateMissing, s2, method,
+			))
 		}
 
 		if s1 != "" || method == am.StateAny+am.SuffixEnter ||
@@ -1982,7 +1988,10 @@ func HandlerToState(handler string) string {
 		strings.TrimSuffix(
 			strings.TrimSuffix(
 				strings.TrimSuffix(handler,
-					am.SuffixState), am.SuffixEnter), am.SuffixEnd), am.SuffixExit)
+					am.SuffixState), am.SuffixEnter,
+			), am.SuffixEnd,
+		), am.SuffixExit,
+	)
 }
 
 // RandId generates a random ID of the given length (defaults to 8).

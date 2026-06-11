@@ -44,7 +44,8 @@ func (d *Debugger) hInitUiComponents() {
 			//
 			d.Mach.Add(
 				am.S{ss.SetGroup, ss.UpdateFocus, ss.TreeGroupsFocused},
-				Pass(&A{Group: opt.GetText()}))
+				Pass(&A{Group: opt.GetText()}),
+			)
 		}
 
 		d.treeGroupSkip = false
@@ -447,7 +448,8 @@ func (d *Debugger) hInitToolbar() {
 			}
 			if nextI != -1 {
 				d.toolbars[nextI].Select(
-					0, min(col, d.toolbars[nextI].GetColumnCount()-1))
+					0, min(col, d.toolbars[nextI].GetColumnCount()-1),
+				)
 				d.Mach.Add1(nextFocus, nil)
 				d.Mach.Add1(ss.UpdateFocus, nil)
 				d.hUpdateToolbar()
@@ -627,7 +629,8 @@ func (d *Debugger) hInitToolbar() {
 	}
 
 	if d.params.AddrHttp != "" {
-		d.toolbarItems[3] = slices.Insert(d.toolbarItems[3], 3,
+		d.toolbarItems[3] = slices.Insert(
+			d.toolbarItems[3], 3,
 			toolbarItem{id: types.ToolWeb, label: "web", active: func() bool {
 				return false
 			}},
@@ -1251,7 +1254,9 @@ func treeToText(tree *cview.TreeView) string {
 	tree.Draw(simscreen)
 	text := foldNewlinesRe.ReplaceAllString(
 		trimTailWhitespaceRe.ReplaceAllString(
-			cview.TextFromScreen(simscreen), "\n"), "\n")
+			cview.TextFromScreen(simscreen), "\n",
+		), "\n",
+	)
 	tree.Box = oldBox
 	return text
 }
@@ -1267,7 +1272,9 @@ func textViewToText(textView *cview.TextView) string {
 	textView.Draw(simscreen)
 	text := foldNewlinesRe.ReplaceAllString(
 		trimTailWhitespaceRe.ReplaceAllString(
-			cview.TextFromScreen(simscreen), "\n"), "\n")
+			cview.TextFromScreen(simscreen), "\n",
+		), "\n",
+	)
 	textView.Box = oldBox
 	return text
 }

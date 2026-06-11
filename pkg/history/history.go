@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/orsinium-labs/enum"
+
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"

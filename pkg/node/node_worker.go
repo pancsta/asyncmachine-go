@@ -99,7 +99,8 @@ func NewWorker(ctx context.Context, kind string, workerStruct am.Schema,
 	err = amhelp.Implements(mach.StateNames(), ssW.Names())
 	if err != nil {
 		err := fmt.Errorf(
-			"client has to implement am/node/states/WorkerStates: %w", err)
+			"client has to implement am/node/states/WorkerStates: %w", err,
+		)
 		return nil, err
 	}
 

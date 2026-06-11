@@ -34,8 +34,10 @@ type ReplApi interface {
 	NetMachArgs(machId string) []string
 }
 
-var Sp = utils.Sp
-var Pass = am.Pass
+var (
+	Sp   = utils.Sp
+	Pass = am.Pass
+)
 
 var (
 	title   = "aRPC REPL for asyncmachine.dev"
@@ -352,7 +354,6 @@ func MutationFlags(repl ReplApi, cmd *cobra.Command, groupCmd bool) {
 	_ = cmd.RegisterFlagCompletionFunc("arg", func(
 		cmd *cobra.Command, args []string, toComplete string,
 	) ([]string, cobra.ShellCompDirective) {
-
 		// TODO feat: narrow down to only mentioned states (State.Arg)
 		return repl.NetMachArgs(args[0]), cobra.ShellCompDirectiveDefault
 	})
@@ -544,7 +545,8 @@ func WaitingCmds(repl *Repl) []*cobra.Command {
 			// Check if the number of states and times are the same
 			if len(states) != len(times) {
 				return fmt.Errorf(
-					"the number of states (-s) and times (-t) must be the same")
+					"the number of states (-s) and times (-t) must be the same",
+				)
 			}
 			if len(states) == 0 {
 				return fmt.Errorf("no states (-s) specified")
@@ -711,7 +713,8 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 
 			// TODO get the list via a state, take total from list of registered
 			//  (named) addresses
-			repl.Print(strings.Repeat("%-15s %d\n", 4),
+			repl.Print(
+				strings.Repeat("%-15s %d\n", 4),
 				"Connected:", conn,
 				"Connecting:", inprog,
 				"Disconnected:", disconn,
@@ -1053,7 +1056,8 @@ func listFlagsToFilters(cmd *cobra.Command) (*ListFilters, error) {
 
 	// inactive
 	if inactiveStates, err := cmd.Flags().GetStringArray(
-		"inactive"); err != nil {
+		"inactive",
+	); err != nil {
 		return nil, err
 	} else if len(inactiveStates) > 0 {
 		filters.StatesInactive = inactiveStates
@@ -1075,7 +1079,8 @@ func listFlagsToFilters(cmd *cobra.Command) (*ListFilters, error) {
 
 	// mtime-states
 	if mtimeStates, err := cmd.Flags().GetStringArray(
-		"mtime-states"); err != nil {
+		"mtime-states",
+	); err != nil {
 		return nil, err
 	} else if len(mtimeStates) > 0 {
 		filters.MtimeStates = mtimeStates
@@ -1098,7 +1103,8 @@ func mutationGetArgs(cmd *cobra.Command) ([2][]string, error) {
 	}
 	if len(argsFlags) != len(valFlags) {
 		return empty, fmt.Errorf(
-			"the number of arguments (--arg) and values (--val) must match")
+			"the number of arguments (--arg) and values (--val) must match",
+		)
 	}
 
 	return [2][]string{argsFlags, valFlags}, nil

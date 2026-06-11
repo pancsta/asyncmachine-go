@@ -192,9 +192,11 @@ const APrefix = "_am"
 
 // ArgsApi is the base interface for typed arguments.
 type ArgsApi interface {
-	// ArgsPrefix returns the argument prefix inside the [A] map. Should be provided by the implementation.
+	// ArgsPrefix returns the argument prefix inside the [A] map. Should be
+	// provided by the implementation.
 	ArgsPrefix() string
-	// ArgsState represents the state this argument struct belongs to. Defaults to [StateAny].
+	// ArgsState represents the state this argument struct belongs to.
+	// Defaults to [StateAny].
 	ArgsState() string
 	// TODO deep clone interface, optional
 	// ArgsClone() G
@@ -205,7 +207,8 @@ type ArgsBase struct {
 	ArgsApi
 }
 
-// ArgsPrefix is a fallback to a stack trace hash of the implementation symbol. Each
+// ArgsPrefix is a fallback to a stack trace hash of the implementation
+// symbol. Each
 // pkg should overwrite this method.
 func (a ArgsBase) ArgsPrefix() string {
 	buf := make([]byte, 4024)
@@ -314,7 +317,8 @@ func ParseArgs[G ArgsApi](args A) *G {
 	return v
 }
 
-// ParseArgsCheck parses [A] into typed arguments described by the passed generic
+// ParseArgsCheck parses [A] into typed arguments described by the
+// passed generic
 // type. Returns
 func ParseArgsCheck[G ArgsApi](args A) (*G, bool) {
 	var ret G

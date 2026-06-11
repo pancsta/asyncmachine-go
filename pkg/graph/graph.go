@@ -132,7 +132,8 @@ func New(server *am.Machine) (*Graph, error) {
 	if !server.Has(ssdbg.ServerStates.Names()) {
 		return nil, fmt.Errorf(
 			"Graph.New: server machine %s does not implement ssdbg.ServerStates",
-			server.Id())
+			server.Id(),
+		)
 	}
 
 	g := &Graph{
@@ -531,7 +532,8 @@ func (g *Graph) Inspect() (map[string]*MachInspect, error) {
 					inspect[machId].Pipes[edge.Target] = append(
 						inspect[machId].Pipes[edge.Target], fmt.Sprintf(
 							"[%s] %s -> %s", pipe.MutType, pipe.FromState, pipe.ToState,
-						))
+						),
+					)
 				}
 			}
 		}

@@ -33,8 +33,11 @@ var (
 
 //go:embed config.env
 var env string
-var ssO = states.OrchestratorStates
-var ssW = states.WorkerStates
+
+var (
+	ssO = states.OrchestratorStates
+	ssW = states.WorkerStates
+)
 
 func init() {
 	reader := strings.NewReader(env)

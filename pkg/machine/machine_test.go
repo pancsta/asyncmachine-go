@@ -21,14 +21,6 @@ func init() {
 	// os.Setenv(EnvAmDebug, "1")
 }
 
-func enableDebugging() {
-	if os.Getenv(EnvAmTestRunner) != "" {
-		return
-	}
-
-	os.Setenv(EnvAmDebug, "1")
-}
-
 func ExampleNew() {
 	ctx := context.TODO()
 	mach := New(ctx, Schema{
@@ -1416,6 +1408,7 @@ func TestEvalNestedHandlers(t *testing.T) {
 	forked := false
 	done := make(chan struct{})
 	m := NewNoRels(t, nil)
+	m.detectEval = true
 	_, _ = m.HandlersBind(&struct {
 		AState HandlerFinal
 	}{
@@ -1431,7 +1424,6 @@ func TestEvalNestedHandlers(t *testing.T) {
 			})
 		},
 	})
-	m.detectEval = true
 
 	m.Add1("A", nil)
 	<-done
@@ -2240,7 +2232,9 @@ func TestWhenCtx(t *testing.T) {
 	m.Set(S{"A", "B"}, nil)
 
 	// wait on "when" methods with a "step" context
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
+	ctx, cancel := signal.NotifyContext(
+		context.Background(), os.Interrupt, os.Kill,
+	)
 	whenTimeCh := m.WhenTime(S{"A", "B"}, Time{3, 3}, ctx)
 	whenTicks1Ch := m.WhenTicks("A", 2, ctx)
 	whenTicks2Ch := m.WhenTime1("B", 3, ctx)

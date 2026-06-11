@@ -176,9 +176,11 @@ func completionsNarrowDown(
 var (
 	errOpenHistoryFile = errors.New("failed to open history file")
 	errNegativeIndex   = errors.New(
-		"cannot use a negative index when requesting historic commands")
+		"cannot use a negative index when requesting historic commands",
+	)
 	errOutOfRangeIndex = errors.New(
-		"index requested greater than number of items in history")
+		"index requested greater than number of items in history",
+	)
 )
 
 type History struct {

@@ -1108,7 +1108,8 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 	if len(mach.Handlers()) > 0 && !mach.Has(ssSs.Names()) {
 		err := fmt.Errorf(
 			"%w: REPL source has to implement pkg/rpc/states/StateSourceStatesDef",
-			am.ErrSchema)
+			am.ErrSchema,
+		)
 
 		return err
 	}
@@ -1200,7 +1201,8 @@ func MachReplWs(mach am.Api, addr string, opts *ReplOpts) (*Server, error) {
 	if len(mach.Handlers()) > 0 && !mach.Has(ssSs.Names()) {
 		err := fmt.Errorf(
 			"%w: REPL source has to implement pkg/rpc/states/StateSourceStatesDef",
-			am.ErrSchema)
+			am.ErrSchema,
+		)
 
 		return nil, err
 	}

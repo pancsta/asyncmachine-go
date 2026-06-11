@@ -237,7 +237,8 @@ func (r *Relay) HandleWsTcpDial(
 	uri, ok := strings.CutPrefix(req.URL.Path, arpc.WsPathDial)
 	if !ok {
 		r.Mach.EvAddErrState(e, ssR.ErrNetwork, fmt.Errorf(
-			"invalid %s path: %s", arpc.WsPathDial, req.URL.Path), nil)
+			"invalid %s path: %s", arpc.WsPathDial, req.URL.Path,
+		), nil)
 		return
 	}
 	id, tcpAddr := path.Split(uri)
@@ -342,7 +343,8 @@ func (r *Relay) HandleWsTcpListen(
 	uri, ok := strings.CutPrefix(req.URL.Path, arpc.WsPathListen)
 	if !ok {
 		r.Mach.EvAddErrState(e, ssR.ErrNetwork, fmt.Errorf(
-			"invalid %s path: %s", arpc.WsPathListen, req.URL.Path), nil)
+			"invalid %s path: %s", arpc.WsPathListen, req.URL.Path,
+		), nil)
 		return
 	}
 	id, tcpAddr := path.Split(uri)
@@ -429,7 +431,8 @@ func (r *Relay) HandleWsTcpListen(
 		err := os.WriteFile(addrFile, []byte(tcpAddr), 0o644)
 		if err != nil {
 			r.Mach.EvAddErr(e, fmt.Errorf(
-				"failed to write REPL addr file %s: %s", name, err), nil)
+				"failed to write REPL addr file %s: %s", name, err,
+			), nil)
 		}
 	}
 

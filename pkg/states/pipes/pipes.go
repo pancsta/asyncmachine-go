@@ -148,7 +148,8 @@ func BindAny(source, target am.Api) (string, error) {
 	missing := am.StatesDiff(source.StateNames(), target.StateNames())
 	if len(missing) > 0 {
 
-		return "", fmt.Errorf("BindAny: %w in target: %s", am.ErrStateMissing, missing)
+		return "", fmt.Errorf("BindAny: %w in target: %s",
+			am.ErrStateMissing, missing)
 	}
 
 	// AnyState

@@ -128,7 +128,8 @@ func NewNetworkMachine(
 	}
 	if schema != nil && len(schema) != len(stateNames) {
 		return nil, nil, errors.New(
-			"schema and stateNames must have the same length")
+			"schema and stateNames must have the same length",
+		)
 	}
 	if parent == nil {
 		return nil, nil, errors.New("parent cannot be nil")
@@ -740,7 +741,8 @@ func (m *NetworkMachine) WhenTime(
 	if len(states) != len(times) {
 		err := fmt.Errorf(
 			"whenTime: states and times must have the same length (%s)",
-			utils.J(states))
+			utils.J(states),
+		)
 		m.AddErr(err, nil)
 
 		return newClosedChan()
@@ -906,7 +908,6 @@ func (m *NetworkMachine) time(states am.S) am.Time {
 func (m *NetworkMachine) NewStateCtx(
 	state string, event ...*am.Event,
 ) context.Context {
-
 	// TODO reuse existing ctxs
 	m.clockMx.Lock()
 	defer m.clockMx.Unlock()
@@ -1189,7 +1190,6 @@ func (m *NetworkMachine) Schema() am.Schema {
 func (m *NetworkMachine) HandlersBind(
 	handlers any, opts ...am.BindOpts,
 ) (string, error) {
-
 	v := reflect.ValueOf(handlers)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
 		return "", errors.New("BindTracer expects a pointer to a struct")
@@ -1265,7 +1265,9 @@ func (m *NetworkMachine) HandlersDetach(bindingId string) error {
 }
 
 // BindHandlers is deprecated, use [Api.HandlersBind].
-func (m *NetworkMachine) BindHandlers(handlers any, opts ...am.BindOpts) (string, error) {
+func (m *NetworkMachine) BindHandlers(handlers any,
+	opts ...am.BindOpts,
+) (string, error) {
 	return m.HandlersBind(handlers, opts...)
 }
 
@@ -1496,7 +1498,8 @@ func (m *NetworkMachine) handle(h *handler, i int, state, suffix string) {
 	if m.semLogger.Level() >= am.LogEverything {
 		emitterId := utils.TruncateStr(handlerName, 15)
 		emitterId = utils.PadString(strings.ReplaceAll(
-			emitterId, " ", "_"), 15, "_")
+			emitterId, " ", "_",
+		), 15, "_")
 		m.log(am.LogEverything, "[handle:%-15s] %s", emitterId, methodName)
 	}
 

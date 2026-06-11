@@ -115,7 +115,8 @@ func (d *Debugger) hBuildClientList(selectedIndex int) {
 	}
 
 	d.clientList.SetTitle(d.P.Sprintf(
-		" Machines:%d T:%v ", len(d.Clients), totalSum))
+		" Machines:%d T:%v ", len(d.Clients), totalSum,
+	))
 
 	d.hUpdateClientList()
 }
@@ -235,7 +236,8 @@ func (d *Debugger) hUpdateClientList() {
 		}
 
 		d.clientList.SetTitle(d.P.Sprintf(
-			" Machines:%d T:%v ", len(d.Clients), totalSum))
+			" Machines:%d T:%v ", len(d.Clients), totalSum,
+		))
 	} else {
 		d.clientList.SetTitle(" Machines ")
 	}
@@ -414,7 +416,8 @@ func (d *Debugger) hInitClientList() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
-		amhelp.Add1Async(ctx, d.Mach, ss.ClientSelected,
+		amhelp.Add1Async(
+			ctx, d.Mach, ss.ClientSelected,
 			ss.SelectingClient, Pass(&A{
 				ClientId: clickedId,
 			}),

@@ -31,9 +31,11 @@ func NewOtelProvider(
 		propagation.NewCompositeTextMapPropagator(
 			propagation.TraceContext{},
 			propagation.Baggage{},
-		))
+		),
+	)
 
-	exporter, err := otlptrace.New(ctx,
+	exporter, err := otlptrace.New(
+		ctx,
 		otlptracehttp.NewClient(
 			otlptracehttp.WithInsecure(),
 		),
@@ -44,7 +46,8 @@ func NewOtelProvider(
 
 	serviceName := source
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter,
+		sdktrace.WithBatcher(
+			exporter,
 			sdktrace.WithMaxExportBatchSize(50),
 			sdktrace.WithBatchTimeout(100*time.Millisecond),
 		),

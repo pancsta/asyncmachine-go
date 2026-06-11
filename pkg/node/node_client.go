@@ -81,7 +81,8 @@ func NewClient(ctx context.Context, clientId string, workerKind string,
 	err := amhelp.SchemaImplements(workerSchema, states.WorkerStates.Names())
 	if err != nil {
 		err := fmt.Errorf(
-			"worker has to implement am/node/states/WorkerStates: %w", err)
+			"worker has to implement am/node/states/WorkerStates: %w", err,
+		)
 		return nil, err
 	}
 
@@ -114,7 +115,8 @@ func NewClient(ctx context.Context, clientId string, workerKind string,
 	err = amhelp.Implements(mach.StateNames(), ssC.Names())
 	if err != nil {
 		err := fmt.Errorf(
-			"client has to implement am/node/states/ClientStates: %w", err)
+			"client has to implement am/node/states/ClientStates: %w", err,
+		)
 		return nil, err
 	}
 
@@ -153,7 +155,8 @@ func (c *Client) StartState(e *am.Event) {
 	}
 
 	// bind to super rpc
-	_, err1 := ampipe.BindConnected(c.RpcSuper.Mach, c.Mach, ssC.SuperDisconnected,
+	_, err1 := ampipe.BindConnected(c.RpcSuper.Mach, c.Mach,
+		ssC.SuperDisconnected,
 		ssC.SuperConnecting, ssC.SuperConnected, ssC.SuperDisconnecting)
 	_, err2 := ampipe.BindErr(c.RpcSuper.Mach, c.Mach, ssC.ErrSupervisor)
 	_, err3 := ampipe.BindReady(c.RpcSuper.Mach, c.Mach, ssC.SuperReady, "")
@@ -180,7 +183,8 @@ func (c *Client) StartState(e *am.Event) {
 			// TODO config via a composable RetryPolicy from rpc-c
 			c.RpcSuper.ConnRetries = 3
 			c.RpcSuper.Start(e)
-			err := amhelp.WaitForAny(ctx, c.ConnTimeout,
+			err := amhelp.WaitForAny(
+				ctx, c.ConnTimeout,
 				c.Mach.When1(ssC.SuperReady, nil),
 				c.RpcSuper.Mach.WhenNot1(ssrpc.ClientStates.Start, nil),
 			)
@@ -285,7 +289,8 @@ func (c *Client) ServerPayloadState(e *am.Event) {
 		c.RpcWorker.HelloDelay = 100 * time.Millisecond
 
 		// bind to worker rpc
-		_, err1 := ampipe.BindConnected(c.RpcWorker.Mach, c.Mach, ssC.WorkerDisconnected,
+		_, err1 := ampipe.BindConnected(c.RpcWorker.Mach, c.Mach,
+			ssC.WorkerDisconnected,
 			ssC.WorkerConnecting, ssC.WorkerConnected, ssC.WorkerDisconnecting)
 		_, err2 := ampipe.BindErr(c.RpcWorker.Mach, c.Mach, ssC.ErrWorker)
 		_, err3 := ampipe.BindReady(c.RpcWorker.Mach, c.Mach, ssC.WorkerReady, "")
@@ -297,7 +302,8 @@ func (c *Client) ServerPayloadState(e *am.Event) {
 
 		// start and wait
 		c.RpcWorker.Start(e)
-		err = amhelp.WaitForAny(ctx, c.ConnTimeout,
+		err = amhelp.WaitForAny(
+			ctx, c.ConnTimeout,
 			c.Mach.When1(ssC.WorkerReady, nil),
 			c.RpcWorker.Mach.WhenErr(ctxStart),
 		)
