@@ -3,7 +3,7 @@ package states
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
-	"github.com/pancsta/asyncmachine-go/pkg/states"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
@@ -38,21 +38,19 @@ type ClientStatesDef struct {
 	WorkerRequested string
 
 	// inherit from BasicStatesDef
-	*states.BasicStatesDef
+	*ssam.BasicStatesDef
 	// inherit from ConsumerStatesDef
 	*ssrpc.ConsumerStatesDef
 }
 
 // ClientGroupsDef contains all the state groups of the Client state machine.
 type ClientGroupsDef struct {
-	*states.ConnectedGroupsDef
+	*ssam.ConnectedGroupsDef
 	// TODO?
 }
 
 // ClientSchema represents all relations and properties of ClientStates.
-var ClientSchema = SchemaMerge(
-	// inherit from BasicStruct
-	states.BasicSchema,
+var ClientSchema = ssam.BasicSchema.Merge(
 	// inherit from ConsumerSchema
 	ssrpc.ConsumerSchema,
 	am.Schema{
@@ -91,7 +89,7 @@ var ClientSchema = SchemaMerge(
 
 var (
 	ssC = am.NewStates(ClientStatesDef{})
-	sgC = am.NewStateGroups(ClientGroupsDef{}, states.ConnectedGroups)
+	sgC = am.NewStateGroups(ClientGroupsDef{}, ssam.ConnectedGroups)
 
 	// ClientStates contains all the states for the Client machine.
 	ClientStates = ssC

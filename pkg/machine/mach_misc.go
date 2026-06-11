@@ -5,9 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"os"
-	"regexp"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -882,7 +879,7 @@ var LogArgsMaxLen = 20
 func NewLogArgsMapper(
 	maxLen int, names []string,
 ) func(args A) map[string]string {
-	//
+	// TODO make it work with default Exception/err argument
 
 	if maxLen == 0 {
 		maxLen = LogArgsMaxLen
@@ -933,6 +930,7 @@ func MutationFormatArgs(matched map[string]string) string {
 type Tracer interface {
 	// TODO godoc
 
+	TracerId() string
 	TransitionInit(transition *Transition)
 	TransitionStart(transition *Transition)
 	TransitionFinals(transition *Transition)
@@ -952,7 +950,17 @@ type Tracer interface {
 }
 
 // TracerNoOp is a no-op implementation of Tracer, used for embedding.
-type TracerNoOp struct{}
+type TracerNoOp struct {
+	Id string
+}
+
+func (t *TracerNoOp) TracerId() string {
+	if t.Id == "" {
+		panic("tracer ID required")
+	}
+
+	return t.Id
+}
 
 func (t *TracerNoOp) TransitionInit(transition *Transition)          {}
 func (t *TracerNoOp) TransitionStart(transition *Transition)         {}
@@ -982,11 +990,9 @@ var _ Tracer = &TracerNoOp{}
 
 // ///// ///// /////
 
-// ///// EVENTS, WHEN, EMITTERS
+// ///// EVENT
 
 // ///// ///// /////
-
-var emitterNameRe = regexp.MustCompile(`/\w+\.go:\d+`)
 
 // Event struct represents a single event of a Mutation within a Transition.
 // One event can have 0-n handlers.
@@ -1171,6 +1177,10 @@ type LastTxTracer struct {
 	lastTx atomic.Pointer[Transition]
 }
 
+func (t *LastTxTracer) TracerId() string {
+	return "lasttx"
+}
+
 func (t *LastTxTracer) TransitionEnd(transition *Transition) {
 	t.lastTx.Store(transition)
 }
@@ -1187,10 +1197,4 @@ func (t *LastTxTracer) String() string {
 	}
 
 	return tx.String()
-}
-
-func newClosedChan() chan struct{} {
-	ch := make(chan struct{})
-	close(ch)
-	return ch
 }

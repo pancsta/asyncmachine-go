@@ -4,15 +4,14 @@ import (
 	"crypto/sha512"
 	_ "embed"
 	"encoding/gob"
-	"encoding/json"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
+	"github.com/pancsta/asyncmachine-go/examples/wasm_workflow/states"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
@@ -34,6 +33,8 @@ var (
 
 //go:embed config.env
 var env string
+var ssO = states.OrchestratorStates
+var ssW = states.WorkerStates
 
 func init() {
 	reader := strings.NewReader(env)
@@ -92,74 +93,80 @@ type Boot struct {
 
 // ///// ///// /////
 
-func init() {
-	gob.Register(ARpc{})
-}
-
 const APrefix = "wasm"
 
-// A is a struct for node arguments. It's a typesafe alternative to [am.A].
-type A struct {
-	Id      string `log:"id"`
-	Boot    *Boot
+// Args is shared pkg args for Any state
+type Args struct {
+	am.ArgsBase `json:"-"`
+}
+
+func (Args) ArgsPrefix() string {
+	return APrefix
+}
+
+// -----
+
+type ABrowserConn struct {
+	Args `json:"-"`
+
+	// ID of the connected state machine
+	Id string `log:"id"`
+}
+
+func (ABrowserConn) ArgsState() string {
+	return ssO.BrowserConn
+}
+
+// -----
+
+type AStart struct {
+	Args `json:"-"`
+
+	Boot *Boot
+}
+
+func (AStart) ArgsState() string {
+	return ssO.Start
+}
+
+// -----
+
+type AWorking struct {
+	Args `json:"-"`
+
 	Payload []byte
-	Failed  bool `log:"failed"`
 	Retry   bool `log:"retry"`
-
-	// non-rpc fields
-
-	ReturnCh chan<- []string
 }
 
-// ARpc is a subset of A that can be passed over RPC.
-type ARpc struct {
-	Id      string `log:"id"`
-	Boot    *Boot
+func (AWorking) ArgsState() string {
+	return ssW.Working
+}
+
+// -----
+
+type ACompleted struct {
+	Args `json:"-"`
+
 	Payload []byte
-	Failed  bool `log:"failed"`
-	Retry   bool `log:"retry"`
 }
 
-// ParseArgs extracts A or ARpc from [am.Event.Args][APrefix].
-func ParseArgs(args am.A) *A {
-	if r, ok := args[APrefix].(*ARpc); ok {
-		return amhelp.ArgsToArgs(r, &A{})
-	} else if r, ok := args[APrefix].(ARpc); ok {
-		return amhelp.ArgsToArgs(&r, &A{})
+func (ACompleted) ArgsState() string {
+	return ssW.Completed
+}
+
+// ----- RPC
+
+func init() {
+	for _, arg := range ArgsRpc {
+		gob.Register(arg)
 	}
-	if a, _ := args[APrefix].(*A); a != nil {
-		return a
+	for _, arg := range ArgsWorkerRpc {
+		gob.Register(arg)
 	}
-	return &A{}
 }
 
-// Pass prepares [am.A] from A to pass to further mutations.
-func Pass(args *A) am.A {
-	return am.A{APrefix: args}
-}
+// ArgsRpc will be available in the REPL.
+var ArgsRpc = []am.ArgsApi{ABrowserConn{}, AStart{}}
 
-// PassRpc prepares [am.A] from A to pass over RPC.
-func PassRpc(args *A) am.A {
-	return am.A{APrefix: amhelp.ArgsToArgs(args, &ARpc{})}
-}
-
-// LogArgs is an args logger for A.
-func LogArgs(args am.A) map[string]string {
-	a := ParseArgs(args)
-	if a == nil {
-		return nil
-	}
-
-	return amhelp.ArgsToLogMap(a, 0)
-}
-
-// ParseRpc parses am.A to *ARpc wrapped in am.A. Useful for REPLs.
-func ParseRpc(args am.A) am.A {
-	ret := am.A{APrefix: &ARpc{}}
-	jsonArgs, err := json.Marshal(args)
-	if err == nil {
-		json.Unmarshal(jsonArgs, ret[APrefix])
-	}
-
-	return ret
-}
+// ArgsWorkerRpc will be available in the REPL.
+var ArgsWorkerRpc = []am.ArgsApi{AWorking{}}

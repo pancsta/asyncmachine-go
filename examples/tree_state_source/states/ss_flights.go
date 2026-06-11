@@ -6,6 +6,16 @@ import (
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
+// TODO migrate
+func SAdd(states ...S) S {
+	// TODO test
+	// TODO move to resolver
+	if len(states) == 0 {
+		return S{}
+	}
+	return states[0].Add(states[1:]...)
+}
+
 // FlightsStatesDef contains all the states of the Flights state machine.
 type FlightsStatesDef struct {
 	*am.StatesBase
@@ -192,34 +202,32 @@ type FlightsGroupsDef struct {
 }
 
 // FlightsSchema represents all relations and properties of FlightsStates.
-var FlightsSchema = SchemaMerge(
-	// inherit from BasicSchema
-	ssam.BasicSchema,
+var FlightsSchema = ssam.BasicSchema.Merge(
 	// inherit from rpc/WorkerSchema
 	ssrpc.StateSourceSchema,
 	am.Schema{
 
 		ssF.Flight1OnTime: {
-			Remove: SAdd(sgF.Flight1Status),
+			Remove: sgF.Flight1Status,
 		},
 		ssF.Flight1Delayed: {
-			Remove: SAdd(sgF.Flight1Status),
+			Remove: sgF.Flight1Status,
 		},
 		ssF.Flight1Departed: {
-			Remove: SAdd(sgF.Flight1Status, S{ssF.Flight1GoToGate}),
+			Remove: sgF.Flight1Status.Add1(ssF.Flight1GoToGate),
 		},
 		ssF.Flight1Arrived: {
-			Remove: SAdd(sgF.Flight1Status),
+			Remove: sgF.Flight1Status,
 		},
 		ssF.Flight1Scheduled: {
 			Auto:   true,
-			Remove: SAdd(sgF.Flight1Status),
+			Remove: sgF.Flight1Status,
 		},
 		ssF.Flight1Inbound: {
-			Remove: SAdd(sgF.Flight1Direction),
+			Remove: sgF.Flight1Direction,
 		},
 		ssF.Flight1Outbound: {
-			Remove: SAdd(sgF.Flight1Direction),
+			Remove: sgF.Flight1Direction,
 		},
 		ssF.Flight1GoToGate: {
 			Require: S{ssF.Flight1Outbound},
@@ -228,35 +236,35 @@ var FlightsSchema = SchemaMerge(
 			Auto: true,
 		},
 		ssF.Flight1Gate1: {
-			Remove: SAdd(sgF.Flight1Gates),
+			Remove: sgF.Flight1Gates,
 		},
 		ssF.Flight1Gate2: {
-			Remove: SAdd(sgF.Flight1Gates),
+			Remove: sgF.Flight1Gates,
 		},
 		ssF.Flight1Gate3: {
-			Remove: SAdd(sgF.Flight1Gates),
+			Remove: sgF.Flight1Gates,
 		},
 		ssF.Flight1Gate4: {
-			Remove: SAdd(sgF.Flight1Gates),
+			Remove: sgF.Flight1Gates,
 		},
 		ssF.Flight1Gate5: {
-			Remove: SAdd(sgF.Flight1Gates),
+			Remove: sgF.Flight1Gates,
 		},
 		ssF.Flight2OnTime: {
-			Remove: SAdd(sgF.Flight2Status),
+			Remove: sgF.Flight2Status,
 		},
 		ssF.Flight2Delayed: {
-			Remove: SAdd(sgF.Flight2Status),
+			Remove: sgF.Flight2Status,
 		},
 		ssF.Flight2Departed: {
 			Remove: SAdd(sgF.Flight2Status, S{ssF.Flight2GoToGate}),
 		},
 		ssF.Flight2Arrived: {
-			Remove: SAdd(sgF.Flight2Status),
+			Remove: sgF.Flight2Status,
 		},
 		ssF.Flight2Scheduled: {
 			Auto:   true,
-			Remove: SAdd(sgF.Flight2Status),
+			Remove: sgF.Flight2Status,
 		},
 		ssF.Flight2Inbound: {
 			Remove: SAdd(sgF.Flight2Direction),

@@ -25,7 +25,7 @@ func TestWithOpts(t *testing.T) {
 	assert.Greater(t, opts.HandlerTimeout, time.Duration(0))
 
 	// OptsWithTracers
-	tracer := &TracerNoOp{}
+	tracer := &TracerNoOp{Id: t.Name()}
 	OptsWithTracers(opts, tracer)
 
 	assert.Equal(t, tracer, opts.Tracers[0])
@@ -138,7 +138,7 @@ func TestParseStruct(t *testing.T) {
 		"B": {},
 		"C": {},
 	}
-	p, err := ParseSchema(s)
+	p, err := s.Parse()
 	require.NoError(t, err)
 	assert.Equal(t, ex, p)
 }
@@ -180,7 +180,7 @@ type TestStatesFileGroupsSuperDef struct {
 	FooBaz S
 }
 
-var TestStatesFileSuperStruct = Schema{
+var TestStatesFileSuperSchema = Schema{
 	testSuperStates.Foo: {},
 	testSuperStates.Baz: {},
 }
@@ -207,8 +207,7 @@ type TestStatesFileGroupsDef struct {
 	FooBar S
 }
 
-var TestStatesFileStruct = SchemaMerge(
-	TestStatesFileSuperStruct,
+var TestStatesFileStruct = TestStatesFileSuperSchema.Merge(
 	Schema{
 		testStates.Bar: {},
 	})

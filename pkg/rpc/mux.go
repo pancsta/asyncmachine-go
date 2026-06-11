@@ -32,7 +32,7 @@ type Mux struct {
 	// isnt provided.
 	Source am.Api
 	// Typed arguments struct value
-	Args any
+	Args []am.ArgsApi
 
 	Name string
 	Addr string
@@ -72,11 +72,13 @@ func NewMux(
 	}
 
 	mach, err := am.NewCommon(ctx, "rm-"+name, states.MuxSchema, ssM.Names(),
-		d, opts.Parent, &am.Opts{Tags: []string{TagRpcMux}})
+		d, opts.Parent, &am.Opts{
+			Tags: []string{TagRpcMux},
+		})
 	if err != nil {
 		return nil, err
 	}
-	mach.SemLogger().SetArgsMapper(LogArgs)
+	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 	mach.SetGroups(states.MuxGroups, ssC)
 	d.Mach = mach
 	// optional env debug
@@ -278,9 +280,9 @@ func (m *Mux) NewServer(
 func (m *Mux) NewDefaultServer(id string) (*Server, error) {
 	return NewServer(m.Mach.Context(), "",
 		m.Name+"-"+id, m.Source, &ServerOpts{
-			Parent:   m.Mach,
-			Args:     m.Args,
-			ParseRpc: m.Opts.ParseRpc,
+			Parent:           m.Mach,
+			Args:             m.Args,
+			ArgsUnmarshaller: m.Opts.ArgsUnmarshaller,
 		})
 }
 
@@ -317,18 +319,18 @@ type MuxOpts struct {
 	// Parent is a parent state machine for a new Mux state machine. See
 	// [am.Opts].
 	Parent am.Api
-	// Typed arguments struct value
-	Args any
-	// optional RPC args parser
-	ParseRpc func(args am.A) am.A
+	// See [ServerOpts.Args].
+	Args []am.ArgsApi
+	// See [ServerOpts.ArgsUnmarshaller].
+	ArgsUnmarshaller amhelp.ArgsUnmarshallerFn
 }
 
 // BindMux binds the HasClients state with Add/Remove to custom states.
 func BindMux(
 	source, target *am.Machine, activeState, inactiveState string,
-) error {
+) (string, error) {
 	if activeState == "" {
-		return fmt.Errorf("active state must be set")
+		return "", fmt.Errorf("active state must be set")
 	}
 	if inactiveState == "" {
 		inactiveState = activeState

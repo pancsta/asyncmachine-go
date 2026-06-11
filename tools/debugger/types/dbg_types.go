@@ -2,7 +2,7 @@ package types
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/gob"
 	"fmt"
 	"log"
 	"net/http"
@@ -20,7 +20,6 @@ import (
 	"github.com/coder/websocket"
 	"github.com/gdamore/tcell/v2"
 	"github.com/orsinium-labs/enum"
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
@@ -655,14 +654,23 @@ var (
 
 // ///// ///// /////
 
-// ///// ARGS
+// ///// ARGS TODO split per state
 
 // ///// ///// /////
 
 const APrefix = "dbg"
 
+type Args struct {
+	am.ArgsBase `json:"-"`
+}
+
+func (Args) ArgsPrefix() string {
+	return APrefix
+}
+
 // A is a struct for debugger arguments. It's a typesafe alternative to [am.A].
 type A struct {
+	Args `json:"-"`
 
 	// client identification
 
@@ -754,6 +762,7 @@ type A struct {
 
 // ARpc is a subset of A, that can be passed over RPC.
 type ARpc struct {
+	Args `json:"-"`
 
 	// client identification
 
@@ -820,6 +829,15 @@ type ARpc struct {
 	Column    int `json:",string"`
 	CurrTxRow int `json:",string"`
 }
+
+func init() {
+	for _, arg := range ArgsRpc {
+		gob.Register(arg)
+	}
+}
+
+// ArgsRpc will be available in the REPL.
+var ArgsRpc = []am.ArgsApi{ARpc{}}
 
 // StateCalls is a list binding args to state names.
 var StateCalls = []am.CallSignature{
@@ -907,43 +925,11 @@ var StateCalls = []am.CallSignature{
 	},
 }
 
-// ParseArgs extracts A from [am.Event.Args][APrefix].
-func ParseArgs(args am.A) *A {
-	if r, ok := args[APrefix].(*ARpc); ok {
-		return amhelp.ArgsToArgs(r, &A{})
-	} else if r, ok := args[APrefix].(ARpc); ok {
-		return amhelp.ArgsToArgs(&r, &A{})
-	}
-	if a, _ := args[APrefix].(*A); a != nil {
-		return a
-	}
-	return &A{}
-}
+// ///// ///// /////
 
-// Pass prepares [am.A] from A to pass to further mutations.
-func Pass(args *A) am.A {
-	return am.A{APrefix: args}
-}
+// ///// UTILS
 
-// LogArgs is an args logger for A.
-func LogArgs(args am.A) map[string]string {
-	a := ParseArgs(args)
-	if a == nil {
-		return nil
-	}
-	return amhelp.ArgsToLogMap(a, 0)
-}
-
-// ParseRpc parses [am.A] to *ARpc namespaced in [am.A]. Useful for REPLs.
-func ParseRpc(args am.A) am.A {
-	ret := am.A{APrefix: &ARpc{}}
-	jsonArgs, err := json.Marshal(args)
-	if err == nil {
-		_ = json.Unmarshal(jsonArgs, ret[APrefix])
-	}
-
-	return ret
-}
+// ///// ///// /////
 
 // TODO
 func NormalizeGroupName(name string) string {

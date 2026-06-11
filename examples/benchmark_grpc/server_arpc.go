@@ -39,7 +39,7 @@ func NewWorkerArpcServer(
 	if err != nil {
 		return nil, err
 	}
-	err = w.Mach.BindHandlers(w)
+	_, err = w.Mach.HandlersBind(w)
 	if err != nil {
 		return nil, err
 	}

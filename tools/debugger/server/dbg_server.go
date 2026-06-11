@@ -33,8 +33,7 @@ import (
 )
 
 var ss = states.DebuggerStates
-var Pass = types.Pass
-var ParseArgs = types.ParseArgs
+var Pass = am.Pass
 
 type A = types.A
 
@@ -697,7 +696,7 @@ func httpHandlerIndex(
 	}
 	if p.OutputTx {
 		fmt.Fprintf(w, "<li><a href=\"/tx.d2.svg\">"+
-			"Steps Diagram</a> (manual refresh)</li>")
+			"Transition Diagram</a> (manual refresh)</li>")
 	}
 	if p.UiMcp {
 		fmt.Fprintf(w, `<li>http://%s/mcp</li>`, httpAddr)

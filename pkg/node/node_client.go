@@ -11,7 +11,7 @@ import (
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/node/states"
-	"github.com/pancsta/asyncmachine-go/pkg/rpc"
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 )
@@ -35,8 +35,8 @@ type Client struct {
 
 	// network
 
-	RpcSuper  *rpc.Client
-	RpcWorker *rpc.Client
+	RpcSuper  *arpc.Client
+	RpcWorker *arpc.Client
 
 	// internal
 
@@ -106,7 +106,7 @@ func NewClient(ctx context.Context, clientId string, workerKind string,
 		return nil, err
 	}
 
-	mach.SemLogger().SetArgsMapper(LogArgs)
+	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 	c.Mach = mach
 	_ = amhelp.MachDebugEnv(mach)
 
@@ -129,36 +129,35 @@ var _ = ssC.Start
 // ///// ///// /////
 
 func (c *Client) StartEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a != nil && len(a.NodesList) > 0
 }
 
 func (c *Client) StartState(e *am.Event) {
 	var err error
 	ctx := c.Mach.NewStateCtx(ssC.Start)
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	addr := args.NodesList[0]
 	c.nodeList = args.NodesList
 
 	// init super rpc (but dont connect just yet)
-	c.RpcSuper, err = rpc.NewClient(ctx, addr, GetSuperClientId(c.Name),
-		states.SupervisorSchema, &rpc.ClientOpts{
+	c.RpcSuper, err = arpc.NewClient(ctx, addr, GetSuperClientId(c.Name),
+		states.SupervisorSchema, &arpc.ClientOpts{
 			Parent:   c.Mach,
 			Consumer: c.Mach,
 		})
 	if err != nil {
 		err := fmt.Errorf("failed to connect to the Supervisor: %w", err)
-		_ = AddErrRpc(c.Mach, err, nil)
+		AddErrRpc(e, c.Mach, err, nil)
 		return
 	}
 
 	// bind to super rpc
-	err = errors.Join(
-		ampipe.BindConnected(c.RpcSuper.Mach, c.Mach, ssC.SuperDisconnected,
-			ssC.SuperConnecting, ssC.SuperConnected, ssC.SuperDisconnecting),
-		ampipe.BindErr(c.RpcSuper.Mach, c.Mach, ssC.ErrSupervisor),
-		ampipe.BindReady(c.RpcSuper.Mach, c.Mach, ssC.SuperReady, ""),
-	)
+	_, err1 := ampipe.BindConnected(c.RpcSuper.Mach, c.Mach, ssC.SuperDisconnected,
+		ssC.SuperConnecting, ssC.SuperConnected, ssC.SuperDisconnecting)
+	_, err2 := ampipe.BindErr(c.RpcSuper.Mach, c.Mach, ssC.ErrSupervisor)
+	_, err3 := ampipe.BindReady(c.RpcSuper.Mach, c.Mach, ssC.SuperReady, "")
+	err = errors.Join(err1, err2, err3)
 	if err != nil {
 		c.Mach.AddErr(err, nil)
 		return
@@ -200,7 +199,7 @@ func (c *Client) StartState(e *am.Event) {
 
 			if err != nil {
 				err := errors.Join(err, c.RpcSuper.Mach.Err())
-				_ = AddErrRpc(c.Mach, err, nil)
+				AddErrRpc(e, c.Mach, err, nil)
 
 				return
 			}
@@ -227,16 +226,16 @@ func (c *Client) WorkerRequestedEnter(e *am.Event) bool {
 
 func (c *Client) WorkerRequestedState(e *am.Event) {
 	// supervisor needs IDs of RPC clients for routing and ACL
-	c.RpcSuper.NetMach.Add1(ssS.ProvideWorker, PassRpc(&A{
+	c.RpcSuper.NetMach.Add1(ssS.ProvideWorker, Pass(&ARpc{
 		SuperRpcId:  c.RpcSuper.Mach.Id(),
-		WorkerRpcId: rpc.GetClientId(GetWorkerClientId(c.Name)),
+		WorkerRpcId: arpc.GetClientId(GetWorkerClientId(c.Name)),
 	}))
 }
 
 var _ = ssC.ServerPayload
 
 func (c *Client) ServerPayloadEnter(e *am.Event) bool {
-	a := rpc.ParseArgs(e.Args)
+	a := am.ParseArgs[arpc.AServerPayload](e.Args)
 	return a != nil && a.Name != "" && a.Payload != nil
 }
 
@@ -244,7 +243,7 @@ func (c *Client) ServerPayloadEnter(e *am.Event) bool {
 // this shared code only deals with [ssC.ClientStatesDef.WorkerRequested].
 func (c *Client) ServerPayloadState(e *am.Event) {
 	c.Mach.Remove1(ssC.ServerPayload, nil)
-	args := rpc.ParseArgs(e.Args)
+	args := am.ParseArgs[arpc.AServerPayload](e.Args)
 	c.log("worker %s delivered: %s", args.Payload.Source, args.Name)
 
 	if args.Name != ssS.ProvideWorker {
@@ -272,26 +271,25 @@ func (c *Client) ServerPayloadState(e *am.Event) {
 	go func() {
 		// connect to the worker
 		var err error
-		c.RpcWorker, err = rpc.NewClient(ctxStart, addr, GetWorkerClientId(c.Name),
-			c.schemaWorker, &rpc.ClientOpts{
+		c.RpcWorker, err = arpc.NewClient(ctxStart, addr, GetWorkerClientId(c.Name),
+			c.schemaWorker, &arpc.ClientOpts{
 				Parent:   c.Mach,
 				Consumer: c.Mach,
 			})
 		if err != nil {
 			err := fmt.Errorf("failed to connect to the NetworkMachine: %w", err)
-			_ = AddErrRpc(c.Mach, err, nil)
+			AddErrRpc(e, c.Mach, err, nil)
 			return
 		}
 		// delay for rpc/Mux
 		c.RpcWorker.HelloDelay = 100 * time.Millisecond
 
 		// bind to worker rpc
-		err = errors.Join(
-			ampipe.BindConnected(c.RpcWorker.Mach, c.Mach, ssC.WorkerDisconnected,
-				ssC.WorkerConnecting, ssC.WorkerConnected, ssC.WorkerDisconnecting),
-			ampipe.BindErr(c.RpcWorker.Mach, c.Mach, ssC.ErrWorker),
-			ampipe.BindReady(c.RpcWorker.Mach, c.Mach, ssC.WorkerReady, ""),
-		)
+		_, err1 := ampipe.BindConnected(c.RpcWorker.Mach, c.Mach, ssC.WorkerDisconnected,
+			ssC.WorkerConnecting, ssC.WorkerConnected, ssC.WorkerDisconnecting)
+		_, err2 := ampipe.BindErr(c.RpcWorker.Mach, c.Mach, ssC.ErrWorker)
+		_, err3 := ampipe.BindReady(c.RpcWorker.Mach, c.Mach, ssC.WorkerReady, "")
+		err = errors.Join(err1, err2, err3)
 		if err != nil {
 			c.Mach.AddErr(err, nil)
 			return

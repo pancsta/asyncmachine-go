@@ -58,9 +58,8 @@ type (
 )
 
 var (
-	Pass      = types.Pass
-	ParseArgs = types.ParseArgs
-	ss        = states.DebuggerStates
+	Pass = am.Pass
+	ss   = states.DebuggerStates
 )
 
 type cache struct {
@@ -196,8 +195,9 @@ type Debugger struct {
 	callLogCount map[string]int
 	// count value of the last active separator
 	callLogLastSep map[string]int
-	listenHost     string
-	httpPort       string
+	// host to connect to, resolved from 0.0.0.0
+	listenHost string
+	httpPort   string
 }
 
 // TODO split to New and
@@ -239,16 +239,15 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	if p.Repl {
 		// start a dedicated aRPC server for the REPL, create an addr file
 		err = arpc.MachRepl(mach, "", &arpc.ReplOpts{
-			AddrDir:  p.OutputDir,
-			Args:     types.ARpc{},
-			ParseRpc: types.ParseRpc,
+			AddrDir: p.OutputDir,
+			Args:    types.ArgsRpc,
 		})
 		mach.AddErr(err, nil)
 	}
 	// mach.AddBreakpoint1(ss.AddressFocused, "", false)
 	// mach.AddBreakpoint1(ss.AddressFocused, "", true)
-	// mach.AddBreakpoint1(ss.UpdateFocus, "", false)
-	// mach.AddBreakpoint1(ss.UpdateFocus, "", true)
+	// mach.AddBreakpoint1(ss.Disposing, "", false)
+	// mach.AddBreakpoint1(ss.Disposing, "", true)
 
 	err = d.hSetParams(p)
 	if err != nil {
@@ -265,7 +264,7 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	} else {
 		semLog.SetSimple(log.Printf, d.params.LogLevel)
 	}
-	semLog.SetArgsMapper(types.LogArgs)
+	semLog.SetArgsMapper(amhelp.LogArgsMapper)
 
 	d.graph, err = amgraph.New(d.Mach)
 	if err != nil {
@@ -1903,7 +1902,10 @@ func (d *Debugger) hExportData(filename string, snapshot bool) {
 	defer fw.Close()
 
 	// prepare the format
-	now := *d.C.Tx(max(0, d.C.CursorTx1-1)).Time
+	now := time.Now()
+	if d.PrevTx() != nil {
+		now = *d.C.Tx(max(0, d.C.CursorTx1-1)).Time
+	}
 	data := make([]*server.Exportable, 0, len(d.Clients))
 	i := 0
 	for _, c := range d.Clients {

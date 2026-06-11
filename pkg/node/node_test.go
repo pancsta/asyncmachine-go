@@ -19,13 +19,17 @@ import (
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/node/states"
-	"github.com/pancsta/asyncmachine-go/pkg/rpc"
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 )
 
 const defTimeout = 5 * time.Second
 
 func init() {
+	if os.Getenv(am.EnvAmTestRunner) != "" {
+		return
+	}
+
 	_ = godotenv.Load()
 
 	if os.Getenv(am.EnvAmTestDebug) != "" {
@@ -35,7 +39,8 @@ func init() {
 
 func TestFork1(t *testing.T) {
 	// t.Parallel()
-	// amhelp.EnableDebugging(false)
+	// amhelp.EnableDebugging(true)
+	// arpc.EnableDebuggingRpc(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -308,7 +313,7 @@ func TestClientServerPayload(t *testing.T) {
 
 	// bind payload handler
 	h := &clientHandlers{t: t}
-	err = c.Mach.BindHandlers(h)
+	_, err = c.Mach.HandlersBind(h)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +414,7 @@ func newTestFork(
 			// TODO chan the main thread
 			t.Fatal(err)
 		}
-		err = worker.Mach.BindHandlers(&workerHandlers{t: t})
+		_, err = worker.Mach.HandlersBind(&workerHandlers{t: t})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -476,13 +481,13 @@ type workerHandlers struct {
 func (w *workerHandlers) WorkRequestedState(e *am.Event) {
 	input := e.Args["input"].(int)
 
-	payload := &rpc.MsgSrvPayload{
+	payload := &arpc.MsgSrvPayload{
 		Name:   w.t.Name(),
 		Data:   input * input,
 		Source: e.Machine().Id(),
 	}
 
-	e.Machine().Add1(ssW.ClientSendPayload, rpc.PassRpc(&rpc.A{
+	e.Machine().Add1(ssW.ClientSendPayload, am.Pass(&arpc.AServerPayload{
 		Name:    w.t.Name(),
 		Payload: payload,
 	}))
@@ -490,14 +495,14 @@ func (w *workerHandlers) WorkRequestedState(e *am.Event) {
 
 type clientHandlers struct {
 	t       *testing.T
-	payload *rpc.MsgSrvPayload
+	payload *arpc.MsgSrvPayload
 }
 
 // implement ssrpc.ConsumerHandlers
 var _ ssrpc.ConsumerHandlers = &clientHandlers{}
 
 func (c *clientHandlers) ServerPayloadState(e *am.Event) {
-	args := rpc.ParseArgs(e.Args)
+	args := am.ParseArgs[arpc.AServerPayload](e.Args)
 
 	if args.Name != ssS.ProvideWorker {
 		c.payload = args.Payload

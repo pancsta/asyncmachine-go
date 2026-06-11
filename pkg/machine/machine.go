@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -75,8 +74,7 @@ type Machine struct {
 	// parentId is the id of the parent machine (if any).
 	parentId string
 	// disposing disabled auto schema
-	disposing   atomic.Bool
-	evalRunning atomic.Bool
+	disposing atomic.Bool
 	// disposed tells if the machine has been disposed and is no-op.
 	disposed atomic.Bool
 	// queueRunning indicates the queue is currently being executed.
@@ -137,6 +135,7 @@ type Machine struct {
 	logEntries       []*LogEntry
 	logArgs          atomic.Pointer[LogArgsMapperFn]
 	currentHandler   atomic.Value
+	currentEval      atomic.Value
 	disposeHandlers  []HandlerDispose
 	timeLast         atomic.Pointer[Time]
 	// Channel closing when the machine finished disposal. Read-only.
@@ -179,6 +178,10 @@ func NewCommon(
 		machOpts.HandlerTimeout = 1 * time.Second
 	}
 
+	if lvl := os.Getenv(EnvAmLog); lvl != "" {
+		machOpts.LogLevel = EnvLogLevel(lvl)
+	}
+
 	if parent != nil {
 		machOpts.Parent = parent
 	}
@@ -194,7 +197,9 @@ func NewCommon(
 	}
 
 	if handlers != nil {
-		err = mach.BindHandlers(handlers)
+		_, err = mach.HandlersBind(handlers, BindOpts{
+			Id: "comm-" + Capitalize(id),
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -207,7 +212,7 @@ func NewCommon(
 // optional Opts.
 func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 	// parse relations
-	parsedStates, err := ParseSchema(schema)
+	parsedStates, err := schema.Parse()
 
 	m := &Machine{
 		HandlerTimeout:   100 * time.Millisecond,
@@ -477,8 +482,9 @@ func (m *Machine) doDispose(force bool) {
 		if !mut.IsCheck {
 			continue
 		}
-		if done, ok := mut.Args[argCheckDone].(*CheckDone); ok {
-			closeSafe(done.Ch)
+		args := ParseArgs[ACheck](mut.Args)
+		if args.CheckDone != nil {
+			closeSafe(args.CheckDone)
 		}
 	}
 	// let it settle
@@ -541,7 +547,7 @@ func (m *Machine) WhenErr(disposeCtx context.Context) <-chan struct{} {
 // ctx: optional context that will close the channel early.
 func (m *Machine) When(states S, ctx context.Context) <-chan struct{} {
 	if m.disposed.Load() {
-		return newClosedChan()
+		return m.subs.Closed
 	}
 
 	// locks
@@ -590,16 +596,16 @@ func (m *Machine) WhenTime(
 	states S, times Time, ctx context.Context,
 ) <-chan struct{} {
 	if m.disposed.Load() {
-		return newClosedChan()
+		return m.subs.Closed
 	}
 
 	// close early on invalid
-	if len(states) != len(times) {
+	if len(states) != len(times) || len(states) == 0 {
 		err := fmt.Errorf(
-			"whenTime: states and times must have the same length (%s)", j(states))
+			"whenTime: states and times must have the same length (%s) > 0", j(states))
 		m.AddErr(err, nil)
 
-		return newClosedChan()
+		return m.subs.Closed
 	}
 
 	// locks
@@ -636,7 +642,6 @@ func (m *Machine) WhenTicks(
 func (m *Machine) WhenNextActive(
 	state string, ctx context.Context,
 ) <-chan struct{} {
-	// TODO add to API
 	return m.WhenTicks(state, NextActiveIn(m.Tick(state)), ctx)
 }
 
@@ -652,7 +657,7 @@ func (m *Machine) WhenQuery(
 	// TODO add to Api
 
 	if m.disposed.Load() {
-		return newClosedChan()
+		return m.subs.Closed
 	}
 
 	// locks
@@ -668,7 +673,7 @@ func (m *Machine) WhenQuery(
 func (m *Machine) WhenQueueEnds() <-chan struct{} {
 	// finish early
 	if m.disposed.Load() || !m.queueRunning.Load() {
-		return newClosedChan()
+		return m.subs.Closed
 	}
 
 	// locks
@@ -682,7 +687,7 @@ func (m *Machine) WhenQueueEnds() <-chan struct{} {
 // TODO example
 func (m *Machine) WhenQueue(tick Result) <-chan struct{} {
 	if m.disposed.Load() {
-		return newClosedChan()
+		return m.subs.Closed
 	}
 
 	// locks
@@ -691,14 +696,14 @@ func (m *Machine) WhenQueue(tick Result) <-chan struct{} {
 
 	// finish early
 	if m.queueTick >= uint64(tick) {
-		return newClosedChan()
+		return m.subs.Closed
 	}
 
 	return m.subs.WhenQueue(tick)
 }
 
 // WhenArgs returns a channel that will be closed when the passed state
-// becomes active with all the passed args. Args are compared using the native
+// becomes active with all the passed args. ArgsBase are compared using the native
 // '=='. It's meant to be used with async Multi states, to filter out
 // a specific call.
 //
@@ -707,7 +712,7 @@ func (m *Machine) WhenArgs(
 	state string, args A, ctx context.Context,
 ) <-chan struct{} {
 	if m.disposed.Load() {
-		return newClosedChan()
+		return m.subs.Closed
 	}
 
 	// locks
@@ -945,7 +950,10 @@ func (m *Machine) AddErr(err error, args A) Result {
 // and trigger handlers. AddErrState produces a stack trace of the error, if
 // LogStackTrace is enabled.
 func (m *Machine) AddErrState(state string, err error, args A) Result {
-	if m.disposing.Load() || m.Backoff() || err == nil {
+	if m.disposing.Load() || m.Backoff() ||
+		uint16(m.queueLen.Load()) >= m.QueueLimit || err == nil ||
+		err == context.Canceled {
+
 		return Canceled
 	}
 
@@ -958,10 +966,10 @@ func (m *Machine) AddErrState(state string, err error, args A) Result {
 	}
 
 	// build args
-	argsT := &AT{
+	args2 := Pass(&AException{
 		Err:      err,
 		ErrTrace: trace,
-	}
+	})
 
 	// OnError handler
 	if onErr := m.onError.Load(); onErr != nil {
@@ -969,7 +977,7 @@ func (m *Machine) AddErrState(state string, err error, args A) Result {
 	}
 
 	// add normally, dont prepend
-	return m.Add(S{state, StateException}, PassMerge(args, argsT))
+	return m.Add(S{state, StateException}, PassMerge(args, args2))
 }
 
 // CanAdd checks if [states] can be added and returns Executed or
@@ -1443,6 +1451,37 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	return true
 }
 
+func (m *Machine) isNestedEval(source string) bool {
+	// detect eval in handlers
+	if !m.detectEval || m.handlerGoId.Load() == 0 {
+		return false
+	}
+
+	if m.handlerGoId.Load() != goroutineNum() {
+		return false
+	}
+
+	handler := m.currentHandler.Load().(string)
+	eval := m.currentEval.Load().(string)
+	var err error
+	if handler != "" {
+		err = fmt.Errorf("%w: eval:%s called directly in handler %s(),"+
+			" skipping", ErrNestedEval, source, handler)
+
+	} else if eval != "" {
+		err = fmt.Errorf("%w: eval:%s called directly in eval.%s, skipping",
+			ErrNestedEval, source, eval)
+
+	} else {
+		err = fmt.Errorf("%w: eval:%s called directly in ???, skipping",
+			ErrNestedEval, source)
+	}
+	m.log(LogOps, "[eval] %s", err)
+	m.AddErr(err, nil)
+
+	return false
+}
+
 // NewStateCtx returns a new sub-context, bound to the current clock's tick of
 // the passed state.
 //
@@ -1451,14 +1490,19 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 //
 // State contexts are used to check state expirations and should be checked
 // often inside goroutines.
-func (m *Machine) NewStateCtx(state string) context.Context {
+//
+// [e]: optional [Event] to bind to this context.
+func (m *Machine) NewStateCtx(state string, event ...*Event) context.Context {
 	if m.disposing.Load() {
 		return context.TODO()
 	}
-	// TODO handle cancelation while parsing the queue
 	m.mustParseStates(S{state})
 	m.activeStatesMx.Lock()
 	defer m.activeStatesMx.Unlock()
+
+	if e := OptEv(event); e != nil {
+		return EvToCtx(m.subs.NewStateCtx(state), e)
+	}
 
 	return m.subs.NewStateCtx(state)
 }
@@ -1658,7 +1702,7 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 		Type:   MutationAdd,
 		Called: m.Index(S{StateException}),
 		Source: src,
-		Args: Pass(&AT{
+		Args: Pass(&AException{
 			Err:      err,
 			ErrTrace: r.stack,
 			Panic: &ExceptionArgsPanic{
@@ -2037,14 +2081,13 @@ func (m *Machine) processQueue() Result {
 
 		// special case for Eval mutations
 		if mut.Type == mutationEval {
-			m.evalRunning.Store(true)
+			m.currentEval.Store(mut.evalSource)
 			m.Log("eval: " + mut.evalSource)
 			mut.eval()
-			m.evalRunning.Store(false)
+			m.currentEval.Store("")
 
 			continue
 		}
-		// TODO race in relations.go:79; m.queueProcessing failing?
 		t := newTransition(m, mut)
 
 		// execute the transition and set active states
@@ -2057,12 +2100,14 @@ func (m *Machine) processQueue() Result {
 		// parse wait chans
 		if t.Mutation.IsCheck {
 			// TODO test case
-			if done, ok := mut.Args[argCheckDone].(*CheckDone); ok {
-				done.Canceled = t.IsAccepted.Load()
-				closeSafe(done.Ch)
+			args := ParseArgs[ACheck](mut.Args)
+			if args.CheckDone != nil {
+				args.Canceled = t.IsAccepted.Load()
+				closeSafe(args.CheckDone)
 			}
 		} else if t.IsAccepted.Load() && !t.Mutation.IsCheck {
 			// TODO optimize process only when ticks change (incl queue tick)
+			// TODO optimize: check sub ctxs also on canceled txs
 			m.processSubscriptions(t)
 		}
 
@@ -2082,7 +2127,6 @@ func (m *Machine) processQueue() Result {
 	m.tracersMx.RUnlock()
 
 	// subscriptions
-	// TODO deadlock with doDispose
 	m.queueMx.Lock()
 	for _, ch := range m.subs.ProcessWhenQueueEnds() {
 		closeSafe(ch)
@@ -2130,11 +2174,19 @@ func (m *Machine) Context() context.Context {
 	return m.ctx
 }
 
-// TODO add EvLog(e, ...) to output a state name
+// ContextParent returns the original context passed to the constructor.
+func (m *Machine) ContextParent() context.Context {
+	return m.ctxParent
+}
 
 // Log logs an [extern] message unless LogNothing is set.
 // Optionally redirects to a custom logger from [SemLogger.SetLogger].
 func (m *Machine) Log(msg string, args ...any) {
+	m.LogEv(nil, msg, args...)
+}
+
+// TODO api
+func (m *Machine) LogEv(e *Event, msg string, args ...any) {
 	if m.disposing.Load() {
 		return
 	}
@@ -2146,9 +2198,18 @@ func (m *Machine) Log(msg string, args ...any) {
 	m.log(LogExternal, prefix+"] "+msg, args...)
 }
 
+// TODO api
+func (m *Machine) LogCtx(ctx context.Context, msg string, args ...any) {
+	m.LogEv(CtxToEv(ctx), msg, args...)
+}
+
 // log logs a message if the log level is high enough.
 // Optionally redirects to a custom logger from [SemLogger.SetLogger].
 func (m *Machine) log(level LogLevel, msg string, args ...any) {
+	m.logEv(nil, level, msg, args...)
+}
+
+func (m *Machine) logEv(e *Event, level LogLevel, msg string, args ...any) {
 	if level > m.semLogger.Level() || m.disposing.Load() {
 		return
 	}
@@ -2160,8 +2221,13 @@ func (m *Machine) log(level LogLevel, msg string, args ...any) {
 			id = id[:5]
 		}
 		prefix = "[" + id + "] "
-		msg = prefix + msg
 	}
+
+	if e != nil {
+		prefix += "[" + e.Name + "] "
+	}
+
+	msg = prefix + msg
 
 	out := fmt.Sprintf(msg, args...)
 	logger := m.semLogger.Logger()
@@ -2275,65 +2341,37 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		}
 		h.mx.Lock()
 		methodName := e.Name
-		// TODO descriptive name
-		handlerName := strconv.Itoa(i) + ":" + h.name
 
-		if m.semLogger.Level() >= LogEverything {
-			emitterID := truncateStr(handlerName, 15)
-			emitterID = padString(strings.ReplaceAll(emitterID, " ", "_"), 15, "_")
-			m.log(LogEverything, "[handle:%-15s] %s", emitterID, methodName)
-		}
-
-		// cache
-		_, ok := h.missingCache[methodName]
-		if ok {
+		// binding opts
+		if !strings.HasPrefix(e.Name, h.opts.StatePrefix) {
 			h.mx.Unlock()
-
 			continue
 		}
-		method, ok := h.methodCache[methodName]
-		if !ok {
-			method = h.methods.MethodByName(methodName)
+		methodName = strings.TrimPrefix(e.Name, h.opts.StatePrefix)
 
-			// support field handlers
-			if !method.IsValid() {
-				method = h.methods.Elem().FieldByName(methodName)
-			}
-			if !method.IsValid() {
-				h.missingCache[methodName] = struct{}{}
-				h.mx.Unlock()
-
-				continue
-			}
-			h.methodCache[methodName] = method
+		if m.semLogger.Level() >= LogEverything {
+			m.log(LogEverything, "[handle:%s] %s", h.id, methodName)
 		}
-		h.mx.Unlock()
 
-		// call the handler
-		m.log(LogOps, "[handler:%d] %s", i, methodName)
-		m.currentHandler.Store(methodName)
+		var call *handlerCall
 		var ret bool
 		var timeout bool
-		handlerCalled = true
-
-		// tracers
-		m.tracersMx.RLock()
 		tx := m.t.Load()
-		for i := range m.tracers {
-			m.tracers[i].HandlerStart(tx, handlerName, methodName)
-		}
-		m.tracersMx.RUnlock()
-		handlerCall := &handlerCall{
-			fn:      method,
-			name:    methodName,
-			event:   e,
-			timeout: false,
+		if !h.isMap {
+			call = newHandlerCallStruct(e, h, methodName, m)
+		} else {
+			call = newHandlerCallMap(e, h, methodName, m)
 		}
 
+		if call == nil {
+			continue
+		}
+
+		handlerCalled = true
 		select {
 		case <-m.ctx.Done():
 			break
-		case m.handlerStart <- handlerCall:
+		case m.handlerStart <- call:
 		}
 
 		// reuse the timer each time
@@ -2359,11 +2397,11 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 			select {
 			case <-m.handlerEnd:
 				// accepted timeout (good)
-				m.log(LogEverything, "[handler:ack-timeout] %s from %s", e.Name, h.name)
+				m.log(LogEverything, "[handler:ack-timeout] %s from %s", e.Name, h.id)
 
 				// TODO optimize re-use a timer like timeout
 			case <-time.After(m.HandlerDeadline):
-				m.log(LogEverything, "[handler:deadline] %s from %s", e.Name, h.name)
+				m.log(LogEverything, "[handler:deadline] %s from %s", e.Name, h.id)
 				// deadlined timeout (bad)
 				// fork a new handler loop
 				go m.handlerLoop()
@@ -2378,8 +2416,8 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 
 				// enqueue the relevant err
 				err := fmt.Errorf("%w: %s from %s", ErrHandlerTimeout, methodName,
-					h.name)
-				m.EvAddErr(e, err, Pass(&AT{
+					h.id)
+				m.EvAddErr(e, err, Pass(&AException{
 					TargetStates: tx.TargetStates(),
 					CalledStates: tx.CalledStates(),
 					TimeBefore:   tx.TimeBefore,
@@ -2398,7 +2436,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 			m.recoverToErr(h, r)
 
 		case ret = <-m.handlerEnd:
-			m.log(LogEverything, "[handler:end] %s from %s", e.Name, h.name)
+			m.log(LogEverything, "[handler:end] %s from %s", e.Name, h.id)
 			// ok
 		}
 
@@ -2408,7 +2446,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		// tracers
 		m.tracersMx.RLock()
 		for i := range m.tracers {
-			m.tracers[i].HandlerEnd(tx, handlerName, methodName)
+			m.tracers[i].HandlerEnd(tx, h.id, methodName)
 		}
 		m.tracersMx.RUnlock()
 
@@ -2470,13 +2508,8 @@ func (m *Machine) handlerLoop() {
 		ret := true
 
 		// handler signature: FooState(e *am.Event)
-		// TODO optimize https://github.com/golang/go/issues/7818
 		if call.event.IsValid() {
-			callRet := call.fn.Call([]reflect.Value{reflect.ValueOf(call.event)})
-			if len(callRet) > 0 {
-				// TODO log err, dont panic
-				ret = callRet[0].Interface().(bool)
-			}
+			ret = call.Exec()
 		} else {
 			m.log(LogDecisions, "[handler:invalid] %s", call.name)
 			ret = false
@@ -2485,8 +2518,11 @@ func (m *Machine) handlerLoop() {
 		// exit, a new clone is running
 		currVer := m.handlerLoopVer.Load()
 		if currVer != ver {
-			m.AddErr(fmt.Errorf(
-				"deadlined handler finished, theoretical leak: %s", call.name), nil)
+			err := fmt.Errorf(
+				"deadlined handler finished, theoretical leak: %s", call.name)
+			m.log(LogOps, "[error] %s", err)
+			// TODO option to disable muts
+			m.AddErr(err, nil)
 
 			return false
 		}
@@ -2509,7 +2545,7 @@ func (m *Machine) handlerLoop() {
 	}
 
 	// wait for a handler call or context
-grace:
+loop:
 	for {
 		select {
 
@@ -2524,7 +2560,7 @@ grace:
 				m.log(LogOps, "[dispose] graceful shutdown via Dispose()")
 				m.Dispose()
 			}
-			break grace
+			break loop
 
 		case call, ok := <-m.handlerStart:
 			if !ok {
@@ -2537,7 +2573,7 @@ grace:
 		}
 	}
 
-	// TODO test
+	// start disposal grace period TODO test
 	// fmt.Println("tmp ctx")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*m.DisposeTimeout)
 	defer cancel()
@@ -2676,7 +2712,7 @@ func (m *Machine) IsQueued(mutType MutationType, states S,
 	m.queueMx.RLock()
 	defer m.queueMx.RUnlock()
 
-	// position TODO test case
+	// position TODO test caseh
 	iter := m.queue
 	switch position {
 	case PositionLast:
@@ -3064,6 +3100,7 @@ func (m *Machine) Switch(groups ...S) string {
 // ActiveStates returns a copy of the currently active states when states is
 // nil, optionally limiting the results to a subset of states.
 func (m *Machine) ActiveStates(states S) S {
+	// TODO test for states param
 	if m.disposing.Load() {
 		return S{}
 	}
@@ -3096,21 +3133,6 @@ func (m *Machine) StateNames() S {
 	return m.stateNamesExport
 }
 
-// TODO docs
-func (m *Machine) StateNamesMatch(re *regexp.Regexp) S {
-	m.schemaMx.RLock()
-	defer m.schemaMx.RUnlock()
-
-	ret := S{}
-	for _, name := range m.stateNames {
-		if re.MatchString(name) {
-			ret = append(ret, name)
-		}
-	}
-
-	return ret
-}
-
 // Queue returns a copy of the currently active states.
 func (m *Machine) Queue() []*Mutation {
 	if m.disposing.Load() {
@@ -3127,7 +3149,7 @@ func (m *Machine) Schema() Schema {
 	m.schemaMx.RLock()
 	defer m.schemaMx.RUnlock()
 
-	return SchemaClone(m.schema)
+	return m.schema.Clone()
 }
 
 func (m *Machine) schemaSafe() Schema {
@@ -3170,7 +3192,7 @@ func (m *Machine) SetSchema(newSchema Schema, names S) error {
 
 	// replace and unlock
 	old := m.schema
-	parsed, err := ParseSchema(newSchema)
+	parsed, err := newSchema.Parse()
 	if err != nil {
 		m.schemaMx.Unlock()
 		return err
@@ -3280,7 +3302,8 @@ func (m *Machine) EvAddErrState(
 	event *Event, state string, err error, args A,
 ) Result {
 	if m.disposing.Load() || m.Backoff() ||
-		uint16(m.queueLen.Load()) >= m.QueueLimit || err == nil {
+		uint16(m.queueLen.Load()) >= m.QueueLimit || err == nil ||
+		err == context.Canceled {
 
 		return Canceled
 	}
@@ -3300,13 +3323,13 @@ func (m *Machine) EvAddErrState(
 
 	// build args
 	// TODO read [event] and fill out relevant fields
-	argsT := &AT{
+	args2 := Pass(&AException{
 		Err:      err,
 		ErrTrace: trace,
-	}
+	})
 
 	// TODO prepend to the queue? test
-	return m.EvAdd(event, S{state, StateException}, PassMerge(args, argsT))
+	return m.EvAdd(event, S{state, StateException}, PassMerge(args, args2))
 }
 
 // Export exports the machine state as Serialized: ID, machine time, and
@@ -3335,7 +3358,7 @@ func (m *Machine) Export() (*Serialized, Schema, error) {
 		// export only
 
 		QueueTick: m.queueTick,
-	}, SchemaClone(m.schema), nil
+	}, m.schema.Clone(), nil
 }
 
 // Import imports the machine state from Serialized. It's not safe to import
@@ -3523,7 +3546,7 @@ func (m *Machine) SetGroups(groups any, optStates States) {
 			name := field.Name
 			value := val.Field(i).Interface()
 			if states, ok := value.(S); ok {
-				list[name] = StatesToIndex(index, states)
+				list[name] = index.Index(states)
 				order = append(order, name)
 			}
 		}
@@ -3551,8 +3574,9 @@ func (m *Machine) SetGroupsString(groups map[string]S, order []string) {
 	defer m.schemaMx.Unlock()
 	list := map[string][]int{}
 
+	// encode
 	for name, states := range groups {
-		list[name] = StatesToIndex(m.stateNames, states)
+		list[name] = m.stateNames.Index(states)
 	}
 
 	m.groups = list
@@ -3585,10 +3609,29 @@ func (m *Machine) Go(ctx context.Context, fn func()) {
 		if ctx.Err() != nil {
 			return // expired
 		}
-		defer m.PanicToErr(nil)
+		// in debug, log location of [fn]
+		if os.Getenv(EnvAmDetectEval) != "" {
+			defer m.PanicToErr(Pass(AException{
+				Fn: funcName(fn),
+			}))
+		} else {
+			defer m.PanicToErr(nil)
+		}
 
 		fn()
 	}()
+}
+
+// TODO move
+func funcName(fn func()) string {
+	funcPtr := reflect.ValueOf(fn).Pointer()
+	funcObj := runtime.FuncForPC(funcPtr)
+	if funcObj == nil {
+		return ""
+	}
+	funcName := funcObj.Name()
+	// file, line := funcObj.FileLine(funcPtr)
+	return funcName
 }
 
 // GoAfter is like [Go], but with a delay.

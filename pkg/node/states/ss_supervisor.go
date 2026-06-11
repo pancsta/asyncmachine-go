@@ -107,9 +107,7 @@ type SupervisorGroupsDef struct {
 }
 
 // SupervisorSchema represents all relations and properties of SupervisorStates.
-var SupervisorSchema = SchemaMerge(
-	// inherit from BasicSchema
-	ssam.BasicSchema,
+var SupervisorSchema = ssam.BasicSchema.Merge(
 	// inherit from WorkerStruct
 	ssrpc.StateSourceSchema,
 	am.Schema{

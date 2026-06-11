@@ -28,6 +28,10 @@ var natsUrl = ""
 // var natsUrl = "nats://localhost:7542"
 
 func init() {
+	if os.Getenv(am.EnvAmTestRunner) != "" {
+		return
+	}
+
 	_ = godotenv.Load()
 
 	if os.Getenv(am.EnvAmTestDebug) != "" {
@@ -82,7 +86,7 @@ func TestMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	okArg1 := false
-	err = mach.BindHandlers(&struct {
+	_, err = mach.HandlersBind(&struct {
 		BEnd am.HandlerFinal
 	}{
 		BEnd: func(event *am.Event) {

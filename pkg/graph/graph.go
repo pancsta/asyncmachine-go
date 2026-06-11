@@ -248,35 +248,38 @@ func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 				line := strings.Split(strings.TrimRight(item.Text, ")\n"), "(")
 				for _, arg := range strings.Split(line[1], " ") {
 					a := strings.Split(arg, "=")
-					if a[0] == "id" {
-						id := a[1]
-						data := graph.EdgeData(&EdgeData{MachConnectedTo: true})
-						err := g.G.AddEdge(id, c.Id, data)
-						if err != nil {
+					if a[0] != "id" {
+						continue
+					}
 
-							// wait for the other mach to show up TODO use addMach()
+					id := a[1]
+					data := graph.EdgeData(&EdgeData{MachConnectedTo: true})
+					err := g.G.AddEdge(id, c.Id, data)
+					if err != nil {
 
-							g.Server.Log("waiting for RPC conn %s to show up", id)
-							when := g.Server.WhenArgs(ss.InitClient, am.A{"id": a[1]}, nil)
-							go func() {
-								<-when
-								g.Server.Log("Resuming RPC for %s", id)
+						// wait for the other mach to show up TODO use addMach()
 
-								if err := g.G.AddEdge(a[1], c.Id, data); err != nil {
-									AddErrGraph(nil, g.Server, fmt.Errorf("ParseMsg: %w", err))
-									return
-								}
-								if err = g.Map.AddEdge(a[1], c.Id); err != nil {
-									AddErrGraph(nil, g.Server, fmt.Errorf("ParseMsg: %w", err))
-									return
-								}
-							}()
+						// TODO leaks, use addMach()
+						g.Server.Log("waiting for RPC conn %s to show up", id)
+						when := g.Server.WhenArgs(ss.InitClient, am.A{"id": a[1]}, nil)
+						go func() {
+							<-when
+							g.Server.Log("Resuming RPC for %s", id)
 
-						} else {
+							if err := g.G.AddEdge(a[1], c.Id, data); err != nil {
+								AddErrGraph(nil, g.Server, fmt.Errorf("ParseMsg: %w", err))
+								return
+							}
 							if err = g.Map.AddEdge(a[1], c.Id); err != nil {
 								AddErrGraph(nil, g.Server, fmt.Errorf("ParseMsg: %w", err))
 								return
 							}
+						}()
+
+					} else {
+						if err = g.Map.AddEdge(a[1], c.Id); err != nil {
+							AddErrGraph(nil, g.Server, fmt.Errorf("ParseMsg: %w", err))
+							return
 						}
 					}
 				}
@@ -327,7 +330,7 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 	}
 	g.Clients[id] = c
 
-	// add machine
+	// add machine TODO dont exit on error, merge
 	var err error
 	if err = g.addMach(c.Id); err != nil {
 		return err
@@ -507,7 +510,7 @@ func (g *Graph) Inspect() (map[string]*MachInspect, error) {
 			inspect[machId] = &MachInspect{
 				Pipes:  make(map[string][]string),
 				Time:   c.LatestTimeSum,
-				Schema: am.SchemaClone(c.MsgSchema.States),
+				Schema: c.MsgSchema.States.Clone(),
 				Tags:   slices.Clone(c.MsgSchema.Tags),
 				MTime:  slices.Clone(c.LatestMTime),
 				States: slices.Clone(c.MsgSchema.StatesIndex),

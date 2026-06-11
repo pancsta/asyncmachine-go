@@ -2,6 +2,7 @@ package machine
 
 import (
 	"context"
+	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -339,7 +341,7 @@ func SAdd(states ...S) S {
 	return slicesUniq(s)
 }
 
-// SRem removes groups > 1 from nr 1. TODO docs
+// SRem is deprecated, use [S.Delete].
 func SRem(src S, states ...S) S {
 	// TODO test
 	// TODO move to resolver
@@ -911,16 +913,15 @@ func compareArgs(args1, args2 A) bool {
 	return match
 }
 
-type handlerCall struct {
-	fn reflect.Value
-	// TODO debug only
-	name    string
-	event   *Event
-	timeout bool
-}
+// RandId generates a random ID of the given length (defaults to 8).
+func randId(strLen int) string {
+	if strLen == 0 {
+		strLen = 16
+	}
+	strLen++
+	strLen = strLen / 2
 
-func randId() string {
-	id := make([]byte, 16)
+	id := make([]byte, strLen)
 	_, err := rand.Read(id)
 	if err != nil {
 		return "error"
@@ -1042,4 +1043,89 @@ func OptCtx(ctxs []context.Context) context.Context {
 		return ctxs[0]
 	}
 	return nil
+}
+
+// OptEv will return the first [*Event] from a list.
+func OptEv(events []*Event) *Event {
+	if len(events) > 0 {
+		return events[0]
+	}
+	return nil
+}
+
+// optBindOpts will return the first [BindOpts] from a list.
+func optBindOpts(args []BindOpts) BindOpts {
+	if len(args) > 0 {
+		return args[0]
+	}
+	return BindOpts{}
+}
+
+// goroutineNum returns the ID of the current goroutine, or 0 if err.
+// Numbers are re-assigned, so this is not a bulletproof way of IDing threads.
+func goroutineNum() int64 {
+	buf := make([]byte, 4024)
+	n := runtime.Stack(buf, false)
+	stack := string(buf[:n])
+	lines := strings.Split(stack, "\n")
+	first := strings.Split(lines[0], " ")
+	num, _ := strconv.Atoi(first[1])
+
+	return int64(num)
+}
+
+func captureStackTrace() string {
+	buf := make([]byte, 4024)
+	n := runtime.Stack(buf, false)
+	stack := string(buf[:n])
+	lines := strings.Split(stack, "\n")
+	isPanic := strings.Contains(stack, "panic")
+	slices.Reverse(lines)
+
+	heads := []string{
+		"AddErr", "AddErrState", "Remove", "Remove1", "Add", "Add1", "Set",
+	}
+	// TODO trim tails start at reflect.Value.Call({
+	//  with asyncmachine 2 frames down
+
+	// trim the head, remove junk
+	stop := false
+	for i, line := range lines {
+		if isPanic && strings.HasPrefix(line, "panic(") {
+			lines = lines[:i-1]
+			break
+		}
+
+		for _, head := range heads {
+			if strings.Contains("machine.(*Machine)."+line+"(", head) {
+				lines = lines[:i-1]
+				stop = true
+				break
+			}
+		}
+		if stop {
+			break
+		}
+	}
+	slices.Reverse(lines)
+	join := strings.Join(lines, "\n")
+
+	if filter := os.Getenv(EnvAmTraceFilter); filter != "" {
+		join = strings.ReplaceAll(join, filter, "")
+	}
+
+	return join
+}
+
+// Hash is a general hashing function.
+func Hash(in string, l int) string {
+	hasher := md5.New()
+	hasher.Write([]byte(in))
+	if l == 0 {
+		l = 6
+	}
+
+	hash := hex.EncodeToString(hasher.Sum(nil))
+	// short hash
+	return hash[:l]
 }

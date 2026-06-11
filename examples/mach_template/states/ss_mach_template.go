@@ -4,7 +4,8 @@ package states
 
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	ss "github.com/pancsta/asyncmachine-go/pkg/states"
+	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
 // MachTemplateStatesDef contains all the states of the MachTemplate state machine.
@@ -19,28 +20,30 @@ type MachTemplateStatesDef struct {
 	Channel    string
 
 	// inherit from BasicStatesDef
-	*ss.BasicStatesDef
+	*ssam.BasicStatesDef
 	// inherit from ConnectedStatesDef
-	*ss.ConnectedStatesDef
+	*ssam.ConnectedStatesDef
 	// inherit from DisposedStatesDef
-	*ss.DisposedStatesDef
+	*ssam.DisposedStatesDef
+	// inherit from StateSourceStatesDef
+	*ssrpc.StateSourceStatesDef
 }
 
 // MachTemplateGroupsDef contains all the state groups MachTemplate state machine.
 type MachTemplateGroupsDef struct {
-	*ss.ConnectedGroupsDef
+	*ssam.ConnectedGroupsDef
 	Group1 S
 	Group2 S
 }
 
 // MachTemplateSchema represents all relations and properties of MachTemplateStates.
-var MachTemplateSchema = SchemaMerge(
-	// inherit from BasicSchema
-	ss.BasicSchema,
+var MachTemplateSchema = ssam.BasicSchema.Merge(
 	// inherit from ConnectedSchema
-	ss.ConnectedSchema,
+	ssam.ConnectedSchema,
 	// inherit from DisposedSchema
-	ss.DisposedSchema,
+	ssam.DisposedSchema,
+	// inherit from StateSourceStatesDef
+	ssrpc.StateSourceSchema,
 	am.Schema{
 
 		ssM.ErrExample: {
@@ -66,7 +69,7 @@ var (
 	sgM = am.NewStateGroups(MachTemplateGroupsDef{
 		Group1: S{},
 		Group2: S{},
-	}, ss.ConnectedGroups)
+	}, ssam.ConnectedGroups)
 
 	// MachTemplateStates contains all the states for the MachTemplate machine.
 	MachTemplateStates = ssM

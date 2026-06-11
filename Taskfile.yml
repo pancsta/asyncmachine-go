@@ -270,26 +270,44 @@ tasks:
   test-count-pkg:
     cmd: grep -r --include="*_test.go"  "^func Test" ./pkg | wc -l > tests-pkg.txt
 
-  test-coverage:
+  test-coverage-tools:
+    desc: Generate coverage for ./tools from all tests
     env:
       AM_TEST_RUNNER: 1
+    ignore_error: true
     cmds:
       - task test --  
           -p 1 --parallel 1
-          -coverprofile=coverage.txt -covermode=atomic >
-            coverage.sum.txt
-      - go tool cover -func=coverage.txt | grep total | awk '{print $3}' >
-          coverage.sum.txt
+          -tags integration
+          -coverprofile=coverage-tools.txt -coverpkg=./tools/...
+      - go tool cover -func=coverage-tools.txt | grep total | awk '{print $3}' >
+          coverage-tools.sum.txt
 
   test-coverage-pkg:
+    desc: Generate coverage for ./pkg from all tests
     env:
       AM_TEST_RUNNER: 1
+    ignore_error: true
     cmds:
-      - task: clean-test
-      - go test -p 1 --parallel 1 ./pkg/... 
-          -coverprofile=coverage-pkg.txt -covermode=atomic
+      - task test --  
+          -p 1 --parallel 1
+          -tags integration
+          -coverprofile=coverage-pkg.txt -coverpkg=./pkg/...
       - go tool cover -func=coverage-pkg.txt | grep total | awk '{print $3}' >
           coverage-pkg.sum.txt
+
+  test-coverage-machine:
+    desc: Generate coverage for ./pkg/machine from all tests
+    env:
+      AM_TEST_RUNNER: 1
+    ignore_error: true
+    cmds:
+      - task test --  
+          -p 1 --parallel 1
+          -tags integration
+          -coverprofile=coverage-pkg-machine.txt -coverpkg=./pkg/machine
+      - go tool cover -func=coverage-pkg-machine.txt | grep total | awk '{print $3}' >
+          coverage-pkg-machine.sum.txt
 
   test-series:
     env:
@@ -886,6 +904,13 @@ tasks:
         sed -i 's/name: am/name: am-mini/' {{.FILE}}
       - cat docs/editors/mini.md >> {{.FILE}}
 
+  gen-badges:
+    cmds:
+      - task: test-coverage-machine
+      - task: test-coverage-pkg
+      - task: test-coverage-tools
+      - task: script-gen-badges
+
   #
   #
   # SCRIPTS (different work dir and go.mod)
@@ -935,3 +960,8 @@ tasks:
     dir: scripts
     deps: [install-deps-scripts]
     cmd: go run ./gen_release_notes
+
+  script-gen-badges:
+    dir: scripts
+    deps: [install-deps-scripts]
+    cmd: go run ./gen_badges

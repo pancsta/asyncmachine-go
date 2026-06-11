@@ -88,11 +88,9 @@ var ErrConnecting = errors.New("error connecting")
 // machine.
 func AddErrConnecting(
 	event *am.Event, mach *am.Machine, err error, args am.A,
-) error {
+) am.Result {
 	err = fmt.Errorf("%w: %w", ErrConnecting, err)
-	mach.EvAddErrState(event, ssC.ErrConnecting, err, args)
-
-	return err
+	return mach.EvAddErrState(event, ssC.ErrConnecting, err, args)
 }
 
 // ///// ///// /////

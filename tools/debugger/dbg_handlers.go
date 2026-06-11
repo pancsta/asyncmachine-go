@@ -146,7 +146,7 @@ func (d *Debugger) StartState(e *am.Event) {
 		d.Mach.Add1(ss.Ready, nil)
 	})
 
-	// servers TODO extract
+	// servers TODO extract, wait for listening
 
 	if d.ServerMux != nil {
 		d.Mach.Go(ctx, func() {
@@ -260,12 +260,13 @@ func (d *Debugger) HeartbeatState(e *am.Event) {
 var _ = ss.StateNameSelected
 
 func (d *Debugger) StateNameSelectedEnter(e *am.Event) bool {
-	return ParseArgs(e.Args).State != ""
+	args := am.ParseArgs[A](e.Args)
+	return args.State != ""
 }
 
 func (d *Debugger) StateNameSelectedState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.StateNameSelected)
-	d.C.SelectedState = ParseArgs(e.Args).State
+	d.C.SelectedState = am.ParseArgs[A](e.Args).State
 	d.lastSelectedState = d.C.SelectedState
 
 	switch d.Mach.Switch(states.DebuggerGroups.Views) {
@@ -372,7 +373,7 @@ var _ = ss.Redraw
 
 func (d *Debugger) RedrawState(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.Redraw, nil)
-	immediate := ParseArgs(e.Args).Immediate
+	immediate := am.ParseArgs[A](e.Args).Immediate
 	d.hRedrawFull(immediate)
 }
 
@@ -387,7 +388,8 @@ func (d *Debugger) UserFwdState(e *am.Event) {
 var _ = ss.Fwd
 
 func (d *Debugger) FwdEnter(e *am.Event) bool {
-	amount := max(ParseArgs(e.Args).Amount, 1)
+	args := am.ParseArgs[A](e.Args)
+	amount := max(args.Amount, 1)
 	return d.C.CursorTx1+amount <= len(d.C.MsgTxs)
 }
 
@@ -395,7 +397,8 @@ func (d *Debugger) FwdState(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.Fwd, nil)
 	c := d.C
 
-	amount := max(ParseArgs(e.Args).Amount, 1)
+	args := am.ParseArgs[A](e.Args)
+	amount := max(args.Amount, 1)
 
 	d.hSetCursor1(e, &A{
 		Cursor1: c.CursorTx1 + amount,
@@ -418,14 +421,16 @@ func (d *Debugger) UserBackState(e *am.Event) {
 var _ = ss.Back
 
 func (d *Debugger) BackEnter(e *am.Event) bool {
-	amount := max(ParseArgs(e.Args).Amount, 1)
+	args := am.ParseArgs[A](e.Args)
+	amount := max(args.Amount, 1)
 	return d.C.CursorTx1-amount >= 0
 }
 
 func (d *Debugger) BackState(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.Back, nil)
 
-	amount := max(ParseArgs(e.Args).Amount, 1)
+	args := am.ParseArgs[A](e.Args)
+	amount := max(args.Amount, 1)
 
 	d.hSetCursor1(e, &A{
 		Cursor1:    d.C.CursorTx1 - amount,
@@ -617,7 +622,7 @@ func (d *Debugger) TreeGroupsFocusedEnd(e *am.Event) {
 var _ = ss.ConnectEvent
 
 func (d *Debugger) ConnectEventEnter(e *am.Event) bool {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	if args.MsgStruct == nil || args.ConnId == "" || args.MsgStruct.ID == "" {
 		d.Mach.Log("Error: msg_struct malformed\n")
 		return false
@@ -628,7 +633,7 @@ func (d *Debugger) ConnectEventEnter(e *am.Event) bool {
 
 func (d *Debugger) ConnectEventState(e *am.Event) {
 	// initial structure data
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	msg := args.MsgStruct
 	connId := args.ConnId
 	var c *Client
@@ -756,7 +761,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 var _ = ss.DisconnectEvent
 
 func (d *Debugger) DisconnectEventEnter(e *am.Event) bool {
-	if ParseArgs(e.Args).ConnId == "" {
+	if am.ParseArgs[A](e.Args).ConnId == "" {
 		d.Mach.Log("Error: DisconnectEvent malformed\n")
 		return false
 	}
@@ -765,7 +770,7 @@ func (d *Debugger) DisconnectEventEnter(e *am.Event) bool {
 }
 
 func (d *Debugger) DisconnectEventState(e *am.Event) {
-	connID := ParseArgs(e.Args).ConnId
+	connID := am.ParseArgs[A](e.Args).ConnId
 	for _, c := range d.Clients {
 		if c.ConnId != "" && c.ConnId == connID {
 			// mark as disconnected
@@ -807,7 +812,7 @@ func (d *Debugger) DisconnectEventState(e *am.Event) {
 var _ = ss.ClientMsg
 
 func (d *Debugger) ClientMsgEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a.MsgsTx != nil && a.ConnIds != nil
 }
 
@@ -817,7 +822,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	// TODO make it async via a dedicated goroutine, pushing results to
 	//  async multi state ClientMsgDone (if possible)
 
-	cArgs := ParseArgs(e.Args)
+	cArgs := am.ParseArgs[A](e.Args)
 	msgs := cArgs.MsgsTx
 	connIds := cArgs.ConnIds
 	mach := d.Mach
@@ -949,7 +954,7 @@ func (d *Debugger) hUpdateGraphFile(e *am.Event) error {
 var _ = ss.RemoveClient
 
 func (d *Debugger) RemoveClientEnter(e *am.Event) bool {
-	cid := ParseArgs(e.Args).ClientId
+	cid := am.ParseArgs[A](e.Args).ClientId
 	_, ok2 := d.Clients[cid]
 
 	return cid != "" && ok2
@@ -957,7 +962,7 @@ func (d *Debugger) RemoveClientEnter(e *am.Event) bool {
 
 func (d *Debugger) RemoveClientState(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.RemoveClient, nil)
-	cid := ParseArgs(e.Args).ClientId
+	cid := am.ParseArgs[A](e.Args).ClientId
 	c := d.Clients[cid]
 
 	// clean up
@@ -987,7 +992,7 @@ func (d *Debugger) RemoveClientState(e *am.Event) {
 var _ = ss.SetGroup
 
 func (d *Debugger) SetGroupEnter(e *am.Event) bool {
-	group := ParseArgs(e.Args).Group
+	group := am.ParseArgs[A](e.Args).Group
 	if group == "" {
 		return false
 	}
@@ -1000,7 +1005,7 @@ func (d *Debugger) SetGroupEnter(e *am.Event) bool {
 }
 
 func (d *Debugger) SetGroupState(e *am.Event) {
-	group := ParseArgs(e.Args).Group
+	group := am.ParseArgs[A](e.Args).Group
 	c := d.C
 
 	if group == "all" {
@@ -1018,12 +1023,10 @@ func (d *Debugger) SetGroupState(e *am.Event) {
 	}))
 }
 
-// TODO SelectingClientSelectingClient (for?)
-
 var _ = ss.SelectingClient
 
 func (d *Debugger) SelectingClientEnter(e *am.Event) bool {
-	cid := ParseArgs(e.Args).ClientId
+	cid := am.ParseArgs[A](e.Args).ClientId
 	// same client
 	if d.C != nil && cid == d.C.Id && d.Mach.Is1(ss.ClientSelected) {
 		return false
@@ -1036,7 +1039,7 @@ func (d *Debugger) SelectingClientEnter(e *am.Event) bool {
 
 func (d *Debugger) SelectingClientState(e *am.Event) {
 	// TODO support tx ID
-	sArgs := ParseArgs(e.Args)
+	sArgs := am.ParseArgs[A](e.Args)
 	clientID := sArgs.ClientId
 	group := sArgs.Group
 	fromConnected := sArgs.FromConnected
@@ -1115,7 +1118,7 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 var _ = ss.ClientSelected
 
 func (d *Debugger) ClientSelectedState(e *am.Event) {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	ctx := d.Mach.NewStateCtx(ss.ClientSelected)
 	fromConnected := args.FromConnected
 	fromPlaying := args.FromPlaying
@@ -1277,7 +1280,7 @@ func (d *Debugger) MatrixRainState(e *am.Event) {
 var _ = ss.ScrollToTx
 
 func (d *Debugger) ScrollToTxEnter(e *am.Event) bool {
-	stArgs := ParseArgs(e.Args)
+	stArgs := am.ParseArgs[A](e.Args)
 	cursor, id := stArgs.CursorTx1, stArgs.TxId
 	c := d.C
 
@@ -1289,7 +1292,7 @@ func (d *Debugger) ScrollToTxEnter(e *am.Event) bool {
 
 func (d *Debugger) ScrollToTxState(e *am.Event) {
 	defer d.Mach.EvRemove1(e, ss.ScrollToTx, nil)
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	cursor1 := args.CursorTx1
 	cursorStep1 := args.CursorStep1
 	trim := args.TrimHistory
@@ -1333,7 +1336,7 @@ func (d *Debugger) NarrowLayoutEnd(e *am.Event) {
 var _ = ss.ScrollToStep
 
 func (d *Debugger) ScrollToStepEnter(e *am.Event) bool {
-	cursor := ParseArgs(e.Args).CursorStep1
+	cursor := am.ParseArgs[A](e.Args).CursorStep1
 	c := d.C
 	return c != nil && cursor > 0 && d.hNextTx() != nil
 }
@@ -1344,7 +1347,7 @@ func (d *Debugger) ScrollToStepState(e *am.Event) {
 	// TODO multi?
 	d.Mach.EvRemove1(e, ss.ScrollToStep, nil)
 
-	cStep1 := ParseArgs(e.Args).CursorStep1
+	cStep1 := am.ParseArgs[A](e.Args).CursorStep1
 	nextTx := d.hNextTx()
 
 	if cStep1 > len(nextTx.Steps) {
@@ -1359,13 +1362,13 @@ func (d *Debugger) ScrollToStepState(e *am.Event) {
 var _ = ss.ToggleTool
 
 func (d *Debugger) ToggleToolEnter(e *am.Event) bool {
-	return ParseArgs(e.Args).ToolName.Value != ""
+	return am.ParseArgs[A](e.Args).ToolName.Value != ""
 }
 
 func (d *Debugger) ToggleToolState(e *am.Event) {
 	// TODO split the state into an async one
 	// TODO refac to FilterToggledState
-	tool := ParseArgs(e.Args).ToolName
+	tool := am.ParseArgs[A](e.Args).ToolName
 
 	// tool is a filter and needs re-filter txs
 	filterTxs := false
@@ -1605,7 +1608,7 @@ var _ = ss.ToolToggled
 
 func (d *Debugger) ToolToggledState(e *am.Event) {
 	defer d.Mach.EvRemove1(e, ss.ToolToggled, nil)
-	tArgs := ParseArgs(e.Args)
+	tArgs := am.ParseArgs[A](e.Args)
 	filterTxs := tArgs.FilterTxs
 	buildClientList := tArgs.BuildClientList
 
@@ -1658,7 +1661,7 @@ var _ = ss.SwitchingClientTx
 
 func (d *Debugger) SwitchingClientTxState(e *am.Event) {
 	mach := d.Mach
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	clientID := args.ClientId
 	cursorTx := args.CursorTx1
 	ctx := d.Mach.NewStateCtx(ss.SwitchingClientTx)
@@ -1698,7 +1701,7 @@ func (d *Debugger) ScrollToMutTxState(e *am.Event) {
 	d.Mach.EvRemove1(e, ss.ScrollToMutTx, nil)
 
 	// TODO validate in Enter
-	smArgs := ParseArgs(e.Args)
+	smArgs := am.ParseArgs[A](e.Args)
 	state := smArgs.State
 	fwd := smArgs.Fwd
 
@@ -1743,7 +1746,7 @@ var _ = ss.Exception
 
 func (d *Debugger) ExceptionEnter(e *am.Event) bool {
 	// ignore eval timeouts, but log them
-	a := am.ParseArgs(e.Args)
+	a := am.ParseArgs[am.AException](e.Args)
 	if errors.Is(a.Err, am.ErrEvalTimeout) {
 		if !e.IsCheck {
 			d.Mach.Log(a.Err.Error())
@@ -1759,7 +1762,7 @@ func (d *Debugger) ExceptionEnter(e *am.Event) bool {
 // calling the super exception handler.
 func (d *Debugger) ExceptionState(e *am.Event) {
 	d.ExceptionHandler.ExceptionState(e)
-	args := am.ParseArgs(e.Args)
+	args := am.ParseArgs[am.AException](e.Args)
 
 	if d.Mach != nil {
 		d.hUpdateBorderColor()
@@ -1807,8 +1810,9 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 		}
 	})
 
+	runtime.GC()
 	mem1 := AllocMem()
-	d.Mach.Log(d.P.Sprintf("GC mem: %d bytes\n", mem1))
+	d.Mach.Log(d.P.Sprintf("Alloc mem: %d MBs\n", mem1/1024/1024))
 
 	// check TTL of client log msgs >lvl 2
 	// TODO remember the tip of cleaning (date) and binary find it, then
@@ -1839,7 +1843,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 	runtime.GC()
 	mem2 := AllocMem()
 	if mem1 > mem2 {
-		d.Mach.Log(d.P.Sprintf("GC logs shaved %d bytes\n", mem1-mem2))
+		d.Mach.Log(d.P.Sprintf("GC logs shaved %d MBs\n", (mem1-mem2)/1024/1024))
 	}
 
 	round := 0
@@ -1902,7 +1906,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 	}
 	mem3 := AllocMem()
 	if mem1 > mem3 {
-		d.Mach.Log(d.P.Sprintf("GC in total shaved %d bytes", mem1-mem3))
+		d.Mach.Log(d.P.Sprintf("GC in total shaved %d MBs", (mem1-mem3)/1024/1024))
 	}
 
 	d.hRedrawFull(false)
@@ -1924,7 +1928,7 @@ func (d *Debugger) LogReaderVisibleEnd(e *am.Event) {
 var _ = ss.SetCursor
 
 func (d *Debugger) SetCursorState(e *am.Event) {
-	d.hSetCursor1(e, ParseArgs(e.Args))
+	d.hSetCursor1(e, am.ParseArgs[A](e.Args))
 }
 
 // func (d *Debugger) CursorSetState(e *am.Event) {
@@ -2066,7 +2070,7 @@ func (d *Debugger) DiagramsReadyState(e *am.Event) {
 	defer d.Mach.EvRemove1(e, ss.DiagramsReady, nil)
 
 	// update cache
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	if args.DiagramCache != nil {
 		d.cache.diagramDom = args.DiagramCache
 		d.cache.diagramName = args.DiagramName
@@ -2185,7 +2189,7 @@ func (d *Debugger) UpdateFocusState(e *am.Event) {
 var _ = ss.AfterFocus
 
 func (d *Debugger) AfterFocusEnter(e *am.Event) bool {
-	p := ParseArgs(e.Args).FocusPrimitive
+	p := am.ParseArgs[A](e.Args).FocusPrimitive
 	if p == nil {
 		return false
 	}
@@ -2197,7 +2201,7 @@ func (d *Debugger) AfterFocusEnter(e *am.Event) bool {
 }
 
 func (d *Debugger) AfterFocusState(e *am.Event) {
-	afArgs := ParseArgs(e.Args)
+	afArgs := am.ParseArgs[A](e.Args)
 	focused := afArgs.FocusPrimitive
 	mouse := afArgs.MouseFocus
 	focused.GetFocusable()
@@ -2310,7 +2314,7 @@ func (d *Debugger) AnyState(e *am.Event) {
 var _ = ss.WebReq
 
 func (d *Debugger) WebReqState(e *am.Event) {
-	wrArgs := ParseArgs(e.Args)
+	wrArgs := am.ParseArgs[A](e.Args)
 	r := wrArgs.HttpRequest
 	w := wrArgs.HttpResponseWriter
 	done := wrArgs.DoneChan
@@ -2356,7 +2360,7 @@ var _ = ss.WebSocketDiag
 func (d *Debugger) WebSocketDiagState(e *am.Event) {
 	mach := d.Mach
 	ctx := mach.NewStateCtx(ss.WebSocketDiag)
-	wsdArgs := ParseArgs(e.Args)
+	wsdArgs := am.ParseArgs[A](e.Args)
 	ws := wsdArgs.WebSocketConn
 	r := wsdArgs.HttpRequest
 	done := wsdArgs.DoneChan
@@ -2483,7 +2487,7 @@ var _ = ss.MatrixRainSelected
 
 func (d *Debugger) MatrixRainSelectedState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.MatrixRainSelected)
-	mrArgs := ParseArgs(e.Args)
+	mrArgs := am.ParseArgs[A](e.Args)
 	row := mrArgs.Row
 	column := mrArgs.Column
 	currTxRow := mrArgs.CurrTxRow
@@ -2513,15 +2517,15 @@ func (d *Debugger) MatrixRainSelectedState(e *am.Event) {
 
 	// unblock
 	d.Mach.Fork(ctx, e, func() {
+		// scroll
+		ok := amhelp.Add1Sync(ctx, d.Mach, ss.ScrollToTx, Pass(&A{
+			CursorTx1:   row,
+			TrimHistory: true,
+		}))
 		if ctx.Err() != nil {
 			return // expired
 		}
-
-		// scroll
-		if am.Canceled == amhelp.Add1Sync(ctx, d.Mach, ss.ScrollToTx, Pass(&A{
-			CursorTx1:   row,
-			TrimHistory: true,
-		})) {
+		if ok {
 			return
 		}
 
@@ -2619,13 +2623,13 @@ func (d *Debugger) SshServerState(e *am.Event) {
 		}
 
 		// show banner TODO optional
-		host, port, _ := net.SplitHostPort(d.params.AddrSsh)
+		_, port, _ := net.SplitHostPort(d.params.AddrSsh)
 		p := d.params.Print
 		p("SSH: listening on %s\n", d.params.AddrSsh)
 		p("\n")
 		p("Connect via:\n")
 		p("$ ssh %s -p %s -o UserKnownHostsFile=/dev/null "+
-			"-o StrictHostKeyChecking=no\n", host, port)
+			"-o StrictHostKeyChecking=no\n", d.listenHost, port)
 		d.Mach.EvAddErr(
 			e, ssh.ListenAndServe(d.params.AddrSsh, handler, optSrv), nil)
 	})

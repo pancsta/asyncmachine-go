@@ -97,7 +97,7 @@ func NewRelsNetSrc(t *testing.T, initialState am.S) *am.Machine {
 
 	// TODO define these in /states using v2 as RelWorkerStruct and
 	//  RelWorkerStates, inheriting frm RelStructDef etc
-	schema := am.SchemaMerge(ssrpc.StateSourceSchema, ss.States)
+	schema := ssrpc.StateSourceSchema.Merge(ss.States)
 	names := am.SAdd(ss.Names, ssrpc.StateSourceStates.Names())
 
 	// machine init
@@ -122,7 +122,7 @@ func NewRelsNetSrc(t *testing.T, initialState am.S) *am.Machine {
 // inherit from RPC worker
 
 var (
-	RelsNodeWorkerSchema = am.SchemaMerge(ssnode.WorkerSchema, ss.States)
+	RelsNodeWorkerSchema = ssnode.WorkerSchema.Merge(ss.States)
 	RelsNodeWorkerStates = am.SAdd(ss.Names, ssnode.WorkerStates.Names())
 )
 
@@ -182,11 +182,11 @@ func NewNoRels(t *testing.T, initialState am.S, suffix string) *am.Machine {
 func NewNoRelsNetSrc(
 	t *testing.T, initialState am.S, suffix string,
 ) *am.Machine {
-	
+
 	id := "ns-" + t.Name() + suffix
 
 	// inherit from RPC worker
-	schema := am.SchemaMerge(ssrpc.StateSourceSchema, am.Schema{
+	schema := ssrpc.StateSourceSchema.Merge(am.Schema{
 		ss.A: {},
 		ss.B: {},
 		ss.C: {},
@@ -219,12 +219,13 @@ func NewNoRelsNetSrcSchema(
 	t *testing.T, initialState am.S, overlay am.Schema) *am.Machine {
 
 	// inherit from RPC worker
-	schema := am.SchemaMerge(ssrpc.StateSourceSchema, am.SchemaMerge(am.Schema{
-		ss.A: {},
-		ss.B: {},
-		ss.C: {},
-		ss.D: {},
-	}, overlay))
+	schema := ssrpc.StateSourceSchema.Merge(ssrpc.StateSourceSchema,
+		am.Schema{
+			ss.A: {},
+			ss.B: {},
+			ss.C: {},
+			ss.D: {},
+		}, overlay)
 	names := am.SAdd(ss.Names, ssrpc.StateSourceStates.Names())
 
 	// machine init
@@ -269,7 +270,7 @@ func NewCustomNetSrc(t *testing.T, states am.Schema) *am.Machine {
 
 	// inherit from RPC worker
 
-	schema := am.SchemaMerge(ssrpc.StateSourceSchema, states)
+	schema := ssrpc.StateSourceSchema.Merge(ssrpc.StateSourceSchema, states)
 	names := am.SAdd(maps.Keys(states), ssrpc.StateSourceStates.Names())
 
 	mach := am.New(context.Background(), schema, &am.Opts{

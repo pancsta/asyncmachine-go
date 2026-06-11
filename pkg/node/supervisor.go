@@ -203,7 +203,7 @@ func NewSupervisor(
 		return nil, err
 	}
 
-	mach.SemLogger().SetArgsMapper(LogArgs)
+	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 	s.Mach = mach
 	_ = amhelp.MachDebugEnv(mach)
 	mach.AddBreakpoint(am.S{ssS.ErrWorker}, nil, false)
@@ -238,8 +238,8 @@ func (s *Supervisor) ErrWorkerState(e *am.Event) {
 	if !s.Mach.WillBe1(ssS.Exception) {
 		s.Mach.Remove(am.S{ssS.ErrWorker, ssS.Exception}, nil)
 	}
-	err := am.ParseArgs(e.Args).Err
-	args := ParseArgs(e.Args)
+	err := am.ParseArgs[am.AException](e.Args).Err
+	args := am.ParseArgs[A](e.Args)
 	w := s.workers[args.LocalAddr]
 
 	// possibly kill the worker
@@ -278,14 +278,14 @@ func (s *Supervisor) ClientConnectedState(e *am.Event) {
 var _ = ssS.ClientDisconnected
 
 func (s *Supervisor) ClientDisconnectedEnter(e *am.Event) bool {
-	a := arpc.ParseArgs(e.Args)
+	a := am.ParseArgs[arpc.A](e.Args)
 	return a != nil && a.Addr != ""
 }
 
 func (s *Supervisor) ClientDisconnectedState(e *am.Event) {
 	s.Mach.Remove1(ssS.ClientDisconnected, nil)
 
-	addr := arpc.ParseArgs(e.Args).Addr
+	addr := am.ParseArgs[arpc.A](e.Args).Addr
 	srv, ok := s.PublicRpcs[addr]
 	if !ok {
 		s.log("client %s disconnected, but not found", addr)
@@ -297,14 +297,14 @@ func (s *Supervisor) ClientDisconnectedState(e *am.Event) {
 var _ = ssS.Start
 
 func (s *Supervisor) StartEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a != nil && a.PublicAddr != "" && a.LocalAddr != ""
 }
 
 func (s *Supervisor) StartState(e *am.Event) {
 	var err error
 	ctx := s.Mach.NewStateCtx(ssS.Start)
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	s.LocalAddr = args.LocalAddr
 	s.PublicAddr = args.PublicAddr
 
@@ -315,7 +315,7 @@ func (s *Supervisor) StartState(e *am.Event) {
 			NewServerFn: s.newClientConn,
 		})
 	if err != nil {
-		_ = AddErrRpc(s.Mach, err, nil)
+		AddErrRpc(e, s.Mach, err, nil)
 		return
 	}
 
@@ -326,14 +326,14 @@ func (s *Supervisor) StartState(e *am.Event) {
 	s.LocalRpc, err = arpc.NewServer(ctx, s.LocalAddr, "ns-loc-"+s.Name, s.Mach,
 		opts)
 	if err != nil {
-		_ = AddErrRpc(s.Mach, err, nil)
+		AddErrRpc(e, s.Mach, err, nil)
 		return
 	}
 	s.LocalRpc.DeliveryTimeout = s.DeliveryTimeout
-	err = arpc.BindServerMulti(s.LocalRpc.Mach, s.Mach, ssS.LocalRpcReady,
+	_, err = arpc.BindServerMulti(s.LocalRpc.Mach, s.Mach, ssS.LocalRpcReady,
 		ssS.SuperConnected, ssS.SuperDisconnected)
 	if err != nil {
-		_ = AddErrRpc(s.Mach, err, nil)
+		AddErrRpc(e, s.Mach, err, nil)
 		return
 	}
 
@@ -352,7 +352,7 @@ func (s *Supervisor) StartState(e *am.Event) {
 		}
 		if err != nil {
 			err := errors.Join(err, s.PublicMux.Mach.Err(), s.LocalRpc.Mach.Err())
-			_ = AddErrRpc(s.Mach, err, nil)
+			AddErrRpc(e, s.Mach, err, nil)
 			return
 		}
 
@@ -401,7 +401,7 @@ func (s *Supervisor) ForkWorkerState(e *am.Event) {
 	// init bootstrap machine
 	boot, err := newBootstrap(ctx, s)
 	if err != nil {
-		_ = AddErrWorker(nil, s.Mach, err, nil)
+		AddErrWorker(nil, s.Mach, err, nil)
 		return
 	}
 	argsOut := &A{Bootstrap: boot}
@@ -409,7 +409,7 @@ func (s *Supervisor) ForkWorkerState(e *am.Event) {
 	// start connection-bootstrap machine
 	res := boot.Mach.Add1(ssB.Start, nil)
 	if res != am.Executed || boot.Mach.IsErr() {
-		_ = AddErrWorker(e, s.Mach, ErrWorkerConn, Pass(argsOut))
+		AddErrWorker(e, s.Mach, ErrWorkerConn, Pass(argsOut))
 		return
 	}
 
@@ -422,19 +422,19 @@ func (s *Supervisor) ForkWorkerState(e *am.Event) {
 			return // expired
 		}
 		if err != nil {
-			_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
+			AddErrWorker(e, s.Mach, err, Pass(argsOut))
 			return
 		}
 
 		// next
-		s.Mach.Add1(ssS.ForkingWorker, Pass(argsOut))
+		s.Mach.EvAdd1(e, ssS.ForkingWorker, Pass(argsOut))
 	}()
 }
 
 var _ = ssS.ForkingWorker
 
 func (s *Supervisor) ForkingWorkerEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a.Bootstrap != nil && a.Bootstrap.Addr() != "" &&
 		len(s.workers) < s.Max
 }
@@ -442,7 +442,7 @@ func (s *Supervisor) ForkingWorkerEnter(e *am.Event) bool {
 func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 	s.Mach.Remove1(ssS.ForkingWorker, nil)
 	ctx := s.Mach.NewStateCtx(ssS.Start)
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	boot := args.Bootstrap
 	bootAddr := boot.Addr()
 	argsOut := &A{Bootstrap: boot}
@@ -455,7 +455,7 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 				return // expired
 			}
 			if err := s.TestFork(bootAddr); err != nil {
-				_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
+				AddErrWorker(e, s.Mach, err, Pass(argsOut))
 				return
 			}
 			// fake entry
@@ -488,7 +488,7 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 	// read errors
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
+		AddErrWorker(e, s.Mach, err, Pass(argsOut))
 		return
 	}
 	scanner := bufio.NewScanner(stderr)
@@ -496,7 +496,7 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 	// fork the worker
 	err = cmd.Start()
 	if err != nil {
-		_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
+		AddErrWorker(e, s.Mach, err, Pass(argsOut))
 		return
 	}
 
@@ -513,7 +513,7 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 			if out != "" {
 				s.log("fork error: %s", out)
 			}
-			_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
+			AddErrWorker(e, s.Mach, err, Pass(argsOut))
 
 			return
 		}
@@ -523,7 +523,7 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 var _ = ssS.WorkerConnected
 
 func (s *Supervisor) WorkerConnectedEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a != nil && a.LocalAddr != ""
 }
 
@@ -531,7 +531,7 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 	s.Mach.Remove1(ssS.WorkerConnected, nil)
 
 	ctx := s.Mach.NewStateCtx(ssS.Start)
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	// copy args
 	argsOut := *args
 
@@ -546,13 +546,13 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 		workerAddr := args.LocalAddr
 		_, port, err := net.SplitHostPort(workerAddr)
 		if err != nil {
-			_ = AddErrWorker(e, s.Mach, err, Pass(&argsOut))
+			AddErrWorker(e, s.Mach, err, Pass(&argsOut))
 			return
 		}
 		wrpc, err := arpc.NewClient(ctx, workerAddr, s.Name+"-"+port,
 			s.schemaWorker, &arpc.ClientOpts{Parent: s.Mach})
 		if err != nil {
-			_ = AddErrWorker(e, s.Mach, err, Pass(&argsOut))
+			AddErrWorker(e, s.Mach, err, Pass(&argsOut))
 			return
 		}
 
@@ -564,7 +564,7 @@ func (s *Supervisor) WorkerConnectedState(e *am.Event) {
 			return // expired
 		}
 		if err != nil {
-			_ = AddErrWorker(e, s.Mach, wrpc.Mach.Err(), Pass(&argsOut))
+			AddErrWorker(e, s.Mach, wrpc.Mach.Err(), Pass(&argsOut))
 			return
 		}
 
@@ -596,7 +596,7 @@ func (s *Supervisor) WorkerForkedState(e *am.Event) {
 	// switch addresses (boot -> local) and update the worker map
 	info, ok := s.workers[bootAddr]
 	if !ok {
-		_ = AddErrWorker(e, s.Mach, ErrWorkerMissing, Pass(argsOut))
+		AddErrWorker(e, s.Mach, ErrWorkerMissing, Pass(argsOut))
 		return
 	}
 	delete(s.workers, bootAddr)
@@ -609,23 +609,22 @@ func (s *Supervisor) WorkerForkedState(e *am.Event) {
 	s.workers[addr] = info
 
 	// custom pipe worker states
-	err := errors.Join(
-		ampipe.BindReady(wrpc.Mach, s.Mach, ssS.WorkerReady, ""),
-		wrpc.Mach.BindHandlers(&struct {
-			ExceptionState am.HandlerFinal
-			ReadyEnd       am.HandlerFinal
-		}{
-			ExceptionState: func(e *am.Event) {
-				_ = AddErrWorker(e, s.Mach, wrpc.Mach.Err(), Pass(argsOut))
-			},
-			ReadyEnd: func(e *am.Event) {
-				// TODO why this kills the workers? which Ready ends?
-				s.Mach.EvAdd1(e, ssS.KillWorker, Pass(argsOut))
-			},
-		}),
-	)
+	_, err1 := ampipe.BindReady(wrpc.Mach, s.Mach, ssS.WorkerReady, "")
+	_, err2 := wrpc.Mach.HandlersBind(&struct {
+		ExceptionState am.HandlerFinal
+		ReadyEnd       am.HandlerFinal
+	}{
+		ExceptionState: func(e *am.Event) {
+			AddErrWorker(e, s.Mach, wrpc.Mach.Err(), Pass(argsOut))
+		},
+		ReadyEnd: func(e *am.Event) {
+			// TODO why this kills the workers? which Ready ends?
+			s.Mach.EvAdd1(e, ssS.KillWorker, Pass(argsOut))
+		},
+	})
+	err := errors.Join(err1, err2)
 	if err != nil {
-		_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
+		AddErrWorker(e, s.Mach, err, Pass(argsOut))
 		return
 	}
 
@@ -659,12 +658,12 @@ func (s *Supervisor) KillingWorkerState(e *am.Event) {
 
 	w, ok := s.workers[addr]
 	if !ok {
-		_ = AddErrWorker(e, s.Mach, ErrWorkerMissing, Pass(argsOut))
+		AddErrWorker(e, s.Mach, ErrWorkerMissing, Pass(argsOut))
 		return
 	}
 	err := w.proc.Kill()
 	if err != nil {
-		_ = AddErrWorker(e, s.Mach, err, Pass(argsOut))
+		AddErrWorker(e, s.Mach, err, Pass(argsOut))
 		return
 	}
 
@@ -754,10 +753,12 @@ func (s *Supervisor) HeartbeatState(e *am.Event) {
 				}
 
 				if !ok {
-					return AddErrWorker(e, s.Mach, ErrWorkerHealth, Pass(&A{
+					AddErrWorker(e, s.Mach, ErrWorkerHealth, Pass(&A{
 						LocalAddr: info.localAddr,
 						Id:        info.w.Id(),
 					}))
+
+					return ErrWorkerHealth
 				}
 
 				return nil
@@ -769,7 +770,7 @@ func (s *Supervisor) HeartbeatState(e *am.Event) {
 		// ...wait with a timeout instead
 		err := amhelp.WaitForAll(ctx, s.ConnTimeout, parCtx.Done())
 		if err != nil {
-			_ = AddErrPool(s.Mach, fmt.Errorf("%w: %w", ErrHeartbeat, err), nil)
+			AddErrPool(e, s.Mach, fmt.Errorf("%w: %w", ErrHeartbeat, err), nil)
 			return
 		}
 
@@ -783,7 +784,7 @@ func (s *Supervisor) HeartbeatState(e *am.Event) {
 			return // expired
 		}
 		if err != nil {
-			_ = AddErrWorker(e, s.Mach, err, nil)
+			AddErrWorker(e, s.Mach, err, nil)
 			return
 		}
 		if len(idle) > 0 {
@@ -863,7 +864,7 @@ func (s *Supervisor) NormalizingPoolState(e *am.Event) {
 		}
 
 		if !ready {
-			_ = AddErrPoolStr(s.Mach, "failed to normalize pool", nil)
+			AddErrPoolStr(e, s.Mach, "failed to normalize pool", nil)
 		}
 
 		s.normalizeStart = time.Time{}
@@ -873,7 +874,7 @@ func (s *Supervisor) NormalizingPoolState(e *am.Event) {
 var _ = ssS.ProvideWorker
 
 func (s *Supervisor) ProvideWorkerEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a.WorkerRpcId != "" && a.SuperRpcId != ""
 }
 
@@ -893,12 +894,14 @@ func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 		for _, info := range idle {
 
 			// confirm with the worker
-			res := amhelp.Add1Sync(ctx, info.rpc.NetMach, ssW.ServeClient,
-				PassRpc(&A{Id: args.WorkerRpcId}))
+			ok := amhelp.Add1Sync(ctx, info.rpc.NetMach, ssW.ServeClient,
+				Pass(&ARpc{
+					Id: args.WorkerRpcId,
+				}))
 			if ctx.Err() != nil {
 				return // expired
 			}
-			if res != am.Executed {
+			if ok {
 				s.log("worker %s rejected %s", info.rpc.NetMach.Id(), args.WorkerRpcId)
 				continue
 			}
@@ -1140,7 +1143,7 @@ func (s *Supervisor) newClientConn(
 
 	// set up
 	rpcS.DeliveryTimeout = s.DeliveryTimeout
-	err = arpc.BindServerMulti(rpcS.Mach, s.Mach, ssS.PublicRpcReady,
+	_, err = arpc.BindServerMulti(rpcS.Mach, s.Mach, ssS.PublicRpcReady,
 		ssS.ClientConnected, ssS.ClientDisconnected)
 	if err != nil {
 		return nil, err

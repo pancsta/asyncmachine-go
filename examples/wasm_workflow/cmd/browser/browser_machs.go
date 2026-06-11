@@ -22,12 +22,6 @@ import (
 
 var ssW = states.WorkerStates
 var ssD = states.DispatcherStates
-var Pass = example.Pass
-var PassRpc = example.PassRpc
-var ParseArgs = example.ParseArgs
-
-type A = example.A
-type ARpc = example.ARpc
 
 func newDispatcherMach(
 	ctx context.Context, handlers any, conns map[string]net.Conn,
@@ -39,13 +33,12 @@ func newDispatcherMach(
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	mach.SemLogger().SetArgsMapper(example.LogArgs)
+	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 	mach.SetGroups(states.DispatcherGroups, ssD)
 	amhelp.MachDebugEnv(mach)
 	repl, err := arpc.MachReplWs(mach, example.EnvRelayHttpAddr, &arpc.ReplOpts{
 		WebSocketTunnel: arpc.WsListenPath("repl-"+mach.Id(), example.EnvBrowser2ReplAddr),
-		Args:            ARpc{},
-		ParseRpc:        example.ParseRpc,
+		Args:            example.ArgsRpc,
 	})
 	if err == nil {
 		repl.Start(nil)
@@ -152,12 +145,11 @@ func newWorkerMach(
 	if err != nil {
 		return nil, nil, err
 	}
-	mach.SemLogger().SetArgsMapper(example.LogArgs)
+	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 	amhelp.MachDebugEnv(mach)
 	repl, err := arpc.MachReplWs(mach, example.EnvRelayHttpAddr, &arpc.ReplOpts{
 		WebSocketTunnel: arpc.WsListenPath("repl-"+mach.Id(), addrRepl),
-		Args:            ARpc{},
-		ParseRpc:        example.ParseRpc,
+		Args:            example.ArgsWorkerRpc,
 	})
 	if err != nil {
 		return nil, nil, err

@@ -74,9 +74,7 @@ type TopicGroupsDef struct {
 }
 
 // TopicSchema represents all relations and properties of TopicStates.
-var TopicSchema = SchemaMerge(
-	// inherit from BasicStruct
-	ss.BasicSchema,
+var TopicSchema = ss.BasicSchema.Merge(
 	// inherit from ConnectedStruct
 	ss.ConnectedSchema,
 	// inherit from DisposedStruct

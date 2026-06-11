@@ -71,16 +71,21 @@ func (m *Mutation) StringFromIndex(index S) string {
 
 // MapArgs returns arguments of this Mutation which match the passed [mapper].
 // The returned map is never nil.
-func (m *Mutation) MapArgs(mapper LogArgsMapperFn) map[string]string {
+func (m *Mutation) MapArgs(mapper LogArgsMapperFn) (ret map[string]string) {
+	ret = map[string]string{}
 	if mapper == nil {
-		return map[string]string{}
-	}
-
-	if ret := mapper(m.Args); ret == nil {
-		return map[string]string{}
-	} else {
 		return ret
 	}
+
+	// TODO catch panic and recover with a default
+	// defer func() {
+	// 	if r := recover(); r != nil {
+	// 		// TODO log err
+	// 	}
+	// }()
+
+	ret = mapper(m.Args)
+	return
 }
 
 // LogArgs returns a text snippet with arguments which should be logged for this

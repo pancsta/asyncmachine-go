@@ -26,9 +26,7 @@ type CliGroupsDef struct {
 }
 
 // CliSchema represents all relations and properties of CliStates.
-var CliSchema = SchemaMerge(
-	// inherit from BasicStruct
-	ss.BasicSchema,
+var CliSchema = ss.BasicSchema.Merge(
 	// inherit from DisposedStruct
 	ss.DisposedSchema,
 	am.Schema{

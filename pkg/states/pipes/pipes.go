@@ -3,13 +3,14 @@ package pipes
 
 // TODO implement removal of pipes via:
 //  - dispose source handlers when target mach disposes
-//  - binding-struct
-//  - pass binding IDs, so its possible to unbind
+//  - migrate to map bindings
+//  - check IsLocal and dont fork
 
 import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -65,8 +66,12 @@ func add(
 		if flat && target.Is(names) {
 			return
 		} else if flat {
-			// TODO optimize: fork only for non-local
-			go target.EvAdd(e, names, nil)
+			if target.IsLocal() {
+				target.EvAdd(e, names, nil)
+			} else {
+				// avoid network blocking
+				go target.EvAdd(e, names, nil)
+			}
 		} else {
 			// TODO source tx ID missings
 			go target.EvAdd(e, names, e.Args)
@@ -116,8 +121,12 @@ func remove(
 		if flat && target.Not1(targetState) {
 			return
 		} else if flat {
-			// TODO optimize: fork only for non-local
-			go target.EvRemove1(e, targetState, nil)
+			if target.IsLocal() {
+				target.EvRemove1(e, targetState, nil)
+			} else {
+				// avoid network blocking
+				go target.EvRemove1(e, targetState, nil)
+			}
 		} else {
 			// TODO source tx ID missing
 			go target.EvRemove1(e, targetState, e.Args)
@@ -133,13 +142,13 @@ func remove(
 
 // BindAny binds a whole machine via the global AnyState handler and Set
 // mutation. The target mutates the same number of times as the source.
-func BindAny(source, target am.Api) error {
+func BindAny(source, target am.Api) (string, error) {
 
 	// validate
 	missing := am.StatesDiff(source.StateNames(), target.StateNames())
 	if len(missing) > 0 {
 
-		return fmt.Errorf("BindAny: %w in target: %s", am.ErrStateMissing, missing)
+		return "", fmt.Errorf("BindAny: %w in target: %s", am.ErrStateMissing, missing)
 	}
 
 	// AnyState
@@ -170,7 +179,9 @@ func BindAny(source, target am.Api) error {
 	source.OnDispose(gcHandler(target))
 	target.OnDispose(gcHandler(source))
 
-	return source.BindHandlers(h)
+	return source.HandlersBind(h, am.BindOpts{
+		Id: "BindAny-" + target.Id(),
+	})
 }
 
 // BindConnected binds a [ss.ConnectedSchema] machine to 4 custom states. Each
@@ -178,7 +189,7 @@ func BindAny(source, target am.Api) error {
 func BindConnected(
 	source, target am.Api, disconnected, connecting, connected,
 	disconnecting string,
-) error {
+) (string, error) {
 
 	h := &struct {
 		DisconnectedState am.HandlerFinal
@@ -212,12 +223,14 @@ func BindConnected(
 		h.DisconnectingEnd = Remove(source, target, s.Disconnecting, disconnecting)
 	}
 
-	return source.BindHandlers(h)
+	return source.HandlersBind(h, am.BindOpts{
+		Id: "BindConnected-" + target.Id(),
+	})
 }
 
 // BindErr binds Exception to a custom state using Add. Empty state defaults to
 // [am.StateException], and a custom state will also add [am.StateException].
-func BindErr(source, target am.Api, targetErr string) error {
+func BindErr(source, target am.Api, targetErr string) (string, error) {
 	if targetErr == "" {
 		targetErr = am.StateException
 	}
@@ -228,14 +241,16 @@ func BindErr(source, target am.Api, targetErr string) error {
 		ExceptionState: Add(source, target, am.StateException, targetErr),
 	}
 
-	return source.BindHandlers(h)
+	return source.HandlersBind(h, am.BindOpts{
+		Id: "BindErr-" + target.Id(),
+	})
 }
 
 // BindStart binds Start to custom states using Add/Remove. Empty state
 // defaults to Start.
 func BindStart(
 	source, target am.Api, activeState, inactiveState string,
-) error {
+) (string, error) {
 
 	if activeState == "" {
 		activeState = am.StateStart
@@ -252,14 +267,16 @@ func BindStart(
 		StartEnd:   Remove(source, target, ss.BasicStates.Start, inactiveState),
 	}
 
-	return source.BindHandlers(h)
+	return source.HandlersBind(h, am.BindOpts{
+		Id: "BindStart-" + target.Id(),
+	})
 }
 
 // BindReady binds Ready to custom states using Add/. Empty state
 // defaults to Ready.
 func BindReady(
 	source, target am.Api, activeState, inactiveState string,
-) error {
+) (string, error) {
 
 	if activeState == "" {
 		activeState = am.StateReady
@@ -276,7 +293,9 @@ func BindReady(
 		ReadyEnd:   Remove(source, target, ss.BasicStates.Ready, inactiveState),
 	}
 
-	return source.BindHandlers(h)
+	return source.HandlersBind(h, am.BindOpts{
+		Id: "BindReady-" + target.Id(),
+	})
 }
 
 // Bind binds an arbitrary state to custom states using Add and Remove.
@@ -284,7 +303,7 @@ func BindReady(
 // creates a separate handler struct, unlike in BindMany.
 func Bind(
 	source, target am.Api, state string, activeState, inactiveState string,
-) error {
+) (string, error) {
 
 	if activeState == "" {
 		activeState = state
@@ -320,21 +339,23 @@ func Bind(
 	// bind handlers
 	handlers := val.Addr().Interface()
 
-	return source.BindHandlers(handlers)
+	return source.HandlersBind(handlers, am.BindOpts{
+		Id: "Bind-" + state + "-" + target.Id(),
+	})
 }
 
 // BindMany binds arbitrary states to a mirrored list of states using Add and
 // Remove. Only one handler struct is created for all the bindings.
 func BindMany(
 	source, target am.Api, states, targetStates am.S,
-) error {
+) (string, error) {
 
 	if targetStates == nil {
 		targetStates = states
 	}
 
 	if len(states) != len(targetStates) {
-		return fmt.Errorf("%w: source and target states len mismatch",
+		return "", fmt.Errorf("%w: source and target states len mismatch",
 			am.ErrStateMissing)
 	}
 
@@ -368,7 +389,9 @@ func BindMany(
 	// bind handlers
 	handlers := val.Addr().Interface()
 
-	return source.BindHandlers(handlers)
+	return source.HandlersBind(handlers, am.BindOpts{
+		Id: "BindMany-" + strconv.Itoa(len(states)) + "-" + target.Id(),
+	})
 }
 
 // Sync synchronizes states from source to target and returns the number of

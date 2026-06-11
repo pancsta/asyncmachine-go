@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/orsinium-labs/enum"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
@@ -278,6 +279,11 @@ type tracer struct {
 	*am.TracerNoOp
 
 	mem *Memory
+	id  string
+}
+
+func (t *tracer) TracerId() string {
+	return "history" + t.id
 }
 
 func (t *tracer) MachineInit(mach am.Api) context.Context {
@@ -780,6 +786,7 @@ func NewMemory(
 	mem.BaseMemory = NewBaseMemory(ctx, mach, c, mem)
 	tr := &tracer{
 		mem: mem,
+		id:  amhelp.RandId(4),
 	}
 	mem.tr = tr
 	if machRecord != nil {
@@ -788,14 +795,15 @@ func NewMemory(
 		tr.mem.machRec = &cp
 	}
 	tr.MachineInit(mach)
-	mach.OnDispose(func(id string, ctx context.Context) {
+	amhelp.DisposeBind(mach, func(id string, ctx context.Context) {
 		err := mem.Dispose()
 		if err != nil {
 			mem.onErr(err)
 		}
 	})
+	_, err := mach.BindTracer(tr)
 
-	return mem, mach.BindTracer(tr)
+	return mem, err
 }
 
 func (m *Memory) MachineRecord() *MachineRecord {
@@ -819,7 +827,7 @@ func (m *Memory) Dispose() error {
 	defer m.mx.Unlock()
 
 	m.db = nil
-	return m.Mach.DetachTracer(m.tr)
+	return m.Mach.DetachTracer(m.tr.TracerId())
 }
 
 // FindLatest is [BaseMemory.FindLatest] for in-process memory.

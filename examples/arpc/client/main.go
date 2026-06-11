@@ -86,7 +86,7 @@ func newClient(
 
 	// consumer
 	consumer := am.New(ctx, ssrpc.ConsumerSchema, nil)
-	err := consumer.BindHandlers(&clientHandlers{})
+	_, err := consumer.HandlersBind(&clientHandlers{})
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +116,6 @@ var _ = ssrpc.ConsumerStates.ServerPayload
 func (h *clientHandlers) ServerPayloadState(e *am.Event) {
 	e.Machine().Remove1(ssrpc.ConsumerStates.ServerPayload, nil)
 
-	args := arpc.ParseArgs(e.Args)
+	args := am.ParseArgs[arpc.AServerPayload](e.Args)
 	println("Payload: " + args.Payload.Data.(string))
 }

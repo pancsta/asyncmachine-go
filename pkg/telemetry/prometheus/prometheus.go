@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
 
@@ -23,10 +24,16 @@ import (
 
 const EnvPromPushUrl = "AM_PROM_PUSH_URL"
 
+// TODO?
 type PromInheritTracer struct {
 	*am.TracerNoOp
 
-	m *Metrics
+	m  *Metrics
+	id string
+}
+
+func (t *PromInheritTracer) TracerId() string {
+	return "prominherit" + t.id
 }
 
 // PromTracer is [am.Tracer] for tracing state machines.
@@ -36,6 +43,11 @@ type PromTracer struct {
 	m           *Metrics
 	txStartTime time.Time
 	prevTime    uint64
+	id          string
+}
+
+func (t *PromTracer) TracerId() string {
+	return "prom" + t.id
 }
 
 func (t *PromTracer) SchemaChange(machine am.Api, old am.Schema) {
@@ -65,8 +77,8 @@ func (t *PromTracer) NewSubmachine(parent, mach am.Api) {
 		BindToRegistry(m2, t.m.registry)
 	}
 
-	// bind inheritance tracer
-	err := mach.BindTracer(&PromInheritTracer{
+	// bind inheritance tracer TODO ???
+	_, err := mach.BindTracer(&PromInheritTracer{
 		m: m2,
 	})
 	if err != nil {
@@ -455,9 +467,12 @@ func BindMach(mach am.Api) *Metrics {
 
 	metrics.RelAmount.Set(float64(relCount))
 	metrics.RefStatesAmount.Set(float64(stateRefCount))
-	metrics.Tracer = &PromTracer{m: metrics}
+	metrics.Tracer = &PromTracer{
+		m:  metrics,
+		id: utils.RandId(4),
+	}
 
-	_ = mach.BindTracer(metrics.Tracer)
+	_, _ = mach.BindTracer(metrics.Tracer)
 
 	return metrics
 }

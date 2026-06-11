@@ -1185,7 +1185,7 @@ func TestNestedMutation(t *testing.T) {
 	// machine
 	mach := utils.NewNoRelsNetSrc(t, nil, "")
 	// bind handlers
-	err := mach.BindHandlers(&TestNestedMutationHandlers{})
+	_, err := mach.HandlersBind(&TestNestedMutationHandlers{})
 	assert.NoError(t, err)
 
 	// worker
@@ -1320,10 +1320,14 @@ func TestWhenQueue(t *testing.T) {
 
 	// test
 	tr := &TestWhenQueueTracer{
+		TracerNoOp: &am.TracerNoOp{
+			Id: t.Name(),
+		},
 		t:    t,
 		done: make(chan struct{}),
 	}
-	require.NoError(t, nm.BindTracer(tr))
+	_, err := nm.BindTracer(tr)
+	require.NoError(t, err)
 
 	nm.Add1("A", nil)
 	// TODO weird close-doesnt-unblock bug in go1.25
@@ -1420,7 +1424,8 @@ func TestPipes(t *testing.T) {
 	// sync and pipe from network version to a full local
 	// TODO pause RPC client?
 	local.Set(c.NetMach.ActiveStates(nil), nil)
-	require.NoError(t, ampipe.BindAny(c.NetMach, local))
+	_, err := ampipe.BindAny(c.NetMach, local)
+	require.NoError(t, err)
 
 	// mutate
 	netSrc.Add(S{"A", "B"}, nil)
@@ -1431,4 +1436,27 @@ func TestPipes(t *testing.T) {
 
 	local.Dispose()
 	disposeTest(t, c, s, true)
+}
+
+func TestStateCtxBasic(t *testing.T) {
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+	// init
+	m := utils.NewNoRelsNetSrc(t, nil, "")
+
+	// test
+	m.Add1("A", nil)
+	ctx1 := m.NewStateCtx("A")
+	assert.Nil(t, ctx1.Err())
+	m.Remove1("A", nil)
+	assert.Error(t, ctx1.Err())
+
+	// test early cancel
+	ctx2 := m.NewStateCtx("B")
+	assert.Error(t, ctx2.Err())
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
 }

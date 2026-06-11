@@ -129,9 +129,8 @@ type OtelMachTracer struct {
 
 	opts  *OtelMachTracerOpts
 	ended bool
+	id    string
 }
-
-var _ am.Tracer = (*OtelMachTracer)(nil)
 
 // NewOtelMachTracer creates a new machine tracer from an OpenTelemetry tracer.
 // Requires OtelMachTracer.Dispose to be called at the end.
@@ -153,6 +152,7 @@ func NewOtelMachTracer(
 		Machines: make(map[string]*OtelMachineData),
 		RootSpan: rootSpan,
 
+		id:          utils.RandId(4),
 		opts:        opts,
 		parentSpans: make(map[string]trace.Span),
 		parents:     make(map[string]string),
@@ -171,6 +171,10 @@ func NewOtelMachTracer(
 	}
 
 	return mt
+}
+
+func (t *OtelMachTracer) TracerId() string {
+	return "otel" + t.id
 }
 
 func (mt *OtelMachTracer) getMachineData(
@@ -287,7 +291,7 @@ func (mt *OtelMachTracer) NewSubmachine(parent, mach am.Api) {
 		return
 	}
 
-	err := mach.BindTracer(mt)
+	_, err := mach.BindTracer(mt)
 	if err != nil {
 		mt.Logf("[otel] NewSubmachine: err binding tracer", mach.Id())
 		return
@@ -425,7 +429,7 @@ func (mt *OtelMachTracer) TransitionInit(tx *am.Transition) {
 	var errAttr error
 	if slices.Contains(tx.TargetStates(), am.StateException) {
 		name = "!" + name
-		errAttr = am.ParseArgs(tx.Args()).Err
+		errAttr = am.ParseArgs[am.AException](tx.Args()).Err
 	}
 
 	// build a transition trace
@@ -923,7 +927,7 @@ func MachBindOtelEnv(mach am.Api) error {
 	}
 
 	// bind the Otel tracer
-	err = mach.BindTracer(mt)
+	_, err = mach.BindTracer(mt)
 	if err != nil {
 		return err
 	}

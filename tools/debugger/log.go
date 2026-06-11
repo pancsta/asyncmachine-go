@@ -39,7 +39,7 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 
 	// TODO handle logRebuildEnd by observing ClientMsg state clock, dont req
 	ctx := d.Mach.NewStateCtx(ss.BuildingLog)
-	endIndex1 := ParseArgs(e.Args).LogRebuildEnd
+	endIndex1 := am.ParseArgs[A](e.Args).LogRebuildEnd
 	cursorTx1 := d.C.CursorTx1
 	level := d.params.Filters.LogLevel
 	var buf string
@@ -138,7 +138,7 @@ var _ = ss.LogBuilt
 
 func (d *Debugger) LogBuiltState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.LogBuilt)
-	lArgs := ParseArgs(e.Args)
+	lArgs := am.ParseArgs[A](e.Args)
 	cursorTx1 := lArgs.CursorTx1
 	updated := cursorTx1 > 0 // cursor is 1-based; 0 means not passed
 	level := lArgs.LogLevel
@@ -206,11 +206,11 @@ func (d *Debugger) UpdatingLogState(e *am.Event) {
 	// unblock
 	d.Mach.Fork(ctx, e, func() {
 		// rebuild if needed
-		res := amhelp.EvAdd1Async(ctx, e, d.Mach, ss.LogBuilt, ss.BuildingLog,
+		ok := amhelp.EvAdd1Async(ctx, e, d.Mach, ss.LogBuilt, ss.BuildingLog,
 			Pass(&A{
 				LogRebuildEnd: len(d.C.MsgTxs),
 			}))
-		if am.Canceled == res {
+		if ok {
 			d.Mach.Log("err: LogBuilt canceled")
 		}
 
@@ -283,11 +283,11 @@ func (d *Debugger) LogUpdatedState(e *am.Event) {
 var _ = ss.Overlay
 
 func (d *Debugger) OverlayEnter(e *am.Event) bool {
-	return ParseArgs(e.Args).Text != ""
+	return am.ParseArgs[A](e.Args).Text != ""
 }
 
 func (d *Debugger) OverlayState(e *am.Event) {
-	txt := ParseArgs(e.Args).Text
+	txt := am.ParseArgs[A](e.Args).Text
 
 	d.overlay.SetText(txt)
 	d.overlay.SetVisible(true)
@@ -1763,6 +1763,7 @@ func (u *logReaderUpdate) buildStateTrace() error {
 func (u *logReaderUpdate) buildSource() error {
 	u.parentSource = cview.NewTreeNode("Source")
 	sourceKnown := false
+	// find the source line
 	for _, entry := range u.tx.LogEntries {
 		if !strings.HasPrefix(entry.Text, "[source] ") {
 			continue
@@ -1778,11 +1779,17 @@ func (u *logReaderUpdate) buildSource() error {
 			return fmt.Errorf("invalid source mach time %q: %w", source[2], err)
 		}
 
+		if u.tx.IsAuto {
+			node := cview.NewTreeNode("auto")
+			node.SetIndent(1)
+			u.parentSource.AddChild(node)
+		}
+
 		node := cview.NewTreeNode("self")
 		node.SetIndent(1)
 		if source[0] != u.c.Id {
 			node.SetText(u.d.P.Sprintf("%s [%s]t%v[-]",
-				theme.Grey, source[0], machTime))
+				source[0], theme.Grey, machTime))
 			node.SetReference(&logReaderTreeRef{
 				machId:   source[0],
 				txId:     source[1],
@@ -1793,8 +1800,8 @@ func (u *logReaderUpdate) buildSource() error {
 
 		if sC, sTx := u.d.hGetClientTx(source[0], source[1]); sTx != nil {
 			stateNames := sTx.CalledStateNames(sC.MsgStruct.StatesIndex)
-			label := capitalizeFirst(sTx.Type.String()) +
-				" [::b]" + utils.J(stateNames)
+			label := u.d.P.Sprintf("%s [::b]%s[%s::-] t%v",
+				capitalizeFirst(sTx.Type.String()), utils.J(stateNames), theme.Grey, sTx.TimeSum())
 			node2 := cview.NewTreeNode(label)
 			node2.SetIndent(1)
 			node2.SetReference(&logReaderTreeRef{

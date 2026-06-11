@@ -32,15 +32,14 @@ var workerAddr = "localhost:" + utils.RandPort(52001, 53000)
 
 type A = types.A
 
-var Pass = types.Pass
-var ParseArgs = types.ParseArgs
+var Pass = am.Pass
 
 func init() {
 	_ = godotenv.Load()
 
 	// uncomment to debug
 	// amhelp.EnableDebugging(false)
-	amhelp.SetEnvLogLevel(am.LogOps)
+	// amhelp.SetEnvLogLevel(am.LogOps)
 	// os.Setenv(am.EnvAmDetectEval, "1")
 
 	// worker uses env debugging

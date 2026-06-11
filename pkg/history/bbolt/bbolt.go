@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	"github.com/vmihailenco/msgpack/v5"
 	"go.etcd.io/bbolt"
 	"golang.org/x/sync/errgroup"
@@ -51,6 +52,11 @@ type tracer struct {
 	*am.TracerNoOp
 
 	mem *Memory
+	id  string
+}
+
+func (t *tracer) TracerId() string {
+	return "bbolt" + t.id
 }
 
 func (t *tracer) MachineInit(mach am.Api) context.Context {
@@ -398,11 +404,19 @@ func NewMemory(
 	mem.queueWorker.SetLimit(1)
 	tr := &tracer{
 		mem: mem,
+		id:  amhelp.RandId(4),
 	}
 	mem.tr = tr
 	tr.MachineInit(mach)
+	amhelp.DisposeBind(mach, func(id string, ctx context.Context) {
+		err := mem.Dispose()
+		if err != nil {
+			mem.onErr(err)
+		}
+	})
+	_, err = mach.BindTracer(tr)
 
-	return mem, mach.BindTracer(tr)
+	return mem, err
 }
 
 // FindLatest is [amhist.BaseMemory.FindLatest].
@@ -661,7 +675,7 @@ func (m *Memory) Dispose() error {
 
 	return errors.Join(
 		m.Db.Close(),
-		m.Mach.DetachTracer(m.tr),
+		m.Mach.DetachTracer(m.tr.TracerId()),
 	)
 }
 

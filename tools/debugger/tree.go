@@ -134,20 +134,19 @@ func (d *Debugger) hUpdateSchemaTree() {
 
 	var steps []*am.Step
 	nextTx := d.hNextTx()
-	if nextTx == nil {
-		// TODO handle?
-		return
-	}
-	if c.CursorTx1 < len(c.MsgTxs) && c.CursorStep1 > 0 {
+	if nextTx != nil && c.CursorTx1 < len(c.MsgTxs) && c.CursorStep1 > 0 {
 		steps = nextTx.Steps
 	}
 
+	// TODO remove steps
 	// default decorations plus name highlights
 	colIdx := d.hUpdateTreeDefaultsHighlights(msg, i1)
 
 	// decorate steps, take the longest row from either defaults or steps
-	colIdx = max(colIdx, d.hUpdateTreeTxSteps(steps, nextTx))
-	colIdx += treeIndent
+	if nextTx != nil {
+		colIdx = max(colIdx, d.hUpdateTreeTxSteps(steps, nextTx))
+		colIdx += treeIndent
+	}
 	d.hSortTree()
 	d.hUpdateTreeRelCols(colIdx, steps, nextTx)
 }
@@ -676,7 +675,7 @@ func (d *Debugger) hUpdateTreeRelCols(
 		// regexp
 
 		// TODO avoid monkey patching
-		if ref.stateName != "" && !ref.isRef {
+		if ref.stateName != "" && !ref.isRef && msg != nil {
 			if !msg.Is(d.C.MsgStruct.StatesIndex, am.S{ref.stateName}) {
 				text = reTreeStateColorFix.ReplaceAllString(text,
 					"["+theme.Inactive+"]$1["+theme.Grey+"]$2")
@@ -849,6 +848,8 @@ func (d *Debugger) hAddState(name string) {
 
 		stateNode.AddChild(tagRootNode)
 	}
+
+	stateNode.SetExpanded(false)
 }
 
 // hSortTree requires hUpdateSchemaTree called before

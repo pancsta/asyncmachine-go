@@ -11,7 +11,7 @@ import (
 type TuiStatesDef struct {
 	*am.StatesBase
 
-	Resized string
+	Resized      string
 	IncomingData string
 
 	// inherit from BasicStatesDef
@@ -23,13 +23,10 @@ type TuiGroupsDef struct {
 }
 
 // TuiSchema represents all relations and properties of TuiStates.
-var TuiSchema = SchemaMerge(
-	// inherit from BasicSchema
-	ss.BasicSchema,
-	am.Schema{
+var TuiSchema = ss.BasicSchema.Merge(am.Schema{
 
-		ssT.Resized: {},
-		ssT.IncomingData: {},
+	ssT.Resized:      {},
+	ssT.IncomingData: {},
 })
 
 // EXPORTS AND GROUPS

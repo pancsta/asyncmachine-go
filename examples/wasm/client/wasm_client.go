@@ -92,6 +92,8 @@ type BarHandlers struct {
 	machFooHand *am.Machine
 }
 
+var _ = ssB.Start
+
 func (h *BarHandlers) StartState(e *am.Event) {
 	log.Println("[bar] StartState")
 	addLi(h.uiDoc, h.uiList, "[bar] StartState\n")
@@ -108,10 +110,12 @@ func (h *BarHandlers) StartState(e *am.Event) {
 	})
 }
 
+var _ = ssB.SubmitMsg
+
 func (h *BarHandlers) SubmitMsgState(e *am.Event) {
 	txt := h.uiInput.Value()
 	h.uiInput.SetValue("")
-	args := PassRpc(&A{
+	args := am.Pass(&example.AMsg{
 		Msg: txt,
 	})
 
@@ -125,12 +129,14 @@ func (h *BarHandlers) SubmitMsgState(e *am.Event) {
 	}()
 }
 
+var _ = ssB.Msg
+
 func (h *BarHandlers) MsgEnter(e *am.Event) bool {
-	return example.ParseArgs(e.Args).Msg != ""
+	return am.ParseArgs[example.AMsg](e.Args).Msg != ""
 }
 
 func (h *BarHandlers) MsgState(e *am.Event) {
-	args := example.ParseArgs(e.Args)
+	args := am.ParseArgs[example.AMsg](e.Args)
 
 	// both foo and bar mutate this state
 	author := "bar"

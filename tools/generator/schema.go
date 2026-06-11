@@ -33,6 +33,7 @@ type SchemaGenerator struct {
 	Name string
 	// N is the first letter of Name
 	N           string
+	Global      bool
 	States      []string
 	StatesAuto  []string
 	StatesMulti []string
@@ -117,6 +118,7 @@ func (g *SchemaGenerator) parseParams(p cli.StatesParams) {
 
 	g.Name = capitalizeFirstLetter(p.Name)
 	g.N = string(g.Name[0])
+	g.Global = p.Global
 }
 
 var _ = ssG.Inherit
@@ -135,8 +137,12 @@ func (g *SchemaGenerator) Output() string {
 	// TODO switch to github.com/dave/jennifer
 
 	var impPkgStates string
-	if g.Mach.Any1(ssG.InheritBasic, ssG.InheritConnected) {
-		impPkgStates = "\n\tss \"github.com/pancsta/asyncmachine-go/pkg/states\""
+	if g.Mach.Any1(ssG.InheritBasic, ssG.InheritConnected, ssG.InheritDisposed) {
+		impPkgStates = "\n\tssam \"github.com/pancsta/asyncmachine-go/pkg/states\""
+	}
+	var impGlobal string
+	if g.Global {
+		impGlobal = "\n\t. \"github.com/pancsta/asyncmachine-go/pkg/states/global\""
 	}
 
 	// imports
@@ -146,8 +152,8 @@ func (g *SchemaGenerator) Output() string {
 		import (
 			"context"
 	
-			am "github.com/pancsta/asyncmachine-go/pkg/machine"%s
-	`, impPkgStates)
+			am "github.com/pancsta/asyncmachine-go/pkg/machine"%s%s
+	`, impGlobal, impPkgStates)
 
 	if g.Mach.Is1(ssG.InheritRpcStateSource) {
 		out += "\tssrpc \"github.com/pancsta/asyncmachine-go/pkg/rpc/states\"\n"
@@ -175,11 +181,15 @@ func (g *SchemaGenerator) Output() string {
 
 	// inherits
 	if g.Mach.Is1(ssG.InheritBasic) {
-		out += "\t// inherit from BasicStatesDef\n\t*ss.BasicStatesDef\n"
+		out += "\t// inherit from BasicStatesDef\n\t*ssam.BasicStatesDef\n"
 	}
 	if g.Mach.Is1(ssG.InheritConnected) {
 		out += "\t// inherit from ConnectedStatesDef\n" +
-			"\t*ss.ConnectedStatesDef\n"
+			"\t*ssam.ConnectedStatesDef\n"
+	}
+	if g.Mach.Is1(ssG.InheritDisposed) {
+		out += "\t// inherit from DisposedStatesDef\n" +
+			"\t*ssam.DisposedStatesDef\n"
 	}
 	if g.Mach.Is1(ssG.InheritRpcStateSource) {
 		out += "\t// inherit from rpc/StateSourceStatesDef\n" +
@@ -198,7 +208,7 @@ func (g *SchemaGenerator) Output() string {
 			type %sGroupsDef struct {
 		`, g.Name, g.Name, g.Name)
 	if g.Mach.Is1(ssG.InheritConnected) {
-		out += "\t*ss.ConnectedGroupsDef\n"
+		out += "\t*ssam.ConnectedGroupsDef\n"
 	}
 	if g.Mach.Is1(ssG.InheritNodeWorker) {
 		out += "\t*ssnode.WorkerGroupsDef\n"
@@ -223,11 +233,15 @@ func (g *SchemaGenerator) Output() string {
 
 	// struct inherit
 	if g.Mach.Is1(ssG.InheritBasic) {
-		out += "\t// inherit from BasicSchema\n\tss.BasicSchema,\n"
+		out += "\t// inherit from BasicSchema\n\tssam.BasicSchema,\n"
 	}
 	if g.Mach.Is1(ssG.InheritConnected) {
 		out += fmt.Sprintf("\t// inherit from ConnectedSchema\n" +
-			"\tss.ConnectedSchema,\n")
+			"\tssam.ConnectedSchema,\n")
+	}
+	if g.Mach.Is1(ssG.InheritDisposed) {
+		out += fmt.Sprintf("\t// inherit from DisposedSchema\n" +
+			"\tssam.DisposedSchema,\n")
 	}
 	if g.Mach.Is1(ssG.InheritRpcStateSource) {
 		out += fmt.Sprintf("\t// inherit from rpc/StateSourceSchema\n" +
@@ -338,7 +352,7 @@ func (g *SchemaGenerator) Output() string {
 	out += "}"
 
 	if g.Mach.Is1(ssG.InheritConnected) {
-		out += ", ss.ConnectedGroups"
+		out += ", ssam.ConnectedGroups"
 	}
 	if g.Mach.Is1(ssG.InheritNodeWorker) {
 		out += ", ssnode.WorkerGroups"

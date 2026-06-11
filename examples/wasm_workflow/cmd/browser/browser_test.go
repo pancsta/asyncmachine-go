@@ -101,7 +101,7 @@ func NewWorker() *Worker {
 // }
 //
 // func (h *BarHandlersMock) MsgState(e *am.Event) {
-// 	args := example.ParseArgs(e.Args)
+// 	args := example.ParseArgs(e.ArgsBase)
 //
 // 	// both foo and bar mutate this state
 // 	author := "bar"

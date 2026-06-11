@@ -3,11 +3,8 @@ package machine
 import (
 	"context"
 	"errors"
-	"reflect"
-	"regexp"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -18,13 +15,15 @@ const (
 	EnvAmDebug = "AM_DEBUG"
 	// EnvAmTestRunner indicates a CI test runner.
 	EnvAmTestRunner = "AM_TEST_RUNNER"
-	// EnvAmLog sets the log level.
+	// EnvAmLog sets the log level. TODO add separate AM_DBG_LOG
 	// "1" | "2" | "3" | "4" | "5" | "" (default)
 	EnvAmLog = "AM_LOG"
-	// EnvAmDetectEval detects evals directly in handlers (use in tests).
+	// EnvAmDetectEval detects evals directly in handlers (use in tests) and also
+	// logs panicked funcs.
+	// TODO rename EnvAmDiagnose, log names of mach.Go sources
 	EnvAmDetectEval = "AM_DETECT_EVAL"
 	// EnvAmTraceFilter will remove its contents from stack traces, shortening
-	// them .
+	// them.
 	EnvAmTraceFilter = "AM_TRACE_FILTER"
 	// EnvAmTestDebug activates debugging in tests.
 	EnvAmTestDebug = "AM_TEST_DEBUG"
@@ -51,39 +50,9 @@ const (
 	StateReady = "Ready"
 	// StateMachineRestored is the name of the predefined MachineRestored state.
 	StateMachineRestored = "MachineRestored"
+	// TagArgsReq marks a state which can only be added with relevant args.
+	TagArgsReq = "ArgsReq"
 )
-
-type (
-	// S (state names) is a string list of state names.
-	S []string
-	// Schema is a map of state names to state definitions.
-	Schema = map[string]State
-)
-
-// Filter returns a subset of S from specified indexes.
-func (s S) Filter(idxs []int) S {
-	ret := make(S, len(idxs))
-	for i, idx := range idxs {
-		if idx >= len(s) {
-			continue
-		}
-		ret[i] = s[idx]
-	}
-
-	return ret
-}
-
-// State defines a single state of a machine, its properties, relations, and tags.
-// nolint:lll
-type State struct {
-	Auto    bool     `json:"auto,omitempty" yaml:"auto,omitempty" toml:"auto,omitempty"`
-	Multi   bool     `json:"multi,omitempty" yaml:"multi,omitempty" toml:"multi,omitempty"`
-	Require S        `json:"require,omitempty" yaml:"require,omitempty" toml:"require,omitempty"`
-	Add     S        `json:"add,omitempty" yaml:"add,omitempty" toml:"add,omitempty"`
-	Remove  S        `json:"remove,omitempty" yaml:"remove,omitempty" toml:"remove,omitempty"`
-	After   S        `json:"after,omitempty" yaml:"after,omitempty" toml:"after,omitempty"`
-	Tags    []string `json:"tags,omitempty" yaml:"tags,omitempty" toml:"tags,omitempty"`
-}
 
 // A (arguments) is a map of named arguments for a [Mutation].
 type A map[string]any
@@ -250,6 +219,10 @@ type Api interface {
 	CanRemove1(state string, args A) Result
 	// Transition is [Machine.Transition].
 	Transition() *Transition
+	// IsLocal is [Machine.IsLocal].
+	IsLocal() bool
+	// ErrInternal is [Machine.ErrInternal].
+	ErrInternal() <-chan error
 
 	// Waiting (local)
 
@@ -267,7 +240,8 @@ type Api interface {
 	WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
 	// WhenTicks is [Machine.WhenTicks].
 	WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
-	// TODO WhenNextActive(state string, ctx context.Context) <-chan struct{}
+	// WhenNextActive is [Machine.WhenNextActive].
+	WhenNextActive(state string, ctx context.Context) <-chan struct{}
 
 	// WhenQuery is [Machine.WhenQuery].
 	WhenQuery(query func(clock Clock) bool, ctx context.Context) <-chan struct{}
@@ -280,8 +254,6 @@ type Api interface {
 
 	// StateNames is [Machine.StateNames].
 	StateNames() S
-	// StateNamesMatch is [Machine.StateNamesMatch].
-	StateNamesMatch(re *regexp.Regexp) S
 	// ActiveStates is [Machine.ActiveStates].
 	ActiveStates(states S) S
 	// Tick is [Machine.Tick].
@@ -297,7 +269,7 @@ type Api interface {
 	// QueueLen is [Machine.QueueLen].
 	QueueLen() uint16
 	// NewStateCtx is [Machine.NewStateCtx].
-	NewStateCtx(state string) context.Context
+	NewStateCtx(state string, e ...*Event) context.Context
 	// Export is [Machine.Export].
 	Export() (*Serialized, Schema, error)
 	// Schema is [Machine.Schema].
@@ -321,8 +293,10 @@ type Api interface {
 	ParseStates(states S) S
 	// Tags is [Machine.Tags].
 	Tags() []string
-	// Ctx is [Machine.Ctx].
+	// Context is [Machine.Ctx].
 	Context() context.Context
+	// ContextParent is [Machine.ContextParent].
+	ContextParent() context.Context
 	// String is [Machine.String].
 	String() string
 	// StringAll is [Machine.StringAll].
@@ -518,9 +492,9 @@ var (
 	ErrDisposed = errors.New("machine disposed")
 	// ErrSchema indicates an issue with the machine schema.
 	ErrSchema = errors.New("schema error")
-	// ErrInternal happens for internal errors in the machine. These should be
-	// reported as bugs.
-	ErrInternal = errors.New("internal error")
+	// ErrNestedEval indicated an eval called in another eval or directly inside a
+	// transition handler's body.
+	ErrNestedEval = errors.New("eval nested in handler or eval")
 )
 
 func (r Result) String() string {

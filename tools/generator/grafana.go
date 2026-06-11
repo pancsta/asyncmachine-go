@@ -237,7 +237,9 @@ func MachDashboardEnv(mach *am.Machine) error {
 	}
 
 	mach.Log("[bind] grafana dashboard")
-	return mach.BindTracer(t)
+	_, err := mach.BindTracer(t)
+
+	return err
 }
 
 // SyncTracer is [am.Tracer] for tracing new submachines and syncing the Grafana
@@ -247,6 +249,10 @@ type SyncTracer struct {
 
 	p  cli.GrafanaParams
 	mx sync.Mutex
+}
+
+func (t *SyncTracer) TracerId() string {
+	return "grafanasync"
 }
 
 func (t *SyncTracer) MachineInit(mach am.Api) context.Context {

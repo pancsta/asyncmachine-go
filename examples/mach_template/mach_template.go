@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"encoding/gob"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/pancsta/asyncmachine-go/examples/mach_template/states"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -26,9 +26,10 @@ type S = am.S
 func init() {
 	// load dotenv
 	// err := godotenv.Load("./examples/mach_template/example.env")
-	// if err != nil {
-	// 	panic(err)
-	// }
+	err := godotenv.Load("example.env")
+	if err != nil {
+		panic(err)
+	}
 
 	// manual logging
 	// amhelp.SetEnvLogLevel(am.LogOps)
@@ -112,15 +113,17 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 	mach.SetGroups(states.MachTemplateGroups, states.MachTemplateStates)
 
 	mach.SemLogger().SetLevel(am.LogChanges)
-	mach.SemLogger().SetArgsMapper(LogArgs)
+	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 	// connect to am-dbg
 	amhelp.MachDebugEnv(mach)
 	// start a dedicated aRPC server for the REPL, create an addr file
-	arpc.MachReplEnv(mach, &arpc.ReplOpts{
-		AddrDir:  ".",
-		Args:     ARpc{},
-		ParseRpc: ParseRpc,
+	err, _ = arpc.MachReplEnv(mach, &arpc.ReplOpts{
+		AddrDir: ".",
+		Args:    ArgsRpc,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	// parent-only exporters
 
@@ -142,7 +145,7 @@ func NewTemplate(ctx context.Context, num int) (*am.Machine, error) {
 	// manual tracing
 
 	tracer := &Tracer{}
-	err = mach.BindTracer(tracer)
+	_, err = mach.BindTracer(tracer)
 	if err != nil {
 		return nil, err
 	}
@@ -225,8 +228,6 @@ func (h *TemplateHandlers) ChannelEnter(e *am.Event) bool {
 	// only buffered channel can pass
 	return args != nil && cap(args.ReturnCh) > 0
 }
-
-var _ = ss.Channel
 
 func (h *TemplateHandlers) ChannelState(e *am.Event) {
 	// no validation needed
@@ -320,6 +321,10 @@ type Tracer struct {
 	*am.TracerNoOp
 	// This machine's clock has been updated and needs to be synced.
 	dirty atomic.Bool
+}
+
+func (t *Tracer) TracerId() string {
+	return "mytrace"
 }
 
 // TransitionEnd sends a message when a transition ends

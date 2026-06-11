@@ -14,7 +14,7 @@ tool github.com/pancsta/asyncmachine-go/tools/cmd/am-vis
 tool github.com/pancsta/asyncmachine-go/tools/cmd/arpc
 
 require (
-	github.com/gookit/goutil v0.7.4
+	github.com/gookit/goutil v0.7.5
 	github.com/joho/godotenv v1.5.1
 	github.com/pancsta/asyncmachine-go v0.18.4
 )
@@ -67,7 +67,6 @@ require (
 	github.com/mazznoer/csscolorparser v0.1.5 // indirect
 	github.com/orsinium-labs/enum v1.4.0 // indirect
 	github.com/pancsta/cview v1.5.22 // indirect
-	github.com/pancsta/tcell-v2 v0.0.1-fork1 // indirect
 	github.com/reeflective/console v0.1.25 // indirect
 	github.com/reeflective/readline v1.1.3 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect

@@ -40,9 +40,7 @@ type RelayGroupsDef struct {
 }
 
 // RelaySchema represents all relations and properties of RelayStates.
-var RelaySchema = SchemaMerge(
-	// inherit from BasicStruct
-	ssam.BasicSchema,
+var RelaySchema = ssam.BasicSchema.Merge(
 	// inherit from DisposedStruct
 	ssam.DisposedSchema,
 	// inherit from ServerSchema
@@ -122,11 +120,9 @@ type WsTcpTunGroupsDef struct {
 }
 
 // WsTcpTunSchema represents all relations and properties of WsTcpTunStates.
-var WsTcpTunSchema = SchemaMerge(
+var WsTcpTunSchema = ssam.BasicSchema.Merge(
 	// inherit from DisposedStruct
 	ssam.DisposedSchema,
-	// inherit from BasicSchema
-	ssam.BasicSchema,
 	am.Schema{
 		ssW.ErrClient: {
 			Add:     S{ssW.Disposing},

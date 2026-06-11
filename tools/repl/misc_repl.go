@@ -16,7 +16,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc"
 	"github.com/pancsta/asyncmachine-go/tools/repl/states"
@@ -67,8 +66,21 @@ func AddErrSyntax(
 
 const APrefix = "am_repl"
 
+// Args is shared pkg args for Any state
+type Args struct {
+	am.ArgsBase `json:"-"`
+}
+
+func (Args) ArgsPrefix() string {
+	return APrefix
+}
+
+// -----
+
 // A is a struct for node arguments. It's a typesafe alternative to [am.A].
 type A struct {
+	Args `json:"-"`
+
 	Id     string   `log:"id"`
 	Addrs  []string `log:"addr"`
 	Lines  []string
@@ -86,6 +98,12 @@ type A struct {
 	RpcCh       chan<- []*rpc.Client
 	ListFilters *ListFilters
 }
+
+// ///// ///// /////
+
+// ///// TYPES
+
+// ///// ///// /////
 
 // TODO merge with pkg/pubsub and pkg/integrations
 // TODO extract to pkg/helpers.Group
@@ -127,30 +145,6 @@ type ListFilters struct {
 	NoSchema bool
 	// Exclude disconnected machines
 	SkipDisconn bool
-}
-
-// ParseArgs extracts A from [am.Event.Args][APrefix].
-func ParseArgs(args am.A) *A {
-	if a, _ := args[APrefix].(*A); a != nil {
-		return a
-	}
-	return &A{}
-}
-
-// Pass prepares [am.A] from A to pass to further mutations.
-func Pass(args *A) am.A {
-	return am.A{APrefix: args}
-}
-
-// LogArgs is an args logger for A and [rpc.A].
-func LogArgs(args am.A) map[string]string {
-	a1 := rpc.ParseArgs(args)
-	a2 := ParseArgs(args)
-	if a1 == nil && a2 == nil {
-		return nil
-	}
-
-	return am.AMerge(amhelp.ArgsToLogMap(a1, 0), amhelp.ArgsToLogMap(a2, 0))
 }
 
 func completionsNarrowDown(

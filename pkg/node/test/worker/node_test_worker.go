@@ -12,7 +12,7 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/node"
 	"github.com/pancsta/asyncmachine-go/pkg/node/states"
-	"github.com/pancsta/asyncmachine-go/pkg/rpc"
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 )
 
 var ssW = states.WorkerStates
@@ -47,7 +47,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	err = worker.Mach.BindHandlers(&workerHandlers{Mach: mach})
+	_, err = worker.Mach.HandlersBind(&workerHandlers{Mach: mach})
 	if err != nil {
 		panic(err)
 	}
@@ -79,13 +79,14 @@ var _ = ssW.WorkRequested
 func (w *workerHandlers) WorkRequestedState(e *am.Event) {
 	input := e.Args["input"].(int)
 
-	payload := &rpc.MsgSrvPayload{
+	payload := &arpc.MsgSrvPayload{
 		Name:   w.Mach.Id(),
 		Data:   input * input,
 		Source: e.Machine().Id(),
 	}
 
-	e.Machine().Add1(ssW.ClientSendPayload, rpc.PassRpc(&rpc.A{
+	// TODO dedicated AClientSendPayload
+	e.Machine().Add1(ssW.ClientSendPayload, am.Pass(&arpc.AServerPayload{
 		Name:    w.Mach.Id(),
 		Payload: payload,
 	}))

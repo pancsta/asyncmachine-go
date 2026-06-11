@@ -83,7 +83,7 @@ func (h *BarHandlersMock) StartState(e *am.Event) {
 
 func (h *BarHandlersMock) SubmitMsgState(e *am.Event) {
 	txt := "mock msg"
-	args := PassRpc(&A{
+	args := am.Pass(&example.AMsg{
 		Msg: txt,
 	})
 
@@ -95,7 +95,7 @@ func (h *BarHandlersMock) SubmitMsgState(e *am.Event) {
 }
 
 func (h *BarHandlersMock) MsgState(e *am.Event) {
-	args := example.ParseArgs(e.Args)
+	args := am.ParseArgs[example.AMsg](e.Args)
 
 	// both foo and bar mutate this state
 	author := "bar"

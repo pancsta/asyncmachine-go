@@ -218,7 +218,7 @@ func FileProcessingFlow(ctx context.Context, log Logger, filename string) (*am.M
 	})
 
 	// bind handlers
-	err := mach.BindHandlers(&MachineHandlers{})
+	_, err := mach.HandlersBind(&MachineHandlers{})
 	if err != nil {
 		return mach, err
 	}

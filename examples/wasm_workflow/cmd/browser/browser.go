@@ -211,15 +211,17 @@ func NewWorker() *Worker {
 	}
 }
 
+var _ = ssW.Start
+
 func (h *Worker) StartEnter(e *am.Event) bool {
-	// dump.Println(e.Args)
-	args := example.ParseArgs(e.Args)
+	// dump.Println(e.ArgsBase)
+	args := am.ParseArgs[example.AStart](e.Args)
 	return args.Boot != nil
 }
 
 func (h *Worker) StartState(e *am.Event) {
 	ctx := h.mach.NewStateCtx(ssW.Start)
-	args := example.ParseArgs(e.Args)
+	args := am.ParseArgs[example.AStart](e.Args)
 
 	// set the root span
 	os.Setenv(amtele.EnvOtelTraceId, args.Boot.TraceId)
@@ -251,17 +253,21 @@ func (h *Worker) StartEnd(e *am.Event) {
 	}
 }
 
+var _ = ssW.Working
+
 func (h *Worker) WorkingEnter(e *am.Event) bool {
-	return len(example.ParseArgs(e.Args).Payload) > 0
+	return len(am.ParseArgs[example.AWorking](e.Args).Payload) > 0
 }
 
 func (h *Worker) WorkingState(e *am.Event) {
 	ctx := h.mach.NewStateCtx(ssW.Working)
-	payload := example.ParseArgs(e.Args).Payload
-	h.payload = payload
+	args := am.ParseArgs[example.AWorking](e.Args)
 
-	h.mach.Fork(ctx, e, h.doWork(e, payload))
+	h.payload = args.Payload
+	h.mach.Fork(ctx, e, h.doWork(e, args.Payload))
 }
+
+var _ = ssW.Retrying
 
 func (h *Worker) RetryingEnter(e *am.Event) bool {
 	return h.payload != nil
@@ -272,24 +278,28 @@ func (h *Worker) RetryingState(e *am.Event) {
 	h.mach.Fork(ctx, e, h.doWork(e, h.payload))
 }
 
+var _ = ssW.Completed
+
 func (h *Worker) CompletedEnter(e *am.Event) bool {
-	return len(example.ParseArgs(e.Args).Payload) > 0
+	return len(am.ParseArgs[example.ACompleted](e.Args).Payload) > 0
 }
 
 func (h *Worker) CompletedState(e *am.Event) {
 	ctx := h.mach.NewStateCtx(ssW.Completed)
-	payload := example.ParseArgs(e.Args).Payload
+	args := am.ParseArgs[example.ACompleted](e.Args)
 
 	h.mach.Fork(ctx, e, func() {
 		h.mach.Log("sending the results back...")
 		// send it back via untyped server payload
 		err := h.srv.SendPayload(ctx, e, &arpc.MsgSrvPayload{
 			Name: "result",
-			Data: payload,
+			Data: args.Payload,
 		})
 		h.mach.EvAddErr(e, err, nil)
 	})
 }
+
+var _ = ssW.Failed
 
 func (h *Worker) FailedState(e *am.Event) {
 	ctx := h.mach.NewStateCtx(ssW.Failed)
@@ -334,7 +344,7 @@ func (h *Worker) doWork(e *am.Event, payload []byte) func() {
 		}
 
 		// next
-		h.mach.EvAdd1(e, ssW.Completed, Pass(&A{
+		h.mach.EvAdd1(e, ssW.Completed, am.Pass(&example.ACompleted{
 			Payload: result,
 		}))
 
@@ -361,13 +371,17 @@ func NewDispatcher() *Dispatcher {
 	}
 }
 
+var _ = ssD.ServerPayload
+
 func (h *Dispatcher) ServerPayloadState(e *am.Event) {
 	h.mach.EvRemove1(e, ssD.ServerPayload, nil)
 	// fwd payloads from leaf workers
 	ctx := h.mach.NewStateCtx(ssW.Ready)
-	// dump.Println(e.Args)
-	h.srv.SendPayload(ctx, nil, arpc.ParseArgs(e.Args).Payload)
+	// dump.Println(e.ArgsBase)
+	h.srv.SendPayload(ctx, nil, am.ParseArgs[arpc.AServerPayload](e.Args).Payload)
 }
+
+var _ = ssD.Disposing
 
 func (h *Dispatcher) DisposingState(e *am.Event) {
 	for _, client := range h.clients {
@@ -381,17 +395,25 @@ func (h *Dispatcher) DisposingState(e *am.Event) {
 
 // readability handlers
 
+var _ = ssD.Browser3Work
+
 func (h *Dispatcher) Browser3WorkState(e *am.Event) {
 	h.mach.EvRemove1(e, ssD.Browser3Work, nil)
 }
+
+var _ = ssD.Browser4Work
 
 func (h *Dispatcher) Browser4WorkState(e *am.Event) {
 	h.mach.EvRemove1(e, ssD.Browser4Work, nil)
 }
 
+var _ = ssD.Browser3Retry
+
 func (h *Dispatcher) Browser3RetryState(e *am.Event) {
 	h.mach.EvRemove1(e, ssD.Browser3Retry, nil)
 }
+
+var _ = ssD.Browser4Retry
 
 func (h *Dispatcher) Browser4RetryState(e *am.Event) {
 	h.mach.EvRemove1(e, ssD.Browser4Retry, nil)

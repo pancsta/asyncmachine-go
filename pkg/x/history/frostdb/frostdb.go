@@ -103,7 +103,8 @@ func (m *Memory) Track(
 
 	t.MachineInit(mach)
 
-	return t, mach.BindTracer(t)
+	_, err := mach.BindTracer(t)
+	return t, err
 }
 
 type Tracer struct {
@@ -129,6 +130,10 @@ type Tracer struct {
 	// tMachines    *frostdb.GenericTable[Machine]
 	tTimes       map[string]*frostdb.GenericTable[*Time]
 	tTransitions map[string]*frostdb.GenericTable[*Transition]
+}
+
+func (t *Tracer) TracerId() string {
+	return "frostdb"
 }
 
 func (t *Tracer) TransitionEnd(tx *am.Transition) {

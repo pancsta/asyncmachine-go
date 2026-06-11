@@ -272,8 +272,7 @@ func newMcpServer(d *Debugger) (*mcpServer, error) {
 		},
 		StatesInclude:  states.DebuggerGroups.Mcp,
 		StatesReadonly: states.DebuggerGroups.McpReadonly,
-		Args:           types.ARpc{},
-		ParseRpc:       types.ParseRpc,
+		Args:           types.ArgsRpc,
 		StateCalls:     types.StateCalls,
 		Version:        d.params.Version,
 	})

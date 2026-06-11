@@ -23,11 +23,6 @@ import (
 
 var ssF = states.FooStates
 var ssB = states.BarStates
-var Pass = example.Pass
-var PassRpc = example.PassRpc
-
-type A = example.A
-type ARpc = example.ARpc
 
 func initMachines(
 	ctx context.Context, barHandlers any, fooHandlers any,
@@ -44,13 +39,12 @@ func initMachines(
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	barMach.SemLogger().SetArgsMapper(example.LogArgs)
+	barMach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 	amhelp.MachDebugEnv(barMach)
 	repl, err := arpc.MachReplWs(barMach, example.EnvRelayHttpAddr, &arpc.ReplOpts{
 		// TODO should be automatic in WASM
 		WebSocketTunnel: arpc.WsListenPath("repl-"+barMach.Id(), example.EnvBarReplAddr),
-		Args:            ARpc{},
-		ParseRpc:        example.ParseRpc,
+		Args:            example.ArgsRpc,
 	})
 	if err == nil {
 		repl.Start(nil)
@@ -127,7 +121,7 @@ func initMachines(
 		log.Fatal(err.Error())
 	}
 	amhelp.MachDebugEnv(fooHandlerMach)
-	fooHandlerMach.SemLogger().SetArgsMapper(example.LogArgs)
+	fooHandlerMach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 
 	// RPC Client (Net Machine)
 
@@ -146,7 +140,7 @@ func initMachines(
 	<-foo.Mach.When1(ssrpc.ClientStates.Ready, nil)
 
 	// bind and sync the handler mach to net mach
-	if err := ampipe.BindAny(foo.NetMach, fooHandlerMach); err != nil {
+	if _, err := ampipe.BindAny(foo.NetMach, fooHandlerMach); err != nil {
 		log.Fatal(err.Error())
 	}
 	fooHandlerMach.Set(foo.NetMach.ActiveStates(nil), nil)

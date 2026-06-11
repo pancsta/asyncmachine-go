@@ -41,9 +41,7 @@ type SharedGroupsDef struct {
 }
 
 // SharedSchema represents all relations and properties of StateSourceStates.
-var SharedSchema = SchemaMerge(
-	// inherit from BasicStruct
-	ss.BasicSchema,
+var SharedSchema = ss.BasicSchema.Merge(
 	// inherit from rpc/WorkerSchema (for REPL)
 	StateSourceSchema,
 	am.Schema{
@@ -103,13 +101,12 @@ type StateSourceStatesDef struct {
 
 // StateSourceSchema represents all relations and properties of
 // [StateSourceStates].
-var StateSourceSchema = SchemaMerge(
-	am.Schema{
+var StateSourceSchema = am.Schema{
 
-		// errors
+	// errors
 
-		ssSS.ErrOnClient: {Require: S{Exception}},
-	})
+	ssSS.ErrOnClient: {Require: S{Exception}},
+}
 
 // EXPORTS AND GROUPS
 
@@ -172,52 +169,46 @@ type ServerGroupsDef struct {
 }
 
 // ServerSchema represents all relations and properties of ClientStates.
-var ServerSchema = SchemaMerge(
-	// inherit from SharedStruct
-	SharedSchema,
-	am.Schema{
+var ServerSchema = SharedSchema.Merge(am.Schema{
+	ssS.ErrNetwork: {
+		Require: S{am.StateException},
+		Remove:  S{ssS.ClientConnected},
+	},
 
-		ssS.ErrNetwork: {
-			Require: S{am.StateException},
-			Remove:  S{ssS.ClientConnected},
-		},
+	// inject Server states into HandshakeDone
+	ssS.HandshakeDone: SharedSchema[ssS.HandshakeDone].Extend(am.State{
+		Require: S{ssS.ClientConnected},
+		// TODO why?
+		Remove: S{Exception},
+	}),
 
-		// inject Server states into HandshakeDone
-		ssS.HandshakeDone: StateAdd(
-			SharedSchema[ssS.HandshakeDone],
-			am.State{
-				Require: S{ssS.ClientConnected},
-				// TODO why?
-				Remove: S{Exception},
-			}),
+	// Server
 
-		// Server
+	ssS.Start: {Add: S{ssS.RpcStarting}},
+	ssS.Ready: {
+		Auto:    true,
+		Require: S{ssS.HandshakeDone, ssS.RpcReady},
+	},
 
-		ssS.Start: {Add: S{ssS.RpcStarting}},
-		ssS.Ready: {
-			Auto:    true,
-			Require: S{ssS.HandshakeDone, ssS.RpcReady},
-		},
+	ssS.RpcStarting: {
+		Require: S{ssS.Start},
+		Remove:  sgS.Rpc,
+	},
+	ssS.RpcAccepting: {
+		Require: S{ssS.Start},
+		Remove:  sgS.Rpc,
+	},
+	ssS.RpcReady: {
+		Require: S{ssS.Start},
+		Remove:  sgS.Rpc,
+	},
+	ssS.ClientConnected: {
+		Require: S{ssS.RpcReady},
+	},
 
-		ssS.RpcStarting: {
-			Require: S{ssS.Start},
-			Remove:  sgS.Rpc,
-		},
-		ssS.RpcAccepting: {
-			Require: S{ssS.Start},
-			Remove:  sgS.Rpc,
-		},
-		ssS.RpcReady: {
-			Require: S{ssS.Start},
-			Remove:  sgS.Rpc,
-		},
-		ssS.ClientConnected: {
-			Require: S{ssS.RpcReady},
-		},
-
-		ssS.MetricSync:      {Multi: true},
-		ssS.WebSocketTunnel: {},
-	})
+	ssS.MetricSync:      {Multi: true},
+	ssS.WebSocketTunnel: {},
+})
 
 // EXPORTS AND GROUPS
 
@@ -286,9 +277,7 @@ type ClientGroupsDef struct {
 }
 
 // ClientSchema represents all relations and properties of ClientStates.
-var ClientSchema = SchemaMerge(
-	// inherit from SharedStruct
-	SharedSchema,
+var ClientSchema = SharedSchema.Merge(
 	// inherit from ConnectedStruct
 	ss.ConnectedSchema,
 
@@ -310,19 +299,16 @@ var ClientSchema = SchemaMerge(
 		},
 
 		// inject Client states into Connected
-		ssC.Connected: StateAdd(
-			ss.ConnectedSchema[ss.ConnectedStates.Connected],
+		ssC.Connected: ss.ConnectedSchema[ss.ConnectedStates.Connected].Extend(
 			am.State{
 				Remove: S{ssC.RetryingConn},
 				Add:    S{ssC.Handshaking},
 			}),
 
 		// inject Client states into Handshaking
-		ssC.Handshaking: StateAdd(
-			SharedSchema[s.Handshaking],
-			am.State{
-				Require: S{ssC.Connected},
-			}),
+		ssC.Handshaking: SharedSchema[s.Handshaking].Extend(am.State{
+			Require: S{ssC.Connected},
+		}),
 
 		// inject Client states into HandshakeDone
 		ssC.HandshakeDone: am.StateAdd(
@@ -402,25 +388,23 @@ type MuxGroupsDef struct {
 }
 
 // MuxSchema represents all relations and properties of MuxStatesDef.
-var MuxSchema = SchemaMerge(
-	ss.BasicSchema,
-	am.Schema{
-		ssD.Exception: {
-			Multi:  true,
-			Remove: S{ssS.Ready},
-		},
+var MuxSchema = ss.BasicSchema.Merge(am.Schema{
+	ssD.Exception: {
+		Multi:  true,
+		Remove: S{ssS.Ready},
+	},
 
-		ssD.Ready: {
-			Require: S{ssS.Start},
-		},
+	ssD.Ready: {
+		Require: S{ssS.Start},
+	},
 
-		ssD.ClientConnected: {
-			Multi:   true,
-			Require: S{ssD.Start},
-		},
-		ssD.HasClients:   {Require: S{ssD.Start}},
-		ssD.NewServerErr: {},
-	})
+	ssD.ClientConnected: {
+		Multi:   true,
+		Require: S{ssD.Start},
+	},
+	ssD.HasClients:   {Require: S{ssD.Start}},
+	ssD.NewServerErr: {},
+})
 
 // EXPORTS AND GROUPS
 

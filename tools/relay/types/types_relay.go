@@ -2,11 +2,11 @@ package types
 
 import (
 	"context"
+	"encoding/gob"
 	"net"
 	"regexp"
 	"time"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 )
@@ -16,7 +16,7 @@ const CmdRotateDbg = "rotate-dbg"
 type OutputFunc func(msg string, args ...any)
 
 // nolint:lll
-type Args struct {
+type CliArgs struct {
 	RotateDbg *ArgsRotateDbg `arg:"subcommand:rotate-dbg" help:"Rotate dbg protocol with fragmented dump files"`
 	Wasm      *ArgsWasm      `arg:"subcommand:wasm" help:"WebSockets to local TCP listeners for WASM"`
 	Debug     bool           `arg:"--debug" help:"Enable debugging for asyncmachine"`
@@ -43,7 +43,7 @@ type ArgsRotateDbg struct {
 type ArgsWasm struct {
 	ListenAddr  string `arg:"-l,--listen-addr" default:"localhost:12733" help:"Listen address for HTTP server"`
 	StaticDir   string `arg:"-s,--static-dir" help:"Directory with static files to serve (optional)"`
-	ReplAddrDir string `arg:"-r,--repl-addr-dir" help:"Directory for creating REPL addr files (optional)"`
+	ReplAddrDir string `arg:"-r,--repl-addr-dir" help:"Directory for creating tunneled REPLs' addr files (optional)"`
 	// Match incoming tunnels by mach IDs and pass directly to new RPC clients
 	TunnelMatchers []TunnelMatcher `arg:"-"`
 	// Match incoming TCP dials by mach IDs and pass directly to new RPC servers
@@ -76,8 +76,20 @@ type NewClientFunc func(
 
 const APrefix = "relay"
 
+type Args struct {
+	am.ArgsBase `json:"-"`
+}
+
+func (Args) ArgsPrefix() string {
+	return APrefix
+}
+
+// ----- TODO per-state args
+
 // A is a struct for node arguments. It's a typesafe alternative to [am.A].
 type A struct {
+	Args `json:"-"`
+
 	Id         string `log:"id"`
 	Addr       string `log:"addr"`
 	RemoteAddr string `log:"remote_addr"`
@@ -89,39 +101,19 @@ type A struct {
 
 // ARpc is a subset of A, that can be passed over RPC.
 type ARpc struct {
+	Args `json:"-"`
+
 	Id   string `log:"id"`
 	Addr string `log:"addr"`
 }
 
-// ParseArgs extracts A from [am.Event.Args][APrefix].
-func ParseArgs(args am.A) *A {
-	if r, ok := args[APrefix].(*ARpc); ok {
-		return amhelp.ArgsToArgs(r, &A{})
-	} else if r, ok := args[APrefix].(ARpc); ok {
-		return amhelp.ArgsToArgs(&r, &A{})
+// ----- RPC boilerplate
+
+func init() {
+	for _, arg := range ArgsRpc {
+		gob.Register(arg)
 	}
-	if a, _ := args[APrefix].(*A); a != nil {
-		return a
-	}
-	return &A{}
 }
 
-// Pass prepares [am.A] from A to pass to further mutations.
-func Pass(args *A) am.A {
-	return am.A{APrefix: args}
-}
-
-// PassRpc prepares [am.A] from A to pass over RPC.
-func PassRpc(args *ARpc) am.A {
-	return am.A{APrefix: amhelp.ArgsToArgs(args, &ARpc{})}
-}
-
-// LogArgs is an args logger for A.
-func LogArgs(args am.A) map[string]string {
-	a := ParseArgs(args)
-	if a == nil {
-		return nil
-	}
-
-	return amhelp.ArgsToLogMap(a, 0)
-}
+// ArgsRpc will be available in the REPL.
+var ArgsRpc = []am.ArgsApi{ARpc{}}
