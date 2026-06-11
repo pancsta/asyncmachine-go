@@ -76,6 +76,10 @@ var mirrorStates = am.S{
 }
 
 func init() {
+	if os.Getenv(am.EnvAmTestRunner) != "" {
+		return
+	}
+
 	_ = godotenv.Load()
 
 	if os.Getenv(am.EnvAmTestDebug) != "" {

@@ -48,11 +48,11 @@ func main() {
 	netmach := cli.DaemonRpc.NetMach
 
 	if args.Foo1 {
-		netmach.Add1(ss.OpFoo1, types.PassRpc(&types.ARpc{
+		netmach.Add1(ss.OpFoo1, am.Pass(&types.OpFoo1{
 			Duration: args.Duration,
 		}))
 	} else if args.Bar2 {
-		netmach.Add1(ss.OpBar2, types.PassRpc(&types.ARpc{
+		netmach.Add1(ss.OpBar2, am.Pass(&types.OpBar2{
 			Duration: args.Duration,
 		}))
 	} else {
@@ -76,7 +76,7 @@ func newCli(ctx context.Context, args *Args) (*cli, error) {
 
 	// init cli
 	consumer := am.New(ctx, ssrpc.ConsumerSchema, nil)
-	err := consumer.BindHandlers(&cli{})
+	_, err := consumer.HandlersBind(&cli{})
 	if err != nil {
 		return nil, err
 	}
@@ -122,6 +122,6 @@ var _ = ssrpc.ConsumerStates.ServerPayload
 func (c *cli) ServerPayloadState(e *am.Event) {
 	e.Machine().Remove1(ssrpc.ConsumerStates.ServerPayload, nil)
 
-	args := arpc.ParseArgs(e.Args)
+	args := am.ParseArgs[arpc.AServerPayload](e.Args)
 	println("Payload: " + args.Payload.Data.(string))
 }

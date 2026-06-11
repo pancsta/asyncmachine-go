@@ -76,9 +76,9 @@ func (b *bootstrap) StartState(e *am.Event) {
 		return
 	}
 	_ = amhelp.MachDebugEnv(b.server.Mach)
-	err = ampipe.BindErr(b.server.Mach, b.Mach, ssB.ErrNetwork)
+	_, err = ampipe.BindErr(b.server.Mach, b.Mach, ssB.ErrNetwork)
 	if err != nil {
-		b.Mach.AddErr(err, nil)
+		b.Mach.EvAddErr(e, err, nil)
 		return
 	}
 
@@ -108,18 +108,22 @@ func (b *bootstrap) StartEnd(e *am.Event) {
 var _ = ssB.WorkerAddr
 
 func (b *bootstrap) WorkerAddrEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[ARpc](e.Args)
 	return a != nil && a.LocalAddr != "" && a.PublicAddr != "" && a.Id != ""
 }
 
 func (b *bootstrap) WorkerAddrState(e *am.Event) {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[ARpc](e.Args)
 	// copy
-	argsOut := *args
+	argsOut := &A{
+		Id:         args.Id,
+		PublicAddr: args.PublicAddr,
+		LocalAddr:  args.LocalAddr,
+	}
 	argsOut.BootAddr = b.Addr()
 	b.log("worker addr %s: %s / %s", args.Id, args.PublicAddr, args.LocalAddr)
 	// pass the conn info to the supervisor, and self destruct
-	b.Super.Mach.Add1(ssS.WorkerConnected, Pass(&argsOut))
+	b.Super.Mach.EvAdd1(e, ssS.WorkerConnected, Pass(argsOut))
 
 	// dispose after a while
 	go func() {

@@ -43,23 +43,23 @@ func main() {
 	amhelp.MachDebugEnv(mach2)
 
 	// pipe conventional states
-	err := ampipe.BindReady(mach1, mach2, "", "")
+	_, err := ampipe.BindReady(mach1, mach2, "", "")
 	if err != nil {
 		panic(err)
 	}
-	err = ampipe.BindErr(mach1, mach2, "")
+	_, err = ampipe.BindErr(mach1, mach2, "")
 	if err != nil {
 		panic(err)
 	}
 
 	// bind single
-	err = ampipe.Bind(mach1, mach2, "Custom", "", "")
+	_, err = ampipe.Bind(mach1, mach2, "Custom", "", "")
 	if err != nil {
 		panic(err)
 	}
 
 	// bind many
-	err = ampipe.BindMany(mach1, mach2, am.S{"Foo", "Bar"}, nil)
+	_, err = ampipe.BindMany(mach1, mach2, am.S{"Foo", "Bar"}, nil)
 	if err != nil {
 		panic(err)
 	}

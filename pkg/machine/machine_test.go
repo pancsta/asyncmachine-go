@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/signal"
 	"reflect"
 	"regexp"
 	"strings"
@@ -21,6 +22,10 @@ func init() {
 }
 
 func enableDebugging() {
+	if os.Getenv(EnvAmTestRunner) != "" {
+		return
+	}
+
 	os.Setenv(EnvAmDebug, "1")
 }
 
@@ -43,7 +48,7 @@ func ExampleNewCommon() {
 	stateNames := []string{"Foo", "Bar"}
 	type Handlers struct{}
 	// func (h *Handlers) FooState(e *Event) {
-	// 	args := e.Args
+	// 	args := e.ArgsBase
 	// 	mach := e.Machine()
 	// 	ctx := mach.NewStateCtx("Foo")
 	// 	// unblock
@@ -762,7 +767,7 @@ func TestQueue(t *testing.T) {
 	history := trackTransitions(m)
 
 	// handlers
-	err := m.BindHandlers(&TestQueueHandlers{})
+	_, err := m.HandlersBind(&TestQueueHandlers{})
 	assert.NoError(t, err)
 
 	// triggers Add(C) from BEnter
@@ -829,7 +834,7 @@ func TestNegotiationCancel(t *testing.T) {
 			m := NewNoRels(t, S{"A"})
 
 			// bind handlers
-			err := m.BindHandlers(&TestNegotiationCancelHandlers{})
+			_, err := m.HandlersBind(&TestNegotiationCancelHandlers{})
 			assert.NoError(t, err)
 
 			// bind logger
@@ -929,7 +934,7 @@ func TestPartialAutoStatesByStateState(t *testing.T) {
 	})
 
 	// CB cancels
-	_ = m.BindHandlers(&struct {
+	_, _ = m.HandlersBind(&struct {
 		CB     HandlerNegotiation
 		BState HandlerFinal
 	}{
@@ -969,7 +974,7 @@ func TestPartialAutoStatesByEnter(t *testing.T) {
 	})
 
 	// BEnter cancels
-	_ = m.BindHandlers(&struct {
+	_, _ = m.HandlersBind(&struct {
 		BEnter HandlerNegotiation
 		BState HandlerFinal
 	}{
@@ -997,7 +1002,7 @@ func TestPartialAutoStatesBySelfHandler(t *testing.T) {
 		t.Parallel()
 	}
 
-	enableDebugging()
+	// enableDebugging()
 
 	// init
 	m := NewCustomStates(t, Schema{
@@ -1007,7 +1012,7 @@ func TestPartialAutoStatesBySelfHandler(t *testing.T) {
 	})
 
 	// CB cancels
-	_ = m.BindHandlers(&struct {
+	_, _ = m.HandlersBind(&struct {
 		CC     HandlerNegotiation
 		BState HandlerFinal
 	}{
@@ -1048,7 +1053,7 @@ func TestNegotiationRemove(t *testing.T) {
 	m := NewNoRels(t, S{"A"})
 
 	// bind handlers
-	err := m.BindHandlers(&TestNegotiationRemoveHandlers{})
+	_, err := m.HandlersBind(&TestNegotiationRemoveHandlers{})
 	assert.NoError(t, err)
 
 	// bind logger
@@ -1131,7 +1136,7 @@ func TestHandlerStateInfo(t *testing.T) {
 	history := trackTransitions(m)
 
 	// bind handlers
-	err = m.BindHandlers(&TestHandlerStateInfoHandlers{
+	_, err = m.HandlersBind(&TestHandlerStateInfoHandlers{
 		t: t,
 	})
 	assert.NoError(t, err)
@@ -1294,7 +1299,7 @@ func TestHandlerArgs(t *testing.T) {
 	history := trackTransitions(m)
 
 	// bind handlers
-	err := m.BindHandlers(&TestHandlerArgsHandlers{})
+	_, err := m.HandlersBind(&TestHandlerArgsHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -1335,7 +1340,7 @@ func TestEvMutations(t *testing.T) {
 	history := trackTransitions(m)
 
 	// bind handlers
-	err := m.BindHandlers(&TestEvH{})
+	_, err := m.HandlersBind(&TestEvH{})
 	assert.NoError(t, err)
 
 	// test
@@ -1354,19 +1359,7 @@ func TestEvMutations(t *testing.T) {
 func TestEval(t *testing.T) {
 	// init
 
-	t.Setenv(EnvAmDetectEval, "1")
 	m := NewNoRels(t, nil)
-	_ = m.BindHandlers(&struct {
-		AB HandlerNegotiation
-		BA HandlerNegotiation
-	}{
-		AB: func(e *Event) bool {
-			return true
-		},
-		BA: func(e *Event) bool {
-			return true
-		},
-	})
 	m.detectEval = true
 
 	// test
@@ -1484,7 +1477,7 @@ func TestHandlerStateState(t *testing.T) {
 
 	// init
 	m := NewNoRels(t, S{"A"})
-	_ = m.BindHandlers(&struct {
+	_, _ = m.HandlersBind(&struct {
 		AB HandlerNegotiation
 		BA HandlerNegotiation
 	}{
@@ -1517,7 +1510,7 @@ func TestHandlerNegotiationStateState(t *testing.T) {
 
 	// init
 	m := NewNoRels(t, S{"A"})
-	_ = m.BindHandlers(&struct {
+	_, _ = m.HandlersBind(&struct {
 		AB HandlerNegotiation
 		BA HandlerNegotiation
 	}{
@@ -1549,7 +1542,7 @@ func TestAnonHandlers(t *testing.T) {
 	ok := false
 
 	// bind handlers
-	err := m.BindHandlers(&struct {
+	_, err := m.HandlersBind(&struct {
 		AExit func(e *Event) bool
 		AEnd  func(e *Event)
 	}{
@@ -1594,7 +1587,7 @@ func TestSelfHandlersCancellable(t *testing.T) {
 	history := trackTransitions(m)
 
 	// bind handlers
-	err := m.BindHandlers(&TestSelfHandlersCancellableHandlers{})
+	_, err := m.HandlersBind(&TestSelfHandlersCancellableHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -1739,7 +1732,7 @@ func TestWhen(t *testing.T) {
 	m := NewNoRels(t, nil)
 
 	// bind handlers
-	err := m.BindHandlers(&TestWhenHandlers{})
+	_, err := m.HandlersBind(&TestWhenHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -1848,7 +1841,7 @@ func TestWhenNot(t *testing.T) {
 	m := NewNoRels(t, S{"B", "C"})
 
 	// bind handlers
-	err := m.BindHandlers(&TestWhenNotHandlers{})
+	_, err := m.HandlersBind(&TestWhenNotHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -1942,7 +1935,7 @@ func TestPartialNegotiationPanic(t *testing.T) {
 	captureLog(t, m, &log)
 
 	// bind handlers
-	err := m.BindHandlers(&TestPartialNegotiationPanicHandlers{})
+	_, err := m.HandlersBind(&TestPartialNegotiationPanicHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -1978,7 +1971,7 @@ func TestPartialFinalPanic(t *testing.T) {
 	captureLog(t, m, &log)
 
 	// bind handlers
-	err := m.BindHandlers(&TestPartialFinalPanicHandlers{})
+	_, err := m.HandlersBind(&TestPartialFinalPanicHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -2031,7 +2024,7 @@ func TestStateCtx(t *testing.T) {
 
 	// bind handlers
 	handlers := &TestStateCtxHandlers{}
-	err := m.BindHandlers(handlers)
+	_, err := m.HandlersBind(handlers)
 	assert.NoError(t, err)
 
 	// test
@@ -2056,6 +2049,29 @@ func TestStateCtx(t *testing.T) {
 	default:
 		t.Fatal("expected cancel")
 	}
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+func TestStateCtxBasic(t *testing.T) {
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+	// init
+	m := NewNoRels(t, nil)
+
+	// test
+	m.Add1("A", nil)
+	ctx1 := m.NewStateCtx("A")
+	assert.Nil(t, ctx1.Err())
+	m.Remove1("A", nil)
+	assert.Error(t, ctx1.Err())
+
+	// test early cancel
+	ctx2 := m.NewStateCtx("B")
+	assert.Error(t, ctx2.Err())
 
 	// dispose
 	m.Dispose()
@@ -2104,7 +2120,8 @@ func TestQueueCheckable(t *testing.T) {
 
 	// bind handlers
 	handlers := &TestQueueCheckableHandlers{}
-	m.MustBindHandlers(handlers)
+	_, err := m.HandlersBind(handlers)
+	require.NoError(t, err)
 
 	// test
 	m.Add(S{"A"}, A{"t": t})
@@ -2214,10 +2231,16 @@ func TestWhenCtx(t *testing.T) {
 		t.Parallel()
 	}
 	// init
-	m := NewNoRels(t, S{"A", "B"})
+	m := NewCustomStates(t, Schema{
+		"A": {},
+		"B": {},
+		"C": {},
+		"D": {Multi: true},
+	})
+	m.Set(S{"A", "B"}, nil)
 
 	// wait on "when" methods with a "step" context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 	whenTimeCh := m.WhenTime(S{"A", "B"}, Time{3, 3}, ctx)
 	whenTicks1Ch := m.WhenTicks("A", 2, ctx)
 	whenTicks2Ch := m.WhenTime1("B", 3, ctx)
@@ -2230,24 +2253,19 @@ func TestWhenCtx(t *testing.T) {
 	assert.Greater(t, len(m.subs.whenArgs), 0)
 
 	go func() {
-		time.Sleep(10 * time.Millisecond)
 		cancel()
+		// tick the mach to trigger ctx rechecks
+		for range 3 {
+			m.Add1("D", nil)
+			time.Sleep(100 * time.Millisecond)
+		}
 	}()
 
-	select {
-	case <-whenCh:
-		t.Fatal("when shouldnt be resolved")
-	case <-whenArgsCh:
-		t.Fatal("when shouldnt be resolved")
-	case <-whenTimeCh:
-		t.Fatal("when shouldnt be resolved")
-	case <-whenTicks1Ch:
-		t.Fatal("when shouldnt be resolved")
-	case <-whenTicks2Ch:
-		t.Fatal("when shouldnt be resolved")
-	case <-ctx.Done():
-		// resolved
-	}
+	<-whenCh
+	<-whenArgsCh
+	<-whenTimeCh
+	<-whenTicks1Ch
+	<-whenTicks2Ch
 
 	// GC contexts via another mutation
 	m.Add(S{"D"}, nil)
@@ -2346,6 +2364,35 @@ func TestWhenTime(t *testing.T) {
 	m.Add1("A", nil)
 
 	<-whenCh3
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+func TestChanReuse(t *testing.T) {
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+	// init
+	m := NewNoRels(t, S{"A", "B"})
+	whenCh1 := m.WhenTime(S{"A", "B"}, Time{5, 2}, nil)
+	whenCh2 := m.WhenTime(S{"A", "B"}, Time{5, 2}, nil)
+	assert.Equal(t, whenCh1, whenCh2, "WhenTime chans not reused")
+
+	whenCh1 = m.WhenArgs("B", A{"foo": "bar"}, nil)
+	whenCh2 = m.WhenArgs("B", A{"foo": "bar"}, nil)
+	assert.Equal(t, whenCh1, whenCh2, "WhenArgs chans not reused")
+
+	whenCh1 = m.When1("C", nil)
+	whenCh2 = m.When1("C", nil)
+	assert.Equal(t, whenCh1, whenCh2, "When chans not reused")
+
+	whenCh1 = m.WhenNot1("A", nil)
+	whenCh2 = m.WhenNot1("A", nil)
+	assert.Equal(t, whenCh1, whenCh2, "WhenNot chans not reused")
+
+	// TODO WhenQueue, WhenQueueEnds, WhenQuery
 
 	// dispose
 	m.Dispose()
@@ -3312,12 +3359,9 @@ func TestDisposedNoOp(t *testing.T) {
 	assert.Empty(t, m.Inspect(nil))
 	assert.Empty(t, m.detectQueueDuplicates(MutationAdd, s, false))
 	assert.Empty(t, m.Eval("test", func() {}, nil))
-	assert.Empty(t, m.BindHandlers(struct{}{}))
-	assert.Empty(t, m.DetachHandlers(struct{}{}))
 	assert.Empty(t, m.VerifyStates(s))
 	assert.Empty(t, m.NewStateCtx("A"))
-	assert.Empty(t, m.newHandler(struct{}{}, "test", &reflect.Value{},
-		[]string{"test"}))
+	assert.Empty(t, m.newHandlerStruct(struct{}{}, &reflect.Value{}))
 	assert.Empty(t, m.setActiveStates(s, s, false))
 	m.log(LogChanges, "")
 	m.Log("")
@@ -3367,19 +3411,15 @@ var testGroups0Schema = Schema{
 	testGroups2S.State01: {},
 }
 
-var testGroups1Schema = SchemaMerge(
-	testGroups0Schema,
-	Schema{
-		testGroups2S.State10: {},
-		testGroups2S.State11: {},
-	})
+var testGroups1Schema = testGroups0Schema.Merge(Schema{
+	testGroups2S.State10: {},
+	testGroups2S.State11: {},
+})
 
-var testGroups2Schema = SchemaMerge(
-	testGroups1Schema,
-	Schema{
-		testGroups2S.State20: {},
-		testGroups2S.State21: {},
-	})
+var testGroups2Schema = testGroups1Schema.Merge(Schema{
+	testGroups2S.State20: {},
+	testGroups2S.State21: {},
+})
 
 // EXPORTS AND GROUPS
 

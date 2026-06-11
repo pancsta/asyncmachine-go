@@ -24,10 +24,6 @@ import (
 
 var ssF = states.FooStates
 var ssB = states.BarStates
-var PassRpc = example.PassRpc
-
-type ARpc = example.ARpc
-type A = example.A
 
 func init() {
 	_ = godotenv.Load()
@@ -51,12 +47,11 @@ func main() {
 		panic(err)
 	}
 	amhelp.MachDebugEnv(fooMach)
-	fooMach.SemLogger().SetArgsMapper(example.LogArgs)
+	fooMach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 	handlers.machFoo = fooMach
 	arpc.MachRepl(fooMach, example.EnvFooReplAddr, &arpc.ReplOpts{
-		AddrDir:  example.EnvReplDir,
-		Args:     ARpc{},
-		ParseRpc: example.ParseRpc,
+		AddrDir: example.EnvReplDir,
+		Args:    example.ArgsRpc,
 	})
 	fooMach.Add1(ssF.Start, nil)
 
@@ -93,7 +88,7 @@ func main() {
 
 		return bar, nil
 	}
-	relay, err := amrelay.New(ctx, amrelayt.Args{
+	relay, err := amrelay.New(ctx, amrelayt.CliArgs{
 		Name:   "wasm-demo",
 		Debug:  true,
 		Parent: fooMach,
@@ -163,7 +158,7 @@ func (h *HandlersFoo) StartState(e *am.Event) {
 					bar.NetMach.Tick(ssB.Msg) < 20 {
 
 					// instant sync with args
-					args := PassRpc(&A{
+					args := am.Pass(&example.AMsg{
 						Msg: "hello",
 					})
 					bar.NetMach.EvAdd1(e, ssF.Msg, args)
@@ -178,12 +173,12 @@ func (h *HandlersFoo) StartState(e *am.Event) {
 var _ = ssF.Msg
 
 func (h *HandlersFoo) MsgEnter(e *am.Event) bool {
-	return example.ParseArgs(e.Args).Msg != ""
+	return am.ParseArgs[example.AMsg](e.Args).Msg != ""
 }
 
 func (h *HandlersFoo) MsgState(e *am.Event) {
 	h.machFoo.Remove1(ssF.Msg, nil)
-	args := example.ParseArgs(e.Args)
+	args := am.ParseArgs[example.AMsg](e.Args)
 
 	// both foo and bar mutate this state
 	author := "bar"

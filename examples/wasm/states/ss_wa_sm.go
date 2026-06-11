@@ -8,6 +8,53 @@ import (
 
 //
 
+// SHARED (common for both server and browser)
+
+//
+
+// SharedStatesDef contains all the states of the Shared state machine.
+type SharedStatesDef struct {
+	*am.StatesBase
+
+	// Message received and should be processed.
+	Msg string
+
+	// inherit from BasicStatesDef
+	*ss.BasicStatesDef
+	// inherit from rpc/StateSourceStatesDef
+	*ssrpc.StateSourceStatesDef
+}
+
+// SharedGroupsDef contains all the state groups Shared state machine.
+type SharedGroupsDef struct {
+	// GroupName S
+}
+
+// SharedSchema represents all relations and properties of SharedStates.
+var SharedSchema = ss.BasicSchema.Merge(
+	// inherit from rpc/StateSourceSchema
+	ssrpc.StateSourceSchema,
+	am.Schema{
+
+		ssS.Msg: {Multi: true},
+	})
+
+// EXPORTS AND GROUPS
+
+var (
+	ssS = am.NewStates(SharedStatesDef{})
+	sgS = am.NewStateGroups(SharedGroupsDef{
+		// GroupName: S{...},
+	})
+
+	// SharedStates contains all the states for the Shared machine.
+	SharedStates = ssS
+	// SharedGroups contains all the state groups for the Shared machine.
+	SharedGroups = sgS
+)
+
+//
+
 // FOO (server)
 
 //
@@ -29,18 +76,13 @@ type FooGroupsDef struct {
 }
 
 // FooSchema represents all relations and properties of FooStates.
-var FooSchema = SchemaMerge(
-	// inherit from SharedSchema
-	SharedSchema,
-	am.Schema{
+var FooSchema = SharedSchema.Merge(am.Schema{
 
-		ssF.Bored: {},
-		ssF.Msg: StateAdd(
-			SharedSchema[ssF.Msg],
-			am.State{
-				Remove: S{ssF.Bored},
-			}),
-	})
+	ssF.Bored: {},
+	ssF.Msg: SharedSchema[ssF.Msg].Extend(am.State{
+		Remove: S{ssF.Bored},
+	}),
+})
 
 // EXPORTS AND GROUPS
 
@@ -78,13 +120,9 @@ type BarGroupsDef struct {
 }
 
 // BarSchema represents all relations and properties of BarStates.
-var BarSchema = SchemaMerge(
-	// inherit from SharedSchema
-	SharedSchema,
-	am.Schema{
-
-		ssB.SubmitMsg: {Multi: true},
-	})
+var BarSchema = SharedSchema.Merge(am.Schema{
+	ssB.SubmitMsg: {Multi: true},
+})
 
 // EXPORTS AND GROUPS
 
@@ -98,53 +136,4 @@ var (
 	BarStates = ssB
 	// BarGroups contains all the state groups for the Bar machine.
 	BarGroups = sgB
-)
-
-//
-
-// SHARED (common for both server and browser)
-
-//
-
-// SharedStatesDef contains all the states of the Shared state machine.
-type SharedStatesDef struct {
-	*am.StatesBase
-
-	// Message received and should be processed.
-	Msg string
-
-	// inherit from BasicStatesDef
-	*ss.BasicStatesDef
-	// inherit from rpc/StateSourceStatesDef
-	*ssrpc.StateSourceStatesDef
-}
-
-// SharedGroupsDef contains all the state groups Shared state machine.
-type SharedGroupsDef struct {
-	// GroupName S
-}
-
-// SharedSchema represents all relations and properties of SharedStates.
-var SharedSchema = SchemaMerge(
-	// inherit from BasicSchema
-	ss.BasicSchema,
-	// inherit from rpc/StateSourceSchema
-	ssrpc.StateSourceSchema,
-	am.Schema{
-
-		ssS.Msg: {Multi: true},
-	})
-
-// EXPORTS AND GROUPS
-
-var (
-	ssS = am.NewStates(SharedStatesDef{})
-	sgS = am.NewStateGroups(SharedGroupsDef{
-		// GroupName: S{...},
-	})
-
-	// SharedStates contains all the states for the Shared machine.
-	SharedStates = ssS
-	// SharedGroups contains all the state groups for the Shared machine.
-	SharedGroups = sgS
 )

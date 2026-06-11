@@ -5,7 +5,7 @@ package states
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
-	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
+	// . "github.com/pancsta/asyncmachine-go/pkg/states/global"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
@@ -26,9 +26,7 @@ type VisualizerGroupsDef struct {
 }
 
 // VisualizerSchema represents all relations and properties of VisualizerStates.
-var VisualizerSchema = SchemaMerge(
-	// inherit from BasicStruct
-	ss.BasicSchema,
+var VisualizerSchema = ss.BasicSchema.Merge(
 	// inherit from DisposedStruct
 	ss.DisposedSchema,
 	// inherit from ServerSchema

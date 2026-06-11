@@ -395,6 +395,10 @@ func NewTracer(mach am.Api, addr string) *Tracer {
 	return t
 }
 
+func (t *Tracer) TracerId() string {
+	return "dbg"
+}
+
 func (t *Tracer) MachineInit(mach am.Api) context.Context {
 	t.mx.Lock()
 	defer t.mx.Unlock()
@@ -472,7 +476,7 @@ func (t *Tracer) TransitionEnd(tx *am.Transition) {
 			// log.Println(mach.Id() + ": too many errors - detaching dbg tracer")
 		}
 		go func() {
-			err := mach.DetachTracer(t)
+			err := mach.DetachTracer(t.TracerId())
 			if err != nil && os.Getenv(am.EnvAmLog) != "" {
 				// log.Printf(mach.Id()+": failed to detach dbg tracer: %s\n", err)
 			}
@@ -592,7 +596,7 @@ func (t *Tracer) MutationQueued(mach am.Api, mut *am.Mutation) {
 	if semlog.IsArgs() {
 		msg.Args = mut.MapArgs(semlog.ArgsMapper())
 	}
-	if err := am.ParseArgs(mut.Args).Err; err != nil {
+	if err := am.ParseArgs[am.AException](mut.Args).Err; err != nil {
 		if msg.Args == nil {
 			msg.Args = make(map[string]string)
 		}
@@ -644,7 +648,7 @@ func TransitionsToDbg(mach am.Api, addr string, opts ...*Opts) error {
 
 	// add the tracer
 	tracer := NewTracer(mach, addr)
-	err := mach.BindTracer(tracer)
+	_, err := mach.BindTracer(tracer)
 	if err != nil {
 		return err
 	}

@@ -62,7 +62,7 @@ func newDaemon(ctx context.Context, args *Args) (*daemon, error) {
 		d, nil, &am.Opts{
 			DontPanicToException: args.Debug,
 			LogLevel:             am.LogChanges,
-			LogArgs:              types.LogArgs,
+			LogArgs:              amhelp.LogArgsMapper,
 		})
 	if err != nil {
 		return nil, err
@@ -93,9 +93,8 @@ func newDaemon(ctx context.Context, args *Args) (*daemon, error) {
 	portNum, _ := strconv.Atoi(port)
 	addrRepl := host + ":" + strconv.Itoa(portNum+1)
 	arpc.MachRepl(mach, addrRepl, &arpc.ReplOpts{
-		AddrDir:  ".",
-		Args:     types.ARpc{},
-		ParseRpc: types.ParseRpc,
+		AddrDir: ".",
+		Args:    types.ArgsRpc,
 	})
 	// TODO print when ready
 	fmt.Printf("REPL listening on %s\n", addrRepl)
@@ -120,7 +119,7 @@ func (d *daemon) hOp(e *am.Event) {
 	ctxDaemon := d.Mach.NewStateCtx(ss.Start)
 	ctxRpc := d.S.Mach.NewStateCtx(ssrpc.ServerStates.ClientConnected)
 	ctx, _ := onecontext.Merge(ctxDaemon, ctxRpc)
-	duration := types.ParseArgs(e.Args).Duration
+	duration := am.ParseArgs[types.OpFoo1](e.Args).Duration
 	called := e.Transition().CalledStates()
 
 	fmt.Printf("starting op %s for %s\n", called, duration)

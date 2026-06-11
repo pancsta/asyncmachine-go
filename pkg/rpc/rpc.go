@@ -27,7 +27,6 @@ import (
 )
 
 func init() {
-	gob.Register(&ARpc{})
 	gob.Register(am.Relation(0))
 }
 
@@ -61,6 +60,8 @@ const (
 
 var ss = states.SharedStates
 
+var Pass = am.Pass
+
 // ///// ///// /////
 
 // ///// TYPES
@@ -85,7 +86,7 @@ var (
 	ServerHandshake = ServerMethod{"Handshake"}
 	ServerLog       = ServerMethod{"Log"}
 	ServerSync      = ServerMethod{"Sync"}
-	ServerArgs      = ServerMethod{"Args"}
+	ServerArgs      = ServerMethod{"ArgsBase"}
 	ServerBye       = ServerMethod{"Close"}
 
 	ServerMethods = enum.New(ServerAdd, ServerAddNS, ServerRemove, ServerSet,
@@ -231,10 +232,10 @@ type ReplOpts struct {
 	ErrCh chan<- error
 	// optional channel to send the address to, once ready
 	AddrCh chan<- string
-	// optional typed args struct value
-	Args any
-	// optional RPC args parser
-	ParseRpc func(args am.A) am.A
+	// See [ServerOpts.Args].
+	Args []am.ArgsApi
+	// See [ServerOpts.ArgsUnmarshaller].
+	ArgsUnmarshaller amhelp.ArgsUnmarshallerFn
 	// Listen on a WebSocket connection instead of TCP.
 	WebSocket bool
 	// HTTP URL without proto to tunnel the TCP listen over a WebSocket conn.
@@ -246,7 +247,7 @@ type ReplOpts struct {
 
 // ///// ///// /////
 
-// ///// ARGS
+// ///// ARGS TODO update
 
 // ///// ///// /////
 
@@ -681,7 +682,8 @@ func (s *semLogger) IsCan() bool {
 // handler represents a single event consumer, synchronized by channels.
 type handler struct {
 	h            any
-	name         string
+	id           string
+	num          int
 	mx           sync.Mutex
 	methods      *reflect.Value
 	methodCache  map[string]reflect.Value
@@ -692,7 +694,7 @@ func newHandler(
 	handlers any, name string, methods *reflect.Value,
 ) *handler {
 	return &handler{
-		name:         name,
+		id:           name,
 		h:            handlers,
 		methods:      methods,
 		methodCache:  make(map[string]reflect.Value),
@@ -1055,17 +1057,17 @@ func MachReplEnv(mach am.Api, opts *ReplOpts) (error, <-chan error) {
 	case "":
 		return nil, nil
 	case "1":
-		// expand 1 to default
+		// expand 1 to default in [MachRepl]
 		addr = ""
 	}
 
 	// MachRepl closes errCh
 	errCh := make(chan error, 1)
 	opts2 := &ReplOpts{
-		AddrDir:  dir,
-		ErrCh:    errCh,
-		Args:     opts.Args,
-		ParseRpc: opts.ParseRpc,
+		AddrDir:          dir,
+		ErrCh:            errCh,
+		Args:             opts.Args,
+		ArgsUnmarshaller: opts.ArgsUnmarshaller,
 	}
 	var err error
 	if runtime.GOOS == "wasm" {
@@ -1096,14 +1098,14 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 	errCh := opts.ErrCh
 
 	if amhelp.IsTestRunner() {
-		return amhelp.ErrTestAutoDisable
+		return nil
 	}
 
 	if addr == "" {
 		addr = "127.0.0.1:0"
 	}
 
-	if mach.HasHandlers() && !mach.Has(ssSs.Names()) {
+	if len(mach.Handlers()) > 0 && !mach.Has(ssSs.Names()) {
 		err := fmt.Errorf(
 			"%w: REPL source has to implement pkg/rpc/states/StateSourceStatesDef",
 			am.ErrSchema)
@@ -1111,18 +1113,10 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 		return err
 	}
 
-	// verify args is a value struct
-	if opts.Args != nil {
-		t := reflect.TypeOf(opts.Args)
-		if t.Kind() != reflect.Struct {
-			return fmt.Errorf("expected a struct, got %s", t.Kind())
-		}
-	}
-
 	mux, err := NewMux(mach.Context(), addr, "repl-"+mach.Id(), mach, &MuxOpts{
-		Parent:   mach,
-		Args:     opts.Args,
-		ParseRpc: opts.ParseRpc,
+		Parent:           mach,
+		Args:             opts.Args,
+		ArgsUnmarshaller: opts.ArgsUnmarshaller,
 	})
 	if err != nil {
 		return err
@@ -1172,7 +1166,8 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 		// save to dir
 		if dirOk && addrDir != "" {
 			err = os.WriteFile(
-				filepath.Join(addrDir, mach.Id()+".addr"),
+				// -repl suffix coz args unmarshallers break aRPC
+				filepath.Join(addrDir, mach.Id()+"-repl.addr"),
 				[]byte(mux.Addr), 0o644,
 			)
 			if errCh != nil {
@@ -1195,14 +1190,14 @@ func MachReplWs(mach am.Api, addr string, opts *ReplOpts) (*Server, error) {
 	errCh := opts.ErrCh
 
 	if amhelp.IsTestRunner() {
-		return nil, amhelp.ErrTestAutoDisable
+		return nil, nil
 	}
 
 	if addr == "" {
 		addr = "127.0.0.1:0"
 	}
 
-	if mach.HasHandlers() && !mach.Has(ssSs.Names()) {
+	if len(mach.Handlers()) > 0 && !mach.Has(ssSs.Names()) {
 		err := fmt.Errorf(
 			"%w: REPL source has to implement pkg/rpc/states/StateSourceStatesDef",
 			am.ErrSchema)
@@ -1210,21 +1205,13 @@ func MachReplWs(mach am.Api, addr string, opts *ReplOpts) (*Server, error) {
 		return nil, err
 	}
 
-	// verify args is a value struct
-	if opts.Args != nil {
-		t := reflect.TypeOf(opts.Args)
-		if t.Kind() != reflect.Struct {
-			return nil, fmt.Errorf("expected a struct, got %s", t.Kind())
-		}
-	}
-
 	s, err := NewServer(mach.Context(), addr, "repl-"+mach.Id(), mach,
 		&ServerOpts{
-			Parent:          mach,
-			Args:            opts.Args,
-			ParseRpc:        opts.ParseRpc,
-			WebSocket:       opts.WebSocket,
-			WebSocketTunnel: opts.WebSocketTunnel,
+			Parent:           mach,
+			Args:             opts.Args,
+			ArgsUnmarshaller: opts.ArgsUnmarshaller,
+			WebSocket:        opts.WebSocket,
+			WebSocketTunnel:  opts.WebSocketTunnel,
 		})
 	if err != nil {
 		return nil, err
@@ -1300,12 +1287,14 @@ func MachReplWs(mach am.Api, addr string, opts *ReplOpts) (*Server, error) {
 
 // Checksum calculates a short checksum of current machine time and ticks.
 func Checksum(mTime uint64, qTick uint64, machTick uint32) uint8 {
+	// TODO add index of active states to the checksum
 	return uint8(mTime + qTick + uint64(machTick))
 }
 
 // TrafficMeter measures the traffic of a listener and forwards it to a
 // destination. Results are sent to the [counter] channel. Useful for testing
 // and benchmarking.
+// TODO optimize: override Read/Write instead, omit the network stack
 func TrafficMeter(
 	listener net.Listener, fwdTo string, counter chan<- int64,
 	end <-chan struct{},

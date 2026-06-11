@@ -47,8 +47,8 @@ type Server struct {
 	Conn       net.Conn
 	LogEnabled bool
 	CallCount  uint64
-	// Typed arguments struct value with defaults
-	Args any
+	// List of typed arguments.
+	Args []am.ArgsApi
 	Opts ServerOpts
 
 	// sync settings
@@ -106,13 +106,12 @@ type Server struct {
 	// respInProgress atomic.Bool
 
 	// ID of the currently connected client.
-	clientId         atomic.Pointer[string]
-	deliveryHandlers any
-	lastPush         time.Time
-	lastPushData     *tracerData
-	httpSrv          *http.Server
-	wsTunRetryRound  atomic.Int32
-	wsConn           *websocket.Conn
+	clientId        atomic.Pointer[string]
+	lastPush        time.Time
+	lastPushData    *tracerData
+	httpSrv         *http.Server
+	wsTunRetryRound atomic.Int32
+	wsConn          *websocket.Conn
 }
 
 // interfaces
@@ -137,6 +136,9 @@ func NewServer(
 	if opts == nil {
 		opts = &ServerOpts{}
 	}
+	if opts.Args != nil && opts.ArgsUnmarshaller == nil {
+		opts.ArgsUnmarshaller = amhelp.NewArgsUnmarshaller(opts.Args)
+	}
 	// TODO WASM auto-tunnel
 	if opts.WebSocketTunnel != "" && addr == "" {
 		return nil, fmt.Errorf("addr required for WebSocketTunnel")
@@ -150,7 +152,8 @@ func NewServer(
 		return nil, fmt.Errorf(
 			"net source states not verified, call VerifyStates()")
 	}
-	hasHandlers := stateSource.HasHandlers()
+	hasHandlers := len(stateSource.Handlers()) > 0
+
 	if hasHandlers && !stateSource.Has(ssSs.Names()) {
 		// error only when some handlers bound, skip deterministic machines
 		err := fmt.Errorf(
@@ -192,7 +195,7 @@ func NewServer(
 	if err != nil {
 		return nil, err
 	}
-	mach.SemLogger().SetArgsMapper(LogArgs)
+	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 	mach.SetGroups(states.ServerGroups, ssS)
 	mach.OnDispose(func(id string, ctx context.Context) {
 		if l := s.Listener.Load(); l != nil {
@@ -200,8 +203,7 @@ func NewServer(
 			s.Listener.Store(nil)
 		}
 		s.rpcServer = nil
-		_ = s.Source.DetachTracer(s.tracer)
-		_ = s.Source.DetachHandlers(s.deliveryHandlers)
+		_ = s.Source.DetachTracer(s.tracer.TracerId())
 	})
 	s.Mach = mach
 	// optional env debug
@@ -216,6 +218,9 @@ func NewServer(
 
 	// bind to source via Tracer API (inactive until activated)
 	s.tracer = &sourceTracer{
+		TracerNoOp: &am.TracerNoOp{
+			Id: mach.Id(),
+		},
 		s: s,
 		dataLatest: &tracerData{
 			// queue ticks start at 1
@@ -224,7 +229,7 @@ func NewServer(
 	}
 	// queue ticks start at 1
 	s.tracer.dataLatest.queueTick = 1
-	if err = stateSource.BindTracer(s.tracer); err != nil {
+	if _, err = stateSource.BindTracer(s.tracer); err != nil {
 		return nil, err
 	}
 
@@ -317,7 +322,7 @@ func (s *Server) StartEnd(e *am.Event) {
 	} else if s.Mach.Is1(ssS.WebSocketTunnel) && s.wsConn != nil {
 		_ = s.wsConn.Close(websocket.StatusNormalClosure, "")
 	}
-	if ParseArgs(e.Args).Dispose {
+	if am.ParseArgs[A](e.Args).Dispose {
 		s.Mach.Dispose()
 	}
 }
@@ -519,10 +524,14 @@ func (s *Server) RpcAcceptingState(e *am.Event) {
 
 		// bind to RPC server events (or override)
 		srv.OnDisconnect(func(client *rpc2.Client) {
-			s.Mach.EvRemove1(e, ssS.ClientConnected, Pass(&A{Client: client}))
+			s.Mach.EvRemove1(e, ssS.ClientConnected, Pass(&AClientConnected{
+				Client: client,
+			}))
 		})
 		srv.OnConnect(func(client *rpc2.Client) {
-			s.Mach.EvAdd1(e, ssS.ClientConnected, Pass(&A{Client: client}))
+			s.Mach.EvAdd1(e, ssS.ClientConnected, Pass(&AClientConnected{
+				Client: client,
+			}))
 		})
 	}()
 }
@@ -949,8 +958,8 @@ func (s *Server) RemoteAdd(
 
 	// typed args
 	args := req.Args
-	if s.Opts.ParseRpc != nil {
-		args = s.Opts.ParseRpc(args)
+	if s.Opts.ArgsUnmarshaller != nil {
+		args = s.Opts.ArgsUnmarshaller(args)
 	}
 
 	// execute
@@ -987,8 +996,8 @@ func (s *Server) RemoteAddNS(
 
 	// typed args
 	args := req.Args
-	if s.Opts.ParseRpc != nil {
-		args = s.Opts.ParseRpc(args)
+	if s.Opts.ArgsUnmarshaller != nil {
+		args = s.Opts.ArgsUnmarshaller(args)
 	}
 
 	// execute TODO event trace
@@ -1014,8 +1023,8 @@ func (s *Server) RemoteRemove(
 
 	// typed args
 	args := req.Args
-	if s.Opts.ParseRpc != nil {
-		args = s.Opts.ParseRpc(args)
+	if s.Opts.ArgsUnmarshaller != nil {
+		args = s.Opts.ArgsUnmarshaller(args)
 	}
 
 	// execute TODO event trace
@@ -1045,8 +1054,8 @@ func (s *Server) RemoteSet(
 
 	// typed args
 	args := req.Args
-	if s.Opts.ParseRpc != nil {
-		args = s.Opts.ParseRpc(args)
+	if s.Opts.ArgsUnmarshaller != nil {
+		args = s.Opts.ArgsUnmarshaller(args)
 	}
 
 	// execute TODO event trace
@@ -1086,15 +1095,16 @@ func (s *Server) RemoteArgs(
 	}
 
 	// args TODO cache
-	if s.Args != nil {
-		// TODO use JSON field names
-		args, err := utils.StructFields(s.Args)
-		if err != nil {
-			return err
-		}
-		(*resp).Args = args
+	if s.Args == nil {
+		return nil
 	}
 
+	ret, err := amhelp.ArgsNames(s.Args)
+	if err != nil {
+		return err
+	}
+
+	(*resp).Args = ret
 	return nil
 }
 
@@ -1143,10 +1153,10 @@ func (s *Server) RemoteBye(
 // states.
 func BindServer(
 	source, target *am.Machine, rpcReady, clientReady string,
-) error {
+) (string, error) {
 	// TODO use ampipe.BindMany
 	if rpcReady == "" || clientReady == "" {
-		return fmt.Errorf("rpcReady and clientConn must be set")
+		return "", fmt.Errorf("rpcReady and clientConn must be set")
 	}
 
 	h := &struct {
@@ -1165,16 +1175,16 @@ func BindServer(
 			clientReady),
 	}
 
-	return source.BindHandlers(h)
+	return source.HandlersBind(h)
 }
 
 // BindServerMulti binds RpcReady, ClientConnected, and ClientDisconnected.
 // RpcReady is Add/Remove, the other two are Add-only to passed multi states.
 func BindServerMulti(
 	source, target *am.Machine, rpcReady, clientConn, clientDisconn string,
-) error {
+) (string, error) {
 	if rpcReady == "" || clientConn == "" || clientDisconn == "" {
-		return fmt.Errorf("rpcReady, clientConn, and clientDisconn must be set")
+		return "", fmt.Errorf("rpcReady, clientConn, and clientDisconn must be set")
 	}
 	// TODO use ampipe.BindMany
 
@@ -1194,11 +1204,11 @@ func BindServerMulti(
 			ssS.ClientConnected, clientDisconn),
 	}
 
-	return source.BindHandlers(h)
+	return source.HandlersBind(h)
 }
 
 // BindServerRpcReady bind RpcReady using Add to a custom multi state.
-func BindServerRpcReady(source, target *am.Machine, rpcReady string) error {
+func BindServerRpcReady(source, target *am.Machine, rpcReady string) (string, error) {
 	// TODO use ampipe.Bind
 	h := &struct {
 		RpcReadyState am.HandlerFinal
@@ -1206,16 +1216,17 @@ func BindServerRpcReady(source, target *am.Machine, rpcReady string) error {
 		RpcReadyState: ampipe.Add(source, target, ssS.RpcReady, rpcReady),
 	}
 
-	return source.BindHandlers(h)
+	return source.HandlersBind(h)
 }
 
 type ServerOpts struct {
 	// Parent is a parent state machine for a new Server state machine.
 	Parent am.Api // Typed arguments struct pointer
-	// optional typed args struct value
-	Args any
-	// optional RPC args parser
-	ParseRpc func(args am.A) am.A
+	// optional list of typed args
+	Args []am.ArgsApi
+	// optional RPC args parser, defaults to [amhelp.NewArgsUnmarshaller] when
+	// [ServerOpts.Args] present. Useful for REPLs.
+	ArgsUnmarshaller amhelp.ArgsUnmarshallerFn
 	// Listen on a WebSocket connection instead of TCP.
 	WebSocket bool
 	// HTTP URL without proto to tunnel the TCP listen over a WebSocket conn.

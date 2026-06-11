@@ -66,7 +66,7 @@ func New(ctx context.Context) (*PathWatcher, error) {
 		return nil, err
 	}
 
-	err = w.Mach.BindHandlers(w)
+	_, err = w.Mach.HandlersBind(w)
 	if err != nil {
 		return nil, err
 	}

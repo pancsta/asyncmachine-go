@@ -352,7 +352,7 @@ func FanOutIn(
 		}
 	}
 
-	err = mach.BindHandlers(&h)
+	_, err = mach.HandlersBind(&h)
 	if err != nil {
 		return nil, err
 	}

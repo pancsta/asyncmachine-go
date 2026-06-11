@@ -85,7 +85,7 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	semlog := m.SemLogger()
 
 	t := &Transition{
-		Id:          randId(),
+		Id:          randId(16),
 		Mutation:    mut,
 		TimeBefore:  tNow,
 		Machine:     m,
@@ -423,7 +423,7 @@ func (t *Transition) ClockAfter() Clock {
 	return ret
 }
 
-// Args returns the argument map passed to the mutation method
+// ArgsBase returns the argument map passed to the mutation method
 // (or an empty one).
 func (t *Transition) Args() A {
 	return t.Mutation.Args

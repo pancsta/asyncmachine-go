@@ -34,14 +34,14 @@ import (
 var (
 	ssR  = states.RelayStates
 	ssT  = states.WsTcpTunStates
-	Pass = types.Pass
+	Pass = am.Pass
 )
 
 type A = types.A
 
 type Relay struct {
 	Mach    *am.Machine
-	Args    types.Args
+	Args    types.CliArgs
 	HttpMux *http.ServeMux
 
 	// WS TCP tunnels
@@ -57,7 +57,7 @@ type Relay struct {
 var TagRelay = "relay"
 
 // New creates a new Relay - state machine, RPC server.
-func New(ctx context.Context, args types.Args) (*Relay, error) {
+func New(ctx context.Context, args types.CliArgs) (*Relay, error) {
 	out := args.Output
 	if out == nil {
 		out = func(format string, v ...any) {
@@ -96,11 +96,10 @@ func New(ctx context.Context, args types.Args) (*Relay, error) {
 	}
 	r.Mach = mach
 	_, _ = arpc.MachReplEnv(mach, &arpc.ReplOpts{
-		Args: types.ARpc{},
-		// TODO ParseRpc
+		Args: types.ArgsRpc,
 	})
 	// mach.SemLogger().SetArgsMapperDef("remote_addr")
-	mach.SemLogger().SetArgsMapper(types.LogArgs)
+	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 
 	return r, nil
 }
@@ -179,19 +178,18 @@ func (r *Relay) HttpStartingState(e *am.Event) {
 		Addr:    addr,
 		Handler: r.HttpMux,
 	}
-	go func() {
-		if ctx.Err() != nil {
-			return // expired
-		}
 
-		go r.Mach.Add1(ssR.HttpReady, nil)
+	r.Mach.Fork(ctx, e, func() {
+		go r.Mach.EvAdd1(e, ssR.HttpReady, nil)
+
+		// block
 		err := r.http.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			// TODO retry?
-			r.Mach.AddErr(err, nil)
+			r.Mach.EvAddErr(e, err, nil)
 		}
-		r.Mach.Remove1(ssR.HttpReady, nil)
-	}()
+		r.Mach.EvRemove1(e, ssR.HttpReady, nil)
+	})
 }
 
 var _ = ssR.HttpReady
@@ -391,8 +389,9 @@ func (r *Relay) HandleWsTcpListen(
 	var tunMach *am.Machine
 	ok = r.Mach.Eval("listen_init", func() {
 		// rm old TODO also by duped IDs
-		// TODO races and causes 2 tunnels per 1 client
-		if tun, ok2 := r.wsTcpTuns[tcpAddr]; ok2 {
+		if tun, ok2 := r.wsTcpTuns[tcpAddr]; ok2 &&
+			!strings.HasSuffix(tcpAddr, ":0") {
+
 			r.Mach.Log("disposing existing WS TCP tunnel for %s at %s", id, tcpAddr)
 			amhelp.Dispose(tun.Mach)
 			time.Sleep(100 * time.Millisecond)

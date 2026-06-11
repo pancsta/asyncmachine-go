@@ -189,7 +189,7 @@ func NewClient(
 		CallRetryDelay:   100 * time.Millisecond,
 		CallRetryBackoff: 10 * time.Second,
 
-		schema: am.SchemaClone(netSrcSchema),
+		schema: netSrcSchema.Clone(),
 	}
 
 	// state machine
@@ -201,7 +201,7 @@ func NewClient(
 	if err != nil {
 		return nil, err
 	}
-	mach.SemLogger().SetArgsMapper(LogArgs)
+	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 	mach.SetGroups(states.ClientGroups, ssC)
 	c.Mach = mach
 	// optional env debug

@@ -214,6 +214,9 @@ var d2Header = utils.Sp(`
 				stroke-width: 4
 			}
 		}
+	  lifeline: {
+	    style.stroke: grey
+	  }
 
 	#${CLASSES}
 	}

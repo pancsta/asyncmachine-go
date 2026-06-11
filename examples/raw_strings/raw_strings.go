@@ -37,7 +37,7 @@ func main() {
 		},
 	}, &am.Opts{LogLevel: am.LogOps, Id: "raw-strings"})
 	amhelp.MachDebugEnv(mach)
-	mach.BindHandlers(&Handlers{
+	mach.HandlersBind(&Handlers{
 		Filename: "README.md",
 	})
 	// change the state

@@ -91,8 +91,8 @@ github.com/google/pprof v0.0.0-20250607225305-033d6d78b36a h1://KbezygeMJZCSHH+H
 github.com/google/pprof v0.0.0-20250607225305-033d6d78b36a/go.mod h1:5hDyRhoBCxViHszMt12TnOpEI4VVi+U8Gm9iphldiMA=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/gookit/goutil v0.7.4 h1:OWgUngToNz+bPlX5aP+EMG31DraEU63uvKMwwT3vseM=
-github.com/gookit/goutil v0.7.4/go.mod h1:vJS9HXctYTCLtCsZot5L5xF+O1oR17cDYO9R0HxBmnU=
+github.com/gookit/goutil v0.7.5 h1:FXLTq+hVniw7UVMnr2i371yXqslgVpXqXszvXCJdEH8=
+github.com/gookit/goutil v0.7.5/go.mod h1:vJS9HXctYTCLtCsZot5L5xF+O1oR17cDYO9R0HxBmnU=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 h1:HWRh5R2+9EifMyIHV7ZV+MIZqgz+PMpZ14Jynv3O2Zs=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0/go.mod h1:JfhWUomR1baixubs02l85lZYYOm7LV6om4ceouMv45c=
 github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUqJM=
@@ -128,13 +128,10 @@ github.com/mazznoer/csscolorparser v0.1.5 h1:Wr4uNIE+pHWN3TqZn2SGpA2nLRG064gB7Wd
 github.com/mazznoer/csscolorparser v0.1.5/go.mod h1:OQRVvgCyHDCAquR1YWfSwwaDcM0LhnSffGnlbOew/3I=
 github.com/orsinium-labs/enum v1.4.0 h1:3NInlfV76kuAg0kq2FFUondmg3WO7gMEgrPPrlzLDUM=
 github.com/orsinium-labs/enum v1.4.0/go.mod h1:Qj5IK2pnElZtkZbGDxZMjpt7SUsn4tqE5vRelmWaBbc=
-github.com/pancsta/cview v1.5.22-0.20260308120046-97d519652c66 h1:9/SwGffDFOWV3vQXbHa+moPEf0DR4MUZr3HT5S7H0e4=
-github.com/pancsta/cview v1.5.22-0.20260308120046-97d519652c66/go.mod h1:H5j2xIAdRRYMlEBxfRN3jb+Cyb3Mi66Uh3Mrbre6yJM=
+github.com/pancsta/cview v1.5.22 h1:gnUV8PknGjtyXpPC6Sj0YX49oJx4aehc+N/KMSTlVcg=
 github.com/pancsta/cview v1.5.22/go.mod h1:885vjKfWYxUvuiib2g5Yxgtxq+i2dbO/h4FBBF5aGI4=
 github.com/pancsta/opentelemetry-go/exporters/otlp/otlptrace/otlptracehttp v0.0.0-20260331193851-f087fcb1fc48 h1:/lsv2IUYFYT/iHsKty23K9ee5L0XEpuNBPABi7BHnYY=
 github.com/pancsta/opentelemetry-go/exporters/otlp/otlptrace/otlptracehttp v0.0.0-20260331193851-f087fcb1fc48/go.mod h1:rITcbMJQGLy3pIqR3kh7ng7ROnbLfZNCCtFMegTxxr0=
-github.com/pancsta/tcell-v2 v0.0.1-fork1 h1:ZmBCBVVYto5GIF28FFUIBdZS5pAnmLZ6Ww4/yQngehE=
-github.com/pancsta/tcell-v2 v0.0.1-fork1/go.mod h1:vg2NrucL/pqvaVYJrO1BZT1k0xrIUFmSmf3GgoBQcTc=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

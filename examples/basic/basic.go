@@ -17,7 +17,7 @@ func main() {
 	ctx := context.Background()
 	// init the state machine
 	mach := am.New(nil, states.Schema, nil)
-	mach.BindHandlers(&Handlers{
+	mach.HandlersBind(&Handlers{
 		Filename: "README.md",
 		Mach:     mach,
 	})

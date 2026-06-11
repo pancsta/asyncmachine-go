@@ -16,7 +16,7 @@ import (
 )
 
 var ss = states.RelayStates
-var args types.Args
+var args types.CliArgs
 
 func main() {
 	p := arg.MustParse(&args)
@@ -45,7 +45,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, args types.Args) error {
+func run(ctx context.Context, args types.CliArgs) error {
 	r, err := relay.New(ctx, args)
 	if err != nil {
 		return err

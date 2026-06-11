@@ -17,6 +17,7 @@ import (
 
 	"github.com/ncruces/go-sqlite3/gormlite"
 	"github.com/ncruces/go-sqlite3/vfs"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -203,6 +204,11 @@ type tracer struct {
 	*am.TracerNoOp
 
 	mem *Memory
+	id  string
+}
+
+func (t *tracer) TracerId() string {
+	return "gorm" + t.id
 }
 
 func (t *tracer) MachineInit(mach am.Api) context.Context {
@@ -638,17 +644,19 @@ func NewMemory(
 	mem.savePool.SetLimit(c.SavePool)
 	tr := &tracer{
 		mem: mem,
+		id:  amhelp.RandId(4),
 	}
 	mem.tr = tr
 	tr.MachineInit(mach)
-	mach.OnDispose(func(id string, ctx context.Context) {
+	amhelp.DisposeBind(mach, func(id string, ctx context.Context) {
 		err := mem.Dispose()
 		if err != nil {
 			mem.onErr(err)
 		}
 	})
+	_, err = mach.BindTracer(tr)
 
-	return mem, mach.BindTracer(tr)
+	return mem, err
 }
 
 // FindLatest is [amhist.BaseMemory.FindLatest].
@@ -812,7 +820,7 @@ func (m *Memory) Dispose() error {
 	m.mx.Lock()
 	defer m.mx.Unlock()
 
-	trErr := m.Mach.DetachTracer(m.tr)
+	trErr := m.Mach.DetachTracer(m.tr.TracerId())
 	if stdDb, err := m.Db.DB(); err != nil {
 		return errors.Join(err, trErr)
 	} else {

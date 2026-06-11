@@ -4,9 +4,9 @@ package helpers
 
 import (
 	"context"
-	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -70,8 +70,6 @@ const (
 	healthcheckInterval = 30 * time.Second
 )
 
-var ErrTestAutoDisable = errors.New("feature disabled when AM_TEST_RUNNER")
-
 type (
 	S      = am.S
 	A      = am.A
@@ -83,7 +81,7 @@ type (
 // Add1Sync is [AddSync] for a single state.
 func Add1Sync(
 	ctx context.Context, mach am.Api, state string, args ...am.A,
-) am.Result {
+) bool {
 	return EvAddSync(ctx, nil, mach, S{state}, args...)
 }
 
@@ -91,38 +89,38 @@ func Add1Sync(
 // Supports queued rejections, expiration ctx and returns as [am.Canceled].
 func AddSync(
 	ctx context.Context, mach am.Api, states S, args ...am.A,
-) am.Result {
+) bool {
 	return EvAddSync(ctx, nil, mach, states, args...)
 }
 
 // EvAdd1Sync is [Add1Sync] with an [am.Event] trace.
 func EvAdd1Sync(
 	ctx context.Context, e *am.Event, mach am.Api, state string, args ...am.A,
-) am.Result {
+) bool {
 	return EvAddSync(ctx, e, mach, S{state}, args...)
 }
 
 // EvAddSync is [AddSync] with an [am.Event] trace.
 func EvAddSync(
 	ctx context.Context, e *am.Event, mach am.Api, states S, args ...am.A,
-) am.Result {
+) bool {
 	res := mach.EvAdd(e, states, am.OptArgs(args))
 	// fmt.Printf("wait on %d\n", res)
 	switch res {
 	case am.Executed:
-		return res
+		return true
 	case am.Canceled:
-		return res
+		return false
 	default:
 		// wait
 		select {
 		case <-ctx.Done():
-			return am.Canceled
+			return false
 		case <-mach.WhenQueue(res):
 			if mach.Is(states) {
-				return am.Executed
+				return true
 			}
-			return am.Canceled
+			return false
 		}
 	}
 }
@@ -131,7 +129,7 @@ func EvAddSync(
 func Add1Async(
 	ctx context.Context, mach am.Api, waitState string,
 	addState string, args ...am.A,
-) am.Result {
+) bool {
 	return EvAddAsync(ctx, nil, mach, waitState, S{addState}, am.OptArgs(args))
 }
 
@@ -142,21 +140,21 @@ func Add1Async(
 func AddAsync(
 	ctx context.Context, mach am.Api, waitState string,
 	addStates S, args ...am.A,
-) am.Result {
+) bool {
 	return EvAddAsync(ctx, nil, mach, waitState, addStates, am.OptArgs(args))
 }
 
 func EvAdd1Async(
 	ctx context.Context, e *am.Event, mach am.Api, waitState string,
 	addState string, args ...am.A,
-) am.Result {
+) bool {
 	return EvAddAsync(ctx, e, mach, waitState, S{addState}, am.OptArgs(args))
 }
 
 func EvAddAsync(
 	ctx context.Context, e *am.Event, mach am.Api, waitState string,
 	addStates S, args ...am.A,
-) am.Result {
+) bool {
 	ctxWhen, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -164,15 +162,15 @@ func EvAddAsync(
 	ticks := am.NextActiveIn(tickBefore)
 	when := mach.WhenTicks(waitState, ticks, ctxWhen)
 	if mach.EvAdd(e, addStates, am.OptArgs(args)) == am.Canceled {
-		return am.Canceled
+		return false
 	}
 
 	// wait
 	select {
 	case <-when:
-		return am.Executed
+		return true
 	case <-ctx.Done():
-		return am.Canceled
+		return false
 	}
 }
 
@@ -181,7 +179,7 @@ func EvAddAsync(
 // Remove1Sync is [RemoveSync] for a single state.
 func Remove1Sync(
 	ctx context.Context, mach am.Api, state string, args ...am.A,
-) am.Result {
+) bool {
 	return EvRemoveSync(ctx, nil, mach, S{state}, args...)
 }
 
@@ -190,37 +188,37 @@ func Remove1Sync(
 // [am.Canceled].
 func RemoveSync(
 	ctx context.Context, mach am.Api, states S, args ...am.A,
-) am.Result {
+) bool {
 	return EvRemoveSync(ctx, nil, mach, states, args...)
 }
 
 // EvRemove1Sync is [Remove1Sync] with an [am.Event] trace.
 func EvRemove1Sync(
 	ctx context.Context, e *am.Event, mach am.Api, state string, args ...am.A,
-) am.Result {
+) bool {
 	return EvRemoveSync(ctx, e, mach, S{state}, args...)
 }
 
 // EvRemoveSync is [RemoveSync] with an [am.Event] trace.
 func EvRemoveSync(
 	ctx context.Context, e *am.Event, mach am.Api, states S, args ...am.A,
-) am.Result {
+) bool {
 	res := mach.EvRemove(e, states, am.OptArgs(args))
 	switch res {
 	case am.Executed:
-		return res
+		return true
 	case am.Canceled:
-		return res
+		return false
 	default:
 		// wait
 		select {
 		case <-ctx.Done():
-			return am.Canceled
+			return false
 		case <-mach.WhenQueue(res):
 			if mach.Not(states) {
-				return am.Executed
+				return true
 			}
-			return am.Canceled
+			return true
 		}
 	}
 }
@@ -832,6 +830,11 @@ func ExecAndClose(fn func()) <-chan struct{} {
 // EnableDebugging sets env vars for debugging tested machines with am-dbg on
 // port 6831.
 func EnableDebugging(stdout bool) {
+	// skip for test runner
+	if os.Getenv(am.EnvAmTestRunner) != "" {
+		return
+	}
+
 	_ = os.Setenv(am.EnvAmDebug, "1")
 	if stdout {
 		_ = os.Setenv(EnvAmLogPrint, "1")
@@ -860,19 +863,43 @@ func Implements(statesChecked, statesNeeded am.S) error {
 	return nil
 }
 
-// ArgsToLogMap converts an [A] (arguments) struct to a map of strings using
-// `log` tags as keys, and their cased string values.
-func ArgsToLogMap(args interface{}, maxLen int) map[string]string {
+// LogArgs runs [ArgsToLogMap] on each [am.A] entry and returns a full log arg
+// map. Useful for logging typed arguments.
+func LogArgs(args am.A, maxLen int) map[string]string {
+	ret := map[string]string{}
+	for _, arg := range args {
+		for k, v := range ArgsToLogMap(arg, maxLen) {
+			ret[k] = v
+		}
+	}
+
+	return ret
+}
+
+// LogArgsMapper is [LogArgs] implementing [am.LogArgsMapperFn], so it fits into
+// [am.SemLogger]. Typed args only.
+func LogArgsMapper(args am.A) map[string]string {
+	return LogArgs(args, 0)
+}
+
+// ArgsToLogMap converts a typed arguments struct to a map of strings using
+// `log` tags as keys, and their casted string values.
+func ArgsToLogMap(args any, maxLen int) map[string]string {
 	if maxLen == 0 {
 		maxLen = max(4, am.LogArgsMaxLen)
 	}
 	skipMaxLen := false
 	result := make(map[string]string)
-	val := reflect.ValueOf(args).Elem()
-	if !val.IsValid() {
+
+	// ptr or value
+	val := reflect.ValueOf(args)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	if !val.IsValid() || val.Kind() != reflect.Struct {
 		return result
 	}
-	typ := reflect.TypeOf(args).Elem()
+	typ := val.Type()
 
 	for i := 0; i < val.NumField(); i++ {
 		field := val.Field(i)
@@ -899,9 +926,12 @@ func ArgsToLogMap(args interface{}, maxLen int) map[string]string {
 
 			ii := 0
 			for _, el := range v {
-				if reflect.ValueOf(v).IsNil() {
+				// check nil ptr
+				val := reflect.ValueOf(v)
+				if val.Kind() == reflect.Ptr && val.IsNil() {
 					continue
 				}
+
 				if txt != "" {
 					txt += ", "
 				}
@@ -958,9 +988,13 @@ func ArgsToLogMap(args interface{}, maxLen int) map[string]string {
 
 			// MutString() method
 		case fmt.Stringer:
-			if reflect.ValueOf(v).IsNil() {
+			// check nil ptr
+			val := reflect.ValueOf(v)
+			if val.Kind() == reflect.Ptr && val.IsNil() {
 				continue
 			}
+
+			// string
 			txt := v.String()
 			if txt == "" {
 				continue
@@ -1010,25 +1044,80 @@ func ArgsToLogMap(args interface{}, maxLen int) map[string]string {
 	return result
 }
 
-// ArgsToArgs converts a typed arguments struct into an overlapping typed
-// arguments struct. Useful for removing fields which can't be passed over RPC,
-// and back. Both params should be pointers to a struct and share at least one
-// field.
-func ArgsToArgs[T any](src interface{}, dest T) T {
-	// TODO test
-	srcVal := reflect.ValueOf(src).Elem()
-	destVal := reflect.ValueOf(dest).Elem()
+type ArgsUnmarshallerFn func(args am.A) am.A
 
-	for i := 0; i < srcVal.NumField(); i++ {
-		srcField := srcVal.Field(i)
-		destField := destVal.FieldByName(srcVal.Type().Field(i).Name)
+// ArgsUnmarshal deserializes JSON [args] into an instance of [def] under a "State.Arg" index. Useful for REPLs.
+func ArgsUnmarshal[G am.ArgsApi](args am.A, def G) am.A {
+	ret := am.A{}
+	// for all registered types
+	coll := map[string]string{}
+	// find all prefix matches for state, eg "State.Arg"
+	for key, val := range args {
+		arg, ok := strings.CutPrefix(key, def.ArgsState()+".")
+		if !ok {
+			continue
+		}
+		valS, ok := val.(string)
+		if !ok {
+			continue
+		}
+		coll[arg] = valS
+	}
 
-		if destField.IsValid() && destField.CanSet() {
-			destField.Set(srcField)
+	// decode string-json-byte-struct
+	clone := def
+	valB, err := json.Marshal(coll)
+	if err != nil {
+		return ret
+	}
+	err = json.Unmarshal(valB, &clone)
+	if err != nil {
+		return ret
+	}
+
+	// proper form
+	ret[am.ArgIndex(def)] = &clone
+
+	return ret
+}
+
+// ArgsNames collect a flat list of names from a slice of typesafe arguments.
+// Uses JSON encoding, useful for REPLs.
+func ArgsNames(args []am.ArgsApi) ([]string, error) {
+	var ret []string
+	for _, arg := range args {
+		// TODO optimize: custom func, json optional
+		argB, err := json.Marshal(arg)
+		if err != nil {
+			return nil, err
+		}
+		names := map[string]any{}
+		if err := json.Unmarshal(argB, &names); err != nil {
+			return nil, err
+		}
+
+		// all arg names for this state
+		for name := range names {
+			// TODO better encoding
+			ret = append(ret, arg.ArgsState()+"."+name)
 		}
 	}
 
-	return dest
+	return ret, nil
+}
+
+// NewArgsUnmarshaller creates a new unmarshalling function for the provided argument
+// [defs].
+func NewArgsUnmarshaller(defs []am.ArgsApi) ArgsUnmarshallerFn {
+	return func(args am.A) am.A {
+		merge := make([]am.A, len(defs))
+		for i, def := range defs {
+			merge[i] = ArgsUnmarshal(args, def)
+		}
+
+		// return combined args
+		return am.PassMerge(merge...)
+	}
 }
 
 // IsDebug returns true if the process is in a "simple debug mode" via AM_DEBUG.
@@ -1452,7 +1541,7 @@ func TagValue(tags []string, key string) string {
 func TagValueInt(tags []string, key string) int {
 	v := TagValue(tags, key)
 	if v == "" {
-		return 0
+		return -1
 	}
 	i, _ := strconv.Atoi(v)
 	return i
@@ -1487,7 +1576,7 @@ func NewMirror(
 
 	// detect methods
 	var methodNames []string
-	methodNames, err := am.ListHandlers(handlers, states)
+	methodNames, err := listHandlers(handlers, states)
 	if err != nil {
 		return nil, fmt.Errorf("listing handlers: %w", err)
 	}
@@ -1551,11 +1640,58 @@ func NewMirror(
 	}
 
 	// bind pipe handlers
-	if err := source.BindHandlers(handlers); err != nil {
+	if _, err := source.HandlersBind(handlers); err != nil {
 		return nil, err
 	}
 
 	return mirror, nil
+}
+
+// ListHandlers returns a list of handler method names from a handler struct,
+// limited to [states].
+func listHandlers(handlers any, states S) ([]string, error) {
+	var methodNames []string
+	var errs []error
+
+	check := func(method string) {
+		s1, s2 := am.IsHandler(states, method)
+		if s1 != "" && !slices.Contains(states, s1) {
+			errs = append(errs, fmt.Errorf(
+				"%w: %s from handler %s", am.ErrStateMissing, s1, method))
+		}
+		if s2 != "" && !slices.Contains(states, s2) {
+			errs = append(errs, fmt.Errorf(
+				"%w: %s from handler %s", am.ErrStateMissing, s2, method))
+		}
+
+		if s1 != "" || method == am.StateAny+am.SuffixEnter ||
+			method == am.StateAny+am.SuffixState {
+
+			methodNames = append(methodNames, method)
+			// TODO verify method signatures early (returns and params)
+		}
+	}
+
+	// methods
+	t := reflect.TypeOf(handlers)
+	for i := 0; i < t.NumMethod(); i++ {
+		method := t.Method(i).Name
+		check(method)
+	}
+
+	// fields
+	val := reflect.ValueOf(handlers).Elem()
+	typ := val.Type()
+	for i := 0; i < val.NumField(); i++ {
+		kind := typ.Field(i).Type.Kind()
+		if kind != reflect.Func {
+			continue
+		}
+		method := typ.Field(i).Name
+		check(method)
+	}
+
+	return methodNames, errors.Join(errs...)
 }
 
 // CopySchema copies states from the source to target schema, from the passed
@@ -1632,20 +1768,7 @@ func SchemaHash(schema am.Schema) string {
 		ret += ";"
 	}
 
-	return Hash(ret, 6)
-}
-
-// Hash is a general hashing function. TODO move to pkg/machine
-func Hash(in string, l int) string {
-	hasher := md5.New()
-	hasher.Write([]byte(in))
-	if l == 0 {
-		l = 6
-	}
-
-	hash := hex.EncodeToString(hasher.Sum(nil))
-	// short hash
-	return hash[:l]
+	return am.Hash(ret, 6)
 }
 
 // TODO MachHash(...)
@@ -1714,15 +1837,13 @@ func EvalSetter(
 
 // CantAdd will confirm that the mutation is impossible. Blocks.
 func CantAdd(mach am.Api, states am.S, args am.A) bool {
-	done := &am.CheckDone{
-		Ch: make(chan struct{}),
+	args2 := &am.ACheck{
+		CheckDone: make(chan struct{}),
 	}
-	mach.CanAdd(states, am.PassMerge(args, &am.AT{
-		CheckDone: done,
-	}))
-	<-done.Ch
+	mach.CanAdd(states, am.PassMerge(args, am.Pass(args2)))
+	<-args2.CheckDone
 
-	return !done.Canceled
+	return !args2.Canceled
 }
 
 // CantAdd1 is a single-state version of [CantAdd].
@@ -1732,15 +1853,13 @@ func CantAdd1(mach am.Api, state string, args am.A) bool {
 
 // CantRemove will confirm that the mutation is impossible. Blocks.
 func CantRemove(mach am.Api, states am.S, args am.A) bool {
-	done := &am.CheckDone{
-		Ch: make(chan struct{}),
+	args2 := &am.ACheck{
+		CheckDone: make(chan struct{}),
 	}
-	mach.CanRemove(states, am.PassMerge(args, &am.AT{
-		CheckDone: done,
-	}))
-	<-done.Ch
+	mach.CanRemove(states, am.PassMerge(args, am.Pass(args2)))
+	<-args2.CheckDone
 
-	return done.Canceled
+	return args2.Canceled
 }
 
 // CantRemove1 is a single-state version of [CantRemove].
@@ -1852,14 +1971,9 @@ func DisposeEv(mach am.Api, e *am.Event) {
 	mach.Dispose()
 }
 
-// SchemaStates returns state names from a schema struct in a random order.
-func SchemaStates(schema am.Schema) am.S {
-	return slices.Collect(maps.Keys(schema))
-}
-
 // SchemaImplements checks if a given schema implements a certain set of states.
 func SchemaImplements(schema am.Schema, states am.S) error {
-	return Implements(SchemaStates(schema), states)
+	return Implements(schema.Names(), states)
 }
 
 // HandlerToState returns a state name from a handler name.
@@ -1888,12 +2002,28 @@ func RandId(strLen int) string {
 	return hex.EncodeToString(id)
 }
 
-// BlockChan converts a blocking call to channel, which can be used in `select`.
-func BlockChan(fn func()) <-chan struct{} {
+// WhenFunc converts a blocking call to a broadcast channel, which can be used
+// in `select`.
+func WhenFunc(fn func()) <-chan struct{} {
 	resChan := make(chan struct{})
 
 	go func() {
 		fn()
+		close(resChan)
+	}()
+
+	return resChan
+}
+
+// WhenFuncOk converts a blocking call to a bool send channel, which can be used
+// in `select`.
+func WhenFuncOk(fn func() bool) <-chan bool {
+	resChan := make(chan bool)
+
+	go func() {
+		if fn() {
+			resChan <- true
+		}
 		close(resChan)
 	}()
 

@@ -91,7 +91,7 @@ func NewWorker(ctx context.Context, kind string, workerStruct am.Schema,
 		return nil, err
 	}
 
-	mach.SemLogger().SetArgsMapper(LogArgs)
+	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 	w.Mach = mach
 	_ = amhelp.MachDebugEnv(mach)
 
@@ -120,7 +120,7 @@ func (w *Worker) ErrNetworkState(e *am.Event) {
 var _ = ssW.Start
 
 func (w *Worker) StartEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a.LocalAddr != ""
 }
 
@@ -129,7 +129,7 @@ var _ = ssW.Start
 func (w *Worker) StartState(e *am.Event) {
 	var err error
 	ctx := w.Mach.NewStateCtx(ssW.Start)
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	w.BootAddr = args.LocalAddr
 
 	// local RPC
@@ -139,16 +139,16 @@ func (w *Worker) StartState(e *am.Event) {
 	w.LocalRpc, err = rpc.NewServer(ctx, "localhost:0", "nw-loc-"+w.Name, w.Mach,
 		opts)
 	if err != nil {
-		_ = AddErrRpc(w.Mach, err, nil)
+		AddErrRpc(e, w.Mach, err, nil)
 		return
 	}
 	w.LocalRpc.DeliveryTimeout = w.DeliveryTimeout
-	err = errors.Join(
-		// bind to Ready state
-		rpc.BindServer(w.LocalRpc.Mach, w.Mach, ssW.LocalRpcReady,
-			ssW.SuperConnected),
-		// bind to err
-		ampipe.BindErr(w.LocalRpc.Mach, w.Mach, ssW.ErrSupervisor))
+	// bind to Ready state
+	_, err1 := rpc.BindServer(w.LocalRpc.Mach, w.Mach, ssW.LocalRpcReady,
+		ssW.SuperConnected)
+	// bind to err
+	_, err2 := ampipe.BindErr(w.LocalRpc.Mach, w.Mach, ssW.ErrSupervisor)
+	err = errors.Join(err1, err2)
 	if err != nil {
 		w.Mach.AddErr(err, nil)
 		return
@@ -161,16 +161,16 @@ func (w *Worker) StartState(e *am.Event) {
 	w.PublicRpc, err = rpc.NewServer(ctx, "0.0.0.0:0", "nw-pub-"+w.Name,
 		w.Mach, opts)
 	if err != nil {
-		_ = AddErrRpc(w.Mach, err, nil)
+		AddErrRpc(e, w.Mach, err, nil)
 		return
 	}
 	w.PublicRpc.DeliveryTimeout = w.DeliveryTimeout
-	err = errors.Join(
-		// bind to Ready state
-		rpc.BindServer(w.PublicRpc.Mach, w.Mach, ssW.PublicRpcReady,
-			ssW.ClientConnected),
-		// bind to err
-		ampipe.BindErr(w.PublicRpc.Mach, w.Mach, ssW.ErrClient))
+	// bind to Ready state
+	_, err1 = rpc.BindServer(w.PublicRpc.Mach, w.Mach, ssW.PublicRpcReady,
+		ssW.ClientConnected)
+	// bind to err
+	_, err2 = ampipe.BindErr(w.PublicRpc.Mach, w.Mach, ssW.ErrClient)
+	err = errors.Join(err1, err2)
 	if err != nil {
 		w.Mach.AddErr(err, nil)
 		return
@@ -178,11 +178,11 @@ func (w *Worker) StartState(e *am.Event) {
 
 	// start
 	if w.LocalRpc.Start(e) != am.Executed {
-		_ = AddErrRpc(w.Mach, nil, nil)
+		AddErrRpc(e, w.Mach, nil, nil)
 		return
 	}
 	if w.PublicRpc.Start(e) != am.Executed {
-		_ = AddErrRpc(w.Mach, nil, nil)
+		AddErrRpc(e, w.Mach, nil, nil)
 		return
 	}
 }
@@ -190,7 +190,7 @@ func (w *Worker) StartState(e *am.Event) {
 var _ = ssW.Start
 
 func (w *Worker) StartEnd(e *am.Event) {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 
 	if w.PublicRpc != nil {
 		w.PublicRpc.Stop(e, true)
@@ -231,12 +231,12 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 	w.BootRpc, err = rpc.NewClient(ctx, w.BootAddr, "nw-"+w.Name,
 		states.BootstrapSchema, opts)
 	if err != nil {
-		_ = AddErrRpc(w.Mach, err, nil)
+		AddErrRpc(e, w.Mach, err, nil)
 		return
 	}
-	err = ampipe.BindErr(w.BootRpc.Mach, w.Mach, "")
+	_, err = ampipe.BindErr(w.BootRpc.Mach, w.Mach, "")
 	if err != nil {
-		_ = AddErrRpc(w.Mach, err, nil)
+		AddErrRpc(e, w.Mach, err, nil)
 		return
 	}
 	w.BootRpc.Start(e)
@@ -250,12 +250,12 @@ func (w *Worker) RpcReadyState(e *am.Event) {
 			return // expired
 		}
 		if err != nil {
-			_ = AddErrRpc(w.Mach, err, nil)
+			AddErrRpc(e, w.Mach, err, nil)
 			return
 		}
 
 		// pass the local port to [bootstrap.WorkerAddState] via RPC
-		w.BootRpc.NetMach.EvAdd1(e, ssB.WorkerAddr, PassRpc(&A{
+		w.BootRpc.NetMach.EvAdd1(e, ssB.WorkerAddr, Pass(&ARpc{
 			LocalAddr:  w.LocalAddr,
 			PublicAddr: w.PublicAddr,
 			Id:         w.Mach.Id(),
@@ -275,7 +275,7 @@ func (w *Worker) HealthcheckState(e *am.Event) {
 var _ = ssW.ServeClient
 
 func (w *Worker) ServeClientEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a != nil && a.Id != ""
 }
 
@@ -284,7 +284,7 @@ var _ = ssW.ServeClient
 func (w *Worker) ServeClientState(e *am.Event) {
 	w.Mach.Remove1(ssW.ServeClient, nil)
 
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	w.AcceptClient = args.Id
 	w.PublicRpc.AllowId = w.AcceptClient
 }

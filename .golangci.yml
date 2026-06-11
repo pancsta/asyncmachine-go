@@ -35,3 +35,5 @@ formatters:
       - ^examples
       - ^docs
       - ^scripts
+run:
+  allow-parallel-runners: true

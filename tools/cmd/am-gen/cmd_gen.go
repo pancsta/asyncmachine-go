@@ -87,12 +87,14 @@ func genStatesFile(ctx context.Context, params *cli.StatesParams) error {
 		fmt.Printf("Generated %s\n", name)
 
 		// save utils
-		content = []byte(generator.GenUtilsFile())
-		err = os.WriteFile("states_utils.go", content, 0666)
-		if err != nil {
-			return err
+		if !params.Global && params.Utils {
+			content = []byte(generator.GenUtilsFile())
+			err = os.WriteFile("states_utils.go", content, 0666)
+			if err != nil {
+				return err
+			}
+			fmt.Println("Generated states_utils.go")
 		}
-		fmt.Println("Generated states_utils.go")
 
 	} else {
 		return fmt.Errorf("file %s already exists, delete it or use --force", name)

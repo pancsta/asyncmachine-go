@@ -27,12 +27,6 @@ import (
 var ssO = states.OrchestratorStates
 var ssD = states.DispatcherStates
 var ssW = states.WorkerStates
-var PassRpc = example.PassRpc
-var Pass = example.Pass
-var ParseArgs = example.ParseArgs
-
-type ARpc = example.ARpc
-type A = example.A
 
 func init() {
 	// pprof debug
@@ -53,7 +47,7 @@ func main() {
 		panic(err)
 	}
 	amhelp.MachDebugEnv(mach)
-	mach.SemLogger().SetArgsMapper(example.LogArgs)
+	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 	mach.SetGroups(states.OrchestratorGroups, ssO)
 	orch.mach = mach
 	// open telemetry traces
@@ -62,9 +56,8 @@ func main() {
 		mach.AddErr(err, nil)
 	}
 	err = arpc.MachRepl(mach, example.EnvOrchestratorReplAddr, &arpc.ReplOpts{
-		AddrDir:  example.EnvReplDir,
-		Args:     ARpc{},
-		ParseRpc: example.ParseRpc,
+		AddrDir: example.EnvReplDir,
+		Args:    example.ArgsRpc,
 	})
 	if err != nil {
 		return
@@ -97,7 +90,7 @@ func main() {
 
 	// websocket relay
 
-	relay, err := amrelay.New(mach.Context(), amrelayt.Args{
+	relay, err := amrelay.New(mach.Context(), amrelayt.CliArgs{
 		Name:   "wasm-workflow",
 		Debug:  true,
 		Parent: mach,
@@ -236,9 +229,8 @@ func (o *Orchestrator) newBrowserClient(ctx context.Context, id string, conn net
 		)
 	}
 
+	// add already active states (from the piped ones)
 	ampipe.Sync(client.NetMach, o.mach, pipeSrc, pipeDest)
-
-	// TODO add already active states (from the piped ones)
 
 	// bind pipes
 	err = ampipe.BindMany(client.NetMach, o.mach, pipeSrc, pipeDest)
@@ -265,7 +257,8 @@ func (o *Orchestrator) StartWorkState(e *am.Event) {
 
 func (o *Orchestrator) Browser1WorkState(e *am.Event) {
 	ctx := o.mach.NewStateCtx(ssO.NetworkReady)
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[example.AWorking](e.Args)
+
 	o.mach.EvRemove1(e, ssO.Browser1Work, nil)
 	o.mach.Fork(ctx, e, func() {
 		// dont send data when retrying
@@ -275,7 +268,7 @@ func (o *Orchestrator) Browser1WorkState(e *am.Event) {
 		}
 
 		// send initial payload
-		o.workers["browser1"].NetMach.EvAdd1(e, ssW.Working, PassRpc(&A{
+		o.workers["browser1"].NetMach.EvAdd1(e, ssW.Working, am.Pass(&example.AWorking{
 			// seed payload for browser1, results in o.payload1 when completed
 			Payload: []byte("wasm-workflow-1"),
 		}))
@@ -284,7 +277,8 @@ func (o *Orchestrator) Browser1WorkState(e *am.Event) {
 
 func (o *Orchestrator) Browser2WorkState(e *am.Event) {
 	ctx := o.mach.NewStateCtx(ssO.NetworkReady)
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[example.AWorking](e.Args)
+
 	o.mach.EvRemove1(e, ssO.Browser2Work, nil)
 	o.mach.Fork(ctx, e, func() {
 		// dont send data when retrying
@@ -294,7 +288,7 @@ func (o *Orchestrator) Browser2WorkState(e *am.Event) {
 		}
 
 		// send initial payload
-		o.workers["browser2"].NetMach.EvAdd1(e, ssW.Working, PassRpc(&A{
+		o.workers["browser2"].NetMach.EvAdd1(e, ssW.Working, am.Pass(&example.AWorking{
 			// seed payload for browser1, results in o.payload1 when completed
 			Payload: []byte("wasm-workflow-2"),
 		}))
@@ -303,7 +297,8 @@ func (o *Orchestrator) Browser2WorkState(e *am.Event) {
 
 func (o *Orchestrator) Browser3WorkState(e *am.Event) {
 	ctx := o.mach.NewStateCtx(ssO.NetworkReady)
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[example.AWorking](e.Args)
+
 	o.mach.EvRemove1(e, ssO.Browser3Work, nil)
 	o.mach.Fork(ctx, e, func() {
 		// dont send data when retrying
@@ -313,7 +308,7 @@ func (o *Orchestrator) Browser3WorkState(e *am.Event) {
 		}
 
 		// send initial payload, proxy via browser2
-		o.workers["browser2"].NetMach.EvAdd1(e, ssD.Browser3Work, PassRpc(&A{
+		o.workers["browser2"].NetMach.EvAdd1(e, ssD.Browser3Work, am.Pass(&example.AWorking{
 			// received payload for browser3 from browser1, results in o.payload3 when completed
 			Payload: o.payload1,
 		}))
@@ -322,7 +317,8 @@ func (o *Orchestrator) Browser3WorkState(e *am.Event) {
 
 func (o *Orchestrator) Browser4WorkState(e *am.Event) {
 	ctx := o.mach.NewStateCtx(ssO.NetworkReady)
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[example.AWorking](e.Args)
+
 	o.mach.EvRemove1(e, ssO.Browser4Work, nil)
 	o.mach.Fork(ctx, e, func() {
 		// dont send data when retrying
@@ -333,7 +329,7 @@ func (o *Orchestrator) Browser4WorkState(e *am.Event) {
 
 		// send initial payload, proxy via browser2
 		// proxy via browser2
-		o.workers["browser2"].NetMach.EvAdd1(e, ssD.Browser4Work, PassRpc(&A{
+		o.workers["browser2"].NetMach.EvAdd1(e, ssD.Browser4Work, am.Pass(&example.AWorking{
 			// received payload for browser4 from browser2, results in o.payload4 when completed
 			Payload: o.payload2,
 		}))
@@ -341,7 +337,7 @@ func (o *Orchestrator) Browser4WorkState(e *am.Event) {
 }
 
 func (o *Orchestrator) ServerPayloadEnter(e *am.Event) bool {
-	payload := arpc.ParseArgs(e.Args).Payload
+	payload := am.ParseArgs[arpc.AServerPayload](e.Args).Payload
 	_, ok := payload.Data.([]byte)
 	return ok
 }
@@ -349,9 +345,11 @@ func (o *Orchestrator) ServerPayloadEnter(e *am.Event) bool {
 func (o *Orchestrator) ServerPayloadState(e *am.Event) {
 	// split Otel trace
 	// o.mach.EvRemove1(e, ssO.ServerPayload, nil)
-	payload := arpc.ParseArgs(e.Args).Payload
+	payload := am.ParseArgs[arpc.AServerPayload](e.Args).Payload
 	// dump.Println(payload)
-	retry := Pass(&A{Retry: true})
+	retry := am.Pass(&example.AWorking{
+		Retry: true,
+	})
 	switch payload.Source {
 	case "browser1":
 		o.payload1 = payload.Data.([]byte)
@@ -416,30 +414,30 @@ func (o *Orchestrator) ErrRpcExit(e *am.Event) bool {
 
 func (o *Orchestrator) Browser1ConnState(e *am.Event) {
 	// fwd to multi
-	o.mach.EvAdd1(e, ssO.BrowserConn, Pass(&A{
+	o.mach.EvAdd1(e, ssO.BrowserConn, am.Pass(&example.ABrowserConn{
 		Id: e.Mutation().Source.MachId,
 	}))
 }
 
 func (o *Orchestrator) Browser2ConnState(e *am.Event) {
 	// fwd to multi
-	o.mach.EvAdd1(e, ssO.BrowserConn, Pass(&A{
+	o.mach.EvAdd1(e, ssO.BrowserConn, am.Pass(&example.ABrowserConn{
 		Id: e.Mutation().Source.MachId,
 	}))
 }
 
 func (o *Orchestrator) BrowserConnEnter(e *am.Event) bool {
-	return ParseArgs(e.Args).Id != ""
+	return am.ParseArgs[example.ABrowserConn](e.Args).Id != ""
 }
 
 func (o *Orchestrator) BrowserConnState(e *am.Event) {
-	id := ParseArgs(e.Args).Id
+	id := am.ParseArgs[example.ABrowserConn](e.Args).Id
 	machId := strings.TrimPrefix(id, "rc-srv-")
 	o.mach.Log("Connected to %s", machId)
 
 	o.mach.Fork(o.mach.NewStateCtx(ssO.Start), e, func() {
 		// TODO via a request for redos
-		o.workers[machId].NetMach.EvAdd1(e, ssW.Start, PassRpc(&A{
+		o.workers[machId].NetMach.EvAdd1(e, ssW.Start, am.Pass(&example.AStart{
 			Boot: &example.Boot{
 				TraceId: os.Getenv(amtele.EnvOtelTraceId),
 				SpanId:  os.Getenv(amtele.EnvOtelSpanId),

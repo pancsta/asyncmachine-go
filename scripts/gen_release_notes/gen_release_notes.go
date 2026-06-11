@@ -84,7 +84,7 @@ func main() {
 		inEntry = false
 	}
 
-	doc += fmt.Sprintf("# Release Notes\n\n- [CHANGELOG.md](../CHANGELOG.md)\n\n")
+	doc += fmt.Sprintf("# Release Notes\n\n- [CHANGELOG.md](/CHANGELOG.md)\n\n")
 	started := false
 
 	for i, line := range lines {

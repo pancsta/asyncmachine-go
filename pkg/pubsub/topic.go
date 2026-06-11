@@ -167,11 +167,12 @@ func NewTopic(
 		reqInfo:            make(map[string]time.Time),
 		reqUpdate:          make(map[string]time.Time),
 	}
+	id := "ps-" + name + "-" + suffix
 
 	// attach tracers
 	for i, mach := range exposedMachs {
-		tracer := &Tracer{}
-		err := mach.BindTracer(tracer)
+		tracer := &Tracer{TracerNoOp: &am.TracerNoOp{Id: id}}
+		_, err := mach.BindTracer(tracer)
 		if err != nil {
 			return nil, err
 		}
@@ -182,7 +183,7 @@ func NewTopic(
 		suffix = utils.RandId(2)
 	}
 
-	mach, err := am.NewCommon(ctx, "ps-"+name+"-"+suffix, states.TopicSchema,
+	mach, err := am.NewCommon(ctx, id, states.TopicSchema,
 		ss.Names(), t, opts.Parent, &am.Opts{
 			Tags: []string{"pubsub:" + name},
 
@@ -402,7 +403,7 @@ func (t *Topic) ConnectingState(e *am.Event) {
 				infos, err := peer.AddrInfosFromP2pAddrs(addr)
 				if err != nil {
 					err := fmt.Errorf("%w: %s", err, addr)
-					_ = ssam.AddErrConnecting(e, t.Mach, err, nil)
+					ssam.AddErrConnecting(e, t.Mach, err, nil)
 					// dont stop, no err
 					return nil
 				}
@@ -428,7 +429,7 @@ func (t *Topic) ConnectingState(e *am.Event) {
 		// check if successful
 		if t.ConnCount() <= 0 {
 			err := errors.New("failed to establish any connections")
-			_ = ssam.AddErrConnecting(e, t.Mach, err, nil)
+			ssam.AddErrConnecting(e, t.Mach, err, nil)
 			return
 		}
 

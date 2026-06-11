@@ -2,16 +2,13 @@ package types
 
 import (
 	"encoding/gob"
-	"encoding/json"
 	"time"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	"github.com/pancsta/asyncmachine-go/examples/cli_daemon/states"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
-func init() {
-	gob.Register(&ARpc{})
-}
+var ss = states.DaemonStates
 
 // ///// ///// /////
 
@@ -22,58 +19,41 @@ func init() {
 
 const APrefix = "daemon"
 
-// A is a struct for node arguments. It's a typesafe alternative to [am.A].
-type A struct {
+type Args struct {
+	am.ArgsBase `json:"-"`
+}
+
+func (Args) ArgsPrefix() string {
+	return APrefix
+}
+
+// -----
+
+type OpFoo1 struct {
+	Args `json:"-"`
+
 	Duration time.Duration `log:"duration"`
 }
 
-// ARpc is a subset of A, that can be passed over RPC.
-type ARpc struct {
-	Duration time.Duration `log:"duration"`
+func (OpFoo1) ArgsState() string {
+	return ss.OpFoo1
 }
 
-// ParseArgs extracts A from [am.Event.Args][APrefix].
-func ParseArgs(args am.A) *A {
-	if r, ok := args[APrefix].(*ARpc); ok {
-		return amhelp.ArgsToArgs(r, &A{})
-	} else if r, ok := args[APrefix].(ARpc); ok {
-		return amhelp.ArgsToArgs(&r, &A{})
+// -----
+
+type OpBar2 OpFoo1
+
+func (OpBar2) ArgsState() string {
+	return ss.OpBar2
+}
+
+// ----- RPC boilerplate
+
+func init() {
+	for _, arg := range ArgsRpc {
+		gob.Register(arg)
 	}
-	if a, _ := args[APrefix].(*A); a != nil {
-		return a
-	}
-
-	return &A{}
 }
 
-// Pass prepares [am.A] from A to pass to further mutations.
-func Pass(args *A) am.A {
-	return am.A{APrefix: args}
-}
-
-// PassRpc prepares [am.A] from A to pass over RPC.
-func PassRpc(args *ARpc) am.A {
-	return am.A{APrefix: amhelp.ArgsToArgs(args, &ARpc{})}
-}
-
-// LogArgs is an args logger for A.
-func LogArgs(args am.A) map[string]string {
-	a := ParseArgs(args)
-	if a == nil {
-		return nil
-	}
-
-	return amhelp.ArgsToLogMap(a, 0)
-}
-
-// ParseRpc parses am.A to *ARpc wrapped in am.A. Useful for REPLs.
-func ParseRpc(args am.A) am.A {
-	ret := am.A{APrefix: &ARpc{}}
-	jsonArgs, err := json.Marshal(args)
-	if err == nil {
-		json.Unmarshal(jsonArgs, ret[APrefix])
-	}
-
-	return ret
-}
-
+// ArgsRpc will be available in the REPL.
+var ArgsRpc = []am.ArgsApi{OpFoo1{}, OpBar2{}}

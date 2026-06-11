@@ -45,7 +45,7 @@ func main() {
 	fmt.Println("---------------------------------------------------")
 
 	addr := "127.0.0.1:" + utils.RandPort(52001, 53000)
-	dbg, err := relay.New(ctx, &types.Args{
+	dbg, err := relay.New(ctx, &types.CliArgs{
 		// Debug: true,
 		RotateDbg: &types.ArgsRotateDbg{
 			Dir:        BaseOutputDir,

@@ -23,15 +23,12 @@ type ExampleGroupsDef struct {
 }
 
 // ExampleSchema represents all relations and properties of ExampleStates.
-var ExampleSchema = SchemaMerge(
-	// inherit from rpc/WorkerSchema
-	ssrpc.StateSourceSchema,
-	am.Schema{
-
-		ssE.Foo: {Remove: sgE.Mutex},
-		ssE.Bar: {Remove: sgE.Mutex},
-		ssE.Baz: {Remove: sgE.Mutex},
-	})
+// inherit from rpc/WorkerSchema
+var ExampleSchema = ssrpc.StateSourceSchema.Merge(am.Schema{
+	ssE.Foo: {Remove: sgE.Mutex},
+	ssE.Bar: {Remove: sgE.Mutex},
+	ssE.Baz: {Remove: sgE.Mutex},
+})
 
 // EXPORTS AND GROUPS
 

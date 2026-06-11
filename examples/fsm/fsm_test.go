@@ -96,7 +96,7 @@ func TestTurnstile(t *testing.T) {
 		HandlerTimeout:       time.Minute,
 	})
 
-	_ = mach.BindHandlers(&Turnstile{})
+	_, _ = mach.HandlersBind(&Turnstile{})
 	_ = mach.VerifyStates(Names)
 
 	// start

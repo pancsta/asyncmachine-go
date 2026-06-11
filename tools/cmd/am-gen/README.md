@@ -14,8 +14,8 @@ $ am-gen states-file --states State1,State2:multi \
     --name MyMach
 ```
 
-This will create 2 files in the current directory - **ss_mymach.go** and **states_utils.go**, which should be placed in
-`mypkg/states` (optional). Once generated, the file is edited manually. Read [Typesafe States in /docs/manual.md](/docs/manual.md#typesafe-states)
+This will create **ss_mymach.go** and, by default, **states_utils.go** in the current directory. These files should be
+placed in `mypkg/states` (optional). Once generated, the file is edited manually. Read [Typesafe States in /docs/manual.md](/docs/manual.md#typesafe-states)
 for more info.
 
 ## Installation
@@ -63,7 +63,7 @@ package states
 
 import (
     am "github.com/pancsta/asyncmachine-go/pkg/machine"
-    ss "github.com/pancsta/asyncmachine-go/pkg/states"
+    ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
 // MyMachStatesDef contains all the states of the MyMach state machine.
@@ -74,14 +74,14 @@ type MyMachStatesDef struct {
     State2 string
 
     // inherit from BasicStatesDef
-    *ss.BasicStatesDef
+    *ssam.BasicStatesDef
     // inherit from ConnectedStatesDef
-    *ss.ConnectedStatesDef
+    *ssam.ConnectedStatesDef
 }
 
 // MyMachGroupsDef contains all the state groups MyMach state machine.
 type MyMachGroupsDef struct {
-    *ss.ConnectedGroupsDef
+    *ssam.ConnectedGroupsDef
     Group1 S
     Group2 S
 }
@@ -89,9 +89,9 @@ type MyMachGroupsDef struct {
 // MyMachSchema represents all relations and properties of MyMachStates.
 var MyMachSchema = SchemaMerge(
     // inherit from BasicStruct
-    ss.BasicStruct,
+    ssam.BasicStruct,
     // inherit from ConnectedStruct
-    ss.ConnectedStruct,
+    ssam.ConnectedStruct,
     am.Schema{
 
         ssM.State1: {},
@@ -107,7 +107,7 @@ var (
     sgM = am.NewStateGroups(MyMachGroupsDef{
         Group1: S{},
         Group2: S{},
-    }, ss.ConnectedGroups)
+    }, ssam.ConnectedGroups)
 
     // MyMachStates contains all the states for the MyMach machine.
     MyMachStates = ssM
@@ -119,7 +119,7 @@ var (
 ### Schema File Help
 
 ```bash
-Usage: am-gen states-file [--version] --states STATES [--inherit INHERIT] [--groups GROUPS] --name NAME [--force] [--utils]
+Usage: am-gen states-file [--version] --states STATES [--inherit INHERIT] [--groups GROUPS] --name NAME [--force] [--utils] [--global]
 
 Options:
   --version
@@ -132,6 +132,7 @@ Options:
   --name NAME, -n NAME   Name of the state machine. Eg: MyMach
   --force, -f            Override output file (if any)
   --utils, -u            Generate states_utils.go in CWD. Overrides files. [default: true]
+  --global               Import pkg/states/global and skip generating states_utils.go
 
 Global options:
   --version, -v          Print version and exit

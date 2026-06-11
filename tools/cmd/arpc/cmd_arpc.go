@@ -10,6 +10,7 @@ import (
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	"github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/repl"
 	"github.com/pancsta/asyncmachine-go/tools/repl/states"
 )
@@ -51,7 +52,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	id := "repl-" + amhelp.Hash(wd, 6)
+	id := "repl-" + machine.Hash(wd, 6)
 	r, err := repl.New(ctx, id)
 	if err != nil {
 		panic(err)

@@ -2,18 +2,20 @@ package states
 
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
-// S is a type alias for a list of state names.
+// S is a type alias for a list of state names. See [am.S].
 type S = am.S
 
-// SAdd is a func alias for merging lists of states.
-var SAdd = am.SAdd
+// State is a type alias for a state definition. See [am.State].
+type State = am.State
 
-// StateAdd is a func alias for adding to an existing state definition.
-var StateAdd = am.StateAdd
+// Schema is a type alias for a map of state names to state definitions. See [am.Schema].
+type Schema = am.Schema
 
-// StateSet is a func alias for replacing parts of an existing state
-// definition.
-var StateSet = am.StateSet
+// Exception is a type alias for the Exception state. See [am.StateException].
+var Exception = am.StateException
 
-// SchemaMerge is a func alias for extending an existing state structure.
-var SchemaMerge = am.SchemaMerge
+// Start is a type alias for the Start state. See [am.StateStart].
+var Start = am.StateStart
+
+// Ready is a type alias for the Ready state. See [am.StateReady].
+var Ready = am.StateReady

@@ -181,8 +181,7 @@ type DebuggerStatesDef struct {
 }
 
 // DebuggerSchema represents all relations and properties of DebuggerStates.
-var DebuggerSchema = SchemaMerge(
-	ssam.BasicSchema,
+var DebuggerSchema = ssam.BasicSchema.Merge(
 	ServerSchema,
 	ssrpc.StateSourceSchema,
 	ssam.DisposedSchema,
@@ -193,7 +192,7 @@ var DebuggerSchema = SchemaMerge(
 		ssD.ErrDiagrams: {
 			Multi:   true,
 			Require: S{Exception},
-			Remove:  S{ssD.DiagramsScheduled, ssD.DiagramsRendering},
+			Remove:  S{ssD.DiagramsRendering},
 		},
 		ssD.ErrWeb: {
 			Multi:   true,
@@ -224,12 +223,12 @@ var DebuggerSchema = SchemaMerge(
 		ssD.UserFwdStep: {
 			Add:     S{ssD.FwdStep},
 			Require: S{ssD.ClientSelected},
-			Remove:  SAdd(sgD.Playing, S{ssD.LogUserScrolled}),
+			Remove:  sgD.Playing.Add1(ssD.LogUserScrolled),
 		},
 		ssD.UserBackStep: {
 			Add:     S{ssD.BackStep},
 			Require: S{ssD.ClientSelected},
-			Remove:  SAdd(sgD.Playing, S{ssD.LogUserScrolled}),
+			Remove:  sgD.Playing.Add1(ssD.LogUserScrolled),
 		},
 
 		// ///// Read-only states (e.g. UI)
@@ -270,11 +269,11 @@ var DebuggerSchema = SchemaMerge(
 		ssD.TimelineStepsScrolled: {Require: S{ssD.ClientSelected}},
 		ssD.HelpDialog: {
 			Add:    S{ssD.DialogFocused},
-			Remove: SAdd(sgD.Dialog, sgD.Focused),
+			Remove: sgD.Dialog.Add(sgD.Focused),
 		},
 		ssD.ExportDialog: {
 			Add:    S{ssD.DialogFocused},
-			Remove: SAdd(sgD.Dialog, sgD.Focused),
+			Remove: sgD.Dialog.Add(sgD.Focused),
 		},
 		ssD.LogUserScrolled: {
 			Remove: S{ssD.Playing, ssD.TailMode},
@@ -317,17 +316,17 @@ var DebuggerSchema = SchemaMerge(
 		ssD.TreeLogView: {
 			Auto:    true,
 			Require: S{Start},
-			Remove:  SAdd(sgD.Views, S{ssD.MatrixRain}),
+			Remove:  sgD.Views.Add1(ssD.MatrixRain),
 		},
-		ssD.MatrixView:     {Remove: SAdd(sgD.Views, S{ssD.LogReaderVisible})},
-		ssD.TreeMatrixView: {Remove: SAdd(sgD.Views, S{ssD.LogReaderVisible})},
+		ssD.MatrixView:     {Remove: sgD.Views.Add1(ssD.LogReaderVisible)},
+		ssD.TreeMatrixView: {Remove: sgD.Views.Add1(ssD.LogReaderVisible)},
 		ssD.TailMode: {
 			Require: S{ssD.ClientSelected},
-			Remove:  SAdd(sgD.Playing, S{ssD.LogUserScrolled}),
+			Remove:  sgD.Playing.Add1(ssD.LogUserScrolled),
 		},
 		ssD.Playing: {
 			Require: S{ssD.ClientSelected},
-			Remove:  SAdd(sgD.Playing, S{ssD.LogUserScrolled}),
+			Remove:  sgD.Playing.Add1(ssD.LogUserScrolled),
 		},
 		ssD.Paused: {
 			Auto:    true,
@@ -531,21 +530,20 @@ var (
 		// Dialog
 		Dialog: S{ssD.HelpDialog, ssD.ExportDialog},
 
-		Debug: SAdd(groupFocus, S{
+		Debug: groupFocus.Add1(
 			ssD.ExportDialog, ssD.UpdateFocus, ssD.LogReaderVisible,
 			ssD.UpdateFocus, ssD.FocusNext, ssD.FocusPrev,
 			ssD.Overlay, ssD.HelpDialog, ssD.ExportDialog,
-		}),
+		),
 
-		Mcp: SAdd(groupFocus, S{ssD.UserFwd, ssD.UserBack, ssD.UserFwdStep,
+		Mcp: groupFocus.Add1(ssD.UserFwd, ssD.UserBack, ssD.UserFwdStep,
 			ssD.UserBackStep, ssD.ScrollToMutTx, ssD.SwitchingClientTx,
 			ssD.SelectingClient, ssD.RemoveClient, ssD.SetCursor, ssD.SetGroup,
 			ssD.StateNameSelected, ssD.FocusNext, ssD.FocusPrev,
 			ssD.LogReaderEnabled, ssD.UserNarrowLayout, ssD.TimelineTxHidden,
-			ssD.TimelineStepsHidden}),
+			ssD.TimelineStepsHidden),
 
-		McpReadonly: SAdd(groupFilters, S{
-			ssD.SwitchedClientTx, ssD.ClientSelected}),
+		McpReadonly: groupFilters.Add1(ssD.SwitchedClientTx, ssD.ClientSelected),
 	})
 
 	// DebuggerStates contains all the states for the debugger machine.

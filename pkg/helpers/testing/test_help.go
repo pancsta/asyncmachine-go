@@ -157,6 +157,16 @@ func AssertNoErrEver(t *stdtest.T, mach am.Api) {
 			t.Fatalf("Unexpected PAST error in %s", mach.Id())
 		}
 	}
+	machQueue, ok := mach.(*am.Machine)
+	if ok {
+		AssertNoErrQueued(t, machQueue)
+	}
+}
+
+func AssertNoErrQueued(t *stdtest.T, mach *am.Machine) {
+	if mach.WillBe1(am.StateException) && t.Context().Err() == nil {
+		t.Fatalf("Unexpected queued error in %s", mach.Id())
+	}
 }
 
 // AssertErr asserts that the machine is in the Exception state.

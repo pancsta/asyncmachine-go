@@ -30,9 +30,7 @@ type WorkerGroupsDef struct {
 }
 
 // WorkerSchema represents all relations and properties of WorkerStates.
-var WorkerSchema = SchemaMerge(
-	// inherit from BasicSchema
-	ssam.BasicSchema,
+var WorkerSchema = ssam.BasicSchema.Merge(
 	// inherit from NetSourceSchema
 	ssrpc.StateSourceSchema,
 	am.Schema{

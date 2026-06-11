@@ -63,12 +63,12 @@ func New(ctx context.Context, id string) (*Repl, error) {
 
 	// add Disposed handlers
 	disposed := ssam.DisposedHandlers{}
-	err = mach.BindHandlers(&disposed)
+	_, err = mach.HandlersBind(&disposed)
 	if err != nil {
 		return nil, err
 	}
 	r.Mach = mach
-	mach.SemLogger().SetArgsMapper(LogArgs)
+	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 
 	return r, nil
 }
@@ -222,7 +222,7 @@ func (r *Repl) ReplModeState(e *am.Event) {
 var _ = ss.CmdAdd
 
 func (r *Repl) CmdAddEnter(e *am.Event) bool {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 
 	// confirm theres a Ready worker
 	var mach *arpc.NetworkMachine
@@ -252,7 +252,7 @@ func (r *Repl) CmdAddEnter(e *am.Event) bool {
 }
 
 func (r *Repl) CmdAddState(e *am.Event) {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 
 	// confirm theres a Ready worker
 	var mach *arpc.NetworkMachine
@@ -283,7 +283,7 @@ func (r *Repl) CmdAddState(e *am.Event) {
 var _ = ss.CmdRemove
 
 func (r *Repl) CmdRemoveEnter(e *am.Event) bool {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 
 	// confirm theres a Ready worker
 	var mach *arpc.NetworkMachine
@@ -313,7 +313,7 @@ func (r *Repl) CmdRemoveEnter(e *am.Event) bool {
 }
 
 func (r *Repl) CmdRemoveState(e *am.Event) {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 
 	// confirm theres a Ready worker
 	var mach *arpc.NetworkMachine
@@ -344,7 +344,7 @@ func (r *Repl) CmdRemoveState(e *am.Event) {
 var _ = ss.CmdGroupAdd
 
 func (r *Repl) CmdGroupAddEnter(e *am.Event) bool {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	if len(args.MachIds) == 0 {
 		return false
 	}
@@ -370,7 +370,7 @@ func (r *Repl) CmdGroupAddEnter(e *am.Event) bool {
 }
 
 func (r *Repl) CmdGroupAddState(e *am.Event) {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 
 	// pass cli args
 	mutArgs := am.A{}
@@ -411,7 +411,7 @@ func (r *Repl) CmdGroupAddState(e *am.Event) {
 var _ = ss.CmdGroupRemove
 
 func (r *Repl) CmdGroupRemoveEnter(e *am.Event) bool {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	if len(args.MachIds) == 0 {
 		return false
 	}
@@ -440,7 +440,7 @@ func (r *Repl) CmdGroupRemoveEnter(e *am.Event) bool {
 }
 
 func (r *Repl) CmdGroupRemoveState(e *am.Event) {
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 
 	// pass cli args
 	mutArgs := am.A{}
@@ -481,7 +481,7 @@ func (r *Repl) CmdGroupRemoveState(e *am.Event) {
 var _ = ss.ListMachines
 
 func (r *Repl) ListMachinesEnter(e *am.Event) bool {
-	a := ParseArgs(e.Args)
+	a := am.ParseArgs[A](e.Args)
 	return a != nil && a.RpcCh != nil &&
 		// check buffered channel
 		cap(a.RpcCh) > 0
@@ -492,7 +492,7 @@ func (r *Repl) ListMachinesState(e *am.Event) {
 	// TODO extract to pkg/helpers.MachGroup
 	r.Mach.Remove1(ss.ListMachines, nil)
 
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 	filters := args.ListFilters
 	if filters == nil {
 		filters = &ListFilters{}
@@ -712,7 +712,7 @@ func (r *Repl) ConnectedExit(e *am.Event) bool {
 var _ = ss.AddrChanged
 
 func (r *Repl) AddrChangedEnter(e *am.Event) bool {
-	return len(ParseArgs(e.Args).Addrs) > 0
+	return len(am.ParseArgs[A](e.Args).Addrs) > 0
 }
 
 // TODO avoid a full restart
@@ -720,7 +720,7 @@ func (r *Repl) AddrChangedState(e *am.Event) {
 	mach := r.Mach
 
 	// use the new addr list and dispose
-	r.Addrs = ParseArgs(e.Args).Addrs
+	r.Addrs = am.ParseArgs[A](e.Args).Addrs
 	whenDisconn := mach.WhenTicks(ss.Disconnected, 1, nil)
 	mach.Add1(ss.Disconnecting, nil)
 
@@ -868,11 +868,11 @@ func (r *Repl) newRpcClient(addr, idSuffix string) (*arpc.Client, error) {
 	}
 
 	// bind pipes
-	err = pipes.BindReady(client.Mach, r.Mach, ss.RpcConn, ss.RpcDisconn)
+	_, err = pipes.BindReady(client.Mach, r.Mach, ss.RpcConn, ss.RpcDisconn)
 	if err != nil {
 		return nil, err
 	}
-	err = pipes.BindErr(client.Mach, r.Mach, ss.ErrNetwork)
+	_, err = pipes.BindErr(client.Mach, r.Mach, ss.ErrNetwork)
 	if err != nil {
 		return nil, err
 	}

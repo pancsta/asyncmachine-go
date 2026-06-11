@@ -16,6 +16,7 @@ import (
 
 	merascii "github.com/AlexanderGrooff/mermaid-ascii/pkg/sequence"
 	"github.com/alitto/pond/v2"
+	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 	"oss.terrastruct.com/d2/d2graph"
@@ -27,7 +28,6 @@ import (
 	"oss.terrastruct.com/d2/lib/textmeasure"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	dbgtypes "github.com/pancsta/asyncmachine-go/tools/debugger/types"
@@ -151,7 +151,7 @@ func (t *Transition) steps(statesIndex am.S) (bool, string) {
 			// handle "handler FooState" -> Foo
 			if op == "handler" {
 				// TODO func suffix? "FooState(e)"
-				state = amhelp.HandlerToState(state)
+				state = helpers.HandlerToState(state)
 				steps += state + " -> " + state + ": " + line[1]
 			} else {
 				steps += state + " -> " + state + ": " + line[0]
@@ -215,7 +215,7 @@ func (t *Transition) funcName(
 
 			continue
 		}
-		class := "; state"
+		class := "; state; lifeline"
 		if slices.Contains(t.Tx.CalledStatesIdxs, idx) {
 			class += "; called"
 		}
@@ -257,6 +257,7 @@ func (t *Transition) d2Gen(
 
 	txtFull := utils.Sp(`
 		shape: sequence_diagram
+		style.fill: black
 		
 		%s
 		explanation: |md
@@ -287,6 +288,7 @@ func (t *Transition) d2Gen(
 	group.SubmitErr(func() error {
 		txtFirst := utils.Sp(`
 		shape: sequence_diagram
+		style.fill: black
 		
 		%s
 		explanation: |md
@@ -320,6 +322,7 @@ func (t *Transition) d2Gen(
 			}
 			partTxt := utils.Sp(`
 				shape: sequence_diagram
+				style.fill: black
 				
 				%s
 				
@@ -344,6 +347,7 @@ func (t *Transition) d2Gen(
 	group.SubmitErr(func() error {
 		txtLast := utils.Sp(`
 		shape: sequence_diagram
+		style.fill: black
 		
 		%s
 		
@@ -416,7 +420,7 @@ func (t *Transition) Mermaid(statesIndex am.S) (string, string, error) {
 			state := line[1]
 			// handle "handler FooState" -> Foo
 			if op == "handler" {
-				state = amhelp.HandlerToState(state)
+				state = helpers.HandlerToState(state)
 				steps += state + " ->> " + state + ": " + line[1]
 			} else {
 				steps += state + " ->> " + state + ": " + line[0]

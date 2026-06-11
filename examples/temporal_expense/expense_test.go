@@ -218,7 +218,7 @@ func ExpenseFlow(
 	})
 
 	// bind handlers
-	err := mach.BindHandlers(&MachineHandlers{})
+	_, err := mach.HandlersBind(&MachineHandlers{})
 	if err != nil {
 		return mach, err
 	}

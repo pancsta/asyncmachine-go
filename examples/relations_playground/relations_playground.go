@@ -47,7 +47,7 @@ func FileProcessed() {
 		},
 	})
 	lastTx := am.NewLastTxTracer()
-	err := mach.BindTracer(lastTx)
+	_, err := mach.BindTracer(lastTx)
 	if err != nil {
 		panic(err)
 	}
@@ -132,7 +132,7 @@ func newMach(id string, machSchema am.Schema) *am.Machine {
 	mach := am.New(nil, machSchema, &am.Opts{
 		Id:        id,
 		DontLogId: true,
-		Tracers:   []am.Tracer{&Tracer{}},
+		Tracers:   []am.Tracer{&Tracer{&am.TracerNoOp{Id: "play"}}},
 		LogLevel:  log,
 	})
 	println("\n")

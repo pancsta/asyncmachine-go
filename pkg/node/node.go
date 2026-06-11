@@ -6,14 +6,9 @@ import (
 	"errors"
 	"fmt"
 
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc"
 )
-
-func init() {
-	gob.Register(&ARpc{})
-}
 
 const (
 	// EnvAmNodeLogSupervisor enables extra logging for node supervisor.
@@ -32,6 +27,8 @@ const (
 	StateBusy    WorkerState = "busy"
 	StateReady   WorkerState = "ready"
 )
+
+var Pass = am.Pass
 
 // ///// ///// /////
 
@@ -55,49 +52,37 @@ var (
 // error mutations
 
 // AddErrWorker wraps an error in the ErrWorker sentinel and adds to a machine.
-func AddErrWorker(
-	event *am.Event, mach *am.Machine, err error, args am.A,
-) error {
+func AddErrWorker(event *am.Event, mach *am.Machine, err error, args am.A) am.Result {
 	err = fmt.Errorf("%w: %w", ErrWorker, err)
-	mach.EvAddErrState(event, ssS.ErrWorker, err, args)
-
-	return err
+	return mach.EvAddErrState(event, ssS.ErrWorker, err, args)
 }
 
 // AddErrWorkerStr wraps a msg in the ErrWorker sentinel and adds to a machine.
 // TODO add event param
-func AddErrWorkerStr(mach *am.Machine, msg string, args am.A) error {
+func AddErrWorkerStr(event *am.Event, mach *am.Machine, msg string, args am.A) am.Result {
 	err := fmt.Errorf("%w: %s", ErrWorker, msg)
-	mach.AddErrState(ssS.ErrWorker, err, args)
-
-	return err
+	return mach.EvAddErrState(event, ssS.ErrWorker, err, args)
 }
 
 // AddErrPool wraps an error in the ErrPool sentinel and adds to a machine.
 // TODO add event param
-func AddErrPool(mach *am.Machine, err error, args am.A) error {
+func AddErrPool(event *am.Event, mach *am.Machine, err error, args am.A) am.Result {
 	wrappedErr := fmt.Errorf("%w: %w", ErrPool, err)
-	mach.AddErrState(ssS.ErrPool, wrappedErr, args)
-
-	return wrappedErr
+	return mach.EvAddErrState(event, ssS.ErrPool, wrappedErr, args)
 }
 
 // AddErrPoolStr wraps a msg in the ErrPool sentinel and adds to a machine.
 // TODO add event param
-func AddErrPoolStr(mach *am.Machine, msg string, args am.A) error {
+func AddErrPoolStr(event *am.Event, mach *am.Machine, msg string, args am.A) am.Result {
 	err := fmt.Errorf("%w: %s", ErrPool, msg)
-	mach.AddErrState(ssS.ErrPool, err, args)
-
-	return err
+	return mach.EvAddErrState(event, ssS.ErrPool, err, args)
 }
 
 // AddErrRpc wraps an error in the ErrRpc sentinel and adds to a machine.
 // TODO add event param
-func AddErrRpc(mach *am.Machine, err error, args am.A) error {
+func AddErrRpc(event *am.Event, mach *am.Machine, err error, args am.A) am.Result {
 	wrappedErr := fmt.Errorf("%w: %w", ErrRpc, err)
-	mach.AddErrState(ssS.ErrNetwork, wrappedErr, args)
-
-	return wrappedErr
+	return mach.EvAddErrState(event, ssS.ErrNetwork, wrappedErr, args)
 }
 
 // ///// ///// /////
@@ -108,8 +93,20 @@ func AddErrRpc(mach *am.Machine, err error, args am.A) error {
 
 const APrefix = "am_node"
 
+type Args struct {
+	am.ArgsBase `json:"-"`
+}
+
+func (Args) ArgsPrefix() string {
+	return APrefix
+}
+
+// ----- TODO per-state args
+
 // A is a struct for node arguments. It's a typesafe alternative to [am.A].
 type A struct {
+	Args `json:"-"`
+
 	// Id is a machine ID.
 	Id string `log:"id"`
 	// PublicAddr is the public address of a Supervisor or WorkerRpc.
@@ -145,6 +142,8 @@ type A struct {
 
 // ARpc is a subset of A, that can be passed over RPC.
 type ARpc struct {
+	Args `json:"-"`
+
 	// Id is a machine ID.
 	Id string `log:"id"`
 	// PublicAddr is the public address of a Supervisor or Worker.
@@ -161,36 +160,13 @@ type ARpc struct {
 	SuperRpcId string `log:"super_rpc_id"`
 }
 
-// ParseArgs extracts A from [am.Event.Args][APrefix].
-func ParseArgs(args am.A) *A {
-	if r, ok := args[APrefix].(*ARpc); ok {
-		return amhelp.ArgsToArgs(r, &A{})
-	} else if r, ok := args[APrefix].(ARpc); ok {
-		return amhelp.ArgsToArgs(&r, &A{})
+// ----- RPC boilerplate
+
+// ArgsRpc will be available in the REPL.
+var ArgsRpc = []am.ArgsApi{ARpc{}}
+
+func init() {
+	for _, arg := range ArgsRpc {
+		gob.Register(arg)
 	}
-	if a, _ := args[APrefix].(*A); a != nil {
-		return a
-	}
-	return &A{}
-}
-
-// Pass prepares [am.A] from A to pass to further mutations.
-func Pass(args *A) am.A {
-	return am.A{APrefix: args}
-}
-
-// PassRpc prepares [am.A] from A to pass over RPC.
-func PassRpc(args *A) am.A {
-	return am.A{APrefix: amhelp.ArgsToArgs(args, &ARpc{})}
-}
-
-// LogArgs is an args logger for A and [rpc.A].
-func LogArgs(args am.A) map[string]string {
-	a1 := rpc.ParseArgs(args)
-	a2 := ParseArgs(args)
-	if a1 == nil && a2 == nil {
-		return nil
-	}
-
-	return am.AMerge(amhelp.ArgsToLogMap(a1, 0), amhelp.ArgsToLogMap(a2, 0))
 }

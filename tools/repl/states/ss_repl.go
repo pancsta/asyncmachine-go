@@ -58,9 +58,7 @@ type ReplGroupsDef struct {
 }
 
 // ReplSchema represents all relations and properties of ReplStates.
-var ReplSchema = SchemaMerge(
-	// inherit from BasicStruct
-	ss.BasicSchema,
+var ReplSchema = ss.BasicSchema.Merge(
 	// inherit from ConnPoolSchema
 	ss.ConnPoolSchema,
 	// inherit from DisposedStruct

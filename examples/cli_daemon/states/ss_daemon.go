@@ -33,9 +33,7 @@ type DaemonGroupsDef struct {
 }
 
 // DaemonSchema represents all relations and properties of DaemonStates.
-var DaemonSchema = SchemaMerge(
-	// inherit from BasicStruct
-	ss.BasicSchema,
+var DaemonSchema = ss.BasicSchema.Merge(
 	// inherit from DisposedStruct
 	ss.DisposedSchema,
 	// inherit from WorkerSchema

@@ -23,7 +23,13 @@ import (
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 )
 
+var readyTimeout = 3 * time.Second
+
 func init() {
+	if os.Getenv(am.EnvAmTestRunner) != "" {
+		return
+	}
+
 	_ = godotenv.Load()
 
 	if os.Getenv(am.EnvAmTestDebug) != "" {
@@ -42,7 +48,7 @@ func TestBasic(t *testing.T) {
 	defer cancel()
 
 	// init worker
-	schema := am.SchemaMerge(ssrpc.StateSourceSchema, am.Schema{
+	schema := ssrpc.StateSourceSchema.Merge(am.Schema{
 		"Foo": {},
 		"Bar": {Require: am.S{"Foo"}},
 	})
@@ -306,7 +312,7 @@ func TestManyStates(t *testing.T) {
 	end := make(chan struct{})
 
 	// reuse the net src and add many rand states
-	schema := am.SchemaMerge(ssrpc.StateSourceSchema, sst.States)
+	schema := ssrpc.StateSourceSchema.Merge(sst.States)
 	names := am.SAdd(ssrpc.StateSourceStates.Names(), sst.Names)
 	randAmount := 100
 	for i := 0; i < randAmount; i++ {
@@ -368,7 +374,7 @@ func TestHighInstantClocks(t *testing.T) {
 	clock := worker.Clock(nil)
 	clock[sst.A] = 1_000_000
 	clock[sst.C] = 1_000_000
-	am.MockClock(worker, clock)
+	am.TestMockClock(worker, clock)
 	// disable clock optimization
 	counter, _, s, c := NewTest(t, ctx, worker, end, 0, false, nil, nil)
 
@@ -436,7 +442,8 @@ func TestRetryCall(t *testing.T) {
 	defer cancel()
 	_, w, s, c := NewTest(t, ctx, nil, nil, 0, false, nil, nil)
 	handlers := &TestRetryCallHandlers{}
-	w.MustBindHandlers(handlers)
+	_, err := w.HandlersBind(handlers)
+	require.NoError(t, err)
 
 	// inject a fake error
 	c.tmpTestErr = fmt.Errorf("IGNORE MOCK ERR")
@@ -550,7 +557,8 @@ func TestRetryErrNetworkTimeout(t *testing.T) {
 	handlers := &TestRetryErrNetworkTimeoutHandlers{
 		shouldBlock: true,
 	}
-	w.MustBindHandlers(handlers)
+	_, err := w.HandlersBind(handlers)
+	require.NoError(t, err)
 
 	// test network timeout
 	// extend the handler timeout (handler blocks for 1s)
@@ -626,8 +634,8 @@ type TestPayloadHandlers struct {
 // CState will trigger SendPayload
 func (w *TestPayloadHandlers) CState(e *am.Event) {
 	// TODO use v2 state def
-	e.Machine().Remove1(sst.C, nil)
-	args := ParseArgs(e.Args)
+	e.Machine().EvRemove1(e, sst.C, nil)
+	args := am.ParseArgs[A](e.Args)
 
 	_ = w.srv.SendPayload(context.Background(), e, &MsgSrvPayload{
 		Data: "Hello",
@@ -643,7 +651,7 @@ type TestPayloadConsumer struct {
 func (c *TestPayloadConsumer) ServerPayloadState(e *am.Event) {
 	e.Machine().Remove1(ssCo.ServerPayload, nil)
 
-	args := ParseArgs(e.Args)
+	args := am.ParseArgs[AServerPayload](e.Args)
 	assert.Equal(c.t, "TestPayload", args.Name)
 	assert.Equal(c.t, "Hello", args.Payload.Data.(string))
 
@@ -654,7 +662,8 @@ func TestPayload(t *testing.T) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
-	// amhelp.EnableDebugging(false)
+	// amhelp.EnableDebugging(true)
+	// EnableDebuggingRpc(true)
 
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
@@ -672,7 +681,7 @@ func TestPayload(t *testing.T) {
 	// source mach
 	source := utils.NewNoRelsNetSrc(t, nil, "")
 	handlers := &TestPayloadHandlers{}
-	err = source.BindHandlers(handlers)
+	_, err = source.HandlersBind(handlers)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -685,7 +694,9 @@ func TestPayload(t *testing.T) {
 
 	whenDelivered := consMach.When1(ssCo.ServerPayload, nil)
 	// Consumer requests a payload from the remote worker
-	c.NetMach.Add1(sst.C, PassRpc(&A{Name: "TestPayload"}))
+	c.NetMach.Add1(sst.C, Pass(&A{
+		Name: "TestPayload",
+	}))
 	// Consumer waits for WorkerDelivered
 	err = amhelp.WaitForAll(ctx, 2*time.Second, whenDelivered)
 
@@ -1036,8 +1047,9 @@ func TestMutationsSync(t *testing.T) {
 			SyncMutations: true,
 		}, nil)
 
-	txCount := &TestMutationsSyncTracer{}
-	require.NoError(t, c.NetMach.BindTracer(txCount))
+	txCount := &TestMutationsSyncTracer{TracerNoOp: &am.TracerNoOp{Id: t.Name()}}
+	_, err := c.NetMach.BindTracer(txCount)
+	require.NoError(t, err)
 
 	// test
 	// add B and cause auto:A
@@ -1074,6 +1086,8 @@ func TestExport(t *testing.T) {
 
 	// TODO schema change
 }
+
+// TODO Test Pass/ParseArgs
 
 // ///// ///// /////
 
@@ -1162,12 +1176,12 @@ func NewTest(t *testing.T, ctx context.Context, netSrc *am.Machine,
 
 	// server start
 	s.Start(nil)
-	amhelpt.WaitForAll(t, "RpcReady", ctx, 3*time.Second,
+	amhelpt.WaitForAll(t, "RpcReady", ctx, readyTimeout,
 		s.Mach.When1(ssS.RpcReady, ctx))
 
 	// client ready
 	c.Start(nil)
-	amhelpt.WaitForAll(t, "client-server Ready", ctx, 3*time.Second,
+	amhelpt.WaitForAll(t, "client-server Ready", ctx, readyTimeout,
 		c.Mach.When1(ssC.Ready, ctx),
 		s.Mach.When1(ssS.Ready, ctx))
 

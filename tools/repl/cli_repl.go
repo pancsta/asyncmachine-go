@@ -35,6 +35,7 @@ type ReplApi interface {
 }
 
 var Sp = utils.Sp
+var Pass = am.Pass
 
 var (
 	title   = "aRPC REPL for asyncmachine.dev"
@@ -351,6 +352,8 @@ func MutationFlags(repl ReplApi, cmd *cobra.Command, groupCmd bool) {
 	_ = cmd.RegisterFlagCompletionFunc("arg", func(
 		cmd *cobra.Command, args []string, toComplete string,
 	) ([]string, cobra.ShellCompDirective) {
+
+		// TODO feat: narrow down to only mentioned states (State.Arg)
 		return repl.NetMachArgs(args[0]), cobra.ShellCompDirectiveDefault
 	})
 	// if err != nil {

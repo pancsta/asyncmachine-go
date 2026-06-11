@@ -55,8 +55,8 @@ func NewWsTcpTun(
 		_ = amhelp.MachDebugEnv(mach)
 	}
 	// debug
-	// mach.AddBreakpoint1(ssT.Disposing, "", true)
-	// mach.AddBreakpoint1(ssT.Disposing, "", false)
+	mach.AddBreakpoint1(ssT.Disposing, "", true)
+	mach.AddBreakpoint1(ssT.Disposing, "", false)
 
 	return t, nil
 }
@@ -128,12 +128,15 @@ func (t *WsTcpTun) TcpListeningState(e *am.Event) {
 			}
 
 			// accept
-			add := amhelp.EvAdd1Sync(ctx, e, t.Mach, ssT.TcpAccepted,
-				types.Pass(&types.A{
+			ok := amhelp.EvAdd1Sync(ctx, e, t.Mach, ssT.TcpAccepted,
+				Pass(&types.A{
 					RemoteAddr: tcpConn.RemoteAddr().String(),
 					Conn:       tcpConn,
 				}))
-			if add == am.Executed {
+			if ctx.Err() != nil {
+				return // expired
+			}
+			if ok {
 				<-t.Mach.WhenNot1(ssT.TcpAccepted, ctx)
 			}
 		}
@@ -144,7 +147,7 @@ var _ = ssT.TcpAccepted
 
 func (t *WsTcpTun) TcpAcceptedState(e *am.Event) {
 	ctx := t.Mach.NewStateCtx(ssT.TcpAccepted)
-	args := types.ParseArgs(e.Args)
+	args := am.ParseArgs[A](e.Args)
 
 	t.Mach.Fork(ctx, e, func() {
 		// start

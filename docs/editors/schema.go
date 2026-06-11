@@ -51,9 +51,7 @@ type ServerGroupsDef struct {
 }
 
 // ServerSchema represents all relations and properties of ClientStates.
-var ServerSchema = SchemaMerge(
-	// inherit from BasicStruct
-	ss.BasicSchema,
+var ServerSchema = ss.BasicSchema.Merge(
 	am.Schema{
 
 		ssS.ErrNetwork: {

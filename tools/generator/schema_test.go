@@ -28,7 +28,7 @@ func TestAll(t *testing.T) {
 	params := cli.StatesParams{
 		Version: false,
 		States:  "State1,State2:multi",
-		Inherit: "basic,connected,node/worker,rpc/statesrc",
+		Inherit: "basic,connected,disposed,node/worker,rpc/statesrc",
 		Groups:  "Group1,Group2",
 		Name:    "MyMach",
 	}
@@ -46,7 +46,7 @@ func TestAll(t *testing.T) {
 			"context"
 	
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
-			ss "github.com/pancsta/asyncmachine-go/pkg/states"
+			ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 			ssnode "github.com/pancsta/asyncmachine-go/pkg/node/states"
 		)
 		
@@ -58,16 +58,18 @@ func TestAll(t *testing.T) {
 			State2 string
 		
 			// inherit from BasicStatesDef
-			*ss.BasicStatesDef
+			*ssam.BasicStatesDef
 			// inherit from ConnectedStatesDef
-			*ss.ConnectedStatesDef
+			*ssam.ConnectedStatesDef
+			// inherit from DisposedStatesDef
+			*ssam.DisposedStatesDef
 			// inherit from node/StateSourceStatesDef
 			*ssnode.StateSourceStatesDef
 		}
 		
 		// MyMachGroupsDef contains all the state groups [MyMach] state-machine.
 		type MyMachGroupsDef struct {
-			*ss.ConnectedGroupsDef
+			*ssam.ConnectedGroupsDef
 			*ssnode.WorkerGroupsDef
 			Group1 S
 			Group2 S
@@ -76,9 +78,11 @@ func TestAll(t *testing.T) {
 		// MyMachSchema represents all relations and properties of [MyMachStates].
 		var MyMachSchema = SchemaMerge(
 			// inherit from BasicSchema
-			ss.BasicSchema,
+			ssam.BasicSchema,
 			// inherit from ConnectedSchema
-			ss.ConnectedSchema,
+			ssam.ConnectedSchema,
+			// inherit from DisposedSchema
+			ssam.DisposedSchema,
 			// inherit from node/WorkerSchema
 			ssnode.WorkerSchema,
 			am.Schema{
@@ -96,7 +100,7 @@ func TestAll(t *testing.T) {
 			sgM = am.NewStateGroups(MyMachGroupsDef{
 				Group1: S{},
 				Group2: S{},
-			}, ss.ConnectedGroups, ssnode.WorkerGroups)
+			}, ssam.ConnectedGroups, ssnode.WorkerGroups)
 		
 			// MyMachStates contains all the states for the [MyMach] state-machine.
 			MyMachStates = ssM
@@ -141,7 +145,7 @@ func TestBasicConnected(t *testing.T) {
 			"context"
 	
 			am "github.com/pancsta/asyncmachine-go/pkg/machine"
-			ss "github.com/pancsta/asyncmachine-go/pkg/states"
+			ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 		)
 		
 		// MyMachStatesDef contains all the states of the [MyMach] state-machine.
@@ -152,14 +156,14 @@ func TestBasicConnected(t *testing.T) {
 			State2 string
 		
 			// inherit from BasicStatesDef
-			*ss.BasicStatesDef
+			*ssam.BasicStatesDef
 			// inherit from ConnectedStatesDef
-			*ss.ConnectedStatesDef
+			*ssam.ConnectedStatesDef
 		}
 		
 		// MyMachGroupsDef contains all the state groups [MyMach] state-machine.
 		type MyMachGroupsDef struct {
-			*ss.ConnectedGroupsDef
+			*ssam.ConnectedGroupsDef
 			Group1 S
 			Group2 S
 		}
@@ -167,9 +171,9 @@ func TestBasicConnected(t *testing.T) {
 		// MyMachSchema represents all relations and properties of [MyMachStates].
 		var MyMachSchema = SchemaMerge(
 			// inherit from BasicSchema
-			ss.BasicSchema,
+			ssam.BasicSchema,
 			// inherit from ConnectedSchema
-			ss.ConnectedSchema,
+			ssam.ConnectedSchema,
 			am.Schema{
 		
 				ssM.State1: {},
@@ -185,7 +189,7 @@ func TestBasicConnected(t *testing.T) {
 			sgM = am.NewStateGroups(MyMachGroupsDef{
 				Group1: S{},
 				Group2: S{},
-			}, ss.ConnectedGroups)
+			}, ssam.ConnectedGroups)
 		
 			// MyMachStates contains all the states for the [MyMach] state-machine.
 			MyMachStates = ssM
@@ -482,6 +486,75 @@ func TestGroupsStates(t *testing.T) {
 			MyMachGroups = sgM
 		)
 		
+		// NewMyMach creates a new [MyMach] state-machine in the most basic form.
+		func NewMyMach(ctx context.Context) *am.Machine {
+			return am.New(ctx, MyMachSchema, nil)
+		}
+	`), "\n")
+
+	assert.Equal(t, expected, removeEmptyLines(generated))
+}
+
+func TestGlobal(t *testing.T) {
+	ctx := context.Background()
+	// --states State1,State2
+	//				--name MyMach
+
+	params := cli.StatesParams{
+		Version: false,
+		States:  "State1,State2",
+		Name:    "MyMach",
+		Global:  true,
+	}
+
+	gen, err := NewSchemaGenerator(ctx, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	generated := gen.Output()
+	expected := strings.TrimLeft(dedent.Dedent(`
+		package states
+		
+		import (
+			"context"
+	
+			am "github.com/pancsta/asyncmachine-go/pkg/machine"
+			. "github.com/pancsta/asyncmachine-go/pkg/states/global"
+		)
+		
+		// MyMachStatesDef contains all the states of the [MyMach] state-machine.
+		type MyMachStatesDef struct {
+			*am.StatesBase
+		
+			State1 string
+			State2 string
+		
+		}
+		
+		// MyMachGroupsDef contains all the state groups [MyMach] state-machine.
+		type MyMachGroupsDef struct {
+		}
+		
+		// MyMachSchema represents all relations and properties of [MyMachStates].
+		var MyMachSchema = am.Schema{
+		
+			ssM.State1: {},
+			ssM.State2: {},
+		}
+		
+		// EXPORTS AND GROUPS
+		
+		var (
+			ssM = am.NewStates(MyMachStatesDef{})
+			sgM = am.NewStateGroups(MyMachGroupsDef{})
+		
+			// MyMachStates contains all the states for the [MyMach] state-machine.
+			MyMachStates = ssM
+			// MyMachGroups contains all the state groups for the [MyMach] state-machine.
+			MyMachGroups = sgM
+		)
+	
 		// NewMyMach creates a new [MyMach] state-machine in the most basic form.
 		func NewMyMach(ctx context.Context) *am.Machine {
 			return am.New(ctx, MyMachSchema, nil)
