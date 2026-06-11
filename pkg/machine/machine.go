@@ -1477,19 +1477,9 @@ func (m *Machine) NewStateCtx(state string) context.Context {
 	return m.subs.NewStateCtx(state)
 }
 
-// MustBindHandlers is a panicking version of BindHandlers, useful in tests.
-func (m *Machine) MustBindHandlers(handlers any) {
-	if err := m.BindHandlers(handlers); err != nil {
-		panic(err)
-	}
-}
-
-// BindHandlers binds a struct of handler methods to machine's states, based on
-// the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
-// optionally return bool.
-func (m *Machine) BindHandlers(handlers any) error {
+func (m *Machine) bindHandlers(h *handler, opts ...BindOpts) (string, error) {
 	if m.disposing.Load() {
-		return nil
+		return "", nil
 	}
 	first := false
 	if !m.handlerLoopRunning.Load() {
@@ -1500,56 +1490,60 @@ func (m *Machine) BindHandlers(handlers any) error {
 		go m.handlerLoop()
 	}
 
-	v := reflect.ValueOf(handlers)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		return errors.New("BindHandlers expects a pointer to a struct")
-	}
-
-	// extract the name
-	name := reflect.TypeOf(handlers).Elem().Name()
-	if name == "" {
-		name = "anon"
-		if os.Getenv(EnvAmDebug) != "" {
-			buf := make([]byte, 4024)
-			n := runtime.Stack(buf, false)
-			stack := string(buf[:n])
-			lines := strings.Split(stack, "\n")
-			name = lines[len(lines)-2]
-			name = strings.TrimLeft(emitterNameRe.FindString(name), "/")
-		}
-	}
-
-	// detect methods
-	var methodNames []string
-	if m.detectEval || os.Getenv(EnvAmDebug) != "" {
-		var err error
-		methodNames, err = ListHandlers(handlers, m.stateNames)
-		if err != nil {
-			return fmt.Errorf("listing handlers for %s: %w", m.Id(), err)
-		}
-	}
-
-	h := m.newHandler(handlers, name, &v, methodNames)
-	old := m.getHandlers(false)
-	m.setHandlers(false, append(old, h))
-	if name != "" {
-		m.log(LogOps, "[handlers] bind %s", name)
+	m.handlersMx.Lock()
+	o := optBindOpts(opts)
+	if o.Id != "" {
+		h.id = idRe.ReplaceAllString(o.Id, "")
 	} else {
-		// index for anon handlers
-		m.log(LogOps, "[handlers] bind %d", len(old))
+		// TODO name from stack trace
+		h.id = "anon-" + randId(4)
 	}
-	// TODO sem logger for handlers
+	old := m.getHandlers(true)
+	h.num = m.nextHandlerNum
+	m.nextHandlerNum++
+
+	m.setHandlers(true, append(old, h))
+	m.log(LogOps, "[handlers] bind %d:%s", h.num, h.id)
+	h.opts = &o
+	m.handlersMx.Unlock()
 
 	// if already in Exception when 1st handler group is bound, re-add the err
 	if first && m.IsErr() {
 		m.AddErr(m.Err(), nil)
 	}
 
-	return nil
+	return h.id, nil
 }
 
-// DetachHandlers detaches previously bound machine handlers.
-func (m *Machine) DetachHandlers(handlers any) error {
+// TODO move
+var idRe = regexp.MustCompile(`[^a-zA-Z0-9-_.]+`)
+
+// HandlersBind binds a struct of handler methods to machine's states, based on
+// the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
+// optionally return bool.
+func (m *Machine) HandlersBind(handlers any, opts ...BindOpts) (string, error) {
+	v := reflect.ValueOf(handlers)
+	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+		return "", errors.New("BindHandlers expects a pointer to a struct")
+	}
+
+	return m.bindHandlers(m.newHandlerStruct(handlers, &v), optBindOpts(opts))
+}
+
+// HandlersBindMaps is like [Machine.BindHandlers] but accepts maps of
+// handlers to bypass reflecting structs. It may lead to higher performance.
+// Returns a binding ID.
+func (m *Machine) HandlersBindMaps(
+	negotiations map[string]HandlerNegotiation, finals map[string]HandlerFinal,
+	opts ...BindOpts,
+) (string, error) {
+
+	return m.bindHandlers(m.newHandlerMap(negotiations, finals),
+		optBindOpts(opts))
+}
+
+// HandlersDetach detaches previously bound machine handlers.
+func (m *Machine) HandlersDetach(bindingId string) error {
 	if m.disposing.Load() {
 		return nil
 	}
@@ -1561,7 +1555,7 @@ func (m *Machine) DetachHandlers(handlers any) error {
 	var match *handler
 	var matchIndex int
 	for i, h := range old {
-		if h.h == handlers {
+		if h.id == bindingId {
 			match = h
 			matchIndex = i
 			break
@@ -1573,36 +1567,61 @@ func (m *Machine) DetachHandlers(handlers any) error {
 	}
 
 	m.setHandlers(true, slices.Delete(old, matchIndex, matchIndex+1))
-	match.dispose()
-	m.log(LogOps, "[handlers] detach %s", match.name)
+	m.log(LogOps, "[handlers] detach %s", match.id)
 
 	return nil
 }
 
-// HasHandlers returns true if this machine has bound handlers, and thus an
-// allocated goroutine. It also makes it nondeterministic.
-func (m *Machine) HasHandlers() bool {
+// BindHandlers is deprecated, use [Api.HandlersBind].
+func (m *Machine) BindHandlers(handlers any, opts ...BindOpts) (string, error) {
+	return m.HandlersBind(handlers, opts...)
+}
+
+// DetachHandlers is deprecated, use [Api.HandlersDetach].
+func (m *Machine) DetachHandlers(bindingId string) error {
+	return m.DetachHandlers(bindingId)
+}
+
+// Handlers returns the IDs of bound handlers.
+func (m *Machine) Handlers() []string {
 	m.handlersMx.RLock()
 	defer m.handlersMx.RUnlock()
 
-	// TODO keep a cache flag?
-	return len(m.handlers) > 0
+	ret := make([]string, 0, len(m.handlers))
+	for _, h := range m.handlers {
+		ret = append(ret, h.id)
+	}
+
+	return ret
 }
 
-// newHandler creates a new handler for Machine.
-// Each handler should be consumed by one receiver only to guarantee the
-// delivery of all events.
-func (m *Machine) newHandler(
-	handlers any, name string, methods *reflect.Value, methodNames []string,
+// newHandlerStruct creates a [handler] binding for a map.
+func (m *Machine) newHandlerMap(
+	negotiations map[string]HandlerNegotiation, finals map[string]HandlerFinal,
 ) *handler {
 	if m.disposing.Load() {
 		return &handler{}
 	}
 	e := &handler{
-		name:         name,
+		isMap:        true,
+		finals:       finals,
+		negotiations: negotiations,
+	}
+
+	return e
+}
+
+// newHandlerStruct creates a [handler] binding for a struct.
+func (m *Machine) newHandlerStruct(
+	handlers any, methods *reflect.Value,
+) *handler {
+	if m.disposing.Load() {
+		return &handler{}
+	}
+	e := &handler{
+		isMap:        false,
 		h:            handlers,
 		methods:      methods,
-		methodNames:  methodNames,
 		methodCache:  make(map[string]reflect.Value),
 		missingCache: make(map[string]struct{}),
 	}
@@ -3392,9 +3411,9 @@ func (m *Machine) Resolver() RelationsResolver {
 // BindTracer binds a Tracer to the machine. Tracers can cause StateException in
 // submachines, before any handlers are bound. Use the Err() getter to examine
 // such errors.
-func (m *Machine) BindTracer(tracer Tracer) error {
+func (m *Machine) TracerBind(tracer Tracer) (string, error) {
 	if m.disposing.Load() {
-		return nil
+		return "", nil
 	}
 
 	m.tracersMx.Lock()
@@ -3402,19 +3421,18 @@ func (m *Machine) BindTracer(tracer Tracer) error {
 
 	v := reflect.ValueOf(tracer)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		return errors.New("BindTracer expects a pointer to a struct")
+		return "", errors.New("BindTracer expects a pointer to a struct")
 	}
-	name := reflect.TypeOf(tracer).Elem().Name()
 
 	m.tracers = append(m.tracers, tracer)
-	m.log(LogOps, "[tracers] bind %s", name)
+	m.log(LogOps, "[tracers] bind %s", tracer.TracerId())
 
-	return nil
+	return tracer.TracerId(), nil
 }
 
 // DetachTracer tries to remove a tracer from the machine. Returns an error in
 // case the tracer wasn't bound.
-func (m *Machine) DetachTracer(tracer Tracer) error {
+func (m *Machine) TracerDetach(id string) error {
 	if m.disposing.Load() {
 		return nil
 	}
@@ -3422,17 +3440,11 @@ func (m *Machine) DetachTracer(tracer Tracer) error {
 	m.tracersMx.Lock()
 	defer m.tracersMx.Unlock()
 
-	v := reflect.ValueOf(tracer)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		return errors.New("DetachTracer expects a pointer to a struct")
-	}
-	name := reflect.TypeOf(tracer).Elem().Name()
-
 	for i, t := range m.tracers {
-		if t == tracer {
+		if t.TracerId() == id {
 			// TODO check
 			m.tracers = slices.Delete(m.tracers, i, i+1)
-			m.log(LogOps, "[tracers] detach %s", name)
+			m.log(LogOps, "[tracers] detach %s", id)
 
 			return nil
 		}
@@ -3441,7 +3453,17 @@ func (m *Machine) DetachTracer(tracer Tracer) error {
 	return errors.New("tracer not bound")
 }
 
-// Tracers return a copy of currenty attached tracers.
+// BindTracer is deprecated, use [Machine.TracerBind].
+func (m *Machine) BindTracer(tracer Tracer) (string, error) {
+	return m.TracerBind(tracer)
+}
+
+// DetachTracer is deprecated, use [Machine.TracerDetach].
+func (m *Machine) DetachTracer(id string) error {
+	return m.TracerDetach(id)
+}
+
+// Tracers return a copy of currently attached tracers.
 func (m *Machine) Tracers() []Tracer {
 	m.tracersMx.Lock()
 	defer m.tracersMx.Unlock()

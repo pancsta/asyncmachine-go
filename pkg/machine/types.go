@@ -333,20 +333,23 @@ type Api interface {
 	SemLogger() SemLogger
 	// Inspect is [Machine.Inspect].
 	Inspect(states S) string
-	// BindHandlers is [Machine.BindHandlers].
-	BindHandlers(handlers any) error
-	// DetachHandlers is [Machine.DetachHandlers].
-	DetachHandlers(handlers any) error
-	// HasHandlers is [Machine.HasHandlers].
-	HasHandlers() bool
+	// HandlersBind is [Machine.BindHandlers].
+	HandlersBind(handlers any, opts ...BindOpts) (string, error)
+	// HandlersBindMaps is [Machine.HandlerBindMaps].
+	HandlersBindMaps(negotiations map[string]HandlerNegotiation,
+		finals map[string]HandlerFinal, opts ...BindOpts) (string, error)
+	// HandlersDetach is [Machine.DetachHandlers].
+	HandlersDetach(bindingId string) error
+	// Handlers is [Machine.Handlers].
+	Handlers() []string
 	// StatesVerified is [Machine.StatesVerified].
 	StatesVerified() bool
 	// Tracers is [Machine.Tracers].
 	Tracers() []Tracer
-	// DetachTracer is [Machine.DetachTracer].
-	DetachTracer(tracer Tracer) error
-	// BindTracer is [Machine.BindTracer].
-	BindTracer(tracer Tracer) error
+	// TracerDetach is [Machine.TracerDetach].
+	TracerDetach(id string) error
+	// TracerBind is [Machine.TracerBind].
+	TracerBind(tracer Tracer) (string, error)
 	// AddBreakpoint is [Machine.AddBreakpoint].
 	AddBreakpoint(added S, removed S, strict bool)
 	// AddBreakpoint1 is [Machine.AddBreakpoint1].
@@ -359,6 +362,17 @@ type Api interface {
 	IsDisposed() bool
 	// OnDispose is [Machine.OnDispose].
 	OnDispose(fn HandlerDispose)
+
+	// Deprecated, to be removed soon.
+
+	// BindHandlers is deprecated, use [Api.HandlersBind].
+	BindHandlers(handlers any, opts ...BindOpts) (string, error)
+	// DetachHandlers is deprecated, use [Api.HandlersDetach].
+	DetachHandlers(bindingId string) error
+	// DetachTracer is deprecated, use [Api.TracerDetach].
+	DetachTracer(id string) error
+	// BindTracer is deprecated, use [Api.TracerBind].
+	BindTracer(tracer Tracer) (string, error)
 
 	// Debug
 
@@ -444,27 +458,6 @@ type whenQueryBinding struct {
 
 // TODO optimize with indexes
 type StateIsActive map[string]bool
-
-// handler represents a single event consumer, synchronized by channels.
-type handler struct {
-	h    any
-	name string
-	mx   sync.Mutex
-	// disposed     bool
-	methods      *reflect.Value
-	methodNames  []string
-	methodCache  map[string]reflect.Value
-	missingCache map[string]struct{}
-}
-
-func (e *handler) dispose() {
-	// TODO check if this leaks
-	// e.disposed = true
-	// e.methods = nil
-	// e.methodCache = nil
-	// e.methodNames = nil
-	// e.h = nil
-}
 
 // ///// ///// /////
 
