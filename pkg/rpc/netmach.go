@@ -85,9 +85,6 @@ type NetworkMachine struct {
 	stateNames      am.S
 	activeStates    atomic.Pointer[am.S]
 	activeStatesDbg am.S
-	indexStateCtx   am.IndexStateCtx
-	indexWhen       am.IndexWhen
-	indexWhenTime   am.IndexWhenTime
 	// TODO indexWhenArgs
 	// indexWhenArgs am.IndexWhenArgs
 	whenDisposed   chan struct{}
@@ -935,49 +932,20 @@ func (m *NetworkMachine) time(states am.S) am.Time {
 	return ret
 }
 
-// NewStateCtx returns a new sub-context, bound to the current clock's tick of
-// the passed state.
-//
-// Context cancels when the state has been de-activated, or right away,
-// if it isn't currently active.
-//
-// State contexts are used to check state expirations and should be checked
-// often inside goroutines.
-// TODO log reader
-func (m *NetworkMachine) NewStateCtx(state string) context.Context {
+// NewStateCtx is [am.Api.NewStateCtx].
+func (m *NetworkMachine) NewStateCtx(
+	state string, event ...*am.Event,
+) context.Context {
+
 	// TODO reuse existing ctxs
 	m.clockMx.Lock()
 	defer m.clockMx.Unlock()
 
-	if _, ok := m.indexStateCtx[state]; ok {
-		return m.indexStateCtx[state].Ctx
+	if e := am.OptEv(event); e != nil {
+		return am.EvToCtx(m.subs.NewStateCtx(state), e)
 	}
 
-	v := am.CtxValue{
-		Id:    m.id,
-		State: state,
-		Tick:  m.machClock[state],
-	}
-	stateCtx, cancel := context.WithCancel(context.WithValue(m.Context(),
-		am.CtxKey, v))
-
-	// cancel early
-	if !m.is(am.S{state}) {
-		// TODO decision msg
-		cancel()
-		return stateCtx
-	}
-
-	binding := &am.CtxBinding{
-		Ctx:    stateCtx,
-		Cancel: cancel,
-	}
-
-	// add an index
-	m.indexStateCtx[state] = binding
-	m.log(am.LogOps, "[ctx:new] %s", state)
-
-	return stateCtx
+	return m.subs.NewStateCtx(state)
 }
 
 // ///// MISC
