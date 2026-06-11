@@ -57,6 +57,7 @@ type Machine struct {
 	// subs is the subscription manager.
 	subs *Subscriptions
 
+	errInternal chan error
 	panicCaught atomic.Bool
 	// If true, logs will start with the machine's id (5 chars).
 	// Default: true.
@@ -218,7 +219,8 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 		QueueLimit:       1000,
 		DisposeTimeout:   time.Second,
 
-		id:           randId(),
+		errInternal:  make(chan error, 10),
+		id:           randId(16),
 		schema:       parsedStates,
 		clock:        Clock{},
 		handlers:     []*handler{},
@@ -469,6 +471,7 @@ func (m *Machine) doDispose(force bool) {
 
 	// dispose chans
 
+	close(m.errInternal)
 	m.subs.dispose()
 	for _, mut := range m.queue {
 		if !mut.IsCheck {
@@ -2344,7 +2347,12 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		case <-m.handlerTimer.C:
 			// timeout, fork a new handler loop
 			m.log(LogOps, "[cancel] (%s) by timeout", j(tx.TargetStates()))
-			m.log(LogDecisions, "[handler:timeout]: %s from %s", methodName, h.name)
+			m.log(LogDecisions, "[handler:timeout]: %s from %s", methodName, h.id)
+			err := fmt.Errorf("%w: %s from %s", ErrHandlerTimeout, methodName, h.id)
+			select {
+			case m.errInternal <- err:
+			default:
+			}
 			timeout = true
 
 			// wait for the handler to exit within HandlerDeadline
@@ -2592,6 +2600,18 @@ func (m *Machine) detectQueueDuplicates(mutationType MutationType,
 // Transition returns the current transition, if any.
 func (m *Machine) Transition() *Transition {
 	return m.t.Load()
+}
+
+// IsLocal returns true for *am.Machine and false for *arpc.NetworkMachine.
+func (m *Machine) IsLocal() bool {
+	return true
+}
+
+// ErrInternal returns a channel which receives handler and eval timeout errors,
+// so they can be handled accordingly without passing through mutations.
+// This method always returns a closed channel for [Api.IsLocal] == false.
+func (m *Machine) ErrInternal() <-chan error {
+	return m.errInternal
 }
 
 // Clock returns current machine's clock, a state-keyed map of ticks. If states
