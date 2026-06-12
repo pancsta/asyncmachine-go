@@ -34,7 +34,7 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
-	github.com/pancsta/cview v1.5.22 // indirect
+	github.com/pancsta/cview v1.5.23 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/teivah/onecontext v1.3.0 // indirect

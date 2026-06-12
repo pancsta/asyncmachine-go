@@ -930,6 +930,7 @@ tasks:
   script-gen-api-docs:
     dir: scripts
     deps: [install-deps-scripts]
+    # TODO run tool golds
     cmd: go run ./gen_api_docs
 
   script-gen-website:

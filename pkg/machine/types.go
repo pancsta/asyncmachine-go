@@ -242,7 +242,6 @@ type Api interface {
 	WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
 	// WhenNextActive is [Machine.WhenNextActive].
 	WhenNextActive(state string, ctx context.Context) <-chan struct{}
-
 	// WhenQuery is [Machine.WhenQuery].
 	WhenQuery(query func(clock Clock) bool, ctx context.Context) <-chan struct{}
 	// WhenErr is [Machine.WhenErr].
@@ -307,12 +306,12 @@ type Api interface {
 	SemLogger() SemLogger
 	// Inspect is [Machine.Inspect].
 	Inspect(states S) string
-	// HandlersBind is [Machine.BindHandlers].
+	// HandlersBind is [Machine.HandlersBind].
 	HandlersBind(handlers any, opts ...BindOpts) (string, error)
-	// HandlersBindMaps is [Machine.HandlerBindMaps].
+	// HandlersBindMaps is [Machine.HandlersBindMaps].
 	HandlersBindMaps(negotiations map[string]HandlerNegotiation,
 		finals map[string]HandlerFinal, opts ...BindOpts) (string, error)
-	// HandlersDetach is [Machine.DetachHandlers].
+	// HandlersDetach is [Machine.HandlersDetach].
 	HandlersDetach(bindingId string) error
 	// Handlers is [Machine.Handlers].
 	Handlers() []string

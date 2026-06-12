@@ -10,7 +10,7 @@
 ![](https://pancsta.github.io/assets/asyncmachine-go/badges/coverage-tools.svg)
 ![](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
 [![](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
-[![](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#room:asyncmachine)
+[![](https://pancsta.github.io/assets/asyncmachine-go/badges/reddit.svg)](https://reddit.com/r/asyncmachine/)
 
 <div align="center">
     <a href="#samples">Samples</a> .
@@ -317,7 +317,7 @@ Other packages:
 ## Community
 
 - [GitHub discussions](https://github.com/pancsta/asyncmachine-go/discussions)
-- [Matrix chat](https://matrix.to/#/#room:asyncmachine)
+- [Reddit](reddit.com/r/asyncmachine/)
 - [Author's RSS](https://blogic.tech/feed)
 
 <div align="center">

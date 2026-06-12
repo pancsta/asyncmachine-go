@@ -66,7 +66,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/mazznoer/csscolorparser v0.1.5 // indirect
 	github.com/orsinium-labs/enum v1.4.0 // indirect
-	github.com/pancsta/cview v1.5.22 // indirect
+	github.com/pancsta/cview v1.5.23 // indirect
 	github.com/reeflective/console v0.1.25 // indirect
 	github.com/reeflective/readline v1.1.3 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect

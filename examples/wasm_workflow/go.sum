@@ -130,6 +130,7 @@ github.com/orsinium-labs/enum v1.4.0 h1:3NInlfV76kuAg0kq2FFUondmg3WO7gMEgrPPrlzL
 github.com/orsinium-labs/enum v1.4.0/go.mod h1:Qj5IK2pnElZtkZbGDxZMjpt7SUsn4tqE5vRelmWaBbc=
 github.com/pancsta/cview v1.5.22 h1:gnUV8PknGjtyXpPC6Sj0YX49oJx4aehc+N/KMSTlVcg=
 github.com/pancsta/cview v1.5.22/go.mod h1:885vjKfWYxUvuiib2g5Yxgtxq+i2dbO/h4FBBF5aGI4=
+github.com/pancsta/cview v1.5.23/go.mod h1:885vjKfWYxUvuiib2g5Yxgtxq+i2dbO/h4FBBF5aGI4=
 github.com/pancsta/opentelemetry-go/exporters/otlp/otlptrace/otlptracehttp v0.0.0-20260331193851-f087fcb1fc48 h1:/lsv2IUYFYT/iHsKty23K9ee5L0XEpuNBPABi7BHnYY=
 github.com/pancsta/opentelemetry-go/exporters/otlp/otlptrace/otlptracehttp v0.0.0-20260331193851-f087fcb1fc48/go.mod h1:rITcbMJQGLy3pIqR3kh7ng7ROnbLfZNCCtFMegTxxr0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

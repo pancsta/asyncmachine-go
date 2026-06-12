@@ -54,7 +54,7 @@ require (
 	github.com/ncruces/go-sqlite3 v0.34.0
 	github.com/ncruces/go-sqlite3/gormlite v0.34.0
 	github.com/orsinium-labs/enum v1.4.0
-	github.com/pancsta/cview v1.5.22
+	github.com/pancsta/cview v1.5.23
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/polarsignals/frostdb v0.0.0-20250728125857-906ebbaef267
 	github.com/prometheus/client_golang v1.22.0

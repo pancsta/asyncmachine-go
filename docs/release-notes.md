@@ -4,6 +4,159 @@
 
 ---
 
+## [v0.19.0](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.0) (2026-06-11)
+
+The highlight of this release are generic typed args.
+
+```go
+// common def
+
+const APrefix = "template"
+
+type Args struct {
+	am.ArgsBase `json:"-"`
+}
+
+func (Args) ArgsPrefix() string {
+	return APrefix
+}
+
+// ----- per state def
+
+type ABaz struct {
+	// shared pkg args
+	Args `json:"-"`
+	// Address with logging.
+	Addr string `log:"addr"`
+}
+
+func (ABaz) ArgsState() string {
+	return ss.Baz
+}
+```
+
+
+
+### feat: release v0.19.0
+
+PR: [\#442](https://github.com/pancsta/asyncmachine-go/pull/442) (@pancsta)
+
+- feat(machine): add `LogEv()`, `LogCtx()` for traced external logging lines
+- feat(machine): log sources of panics in Go()
+- test: fix test runner timeouts and coverage gen
+- fix(rpc): fix `ActiveStates` states param
+- feat(helpers): `RemoveSync` and `RemoveSync` return bool
+
+The remainder of `v0.19.0` is in this PR.
+
+### fix\(helpers\): fix NewReqRemove was adding not removing, add req.Event
+
+PR: [\#441](https://github.com/pancsta/asyncmachine-go/pull/441) (@pancsta)
+
+_No PR description provided._
+
+### refac\(machine\): move funcs into methods of `S` and `Schema`
+
+PR: [\#440](https://github.com/pancsta/asyncmachine-go/pull/440) (@pancsta)
+
+This should make schema overloads and processing easier. Some new ones were also added, like `schema.FilterByTag("foo")` or
+
+```go
+schema1["Foo"] = schema2["Foo"].SetRels(am.State{
+  Remove: states,
+})
+```
+
+### chore: add badges generator
+
+PR: [\#439](https://github.com/pancsta/asyncmachine-go/pull/439) (@pancsta)
+
+_No PR description provided._
+
+### feat\(machine\): reuse subscription channels
+
+PR: [\#438](https://github.com/pancsta/asyncmachine-go/pull/438) (@pancsta)
+
+- fix(machine): fix ctx-expired subscription chans not closed
+
+Channels are reused, including a single closed channel.
+
+### feat\(machine\): add `ErrInternal()` channel
+
+PR: [\#437](https://github.com/pancsta/asyncmachine-go/pull/437) (@pancsta)
+
+Useful passing handler timeouts into the app's log.
+
+### fix\(machine\): partially accepted auto txs shown as Canceled
+
+PR: [\#436](https://github.com/pancsta/asyncmachine-go/pull/436) (@pancsta)
+
+_No PR description provided._
+
+### feat\(machine\): improve nested eval detection
+
+PR: [\#435](https://github.com/pancsta/asyncmachine-go/pull/435) (@pancsta)
+
+Via goroutine IDs compared with the event loop's goroutine ID. Separate (but simple) detection for eval-in-eval, as evals don't run on the event loop goroutine.
+
+### feat\(machine\): add per-state generic typed args
+
+PR: [\#434](https://github.com/pancsta/asyncmachine-go/pull/434) (@pancsta)
+
+The biggest gap of the library is now fixed in a short and generic way. Per-state structs open the doors to generating `CallSignagure`s easily but are especially useful in dealing with schemas extended on multiple levels. The new args are backward compatible with a single `A` struct (which by default belongs to `Any` state).
+
+```go
+// common def
+
+const APrefix = "template"
+
+type Args struct {
+	am.ArgsBase `json:"-"`
+}
+
+func (Args) ArgsPrefix() string {
+	return APrefix
+}
+
+// ----- per state def
+
+type ABaz struct {
+	// shared pkg args
+	Args `json:"-"`
+	// Address with logging.
+	Addr string `log:"addr"`
+}
+
+func (ABaz) ArgsState() string {
+	return ss.Baz
+}
+```
+
+### fix\(rpc\): fix state ctx never closed
+
+PR: [\#433](https://github.com/pancsta/asyncmachine-go/pull/433) (@pancsta)
+
+_No PR description provided._
+
+### feat\(machine\): add BindHandlerMaps for reflection-less bindings
+
+PR: [\#432](https://github.com/pancsta/asyncmachine-go/pull/432) (@pancsta)
+
+- feat(states): return a binding ID from all bind funcs, incl pipes
+- feat(machine): add prefix for allowlist binding, method prefix
+
+This breaking change is crucial for TinyGo and proper WASM dead code elimination. Same API changes apply to tracers.
+
+Prefix-based nesting is now more feasible thanks for state prefixes and method de-prefixing via `BindOpts`. The first step to proper schema nesting.
+
+### fix\(integrations\): fix listing all args for untyped MCP mutations
+
+PR: [\#430](https://github.com/pancsta/asyncmachine-go/pull/430) (@pancsta)
+
+_No PR description provided._
+
+---
+
 ## [v0.18.9](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.18.9) (2026-05-11)
 
 ### feat: release v0.18.9
