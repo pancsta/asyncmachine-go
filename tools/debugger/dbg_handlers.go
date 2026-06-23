@@ -2639,3 +2639,38 @@ func (d *Debugger) SshServerState(e *am.Event) {
 func (d *Debugger) SshServerEnd(e *am.Event) {
 	d.sshSrv.Close()
 }
+
+var _ = ss.Loading
+
+func (d *Debugger) LoadingState(e *am.Event) {
+	ctx := d.Mach.NewStateCtx(ss.Loading)
+	mach := d.Mach
+
+	mach.Fork(ctx, e, func() {
+		i := 0
+		for ctx.Err() == nil {
+			i++
+			mach.Eval(ss.Loading+am.SuffixState, func() {
+				d.loadingPos = i
+				d.hUpdateStatusBar()
+			}, ctx)
+			d.draw(d.statusBarLeft)
+			i = i % 9
+			time.Sleep(100 * time.Millisecond)
+
+			// check if valid TODO push when leaving states
+			if !d.Mach.Any1(states.DebuggerGroups.Loading...) {
+				d.Mach.EvRemove1(e, ss.Loading, nil)
+			}
+		}
+	})
+}
+
+func (d *Debugger) LoadingExit(e *am.Event) bool {
+	return !d.Mach.Any1(states.DebuggerGroups.Loading...)
+}
+
+func (d *Debugger) LoadingEnd(e *am.Event) {
+	d.hUpdateStatusBar()
+	d.draw(d.statusBarLeft)
+}

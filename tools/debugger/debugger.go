@@ -2385,6 +2385,8 @@ func (d *Debugger) hUpdateMatrixRain() {
 	}
 }
 
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
 func (d *Debugger) hUpdateStatusBar() {
 	d.statusBarLeft.SetText("")
 	d.statusBarRight.SetText("")
@@ -2395,10 +2397,14 @@ func (d *Debugger) hUpdateStatusBar() {
 	}
 	tx := d.hCurrentTx()
 
+	loading := " "
+	if d.Mach.Is1(ss.Loading) {
+		loading = spinnerFrames[d.loadingPos]
+	}
+
 	// left
 
-	// current) global mach time
-
+	// current global mach time
 	var graphMTime uint64
 	var currHTime time.Time
 	// current tx of the selected client
@@ -2416,7 +2422,7 @@ func (d *Debugger) hUpdateStatusBar() {
 			graphMTime += parsed.TimeSum
 		}
 	}
-	left := []string{d.P.Sprintf("Graph:t%v", graphMTime)}
+	left := []string{P.Sprintf("%sGraph:t%v", loading, graphMTime)}
 
 	// selected state
 	idx := slices.Index(c.MsgStruct.StatesIndex, c.SelectedState)
