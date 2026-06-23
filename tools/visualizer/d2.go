@@ -204,8 +204,14 @@ var d2Header = utils.Sp(`
 				stroke-width: 5
 			}
 		}
-		selected: {
-			style.stroke: "` + colorSelected + `"
+		state-zoom: {
+			style: {
+				font-size: 50
+				stroke-width: 10
+			}
+		}
+		rel-zoom: {
+			style.stroke-width: 10
 		}
 		rpc: {
 			style: {
@@ -255,7 +261,7 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 	// 1st pass - requested machs and neighbours
 	for src := range r.adjMap {
 		if ctx.Err() != nil {
-			return nil
+			return ctx.Err()
 		}
 
 		srcVertex, err := r.graph.G.Vertex(src)
@@ -278,6 +284,10 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 	// 2nd pass - render adjecents as halfs
 	adjs := r.adjsMachsToRender
 	for _, machId := range adjs {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
 		// only not already rendered
 		if _, ok := r.renderedMachs[machId]; ok {
 			continue
@@ -302,7 +312,7 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 		}
 		for _, machId := range renderedMachs {
 			if ctx.Err() != nil {
-				return nil
+				return ctx.Err()
 			}
 
 			for predId := range predMap[machId] {
@@ -364,6 +374,9 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 	r.log("Generating %s.svg\n", r.OutputFilename)
 	d2Diag, d2Graph, err := d2lib.Compile(ctx, diagTxt,
 		compileOpts, renderOpts)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if err != nil {
 		return fmt.Errorf("failed to compile D2: %w", err)
 	}
@@ -373,6 +386,9 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 	// render svg
 	if r.OutputD2Svg {
 		out, err := d2svg.Render(d2Diag, renderOpts)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err != nil {
 			return fmt.Errorf("failed to render D2: %w", err)
 		}
@@ -402,7 +418,13 @@ func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {
 	r.renderedMachs[machId] = struct{}{}
 
 	// TAGS
-	c := r.graph.Clients[machId]
+	c, ok := r.graph.Clients[machId]
+	if !ok {
+		// TODO fix with virtual machine placeholders
+		return nil
+		// return fmt.Errorf("failed to get client for mach %s", machId)
+	}
+
 	tags := "\n"
 	if r.RenderTags && len(c.MsgSchema.Tags) > 0 {
 		txt := "#" + strings.Join(c.MsgSchema.Tags, "\n#")
@@ -423,7 +445,11 @@ func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {
 	} else if len(r.renderMachIds()) > 0 {
 		border = "\tstyle.stroke: white\n"
 	}
-	r.buf.WriteString(shortMachId + ": " + machId + " {\n" +
+	label := ": " + machId
+	if !r.RenderMachTitles {
+		label = `: ""`
+	}
+	r.buf.WriteString(shortMachId + label + " {\n" +
 		"\tclass: [M_" + machId + "; mach]\n" +
 		border + tags)
 
@@ -434,7 +460,7 @@ func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {
 	// TODO extract & split
 	for _, edge := range r.adjMap[machId] {
 		if ctx.Err() != nil {
-			return nil
+			return ctx.Err()
 		}
 
 		target, err := r.graph.G.Vertex(edge.Target)
@@ -454,6 +480,7 @@ func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {
 			class := "_0"
 			if r.RenderActive {
 				idx := slices.Index(c.MsgSchema.StatesIndex, stateName)
+				// TODO current mach time, not latest
 				if c.LatestMTime.Is1(idx) {
 					class = "_1"
 				}
@@ -471,6 +498,10 @@ func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {
 				classSuffix = "r"
 			} else if r.RenderStart && stateName == am.StateStart {
 				classSuffix = "s"
+			}
+
+			if slices.Contains(r.RenderZoom, stateName) {
+				class += "; state-zoom"
 			}
 
 			r.buf.WriteString("\t" + shortStateId + ":" + stateName + "\n")
@@ -513,7 +544,11 @@ func (r *Renderer) outputD2HalfMach(
 	if r.RenderNestSubmachines {
 		shortMachId = strings.Join(r.fullIdPath(machId, true), ".")
 	}
-	r.buf.WriteString(shortMachId + ": " + machId + " {\n" +
+	label := ": " + machId
+	if !r.RenderMachTitles {
+		label = `: ""`
+	}
+	r.buf.WriteString(shortMachId + label + " {\n" +
 		"\tclass: [M_" + machId + "; mach]\n")
 
 	parent := ""
@@ -521,7 +556,7 @@ func (r *Renderer) outputD2HalfMach(
 	conns := ""
 	for _, edge := range r.adjMap[machId] {
 		if ctx.Err() != nil {
-			return nil
+			return ctx.Err()
 		}
 
 		graphConn, err := r.graph.Connection(machId, edge.Target)
@@ -574,7 +609,14 @@ func (r *Renderer) renderD2Relations(
 			continue
 		}
 
-		class := classBase + relState + "; " + "req]\n"
+		classSuffix := ""
+		if slices.Contains(r.RenderZoom, relState) ||
+			slices.Contains(r.RenderZoom, stateName) {
+
+			classSuffix += "; rel-zoom"
+		}
+
+		class := classBase + relState + "; " + "req" + classSuffix + "]\n"
 		r.buf.WriteString("\t" + shortStateId + " --> " +
 			r.shortId(relState) + ": require {\n" +
 			"\t\tclass: " + class +
@@ -586,8 +628,14 @@ func (r *Renderer) renderD2Relations(
 		if !r.shouldRenderState(machId, relState) {
 			continue
 		}
+		classSuffix := ""
+		if slices.Contains(r.RenderZoom, relState) ||
+			slices.Contains(r.RenderZoom, stateName) {
 
-		class := classBase + relState + "; " + "add]\n"
+			classSuffix += "; rel-zoom"
+		}
+
+		class := classBase + relState + "; " + "add" + classSuffix + "]\n"
 		r.buf.WriteString("\t" + shortStateId + " --> " +
 			r.shortId(relState) + ": add {\n" +
 			"\t\tclass: " + class +
@@ -600,6 +648,12 @@ func (r *Renderer) renderD2Relations(
 	for _, relState := range state.Remove {
 		if !r.shouldRenderState(machId, relState) {
 			continue
+		}
+		classSuffix := ""
+		if slices.Contains(r.RenderZoom, relState) ||
+			slices.Contains(r.RenderZoom, stateName) {
+
+			classSuffix += "; rel-zoom"
 		}
 
 		// no self removal
@@ -619,13 +673,16 @@ func (r *Renderer) renderD2Relations(
 			}
 			edgeType = " <--> "
 			label = "double remove"
-			relClass = "rem2"
+			// not when zoomed in
+			if !slices.Contains(r.RenderZoom, stateName) {
+				relClass = "rem2"
+			}
 
 			// mark
 			renderedRemoves[relState+":"+stateName] = struct{}{}
 			renderedRemoves[relState+":"+stateName] = struct{}{}
 		}
-		class := classBase + relState + "; " + relClass + "]\n"
+		class := classBase + relState + "; " + relClass + classSuffix + "]\n"
 
 		r.buf.WriteString("\t" + shortStateId + edgeType +
 			r.shortId(relState) + ": " + label + " {\n" +

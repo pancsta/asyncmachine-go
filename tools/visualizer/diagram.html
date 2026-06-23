@@ -69,11 +69,14 @@
 </div>
 
 <script>
+    // mach. state, graph, tx
+    const TYPE = "mach";
+
     document.addEventListener('DOMContentLoaded', () => {
         // --- Configuration ---
-        const SVG_URL = 'http://localhost:6831/diagrams/mach.svg';
-        const WEBSOCKET_URL = 'ws://localhost:6831/diagrams/mach.ws';
-        let currentMemKey = 'svg-viewbox-state';
+        const SVG_URL = `http://localhost:6831/viewer/${TYPE}.svg`;
+        const WEBSOCKET_URL = `ws://localhost:6831/viewer/${TYPE}.ws`;
+        let currentMemKey = 'am-diagram-' + TYPE;
 
         const svgContainer = document.getElementById('svg-container');
         const statusBar = document.getElementById('status-bar');
@@ -130,7 +133,7 @@
                 svg = svgContainer.querySelector('svg');
 
                 if (!svg) {
-                    throw new Error('Enable diagrams on the toolbar.');
+                    throw new Error('Enable diagrams on the toolbar and check the group.');
                 }
 
                 // Try to load the saved viewbox state only if requested
@@ -154,6 +157,10 @@
                 }
                 svg.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
                 console.log('SVG loaded successfully.');
+
+                if (!restoreState) {
+                    fitToScreen()
+                }
             } catch (error) {
                 console.error('Failed to load SVG:', error);
                 svgContainer.innerHTML = `<p style="color: red; padding: 1rem;">Error loading SVG: ${error.message}</p>`;
@@ -188,14 +195,15 @@
 
             socket.onmessage = (event) => {
                 msg = JSON.parse(event.data);
-                if (msg.Type === 'refresh') {
+                if (msg.Event === 'refresh') {
                     console.log('Received "refresh" event, reloading SVG and restoring view.');
-                    currentMemKey = "svg-viewbox-state-" + msg.Addr.MachId + "-" + msg.Group;
-                    loadSVG(true); // Pass true to restore state
-                } else if (msg.Type == "loading") {
+                    currentMemKey = "am-diagram-" + TYPE + "-" + msg.Id + "-" + msg.Group;
+                    // dont restore state for "state" diagrams
+                    loadSVG(TYPE != "state");
+                } else if (msg.Event === "loading") {
                     svgContainer.innerHTML = `<p style="color: white; padding: 1rem;">Rendering...<br /><br />"M": maximize<br />wheel: zoom<br />drag: move</p>`;
                 } else {
-                    console.log('Received message:', msg);
+                    console.log('Unknown message:', msg);
                 }
             };
 

@@ -60,6 +60,7 @@ func PresetMap(r *Renderer) {
 
 	r.RenderNestSubmachines = true
 	r.RenderStates = false
+	// TODO enable?
 	r.RenderPipes = false
 	r.RenderStart = false
 	r.RenderReady = false
@@ -232,6 +233,10 @@ type Renderer struct {
 	RenderMachs []string
 	// Render only these states
 	RenderAllowlist am.S
+	// Render states as zoomed in (incl their rels)
+	RenderZoom am.S
+	// Render machine IDs as box titles.
+	RenderMachTitles bool
 	// Render only machines matching the regular expressions as starting points.
 	RenderMachsRe []*regexp.Regexp
 	// Skip rendering of these machines.
@@ -343,6 +348,7 @@ func NewRenderer(
 func (r *Renderer) RenderDefaults() {
 	// ON
 
+	r.RenderMachTitles = true
 	r.RenderReady = true
 	r.RenderStart = true
 	r.RenderException = true
@@ -397,6 +403,11 @@ func (r *Renderer) GenDiagrams(ctx context.Context) error {
 			return fmt.Errorf("failed to generate mermaid: %w", err)
 		}
 	}
+
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	if r.OutputD2 {
 		if err := r.outputD2(ctx); err != nil {
 			return fmt.Errorf("failed to generate D2: %w", err)
@@ -670,6 +681,8 @@ func (r *Renderer) shouldRenderMach(machId string) bool {
 		return true
 	}
 
+	// TODO check if any state from this mach is being rendered
+
 	return false
 }
 
@@ -936,14 +949,6 @@ func UpdateCache(
 			}
 		}
 
-		// TODO get from classes
-		cssTxt := "text-anchor: middle; font-size: 30px;"
-		cssInner := ""
-		if isSelected {
-			cssTxt += "fill: black;"
-			cssInner += "fill: " + colorSelected + ";"
-		}
-
 		// update
 
 		// query TODO query class
@@ -954,6 +959,18 @@ func UpdateCache(
 			})
 		inner := txt.Prev()
 		root := txt.Parent()
+
+		// TODO get from classes
+		cssTxt := "text-anchor: middle; font-size: 30px;"
+		cssInner := ""
+		if isSelected {
+			cssTxt += "fill: black;"
+			cssInner += "fill: " + colorSelected + ";"
+		}
+		if root.Is(".state-zoom") {
+			cssTxt = "text-anchor: middle; font-size: 50px;"
+			cssInner = "stroke-width:10;"
+		}
 
 		// colors
 		txt.SetAttr("fill", fillTxt).
@@ -1071,6 +1088,10 @@ func UpdateCache(
 		SetAttr("style", "stroke-width: 2")
 	dom.Find("g.add > path").SetAttr("stroke", colorRelAdd).
 		SetAttr("style", "stroke-width: 2")
+	// reset relation zoom
+	dom.Find("g.rel-zoom > path").SetAttr("stroke", colorRelRemove).
+		SetAttr("style", "stroke-width: 10")
+
 	// selected state
 	if filters.Selected != nil {
 		for _, state := range filters.Selected {
