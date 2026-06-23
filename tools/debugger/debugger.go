@@ -115,17 +115,19 @@ type Debugger struct {
 	genGraphsLast  time.Time
 	graph          *amgraph.Graph
 	// update client list scheduled
-	updateCLScheduled atomic.Bool
-	buildCLScheduled  atomic.Bool
-	lastKeystroke     tcell.Key
-	lastKeystrokeTime time.Time
-	matrix            *cview.Table
-	exportDialog      *cview.Modal
-	contentPanels     *cview.Panels
-	toolbars          [4]*cview.Table
-	schemaLogGrid     *cview.Grid
-	treeMatrixGrid    *cview.Grid
-	lastSelectedState string
+	updateCLScheduled  atomic.Bool
+	buildCLScheduled   atomic.Bool
+	lastKeystroke      tcell.Key
+	lastKeystrokeTime  time.Time
+	matrix             *cview.Table
+	exportDialog       *cview.Modal
+	contentPanels      *cview.Panels
+	toolbars           [4]*cview.Table
+	schemaLogGrid      *cview.Grid
+	treeMatrixGrid     *cview.Grid
+	selectedState      atomic.Pointer[string]
+	selectedClient     atomic.Pointer[string]
+	selectedSchemaHash atomic.Pointer[string]
 	// TODO should be after a redraw, not before
 	// redrawCallback is auto-disposed in draw()
 	redrawCallback func()
@@ -196,8 +198,30 @@ type Debugger struct {
 	// count value of the last active separator
 	callLogLastSep map[string]int
 	// host to connect to, resolved from 0.0.0.0
-	listenHost string
-	httpPort   string
+	listenHost     string
+	listenAddrRpc  string
+	listenAddrHttp string
+	listenAddrSsh  string
+
+	// diagrams
+
+	// machine diagram cache
+	diagMachDom atomic.Pointer[goquery.Document]
+	// machine diagram name (no dir, no extension)
+	diagMachName atomic.Pointer[string]
+	// state diagram cache
+	diagStateDom atomic.Pointer[goquery.Document]
+	// state diagram path (no extension)
+	diagStatePath             atomic.Pointer[string]
+	diagMachUpdate            chan struct{}
+	diagStepsUpdate           chan struct{}
+	diagStateUpdate           chan struct{}
+	diagSkipGroup             atomic.Pointer[string]
+	diagStepsFileD2           *os.File
+	diagStepsFileD2Svg        *os.File
+	diagStepsFileMermaid      *os.File
+	diagStepsFileMermaidAscii *os.File
+	loadingPos                int
 }
 
 // TODO split to New and
@@ -213,8 +237,20 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 		callLogFilesLen:   make(map[string]int64),
 		callLogCount:      make(map[string]int),
 		callLogLastSep:    make(map[string]int),
+		diagMachUpdate:    make(chan struct{}, 1),
+		diagStepsUpdate:   make(chan struct{}, 1),
+		diagStateUpdate:   make(chan struct{}, 1),
 	}
-	d.P = message.NewPrinter(language.English)
+
+	// pointer defs
+	d.diagSkipGroup.Store(new(string))
+	d.diagMachName.Store(new(string))
+	d.diagStatePath.Store(new(string))
+	d.selectedState.Store(new(string))
+	d.selectedGroup.Store(new(string))
+	d.selectedSchemaHash.Store(new(string))
+	d.selectedClient.Store(new(string))
+	// TODO params def
 
 	id := utils.RandId(0)
 	if p.Id != "" {
@@ -533,6 +569,16 @@ func (d *Debugger) hInitOutputTxFiles() {
 	}
 }
 
+func (d *Debugger) hCloseDiagFiles() {
+	if d.diagStepsFileD2Svg == nil {
+		return
+	}
+	d.diagStepsFileD2Svg.Close()
+	d.diagStepsFileD2.Close()
+	d.diagStepsFileMermaid.Close()
+	d.diagStepsFileMermaidAscii.Close()
+}
+
 // hSetCursor1 sets both the tx and steps cursors, 1-based.
 func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
 	cursor1 := args.Cursor1
@@ -598,42 +644,20 @@ func (d *Debugger) hGenSeqDiagram(
 ) {
 	//
 
-	e := am.CtxToEv(ctx)
-	index := d.C.MsgStruct.StatesIndex
-	_ = d.txFileMd.Truncate(0)
-	_ = d.txFileD2.Truncate(0)
-	_ = d.txFileD2Svg.Truncate(0)
-	_ = d.txFileMermaid.Truncate(0)
-	_ = d.txFileMermaidAscii.Truncate(0)
-	_, _ = d.txFileMd.WriteAt([]byte(tx.TxString(index)), 0)
-
-	if tx.Steps == nil {
-		return
-	}
-
-	visTx := amvis.Transition{
-		Log:        amhelp.MachToSlog(d.Mach),
-		Tx:         tx,
-		TxParsed:   parsed,
-		PrevTx:     d.hPrevTx(),
-		StateTrace: d.hStateTrace(tx),
-		// add queue-tx with stack trace
-	}
-
-	// D2
-	d2Diag, d2Svg, err := visTx.D2(ctx, index)
-	if ctx.Err() != nil {
-		return // expired
-	}
-	if err != nil {
-		d.Mach.Log("err: genSeqDiagram D2: %s", err)
-	}
-	_, _ = d.txFileD2.WriteAt([]byte(d2Diag), 0)
-	if err != nil {
-		d.Mach.EvAddErr(e, err, nil)
-	} else {
-		_, _ = d.txFileD2Svg.WriteAt([]byte(d2Svg), 0)
-	}
+	// diagrams TODO merged mutation once partial negotiation lands
+	d.Mach.GoAfter(ctx, time.Second, func() {
+		if err := d.diagramsMachUpdating(ctx); err != nil {
+			d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+			return
+		}
+	})
+	d.Mach.GoAfter(ctx, time.Second, func() {
+		if err := d.diagramsStateUpdating(ctx); err != nil {
+			d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+			return
+		}
+	})
+}
 
 	// mermaid
 	mermaid, ascii, err := visTx.Mermaid(index)
@@ -758,12 +782,11 @@ func (d *Debugger) GoToMachAddress(
 					break
 				}
 			}
-			d.lastSelectedGroup = label
+			d.selectedGroup.Store(&label)
 			d.C.SelectedGroup = label
 			d.hBuildSchemaTree()
 			d.hUpdateSchemaTree()
 			d.hUpdateTreeGroups()
-			go amhelp.AskAdd1(d.Mach, ss.DiagramsScheduled, nil)
 			d.Mach.Add(am.S{ss.ToolToggled, ss.UpdateLogScheduled}, Pass(&A{
 				FilterTxs:     true,
 				LogRebuildEnd: len(d.C.MsgTxs),
@@ -2646,106 +2669,6 @@ func (d *Debugger) hGetParentTags(c *Client, tags []string) []string {
 	return d.hGetParentTags(parent, tags)
 }
 
-func (d *Debugger) initGraphGen(
-	snapshot *amgraph.Graph, id string, detailsLvl, numClients int, diagDir,
-	svgName string, statesAllowlist S,
-) []*amvis.Renderer {
-	//
-
-	var vizs []*amvis.Renderer
-
-	// render single (current one)
-	vis := amvis.NewRenderer(snapshot, d.Mach.Log)
-	amvis.PresetSingle(vis)
-	// TODO enum
-	switch detailsLvl {
-	default:
-		return vizs
-
-		// single (simple)
-	case 1:
-		vis.RenderNestSubmachines = false
-		vis.RenderStart = false
-		vis.RenderInherited = false
-		vis.RenderPipes = false
-		vis.RenderHalfPipes = false
-		vis.RenderHalfConns = false
-		vis.RenderHalfHierarchy = false
-		vis.RenderParentRel = false
-
-		// single (detailed)
-	case 2:
-		vis.RenderNestSubmachines = false
-		vis.RenderStart = true
-		vis.RenderInherited = true
-		vis.RenderPipes = false
-		vis.RenderHalfPipes = false
-		vis.RenderHalfConns = false
-		vis.RenderHalfHierarchy = false
-
-		// single (external)
-	case 3:
-		vis.RenderNestSubmachines = true
-		vis.RenderStart = true
-		vis.RenderInherited = true
-		vis.RenderPipes = true
-	}
-
-	d.Mach.Log("rendering graphs lvl %d", detailsLvl)
-
-	// machine diagram
-	vis.RenderMachs = []string{id}
-	vis.OutputFilename = path.Join(diagDir, svgName)
-	if len(statesAllowlist) > 0 {
-		vis.RenderAllowlist = statesAllowlist
-	}
-
-	vizs = append(vizs, vis)
-
-	// TODO render by prefixes
-	// } else {
-	// 	for _, p := range strings.Split(d.Params.Graph, ",") {
-	//
-	// 		// vis
-	// 		vis := amvis.NewRenderer(d.Mach, shot)
-	// 		if p == "1" || p == "true" {
-	// 			// render single (current one)
-	// 			amvis.PresetSingle(vis)
-	// 			vis.RenderMachs = []string{p}
-	// 			vis.RenderNestSubmachines = true
-	// 			vis.RenderStart = true
-	// 		} else {
-	// 			// render by prefix
-	// 			prefix := regexp.MustCompile("^" + p)
-	// 			amvis.PresetNeighbourhood(vis)
-	// 			vis.RenderMachsRe = []*regexp.Regexp{prefix}
-	// 			vis.RenderDistance = 1
-	// 			vis.RenderDepth = 1
-	// 		}
-	// 		// prefix with am-vis
-	// 		vis.OutputFilename = path.Join(d.Params.OutputDir, "am-vis-"+p)
-	//
-	// 		vizs = append(vizs, vis)
-	// 	}
-	// }
-
-	// TODO render a mutation
-
-	// map
-	// TODO skip if there was no change in schemas
-	//  hash schemas and schema's hashes, then compare
-
-	// map renderer, check cache TODO extract
-	mapPath := fmt.Sprintf("am-vis-map-%d", numClients)
-	if _, err := os.Stat(mapPath); err != nil {
-		vis = amvis.NewRenderer(snapshot, d.Mach.Log)
-		amvis.PresetMap(vis)
-		vis.OutputFilename = path.Join(diagDir, mapPath)
-	}
-
-	return append(vizs, vis)
-}
-
 func (d *Debugger) hSyncOptsTimelines() {
 	switch d.params.ViewTimelines {
 	case types.ParamsViewTimelinesNone:
@@ -2756,148 +2679,6 @@ func (d *Debugger) hSyncOptsTimelines() {
 	case types.ParamsViewTimelinesTwo:
 		d.Mach.Remove(S{ss.TimelineStepsHidden, ss.TimelineTxHidden}, nil)
 	}
-}
-
-func (d *Debugger) diagramsRender(
-	ctx context.Context, shot *amgraph.Graph, id string,
-	diagFilters *amvis.Filters, details, clients int, diagDir string,
-	svgName string, states S,
-) {
-	e := am.CtxToEv(ctx)
-	if ctx.Err() != nil {
-		return // expired
-	}
-	// mark rendering as in-progress
-	d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
-
-	// create the visualizer
-	vizs := d.initGraphGen(shot, id, details, clients, diagDir, svgName, states)
-	// TODO config
-	pool := amhelp.Pool(ctx, 2)
-
-	for _, vis := range vizs {
-		pool.SubmitErr(func() error {
-			return vis.GenDiagrams(ctx)
-		})
-	}
-
-	err := pool.Wait()
-	if err != nil {
-		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
-		return
-	}
-
-	// link
-	d.diagramLink(diagDir, svgName)
-	if ctx.Err() != nil {
-		return // expired
-	}
-
-	// symlink am-vis-map.svg -> am-vis-map-CLIENTS.svg
-	source := path.Join(diagDir, "am-vis-map.svg")
-	target := fmt.Sprintf("am-vis-map-%d.svg", clients)
-	_ = os.Remove(source)
-	err = os.Symlink(target, source)
-	if ctx.Err() != nil {
-		return // expired
-	}
-	d.Mach.EvAddErr(e, err, nil)
-
-	// next
-	if !diagFilters.Empty() {
-		// apply filters
-		d.Mach.Go(ctx, func() {
-			d.diagramsFileCache(ctx, diagFilters, details, diagDir, svgName)
-		})
-	} else {
-		d.Mach.EvAdd1(e, ss.DiagramsReady, nil)
-	}
-}
-
-func (d *Debugger) diagramLink(diagDir string, svgName string) {
-	// symlink am-vis.svg -> ID-LVL-HASH.svg
-	source := path.Join(diagDir, "am-vis.svg")
-	target := svgName + ".svg"
-	_ = os.Remove(source)
-	err := os.Symlink(target, source)
-	d.Mach.AddErr(err, nil)
-}
-
-// diagramsMemCache - update diagram from memory cache
-func (d *Debugger) diagramsMemCache(
-	ctx context.Context, cache *goquery.Document, diagFilters *amvis.Filters,
-	diagDir, svgName string,
-) {
-	//
-
-	e := am.CtxToEv(ctx)
-	svgPath := path.Join(diagDir, svgName+".svg")
-	// mark rendering as in-progress
-	d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
-
-	// update cache DOM
-	err := amvis.UpdateCache(ctx, svgPath, cache, diagFilters)
-	if ctx.Err() != nil {
-		return // expired
-	}
-	if err != nil {
-		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
-		return
-	}
-
-	// link
-	d.diagramLink(diagDir, svgName)
-	if ctx.Err() != nil {
-		return // expired
-	}
-
-	// next
-	d.Mach.EvAdd1(e, ss.DiagramsReady, nil)
-}
-
-// diagramsFileCache - update diagram from file cache
-func (d *Debugger) diagramsFileCache(
-	ctx context.Context, diagFilters *amvis.Filters, lvl int, diagDir,
-	svgName string,
-) {
-	e := am.CtxToEv(ctx)
-	svgPath := path.Join(diagDir, svgName+".svg")
-	// mark rendering as in-progress
-	d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
-
-	// read cache from a file
-	file, err := os.Open(svgPath)
-	if err != nil {
-		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
-		return
-	}
-	cache, err := goquery.NewDocumentFromReader(file)
-	if err != nil {
-		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
-		return
-	}
-
-	// update cache DOM
-	err = amvis.UpdateCache(ctx, svgPath, cache, diagFilters)
-	if ctx.Err() != nil {
-		return // expired
-	}
-	if err != nil {
-		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
-		return
-	}
-
-	// link
-	d.diagramLink(diagDir, svgName)
-	if ctx.Err() != nil {
-		return // expired
-	}
-
-	// next
-	d.Mach.EvAdd1(e, ss.DiagramsReady, Pass(&A{
-		DiagramCache: cache,
-		DiagramName:  svgName,
-	}))
 }
 
 func (d *Debugger) getFocusColor() tcell.Color {

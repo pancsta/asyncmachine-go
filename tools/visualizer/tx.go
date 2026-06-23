@@ -42,6 +42,8 @@ type Transition struct {
 	TxParsed   *dbgtypes.MsgTxParsed
 	StateTrace []*dbgtypes.StateTraceItem
 	Log        *slog.Logger
+	// Render only the following states
+	Group am.S
 }
 
 var p = message.NewPrinter(language.English)
@@ -66,8 +68,13 @@ func (t *Transition) D2(
 
 	info := t.info(statesIndex)
 	anyStep, steps := t.steps(statesIndex)
-	states := t.funcName(t.PrevTx, statesIndex, anyStep)
-	statesAfter := t.funcName(t.Tx, statesIndex, anyStep)
+	states := t.stateNames(t.PrevTx, statesIndex, anyStep)
+	statesAfter := t.stateNames(t.Tx, statesIndex, anyStep)
+
+	// filtered out by group
+	if states == "" {
+		return "", nil, ErrEmptyTx
+	}
 
 	// generate
 
@@ -155,20 +162,30 @@ func (t *Transition) steps(statesIndex am.S) (bool, string) {
 			if op == "handler" {
 				// TODO func suffix? "FooState(e)"
 				state = helpers.HandlerToState(state)
+			}
+
+			if state == am.StateAny {
+				anyStep = true
+
+				// skip out of group
+			} else if len(t.Group) > 0 && !t.Group.Has(state) {
+				continue
+			}
+
+			// handle "handler FooState" -> Foo
+			if op == "handler" {
 				steps += state + " -> " + state + ": " + line[1]
 			} else {
 				steps += state + " -> " + state + ": " + line[0]
 			}
-			if state == am.StateAny {
-				anyStep = true
-			}
 
 		// "Foo require Bar"
 		case 3:
-			steps += line[0] + " -> " + line[2] + ": " + line[1]
-			if line[0] == am.StateAny || line[2] == am.StateAny {
-				anyStep = true
+			// skip out of group
+			if len(t.Group) > 0 && (!t.Group.Has(line[0]) || !t.Group.Has(line[2])) {
+				continue
 			}
+			steps += line[0] + " -> " + line[2] + ": " + line[1]
 			op = line[1]
 
 		default:
@@ -208,16 +225,22 @@ func (t *Transition) steps(statesIndex am.S) (bool, string) {
 	return anyStep, steps
 }
 
-func (t *Transition) funcName(
+func (t *Transition) stateNames(
 	tx *dbg.DbgMsgTx, statesIndex am.S, anyStep bool,
 ) string {
-	states := ""
+	ret := ""
 	for idx, state := range slices.Concat(statesIndex, am.S{am.StateAny}) {
 		if !slices.Contains(t.TxParsed.StatesTouched, idx) &&
 			!(anyStep && state == am.StateAny) {
 
 			continue
 		}
+
+		// skip out of group
+		if len(t.Group) > 0 && state != am.StateAny && !t.Group.Has(state) {
+			continue
+		}
+
 		class := "; state; lifeline"
 		if slices.Contains(t.Tx.CalledStatesIdxs, idx) {
 			class += "; called"
@@ -225,31 +248,32 @@ func (t *Transition) funcName(
 		switch {
 		case state == am.StateStart:
 			if tx != nil && tx.Is1(statesIndex, state) {
-				states += state + ".class: [_1s" + class + "]\n"
+				ret += state + ".class: [_1s" + class + "]\n"
 			} else {
-				states += state + ".class: [_0s" + class + "]\n"
+				ret += state + ".class: [_0s" + class + "]\n"
 			}
 		case state == am.StateReady:
 			if tx != nil && tx.Is1(statesIndex, state) {
-				states += state + ".class: [_1r" + class + "]\n"
+				ret += state + ".class: [_1r" + class + "]\n"
 			} else {
-				states += state + ".class: [_0r" + class + "]\n"
+				ret += state + ".class: [_0r" + class + "]\n"
 			}
 		case tx != nil && tx.Is1(statesIndex, state):
 			if IsStateInherited(state, statesIndex) {
-				states += state + ".class: [_1i" + class + "]\n"
+				ret += state + ".class: [_1i" + class + "]\n"
 			} else {
-				states += state + ".class: [_1" + class + "]\n"
+				ret += state + ".class: [_1" + class + "]\n"
 			}
 		default:
 			if IsStateInherited(state, statesIndex) {
-				states += state + ".class: [_0i" + class + "]\n"
+				ret += state + ".class: [_0i" + class + "]\n"
 			} else {
-				states += state + ".class: [_0" + class + "]\n"
+				ret += state + ".class: [_0" + class + "]\n"
 			}
 		}
 	}
-	return states
+
+	return ret
 }
 
 func (t *Transition) d2Gen(

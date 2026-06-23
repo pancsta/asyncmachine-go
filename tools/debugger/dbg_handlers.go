@@ -197,9 +197,10 @@ func (d *Debugger) ReadyState(e *am.Event) {
 		d.Mach.EvAdd1(e, ss.UserNarrowLayout, nil)
 	}
 	d.hSyncOptsTimelines()
-	if d.params.OutputDiagrams.Value > 0 {
-		d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
-	}
+	// TODO merge mut once partial acceptance lands
+	d.Mach.EvAdd1(e, ss.DiagramsGraphRendering, nil)
+	d.Mach.EvAdd1(e, ss.DiagramsMachRendering, nil)
+	d.Mach.EvAdd1(e, ss.DiagramsStatesRendering, nil)
 	if d.params.ViewRain {
 		d.Mach.EvAdd1(e, ss.MatrixRain, nil)
 	}
@@ -265,9 +266,12 @@ func (d *Debugger) StateNameSelectedEnter(e *am.Event) bool {
 }
 
 func (d *Debugger) StateNameSelectedState(e *am.Event) {
+	state := am.ParseArgs[A](e.Args).State
 	ctx := d.Mach.NewStateCtx(ss.StateNameSelected)
-	d.C.SelectedState = am.ParseArgs[A](e.Args).State
-	d.lastSelectedState = d.C.SelectedState
+	c := d.C
+
+	c.SelectedState = state
+	d.selectedState.Store(&c.SelectedState)
 
 	switch d.Mach.Switch(states.DebuggerGroups.Views) {
 
@@ -283,21 +287,32 @@ func (d *Debugger) StateNameSelectedState(e *am.Event) {
 	}
 
 	d.hUpdateStatusBar()
-	d.Mach.Fork(ctx, e, func() {
-		amhelp.AskEvAdd1(e, d.Mach, ss.DiagramsScheduled, nil)
+
+	// diagrams TODO merged mutation once partial negotiation lands
+	d.Mach.GoAfter(ctx, time.Second, func() {
+		if err := d.diagramsMachUpdating(ctx); err != nil {
+			d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+			return
+		}
+	})
+	d.Mach.GoAfter(ctx, time.Second, func() {
+		if err := d.diagramsStateUpdating(ctx); err != nil {
+			d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
+			return
+		}
 	})
 }
 
 func (d *Debugger) StateNameSelectedEnd(e *am.Event) {
-	ctx := d.Mach.NewStateCtx(ss.Start)
 	if d.C != nil {
 		d.C.SelectedState = ""
+		// diagrams
+		d.Mach.EvAddErrState(e, ss.ErrDiagrams,
+			d.diagramsMachUpdating(d.Mach.NewStateCtx(ss.StateNameSelected)), nil)
 	}
+	d.selectedState.Store(new(string))
 	d.hUpdateSchemaTree()
 	d.hUpdateStatusBar()
-	d.Mach.Fork(ctx, e, func() {
-		amhelp.AskEvAdd1(e, d.Mach, ss.DiagramsScheduled, nil)
-	})
 }
 
 var _ = ss.Playing
@@ -672,7 +687,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 	}
 
 	// re-select the last group
-	if g := d.lastSelectedGroup; g != "" {
+	if g := *d.selectedGroup.Load(); g != "" {
 		if _, ok := c.MsgStruct.Groups[g]; ok {
 			c.SelectedGroup = g
 		}
@@ -729,12 +744,12 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 		d.hPrependHistory(&types.MachAddress{MachId: msg.ID})
 
 		// re-select the state
-		if d.lastSelectedState != "" {
+		if selected := *d.selectedState.Load(); selected != "" {
 			d.Mach.EvAdd1(e, ss.StateNameSelected, Pass(&A{
-				State: d.lastSelectedState,
+				State: selected,
 			}))
 			// TODO Keep in StateNameSelected behind a flag
-			d.hSelectTreeState(d.lastSelectedState)
+			d.hSelectTreeState(selected)
 		}
 	}
 
@@ -755,6 +770,11 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 		Id: msg.ID,
 	}))
 
+	// update graph
+	d.hUpdateGraphHash()
+	// TODO use Add relation once partial negotiation lands
+	d.Mach.EvAdd1(e, ss.DiagramsGraphRendering, nil)
+
 	d.draw()
 }
 
@@ -770,6 +790,8 @@ func (d *Debugger) DisconnectEventEnter(e *am.Event) bool {
 }
 
 func (d *Debugger) DisconnectEventState(e *am.Event) {
+	d.hUpdateGraphHash()
+
 	connID := am.ParseArgs[A](e.Args).ConnId
 	for _, c := range d.Clients {
 		if c.ConnId != "" && c.ConnId == connID {
@@ -961,7 +983,9 @@ func (d *Debugger) RemoveClientEnter(e *am.Event) bool {
 }
 
 func (d *Debugger) RemoveClientState(e *am.Event) {
-	d.Mach.EvRemove1(e, ss.RemoveClient, nil)
+	// TODO use Add relation once partial negotiation lands
+	d.Mach.EvAdd1(e, ss.DiagramsGraphRendering, nil)
+
 	cid := am.ParseArgs[A](e.Args).ClientId
 	c := d.Clients[cid]
 
@@ -1013,14 +1037,20 @@ func (d *Debugger) SetGroupState(e *am.Event) {
 	} else {
 		c.SelectedGroup = strings.Split(group, ":")[0]
 	}
-	d.lastSelectedGroup = c.SelectedGroup
+	d.selectedGroup.Store(&c.SelectedGroup)
 	d.hBuildSchemaTree()
 	d.hUpdateSchemaTree()
-	go amhelp.AskEvAdd1(e, d.Mach, ss.DiagramsScheduled, nil)
+	// TODO merge once partial negotiation lands
+	d.Mach.EvAdd1(e, ss.DiagramsMachRendering, nil)
+	d.Mach.EvAdd1(e, ss.DiagramsStatesRendering, nil)
 	d.Mach.EvAdd(e, am.S{ss.ToolToggled, ss.UpdateLogScheduled}, Pass(&A{
 		FilterTxs:     true,
 		LogRebuildEnd: len(c.MsgTxs),
 	}))
+	d.diagSkipGroup.Store(new(string))
+	if d.params.OutputDiagGroup == types.ParamsOutDiagGroupSkip {
+		d.diagSkipGroup.Store(&group)
+	}
 }
 
 var _ = ss.SelectingClient
@@ -1039,10 +1069,10 @@ func (d *Debugger) SelectingClientEnter(e *am.Event) bool {
 
 func (d *Debugger) SelectingClientState(e *am.Event) {
 	// TODO support tx ID
-	sArgs := am.ParseArgs[A](e.Args)
-	clientID := sArgs.ClientId
-	group := sArgs.Group
-	fromConnected := sArgs.FromConnected
+	args := am.ParseArgs[A](e.Args)
+	clientID := args.ClientId
+	group := args.Group
+	fromConnected := args.FromConnected
 	fromPlaying := slices.Contains(e.Transition().StatesBefore(), ss.Playing)
 
 	if d.Clients[clientID] == nil {
@@ -1059,7 +1089,10 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 	logRebuildEnd := len(d.C.LogMsgs)
 	// remain in TailMode after the selection
 	wasTailMode := slices.Contains(e.Transition().StatesBefore(), ss.TailMode)
-	d.C.SelectedGroup = group
+
+	if group != "" {
+		d.C.SelectedGroup = group
+	}
 
 	// TODO extract SelectingClientFiltered
 	// TODO Remove selecting with a timeout (in case it fails)
@@ -1086,11 +1119,9 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 				return // expired
 			}
 
-		} else {
-			// [hSetCursor1] triggers DiagramsScheduled, so do we
-			// TODO optimize: push diagram after the initial rendering
-			go amhelp.AskEvAdd1(e, d.Mach, ss.DiagramsScheduled, nil)
 		}
+
+		// TODO diagrams?
 
 		// scroll client list item into view
 		selOffset := d.hGetSidebarCurrClientIdx()
@@ -1128,6 +1159,10 @@ func (d *Debugger) ClientSelectedState(e *am.Event) {
 		return // expired
 	}
 
+	// TODO merge once partial negotiation lands
+	d.Mach.EvAdd1(e, ss.DiagramsMachRendering, nil)
+	d.Mach.EvAdd1(e, ss.DiagramsStatesRendering, nil)
+
 	// catch up with new log msgs
 	for i := max(0, d.logRebuildEnd-1); i < len(d.C.LogMsgs); i++ {
 		err := d.hAppendLogEntry(i)
@@ -1162,13 +1197,15 @@ func (d *Debugger) ClientSelectedState(e *am.Event) {
 	}
 
 	// re-select the state
-	if d.lastSelectedState != "" {
+	if selected := *d.selectedState.Load(); selected != "" {
 		d.Mach.EvAdd1(e, ss.StateNameSelected, Pass(&A{
-			State: d.lastSelectedState,
+			State: selected,
 		}))
 		// TODO Keep in StateNameSelected behind a flag
-		d.hSelectTreeState(d.lastSelectedState)
+		d.hSelectTreeState(selected)
 	}
+	d.selectedClient.Store(&d.C.Id)
+	d.selectedSchemaHash.Store(&d.C.MsgSchemaParsed.Hash)
 
 	d.hUpdateBorderColor()
 	d.hUpdateAddressBar()
@@ -1181,6 +1218,8 @@ func (d *Debugger) ClientSelectedEnd(e *am.Event) {
 	if !e.Mutation().IsCalled(idx) {
 		d.C = nil
 	}
+	d.selectedClient.Store(new(string))
+	d.selectedSchemaHash.Store(new(string))
 
 	d.log.Clear()
 	d.treeRoot.ClearChildren()
@@ -1450,7 +1489,7 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		case types.ParamsOutputDiagramsThree:
 			d.params.OutputDiagrams = types.ParamsOutputDiagramsNone
 		}
-		d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
+		d.Mach.EvAdd(e, S{ss.DiagramsGraphRendering, ss.DiagramsMachRendering}, nil)
 
 	case types.ToolDiagramsSteps:
 		d.params.OutputTx = !d.params.OutputTx
@@ -1477,7 +1516,20 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		case types.ParamsOutDiagTxRelations:
 			d.params.OutputDiagTx = types.ParamsOutDiagTxNone
 		}
-		d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
+
+		// render
+		if d.params.OutputDiagrams != types.ParamsOutputDiagramsNone {
+			_ = d.hInitDiagFiles()
+			d.Mach.EvAdd1(e, ss.DiagramsGraphRendering, nil)
+			d.Mach.EvAdd1(e, ss.DiagramsMachRendering, nil)
+			d.Mach.EvAdd1(e, ss.DiagramsStatesRendering, nil)
+			if tx := d.hCurrentTx(); tx != nil {
+				ctx := am.EvToCtx(d.Mach.Context(), e)
+				d.hDiagramsStepsRendering(ctx, tx, d.hCurrentTxParsed())
+			}
+		} else {
+			d.hCloseDiagFiles()
+		}
 
 	case types.ToolDiagramsGroup:
 		switch d.params.OutputDiagGroup {
@@ -1488,7 +1540,7 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		case types.ParamsOutDiagGroupSkip:
 			d.params.OutputDiagGroup = types.ParamsOutDiagGroupNone
 		}
-		d.Mach.EvAdd1(e, ss.DiagramsScheduled, nil)
+		d.Mach.EvAdd1(e, ss.DiagramsMachRendering, nil)
 
 	case types.ToolCallLog:
 		d.params.OutputCallLog = !d.params.OutputCallLog
@@ -1931,159 +1983,6 @@ func (d *Debugger) SetCursorState(e *am.Event) {
 	d.hSetCursor1(e, am.ParseArgs[A](e.Args))
 }
 
-// func (d *Debugger) CursorSetState(e *am.Event) {
-// }
-
-var _ = ss.DiagramsScheduled
-
-func (d *Debugger) DiagramsScheduledEnter(e *am.Event) bool {
-	// TODO refuse on too many ErrDiagrams, remove ErrDiagrams in ErrDiagramsState
-	return d.C != nil && d.params.OutputDiagrams != types.ParamsOutputDiagramsNone
-}
-
-func (d *Debugger) DiagramsScheduledState(e *am.Event) {
-	// TODO cancel rendering on:
-	//  - client change
-	//  - details change
-	//  - but not on tx change (wait until completed)
-	d.Mach.EvAdd1(e, ss.DiagramsRendering, nil)
-}
-
-var _ = ss.DiagramsRendering
-
-func (d *Debugger) DiagramsRenderingEnter(e *am.Event) bool {
-	return d.params.OutputDiagrams.Value > 0 && d.C != nil
-}
-
-func (d *Debugger) DiagramsRenderingState(e *am.Event) {
-	ctx := d.Mach.NewStateCtx(ss.DiagramsRendering)
-	lvl := d.params.OutputDiagrams.Value
-	diagDir := path.Join(d.params.OutputDir, "diagrams")
-	c := d.C
-	tx := d.hCurrentTx()
-	svgName := fmt.Sprintf("%s-%d-%s", c.Id, lvl, c.SchemaHash)
-
-	// state groups
-	var states S
-	if g := c.SelectedGroup; g != "" &&
-		d.params.OutputDiagGroup == types.ParamsOutDiagGroupSkip {
-
-		states = c.MsgSchemaParsed.Groups[g]
-		svgName = fmt.Sprintf("%s-%s-%d-%s",
-			c.Id, types.NormalizeGroupName(g), lvl, c.SchemaHash)
-	}
-	svgPath := filepath.Join(diagDir, svgName+".svg")
-
-	// output dir
-	if err := os.MkdirAll(diagDir, 0o755); err != nil {
-		d.Mach.EvAddErrState(e, ss.ErrDiagrams,
-			fmt.Errorf("create output dir: %w", err), nil)
-	}
-
-	// cached?
-
-	// build update fragment
-	index := c.MsgStruct.StatesIndex
-	diagFilters := &amvis.Filters{
-		MachId:   c.Id,
-		Index:    index,
-		Selected: am.S{d.C.SelectedState},
-	}
-	if tx != nil {
-		diagFilters.Active = tx.ActiveStates(index)
-
-		// dim
-		if d.params.OutputDiagTx != types.ParamsOutDiagTxNone {
-			parsed := c.MsgTxsParsed[c.CursorTx1-1]
-			showIdxs := tx.CalledStatesIdxs
-			switch d.params.OutputDiagTx {
-			case types.ParamsOutDiagTxMutated:
-				showIdxs = slices.Concat(parsed.StatesAdded, parsed.StatesRemoved)
-			case types.ParamsOutDiagTxTouched:
-				fallthrough
-			case types.ParamsOutDiagTxRelations:
-				showIdxs = parsed.StatesTouched
-			}
-			diagFilters.Highlighted = c.IndexesToStates(showIdxs)
-		}
-
-		// collect touched rels TODO add to step timeline 1-by-1
-		if d.params.OutputDiagTx == types.ParamsOutDiagTxRelations {
-			for _, step := range tx.Steps {
-				if step.Type != am.StepRelation {
-					continue
-				}
-
-				diagFilters.HighlightedRels = append(diagFilters.HighlightedRels,
-					[3]string{
-						step.GetFromState(index),
-						step.GetToState(index),
-						step.RelType.String(),
-					})
-			}
-		}
-	}
-	if d.params.OutputDiagGroup == types.ParamsOutDiagGroupHide &&
-		c.SelectedGroup != "" {
-
-		diagFilters.Visible = c.MsgSchemaParsed.Groups[c.SelectedGroup]
-	}
-
-	// mem cache
-	if d.cache.diagramName == svgName {
-		cache := d.cache.diagramDom
-		d.Mach.Fork(ctx, e, func() {
-			d.diagramsMemCache(am.EvToCtx(ctx, e), cache, diagFilters,
-				diagDir, svgName)
-		})
-		return
-
-		// file cache, move to mem cache
-	} else if _, err := os.Stat(svgPath); err == nil {
-		d.Mach.Fork(ctx, e, func() {
-			d.diagramsFileCache(am.EvToCtx(ctx, e), diagFilters, lvl,
-				diagDir, svgName)
-		})
-		return
-	}
-
-	// no cache - render
-
-	// clone the current graph TODO optimize
-	shot, err := d.graph.Clone()
-	if err != nil {
-		d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
-		return
-	}
-
-	// unblock
-	d.Mach.EvAdd1(e, ss.DiagramsNoCache, nil)
-	d.Mach.Fork(ctx, e, func() {
-		d.diagramsRender(am.EvToCtx(ctx, e), shot, c.Id, diagFilters, lvl,
-			len(d.Clients), diagDir, svgName, states)
-	})
-}
-
-var _ = ss.DiagramsReady
-
-func (d *Debugger) DiagramsReadyState(e *am.Event) {
-	defer d.Mach.EvRemove1(e, ss.DiagramsReady, nil)
-
-	// update cache
-	args := am.ParseArgs[A](e.Args)
-	if args.DiagramCache != nil {
-		d.cache.diagramDom = args.DiagramCache
-		d.cache.diagramName = args.DiagramName
-	}
-
-	// render a fresher one, if scheduled
-	d.genGraphsLast = time.Now()
-	if d.Mach.Is1(ss.DiagramsScheduled) {
-		d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
-		d.Mach.EvAdd1(e, ss.DiagramsRendering, nil)
-	}
-}
-
 var _ = ss.ClientListVisible
 
 func (d *Debugger) ClientListVisibleState(e *am.Event) {
@@ -2311,164 +2210,6 @@ func (d *Debugger) AnyState(e *am.Event) {
 	}
 }
 
-var _ = ss.WebReq
-
-func (d *Debugger) WebReqState(e *am.Event) {
-	wrArgs := am.ParseArgs[A](e.Args)
-	r := wrArgs.HttpRequest
-	w := wrArgs.HttpResponseWriter
-	done := wrArgs.DoneChan
-	defer close(done)
-
-	uri := r.RequestURI
-	switch {
-
-	// diagram viewer
-	case uri == "/":
-		fallthrough
-	case uri == "/diagrams/mach":
-		html := string(amvis.HtmlDiagram)
-		html = strings.ReplaceAll(html, "localhost:6831",
-			d.listenHost+":"+d.httpPort)
-		_, err := w.Write([]byte(html))
-		d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
-
-	// default svg symlink
-	case strings.HasPrefix(uri, "/diagrams/mach.svg"):
-		svgPath := filepath.Join(d.params.OutputDir, "diagrams", "am-vis.svg")
-		b, err := os.ReadFile(svgPath)
-		d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
-		if err != nil {
-			return
-		}
-
-		// send
-		w.Header().Set("Content-Type", "image/svg+xml")
-		_, err = w.Write(b)
-		d.Mach.EvAddErrState(e, ss.ErrWeb, err, nil)
-	}
-}
-
-type WsDiagMsg struct {
-	Type  string
-	Addr  *types.MachAddress
-	Group string
-}
-
-var _ = ss.WebSocketDiag
-
-func (d *Debugger) WebSocketDiagState(e *am.Event) {
-	mach := d.Mach
-	ctx := mach.NewStateCtx(ss.WebSocketDiag)
-	wsdArgs := am.ParseArgs[A](e.Args)
-	ws := wsdArgs.WebSocketConn
-	r := wsdArgs.HttpRequest
-	done := wsdArgs.DoneChan
-	clientDone := make(chan struct{})
-
-	mach.EvAdd1(e, ss.DiagramsScheduled, nil)
-
-	// unblock
-	mach.Fork(ctx, e, func() {
-		defer close(done)
-		var ctxReq context.Context
-		var cancelReq context.CancelFunc
-		for {
-			// release prev run's wait chans
-			if cancelReq != nil {
-				cancelReq()
-			}
-
-			ctxReq, cancelReq = context.WithCancel(ctx)
-			defer cancelReq()
-
-			// wait for diagrams start
-			select {
-			case <-clientDone:
-				return
-			case <-mach.When1(ss.DiagramsScheduled, ctxReq):
-			}
-
-			// show progress
-			select {
-
-			case <-clientDone:
-				return
-
-			case <-mach.When1(ss.DiagramsNoCache, ctxReq):
-				// msg
-				msg, err := json.Marshal(WsDiagMsg{
-					Type: "loading",
-				})
-				if err != nil {
-					mach.Log(err.Error())
-					continue
-				}
-
-				// send
-				err = ws.Write(r.Context(), websocket.MessageText, msg)
-				if err != nil {
-					mach.EvAddErrState(e, ss.ErrWeb, err, nil)
-					return
-				}
-
-			case <-mach.When1(ss.DiagramsReady, ctxReq):
-				// ok
-			}
-
-			// wait for diagrams ready
-			select {
-
-			case <-clientDone:
-				return
-
-			// TODO loop over WSs in DiagramsReady. no goroutine per each
-			case <-mach.When1(ss.DiagramsReady, ctxReq):
-				// msg
-				msg := WsDiagMsg{
-					Type: "refresh",
-					Addr: d.MachAddr(),
-				}
-				mach.Eval("WebSocketDiagState", func() {
-					if d.params.OutputDiagGroup == types.ParamsOutDiagGroupSkip {
-						msg.Group = d.C.SelectedGroup
-					}
-				}, r.Context())
-				msgB, err := json.Marshal(msg)
-				if err != nil {
-					mach.Log(err.Error())
-					continue
-				}
-
-				// send
-				err = ws.Write(r.Context(), websocket.MessageText, msgB)
-				if err != nil {
-					mach.EvAddErrState(e, ss.ErrWeb, err, nil)
-					return
-				}
-			}
-		}
-	})
-
-	mach.Fork(ctx, e, func() {
-		for {
-			// msgType, msg, err := ws.Read(r.Context())
-			_, _, err := ws.Read(r.Context())
-			if err != nil {
-				mach.Log("websocket closed")
-				if websocket.CloseStatus(err) == -1 {
-					err = fmt.Errorf("websocket read: %w", err)
-					mach.EvAddErrState(e, ss.ErrWeb, err, nil)
-				}
-
-				// close up
-				close(clientDone)
-				return
-			}
-		}
-	})
-}
-
 var _ = ss.FilterCanceledTx
 
 func (d *Debugger) FilterCanceledTxEnd(e *am.Event) {
@@ -2638,4 +2379,39 @@ func (d *Debugger) SshServerState(e *am.Event) {
 
 func (d *Debugger) SshServerEnd(e *am.Event) {
 	d.sshSrv.Close()
+}
+
+var _ = ss.Loading
+
+func (d *Debugger) LoadingState(e *am.Event) {
+	ctx := d.Mach.NewStateCtx(ss.Loading)
+	mach := d.Mach
+
+	mach.Fork(ctx, e, func() {
+		i := 0
+		for ctx.Err() == nil {
+			i++
+			mach.Eval(ss.Loading+am.SuffixState, func() {
+				d.loadingPos = i
+				d.hUpdateStatusBar()
+			}, ctx)
+			d.draw(d.statusBarLeft)
+			i = i % 9
+			time.Sleep(100 * time.Millisecond)
+
+			// check if valid TODO push when leaving states
+			if !d.Mach.Any1(states.DebuggerGroups.Loading...) {
+				d.Mach.EvRemove1(e, ss.Loading, nil)
+			}
+		}
+	})
+}
+
+func (d *Debugger) LoadingExit(e *am.Event) bool {
+	return !d.Mach.Any1(states.DebuggerGroups.Loading...)
+}
+
+func (d *Debugger) LoadingEnd(e *am.Event) {
+	d.hUpdateStatusBar()
+	d.draw(d.statusBarLeft)
 }
