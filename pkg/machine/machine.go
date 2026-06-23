@@ -2283,6 +2283,7 @@ func (m *Machine) handle(
 	if m.disposing.Load() {
 		return Canceled, false
 	}
+	// TODO return accepted states
 
 	t := m.t.Load()
 	e := &Event{
@@ -2318,6 +2319,7 @@ func (m *Machine) handle(
 				self = ":self"
 			}
 
+			// TODO log partial acceptance
 			m.log(LogOps, "[cancel%s] (%s) by %s", self,
 				j(targetStates), name)
 		}
@@ -2332,6 +2334,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 	if m.disposing.Load() {
 		return Canceled, false
 	}
+	// TODO return accepted states
 
 	handlerCalled := false
 	handlers := m.getHandlers(false)
@@ -2385,6 +2388,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 
 		case <-m.handlerTimer.C:
 			// timeout, fork a new handler loop
+			// TODO update for partial acceptance
 			m.log(LogOps, "[cancel] (%s) by timeout", j(tx.TargetStates()))
 			m.log(LogDecisions, "[handler:timeout]: %s from %s", methodName, h.id)
 			err := fmt.Errorf("%w: %s from %s", ErrHandlerTimeout, methodName, h.id)
@@ -3594,8 +3598,10 @@ func (m *Machine) Groups() (map[string][]int, []string) {
 }
 
 // Fork is a syntax sugar method for a handler unblocking boilerplate. Fork can
-// only by used in the handler body (while the event is valid). See
+// only by used in the handler's body (while the event is valid). See
 // [Machine.Go] for nested forking.
+//
+// Fork does NOT work with events exported via [EvToCtx] and [CtxToEv].
 func (m *Machine) Fork(ctx context.Context, e *Event, fn func()) {
 	if !e.IsValid() {
 		return
@@ -3607,17 +3613,18 @@ func (m *Machine) Fork(ctx context.Context, e *Event, fn func()) {
 // Go is a syntax sugar method for a nested handler unblocking boilerplate.
 func (m *Machine) Go(ctx context.Context, fn func()) {
 	go func() {
+		// in debug, log location of [fn]
+		var caller string
+		if os.Getenv(EnvAmDetectEval) != "" {
+			caller = funcName(fn)
+		}
+
 		if ctx.Err() != nil {
 			return // expired
 		}
-		// in debug, log location of [fn]
-		if os.Getenv(EnvAmDetectEval) != "" {
-			defer m.PanicToErr(Pass(AException{
-				Fn: funcName(fn),
-			}))
-		} else {
-			defer m.PanicToErr(nil)
-		}
+		defer m.PanicToErr(Pass(AException{
+			Fn: caller,
+		}))
 
 		fn()
 	}()
@@ -3631,6 +3638,7 @@ func funcName(fn func()) string {
 		return ""
 	}
 	funcName := funcObj.Name()
+
 	// file, line := funcObj.FileLine(funcPtr)
 	return funcName
 }

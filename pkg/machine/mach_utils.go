@@ -160,6 +160,11 @@ func (s S) FilterIndex(idxs []int) S {
 	return IndexToStates(s, idxs)
 }
 
+// Unique returns a new slice with unique state names.
+func (s S) Unique() S {
+	return slicesUniq(s)
+}
+
 // FilterPrefix returns all the states with a prefix.
 func (s S) FilterPrefix(prefix ...string) S {
 	ret := S{}
@@ -253,8 +258,14 @@ func (s S) Index(states S) []int {
 	return StatesToIndex(s, states)
 }
 
+// Hash returns a short hash of this state set.
 func (s S) Hash() string {
 	return Hash(strings.Join(s, ","), 4)
+}
+
+// Has returns true is [state] is in this state set.
+func (s S) Has(state string) bool {
+	return slices.Contains(s, state)
 }
 
 // ----- old
@@ -670,6 +681,15 @@ func (s Schema) FilterByTag(tag string) Schema {
 // Names is a random-order list of defined state names.
 func (s Schema) Names() S {
 	return slices.Collect(maps.Keys(s))
+}
+
+func (s Schema) AdjacentStates(state string) S {
+	if _, ok := s[state]; !ok {
+		return nil
+	}
+	data := s[state]
+
+	return slices.Concat(data.Add, data.After, data.Require, data.Remove)
 }
 
 // ----- old

@@ -437,7 +437,7 @@ func CtxToEv(ctx context.Context) *Event {
 }
 
 // EvToCtx will inject *Event into [ctx] under [CtxKey]. Useful for passing
-// events for tracing.
+// events for tracing, does not work with [Machine.Fork].
 func EvToCtx(ctx context.Context, e *Event) context.Context {
 	if e == nil {
 		return ctx

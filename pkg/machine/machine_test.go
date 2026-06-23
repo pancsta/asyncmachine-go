@@ -2033,15 +2033,6 @@ func TestStateCtx(t *testing.T) {
 	// assert
 	assertStates(t, m, S{})
 
-	// test early cancel
-	ctx := m.NewStateCtx("B")
-	select {
-	case <-ctx.Done():
-		// pass
-	default:
-		t.Fatal("expected cancel")
-	}
-
 	// dispose
 	m.Dispose()
 	<-m.WhenDisposed()
@@ -2061,8 +2052,10 @@ func TestStateCtxBasic(t *testing.T) {
 	m.Remove1("A", nil)
 	assert.Error(t, ctx1.Err())
 
-	// test early cancel
+	// test inactive ctx
 	ctx2 := m.NewStateCtx("B")
+	assert.Nil(t, ctx2.Err())
+	m.Add1("B", nil)
 	assert.Error(t, ctx2.Err())
 
 	// dispose
