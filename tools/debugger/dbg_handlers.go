@@ -3,15 +3,12 @@
 package debugger
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"net"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -20,7 +17,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/ssh"
-	"github.com/coder/websocket"
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 	"github.com/soheilhy/cmux"
@@ -32,7 +28,6 @@ import (
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
-	amvis "github.com/pancsta/asyncmachine-go/tools/visualizer"
 )
 
 var _ = ss.ErrGraph
@@ -1491,16 +1486,12 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		}
 		d.Mach.EvAdd(e, S{ss.DiagramsGraphRendering, ss.DiagramsMachRendering}, nil)
 
-	case types.ToolDiagramsSteps:
+	case types.ToolOutputTx:
 		d.params.OutputTx = !d.params.OutputTx
 		if d.params.OutputTx {
-			d.hInitOutputTxFiles()
-			if tx := d.hCurrentTx(); tx != nil {
-				d.hGenSeqDiagram(am.EvToCtx(d.Mach.Context(), e), tx,
-					d.C.MsgTxsParsed[d.C.CursorTx1-1])
-			}
+			_ = d.hInitTxFile()
 		} else {
-			d.hCloseOutputTxFiles()
+			_ = d.hCloseTxFile()
 		}
 
 	case types.ToolDiagramsTx:
@@ -1545,7 +1536,7 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 	case types.ToolCallLog:
 		d.params.OutputCallLog = !d.params.OutputCallLog
 		if !d.params.OutputCallLog {
-			d.hCloseOutputCallLogFiles()
+			d.hCloseCallLogFiles()
 		} else {
 			// process whole call log
 		}
@@ -1553,9 +1544,9 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 	case types.ToolOutputLog:
 		d.params.OutputLog = !d.params.OutputLog
 		if !d.params.OutputLog {
-			d.hCloseOutputLog()
+			d.hCloseLogFile()
 		} else {
-			d.hCreateOutputLogFile()
+			d.hInitLogFile()
 			d.Mach.EvAddErr(e, d.outputLogFile(d.Mach.Context()), nil)
 		}
 
@@ -1864,7 +1855,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 
 	runtime.GC()
 	mem1 := AllocMem()
-	d.Mach.Log(d.P.Sprintf("Alloc mem: %d MBs\n", mem1/1024/1024))
+	d.Mach.Log(P.Sprintf("Alloc mem: %d MBs\n", mem1/1024/1024))
 
 	// check TTL of client log msgs >lvl 2
 	// TODO remember the tip of cleaning (date) and binary find it, then
@@ -1895,7 +1886,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 	runtime.GC()
 	mem2 := AllocMem()
 	if mem1 > mem2 {
-		d.Mach.Log(d.P.Sprintf("GC logs shaved %d MBs\n", (mem1-mem2)/1024/1024))
+		d.Mach.Log(P.Sprintf("GC logs shaved %d MBs\n", (mem1-mem2)/1024/1024))
 	}
 
 	round := 0
@@ -1958,7 +1949,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 	}
 	mem3 := AllocMem()
 	if mem1 > mem3 {
-		d.Mach.Log(d.P.Sprintf("GC in total shaved %d MBs", (mem1-mem3)/1024/1024))
+		d.Mach.Log(P.Sprintf("GC in total shaved %d MBs", (mem1-mem3)/1024/1024))
 	}
 
 	d.hRedrawFull(false)

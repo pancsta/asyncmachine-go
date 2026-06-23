@@ -586,14 +586,14 @@ func (d *Debugger) hInitToolbar() {
 					return "S"
 				}
 			}},
-			{id: types.ToolDiagramsSteps, label: "diag-steps", active: func() bool {
+			{id: types.ToolOutputTx, label: "out-tx", active: func() bool {
 				return d.params.OutputTx
-			}},
-			{id: types.ToolCallLog, label: "call-log", active: func() bool {
-				return d.params.OutputCallLog
 			}},
 			{id: types.ToolOutputLog, label: "out-log", active: func() bool {
 				return d.params.OutputLog
+			}},
+			{id: types.ToolCallLog, label: "call-log", active: func() bool {
+				return d.params.OutputCallLog
 			}},
 		},
 
@@ -733,11 +733,11 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[:green] [:-]            Executed
 		[:yellow] [:-]            Queued
 		[:red] [:-]            Canceled
-		%s               queued regular transition
-		%s               queued auto transition
-		%s               state diff after a reg transition
-		%s               state diff after an auto transition
-		%s               canceled transition (any)
+		%s      queued regular transition
+		%s      queued auto transition
+		%s      state diff after a reg transition
+		%s      state diff after an auto transition
+		%s      canceled transition (any)
 	`, "\n ")), theme.Active, theme.Active2, theme.Inactive,
 		cview.Escape("[queue]"), cview.Escape("[aqueu]"),
 		cview.Escape("[state]"), cview.Escape("[auto_]"),
@@ -877,6 +877,7 @@ func (d *Debugger) hUpdateHelpDialog() {
 	
 		[::b]### [::u]status bar legend[::-]
 		[::b]Graph:t123[::-]        current graph time
+		[::b]⠴[::-]                 rendering or processing
 	
 		[::b]### [::u]about am-dbg[::-]
 		%-15s    version
@@ -884,8 +885,8 @@ func (d *Debugger) hUpdateHelpDialog() {
 		%-15s    HTTP server addr
 		%-15s    SSH server addr
 		%-15s    mem usage
-	`, "\n ")), theme.Active, d.params.Version, d.params.AddrRpc,
-		d.params.AddrHttp, d.params.AddrSsh, strconv.Itoa(mem)+"mb"))
+	`, "\n ")), theme.Active, d.params.Version, d.listenAddrRpc,
+		d.listenAddrHttp, d.listenAddrSsh, strconv.Itoa(mem)+"mb"))
 }
 
 func (d *Debugger) hInitLayout() {

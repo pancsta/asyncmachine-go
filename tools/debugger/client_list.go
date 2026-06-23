@@ -114,7 +114,7 @@ func (d *Debugger) hBuildClientList(selectedIndex int) {
 		totalSum += c.MTimeSum
 	}
 
-	d.clientList.SetTitle(d.P.Sprintf(
+	d.clientList.SetTitle(P.Sprintf(
 		" Machines:%d T:%v ", len(d.Clients), totalSum,
 	))
 
@@ -235,7 +235,7 @@ func (d *Debugger) hUpdateClientList() {
 			totalSum += c.MTimeSum
 		}
 
-		d.clientList.SetTitle(d.P.Sprintf(
+		d.clientList.SetTitle(P.Sprintf(
 			" Machines:%d T:%v ", len(d.Clients), totalSum,
 		))
 	} else {
@@ -357,7 +357,7 @@ func (d *Debugger) hGetClientListLabel(
 		state = " "
 	}
 
-	label := d.P.Sprintf("%s %s|%d", name, state, currCTxIdx+1)
+	label := P.Sprintf("%s %s|%d", name, state, currCTxIdx+1)
 	if currCTxIdx+1 < len(c.MsgTxs) {
 		label += "+"
 	}

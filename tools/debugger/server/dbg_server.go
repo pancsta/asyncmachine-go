@@ -26,6 +26,7 @@ import (
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/pancsta/asyncmachine-go/pkg/helpers"
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
@@ -294,6 +295,7 @@ func (c *Client) ParseSchema() {
 		}
 		sp.GroupsOrder = append(sp.GroupsOrder, name)
 		sp.Groups[name] = c.IndexesToStates(schema.Groups[g])
+		sp.Hash = amhelp.SchemaHash(schema.States)
 
 		if pastSelf {
 			// merge with prev groups TODO why? breaks inheriting from 2 sources
@@ -402,26 +404,40 @@ func New(
 			httpHandlerIndex(w, r, mach, p)
 		})
 		httpMux.Handle("/", http.FileServer(http.Dir(p.OutputDir)))
-		httpMux.HandleFunc("/diagrams/mach", func(
-			w http.ResponseWriter, r *http.Request,
-		) {
 
-			httpHandlerDiagMach(w, r, mach)
-		})
-		httpMux.HandleFunc("/diagrams/mach.svg", func(
-			w http.ResponseWriter, r *http.Request,
-		) {
+		// diagrams
 
-			httpHandlerDiagMach(w, r, mach)
-		})
-		httpMux.HandleFunc("/diagrams/mach.ws",
-			func(w http.ResponseWriter, r *http.Request) {
-				wsDiagHandler(w, r, mach)
-			})
+		httpMux.HandleFunc("/viewer/mach",
+			newDiagHandler(mach, types.DiagramTypeMach))
+		httpMux.HandleFunc("/viewer/mach.svg",
+			newDiagHandler(mach, types.DiagramTypeMach))
+		httpMux.HandleFunc("/viewer/mach.ws",
+			newWsDiagHandler(mach, types.DiagramTypeMach))
+
+		httpMux.HandleFunc("/viewer/state",
+			newDiagHandler(mach, types.DiagramTypeState))
+		httpMux.HandleFunc("/viewer/state.svg",
+			newDiagHandler(mach, types.DiagramTypeState))
+		httpMux.HandleFunc("/viewer/state.ws",
+			newWsDiagHandler(mach, types.DiagramTypeState))
+
+		httpMux.HandleFunc("/viewer/steps",
+			newDiagHandler(mach, types.DiagramTypeSteps))
+		httpMux.HandleFunc("/viewer/steps.svg",
+			newDiagHandler(mach, types.DiagramTypeSteps))
+		httpMux.HandleFunc("/viewer/steps.ws",
+			newWsDiagHandler(mach, types.DiagramTypeSteps))
+
+		httpMux.HandleFunc("/viewer/graph",
+			newDiagHandler(mach, types.DiagramTypeGraph))
+		httpMux.HandleFunc("/viewer/graph.svg",
+			newDiagHandler(mach, types.DiagramTypeGraph))
+		httpMux.HandleFunc("/viewer/graph.ws",
+			newWsDiagHandler(mach, types.DiagramTypeGraph))
+
 		httpMux.HandleFunc("/dbg.ws", func(w http.ResponseWriter, r *http.Request) {
 			wsDbgHandler(w, r, mach, fwdTo)
 		})
-		// TODO handlers for text screens (reader, screen, log)
 
 		httpSrv = &http.Server{
 			Handler: &httpMux,
@@ -690,16 +706,25 @@ func httpHandlerIndex(
 	fmt.Fprintf(w, "<h1>am-dbg</h1><hr>")
 
 	fmt.Fprintf(w, "<h2>Pages</h2><hr><ul>")
+
+	// diagrams
 	if p.OutputDiagrams != types.ParamsOutputDiagramsNone {
-		fmt.Fprintf(w, "<li><a href=\"/diagrams/mach\">"+
-			"Machine Diagram</a> (auto refresh)</li>")
+		fmt.Fprintf(w, "<li><a href=\"/viewer/graph\">"+
+			"Graph Diagram</a></li>")
+		fmt.Fprintf(w, "<li><a href=\"/viewer/mach\">"+
+			"Machine Diagram</a></li>")
 	}
+	// TODO CLI params
+	fmt.Fprintf(w, "<li><a href=\"/viewer/state\">"+
+		"State Diagram</a></li>")
+	// TODO CLI param
 	if p.OutputTx {
-		fmt.Fprintf(w, "<li><a href=\"/tx.d2.svg\">"+
-			"Transition Diagram</a> (manual refresh)</li>")
+		fmt.Fprintf(w, "<li><a href=\"/viewer/steps\">"+
+			"Steps Diagram</a></li>")
 	}
+
 	if p.UiMcp {
-		fmt.Fprintf(w, `<li>http://%s/mcp</li>`, httpAddr)
+		fmt.Fprintf(w, `<li>MCP: http://%s/mcp</li>`, httpAddr)
 	}
 	fmt.Fprintf(w, `</ul>`)
 
@@ -715,55 +740,67 @@ func httpHandlerIndex(
 	fmt.Fprintf(w, "</ul><hr></body></html>")
 }
 
-// httpHandlerDiagMach serve the diagram website.
-func httpHandlerDiagMach(
-	w http.ResponseWriter, r *http.Request, mach *am.Machine,
-) {
-	done := make(chan struct{})
+// newDiagHandler creates a new func serving HTML and SVGs of diagrams.
+func newDiagHandler(
+	mach *am.Machine, diagType types.DiagramType,
+) func(w http.ResponseWriter, r *http.Request) {
+	//
 
-	middleware(w)
+	return func(w http.ResponseWriter, r *http.Request) {
+		done := make(chan struct{})
 
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
+		middleware(w)
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// TODO WebDiagReq
+		mach.Add1(ss.WebReqDiag, Pass(&A{
+			DiagType:           diagType,
+			Uri:                r.RequestURI,
+			HttpRequest:        r,
+			HttpResponseWriter: w,
+			DoneChan:           done,
+			Addr:               r.RemoteAddr,
+		}))
+		// TODO timeout
+		<-done
 	}
-
-	// TODO WebDiagReq
-	mach.Add1(ss.WebReq, Pass(&A{
-		Uri:                r.RequestURI,
-		HttpRequest:        r,
-		HttpResponseWriter: w,
-		DoneChan:           done,
-		Addr:               r.RemoteAddr,
-	}))
-	// TODO timeout
-	<-done
 }
 
-// wsDiagHandler handles diagram updates.
-func wsDiagHandler(w http.ResponseWriter, r *http.Request, mach *am.Machine) {
-	middleware(w)
+// newWsDiagHandler creates a new func handling diagram updates over WS.
+func newWsDiagHandler(
+	mach *am.Machine, diagType types.DiagramType,
+) func(w http.ResponseWriter, r *http.Request) {
+	//
 
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		InsecureSkipVerify: true,
-	})
-	if err != nil {
-		mach.AddErrState(ss.ErrWeb, err, nil)
-		return
+	return func(w http.ResponseWriter, r *http.Request) {
+		middleware(w)
+
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
+		if err != nil {
+			mach.AddErrState(ss.ErrWeb, err, nil)
+			return
+		}
+		defer conn.Close(websocket.StatusInternalError, "internal error")
+		// TODO remove?
+		done := make(chan struct{})
+		mach.Add1(ss.WebSocketDiag, Pass(&A{
+			DiagType:           diagType,
+			WebSocketConn:      conn,
+			HttpRequest:        r,
+			HttpResponseWriter: w,
+			DoneChan:           done,
+			Addr:               r.RemoteAddr,
+		}))
+		// TODO timeout
+		// TODO r.Context()?
+		<-done
 	}
-	defer conn.Close(websocket.StatusInternalError, "internal error")
-	// TODO remove?
-	done := make(chan struct{})
-	mach.Add1(ss.WebSocketDiag, Pass(&A{
-		WebSocketConn:      conn,
-		HttpRequest:        r,
-		HttpResponseWriter: w,
-		DoneChan:           done,
-		Addr:               r.RemoteAddr,
-	}))
-	// TODO timeout
-	// TODO r.Context()?
-	<-done
 }
 
 func middleware(w http.ResponseWriter) {
