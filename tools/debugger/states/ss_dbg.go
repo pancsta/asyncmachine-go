@@ -117,6 +117,7 @@ type DebuggerStatesDef struct {
 	FilterRpcMachs        string
 	FilterOutGroup        string
 	Redraw                string
+	Loading               string
 
 	// actions
 	Start             string
@@ -301,6 +302,7 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 		ssD.FilterRpcMachs:       {},
 		ssD.FilterOutGroup:       {},
 		ssD.Redraw:               {},
+		ssD.Loading:              {},
 
 		// ///// Actions
 
@@ -511,6 +513,9 @@ type DebuggerGroupsDef struct {
 
 	Mcp         S
 	McpReadonly S
+
+	// states triggering the Loading state
+	Loading S
 }
 
 // EXPORTS AND GROUPS
