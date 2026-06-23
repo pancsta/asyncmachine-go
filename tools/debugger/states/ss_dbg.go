@@ -165,14 +165,18 @@ type DebuggerStatesDef struct {
 	BuildingLog     string
 	LogBuilt        string
 
-	SetCursor         string
-	SetGroup          string
-	DiagramsScheduled string
-	DiagramsRendering string
-	DiagramsReady     string
-	DiagramsNoCache   string
-	SshServer         string
-	SshDisconn        string
+	SetCursor  string
+	SetGroup   string
+	SshServer  string
+	SshDisconn string
+
+	DiagramsGraphRendering string
+	DiagramsGraphReady     string
+	DiagramsMachRendering  string
+	DiagramsMachReady      string
+	// pre-render all state-zoom diagrams for the selected machine
+	DiagramsStatesRendering string
+	DiagramsStatesReady     string
 
 	*ssam.BasicStatesDef
 	*ServerStatesDef
@@ -192,7 +196,6 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 		ssD.ErrDiagrams: {
 			Multi:   true,
 			Require: S{Exception},
-			Remove:  S{ssD.DiagramsRendering},
 		},
 		ssD.ErrWeb: {
 			Multi:   true,
@@ -201,7 +204,7 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 
 		// ///// Input events
 
-		ssD.WebReq: {
+		ssD.WebReqDiag: {
 			Multi:   true,
 			Require: S{Start},
 		},
@@ -209,7 +212,6 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 			Multi:   true,
 			Require: S{Start},
 		},
-		ssD.WebSocketDbg: {Require: S{Start}},
 
 		// user scrolling tx / steps
 		ssD.UserFwd: {
@@ -440,21 +442,43 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 			Multi:   true,
 			Require: S{ssD.ClientSelected},
 		},
-		ssD.DiagramsScheduled: {
-			Multi:   true,
-			Require: S{Ready},
-		},
-		ssD.DiagramsRendering: {
-			Require: S{Ready},
-			Remove:  S{ssD.DiagramsReady},
-		},
-		ssD.DiagramsReady:   {Remove: S{ssD.DiagramsRendering}},
-		ssD.DiagramsNoCache: {Require: S{ssD.DiagramsRendering}},
-
 		ssD.SshServer: {Require: S{Start}},
 		ssD.SshDisconn: {
 			Multi:   true,
 			Require: S{ssD.SshServer},
+		},
+
+		// diagrams
+
+		ssD.DiagramsGraphRendering: {
+			Multi:   true,
+			Require: S{ssD.Ready},
+			Add:     S{ssD.Loading},
+			Remove:  S{ssD.DiagramsGraphReady},
+		},
+		ssD.DiagramsGraphReady: {
+			Require: S{ssD.Ready},
+			Remove:  S{ssD.DiagramsGraphRendering},
+		},
+		ssD.DiagramsMachRendering: {
+			Multi:   true,
+			Require: S{ssD.ClientSelected},
+			Add:     S{ssD.Loading},
+			Remove:  S{ssD.DiagramsMachReady},
+		},
+		ssD.DiagramsMachReady: {
+			Require: S{ssD.ClientSelected},
+			Remove:  S{ssD.DiagramsMachRendering},
+		},
+		ssD.DiagramsStatesRendering: {
+			Multi:   true,
+			Require: S{ssD.ClientSelected},
+			Add:     S{ssD.Loading},
+			Remove:  S{ssD.DiagramsStatesReady},
+		},
+		ssD.DiagramsStatesReady: {
+			Require: S{ssD.ClientSelected},
+			Remove:  S{ssD.DiagramsStatesRendering},
 		},
 	},
 )
