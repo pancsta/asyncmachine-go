@@ -74,8 +74,8 @@ documentation, TUI devtools, using a [non-mainstream paradigm](/pkg/machine/READ
 
 ## What should be a "state"?
 
-Only interesting things - if we don't care about something to be a separate entity, there's no need to orchestrate it
-as a separate state.
+Only flow-related nodes - if we don't care about something to be a separate entity-in-time, there's no need to
+orchestrate it as a separate state.
 
 ## What's the origin of asyncmachine?
 

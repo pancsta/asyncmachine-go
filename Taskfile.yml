@@ -481,14 +481,7 @@ tasks:
       - test -z "$(goimports -l -local "github.com/pancsta/asyncmachine-go" pkg/**/*.go)"
       - test -z "$(goimports -l -local "github.com/pancsta/asyncmachine-go" tools/**/*.go)"
 
-  gen-changelog:
-    cmds:
-      - gem install github_changelog_generator
-      - gem install faraday-retry
-      - gem install erb
-      - github_changelog_generator --token $GITHUB_TOKEN
-      - head -n -4 CHANGELOG.md > CHANGELOG-tmp.md
-      - mv CHANGELOG-tmp.md CHANGELOG.md
+  gen-changelog: task script-gen-changelog > CHANGELOG.md
 
   install-am-dbg: go install ./tools/cmd/am-dbg
   install-arpc: go install ./tools/cmd/arpc
@@ -966,3 +959,7 @@ tasks:
     dir: scripts
     deps: [install-deps-scripts]
     cmd: go run ./gen_badges
+
+  script-gen-changelog:
+    dir: scripts
+    cmd: go run ./gen_changelog

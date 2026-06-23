@@ -5,6 +5,14 @@
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
+## [v0.19.1](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.1) (2026-06-23)
+
+- feat: release v0.19.1 [\#448](https://github.com/pancsta/asyncmachine-go/pull/448) (@pancsta)
+- feat\(am-dbg\): release am-dbg v0.19.1 [\#447](https://github.com/pancsta/asyncmachine-go/pull/447) (@pancsta)
+- feat\(am-dbg\): add loading spinner [\#446](https://github.com/pancsta/asyncmachine-go/pull/446) (@pancsta)
+- feat\(am-dbg\): unify diagram viewer for graph, mach, state, steps [\#445](https://github.com/pancsta/asyncmachine-go/pull/445) (@pancsta)
+- feat\(machine\): enable state ctx for inactive states [\#444](https://github.com/pancsta/asyncmachine-go/pull/444) (@pancsta)
+
 ## [v0.19.0](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.0) (2026-06-11)
 
 - feat: release v0.19.0 [\#442](https://github.com/pancsta/asyncmachine-go/pull/442) (@pancsta)
@@ -18,6 +26,7 @@
 - feat\(machine\): add per-state generic typed args [\#434](https://github.com/pancsta/asyncmachine-go/pull/434) (@pancsta)
 - fix\(rpc\): fix state ctx never closed [\#433](https://github.com/pancsta/asyncmachine-go/pull/433) (@pancsta)
 - feat\(machine\): add BindHandlerMaps for reflection-less bindings [\#432](https://github.com/pancsta/asyncmachine-go/pull/432) (@pancsta)
+- feat\(am-gen\): add an optional global import [\#431](https://github.com/pancsta/asyncmachine-go/pull/431) (@pancsta)
 - fix\(integrations\): fix listing all args for untyped MCP mutations [\#430](https://github.com/pancsta/asyncmachine-go/pull/430) (@pancsta)
 
 ## [v0.18.9](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.18.9) (2026-05-11)

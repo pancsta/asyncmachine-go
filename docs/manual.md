@@ -2,7 +2,7 @@
 
 <!-- TOC -->
 
-- version `v0.18.0`
+- version `v0.19.1`
 - [Legend](#legend)
 - [Machine and States](#machine-and-states)
   - [Machine Schema](#machine-schema)
@@ -28,27 +28,27 @@
   - [Global Handlers](#global-handlers)
 - [Advanced Topics](#advanced-topics)
   - [Relations](#relations)
-    - [`Add` relation](#add-relation)
-    - [`Remove` relation](#remove-relation)
-    - [`Require` relation](#require-relation)
-    - [`After` relation](#after-relation)
+  - [`Add` relation](#add-relation)
+  - [`Remove` relation](#remove-relation)
+  - [`Require` relation](#require-relation)
+  - [`After` relation](#after-relation)
   - [Waiting](#waiting)
   - [Error Handling](#error-handling)
   - [Catching Panics](#catching-panics)
-    - [Panic in a negotiation handler](#panic-in-a-negotiation-handler)
-    - [Panic in a final handler](#panic-in-a-final-handler)
-    - [Panic anywhere else](#panic-anywhere-else)
+  - [Panic in a negotiation handler](#panic-in-a-negotiation-handler)
+  - [Panic in a final handler](#panic-in-a-final-handler)
+  - [Panic anywhere else](#panic-anywhere-else)
   - [Queue and History](#queue-and-history)
   - [Logging](#logging)
-    - [Customizing Logging](#customizing-logging)
+  - [Customizing Logging](#customizing-logging)
   - [Debugging](#debugging)
-    - [Steps To Debug](#steps-to-debug)
-    - [Enabling Telemetry](#enabling-telemetry)
-    - [Breakpoints](#breakpoints)
+  - [Steps To Debug](#steps-to-debug)
+  - [Enabling Telemetry](#enabling-telemetry)
+  - [Breakpoints](#breakpoints)
   - [Typesafe States](#typesafe-states)
   - [Typesafe Arguments](#typesafe-arguments)
-    - [Arguments Subtypes](#arguments-subtypes)
-    - [Arguments Logging](#arguments-logging)
+  - [Arguments Subtypes](#arguments-subtypes)
+  - [Arguments Logging](#arguments-logging)
   - [Tracing and Metrics](#tracing-and-metrics)
   - [Optimizing Data Input](#optimizing-data-input)
   - [Disposal and GC](#disposal-and-gc)
@@ -82,18 +82,18 @@ and lists can be combined using [`am.SAdd`](https://pkg.go.dev/github.com/pancst
 
 ```go
 am.Schema{
-    "StateName": {
+  "StateName": {
 
-        // properties
-        Auto:    true,
-        Multi:   true,
+    // properties
+    Auto:  true,
+    Multi:   true,
 
-        // relations
-        Require: am.S{"AnotherState1"},
-        Add:     am.S{"AnotherState2"},
-        Remove:  am.S{"AnotherState3", "AnotherState4"},
-        After:   am.S{"AnotherState2"},
-    }
+    // relations
+    Require: am.S{"AnotherState1"},
+    Add:   am.S{"AnotherState2"},
+    Remove:  am.S{"AnotherState3", "AnotherState4"},
+    After:   am.S{"AnotherState2"},
+  }
 }
 ```
 
@@ -115,10 +115,10 @@ states representing a single abstraction in time are called a Flow.
 
 ```go
 DownloadingFile: {
-    Remove: S{ss.DownloadingFile},
+  Remove: S{ss.DownloadingFile},
 },
 FileDownloaded: {
-    Remove: S{ss.FileDownloaded},
+  Remove: S{ss.FileDownloaded},
 },
 ```
 
@@ -126,13 +126,13 @@ FileDownloaded: {
 
 ```go
 Connected: {
-    Remove: groupConnected,
+  Remove: groupConnected,
 },
 Connecting: {
-    Remove: groupConnected,
+  Remove: groupConnected,
 },
 Disconnecting: {
-    Remove: groupConnected,
+  Remove: groupConnected,
 },
 ```
 
@@ -140,17 +140,17 @@ Disconnecting: {
 
 ```go
 Connected: {
-    Remove: groupConnected,
+  Remove: groupConnected,
 },
 Connecting: {
-    Remove: groupConnected,
+  Remove: groupConnected,
 },
 Disconnecting: {
-    Remove: groupConnected,
+  Remove: groupConnected,
 },
 Disconnected: {
-    Auto: true,
-    Remove: groupConnected,
+  Auto: true,
+  Remove: groupConnected,
 },
 ```
 
@@ -173,8 +173,8 @@ import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 ctx := context.Background()
 schema := am.Schema{"Foo":{}, "Bar":{}}
 mach := am.New(ctx, schema, &am.Opts{
-    Id: "foo1",
-    LogLevel: am.LogChanges,
+  Id: "foo1",
+  LogLevel: am.LogChanges,
 })
 ```
 
@@ -193,7 +193,8 @@ different instances of the same state. It's most commonly used in the form of `c
 [`Machine.NewStateCtx(state string)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.NewStateCtx),
 but it also provides methods on its own data types [`am.Time`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Time)
 and [`am.TimeIndex`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#TimeIndex).
-An instance of state context gets canceled once the state becomes inactive.
+An instance of state context gets canceled once the state's tick changes, which means it works for both active and
+inactive states.
 
 // TODO MachineTick, Time slice methods +TimeIndex
 
@@ -229,15 +230,15 @@ mach.Tick("Foo") // ->3
 
 ```go
 func (h *Handlers) DownloadingFileState(e *am.Event) {
-    // open until the state remains active
-    ctx := e.Machine.NewStateCtx("DownloadingFile")
-    // fork to unblock
-    go func() {
-        // check if still valid
-        if ctx.Err() != nil {
-            return // expired
-        }
-    }()
+  // open until the state remains active
+  ctx := e.Machine.NewStateCtx("DownloadingFile")
+  // fork to unblock
+  go func() {
+    // check if still valid
+    if ctx.Err() != nil {
+      return // expired
+    }
+  }()
 }
 ```
 
@@ -329,30 +330,30 @@ mach.String() // ->(Foo:1)
 // From examples/temporal-fileprocessing/fileprocessing.go
 mach.Inspect()
 // 0 DownloadingFile
-//     |Tick     2
-//     |Remove   FileDownloaded
+//   |Tick   2
+//   |Remove   FileDownloaded
 // 0 Exception
-//     |Tick     0
-//     |Multi    true
+//   |Tick   0
+//   |Multi  true
 // 1 FileDownloaded
-//     |Tick     1
-//     |Remove   DownloadingFile
+//   |Tick   1
+//   |Remove   DownloadingFile
 // 1 FileProcessed
-//     |Tick     1
-//     |Remove   ProcessingFile
+//   |Tick   1
+//   |Remove   ProcessingFile
 // 1 FileUploaded
-//     |Tick     1
-//     |Remove   UploadingFile
+//   |Tick   1
+//   |Remove   UploadingFile
 // 0 ProcessingFile
-//     |Tick     2
-//     |Auto     true
-//     |Require  FileDownloaded
-//     |Remove   FileProcessed
+//   |Tick   2
+//   |Auto   true
+//   |Require  FileDownloaded
+//   |Remove   FileProcessed
 // 0 UploadingFile
-//     |Tick     2
-//     |Auto     true
-//     |Require  FileProcessed
-//     |Remove   FileUploaded
+//   |Tick   2
+//   |Auto   true
+//   |Require  FileProcessed
+//   |Remove   FileUploaded
 ```
 
 ### Auto States
@@ -406,8 +407,8 @@ states_ are used for relations with other states, as relations to an inactive st
 
 ```go
 func (h *Handlers) ClickState(e *am.Event) {
-    // add removal to the queue
-    e.Machine.Remove1("Click")
+  // add removal to the queue
+  e.Machine.Remove1("Click")
 }
 ```
 
@@ -415,17 +416,17 @@ func (h *Handlers) ClickState(e *am.Event) {
 
 ```go
 func (h *Handlers) ClickState(e *am.Event) {
-    mach := e.Machine
-    tick := mach.Tick("Click")
+  mach := e.Machine
+  tick := mach.Tick("Click")
 
-    go func() {
-        // ... blocking calls
+  go func() {
+    // ... blocking calls
 
-        // last one deactivates
-        if tick == mach.Tick("Click") {
-            mach.Remove1("Click", nil)
-        }
-    }()
+    // last one deactivates
+    if tick == mach.Tick("Click") {
+      mach.Remove1("Click", nil)
+    }
+  }()
 }
 ```
 
@@ -634,15 +635,15 @@ d.hScrollToTx(am.EvToCtx(ctx, e))
 // args replaced
 ctx := mach.NewStateCtx("Foo")
 eSub := e.SwapArgs(am.A{
-    "cursorTx1":   row,
-    "trimHistory": true,
+  "cursorTx1":   row,
+  "trimHistory": true,
 })
 d.hScrollToTx(am.EvToCtx(ctx, eSub))
 
-// def
+// ...
 
 func (h *Handler) hScrollToTx(ctx context.Context) error {
-    e := am.CtxToEv(ctx)
+  e := am.CtxToEv(ctx)
 }
 ```
 
@@ -657,22 +658,22 @@ struct can be used for handlers, as long as there's no name conflict.
 
 ```go
 type Handlers struct {
-    // default handler for the build in Exception state
-    *am.ExceptionHandler
+  // default handler for the build in Exception state
+  *am.ExceptionHandler
 }
 
 func (h *Handlers) FooState(e *am.Event) {
-    // final activation handler for Foo
+  // final activation handler for Foo
 }
 
 func (h *Handlers) FooEnter(e *am.Event) bool {
-    // negotiation activation handler for Foo
-    return true // accept this transition by Foo
+  // negotiation activation handler for Foo
+  return true // accept this transition by Foo
 }
 
 func main() {
-    // ...
-    err := mach.HandlersBind(&Handlers{})
+  // ...
+  err := mach.HandlersBind(&Handlers{})
 }
 ```
 
@@ -694,19 +695,19 @@ struct, with `Name`, `Machine()` and `Args`.
 // Event struct represents a single event of a Mutation within a Transition.
 // One event can have 0-n handlers.
 type Event struct {
-    // Ctx is an optional context this event is constrained by.
-    Ctx context.Context
-    // Name of the event / handler
-    Name string
-    // MachineId is the ID of the parent machine.
-    MachineId string
-    // TransitionId is the ID of the parent transition.
-    TransitionId string
-    // Args is a map of named arguments for a Mutation.
-    Args A
-    // IsCheck is true if this event is a check event, fired by one of Can*()
-    // methods. Useful for avoiding flooding the log with errors.
-    IsCheck bool
+  // Ctx is an optional context this event is constrained by.
+  Ctx context.Context
+  // Name of the event / handler
+  Name string
+  // MachineId is the ID of the parent machine.
+  MachineId string
+  // TransitionId is the ID of the parent transition.
+  TransitionId string
+  // Args is a map of named arguments for a Mutation.
+  Args A
+  // IsCheck is true if this event is a check event, fired by one of Can*()
+  // methods. Useful for avoiding flooding the log with errors.
+  IsCheck bool
 }
 
 // ...
@@ -743,10 +744,10 @@ Transition exposes the currently called, target, and previous states using:
 // machine
 
 mach := am.New(ctx, am.Schema{
-    "Foo": {
-        Add: am.S{"Bar"},
-    },
-    "Bar": {}
+  "Foo": {
+    Add: am.S{"Bar"},
+  },
+  "Bar": {}
 }, nil)
 _ = mach.HandlersBind(&Handlers{})
 
@@ -755,20 +756,20 @@ _ = mach.HandlersBind(&Handlers{})
 // handlers
 
 func (h *Handlers) FooEnter(e *am.Event) bool {
-    e.Transition().StatesBefore() // ()
-    e.Transition().TargetStates() // (Foo Bar)
-    e.Transition().CalledStates() // (Foo)
+  e.Transition().StatesBefore() // ()
+  e.Transition().TargetStates() // (Foo Bar)
+  e.Transition().CalledStates() // (Foo)
 
-    e.Machine().Is(am.S{"Foo", "Bar"}) // false
-    return true
+  e.Machine().Is(am.S{"Foo", "Bar"}) // false
+  return true
 }
 
 func (h *Handlers) FooState(e *am.Event) {
-    e.Transition().StatesBefore // ()
-    e.Transition().TargetStates // (Foo Bar)
-    e.Transition().CalledStates() // (Foo)
+  e.Transition().StatesBefore // ()
+  e.Transition().TargetStates // (Foo Bar)
+  e.Transition().CalledStates() // (Foo)
 
-    e.Machine().Is(am.S{"Foo", "Bar"}) // true
+  e.Machine().Is(am.S{"Foo", "Bar"}) // true
 }
 
 // ...
@@ -817,11 +818,11 @@ are good to go. Additionally, the [Self Handlers](#self-handlers) are called for
 ```go
 // negotiation handler
 func (h *Handlers) ProcessingFileEnter(e *am.Event) bool {
-    // read-only ops
-    // decide if moving fwd is ok
-    // no blocking
-    // lock-free critical section
-    return true
+  // read-only ops
+  // decide if moving fwd is ok
+  // no blocking
+  // lock-free critical section
+  return true
 }
 ```
 
@@ -830,17 +831,17 @@ func (h *Handlers) ProcessingFileEnter(e *am.Event) bool {
 ```go
 // machine
 mach := am.New(ctx, am.Schema{
-    "Foo": {
-        Add: am.S{"Bar"},
-    },
-    "Bar": {},
+  "Foo": {
+    Add: am.S{"Bar"},
+  },
+  "Bar": {},
 }, nil)
 
 // ...
 
 // handlers
 func (h *Handlers) FooEnter(e *am.Event) bool {
-    return false
+  return false
 }
 
 // ...
@@ -875,31 +876,31 @@ continue their execution within it, while asserting the [state context](#clock-a
 
 ```go
 func (h *Handlers) ProcessingFileState(e *am.Event) {
-    // read & write ops
-    // no blocking
-    // lock-free critical section
-    mach := e.Machine
-    // tick-based context
-    stateCtx := mach.NewStateCtx("ProcessingFile")
-    // block in the background
-    go func() {
-        // locks needed
-        if stateCtx.Err() != nil {
-            return // expired
-        }
-        // blocking call
-        err := processFile(h.Filename, stateCtx)
-        if err != nil {
-            mach.AddErr(err, nil)
-            return
-        }
-        // re-check the tick ctx after a blocking call
-        if stateCtx.Err() != nil {
-            return // expired
-        }
-        // move to the next state in the flow
-        mach.Add1("FileProcessed", nil)
-    }()
+  // read & write ops
+  // no blocking
+  // lock-free critical section
+  mach := e.Machine
+  // tick-based context
+  stateCtx := mach.NewStateCtx("ProcessingFile")
+  // block in the background
+  go func() {
+    // locks needed
+    if stateCtx.Err() != nil {
+      return // expired
+    }
+    // blocking call
+    err := processFile(h.Filename, stateCtx)
+    if err != nil {
+      mach.AddErr(err, nil)
+      return
+    }
+    // re-check the tick ctx after a blocking call
+    if stateCtx.Err() != nil {
+      return // expired
+    }
+    // move to the next state in the flow
+    mach.Add1("FileProcessed", nil)
+  }()
 }
 ```
 
@@ -913,11 +914,11 @@ Side effects:
 
 ```go
 func (d *Debugger) AnyEnter(e *am.Event) bool {
-    tx := e.Transition()
+  tx := e.Transition()
 
-    // ...
+  // ...
 
-    return true
+  return true
 }
 ```
 
@@ -925,9 +926,9 @@ func (d *Debugger) AnyEnter(e *am.Event) bool {
 
 ```go
 func (d *Debugger) AnyState(e *am.Event) {
-    tx := e.Transition()
+  tx := e.Transition()
 
-    // ...
+  // ...
 }
 ```
 
@@ -968,10 +969,10 @@ Their activation is optional, meaning if any of those won't get accepted, the tr
 ```go
 // machine
 mach := am.New(ctx, am.Schema{
-    "Foo": {
-        Add: am.S{"Bar"},
-    },
-    "Bar": {},
+  "Foo": {
+    Add: am.S{"Bar"},
+  },
+  "Bar": {},
 }, nil)
 
 // usage
@@ -999,10 +1000,10 @@ Example of an [accepted transition](#transition-lifecycle) involving a `Remove` 
 ```go
 // machine
 mach := am.New(ctx, am.Schema{
-    "Foo": {
-        Remove: am.S{"Bar"},
-    },
-    "Bar": {},
+  "Foo": {
+    Remove: am.S{"Bar"},
+  },
+  "Bar": {},
 }, nil)
 
 // usage
@@ -1025,10 +1026,10 @@ Example of a [canceled transition](#transition-lifecycle) involving a `Remove` r
 ```go
 // machine
 mach := am.New(ctx, am.Schema{
-    "Foo": {},
-    "Bar": {
-        Remove: am.S{"Foo"},
-    },
+  "Foo": {},
+  "Bar": {
+    Remove: am.S{"Foo"},
+  },
 }, nil)
 
 // usage
@@ -1049,10 +1050,10 @@ Example of a [canceled transition](#transition-lifecycle) involving a `Remove` r
 ```go
 // machine
 mach := am.New(ctx, am.Schema{
-    "Foo": {},
-    "Bar": {
-        Remove: am.S{"Foo"},
-    },
+  "Foo": {},
+  "Bar": {
+    Remove: am.S{"Foo"},
+  },
 }, nil)
 
 // usage
@@ -1078,10 +1079,10 @@ Example of an [accepted transition](#transition-lifecycle) involving a `Require`
 ```go
 // machine
 mach := am.New(ctx, am.Schema{
-    "Foo": {},
-    "Bar": {
-        Require: am.S{"Foo"},
-    }
+  "Foo": {},
+  "Bar": {
+    Require: am.S{"Foo"},
+  }
 }, nil)
 
 // usage
@@ -1103,10 +1104,10 @@ Example of a [canceled transition](#transition-lifecycle) involving a `Require` 
 ```go
 // machine
 mach := am.New(ctx, am.Schema{
-    "Foo": {},
-    "Bar": {
-        Require: am.S{"Foo"},
-    },
+  "Foo": {},
+  "Bar": {
+    Require: am.S{"Foo"},
+  },
 }, nil)
 
 // usage
@@ -1129,22 +1130,22 @@ the defined state will be executed **after** handlers from listed states.
 ```go
 // machine
 mach := am.New(ctx, am.Schema{
-    "Foo": {
-        After: am.S{"Bar"},
-    },
-    "Bar": {
-        Require: am.S{"Foo"},
-    },
+  "Foo": {
+    After: am.S{"Bar"},
+  },
+  "Bar": {
+    Require: am.S{"Foo"},
+  },
 }, nil)
 
 // ...
 
 // handlers
 func (h *Handlers) FooState(e *am.Event) {
-    println("Foo")
+  println("Foo")
 }
 func (h *Handlers) BarState(e *am.Event) {
-    println("Bar")
+  println("Bar")
 }
 
 // ...
@@ -1217,19 +1218,19 @@ these channels will be reused and should scale way better.
 ```go
 // machine
 mach := am.New(ctx, am.Schema{
-    "Foo": {
-        Add: am.S{"Bar"},
-    },
-    "Bar": {},
+  "Foo": {
+    Add: am.S{"Bar"},
+  },
+  "Bar": {},
 })
 
 // ...
 
 // usage
 select {
-    case <-mach.When(am.S{"Foo", "Bar"}, nil):
-        println("Foo Bar")
-    }
+  case <-mach.When(am.S{"Foo", "Bar"}, nil):
+    println("Foo Bar")
+  }
 }
 
 // ...
@@ -1284,10 +1285,10 @@ Error handling methods:
 ```go
 var States = am.Schema{
 
-    ErrWorker:  {Require: am.S{am.StateException}},
-    ErrPool:    {Require: am.S{am.StateException}},
+  ErrWorker:  {Require: am.S{am.StateException}},
+  ErrPool:  {Require: am.S{am.StateException}},
 
-    // ...
+  // ...
 }
 ```
 
@@ -1296,12 +1297,12 @@ var States = am.Schema{
 ```go
 select {
 case <-time.After(10 * time.Second):
-    // timeout
+  // timeout
 case <-mach.WhenErr(nil):
-    // error or machine disposed
-    fmt.Printf("err: %s\n", mach.Err())
+  // error or machine disposed
+  fmt.Printf("err: %s\n", mach.Err())
 case <-mach.When1("Bar", nil):
-    // state Bar active
+  // state Bar active
 }
 ```
 
@@ -1318,8 +1319,8 @@ err: fake err
 
 ```go
 func AddErrRpc(mach *am.Machine, err error, args am.A) am.Result {
-    err = fmt.Errorf("%w: %w", ErrRpc, err)
-    return mach.AddErrState(states.BasicStates.ErrNetwork, err, args)
+  err = fmt.Errorf("%w: %w", ErrRpc, err)
+  return mach.AddErrState(states.BasicStates.ErrNetwork, err, args)
 }
 ```
 
@@ -1357,31 +1358,31 @@ In case of a panic inside a transition handler, the recovery flow depends on the
 ```go
 // TestPartialFinalPanic
 type TestPartialFinalPanicHandlers struct {
-    *ExceptionHandler
+  *ExceptionHandler
 }
 
 func (h *TestPartialFinalPanicHandlers) BState(_ *Event) {
-    panic("BState panic")
+  panic("BState panic")
 }
 
 func TestPartialFinalPanic(t *testing.T) {
-    // init
-    mach := NewNoRels(t, nil)
-    // () [A:0 B:0 C:0 D:0]
+  // init
+  mach := NewNoRels(t, nil)
+  // () [A:0 B:0 C:0 D:0]
 
-    // logger
-    log := ""
-    captureLog(t, m, &log)
+  // logger
+  log := ""
+  captureLog(t, m, &log)
 
-    // bind handlers
-    err := m.HandlersBind(&TestPartialFinalPanicHandlers{})
-    assert.NoError(t, err)
+  // bind handlers
+  err := m.HandlersBind(&TestPartialFinalPanicHandlers{})
+  assert.NoError(t, err)
 
-    // test
-    m.Add(S{"A", "B", "C"}, nil)
+  // test
+  m.Add(S{"A", "B", "C"}, nil)
 
-    // assert
-    assertStates(t, m, S{"A", "Exception"})
+  // assert
+  assertStates(t, m, S{"A", "Exception"})
 }
 ```
 
@@ -1396,8 +1397,8 @@ to catch panics. They support `Exception` as well as arbitrary error states.
 ```go
 var mach *am.Machine
 func getHandler(w http.ResponseWriter, r *http.Request) {
-    defer mach.PanicToErr(nil)
-    // ...
+  defer mach.PanicToErr(nil)
+  // ...
 }
 ```
 
@@ -1424,17 +1425,17 @@ Both sources can help to make informed decisions based on scheduled and past act
 ```go
 // machine
 mach := am.New(ctx, am.Schema{
-    "Foo": {},
-    "Bar": {}
+  "Foo": {},
+  "Bar": {}
 }, nil)
 
 // ...
 
 // handlers
 func (h *Handlers) FooState(e *am.Event) {
-    e.Machine.Add1("Bar", nil) // -> Queued
-    e.Machine.Is1("Bar", nil) // -> false
-    e.Machine.WillBe1("Bar", nil) // -> true
+  e.Machine.Add1("Bar", nil) // -> Queued
+  e.Machine.Is1("Bar", nil) // -> false
+  e.Machine.WillBe1("Bar", nil) // -> true
 }
 
 // ...
@@ -1481,11 +1482,11 @@ Example of all log levels for the same code snippet:
 ```go
 // machine
 mach := am.New(ctx, am.Schema{
-    "Foo": {},
-    "Bar": {
-        Auto: true,
-    },
-    // disable ID logging
+  "Foo": {},
+  "Bar": {
+    Auto: true,
+  },
+  // disable ID logging
 }, &am.Opts{DontLogId: true})
 m.SetLogLevel(am.LogOps)
 
@@ -1493,10 +1494,10 @@ m.SetLogLevel(am.LogOps)
 
 // handlers
 func (h *Handlers) FooState(e *am.Event) {
-    // empty
+  // empty
 }
 func (h *Handlers) BarEnter(e *am.Event) bool {
-    return false
+  return false
 }
 
 // ...
@@ -1587,11 +1588,11 @@ mach.SetLogArgs(am.NewArgsMapper([]string{"id", "name"}, 20))
 mach.SetLogLevel(am.LogEverything)
 // level based dispatcher
 mach.SetLogger(func(level LogLevel, msg string, args ...any) {
-    if level > am.LogChanges {
-        customLogDetails(msg, args...)
-        return
-    }
-    customLog(msg, args...)
+  if level > am.LogChanges {
+    customLogDetails(msg, args...)
+    return
+  }
+  customLog(msg, args...)
 
 })
 ```
@@ -1669,18 +1670,18 @@ should be edited manually.
 package states
 
 import (
-    am "github.com/pancsta/asyncmachine-go/pkg/machine"
-    ss "github.com/pancsta/asyncmachine-go/pkg/states"
+  am "github.com/pancsta/asyncmachine-go/pkg/machine"
+  ss "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
 // MyMachStatesDef contains all the states of the MyMach state machine.
 type MyMachStatesDef struct {
-    *am.StatesBase
+  *am.StatesBase
 
-    // State1 is the first state
-    State1 string
-    // State2 is the second state
-    State2 string
+  // State1 is the first state
+  State1 string
+  // State2 is the second state
+  State2 string
 
 }
 
@@ -1691,20 +1692,20 @@ type MyMachGroupsDef struct {
 // MyMachSchema represents all relations and properties of MyMachStates.
 var MyMachSchema = am.Schema{
 
-    ssM.State1: {},
-    ssM.State2: {},
+  ssM.State1: {},
+  ssM.State2: {},
 }
 
 // EXPORTS AND GROUPS
 
 var (
-    ssM = am.NewStates(MyMachStatesDef{})
-    sgM = am.NewStateGroups(MyMachGroupsDef{})
+  ssM = am.NewStates(MyMachStatesDef{})
+  sgM = am.NewStateGroups(MyMachGroupsDef{})
 
-    // MyMachStates contains all the states for the MyMach machine.
-    MyMachStates = ssM
-    // MyMachGroups contains all the state groups for the MyMach machine.
-    MyMachGroups = sgM
+  // MyMachStates contains all the states for the MyMach machine.
+  MyMachStates = ssM
+  // MyMachGroups contains all the state groups for the MyMach machine.
+  MyMachGroups = sgM
 )
 ```
 
@@ -1716,9 +1717,9 @@ as map keys have a random order.
 
 ```go
 import (
-    am "github.com/pancsta/asyncmachine-go/pkg/machine"
+  am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
-    "github.com/owner/repo/states"
+  "github.com/owner/repo/states"
 )
 
 var ss := states.MyMachStates
@@ -1743,25 +1744,25 @@ package namespace. Refer to [/examples/mach_template](/examples/mach_template) f
 ```go
 // A is a struct for node arguments. It's a typesafe alternative to am.A.
 type A struct {
-    Id string
-    PublicAddr string
-    LocalAddr string
+  Id string
+  PublicAddr string
+  LocalAddr string
 }
 
 // ParseArgs extracts A from [am.Event.Args]["am_node"].
 func ParseArgs(args am.A) *A {
-    if r, _ := args["am_node"].(*ARpc); r != nil {
-        return amhelp.ArgsToArgs(r, &A{})
-    } else if r, ok := args["am_node"].(ARpc); ok {
-        return amhelp.ArgsToArgs(&r, &A{})
-    }
-    a, _ := args["am_node"].(*A)
-    return a
+  if r, _ := args["am_node"].(*ARpc); r != nil {
+    return amhelp.ArgsToArgs(r, &A{})
+  } else if r, ok := args["am_node"].(ARpc); ok {
+    return amhelp.ArgsToArgs(&r, &A{})
+  }
+  a, _ := args["am_node"].(*A)
+  return a
 }
 
 // Pass prepares [am.A] from A to pass to further mutations.
 func Pass(args *A) am.A {
-    return am.A{"am_node": args}
+  return am.A{"am_node": args}
 }
 ```
 
@@ -1769,22 +1770,22 @@ func Pass(args *A) am.A {
 
 ```go
 func (s *Supervisor) ForkingWorkerState(e *am.Event) {
-    args := ParseArgs(e.Args)
-    b := args.Bootstrap
-    argsOut := &A{Bootstrap: b}
+  args := ParseArgs(e.Args)
+  b := args.Bootstrap
+  argsOut := &A{Bootstrap: b}
 
-    // ...
+  // ...
 
-    // err
-    if err != nil {
-        AddErrWorker(s.Mach, err, Pass(argsOut))
-        return
-    }
+  // err
+  if err != nil {
+    AddErrWorker(s.Mach, err, Pass(argsOut))
+    return
+  }
 
-    // ...
+  // ...
 
-    // next
-    s.Mach.Add1(ssS.AwaitingWorker, Pass(argsOut))
+  // next
+  s.Mach.Add1(ssS.AwaitingWorker, Pass(argsOut))
 }
 ```
 
@@ -1797,21 +1798,21 @@ one. It will copy overlapping fields between both arguments structs.
 ```go
 // APublic is a subset of A, that exposes only public addresses.
 type APublic struct {
-    PublicAddr string
+  PublicAddr string
 }
 
 // PassRpc prepares [am.A] from A, according to APublic.
 func PassPublic(args *A) am.A {
-    return am.A{"am_node": amhelp.ArgsToArgs(args, &APublic{})}
+  return am.A{"am_node": amhelp.ArgsToArgs(args, &APublic{})}
 }
 
 // ...
 
 // this will only pass "PublicAddr", with other fields removed
 mach.Add1("WorkerAddr", PassPublic(&A{
-    LocalAddr:  w.LocalAddr,
-    PublicAddr: w.PublicAddr,
-    Id:         w.Mach.Id,
+  LocalAddr:  w.LocalAddr,
+  PublicAddr: w.PublicAddr,
+  Id:     w.Mach.Id,
 }))
 ```
 
@@ -1823,8 +1824,8 @@ from [`pkg/helpers`](/pkg/helpers/README.md).
 
 ```go
 type A struct {
-    // tag for logging
-    Id string `log:"id"`
+  // tag for logging
+  Id string `log:"id"`
 }
 ```
 
@@ -1832,13 +1833,13 @@ type A struct {
 
 ```go
 func LogArgs(args am.A) map[string]string {
-    a1 := amnode.ParseArgs(args)
-    a2 := ParseArgs(args)
-    if a1 == nil && a2 == nil {
-        return nil
-    }
+  a1 := amnode.ParseArgs(args)
+  a2 := ParseArgs(args)
+  if a1 == nil && a2 == nil {
+    return nil
+  }
 
-    return am.AMerge(amhelp.ArgsToLogMap(a1), amhelp.ArgsToLogMap(a2))
+  return am.AMerge(amhelp.ArgsToLogMap(a1), amhelp.ArgsToLogMap(a2))
 }
 ```
 
@@ -1867,26 +1868,26 @@ var queueMx sync.Mutex
 var scheduled bool
 
 func Msg(msgTx *Msg) {
-    queueMx.Lock()
-    defer queueMx.Unlock()
+  queueMx.Lock()
+  defer queueMx.Unlock()
 
-    if !scheduled {
-        scheduled = true
-        go func() {
-            // wait some time
-            time.Sleep(debounce)
+  if !scheduled {
+    scheduled = true
+    go func() {
+      // wait some time
+      time.Sleep(debounce)
 
-            queueMx.Lock()
-            defer queueMx.Unlock()
+      queueMx.Lock()
+      defer queueMx.Unlock()
 
-            // add in bulk
-            mach.Add1("Msgs", am.A{"msgs": queue})
-            queue = nil
-            scheduled = false
-        }()
-    }
-    // enqueue
-    queue = append(queue, msgTx)
+      // add in bulk
+      mach.Add1("Msgs", am.A{"msgs": queue})
+      queue = nil
+      scheduled = false
+    }()
+  }
+  // enqueue
+  queue = append(queue, msgTx)
 }
 ```
 

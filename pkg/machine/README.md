@@ -363,7 +363,7 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 <div align="center">
     <a href="/tools/cmd/am-dbg/README.md">
-        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png"
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg/am-dbg.png"
             alt="am-dbg"></a>
 </div>
 

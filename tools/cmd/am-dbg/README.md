@@ -8,41 +8,29 @@
 ## am-dbg TUI Debugger
 
 <div align="center">
-    <a href="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-reader.png/arpc.png">
-        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-reader.png"
-            alt="arpc REPL" />
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/am-dbg/am-dbg.png">
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg/am-dbg.png"
+            alt="am-dbg" />
     </a>
 </div>
 
 `am-dbg` is a lightweight, multi-client debugger which can handle hundreds of simultaneous streams from asyncmachines.
 It's built around a timeline of transitions and allows for precise searches and drill-downs of state mutations.
 
-<table style="border-spacing: 10px; border-collapse: separate;">
-  <tr>
-    <td>
-        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-log.png" />
-    </td>
-    <td>
-        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-steps.png" />
-    </td>
-    <td>
-        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-rain.png" />
-    </td>
-  </tr>
-</table>
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/am-dbg/diagrams.mp4">
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg/diagrams.jpg"
+            alt="am-dbg diagrams" />
+    </a>
+</div>
 
 ## Installation
 
-Available options:
-
 - [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
-- Install
 
 ```bash
 go install github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
 ```
-
-- Run directly
 
 ```bash
 go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
@@ -91,7 +79,7 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 - **partial layout**: some elements of the UI can be hidden, so many instances can create dashboards
 - **headless mode**: the UI can be requested via SSH, allowing the debugger to start without PTY.
 - **files**: various files are created in `--dir`.
-- **diagrams**: live machine diagram viewer and static transaction diagrams.
+- **diagrams**: live diagrams for: graph, machine, state, and steps.
 
 ```bash
 Usage: am-dbg [--listen-addr LISTEN-ADDR] [--dir DIR] [--clean-on-connect] [--import-data IMPORT-DATA] [--fwd-data FWD-DATA] [--select-connected] [--enable-clipboard] [--enable-mouse] [--filter-auto] [--filter-auto-canceled] [--filter-canceled] [--filter-checks] [--filter-disconn] [--filter-empty] [--filter-group] [--filter-health] [--filter-log-level FILTER-LOG-LEVEL] [--filter-queued] [--output-clients] [--output-diagrams OUTPUT-DIAGRAMS] [--output-diag-group OUTPUT-DIAG-GROUP] [--output-diag-tx OUTPUT-DIAG-TX] [--output-graph] [--output-log] [--output-tx] [--ui-mcp] [--ui-ssh] [--ui-web] [--version] [--view VIEW] [--view-log-wrap] [--view-narrow] [--view-rain] [--view-reader] [--view-tail] [--view-theme VIEW-THEME] [--view-timelines VIEW-TIMELINES] [--log-ops-ttl LOG-OPS-TTL] [--max-mem MAX-MEM] [--dbg-am-dbg-addr DBG-AM-DBG-ADDR] [--dbg-go-race] [--dbg-id DBG-ID] [--dbg-log-level DBG-LOG-LEVEL] [--dbg-otel] [--dbg-prof-srv DBG-PROF-SRV] [--dbg-repl] [MACHURL]
