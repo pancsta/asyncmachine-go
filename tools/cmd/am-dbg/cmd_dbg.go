@@ -101,7 +101,7 @@ func printStats(dbg *debugger.Debugger) {
 		txs += len(c.MsgTxs)
 	}
 
-	_, _ = dbg.P.Printf("Clients: %d\n", len(dbg.Clients))
-	_, _ = dbg.P.Printf("Transitions: %d\n", txs)
-	_, _ = dbg.P.Printf("Memory: %dmb\n", debugger.AllocMem()/1024/1024)
+	_, _ = debugger.P.Printf("Clients: %d\n", len(dbg.Clients))
+	_, _ = debugger.P.Printf("Transitions: %d\n", txs)
+	_, _ = debugger.P.Printf("Memory: %dmb\n", debugger.AllocMem()/1024/1024)
 }

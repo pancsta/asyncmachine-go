@@ -426,10 +426,18 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		// TODO strings.Replace(href, "?raw=true", "", 1)
 		src := s.AttrOr("src", "")
 		s.SetAttr("src", strings.Replace(src, ghAssets, assetsUrl, 1))
+
+		// set ratio
 		fname := rmGetParams.ReplaceAllString(path.Base(src), "")
 		if cls, ok := imgAspect[fname]; ok {
 			s.AddClass(cls)
 		}
+	})
+
+	// redir links to assets
+	doc.Find(fmt.Sprintf(`#page-content a[href^="%s"]`, ghAssets)).Each(func(i int, s *goquery.Selection) {
+		src := s.AttrOr("href", "")
+		s.SetAttr("href", strings.Replace(src, ghAssets, assetsUrl, 1))
 	})
 
 	// parse github alerts
