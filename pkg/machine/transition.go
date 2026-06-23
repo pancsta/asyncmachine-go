@@ -764,7 +764,8 @@ func (t *Transition) emitEvents() Result {
 			}
 
 			// cancel contexts as soon as known
-			for _, cancel := range m.subs.ProcessStateCtx(t.cacheDeactivated) {
+			toCancel := m.subs.ProcessStateCtx(t.cacheActivated, t.cacheDeactivated)
+			for _, cancel := range toCancel {
 				cancel()
 			}
 
