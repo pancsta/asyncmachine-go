@@ -70,7 +70,7 @@ type Params struct {
 
 	OutputCallLog   bool                 `arg:"--output-call-log" help:"Write called handlers as Go code into call-log/{mach-id}/{mtime}.go inside --dir (EXPERIMENTAL)"`
 	OutputClients   bool                 `arg:"--output-clients" help:"Write a detailed client list into clients.txt inside --dir"`
-	OutputDiagrams  ParamsOutputDiagrams `arg:"--output-diagrams" help:"Level of details for machine graph diagrams (svg, d2, mermaid) in --dir (0 off, 1-3 on) (EXPERIMENTAL)"`
+	OutputDiagrams  ParamsOutputDiagrams `arg:"--output-diagrams" help:"Enable graph diagrams and set the level of detail for machine diagrams in --dir (0 off, 1-3 on) (EXPERIMENTAL)"`
 	OutputDiagGroup ParamsOutDiagGroup   `arg:"--output-diag-group" help:"Only show states from the selected group (valid: hide, skip)" default:"hide"`
 	OutputDiagTx    ParamsOutDiagTx      `arg:"--output-diag-tx" help:"Dim states and rels unrelated to a transition (valid: called, changed, touched, relations)" default:"relations"`
 	OutputGraph     bool                 `arg:"--output-graph" help:"Write the current network graph as graph.(md|mgml) inside --dir (EXPERIMENTAL)"`
@@ -514,6 +514,7 @@ type MsgSchemaParsed struct {
 	// TODO split to group ID, labels
 	Groups      map[string]am.S
 	GroupsOrder []string
+	Hash      string
 }
 
 type LogReaderEntry struct {
@@ -585,9 +586,9 @@ var (
 	ToolDiagrams         = ToolName{"diagrams"}
 	ToolDiagramsTx       = ToolName{"diag-tx"}
 	ToolDiagramsGroup    = ToolName{"diag-group"}
-	ToolDiagramsSteps    = ToolName{"diag-seq"}
-	ToolCallLog          = ToolName{"call-log"}
+	ToolOutputTx         = ToolName{"out-tx"}
 	ToolOutputLog        = ToolName{"out-log"}
+	ToolCallLog          = ToolName{"call-log"}
 	ToolTimelines        = ToolName{"timelines"}
 	ToolReader           = ToolName{"reader"}
 	ToolRain             = ToolName{"rain"}
@@ -626,7 +627,6 @@ var (
 		ToolDiagrams,
 		ToolDiagramsTx,
 		ToolDiagramsGroup,
-		ToolDiagramsSteps,
 		ToolCallLog,
 		ToolTimelines,
 		ToolReader,
@@ -738,14 +738,8 @@ type A struct {
 	Column    int `json:",string"`
 	CurrTxRow int `json:",string"`
 
-	// non-rpc / complex types
-
 	// FocusPrimitive is the UI element receiving focus.
 	FocusPrimitive cview.Primitive
-	// DiagramCache is parsed HTML for diagram generation.
-	DiagramCache *goquery.Document
-	// DiagramName is the name of the diagram being generated.
-	DiagramName string
 	// HttpRequest is for web server route handlers.
 	HttpRequest *http.Request
 	// HttpResponseWriter is for web server route handlers.
@@ -758,6 +752,12 @@ type A struct {
 	MsgStruct *dbg.DbgMsgStruct
 	// MsgsTx is a batch of transaction messages.
 	MsgsTx []*dbg.DbgMsgTx
+
+	// DiagDom is parsed HTML for diagram generation.
+	DiagDom *goquery.Document
+	// DiagName is the name of the diagram being generated.
+	DiagName string
+	DiagType DiagramType `log:"diag_type"`
 }
 
 // ARpc is a subset of A, that can be passed over RPC.
@@ -909,7 +909,7 @@ var StateCalls = []am.CallSignature{
 		Optional: []string{"LogRebuildEnd"},
 	},
 	{
-		States:   am.S{ss.WebReq},
+		States:   am.S{ss.WebReqDiag},
 		Needed:   []string{"HttpRequest", "HttpResponseWriter", "DoneChan"},
 		Optional: []string{"Uri", "Addr"},
 	},
@@ -944,4 +944,26 @@ type StateTraceItem struct {
 	Label      string
 	Source     *MachAddress
 	StateNames am.S
+}
+
+// DiagramType is a type of a diagram.
+type DiagramType enum.Member[string]
+
+var (
+	DiagramTypeState = DiagramType{"state"}
+	DiagramTypeMach  = DiagramType{"mach"}
+	DiagramTypeSteps = DiagramType{"steps"}
+	DiagramTypeGraph = DiagramType{"graph"}
+)
+
+func (d DiagramType) String() string {
+	return d.Value
+}
+
+type WsDiagMsg struct {
+	// ID of this event (eg refresh)
+	Event string
+	// ID of this diagram (eg mach ID, state name...)
+	Id    string
+	Group string
 }

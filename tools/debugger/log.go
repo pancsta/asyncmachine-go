@@ -236,7 +236,7 @@ func (d *Debugger) LogUpdatedState(e *am.Event) {
 	if c.MsgStruct != nil {
 		title := " Log:" + d.params.Filters.LogLevel.String() + " "
 		if tx != nil && c.CursorTx1 != 0 {
-			title += d.P.Sprintf("[%s]([-]t%v[%s])[-] ",
+			title += P.Sprintf("[%s]([-]t%v[%s])[-] ",
 				theme.Grey, c.MsgTxsParsed[c.CursorTx1-1].TimeSum, theme.Grey)
 		}
 		d.log.SetTitle(title)
@@ -549,7 +549,7 @@ func (d *Debugger) hGetLogEntryTxt(index int) (entry string, empty bool) {
 				msgTime.Sub(*prevMsg.Time) > time.Second {
 
 				// grouping labels (per second)
-				ret += d.P.Sprintf("[%s]%s [::b]t%v[-]\n", theme.Grey,
+				ret += P.Sprintf("[%s]%s [::b]t%v[-]\n", theme.Grey,
 					msgTime.Format(timeFormat), txParsed.TimeSum)
 			}
 		}
@@ -1572,7 +1572,7 @@ func (u *logReaderUpdate) buildTimedStateParent(
 		parent = cview.NewTreeNode(label)
 	}
 	states := amhelp.IndexesToStates(u.statesIndex, entry.States)
-	node := cview.NewTreeNode(u.d.P.Sprintf(
+	node := cview.NewTreeNode(P.Sprintf(
 		"[::b]%s[::-] ["+theme.Grey+"]t%d[-]",
 		utils.J(states), entry.CreatedAt,
 	))
@@ -1607,7 +1607,7 @@ func (u *logReaderUpdate) buildWhenTime(
 			highlight = true
 		}
 	}
-	node := cview.NewTreeNode(u.d.P.Sprintf("%s["+theme.Grey+"]t%d[-]", txt,
+	node := cview.NewTreeNode(P.Sprintf("%s["+theme.Grey+"]t%d[-]", txt,
 		entry.CreatedAt))
 	parent.AddChild(node)
 	nodeAddr := newLinkNode(&types.MachAddress{
@@ -1633,12 +1633,12 @@ func (u *logReaderUpdate) buildWhenArgs(
 		parent = cview.NewTreeNode("WhenArgs")
 	}
 	states := amhelp.IndexesToStates(u.statesIndex, entry.States)
-	node := cview.NewTreeNode(u.d.P.Sprintf(
+	node := cview.NewTreeNode(P.Sprintf(
 		"[::b]%s[::-] ["+theme.Grey+"]t%d[-]",
 		utils.J(states), entry.CreatedAt,
 	))
 	parent.AddChild(node)
-	nodeArgs := cview.NewTreeNode(u.d.P.Sprintf("%s", entry.Args))
+	nodeArgs := cview.NewTreeNode(P.Sprintf("%s", entry.Args))
 	nodeArgs.SetIndent(1)
 	nodeArgs.SetReference(&logReaderTreeRef{entry: ptr})
 	node.AddChild(nodeArgs)
@@ -1665,7 +1665,7 @@ func (u *logReaderUpdate) buildWhenQueue(
 	if parent == nil {
 		parent = cview.NewTreeNode("WhenQueue")
 	}
-	node := cview.NewTreeNode(u.d.P.Sprintf("%v", entry.QueueTick))
+	node := cview.NewTreeNode(P.Sprintf("%v", entry.QueueTick))
 	nodeAddr := newLinkNode(&types.MachAddress{
 		MachId:    u.c.Id,
 		QueueTick: uint64(entry.QueueTick),
@@ -1720,7 +1720,7 @@ func (u *logReaderUpdate) buildPipeParent(
 		node.SetBold(true)
 		parent.AddChild(node)
 	}
-	node2 := cview.NewTreeNode(u.d.P.Sprintf(
+	node2 := cview.NewTreeNode(P.Sprintf(
 		"%-6s | ["+theme.Grey+"]t%d[-] %s",
 		capitalizeFirst(entry.Pipe.String()), entry.CreatedAt, entry.Mach,
 	))
@@ -1798,7 +1798,7 @@ func (u *logReaderUpdate) buildSource() error {
 		node := cview.NewTreeNode("self")
 		node.SetIndent(1)
 		if source[0] != u.c.Id {
-			node.SetText(u.d.P.Sprintf("%s [%s]t%v[-]",
+			node.SetText(P.Sprintf("%s [%s]t%v[-]",
 				source[0], theme.Grey, machTime))
 			node.SetReference(&logReaderTreeRef{
 				machId:   source[0],
@@ -1810,7 +1810,7 @@ func (u *logReaderUpdate) buildSource() error {
 
 		if sC, sTx := u.d.hGetClientTx(source[0], source[1]); sTx != nil {
 			stateNames := sTx.CalledStateNames(sC.MsgStruct.StatesIndex)
-			label := u.d.P.Sprintf("%s [::b]%s[%s::-] t%v",
+			label := P.Sprintf("%s [::b]%s[%s::-] t%v",
 				capitalizeFirst(sTx.Type.String()), utils.J(stateNames),
 				theme.Grey, sTx.TimeSum())
 			node2 := cview.NewTreeNode(label)
@@ -1865,7 +1865,7 @@ func (u *logReaderUpdate) buildSource() error {
 func (u *logReaderUpdate) buildQueue() error {
 	u.parentQueue = cview.NewTreeNode("Queue")
 	tickNode := cview.NewTreeNode(
-		u.d.P.Sprintf("current     [::b]q%v", u.tx.QueueTick),
+		P.Sprintf("current     [::b]q%v", u.tx.QueueTick),
 	)
 	tickNode.SetIndent(1)
 	u.parentQueue.AddChild(tickNode)
@@ -1876,7 +1876,7 @@ func (u *logReaderUpdate) buildQueue() error {
 		u.buildQueueExecuted()
 	}
 
-	lenNode := cview.NewTreeNode(u.d.P.Sprintf("length [::b]%v[::-]", u.tx.Queue))
+	lenNode := cview.NewTreeNode(P.Sprintf("length [::b]%v[::-]", u.tx.Queue))
 	if u.tx.IsQueued {
 		lenNode.SetText(lenNode.GetText() + " (inferred)")
 	}
@@ -1895,7 +1895,7 @@ func (u *logReaderUpdate) buildQueuedStatus() {
 	label := "???"
 	var ref *logReaderTreeRef
 	if executed != nil {
-		label = u.d.P.Sprintf("t%v", executed.TimeSum())
+		label = P.Sprintf("t%v", executed.TimeSum())
 		ref = &logReaderTreeRef{
 			stateNames: u.tx.CalledStateNames(u.statesIndex),
 			machId:     u.c.Id,
@@ -1908,13 +1908,13 @@ func (u *logReaderUpdate) buildQueuedStatus() {
 	executedNode.SetIndent(1)
 	u.parentQueue.AddChild(executedNode)
 	queuedNode := cview.NewTreeNode(
-		u.d.P.Sprintf("queued   at [::b]t%d", u.tx.TimeSum()),
+		P.Sprintf("queued   at [::b]t%d", u.tx.TimeSum()),
 	)
 	queuedNode.SetIndent(1)
 	u.parentQueue.AddChild(queuedNode)
 	queuedForLabel := "..."
 	if u.tx.MutQueueTick > 0 {
-		queuedForLabel = u.d.P.Sprintf("q%v", u.tx.MutQueueTick)
+		queuedForLabel = P.Sprintf("q%v", u.tx.MutQueueTick)
 	}
 	queuedForNode := cview.NewTreeNode("queued  for [::b]" + queuedForLabel)
 	queuedForNode.SetIndent(1)
@@ -1938,7 +1938,7 @@ func (u *logReaderUpdate) buildQueueExecuted() {
 	label := "???"
 	var ref *logReaderTreeRef
 	if queued != nil {
-		label = u.d.P.Sprintf("t%v", queued.TimeSum())
+		label = P.Sprintf("t%v", queued.TimeSum())
 		ref = &logReaderTreeRef{
 			stateNames: u.tx.CalledStateNames(u.statesIndex),
 			machId:     u.c.Id,
@@ -2031,7 +2031,7 @@ func (u *logReaderUpdate) buildQueueTxNode(past *dbg.DbgMsgTx) *cview.TreeNode {
 	label := fmt.Sprintf("[::b]%s%s[::-]",
 		past.Type.StringShort(), utils.J(calledStates))
 	if past.MutQueueTick > 0 {
-		label += " " + u.d.P.Sprintf("["+theme.Grey+"]q%v", past.MutQueueTick)
+		label += " " + P.Sprintf("["+theme.Grey+"]q%v", past.MutQueueTick)
 	}
 	mutNode := cview.NewTreeNode(label)
 	mutNode.SetIndent(2)
@@ -2111,9 +2111,9 @@ func (u *logReaderUpdate) addRelatedNode(
 	}
 	highlight := false
 
-	label := u.d.P.Sprintf("%s#%s", link.MachId, link.TxId)
+	label := P.Sprintf("%s#%s", link.MachId, link.TxId)
 	if link.MachId == u.c.Id {
-		label = u.d.P.Sprintf("#%s", link.TxId)
+		label = P.Sprintf("#%s", link.TxId)
 	}
 	if targetMach != nil && targetTxIdx != -1 {
 		targetTx := targetMach.Tx(targetTxIdx)
@@ -2140,13 +2140,13 @@ func (u *logReaderUpdate) addRelatedNode(
 	}
 
 	if link.MachId != u.c.Id && targetMach != nil {
-		label2 := u.d.P.Sprintf("%s#%s", link.MachId, link.TxId)
+		label2 := P.Sprintf("%s#%s", link.MachId, link.TxId)
 		if targetTxIdx != -1 {
 			targetTx := targetMach.Tx(targetTxIdx)
 			if targetTx == nil {
 				return fmt.Errorf("target tx missing: %s#%s", link.MachId, link.TxId)
 			}
-			label2 = u.d.P.Sprintf("%s ["+theme.Grey+"]t%v[-]", link.MachId,
+			label2 = P.Sprintf("%s ["+theme.Grey+"]t%v[-]", link.MachId,
 				targetTx.TimeSum())
 		}
 
@@ -2189,7 +2189,7 @@ func (u *logReaderUpdate) buildExecutedArgs() error {
 		}
 		handlerIdx := entry.Text[len("[handler:"):idx]
 		name := entry.Text[idx+2:]
-		node := cview.NewTreeNode(u.d.P.Sprintf("%s["+theme.Grey+"]:%s[-]", name,
+		node := cview.NewTreeNode(P.Sprintf("%s["+theme.Grey+"]:%s[-]", name,
 			handlerIdx))
 		node.SetIndent(1)
 		u.parentExecuted.AddChild(node)
@@ -2202,7 +2202,7 @@ func (u *logReaderUpdate) buildExecutedArgs() error {
 	u.parentArgs.SetExpanded(false)
 	labels := []string{}
 	for k, v := range u.tx.Args {
-		labels = append(labels, u.d.P.Sprintf(
+		labels = append(labels, P.Sprintf(
 			"[::b]%s[::-] [%s]%s", k, theme.Inactive, v,
 		))
 	}

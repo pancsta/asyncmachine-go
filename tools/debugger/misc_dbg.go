@@ -404,7 +404,7 @@ func (m *mcpServer) textHelp(
 func (m *mcpServer) textLog(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	p := m.d.Params()
+	p := *m.d.Params.Load()
 	if !p.OutputLog {
 		return mcp.NewToolResultError("--output-log not set"), nil
 	}
@@ -419,7 +419,7 @@ func (m *mcpServer) textLog(
 func (m *mcpServer) textClients(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	p := m.d.Params()
+	p := *m.d.Params.Load()
 	if !p.OutputLog {
 		return mcp.NewToolResultError("--output-clients not set"), nil
 	}
@@ -434,7 +434,7 @@ func (m *mcpServer) textClients(
 func (m *mcpServer) netGraph(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	p := m.d.Params()
+	p := *m.d.Params.Load()
 	if !p.OutputLog {
 		return mcp.NewToolResultError("--output-clients not set"), nil
 	}
@@ -449,7 +449,7 @@ func (m *mcpServer) netGraph(
 func (m *mcpServer) txSteps(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	p := m.d.Params()
+	p := *m.d.Params.Load()
 	if !p.OutputLog {
 		return mcp.NewToolResultError("--output-tx not set"), nil
 	}
