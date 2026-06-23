@@ -32,6 +32,11 @@ type completionFunc func(
 
 func init() {
 	usr, _ := user.Current()
+	if usr == nil {
+		historyPath = ".arpc_history"
+		return
+	}
+
 	dir := usr.HomeDir
 	historyPath = dir + "/.arpc_history"
 }

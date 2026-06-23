@@ -90,7 +90,7 @@ func NewRootCommand(repl *Repl, cliArgs, osArgs []string) *cobra.Command {
 		"Load addresses from a file")
 	rootCmd.Flags().BoolP("dir", "d", false,
 		"Load *.addr files from a directory")
-	rootCmd.Flags().BoolP("watch", "w", false,
+	rootCmd.Flags().BoolP("watch", "w", true,
 		"Watch the addr file / dir for changes (EXPERIMENTAL)")
 	rootCmd.Flags().String("am-dbg-addr", "",
 		"Connect this client to am-dbg")
@@ -762,9 +762,6 @@ func rootRun(
 	if isDir && isFile {
 		return fmt.Errorf("cannot use both --dir and --file")
 	}
-	if isWatch && !isDir && !isFile {
-		return fmt.Errorf("--file or --dir required for --watch")
-	}
 	clipath := args[0]
 
 	// debug
@@ -774,7 +771,7 @@ func rootRun(
 	}
 
 	// init fs watcher
-	if isWatch {
+	if isWatch && (isDir || isFile) {
 		watcher, err = initWatcher(mach, clipath, isDir)
 		if err != nil {
 			return err
