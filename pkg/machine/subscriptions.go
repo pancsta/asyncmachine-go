@@ -72,14 +72,26 @@ func NewSubscriptionManager(
 
 // ///// ///// /////
 
-// ProcessStateCtx collects all deactivated state contexts, and returns theirs
+// ProcessStateCtx collects all expired state contexts, and returns theirs
 // cancel funcs. Uses transition caches.
-func (sm *Subscriptions) ProcessStateCtx(deactivated S) []context.CancelFunc {
+func (sm *Subscriptions) ProcessStateCtx(
+	activated, deactivated S,
+) []context.CancelFunc {
 	// locks
 	sm.Mx.Lock()
 	defer sm.Mx.Unlock()
-
 	var toCancel []context.CancelFunc
+
+	for _, s := range activated {
+		if _, ok := sm.stateCtx[s]; !ok {
+			continue
+		}
+
+		toCancel = append(toCancel, sm.stateCtx[s].Cancel)
+		sm.log(LogOps, "[ctx:match] %s", s)
+		delete(sm.stateCtx, s)
+	}
+
 	for _, s := range deactivated {
 		if _, ok := sm.stateCtx[s]; !ok {
 			continue
@@ -544,14 +556,6 @@ func (sm *Subscriptions) NewStateCtx(state string) context.Context {
 	}
 	stateCtx, cancel := context.WithCancel(context.WithValue(sm.mach.Context(),
 		CtxKey, v))
-
-	// cancel early
-	if !sm.is(S{state}) {
-		// TODO decision msg
-		cancel()
-		return stateCtx
-	}
-
 	binding := &CtxBinding{
 		Ctx:    stateCtx,
 		Cancel: cancel,

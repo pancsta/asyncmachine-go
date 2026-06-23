@@ -1558,7 +1558,7 @@ func (m *NetworkMachine) processSubscriptions(
 	m.clockMx.RLock()
 
 	// collect
-	toCancel := m.subs.ProcessStateCtx(deactivated)
+	toCancel := m.subs.ProcessStateCtx(activated, deactivated)
 	toClose := slices.Concat(
 		m.subs.ProcessWhen(activated, deactivated),
 		m.subs.ProcessWhenTime(clockBefore),
