@@ -49,7 +49,6 @@ import (
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
-	amvis "github.com/pancsta/asyncmachine-go/tools/visualizer"
 )
 
 type (
@@ -60,12 +59,9 @@ type (
 var (
 	Pass = am.Pass
 	ss   = states.DebuggerStates
+	// printer for numbers TODO global
+	P = message.NewPrinter(language.English)
 )
-
-type cache struct {
-	diagramName string
-	diagramDom  *goquery.Document
-}
 
 // TODO avoid globals
 var theme Theme
@@ -76,21 +72,23 @@ type Debugger struct {
 
 	Mach    *am.Machine
 	Clients map[string]*Client
-	// TODO make private, pass via state
-	params     types.Params
+	// graphHash is a hash of all schema hashes
+	graphHash  string
 	LayoutRoot *cview.Panels
 	// selected client
 	C   *Client
 	App *cview.Application
-	// printer for numbers TODO global
-	P *message.Printer
 	// TODO GC removed machines
 	History       []*types.MachAddress
 	HistoryCursor int
 
+	// TODO pass via state
+	params types.Params
+	// read-only params clone
+	Params atomic.Pointer[types.Params]
+
 	// UI is currently being drawn
 	drawing            atomic.Bool
-	cache              cache
 	tree               *cview.TreeView
 	treeRoot           *cview.TreeNode
 	log                *cview.TextView
@@ -112,7 +110,6 @@ type Debugger struct {
 	repaintScheduled atomic.Bool
 	// repaintPending indicates a skipped repaint
 	repaintPending atomic.Bool
-	genGraphsLast  time.Time
 	graph          *amgraph.Graph
 	// update client list scheduled
 	updateCLScheduled  atomic.Bool
@@ -140,18 +137,14 @@ type Debugger struct {
 	tagsBar         *cview.TextView
 	clip            clipper.Clipboard
 	// toolbarItems is a list of row of toolbars items
-	toolbarItems       [4][]toolbarItem
-	clientListFile     *os.File
-	txFileMd           *os.File
-	txFileD2           *os.File
-	txFileD2Svg        *os.File
-	txFileMermaid      *os.File
-	txFileMermaidAscii *os.File
-	msgsDelayed        []*dbg.DbgMsgTx
-	msgsDelayedConns   []string
-	currTxBar          *cview.Flex
-	nextTxBar          *cview.Flex
-	mainGridCols       []int
+	toolbarItems     [4][]toolbarItem
+	clientListFile   *os.File
+	txFileMd         *os.File
+	msgsDelayed      []*dbg.DbgMsgTx
+	msgsDelayedConns []string
+	currTxBar        *cview.Flex
+	nextTxBar        *cview.Flex
+	mainGridCols     []int
 	// reader tree root node names to expanded state
 	logReaderExpanded map[string]bool
 	logReaderScroll   int
@@ -165,8 +158,7 @@ type Debugger struct {
 	treeLayout              *cview.Flex
 	// list of states to show, bypassing other ones from the schema
 	schemaTreeStates am.S
-	// TODO per-client
-	lastSelectedGroup string
+	selectedGroup    atomic.Pointer[string]
 	// number of appended log msgs without a rebuild
 	logAppends        int
 	logRenderedClient string
@@ -197,6 +189,7 @@ type Debugger struct {
 	callLogCount map[string]int
 	// count value of the last active separator
 	callLogLastSep map[string]int
+
 	// host to connect to, resolved from 0.0.0.0
 	listenHost     string
 	listenAddrRpc  string
@@ -224,7 +217,7 @@ type Debugger struct {
 	loadingPos                int
 }
 
-// TODO split to New and
+// TODO split to New and Init
 func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	var err error
 
@@ -366,9 +359,12 @@ func (d *Debugger) hSetParams(p types.Params) error {
 
 		if err == nil {
 			dbgPort, _ := strconv.Atoi(port)
-			d.httpPort = strconv.Itoa(dbgPort + 1)
-			httpAddr = host + ":" + d.httpPort
+			httpAddr = host + ":" + strconv.Itoa(dbgPort+1)
 			sshAddr = host + ":" + strconv.Itoa(dbgPort+2)
+
+			d.listenAddrRpc = d.listenHost + ":" + strconv.Itoa(dbgPort)
+			d.listenAddrHttp = d.listenHost + ":" + strconv.Itoa(dbgPort+1)
+			d.listenAddrSsh = d.listenHost + ":" + strconv.Itoa(dbgPort+2)
 		}
 	}
 	if !p.UiSsh {
@@ -439,11 +435,14 @@ func (d *Debugger) hSetParams(p types.Params) error {
 
 	// TODO dispose old files
 
-	// ensure output directory exists
-	if p.OutputDir != "" && p.OutputDir != "." {
-		if err := os.MkdirAll(p.OutputDir, 0o755); err != nil {
-			mach.AddErr(fmt.Errorf("create output dir: %w", err), nil)
-		}
+	// ensure dirs exist
+	err = os.MkdirAll(path.Join(p.OutputDir, "diagrams"), 0o755)
+	if err != nil {
+		return err
+	}
+	err = os.MkdirAll(path.Join(p.OutputDir, "call-log"), 0o755)
+	if err != nil {
+		return err
 	}
 
 	// client list file
@@ -473,23 +472,25 @@ func (d *Debugger) hSetParams(p types.Params) error {
 	// expand links
 	d.logReaderExpanded["__link_nodes"] = p.ViewExpandLinks
 
-	// save
+	// SAVE
 	d.params = p
+	clone := p
+	d.Params.Store(&clone)
 
 	// log file
 	if p.OutputLog {
-		d.hCreateOutputLogFile()
+		d.hInitLogFile()
 	}
 
 	// tx files
 	if p.OutputTx {
-		d.hInitOutputTxFiles()
+		if err := d.hInitTxFile(); err != nil {
+			return err
+		}
 	}
 
-	// init call-log TODO duplicate?
-	if p.OutputCallLog {
-		err := os.MkdirAll(path.Join(p.OutputDir, "call-log"), 0o755)
-		if err != nil {
+	if p.OutputDiagrams != types.ParamsOutputDiagramsNone {
+		if err := d.hInitDiagFiles(); err != nil {
 			return err
 		}
 	}
@@ -497,7 +498,26 @@ func (d *Debugger) hSetParams(p types.Params) error {
 	return nil
 }
 
-func (d *Debugger) hCreateOutputLogFile() {
+func (d *Debugger) hInitTxFile() error {
+	// markdown
+	loc := path.Join(d.params.OutputDir, "tx.md")
+	txFile, err := os.Create(loc)
+	if err != nil {
+		return err
+	}
+	d.txFileMd = txFile
+
+	return nil
+}
+
+func (d *Debugger) hCloseTxFile() error {
+	if d.txFileMd == nil {
+		return nil
+	}
+	return d.txFileMd.Close()
+}
+
+func (d *Debugger) hInitLogFile() {
 	p := path.Join(d.params.OutputDir, logFile)
 	logFile, err := os.Create(p)
 	if err != nil {
@@ -507,66 +527,53 @@ func (d *Debugger) hCreateOutputLogFile() {
 	d.logFile = logFile
 }
 
-func (d *Debugger) hCloseOutputTxFiles() {
-	if d.txFileMd == nil {
-		return
-	}
-	d.txFileMd.Close()
-	d.txFileD2Svg.Close()
-	d.txFileD2.Close()
-	d.txFileMermaid.Close()
-	d.txFileMermaidAscii.Close()
-}
-
-func (d *Debugger) hCloseOutputCallLogFiles() {
-	for _, f := range d.callLogFiles {
-		f.Close()
-	}
-	d.callLogFiles = make(map[string]*os.File)
-}
-
-func (d *Debugger) hCloseOutputLog() {
+// TODO error
+func (d *Debugger) hCloseLogFile() {
 	d.logFileMx.Lock()
 	defer d.logFileMx.Unlock()
 	d.Mach.AddErr(d.logFile.Close(), nil)
 	d.logFile = nil
 }
 
-// TODO ret error
-func (d *Debugger) hInitOutputTxFiles() {
-	mach := d.Mach
-	dir := d.params.OutputDir
-
-	loc := path.Join(dir, "tx.md")
-	txFile, err := os.Create(loc)
-	if err != nil {
-		mach.AddErr(err, nil)
+func (d *Debugger) hCloseCallLogFiles() {
+	for _, f := range d.callLogFiles {
+		f.Close()
 	}
-	d.txFileMd = txFile
+	d.callLogFiles = make(map[string]*os.File)
+}
+
+func (d *Debugger) hInitDiagFiles() error {
+	dir := d.params.OutputDir
+	diagDir := path.Join(dir, "diagrams")
+	var err error
+
+	// TODO CLI flag
 
 	// D2
-	txD2File := path.Join(dir, "tx.d2")
-	d.txFileD2, err = os.Create(txD2File)
+	txD2File := path.Join(diagDir, "steps.d2")
+	d.diagStepsFileD2, err = os.Create(txD2File)
 	if err != nil {
-		mach.AddErr(err, nil)
+		return nil
 	}
-	txD2SvgFile := path.Join(dir, "tx.d2.svg")
-	d.txFileD2Svg, err = os.Create(txD2SvgFile)
+	txD2SvgFile := path.Join(diagDir, "steps.d2.svg")
+	d.diagStepsFileD2Svg, err = os.Create(txD2SvgFile)
 	if err != nil {
-		mach.AddErr(err, nil)
+		return err
 	}
 
 	// mermaid
-	txMermaidFile := path.Join(dir, "tx.mermaid")
-	d.txFileMermaid, err = os.Create(txMermaidFile)
+	txMermaidFile := path.Join(diagDir, "steps.mermaid")
+	d.diagStepsFileMermaid, err = os.Create(txMermaidFile)
 	if err != nil {
-		mach.AddErr(err, nil)
+		return err
 	}
-	txMermaidAsciiFile := path.Join(dir, "tx.mermaid.txt")
-	d.txFileMermaidAscii, err = os.Create(txMermaidAsciiFile)
+	txMermaidAsciiFile := path.Join(diagDir, "steps.mermaid.txt")
+	d.diagStepsFileMermaidAscii, err = os.Create(txMermaidAsciiFile)
 	if err != nil {
-		mach.AddErr(err, nil)
+		return err
 	}
+
+	return nil
 }
 
 func (d *Debugger) hCloseDiagFiles() {
@@ -586,18 +593,21 @@ func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
 	skipHistory := args.SkipHistory
 	trimHistory := args.TrimHistory
 	filterBack := args.FilterBack
+	c := d.C
+	tx := d.hCurrentTx()
 
 	// ctx
 	if d.ctxCancelCursor != nil {
 		d.ctxCancelCursor()
 	}
 	d.ctxCursor, d.ctxCancelCursor = context.WithCancel(d.Mach.Context())
+	ctx := am.EvToCtx(d.ctxCursor, e)
 
 	// TODO optimize for no-change?
-	d.C.CursorTx1 = d.hFilterTxCursor1(d.C, cursor1, filterBack)
+	c.CursorTx1 = d.hFilterTxCursor1(c, cursor1, filterBack)
 	// reset the step timeline
 	// TODO validate
-	d.C.CursorStep1 = cursorStep1
+	c.CursorStep1 = cursorStep1
 
 	if d.HistoryCursor == 0 && !skipHistory {
 		d.hPrependHistory(d.hGetMachAddress())
@@ -611,38 +621,36 @@ func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
 	// d.State.DbgLogger.Printf("History: %v\n", d.History)
 
 	d.lastScrolledTxTime = time.Time{}
-	if d.C.CursorTx1 > 0 {
+	if tx != nil {
+		d.Mach.EvAdd1(e, ss.TxSelected, nil)
 		tx := d.hCurrentTx()
 		if tx != nil {
 			d.lastScrolledTxTime = *tx.Time
 		}
 
-		// tx file
-		if d.params.OutputTx && tx != nil {
+		// diagram steps
+		if d.params.OutputDiagrams != types.ParamsOutputDiagramsNone &&
+			tx != nil {
+
 			d.Mach.GoAfter(d.ctxCursor, time.Second/2, func() {
-				parsed := d.C.TxParsed(d.C.CursorTx1 - 1)
+				parsed := c.TxParsed(c.CursorTx1 - 1)
 				// TODO parsed msg nil
 				if parsed == nil {
 					err := fmt.Errorf("parsed tx missing for %s", tx.ID)
 					d.Mach.AddErrState(ss.ErrDiagrams, err, nil)
 					return
 				}
-				d.hGenSeqDiagram(am.EvToCtx(d.ctxCursor, e),
-					tx, parsed)
+
+				// render diagram
+				d.hDiagramsStepsRendering(ctx, tx, parsed)
+				// TODO update state diagram
 			})
 		}
+	} else {
+		d.Mach.EvRemove1(e, ss.TxSelected, nil)
 	}
 
 	d.Mach.EvRemove1(e, ss.TimelineStepsScrolled, nil)
-	// optional diagrams
-	go amhelp.AskEvAdd1(e, d.Mach, ss.DiagramsScheduled, nil)
-}
-
-// TODO state
-func (d *Debugger) hGenSeqDiagram(
-	ctx context.Context, tx *dbg.DbgMsgTx, parsed *types.MsgTxParsed,
-) {
-	//
 
 	// diagrams TODO merged mutation once partial negotiation lands
 	d.Mach.GoAfter(ctx, time.Second, func() {
@@ -659,20 +667,13 @@ func (d *Debugger) hGenSeqDiagram(
 	})
 }
 
-	// mermaid
-	mermaid, ascii, err := visTx.Mermaid(index)
-	if ctx.Err() != nil {
-		return // expired
+func (d *Debugger) hUpdateGraphHash() {
+	schemas := ""
+	for _, c := range d.Clients {
+		schemas += amhelp.SchemaHash(c.MsgStruct.States)
 	}
-	if err != nil {
-		d.Mach.Log("err: genSeqDiagram mermaid: %s", err)
-	}
-	_, _ = d.txFileMermaid.WriteAt([]byte(mermaid), 0)
-	if err != nil {
-		d.Mach.EvAddErr(e, err, nil)
-	} else {
-		_, _ = d.txFileMermaidAscii.WriteAt([]byte(ascii), 0)
-	}
+
+	d.graphHash = am.Hash(schemas, 20)
 }
 
 // hGetMachAddress returns the address of the currently visible view (mach, tx).
@@ -1017,6 +1018,19 @@ func (d *Debugger) hCurrentTx() *dbg.DbgMsgTx {
 	}
 
 	return c.MsgTxs[c.CursorTx1-1]
+}
+
+func (d *Debugger) hCurrentTxParsed() *types.MsgTxParsed {
+	c := d.C
+	if c == nil {
+		return nil
+	}
+
+	if c.CursorTx1 == 0 || len(c.MsgTxsParsed) < c.CursorTx1 {
+		return nil
+	}
+
+	return d.C.MsgTxsParsed[d.C.CursorTx1-1]
 }
 
 // PrevTx returns the previous transition. Thread safe via Eval().
@@ -1564,7 +1578,7 @@ func (d *Debugger) appendCallLog(
 	// 	name, _ := strings.CutPrefix(strings.ReplaceAll(
 	// 		step.StringFromIndex(c.MsgStruct.StatesIndex),
 	// 		"*", ""), "handler ")
-	// 	steps += d.P.Sprintf("\t%s(e) // t%v \n",
+	// 	steps += P.Sprintf("\t%s(e) // t%v \n",
 	// 		name,
 	// 		msgTxParsed.TimeSum)
 	// }
@@ -1624,7 +1638,7 @@ func (d *Debugger) appendCallLog(
 		return nil
 	}
 
-	steps = d.P.Sprintf("\t// t%v\n%s", msgTxParsed.TimeSum, steps)
+	steps = P.Sprintf("\t// t%v\n%s", msgTxParsed.TimeSum, steps)
 	dir := path.Join(d.params.OutputDir, "call-log", c.Id)
 
 	// TODO paginate, filename suffix with mach time
@@ -1874,10 +1888,10 @@ func (d *Debugger) hUpdateTimelines() {
 		if c.CursorTx1 == 0 {
 			pos = 0
 		}
-		title = d.P.Sprintf(" Transition %d / %d [%s]%d / %d[-] ",
+		title = P.Sprintf(" Transition %d / %d [%s]%d / %d[-] ",
 			pos, len(c.MsgTxsFiltered), theme.Grey, c.CursorTx1, txCount)
 	} else {
-		title = d.P.Sprintf(" Transition %d / %d ", c.CursorTx1, txCount)
+		title = P.Sprintf(" Transition %d / %d ", c.CursorTx1, txCount)
 	}
 	d.timelineTxs.SetTitle(title)
 	d.timelineTxs.SetEmptyRune(' ')
@@ -1984,11 +1998,11 @@ func (d *Debugger) hGetTxInfo(txIdx int, title string) (string, string) {
 	// TODO limit state names to a group when [2]group
 	calledStates := tx.CalledStateNames(d.C.MsgStruct.StatesIndex)
 
-	left += d.P.Sprintf(" | tx: %d", txIdx)
+	left += P.Sprintf(" | tx: %d", txIdx)
 	if parsed.TimeDiff == 0 {
 		left += " | Time: [" + theme.Grey + "] 0[-]"
 	} else {
-		left += d.P.Sprintf(" | Time: +%d", parsed.TimeDiff)
+		left += P.Sprintf(" | Time: +%d", parsed.TimeDiff)
 	}
 	left += " |"
 
@@ -2701,15 +2715,6 @@ func (d *Debugger) LogReaderText() string {
 	ret, _ := amhelp.EvalGetter(ctx, "LogReaderText", 3, d.Mach,
 		func() (string, error) {
 			return treeToText(d.logReader), nil
-		})
-	return ret
-}
-
-func (d *Debugger) Params() types.Params {
-	ctx := d.Mach.NewStateCtx(ss.LogReaderVisible)
-	ret, _ := amhelp.EvalGetter(ctx, "Params", 3, d.Mach,
-		func() (types.Params, error) {
-			return d.params, nil
 		})
 	return ret
 }

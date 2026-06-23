@@ -67,7 +67,7 @@ func (d *Debugger) hInitSchemaTree() *cview.TreeView {
 		ref, ok := node.GetReference().(*nodeRef)
 		if !ok || ref.stateName == "" {
 			d.Mach.Remove1(ss.StateNameSelected, nil)
-			d.lastSelectedState = ""
+			d.selectedState.Store(new(string))
 
 			return
 		}
@@ -130,7 +130,7 @@ func (d *Debugger) hUpdateSchemaTree() {
 		msg = c.MsgTxs[i1]
 	}
 
-	d.tree.SetTitle(d.P.Sprintf(" Schema:%v ", len(c.MsgStruct.StatesIndex)))
+	d.tree.SetTitle(P.Sprintf(" Schema:%v ", len(c.MsgStruct.StatesIndex)))
 
 	var steps []*am.Step
 	nextTx := d.hNextTx()
@@ -255,7 +255,7 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 					}
 				}
 
-				tick := d.P.Sprintf("%d", msg.Clock(index,
+				tick := P.Sprintf("%d", msg.Clock(index,
 					stateName))
 				node.SetColor(tcell.GetColor(nodeColor))
 				node.SetText(stateNamePad + " " + multi + "|" + tick)

@@ -23,7 +23,8 @@ type ServerStatesDef struct {
 	ConnectEvent    string
 	ClientMsg       string
 	DisconnectEvent string
-	InitClient      string
+	// TODO this never passes negotiation in am-dbg imports
+	InitClient string
 }
 
 // ServerSchema represents all relations and properties of ServerStates.
@@ -31,16 +32,16 @@ var ServerSchema = am.Schema{
 	ssV.ErrGraph: {Require: S{Exception}},
 	ssV.ConnectEvent: {
 		Multi:   true,
-		Require: S{ssam.BasicStates.Start}},
+		Require: S{Start}},
 	ssV.ClientMsg: {
 		Multi:   true,
-		Require: S{ssam.BasicStates.Start}},
+		Require: S{Start}},
 	ssV.DisconnectEvent: {
 		Multi:   true,
-		Require: S{ssam.BasicStates.Start}},
+		Require: S{Start}},
 	ssV.InitClient: {
 		Multi:   true,
-		Require: S{ssam.BasicStates.Start}},
+		Require: S{Start}},
 }
 
 // EXPORTS AND GROUPS
@@ -64,10 +65,10 @@ type DebuggerStatesDef struct {
 	ErrDiagrams string
 	ErrWeb      string
 
-	// input events
-	WebReq        string
+	// web req for diagram viewer
+	WebReqDiag string
+	// websocket conn for diagram viewer
 	WebSocketDiag string
-	WebSocketDbg  string
 
 	// input events
 	UserFwd      string
@@ -93,12 +94,13 @@ type DebuggerStatesDef struct {
 	Resized              string
 
 	// view states
-	TimelineTxHidden      string
-	TimelineStepsHidden   string
-	NarrowLayout          string
-	UserNarrowLayout      string
-	ClientListVisible     string
-	StateNameSelected     string
+	TimelineTxHidden    string
+	TimelineStepsHidden string
+	NarrowLayout        string
+	UserNarrowLayout    string
+	ClientListVisible   string
+	StateNameSelected   string
+	// TODO remove
 	TimelineStepsScrolled string
 	HelpDialog            string
 	ExportDialog          string
@@ -162,7 +164,10 @@ type DebuggerStatesDef struct {
 	// client selection
 	SelectingClient string
 	ClientSelected  string
+	TxSelected      string
 	RemoveClient    string
+	// TODO call UpdatingLog with partial acceptance and delegate to
+	// BuildingLog if out of bounds
 	BuildingLog     string
 	LogBuilt        string
 
@@ -260,7 +265,7 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 		ssD.TimelineTxHidden:    {Require: S{ssD.TimelineStepsHidden}},
 		ssD.TimelineStepsHidden: {},
 		ssD.NarrowLayout: {
-			Require: S{Ready},
+			Require: S{ssD.Ready},
 			Remove:  S{ssD.ClientListVisible},
 		},
 		ssD.UserNarrowLayout:  {Add: S{ssD.NarrowLayout}},
@@ -314,9 +319,11 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 			Multi:   true,
 			Require: S{Start},
 		},
-		ssD.GcMsgs: {Remove: S{
-			ssD.SelectingClient, ssD.SwitchedClientTx, ssD.ScrollToTx,
-			ssD.ScrollToMutTx}},
+		ssD.GcMsgs: {
+			Add: S{ssD.Loading},
+			Remove: S{ssD.SelectingClient, ssD.SwitchedClientTx, ssD.ScrollToTx,
+				ssD.ScrollToMutTx},
+		},
 		ssD.TreeLogView: {
 			Auto:    true,
 			Require: S{Start},
@@ -340,11 +347,11 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 		ssD.ToggleTool:  {Remove: S{ssD.ToolToggled}},
 		ssD.ToolToggled: {Remove: S{ssD.ToggleTool}},
 		ssD.SwitchingClientTx: {
-			Require: S{Ready},
+			Require: S{ssD.Ready},
 			Remove:  S{ssD.SwitchedClientTx},
 		},
 		ssD.SwitchedClientTx: {
-			Require: S{Ready},
+			Require: S{ssD.Ready},
 			Remove:  S{ssD.SwitchingClientTx},
 		},
 		ssD.ScrollToMutTx: {Require: S{ssD.ClientSelected}},
@@ -359,36 +366,36 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 			Require: S{ssD.TreeLogView, ssD.LogReaderEnabled},
 		},
 		ssD.LogReaderEnabled:   {},
-		ssD.UpdateLogScheduled: {Require: S{Ready}},
+		ssD.UpdateLogScheduled: {Require: S{ssD.Ready}},
 		ssD.UpdatingLog: {
-			Require: S{Ready, ssD.ClientSelected},
+			Require: S{ssD.Ready, ssD.ClientSelected},
 			Remove:  S{ssD.LogUpdated},
 		},
 		ssD.LogUpdated: {
-			Require: S{Ready, ssD.ClientSelected},
+			Require: S{ssD.Ready, ssD.ClientSelected},
 			Remove:  S{ssD.UpdatingLog},
 		},
-		ssD.UpdateLogReader: {Require: S{Ready, ssD.LogReaderEnabled}},
+		ssD.UpdateLogReader: {Require: S{ssD.Ready, ssD.LogReaderEnabled}},
 		ssD.UpdateFocus: {
 			Multi:   true,
-			Require: S{Ready},
+			Require: S{ssD.Ready},
 		},
 		ssD.Overlay: {Require: S{ssD.LogReaderFocused}},
 		ssD.AfterFocus: {
 			Multi:   true,
-			Require: S{Ready},
+			Require: S{ssD.Ready},
 		},
 		ssD.FocusPrev: {
 			Multi:   true,
-			Require: S{Ready},
+			Require: S{ssD.Ready},
 		},
 		ssD.FocusNext: {
 			Multi:   true,
-			Require: S{Ready},
+			Require: S{ssD.Ready},
 		},
 		ssD.ToolRain: {
 			Multi:   true,
-			Require: S{Ready},
+			Require: S{ssD.Ready},
 		},
 
 		// tx / steps back / fwd
@@ -421,12 +428,16 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 		// client selection
 
 		ssD.SelectingClient: {
+			Add:     S{ssD.Loading},
 			Require: S{Start},
 			Remove:  S{ssD.ClientSelected, ssD.Overlay},
 		},
 		ssD.ClientSelected: {
 			Require: S{Start},
 			Remove:  S{ssD.SelectingClient},
+		},
+		ssD.TxSelected: {
+			Require: S{ssD.ClientSelected},
 		},
 		ssD.RemoveClient: {Require: S{ssD.ClientSelected}},
 		ssD.BuildingLog: {
@@ -439,7 +450,7 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 			Remove:  S{ssD.BuildingLog},
 		},
 
-		ssD.SetCursor: {Require: S{Ready}},
+		ssD.SetCursor: {Require: S{ssD.Ready}},
 		ssD.SetGroup: {
 			Multi:   true,
 			Require: S{ssD.ClientSelected},
@@ -511,6 +522,9 @@ type DebuggerGroupsDef struct {
 	// debugger.
 	Debug S
 
+	// Machine diagram rendering states.
+	DiagramsMach S
+
 	Mcp         S
 	McpReadonly S
 
@@ -573,6 +587,9 @@ var (
 			ssD.TimelineStepsHidden),
 
 		McpReadonly: groupFilters.Add1(ssD.SwitchedClientTx, ssD.ClientSelected),
+
+		Loading: S{ssD.SelectingClient, ssD.GcMsgs, ssD.DiagramsStatesRendering,
+			ssD.DiagramsGraphRendering, ssD.DiagramsMachRendering},
 	})
 
 	// DebuggerStates contains all the states for the debugger machine.
