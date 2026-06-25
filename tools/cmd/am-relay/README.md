@@ -18,9 +18,15 @@ into chunked file dumps.
 
 ## Installation
 
-1. [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
-2. Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-relay@latest`
-3. Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/am-relay@latest`
+[Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
+
+```bash
+go install github.com/pancsta/asyncmachine-go/tools/cmd/am-relay@latest
+```
+
+```bash
+go run github.com/pancsta/asyncmachine-go/tools/cmd/am-relay@latest
+```
 
 ## Features
 

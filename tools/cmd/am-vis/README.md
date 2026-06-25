@@ -32,20 +32,15 @@ The rendering uses ELK ([Eclipse Layout Kernel](https://eclipse.dev/elk/)) and i
 
 ## Installation
 
-Available options:
+[Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
 
-1. [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
-2. Install with Go
+```bash
+go install github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest
+```
 
-   ```bash
-   go install github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest
-   ```
-
-3. Run directly
-
-   ```bash
-   go run github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest
-   ```
+```bash
+go run github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest
+```
 
 ## Features
 

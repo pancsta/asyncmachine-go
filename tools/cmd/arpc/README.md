@@ -21,9 +21,15 @@ filtered group operations.
 
 ## Installation
 
-- [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
-- Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/arpc@latest`
-- Run directly `go run github.com/pancsta/asyncmachine-go/tools/cmd/arpc@latest`
+[Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
+
+```bash
+go install github.com/pancsta/asyncmachine-go/tools/cmd/arpc@latest
+```
+
+```bash
+go run github.com/pancsta/asyncmachine-go/tools/cmd/arpc@latest
+```
 
 ## Features
 

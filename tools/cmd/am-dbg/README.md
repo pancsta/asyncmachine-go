@@ -7,15 +7,16 @@
 
 ## am-dbg TUI Debugger
 
+`am-dbg` is a lightweight, multi-client debugger which can handle hundreds of simultaneous streams from async state
+machines. It's built around a timeline of transitions and allows for precise searches and drill-downs of state
+mutations.
+
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/am-dbg/am-dbg.png">
         <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg/am-dbg.png"
             alt="am-dbg" />
     </a>
 </div>
-
-`am-dbg` is a lightweight, multi-client debugger which can handle hundreds of simultaneous streams from asyncmachines.
-It's built around a timeline of transitions and allows for precise searches and drill-downs of state mutations.
 
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/am-dbg/diagrams.mp4">
@@ -26,7 +27,7 @@ It's built around a timeline of transitions and allows for precise searches and 
 
 ## Installation
 
-- [Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
+[Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
 
 ```bash
 go install github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest

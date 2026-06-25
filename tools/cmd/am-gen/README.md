@@ -20,11 +20,17 @@ for more info.
 
 ## Installation
 
+[Download a release binary](https://github.com/pancsta/asyncmachine-go/releases/latest)
+
 ```bash
 go install github.com/pancsta/asyncmachine-go/tools/cmd/am-gen@latest
 ```
 
-### Usage
+```bash
+go run github.com/pancsta/asyncmachine-go/tools/cmd/am-gen@latest
+```
+
+## Usage
 
 ```bash
 am-gen generates state files and Grafana dashboards for asyncmachine-go state machines.
