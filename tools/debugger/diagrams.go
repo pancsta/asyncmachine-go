@@ -612,10 +612,14 @@ func (d *Debugger) diagramWsUpdateChan(
 
 		case <-updateChan:
 			// msg
+			machId := ""
+			// TODO no eval
+			if addr := d.MachAddr(); addr != nil {
+				machId = addr.MachId
+			}
 			msg, err := json.Marshal(types.WsDiagMsg{
 				Event: "refresh",
-				// TODO no eval
-				Id: d.MachAddr().MachId,
+				Id:    machId,
 			})
 			if err != nil {
 				mach.EvAddErrState(e, ss.ErrWeb, err, nil)
