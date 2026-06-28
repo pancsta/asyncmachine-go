@@ -1,6 +1,6 @@
 # Release Notes
 
-- [CHANGELOG.md](../CHANGELOG.md)
+- [CHANGELOG.md](/CHANGELOG.md)
 
 ---
 
