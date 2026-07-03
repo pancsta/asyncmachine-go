@@ -377,6 +377,7 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 **asyncmachine-go** synchronizes state for the following projects:
 
+- [Taskbot.APP](https://taskbot.app) - AI Browser Automation
 - [secai](https://github.com/pancsta/secai) - AI Workflows framework
 - [secai Web UI](https://github.com/pancsta/secai/tree/main/web) - WebAssembly [go-app](https://go-app.dev/) PWA
 - Self-hosting of [pkg/rpc](pkg/rpc/states), [pkg/node](pkg/node/states), [pkg/pubsub](pkg/pubsub/states)

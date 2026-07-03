@@ -1,15 +1,14 @@
 # How Does It Work?
 
-Code is bound to states (graph nodes), not transitions (graph edges in FSMs). When a state "Foo" activates, it checks
-the `FooEnter(e)` method first, then runs `FooState(e)`. When it deactivates, checks the `FooExit(e)` method, then runs
-`FooEnd(e)`. `FooState(e)` binds context and collects data, then forks background processes bound to that instance of
-the "Foo" state. Code executed during a transition is dynamically composed of deactivating and activating states.
-Transitions between states are not defined, and many states can be active simultaneously. It should be used to solve 
-complexity in time.
+Code is **bound to states** (graph nodes), not transitions (graph edges in FSMs). When a state "Foo" activates, it 
+checks the `FooEnter(e)` method first, then runs `FooState(e)`. When it deactivates, checks the `FooExit(e)` method, 
+then runs `FooEnd(e)`. `FooState(e)` binds context and collects data, then **forks background processes** bound to that 
+instance of the "Foo" state. Code executed during a transition is **dynamically composed** of deactivating and
+activating states. Transitions between states **are not defined**, and many states can be active simultaneously. It
+should be used to solve complexity in time.
 
 -----
 
-[![](https://goreportcard.com/badge/github.com/pancsta/asyncmachine-go)](https://goreportcard.com/report/github.com/pancsta/asyncmachine-go)
 [![](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
 [![website](https://img.shields.io/badge/asyncmachine-.dev-blue)](https://asyncmachine.dev)
 ![](https://pancsta.github.io/assets/asyncmachine-go/badges/loc-pkg.svg)
@@ -297,6 +296,7 @@ Other packages:
 
 **asyncmachine-go** synchronizes state for the following projects:
 
+- [Taskbot.APP](https://taskbot.app) - AI Browser Automation
 - [secai](https://github.com/pancsta/secai) - AI Workflows framework
 - [secai Web UI](https://github.com/pancsta/secai/tree/main/web) - WebAssembly [go-app](https://go-app.dev/) PWA
 - Self-hosting of [pkg/rpc](pkg/rpc/states), [pkg/node](pkg/node/states), [pkg/pubsub](pkg/pubsub/states)
