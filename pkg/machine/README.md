@@ -16,6 +16,12 @@ and subscriptions are [state waiting](/docs/manual.md#waiting). It's dependency-
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 ```
 
+## Not an FSM
+
+When an [FSM](https://en.wikipedia.org/wiki/Finite-state_machine) transitions between `A -> B -> C`, it runs the `AB`
+handler, then the `BC` handler. When asyncmachine transitions between `AB -> BC` it runs the following handlers
+`AExit, CEnter, BB, AC, AB, BC` for negotiation and `AEnd, CState` after consensus. [Playground link](https://play.golang.com/p/TSLoMUrndsx).
+
 ## Features
 
 Features are explained using [Mermaid flow diagrams](/docs/diagrams.md), and the headers link to relevant sections of
@@ -43,7 +49,7 @@ States have clocks that produce contexts (odd = active; even = inactive).
 
 ### [Queue](/docs/manual.md#queue-and-history)
 
-Queue of mutations enable lock-free [actor model](https://en.wikipedia.org/wiki/Actor_model).
+Queue of mutations enables a lock-free [actor model](https://en.wikipedia.org/wiki/Actor_model).
 
 <div align="center"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://pancsta.github.io/assets/asyncmachine-go/diagrams/basics-queue.mermaid.dark.svg">

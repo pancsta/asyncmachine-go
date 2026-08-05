@@ -1,11 +1,11 @@
 # How Does It Work?
 
-Code is **bound to states** (graph nodes), not transitions (graph edges in FSMs). When a state "Foo" activates, it 
-checks the `FooEnter(e)` method first, then runs `FooState(e)`. When it deactivates, checks the `FooExit(e)` method, 
-then runs `FooEnd(e)`. `FooState(e)` binds context and collects data, then **forks background processes** bound to that 
+Code is **bound to states** (graph nodes), not transitions (graph edges in FSMs). When a state "Foo" activates, it
+checks the `FooEnter(e)` method first, then runs `FooState(e)`. When it deactivates, checks the `FooExit(e)` method,
+then runs `FooEnd(e)`. `FooState(e)` binds context and collects data, then **forks background processes** bound to that
 instance of the "Foo" state. Code executed during a transition is **dynamically composed** of deactivating and
-activating states. Transitions between states **are not defined**, and many states can be active simultaneously. It
-should be used to solve complexity in time.
+activating states. Transitions between states **are not defined**, and many states can be active simultaneously.
+It should be used to solve complexity in time.
 
 -----
 
@@ -180,53 +180,53 @@ func (h *Handlers) FooEnd(e *am.Event) {
 
 ```go
 var ServerSchema = am.Schema{
-    ssF.ClientConnected: {Require: S{ssS.RpcReady}},
-    ssF.ErrDelivery:     {Require: S{ssS.Exception}},
-    ssF.ErrHandlerTimeout: {
-        Add:     S{ssS.Exception},
+    ssS.ClientConnected: {Require: S{RpcReady}},
+    ssS.ErrDelivery:     {Require: S{Exception}},
+    ssS.ErrHandlerTimeout: {
+        Add:     S{Exception},
         Multi:   true,
-        Require: S{ssS.Exception},
+        Require: S{Exception},
     },
-    ssF.ErrNetwork: {
-        Remove:  S{ssS.ClientConnected},
-        Require: S{ssS.Exception},
+    ssS.ErrNetwork: {
+        Remove:  S{ClientConnected},
+        Require: S{Exception},
     },
-    ssF.ErrNetworkTimeout: {Require: S{ssS.Exception}},
-    ssF.ErrOnClient:       {Require: S{ssS.Exception}},
-    ssF.ErrProviding:      {Require: S{ssS.Exception}},
-    ssF.ErrRpc:            {Require: S{ssS.Exception}},
-    ssF.ErrSendPayload:    {Require: S{ssS.Exception}},
-    ssF.Exception:         {Multi: true},
-    ssF.HandshakeDone: {
-        Remove:  S{ssS.Handshaking, ssS.HandshakeDone, ssS.Exception},
-        Require: S{ssS.Start, ssS.ClientConnected},
+    ssS.ErrNetworkTimeout: {Require: S{Exception}},
+    ssS.ErrOnClient:       {Require: S{Exception}},
+    ssS.ErrProviding:      {Require: S{Exception}},
+    ssS.ErrRpc:            {Require: S{Exception}},
+    ssS.ErrSendPayload:    {Require: S{Exception}},
+    ssS.Exception:         {Multi: true},
+    ssS.HandshakeDone: {
+        Remove:  S{Handshaking, ssS.HandshakeDone, ssS.Exception},
+        Require: S{Start, ssS.ClientConnected},
     },
-    ssF.Handshaking: {
-        Remove:  S{ssS.Handshaking, ssS.HandshakeDone},
-        Require: S{ssS.Start},
+    ssS.Handshaking: {
+        Remove:  S{Handshaking, ssS.HandshakeDone},
+        Require: S{Start},
     },
-    ssF.Healthcheck: {Multi: true},
-    ssF.Heartbeat:   {},
-    ssF.MetricSync:  {Multi: true},
-    ssF.Ready: {
+    ssS.Healthcheck: {Multi: true},
+    ssS.Heartbeat:   {},
+    ssS.MetricSync:  {Multi: true},
+    ssS.Ready: {
         Auto:    true,
-        Require: S{ssS.HandshakeDone, ssS.RpcReady},
+        Require: S{HandshakeDone, ssS.RpcReady},
     },
-    ssF.RpcAccepting: {
-        Remove:  S{ssS.RpcStarting, ssS.RpcAccepting, ssS.RpcReady},
-        Require: S{ssS.Start},
+    ssS.RpcAccepting: {
+        Remove:  S{RpcStarting, ssS.RpcAccepting, ssS.RpcReady},
+        Require: S{Start},
     },
-    ssF.RpcReady: {
-        Remove:  S{ssS.RpcStarting, ssS.RpcAccepting, ssS.RpcReady},
-        Require: S{ssS.Start},
+    ssS.RpcReady: {
+        Remove:  S{RpcStarting, ssS.RpcAccepting, ssS.RpcReady},
+        Require: S{Start},
     },
-    ssF.RpcStarting: {
-        Remove:  S{ssS.RpcStarting, ssS.RpcAccepting, ssS.RpcReady},
-        Require: S{ssS.Start},
+    ssS.RpcStarting: {
+        Remove:  S{RpcStarting, ssS.RpcAccepting, ssS.RpcReady},
+        Require: S{Start},
     },
-    ssF.SendPayload:     {Multi: true},
-    ssF.Start:           {Add: S{ssS.RpcStarting}},
-    ssF.WebSocketTunnel: {},
+    ssS.SendPayload:     {Multi: true},
+    ssS.Start:           {Add: S{RpcStarting}},
+    ssS.WebSocketTunnel: {},
 }
 ```
 
@@ -312,10 +312,10 @@ Other packages:
 - API: [pkg.go.dev](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine) / [code.asyncmachine.dev](https://code.asyncmachine.dev)
 - [diagrams](/docs/diagrams.md) / [cookbook](/docs/cookbook.md)
 - [manual MD](/docs/manual.md) / [manual PDF](https://pancsta.github.io/assets/asyncmachine-go/manual.pdf)
-    - [Machine and States](/docs/manual.md#machine-and-states)
-    - [Changing State](/docs/manual.md#changing-state)
-    - [Advanced Topics](/docs/manual.md#advanced-topics)
-    - [Cheatsheet](/docs/manual.md#cheatsheet)
+  - [Machine and States](/docs/manual.md#machine-and-states)
+  - [Changing State](/docs/manual.md#changing-state)
+  - [Advanced Topics](/docs/manual.md#advanced-topics)
+  - [Cheatsheet](/docs/manual.md#cheatsheet)
 
 ## Goals
 
@@ -360,17 +360,17 @@ Under development, status depends on each package. The bottom layers seem prod g
 
 - [good first issues](https://github.com/pancsta/asyncmachine-go/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22)
 - before
-    - `./scripts/dep-taskfile.sh`
-    - `task install-deps`
+  - `./scripts/dep-taskfile.sh`
+  - `task install-deps`
 - after
-    - `task test`
-    - `task format`
-    - `task lint`
-    - `task precommit`
+  - `task test`
+  - `task format`
+  - `task lint`
+  - `task precommit`
 
 ### Roadmap
 
-- more tooling and diagrams
+- more tooling, diagrams, integrations
 - bug fixes, optimizations
 - network security, ACLs
 - [ROADMAP.md](/ROADMAP.md)

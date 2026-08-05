@@ -45,7 +45,7 @@ aRPC auto syncs only clock values, which technically is `[n]uint64` (`n` = numbe
 ## Does asyncmachine return data?
 
 No, just yes/no/later (`Executed`, `Canceled`, `Queued`). Use channels in mutation args for returning local data and
-the `SendPayload` state for aRPC.
+the `ServerPayload` state for aRPC.
 
 ## Does asyncmachine return errors?
 
