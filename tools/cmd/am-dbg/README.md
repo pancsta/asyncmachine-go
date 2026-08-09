@@ -86,7 +86,7 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 Usage: am-dbg [--listen-addr LISTEN-ADDR] [--dir DIR] [--clean-on-connect] [--import-data IMPORT-DATA] [--fwd-data FWD-DATA] [--select-connected] [--enable-clipboard] [--enable-mouse] [--filter-auto] [--filter-auto-canceled] [--filter-canceled] [--filter-checks] [--filter-disconn] [--filter-empty] [--filter-group] [--filter-health] [--filter-log-level FILTER-LOG-LEVEL] [--filter-queued] [--output-clients] [--output-diagrams OUTPUT-DIAGRAMS] [--output-diag-group OUTPUT-DIAG-GROUP] [--output-diag-tx OUTPUT-DIAG-TX] [--output-graph] [--output-log] [--output-tx] [--ui-mcp] [--ui-ssh] [--ui-web] [--version] [--view VIEW] [--view-log-wrap] [--view-narrow] [--view-rain] [--view-reader] [--view-tail] [--view-theme VIEW-THEME] [--view-timelines VIEW-TIMELINES] [--log-ops-ttl LOG-OPS-TTL] [--max-mem MAX-MEM] [--dbg-am-dbg-addr DBG-AM-DBG-ADDR] [--dbg-go-race] [--dbg-id DBG-ID] [--dbg-log-level DBG-LOG-LEVEL] [--dbg-otel] [--dbg-prof-srv DBG-PROF-SRV] [--dbg-repl] [MACHURL]
 
 Positional arguments:
-  MACHURL                Machine URL to connect to
+  MACHURL                Machine URL to open from the imported file
 
 Options:
   --listen-addr LISTEN-ADDR, -l LISTEN-ADDR
@@ -123,9 +123,9 @@ Options:
   --output-graph         Write the current network graph as graph.(md|mgml) inside --dir (EXPERIMENTAL)
   --output-log           Write the current log buffer to log.txt inside --dir
   --output-tx            Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir (EXPERIMENTAL) [default: true]
-  --ui-mcp               Enable MCP server on port 62626 (EXPERIMENTAL)
-  --ui-ssh               Enable SSH headless mode on port --listen-addr +2 (EXPERIMENTAL)
-  --ui-web               Start a web server for --dir and diagrams on --listen-addr +1 (EXPERIMENTAL) [default: true]
+  --ui-mcp               Enable MCP server via `--ui-web` (EXPERIMENTAL)
+  --ui-ssh               Enable SSH headless mode on port `--listen-addr` +2 (EXPERIMENTAL)
+  --ui-web               Start a web server for --dir and diagrams on `--listen-addr` +1 (EXPERIMENTAL) [default: true]
   --version              Print version and exit
   --view VIEW, -v VIEW   Initial view (tree-log, tree-matrix, matrix) [default: tree-log]
   --view-log-wrap        Wrap log lines
@@ -155,9 +155,8 @@ Options:
 
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-legend.png">
-        <img style="min-height: 353px"
-            src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-legend.png"
-            alt="grafana dashboard" />
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-legend.png"
+            alt="am-dbg legend window " />
     </a>
 </div>
 

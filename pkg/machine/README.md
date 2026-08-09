@@ -1,9 +1,12 @@
-# 🦾 /pkg/machine
-
 [`cd /`](/README.md)
 
-> [!NOTE]
-> **asyncmachine-go** is a pathless control-flow graph with a consensus (AOP, actor model, state-machine).
+## Not an FSM
+
+When an [FSM](https://en.wikipedia.org/wiki/Finite-state_machine) transitions between `A -> B -> C`, it runs the `AB`
+handler, then the `BC` handler. When asyncmachine transitions between `AB -> BC` it runs the following handlers
+`AExit, CEnter, BB, AC, AB, BC` for negotiation and `AEnd, CState` after consensus. [Playground link](https://play.golang.com/p/TSLoMUrndsx).
+
+# 🦾 /pkg/machine
 
 **`/pkg/machine`** is a nondeterministic, multi-state, clock-based, relational, optionally accepting, and non-blocking
 **state machine**. It's a form of a _rules engine_ that can orchestrate blocking APIs into fully controllable async
@@ -15,12 +18,6 @@ and subscriptions are [state waiting](/docs/manual.md#waiting). It's dependency-
 ```go
 import am "github.com/pancsta/asyncmachine-go/pkg/machine"
 ```
-
-## Not an FSM
-
-When an [FSM](https://en.wikipedia.org/wiki/Finite-state_machine) transitions between `A -> B -> C`, it runs the `AB`
-handler, then the `BC` handler. When asyncmachine transitions between `AB -> BC` it runs the following handlers
-`AExit, CEnter, BB, AC, AB, BC` for negotiation and `AEnd, CState` after consensus. [Playground link](https://play.golang.com/p/TSLoMUrndsx).
 
 ## Features
 
@@ -410,7 +407,6 @@ The common API methods are listed below. There's more for [local state machines]
 but all of these are also implemented in the [transparent RPC layer](/pkg/rpc/README.md).
 
 ```go
-// TODO update
 // A (arguments) is a map of named arguments for a Mutation.
 type A map[string]any
 // S (state names) is a string list of state names.
@@ -543,37 +539,29 @@ type Api interface {
 ## Tests
 
 It's very easy to get a grasp of how asyncmachine works by reading the [idiomatic test suite](/pkg/machine/machine_test.go).
-Consider the example below of a method used to wait for certain arguments passing via a state activation:
+Consider the example below of a `context.Context` bound to a state instance or inactivity:
 
 ```go
-func TestWhenArgs(t *testing.T) {
-    // init
-    m := NewRels(t, nil)
+func TestStateCtxBasic(t *testing.T) {
+	// init
+	m := NewNoRels(t, nil)
 
-    // bind
-    whenCh := m.WhenArgs("B", A{"foo": "bar"}, nil)
+	// test
+	m.Add1("A", nil)
+	ctx1 := m.NewStateCtx("A")
+	assert.Nil(t, ctx1.Err())
+	m.Remove1("A", nil)
+	assert.Error(t, ctx1.Err())
 
-    // incorrect args
-    m.Add1("B", A{"foo": "foo"})
-    select {
-    case <-whenCh:
-        t.Fatal("whenCh shouldnt be selected")
-    default:
-        // pass
-    }
+	// test inactive ctx
+	ctx2 := m.NewStateCtx("B")
+	assert.Nil(t, ctx2.Err())
+	m.Add1("B", nil)
+	assert.Error(t, ctx2.Err())
 
-    // correct args
-    m.Add1("B", A{"foo": "bar"})
-    select {
-    case <-whenCh:
-        // pass
-    default:
-        t.Fatal("whenCh should be selected")
-    }
-
-    // dispose
-    m.Dispose()
-    <-m.WhenDisposed()
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
 }
 ```
 
@@ -601,10 +589,10 @@ Release Candidate, semantically versioned, partially optimized.
 
 ### State-Oriented Programming
 
-This is a new term which could possibly encapsulate the unique way of modeling the flow using **asyncmachine**. Unlike
+This is a new term which could possibly encapsulate the unique way of modeling the control flow using **asyncmachine**. Unlike
 common state machines, there are no transition paths between states, and the activation / deactivation is decided by the
 state consensus. The consensus is calculated from a mutation, active states, relations between states, and negotiating
-methods. Just like object-oriented programming solves domain complexity, state-oriented programming tries to solve the
+methods. Just like Object-Oriented Programming solves domain complexity, State-Oriented Programming tries to solve the
 unpredictability of the flow.
 
 ## monorepo

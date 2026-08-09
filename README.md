@@ -23,6 +23,7 @@ It should be used to solve complexity in time.
 [![](https://pancsta.github.io/assets/asyncmachine-go/badges/reddit.svg)](https://reddit.com/r/asyncmachine/)
 
 <div align="center">
+    <a href="https://github.com/pancsta/asyncmachine-go/blob/main/pkg/machine/README.md">Machine</a> .
     <a href="#samples">Samples</a> .
     <a href="#getting-started">Getting Started</a> .
     <a href="#packages">Packages</a> .
@@ -371,8 +372,8 @@ Under development, status depends on each package. The bottom layers seem prod g
 ### Roadmap
 
 - more tooling, diagrams, integrations
-- bug fixes, optimizations
-- network security, ACLs
+- bug fixes and optimizations
+- network security with ACLs
 - [ROADMAP.md](/ROADMAP.md)
 
 <div align="center">
