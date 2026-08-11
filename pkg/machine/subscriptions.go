@@ -29,14 +29,16 @@ type Subscriptions struct {
 
 	stateCtx IndexStateCtx
 
-	when         IndexWhen
-	whenCtx      map[context.Context][]*WhenBinding
-	whenTime     IndexWhenTime
-	whenTimeCtx  map[context.Context][]*WhenTimeBinding
-	whenArgs     IndexWhenArgs
-	whenArgsCtx  map[context.Context][]*WhenArgsBinding
-	whenQuery    []*whenQueryBinding
-	whenQueryCtx map[context.Context][]*whenQueryBinding
+	when           IndexWhen
+	whenCtx        map[context.Context][]*WhenBinding
+	whenTime       IndexWhenTime
+	whenTimeCtx    map[context.Context][]*WhenTimeBinding
+	whenTimeSum    []*WhenTimeSumBinding
+	whenTimeSumCtx map[context.Context][]*WhenTimeSumBinding
+	whenArgs       IndexWhenArgs
+	whenArgsCtx    map[context.Context][]*WhenArgsBinding
+	whenQuery      []*whenQueryBinding
+	whenQueryCtx   map[context.Context][]*whenQueryBinding
 
 	whenQueueEnds []*whenQueueEndsBinding
 	whenQueue     []*whenQueueBinding
@@ -56,13 +58,15 @@ func NewSubscriptionManager(
 		log:    log,
 		Closed: ch,
 
-		when:        IndexWhen{},
-		whenTime:    IndexWhenTime{},
-		whenArgs:    IndexWhenArgs{},
-		stateCtx:    IndexStateCtx{},
-		whenCtx:     map[context.Context][]*WhenBinding{},
-		whenTimeCtx: map[context.Context][]*WhenTimeBinding{},
-		whenArgsCtx: map[context.Context][]*WhenArgsBinding{},
+		when:           IndexWhen{},
+		whenTime:       IndexWhenTime{},
+		whenTimeCtx:    map[context.Context][]*WhenTimeBinding{},
+		whenTimeSum:    []*WhenTimeSumBinding{},
+		whenTimeSumCtx: map[context.Context][]*WhenTimeSumBinding{},
+		whenArgs:       IndexWhenArgs{},
+		whenArgsCtx:    map[context.Context][]*WhenArgsBinding{},
+		stateCtx:       IndexStateCtx{},
+		whenCtx:        map[context.Context][]*WhenBinding{},
 	}
 }
 
@@ -327,6 +331,77 @@ func (sm *Subscriptions) gcWhenTimeBinding(
 
 	// log TODO sem logger
 	sm.log(LogOps, "[whenTime:match] %s %d", j(names), binding.Times)
+}
+
+func (sm *Subscriptions) ProcessWhenTimeSum() []chan struct{} {
+	// locks
+	sm.Mx.Lock()
+	defer sm.Mx.Unlock()
+
+	// collect ctx expirations
+	// TODO optimize by skipping
+	ret := sm.processWhenTimeSumCtx()
+
+	sum := sm.clock.Sum(nil)
+	for _, binding := range sm.whenTimeSum {
+		if binding.MTime > sum {
+			break
+		}
+
+		sm.gcWhenTimeSumBinding(binding, true)
+		ret = append(ret, binding.Ch)
+	}
+
+	return ret
+}
+
+func (sm *Subscriptions) processWhenTimeSumCtx() []chan struct{} {
+	var ret []chan struct{}
+
+	// find expired ctxs
+	for ctx, bindings := range sm.whenTimeSumCtx {
+		if ctx.Err() == nil {
+			continue
+		}
+
+		// delete the ctx and all the bindings
+		delete(sm.whenTimeCtx, ctx)
+		for _, binding := range bindings {
+			sm.gcWhenTimeSumBinding(binding, false)
+			ret = append(ret, binding.Ch)
+		}
+	}
+
+	return ret
+}
+
+func (sm *Subscriptions) gcWhenTimeSumBinding(
+	binding *WhenTimeSumBinding, gcCtx bool,
+) {
+	for _, row := range sm.whenTimeSum {
+		if row != binding {
+			continue
+		}
+
+		// remove GC ctx
+		if binding.Ctx != nil && gcCtx {
+			sm.whenTimeSumCtx[binding.Ctx] = slicesWithout(
+				sm.whenTimeSumCtx[binding.Ctx], binding,
+			)
+
+			if len(sm.whenTimeSumCtx[binding.Ctx]) == 0 {
+				delete(sm.whenTimeSumCtx, binding.Ctx)
+			}
+		}
+
+		// delete with a lookup
+		sm.whenTimeSum = slicesWithout(sm.whenTimeSum, binding)
+
+		break
+	}
+
+	// log TODO sem logger
+	sm.log(LogOps, "[whenTimeSum:match] %d", binding.MTime)
 }
 
 // ProcessWhenArgs collects all the args-matching subscriptions, and
@@ -808,6 +883,50 @@ func (sm *Subscriptions) WhenTime(
 	}
 	if ctx != nil {
 		sm.whenTimeCtx[ctx] = append(sm.whenTimeCtx[ctx], binding)
+	}
+
+	return ch
+}
+
+func (sm *Subscriptions) WhenTimeSum(
+	mtime uint64, ctx context.Context,
+) <-chan struct{} {
+	//
+
+	// locks
+	sm.Mx.Lock()
+	defer sm.Mx.Unlock()
+
+	// try to reuse an existing channel
+	for _, bind := range sm.whenTimeSum {
+		if bind.MTime == mtime {
+			return bind.Ch
+		}
+	}
+
+	// if time happened, close early
+	if sm.clock.Sum(nil) >= mtime {
+		return sm.Closed
+	}
+
+	// add the binding
+	ch := make(chan struct{})
+	binding := &WhenTimeSumBinding{
+		Ch:    ch,
+		MTime: mtime,
+		Ctx:   ctx,
+	}
+	sm.log(LogOps, "[whenTimeSum:new] %s", mtime)
+
+	// insert the binding TODO optimize: binary search
+	idx := 0
+	for idx < len(sm.whenTimeSum) && sm.whenTimeSum[idx].MTime < mtime {
+		idx++
+	}
+	sm.whenTimeSum = slices.Insert(sm.whenTimeSum, idx, binding)
+
+	if ctx != nil {
+		sm.whenTimeSumCtx[ctx] = append(sm.whenTimeSumCtx[ctx], binding)
 	}
 
 	return ch
