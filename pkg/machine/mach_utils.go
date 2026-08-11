@@ -532,6 +532,9 @@ func (s Schema) Merge(schemas ...Schema) Schema {
 		maps.Copy(ret, schemas[i])
 	}
 
+	// rm noname states
+	delete(ret, "")
+
 	return ret.Clone()
 }
 
