@@ -215,6 +215,7 @@ type Debugger struct {
 	diagStepsFileMermaid      *os.File
 	diagStepsFileMermaidAscii *os.File
 	loadingPos                int
+	sshSrvKick                chan struct{}
 }
 
 // TODO split to New and Init
@@ -739,7 +740,12 @@ func (d *Debugger) GoToMachAddress(
 	}
 
 	// TODO timeout
-	<-wait
+	select {
+	case <-wait:
+	case <-time.After(time.Second):
+		return false
+	}
+
 	if addr.TxId != "" {
 		scrollArgs := &A{
 			TxId:        addr.TxId,

@@ -302,8 +302,11 @@ func (d *Debugger) StateNameSelectedEnd(e *am.Event) {
 	if d.C != nil {
 		d.C.SelectedState = ""
 		// diagrams
-		d.Mach.EvAddErrState(e, ss.ErrDiagrams,
-			d.diagramsMachUpdating(d.Mach.NewStateCtx(ss.StateNameSelected)), nil)
+		ctx := d.Mach.NewStateCtx(ss.StateNameSelected)
+		d.Mach.GoAfter(ctx, time.Second, func() {
+			d.Mach.EvAddErrState(e, ss.ErrDiagrams,
+				d.diagramsMachUpdating(ctx), nil)
+		})
 	}
 	d.selectedState.Store(new(string))
 	d.hUpdateSchemaTree()
@@ -2307,12 +2310,23 @@ func (d *Debugger) SshServerState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.SshServer)
 	// TODO SshClientState
 	busy := atomic.Bool{}
+	d.sshSrvKick = make(chan struct{})
 	handler := func(sess ssh.Session) {
 		d.Mach.Log("new SSH session " + sess.RemoteAddr().String())
-		if busy.Load() {
+		if busy.Load() && sess.User() != "force" {
 			_, _ = sess.Write([]byte("am-dbg server busy...\n"))
 			_ = sess.Close()
 			return
+		}
+
+		// kick out if busy
+		select {
+		case d.sshSrvKick <- struct{}{}:
+			// TODO reply
+			_, _ = sess.Write([]byte("am-dbg kicking out...\n"))
+			time.Sleep(time.Second)
+		default:
+			// no one
 		}
 		// TODO prevent double conns via SshServerConnectedState
 
@@ -2338,6 +2352,7 @@ func (d *Debugger) SshServerState(e *am.Event) {
 		case <-d.Mach.WhenTicks(ss.SshDisconn, 1, nil):
 		case <-sigCh: // TODO
 		case <-ctx.Done():
+		case <-d.sshSrvKick:
 		}
 
 		// restore sim screen
@@ -2362,6 +2377,10 @@ func (d *Debugger) SshServerState(e *am.Event) {
 		p("Connect via:\n")
 		p("$ ssh %s -p %s -o UserKnownHostsFile=/dev/null "+
 			"-o StrictHostKeyChecking=no\n", d.listenHost, port)
+		p("\n")
+		p("Force connect via:\n")
+		p("$ ssh force@%s -p %s -o UserKnownHostsFile=/dev/null "+
+			"-o StrictHostKeyChecking=no\n", d.listenHost, port)
 		d.Mach.EvAddErr(
 			e, ssh.ListenAndServe(d.params.AddrSsh, handler, optSrv), nil,
 		)
@@ -2370,6 +2389,7 @@ func (d *Debugger) SshServerState(e *am.Event) {
 
 func (d *Debugger) SshServerEnd(e *am.Event) {
 	d.sshSrv.Close()
+	close(d.sshSrvKick)
 }
 
 var _ = ss.Loading

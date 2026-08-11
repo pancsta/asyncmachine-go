@@ -23,7 +23,7 @@ import (
 
 	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 
-	ammcp "github.com/pancsta/asyncmachine-go/pkg/integrations/mcp"
+	ammcp "github.com/pancsta/asyncmachine-go/pkg/integrations/mcp-go"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"

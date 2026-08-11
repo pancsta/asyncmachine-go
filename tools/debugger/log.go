@@ -799,6 +799,8 @@ func (d *Debugger) onLogReaderSelected(
 	}
 	tree.RUnlock()
 
+	defer d.Mach.PanicToErr(nil)
+
 	// TODO support extMachTime
 	ref, ok := node.GetReference().(*logReaderTreeRef)
 	if !ok || ref == nil {
@@ -815,7 +817,10 @@ func (d *Debugger) onLogReaderSelected(
 
 	focused := d.Mach.Is1(ss.LogReaderFocused)
 	// TODO disable for all initial mouse clicks
-	if ch := node.GetChildren(); len(ch) == 1 && focused {
+	//  disable for Executed tree
+	if ch := node.GetChildren(); len(ch) == 1 && focused &&
+		ch[0].GetReference() != nil {
+
 		refChild := ch[0].GetReference().(*logReaderTreeRef)
 		if refChild != nil && refChild.isLinkNode {
 			d.logReaderExpanded["__link_nodes"] = node.IsExpanded()
@@ -989,6 +994,11 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		d.Mach.EvAddErr(e, err, nil)
 		return
 	}
+	// TODO
+	// if err := u.buildHandlers(); err != nil {
+	// 	d.Mach.EvAddErr(e, err, nil)
+	// 	return
+	// }
 	if err := u.buildForks(); err != nil {
 		d.Mach.EvAddErr(e, err, nil)
 		return
@@ -1004,8 +1014,9 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 
 	parents := []*cview.TreeNode{
 		u.parentSource, u.parentTrace, u.parentQueue,
-		u.parentForks, u.parentSiblings, u.parentExecuted, u.parentArgs,
-		u.parentCtx, u.parentWhen, u.parentWhenNot, u.parentWhenTime,
+		// TODO u.parentHandlers (bound handler names with time)
+		u.parentForks, u.parentSiblings, u.parentExecuted, u.parentCanceled,
+		u.parentArgs, u.parentCtx, u.parentWhen, u.parentWhenNot, u.parentWhenTime,
 		u.parentWhenArgs, u.parentWhenQueue, u.parentPipeIn, u.parentPipeOut,
 	}
 
@@ -1778,6 +1789,7 @@ func (u *logReaderUpdate) buildStateTrace() error {
 func (u *logReaderUpdate) buildSource() error {
 	u.parentSource = cview.NewTreeNode("Source")
 	sourceKnown := false
+
 	// find the source line
 	for _, entry := range u.tx.LogEntries {
 		if !strings.HasPrefix(entry.Text, "[source] ") {
@@ -1792,12 +1804,6 @@ func (u *logReaderUpdate) buildSource() error {
 		machTime, err := strconv.ParseUint(source[2], 10, 64)
 		if err != nil {
 			return fmt.Errorf("invalid source mach time %q: %w", source[2], err)
-		}
-
-		if u.tx.IsAuto {
-			node := cview.NewTreeNode("auto")
-			node.SetIndent(1)
-			u.parentSource.AddChild(node)
 		}
 
 		node := cview.NewTreeNode("self")
@@ -1861,6 +1867,12 @@ func (u *logReaderUpdate) buildSource() error {
 		node.SetReference(&logReaderTreeRef{
 			info: strings.TrimSpace(highlightStackTrace("\n" + u.tx.StackTrace)),
 		})
+		u.parentSource.AddChild(node)
+	}
+
+	if u.tx.IsAuto {
+		node := cview.NewTreeNode("auto")
+		node.SetIndent(1)
 		u.parentSource.AddChild(node)
 	}
 
@@ -2181,10 +2193,14 @@ func (u *logReaderUpdate) addRelatedNode(
 	return nil
 }
 
+// buildExecutedArgs builds the Executed and Arguments tree parents.
 func (u *logReaderUpdate) buildExecutedArgs() error {
+	// executed
+
 	u.parentExecuted = cview.NewTreeNode("Executed")
 	u.parentExecuted.SetExpanded(false)
 	for _, entry := range u.tx.LogEntries {
+		// TODO handler name
 		if !strings.HasPrefix(entry.Text, "[handler:") {
 			continue
 		}
@@ -2202,6 +2218,8 @@ func (u *logReaderUpdate) buildExecutedArgs() error {
 			node.SetHighlighted(true)
 		}
 	}
+
+	// arguments
 
 	u.parentArgs = cview.NewTreeNode("Arguments")
 	u.parentArgs.SetExpanded(false)
