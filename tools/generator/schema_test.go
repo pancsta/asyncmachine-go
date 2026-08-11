@@ -76,7 +76,7 @@ func TestAll(t *testing.T) {
 		}
 		
 		// MyMachSchema represents all relations and properties of [MyMachStates].
-		var MyMachSchema = SchemaMerge(
+		var MyMachSchema = am.Schema{}.Merge(
 			// inherit from BasicSchema
 			ssam.BasicSchema,
 			// inherit from ConnectedSchema
@@ -169,9 +169,94 @@ func TestBasicConnected(t *testing.T) {
 		}
 		
 		// MyMachSchema represents all relations and properties of [MyMachStates].
-		var MyMachSchema = SchemaMerge(
+		var MyMachSchema = am.Schema{}.Merge(
 			// inherit from BasicSchema
 			ssam.BasicSchema,
+			// inherit from ConnectedSchema
+			ssam.ConnectedSchema,
+			am.Schema{
+		
+				ssM.State1: {},
+				ssM.State2: {
+					Multi: true,
+				},
+		})
+		
+		// EXPORTS AND GROUPS
+		
+		var (
+			ssM = am.NewStates(MyMachStatesDef{})
+			sgM = am.NewStateGroups(MyMachGroupsDef{
+				Group1: S{},
+				Group2: S{},
+			}, ssam.ConnectedGroups)
+		
+			// MyMachStates contains all the states for the [MyMach] state-machine.
+			MyMachStates = ssM
+			// MyMachGroups contains all the state groups for the [MyMach] state-machine.
+			MyMachGroups = sgM
+		)
+	
+		// NewMyMach creates a new [MyMach] state-machine in the most basic form.
+		func NewMyMach(ctx context.Context) *am.Machine {
+			return am.New(ctx, MyMachSchema, nil)
+		}
+	`), "\n")
+
+	assert.Equal(t, expected, removeEmptyLines(generated))
+}
+
+func TestConnected(t *testing.T) {
+	ctx := context.Background()
+	// --states State1,State2:multi \
+	//				--inherit basic,connected \
+	//				--groups Group1,Group2 \
+	//				--name MyMach
+
+	params := cli.StatesParams{
+		Version: false,
+		States:  "State1,State2:multi",
+		Inherit: "connected",
+		Groups:  "Group1,Group2",
+		Name:    "MyMach",
+	}
+
+	gen, err := NewSchemaGenerator(ctx, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	generated := gen.Output()
+	expected := strings.TrimLeft(dedent.Dedent(`
+		package states
+		
+		import (
+			"context"
+	
+			am "github.com/pancsta/asyncmachine-go/pkg/machine"
+			ssam "github.com/pancsta/asyncmachine-go/pkg/states"
+		)
+		
+		// MyMachStatesDef contains all the states of the [MyMach] state-machine.
+		type MyMachStatesDef struct {
+			*am.StatesBase
+		
+			State1 string
+			State2 string
+		
+			// inherit from ConnectedStatesDef
+			*ssam.ConnectedStatesDef
+		}
+		
+		// MyMachGroupsDef contains all the state groups [MyMach] state-machine.
+		type MyMachGroupsDef struct {
+			*ssam.ConnectedGroupsDef
+			Group1 S
+			Group2 S
+		}
+		
+		// MyMachSchema represents all relations and properties of [MyMachStates].
+		var MyMachSchema = am.Schema{}.Merge(
 			// inherit from ConnectedSchema
 			ssam.ConnectedSchema,
 			am.Schema{

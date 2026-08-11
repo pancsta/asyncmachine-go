@@ -227,7 +227,7 @@ func (g *SchemaGenerator) Output() string {
 	var indent string
 	if g.Mach.Is1(ssG.Inherit) {
 		indent = "\t"
-		out += fmt.Sprintf("var %sSchema = SchemaMerge(\n", g.Name)
+		out += fmt.Sprintf("var %sSchema = am.Schema{}.Merge(\n", g.Name)
 	} else {
 		out += fmt.Sprintf("var %sSchema = am.Schema{\n", g.Name)
 	}
