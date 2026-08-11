@@ -5,9 +5,12 @@
 > [!NOTE]
 > **asyncmachine-go** is a declarative execution model based on AOP, actor model, and state machines.
 
-**/pkg/integrations** is responsible for exposing state machines over various
-JSON transports, with currently only NATS being implemented. In the future,
-this may include email, Kafka, or HTTP.
+**/pkg/integrations** integrates asyncmachine with other projects and technologies:
+
+* [JSON](#json)
+* [NATS](#nats)
+* [MCP](#mcp)
+* [Interpreted State Machines](#interpreted-state-machines)
 
 ## JSON
 
@@ -100,6 +103,28 @@ if err != nil {
     return nil, err
 }
 srv.Http.Start(":8753")
+```
+
+## Interpreted State Machines
+
+State machines can be extended from interpreted (dynamic) Go source code without compilation via [traefik/yaegi](https://github.com/traefik/yaegi).
+This includes adding new states, modifying schema relations, and binding handlers. It can happen either inside the
+interpreted code or outside in the host. The host is available as `H` and the `Run` functions return extensions of the
+passed asyncmachine. See [/pkg/integrations/yaegi](/pkg/integrations/yaegi).
+
+```go
+type Host struct {
+	Mach *am.Machine
+	Host any
+}
+
+var H *Host
+
+type Ret struct {
+	Schema    am.Schema
+	Names     am.S
+	BindingId string
+}
 ```
 
 ## Status
