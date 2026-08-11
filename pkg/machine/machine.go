@@ -123,6 +123,7 @@ type Machine struct {
 	handlers         []*handler
 	handlersMx       sync.RWMutex
 	clock            Clock
+	activatedAt      map[string]uint64
 	cancel           context.CancelFunc
 	logLevel         atomic.Pointer[LogLevel]
 	logger           atomic.Pointer[LoggerFn]
@@ -228,6 +229,7 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 		id:           randId(16),
 		schema:       parsedStates,
 		clock:        Clock{},
+		activatedAt:  make(map[string]uint64),
 		handlers:     []*handler{},
 		handlerStart: make(chan *handlerCall),
 		handlerEnd:   make(chan bool),
@@ -796,6 +798,19 @@ func (m *Machine) MachineTick() uint32 {
 	defer m.schemaMx.RUnlock()
 
 	return m.machineTick
+}
+
+// ActivatedAt returns the machine time of the last activation of the passed
+// state (even if the state isnt currently active).
+func (m *Machine) ActivatedAt(state string) uint64 {
+	if m.disposed.Load() {
+		return 0
+	}
+	m.activeStatesMx.RLock()
+	defer m.activeStatesMx.RUnlock()
+
+	sum, _ := m.activatedAt[state]
+	return sum
 }
 
 // Time returns machine's time, a list of ticks per state. Returned value
@@ -1920,6 +1935,7 @@ func (m *Machine) setActiveStates(
 	noChangeStates := StatesDiff(targetStates, newStates)
 	m.activeStates = slices.Clone(targetStates)
 
+	toActivate := []string{}
 	// Tick all new states by +1 and already active and called multi states by +2
 	for _, name := range targetStates {
 
@@ -1928,6 +1944,7 @@ func (m *Machine) setActiveStates(
 			// tick by +1
 			// TODO wrap on overflow
 			m.clock[name]++
+			toActivate = append(toActivate, name)
 		} else if slices.Contains(calledStates, name) && state.Multi {
 
 			// tick by +2 to indicate a new instance
@@ -1965,6 +1982,12 @@ func (m *Machine) setActiveStates(
 			args := m.t.Load().Mutation.LogArgs(m.SemLogger().ArgsMapper())
 			m.log(LogChanges, "["+label+"]"+logMsg+args)
 		}
+	}
+
+	// memorize machine time for activations
+	sum := m.time(nil).Sum(nil)
+	for _, name := range toActivate {
+		m.activatedAt[name] = sum
 	}
 
 	return previous
