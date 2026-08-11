@@ -627,6 +627,30 @@ func (m *Machine) WhenTime1(
 	return m.WhenTime(S{state}, Time{ticks}, ctx)
 }
 
+// WhenTimeSum waits till machine time equals the given value (or higher).
+//
+// ctx: optional context that will close the channel early.
+func (m *Machine) WhenTimeSum(
+	mtime uint64, ctx context.Context,
+) <-chan struct{} {
+	//
+
+	if m.disposed.Load() {
+		return m.subs.Closed
+	}
+
+	// close early on too late
+	if mtime <= m.Time(nil).Sum(nil) {
+		return m.subs.Closed
+	}
+
+	// locks
+	m.activeStatesMx.Lock()
+	defer m.activeStatesMx.Unlock()
+
+	return m.subs.WhenTimeSum(mtime, ctx)
+}
+
 // WhenTicks waits N ticks of a single state (relative to now). Uses WhenTime
 // underneath.
 //
@@ -2150,6 +2174,7 @@ func (m *Machine) processSubscriptions(t *Transition) {
 	toClose := slices.Concat(
 		m.subs.ProcessWhen(t.cacheActivated, t.cacheDeactivated),
 		m.subs.ProcessWhenTime(t.ClockBefore()),
+		m.subs.ProcessWhenTimeSum(),
 		m.subs.ProcessWhenQueue(m.queueTick),
 		m.subs.ProcessWhenQuery(),
 	)

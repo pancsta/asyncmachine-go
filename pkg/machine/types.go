@@ -62,6 +62,22 @@ type A map[string]any
 // structure.
 type Clock map[string]uint64
 
+func (c Clock) Sum(states S) uint64 {
+	var sum uint64
+	for name, v := range c {
+		if len(states) > 0 && !states.Has(name) {
+			continue
+		}
+
+		sum += v
+	}
+
+	return sum
+}
+
+// TODO Clock.Time
+// func (c Clock) Time(index, filter S) TimeIndex {...}
+
 // HandlerFinal is a final transition handler func signature.
 type HandlerFinal func(e *Event)
 
@@ -248,6 +264,7 @@ type Api interface {
 	WhenErr(ctx context.Context) <-chan struct{}
 	// WhenQueue is [Machine.WhenQueue].
 	WhenQueue(tick Result) <-chan struct{}
+	// TODO WhenTimeSum
 
 	// Getters (local)
 
@@ -405,6 +422,13 @@ type WhenTimeBinding struct {
 	Times     Time
 	Completed StateIsActive
 	Ctx       context.Context
+}
+
+// WhenTimeSumBinding is a slice element of machine time to a binding chan
+type WhenTimeSumBinding struct {
+	Ch    chan struct{}
+	MTime uint64
+	Ctx   context.Context
 }
 
 type WhenArgsBinding struct {
