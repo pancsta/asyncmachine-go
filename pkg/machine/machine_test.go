@@ -3558,3 +3558,21 @@ func TestWhenTimeSum(t *testing.T) {
 	m.Dispose()
 	<-m.WhenDisposed()
 }
+
+func TestActivatedAt(t *testing.T) {
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+	m := NewNoRels(t, S{"A"})
+	mtime := m.Time(nil).Sum(nil)
+	m.Add1("B", nil)
+	assert.Equal(t, mtime+1, m.ActivatedAt("B"))
+	m.Remove1("B", nil)
+	m.Add1("B", nil)
+	assert.Equal(t, mtime+3, m.ActivatedAt("B"))
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
