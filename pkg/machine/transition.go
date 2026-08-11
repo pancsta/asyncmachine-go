@@ -576,12 +576,20 @@ func (t *Transition) emitHandler(
 	t.latestHandlerToState = to
 	ret, handlerCalled := t.Machine.handle(event, args, isFinal, isEnter, false)
 
-	if handlerCalled && t.Machine.semLogger.IsSteps() {
+	if handlerCalled && t.isLogSteps() {
 		step := newStep(from, to, StepHandler, 0)
 		step.IsFinal = isFinal
 		step.IsEnter = isEnter
 		t.addSteps(step)
+		if ret == Canceled && !isFinal {
+			state := to
+			if state == "" {
+				state = from
+			}
+			t.addSteps(newStep("", state, StepCancel, 0))
+		}
 	}
+
 	return ret
 }
 
@@ -636,9 +644,12 @@ func (t *Transition) emitStateStateEvents() Result {
 			ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args, false,
 				false, false)
 
-			if handlerCalled && t.Machine.semLogger.IsSteps() {
+			if handlerCalled && t.isLogSteps() {
 				step := newStep(before[i], after[ii], StepHandler, 0)
 				t.addSteps(step)
+				if ret == Canceled {
+					t.addSteps(newStep("", after[ii], StepCancel, 0))
+				}
 			}
 
 			if ret != Canceled {
