@@ -997,6 +997,10 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		d.Mach.EvAddErr(e, err, nil)
 		return
 	}
+	if err := u.buildCanceled(); err != nil {
+		d.Mach.EvAddErr(e, err, nil)
+		return
+	}
 
 	parents := []*cview.TreeNode{
 		u.parentSource, u.parentTrace, u.parentQueue,
@@ -1493,6 +1497,7 @@ type logReaderUpdate struct {
 	parentPipeIn    *cview.TreeNode
 	parentPipeOut   *cview.TreeNode
 	parentExecuted  *cview.TreeNode
+	parentCanceled  *cview.TreeNode
 	parentArgs      *cview.TreeNode
 	parentSource    *cview.TreeNode
 	parentTrace     *cview.TreeNode
@@ -2212,6 +2217,31 @@ func (u *logReaderUpdate) buildExecutedArgs() error {
 		node.SetIndent(1)
 		u.parentArgs.AddChild(node)
 	}
+
+	return nil
+}
+
+func (u *logReaderUpdate) buildCanceled() error {
+	u.parentCanceled = cview.NewTreeNode("Canceled")
+	u.parentCanceled.SetExpanded(false)
+	var prev *am.Step
+	for _, step := range u.tx.Steps {
+		if step.Type != am.StepCancel || prev == nil {
+			prev = step
+			continue
+		}
+		state := step.GetToState(u.statesIndex)
+		label := fmt.Sprintf("%s ["+theme.Grey+"]%s[-]",
+			state, prev.StringFromIndex(u.statesIndex))
+		node := cview.NewTreeNode(strings.ReplaceAll(label, "**", ""))
+		node.SetReference(&logReaderTreeRef{
+			stateNames: S{state},
+		})
+		node.SetIndent(1)
+		u.parentCanceled.AddChild(node)
+	}
+
+	// TODO log-based fallback?
 
 	return nil
 }
