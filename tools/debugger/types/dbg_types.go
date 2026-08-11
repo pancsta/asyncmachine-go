@@ -91,7 +91,7 @@ type Params struct {
 	ViewLogWrap     bool                `arg:"--view-log-wrap" help:"Wrap log lines"`
 	ViewNarrow      bool                `arg:"--view-narrow" help:"Force a narrow view, independently of the viewport size"`
 	ViewRain        bool                `arg:"--view-rain" help:"Show the rain view"`
-	ViewReader      bool                `arg:"-r,--view-reader" help:"Show the log reader view" default:"true"`
+	ViewReader      bool                `arg:"-r,--view-reader" help:"Show the log reader pane" default:"true"`
 	TailMode        bool                `arg:"--view-tail" default:"true" help:"Show the most recent transition"`
 	ViewTheme       string              `arg:"--view-theme" default:"dark" help:"Color theme (dark, light)"`
 	ViewTimelines   ParamsViewTimelines `arg:"--view-timelines" default:"1" help:"Number of timelines to show (0-2)"`
