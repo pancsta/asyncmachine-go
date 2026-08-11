@@ -1,0 +1,14 @@
+version: '3'
+
+tasks:
+  gen-yaegi-symbols:
+    dir: symbols
+    cmds:
+      # TODO rest
+      - go tool yaegi extract -name symbols github.com/pancsta/asyncmachine-go/pkg/machine
+      - go tool yaegi extract -name symbols github.com/pancsta/asyncmachine-go/pkg/rpc
+      - go tool yaegi extract -name symbols github.com/pancsta/asyncmachine-go/pkg/rpc/states
+      - go tool yaegi extract -name symbols github.com/pancsta/asyncmachine-go/pkg/helpers
+      - go tool yaegi extract -name symbols github.com/pancsta/asyncmachine-go/pkg/states
+      - go tool yaegi extract -name symbols github.com/pancsta/asyncmachine-go/pkg/states/pipes
+      - go tool yaegi extract -name symbols github.com/gookit/goutil/dump
