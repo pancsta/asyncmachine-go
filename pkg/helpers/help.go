@@ -1513,6 +1513,20 @@ func MachToSlog(mach am.Api) *slog.Logger {
 	))
 }
 
+type IoWriterToMachLog struct {
+	Mach   am.Api
+	Prefix string
+}
+
+func NewIoWriterToMachLog(mach am.Api, prefix string) *IoWriterToMachLog {
+	return &IoWriterToMachLog{Mach: mach, Prefix: prefix}
+}
+
+func (l IoWriterToMachLog) Write(p []byte) (n int, err error) {
+	l.Mach.Log(l.Prefix + string(p))
+	return len(p), nil
+}
+
 // ///// ///// /////
 
 // ///// STATE UTILS

@@ -269,17 +269,28 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 
 	// fix readme headers
 	if !strings.Contains(sourcePath, "/") {
-		// main readme
+		firstP := doc.Find("#page-content > p")
 		doc.Find("#page-content > h1").PrevAll().Remove().End().Remove()
 		title := "/" + e.Path
+		// main readme
 		if sourcePath == "README.md" {
 			title = "/"
+			content := doc.Find("#page-content")
+			content.PrependHtml("<hr/>")
+			content.PrependNodes(firstP.Get(0))
+			content.PrependHtml("<h2>How Does It Work?<h2>")
 		}
 		doc.Find("h1").SetText(title)
 	} else if sourcePath == "docs/release-notes.md" {
 		doc.Find("#page-content > h1").Remove()
 		doc.Find("h1").SetText("/" + e.Path)
 	} else {
+		if sourcePath == "pkg/machine/README.md" {
+			// remove "cd /"
+			doc.Find("#page-content > p").Slice(0, 1).Remove()
+			// add <hr>
+			doc.Find("#page-content > p").Slice(0, 1).AfterHtml("<hr>")
+		}
 		// nested readmes
 		doc.Find("#page-content > blockquote").First().PrevAll().Remove().End().Remove()
 		doc.Find("#page-content > h1").Remove()

@@ -199,7 +199,7 @@ func NewCommon(
 
 	if handlers != nil {
 		_, err = mach.HandlersBind(handlers, BindOpts{
-			Id: "comm-" + Capitalize(id),
+			Id: "new:" + id,
 		})
 		if err != nil {
 			return nil, err
@@ -335,7 +335,7 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 	}
 	m.ctxParent = ctx
 	// graceful internal context
-	m.ctx, m.cancel = context.WithCancel(context.Background())
+	m.ctx, m.cancel = context.WithCancel(context.WithoutCancel(m.ctxParent))
 
 	if parent != nil {
 		m.parentId = parent.Id()
@@ -620,7 +620,7 @@ func (m *Machine) WhenTime(
 }
 
 // WhenTime1 waits till ticks for a single state equal the given value (or
-// more).
+// higher).
 //
 // ctx: optional context that will close the channel early.
 func (m *Machine) WhenTime1(
@@ -825,6 +825,7 @@ func (m *Machine) Time(states S) Time {
 	return m.time(states)
 }
 
+// time requires activeStatesMx.
 func (m *Machine) time(states S) Time {
 	if m.disposed.Load() {
 		return nil
@@ -1566,7 +1567,7 @@ func (m *Machine) bindHandlers(h *handler, opts ...BindOpts) (string, error) {
 		h.id = idRe.ReplaceAllString(o.Id, "")
 	} else {
 		// TODO name from stack trace
-		h.id = "anon-" + randId(4)
+		h.id = "anon:" + randId(4)
 	}
 	old := m.getHandlers(true)
 	h.num = m.nextHandlerNum
@@ -1724,6 +1725,7 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 	if t.latestHandlerIsFinal {
 		m.recoverFinalPhase()
 	}
+	// TODO partial acceptance
 	m.log(LogOps, "[cancel] (%s) by recover", j(t.TargetStates()))
 
 	// negotiation phase - canceling is enough
@@ -1872,8 +1874,13 @@ func (m *Machine) VerifyStates(states S) error {
 func (m *Machine) verifyStates(states S) error {
 	var errs []error
 	var checked []string
-	for _, s := range states {
 
+	if slices.Contains(states, "") {
+		err := fmt.Errorf("noname state detected for schema for %s", m.id)
+		errs = append(errs, err)
+	}
+
+	for _, s := range states {
 		if _, ok := m.schema[s]; !ok {
 			err := fmt.Errorf("state %s not defined in schema for %s", s, m.id)
 			errs = append(errs, err)
@@ -1919,7 +1926,7 @@ func (m *Machine) StatesVerified() bool {
 }
 
 // setActiveStates sets the new active states incrementing the counters and
-// returning the previously active states.
+// returning the previously active states. Requires activeStatesMx being locked.
 func (m *Machine) setActiveStates(
 	calledStates S, targetStates S, isAuto bool,
 ) S {
@@ -3663,6 +3670,7 @@ func (m *Machine) Go(ctx context.Context, fn func()) {
 	go func() {
 		// in debug, log location of [fn]
 		var caller string
+		// TODO not via env?
 		if os.Getenv(EnvAmDetectEval) != "" {
 			caller = funcName(fn)
 		}
