@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a pathless control-flow graph with a consensus (AOP, actor model, state-machine).
+> **asyncmachine-go** is a declarative execution model based on AOP, actor model, and state machines.
 
 This is a simple example of WASM interop and communication between two distributed async state machines
 (`foo` and `bar`). The complete WASM support allows having a single state-machine which is fully (or selectively)

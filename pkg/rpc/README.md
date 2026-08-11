@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a pathless control-flow graph with a consensus (AOP, actor model, state-machine).
+> **asyncmachine-go** is a declarative execution model based on AOP, actor model, and state machines.
 
 **aRPC** is a transparent RPC for state machines implemented using [asyncmachine-go](/). It's
 clock-based and features many optimizations, e.g. having most of the API methods executed locally (as state changes are

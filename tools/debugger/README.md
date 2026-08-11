@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a pathless control-flow graph with a consensus (AOP, actor model, state-machine).
+> **asyncmachine-go** is a declarative execution model based on AOP, actor model, and state machines.
 
 To read about **am-dbg**, go to [/tools/cmd/am-dbg](/tools/cmd/am-dbg/README.md). This package is about the
 implementation, not the end-user application.

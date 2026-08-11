@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a pathless control-flow graph with a consensus (AOP, actor model, state-machine).
+> **asyncmachine-go** is a declarative execution model based on AOP, actor model, and state machines.
 
 **/pkg/states** contains common state schema mixins to make state-based APIs easier to compose and exchange. It
 also offers tooling for [piping](#piping) states between state machines.

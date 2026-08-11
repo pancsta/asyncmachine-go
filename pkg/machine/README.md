@@ -228,6 +228,9 @@ Subscriptions do not allocate goroutines and channels are reused.
 // wait for a mutation to execute
 <-mach.WhenQueue(mach.Add1("Foo", nil))
 
+// wait for machine time to be >= 16
+<-mach.WhenTimeSum(16)
+
 // wait for an error
 <-mach.WhenErr(nil)
 

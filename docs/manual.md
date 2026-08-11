@@ -2,7 +2,7 @@
 
 <!-- TOC -->
 
-- version `v0.19.1`
+- version `v0.19.2`
 - [Legend](#legend)
 - [Machine and States](#machine-and-states)
   - [Machine Schema](#machine-schema)
@@ -1189,6 +1189,9 @@ they use [machine time](#clock-and-context) to push. The same wait channels are 
 
 // wait for a mutation to execute
 <-mach.WhenQueue(mach.Add1("Foo", nil))
+
+// wait for machine time to be >= 16
+<-mach.WhenTimeSum(16)
 
 // wait for an error
 <-mach.WhenErr(nil)

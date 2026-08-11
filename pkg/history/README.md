@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a pathless control-flow graph with a consensus (AOP, actor model, state-machine).
+> **asyncmachine-go** is a declarative execution model based on AOP, actor model, and state machines.
 
 **/pkg/history** provides mutation history tracking and traversal, which plays an essential role in making informed
 decision about state flow. It contains rich [machine time](/docs/manual.md#clock-and-context) information including

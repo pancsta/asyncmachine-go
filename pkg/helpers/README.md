@@ -3,7 +3,7 @@
 [`cd /`](/README.md)
 
 > [!NOTE]
-> **asyncmachine-go** is a pathless control-flow graph with a consensus (AOP, actor model, state-machine).
+> **asyncmachine-go** is a declarative execution model based on AOP, actor model, and state machines.
 
 **/pkg/helpers** is the swiss army knife for async state machines. It encapsulates many low-level details of
 [`/pkg/machine`](/pkg/machine/README.md) and provide easy to reason about functions. It specifically deals with

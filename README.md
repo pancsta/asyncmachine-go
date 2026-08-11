@@ -46,9 +46,9 @@ It should be used to solve complexity in time.
 > [!NOTE]
 > State machines communicate through states.
 
-**asyncmachine-go** is a distributed workflow engine (technically a pathless control-flow graph with a consensus),
+**asyncmachine-go** is a distributed workflow engine and a declarative execution model,
 which implements [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming) and [actor model](https://en.wikipedia.org/wiki/Actor_model)
-through a **[clock-based state-machine](/pkg/machine/README.md)**. It features [atomic transitions](/docs/manual.md#transition-lifecycle),
+through a **[clock-based state machine](/pkg/machine/README.md)**. It features [atomic transitions](/docs/manual.md#transition-lifecycle),
 [relations](/docs/manual.md#relations), [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
 [telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md), [selective distribution](/pkg/rpc/README.md#selective-distribution),
 and [diagrams](/tools/cmd/am-vis/README.md) (plus support for [WASM](/docs/wasm.md) and [AI](/docs/ai.md)).
@@ -88,7 +88,7 @@ vector formats. It aims to create **autonomous** workflows with **organic** cont
 - breakpoint
 
 Besides the main use-case of **workflows**, it can be used for **stateful applications of any size** - daemons, UIs,
-stateful RPC UIs, configs, bots, firewalls, synchronization consensus, games, smart graphs, microservice orchestration,
+stateful RPC UIs, configs, live sessions, bots, firewalls, synchronization consensus, games, smart graphs, microservice orchestration,
 robots, contracts, streams, DI containers, message broking, test scenarios, simulators, as well as **"real-time" systems**
 which rely on instant cancelation.
 
@@ -269,8 +269,8 @@ This monorepo offers the following importable packages, especially:
 Other packages:
 
 - [`/pkg/rpc`](/pkg/rpc) Remote state machines, with the same API as local ones.
-- [`/pkg/history`](/pkg/history) History tracking and traversal, including Key-Value and SQL.
-- [`/pkg/integrations`](/pkg/integrations) Integrations for JSON, NATS, MCP.
+- [`/pkg/history`](/pkg/history) History tracking and traversal in mem, KV, and SQL.
+- [`/pkg/integrations`](/pkg/integrations) Integrations for JSON, NATS, MCP, and yaegi.
 - [`/pkg/graph`](/pkg/graph) Directional multigraph of connected state machines.
 - [`/pkg/node`](/pkg/node) Distributed worker pools with supervisors.
 - [`/pkg/pubsub`](/pkg/pubsub) Decentralized PubSub based on libp2p gossipsub.
