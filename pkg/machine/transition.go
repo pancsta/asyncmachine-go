@@ -599,6 +599,8 @@ func (t *Transition) emitFinalEvents() Result {
 	for _, s := range finals {
 		isEnter := slices.Contains(t.Enters, s)
 
+		// TODO use emitHandler
+
 		var handler string
 		if isEnter {
 			handler = s + SuffixState
@@ -611,14 +613,14 @@ func (t *Transition) emitFinalEvents() Result {
 		ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args,
 			true, isEnter, false)
 
-		if handlerCalled && t.Machine.semLogger.IsSteps() {
+		if handlerCalled && t.isLogSteps() {
 			step := newStep("", s, StepHandler, 0)
 			step.IsFinal = true
 			step.IsEnter = isEnter
 			t.addSteps(step)
 		}
 
-		// final handler cancel means timeout
+		// final handler cancel means timeout TODO add dedicated steps
 		if ret == Canceled {
 			return ret
 		}
@@ -638,7 +640,10 @@ func (t *Transition) emitStateStateEvents() Result {
 				continue
 			}
 
+			// TODO use emitHandler?
+
 			autoState := t.cacheSchema[after[ii]].Auto
+			// TODO validate before / after not empty
 			handler := before[i] + after[ii]
 			t.latestHandlerToState = ""
 			ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args, false,
@@ -652,6 +657,7 @@ func (t *Transition) emitStateStateEvents() Result {
 				}
 			}
 
+			// continue
 			if ret != Canceled {
 				continue
 			}
@@ -857,28 +863,27 @@ func (t *Transition) emitEvents() Result {
 		return result
 	}
 
-	// TODO optimize: remove checks?
+	// remove mutation
 	if t.Type() == MutationRemove {
 		if m.Not(called) {
 			return Executed
-		} else {
-			return Canceled
 		}
-	} else {
-		// partial auto acceptance
-		if t.IsAuto() && len(t.TargetStates()) > len(t.StatesBefore()) {
-			return Executed
-		} else if !t.IsAuto() && m.Is(t.TargetStates()) {
-			return Executed
-		} else {
-			return Canceled
-		}
+		return Canceled
 	}
+
+	// partial auto acceptance (add mutation)
+	if t.IsAuto() && len(t.TargetStates()) > len(t.StatesBefore()) {
+		return Executed
+	} else if !t.IsAuto() && m.Is(t.TargetStates()) {
+		return Executed
+	}
+
+	return Canceled
 }
 
 func (t *Transition) setupAccepted() {
 	m := t.Machine
-	// Dropping states doesn't require an acceptance
+	// dropping states doesn't require an acceptance TODO confirm
 	if t.Type() == MutationRemove {
 		return
 	}
@@ -898,7 +903,7 @@ func (t *Transition) setupAccepted() {
 		return
 	}
 
-	// accept if check and one of called is multi
+	// accept if check and one of called is multi TODO doc why
 	isMulti := false
 	for _, s := range called {
 		if t.cacheSchema[s].Multi {
@@ -910,12 +915,11 @@ func (t *Transition) setupAccepted() {
 		return
 	}
 
-	// no accepted
-
+	// not accepted
 	t.IsAccepted.Store(false)
+	// TODO partial acceptance
 	m.log(LogOps, "[cancel:reject] %s", j(notAccepted))
 	if t.isLogSteps() {
-		// TODO optimize: stop early on cancel
 		t.addSteps(newSteps("", notAccepted, StepCancel, 0)...)
 	}
 }

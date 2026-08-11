@@ -285,7 +285,8 @@ func (s *Server) ExceptionState(e *am.Event) {
 var _ = ssS.Start
 
 func (s *Server) StartState(e *am.Event) {
-	ctx := s.Mach.NewStateCtx(ssS.Start)
+	mach := s.Mach
+	ctx := mach.NewStateCtx(ssS.Start)
 
 	// start websocket server early
 	if s.Opts.WebSocket {
@@ -297,22 +298,15 @@ func (s *Server) StartState(e *am.Event) {
 			},
 		}
 
-		// fork2
-		go func() {
-			if ctx.Err() != nil {
-				return // expired
-			}
-
+		mach.Fork(ctx, e, func() {
 			err := s.httpSrv.ListenAndServe()
 			if err != nil {
 				// add err to mach
-				AddErrNetwork(e, s.Mach, err)
+				AddErrNetwork(e, mach, err)
 				// add outcome to mach
-				s.Mach.Remove1(ssS.RpcStarting, nil)
-
-				return
+				mach.Remove1(ssS.RpcStarting, nil)
 			}
-		}()
+		})
 	}
 }
 
@@ -341,7 +335,8 @@ func (s *Server) RpcStartingEnter(e *am.Event) bool {
 }
 
 func (s *Server) RpcStartingState(e *am.Event) {
-	ctxStart := s.Mach.NewStateCtx(ssS.Start)
+	mach := s.Mach
+	ctxStart := mach.NewStateCtx(ssS.Start)
 	s.log("Starting RPC on %s", s.Addr)
 	s.bindRpcHandlers()
 
@@ -350,13 +345,8 @@ func (s *Server) RpcStartingState(e *am.Event) {
 		return
 	}
 
-	// fork1 TODO mach.Fork
-	go func() {
-		// has to be ctxStart, not ctxRpcStarting TODO why? reconns?
-		if ctxStart.Err() != nil {
-			return // expired
-		}
-
+	mach.Fork(ctxStart, e, func() {
+		// has to be ctxStart, not ctxRpcStarting
 		// websocket listener (HTTP)
 		if s.Opts.WebSocketTunnel != "" {
 			addr := "ws://" + s.Addr + s.Opts.WebSocketTunnel
@@ -385,16 +375,16 @@ func (s *Server) RpcStartingState(e *am.Event) {
 				if err != nil {
 					s.log("WebSocket err")
 					if ctxStart.Err() == nil && ctxWs.Err() != nil {
-						AddErrNetworkTimeout(e, s.Mach, err)
+						AddErrNetworkTimeout(e, mach, err)
 					} else {
-						AddErrNetwork(e, s.Mach, err)
+						AddErrNetwork(e, mach, err)
 					}
 
 				} else {
 					s.log("WebSocket OK")
 					s.wsConn = ws
 					if err != nil {
-						AddErrNetwork(e, s.Mach, err)
+						AddErrNetwork(e, mach, err)
 					} else {
 						s.log("Tunnel OK")
 						s.Conn = websocket.NetConn(ctxStart, ws, websocket.MessageBinary)
@@ -426,7 +416,7 @@ func (s *Server) RpcStartingState(e *am.Event) {
 			// failed?
 			if s.Conn == nil {
 				s.log("WebSocket tunnel failure")
-				s.Mach.EvRemove1(e, ssS.RpcStarting, nil)
+				mach.EvRemove1(e, ssS.RpcStarting, nil)
 				return
 			}
 
@@ -448,9 +438,9 @@ func (s *Server) RpcStartingState(e *am.Event) {
 			lis, err := cfg.Listen(ctxStart, "tcp4", s.Addr)
 			if err != nil {
 				// add err to mach
-				AddErrNetwork(e, s.Mach, err)
+				AddErrNetwork(e, mach, err)
 				// add outcome to mach
-				s.Mach.EvRemove1(e, ssS.RpcStarting, nil)
+				mach.EvRemove1(e, ssS.RpcStarting, nil)
 
 				return
 			}
@@ -461,8 +451,8 @@ func (s *Server) RpcStartingState(e *am.Event) {
 		}
 
 		// next
-		s.Mach.EvAdd1(e, ssS.RpcAccepting, nil)
-	}()
+		mach.EvAdd1(e, ssS.RpcAccepting, nil)
+	})
 }
 
 var _ = ssS.RpcAccepting
@@ -472,24 +462,20 @@ func (s *Server) RpcAcceptingEnter(e *am.Event) bool {
 }
 
 func (s *Server) RpcAcceptingState(e *am.Event) {
-	ctxRpcAccepting := s.Mach.NewStateCtx(ssS.RpcAccepting)
+	ctx := s.Mach.NewStateCtx(ssS.RpcAccepting)
 	ctxStart := s.Mach.NewStateCtx(ssS.Start)
 	srv := s.rpcServer
 
 	s.log("RPC started on %s", s.Addr)
 
 	// unblock
-	go func() {
-		if ctxRpcAccepting.Err() != nil {
-			return // expired
-		}
-
+	s.Mach.Fork(ctx, e, func() {
 		// fork to accept TODO state?
-		go func() {
-			if ctxRpcAccepting.Err() != nil {
-				return // expired
-			}
-			s.Mach.EvAdd1(e, ssS.RpcReady, Pass(&A{Addr: s.Addr}))
+		s.Mach.Go(ctx, func() {
+			// mark as ready
+			s.Mach.EvAdd1(e, ssS.RpcReady, Pass(&A{
+				Addr: s.Addr,
+			}))
 
 			// accept (block)
 			lis := s.Listener.Load()
@@ -522,7 +508,7 @@ func (s *Server) RpcAcceptingState(e *am.Event) {
 				s.Mach.EvRemove1(e, ssS.RpcReady, nil)
 				s.Mach.EvAdd1(e, ssS.RpcStarting, nil)
 			}
-		}()
+		})
 
 		// bind to RPC server events (or override)
 		srv.OnDisconnect(func(client *rpc2.Client) {
@@ -535,7 +521,7 @@ func (s *Server) RpcAcceptingState(e *am.Event) {
 				Client: client,
 			}))
 		})
-	}()
+	})
 }
 
 var _ = ssS.RpcReady
@@ -1379,7 +1365,8 @@ func (h *wsHandlerServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	conn := websocket.NetConn(mach.Context(), connWs, websocket.MessageBinary)
 	h.s.Conn = conn
 
-	// next and stay alive
+	// next and stay alive TODO JSON-RPC compat via RpcAcceptingJson
+	// TODO add Opts.JsonRpc (req Opts.WebSocket)
 	mach.EvAdd1(h.event, ssS.RpcAccepting, nil)
 	select {
 	case <-mach.WhenNot1(ss.Start, nil):

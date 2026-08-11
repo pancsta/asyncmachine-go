@@ -121,9 +121,11 @@ tasks:
           -l -1
           {{.CLI_ARGS}}
 
-  am-dbg-ssh:
-    ignore_error: true
-    cmd: ssh localhost -p 6833 -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
+  am-dbg-ssh: ssh localhost -p 6833 
+    -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
+
+  am-dbg-ssh-force: ssh force@localhost -p 6833 
+    -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
 
   am-dbg-ssh-auto:
     ignore_error: true
@@ -263,6 +265,10 @@ tasks:
       - go test {{.CLI_ARGS}}
       - go test -race {{.CLI_ARGS}}
 
+  test-pkg:
+    desc: Run tests for a specific package
+    cmd: task test-path -- ./pkg/{{.CLI_ARGS}}
+
   test-count:
     cmd: grep -r --include="*_test.go"  "^func Test" ./ | wc -l > tests.txt
 
@@ -382,7 +388,7 @@ tasks:
     jq '.languages[] | select(.name == "Go").code' |
     task script-compact-number
 
-  cloc-go-pkg: gocloc --output-type json --not-match=_test\.go
+  cloc-go-pkg: gocloc --output-type json --not-match=_test\.go --not-match-d=symbols
     pkg |
     jq '.languages[] | select(.name == "Go").code' |
     task script-compact-number
@@ -448,7 +454,10 @@ tasks:
       - task: format
       - task: check-fmt
       - '! grep -rn --include="*.go" "TODO DEBUG" .'
-      - '! grep -rn --include="*.go" --exclude-dir="examples" "github.com/gookit/goutil/dump" .'
+      - '! grep -rn --include="*.go"
+       --exclude-dir="examples"
+       --exclude-dir="yaegi"
+        "github.com/gookit/goutil/dump" .'
 
   lint-ci:
     cmds:
@@ -585,7 +594,7 @@ tasks:
     cmds:
       - godoc -http=:6060
 
-  gen-manual-pdf:
+  gen-docs-manual-pdf:
     cmds:
       - pandoc -f markdown-implicit_figures docs/manual.md -o assets/asyncmachine-go/manual.pdf
 
@@ -774,6 +783,7 @@ tasks:
 
   gen-docs-api:
     cmds:
+      - rm -R ./tmp*/call-log
       - task: script-gen-api-docs
 
   gen-docs-release-notes:
@@ -903,6 +913,10 @@ tasks:
       - task: test-coverage-pkg
       - task: test-coverage-tools
       - task: script-gen-badges
+
+  gen-yaegi-symbols:
+    dir: pkg/integrations/yaegi
+    cmd: task gen-yaegi-symbols
 
   #
   #

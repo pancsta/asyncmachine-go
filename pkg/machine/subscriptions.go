@@ -21,7 +21,9 @@ type Subscriptions struct {
 	Mx     sync.Mutex
 	Closed chan struct{}
 
-	mach  Api
+	// currently bound machine
+	mach Api
+	// current machine clock
 	clock Clock
 	is    InternalCheckFunc
 	not   InternalCheckFunc
@@ -644,8 +646,6 @@ func (sm *Subscriptions) NewStateCtx(state string) context.Context {
 }
 
 func (sm *Subscriptions) When(states S, ctx context.Context) <-chan struct{} {
-	// TODO re-use channels with the same state set and context
-
 	// if all active, close early
 	if sm.is(states) || (ctx != nil && ctx.Err() != nil) {
 		return sm.Closed
@@ -658,7 +658,7 @@ func (sm *Subscriptions) When(states S, ctx context.Context) <-chan struct{} {
 	// try to reuse an existing channel
 	for _, bind := range sm.when[states[0]] {
 		names := slices.Collect(maps.Keys(bind.States))
-		if !bind.Negation && StatesEqual(names, states) && bind.Ctx == ctx {
+		if !bind.Negation && S(names).Equal(states) && bind.Ctx == ctx {
 			return bind.Ch
 		}
 	}
@@ -712,7 +712,7 @@ func (sm *Subscriptions) WhenNot(
 	// try to reuse an existing channel
 	for _, bind := range sm.when[states[0]] {
 		names := slices.Collect(maps.Keys(bind.States))
-		if bind.Negation && StatesEqual(names, states) && bind.Ctx == ctx {
+		if bind.Negation && S(names).Equal(states) && bind.Ctx == ctx {
 			return bind.Ch
 		}
 	}
@@ -840,7 +840,7 @@ func (sm *Subscriptions) WhenTime(
 		}
 	}
 
-	// if all times passed, close early TODO optimize with always-closed chan
+	// if all times passed, close early
 	passed := true
 	for i, s := range states {
 		if sm.clock[s] < times[i] {

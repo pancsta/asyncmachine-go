@@ -538,10 +538,10 @@ func (s Schema) Merge(schemas ...Schema) Schema {
 	return ret.Clone()
 }
 
-// Prefix will prefix all state names with [prefix]. removeDups will skip
-// overlaps eg "FooFooName" will be "Foo".
+// Prefix will prefix all state names with [prefix]. skipPrefixed will skip
+// overlaps eg "FooFooName" will remain "FooName".
 func (s Schema) Prefix(
-	prefix string, removeDups bool, optAllowlist, optSkiplist S,
+	prefix string, skipPrefixed bool, optAllowlist, optSkiplist S,
 ) Schema {
 	ret := Schema{}
 	for name, s := range s {
@@ -555,35 +555,35 @@ func (s Schema) Prefix(
 
 		for i, r := range s.After {
 			newName := r
-			if !removeDups || !strings.HasPrefix(name, prefix) {
+			if !skipPrefixed || !strings.HasPrefix(name, prefix) {
 				newName = prefix + r
 			}
 			s.After[i] = newName
 		}
 		for i, r := range s.Add {
 			newName := r
-			if !removeDups || !strings.HasPrefix(name, prefix) {
+			if !skipPrefixed || !strings.HasPrefix(name, prefix) {
 				newName = prefix + r
 			}
 			s.Add[i] = newName
 		}
 		for i, r := range s.Remove {
 			newName := r
-			if !removeDups || !strings.HasPrefix(name, prefix) {
+			if !skipPrefixed || !strings.HasPrefix(name, prefix) {
 				newName = prefix + r
 			}
 			s.Remove[i] = newName
 		}
 		for i, r := range s.Require {
 			newName := r
-			if !removeDups || !strings.HasPrefix(name, prefix) {
+			if !skipPrefixed || !strings.HasPrefix(name, prefix) {
 				newName = prefix + r
 			}
 			s.Require[i] = newName
 		}
 
 		newName := name
-		if !removeDups || !strings.HasPrefix(name, prefix) {
+		if !skipPrefixed || !strings.HasPrefix(name, prefix) {
 			newName = prefix + name
 		}
 
@@ -716,6 +716,23 @@ func SchemaMerge(schemas ...Schema) Schema {
 	return ret.Clone()
 }
 
+// StatesByTag is deprecated, use
+//
+//	Schema.FilterByTag("").Names()
+func StatesByTag(schema Schema, tag string) S {
+	ret := S{}
+	for name, s := range schema {
+		for _, t := range s.Tags {
+			if t == tag || strings.HasPrefix(t, tag+":") {
+				ret = append(ret, name)
+				break
+			}
+		}
+	}
+
+	return ret
+}
+
 // ///// ///// /////
 
 // ///// HANDLERS
@@ -746,10 +763,14 @@ type handler struct {
 type BindOpts struct {
 	// Id of this binding, optional.
 	Id string
-	// method name will have this prefix removed
+	// Method names will have this prefix removed
 	MethodPrefixTrim string
-	// only states with this prefix
+	// Bind only the states with this prefix
 	StatePrefix string
+
+	// TODO ExecOnActive to run handlers of active states
+	//  in order they depend on each other and order of activation
+	//  (save activation tick)
 }
 
 type handlerCall struct {
@@ -760,6 +781,7 @@ type handlerCall struct {
 	final       HandlerFinal
 	event       *Event
 	timeout     bool
+	debug       string
 }
 
 func (c *handlerCall) Exec() bool {
@@ -822,12 +844,19 @@ func newHandlerCallStruct(
 	}
 	m.tracersMx.RUnlock()
 
-	return &handlerCall{
+	c := &handlerCall{
 		fn:      &method,
 		name:    methodName,
 		event:   e,
 		timeout: false,
 	}
+
+	// TODO not via env?
+	if os.Getenv(EnvAmDetectEval) != "" {
+		c.debug = h.id + "." + methodName
+	}
+
+	return c
 }
 
 func newHandlerCallMap(

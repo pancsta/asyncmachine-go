@@ -15,19 +15,17 @@ import (
 // ///// ///// /////
 // TODO godoc
 
-type ConnectedState = string
-
 // ConnectedStatesDef contains states for a connection status.
 // Required states:
 // - Start
 type ConnectedStatesDef struct {
 	// ErrConnecting is a detailed connection error, eg no access.
-	ErrConnecting ConnectedState
+	ErrConnecting string
 
-	Connecting    ConnectedState
-	Connected     ConnectedState
-	Disconnecting ConnectedState
-	Disconnected  ConnectedState
+	Connecting    string
+	Connected     string
+	Disconnecting string
+	Disconnected  string
 
 	*am.StatesBase
 }
