@@ -976,4 +976,5 @@ tasks:
 
   script-gen-changelog:
     dir: scripts
+    deps: [install-deps-scripts]
     cmd: go run ./gen_changelog
