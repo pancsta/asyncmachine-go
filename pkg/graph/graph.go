@@ -213,6 +213,11 @@ func (g *Graph) Connection(source, target string) (*Connection, error) {
 func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 	c := g.Clients[id]
 
+	// TODO err
+	if c == nil {
+		return
+	}
+
 	var sum uint64
 	for _, v := range msgTx.Clocks {
 		sum += v

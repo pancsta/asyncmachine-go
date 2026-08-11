@@ -1462,3 +1462,50 @@ func TestStateCtxBasic(t *testing.T) {
 	m.Dispose()
 	<-m.WhenDisposed()
 }
+
+func TestWhenTimeSum(t *testing.T) {
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+	// init
+	m := utils.NewNoRelsNetSrc(t, S{"A", "B"}, "")
+
+	// initial sum: A:1 B:1 = 2
+	sum0 := m.Time(nil).Sum(nil)
+	require.Equal(t, uint64(2), sum0)
+
+	// bind: wait for sum >= 8
+	whenCh := m.WhenTimeSum(8, nil)
+
+	// tick some, but not enough: Remove+Add both = A:3 B:3 sum=6
+	m.Remove(S{"A", "B"}, nil)
+	m.Add(S{"A", "B"}, nil)
+	sum1 := m.Time(nil).Sum(nil)
+	require.Equal(t, uint64(6), sum1)
+
+	// channel should not fire yet
+	select {
+	case <-whenCh:
+		t.Fatal("when shouldnt be resolved")
+	default:
+		// pass
+	}
+
+	// tick A again: Remove1+Add1 = A:5 B:3 sum=8
+	m.Remove1("A", nil)
+	m.Add1("A", nil)
+	sum2 := m.Time(nil).Sum(nil)
+	require.Equal(t, uint64(8), sum2)
+
+	// channel should fire now
+	select {
+	default:
+		t.Fatal("when should be resolved")
+	case <-whenCh:
+		// pass
+	}
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}

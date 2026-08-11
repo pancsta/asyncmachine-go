@@ -135,6 +135,7 @@ type DbgMsgTx struct {
 	// TODO remove or skip in msgpack
 	// TODO rename to HTime
 	Time *time.Time
+	// TODO ExecutionTime (measure)
 	// transition was triggered by an auto state
 	IsAuto bool
 	// result of the transition

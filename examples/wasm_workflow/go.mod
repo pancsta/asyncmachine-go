@@ -14,7 +14,7 @@ tool github.com/pancsta/asyncmachine-go/tools/cmd/am-vis
 tool github.com/pancsta/asyncmachine-go/tools/cmd/arpc
 
 require (
-	github.com/gookit/goutil v0.7.5
+	github.com/gookit/goutil v0.8.0
 	github.com/joho/godotenv v1.5.1
 	github.com/pancsta/asyncmachine-go v0.18.4
 )

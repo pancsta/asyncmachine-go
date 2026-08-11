@@ -139,6 +139,7 @@ type ServerStatesDef struct {
 	RpcStarting string
 	// setting up RPC accepting
 	RpcAccepting string
+	// TODO RpcAcceptingJson for JSON-RPC over WS
 	// RPC is accepting or has accepted connections
 	RpcReady string
 

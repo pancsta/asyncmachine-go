@@ -23,6 +23,8 @@ go 1.25.0
 //replace github.com/gdamore/tcell/v2 => ../tcell
 //replace github.com/gdamore/tcell/v2 => ../tcell-v2
 
+tool github.com/traefik/yaegi/cmd/yaegi
+
 require (
 	github.com/AlexanderGrooff/mermaid-ascii v0.0.0-20260221123917-b5d02c35decf
 	github.com/K-Phoen/grabana v0.22.2
@@ -39,6 +41,7 @@ require (
 	github.com/failsafe-go/failsafe-go v0.6.8
 	github.com/fsnotify/fsnotify v1.7.1-0.20240403050945-7086bea086b7
 	github.com/gdamore/tcell/v2 v2.13.9
+	github.com/gookit/goutil v0.8.0
 	github.com/hibiken/asynq v0.24.1
 	github.com/ic2hrmk/promtail v0.0.5
 	github.com/ipfs/go-log/v2 v2.6.0
@@ -69,6 +72,7 @@ require (
 	github.com/teivah/onecontext v1.3.0
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.40.0
+	github.com/traefik/yaegi v0.16.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/zyedidia/clipper v0.1.1
 	go.etcd.io/bbolt v1.3.6

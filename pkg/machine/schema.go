@@ -13,7 +13,13 @@ import (
 
 // ///// ///// /////
 
+// StatesBase is the base class for schema states definition, providing compiler
+// safety and holding order of state names, as well as groups.
 type StatesBase struct {
+	// TODO rename to SchemaStates
+
+	// TODO Prefix, support prefixing index and struct field vals
+
 	// Exception is the only built-in state and mean a global error. All errors
 	// have to [State.Require] the Exception state. If [Machine.PanicToErr] is
 	// true, Exception will receive it.
@@ -42,16 +48,17 @@ func (b *StatesBase) SetStateGroups(groups map[string][]int, order []string) {
 	b.groupsOrder = order
 }
 
-// States is the vase interface for schema states.
+// States is the vase interface for schema states. TODO name to SchemaStates?
 type States interface {
 	// Names returns the state names of the state machine.
 	Names() S
-	// TODO
 	StateGroups() (map[string][]int, []string)
 	SetNames(S)
 	SetStateGroups(map[string][]int, []string)
 }
 
+// NewStates inits the *StatesDef struct by assigning state names to string
+// values and storing the name order.
 func NewStates[G States](states G) G {
 	// read and assign names of all the embedded structs
 	names := S{}
@@ -91,7 +98,7 @@ func parseStateNames(
 			parseStateNames(value.Elem(), names, field.Name, groups, order)
 
 		} else if value.CanSet() && kind == reflect.String {
-			// local state name
+			// local state name TODO prefix
 			value.SetString(field.Name)
 			if !slices.Contains(*names, field.Name) {
 				if group != "StatesBase" {
@@ -103,8 +110,8 @@ func parseStateNames(
 	}
 }
 
-// NewStateGroups accepts the target group with values (FooGroupsDef) and
-// inherited GroupsDefs (optionally).
+// NewStateGroups inits a *GroupsDef struct with state lists and optionally
+// inherits from parent *GroupsDefs instances.
 func NewStateGroups[G any](groups G, mixins ...any) G {
 	// init nil embeds
 	v := reflect.ValueOf(&groups).Elem()
@@ -165,21 +172,6 @@ func copyFields(src, dst interface{}) {
 			}
 		}
 	}
-}
-
-// TODO refac to Schema.StatesByTag
-func StatesByTag(schema Schema, tag string) S {
-	ret := S{}
-	for name, s := range schema {
-		for _, t := range s.Tags {
-			if t == tag || strings.HasPrefix(t, tag+":") {
-				ret = append(ret, name)
-				break
-			}
-		}
-	}
-
-	return ret
 }
 
 // ///// ///// /////
@@ -343,3 +335,7 @@ func ArgIndex(arg ArgsApi) string {
 	state := arg.ArgsState()
 	return ns + "__" + state
 }
+
+// TODO
+// func (e *Event) ArgsState(state string, def any) any {
+// }

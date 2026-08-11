@@ -94,6 +94,7 @@ func (rr *DefaultRelationsResolver) TargetStates(
 
 	// start from the end
 	// TODO optimize?
+	// TODO rename to targetStates
 	resolvedS := slicesReverse(statesToSet)
 
 	// collect blocked calledStates
@@ -142,11 +143,10 @@ func (rr *DefaultRelationsResolver) TargetStates(
 			toRemove = append(toRemove, state.Remove...)
 		}
 	}
-	resolvedS = slicesFilter(rr.parseAdd(resolvedS), func(name string,
-		_ int,
-	) bool {
-		return !slices.Contains(toRemove, name)
-	})
+	resolvedS = slicesFilter(rr.parseAdd(resolvedS),
+		func(name string, _ int) bool {
+			return !slices.Contains(toRemove, name)
+		})
 	resolvedS = slicesUniq(resolvedS)
 
 	// Parsing required states allows to avoid cross-removal of states
@@ -312,17 +312,17 @@ func (rr *DefaultRelationsResolver) stateBlockedBy(
 }
 
 // TODO docs
-func (rr *DefaultRelationsResolver) parseRequire(states S) S {
+func (rr *DefaultRelationsResolver) parseRequire(targetStates S) S {
 	t := rr.Transition
 	lengthBefore := 0
 	// maps of states with their required states missing
 	missingMap := map[string]S{}
 
-	for lengthBefore != len(states) {
-		lengthBefore = len(states)
-		states = slicesFilter(states, func(name string, _ int) bool {
+	for lengthBefore != len(targetStates) {
+		lengthBefore = len(targetStates)
+		targetStates = slicesFilter(targetStates, func(name string, _ int) bool {
 			state := rr.Machine.schema[name]
-			missingReqs := rr.getMissingRequires(name, state, states)
+			missingReqs := rr.getMissingRequires(name, state, targetStates)
 			if len(missingReqs) > 0 {
 				missingMap[name] = missingReqs
 			}
@@ -330,6 +330,7 @@ func (rr *DefaultRelationsResolver) parseRequire(states S) S {
 		})
 	}
 
+	// log missing states if canceled
 	if len(missingMap) > 0 {
 		names := S{}
 		for state, notFound := range missingMap {
@@ -342,12 +343,12 @@ func (rr *DefaultRelationsResolver) parseRequire(states S) S {
 		}
 	}
 
-	return states
+	return targetStates
 }
 
 // TODO docs
 func (rr *DefaultRelationsResolver) getMissingRequires(
-	name string, state State, states S,
+	name string, state State, targetStates S,
 ) S {
 	t := rr.Transition
 	ret := S{}
@@ -357,18 +358,19 @@ func (rr *DefaultRelationsResolver) getMissingRequires(
 			t.addSteps(newStep(name, req, StepRelation,
 				RelationRequire))
 		}
-		if slices.Contains(states, req) {
+		if slices.Contains(targetStates, req) {
 			continue
-		}
-		ret = append(ret, req)
-		if t.isLogSteps() {
-			t.addSteps(newStep(name, "", StepRemoveNotActive, 0))
 		}
 
 		idx := slices.Index(rr.Index, name)
 		if slices.Contains(t.Mutation.Called, idx) && t.isLogSteps() {
-			// TODO optimize: stop on cancel
+			// TODO partial acceptance
 			t.addSteps(newStep("", req, StepCancel, 0))
+		}
+
+		ret = append(ret, req)
+		if t.isLogSteps() {
+			t.addSteps(newStep(name, "", StepRemoveNotActive, 0))
 		}
 	}
 

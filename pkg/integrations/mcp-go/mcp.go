@@ -1,4 +1,8 @@
+// Package mcp exposes asyncmachines over mcp-go as an MCP server.
+// See /tools/debugger/misc_dbg.(newMcpServer) for an example.
 package mcp
+
+// TODO add test &/ example
 
 import (
 	"context"

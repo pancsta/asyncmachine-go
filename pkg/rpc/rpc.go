@@ -1348,12 +1348,6 @@ func TrafficMeter(
 	counter <- c
 }
 
-func newClosedChan() chan struct{} {
-	ch := make(chan struct{})
-	close(ch)
-	return ch
-}
-
 // WsListenPath creates a WebSocket remote listen URL path.
 // Eg /listen/MyMach/localhost:1234
 func WsListenPath(machId, addr string) string {

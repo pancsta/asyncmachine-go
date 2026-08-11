@@ -239,6 +239,7 @@ type Api interface {
 	IsLocal() bool
 	// ErrInternal is [Machine.ErrInternal].
 	ErrInternal() <-chan error
+	// TODO ActivatedAt
 
 	// Waiting (local)
 
@@ -383,7 +384,7 @@ type breakpoint struct {
 
 type (
 	// IndexWhen is a map of (single) state names to a list of activation or
-	// de-activation bindings
+	// deactivation bindings
 	IndexWhen map[string][]*WhenBinding
 	// IndexWhenTime is a map of (single) state names to a list of time bindings
 	IndexWhenTime map[string][]*WhenTimeBinding

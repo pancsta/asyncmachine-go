@@ -688,7 +688,7 @@ func (m *NetworkMachine) When(
 	states am.S, ctx context.Context,
 ) <-chan struct{} {
 	if m.disposed.Load() {
-		return newClosedChan()
+		return m.subs.Closed
 	}
 
 	// locks
@@ -734,7 +734,7 @@ func (m *NetworkMachine) WhenTime(
 	states am.S, times am.Time, ctx context.Context,
 ) <-chan struct{} {
 	if m.disposed.Load() {
-		return newClosedChan()
+		return m.subs.Closed
 	}
 
 	// close early on invalid
@@ -745,7 +745,7 @@ func (m *NetworkMachine) WhenTime(
 		)
 		m.AddErr(err, nil)
 
-		return newClosedChan()
+		return m.subs.Closed
 	}
 
 	// locks
@@ -796,10 +796,32 @@ func (m *NetworkMachine) WhenQueue(tick am.Result) <-chan struct{} {
 
 	// finish early
 	if m.queueTick >= uint64(tick) {
-		return newClosedChan()
+		return m.subs.Closed
 	}
 
 	return m.subs.WhenQueue(tick)
+}
+
+// WhenTimeSum is [am.Api.WhenTimeSum].
+func (m *NetworkMachine) WhenTimeSum(
+	mtime uint64, ctx context.Context,
+) <-chan struct{} {
+	//
+
+	if m.disposed.Load() {
+		return m.subs.Closed
+	}
+
+	// close early on too late
+	if mtime <= m.Time(nil).Sum(nil) {
+		return m.subs.Closed
+	}
+
+	// locks
+	m.clockMx.Lock()
+	defer m.clockMx.Unlock()
+
+	return m.subs.WhenTimeSum(mtime, ctx)
 }
 
 // ///// Waiting (remote)
@@ -809,7 +831,7 @@ func (m *NetworkMachine) WhenArgs(
 	state string, args am.A, ctx context.Context,
 ) <-chan struct{} {
 	// TODO subscribe on the source via a uint8 token
-	return newClosedChan()
+	return m.subs.Closed
 }
 
 // ///// Getters (remote)
@@ -1562,6 +1584,7 @@ func (m *NetworkMachine) processSubscriptions(
 	toClose := slices.Concat(
 		m.subs.ProcessWhen(activated, deactivated),
 		m.subs.ProcessWhenTime(clockBefore),
+		m.subs.ProcessWhenTimeSum(),
 		m.subs.ProcessWhenQueue(m.queueTick),
 		m.subs.ProcessWhenQuery(),
 	)
@@ -1661,6 +1684,15 @@ func (m *NetworkMachine) MachineTick() uint32 {
 	defer m.clockMx.RUnlock()
 
 	return m.machTick
+}
+
+// ActivatedAt is [am.Api.ActivatedAt].
+func (m *NetworkMachine) ActivatedAt(state string) uint64 {
+	// TOOD copy test
+	if m.disposed.Load() {
+		return 0
+	}
+	panic("not implemented yet")
 }
 
 // ParseStates is [am.Api.ParseStates].

@@ -3,17 +3,18 @@ package machine
 import (
 	"context"
 	"errors"
+	"maps"
 	"os"
 	"os/signal"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/maps"
 )
 
 func init() {
@@ -2229,6 +2230,7 @@ func TestWhenCtx(t *testing.T) {
 		context.Background(), os.Interrupt, os.Kill,
 	)
 	whenTimeCh := m.WhenTime(S{"A", "B"}, Time{3, 3}, ctx)
+	whenTimeSumCh := m.WhenTimeSum(6, ctx)
 	whenTicks1Ch := m.WhenTicks("A", 2, ctx)
 	whenTicks2Ch := m.WhenTime1("B", 3, ctx)
 	whenArgsCh := m.WhenArgs("B", A{"foo": "bar"}, ctx)
@@ -2236,6 +2238,7 @@ func TestWhenCtx(t *testing.T) {
 
 	// assert
 	assert.Greater(t, len(m.subs.whenTime), 0)
+	assert.Greater(t, len(m.subs.whenTimeSum), 0)
 	assert.Greater(t, len(m.subs.when), 0)
 	assert.Greater(t, len(m.subs.whenArgs), 0)
 
@@ -2251,6 +2254,7 @@ func TestWhenCtx(t *testing.T) {
 	<-whenCh
 	<-whenArgsCh
 	<-whenTimeCh
+	<-whenTimeSumCh
 	<-whenTicks1Ch
 	<-whenTicks2Ch
 
@@ -2259,6 +2263,7 @@ func TestWhenCtx(t *testing.T) {
 
 	// assert
 	assert.Equal(t, 0, len(m.subs.whenTime))
+	assert.Equal(t, 0, len(m.subs.whenTimeSum))
 	assert.Equal(t, 0, len(m.subs.when))
 	assert.Equal(t, 0, len(m.subs.whenArgs))
 
@@ -2379,6 +2384,11 @@ func TestChanReuse(t *testing.T) {
 	whenCh2 = m.WhenNot1("A", nil)
 	assert.Equal(t, whenCh1, whenCh2, "WhenNot chans not reused")
 
+	// same mtime should return same channel
+	whenCh1 = m.WhenTimeSum(10, nil)
+	whenCh2 = m.WhenTimeSum(10, nil)
+	assert.Equal(t, whenCh1, whenCh2, "WhenTimeSum chans not reused")
+
 	// TODO WhenQueue, WhenQueueEnds, WhenQuery
 
 	// dispose
@@ -2400,7 +2410,7 @@ func TestNewCommon(t *testing.T) {
 
 	// init
 	s := Schema{"A": {}, StateException: {}}
-	m, err := NewCommon(context.TODO(), "foo", s, maps.Keys(s),
+	m, err := NewCommon(context.TODO(), "foo", s, slices.Collect(maps.Keys(s)),
 		&TestNewCommonHandlers{}, nil, nil)
 
 	// assert
@@ -2415,7 +2425,7 @@ func TestNewCommonLessCommon(t *testing.T) {
 
 	// init
 	s := Schema{"A": {}, StateException: {}}
-	m2, err := NewCommon(context.TODO(), "foo", s, maps.Keys(s),
+	m2, err := NewCommon(context.TODO(), "foo", s, slices.Collect(maps.Keys(s)),
 		&TestNewCommonHandlers{}, m, &Opts{LogLevel: LogChanges})
 
 	// assert
@@ -3575,4 +3585,3 @@ func TestActivatedAt(t *testing.T) {
 	m.Dispose()
 	<-m.WhenDisposed()
 }
-
