@@ -993,6 +993,13 @@ func (c *Client) callFailsafe(
 ) bool {
 	mName := ServerMethods.Parse(method).Value
 
+	// allow for a re-conn to finish
+	if c.Mach.Is1(ssC.RetryingConn) {
+		_ = amhelp.WaitForAny(ctx, c.ConnRetryTimeout,
+			c.Mach.When1(ssC.Ready, ctx),
+			c.Mach.WhenNextActive(ssC.Disconnected, ctx))
+	}
+
 	// validate
 	if c.rpc.Load() == nil || c.Mach.Not1(ssC.Ready) {
 		AddErrNoConn(nil, c.Mach, errors.New(mName))
@@ -1114,6 +1121,13 @@ func (c *Client) notifyFailsafe(
 	ctx context.Context, method string, args any,
 ) bool {
 	mName := ServerMethods.Parse(method).Value
+
+	// allow for a re-conn to finish
+	if c.Mach.Is1(ssC.RetryingConn) {
+		_ = amhelp.WaitForAny(ctx, c.ConnRetryTimeout,
+			c.Mach.When1(ssC.Ready, ctx),
+			c.Mach.WhenNextActive(ssC.Disconnected, ctx))
+	}
 
 	// validate
 	if c.rpc.Load() == nil {
