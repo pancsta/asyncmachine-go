@@ -142,6 +142,8 @@ type Debugger struct {
 	toolbarItems     [4][]toolbarItem
 	clientListFile   *os.File
 	txFileMd         *os.File
+	machFileYml      *os.File
+	schemaFileYml    *os.File
 	msgsDelayed      []*dbg.DbgMsgTx
 	msgsDelayedConns []string
 	currTxBar        *cview.Flex
@@ -494,6 +496,13 @@ func (d *Debugger) hSetParams(p types.Params) error {
 		}
 	}
 
+	// mach file
+	if p.OutputMach {
+		if err := d.hInitMachFile(); err != nil {
+			return err
+		}
+	}
+
 	if p.OutputDiagrams != types.ParamsOutputDiagramsNone {
 		if err := d.hInitDiagFiles(); err != nil {
 			return err
@@ -520,6 +529,118 @@ func (d *Debugger) hCloseTxFile() error {
 		return nil
 	}
 	return d.txFileMd.Close()
+}
+
+func (d *Debugger) hUpdateTxFile() error {
+	if !d.params.OutputTx || d.txFileMd == nil || d.C == nil ||
+		d.C.MsgStruct == nil {
+		return nil
+	}
+
+	tx := d.hCurrentTx()
+	if tx == nil {
+		_ = d.txFileMd.Truncate(0)
+		return nil
+	}
+
+	index := d.C.MsgStruct.StatesIndex
+	_ = d.txFileMd.Truncate(0)
+	_, err := d.txFileMd.WriteAt([]byte(tx.TxString(index)), 0)
+	return err
+}
+
+func (d *Debugger) hInitMachFile() error {
+	loc := path.Join(d.params.OutputDir, "mach.yml")
+	machFile, err := os.Create(loc)
+	if err != nil {
+		return err
+	}
+	d.machFileYml = machFile
+
+	schemaLoc := path.Join(d.params.OutputDir, "schema.yml")
+	schemaFile, err := os.Create(schemaLoc)
+	if err != nil {
+		_ = machFile.Close()
+		d.machFileYml = nil
+		return err
+	}
+	d.schemaFileYml = schemaFile
+
+	return nil
+}
+
+func (d *Debugger) hCloseMachFile() error {
+	var err error
+
+	if d.machFileYml != nil {
+		err = d.machFileYml.Close()
+		d.machFileYml = nil
+	}
+
+	if d.schemaFileYml != nil {
+		if closeErr := d.schemaFileYml.Close(); err == nil {
+			err = closeErr
+		}
+		d.schemaFileYml = nil
+	}
+
+	return err
+}
+
+// hExportMach export tmp/mach.yml file
+func (d *Debugger) hExportMach() error {
+	if !d.params.OutputMach || d.machFileYml == nil || d.C == nil ||
+		d.C.MsgStruct == nil {
+
+		return nil
+	}
+
+	tx := d.hCurrentTx()
+	var machTime am.Time
+	var qTick uint64
+	var machTick uint32
+
+	if tx != nil {
+		machTime = tx.Clocks
+		qTick = tx.QueueTick
+		if d.C.CursorTx1 > 0 {
+			machTick = uint32(d.C.CursorTx1 - 1)
+		}
+	} else {
+		machTime = make(am.Time, len(d.C.MsgStruct.StatesIndex))
+	}
+
+	ser := &am.Serialized{
+		ID:          d.C.Id,
+		StateNames:  d.C.MsgStruct.StatesIndex,
+		Time:        machTime,
+		QueueTick:   qTick,
+		MachineTick: machTick,
+	}
+
+	data, err := yaml.Marshal(ser)
+	if err != nil {
+		return err
+	}
+
+	_ = d.machFileYml.Truncate(0)
+	_, err = d.machFileYml.WriteAt(data, 0)
+	if err != nil {
+		return err
+	}
+
+	if d.schemaFileYml == nil {
+		return nil
+	}
+
+	schemaData, err := yaml.Marshal(d.C.MsgStruct.States)
+	if err != nil {
+		return err
+	}
+
+	_ = d.schemaFileYml.Truncate(0)
+	_, err = d.schemaFileYml.WriteAt(schemaData, 0)
+	return err
 }
 
 func (d *Debugger) hInitLogFile() {
