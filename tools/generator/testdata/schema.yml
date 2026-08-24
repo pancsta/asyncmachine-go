@@ -1,0 +1,25 @@
+Start:
+BaseDBReady:
+  remove:
+    - BaseDBStarting
+BaseDBSaving:
+  multi: true
+BaseDBStarting:
+  remove:
+    - BaseDBReady
+CharacterReady:
+  remove:
+    - RestoreCharacter
+    - GenCharacter
+CheckStories:
+  multi: true
+  require:
+    - Start
+CheckingMenuRefs:
+  multi: true
+  require:
+    - Start
+  tags:
+    - args
+RestoreCharacter:
+GenCharacter:
