@@ -612,16 +612,21 @@ func TestRetryClosedListener(t *testing.T) {
 	c.NetMach.Add1(sst.D, nil)
 
 	// wait for D
-	_ = amhelp.WaitForAll(ctx, 2*time.Second, c.NetMach.When1(sst.D, ctx))
+	amhelpt.WaitForAll(t, t.Name(), ctx, 2*time.Second,
+		c.NetMach.When1(sst.D, ctx))
 
 	// assert
+	amhelpt.AssertIs1(t, c.NetMach, sst.D)
+
 	amhelpt.AssertIs1(t, c.Mach, ssrpc.ClientStates.Ready)
 	amhelpt.AssertIs1(t, s.Mach, ssrpc.ServerStates.Ready)
 
 	amhelpt.AssertNot1(t, c.Mach, ssrpc.ClientStates.RetryingCall)
 	amhelpt.AssertNot1(t, c.Mach, ssrpc.ClientStates.RetryingConn)
 
-	assertTime(t, c.Mach, am.S{ssC.Exception, ssC.ErrRpc}, am.Time{2, 2})
+	amhelpt.AssertTime(t, c.Mach,
+		am.S{ssC.RetryingConn, ssC.HandshakeDone, ssC.Disconnected},
+		am.Time{2, 3, 2})
 	disposeTest(t, c, s, false)
 }
 
