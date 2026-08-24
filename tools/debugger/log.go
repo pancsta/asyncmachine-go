@@ -242,19 +242,9 @@ func (d *Debugger) LogUpdatedState(e *am.Event) {
 		d.log.SetTitle(title)
 	}
 
-	// highlight the next tx if scrolling by steps
-	bySteps := d.Mach.Is1(ss.TimelineStepsScrolled)
-	if bySteps {
-		tx = d.hNextTx()
-	}
 	if tx == nil {
 		d.log.Highlight("")
-		if bySteps {
-			d.log.ScrollToEnd()
-		} else {
-			d.log.ScrollToBeginning()
-		}
-
+		d.log.ScrollToBeginning()
 		return
 	}
 
