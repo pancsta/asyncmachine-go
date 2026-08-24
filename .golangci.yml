@@ -2,6 +2,7 @@ version: "2"
 linters:
   enable:
     - lll
+    - gomoddirectives
   settings:
     lll:
       line-length: 80
@@ -26,6 +27,7 @@ linters:
       - ^examples
       - ^docs
       - ^scripts
+      - ^tmp
 formatters:
   exclusions:
     generated: lax
@@ -35,5 +37,6 @@ formatters:
       - ^examples
       - ^docs
       - ^scripts
+      - ^tmp
 run:
   allow-parallel-runners: true

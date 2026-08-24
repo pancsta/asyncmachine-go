@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/lithammer/dedent"
@@ -16,27 +17,45 @@ import (
 //
 //nolint:lll
 type Args struct {
-	StatesFile *StatesParams  `arg:"subcommand:states-file" help:"Generate state schema"`
-	Grafana    *GrafanaParams `arg:"subcommand:grafana" help:"Generate Grafana dashboards"`
-	Version    bool           `arg:"-v,--version" help:"Print version and exit"`
+	Starter    *StarterParams    `arg:"subcommand:starter-kit" help:"Generate a starter project from schema.yml / mach.yml"`
+	Schema     *SchemaParams     `arg:"subcommand:schema" help:"Generate state schema from CLI params"`
+	SchemaFile *SchemaFileParams `arg:"subcommand:schema-from-file" help:"Generate state schema from schema.yml / mach.yml"`
+	Grafana    *GrafanaParams    `arg:"subcommand:grafana" help:"Generate Grafana dashboards"`
+	Version    bool              `arg:"-v,--version" help:"Print version and exit"`
+
+	StatesFile *SchemaParams `arg:"subcommand:states-file" help:"Deprecated, use schema"`
 }
 
-// TODO dedicated descriptions
+// Description returns the formatted CLI description and examples.
 func (Args) Description() string {
 	//nolint:lll
-	return strings.TrimLeft(dedent.Dedent(`
-			am-gen generates state files and Grafana dashboards for asyncmachine-go state machines.
+	desc := dedent.Dedent(`
+		am-gen generates schemas, project boilerplate, and Grafana dashboards for
+			asyncmachine-go state machines.
+		
+		Example:
+		$ am-gen schema --state State1 --state State2:multi \
+			--inherit basic --inherit connected \
+			--group Group1 --group Group2 \
+			--name MyMach
+		
+		Example:
+		$ am-gen starter-kit schema.yml --name MyMach --uri github.com/my/project
+		
+		Example:
+		$ am-gen schema-from-file schema.yml --name MyMach
+		
+		Example:
+		$ am-gen grafana --IDs MyMach1,MyMach2 \
+			--sync grafana-host.com
+		
+		Valid for --inherit:
+		- %s
 	
-			Example:
-			$ am-gen states-file --states State1,State2:multi \
-				--inherit basic,connected \
-				--groups Group1,Group2 \
-				--name MyMach
-	
-			Example:
-			$ am-gen grafana --IDs MyMach1,MyMach2 \
-				--sync grafana-host.com
-		`), "\n")
+		`)
+
+	return fmt.Sprintf(
+		strings.TrimSpace(desc)+"\n", strings.Join(Inherits, "\n- "))
 }
 
 // ///// ///// /////
@@ -65,30 +84,83 @@ type GrafanaParams struct {
 
 // ///// ///// /////
 
-// TODO validate param
-// var inherits = []string{"basic", "connected", "rpc/worker", "node/worker"}
+// TODO enum, merge with schema.go
+var Inherits = []string{
+	"basic", "connected", "disposed", "rpc/statesrc", "node/worker",
+}
 
-// StatesParams are params for the states-file subcommand.
+// SchemaParams are params for the states-file subcommand.
 //
 //nolint:lll
-type StatesParams struct {
+type SchemaParams struct {
+
+	SchemaParamsCommon
+
+	// State - State name to generate (repeatable). Eg: --state State1 --state State2:multi
+	State []string `arg:"--state,separate" help:"Repeatable state name to generate. Eg: --state State1 --state State2:multi"`
+	// States - State names to generate. Eg: State1,State2
+	States string `arg:"-s,--states" help:"State names to generate. Eg: State1,State2"`
+}
+
+// ///// ///// /////
+
+// ///// SCHEMA FILE
+
+// ///// ///// /////
+
+// SchemaFileParams are params for the schema-yaml subcommand.
+//
+//nolint:lll
+type SchemaFileParams struct {
+	SchemaParamsCommon
+
+	// File - Path to YAML schema file.
+	File string `arg:"positional,required" help:"Path to schema.yml / mach.yml"`
+
+	// internal
+	FileContent []byte `arg:"-"`
+}
+
+//nolint:lll
+type SchemaParamsCommon struct {
 	// Version - print version
 	Version bool
-	// States - State names to generate. Eg: State1,State2
-	States string `arg:"-s,--states,required" help:"State names to generate. Eg: State1,State2"`
-	// Inherit - Inherit from built-in states machines (comma separated):
+	// Inherit - Inherit from built-in states machines (comma separated or repeatable):
 	// - basic,connected
 	// - rpc/statesrc
 	// - node/worker
-	Inherit string `arg:"-i,--inherit" help:"Inherit from built-in state-machines: basic,connected,rpc/statesrc,node/worker"`
+	Inherit []string `arg:"-i,--inherit,separate" help:"Inherit from built-in state-machines: basic,disposed,connected,rpc/statesrc,node/worker"`
+	// Group - Group to generate (repeatable). Eg: --group Group1 --group Group2
+	Group []string `arg:"--group,separate" help:"Repeatable group to generate. Eg: --group Group1 --group Group2"`
 	// Groups - Groups to generate. Eg: Group1,Group2
 	Groups string `arg:"-g,--groups" help:"Groups to generate. Eg: Group1,Group2"`
 	// Name - Name of the state machine.
-	Name string `arg:"-n,--name,required" help:"Name of the state machine. Eg: MyMach"`
+	Name string `arg:"-n,--name" default:"MyMach" help:"Name of the state machine. Eg: MyMach"`
 	// Force - Overwrite existing files.
 	Force bool `arg:"-f,--force" help:"Override output file (if any)"`
 	// Utils - Generate states_utils.go in CWD. Overrides files.
 	Utils bool `arg:"-u,--utils" default:"true" help:"Generate states_utils.go in CWD. Overrides files."`
 	// Global - Import pkg/states/global and skip generating states_utils.go.
-	Global bool `arg:"--global" help:"Import pkg/states/global and skip generating states_utils.go"`
+	Global bool `arg:"--global" default:"true" help:"Import pkg/states/global and skip generating states_utils.go"`
+	// Output - Print output to stdout instead of writing to a file.
+	Output bool `arg:"-o,--output" help:"Print output to stdout"`
+}
+
+//nolint:lll
+type StarterParams struct {
+	// File - Path to YAML schema file.
+	File string `arg:"positional,required" help:"Path to schema.yml / mach.yml"`
+
+	Name     string   `arg:"-n,--name" default:"MyMach" help:"Name of the state machine and the project directory"`
+	Uri      string   `arg:"-u,--uri" default:"asyncmachine.dev/mymach" help:"URI of this module for imports"`
+	Module   bool     `arg:"-m,--module" default:"true" help:"Generate go.mod"`
+	Handlers bool     `arg:"-h,--handlers" default:"true" help:"Generate state-state handlers"`
+	Args     bool     `arg:"-a,--args" default:"true" help:"Generate common args and for each state tagged #args"`
+	Path     string   `arg:"-p,--path" help:"Base path for the generated project directory"`
+	Force    bool     `arg:"-f,--force" help:"Override output files (if any)"`
+	Inherit  []string `arg:"-i,--inherit,separate" help:"Inherit from built-in state-machines: basic,connected,disposed,rpc/statesrc,node/worker (default: basic, disposed)"`
+	// later: Typesafe bool
+
+	// internal
+	FileContent []byte `arg:"-"`
 }

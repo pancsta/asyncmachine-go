@@ -130,8 +130,7 @@ func replaceInFile(path string) error {
 
 	// inject stats
 	newContent = strings.ReplaceAll(newContent, `<pre id="footer">`, `
-		<script defer data-domain="code.asyncmachine.dev"
-			src="https://a.blogic.tech/js/script.outbound-links.js"></script>
+		<script defer data-domain="code.asyncmachine.dev" src="/js/script.outbound-links.js"></script>
 		<pre id="footer">`)
 
 	return os.WriteFile(path, []byte(newContent), 0644)

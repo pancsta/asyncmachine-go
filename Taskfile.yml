@@ -121,8 +121,10 @@ tasks:
           -l -1
           {{.CLI_ARGS}}
 
-  am-dbg-ssh: ssh localhost -p 6833 
-    -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
+  am-dbg-ssh:
+    ignore_error: true
+    cmd: ssh localhost -p 6833 
+      -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
 
   am-dbg-ssh-force: ssh force@localhost -p 6833 
     -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
@@ -219,15 +221,23 @@ tasks:
   test:
     env:
       AM_TEST_RUNNER: 1
-    desc: Run all regular tests
+    desc: Run all simple tests
     cmds:
       - task: clean-test
       - go test ./... {{.CLI_ARGS}}
 
+  test-all:
+    env:
+      AM_TEST_RUNNER: 1
+    desc: Run simple and integration tests
+    cmds:
+      - task: clean-test
+      - go test -tags integration ./... {{.CLI_ARGS}}
+
   test-integration:
     env:
       AM_TEST_RUNNER: 1
-    desc: Run all integration tests
+    desc: Run only integration tests
     cmds:
       - task: clean-test
       - go test -tags integration
@@ -243,6 +253,7 @@ tasks:
         ./examples/pipes
         ./examples/raw_strings
         ./examples/subscriptions
+        ./tools/debugger
         {{.CLI_ARGS}}
 
   test-integration-dbg:
@@ -263,7 +274,7 @@ tasks:
     cmds:
       - task: clean-test
       - go test {{.CLI_ARGS}}
-      - go test -race {{.CLI_ARGS}}
+      - go test -race -timeout 1m {{.CLI_ARGS}}
 
   test-pkg:
     desc: Run tests for a specific package
@@ -445,12 +456,6 @@ tasks:
     cmds:
       - task: lint-go
       - task: lint-md
-      # https://github.com/markdownlint/markdownlint/issues/136
-      - |
-        if grep -q "]()" --exclude="docs/release-notes.md" docs/*.md; then
-          echo "Error: Empty links" >&2
-          exit 1
-        fi
       - task: format
       - task: check-fmt
       - '! grep -rn --include="*.go" "TODO DEBUG" .'
@@ -464,22 +469,15 @@ tasks:
       - task: lint-go
       - task: lint-md
 
-  lint-go:
-    cmds:
-      - $(go env GOPATH)/bin/golangci-lint run --fix --timeout 15m
+  lint-go: $(go env GOPATH)/bin/golangci-lint run --fix --timeout 15m
 
+  # config in .rumdl.toml
   lint-md:
-    # TODO migrate to https://github.com/rvben/rumdl
-#    cmd: find . -type f -path '**/*.md'
-#          -not -path '*am-vis.md'
-#          -not -path '*deps.md'
-#          -not -path './\.*'
-#          -not -path './tmp*'
-#          -not -path './CHANGELOG.md'
-#          -not -path './docs/editors*'
-#          -not -path './docs/release-notes.md'
-#          -not -path './dist*' |
-#            xargs mdl -g -c config/mdlrc
+    cmd: rumdl check . {{.CLI_ARGS}}
+
+  lint-md-fix:
+    desc: Fix auto-fixable markdown issues
+    cmd: rumdl check --fix . {{.CLI_ARGS}}
 
   check-fmt:
     silent: false
@@ -524,11 +522,6 @@ tasks:
       - chmod +x tailwindcss-linux-x64
       - sudo mv tailwindcss-linux-x64 /usr/local/bin/tailwindcss
 
-  install-deps-video:
-    desc: Install promo video dependencies
-    cmds:
-      - npm install -g terminalizer
-
   install-deps-scripts:
     desc: Install go.mod for /scripts
     dir: scripts
@@ -539,6 +532,11 @@ tasks:
     cmds:
       - go run ./tools/cmd/am-gen states-file {{.CLI_ARGS}}
 
+  am-gen-schema-yaml:
+    desc: Generate a schema file in ROOT DIR from a YAML file, eg "task am-gen-schema-yaml -- schema.yml -n MyMach"
+    cmds:
+      - go run ./tools/cmd/am-gen schema-yaml {{.CLI_ARGS}}
+
   am-gen-grafana:
     desc: Generate a Grafana dashboard, eg "task am-gen-grafana -- --ids mymach,rm-mymach --name mymach --source my-service"
     cmds:
@@ -546,53 +544,13 @@ tasks:
 
   install-deps-linter:
     cmds:
-      - # TODO switch to quickmark-cli
-      - gem install mdl
-#      - cargo install quickmark-cli
+      - uv tool install --force rumdl
       - go install mvdan.cc/gofumpt@latest
       - go install golang.org/x/tools/cmd/goimports@latest
       - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh 
           | sh -s -- -b $(go env GOPATH)/bin v2.10.1
 
-  video-gif:
-    env:
-      DISPLAY: :0
-    cmds:
-      - terminalizer render assets/asyncmachine-go/video.cast.yml -o assets/asyncmachine-go/video.gif
-      - convert assets/asyncmachine-go/video.gif -delete 0 assets/asyncmachine-go/video.gif
-      - magick assets/asyncmachine-go/video.gif -layers optimize assets/asyncmachine-go/video.gif
-
-  video-gif-quick:
-    desc: Render a low quality video gif
-    env:
-      DISPLAY: :0
-    cmds:
-      - terminalizer render assets/asyncmachine-go/video.cast.yml -o assets/asyncmachine-go/video.gif -q 15
-      - convert assets/asyncmachine-go/video.gif -delete 0 assets/asyncmachine-go/video.gif
-
-  video:
-    desc: Record a video with a preview
-    cmds:
-      - terminalizer record
-        --config config/terminalizer.yml assets/asyncmachine-go/video.cast
-        --skip-sharing
-      # delete first 1 record (each has 2 lines)
-      - sed -i '/^records:/{n;N;d;}' assets/asyncmachine-go/video.cast.yml
-      - task: video-gif-quick
-
-  video-run:
-    cmds:
-      - go run ./internal/cmd/am-dbg-video
-
-  gen-video:
-    desc: Create assets/asyncmachine-go/video.gif using internal/cmd/video
-    cmds:
-      - task: video
-      - task: video-gif
-
-  godoc:
-    cmds:
-      - godoc -http=:6060
+  godoc: godoc -http=:6060
 
   gen-docs-manual-pdf:
     cmds:
@@ -857,6 +815,11 @@ tasks:
     cmds:
       - task: gen-docs-skill-mini
       - task: gen-docs-skill-full
+      - task: gen-docs-skill-cli
+
+  gen-docs-skill-cli:
+    dir: scripts
+    cmd: go run ./gen_cli_skill
 
   gen-docs-skill-am:
     vars:
@@ -978,3 +941,8 @@ tasks:
     dir: scripts
     deps: [install-deps-scripts]
     cmd: go run ./gen_changelog
+
+  script-gen-cli-skill:
+    dir: scripts
+    deps: [install-deps-scripts]
+    cmd: go run ./gen_cli_skill

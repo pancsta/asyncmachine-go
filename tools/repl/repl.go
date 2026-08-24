@@ -461,7 +461,7 @@ func (r *Repl) CmdGroupRemoveState(e *am.Event) {
 		}
 
 		// count results
-		switch c.NetMach.Add(args.States, mutArgs) {
+		switch c.NetMach.Remove(args.States, mutArgs) {
 		case am.Executed:
 			se++
 		case am.Canceled:

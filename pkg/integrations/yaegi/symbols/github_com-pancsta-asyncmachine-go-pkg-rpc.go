@@ -78,7 +78,6 @@ func init() {
 		"TagRpcHandler":            reflect.ValueOf(constant.MakeFromLiteral("\"rpc-handler\"", token.STRING, 0)),
 		"TagRpcMux":                reflect.ValueOf(constant.MakeFromLiteral("\"rpc-mux\"", token.STRING, 0)),
 		"TagRpcServer":             reflect.ValueOf(constant.MakeFromLiteral("\"rpc-server\"", token.STRING, 0)),
-		"TrafficMeter":             reflect.ValueOf(rpc.TrafficMeter),
 		"WsDialPath":               reflect.ValueOf(rpc.WsDialPath),
 		"WsListenPath":             reflect.ValueOf(rpc.WsListenPath),
 		"WsPathDial":               reflect.ValueOf(constant.MakeFromLiteral("\"/dial/\"", token.STRING, 0)),

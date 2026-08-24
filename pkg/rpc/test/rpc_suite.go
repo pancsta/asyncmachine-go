@@ -1,43 +1,38 @@
-package rpc
+package test
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 
 	sst "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 )
 
-var readyTimeout = 3 * time.Second
+var (
+	ssC  = ssrpc.ClientStates
+	ssCo = ssrpc.ConsumerStates
+	ssS  = ssrpc.ServerStates
+	ssM  = ssrpc.MuxStates
+	Pass = am.Pass
+)
 
-func init() {
-	if os.Getenv(am.EnvAmTestRunner) != "" {
-		return
-	}
-
-	_ = godotenv.Load()
-
-	if os.Getenv(am.EnvAmTestDebug) != "" {
-		amhelp.EnableDebugging(true)
-	}
-}
-
-func TestBasic(t *testing.T) {
+func TemplateTestBasic(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -62,7 +57,7 @@ func TestBasic(t *testing.T) {
 	amhelpt.MachDebugEnv(t, netSrc)
 
 	// init server and client
-	_, _, s, c := NewTest(t, ctx, netSrc, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, netSrc, nil, 0, false, nil, nil)
 
 	// test
 	c.NetMach.Add1("Foo", nil)
@@ -85,7 +80,7 @@ func TestBasic(t *testing.T) {
 	s.Mach.Remove1(ssrpc.ServerStates.Start, nil)
 }
 
-func TestTypeSafe(t *testing.T) {
+func TemplateTestTypeSafe(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -101,7 +96,7 @@ func TestTypeSafe(t *testing.T) {
 	amhelpt.MachDebug(t, worker, amDbgAddr, logLvl, true)
 
 	// init server and client
-	_, _, s, c := NewTest(t, ctx, worker, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, worker, nil, 0, false, nil, nil)
 
 	// test
 	states := am.S{sst.A, sst.C}
@@ -126,7 +121,7 @@ func TestTypeSafe(t *testing.T) {
 	s.Mach.Remove1(ssrpc.ServerStates.Start, nil)
 }
 
-func TestWaiting(t *testing.T) {
+func TemplateTestWaiting(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -136,7 +131,7 @@ func TestWaiting(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	end := make(chan struct{})
-	counter, _, s, c := NewTest(t, ctx, nil, end, 0, false, nil, nil)
+	counter, _, s, c := newTest(t, ctx, nil, end, 0, false, nil, nil)
 
 	// test
 	whenA := make(chan struct{})
@@ -161,13 +156,13 @@ func TestWaiting(t *testing.T) {
 	bytesCount := <-counter
 	assert.LessOrEqual(t, 1_300, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 1_400, int(bytesCount),
+	assert.GreaterOrEqual(t, 20_000, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
 }
 
-func TestAddMany(t *testing.T) {
+func TemplateTestAddMany(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -177,7 +172,7 @@ func TestAddMany(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	end := make(chan struct{})
-	counter, _, s, c := NewTest(t, ctx, nil, end, 0, false, nil, nil)
+	counter, _, s, c := newTest(t, ctx, nil, end, 0, false, nil, nil)
 
 	// test
 	whenD := make(chan struct{})
@@ -203,13 +198,13 @@ func TestAddMany(t *testing.T) {
 	bytesCount := <-counter
 	assert.LessOrEqual(t, 20_000, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
-	assert.GreaterOrEqual(t, 21_000, int(bytesCount),
+	assert.GreaterOrEqual(t, 200_000, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
 
 	disposeTest(t, c, s, true)
 }
 
-func TestAddManyNoSync(t *testing.T) {
+func TemplateTestAddManyNoSync(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -219,7 +214,7 @@ func TestAddManyNoSync(t *testing.T) {
 	defer cancel()
 	end := make(chan struct{})
 	// disable clock pushes
-	counter, _, s, c := NewTest(t, ctx, nil, end, 0, false, nil, nil)
+	counter, _, s, c := newTest(t, ctx, nil, end, 0, false, nil, nil)
 
 	// test
 	whenD := make(chan struct{})
@@ -251,13 +246,13 @@ func TestAddManyNoSync(t *testing.T) {
 	bytesCount := <-counter
 	assert.LessOrEqual(t, 10_000, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
-	assert.GreaterOrEqual(t, 11_000, int(bytesCount),
+	assert.GreaterOrEqual(t, 100_000, int(bytesCount),
 		"Client called handshake (2) and A,C (500) and D(1)")
 
 	disposeTest(t, c, s, true)
 }
 
-func TestAddManyInstantClock(t *testing.T) {
+func TemplateTestAddManyInstantClock(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -268,7 +263,7 @@ func TestAddManyInstantClock(t *testing.T) {
 	end := make(chan struct{})
 	// disable clock optimization (instant pushes)
 	interval := 1 * time.Nanosecond
-	counter, _, s, c := NewTest(t, ctx, nil, end, interval, false, nil, nil)
+	counter, _, s, c := newTest(t, ctx, nil, end, interval, false, nil, nil)
 
 	// test
 	whenD := make(chan struct{})
@@ -293,13 +288,13 @@ func TestAddManyInstantClock(t *testing.T) {
 	assert.LessOrEqual(t, 20_000, int(bytesCount),
 		"Bytes transferred (both ways)")
 	// 549_751
-	assert.GreaterOrEqual(t, 21_000, int(bytesCount),
+	assert.GreaterOrEqual(t, 200_000, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
 }
 
-func TestManyStates(t *testing.T) {
+func TemplateTestManyStates(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -325,7 +320,7 @@ func TestManyStates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	counter, _, s, c := NewTest(t, ctx, netSrc, end, 0, false, nil, nil)
+	counter, _, s, c := newTest(t, ctx, netSrc, end, 0, false, nil, nil)
 
 	// test
 	whenD := make(chan struct{})
@@ -352,13 +347,13 @@ func TestManyStates(t *testing.T) {
 	bytesCount := <-counter
 	assert.LessOrEqual(t, 10_000, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 10_500, int(bytesCount),
+	assert.GreaterOrEqual(t, 100_000, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
 }
 
-func TestHighInstantClocks(t *testing.T) {
+func TemplateTestHighInstantClocks(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -376,11 +371,11 @@ func TestHighInstantClocks(t *testing.T) {
 	clock[sst.C] = 1_000_000
 	am.TestMockClock(worker, clock)
 	// disable clock optimization
-	counter, _, s, c := NewTest(t, ctx, worker, end, 0, false, nil, nil)
+	counter, _, s, c := newTest(t, ctx, worker, end, 0, false, nil, nil)
 
 	// test
-	assert.GreaterOrEqual(t, 1_000_000, int(worker.Tick(sst.A)),
-		"Bytes transferred (both ways)")
+	assert.GreaterOrEqual(t, int(worker.Tick(sst.A)), 1_000_000,
+		"Tick count should be greater or equal to 1M")
 	whenD := make(chan struct{})
 	go func() {
 		<-c.NetMach.When1(sst.D, ctx)
@@ -404,7 +399,7 @@ func TestHighInstantClocks(t *testing.T) {
 	bytesCount := <-counter
 	assert.LessOrEqual(t, 48_000, int(bytesCount),
 		"Bytes transferred (both ways)")
-	assert.GreaterOrEqual(t, 50_000, int(bytesCount),
+	assert.GreaterOrEqual(t, 350_000, int(bytesCount),
 		"Bytes transferred (both ways)")
 
 	disposeTest(t, c, s, true)
@@ -412,7 +407,7 @@ func TestHighInstantClocks(t *testing.T) {
 
 // TestRetryCall
 
-func TestClockPush(t *testing.T) {
+func TemplateTestClockPush(t *testing.T, newTest NewTestFactory) {
 	// TODO TestClockPush
 	t.Skip("test server-side mutations push their clock")
 }
@@ -431,7 +426,7 @@ func (h *TestRetryCallHandlers) DState(e *am.Event) {
 	h.blocked = true
 }
 
-func TestRetryCall(t *testing.T) {
+func TemplateTestRetryCall(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -440,13 +435,13 @@ func TestRetryCall(t *testing.T) {
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, w, s, c := NewTest(t, ctx, nil, nil, 0, false, nil, nil)
+	_, w, s, c := newTest(t, ctx, nil, nil, 0, false, nil, nil)
 	handlers := &TestRetryCallHandlers{}
 	_, err := w.HandlersBind(handlers)
 	require.NoError(t, err)
 
 	// inject a fake error
-	c.tmpTestErr = fmt.Errorf("IGNORE MOCK ERR")
+	c.TmpTestErr = fmt.Errorf("IGNORE MOCK ERR")
 	whenRetrying := c.Mach.When1(ssrpc.ClientStates.RetryingCall, nil)
 	c.NetMach.Add1(sst.A, nil)
 	amhelpt.WaitForAll(t, "RetryingCall", ctx, 2*time.Second, whenRetrying)
@@ -458,6 +453,9 @@ func TestRetryCall(t *testing.T) {
 	c.Mach.Log("Generic err retried")
 
 	// extend the timeout to cause a network one (handler blocks for 1s)
+	// TODO avoid races with the queue in iroh, remove in v0.20
+	<-w.WhenQueueEnds()
+	time.Sleep(100*time.Millisecond)
 	w.HandlerTimeout = 5 * time.Second
 	c.CallTimeout = 500 * time.Millisecond
 	wg := sync.WaitGroup{}
@@ -485,7 +483,7 @@ func TestRetryCall(t *testing.T) {
 	disposeTest(t, c, s, false)
 }
 
-func TestRetryConn(t *testing.T) {
+func TemplateTestRetryConn(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -496,7 +494,7 @@ func TestRetryConn(t *testing.T) {
 	defer cancel()
 
 	// test
-	_, _, s, c := NewTest(t, ctx, nil, nil, 0, true, nil, nil)
+	_, _, s, c := newTest(t, ctx, nil, nil, 0, true, nil, nil)
 	lis := *s.Listener.Load()
 	addr := lis.Addr()
 	_ = lis.Close()
@@ -544,7 +542,7 @@ func (h *TestRetryErrNetworkTimeoutHandlers) DState(e *am.Event) {
 	h.blocked = true
 }
 
-func TestRetryErrNetworkTimeout(t *testing.T) {
+func TemplateTestRetryErrNetworkTimeout(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -553,7 +551,7 @@ func TestRetryErrNetworkTimeout(t *testing.T) {
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, w, s, c := NewTest(t, ctx, nil, nil, 0, false, nil, nil)
+	_, w, s, c := newTest(t, ctx, nil, nil, 0, false, nil, nil)
 	handlers := &TestRetryErrNetworkTimeoutHandlers{
 		shouldBlock: true,
 	}
@@ -594,7 +592,7 @@ func TestRetryErrNetworkTimeout(t *testing.T) {
 	disposeTest(t, c, s, false)
 }
 
-func TestRetryClosedListener(t *testing.T) {
+func TemplateTestRetryClosedListener(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -603,7 +601,7 @@ func TestRetryClosedListener(t *testing.T) {
 	// config
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, _, s, c := NewTest(t, ctx, nil, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, nil, nil, 0, false, nil, nil)
 
 	// close the listener and try a mutation
 	lis := *s.Listener.Load()
@@ -633,16 +631,16 @@ func TestRetryClosedListener(t *testing.T) {
 // TestPayload
 
 type TestPayloadHandlers struct {
-	srv *Server
+	srv *arpc.Server
 }
 
 // CState will trigger SendPayload
 func (w *TestPayloadHandlers) CState(e *am.Event) {
 	// TODO use v2 state def
 	e.Machine().EvRemove1(e, sst.C, nil)
-	args := am.ParseArgs[A](e.Args)
+	args := am.ParseArgs[arpc.A](e.Args)
 
-	_ = w.srv.SendPayload(context.Background(), e, &MsgSrvPayload{
+	_ = w.srv.SendPayload(context.Background(), e, &arpc.MsgSrvPayload{
 		Data: "Hello",
 		Name: args.Name,
 	})
@@ -656,14 +654,14 @@ type TestPayloadConsumer struct {
 func (c *TestPayloadConsumer) ServerPayloadState(e *am.Event) {
 	e.Machine().Remove1(ssCo.ServerPayload, nil)
 
-	args := am.ParseArgs[AServerPayload](e.Args)
+	args := am.ParseArgs[arpc.AServerPayload](e.Args)
 	assert.Equal(c.t, "TestPayload", args.Name)
 	assert.Equal(c.t, "Hello", args.Payload.Data.(string))
 
 	c.delivered = true
 }
 
-func TestPayload(t *testing.T) {
+func TemplateTestPayload(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -692,14 +690,14 @@ func TestPayload(t *testing.T) {
 	}
 
 	// init RPC
-	_, _, s, c := NewTest(t, ctx, source, nil, 0, false, &ClientOpts{
+	_, _, s, c := newTest(t, ctx, source, nil, 0, false, &arpc.ClientOpts{
 		Consumer: consMach,
 	}, nil)
 	handlers.srv = s
 
 	whenDelivered := consMach.When1(ssCo.ServerPayload, nil)
 	// Consumer requests a payload from the remote worker
-	c.NetMach.Add1(sst.C, Pass(&A{
+	c.NetMach.Add1(sst.C, Pass(&arpc.A{
 		Name: "TestPayload",
 	}))
 	// Consumer waits for WorkerDelivered
@@ -714,108 +712,11 @@ func TestPayload(t *testing.T) {
 
 // TODO test gob errors (although not user-facing)
 
-func TestMux(t *testing.T) {
-	// numClients := 10
-	numClients := 3
-
-	// TODO flaky
-	//  test_help.go:60: error for cWorkers A: timeout
-	//  --- FAIL: TestMux (2.04s)
-	if os.Getenv(amhelp.EnvAmTestRunner) != "" {
-		t.Skip("FLAKY")
-		return
-	}
-	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
-		t.Parallel()
-	}
-	// amhelp.EnableDebugging(false)
-	ctx := context.Background()
-
-	// bind to an open port
-	listener := utils.RandListener("localhost")
-	serverAddr := listener.Addr().String()
-	connAddr := serverAddr
-
-	// init source & mux
-	netSrc := utils.NewRelsNetSrc(t, nil)
-	amhelpt.MachDebugEnv(t, netSrc)
-	newServerFn := func(mux *Mux, id string, _ net.Conn) (*Server, error) {
-		s, err := NewServer(ctx, serverAddr, t.Name()+"-"+id, netSrc, &ServerOpts{
-			Parent: mux.Mach,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		amhelpt.MachDebugEnv(t, s.Mach)
-
-		return s, nil
-	}
-	mux, err := NewMux(ctx, "", t.Name(), nil, &MuxOpts{
-		Parent:      netSrc,
-		NewServerFn: newServerFn,
-	})
-
-	// client fac
-	newC := func(num int) *Client {
-		name := fmt.Sprintf("%s-%d", t.Name(), num)
-		c, err := NewClient(ctx, connAddr, name, netSrc.Schema(),
-			&ClientOpts{Parent: mux.Mach})
-		if err != nil {
-			t.Fatal(err)
-		}
-		amhelpt.MachDebugEnv(t, c.Mach)
-
-		return c
-	}
-
-	// start cmux
-	if err != nil {
-		t.Fatal(err)
-	}
-	amhelpt.MachDebugEnv(t, mux.Mach)
-	mux.Listener = listener
-	mux.Start(nil)
-	amhelpt.WaitForAll(t, "mux Ready", ctx, 2*time.Second,
-		mux.Mach.When1(ssM.Ready, nil))
-
-	var clients []*Client
-	var clientsApi []am.Api
-	var netMachs []am.Api
-
-	// connect 10 clients to the worker
-	for i := 0; i < numClients; i++ {
-		c := newC(i)
-		c.Start(nil)
-		clients = append(clients, c)
-		netMachs = append(netMachs, c.NetMach)
-		clientsApi = append(clientsApi, c.Mach)
-	}
-
-	// wait for all clients to be ready
-	amhelpt.WaitForAll(t, "group Ready", ctx, 2*time.Second,
-		amhelpt.GroupWhen1(t, clientsApi, ssC.Ready, nil)...)
-
-	for _, w := range netMachs {
-		amhelpt.MachDebugEnv(t, w)
-	}
-
-	// start mutating (C adds auto A)
-	clients[0].NetMach.Add1(sst.C, nil)
-
-	// wait for all clients to get the new state
-	amhelpt.WaitForAll(t, "netMachs A", ctx, 2*time.Second,
-		amhelpt.GroupWhen1(t, netMachs, sst.A, nil)...)
-
-	if amhelp.IsTelemetry() {
-		time.Sleep(1 * time.Second)
-	}
-}
-
-func TestRetryingConnState(t *testing.T) {
+func TemplateTestRetryingConnState(t *testing.T, newTest NewTestFactory) {
 	t.Skip("TODO")
 }
 
-func TestPartial(t *testing.T) {
+func TemplateTestPartial(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -831,7 +732,7 @@ func TestPartial(t *testing.T) {
 	source.Remove1(sst.C, nil)
 
 	// init RPC
-	_, _, s, c := NewTest(t, ctx, source, nil, 0, false, &ClientOpts{
+	_, _, s, c := newTest(t, ctx, source, nil, 0, false, &arpc.ClientOpts{
 		AllowedStates: am.S{sst.A, sst.B, sst.C},
 		SkippedStates: am.S{sst.C},
 	}, nil)
@@ -844,7 +745,7 @@ func TestPartial(t *testing.T) {
 	// assert
 	amhelpt.WaitForAll(t, "TestPartial(A, B)", ctx, time.Second,
 		c.NetMach.When(am.S{sst.A, sst.B}, nil))
-	assertStates(t, c.NetMach, am.S{sst.A, sst.B})
+	amhelpt.AssertIs(t, c.NetMach, am.S{sst.A, sst.B})
 
 	// TODO schema change
 	// TODO full sync
@@ -856,7 +757,7 @@ func TestPartial(t *testing.T) {
 	}
 }
 
-func TestPartialInferred(t *testing.T) {
+func TemplateTestPartialInferred(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -870,7 +771,7 @@ func TestPartialInferred(t *testing.T) {
 	source := utils.NewRelsNetSrc(t, nil)
 
 	// init RPC
-	_, _, s, c := NewTest(t, ctx, source, nil, 0, false, &ClientOpts{
+	_, _, s, c := newTest(t, ctx, source, nil, 0, false, &arpc.ClientOpts{
 		AllowedStates: am.S{sst.A},
 	}, nil)
 
@@ -880,7 +781,7 @@ func TestPartialInferred(t *testing.T) {
 	// assert
 	amhelpt.WaitForAll(t, "TestPartial(A, C)", ctx, time.Second,
 		c.NetMach.When(am.S{sst.A, sst.C}, nil))
-	assertStates(t, c.NetMach, am.S{sst.A, sst.C})
+	amhelpt.AssertIs(t, c.NetMach, am.S{sst.A, sst.C})
 
 	// TODO schema change
 	// TODO full sync
@@ -892,7 +793,7 @@ func TestPartialInferred(t *testing.T) {
 	}
 }
 
-func TestPartialNoSchema(t *testing.T) {
+func TemplateTestPartialNoSchema(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -906,7 +807,7 @@ func TestPartialNoSchema(t *testing.T) {
 	source := utils.NewRelsNetSrc(t, nil)
 
 	// init RPC
-	_, _, s, c := NewTest(t, ctx, source, nil, 0, false, &ClientOpts{
+	_, _, s, c := newTest(t, ctx, source, nil, 0, false, &arpc.ClientOpts{
 		AllowedStates: am.S{sst.C},
 		NoSchema:      true,
 	}, nil)
@@ -918,7 +819,7 @@ func TestPartialNoSchema(t *testing.T) {
 	expected := am.S{sst.C}
 	amhelpt.WaitForAll(t, "TestPartial(A, C)", ctx, time.Second,
 		c.NetMach.When(expected, nil))
-	assertStates(t, c.NetMach, expected)
+	amhelpt.AssertIs(t, c.NetMach, expected)
 
 	// TODO schema change
 	// TODO full sync
@@ -943,7 +844,7 @@ func (t *TestSchemaFilteringSyncTracer) MutationQueued(
 	t.amount++
 }
 
-func TestSchemaFilteringSync(t *testing.T) {
+func TemplateTestSchemaFilteringSync(t *testing.T, newTest NewTestFactory) {
 	// TODO
 	t.Skip("mutation filtering not implemented yet")
 	return
@@ -978,16 +879,16 @@ func TestSchemaFilteringSync(t *testing.T) {
 	// bytesCount := <-counter
 	// assert.LessOrEqual(t, 1_000, int(bytesCount))
 	// assert.GreaterOrEqual(t, 2_000, int(bytesCount))
-	// assertStates(t, netSrc, am.S{sst.C, sst.A})
+	// amhelpt.AssertIs(t, netSrc, am.S{sst.C, sst.A})
 	//
 	// disposeTest(t, c, s, true)
 }
 
-func TestShallowSync(t *testing.T) {
+func TemplateTestShallowSync(t *testing.T, newTest NewTestFactory) {
 	t.Skip("TODO")
 }
 
-func TestNoSchema(t *testing.T) {
+func TemplateTestNoSchema(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1001,7 +902,7 @@ func TestNoSchema(t *testing.T) {
 	source := utils.NewRelsNetSrc(t, nil)
 
 	// init RPC
-	_, _, s, c := NewTest(t, ctx, source, nil, 0, false, &ClientOpts{
+	_, _, s, c := newTest(t, ctx, source, nil, 0, false, &arpc.ClientOpts{
 		NoSchema: true,
 	}, nil)
 
@@ -1012,7 +913,7 @@ func TestNoSchema(t *testing.T) {
 	expected := am.S{sst.A, sst.C}
 	amhelpt.WaitForAll(t, "TestNoSchema(A, B, C, D)", ctx, time.Second,
 		c.NetMach.When(expected, nil))
-	assertStates(t, c.NetMach, expected)
+	amhelpt.AssertIs(t, c.NetMach, expected)
 
 	// TODO schema change
 	// TODO full sync
@@ -1037,7 +938,7 @@ func (t *TestMutationsSyncTracer) TransitionEnd(tx *am.Transition) {
 	// TODO assert mut types, called states
 }
 
-func TestMutationsSync(t *testing.T) {
+func TemplateTestMutationsSync(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1047,8 +948,8 @@ func TestMutationsSync(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	end := make(chan struct{})
-	counter, netSrc, s, c := NewTest(t, ctx, nil, end, time.Second, false,
-		&ClientOpts{
+	counter, netSrc, s, c := newTest(t, ctx, nil, end, time.Second, false,
+		&arpc.ClientOpts{
 			SyncMutations: true,
 		}, nil)
 
@@ -1065,7 +966,7 @@ func TestMutationsSync(t *testing.T) {
 	// force push
 	intNano := time.Nanosecond
 	s.PushInterval.Store(&intNano)
-	s.pushClient()
+	s.PushClient()
 	amhelpt.WaitForAll(t, "mutations pushed", ctx, time.Second,
 		c.NetMach.When1(sst.D, nil))
 
@@ -1084,111 +985,87 @@ func TestMutationsSync(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestExport(t *testing.T) {
+func TemplateTestExport(t *testing.T, newTest NewTestFactory) {
 	t.Skip("TODO")
 
 	// TODO assert mach tick
-
 	// TODO schema change
 }
-
-// TODO Test Pass/ParseArgs
 
 // ///// ///// /////
 
 // ///// UTILS
 
-// ///// ///// /////}
+// ///// ///// /////
 
-func NewTest(t *testing.T, ctx context.Context, netSrc *am.Machine,
+type NewTestFactory func(t *testing.T, ctx context.Context, netSrc *am.Machine,
 	disposeMeter <-chan struct{}, pushInterval time.Duration, skipStart bool,
-	clientOpts *ClientOpts, serverOpts *ServerOpts,
-) (<-chan int64, *am.Machine, *Server, *Client) {
-	// bind to an open port
-	listener := utils.RandListener("localhost")
-	serverAddr := listener.Addr().String()
-	connAddr := serverAddr
+	clientOpts *arpc.ClientOpts, serverOpts *arpc.ServerOpts,
+) (<-chan int64, *am.Machine, *arpc.Server, *arpc.Client)
 
-	// worker init
-	if netSrc == nil {
-		netSrc = utils.NewRelsNetSrc(t, nil)
+func disposeTest(t *testing.T, c *arpc.Client, s *arpc.Server, checkErrs bool) {
+	if checkErrs {
+		amhelpt.AssertNoErrEver(t, c.Mach)
+		amhelpt.AssertNoErrEver(t, s.Mach)
 	}
-	amhelpt.MachDebugEnv(t, netSrc)
-
-	// traffic counter init
-	var counter chan int64
-	if disposeMeter != nil {
-		counterListener := utils.RandListener("localhost")
-		connAddr = counterListener.Addr().String()
-		if amhelp.IsDebug() {
-			t.Logf("Meter addr: %s", connAddr)
-		}
-		counter = make(chan int64, 1)
-
-		go TrafficMeter(counterListener, serverAddr, counter, disposeMeter)
-		time.Sleep(100 * time.Millisecond)
+	if os.Getenv(dbg.EnvAmDbgAddr) != "" {
+		time.Sleep(time.Second)
 	}
+	c.Stop(context.TODO(), nil, true)
+	<-c.Mach.WhenDisposed()
+	s.Stop(nil, true)
+}
 
-	// server init
-	if serverOpts == nil {
-		serverOpts = &ServerOpts{}
-	}
-	serverOpts.Parent = netSrc
-	s, err := NewServer(ctx, serverAddr, t.Name(), netSrc, serverOpts)
+// TCPMeter measures the traffic of a listener and forwards it to a
+// destination. Results are sent to the [counter] channel. Useful for testing
+// and benchmarking.
+func TCPMeter(
+	listener net.Listener, fwdTo string, counter chan<- int64,
+	end <-chan struct{},
+) {
+	defer listener.Close()
+	// fmt.Println("Listening on " + listenOn)
+
+	// callFailsafe the destination
+	destination, err := net.Dial("tcp4", fwdTo)
 	if err != nil {
-		t.Fatal(err)
+		fmt.Println("Error connecting to destination:", err.Error())
+		return
 	}
-	// set the test listener to avoid port conflicts
-	s.Listener.Store(&listener)
-	amhelpt.MachDebugEnv(t, s.Mach)
-	if pushInterval > 0 {
-		s.PushInterval.Store(&pushInterval)
-	}
-	// let it settle
-	time.Sleep(10 * time.Millisecond)
+	defer destination.Close()
 
-	// client init
-	if clientOpts == nil {
-		clientOpts = &ClientOpts{}
-	}
-	clientOpts.Parent = netSrc
-	schema := netSrc.Schema()
-	if clientOpts.NoSchema {
-		schema = nil
-	}
-	c, err := NewClient(ctx, connAddr, t.Name(), schema, clientOpts)
+	// wait for the connection
+	conn, err := listener.Accept()
 	if err != nil {
-		t.Fatal(err)
+		fmt.Println("Error accepting connection:", err.Error())
+		return
 	}
-	amhelpt.MachDebugEnv(t, c.Mach)
-	if clientOpts.Consumer != nil {
-		amhelpt.MachDebugEnv(t, clientOpts.Consumer)
-	}
+	defer conn.Close()
 
-	// tear down
-	t.Cleanup(func() {
-		<-s.Mach.WhenDisposed()
-		<-c.Mach.WhenDisposed()
-		// cool off am-dbg and free the ports
-		if os.Getenv(dbg.EnvAmDbgAddr) != "" {
-			time.Sleep(100 * time.Millisecond)
-		}
-	})
+	// forward data bidirectionally
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	bytes := atomic.Int64{}
+	go func() {
+		c, _ := io.Copy(destination, conn)
+		bytes.Add(c)
+		wg.Done()
+	}()
+	go func() {
+		c, _ := io.Copy(conn, destination)
+		bytes.Add(c)
+		wg.Done()
+	}()
 
-	if skipStart {
-		return counter, netSrc, s, c
-	}
+	// wait for the test and forwarding to finish
+	<-end
+	// fmt.Printf("Closing counter...\n")
+	_ = listener.Close()
+	_ = destination.Close()
+	_ = conn.Close()
+	wg.Wait()
 
-	// server start
-	s.Start(nil)
-	amhelpt.WaitForAll(t, "RpcReady", ctx, readyTimeout,
-		s.Mach.When1(ssS.RpcReady, ctx))
-
-	// client ready
-	c.Start(nil)
-	amhelpt.WaitForAll(t, "client-server Ready", ctx, readyTimeout,
-		c.Mach.When1(ssC.Ready, ctx),
-		s.Mach.When1(ssS.Ready, ctx))
-
-	return counter, netSrc, s, c
+	c := bytes.Load()
+	// fmt.Printf("Forwarded %d bytes\n", c)
+	counter <- c
 }

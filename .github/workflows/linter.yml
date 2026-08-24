@@ -5,9 +5,6 @@ on: [push]
 jobs:
   build:
 
-    # Disable this job
-#    if: false
-
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -23,10 +20,8 @@ jobs:
 
       # set up
       - uses: actions/checkout@v4
-      # TODO no ruby
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3'
+      # rumdl is installed via `uv tool install` in install-deps-linter
+      - uses: astral-sh/setup-uv@v6
       - uses: actions/setup-go@v4
         with:
           go-version: ${{ matrix.go-version }}

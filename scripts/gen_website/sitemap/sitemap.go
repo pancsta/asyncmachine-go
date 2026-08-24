@@ -64,4 +64,5 @@ var MainMenu = []Entry{
 	{Url: "diagrams", Path: "docs/diagrams.md", SkipMenu: true},
 	{Url: "roadmap", Path: "ROADMAP.md", SkipMenu: true},
 	{Url: "breaking-changes", Path: "BREAKING.md", SkipMenu: true},
+	{Url: "getting-started", Path: "docs/getting-started.md", SkipMenu: true},
 }

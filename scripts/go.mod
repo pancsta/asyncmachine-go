@@ -1,10 +1,12 @@
 module github.com/pancsta/asyncmachine-go/scripts
 
-go 1.25.0
+go 1.26
 
 tool go101.org/golds
 
 replace github.com/pancsta/asyncmachine-go => ..
+
+replace github.com/tmc/go-iroh => ../../go-iroh
 
 //replace github.com/pancsta/cview => ../../cview
 
@@ -25,6 +27,7 @@ require (
 )
 
 require (
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/alitto/pond/v2 v2.7.1 // indirect
 	github.com/cenkalti/hub v1.0.2 // indirect
 	github.com/cenkalti/rpc2 v1.0.4 // indirect
@@ -38,7 +41,8 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/teivah/onecontext v1.3.0 // indirect
-	golang.org/x/term v0.42.0 // indirect
+	github.com/tmc/go-iroh v0.1.0 // indirect
+	golang.org/x/term v0.43.0 // indirect
 )
 
 require (
@@ -48,7 +52,7 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
-	github.com/coder/websocket v1.8.12 // indirect
+	github.com/coder/websocket v1.8.14 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/failsafe-go/failsafe-go v0.6.8 // indirect
 	github.com/go-json-experiment/json v0.0.0-20250725192818-e39067aee2d2 // indirect
@@ -73,11 +77,11 @@ require (
 	// TODO max v0.8.2 for go <1.26
 	go101.org/golds v0.8.2
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
-	golang.org/x/mod v0.34.0 // indirect
-	golang.org/x/net v0.52.0 // indirect
+	golang.org/x/mod v0.35.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
-	golang.org/x/tools v0.43.0
+	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/tools v0.44.0
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

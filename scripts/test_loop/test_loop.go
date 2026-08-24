@@ -45,7 +45,7 @@ func main() {
 	fmt.Println("---------------------------------------------------")
 
 	addr := "127.0.0.1:" + utils.RandPort(52001, 53000)
-	dbg, err := relay.New(ctx, &types.CliArgs{
+	dbg, err := relay.New(ctx, types.CliArgs{
 		// Debug: true,
 		RotateDbg: &types.ArgsRotateDbg{
 			Dir:        BaseOutputDir,
@@ -53,8 +53,9 @@ func main() {
 			ListenAddr: addr,
 			// TODO save text logs
 		},
-	}, func(msg string, args ...any) {
-		fmt.Printf(msg, args...)
+		Output: func(msg string, args ...any) {
+			fmt.Printf(msg, args...)
+		},
 	})
 	if err != nil {
 		log.Fatalf("Failed to start relay: %v", err)

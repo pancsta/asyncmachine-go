@@ -1066,7 +1066,7 @@ func (e *Event) IsValid() bool {
 // Export clones only the essential data of the Event. Useful for tracing vs GC.
 func (e *Event) Export() *Event {
 	id := e.MachineId
-	if e.Machine() == nil {
+	if e.Machine() != nil {
 		id = e.Machine().Id()
 	}
 

@@ -8,8 +8,8 @@ import (
 	"syscall"
 
 	"github.com/alexflint/go-arg"
-	"github.com/pancsta/asyncmachine-go/internal/utils"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/pancsta/asyncmachine-go/tools/relay"
 	"github.com/pancsta/asyncmachine-go/tools/relay/states"
 	"github.com/pancsta/asyncmachine-go/tools/relay/types"
