@@ -19,6 +19,8 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/soheilhy/cmux"
 	"github.com/teivah/onecontext"
+	"github.com/tmc/go-iroh/key"
+	"gopkg.in/yaml.v3"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -43,6 +45,8 @@ type Relay struct {
 	Mach    *am.Machine
 	Args    types.CliArgs
 	HttpMux *http.ServeMux
+
+	AuthPubKeys atomic.Pointer[[]key.PublicKey]
 
 	// WS TCP tunnels
 	wsTcpTuns map[string]*WsTcpTun
@@ -209,15 +213,15 @@ func (r *Relay) HttpReadyState(e *am.Event) {
 
 	// tun listen
 	r.HttpMux.HandleFunc("/listen/",
-		func(w http.ResponseWriter, req *http.Request) {
+		r.authMiddleware(func(w http.ResponseWriter, req *http.Request) {
 			r.HandleWsTcpListen(e, w, req)
-		})
+		}))
 
 	// WS->TCP dial
 	r.HttpMux.HandleFunc("/dial/",
-		func(w http.ResponseWriter, req *http.Request) {
+		r.authMiddleware(func(w http.ResponseWriter, req *http.Request) {
 			r.HandleWsTcpDial(e, w, req)
-		})
+		}))
 }
 
 func (r *Relay) HandleWsTcpDial(
@@ -681,4 +685,31 @@ func (r *Relay) msgsCount() int {
 	}
 
 	return count
+}
+
+func (r *Relay) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		keysPtr := r.AuthPubKeys.Load()
+		if keysPtr != nil && len(*keysPtr) > 0 {
+			pk := req.Header.Get("X-API-Key")
+			valid := false
+			if pk != "" {
+				if parsedKey, err := key.ParsePublicKey(pk); err == nil {
+					for _, k := range *keysPtr {
+						if parsedKey.Equal(k) {
+							valid = true
+							break
+						}
+					}
+				}
+			}
+			if !valid {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error":"Unauthorized"}`))
+				return
+			}
+		}
+		next(w, req)
+	}
 }
