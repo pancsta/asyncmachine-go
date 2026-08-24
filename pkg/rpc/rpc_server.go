@@ -16,6 +16,7 @@ import (
 
 	"github.com/cenkalti/rpc2"
 	"github.com/coder/websocket"
+	"github.com/tmc/go-iroh/key"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -28,6 +29,28 @@ var (
 	ssS  = states.ServerStates
 	ssSs = states.StateSourceStates
 )
+
+type ServerOpts struct {
+	// Parent is a parent state machine for a new Server state machine.
+	Parent am.Api // Typed arguments struct pointer
+	// optional list of typed args
+	Args []am.ArgsApi
+	// optional RPC args parser, defaults to [amhelp.NewArgsUnmarshaller] when
+	// [ServerOpts.Args] present. Useful for REPLs.
+	ArgsUnmarshaller amhelp.ArgsUnmarshallerFn
+	// Listen on a WebSocket connection instead of TCP.
+	WebSocket bool
+	// List of allowed API keys (optional).
+	WebSocketPubKeys []key.PublicKey
+	// HTTP URL without proto to tunnel the TCP listen over a WebSocket conn.
+	// See WsListenPath.
+	WebSocketTunnel string
+	// WebSocketTunnelPubKey is the API key used for authenticating with the
+	// WebSocket tunnel.
+	WebSocketTunnelPubKey *key.PublicKey
+	// AllowedIds will limit clients to specified IDs (optional).
+	AllowedIds []string
+}
 
 // Server is an RPC server that can be bound to a worker machine and provide
 // remote access to its states and methods.
@@ -51,17 +74,20 @@ type Server struct {
 	Args []am.ArgsApi
 	Opts ServerOpts
 
-	// sync settings
+	// settings - live
 
 	// PushInterval is the interval for clock updates, effectively throttling
 	// the number of updates sent to the client within the interval window.
 	// 0 means pushes are disabled. Setting to a very small value will make
 	// pushes instant.
 	PushInterval atomic.Pointer[time.Duration]
-	// AllowId will limit clients to a specific ID, if set.
-	AllowId string
+	// AuthIds will limit clients to specified IDs (optional).
+	AuthIds atomic.Pointer[[]string]
+	// AuthWsPubKeys will limit clients to specified public keys (optional).
+	// Requires [ServerOpts.WebSocketPubKeys] to be set.
+	AuthWsPubKeys atomic.Pointer[[]key.PublicKey]
 
-	// failsafe - connection (writable when stopped)
+	// settings - stopped
 
 	// WsTunReconn enables retrying the WebSocket tunnel.
 	WsTunReconn bool
@@ -143,6 +169,9 @@ func NewServer(
 	if opts.WebSocketTunnel != "" && addr == "" {
 		return nil, fmt.Errorf("addr required for WebSocketTunnel")
 	}
+	if opts.WebSocket && addr == "" {
+		return nil, fmt.Errorf("addr required for WebSocket")
+	}
 
 	// check the source
 	if stateSource == nil {
@@ -188,6 +217,8 @@ func NewServer(
 	}
 	interval := 250 * time.Millisecond
 	s.PushInterval.Store(&interval)
+	s.AuthWsPubKeys.Store(&opts.WebSocketPubKeys)
+	s.AuthIds.Store(&opts.AllowedIds)
 
 	// state machine
 	mach, err := am.NewCommon(ctx, "rs-"+name, states.ServerSchema, ssS.Names(),
@@ -291,11 +322,8 @@ func (s *Server) StartState(e *am.Event) {
 	// start websocket server early
 	if s.Opts.WebSocket {
 		s.httpSrv = &http.Server{
-			Addr: s.Addr,
-			Handler: &wsHandlerServer{
-				s:     s,
-				event: e.Export(),
-			},
+			Addr:    s.Addr,
+			Handler: s.newWebsocketHandler(e),
 		}
 
 		mach.Fork(ctx, e, func() {
@@ -369,9 +397,16 @@ func (s *Server) RpcStartingState(e *am.Event) {
 
 				// dial
 				ctxWs, cancel := context.WithTimeout(ctxStart, s.WsTunConnTimeout)
-				// ctxWs, _ := context.WithTimeout(ctxStart, s.WsTunConnTimeout)
 				s.log("Dialing (round %d) %s", s.wsTunRetryRound.Load(), addr)
-				ws, _, err := websocket.Dial(ctxWs, addr, nil)
+				var dialOpts *websocket.DialOptions
+				if s.Opts.WebSocketTunnelPubKey != nil {
+					dialOpts = &websocket.DialOptions{
+						HTTPHeader: http.Header{},
+					}
+					dialOpts.HTTPHeader.Set("X-API-Key",
+						s.Opts.WebSocketTunnelPubKey.String())
+				}
+				ws, _, err := websocket.Dial(ctxWs, addr, dialOpts)
 				if err != nil {
 					s.log("WebSocket err")
 					if ctxStart.Err() == nil && ctxWs.Err() != nil {
@@ -815,6 +850,42 @@ func (s *Server) storeLastPush(data *tracerData) {
 	s.lastPushData = data
 }
 
+func (s *Server) newWebsocketHandler(e *am.Event) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// check API key
+		keysPtr := s.AuthWsPubKeys.Load()
+		if keysPtr != nil && len(*keysPtr) > 0 {
+			pk := r.Header.Get("X-API-Key")
+
+			valid := false
+			if pk != "" {
+				parsedKey, err := key.ParsePublicKey(pk)
+				if err == nil {
+					for _, k := range *keysPtr {
+						if parsedKey.Equal(k) {
+							valid = true
+							break
+						}
+					}
+				}
+			}
+			if !valid {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error": "unauthorized"}`))
+				return
+			}
+		}
+
+		// handle
+		ws := &wsHandlerServer{
+			s:     s,
+			event: e.Export(),
+		}
+		ws.ServeHTTP(w, r)
+	}
+}
+
 // ///// ///// /////
 
 // ///// REMOTE METHODS
@@ -841,10 +912,12 @@ func (s *Server) RemoteHello(
 	defer s.lockCollection.Unlock()
 
 	// check access TODO test
-	if s.AllowId != "" && req.Id != s.AllowId {
+	authIds := s.AuthIds.Load()
+	if authIds != nil && len(*authIds) > 0 && !slices.Contains(*authIds, req.Id) {
 		s.Mach.Remove1(ssS.Handshaking, nil)
 
-		return fmt.Errorf("%w: %s != %s", ErrNoAccess, req.Id, s.AllowId)
+		return fmt.Errorf("%w: %d keys, but not '%s'",
+			ErrNoAccess, len(*authIds), req.Id)
 	}
 
 	// set up sync
@@ -1208,21 +1281,6 @@ func BindServerRpcReady(source, target *am.Machine,
 	}
 
 	return source.HandlersBind(h)
-}
-
-type ServerOpts struct {
-	// Parent is a parent state machine for a new Server state machine.
-	Parent am.Api // Typed arguments struct pointer
-	// optional list of typed args
-	Args []am.ArgsApi
-	// optional RPC args parser, defaults to [amhelp.NewArgsUnmarshaller] when
-	// [ServerOpts.Args] present. Useful for REPLs.
-	ArgsUnmarshaller amhelp.ArgsUnmarshallerFn
-	// Listen on a WebSocket connection instead of TCP.
-	WebSocket bool
-	// HTTP URL without proto to tunnel the TCP listen over a WebSocket conn.
-	// See WsListenPath.
-	WebSocketTunnel string
 }
 
 // calcUpdate calculates a new update based on previously pushed data.
