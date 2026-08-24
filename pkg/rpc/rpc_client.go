@@ -15,6 +15,7 @@ import (
 
 	"github.com/cenkalti/rpc2"
 	"github.com/coder/websocket"
+	"github.com/tmc/go-iroh/key"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 
@@ -305,8 +306,15 @@ func (c *Client) ConnectingState(e *am.Event) {
 		}
 		if c.Conn.Load() == nil && c.Opts.WebSocket != "" {
 			mach.Log("dialing WS %s", c.Addr)
+			var dialOpts *websocket.DialOptions
+			if c.Opts.WebSocketPubKey != nil {
+				dialOpts = &websocket.DialOptions{
+					HTTPHeader: make(http.Header),
+				}
+				dialOpts.HTTPHeader.Set("X-API-Key", c.Opts.WebSocketPubKey.String())
+			}
 			wsConn, _, err := websocket.Dial(ctx,
-				"ws://"+c.Addr+c.Opts.WebSocket, nil)
+				"ws://"+c.Addr+c.Opts.WebSocket, dialOpts)
 			if err != nil {
 				mach.EvAdd1(e, ssC.Disconnected, nil)
 				AddErrNetwork(e, mach, err)
@@ -1324,6 +1332,11 @@ func (c *Client) RemoteSchemaChange(
 
 // ///// ///// /////
 
+// GenerateSecretKey generates a new SecretKey using crypto/ed25519.
+func GenerateSecretKey() (key.SecretKey, error) {
+	return key.GenerateSecretKey()
+}
+
 type ClientOpts struct {
 	// Consumer is an optional target for the [states.SendPayload] state.
 	Consumer *am.Machine
@@ -1348,6 +1361,8 @@ type ClientOpts struct {
 	MutationFiltering bool
 	// Connect via WebSocket using path, eg "/" (default for WASM).
 	WebSocket string
+	// Pubkey to be sent as Bearer token for WebSocket connections.
+	WebSocketPubKey *key.PublicKey
 	// Forcefully disable am-dbg conns for netmachs.
 	DebugDisable bool
 }
