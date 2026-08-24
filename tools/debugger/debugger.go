@@ -86,6 +86,8 @@ type Debugger struct {
 	params types.Params
 	// read-only params clone
 	Params atomic.Pointer[types.Params]
+	// sorted list of markers TODO clean up on client disconn
+	markers []*MarkerItem
 
 	// UI is currently being drawn
 	drawing            atomic.Bool
@@ -93,7 +95,7 @@ type Debugger struct {
 	treeRoot           *cview.TreeNode
 	log                *cview.TextView
 	timelineTxs        *cview.ProgressBar
-	timelineSteps      *cview.ProgressBar
+	timelineMarkers    *cview.ProgressBar
 	focusable          []*cview.Box
 	playTimer          *time.Ticker
 	currTxBarRight     *cview.TextView
@@ -216,6 +218,7 @@ type Debugger struct {
 	diagStepsFileMermaidAscii *os.File
 	loadingPos                int
 	sshSrvKick                chan struct{}
+	cacheToolbarMarked        bool
 }
 
 // TODO split to New and Init
@@ -226,6 +229,7 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	d := &Debugger{
 		DisposedHandlers:  &ssam.DisposedHandlers{},
 		Clients:           make(map[string]*Client),
+		markers:           make([]*MarkerItem, 0),
 		logReaderExpanded: make(map[string]bool),
 		callLogFiles:      make(map[string]*os.File),
 		callLogFilesLen:   make(map[string]int64),
@@ -615,7 +619,6 @@ func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
 	} else if trimHistory {
 		d.hTrimHistory()
 	}
-	d.hHandleTStepsScrolled()
 
 	// debug
 	// d.State.DbgLogger.Printf("HistoryCursor: %d\n", d.HistoryCursor)
@@ -651,7 +654,10 @@ func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
 		d.Mach.EvRemove1(e, ss.TxSelected, nil)
 	}
 
-	d.Mach.EvRemove1(e, ss.TimelineStepsScrolled, nil)
+	// update markes and maybe toolbar
+	if d.hUpdateTimelineMarker() {
+		d.hUpdateToolbar()
+	}
 
 	// diagrams TODO merged mutation once partial negotiation lands
 	d.Mach.GoAfter(ctx, time.Second, func() {
@@ -692,9 +698,6 @@ func (d *Debugger) hGetMachAddress() *types.MachAddress {
 		a.TxId = tx.ID
 		a.MachTime = tx.TimeSum()
 		// TODO queue tick
-	}
-	if c.CursorStep1 > 0 {
-		a.Step = c.CursorStep1
 	}
 
 	// GET params
@@ -748,8 +751,7 @@ func (d *Debugger) GoToMachAddress(
 
 	if addr.TxId != "" {
 		scrollArgs := &A{
-			TxId:        addr.TxId,
-			CursorStep1: addr.Step,
+			TxId: addr.TxId,
 		}
 		mach.Add1(ss.ScrollToTx, Pass(scrollArgs))
 
@@ -802,13 +804,6 @@ func (d *Debugger) GoToMachAddress(
 	} else {
 		d.Mach.Add1(ss.SetGroup, Pass(&A{
 			Group: "all",
-		}))
-	}
-
-	// TODO remove
-	if addr.Step != 0 {
-		mach.Add1(ss.ScrollToStep, Pass(&A{
-			CursorStep1: addr.Step,
 		}))
 	}
 
@@ -1098,9 +1093,6 @@ func (d *Debugger) MachAddr() *types.MachAddress {
 				ret.HumanTime = *tx.Time
 				ret.QueueTick = tx.QueueTick
 			}
-			if d.C.CursorStep1 > 0 {
-				ret.Step = d.C.CursorStep1
-			}
 			if d.C.SelectedGroup != "" {
 				ret.Group = d.C.SelectedGroup
 			}
@@ -1282,10 +1274,6 @@ func (d *Debugger) hUpdateAddressBar() {
 		if d.C.CursorTx1 > 0 {
 			// TODO conflict with GC?
 			txId = d.C.MsgTxs[d.C.CursorTx1-1].ID
-		}
-		if d.C.CursorStep1 > 0 {
-			// TODO conflict with GC?
-			stepId = strconv.Itoa(d.C.CursorStep1)
 		}
 		machConn = d.C.Connected.Load()
 	}
@@ -1863,24 +1851,6 @@ func (d *Debugger) hUpdateTimelines() {
 	}
 
 	txCount := len(c.MsgTxs)
-	nextTx := d.hNextTx()
-	d.timelineSteps.SetTitleColor(cview.Styles.PrimaryTextColor)
-	d.timelineSteps.SetFilledColor(cview.Styles.PrimaryTextColor)
-
-	// grey rejected bars
-	if nextTx != nil && !nextTx.Accepted {
-		d.timelineSteps.SetFilledColor(tcell.GetColor(theme.Grey))
-	}
-
-	// mark the last step of a canceled tx in red
-	if nextTx != nil && c.CursorStep1 == len(nextTx.Steps) && !nextTx.Accepted {
-		d.timelineSteps.SetFilledColor(tcell.GetColor(theme.Err))
-	}
-
-	stepsCount := 0
-	if nextTx != nil {
-		stepsCount = len(nextTx.Steps)
-	}
 
 	// progressbar cant be max==0
 	d.timelineTxs.SetMax(max(txCount, 1))
@@ -1901,15 +1871,54 @@ func (d *Debugger) hUpdateTimelines() {
 	}
 	d.timelineTxs.SetTitle(title)
 	d.timelineTxs.SetEmptyRune(' ')
+}
 
-	// progressbar cant be max==0
-	d.timelineSteps.SetMax(max(stepsCount, 1))
-	// progress <= max
-	d.timelineSteps.SetProgress(c.CursorStep1)
-	d.timelineSteps.SetTitle(fmt.Sprintf(
-		" Next mutation step %d / %d ", c.CursorStep1, stepsCount,
-	))
-	d.timelineSteps.SetEmptyRune(' ')
+// hUpdateTimelineMarker returns true when the toolbar changed.
+func (d *Debugger) hUpdateTimelineMarker() bool {
+	// markers timeline
+	tx := d.hCurrentTx()
+	totalMarkers := len(d.markers)
+	txTime := d.lastScrolledTxTime
+	if tx != nil && tx.Time != nil {
+		txTime = *tx.Time
+	}
+
+	// binary search by time
+	index, found := slices.BinarySearchFunc(d.markers, txTime,
+		func(m *MarkerItem, target time.Time) int {
+			return m.Time.Compare(target)
+		})
+
+	d.timelineMarkers.SetMax(max(totalMarkers-1, 1))
+	d.timelineMarkers.SetProgress(index)
+	if totalMarkers == 0 {
+		d.timelineMarkers.SetProgress(0)
+		d.timelineMarkers.SetTitle(" No markers ")
+	} else if found {
+		// exact marker
+		d.timelineMarkers.SetTitle(fmt.Sprintf(
+			" Marker %d / %d ", index+1, totalMarkers,
+		))
+	} else {
+		// approximate marker
+		d.timelineMarkers.SetTitle(fmt.Sprintf(
+			// TODO closest marker (to either sides)
+			" Previous Marker %d / %d ", index, totalMarkers,
+		))
+	}
+	d.timelineMarkers.SetEmptyRune(' ')
+
+	if d.C == nil || tx == nil {
+		return false
+	}
+
+	isMarked := d.C.TxIsMarked(tx.ID)
+	if d.cacheToolbarMarked != isMarked {
+		d.cacheToolbarMarked = d.C.TxIsMarked(tx.ID)
+		return true
+	}
+
+	return false
 }
 
 func (d *Debugger) hUpdateBorderColor() {
@@ -1961,14 +1970,17 @@ func (d *Debugger) hExportData(filename string, snapshot bool) {
 		if d.Mach.Is1(ss.FilterRpcMachs) && machIsRpc(c.MsgStruct) {
 			continue
 		}
+
 		data = append(data, &server.Exportable{
-			MsgStruct: c.Exportable.MsgStruct,
-			MsgTxs:    c.Exportable.MsgTxs,
+			MsgStruct: c.MsgStruct,
+			MsgTxs:    c.MsgTxs,
+			Markers:   c.Markers,
 			Version:   utils.GetVersion(),
 		})
 		// snapshot limits to a single tx
 		if snapshot {
 			data[i].MsgTxs = []*dbg.DbgMsgTx{c.Tx(c.TxAtHTime(now))}
+			data[i].Markers = map[string]struct{}{}
 		}
 		i++
 	}
@@ -2115,22 +2127,13 @@ func (d *Debugger) hUpdateMatrixRelations() {
 	if c.SelectedGroup != "" {
 		index = c.MsgSchemaParsed.Groups[c.SelectedGroup]
 	}
-	var tx *dbg.DbgMsgTx
-	var prevTx *dbg.DbgMsgTx
-	if c.CursorStep1 == 0 {
-		tx = d.hCurrentTx()
-		prevTx = d.hPrevTx()
-	} else {
-		tx = d.hNextTx()
-		prevTx = d.hCurrentTx()
+	tx := d.hCurrentTx()
+	if tx == nil {
+		return
 	}
+	prevTx := d.hPrevTx()
 	steps := tx.Steps
 	calledStates := tx.CalledStateNames(c.MsgStruct.StatesIndex)
-
-	// show the current tx summary on step 0, and partial if cursor > 0
-	if c.CursorStep1 > 0 {
-		steps = steps[:c.CursorStep1]
-	}
 
 	highlightIndex := -1
 
@@ -2478,30 +2481,7 @@ func (d *Debugger) hUpdateStatusBar() {
 		// TODO show schema group / inheritance
 	}
 	d.statusBarLeft.SetText(strings.Join(left, " ["+theme.Grey+"]|[-] "))
-
-	// right
-
-	txt := ""
-	if c.CursorStep1 > 0 {
-		nextTx := d.hNextTx()
-		if nextTx != nil && nextTx.Steps != nil {
-			stepIdx := min(len(nextTx.Steps)-1, c.CursorStep1-1)
-			step := nextTx.Steps[stepIdx]
-			txt = step.StringFromIndex(c.MsgStruct.StatesIndex)
-		}
-	}
-
-	// markdown to cview TODO extract
-	i := 0
-	for strings.Contains(txt, "**") {
-		rep := "[::b]"
-		if i%2 == 1 {
-			rep = "[::-]"
-		}
-		i++
-		txt = strings.Replace(txt, "**", rep, 1)
-	}
-	d.statusBarRight.SetText(txt)
+	d.statusBarRight.SetText("")
 }
 
 func (d *Debugger) hGetSidebarCurrClientIdx() int {
@@ -2698,12 +2678,12 @@ func (d *Debugger) hGetParentTags(c *Client, tags []string) []string {
 func (d *Debugger) hSyncOptsTimelines() {
 	switch d.params.ViewTimelines {
 	case types.ParamsViewTimelinesNone:
-		d.Mach.Add(S{ss.TimelineTxHidden, ss.TimelineStepsHidden}, nil)
+		d.Mach.Add(S{ss.TimelineTxHidden, ss.TimelineMarkersHidden}, nil)
 	case types.ParamsViewTimelinesOne:
-		d.Mach.Add1(ss.TimelineStepsHidden, nil)
+		d.Mach.Add1(ss.TimelineMarkersHidden, nil)
 		d.Mach.Remove1(ss.TimelineTxHidden, nil)
 	case types.ParamsViewTimelinesTwo:
-		d.Mach.Remove(S{ss.TimelineStepsHidden, ss.TimelineTxHidden}, nil)
+		d.Mach.Remove(S{ss.TimelineMarkersHidden, ss.TimelineTxHidden}, nil)
 	}
 }
 
@@ -2770,4 +2750,138 @@ func (d *Debugger) callLogBootstrap(dir string) error {
 	}
 
 	return nil
+}
+
+// TxCount returns the number of transactions in the current client.
+func (d *Debugger) TxCount() int {
+	ctx := context.Background()
+	ret, _ := amhelp.EvalGetter(ctx, "TxCount", 3, d.Mach,
+		func() (int, error) {
+			if d.C == nil {
+				return 0, nil
+			}
+			return len(d.C.MsgTxs), nil
+		})
+
+	return ret
+}
+
+func (d *Debugger) MarkersCount() int {
+	ctx := context.Background()
+	ret, _ := amhelp.EvalGetter(ctx, "MarkersCount", 3, d.Mach,
+		func() (int, error) {
+			return len(d.markers), nil
+		})
+
+	return ret
+}
+
+func (d *Debugger) hIsCurrentTxMarked() bool {
+	tx := d.hCurrentTx()
+	if tx == nil {
+		return false
+	}
+	return d.C.TxIsMarked(tx.ID)
+}
+
+func (d *Debugger) hBuildMarkersIndex() {
+	// TODO optimize with binary search
+
+	var markers []*MarkerItem
+	for _, c := range d.Clients {
+		for txId := range c.Markers {
+
+			// mach filters
+
+			// skip disconnected if filtering
+			if d.Mach.Is1(ss.FilterDisconn) && !c.Connected.Load() {
+				continue
+			}
+			// skip rpc if filtering
+			if d.Mach.Is1(ss.FilterRpcMachs) && machIsRpc(c.MsgStruct) {
+				continue
+			}
+
+			txIdx := c.TxIndex(txId)
+			tx := c.Tx(txIdx)
+			if tx == nil || tx.Time == nil {
+				continue
+			}
+
+			// tx filters
+			if d.filtersActive() && d.hIsTxSkipped(c, txIdx) {
+				continue
+			}
+
+			item := MarkerItem{
+				ClientId: c.Id,
+				TxId:     txId,
+				Time:     *tx.Time,
+			}
+			markers = append(markers, &item)
+		}
+	}
+	slices.SortFunc(markers, func(a, b *MarkerItem) int {
+		if a.Time.Before(b.Time) {
+			return -1
+		}
+		return 1
+	})
+
+	d.markers = markers
+}
+
+func (d *Debugger) hFwdMarker(e *am.Event) {
+	// binary search for by time
+	index, found := slices.BinarySearchFunc(d.markers, d.lastScrolledTxTime,
+		func(m *MarkerItem, target time.Time) int {
+			return m.Time.Compare(target)
+		})
+
+	// advance on a match
+	if found {
+		index++
+	} else if index == len(d.markers) {
+		index--
+	}
+
+	// safety
+	if index < 0 {
+		index = 0
+	} else if index >= len(d.markers) {
+		index = len(d.markers) - 1
+	}
+
+	marker := d.markers[index]
+
+	go d.GoToMachAddress(&types.MachAddress{
+		MachId: marker.ClientId,
+		TxId:   marker.TxId,
+	}, false)
+}
+
+func (d *Debugger) hBackMarker(e *am.Event) {
+	// binary search for by time
+	index, found := slices.BinarySearchFunc(d.markers, d.lastScrolledTxTime,
+		func(m *MarkerItem, target time.Time) int {
+			return m.Time.Compare(target)
+		})
+
+	// advance on a match
+	if found {
+		index--
+	}
+
+	// safety
+	if index < 0 {
+		index = 0
+	} else if index >= len(d.markers) {
+		index = len(d.markers) - 1
+	}
+
+	marker := d.markers[index]
+	go d.GoToMachAddress(&types.MachAddress{
+		MachId: marker.ClientId,
+		TxId:   marker.TxId,
+	}, false)
 }

@@ -253,13 +253,27 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 		"alt+l":     d.hJumpFwdKey,
 		"alt+Left":  d.hJumpBackKey,
 		"alt+Right": d.hJumpFwdKey,
+
+		// toggle mark on current tx
+		"alt+i": func(ev *tcell.EventKey) *tcell.EventKey {
+			// TODO not working?
+			if d.Mach.Is1(ss.ClientSelected) &&
+				d.Mach.Not(am.S{ss.ClientListFocused, ss.TreeFocused}) {
+				d.Mach.Add1(ss.ToggleMark, nil)
+
+				return nil
+			}
+			return ev
+		},
+
+		// markers jumps
 		"alt+j": func(ev *tcell.EventKey) *tcell.EventKey {
-			d.Mach.Add1(ss.UserBackStep, nil)
+			d.Mach.Add1(ss.UserBackMarker, nil)
 
 			return nil
 		},
 		"alt+k": func(ev *tcell.EventKey) *tcell.EventKey {
-			d.Mach.Add1(ss.UserFwdStep, nil)
+			d.Mach.Add1(ss.UserFwdMarker, nil)
 
 			return nil
 		},
@@ -501,8 +515,8 @@ func (d *Debugger) hNextTxKey() tcellKeyFn {
 
 		// scroll timelines
 		state := ss.UserFwd
-		if d.Mach.Is1(ss.TimelineStepsFocused) {
-			state = ss.UserFwdStep
+		if d.Mach.Is1(ss.TimelineMarkersFocused) {
+			state = ss.UserFwdMarker
 		}
 
 		// check queue throttle and add the state
@@ -544,8 +558,8 @@ func (d *Debugger) hPrevTxKey() tcellKeyFn {
 
 		// scroll timelines
 		state := ss.UserBack
-		if d.Mach.Is1(ss.TimelineStepsFocused) {
-			state = ss.UserBackStep
+		if d.Mach.Is1(ss.TimelineMarkersFocused) {
+			state = ss.UserBackMarker
 		}
 
 		// check queue throttle and add the state
@@ -833,8 +847,8 @@ func (d *Debugger) hUpdateFocusableList() {
 	// add timelines
 	switch d.params.ViewTimelines {
 	case types.ParamsViewTimelinesTwo:
-		d.focusable = append(d.focusable, d.timelineTxs.Box, d.timelineSteps.Box)
-		prims = append(prims, d.timelineTxs.Box, d.timelineSteps.Box)
+		d.focusable = append(d.focusable, d.timelineTxs.Box, d.timelineMarkers.Box)
+		prims = append(prims, d.timelineTxs.Box, d.timelineMarkers.Box)
 	case types.ParamsViewTimelinesOne:
 		d.focusable = append(d.focusable, d.timelineTxs.Box)
 		prims = append(prims, d.timelineTxs.Box)

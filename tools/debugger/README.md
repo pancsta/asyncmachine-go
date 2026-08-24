@@ -32,7 +32,7 @@ var States = am.Schema{
     ConnectEvent:    {Multi: true},
     DisconnectEvent: {Multi: true},
 
-    // user scrolling tx / steps
+    // user scrolling tx / markers
     UserFwd: {
         Add:    S{Fwd},
         Remove: GroupPlaying,
@@ -41,13 +41,13 @@ var States = am.Schema{
         Add:    S{Back},
         Remove: GroupPlaying,
     },
-    UserFwdStep: {
-        Add:     S{FwdStep},
+    UserFwdMarker: {
+        Add:     S{FwdMarker},
         Require: S{ClientSelected},
         Remove:  SAdd(GroupPlaying, S{LogUserScrolled}),
     },
-    UserBackStep: {
-        Add:     S{BackStep},
+    UserBackMarker: {
+        Add:     S{BackMarker},
         Require: S{ClientSelected},
         Remove:  SAdd(GroupPlaying, S{LogUserScrolled}),
     },
@@ -56,23 +56,23 @@ var States = am.Schema{
 
     // focus group
 
-    TreeFocused:          {Remove: GroupFocused},
-    LogFocused:           {Remove: GroupFocused},
-    ClientListFocused:    {Remove: GroupFocused},
-    TimelineTxsFocused:   {Remove: GroupFocused},
-    TimelineStepsFocused: {Remove: GroupFocused},
-    MatrixFocused:        {Remove: GroupFocused},
-    DialogFocused:        {Remove: GroupFocused},
-    Toolbar1Focused:      {Remove: GroupFocused},
-    Toolbar2Focused:      {Remove: GroupFocused},
+    TreeFocused:            {Remove: GroupFocused},
+    LogFocused:             {Remove: GroupFocused},
+    ClientListFocused:      {Remove: GroupFocused},
+    TimelineTxsFocused:     {Remove: GroupFocused},
+    TimelineMarkersFocused: {Remove: GroupFocused},
+    MatrixFocused:          {Remove: GroupFocused},
+    DialogFocused:          {Remove: GroupFocused},
+    Toolbar1Focused:        {Remove: GroupFocused},
+    Toolbar2Focused:        {Remove: GroupFocused},
     LogReaderFocused: {
         Require: S{LogReaderVisible},
         Remove:  GroupFocused,
     },
     AddressFocused: {Remove: GroupFocused},
 
-    TimelineHidden:      {Require: S{TimelineStepsHidden}},
-    TimelineStepsHidden: {},
+    TimelineHidden:        {Require: S{TimelineMarkersHidden}},
+    TimelineMarkersHidden: {},
     NarrowLayout: {
         Require: S{Ready},
         Remove:  S{ClientListVisible},
@@ -81,9 +81,9 @@ var States = am.Schema{
         Require: S{Ready},
         Auto:    true,
     },
-    StateNameSelected:     {Require: S{ClientSelected}},
-    TimelineStepsScrolled: {Require: S{ClientSelected}},
-    HelpDialog:            {Remove: GroupDialog},
+    StateNameSelected:       {Require: S{ClientSelected}},
+    TimelineMarkersScrolled: {Require: S{ClientSelected}},
+    HelpDialog:              {Remove: GroupDialog},
     ExportDialog: {
         Require: S{ClientSelected},
         Remove:  GroupDialog,
@@ -146,7 +146,7 @@ var States = am.Schema{
     LogReaderEnabled: {},
     UpdateLogReader:  {Require: S{LogReaderEnabled}},
 
-    // tx / steps back / fwd
+    // tx / markers back / fwd
 
     Fwd: {
         Require: S{ClientSelected},
@@ -154,20 +154,24 @@ var States = am.Schema{
     Back: {
         Require: S{ClientSelected},
     },
-    FwdStep: {
+    FwdMarker: {
         Require: S{ClientSelected},
     },
-    BackStep: {
+    BackMarker: {
         Require: S{ClientSelected},
     },
 
     ScrollToTx: {
         Require: S{ClientSelected},
-        Remove:  S{TailMode, Playing, TimelineStepsScrolled},
+        Remove:  S{TailMode, Playing, TimelineMarkersScrolled},
     },
-    ScrollToStep: {
+    ScrollToMarker: {
         Require: S{ClientSelected},
         Remove:  S{TailMode, Playing},
+    },
+    // TODO rename
+    ToggleMark: {
+        Require: S{ClientSelected},
     },
 
     // client selection
