@@ -6,6 +6,7 @@ import (
 	"net"
 	"testing"
 
+	arpctest "github.com/pancsta/asyncmachine-go/pkg/rpc/test"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -14,7 +15,6 @@ import (
 
 	pb "github.com/pancsta/asyncmachine-go/examples/benchmark_grpc/proto"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
-	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 )
 
 func BenchmarkClientGrpc(b *testing.B) {
@@ -43,7 +43,7 @@ func BenchmarkClientGrpc(b *testing.B) {
 	counterListener := utils.RandListener("localhost")
 	connAddr := counterListener.Addr().String()
 	counter := make(chan int64, 1)
-	go arpc.TrafficMeter(counterListener, serverAddr, counter, end)
+	go arpctest.TCPMeter(counterListener, serverAddr, counter, end)
 
 	// init grpc client
 	conn, err := grpc.NewClient(connAddr, grpc.WithInsecure())

@@ -3,10 +3,14 @@ package testing
 
 import (
 	"context"
+	"net"
 	"os"
+	"strings"
+	"sync/atomic"
 	stdtest "testing"
 	"time"
 
+	"github.com/lithammer/dedent"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -114,25 +118,73 @@ func GroupWhen1(
 	return chs
 }
 
+// MeteredUDP wraps a net.PacketConn to track bytes and packet counts.
+type MeteredUDP struct {
+	net.PacketConn
+	bytesIn    atomic.Uint64
+	bytesOut   atomic.Uint64
+	packetsIn  atomic.Uint64
+	packetsOut atomic.Uint64
+}
+
+func WrapUDP(conn net.PacketConn) *MeteredUDP {
+	return &MeteredUDP{PacketConn: conn}
+}
+
+func (m *MeteredUDP) ReadFrom(p []byte) (int, net.Addr, error) {
+	n, addr, err := m.PacketConn.ReadFrom(p)
+	if n > 0 {
+		m.bytesIn.Add(uint64(n))
+		m.packetsIn.Add(1)
+	}
+	return n, addr, err
+}
+
+func (m *MeteredUDP) WriteTo(p []byte, addr net.Addr) (int, error) {
+	n, err := m.PacketConn.WriteTo(p, addr)
+	if n > 0 {
+		m.bytesOut.Add(uint64(n))
+		m.packetsOut.Add(1)
+	}
+	return n, err
+}
+
+// Stats getters
+func (m *MeteredUDP) BytesIn() uint64    { return m.bytesIn.Load() }
+func (m *MeteredUDP) BytesOut() uint64   { return m.bytesOut.Load() }
+func (m *MeteredUDP) PacketsIn() uint64  { return m.packetsIn.Load() }
+func (m *MeteredUDP) PacketsOut() uint64 { return m.packetsOut.Load() }
+
 // AssertIs asserts that the machine is in the given states.
-func AssertIs(t *stdtest.T, mach am.Api, states am.S) {
-	assert.Subset(t, mach.ActiveStates(nil), states, "%s expected", states)
+func AssertIs(t *stdtest.T, mach am.Api, states am.S, msgAndArgs ...any) {
+	if len(msgAndArgs) == 0 {
+		msgAndArgs = []any{"%s expected"}
+	}
+	assert.Subset(t, mach.ActiveStates(nil), states, msgAndArgs...)
 }
 
 // AssertIs1 asserts that the machine is in the given state.
-func AssertIs1(t *stdtest.T, mach am.Api, state string) {
-	assert.Subset(t, mach.ActiveStates(nil), am.S{state}, "%s expected", state)
+func AssertIs1(t *stdtest.T, mach am.Api, state string, msgAndArgs ...any) {
+	if len(msgAndArgs) == 0 {
+		msgAndArgs = []any{"%s expected"}
+	}
+	assert.Subset(t, mach.ActiveStates(nil), am.S{state}, msgAndArgs...)
 }
 
 // AssertNot asserts that the machine is not in the given states.
-func AssertNot(t *stdtest.T, mach am.Api, states am.S) {
-	assert.NotSubset(t, mach.ActiveStates(nil), states, "%s not expected", states)
+func AssertNot(t *stdtest.T, mach am.Api, states am.S, msgAndArgs ...any) {
+	if len(msgAndArgs) == 0 {
+		msgAndArgs = []any{"%s not expected"}
+	}
+	assert.NotSubset(t, mach.ActiveStates(nil), states, msgAndArgs...)
 }
 
 // AssertNot1 asserts that the machine is not in the given state.
-func AssertNot1(t *stdtest.T, mach am.Api, state string) {
-	assert.NotSubset(t, mach.ActiveStates(nil), am.S{state}, "%s not expected",
-		state)
+func AssertNot1(t *stdtest.T, mach am.Api, state string, msgAndArgs ...any) {
+	if len(msgAndArgs) == 0 {
+		msgAndArgs = []any{"%s not expected"}
+	}
+	assert.NotSubset(t, mach.ActiveStates(nil), am.S{state}, msgAndArgs...)
 }
 
 // AssertNoErrNow asserts that the machine is not in the Exception state.
@@ -187,4 +239,18 @@ func LogToTestLog(t *stdtest.T, mach am.Api, maxLvl am.LogLevel) {
 			logOld(level, msg, args...)
 		}
 	})
+}
+
+func AssertTime(t *stdtest.T, m am.Api, states am.S, time am.Time,
+	msgAndArgs ...any,
+) {
+	assert.Subset(t, m.Time(states), time, msgAndArgs...)
+}
+
+func AssertString(
+	t *stdtest.T, m am.Api, expected string, states am.S,
+) {
+	assert.Equal(t,
+		strings.Trim(dedent.Dedent(expected), "\n"),
+		strings.Trim(m.Inspect(states), "\n"))
 }

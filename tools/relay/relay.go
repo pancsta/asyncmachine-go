@@ -6,12 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/andybalholm/brotli"
@@ -26,6 +29,7 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	typesDbg "github.com/pancsta/asyncmachine-go/tools/debugger/types"
@@ -466,14 +470,14 @@ func (r *Relay) HttpReadyEnd(e *am.Event) {
 	}
 }
 
+var _ = ssR.ClientMsg
+
 // ///// ///// /////
 
 // ///// HANDLERS (DBG)
 
 // ///// ///// /////
 // TODO typed args for dbg server
-
-var _ = ssR.ClientMsg
 
 func (r *Relay) ClientMsgEnter(e *am.Event) bool {
 	_, ok1 := e.Args["msgs_tx"].([]*dbg.DbgMsgTx)
@@ -615,14 +619,6 @@ func (r *Relay) DisconnectEventState(e *am.Event) {
 		}
 	}
 }
-
-// TODO SetArgs
-
-// ///// ///// /////
-
-// ///// METHODS (DBG)
-
-// ///// ///// /////
 
 // TODO ExportDataState
 func (r *Relay) hExportData() error {

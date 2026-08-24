@@ -1,0 +1,41 @@
+# https://github.com/rvben/rumdl
+# ported from config/.mdl_style.rb (mdl)
+
+[global]
+respect-gitignore = true
+exclude = [
+  "CHANGELOG.md",
+  "docs/release-notes.md",
+  "docs/editors/**",
+  "**/am-vis.md",
+  "**/deps.md",
+]
+disable = [
+  # Header levels should only increment by one level at a time
+  # not compatible with hashtags
+  "MD001",
+  # ???
+  "MD007",
+  # dollar sign
+  "MD014",
+  # header question mark
+  "MD026",
+  # block quotes
+  "MD028",
+  # HTML blocks
+  "MD033",
+  # false-positives in collapsable sections
+  "MD034",
+  # Spaces inside emphasis markers (buggy)
+  "MD037",
+  # first line H1
+  "MD041",
+]
+
+[MD013]
+line-length = 120
+code-blocks = false
+
+# list style
+[MD029]
+style = "ordered"

@@ -1,0 +1,122 @@
+---
+name: am-cli
+description: asyncmachine CLI tools - am-dbg, am-gen, am-relay, am-vis, arpc commands and options.
+---
+
+# asyncmachine-go CLI Tools
+
+Reference and help output for CLI tools in `tools/cmd` for asyncmachine.dev
+
+{{ with .Cmd "am-dbg" }}
+## am-dbg
+
+`am-dbg` is a multi-client TUI debugger built around a timeline of transitions with state trees, log view, stepping, time travel, live diagrams, and REPL/SSH access.
+
+You can drive the debugger via MCP at http://localhost:6832/mcp (default port) and skip the PTY requirement by adding `--ui-ssh` (headless mode).
+
+```bash
+go install github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
+# or
+go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest
+```
+
+```bash
+{{ .Help }}
+```
+{{ end }}
+
+{{ with .Cmd "am-gen" }}
+## am-gen
+
+`am-gen` generates state machine schemas, project boilerplates (`starter-kit`), and Grafana monitoring dashboards.
+
+```bash
+go install github.com/pancsta/asyncmachine-go/tools/cmd/am-gen@latest
+# or
+go run github.com/pancsta/asyncmachine-go/tools/cmd/am-gen@latest
+```
+
+```bash
+{{ .Help }}
+```
+
+{{ range .Subcommands }}
+### am-gen {{ .Name }}
+
+```bash
+{{ .Help }}
+```
+{{ end }}
+{{ end }}
+
+{{ with .Cmd "am-relay" }}
+## am-relay
+
+`am-relay` converts formats, rotates telemetry dumps into chunked files, and provides WebSocket-to-TCP tunnels for WebAssembly (WASM).
+
+```bash
+go install github.com/pancsta/asyncmachine-go/tools/cmd/am-relay@latest
+# or
+go run github.com/pancsta/asyncmachine-go/tools/cmd/am-relay@latest
+```
+
+```bash
+{{ .Help }}
+```
+
+{{ range .Subcommands }}
+### am-relay {{ .Name }}
+
+```bash
+{{ .Help }}
+```
+{{ end }}
+{{ end }}
+
+{{ with .Cmd "am-vis" }}
+## am-vis
+
+`am-vis` renders diagrams of interconnected state machines and transition sequences from debugger dumps using D2 and ELK.
+
+```bash
+go install github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest
+# or
+go run github.com/pancsta/asyncmachine-go/tools/cmd/am-vis@latest
+```
+
+```bash
+{{ .Help }}
+```
+
+{{ range .Subcommands }}
+### am-vis {{ .Name }}
+
+```bash
+{{ .Help }}
+```
+{{ end }}
+{{ end }}
+
+{{ with .Cmd "arpc" }}
+## arpc
+
+`arpc` is a network-native REPL and CLI to manage, mutate, inspect, and wait on states across one or multiple remote state machines.
+
+```bash
+go install github.com/pancsta/asyncmachine-go/tools/cmd/arpc@latest
+# or
+go run github.com/pancsta/asyncmachine-go/tools/cmd/arpc@latest
+```
+
+```bash
+{{ .Help }}
+```
+
+{{ range .Subcommands }}
+### arpc {{ .Name }}
+
+```bash
+{{ .Help }}
+```
+{{ end }}
+{{ end }}

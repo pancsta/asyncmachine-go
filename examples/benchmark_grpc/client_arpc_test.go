@@ -17,6 +17,7 @@ import (
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+	arpctest "github.com/pancsta/asyncmachine-go/pkg/rpc/test"
 )
 
 func BenchmarkClientArpc(b *testing.B) {
@@ -46,7 +47,7 @@ func BenchmarkClientArpc(b *testing.B) {
 	counterListener := utils.RandListener("localhost")
 	connAddr := counterListener.Addr().String()
 	counter := make(chan int64, 1)
-	go arpc.TrafficMeter(counterListener, serverAddr, counter, end)
+	go arpctest.TCPMeter(counterListener, serverAddr, counter, end)
 
 	// init client
 	c, err := arpc.NewClient(ctx, connAddr, "worker", states.WorkerSchema, nil)

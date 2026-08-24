@@ -242,6 +242,10 @@ type ReplOpts struct {
 	// See WsListenPath.
 	WebSocketTunnel string
 
+	// internal
+
+	InternalForceTest bool
+
 	// TODO accept Name
 }
 
@@ -380,32 +384,32 @@ var (
 
 // wrapping error setters
 
-func AddErrRpcStr(e *am.Event, mach *am.Machine, msg string) {
+func AddErrRpcStr(e *am.Event, mach *am.Machine, msg string) am.Result {
 	err := fmt.Errorf("%w: %s", ErrRpc, msg)
-	mach.EvAddErrState(e, ss.ErrRpc, err, nil)
+	return mach.EvAddErrState(e, ss.ErrRpc, err, nil)
 }
 
-func AddErrParams(e *am.Event, mach *am.Machine, err error) {
+func AddErrParams(e *am.Event, mach *am.Machine, err error) am.Result {
 	err = fmt.Errorf("%w: %w", ErrInvalidParams, err)
-	mach.AddErrState(ss.ErrRpc, err, nil)
+	return mach.AddErrState(ss.ErrRpc, err, nil)
 }
 
-func AddErrResp(e *am.Event, mach *am.Machine, err error) {
+func AddErrResp(e *am.Event, mach *am.Machine, err error) am.Result {
 	err = fmt.Errorf("%w: %w", ErrInvalidResp, err)
-	mach.AddErrState(ss.ErrRpc, err, nil)
+	return mach.AddErrState(ss.ErrRpc, err, nil)
 }
 
-func AddErrNetwork(e *am.Event, mach *am.Machine, err error) {
-	mach.AddErrState(ss.ErrNetwork, err, nil)
+func AddErrNetwork(e *am.Event, mach *am.Machine, err error) am.Result {
+	return mach.AddErrState(ss.ErrNetwork, err, nil)
 }
 
-func AddErrNetworkTimeout(e *am.Event, mach *am.Machine, err error) {
-	mach.AddErrState(ss.ErrNetworkTimeout, err, nil)
+func AddErrNetworkTimeout(e *am.Event, mach *am.Machine, err error) am.Result {
+	return mach.AddErrState(ss.ErrNetworkTimeout, err, nil)
 }
 
-func AddErrNoConn(e *am.Event, mach *am.Machine, err error) {
+func AddErrNoConn(e *am.Event, mach *am.Machine, err error) am.Result {
 	err = fmt.Errorf("%w: %w", ErrNoConn, err)
-	mach.AddErrState(ss.ErrNetwork, err, nil)
+	return mach.AddErrState(ss.ErrNetwork, err, nil)
 }
 
 // AddErr detects sentinels from error msgs and calls the proper error setter.
@@ -852,7 +856,7 @@ func (t *sourceTracer) TransitionEnd(tx *am.Transition) {
 			d.checksum, calledTracked)
 
 		// try to push this tx to the client
-		t.s.pushClient()
+		t.s.PushClient()
 	}()
 }
 
@@ -1097,7 +1101,7 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 	addrCh := opts.AddrCh
 	errCh := opts.ErrCh
 
-	if amhelp.IsTestRunner() {
+	if amhelp.IsTestRunner() && !opts.InternalForceTest {
 		return nil
 	}
 
@@ -1291,61 +1295,6 @@ func MachReplWs(mach am.Api, addr string, opts *ReplOpts) (*Server, error) {
 func Checksum(mTime uint64, qTick uint64, machTick uint32) uint8 {
 	// TODO add index of active states to the checksum
 	return uint8(mTime + qTick + uint64(machTick))
-}
-
-// TrafficMeter measures the traffic of a listener and forwards it to a
-// destination. Results are sent to the [counter] channel. Useful for testing
-// and benchmarking.
-// TODO optimize: override Read/Write instead, omit the network stack
-func TrafficMeter(
-	listener net.Listener, fwdTo string, counter chan<- int64,
-	end <-chan struct{},
-) {
-	defer listener.Close()
-	// fmt.Println("Listening on " + listenOn)
-
-	// callFailsafe the destination
-	destination, err := net.Dial("tcp4", fwdTo)
-	if err != nil {
-		fmt.Println("Error connecting to destination:", err.Error())
-		return
-	}
-	defer destination.Close()
-
-	// wait for the connection
-	conn, err := listener.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection:", err.Error())
-		return
-	}
-	defer conn.Close()
-
-	// forward data bidirectionally
-	wg := sync.WaitGroup{}
-	wg.Add(2)
-	bytes := atomic.Int64{}
-	go func() {
-		c, _ := io.Copy(destination, conn)
-		bytes.Add(c)
-		wg.Done()
-	}()
-	go func() {
-		c, _ := io.Copy(conn, destination)
-		bytes.Add(c)
-		wg.Done()
-	}()
-
-	// wait for the test and forwarding to finish
-	<-end
-	// fmt.Printf("Closing counter...\n")
-	_ = listener.Close()
-	_ = destination.Close()
-	_ = conn.Close()
-	wg.Wait()
-
-	c := bytes.Load()
-	// fmt.Printf("Forwarded %d bytes\n", c)
-	counter <- c
 }
 
 // WsListenPath creates a WebSocket remote listen URL path.

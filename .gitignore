@@ -114,3 +114,6 @@ tools/visualizer/testdata/*
 /docs/editors/skills/am-mini
 /pkg/history/badger/amhist.badger
 /examples/wasm/client/amhist.badger/
+/.rumdl_cache/
+/docs/editors/skills/am-cli/
+/examples/mach_template/tmp/

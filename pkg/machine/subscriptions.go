@@ -69,6 +69,8 @@ func NewSubscriptionManager(
 		whenArgsCtx:    map[context.Context][]*WhenArgsBinding{},
 		stateCtx:       IndexStateCtx{},
 		whenCtx:        map[context.Context][]*WhenBinding{},
+		whenQueryCtx:   map[context.Context][]*whenQueryBinding{},
+		whenQuery:      []*whenQueryBinding{},
 	}
 }
 

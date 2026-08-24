@@ -162,6 +162,9 @@ type DbgMsgTx struct {
 
 func (m *DbgMsgTx) Clock(statesIndex am.S, state string) uint64 {
 	idx := slices.Index(statesIndex, state)
+	if idx == -1 {
+		return 0
+	}
 	if len(m.Clocks) <= idx {
 		return 0
 	}

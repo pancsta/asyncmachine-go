@@ -30,18 +30,19 @@ type Machine struct {
 	// HandlerTimeout defined the time for a handler to execute before it causes
 	// StateException. Default: 1s. See also [Opts.HandlerTimeout].
 	// Using HandlerTimeout can cause race conditions, unless paired with
-	// [Event.IsValid].
+	// [Event.IsValid]. TODO atomic
 	HandlerTimeout time.Duration
 	// HandlerDeadline is a grace period after a handler timeout, before the
-	// machine moves on.
+	// machine moves on. TODO atomic
 	HandlerDeadline time.Duration
 	// LastHandlerDeadline stores when the last HandlerDeadline was hit.
 	LastHandlerDeadline atomic.Pointer[time.Time]
 	// HandlerBackoff is the time after a [HandlerDeadline], during which the
-	// machine will return [Canceled] to any mutation.
+	// machine will return [Canceled] to any mutation. TODO atomic
 	HandlerBackoff time.Duration
 	// EvalTimeout is the time the machine will try to execute an eval func.
 	// Like any other handler, eval func also has [HandlerTimeout]. Default: 1s.
+	// TODO atomic
 	EvalTimeout time.Duration
 	// If true, the machine will log stack traces of errors. Default: true.
 	// Requires an ExceptionHandler binding and [Machine.PanicToException] set.
@@ -1332,8 +1333,9 @@ func (m *Machine) queueMutation(
 ) uint64 {
 	statesParsed := m.mustParseStates(states)
 	multi := false
+	schema := m.schemaSafe()
 	for _, state := range statesParsed {
-		if m.schemaSafe()[state].Multi {
+		if schema[state].Multi {
 			multi = true
 			break
 		}
@@ -1649,7 +1651,7 @@ func (m *Machine) BindHandlers(handlers any, opts ...BindOpts) (string, error) {
 
 // DetachHandlers is deprecated, use [Api.HandlersDetach].
 func (m *Machine) DetachHandlers(bindingId string) error {
-	return m.DetachHandlers(bindingId)
+	return m.HandlersDetach(bindingId)
 }
 
 // Handlers returns the IDs of bound handlers.
@@ -1807,15 +1809,17 @@ func (m *Machine) mustParseStates(states S) S {
 	// check if all states are defined in m.Struct
 	seen := make(map[string]struct{})
 	dups := false
+	schema := m.schemaSafe()
 	for i := range states {
-		if _, ok := m.schemaSafe()[states[i]]; !ok {
+		s := states[i]
+		if _, ok := schema[s]; !ok {
 			panic(fmt.Errorf(
 				"%w: %s not defined in schema for %s", ErrStateMissing,
-				states[i], m.id,
+				s, m.id,
 			))
 		}
-		if _, ok := seen[states[i]]; !ok {
-			seen[states[i]] = struct{}{}
+		if _, ok := seen[s]; !ok {
+			seen[s] = struct{}{}
 		} else {
 			// mark as duplicated
 			dups = true
@@ -1839,8 +1843,9 @@ func (m *Machine) ParseStates(states S) S {
 	// check if all states are defined in the schema
 	seen := make(map[string]struct{})
 	dups := false
+	schema := m.schemaSafe()
 	for i := range states {
-		if _, ok := m.schemaSafe()[states[i]]; !ok {
+		if _, ok := schema[states[i]]; !ok {
 			continue
 		}
 		if _, ok := seen[states[i]]; !ok {
@@ -1943,10 +1948,11 @@ func (m *Machine) setActiveStates(
 	m.activeStates = slices.Clone(targetStates)
 
 	toActivate := []string{}
+	schema := m.schemaSafe()
 	// Tick all new states by +1 and already active and called multi states by +2
 	for _, name := range targetStates {
 
-		state := m.schemaSafe()[name]
+		state := schema[name]
 		if !slices.Contains(previous, name) {
 			// tick by +1
 			// TODO wrap on overflow
@@ -3103,9 +3109,10 @@ func (m *Machine) Inspect(states S) string {
 	}
 
 	ret := ""
+	schema := m.schemaSafe()
 	for _, name := range states {
 
-		state := m.schemaSafe()[name]
+		state := schema[name]
 		active := "0"
 		if slices.Contains(m.activeStates, name) {
 			active = "1"

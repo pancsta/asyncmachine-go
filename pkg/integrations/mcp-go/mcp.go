@@ -202,7 +202,7 @@ func (m *Server) mutRemove(
 	}
 
 	// mutate
-	res := m.Mach.Add1(state, nil)
+	res := m.Mach.Remove1(state, nil)
 
 	// wait until processed
 	if res == am.Canceled {
