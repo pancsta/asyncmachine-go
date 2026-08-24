@@ -51,7 +51,7 @@ func startServer(t *testing.T) (*am.Machine, string) {
 	mach := utils.NewRelsNetSrc(t, nil)
 	addrCh := make(chan string, 1)
 	err := rpc.MachRepl(mach, "127.0.0.1:0", &rpc.ReplOpts{
-		AddrCh: addrCh,
+		AddrCh:            addrCh,
 		InternalForceTest: true,
 	})
 	if err != nil {

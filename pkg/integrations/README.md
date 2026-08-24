@@ -7,10 +7,10 @@
 
 **/pkg/integrations** integrates asyncmachine with other projects and technologies:
 
-* [JSON](#json)
-* [NATS](#nats)
-* [MCP](#mcp)
-* [Interpreted State Machines](#interpreted-state-machines)
+- [JSON](#json)
+- [NATS](#nats)
+- [MCP](#mcp)
+- [Interpreted State Machines](#interpreted-state-machines)
 
 ## JSON
 
@@ -73,7 +73,7 @@ server thanks to [`mcp-go`](https://github.com/mark3labs/mcp-go). See
 custom getters (as **asyncmachine** does not return data).
 
 ```go
-import ammcp "github.com/pancsta/asyncmachine-go/pkg/integrations/mcp"
+import ammcp "github.com/pancsta/asyncmachine-go/pkg/integrations/mcp-go"
 
 // ...
 

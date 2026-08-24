@@ -70,6 +70,8 @@ Options:
   --output OUTPUT, -o OUTPUT
                          Output file base name [default: am-dbg-dump]
   --dir DIR, -d DIR      Output directory [default: .]
+  --output-mach          Export serialized machines as YAML into dir/machs/id.yml [default: true]
+  --output-clients       Write a plain text client list into clients.txt inside --dir
 
 Global options:
   --debug                Enable debugging for asyncmachine

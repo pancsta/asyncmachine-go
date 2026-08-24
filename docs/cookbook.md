@@ -860,7 +860,7 @@ func (ABaz) ArgsState() string {
 ## Expose typesafe args to aRPC
 
 ```go
-// ArgsRpc will be available in the REPL.
+// ArgsRpc entries will be available via aRPC and the REPL.
 var ArgsRpc = []am.ArgsApi{ABaz{}}
 
 func init() {
