@@ -13,12 +13,10 @@ import (
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
-	amrelay "github.com/pancsta/asyncmachine-go/tools/relay"
 )
 
 // buildClientList builds the clientList with the list of clients.
@@ -62,7 +60,7 @@ func (d *Debugger) hBuildClientList(selectedIndex int) {
 		item = d.clientList.GetItem(selectedIndex)
 	}
 	if item != nil {
-		selected = item.GetReference().(*sidebarRef).name
+		selected = item.GetReference().(*clientListRef).name
 	}
 
 	// re-gen all
@@ -93,7 +91,7 @@ func (d *Debugger) hBuildClientList(selectedIndex int) {
 
 		// create list item
 		item := cview.NewListItem(parent)
-		item.SetReference(&sidebarRef{name: parent, lvl: 0})
+		item.SetReference(&clientListRef{name: parent, lvl: 0})
 		d.clientList.AddItem(item)
 
 		if selected == "" && d.C != nil && d.C.Id == parent {
@@ -176,7 +174,7 @@ func (d *Debugger) hUpdateClientList() {
 	// count
 	longestName := 0
 	for _, item := range d.clientList.GetItems() {
-		ref := item.GetReference().(*sidebarRef)
+		ref := item.GetReference().(*clientListRef)
 		l := len(ref.name) + ref.lvl
 		if l > longestName {
 			longestName = l
@@ -190,7 +188,7 @@ func (d *Debugger) hUpdateClientList() {
 
 	// update
 	for i, item := range d.clientList.GetItems() {
-		ref := item.GetReference().(*sidebarRef)
+		ref := item.GetReference().(*clientListRef)
 		c := d.Clients[ref.name]
 		if c == nil {
 			// TODO happens with --clean-on-connect?
@@ -250,19 +248,12 @@ func (d *Debugger) hUpdateClientList() {
 	}
 }
 
-// TODO move
-type sidebarRef struct {
+type clientListRef struct {
 	name string
 	lvl  int
 }
 
 // TODO move
-func machIsRpc(schema *dbg.DbgMsgStruct) bool {
-	return schema.HasTag(arpc.TagRpcClient, "") ||
-		schema.HasTag(arpc.TagRpcServer, "") ||
-		schema.HasTag(arpc.TagRpcMux, "") ||
-		schema.HasTag(amrelay.TagRelay, "")
-}
 
 func (d *Debugger) hClientListChild(
 	list []string, parent string, pos int, selected string,
@@ -286,7 +277,7 @@ func (d *Debugger) hClientListChild(
 
 		// create list item
 		item := cview.NewListItem(child)
-		item.SetReference(&sidebarRef{name: child, lvl: lvl})
+		item.SetReference(&clientListRef{name: child, lvl: lvl})
 		d.clientList.AddItem(item)
 
 		if selected == "" && d.C != nil && d.C.Id == child {
@@ -404,7 +395,7 @@ func (d *Debugger) hInitClientList() {
 	})
 	// switch clients and handle history
 	d.clientList.SetSelectedFunc(func(i int, listItem *cview.ListItem) {
-		client := listItem.GetReference().(*sidebarRef)
+		client := listItem.GetReference().(*clientListRef)
 		clickedId := client.name
 		selectedId := ""
 		if c, _ := d.Client(); c != nil {

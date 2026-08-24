@@ -145,17 +145,17 @@ func (d *Debugger) hInitUiComponents() {
 	d.nextTxBarRight.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
 	d.nextTxBarRight.SetDynamicColors(true)
 	d.nextTxBarRight.SetClickedFunc(func(regionId string) {
-		d.Mach.Add1(ss.TimelineStepsFocused, nil)
+		d.Mach.Add1(ss.TimelineMarkersFocused, nil)
 	})
 	d.nextTxBarLeft.SetClickedFunc(func(regionId string) {
-		d.Mach.Add1(ss.TimelineStepsFocused, nil)
+		d.Mach.Add1(ss.TimelineMarkersFocused, nil)
 	})
 
 	// timeline tx
 	d.hInitTimelineTx()
 
-	// timeline steps
-	d.hInitTimelineSteps()
+	// timeline markers
+	d.hInitTimelineMarkers()
 
 	// address bar
 	d.hInitAddressBar()
@@ -171,44 +171,50 @@ func (d *Debugger) hInitUiComponents() {
 	d.statusBarRight.SetDynamicColors(true)
 
 	// update models
-	d.hUpdateTimelines()
+	d.hUpdateTimelineTx()
 	d.hUpdateTxBars()
 	d.hUpdateStatusBar()
 	d.Mach.Add1(ss.UpdateFocus, nil)
 }
 
-func (d *Debugger) hInitTimelineSteps() {
-	d.timelineSteps = cview.NewProgressBar()
-	d.timelineSteps.SetBorder(true)
-	// d.timelineSteps.SetFilledColor(tcell.GetColor(theme.Highlight))
+func (d *Debugger) hInitTimelineMarkers() {
+	d.timelineMarkers = cview.NewProgressBar()
+	d.timelineMarkers.SetBorder(true)
 	// timeline click
-	d.timelineSteps.SetMouseCapture(func(
+	d.timelineMarkers.SetMouseCapture(func(
 		action cview.MouseAction, event *tcell.EventMouse,
 	) (cview.MouseAction, *tcell.EventMouse) {
+		//
+
+		defer d.Mach.PanicToErrState(ss.ErrUi, nil)
+
 		a := action
 		if a == cview.MouseScrollUp || a == cview.MouseScrollLeft {
-			d.Mach.Add1(ss.BackStep, Pass(&A{
+			d.Mach.Add1(ss.BackMarker, Pass(&A{
 				Amount: 1,
 			}))
 
 			return a, event
 		} else if a == cview.MouseScrollDown || a == cview.MouseScrollRight {
-			d.Mach.Add1(ss.FwdStep, Pass(&A{
+			d.Mach.Add1(ss.FwdMarker, Pass(&A{
 				Amount: 1,
 			}))
 
 			return a, event
 		} else if a != cview.MouseLeftClick {
-			// TODO support wheel scrolling
 			return a, event
 		}
 
-		_, _, width, _ := d.timelineSteps.GetRect()
+		if d.MarkersCount() == 0 {
+			return a, event
+		}
+
+		_, _, width, _ := d.timelineMarkers.GetRect()
 		x, _ := event.Position()
 		pos := float64(x) / float64(width)
-		txNum := math.Round(float64(d.timelineSteps.GetMax()) * pos)
-		d.Mach.Add1(ss.ScrollToStep, Pass(&A{
-			CursorStep1: int(txNum),
+		markNum := math.Round(float64(d.timelineMarkers.GetMax()) * pos)
+		d.Mach.Add1(ss.ScrollToMarker, Pass(&A{
+			CursorMarker1: int(markNum),
 		}))
 
 		return a, event
@@ -223,6 +229,10 @@ func (d *Debugger) hInitTimelineTx() {
 	d.timelineTxs.SetMouseCapture(func(
 		action cview.MouseAction, event *tcell.EventMouse,
 	) (cview.MouseAction, *tcell.EventMouse) {
+		//
+
+		defer d.Mach.PanicToErrState(ss.ErrUi, nil)
+
 		a := action
 		c := d.C
 		if c == nil {
@@ -248,8 +258,7 @@ func (d *Debugger) hInitTimelineTx() {
 		_, _, width, _ := d.timelineTxs.GetRect()
 		x, _ := event.Position()
 		pos := float64(x) / float64(width)
-		// TODO race: eval / lock / state
-		txNum := math.Round(float64(len(c.MsgTxs)) * pos)
+		txNum := math.Round(float64(d.TxCount()) * pos)
 		d.Mach.Add1(ss.ScrollToTx, Pass(&A{
 			CursorTx1:   int(txNum),
 			TrimHistory: true,
@@ -470,11 +479,14 @@ func (d *Debugger) hInitToolbar() {
 			{id: types.ToolPrevClient, label: "", icon: "▲"},
 			{id: types.ToolNextClient, label: "", icon: "▼"},
 			{id: types.ToolJumpPrev, label: "jump", icon: "◀ "},
-			{id: types.ToolPrevStep, label: "step", icon: "<"},
+			{id: types.ToolPrevMarker, label: "mark", icon: "<"},
 			{id: types.ToolPrev, label: "tx", icon: "◁ "},
 			{id: types.ToolNext, label: "tx", icon: "▷ "},
-			{id: types.ToolNextStep, label: "step", icon: ">"},
+			{id: types.ToolNextMarker, label: "mark", icon: ">"},
 			{id: types.ToolJumpNext, label: "jump", icon: "▶ "},
+			{id: types.ToolMark, label: "mark", active: func() bool {
+				return d.hIsCurrentTxMarked()
+			}},
 			{id: types.ToolPlay, label: "play", active: func() bool {
 				return d.Mach.Is1(ss.Playing)
 			}},
@@ -588,6 +600,9 @@ func (d *Debugger) hInitToolbar() {
 			}},
 			{id: types.ToolOutputTx, label: "out-tx", active: func() bool {
 				return d.params.OutputTx
+			}},
+			{id: types.ToolOutputMach, label: "out-mach", active: func() bool {
+				return d.params.OutputMach
 			}},
 			{id: types.ToolOutputLog, label: "out-log", active: func() bool {
 				return d.params.OutputLog
@@ -780,6 +795,8 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 	flexVer.SetMouseCapture(func(
 		action cview.MouseAction, event *tcell.EventMouse,
 	) (cview.MouseAction, *tcell.EventMouse) {
+		defer d.Mach.PanicToErrState(ss.ErrUi, nil)
+
 		if action == cview.MouseLeftClick {
 			x, y := event.Position()
 			for _, b := range bg {
@@ -813,10 +830,11 @@ func (d *Debugger) hUpdateHelpDialog() {
 		[::b]tab[::-]                change focus
 		[::b]shift tab[::-]          change focus
 		[::b]space[::-]              play/pause
+		[::b]m[::-]                  toggle marker on tx
 		[::b]left/right[::-]         prev/next tx
 		[::b]left/right[::-]         scroll log
 		[::b]alt left/right[::-]     fast jump
-		[::b]alt j/k[::-]            prev/next step
+		[::b]alt j/k[::-]            prev/next marker
 		[::b]alt h/l[::-]            fast jump
 		[::b]alt h/l[::-]            state jump (when selected)
 		[::b]up/down[::-]            scroll / navigate
@@ -849,6 +867,7 @@ func (d *Debugger) hUpdateHelpDialog() {
 		[::b]R|[::-]                 Ready active
 	
 		[::b]### [::u]toolbar legend[::-]
+		[::b]mark[::-]          toggle marker on current tx
 		[::b]auto *[::-]        skip canceled auto mutations
 		[::b]auto x[::-]        skip all auto mutations
 		[::b]times[::-]         show timestamps in the log
@@ -983,6 +1002,7 @@ func (d *Debugger) hUpdateLayout() {
 
 	// timelines
 	if d.Mach.Not1(ss.TimelineTxHidden) {
+
 		d.mainGrid.SetRows(1, 1, -1, 2, 3, 1, 1, 1, 1, 1)
 
 		d.mainGrid.AddItem(d.currTxBar, row, 0, 1, len(cols), 0, 0, false)
@@ -990,12 +1010,10 @@ func (d *Debugger) hUpdateLayout() {
 		d.mainGrid.AddItem(d.timelineTxs, row, 0, 1, len(cols), 0, 0, false)
 		row++
 	}
-	if d.Mach.Not1(ss.TimelineStepsHidden) {
-		d.mainGrid.SetRows(1, 1, -1, 2, 3, 2, 3, 1, 1, 1, 1, 1)
+	if d.Mach.Not1(ss.TimelineMarkersHidden) {
+		d.mainGrid.SetRows(1, 1, -1, 2, 3, 3, 1, 1, 1, 1, 1)
 
-		d.mainGrid.AddItem(d.nextTxBar, row, 0, 1, len(cols), 0, 0, false)
-		row++
-		d.mainGrid.AddItem(d.timelineSteps, row, 0, 1, len(cols), 0, 0, false)
+		d.mainGrid.AddItem(d.timelineMarkers, row, 0, 1, len(cols), 0, 0, false)
 		row++
 	}
 
@@ -1013,7 +1031,7 @@ func (d *Debugger) hUpdateLayout() {
 	d.mainGrid.AddItem(d.statusBarRight, row, len(cols)-len(cols)/3, 1,
 		len(cols)/3, 0, 0, false)
 
-	d.hUpdateFocusableList()
+	d.hUpdateFocusableOrder()
 }
 
 func (d *Debugger) hDrawViews() {
@@ -1029,7 +1047,7 @@ func (d *Debugger) hDrawViews() {
 // Then, it schedules a redraw.
 func (d *Debugger) hRedrawFull(immediate bool) {
 	d.hUpdateViews(immediate)
-	d.hUpdateTimelines()
+	d.hUpdateTimelineTx()
 	d.hUpdateTxBars()
 	d.hUpdateStatusBar()
 	d.hUpdateBorderColor()
@@ -1088,18 +1106,12 @@ func (d *Debugger) hUpdateSchemaLogGrid() {
 
 	showLog := lvl > am.LogNothing
 	showReader := d.Mach.Is1(ss.LogReaderVisible)
-	stepping := d.Mach.Any1(ss.TimelineStepsScrolled, ss.TimelineStepsFocused)
 	showMatrix := d.Mach.Is1(ss.TreeMatrixView)
 
 	// TODO flexbox...
 	switch {
 
 	// log
-
-	case showLog && showReader && stepping:
-		d.schemaLogGrid.UpdateItem(d.treeLayout, 0, 0, 1, 3, 0, 0, false)
-		d.schemaLogGrid.AddItem(d.log, 0, 3, 1, 2, 0, 0, false)
-		d.schemaLogGrid.AddItem(d.logReader, 0, 5, 1, 1, 0, 0, false)
 
 	case showLog && showReader:
 		d.schemaLogGrid.UpdateItem(d.treeLayout, 0, 0, 1, 2, 0, 0, false)
@@ -1115,10 +1127,6 @@ func (d *Debugger) hUpdateSchemaLogGrid() {
 		d.schemaLogGrid.AddItem(d.logReader, 0, 3, 1, 3, 0, 0, false)
 
 	// matrix
-
-	case showMatrix && stepping:
-		d.schemaLogGrid.UpdateItem(d.treeLayout, 0, 0, 1, 3, 0, 0, false)
-		d.schemaLogGrid.AddItem(d.matrix, 0, 3, 1, 3, 0, 0, false)
 
 	case showMatrix:
 		d.schemaLogGrid.UpdateItem(d.treeLayout, 0, 0, 1, 2, 0, 0, false)
@@ -1167,11 +1175,11 @@ func (d *Debugger) hBoxFromPrimitive(p any) (*cview.Box, string) {
 		box = d.timelineTxs.Box
 		state = ss.TimelineTxsFocused
 
-	case d.timelineSteps:
+	case d.timelineMarkers:
 		fallthrough
-	case d.timelineSteps.Box:
-		box = d.timelineSteps.Box
-		state = ss.TimelineStepsFocused
+	case d.timelineMarkers.Box:
+		box = d.timelineMarkers.Box
+		state = ss.TimelineMarkersFocused
 
 	case d.toolbars[0]:
 		fallthrough

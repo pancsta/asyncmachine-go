@@ -170,7 +170,7 @@ func TestUserBackRemote(t *testing.T) {
 	c.Stop(ctx, true)
 }
 
-func TestStepsResetAfterStateJumpRemote(t *testing.T) {
+func TestToggleMarkRemote(t *testing.T) {
 
 	// init rpc
 	ctx, cancel := context.WithCancel(context.Background())
@@ -179,25 +179,12 @@ func TestStepsResetAfterStateJumpRemote(t *testing.T) {
 	mach := c.NetMach
 
 	// fixtures
-	state := "PublishMessage"
+	cursorTx := 20
 	amhelp.Add1Async(ctx, mach, ss.SwitchedClientTx, ss.SwitchingClientTx,
-		am.A{"Client.id": "ps-2", "cursorTx1": 20})
+		am.A{"Client.id": "ps-2", "cursorTx1": cursorTx})
 
 	// test
-	amhelp.Add1Block(ctx, mach, ss.StateNameSelected, am.A{"state": state})
-	amhelp.Add1Block(ctx, mach, ss.UserFwdStep, nil)
-	amhelp.Add1Block(ctx, mach, ss.UserFwdStep, nil)
-
-	// trigger a state jump and wait for the next scroll
-	amhelp.Add1Async(ctx, mach, ss.ScrollToTx, ss.ScrollToMutTx, am.A{
-		"state": state,
-		"fwd":   true,
-	})
-
-	// assert
-	assert.Equal(t, 0, get(t, c, server.GetCursorStep, 0),
-		"Steps timeline should reset")
-
+	amhelp.Add1Block(ctx, mach, ss.ToggleMark, nil)
 	c.Stop(ctx, true)
 }
 
@@ -247,9 +234,6 @@ func RpcGetter(d *Debugger) func(string) any {
 
 		case server.GetCursorTx.Encode():
 			return d.C.CursorTx1
-
-		case server.GetCursorStep.Encode():
-			return d.C.CursorStep1
 
 		case server.GetMsgCount.Encode():
 			return len(d.C.MsgTxs)
