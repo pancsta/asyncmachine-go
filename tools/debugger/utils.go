@@ -10,10 +10,21 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+	amrelay "github.com/pancsta/asyncmachine-go/tools/relay"
+
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 
 	"github.com/pancsta/asyncmachine-go/pkg/machine"
 )
+
+func machIsRpc(schema *dbg.DbgMsgStruct) bool {
+	return schema.HasTag(arpc.TagRpcClient, "") ||
+		schema.HasTag(arpc.TagRpcServer, "") ||
+		schema.HasTag(arpc.TagRpcMux, "") ||
+		schema.HasTag(amrelay.TagRelay, "")
+}
 
 type Focusable struct {
 	cview.Primitive

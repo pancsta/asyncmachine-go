@@ -451,7 +451,7 @@ func (d *Debugger) hDeleteClient() {
 		return
 	}
 
-	ref := sel.GetReference().(*sidebarRef)
+	ref := sel.GetReference().(*clientListRef)
 	d.Mach.Add1(ss.RemoveClient, Pass(&A{
 		ClientId: ref.name,
 	}))
@@ -799,7 +799,7 @@ func (d *Debugger) FocusPrevState(e *am.Event) {
 	d.App.SetFocus(prim)
 }
 
-func (d *Debugger) hUpdateFocusableList() {
+func (d *Debugger) hUpdateFocusableOrder() {
 	var prims []cview.Primitive
 
 	// dialogs

@@ -25,7 +25,6 @@ import (
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 )
@@ -171,6 +170,12 @@ func (d *Debugger) StartState(e *am.Event) {
 				d.Mach.EvAddErr(e, err, nil)
 			}
 		})
+	}
+
+	// handle markers
+	if d.params.ImportData != "" {
+		d.hBuildMarkersIndex()
+		d.hUpdateTimelineMarker()
 	}
 }
 
@@ -325,8 +330,8 @@ func (d *Debugger) PlayingState(e *am.Event) {
 	}
 
 	// initial play step
-	if d.Mach.Is1(ss.TimelineStepsFocused) {
-		d.Mach.EvAdd1(e, ss.FwdStep, nil)
+	if d.Mach.Is1(ss.TimelineMarkersFocused) {
+		d.Mach.EvAdd1(e, ss.FwdMarker, nil)
 	} else {
 		d.Mach.EvAdd1(e, ss.Fwd, nil)
 	}
@@ -339,8 +344,8 @@ func (d *Debugger) PlayingState(e *am.Event) {
 
 			case <-d.playTimer.C:
 
-				if d.Mach.Is1(ss.TimelineStepsFocused) {
-					d.Mach.Add1(ss.FwdStep, nil)
+				if d.Mach.Is1(ss.TimelineMarkersFocused) {
+					d.Mach.Add1(ss.FwdMarker, nil)
 				} else {
 					d.Mach.Add1(ss.Fwd, nil)
 				}
@@ -457,105 +462,62 @@ func (d *Debugger) BackState(e *am.Event) {
 
 // ///// STEP BACK / FWD
 
-var _ = ss.UserFwdStep
+var _ = ss.UserFwdMarker
 
-func (d *Debugger) UserFwdStepState(e *am.Event) {
-	d.Mach.EvRemove1(e, ss.UserFwdStep, nil)
+func (d *Debugger) UserFwdMarkerState(e *am.Event) {
+	d.Mach.EvRemove1(e, ss.UserFwdMarker, nil)
 }
 
-var _ = ss.FwdStep
+var _ = ss.FwdMarker
 
-func (d *Debugger) FwdStepEnter(e *am.Event) bool {
-	nextTx := d.hNextTx()
-	if nextTx == nil {
-		return false
-	}
-	return d.C.CursorStep1 < len(nextTx.Steps)+1
+func (d *Debugger) FwdMarkerEnter(e *am.Event) bool {
+	return len(d.markers) > 0
 }
 
-func (d *Debugger) FwdStepState(e *am.Event) {
-	d.Mach.EvRemove1(e, ss.FwdStep, nil)
+func (d *Debugger) FwdMarkerState(e *am.Event) {
+	d.Mach.EvRemove1(e, ss.FwdMarker, nil)
+	d.hFwdMarker(e)
+}
 
-	// next tx
-	nextTx := d.hNextTx()
-	// scroll to the next tx
-	if d.C.CursorStep1 == len(nextTx.Steps) {
-		d.Mach.EvAdd1(e, ss.Fwd, nil)
+var _ = ss.UserBackMarker
+
+func (d *Debugger) UserBackMarkerState(e *am.Event) {
+	d.Mach.EvRemove1(e, ss.UserBackMarker, nil)
+}
+
+var _ = ss.BackMarker
+
+func (d *Debugger) BackMarkerEnter(e *am.Event) bool {
+	return len(d.markers) > 0
+}
+
+func (d *Debugger) BackMarkerState(e *am.Event) {
+	d.Mach.EvRemove1(e, ss.BackMarker, nil)
+	d.hBackMarker(e)
+}
+
+var _ = ss.ToggleMark
+
+func (d *Debugger) ToggleMarkState(e *am.Event) {
+	tx := d.hCurrentTx()
+	if tx == nil {
 		return
 	}
-	d.C.CursorStep1++
-
-	d.hHandleTStepsScrolled()
-	d.hRedrawFull(false)
-}
-
-var _ = ss.UserBackStep
-
-func (d *Debugger) UserBackStepState(e *am.Event) {
-	d.Mach.EvRemove1(e, ss.UserBackStep, nil)
-}
-
-var _ = ss.BackStep
-
-func (d *Debugger) BackStepEnter(e *am.Event) bool {
-	return d.C.CursorStep1 > 0 || d.C.CursorTx1 > 0
-}
-
-func (d *Debugger) BackStepState(e *am.Event) {
-	d.Mach.EvRemove1(e, ss.BackStep, nil)
-
-	// wrap if there's a prev tx
-	if d.C.CursorStep1 <= 0 {
-		d.hSetCursor1(e, &A{Cursor1: d.hPrevTxIdx() + 1})
-
-		d.Mach.EvAdd1(e, ss.UpdateLogScheduled, nil)
-		if nextTx := d.hNextTx(); nextTx != nil {
-			d.C.CursorStep1 = len(nextTx.Steps)
-		}
-
+	if d.C.TxIsMarked(tx.ID) {
+		d.C.TxMark(tx.ID, false)
 	} else {
-		d.C.CursorStep1--
+		d.C.TxMark(tx.ID, true)
 	}
 
-	d.updateClientList()
-	d.hHandleTStepsScrolled()
-	d.hRedrawFull(false)
-}
+	d.hBuildMarkersIndex()
 
-// TODO move
-func (d *Debugger) hHandleTStepsScrolled() {
-	// TODO merge with a CursorStep setter
-	tStepsScrolled := d.C.CursorStep1 != 0
+	// TODO notif status bar with marker number base-1
 
-	if tStepsScrolled {
-		d.Mach.Add1(ss.TimelineStepsScrolled, nil)
-	} else {
-		d.Mach.Remove1(ss.TimelineStepsScrolled, nil)
-	}
-}
-
-var _ = ss.TimelineStepsScrolled
-
-func (d *Debugger) TimelineStepsScrolledState(e *am.Event) {
-	d.hUpdateSchemaLogGrid()
-	d.hRedrawFull(false)
-}
-
-func (d *Debugger) TimelineStepsScrolledEnd(e *am.Event) {
-	d.hUpdateSchemaLogGrid()
-	d.hRedrawFull(false)
-}
-
-var _ = ss.TimelineStepsFocused
-
-func (d *Debugger) TimelineStepsFocusedState(e *am.Event) {
-	d.hUpdateSchemaLogGrid()
-	d.hRedrawFull(false)
-}
-
-func (d *Debugger) TimelineStepsFocusedEnd(e *am.Event) {
-	d.hUpdateSchemaLogGrid()
-	d.hRedrawFull(false)
+	// render
+	d.hUpdateTimelineTx()
+	d.hUpdateTimelineMarker()
+	d.hUpdateToolbar()
+	d.draw()
 }
 
 var _ = ss.Toolbar1Focused
@@ -676,10 +638,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 	// create a new client
 	if c == nil {
-		data := &server.Exportable{
-			MsgStruct: msg,
-		}
-		c = newClient(msg.ID, connId, amhelp.SchemaHash(msg.States), data)
+		c = newClient(connId, msg)
 		c.Connected.Store(true)
 		d.Clients[msg.ID] = c
 	}
@@ -700,7 +659,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 		// select the new (and only) client
 		d.C = c
 		d.log.Clear()
-		d.hUpdateTimelines()
+		d.hUpdateTimelineTx()
 		d.hUpdateTxBars()
 		d.hUpdateBorderColor()
 		d.buildClientList(0)
@@ -938,7 +897,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 
 	// timelines always change
 	d.updateClientList()
-	d.hUpdateTimelines()
+	d.hUpdateTimelineTx()
 	d.hUpdateMatrix()
 	d.hUpdateAddressBar()
 
@@ -990,6 +949,8 @@ func (d *Debugger) RemoveClientState(e *am.Event) {
 	// clean up
 	delete(d.Clients, cid)
 	d.hRemoveHistory(c.Id)
+	// TODO optimize by removal
+	d.hBuildMarkersIndex()
 
 	// if currently selected, switch to the first one
 	if c == d.C {
@@ -1172,7 +1133,7 @@ func (d *Debugger) ClientSelectedState(e *am.Event) {
 	// initial build of the schema tree
 	d.hBuildSchemaTree()
 	d.hUpdateTreeGroups()
-	d.hUpdateTimelines()
+	d.hUpdateTimelineTx()
 	d.hUpdateTxBars()
 	d.hUpdateClientList()
 	_ = d.hExportMach()
@@ -1230,7 +1191,7 @@ var _ = ss.HelpDialog
 func (d *Debugger) HelpDialogState(e *am.Event) {
 	// re-render for mem stats
 	d.hUpdateHelpDialog()
-	d.hUpdateFocusableList()
+	d.hUpdateFocusableOrder()
 	d.hUpdateToolbar()
 	// TODO use Visibility instead of SendToFront
 	d.LayoutRoot.SendToFront("main")
@@ -1332,7 +1293,6 @@ func (d *Debugger) ScrollToTxState(e *am.Event) {
 	defer d.Mach.EvRemove1(e, ss.ScrollToTx, nil)
 	args := am.ParseArgs[A](e.Args)
 	cursor1 := args.CursorTx1
-	cursorStep1 := args.CursorStep1
 	trim := args.TrimHistory
 
 	if args.TxId != "" {
@@ -1341,7 +1301,6 @@ func (d *Debugger) ScrollToTxState(e *am.Event) {
 
 	d.hSetCursor1(e, &A{
 		Cursor1:     cursor1,
-		CursorStep1: cursorStep1,
 		TrimHistory: trim,
 	})
 	d.updateClientList()
@@ -1371,30 +1330,23 @@ func (d *Debugger) NarrowLayoutEnd(e *am.Event) {
 	d.Mach.EvAdd1(e, ss.ClientListVisible, nil)
 }
 
-var _ = ss.ScrollToStep
+var _ = ss.ScrollToMarker
 
-func (d *Debugger) ScrollToStepEnter(e *am.Event) bool {
-	cursor := am.ParseArgs[A](e.Args).CursorStep1
-	c := d.C
-	return c != nil && cursor > 0 && d.hNextTx() != nil
+func (d *Debugger) ScrollToMarkerEnter(e *am.Event) bool {
+	cursor := am.ParseArgs[A](e.Args).CursorMarker1
+	return cursor > 0 && cursor <= len(d.markers)
 }
 
-// ScrollToStepState scrolls to a specific transition (cursor position 1-based).
+// ScrollToMarkerState scrolls to a specific marker (1-based index).
+func (d *Debugger) ScrollToMarkerState(e *am.Event) {
+	d.Mach.EvRemove1(e, ss.ScrollToMarker, nil)
 
-func (d *Debugger) ScrollToStepState(e *am.Event) {
-	// TODO multi?
-	d.Mach.EvRemove1(e, ss.ScrollToStep, nil)
-
-	cStep1 := am.ParseArgs[A](e.Args).CursorStep1
-	nextTx := d.hNextTx()
-
-	if cStep1 > len(nextTx.Steps) {
-		cStep1 = len(nextTx.Steps)
-	}
-	d.C.CursorStep1 = cStep1
-
-	d.hHandleTStepsScrolled()
-	d.hRedrawFull(false)
+	cursor1 := am.ParseArgs[A](e.Args).CursorMarker1
+	marker := d.markers[cursor1-1]
+	go d.GoToMachAddress(&types.MachAddress{
+		MachId: marker.ClientId,
+		TxId:   marker.TxId,
+	}, false)
 }
 
 var _ = ss.ToggleTool
@@ -1617,11 +1569,14 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 	case types.ToolNext:
 		d.Mach.EvAdd1(e, ss.UserFwd, nil)
 
-	case types.ToolNextStep:
-		d.Mach.EvAdd1(e, ss.UserFwdStep, nil)
+	case types.ToolMark:
+		d.Mach.EvAdd1(e, ss.ToggleMark, nil)
 
-	case types.ToolPrevStep:
-		d.Mach.EvAdd1(e, ss.UserBackStep, nil)
+	case types.ToolNextMarker:
+		d.Mach.EvAdd1(e, ss.UserFwdMarker, nil)
+
+	case types.ToolPrevMarker:
+		d.Mach.EvAdd1(e, ss.UserBackMarker, nil)
 
 	case types.ToolJumpPrev:
 		// TODO state
@@ -1707,7 +1662,7 @@ func (d *Debugger) ToolToggledState(e *am.Event) {
 		d.updateClientList()
 	}
 	d.hUpdateToolbar()
-	d.hUpdateTimelines()
+	d.hUpdateTimelineTx()
 	d.hUpdateMatrix()
 	d.hUpdateTxBars()
 	d.draw()
@@ -1965,6 +1920,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 		d.Mach.Log(P.Sprintf("GC in total shaved %d MBs", (mem1-mem3)/1024/1024))
 	}
 
+	d.hBuildMarkersIndex()
 	d.hRedrawFull(false)
 }
 
@@ -2011,8 +1967,8 @@ func (d *Debugger) ClientListVisibleEnd(e *am.Event) {
 var _ = ss.TimelineTxHidden
 
 func (d *Debugger) TimelineTxHiddenState(e *am.Event) {
-	// handled in TimelineStepsHiddenState
-	if e.Machine().Is1(ss.TimelineStepsHidden) {
+	// handled in TimelineMarkersHiddenState
+	if e.Machine().Is1(ss.TimelineMarkersHidden) {
 		return
 	}
 
@@ -2023,13 +1979,13 @@ func (d *Debugger) TimelineTxHiddenEnd(e *am.Event) {
 	d.hUpdateLayout()
 }
 
-var _ = ss.TimelineStepsHidden
+var _ = ss.TimelineMarkersHidden
 
-func (d *Debugger) TimelineStepsHiddenEnd(e *am.Event) {
+func (d *Debugger) TimelineMarkersHiddenEnd(e *am.Event) {
 	d.hUpdateLayout()
 }
 
-func (d *Debugger) TimelineStepsHiddenState(e *am.Event) {
+func (d *Debugger) TimelineMarkersHiddenState(e *am.Event) {
 	d.hUpdateLayout()
 }
 
@@ -2037,7 +1993,7 @@ var _ = ss.UpdateFocus
 
 func (d *Debugger) UpdateFocusState(e *am.Event) {
 	old := d.focusablePrims
-	d.hUpdateFocusableList()
+	d.hUpdateFocusableOrder()
 	d.hUpdateBorderColor()
 
 	var focused cview.Primitive
@@ -2059,8 +2015,8 @@ func (d *Debugger) UpdateFocusState(e *am.Event) {
 		focused = d.matrix
 	case ss.TimelineTxsFocused:
 		focused = d.timelineTxs
-	case ss.TimelineStepsFocused:
-		focused = d.timelineSteps
+	case ss.TimelineMarkersFocused:
+		focused = d.timelineMarkers
 	case ss.Toolbar1Focused:
 		focused = d.toolbars[0]
 	case ss.Toolbar2Focused:
@@ -2127,7 +2083,7 @@ func (d *Debugger) AfterFocusState(e *am.Event) {
 
 	d.hUpdateClientList()
 	d.hUpdateStatusBar()
-	d.hUpdateTimelines()
+	d.hUpdateTimelineTx()
 }
 
 var _ = ss.ToolRain

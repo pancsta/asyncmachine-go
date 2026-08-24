@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/alexflint/go-arg"
 
@@ -88,6 +89,7 @@ func cliRun(ctx context.Context, p types.Params) error {
 
 	// show footer stats
 	printStats(dbg)
+	time.Sleep(100 * time.Millisecond)
 
 	// pprof memory profile
 	types.HandleProfMem(p.DbgLogger, &p)
@@ -101,7 +103,9 @@ func printStats(dbg *debugger.Debugger) {
 		txs += len(c.MsgTxs)
 	}
 
-	_, _ = debugger.P.Printf("Clients: %d\n", len(dbg.Clients))
-	_, _ = debugger.P.Printf("Transitions: %d\n", txs)
-	_, _ = debugger.P.Printf("Memory: %dmb\n", debugger.AllocMem()/1024/1024)
+	_, _ = debugger.P.Printf(utils.Sp(`
+		Clients: %%d 
+		Transitions: %%d
+		Memory: %%dmb
+	`), len(dbg.Clients), txs, debugger.AllocMem()/1024/1024)
 }

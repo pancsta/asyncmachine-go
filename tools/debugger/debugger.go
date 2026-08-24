@@ -38,6 +38,7 @@ import (
 	"github.com/zyedidia/clipper"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
+	"gopkg.in/yaml.v3"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
@@ -59,7 +60,7 @@ type (
 var (
 	Pass = am.Pass
 	ss   = states.DebuggerStates
-	// printer for numbers TODO global
+	// P is a printer for large numbers
 	P = message.NewPrinter(language.English)
 )
 
@@ -712,10 +713,9 @@ func (d *Debugger) hCloseDiagFiles() {
 	d.diagStepsFileMermaidAscii.Close()
 }
 
-// hSetCursor1 sets both the tx and steps cursors, 1-based.
+// hSetCursor1 sets the tx cursor, 1-based.
 func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
 	cursor1 := args.Cursor1
-	cursorStep1 := args.CursorStep1
 	skipHistory := args.SkipHistory
 	trimHistory := args.TrimHistory
 	filterBack := args.FilterBack
@@ -731,9 +731,6 @@ func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
 
 	// TODO optimize for no-change?
 	c.CursorTx1 = d.hFilterTxCursor1(c, cursor1, filterBack)
-	// reset the step timeline
-	// TODO validate
-	c.CursorStep1 = cursorStep1
 
 	if d.HistoryCursor == 0 && !skipHistory {
 		d.hPrependHistory(d.hGetMachAddress())
@@ -752,6 +749,7 @@ func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
 		if tx != nil {
 			d.lastScrolledTxTime = *tx.Time
 		}
+		_ = d.hUpdateTxFile()
 
 		// diagram steps
 		if d.params.OutputDiagrams != types.ParamsOutputDiagramsNone &&
@@ -894,7 +892,11 @@ func (d *Debugger) GoToMachAddress(
 			TxId: tx.ID,
 		}))
 	}
-	d.hUpdateAddressBar()
+
+	// TODO needed?
+	d.Mach.Eval("GoToMachAddress", func() {
+		d.hUpdateAddressBar()
+	}, nil)
 
 	// GET params
 	if addr.State != "" {
@@ -1295,8 +1297,7 @@ func (d *Debugger) hImportData(filename string) {
 	// parse the data
 	for _, data := range res {
 		id := data.MsgStruct.ID
-		hash := amhelp.SchemaHash((*data).MsgStruct.States)
-		d.Clients[id] = newClient(id, id, hash, data)
+		d.Clients[id] = newClientExported(id, data)
 		if d.graph != nil {
 			err := d.graph.AddClient(data.MsgStruct)
 			if err != nil {
@@ -1964,7 +1965,7 @@ func (d *Debugger) hUpdateTxBars() {
 	}
 }
 
-func (d *Debugger) hUpdateTimelines() {
+func (d *Debugger) hUpdateTimelineTx() {
 	// check for a ready client
 	c := d.C
 	if c == nil {
@@ -2612,7 +2613,7 @@ func (d *Debugger) hGetSidebarCurrClientIdx() int {
 
 	i := 0
 	for _, item := range d.clientList.GetItems() {
-		ref := item.GetReference().(*sidebarRef)
+		ref := item.GetReference().(*clientListRef)
 		if ref.name == d.C.Id {
 			return i
 		}

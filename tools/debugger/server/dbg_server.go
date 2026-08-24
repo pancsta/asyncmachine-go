@@ -49,7 +49,9 @@ type Exportable struct {
 	// TODO version schemas
 	MsgStruct *dbg.DbgMsgStruct
 	MsgTxs    []*dbg.DbgMsgTx
-	Version   string
+	// TODO clean up on GC
+	Markers map[string]struct{}
+	Version string
 }
 
 type Client struct {
@@ -57,8 +59,6 @@ type Client struct {
 	*Exportable
 
 	// current transition, 1-based, mirrors the slider (eg 1 means tx.ID == 0)
-	// TODO atomic
-	// current step, 1-based, mirrors the slider
 	// TODO atomic
 	ReaderCollapsed bool
 	Id              string
@@ -80,6 +80,34 @@ type Client struct {
 
 	txCache   map[string]int
 	txCacheMx sync.Mutex
+}
+
+func NewClient(connId string, msgSchema *dbg.DbgMsgStruct) *Client {
+	c := &Client{
+		Id:         msgSchema.ID,
+		ConnId:     connId,
+		SchemaHash: amhelp.SchemaHash(msgSchema.States),
+		Exportable: &Exportable{
+			MsgStruct: msgSchema,
+			Markers:   make(map[string]struct{}),
+		},
+	}
+	c.ParseSchema()
+
+	return c
+}
+
+func (c *Client) TxIsMarked(txId string) bool {
+	_, ok := c.Markers[txId]
+	return ok
+}
+
+func (c *Client) TxMark(txId string, mark bool) {
+	if mark {
+		c.Markers[txId] = struct{}{}
+	} else {
+		delete(c.Markers, txId)
+	}
 }
 
 func (c *Client) ClearCache() {
