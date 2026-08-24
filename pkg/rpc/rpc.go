@@ -242,6 +242,10 @@ type ReplOpts struct {
 	// See WsListenPath.
 	WebSocketTunnel string
 
+	// internal
+
+	InternalForceTest bool
+
 	// TODO accept Name
 }
 
@@ -1097,7 +1101,7 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 	addrCh := opts.AddrCh
 	errCh := opts.ErrCh
 
-	if amhelp.IsTestRunner() {
+	if amhelp.IsTestRunner() && !opts.InternalForceTest {
 		return nil
 	}
 

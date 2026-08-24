@@ -273,8 +273,8 @@ tasks:
     desc: Run tests for a provided path
     cmds:
       - task: clean-test
-      - go test {{.CLI_ARGS}}
-      - go test -race -timeout 1m {{.CLI_ARGS}}
+      - go test -tags integration {{.CLI_ARGS}}
+      - go test -tags integration -race -timeout 1m {{.CLI_ARGS}}
 
   test-pkg:
     desc: Run tests for a specific package
