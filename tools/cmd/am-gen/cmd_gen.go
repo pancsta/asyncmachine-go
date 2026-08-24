@@ -35,12 +35,28 @@ func main() {
 	}
 
 	if p.Subcommand() == nil {
-		p.Fail("missing subcommand (states-file, grafana)\n" + args.Description())
+		p.Fail("missing subcommand (starter-kit, schema, schema-from-file, " +
+			"grafana)\n" + args.Description())
 	}
 
 	switch {
+	case args.Starter != nil:
+		if err := genStarterKit(ctx, args.Starter); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	case args.Schema != nil:
+		if err := genStatesFile(ctx, args.Schema); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 	case args.StatesFile != nil:
 		if err := genStatesFile(ctx, args.StatesFile); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	case args.SchemaFile != nil:
+		if err := genSchemaYaml(ctx, args.SchemaFile); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
@@ -51,6 +67,18 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func genStarterKit(ctx context.Context, params *cli.StarterParams) error {
+	return generator.GenStarterKit(ctx, params)
+}
+
+func genSchemaYaml(ctx context.Context, params *cli.SchemaFileParams) error {
+	statesParams, err := generator.SchemaFileToParams(*params)
+	if err != nil {
+		return err
+	}
+	return genStatesFile(ctx, &statesParams)
 }
 
 func genGrafana(ctx context.Context, params *cli.GrafanaParams) error {
@@ -67,17 +95,25 @@ func genGrafana(ctx context.Context, params *cli.GrafanaParams) error {
 	return nil
 }
 
-func genStatesFile(ctx context.Context, params *cli.StatesParams) error {
+func genStatesFile(ctx context.Context, params *cli.SchemaParams) error {
+	if params.States == "" && len(params.State) == 0 {
+		return errors.New("either --state or --states is required")
+	}
+
+	// generate
+	gen, err := generator.NewSchemaGenerator(ctx, *params)
+	if err != nil {
+		return err
+	}
+
+	if params.Output {
+		fmt.Print(gen.Output())
+		return nil
+	}
+
 	name := fmt.Sprintf("ss_%s.go", camelToSnake(params.Name))
 
 	if !fileExists(name) || params.Force {
-
-		// generate
-		gen, err := generator.NewSchemaGenerator(ctx, *params)
-		if err != nil {
-			return err
-		}
-
 		// save ss_
 		content := []byte(gen.Output())
 		err = os.WriteFile(name, content, 0666)

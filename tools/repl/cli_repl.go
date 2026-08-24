@@ -331,7 +331,7 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 				States:  args,
 				MutArgs: mutArgs,
 			}
-			res := mach.Add1(ss.CmdGroupAdd, Pass(&mut))
+			res := mach.Add1(ss.CmdGroupRemove, Pass(&mut))
 			if res != am.Executed {
 				repl.Print(res.String())
 			}

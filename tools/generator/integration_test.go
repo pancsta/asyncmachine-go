@@ -63,10 +63,6 @@ func TestStarterKit_E2E_Execution(t *testing.T) {
 
 	editArgs := []string{"mod", "edit", "-replace=github.com/pancsta/asyncmachine-go=" + repoRoot}
 
-	// Propagate local replaces from repository root go.mod
-	repoGoModBytes, err := os.ReadFile(filepath.Join(repoRoot, "go.mod"))
-	require.NoError(t, err)
-
 	cmdEdit := exec.CommandContext(ctx, "go", editArgs...)
 	cmdEdit.Dir = machDir
 	outEdit, err := cmdEdit.CombinedOutput()

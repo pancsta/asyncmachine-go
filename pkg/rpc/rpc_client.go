@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"net"
+	"net/http"
 	"os"
 	"slices"
 	"strconv"
@@ -18,7 +19,6 @@ import (
 	"github.com/tmc/go-iroh/key"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
-
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc/states"
@@ -118,9 +118,9 @@ type Client struct {
 	rpc      atomic.Pointer[rpc2.Client]
 	// schema of the network machine
 	schema am.Schema
-	// tmpTestErr is an error to return on the next call or notify, only for
+	// TmpTestErr is an error to return on the next call or notify, only for
 	// testing.
-	tmpTestErr error
+	TmpTestErr error
 	// permTestErr is an error to return on the next call or notify, only for
 	// testing.
 	permTestErr    error
@@ -1105,14 +1105,14 @@ func (c *Client) call(
 		return false
 	}
 	// err test
-	if c.tmpTestErr != nil {
-		AddErrNetwork(nil, c.Mach, fmt.Errorf("%w: %s", c.tmpTestErr, mName))
-		c.tmpTestErr = nil
+	if c.TmpTestErr != nil {
+		AddErrNetwork(nil, c.Mach, fmt.Errorf("%w: %s", c.TmpTestErr, mName))
+		c.TmpTestErr = nil
 		return false
 	}
 	// err test
 	if c.permTestErr != nil {
-		AddErrNetwork(nil, c.Mach, fmt.Errorf("%w: %s", c.tmpTestErr, mName))
+		AddErrNetwork(nil, c.Mach, fmt.Errorf("%w: %s", c.TmpTestErr, mName))
 		return false
 	}
 	// err

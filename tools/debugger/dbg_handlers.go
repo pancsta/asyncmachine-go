@@ -1061,23 +1061,22 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 
 		// scroll to the same place as the prev client
 		// TODO continue in SelectingClientFilteredState
-		match := false
-		if !wasTailMode {
-			match = d.hScrollToTime(e, d.lastScrolledTxTime, true)
-		}
+		d.Mach.Eval("SelectingClientState", func() {
+			match := false
+			if !wasTailMode {
+				match = d.hScrollToTime(e, d.lastScrolledTxTime, true)
+			}
 
-		// or scroll to the last one
-		if !match {
-			d.Mach.Eval("SelectingClientState", func() {
+			// or scroll to the last one
+			if !match {
 				d.hSetCursor1(e, &A{
 					Cursor1:    len(d.C.MsgTxs),
 					FilterBack: true,
 				})
-			}, ctx)
-			if ctx.Err() != nil {
-				return // expired
 			}
-
+		}, ctx)
+		if ctx.Err() != nil {
+			return // expired
 		}
 
 		// TODO diagrams?

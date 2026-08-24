@@ -126,7 +126,7 @@ type Server struct {
 
 	// lock data collection (RemoteHello and tracer data)
 	lockCollection sync.Mutex
-	// lock exporting updates (pushClient and responses to mutations)
+	// lock exporting updates (PushClient and responses to mutations)
 	lockExport sync.Mutex
 	// server is currently responding to a client, and pushing should be skipped
 	// respInProgress atomic.Bool
@@ -594,7 +594,7 @@ func (s *Server) RpcReadyState(e *am.Event) {
 				return
 
 			case <-t.C:
-				s.pushClient()
+				s.PushClient()
 			}
 		}
 	})
@@ -715,9 +715,9 @@ func (s *Server) bindRpcHandlers() {
 	// s.rpcServer.Handle("RemoteWhenArgs", s.RemoteWhenArgs)
 }
 
-// pushClient pushes an update to the client. It can be either a single or a
-// multi update. It can also be throttled and happen later.
-func (s *Server) pushClient() {
+// PushClient triggers a manual push of an update to the client. It can be
+// either a single or a multi update. It can also be throttled and happen later.
+func (s *Server) PushClient() {
 	c := s.rpcClient.Load()
 	if c == nil {
 		return
@@ -774,7 +774,7 @@ func (s *Server) pushClient() {
 	s.storeLastPush(data)
 }
 
-// call via by pushClient
+// call via by PushClient
 func (s *Server) pushUpdateMutations(muts []tracerMutation) error {
 	c := s.rpcClient.Load()
 	if c == nil {
@@ -797,7 +797,7 @@ func (s *Server) pushUpdateMutations(muts []tracerMutation) error {
 	return c.Notify(ClientUpdateMutations.Value, updateMuts)
 }
 
-// call via by pushClient
+// call via by PushClient
 func (s *Server) pushUpdateLatest(data *tracerData) error {
 	c := s.rpcClient.Load()
 	if c == nil {

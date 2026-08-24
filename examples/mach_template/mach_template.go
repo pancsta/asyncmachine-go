@@ -251,6 +251,15 @@ func (Args) ArgsPrefix() string {
 	return APrefix
 }
 
+func init() {
+	for _, arg := range ArgsRpc {
+		gob.Register(arg)
+	}
+}
+
+// ArgsRpc will be available in the REPL.
+var ArgsRpc = []am.ArgsApi{ABaz{}}
+
 // -----
 
 type AChannel struct {
@@ -276,17 +285,6 @@ type ABaz struct {
 func (ABaz) ArgsState() string {
 	return ss.Baz
 }
-
-// ----- RPC
-
-func init() {
-	for _, arg := range ArgsRpc {
-		gob.Register(arg)
-	}
-}
-
-// ArgsRpc will be available in the REPL.
-var ArgsRpc = []am.ArgsApi{ABaz{}}
 
 // ///// ///// /////
 

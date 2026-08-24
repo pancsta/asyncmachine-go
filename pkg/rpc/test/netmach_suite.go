@@ -1,6 +1,6 @@
 // TODO handle-bound tests
 
-package rpc
+package test
 
 import (
 	"context"
@@ -8,10 +8,9 @@ import (
 	"testing"
 	"time"
 
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 
 	sst "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
@@ -26,7 +25,7 @@ type (
 	Schema = am.Schema
 )
 
-func TestSingleStateActive(t *testing.T) {
+func TemplateTestSingleStateActive(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -36,19 +35,19 @@ func TestSingleStateActive(t *testing.T) {
 	defer cancel()
 
 	m := utils.NewNoRelsNetSrc(t, nil, "")
-	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
 	w.Add1("A", nil)
 
 	// assert
-	assertStates(t, c.NetMach, S{"A"})
+	amhelpt.AssertIs(t, c.NetMach, S{"A"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestMultipleStatesActive(t *testing.T) {
+func TemplateTestMultipleStatesActive(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -58,7 +57,7 @@ func TestMultipleStatesActive(t *testing.T) {
 	defer cancel()
 
 	m := utils.NewNoRelsNetSrc(t, nil, "")
-	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
@@ -66,12 +65,12 @@ func TestMultipleStatesActive(t *testing.T) {
 	w.Add(S{"B"}, nil)
 
 	// assert
-	assertStates(t, c.NetMach, S{"A", "B"})
+	amhelpt.AssertIs(t, c.NetMach, S{"A", "B"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestExposeAllStateNames(t *testing.T) {
+func TemplateTestExposeAllStateNames(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -81,7 +80,7 @@ func TestExposeAllStateNames(t *testing.T) {
 	defer cancel()
 
 	m := utils.NewNoRelsNetSrc(t, S{"A"}, "")
-	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// assert
@@ -90,7 +89,7 @@ func TestExposeAllStateNames(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestStateSet(t *testing.T) {
+func TemplateTestStateSet(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -101,19 +100,19 @@ func TestStateSet(t *testing.T) {
 	defer cancel()
 
 	m := utils.NewNoRelsNetSrc(t, S{"A"}, "")
-	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
 	w.Set(S{"B"}, nil)
 
 	// assert
-	assertStates(t, w, S{"B"})
+	amhelpt.AssertIs(t, w, S{"B"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestStateAdd(t *testing.T) {
+func TemplateTestStateAdd(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -123,19 +122,19 @@ func TestStateAdd(t *testing.T) {
 	defer cancel()
 
 	m := utils.NewNoRelsNetSrc(t, S{"A"}, "")
-	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
 	w.Add(S{"B"}, nil)
 
 	// assert
-	assertStates(t, w, S{"A", "B"})
+	amhelpt.AssertIs(t, w, S{"A", "B"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestStateRemove(t *testing.T) {
+func TemplateTestStateRemove(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -145,19 +144,19 @@ func TestStateRemove(t *testing.T) {
 	defer cancel()
 
 	m := utils.NewNoRelsNetSrc(t, S{"B", "C"}, "")
-	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, m, nil, 0, false, nil, nil)
 
 	// test
 	c.NetMach.Remove(S{"C"}, nil)
 	w := c.NetMach
 
 	// assert
-	assertStates(t, w, S{"B"})
+	amhelpt.AssertIs(t, w, S{"B"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestRemoveRelation(t *testing.T) {
+func TemplateTestRemoveRelation(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -174,17 +173,19 @@ func TestRemoveRelation(t *testing.T) {
 		sst.D: {},
 	})
 	m.Add1(sst.D, nil)
-	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// C deactivates D
 	w.Add(S{"C"}, nil)
-	assertStates(t, w, S{"C"})
+	amhelpt.AssertIs(t, w, S{"C"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestRemoveRelationSimultaneous(t *testing.T) {
+func TemplateTestRemoveRelationSimultaneous(
+	t *testing.T, newTest NewTestFactory,
+) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -200,7 +201,7 @@ func TestRemoveRelationSimultaneous(t *testing.T) {
 		sst.D: {},
 	})
 	m.Add1(sst.D, nil)
-	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
@@ -208,50 +209,52 @@ func TestRemoveRelationSimultaneous(t *testing.T) {
 
 	// assert
 	assert.Equal(t, am.Canceled, r)
-	assertStates(t, w, S{"D"})
+	amhelpt.AssertIs(t, w, S{"D"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestRemoveRelationCrossBlocking(t *testing.T) {
+func TemplateTestRemoveRelationCrossBlocking(
+	t *testing.T, newTest NewTestFactory,
+) {
 	tests := []struct {
 		name string
-		fn   func(t *testing.T, w *NetworkMachine)
+		fn   func(t *testing.T, w *arpc.NetworkMachine)
 	}{
 		{
 			"using Set should de-activate the old one",
-			func(t *testing.T, w *NetworkMachine) {
+			func(t *testing.T, w *arpc.NetworkMachine) {
 				// (D:1)[A:0 B:0 C:0]
 				w.Set(S{"C"}, nil)
-				assertStates(t, w, S{"C"})
+				amhelpt.AssertIs(t, w, S{"C"})
 			},
 		},
 		{
 			"using Set should work both ways",
-			func(t *testing.T, w *NetworkMachine) {
+			func(t *testing.T, w *arpc.NetworkMachine) {
 				// (D:1)[A:0 B:0 C:0]
 				w.Set(S{"C"}, nil)
-				assertStates(t, w, S{"C"})
+				amhelpt.AssertIs(t, w, S{"C"})
 				w.Set(S{"D"}, nil)
-				assertStates(t, w, S{"D"})
+				amhelpt.AssertIs(t, w, S{"D"})
 			},
 		},
 		{
 			"using Add should de-activate the old one",
-			func(t *testing.T, w *NetworkMachine) {
+			func(t *testing.T, w *arpc.NetworkMachine) {
 				// (D:1)[A:0 B:0 C:0]
 				w.Add(S{"C"}, nil)
-				assertStates(t, w, S{"C"})
+				amhelpt.AssertIs(t, w, S{"C"})
 			},
 		},
 		{
 			"using Add should work both ways",
-			func(t *testing.T, w *NetworkMachine) {
+			func(t *testing.T, w *arpc.NetworkMachine) {
 				// (D:1)[A:0 B:0 C:0]
 				w.Add(S{"C"}, nil)
-				assertStates(t, w, S{"C"})
+				amhelpt.AssertIs(t, w, S{"C"})
 				w.Add(S{"D"}, nil)
-				assertStates(t, w, S{"D"})
+				amhelpt.AssertIs(t, w, S{"D"})
 			},
 		},
 	}
@@ -275,7 +278,7 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 				sst.D: {Remove: S{sst.C}},
 			})
 			m.Add1(sst.D, nil)
-			_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+			_, _, s, c := newTest(t, ctx, m, nil, 0, false, nil, nil)
 			w := c.NetMach
 
 			// test
@@ -287,20 +290,7 @@ func TestRemoveRelationCrossBlocking(t *testing.T) {
 	}
 }
 
-func disposeTest(t *testing.T, c *Client, s *Server, checkErrs bool) {
-	if checkErrs {
-		amhelpt.AssertNoErrEver(t, c.Mach)
-		amhelpt.AssertNoErrEver(t, s.Mach)
-	}
-	if os.Getenv(dbg.EnvAmDbgAddr) != "" {
-		time.Sleep(time.Second)
-	}
-	c.Stop(context.TODO(), nil, true)
-	<-c.Mach.WhenDisposed()
-	s.Stop(nil, true)
-}
-
-func TestAddRelation(t *testing.T) {
+func TemplateTestAddRelation(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -318,22 +308,22 @@ func TestAddRelation(t *testing.T) {
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
 	w.Set(S{"C"}, nil)
 
 	// assert
-	assertStates(t, w, S{"C", "D"}, "state should be activated")
+	amhelpt.AssertIs(t, w, S{"C", "D"}, "state should be activated")
 	w.Set(S{"A", "C"}, nil)
-	assertStates(t, w, S{"A", "C"}, "state D should be skipped if "+
+	amhelpt.AssertIs(t, w, S{"A", "C"}, "state D should be skipped if "+
 		"blocked at the same time")
 
 	disposeTest(t, c, s, true)
 }
 
-func TestRequireRelation(t *testing.T) {
+func TemplateTestRequireRelation(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -351,19 +341,21 @@ func TestRequireRelation(t *testing.T) {
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
 	w.Set(S{"C", "D"}, nil)
 
 	// assert
-	assertStates(t, w, S{"C", "D"})
+	amhelpt.AssertIs(t, w, S{"C", "D"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
+func TemplateTestRequireRelationWhenRequiredIsntActive(
+	t *testing.T, newTest NewTestFactory,
+) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -382,19 +374,19 @@ func TestRequireRelationWhenRequiredIsntActive(t *testing.T) {
 	mach.Add1(sst.A, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
 	w.Set(S{"C", "A"}, nil)
 
 	// assert
-	assertStates(t, w, S{"A"}, "target state shouldnt be activated")
+	amhelpt.AssertIs(t, w, S{"A"}, "target state shouldnt be activated")
 
 	disposeTest(t, c, s, true)
 }
 
-func TestAutoStates(t *testing.T) {
+func TemplateTestAutoStates(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -415,7 +407,7 @@ func TestAutoStates(t *testing.T) {
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
@@ -423,12 +415,12 @@ func TestAutoStates(t *testing.T) {
 
 	// assert
 	assert.Equal(t, am.Executed, result, "transition should be executed")
-	assertStates(t, w, S{"A", "B"}, "dependant auto state should be set")
+	amhelpt.AssertIs(t, w, S{"A", "B"}, "dependant auto state should be set")
 
 	disposeTest(t, c, s, true)
 }
 
-func TestSwitch(t *testing.T) {
+func TemplateTestSwitch(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -447,7 +439,7 @@ func TestSwitch(t *testing.T) {
 	mach.Add1(sst.A, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	caseA := false
@@ -469,7 +461,9 @@ func TestSwitch(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestRegressionRemoveCrossBlockedByImplied(t *testing.T) {
+func TemplateTestRegressionRemoveCrossBlockedByImplied(
+	t *testing.T, newTest NewTestFactory,
+) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -486,19 +480,21 @@ func TestRegressionRemoveCrossBlockedByImplied(t *testing.T) {
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
 	w.Set(S{"Z"}, nil)
 
 	// assert
-	assertStates(t, w, S{"Z", "B"})
+	amhelpt.AssertIs(t, w, S{"Z", "B"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestRegressionImpliedBlockByBeingRemoved(t *testing.T) {
+func TemplateTestRegressionImpliedBlockByBeingRemoved(
+	t *testing.T, newTest NewTestFactory,
+) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -515,7 +511,7 @@ func TestRegressionImpliedBlockByBeingRemoved(t *testing.T) {
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
@@ -523,12 +519,12 @@ func TestRegressionImpliedBlockByBeingRemoved(t *testing.T) {
 	w.Set(S{"Water"}, nil)
 
 	// assert
-	assertStates(t, w, S{"Water", "Wet"})
+	amhelpt.AssertIs(t, w, S{"Water", "Wet"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestWhen2(t *testing.T) {
+func TemplateTestWhen2(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -541,7 +537,7 @@ func TestWhen2(t *testing.T) {
 	mach := utils.NewNoRelsNetSrc(t, nil, "")
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
@@ -573,7 +569,7 @@ func TestWhen2(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestWhenActive(t *testing.T) {
+func TemplateTestWhenActive(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -585,19 +581,19 @@ func TestWhenActive(t *testing.T) {
 	// machine
 	mach := utils.NewNoRelsNetSrc(t, S{"A"}, "")
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
 	<-w.When(S{"A"}, nil)
 
 	// assert
-	assertStates(t, w, S{"A"})
+	amhelpt.AssertIs(t, w, S{"A"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestWhenNot2(t *testing.T) {
+func TemplateTestWhenNot2(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -609,7 +605,7 @@ func TestWhenNot2(t *testing.T) {
 	// machine
 	mach := utils.NewNoRelsNetSrc(t, S{"A", "B"}, "")
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
@@ -641,7 +637,7 @@ func TestWhenNot2(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestWhenNotActive(t *testing.T) {
+func TemplateTestWhenNotActive(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -653,19 +649,19 @@ func TestWhenNotActive(t *testing.T) {
 	// machine
 	mach := utils.NewNoRelsNetSrc(t, S{"A"}, "")
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
 	<-w.WhenNot(S{"B"}, nil)
 
 	// assert
-	assertStates(t, w, S{"A"})
+	amhelpt.AssertIs(t, w, S{"A"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestPartialAuto(t *testing.T) {
+func TemplateTestPartialAuto(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -690,19 +686,19 @@ func TestPartialAuto(t *testing.T) {
 	mach.Add1(sst.A, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
 	w.Add(S{"A"}, nil)
 
 	// assert
-	assertStates(t, w, S{"A"})
+	amhelpt.AssertIs(t, w, S{"A"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestTime(t *testing.T) {
+func TemplateTestTime(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -720,38 +716,38 @@ func TestTime(t *testing.T) {
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test 1
 	// ()[]
 	w.Add(S{"A", "B"}, nil)
-	assertStates(t, w, S{"A", "B"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{1, 1, 0, 0})
+	amhelpt.AssertIs(t, w, S{"A", "B"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{1, 1, 0, 0})
 
 	w.Add(S{"A", "B"}, nil)
-	assertStates(t, w, S{"A", "B"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{1, 3, 0, 0})
+	amhelpt.AssertIs(t, w, S{"A", "B"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{1, 3, 0, 0})
 
 	w.Add(S{"A", "B", "C"}, nil)
-	assertStates(t, w, S{"A", "B", "C"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{1, 5, 1, 0})
+	amhelpt.AssertIs(t, w, S{"A", "B", "C"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{1, 5, 1, 0})
 
 	w.Set(S{"D"}, nil)
-	assertStates(t, w, S{"D"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{2, 6, 2, 1})
+	amhelpt.AssertIs(t, w, S{"D"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{2, 6, 2, 1})
 
 	w.Add(S{"D", "C"}, nil)
-	assertStates(t, w, S{"D", "C"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{2, 6, 3, 1})
+	amhelpt.AssertIs(t, w, S{"D", "C"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{2, 6, 3, 1})
 
 	w.Remove(S{"B", "C"}, nil)
-	assertStates(t, w, S{"D"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{2, 6, 4, 1})
+	amhelpt.AssertIs(t, w, S{"D"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{2, 6, 4, 1})
 
 	w.Add(S{"A", "B"}, nil)
-	assertStates(t, w, S{"D", "A", "B"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{3, 7, 4, 1})
+	amhelpt.AssertIs(t, w, S{"D", "A", "B"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{3, 7, 4, 1})
 
 	// test 2
 	order := S{"A", "B", "C", "D"}
@@ -760,8 +756,8 @@ func TestTime(t *testing.T) {
 	now := w.Time(order)
 
 	// assert
-	assertStates(t, w, S{"A", "B", "D", "C"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{3, 7, 5, 1})
+	amhelpt.AssertIs(t, w, S{"A", "B", "D", "C"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{3, 7, 5, 1})
 	assert.True(t, now.After(true, before))
 	assert.False(t, before.After(true, now))
 
@@ -857,7 +853,7 @@ func TestTime(t *testing.T) {
 //	<-w.WhenDisposed()
 // }
 
-func TestWhenTime(t *testing.T) {
+func TemplateTestWhenTime(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -869,7 +865,7 @@ func TestWhenTime(t *testing.T) {
 	// machine
 	mach := utils.NewNoRelsNetSrc(t, S{"A", "B"}, "")
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// bind
@@ -901,7 +897,7 @@ func TestWhenTime(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestIs(t *testing.T) {
+func TemplateTestIs(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -923,7 +919,7 @@ func TestIs(t *testing.T) {
 	mach.Add(S{sst.A, sst.B}, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
@@ -933,7 +929,7 @@ func TestIs(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestNot(t *testing.T) {
+func TemplateTestNot(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -955,7 +951,7 @@ func TestNot(t *testing.T) {
 	mach.Add(S{sst.A, sst.B}, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
@@ -966,7 +962,7 @@ func TestNot(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestAny(t *testing.T) {
+func TemplateTestAny(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -988,7 +984,7 @@ func TestAny(t *testing.T) {
 	mach.Add(S{sst.A, sst.B}, nil)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
@@ -999,7 +995,7 @@ func TestAny(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestClock(t *testing.T) {
+func TemplateTestClock(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1017,38 +1013,38 @@ func TestClock(t *testing.T) {
 	})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test 1
 	// ()[]
 	w.Add(S{"A", "B"}, nil)
-	assertStates(t, w, S{"A", "B"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{1, 1, 0, 0})
+	amhelpt.AssertIs(t, w, S{"A", "B"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{1, 1, 0, 0})
 
 	w.Add(S{"A", "B"}, nil)
-	assertStates(t, w, S{"A", "B"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{1, 3, 0, 0})
+	amhelpt.AssertIs(t, w, S{"A", "B"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{1, 3, 0, 0})
 
 	w.Add(S{"A", "B", "C"}, nil)
-	assertStates(t, w, S{"A", "B", "C"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{1, 5, 1, 0})
+	amhelpt.AssertIs(t, w, S{"A", "B", "C"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{1, 5, 1, 0})
 
 	w.Set(S{"D"}, nil)
-	assertStates(t, w, S{"D"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{2, 6, 2, 1})
+	amhelpt.AssertIs(t, w, S{"D"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{2, 6, 2, 1})
 
 	w.Add(S{"D", "C"}, nil)
-	assertStates(t, w, S{"D", "C"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{2, 6, 3, 1})
+	amhelpt.AssertIs(t, w, S{"D", "C"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{2, 6, 3, 1})
 
 	w.Remove(S{"B", "C"}, nil)
-	assertStates(t, w, S{"D"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{2, 6, 4, 1})
+	amhelpt.AssertIs(t, w, S{"D"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{2, 6, 4, 1})
 
 	w.Add(S{"A", "B"}, nil)
-	assertStates(t, w, S{"D", "A", "B"})
-	assertTime(t, w, S{"A", "B", "C", "D"}, am.Time{3, 7, 4, 1})
+	amhelpt.AssertIs(t, w, S{"D", "A", "B"})
+	amhelpt.AssertTime(t, w, S{"A", "B", "C", "D"}, am.Time{3, 7, 4, 1})
 
 	assert.Subset(t, w.Clock(nil), am.Clock{
 		"A": 3, "B": 7, "C": 4, "D": 1, "Exception": 0,
@@ -1063,7 +1059,7 @@ func TestClock(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestInspect(t *testing.T) {
+func TemplateTestInspect(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1076,7 +1072,7 @@ func TestInspect(t *testing.T) {
 	mach := utils.NewRelsNetSrc(t, S{"A", "C"})
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// (A:1 C:1)[B:0 D:0 Exception:0]
@@ -1100,7 +1096,7 @@ func TestInspect(t *testing.T) {
         |Tick     0
         |Multi    true
 		`
-	assertString(t, w, expected, names)
+	amhelpt.AssertString(t, w, expected, names)
 	// (A:1 C:1)[B:0 D:0 Exception:0]
 	w.Remove(S{"C"}, nil)
 	// ()[A:2 B:0 C:2 D:0 Exception:0]
@@ -1130,12 +1126,12 @@ func TestInspect(t *testing.T) {
 		    |Tick     0
 		    |Require  Exception
 	`
-	assertString(t, w, expected, nil)
+	amhelpt.AssertString(t, w, expected, nil)
 
 	disposeTest(t, c, s, true)
 }
 
-func TestString(t *testing.T) {
+func TemplateTestString(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1148,7 +1144,7 @@ func TestString(t *testing.T) {
 	mach := utils.NewNoRelsNetSrc(t, S{"A", "B"}, "")
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
@@ -1161,7 +1157,7 @@ func TestString(t *testing.T) {
 
 // TestNestedMutation
 type TestNestedMutationHandlers struct {
-	*ExceptionHandler
+	*am.ExceptionHandler
 }
 
 func (h *TestNestedMutationHandlers) AState(e *am.Event) {
@@ -1173,7 +1169,7 @@ func (h *TestNestedMutationHandlers) AState(e *am.Event) {
 	e.Machine().Remove1("B", nil)
 }
 
-func TestNestedMutation(t *testing.T) {
+func TemplateTestNestedMutation(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1189,19 +1185,19 @@ func TestNestedMutation(t *testing.T) {
 	assert.NoError(t, err)
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
 	w.Add1("A", nil)
 
 	// assert
-	assertStates(t, w, S{"A"})
+	amhelpt.AssertIs(t, w, S{"A"})
 
 	disposeTest(t, c, s, true)
 }
 
-func TestIsClock(t *testing.T) {
+func TemplateTestIsClock(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1211,7 +1207,7 @@ func TestIsClock(t *testing.T) {
 	defer cancel()
 
 	m := utils.NewNoRelsNetSrc(t, nil, "")
-	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
@@ -1226,7 +1222,7 @@ func TestIsClock(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestIsTime(t *testing.T) {
+func TemplateTestIsTime(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1236,7 +1232,7 @@ func TestIsTime(t *testing.T) {
 	defer cancel()
 
 	m := utils.NewNoRelsNetSrc(t, nil, "")
-	_, _, s, c := NewTest(t, ctx, m, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, m, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
@@ -1297,12 +1293,12 @@ func (tr *TestWhenQueueTracer) TransitionEnd(tx *am.Transition) {
 		m.Add1("D", nil)
 
 		<-m.WhenQueue(res)
-		assertStates(tr.t, m, S{"A", "B", "C", "D"})
+		amhelpt.AssertIs(tr.t, m, S{"A", "B", "C", "D"})
 		close(tr.done)
 	}()
 }
 
-func TestWhenQueue(t *testing.T) {
+func TemplateTestWhenQueue(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1315,7 +1311,7 @@ func TestWhenQueue(t *testing.T) {
 	mach := utils.NewNoRelsNetSrc(t, nil, "")
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	nm := c.NetMach
 
 	// test
@@ -1341,7 +1337,7 @@ func TestWhenQueue(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestWhenQuery(t *testing.T) {
+func TemplateTestWhenQuery(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1354,7 +1350,7 @@ func TestWhenQuery(t *testing.T) {
 	mach := utils.NewNoRelsNetSrc(t, S{"A"}, "")
 
 	// worker
-	_, _, s, c := NewTest(t, ctx, mach, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, mach, nil, 0, false, nil, nil)
 	w := c.NetMach
 
 	// test
@@ -1401,7 +1397,7 @@ func TestWhenQuery(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestPipes(t *testing.T) {
+func TemplateTestPipes(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1414,7 +1410,7 @@ func TestPipes(t *testing.T) {
 	// amhelp.MachDebugEnv(local)
 
 	// connect
-	_, _, s, c := NewTest(t, ctx, netSrc, nil, 0, false, nil, nil)
+	_, _, s, c := newTest(t, ctx, netSrc, nil, 0, false, nil, nil)
 	// amhelp.MachDebug(c.NetMach, "localhost:6831", am.LogOps, true,
 	// 	amhelp.SemConfigEnv(true))
 
@@ -1438,7 +1434,7 @@ func TestPipes(t *testing.T) {
 	disposeTest(t, c, s, true)
 }
 
-func TestStateCtxBasic(t *testing.T) {
+func TemplateTestStateCtxBasic(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1463,7 +1459,7 @@ func TestStateCtxBasic(t *testing.T) {
 	<-m.WhenDisposed()
 }
 
-func TestWhenTimeSum(t *testing.T) {
+func TemplateTestWhenTimeSum(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}

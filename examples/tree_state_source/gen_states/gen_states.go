@@ -42,9 +42,11 @@ func main() {
 	ctx := context.Background()
 
 	// TODO am.Schema to cli.StatesParams converter
-	params := cli.StatesParams{
-		Name:    "Flights",
-		Inherit: "rpc/worker,basic",
+	params := cli.SchemaParams{
+		SchemaParamsCommon: cli.SchemaParamsCommon{
+			Name:    "Flights",
+			Inherit: []string{"rpc/worker", "basic"},
+		},
 	}
 
 	for i := 1; i <= flights; i++ {
