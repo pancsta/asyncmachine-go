@@ -57,7 +57,6 @@ type Client struct {
 
 	CursorTx1       int
 	ReaderCollapsed bool
-	CursorStep1     int
 	SelectedState   string
 	// extracted log entries per tx ID
 	// TODO GC when all entries are closedAt and the first client's tx is later
@@ -242,6 +241,12 @@ func isWSL() bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(string(releaseData)), "microsoft")
+}
+
+type MarkerItem struct {
+	ClientId string
+	TxId     string
+	Time     time.Time
 }
 
 // ///// ///// /////
