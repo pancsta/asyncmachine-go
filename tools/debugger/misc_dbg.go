@@ -21,6 +21,8 @@ import (
 	"github.com/gdamore/tcell/v2/terminfo"
 	"github.com/mark3labs/mcp-go/mcp"
 
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
+
 	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 
 	ammcp "github.com/pancsta/asyncmachine-go/pkg/integrations/mcp-go"
@@ -76,17 +78,26 @@ func init() {
 	gob.Register(am.Relation(0))
 }
 
-func newClient(id, connId, schemaHash string, data *server.Exportable) *Client {
+func newClient(connId string, schema *dbg.DbgMsgStruct) *Client {
 	c := &Client{
-		Client: &server.Client{
-			Id:         id,
-			ConnId:     connId,
-			SchemaHash: schemaHash,
-			Exportable: data,
-		},
+		Client:    server.NewClient(connId, schema),
 		LogReader: make(map[string][]*types.LogReaderEntry),
 	}
-	c.ParseSchema()
+
+	return c
+}
+
+func newClientExported(connId string, data *server.Exportable) *Client {
+	c := &Client{
+		Client:    server.NewClient(connId, data.MsgStruct),
+		LogReader: make(map[string][]*types.LogReaderEntry),
+	}
+	c.Exportable = data
+
+	// backward compatibility
+	if c.Exportable.Markers == nil {
+		c.Exportable.Markers = make(map[string]struct{})
+	}
 
 	return c
 }
@@ -333,6 +344,12 @@ func newMcpServer(d *Debugger) (*mcpServer, error) {
 			"Get a markdown sequence diagram of the transition steps",
 		),
 	)
+	serializedMach := mcp.NewTool(
+		"SerializedMachine",
+		mcp.WithDescription(
+			"Get a YAML of the serialized machine state",
+		),
+	)
 
 	// methods
 
@@ -358,6 +375,7 @@ func newMcpServer(d *Debugger) (*mcpServer, error) {
 	srv.Mcp.AddTool(textClients, srvDbg.textClients)
 	srv.Mcp.AddTool(netGraph, srvDbg.netGraph)
 	srv.Mcp.AddTool(txSteps, srvDbg.txSteps)
+	srv.Mcp.AddTool(serializedMach, srvDbg.serializedMach)
 	srv.Mcp.AddTool(goToMachAddr, srvDbg.goToMachAddr)
 	srv.Mcp.AddTool(pressKey, srvDbg.pressKey)
 
@@ -455,7 +473,7 @@ func (m *mcpServer) txSteps(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	p := *m.d.Params.Load()
-	if !p.OutputLog {
+	if !p.OutputTx {
 		return mcp.NewToolResultError("--output-tx not set"), nil
 	}
 
@@ -464,6 +482,21 @@ func (m *mcpServer) txSteps(
 		return nil, err
 	}
 	return mcp.NewToolResultText(string(log)), nil
+}
+
+func (m *mcpServer) serializedMach(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	p := *m.d.Params.Load()
+	if !p.OutputMach {
+		return mcp.NewToolResultError("--output-mach not set"), nil
+	}
+
+	content, err := os.ReadFile(path.Join(p.OutputDir, "mach.yml"))
+	if err != nil {
+		return nil, err
+	}
+	return mcp.NewToolResultText(string(content)), nil
 }
 
 func (m *mcpServer) pressKey(

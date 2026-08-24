@@ -63,6 +63,7 @@ type DebuggerStatesDef struct {
 
 	// errors
 	ErrDiagrams string
+	ErrUi string
 	ErrWeb      string
 
 	// web req for diagram viewer
@@ -71,18 +72,18 @@ type DebuggerStatesDef struct {
 	WebSocketDiag string
 
 	// input events
-	UserFwd      string
-	UserBack     string
-	UserFwdStep  string
-	UserBackStep string
+	UserFwd        string
+	UserBack       string
+	UserFwdMarker  string
+	UserBackMarker string
 
 	// focus group
-	TreeFocused          string
-	TreeGroupsFocused    string
-	LogFocused           string
-	ClientListFocused    string
-	TimelineTxsFocused   string
-	TimelineStepsFocused string
+	TreeFocused            string
+	TreeGroupsFocused      string
+	LogFocused             string
+	ClientListFocused      string
+	TimelineTxsFocused     string
+	TimelineMarkersFocused string
 	MatrixFocused        string
 	DialogFocused        string
 	Toolbar1Focused      string
@@ -94,14 +95,12 @@ type DebuggerStatesDef struct {
 	Resized              string
 
 	// view states
-	TimelineTxHidden    string
-	TimelineStepsHidden string
-	NarrowLayout        string
-	UserNarrowLayout    string
-	ClientListVisible   string
-	StateNameSelected   string
-	// TODO remove
-	TimelineStepsScrolled string
+	TimelineTxHidden        string
+	TimelineMarkersHidden   string
+	NarrowLayout            string
+	UserNarrowLayout        string
+	ClientListVisible       string
+	StateNameSelected       string
 	HelpDialog            string
 	ExportDialog          string
 	LogUserScrolled       string
@@ -153,13 +152,14 @@ type DebuggerStatesDef struct {
 	FocusNext          string
 	ToolRain           string
 
-	// tx / steps back / fwd
-	Fwd          string
-	Back         string
-	FwdStep      string
-	BackStep     string
-	ScrollToTx   string
-	ScrollToStep string
+	// tx / markers back / fwd
+	Fwd            string
+	Back           string
+	FwdMarker      string
+	BackMarker     string
+	ScrollToTx     string
+	ScrollToMarker string
+	ToggleMark     string
 
 	// client selection
 	SelectingClient string
@@ -207,6 +207,10 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 			Multi:   true,
 			Require: S{Exception},
 		},
+		ssD.ErrUi: {
+			Multi:   true,
+			Require: S{Exception},
+		},
 
 		// ///// Input events
 
@@ -219,7 +223,7 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 			Require: S{Start},
 		},
 
-		// user scrolling tx / steps
+		// user scrolling tx / markers
 		ssD.UserFwd: {
 			Add:    S{ssD.Fwd},
 			Remove: sgD.Playing,
@@ -228,13 +232,13 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 			Add:    S{ssD.Back},
 			Remove: sgD.Playing,
 		},
-		ssD.UserFwdStep: {
-			Add:     S{ssD.FwdStep},
+		ssD.UserFwdMarker: {
+			Add:     S{ssD.FwdMarker},
 			Require: S{ssD.ClientSelected},
 			Remove:  sgD.Playing.Add1(ssD.LogUserScrolled),
 		},
-		ssD.UserBackStep: {
-			Add:     S{ssD.BackStep},
+		ssD.UserBackMarker: {
+			Add:     S{ssD.BackMarker},
 			Require: S{ssD.ClientSelected},
 			Remove:  sgD.Playing.Add1(ssD.LogUserScrolled),
 		},
@@ -247,14 +251,14 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 		ssD.TreeGroupsFocused:    {Remove: sgD.Focused},
 		ssD.LogFocused:           {Remove: sgD.Focused},
 		ssD.ClientListFocused:    {Remove: sgD.Focused},
-		ssD.TimelineTxsFocused:   {Remove: sgD.Focused},
-		ssD.TimelineStepsFocused: {Remove: sgD.Focused},
-		ssD.MatrixFocused:        {Remove: sgD.Focused},
-		ssD.DialogFocused:        {Remove: sgD.Focused},
-		ssD.Toolbar1Focused:      {Remove: sgD.Focused},
-		ssD.Toolbar2Focused:      {Remove: sgD.Focused},
-		ssD.Toolbar3Focused:      {Remove: sgD.Focused},
-		ssD.Toolbar4Focused:      {Remove: sgD.Focused},
+		ssD.TimelineTxsFocused:     {Remove: sgD.Focused},
+		ssD.TimelineMarkersFocused: {Remove: sgD.Focused},
+		ssD.MatrixFocused:          {Remove: sgD.Focused},
+		ssD.DialogFocused:          {Remove: sgD.Focused},
+		ssD.Toolbar1Focused:        {Remove: sgD.Focused},
+		ssD.Toolbar2Focused:        {Remove: sgD.Focused},
+		ssD.Toolbar3Focused:        {Remove: sgD.Focused},
+		ssD.Toolbar4Focused:        {Remove: sgD.Focused},
 		ssD.LogReaderFocused: {
 			Require: S{ssD.LogReaderVisible},
 			Remove:  sgD.Focused,
@@ -262,8 +266,8 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 		ssD.AddressFocused: {Remove: sgD.Focused},
 		ssD.Resized:        {Multi: true},
 
-		ssD.TimelineTxHidden:    {Require: S{ssD.TimelineStepsHidden}},
-		ssD.TimelineStepsHidden: {},
+		ssD.TimelineTxHidden:      {Require: S{ssD.TimelineMarkersHidden}},
+		ssD.TimelineMarkersHidden: {},
 		ssD.NarrowLayout: {
 			Require: S{ssD.Ready},
 			Remove:  S{ssD.ClientListVisible},
@@ -274,7 +278,6 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 			Multi:   true,
 			Require: S{ssD.ClientSelected},
 		},
-		ssD.TimelineStepsScrolled: {Require: S{ssD.ClientSelected}},
 		ssD.HelpDialog: {
 			Add:    S{ssD.DialogFocused},
 			Remove: sgD.Dialog.Add(sgD.Focused),
@@ -398,7 +401,7 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 			Require: S{ssD.Ready},
 		},
 
-		// tx / steps back / fwd
+		// tx / markers back / fwd
 
 		ssD.Fwd: {
 			Require: S{ssD.ClientSelected},
@@ -408,21 +411,25 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 			Require: S{ssD.ClientSelected},
 			Remove:  S{ssD.Overlay},
 		},
-		ssD.FwdStep: {
+		ssD.FwdMarker: {
 			Require: S{ssD.ClientSelected},
 		},
-		ssD.BackStep: {
+		ssD.BackMarker: {
 			Require: S{ssD.ClientSelected},
 		},
 
 		ssD.ScrollToTx: {
 			Multi:   true,
 			Require: S{ssD.ClientSelected},
-			Remove:  S{ssD.TailMode, ssD.Playing, ssD.TimelineStepsScrolled},
+			Remove:  S{ssD.TailMode, ssD.Playing},
 		},
-		ssD.ScrollToStep: {
+		ssD.ScrollToMarker: {
 			Require: S{ssD.ClientSelected},
 			Remove:  S{ssD.TailMode, ssD.Playing},
+		},
+		ssD.ToggleMark: {
+			Multi: true,
+			Require: S{ssD.ClientSelected},
 		},
 
 		// client selection
@@ -541,7 +548,7 @@ var (
 
 		ssD.LogFocused, ssD.LogReaderFocused, ssD.MatrixFocused,
 
-		ssD.TimelineTxsFocused, ssD.TimelineStepsFocused,
+		ssD.TimelineTxsFocused, ssD.TimelineMarkersFocused,
 
 		ssD.Toolbar1Focused, ssD.Toolbar2Focused,
 		ssD.Toolbar3Focused, ssD.Toolbar4Focused,
@@ -579,12 +586,12 @@ var (
 			ssD.Overlay, ssD.HelpDialog, ssD.ExportDialog,
 		),
 
-		Mcp: groupFocus.Add1(ssD.UserFwd, ssD.UserBack, ssD.UserFwdStep,
-			ssD.UserBackStep, ssD.ScrollToMutTx, ssD.SwitchingClientTx,
+		Mcp: groupFocus.Add1(ssD.UserFwd, ssD.UserBack, ssD.UserFwdMarker,
+			ssD.UserBackMarker, ssD.ScrollToMutTx, ssD.SwitchingClientTx,
 			ssD.SelectingClient, ssD.RemoveClient, ssD.SetCursor, ssD.SetGroup,
 			ssD.StateNameSelected, ssD.FocusNext, ssD.FocusPrev,
 			ssD.LogReaderEnabled, ssD.UserNarrowLayout, ssD.TimelineTxHidden,
-			ssD.TimelineStepsHidden),
+			ssD.TimelineMarkersHidden),
 
 		McpReadonly: groupFilters.Add1(ssD.SwitchedClientTx, ssD.ClientSelected),
 

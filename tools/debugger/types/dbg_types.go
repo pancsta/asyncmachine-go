@@ -46,7 +46,7 @@ type Params struct {
 	// main params
 
 	ListenAddr      string   `arg:"-l,--listen-addr" default:"localhost:6831" help:"Host and port for the debugger to listen on"`
-	OutputDir       string   `arg:"-d,--dir" default:"." help:"Output directory for generated files"`
+	OutputDir       string   `arg:"-d,--dir" default:"am-dbg" help:"Output directory for generated files"`
 	CleanOnConnect  bool     `arg:"--clean-on-connect" default:"true" help:"Clean up disconnected clients on the 1st connection"`
 	ImportData      string   `arg:"-i,--import-data" help:"Import an exported gob.br file"`
 	FwdData         []string `arg:"-f,--fwd-data,separate" help:"Forward incoming data to other instances (repeatable)"`
@@ -75,6 +75,7 @@ type Params struct {
 	OutputDiagTx    ParamsOutDiagTx      `arg:"--output-diag-tx" help:"Dim states and rels unrelated to a transition (valid: called, changed, touched, relations)" default:"relations"`
 	OutputGraph     bool                 `arg:"--output-graph" help:"Write the current network graph as graph.(md|mgml) inside --dir (EXPERIMENTAL)"`
 	OutputLog       bool                 `arg:"--output-log" help:"Write the current log buffer to log.md inside --dir"`
+	OutputMach      bool                 `arg:"--output-mach" default:"true" help:"Write the serialized machine state into mach.yml and schema.yml inside --dir"`
 	OutputTx        bool                 `arg:"--output-tx" default:"true" help:"Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir"`
 
 	// ui
@@ -363,8 +364,7 @@ func StartCpuProfileSrv(ctx context.Context, logger *log.Logger, p *Params) {
 type MachAddress struct {
 	MachId string
 	TxId   string
-	// TODO remove
-	Step int
+	Step   int
 
 	// GET param
 
@@ -514,7 +514,7 @@ type MsgSchemaParsed struct {
 	// TODO split to group ID, labels
 	Groups      map[string]am.S
 	GroupsOrder []string
-	Hash      string
+	Hash        string
 }
 
 type LogReaderEntry struct {
@@ -587,6 +587,7 @@ var (
 	ToolDiagramsTx       = ToolName{"diag-tx"}
 	ToolDiagramsGroup    = ToolName{"diag-group"}
 	ToolOutputTx         = ToolName{"out-tx"}
+	ToolOutputMach       = ToolName{"out-mach"}
 	ToolOutputLog        = ToolName{"out-log"}
 	ToolCallLog          = ToolName{"call-log"}
 	ToolTimelines        = ToolName{"timelines"}
@@ -606,8 +607,9 @@ var (
 	ToolExpand           = ToolName{"expand"}
 	ToolMatrix           = ToolName{"matrix"}
 	ToolExport           = ToolName{"export"}
-	ToolNextStep         = ToolName{"next-step"}
-	ToolPrevStep         = ToolName{"prev-step"}
+	ToolMark             = ToolName{"mark"}
+	ToolNextMarker       = ToolName{"next-mark"}
+	ToolPrevMarker       = ToolName{"prev-mark"}
 	ToolPrevClient       = ToolName{"prev-client"}
 	ToolNextClient       = ToolName{"next-client"}
 
@@ -627,6 +629,9 @@ var (
 		ToolDiagrams,
 		ToolDiagramsTx,
 		ToolDiagramsGroup,
+		ToolOutputTx,
+		ToolOutputMach,
+		ToolOutputLog,
 		ToolCallLog,
 		ToolTimelines,
 		ToolReader,
@@ -645,8 +650,9 @@ var (
 		ToolExpand,
 		ToolMatrix,
 		ToolExport,
-		ToolNextStep,
-		ToolPrevStep,
+		ToolMark,
+		ToolNextMarker,
+		ToolPrevMarker,
 		ToolPrevClient,
 		ToolNextClient,
 	)
@@ -681,8 +687,8 @@ type A struct {
 
 	// cursor positioning (1-based)
 
-	Cursor1     int `log:"cursor1" json:",string"`
-	CursorStep1 int `log:"cursor_step1" json:",string"`
+	Cursor1       int `log:"cursor1" json:",string"`
+	CursorMarker1 int `log:"cursor_marker1" json:",string"`
 	// TODO merge with Cursor1
 	CursorTx1 int `log:"cursor_tx1" json:",string"`
 
@@ -773,8 +779,8 @@ type ARpc struct {
 
 	// cursor positioning (1-based)
 
-	Cursor1     int `log:"cursor1" json:",string"`
-	CursorStep1 int `log:"cursor_step1" json:",string"`
+	Cursor1       int `log:"cursor1" json:",string"`
+	CursorMarker1 int `log:"cursor_marker1" json:",string"`
 	// TODO merge with Cursor1
 	CursorTx1 int `log:"cursor_tx1" json:",string"`
 
@@ -870,11 +876,14 @@ var StateCalls = []am.CallSignature{
 	},
 	{
 		States:   am.S{ss.ScrollToTx},
-		Optional: []string{"CursorTx1", "TxId", "CursorStep1", "TrimHistory"},
+		Optional: []string{"CursorTx1", "TxId", "TrimHistory"},
 	},
 	{
-		States: am.S{ss.ScrollToStep},
-		Needed: []string{"CursorStep1"},
+		States: am.S{ss.ScrollToMarker},
+		Needed: []string{"CursorMarker1"},
+	},
+	{
+		States: am.S{ss.ToggleMark},
 	},
 	{
 		States: am.S{ss.ToggleTool},
