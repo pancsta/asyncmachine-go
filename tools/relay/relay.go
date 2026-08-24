@@ -126,6 +126,12 @@ func (r *Relay) StartState(e *am.Event) {
 		for _, addr := range cmd.FwdAddr {
 			r.out("forwarding to %s\n", addr)
 		}
+		if cmd.OutputMach {
+			_ = os.MkdirAll(filepath.Join(cmd.Dir, "machs"), 0o755)
+		}
+		if cmd.OutputClients {
+			_ = r.hExportClients()
+		}
 		dbgParams := typesDbg.Params{
 			FwdData: cmd.FwdAddr,
 		}
@@ -479,6 +485,8 @@ func (r *Relay) ClientMsgState(e *am.Event) {
 	msgs := e.Args["msgs_tx"].([]*dbg.DbgMsgTx)
 	connIds := e.Args["conn_ids"].([]string)
 
+	updatedClients := make(map[string]*server.Client)
+
 	for i, msg := range msgs {
 
 		// TODO check tokens
@@ -502,6 +510,14 @@ func (r *Relay) ClientMsgState(e *am.Event) {
 
 		// append the msg
 		c.MsgTxs = append(c.MsgTxs, msg)
+		updatedClients[machId] = c
+	}
+
+	for _, c := range updatedClients {
+		_ = r.hExportMach(c)
+	}
+	if len(updatedClients) > 0 {
+		_ = r.hExportClients()
 	}
 
 	a := r.Args.RotateDbg
@@ -554,35 +570,13 @@ func (r *Relay) ConnectEventState(e *am.Event) {
 	// create a new client
 	if c == nil {
 		r.out("new client %s\n", msg.ID)
-		// TODO server.NewClient
-		c = &server.Client{
-			Id:         msg.ID,
-			ConnId:     connId,
-			SchemaHash: amhelp.SchemaHash(msg.States),
-			Exportable: &server.Exportable{
-				MsgStruct: msg,
-			},
-		}
+		c = server.NewClient(connId, msg)
 		c.Connected.Store(true)
 		r.dbgClients[msg.ID] = c
 	}
 
-	// TODO remove the last active client if over the limit
-	// if len(r.clients) > maxClients {
-	// 	var (
-	// 		lastActiveTime time.Time
-	// 		lastActiveID   string
-	// 	)
-	// 	// TODO get time from msgs
-	// 	for id, c := range r.clients {
-	// 		active := c.LastActive()
-	// 		if active.After(lastActiveTime) || lastActiveID == "" {
-	// 			lastActiveTime = active
-	// 			lastActiveID = id
-	// 		}
-	// 	}
-	// 	r.Mach.Add1(ss.RemoveClient, am.A{"Client.id": lastActiveID})
-	// }
+	_ = r.hExportMach(c)
+	_ = r.hExportClients()
 
 	r.Mach.Add1(ssR.InitClient, am.A{"id": msg.ID})
 }
@@ -607,6 +601,7 @@ func (r *Relay) DisconnectEventState(e *am.Event) {
 			c.Connected.Store(false)
 			r.Mach.Log("client %s disconnected", c.Id)
 			r.out("client %s disconnected\n", c.Id)
+			_ = r.hExportClients()
 			break
 		}
 	}
@@ -677,6 +672,127 @@ func (r *Relay) hExportData() error {
 
 	return nil
 }
+
+func (r *Relay) hExportMach(c *server.Client) error {
+	a := r.Args.RotateDbg
+	if a == nil || !a.OutputMach || c == nil || c.MsgStruct == nil {
+		return nil
+	}
+
+	machsDir := filepath.Join(a.Dir, "machs")
+	if err := os.MkdirAll(machsDir, 0o755); err != nil {
+		return err
+	}
+
+	var machTime am.Time
+	var qTick uint64
+	var machTick uint32
+
+	if len(c.MsgTxs) > 0 {
+		lastTx := c.MsgTxs[len(c.MsgTxs)-1]
+		machTime = lastTx.Clocks
+		qTick = lastTx.QueueTick
+		machTick = uint32(len(c.MsgTxs) - 1)
+	} else {
+		machTime = make(am.Time, len(c.MsgStruct.StatesIndex))
+	}
+
+	ser := &am.Serialized{
+		ID:          c.Id,
+		StateNames:  c.MsgStruct.StatesIndex,
+		Time:        machTime,
+		QueueTick:   qTick,
+		MachineTick: machTick,
+	}
+
+	data, err := yaml.Marshal(ser)
+	if err != nil {
+		return err
+	}
+
+	filePath := filepath.Join(machsDir, c.Id+".yml")
+	err = os.WriteFile(filePath, data, 0o644)
+	if err != nil {
+		return err
+	}
+
+	filePath = filepath.Join(machsDir, c.Id+".schema.yml")
+	schemaData, err := yaml.Marshal(c.MsgStruct.States)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(filePath, schemaData, 0o644)
+}
+
+func (r *Relay) hExportClients() error {
+	a := r.Args.RotateDbg
+	if a == nil || !a.OutputClients {
+		return nil
+	}
+
+	if a.Dir != "" {
+		if err := os.MkdirAll(a.Dir, 0o755); err != nil {
+			return err
+		}
+	}
+
+	ids := slices.Collect(maps.Keys(r.dbgClients))
+	slices.Sort(ids)
+
+	var txtFile string
+	for _, id := range ids {
+		c := r.dbgClients[id]
+		if c == nil {
+			continue
+		}
+		var state string
+		var lastTx *dbg.DbgMsgTx
+		if len(c.MsgTxs) > 0 {
+			lastTx = c.MsgTxs[len(c.MsgTxs)-1]
+		}
+		if lastTx != nil && c.MsgStruct != nil {
+			index := c.MsgStruct.StatesIndex
+			readyIdx := slices.Index(index, ssam.BasicStates.Ready)
+			startIdx := slices.Index(index, ssam.BasicStates.Start)
+			errIdx := slices.Index(index, am.StateException)
+			isErrNow := errIdx != -1 && am.IsActiveTick(lastTx.Clocks[errIdx])
+			if readyIdx != -1 && am.IsActiveTick(lastTx.Clocks[readyIdx]) {
+				state = "R"
+			} else if startIdx != -1 && am.IsActiveTick(lastTx.Clocks[startIdx]) {
+				state = "S"
+			}
+			if isErrNow {
+				state = "E" + state
+			}
+		}
+		if state == "" {
+			state = " "
+		}
+
+		label := fmt.Sprintf("%s %s|%d", c.Id, state, len(c.MsgTxs))
+		if !c.Connected.Load() {
+			label += " (disconnected)"
+		}
+		txtFile += label + "\n"
+		if c.MsgStruct != nil {
+			for _, tag := range c.MsgStruct.Tags {
+				txtFile += "  #" + tag + "\n"
+			}
+		}
+	}
+
+	filePath := filepath.Join(a.Dir, "clients.txt")
+	return os.WriteFile(filePath, []byte(txtFile), 0o644)
+}
+
+// TODO SetArgs
+
+// ///// ///// /////
+
+// ///// METHODS
+
+// ///// ///// /////
 
 func (r *Relay) msgsCount() int {
 	count := 0

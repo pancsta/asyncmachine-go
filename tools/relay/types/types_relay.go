@@ -34,8 +34,10 @@ type ArgsRotateDbg struct {
 	FwdAddr      []string      `arg:"-f,--fwd-addr,separate" help:"Address of an RPC server to forward data to (repeatable)"`
 	IntervalTx   int           `arg:"--interval-tx" default:"10000" help:"Amount of transitions to create a dump file"`
 	IntervalTime time.Duration `arg:"--interval-duration" default:"24h" help:"Amount of human time to create a dump file"`
-	Filename     string        `arg:"-o,--output" default:"am-dbg-dump" help:"Output file base name"`
-	Dir          string        `arg:"-d,--dir" default:"." help:"Output directory"`
+	Filename      string        `arg:"-o,--output" default:"am-dbg-dump" help:"Output file base name"`
+	Dir           string        `arg:"-d,--dir" default:"." help:"Output directory"`
+	OutputMach    bool          `arg:"--output-mach" default:"true" help:"Export serialized machines as YAML into dir/machs/id.yml and dir/machs/id.schema.yml"`
+	OutputClients bool          `arg:"--output-clients" help:"Write a plain text client list into clients.txt inside --dir"`
 }
 
 // ArgsWasm
