@@ -1175,6 +1175,7 @@ func (d *Debugger) ClientSelectedState(e *am.Event) {
 	d.hUpdateTimelines()
 	d.hUpdateTxBars()
 	d.hUpdateClientList()
+	_ = d.hExportMach()
 	if d.Mach.Is1(ss.TreeLogView) || d.Mach.Is1(ss.TreeMatrixView) {
 		d.hUpdateSchemaTree()
 	}
@@ -1495,6 +1496,15 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 			_ = d.hInitTxFile()
 		} else {
 			_ = d.hCloseTxFile()
+		}
+
+	case types.ToolOutputMach:
+		d.params.OutputMach = !d.params.OutputMach
+		if d.params.OutputMach {
+			_ = d.hInitMachFile()
+			_ = d.hExportMach()
+		} else {
+			_ = d.hCloseMachFile()
 		}
 
 	case types.ToolDiagramsTx:
