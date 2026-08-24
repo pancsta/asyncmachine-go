@@ -1,15 +1,22 @@
 # Schema Formats
 
-This document contains a brief overview of `asyncmachine-go` schema file formats. All schemas are simply an executable
-Golang code.
+This document contains a brief overview of `asyncmachine-go` schema formats. JSON schemas can be found in [`/docs/jsonschema`](/docs/jsonschema).
 
-## schema-v0
+- [Schema-v0](#schema-v0)
+- [Schema-v1](#schema-v1)
+- [Schema-v2](#schema-v2)
+- [YAML Schema](#yaml-schema)
+- [YAML Machine](#yaml-machine)
+- [MachAddress URLs](#machaddress-urls)
+
+## Schema-v0
 
 - type safety **NO**
 - reflection **NO**
 - bootstrapped **NO**
 - inheritance **NO**
 - generated **NO**
+- bootstrapped **NO**
 
 Schemas for `asyncmachine-go` are optional and for simple things, we don't need a typed schema (nor type safety), and we
 can construct the machine like so:
@@ -38,6 +45,7 @@ All the state-related calls happen via raw strings. It's good for prototyping an
 - bootstrapped **NO**
 - inheritance **NO**
 - generated **NO**
+- bootstrapped **NO**
 
 The `v1` is the simplest schema file format:
 
@@ -110,9 +118,10 @@ mach, err := am.NewCommon(ctx, "expense", ss.Schema, ss.Names, h, nil, nil)
 - bootstrapped **YES**
 - inheritance **YES**
 - generated **NO**
+- bootstrapped **YES**
 
-The `v2` is the actual schema file format schema file format and should be used everywhere. The problem is the use of
-reflection that causes issues with **TinyGo**.
+The `v2` is the actual schema file format and should be used everywhere. The problem is the use of
+reflection that causes issues with **TinyGo**. Bootstrappable by `am-gen schema`.
 
 ```go
 import (
@@ -227,3 +236,74 @@ var (
 ```
 
 See [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) for schema bootstrapping commands.
+
+## YAML Schema
+
+YAML schema files are useful for bootstrapping the project boilerplate via `am-gen starter-kit`.
+
+```yaml
+Start:
+BaseDBReady:
+    remove:
+        - BaseDBStarting
+BaseDBSaving:
+    multi: true
+BaseDBStarting:
+    remove:
+        - BaseDBReady
+CharacterReady:
+    remove:
+        - RestoreCharacter
+        - GenCharacter
+CheckStories:
+    multi: true
+    require:
+        - Start
+CheckingMenuRefs:
+    multi: true
+    require:
+        - Start
+RestoreCharacter:
+GenCharacter:
+```
+
+## YAML Machine
+
+YAML machine files can be used to generate a schema via `am-gen schema-from-file`.
+
+```yaml
+id: my-serialized-mach
+state_names:
+    - Start
+    - BaseDBReady
+    - BaseDBSaving
+time:
+    - 1
+    - 2
+    - 0
+queue_tick: 25
+machine_tick: 1
+```
+
+## MachAddress URLs
+
+Machine addresses are implemented in `am-dbg` and `am-vis` for convenient copy-pasta.
+
+**Format**: `mach://<mach-id>[/<tx-id>[/<step>]][?<query-params>]`
+
+- **Host (`MachId`)**: State machine identifier (e.g. `mach://my-mach`).
+- **Path (`TxId`, `Step`)**:
+  - `/<tx-id>`: Specific transition ID (e.g. `mach://my-mach/tx-101`).
+  - `/<tx-id>/<step>`: Step index within the transition (e.g. `mach://my-mach/tx-101/2`).
+- **Query Parameters**:
+  - `t=<uint64>`: Machine logical time (`MachTime`).
+  - `q=<uint64>`: Queue tick (`QueueTick`).
+  - `ht=<RFC3339>`: Wall-clock timestamp (`HumanTime`).
+  - `state=<string>`: Selected/highlighted state name.
+  - `group=<string>`: Selected/highlighted state group name.
+
+Example:
+
+```text
+mach://auth-service/tx-45/2?state=Ready&t=1450
+```

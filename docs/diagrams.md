@@ -101,29 +101,29 @@ Channel-broadcast waiting on clock values.
 
 ## Transition Lifecycle
 
-![](https://pancsta.github.io/assets/asyncmachine-go/diagrams/tx-lifecycle.d2.dark.svg)
+![Transition Lifecycle diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/tx-lifecycle.d2.dark.svg)
 
 ## aRPC
 
 ### aRPC Architecture
 
-![](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc.d2.dark.svg)
+![aRPC Architecture diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc.d2.dark.svg)
 
 ### aRPC Sync (Details)
 
-![](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-sync-details.d2.dark.svg)
+![aRPC Sync (Details) diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-sync-details.d2.dark.svg)
 
 ### aRPC Sync (Clocks)
 
-![](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-sync-clocks.d2.dark.svg)
+![aRPC Sync (Clocks) diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-sync-clocks.d2.dark.svg)
 
 ### aRPC Partial Distribution
 
-![](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-dist-mach.d2.dark.svg)
+![aRPC Partial Distribution diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-dist-mach.d2.dark.svg)
 
 ### aRPC Handler Mutations
 
-![](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-handlers.d2.dark.svg)
+![aRPC Handler Mutations diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-handlers.d2.dark.svg)
 
 ## Worker Pool Architecture
 
@@ -196,4 +196,4 @@ Consumer requests payload from a remote worker.
 ![diagram3](https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-3.svg)
 ![diagram4](https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-4.svg)
 ![diagram5](https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-5.svg)
-![](https://pancsta.github.io/assets/asyncmachine-go/am-vis/tx.svg)
+![Transition diagram](https://pancsta.github.io/assets/asyncmachine-go/am-vis/tx.svg)

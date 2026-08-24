@@ -27,6 +27,7 @@ sides.
 ![logical diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/example-wasm.d2.dark.svg)
 
 > [!NOTE]
+>
 > - Blue - real state machine
 > - Blue+orange - real state machine and state source
 > - Green - network state machine (mirror)

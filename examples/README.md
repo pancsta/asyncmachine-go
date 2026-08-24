@@ -221,7 +221,7 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 
 - [secai](https://github.com/pancsta/secai) - AI Workflows framework
 - [secai Web UI](https://github.com/pancsta/secai/tree/main/web) - WebAssembly [go-app](https://go-app.dev/) PWA
-- Self-hosting of [pkg/rpc](pkg/rpc/states), [pkg/node](pkg/node/states), [pkg/pubsub](pkg/pubsub/states)
+- Self-hosting of [pkg/rpc](/pkg/rpc/states), [pkg/node](/pkg/node/states), [pkg/pubsub](/pkg/pubsub/states)
 - [arpc REPL](/tools/repl/states) - Cobra-based REPL
 - [am-dbg TUI Debugger](/tools/debugger/states) - Single state-machine TUI app
 - [libp2p PubSub Simulator](https://github.com/pancsta/go-libp2p-pubsub-benchmark/#libp2p-pubsub-simulator) - Sandbox

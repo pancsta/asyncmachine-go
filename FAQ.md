@@ -6,7 +6,7 @@ Code is bound to states (graph nodes), not transitions (graph edges in FSMs). Wh
 the `FooEnter(e)` method first, then runs `FooState(e)`. When it deactivates, checks the `FooExit(e)` method, then runs
 `FooEnd(e)`. `FooState(e)` binds context and collects data, then forks background processes bound to that instance of
 the "Foo" state. Code executed during a transition is dynamically composed of deactivating and activating states.
-Transitions between states are not defined, and many states can be active simultaneously. It should be used to solve 
+Transitions between states are not defined, and many states can be active simultaneously. It should be used to solve
 complexity in time.
 
 ## What is a "state" in asyncmachine?

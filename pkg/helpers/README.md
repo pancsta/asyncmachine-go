@@ -17,7 +17,6 @@ Highlights:
 - [waiting helpers](#waiting-helpers)
 - [failsafe Request object](#failsafe-request-object)
 - [test helpers](#test-helpers)
-- [miscellaneous utils](#miscellaneous-utils)
 
 ## Installation
 
@@ -199,81 +198,110 @@ amhelpt.AssertNoErrEver(t, mach)
 ## Complete API
 
 ```go
-Package-Level Functions (total 56)
+Package-Level Functions (total 83)
 
-     func Activations(u uint64) int
-     func Add1Async(ctx context.Context, mach am.Api, waitState string, addState string, args am.A) am.Result
-     func Add1Sync(ctx context.Context, mach am.Api, state string, args am.A) am.Result
-     func ArgsToArgs[T](src interface{}, dest T) T
-     func ArgsToLogMap(args interface{}, maxLen int) map[string]string
-     func AskAdd(mach am.Api, states am.S, args am.A) am.Result
-     func AskAdd1(mach am.Api, state string, args am.A) am.Result
-     func AskEvAdd(e *am.Event, mach am.Api, states am.S, args am.A) am.Result
-     func AskEvAdd1(e *am.Event, mach am.Api, state string, args am.A) am.Result
-     func AskEvRemove(e *am.Event, mach am.Api, states am.S, args am.A) am.Result
-     func AskEvRemove1(e *am.Event, mach am.Api, state string, args am.A) am.Result
-     func AskRemove(mach am.Api, states am.S, args am.A) am.Result
-     func AskRemove1(mach am.Api, state string, args am.A) am.Result
-     func CantAdd(mach am.Api, states am.S, args am.A) bool
-     func CantAdd1(mach am.Api, state string, args am.A) bool
-     func CantRemove(mach am.Api, states am.S, args am.A) bool
-     func CantRemove1(mach am.Api, state string, args am.A) bool
-     func CopySchema(source am.Schema, target *am.Machine, states am.S) error
-     func CountRelations(state *am.State) int
-     func EnableDebugging(stdout bool)
-     func EvalGetter[T](ctx context.Context, source string, maxTries int, mach *am.Machine, eval func() (T, error)) (T, error)
-     func ExecAndClose(fn func()) <-chan struct{}
-     func GetTransitionStates(tx *am.Transition, index am.S) (added am.S, removed am.S, touched am.S)
-     func GroupWhen1(machs []am.Api, state string, ctx context.Context) ([]<-chan struct{}, error)
-     func Healthcheck(mach am.Api)
-     func Implements(statesChecked, statesNeeded am.S) error
-     func IndexesToStates(allStates am.S, indexes []int) am.S
-     func Interval(ctx context.Context, length time.Duration, interval time.Duration, fn func() bool) error
-     func IsDebug() bool
-     func IsMulti(mach am.Api, state string) bool
-     func IsTelemetry() bool
-     func IsTestRunner() bool
-     func MachDebug(mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout bool, semConfig *am.SemConfig)
-     func MachDebugEnv(mach am.Api)
-     func NewMirror(id string, flat bool, source *am.Machine, handlers any, states am.S) (*am.Machine, error)
-     func NewMutRequest(mach am.Api, mutType am.MutationType, states am.S, args am.A) *MutRequest
-     func NewReqAdd(mach am.Api, states am.S, args am.A) *MutRequest
-     func NewReqAdd1(mach am.Api, state string, args am.A) *MutRequest
-     func NewReqRemove(mach am.Api, states am.S, args am.A) *MutRequest
-     func NewReqRemove1(mach am.Api, state string, args am.A) *MutRequest
-     func NewStateLoop(mach *am.Machine, loopState string, optCheck func() bool) *StateLoop
-     func Pool(limit int) *errgroup.Group
-     func PrefixStates(schema am.Schema, prefix string, removeDups bool, optWhitelist, optBlacklist S) am.Schema
-     func RemoveMulti(mach am.Api, state string) am.HandlerFinal
-     func ResultToErr(result am.Result) error
-     func SchemaHash(schema am.Schema) string
-     func SemConfig(forceFull bool) *am.SemConfig
-     func SetEnvLogLevel(level am.LogLevel)
-     func StatesToIndexes(allStates am.S, states am.S) []int
-     func TagValue(tags []string, key string) string
-     func Wait(ctx context.Context, length time.Duration) bool
-     func WaitForAll(ctx context.Context, timeout time.Duration, chans ...<-chan struct{}) error
-     func WaitForAny(ctx context.Context, timeout time.Duration, chans ...<-chan struct{}) error
-     func WaitForErrAll(ctx context.Context, timeout time.Duration, mach am.Api, chans ...<-chan struct{}) error
-     func WaitForErrAny(ctx context.Context, timeout time.Duration, mach *am.Machine, chans ...<-chan struct{}) error
+	 func Activations(u uint64) int
+	 func Add1Async(ctx context.Context, mach am.Api, waitState string, addState string, args ...am.A) bool
+	 func Add1Sync(ctx context.Context, mach am.Api, state string, args ...am.A) bool
+	 func AddAsync(ctx context.Context, mach am.Api, waitState string, addStates S, args ...am.A) bool
+	 func AddSync(ctx context.Context, mach am.Api, states S, args ...am.A) bool
+	 func ArgsNames(args []am.ArgsApi) ([]string, error)
+	 func ArgsToLogMap(args any, maxLen int) map[string]string
+	 func ArgsUnmarshal[G](args am.A, def G) am.A
+	 func AskAdd(mach am.Api, states am.S, args am.A) am.Result
+	 func AskAdd1(mach am.Api, state string, args am.A) am.Result
+	 func AskEvAdd(e *am.Event, mach am.Api, states am.S, args am.A) am.Result
+	 func AskEvAdd1(e *am.Event, mach am.Api, state string, args am.A) am.Result
+	 func AskEvRemove(e *am.Event, mach am.Api, states am.S, args am.A) am.Result
+	 func AskEvRemove1(e *am.Event, mach am.Api, state string, args am.A) am.Result
+	 func AskRemove(mach am.Api, states am.S, args am.A) am.Result
+	 func AskRemove1(mach am.Api, state string, args am.A) am.Result
+	 func CantAdd(mach am.Api, states am.S, args am.A) bool
+	 func CantAdd1(mach am.Api, state string, args am.A) bool
+	 func CantRemove(mach am.Api, states am.S, args am.A) bool
+	 func CantRemove1(mach am.Api, state string, args am.A) bool
+	 func CopySchema(source am.Schema, target *am.Machine, states am.S) error
+	 func CountRelations(state *am.State) int
+	 func Dispose(mach am.Api)
+	 func DisposeBind(mach am.Api, handler am.HandlerDispose)
+	 func DisposeEv(mach am.Api, e *am.Event)
+	 func EnableDebugging(stdout bool)
+	 func EvAdd1Async(ctx context.Context, e *am.Event, mach am.Api, waitState string, addState string, args ...am.A) bool
+	 func EvAdd1Sync(ctx context.Context, e *am.Event, mach am.Api, state string, args ...am.A) bool
+	 func EvAddAsync(ctx context.Context, e *am.Event, mach am.Api, waitState string, addStates S, args ...am.A) bool
+	 func EvAddSync(ctx context.Context, e *am.Event, mach am.Api, states S, args ...am.A) bool
+	 func EvalGetter[T](ctx context.Context, source string, maxTries int, mach *am.Machine, eval func() (T, error)) (T, error)
+	 func EvalSetter(ctx context.Context, source string, maxTries int, mach *am.Machine, eval func() error) error
+	 func EvRemove1Sync(ctx context.Context, e *am.Event, mach am.Api, state string, args ...am.A) bool
+	 func EvRemoveSync(ctx context.Context, e *am.Event, mach am.Api, states S, args ...am.A) bool
+	 func ExecAndClose(fn func()) <-chan struct{}
+	 func GetTransitionStates(tx *am.Transition, index am.S) (added am.S, removed am.S, touched am.S)
+	 func GroupWhen1(machs []am.Api, state string, ctx context.Context) ([]<-chan struct{}, error)
+	 func HandlerToState(handler string) string
+	 func Healthcheck(mach am.Api)
+	 func Implements(statesChecked, statesNeeded am.S) error
+	 func IndexesToStates(allStates am.S, indexes []int) am.S
+	 func Interval(ctx context.Context, length time.Duration, interval time.Duration, fn func() bool) error
+	 func IsDebug() bool
+	 func IsMulti(mach am.Api, state string) bool
+	 func IsTelemetry() bool
+	 func IsTestRunner() bool
+	 func IsWasi() bool
+	 func IsWasm() bool
+	 func LogArgs(args am.A, maxLen int) map[string]string
+	 func LogArgsMapper(args am.A) map[string]string
+	 func MachDebug(mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout bool, semConfig *am.SemConfig) error
+	 func MachDebugEnv(mach am.Api) error
+	 func MachDebugWs(mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout bool, semConfig *am.SemConfig) error
+	 func MachToSlog(mach am.Api) *slog.Logger
+	 func NewArgsUnmarshaller(defs []am.ArgsApi) ArgsUnmarshallerFn
+	 func NewIoWriterToMachLog(mach am.Api, prefix string) *IoWriterToMachLog
+	 func NewMirror(id string, flat bool, source *am.Machine, handlers any, states am.S) (*am.Machine, error)
+	 func NewMutRequest(mach am.Api, mutType am.MutationType, states am.S, args am.A) *MutRequest
+	 func NewReqAdd(mach am.Api, states am.S, args am.A) *MutRequest
+	 func NewReqAdd1(mach am.Api, state string, args am.A) *MutRequest
+	 func NewReqRemove(mach am.Api, states am.S, args am.A) *MutRequest
+	 func NewReqRemove1(mach am.Api, state string, args am.A) *MutRequest
+	 func NewStateLoop(mach *am.Machine, loopState string, optCheck func() bool) *StateLoop
+	 func Pool(ctx context.Context, limit int) pond.TaskGroup
+	 func RandId(strLen int) string
+	 func Remove1Sync(ctx context.Context, mach am.Api, state string, args ...am.A) bool
+	 func RemoveMulti(mach am.Api, state string) am.HandlerFinal
+	 func RemoveSync(ctx context.Context, mach am.Api, states S, args ...am.A) bool
+	 func ResultToErr(result am.Result) error
+	 func SchemaHash(schema am.Schema) string
+	 func SchemaImplements(schema am.Schema, states am.S) error
+	 func SemConfigEnv(forceFull bool) *am.SemConfig
+	 func SetEnvLogLevel(level am.LogLevel)
+	 func StatesToIndexes(allStates am.S, states am.S) []int
+	 func TagValue(tags []string, key string) string
+	 func TagValueInt(tags []string, key string) int
+	 func Wait(ctx context.Context, length time.Duration) bool
+	 func WaitForAll(ctx context.Context, timeout time.Duration, chans ...<-chan struct{}) error
+	 func WaitForAny(ctx context.Context, timeout time.Duration, chans ...<-chan struct{}) error
+	 func WaitForErrAll(ctx context.Context, timeout time.Duration, mach am.Api, chans ...<-chan struct{}) error
+	 func WaitForErrAny(ctx context.Context, timeout time.Duration, mach *am.Machine, chans ...<-chan struct{}) error
+	 func WhenFunc(fn func()) <-chan struct{}
+	 func WhenFuncOk(fn func() bool) <-chan bool
 
 Package-Level Variables (only one)
 
-      var SlogToMachLogOpts *slog.HandlerOptions
+	  var SlogToMachLogOpts *slog.HandlerOptions
 
-Package-Level Constants (total 11)
+Package-Level Constants (total 12)
 
-    const EnvAmHealthcheck = "AM_HEALTHCHECK"
-    const EnvAmLogArgs = "AM_LOG_ARGS"
-    const EnvAmLogChecks = "AM_LOG_CHECKS"
-    const EnvAmLogFile = "AM_LOG_FILE"
-    const EnvAmLogFull = "AM_LOG_FULL"
-    const EnvAmLogGraph = "AM_LOG_GRAPH"
-    const EnvAmLogQueued = "AM_LOG_QUEUED"
-    const EnvAmLogStateCtx = "AM_LOG_STATE_CTX"
-    const EnvAmLogSteps = "AM_LOG_STEPS"
-    const EnvAmLogWhen = "AM_LOG_WHEN"
-    const EnvAmTestRunner = "AM_TEST_RUNNER"
+	const EnvAmHealthcheck = "AM_HEALTHCHECK"
+	const EnvAmLogArgs = "AM_LOG_ARGS"
+	const EnvAmLogChecks = "AM_LOG_CHECKS"
+	const EnvAmLogFile = "AM_LOG_FILE"
+	const EnvAmLogFull = "AM_LOG_FULL"
+	const EnvAmLogGraph = "AM_LOG_GRAPH"
+	const EnvAmLogPrint = "AM_LOG_PRINT"
+	const EnvAmLogQueued = "AM_LOG_QUEUED"
+	const EnvAmLogStateCtx = "AM_LOG_STATE_CTX"
+	const EnvAmLogSteps = "AM_LOG_STEPS"
+	const EnvAmLogWhen = "AM_LOG_WHEN"
+	const EnvAmTestRunner = "AM_TEST_RUNNER"
 ```
 
 ## Documentation

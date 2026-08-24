@@ -1,4 +1,4 @@
-# How Does It Work?
+## How Does It Work?
 
 Code is **bound to states** (graph nodes), not transitions (graph edges in FSMs). When a state "Foo" activates, it
 checks the `FooEnter(e)` method first, then runs `FooState(e)`. When it deactivates, checks the `FooExit(e)` method,
@@ -9,18 +9,18 @@ It should be used to solve complexity in time.
 
 -----
 
-[![](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
+[![Go Reference](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
 [![website](https://img.shields.io/badge/asyncmachine-.dev-blue)](https://asyncmachine.dev)
-![](https://pancsta.github.io/assets/asyncmachine-go/badges/loc-pkg.svg)
-![](https://pancsta.github.io/assets/asyncmachine-go/badges/loc-tools.svg)
-![](https://pancsta.github.io/assets/asyncmachine-go/badges/tests.svg)
-![](https://pancsta.github.io/assets/asyncmachine-go/badges/tests-pkg.svg)
-![](https://pancsta.github.io/assets/asyncmachine-go/badges/coverage-machine.svg)
-![](https://pancsta.github.io/assets/asyncmachine-go/badges/coverage-pkg.svg)
-![](https://pancsta.github.io/assets/asyncmachine-go/badges/coverage-tools.svg)
-![](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
-[![](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
-[![](https://pancsta.github.io/assets/asyncmachine-go/badges/reddit.svg)](https://reddit.com/r/asyncmachine/)
+![pkg lines of code](https://pancsta.github.io/assets/asyncmachine-go/badges/loc-pkg.svg)
+![tools lines of code](https://pancsta.github.io/assets/asyncmachine-go/badges/loc-tools.svg)
+![tests](https://pancsta.github.io/assets/asyncmachine-go/badges/tests.svg)
+![pkg tests](https://pancsta.github.io/assets/asyncmachine-go/badges/tests-pkg.svg)
+![machine coverage](https://pancsta.github.io/assets/asyncmachine-go/badges/coverage-machine.svg)
+![pkg coverage](https://pancsta.github.io/assets/asyncmachine-go/badges/coverage-pkg.svg)
+![tools coverage](https://pancsta.github.io/assets/asyncmachine-go/badges/coverage-tools.svg)
+![GitHub release](https://img.shields.io/github/v/release/pancsta/asyncmachine-go)
+[![last commit](https://img.shields.io/github/last-commit/pancsta/asyncmachine-go/main)](https://github.com/pancsta/asyncmachine-go/commits/main/)
+[![Reddit](https://pancsta.github.io/assets/asyncmachine-go/badges/reddit.svg)](https://reddit.com/r/asyncmachine/)
 
 <div align="center">
     <a href="https://github.com/pancsta/asyncmachine-go/blob/main/pkg/machine/README.md">Machine</a> .
@@ -88,9 +88,9 @@ vector formats. It aims to create **autonomous** workflows with **organic** cont
 - breakpoint
 
 Besides the main use-case of **workflows**, it can be used for **stateful applications of any size** - daemons, UIs,
-stateful RPC UIs, configs, live sessions, bots, firewalls, synchronization consensus, games, smart graphs, microservice orchestration,
-robots, contracts, streams, DI containers, message broking, test scenarios, simulators, as well as **"real-time" systems**
-which rely on instant cancelation.
+stateful RPC UIs, configs, live sessions, bots, firewalls, synchronization consensus, games, smart graphs, microservice
+orchestration, robots, contracts, streams, DI containers, message broking, test scenarios, simulators, as well as
+**"real-time" systems** which rely on instant cancelation.
 
 <div align="center">
     <a href="https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true">
@@ -245,6 +245,7 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 ## Getting Started
 
 - 🦾 **[`/pkg/machine`](pkg/machine/README.md)** is the main package
+- [`/docs/getting-started.md`](/docs/getting-started.md) is a short, step-by-step tutorial
 - [`/docs/manual.md`](/docs/manual.md) is the go-to
 - [`/docs/diagrams.md`](/docs/diagrams.md) try to explain things visually
 - [`/examples`](/examples/README.md) show use cases and integrations
@@ -329,7 +330,7 @@ Other packages:
 ## Community
 
 - [GitHub discussions](https://github.com/pancsta/asyncmachine-go/discussions)
-- [Reddit](reddit.com/r/asyncmachine/)
+- [Reddit](https://reddit.com/r/asyncmachine/)
 - [Author's RSS](https://blogic.tech/feed)
 
 <div align="center">
@@ -395,7 +396,7 @@ Code is bound to states (graph nodes), not transitions (graph edges in FSMs). Wh
 the `FooEnter(e)` method first, then runs `FooState(e)`. When it deactivates, checks the `FooExit(e)` method, then runs
 `FooEnd(e)`. `FooState(e)` binds context and collects data, then forks background processes bound to that instance of
 the "Foo" state. Code executed during a transition is dynamically composed of deactivating and activating states.
-Transitions between states are not defined, and many states can be active simultaneously. It should be used to solve 
+Transitions between states are not defined, and many states can be active simultaneously. It should be used to solve
 complexity in time.
 
 ### What is a "state" in asyncmachine?

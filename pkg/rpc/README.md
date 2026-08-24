@@ -8,31 +8,39 @@
 **aRPC** is a transparent RPC for state machines implemented using [asyncmachine-go](/). It's
 clock-based and features many optimizations, e.g. having most of the API methods executed locally (as state changes are
 regularly pushed to the client). It's built on top of [cenkalti/rpc2](https://github.com/cenkalti/rpc2) (fork of `net/rpc`),
-and [soheilhy/cmux](https://github.com/soheilhy/cmux). Check out the [dedicated example](/examples/arpc), [gRPC benchmark](/examples/benchmark_grpc),
-and an [integration tests tutorial](/pkg/rpc/HOWTO.md).
+and [soheilhy/cmux](https://github.com/soheilhy/cmux) with optional overlay via [tmc/go-iroh](https://github.com/tmc/go-iroh).
+Check out the [dedicated example](/examples/arpc), [gRPC benchmark](/examples/benchmark_grpc), and an
+[integration tests tutorial](/pkg/rpc/HOWTO.md).
+
+## Support
+
+- state checking YES
+- state mutations YES
+- state waiting YES
 
 ## Features
 
-- mutation methods
-- wait methods
-- clock pushes (from source mutations)
-- remote contexts
+- clock pushes (after a mutation and periodically)
+- remote state contexts
 - multiplexing
 - reconnect / fail-safety
 - state source machine sending payloads to the client
-- [REPL](/tools/cmd/arpc/README.md)
-- queue ticks support
+- [REPL and CLI](/tools/cmd/arpc/README.md)
+- queue ticks and machine ticks support
 - initial optimizations
-- web sockets
+- WebSockets with auth
 - checksums
+- [iroh overlay](https://docs.iroh.computer/what-is-iroh)
+  - UDP (HTTP3 QUIC)
+  - ACLs via public keys
+  - encryption
+  - relays and NAT bypass
 
 Not implemented (yet):
 
 - `WhenArgs`
 - chunked payloads
-- TLS
-- compression
-- msgpack encoding
+- JSON encoding
 
 Each RPC server can handle 1 RPC client at a time, but 1 state source (asyncmachine) can have many RPC servers attached
 to itself (via [Tracer API](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Tracer)).
@@ -294,7 +302,7 @@ State schema from [/pkg/rpc/states/ss_rpc.go](/pkg/rpc/states/ss_rpc.go).
 
 ## Selective Distribution
 
-![](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-dist-mach.d2.dark.svg)
+![Selective Distribution diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-dist-mach.d2.dark.svg)
 
 Every state-machine can be partially distributed over the network and updated on a different granularity level.
 
@@ -310,9 +318,9 @@ Synchronization granularity:
 - 1 clock diff per N mutations
 - N clock diffs per N mutations
 
-![](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-sync-details.d2.dark.svg)
+![aRPC sync details diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-sync-details.d2.dark.svg)
 
-![](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-sync-clocks.d2.dark.svg)
+![aRPC sync clocks diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-sync-clocks.d2.dark.svg)
 
 Scenarios can be mixed with each other to a certain degree (eg shallow clocks for selected states). **Selective
 Distribution** is like [state piping](/pkg/states/README.md#piping), but over the network and utilizes all other aRPC
@@ -329,7 +337,7 @@ By combining **Network Handlers** with **Selective Distribution** received by a 
 we can create multidimensional graphs. Those could be developed further with "voting receivers" (vote-based firewalls)
 to create more organic systems.
 
-![](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-handlers.d2.dark.svg)
+![Network handlers diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-handlers.d2.dark.svg)
 
 ## Implementation details
 

@@ -52,9 +52,8 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 - **states tree**: list of all states and relations of the selected state machine, with their clock ticks,
   search-as-you-type, and error highlighting.
 - **log view**: highlighted log view with the current transition being selected.
-- **address bar**: navigate the hitory with 2 entries per machine.
-- **stepping through transitions**: draws relations graph lines of the resolutions process in the states tree.
-- **time travel**: transition and steps timelines allow to navigate in time, even between different state machines.
+- **address bar**: navigate the history via back, fwd, copy, and paste
+- **time travel**: the transition timeline allow to navigate in time, even between different state machines.
 - **transition info**: show number, machine time, type, states, states, and human time of each transition.
 - **import / export**: using Brotli and `encoding/gob`, it's easy to save and share dump files.
 - **filters**: filters narrow down both the number of transitions, and log messages.
@@ -81,9 +80,10 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 - **headless mode**: the UI can be requested via SSH, allowing the debugger to start without PTY.
 - **files**: various files are created in `--dir`.
 - **diagrams**: live diagrams for: graph, machine, state, and steps.
+- **markers**: the marker timeline gives fast navigation across the whole graph
 
 ```bash
-Usage: am-dbg [--listen-addr LISTEN-ADDR] [--dir DIR] [--clean-on-connect] [--import-data IMPORT-DATA] [--fwd-data FWD-DATA] [--select-connected] [--enable-clipboard] [--enable-mouse] [--filter-auto] [--filter-auto-canceled] [--filter-canceled] [--filter-checks] [--filter-disconn] [--filter-empty] [--filter-group] [--filter-health] [--filter-log-level FILTER-LOG-LEVEL] [--filter-queued] [--output-clients] [--output-diagrams OUTPUT-DIAGRAMS] [--output-diag-group OUTPUT-DIAG-GROUP] [--output-diag-tx OUTPUT-DIAG-TX] [--output-graph] [--output-log] [--output-tx] [--ui-mcp] [--ui-ssh] [--ui-web] [--version] [--view VIEW] [--view-log-wrap] [--view-narrow] [--view-rain] [--view-reader] [--view-tail] [--view-theme VIEW-THEME] [--view-timelines VIEW-TIMELINES] [--log-ops-ttl LOG-OPS-TTL] [--max-mem MAX-MEM] [--dbg-am-dbg-addr DBG-AM-DBG-ADDR] [--dbg-go-race] [--dbg-id DBG-ID] [--dbg-log-level DBG-LOG-LEVEL] [--dbg-otel] [--dbg-prof-srv DBG-PROF-SRV] [--dbg-repl] [MACHURL]
+Usage: am-dbg [--listen-addr LISTEN-ADDR] [--dir DIR] [--clean-on-connect] [--import-data IMPORT-DATA] [--fwd-data FWD-DATA] [--select-connected] [--enable-clipboard] [--enable-mouse] [--filter-auto] [--filter-auto-canceled] [--filter-canceled] [--filter-checks] [--filter-disconn] [--filter-empty] [--filter-group] [--filter-health] [--filter-log-level FILTER-LOG-LEVEL] [--filter-queued] [--output-clients] [--output-diagrams OUTPUT-DIAGRAMS] [--output-diag-group OUTPUT-DIAG-GROUP] [--output-diag-tx OUTPUT-DIAG-TX] [--output-graph] [--output-log] [--output-mach] [--output-tx] [--ui-mcp] [--ui-ssh] [--ui-web] [--version] [--view VIEW] [--view-log-wrap] [--view-narrow] [--view-rain] [--view-reader] [--view-tail] [--view-theme VIEW-THEME] [--view-timelines VIEW-TIMELINES] [--log-ops-ttl LOG-OPS-TTL] [--max-mem MAX-MEM] [--dbg-am-dbg-addr DBG-AM-DBG-ADDR] [--dbg-go-race] [--dbg-id DBG-ID] [--dbg-log-level DBG-LOG-LEVEL] [--dbg-otel] [--dbg-prof-srv DBG-PROF-SRV] [--dbg-repl] [MACHURL]
 
 Positional arguments:
   MACHURL                Machine URL to open from the imported file
@@ -122,6 +122,7 @@ Options:
                          Dim states and rels unrelated to a transition (valid: called, changed, touched, relations) [default: relations]
   --output-graph         Write the current network graph as graph.(md|mgml) inside --dir (EXPERIMENTAL)
   --output-log           Write the current log buffer to log.txt inside --dir
+  --output-mach          Write the serialized machine state into mach.yml inside --dir (EXPERIMENTAL) [default: true]
   --output-tx            Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir (EXPERIMENTAL) [default: true]
   --ui-mcp               Enable MCP server via `--ui-web` (EXPERIMENTAL)
   --ui-ssh               Enable SSH headless mode on port `--listen-addr` +2 (EXPERIMENTAL)

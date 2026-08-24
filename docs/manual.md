@@ -2,7 +2,7 @@
 
 <!-- TOC -->
 
-- version `v0.19.2`
+- version `v0.19.3`
 - [Legend](#legend)
 - [Machine and States](#machine-and-states)
   - [Machine Schema](#machine-schema)
@@ -47,7 +47,6 @@
     - [Breakpoints](#breakpoints)
   - [Typesafe States](#typesafe-states)
   - [Typesafe Arguments](#typesafe-arguments)
-    - [Arguments Subtypes](#arguments-subtypes)
     - [Arguments Logging](#arguments-logging)
   - [Tracing and Metrics](#tracing-and-metrics)
   - [Optimizing Data Input](#optimizing-data-input)
@@ -547,8 +546,8 @@ Once a transition begins to execute, it goes through the following steps:
    [called states](#mutations). Transition can already be `Canceled` at this point.
 2. [Negotiation handlers](#negotiation-handlers) - methods called for each state about-to-be activated or deactivated.
    Each of these handlers can return `false`, which will cause the mutation to be [`Canceled`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Canceled)
-  and [`Transition.IsAccepted`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.IsAccepted)
-  to be `false`.
+   and [`Transition.IsAccepted`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.IsAccepted)
+   to be `false`.
 3. Apply the **target states** to the machine - from this point `Is` (
    [and other checking methods](#active-states)) will reflect the target states.
 4. [Final handlers](#final-handlers) - methods called for each state about-to-be activated or deactivated, as well as
@@ -953,7 +952,7 @@ func (h *Handlers) FooState(e *am.Event) {}
 ### Relations
 
 [Mutations](/docs/manual.md#mutations) are the heartbeat of asyncmachine, while [relations](/docs/manual.md#relations)
-define the rules of the flow. Each [state](#defining-states) can have 4 types of **relations**. Each relation accepts a
+define the rules of the flow. Each [state](#machine-schema) can have 4 types of **relations**. Each relation accepts a
 list of state names. Relations guarantee consistency among [active states](#active-states).
 
 Relations form a [multigraph (with identity edges)](https://en.wikipedia.org/wiki/Multigraph) of state nodes,
@@ -1354,9 +1353,9 @@ In case of a panic inside a transition handler, the recovery flow depends on the
 
 1. Transition has been accepted and [target states](#calculating-target-states) has been set as [active states](#mutations).
 2. Not all the [final handlers](#final-handlers) have been executed, so the states from non-executed handlers are
-  removed from [active states](#mutations).
+   removed from [active states](#mutations).
 3. [Add mutation](#mutations) for the `Exception` state is prepended to the queue and the integrity should
-  be restored manually (e.g. [relations](#relations), resources involved).
+   be restored manually (e.g. [relations](#relations), resources involved).
 
 ```go
 // TestPartialFinalPanic
@@ -1742,30 +1741,32 @@ The default format of arguments in asyncmachine is `map[string]any`, which is ve
 term. Because of that, it's advised to structure arguments into a single struct and Parse-Pass helpers, ideally with a
 package namespace. Refer to [/examples/mach_template](/examples/mach_template) for the full boilerplate.
 
-**Example** - define pkg-level args and helpers (from [`pkg/node`](/pkg/node/node.go))
+**Example** - define pkg-level args and per-state arg
 
 ```go
-// A is a struct for node arguments. It's a typesafe alternative to am.A.
-type A struct {
-  Id string
-  PublicAddr string
-  LocalAddr string
+// common def
+
+const APrefix = "template"
+
+type Args struct {
+  am.ArgsBase `json:"-"`
 }
 
-// ParseArgs extracts A from [am.Event.Args]["am_node"].
-func ParseArgs(args am.A) *A {
-  if r, _ := args["am_node"].(*ARpc); r != nil {
-    return amhelp.ArgsToArgs(r, &A{})
-  } else if r, ok := args["am_node"].(ARpc); ok {
-    return amhelp.ArgsToArgs(&r, &A{})
-  }
-  a, _ := args["am_node"].(*A)
-  return a
+func (Args) ArgsPrefix() string {
+  return APrefix
 }
 
-// Pass prepares [am.A] from A to pass to further mutations.
-func Pass(args *A) am.A {
-  return am.A{"am_node": args}
+// ----- per state def
+
+type ABaz struct {
+  // shared pkg args
+  Args `json:"-"`
+  // Address with logging.
+  Addr string `log:"addr"`
+}
+
+func (ABaz) ArgsState() string {
+  return ss.Baz
 }
 ```
 
@@ -1773,9 +1774,10 @@ func Pass(args *A) am.A {
 
 ```go
 func (s *Supervisor) ForkingWorkerState(e *am.Event) {
-  args := ParseArgs(e.Args)
-  b := args.Bootstrap
-  argsOut := &A{Bootstrap: b}
+  args := am.ParseArgs[ABaz](e.Args)
+
+  p.boot.Addr = args.Addr
+  argsOut := &ABaz{Addr:  ":5555"}
 
   // ...
 
@@ -1790,33 +1792,6 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
   // next
   s.Mach.Add1(ssS.AwaitingWorker, Pass(argsOut))
 }
-```
-
-#### Arguments Subtypes
-
-Sometimes it's necessary to have move then 1 set of arguments per package (eg 1 for RPC and 1 local). Embedding is one
-option, and using [`ArgsToArgs`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#ArgsToArgs) another
-one. It will copy overlapping fields between both arguments structs.
-
-```go
-// APublic is a subset of A, that exposes only public addresses.
-type APublic struct {
-  PublicAddr string
-}
-
-// PassRpc prepares [am.A] from A, according to APublic.
-func PassPublic(args *A) am.A {
-  return am.A{"am_node": amhelp.ArgsToArgs(args, &APublic{})}
-}
-
-// ...
-
-// this will only pass "PublicAddr", with other fields removed
-mach.Add1("WorkerAddr", PassPublic(&A{
-  LocalAddr:  w.LocalAddr,
-  PublicAddr: w.PublicAddr,
-  Id:     w.Mach.Id,
-}))
 ```
 
 #### Arguments Logging
@@ -1921,9 +1896,9 @@ func Msg(msgTx *Msg) {
 ## Cheatsheet
 
 - **State**: main entity of the [machine](#machine-init), higher-level abstraction of a meaningful workflow step
-- **Active states**: [states](#defining-states) currently activated in the machine, `0-n` where `n == len(states)`
-- **Called states**: [states](#defining-states) passed to a [mutation method](#mutations), explicitly requested
-- **Target states**: [states](#defining-states) after resolving [relations](#relations), based on previously
+- **Active states**: [states](#machine-schema) currently activated in the machine, `0-n` where `n == len(states)`
+- **Called states**: [states](#machine-schema) passed to a [mutation method](#mutations), explicitly requested
+- **Target states**: [states](#machine-schema) after resolving [relations](#relations), based on previously
   [active states](#active-states), about to become new [active states](#transition-lifecycle)
 - **Mutation**: change to currently [active states](#active-states), created by [mutation methods](#mutations)
 - **Transition**: container struct for a [mutation](#mutations), handles [relations](#relations)
@@ -1936,7 +1911,7 @@ func Msg(msgTx *Msg) {
 - **Transition handlers**: methods [defined on a handler struct](#defining-handlers), which are triggered during a [transition](#transition-lifecycle)
 - **Negotiation handlers**: [handlers](#defining-handlers) executed as the first ones, used to make a decision if the
   [transition](#transition-lifecycle) should be
-   accepted
+  accepted
 - **Final handlers**: [handlers](#defining-handlers) executed as the last ones, used for operations with side effects
 
 ## Other sources

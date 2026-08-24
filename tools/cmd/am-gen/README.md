@@ -8,9 +8,13 @@
 `am-gen` will quickly bootstrap a typesafe schema file, or a Grafana dashboard for you.
 
 ```bash
-$ am-gen states-file --states State1,State2:multi \
-    --inherit basic,connected \
-    --groups Group1,Group2 \
+$ am-gen schema-yaml schema.yml --name MyMach
+```
+
+```bash
+$ am-gen schema --states State1,State2:multi \
+    --inherit basic --inherit connected \
+    --group Group1 --group Group2 \
     --name MyMach
 ```
 
@@ -36,14 +40,27 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-gen@latest
 am-gen generates state files and Grafana dashboards for asyncmachine-go state machines.
 
 Example:
-$ am-gen states-file --states State1,State2:multi \
-        --inherit basic,connected \
-        --groups Group1,Group2 \
-        --name MyMach
+$ am-gen schema --state State1 --state State2:multi \
+	--inherit basic --inherit connected \
+	--group Group1 --group Group2 \
+	--name MyMach
+
+Example:
+$ am-gen starter-kit schema.yml --name MyMach --uri github.com/my/project
+
+Example:
+$ am-gen schema-from-file schema.yml --name MyMach
 
 Example:
 $ am-gen grafana --IDs MyMach1,MyMach2 \
-        --sync grafana-host.com
+	--sync grafana-host.com
+
+Valid for --inherit:
+- basic
+- connected
+- disposed
+- rpc/statesrc
+- node/worker
 
 Usage: am-gen [--version] <command> [<args>]
 
@@ -52,8 +69,11 @@ Options:
   --help, -h             display this help and exit
 
 Commands:
-  states-file            Generate state schema files
+  starter-kit            Generate a starter project from schema.yml / mach.yml
+  schema                 Generate state schema from CLI params
+  schema-from-file       Generate state schema from schema.yml / mach.yml
   grafana                Generate Grafana dashboards
+  states-file            Deprecated, use schema
 ```
 
 ## Schema Files
@@ -122,23 +142,52 @@ var (
 )
 ```
 
-### Schema File Help
+### Schema Help
 
 ```bash
-Usage: am-gen states-file [--version] --states STATES [--inherit INHERIT] [--groups GROUPS] --name NAME [--force] [--utils] [--global]
+Usage: am-gen schema [--version] [--inherit INHERIT] [--group GROUP] [--groups GROUPS] [--name NAME] [--force] [--utils] [--global] [--output] [--state STATE] [--states STATES]
 
 Options:
   --version
-  --states STATES, -s STATES
-                         State names to generate. Eg: State1,State2
   --inherit INHERIT, -i INHERIT
                          Inherit from built-in state-machines: basic,connected,rpc/statesrc,node/worker
+  --group GROUP          Repeatable group to generate. Eg: --group Group1 --group Group2
   --groups GROUPS, -g GROUPS
                          Groups to generate. Eg: Group1,Group2
-  --name NAME, -n NAME   Name of the state machine. Eg: MyMach
+  --name NAME, -n NAME   Name of the state machine. Eg: MyMach [default: MyMach]
   --force, -f            Override output file (if any)
   --utils, -u            Generate states_utils.go in CWD. Overrides files. [default: true]
   --global               Import pkg/states/global and skip generating states_utils.go
+  --output, -o           Print output to stdout
+  --state STATE          Repeatable state name to generate. Eg: --state State1 --state State2:multi
+  --states STATES, -s STATES
+                         State names to generate. Eg: State1,State2
+
+Global options:
+  --version, -v          Print version and exit
+  --help, -h             display this help and exit
+```
+
+### Schema From File Help
+
+```bash
+Usage: am-gen schema-from-file [--version] [--inherit INHERIT] [--group GROUP] [--groups GROUPS] [--name NAME] [--force] [--utils] [--global] [--output] FILE
+
+Positional arguments:
+  FILE                   Path to schema.yml / mach.yml
+
+Options:
+  --version
+  --inherit INHERIT, -i INHERIT
+                         Inherit from built-in state-machines: basic,connected,rpc/statesrc,node/worker
+  --group GROUP          Repeatable group to generate. Eg: --group Group1 --group Group2
+  --groups GROUPS, -g GROUPS
+                         Groups to generate. Eg: Group1,Group2
+  --name NAME, -n NAME   Name of the state machine. Eg: MyMach [default: MyMach]
+  --force, -f            Override output file (if any)
+  --utils, -u            Generate states_utils.go in CWD. Overrides files. [default: true]
+  --global               Import pkg/states/global and skip generating states_utils.go
+  --output, -o           Print output to stdout
 
 Global options:
   --version, -v          Print version and exit

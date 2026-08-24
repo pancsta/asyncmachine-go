@@ -61,11 +61,11 @@ tools that can help today:
 
 ## Known Issues
 
-- stock HTTP Otel expoter is broken in WASM and needs a `replace` directive (see [PR#8120](https://github.com/open-telemetry/opentelemetry-go/pull/8120))
+- the stock HTTP Otel exporter is broken in WASM and needs a `replace` directive (see [PR#8120](https://github.com/open-telemetry/opentelemetry-go/pull/8120))
 
 ```go
 replace go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp => github.com/pancsta/opentelemetry-go/exporters/otlp/otlptrace/otlptracehttp v0.0.0-20260331193851-f087fcb1fc48
 ```
 
-- `/pkg/rpc.(*Mux)` doesn't work in WASM, every clients needs a manual RPC server created
+- `/pkg/rpc.(*Mux)` doesn't work in WASM, every client needs a manual RPC server created
 - `/history/bbolt` doesn't compile in WASM
