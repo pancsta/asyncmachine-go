@@ -1,0 +1,8 @@
+Wet:
+  require: [ Water ]
+Water:
+  remove: [ Dry ]
+  add: [ Wet ]
+Dry:
+  auto: true
+  remove: [ Water ]

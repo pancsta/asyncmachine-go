@@ -1,0 +1,47 @@
+Disposed:
+    remove:
+        - Start
+        - Exception
+        - Disposing
+Disposing:
+    remove:
+        - Start
+        - Exception
+Dry:
+    auto: true
+    remove:
+        - Water
+ErrHandlerTimeout:
+    multi: true
+    require:
+        - Exception
+    add:
+        - Exception
+ErrNetwork:
+    multi: true
+    require:
+        - Exception
+    add:
+        - Exception
+ErrOnClient:
+    require:
+        - Exception
+Exception:
+    multi: true
+Healthcheck:
+    multi: true
+Heartbeat: {}
+Ready:
+    require:
+        - Start
+RegisterDisposal:
+    multi: true
+Start: {}
+Water:
+    add:
+        - Wet
+    remove:
+        - Dry
+Wet:
+    require:
+        - Water

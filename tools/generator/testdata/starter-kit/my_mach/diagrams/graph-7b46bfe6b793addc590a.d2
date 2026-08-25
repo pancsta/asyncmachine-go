@@ -1,0 +1,222 @@
+	vars: {
+		d2-config: {
+			theme-id: 201
+			theme-overrides: {
+				N7: black
+
+				# mach border
+				B1: "#5F5C5C"
+				B2: grey
+				B3: "#6C7086"
+				# mach background
+				B4: "#262424"
+				B5: "#45475A"
+				B6: "#313244"
+
+				AA2: "#f38BA8"
+				AA4: "#45475A"
+				AA5: "#313244"
+
+				AB4: "#45475A"
+				AB5: "#313244"
+			}
+		}
+	}
+	classes: {
+		# active
+		_1: {
+			style: {
+				font-color: black
+				fill: yellow
+				border-radius: 999
+				double-border: true
+			}
+		}
+		# inactive
+		_0: {
+			style: {
+				stroke: white
+				border-radius: 999
+				double-border: true
+			}
+		}
+
+		# active inherited
+		_1i: {
+			style: {
+				font-color: black
+				fill: "yellow"
+				border-radius: 999
+			}
+		}
+		# inactive inherited
+		_0i: {
+			style: {
+				border-radius: 999
+			}
+		}
+
+		# active Start
+		_1s: {
+			style: {
+				font-color: black
+				fill: "#329241"
+				border-radius: 999
+			}
+		}
+		# inactive Start
+		_0s: {
+			style: {
+				border-radius: 999
+			}
+		}
+
+		# active Ready
+		_1r: {
+			style: {
+				font-color: black
+				fill: "deepskyblue"
+				border-radius: 999
+			}
+		}
+		# inactive Ready
+		_0r: {
+			style: {
+				border-radius: 999
+			}
+		}
+
+		# require relation
+		req: {
+			style.stroke: "lightblue"
+			target-arrowhead.style.filled: true
+			target-arrowhead.shape: circle
+		}
+		# add relation
+		add: {
+			style.stroke: "orange"
+			target-arrowhead.shape: triangle
+			target-arrowhead.style.filled: true
+		}
+		# remove relation
+		rem: {
+			style.stroke: "#DA70D6"
+			style.stroke-width: 2
+			target-arrowhead.style.filled: true
+			target-arrowhead.shape: diamond
+			source-arrowhead.style.filled: true
+			source-arrowhead.shape: diamond
+		}
+		# double remove relation
+		rem2: {
+			style.stroke: "#DA70D6"
+			style.stroke-width: 3
+			target-arrowhead.style.filled: true
+			target-arrowhead.shape: diamond
+			source-arrowhead.style.filled: true
+			source-arrowhead.shape: diamond
+		}
+		# add pipe
+		pipe_add: {
+			style.stroke: "orange"
+			style.stroke-dash: 3
+			target-arrowhead.style.filled: false
+		}
+		# remove pipe
+		pipe_rem: {
+			style.stroke: "#DA70D6"
+			target-arrowhead.shape: diamond
+			style.stroke-dash: 3
+		}
+		# pipe (mach -> mach)
+		pipe: {
+			style.stroke: white
+		}
+
+		# parent hierarchy relation
+		parent: {
+			style.stroke: white
+			style.stroke-width: 8
+			target-arrowhead.shape: circle
+		}
+		mach: {
+      style: {
+				font-size: 50
+				fill: "black"
+			}
+			label.near: top-center
+		}
+		state: {
+      style.font-size: 30
+		}
+		called: {
+			style.underline: true
+		}
+		handler: {
+			style.stroke: "#2596be"
+		}
+		cancel: {
+			style: {
+				stroke: red
+				stroke-width: 5
+			}
+		}
+		state-zoom: {
+			style: {
+				font-size: 50
+				stroke-width: 10
+			}
+		}
+		rel-zoom: {
+			style.stroke-width: 10
+		}
+		rpc: {
+			style: {
+				# TODO dedicated color
+				stroke: "orange"
+				stroke-width: 4
+			}
+		}
+	  lifeline: {
+	    style.stroke: grey
+	  }
+
+		M_my_mach: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_Wet: {}
+	T_Wet: {}
+	F_Water: {}
+	T_Water: {}
+	F_Dry: {}
+	T_Dry: {}
+	F_ErrNetwork: {}
+	T_ErrNetwork: {}
+	F_ErrHandlerTimeout: {}
+	T_ErrHandlerTimeout: {}
+	F_Start: {}
+	T_Start: {}
+	F_Ready: {}
+	T_Ready: {}
+	F_Healthcheck: {}
+	T_Healthcheck: {}
+	F_Heartbeat: {}
+	T_Heartbeat: {}
+	F_RegisterDisposal: {}
+	T_RegisterDisposal: {}
+	F_Disposing: {}
+	T_Disposing: {}
+	F_Disposed: {}
+	T_Disposed: {}
+	F_ErrOnClient: {}
+	T_ErrOnClient: {}
+
+	}
+	direction: right
+
+a: my_mach {
+	class: [M_my_mach; mach]
+
+}
+
+
