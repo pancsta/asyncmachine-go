@@ -9,6 +9,7 @@ exclude = [
   "docs/editors/**",
   "**/am-vis.md",
   "**/deps.md",
+  "**/testdata/**",
 ]
 disable = [
   # Header levels should only increment by one level at a time

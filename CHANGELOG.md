@@ -5,6 +5,23 @@
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
+## [v0.19.3](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.3) (2026-08-25)
+
+- feat: release v0.19.3 [\#475](https://github.com/pancsta/asyncmachine-go/pull/475) (@pancsta)
+- feat\(am-dbg\): release am-dbg v0.19.3 [\#474](https://github.com/pancsta/asyncmachine-go/pull/474) (@pancsta)
+- feat\(am-dbg\): add --output-mach to dump the current machine and schema in --dir [\#473](https://github.com/pancsta/asyncmachine-go/pull/473) (@pancsta)
+- feat\(am-gen\): add schema-from-file cmd for YAML inputs [\#471](https://github.com/pancsta/asyncmachine-go/pull/471) (@pancsta)
+- feat\(am-dbg\): replace step timeline with marker timeline [\#470](https://github.com/pancsta/asyncmachine-go/pull/470) (@pancsta)
+- feat\(am-relay\): add --output-mach and --output-clients [\#469](https://github.com/pancsta/asyncmachine-go/pull/469) (@pancsta)
+- feat\(am-gen\): add starter-kit cmd for YAML inputs [\#468](https://github.com/pancsta/asyncmachine-go/pull/468) (@pancsta)
+- feat\(am-relay\): add API keys to relayed WebSocket connections [\#467](https://github.com/pancsta/asyncmachine-go/pull/467) (@pancsta)
+- feat\(rpc\): add API keys to WebSocket aRPC connections [\#466](https://github.com/pancsta/asyncmachine-go/pull/466) (@pancsta)
+- fix\(rpc\): retry mutation on conn retry [\#465](https://github.com/pancsta/asyncmachine-go/pull/465) (@pancsta)
+- feat\(rpc\): add go-iroh overlay for aRPC [\#464](https://github.com/pancsta/asyncmachine-go/pull/464) (@pancsta)
+- test\(am-relay\): add /tunnel/ and /dial/ tests for am-relay [\#463](https://github.com/pancsta/asyncmachine-go/pull/463) (@pancsta)
+- test\(machine\): bump line coverage to 90% [\#462](https://github.com/pancsta/asyncmachine-go/pull/462) (@pancsta)
+- test\(repl\): add CLI and REPL tests for aRPC [\#461](https://github.com/pancsta/asyncmachine-go/pull/461) (@pancsta)
+
 ## [v0.19.2](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.2) (2026-08-11)
 
 - feat: release v0.19.2 [\#459](https://github.com/pancsta/asyncmachine-go/pull/459) (@pancsta)

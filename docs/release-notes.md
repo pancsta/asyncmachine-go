@@ -4,6 +4,194 @@
 
 ---
 
+## [v0.19.3](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.3) (2026-08-25)
+
+The highlight of this release is a go-iroh overlay for aRPC.
+
+<img width="1295" height="225" alt="ss-2026-08-24-12-02-50" src="https://github.com/user-attachments/assets/3205a0ab-833f-48cf-9403-1f48d0a1161f" />
+
+### feat: release v0.19.3
+
+PR: [\#475](https://github.com/pancsta/asyncmachine-go/pull/475) (@pancsta)
+
+- chore: add rumdl markdown linter
+- chore: remove am-dbg video
+- docs: add /am-cli AI skill
+
+The remainder of `v0.19.3` is in this PR.
+
+### feat\(am-dbg\): release am-dbg v0.19.3
+
+PR: [\#474](https://github.com/pancsta/asyncmachine-go/pull/474) (@pancsta)
+
+The remainder of `am-dbg v0.19.3` is in this PR.
+
+### feat\(am-dbg\): add --output-mach to dump the current machine and schema in --dir
+
+PR: [\#473](https://github.com/pancsta/asyncmachine-go/pull/473) (@pancsta)
+
+The new output param is the easiest way to serialize an asyncmachine and its schema. Both can be used as input for `am-gen schema-from-file file.yml` or for quick IDE inspections.
+
+### feat\(am-gen\): add schema-from-file cmd for YAML inputs
+
+PR: [\#471](https://github.com/pancsta/asyncmachine-go/pull/471) (@pancsta)
+
+Schemas can now be generated from YAML serialized machines (state order, mach time) or schemas (relations).
+
+`schema.yml`
+
+```yaml
+BaseDBReady:
+    remove:
+        - BaseDBStarting
+BaseDBSaving:
+    multi: true
+BaseDBStarting:
+    remove:
+        - BaseDBReady
+CharacterReady:
+    remove:
+        - RestoreCharacter
+        - GenCharacter
+CheckStories:
+    multi: true
+    require:
+        - Start
+CheckingMenuRefs:
+    multi: true
+    require:
+        - Start
+ConfigUpdate:
+    multi: true
+    remove:
+        - ConfigValid
+        - ConfigValidating
+ConfigValid:
+    remove:
+        - ConfigValidating
+ConfigValidating:
+    auto: true
+    require:
+        - Start
+    remove:
+        - ConfigValid
+```
+
+`mach.yml`
+
+```yaml
+id: tbot-dev
+state_names:
+    - Exception
+    - GhFeedStart
+    - GhFeedStarting
+    - GhFeedReady
+    - GhFeedOrienting
+    - GhFeedOpening
+    - GhFeedCompleted
+    - GhFeedUserNeeded
+    - GhFeedEventDomContent
+    - GhFeedOpeningLoginPage
+    - GhFeedLoginPageOpened
+time:
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+queue_tick: 0
+machine_tick: 0
+```
+
+### feat\(am-dbg\): replace step timeline with marker timeline
+
+PR: [\#470](https://github.com/pancsta/asyncmachine-go/pull/470) (@pancsta)
+
+The marker timeline creates a global and sorted timeline of marked transitions, from any tracked machine. This allows for fast jumping between places without copy-pasting the URLs. Markers are stored per-machine and included in export files.
+
+<img width="1295" height="225" alt="ss-2026-08-24-12-02-50" src="https://github.com/user-attachments/assets/3205a0ab-833f-48cf-9403-1f48d0a1161f" />
+
+Closes #451.
+
+### feat\(am-relay\): add --output-mach and --output-clients
+
+PR: [\#469](https://github.com/pancsta/asyncmachine-go/pull/469) (@pancsta)
+
+To gain more visibility, we can quickly pick into the list of connected clients and their YAML state and schemas. Based on similar features from am-dbg.
+
+### feat\(am-gen\): add starter-kit cmd for YAML inputs
+
+PR: [\#468](https://github.com/pancsta/asyncmachine-go/pull/468) (@pancsta)
+
+A full project boilerplate can be generated from YAML serialized machines (state order, mach time) or schemas (relations). It will contain ALL the possible handlers, args boilerplate, a constructor, and more.
+
+```bash
+my_mach
+├── go.mod
+├── handlers.go
+├── my_mach.go
+├── my_mach_test.go
+└── states
+    └── ss_my_mach.go
+```
+
+### feat\(am-relay\): add API keys to relayed WebSocket connections
+
+PR: [\#467](https://github.com/pancsta/asyncmachine-go/pull/467) (@pancsta)
+
+Relay has an optional allowlist for `X-API-Key` HTTP headers when created programmatically.
+
+### feat\(rpc\): add API keys to WebSocket aRPC connections
+
+PR: [\#466](https://github.com/pancsta/asyncmachine-go/pull/466) (@pancsta)
+
+Each WebSocket RPC server has an optional allowlist for `X-API-Key` HTTP headers. Use the iroh overlay for regular TCP servers.
+
+### fix\(rpc\): retry mutation on conn retry
+
+PR: [\#465](https://github.com/pancsta/asyncmachine-go/pull/465) (@pancsta)
+
+_No PR description provided._
+
+### feat\(rpc\): add go-iroh overlay for aRPC
+
+PR: [\#464](https://github.com/pancsta/asyncmachine-go/pull/464) (@pancsta)
+
+This is the highlight of `v0.19.3` which makes aRPC ready for public networks. The [Go port](https://github.com/tmc/go-iroh) of [iroh](https://github.com/n0-computer/iroh) P2P and gossip networking stack adds:
+
+- UDP (HTTP3 QUIC)
+- ACLs via public keys
+- encryption
+- relays and NAT bypass
+
+This integration is optional and iroh-wrapped asyncmachines can talk to non-iroh ones by creating another server/mux (one on TCP, the other on iroh).
+
+### test\(am-relay\): add /tunnel/ and /dial/ tests for am-relay
+
+PR: [\#463](https://github.com/pancsta/asyncmachine-go/pull/463) (@pancsta)
+
+_No PR description provided._
+
+### test\(machine\): bump line coverage to 90%
+
+PR: [\#462](https://github.com/pancsta/asyncmachine-go/pull/462) (@pancsta)
+
+_No PR description provided._
+
+### test\(repl\): add CLI and REPL tests for aRPC
+
+PR: [\#461](https://github.com/pancsta/asyncmachine-go/pull/461) (@pancsta)
+
+_No PR description provided._
+
+---
+
 ## [v0.19.2](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.2) (2026-08-11)
 
 The highlights of this release are interpreted state machines.

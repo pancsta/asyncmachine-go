@@ -149,6 +149,6 @@ func (h *Handlers) WetEnter(e *am.Event) bool {
 }
 ```
 
-Now `go run .` it and verify that points [3](#3-run-test-cases) and [6](#6-modify-the-state-via-the-command-line) give
+Now `go run .` it and verify that points [3](#3-run-test-cases) and [6](#6-modify-state-via-the-command-line) give
 the same result, but the transition step diagram differs. The transition cancelation causes also show up in the
 "Log Reader" pane.
