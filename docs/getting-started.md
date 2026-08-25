@@ -7,7 +7,7 @@ Getting started with **asyncmachine-go**, in this tutorial we will:
 3. [Run test cases](#3-run-test-cases)
 4. [Modify the state machine handlers](#4-modify-the-state-machine-handlers)
 5. [Debug the machine](#5-debug-the-machine)
-6. [Modify the state via the command line](#6-modify-the-state-via-the-command-line)
+6. [Modify state via the command line](#6-modify-state-via-the-command-line)
 7. [Replace a relation with a negotiation handler](#7-replace-relation-with-a-negotiation-handler)
 
 ## 0. Prerequisites
@@ -52,7 +52,7 @@ Now let's generate the project's starter kit via:
 am-gen starter-kit schema.yml --name MyMach --uri mymach
 ```
 
-This will create the following file structure:
+This will create the following file structure (also available in [`here`](/tools/generator/testdata/starter-kit)`:
 
 ```bash
 $ tree my_mach
@@ -100,7 +100,7 @@ current transition is available at:
 - [localhost:6832/viewer/steps.svg](http://localhost:6832/viewer/steps.svg)
 - `am-dbg/tx.md`
 
-## 6. Modify the state via the command line
+## 6. Modify state via the command line
 
 Create a simple program using the new machine by creating `./cmd/main.go`:
 

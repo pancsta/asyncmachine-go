@@ -10,10 +10,11 @@ type Entry struct {
 var MainMenu = []Entry{
 	{Url: "", Path: "README.md"},
 	{Url: "machine", Path: "pkg/machine/README.md", Bold: true},
+	{Url: "tutorial", Path: "docs/getting-started.md"},
 	{"", "", false, false},
 	{Url: "examples", Path: "examples/README.md"},
 	{Url: "manual", Path: "docs/manual.md"},
-	{Url: "cookbook", Path: "docs/cookbook.md", SkipMenu: false},
+	{Url: "cookbook", Path: "docs/cookbook.md"},
 	{"", "", false, false},
 	{Url: "states", Path: "pkg/states/README.md"},
 	{Url: "helpers", Path: "pkg/helpers/README.md"},
@@ -64,5 +65,4 @@ var MainMenu = []Entry{
 	{Url: "diagrams", Path: "docs/diagrams.md", SkipMenu: true},
 	{Url: "roadmap", Path: "ROADMAP.md", SkipMenu: true},
 	{Url: "breaking-changes", Path: "BREAKING.md", SkipMenu: true},
-	{Url: "getting-started", Path: "docs/getting-started.md", SkipMenu: true},
 }

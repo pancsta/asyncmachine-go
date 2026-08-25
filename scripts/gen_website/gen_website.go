@@ -229,6 +229,13 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 	}
 	lexerMarkdown = chroma.Coalesce(lexerMarkdown)
 
+	// yaml
+	lexerYaml := lexers.Get("yaml")
+	if lexerYaml == nil {
+		lexerYaml = lexers.Fallback
+	}
+	lexerYaml = chroma.Coalesce(lexerYaml)
+
 	// lexerDotenv := lexers.Get("dotenv")
 	// if lexerDotenv == nil {
 	// 	lexerDotenv = lexers.Fallback
@@ -261,6 +268,12 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 	})
 	doc.Find("pre > code.language-markdown").Each(func(i int, s *goquery.Selection) {
 		highlightCode(s, lexerMarkdown, formatter, style)
+	})
+	doc.Find("pre > code.language-yaml").Each(func(i int, s *goquery.Selection) {
+		highlightCode(s, lexerYaml, formatter, style)
+	})
+	doc.Find("pre > code.language-yml").Each(func(i int, s *goquery.Selection) {
+		highlightCode(s, lexerYaml, formatter, style)
 	})
 	doc.Find("pre > code").Parent().AddClass("p-2 rounded-lg overflow-x-auto")
 

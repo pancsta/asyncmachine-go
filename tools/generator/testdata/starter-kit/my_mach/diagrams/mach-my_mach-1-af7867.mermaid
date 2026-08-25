@@ -1,0 +1,36 @@
+%%{init: {'flowchart': {'defaultRenderer': 'elk'}} }%%
+flowchart LR
+	subgraph a[my_mach]
+		direction TB
+		b([Disposed])
+		b --x c
+		b --x d
+		b --x e
+		f([Water])
+		f --> g
+		f --x h
+		i([ErrHandlerTimeout])
+		i --o d
+		i --> d
+		j([ErrNetwork])
+		j --o d
+		j --> d
+		k([Healthcheck])
+		g([Wet])
+		g --o f
+		l([Heartbeat])
+		m([ErrOnClient])
+		m --o d
+		n([RegisterDisposal])
+		h([Dry])
+		h --x f
+		d([Exception])
+		e([Disposing])
+		e --x c
+		e --x d
+		c([Start])
+		o([Ready])
+		o --o c
+	end
+
+

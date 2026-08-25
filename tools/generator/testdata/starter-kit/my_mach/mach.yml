@@ -1,0 +1,33 @@
+id: my_mach
+state_names:
+    - Exception
+    - Wet
+    - Water
+    - Dry
+    - ErrNetwork
+    - ErrHandlerTimeout
+    - Start
+    - Ready
+    - Healthcheck
+    - Heartbeat
+    - RegisterDisposal
+    - Disposing
+    - Disposed
+    - ErrOnClient
+time:
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+queue_tick: 0
+machine_tick: 0
