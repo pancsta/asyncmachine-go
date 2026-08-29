@@ -1213,7 +1213,7 @@ func (m *NetworkMachine) HandlersBind(
 	handlers any, opts ...am.BindOpts,
 ) (string, error) {
 	v := reflect.ValueOf(handlers)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
 		return "", errors.New("BindTracer expects a pointer to a struct")
 	}
 	m.handlersMx.Lock()
@@ -1307,7 +1307,7 @@ func (m *NetworkMachine) TracerBind(tracer am.Tracer) (string, error) {
 	defer m.tracersMx.Unlock()
 
 	v := reflect.ValueOf(tracer)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
 		return "", errors.New("BindTracer expects a pointer to a struct")
 	}
 

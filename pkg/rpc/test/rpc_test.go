@@ -16,7 +16,6 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
-	"github.com/tmc/go-iroh/key"
 )
 
 var readyTimeout = 3 * time.Second
@@ -343,11 +342,11 @@ func TestWebSocketAuth(t *testing.T) {
 
 	// gen valid key
 	validKey, _ := arpc.GenerateSecretKey()
+	pubKey := validKey.Public().String()
 	serverOpts := &arpc.ServerOpts{
 		WebSocket:        true,
-		WebSocketPubKeys: []key.PublicKey{validKey.Public()},
+		AllowedWsPubKeys: []string{pubKey},
 	}
-	pubKey := validKey.Public()
 
 	s, err := arpc.NewServer(ctx, serverAddr, t.Name(), netSrc, serverOpts)
 	if err != nil {
@@ -358,7 +357,7 @@ func TestWebSocketAuth(t *testing.T) {
 
 	clientOpts := &arpc.ClientOpts{
 		WebSocket:       "/",
-		WebSocketPubKey: &pubKey,
+		WebSocketPubKey: pubKey,
 	}
 	c, err := arpc.NewClient(
 		ctx, serverAddr, t.Name()+"-c1", netSrc.Schema(), clientOpts)
@@ -370,11 +369,9 @@ func TestWebSocketAuth(t *testing.T) {
 		c.Mach.When1(ssC.Ready, ctx))
 	c.Stop(nil, nil, true)
 
-	invalidKey, _ := arpc.GenerateSecretKey()
-	invalidPK := invalidKey.Public()
 	clientOptsFail := &arpc.ClientOpts{
 		WebSocket:       "/",
-		WebSocketPubKey: &invalidPK,
+		WebSocketPubKey: "invalidPK",
 	}
 	cFail, err := arpc.NewClient(
 		ctx, serverAddr, t.Name()+"-c2", netSrc.Schema(), clientOptsFail)
@@ -404,7 +401,7 @@ func TestAllowedIds(t *testing.T) {
 	listener.Close()
 
 	serverOpts := &arpc.ServerOpts{
-		AllowedIds: []string{arpc.GetClientId("allowed-client")},
+		AllowedMachIds: []string{arpc.GetClientId("allowed-client")},
 	}
 
 	s, err := arpc.NewServer(ctx, serverAddr, t.Name(), netSrc, serverOpts)

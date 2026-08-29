@@ -287,7 +287,7 @@ func (w *Worker) ServeClientState(e *am.Event) {
 
 	args := am.ParseArgs[A](e.Args)
 	w.AcceptClient = args.Id
-	w.PublicRpc.AuthIds.Store(&[]string{w.AcceptClient})
+	w.PublicRpc.AllowedMachIds.Store(&[]string{w.AcceptClient})
 }
 
 // ///// ///// /////

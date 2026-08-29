@@ -23,6 +23,19 @@ type MuxNewServerFn func(mux *Mux, id string, conn net.Conn) (*Server, error)
 
 var ssM = states.MuxStates
 
+type MuxOpts struct {
+	// NewServerFn is a function to create a new RPC server for each incoming
+	// connection. Optional.
+	NewServerFn MuxNewServerFn
+	// Parent is a parent state machine for a new Mux state machine. See
+	// [am.Opts].
+	Parent am.Api
+	// See [ServerOpts.Args].
+	Args []am.ArgsApi
+	// See [ServerOpts.ArgsUnmarshaller].
+	ArgsUnmarshaller amhelp.ArgsUnmarshallerFn
+}
+
 // Mux creates a new RPC server for each incoming connection.
 type Mux struct {
 	*am.ExceptionHandler
@@ -311,19 +324,6 @@ func (m *Mux) log(msg string, args ...any) {
 // ///// MISC
 
 // ///// ///// /////
-
-type MuxOpts struct {
-	// NewServerFn is a function to create a new RPC server for each incoming
-	// connection. Optional.
-	NewServerFn MuxNewServerFn
-	// Parent is a parent state machine for a new Mux state machine. See
-	// [am.Opts].
-	Parent am.Api
-	// See [ServerOpts.Args].
-	Args []am.ArgsApi
-	// See [ServerOpts.ArgsUnmarshaller].
-	ArgsUnmarshaller amhelp.ArgsUnmarshallerFn
-}
 
 // BindMux binds the HasClients state with Add/Remove to custom states.
 func BindMux(

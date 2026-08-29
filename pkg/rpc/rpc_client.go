@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"net"
-	"net/http"
 	"os"
 	"slices"
 	"strconv"
@@ -29,6 +28,36 @@ var (
 	ssC           = states.ClientStates
 	ssCo          = states.ConsumerStates
 )
+
+type ClientOpts struct {
+	// Consumer is an optional target for the [states.SendPayload] state.
+	Consumer *am.Machine
+	// Parent is a parent state machine for a new Client state machine. See
+	// [am.Opts].
+	Parent am.Api
+	// Make this client schema-less (infer an empty one for tracked states).
+	NoSchema bool
+	// Only sync selected states.
+	AllowedStates am.S
+	// Skip syncing of these states.
+	SkippedStates am.S
+	// Sync machine time for every mutation. Disables
+	// [ClientOpts.SyncShallowClocks].
+	// TODO de-activates states for no reason
+	SyncMutations bool
+	// Only activete/deactivate (0-1) clock values will be sent.
+	SyncShallowClocks bool
+	// Enable client-side mutation filtering by performing relations resolution
+	// based on locally active states. Doesn't work with [ClientOpts.NoSchema].
+	// TODO not implemented yet
+	MutationFiltering bool
+	// Connect via WebSocket using path, eg "/" (default for WASM).
+	WebSocket string
+	// Pubkey to be sent as Bearer token for WebSocket connections.
+	WebSocketPubKey string
+	// Forcefully disable am-dbg conns for netmachs.
+	DebugDisable bool
+}
 
 // Client is a type representing an RPC client that interacts with a remote
 // am.Machine instance.
@@ -307,12 +336,12 @@ func (c *Client) ConnectingState(e *am.Event) {
 		if c.Conn.Load() == nil && c.Opts.WebSocket != "" {
 			mach.Log("dialing WS %s", c.Addr)
 			var dialOpts *websocket.DialOptions
-			if c.Opts.WebSocketPubKey != nil {
+			if c.Opts.WebSocketPubKey != "" {
 				dialOpts = &websocket.DialOptions{
-					HTTPHeader: make(http.Header),
+					Subprotocols: []string{"X-API-Key", c.Opts.WebSocketPubKey},
 				}
-				dialOpts.HTTPHeader.Set("X-API-Key", c.Opts.WebSocketPubKey.String())
 			}
+
 			wsConn, _, err := websocket.Dial(ctx,
 				"ws://"+c.Addr+c.Opts.WebSocket, dialOpts)
 			if err != nil {
@@ -1335,36 +1364,6 @@ func (c *Client) RemoteSchemaChange(
 // GenerateSecretKey generates a new SecretKey using crypto/ed25519.
 func GenerateSecretKey() (key.SecretKey, error) {
 	return key.GenerateSecretKey()
-}
-
-type ClientOpts struct {
-	// Consumer is an optional target for the [states.SendPayload] state.
-	Consumer *am.Machine
-	// Parent is a parent state machine for a new Client state machine. See
-	// [am.Opts].
-	Parent am.Api
-	// Make this client schema-less (infer an empty one for tracked states).
-	NoSchema bool
-	// Only sync selected states.
-	AllowedStates am.S
-	// Skip syncing of these states.
-	SkippedStates am.S
-	// Sync machine time for every mutation. Disables
-	// [ClientOpts.SyncShallowClocks].
-	// TODO de-activates states for no reason
-	SyncMutations bool
-	// Only activete/deactivate (0-1) clock values will be sent.
-	SyncShallowClocks bool
-	// Enable client-side mutation filtering by performing relations resolution
-	// based on locally active states. Doesn't work with [ClientOpts.NoSchema].
-	// TODO not implemented yet
-	MutationFiltering bool
-	// Connect via WebSocket using path, eg "/" (default for WASM).
-	WebSocket string
-	// Pubkey to be sent as Bearer token for WebSocket connections.
-	WebSocketPubKey *key.PublicKey
-	// Forcefully disable am-dbg conns for netmachs.
-	DebugDisable bool
 }
 
 // GetClientId returns an RPC Client machine ID from a name. This ID will be

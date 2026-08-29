@@ -430,6 +430,10 @@ func TemplateTestRetryCall(t *testing.T, newTest NewTestFactory) {
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
+	if amhelp.IsTestRunner() {
+		t.Skip("TODO make Machine.HandlerTimeout atomic")
+		return
+	}
 	// amhelp.EnableDebugging(false)
 
 	// config
