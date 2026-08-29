@@ -87,7 +87,7 @@ func parseStateNames(
 		value := v.Field(i)
 		kind := field.Type.Kind()
 
-		if field.Anonymous && kind == reflect.Ptr &&
+		if field.Anonymous && kind == reflect.Pointer &&
 			// embedded struct (inherit states)
 			field.Type.Elem().Kind() == reflect.Struct {
 
@@ -133,7 +133,7 @@ func initNilEmbeds(v reflect.Value) {
 		value := v.Field(i)
 		kind := field.Type.Kind()
 
-		if field.Anonymous && kind == reflect.Ptr &&
+		if field.Anonymous && kind == reflect.Pointer &&
 			field.Type.Elem().Kind() == reflect.Struct {
 
 			if value.IsNil() {
@@ -152,10 +152,10 @@ func copyFields(src, dst interface{}) {
 	srcVal := reflect.ValueOf(src)
 	dstVal := reflect.ValueOf(dst)
 
-	if srcVal.Kind() == reflect.Ptr {
+	if srcVal.Kind() == reflect.Pointer {
 		srcVal = srcVal.Elem()
 	}
-	if dstVal.Kind() == reflect.Ptr {
+	if dstVal.Kind() == reflect.Pointer {
 		dstVal = dstVal.Elem()
 	}
 

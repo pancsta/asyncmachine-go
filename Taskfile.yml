@@ -9,12 +9,27 @@ tasks:
 
   build:
     desc: Build the project, but don't create files
-    ignore_error: true
     cmds:
-      - go build -o /dev/null ./examples/...
+      - go build -o /dev/null $(go list ./examples/...
+          | grep -v -E '/(wasm/client|fsm|nfa|temporal_expense)')
       - go build -o /dev/null ./pkg/...
       - go build -o /dev/null ./internal/...
       - go build -o /dev/null ./tools/...
+
+  build-wasm:
+    desc: Build the project for WASM, but don't create files
+    env:
+      GOOS: js
+      GOARCH: wasm
+    cmds:
+      # dedicated go.mod
+      - cd ./examples/wasm_workflow &&
+          go build -o /dev/null ./...
+      # root go.mod
+      - go build -o /dev/null ./examples/wasm/...
+      - go build -o /dev/null ./pkg/machine/...
+      - go build -o /dev/null ./pkg/rpc/...
+      - go build -o /dev/null ./pkg/helpers/...
 
   build-am-dbg:
     ignore_error: true
@@ -223,6 +238,7 @@ tasks:
       AM_TEST_RUNNER: 1
     desc: Run all simple tests
     cmds:
+      - task: build-wasm
       - task: clean-test
       - go test ./... {{.CLI_ARGS}}
 
@@ -231,6 +247,7 @@ tasks:
       AM_TEST_RUNNER: 1
     desc: Run simple and integration tests
     cmds:
+      - task: build-wasm
       - task: clean-test
       - go test -tags integration ./... {{.CLI_ARGS}}
 
@@ -379,7 +396,7 @@ tasks:
       - go mod tidy
       - task: clean
       - task: format
-      - .git/hooks/pre-commit
+      - task: test-all
       - task: test-race
 
   clean-lint:
@@ -750,7 +767,7 @@ tasks:
 
   gen-docs-api:
     cmds:
-      - rm -R ./tmp*/call-log
+      - rm -Rf ./tmp*/call-log
       - task: script-gen-api-docs
 
   gen-docs-release-notes:

@@ -118,6 +118,8 @@ func GroupWhen1(
 	return chs
 }
 
+// TODO move stuff below to /pkg/testing
+
 // MeteredUDP wraps a net.PacketConn to track bytes and packet counts.
 type MeteredUDP struct {
 	net.PacketConn
