@@ -1,3 +1,4 @@
+// Package main is a boilerplate for asyncmachine-go.
 package main
 
 import (
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+
 	"github.com/pancsta/asyncmachine-go/examples/mach_template/states"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -82,6 +84,11 @@ func main() {
 	<-mach.WhenDisposed()
 	fmt.Printf("done")
 	// fully disposed
+
+	// am-dbg and otel flush
+	if amhelp.IsDebug() {
+		time.Sleep(time.Second)
+	}
 }
 
 // ///// ///// /////

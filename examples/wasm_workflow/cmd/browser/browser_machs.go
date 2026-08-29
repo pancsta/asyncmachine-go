@@ -57,7 +57,7 @@ func newDispatcherMach(
 		log.Fatal(err.Error())
 	}
 	// pipes
-	err = ampipe.BindReady(srv.Mach, mach, ssW.RpcReady, "")
+	_, err = ampipe.BindReady(srv.Mach, mach, ssW.RpcReady, "")
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -88,7 +88,7 @@ func newDispatcherMach(
 		func() {
 			<-client.Mach.When1(ssrpc.ClientStates.Ready, ctx)
 			target := am.StatesPrefix(am.Capitalize(leafId), ssW.Names())
-			err = ampipe.BindMany(client.NetMach, mach, ssW.Names(), target)
+			_, err = ampipe.BindMany(client.NetMach, mach, ssW.Names(), target)
 			if err != nil {
 				mach.AddErr(err, nil)
 				return
@@ -104,7 +104,7 @@ func newDispatcherMach(
 			case "browser4":
 				pipeSrc = append(pipeSrc, ssD.Browser4Work, ssD.Browser4Retry)
 			}
-			err = ampipe.BindMany(mach, client.NetMach, pipeSrc, pipeDest)
+			_, err = ampipe.BindMany(mach, client.NetMach, pipeSrc, pipeDest)
 			if err != nil {
 				mach.AddErr(err, nil)
 				return
@@ -174,7 +174,7 @@ func newWorkerMach(
 		srv.Conn = conn
 	}
 	// pipes
-	err = ampipe.BindReady(srv.Mach, mach, ssW.RpcReady, "")
+	_, err = ampipe.BindReady(srv.Mach, mach, ssW.RpcReady, "")
 	if err != nil {
 		return nil, nil, err
 	}

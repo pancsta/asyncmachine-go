@@ -893,7 +893,7 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 
 	// ptr or value
 	val := reflect.ValueOf(args)
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 	if !val.IsValid() || val.Kind() != reflect.Struct {
@@ -928,7 +928,7 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 			for _, el := range v {
 				// check nil ptr
 				val := reflect.ValueOf(v)
-				if val.Kind() == reflect.Ptr && val.IsNil() {
+				if val.Kind() == reflect.Pointer && val.IsNil() {
 					continue
 				}
 
@@ -990,7 +990,7 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 		case fmt.Stringer:
 			// check nil ptr
 			val := reflect.ValueOf(v)
-			if val.Kind() == reflect.Ptr && val.IsNil() {
+			if val.Kind() == reflect.Pointer && val.IsNil() {
 				continue
 			}
 
@@ -1587,7 +1587,7 @@ func NewMirror(
 	// TODO dont create a new machine, add to an existing one
 
 	v := reflect.ValueOf(handlers)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
 		return nil, errors.New("BindHandlers expects a pointer to a struct")
 	}
 	vElem := v.Elem()

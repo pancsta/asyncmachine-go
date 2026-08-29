@@ -245,7 +245,7 @@ func (h *Worker) StartEnd(e *am.Event) {
 	// unbind otel tracer
 	for _, t := range h.mach.Tracers() {
 		if otel, ok := t.(*amtele.OtelMachTracer); ok {
-			err := h.mach.DetachTracer(otel)
+			err := h.mach.TracerDetach(otel.TracerId())
 			if err != nil {
 				h.mach.AddErr(err, nil)
 			}

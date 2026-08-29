@@ -1,3 +1,5 @@
+# this is prod cfg for serving demo traces
+
 services:
 
   jaeger-prod:

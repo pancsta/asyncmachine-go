@@ -268,7 +268,7 @@ var WorkerSchema = SchemaMerge(
 
 		ssW.Working: {
 			Require: S{ssW.Start},
-			Remove:  SAdd(sgW.Work, S{Exception}),
+			Remove:  sgW.Work.Add1(Exception),
 		},
 		ssW.Failed: {
 			Require: S{ssW.Start},
@@ -280,7 +280,7 @@ var WorkerSchema = SchemaMerge(
 		},
 		ssW.Retrying: {
 			Require: S{ssW.Start},
-			Remove:  SAdd(sgW.Work, S{Exception}),
+			Remove:  sgW.Work.Add1(Exception),
 		},
 
 		// piped
@@ -337,7 +337,7 @@ type DispatcherGroupsDef struct {
 }
 
 // DispatcherSchema represents all relations and properties of DispatcherStates.
-var DispatcherSchema = SchemaMerge(
+var DispatcherSchema = Schema{}.Merge(
 	// inherit from rpc/ConsumerSchema
 	ssrpc.ConsumerSchema,
 	// inherit from WorkerSchema
@@ -371,8 +371,8 @@ func init() {
 	// append piped schemas for indirect workers (dynamic states)
 	DispatcherSchema = am.SchemaMerge(
 		DispatcherSchema,
-		am.SchemaPrefix(WorkerSchema, "Browser3", false, nil, nil),
-		am.SchemaPrefix(WorkerSchema, "Browser4", false, nil, nil),
+		WorkerSchema.Prefix("Browser3", false, nil, nil),
+		WorkerSchema.Prefix("Browser4", false, nil, nil),
 	)
 	ssD.SetNames(slices.Concat(
 		ssD.Names(),

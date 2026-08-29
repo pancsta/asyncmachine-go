@@ -172,7 +172,7 @@ func (o *Orchestrator) newBrowserClient(ctx context.Context, id string, conn net
 	prefix := am.Capitalize(id)
 
 	// pipe from RPC client
-	err = ampipe.BindMany(client.Mach, o.mach, am.S{
+	_, err = ampipe.BindMany(client.Mach, o.mach, am.S{
 		ssrpc.ClientStates.Exception,
 		ssrpc.ClientStates.Ready,
 	}, am.S{
@@ -233,7 +233,7 @@ func (o *Orchestrator) newBrowserClient(ctx context.Context, id string, conn net
 	ampipe.Sync(client.NetMach, o.mach, pipeSrc, pipeDest)
 
 	// bind pipes
-	err = ampipe.BindMany(client.NetMach, o.mach, pipeSrc, pipeDest)
+	_, err = ampipe.BindMany(client.NetMach, o.mach, pipeSrc, pipeDest)
 	if err != nil {
 		return nil, err
 	}

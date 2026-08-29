@@ -1596,7 +1596,7 @@ var idRe = regexp.MustCompile(`[^a-zA-Z0-9-_.]+`)
 // optionally return bool.
 func (m *Machine) HandlersBind(handlers any, opts ...BindOpts) (string, error) {
 	v := reflect.ValueOf(handlers)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
 		return "", errors.New("BindHandlers expects a pointer to a struct")
 	}
 
@@ -3518,7 +3518,7 @@ func (m *Machine) TracerBind(tracer Tracer) (string, error) {
 	defer m.tracersMx.Unlock()
 
 	v := reflect.ValueOf(tracer)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
 		return "", errors.New("BindTracer expects a pointer to a struct")
 	}
 
