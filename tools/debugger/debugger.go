@@ -29,9 +29,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"charm.land/ssh"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/andybalholm/brotli"
-	"github.com/charmbracelet/ssh"
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 	"github.com/soheilhy/cmux"
@@ -482,8 +482,7 @@ func (d *Debugger) hSetParams(p types.Params) error {
 
 	// SAVE
 	d.params = p
-	clone := p
-	d.Params.Store(&clone)
+	d.paramsSave()
 
 	// log file
 	if p.OutputLog {
@@ -511,6 +510,12 @@ func (d *Debugger) hSetParams(p types.Params) error {
 	}
 
 	return nil
+}
+
+// params save updates the read-only public params
+func (d *Debugger) paramsSave() {
+	clone := d.params
+	d.Params.Store(&clone)
 }
 
 func (d *Debugger) hInitTxFile() error {

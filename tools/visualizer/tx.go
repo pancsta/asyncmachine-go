@@ -26,9 +26,8 @@ import (
 	d2log "oss.terrastruct.com/d2/lib/log"
 	"oss.terrastruct.com/d2/lib/textmeasure"
 
-	"github.com/pancsta/asyncmachine-go/pkg/helpers"
-
 	"github.com/pancsta/asyncmachine-go/internal/utils"
+	"github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	dbgtypes "github.com/pancsta/asyncmachine-go/tools/debugger/types"

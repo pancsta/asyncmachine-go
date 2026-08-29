@@ -193,7 +193,9 @@ var d2Header = utils.Sp(`
       style.font-size: 30
 		}
 		called: {
-			style.underline: true
+			style.stroke-width: 10
+			style.stroke: "white"
+			style.stroke-dash: 3
 		}
 		handler: {
 			style.stroke: "#2596be"
