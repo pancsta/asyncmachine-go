@@ -305,6 +305,7 @@ func (c *Client) ParseSchema() {
 		},
 	}
 	c.MsgSchemaParsed = sp
+	sp.Hash = amhelp.SchemaHash(schema.States)
 
 	if len(schema.GroupsOrder) == 0 {
 		return
@@ -323,7 +324,6 @@ func (c *Client) ParseSchema() {
 		}
 		sp.GroupsOrder = append(sp.GroupsOrder, name)
 		sp.Groups[name] = c.IndexesToStates(schema.Groups[g])
-		sp.Hash = amhelp.SchemaHash(schema.States)
 
 		if pastSelf {
 			// merge with prev groups TODO why? breaks inheriting from 2 sources

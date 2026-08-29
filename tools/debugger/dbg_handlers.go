@@ -16,7 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/charmbracelet/ssh"
+	"charm.land/ssh"
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 	"github.com/soheilhy/cmux"
@@ -1439,6 +1439,10 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		case types.ParamsOutputDiagramsThree:
 			d.params.OutputDiagrams = types.ParamsOutputDiagramsNone
 		}
+		if d.params.OutputDiagrams != types.ParamsOutputDiagramsNone {
+			d.Mach.EvAddErrState(e, ss.ErrDiagrams, d.hInitDiagFiles(), nil)
+		}
+		d.paramsSave()
 		d.Mach.EvAdd(e, S{ss.DiagramsGraphRendering, ss.DiagramsMachRendering}, nil)
 
 	case types.ToolOutputTx:
@@ -1621,6 +1625,7 @@ func (d *Debugger) ToolToggledState(e *am.Event) {
 	tArgs := am.ParseArgs[A](e.Args)
 	filterTxs := tArgs.FilterTxs
 	buildClientList := tArgs.BuildClientList
+	d.paramsSave()
 
 	if filterTxs {
 		d.hFilterClientTxs()

@@ -6,9 +6,6 @@ tool go101.org/golds
 
 replace github.com/pancsta/asyncmachine-go => ..
 
-replace github.com/tmc/go-iroh => ../../go-iroh
-
-//replace github.com/pancsta/cview => ../../cview
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
@@ -42,7 +39,7 @@ require (
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/teivah/onecontext v1.3.0 // indirect
 	github.com/tmc/go-iroh v0.1.0 // indirect
-	golang.org/x/term v0.43.0 // indirect
+	golang.org/x/term v0.45.0 // indirect
 )
 
 require (
@@ -77,11 +74,11 @@ require (
 	// TODO max v0.8.2 for go <1.26
 	go101.org/golds v0.8.2
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
-	golang.org/x/mod v0.35.0 // indirect
-	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
-	golang.org/x/tools v0.44.0
+	golang.org/x/mod v0.37.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/tools v0.47.0
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
