@@ -10,13 +10,13 @@ import (
 	"net/http"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cenkalti/rpc2"
 	"github.com/coder/websocket"
-	"github.com/tmc/go-iroh/key"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -38,18 +38,27 @@ type ServerOpts struct {
 	// optional RPC args parser, defaults to [amhelp.NewArgsUnmarshaller] when
 	// [ServerOpts.Args] present. Useful for REPLs.
 	ArgsUnmarshaller amhelp.ArgsUnmarshallerFn
+
+	// WebSocket
+
 	// Listen on a WebSocket connection instead of TCP.
 	WebSocket bool
-	// List of allowed API keys (optional).
-	WebSocketPubKeys []key.PublicKey
 	// HTTP URL without proto to tunnel the TCP listen over a WebSocket conn.
 	// See WsListenPath.
 	WebSocketTunnel string
 	// WebSocketTunnelPubKey is the API key used for authenticating with the
 	// WebSocket tunnel.
-	WebSocketTunnelPubKey *key.PublicKey
-	// AllowedIds will limit clients to specified IDs (optional).
-	AllowedIds []string
+	WebSocketTunnelPubKey string
+
+	// Authentication
+
+	// AllowedMachIds will limit clients to specified machine IDs (optional).
+	AllowedMachIds []string
+	// AllowedWsOrigins is a list of allowed origins for WebSocket
+	// connections (optional).
+	AllowedWsOrigins []string
+	// AllowedWsPubKeys is a list of allowed API keys for WebSocket (optional).
+	AllowedWsPubKeys []string
 }
 
 // Server is an RPC server that can be bound to a worker machine and provide
@@ -81,11 +90,12 @@ type Server struct {
 	// 0 means pushes are disabled. Setting to a very small value will make
 	// pushes instant.
 	PushInterval atomic.Pointer[time.Duration]
-	// AuthIds will limit clients to specified IDs (optional).
-	AuthIds atomic.Pointer[[]string]
-	// AuthWsPubKeys will limit clients to specified public keys (optional).
-	// Requires [ServerOpts.WebSocketPubKeys] to be set.
-	AuthWsPubKeys atomic.Pointer[[]key.PublicKey]
+	// AllowedMachIds will limit clients to specified IDs (optional).
+	AllowedMachIds atomic.Pointer[[]string]
+	// AllowedWsPubKeys will limit clients to specified public keys (optional).
+	// Requires [ServerOpts.AllowedWsPubKeys] to be set.
+	AllowedWsPubKeys atomic.Pointer[[]string]
+	// TODO AllowedWsOrigins
 
 	// settings - stopped
 
@@ -217,8 +227,8 @@ func NewServer(
 	}
 	interval := 250 * time.Millisecond
 	s.PushInterval.Store(&interval)
-	s.AuthWsPubKeys.Store(&opts.WebSocketPubKeys)
-	s.AuthIds.Store(&opts.AllowedIds)
+	s.AllowedWsPubKeys.Store(&opts.AllowedWsPubKeys)
+	s.AllowedMachIds.Store(&opts.AllowedMachIds)
 
 	// state machine
 	mach, err := am.NewCommon(ctx, "rs-"+name, states.ServerSchema, ssS.Names(),
@@ -399,12 +409,10 @@ func (s *Server) RpcStartingState(e *am.Event) {
 				ctxWs, cancel := context.WithTimeout(ctxStart, s.WsTunConnTimeout)
 				s.log("Dialing (round %d) %s", s.wsTunRetryRound.Load(), addr)
 				var dialOpts *websocket.DialOptions
-				if s.Opts.WebSocketTunnelPubKey != nil {
+				if s.Opts.WebSocketTunnelPubKey != "" {
 					dialOpts = &websocket.DialOptions{
-						HTTPHeader: http.Header{},
+						Subprotocols: []string{"X-API-Key", s.Opts.WebSocketTunnelPubKey},
 					}
-					dialOpts.HTTPHeader.Set("X-API-Key",
-						s.Opts.WebSocketTunnelPubKey.String())
 				}
 				ws, _, err := websocket.Dial(ctxWs, addr, dialOpts)
 				if err != nil {
@@ -853,19 +861,29 @@ func (s *Server) storeLastPush(data *tracerData) {
 func (s *Server) newWebsocketHandler(e *am.Event) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// check API key
-		keysPtr := s.AuthWsPubKeys.Load()
+		keysPtr := s.AllowedWsPubKeys.Load()
 		if keysPtr != nil && len(*keysPtr) > 0 {
 			pk := r.Header.Get("X-API-Key")
+			if pk == "" {
+				rawHeader := r.Header.Get("Sec-WebSocket-Protocol")
+				if rawHeader != "" {
+					protocols := strings.Split(rawHeader, ",")
+					for _, p := range protocols {
+						p = strings.TrimSpace(p)
+						if !strings.EqualFold(p, "X-API-Key") && p != "" {
+							pk = p
+							break
+						}
+					}
+				}
+			}
 
 			valid := false
 			if pk != "" {
-				parsedKey, err := key.ParsePublicKey(pk)
-				if err == nil {
-					for _, k := range *keysPtr {
-						if parsedKey.Equal(k) {
-							valid = true
-							break
-						}
+				for _, k := range *keysPtr {
+					if pk == k {
+						valid = true
+						break
 					}
 				}
 			}
@@ -912,7 +930,7 @@ func (s *Server) RemoteHello(
 	defer s.lockCollection.Unlock()
 
 	// check access TODO test
-	authIds := s.AuthIds.Load()
+	authIds := s.AllowedMachIds.Load()
 	if authIds != nil && len(*authIds) > 0 && !slices.Contains(*authIds, req.Id) {
 		s.Mach.Remove1(ssS.Handshaking, nil)
 
@@ -1412,10 +1430,14 @@ type wsHandlerServer struct {
 func (h *wsHandlerServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mach := h.s.Mach
 
-	connWs, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		// TODO security
-		InsecureSkipVerify: true,
-	})
+	acceptOpts := &websocket.AcceptOptions{}
+	if len(h.s.Opts.AllowedWsOrigins) == 0 {
+		acceptOpts.InsecureSkipVerify = true
+	} else {
+		acceptOpts.OriginPatterns = h.s.Opts.AllowedWsOrigins
+	}
+
+	connWs, err := websocket.Accept(w, r, acceptOpts)
 	if err != nil {
 		log.Printf("Upgrade error: %v", err)
 		return

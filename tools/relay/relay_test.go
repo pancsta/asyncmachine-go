@@ -85,7 +85,7 @@ func TestTunnelMatchers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	relay.AuthPubKeys.Store(&[]key.PublicKey{validPK})
+	relay.AllowedPubKeys.Store(&[]string{validPK.String()})
 	relay.Start(nil)
 	<-relay.Mach.When1(ssR.HttpReady, nil)
 
@@ -98,7 +98,7 @@ func TestTunnelMatchers(t *testing.T) {
 
 	serverOpts := &arpc.ServerOpts{
 		WebSocketTunnel:       arpc.WsListenPath("browser-bar-1", barTcpAddr),
-		WebSocketTunnelPubKey: &validPK,
+		WebSocketTunnelPubKey: validPK.String(),
 	}
 	serverValid, err := arpc.NewServer(
 		ctx, relayAddr, "browser-bar-1", netSrc, serverOpts,
@@ -124,7 +124,7 @@ func TestTunnelMatchers(t *testing.T) {
 	// Unauthorized server tunneling to /listen/
 	serverOptsFail := &arpc.ServerOpts{
 		WebSocketTunnel:       arpc.WsListenPath("browser-bar-2", barTcpAddr),
-		WebSocketTunnelPubKey: &invalidPK, // invalid
+		WebSocketTunnelPubKey: invalidPK.String(), // invalid
 	}
 	serverFail, err := arpc.NewServer(
 		ctx, relayAddr, "browser-bar-2", netSrc, serverOptsFail,
@@ -169,7 +169,7 @@ func TestDialMatchers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	relay.AuthPubKeys.Store(&[]key.PublicKey{validPK})
+	relay.AllowedPubKeys.Store(&[]string{validPK.String()})
 	relay.Start(nil)
 	<-relay.Mach.When1(ssR.HttpReady, nil)
 
@@ -179,7 +179,7 @@ func TestDialMatchers(t *testing.T) {
 	// server-foo via relay)
 	clientOpts := &arpc.ClientOpts{
 		WebSocket:       arpc.WsDialPath("browser-foo-1", fooTcpAddr),
-		WebSocketPubKey: &validPK,
+		WebSocketPubKey: validPK.String(),
 	}
 	clientValid, err := arpc.NewClient(
 		ctx, relayAddr, "browser-foo-1", netSrc.Schema(), clientOpts,
@@ -194,7 +194,7 @@ func TestDialMatchers(t *testing.T) {
 	// Unauthorized client dialing to /dial/
 	clientOptsFail := &arpc.ClientOpts{
 		WebSocket:       arpc.WsDialPath("browser-foo-2", fooTcpAddr),
-		WebSocketPubKey: &invalidPK, // invalid
+		WebSocketPubKey: invalidPK.String(), // invalid
 	}
 	clientFail, err := arpc.NewClient(
 		ctx, relayAddr, "browser-foo-2", netSrc.Schema(), clientOptsFail,

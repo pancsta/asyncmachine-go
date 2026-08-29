@@ -22,7 +22,6 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/soheilhy/cmux"
 	"github.com/teivah/onecontext"
-	"github.com/tmc/go-iroh/key"
 	"gopkg.in/yaml.v3"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -50,7 +49,8 @@ type Relay struct {
 	Args    types.CliArgs
 	HttpMux *http.ServeMux
 
-	AuthPubKeys atomic.Pointer[[]key.PublicKey]
+	AllowedPubKeys atomic.Pointer[[]string]
+	AllowedMachIds atomic.Pointer[[]string]
 
 	// WS TCP tunnels
 	wsTcpTuns map[string]*WsTcpTun
@@ -87,6 +87,10 @@ func New(ctx context.Context, args types.CliArgs) (*Relay, error) {
 		dbgClients: make(map[string]*server.Client),
 		wsTcpTuns:  make(map[string]*WsTcpTun),
 	}
+	pubKeys := slices.Clone(args.AllowedPubKeys)
+	r.AllowedPubKeys.Store(&pubKeys)
+	machIds := slices.Clone(args.AllowedIds)
+	r.AllowedMachIds.Store(&machIds)
 	id := "relay"
 	if args.Name != "" {
 		id += "-" + args.Name
@@ -106,7 +110,6 @@ func New(ctx context.Context, args types.CliArgs) (*Relay, error) {
 	_, _ = arpc.MachReplEnv(mach, &arpc.ReplOpts{
 		Args: types.ArgsRpc,
 	})
-	// mach.SemLogger().SetArgsMapperDef("remote_addr")
 	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 
 	return r, nil
@@ -259,13 +262,22 @@ func (r *Relay) HandleWsTcpDial(
 	id = strings.TrimSuffix(id, "/")
 	r.Mach.Log("WS TCP dial from %s to %s", id, tcpAddr)
 
-	// TODO origin security
-	// TODO ID security
+	allowedIds := r.AllowedMachIds.Load()
+	if allowedIds != nil && len(*allowedIds) > 0 &&
+		!slices.Contains(*allowedIds, id) {
+		r.Mach.Log("WS TCP dial rejected: ID %s not allowed", id)
+		http.Error(w, "Unauthorized ID", http.StatusUnauthorized)
+		return
+	}
 
 	// websocket
-	wsConn, err := websocket.Accept(w, req, &websocket.AcceptOptions{
-		InsecureSkipVerify: true,
-	})
+	acceptOpts := &websocket.AcceptOptions{}
+	if len(r.Args.AllowedWebsocketOrigins) == 0 {
+		acceptOpts.InsecureSkipVerify = true
+	} else {
+		acceptOpts.OriginPatterns = r.Args.AllowedWebsocketOrigins
+	}
+	wsConn, err := websocket.Accept(w, req, acceptOpts)
 	if err != nil {
 		r.Mach.EvAddErrState(e, ssR.ErrNetwork, err, Pass(&A{
 			Addr: tcpAddr,
@@ -365,13 +377,22 @@ func (r *Relay) HandleWsTcpListen(
 	id = strings.TrimSuffix(id, "/")
 	r.Mach.Log("WS TCP tunnel for %s at %s", id, tcpAddr)
 
-	// TODO origin security
-	// TODO ID security
+	allowedIds := r.AllowedMachIds.Load()
+	if allowedIds != nil && len(*allowedIds) > 0 &&
+		!slices.Contains(*allowedIds, id) {
+		r.Mach.Log("WS TCP tunnel rejected: ID %s not allowed", id)
+		http.Error(w, "Unauthorized Machine ID", http.StatusUnauthorized)
+		return
+	}
 
 	// websocket
-	conn, err := websocket.Accept(w, req, &websocket.AcceptOptions{
-		InsecureSkipVerify: true,
-	})
+	acceptOpts := &websocket.AcceptOptions{}
+	if len(r.Args.AllowedWebsocketOrigins) == 0 {
+		acceptOpts.InsecureSkipVerify = true
+	} else {
+		acceptOpts.OriginPatterns = r.Args.AllowedWebsocketOrigins
+	}
+	conn, err := websocket.Accept(w, req, acceptOpts)
 	if err != nil {
 		r.Mach.EvAddErrState(e, ssR.ErrNetwork, err, Pass(&A{
 			Addr: tcpAddr,
@@ -801,17 +822,28 @@ func (r *Relay) msgsCount() int {
 
 func (r *Relay) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		keysPtr := r.AuthPubKeys.Load()
+		keysPtr := r.AllowedPubKeys.Load()
 		if keysPtr != nil && len(*keysPtr) > 0 {
 			pk := req.Header.Get("X-API-Key")
-			valid := false
-			if pk != "" {
-				if parsedKey, err := key.ParsePublicKey(pk); err == nil {
-					for _, k := range *keysPtr {
-						if parsedKey.Equal(k) {
-							valid = true
+			if pk == "" {
+				rawHeader := req.Header.Get("Sec-WebSocket-Protocol")
+				if rawHeader != "" {
+					protocols := strings.Split(rawHeader, ",")
+					for _, p := range protocols {
+						p = strings.TrimSpace(p)
+						if !strings.EqualFold(p, "X-API-Key") && p != "" {
+							pk = p
 							break
 						}
+					}
+				}
+			}
+			valid := false
+			if pk != "" {
+				for _, k := range *keysPtr {
+					if pk == k {
+						valid = true
+						break
 					}
 				}
 			}
