@@ -167,8 +167,7 @@ func (sm *Subscriptions) ProcessWhen(activated, deactivated S) []chan struct{} {
 			}
 
 			// if not all matched, ignore for now
-			expired := binding.Ctx != nil && binding.Ctx.Err() != nil
-			if binding.Matched < binding.Total && !expired {
+			if binding.Matched < binding.Total {
 				continue
 			}
 
@@ -185,17 +184,23 @@ func (sm *Subscriptions) processWhenCtx() []chan struct{} {
 	var ret []chan struct{}
 
 	// find expired ctxs
+	var toDel []context.Context
 	for ctx, bindings := range sm.whenCtx {
 		if ctx.Err() == nil {
 			continue
 		}
 
 		// delete the ctx and all the bindings
-		delete(sm.whenCtx, ctx)
+		toDel = append(toDel, ctx)
 		for _, binding := range bindings {
 			sm.gcWhenBinding(binding, false)
 			ret = append(ret, binding.Ch)
 		}
+	}
+
+	// delayed del
+	for _, ctx := range toDel {
+		delete(sm.whenCtx, ctx)
 	}
 
 	return ret
@@ -690,10 +695,9 @@ func (sm *Subscriptions) When(states S, ctx context.Context) <-chan struct{} {
 	// insert the binding
 	for _, s := range states {
 		sm.when[s] = append(sm.when[s], binding)
-
-		if ctx != nil {
-			sm.whenCtx[ctx] = append(sm.whenCtx[ctx], binding)
-		}
+	}
+	if ctx != nil {
+		sm.whenCtx[ctx] = append(sm.whenCtx[ctx], binding)
 	}
 
 	return ch
