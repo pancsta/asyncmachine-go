@@ -787,7 +787,7 @@ tasks:
     requires:
       vars: [AM_DEPLOY_WEBSITE_DIR, AM_DEPLOY_WEBSITE_CODE_DIR]
     cmds:
-      - mv docs/website/*.{html,css,ico} {{.AM_DEPLOY_WEBSITE_DIR}}
+      - mv docs/website/*.{html,css,ico,md} {{.AM_DEPLOY_WEBSITE_DIR}}
       - cp -R scripts/gen_website/sitemap {{.AM_DEPLOY_WEBSITE_CODE_DIR}}/sitemap_am
 
   deploy-docs-api:
