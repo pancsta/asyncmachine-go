@@ -15,7 +15,7 @@ tasks:
     cmds:
       - go mod tidy
       - cp $(go env GOROOT)/lib/wasm/wasm_exec.js ./client
-      - go build -o client/main.wasm ./client
+      - go build -buildvcs=false -o client/main.wasm ./client
 
   start:
     desc: Build and start server

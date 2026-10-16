@@ -1,6 +1,6 @@
 module github.com/pancsta/asyncmachine-go/examples/wasm_workflow
 
-go 1.26
+go 1.26.5
 
 // https://github.com/open-telemetry/opentelemetry-go/pull/8120
 replace go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp => github.com/pancsta/opentelemetry-go/exporters/otlp/otlptrace/otlptracehttp v0.0.0-20260331193851-f087fcb1fc48
@@ -42,20 +42,20 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/creack/pty v1.1.24 // indirect
-	github.com/dlclark/regexp2 v1.11.4 // indirect
+	github.com/d2lang/dagro v0.2.0 // indirect
+	github.com/d2lang/elk-go v0.2.0 // indirect
+	github.com/d2lang/mathjax-go v0.1.0 // indirect
+	github.com/d2lang/rough-go v0.2.0 // indirect
+	github.com/d2lang/util-go v0.2.0 // indirect
 	github.com/dlclark/regexp2/v2 v2.6.0 // indirect
 	github.com/dominikbraun/graph v0.23.0 // indirect
-	github.com/dop251/goja v0.0.0-20240927123429-241b342198c2 // indirect
 	github.com/failsafe-go/failsafe-go v0.6.8 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/gdamore/tcell/v2 v2.13.9 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
-	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
-	github.com/google/pprof v0.0.0-20240927180334-d43a67379298 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/ic2hrmk/promtail v0.0.5 // indirect
@@ -68,6 +68,7 @@ require (
 	github.com/mazznoer/csscolorparser v0.1.8 // indirect
 	github.com/orsinium-labs/enum v1.4.0 // indirect
 	github.com/pancsta/cview v1.5.23 // indirect
+	github.com/pancsta/d2 v0.8.2-0.20260829154946-02b64fd28fde // indirect
 	github.com/pires/go-proxyproto v0.12.0 // indirect
 	github.com/reeflective/console v0.1.25 // indirect
 	github.com/reeflective/readline v1.1.3 // indirect
@@ -94,11 +95,11 @@ require (
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743 // indirect
-	golang.org/x/image v0.44.0 // indirect
+	golang.org/x/image v0.45.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260330182312-d5a96adf58d8 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260330182312-d5a96adf58d8 // indirect
@@ -106,6 +107,4 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	mvdan.cc/sh/v3 v3.7.0 // indirect
-	oss.terrastruct.com/d2 v0.7.1 // indirect
-	oss.terrastruct.com/util-go v0.0.0-20250213174338-243d8661088a // indirect
 )

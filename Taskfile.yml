@@ -284,6 +284,17 @@ tasks:
         ./tools/debugger/test
         {{.CLI_ARGS}}
 
+  test-integration-wasm:
+    env:
+      AM_TEST_RUNNER: 1
+    desc: Run WASM example integration tests
+    cmds:
+      - task: clean-test
+      - go test -tags integration ./examples/wasm {{.CLI_ARGS}}
+      - cd examples/wasm_workflow &&
+          go mod tidy &&
+          go test -tags integration . {{.CLI_ARGS}}
+
   test-path:
     env:
       AM_TEST_RUNNER: 1
