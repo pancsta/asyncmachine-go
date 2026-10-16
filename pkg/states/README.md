@@ -64,7 +64,7 @@ var MyMachSchema = SchemaMerge(
 
 ```bash
 $ am-gen --name MyMach \
-  --states State1,State2 \
+  --state State1 --state State2 \
   --inherit basic
 ```
 
@@ -121,6 +121,54 @@ h := &struct {
 }
 
 source.HandlersBind(h)
+```
+
+## Nesting Schemas
+
+Schemas can be nested under a prefix, as another way of re-use after embedding. Type safety works the same way as 
+for regular schemas, eg `ss.Parent1.Nested1` returns "Parent1Nested1". It's useful for multiple fan-out-fan-in threads
+(possibly defined dynamically), as well as a lightweight alternative to piping (which will share a single queue).
+
+```go
+type NestedStatesDef struct {
+	*StatesBase
+
+	Nested1 string
+	Nested2 string
+	Nested3 string
+}
+
+var NestedSchema = Schema{
+	ssN.Nested1: {},
+	ssN.Nested2: {Multi: true},
+	ssN.Nested3: {Multi: true},
+}
+
+type BasicStatesDef struct {
+	*StatesBase
+
+	Heartbeat string
+  Parent1   *NestedStatesDef
+}
+
+var BasicSchema = Schema{}.Merge(
+  // prefix with "Parent1"
+	NestedSchema.Nest(ssB.Parent1.Prefix(), ssN.Names()),
+	Schema{
+		ssB.Heartbeat: {},
+		// override a nested state
+		ssB.Parent1.Prefix()+ssN.Nested3: {},
+	})
+```
+
+Nested schemas produce state names without a dot, so handler names remain the same:
+
+```go
+var _ = ss.LaygenPage.NotMatched // => "LaygenPageNotMatched"
+
+func (h *handlers) LaygenPageNotMatched(e *am.Event) {
+  // ...
+}
 ```
 
 ## Extending States
