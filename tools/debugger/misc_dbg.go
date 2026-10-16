@@ -14,12 +14,12 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"charm.land/ssh"
 	"github.com/gdamore/tcell/v2"
 	"github.com/gdamore/tcell/v2/terminfo"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/pancsta/cview/cbind"
 
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 
@@ -298,10 +298,9 @@ func newMcpServer(d *Debugger) (*mcpServer, error) {
 
 	// bind keys from keyboard.go
 	keys := slices.Collect(maps.Keys(d.getKeystrokes()))
-	keys = append(keys, "enter", "tab", "shift+tab", "up", "down")
-	pressKey := mcp.NewTool(
-		"PressKey",
-		mcp.WithDescription("Press a key combination"),
+	keystroke := mcp.NewTool(
+		"Keystroke",
+		mcp.WithDescription("Press a predefined key combination"),
 		mcp.WithString(
 			"key",
 			mcp.Required(),
@@ -309,8 +308,66 @@ func newMcpServer(d *Debugger) (*mcpServer, error) {
 			mcp.Enum(keys...),
 		),
 	)
+	// any key combo
+	pressKey := mcp.NewTool(
+		"PressKey",
+		mcp.WithDescription("Press any key combination"),
+		mcp.WithString(
+			"key",
+			mcp.Required(),
+			mcp.Description("Key or key combination (e.g. 'enter', 'tab', 'shift+tab', 'alt+h', 'ctrl+q', 'up', 'down')"),
+		),
+	)
+	typeText := mcp.NewTool(
+		"TypeText",
+		mcp.WithDescription("Type text into the focused TUI input or view"),
+		mcp.WithString(
+			"text",
+			mcp.Required(),
+			mcp.Description("Text to type"),
+		),
+	)
 
-	// TODO mouse clicks
+	// mouse events
+	mouseClick := mcp.NewTool(
+		"MouseClick",
+		mcp.WithDescription("Simulate a mouse left click at a grid position (x, y)"),
+		mcp.WithNumber(
+			"x",
+			mcp.Required(),
+			mcp.Description("X coordinate (column, 0-indexed)"),
+		),
+		mcp.WithNumber(
+			"y",
+			mcp.Required(),
+			mcp.Description("Y coordinate (row, 0-indexed)"),
+		),
+	)
+	mouseScroll := mcp.NewTool(
+		"MouseScroll",
+		mcp.WithDescription("Simulate mouse scrolling at a grid position (x, y)"),
+		mcp.WithNumber(
+			"x",
+			mcp.Required(),
+			mcp.Description("X coordinate (column, 0-indexed)"),
+		),
+		mcp.WithNumber(
+			"y",
+			mcp.Required(),
+			mcp.Description("Y coordinate (row, 0-indexed)"),
+		),
+		mcp.WithString(
+			"direction",
+			mcp.Required(),
+			mcp.Description("Scroll direction ('up', 'down', 'left', 'right')"),
+			mcp.Enum("up", "down", "left", "right"),
+		),
+		mcp.WithNumber(
+			"amount",
+			mcp.Description("Number of scroll steps (default: 1)"),
+			mcp.DefaultNumber(1),
+		),
+	)
 
 	// TUI
 
@@ -377,7 +434,11 @@ func newMcpServer(d *Debugger) (*mcpServer, error) {
 	srv.Mcp.AddTool(txSteps, srvDbg.txSteps)
 	srv.Mcp.AddTool(serializedMach, srvDbg.serializedMach)
 	srv.Mcp.AddTool(goToMachAddr, srvDbg.goToMachAddr)
+	srv.Mcp.AddTool(keystroke, srvDbg.pressKey)
 	srv.Mcp.AddTool(pressKey, srvDbg.pressKey)
+	srv.Mcp.AddTool(typeText, srvDbg.typeText)
+	srv.Mcp.AddTool(mouseClick, srvDbg.mouseLeftClick)
+	srv.Mcp.AddTool(mouseScroll, srvDbg.mouseScroll)
 
 	return srvDbg, nil
 }
@@ -507,39 +568,95 @@ func (m *mcpServer) pressKey(
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	// split "key" param on + and parse the modifier
-	parts := strings.Split(key, "+")
-	var mod tcell.ModMask = tcell.ModNone
-	keyName := parts[len(parts)-1]
-	for _, part := range parts[:len(parts)-1] {
-		switch strings.ToLower(part) {
-		case "alt":
-			mod |= tcell.ModAlt
-		case "ctrl":
-			mod |= tcell.ModCtrl
-		case "shift":
-			mod |= tcell.ModShift
-		}
+	mod, evKey, ch, err := cbind.Decode(key)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	// create evKey and rune
-	var evKey tcell.Key
-	var rune rune
-	stringToKey := make(map[string]tcell.Key)
-	for key, name := range tcell.KeyNames {
-		stringToKey[strings.ToLower(name)] = key
-	}
-	lowerStr := strings.ToLower(keyName)
-	if key, exists := stringToKey[lowerStr]; exists {
-		evKey = key
-	} else {
-		rune, _ = utf8.DecodeRuneInString(strings.ToLower(keyName))
-		if rune == utf8.RuneError {
-			return mcp.NewToolResultError("key rune err"), nil
-		}
-		evKey = tcell.KeyRune
+	m.d.App.QueueEvent(tcell.NewEventKey(evKey, ch, mod))
+	return mcp.NewToolResultText("ok"), nil
+}
+
+func (m *mcpServer) typeText(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	text, err := req.RequireString("text")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	m.d.App.QueueEvent(tcell.NewEventKey(evKey, rune, mod))
+	for _, ch := range text {
+		var (
+			key tcell.Key     = tcell.KeyRune
+			mod tcell.ModMask = tcell.ModNone
+		)
+		switch ch {
+		case '\n', '\r':
+			key = tcell.KeyEnter
+		case '\t':
+			key = tcell.KeyTab
+		}
+		m.d.App.QueueEvent(tcell.NewEventKey(key, ch, mod))
+	}
+
+	return mcp.NewToolResultText("ok"), nil
+}
+
+func (m *mcpServer) mouseLeftClick(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	x, err := req.RequireInt("x")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	y, err := req.RequireInt("y")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	m.d.App.QueueEvent(tcell.NewEventMouse(x, y, tcell.ButtonPrimary, tcell.ModNone))
+	m.d.App.QueueEvent(tcell.NewEventMouse(x, y, tcell.ButtonNone, tcell.ModNone))
+
+	return mcp.NewToolResultText("ok"), nil
+}
+
+func (m *mcpServer) mouseScroll(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	x, err := req.RequireInt("x")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	y, err := req.RequireInt("y")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	direction, err := req.RequireString("direction")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	amount := req.GetInt("amount", 1)
+	if amount <= 0 {
+		amount = 1
+	}
+
+	var btn tcell.ButtonMask
+	switch strings.ToLower(direction) {
+	case "up":
+		btn = tcell.WheelUp
+	case "down":
+		btn = tcell.WheelDown
+	case "left":
+		btn = tcell.WheelLeft
+	case "right":
+		btn = tcell.WheelRight
+	default:
+		return mcp.NewToolResultError("invalid direction: " + direction), nil
+	}
+
+	for i := 0; i < amount; i++ {
+		m.d.App.QueueEvent(tcell.NewEventMouse(x, y, btn, tcell.ModNone))
+	}
+
 	return mcp.NewToolResultText("ok"), nil
 }
