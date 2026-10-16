@@ -60,6 +60,7 @@ type Args struct {
 
 	// output
 
+	OutputPng      bool   `arg:"--output-png" help:"Output also PNG (slow)"`
 	OutputElk      bool   `arg:"--output-elk" default:"true" help:"Use ELK layout"`
 	OutputFilename string `arg:"-o,--output-filename" default:"am-vis"`
 
@@ -215,6 +216,7 @@ func renderDump(ctx context.Context, args Args, cliArgs []string) error {
 	// render
 	vis.R.OutputFilename = args.OutputFilename
 	vis.R.OutputMermaid = false
+	vis.R.OutputPng = args.OutputPng
 	fmt.Printf("Rendering... please wait\n")
 	if err := vis.R.GenDiagrams(ctx); err != nil {
 		return err
