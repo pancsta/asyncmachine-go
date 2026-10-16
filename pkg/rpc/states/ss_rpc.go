@@ -6,6 +6,19 @@ import (
 	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
+const (
+	TagRpcHandler = "rpc-handler"
+	TagRpcClient  = "rpc-client"
+	TagRpcServer  = "rpc-server"
+	TagRpcMux     = "rpc-mux"
+	TagRpcNetmach = "rpc-mux"
+
+	TagKeySrcId   = "src-id"
+	TagKeyAddr   = "addr"
+
+	PrefixNetMach = "rnm-"
+)
+
 // ///// ///// /////
 
 // ///// SHARED

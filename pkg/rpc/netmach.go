@@ -135,7 +135,7 @@ func NewNetworkMachine(
 		return nil, nil, errors.New("parent cannot be nil")
 	}
 	if tags == nil {
-		tags = []string{"rpc-netmach", "src-id:"}
+		tags = []string{states.TagRpcNetmach, states.TagKeySrcId}
 	}
 
 	netMach := &NetworkMachine{
