@@ -1443,7 +1443,10 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 			d.Mach.EvAddErrState(e, ss.ErrDiagrams, d.hInitDiagFiles(), nil)
 		}
 		d.paramsSave()
-		d.Mach.EvAdd(e, S{ss.DiagramsGraphRendering, ss.DiagramsMachRendering}, nil)
+		// TODO merge with partial acceptance
+		d.Mach.EvAdd1(e, ss.DiagramsGraphRendering, nil)
+		d.Mach.EvAdd1(e, ss.DiagramsMachRendering, nil)
+		d.Mach.EvAdd1(e, ss.DiagramsStatesRendering, nil)
 
 	case types.ToolOutputTx:
 		d.params.OutputTx = !d.params.OutputTx
