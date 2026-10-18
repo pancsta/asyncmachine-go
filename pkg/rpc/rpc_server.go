@@ -233,7 +233,7 @@ func NewServer(
 	// state machine
 	mach, err := am.NewCommon(ctx, "rs-"+name, states.ServerSchema, ssS.Names(),
 		s, opts.Parent, &am.Opts{
-			Tags: []string{TagRpcServer},
+			Tags: []string{states.TagRpcServer},
 		})
 	if err != nil {
 		return nil, err

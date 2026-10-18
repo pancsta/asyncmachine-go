@@ -259,6 +259,8 @@ func (t *tracer) MachineInit(mach am.Api) context.Context {
 		}
 	}
 
+	// TODO fork here?
+
 	// states
 	existing := make(map[string]bool, len(rec.States))
 	for _, state := range rec.States {
@@ -1048,10 +1050,7 @@ func (m *Memory) writeDb(rLocked bool) {
 			defer m.syncMx.RUnlock()
 		}
 
-		// TODO needed?
-		m.mx.Lock()
-		defer m.mx.Unlock()
-
+		// TODO retry loop?
 		// sync mach record TODO skip saving states
 		if err := m.Db.Save(machRec).Error; err != nil {
 			m.onErr(fmt.Errorf("failed to save: %w", err))

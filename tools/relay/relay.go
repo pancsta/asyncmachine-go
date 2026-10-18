@@ -207,17 +207,15 @@ func (r *Relay) HttpStartingState(e *am.Event) {
 			// TODO retry?
 			r.Mach.EvAddErr(e, err, nil)
 		}
-		r.Mach.EvRemove1(e, ssR.HttpReady, nil)
+		if r.Mach.Is1(ssR.HttpReady) {
+			r.Mach.EvRemove1(e, ssR.HttpReady, nil)
+		}
 	})
 }
 
 var _ = ssR.HttpReady
 
 func (r *Relay) HttpReadyState(e *am.Event) {
-	// TODO /dial - RPC clients (WS to TCP dial)
-
-	// ctx := r.Mach.NewStateCtx(ssR.HttpReady)
-
 	r.out("WASM relay listening on http://%s\n", r.Args.Wasm.ListenAddr)
 
 	// static
@@ -225,6 +223,8 @@ func (r *Relay) HttpReadyState(e *am.Event) {
 		r.out("WASM relay serving %s\n", dir)
 		r.HttpMux.Handle("/", http.FileServer(http.Dir(dir)))
 	}
+
+	// TODO opts to selectively disable these
 
 	// tun listen
 	r.HttpMux.HandleFunc("/listen/",
@@ -237,6 +237,12 @@ func (r *Relay) HttpReadyState(e *am.Event) {
 		r.authMiddleware(func(w http.ResponseWriter, req *http.Request) {
 			r.HandleWsTcpDial(e, w, req)
 		}))
+}
+
+func (r *Relay) HttpReadyEnd(e *am.Event) {
+	if s := r.http; s != nil {
+		r.Mach.AddErr(s.Close(), nil)
+	}
 }
 
 func (r *Relay) HandleWsTcpDial(
@@ -486,14 +492,6 @@ func (r *Relay) HandleWsTcpListen(
 		}
 	}, ctx)
 }
-
-func (r *Relay) HttpReadyEnd(e *am.Event) {
-	if s := r.http; s != nil {
-		r.Mach.AddErr(s.Close(), nil)
-	}
-}
-
-var _ = ssR.ClientMsg
 
 // ///// ///// /////
 

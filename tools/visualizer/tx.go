@@ -16,8 +16,6 @@ import (
 
 	merascii "github.com/AlexanderGrooff/mermaid-ascii/pkg/sequence"
 	"github.com/alitto/pond/v2"
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
 	"github.com/pancsta/d2/d2graph"
 	"github.com/pancsta/d2/d2layouts/d2dagrelayout"
 	"github.com/pancsta/d2/d2lib"
@@ -25,6 +23,8 @@ import (
 	"github.com/pancsta/d2/d2themes/d2themescatalog"
 	d2log "github.com/pancsta/d2/lib/log"
 	"github.com/pancsta/d2/lib/textmeasure"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	"github.com/pancsta/asyncmachine-go/pkg/helpers"

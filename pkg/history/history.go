@@ -577,6 +577,10 @@ func (m *BaseMemory) ActiveBetween(
 	return err == nil && ret != nil
 }
 
+// Was [state] activated after the [afterState]
+// TODO LatestActivated(ctx, state...string) state
+// TODO LatestDeactivated(ctx, state...string) state
+
 func (m *BaseMemory) DeactivatedBetween(
 	ctx context.Context, state string, start, end time.Time,
 ) bool {

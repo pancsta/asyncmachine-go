@@ -395,6 +395,13 @@ func BindMany(
 	})
 }
 
+// TODO bind many matching the pattern to same names in taret
+// func BindRegexp(
+// 	source, target am.Api,
+// ) (string, error) {
+//
+// }
+
 // Sync synchronizes states from source to target and returns the number of
 // synced states. Useful when re-connecting a pipe source. When mixed with
 // piping, Sync should be called inside rpc.Client.Eval().

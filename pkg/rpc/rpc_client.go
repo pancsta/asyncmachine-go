@@ -225,8 +225,8 @@ func NewClient(
 	// state machine
 	mach, err := am.NewCommon(ctx, GetClientId(id), states.ClientSchema,
 		ssC.Names(), c, opts.Parent, &am.Opts{Tags: []string{
-			TagRpcClient,
-			"addr:" + addr,
+			states.TagRpcClient,
+			states.TagKeyAddr + ":" + addr,
 		}})
 	if err != nil {
 		return nil, err
@@ -278,7 +278,7 @@ func (c *Client) StartState(e *am.Event) {
 	nmConn := &clientNetMachConn{rpc: c}
 	// tmp state names
 	stateNames := slices.Collect(maps.Keys(c.schema))
-	id := PrefixNetMach + c.Id
+	id := states.PrefixNetMach + c.Id
 	// RPC parent or actual parent
 	var parent am.Api = c.Mach
 	if os.Getenv(EnvAmRpcDbg) == "" && c.Opts.Parent != nil {
@@ -544,7 +544,7 @@ func (c *Client) HandshakingState(e *am.Event) {
 		c.updateStatesSchema(resp)
 
 		// ID as tag TODO find-n-replace the tag, not via index [1]
-		c.NetMach.tags[1] = "src-id:" + resp.Serialized.ID
+		c.NetMach.tags[1] = states.TagKeySrcId + ":" + resp.Serialized.ID
 		// TODO setter
 		c.NetMach.remoteId = resp.Serialized.ID
 

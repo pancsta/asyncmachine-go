@@ -112,6 +112,7 @@ tools/visualizer/testdata/*
 /docs/editors/skills/am-cook
 /docs/editors/skills/am-full
 /docs/editors/skills/am-mini
+/docs/editors/skills/am-readme
 /pkg/history/badger/amhist.badger
 /examples/wasm/client/amhist.badger/
 /.rumdl_cache/

@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/alitto/pond/v2"
@@ -231,6 +232,7 @@ func IsMulti(mach am.Api, state string) bool {
 
 // StatesToIndexes converts a list of state names to a list of state indexes,
 // for the given machine. It returns -1 for unknown states.
+// Deprecated, use [am.S.Index].
 func StatesToIndexes(allStates am.S, states am.S) []int {
 	indexes := make([]int, len(states))
 	for i, state := range states {
@@ -242,6 +244,7 @@ func StatesToIndexes(allStates am.S, states am.S) []int {
 
 // IndexesToStates converts a list of state indexes to a list of state names,
 // for a given machine.
+// Deprecated, use [am.S.FilterIndex].
 func IndexesToStates(allStates am.S, indexes []int) am.S {
 	states := make(am.S, len(indexes))
 	for i, idx := range indexes {
@@ -584,6 +587,13 @@ func Wait(ctx context.Context, length time.Duration) bool {
 	}
 }
 
+// WaitCh is like [Wait], but returns a channel.
+func WaitCh(ctx context.Context, length time.Duration) <-chan struct{} {
+	return WhenFunc(func() {
+		Wait(ctx, length)
+	})
+}
+
 // Interval runs a function at a given interval, for a given duration, or until
 // the context is done. Returns nil if the duration has passed, or err is ctx is
 // done. The function should return false to stop the interval.
@@ -854,6 +864,7 @@ func SetEnvLogLevel(level am.LogLevel) {
 // Implements checks is statesChecked implement statesNeeded. It's an equivalent
 // of Machine.Has(), but for slices of state names, and with better error msgs.
 func Implements(statesChecked, statesNeeded am.S) error {
+	// TODO use S.Has
 	for _, state := range statesNeeded {
 		if !slices.Contains(statesChecked, state) {
 			return errors.New("missing state: " + state)
@@ -964,13 +975,60 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 			// TODO fix highlighting issues in am-dbg
 			result[key] = strings.Trim(result[key], "[]")
 
+		// ints
+
 		case int:
 			// skip default
 			if v == 0 {
 				continue
 			}
 			result[key] = fmt.Sprintf("%d", v)
+		case uint:
+			// skip default
+			if v == 0 {
+				continue
+			}
+			result[key] = fmt.Sprintf("%d", v)
+		case int64:
+			// skip default
+			if v == 0 {
+				continue
+			}
+			result[key] = fmt.Sprintf("%d", v)
+		case uint64:
+			// skip default
+			if v == 0 {
+				continue
+			}
+			result[key] = fmt.Sprintf("%d", v)
+
+		// int slices
+
 		case []int:
+			// combine []int into a single comma-separated string
+			if len(v) == 0 {
+				continue
+			}
+			result[key] = fmt.Sprintf("%d", v)
+			// TODO fix highlighting issues in am-dbg
+			result[key] = strings.Trim(result[key], "[]")
+		case []uint:
+			// combine []int into a single comma-separated string
+			if len(v) == 0 {
+				continue
+			}
+			result[key] = fmt.Sprintf("%d", v)
+			// TODO fix highlighting issues in am-dbg
+			result[key] = strings.Trim(result[key], "[]")
+		case []int64:
+			// combine []int into a single comma-separated string
+			if len(v) == 0 {
+				continue
+			}
+			result[key] = fmt.Sprintf("%d", v)
+			// TODO fix highlighting issues in am-dbg
+			result[key] = strings.Trim(result[key], "[]")
+		case []uint64:
 			// combine []int into a single comma-separated string
 			if len(v) == 0 {
 				continue
@@ -1257,9 +1315,17 @@ func (g *MachGroup) Is1(state string) bool {
 
 // Pool creates a highly configurable pond pool. Use SubmitErr or Submit on the
 // result.
-func Pool(ctx context.Context, limit int) pond.TaskGroup {
-	pool := pond.NewPool(limit)
-	return pool.NewGroupContext(ctx)
+func Pool(ctx context.Context, limit int) pond.Pool {
+	return pond.NewPool(limit, pond.WithContext(ctx))
+}
+
+// CloseSafe closes a channel if it is not already closed.
+func CloseSafe[T any](ch chan T) {
+	select {
+	case <-ch:
+	default:
+		close(ch)
+	}
 }
 
 // ///// ///// /////
@@ -1332,21 +1398,26 @@ func (c Cond) IsEmpty() bool {
 
 // ///// ///// /////
 
-// TODO thread safety via atomics
+// StateLoop is for a single state and it's context states. See [NewStateLoop].
 type StateLoop struct {
 	ResetInterval time.Duration
-	// max ticks
+	// Threshold is the max number of ticks (for both the loop state and context
+	// states) withing the interval window.
 	Threshold int
+
+	// mutable
+
+	// last seen machine time
+	lastMTime atomic.Uint64
+	lastHTime atomic.Int64
+	ended     atomic.Bool
+
+	// read-only
 
 	loopState string
 	ctxStates am.S
 	mach      am.Api
-	ended     bool
 	check     func() bool
-
-	// last seen machine time
-	lastMTime uint64
-	lastHTime time.Time
 	// machine time of [ctxStates] when started
 	startMTime uint64
 	// Start Human Time
@@ -1355,7 +1426,7 @@ type StateLoop struct {
 
 func (l *StateLoop) String() string {
 	ok := "ok"
-	if l.ended {
+	if l.ended.Load() {
 		ok = "ended"
 	}
 
@@ -1364,7 +1435,7 @@ func (l *StateLoop) String() string {
 
 // Break breaks the loop.
 func (l *StateLoop) Break() {
-	l.ended = true
+	l.ended.Store(true)
 	l.mach.Log(l.String())
 }
 
@@ -1375,13 +1446,11 @@ func (l *StateLoop) Sum() uint64 {
 
 // Ok returns true if the loop should continue.
 func (l *StateLoop) Ok(ctx context.Context) bool {
-	if l.ended {
+	if l.ended.Load() {
 		return false
 	} else if ctx != nil && ctx.Err() != nil {
-		err := fmt.Errorf("loop: arg ctx expired for %s/%s", l.mach.Id(),
-			l.loopState)
-		l.mach.AddErr(err, nil)
-		l.ended = true
+		l.mach.Log("loop: arg ctx expired for %s/%s", l.mach.Id(), l.loopState)
+		l.ended.Store(true)
 
 		return false
 
@@ -1389,23 +1458,24 @@ func (l *StateLoop) Ok(ctx context.Context) bool {
 		err := fmt.Errorf("loop: state ctx expired for %s/%s", l.mach.Id(),
 			l.loopState)
 		l.mach.AddErr(err, nil)
-		l.ended = true
+		l.ended.Store(true)
 
 		return false
 	}
 
 	// stop on a function check
 	if l.check != nil && !l.check() {
-		l.ended = true
+		l.ended.Store(true)
 
 		return false
 	}
 
 	// reset counters on a new interval window
 	sum := l.mach.Time(l.ctxStates).Sum(nil)
-	if time.Since(l.lastHTime) > l.ResetInterval {
-		l.lastHTime = time.Now()
-		l.lastMTime = sum
+	lastH := l.lastHTime.Load()
+	if lastH == 0 || time.Since(time.Unix(0, lastH)) > l.ResetInterval {
+		l.lastHTime.Store(time.Now().UnixNano())
+		l.lastMTime.Store(sum)
 
 		return true
 
@@ -1414,12 +1484,12 @@ func (l *StateLoop) Ok(ctx context.Context) bool {
 		err := fmt.Errorf("loop: threshold exceeded for %s/%s", l.mach.Id(),
 			l.loopState)
 		l.mach.AddErr(err, nil)
-		l.ended = true
+		l.ended.Store(true)
 
 		return false
 	}
 
-	l.lastMTime = sum
+	l.lastMTime.Store(sum)
 
 	return true
 }
@@ -1427,20 +1497,22 @@ func (l *StateLoop) Ok(ctx context.Context) bool {
 // Ended returns the ended flag, but does not any context. Useful for
 // negotiation handles which don't have state context yet.
 func (l *StateLoop) Ended() bool {
-	return l.ended
+	return l.ended.Load()
 }
 
 // NewStateLoop helper creates a state loop guard bound to a specific state
 // (eg Heartbeat), preventing infinite loops. It monitors context, off states,
 // ticks of related "context states", and an optional check function. We can
-// adjust Threshold and ResetInterval.
+// adjust [StateLoop.Threshold] and [StateLoop.ResetInterval].
 // Not thread safe ATM.
 func NewStateLoop(
 	mach *am.Machine, loopState string, optCheck func() bool,
 ) *StateLoop {
 	schema := mach.Schema()
 	if !mach.Has1(loopState) {
-		return &StateLoop{ended: true}
+		l := &StateLoop{}
+		l.ended.Store(true)
+		return l
 	}
 
 	// collect related states
@@ -1536,6 +1608,7 @@ func (l IoWriterToMachLog) Write(p []byte) (n int, err error) {
 // TagValue returns the value part from a text tag "key:value". For tag without
 // value, it returns the tag name.
 func TagValue(tags []string, key string) string {
+	// TODO move to a dedicated Schema struct
 	for _, t := range tags {
 		// no value
 		if t == key {
@@ -1557,6 +1630,7 @@ func TagValue(tags []string, key string) string {
 
 // TagValueInt is like TagValue, but returns a formatted int.
 func TagValueInt(tags []string, key string) int {
+	// TODO move to a dedicated Schema struct
 	v := TagValue(tags, key)
 	if v == "" {
 		return -1
@@ -1568,6 +1642,7 @@ func TagValueInt(tags []string, key string) int {
 // CountRelations will count all referenced states in all relations of the
 // given state.
 func CountRelations(state *am.State) int {
+	// TODO move to a dedicated Schema struct
 	return len(state.Remove) + len(state.Add) + len(state.Require) +
 		len(state.After)
 }
@@ -1718,6 +1793,8 @@ func listHandlers(handlers any, states S) ([]string, error) {
 // list of states. Returns a list of copied states, and an error. CopySchema
 // verifies states.
 func CopySchema(source am.Schema, target *am.Machine, states am.S) error {
+	// TODO group as amhelp.Schema
+
 	if len(states) == 0 {
 		return nil
 	}
@@ -1739,6 +1816,8 @@ func CopySchema(source am.Schema, target *am.Machine, states am.S) error {
 // SchemaHash computes an MD5 hash of the passed schema. The order of states
 // is not important.
 func SchemaHash(schema am.Schema) string {
+	// TODO group as amhelp.Schema
+
 	ret := ""
 	if schema == nil {
 		return ""
@@ -1849,14 +1928,37 @@ func EvalSetter(
 
 // TODO ChanGetter
 
+// NewDynMach initializes a new machine with dynamic handlers (map-based).
+// Useful for prototyping or when declaring handlers isn't feasible.
+// TODO add to readme
+func NewDynMach(
+	ctx context.Context, schema am.Schema,
+	negs map[string]am.HandlerNegotiation,
+	finals map[string]am.HandlerFinal, state S,
+) (*am.Machine, error) {
+	mach := am.New(ctx, schema, nil)
+	_, err := mach.HandlersBindMaps(negs, finals)
+	if err != nil {
+		return nil, err
+	}
+	if len(state) > 0 {
+		mach.Set(state, nil)
+	}
+
+	return mach, err
+}
+
 // ///// ///// /////
 
 // ///// CAN
 
 // ///// ///// /////
 
+// TODO migrate Can* to atomic returns
+
 // CantAdd will confirm that the mutation is impossible. Blocks.
 func CantAdd(mach am.Api, states am.S, args am.A) bool {
+	// TODO optimize: poll atomics instead of alloc chans (bench first)
 	args2 := &am.ACheck{
 		CheckDone: make(chan struct{}),
 	}
@@ -1943,6 +2045,116 @@ func AskRemove1(mach am.Api, state string, args am.A) am.Result {
 // AskEvRemove1 is a traced version of [AskRemove] for a single state.
 func AskEvRemove1(e *am.Event, mach am.Api, state string, args am.A) am.Result {
 	return AskEvRemove(e, mach, S{state}, args)
+}
+
+// Promise is a streamlined version of [am.NextMut].
+type Promise struct {
+	Mach am.Api
+
+	called atomic.Bool
+	mut    func() am.Result
+}
+
+// Now calls only once.
+func (p *Promise) Now() am.Result {
+	if !p.called.CompareAndSwap(false, true) {
+		return am.Canceled
+	}
+	return p.mut()
+}
+
+// Again always calls.
+func (p *Promise) Again() am.Result {
+	return p.mut()
+}
+
+// Called returns true for when the promise has been called.
+func (p *Promise) Called() bool {
+	return p.called.Load()
+}
+
+// PromiseAdd returns a closure that executes [am.Machine.Add].
+func PromiseAdd(mach am.Api, states am.S, args am.A) *Promise {
+	return &Promise{
+		Mach: mach,
+		mut: func() am.Result {
+			return mach.Add(states, args)
+		},
+	}
+}
+
+// PromiseEvAdd returns a closure that executes [am.Machine.EvAdd].
+func PromiseEvAdd(e *am.Event, mach am.Api, states am.S, args am.A) *Promise {
+	return &Promise{
+		Mach: mach,
+		mut: func() am.Result {
+			return mach.EvAdd(e, states, args)
+		},
+	}
+}
+
+// PromiseAdd1 returns a closure that executes [am.Machine.Add1].
+func PromiseAdd1(mach am.Api, state string, args am.A) *Promise {
+	return &Promise{
+		Mach: mach,
+		mut: func() am.Result {
+			return mach.Add1(state, args)
+		},
+	}
+}
+
+// PromiseEvAdd1 returns a closure that executes [am.Machine.EvAdd1].
+func PromiseEvAdd1(e *am.Event, mach am.Api, state string, args am.A) *Promise {
+	return &Promise{
+		Mach: mach,
+		mut: func() am.Result {
+			return mach.EvAdd1(e, state, args)
+		},
+	}
+}
+
+// PromiseRemove returns a closure that executes [am.Machine.Remove].
+func PromiseRemove(mach am.Api, states am.S, args am.A) *Promise {
+	return &Promise{
+		Mach: mach,
+		mut: func() am.Result {
+			return mach.Remove(states, args)
+		},
+	}
+}
+
+// PromiseEvRemove returns a closure that executes [am.Machine.EvRemove].
+func PromiseEvRemove(
+	e *am.Event, mach am.Api, states am.S, args am.A,
+) *Promise {
+	return &Promise{
+		Mach: mach,
+		mut: func() am.Result {
+			return mach.EvRemove(e, states, args)
+		},
+	}
+}
+
+// PromiseRemove1 returns a closure that executes [am.Machine.Remove1].
+func PromiseRemove1(mach am.Api, state string, args am.A) *Promise {
+	return &Promise{
+		Mach: mach,
+		mut: func() am.Result {
+			return mach.Remove1(state, args)
+		},
+	}
+}
+
+// PromiseEvRemove1 returns a closure that executes [am.Machine.EvRemove1].
+func PromiseEvRemove1(
+	e *am.Event, mach am.Api, state string, args am.A,
+) *Promise {
+	return &Promise{
+		Mach: mach,
+		mut: func() am.Result {
+			return mach.EvRemove1(e, state, args)
+		},
+	}
 }
 
 // DisposeBind registers a disposal handler, using either the dedicated state
@@ -2038,6 +2250,14 @@ func WhenFunc(fn func()) <-chan struct{} {
 	return resChan
 }
 
+// WhenFuncErr is sugar for WhenFunc accepting funcs returning errors. The
+// returned error is ignored.
+func WhenFuncErr(fn func() error) <-chan struct{} {
+	return WhenFunc(func() {
+		_ = fn()
+	})
+}
+
 // WhenFuncOk converts a blocking call to a bool send channel, which can be used
 // in `select`.
 func WhenFuncOk(fn func() bool) <-chan bool {
@@ -2045,10 +2265,23 @@ func WhenFuncOk(fn func() bool) <-chan bool {
 
 	go func() {
 		if fn() {
-			resChan <- true
+			select {
+			case resChan <- true:
+			default:
+				// no wait
+			}
 		}
 		close(resChan)
 	}()
 
 	return resChan
+}
+
+func ChanToCtx(ch <-chan struct{}) context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-ch
+		cancel()
+	}()
+	return ctx
 }

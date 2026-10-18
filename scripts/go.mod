@@ -1,6 +1,6 @@
 module github.com/pancsta/asyncmachine-go/scripts
 
-go 1.26
+go 1.26.5
 
 tool go101.org/golds
 
@@ -20,9 +20,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0
 	github.com/joho/godotenv v1.5.1
 	github.com/nkall/compactnumber v1.1.1
-	github.com/pancsta/asyncmachine-go v0.0.0-00010101000000-000000000000
-	github.com/pancsta/asyncmachine-go/tools v0.0.0-00010101000000-000000000000
-	// TODO max v0.8.2 for go <1.26
+	github.com/pancsta/asyncmachine-go v0.19.3
 	go101.org/golds v0.8.2
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/tools v0.48.0

@@ -22,6 +22,7 @@ const (
 	// DbgAddr is the default address of the am-dbg server.
 	DbgAddr    = "localhost:6831"
 	DbgAddrWeb = "localhost:6832"
+	DbgAddrSsh = "localhost:6833"
 	// EnvAmDbgAddr is the address of a running am-dbg instance.
 	// "1" expands to "localhost:6831"
 	EnvAmDbgAddr = "AM_DBG_ADDR"
@@ -41,7 +42,7 @@ type DbgMsg interface {
 // ///// STRUCT
 
 // DbgMsgStruct contains the state and relations data.
-// TODO refac: MsgSchema
+// TODO refac: MsgMachine
 type DbgMsgStruct struct {
 
 	// Machine ID
@@ -57,7 +58,7 @@ type DbgMsgStruct struct {
 	GroupsOrder []string
 	// parent am ID
 	Parent string
-	// am tags
+	// machine tags
 	Tags []string
 
 	// TODO include the current mach time
@@ -90,6 +91,10 @@ func (d *DbgMsgStruct) HasTag(tag string, val string) bool {
 	}
 
 	return false
+}
+
+func (d *DbgMsgStruct) Schema() am.Schema {
+	return d.States
 }
 
 // ///// TRANSITION
@@ -519,6 +524,14 @@ func (t *Tracer) TransitionEnd(tx *am.Transition) {
 		// debug
 		// QueueDump: mach.QueueDump(),
 	}
+
+	// debug
+	// for _, t := range slices.Concat(tx.LogEntries, tx.PreLogEntries) {
+	// 	if strings.Contains(t.Text, "Template ConfigValid") &&
+	// 		strings.Contains(t.Text, "when:match") {
+	// 		print()
+	// 	}
+	// }
 
 	// collect args
 	semlog := mach.SemLogger()

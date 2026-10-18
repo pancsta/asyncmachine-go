@@ -323,6 +323,12 @@ func multiLit(open, close string, items ...jen.Code) *jen.Statement {
 
 // genSchemaVar renders the {Name}Schema var, merging inherited schemas (if
 // any) with the local one.
+// TODO support short single-indent form
+//
+//	  var LaygenPageSchema = ssam.BasicSchema.
+//		  Merge(ssam.ConnectedSchema).
+//		  Merge(ssam.DisposedSchema).Merge(am.Schema{
+//	    ss.State: ...
 func (g *SchemaGenerator) genSchemaVar(f *jen.File, ssN string) {
 	f.Commentf("%sSchema represents all relations and properties of [%sStates].",
 		g.Name, g.Name)
@@ -519,7 +525,7 @@ func NewSchemaGenerator(
 }
 
 func GenUtilsFile() string {
-	return ssam.StatesUtilsFile
+	return ssam.UtilsFile
 }
 
 func capitalizeFirstLetter(s string) string {
