@@ -206,7 +206,8 @@ func TestExportMach(t *testing.T) {
 
 func TestMcp(t *testing.T) {
 	ctx := context.Background()
-	mach, err := am.NewCommon(ctx, "dbg-test", states.DebuggerSchema, ss.Names(), nil, nil, nil)
+	mach, err := am.NewCommon(
+		ctx, "dbg-test", states.DebuggerSchema, ss.Names(), nil, nil, nil)
 	require.NoError(t, err)
 
 	d := &Debugger{

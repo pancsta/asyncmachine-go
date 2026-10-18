@@ -210,7 +210,7 @@ func (d *Debugger) ReadyState(e *am.Event) {
 
 	// TODO merge parsing with addr bar
 	if addr, err := types.ParseMachUrl(d.params.MachUrl); err == nil {
-		go d.GoToMachAddress(addr, false)
+		go d.GoToMachAddress(addr, false, true)
 	}
 
 	// initial focus TODO def focus
@@ -827,6 +827,13 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	selectedUpdated := false
 	for i, msg := range msgs {
 
+		// debug
+		// for _, t := range slices.Concat(msg.LogEntries, msg.PreLogEntries) {
+		// 	if strings.Contains(t.Text, "Template ConfigValid") {
+		// 		fmt.Println(t.Text)
+		// 	}
+		// }
+
 		// TODO check tokens
 		machId := msg.MachineID
 		c := d.Clients[machId]
@@ -1002,6 +1009,7 @@ func (d *Debugger) SetGroupState(e *am.Event) {
 	// TODO merge once partial negotiation lands
 	d.Mach.EvAdd1(e, ss.DiagramsMachRendering, nil)
 	d.Mach.EvAdd1(e, ss.DiagramsStatesRendering, nil)
+	// TODO make sure log rebuilts without out-of-group
 	d.Mach.EvAdd(e, am.S{ss.ToolToggled, ss.UpdateLogScheduled}, Pass(&A{
 		FilterTxs:     true,
 		LogRebuildEnd: len(c.MsgTxs),
@@ -1345,7 +1353,7 @@ func (d *Debugger) ScrollToMarkerState(e *am.Event) {
 	go d.GoToMachAddress(&types.MachAddress{
 		MachId: marker.ClientId,
 		TxId:   marker.TxId,
-	}, false)
+	}, false, true)
 }
 
 var _ = ss.ToggleTool
@@ -1422,6 +1430,7 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		filterTxs = true
 
 	case types.ToolFilterTraces:
+		// TODO rebuild the whole log buffer
 		d.Mach.EvToggle1(e, ss.FilterTraces, nil)
 
 	case types.ToolLog:
@@ -2110,10 +2119,11 @@ func (d *Debugger) ToolRainState(e *am.Event) {
 	}
 }
 
-// AnyEnter prevents most of mutations during a UI redraw (and vice versa)
-// forceful race solving
 var _ = am.StateAny
 
+// AnyEnter prevents most of mutations during a UI redraw (and vice versa)
+// forceful race solving
+// TODO avoid this, use go-tui
 func (d *Debugger) AnyEnter(e *am.Event) bool {
 	// always pass network traffic
 	mach := d.Mach
