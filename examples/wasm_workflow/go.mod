@@ -47,14 +47,23 @@ require (
 	github.com/d2lang/mathjax-go v0.1.0 // indirect
 	github.com/d2lang/rough-go v0.2.0 // indirect
 	github.com/d2lang/util-go v0.2.0 // indirect
+	github.com/deckarep/golang-set/v2 v2.9.0 // indirect
 	github.com/dlclark/regexp2/v2 v2.6.0 // indirect
 	github.com/dominikbraun/graph v0.23.0 // indirect
+	github.com/dsoprea/go-exif/v3 v3.0.1 // indirect
+	github.com/dsoprea/go-logging v0.0.0-20200710184922-b02d349568dd // indirect
+	github.com/dsoprea/go-png-image-structure/v2 v2.0.0-20210512210324-29b889a6093d // indirect
+	github.com/dsoprea/go-utility/v2 v2.0.0-20221003172846-a3e1774ef349 // indirect
 	github.com/failsafe-go/failsafe-go v0.6.8 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/gdamore/tcell/v2 v2.13.9 // indirect
+	github.com/go-errors/errors v1.5.1 // indirect
+	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/go-stack/stack v1.8.1 // indirect
+	github.com/golang/geo v0.0.0-20260713102120-857a528af641 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
@@ -66,6 +75,7 @@ require (
 	github.com/mark3labs/mcp-go v0.48.0 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/mazznoer/csscolorparser v0.1.8 // indirect
+	github.com/mxschmitt/playwright-go v0.6100.0 // indirect
 	github.com/orsinium-labs/enum v1.4.0 // indirect
 	github.com/pancsta/cview v1.5.23 // indirect
 	github.com/pancsta/d2 v0.8.2-0.20260829154946-02b64fd28fde // indirect
@@ -82,6 +92,7 @@ require (
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yuin/goldmark v1.8.5 // indirect
 	github.com/zyedidia/clipper v0.1.1 // indirect
+	go.mongodb.org/mongo-driver v1.17.9 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.42.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.42.0 // indirect
@@ -105,6 +116,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260330182312-d5a96adf58d8 // indirect
 	google.golang.org/grpc v1.79.3 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	mvdan.cc/sh/v3 v3.7.0 // indirect
 )

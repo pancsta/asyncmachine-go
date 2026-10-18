@@ -1,5 +1,7 @@
 # Diagrams
 
+These are documentation diagrams, if you're looking for machine diagrams head over to [`/tools/cmd/am-vis`](/tools/cmd/am-vis/README.md).
+
 * [Machine Basics](#machine-basics)
   * [Multi-state](#multi-state)
   * [Clock and state contexts](#clock-and-state-contexts)

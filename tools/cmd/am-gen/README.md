@@ -88,58 +88,64 @@ Commands:
 package states
 
 import (
-    am "github.com/pancsta/asyncmachine-go/pkg/machine"
-    ssam "github.com/pancsta/asyncmachine-go/pkg/states"
+	"context"
+	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
-// MyMachStatesDef contains all the states of the MyMach state machine.
+// MyMachStatesDef contains all the states of the [MyMach] state-machine.
 type MyMachStatesDef struct {
-    *am.StatesBase
+	*am.StatesBase
 
-    State1 string
-    State2 string
+	State1 string
+	State2 string
 
-    // inherit from BasicStatesDef
-    *ssam.BasicStatesDef
-    // inherit from ConnectedStatesDef
-    *ssam.ConnectedStatesDef
+	// inherit from BasicStatesDef
+	*ssam.BasicStatesDef
+	// inherit from ConnectedStatesDef
+	*ssam.ConnectedStatesDef
 }
 
-// MyMachGroupsDef contains all the state groups MyMach state machine.
+// MyMachGroupsDef contains all the state groups [MyMach] state-machine.
 type MyMachGroupsDef struct {
-    *ssam.ConnectedGroupsDef
-    Group1 S
-    Group2 S
+	*ssam.ConnectedGroupsDef
+	Group1 S
+	Group2 S
 }
 
-// MyMachSchema represents all relations and properties of MyMachStates.
-var MyMachSchema = SchemaMerge(
-    // inherit from BasicStruct
-    ssam.BasicStruct,
-    // inherit from ConnectedStruct
-    ssam.ConnectedStruct,
-    am.Schema{
-
-        ssM.State1: {},
-        ssM.State2: {
-            Multi: true,
-        },
-})
+// MyMachSchema represents all relations and properties of [MyMachStates].
+var MyMachSchema = am.Schema{}.Merge(
+	// inherit from BasicSchema
+	ssam.BasicSchema,
+	// inherit from ConnectedSchema
+	ssam.ConnectedSchema,
+	am.Schema{
+		ssM.State1: {},
+		ssM.State2: {
+			Multi: true,
+		},
+	},
+)
 
 // EXPORTS AND GROUPS
-
 var (
-    ssM = am.NewStates(MyMachStatesDef{})
-    sgM = am.NewStateGroups(MyMachGroupsDef{
-        Group1: S{},
-        Group2: S{},
-    }, ssam.ConnectedGroups)
+	ssM = am.NewStates(MyMachStatesDef{})
+	sgM = am.NewStateGroups(MyMachGroupsDef{
+		Group1: S{},
+		Group2: S{},
+	}, ssam.ConnectedGroups)
 
-    // MyMachStates contains all the states for the MyMach machine.
-    MyMachStates = ssM
-    // MyMachGroups contains all the state groups for the MyMach machine.
-    MyMachGroups = sgM
+	// MyMachStates contains all the states for the [MyMach] state-machine.
+	MyMachStates = ssM
+	// MyMachGroups contains all the state groups for the [MyMach] state-machine.
+	MyMachGroups = sgM
 )
+
+// NewMyMach creates a new [MyMach] state-machine in the most basic form.
+func NewMyMach(ctx context.Context) *am.Machine {
+	return am.New(ctx, MyMachSchema, nil)
+}
 ```
 
 ### Schema Help
@@ -150,14 +156,14 @@ Usage: am-gen schema [--version] [--inherit INHERIT] [--group GROUP] [--groups G
 Options:
   --version
   --inherit INHERIT, -i INHERIT
-                         Inherit from built-in state-machines: basic,connected,rpc/statesrc,node/worker
+                         Inherit from built-in state-machines: basic,disposed,connected,rpc/statesrc,node/worker
   --group GROUP          Repeatable group to generate. Eg: --group Group1 --group Group2
   --groups GROUPS, -g GROUPS
                          Groups to generate. Eg: Group1,Group2
   --name NAME, -n NAME   Name of the state machine. Eg: MyMach [default: MyMach]
   --force, -f            Override output file (if any)
   --utils, -u            Generate states_utils.go in CWD. Overrides files. [default: true]
-  --global               Import pkg/states/global and skip generating states_utils.go
+  --global               Import pkg/states/global and skip generating states_utils.go [default: true]
   --output, -o           Print output to stdout
   --state STATE          Repeatable state name to generate. Eg: --state State1 --state State2:multi
   --states STATES, -s STATES
@@ -179,14 +185,14 @@ Positional arguments:
 Options:
   --version
   --inherit INHERIT, -i INHERIT
-                         Inherit from built-in state-machines: basic,connected,rpc/statesrc,node/worker
+                         Inherit from built-in state-machines: basic,disposed,connected,rpc/statesrc,node/worker
   --group GROUP          Repeatable group to generate. Eg: --group Group1 --group Group2
   --groups GROUPS, -g GROUPS
                          Groups to generate. Eg: Group1,Group2
   --name NAME, -n NAME   Name of the state machine. Eg: MyMach [default: MyMach]
   --force, -f            Override output file (if any)
   --utils, -u            Generate states_utils.go in CWD. Overrides files. [default: true]
-  --global               Import pkg/states/global and skip generating states_utils.go
+  --global               Import pkg/states/global and skip generating states_utils.go [default: true]
   --output, -o           Print output to stdout
 
 Global options:

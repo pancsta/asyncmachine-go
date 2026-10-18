@@ -8,7 +8,7 @@ This document contains a brief overview of `asyncmachine-go` schema formats. JSO
 - [Schema v3](#schema-v3)
 - [YAML Schema](#yaml-schema)
 - [YAML Machine](#yaml-machine)
-- [MachAddress URLs](#machaddress-urls)
+- [URL Formats](#url-formats)
 
 ## Schema v0
 
@@ -174,7 +174,7 @@ type ServerGroupsDef struct {
 }
 
 // ServerSchema represents all relations and properties of ClientStates.
-var ServerSchema = SchemaMerge(
+var ServerSchema = Schema{}.Merge(
     // inherit from SharedStruct
     SharedSchema,
     am.Schema{
@@ -246,7 +246,8 @@ See [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) for schema bootstrapping 
 - generated **YES**
 - bootstrapped **NO**
 
-Schema v3 is flattened schema v2 which makes it reflection-less. It's a WIP in the [`/feat/tinygo`](https://github.com/pancsta/asyncmachine-go/pull/382) branch.
+Schema v3 is flattened schema v2 which doesn't use `reflect`, but requires a generation step. It's a WIP in the
+[`/feat/tinygo`](https://github.com/pancsta/asyncmachine-go/pull/382) branch.
 
 ## YAML Schema
 
@@ -298,7 +299,7 @@ queue_tick: 25
 machine_tick: 1
 ```
 
-## MachAddress URLs
+## URL Formats
 
 Machine addresses are implemented in `am-dbg` and `am-vis` for convenient copy-pasta.
 
@@ -306,10 +307,10 @@ Machine addresses are implemented in `am-dbg` and `am-vis` for convenient copy-p
 
 - **Host (`MachId`)**: State machine identifier (e.g. `mach://my-mach`).
 - **Path (`TxId`, `Step`)**:
-  - `/<tx-id>`: Specific transition ID (e.g. `mach://my-mach/tx-101`).
-  - `/<tx-id>/<step>`: Step index within the transition (e.g. `mach://my-mach/tx-101/2`).
+  - `/<tx-id>`: Specific transition ID (e.g. `mach://my-mach/hd723h2hd`).
+  - `/<tx-id>/<step>`: Step index within the transition (e.g. `mach://my-mach/hd723h2hd/2`).
 - **Query Parameters**:
-  - `t=<uint64>`: Machine logical time (`MachTime`).
+  - `t=<uint64>`: Machine time (`MachTime`).
   - `q=<uint64>`: Queue tick (`QueueTick`).
   - `ht=<RFC3339>`: Wall-clock timestamp (`HumanTime`).
   - `state=<string>`: Selected/highlighted state name.
@@ -318,5 +319,7 @@ Machine addresses are implemented in `am-dbg` and `am-vis` for convenient copy-p
 Example:
 
 ```text
-mach://auth-service/tx-45/2?state=Ready&t=1450
+mach://auth-service/hd723h2hd/2?state=Ready&t=1450
 ```
+
+// TODO ctx://mach/state/tick format for state contexts

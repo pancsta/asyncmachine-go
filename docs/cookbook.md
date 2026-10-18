@@ -1022,5 +1022,6 @@ tx, err := amhelp.EvalGetter(ctx, "PrevTx", 3, mach,
 // click more and wait for unclick
 err = amhelp.WaitForErrAll(ctx, time.Second, mach,
     mach.WhenQueue(mach.EvAdd1(e, ss.ClickingMore, nil)),
-    mach.WhenTicks(ss.ClickingMore, am.NextInactiveIn(mach.Tick(ss.ClickingMore)), ctx))
+    mach.WhenTicks(ss.ClickingMore,
+      am.NextInactiveIn(mach.Tick(ss.ClickingMore)), ctx))
 ```

@@ -125,9 +125,10 @@ source.HandlersBind(h)
 
 ## Nesting Schemas
 
-Schemas can be nested under a prefix, as another way of re-use after embedding. Type safety works the same way as 
-for regular schemas, eg `ss.Parent1.Nested1` returns "Parent1Nested1". It's useful for multiple fan-out-fan-in threads
-(possibly defined dynamically), as well as a lightweight alternative to piping (which will share a single queue).
+Schemas can be nested under a prefix, as another way of re-use after embedding. Type safety works the same way as
+for regular schemas, eg `ss.Parent1.Nested1` returns an already prefixed value of `"Parent1Nested1"`. It's useful for
+multiple fan-out-fan-in threads (possibly defined dynamically), as well as a lightweight alternative to piping (which
+will share a single queue). Nested schemas combine nicely with handler prefixes from [/pkg/machine.BindOpts](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#BindOpts).
 
 ```go
 type NestedStatesDef struct {

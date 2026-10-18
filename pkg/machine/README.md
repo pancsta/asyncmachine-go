@@ -540,6 +540,77 @@ type Api interface {
 }
 ```
 
+## Dynamic State Machines
+
+Both handlers and schemas are fully dynamic, including via dynamically interpreted Go code thanks to
+[`yaegi`](/pkg/integrations/yaegi).
+
+```go
+import amhelp "TODO"
+
+// ...
+
+// states
+var (
+  StateFoo = "Foo"
+  StateBar = "Bar"
+  StateBaz = "Baz"
+)
+
+// machine
+mach, err := amhelp.NewDynMach(ctx, machine.Schema{
+  // schema
+
+  StateFoo: {
+    Auto:    true,
+    Require: []string{StateBar},
+  },
+  StateBar: {
+    Auto:    true,
+    Require: []string{StateBaz},
+  },
+  StateBaz: {
+    Auto: true,
+  },
+}, map[string]machine.HandlerNegotiation{
+
+  // FooEnter() handler
+  StateFoo + machine.SuffixEnter: func(e *machine.Event) bool {
+    return rand.Intn(2) == 1
+  },
+}, map[string]machine.HandlerFinal{
+
+  // FooState() handler
+  StateFoo + machine.SuffixState: func(e *machine.Event) {
+    mach := e.Machine()
+    ctx := mach.NewStateCtx(StateFoo)
+
+    mach.Fork(ctx, e, func() {
+      mach.EvRemove1(e, StateBar, nil)
+    })
+  },
+}
+
+// ...
+
+mach.SetSchema(machine.Schema{
+  StateFoo: {
+    Auto:    true,
+    Require: []string{StateBar},
+  },
+  StateBar: {
+    Auto:    true,
+    Require: []string{StateBaz},
+  },
+  StateBaz: {
+    Auto: true,
+  },
+  "NewOne": {
+    Auto: true,
+  },
+}, am.S{StateFoo, StateBar, StateBaz, "NewOne"})
+```
+
 ## Tests
 
 It's very easy to get a grasp of how asyncmachine works by reading the [idiomatic test suite](/pkg/machine/machine_test.go).
