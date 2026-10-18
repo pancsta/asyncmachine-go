@@ -30,6 +30,7 @@ Skills are divided based on token usage, each fully contained within a single `S
 - `/am` ~2.9k tokens - basic boilerplate
 - `/am-cook` ~11k tokens - also includes [`/docs/cookbook.md`](/docs/cookbook.md)
 - `/am-full` ~18k tokens - also includes [`/docs/manual.md`](/docs/manual.md)
+- `/am-readme` all package READMEs from [`/pkg`](/pkg)
 - `/am-cli` all commands from [`/tools/cmd`](/tools/cmd) and their `--help` docs 
 
 ## Live Templates
