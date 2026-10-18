@@ -5,6 +5,33 @@
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
+## [v0.19.5](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.5) (2026-10-18)
+
+- release/v0.19.5 [\#499](https://github.com/pancsta/asyncmachine-go/pull/499) (@pancsta)
+- feat: release v0.19.5 [\#498](https://github.com/pancsta/asyncmachine-go/pull/498) (@pancsta)
+- feat\(am-dbg\): release am-dbg v0.19.5 [\#497](https://github.com/pancsta/asyncmachine-go/pull/497) (@pancsta)
+- feat\(am-vis\): speed up diagram rendering by 50x [\#496](https://github.com/pancsta/asyncmachine-go/pull/496) (@pancsta)
+- feat\(machine\): add support for nested schemas [\#495](https://github.com/pancsta/asyncmachine-go/pull/495) (@pancsta)
+- test\(wasm\): add integration tests for WASM examples [\#494](https://github.com/pancsta/asyncmachine-go/pull/494) (@pancsta)
+- feat\(am-relay\): add reconn support to --fwd-data, including schemas [\#493](https://github.com/pancsta/asyncmachine-go/pull/493) (@pancsta)
+- feat\(am-vis\): add linking netmachs with source machs [\#492](https://github.com/pancsta/asyncmachine-go/pull/492) (@pancsta)
+- feat\(am-vis\): add --output-png CLI flag [\#491](https://github.com/pancsta/asyncmachine-go/pull/491) (@pancsta)
+- docs\(ai\): add /am-readme skill with all markdowns [\#490](https://github.com/pancsta/asyncmachine-go/pull/490) (@pancsta)
+- docs\(website\): serve markdown on Accept header and file ext [\#489](https://github.com/pancsta/asyncmachine-go/pull/489) (@pancsta)
+- feat\(am-dbg\): add Keystroke, TypeText, MouseClick, MouseScroll cmds to MCP [\#488](https://github.com/pancsta/asyncmachine-go/pull/488) (@pancsta)
+- fix\(am-relay\): fix args for dbg rotation [\#487](https://github.com/pancsta/asyncmachine-go/pull/487) (@pancsta)
+- fix\(am-dbg\): fix When entries never disposed in log reader for >1 state [\#486](https://github.com/pancsta/asyncmachine-go/pull/486) (@pancsta)
+- fix\(am-dbg\): fix matrix rain timestamp diffs for tx filters [\#485](https://github.com/pancsta/asyncmachine-go/pull/485) (@pancsta)
+- fix\(machine\): fix When with ctx for multiple states deadlocked [\#484](https://github.com/pancsta/asyncmachine-go/pull/484) (@pancsta)
+- fix\(history\): add GC for ticks table in SQL, prevent a storage leak, dont block [\#483](https://github.com/pancsta/asyncmachine-go/pull/483) (@pancsta)
+- fix\(graph\): mock missing clients for parent, rpc relations [\#482](https://github.com/pancsta/asyncmachine-go/pull/482) (@pancsta)
+
+## [v0.19.4](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.4) (2026-08-29)
+
+- feat: release v0.19.4 [\#480](https://github.com/pancsta/asyncmachine-go/pull/480) (@pancsta)
+- fix\(rpc\): fix websocket auth in WASM [\#479](https://github.com/pancsta/asyncmachine-go/pull/479) (@pancsta)
+- fix\(am-dbg\): fix diagram symlinks and toolbar button [\#478](https://github.com/pancsta/asyncmachine-go/pull/478) (@pancsta)
+
 ## [v0.19.3](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.3) (2026-08-25)
 
 - feat: release v0.19.3 [\#475](https://github.com/pancsta/asyncmachine-go/pull/475) (@pancsta)
