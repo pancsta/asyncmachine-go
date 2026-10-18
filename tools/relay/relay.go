@@ -31,7 +31,7 @@ import (
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
-	typesDbg "github.com/pancsta/asyncmachine-go/tools/debugger/types"
+	typesdbg "github.com/pancsta/asyncmachine-go/tools/debugger/types"
 	"github.com/pancsta/asyncmachine-go/tools/relay/states"
 	"github.com/pancsta/asyncmachine-go/tools/relay/types"
 )
@@ -139,8 +139,10 @@ func (r *Relay) StartState(e *am.Event) {
 		if cmd.OutputClients {
 			_ = r.hExportClients()
 		}
-		dbgParams := typesDbg.Params{
-			FwdData: cmd.FwdAddr,
+		dbgParams := func() *typesdbg.Params {
+			return &typesdbg.Params{
+				FwdData: cmd.FwdAddr,
+			}
 		}
 		srvMux, _, err := server.New(r.Mach, cmd.ListenAddr, dbgParams)
 		if err != nil {
@@ -205,17 +207,15 @@ func (r *Relay) HttpStartingState(e *am.Event) {
 			// TODO retry?
 			r.Mach.EvAddErr(e, err, nil)
 		}
-		r.Mach.EvRemove1(e, ssR.HttpReady, nil)
+		if r.Mach.Is1(ssR.HttpReady) {
+			r.Mach.EvRemove1(e, ssR.HttpReady, nil)
+		}
 	})
 }
 
 var _ = ssR.HttpReady
 
 func (r *Relay) HttpReadyState(e *am.Event) {
-	// TODO /dial - RPC clients (WS to TCP dial)
-
-	// ctx := r.Mach.NewStateCtx(ssR.HttpReady)
-
 	r.out("WASM relay listening on http://%s\n", r.Args.Wasm.ListenAddr)
 
 	// static
@@ -223,6 +223,8 @@ func (r *Relay) HttpReadyState(e *am.Event) {
 		r.out("WASM relay serving %s\n", dir)
 		r.HttpMux.Handle("/", http.FileServer(http.Dir(dir)))
 	}
+
+	// TODO opts to selectively disable these
 
 	// tun listen
 	r.HttpMux.HandleFunc("/listen/",
@@ -235,6 +237,12 @@ func (r *Relay) HttpReadyState(e *am.Event) {
 		r.authMiddleware(func(w http.ResponseWriter, req *http.Request) {
 			r.HandleWsTcpDial(e, w, req)
 		}))
+}
+
+func (r *Relay) HttpReadyEnd(e *am.Event) {
+	if s := r.http; s != nil {
+		r.Mach.AddErr(s.Close(), nil)
+	}
 }
 
 func (r *Relay) HandleWsTcpDial(
@@ -485,30 +493,23 @@ func (r *Relay) HandleWsTcpListen(
 	}, ctx)
 }
 
-func (r *Relay) HttpReadyEnd(e *am.Event) {
-	if s := r.http; s != nil {
-		r.Mach.AddErr(s.Close(), nil)
-	}
-}
-
-var _ = ssR.ClientMsg
-
 // ///// ///// /////
 
 // ///// HANDLERS (DBG)
 
 // ///// ///// /////
-// TODO typed args for dbg server
+
+var _ = ssR.ClientMsg
 
 func (r *Relay) ClientMsgEnter(e *am.Event) bool {
-	_, ok1 := e.Args["msgs_tx"].([]*dbg.DbgMsgTx)
-	_, ok2 := e.Args["conn_ids"].([]string)
-	return ok1 && ok2
+	args, ok := am.ParseArgsCheck[typesdbg.A](e.Args)
+	return ok && args.MsgsTx != nil && args.ConnIds != nil
 }
 
 func (r *Relay) ClientMsgState(e *am.Event) {
-	msgs := e.Args["msgs_tx"].([]*dbg.DbgMsgTx)
-	connIds := e.Args["conn_ids"].([]string)
+	args := am.ParseArgs[typesdbg.A](e.Args)
+	msgs := args.MsgsTx
+	connIds := args.ConnIds
 
 	updatedClients := make(map[string]*server.Client)
 
@@ -559,9 +560,8 @@ func (r *Relay) ClientMsgState(e *am.Event) {
 var _ = ssR.ConnectEvent
 
 func (r *Relay) ConnectEventEnter(e *am.Event) bool {
-	msg, ok1 := e.Args["msg_struct"].(*dbg.DbgMsgStruct)
-	_, ok2 := e.Args["conn_id"].(string)
-	if !ok1 || !ok2 || msg.ID == "" {
+	args, ok := am.ParseArgsCheck[typesdbg.A](e.Args)
+	if !ok || args.MsgStruct == nil || args.MsgStruct.ID == "" {
 		r.Mach.Log("Error: msg_struct malformed\n")
 		return false
 	}
@@ -571,8 +571,9 @@ func (r *Relay) ConnectEventEnter(e *am.Event) bool {
 
 func (r *Relay) ConnectEventState(e *am.Event) {
 	// initial structure data
-	msg := e.Args["msg_struct"].(*dbg.DbgMsgStruct)
-	connId := e.Args["conn_id"].(string)
+	args := am.ParseArgs[typesdbg.A](e.Args)
+	msg := args.MsgStruct
+	connId := args.ConnId
 	var c *server.Client
 
 	// update existing client
@@ -609,7 +610,7 @@ func (r *Relay) ConnectEventState(e *am.Event) {
 var _ = ssR.DisconnectEvent
 
 func (r *Relay) DisconnectEventEnter(e *am.Event) bool {
-	_, ok := e.Args["conn_id"].(string)
+	_, ok := am.ParseArgsCheck[typesdbg.A](e.Args)
 	if !ok {
 		r.Mach.Log("Error: DisconnectEvent malformed\n")
 		return false
@@ -619,7 +620,8 @@ func (r *Relay) DisconnectEventEnter(e *am.Event) bool {
 }
 
 func (r *Relay) DisconnectEventState(e *am.Event) {
-	connID := e.Args["conn_id"].(string)
+	args := am.ParseArgs[typesdbg.A](e.Args)
+	connID := args.ConnId
 	for _, c := range r.dbgClients {
 		if c.ConnId != "" && c.ConnId == connID {
 			// mark as disconnected
