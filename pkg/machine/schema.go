@@ -1,6 +1,9 @@
 package machine
 
 import (
+	"errors"
+	"fmt"
+	"maps"
 	"reflect"
 	"runtime"
 	"slices"
@@ -9,7 +12,7 @@ import (
 
 // ///// ///// /////
 
-// ///// STATES & SCHEMA
+// ///// STATES
 
 // ///// ///// /////
 
@@ -27,9 +30,16 @@ type StatesBase struct {
 	names       S
 	groups      map[string][]int
 	groupsOrder []string
+	// prefix for nesting
+	prefix string
 }
 
 var _ States = &StatesBase{}
+
+// Prefix returns the nesting prefix for this state definition.
+func (b *StatesBase) Prefix() string {
+	return b.prefix
+}
 
 func (b *StatesBase) Names() S {
 	return b.names
@@ -65,7 +75,7 @@ func NewStates[G States](states G) G {
 	groups := map[string][]int{}
 	v := reflect.ValueOf(&states).Elem()
 	order := []string{}
-	parseStateNames(v, &names, "self", groups, &order)
+	parseStateNames(v, &names, "self", groups, &order, "")
 	states.SetNames(names)
 	states.SetStateGroups(groups, order)
 
@@ -74,7 +84,7 @@ func NewStates[G States](states G) G {
 
 func parseStateNames(
 	v reflect.Value, names *S, group string, groups map[string][]int,
-	order *[]string,
+	order *[]string, prefix string,
 ) {
 	if group != "StatesBase" {
 		groups[group] = []int{}
@@ -87,7 +97,29 @@ func parseStateNames(
 		value := v.Field(i)
 		kind := field.Type.Kind()
 
-		if field.Anonymous && kind == reflect.Pointer &&
+		// nested struct (inherit states with a prefix)
+		if !field.Anonymous && kind == reflect.Pointer &&
+			field.Type.Elem().Kind() == reflect.Struct {
+
+			if value.IsNil() {
+				elem := reflect.New(field.Type.Elem())
+				value.Set(elem)
+			}
+
+			// set prefix on nested struct's StatesBase
+			baseField := value.Elem().FieldByName("StatesBase")
+			if baseField.IsValid() && baseField.Kind() == reflect.Pointer {
+				if baseField.IsNil() {
+					baseField.Set(reflect.New(baseField.Type().Elem()))
+				}
+				if base, ok := baseField.Interface().(*StatesBase); ok {
+					base.prefix = prefix + field.Name
+				}
+			}
+
+			parseStateNames(value.Elem(), names, field.Name, groups, order, prefix+field.Name)
+
+		} else if field.Anonymous && kind == reflect.Pointer &&
 			// embedded struct (inherit states)
 			field.Type.Elem().Kind() == reflect.Struct {
 
@@ -95,16 +127,18 @@ func parseStateNames(
 				elem := reflect.New(field.Type.Elem())
 				value.Set(elem)
 			}
-			parseStateNames(value.Elem(), names, field.Name, groups, order)
+
+			parseStateNames(value.Elem(), names, field.Name, groups, order, prefix)
 
 		} else if value.CanSet() && kind == reflect.String {
-			// local state name TODO prefix
-			value.SetString(field.Name)
-			if !slices.Contains(*names, field.Name) {
+			// local state name
+			stateName := prefix + field.Name
+			value.SetString(stateName)
+			if !slices.Contains(*names, stateName) {
 				if group != "StatesBase" {
 					groups[group] = append(groups[group], len(*names))
 				}
-				*names = append(*names, field.Name)
+				*names = append(*names, stateName)
 			}
 		}
 	}
@@ -172,6 +206,284 @@ func copyFields(src, dst interface{}) {
 			}
 		}
 	}
+}
+
+// ///// ///// /////
+
+// ///// SCHEMA
+
+// ///// ///// /////
+
+// Schema is a map of state names to state definitions.
+type Schema map[string]State
+
+// Merge merges multiple state structs into one, overriding the previous
+// state definitions. No relation-level merging takes place.
+func (s Schema) Merge(schemas ...Schema) Schema {
+	// TODO mark all-but-last states as Inherited?
+	// TODO example
+	// TODO test
+	// defaults
+	l := len(schemas)
+	switch l {
+	case 0:
+		return s
+	}
+
+	ret := s.Clone()
+	for i := 0; i < l; i++ {
+		maps.Copy(ret, schemas[i])
+	}
+
+	// rm noname states
+	delete(ret, "")
+
+	return ret.Clone()
+}
+
+// Prefix will prefix all state names with [prefix]. skipPrefixed will skip
+// overlaps eg "FooFooName" will remain "FooName".
+func (s Schema) Prefix(
+	prefix string, skipPrefixed bool, optAllowlist, optSkiplist S,
+) Schema {
+	ret := Schema{}
+	for name, s := range s {
+		s = s.Clone()
+
+		if len(optAllowlist) > 0 && !slices.Contains(optAllowlist, name) {
+			continue
+		} else if len(optSkiplist) > 0 && slices.Contains(optSkiplist, name) {
+			continue
+		}
+
+		for i, r := range s.After {
+			newName := r
+			if !skipPrefixed || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.After[i] = newName
+		}
+		for i, r := range s.Add {
+			newName := r
+			if !skipPrefixed || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.Add[i] = newName
+		}
+		for i, r := range s.Remove {
+			newName := r
+			if !skipPrefixed || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.Remove[i] = newName
+		}
+		for i, r := range s.Require {
+			newName := r
+			if !skipPrefixed || !strings.HasPrefix(name, prefix) {
+				newName = prefix + r
+			}
+			s.Require[i] = newName
+		}
+
+		newName := name
+		if !skipPrefixed || !strings.HasPrefix(name, prefix) {
+			newName = prefix + name
+		}
+
+		// build
+		ret[newName] = s
+	}
+
+	return ret
+}
+
+// Clone deep clones the states struct and returns a copy.
+func (s Schema) Clone() Schema {
+	ret := make(Schema)
+
+	for name, state := range s {
+		ret[name] = state.Clone()
+	}
+
+	return ret
+}
+
+// Parse sanitizes the schema and returns potential errors.
+func (s Schema) Parse() (Schema, error) {
+	// TODO capitalize states
+	// TODO ErrFoo must require Exception
+
+	parsed := s.Clone()
+	states := slices.Collect(maps.Keys(s))
+	var errs error
+	for name, state := range s {
+
+		// avoid self removal
+		if slices.Contains(state.Remove, name) {
+			state.Remove = slicesWithout(state.Remove, name)
+		}
+
+		// don't Remove if in Add
+		for _, add := range state.Add {
+			if slices.Contains(state.Remove, add) {
+				state.Remove = slicesWithout(state.Remove, add)
+
+				// check if exists
+			} else if !slices.Contains(states, add) {
+				state.Add = slicesWithout(state.Add, add)
+			}
+		}
+
+		// avoid being after itself
+		if slices.Contains(state.After, name) {
+			state.After = slicesWithout(state.After, name)
+		}
+
+		// detect require-remove conflicts
+		for _, required := range state.Require {
+			if slices.Contains(state.Remove, required) {
+				errs = errors.Join(errs, fmt.Errorf(
+					"%w: require-remove conflict for %s to %s",
+					ErrSchema, name, required,
+				))
+			}
+		}
+
+		// remove references to non-existing states
+		for _, n := range state.Remove {
+			if !slices.Contains(states, n) {
+				state.Remove = slicesWithout(state.Remove, n)
+			}
+		}
+		for _, n := range state.After {
+			if !slices.Contains(states, n) {
+				state.After = slicesWithout(state.After, n)
+			}
+		}
+		for _, n := range state.Remove {
+			if !slices.Contains(states, n) {
+				state.Remove = slicesWithout(state.Remove, n)
+			}
+		}
+
+		parsed[name] = state
+	}
+
+	return parsed, errs
+}
+
+// FilterByTag returns a subset schema with states having the given tag.
+func (s Schema) FilterByTag(tag string) Schema {
+	ret := Schema{}
+	for name, state := range s {
+		if slices.Contains(state.Tags, tag) {
+			ret[name] = state
+		}
+	}
+
+	return ret
+}
+
+// FilterByTagKey returns a subset schema with states having a value tag
+// prefixed with [key].
+func (s Schema) FilterByTagKey(key string) Schema {
+	ret := Schema{}
+	for name, state := range s {
+		for _, t := range state.Tags {
+			if strings.HasPrefix(t, key+":") {
+				ret[name] = state
+				break
+			}
+		}
+	}
+
+	return ret
+}
+
+// Names is a random-order list of defined state names.
+func (s Schema) Names() S {
+	return slices.Collect(maps.Keys(s))
+}
+
+func (s Schema) AdjacentStates(state string) S {
+	if _, ok := s[state]; !ok {
+		return nil
+	}
+	data := s[state]
+
+	return slices.Concat(data.Add, data.After, data.Require, data.Remove)
+}
+
+func (s Schema) Nest(prefix string, states S) Schema {
+
+	ret := Schema{}
+
+	for _, state := range states {
+		st := s[state]
+		st.Require = prefixRels(prefix, states, st.Require)
+		st.Add = prefixRels(prefix, states, st.Add)
+		st.Remove = prefixRels(prefix, states, st.Remove)
+		st.After = prefixRels(prefix, states, st.After)
+		ret[prefix+state] = st
+	}
+
+	return ret
+}
+
+func prefixRels(prefix string, states, rels S) S {
+	if rels == nil {
+		return nil
+	}
+	res := make(S, len(rels))
+	for i, rel := range rels {
+		// prefix only the states from this schema
+		if !slices.Contains(states, rel) {
+			res[i] = rel
+			continue
+		}
+
+		res[i] = prefix + rel
+	}
+
+	return res
+}
+
+// ----- old
+
+// SchemaMerge is deprecated, use [Schema.Merge].
+func SchemaMerge(schemas ...Schema) Schema {
+	l := len(schemas)
+	switch l {
+	case 0:
+		return Schema{}
+	case 1:
+		return schemas[0]
+	}
+
+	ret := make(Schema)
+	for i := 0; i < l; i++ {
+		// TODO clone?
+		maps.Copy(ret, schemas[i])
+	}
+
+	return ret.Clone()
+}
+
+// StatesByTag is deprecated, use
+//
+//	Schema.FilterByTag("").Names()
+func StatesByTag(schema Schema, tag string) S {
+	ret := S{}
+	for name, s := range schema {
+		for _, t := range s.Tags {
+			if t == tag || strings.HasPrefix(t, tag+":") {
+				ret = append(ret, name)
+				break
+			}
+		}
+	}
+
+	return ret
 }
 
 // ///// ///// /////

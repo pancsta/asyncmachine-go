@@ -2,14 +2,15 @@
 
 This document contains a brief overview of `asyncmachine-go` schema formats. JSON schemas can be found in [`/docs/jsonschema`](/docs/jsonschema).
 
-- [Schema-v0](#schema-v0)
-- [Schema-v1](#schema-v1)
-- [Schema-v2](#schema-v2)
+- [Schema v0](#schema-v0)
+- [Schema v1](#schema-v1)
+- [Schema v2](#schema-v2)
+- [Schema v3](#schema-v3)
 - [YAML Schema](#yaml-schema)
 - [YAML Machine](#yaml-machine)
 - [MachAddress URLs](#machaddress-urls)
 
-## Schema-v0
+## Schema v0
 
 - type safety **NO**
 - reflection **NO**
@@ -38,7 +39,7 @@ mach := newMach("DryWaterWet", am.Schema{
 
 All the state-related calls happen via raw strings. It's good for prototyping and nothing else.
 
-## Schema-v1
+## Schema v1
 
 - type safety **YES**
 - reflection **NO**
@@ -111,7 +112,7 @@ h := &MachineHandlers{}
 mach, err := am.NewCommon(ctx, "expense", ss.Schema, ss.Names, h, nil, nil)
 ```
 
-## Schema-v2
+## Schema v2
 
 - type safety **YES**
 - reflection **YES**
@@ -237,9 +238,20 @@ var (
 
 See [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) for schema bootstrapping commands.
 
+## Schema-v3
+
+- type safety **YES**
+- reflection **NO**
+- inheritance **NO**
+- generated **YES**
+- bootstrapped **NO**
+
+Schema v3 is flattened schema v2 which makes it reflection-less. It's a WIP in the [`/feat/tinygo`](https://github.com/pancsta/asyncmachine-go/pull/382) branch.
+
 ## YAML Schema
 
-YAML schema files are useful for bootstrapping the project boilerplate via `am-gen starter-kit`.
+YAML schema files are useful for bootstrapping the project boilerplate via `am-gen starter-kit`. Serialized struct of
+[`/pkg/machine.Schema`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Serialized) type.
 
 ```yaml
 Start:
@@ -269,7 +281,8 @@ GenCharacter:
 
 ## YAML Machine
 
-YAML machine files can be used to generate a schema via `am-gen schema-from-file`.
+YAML machine files can be used to generate a schema via `am-gen schema-from-file`. Serialized struct of
+[`/pkg/machine.Serialized`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Serialized) type.
 
 ```yaml
 id: my-serialized-mach

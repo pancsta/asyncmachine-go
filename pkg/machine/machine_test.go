@@ -1376,6 +1376,7 @@ func TestEvalNested(t *testing.T) {
 
 	m := NewNoRels(t, nil)
 	m.detectEval = true
+	m.EvalTimeout = time.Millisecond
 
 	// test
 	a := 0
@@ -1410,6 +1411,7 @@ func TestEvalNestedHandlers(t *testing.T) {
 	done := make(chan struct{})
 	m := NewNoRels(t, nil)
 	m.detectEval = true
+	m.EvalTimeout = time.Millisecond
 	_, _ = m.HandlersBind(&struct {
 		AState HandlerFinal
 	}{
@@ -3584,4 +3586,49 @@ func TestActivatedAt(t *testing.T) {
 	// dispose
 	m.Dispose()
 	<-m.WhenDisposed()
+}
+
+type NestedStatesDef struct {
+	*StatesBase
+
+	Nested1 string
+	Nested2 string
+	Nested3 string
+}
+
+var NestedSchema = Schema{
+	ssN.Nested1: {Remove: S{ssN.Nested2, ssB.Heartbeat}},
+	ssN.Nested2: {Multi: true},
+	ssN.Nested3: {Multi: true},
+}
+
+type BasicStatesDef struct {
+	*StatesBase
+
+	Heartbeat string
+	Parent1   *NestedStatesDef
+}
+
+var BasicSchema = Schema{}.Merge(
+	// prefix with "Parent1"
+	NestedSchema.Nest(par1, ssN.Names()),
+	Schema{
+		ssB.Heartbeat: {},
+		// override a nested state
+		par1 + ssN.Nested3: {},
+	})
+
+var (
+	par1 = ssB.Parent1.Prefix()
+	ssB  = NewStates(BasicStatesDef{})
+	ssN  = NewStates(NestedStatesDef{})
+)
+
+func TestNestedSchema(t *testing.T) {
+	assert.Equal(t, "Parent1", ssB.Parent1.Prefix())
+	assert.Equal(t, "Parent1Nested1", ssB.Parent1.Nested1)
+	assert.Equal(t, "Parent1Nested2", BasicSchema[ssB.Parent1.Nested1].Remove[0])
+	assert.Equal(t, "Heartbeat", BasicSchema[ssB.Parent1.Nested1].Remove[1])
+	assert.True(t, BasicSchema[ssB.Parent1.Nested2].Multi)
+	assert.False(t, BasicSchema[ssB.Parent1.Nested3].Multi)
 }
