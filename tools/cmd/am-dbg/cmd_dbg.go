@@ -74,7 +74,8 @@ func cliRun(ctx context.Context, p types.Params) error {
 
 	// rpc server
 	if p.ListenAddr != "" && p.ListenAddr != "-1" {
-		dbg.ServerMux, dbg.ServerHttp, err = server.New(dbg.Mach, p.ListenAddr, dbg.Params.Load)
+		dbg.ServerMux, dbg.ServerHttp, err = server.New(
+			dbg.Mach, p.ListenAddr, dbg.Params.Load)
 		if err != nil {
 			return err
 		}

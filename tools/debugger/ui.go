@@ -318,7 +318,7 @@ func (d *Debugger) hInitAddressBar() {
 			}
 			addr := d.History[d.HistoryCursor]
 			// d.params.Print("go:\n" + addr.String() + "\n")
-			d.GoToMachAddress(addr, true)
+			d.GoToMachAddress(addr, true, true)
 		case colPrev:
 			if d.HistoryCursor >= len(d.History)-1 {
 				return
@@ -326,7 +326,7 @@ func (d *Debugger) hInitAddressBar() {
 			d.HistoryCursor++
 			addr := d.History[d.HistoryCursor]
 			// d.params.Print("go:\n" + addr.String() + "\n")
-			d.GoToMachAddress(addr, true)
+			d.GoToMachAddress(addr, true, true)
 
 		case colNext:
 			if d.HistoryCursor <= 0 {
@@ -335,7 +335,7 @@ func (d *Debugger) hInitAddressBar() {
 			d.HistoryCursor--
 			addr := d.History[d.HistoryCursor]
 			// d.params.Print("go:\n" + addr.String() + "\n")
-			d.GoToMachAddress(addr, true)
+			d.GoToMachAddress(addr, true, true)
 		case colNextMach:
 			if d.HistoryCursor <= 0 {
 				return
@@ -349,7 +349,7 @@ func (d *Debugger) hInitAddressBar() {
 			}
 			addr := d.History[d.HistoryCursor]
 			// d.params.Print("go:\n" + addr.String() + "\n")
-			d.GoToMachAddress(addr, true)
+			d.GoToMachAddress(addr, true, true)
 
 		case colCopy:
 			if d.clip == nil {
@@ -364,7 +364,7 @@ func (d *Debugger) hInitAddressBar() {
 			}
 			txt, _ := d.clip.ReadAll(clipper.RegClipboard)
 			if addr, err := types.ParseMachUrl(string(txt)); err == nil {
-				d.GoToMachAddress(addr, false)
+				d.GoToMachAddress(addr, false, true)
 			}
 		}
 
@@ -710,39 +710,19 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		[%s::b]state[-]        active multi state
 		[%s::b]state[-]        inactive state
 		[::b]M|[::-]           multi state
-		[::b]|5[::-]           tick value
-		[::b]*[::-]            executed handler
-		[::b]+[::-]            to be activated
-		[::b]-[::-]            to be de-activated
-		[::b]bold[::-]         touched state
-		[::b]underline[::-]    called state
-		[::b]![::-]            state canceled
-		[::b]|[::-]            rel link
-		[green::b]|[-::-]            rel link start
-		[red::b]|[-::-]            rel link end
+		[::b]|154[::-]         tick value
 	
-		[::b]### [::u]matrix rain legend[::-]
-		[::b]1[::-]            state active
-		[::b]2[::-]            state active and touched
-		[::b]-[::-]            state touched
-		[::b]|[::-]            state de-activated
-		[::b]c[::-]            state canceled
-		underline    state called
-	
-		[::b]### [::u]dashboard keystrokes[::-]
-		[::b]alt arrow[::-]    navigate to tiles
-		[::b]alt -+[::-]       change size of a tile
-	
-		[::b]### [::u]matrix legend[::-]
-		[::b]underline[::-]    called state
-		[::b]1st row[::-]      called states
-		             col == state index
-		[::b]2nd row[::-]      state tick changes
-		             col == state index
-		[::b]>=3 row[::-]      state relations
-		             cartesian product
-		             col == source state index
-		             row == target state index
+		[::b]### [::u]machine list legend[::-]
+		[::b]T:t123[::-]       total received graph time
+		[%s::b]client-id[-::-]    connected
+		[grey::b]client-id[-::-]    disconnected
+		[red::b]client-id[-::-]    current error
+		[#FF5FAF::b]client-id[-::-]    recent error
+		[::bu]client-id[::-]    selected machine
+		[::b]|123[::-]         transitions till now
+		[::b]|123+[::-]        more transitions left
+		[::b]S|[::-]           Start active
+		[::b]R|[::-]           Ready active
 	
 		[::b]### [::u]log legend[::-]
 		[:green] [:-]            Executed
@@ -753,7 +733,30 @@ func (d *Debugger) initHelpDialog() *cview.Flex {
 		%s      state diff after a reg transition
 		%s      state diff after an auto transition
 		%s      canceled transition (any)
-	`, "\n ")), theme.Active, theme.Active2, theme.Inactive,
+	
+		[::b]### [::u]matrix rain legend[::-]
+		[::b]1[::-]            state active
+		[::b]2[::-]            state active and touched
+		[::b]-[::-]            state touched
+		[::b]|[::-]            state de-activated
+		[::b]c[::-]            state canceled
+		underline    state called
+	
+		[::b]### [::u]transition matrix legend[::-]
+		[::b]underline[::-]    called state
+		[::b]1st row[::-]      called states
+		             col == state index
+		[::b]2nd row[::-]      state tick changes
+		             col == state index
+		[::b]>=3 row[::-]      state relations
+		             cartesian product
+		             col == source state index
+		             row == target state index
+	
+		[::b]### [::u]dashboard keystrokes[::-]
+		[::b]alt arrow[::-]    navigate to tiles
+		[::b]alt -+[::-]       change size of a tile
+	`, "\n ")), theme.Active, theme.Active2, theme.Inactive, theme.Active,
 		cview.Escape("[queue]"), cview.Escape("[aqueu]"),
 		cview.Escape("[state]"), cview.Escape("[auto_]"),
 		cview.Escape("[cance]")))
@@ -854,18 +857,6 @@ func (d *Debugger) hUpdateHelpDialog() {
 		[::b]ctrl q[::-]             quit
 		[::b]?[::-]                  show help
 	
-		[::b]### [::u]machine list legend[::-]
-		[::b]T:t123[::-]              total received graph time
-		[%s::b]client-id[-::-]          connected
-		[grey::b]client-id[-::-]          disconnected
-		[red::b]client-id[-::-]          current error
-		[#FF5FAF::b]client-id[-::-]          recent error
-		[::bu]client-id[::-]          selected machine
-		[::b]|123[::-]               transitions till now
-		[::b]|123+[::-]              more transitions left
-		[::b]S|[::-]                 Start active
-		[::b]R|[::-]                 Ready active
-	
 		[::b]### [::u]toolbar legend[::-]
 		[::b]mark[::-]          toggle marker on current tx
 		[::b]auto *[::-]        skip canceled auto mutations
@@ -895,8 +886,8 @@ func (d *Debugger) hUpdateHelpDialog() {
 		[::b]matrix[::-]        transition vectors
 	
 		[::b]### [::u]status bar legend[::-]
-		[::b]Graph:t123[::-]        current graph time
-		[::b]⠴[::-]                 rendering or processing
+		[::b]Graph:t123[::-]    current graph time
+		[::b]⠴[::-]             rendering or processing
 	
 		[::b]### [::u]about am-dbg[::-]
 		%-15s    version
@@ -904,7 +895,7 @@ func (d *Debugger) hUpdateHelpDialog() {
 		%-15s    HTTP server addr
 		%-15s    SSH server addr
 		%-15s    mem usage
-	`, "\n ")), theme.Active, d.params.Version, d.listenAddrRpc,
+	`, "\n ")), d.params.Version, d.listenAddrRpc,
 		d.listenAddrHttp, d.listenAddrSsh, strconv.Itoa(mem)+"mb"))
 }
 

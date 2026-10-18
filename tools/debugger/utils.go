@@ -10,7 +10,8 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 
-	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+	"github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	amrelay "github.com/pancsta/asyncmachine-go/tools/relay"
 
@@ -20,9 +21,9 @@ import (
 )
 
 func machIsRpc(schema *dbg.DbgMsgStruct) bool {
-	return schema.HasTag(arpc.TagRpcClient, "") ||
-		schema.HasTag(arpc.TagRpcServer, "") ||
-		schema.HasTag(arpc.TagRpcMux, "") ||
+	return schema.HasTag(states.TagRpcClient, "") ||
+		schema.HasTag(states.TagRpcServer, "") ||
+		schema.HasTag(states.TagRpcMux, "") ||
 		schema.HasTag(amrelay.TagRelay, "")
 }
 

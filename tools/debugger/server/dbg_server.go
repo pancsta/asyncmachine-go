@@ -391,13 +391,118 @@ func (c *Client) ParseSchema() {
 
 // ///// ///// /////
 
+const (
+	fwdBackoffMin = 500 * time.Millisecond
+	fwdBackoffMax = 30 * time.Second
+)
+
+// fwdConn is a lazily- and re-dialed RPC connection to a forwarding target.
+// It survives target downtime (both at startup and mid-stream) by redialing
+// in the background with an exponential backoff, instead of failing the
+// whole dbg server or permanently giving up on a forward target.
+type fwdConn struct {
+	addr string
+	mach *am.Machine
+
+	mx       sync.Mutex
+	cli      *rpc.Client
+	backoff  time.Duration
+	nextDial time.Time
+}
+
+// newFwdConn creates a fwdConn and kicks off the initial (non-blocking)
+// dial.
+func newFwdConn(mach *am.Machine, addr string) *fwdConn {
+	f := &fwdConn{addr: addr, mach: mach, backoff: fwdBackoffMin}
+	go f.dial()
+
+	return f
+}
+
+// retry schedules another dial attempt, doubling the backoff (capped at
+// fwdBackoffMax). Requires f.mx to be held by the caller.
+func (f *fwdConn) retry(reason error) {
+	delay := f.backoff
+	f.nextDial = time.Now().Add(delay)
+	f.backoff *= 2
+	if f.backoff > fwdBackoffMax {
+		f.backoff = fwdBackoffMax
+	}
+	f.mach.Log("dbg fwd to %s failed, retrying in %s: %s",
+		f.addr, delay, reason)
+	go func() {
+		time.Sleep(delay)
+		f.dial()
+	}()
+}
+
+// dial (re)connects, replays known client schemas as the first messages on
+// the fresh connection, and resets the backoff on success. Safe to call
+// concurrently.
+func (f *fwdConn) dial() {
+	f.mx.Lock()
+	defer f.mx.Unlock()
+
+	if f.cli != nil || time.Now().Before(f.nextDial) {
+		return
+	}
+
+	cli, err := rpc.Dial("tcp", f.addr)
+	if err != nil {
+		f.retry(err)
+		return
+	}
+
+	// replay known client schemas first, so a (re)connected target learns
+	// about clients it missed while this fwd link was down
+	// TODO collect last N msgs and push after the schema msg, memorize last msg
+	//  ID sent per client
+	if err := pushClientSchemas(cli); err != nil {
+		_ = cli.Close()
+		f.retry(fmt.Errorf("schema replay: %w", err))
+		return
+	}
+
+	f.mach.Log("dbg fwd to %s connected", f.addr)
+	f.cli = cli
+	f.backoff = fwdBackoffMin
+}
+
+// Call forwards an RPC call over the current connection. If disconnected, or
+// the call fails, it triggers a reconnect with a backoff and returns an
+// error, leaving the caller to drop or retry the message.
+func (f *fwdConn) Call(serviceMethod string, args, reply any) error {
+	f.mx.Lock()
+	cli := f.cli
+	f.mx.Unlock()
+
+	if cli == nil {
+		go f.dial()
+		return fmt.Errorf("dbg fwd to %s: not connected", f.addr)
+	}
+
+	err := cli.Call(serviceMethod, args, reply)
+	if err != nil {
+		f.mx.Lock()
+		if f.cli == cli {
+			_ = cli.Close()
+			f.cli = nil
+		}
+		f.mx.Unlock()
+		go f.dial()
+	}
+
+	return err
+}
+
 // New initializes listeners, fwd conns, and returns unstated servers.
 func New(
-	mach *am.Machine, addr string, p types.Params,
+	mach *am.Machine, addr string, params func() *types.Params,
 ) (cmux.CMux, *http.Server, error) {
-	// TODO extract conns, refac to am
+	// TODO extract conns, write a sibling impl on AM
 	// TODO dont listen in WASM
 
+	p := params()
 	var err error
 	gob.Register(am.Relation(0))
 	gob.Register(Exportable{})
@@ -412,13 +517,11 @@ func New(
 	}
 	mach.Log("dbg server started at %s", addr)
 
-	// connect to other instances
-	fwdTo := make([]*rpc.Client, len(p.FwdData))
+	// connect to other instances (non-blocking, reconnects with a backoff)
+	// TODO add mutable FwdData setter
+	fwdTo := make([]*fwdConn, len(p.FwdData))
 	for i, a := range p.FwdData {
-		fwdTo[i], err = rpc.Dial("tcp", a)
-		if err != nil {
-			return nil, nil, fmt.Errorf("Cant fwd to %s: %s\n", a, err)
-		}
+		fwdTo[i] = newFwdConn(mach, a)
 	}
 
 	// first cmux for tcp
@@ -433,7 +536,7 @@ func New(
 			addr[:strings.LastIndex(addr, ":")], port+1)
 		httpMux := http.ServeMux{}
 		httpMux.HandleFunc("/{$}", func(w http.ResponseWriter, r *http.Request) {
-			httpHandlerIndex(w, r, mach, p)
+			httpHandlerIndex(w, r, mach, params())
 		})
 		httpMux.Handle("/", http.FileServer(http.Dir(p.OutputDir)))
 
@@ -485,12 +588,40 @@ type RPCServer struct {
 	Mach *am.Machine
 	// TODO ConnId
 	ConnID string
-	FwdTo  []*rpc.Client
+	FwdTo  []*fwdConn
 }
 
 type DbgMsgSchemaFwd struct {
 	MsgStruct *dbg.DbgMsgStruct
 	ConnId    string
+}
+
+var (
+	// clientSchemas holds the latest known schema of each currently
+	// connected client (direct or forwarded), keyed by its origin ConnId.
+	// Replayed to fwd targets on (re)connect, see [pushClientSchemas].
+	clientSchemas   = make(map[string]*DbgMsgSchemaFwd)
+	clientSchemasMx sync.Mutex
+)
+
+// pushClientSchemas replays the schema of every currently connected client
+// over cli, as the first messages on a freshly (re)connected fwd link, so
+// the target learns about clients it missed while disconnected.
+func pushClientSchemas(cli *rpc.Client) error {
+	clientSchemasMx.Lock()
+	msgs := make([]*DbgMsgSchemaFwd, 0, len(clientSchemas))
+	for _, msg := range clientSchemas {
+		msgs = append(msgs, msg)
+	}
+	clientSchemasMx.Unlock()
+
+	for _, msg := range msgs {
+		if err := cli.Call("RPCServer.DbgMsgSchemaFwd", msg, nil); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // TODO rename to RemoteMsgSchemaReceive (compat break)
@@ -504,6 +635,10 @@ func (r *RPCServer) DbgMsgSchemaFwd(
 		ClientId:  msg.MsgStruct.ID,
 	}))
 
+	clientSchemasMx.Lock()
+	clientSchemas[msg.ConnId] = msg
+	clientSchemasMx.Unlock()
+
 	return nil
 }
 
@@ -516,6 +651,13 @@ func (r *RPCServer) DbgMsgSchema(
 		ConnId:    r.ConnID,
 		ClientId:  msgSchema.ID,
 	}))
+
+	clientSchemasMx.Lock()
+	clientSchemas[r.ConnID] = &DbgMsgSchemaFwd{
+		MsgStruct: msgSchema,
+		ConnId:    r.ConnID,
+	}
+	clientSchemasMx.Unlock()
 
 	// fwd to other instances
 	for _, host := range r.FwdTo {
@@ -640,7 +782,7 @@ func (r *RPCServer) DbgMsgTxFwd(msg *DbgMsgTx, _ *string) error {
 	return nil
 }
 
-func tcpAccept(l net.Listener, mach *am.Machine, fwdTo []*rpc.Client) {
+func tcpAccept(l net.Listener, mach *am.Machine, fwdTo []*fwdConn) {
 	// TODO restart on error
 	// defer mach.PanicToErr(nil)
 
@@ -659,7 +801,7 @@ func tcpAccept(l net.Listener, mach *am.Machine, fwdTo []*rpc.Client) {
 
 // AcceptConn accepts a std rpc connection, or alike.
 func AcceptConn(
-	conn io.ReadWriteCloser, mach *am.Machine, fwdTo []*rpc.Client,
+	conn io.ReadWriteCloser, mach *am.Machine, fwdTo []*fwdConn,
 ) {
 	server := rpc.NewServer()
 	connId := utils.RandId(8)
@@ -674,9 +816,13 @@ func AcceptConn(
 		rcvr.Mach.AddErr(err, nil)
 		// TODO err msg
 		fmt.Println(err)
-		os.Exit(1)
+		return
 	}
 	server.ServeConn(conn)
+
+	clientSchemasMx.Lock()
+	delete(clientSchemas, connId)
+	clientSchemasMx.Unlock()
 
 	// TODO pass to range fwdTo (dedicated RPC method)
 	rcvr.Mach.Add1(ss.DisconnectEvent, Pass(&A{
@@ -692,7 +838,7 @@ func AcceptConn(
 
 // httpHandlerIndex lists --dir
 func httpHandlerIndex(
-	w http.ResponseWriter, r *http.Request, mach *am.Machine, p types.Params,
+	w http.ResponseWriter, r *http.Request, mach *am.Machine, p *types.Params,
 ) {
 	middleware(w)
 
@@ -745,14 +891,10 @@ func httpHandlerIndex(
 			"Graph Diagram</a></li>")
 		fmt.Fprintf(w, "<li><a href=\"/viewer/mach\">"+
 			"Machine Diagram</a></li>")
-	}
-	// TODO CLI params
-	fmt.Fprintf(w, "<li><a href=\"/viewer/state\">"+
-		"State Diagram</a></li>")
-	// TODO CLI param
-	if p.OutputTx {
+		fmt.Fprintf(w, "<li><a href=\"/viewer/state\">"+
+			"State Diagram</a></li>")
 		fmt.Fprintf(w, "<li><a href=\"/viewer/steps\">"+
-			"Steps Diagram</a></li>")
+			"Step Diagram</a></li>")
 	}
 
 	if p.UiMcp {
@@ -853,7 +995,7 @@ func middleware(w http.ResponseWriter) {
 
 // wsDbgHandler handles dbg protocol over WS.
 func wsDbgHandler(
-	w http.ResponseWriter, r *http.Request, mach *am.Machine, fwdTo []*rpc.Client,
+	w http.ResponseWriter, r *http.Request, mach *am.Machine, fwdTo []*fwdConn,
 ) {
 
 	connWs, err := websocket.Accept(w, r, &websocket.AcceptOptions{

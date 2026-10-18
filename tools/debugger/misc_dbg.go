@@ -289,7 +289,7 @@ func newMcpServer(d *Debugger) (*mcpServer, error) {
 		StatesInclude:  states.DebuggerGroups.Mcp,
 		StatesReadonly: states.DebuggerGroups.McpReadonly,
 		Args:           types.ArgsRpc,
-		StateCalls:     types.StateCalls,
+		CallSignatures: types.StateCalls,
 		Version:        d.params.Version,
 	})
 	if err != nil {
@@ -315,7 +315,9 @@ func newMcpServer(d *Debugger) (*mcpServer, error) {
 		mcp.WithString(
 			"key",
 			mcp.Required(),
-			mcp.Description("Key or key combination (e.g. 'enter', 'tab', 'shift+tab', 'alt+h', 'ctrl+q', 'up', 'down')"),
+			mcp.Description(
+				"Key or key combination (e.g. 'enter', 'tab', 'shift+tab', "+
+					"'alt+h', 'ctrl+q', 'up', 'down')"),
 		),
 	)
 	typeText := mcp.NewTool(
@@ -331,7 +333,8 @@ func newMcpServer(d *Debugger) (*mcpServer, error) {
 	// mouse events
 	mouseClick := mcp.NewTool(
 		"MouseClick",
-		mcp.WithDescription("Simulate a mouse left click at a grid position (x, y)"),
+		mcp.WithDescription(
+			"Simulate a mouse left click at a grid position (x, y)"),
 		mcp.WithNumber(
 			"x",
 			mcp.Required(),
@@ -454,7 +457,7 @@ func (m *mcpServer) goToMachAddr(
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	m.d.GoToMachAddress(machUrl, false)
+	m.d.GoToMachAddress(machUrl, false, false)
 
 	return mcp.NewToolResultText("ok"), nil
 }
@@ -614,7 +617,8 @@ func (m *mcpServer) mouseLeftClick(
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	m.d.App.QueueEvent(tcell.NewEventMouse(x, y, tcell.ButtonPrimary, tcell.ModNone))
+	m.d.App.QueueEvent(
+		tcell.NewEventMouse(x, y, tcell.ButtonPrimary, tcell.ModNone))
 	m.d.App.QueueEvent(tcell.NewEventMouse(x, y, tcell.ButtonNone, tcell.ModNone))
 
 	return mcp.NewToolResultText("ok"), nil
