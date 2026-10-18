@@ -1,11 +1,15 @@
 package debugger
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/pancsta/cview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -198,4 +202,217 @@ func TestExportMach(t *testing.T) {
 	err = yaml.Unmarshal(schemaContent, &gotSchema)
 	require.NoError(t, err)
 	assert.Equal(t, schema, gotSchema)
+}
+
+func TestMcp(t *testing.T) {
+	ctx := context.Background()
+	mach, err := am.NewCommon(ctx, "dbg-test", states.DebuggerSchema, ss.Names(), nil, nil, nil)
+	require.NoError(t, err)
+
+	d := &Debugger{
+		Mach:   mach,
+		App:    cview.NewApplication(),
+		params: types.Params{Version: "1.0.0"},
+	}
+
+	srv, err := newMcpServer(d)
+	require.NoError(t, err)
+	require.NotNil(t, srv)
+
+	// test Keystroke with various cview keys
+	keysToTest := []string{
+		"enter",
+		"tab",
+		"shift+tab",
+		"Backtab",
+		"up",
+		"down",
+		"left",
+		"right",
+		"alt+h",
+		"ctrl+q",
+		"space",
+		"esc",
+		"home",
+		"end",
+		"pgup",
+		"pgdn",
+		"F1",
+		"a",
+		"?",
+	}
+
+	for _, key := range keysToTest {
+		t.Run("Keystroke_"+key, func(t *testing.T) {
+			req := mcp.CallToolRequest{
+				Params: mcp.CallToolParams{
+					Name: "Keystroke",
+					Arguments: map[string]interface{}{
+						"key": key,
+					},
+				},
+			}
+			res, err := srv.pressKey(ctx, req)
+			require.NoError(t, err)
+			assert.False(t, res.IsError, "unexpected error for key %s", key)
+		})
+	}
+
+	// test invalid key
+	t.Run("Keystroke_Invalid", func(t *testing.T) {
+		req := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name: "Keystroke",
+				Arguments: map[string]interface{}{
+					"key": "invalid_super_key_combination",
+				},
+			},
+		}
+		res, err := srv.pressKey(ctx, req)
+		require.NoError(t, err)
+		assert.True(t, res.IsError)
+	})
+
+	// test TypeText
+	t.Run("TypeText", func(t *testing.T) {
+		req := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name: "TypeText",
+				Arguments: map[string]interface{}{
+					"text": "hello\tworld\n",
+				},
+			},
+		}
+		res, err := srv.typeText(ctx, req)
+		require.NoError(t, err)
+		assert.False(t, res.IsError)
+	})
+
+	// test MouseLeftClick
+	t.Run("MouseLeftClick", func(t *testing.T) {
+		req := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name: "MouseLeftClick",
+				Arguments: map[string]interface{}{
+					"x": 10,
+					"y": 5,
+				},
+			},
+		}
+		res, err := srv.mouseLeftClick(ctx, req)
+		require.NoError(t, err)
+		assert.False(t, res.IsError)
+	})
+
+	// test MouseScroll
+	for _, dir := range []string{"up", "down", "left", "right"} {
+		t.Run("MouseScroll_"+dir, func(t *testing.T) {
+			req := mcp.CallToolRequest{
+				Params: mcp.CallToolParams{
+					Name: "MouseScroll",
+					Arguments: map[string]interface{}{
+						"x":         10,
+						"y":         5,
+						"direction": dir,
+						"amount":    3,
+					},
+				},
+			}
+			res, err := srv.mouseScroll(ctx, req)
+			require.NoError(t, err)
+			assert.False(t, res.IsError)
+		})
+	}
+
+	// test MouseScroll invalid direction
+	t.Run("MouseScroll_InvalidDir", func(t *testing.T) {
+		req := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name: "MouseScroll",
+				Arguments: map[string]interface{}{
+					"x":         10,
+					"y":         5,
+					"direction": "diagonal",
+				},
+			},
+		}
+		res, err := srv.mouseScroll(ctx, req)
+		require.NoError(t, err)
+		assert.True(t, res.IsError)
+	})
+}
+
+func TestHumanSort(t *testing.T) {
+	data := []string{
+		"_nco-dev-test-210946-00e4ff1",
+		"_rs-nco-dev-test-210946-00e4ff1",
+		"_rc-con-dev-test-2870ef",
+		"_rs-nw-loc-dev-test-6791e5",
+		"_rc-con-dev-test-6791e5",
+		"_ns-dev-test-210946-0",
+		"_rs-ns-pub-dev-test-210946-0",
+		"_rs-ns-loc-dev-test-210946-0",
+		"_rs-nco-dev-test-210946-0e7608f",
+		"_rc-ns-dev-test-p-36317",
+		"_rs-nw-loc-dev-test-b55a1b",
+		"_nco-dev-test-210946-0c2bbae",
+		"_rc-ns-dev-test-p-44331",
+		"_rs-nw-loc-dev-test-2870ef",
+		"_nw-dev-test-2870ef",
+		"_nw-dev-test-6791e5",
+		"_nco-dev-test-210946-0e7608f",
+		"_nw-dev-test-b55a1b",
+		"_rc-con-dev-test-b55a1b",
+		"_rs-nco-dev-test-210946-0c2bbae",
+	}
+
+	expected := []string{
+		"_nco-dev-test-210946-00e4ff1",
+		"_nco-dev-test-210946-0c2bbae",
+		"_nco-dev-test-210946-0e7608f",
+
+		"_ns-dev-test-210946-0",
+
+		"_nw-dev-test-2870ef",
+		"_nw-dev-test-6791e5",
+		"_nw-dev-test-b55a1b",
+
+		"_rc-con-dev-test-2870ef",
+		"_rc-con-dev-test-6791e5",
+		"_rc-con-dev-test-b55a1b",
+		"_rc-ns-dev-test-p-36317",
+		"_rc-ns-dev-test-p-44331",
+		"_rs-nco-dev-test-210946-00e4ff1",
+		"_rs-nco-dev-test-210946-0c2bbae",
+		"_rs-nco-dev-test-210946-0e7608f",
+		"_rs-ns-loc-dev-test-210946-0",
+		"_rs-ns-pub-dev-test-210946-0",
+		"_rs-nw-loc-dev-test-2870ef",
+		"_rs-nw-loc-dev-test-6791e5",
+		"_rs-nw-loc-dev-test-b55a1b",
+	}
+
+	humanSort(data)
+	join := strings.Join(data, "\n")
+
+	// debug
+	// t.Log("\n" + join)
+
+	assert.Equal(t, strings.Join(expected, "\n"), join)
+}
+
+func TestHadErrSince(t *testing.T) {
+	c := &Client{
+		Client: &server.Client{
+			Errors: []int{100, 50, 5, 1},
+		},
+	}
+
+	assert.False(t, c.HadErrSinceTx(300, 5), "tx: %d, dist: %d", 300, 5)
+	assert.False(t, c.HadErrSinceTx(105, 3), "tx: %d, dist: %d", 105, 3)
+
+	assert.True(t, c.HadErrSinceTx(55, 10), "tx: %d, dist: %d", 55, 10)
+	assert.True(t, c.HadErrSinceTx(6, 2), "tx: %d, dist: %d", 6, 2)
+	assert.True(t, c.HadErrSinceTx(100, 2), "tx: %d, dist: %d", 100, 2)
+	assert.True(t, c.HadErrSinceTx(1, 1), "tx: %d, dist: %d", 1, 1)
 }

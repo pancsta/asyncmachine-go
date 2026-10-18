@@ -155,11 +155,17 @@ func renderFile(e sitemap.Entry, outputDir string) error {
 
 	// E. Generate Flat Filename
 	flatName := e.Url + ".html"
+	mdPath := filepath.Join(outputDir, e.Url+".md")
 	// main page /
 	if sourcePath == "README.md" {
 		flatName = "index.html"
+		mdPath = filepath.Join(outputDir, "index.md")
 	}
 
+	// copy source markdown
+	if err := os.WriteFile(mdPath, content, 0644); err != nil {
+		return err
+	}
 	outputPath := filepath.Join(outputDir, flatName)
 
 	// fix lists
