@@ -71,6 +71,10 @@ type DebuggerStatesDef struct {
 	// websocket conn for diagram viewer
 	WebSocketDiag string
 
+	// TODO for creating machs, MCP
+	// GroupAdd string
+	// GroupRemove string
+
 	// input events
 	UserFwd        string
 	UserBack       string
@@ -585,15 +589,6 @@ var (
 			ssD.UpdateFocus, ssD.FocusNext, ssD.FocusPrev,
 			ssD.Overlay, ssD.HelpDialog, ssD.ExportDialog,
 		),
-
-		Mcp: groupFocus.Add1(ssD.UserFwd, ssD.UserBack, ssD.UserFwdMarker,
-			ssD.UserBackMarker, ssD.ScrollToMutTx, ssD.SwitchingClientTx,
-			ssD.SelectingClient, ssD.RemoveClient, ssD.SetCursor, ssD.SetGroup,
-			ssD.StateNameSelected, ssD.FocusNext, ssD.FocusPrev,
-			ssD.LogReaderEnabled, ssD.UserNarrowLayout, ssD.TimelineTxHidden,
-			ssD.TimelineMarkersHidden),
-
-		McpReadonly: groupFilters.Add1(ssD.SwitchedClientTx, ssD.ClientSelected),
 
 		Loading: S{ssD.SelectingClient, ssD.GcMsgs, ssD.DiagramsStatesRendering,
 			ssD.DiagramsGraphRendering, ssD.DiagramsMachRendering},

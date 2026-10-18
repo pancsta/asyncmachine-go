@@ -197,6 +197,8 @@ func (d *Debugger) DiagramsGraphRenderingState(e *am.Event) {
 			// TODO fix RPC conns not visible
 			amvis.PresetMap(vis)
 			vis.OutputFilename = svgPath
+			// TODO
+			// vis.OutputD2Tala = true
 			err := vis.GenDiagrams(ctx)
 			if ctx.Err() != nil {
 				return // expired

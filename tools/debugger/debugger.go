@@ -834,7 +834,7 @@ func (d *Debugger) hGetMachAddress() *types.MachAddress {
 // GoToMachAddress tries to render a view of the provided address (mach, tx).
 // Blocks. TODO state: GoToMachAddr, MachAddr
 func (d *Debugger) GoToMachAddress(
-	addr *types.MachAddress, skipHistory bool,
+	addr *types.MachAddress, skipHistory bool, preserveGroup bool,
 ) bool {
 	// TODO should be an async state
 	// TODO ctx
@@ -842,6 +842,10 @@ func (d *Debugger) GoToMachAddress(
 
 	if addr.MachId == "" {
 		return false
+	}
+
+	if preserveGroup {
+		addr.Group = *d.selectedGroup.Load()
 	}
 
 	var wait <-chan struct{}
@@ -1578,6 +1582,14 @@ func (d *Debugger) hParseMsg(c *Client, idx int) {
 	// TODO verify connId
 	msgTx := c.MsgTxs[idx]
 
+	// TODO confirm full inheritance of ssam.DisposedStates
+	disposed := ssam.DisposedStates.Disposed
+	if msgTx.ActiveStates(c.MsgStruct.StatesIndex).Has(disposed) {
+		d.Mach.Add1(ss.DisconnectEvent, Pass(&types.A{
+			ConnId: c.ConnId,
+		}))
+	}
+
 	var sum uint64
 	for _, v := range msgTx.Clocks {
 		sum += v
@@ -2137,7 +2149,7 @@ func (d *Debugger) hGetTxInfo(txIdx int, title string) (string, string) {
 	// left side
 	var prev *dbg.DbgMsgTx
 	prevIdx := d.hFilterTxCursor1(d.C, txIdx, true) - 1
-	if prevIdx > 0 {
+	if prevIdx >= 0 {
 		prev = d.C.MsgTxs[prevIdx]
 	}
 	// TODO limit state names to a group when [2]group
@@ -2726,7 +2738,10 @@ func (d *Debugger) filtersActive() bool {
 // hFilterTx returns true when a TX passes selected toolbarItems.
 func (d *Debugger) hFilterTx(c *Client, idx int, filters *types.Filters) bool {
 	tx := c.MsgTxs[idx]
-	parsed := c.MsgTxsParsed[idx]
+	parsed := c.TxParsed(idx)
+	if parsed == nil {
+		return false
+	}
 	called := tx.CalledStateNames(c.MsgStruct.StatesIndex)
 	group := c.SelectedGroup
 	f := filters
@@ -2991,7 +3006,7 @@ func (d *Debugger) hFwdMarker(e *am.Event) {
 	go d.GoToMachAddress(&types.MachAddress{
 		MachId: marker.ClientId,
 		TxId:   marker.TxId,
-	}, false)
+	}, false, true)
 }
 
 func (d *Debugger) hBackMarker(e *am.Event) {
@@ -3017,5 +3032,5 @@ func (d *Debugger) hBackMarker(e *am.Event) {
 	go d.GoToMachAddress(&types.MachAddress{
 		MachId: marker.ClientId,
 		TxId:   marker.TxId,
-	}, false)
+	}, false, true)
 }

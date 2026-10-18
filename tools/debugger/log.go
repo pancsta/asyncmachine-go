@@ -103,6 +103,8 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 			continue
 		}
 
+		// TODO if log hidden, render log level 2 just for --output-log
+
 		buf = entry + "\n" + buf
 		collected++
 	}
@@ -125,6 +127,15 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 			return
 		}
 
+		// save to file
+		updated := cursorTx1 > 0 // cursor is 1-based; 0 means not passed
+		if updated && d.params.OutputLog {
+			// TODO bind context to current AND NEXT tick of LogBuilt
+			d.Mach.Go(d.Mach.NewStateCtx(ss.Start), func() {
+				d.Mach.EvAddErr(e, d.outputLogFile(ctx), nil)
+			})
+		}
+
 		// next
 		d.Mach.EvAdd1(e, ss.LogBuilt, Pass(&A{
 			CursorTx1: cursorTx1,
@@ -137,19 +148,11 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 var _ = ss.LogBuilt
 
 func (d *Debugger) LogBuiltState(e *am.Event) {
-	ctx := d.Mach.NewStateCtx(ss.LogBuilt)
 	lArgs := am.ParseArgs[A](e.Args)
 	cursorTx1 := lArgs.CursorTx1
 	updated := cursorTx1 > 0 // cursor is 1-based; 0 means not passed
 	level := lArgs.LogLevel
 	group := lArgs.Group
-
-	// save to file
-	if updated && d.params.OutputLog {
-		d.Mach.Go(ctx, func() {
-			d.Mach.EvAddErr(e, d.outputLogFile(ctx), nil)
-		})
-	}
 
 	// memorize
 	if updated {
@@ -837,7 +840,7 @@ func (d *Debugger) onLogReaderSelected(
 	ctx := d.Mach.NewStateCtx(ss.LogReaderVisible)
 	d.Mach.Go(ctx, func() {
 		time.Sleep(time.Millisecond * 200)
-		d.GoToMachAddress(addr, false)
+		d.GoToMachAddress(addr, false, true)
 
 		time.Sleep(time.Millisecond * 50)
 		if tick != d.Mach.Tick(ss.UpdateLogReader) {
@@ -1313,6 +1316,11 @@ func (d *Debugger) parseMsgReader(
 
 	if strings.HasPrefix(log.Text, "[when:match] ") {
 
+		// if strings.Contains(log.Text, "Template ConfigValid") &&
+		// 	strings.Contains(log.Text, "when:match") {
+		// 	fmt.Println("reader " + log.Text)
+		// }
+
 		// [when:match] Foo,Bar
 		states := log.Text[len("[when:match] "):]
 		statesIdx := c.StatesStringToIndex(states)
@@ -1334,6 +1342,10 @@ func (d *Debugger) parseMsgReader(
 
 		if !found {
 			d.Mach.Log("err: match missing: " + log.Text)
+			// if strings.Contains(log.Text, "Template ConfigValid") &&
+			// 	strings.Contains(log.Text, "when:match") {
+			// 	fmt.Println("reader missing" + log.Text)
+			// }
 		}
 
 	} else if strings.HasPrefix(log.Text, "[whenNot:match] ") {
@@ -1672,7 +1684,7 @@ func (u *logReaderUpdate) buildWhenQueue(
 	if parent == nil {
 		parent = cview.NewTreeNode("WhenQueue")
 	}
-	node := cview.NewTreeNode(P.Sprintf("%v", entry.QueueTick))
+	node := cview.NewTreeNode(P.Sprintf("q%v", entry.QueueTick))
 	nodeAddr := newLinkNode(&types.MachAddress{
 		MachId:    u.c.Id,
 		QueueTick: uint64(entry.QueueTick),
