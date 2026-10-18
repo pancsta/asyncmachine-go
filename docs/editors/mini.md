@@ -155,7 +155,7 @@ type ServerGroupsDef struct {
 }
 
 // ServerSchema represents all relations and properties of ClientStates.
-var ServerSchema = SchemaMerge(
+var ServerSchema = Schema{}.Merge(
   // inherit from SharedStruct
   SharedSchema,
   am.Schema{

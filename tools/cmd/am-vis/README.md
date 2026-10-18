@@ -184,7 +184,7 @@ type Renderer struct {
 
 ## Gallery
 
-It's recommended to view the SVGs using [SVG Navigator](https://github.com/pRizz/SVG-Navigator---Chrome-Extension).
+It's recommended to view the SVGs using [SVG Navigator](https://github.com/pRizz/SVG-Navigator---Chrome-Extension) or [imv](https://sr.ht/~exec64/imv/).
 
 ![diagram1](https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-1.svg)
 ![diagram2](https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-2.svg)

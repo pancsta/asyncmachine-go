@@ -246,12 +246,14 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
 
 - 🦾 **[`/pkg/machine`](pkg/machine/README.md)** is the main package
 - [`/docs/getting-started.md`](/docs/getting-started.md) is a short, step-by-step tutorial
-- [`/docs/manual.md`](/docs/manual.md) is the go-to
+- [`/docs/manual.md`](/docs/manual.md) and [`/docs/cookbook.md`](/docs/cookbook.md) are the go-to
 - [`/docs/diagrams.md`](/docs/diagrams.md) try to explain things visually
 - [`/examples`](/examples/README.md) show use cases and integrations
-    - with [`/examples/mach_template`](/examples/mach_template) being ready for copy-paste
-    - also [Basic](/examples/basic), [CLI Daemon](/examples/cli_daemon), [aRPC](/examples/arpc),
-      [WASM Workflow](/examples/wasm_workflow/README.md), [TUI](/examples/tui)
+  - with [`/examples/mach_template`](/examples/mach_template) being ready for copy-paste
+  - also [Basic](/examples/basic), [CLI Daemon](/examples/cli_daemon), [aRPC](/examples/arpc),
+    [WASM Workflow](/examples/wasm_workflow/README.md), [TUI](/examples/tui)
+  - and classic like [FSM](/examples/fsm), [NFA](/examples/nfa), [DAG](/examples/dag_dependency_graph)
+  - migrating from [Temporal](/examples/temporal_expense)?
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) and [`/docs/editors`](/docs/editors/README.md) will bootstrap
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) will record every detail
 - code in [`/pkg/node`](/pkg/node) shows a high-level usage
@@ -330,7 +332,8 @@ Other packages:
 ## Community
 
 - [GitHub discussions](https://github.com/pancsta/asyncmachine-go/discussions)
-- [Reddit](https://reddit.com/r/asyncmachine/)
+- [r/asyncmachine](https://reddit.com/r/asyncmachine/)
+- [Mastodon #asyncmachine](https://mastodon.social/tags/asyncmachine)
 - [Author's RSS](https://blogic.tech/feed)
 
 <div align="center">
@@ -389,15 +392,6 @@ Under development, status depends on each package. The bottom layers seem prod g
 > Step by step.
 
 ## [FAQ](/FAQ.md)
-
-### How does asyncmachine work?
-
-Code is bound to states (graph nodes), not transitions (graph edges in FSMs). When a state "Foo" activates, it checks
-the `FooEnter(e)` method first, then runs `FooState(e)`. When it deactivates, checks the `FooExit(e)` method, then runs
-`FooEnd(e)`. `FooState(e)` binds context and collects data, then forks background processes bound to that instance of
-the "Foo" state. Code executed during a transition is dynamically composed of deactivating and activating states.
-Transitions between states are not defined, and many states can be active simultaneously. It should be used to solve
-complexity in time.
 
 ### What is a "state" in asyncmachine?
 

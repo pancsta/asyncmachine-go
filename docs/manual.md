@@ -231,6 +231,8 @@ mach.Tick("Foo") // ->3
 func (h *Handlers) DownloadingFileState(e *am.Event) {
   // open until the state remains active
   ctx := e.Machine.NewStateCtx("DownloadingFile")
+  // (state-traced context with `e`)
+  // ctx := e.Machine.NewStateCtx("DownloadingFile", e)
   // fork to unblock
   go func() {
     // check if still valid
