@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/d2lang/util-go/go2"
 	"github.com/pancsta/d2/d2graph"
@@ -19,7 +18,6 @@ import (
 	"github.com/pancsta/d2/d2renderers/d2svg"
 	"github.com/pancsta/d2/d2themes/d2themescatalog"
 	d2log "github.com/pancsta/d2/lib/log"
-	d2png "github.com/pancsta/d2/lib/png"
 	"github.com/pancsta/d2/lib/textmeasure"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
