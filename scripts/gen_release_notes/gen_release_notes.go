@@ -38,6 +38,20 @@ func main() {
 
 	doc := ""
 
+	const outPath = "../docs/release-notes.md"
+	const saveEveryPRs = 10
+	prsFetched := 0
+
+	// save writes the (possibly partial) notes to disk
+	save := func(reason string) {
+		err := os.WriteFile(outPath, []byte(doc), 0644)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("SAVED %s (%d bytes, %d PRs fetched): %s\n",
+			outPath, len(doc), prsFetched, reason)
+	}
+
 	flushEntry := func() {
 		if currentEntry == "" {
 			return
@@ -50,10 +64,12 @@ func main() {
 			owner := currentEntry[loc[4]:loc[5]]
 			repo := currentEntry[loc[6]:loc[7]]
 
+			fmt.Printf("Fetching PR %s/%s#%d...\n", owner, repo, prNum)
 			pr, _, err := client.PullRequests.Get(ctx, owner, repo, prNum)
 			if err != nil {
 				log.Printf("Warning: Failed to fetch PR #%d: %v", prNum, err)
 			}
+			prsFetched++
 
 			// Extract everything before the PR link (ignoring the "- " prefix)
 			desc := strings.TrimSpace(currentEntry[2:loc[0]])
@@ -82,6 +98,10 @@ func main() {
 
 		currentEntry = ""
 		inEntry = false
+
+		if prsFetched > 0 && prsFetched%saveEveryPRs == 0 {
+			save("periodic")
+		}
 	}
 
 	doc += fmt.Sprintf("# Release Notes\n\n- [CHANGELOG.md](/CHANGELOG.md)\n\n")
@@ -100,6 +120,8 @@ func main() {
 
 		if strings.HasPrefix(line, "## ") {
 			flushEntry()
+			save("before new release section")
+			fmt.Printf("Processing release: %s\n", line)
 			doc += fmt.Sprintf("---\n\n%s\n\n", line)
 
 			// Fetch and inject release description
@@ -109,6 +131,7 @@ func main() {
 				owner := relMatch[2]
 				repo := relMatch[3]
 
+				fmt.Printf("Fetching release %s/%s %s...\n", owner, repo, tag)
 				release, _, err := client.Repositories.GetReleaseByTag(ctx, owner, repo, tag)
 				if err != nil {
 					log.Printf("Warning: Failed to fetch Release %s: %v", tag, err)
@@ -136,8 +159,6 @@ func main() {
 
 	flushEntry()
 
-	err = os.WriteFile("../docs/release-notes.md", []byte(doc), 0644)
-	if err != nil {
-		panic(err)
-	}
+	save("final")
+	fmt.Println("Done.")
 }

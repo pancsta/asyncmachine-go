@@ -4,6 +4,200 @@
 
 ---
 
+## [v0.19.5](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.5) (2026-10-18)
+
+The highlight of this release is initial support for nested schemas.
+
+<img width="641" height="485" alt="ss-2026-09-24-17-41-49" src="https://github.com/user-attachments/assets/5bfa2583-afbf-4cd9-947d-c4ddde58e627" />
+
+
+
+
+### release/v0.19.5
+
+PR: [\#499](https://github.com/pancsta/asyncmachine-go/pull/499) (@pancsta)
+
+_No PR description provided._
+
+### feat: release v0.19.5
+
+PR: [\#498](https://github.com/pancsta/asyncmachine-go/pull/498) (@pancsta)
+
+- fix(helpers): return proper pond.Pool
+- feat(states): add RegisterDisposal sugar method
+- feat(helpers): add Promise for mutations
+- feat(machine): add Machine.Url method and ctx methods
+- feat(machine): add NewStateCtxActive for old behavior
+- feat(helpers): add ChanToCtx for waiting ctxs
+
+The remainder of `v0.19.5` is in this PR.
+
+### feat\(am-dbg\): release am-dbg v0.19.5
+
+PR: [\#497](https://github.com/pancsta/asyncmachine-go/pull/497) (@pancsta)
+
+- feat(am-dbg): make HTTP server react to param changes
+  - Links on the HTTP index now reflect diagram settings on the toolbar.
+- feat(am-dbg): show aRPC and pipe conns in graph diagrams
+- fix(am-dbg): retain selected group on link click
+- fix(am-dbg): mark as disconn on DisposeState
+- feat(am-dbg): add NextMut struct for scheduling
+
+The remainder of `am-dbg v0.19.5` is in this PR.
+
+### feat\(am-vis\): speed up diagram rendering by 50x
+
+PR: [\#496](https://github.com/pancsta/asyncmachine-go/pull/496) (@pancsta)
+
+The speedup is real and caused by porting of the ELK algo from JS to Go. All the kudos go to the [d2 project](https://github.com/d2lang/d2/releases/tag/v0.8.2), which has been temporarily forked to avoid forcing **go1.27**. Additionally, state diagrams render in parallel now (max 3).
+
+### feat\(machine\): add support for nested schemas
+
+PR: [\#495](https://github.com/pancsta/asyncmachine-go/pull/495) (@pancsta)
+
+> Schemas can now be nested under a prefix, as another way of re-use after embedding. Type safety works the same way as for regular schemas, eg `ss.Parent1.Nested1` returns "Parent1Nested1".
+>
+> It's useful for multiple fan-out-fan-in threads (possibly defined dynamically), as well as a lightweight alternative to piping.
+>
+> ```go
+> type NestedStatesDef struct {
+> 	*StatesBase
+>
+> 	Nested1 string
+> 	Nested2 string
+> 	Nested3 string
+> }
+>
+> var NestedSchema = Schema{
+> 	ssN.Nested1: {},
+> 	ssN.Nested2: {Multi: true},
+> 	ssN.Nested3: {Multi: true},
+> }
+>
+> type BasicStatesDef struct {
+> 	*StatesBase
+>
+> 	Heartbeat string
+> 	Parent1   *NestedStatesDef
+> }
+>
+> var BasicSchema = Schema{}.Merge(
+> 	// prefix with "Parent1"
+> 	NestedSchema.Nest(ssB.Parent1.Prefix(), ssN.Names()),
+> 	Schema{
+> 		ssB.Heartbeat: {},
+> 		// override a nested state
+> 		ssB.Parent1.Prefix()+ssN.Nested3: {},
+> 	})
+> ```
+
+### test\(wasm\): add integration tests for WASM examples
+
+PR: [\#494](https://github.com/pancsta/asyncmachine-go/pull/494) (@pancsta)
+
+_No PR description provided._
+
+### feat\(am-relay\): add reconn support to --fwd-data, including schemas
+
+PR: [\#493](https://github.com/pancsta/asyncmachine-go/pull/493) (@pancsta)
+
+Using `--fwd-data` is order-independent now and will re-send the schema after each connection. Useful when restarting the forward targets.
+
+### feat\(am-vis\): add linking netmachs with source machs
+
+PR: [\#492](https://github.com/pancsta/asyncmachine-go/pull/492) (@pancsta)
+
+Useful when the dbg telemetry for aRPC is turned off (which is the default). Especially helps am-dbg Graph diagrams.
+<img width="641" height="485" alt="ss-2026-09-24-17-41-49" src="https://github.com/user-attachments/assets/cef718ae-2b3c-480d-98a8-ca9bb6b68f4e" />
+
+### feat\(am-vis\): add --output-png CLI flag
+
+PR: [\#491](https://github.com/pancsta/asyncmachine-go/pull/491) (@pancsta)
+
+Faster viewing than SVGs for large diagrams, but gen timeouts can happen ([tracking issue](https://github.com/d2lang/d2/issues/2761)).
+
+Workaround: `env D2_TIMEOUT=99999 d2 --theme=201 --layout elk tmp/am-vis.d2 tmp/am-vis.png --timeout 100000000`
+
+### docs\(ai\): add /am-readme skill with all markdowns
+
+PR: [\#490](https://github.com/pancsta/asyncmachine-go/pull/490) (@pancsta)
+
+_No PR description provided._
+
+### docs\(website\): serve markdown on Accept header and file ext
+
+PR: [\#489](https://github.com/pancsta/asyncmachine-go/pull/489) (@pancsta)
+
+The website now honors `Accept: text/markdown` as per https://acceptmarkdown.com, including via a file extension eg https://asyncmachine.dev/manual.md
+
+### feat\(am-dbg\): add Keystroke, TypeText, MouseClick, MouseScroll cmds to MCP
+
+PR: [\#488](https://github.com/pancsta/asyncmachine-go/pull/488) (@pancsta)
+
+These were missing from the initial implementation.
+
+### fix\(am-relay\): fix args for dbg rotation
+
+PR: [\#487](https://github.com/pancsta/asyncmachine-go/pull/487) (@pancsta)
+
+_No PR description provided._
+
+### fix\(am-dbg\): fix When entries never disposed in log reader for >1 state
+
+PR: [\#486](https://github.com/pancsta/asyncmachine-go/pull/486) (@pancsta)
+
+_No PR description provided._
+
+### fix\(am-dbg\): fix matrix rain timestamp diffs for tx filters
+
+PR: [\#485](https://github.com/pancsta/asyncmachine-go/pull/485) (@pancsta)
+
+_No PR description provided._
+
+### fix\(machine\): fix When with ctx for multiple states deadlocked
+
+PR: [\#484](https://github.com/pancsta/asyncmachine-go/pull/484) (@pancsta)
+
+_No PR description provided._
+
+### fix\(history\): add GC for ticks table in SQL, prevent a storage leak, dont block
+
+PR: [\#483](https://github.com/pancsta/asyncmachine-go/pull/483) (@pancsta)
+
+_No PR description provided._
+
+### fix\(graph\): mock missing clients for parent, rpc relations
+
+PR: [\#482](https://github.com/pancsta/asyncmachine-go/pull/482) (@pancsta)
+
+_No PR description provided._
+
+---
+
+## [v0.19.4](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.4) (2026-08-29)
+
+
+
+### feat: release v0.19.4
+
+PR: [\#480](https://github.com/pancsta/asyncmachine-go/pull/480) (@pancsta)
+
+The remainder of `v0.19.4` is in this PR.
+
+### fix\(rpc\): fix websocket auth in WASM
+
+PR: [\#479](https://github.com/pancsta/asyncmachine-go/pull/479) (@pancsta)
+
+_No PR description provided._
+
+### fix\(am-dbg\): fix diagram symlinks and toolbar button
+
+PR: [\#478](https://github.com/pancsta/asyncmachine-go/pull/478) (@pancsta)
+
+_No PR description provided._
+
+---
+
 ## [v0.19.3](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.3) (2026-08-25)
 
 The highlight of this release is a go-iroh overlay for aRPC.
