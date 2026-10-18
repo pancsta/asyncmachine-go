@@ -48,14 +48,8 @@ const (
 	// $AM_REPL_DIR/mach-id.addr. Optional.
 	EnvAmReplDir = "AM_REPL_DIR"
 
-	TagRpcHandler = "rpc-handler"
-	TagRpcClient  = "rpc-client"
-	TagRpcServer  = "rpc-server"
-	TagRpcMux     = "rpc-mux"
-
-	PrefixNetMach = "rnm-"
-	WsPathListen  = "/listen/"
-	WsPathDial    = "/dial/"
+	WsPathListen = "/listen/"
+	WsPathDial   = "/dial/"
 )
 
 var ss = states.SharedStates

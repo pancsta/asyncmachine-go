@@ -117,7 +117,8 @@ func parseStateNames(
 				}
 			}
 
-			parseStateNames(value.Elem(), names, field.Name, groups, order, prefix+field.Name)
+			parseStateNames(
+				value.Elem(), names, field.Name, groups, order, prefix+field.Name)
 
 		} else if field.Anonymous && kind == reflect.Pointer &&
 			// embedded struct (inherit states)
@@ -415,7 +416,6 @@ func (s Schema) AdjacentStates(state string) S {
 }
 
 func (s Schema) Nest(prefix string, states S) Schema {
-
 	ret := Schema{}
 
 	for _, state := range states {
@@ -427,6 +427,15 @@ func (s Schema) Nest(prefix string, states S) Schema {
 		ret[prefix+state] = st
 	}
 
+	return ret
+}
+
+// Get a map index with a default ret value.
+func (s Schema) Get(state string) State {
+	ret, ok := s[state]
+	if !ok {
+		return State{}
+	}
 	return ret
 }
 
@@ -502,6 +511,10 @@ type ArgsApi interface {
 	// ArgsState represents the state this argument struct belongs to.
 	// Defaults to [StateAny].
 	ArgsState() string
+
+	// TODO enable in v0.20
+	// ArgsPrefixNested returns both args prefix and the optional nesting prefix.
+	// ArgsPrefixNested() string
 	// TODO deep clone interface, optional
 	// ArgsClone() G
 }
@@ -509,11 +522,23 @@ type ArgsApi interface {
 // ArgsBase is the base implementation of [ArgsApi] interface.
 type ArgsBase struct {
 	ArgsApi
+	// TODO enable in v0.20
+	// prefixNested string
 }
 
+// TODO enable in v0.20
+// func (a ArgsBase) Nest(nested string) ArgsBase {
+// 	a.prefixNested = nested
+// 	return a
+// }
+
+// TODO enable in v0.20
+// func (a ArgsBase) PrefixNested() string {
+// 	return a.ArgsState() + a.prefixNested
+// }
+
 // ArgsPrefix is a fallback to a stack trace hash of the implementation
-// symbol. Each
-// pkg should overwrite this method.
+// symbol. Each pkg should overwrite this method.
 func (a ArgsBase) ArgsPrefix() string {
 	buf := make([]byte, 4024)
 	n := runtime.Stack(buf, false)
@@ -524,7 +549,7 @@ func (a ArgsBase) ArgsPrefix() string {
 	return hash
 }
 
-// State is the default Any state.
+// ArgsState is the default Any state.
 func (a ArgsBase) ArgsState() string {
 	return StateAny
 }
@@ -585,6 +610,7 @@ func (AException) ArgsState() string {
 type ACheck struct {
 	Args
 	// TODO close these on dispose and deadline
+	// TODO optimize: poll atomics instead of alloc chans (bench first)
 	CheckDone chan struct{}
 	// Was the mutation canceled?
 	Canceled bool
@@ -643,6 +669,7 @@ func ParseArgsCheck[G ArgsApi](args A) (*G, bool) {
 
 // ArgIndex return an index of [arg] inside [A].
 func ArgIndex(arg ArgsApi) string {
+	// TODO arg.ArgsPrefixNested()
 	ns := arg.ArgsPrefix()
 	state := arg.ArgsState()
 	return ns + "__" + state

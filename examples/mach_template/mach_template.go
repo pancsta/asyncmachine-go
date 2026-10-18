@@ -178,7 +178,7 @@ type TemplateHandlers struct {
 var _ = ss.Foo
 
 func (h *TemplateHandlers) FooState(e *am.Event) {
-	ctx := h.Mach.NewStateCtx(ss.Bar)
+	ctx := h.Mach.NewStateCtx(ss.Bar, e)
 
 	// unblock
 	h.Mach.Fork(ctx, e, func() {
@@ -205,7 +205,7 @@ func (h *TemplateHandlers) BazState(e *am.Event) {
 	addr := args.Addr
 
 	// multi states rely on context of other states
-	ctx := h.Mach.NewStateCtx(ss.Start)
+	ctx := h.Mach.NewStateCtx(ss.Start, e)
 
 	// very frequent multi-states should be rate-limited
 	h.Mach.PoolFork(ctx, e, func() {

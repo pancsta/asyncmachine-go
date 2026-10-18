@@ -13,7 +13,14 @@ import (
 )
 
 //go:embed global/states_utils.go
-var StatesUtilsFile string
+var UtilsFile string
+
+var (
+	// TagRepl tags states which are safe to invoke via REPL.
+	TagRepl = "repl"
+	// TagArgs tags states which aceepts arguments.
+	TagArgs = "args"
+)
 
 // BasicStatesDef contains all the basic states.
 type BasicStatesDef struct {

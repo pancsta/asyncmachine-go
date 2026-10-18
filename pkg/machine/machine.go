@@ -54,6 +54,9 @@ type Machine struct {
 	// disposal. Default 1s.
 	DisposeTimeout time.Duration
 
+	// TODO API
+	Closed <-chan struct{}
+
 	// subs is the subscription manager.
 	subs *Subscriptions
 
@@ -238,12 +241,14 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 		handlerTimer: time.NewTimer(24 * time.Hour),
 		whenDisposed: make(chan struct{}),
 		// queue ticks start from 1 to align with the [Result] enum
-		queueTick:  1,
-		pools:      map[string]*atomic.Int32{},
-		poolLimits: map[string]int32{},
+		queueTick:       1,
+		pools:           map[string]*atomic.Int32{},
+		poolLimits:      map[string]int32{},
+		poolGlobalLimit: 1000,
 	}
 
 	m.subs = NewSubscriptionManager(m, m.clock, m.is, m.not, m.log)
+	m.Closed = m.subs.Closed
 	m.semLogger = &semLogger{mach: m}
 	m.logId.Store(true)
 	m.timeLast.Store(&Time{})
@@ -572,9 +577,7 @@ func (m *Machine) When1(state string, ctx context.Context) <-chan struct{} {
 // ctx: optional context that will close the channel early.
 func (m *Machine) WhenNot(states S, ctx context.Context) <-chan struct{} {
 	if m.disposed.Load() {
-		ch := make(chan struct{})
-		close(ch)
-		return ch
+		return m.subs.Closed
 	}
 
 	// locks
@@ -844,6 +847,26 @@ func (m *Machine) time(states S) Time {
 	}
 
 	return ret
+}
+
+// Url returns the currnet URL of the machine, with either the transition,
+// machine time, or both.
+func (m *Machine) Url(incTime bool) string {
+	// TODO move to API v0.20
+	tx := m.Transition()
+	txId := ""
+	if tx != nil {
+		txId = tx.Id
+	}
+	suf := ""
+	if incTime || tx == nil {
+		t := m.Time(nil).Sum(nil)
+		if t > 0 {
+			suf = fmt.Sprintf("?t=%d", t)
+		}
+	}
+
+	return fmt.Sprintf("mach://%s%s%s", m.Id(), txId, suf)
 }
 
 // PrependMut prepends the mutation to the front of the queue. This is a special
@@ -1536,6 +1559,8 @@ func (m *Machine) isNestedEval(source string) bool {
 //
 // [e]: optional [Event] to bind to this context.
 func (m *Machine) NewStateCtx(state string, event ...*Event) context.Context {
+	// TODO add ticks param, to have ctx valid for more ticks
+	//   as NewStateCtxMulti(...)
 	if m.disposing.Load() {
 		return context.TODO()
 	}
@@ -1543,12 +1568,36 @@ func (m *Machine) NewStateCtx(state string, event ...*Event) context.Context {
 	m.activeStatesMx.Lock()
 	defer m.activeStatesMx.Unlock()
 
-	if e := OptEv(event); e != nil {
-		return EvToCtx(m.subs.NewStateCtx(state), e)
+	var mTime Time
+	if os.Getenv(EnvAmDebug) != "" {
+		mTime = m.time(nil)
 	}
 
-	return m.subs.NewStateCtx(state)
+	if e := OptEv(event); e != nil {
+		return EvToCtx(m.subs.NewStateCtx(state, mTime), e)
+	}
+
+	return m.subs.NewStateCtx(state, mTime)
 }
+
+// NewStateCtxActive is like [Machine.NewStateCtxActive], but only for active
+// states. Useful for creating contexts for states other than the one being
+// handled.
+func (m *Machine) NewStateCtxActive(
+	state string, event ...*Event,
+) context.Context {
+	if !m.Is1(state) {
+		// TODO optimise ret pre-closed context
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		return ctx
+	}
+	return m.NewStateCtx(state, event...)
+}
+
+// TODO add multi-state (multi-tick) contexts
+// TODO func (m *Machine) NewStateCtxActiveOrNext()
 
 func (m *Machine) bindHandlers(h *handler, opts ...BindOpts) (string, error) {
 	if m.disposing.Load() {
@@ -2248,7 +2297,8 @@ func (m *Machine) Log(msg string, args ...any) {
 	m.LogEv(nil, msg, args...)
 }
 
-// TODO api
+// LogEv is like [Machine.Log] but decorated with the handler name. Useful for
+// log entries from forked goroutines.
 func (m *Machine) LogEv(e *Event, msg string, args ...any) {
 	if m.disposing.Load() {
 		return
@@ -2261,7 +2311,8 @@ func (m *Machine) LogEv(e *Event, msg string, args ...any) {
 	m.log(LogExternal, prefix+"] "+msg, args...)
 }
 
-// TODO api
+// LogCtx is like [Machine.LogEv] but will extract [Event] from the passed
+// context.
 func (m *Machine) LogCtx(ctx context.Context, msg string, args ...any) {
 	m.LogEv(CtxToEv(ctx), msg, args...)
 }
@@ -2306,6 +2357,11 @@ func (m *Machine) logEv(e *Event, level LogLevel, msg string, args ...any) {
 		// append the log msg to the current transition
 		t.InternalLogEntriesLock.Lock()
 		defer t.InternalLogEntriesLock.Unlock()
+
+		// TODO debug
+		if strings.Contains(out, "Template ConfigValid") {
+			print()
+		}
 		t.LogEntries = append(t.LogEntries, &LogEntry{level, out})
 
 	} else {
@@ -2313,6 +2369,11 @@ func (m *Machine) logEv(e *Event, level LogLevel, msg string, args ...any) {
 		// transition
 		m.logEntriesLock.Lock()
 		defer m.logEntriesLock.Unlock()
+
+		// TODO debug
+		if strings.Contains(out, "Template ConfigValid") {
+			print()
+		}
 
 		// prevent dups (except piping and subs) TODO semlogger
 		allowDups := strings.HasPrefix(out, prefix+"[pipe-") ||
@@ -2395,7 +2456,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 	if m.disposing.Load() {
 		return Canceled, false
 	}
-	// TODO return accepted states
+	// TODO return accepted states, closed chans
 
 	handlerCalled := false
 	handlers := m.getHandlers(false)
@@ -2534,7 +2595,8 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 	m.activeStatesMx.RLock()
 	defer m.activeStatesMx.RUnlock()
 	for _, ch := range m.subs.ProcessWhenArgs(e) {
-		close(ch)
+		// TODO delay after the tx / move
+		closeSafe(ch)
 	}
 
 	return Executed, handlerCalled
@@ -2746,6 +2808,8 @@ func (m *Machine) Tick(state string) uint64 {
 
 	return m.clock[state]
 }
+
+// TODO v0.20 Tick(state string, base... uint64)
 
 // IsQueued checks if a particular mutation has been queued. Returns
 // an index (idx, true), or (0, false), if not found.
@@ -3506,7 +3570,7 @@ func (m *Machine) Resolver() RelationsResolver {
 	return m.resolver
 }
 
-// BindTracer binds a Tracer to the machine. Tracers can cause StateException in
+// TracerBind binds a Tracer to the machine. Tracers can cause StateException in
 // submachines, before any handlers are bound. Use the Err() getter to examine
 // such errors.
 func (m *Machine) TracerBind(tracer Tracer) (string, error) {
@@ -3528,7 +3592,7 @@ func (m *Machine) TracerBind(tracer Tracer) (string, error) {
 	return tracer.TracerId(), nil
 }
 
-// DetachTracer tries to remove a tracer from the machine. Returns an error in
+// TracerDetach tries to remove a tracer from the machine. Returns an error in
 // case the tracer wasn't bound.
 func (m *Machine) TracerDetach(id string) error {
 	if m.disposing.Load() {
@@ -3673,12 +3737,21 @@ func (m *Machine) Fork(ctx context.Context, e *Event, fn func()) {
 }
 
 // Go is a syntax sugar method for a nested handler unblocking boilerplate.
+// This method also gives some debug symbols in [caller].
 func (m *Machine) Go(ctx context.Context, fn func()) {
+	// TODO v0.20 Go defer
+	// func (m *Machine) Go(ctx context.Context, fn func(), deferred ...func()) {
 	go func() {
+		// defer func() {
+		// 	for _, df := range deferred {
+		// 		df()
+		// 	}
+		// }()
+
 		// in debug, log location of [fn]
 		var caller string
 		// TODO not via env?
-		if os.Getenv(EnvAmDetectEval) != "" {
+		if os.Getenv(EnvAmDetectEval) != "" || os.Getenv(EnvAmDebug) != "" {
 			caller = funcName(fn)
 		}
 
@@ -3689,7 +3762,7 @@ func (m *Machine) Go(ctx context.Context, fn func()) {
 			Fn: caller,
 		}))
 
-		fn()
+		fn() // watch: caller
 	}()
 }
 
@@ -3773,7 +3846,8 @@ func (m *Machine) PoolSetLimit(handlerName string, limit int32) {
 	m.poolLimits[handlerName] = limit
 }
 
-// PoolSetLimitGlobal sets a global limit for all PoolFork calls.
+// PoolSetLimitGlobal sets a global limit for all PoolFork calls. Defaults to
+// 1000.
 func (m *Machine) PoolSetLimitGlobal(limit int32) {
 	m.poolMx.Lock()
 	defer m.poolMx.Unlock()

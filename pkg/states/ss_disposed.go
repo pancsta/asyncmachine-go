@@ -71,6 +71,16 @@ type DisposedHandlers struct {
 	DisposedHandlers []am.HandlerDispose
 }
 
+// RegisterDisposal is a sugar method for
+// the [DisposedStatesDef.RegisterDisposal] state.
+func (h *DisposedHandlers) RegisterDisposal(
+	e *am.Event, mach am.Api, handler am.HandlerDispose,
+) am.Result {
+	return mach.EvAdd1(e, ssD.RegisterDisposal, am.A{
+		DisposedArgHandler: handler,
+	})
+}
+
 func (h *DisposedHandlers) RegisterDisposalEnter(e *am.Event) bool {
 	fn, ok := e.Args[DisposedArgHandler].(am.HandlerDispose)
 	ret := ok && fn != nil

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"reflect"
 	"regexp"
 	"slices"
@@ -930,15 +931,19 @@ func (m *NetworkMachine) time(states am.S) am.Time {
 func (m *NetworkMachine) NewStateCtx(
 	state string, event ...*am.Event,
 ) context.Context {
-	// TODO reuse existing ctxs
 	m.clockMx.Lock()
 	defer m.clockMx.Unlock()
 
-	if e := am.OptEv(event); e != nil {
-		return am.EvToCtx(m.subs.NewStateCtx(state), e)
+	var mTime am.Time
+	if os.Getenv(am.EnvAmDebug) != "" {
+		mTime = m.time(nil)
 	}
 
-	return m.subs.NewStateCtx(state)
+	if e := am.OptEv(event); e != nil {
+		return am.EvToCtx(m.subs.NewStateCtx(state, mTime), e)
+	}
+
+	return m.subs.NewStateCtx(state, mTime)
 }
 
 // ///// MISC

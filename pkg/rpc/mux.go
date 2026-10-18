@@ -86,7 +86,7 @@ func NewMux(
 
 	mach, err := am.NewCommon(ctx, "rm-"+name, states.MuxSchema, ssM.Names(),
 		d, opts.Parent, &am.Opts{
-			Tags: []string{TagRpcMux},
+			Tags: []string{states.TagRpcMux},
 		})
 	if err != nil {
 		return nil, err

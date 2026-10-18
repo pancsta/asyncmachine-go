@@ -24,12 +24,11 @@ func init() {
 		"DisposedSchema":     reflect.ValueOf(&states.DisposedSchema).Elem(),
 		"DisposedStates":     reflect.ValueOf(&states.DisposedStates).Elem(),
 		"ErrConnecting":      reflect.ValueOf(&states.ErrConnecting).Elem(),
-		"StatesUtilsFile":    reflect.ValueOf(&states.StatesUtilsFile).Elem(),
+		"StatesUtilsFile":    reflect.ValueOf(&states.UtilsFile).Elem(),
 
 		// type definitions
 		"BasicStatesDef":     reflect.ValueOf((*states.BasicStatesDef)(nil)),
 		"ConnPoolGroupsDef":  reflect.ValueOf((*states.ConnPoolGroupsDef)(nil)),
-		"ConnPoolState":      reflect.ValueOf((*states.ConnPoolState)(nil)),
 		"ConnPoolStatesDef":  reflect.ValueOf((*states.ConnPoolStatesDef)(nil)),
 		"ConnectedGroupsDef": reflect.ValueOf((*states.ConnectedGroupsDef)(nil)),
 		"ConnectedStatesDef": reflect.ValueOf((*states.ConnectedStatesDef)(nil)),

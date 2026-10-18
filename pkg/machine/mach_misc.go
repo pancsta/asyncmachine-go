@@ -426,13 +426,46 @@ type (
 		State string
 		Tick  uint64
 		Event *Event
+		// MachTime is under env AM_DEBUG
+		MachTime uint64
 	}
 )
+
+func (c *CtxValue) String() string {
+	return c.Url()
+}
+
+func (c *CtxValue) UrlTx(incTime bool) string {
+	tx := c.TxId()
+	if tx == "" {
+		return ""
+	}
+	suf := ""
+	if c.MachTime > 0 && incTime {
+		suf = fmt.Sprintf("?t=%d", c.MachTime)
+	}
+
+	return fmt.Sprintf("mach://%s/%s%s", c.Id, tx, suf)
+}
+
+func (c *CtxValue) Url() string {
+	return fmt.Sprintf("ctx://%s/%s/%d", c.Id, c.State, c.Tick)
+}
+
+func (c *CtxValue) TxId() string {
+	if c.Event != nil && c.Event.TransitionId != "" {
+		return c.Event.TransitionId
+	}
+	return ""
+}
 
 var CtxKey = &CtxKeyName{}
 
 func CtxToEv(ctx context.Context) *Event {
 	v, _ := ctx.Value(CtxKey).(CtxValue)
+	if v.Event == nil {
+		return &Event{}
+	}
 	return v.Event
 }
 

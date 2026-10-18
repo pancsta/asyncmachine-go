@@ -115,7 +115,7 @@ func TestFork1Process(t *testing.T) {
 func TestFork5Warm2Min2(t *testing.T) {
 	// TODO flaky?
 	// t.Parallel()
-	// amhelp.EnableDebugging(false)
+	amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -204,6 +204,7 @@ func TestClientSupervisor(t *testing.T) {
 
 	// supervisor
 	s := newSupervisor(t, ctx, getKind(t), 1)
+	// TODO
 
 	opts := &ClientOpts{ClientSchema: states.ClientSchema}
 	c, err := NewClient(ctx, "cli", getKind(t),

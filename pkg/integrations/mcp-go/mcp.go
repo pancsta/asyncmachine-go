@@ -17,20 +17,24 @@ import (
 )
 
 type Opts struct {
-	StatesInclude  am.S
-	StatesExclude  am.S
-	StatesReadonly am.S
-	// list of typed args
+	Version        string
+	Name           string
+	Desc           string
+	// List of typed arguments
 	Args []am.ArgsApi
-	// RPC args parser
+
+	// Allowlist of mutable states (optional)
+	StatesInclude am.S
+	// Denylist of mutable states (optional)
+	StatesExclude am.S
+	// Readonly states (optional)
+	StatesReadonly am.S
+	// RPC args parser (optional)
 	ArgsUnmarshaller amhelp.ArgsUnmarshallerFn
-	CallSignatures   []am.CallSignature
-	// optional func to call after a mutation
-	MutCallback func(ctx context.Context) error
-	Version     string
-	Name        string
-	Desc        string
-	StateCalls  []am.CallSignature
+	// List of predefined call signatures (optional)
+	CallSignatures []am.CallSignature
+	// Func to call after a mutation (optional)
+	MutCallback    func(ctx context.Context) error
 }
 
 type Server struct {
@@ -90,7 +94,7 @@ func New(mach am.Api, opts Opts) (*Server, error) {
 		mcp.WithString("state",
 			mcp.Required(),
 			mcp.Description("Name of the state to add"),
-			mcp.Enum(m.StateNames()...),
+			mcp.Enum(m.MutableStateNames()...),
 		),
 	}
 	toolOpts = append(toolOpts, toolOptsArgs...)
@@ -103,7 +107,7 @@ func New(mach am.Api, opts Opts) (*Server, error) {
 			mcp.Required(),
 			mcp.Description("Name of the state to remove"),
 			// TODO allowlist
-			mcp.Enum(m.StateNames()...),
+			mcp.Enum(m.MutableStateNames()...),
 		),
 	}
 	toolOpts = append(toolOpts, toolOptsArgs...)
@@ -111,7 +115,7 @@ func New(mach am.Api, opts Opts) (*Server, error) {
 
 	// specified call signatures
 CALLS:
-	for _, sig := range opts.StateCalls {
+	for _, sig := range opts.CallSignatures {
 		// perms
 		for _, state := range sig.States {
 			if !m.stateMutable(state) {
@@ -323,7 +327,7 @@ func (m *Server) stateMutable(name string) bool {
 	return !slices.Contains(m.Opts.StatesExclude, name)
 }
 
-func (m *Server) StateNames() am.S {
+func (m *Server) MutableStateNames() am.S {
 	return slices.DeleteFunc(slices.Clone(m.Mach.StateNames()),
 		func(name string) bool {
 			return !m.stateMutable(name)

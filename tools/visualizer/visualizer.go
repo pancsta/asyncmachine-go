@@ -59,17 +59,16 @@ func PresetMap(r *Renderer) {
 	r.RenderDefaults()
 
 	r.RenderNestSubmachines = true
+	r.RenderPipes = true
+	r.RenderConns = true
+
 	r.RenderStates = false
-	// TODO enable?
-	r.RenderPipes = false
 	r.RenderStart = false
 	r.RenderReady = false
 	r.RenderException = false
 	r.RenderTags = false
 	r.RenderDepth = 0
 	r.RenderRelations = false
-	// TODO test
-	r.OutputElk = false
 }
 
 // ///// ///// /////
@@ -297,11 +296,15 @@ type Renderer struct {
 	OutputD2Svg bool
 	// Render a Mermaid svg in addition to the plain text version.
 	OutputMermaidSvg bool
-	// Render edges using ELK.
+	// Layout D2 using ELK.
 	OutputElk bool
+	// Layout D2 using TALA.
+	OutputD2Tala bool
 	// Also rasterize the diagram into a PNG, via the external d2 CLI (slow,
 	// requires d2 on PATH).
 	OutputPng bool
+
+	// TODO refac to prefixes -d2-png, -d2-elk, -mermaid-elk
 
 	// Output a D2 diagram (default)
 	OutputD2 bool
