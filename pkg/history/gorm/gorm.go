@@ -216,7 +216,7 @@ func (t *tracer) MachineInit(mach am.Api) context.Context {
 	now := time.Now().UTC()
 	var err error
 
-	// locks
+	// locks TODO no blocking in tracers, fork
 	m.mx.Lock()
 	defer m.mx.Unlock()
 
@@ -309,7 +309,7 @@ func (t *tracer) SchemaChange(machine am.Api, old am.Schema) {
 	m := t.mem
 	var err error
 
-	// locks
+	// locks TODO no blocking in tracers, fork
 	m.mx.Lock()
 	defer m.mx.Unlock()
 
@@ -370,7 +370,7 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 		return
 	}
 
-	// locks
+	// locks TODO no blocking in tracers, fork
 	m.mx.Lock()
 	defer m.mx.Unlock()
 
@@ -545,6 +545,7 @@ type Memory struct {
 	Cfg            *Config
 	SavePending    atomic.Int32
 	SaveInProgress atomic.Bool
+	GcInProgress   atomic.Bool
 	Saved          atomic.Uint64
 	// Value of Saved at the end of the last GC
 	SavedGc atomic.Uint64
@@ -552,8 +553,6 @@ type Memory struct {
 	savePool *errgroup.Group
 	// sync lock (read: flush, write: sync)
 	syncMx sync.RWMutex
-	// garbage collector lock (read: query, write: GC)
-	gcMx sync.RWMutex
 	// TODO use Context
 	disposed atomic.Bool
 	machRec  *Machine
@@ -952,28 +951,47 @@ func (m *Memory) Match(
 func (m *Memory) checkGc() {
 	// TODO flush WAL checkpoint?
 	// maybe GC TODO cap to max diff
-	sinceLastGc := m.SavedGc.Load()
-	now := m.Saved.Load()
-	if float32(now-sinceLastGc) <= float32(m.Cfg.MaxRecords)*1.5 ||
-		!m.gcMx.TryLock() {
+	// sinceLastGc := m.SavedGc.Load()
+	// now := m.Saved.Load()
+	// if float32(now-sinceLastGc) <= float32(m.Cfg.MaxRecords)*1.5 ||
+	// 	!m.gcMx.TryLock() {
+	//
+	// 	return
+	// }
 
+	if m.GcInProgress.Swap(true) {
 		return
 	}
 
-	timeDb := gorm.G[Time](m.Db)
-	_, err := timeDb.
-		Where("machine_id = ?", m.machRec.ID).
-		Where("id NOT IN (?)", timeDb.
-			Select("id").
+	go func() {
+		timeDb := gorm.G[Time](m.Db)
+		_, err := timeDb.
 			Where("machine_id = ?", m.machRec.ID).
-			Order("id DESC").
-			Limit(m.Cfg.MaxRecords)).
-		Delete(m.Ctx)
-	if err != nil {
-		m.onErr(fmt.Errorf("failed to GC: %w", err))
-	}
+			Where("id NOT IN (?)", timeDb.
+				Select("id").
+				Where("machine_id = ?", m.machRec.ID).
+				Order("id DESC").
+				Limit(m.Cfg.MaxRecords)).
+			Delete(m.Ctx)
+		if err != nil {
+			m.onErr(fmt.Errorf("failed to GC times: %w", err))
+		}
 
-	m.SavedGc.Store(m.Saved.Load())
+		// GC ticks of the times just removed above
+		tickDb := gorm.G[Tick](m.Db)
+		_, err = tickDb.
+			Where("machine_id = ?", m.machRec.ID).
+			Where("time_id NOT IN (?)", timeDb.
+				Select("id").
+				Where("machine_id = ?", m.machRec.ID)).
+			Delete(m.Ctx)
+		if err != nil {
+			m.onErr(fmt.Errorf("failed to GC ticks: %w", err))
+		}
+
+		m.SavedGc.Store(m.Saved.Load())
+		m.GcInProgress.Store(false)
+	}()
 }
 
 // Config is [amhist.BaseMemory.Config].
@@ -1029,6 +1047,10 @@ func (m *Memory) writeDb(rLocked bool) {
 		if rLocked {
 			defer m.syncMx.RUnlock()
 		}
+
+		// TODO needed?
+		m.mx.Lock()
+		defer m.mx.Unlock()
 
 		// sync mach record TODO skip saving states
 		if err := m.Db.Save(machRec).Error; err != nil {

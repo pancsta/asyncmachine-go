@@ -474,7 +474,7 @@ type MemoryApi interface {
 	) ([]*MemoryRecord, error)
 	// Sync synchronizes the batch buffer with the underlying backend, making
 	// those new records appear in queries. Doesn't guarantee persistence.
-	// Useful when queries very fresh records.
+	// Useful when querying very fresh records.
 	Sync() error
 
 	// converters

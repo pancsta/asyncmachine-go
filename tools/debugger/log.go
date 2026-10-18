@@ -1314,7 +1314,8 @@ func (d *Debugger) parseMsgReader(
 	if strings.HasPrefix(log.Text, "[when:match] ") {
 
 		// [when:match] Foo,Bar
-		states := strings.Split(log.Text[len("[when:match] "):], ",")
+		states := log.Text[len("[when:match] "):]
+		statesIdx := c.StatesStringToIndex(states)
 		found := false
 
 		for i, ptr := range txEntries {
@@ -1322,7 +1323,7 @@ func (d *Debugger) parseMsgReader(
 
 			// matched, delete and mark
 			if entry != nil && entry.Kind == types.LogReaderWhen &&
-				am.StatesEqual(states, c.IndexesToStates(entry.States)) {
+				slices.Equal(entry.States, statesIdx) {
 
 				txEntries = slices.Delete(txEntries, i, i+1)
 				entry.ClosedAt = *tx.Time
@@ -1338,7 +1339,7 @@ func (d *Debugger) parseMsgReader(
 	} else if strings.HasPrefix(log.Text, "[whenNot:match] ") {
 
 		// [whenNot:match] Foo,Bar
-		states := strings.Split(log.Text[len("[whenNot:match] "):], ",")
+		statesIdx := c.StatesStringToIndex(log.Text[len("[whenNot:match] "):])
 		found := false
 
 		for i, ptr := range txEntries {
@@ -1346,7 +1347,7 @@ func (d *Debugger) parseMsgReader(
 
 			// matched, delete and mark
 			if entry != nil && entry.Kind == types.LogReaderWhenNot &&
-				am.StatesEqual(states, c.IndexesToStates(entry.States)) {
+				slices.Equal(entry.States, statesIdx) {
 
 				txEntries = slices.Delete(txEntries, i, i+1)
 				entry.ClosedAt = *tx.Time

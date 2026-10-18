@@ -2,7 +2,7 @@
 
 <!-- TOC -->
 
-- version `v0.19.3`
+- version `v0.19.5`
 - [Legend](#legend)
 - [Machine and States](#machine-and-states)
   - [Machine Schema](#machine-schema)
@@ -51,7 +51,7 @@
   - [Tracing and Metrics](#tracing-and-metrics)
   - [Optimizing Data Input](#optimizing-data-input)
   - [Disposal and GC](#disposal-and-gc)
-  - [Dynamically Generating States](#dynamically-generating-states)
+- [Dynamic State Machines](#dynamic-state-machines)
 - [Cheatsheet](#cheatsheet)
 - [Other sources](#other-sources)
   - [Packages](#packages)
@@ -89,7 +89,7 @@ am.Schema{
 
     // relations
     Require: am.S{"AnotherState1"},
-    Add:   am.S{"AnotherState2"},
+    Add:     am.S{"AnotherState2"},
     Remove:  am.S{"AnotherState3", "AnotherState4"},
     After:   am.S{"AnotherState2"},
   }
@@ -1733,7 +1733,7 @@ err := mach.VerifyStates(ss.Names())
 mach.Add1(ss.State1, nil)
 ```
 
-Read more about schemas in [`/docs/schema.md`](/docs/schema.md)
+Read more about schemas in [`/pkg/states`](/pkg/states/README.md) and [`/docs/schema.md`](/docs/schema.md).
 
 ### Typesafe Arguments
 
@@ -1871,19 +1871,105 @@ func Msg(msgTx *Msg) {
 
 ### Disposal and GC
 
-// TODO
+Each machine will dispose with the passed context, after a max grace period to finish a running transition (if any).
+Precise disposal can be achieved by inheriting from [/pkg/states/ss_disposed.go](/pkg/states/ss_disposed.go).
 
-- wait contexts
-- Dispose
-- WhenDisposed
-- HandleDispose
+```go
+type App struct {
+  *am.ExceptionHandler
+  *ssam.DisposedHandlers
+}
 
-### Dynamically Generating States
+// ...
 
-// TODO
+app := &App{
+  DisposedHandlers: &ssam.DisposedHandlers{},
+}
+  
+// ...
 
-- Machine.SetSchema
-- schema versions
+mach.Dispose()
+amhelp.Dispose(mach)
+
+// ...
+
+<-r.Mach.WhenDisposed()
+```
+
+## Dynamic State Machines
+
+**asyncmachine-go** supports dynamism in a couple of ways (regular struct-based handlers can be added at any time).
+The schema can be changed, as long as it's longer than the previous one (changes relations too), which creates a
+version of that machine schema. New state machines can be initialized easily from dynamic handler names via
+[`amhelp.NewDynMach()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#NewDynMach). It's also
+possible to parse Go code fully dynamically to create new or extend existing state machines using
+[`/pkg/integrations/yaegi`](/pkg/integrations/yaegi) (language limitations apply).
+
+```go
+import amhelp "TODO"
+
+// ...
+
+// states
+var (
+  StateFoo = "Foo"
+  StateBar = "Bar"
+  StateBaz = "Baz"
+)
+
+// machine
+mach, err := amhelp.NewDynMach(ctx, machine.Schema{
+  // schema
+
+  StateFoo: {
+    Auto:    true,
+    Require: []string{StateBar},
+  },
+  StateBar: {
+    Auto:    true,
+    Require: []string{StateBaz},
+  },
+  StateBaz: {
+    Auto: true,
+  },
+}, map[string]machine.HandlerNegotiation{
+
+  // FooEnter() handler
+  StateFoo + machine.SuffixEnter: func(e *machine.Event) bool {
+    return rand.Intn(2) == 1
+  },
+}, map[string]machine.HandlerFinal{
+
+  // FooState() handler
+  StateFoo + machine.SuffixState: func(e *machine.Event) {
+    mach := e.Machine()
+    ctx := mach.NewStateCtx(StateFoo)
+
+    mach.Fork(ctx, e, func() {
+      mach.EvRemove1(e, StateBar, nil)
+    })
+  },
+}
+
+// ...
+
+mach.SetSchema(machine.Schema{
+  StateFoo: {
+    Auto:    true,
+    Require: []string{StateBar},
+  },
+  StateBar: {
+    Auto:    true,
+    Require: []string{StateBaz},
+  },
+  StateBaz: {
+    Auto: true,
+  },
+  "StateNewOne": {
+    Auto: true,
+  },
+}, am.S{StateFoo, StateBar, StateBaz, "StateNewOne"})
+```
 
 ### Naming Convention
 
@@ -1924,9 +2010,7 @@ func Msg(msgTx *Msg) {
 ### Packages
 
 **asyncmachine-go** provides additional tooling and extensions in the form of separate packages, available at
-[`/pkg`](https://github.com/pancsta/asyncmachine-go/tree/main/pkg) and [`/tools`](https://github.com/pancsta/asyncmachine-go/tree/main/tools).
-
-Each of them has a readme with examples:
+[`/pkg`](https://github.com/pancsta/asyncmachine-go/tree/main/pkg) and [`/tools`](https://github.com/pancsta/asyncmachine-go/tree/main/tools). Each of them has a readme with examples:
 
 - [`/pkg/states`](/pkg/states) Reusable state schemas, handlers, and piping.
 - [`/pkg/helpers`](/pkg/helpers) Useful functions when working with async state machines.

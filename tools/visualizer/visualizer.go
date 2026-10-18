@@ -299,6 +299,9 @@ type Renderer struct {
 	OutputMermaidSvg bool
 	// Render edges using ELK.
 	OutputElk bool
+	// Also rasterize the diagram into a PNG, via the external d2 CLI (slow,
+	// requires d2 on PATH).
+	OutputPng bool
 
 	// Output a D2 diagram (default)
 	OutputD2 bool

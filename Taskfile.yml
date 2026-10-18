@@ -284,6 +284,17 @@ tasks:
         ./tools/debugger/test
         {{.CLI_ARGS}}
 
+  test-integration-wasm:
+    env:
+      AM_TEST_RUNNER: 1
+    desc: Run WASM example integration tests
+    cmds:
+      - task: clean-test
+      - go test -tags integration ./examples/wasm {{.CLI_ARGS}}
+      - cd examples/wasm_workflow &&
+          go mod tidy &&
+          go test -tags integration . {{.CLI_ARGS}}
+
   test-path:
     env:
       AM_TEST_RUNNER: 1
@@ -787,7 +798,7 @@ tasks:
     requires:
       vars: [AM_DEPLOY_WEBSITE_DIR, AM_DEPLOY_WEBSITE_CODE_DIR]
     cmds:
-      - mv docs/website/*.{html,css,ico} {{.AM_DEPLOY_WEBSITE_DIR}}
+      - mv docs/website/*.{html,css,ico,md} {{.AM_DEPLOY_WEBSITE_DIR}}
       - cp -R scripts/gen_website/sitemap {{.AM_DEPLOY_WEBSITE_CODE_DIR}}/sitemap_am
 
   deploy-docs-api:
@@ -837,64 +848,9 @@ tasks:
       - task: deploy-assets
 
   gen-docs-skills:
-    desc: Generate AI skill in /docs/editors/skills
-    cmds:
-      - task: gen-docs-skill-mini
-      - task: gen-docs-skill-full
-      - task: gen-docs-skill-cli
-
-  gen-docs-skill-cli:
+    desc: Generate AI skills in /docs/editors/skills (am, am-cook, am-full, am-readme, am-mini, am-cli)
     dir: scripts
-    cmd: go run ./gen_cli_skill
-
-  gen-docs-skill-am:
-    vars:
-      FILE: docs/editors/skills/am/SKILL.md
-    cmds:
-      - mkdir -p docs/editors/skills/am
-      - cp docs/editors/SKILL.md {{.FILE}}
-      - echo -e "\n\n## Example Schema\n\n\`\`\`go" >> {{.FILE}}
-      - cat docs/editors/schema.go >> {{.FILE}}
-      - echo -e "\`\`\`\n\n## Predefined States /pkg/states\n\n\`\`\`go" >> {{.FILE}}
-      - cat docs/editors/states.md >> {{.FILE}}
-      - echo -e "\`\`\`\n\n## Basic\n\n\`\`\`go" >> {{.FILE}}
-      - cat examples/basic/basic.go >> {{.FILE}}
-      - echo -e "\`\`\`\n\n## Machine Template\n\n\`\`\`go" >> {{.FILE}}
-      - cat examples/mach_template/mach_template.go >> {{.FILE}}
-
-  gen-docs-skill-cook:
-    vars:
-      FILE: docs/editors/skills/am-cook/SKILL.md
-    cmds:
-      - task: gen-docs-skill-am
-      - mkdir -p docs/editors/skills/am-cook
-      - cp docs/editors/skills/am/SKILL.md {{.FILE}}
-      - | 
-        sed -i 's/name: am/name: am-cook/' {{.FILE}}
-      - echo -e "\`\`\`\n\n## Cookbook\n\n" >> {{.FILE}}
-      - cat docs/cookbook.md >> {{.FILE}}
-
-  gen-docs-skill-full:
-    vars:
-      FILE: docs/editors/skills/am-full/SKILL.md
-    cmds:
-      - task: gen-docs-skill-cook
-      - mkdir -p docs/editors/skills/am-full
-      - cp docs/editors/skills/am-cook/SKILL.md {{.FILE}}
-      - | 
-        sed -i 's/name: am-cook/name: am-full/' {{.FILE}}
-      - echo -e "\n\n## Manual\n\n" >> {{.FILE}}
-      - cat docs/manual.md >> {{.FILE}}
-
-  gen-docs-skill-mini:
-    vars:
-      FILE: docs/editors/skills/am-mini/SKILL.md
-    cmds:
-      - mkdir -p docs/editors/skills/am-mini
-      - cp docs/editors/SKILL.md {{.FILE}}
-      - | 
-        sed -i 's/name: am/name: am-mini/' {{.FILE}}
-      - cat docs/editors/mini.md >> {{.FILE}}
+    cmd: go run ./gen_skills
 
   gen-badges:
     cmds:

@@ -16,6 +16,19 @@ distributed across _n_ servers and _m_ browsers, using efficient diff-based sync
 3. `../../scripts/dep-taskfile.sh`
 4. `task start`
 
+## Testing
+
+`wasm_test.go` is an integration test which runs the same commands as `task start` (WASM build, `go run ./server`),
+opens `RELAY_HTTP_ADDR` from [`.env`](/examples/wasm/.env) in a headless browser and asserts that mutations flow both
+ways over aRPC.
+
+```bash
+go test ./examples/wasm
+```
+
+It needs a headless Chrome / Brave (override with `AM_WASM_BROWSER`) and `RELAY_HTTP_ADDR` to be bindable. It's skipped
+with `-short`.
+
 ## Implementation
 
 [cenkalti/rpc2](https://github.com/cenkalti/rpc2) (fork of `net/rpc`), and [coder/websocket](https://github.com/coder/websocket)

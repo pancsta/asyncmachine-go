@@ -206,6 +206,10 @@ Small-scale dashboards can be achieved by using the `--fwd-data` param, with mul
 destinations. It will duplicate all the memory allocations and won't scale far, but it will work. Check out
 [`/config/dashboards`](/config/dashboards) directory for preconfigured [zellij layouts](https://zellij.dev/).
 
+## MCP Server
+
+TODO list cmds
+
 ## monorepo
 
 - [`/tools/debugger`](/tools/debugger/README.md)

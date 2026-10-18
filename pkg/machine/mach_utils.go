@@ -5,9 +5,6 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
-	"fmt"
-	"maps"
 	"os"
 	"reflect"
 	"regexp"
@@ -155,6 +152,9 @@ func AMerge[K comparable, V any](maps ...map[K]V) map[K]V {
 // S (state names) is a string list of state names.
 type S []string
 
+// TODO NewS([]string, stateLists ... string) S
+//   - should filter newlines
+
 // FilterIndex returns a subset of S from specified indexes.
 func (s S) FilterIndex(idxs []int) S {
 	return IndexToStates(s, idxs)
@@ -244,12 +244,18 @@ func (s S) EqualOrder(other S) bool {
 	}
 
 	for i := range s {
-		if s[i] != other[i] {
+		if s[i] != strings.TrimSpace(other[i]) {
 			return false
 		}
 	}
 
 	return true
+}
+
+// EqualIndex is like  [S.EqualOrder], but for state indexes instead of names.
+func (s S) EqualIndex(otherIdx []int) bool {
+	idx := s.Index(nil)
+	return slices.Equal(idx, otherIdx)
 }
 
 // Index returns an index of passed [states]. Unknown states are
@@ -258,12 +264,18 @@ func (s S) Index(states S) []int {
 	return StatesToIndex(s, states)
 }
 
+// Index1 is [S.Index] for a single state.
+func (s S) Index1(state string) int {
+	return slices.Index(s, state)
+}
+
 // Hash returns a short hash of this state set.
 func (s S) Hash() string {
 	return Hash(strings.Join(s, ","), 4)
 }
 
 // Has returns true is [state] is in this state set.
+// TODO v0.20 Has1(string), Has(S), like amhelp.Implements
 func (s S) Has(state string) bool {
 	return slices.Contains(s, state)
 }
@@ -288,7 +300,7 @@ func IndexToStates(index S, states []int) S {
 func StatesToIndex(index S, states S) []int {
 	ret := make([]int, len(states))
 	for i := range states {
-		ret[i] = slices.Index(index, states[i])
+		ret[i] = slices.Index(index, strings.TrimSpace(states[i]))
 	}
 
 	return ret
@@ -507,230 +519,6 @@ func StateSet(source State, auto, multi bool, overlay State) State {
 	}
 
 	return s
-}
-
-// ----- SCHEMA
-
-// Schema is a map of state names to state definitions.
-type Schema map[string]State
-
-// Merge merges multiple state structs into one, overriding the previous
-// state definitions. No relation-level merging takes place.
-func (s Schema) Merge(schemas ...Schema) Schema {
-	// TODO mark all-but-last states as Inherited?
-	// TODO example
-	// TODO test
-	// defaults
-	l := len(schemas)
-	switch l {
-	case 0:
-		return s
-	}
-
-	ret := s.Clone()
-	for i := 0; i < l; i++ {
-		maps.Copy(ret, schemas[i])
-	}
-
-	// rm noname states
-	delete(ret, "")
-
-	return ret.Clone()
-}
-
-// Prefix will prefix all state names with [prefix]. skipPrefixed will skip
-// overlaps eg "FooFooName" will remain "FooName".
-func (s Schema) Prefix(
-	prefix string, skipPrefixed bool, optAllowlist, optSkiplist S,
-) Schema {
-	ret := Schema{}
-	for name, s := range s {
-		s = s.Clone()
-
-		if len(optAllowlist) > 0 && !slices.Contains(optAllowlist, name) {
-			continue
-		} else if len(optSkiplist) > 0 && slices.Contains(optSkiplist, name) {
-			continue
-		}
-
-		for i, r := range s.After {
-			newName := r
-			if !skipPrefixed || !strings.HasPrefix(name, prefix) {
-				newName = prefix + r
-			}
-			s.After[i] = newName
-		}
-		for i, r := range s.Add {
-			newName := r
-			if !skipPrefixed || !strings.HasPrefix(name, prefix) {
-				newName = prefix + r
-			}
-			s.Add[i] = newName
-		}
-		for i, r := range s.Remove {
-			newName := r
-			if !skipPrefixed || !strings.HasPrefix(name, prefix) {
-				newName = prefix + r
-			}
-			s.Remove[i] = newName
-		}
-		for i, r := range s.Require {
-			newName := r
-			if !skipPrefixed || !strings.HasPrefix(name, prefix) {
-				newName = prefix + r
-			}
-			s.Require[i] = newName
-		}
-
-		newName := name
-		if !skipPrefixed || !strings.HasPrefix(name, prefix) {
-			newName = prefix + name
-		}
-
-		// build
-		ret[newName] = s
-	}
-
-	return ret
-}
-
-// Clone deep clones the states struct and returns a copy.
-func (s Schema) Clone() Schema {
-	ret := make(Schema)
-
-	for name, state := range s {
-		ret[name] = state.Clone()
-	}
-
-	return ret
-}
-
-// Parse sanitizes the schema and returns potential errors.
-func (s Schema) Parse() (Schema, error) {
-	// TODO capitalize states
-	// TODO ErrFoo must require Exception
-
-	parsed := s.Clone()
-	states := slices.Collect(maps.Keys(s))
-	var errs error
-	for name, state := range s {
-
-		// avoid self removal
-		if slices.Contains(state.Remove, name) {
-			state.Remove = slicesWithout(state.Remove, name)
-		}
-
-		// don't Remove if in Add
-		for _, add := range state.Add {
-			if slices.Contains(state.Remove, add) {
-				state.Remove = slicesWithout(state.Remove, add)
-
-				// check if exists
-			} else if !slices.Contains(states, add) {
-				state.Add = slicesWithout(state.Add, add)
-			}
-		}
-
-		// avoid being after itself
-		if slices.Contains(state.After, name) {
-			state.After = slicesWithout(state.After, name)
-		}
-
-		// detect require-remove conflicts
-		for _, required := range state.Require {
-			if slices.Contains(state.Remove, required) {
-				errs = errors.Join(errs, fmt.Errorf(
-					"%w: require-remove conflict for %s to %s",
-					ErrSchema, name, required,
-				))
-			}
-		}
-
-		// remove references to non-existing states
-		for _, n := range state.Remove {
-			if !slices.Contains(states, n) {
-				state.Remove = slicesWithout(state.Remove, n)
-			}
-		}
-		for _, n := range state.After {
-			if !slices.Contains(states, n) {
-				state.After = slicesWithout(state.After, n)
-			}
-		}
-		for _, n := range state.Remove {
-			if !slices.Contains(states, n) {
-				state.Remove = slicesWithout(state.Remove, n)
-			}
-		}
-
-		parsed[name] = state
-	}
-
-	return parsed, errs
-}
-
-// FilterByTag returns a subset schema with states having the given tag.
-func (s Schema) FilterByTag(tag string) Schema {
-	ret := Schema{}
-	for name, state := range s {
-		if slices.Contains(state.Tags, tag) {
-			ret[name] = state
-		}
-	}
-
-	return ret
-}
-
-// Names is a random-order list of defined state names.
-func (s Schema) Names() S {
-	return slices.Collect(maps.Keys(s))
-}
-
-func (s Schema) AdjacentStates(state string) S {
-	if _, ok := s[state]; !ok {
-		return nil
-	}
-	data := s[state]
-
-	return slices.Concat(data.Add, data.After, data.Require, data.Remove)
-}
-
-// ----- old
-
-// SchemaMerge is deprecated, use [Schema.Merge].
-func SchemaMerge(schemas ...Schema) Schema {
-	l := len(schemas)
-	switch l {
-	case 0:
-		return Schema{}
-	case 1:
-		return schemas[0]
-	}
-
-	ret := make(Schema)
-	for i := 0; i < l; i++ {
-		// TODO clone?
-		maps.Copy(ret, schemas[i])
-	}
-
-	return ret.Clone()
-}
-
-// StatesByTag is deprecated, use
-//
-//	Schema.FilterByTag("").Names()
-func StatesByTag(schema Schema, tag string) S {
-	ret := S{}
-	for name, s := range schema {
-		for _, t := range s.Tags {
-			if t == tag || strings.HasPrefix(t, tag+":") {
-				ret = append(ret, name)
-				break
-			}
-		}
-	}
-
-	return ret
 }
 
 // ///// ///// /////

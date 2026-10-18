@@ -186,6 +186,8 @@ var d2Header = utils.Sp(`
       style: {
 				font-size: 50
 				fill: "black"
+				border-radius: 40
+				stroke-width: 4
 			}
 			label.near: top-center
 		}
@@ -386,7 +388,7 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 		len(d2Graph.Objects))
 
 	// render svg
-	if r.OutputD2Svg {
+	if r.OutputD2Svg || r.OutputPng {
 		out, err := d2svg.Render(d2Diag, renderOpts)
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -394,13 +396,68 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to render D2: %w", err)
 		}
-		err = os.WriteFile(filepath.Join(r.OutputFilename+".svg"), out, 0o600)
-		if err != nil {
-			return fmt.Errorf("failed to write D2 file: %w", err)
+
+		if r.OutputD2Svg {
+			err = os.WriteFile(filepath.Join(r.OutputFilename+".svg"), out, 0o600)
+			if err != nil {
+				return fmt.Errorf("failed to write D2 file: %w", err)
+			}
+			fmt.Printf("Rendered %s.svg\n", r.OutputFilename)
+		}
+
+		if r.OutputPng {
+			if err := r.outputD2Png(ctx, out); err != nil {
+				return fmt.Errorf("failed to render PNG: %w", err)
+			}
 		}
 	}
 
 	return nil
+}
+
+// d2PngTimeoutSec mirrors `d2 --timeout 100000000` (the CLI's per-run
+// deadline) as a local context timeout for the API call below.
+const d2PngTimeoutSec = 100_000_000
+
+// d2PngEnvTimeoutSec mirrors `D2_TIMEOUT=99999` from the CLI invocation:
+// [d2png.ConvertSVG] reads it (via d2's lib/env.Timeout) to set the headless
+// browser's own default/navigation timeouts.
+const d2PngEnvTimeoutSec = "99999"
+
+// outputD2Png rasterizes an already-rendered D2 svg into a PNG via the d2
+// API's headless-browser screenshot (slow, requires Chromium).
+func (r *Renderer) outputD2Png(ctx context.Context, svg []byte) error {
+	r.log("Generating %s.png\n", r.OutputFilename)
+
+	if err := os.Setenv("D2_TIMEOUT", d2PngEnvTimeoutSec); err != nil {
+		return fmt.Errorf("failed to set D2_TIMEOUT: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, d2PngTimeoutSec*time.Second)
+	defer cancel()
+
+	pw, err := d2png.InitPlaywrightWithPrompt()
+	if err != nil {
+		return fmt.Errorf("failed to init a headless browser: %w", err)
+	}
+	defer func() {
+		_ = pw.Cleanup()
+	}()
+
+	out, err := d2png.ConvertSVG(pw.Browser, svg)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if err != nil {
+		return fmt.Errorf("failed to convert svg to png: %w", err)
+	}
+
+	out, err = d2png.AddExif(out)
+	if err != nil {
+		return fmt.Errorf("failed to add exif to png: %w", err)
+	}
+
+	return os.WriteFile(r.OutputFilename+".png", out, 0o600)
 }
 
 func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {

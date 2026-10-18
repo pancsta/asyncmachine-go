@@ -232,65 +232,8 @@ func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 		msgTx.CalledStates = nil
 	}
 
-	// detect RPC connections - read arg "id" for HandshakeDone, being the ID of
-	// the RPC client
-	// TODO extract to a func
-	if c.LatestMsgTx != nil {
-		prevTx := c.LatestMsgTx
-		fakeTx := &am.Transition{
-			TimeBefore: prevTx.Clocks,
-			TimeAfter:  msgTx.Clocks,
-		}
-		added, _, _ := amhelp.GetTransitionStates(fakeTx, index)
-
-		// RPC conns (requires LogLevel2)
-		isRpcServer := slices.Contains(c.MsgSchema.Tags, "rpc-server")
-		if slices.Contains(added, ssrpc.ServerStates.HandshakeDone) && isRpcServer {
-			for _, item := range msgTx.LogEntries {
-				if !strings.HasPrefix(item.Text, "[add] ") {
-					continue
-				}
-
-				line := strings.Split(strings.TrimRight(item.Text, ")\n"), "(")
-				for _, arg := range strings.Split(line[1], " ") {
-					a := strings.Split(arg, "=")
-					if a[0] != "id" {
-						continue
-					}
-
-					id := a[1]
-					data := graph.EdgeData(&EdgeData{MachConnectedTo: true})
-					err := g.G.AddEdge(id, c.Id, data)
-					if err != nil {
-
-						// wait for the other mach to show up TODO use addMach()
-
-						// TODO leaks, use addMach()
-						g.Server.Log("waiting for RPC conn %s to show up", id)
-						when := g.Server.WhenArgs(ss.InitClient, am.A{"id": a[1]}, nil)
-						go func() {
-							<-when
-							g.Server.Log("Resuming RPC for %s", id)
-
-							if err := g.G.AddEdge(a[1], c.Id, data); err != nil {
-								AddErrGraph(nil, g.Server, fmt.Errorf("ParseMsg: %w", err))
-								return
-							}
-							if err = g.Map.AddEdge(a[1], c.Id); err != nil {
-								AddErrGraph(nil, g.Server, fmt.Errorf("ParseMsg: %w", err))
-								return
-							}
-						}()
-
-					} else {
-						if err = g.Map.AddEdge(a[1], c.Id); err != nil {
-							AddErrGraph(nil, g.Server, fmt.Errorf("ParseMsg: %w", err))
-							return
-						}
-					}
-				}
-			}
-		}
+	if err := g.parseRpcConns(c, msgTx); err != nil {
+		AddErrGraph(nil, g.Server, fmt.Errorf("ParseMsg: %w", err))
 	}
 
 	// TODO errors
@@ -307,10 +250,11 @@ func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 	// 	c.errors = append([]int{idx}, c.errors...)
 	// }
 
-	err := g.parseMsgLog(c, msgTx)
-	if err != nil {
+
+	if err := g.parseMsgLog(c, msgTx); err != nil {
 		AddErrGraph(nil, g.Server, fmt.Errorf("parseMsgLog: %w", err))
 	}
+
 	// TODO dedicated error state, enable once stable
 	// if err != nil {
 	// g.Mach.AddErr(fmt.Errorf("Graph.parseMsgLog: %w", err), nil)
@@ -321,9 +265,72 @@ func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 	c.LatestTimeSum = sum
 }
 
+func (g *Graph) parseRpcConns(c *Client, msgTx *dbg.DbgMsgTx) error {
+	index := c.MsgSchema.StatesIndex
+
+	// detect RPC connections - read arg "id" for HandshakeDone, being the ID of
+	// the RPC client
+	if c.LatestMsgTx != nil {
+		prevTx := c.LatestMsgTx
+		fakeTx := &am.Transition{
+			TimeBefore: prevTx.Clocks,
+			TimeAfter:  msgTx.Clocks,
+		}
+		added, _, _ := amhelp.GetTransitionStates(fakeTx, index)
+
+		// RPC conns (requires LogLevel2)
+		isRpcServer := slices.Contains(c.MsgSchema.Tags, ssrpc.TagRpcServer)
+		if slices.Contains(added, ssrpc.ServerStates.HandshakeDone) && isRpcServer {
+			for _, item := range msgTx.LogEntries {
+				if !strings.HasPrefix(item.Text, "[add] ") {
+					continue
+				}
+
+				line := strings.Split(strings.TrimRight(item.Text, ")\n"), "(")
+				for _, arg := range strings.Split(line[1], " ") {
+					a := strings.Split(arg, "=")
+					if a[0] != "id" {
+						continue
+					}
+
+					id := a[1]
+					err := g.AddEdge(id, c.Id, &EdgeData{MachConnectedTo: true})
+					if err != nil {
+						return err
+					}
+					_ = g.Map.AddEdge(id, c.Id)
+				}
+			}
+		}
+	}
+
+	// link netmachs to sources
+	if id := amhelp.TagValue(c.MsgSchema.Tags, ssrpc.TagKeySrcId); id != "" {
+		err := g.AddEdge(c.Id, id, &EdgeData{MachConnectedTo: true})
+		if err != nil {
+			return err
+		}
+		_ = g.Map.AddEdge(c.Id, id)
+	}
+
+	return nil
+}
+
 func (g *Graph) RemoveClient(id string) error {
 	// TODO
 	return nil
+}
+
+func (g *Graph) AddEdge(srcId, destId string, data *EdgeData) error {
+	g.addMach(srcId, nil)
+	g.addMach(destId, nil)
+
+	err := g.G.AddEdge(srcId, destId, graph.EdgeData(data))
+	if err == nil {
+		_ = g.Map.AddEdge(srcId, destId)
+	}
+
+	return err
 }
 
 func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
@@ -338,32 +345,17 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 
 	// add machine TODO dont exit on error, merge
 	var err error
-	if err = g.addMach(c.Id); err != nil {
+	if err = g.addMach(c.Id, c); err != nil {
 		return err
 	}
 
 	// parent
 	if c.MsgSchema.Parent != "" {
-		data := graph.EdgeData(&EdgeData{MachChildOf: true})
-		err = g.G.AddEdge(c.Id, c.MsgSchema.Parent, data)
+		err = g.AddEdge(c.Id, c.MsgSchema.Parent, &EdgeData{MachChildOf: true})
 		if err != nil {
-
-			// wait for the parent to show up TODO use addMach()
-			g.Server.Log("waiting for parent %s to show up", c.MsgSchema.Parent)
-			when := g.Server.WhenArgs(ss.InitClient,
-				am.A{"id": c.MsgSchema.Parent}, nil)
-			go func() {
-				<-when
-				g.Server.Log("resuming for %s", c.MsgSchema.Parent)
-				err = g.G.AddEdge(c.Id, c.MsgSchema.Parent, data)
-				if err == nil {
-					_ = g.Map.AddEdge(c.Id, c.MsgSchema.Parent)
-				}
-				AddErrGraph(nil, g.Server, fmt.Errorf("AddClient: %w", err))
-			}()
-		} else {
-			_ = g.Map.AddEdge(c.Id, c.MsgSchema.Parent)
+			return err
 		}
+		_ = g.Map.AddEdge(c.Id, c.MsgSchema.Parent)
 	}
 
 	// add states
@@ -456,11 +448,16 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 	return nil
 }
 
-func (g *Graph) addMach(id string) error {
+func (g *Graph) addMach(id string, client *Client) error {
 	err := g.G.AddVertex(&Vertex{
 		MachId: id,
 	})
 	if errors.Is(err, graph.ErrVertexAlreadyExists) {
+		// update
+		if client != nil && client.MsgSchema != nil {
+			g.Clients[id] = client
+		}
+
 		return nil
 	}
 	if err != nil {
@@ -619,7 +616,7 @@ func (g *Graph) parseMsgReader(
 			err := g.G.AddEdge(sourceMachId, targetMachId, graph.EdgeData(data))
 			if err != nil {
 				// too early, add a dummy mach
-				if err = g.addMach(otherMach); err != nil {
+				if err = g.addMach(otherMach, nil); err != nil {
 					return err
 				}
 				err = g.G.AddEdge(sourceMachId, targetMachId, graph.EdgeData(data))
