@@ -250,7 +250,6 @@ func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
 	// 	c.errors = append([]int{idx}, c.errors...)
 	// }
 
-
 	if err := g.parseMsgLog(c, msgTx); err != nil {
 		AddErrGraph(nil, g.Server, fmt.Errorf("parseMsgLog: %w", err))
 	}
@@ -322,8 +321,12 @@ func (g *Graph) RemoveClient(id string) error {
 }
 
 func (g *Graph) AddEdge(srcId, destId string, data *EdgeData) error {
-	g.addMach(srcId, nil)
-	g.addMach(destId, nil)
+	if err := g.addMach(srcId, nil); err != nil {
+		return err
+	}
+	if err := g.addMach(destId, nil); err != nil {
+		return err
+	}
 
 	err := g.G.AddEdge(srcId, destId, graph.EdgeData(data))
 	if err == nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -757,10 +758,19 @@ func rootRun(
 	if err != nil {
 		return err
 	}
+	isAddr := false
+	addrToParse := args[0]
+	if host, port, err := net.SplitHostPort(addrToParse); err == nil &&
+		host != "" && port != "" {
+
+		isAddr = true
+	}
 
 	// validate flags
 	if isDir && isFile {
 		return fmt.Errorf("cannot use both --dir and --file")
+	} else if !isDir && !isFile && !isAddr {
+		return fmt.Errorf("invalid address: %s", args[0])
 	}
 	clipath := args[0]
 

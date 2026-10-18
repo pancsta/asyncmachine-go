@@ -179,7 +179,7 @@ func exportTelemetry(node *Node, mach am.Api) {
 	amhelp.MachDebugEnv(mach)
 
 	if node.Loki != nil {
-		amtele.BindLokiLogger(mach, node.Loki)
+		amtele.MachBindLokiLogger(mach, node.Loki)
 	}
 
 	// prom metrics

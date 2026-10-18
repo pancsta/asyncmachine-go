@@ -408,6 +408,9 @@ type WhenBinding struct {
 	Matched  int
 	Total    int
 	Ctx      context.Context
+
+	// TODO debug
+	Debug string
 }
 
 type WhenTimeBinding struct {
@@ -679,4 +682,11 @@ func (c *CallSignature) String() string {
 
 func (c *CallSignature) Args() []string {
 	return slices.Concat(c.Needed, c.Optional)
+}
+
+// NextMut represent a scheduled mutation.
+type NextMut struct {
+	Mach   Api
+	States S
+	Args   A
 }

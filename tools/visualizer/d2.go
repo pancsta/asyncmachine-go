@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/d2lang/util-go/go2"
 	"github.com/pancsta/d2/d2graph"
@@ -18,6 +19,7 @@ import (
 	"github.com/pancsta/d2/d2renderers/d2svg"
 	"github.com/pancsta/d2/d2themes/d2themescatalog"
 	d2log "github.com/pancsta/d2/lib/log"
+	d2png "github.com/pancsta/d2/lib/png"
 	"github.com/pancsta/d2/lib/textmeasure"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
@@ -362,6 +364,10 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 	ctx = d2log.With(ctx, slogLogger)
 	ruler, _ := textmeasure.NewRuler()
 	layoutResolver := func(engine string) (d2graph.LayoutGraph, error) {
+		// TODO
+		// if r.OutputD2Tala {
+		// 		return d2talalayout.DefaultLayout, nil
+		// }
 		if r.OutputElk {
 			return d2elklayout.DefaultLayout, nil
 		}
@@ -384,8 +390,7 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to compile D2: %w", err)
 	}
-	r.log("Edges: %d Objects: %d\n", len(d2Graph.Edges),
-		len(d2Graph.Objects))
+	r.log("Edges: %d Objects: %d\n", len(d2Graph.Edges), len(d2Graph.Objects))
 
 	// render svg
 	if r.OutputD2Svg || r.OutputPng {
@@ -402,7 +407,7 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("failed to write D2 file: %w", err)
 			}
-			fmt.Printf("Rendered %s.svg\n", r.OutputFilename)
+			r.log("Generated %s.svg\n", r.OutputFilename)
 		}
 
 		if r.OutputPng {
@@ -444,6 +449,9 @@ func (r *Renderer) outputD2Png(ctx context.Context, svg []byte) error {
 		_ = pw.Cleanup()
 	}()
 
+	// TODO fix timeout
+	//  failed to convert svg to png: playwright: timeout:
+	//  Timeout 30000ms exceeded.
 	out, err := d2png.ConvertSVG(pw.Browser, svg)
 	if ctx.Err() != nil {
 		return ctx.Err()

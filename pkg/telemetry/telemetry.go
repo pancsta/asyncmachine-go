@@ -17,7 +17,7 @@ const (
 	EnvLokiAddr = "AM_LOKI_ADDR"
 )
 
-func BindLokiLogger(mach am.Api, client promtail.Client) {
+func MachBindLokiLogger(mach am.Api, client promtail.Client) {
 	labels := map[string]string{
 		"asyncmachine_id": mach.Id(),
 	}
@@ -53,11 +53,11 @@ func NormalizeId(id string) string {
 	return normalizeRegexp.ReplaceAllString(strings.ToLower(id), "_")
 }
 
-// BindLokiEnv bind Loki logger to [mach], based on environment vars:
+// MachBindLokiEnv bind Loki logger to [mach], based on environment vars:
 // - AM_SERVICE (required)
 // - AM_LOKI_ADDR (required)
 // This tracer is NOT inherited by submachines.
-func BindLokiEnv(mach am.Api) error {
+func MachBindLokiEnv(mach am.Api) error {
 	service := os.Getenv(EnvService)
 	addr := os.Getenv(EnvLokiAddr)
 	if service == "" || addr == "" {
@@ -91,7 +91,7 @@ func BindLokiEnv(mach am.Api) error {
 		}()
 	}
 
-	BindLokiLogger(mach, pt)
+	MachBindLokiLogger(mach, pt)
 
 	return nil
 }

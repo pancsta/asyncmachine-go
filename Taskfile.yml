@@ -256,22 +256,23 @@ tasks:
       AM_TEST_RUNNER: 1
     desc: Run only integration tests
     cmds:
+      - task: test-integration-dbg
+      - task: test-integration-wasm
       - task: clean-test
       - go test -tags integration
-        -p 1 --parallel 1
-        ./tools/debugger/test
-        ./examples/arpc
-        ./examples/basic
-        ./examples/cli
-        ./examples/cli_daemon
-        ./examples/dag_dependency_graph
-        ./examples/fan_out_in
-        ./examples/mach_template
-        ./examples/pipes
-        ./examples/raw_strings
-        ./examples/subscriptions
-        ./tools/debugger
-        {{.CLI_ARGS}}
+          -p 1 --parallel 1
+          ./examples/arpc
+          ./examples/basic
+          ./examples/cli
+          ./examples/cli_daemon
+          ./examples/dag_dependency_graph
+          ./examples/fan_out_in
+          ./examples/mach_template
+          ./examples/pipes
+          ./examples/raw_strings
+          ./examples/subscriptions
+          ./pkg/history/gorm
+          {{.CLI_ARGS}}
 
   test-integration-dbg:
     env:
@@ -591,7 +592,11 @@ tasks:
 
   gen-docs-manual-pdf:
     cmds:
-      - pandoc -f markdown-implicit_figures docs/manual.md -o assets/asyncmachine-go/manual.pdf
+      - >-
+        docker run --rm -v "$(pwd):/data" pandoc/extra \
+          -f markdown-implicit_figures docs/manual.md \
+          -o manual.pdf
+      - mv manual.pdf assets/asyncmachine-go/manual.pdf
 
   prof-cpu-img:
     cmds:
@@ -731,7 +736,7 @@ tasks:
     desc: Exit Zellij dashboard
     cmd: zellij delete-session am-dashboard --force
 
-  gen-jsonschema:
+  gen-docs-jsonschema:
     desc: Generate JSON schemas for pkg/integrations
     dir: scripts
     cmd: go run ./gen_jsonschema
@@ -882,7 +887,6 @@ tasks:
   script-gen-api-docs:
     dir: scripts
     deps: [install-deps-scripts]
-    # TODO run tool golds
     cmd: go run ./gen_api_docs
 
   script-gen-website:

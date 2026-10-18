@@ -44,6 +44,11 @@ type Subscriptions struct {
 
 	whenQueueEnds []*whenQueueEndsBinding
 	whenQueue     []*whenQueueBinding
+
+	// debug
+
+	// debug  []*WhenBinding
+	// debug2 []*WhenBinding
 }
 
 func NewSubscriptionManager(
@@ -97,6 +102,7 @@ func (sm *Subscriptions) ProcessStateCtx(
 
 		toCancel = append(toCancel, sm.stateCtx[s].Cancel)
 		sm.log(LogOps, "[ctx:match] %s", s)
+		// fmt.Printf("[ctx:match:A] %s\n", s)
 		delete(sm.stateCtx, s)
 	}
 
@@ -107,6 +113,7 @@ func (sm *Subscriptions) ProcessStateCtx(
 
 		toCancel = append(toCancel, sm.stateCtx[s].Cancel)
 		sm.log(LogOps, "[ctx:match] %s", s)
+		// fmt.Printf("[ctx:match:D] %s\n", s)
 		delete(sm.stateCtx, s)
 	}
 
@@ -206,6 +213,7 @@ func (sm *Subscriptions) processWhenCtx() []chan struct{} {
 	return ret
 }
 
+// gcCtx: context will be GCed (if false - by the caller)
 func (sm *Subscriptions) gcWhenBinding(binding *WhenBinding, gcCtx bool) {
 	// completed - close and delete indexes for all involved states
 	var names []string
@@ -236,7 +244,10 @@ func (sm *Subscriptions) gcWhenBinding(binding *WhenBinding, gcCtx bool) {
 	if binding.Negation {
 		sm.log(LogOps, "[whenNot:match] %s", j(names))
 	} else {
-		// TODO doesnt output and created false-positive in the debugger
+		// debug
+		// if j(names) == "DBReady LaygenEventDomContentTemplate ConfigValid" {
+		// 	fmt.Printf("subs [when:match] %s\n", j(names))
+		// }
 		sm.log(LogOps, "[when:match] %s", j(names))
 	}
 }
@@ -623,7 +634,9 @@ func (sm *Subscriptions) ProcessWhenQueue(queueTick uint64) []chan struct{} {
 //
 // State contexts are used to check state expirations and should be checked
 // often inside goroutines.
-func (sm *Subscriptions) NewStateCtx(state string) context.Context {
+func (sm *Subscriptions) NewStateCtx(
+	state string, machTime Time,
+) context.Context {
 	// locks
 	sm.Mx.Lock()
 	defer sm.Mx.Unlock()
@@ -637,6 +650,9 @@ func (sm *Subscriptions) NewStateCtx(state string) context.Context {
 		Id:    sm.mach.Id(),
 		State: state,
 		Tick:  sm.clock[state],
+	}
+	if machTime != nil {
+		v.MachTime = machTime.Sum(nil)
 	}
 	stateCtx, cancel := context.WithCancel(context.WithValue(sm.mach.Context(),
 		CtxKey, v))
@@ -666,6 +682,11 @@ func (sm *Subscriptions) When(states S, ctx context.Context) <-chan struct{} {
 	for _, bind := range sm.when[states[0]] {
 		names := slices.Collect(maps.Keys(bind.States))
 		if !bind.Negation && S(names).Equal(states) && bind.Ctx == ctx {
+			// debug
+			// sm.debug2 = append(sm.debug2, binding)
+			// if j(states) == "DBReady LaygenEventDomContentTemplate ConfigValid" {
+			// 	fmt.Printf("subs resume %s\n", j(states))
+			// }
 			return bind.Ch
 		}
 	}
@@ -683,6 +704,7 @@ func (sm *Subscriptions) When(states S, ctx context.Context) <-chan struct{} {
 
 	// add the binding to an index of each state
 	binding := &WhenBinding{
+		Debug:    randId(10),
 		Ch:       ch,
 		Negation: false,
 		States:   setMap,
@@ -690,7 +712,11 @@ func (sm *Subscriptions) When(states S, ctx context.Context) <-chan struct{} {
 		Matched:  matched,
 		Ctx:      ctx,
 	}
-	sm.log(LogOps, "[when:new] %s", j(states))
+	// debug
+	// sm.debug2 = append(sm.debug2, binding)
+	// if j(states) == "DBReady LaygenEventDomContentTemplate ConfigValid" {
+	// 	fmt.Printf("subs [when:new] %s\n", j(states))
+	// }
 
 	// insert the binding
 	for _, s := range states {

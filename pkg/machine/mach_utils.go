@@ -275,9 +275,33 @@ func (s S) Hash() string {
 }
 
 // Has returns true is [state] is in this state set.
-// TODO v0.20 Has1(string), Has(S), like amhelp.Implements
+// TODO v0.20 Has1(string), Is1(S), like amhelp.Implements
 func (s S) Has(state string) bool {
 	return slices.Contains(s, state)
+}
+
+// TODO v0.20 Has1(string), Is(S), like amhelp.Implements
+func (s S) HasN(states S) bool {
+	for _, state := range states {
+		if !slices.Contains(s, state) {
+			return false
+		}
+	}
+	return true
+}
+
+// TODO Not(), Not1()
+
+func (s S) Remove1(state string) S {
+	return slices.DeleteFunc(s, func(s string) bool {
+		return s == state
+	})
+}
+
+func (s S) Remove(states S) S {
+	return slices.DeleteFunc(s, func(s string) bool {
+		return slices.Contains(states, s)
+	})
 }
 
 // ----- old

@@ -30,7 +30,7 @@ func TestMCPServer(t *testing.T) {
 		MutCallback: func(ctx context.Context) error {
 			return nil
 		},
-		StateCalls: []am.CallSignature{
+		CallSignatures: []am.CallSignature{
 			{Name: "CustomCall", States: am.S{"StateC"}, Desc: "Custom call"},
 		},
 	}
@@ -40,7 +40,7 @@ func TestMCPServer(t *testing.T) {
 	require.NotNil(t, srv)
 
 	// Test stateNames
-	names := srv.StateNames()
+	names := srv.MutableStateNames()
 	assert.Contains(t, names, "StateA")
 	assert.Contains(t, names, "StateB")
 	assert.NotContains(t, names, "StateC") // Excluded by StatesInclude
@@ -88,7 +88,7 @@ func TestMCPServer_StateCalls(t *testing.T) {
 			am.ArgsBase{},
 		},
 		StatesInclude: am.S{"StateA", "StateB"},
-		StateCalls: []am.CallSignature{
+		CallSignatures: []am.CallSignature{
 			{Name: "CallA", States: am.S{"StateA"}, Needed: []string{"Param1"}},
 			{Name: "CallRemoveB", States: am.S{"StateB"}, IsRemove: true},
 		},
@@ -99,7 +99,7 @@ func TestMCPServer_StateCalls(t *testing.T) {
 	require.NotNil(t, srv)
 
 	// Test CallA (Add)
-	sigA := opts.StateCalls[0]
+	sigA := opts.CallSignatures[0]
 	toolA, handlerA := srv.newCallSigHandler(&sigA)
 	require.Equal(t, "CallA", toolA.Name)
 
@@ -119,7 +119,7 @@ func TestMCPServer_StateCalls(t *testing.T) {
 	assert.True(t, mach.Is1("StateB"))
 
 	// Test CallRemoveB (Remove)
-	sigB := opts.StateCalls[1]
+	sigB := opts.CallSignatures[1]
 	toolB, handlerB := srv.newCallSigHandler(&sigB)
 	require.Equal(t, "CallRemoveB", toolB.Name)
 

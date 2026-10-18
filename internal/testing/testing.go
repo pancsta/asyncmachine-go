@@ -159,7 +159,8 @@ func NewDbgWorker(
 
 	// am-dbg server (used for testing live connections)
 	if p.ListenAddr != "" {
-		d.ServerMux, d.ServerHttp, err = server.New(d.Mach, p.ListenAddr, p)
+		d.ServerMux, d.ServerHttp, err = server.New(d.Mach, p.ListenAddr,
+			d.Params.Load)
 		if err != nil {
 			return nil, err
 		}

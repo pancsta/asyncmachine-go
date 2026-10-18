@@ -87,6 +87,7 @@ var ErrConnecting = errors.New("error connecting")
 func AddErrConnecting(
 	event *am.Event, mach *am.Machine, err error, args am.A,
 ) am.Result {
+	// TODO opt args (semver break)
 	err = fmt.Errorf("%w: %w", ErrConnecting, err)
 	return mach.EvAddErrState(event, ssC.ErrConnecting, err, args)
 }
@@ -98,20 +99,18 @@ func AddErrConnecting(
 // ///// ///// /////
 // Connection to multiple hosts, states aggregating a pool of connections.
 
-type ConnPoolState = string
-
 // ConnPoolStatesDef contains states for a connection status.
 // Required states:
 // - Start
 type ConnPoolStatesDef struct {
 	// ErrConnecting is a detailed connection error, eg no access.
-	ErrConnecting ConnPoolState
+	ErrConnecting string
 
-	Connecting     ConnPoolState
-	Connected      ConnPoolState
-	ConnectedFully ConnPoolState
-	Disconnecting  ConnPoolState
-	Disconnected   ConnPoolState
+	Connecting     string
+	Connected      string
+	ConnectedFully string
+	Disconnecting  string
+	Disconnected   string
 
 	*am.StatesBase
 }
