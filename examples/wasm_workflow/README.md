@@ -76,10 +76,25 @@ task traces #tty2
 task start #tty3
 ```
 
+## Testing
+
+`wasm_workflow_test.go` is an integration test which runs the same commands as `task start` (both builds,
+`./orchestrator`) and opens `RELAY_ADDR` from [`config.env`](/examples/wasm_workflow/config.env) in a headless browser.
+It asserts that all 4 browser threads connect, then waits for the orchestrator to complete the workflow and exit on its
+own, thanks to `EXIT_ON_COMPLETED`.
+
+```bash
+cd examples/wasm_workflow
+go test .
+```
+
+It needs a headless Chrome / Brave (override with `AM_WASM_BROWSER`) and `EXIT_ON_COMPLETED` to be set. It's skipped
+with `-short`.
+
 ## Traces
 
 OpenTelemetry traces are generated automatically for each state-machine, with nonimportant ones being filtered out.
-You can [browse the results in Jaeger](https://asyncmachine.dev/demo-traces/trace/daaa1f7fb9bab9e5e0dfc6beb56a4a82).
+You can [download the JSON dump](https://pancsta.github.io/assets/asyncmachine-go/traces/wasm-workflow.json) and view it using a [Jaeger demo instance](https://demo.jaegertracing.io/jaeger/search).
 
 ![Traces](https://pancsta.github.io/assets/asyncmachine-go/examples/wasm-workflow-traces.png)
 
