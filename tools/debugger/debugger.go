@@ -2506,12 +2506,19 @@ func (d *Debugger) hUpdateMatrixRain() {
 			}
 		}
 
+		// left side
+		var prev *dbg.DbgMsgTx
+		prevIdx := d.hFilterTxCursor1(d.C, txIdx1-1, true) - 1
+		if prevIdx >= 0 {
+			prev = d.C.MsgTxs[prevIdx]
+		}
+
 		// timestamp
 		tStamp := tx.Time.Format(timeFormat)
 		tStampFmt := tStamp
 		// highlight first diff number since prev timestamp
-		if txIdx1 > 1 {
-			prevTStamp := c.MsgTxs[txIdx1-2].Time.Format(timeFormat)
+		if prev != nil {
+			prevTStamp := prev.Time.Format(timeFormat)
 			if idx := findFirstDiff(prevTStamp, tStamp); idx != -1 {
 				tStampFmt = tStamp[:idx] + "[" + theme.White + "]" +
 					tStamp[idx:idx+1] + "[" + theme.Grey + "]" + tStamp[idx+1:]
