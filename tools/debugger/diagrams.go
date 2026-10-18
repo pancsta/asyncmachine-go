@@ -302,7 +302,7 @@ func (d *Debugger) DiagramsStatesRenderingEnter(e *am.Event) bool {
 }
 
 func (d *Debugger) DiagramsStatesRenderingState(e *am.Event) {
-	ctx := d.Mach.NewStateCtx(ss.DiagramsStatesRendering)
+	ctx := d.Mach.NewStateCtx(ss.ClientSelected)
 	c := d.C
 	diagDir := path.Join(d.params.OutputDir, "diagrams")
 	index := c.MsgStruct.StatesIndex
@@ -316,15 +316,26 @@ func (d *Debugger) DiagramsStatesRenderingState(e *am.Event) {
 	machId := c.Id
 	schema := c.MsgStruct.States.Clone()
 
-	// TODO pool state
-	d.Mach.Go(ctx, func() {
-		for _, state := range index {
+	// render the selected state first
+	order := slices.Clone(index)
+	if selected := *d.selectedState.Load(); selected != "" {
+		if idx := slices.Index(order, selected); idx > 0 {
+			order = slices.Insert(slices.Delete(order, idx, idx+1), 0, selected)
+		}
+	}
+
+	// TODO --diagrams-concurrency
+	pool := amhelp.Pool(ctx, 3)
+	for _, state := range order {
+		// no zoom-in on common states
+		if state == am.StateStart || state == am.StateReady {
+			continue
+		}
+
+		// fork
+		pool.Submit(func() {
 			if ctx.Err() != nil {
 				return // expired
-			}
-			// skip
-			if state == am.StateStart || state == am.StateReady {
-				continue
 			}
 
 			diagName := d.diagramsStateDiagName(
@@ -346,10 +357,10 @@ func (d *Debugger) DiagramsStatesRenderingState(e *am.Event) {
 			if *d.selectedState.Load() == state {
 				d.diagramsStatesPush(ctx, d.diagramsDiagPath(diagName))
 			}
-		}
 
-		d.Mach.EvAdd1(e, ss.DiagramsStatesReady, nil)
-	})
+			d.Mach.EvAdd1(e, ss.DiagramsStatesReady, nil)
+		})
+	}
 }
 
 // ///// ///// /////
