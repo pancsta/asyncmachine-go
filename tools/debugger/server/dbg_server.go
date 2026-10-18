@@ -188,6 +188,10 @@ func (c *Client) IndexesToStates(indexes []int) am.S {
 	return helpers.IndexesToStates(c.MsgStruct.StatesIndex, indexes)
 }
 
+func (c *Client) StatesStringToIndex(states string) []int {
+	return c.MsgStruct.StatesIndex.Index(strings.Split(states, " "))
+}
+
 // TxIndex returns the index of transition ID [id] or -1 if not found.
 func (c *Client) TxIndex(id string) int {
 	c.txCacheMx.Lock()
