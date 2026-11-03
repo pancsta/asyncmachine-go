@@ -219,6 +219,10 @@ func TestMutationsSync(t *testing.T) {
 	TemplateTestMutationsSync(t, newTest)
 }
 
+func TestMutationsSyncKeepsUnrelated(t *testing.T) {
+	TemplateTestMutationsSyncKeepsUnrelated(t, newTest)
+}
+
 func TestExport(t *testing.T) {
 	TemplateTestExport(t, newTest)
 }

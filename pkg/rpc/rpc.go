@@ -768,8 +768,11 @@ func (t *sourceTracer) DataQueue() []tracerMutation {
 	t.s.lockCollection.Lock()
 	defer t.s.lockCollection.Unlock()
 
-	// copy and flush
+	// copy and flush — without clearing dataQueue, a later push would re-diff
+	// already-sent mutations against lastPushData and apply backward clock
+	// steps on the client, which deactivates unrelated states (#391).
 	ret := t.dataQueue
+	t.dataQueue = nil
 	t.dataLatest = nil
 
 	return ret

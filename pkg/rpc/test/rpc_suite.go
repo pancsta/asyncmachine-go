@@ -989,6 +989,50 @@ func TemplateTestMutationsSync(t *testing.T, newTest NewTestFactory) {
 	disposeTest(t, c, s, true)
 }
 
+// TemplateTestMutationsSyncKeepsUnrelated regresses #391: a second
+// SyncMutations push must not deactivate states that stayed active on the
+// source between pushes (re-diffing already-sent mutations against lastPush).
+func TemplateTestMutationsSyncKeepsUnrelated(
+	t *testing.T, newTest NewTestFactory,
+) {
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_, netSrc, s, c := newTest(t, ctx, nil, nil, time.Second, false,
+		&arpc.ClientOpts{
+			SyncMutations: true,
+		}, nil)
+
+	intNano := time.Nanosecond
+	s.PushInterval.Store(&intNano)
+
+	// First wave: D also adds C+B; auto A requires C.
+	netSrc.Add1(sst.D, nil)
+	time.Sleep(100 * time.Millisecond)
+	s.PushClient()
+	amhelpt.WaitForAll(t, "D pushed", ctx, time.Second,
+		c.NetMach.When1(sst.D, nil))
+	amhelpt.AssertIs(t, c.NetMach, am.S{sst.A, sst.B, sst.C, sst.D})
+
+	// Second wave: multi B re-fires without removing A/C/D. A prior bug
+	// re-sent the first wave's mutations and briefly dropped them on the client.
+	waitB := c.NetMach.WhenTicks(sst.B, 2, nil)
+	netSrc.Add1(sst.B, nil)
+	time.Sleep(100 * time.Millisecond)
+	s.PushClient()
+	amhelpt.WaitForAll(t, "B re-pushed", ctx, time.Second, waitB)
+
+	amhelpt.AssertIs(t, c.NetMach, am.S{sst.A, sst.B, sst.C, sst.D})
+	amhelpt.AssertIs(t, netSrc, am.S{sst.A, sst.B, sst.C, sst.D})
+	assert.Equal(t, netSrc.Time(nil), c.NetMach.Time(nil),
+		"client clock must match source after the second SyncMutations push")
+
+	disposeTest(t, c, s, true)
+}
+
 func TemplateTestExport(t *testing.T, newTest NewTestFactory) {
 	t.Skip("TODO")
 
