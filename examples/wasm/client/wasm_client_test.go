@@ -1,3 +1,5 @@
+//go:build !wasm
+
 package main
 
 import (
@@ -26,9 +28,17 @@ func TestWasmClient(t *testing.T) {
 	barHandlers := &BarHandlersMock{t: t}
 	fooHandlers := &FooHandlersMock{t: t}
 
-	// machines
+	var bindBar am.HandlersBind
+	bindBar = func(mach *am.Machine, opts ...am.BindOpts) (string, error) {
+		return mach.HandlersBind(barHandlers, opts...)
+	}
+	var bindFoo am.HandlersBind
+	bindFoo = func(mach *am.Machine, opts ...am.BindOpts) (string, error) {
+		return mach.HandlersBind(fooHandlers, opts...)
+	}
 
-	barMach, fooClient, fooHandMach, err := initMachines(ctx, barHandlers, fooHandlers)
+	// machines
+	barMach, fooClient, fooHandMach, err := InitMachines(ctx, bindBar, bindFoo)
 	if err != nil {
 		t.Error(err)
 	}

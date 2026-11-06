@@ -596,25 +596,6 @@ type handlerCall struct {
 	debug       string
 }
 
-func (c *handlerCall) Exec() bool {
-	ret := true
-	if c.fn != nil {
-		callRet := c.fn.Call([]reflect.Value{reflect.ValueOf(c.event)})
-		if len(callRet) > 0 {
-			// TODO log err?
-			ret, _ = callRet[0].Interface().(bool)
-		}
-	} else if c.negotiation != nil {
-		ret = c.negotiation(c.event)
-	} else if c.final != nil {
-		c.final(c.event)
-	} else {
-		panic("invalid handler call " + c.name)
-	}
-
-	return ret
-}
-
 func newHandlerCallStruct(
 	e *Event, h *handler, methodName string, m *Machine,
 ) *handlerCall {

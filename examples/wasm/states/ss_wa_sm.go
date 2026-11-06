@@ -1,9 +1,13 @@
+//go:build !tinygo
+//go:generate go run ./gen
+
 package states
 
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
+	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
 
 //

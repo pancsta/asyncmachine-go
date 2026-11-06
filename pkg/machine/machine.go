@@ -1640,18 +1640,6 @@ func (m *Machine) bindHandlers(h *handler, opts ...BindOpts) (string, error) {
 // TODO move
 var idRe = regexp.MustCompile(`[^a-zA-Z0-9-_.]+`)
 
-// HandlersBind binds a struct of handler methods to machine's states, based on
-// the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
-// optionally return bool.
-func (m *Machine) HandlersBind(handlers any, opts ...BindOpts) (string, error) {
-	v := reflect.ValueOf(handlers)
-	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
-		return "", errors.New("BindHandlers expects a pointer to a struct")
-	}
-
-	return m.bindHandlers(m.newHandlerStruct(handlers, &v), optBindOpts(opts))
-}
-
 // HandlersBindMaps is like [Machine.BindHandlers] but accepts maps of
 // handlers to bypass reflecting structs. It may lead to higher performance.
 // Returns a binding ID.

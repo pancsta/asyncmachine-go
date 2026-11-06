@@ -1669,7 +1669,7 @@ func NewMirror(
 
 	// detect methods
 	var methodNames []string
-	methodNames, err := listHandlers(handlers, states)
+	methodNames, err := ListHandlers(handlers, states)
 	if err != nil {
 		return nil, fmt.Errorf("listing handlers: %w", err)
 	}
@@ -1742,7 +1742,7 @@ func NewMirror(
 
 // ListHandlers returns a list of handler method names from a handler struct,
 // limited to [states].
-func listHandlers(handlers any, states S) ([]string, error) {
+func ListHandlers(handlers any, states S) ([]string, error) {
 	var methodNames []string
 	var errs []error
 
@@ -1953,8 +1953,6 @@ func NewDynMach(
 // ///// CAN
 
 // ///// ///// /////
-
-// TODO migrate Can* to atomic returns
 
 // CantAdd will confirm that the mutation is impossible. Blocks.
 func CantAdd(mach am.Api, states am.S, args am.A) bool {

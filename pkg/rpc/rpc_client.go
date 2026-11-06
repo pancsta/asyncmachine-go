@@ -30,7 +30,7 @@ var (
 )
 
 type ClientOpts struct {
-	// Consumer is an optional target for the [states.SendPayload] state.
+	// Consumer is an optional target for the [states.ConsumerStatesDef.ServerPayload] state.
 	Consumer *am.Machine
 	// Parent is a parent state machine for a new Client state machine. See
 	// [am.Opts].
@@ -224,11 +224,14 @@ func NewClient(
 
 	// state machine
 	mach, err := am.NewCommon(ctx, GetClientId(id), states.ClientSchema,
-		ssC.Names(), c, opts.Parent, &am.Opts{Tags: []string{
+		ssC.Names(), nil, opts.Parent, &am.Opts{Tags: []string{
 			states.TagRpcClient,
 			states.TagKeyAddr + ":" + addr,
 		}})
 	if err != nil {
+		return nil, err
+	}
+	if _, err = BindHandlersClient(c, mach); err != nil {
 		return nil, err
 	}
 	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)

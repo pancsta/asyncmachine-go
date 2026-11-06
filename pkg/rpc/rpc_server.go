@@ -232,10 +232,13 @@ func NewServer(
 
 	// state machine
 	mach, err := am.NewCommon(ctx, "rs-"+name, states.ServerSchema, ssS.Names(),
-		s, opts.Parent, &am.Opts{
+		nil, opts.Parent, &am.Opts{
 			Tags: []string{states.TagRpcServer},
 		})
 	if err != nil {
+		return nil, err
+	}
+	if _, err = BindHandlersServer(s, mach); err != nil {
 		return nil, err
 	}
 	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)

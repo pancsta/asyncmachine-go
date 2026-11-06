@@ -1,9 +1,8 @@
+//go:build !tinygo
+
 package states
 
 import (
-	"errors"
-	"fmt"
-
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
@@ -19,6 +18,8 @@ import (
 // Required states:
 // - Start
 type ConnectedStatesDef struct {
+	*am.StatesBase
+
 	// ErrConnecting is a detailed connection error, eg no access.
 	ErrConnecting string
 
@@ -26,8 +27,6 @@ type ConnectedStatesDef struct {
 	Connected     string
 	Disconnecting string
 	Disconnected  string
-
-	*am.StatesBase
 }
 
 // ConnectedGroupsDef contains all the state groups of the Connected state
@@ -73,24 +72,6 @@ var (
 	// schema.
 	ConnectedGroups = sgC
 )
-
-// ERRORS
-
-// sentinel errors
-
-var ErrConnecting = errors.New("error connecting")
-
-// error mutations
-
-// AddErrConnecting wraps an error in the ErrConnecting sentinel and adds to a
-// machine.
-func AddErrConnecting(
-	event *am.Event, mach *am.Machine, err error, args am.A,
-) am.Result {
-	// TODO opt args (semver break)
-	err = fmt.Errorf("%w: %w", ErrConnecting, err)
-	return mach.EvAddErrState(event, ssC.ErrConnecting, err, args)
-}
 
 // ///// ///// /////
 

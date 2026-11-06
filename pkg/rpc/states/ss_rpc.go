@@ -1,22 +1,12 @@
+//go:build !tinygo
+
+//go:generate go run ./gen
 package states
 
 import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
 	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
-)
-
-const (
-	TagRpcHandler = "rpc-handler"
-	TagRpcClient  = "rpc-client"
-	TagRpcServer  = "rpc-server"
-	TagRpcMux     = "rpc-mux"
-	TagRpcNetmach = "rpc-mux"
-
-	TagKeySrcId   = "src-id"
-	TagKeyAddr   = "addr"
-
-	PrefixNetMach = "rnm-"
 )
 
 // ///// ///// /////
@@ -451,11 +441,6 @@ type ConsumerStatesDef struct {
 // ConsumerSchema represents all relations and properties of ConsumerStates.
 var ConsumerSchema = am.Schema{
 	ssCo.ServerPayload: {Multi: true},
-}
-
-// ConsumerHandlers is the required interface for Consumer's state handlers.
-type ConsumerHandlers interface {
-	ServerPayloadState(e *am.Event)
 }
 
 // EXPORTS AND GROUPS

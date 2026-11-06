@@ -1,4 +1,6 @@
 // Package rpc is a transparent RPC for state machines.
+
+//go:generate go run ./gen
 package rpc
 
 import (
@@ -679,25 +681,22 @@ func (s *semLogger) IsCan() bool {
 // ///// ///// /////
 // handler represents a single event consumer, synchronized by channels.
 type handler struct {
-	h            any
-	id           string
-	num          int
-	mx           sync.Mutex
+	h   any
+	id  string
+	num int
+	mx  sync.Mutex
+	// TODO
+	opts *am.BindOpts
+	isMap        bool
+
+	// maps
+	negotiations map[string]am.HandlerNegotiation
+	finals       map[string]am.HandlerFinal
+
+	// reflect
 	methods      *reflect.Value
 	methodCache  map[string]reflect.Value
 	missingCache map[string]struct{}
-}
-
-func newHandler(
-	handlers any, name string, methods *reflect.Value,
-) *handler {
-	return &handler{
-		id:           name,
-		h:            handlers,
-		methods:      methods,
-		methodCache:  make(map[string]reflect.Value),
-		missingCache: make(map[string]struct{}),
-	}
 }
 
 // ///// ///// /////

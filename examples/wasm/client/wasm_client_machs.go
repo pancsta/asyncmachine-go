@@ -24,8 +24,8 @@ import (
 var ssF = states.FooStates
 var ssB = states.BarStates
 
-func initMachines(
-	ctx context.Context, barHandlers any, fooHandlers any,
+func InitMachines(
+	ctx context.Context, bindBar, bindFoo am.HandlersBind,
 ) (*am.Machine, *arpc.Client, *am.Machine, error) {
 
 	//
@@ -35,8 +35,11 @@ func initMachines(
 	//
 
 	sessId := utils.RandId(3)
-	barMach, err := am.NewCommon(ctx, "browser-bar-"+sessId, states.BarSchema, ssB.Names(), barHandlers, nil, nil)
+	barMach, err := am.NewCommon(ctx, "browser-bar-"+sessId, states.BarSchema, ssB.Names(), nil, nil, nil)
 	if err != nil {
+		log.Fatal(err.Error())
+	}
+	if _, err := bindBar(barMach); err != nil {
 		log.Fatal(err.Error())
 	}
 	barMach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
@@ -114,10 +117,13 @@ func initMachines(
 
 	// RPC Handlers Machine
 
-	fooHandlerMach, err := am.NewCommon(ctx, "browser-foo-"+sessId, states.FooSchema, ssF.Names(), fooHandlers, barMach, &am.Opts{
+	fooHandlerMach, err := am.NewCommon(ctx, "browser-foo-"+sessId, states.FooSchema, ssF.Names(), nil, barMach, &am.Opts{
 		Tags: []string{"rpc-handler"},
 	})
 	if err != nil {
+		log.Fatal(err.Error())
+	}
+	if _, err := bindFoo(fooHandlerMach); err != nil {
 		log.Fatal(err.Error())
 	}
 	amhelp.MachDebugEnv(fooHandlerMach)

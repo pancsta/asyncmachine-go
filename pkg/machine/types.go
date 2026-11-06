@@ -620,6 +620,8 @@ const (
 type (
 	HandlerError  func(mach *Machine, err error)
 	HandlerChange func(mach *Machine, before, after Time)
+	// HandlersBind is a curried version of [Api.HandlersBind] for DI.
+	HandlersBind func(mach *Machine, opts ...BindOpts) (string, error)
 )
 
 // Options
