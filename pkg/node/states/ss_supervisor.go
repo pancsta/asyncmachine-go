@@ -112,6 +112,10 @@ var SupervisorSchema = ssam.BasicSchema.Merge(
 	ssrpc.StateSourceSchema,
 	am.Schema{
 
+		// basics
+
+		ssS.Start: {Add: S{ssS.PoolStarting}},
+
 		// errors
 
 		ssS.ErrWorker: {
@@ -123,29 +127,8 @@ var SupervisorSchema = ssam.BasicSchema.Merge(
 			Remove:  S{ssS.PoolNormalized},
 			Add:     S{ssS.NormalizingPool},
 		},
-
-		// piped
-
-		ssS.ClientConnected:    {Multi: true},
-		ssS.ClientDisconnected: {Multi: true},
-		ssS.SuperConnected:     {Multi: true},
-		ssS.SuperDisconnected:  {Multi: true},
-		ssS.LocalRpcReady:      {Require: S{ssS.Start}},
-		ssS.PublicRpcReady:     {Require: S{ssS.Start}},
-		ssS.WorkerReady: {
-			Multi:   true,
-			Require: S{ssS.Start},
-			Add:     S{ssS.PoolReady},
-		},
-		ssS.WorkerGone: {
-			Multi:   true,
-			Require: S{ssS.Start},
-			Remove:  S{ssS.PoolReady},
-		},
-
-		// basics
-
-		ssS.Start: {Add: S{ssS.PoolStarting}},
+		ssS.LocalRpcReady:  {Require: S{ssS.Start}},
+		ssS.PublicRpcReady: {Require: S{ssS.Start}},
 		ssS.Ready: {Require: S{
 			ssS.LocalRpcReady, ssS.PublicRpcReady, ssS.PoolReady}},
 		ssS.Heartbeat: {Require: S{ssS.Start}},
@@ -156,11 +139,6 @@ var SupervisorSchema = ssam.BasicSchema.Merge(
 			Remove: sgS.PoolStatus,
 			Add:    S{ssS.NormalizingPool},
 		},
-		ssS.PoolReady: {
-			Require: S{ssS.Start},
-			Remove:  sgS.PoolStatus,
-			Add:     S{ssS.Heartbeat},
-		},
 		ssS.NormalizingPool: {
 			Require: S{ssS.Start},
 			Remove:  sgS.PoolNormalized,
@@ -170,6 +148,11 @@ var SupervisorSchema = ssam.BasicSchema.Merge(
 		ssS.PoolNormalized: {
 			Require: S{ssS.Start},
 			Remove:  sgS.PoolNormalized,
+			Add:     S{ssS.Heartbeat},
+		},
+		ssS.PoolReady: {
+			Require: S{ssS.Start},
+			Remove:  sgS.PoolStatus,
 			Add:     S{ssS.Heartbeat},
 		},
 		ssS.WorkersAvailable: {Require: S{ssS.PoolReady}},
@@ -208,6 +191,21 @@ var SupervisorSchema = ssam.BasicSchema.Merge(
 			Multi: true,
 			Add:   S{ssS.NormalizingPool, ssS.Heartbeat},
 		},
+		ssS.WorkerReady: {
+			Multi:   true,
+			Require: S{ssS.Start},
+			Add:     S{ssS.PoolReady},
+		},
+		ssS.WorkerGone: {
+			Multi:   true,
+			Require: S{ssS.Start},
+			Remove:  S{ssS.PoolReady},
+		},
+
+		// piped
+
+		ssS.ClientConnected:    {Multi: true},
+		ssS.ClientDisconnected: {Multi: true},
 
 		// client
 
@@ -219,6 +217,8 @@ var SupervisorSchema = ssam.BasicSchema.Merge(
 			Multi: true,
 		},
 		ssS.ClientSendPayload: {Multi: true},
+		ssS.SuperConnected:    {Multi: true},
+		ssS.SuperDisconnected: {Multi: true},
 
 		// supervisor
 

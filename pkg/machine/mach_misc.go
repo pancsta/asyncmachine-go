@@ -461,8 +461,13 @@ func (c *CtxValue) TxId() string {
 
 var CtxKey = &CtxKeyName{}
 
-func CtxToEv(ctx context.Context) *Event {
+func CtxToCtxValue(ctx context.Context) *CtxValue {
 	v, _ := ctx.Value(CtxKey).(CtxValue)
+	return &v
+}
+
+func CtxToEv(ctx context.Context) *Event {
+	v := CtxToCtxValue(ctx)
 	if v.Event == nil {
 		return &Event{}
 	}
@@ -557,10 +562,6 @@ func LogArgsMapperMerge(mappers ...LogArgsMapperFn) LogArgsMapperFn {
 // - setters for external semantics (eg pipes)
 // It's WIP, and eventually it will replace (but not remove) the text logger.
 type SemLogger interface {
-	// TODO implement empty methods
-	// TODO add SetTag, RemoveTag, JoinTopic, LeaveTopic, custom graph
-	//  links / edges
-
 	// graph
 
 	// AddPipeOut informs that [sourceState] has been piped out into [targetMach].
@@ -574,11 +575,13 @@ type SemLogger interface {
 	// Pipes return log entries for currently bound pipes. Useful for late
 	// debugging.
 	Pipes() []*LogEntry
+	// SetTags marks a change of the machine's tags.
+	SetTags()
 	// TODO AddHandlerBinding
 	// TODO RemoveHandlerBinding
 	// TODO HandlerBindings
 
-	// details
+	// granular logging switches
 
 	// IsCan return true when the machine is logging Can* methods.
 	IsCan() bool
@@ -646,7 +649,8 @@ type SemLogger interface {
 // SemConfig defines a config for SemLogger.
 type SemConfig struct {
 	// TODO
-	Full     bool
+	Full bool
+
 	Steps    bool
 	Graph    bool
 	Can      bool
@@ -657,14 +661,15 @@ type SemConfig struct {
 }
 
 type semLogger struct {
-	mach    *Machine
-	steps   atomic.Bool
-	graph   atomic.Bool
-	queued  atomic.Bool
-	args    atomic.Bool
-	can     atomic.Bool
-	pipes   []Pipe
-	pipesMx sync.Mutex
+	mach        *Machine
+	steps       atomic.Bool
+	graph       atomic.Bool
+	queued      atomic.Bool
+	args        atomic.Bool
+	can         atomic.Bool
+	pipes       []Pipe
+	pipesMx     sync.Mutex
+	tagMTimeSum atomic.Uint64
 }
 
 type Pipe struct {
@@ -757,6 +762,10 @@ func (s *semLogger) SetSimple(
 }
 
 func (s *semLogger) AddPipeOut(isAdd bool, sourceState, targetMach string) {
+	if !s.IsGraph() {
+		return
+	}
+
 	kind := "remove"
 	if isAdd {
 		kind = "add"
@@ -775,6 +784,10 @@ func (s *semLogger) AddPipeOut(isAdd bool, sourceState, targetMach string) {
 }
 
 func (s *semLogger) AddPipeIn(isAdd bool, targetState, sourceMach string) {
+	if !s.IsGraph() {
+		return
+	}
+
 	kind := "remove"
 	if isAdd {
 		kind = "add"
@@ -793,6 +806,10 @@ func (s *semLogger) AddPipeIn(isAdd bool, targetState, sourceMach string) {
 }
 
 func (s *semLogger) RemovePipes(machId string) {
+	if !s.IsGraph() {
+		return
+	}
+
 	s.mach.log(LogOps, "[pipe:gc] %s", machId)
 
 	s.pipesMx.Lock()
@@ -803,11 +820,12 @@ func (s *semLogger) RemovePipes(machId string) {
 }
 
 func (s *semLogger) Pipes() []*LogEntry {
-	s.pipesMx.Lock()
-	defer s.pipesMx.Unlock()
-	if len(s.pipes) == 0 {
+	if !s.IsGraph() {
 		return nil
 	}
+
+	s.pipesMx.Lock()
+	defer s.pipesMx.Unlock()
 
 	ret := make([]*LogEntry, len(s.pipes))
 	for i, p := range s.pipes {
@@ -832,6 +850,15 @@ func (s *semLogger) Pipes() []*LogEntry {
 	}
 
 	return ret
+}
+
+func (s *semLogger) SetTags() {
+	if !s.IsGraph() {
+		return
+	}
+
+	s.mach.log(LogOps, "[tags] #%s", slices.Concat(s.mach.Tags()))
+	s.tagMTimeSum.Store(s.mach.Time(nil).Sum(nil))
 }
 
 func (s *semLogger) IsSteps() bool {
@@ -874,7 +901,7 @@ func (s *semLogger) EnableArgs(enable bool) {
 	s.args.Store(enable)
 }
 
-// TODO more data types
+// TODO optimize: more data types to disable
 
 func (s *semLogger) EnableStateCtx(enable bool) {
 	// TODO
@@ -979,6 +1006,7 @@ type Tracer interface {
 	Inheritable() bool
 	QueueEnd(machine Api)
 	SchemaChange(machine Api, old Schema)
+	// TODO v0.20 TagChange
 	VerifyStates(machine Api)
 }
 
@@ -1096,17 +1124,17 @@ func (e *Event) IsValid() bool {
 		tx.IsAccepted.Load()
 }
 
-// Called returns true if the state of this event has been explicitly called
-// (requested) in the current transition. Useful as a guard for partial
+// StateCalled returns true if the state of this event has been explicitly
+// called (requested) in the current transition. Useful as a guard for partial
 // acceptance. Returns false for events not bound to a single state, eg
 // AnyEnter.
-func (e *Event) Called() bool {
+func (e *Event) StateCalled() bool {
 	tx := e.Transition()
 	if tx == nil {
 		return false
 	}
 
-	state := e.negotiationState()
+	state := e.StateName()
 	return state != "" && tx.CalledStates().Has(state)
 }
 
@@ -1140,11 +1168,12 @@ func (e *Event) AcceptWithout(states S) S {
 
 // AcceptWithoutThis returns all called states of the transition, except for
 // the state of this event. For events not bound to a single state (eg
-// AnyEnter), it returns all called states.
+// AnyEnter), it cancels the whole transition. If the state wasn't called
+// directly, the whole transition gets canceled.
 func (e *Event) AcceptWithoutThis() S {
-	state := e.negotiationState()
-	if state == "" {
-		return e.Accept()
+	state := e.StateName()
+	if state == "" || !e.StateCalled() {
+		return e.Cancel()
 	}
 
 	return e.AcceptWithout1(state)
@@ -1156,11 +1185,9 @@ func (e *Event) Cancel() S {
 	return nil
 }
 
-// negotiationState returns the state this event is bound to, based on the
-// handler name. Returns an empty string for events not bound to a single state,
-// eg AnyEnter, self handlers (FooFoo), state-state handlers (FooBar), and final
-// handlers (FooState, FooEnd).
-func (e *Event) negotiationState() string {
+// StateName returns the state this event is bound to, based on the
+// handler name. Returns empty for Any state global handlers.
+func (e *Event) StateName() string {
 	switch {
 	case strings.HasSuffix(e.Name, SuffixEnter):
 		state := strings.TrimSuffix(e.Name, SuffixEnter)
@@ -1170,6 +1197,15 @@ func (e *Event) negotiationState() string {
 
 	case strings.HasSuffix(e.Name, SuffixExit):
 		return strings.TrimSuffix(e.Name, SuffixExit)
+
+	case strings.HasSuffix(e.Name, SuffixState):
+		state := strings.TrimSuffix(e.Name, SuffixState)
+		if state != StateAny {
+			return state
+		}
+
+	case strings.HasSuffix(e.Name, SuffixEnd):
+		return strings.TrimSuffix(e.Name, SuffixEnd)
 	}
 
 	return ""

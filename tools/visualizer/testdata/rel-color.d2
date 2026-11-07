@@ -1,0 +1,633 @@
+	vars: {
+		d2-config: {
+			theme-id: 201
+			theme-overrides: {
+				N7: black
+
+				# mach border
+				B1: "#5F5C5C"
+				B2: grey
+				B3: "#6C7086"
+				# mach background
+				B4: "#262424"
+				B5: "#45475A"
+				B6: "#313244"
+
+				AA2: "#f38BA8"
+				AA4: "#45475A"
+				AA5: "#313244"
+
+				AB4: "#45475A"
+				AB5: "#313244"
+			}
+		}
+	}
+	classes: {
+		# active
+		_1: {
+			style: {
+				font-color: black
+				fill: yellow
+				border-radius: 999
+				double-border: true
+			}
+		}
+		# inactive
+		_0: {
+			style: {
+				stroke: white
+				border-radius: 999
+				double-border: true
+			}
+		}
+
+		# active inherited
+		_1i: {
+			style: {
+				font-color: black
+				fill: "yellow"
+				border-radius: 999
+			}
+		}
+		# inactive inherited
+		_0i: {
+			style: {
+				border-radius: 999
+			}
+		}
+
+		# active Start
+		_1s: {
+			style: {
+				font-color: black
+				fill: "#329241"
+				border-radius: 999
+			}
+		}
+		# inactive Start
+		_0s: {
+			style: {
+				border-radius: 999
+			}
+		}
+
+		# active Ready
+		_1r: {
+			style: {
+				font-color: black
+				fill: "deepskyblue"
+				border-radius: 999
+			}
+		}
+		# inactive Ready
+		_0r: {
+			style: {
+				border-radius: 999
+			}
+		}
+
+		# require relation
+		req: {
+			style.stroke: "lightblue"
+			target-arrowhead.style.filled: true
+			target-arrowhead.shape: circle
+		}
+		# add relation
+		add: {
+			style.stroke: "orange"
+			target-arrowhead.shape: triangle
+			target-arrowhead.style.filled: true
+		}
+		# remove relation
+		rem: {
+			style.stroke: "#DA70D6"
+			style.stroke-width: 2
+			target-arrowhead.style.filled: true
+			target-arrowhead.shape: diamond
+			source-arrowhead.style.filled: true
+			source-arrowhead.shape: diamond
+		}
+		# double remove relation
+		rem2: {
+			style.stroke: "#DA70D6"
+			style.stroke-width: 3
+			target-arrowhead.style.filled: true
+			target-arrowhead.shape: diamond
+			source-arrowhead.style.filled: true
+			source-arrowhead.shape: diamond
+		}
+		# add pipe
+		pipe_add: {
+			style.stroke: "orange"
+			style.stroke-dash: 3
+			target-arrowhead.style.filled: false
+		}
+		# remove pipe
+		pipe_rem: {
+			style.stroke: "#DA70D6"
+			target-arrowhead.shape: diamond
+			style.stroke-dash: 3
+		}
+		# pipe (mach -> mach)
+		pipe: {
+			style.stroke: white
+		}
+
+		# parent hierarchy relation
+		parent: {
+			style.stroke: white
+			style.stroke-width: 8
+			target-arrowhead.shape: circle
+		}
+		mach: {
+      style: {
+				font-size: 50
+				fill: "black"
+				border-radius: 40
+				stroke-width: 4
+			}
+			label.near: top-center
+		}
+		state: {
+      style.font-size: 30
+		}
+		called: {
+			style.stroke-width: 10
+			style.stroke: "white"
+			style.stroke-dash: 3
+		}
+		handler: {
+			style.stroke: "#2596be"
+		}
+		cancel: {
+			style: {
+				stroke: red
+				stroke-width: 5
+			}
+		}
+		state-zoom: {
+			style: {
+				font-size: 50
+				stroke-width: 10
+			}
+		}
+		rel-zoom: {
+			style.stroke-width: 10
+		}
+		rpc: {
+			style: {
+				# TODO dedicated color
+				stroke: "orange"
+				stroke-width: 4
+			}
+		}
+	  lifeline: {
+	    style.stroke: grey
+	  }
+
+		M_tbot-dev: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_GhFeedStart: {}
+	T_GhFeedStart: {}
+	F_GhFeedStarting: {}
+	T_GhFeedStarting: {}
+	F_GhFeedReady: {}
+	T_GhFeedReady: {}
+	F_GhFeedOrienting: {}
+	T_GhFeedOrienting: {}
+	F_GhFeedOpening: {}
+	T_GhFeedOpening: {}
+	F_GhFeedCompleted: {}
+	T_GhFeedCompleted: {}
+	F_GhFeedUserNeeded: {}
+	T_GhFeedUserNeeded: {}
+	F_GhFeedEventDomContent: {}
+	T_GhFeedEventDomContent: {}
+	F_GhFeedOpeningLoginPage: {}
+	T_GhFeedOpeningLoginPage: {}
+	F_GhFeedLoginPageOpened: {}
+	T_GhFeedLoginPageOpened: {}
+	F_GhFeedLoggedIn: {}
+	T_GhFeedLoggedIn: {}
+	F_GhFeedOpeningStartPage: {}
+	T_GhFeedOpeningStartPage: {}
+	F_GhFeedStartPageOpened: {}
+	T_GhFeedStartPageOpened: {}
+	F_GhFeedExpandingList: {}
+	T_GhFeedExpandingList: {}
+	F_GhFeedListExpanded: {}
+	T_GhFeedListExpanded: {}
+	F_GhFeedExtractingItems: {}
+	T_GhFeedExtractingItems: {}
+	F_GhFeedItemsExtracted: {}
+	T_GhFeedItemsExtracted: {}
+	F_GhFeedUploading: {}
+	T_GhFeedUploading: {}
+	F_MutodonChecking: {}
+	T_MutodonChecking: {}
+	F_MutodonStart: {}
+	T_MutodonStart: {}
+	F_MutodonStarting: {}
+	T_MutodonStarting: {}
+	F_MutodonReady: {}
+	T_MutodonReady: {}
+	F_MutodonOrienting: {}
+	T_MutodonOrienting: {}
+	F_MutodonOpening: {}
+	T_MutodonOpening: {}
+	F_MutodonCompleted: {}
+	T_MutodonCompleted: {}
+	F_MutodonUserNeeded: {}
+	T_MutodonUserNeeded: {}
+	F_MutodonEventDomContent: {}
+	T_MutodonEventDomContent: {}
+	F_MutodonOpeningLoginPage: {}
+	T_MutodonOpeningLoginPage: {}
+	F_MutodonLoginPageOpened: {}
+	T_MutodonLoginPageOpened: {}
+	F_MutodonLoggedIn: {}
+	T_MutodonLoggedIn: {}
+	F_MutodonOpeningStartPage: {}
+	T_MutodonOpeningStartPage: {}
+	F_MutodonStartPageOpened: {}
+	T_MutodonStartPageOpened: {}
+	F_MutodonReadingStartPage: {}
+	T_MutodonReadingStartPage: {}
+	F_MutodonMutingPost: {}
+	T_MutodonMutingPost: {}
+	F_MutodonPostMuted: {}
+	T_MutodonPostMuted: {}
+	F_LaygenStart: {}
+	T_LaygenStart: {}
+	F_LaygenStarting: {}
+	T_LaygenStarting: {}
+	F_LaygenReady: {}
+	T_LaygenReady: {}
+	F_LaygenUserNeeded: {}
+	T_LaygenUserNeeded: {}
+	F_LaygenCompleted: {}
+	T_LaygenCompleted: {}
+	F_LaygenQueueStart: {}
+	T_LaygenQueueStart: {}
+	F_LaygenQueueItemProcessing: {}
+	T_LaygenQueueItemProcessing: {}
+	F_LaygenQueueItemRemove: {}
+	T_LaygenQueueItemRemove: {}
+	F_LaygenPreviewAutoAccept: {}
+	T_LaygenPreviewAutoAccept: {}
+	F_LaygenPageEventTemplateDomContent: {}
+	T_LaygenPageEventTemplateDomContent: {}
+	F_LaygenPageEventPreviewDomContent: {}
+	T_LaygenPageEventPreviewDomContent: {}
+	F_LaygenPageEventUiDomContent: {}
+	T_LaygenPageEventUiDomContent: {}
+	F_LaygenPageException: {}
+	T_LaygenPageException: {}
+	F_LaygenPageErrBrowser: {}
+	T_LaygenPageErrBrowser: {}
+	F_LaygenPageErrPage: {}
+	T_LaygenPageErrPage: {}
+	F_LaygenPageErrJs: {}
+	T_LaygenPageErrJs: {}
+	F_LaygenPageErrOs: {}
+	T_LaygenPageErrOs: {}
+	F_LaygenPageErrContent: {}
+	T_LaygenPageErrContent: {}
+	F_LaygenPageErrUi: {}
+	T_LaygenPageErrUi: {}
+	F_LaygenPageStart: {}
+	T_LaygenPageStart: {}
+	F_LaygenPageStarting: {}
+	T_LaygenPageStarting: {}
+	F_LaygenPageReady: {}
+	T_LaygenPageReady: {}
+	F_LaygenPageLoadUrl: {}
+	T_LaygenPageLoadUrl: {}
+	F_LaygenPageEventSourceDomContent: {}
+	T_LaygenPageEventSourceDomContent: {}
+	F_LaygenPageEventSourceDomContentDelay: {}
+	T_LaygenPageEventSourceDomContentDelay: {}
+	F_LaygenPageEventRenderDomContent: {}
+	T_LaygenPageEventRenderDomContent: {}
+	F_LaygenPageEventRenderClick: {}
+	T_LaygenPageEventRenderClick: {}
+	F_LaygenPageEventRenderHistory: {}
+	T_LaygenPageEventRenderHistory: {}
+	F_LaygenPageEventRenderFocused: {}
+	T_LaygenPageEventRenderFocused: {}
+	F_LaygenPageEventSourceFocused: {}
+	T_LaygenPageEventSourceFocused: {}
+	F_LaygenPageMatching: {}
+	T_LaygenPageMatching: {}
+	F_LaygenPageMatched: {}
+	T_LaygenPageMatched: {}
+	F_LaygenPageNotMatched: {}
+	T_LaygenPageNotMatched: {}
+	F_LaygenPageSourceLoaded: {}
+	T_LaygenPageSourceLoaded: {}
+	F_LaygenPageRenderingLayout: {}
+	T_LaygenPageRenderingLayout: {}
+	F_LaygenPageLayoutRendered: {}
+	T_LaygenPageLayoutRendered: {}
+	F_LaygenPageRenderingDom: {}
+	T_LaygenPageRenderingDom: {}
+	F_LaygenPageRenderingDomNoCache: {}
+	T_LaygenPageRenderingDomNoCache: {}
+	F_LaygenPageLoadingScreen: {}
+	T_LaygenPageLoadingScreen: {}
+	F_LaygenPageUiRendering: {}
+	T_LaygenPageUiRendering: {}
+	F_LaygenPageUiVisible: {}
+	T_LaygenPageUiVisible: {}
+	F_LaygenPageErrNetwork: {}
+	T_LaygenPageErrNetwork: {}
+	F_LaygenPageErrHandlerTimeout: {}
+	T_LaygenPageErrHandlerTimeout: {}
+	F_LaygenPageHealthcheck: {}
+	T_LaygenPageHealthcheck: {}
+	F_LaygenPageHeartbeat: {}
+	T_LaygenPageHeartbeat: {}
+	F_LaygenPageErrConnecting: {}
+	T_LaygenPageErrConnecting: {}
+	F_LaygenPageConnecting: {}
+	T_LaygenPageConnecting: {}
+	F_LaygenPageConnected: {}
+	T_LaygenPageConnected: {}
+	F_LaygenPageDisconnecting: {}
+	T_LaygenPageDisconnecting: {}
+	F_LaygenPageDisconnected: {}
+	T_LaygenPageDisconnected: {}
+	F_LaygenPageRegisterDisposal: {}
+	T_LaygenPageRegisterDisposal: {}
+	F_LaygenPageDisposing: {}
+	T_LaygenPageDisposing: {}
+	F_LaygenPageDisposed: {}
+	T_LaygenPageDisposed: {}
+	F_LaygenIdentifyingContent: {}
+	T_LaygenIdentifyingContent: {}
+	F_LaygenContentIdentified: {}
+	T_LaygenContentIdentified: {}
+	F_LaygenStructuringContent: {}
+	T_LaygenStructuringContent: {}
+	F_LaygenContentStructured: {}
+	T_LaygenContentStructured: {}
+	F_LaygenMergingContent: {}
+	T_LaygenMergingContent: {}
+	F_LaygenContentMerged: {}
+	T_LaygenContentMerged: {}
+	F_LaygenGeneratingPreview: {}
+	T_LaygenGeneratingPreview: {}
+	F_LaygenPreviewGenerated: {}
+	T_LaygenPreviewGenerated: {}
+	F_LaygenPreviewAccepted: {}
+	T_LaygenPreviewAccepted: {}
+	F_LaygenGeneratingTransformation: {}
+	T_LaygenGeneratingTransformation: {}
+	F_LaygenTransformationGenerated: {}
+	T_LaygenTransformationGenerated: {}
+	F_LaygenVerifyingQuality: {}
+	T_LaygenVerifyingQuality: {}
+	F_LaygenQualityVerified: {}
+	T_LaygenQualityVerified: {}
+	F_ErrBrowser: {}
+	T_ErrBrowser: {}
+	F_ErrPage: {}
+	T_ErrPage: {}
+	F_ErrJs: {}
+	T_ErrJs: {}
+	F_ErrOs: {}
+	T_ErrOs: {}
+	F_ErrContent: {}
+	T_ErrContent: {}
+	F_ErrUi: {}
+	T_ErrUi: {}
+	F_StateDisabled: {}
+	T_StateDisabled: {}
+	F_UserNeeded: {}
+	T_UserNeeded: {}
+	F_Test: {}
+	T_Test: {}
+	F_TestDone: {}
+	T_TestDone: {}
+	F_ExecCommand: {}
+	T_ExecCommand: {}
+	F_DbCleanup: {}
+	T_DbCleanup: {}
+	F_OpeningBrowserApp: {}
+	T_OpeningBrowserApp: {}
+	F_BrowserAppOpened: {}
+	T_BrowserAppOpened: {}
+	F_OpeningBrowserRender: {}
+	T_OpeningBrowserRender: {}
+	F_BrowserRenderOpened: {}
+	T_BrowserRenderOpened: {}
+	F_StoryWakingUp: {}
+	T_StoryWakingUp: {}
+	F_StoryGhFeed: {}
+	T_StoryGhFeed: {}
+	F_StoryMutodon: {}
+	T_StoryMutodon: {}
+	F_StoryLaygen: {}
+	T_StoryLaygen: {}
+	F_StoryDisableGhFeed: {}
+	T_StoryDisableGhFeed: {}
+	F_StoryDisableMutodon: {}
+	T_StoryDisableMutodon: {}
+	F_StoryDisableLaygen: {}
+	T_StoryDisableLaygen: {}
+	F_RestoreCharacter: {}
+	T_RestoreCharacter: {}
+	F_GenCharacter: {}
+	T_GenCharacter: {}
+	F_CharacterReady: {}
+	T_CharacterReady: {}
+	F_RestoreResources: {}
+	T_RestoreResources: {}
+	F_GenResources: {}
+	T_GenResources: {}
+	F_ResourcesReady: {}
+	T_ResourcesReady: {}
+	F_Orienting: {}
+	T_Orienting: {}
+	F_OrientingMove: {}
+	T_OrientingMove: {}
+	F_ErrAI: {}
+	T_ErrAI: {}
+	F_ErrDB: {}
+	T_ErrDB: {}
+	F_ErrMem: {}
+	T_ErrMem: {}
+	F_ErrUI: {}
+	T_ErrUI: {}
+	F_ErrWeb: {}
+	T_ErrWeb: {}
+	F_ErrWebPTY: {}
+	T_ErrWebPTY: {}
+	F_ErrLog: {}
+	T_ErrLog: {}
+	F_WarnLog: {}
+	T_WarnLog: {}
+	F_ConfigUpdate: {}
+	T_ConfigUpdate: {}
+	F_ConfigValidating: {}
+	T_ConfigValidating: {}
+	F_ConfigValid: {}
+	T_ConfigValid: {}
+	F_InputPending: {}
+	T_InputPending: {}
+	F_InputBlocked: {}
+	T_InputBlocked: {}
+	F_Requesting: {}
+	T_Requesting: {}
+	F_RequestingAI: {}
+	T_RequestingAI: {}
+	F_RequestedAI: {}
+	T_RequestedAI: {}
+	F_RequestingTool: {}
+	T_RequestingTool: {}
+	F_RequestedTool: {}
+	T_RequestedTool: {}
+	F_Mock: {}
+	T_Mock: {}
+	F_BaseDBStarting: {}
+	T_BaseDBStarting: {}
+	F_BaseDBReady: {}
+	T_BaseDBReady: {}
+	F_BaseDBSaving: {}
+	T_BaseDBSaving: {}
+	F_DBStarting: {}
+	T_DBStarting: {}
+	F_DBReady: {}
+	T_DBReady: {}
+	F_HistoryDBStarting: {}
+	T_HistoryDBStarting: {}
+	F_HistoryDBReady: {}
+	T_HistoryDBReady: {}
+	F_Loop: {}
+	T_Loop: {}
+	F_Prompt: {}
+	T_Prompt: {}
+	F_Interrupted: {}
+	T_Interrupted: {}
+	F_Resume: {}
+	T_Resume: {}
+	F_CheckingMenuRefs: {}
+	T_CheckingMenuRefs: {}
+	F_CheckStories: {}
+	T_CheckStories: {}
+	F_StoryChanged: {}
+	T_StoryChanged: {}
+	F_StoryAction: {}
+	T_StoryAction: {}
+	F_UIMode: {}
+	T_UIMode: {}
+	F_UIReady: {}
+	T_UIReady: {}
+	F_UIButtonSend: {}
+	T_UIButtonSend: {}
+	F_UIButtonInter: {}
+	T_UIButtonInter: {}
+	F_UISaveOutput: {}
+	T_UISaveOutput: {}
+	F_UICleanOutput: {}
+	T_UICleanOutput: {}
+	F_UIMsg: {}
+	T_UIMsg: {}
+	F_UIRenderStories: {}
+	T_UIRenderStories: {}
+	F_UIUpdateClock: {}
+	T_UIUpdateClock: {}
+	F_UIRenderClock: {}
+	T_UIRenderClock: {}
+	F_SSHConn: {}
+	T_SSHConn: {}
+	F_SSHDisconn: {}
+	T_SSHDisconn: {}
+	F_SSHReady: {}
+	T_SSHReady: {}
+	F_WebSSHReady: {}
+	T_WebSSHReady: {}
+	F_WebHTTPReady: {}
+	T_WebHTTPReady: {}
+	F_WebRPCReady: {}
+	T_WebRPCReady: {}
+	F_WebConnected: {}
+	T_WebConnected: {}
+	F_RemoteDashReady: {}
+	T_RemoteDashReady: {}
+	F_RemoteUIReady: {}
+	T_RemoteUIReady: {}
+	F_Debugger: {}
+	T_Debugger: {}
+	F_REPL: {}
+	T_REPL: {}
+	F_ErrNetwork: {}
+	T_ErrNetwork: {}
+	F_ErrHandlerTimeout: {}
+	T_ErrHandlerTimeout: {}
+	F_Start: {}
+	T_Start: {}
+	F_Ready: {}
+	T_Ready: {}
+	F_Healthcheck: {}
+	T_Healthcheck: {}
+	F_Heartbeat: {}
+	T_Heartbeat: {}
+	F_RegisterDisposal: {}
+	T_RegisterDisposal: {}
+	F_Disposing: {}
+	T_Disposing: {}
+	F_Disposed: {}
+	T_Disposed: {}
+	F_ErrOnClient: {}
+	T_ErrOnClient: {}
+	F_ErrConnecting: {}
+	T_ErrConnecting: {}
+	F_Connecting: {}
+	T_Connecting: {}
+	F_Connected: {}
+	T_Connected: {}
+	F_Disconnecting: {}
+	T_Disconnecting: {}
+	F_Disconnected: {}
+	T_Disconnected: {}
+
+	}
+	direction: right
+
+a: "" {
+	class: [M_tbot-dev; mach]
+	style.stroke: yellow
+
+	b:BaseDBStarting
+	b.class: [state; _0]
+	b <--> c: double remove {
+		class: [M_tbot-dev; F_BaseDBStarting; T_BaseDBReady; rem2]
+	}
+	d:CharacterReady
+	d.class: [state; _0]
+	d <--> e: double remove {
+		class: [M_tbot-dev; F_CharacterReady; T_RestoreCharacter; rem2; rel-zoom]
+	}
+	d <--> f: double remove {
+		class: [M_tbot-dev; F_CharacterReady; T_GenCharacter; rem2]
+	}
+	f:GenCharacter
+	f.class: [state; _0]
+	f --> c: require {
+		class: [M_tbot-dev; F_GenCharacter; T_BaseDBReady; req]
+	}
+	f <--> e: double remove {
+		class: [M_tbot-dev; F_GenCharacter; T_RestoreCharacter; rem2; rel-zoom]
+	}
+	c:BaseDBReady
+	c.class: [state; _0]
+	e:RestoreCharacter
+	e.class: [state; _0; state-zoom]
+	e --> c: require {
+		class: [M_tbot-dev; F_RestoreCharacter; T_BaseDBReady; req; rel-zoom]
+	}
+}
+
+

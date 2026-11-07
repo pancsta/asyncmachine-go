@@ -187,7 +187,7 @@ func (s S) FilterMatch(re *regexp.Regexp) S {
 	return ret
 }
 
-// Prefix lists all states with a prefix.
+// Prefix prefixes all state names with [prefix].
 func (s S) Prefix(prefix string) S {
 	return StatesPrefix(prefix, s)
 }
@@ -601,6 +601,24 @@ type BindOpts struct {
 	//  (save activation tick)
 }
 
+// handlerReturn is a return of a single handlerCall.
+type handlerReturn struct {
+	// was the handler called?
+	called bool
+	// did the handler time out?
+	timeout bool
+	// hard cancel, full tx rejection
+	canceled bool
+	// binary negotiation return
+	retBool bool
+	// partial negotiation return of called states
+	retStates S
+	// partial negotiation return marker
+	partialNeg bool
+	// only for partialNeg true
+	partiallyAccepted bool
+}
+
 type handlerCall struct {
 	fn *reflect.Value
 	// TODO debug only
@@ -612,30 +630,28 @@ type handlerCall struct {
 	debug       string
 }
 
-// func negReturn Partial
-
 func (c *handlerCall) Exec() *handlerReturn {
 	ret := handlerReturn{}
 	if c.fn != nil {
 		callRet := c.fn.Call([]reflect.Value{reflect.ValueOf(c.event)})
-		ret.Called = true
+		ret.called = true
 		if len(callRet) > 0 {
 			// TODO log err?
 			v1, ok1 := callRet[0].Interface().(bool)
 			v2, ok2 := callRet[0].Interface().(S)
 			if ok1 {
-				ret.RetBool = v1
+				ret.retBool = v1
 			} else if ok2 {
 				// TODO optimize: with nil as prev value
-				ret.RetStates = v2
-				ret.PartialNeg = true
+				ret.retStates = v2
+				ret.partialNeg = true
 			}
 		} else {
 			// default
-			ret.RetBool = true
+			ret.retBool = true
 		}
 	} else if c.negotiation != nil {
-		ret.RetBool = c.negotiation(c.event)
+		ret.retBool = c.negotiation(c.event)
 		// TODO List ret for map handlers
 	} else if c.final != nil {
 		c.final(c.event)
@@ -644,26 +660,6 @@ func (c *handlerCall) Exec() *handlerReturn {
 	}
 
 	return &ret
-}
-
-// TODO no pub fields
-type handlerReturn struct {
-	// was the handler called?
-	Called bool
-	// did the handler time out?
-	Timeout bool
-	// hard cancel, full tx rejection
-	Canceled   bool
-	// binary negotiation return
-	RetBool bool
-	// partial negotiation return of called states
-	RetStates  S
-	// partial negotiation return marker
-	PartialNeg bool
-	// only for PartialNeg true
-	PartiallyAccepted bool
-
-	processed bool
 }
 
 func newHandlerCallStruct(

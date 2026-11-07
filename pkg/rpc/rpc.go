@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -191,8 +192,8 @@ type MsgSrvUpdate struct {
 	QueueTick uint16
 	// MachTick is an incremental diff for the machine tick.
 	MachTick uint8
-	// Checksum is the last digit of (TimeSum + QueueTick + MachTick)
-	Checksum uint8
+	// Checksum is the modulo of uint16 from all ticks.
+	Checksum uint16
 	// DBGSum       uint64
 	// DBGLastSum   uint64
 	// DBGQTick     uint64
@@ -540,6 +541,10 @@ func (s *semLogger) SetSimple(
 }
 
 func (s *semLogger) AddPipeOut(isAdd bool, sourceState, targetMach string) {
+	if !s.IsGraph() {
+		return
+	}
+
 	kind := "remove"
 	if isAdd {
 		kind = "add"
@@ -558,6 +563,10 @@ func (s *semLogger) AddPipeOut(isAdd bool, sourceState, targetMach string) {
 }
 
 func (s *semLogger) AddPipeIn(isAdd bool, targetState, sourceMach string) {
+	if !s.IsGraph() {
+		return
+	}
+
 	kind := "remove"
 	if isAdd {
 		kind = "add"
@@ -576,6 +585,10 @@ func (s *semLogger) AddPipeIn(isAdd bool, targetState, sourceMach string) {
 }
 
 func (s *semLogger) RemovePipes(machId string) {
+	if !s.IsGraph() {
+		return
+	}
+
 	s.mach.log(am.LogOps, "[pipe:gc] %s", machId)
 
 	s.pipesMx.Lock()
@@ -586,11 +599,12 @@ func (s *semLogger) RemovePipes(machId string) {
 }
 
 func (s *semLogger) Pipes() []*am.LogEntry {
-	s.pipesMx.Lock()
-	defer s.pipesMx.Unlock()
-	if len(s.pipes) == 0 {
+	if !s.IsGraph() {
 		return nil
 	}
+
+	s.pipesMx.Lock()
+	defer s.pipesMx.Unlock()
 
 	ret := make([]*am.LogEntry, len(s.pipes))
 	for i, p := range s.pipes {
@@ -615,6 +629,14 @@ func (s *semLogger) Pipes() []*am.LogEntry {
 	}
 
 	return ret
+}
+
+func (s *semLogger) SetTags() {
+	if !s.IsGraph() {
+		return
+	}
+
+	s.mach.log(am.LogOps, "[tags] #%s", slices.Concat(s.mach.Tags()))
 }
 
 func (s *semLogger) IsSteps() bool {
@@ -709,230 +731,159 @@ func newHandler(
 
 // ///// ///// /////
 
-type tracerData struct {
-	mTrackedTimeSum uint64
-	// time is either source-bound or client-bound (if no schema)
-	mTime     am.Time
-	queueTick uint64
-	machTick  uint32
-	// tracked-states-only checksum
-	checksum uint8
-	tracked  am.S
-	// tracked idx -> machine idx
-	trackedIdxs []int
+type TracerData struct {
+	MTrackedTimeSum uint64
+	// MTime is full machine time
+	MTime     am.Time
+	QueueTick uint64
+	MachTick  uint32
+	// tracked-states-only Checksum
+	Checksum uint16
+	Tracked  am.S
+	// Tracked idx -> machine idx
+	TrackedIdxs []int
 	// mach time on the client according to tracked states
 	// mTimeSumClient uint64
 }
 
-type tracerMutation struct {
-	mutType    am.MutationType
-	calledIdxs []int
-	data       tracerData
+type TracerMutation struct {
+	MutType    am.MutationType
+	CalledIdxs []int
+	Data       TracerData
 }
 
-// sourceTracer is a tracer for source state-machines, used by the RPC server
+type SourceConfig struct {
+	SyncMutations     atomic.Bool
+	SyncAllowedStates atomic.Pointer[am.S]
+	SyncSkippedStates atomic.Pointer[am.S]
+	SyncSchema        atomic.Bool
+	SyncShallowClocks atomic.Bool
+}
+
+// SourceTracer is a tracer for source state-machines, used by the RPC server
 // to produce updates for the RPC client.
-type sourceTracer struct {
+type SourceTracer struct {
 	*am.TracerNoOp
 
-	s *Server
-	// tracer needs explicit activation
-	active bool
-	// latest data, possibly already sent
-	dataLatest *tracerData
-	// unsent data generated for each mutations
-	dataQueue []tracerMutation
+	// Config holds the synchronization configuration.
+	Config *SourceConfig
+	// Active enables transition collection.
+	Active atomic.Bool
+	// DataLatest is the latest collected tracer data.
+	DataLatest atomic.Pointer[TracerData]
+	// DataQueue contains unsent mutation updates.
+	DataQueue atomic.Pointer[[]TracerMutation]
 
-	// list of states this tracer is syncing
-	trackedStates am.S
-	// tracked idx -> machine idx
-	trackedStateIdxs []int
+	// TrackedStates is the list of states this tracer is syncing.
+	TrackedStates am.S
+	// TrackedStateIdxs maps tracked states to machine indexes.
+	TrackedStateIdxs []int
 }
 
-// getters
-
-func (t *sourceTracer) DataLatest() *tracerData {
-	// lock
-	t.s.lockCollection.Lock()
-	defer t.s.lockCollection.Unlock()
-
-	// copy
-	data := t.dataLatest
-	if data == nil {
-		return nil
+func NewSourceTracer(id string, config *SourceConfig) *SourceTracer {
+	if config == nil {
+		config = &SourceConfig{}
 	}
-	ret := *data
+	t := &SourceTracer{
+		TracerNoOp: &am.TracerNoOp{Id: id},
+		Config:     config,
+	}
+	t.DataLatest.Store(new(TracerData{QueueTick: 1}))
 
-	return &ret
-}
-
-func (t *sourceTracer) DataQueue() []tracerMutation {
-	// lock
-	t.s.lockCollection.Lock()
-	defer t.s.lockCollection.Unlock()
-
-	// copy and flush
-	ret := t.dataQueue
-	t.dataQueue = nil
-	t.dataLatest = nil
-
-	return ret
+	return t
 }
 
 // tracing
 
-func (t *sourceTracer) TransitionEnd(tx *am.Transition) {
-	s := t.s
-	srcMach := s.Source
-
-	// lock
-	s.lockCollection.Lock()
-	defer s.lockCollection.Unlock()
-
-	if !t.active {
+func (t *SourceTracer) TransitionEnd(tx *am.Transition) {
+	if !t.Active.Load() {
 		return
 	}
 
+	srcMach := tx.Machine
+
 	// init cache
-	allStates := tx.Machine.StateNames()
-	if t.trackedStates == nil {
+	allStates := srcMach.StateNames()
+	if t.TrackedStates == nil {
 		t.calcTrackedStates(allStates)
 	}
 
 	qTick := srcMach.QueueTick()
 	machTick := srcMach.MachineTick()
 	mTime := srcMach.Time(nil)
-	trackedTSum := mTime.Sum(t.trackedStateIdxs)
+	trackedTSum := mTime.Sum(t.TrackedStateIdxs)
 
 	// filter the time slice
-	if !s.syncSchema {
-		mTime = mTime.Filter(t.trackedStateIdxs)
+	if !t.Config.SyncSchema.Load() {
+		mTime = mTime.Filter(t.TrackedStateIdxs)
 	}
-	if s.syncShallowClocks {
+	if t.Config.SyncShallowClocks.Load() {
 		mTime = am.NewTime(mTime, mTime.ActiveStates(nil))
-		trackedTSum = mTime.Sum(t.trackedStateIdxs)
+		trackedTSum = mTime.Sum(t.TrackedStateIdxs)
 	}
 
 	// update
-	d := &tracerData{
-		mTime:           mTime,
-		mTrackedTimeSum: trackedTSum,
+	d := &TracerData{
+		MTime:           mTime,
+		MTrackedTimeSum: trackedTSum,
 		// mTimeSumClient: mTimeClient.Sum(nil),
-		queueTick:   qTick,
-		machTick:    machTick,
-		checksum:    Checksum(trackedTSum, qTick, machTick),
-		tracked:     t.trackedStates,
-		trackedIdxs: t.trackedStateIdxs,
+		QueueTick:   qTick,
+		MachTick:    machTick,
+		Checksum:    Checksum(trackedTSum, qTick, machTick),
+		Tracked:     t.TrackedStates,
+		TrackedIdxs: t.TrackedStateIdxs,
 	}
-	t.dataLatest = d
-
-	// DEBUG
-	// if srcMach.Id() == "ns-TestPartial" {
-	// 	fmt.Printf("[T] [%+v] %d %d\n", d.mTime, qTick, machTick)
-	// 	fmt.Printf("[T] check %d\n", d.checksum)
-	// }
+	t.DataLatest.Store(d)
 
 	// mutations
-	if s.syncMutations {
+	if t.Config.SyncMutations.Load() {
 		mut := tx.Mutation
 		// skip non-tracked called states
 		called := slices.DeleteFunc(mut.Called, func(idx int) bool {
-			return !slices.Contains(t.trackedStateIdxs, idx)
+			return !slices.Contains(t.TrackedStateIdxs, idx)
 		})
-		t.dataQueue = append(t.dataQueue, tracerMutation{
-			mutType:    mut.Type,
-			calledIdxs: called,
-			data:       *d,
+		appendMutation(t, TracerMutation{
+			MutType:    mut.Type,
+			CalledIdxs: called,
+			Data:       *d,
 		})
 	}
-
-	calledTracked := am.StatesShared(tx.TargetStates(), t.trackedStates)
-
-	// TODO optimize: fork max 1?
-	go func() {
-		s.log("tracer push: tt%d q%d (check:%d) %s", trackedTSum, qTick,
-			d.checksum, calledTracked)
-
-		// try to push this tx to the client
-		t.s.PushClient()
-	}()
 }
 
-func (t *sourceTracer) SchemaChange(mach am.Api, oldSchema am.Schema) {
-	s := t.s
-
-	// lock
-	s.lockCollection.Lock()
-	defer s.lockCollection.Unlock()
-
-	if !t.active {
-		return
-	}
-
-	msg := &MsgSrvHello{}
-	msg.Serialized, msg.Schema, _ = mach.Export()
-	msg.StatesCount = uint32(len(msg.Serialized.StateNames))
-	allStates := msg.Serialized.StateNames
-
-	// client-bound indexes when no schema synced
-	export := msg.Serialized
-	if !s.syncSchema {
-		export.StateNames = am.StatesShared(export.StateNames,
-			s.tracer.trackedStates)
-		export.Time = export.Time.Filter(s.tracer.trackedStateIdxs)
-
-		// zero non-tracked for consistent checksums
-	} else {
-		for i := range allStates {
-			if slices.Contains(s.tracer.trackedStateIdxs, i) {
-				continue
-			}
-			export.Time[i] = 0
+// appendMutation adds a mutation to the queue without locks.
+func appendMutation(t *SourceTracer, mut TracerMutation) {
+	for {
+		old := t.DataQueue.Load()
+		var oldQueue []TracerMutation
+		if old != nil {
+			oldQueue = *old
 		}
-	}
 
-	// init cache
-	if t.trackedStates == nil {
-		t.calcTrackedStates(allStates)
-	}
+		queue := make([]TracerMutation, len(oldQueue)+1)
+		copy(queue, oldQueue)
+		queue[len(oldQueue)] = mut
 
-	// memorize
-	d := s.lastPushData
-	d.mTime = export.Time
-	d.queueTick = export.QueueTick
-	d.mTrackedTimeSum = export.Time.Sum(t.trackedStateIdxs)
-	d.checksum = Checksum(d.mTrackedTimeSum, d.queueTick, d.machTick)
-
-	// fork and push
-	go func() {
-		client := t.s.rpcClient.Load()
-		if client == nil {
+		if t.DataQueue.CompareAndSwap(old, &queue) {
 			return
 		}
-
-		s.lockExport.Lock()
-		defer s.lockExport.Unlock()
-
-		// send
-		err := client.CallWithContext(mach.Context(), ClientSchemaChange.Value, msg,
-			&MsgEmpty{})
-		mach.AddErr(err, nil)
-	}()
+	}
 }
 
 // internal
 
-func (t *sourceTracer) calcTrackedStates(states am.S) {
-	s := t.s
-
-	t.trackedStates = states
-	if s.syncAllowedStates != nil {
-		t.trackedStates = am.StatesShared(t.trackedStates, s.syncAllowedStates)
+func (t *SourceTracer) calcTrackedStates(states am.S) {
+	t.TrackedStates = states
+	if allowed := t.Config.SyncAllowedStates.Load(); allowed != nil &&
+		*allowed != nil {
+		t.TrackedStates = am.StatesShared(t.TrackedStates, *allowed)
 	}
-	t.trackedStates = am.StatesDiff(t.trackedStates, s.syncSkippedStates)
-	t.trackedStateIdxs = make([]int, len(t.trackedStates))
-	for i, name := range t.trackedStates {
-		t.trackedStateIdxs[i] = slices.Index(states, name)
+	if skipped := t.Config.SyncSkippedStates.Load(); skipped != nil &&
+		*skipped != nil {
+		t.TrackedStates = am.StatesDiff(t.TrackedStates, *skipped)
+	}
+	t.TrackedStateIdxs = make([]int, len(t.TrackedStates))
+	for i, name := range t.TrackedStates {
+		t.TrackedStateIdxs[i] = slices.Index(states, name)
 	}
 }
 
@@ -988,16 +939,16 @@ func (c *msgpackCoded) ReadHeader(
 	return nil
 }
 
-func (c *msgpackCoded) ReadRequestBody(body interface{}) error {
+func (c *msgpackCoded) ReadRequestBody(body any) error {
 	return c.dec.Decode(body)
 }
 
-func (c *msgpackCoded) ReadResponseBody(body interface{}) error {
+func (c *msgpackCoded) ReadResponseBody(body any) error {
 	return c.dec.Decode(body)
 }
 
 func (c *msgpackCoded) WriteRequest(
-	r *rpc2.Request, body interface{},
+	r *rpc2.Request, body any,
 ) (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -1012,7 +963,7 @@ func (c *msgpackCoded) WriteRequest(
 }
 
 func (c *msgpackCoded) WriteResponse(
-	r *rpc2.Response, body interface{},
+	r *rpc2.Response, body any,
 ) (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -1290,9 +1241,9 @@ func MachReplWs(mach am.Api, addr string, opts *ReplOpts) (*Server, error) {
 // }
 
 // Checksum calculates a short checksum of current machine time and ticks.
-func Checksum(mTime uint64, qTick uint64, machTick uint32) uint8 {
+func Checksum(mTime uint64, qTick uint64, machTick uint32) uint16 {
 	// TODO add index of active states to the checksum
-	return uint8(mTime + qTick + uint64(machTick))
+	return uint16(mTime + qTick + uint64(machTick)%math.MaxUint16)
 }
 
 // WsListenPath creates a WebSocket remote listen URL path.

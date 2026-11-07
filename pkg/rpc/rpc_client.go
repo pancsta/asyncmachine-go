@@ -41,7 +41,8 @@ type ClientOpts struct {
 	AllowedStates am.S
 	// Skip syncing of these states.
 	SkippedStates am.S
-	// Sync machine time for every mutation. Disables
+	// Sync machine time for every mutation to make sure all the handlers get
+	// executed. Disables
 	// [ClientOpts.SyncShallowClocks].
 	// TODO de-activates states for no reason
 	SyncMutations bool
@@ -543,9 +544,12 @@ func (c *Client) HandshakingState(e *am.Event) {
 		// set schema and states
 		c.updateStatesSchema(resp)
 
-		// ID as tag TODO find-n-replace the tag, not via index [1]
-		c.NetMach.tags[1] = states.TagKeySrcId + ":" + resp.Serialized.ID
-		// TODO setter
+		// ID as tag
+		tags, tagsChanged := amhelp.TagSetValue(c.NetMach.Tags(),
+			states.TagKeySrcId, resp.Serialized.ID)
+		if tagsChanged {
+			c.NetMach.SetTags(tags)
+		}
 		c.NetMach.remoteId = resp.Serialized.ID
 
 		// confirm the handshake or retry conn
@@ -699,7 +703,6 @@ func (c *Client) ServerPayloadState(e *am.Event) {
 var _ = ssC.Healthcheck
 
 func (c *Client) HealthcheckState(e *am.Event) {
-	c.Mach.EvRemove1(e, ssC.Healthcheck, nil)
 	c.ensureGroupConnected(e)
 }
 
@@ -877,7 +880,7 @@ func (c *Client) clockFromUpdate(
 	return timeAfter, qTickAfter, machTickAfter
 }
 
-// ensureGroupConnected ensures that at least one state from  GroupConnected
+// ensureGroupConnected ensures that at least one state from GroupConnected
 // is active.
 func (c *Client) ensureGroupConnected(e *am.Event) {
 	groupConn := states.ClientGroups.Connected

@@ -5,6 +5,8 @@ package symbols
 import (
 	"github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc/states"
+	"go/constant"
+	"go/token"
 	"reflect"
 )
 
@@ -19,6 +21,7 @@ func init() {
 		"MuxGroups":         reflect.ValueOf(&states.MuxGroups).Elem(),
 		"MuxSchema":         reflect.ValueOf(&states.MuxSchema).Elem(),
 		"MuxStates":         reflect.ValueOf(&states.MuxStates).Elem(),
+		"PrefixNetMach":     reflect.ValueOf(constant.MakeFromLiteral("\"rnm-\"", token.STRING, 0)),
 		"ServerGroups":      reflect.ValueOf(&states.ServerGroups).Elem(),
 		"ServerSchema":      reflect.ValueOf(&states.ServerSchema).Elem(),
 		"ServerStates":      reflect.ValueOf(&states.ServerStates).Elem(),
@@ -27,6 +30,13 @@ func init() {
 		"SharedStates":      reflect.ValueOf(&states.SharedStates).Elem(),
 		"StateSourceSchema": reflect.ValueOf(&states.StateSourceSchema).Elem(),
 		"StateSourceStates": reflect.ValueOf(&states.StateSourceStates).Elem(),
+		"TagKeyAddr":        reflect.ValueOf(constant.MakeFromLiteral("\"addr\"", token.STRING, 0)),
+		"TagKeySrcId":       reflect.ValueOf(constant.MakeFromLiteral("\"src-id\"", token.STRING, 0)),
+		"TagRpcClient":      reflect.ValueOf(constant.MakeFromLiteral("\"rpc-client\"", token.STRING, 0)),
+		"TagRpcHandler":     reflect.ValueOf(constant.MakeFromLiteral("\"rpc-handler\"", token.STRING, 0)),
+		"TagRpcMux":         reflect.ValueOf(constant.MakeFromLiteral("\"rpc-mux\"", token.STRING, 0)),
+		"TagRpcNetmach":     reflect.ValueOf(constant.MakeFromLiteral("\"rpc-mux\"", token.STRING, 0)),
+		"TagRpcServer":      reflect.ValueOf(constant.MakeFromLiteral("\"rpc-server\"", token.STRING, 0)),
 
 		// type definitions
 		"ClientGroupsDef":      reflect.ValueOf((*states.ClientGroupsDef)(nil)),

@@ -550,6 +550,7 @@ func average(sum uint64, sampleLen uint) float64 {
 // top-level machines.
 func MachMetricsEnv(mach am.Api) *Metrics {
 
+	// TODO check if tracer bound, not parent
 	if mach.ParentId() != "" {
 		return nil
 	}

@@ -114,7 +114,6 @@ var Inherits = []string{
 //
 //nolint:lll
 type SchemaParams struct {
-
 	SchemaParamsCommon
 
 	// State - State name to generate (repeatable). Eg: --state State1 --state State2:multi

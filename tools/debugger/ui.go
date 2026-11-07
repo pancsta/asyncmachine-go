@@ -529,6 +529,9 @@ func (d *Debugger) hInitToolbar() {
 			{id: types.ToolFilterOutGroup, label: "group", active: func() bool {
 				return d.Mach.Is1(ss.FilterOutGroup)
 			}},
+			{id: types.ToolFilterErrs, label: "errs", active: func() bool {
+				return d.Mach.Not1(ss.FilterErrs)
+			}},
 			{id: types.ToolFilterDisconn, label: "disconn", active: func() bool {
 				return d.Mach.Not1(ss.FilterDisconn)
 			}},
@@ -648,7 +651,7 @@ func (d *Debugger) hInitToolbar() {
 
 	if d.params.AddrHttp != "" {
 		d.toolbarItems[3] = slices.Insert(
-			d.toolbarItems[3], 3,
+			d.toolbarItems[3], 2,
 			toolbarItem{id: types.ToolWeb, label: "web", active: func() bool {
 				return false
 			}},
@@ -869,7 +872,9 @@ func (d *Debugger) hUpdateHelpDialog() {
 		[::b]group[::-]         show transition only from the 
 		              selected group
 		[::b]disconn[::-]        show disconnected clients
-		[::b]checks[::-]        include Can* mutations
+		[::b]checks[::-]        include Can* method checks
+		[::b]errs[::-]          include Err*, Warn*, Exception mutations
+		[::b]read-grp[::-]      narrow the reader to the selected group
 		[::b]rpc[::-]           show RPC machines
 		[::b]expand[::-]        expand tree in the currently
 		              focused tile

@@ -157,6 +157,7 @@ type DbgMsgTx struct {
 	Args       map[string]string
 	QueueDump  []string
 	StackTrace string
+	Tags       []string
 
 	// TODO add Mutation.Source, only if semLogger.IsGraph() == true
 	// Source *am.MutSource
@@ -381,6 +382,7 @@ type Tracer struct {
 	// number of queued mutations since lastTx
 	queued    int
 	lastMTime am.Time
+	tags      []string
 }
 
 var _ am.Tracer = &Tracer{}
@@ -537,6 +539,13 @@ func (t *Tracer) TransitionEnd(tx *am.Transition) {
 		// QueueDump: mach.QueueDump(),
 	}
 
+	// check tags
+	tags := mach.Tags()
+	if !slices.Equal(tags, t.tags) {
+		msg.Tags = tags
+		t.tags = tags
+	}
+
 	// debug
 	// for _, t := range slices.Concat(tx.LogEntries, tx.PreLogEntries) {
 	// 	if strings.Contains(t.Text, "Template ConfigValid") &&
@@ -557,6 +566,14 @@ func (t *Tracer) TransitionEnd(tx *am.Transition) {
 
 	// add to the queue
 	t.outbox <- func() {
+		// DEBUG
+		// if msg.MachineID == "tbot-dev" {
+		// 	idx := t.Mach.Index1("BaseDBReady")
+		// 	if slices.Contains(msg.CalledStatesIdxs, idx) {
+		// 		print()
+		// 	}
+		// }
+
 		if t.c == nil {
 			if os.Getenv(am.EnvAmLog) != "" {
 				// log.Println(mach.Id() + ": no connection to am-dbg")
