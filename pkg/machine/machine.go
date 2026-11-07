@@ -133,7 +133,7 @@ type Machine struct {
 	logger           atomic.Pointer[LoggerFn]
 	semLogger        SemLogger
 	handlerStart     chan *handlerCall
-	handlerEnd       chan bool
+	handlerEnd       chan *handlerReturn
 	handlerPanic     chan recoveryData
 	handlerTimer     *time.Timer
 	logEntriesLock   sync.Mutex
@@ -236,7 +236,7 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 		activatedAt:  make(map[string]uint64),
 		handlers:     []*handler{},
 		handlerStart: make(chan *handlerCall),
-		handlerEnd:   make(chan bool),
+		handlerEnd:   make(chan *handlerReturn),
 		handlerPanic: make(chan recoveryData),
 		handlerTimer: time.NewTimer(24 * time.Hour),
 		whenDisposed: make(chan struct{}),
@@ -2400,23 +2400,23 @@ func (m *Machine) SemLogger() SemLogger {
 // handle triggers methods on handlers structs.
 // locked: transition lock currently held
 func (m *Machine) handle(
-	name string, args A, isFinal, isEnter, isSelf bool,
-) (Result, bool) {
+	state string, eventName string, args A, isFinal, isEnter, isSelf bool,
+) *handlerReturn {
+
 	if m.disposing.Load() {
-		return Canceled, false
+		return &handlerReturn{Canceled: true}
 	}
-	// TODO return accepted states
 
 	t := m.t.Load()
 	e := &Event{
-		Name:         name,
-		machine:      m,
-		machApi:      m,
+		Name:         eventName,
 		Args:         args,
 		TransitionId: t.Id,
 		MachineId:    m.Id(),
+
+		machine: m,
+		machApi: m,
 	}
-	targetStates := t.TargetStates()
 
 	t.latestHandlerIsEnter = isEnter
 	t.latestHandlerIsFinal = isFinal
@@ -2427,38 +2427,41 @@ func (m *Machine) handle(
 	}
 
 	// call the handlers
-	res, handlerCalled := m.processHandlers(e)
+	ret := m.processHandlers(state, e)
 	if m.panicCaught.Load() {
-		res = Canceled
+		ret = &handlerReturn{Canceled: true}
 		m.panicCaught.Store(false)
 	}
 
 	// negotiation support
-	if !isFinal && res == Canceled {
+	if isFinal {
+		return ret
+	}
+
+	if ret.Canceled {
 		if m.semLogger.Level() >= LogOps {
 			var self string
 			if isSelf {
 				self = ":self"
 			}
 
-			// TODO log partial acceptance
 			m.log(LogOps, "[cancel%s] (%s) by %s", self,
-				j(targetStates), name)
+				j(t.TargetStates()), eventName)
 		}
-
-		return Canceled, handlerCalled
+	} else if ret.PartiallyAccepted {
+		m.log(LogOps, "[rejected] (%s) by %s",
+			j(t.CalledInitial().Remove(ret.RetStates)), eventName)
 	}
 
-	return res, handlerCalled
+	return ret
 }
 
-func (m *Machine) processHandlers(e *Event) (Result, bool) {
+func (m *Machine) processHandlers(state string, e *Event) *handlerReturn {
 	if m.disposing.Load() {
-		return Canceled, false
+		return &handlerReturn{Canceled: true}
 	}
-	// TODO return accepted states, closed chans
 
-	handlerCalled := false
+	ret := &handlerReturn{}
 	handlers := m.getHandlers(false)
 	for i := 0; !m.disposing.Load() && i < len(handlers); i++ {
 
@@ -2480,7 +2483,6 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		}
 
 		var call *handlerCall
-		var ret bool
 		var timeout bool
 		tx := m.t.Load()
 		if !h.isMap {
@@ -2493,7 +2495,6 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 			continue
 		}
 
-		handlerCalled = true
 		select {
 		case <-m.ctx.Done():
 			break
@@ -2502,6 +2503,8 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 
 		// reuse the timer each time
 		m.handlerTimer.Reset(m.HandlerTimeout)
+
+		// TODO split func
 
 		// wait on the result / timeout / context
 		select {
@@ -2564,6 +2567,7 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 
 		case ret = <-m.handlerEnd:
 			m.log(LogEverything, "[handler:end] %s from %s", e.Name, h.id)
+
 			// ok
 		}
 
@@ -2580,13 +2584,63 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		// handle negotiation
 		switch {
 		case timeout:
-			return Canceled, handlerCalled
+			return &handlerReturn{
+				Timeout:  true,
+				Canceled: true,
+			}
 		case strings.HasSuffix(e.Name, SuffixState):
 		case strings.HasSuffix(e.Name, SuffixEnd):
 			// returns from State and End handlers are ignored
 		default:
-			if !ret {
-				return Canceled, handlerCalled
+			if !ret.Called {
+				continue
+			}
+			t := m.t.Load()
+
+			// bool return handler canceled?
+			if !ret.PartialNeg && !ret.RetBool {
+				// partial auto-transition acceptance of auto-states (even for bool rets)
+				if t.IsAuto() && t.cacheSchema[state].Auto {
+					// simulate partial acceptance
+					ret.Canceled = false
+					ret.PartialNeg = true
+					ret.RetStates = t.CalledStates().Delete1(state)
+					// ...continue
+
+				} else {
+					// full cancel
+					ret.Canceled = true
+					return ret
+				}
+			}
+
+			// state-return handler - partial acceptance
+			if ret.PartialNeg {
+				// full rejection
+				if len(ret.RetStates) == 0 {
+					ret.Canceled = true
+					return ret
+				}
+
+				// validate states or cancel
+				called := e.Transition().CalledStates()
+				if !called.HasN(ret.RetStates) {
+					m.log(LogOps,
+						"[accept:error] handler states outside of called states")
+					ret.Canceled = true
+				}
+
+				if len(called) == len(ret.RetStates) {
+					// fully accepted
+					continue
+				}
+
+				// re-run with new called states
+				tx.IsPartial = true
+				ret.PartiallyAccepted = true
+				_, _ = t.calculateTarget(ret.RetStates)
+
+				return ret
 			}
 		}
 	}
@@ -2599,7 +2653,10 @@ func (m *Machine) processHandlers(e *Event) (Result, bool) {
 		closeSafe(ch)
 	}
 
-	return Executed, handlerCalled
+	if ret == nil {
+		return &handlerReturn{}
+	}
+	return ret
 }
 
 func (m *Machine) handlerLoop() {
@@ -2633,7 +2690,7 @@ func (m *Machine) handlerLoop() {
 
 	// handleCall returns true to continue, or false to return
 	handleCall := func(call *handlerCall) bool {
-		var ret bool
+		var ret *handlerReturn
 
 		// handler signature: FooState(e *am.Event)
 		if call.event.IsValid() {
@@ -2649,7 +2706,7 @@ func (m *Machine) handlerLoop() {
 				"deadlined handler finished, theoretical leak: %s", call.name,
 			)
 			m.log(LogOps, "[error] %s", err)
-			// TODO option to disable muts
+			// TODO option to disable err muts
 			m.AddErr(err, nil)
 
 			return false

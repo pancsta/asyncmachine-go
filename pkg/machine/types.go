@@ -15,7 +15,7 @@ const (
 	EnvAmDebug = "AM_DEBUG"
 	// EnvAmTestRunner indicates a CI test runner.
 	EnvAmTestRunner = "AM_TEST_RUNNER"
-	// EnvAmLog sets the log level. TODO add separate AM_DBG_LOG
+	// EnvAmLog sets the log level respected by [NewCommon].
 	// "1" | "2" | "3" | "4" | "5" | "" (default)
 	EnvAmLog = "AM_LOG"
 	// EnvAmDetectEval detects evals directly in handlers (use in tests) and also
@@ -83,6 +83,10 @@ type HandlerFinal func(e *Event)
 
 // HandlerNegotiation is a negotiation transition handler func signature.
 type HandlerNegotiation func(e *Event) bool
+
+// HandlerNegotiationPartial is like [HandlerNegotiation], but with support for
+// partial acceptance.
+type HandlerNegotiationPartial func(e *Event) S
 
 // HandlerDispose is a machine disposal handler func signature.
 type HandlerDispose func(id string, ctx context.Context)
@@ -327,6 +331,7 @@ type Api interface {
 	// HandlersBind is [Machine.HandlersBind].
 	HandlersBind(handlers any, opts ...BindOpts) (string, error)
 	// HandlersBindMaps is [Machine.HandlersBindMaps].
+	// TODO v0.20 add HandlerNegotiationPartial
 	HandlersBindMaps(negotiations map[string]HandlerNegotiation,
 		finals map[string]HandlerFinal, opts ...BindOpts) (string, error)
 	// HandlersDetach is [Machine.HandlersDetach].

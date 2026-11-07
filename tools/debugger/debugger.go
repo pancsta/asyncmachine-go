@@ -2462,24 +2462,25 @@ func (d *Debugger) hUpdateMatrixRain() {
 		}
 		tx := c.MsgTxs[txIdx1-1]
 		txParsed := c.MsgTxsParsed[txIdx1-1]
-		calledStates := tx.CalledStateNames(c.MsgStruct.StatesIndex)
+		calledStates := tx.CalledStateNames(index)
 
-		for ii, name := range index {
+		for ii, name := range states {
+			idx := index.Index1(name)
 
 			v := "."
 			sIsErr := strings.HasPrefix(name, "Err")
 
 			if tx.Is1(index, name) {
 				v = "1"
-				if slices.Contains(txParsed.StatesTouched, ii) {
+				if slices.Contains(txParsed.StatesTouched, idx) {
 					v = "2"
 				}
-			} else if slices.Contains(txParsed.StatesRemoved, ii) {
+			} else if slices.Contains(txParsed.StatesRemoved, idx) {
 				v = "|"
-			} else if !tx.Accepted && slices.Contains(calledStates, index[ii]) {
+			} else if !tx.Accepted && slices.Contains(calledStates, name) {
 				// called but canceled
 				v = "c"
-			} else if slices.Contains(txParsed.StatesTouched, ii) {
+			} else if slices.Contains(txParsed.StatesTouched, idx) {
 				v = "*"
 			}
 
@@ -2608,13 +2609,14 @@ func (d *Debugger) hUpdateStatusBar() {
 		}
 	}
 	for _, client := range d.Clients {
-		currCTxIdx := client.TxAtHTime(currHTime)
-		if currCTxIdx != -1 {
-			parsed := client.MsgTxsParsed[currCTxIdx]
-			graphMTime += parsed.TimeSum
+		currTxIdx := client.TxAtHTime(currHTime)
+		if currTxIdx != -1 {
+			if parsed := client.TxParsed(currTxIdx); parsed != nil {
+				graphMTime += parsed.TimeSum
+			}
 		}
 	}
-	left := []string{P.Sprintf("%sGraph:t%v", loading, graphMTime)}
+	left := []string{utils.Fmt.Sprintf("%sGraph:t%v", loading, graphMTime)}
 
 	// selected state
 	idx := slices.Index(c.MsgStruct.StatesIndex, c.SelectedState)
@@ -2675,6 +2677,7 @@ func (d *Debugger) filtersFromStates() *types.Filters {
 		SkipQueuedTx:       is(ss.FilterQueuedTx),
 		SkipOutGroup:       is(ss.FilterOutGroup),
 		SkipChecks:         is(ss.FilterChecks),
+		SkipErrs:           is(ss.FilterErrs),
 		SkipRpcMach:        is(ss.FilterRpcMachs),
 	}
 }
