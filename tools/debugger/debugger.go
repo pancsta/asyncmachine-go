@@ -427,6 +427,11 @@ func (d *Debugger) hSetParams(p types.Params) error {
 	} else {
 		d.Mach.Remove1(ss.FilterDisconn, nil)
 	}
+	if p.FilterReaderGroup {
+		d.Mach.Add1(ss.FilterReaderGroup, nil)
+	} else {
+		d.Mach.Remove1(ss.FilterReaderGroup, nil)
+	}
 
 	// TODO avoid globals
 	var err error

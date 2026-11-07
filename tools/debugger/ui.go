@@ -623,6 +623,9 @@ func (d *Debugger) hInitToolbar() {
 			{id: types.ToolReader, label: "reader", active: func() bool {
 				return d.Mach.Is1(ss.LogReaderVisible)
 			}},
+			{id: types.ToolReaderGroup, label: "read-group", active: func() bool {
+				return d.Mach.Is1(ss.FilterReaderGroup)
+			}},
 			{id: types.ToolTimelines, label: "timelines", active: func() bool {
 				return d.params.ViewTimelines.Value > 0
 			}, activeLabel: func() string {
