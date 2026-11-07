@@ -180,9 +180,17 @@ func BindAny(source, target am.Api) (string, error) {
 	source.OnDispose(gcHandler(target))
 	target.OnDispose(gcHandler(source))
 
-	return source.HandlersBind(h, am.BindOpts{
+	bindId, err := source.HandlersBind(h, am.BindOpts{
 		Id: "BindAny-" + target.Id(),
 	})
+	if err != nil {
+		return "", err
+	}
+
+	target.OnDispose(func(id string, ctx context.Context) {
+		_ = source.HandlersDetach(bindId)
+	})
+	return bindId, nil
 }
 
 // BindConnected binds a [ss.ConnectedSchema] machine to 4 custom states. Each
@@ -224,9 +232,17 @@ func BindConnected(
 		h.DisconnectingEnd = Remove(source, target, s.Disconnecting, disconnecting)
 	}
 
-	return source.HandlersBind(h, am.BindOpts{
+	bindId, err := source.HandlersBind(h, am.BindOpts{
 		Id: "BindConnected-" + target.Id(),
 	})
+	if err != nil {
+		return "", err
+	}
+
+	target.OnDispose(func(id string, ctx context.Context) {
+		_ = source.HandlersDetach(bindId)
+	})
+	return bindId, nil
 }
 
 // BindErr binds Exception to a custom state using Add. Empty state defaults to
@@ -242,9 +258,17 @@ func BindErr(source, target am.Api, targetErr string) (string, error) {
 		ExceptionState: Add(source, target, am.StateException, targetErr),
 	}
 
-	return source.HandlersBind(h, am.BindOpts{
+	bindId, err := source.HandlersBind(h, am.BindOpts{
 		Id: "BindErr-" + target.Id(),
 	})
+	if err != nil {
+		return "", err
+	}
+
+	target.OnDispose(func(id string, ctx context.Context) {
+		_ = source.HandlersDetach(bindId)
+	})
+	return bindId, nil
 }
 
 // BindStart binds Start to custom states using Add/Remove. Empty state
@@ -268,9 +292,17 @@ func BindStart(
 		StartEnd:   Remove(source, target, ss.BasicStates.Start, inactiveState),
 	}
 
-	return source.HandlersBind(h, am.BindOpts{
+	bindId, err := source.HandlersBind(h, am.BindOpts{
 		Id: "BindStart-" + target.Id(),
 	})
+	if err != nil {
+		return "", err
+	}
+
+	target.OnDispose(func(id string, ctx context.Context) {
+		_ = source.HandlersDetach(bindId)
+	})
+	return bindId, nil
 }
 
 // BindReady binds Ready to custom states using Add/. Empty state
@@ -294,9 +326,17 @@ func BindReady(
 		ReadyEnd:   Remove(source, target, ss.BasicStates.Ready, inactiveState),
 	}
 
-	return source.HandlersBind(h, am.BindOpts{
+	bindId, err := source.HandlersBind(h, am.BindOpts{
 		Id: "BindReady-" + target.Id(),
 	})
+	if err != nil {
+		return "", err
+	}
+
+	target.OnDispose(func(id string, ctx context.Context) {
+		_ = source.HandlersDetach(bindId)
+	})
+	return bindId, nil
 }
 
 // Bind binds an arbitrary state to custom states using Add and Remove.
@@ -340,9 +380,17 @@ func Bind(
 	// bind handlers
 	handlers := val.Addr().Interface()
 
-	return source.HandlersBind(handlers, am.BindOpts{
+	bindId, err := source.HandlersBind(handlers, am.BindOpts{
 		Id: "Bind-" + state + "-" + target.Id(),
 	})
+	if err != nil {
+		return "", err
+	}
+
+	target.OnDispose(func(id string, ctx context.Context) {
+		_ = source.HandlersDetach(bindId)
+	})
+	return bindId, nil
 }
 
 // BindMany binds arbitrary states to a mirrored list of states using Add and
@@ -390,9 +438,17 @@ func BindMany(
 	// bind handlers
 	handlers := val.Addr().Interface()
 
-	return source.HandlersBind(handlers, am.BindOpts{
+	bindId, err := source.HandlersBind(handlers, am.BindOpts{
 		Id: "BindMany-" + strconv.Itoa(len(states)) + "-" + target.Id(),
 	})
+	if err != nil {
+		return "", err
+	}
+
+	target.OnDispose(func(id string, ctx context.Context) {
+		_ = source.HandlersDetach(bindId)
+	})
+	return bindId, nil
 }
 
 // TODO bind many matching the pattern to same names in taret
