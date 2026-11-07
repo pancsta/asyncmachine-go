@@ -59,7 +59,10 @@ var (
 //	var dispose am.HandlerDispose = func(id string, ctx *am.StateCtx) {
 //		// ...
 //	}
-var DisposedArgHandler = "DisposedArgHandler"
+var (
+	DisposedArgHandler  = "DisposedArgHandler"
+	DisposedStructField = "DisposedHandlers"
+)
 
 // DisposedHandlers handle disposal and NEEDS to be initialized manually.
 //

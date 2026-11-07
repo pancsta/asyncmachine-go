@@ -64,6 +64,7 @@ require (
 	github.com/nats-io/nats.go v1.48.0
 	github.com/ncruces/go-sqlite3 v0.34.0
 	github.com/ncruces/go-sqlite3/gormlite v0.34.0
+	github.com/oleiade/reflections v1.1.0
 	github.com/orsinium-labs/enum v1.4.0
 	github.com/pancsta/cview v1.5.23
 	github.com/pancsta/d2 v0.8.2-0.20260829154946-02b64fd28fde
