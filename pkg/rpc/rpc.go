@@ -770,6 +770,7 @@ func (t *sourceTracer) DataQueue() []tracerMutation {
 
 	// copy and flush
 	ret := t.dataQueue
+	t.dataQueue = nil
 	t.dataLatest = nil
 
 	return ret

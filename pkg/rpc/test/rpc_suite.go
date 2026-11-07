@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"os"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	statesflight "github.com/pancsta/asyncmachine-go/examples/tree_state_source/states"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -985,6 +987,55 @@ func TemplateTestMutationsSync(t *testing.T, newTest NewTestFactory) {
 	bytesCount := <-counter
 	assert.LessOrEqual(t, 1_000, int(bytesCount))
 	assert.GreaterOrEqual(t, 2_000, int(bytesCount))
+
+	disposeTest(t, c, s, true)
+}
+
+func TemplateTestMutationsSyncMany(t *testing.T, newTest NewTestFactory) {
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+	// amhelp.EnableDebugging(false)
+
+	// config
+	ctx := t.Context()
+	ss := statesflight.FlightsStates
+	netsrc, err := am.NewCommon(ctx, t.Name(), statesflight.FlightsSchema,
+		ss.Names(), nil, nil, nil)
+	require.NoError(t, err)
+	_, netsrc, s, c := newTest(t, ctx, netsrc, nil, time.Second, false,
+		&arpc.ClientOpts{
+			SyncMutations: true,
+		}, nil)
+
+	txCount := &TestMutationsSyncTracer{TracerNoOp: &am.TracerNoOp{Id: t.Name()}}
+	_, err = c.NetMach.BindTracer(txCount)
+	require.NoError(t, err)
+
+	mutStates := ss.Names().FilterPrefix("Flight")
+
+	// test
+	for i := range 100 {
+		idx := rand.IntN(len(mutStates))
+		netsrc.Add1(mutStates[idx], nil)
+		idx = rand.IntN(len(mutStates))
+		netsrc.Add1(mutStates[idx], nil)
+		idx = rand.IntN(len(mutStates))
+		netsrc.Add1(mutStates[idx], nil)
+		// force push
+		if i%10 == 0 {
+			intNano := time.Nanosecond
+			s.PushInterval.Store(&intNano)
+			s.PushClient()
+		}
+
+		// TODO wait better
+		// <-c.NetMach.When1(mutStates[idx], nil)
+		time.Sleep(100 * time.Millisecond)
+		// t.Log("netsrc", netsrc.String())
+		// t.Log("netmach", c.NetMach.String())
+		amhelpt.AssertTime(t, netsrc, nil, c.NetMach.Time(nil))
+	}
 
 	disposeTest(t, c, s, true)
 }
