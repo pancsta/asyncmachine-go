@@ -80,10 +80,11 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 - **headless mode**: the UI can be requested via SSH, allowing the debugger to start without PTY.
 - **files**: various files are created in `--dir`.
 - **diagrams**: live diagrams for: graph, machine, state, and steps.
+- **traces view**: simple traces view around the current transition, with zooming in/out
 - **markers**: the marker timeline gives fast navigation across the whole graph
 
 ```bash
-Usage: am-dbg [--listen-addr LISTEN-ADDR] [--dir DIR] [--clean-on-connect] [--import-data IMPORT-DATA] [--fwd-data FWD-DATA] [--select-connected] [--enable-clipboard] [--enable-mouse] [--filter-auto] [--filter-auto-canceled] [--filter-canceled] [--filter-checks] [--filter-disconn] [--filter-empty] [--filter-group] [--filter-health] [--filter-log-level FILTER-LOG-LEVEL] [--filter-queued] [--output-clients] [--output-diagrams OUTPUT-DIAGRAMS] [--output-diag-group OUTPUT-DIAG-GROUP] [--output-diag-tx OUTPUT-DIAG-TX] [--output-graph] [--output-log] [--output-mach] [--output-tx] [--ui-mcp] [--ui-ssh] [--ui-web] [--version] [--view VIEW] [--view-log-wrap] [--view-narrow] [--view-rain] [--view-reader] [--view-tail] [--view-theme VIEW-THEME] [--view-timelines VIEW-TIMELINES] [--log-ops-ttl LOG-OPS-TTL] [--max-mem MAX-MEM] [--dbg-am-dbg-addr DBG-AM-DBG-ADDR] [--dbg-go-race] [--dbg-id DBG-ID] [--dbg-log-level DBG-LOG-LEVEL] [--dbg-otel] [--dbg-prof-srv DBG-PROF-SRV] [--dbg-repl] [MACHURL]
+Usage: am-dbg [--listen-addr LISTEN-ADDR] [--dir DIR] [--clean-on-connect] [--import-data IMPORT-DATA] [--fwd-data FWD-DATA] [--select-connected] [--enable-clipboard] [--enable-mouse] [--filter-auto] [--filter-auto-canceled] [--filter-canceled] [--filter-checks] [--filter-disconn] [--filter-empty] [--filter-errs] [--filter-group] [--filter-health] [--filter-log-level FILTER-LOG-LEVEL] [--filter-queued] [--filter-reader-group] [--output-clients] [--output-diagrams OUTPUT-DIAGRAMS] [--output-diag-group OUTPUT-DIAG-GROUP] [--output-diag-layout OUTPUT-DIAG-LAYOUT] [--output-diag-tx OUTPUT-DIAG-TX] [--output-graph] [--output-log] [--output-mach] [--output-tx] [--ui-mcp] [--ui-ssh] [--ui-web] [--version] [--view VIEW] [--view-log-wrap] [--view-narrow] [--view-rain] [--view-reader] [--view-tail] [--view-theme VIEW-THEME] [--view-timelines VIEW-TIMELINES] [--log-ops-ttl LOG-OPS-TTL] [--max-mem MAX-MEM] [--dbg-am-dbg-addr DBG-AM-DBG-ADDR] [--dbg-go-race] [--dbg-id DBG-ID] [--dbg-log-level DBG-LOG-LEVEL] [--dbg-otel] [--dbg-prof-srv DBG-PROF-SRV] [--dbg-repl] [MACHURL]
 
 Positional arguments:
   MACHURL                Machine URL to open from the imported file
@@ -108,16 +109,21 @@ Options:
   --filter-checks        Filter check (read-only) transitions
   --filter-disconn       Filter disconnected clients
   --filter-empty         Filter empty transitions
+  --filter-errs          Filter error and warning transitions (Err*, Warn*)
   --filter-group         Filter transitions by a selected group [default: true]
   --filter-health        Filter health-check transitions
   --filter-log-level FILTER-LOG-LEVEL
                          Filter transitions up to this log level, 0-5 (silent-everything) [default: 2]
   --filter-queued        Filter queued transitions
+  --filter-reader-group
+                         Narrow down the log reader to the selected group
   --output-clients       Write a detailed client list into clients.txt inside --dir
   --output-diagrams OUTPUT-DIAGRAMS
                          Level of details for machine graph diagrams (svg, d2, mermaid) in --dir (0 off, 1-3 on) (EXPERIMENTAL)
   --output-diag-group OUTPUT-DIAG-GROUP
                          Only show states from the selected group (valid: hide, skip) [default: hide]
+  --output-diag-layout OUTPUT-DIAG-LAYOUT
+                         D2 layout engine for diagrams (valid: tala, elk, dagre) [default: tala]
   --output-diag-tx OUTPUT-DIAG-TX
                          Dim states and rels unrelated to a transition (valid: called, changed, touched, relations) [default: relations]
   --output-graph         Write the current network graph as graph.(md|mgml) inside --dir (EXPERIMENTAL)
@@ -157,7 +163,7 @@ Options:
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-legend.png">
         <img src="https://pancsta.github.io/assets/asyncmachine-go/am-dbg-legend.png"
-            alt="am-dbg legend window " />
+            alt="am-dbg legend window" />
     </a>
 </div>
 
@@ -191,6 +197,18 @@ Options:
     ```
 
 4. Your machine should show up in the debugger
+
+## Traces
+
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/traces/am-dbg-traces.png">
+        <img src="https://pancsta.github.io/assets/asyncmachine-go/traces/am-dbg-traces.png"
+            alt="am-dbg traces view" />
+    </a>
+</div>
+
+The traces view is available via `--ui-web` (enabled by default) at [http://localhost:6832](http://localhost:6832). It
+follows the current transition and visible states (read-only).
 
 ## Dashboards
 

@@ -55,41 +55,41 @@ The speedup is real and caused by porting of the ELK algo from JS to Go. All the
 
 PR: [\#495](https://github.com/pancsta/asyncmachine-go/pull/495) (@pancsta)
 
-> Schemas can now be nested under a prefix, as another way of re-use after embedding. Type safety works the same way as for regular schemas, eg `ss.Parent1.Nested1` returns "Parent1Nested1".
->
-> It's useful for multiple fan-out-fan-in threads (possibly defined dynamically), as well as a lightweight alternative to piping.
->
-> ```go
-> type NestedStatesDef struct {
-> 	*StatesBase
->
-> 	Nested1 string
-> 	Nested2 string
-> 	Nested3 string
-> }
->
-> var NestedSchema = Schema{
-> 	ssN.Nested1: {},
-> 	ssN.Nested2: {Multi: true},
-> 	ssN.Nested3: {Multi: true},
-> }
->
-> type BasicStatesDef struct {
-> 	*StatesBase
->
-> 	Heartbeat string
-> 	Parent1   *NestedStatesDef
-> }
->
-> var BasicSchema = Schema{}.Merge(
-> 	// prefix with "Parent1"
-> 	NestedSchema.Nest(ssB.Parent1.Prefix(), ssN.Names()),
-> 	Schema{
-> 		ssB.Heartbeat: {},
-> 		// override a nested state
-> 		ssB.Parent1.Prefix()+ssN.Nested3: {},
-> 	})
-> ```
+Schemas can now be nested under a prefix, as another way of re-use after embedding. Type safety works the same way as for regular schemas, eg `ss.Parent1.Nested1` returns "Parent1Nested1".
+
+It's useful for multiple fan-out-fan-in threads (possibly defined dynamically), as well as a lightweight alternative to piping.
+
+```go
+type NestedStatesDef struct {
+	*StatesBase
+
+	Nested1 string
+	Nested2 string
+	Nested3 string
+}
+
+var NestedSchema = Schema{
+	ssN.Nested1: {},
+	ssN.Nested2: {Multi: true},
+	ssN.Nested3: {Multi: true},
+}
+
+type BasicStatesDef struct {
+	*StatesBase
+
+	Heartbeat string
+	Parent1   *NestedStatesDef
+}
+
+var BasicSchema = Schema{}.Merge(
+	// prefix with "Parent1"
+	NestedSchema.Nest(ssB.Parent1.Prefix(), ssN.Names()),
+	Schema{
+		ssB.Heartbeat: {},
+		// override a nested state
+		ssB.Parent1.Prefix()+ssN.Nested3: {},
+	})
+```
 
 ### test\(wasm\): add integration tests for WASM examples
 

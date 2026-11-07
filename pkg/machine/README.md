@@ -243,7 +243,7 @@ Subscriptions do not allocate goroutines and channels are reused.
 
 ### State Targeting
 
-[Transition](/docs/manual.md#transition-lifecycle) is available within [transition handlers](/docs/manual.md#transition-handlers).
+[`Transition`](/docs/manual.md#transition-lifecycle) is available within [transition handlers](/docs/manual.md#transition-handlers).
 
 ```go
 var (
@@ -276,6 +276,25 @@ len(tx.TimeIndexTimeDiff().ActiveStates())
 
 // did Foo tick between t1 and t2?
 t2.DiffSince(t1).NonZeroStates().Is1("Foo")
+```
+
+### Negotiation
+
+Returning a `bool` cancels the whole transition, and returning a sublist of called states cancels the missing ones only.
+
+```go
+// reject if called directly
+if e.Called() {
+  return e.AcceptWithoutThis()
+}
+return e.Accept()
+
+// ...
+
+// reject Foo if called
+if tx.CalledStates().Is1("Foo") {
+  return e.AcceptWithout1("Foo")
+}
 ```
 
 ### [Schema File](/docs/schema.md)
@@ -540,13 +559,45 @@ type Api interface {
 }
 ```
 
-## Dynamic State Machines
+## Constructors
+
+There are several ways to initialize a state machine.
+
+```go
+import (
+  am "github.com/pancsta/asyncmachine-go/pkg/machine"
+  amnew "github.com/pancsta/asyncmachine-go/pkg/helpers/new"
+)
+
+// barebones
+am.New(ctx context.Context, schema am.Schema, opts *am.Opts) *am.Machine
+
+// commonly sufficient for further customizations
+am.NewCommon(
+	ctx context.Context, id string, stateSchema Schema, stateNames am.S,
+	handlers any, parent am.Api, opts *Opts,
+) (*am.Machine, error)
+
+// complete state machine with telemetry
+amnew.FullMach[GStates am.States, GGroups any](
+	p amnew.FullMachParams[GStates, GGroups],
+) (*amnew.FullMachRet, error)
+
+// dynamic state machine
+amnew.DynMach(
+	ctx context.Context, schema am.Schema,
+	negs map[string]am.HandlerNegotiation,
+	finals map[string]am.HandlerFinal, state am.S,
+) (*am.Machine, error)
+```
+
+### [Dynamic State Machines](/docs/manual.md#dynamic-state-machines)
 
 Both handlers and schemas are fully dynamic, including via dynamically interpreted Go code thanks to
 [`yaegi`](/pkg/integrations/yaegi).
 
 ```go
-import amhelp "TODO"
+import amn "github.com/pancsta/asyncmachine-go/pkg/helpers/new"
 
 // ...
 
@@ -558,7 +609,7 @@ var (
 )
 
 // machine
-mach, err := amhelp.NewDynMach(ctx, machine.Schema{
+mach, err := amn.NewDynMach(ctx, machine.Schema{
   // schema
 
   StateFoo: {
@@ -589,7 +640,9 @@ mach, err := amhelp.NewDynMach(ctx, machine.Schema{
       mach.EvRemove1(e, StateBar, nil)
     })
   },
-}
+},
+  S{StateFoo},
+)
 
 // ...
 

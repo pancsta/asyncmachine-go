@@ -52,7 +52,7 @@ Now let's generate the project's starter kit via:
 am-gen starter-kit schema.yml --name MyMach --uri mymach
 ```
 
-This will create the following file structure (also available in [`here`](/tools/generator/testdata/starter-kit)`:
+This will create the following file structure (also available in [`here`](/tools/generator/testdata/starter-kit):
 
 ```bash
 $ tree my_mach

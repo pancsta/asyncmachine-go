@@ -2,7 +2,7 @@
 
 <!-- TOC -->
 
-- version `v0.19.5`
+- version `v0.19.6`
 - [Legend](#legend)
 - [Machine and States](#machine-and-states)
   - [Machine Schema](#machine-schema)
@@ -51,7 +51,7 @@
   - [Tracing and Metrics](#tracing-and-metrics)
   - [Optimizing Data Input](#optimizing-data-input)
   - [Disposal and GC](#disposal-and-gc)
-- [Dynamic State Machines](#dynamic-state-machines)
+  - [Dynamic State Machines](#dynamic-state-machines)
 - [Cheatsheet](#cheatsheet)
 - [Other sources](#other-sources)
   - [Packages](#packages)
@@ -626,20 +626,17 @@ also **can't block**. Arguments from the original event can be replaced with `Ev
 Sub-handlers are useful when combined with `EvalToGetter` from `pkg/helpers`, as well as for sharing code between
 handlers, without worrying about calling it from a non-handler code-path.
 
-// TODO more examples
-
 ```go
-// direct pass
-ctx := mach.NewStateCtx("Foo")
-d.hScrollToTx(am.EvToCtx(ctx, e))
+// state ctx with an Event instance
+ctx := mach.NewStateCtx("Foo", e)
+d.hScrollToTx(ctx)
 
-// args replaced
-ctx := mach.NewStateCtx("Foo")
-eSub := e.SwapArgs(am.A{
+// Event.Args replaced
+ctx := mach.NewStateCtx("Foo", e.SwapArgs(am.A{
   "cursorTx1":   row,
   "trimHistory": true,
-})
-d.hScrollToTx(am.EvToCtx(ctx, eSub))
+}))
+d.hScrollToTx(ctx)
 
 // ...
 
@@ -858,6 +855,29 @@ mach.Add1("Foo", nil) // ->am.Canceled
 [handler] FooEnter
 [cancel:ad0d8] (Foo Bar) by FooEnter
 () [Bar:0 Foo:0 Exception:0]
+```
+
+Negotiation handlers also support an extended signature for **partial acceptance** - only some of the [called states](#calculating-target-states)
+get accepted and the transition is `Transition.IsPartial` and `Transition.Accepted`. If all the called states are
+rejected (together or separately), the whole transition gets canceled.
+
+- `e.StateCalled()` - was the state of this event explicitly called?
+- `e.Accept()` - accept all called states
+- `e.AcceptWithout1(state)` / `e.AcceptWithout(states)` / `e.AcceptWithoutThis()` - all called states minus the given
+  ones
+- `e.Cancel()` - a `nil` list, canceling the whole transition (like returning `false`)
+
+```go
+// negotiation handler with partial acceptance
+func (h *Handlers) FooEnter(e *am.Event) S {
+  // only called states can be partially rejected
+  if !e.StateCalled() {
+    return e.Accept()
+  }
+
+  // accept all called states, except for Foo
+  return e.AcceptWithoutThis()
+}
 ```
 
 ### Final Handlers
@@ -1898,7 +1918,7 @@ amhelp.Dispose(mach)
 <-r.Mach.WhenDisposed()
 ```
 
-## Dynamic State Machines
+### Dynamic State Machines
 
 **asyncmachine-go** supports dynamism in a couple of ways (regular struct-based handlers can be added at any time).
 The schema can be changed, as long as it's longer than the previous one (changes relations too), which creates a
@@ -1973,14 +1993,6 @@ mach.SetSchema(machine.Schema{
 }, am.S{StateFoo, StateBar, StateBaz, "StateNewOne"})
 ```
 
-### Naming Convention
-
-- states: CamelCase, eg `ProcessRunning`
-- handlers: CamelCase, eg `ProcessRunningState`
-- sub-handlers: CamelCase, eg `hListRunning`
-  - TODO dedicated section with examples
-- regular methods: none, eg `privMethod`, `PubMethod`
-
 ## Cheatsheet
 
 - **State**: main entity of the [machine](#machine-init), higher-level abstraction of a meaningful workflow step
@@ -2001,6 +2013,13 @@ mach.SetSchema(machine.Schema{
   [transition](#transition-lifecycle) should be
   accepted
 - **Final handlers**: [handlers](#defining-handlers) executed as the last ones, used for operations with side effects
+
+### Naming Convention
+
+- states: CamelCase, eg `ProcessRunning`
+- handlers: CamelCase, eg `ProcessRunningState`
+- sub-handlers: CamelCase, eg `hListRunning`
+- regular methods: none, eg `privMethod`, `PubMethod`
 
 ## Other sources
 
