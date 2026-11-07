@@ -882,3 +882,5 @@ lukechampine.com/blake3 v1.4.1 h1:I3Smz7gso8w4/TunLKec6K2fn+kyKtDxr/xcQEN84Wg=
 lukechampine.com/blake3 v1.4.1/go.mod h1:QFosUxmjB8mnrWFSNwKmvxHpfY72bmD2tQ0kBMM3kwo=
 mvdan.cc/sh/v3 v3.7.0 h1:lSTjdP/1xsddtaKfGg7Myu7DnlHItd3/M2tomOcNNBg=
 mvdan.cc/sh/v3 v3.7.0/go.mod h1:K2gwkaesF/D7av7Kxl0HbF5kGOd2ArupNTX3X44+8l8=
+github.com/pancsta/d2 v0.8.2-go1.26 h1:Qf729dO5Ng1Tvu10LRkJG/gaugf4K3X8cgbeGyPbuXM=
+github.com/pancsta/d2 v0.8.2-go1.26/go.mod h1:dpDCDw1Q1X83UgTwV4JgGgshu/ZtpaF2gWIJg7zuAIQ=
