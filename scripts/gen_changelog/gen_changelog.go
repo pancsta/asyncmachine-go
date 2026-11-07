@@ -71,6 +71,21 @@ var skiplistBranches = map[string]bool{
 	"preview": true, // Example: Skip PRs merged into a 'preview' branch
 }
 
+// manualTail are the oldest releases without GitHub releases, kept manually.
+// They are appended to the generated changelog as a single chunk.
+const manualTail = `## [v0.2.1](https://github.com/pancsta/asyncmachine-go/tree/v0.2.1) (2024-01-18)
+
+- fix: prevent double handlerDone notif [\#10](https://github.com/pancsta/asyncmachine-go/pull/10) (@pancsta)
+- chore: release v0.2.0 [\#9](https://github.com/pancsta/asyncmachine-go/pull/9) (@pancsta)
+
+## [v0.2.0](https://github.com/pancsta/asyncmachine-go/tree/v0.2.0) (2024-01-18)
+
+- chore: fix readme playground links [\#8](https://github.com/pancsta/asyncmachine-go/pull/8) (@pancsta)
+- feat: synchronous emitter bindings [\#7](https://github.com/pancsta/asyncmachine-go/pull/7) (@pancsta)
+- fix: synchronous GetStateCtx, When, WhenNot [\#6](https://github.com/pancsta/asyncmachine-go/pull/6) (@pancsta)
+
+`
+
 func main() {
 	config := Config{
 		Owner: getEnv("REPO_OWNER", "pancsta"),
@@ -147,6 +162,9 @@ func main() {
 
 	// 4. Generate & Print Markdown Output
 	printChangelog(config, buckets, unreleasedPRs)
+
+	// 5. Append the manually maintained tail
+	fmt.Print(manualTail)
 }
 
 func fetchReleases(config Config) []Release {

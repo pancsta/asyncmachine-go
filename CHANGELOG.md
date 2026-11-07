@@ -5,6 +5,26 @@
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
+## [v0.19.6](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.6) (2026-11-07)
+
+- release/v0.19.6 [\#521](https://github.com/pancsta/asyncmachine-go/pull/521) (@pancsta)
+- feat: release v0.19.6 [\#520](https://github.com/pancsta/asyncmachine-go/pull/520) (@pancsta)
+- feat\(graph\): add DB backends for network graph [\#519](https://github.com/pancsta/asyncmachine-go/pull/519) (@pancsta)
+- feat\(graph\): add UDP-synced network graph [\#518](https://github.com/pancsta/asyncmachine-go/pull/518) (@pancsta)
+- feat\(am-vis\): migrate to TALA for most diagrams #501 [\#517](https://github.com/pancsta/asyncmachine-go/pull/517) (@pancsta)
+- feat\(am-gen\): add linting and fixing for schemas [\#516](https://github.com/pancsta/asyncmachine-go/pull/516) (@pancsta)
+- feat\(am-dbg\): narrow down reader to selected group [\#515](https://github.com/pancsta/asyncmachine-go/pull/515) (@pancsta)
+- feat\(am-dbg\): add web traces view [\#514](https://github.com/pancsta/asyncmachine-go/pull/514) (@pancsta)
+- feat\(am-dbg\): add evals to log reader \(incl timeouts\) [\#513](https://github.com/pancsta/asyncmachine-go/pull/513) (@pancsta)
+- feat\(helpers\): add pkg/helpers/new for complex constructors [\#512](https://github.com/pancsta/asyncmachine-go/pull/512) (@pancsta)
+- feat\(machine\): support partial acceptance #412 [\#511](https://github.com/pancsta/asyncmachine-go/pull/511) (@pancsta)
+- fix\(am-dbg\): fix matrix rain group state names [\#510](https://github.com/pancsta/asyncmachine-go/pull/510) (@pancsta)
+- fix\(rpc\): fix skipped connection changes, partial checksums [\#509](https://github.com/pancsta/asyncmachine-go/pull/509) (@pancsta)
+- fix\(am-dbg\): fix embedded am-dbg and am-relay deadlock [\#508](https://github.com/pancsta/asyncmachine-go/pull/508) (@pancsta)
+- fix\(rpc\): fix SyncMutations deactivates unrelated states #391 [\#507](https://github.com/pancsta/asyncmachine-go/pull/507) (@pancsta)
+- fix\(states\): detach pipe source handlers when target machine disposes #367 [\#506](https://github.com/pancsta/asyncmachine-go/pull/506) (@pancsta)
+- fix\(machine\): include inherited groups #282 [\#505](https://github.com/pancsta/asyncmachine-go/pull/505) (@pancsta)
+
 ## [v0.19.5](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.5) (2026-10-18)
 
 - release/v0.19.5 [\#499](https://github.com/pancsta/asyncmachine-go/pull/499) (@pancsta)
@@ -520,6 +540,17 @@
 - feat: prevent empty remove mutations [\#15](https://github.com/pancsta/asyncmachine-go/pull/15) (@pancsta)
 - feat: add VerifyStates for early state names assert [\#14](https://github.com/pancsta/asyncmachine-go/pull/14) (@pancsta)
 - fix: prevent double handlerDone notif [\#10](https://github.com/pancsta/asyncmachine-go/pull/10) (@pancsta)
+- feat: synchronous emitter bindings [\#7](https://github.com/pancsta/asyncmachine-go/pull/7) (@pancsta)
+- fix: synchronous GetStateCtx, When, WhenNot [\#6](https://github.com/pancsta/asyncmachine-go/pull/6) (@pancsta)
+
+## [v0.2.1](https://github.com/pancsta/asyncmachine-go/tree/v0.2.1) (2024-01-18)
+
+- fix: prevent double handlerDone notif [\#10](https://github.com/pancsta/asyncmachine-go/pull/10) (@pancsta)
+- chore: release v0.2.0 [\#9](https://github.com/pancsta/asyncmachine-go/pull/9) (@pancsta)
+
+## [v0.2.0](https://github.com/pancsta/asyncmachine-go/tree/v0.2.0) (2024-01-18)
+
+- chore: fix readme playground links [\#8](https://github.com/pancsta/asyncmachine-go/pull/8) (@pancsta)
 - feat: synchronous emitter bindings [\#7](https://github.com/pancsta/asyncmachine-go/pull/7) (@pancsta)
 - fix: synchronous GetStateCtx, When, WhenNot [\#6](https://github.com/pancsta/asyncmachine-go/pull/6) (@pancsta)
 
