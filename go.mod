@@ -265,6 +265,8 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
+	github.com/pancsta/go-app v0.0.0-20261030132146-e4194936713d
+	github.com/pancsta/livepage v0.1.0
 	github.com/parquet-go/parquet-go v0.24.0 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
