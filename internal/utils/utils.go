@@ -13,6 +13,8 @@ import (
 
 	"github.com/lithammer/dedent"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
 
 // EnvAmHostname will override the hostname in all machine names.
@@ -207,3 +209,6 @@ func GetGlobalUnicastIP() (string, error) {
 
 	return "", fmt.Errorf("no global unicast IP found")
 }
+
+// Fmt is a printer for large numbers
+var Fmt = message.NewPrinter(language.English)

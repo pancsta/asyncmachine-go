@@ -150,6 +150,7 @@ type DebuggerStatesDef struct {
 	LogUpdated         string
 	UpdateLogReader    string
 	UpdateFocus        string
+	UpdateTraces       string
 	Overlay            string
 	AfterFocus         string
 	FocusPrev          string
@@ -386,6 +387,10 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 		ssD.UpdateFocus: {
 			Multi:   true,
 			Require: S{ssD.Ready},
+		},
+		ssD.UpdateTraces: {
+			Multi:   true,
+			Require: S{ssD.Ready, ssD.ClientSelected},
 		},
 		ssD.Overlay: {Require: S{ssD.LogReaderFocused}},
 		ssD.AfterFocus: {

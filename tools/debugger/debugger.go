@@ -34,6 +34,7 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
+	"github.com/pancsta/livepage"
 	"github.com/soheilhy/cmux"
 	"github.com/zyedidia/clipper"
 	"golang.org/x/text/language"
@@ -50,6 +51,7 @@ import (
 	"github.com/pancsta/asyncmachine-go/tools/debugger/server"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
+	"github.com/pancsta/asyncmachine-go/tools/visualizer/traces"
 )
 
 type (
@@ -185,6 +187,7 @@ type Debugger struct {
 	graphFileMgml   *os.File
 	ServerMux       cmux.CMux
 	ServerHttp      *http.Server
+	tracePage       *livepage.Page[*traces.View]
 	ctxCancelCursor context.CancelFunc
 	ctxCursor       context.Context
 	callLogFiles    map[string]*os.File
@@ -292,6 +295,13 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	}
 	if d.params.Version == "" {
 		d.params.Version = "(devel)"
+	}
+
+	if d.params.UiWeb {
+		d.tracePage, err = traces.NewPage(ctx, mach, "/traces")
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// logging
@@ -783,7 +793,9 @@ func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
 		d.hUpdateToolbar()
 	}
 
-	// diagrams TODO merged mutation once partial negotiation lands
+	d.hUpdateTraces(ctx)
+
+	// diagrams
 	d.Mach.GoAfter(ctx, time.Second, func() {
 		if err := d.diagramsMachUpdating(ctx); err != nil {
 			d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
@@ -3037,4 +3049,167 @@ func (d *Debugger) hBackMarker(e *am.Event) {
 		MachId: marker.ClientId,
 		TxId:   marker.TxId,
 	}, false, true)
+}
+
+func (d *Debugger) hUpdateTraces(ctx context.Context) {
+	if d.tracePage == nil || d.tracePage.Clients() == 0 {
+		return
+	}
+
+	var cur uint64
+	if d.C != nil && d.C.CursorTx1 > 0 &&
+		d.C.CursorTx1 <= len(d.C.MsgTxsParsed) {
+		cur = d.C.MsgTxsParsed[d.C.CursorTx1-1].TimeSum
+	}
+	spans := d.hBuildTraceSpans(ctx)
+	d.tracePage.Compo().SetCurrentTime(cur)
+	d.tracePage.Compo().SetStateColors(d.hTraceStateColors())
+	d.tracePage.Compo().SetSpans(spans)
+	d.tracePage.HRefresh()
+}
+
+// hTraceStateColors maps states to the debugger legend colors for the current
+// transaction: yellow active, greenyellow active multi, red active error, and
+// limegreen inactive.
+func (d *Debugger) hTraceStateColors() map[string]string {
+	c := d.C
+	if c == nil || len(c.MsgTxs) == 0 {
+		return nil
+	}
+
+	cursor := int(math.Max(float64(c.CursorTx1-1), 0))
+	index := c.MsgStruct.StatesIndex
+	tx := c.MsgTxs[cursor]
+	colors := make(map[string]string, len(index))
+	for _, state := range index {
+		color := theme.Inactive
+		if tx.Is1(index, state) {
+			color = theme.Active
+			if state == am.StateException ||
+				strings.HasPrefix(state, am.PrefixErr) {
+
+				color = theme.Err
+			} else if schema, ok := c.MsgStruct.States[state]; ok &&
+				schema.Multi {
+
+				color = theme.Active2
+			}
+		}
+		colors[state] = color
+	}
+	return colors
+}
+
+// hBuildTraceSpans builds a flat state timeline around the current transition.
+// It looks 100 machine-time ticks backwards and forwards and turns active state
+// intervals into StateTrace spans. All states, or the selected group, are
+// included; states that are never active in the window get an empty row.
+// TODO unslop
+func (d *Debugger) hBuildTraceSpans(ctx context.Context) []traces.StateTrace {
+	c := d.C
+	if c == nil || len(c.MsgTxs) == 0 {
+		return nil
+	}
+
+	// Keep a fixed-width machine-time window. Near the beginning of history,
+	// spend the missing past ticks on future transactions instead. Never go
+	// past the machine's current time.
+	cursor := int(math.Max(float64(c.CursorTx1-1), 0))
+	window := uint64(5000 / d.tracePage.Compo().Zoom)
+	currMTime := c.MsgTxsParsed[cursor].TimeSum
+	lower := uint64(0)
+	if currMTime > window {
+		lower = currMTime - window
+	}
+	upper := lower + 2*window
+	if upper < lower {
+		upper = ^uint64(0)
+	}
+	machEnd := c.MTimeSum
+	if last := c.MsgTxsParsed[len(c.MsgTxsParsed)-1].TimeSum; last > machEnd {
+		machEnd = last
+	}
+	if upper > machEnd {
+		upper = machEnd
+	}
+	if upper < currMTime {
+		upper = currMTime
+	}
+
+	// Walk outwards from the cursor, like the log and matrix-rain builders,
+	// instead of scanning the whole history.
+	startIdx := cursor
+	for startIdx > 0 && c.MsgTxsParsed[startIdx-1].TimeSum >= lower {
+		startIdx--
+	}
+	endIdx := cursor
+	for endIdx+1 < len(c.MsgTxsParsed) &&
+		c.MsgTxsParsed[endIdx+1].TimeSum <= upper {
+		endIdx++
+	}
+
+	index := c.MsgStruct.StatesIndex
+	states := index
+	if c.SelectedGroup != "" && c.MsgSchemaParsed != nil {
+		// TODO extract group sorting
+		states = slices.Clone(c.MsgSchemaParsed.Groups[c.SelectedGroup])
+		slices.SortStableFunc(states, func(a, b string) int {
+			aIdx := slices.Index(index, a)
+			bIdx := slices.Index(index, b)
+			if aIdx < 0 {
+				aIdx = len(index)
+			}
+			if bIdx < 0 {
+				bIdx = len(index)
+			}
+			return aIdx - bIdx
+		})
+	}
+
+	// Build one state at a time, preserving schema/group order.
+	ret := make([]traces.StateTrace, len(states))
+	for i, state := range states {
+		idx := slices.Index(index, state)
+		trace := traces.StateTrace{State: state}
+		active := false
+		var start uint64
+		if startIdx > 0 && startIdx <= len(c.MsgTxs) {
+			base := c.MsgTxs[startIdx-1]
+			active = idx < len(base.Clocks) &&
+				am.IsActiveTick(base.Clocks[idx])
+			if active {
+				start = lower
+			}
+		}
+
+		for i := startIdx; i <= endIdx; i++ {
+			if ctx.Err() != nil {
+				return nil
+			}
+			parsed := c.MsgTxsParsed[i]
+			if parsed.TimeSum < lower || parsed.TimeSum > upper {
+				continue
+			}
+			if !active && slices.Contains(parsed.StatesAdded, idx) {
+				active = true
+				start = parsed.TimeSum
+			}
+			if active && slices.Contains(parsed.StatesRemoved, idx) {
+				trace.Spans = append(trace.Spans, traces.TraceSpan{
+					Start: start,
+					End:   parsed.TimeSum,
+				})
+				active = false
+			}
+		}
+		if active {
+			trace.Spans = append(trace.Spans, traces.TraceSpan{
+				Start: start,
+				End:   upper,
+			})
+		}
+		ret[i] = trace
+	}
+
+	return ret
 }

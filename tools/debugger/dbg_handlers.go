@@ -154,6 +154,11 @@ func (d *Debugger) StartState(e *am.Event) {
 	}
 
 	if d.ServerHttp != nil {
+		if d.tracePage != nil {
+			d.ServerHttp.Handler.(*http.ServeMux).Handle(
+				"/traces/", d.tracePage.NewHandler())
+		}
+
 		if d.params.UiMcp {
 			mcp, err := newMcpServer(d)
 			if err != nil {
@@ -2406,4 +2411,12 @@ func (d *Debugger) LoadingExit(e *am.Event) bool {
 func (d *Debugger) LoadingEnd(e *am.Event) {
 	d.hUpdateStatusBar()
 	d.draw(d.statusBarLeft)
+}
+
+var _ = ss.UpdateTraces
+
+func (d *Debugger) UpdateTracesState(e *am.Event) {
+	mach := d.Mach
+	ctx := mach.NewStateCtx(ss.UpdateTraces)
+	d.hUpdateTraces(ctx)
 }
