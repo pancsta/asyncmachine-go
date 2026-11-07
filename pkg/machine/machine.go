@@ -2193,7 +2193,6 @@ func (m *Machine) processQueue() Result {
 		// special case for Eval mutations
 		if mut.Type == mutationEval {
 			m.currentEval.Store(mut.evalSource)
-			m.Log("eval: " + mut.evalSource)
 			mut.eval()
 			m.currentEval.Store("")
 
