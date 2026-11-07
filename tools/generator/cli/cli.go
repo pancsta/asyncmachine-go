@@ -21,6 +21,7 @@ type Args struct {
 	Schema     *SchemaParams     `arg:"subcommand:schema" help:"Generate state schema from CLI params"`
 	SchemaFile *SchemaFileParams `arg:"subcommand:schema-from-file" help:"Generate state schema from schema.yml / mach.yml"`
 	Grafana    *GrafanaParams    `arg:"subcommand:grafana" help:"Generate Grafana dashboards"`
+	Lint       *LintParams       `arg:"subcommand:lint" help:"Order Schema entries according to StatesDef and add missing ones"`
 	Version    bool              `arg:"-v,--version" help:"Print version and exit"`
 
 	StatesFile *SchemaParams `arg:"subcommand:states-file" help:"Deprecated, use schema"`
@@ -49,6 +50,9 @@ func (Args) Description() string {
 		$ am-gen grafana --IDs MyMach1,MyMach2 \
 			--sync grafana-host.com
 		
+		Example:
+		$ am-gen lint --dry-run ss_my_mach.go
+		
 		Valid for --inherit:
 		- %s
 	
@@ -76,6 +80,23 @@ type GrafanaParams struct {
 	Token      string `arg:"-"`
 	// TODO interval
 	// Interval string
+}
+
+// ///// ///// /////
+
+// ///// LINT
+
+// ///// ///// /////
+
+// LintParams are params for the lint subcommand.
+//
+//nolint:lll
+type LintParams struct {
+	// File - Path to a ss_*.go file or a directory of ss_*.go files.
+	// Defaults to the current directory.
+	File string `arg:"positional" help:"Path to a ss_*.go file or a directory (default: CWD)"`
+	// DryRun - Print the result to stdout instead of writing the file.
+	DryRun bool `arg:"-d,--dry-run" help:"Print the result to stdout without writing the file"`
 }
 
 // ///// ///// /////
