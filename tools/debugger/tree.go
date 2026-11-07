@@ -11,6 +11,8 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
@@ -126,7 +128,8 @@ func (d *Debugger) hUpdateSchemaTree() {
 		msg = c.MsgTxs[i1]
 	}
 
-	d.tree.SetTitle(P.Sprintf(" Schema:%v ", len(c.MsgStruct.StatesIndex)))
+	d.tree.SetTitle(
+		utils.Fmt.Sprintf(" Schema:%v ", len(c.MsgStruct.StatesIndex)))
 
 	// default decorations plus name highlights
 	colIdx := d.hUpdateTreeDefaultsHighlights(msg, i1)
@@ -233,7 +236,7 @@ func (d *Debugger) hUpdateTreeDefaultsHighlights(
 					}
 				}
 
-				tick := P.Sprintf("%d", msg.Clock(index,
+				tick := utils.Fmt.Sprintf("%d", msg.Clock(index,
 					stateName))
 				node.SetColor(tcell.GetColor(nodeColor))
 				node.SetText(stateNamePad + " " + multi + "|" + tick)

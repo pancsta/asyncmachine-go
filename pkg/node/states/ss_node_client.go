@@ -55,10 +55,22 @@ var ClientSchema = ssam.BasicSchema.Merge(
 	ssrpc.ConsumerSchema,
 	am.Schema{
 
+		ssC.Exception: {},
+
 		// errors
 
 		ssC.ErrWorker:     {Require: S{Exception}},
 		ssC.ErrSupervisor: {Require: S{Exception}},
+
+		ssC.WorkerDisconnected:  {},
+		ssC.WorkerConnecting:    {},
+		ssC.WorkerConnected:     {},
+		ssC.WorkerDisconnecting: {},
+		ssC.WorkerReady:         {Remove: S{ssC.WorkerRequested}},
+		ssC.Ready: {
+			Auto:    true,
+			Require: S{ssC.WorkerReady},
+		},
 
 		// piped
 
@@ -68,19 +80,9 @@ var ClientSchema = ssam.BasicSchema.Merge(
 		ssC.SuperDisconnecting: {},
 		ssC.SuperReady:         {},
 
-		ssC.WorkerDisconnected:  {},
-		ssC.WorkerConnecting:    {},
-		ssC.WorkerConnected:     {},
-		ssC.WorkerDisconnecting: {},
-		ssC.WorkerReady:         {Remove: S{ssC.WorkerRequested}},
-
 		// client
 
 		ssC.WorkerRequested: {Require: S{ssC.SuperReady}},
-		ssC.Ready: {
-			Auto:    true,
-			Require: S{ssC.WorkerReady},
-		},
 	})
 
 // TODO handlers iface

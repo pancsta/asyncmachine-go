@@ -256,6 +256,7 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 	m.logLevel.Store(&lvl)
 	m.currentHandler.Store("")
 	m.currentEval.Store("")
+	m.tags.Store(new([]string))
 
 	// parse opts
 	// TODO extract
@@ -1240,7 +1241,9 @@ func (m *Machine) Tags() []string {
 
 // SetTags updates the machine's tags with the provided slice of strings.
 func (m *Machine) SetTags(tags []string) {
+	tags = slices.Clone(tags)
 	m.tags.Store(&tags)
+	m.semLogger.SetTags()
 }
 
 // Is checks if all the passed states are currently active.
@@ -2155,7 +2158,8 @@ func (m *Machine) processQueue() Result {
 		return Queued
 	}
 
-	var ret []Result
+	var ret Result
+	var retCollected bool
 
 	// execute the queue
 	m.queueRunning.Store(false)
@@ -2185,7 +2189,10 @@ func (m *Machine) processQueue() Result {
 
 		// support for context cancelation
 		if mut.ctx != nil && mut.ctx.Err() != nil {
-			ret = append(ret, Executed)
+			if !retCollected {
+				retCollected = true
+				ret = Canceled
+			}
 
 			continue
 		}
@@ -2202,7 +2209,11 @@ func (m *Machine) processQueue() Result {
 
 		// execute the transition and set active states
 		m.schemaMx.RLock()
-		ret = append(ret, t.emitEvents())
+		result := t.emitEvents()
+		if !retCollected {
+			retCollected = true
+			ret = result
+		}
 		m.timeLast.Store(&t.TimeAfter)
 		m.schemaMx.RUnlock()
 		// TODO assert QueueTick same as mut queue tick?
@@ -2243,10 +2254,10 @@ func (m *Machine) processQueue() Result {
 	}
 	m.queueMx.Unlock()
 
-	if len(ret) == 0 {
-		return Canceled
+	if !retCollected {
+		ret = Canceled
 	}
-	return ret[0]
+	return ret
 }
 
 func (m *Machine) processSubscriptions(t *Transition) {
@@ -2401,9 +2412,8 @@ func (m *Machine) SemLogger() SemLogger {
 func (m *Machine) handle(
 	state string, eventName string, args A, isFinal, isEnter, isSelf bool,
 ) *handlerReturn {
-
 	if m.disposing.Load() {
-		return &handlerReturn{Canceled: true}
+		return &handlerReturn{canceled: true}
 	}
 
 	t := m.t.Load()
@@ -2428,7 +2438,7 @@ func (m *Machine) handle(
 	// call the handlers
 	ret := m.processHandlers(state, e)
 	if m.panicCaught.Load() {
-		ret = &handlerReturn{Canceled: true}
+		ret = &handlerReturn{canceled: true}
 		m.panicCaught.Store(false)
 	}
 
@@ -2437,7 +2447,7 @@ func (m *Machine) handle(
 		return ret
 	}
 
-	if ret.Canceled {
+	if ret.canceled {
 		if m.semLogger.Level() >= LogOps {
 			var self string
 			if isSelf {
@@ -2447,9 +2457,9 @@ func (m *Machine) handle(
 			m.log(LogOps, "[cancel%s] (%s) by %s", self,
 				j(t.TargetStates()), eventName)
 		}
-	} else if ret.PartiallyAccepted {
+	} else if ret.partiallyAccepted {
 		m.log(LogOps, "[rejected] (%s) by %s",
-			j(t.CalledInitial().Remove(ret.RetStates)), eventName)
+			j(t.CalledInitial().Remove(ret.retStates)), eventName)
 	}
 
 	return ret
@@ -2457,7 +2467,7 @@ func (m *Machine) handle(
 
 func (m *Machine) processHandlers(state string, e *Event) *handlerReturn {
 	if m.disposing.Load() {
-		return &handlerReturn{Canceled: true}
+		return &handlerReturn{canceled: true}
 	}
 
 	ret := &handlerReturn{}
@@ -2512,7 +2522,6 @@ func (m *Machine) processHandlers(state string, e *Event) *handlerReturn {
 
 		case <-m.handlerTimer.C:
 			// timeout, fork a new handler loop
-			// TODO update for partial acceptance
 			m.log(LogOps, "[cancel] (%s) by timeout", j(tx.TargetStates()))
 			m.log(LogDecisions, "[handler:timeout]: %s from %s", methodName, h.id)
 			err := fmt.Errorf("%w: %s from %s", ErrHandlerTimeout, methodName, h.id)
@@ -2584,60 +2593,61 @@ func (m *Machine) processHandlers(state string, e *Event) *handlerReturn {
 		switch {
 		case timeout:
 			return &handlerReturn{
-				Timeout:  true,
-				Canceled: true,
+				timeout:  true,
+				canceled: true,
 			}
 		case strings.HasSuffix(e.Name, SuffixState):
 		case strings.HasSuffix(e.Name, SuffixEnd):
 			// returns from State and End handlers are ignored
 		default:
-			if !ret.Called {
+			if !ret.called {
 				continue
 			}
 			t := m.t.Load()
 
 			// bool return handler canceled?
-			if !ret.PartialNeg && !ret.RetBool {
-				// partial auto-transition acceptance of auto-states (even for bool rets)
+			if !ret.partialNeg && !ret.retBool {
+				// partial auto-transition acceptance of auto-states
+				// (even for bool rets)
 				if t.IsAuto() && t.cacheSchema[state].Auto {
 					// simulate partial acceptance
-					ret.Canceled = false
-					ret.PartialNeg = true
-					ret.RetStates = t.CalledStates().Delete1(state)
+					ret.canceled = false
+					ret.partialNeg = true
+					ret.retStates = t.CalledStates().Delete1(state)
 					// ...continue
 
 				} else {
 					// full cancel
-					ret.Canceled = true
+					ret.canceled = true
 					return ret
 				}
 			}
 
 			// state-return handler - partial acceptance
-			if ret.PartialNeg {
+			if ret.partialNeg {
 				// full rejection
-				if len(ret.RetStates) == 0 {
-					ret.Canceled = true
+				if len(ret.retStates) == 0 {
+					ret.canceled = true
 					return ret
 				}
 
 				// validate states or cancel
 				called := e.Transition().CalledStates()
-				if !called.HasN(ret.RetStates) {
+				if !called.HasN(ret.retStates) {
 					m.log(LogOps,
 						"[accept:error] handler states outside of called states")
-					ret.Canceled = true
+					ret.canceled = true
 				}
 
-				if len(called) == len(ret.RetStates) {
+				if len(called) == len(ret.retStates) {
 					// fully accepted
 					continue
 				}
 
 				// re-run with new called states
 				tx.IsPartial = true
-				ret.PartiallyAccepted = true
-				_, _ = t.calculateTarget(ret.RetStates)
+				ret.partiallyAccepted = true
+				_, _ = t.calculateTarget(ret.retStates)
 
 				return ret
 			}
@@ -2705,10 +2715,11 @@ func (m *Machine) handlerLoop() {
 				"deadlined handler finished, theoretical leak: %s", call.name,
 			)
 			m.log(LogOps, "[error] %s", err)
-			// TODO option to disable err muts
-			m.AddErr(err, nil)
-
-			return false
+			// report via internal err chan, avoid the queue
+			select {
+			case m.errInternal <- err:
+			default:
+			}
 		}
 
 		m.loopLock.Lock()
@@ -3541,6 +3552,7 @@ func (m *Machine) Export() (*Serialized, Schema, error) {
 		Time:        t,
 		MachineTick: m.machineTick,
 		StateNames:  m.stateNames,
+		Tags:        slices.Clone(*m.tags.Load()),
 
 		// export only
 
@@ -3589,6 +3601,7 @@ func (m *Machine) Import(data *Serialized) error {
 	m.stateNamesExport = nil
 	m.statesVerified.Store(true)
 	m.machineTick = data.MachineTick + 1
+	m.tags.Store(new(slices.Clone(data.Tags)))
 
 	// trigger MachineRestored, if defined
 	if m.Has1(StateMachineRestored) {
@@ -3820,6 +3833,7 @@ func (m *Machine) Groups() (map[string][]int, []string) {
 //
 // Fork does NOT work with events exported via [EvToCtx] and [CtxToEv].
 func (m *Machine) Fork(ctx context.Context, e *Event, fn func()) {
+	// TODO v0.20 Fork deferred
 	if !e.IsValid() {
 		return
 	}
@@ -3830,7 +3844,7 @@ func (m *Machine) Fork(ctx context.Context, e *Event, fn func()) {
 // Go is a syntax sugar method for a nested handler unblocking boilerplate.
 // This method also gives some debug symbols in [caller].
 func (m *Machine) Go(ctx context.Context, fn func()) {
-	// TODO v0.20 Go defer
+	// TODO v0.20 Go deferred
 	// func (m *Machine) Go(ctx context.Context, fn func(), deferred ...func()) {
 	go func() {
 		// defer func() {

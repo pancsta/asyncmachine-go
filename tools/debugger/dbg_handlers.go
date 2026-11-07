@@ -22,6 +22,8 @@ import (
 	"github.com/soheilhy/cmux"
 	"golang.org/x/exp/maps"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
+
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -205,7 +207,7 @@ func (d *Debugger) ReadyState(e *am.Event) {
 	// TODO merge mut once partial acceptance lands
 	d.Mach.EvAdd1(e, ss.DiagramsGraphRendering, nil)
 	d.Mach.EvAdd1(e, ss.DiagramsMachRendering, nil)
-	d.Mach.EvAdd1(e, ss.DiagramsStatesRendering, nil)
+	d.Mach.EvAdd1(e, ss.DiagramsStateRendering, nil)
 	if d.params.ViewRain {
 		d.Mach.EvAdd1(e, ss.MatrixRain, nil)
 	}
@@ -722,7 +724,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 	// graph
 	if d.graph != nil {
-		_ = d.graph.AddClient(msg)
+		_ = d.graph.AddMachine(amgraph.MsgDbgToMach(msg))
 		// TODO errors, check for dups, enable once stable
 		// if err != nil {
 		// d.Mach.EvAddErr(e, err, nil)
@@ -1012,9 +1014,10 @@ func (d *Debugger) SetGroupState(e *am.Event) {
 	// combined mutation TODO make sure log rebuilts without out-of-group
 	d.Mach.EvAdd(e, S{
 		ss.DiagramsMachRendering,
-		ss.DiagramsStatesRendering,
+		ss.DiagramsStateRendering,
 		ss.ToolToggled,
-		ss.UpdateLogScheduled},
+		ss.UpdateLogScheduled,
+	},
 		Pass(&A{
 			FilterTxs:     true,
 			LogRebuildEnd: len(c.MsgTxs),
@@ -1130,7 +1133,7 @@ func (d *Debugger) ClientSelectedState(e *am.Event) {
 		return // expired
 	}
 
-	d.Mach.EvAdd(e, S{ss.DiagramsMachRendering, ss.DiagramsStatesRendering}, nil)
+	d.Mach.EvAdd(e, S{ss.DiagramsMachRendering, ss.DiagramsStateRendering}, nil)
 
 	// catch up with new log msgs
 	for i := max(0, d.logRebuildEnd-1); i < len(d.C.LogMsgs); i++ {
@@ -1413,6 +1416,10 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		d.Mach.EvToggle1(e, ss.FilterChecks, nil)
 		filterTxs = true
 
+	case types.ToolFilterErrs:
+		d.Mach.EvToggle1(e, ss.FilterErrs, nil)
+		filterTxs = true
+
 	case types.ToolFilterRpcMachs:
 		d.Mach.EvToggle1(e, ss.FilterRpcMachs, nil)
 		buildClientList = true
@@ -1455,10 +1462,11 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 			d.Mach.EvAddErrState(e, ss.ErrDiagrams, d.hInitDiagFiles(), nil)
 		}
 		d.paramsSave()
-		// TODO merge with partial acceptance
-		d.Mach.EvAdd1(e, ss.DiagramsGraphRendering, nil)
-		d.Mach.EvAdd1(e, ss.DiagramsMachRendering, nil)
-		d.Mach.EvAdd1(e, ss.DiagramsStatesRendering, nil)
+		d.Mach.EvAdd(e, S{
+			ss.DiagramsGraphRendering,
+			ss.DiagramsMachRendering,
+			ss.DiagramsStateRendering,
+		}, nil)
 
 	case types.ToolOutputTx:
 		d.params.OutputTx = !d.params.OutputTx
@@ -1494,9 +1502,11 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		// render
 		if d.params.OutputDiagrams != types.ParamsOutputDiagramsNone {
 			_ = d.hInitDiagFiles()
-			d.Mach.EvAdd1(e, ss.DiagramsGraphRendering, nil)
-			d.Mach.EvAdd1(e, ss.DiagramsMachRendering, nil)
-			d.Mach.EvAdd1(e, ss.DiagramsStatesRendering, nil)
+			d.Mach.EvAdd(e, S{
+				ss.DiagramsGraphRendering,
+				ss.DiagramsMachRendering,
+				ss.DiagramsStateRendering,
+			}, nil)
 			if tx := d.hCurrentTx(); tx != nil {
 				ctx := am.EvToCtx(d.Mach.Context(), e)
 				d.hDiagramsStepsRendering(ctx, tx, d.hCurrentTxParsed())
@@ -1847,7 +1857,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 
 	runtime.GC()
 	mem1 := AllocMem()
-	d.Mach.Log(P.Sprintf("Alloc mem: %d MBs\n", mem1/1024/1024))
+	d.Mach.Log(utils.Fmt.Sprintf("Alloc mem: %d MBs\n", mem1/1024/1024))
 
 	// check TTL of client log msgs >lvl 2
 	// TODO remember the tip of cleaning (date) and binary find it, then
@@ -1878,7 +1888,8 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 	runtime.GC()
 	mem2 := AllocMem()
 	if mem1 > mem2 {
-		d.Mach.Log(P.Sprintf("GC logs shaved %d MBs\n", (mem1-mem2)/1024/1024))
+		d.Mach.Log(utils.Fmt.Sprintf("GC logs shaved %d MBs\n",
+			(mem1-mem2)/1024/1024))
 	}
 
 	round := 0
@@ -1941,7 +1952,8 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 	}
 	mem3 := AllocMem()
 	if mem1 > mem3 {
-		d.Mach.Log(P.Sprintf("GC in total shaved %d MBs", (mem1-mem3)/1024/1024))
+		d.Mach.Log(utils.Fmt.Sprintf("GC in total shaved %d MBs",
+			(mem1-mem3)/1024/1024))
 	}
 
 	d.hBuildMarkersIndex()

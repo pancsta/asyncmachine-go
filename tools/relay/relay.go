@@ -130,7 +130,7 @@ func (r *Relay) StartState(e *am.Event) {
 	if a.RotateDbg != nil {
 		cmd := a.RotateDbg
 		r.out("starting relay server on %s\n", cmd.ListenAddr)
-		for _, addr := range cmd.FwdAddr {
+		for _, addr := range cmd.FwdAddrs {
 			r.out("forwarding to %s\n", addr)
 		}
 		if cmd.OutputMach {
@@ -141,7 +141,7 @@ func (r *Relay) StartState(e *am.Event) {
 		}
 		dbgParams := func() *typesdbg.Params {
 			return &typesdbg.Params{
-				FwdData: cmd.FwdAddr,
+				FwdData: cmd.FwdAddrs,
 			}
 		}
 		srvMux, _, err := server.New(r.Mach, cmd.ListenAddr, dbgParams)
@@ -351,12 +351,12 @@ func (r *Relay) HandleWsTcpDial(
 	// wait
 	select {
 	case <-ctx.Done():
-	case <-errClient:
+	case err := <-errClient:
 		r.Mach.Log("WS TCP dial from %s to %s client err: %s",
-			id, tcpAddr, errClient)
-	case <-errServer:
+			id, tcpAddr, err)
+	case err := <-errServer:
 		r.Mach.Log("WS TCP dial from %s to %s server err: %s",
-			id, tcpAddr, errServer)
+			id, tcpAddr, err)
 	}
 }
 

@@ -34,6 +34,7 @@ const (
 	SuffixState      = "State"
 	SuffixEnd        = "End"
 	PrefixErr        = "Err"
+	PrefixWarn       = "Warn"
 	// StateAny is a name of a meta-state used in catch-all global handlers.
 	StateAny = "Any"
 	// StateException is the name of the predefined Exception state.
@@ -146,6 +147,8 @@ type Serialized struct {
 	// MachineTick is a value of [Machine.MachineTick].
 	// nolint:lll
 	MachineTick uint32 `json:"machine_tick" yaml:"machine_tick" toml:"machine_tick"`
+	// Tags is a list of short strings attached to the machine.
+	Tags []string `json:"tags" yaml:"tags" toml:"tags"`
 }
 
 // Api is a subset of Machine for alternative implementations.
@@ -314,6 +317,8 @@ type Api interface {
 	ParseStates(states S) S
 	// Tags is [Machine.Tags].
 	Tags() []string
+	// SetTags is [Machine.SetTags].
+	SetTags(tags []string)
 	// Context is [Machine.Ctx].
 	Context() context.Context
 	// ContextParent is [Machine.ContextParent].

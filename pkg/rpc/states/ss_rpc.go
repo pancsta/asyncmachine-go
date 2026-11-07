@@ -13,8 +13,8 @@ const (
 	TagRpcMux     = "rpc-mux"
 	TagRpcNetmach = "rpc-mux"
 
-	TagKeySrcId   = "src-id"
-	TagKeyAddr   = "addr"
+	TagKeySrcId = "src-id"
+	TagKeyAddr  = "addr"
 
 	PrefixNetMach = "rnm-"
 )

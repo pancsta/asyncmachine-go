@@ -507,11 +507,11 @@ func (m *mcpServer) textClients(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	p := *m.d.Params.Load()
-	if !p.OutputLog {
+	if !p.OutputClients {
 		return mcp.NewToolResultError("--output-clients not set"), nil
 	}
 
-	log, err := os.ReadFile(path.Join(p.OutputDir, "clients.txt"))
+	log, err := os.ReadFile(path.Join(p.OutputDir, "clients.md"))
 	if err != nil {
 		return nil, err
 	}

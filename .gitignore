@@ -118,3 +118,6 @@ tools/visualizer/testdata/*
 /.rumdl_cache/
 /docs/editors/skills/am-cli/
 /examples/mach_template/tmp/
+/pkg/graph/test/netgraph.*
+/pkg/graph/frogql/frogql_wasm_bg.wasm
+/pkg/graph/frogql/frogql_gen.go

@@ -24,30 +24,30 @@ type CliArgs struct {
 	// List of allowed WebSocket origins (optional, repeatable).
 	AllowedWebsocketOrigins []string `arg:"-w,--ws-origin,separate" help:"List of allowed WebSocket origins (repeatable)"`
 	// List of allowed machine IDs (optional, repeatable).
-	AllowedIds             []string `arg:"-i,--id,separate" help:"List of allowed machine IDs (repeatable)"`
+	AllowedIds []string `arg:"-i,--id,separate" help:"List of allowed machine IDs (repeatable)"`
 	// List of allowed API keys (optional, repeatable).
-	AllowedPubKeys         []string `arg:"-k,--key,separate" help:"List of allowed API keys (repeatable)"`
-	Version   bool           `arg:"-v,--version" help:"Print version and exit"`
+	AllowedPubKeys []string `arg:"-k,--key,separate" help:"List of allowed API keys (repeatable)"`
+	Version        bool     `arg:"-v,--version" help:"Print version and exit"`
 
 	// internal
 
-	Output    OutputFunc     `arg:"-"`
-	Parent    am.Api         `arg:"-"`
+	Output OutputFunc `arg:"-"`
+	Parent am.Api     `arg:"-"`
 }
 
 // ArgsRotateDbg converts dbg dumps to other formats / versions.
 // am-relay convert-dbg am-dbg-dump.gob.br -o am-vis
 // nolint:lll
 type ArgsRotateDbg struct {
-	ListenAddr   string        `arg:"-l,--listen-addr" default:"localhost:12732" help:"Listen address for the RPC server"`
-	FwdAddr      []string      `arg:"-f,--fwd-addr,separate" help:"Address of an RPC server to forward data to (repeatable)"`
-	IntervalTx   int           `arg:"--interval-tx" default:"10000" help:"Amount of transitions to create a dump file"`
+	ListenAddr string   `arg:"-l,--listen-addr" default:"localhost:12732" help:"Listen address for the RPC server"`
+	FwdAddrs   []string `arg:"-f,--fwd-addr,separate" help:"Address of an RPC server to forward data to (repeatable)"`
+	IntervalTx int      `arg:"--interval-tx" default:"10000" help:"Amount of transitions to create a dump file"`
 	IntervalTime time.Duration `arg:"--interval-duration" default:"24h" help:"Amount of human time to create a dump file"`
 	// TODO max file size
-	Filename      string        `arg:"-o,--output" default:"am-dbg-dump" help:"Output file base name"`
-	Dir           string        `arg:"-d,--dir" default:"." help:"Output directory"`
-	OutputMach    bool          `arg:"--output-mach" default:"true" help:"Export serialized machines as YAML into dir/machs/id.yml and dir/machs/id.schema.yml"`
-	OutputClients bool          `arg:"--output-clients" help:"Write a plain text client list into clients.txt inside --dir"`
+	Filename      string `arg:"-o,--output" default:"am-dbg-dump" help:"Output file base name"`
+	Dir           string `arg:"-d,--dir" default:"." help:"Output directory"`
+	OutputMach    bool   `arg:"--output-mach" default:"true" help:"Export serialized machines as YAML into dir/machs/id.yml and dir/machs/id.schema.yml"`
+	OutputClients bool   `arg:"--output-clients" help:"Write a plain text client list into clients.txt inside --dir"`
 }
 
 // ArgsWasm

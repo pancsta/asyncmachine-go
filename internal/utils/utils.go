@@ -193,7 +193,7 @@ func CaptureStackTrace() string {
 	return join
 }
 
-func GetGlobalUnicastIP() (string, error) {
+func GetGlobalUnicastIp() (string, error) {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return "", err

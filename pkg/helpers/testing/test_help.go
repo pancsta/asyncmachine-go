@@ -246,7 +246,7 @@ func LogToTestLog(t *stdtest.T, mach am.Api, maxLvl am.LogLevel) {
 func AssertTime(t *stdtest.T, m am.Api, states am.S, time am.Time,
 	msgAndArgs ...any,
 ) {
-	assert.Subset(t, m.Time(states), time, msgAndArgs...)
+	require.Subset(t, m.Time(states), time, msgAndArgs...)
 }
 
 func AssertString(

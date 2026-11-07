@@ -40,7 +40,9 @@ const (
 // from .env and starting it is expensive.
 func TestWasmExample(t *testing.T) {
 	// TODO fix CI
-	t.Skip("skipping WASM integration test in CI")
+	if os.Getenv("GITHUB_ACTIONS") == "true" {
+		t.Skip("Skipping test in GitHub CI environment")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(),
 		buildTimeout+startTimeout+2*time.Minute)
 	defer cancel()

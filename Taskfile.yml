@@ -25,8 +25,9 @@ tasks:
       # dedicated go.mod
       - cd ./examples/wasm_workflow &&
           go build -o /dev/null ./...
+      - cd ./examples/wasm &&
+          go build -o /dev/null ./...
       # root go.mod
-      - go build -o /dev/null ./examples/wasm/...
       - go build -o /dev/null ./pkg/machine/...
       - go build -o /dev/null ./pkg/rpc/...
       - go build -o /dev/null ./pkg/helpers/...
@@ -272,6 +273,9 @@ tasks:
           ./examples/raw_strings
           ./examples/subscriptions
           ./pkg/history/gorm
+          ./pkg/graph/test
+          ./pkg/rpc/test
+          ./pkg/rpc/iroh
           {{.CLI_ARGS}}
 
   test-integration-dbg:
@@ -291,7 +295,9 @@ tasks:
     desc: Run WASM example integration tests
     cmds:
       - task: clean-test
-      - go test -tags integration ./examples/wasm {{.CLI_ARGS}}
+      - cd examples/wasm &&
+          go mod tidy &&
+          go test -tags integration . {{.CLI_ARGS}}
       - cd examples/wasm_workflow &&
           go mod tidy &&
           go test -tags integration . {{.CLI_ARGS}}
@@ -586,7 +592,7 @@ tasks:
       - go install mvdan.cc/gofumpt@latest
       - go install golang.org/x/tools/cmd/goimports@latest
       - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh 
-          | sh -s -- -b $(go env GOPATH)/bin v2.10.1
+          | sh -s -- -b $(go env GOPATH)/bin latest
 
   godoc: godoc -http=:6060
 
@@ -863,6 +869,89 @@ tasks:
       - task: test-coverage-pkg
       - task: test-coverage-tools
       - task: script-gen-badges
+
+  gen-graph-frogql-wasm:
+    desc: Download the frogql-wasm release wasm (default 0.6.0)
+    vars:
+      FROGQL_VERSION: '{{.FROGQL_VERSION | default "0.6.0"}}'
+    status:
+      - test -f pkg/graph/frogql/frogql_wasm_bg.wasm
+    cmds:
+      - curl -sL https://registry.npmjs.org/frogql-wasm/-/frogql-wasm-{{.FROGQL_VERSION}}.tgz
+          | tar xz --strip-components=1 -C pkg/graph/frogql package/frogql_wasm_bg.wasm
+
+  gen-graph-frogql:
+    desc: Regenerate pkg/graph/frogql/frogql_gen.go from the frogql wasm
+    sources:
+      - pkg/graph/frogql/frogql_wasm_bg.wasm
+    generates:
+      - pkg/graph/frogql/frogql_gen.go
+    cmds:
+      - task: gen-graph-frogql-wasm
+      - go run github.com/ncruces/wasm2go@v0.4.20 -tags frogql -pkg frogql
+          -o pkg/graph/frogql/frogql_gen.go pkg/graph/frogql/frogql_wasm_bg.wasm
+
+  gen-graph-frogql-update:
+    desc: Force-download a frogql-wasm release (default 0.6.0) and regenerate
+    vars:
+      FROGQL_VERSION: '{{.FROGQL_VERSION | default "0.6.0"}}'
+    cmds:
+      - rm -f pkg/graph/frogql/frogql_wasm_bg.wasm
+      - curl -sL https://registry.npmjs.org/frogql-wasm/-/frogql-wasm-{{.FROGQL_VERSION}}.tgz
+          | tar xz --strip-components=1 -C pkg/graph/frogql package/frogql_wasm_bg.wasm
+      - task: gen-graph-frogql
+
+  build-frogql:
+    desc: Build pkg/graph incl. the embedded frogql DbGraph backend ("frogql" tag)
+    cmds:
+      - task: gen-graph-frogql
+      - go build -tags frogql -o /dev/null ./pkg/graph/...
+
+  test-frogql:
+    env:
+      AM_TEST_RUNNER: 1
+    desc: Run the frogql DbGraph tests ("frogql" tag)
+    cmds:
+      - task: gen-graph-frogql
+      - go test -tags frogql ./pkg/graph/...
+      - go test -tags frogql -race ./pkg/graph/...
+      - go test -tags frogql,integration ./pkg/graph/test/
+
+  bench-frogql:
+    desc: Benchmark DbGraph query TPS on a fully synced graph ("frogql" tag)
+    cmds:
+      - task: gen-graph-frogql
+      - go test -tags frogql,integration -run=^$ -bench . -benchtime 2s ./pkg/graph/test/
+
+  test-graph-gochickpeas:
+    env:
+      AM_TEST_RUNNER: 1
+    desc: Run the gochickpeas DbGraph tests (untagged)
+    cmds:
+      - go test ./pkg/graph/gochickpeas/
+      - go test -race ./pkg/graph/gochickpeas/
+      - go test -count=1 -tags integration ./pkg/graph/test/
+
+  bench-graph-gochickpeas:
+    desc: Benchmark gochickpeas DbGraph query TPS on a fully synced graph
+    cmds:
+      - go test -tags integration -run=^$ -bench . -benchtime 2s ./pkg/graph/test/
+
+  test-graph-gql:
+    env:
+      AM_TEST_RUNNER: 1
+    desc: Run the native GQL DbGraph tests
+    cmds:
+      - go test ./pkg/graph/gql/
+      - go test -race ./pkg/graph/gql/
+      - go test -tags integration -count=1 -run 'TestDbServerAuth' ./pkg/graph/test/
+
+  bench-graph-gql:
+    desc: Benchmark native GQL DbGraph query TPS on a fully synced graph
+    cmds:
+      - go test -tags integration -run=^$ -bench 'gql$' -benchtime 2s ./pkg/graph/test/
+
+#  TODO bench-graph
 
   gen-yaegi-symbols:
     dir: pkg/integrations/yaegi

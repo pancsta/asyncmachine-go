@@ -18,6 +18,7 @@ func init() {
 		"Canceled":               reflect.ValueOf(machine.Canceled),
 		"Capitalize":             reflect.ValueOf(machine.Capitalize),
 		"CtxKey":                 reflect.ValueOf(&machine.CtxKey).Elem(),
+		"CtxToCtxValue":          reflect.ValueOf(machine.CtxToCtxValue),
 		"CtxToEv":                reflect.ValueOf(machine.CtxToEv),
 		"EnvAmDebug":             reflect.ValueOf(constant.MakeFromLiteral("\"AM_DEBUG\"", token.STRING, 0)),
 		"EnvAmDetectEval":        reflect.ValueOf(constant.MakeFromLiteral("\"AM_DETECT_EVAL\"", token.STRING, 0)),
@@ -83,6 +84,7 @@ func init() {
 		"PositionFirst":          reflect.ValueOf(machine.PositionFirst),
 		"PositionLast":           reflect.ValueOf(machine.PositionLast),
 		"PrefixErr":              reflect.ValueOf(constant.MakeFromLiteral("\"Err\"", token.STRING, 0)),
+		"PrefixWarn":             reflect.ValueOf(constant.MakeFromLiteral("\"Warn\"", token.STRING, 0)),
 		"Queued":                 reflect.ValueOf(machine.Queued),
 		"RelationAdd":            reflect.ValueOf(machine.RelationAdd),
 		"RelationAfter":          reflect.ValueOf(machine.RelationAfter),
@@ -123,70 +125,72 @@ func init() {
 		"TestMockClock":          reflect.ValueOf(machine.TestMockClock),
 
 		// type definitions
-		"A":                        reflect.ValueOf((*machine.A)(nil)),
-		"ACheck":                   reflect.ValueOf((*machine.ACheck)(nil)),
-		"AException":               reflect.ValueOf((*machine.AException)(nil)),
-		"Api":                      reflect.ValueOf((*machine.Api)(nil)),
-		"Args":                     reflect.ValueOf((*machine.Args)(nil)),
-		"ArgsApi":                  reflect.ValueOf((*machine.ArgsApi)(nil)),
-		"ArgsBase":                 reflect.ValueOf((*machine.ArgsBase)(nil)),
-		"BindOpts":                 reflect.ValueOf((*machine.BindOpts)(nil)),
-		"CallSignature":            reflect.ValueOf((*machine.CallSignature)(nil)),
-		"Clock":                    reflect.ValueOf((*machine.Clock)(nil)),
-		"CtxBinding":               reflect.ValueOf((*machine.CtxBinding)(nil)),
-		"CtxKeyName":               reflect.ValueOf((*machine.CtxKeyName)(nil)),
-		"CtxValue":                 reflect.ValueOf((*machine.CtxValue)(nil)),
-		"DefaultRelationsResolver": reflect.ValueOf((*machine.DefaultRelationsResolver)(nil)),
-		"Event":                    reflect.ValueOf((*machine.Event)(nil)),
-		"ExceptionArgsPanic":       reflect.ValueOf((*machine.ExceptionArgsPanic)(nil)),
-		"ExceptionHandler":         reflect.ValueOf((*machine.ExceptionHandler)(nil)),
-		"HandlerChange":            reflect.ValueOf((*machine.HandlerChange)(nil)),
-		"HandlerDispose":           reflect.ValueOf((*machine.HandlerDispose)(nil)),
-		"HandlerError":             reflect.ValueOf((*machine.HandlerError)(nil)),
-		"HandlerFinal":             reflect.ValueOf((*machine.HandlerFinal)(nil)),
-		"HandlerNegotiation":       reflect.ValueOf((*machine.HandlerNegotiation)(nil)),
-		"IndexStateCtx":            reflect.ValueOf((*machine.IndexStateCtx)(nil)),
-		"IndexWhen":                reflect.ValueOf((*machine.IndexWhen)(nil)),
-		"IndexWhenArgs":            reflect.ValueOf((*machine.IndexWhenArgs)(nil)),
-		"IndexWhenTime":            reflect.ValueOf((*machine.IndexWhenTime)(nil)),
-		"InternalCheckFunc":        reflect.ValueOf((*machine.InternalCheckFunc)(nil)),
-		"InternalLogFunc":          reflect.ValueOf((*machine.InternalLogFunc)(nil)),
-		"LastTxTracer":             reflect.ValueOf((*machine.LastTxTracer)(nil)),
-		"LogArgsMapperFn":          reflect.ValueOf((*machine.LogArgsMapperFn)(nil)),
-		"LogEntry":                 reflect.ValueOf((*machine.LogEntry)(nil)),
-		"LogLevel":                 reflect.ValueOf((*machine.LogLevel)(nil)),
-		"LoggerFn":                 reflect.ValueOf((*machine.LoggerFn)(nil)),
-		"Machine":                  reflect.ValueOf((*machine.Machine)(nil)),
-		"MutSource":                reflect.ValueOf((*machine.MutSource)(nil)),
-		"Mutation":                 reflect.ValueOf((*machine.Mutation)(nil)),
-		"MutationType":             reflect.ValueOf((*machine.MutationType)(nil)),
-		"Opts":                     reflect.ValueOf((*machine.Opts)(nil)),
-		"Pipe":                     reflect.ValueOf((*machine.Pipe)(nil)),
-		"Position":                 reflect.ValueOf((*machine.Position)(nil)),
-		"Relation":                 reflect.ValueOf((*machine.Relation)(nil)),
-		"RelationsResolver":        reflect.ValueOf((*machine.RelationsResolver)(nil)),
-		"Result":                   reflect.ValueOf((*machine.Result)(nil)),
-		"S":                        reflect.ValueOf((*machine.S)(nil)),
-		"Schema":                   reflect.ValueOf((*machine.Schema)(nil)),
-		"SemConfig":                reflect.ValueOf((*machine.SemConfig)(nil)),
-		"SemLogger":                reflect.ValueOf((*machine.SemLogger)(nil)),
-		"Serialized":               reflect.ValueOf((*machine.Serialized)(nil)),
-		"State":                    reflect.ValueOf((*machine.State)(nil)),
-		"StateIsActive":            reflect.ValueOf((*machine.StateIsActive)(nil)),
-		"States":                   reflect.ValueOf((*machine.States)(nil)),
-		"StatesBase":               reflect.ValueOf((*machine.StatesBase)(nil)),
-		"Step":                     reflect.ValueOf((*machine.Step)(nil)),
-		"StepType":                 reflect.ValueOf((*machine.StepType)(nil)),
-		"Subscriptions":            reflect.ValueOf((*machine.Subscriptions)(nil)),
-		"Time":                     reflect.ValueOf((*machine.Time)(nil)),
-		"TimeIndex":                reflect.ValueOf((*machine.TimeIndex)(nil)),
-		"Tracer":                   reflect.ValueOf((*machine.Tracer)(nil)),
-		"TracerNoOp":               reflect.ValueOf((*machine.TracerNoOp)(nil)),
-		"Transition":               reflect.ValueOf((*machine.Transition)(nil)),
-		"WhenArgsBinding":          reflect.ValueOf((*machine.WhenArgsBinding)(nil)),
-		"WhenBinding":              reflect.ValueOf((*machine.WhenBinding)(nil)),
-		"WhenTimeBinding":          reflect.ValueOf((*machine.WhenTimeBinding)(nil)),
-		"WhenTimeSumBinding":       reflect.ValueOf((*machine.WhenTimeSumBinding)(nil)),
+		"A":                         reflect.ValueOf((*machine.A)(nil)),
+		"ACheck":                    reflect.ValueOf((*machine.ACheck)(nil)),
+		"AException":                reflect.ValueOf((*machine.AException)(nil)),
+		"Api":                       reflect.ValueOf((*machine.Api)(nil)),
+		"Args":                      reflect.ValueOf((*machine.Args)(nil)),
+		"ArgsApi":                   reflect.ValueOf((*machine.ArgsApi)(nil)),
+		"ArgsBase":                  reflect.ValueOf((*machine.ArgsBase)(nil)),
+		"BindOpts":                  reflect.ValueOf((*machine.BindOpts)(nil)),
+		"CallSignature":             reflect.ValueOf((*machine.CallSignature)(nil)),
+		"Clock":                     reflect.ValueOf((*machine.Clock)(nil)),
+		"CtxBinding":                reflect.ValueOf((*machine.CtxBinding)(nil)),
+		"CtxKeyName":                reflect.ValueOf((*machine.CtxKeyName)(nil)),
+		"CtxValue":                  reflect.ValueOf((*machine.CtxValue)(nil)),
+		"DefaultRelationsResolver":  reflect.ValueOf((*machine.DefaultRelationsResolver)(nil)),
+		"Event":                     reflect.ValueOf((*machine.Event)(nil)),
+		"ExceptionArgsPanic":        reflect.ValueOf((*machine.ExceptionArgsPanic)(nil)),
+		"ExceptionHandler":          reflect.ValueOf((*machine.ExceptionHandler)(nil)),
+		"HandlerChange":             reflect.ValueOf((*machine.HandlerChange)(nil)),
+		"HandlerDispose":            reflect.ValueOf((*machine.HandlerDispose)(nil)),
+		"HandlerError":              reflect.ValueOf((*machine.HandlerError)(nil)),
+		"HandlerFinal":              reflect.ValueOf((*machine.HandlerFinal)(nil)),
+		"HandlerNegotiation":        reflect.ValueOf((*machine.HandlerNegotiation)(nil)),
+		"HandlerNegotiationPartial": reflect.ValueOf((*machine.HandlerNegotiationPartial)(nil)),
+		"IndexStateCtx":             reflect.ValueOf((*machine.IndexStateCtx)(nil)),
+		"IndexWhen":                 reflect.ValueOf((*machine.IndexWhen)(nil)),
+		"IndexWhenArgs":             reflect.ValueOf((*machine.IndexWhenArgs)(nil)),
+		"IndexWhenTime":             reflect.ValueOf((*machine.IndexWhenTime)(nil)),
+		"InternalCheckFunc":         reflect.ValueOf((*machine.InternalCheckFunc)(nil)),
+		"InternalLogFunc":           reflect.ValueOf((*machine.InternalLogFunc)(nil)),
+		"LastTxTracer":              reflect.ValueOf((*machine.LastTxTracer)(nil)),
+		"LogArgsMapperFn":           reflect.ValueOf((*machine.LogArgsMapperFn)(nil)),
+		"LogEntry":                  reflect.ValueOf((*machine.LogEntry)(nil)),
+		"LogLevel":                  reflect.ValueOf((*machine.LogLevel)(nil)),
+		"LoggerFn":                  reflect.ValueOf((*machine.LoggerFn)(nil)),
+		"Machine":                   reflect.ValueOf((*machine.Machine)(nil)),
+		"MutSource":                 reflect.ValueOf((*machine.MutSource)(nil)),
+		"Mutation":                  reflect.ValueOf((*machine.Mutation)(nil)),
+		"MutationType":              reflect.ValueOf((*machine.MutationType)(nil)),
+		"NextMut":                   reflect.ValueOf((*machine.NextMut)(nil)),
+		"Opts":                      reflect.ValueOf((*machine.Opts)(nil)),
+		"Pipe":                      reflect.ValueOf((*machine.Pipe)(nil)),
+		"Position":                  reflect.ValueOf((*machine.Position)(nil)),
+		"Relation":                  reflect.ValueOf((*machine.Relation)(nil)),
+		"RelationsResolver":         reflect.ValueOf((*machine.RelationsResolver)(nil)),
+		"Result":                    reflect.ValueOf((*machine.Result)(nil)),
+		"S":                         reflect.ValueOf((*machine.S)(nil)),
+		"Schema":                    reflect.ValueOf((*machine.Schema)(nil)),
+		"SemConfig":                 reflect.ValueOf((*machine.SemConfig)(nil)),
+		"SemLogger":                 reflect.ValueOf((*machine.SemLogger)(nil)),
+		"Serialized":                reflect.ValueOf((*machine.Serialized)(nil)),
+		"State":                     reflect.ValueOf((*machine.State)(nil)),
+		"StateIsActive":             reflect.ValueOf((*machine.StateIsActive)(nil)),
+		"States":                    reflect.ValueOf((*machine.States)(nil)),
+		"StatesBase":                reflect.ValueOf((*machine.StatesBase)(nil)),
+		"Step":                      reflect.ValueOf((*machine.Step)(nil)),
+		"StepType":                  reflect.ValueOf((*machine.StepType)(nil)),
+		"Subscriptions":             reflect.ValueOf((*machine.Subscriptions)(nil)),
+		"Time":                      reflect.ValueOf((*machine.Time)(nil)),
+		"TimeIndex":                 reflect.ValueOf((*machine.TimeIndex)(nil)),
+		"Tracer":                    reflect.ValueOf((*machine.Tracer)(nil)),
+		"TracerNoOp":                reflect.ValueOf((*machine.TracerNoOp)(nil)),
+		"Transition":                reflect.ValueOf((*machine.Transition)(nil)),
+		"WhenArgsBinding":           reflect.ValueOf((*machine.WhenArgsBinding)(nil)),
+		"WhenBinding":               reflect.ValueOf((*machine.WhenBinding)(nil)),
+		"WhenTimeBinding":           reflect.ValueOf((*machine.WhenTimeBinding)(nil)),
+		"WhenTimeSumBinding":        reflect.ValueOf((*machine.WhenTimeSumBinding)(nil)),
 
 		// interface wrapper definitions
 		"_Api":               reflect.ValueOf((*_github_com_pancsta_asyncmachine_go_pkg_machine_Api)(nil)),
@@ -266,6 +270,7 @@ type _github_com_pancsta_asyncmachine_go_pkg_machine_Api struct {
 	WSchema           func() machine.Schema
 	WSemLogger        func() machine.SemLogger
 	WSet              func(states machine.S, args machine.A) machine.Result
+	WSetTags          func(tags []string)
 	WStateNames       func() machine.S
 	WStatesVerified   func() bool
 	WString           func() string
@@ -492,6 +497,9 @@ func (W _github_com_pancsta_asyncmachine_go_pkg_machine_Api) SemLogger() machine
 func (W _github_com_pancsta_asyncmachine_go_pkg_machine_Api) Set(states machine.S, args machine.A) machine.Result {
 	return W.WSet(states, args)
 }
+func (W _github_com_pancsta_asyncmachine_go_pkg_machine_Api) SetTags(tags []string) {
+	W.WSetTags(tags)
+}
 func (W _github_com_pancsta_asyncmachine_go_pkg_machine_Api) StateNames() machine.S {
 	return W.WStateNames()
 }
@@ -663,6 +671,7 @@ type _github_com_pancsta_asyncmachine_go_pkg_machine_SemLogger struct {
 	WSetLevel         func(lvl machine.LogLevel)
 	WSetLogger        func(logger machine.LoggerFn)
 	WSetSimple        func(logf func(format string, args ...any), level machine.LogLevel)
+	WSetTags          func()
 }
 
 func (W _github_com_pancsta_asyncmachine_go_pkg_machine_SemLogger) AddPipeIn(isAdd bool, targetState string, sourceMach string) {
@@ -751,6 +760,9 @@ func (W _github_com_pancsta_asyncmachine_go_pkg_machine_SemLogger) SetLogger(log
 }
 func (W _github_com_pancsta_asyncmachine_go_pkg_machine_SemLogger) SetSimple(logf func(format string, args ...any), level machine.LogLevel) {
 	W.WSetSimple(logf, level)
+}
+func (W _github_com_pancsta_asyncmachine_go_pkg_machine_SemLogger) SetTags() {
+	W.WSetTags()
 }
 
 // _github_com_pancsta_asyncmachine_go_pkg_machine_States is an interface wrapper for States type

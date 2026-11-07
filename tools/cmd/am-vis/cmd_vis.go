@@ -26,8 +26,9 @@ import (
 
 // nolint:lll
 type Args struct {
-	RenderDump  *RenderDumpCmd  `arg:"subcommand:render-dump" help:"Render from a debugger dump file"`
-	InspectDump *InspectDumpCmd `arg:"subcommand:inspect-dump" help:"Render text form from a debugger dump file"`
+	RenderDump   *RenderDumpCmd   `arg:"subcommand:render-dump" help:"Render from a debugger dump file"`
+	RenderSchema *RenderSchemaCmd `arg:"subcommand:render-schema" help:"Render from a YAML schema file"`
+	InspectDump  *InspectDumpCmd  `arg:"subcommand:inspect-dump" help:"Render text form from a debugger dump file"`
 	// DbgServer     *DbgServerCmd     `arg:"subcommand:dbg-server" help:"Render from live connections"`
 
 	// TODO RenderAllowlist
@@ -99,6 +100,9 @@ func (Args) Description() string {
 	
 		# inspect a dump file as Markdown and XML
 		am-vis inspect-dump mymach.gob.br
+
+		# render a YAML schema
+		am-vis render-schema schema.yml
 	`)
 }
 
@@ -109,14 +113,21 @@ type RenderDumpCmd struct {
 }
 
 // nolint:lll
+type RenderSchemaCmd struct {
+	SchemaFilename string `arg:"-f,--schema-file,positional" help:"Input YAML schema file" default:"schema.yml"`
+	MachUrl        string `arg:"positional"`
+}
+
+// nolint:lll
 type InspectDumpCmd struct {
 	DumpFilename string `arg:"-f,--dump-file,positional" help:"Input dbg dump file" default:"am-dbg-dump.gob.br"`
 	MachUrl      string `arg:"positional"`
 }
 
 const (
-	CmdRenderDump  = "render-dump"
-	CmdInspectDump = "inspect-dump"
+	CmdRenderDump   = "render-dump"
+	CmdRenderSchema = "render-schema"
+	CmdInspectDump  = "inspect-dump"
 )
 
 // TODO DbgServerCmd
@@ -153,6 +164,10 @@ func main() {
 	case args.RenderDump != nil:
 		if err := renderDump(ctx, args, os.Args[1:]); err != nil {
 			_ = p.FailSubcommand(err.Error(), CmdRenderDump)
+		}
+	case args.RenderSchema != nil:
+		if err := renderSchema(ctx, args, os.Args[1:]); err != nil {
+			_ = p.FailSubcommand(err.Error(), CmdRenderSchema)
 		}
 	case args.InspectDump != nil:
 		if err := inspectDump(ctx, args, os.Args[1:]); err != nil {
@@ -203,8 +218,8 @@ func renderDump(ctx context.Context, args Args, cliArgs []string) error {
 
 	// check target
 	if addr != nil {
-		found := slices.ContainsFunc(clients, func(c amgraph.Client) bool {
-			return c.Id == addr.MachId
+		found := slices.ContainsFunc(clients, func(c amgraph.Machine) bool {
+			return c.ID == addr.MachId
 		})
 		if !found {
 			return fmt.Errorf("machine %s not found in the dump file", addr.MachId)
@@ -293,6 +308,76 @@ func inspectDump(
 	if err != nil {
 		return err
 	}
+
+	// push debug
+	if args.Debug {
+		vis.Mach.Add1(ss.Healthcheck, nil)
+		time.Sleep(time.Second)
+	}
+
+	return nil
+}
+
+func renderSchema(ctx context.Context, args Args, cliArgs []string) error {
+	vis, err := visualizer.New(ctx, "am-vis")
+	if err != nil {
+		return err
+	}
+
+	// parse mach URL
+	var addr *dbgtypes.MachAddress
+	if args.RenderSchema.MachUrl != "" {
+		addr, err = dbgtypes.ParseMachUrl(args.RenderSchema.MachUrl)
+		if err != nil {
+			return err
+		}
+	}
+
+	// init & import
+	vis.Mach.Add1(ss.Start, nil)
+	err = vis.ImportSchema(args.RenderSchema.SchemaFilename)
+	if err != nil {
+		return err
+	}
+	clients := slices.Collect(maps.Values(vis.Clients()))
+	fmt.Printf("Imported %d clients\n", len(clients))
+
+	// presets
+	switch {
+	case args.Map:
+		visualizer.PresetMap(vis.R)
+	case args.Bird:
+		visualizer.PresetBird(vis.R)
+	default:
+		visualizer.PresetSingle(vis.R)
+	}
+	applyOverrides(args, cliArgs, vis.R)
+
+	// check target
+	if addr != nil {
+		found := slices.ContainsFunc(clients, func(c amgraph.Machine) bool {
+			return c.ID == addr.MachId
+		})
+		if !found {
+			return fmt.Errorf("machine %s not found in the YAML schema", addr.MachId)
+		}
+		vis.R.RenderMachs = []string{addr.MachId}
+
+		// render all
+	} else {
+		vis.R.RenderMachs = slices.Collect(maps.Keys(vis.Clients()))
+	}
+
+	// render
+	vis.R.OutputFilename = args.OutputFilename
+	vis.R.OutputMermaid = false
+	vis.R.OutputPng = args.OutputPng
+	fmt.Printf("Rendering... please wait\n")
+	if err := vis.R.GenDiagrams(ctx); err != nil {
+		return err
+	}
+	fmt.Printf("Rendered %s\n", args.OutputFilename+".svg")
+	fmt.Printf("Rendered %s\n", args.OutputFilename+".d2")
 
 	// push debug
 	if args.Debug {

@@ -31,6 +31,101 @@ func TestMarkerToggle(t *testing.T) {
 	assert.False(t, c.TxIsMarked("tx-0"))
 }
 
+func TestFilterErrs(t *testing.T) {
+	c := &Client{
+		Client: server.NewClient("connId", &dbg.DbgMsgStruct{ID: "mach-1"}),
+	}
+	c.MsgTxs = []*dbg.DbgMsgTx{
+		{CalledStates: am.S{"ErrFoo"}, Accepted: true},
+		{CalledStates: am.S{"WarnBar"}, Accepted: true},
+		{CalledStates: am.S{"Foo"}, Accepted: true},
+		{CalledStates: am.S{"ErrFoo", "Foo"}, Accepted: true},
+	}
+	c.MsgTxsParsed = make([]*types.MsgTxParsed, len(c.MsgTxs))
+	for i := range c.MsgTxsParsed {
+		c.MsgTxsParsed[i] = &types.MsgTxParsed{}
+	}
+
+	d := &Debugger{}
+	filter := &types.Filters{SkipErrs: true}
+	assert.False(t, d.hFilterTx(c, 0, filter), "Err* only")
+	assert.False(t, d.hFilterTx(c, 1, filter), "Warn* only")
+	assert.True(t, d.hFilterTx(c, 2, filter), "regular state")
+	assert.True(t, d.hFilterTx(c, 3, filter), "Err* with other states")
+	assert.True(t, d.hFilterTx(c, 0, &types.Filters{}), "filter disabled")
+}
+
+func TestLogReaderEval(t *testing.T) {
+	c := newClient("connId", &dbg.DbgMsgStruct{ID: "mach-1"})
+	tx := &dbg.DbgMsgTx{ID: "tx-1"}
+
+	// evals are not stored as reader entries
+	d := &Debugger{}
+	d.parseMsgReader(c, &am.LogEntry{Text: "[eval] fooEval"}, nil, tx)
+	assert.Empty(t, c.LogReader["tx-1"])
+
+	u := &logReaderUpdate{
+		c: c,
+		tx: &dbg.DbgMsgTx{
+			PreLogEntries: []*am.LogEntry{{Text: "[eval] fooEval"}},
+			LogEntries:    []*am.LogEntry{{Text: "[eval:timeout] barEval"}},
+		},
+	}
+	u.buildEvals()
+	require.NotNil(t, u.parentEval)
+	nodes := u.parentEval.GetChildren()
+	require.Len(t, nodes, 2)
+	assert.Contains(t, nodes[0].GetText(), "eval")
+	assert.Contains(t, nodes[0].GetText(), "fooEval")
+	assert.Contains(t, nodes[1].GetText(), "eval:timeout")
+	assert.Contains(t, nodes[1].GetText(), "barEval")
+}
+
+func TestLogReaderGroup(t *testing.T) {
+	c := newClient("connId", &dbg.DbgMsgStruct{
+		ID:          "mach-1",
+		StatesIndex: am.S{"Foo", "Bar"},
+	})
+	inIdx := c.AddReaderEntry("tx-1", &types.LogReaderEntry{
+		Kind:      types.LogReaderCtx,
+		States:    c.StatesToIndexes(am.S{"Foo"}),
+		CreatedAt: 1,
+	})
+	outIdx := c.AddReaderEntry("tx-1", &types.LogReaderEntry{
+		Kind:      types.LogReaderCtx,
+		States:    c.StatesToIndexes(am.S{"Bar"}),
+		CreatedAt: 1,
+	})
+	evalIdx := c.AddReaderEntry("tx-1", &types.LogReaderEntry{
+		Kind:      types.LogReaderWhenQueue,
+		QueueTick: 1,
+	})
+
+	u := &logReaderUpdate{
+		d:           &Debugger{},
+		c:           c,
+		statesIndex: c.MsgStruct.StatesIndex,
+		groupStates: am.S{"Foo"},
+	}
+	require.NoError(t, u.buildParsedEntry(&types.LogReaderEntryPtr{
+		TxId: "tx-1", EntryIdx: inIdx,
+	}))
+	require.NotNil(t, u.parentCtx)
+	assert.Len(t, u.parentCtx.GetChildren(), 1)
+
+	require.NoError(t, u.buildParsedEntry(&types.LogReaderEntryPtr{
+		TxId: "tx-1", EntryIdx: outIdx,
+	}))
+	assert.Len(t, u.parentCtx.GetChildren(), 1)
+
+	// stateless entries are not group-specific
+	require.NoError(t, u.buildParsedEntry(&types.LogReaderEntryPtr{
+		TxId: "tx-1", EntryIdx: evalIdx,
+	}))
+	require.NotNil(t, u.parentWhenQueue)
+	assert.Len(t, u.parentWhenQueue.GetChildren(), 1)
+}
+
 func TestMarkersExportImport(t *testing.T) {
 	tempDir := t.TempDir()
 

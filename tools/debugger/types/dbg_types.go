@@ -62,6 +62,7 @@ type Params struct {
 	FilterChecks         bool        `arg:"--filter-checks" help:"Filter check (read-only) transitions"`
 	FilterDisconn        bool        `arg:"--filter-disconn" help:"Filter disconnected machines"`
 	FilterEmptyTx        bool        `arg:"--filter-empty" help:"Filter empty transitions"`
+	FilterErrs           bool        `arg:"--filter-errs" help:"Filter error and warning transitions (Err*, Warn*)"`
 	FilterGroup          bool        `arg:"--filter-group" default:"true" help:"Filter transitions by a selected group"`
 	FilterHealthTx       bool        `arg:"--filter-health" help:"Filter health-check transitions"`
 	FilterLogLevel       am.LogLevel `arg:"--filter-log-level" default:"2" help:"Filter transitions up to this log level, 0-5 (silent-everything)"`
@@ -70,11 +71,11 @@ type Params struct {
 	FilterQueuedTx       bool        `arg:"--filter-queued" help:"Filter queued transitions"`
 
 	OutputCallLog    bool                 `arg:"--output-call-log" help:"Write called handlers as Go code into call-log/{mach-id}/{mtime}.go inside --dir (EXPERIMENTAL)"`
-	OutputClients    bool                 `arg:"--output-clients" help:"Write a detailed client list into clients.txt inside --dir"`
+	OutputClients    bool                 `arg:"--output-clients" help:"Write a detailed client list into clients.md inside --dir"`
 	OutputDiagrams   ParamsOutputDiagrams `arg:"--output-diagrams" help:"Enable graph diagrams and set the level of detail for machine diagrams in --dir (0 off, 1-3 on) (EXPERIMENTAL)"`
 	OutputDiagGroup  ParamsOutDiagGroup   `arg:"--output-diag-group" help:"Only show states from the selected group (valid: hide, skip)" default:"hide"`
 	OutputDiagLayout ParamsDiagLayout     `arg:"--output-diag-layout" help:"D2 layout engine for state and graph diagrams (valid: tala, elk, dagre)" default:"tala"`
-	OutputDiagTx     ParamsOutDiagTx      `arg:"--output-diag-tx" help:"Dim states and rels unrelated to a transition (valid: called, changed, touched, relations)" default:"relations"`
+	OutputDiagTx     ParamsOutDiagTx      `arg:"--output-diag-tx" help:"Dim states and rels unrelated to a transition (valid: called, changed, touched, relations)"`
 	OutputGraph      bool                 `arg:"--output-graph" help:"Write the current network graph as graph.(md|mgml) inside --dir (EXPERIMENTAL)"`
 	OutputLog        bool                 `arg:"--output-log" help:"Write the current log buffer to log.md inside --dir"`
 	OutputMach       bool                 `arg:"--output-mach" default:"true" help:"Write the serialized machine state into mach.yml and schema.yml inside --dir"`
@@ -221,6 +222,8 @@ func (p *ParamsOutDiagGroup) UnmarshalText(b []byte) error {
 	return nil
 }
 
+// -----
+
 // ParamsDiagLayout is an enum for --output-diag-layout
 type ParamsDiagLayout enum.Member[string]
 
@@ -291,6 +294,7 @@ type Filters struct {
 	SkipQueuedTx       bool
 	SkipOutGroup       bool
 	SkipChecks         bool
+	SkipErrs           bool
 	LogLevel           am.LogLevel
 	SkipRpcMach        bool
 }
@@ -308,6 +312,7 @@ func (f *Filters) Equal(filters *Filters) bool {
 		f.SkipQueuedTx == filters.SkipQueuedTx &&
 		f.SkipOutGroup == filters.SkipOutGroup &&
 		f.SkipChecks == filters.SkipChecks &&
+		f.SkipErrs == filters.SkipErrs &&
 		f.LogLevel == filters.LogLevel &&
 		f.SkipRpcMach == filters.SkipRpcMach
 }
@@ -602,6 +607,7 @@ var (
 	ToolFilterHealth     = ToolName{"skip-health"}
 	ToolFilterOutGroup   = ToolName{"skip-outgroup"}
 	ToolFilterChecks     = ToolName{"skip-checks"}
+	ToolFilterErrs       = ToolName{"skip-errs"}
 	ToolFilterRpcMachs   = ToolName{"skip-rpc-machs"}
 	ToolFilterDisconn    = ToolName{"skip-disconn"}
 	ToolLogTimestamps    = ToolName{"hide-timestamps"}
@@ -647,6 +653,7 @@ var (
 		ToolFilterHealth,
 		ToolFilterOutGroup,
 		ToolFilterChecks,
+		ToolFilterErrs,
 		ToolFilterDisconn,
 		ToolLogTimestamps,
 		ToolFilterTraces,

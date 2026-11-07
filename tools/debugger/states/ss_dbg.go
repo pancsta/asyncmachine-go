@@ -63,7 +63,7 @@ type DebuggerStatesDef struct {
 
 	// errors
 	ErrDiagrams string
-	ErrUi string
+	ErrUi       string
 	ErrWeb      string
 
 	// web req for diagram viewer
@@ -88,23 +88,23 @@ type DebuggerStatesDef struct {
 	ClientListFocused      string
 	TimelineTxsFocused     string
 	TimelineMarkersFocused string
-	MatrixFocused        string
-	DialogFocused        string
-	Toolbar1Focused      string
-	Toolbar2Focused      string
-	Toolbar3Focused      string
-	Toolbar4Focused      string
-	LogReaderFocused     string
-	AddressFocused       string
-	Resized              string
+	MatrixFocused          string
+	DialogFocused          string
+	Toolbar1Focused        string
+	Toolbar2Focused        string
+	Toolbar3Focused        string
+	Toolbar4Focused        string
+	LogReaderFocused       string
+	AddressFocused         string
+	Resized                string
 
 	// view states
-	TimelineTxHidden        string
-	TimelineMarkersHidden   string
-	NarrowLayout            string
-	UserNarrowLayout        string
-	ClientListVisible       string
-	StateNameSelected       string
+	TimelineTxHidden      string
+	TimelineMarkersHidden string
+	NarrowLayout          string
+	UserNarrowLayout      string
+	ClientListVisible     string
+	StateNameSelected     string
 	HelpDialog            string
 	ExportDialog          string
 	LogUserScrolled       string
@@ -119,6 +119,7 @@ type DebuggerStatesDef struct {
 	FilterTraces          string
 	FilterHealth          string
 	FilterChecks          string
+	FilterErrs            string
 	FilterReaderGroup     string
 	FilterRpcMachs        string
 	FilterOutGroup        string
@@ -174,8 +175,8 @@ type DebuggerStatesDef struct {
 	RemoveClient    string
 	// TODO call UpdatingLog with partial acceptance and delegate to
 	// BuildingLog if out of bounds
-	BuildingLog     string
-	LogBuilt        string
+	BuildingLog string
+	LogBuilt    string
 
 	SetCursor  string
 	SetGroup   string
@@ -187,8 +188,8 @@ type DebuggerStatesDef struct {
 	DiagramsMachRendering  string
 	DiagramsMachReady      string
 	// pre-render all state-zoom diagrams for the selected machine
-	DiagramsStatesRendering string
-	DiagramsStatesReady     string
+	DiagramsStateRendering string
+	DiagramsStateReady     string
 
 	*ssam.BasicStatesDef
 	*ServerStatesDef
@@ -253,10 +254,10 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 
 		// focus group
 
-		ssD.TreeFocused:          {Remove: sgD.Focused},
-		ssD.TreeGroupsFocused:    {Remove: sgD.Focused},
-		ssD.LogFocused:           {Remove: sgD.Focused},
-		ssD.ClientListFocused:    {Remove: sgD.Focused},
+		ssD.TreeFocused:            {Remove: sgD.Focused},
+		ssD.TreeGroupsFocused:      {Remove: sgD.Focused},
+		ssD.LogFocused:             {Remove: sgD.Focused},
+		ssD.ClientListFocused:      {Remove: sgD.Focused},
 		ssD.TimelineTxsFocused:     {Remove: sgD.Focused},
 		ssD.TimelineMarkersFocused: {Remove: sgD.Focused},
 		ssD.MatrixFocused:          {Remove: sgD.Focused},
@@ -313,6 +314,7 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 		ssD.FilterTraces:         {},
 		ssD.FilterHealth:         {},
 		ssD.FilterChecks:         {},
+		ssD.FilterErrs:           {},
 		ssD.FilterReaderGroup:    {},
 		ssD.FilterRpcMachs:       {},
 		ssD.FilterOutGroup:       {},
@@ -439,7 +441,7 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 			Remove:  S{ssD.TailMode, ssD.Playing},
 		},
 		ssD.ToggleMark: {
-			Multi: true,
+			Multi:   true,
 			Require: S{ssD.ClientSelected},
 		},
 
@@ -501,15 +503,15 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 			Require: S{ssD.ClientSelected},
 			Remove:  S{ssD.DiagramsMachRendering},
 		},
-		ssD.DiagramsStatesRendering: {
+		ssD.DiagramsStateRendering: {
 			Multi:   true,
 			Require: S{ssD.ClientSelected},
 			Add:     S{ssD.Loading},
-			Remove:  S{ssD.DiagramsStatesReady},
+			Remove:  S{ssD.DiagramsStateReady},
 		},
-		ssD.DiagramsStatesReady: {
+		ssD.DiagramsStateReady: {
 			Require: S{ssD.ClientSelected},
-			Remove:  S{ssD.DiagramsStatesRendering},
+			Remove:  S{ssD.DiagramsStateRendering},
 		},
 	},
 )
@@ -569,7 +571,7 @@ var (
 	groupFilters = S{
 		ssD.FilterAutoTx, ssD.FilterCanceledTx, ssD.FilterEmptyTx,
 		ssD.FilterHealth, ssD.FilterOutGroup, ssD.FilterQueuedTx,
-		ssD.FilterAutoCanceledTx,
+		ssD.FilterAutoCanceledTx, ssD.FilterErrs,
 	}
 	ssD = am.NewStates(DebuggerStatesDef{})
 	sgD = am.NewStateGroups(DebuggerGroupsDef{
@@ -597,7 +599,7 @@ var (
 			ssD.Overlay, ssD.HelpDialog, ssD.ExportDialog,
 		),
 
-		Loading: S{ssD.SelectingClient, ssD.GcMsgs, ssD.DiagramsStatesRendering,
+		Loading: S{ssD.SelectingClient, ssD.GcMsgs, ssD.DiagramsStateRendering,
 			ssD.DiagramsGraphRendering, ssD.DiagramsMachRendering},
 	})
 

@@ -1,4 +1,4 @@
-package helpers
+package new
 
 import (
 	"context"
@@ -19,7 +19,7 @@ func TestDynMach(t *testing.T) {
 	)
 
 	// machine
-	mach, err := NewDynMach(ctx, machine.Schema{
+	mach, err := DynMach(ctx, machine.Schema{
 		// schema
 
 		StateFoo: {
