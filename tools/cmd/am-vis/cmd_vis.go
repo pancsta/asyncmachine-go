@@ -60,8 +60,8 @@ type Args struct {
 
 	// output
 
-	OutputPng      bool   `arg:"--output-png" help:"Output also PNG (slow)"`
-	OutputElk      bool   `arg:"--output-elk" default:"true" help:"Use ELK layout"`
+	OutputPng      bool   `arg:"--output-png" help:"Output also PNG"`
+	OutputD2       string `arg:"--output-d2" default:"elk" placeholder:"tala|none|elk|dagre" help:"D2 layout engine (tala, none, elk, dagre)"`
 	OutputFilename string `arg:"-o,--output-filename" default:"am-vis"`
 
 	// misc
@@ -93,6 +93,9 @@ func (Args) Description() string {
 	
 		# map view
 		am-vis --map render-dump mymach.gob.br
+	
+		# TALA layout for the D2 output
+		am-vis --output-d2 tala render-dump mymach.gob.br mach://MyMach1/t234
 	
 		# inspect a dump file as Markdown and XML
 		am-vis inspect-dump mymach.gob.br
@@ -214,15 +217,25 @@ func renderDump(ctx context.Context, args Args, cliArgs []string) error {
 	}
 
 	// render
+	layout, err := parseD2Layout(args.OutputD2)
+	if err != nil {
+		return err
+	}
+	if layout == visualizer.D2LayoutNone && args.OutputPng {
+		return fmt.Errorf("--output-png is incompatible with --output-d2 none")
+	}
 	vis.R.OutputFilename = args.OutputFilename
 	vis.R.OutputMermaid = false
+	vis.R.OutputD2Layout = layout
 	vis.R.OutputPng = args.OutputPng
 	fmt.Printf("Rendering... please wait\n")
 	if err := vis.R.GenDiagrams(ctx); err != nil {
 		return err
 	}
-	fmt.Printf("Rendered %s\n", args.OutputFilename+".svg")
-	fmt.Printf("Rendered %s\n", args.OutputFilename+".d2")
+	fmt.Printf("Rendered %s.d2\n", args.OutputFilename)
+	if layout != visualizer.D2LayoutNone {
+		fmt.Printf("Rendered %s.svg\n", args.OutputFilename)
+	}
 	// vis.Graph.DumpGv(args.OutputFilename + ".gv")
 
 	// push debug
@@ -353,7 +366,16 @@ func applyOverrides(args Args, cliArgs []string, vis *visualizer.Renderer) {
 	if cliParam("--render-depth") {
 		vis.RenderDepth = args.RenderDepth
 	}
-	if cliParam("--output-elk") {
-		vis.OutputElk = args.OutputElk
+}
+
+// parseD2Layout validates the --output-d2 value. TODO move to go-arg
+func parseD2Layout(val string) (visualizer.D2Layout, error) {
+	switch l := visualizer.D2Layout(strings.ToLower(val)); l {
+	case visualizer.D2LayoutTala, visualizer.D2LayoutNone,
+		visualizer.D2LayoutElk, visualizer.D2LayoutDagre:
+		return l, nil
+	default:
+		return "", fmt.Errorf(
+			"invalid --output-d2 value %q (allowed: tala, none, elk, dagre)", val)
 	}
 }

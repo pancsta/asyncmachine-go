@@ -197,8 +197,7 @@ func (d *Debugger) DiagramsGraphRenderingState(e *am.Event) {
 			// TODO fix RPC conns not visible
 			amvis.PresetMap(vis)
 			vis.OutputFilename = svgPath
-			// TODO
-			// vis.OutputD2Tala = true
+			vis.OutputD2Layout = d.diagramsLayout()
 			err := vis.GenDiagrams(ctx)
 			if ctx.Err() != nil {
 				return // expired
@@ -733,6 +732,15 @@ func (d *Debugger) diagramsWsUpdateStates(
 	}
 }
 
+// diagramsLayout returns the D2 layout engine for diagrams, as set by
+// --output-diag-layout. Defaults to TALA when unset.
+func (d *Debugger) diagramsLayout() amvis.D2Layout {
+	if d.params.OutputDiagLayout == types.ParamsDiagLayoutNone {
+		return amvis.D2LayoutTala
+	}
+	return amvis.D2Layout(d.params.OutputDiagLayout.Value)
+}
+
 func (d *Debugger) diagramsMachRender(
 	ctx context.Context, shot *amgraph.Graph, machId string,
 	detailLvl int, diagName string, states S,
@@ -786,6 +794,8 @@ func (d *Debugger) diagramsMachRender(
 	vis.RenderActive = false
 	vis.RenderMachs = []string{machId}
 	vis.OutputFilename = diagPath
+	// TODO tala doesnt handle many states
+	vis.OutputD2Layout = amvis.D2LayoutElk
 	if len(states) > 0 {
 		vis.RenderAllowlist = states
 	}
@@ -864,8 +874,7 @@ func (d *Debugger) diagramsStateRender(
 	vis.RenderMachs = []string{d.C.Id}
 	vis.OutputMermaid = false
 	vis.OutputFilename = diagPath
-	// TODO test
-	// vis.OutputElk = false
+	vis.OutputD2Layout = d.diagramsLayout()
 	// TODO skip Start, Ready
 
 	return vis.GenDiagrams(ctx)

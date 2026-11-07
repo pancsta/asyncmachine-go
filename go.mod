@@ -67,7 +67,7 @@ require (
 	github.com/oleiade/reflections v1.1.0
 	github.com/orsinium-labs/enum v1.4.0
 	github.com/pancsta/cview v1.5.23
-	github.com/pancsta/d2 v0.8.2-0.20260829154946-02b64fd28fde
+	github.com/pancsta/d2 v0.8.2-go1.26
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/polarsignals/frostdb v0.0.0-20250728125857-906ebbaef267
 	github.com/prometheus/client_golang v1.22.0

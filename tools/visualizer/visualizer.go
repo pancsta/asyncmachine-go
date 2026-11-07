@@ -32,6 +32,20 @@ var ss = states.VisualizerStates
 //go:embed diagram.html
 var HtmlDiagram []byte
 
+// D2Layout is a D2 layout engine name for SVG/PNG output.
+type D2Layout string
+
+const (
+	// D2LayoutNone writes the .d2 source only and skips layout, SVG and PNG.
+	D2LayoutNone D2Layout = "none"
+	// D2LayoutElk is the ELK layout engine.
+	D2LayoutElk D2Layout = "elk"
+	// D2LayoutDagre is the Dagre layout engine.
+	D2LayoutDagre D2Layout = "dagre"
+	// D2LayoutTala is the native TALA layout and edge-routing engine.
+	D2LayoutTala D2Layout = "tala"
+)
+
 func PresetSingle(r *Renderer) {
 	r.RenderDefaults()
 
@@ -296,12 +310,10 @@ type Renderer struct {
 	OutputD2Svg bool
 	// Render a Mermaid svg in addition to the plain text version.
 	OutputMermaidSvg bool
-	// Layout D2 using ELK.
-	OutputElk bool
-	// Layout D2 using TALA.
-	OutputD2Tala bool
-	// Also rasterize the diagram into a PNG, via the external d2 CLI (slow,
-	// requires d2 on PATH).
+	// Layout engine used for D2 SVG/PNG output: D2LayoutElk (default),
+	// D2LayoutDagre, D2LayoutTala, or D2LayoutNone (write the .d2 source only).
+	OutputD2Layout D2Layout
+	// Also rasterize the diagram into a PNG (pure Go, no browser required).
 	OutputPng bool
 
 	// TODO refac to prefixes -d2-png, -d2-elk, -mermaid-elk
@@ -340,10 +352,10 @@ func NewRenderer(
 		graph: graph,
 
 		// output defaults
-		OutputD2:      true,
-		OutputMermaid: true,
-		OutputD2Svg:   true,
-		OutputElk:     true,
+		OutputD2:       true,
+		OutputMermaid:  true,
+		OutputD2Svg:    true,
+		OutputD2Layout: D2LayoutElk,
 	}
 
 	vis.RenderDefaults()
@@ -429,11 +441,9 @@ func (r *Renderer) outputMermaid(ctx context.Context) error {
 	r.log("Generating mermaid\n")
 
 	r.cleanBuffer()
-	if r.OutputElk {
-		r.buf.WriteString(
-			"%%{init: {'flowchart': {'defaultRenderer': 'elk'}} }%%\n",
-		)
-	}
+	r.buf.WriteString(
+		"%%{init: {'flowchart': {'defaultRenderer': 'elk'}} }%%\n",
+	)
 	r.buf.WriteString("flowchart LR\n")
 
 	graphMap, err := r.graph.G.AdjacencyMap()
