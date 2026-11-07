@@ -2,28 +2,34 @@
 // states, based on the dbg telemetry protocol.
 package graph
 
-// TODO fix GC
-
 import (
+	"encoding/gob"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/dominikbraun/graph"
 	"github.com/dominikbraun/graph/draw"
 
+	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
-var ErrGraph = errors.New("graph error")
+var (
+	ErrGraph      = errors.New("graph error")
+	StateErrGraph = am.PrefixErr + "Graph"
+)
 
 // AddErrGraph adds [ErrGraph].
 func AddErrGraph(
@@ -41,6 +47,7 @@ var ss = ssdbg.ServerStates
 
 type Vertex struct {
 	StateName string
+	TagName   string
 	MachId    string
 }
 
@@ -55,13 +62,15 @@ type EdgeData struct {
 	MachChildOf bool
 	// machine has pipes going to another machine
 	MachPipesTo []*MachPipeTo
+	// machine has a tag
+	MachHasTag bool
 
 	// state has relations with other states
 	StateRelation []*StateRelation
 }
 
 // Client:
-// - has State inherited:string auto:bool multi:bool
+// - has State auto:bool multi:bool
 // - connectedTo Client addr:string
 // - pipeTo Client states:map[string]string
 // - childOf Client
@@ -71,16 +80,14 @@ type EdgeData struct {
 // - pipeTo Client|state add:bool
 
 type MachineHas struct {
-	Inherited string
-	Auto      bool
-	Multi     bool
+	Auto  bool
+	Multi bool
 }
 
 type StateRelation struct {
 	RelType am.Relation
 }
 
-// TODO use am.Pipe
 type MachPipeTo struct {
 	FromState string
 	ToState   string
@@ -93,23 +100,18 @@ type Connection struct {
 	Target *Vertex
 }
 
-func hash(c *Vertex) string {
-	if c.StateName != "" {
-		return c.MachId + ":" + c.StateName
-	}
-	return c.MachId
-}
+// Machine represents a single state machine withing the network graph.
+type Machine = amtypes.Machine
 
-// Client represents a single state machine withing the network graph.
-type Client struct {
-	Id string
-	// TODO version schemas
-	MsgSchema *dbg.DbgMsgStruct
-
-	LatestMsgTx   *dbg.DbgMsgTx
-	LatestTimeSum uint64
-	LatestMTime   am.Time
-	ConnId        string
+type MachInspect struct {
+	Child    string
+	States   []string
+	Conns    []string
+	Pipes    map[string][]string
+	Schema   am.Schema
+	Tags     []string
+	MTime    am.Time
+	MTimeSum uint64
 }
 
 // ///// ///// /////
@@ -118,29 +120,28 @@ type Client struct {
 
 // ///// ///// /////
 
+// Graph represents a network graph of state machines, states, and tags.
 type Graph struct {
-	Server  *am.Machine
-	Clients map[string]*Client
+	ParentMach *am.Machine
+	Machines   map[string]*Machine
 
 	// G is a directed graph of machines and states with metadata.
 	G graph.Graph[string, *Vertex]
 	// Map is a unidirectional mirror of g, without metadata.
 	Map graph.Graph[string, *Vertex]
+
+	// lock for Clone(), called by a consumer
+	loop sync.Mutex
 }
 
-func New(server *am.Machine) (*Graph, error) {
-	if !server.Has(ssdbg.ServerStates.Names()) {
-		return nil, fmt.Errorf(
-			"Graph.New: server machine %s does not implement ssdbg.ServerStates",
-			server.Id(),
-		)
-	}
+func New(parentMach *am.Machine) (*Graph, error) {
+	// TODO verify parentMach has ErrGraph
 
 	g := &Graph{
-		Server:  server,
-		G:       graph.New(hash, graph.Directed()),
-		Map:     graph.New(hash),
-		Clients: make(map[string]*Client),
+		ParentMach: parentMach,
+		G:          graph.New(hash, graph.Directed()),
+		Map:        graph.New(hash),
+		Machines:   make(map[string]*Machine),
 	}
 
 	// err := m.BindHandlers(g)
@@ -149,42 +150,6 @@ func New(server *am.Machine) (*Graph, error) {
 	// }
 
 	return g, nil
-}
-
-// Clone returns a deep clone of the graph.
-func (g *Graph) Clone() (*Graph, error) {
-	c1, err := g.G.Clone()
-	if err != nil {
-		return nil, err
-	}
-
-	c2, err := g.Map.Clone()
-	if err != nil {
-		return nil, err
-	}
-
-	g2 := &Graph{
-		G:       c1,
-		Map:     c2,
-		Clients: make(map[string]*Client, len(g.Clients)),
-	}
-
-	for id, c := range g.Clients {
-		g2.Clients[id] = &Client{
-			Id:            id,
-			MsgSchema:     c.MsgSchema,
-			LatestMTime:   c.LatestMTime,
-			LatestTimeSum: c.LatestTimeSum,
-		}
-	}
-
-	return g2, nil
-}
-
-func (g *Graph) Clear() {
-	g.Clients = make(map[string]*Client)
-	g.G = graph.New(hash, graph.Directed())
-	g.Map = graph.New(hash)
 }
 
 // Connection returns a Connection for the given source-target.
@@ -210,159 +175,36 @@ func (g *Graph) Connection(source, target string) (*Connection, error) {
 	}, nil
 }
 
-func (g *Graph) ParseMsg(id string, msgTx *dbg.DbgMsgTx) {
-	c := g.Clients[id]
-
-	// TODO err
+func (g *Graph) AddMachine(gmach *Machine) error {
+	c := gmach
 	if c == nil {
-		return
+		return nil
 	}
+	id := c.ID
+	g.Machines[id] = c
 
-	var sum uint64
-	for _, v := range msgTx.Clocks {
-		sum += v
-	}
-	index := c.MsgSchema.StatesIndex
-
-	// optimize space
-	if len(msgTx.CalledStates) > 0 {
-		msgTx.CalledStatesIdxs = amhelp.StatesToIndexes(index,
-			msgTx.CalledStates)
-		msgTx.MachineID = ""
-		msgTx.CalledStates = nil
-	}
-
-	if err := g.parseRpcConns(c, msgTx); err != nil {
-		AddErrGraph(nil, g.Server, fmt.Errorf("ParseMsg: %w", err))
-	}
-
-	// TODO errors
-	// var isErr bool
-	// for _, name := range index {
-	// 	if strings.HasPrefix(name, "Err") && msgTx.Is1(index, name) {
-	// 		isErr = true
-	// 		break
-	// 	}
-	// }
-	// if isErr || msgTx.Is1(index, am.StateException) {
-	// 	// prepend to errors TODO DB errors
-	// 	// idx := SQL COUNT
-	// 	c.errors = append([]int{idx}, c.errors...)
-	// }
-
-	if err := g.parseMsgLog(c, msgTx); err != nil {
-		AddErrGraph(nil, g.Server, fmt.Errorf("parseMsgLog: %w", err))
-	}
-
-	// TODO dedicated error state, enable once stable
-	// if err != nil {
-	// g.Mach.AddErr(fmt.Errorf("Graph.parseMsgLog: %w", err), nil)
-	// }
-	c.LatestMsgTx = msgTx
-	// TODO assert clocks
-	c.LatestMTime = msgTx.Clocks
-	c.LatestTimeSum = sum
-}
-
-func (g *Graph) parseRpcConns(c *Client, msgTx *dbg.DbgMsgTx) error {
-	index := c.MsgSchema.StatesIndex
-
-	// detect RPC connections - read arg "id" for HandshakeDone, being the ID of
-	// the RPC client
-	if c.LatestMsgTx != nil {
-		prevTx := c.LatestMsgTx
-		fakeTx := &am.Transition{
-			TimeBefore: prevTx.Clocks,
-			TimeAfter:  msgTx.Clocks,
-		}
-		added, _, _ := amhelp.GetTransitionStates(fakeTx, index)
-
-		// RPC conns (requires LogLevel2)
-		isRpcServer := slices.Contains(c.MsgSchema.Tags, ssrpc.TagRpcServer)
-		if slices.Contains(added, ssrpc.ServerStates.HandshakeDone) && isRpcServer {
-			for _, item := range msgTx.LogEntries {
-				if !strings.HasPrefix(item.Text, "[add] ") {
-					continue
-				}
-
-				line := strings.Split(strings.TrimRight(item.Text, ")\n"), "(")
-				for _, arg := range strings.Split(line[1], " ") {
-					a := strings.Split(arg, "=")
-					if a[0] != "id" {
-						continue
-					}
-
-					id := a[1]
-					err := g.AddEdge(id, c.Id, &EdgeData{MachConnectedTo: true})
-					if err != nil {
-						return err
-					}
-					_ = g.Map.AddEdge(id, c.Id)
-				}
-			}
-		}
-	}
-
-	// link netmachs to sources
-	if id := amhelp.TagValue(c.MsgSchema.Tags, ssrpc.TagKeySrcId); id != "" {
-		err := g.AddEdge(c.Id, id, &EdgeData{MachConnectedTo: true})
-		if err != nil {
-			return err
-		}
-		_ = g.Map.AddEdge(c.Id, id)
-	}
-
-	return nil
-}
-
-func (g *Graph) RemoveClient(id string) error {
-	// TODO
-	return nil
-}
-
-func (g *Graph) AddEdge(srcId, destId string, data *EdgeData) error {
-	if err := g.addMach(srcId, nil); err != nil {
-		return err
-	}
-	if err := g.addMach(destId, nil); err != nil {
-		return err
-	}
-
-	err := g.G.AddEdge(srcId, destId, graph.EdgeData(data))
-	if err == nil {
-		_ = g.Map.AddEdge(srcId, destId)
-	}
-
-	return err
-}
-
-func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
-	// init
-	id := msg.ID
-	c := &Client{
-		Id:          id,
-		MsgSchema:   msg,
-		LatestMTime: make(am.Time, len(msg.States)),
-	}
-	g.Clients[id] = c
-
-	// add machine TODO dont exit on error, merge
+	// add machine
 	var err error
-	if err = g.addMach(c.Id, c); err != nil {
+	if err = g.addMach(c.ID, c); err != nil {
 		return err
 	}
+
+	// add tags
+	tags := slices.Clone(c.Tags)
+	c.Tags = nil
+	g.setClientTags(c, tags)
 
 	// parent
-	if c.MsgSchema.Parent != "" {
-		err = g.AddEdge(c.Id, c.MsgSchema.Parent, &EdgeData{MachChildOf: true})
+	if c.Parent != "" {
+		err = g.addEdge(c.ID, c.Parent, &EdgeData{MachChildOf: true})
 		if err != nil {
 			return err
 		}
-		_ = g.Map.AddEdge(c.Id, c.MsgSchema.Parent)
+		_ = g.Map.AddEdge(c.ID, c.Parent)
 	}
 
 	// add states
-	for name, props := range c.MsgSchema.States {
+	for name, props := range c.Schema {
 		// vertex
 		err = g.G.AddVertex(&Vertex{
 			MachId:    id,
@@ -381,8 +223,6 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 			MachHas: &MachineHas{
 				Auto:  props.Auto,
 				Multi: props.Multi,
-				// TODO
-				Inherited: "",
 			},
 		}))
 		if err != nil {
@@ -392,7 +232,7 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 	}
 
 	// DEBUG
-	// if c.Id == "rc-srv-browser2" {
+	// if c.ID == "rc-srv-browser2" {
 	// 	ver, _ := g.G.Vertex("rc-srv-browser2")
 	// 	ver = ver
 	// 	print()
@@ -404,7 +244,7 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 	}
 
 	// add relations
-	for name, state := range c.MsgSchema.States {
+	for name, state := range c.Schema {
 
 		// define
 		toAdd := []relation{
@@ -448,28 +288,212 @@ func (g *Graph) AddClient(msg *dbg.DbgMsgStruct) error {
 		}
 	}
 
+	// TODO add tags
+
 	return nil
 }
 
-func (g *Graph) addMach(id string, client *Client) error {
-	err := g.G.AddVertex(&Vertex{
-		MachId: id,
-	})
-	if errors.Is(err, graph.ErrVertexAlreadyExists) {
-		// update
-		if client != nil && client.MsgSchema != nil {
-			g.Clients[id] = client
-		}
+func (g *Graph) RemoveMachine(id string) error {
+	g.loop.Lock()
+	defer g.loop.Unlock()
 
+	c, ok := g.Machines[id]
+	if !ok {
 		return nil
 	}
+	delete(g.Machines, id)
+
+	adj, err := g.G.AdjacencyMap()
 	if err != nil {
 		return err
 	}
-	_ = g.Map.AddVertex(&Vertex{
-		MachId: id,
-	})
-	return err
+	for _, edge := range adj[id] {
+		_ = g.G.RemoveEdge(id, edge.Target)
+		_ = g.Map.RemoveEdge(id, edge.Target)
+	}
+	pred, err := g.G.PredecessorMap()
+	if err != nil {
+		return err
+	}
+	for _, edge := range pred[id] {
+		_ = g.G.RemoveEdge(edge.Source, id)
+		_ = g.Map.RemoveEdge(edge.Source, id)
+	}
+
+	for name := range c.Schema {
+		_ = g.G.RemoveVertex(id + ":" + name)
+		_ = g.Map.RemoveVertex(id + ":" + name)
+	}
+	for _, tag := range c.Tags {
+		g.removeTagVertex(id, tag)
+	}
+	_ = g.G.RemoveVertex(id)
+	_ = g.Map.RemoveVertex(id)
+
+	return nil
+}
+
+// RemoveTags removes all tag vertices and their edges of a machine, e.g. for
+// render snapshots which don't need tags.
+func (g *Graph) RemoveTags(id string) {
+	g.loop.Lock()
+	defer g.loop.Unlock()
+
+	c, ok := g.Machines[id]
+	if !ok || c == nil {
+		return
+	}
+	for _, tag := range c.Tags {
+		g.removeTagVertex(id, tag)
+	}
+}
+
+// Clone returns a deep clone of the graph.
+func (g *Graph) Clone() (*Graph, error) {
+	// consumer lock
+	g.loop.Lock()
+	defer g.loop.Unlock()
+
+	c1, err := g.G.Clone()
+	if err != nil {
+		return nil, err
+	}
+
+	c2, err := g.Map.Clone()
+	if err != nil {
+		return nil, err
+	}
+
+	g2 := &Graph{
+		G:        c1,
+		Map:      c2,
+		Machines: make(map[string]*Machine, len(g.Machines)),
+	}
+
+	for id, c := range g.Machines {
+		g2.Machines[id] = c.Clone()
+	}
+
+	return g2, nil
+}
+
+// Machine returns a copy of a client for safe concurrent reads.
+func (g *Graph) Machine(id string) (*Machine, bool) {
+	g.loop.Lock()
+	defer g.loop.Unlock()
+
+	c, ok := g.Machines[id]
+	if !ok {
+		return nil, false
+	}
+	return c.Clone(), true
+}
+
+func (g *Graph) Clear() {
+	clear(g.Machines)
+	g.G = graph.New(hash, graph.Directed())
+	g.Map = graph.New(hash)
+}
+
+func (g *Graph) ParseMsgDbg(id string, msgTx *dbg.DbgMsgTx) {
+	c := g.Machines[id]
+
+	// TODO err
+	if c == nil {
+		return
+	}
+
+	var sum uint64
+	for _, v := range msgTx.Clocks {
+		sum += v
+	}
+	if msgTx.Tags != nil {
+		g.setClientTags(c, msgTx.Tags)
+	}
+	index := c.StateNames
+
+	// optimize space
+	if len(msgTx.CalledStates) > 0 {
+		msgTx.CalledStatesIdxs = amhelp.StatesToIndexes(index,
+			msgTx.CalledStates)
+		msgTx.MachineID = ""
+		msgTx.CalledStates = nil
+	}
+
+	if err := g.parseRpcConns(c, msgTx); err != nil {
+		AddErrGraph(nil, g.ParentMach, fmt.Errorf("ParseMsg: %w", err))
+	}
+
+	// TODO errors
+	// var isErr bool
+	// for _, name := range index {
+	// 	if strings.HasPrefix(name, "Err") && msgTx.Is1(index, name) {
+	// 		isErr = true
+	// 		break
+	// 	}
+	// }
+	// if isErr || msgTx.Is1(index, am.StateException) {
+	// 	// prepend to errors TODO DB errors
+	// 	// idx := SQL COUNT
+	// 	c.errors = append([]int{idx}, c.errors...)
+	// }
+
+	if err := g.parseMsgDbgLog(c, msgTx); err != nil {
+		AddErrGraph(nil, g.ParentMach, fmt.Errorf("parseMsgLog: %w", err))
+	}
+
+	// TODO dedicated error state, enable once stable
+	// if err != nil {
+	// g.Mach.AddErr(fmt.Errorf("Graph.parseMsgLog: %w", err), nil)
+	// }
+	// TODO assert clocks
+	c.Time = msgTx.Clocks
+	c.MTimeSum = sum
+}
+
+// ParseMsgRpc applies a network graph update to the local clock data.
+func (g *Graph) ParseMsgRpc(update *MsgGraphUpdate) bool {
+	if update == nil {
+		return false
+	}
+	c := g.Machines[update.MachId]
+	if c == nil {
+		return false
+	}
+	if update.SchemaHash != c.SchemaHash {
+		return false
+	}
+	// TODO move to update.Validate()
+	if len(update.Indexes) != len(update.Ticks) {
+		return false
+	}
+
+	mTime := slices.Clone(c.Time)
+	for i, idx := range update.Indexes {
+		if int(idx) >= len(mTime) {
+			return false
+		}
+		mTime[idx] += uint64(update.Ticks[i])
+	}
+
+	qTick := c.QueueTick + uint64(update.QueueTick)
+	machTick := c.MachineTick + uint32(update.MachTick)
+	sum := mTime.Sum(nil)
+	if arpc.Checksum(sum, qTick, machTick) != update.Checksum {
+		return false
+	}
+
+	if update.Tags != nil && update.TagsTime >= c.TagsMTimeSum {
+		g.setClientTags(c, update.Tags)
+		c.TagsMTimeSum = update.TagsTime
+	}
+
+	c.Time = mTime
+	c.MTimeSum = sum
+	c.QueueTick = qTick
+	c.MachineTick = machTick
+
+	return true
 }
 
 // DumpGv will create a dot-format *.gv file of the graph. To create an SVG:
@@ -483,17 +507,6 @@ func (g *Graph) DumpGv(path string) error {
 	return draw.DOT(g.G, file)
 }
 
-type MachInspect struct {
-	Child  string
-	States []string
-	Conns  []string
-	Pipes  map[string][]string
-	Time   uint64
-	Schema am.Schema
-	Tags   []string
-	MTime  am.Time
-}
-
 func (g *Graph) Inspect() (map[string]*MachInspect, error) {
 	adjacencyMap, err := g.G.AdjacencyMap()
 	if err != nil {
@@ -504,7 +517,7 @@ func (g *Graph) Inspect() (map[string]*MachInspect, error) {
 		if len(strings.Split(machId, ":")) == 2 {
 			continue
 		}
-		c, ok := g.Clients[machId]
+		c, ok := g.Machines[machId]
 		if !ok {
 			// TODO err
 			continue
@@ -514,12 +527,12 @@ func (g *Graph) Inspect() (map[string]*MachInspect, error) {
 		_, ok = inspect[machId]
 		if !ok {
 			inspect[machId] = &MachInspect{
-				Pipes:  make(map[string][]string),
-				Time:   c.LatestTimeSum,
-				Schema: c.MsgSchema.States.Clone(),
-				Tags:   slices.Clone(c.MsgSchema.Tags),
-				MTime:  slices.Clone(c.LatestMTime),
-				States: slices.Clone(c.MsgSchema.StatesIndex),
+				Pipes:    make(map[string][]string),
+				MTimeSum: c.MTimeSum,
+				Schema:   c.Schema.Clone(),
+				Tags:     slices.Clone(c.Tags),
+				MTime:    slices.Clone(c.Time),
+				States:   slices.Clone(c.StateNames),
 			}
 		}
 
@@ -549,10 +562,110 @@ func (g *Graph) Inspect() (map[string]*MachInspect, error) {
 
 // private
 
-func (g *Graph) parseMsgLog(c *Client, msgTx *dbg.DbgMsgTx) error {
+// setClientTags updates machine tags and their RPC tag relations.
+// TODO err
+func (g *Graph) setClientTags(c *Machine, tags []string) {
+	if c.Serialized == nil {
+		return
+	}
+	oldTags := c.Tags
+	oldSrc := amhelp.TagValue(oldTags, ssrpc.TagKeySrcId)
+	newSrc := amhelp.TagValue(tags, ssrpc.TagKeySrcId)
+	c.Tags = slices.Clone(tags)
+
+	for _, tag := range oldTags {
+		if !slices.Contains(tags, tag) {
+			g.removeTagVertex(c.ID, tag)
+		}
+	}
+	for _, tag := range tags {
+		if !slices.Contains(oldTags, tag) {
+			g.addTagVertex(c.ID, tag)
+		}
+	}
+
+	if oldSrc != "" && oldSrc != newSrc {
+		_ = g.G.RemoveEdge(c.ID, oldSrc)
+		_ = g.Map.RemoveEdge(c.ID, oldSrc)
+	}
+	if newSrc != "" && newSrc != oldSrc {
+		_ = g.addEdge(c.ID, newSrc, &EdgeData{MachConnectedTo: true})
+	}
+}
+
+func (g *Graph) addTagVertex(id string, tag string) {
+	v := &Vertex{MachId: id, TagName: tag}
+	tagID := hash(v)
+	_ = g.G.AddVertex(v)
+	_ = g.Map.AddVertex(&Vertex{MachId: id, TagName: tag})
+	_ = g.G.AddEdge(id, tagID, graph.EdgeData(&EdgeData{MachHasTag: true}))
+	_ = g.Map.AddEdge(id, tagID)
+}
+
+func (g *Graph) removeTagVertex(id string, tag string) {
+	v := &Vertex{MachId: id, TagName: tag}
+	tagID := hash(v)
+	_ = g.G.RemoveEdge(id, tagID)
+	_ = g.Map.RemoveEdge(id, tagID)
+	_ = g.G.RemoveVertex(tagID)
+	_ = g.Map.RemoveVertex(tagID)
+}
+
+func (g *Graph) parseRpcConns(c *Machine, msgTx *dbg.DbgMsgTx) error {
+	// link netmachs to sources
+	if id := amhelp.TagValue(c.Tags, ssrpc.TagKeySrcId); id != "" {
+		err := g.addEdge(c.ID, id, &EdgeData{MachConnectedTo: true})
+		if err != nil {
+			return err
+		}
+		_ = g.Map.AddEdge(c.ID, id)
+	}
+
+	return nil
+}
+
+func (g *Graph) addEdge(srcId, destId string, data *EdgeData) error {
+	if err := g.addMach(srcId, nil); err != nil {
+		return err
+	}
+	if err := g.addMach(destId, nil); err != nil {
+		return err
+	}
+
+	err := g.G.AddEdge(srcId, destId, graph.EdgeData(data))
+	if err == nil {
+		_ = g.Map.AddEdge(srcId, destId)
+	}
+
+	return err
+}
+
+// addMach upsert a mach or a placeholder
+func (g *Graph) addMach(id string, client *Machine) error {
+	err := g.G.AddVertex(&Vertex{
+		MachId: id,
+	})
+	if errors.Is(err, graph.ErrVertexAlreadyExists) {
+		// update
+		if client != nil && client.Serialized != nil {
+			g.Machines[id] = client
+		}
+
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_ = g.Map.AddVertex(&Vertex{
+		MachId: id,
+	})
+	return err
+}
+
+func (g *Graph) parseMsgDbgLog(c *Machine, msgTx *dbg.DbgMsgTx) error {
 	// pre-tx log entries
 	for _, entry := range msgTx.PreLogEntries {
-		err := g.parseMsgReader(c, entry, msgTx)
+		err := g.parseMsgDbgReader(c, entry, msgTx)
 		if err != nil {
 			return err
 		}
@@ -560,7 +673,7 @@ func (g *Graph) parseMsgLog(c *Client, msgTx *dbg.DbgMsgTx) error {
 
 	// tx log entries
 	for _, entry := range msgTx.LogEntries {
-		err := g.parseMsgReader(c, entry, msgTx)
+		err := g.parseMsgDbgReader(c, entry, msgTx)
 		if err != nil {
 			return err
 		}
@@ -569,8 +682,8 @@ func (g *Graph) parseMsgLog(c *Client, msgTx *dbg.DbgMsgTx) error {
 	return nil
 }
 
-func (g *Graph) parseMsgReader(
-	c *Client, log *am.LogEntry, tx *dbg.DbgMsgTx,
+func (g *Graph) parseMsgDbgReader(
+	c *Machine, log *am.LogEntry, tx *dbg.DbgMsgTx,
 ) error {
 	// NEW PIPE
 
@@ -604,11 +717,11 @@ func (g *Graph) parseMsgReader(
 		var sourceMachId string
 		var targetMachId string
 		if isPipeOut {
-			sourceMachId = c.Id
+			sourceMachId = c.ID
 			targetMachId = otherMach
 		} else {
 			sourceMachId = otherMach
-			targetMachId = c.Id
+			targetMachId = c.ID
 		}
 
 		// get edge
@@ -640,7 +753,7 @@ func (g *Graph) parseMsgReader(
 		// if isPipeOut {
 		// 	stateDbg += " out"
 		// }
-		// dump.Println(c.Id, stateDbg, sourceMachId+"->"+targetMachId, data)
+		// dump.Println(c.ID, stateDbg, sourceMachId+"->"+targetMachId, data)
 
 		// update the missing state from the other side of the pipe
 		found := false
@@ -726,7 +839,174 @@ func (g *Graph) parseMsgReader(
 	return nil
 }
 
-// FUNCS
+// SaveGob writes the graph to w using encoding/gob.
+//
+// Only the exported graph data is saved: clients ([Machine]), vertices, and
+// edges with their [EdgeData]. Runtime-only state (ParentMach, locks, the
+// dominikbraun graph internals) is not serialized; [Graph.LoadGob] rebuilds
+// them.
+func (g *Graph) SaveGob(w io.Writer) error {
+	if g == nil {
+		return errors.New("graph is nil")
+	}
+
+	g.loop.Lock()
+	defer g.loop.Unlock()
+
+	snap := gobSnapshot{
+		Version: gobFormatVersion,
+		Clients: make(map[string]*Machine, len(g.Machines)),
+	}
+	for id, client := range g.Machines {
+		snap.Clients[id] = client.Clone()
+	}
+
+	adj, err := g.G.AdjacencyMap()
+	if err != nil {
+		return fmt.Errorf("graph adjacency: %w", err)
+	}
+	for vertexHash := range adj {
+		v, err := g.G.Vertex(vertexHash)
+		if err != nil {
+			return fmt.Errorf("graph vertex %q: %w", vertexHash, err)
+		}
+		snap.Vertices = append(snap.Vertices, &Vertex{
+			StateName: v.StateName,
+			TagName:   v.TagName,
+			MachId:    v.MachId,
+		})
+	}
+
+	edges, err := g.G.Edges()
+	if err != nil {
+		return fmt.Errorf("graph edges: %w", err)
+	}
+	for _, edge := range edges {
+		data, _ := edge.Properties.Data.(*EdgeData)
+		snap.Edges = append(snap.Edges, gobEdge{
+			Source: edge.Source,
+			Target: edge.Target,
+			Data:   cloneEdgeData(data),
+		})
+	}
+
+	return gob.NewEncoder(w).Encode(&snap)
+}
+
+// LoadGob replaces the graph's contents with the data read from r, as written
+// by [Graph.SaveGob]. ParentMach is preserved, everything else is rebuilt.
+func (g *Graph) LoadGob(r io.Reader) error {
+	if g == nil {
+		return errors.New("graph is nil")
+	}
+
+	var snap gobSnapshot
+	if err := gob.NewDecoder(r).Decode(&snap); err != nil {
+		return err
+	}
+	if snap.Version != gobFormatVersion {
+		return fmt.Errorf("graph: unsupported gob version %d", snap.Version)
+	}
+
+	g.loop.Lock()
+	defer g.loop.Unlock()
+
+	g.G = graph.New(hash, graph.Directed())
+	g.Map = graph.New(hash)
+	g.Machines = make(map[string]*Machine, len(snap.Clients))
+	for id, client := range snap.Clients {
+		g.Machines[id] = client
+	}
+
+	for _, v := range snap.Vertices {
+		if err := g.G.AddVertex(&Vertex{
+			StateName: v.StateName,
+			TagName:   v.TagName,
+			MachId:    v.MachId,
+		}); err != nil {
+			return fmt.Errorf("graph vertex %q: %w", hash(v), err)
+		}
+		if err := g.Map.AddVertex(&Vertex{
+			StateName: v.StateName,
+			TagName:   v.TagName,
+			MachId:    v.MachId,
+		}); err != nil {
+			return fmt.Errorf("map vertex %q: %w", hash(v), err)
+		}
+	}
+
+	for _, e := range snap.Edges {
+		if err := g.G.AddEdge(e.Source, e.Target,
+			graph.EdgeData(e.Data)); err != nil {
+			return fmt.Errorf("graph edge %q->%q: %w", e.Source, e.Target, err)
+		}
+		if err := g.Map.AddEdge(e.Source, e.Target); err != nil {
+			return fmt.Errorf("map edge %q->%q: %w", e.Source, e.Target, err)
+		}
+	}
+
+	return nil
+}
+
+// ///// ///// /////
+
+// ///// UTILS
+
+// ///// ///// /////
+
+// gobFormatVersion is the on-wire format of [Graph.SaveGob].
+const gobFormatVersion = 1
+
+// cloneEdgeData deep-copies edge metadata for serialization.
+func cloneEdgeData(data *EdgeData) *EdgeData {
+	if data == nil {
+		return nil
+	}
+	cp := *data
+	if data.MachHas != nil {
+		has := *data.MachHas
+		cp.MachHas = &has
+	}
+	if data.MachPipesTo != nil {
+		cp.MachPipesTo = make([]*MachPipeTo, len(data.MachPipesTo))
+		for i, pipe := range data.MachPipesTo {
+			if pipe == nil {
+				continue
+			}
+			p := *pipe
+			cp.MachPipesTo[i] = &p
+		}
+	}
+	if data.StateRelation != nil {
+		cp.StateRelation = make([]*StateRelation, len(data.StateRelation))
+		for i, rel := range data.StateRelation {
+			if rel == nil {
+				continue
+			}
+			r := *rel
+			cp.StateRelation[i] = &r
+		}
+	}
+
+	return &cp
+}
+
+// gobSnapshot is the serializable form of [Graph]: the clients, vertices, and
+// edges with their metadata. Runtime state (ParentMach, mutexes, the
+// dominikbraun internals) is rebuilt on load.
+type gobSnapshot struct {
+	Version  int
+	Clients  map[string]*Machine
+	Vertices []*Vertex
+	Edges    []gobEdge
+}
+
+// gobEdge is one serialized edge with its metadata.
+type gobEdge struct {
+	Source string
+	Target string
+	Data   *EdgeData
+}
 
 // Markdown returns a Markdown format of the network graph, with state lists,
 // with a flat hierarchy. It's useful for debugging.
@@ -738,16 +1018,24 @@ func Markdown(inspect map[string]*MachInspect) string {
 		data := inspect[machId]
 		ret += "## " + machId + "\n"
 		// TODO format
-		ret += fmt.Sprintf("Time: t%d\n", data.Time)
+		ret += fmt.Sprintf("Time: t%d\n", data.MTimeSum)
 		if data.Child != "" {
 			ret += fmt.Sprintf("Parent: %s\n\n", data.Child)
 		} else {
 			ret += "\n"
 		}
 		if len(data.States) > 0 {
-			sort.Strings(data.States)
+			states := slices.Clone(data.States)
+			sort.Strings(states)
 			ret += "### States\n"
-			ret += fmt.Sprintf("- %s\n", strings.Join(data.States, "\n- "))
+			for _, name := range states {
+				if idx := slices.Index(data.States, name); idx >= 0 &&
+					idx < len(data.MTime) {
+					ret += fmt.Sprintf("- %s:%d\n", name, data.MTime[idx])
+				} else {
+					ret += fmt.Sprintf("- %s\n", name)
+				}
+			}
 			ret += "\n"
 		}
 		if len(data.Conns) > 0 {
@@ -800,6 +1088,35 @@ func Markup(inspect map[string]*MachInspect) string {
 	return ret
 }
 
+func MsgDbgToMach(msg *dbg.DbgMsgStruct) *Machine {
+	if msg == nil {
+		return nil
+	}
+	return &Machine{
+		Serialized: &am.Serialized{
+			ID:          msg.ID,
+			StateNames:  slices.Clone(msg.StatesIndex),
+			Time:        make(am.Time, len(msg.StatesIndex)),
+			QueueTick:   1,
+			MachineTick: 0,
+			Tags:        slices.Clone(msg.Tags),
+		},
+		SchemaHash: amhelp.SchemaHash(msg.States),
+		Schema:     msg.States.Clone(),
+		Parent:     msg.Parent,
+	}
+}
+
+func hash(c *Vertex) string {
+	if c.StateName != "" {
+		return c.MachId + ":" + c.StateName
+	}
+	if c.TagName != "" {
+		return c.MachId + "#" + c.TagName
+	}
+	return c.MachId
+}
+
 func writePipe(target, pipe, pad string) string {
 	body := pipe
 	attrs := fmt.Sprintf(" to=%q", target)
@@ -847,7 +1164,7 @@ func writeMachine(
 	data := inspect[id]
 	pad := strings.Repeat("    ", indent)
 	inner := pad + "    "
-	ret := fmt.Sprintf("%s<machine id=%q time=\"%d\">\n", pad, id, data.Time)
+	ret := fmt.Sprintf("%s<machine id=%q time=\"%d\">\n", pad, id, data.MTimeSum)
 
 	states := slices.Clone(data.States)
 	sort.Strings(states)
