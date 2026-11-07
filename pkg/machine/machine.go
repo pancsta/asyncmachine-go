@@ -3665,22 +3665,57 @@ func (m *Machine) SetGroups(groups any, optStates States) {
 
 	// add all the groups
 	if groups != nil {
-		// TODO recursive for inherited groups
-		val := reflect.ValueOf(groups)
-		typ := val.Type()
-		for i := 0; i < val.NumField(); i++ {
-			field := typ.Field(i)
-			kind := field.Type.Kind()
-			if kind != reflect.Slice {
-				continue
+		// TODO extract
+		var walk func(reflect.Value)
+		walk = func(val reflect.Value) {
+			if val.Kind() == reflect.Pointer {
+				if val.IsNil() {
+					return
+				}
+				val = val.Elem()
 			}
-			name := field.Name
-			value := val.Field(i).Interface()
-			if states, ok := value.(S); ok {
-				list[name] = index.Index(states)
-				order = append(order, name)
+			if val.Kind() != reflect.Struct {
+				return
+			}
+
+			typ := val.Type()
+			// Local groups first.
+			for i := 0; i < val.NumField(); i++ {
+				field := typ.Field(i)
+				if field.Type.Kind() != reflect.Slice {
+					continue
+				}
+				value := val.Field(i)
+				if !value.CanInterface() {
+					continue
+				}
+				states, ok := value.Interface().(S)
+				if !ok {
+					continue
+				}
+				if _, ok := list[field.Name]; ok {
+					continue
+				}
+				list[field.Name] = index.Index(states)
+				order = append(order, field.Name)
+			}
+
+			// Then inherited embedded groups.
+			for i := 0; i < val.NumField(); i++ {
+				field := typ.Field(i)
+				if !field.Anonymous {
+					continue
+				}
+				kind := field.Type.Kind()
+				if kind == reflect.Struct ||
+					(kind == reflect.Pointer &&
+						field.Type.Elem().Kind() == reflect.Struct) {
+
+					walk(val.Field(i))
+				}
 			}
 		}
+		walk(reflect.ValueOf(groups))
 	}
 
 	// add all the schemas (nested)
