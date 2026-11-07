@@ -65,6 +65,7 @@ type Params struct {
 	FilterGroup          bool        `arg:"--filter-group" default:"true" help:"Filter transitions by a selected group"`
 	FilterHealthTx       bool        `arg:"--filter-health" help:"Filter health-check transitions"`
 	FilterLogLevel       am.LogLevel `arg:"--filter-log-level" default:"2" help:"Filter transitions up to this log level, 0-5 (silent-everything)"`
+	FilterReaderGroup    bool        `arg:"--filter-reader-group" help:"Narrow down the log reader to the selected group"`
 	FilterRpcMachs       bool        `arg:"--filter-rpc-machs" help:"Filter RPC machines"`
 	FilterQueuedTx       bool        `arg:"--filter-queued" help:"Filter queued transitions"`
 
@@ -592,6 +593,7 @@ var (
 	ToolCallLog          = ToolName{"call-log"}
 	ToolTimelines        = ToolName{"timelines"}
 	ToolReader           = ToolName{"reader"}
+	ToolReaderGroup      = ToolName{"reader-group"}
 	ToolRain             = ToolName{"rain"}
 	ToolLogWrap          = ToolName{"log-wrap"}
 	ToolWeb              = ToolName{"web"}
@@ -635,6 +637,7 @@ var (
 		ToolCallLog,
 		ToolTimelines,
 		ToolReader,
+		ToolReaderGroup,
 		ToolRain,
 		ToolLogWrap,
 		ToolWeb,

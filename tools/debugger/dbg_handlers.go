@@ -1555,6 +1555,11 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 			d.Mach.EvRemove1(e, ss.LogReaderEnabled, nil)
 		}
 
+	case types.ToolReaderGroup:
+		d.Mach.EvToggle1(e, ss.FilterReaderGroup, nil)
+		d.params.FilterReaderGroup = d.Mach.Is1(ss.FilterReaderGroup)
+		d.hUpdateLogReader(e)
+
 	case types.ToolRain:
 		d.Mach.EvAdd1(e, ss.ToolRain, nil)
 

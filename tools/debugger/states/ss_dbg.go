@@ -119,6 +119,7 @@ type DebuggerStatesDef struct {
 	FilterTraces          string
 	FilterHealth          string
 	FilterChecks          string
+	FilterReaderGroup     string
 	FilterRpcMachs        string
 	FilterOutGroup        string
 	Redraw                string
@@ -312,6 +313,7 @@ var DebuggerSchema = ssam.BasicSchema.Merge(
 		ssD.FilterTraces:         {},
 		ssD.FilterHealth:         {},
 		ssD.FilterChecks:         {},
+		ssD.FilterReaderGroup:    {},
 		ssD.FilterRpcMachs:       {},
 		ssD.FilterOutGroup:       {},
 		ssD.Redraw:               {},
