@@ -439,6 +439,14 @@ func (s Schema) Get(state string) State {
 	return ret
 }
 
+func (s Schema) Implements(required Schema) bool {
+	return s.Names().HasN(required.Names())
+}
+
+func (s Schema) HasStates(states S) bool {
+	return s.Names().HasN(states)
+}
+
 func prefixRels(prefix string, states, rels S) S {
 	if rels == nil {
 		return nil

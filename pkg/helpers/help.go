@@ -864,7 +864,7 @@ func SetEnvLogLevel(level am.LogLevel) {
 // Implements checks is statesChecked implement statesNeeded. It's an equivalent
 // of Machine.Has(), but for slices of state names, and with better error msgs.
 func Implements(statesChecked, statesNeeded am.S) error {
-	// TODO use S.Has
+	// TODO v0.20 use S.Has
 	for _, state := range statesNeeded {
 		if !slices.Contains(statesChecked, state) {
 			return errors.New("missing state: " + state)
@@ -1928,25 +1928,7 @@ func EvalSetter(
 
 // TODO ChanGetter
 
-// NewDynMach initializes a new machine with dynamic handlers (map-based).
-// Useful for prototyping or when declaring handlers isn't feasible.
-// TODO add to readme
-func NewDynMach(
-	ctx context.Context, schema am.Schema,
-	negs map[string]am.HandlerNegotiation,
-	finals map[string]am.HandlerFinal, state S,
-) (*am.Machine, error) {
-	mach := am.New(ctx, schema, nil)
-	_, err := mach.HandlersBindMaps(negs, finals)
-	if err != nil {
-		return nil, err
-	}
-	if len(state) > 0 {
-		mach.Set(state, nil)
-	}
-
-	return mach, err
-}
+// TODO SchemaFull
 
 // ///// ///// /////
 
@@ -2204,6 +2186,7 @@ func DisposeEv(mach am.Api, e *am.Event) {
 }
 
 // SchemaImplements checks if a given schema implements a certain set of states.
+// Deprecated: use [Schema.HasStates] instead.
 func SchemaImplements(schema am.Schema, states am.S) error {
 	return Implements(schema.Names(), states)
 }
