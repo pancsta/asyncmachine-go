@@ -84,6 +84,7 @@ tools/visualizer/testdata/*
 /pkg/x/history/frostdb/databases/
 /pkg/history/bbolt/amhist.db
 /*.d2
+!tools/visualizer/testdata/rel-color.d2
 /tx.*
 /docs/api
 /docs/website
