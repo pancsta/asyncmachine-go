@@ -589,6 +589,12 @@ type RPCServer struct {
 	// TODO ConnId
 	ConnID string
 	FwdTo  []*fwdConn
+
+	// debounced tx queue
+	queue       []*dbg.DbgMsgTx
+	queueConnId []string
+	queueMx     sync.Mutex
+	scheduled   bool
 }
 
 type DbgMsgSchemaFwd struct {
@@ -675,42 +681,35 @@ func (r *RPCServer) DbgMsgSchema(
 	return nil
 }
 
-var (
-	queue       []*dbg.DbgMsgTx
-	queueConnId []string
-	queueMx     sync.Mutex
-	scheduled   bool
-)
-
 func (r *RPCServer) DbgMsgTx(msgTx *dbg.DbgMsgTx, _ *string) error {
-	queueMx.Lock()
-	defer queueMx.Unlock()
+	r.queueMx.Lock()
+	defer r.queueMx.Unlock()
 
-	if !scheduled {
-		scheduled = true
+	if !r.scheduled {
+		r.scheduled = true
 		go func() {
 			// debounce
 			time.Sleep(time.Second)
 
-			queueMx.Lock()
-			defer queueMx.Unlock()
+			r.queueMx.Lock()
+			defer r.queueMx.Unlock()
 
 			r.Mach.Add1(ss.ClientMsg, Pass(&A{
-				MsgsTx:  queue,
-				ConnIds: queueConnId,
+				MsgsTx:  r.queue,
+				ConnIds: r.queueConnId,
 			}))
 			// DEBUG
-			// println("sent", len(queue), "msgs")
-			queue = nil
-			queueConnId = nil
-			scheduled = false
+			// println("sent", len(r.queue), "msgs")
+			r.queue = nil
+			r.queueConnId = nil
+			r.scheduled = false
 		}()
 	}
 
 	now := time.Now()
 	msgTx.Time = &now
-	queue = append(queue, msgTx)
-	queueConnId = append(queueConnId, r.ConnID)
+	r.queue = append(r.queue, msgTx)
+	r.queueConnId = append(r.queueConnId, r.ConnID)
 
 	// fwd to other instances
 	for _, host := range r.FwdTo {
@@ -735,37 +734,37 @@ type DbgMsgTx struct {
 
 // TODO rename to RemoteMsgTxReceive (compat break)
 func (r *RPCServer) DbgMsgTxFwd(msg *DbgMsgTx, _ *string) error {
-	queueMx.Lock()
-	defer queueMx.Unlock()
+	r.queueMx.Lock()
+	defer r.queueMx.Unlock()
 
 	msgTx := msg.MsgTx
 	connId := msg.ConnId
 
-	if !scheduled {
-		scheduled = true
+	if !r.scheduled {
+		r.scheduled = true
 		go func() {
 			// debounce
 			time.Sleep(time.Second)
 
-			queueMx.Lock()
-			defer queueMx.Unlock()
+			r.queueMx.Lock()
+			defer r.queueMx.Unlock()
 
 			r.Mach.Add1(ss.ClientMsg, Pass(&A{
-				MsgsTx:  queue,
-				ConnIds: queueConnId,
+				MsgsTx:  r.queue,
+				ConnIds: r.queueConnId,
 			}))
 			// DEBUG
-			// println("sent", len(queue), "msgs")
-			queue = nil
-			queueConnId = nil
-			scheduled = false
+			// println("sent", len(r.queue), "msgs")
+			r.queue = nil
+			r.queueConnId = nil
+			r.scheduled = false
 		}()
 	}
 
 	now := time.Now()
 	msgTx.Time = &now
-	queue = append(queue, msgTx)
-	queueConnId = append(queueConnId, connId)
+	r.queue = append(r.queue, msgTx)
+	r.queueConnId = append(r.queueConnId, connId)
 
 	// fwd to other instances
 	for _, host := range r.FwdTo {
