@@ -2610,13 +2610,14 @@ func (d *Debugger) hUpdateStatusBar() {
 		}
 	}
 	for _, client := range d.Clients {
-		currCTxIdx := client.TxAtHTime(currHTime)
-		if currCTxIdx != -1 {
-			parsed := client.MsgTxsParsed[currCTxIdx]
-			graphMTime += parsed.TimeSum
+		currTxIdx := client.TxAtHTime(currHTime)
+		if currTxIdx != -1 {
+			if parsed := client.TxParsed(currTxIdx); parsed != nil {
+				graphMTime += parsed.TimeSum
+			}
 		}
 	}
-	left := []string{P.Sprintf("%sGraph:t%v", loading, graphMTime)}
+	left := []string{utils.Fmt.Sprintf("%sGraph:t%v", loading, graphMTime)}
 
 	// selected state
 	idx := slices.Index(c.MsgStruct.StatesIndex, c.SelectedState)
@@ -2677,6 +2678,7 @@ func (d *Debugger) filtersFromStates() *types.Filters {
 		SkipQueuedTx:       is(ss.FilterQueuedTx),
 		SkipOutGroup:       is(ss.FilterOutGroup),
 		SkipChecks:         is(ss.FilterChecks),
+		SkipErrs:           is(ss.FilterErrs),
 		SkipRpcMach:        is(ss.FilterRpcMachs),
 	}
 }

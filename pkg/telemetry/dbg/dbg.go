@@ -143,6 +143,10 @@ type DbgMsgTx struct {
 	// TODO ExecutionTime (measure)
 	// transition was triggered by an auto state
 	IsAuto bool
+	// transition was only partially accepted. Contains the initially called
+	// states, before the partial rejection. Nil for transitions which weren't
+	// partial.
+	IsPartial am.S
 	// result of the transition
 	// TODO rename to IsAccepted
 	Accepted bool
@@ -505,6 +509,13 @@ func (t *Tracer) TransitionEnd(tx *am.Transition) {
 	t.mx.Lock()
 	defer t.mx.Unlock()
 
+	// collect the initially called states of partially accepted transitions,
+	// as Mutation.Called gets rewritten to the accepted subset
+	var partial am.S
+	if tx.IsPartial {
+		partial = tx.CalledInitial()
+	}
+
 	msg := &DbgMsgTx{
 		MachineID:        mach.Id(),
 		ID:               tx.Id,
@@ -518,6 +529,7 @@ func (t *Tracer) TransitionEnd(tx *am.Transition) {
 		LogEntries:    removeLogPrefix(mach, tx.LogEntries),
 		PreLogEntries: removeLogPrefix(mach, tx.PreLogEntries),
 		IsAuto:        mut.IsAuto,
+		IsPartial:     partial,
 		Queue:         int(tx.QueueLen),
 		QueueTick:     mach.QueueTick(),
 		MutQueueToken: mut.QueueToken,

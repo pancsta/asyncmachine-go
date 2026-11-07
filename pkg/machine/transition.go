@@ -58,6 +58,11 @@ type Transition struct {
 	IsBroken atomic.Bool
 	// TODO confirms relations resolved and negotiation ended
 	IsSettled atomic.Bool
+	// Transition was partially accepted.
+	IsPartial bool
+
+	// initial called states of the mutation
+	calledInitial []int
 
 	// last step info for panic recovery
 	latestHandlerIsEnter bool
@@ -78,19 +83,20 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	defer m.activeStatesMx.RUnlock()
 
 	m.schemaMx.RLock()
-	index := m.stateNames
 	schema := m.schema
 	m.schemaMx.RUnlock()
 	tNow := m.time(nil)
 	semlog := m.SemLogger()
 
 	t := &Transition{
-		Id:          randId(16),
-		Mutation:    mut,
-		TimeBefore:  tNow,
-		Machine:     m,
-		MachApi:     m,
-		cacheSchema: schema,
+		Id:         randId(16),
+		Mutation:   mut,
+		TimeBefore: tNow,
+		Machine:    m,
+		MachApi:    m,
+
+		calledInitial: mut.Called,
+		cacheSchema:   schema,
 	}
 
 	activeStates := slices.Clone(m.activeStates)
@@ -122,6 +128,38 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	if src != nil {
 		m.log(LogOps, "[source] %s/%s/%d", src.MachId, src.TxId, src.MachTime)
 	}
+
+	statesToSet, targetStates := t.calculateTarget(called)
+	impliedStates := StatesDiff(targetStates, statesToSet)
+	if len(impliedStates) > 0 {
+		m.log(LogOps, "[implied] %s", j(impliedStates))
+	}
+
+	// if t.IsAccepted.Load() {
+	// 	t.setupExitEnter()
+	// }
+
+	// tracer
+	m.tracersMx.RLock()
+	for _, tracer := range m.tracers {
+		if t.Machine.IsDisposed() {
+			break
+		}
+		tracer.TransitionInit(t)
+	}
+	m.tracersMx.RUnlock()
+
+	return t
+}
+
+// calculateTarget states and time using existing cache.
+func (t *Transition) calculateTarget(called S) (S, S) {
+	m := t.Machine
+	index := m.stateNames
+	tNow := t.TimeBefore
+	mut := t.Mutation
+	mutType := mut.Type
+	activeStates := *t.cacheStatesBefore.Load()
 
 	// set up the mutation
 	statesToSet := t.statesToSet(mutType, called)
@@ -161,31 +199,21 @@ func newTransition(m *Machine, mut *Mutation) *Transition {
 	t.TargetIndexes = m.Index(targetStates)
 	t.cacheTargetStates.Store(&targetStates)
 
-	impliedStates := StatesDiff(targetStates, statesToSet)
-	if len(impliedStates) > 0 {
-		m.log(LogOps, "[implied] %s", j(impliedStates))
+	// invalidate
+	if len(called) != len(t.Mutation.Called) {
+		t.Mutation.Called = m.Index(called)
+		t.Mutation.cacheCalled.Store(nil)
 	}
 
 	t.setupAccepted()
-	if t.IsAccepted.Load() {
-		t.setupExitEnter()
-	}
 
-	// tracer
-	m.tracersMx.RLock()
-	for _, tracer := range m.tracers {
-		if t.Machine.IsDisposed() {
-			break
-		}
-		tracer.TransitionInit(t)
-	}
-	m.tracersMx.RUnlock()
-
-	return t
+	return statesToSet, targetStates
 }
 
 func (t *Transition) statesToSet(mutType MutationType, states S) S {
 	m := t.Machine
+
+	// TODO StepMark "resolve"
 
 	switch mutType {
 
@@ -264,6 +292,8 @@ func (t *Transition) TargetStates() S {
 		return *v
 	}
 
+	// TODO FilterIndex
+
 	ret := make(S, len(t.TargetIndexes))
 	mach := t.MachApi
 	if mach == nil {
@@ -279,6 +309,10 @@ func (t *Transition) TargetStates() S {
 	}
 
 	return ret
+}
+
+func (t *Transition) CalledInitial() S {
+	return t.Machine.StateNames().FilterIndex(t.calledInitial)
 }
 
 // IsAuto returns true if the transition was triggered by an auto state.
@@ -485,103 +519,86 @@ func (t *Transition) setupExitEnter() {
 	t.Enters = enters
 }
 
-func (t *Transition) emitSelfEvents() Result {
+func (t *Transition) emitSelfEvents() *handlerReturn {
 	m := t.Machine
-	ret := Executed
-	var handlerCalled bool
+	var ret *handlerReturn
+
 	for _, s := range t.TargetStates() {
 		// only the active states
 		if !t.Machine.Is(S{s}) {
 			continue
 		}
 
-		autoState := t.cacheSchema[s].Auto
 		name := s + s
 		t.latestHandlerToState = s
-		ret, handlerCalled = m.handle(name, t.Mutation.Args, false, false, true)
-		if handlerCalled && t.isLogSteps() {
+		ret = m.handle(s, name, t.Mutation.Args, false, false, true)
+		if ret.Called && t.isLogSteps() {
 			step := newStep("", s, StepHandler, 0)
 			step.IsSelf = true
 			t.addSteps(step)
 		}
-		if ret == Canceled {
-			// partial auto state acceptance
-			if t.IsAuto() && autoState {
-				targetStates := t.TargetStates()
-				idx := slices.Index(targetStates, s)
-				t.TargetIndexes = slices.Delete(t.TargetIndexes, idx, idx+1)
-				targetStates = slices.Delete(targetStates, idx, idx+1)
-				t.cacheTargetStates.Store(&targetStates)
-			} else {
-				return ret
-			}
+		if ret.Canceled || ret.PartiallyAccepted {
+			return ret
 		}
 	}
 
+	if ret == nil {
+		return &handlerReturn{}
+	}
 	return ret
 }
 
-func (t *Transition) emitEnterEvents() Result {
+func (t *Transition) emitEnterEvents() *handlerReturn {
+	var ret *handlerReturn
+
 	for _, toState := range t.Enters {
 		args := t.Mutation.Args
-		autoState := t.cacheSchema[toState].Auto
 
 		// FooEnter
-		ret := t.emitHandler("", toState, false, true, toState+SuffixEnter, args)
-		if ret == Canceled {
-			if t.IsAuto() && autoState {
-				// partial auto state acceptance
-				targetStates := t.TargetStates()
-				idx := slices.Index(targetStates, toState)
-				t.TargetIndexes = slices.Delete(t.TargetIndexes, idx, idx+1)
-				targetStates = slices.Delete(targetStates, idx, idx+1)
-				t.cacheTargetStates.Store(&targetStates)
-			} else {
-				return ret
-			}
+		ret = t.emitHandler("", toState, false, true, toState+SuffixEnter, args)
+		if ret.Canceled || ret.PartiallyAccepted {
+			return ret
 		}
 	}
 
-	return Executed
+	if ret == nil {
+		return &handlerReturn{}
+	}
+	return ret
 }
 
-func (t *Transition) emitExitEvents() Result {
+func (t *Transition) emitExitEvents() *handlerReturn {
+	var ret *handlerReturn
+
 	for _, fromState := range t.Exits {
 		args := t.Mutation.Args
-		autoState := t.cacheSchema[fromState].Auto
 
 		// FooExit
-		ret := t.emitHandler(fromState, "", false, false, fromState+SuffixExit,
+		ret = t.emitHandler(fromState, "", false, false, fromState+SuffixExit,
 			args)
-		if ret == Canceled {
-			if t.IsAuto() && autoState {
-				// partial auto state acceptance
-				targetStates := t.TargetStates()
-				idx := slices.Index(targetStates, fromState)
-				t.TargetIndexes = slices.Delete(t.TargetIndexes, idx, idx+1)
-				targetStates = slices.Delete(targetStates, idx, idx+1)
-				t.cacheTargetStates.Store(&targetStates)
-			} else {
-				return ret
-			}
+		if ret.Canceled || ret.PartiallyAccepted {
+			return ret
 		}
 	}
 
-	return Executed
+	if ret == nil {
+		return &handlerReturn{}
+	}
+	return ret
 }
 
 func (t *Transition) emitHandler(
 	from, to string, isFinal, isEnter bool, event string, args A,
-) Result {
+) *handlerReturn {
 	t.latestHandlerToState = to
-	ret, handlerCalled := t.Machine.handle(event, args, isFinal, isEnter, false)
+	ret := t.Machine.handle(to, event, args, isFinal, isEnter, false)
 
-	if handlerCalled && t.isLogSteps() {
+	if ret.Called && t.isLogSteps() {
 		step := newStep(from, to, StepHandler, 0)
 		step.IsFinal = isFinal
 		step.IsEnter = isEnter
 		t.addSteps(step)
-		if ret == Canceled && !isFinal {
+		if ret.Canceled && !isFinal {
 			state := to
 			if state == "" {
 				state = from
@@ -593,46 +610,51 @@ func (t *Transition) emitHandler(
 	return ret
 }
 
-func (t *Transition) emitFinalEvents() Result {
+func (t *Transition) emitFinalEvents() *handlerReturn {
+	// TODO optimize 2 loops?
 	finals := slices.Concat(t.Exits, t.Enters)
+	var ret *handlerReturn
 
 	for _, s := range finals {
 		isEnter := slices.Contains(t.Enters, s)
 
 		// TODO use emitHandler
 
-		var handler string
+		var eventName string
 		if isEnter {
-			handler = s + SuffixState
+			eventName = s + SuffixState
 			t.latestHandlerToState = s
 		} else {
-			handler = s + SuffixEnd
+			eventName = s + SuffixEnd
 			t.latestHandlerToState = ""
 		}
 
-		ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args,
+		ret = t.Machine.handle(s, eventName, t.Mutation.Args,
 			true, isEnter, false)
 
-		if handlerCalled && t.isLogSteps() {
+		if ret.Called && t.isLogSteps() {
 			step := newStep("", s, StepHandler, 0)
 			step.IsFinal = true
 			step.IsEnter = isEnter
 			t.addSteps(step)
 		}
 
-		// final handler cancel means timeout TODO add dedicated steps
-		if ret == Canceled {
+		// TODO add dedicated steps
+		if ret.Canceled || ret.PartiallyAccepted || ret.Timeout {
 			return ret
 		}
 	}
 
-	return Executed
+	if ret == nil {
+		ret = &handlerReturn{}
+	}
+	return ret
 }
 
-func (t *Transition) emitStateStateEvents() Result {
+func (t *Transition) emitStateStateEvents() *handlerReturn {
 	before := t.StatesBefore()
 	after := t.TargetStates()
-	var newAfter S
+	var ret *handlerReturn
 
 	for i := range before {
 		for ii := range after {
@@ -642,62 +664,42 @@ func (t *Transition) emitStateStateEvents() Result {
 
 			// TODO use emitHandler?
 
-			autoState := t.cacheSchema[after[ii]].Auto
 			// TODO validate before / after not empty
 			handler := before[i] + after[ii]
 			t.latestHandlerToState = ""
-			ret, handlerCalled := t.Machine.handle(handler, t.Mutation.Args, false,
+			ret := t.Machine.handle(after[ii], handler, t.Mutation.Args, false,
 				false, false)
 
-			if handlerCalled && t.isLogSteps() {
+			if ret.Called && t.isLogSteps() {
 				step := newStep(before[i], after[ii], StepHandler, 0)
 				t.addSteps(step)
-				if ret == Canceled {
+				if ret.Canceled {
 					t.addSteps(newStep("", after[ii], StepCancel, 0))
 				}
 			}
 
 			// continue
-			if ret != Canceled {
+			if !ret.Canceled && !ret.PartiallyAccepted {
 				continue
 			}
 
-			// partial auto state acceptance
-			if t.IsAuto() && autoState {
-				if newAfter == nil {
-					newAfter = slices.Clone(after)
-				}
-
-				// partial auto state acceptance
-				idx := slices.Index(newAfter, after[ii])
-				if idx == -1 {
-					// already removed
-					continue
-				}
-				t.TargetIndexes = slices.Delete(t.TargetIndexes, idx, idx+1)
-
-				// update cache
-				newAfter = slices.Delete(newAfter, idx, idx+1)
-				t.cacheTargetStates.Store(&newAfter)
-
-				// negotiation canceled
-			} else {
-				return ret
-			}
+			return ret
 		}
 	}
 
-	return Executed
+	if ret == nil {
+		return &handlerReturn{}
+	}
+	return ret
 }
 
 func (t *Transition) emitEvents() Result {
 	m := t.Machine
-	result := Executed
+	ret := &handlerReturn{}
 	if !t.IsAccepted.Load() {
-		result = Canceled
+		ret.Canceled = true
 	}
 	hasStateChanged := false
-	called := t.CalledStates()
 	hasHandlers := t.Machine.handlerLoopRunning.Load()
 	logEverything := m.semLogger.Level() == LogEverything
 
@@ -710,37 +712,82 @@ func (t *Transition) emitEvents() Result {
 
 	// NEGOTIATION CALLS PHASE (cancellable)
 
-	if hasHandlers || logEverything {
+	if !ret.Canceled {
+		t.setupExitEnter()
+	}
 
-		// FooExit handlers
-		if result != Canceled {
-			result = t.emitExitEvents()
-		}
+	if !ret.Canceled && (hasHandlers || logEverything) {
 
-		// FooEnter handlers
-		if result != Canceled {
-			result = t.emitEnterEvents()
-		}
+		// loop until called states stop changing
+		lenBefore := len(t.CalledStates())
+		i := 0
+		for lenBefore > 0 {
+			i++
+			if !t.IsAccepted.Load() {
+				ret = &handlerReturn{Canceled: true}
+				break
+			}
 
-		// FooFoo handlers
-		if result != Canceled && t.Type() != MutationRemove {
-			result = t.emitSelfEvents()
-		}
+			t.setupExitEnter()
 
-		// BarFoo
-		if result != Canceled {
-			result = t.emitStateStateEvents()
-		}
+			// FooExit handlers
+			if ret = t.emitExitEvents(); ret.Canceled {
+				break
+			} else if ret.PartiallyAccepted {
+				// recalc
+				continue
+			}
 
-		// none of the auto states has been accepted, so cancel
-		if t.IsAuto() && len(t.TargetIndexes) == 0 {
-			result = Canceled
-		}
+			// FooEnter handlers
+			if ret = t.emitEnterEvents(); ret.Canceled {
+				break
+			} else if ret.PartiallyAccepted {
+				// recalc
+				continue
+			}
 
-		// global AnyEnter handler
-		if result != Canceled {
-			result = t.emitHandler(StateAny, StateAny, false, true,
+			// FooFoo handlers
+			if t.Type() != MutationRemove {
+				if ret = t.emitSelfEvents(); ret.Canceled {
+					break
+				} else if ret.PartiallyAccepted {
+					// recalc
+					continue
+				}
+			}
+
+			// BarFoo
+			if ret = t.emitStateStateEvents(); ret.Canceled {
+				break
+			} else if ret.PartiallyAccepted {
+				// recalc
+				continue
+			}
+
+			// global AnyEnter handler
+			ret = t.emitHandler(StateAny, StateAny, false, true,
 				StateAny+SuffixEnter, t.Mutation.Args)
+			if ret.Canceled {
+				break
+			} else if ret.PartiallyAccepted {
+				// recalc
+				continue
+			}
+
+			// hard limit
+			if i > 100 {
+				ret.Canceled = true
+				break
+			}
+
+			// accepted
+			if len(t.CalledStates()) == lenBefore {
+				break
+
+				// partially accepted
+			} else {
+				lenBefore = len(t.CalledStates())
+			}
 		}
 	}
 
@@ -748,25 +795,12 @@ func (t *Transition) emitEvents() Result {
 	if !t.Mutation.IsCheck {
 		// TODO extract
 
-		// recheck auto txs for canceled handlers, remove direct and transitive Add
-		// relation
-		if t.IsAuto() {
-			rejected := StatesDiff(called, t.TargetStates())
-			calledClean := StatesDiff(called, rejected)
-			toSet := t.statesToSet(MutationAdd, calledClean)
-			targetStates := m.resolver.TargetStates(t, toSet, m.StateNames())
-			t.TargetIndexes = m.Index(targetStates)
-			t.cacheTargetStates.Store(&targetStates)
-			t.setupExitEnter()
-			// TODO cache states before?
-		}
-
 		// FINAL HANDLERS (non cancellable)
-		if result != Canceled {
+		if !ret.Canceled {
 
 			// mutate the clocks
 			m.activeStatesMx.Lock()
-			m.setActiveStates(called, t.TargetStates(), t.IsAuto())
+			m.setActiveStates(t.CalledStates(), t.TargetStates(), t.IsAuto())
 			// gather new clock values, overwrite fake TimeAfter
 			m.activeStatesMx.Unlock()
 
@@ -799,12 +833,12 @@ func (t *Transition) emitEvents() Result {
 			if hasHandlers || logEverything || m.subs.HasWhenArgs() {
 				// FooState
 				// FooEnd
-				result = t.emitFinalEvents()
+				ret = t.emitFinalEvents()
 			}
 
 			// handle timeouts in final handlers the same as a panic
 			// TODO test
-			if result == Canceled {
+			if ret.Timeout {
 				m.recoverFinalPhase()
 				// TODO safe to continue?
 			}
@@ -816,8 +850,8 @@ func (t *Transition) emitEvents() Result {
 		}
 
 		// global AnyState handler
-		if result != Canceled && (hasHandlers || logEverything) {
-			result = t.emitHandler(StateAny, StateAny, true, true,
+		if !ret.Canceled && (hasHandlers || logEverything) {
+			ret = t.emitHandler(StateAny, StateAny, true, true,
 				StateAny+SuffixState, t.Mutation.Args)
 		}
 
@@ -827,7 +861,7 @@ func (t *Transition) emitEvents() Result {
 		}
 
 		// AUTO STATES
-		if result == Canceled {
+		if ret.Canceled {
 			t.IsAccepted.Store(false)
 		} else if !m.disposing.Load() && hasStateChanged && !t.IsAuto() &&
 			!t.IsHealth() {
@@ -838,7 +872,7 @@ func (t *Transition) emitEvents() Result {
 				m.PrependMut(autoMut)
 			}
 		}
-	} else if result == Canceled {
+	} else if ret.Canceled {
 		t.IsAccepted.Store(false)
 	}
 
@@ -857,24 +891,22 @@ func (t *Transition) emitEvents() Result {
 	}
 	m.tracersMx.RUnlock()
 
-	if result == Canceled {
+	if ret.Canceled {
 		return Canceled
 	} else if t.Mutation.IsCheck {
-		return result
+		return Executed
 	}
 
 	// remove mutation
 	if t.Type() == MutationRemove {
-		if m.Not(called) {
+		if m.Not(t.CalledStates()) {
 			return Executed
 		}
 		return Canceled
 	}
 
-	// partial auto acceptance (add mutation)
-	if t.IsAuto() && len(t.TargetStates()) > len(t.StatesBefore()) {
-		return Executed
-	} else if !t.IsAuto() && m.Is(t.TargetStates()) {
+	// add mutation
+	if m.Is(t.TargetStates()) {
 		return Executed
 	}
 

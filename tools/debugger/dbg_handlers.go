@@ -288,7 +288,7 @@ func (d *Debugger) StateNameSelectedState(e *am.Event) {
 
 	d.hUpdateStatusBar()
 
-	// diagrams TODO merged mutation once partial negotiation lands
+	// diagrams
 	d.Mach.GoAfter(ctx, time.Second, func() {
 		if err := d.diagramsMachUpdating(ctx); err != nil {
 			d.Mach.EvAddErrState(e, ss.ErrDiagrams, err, nil)
@@ -729,7 +729,6 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 
 	// update graph
 	d.hUpdateGraphHash()
-	// TODO use Add relation once partial negotiation lands
 	d.Mach.EvAdd1(e, ss.DiagramsGraphRendering, nil)
 
 	d.draw()
@@ -947,7 +946,6 @@ func (d *Debugger) RemoveClientEnter(e *am.Event) bool {
 }
 
 func (d *Debugger) RemoveClientState(e *am.Event) {
-	// TODO use Add relation once partial negotiation lands
 	d.Mach.EvAdd1(e, ss.DiagramsGraphRendering, nil)
 
 	cid := am.ParseArgs[A](e.Args).ClientId
@@ -1006,14 +1004,16 @@ func (d *Debugger) SetGroupState(e *am.Event) {
 	d.selectedGroup.Store(&c.SelectedGroup)
 	d.hBuildSchemaTree()
 	d.hUpdateSchemaTree()
-	// TODO merge once partial negotiation lands
-	d.Mach.EvAdd1(e, ss.DiagramsMachRendering, nil)
-	d.Mach.EvAdd1(e, ss.DiagramsStatesRendering, nil)
-	// TODO make sure log rebuilts without out-of-group
-	d.Mach.EvAdd(e, am.S{ss.ToolToggled, ss.UpdateLogScheduled}, Pass(&A{
-		FilterTxs:     true,
-		LogRebuildEnd: len(c.MsgTxs),
-	}))
+	// combined mutation TODO make sure log rebuilts without out-of-group
+	d.Mach.EvAdd(e, S{
+		ss.DiagramsMachRendering,
+		ss.DiagramsStatesRendering,
+		ss.ToolToggled,
+		ss.UpdateLogScheduled},
+		Pass(&A{
+			FilterTxs:     true,
+			LogRebuildEnd: len(c.MsgTxs),
+		}))
 	d.diagSkipGroup.Store(new(string))
 	if d.params.OutputDiagGroup == types.ParamsOutDiagGroupSkip {
 		d.diagSkipGroup.Store(&group)
@@ -1125,9 +1125,7 @@ func (d *Debugger) ClientSelectedState(e *am.Event) {
 		return // expired
 	}
 
-	// TODO merge once partial negotiation lands
-	d.Mach.EvAdd1(e, ss.DiagramsMachRendering, nil)
-	d.Mach.EvAdd1(e, ss.DiagramsStatesRendering, nil)
+	d.Mach.EvAdd(e, S{ss.DiagramsMachRendering, ss.DiagramsStatesRendering}, nil)
 
 	// catch up with new log msgs
 	for i := max(0, d.logRebuildEnd-1); i < len(d.C.LogMsgs); i++ {

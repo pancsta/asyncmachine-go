@@ -1879,6 +1879,12 @@ func (u *logReaderUpdate) buildSource() error {
 		u.parentSource.AddChild(node)
 	}
 
+	if len(u.tx.IsPartial) > 0 {
+		node := cview.NewTreeNode("partial")
+		node.SetIndent(1)
+		u.parentSource.AddChild(node)
+	}
+
 	return nil
 }
 
