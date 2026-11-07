@@ -7,6 +7,8 @@ replace go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp => githu
 
 replace github.com/pancsta/asyncmachine-go => ../../
 
+//replace github.com/pancsta/d2 => ../../../d2
+
 tool github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg
 
 tool github.com/pancsta/asyncmachine-go/tools/cmd/am-vis
@@ -16,7 +18,7 @@ tool github.com/pancsta/asyncmachine-go/tools/cmd/arpc
 require (
 	github.com/gookit/goutil v0.8.0
 	github.com/joho/godotenv v1.5.1
-	github.com/pancsta/asyncmachine-go v0.18.4
+	github.com/pancsta/asyncmachine-go v0.19.5
 )
 
 require (
@@ -42,28 +44,21 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/creack/pty v1.1.24 // indirect
-	github.com/d2lang/dagro v0.2.0 // indirect
+	github.com/d2lang/dagro v0.2.1 // indirect
 	github.com/d2lang/elk-go v0.2.0 // indirect
-	github.com/d2lang/mathjax-go v0.1.0 // indirect
+	github.com/d2lang/mathjax-go v0.1.1-0.20261002175158-94d80186bfd7 // indirect
 	github.com/d2lang/rough-go v0.2.0 // indirect
 	github.com/d2lang/util-go v0.2.0 // indirect
-	github.com/deckarep/golang-set/v2 v2.9.0 // indirect
 	github.com/dlclark/regexp2/v2 v2.6.0 // indirect
 	github.com/dominikbraun/graph v0.23.0 // indirect
-	github.com/dsoprea/go-exif/v3 v3.0.1 // indirect
-	github.com/dsoprea/go-logging v0.0.0-20200710184922-b02d349568dd // indirect
-	github.com/dsoprea/go-png-image-structure/v2 v2.0.0-20210512210324-29b889a6093d // indirect
-	github.com/dsoprea/go-utility/v2 v2.0.0-20221003172846-a3e1774ef349 // indirect
+	github.com/ericpauley/go-quantize v0.0.0-20200331213906-ae555eb2afa4 // indirect
 	github.com/failsafe-go/failsafe-go v0.6.8 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/gdamore/tcell/v2 v2.13.9 // indirect
-	github.com/go-errors/errors v1.5.1 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-stack/stack v1.8.1 // indirect
-	github.com/golang/geo v0.0.0-20260713102120-857a528af641 // indirect
+	github.com/go-text/typesetting v0.3.4 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
@@ -75,24 +70,27 @@ require (
 	github.com/mark3labs/mcp-go v0.48.0 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/mazznoer/csscolorparser v0.1.8 // indirect
-	github.com/mxschmitt/playwright-go v0.6100.0 // indirect
 	github.com/orsinium-labs/enum v1.4.0 // indirect
-	github.com/pancsta/cview v1.5.23 // indirect
-	github.com/pancsta/d2 v0.8.2-0.20260829154946-02b64fd28fde // indirect
+	github.com/pancsta/cview v1.5.24 // indirect
+	github.com/pancsta/d2 v0.8.2-go1.26 // indirect
+	github.com/pancsta/go-app v0.0.0-20261030132146-e4194936713d // indirect
+	github.com/pancsta/livepage v0.1.0 // indirect
 	github.com/pires/go-proxyproto v0.12.0 // indirect
 	github.com/reeflective/console v0.1.25 // indirect
 	github.com/reeflective/readline v1.1.3 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/spf13/cobra v1.9.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/teivah/onecontext v1.3.0 // indirect
 	github.com/tmc/go-iroh v0.1.0 // indirect
+	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
+	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yuin/goldmark v1.8.5 // indirect
 	github.com/zyedidia/clipper v0.1.1 // indirect
-	go.mongodb.org/mongo-driver v1.17.9 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.42.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.42.0 // indirect
@@ -116,7 +114,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260330182312-d5a96adf58d8 // indirect
 	google.golang.org/grpc v1.79.3 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	mvdan.cc/sh/v3 v3.7.0 // indirect
 )

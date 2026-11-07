@@ -17,6 +17,17 @@ import (
 	ss "github.com/pancsta/asyncmachine-go/pkg/states"
 )
 
+// Pipe is a pipe edge between states of two machines, as stored in a graph's
+// EdgeData.MachPipesTo.
+type Pipe struct {
+	FromMach  string
+	FromState string
+	ToMach    string
+	ToState   string
+	// Mut is the mutation type, [am.MutationAdd] or [am.MutationRemove].
+	Mut am.MutationType
+}
+
 // Add adds a pipe for an Add mutation between [source] and [target] machines,
 // for a single target state.
 //

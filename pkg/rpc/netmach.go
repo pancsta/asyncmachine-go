@@ -95,7 +95,7 @@ type NetworkMachine struct {
 	handlers       []*handler
 	handlersMx     sync.Mutex
 	parentId       string
-	tags           []string
+	tags           atomic.Pointer[[]string]
 	logLevel       atomic.Pointer[am.LogLevel]
 	logger         atomic.Pointer[am.LoggerFn]
 	logEntriesLock sync.Mutex
@@ -153,9 +153,9 @@ func NewNetworkMachine(
 		machClock:       am.Clock{},
 		queueTick:       1,
 		parentId:        parent.Id(),
-		tags:            tags,
 		filterMutations: filterMutations,
 	}
+	netMach.tags.Store(&tags)
 	netMach.logId.Store(true)
 	close(netMach.errInternal)
 
@@ -990,7 +990,18 @@ func (m *NetworkMachine) ParentId() string {
 
 // Tags is [am.Api.Tags].
 func (m *NetworkMachine) Tags() []string {
-	return m.tags
+	tags := m.tags.Load()
+	if tags == nil {
+		return nil
+	}
+	return slices.Clone(*tags)
+}
+
+// SetTags is [am.Api.SetTags].
+func (m *NetworkMachine) SetTags(tags []string) {
+	tags = slices.Clone(tags)
+	m.tags.Store(&tags)
+	m.semLogger.SetTags()
 }
 
 // String is [am.Api.String].

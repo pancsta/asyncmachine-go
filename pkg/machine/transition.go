@@ -532,12 +532,12 @@ func (t *Transition) emitSelfEvents() *handlerReturn {
 		name := s + s
 		t.latestHandlerToState = s
 		ret = m.handle(s, name, t.Mutation.Args, false, false, true)
-		if ret.Called && t.isLogSteps() {
+		if ret.called && t.isLogSteps() {
 			step := newStep("", s, StepHandler, 0)
 			step.IsSelf = true
 			t.addSteps(step)
 		}
-		if ret.Canceled || ret.PartiallyAccepted {
+		if ret.canceled || ret.partiallyAccepted {
 			return ret
 		}
 	}
@@ -556,7 +556,7 @@ func (t *Transition) emitEnterEvents() *handlerReturn {
 
 		// FooEnter
 		ret = t.emitHandler("", toState, false, true, toState+SuffixEnter, args)
-		if ret.Canceled || ret.PartiallyAccepted {
+		if ret.canceled || ret.partiallyAccepted {
 			return ret
 		}
 	}
@@ -576,7 +576,7 @@ func (t *Transition) emitExitEvents() *handlerReturn {
 		// FooExit
 		ret = t.emitHandler(fromState, "", false, false, fromState+SuffixExit,
 			args)
-		if ret.Canceled || ret.PartiallyAccepted {
+		if ret.canceled || ret.partiallyAccepted {
 			return ret
 		}
 	}
@@ -593,12 +593,12 @@ func (t *Transition) emitHandler(
 	t.latestHandlerToState = to
 	ret := t.Machine.handle(to, event, args, isFinal, isEnter, false)
 
-	if ret.Called && t.isLogSteps() {
+	if ret.called && t.isLogSteps() {
 		step := newStep(from, to, StepHandler, 0)
 		step.IsFinal = isFinal
 		step.IsEnter = isEnter
 		t.addSteps(step)
-		if ret.Canceled && !isFinal {
+		if ret.canceled && !isFinal {
 			state := to
 			if state == "" {
 				state = from
@@ -632,7 +632,7 @@ func (t *Transition) emitFinalEvents() *handlerReturn {
 		ret = t.Machine.handle(s, eventName, t.Mutation.Args,
 			true, isEnter, false)
 
-		if ret.Called && t.isLogSteps() {
+		if ret.called && t.isLogSteps() {
 			step := newStep("", s, StepHandler, 0)
 			step.IsFinal = true
 			step.IsEnter = isEnter
@@ -640,7 +640,7 @@ func (t *Transition) emitFinalEvents() *handlerReturn {
 		}
 
 		// TODO add dedicated steps
-		if ret.Canceled || ret.PartiallyAccepted || ret.Timeout {
+		if ret.canceled || ret.partiallyAccepted || ret.timeout {
 			return ret
 		}
 	}
@@ -670,16 +670,16 @@ func (t *Transition) emitStateStateEvents() *handlerReturn {
 			ret := t.Machine.handle(after[ii], handler, t.Mutation.Args, false,
 				false, false)
 
-			if ret.Called && t.isLogSteps() {
+			if ret.called && t.isLogSteps() {
 				step := newStep(before[i], after[ii], StepHandler, 0)
 				t.addSteps(step)
-				if ret.Canceled {
+				if ret.canceled {
 					t.addSteps(newStep("", after[ii], StepCancel, 0))
 				}
 			}
 
 			// continue
-			if !ret.Canceled && !ret.PartiallyAccepted {
+			if !ret.canceled && !ret.partiallyAccepted {
 				continue
 			}
 
@@ -697,7 +697,7 @@ func (t *Transition) emitEvents() Result {
 	m := t.Machine
 	ret := &handlerReturn{}
 	if !t.IsAccepted.Load() {
-		ret.Canceled = true
+		ret.canceled = true
 	}
 	hasStateChanged := false
 	hasHandlers := t.Machine.handlerLoopRunning.Load()
@@ -712,11 +712,11 @@ func (t *Transition) emitEvents() Result {
 
 	// NEGOTIATION CALLS PHASE (cancellable)
 
-	if !ret.Canceled {
+	if !ret.canceled {
 		t.setupExitEnter()
 	}
 
-	if !ret.Canceled && (hasHandlers || logEverything) {
+	if !ret.canceled && (hasHandlers || logEverything) {
 
 		// loop until called states stop changing
 		lenBefore := len(t.CalledStates())
@@ -724,42 +724,42 @@ func (t *Transition) emitEvents() Result {
 		for lenBefore > 0 {
 			i++
 			if !t.IsAccepted.Load() {
-				ret = &handlerReturn{Canceled: true}
+				ret = &handlerReturn{canceled: true}
 				break
 			}
 
 			t.setupExitEnter()
 
 			// FooExit handlers
-			if ret = t.emitExitEvents(); ret.Canceled {
+			if ret = t.emitExitEvents(); ret.canceled {
 				break
-			} else if ret.PartiallyAccepted {
+			} else if ret.partiallyAccepted {
 				// recalc
 				continue
 			}
 
 			// FooEnter handlers
-			if ret = t.emitEnterEvents(); ret.Canceled {
+			if ret = t.emitEnterEvents(); ret.canceled {
 				break
-			} else if ret.PartiallyAccepted {
+			} else if ret.partiallyAccepted {
 				// recalc
 				continue
 			}
 
 			// FooFoo handlers
 			if t.Type() != MutationRemove {
-				if ret = t.emitSelfEvents(); ret.Canceled {
+				if ret = t.emitSelfEvents(); ret.canceled {
 					break
-				} else if ret.PartiallyAccepted {
+				} else if ret.partiallyAccepted {
 					// recalc
 					continue
 				}
 			}
 
 			// BarFoo
-			if ret = t.emitStateStateEvents(); ret.Canceled {
+			if ret = t.emitStateStateEvents(); ret.canceled {
 				break
-			} else if ret.PartiallyAccepted {
+			} else if ret.partiallyAccepted {
 				// recalc
 				continue
 			}
@@ -767,16 +767,16 @@ func (t *Transition) emitEvents() Result {
 			// global AnyEnter handler
 			ret = t.emitHandler(StateAny, StateAny, false, true,
 				StateAny+SuffixEnter, t.Mutation.Args)
-			if ret.Canceled {
+			if ret.canceled {
 				break
-			} else if ret.PartiallyAccepted {
+			} else if ret.partiallyAccepted {
 				// recalc
 				continue
 			}
 
 			// hard limit
 			if i > 100 {
-				ret.Canceled = true
+				ret.canceled = true
 				break
 			}
 
@@ -796,7 +796,7 @@ func (t *Transition) emitEvents() Result {
 		// TODO extract
 
 		// FINAL HANDLERS (non cancellable)
-		if !ret.Canceled {
+		if !ret.canceled {
 
 			// mutate the clocks
 			m.activeStatesMx.Lock()
@@ -838,7 +838,7 @@ func (t *Transition) emitEvents() Result {
 
 			// handle timeouts in final handlers the same as a panic
 			// TODO test
-			if ret.Timeout {
+			if ret.timeout {
 				m.recoverFinalPhase()
 				// TODO safe to continue?
 			}
@@ -850,7 +850,7 @@ func (t *Transition) emitEvents() Result {
 		}
 
 		// global AnyState handler
-		if !ret.Canceled && (hasHandlers || logEverything) {
+		if !ret.canceled && (hasHandlers || logEverything) {
 			ret = t.emitHandler(StateAny, StateAny, true, true,
 				StateAny+SuffixState, t.Mutation.Args)
 		}
@@ -861,7 +861,7 @@ func (t *Transition) emitEvents() Result {
 		}
 
 		// AUTO STATES
-		if ret.Canceled {
+		if ret.canceled {
 			t.IsAccepted.Store(false)
 		} else if !m.disposing.Load() && hasStateChanged && !t.IsAuto() &&
 			!t.IsHealth() {
@@ -872,7 +872,7 @@ func (t *Transition) emitEvents() Result {
 				m.PrependMut(autoMut)
 			}
 		}
-	} else if ret.Canceled {
+	} else if ret.canceled {
 		t.IsAccepted.Store(false)
 	}
 
@@ -891,7 +891,7 @@ func (t *Transition) emitEvents() Result {
 	}
 	m.tracersMx.RUnlock()
 
-	if ret.Canceled {
+	if ret.canceled {
 		return Canceled
 	} else if t.Mutation.IsCheck {
 		return Executed

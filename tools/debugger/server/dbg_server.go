@@ -430,6 +430,7 @@ func (f *fwdConn) retry(reason error) {
 	}
 	f.mach.Log("dbg fwd to %s failed, retrying in %s: %s",
 		f.addr, delay, reason)
+	// TODO fix missing fwd sink deadlocks all the other sinks
 	go func() {
 		time.Sleep(delay)
 		f.dial()
@@ -857,7 +858,7 @@ func httpHandlerIndex(
 
 		// global listen
 		if host == "0.0.0.0" {
-			listenHost, err := utils.GetGlobalUnicastIP()
+			listenHost, err := utils.GetGlobalUnicastIp()
 			if err == nil {
 				httpAddr = listenHost
 			}

@@ -213,6 +213,8 @@ func NewMux(
 	return m, ep, nil
 }
 
+// irohListener decorates [iroh.StreamListener] with PK ACL and eagerly ACKs
+// new conns.
 type irohListener struct {
 	*iroh.StreamListener
 	allowedPubKeys []key.PublicKey

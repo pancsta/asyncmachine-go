@@ -84,6 +84,7 @@ tools/visualizer/testdata/*
 /pkg/x/history/frostdb/databases/
 /pkg/history/bbolt/amhist.db
 /*.d2
+!tools/visualizer/testdata/rel-color.d2
 /tx.*
 /docs/api
 /docs/website
@@ -118,3 +119,6 @@ tools/visualizer/testdata/*
 /.rumdl_cache/
 /docs/editors/skills/am-cli/
 /examples/mach_template/tmp/
+/pkg/graph/test/netgraph.*
+/pkg/graph/frogql/frogql_wasm_bg.wasm
+/pkg/graph/frogql/frogql_gen.go

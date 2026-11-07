@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/andybalholm/brotli"
 	"github.com/dominikbraun/graph"
+	"gopkg.in/yaml.v3"
 
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -192,7 +194,7 @@ func (v *Visualizer) HImportData(filename string) error {
 
 	// init clients
 	for _, data := range res {
-		err := v.Graph.AddClient(data.MsgStruct)
+		err := v.Graph.AddMachine(amgraph.MsgDbgToMach(data.MsgStruct))
 		if err != nil {
 			return err
 		}
@@ -204,16 +206,113 @@ func (v *Visualizer) HImportData(filename string) error {
 		id := data.MsgStruct.ID
 		// parse msgs
 		for i := range data.MsgTxs {
-			v.Graph.ParseMsg(id, data.MsgTxs[i])
+			v.Graph.ParseMsgDbg(id, data.MsgTxs[i])
 		}
 	}
 
 	return nil
 }
 
-func (v *Visualizer) Clients() map[string]amgraph.Client {
-	ret := make(map[string]amgraph.Client)
-	for k, c := range v.Graph.Clients {
+// ImportSchema imports a machine schema from a YAML file and adds it to the
+// graph.
+func (v *Visualizer) ImportSchema(filename string) error {
+	v.Mach.Log("Importing schema from %s\n", filename)
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+
+	var (
+		schema am.Schema
+		index  am.S
+		id     string
+	)
+
+	// check if this is an am.Serialized machine export (mach.yml)
+	if err := yaml.Unmarshal(data, &schema); err != nil {
+		return fmt.Errorf("parsing YAML schema: %w", err)
+	}
+	if len(schema) == 0 {
+		return fmt.Errorf("empty YAML schema in %s", filename)
+	}
+
+	// sanitize the schema
+	parsed, parseErr := schema.Parse()
+	if parseErr != nil {
+		v.Mach.Log("Warning: %s\n", parseErr)
+	}
+	schema = parsed
+
+	// state order, based on the YAML key order (for plain schemas)
+	if len(index) == 0 {
+		index = yamlStateNames(data)
+	}
+	var missing []string
+	for _, name := range schema.Names() {
+		if !slices.Contains(index, name) {
+			missing = append(missing, name)
+		}
+	}
+	slices.Sort(missing)
+	index = slices.Concat(index, missing)
+	if len(index) == 0 {
+		return fmt.Errorf("no states in YAML schema %s", filename)
+	}
+
+	// machine ID from the filename base
+	if id == "" {
+		id = strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
+	}
+
+	// init client
+	msg := &amgraph.Machine{
+		Serialized: &am.Serialized{
+			ID:         id,
+			StateNames: schema.Names(),
+		},
+		Schema: schema,
+	}
+	if err := v.Graph.AddMachine(msg); err != nil {
+		return err
+	}
+	v.Mach.Add1(ss.InitClient, am.A{"id": id})
+
+	return nil
+}
+
+// yamlStateNames returns the top-level keys of a YAML document, in order.
+// TODO move
+func yamlStateNames(yamlData []byte) []string {
+	var root yaml.Node
+	var stateNames []string
+	if err := yaml.Unmarshal(yamlData, &root); err != nil {
+		return nil
+	}
+
+	var mapNode *yaml.Node
+	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
+		mapNode = root.Content[0]
+	} else if root.Kind == yaml.MappingNode {
+		mapNode = &root
+	}
+	if mapNode == nil || mapNode.Kind != yaml.MappingNode {
+		return nil
+	}
+
+	for i := 0; i < len(mapNode.Content); i += 2 {
+		name := strings.TrimSpace(mapNode.Content[i].Value)
+		if name != "" {
+			stateNames = append(stateNames, name)
+		}
+	}
+
+	return stateNames
+}
+
+func (v *Visualizer) Clients() map[string]amgraph.Machine {
+	ret := make(map[string]amgraph.Machine)
+	for k, c := range v.Graph.Machines {
 		ret[k] = *c
 	}
 
@@ -502,14 +601,14 @@ func (r *Renderer) outputMermaidMach(
 		return nil
 	}
 
-	c := r.graph.Clients[machId]
+	c := r.graph.Machines[machId]
 	if c == nil {
 		return fmt.Errorf("no client for mach %s", machId)
 	}
 	tags := ""
-	if r.RenderTags && len(c.MsgSchema.Tags) > 0 {
+	if r.RenderTags && len(c.Tags) > 0 {
 		// TODO linebreaks sometimes
-		tags = "<br>#" + strings.Join(c.MsgSchema.Tags, " #")
+		tags = "<br>#" + strings.Join(c.Tags, " #")
 	}
 
 	r.buf.WriteString("\tsubgraph " + r.shortId(machId) + "[" + machId +
@@ -539,7 +638,7 @@ func (r *Renderer) outputMermaidMach(
 
 			// relations
 			if r.RenderRelations {
-				state := c.MsgSchema.States[target.StateName]
+				state := c.Schema[target.StateName]
 
 				for _, relState := range state.Require {
 					r.buf.WriteString("\t\t" + shortIdTarget + " --o " +
@@ -597,11 +696,11 @@ func (r *Renderer) outputMermaidMach(
 
 	if r.RenderActive {
 		var active am.S
-		for idx, tick := range c.LatestMTime {
+		for idx, tick := range c.Time {
 			if !am.IsActiveTick(tick) {
 				continue
 			}
-			name := c.MsgSchema.StatesIndex[idx]
+			name := c.StateNames[idx]
 			shortId := r.shortId(machId + ":" + name)
 			active = append(active, shortId)
 		}
@@ -669,16 +768,16 @@ func (r *Renderer) fullIdPath(machId string, shorten bool) []string {
 	if shorten {
 		ret[0] = r.shortId(machId)
 	}
-	mach := r.graph.Clients[machId]
-	for mach != nil && mach.MsgSchema != nil && mach.MsgSchema.Parent != "" {
-		parent := mach.MsgSchema.Parent
+	mach := r.graph.Machines[machId]
+	for mach != nil && mach.Schema != nil && mach.Parent != "" {
+		parent := mach.Parent
 		if shorten {
 			parent = r.shortId(parent)
 		}
 		// prepend
 		ret = slices.Concat([]string{parent}, ret)
 		// TODO check for mach is nil and log / err
-		mach = r.graph.Clients[mach.MsgSchema.Parent]
+		mach = r.graph.Machines[mach.Parent]
 	}
 
 	return ret
@@ -749,7 +848,7 @@ func (r *Renderer) shouldRenderState(machId, state string) bool {
 	}
 
 	// inherited
-	statesIndex := r.graph.Clients[machId].MsgSchema.StatesIndex
+	statesIndex := r.graph.Machines[machId].StateNames
 	if !r.RenderInherited && IsStateInherited(state, statesIndex) {
 		// Start
 		if r.RenderStart && state == ssam.BasicStates.Start {
@@ -824,9 +923,9 @@ func (r *Renderer) renderMachIds() []string {
 	ret := slices.Clone(r.RenderMachs)
 
 	for _, re := range r.RenderMachsRe {
-		for _, client := range r.graph.Clients {
-			if re.MatchString(client.Id) {
-				ret = append(ret, client.Id)
+		for _, client := range r.graph.Machines {
+			if re.MatchString(client.ID) {
+				ret = append(ret, client.ID)
 			}
 		}
 	}
@@ -1105,7 +1204,7 @@ func UpdateCache(
 	dom.Find("g.add > path").SetAttr("stroke", colorRelAdd).
 		SetAttr("style", "stroke-width: 2")
 	// reset relation zoom
-	dom.Find("g.rel-zoom > path").SetAttr("stroke", colorRelRemove).
+	dom.Find("g.rel-zoom > path").
 		SetAttr("style", "stroke-width: 10")
 
 	// selected state

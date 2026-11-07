@@ -119,7 +119,7 @@ func (d *Debugger) WebSocketDiagState(e *am.Event) {
 
 	case types.DiagramTypeState:
 		// readyState = ss.DiagramsStatesRendering
-		progressState = ss.DiagramsStatesRendering
+		progressState = ss.DiagramsStateRendering
 		updateChan = d.diagStateUpdate
 		go func() {
 			d.Mach.EvAddErrState(e, ss.ErrDiagrams,
@@ -169,9 +169,14 @@ func (d *Debugger) WebSocketDiagState(e *am.Event) {
 
 var _ = ss.DiagramsGraphRendering
 
-func (d *Debugger) DiagramsGraphRenderingEnter(e *am.Event) bool {
-	return len(d.Clients) > 0 &&
-		d.params.OutputDiagrams != types.ParamsOutputDiagramsNone
+func (d *Debugger) DiagramsGraphRenderingEnter(e *am.Event) S {
+	if len(d.Clients) > 0 &&
+		d.params.OutputDiagrams != types.ParamsOutputDiagramsNone {
+
+		return e.Accept()
+	}
+
+	return e.AcceptWithoutThis()
 }
 
 func (d *Debugger) DiagramsGraphRenderingState(e *am.Event) {
@@ -196,8 +201,8 @@ func (d *Debugger) DiagramsGraphRenderingState(e *am.Event) {
 			vis := amvis.NewRenderer(snapshot, d.Mach.Log)
 			// TODO fix RPC conns not visible
 			amvis.PresetMap(vis)
-			vis.OutputFilename = svgPath
 			vis.OutputD2Layout = d.diagramsLayout()
+			vis.OutputFilename = svgPath
 			err := vis.GenDiagrams(ctx)
 			if ctx.Err() != nil {
 				return // expired
@@ -218,9 +223,14 @@ func (d *Debugger) DiagramsGraphRenderingState(e *am.Event) {
 
 var _ = ss.DiagramsMachRendering
 
-func (d *Debugger) DiagramsMachRenderingEnter(e *am.Event) bool {
-	return d.params.OutputDiagrams != types.ParamsOutputDiagramsNone &&
-		d.C != nil
+func (d *Debugger) DiagramsMachRenderingEnter(e *am.Event) S {
+	if d.params.OutputDiagrams != types.ParamsOutputDiagramsNone &&
+		d.C != nil {
+
+		return e.Accept()
+	}
+
+	return e.AcceptWithoutThis()
 }
 
 func (d *Debugger) DiagramsMachRenderingState(e *am.Event) {
@@ -295,14 +305,19 @@ func (d *Debugger) DiagramsMachReadyState(e *am.Event) {
 
 // STATE
 
-var _ = ss.DiagramsStatesRendering
+var _ = ss.DiagramsStateRendering
 
-func (d *Debugger) DiagramsStatesRenderingEnter(e *am.Event) bool {
-	return d.params.OutputDiagrams != types.ParamsOutputDiagramsNone &&
-		d.C != nil
+func (d *Debugger) DiagramsStateRenderingEnter(e *am.Event) S {
+	if d.params.OutputDiagrams != types.ParamsOutputDiagramsNone &&
+		d.C != nil {
+
+		return e.Accept()
+	}
+
+	return e.AcceptWithoutThis()
 }
 
-func (d *Debugger) DiagramsStatesRenderingState(e *am.Event) {
+func (d *Debugger) DiagramsStateRenderingState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.ClientSelected)
 	c := d.C
 	diagDir := path.Join(d.params.OutputDir, "diagrams")
@@ -359,7 +374,7 @@ func (d *Debugger) DiagramsStatesRenderingState(e *am.Event) {
 				d.diagramsStatesPush(ctx, d.diagramsDiagPath(diagName))
 			}
 
-			d.Mach.EvAdd1(e, ss.DiagramsStatesReady, nil)
+			d.Mach.EvAdd1(e, ss.DiagramsStateReady, nil)
 		})
 	}
 }
@@ -754,6 +769,8 @@ func (d *Debugger) diagramsMachRender(
 
 	vis := amvis.NewRenderer(shot, d.Mach.Log)
 	amvis.PresetSingle(vis)
+	// TODO tala doesnt handle many states
+	vis.OutputD2Layout = amvis.D2LayoutElk
 	// TODO enum
 	switch detailLvl {
 	default:
@@ -794,8 +811,6 @@ func (d *Debugger) diagramsMachRender(
 	vis.RenderActive = false
 	vis.RenderMachs = []string{machId}
 	vis.OutputFilename = diagPath
-	// TODO tala doesnt handle many states
-	vis.OutputD2Layout = amvis.D2LayoutElk
 	if len(states) > 0 {
 		vis.RenderAllowlist = states
 	}
@@ -855,8 +870,11 @@ func (d *Debugger) diagramsStateRender(
 	// mark rendering as in-progress TODO dedicated state
 	// d.Mach.EvRemove1(e, ss.DiagramsScheduled, nil)
 
+	// remove tags from graph snapshot for d.C.Id
+	shot.RemoveTags(d.C.Id)
 	vis := amvis.NewRenderer(shot, d.Mach.Log)
 	amvis.PresetSingle(vis)
+	vis.OutputD2Layout = d.diagramsLayout()
 	vis.RenderNestSubmachines = false
 	vis.RenderStart = false
 	vis.RenderActive = false
@@ -874,7 +892,6 @@ func (d *Debugger) diagramsStateRender(
 	vis.RenderMachs = []string{d.C.Id}
 	vis.OutputMermaid = false
 	vis.OutputFilename = diagPath
-	vis.OutputD2Layout = d.diagramsLayout()
 	// TODO skip Start, Ready
 
 	return vis.GenDiagrams(ctx)

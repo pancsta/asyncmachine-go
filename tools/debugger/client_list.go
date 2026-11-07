@@ -11,6 +11,8 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
 
+	"github.com/pancsta/asyncmachine-go/internal/utils"
+
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
@@ -23,9 +25,6 @@ import (
 // selectedIndex: index of the selected item, -1 for the current one.
 // TODO ReqBuildClientListState
 func (d *Debugger) buildClientList(selectedIndex int) {
-	if d.Mach.Not1(ss.ClientListVisible) {
-		return
-	}
 	if !d.buildCLScheduled.CompareAndSwap(false, true) {
 		// debounce non-forced updates
 		return
@@ -36,7 +35,7 @@ func (d *Debugger) buildClientList(selectedIndex int) {
 		update := func() {
 			d.hBuildClientList(selectedIndex)
 			// draw after a debounce
-			d.draw(d.clientList)
+			d.drawClientList()
 		}
 		// TODO avoid eval
 		go d.Mach.Eval("hBuildClientList", update, nil)
@@ -46,10 +45,6 @@ func (d *Debugger) buildClientList(selectedIndex int) {
 // TODO BuildClientListState
 func (d *Debugger) hBuildClientList(selectedIndex int) {
 	defer d.buildCLScheduled.Store(false)
-
-	if d.Mach.Not1(ss.ClientListVisible) {
-		return
-	}
 
 	// prev state
 	selected := ""
@@ -112,7 +107,7 @@ func (d *Debugger) hBuildClientList(selectedIndex int) {
 		totalSum += c.MTimeSum
 	}
 
-	d.clientList.SetTitle(P.Sprintf(
+	d.clientList.SetTitle(utils.Fmt.Sprintf(
 		" Machines:%d T:%v ", len(d.Clients), totalSum,
 	))
 
@@ -120,7 +115,7 @@ func (d *Debugger) hBuildClientList(selectedIndex int) {
 }
 
 func (d *Debugger) updateClientList() {
-	if d.buildCLScheduled.Load() || d.Mach.Not1(ss.ClientListVisible) {
+	if d.buildCLScheduled.Load() {
 		return
 	}
 
@@ -157,9 +152,6 @@ func (d *Debugger) drawClientList() {
 
 func (d *Debugger) hUpdateClientList() {
 	defer d.buildCLScheduled.Store(false)
-	if d.Mach.Not1(ss.ClientListVisible) {
-		return
-	}
 	if d.Mach.IsDisposed() || d.Mach.Is1(ss.SelectingClient) ||
 		d.Mach.Is1(ss.HelpDialog) {
 		return
@@ -214,14 +206,19 @@ func (d *Debugger) hUpdateClientList() {
 		label := d.hGetClientListLabel(namePad, c, i)
 		item.SetMainText(label)
 
-		// txt file
+		// markdown file, column 0 marks the selected client
 		if d.params.OutputClients {
 			if !hasParent {
 				txtFile += "\n"
 			}
-			txtFile += string(cview.StripTags([]byte(label), true, false)) + "\n"
+			marker := "  "
+			if d.C != nil && d.C.Id == c.Id {
+				marker = "* "
+			}
+			txtFile += marker +
+				string(cview.StripTags([]byte(label), true, false)) + "\n"
 			for _, tag := range c.MsgStruct.Tags {
-				txtFile += strings.Repeat(" ", ref.lvl) + spacePre +
+				txtFile += "  " + strings.Repeat(" ", ref.lvl) + spacePre +
 					"  #" + tag + "\n"
 			}
 		}
@@ -233,7 +230,7 @@ func (d *Debugger) hUpdateClientList() {
 			totalSum += c.MTimeSum
 		}
 
-		d.clientList.SetTitle(P.Sprintf(
+		d.clientList.SetTitle(utils.Fmt.Sprintf(
 			" Machines:%d T:%v ", len(d.Clients), totalSum,
 		))
 	} else {
@@ -348,7 +345,7 @@ func (d *Debugger) hGetClientListLabel(
 		state = " "
 	}
 
-	label := P.Sprintf("%s %s|%d", name, state, currCTxIdx+1)
+	label := utils.Fmt.Sprintf("%s %s|%d", name, state, currCTxIdx+1)
 	if currCTxIdx+1 < len(c.MsgTxs) {
 		label += "+"
 	}
@@ -428,19 +425,39 @@ func (d *Debugger) hInitClientList() {
 	d.clientList.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
 }
 
-// TODO should switch in displayed order, but list no rendered in narrow
 func (d *Debugger) hSwitchClient(e *am.Event, diff int) am.Result {
-	ids := slices.Collect(maps.Keys(d.Clients))
-	var i int
+	// Follow the displayed order, including parents and children.
+	items := d.clientList.GetItems()
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ref, ok := item.GetReference().(*clientListRef)
+		if ok && ref.name != "" {
+			ids = append(ids, ref.name)
+		}
+	}
+	// Fallback for an empty/unbuilt list.
+	if len(ids) == 0 {
+		ids = slices.Sorted(maps.Keys(d.Clients))
+	}
+	if len(ids) == 0 {
+		return am.Canceled
+	}
+
+	i := -1
 	if d.C != nil {
 		i = slices.Index(ids, d.C.Id)
 	}
+	if i < 0 && diff < 0 {
+		// Previous from a client which is not in the visible list goes last.
+		i = 0
+	}
+
 	ii := (i + diff) % len(ids)
 	if ii < 0 {
-		ii = len(ids) - 1
+		ii += len(ids)
 	}
 
 	return d.Mach.EvAdd1(e, ss.SelectingClient, Pass(&A{
-		ClientId: d.Clients[ids[ii]].Id,
+		ClientId: ids[ii],
 	}))
 }

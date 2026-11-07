@@ -461,7 +461,7 @@ func TemplateTestRetryCall(t *testing.T, newTest NewTestFactory) {
 	// extend the timeout to cause a network one (handler blocks for 1s)
 	// TODO avoid races with the queue in iroh, remove in v0.20
 	<-w.WhenQueueEnds()
-	time.Sleep(100*time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	w.HandlerTimeout = 5 * time.Second
 	c.CallTimeout = 500 * time.Millisecond
 	wg := sync.WaitGroup{}

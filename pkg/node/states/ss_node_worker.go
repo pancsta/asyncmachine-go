@@ -78,16 +78,14 @@ var WorkerSchema = ssam.BasicSchema.Merge(
 		ssW.ErrClient:      {Require: S{Exception}},
 		ssW.ErrSupervisor:  {Require: S{Exception}},
 
-		// piped
-
-		ssW.LocalRpcReady:   {Require: S{ssW.Start}},
-		ssW.PublicRpcReady:  {Require: S{ssW.Start}},
-		ssW.SuperConnected:  {Require: S{ssW.Start}},
-		ssW.ClientConnected: {Require: S{ssW.Start}},
-
 		// basics
 
 		ssW.Ready: {Require: S{ssW.LocalRpcReady}},
+
+		// piped
+
+		ssW.LocalRpcReady:  {Require: S{ssW.Start}},
+		ssW.PublicRpcReady: {Require: S{ssW.Start}},
 
 		// rpc
 
@@ -95,7 +93,9 @@ var WorkerSchema = ssam.BasicSchema.Merge(
 			Auto:    true,
 			Require: S{ssW.LocalRpcReady, ssW.PublicRpcReady},
 		},
-		ssW.ServeClient: {Require: S{ssW.PublicRpcReady}},
+		ssW.SuperConnected:  {Require: S{ssW.Start}},
+		ssW.ServeClient:     {Require: S{ssW.PublicRpcReady}},
+		ssW.ClientConnected: {Require: S{ssW.Start}},
 		ssW.ClientSendPayload: {
 			Require: S{ssW.PublicRpcReady},
 		},

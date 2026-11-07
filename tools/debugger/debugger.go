@@ -15,6 +15,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -37,8 +38,6 @@ import (
 	"github.com/pancsta/livepage"
 	"github.com/soheilhy/cmux"
 	"github.com/zyedidia/clipper"
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
 	"gopkg.in/yaml.v3"
 
 	"github.com/pancsta/asyncmachine-go/internal/utils"
@@ -62,8 +61,6 @@ type (
 var (
 	Pass = am.Pass
 	ss   = states.DebuggerStates
-	// P is a printer for large numbers
-	P = message.NewPrinter(language.English)
 )
 
 // TODO avoid globals
@@ -73,10 +70,8 @@ type Debugger struct {
 	*am.ExceptionHandler
 	*ssam.DisposedHandlers
 
-	Mach    *am.Machine
-	Clients map[string]*Client
-	// graphHash is a hash of all schema hashes
-	graphHash  string
+	Mach       *am.Machine
+	Clients    map[string]*Client
 	LayoutRoot *cview.Panels
 	// selected client
 	C   *Client
@@ -84,14 +79,15 @@ type Debugger struct {
 	// TODO GC removed machines
 	History       []*types.MachAddress
 	HistoryCursor int
+	// read-only params clone
+	Params atomic.Pointer[types.Params]
 
 	// TODO pass via state
 	params types.Params
-	// read-only params clone
-	Params atomic.Pointer[types.Params]
 	// sorted list of markers TODO clean up on client disconn
 	markers []*MarkerItem
-
+	// graphHash is a hash of all schema hashes
+	graphHash string
 	// UI is currently being drawn
 	drawing            atomic.Bool
 	tree               *cview.TreeView
@@ -367,7 +363,7 @@ func (d *Debugger) hSetParams(p types.Params) error {
 
 		// global listen
 		if host == "0.0.0.0" {
-			listenHost, err := utils.GetGlobalUnicastIP()
+			listenHost, err := utils.GetGlobalUnicastIp()
 			if err != nil {
 				return err
 			}
@@ -411,6 +407,7 @@ func (d *Debugger) hSetParams(p types.Params) error {
 			SkipHealthTx:       p.FilterHealthTx,
 			SkipQueuedTx:       p.FilterQueuedTx,
 			SkipChecks:         p.FilterChecks,
+			SkipErrs:           p.FilterErrs,
 			SkipRpcMach:        p.FilterRpcMachs,
 		}
 	}
@@ -470,7 +467,7 @@ func (d *Debugger) hSetParams(p types.Params) error {
 
 	// client list file
 	if p.OutputClients {
-		p := path.Join(p.OutputDir, "clients.txt")
+		p := path.Join(p.OutputDir, "clients.md")
 		clientListFile, err := os.Create(p)
 		if err != nil {
 			mach.AddErr(err, nil)
@@ -734,6 +731,7 @@ func (d *Debugger) hCloseDiagFiles() {
 }
 
 // hSetCursor1 sets the tx cursor, 1-based.
+// TODO take ctx, not e, use e.SwapArgs
 func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
 	cursor1 := args.Cursor1
 	skipHistory := args.SkipHistory
@@ -742,7 +740,7 @@ func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
 	c := d.C
 	tx := d.hCurrentTx()
 
-	// ctx
+	// ctx TODO take ctx instead of self-cancel
 	if d.ctxCancelCursor != nil {
 		d.ctxCancelCursor()
 	}
@@ -1325,7 +1323,7 @@ func (d *Debugger) hImportData(filename string) {
 		id := data.MsgStruct.ID
 		d.Clients[id] = newClientExported(id, data)
 		if d.graph != nil {
-			err := d.graph.AddClient(data.MsgStruct)
+			err := d.graph.AddMachine(amgraph.MsgDbgToMach(data.MsgStruct))
 			if err != nil {
 				d.Mach.AddErr(fmt.Errorf("import failed: %w", err), nil)
 				return
@@ -1593,8 +1591,7 @@ func (d *Debugger) hUpdateViews(immediate bool) {
 // }
 
 func (d *Debugger) hParseMsg(c *Client, idx int) {
-	// TODO handle panics from wrongly indexed msgs
-	// defer d.Mach.PanicToErr(nil)
+	// TODO memorize state start, add API for state end, for traces view
 
 	// TODO verify connId
 	msgTx := c.MsgTxs[idx]
@@ -1684,6 +1681,10 @@ func (d *Debugger) hParseMsg(c *Client, idx int) {
 		c.Errors = append([]int{idx}, c.Errors...)
 	}
 
+	if msgTx.Tags != nil {
+		c.MsgStruct.Tags = slices.Clone(msgTx.Tags)
+	}
+
 	// store the parsed msg
 	c.MsgTxsParsed = append(c.MsgTxsParsed, msgTxParsed)
 	c.MTimeSum = sum
@@ -1691,7 +1692,7 @@ func (d *Debugger) hParseMsg(c *Client, idx int) {
 	// logs and graph
 	d.hParseMsgLog(c, msgTx, idx)
 	if d.graph != nil {
-		d.graph.ParseMsg(c.Id, msgTx)
+		d.graph.ParseMsgDbg(c.Id, msgTx)
 	}
 
 	// rebuild the log to trim the head (unless importing)
@@ -1788,7 +1789,7 @@ func (d *Debugger) appendCallLog(
 		return nil
 	}
 
-	steps = P.Sprintf("\t// t%v\n%s", msgTxParsed.TimeSum, steps)
+	steps = utils.Fmt.Sprintf("\t// t%v\n%s", msgTxParsed.TimeSum, steps)
 	dir := path.Join(d.params.OutputDir, "call-log", c.Id)
 
 	// TODO paginate, filename suffix with mach time
@@ -2020,10 +2021,10 @@ func (d *Debugger) hUpdateTimelineTx() {
 		if c.CursorTx1 == 0 {
 			pos = 0
 		}
-		title = P.Sprintf(" Transition %d / %d [%s]%d / %d[-] ",
+		title = utils.Fmt.Sprintf(" Transition %d / %d [%s]%d / %d[-] ",
 			pos, len(c.MsgTxsFiltered), theme.Grey, c.CursorTx1, txCount)
 	} else {
-		title = P.Sprintf(" Transition %d / %d ", c.CursorTx1, txCount)
+		title = utils.Fmt.Sprintf(" Transition %d / %d ", c.CursorTx1, txCount)
 	}
 	d.timelineTxs.SetTitle(title)
 	d.timelineTxs.SetEmptyRune(' ')
@@ -2171,12 +2172,23 @@ func (d *Debugger) hGetTxInfo(txIdx int, title string) (string, string) {
 	}
 	// TODO limit state names to a group when [2]group
 	calledStates := tx.CalledStateNames(d.C.MsgStruct.StatesIndex)
+	// partial txs display the initially called states, with rejected ones grayed
+	// out
+	calledStatesDisplay := calledStates
+	if len(tx.IsPartial) > 0 {
+		calledStatesDisplay = slices.Clone(tx.IsPartial)
+		for i, state := range calledStatesDisplay {
+			if !slices.Contains(calledStates, state) {
+				calledStatesDisplay[i] = "[" + theme.Grey + "]" + state + "[-]"
+			}
+		}
+	}
 
-	left += P.Sprintf(" | tx: %d", txIdx)
+	left += utils.Fmt.Sprintf(" | tx: %d", txIdx)
 	if parsed.TimeDiff == 0 {
 		left += " | Time: [" + theme.Grey + "] 0[-]"
 	} else {
-		left += P.Sprintf(" | Time: +%d", parsed.TimeDiff)
+		left += utils.Fmt.Sprintf(" | Time: +%d", parsed.TimeDiff)
 	}
 	left += " |"
 
@@ -2193,7 +2205,7 @@ func (d *Debugger) hGetTxInfo(txIdx int, title string) (string, string) {
 		queued = "q"
 	}
 	left += fmt.Sprintf(" %s%s%s: [::b]%s[::-]", queued, tx.Type, multi,
-		strings.Join(calledStates, ", "))
+		strings.Join(calledStatesDisplay, ", "))
 
 	if !tx.Accepted {
 		left += "[-]"
@@ -2203,6 +2215,9 @@ func (d *Debugger) hGetTxInfo(txIdx int, title string) (string, string) {
 
 	if tx.IsAuto {
 		right += "auto | "
+	}
+	if len(tx.IsPartial) > 0 {
+		right += "partial | "
 	}
 	if tx.IsCheck {
 		right += "check | "
@@ -2744,6 +2759,11 @@ func (d *Debugger) statesFromFilters(filters *types.Filters) {
 	} else {
 		rm(ss.FilterChecks, nil)
 	}
+	if filters.SkipErrs {
+		add(ss.FilterErrs, nil)
+	} else {
+		rm(ss.FilterErrs, nil)
+	}
 	if filters.SkipRpcMach {
 		add(ss.FilterRpcMachs, nil)
 	} else {
@@ -2808,6 +2828,16 @@ func (d *Debugger) hFilterTx(c *Client, idx int, filters *types.Filters) bool {
 		if len(called) == 1 && slices.Contains(health, called[0]) {
 			return false
 		}
+	}
+
+	// err txs
+	if f.SkipErrs && (called.Has(am.StateException) ||
+		// single state (eg log metrics)
+		len(called) == 1 &&
+			(strings.HasPrefix(called[0], am.PrefixErr) ||
+				strings.HasPrefix(called[0], am.PrefixWarn))) {
+
+		return false
 	}
 
 	return true

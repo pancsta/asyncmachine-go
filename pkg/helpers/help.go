@@ -45,7 +45,7 @@ const (
 	// See [am.SemLogger.EnableSteps].
 	// "1" | "" (default)
 	EnvAmLogSteps = "AM_LOG_STEPS"
-	// EnvAmLogGraph logs the graph structure (mutation traces, pipes, RPC, etc).
+	// EnvAmLogGraph logs the graph structure (pipes and tags).
 	// See [am.SemLogger.EnableGraph].
 	// "1" | "" (default)
 	EnvAmLogGraph = "AM_LOG_GRAPH"
@@ -1605,8 +1605,25 @@ func (l IoWriterToMachLog) Write(p []byte) (n int, err error) {
 
 // ///// ///// /////
 
-// TagValue returns the value part from a text tag "key:value". For tag without
-// value, it returns the tag name.
+// TagSetValue returns a copy of tags with key set to value. The input slice is
+// not modified.
+func TagSetValue(tags []string, key string, value string) ([]string, bool) {
+	ret := slices.Clone(tags)
+	prefix := key + ":"
+	newTag := prefix + value
+	for i, tag := range ret {
+		if tag == key || strings.HasPrefix(tag, prefix) {
+			if tag == newTag {
+				return ret, false
+			}
+			ret[i] = newTag
+			return ret, true
+		}
+	}
+	return append(ret, newTag), true
+}
+
+// TagValue returns the value part from a text tag "key:value" or empty string.
 func TagValue(tags []string, key string) string {
 	// TODO move to a dedicated Schema struct
 	for _, t := range tags {
@@ -1630,7 +1647,6 @@ func TagValue(tags []string, key string) string {
 
 // TagValueInt is like TagValue, but returns a formatted int.
 func TagValueInt(tags []string, key string) int {
-	// TODO move to a dedicated Schema struct
 	v := TagValue(tags, key)
 	if v == "" {
 		return -1

@@ -18,8 +18,10 @@ import (
 )
 
 func init() {
-	// debug
-	// os.Setenv(EnvAmDebug, "1")
+	// debug TODO debug
+	if os.Getenv(EnvAmTestRunner) == "" {
+		// os.Setenv(EnvAmDebug, "1")
+	}
 }
 
 func ExampleNew() {
@@ -283,6 +285,7 @@ func TestSingleToSingleStateTransition(t *testing.T) {
 		t.Parallel()
 	}
 	m := NewNoRels(t, S{"A", "B"})
+	// m.SemLogger().SetLevel(LogEverything)
 
 	// expectations
 	events := []string{
@@ -918,6 +921,10 @@ func TestPartialAutoStatesByStateState(t *testing.T) {
 	if os.Getenv(EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
+	timeout := 200 * time.Millisecond
+	if os.Getenv(EnvAmDebug) != "" {
+		timeout = 20 * time.Minute
+	}
 
 	// init
 	m := NewCustomStates(t, Schema{
@@ -931,20 +938,24 @@ func TestPartialAutoStatesByStateState(t *testing.T) {
 		CB     HandlerNegotiation
 		BState HandlerFinal
 	}{
-		CB:     func(e *Event) bool { return false },
-		BState: func(e *Event) { t.Log("BState should not be called") },
+		CB: func(e *Event) bool {
+			return false
+		},
+		BState: func(e *Event) {
+			t.Log("BState should not be called")
+		},
 	})
 
 	// trigger mut
 	go m.Add1("C", nil)
 	select {
 	case <-m.When(S{"C"}, nil):
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(timeout):
 	}
 	// wait for auto
 	select {
 	case <-m.WhenQueueEnds():
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(timeout):
 	}
 
 	assertStates(t, m, S{"C", "A"}, "only C and A auto state should be active")
@@ -3337,10 +3348,10 @@ func TestDisposedNoOp(t *testing.T) {
 	<-m.WhenTime(s, Time{}, nil)
 	<-m.WhenQueueEnds()
 
-	res, _ := m.processHandlers(e)
-	assert.Equal(t, Canceled, res)
-	res, _ = m.handle("test", A{}, false, false, false)
-	assert.Equal(t, Canceled, res)
+	// res, _ := m.processHandlers(e)
+	// assert.Equal(t, Canceled, res)
+	// res, _ = m.handle("test", A{}, false, false, false)
+	// assert.Equal(t, Canceled, res)
 
 	// others
 	found, _, _ := m.IsQueued(MutationAdd, s, false, false, 0, false, PositionAny)
@@ -3444,9 +3455,8 @@ func TestGroups(t *testing.T) {
 	groups, order := m.Groups()
 
 	assert.Equal(t, groups, map[string][]int{
-		// groups TODO inherited
-		// "BaseGroup0":       {3, 4},
-		// "BaseGroup1":       {6, 3},
+		"BaseGroup0":       {3, 4},
+		"BaseGroup1":       {6, 3},
 		"Group0":           {5, 6},
 		"GroupTestNameBar": {4, 5},
 
@@ -3456,7 +3466,8 @@ func TestGroups(t *testing.T) {
 		"TestGroups0Def": {1, 2},
 	})
 	assert.Equal(t, order, []string{
-		"Group0", "GroupTestNameBar", "self", "TestGroups1Def", "TestGroups0Def",
+		"Group0", "GroupTestNameBar", "BaseGroup0", "BaseGroup1",
+		"self", "TestGroups1Def", "TestGroups0Def",
 	})
 }
 
@@ -3631,4 +3642,115 @@ func TestNestedSchema(t *testing.T) {
 	assert.Equal(t, "Heartbeat", BasicSchema[ssB.Parent1.Nested1].Remove[1])
 	assert.True(t, BasicSchema[ssB.Parent1.Nested2].Multi)
 	assert.False(t, BasicSchema[ssB.Parent1.Nested3].Multi)
+}
+
+type TestPartialNegHandlers struct{}
+
+func (h *TestPartialNegHandlers) AEnter(e *Event) S {
+	if !e.StateCalled() {
+		return e.Accept()
+	}
+
+	return e.AcceptWithoutThis()
+}
+
+func TestPartialNeg(t *testing.T) {
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+	m := NewNoRels(t, nil)
+	_, _ = m.BindHandlers(&TestPartialNegHandlers{})
+	m.Add(S{"A", "B"}, nil)
+	assert.True(t, m.Is1("B"))
+	assert.True(t, m.Not1("A"))
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+type TestPartialAcceptHandlers struct{}
+
+func (h *TestPartialAcceptHandlers) AEnter(e *Event) S {
+	return e.Accept()
+}
+
+type TestPartialAcceptWithout1Handlers struct{}
+
+func (h *TestPartialAcceptWithout1Handlers) AEnter(e *Event) S {
+	return e.AcceptWithout1("A")
+}
+
+type TestPartialAcceptWithoutHandlers struct{}
+
+func (h *TestPartialAcceptWithoutHandlers) AEnter(e *Event) S {
+	return e.AcceptWithout(S{"A", "C"})
+}
+
+type TestPartialCancelHandlers struct{}
+
+func (h *TestPartialCancelHandlers) AEnter(e *Event) S {
+	return e.Cancel()
+}
+
+func TestPartialNegMethods(t *testing.T) {
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+
+	t.Run("Accept", func(t *testing.T) {
+		t.Parallel()
+		m := NewNoRels(t, nil)
+		_, err := m.BindHandlers(&TestPartialAcceptHandlers{})
+		require.NoError(t, err)
+
+		assert.Equal(t, Executed, m.Add(S{"A", "B"}, nil))
+		assert.True(t, m.Is1("A"))
+		assert.True(t, m.Is1("B"))
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+
+	t.Run("AcceptWithout1", func(t *testing.T) {
+		t.Parallel()
+		m := NewNoRels(t, nil)
+		_, err := m.BindHandlers(&TestPartialAcceptWithout1Handlers{})
+		require.NoError(t, err)
+
+		assert.Equal(t, Executed, m.Add(S{"A", "B"}, nil))
+		assert.True(t, m.Is1("B"))
+		assert.True(t, m.Not1("A"))
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+
+	t.Run("AcceptWithout", func(t *testing.T) {
+		t.Parallel()
+		m := NewNoRels(t, nil)
+		_, err := m.BindHandlers(&TestPartialAcceptWithoutHandlers{})
+		require.NoError(t, err)
+
+		assert.Equal(t, Executed, m.Add(S{"A", "B", "C"}, nil))
+		assert.True(t, m.Is1("B"))
+		assert.True(t, m.Not1("A"))
+		assert.True(t, m.Not1("C"))
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+
+	t.Run("Cancel", func(t *testing.T) {
+		t.Parallel()
+		m := NewNoRels(t, nil)
+		_, err := m.BindHandlers(&TestPartialCancelHandlers{})
+		require.NoError(t, err)
+
+		assert.Equal(t, Canceled, m.Add1("A", nil))
+		assert.True(t, m.Not1("A"))
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
 }

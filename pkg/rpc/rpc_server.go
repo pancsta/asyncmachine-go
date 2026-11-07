@@ -115,14 +115,6 @@ type Server struct {
 	// WsTunConnRetryBackoff is the maximum time to wait between retries.
 	WsTunConnRetryBackoff time.Duration
 
-	// syncMutations will push all clock changes for each mutation, enabling
-	// client-side mutation filtering.
-	syncMutations     bool
-	syncAllowedStates am.S
-	syncSkippedStates am.S
-	syncSchema        bool
-	syncShallowClocks bool
-
 	// security
 
 	// internal
@@ -130,7 +122,7 @@ type Server struct {
 	rpcServer *rpc2.Server
 	// rpcClient is the internal rpc2 client.
 	rpcClient atomic.Pointer[rpc2.Client]
-	tracer    *sourceTracer
+	tracer    *SourceTracer
 	// TODO bind the a machine ticker (if handlers bound)
 	ticker *time.Ticker
 
@@ -144,10 +136,28 @@ type Server struct {
 	// ID of the currently connected client.
 	clientId        atomic.Pointer[string]
 	lastPush        time.Time
-	lastPushData    *tracerData
+	lastPushData    *TracerData
 	httpSrv         *http.Server
 	wsTunRetryRound atomic.Int32
 	wsConn          *websocket.Conn
+	Config          *SourceConfig
+}
+
+// serverTracer couples a [SourceTracer] with server-side pushes and schema
+// syncs.
+type serverTracer struct {
+	*SourceTracer
+	server *Server
+}
+
+func (t *serverTracer) TransitionEnd(tx *am.Transition) {
+	t.SourceTracer.TransitionEnd(tx)
+	go t.server.PushClient()
+}
+
+func (t *serverTracer) SchemaChange(mach am.Api, oldSchema am.Schema) {
+	t.SourceTracer.SchemaChange(mach, oldSchema)
+	t.server.schemaChange(mach, oldSchema)
 }
 
 // interfaces
@@ -185,7 +195,7 @@ func NewServer(
 
 	// check the source
 	if stateSource == nil {
-		return nil, fmt.Errorf("netSrcMach required")
+		return nil, fmt.Errorf("stateSource required")
 	}
 	if !stateSource.StatesVerified() {
 		return nil, fmt.Errorf(
@@ -197,8 +207,8 @@ func NewServer(
 	if hasHandlers && !stateSource.Has(ssSs.Names()) {
 		// error only when some handlers bound, skip deterministic machines
 		err := fmt.Errorf(
-			"%w: NetSourceMach with handlers has to implement "+
-				"pkg/rpc/states/StateSourceStatesDef",
+			"%w: StateSource mach with handlers has to implement "+
+				"pkg/rpc/states.StateSourceStatesDef",
 			am.ErrSchema,
 		)
 
@@ -223,7 +233,7 @@ func NewServer(
 		WsTunConnRetryDelay:   time.Second,
 		WsTunConnRetryBackoff: 10 * time.Second,
 
-		lastPushData: &tracerData{},
+		lastPushData: &TracerData{},
 	}
 	interval := 250 * time.Millisecond
 	s.PushInterval.Store(&interval)
@@ -260,19 +270,12 @@ func NewServer(
 	}
 
 	// bind to source via Tracer API (inactive until activated)
-	s.tracer = &sourceTracer{
-		TracerNoOp: &am.TracerNoOp{
-			Id: mach.Id(),
-		},
-		s: s,
-		dataLatest: &tracerData{
-			// queue ticks start at 1
-			queueTick: 1,
-		},
-	}
-	// queue ticks start at 1
-	s.tracer.dataLatest.queueTick = 1
-	if _, err = stateSource.BindTracer(s.tracer); err != nil {
+	s.Config = &SourceConfig{}
+	s.tracer = NewSourceTracer(mach.Id(), s.Config)
+	if _, err = stateSource.BindTracer(&serverTracer{
+		SourceTracer: s.tracer,
+		server:       s,
+	}); err != nil {
 		return nil, err
 	}
 
@@ -618,8 +621,8 @@ func (s *Server) HandshakeDoneState(e *am.Event) {
 	defer s.lockCollection.Unlock()
 
 	// push meantime changes
-	lastTSum := s.lastPushData.mTrackedTimeSum
-	if export.Time.Sum(s.tracer.trackedStateIdxs) != lastTSum {
+	lastTSum := s.lastPushData.MTrackedTimeSum
+	if export.Time.Sum(s.tracer.TrackedStateIdxs) != lastTSum {
 		s.PushClient()
 	}
 }
@@ -737,6 +740,67 @@ func (s *Server) bindRpcHandlers() {
 	// s.rpcServer.Handle("RemoteWhenArgs", s.RemoteWhenArgs)
 }
 
+// schemaChange syncs a source schema change to the client. It is called by
+// [SourceTracer.SchemaChange].
+func (s *Server) schemaChange(mach am.Api, _ am.Schema) {
+	s.lockCollection.Lock()
+	defer s.lockCollection.Unlock()
+
+	if !s.tracer.Active.Load() {
+		return
+	}
+
+	msg := &MsgSrvHello{}
+	msg.Serialized, msg.Schema, _ = mach.Export()
+	msg.StatesCount = uint32(len(msg.Serialized.StateNames))
+	allStates := msg.Serialized.StateNames
+
+	// client-bound indexes when no schema synced
+	export := msg.Serialized
+	if !s.tracer.Config.SyncSchema.Load() {
+		export.StateNames = am.StatesShared(export.StateNames,
+			s.tracer.TrackedStates)
+		export.Time = export.Time.Filter(s.tracer.TrackedStateIdxs)
+
+		// zero non-tracked for consistent checksums
+	} else {
+		for i := range allStates {
+			if slices.Contains(s.tracer.TrackedStateIdxs, i) {
+				continue
+			}
+			export.Time[i] = 0
+		}
+	}
+
+	// init cache
+	if s.tracer.TrackedStates == nil {
+		s.tracer.calcTrackedStates(allStates)
+	}
+
+	// memorize
+	d := s.lastPushData
+	d.MTime = export.Time
+	d.QueueTick = export.QueueTick
+	d.MTrackedTimeSum = export.Time.Sum(s.tracer.TrackedStateIdxs)
+	d.Checksum = Checksum(d.MTrackedTimeSum, d.QueueTick, d.MachTick)
+
+	// fork and push
+	go func() {
+		client := s.rpcClient.Load()
+		if client == nil {
+			return
+		}
+
+		s.lockExport.Lock()
+		defer s.lockExport.Unlock()
+
+		// send
+		err := client.CallWithContext(mach.Context(), ClientSchemaChange.Value,
+			msg, &MsgEmpty{})
+		mach.AddErr(err, nil)
+	}()
+}
+
 // PushClient triggers a manual push of an update to the client. It can be
 // either a single or a multi update. It can also be throttled and happen later.
 func (s *Server) PushClient() {
@@ -758,14 +822,14 @@ func (s *Server) PushClient() {
 	defer s.lockExport.Unlock()
 
 	// collect
-	data := s.tracer.DataLatest()
+	data := s.tracer.DataLatest.Load()
 	if data == nil {
 		return
 	}
 
 	// no change
-	if s.lastPushData.mTrackedTimeSum == data.mTrackedTimeSum &&
-		s.lastPushData.queueTick == data.queueTick {
+	if s.lastPushData.MTrackedTimeSum == data.MTrackedTimeSum &&
+		s.lastPushData.QueueTick == data.QueueTick {
 
 		// s.log("skip no diff")
 		return
@@ -778,10 +842,16 @@ func (s *Server) PushClient() {
 	}
 
 	// sync
-	s.log("pushClient:try t%d", data.mTrackedTimeSum)
+	s.log("pushClient:try t%d", data.MTrackedTimeSum)
 	var err error
-	if s.syncMutations {
-		err = s.pushUpdateMutations(s.tracer.DataQueue())
+	if s.tracer.Config.SyncMutations.Load() {
+		var muts []TracerMutation
+		if queue := s.tracer.DataQueue.Swap(nil); queue != nil {
+			muts = *queue
+		}
+		s.tracer.DataLatest.Store(nil)
+
+		err = s.pushUpdateMutations(muts)
 	} else {
 		err = s.pushUpdateLatest(data)
 	}
@@ -791,13 +861,13 @@ func (s *Server) PushClient() {
 
 		return
 	}
-	s.log("pushClient:ok t%d", data.mTrackedTimeSum)
+	s.log("pushClient:ok t%d", data.MTrackedTimeSum)
 
 	s.storeLastPush(data)
 }
 
 // call via by PushClient
-func (s *Server) pushUpdateMutations(muts []tracerMutation) error {
+func (s *Server) pushUpdateMutations(muts []TracerMutation) error {
 	c := s.rpcClient.Load()
 	if c == nil {
 		return nil
@@ -805,7 +875,8 @@ func (s *Server) pushUpdateMutations(muts []tracerMutation) error {
 	defer s.Mach.PanicToErr(nil)
 
 	// calculate diffs
-	updateMuts := calcUpdateMutations(s.syncSchema, muts, s.lastPushData)
+	updateMuts := calcUpdateMutations(s.tracer.Config.SyncSchema.Load(), muts,
+		s.lastPushData)
 
 	// nothing to push
 	if len(updateMuts.MutationType) == 0 {
@@ -820,7 +891,7 @@ func (s *Server) pushUpdateMutations(muts []tracerMutation) error {
 }
 
 // call via by PushClient
-func (s *Server) pushUpdateLatest(data *tracerData) error {
+func (s *Server) pushUpdateLatest(data *TracerData) error {
 	c := s.rpcClient.Load()
 	if c == nil {
 		return nil
@@ -828,7 +899,8 @@ func (s *Server) pushUpdateLatest(data *tracerData) error {
 	defer s.Mach.PanicToErr(nil)
 
 	// calculate diff
-	update := calcUpdate(s.syncSchema, data, s.lastPushData, s.syncShallowClocks)
+	update := calcUpdate(s.tracer.Config.SyncSchema.Load(), data, s.lastPushData,
+		s.tracer.Config.SyncShallowClocks.Load())
 
 	// nothing to push
 	if len(update.Indexes) == 0 {
@@ -847,16 +919,22 @@ func (s *Server) pushUpdateLatest(data *tracerData) error {
 // newMsgMutation creates a new response to a mutation call from the client.
 // Requires [s.lockExport]
 func (s *Server) newMsgMutation(
-	mut am.Result, data *tracerData,
+	mut am.Result, data *TracerData,
 ) *MsgSrvMutation {
 	r := MsgSrvMutation{Result: mut}
 	// calculate diff
-	if s.syncMutations {
-		r.Mutations = calcUpdateMutations(s.syncSchema, s.tracer.DataQueue(),
+	if s.tracer.Config.SyncMutations.Load() {
+		var muts []TracerMutation
+		if queue := s.tracer.DataQueue.Swap(nil); queue != nil {
+			muts = *queue
+		}
+		s.tracer.DataLatest.Store(nil)
+
+		r.Mutations = calcUpdateMutations(s.tracer.Config.SyncSchema.Load(), muts,
 			s.lastPushData)
 	} else {
-		r.Update = calcUpdate(s.syncSchema, data, s.lastPushData,
-			s.syncShallowClocks)
+		r.Update = calcUpdate(s.tracer.Config.SyncSchema.Load(), data,
+			s.lastPushData, s.tracer.Config.SyncShallowClocks.Load())
 	}
 
 	// fmt.Printf("[S] QueueTick: %d - %d\n", data.queueTick, s.lastPushQTick)
@@ -867,7 +945,7 @@ func (s *Server) newMsgMutation(
 	return &r
 }
 
-func (s *Server) storeLastPush(data *tracerData) {
+func (s *Server) storeLastPush(data *TracerData) {
 	s.lastPush = time.Now()
 	s.lastPushData = data
 }
@@ -953,28 +1031,30 @@ func (s *Server) RemoteHello(
 	}
 
 	// set up sync
-	s.syncAllowedStates = req.AllowedStates
-	s.syncSkippedStates = req.SkippedStates
-	s.syncShallowClocks = req.ShallowClocks
-	s.syncMutations = req.SyncMutations
+	cfg := s.tracer.Config
+	cfg.SyncAllowedStates.Store(&req.AllowedStates)
+	cfg.SyncSkippedStates.Store(&req.SkippedStates)
+	cfg.SyncShallowClocks.Store(req.ShallowClocks)
+	cfg.SyncMutations.Store(req.SyncMutations)
+	cfg.SyncSchema.Store(req.SyncSchema)
 
 	// prep the mach msg
 	export, schema, _ := s.Source.Export()
 	s.tracer.calcTrackedStates(export.StateNames)
-	s.tracer.active = true
+	s.tracer.Active.Store(true)
 	statesCount := len(export.StateNames)
-	tTrackedSum := export.Time.Filter(s.tracer.trackedStateIdxs).Sum(nil)
+	tTrackedSum := export.Time.Filter(s.tracer.TrackedStateIdxs).Sum(nil)
 
 	// client-bound indexes when no schema synced
 	if !req.SyncSchema {
 		export.StateNames = am.StatesShared(export.StateNames,
-			s.tracer.trackedStates)
-		export.Time = export.Time.Filter(s.tracer.trackedStateIdxs)
+			s.tracer.TrackedStates)
+		export.Time = export.Time.Filter(s.tracer.TrackedStateIdxs)
 
 		// zero non-tracked for consistent checksums
 	} else {
 		for i := range export.StateNames {
-			if slices.Contains(s.tracer.trackedStateIdxs, i) {
+			if slices.Contains(s.tracer.TrackedStateIdxs, i) {
 				continue
 			}
 			export.Time[i] = 0
@@ -987,7 +1067,6 @@ func (s *Server) RemoteHello(
 
 	// return the schema if requested
 	if req.SyncSchema {
-		s.syncSchema = true
 		if req.SchemaHash == "" ||
 			req.SchemaHash != amhelp.SchemaHash(schema) {
 
@@ -996,9 +1075,9 @@ func (s *Server) RemoteHello(
 	}
 
 	// memorize
-	s.lastPushData.mTime = export.Time
-	s.lastPushData.queueTick = export.QueueTick
-	s.lastPushData.mTrackedTimeSum = tTrackedSum
+	s.lastPushData.MTime = export.Time
+	s.lastPushData.QueueTick = export.QueueTick
+	s.lastPushData.MTrackedTimeSum = tTrackedSum
 	s.lastPush = time.Now()
 	s.clientId.Store(&req.Id)
 
@@ -1066,9 +1145,10 @@ func (s *Server) RemoteAdd(
 		val = s.Source.Add(amhelp.IndexesToStates(s.Source.StateNames(),
 			req.States), args)
 	}
+	waitMutation(s.Source, val)
 
 	// return
-	data := s.tracer.DataLatest()
+	data := s.tracer.DataLatest.Load()
 	*resp = *s.newMsgMutation(val, data)
 
 	return nil
@@ -1124,9 +1204,10 @@ func (s *Server) RemoteRemove(
 	// execute TODO event trace
 	val := s.Source.Remove(amhelp.IndexesToStates(s.Source.StateNames(),
 		req.States), args)
+	waitMutation(s.Source, val)
 
 	// return
-	data := s.tracer.DataLatest()
+	data := s.tracer.DataLatest.Load()
 	*resp = *s.newMsgMutation(val, data)
 
 	return nil
@@ -1155,9 +1236,10 @@ func (s *Server) RemoteSet(
 	// execute TODO event trace
 	val := s.Source.Set(amhelp.IndexesToStates(s.Source.StateNames(),
 		req.States), args)
+	waitMutation(s.Source, val)
 
 	// return
-	data := s.tracer.DataLatest()
+	data := s.tracer.DataLatest.Load()
 	*resp = *s.newMsgMutation(val, data)
 
 	return nil
@@ -1315,9 +1397,23 @@ func BindServerRpcReady(source, target *am.Machine,
 	return source.HandlersBind(h)
 }
 
+// waitMutation waits until a queued mutation is processed.
+func waitMutation(mach am.Api, res am.Result) {
+	if res >= am.Queued {
+		<-mach.WhenQueue(res)
+	}
+}
+
+// CalcUpdate calculates a new update based on previously pushed data.
+func CalcUpdate(
+	syncSchema bool, data, lastPush *TracerData, shallowClocks bool,
+) *MsgSrvUpdate {
+	return calcUpdate(syncSchema, data, lastPush, shallowClocks)
+}
+
 // calcUpdate calculates a new update based on previously pushed data.
 func calcUpdate(
-	syncSchema bool, data, lastPush *tracerData, shallowClocks bool,
+	syncSchema bool, data, lastPush *TracerData, shallowClocks bool,
 ) *MsgSrvUpdate {
 	var idxs []uint16
 	var ticks []uint32
@@ -1328,47 +1424,47 @@ func calcUpdate(
 	}
 
 	return &MsgSrvUpdate{
-		QueueTick: uint16(data.queueTick - lastPush.queueTick),
-		MachTick:  uint8(data.machTick - lastPush.machTick),
+		QueueTick: uint16(data.QueueTick - lastPush.QueueTick),
+		MachTick:  uint8(data.MachTick - lastPush.MachTick),
 		Indexes:   idxs,
 		Ticks:     ticks,
-		Checksum:  data.checksum,
+		Checksum:  data.Checksum,
 	}
 }
 
 // calcUpdate calculates a new mutation update based on the queue and previously
 // pushed data.
 func calcUpdateMutations(
-	syncSchema bool, muts []tracerMutation, prev *tracerData,
+	syncSchema bool, muts []TracerMutation, prev *TracerData,
 ) *MsgSrvUpdateMuts {
 	ret := &MsgSrvUpdateMuts{}
 	for i := range muts {
 		mut := &muts[i]
-		ret.MutationType = append(ret.MutationType, mut.mutType)
-		called := make([]uint16, len(mut.calledIdxs))
-		for ii := range mut.calledIdxs {
-			called[ii] = uint16(mut.calledIdxs[ii])
+		ret.MutationType = append(ret.MutationType, mut.MutType)
+		called := make([]uint16, len(mut.CalledIdxs))
+		for ii := range mut.CalledIdxs {
+			called[ii] = uint16(mut.CalledIdxs[ii])
 		}
 		ret.CalledStates = append(ret.CalledStates, called)
-		ret.Updates = append(ret.Updates, *calcUpdate(syncSchema, &mut.data, prev,
+		ret.Updates = append(ret.Updates, *calcUpdate(syncSchema, &mut.Data, prev,
 			false))
 
-		prev = &mut.data
+		prev = &mut.Data
 	}
 
 	return ret
 }
 
 func genDeepUpdate(
-	syncSchema bool, data, lastPush *tracerData,
+	syncSchema bool, data, lastPush *TracerData,
 ) (indexes []uint16, ticks []uint32) {
-	indexes = make([]uint16, 0, len(data.tracked))
-	ticks = make([]uint32, 0, len(data.tracked))
+	indexes = make([]uint16, 0, len(data.Tracked))
+	ticks = make([]uint32, 0, len(data.Tracked))
 
-	for trackedIdx := range data.tracked {
-		stateIdx := data.trackedIdxs[trackedIdx]
-		prev := lastPush.mTime
-		now := data.mTime
+	for trackedIdx := range data.Tracked {
+		stateIdx := data.TrackedIdxs[trackedIdx]
+		prev := lastPush.MTime
+		now := data.MTime
 
 		// client has shorter state names
 		pushedIdx := uint16(stateIdx)
@@ -1395,15 +1491,15 @@ func genDeepUpdate(
 }
 
 func genShallowUpdate(
-	syncSchema bool, data, lastPush *tracerData,
+	syncSchema bool, data, lastPush *TracerData,
 ) (indexes []uint16, ticks []uint32) {
-	indexes = make([]uint16, 0, len(data.tracked))
-	ticks = make([]uint32, 0, len(data.tracked))
+	indexes = make([]uint16, 0, len(data.Tracked))
+	ticks = make([]uint32, 0, len(data.Tracked))
 
-	for trackedIdx := range data.tracked {
-		stateIdx := data.trackedIdxs[trackedIdx]
-		prev := lastPush.mTime
-		now := data.mTime
+	for trackedIdx := range data.Tracked {
+		stateIdx := data.TrackedIdxs[trackedIdx]
+		prev := lastPush.MTime
+		now := data.MTime
 
 		// client has shorter state names
 		pushedIdx := uint16(stateIdx)
