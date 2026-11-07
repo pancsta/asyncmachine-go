@@ -610,6 +610,20 @@ func (s *Server) RpcReadyState(e *am.Event) {
 
 var _ = ssS.HandshakeDone
 
+func (s *Server) HandshakeDoneState(e *am.Event) {
+	export, _, _ := s.Source.Export()
+
+	// locks
+	s.lockCollection.Lock()
+	defer s.lockCollection.Unlock()
+
+	// push meantime changes
+	lastTSum := s.lastPushData.mTrackedTimeSum
+	if export.Time.Sum(s.tracer.trackedStateIdxs) != lastTSum {
+		s.PushClient()
+	}
+}
+
 func (s *Server) HandshakeDoneEnd(e *am.Event) {
 	if c := s.rpcClient.Load(); c != nil {
 		_ = c.Close()
