@@ -1032,6 +1032,12 @@ func (d *Debugger) newLogReaderUpdate(
 		return nil
 	}
 
+	var groupStates S
+	if d.Mach.Is1(ss.FilterReaderGroup) && c.SelectedGroup != "" &&
+		c.MsgSchemaParsed != nil {
+		groupStates = c.MsgSchemaParsed.Groups[c.SelectedGroup]
+	}
+
 	return &logReaderUpdate{
 		d:           d,
 		e:           e,
@@ -1041,6 +1047,7 @@ func (d *Debugger) newLogReaderUpdate(
 		txParsed:    c.MsgTxsParsed[c.CursorTx1-1],
 		statesIndex: c.MsgStruct.StatesIndex,
 		selState:    c.SelectedState,
+		groupStates: groupStates,
 	}
 }
 
@@ -1518,6 +1525,9 @@ type logReaderUpdate struct {
 	parentQueue     *cview.TreeNode
 	parentForks     *cview.TreeNode
 	parentSiblings  *cview.TreeNode
+
+	// group narrowing
+	groupStates S
 }
 
 func (u *logReaderUpdate) buildParsedEntries() error {
@@ -1540,6 +1550,13 @@ func (u *logReaderUpdate) buildParsedEntry(ptr *types.LogReaderEntryPtr) error {
 	}
 
 	entry := entries[ptr.EntryIdx]
+	if len(u.groupStates) > 0 && len(entry.States) > 0 {
+		entryStates := u.c.IndexesToStates(entry.States)
+		if len(am.StatesShared(entryStates, u.groupStates)) == 0 {
+			return nil
+		}
+	}
+
 	nodeRef := &logReaderTreeRef{
 		stateNames: u.c.IndexesToStates(entry.States),
 		machId:     entry.Mach,
