@@ -15,6 +15,7 @@ import (
 	"github.com/pancsta/d2/d2graph"
 	"github.com/pancsta/d2/d2layouts/d2dagrelayout"
 	"github.com/pancsta/d2/d2layouts/d2elklayout"
+	"github.com/pancsta/d2/d2layouts/d2talalayout"
 	"github.com/pancsta/d2/d2lib"
 	"github.com/pancsta/d2/d2renderers/d2svg"
 	"github.com/pancsta/d2/d2themes/d2themescatalog"
@@ -353,6 +354,12 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 		return fmt.Errorf("failed to write D2 file: %w", err)
 	}
 
+	// none - only the .d2 source was requested
+	if r.OutputD2Layout == D2LayoutNone {
+		r.log("Skipping D2 layout (%s)\n", D2LayoutNone)
+		return nil
+	}
+
 	// generate D2 graph
 	// Initialize the slog logger
 	opts := slog.HandlerOptions{
@@ -363,22 +370,31 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 	slogLogger := slog.New(slog.NewJSONHandler(os.Stdout, &opts))
 	ctx = d2log.With(ctx, slogLogger)
 	ruler, _ := textmeasure.NewRuler()
+	layoutStr := string(r.OutputD2Layout)
 	layoutResolver := func(engine string) (d2graph.LayoutGraph, error) {
-		// TODO
-		// if r.OutputD2Tala {
-		// 		return d2talalayout.DefaultLayout, nil
-		// }
-		if r.OutputElk {
+		switch D2Layout(strings.ToLower(engine)) {
+		case D2LayoutTala:
+			return d2talalayout.DefaultLayout, nil
+		case D2LayoutDagre:
+			return d2dagrelayout.DefaultLayout, nil
+		default:
 			return d2elklayout.DefaultLayout, nil
 		}
-		return d2dagrelayout.DefaultLayout, nil
+	}
+	routerResolver := func(engine string) (d2graph.RouteEdges, error) {
+		if D2Layout(strings.ToLower(engine)) == D2LayoutTala {
+			return d2talalayout.RouteEdges, nil
+		}
+		return nil, nil
 	}
 	renderOpts := &d2svg.RenderOpts{
 		Pad:     go2.Pointer(int64(5)),
 		ThemeID: &d2themescatalog.DarkMauve.ID,
 	}
 	compileOpts := &d2lib.CompileOptions{
+		Layout:         &layoutStr,
 		LayoutResolver: layoutResolver,
+		RouterResolver: routerResolver,
 		Ruler:          ruler,
 	}
 	r.log("Generating %s.svg\n", r.OutputFilename)

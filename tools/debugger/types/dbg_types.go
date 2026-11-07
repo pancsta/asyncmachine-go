@@ -69,15 +69,16 @@ type Params struct {
 	FilterRpcMachs       bool        `arg:"--filter-rpc-machs" help:"Filter RPC machines"`
 	FilterQueuedTx       bool        `arg:"--filter-queued" help:"Filter queued transitions"`
 
-	OutputCallLog   bool                 `arg:"--output-call-log" help:"Write called handlers as Go code into call-log/{mach-id}/{mtime}.go inside --dir (EXPERIMENTAL)"`
-	OutputClients   bool                 `arg:"--output-clients" help:"Write a detailed client list into clients.txt inside --dir"`
-	OutputDiagrams  ParamsOutputDiagrams `arg:"--output-diagrams" help:"Enable graph diagrams and set the level of detail for machine diagrams in --dir (0 off, 1-3 on) (EXPERIMENTAL)"`
-	OutputDiagGroup ParamsOutDiagGroup   `arg:"--output-diag-group" help:"Only show states from the selected group (valid: hide, skip)" default:"hide"`
-	OutputDiagTx    ParamsOutDiagTx      `arg:"--output-diag-tx" help:"Dim states and rels unrelated to a transition (valid: called, changed, touched, relations)" default:"relations"`
-	OutputGraph     bool                 `arg:"--output-graph" help:"Write the current network graph as graph.(md|mgml) inside --dir (EXPERIMENTAL)"`
-	OutputLog       bool                 `arg:"--output-log" help:"Write the current log buffer to log.md inside --dir"`
-	OutputMach      bool                 `arg:"--output-mach" default:"true" help:"Write the serialized machine state into mach.yml and schema.yml inside --dir"`
-	OutputTx        bool                 `arg:"--output-tx" default:"true" help:"Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir"`
+	OutputCallLog    bool                 `arg:"--output-call-log" help:"Write called handlers as Go code into call-log/{mach-id}/{mtime}.go inside --dir (EXPERIMENTAL)"`
+	OutputClients    bool                 `arg:"--output-clients" help:"Write a detailed client list into clients.txt inside --dir"`
+	OutputDiagrams   ParamsOutputDiagrams `arg:"--output-diagrams" help:"Enable graph diagrams and set the level of detail for machine diagrams in --dir (0 off, 1-3 on) (EXPERIMENTAL)"`
+	OutputDiagGroup  ParamsOutDiagGroup   `arg:"--output-diag-group" help:"Only show states from the selected group (valid: hide, skip)" default:"hide"`
+	OutputDiagLayout ParamsDiagLayout     `arg:"--output-diag-layout" help:"D2 layout engine for state and graph diagrams (valid: tala, elk, dagre)" default:"tala"`
+	OutputDiagTx     ParamsOutDiagTx      `arg:"--output-diag-tx" help:"Dim states and rels unrelated to a transition (valid: called, changed, touched, relations)" default:"relations"`
+	OutputGraph      bool                 `arg:"--output-graph" help:"Write the current network graph as graph.(md|mgml) inside --dir (EXPERIMENTAL)"`
+	OutputLog        bool                 `arg:"--output-log" help:"Write the current log buffer to log.md inside --dir"`
+	OutputMach       bool                 `arg:"--output-mach" default:"true" help:"Write the serialized machine state into mach.yml and schema.yml inside --dir"`
+	OutputTx         bool                 `arg:"--output-tx" default:"true" help:"Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir"`
 
 	// ui
 
@@ -213,6 +214,29 @@ var (
 
 func (p *ParamsOutDiagGroup) UnmarshalText(b []byte) error {
 	res := ParamsOutDiagGroupEnum.Parse(string(b))
+	if res == nil {
+		return fmt.Errorf("invalid value: %s", b)
+	}
+	*p = *res
+	return nil
+}
+
+// ParamsDiagLayout is an enum for --output-diag-layout
+type ParamsDiagLayout enum.Member[string]
+
+// "", "tala", "elk", "dagre"
+var (
+	ParamsDiagLayoutNone  = ParamsDiagLayout{""}
+	ParamsDiagLayoutTala  = ParamsDiagLayout{"tala"}
+	ParamsDiagLayoutElk   = ParamsDiagLayout{"elk"}
+	ParamsDiagLayoutDagre = ParamsDiagLayout{"dagre"}
+
+	ParamsDiagLayoutEnum = enum.New(ParamsDiagLayoutNone, ParamsDiagLayoutTala,
+		ParamsDiagLayoutElk, ParamsDiagLayoutDagre)
+)
+
+func (p *ParamsDiagLayout) UnmarshalText(b []byte) error {
+	res := ParamsDiagLayoutEnum.Parse(string(b))
 	if res == nil {
 		return fmt.Errorf("invalid value: %s", b)
 	}
