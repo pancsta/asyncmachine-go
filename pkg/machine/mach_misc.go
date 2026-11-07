@@ -1096,6 +1096,85 @@ func (e *Event) IsValid() bool {
 		tx.IsAccepted.Load()
 }
 
+// Called returns true if the state of this event has been explicitly called
+// (requested) in the current transition. Useful as a guard for partial
+// acceptance. Returns false for events not bound to a single state, eg
+// AnyEnter.
+func (e *Event) Called() bool {
+	tx := e.Transition()
+	if tx == nil {
+		return false
+	}
+
+	state := e.negotiationState()
+	return state != "" && tx.CalledStates().Has(state)
+}
+
+// Accept returns all called states of the transition, effectively accepting
+// the whole transition. Meant to be returned from a negotiation handler.
+func (e *Event) Accept() S {
+	tx := e.Transition()
+	if tx == nil {
+		return nil
+	}
+
+	return tx.CalledStates()
+}
+
+// AcceptWithout1 returns all called states of the transition, except for the
+// passed state. See [Event.AcceptWithout].
+func (e *Event) AcceptWithout1(state string) S {
+	return e.AcceptWithout(S{state})
+}
+
+// AcceptWithout returns all called states of the transition, except for the
+// passed states. An empty result means a full rejection of the transition.
+func (e *Event) AcceptWithout(states S) S {
+	tx := e.Transition()
+	if tx == nil {
+		return nil
+	}
+
+	return tx.CalledStates().Delete(states)
+}
+
+// AcceptWithoutThis returns all called states of the transition, except for
+// the state of this event. For events not bound to a single state (eg
+// AnyEnter), it returns all called states.
+func (e *Event) AcceptWithoutThis() S {
+	state := e.negotiationState()
+	if state == "" {
+		return e.Accept()
+	}
+
+	return e.AcceptWithout1(state)
+}
+
+// Cancel cancels the whole transition, the same way as returning false from a
+// negotiation handler. Meant to be returned from a negotiation handler.
+func (e *Event) Cancel() S {
+	return nil
+}
+
+// negotiationState returns the state this event is bound to, based on the
+// handler name. Returns an empty string for events not bound to a single state,
+// eg AnyEnter, self handlers (FooFoo), state-state handlers (FooBar), and final
+// handlers (FooState, FooEnd).
+func (e *Event) negotiationState() string {
+	switch {
+	case strings.HasSuffix(e.Name, SuffixEnter):
+		state := strings.TrimSuffix(e.Name, SuffixEnter)
+		if state != StateAny {
+			return state
+		}
+
+	case strings.HasSuffix(e.Name, SuffixExit):
+		return strings.TrimSuffix(e.Name, SuffixExit)
+	}
+
+	return ""
+}
+
 // Export clones only the essential data of the Event. Useful for tracing vs GC.
 func (e *Event) Export() *Event {
 	id := e.MachineId

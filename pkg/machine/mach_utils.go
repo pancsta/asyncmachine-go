@@ -222,8 +222,15 @@ func (s S) Delete1(states ...string) S {
 }
 
 // Sub returns the states from [s] that are missing in [other] (subtract).
+// Deprecated use [S.Delete].
 func (s S) Sub(other S) S {
 	return StatesDiff(s, other)
+}
+
+// Sub1 returns the states from [s] without [state] (subtract).
+// Deprecated use [S.Delete1].
+func (s S) Sub1(state string) S {
+	return StatesDiff(s, S{state})
 }
 
 // Shared returns states present in both S and other (overlap).
@@ -307,6 +314,7 @@ func (s S) Remove(states S) S {
 // ----- old
 
 // IndexToStates is deprecated, use [S.FilterIndex].
+// Deprecated.
 func IndexToStates(index S, states []int) S {
 	ret := make(S, len(states))
 	for i := range states {
@@ -321,6 +329,7 @@ func IndexToStates(index S, states []int) S {
 }
 
 // StatesToIndex is deprecated, use [S.Index].
+// Deprecated.
 func StatesToIndex(index S, states S) []int {
 	ret := make([]int, len(states))
 	for i := range states {
@@ -330,7 +339,8 @@ func StatesToIndex(index S, states S) []int {
 	return ret
 }
 
-// StatesDiff is deprecated, use [S.Sub].
+// StatesDiff is deprecated, use [S.Delete].
+// Deprecated.
 func StatesDiff(states1 S, states2 S) S {
 	// TODO optimize
 	return slicesFilter(states1, func(name string, i int) bool {
@@ -339,6 +349,7 @@ func StatesDiff(states1 S, states2 S) S {
 }
 
 // StatesShared is deprecated, use [S.Shared].
+// Deprecated.
 func StatesShared(states1 S, states2 S) S {
 	return slicesFilter(states1, func(name string, i int) bool {
 		return slices.Contains(states2, name)
@@ -346,11 +357,13 @@ func StatesShared(states1 S, states2 S) S {
 }
 
 // StatesEqual is deprecated, use [S.Equal].
+// Deprecated.
 func StatesEqual(states1 S, states2 S) bool {
 	return slicesEvery(states1, states2) && slicesEvery(states2, states1)
 }
 
 // StatesPrefix is deprecated, use [S.Prefix].
+// Deprecated.
 func StatesPrefix(prefix string, states S) S {
 	ret := make(S, len(states))
 	for i, name := range states {
@@ -361,6 +374,7 @@ func StatesPrefix(prefix string, states S) S {
 }
 
 // StatesWithPrefix is deprecated, use [S.FilterPrefix].
+// Deprecated.
 func StatesWithPrefix(prefix string, states S) S {
 	ret := S{}
 	for _, name := range states {
@@ -373,9 +387,9 @@ func StatesWithPrefix(prefix string, states S) S {
 }
 
 // SAdd is deprecated, use [S.Add].
+// Deprecated.
 func SAdd(states ...S) S {
 	// TODO test
-	// TODO move to resolver
 	if len(states) == 0 {
 		return S{}
 	}
@@ -389,15 +403,15 @@ func SAdd(states ...S) S {
 }
 
 // SRem is deprecated, use [S.Delete].
+// Deprecated.
 func SRem(src S, states ...S) S {
 	// TODO test
-	// TODO move to resolver
 	s := slices.Clone(src)
 	if len(states) == 0 {
 		return s
 	}
 
-	for i := 1; i < len(states); i++ {
+	for i := range states {
 		for ii := 0; ii < len(states[i]); ii++ {
 			s = slicesWithout(s, states[i][ii])
 		}
@@ -487,6 +501,7 @@ func (s State) HasTag(tag string) bool {
 // ----- old
 
 // StateAdd is deprecated, use [State.Extend].
+// Deprecated.
 func StateAdd(source State, overlay State) State {
 	// TODO example
 	// TODO test
@@ -518,6 +533,7 @@ func StateAdd(source State, overlay State) State {
 }
 
 // StateSet is Deprecated, use [State.Set].
+// Deprecated.
 func StateSet(source State, auto, multi bool, overlay State) State {
 	// TODO example
 	// TODO test
@@ -596,23 +612,58 @@ type handlerCall struct {
 	debug       string
 }
 
-func (c *handlerCall) Exec() bool {
-	ret := true
+// func negReturn Partial
+
+func (c *handlerCall) Exec() *handlerReturn {
+	ret := handlerReturn{}
 	if c.fn != nil {
 		callRet := c.fn.Call([]reflect.Value{reflect.ValueOf(c.event)})
+		ret.Called = true
 		if len(callRet) > 0 {
 			// TODO log err?
-			ret, _ = callRet[0].Interface().(bool)
+			v1, ok1 := callRet[0].Interface().(bool)
+			v2, ok2 := callRet[0].Interface().(S)
+			if ok1 {
+				ret.RetBool = v1
+			} else if ok2 {
+				// TODO optimize: with nil as prev value
+				ret.RetStates = v2
+				ret.PartialNeg = true
+			}
+		} else {
+			// default
+			ret.RetBool = true
 		}
 	} else if c.negotiation != nil {
-		ret = c.negotiation(c.event)
+		ret.RetBool = c.negotiation(c.event)
+		// TODO List ret for map handlers
 	} else if c.final != nil {
 		c.final(c.event)
 	} else {
 		panic("invalid handler call " + c.name)
 	}
 
-	return ret
+	return &ret
+}
+
+// TODO no pub fields
+type handlerReturn struct {
+	// was the handler called?
+	Called bool
+	// did the handler time out?
+	Timeout bool
+	// hard cancel, full tx rejection
+	Canceled   bool
+	// binary negotiation return
+	RetBool bool
+	// partial negotiation return of called states
+	RetStates  S
+	// partial negotiation return marker
+	PartialNeg bool
+	// only for PartialNeg true
+	PartiallyAccepted bool
+
+	processed bool
 }
 
 func newHandlerCallStruct(
