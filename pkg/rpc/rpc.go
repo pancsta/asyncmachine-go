@@ -99,7 +99,10 @@ var (
 		ClientSendPayload, ClientBye, ClientSchemaChange)
 )
 
-// MSGS TODO migrate to msgpack, shorten names
+// MSGS
+
+// TODO support other formats - msgpack, json, tinygo json
+// TODO optimize: shorten names
 
 // MsgCliHello is the client saying hello to the server.
 type MsgCliHello struct {
@@ -799,7 +802,7 @@ func (t *sourceTracer) TransitionEnd(tx *am.Transition) {
 	qTick := srcMach.QueueTick()
 	machTick := srcMach.MachineTick()
 	mTime := srcMach.Time(nil)
-	trackedTSum := mTime.Filter(t.trackedStateIdxs).Sum(nil)
+	trackedTSum := mTime.Sum(t.trackedStateIdxs)
 
 	// filter the time slice
 	if !s.syncSchema {
@@ -807,7 +810,7 @@ func (t *sourceTracer) TransitionEnd(tx *am.Transition) {
 	}
 	if s.syncShallowClocks {
 		mTime = am.NewTime(mTime, mTime.ActiveStates(nil))
-		trackedTSum = mTime.Sum(nil)
+		trackedTSum = mTime.Sum(t.trackedStateIdxs)
 	}
 
 	// update
@@ -897,7 +900,7 @@ func (t *sourceTracer) SchemaChange(mach am.Api, oldSchema am.Schema) {
 	d := s.lastPushData
 	d.mTime = export.Time
 	d.queueTick = export.QueueTick
-	d.mTrackedTimeSum = export.Time.Sum(nil)
+	d.mTrackedTimeSum = export.Time.Sum(t.trackedStateIdxs)
 	d.checksum = Checksum(d.mTrackedTimeSum, d.queueTick, d.machTick)
 
 	// fork and push
