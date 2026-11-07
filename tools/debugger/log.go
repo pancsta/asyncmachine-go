@@ -1004,9 +1004,10 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 		d.Mach.EvAddErr(e, err, nil)
 		return
 	}
+	u.buildEvals()
 
 	parents := []*cview.TreeNode{
-		u.parentSource, u.parentTrace, u.parentQueue,
+		u.parentSource, u.parentTrace, u.parentQueue, u.parentEval,
 		// TODO u.parentHandlers (bound handler names with time)
 		u.parentForks, u.parentSiblings, u.parentExecuted, u.parentCanceled,
 		u.parentArgs, u.parentCtx, u.parentWhen, u.parentWhenNot, u.parentWhenTime,
@@ -1516,6 +1517,7 @@ type logReaderUpdate struct {
 	parentSource    *cview.TreeNode
 	parentTrace     *cview.TreeNode
 	parentQueue     *cview.TreeNode
+	parentEval      *cview.TreeNode
 	parentForks     *cview.TreeNode
 	parentSiblings  *cview.TreeNode
 }
@@ -1582,6 +1584,36 @@ func (u *logReaderUpdate) buildParsedEntry(ptr *types.LogReaderEntryPtr) error {
 	node.SetReference(nodeRef)
 
 	return nil
+}
+
+// buildEvals reads evals from the current transition's log entries only.
+func (u *logReaderUpdate) buildEvals() {
+	for _, entry := range slices.Concat(u.tx.PreLogEntries, u.tx.LogEntries) {
+		text := entry.Text
+		prefix := ""
+		timeout := false
+
+		switch {
+		case strings.HasPrefix(text, "[eval] "):
+			prefix = "[eval] "
+		case strings.HasPrefix(text, "[eval:timeout] "):
+			prefix = "[eval:timeout] "
+			timeout = true
+		default:
+			continue
+		}
+
+		if u.parentEval == nil {
+			u.parentEval = cview.NewTreeNode("Evals")
+		}
+
+		source := strings.TrimSpace(text[len(prefix):])
+		label := "[::b]eval[::-] " + source
+		if timeout {
+			label = "[" + theme.Err + "::b]eval:timeout[-::-] " + source
+		}
+		u.parentEval.AddChild(cview.NewTreeNode(label))
+	}
 }
 
 func (u *logReaderUpdate) buildTimedStateParent(
