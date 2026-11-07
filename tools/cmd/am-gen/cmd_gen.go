@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -36,7 +37,7 @@ func main() {
 
 	if p.Subcommand() == nil {
 		p.Fail("missing subcommand (starter-kit, schema, schema-from-file, " +
-			"grafana)\n" + args.Description())
+			"grafana, lint)\n" + args.Description())
 	}
 
 	switch {
@@ -63,6 +64,11 @@ func main() {
 	case args.Grafana != nil:
 		args.Grafana.Token = os.Getenv(EnvGrafanaToken)
 		if err := genGrafana(ctx, args.Grafana); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	case args.Lint != nil:
+		if err := lintSchema(args.Lint); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
@@ -136,6 +142,84 @@ func genStatesFile(ctx context.Context, params *cli.SchemaParams) error {
 		return fmt.Errorf("file %s already exists, delete it or use --force", name)
 	}
 
+	return nil
+}
+
+// lintFiles resolves the input path to a list of ss_*.go files. A directory
+// resolves to all ss_*.go files inside it (non-recursive), an empty path to
+// the current directory.
+func lintFiles(path string) ([]string, error) {
+	if path == "" {
+		path = "."
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return []string{path}, nil
+	}
+
+	matches, err := filepath.Glob(filepath.Join(path, "ss_*.go"))
+	if err != nil {
+		return nil, err
+	}
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("no ss_*.go files found in %s", path)
+	}
+	return matches, nil
+}
+
+func lintSchema(params *cli.LintParams) error {
+	files, err := lintFiles(params.File)
+	if err != nil {
+		return err
+	}
+
+	changed := false
+	for _, file := range files {
+		src, err := os.ReadFile(file)
+		if err != nil {
+			return err
+		}
+
+		res, err := generator.LintSchemaOrder(file, src)
+		if err != nil {
+			return err
+		}
+		if !res.Changed {
+			continue
+		}
+		changed = true
+
+		if params.DryRun {
+			fmt.Printf("--- %s (dry-run) ---\n", file)
+			fmt.Print(string(res.Src))
+			continue
+		}
+
+		info, err := os.Stat(file)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(file, res.Src, info.Mode().Perm()); err != nil {
+			return err
+		}
+
+		msgs := make([]string, 0, 2)
+		if res.Reordered {
+			msgs = append(msgs, "reordered")
+		}
+		if len(res.Added) > 0 {
+			msgs = append(msgs, "added "+strings.Join(res.Added, ", "))
+		}
+		fmt.Printf("Linted %s (%s)\n", file, strings.Join(msgs, ", "))
+	}
+
+	if !changed {
+		fmt.Println("No changes")
+	}
 	return nil
 }
 
