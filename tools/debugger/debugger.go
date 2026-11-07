@@ -2408,8 +2408,9 @@ func (d *Debugger) hUpdateMatrixRain() {
 	d.matrix.SetSelectable(true, true)
 
 	index := c.MsgStruct.StatesIndex
+	states := index
 	if g := c.SelectedGroup; g != "" {
-		index = c.MsgSchemaParsed.Groups[g]
+		states = c.MsgSchemaParsed.Groups[g]
 	}
 	tx := d.hCurrentTx()
 	prevTx := d.hPrevTx()
@@ -2462,24 +2463,25 @@ func (d *Debugger) hUpdateMatrixRain() {
 		}
 		tx := c.MsgTxs[txIdx1-1]
 		txParsed := c.MsgTxsParsed[txIdx1-1]
-		calledStates := tx.CalledStateNames(c.MsgStruct.StatesIndex)
+		calledStates := tx.CalledStateNames(index)
 
-		for ii, name := range index {
+		for ii, name := range states {
+			idx := index.Index1(name)
 
 			v := "."
 			sIsErr := strings.HasPrefix(name, "Err")
 
 			if tx.Is1(index, name) {
 				v = "1"
-				if slices.Contains(txParsed.StatesTouched, ii) {
+				if slices.Contains(txParsed.StatesTouched, idx) {
 					v = "2"
 				}
-			} else if slices.Contains(txParsed.StatesRemoved, ii) {
+			} else if slices.Contains(txParsed.StatesRemoved, idx) {
 				v = "|"
-			} else if !tx.Accepted && slices.Contains(calledStates, index[ii]) {
+			} else if !tx.Accepted && slices.Contains(calledStates, name) {
 				// called but canceled
 				v = "c"
-			} else if slices.Contains(txParsed.StatesTouched, ii) {
+			} else if slices.Contains(txParsed.StatesTouched, idx) {
 				v = "*"
 			}
 
@@ -2538,10 +2540,10 @@ func (d *Debugger) hUpdateMatrixRain() {
 		}
 
 		// tail cell
-		d.matrix.SetCellSimple(rowIdx, len(index), fmt.Sprintf(
+		d.matrix.SetCellSimple(rowIdx, len(states), fmt.Sprintf(
 			"  ["+theme.Grey+"]%d | %s[-]", txIdx1, tStampFmt,
 		))
-		tailCell := d.matrix.GetCell(rowIdx, len(index))
+		tailCell := d.matrix.GetCell(rowIdx, len(states))
 
 		// current tx
 		if txIdx1 == c.CursorTx1 {
@@ -2551,13 +2553,13 @@ func (d *Debugger) hUpdateMatrixRain() {
 
 	diffT := 0
 	if c.CursorTx1 > 0 {
-		for _, name := range index {
+		for _, name := range states {
 
 			var pTick uint64
 			if prevTx != nil {
-				pTick = prevTx.Clock(index, name)
+				pTick = prevTx.Clock(states, name)
 			}
-			tick := tx.Clock(index, name)
+			tick := tx.Clock(states, name)
 
 			v := tick - pTick
 			diffT += int(v)
