@@ -51,7 +51,8 @@ which implements [AOP](https://en.wikipedia.org/wiki/Aspect-oriented_programming
 through a **[clock-based state machine](/pkg/machine/README.md)**. It features [atomic transitions](/docs/manual.md#transition-lifecycle),
 [relations](/docs/manual.md#relations), [transparent RPC](/pkg/rpc/README.md), [TUI debugger](/tools/cmd/am-dbg/README.md),
 [telemetry](/pkg/telemetry/README.md), [REPL](/tools/cmd/arpc/README.md), [selective distribution](/pkg/rpc/README.md#selective-distribution),
-and [diagrams](/tools/cmd/am-vis/README.md) (plus support for [WASM](/docs/wasm.md) and [AI](/docs/ai.md)).
+ [diagrams](/tools/cmd/am-vis/README.md), and [UDP-mesh discovery](/pkg/graph/README.md) (plus support for
+[WASM](/docs/wasm.md) and [AI](/docs/ai.md)).
 
 As a control flow library, it decides about running of predefined bits of code (transition handlers) - their order and
 which ones to run, according to currently active states (flags). Thanks to a [novel state machine](/pkg/machine/README.md),
@@ -274,7 +275,10 @@ Other packages:
 - [`/pkg/rpc`](/pkg/rpc) Remote state machines, with the same API as local ones.
 - [`/pkg/history`](/pkg/history) History tracking and traversal in mem, KV, and SQL.
 - [`/pkg/integrations`](/pkg/integrations) Integrations for JSON, NATS, MCP, and yaegi.
-- [`/pkg/graph`](/pkg/graph) Directional multigraph of connected state machines.
+- [`/pkg/graph`](/pkg/graph) Directional multigraph of connected state machines with a UDP sync.
+
+Experimental:
+
 - [`/pkg/node`](/pkg/node) Distributed worker pools with supervisors.
 - [`/pkg/pubsub`](/pkg/pubsub) Decentralized PubSub based on libp2p gossipsub.
 
@@ -300,7 +304,7 @@ Other packages:
 
 **asyncmachine-go** synchronizes state for the following projects:
 
-- [Taskbot.APP](https://taskbot.app) - AI Browser Automation
+- [Taskbot.APP](https://taskbot.app) - AI Browser Workflows
 - [secai](https://github.com/pancsta/secai) - AI Workflows framework
 - [secai Web UI](https://github.com/pancsta/secai/tree/main/web) - WebAssembly [go-app](https://go-app.dev/) PWA
 - Self-hosting of [pkg/rpc](pkg/rpc/states), [pkg/node](pkg/node/states), [pkg/pubsub](pkg/pubsub/states)

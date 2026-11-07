@@ -55,6 +55,9 @@ Example:
 $ am-gen grafana --IDs MyMach1,MyMach2 \
 	--sync grafana-host.com
 
+Example:
+$ am-gen lint --dry-run ss_my_mach.go
+
 Valid for --inherit:
 - basic
 - connected
@@ -73,7 +76,41 @@ Commands:
   schema                 Generate state schema from CLI params
   schema-from-file       Generate state schema from schema.yml / mach.yml
   grafana                Generate Grafana dashboards
+  lint                   Order Schema entries according to StatesDef and add missing ones
   states-file            Deprecated, use schema
+```
+
+## Lint
+
+`am-gen lint` refactors an existing `ss_*.go` file, a directory of `ss_*.go` files, or all
+`ss_*.go` files in the current directory:
+
+- orders `am.Schema` entries according to the field order of the matching `{Name}StatesDef` struct,
+  keeping comments attached to their entries,
+- adds empty `{}` entries for states declared in the struct, but missing in the schema,
+- leaves inherited/overridden entries (not present in the struct) at the top, in their original order.
+
+```bash
+# lint all ss_*.go files in CWD
+$ am-gen lint
+
+# lint all ss_*.go files in a directory
+$ am-gen lint ./mypkg/states
+
+# lint a single file
+$ am-gen lint ss_my_mach.go
+
+# print the result to stdout without writing
+$ am-gen lint --dry-run ss_my_mach.go
+```
+
+### Lint Help
+
+```bash
+Usage: am-gen lint [--dry-run] [FILE]
+
+Positional arguments:
+  FILE                   Path to a ss_*.go file or a directory (default: CWD)
 ```
 
 ## Schema Files

@@ -21,7 +21,7 @@ state machines. The graph is based on fragmented data they provide via:
   - active states
 
 The rendering uses ELK ([Eclipse Layout Kernel](https://eclipse.dev/elk/)) and is done by [D2](https://d2lang.com/)
-(embedded). At the moment it can only render from file dumps, with the `live-server` version is yet to come.
+(embedded). At the moment it can render from file dumps and YAML schemas, with the `live-server` version is yet to come.
 
 <div align="center">
     <a href="https://pancsta.github.io/assets/asyncmachine-go/am-vis/diagram-1.svg">
@@ -69,10 +69,16 @@ am-vis --render-inherited \
 # map view
 am-vis --map render-dump mymach.gob.br
 
-# inspect dump as Markdown
+# TALA layout for the D2 output
+am-vis --output-d2 tala render-dump mymach.gob.br mach://MyMach1/t234
+
+# inspect a dump file as Markdown and XML
 am-vis inspect-dump mymach.gob.br
 
-Usage: am-vis [--render-distance RENDER-DISTANCE] [--render-depth RENDER-DEPTH] [--render-start] [--render-ready] [--render-exception] [--render-states] [--render-inherited] [--render-pipes] [--render-detailed-pipes] [--render-relations] [--render-conns] [--render-parent-rel] [--render-half-conns] [--render-half-pipes] [--render-nest-submachines] [--render-tags] [--bird] [--map] [--output-elk] [--output-filename OUTPUT-FILENAME] [--debug] [--version] <command> [<args>]
+# render a YAML schema
+am-vis render-schema schema.yml
+
+Usage: am-vis [--render-distance RENDER-DISTANCE] [--render-depth RENDER-DEPTH] [--render-start] [--render-ready] [--render-exception] [--render-states] [--render-inherited] [--render-pipes] [--render-detailed-pipes] [--render-relations] [--render-conns] [--render-parent-rel] [--render-half-conns] [--render-half-pipes] [--render-nest-submachines] [--render-tags] [--bird] [--map] [--output-png] [--output-d2 tala|none|elk|dagre] [--output-filename OUTPUT-FILENAME] [--debug] [--version] <command> [<args>]
 
 Options:
   --render-distance RENDER-DISTANCE, -d RENDER-DISTANCE [default: 0]
@@ -93,7 +99,9 @@ Options:
   --render-tags [default: false]
   --bird, -b             Use the bird's view preset
   --map, -b              Use the map view preset
-  --output-elk           Use ELK layout [default: true]
+  --output-png           Output also PNG
+  --output-d2 tala|none|elk|dagre
+                         D2 layout engine (tala, none, elk, dagre) [default: elk]
   --output-filename OUTPUT-FILENAME, -o OUTPUT-FILENAME [default: am-vis]
   --debug                Enable debugging for asyncmachine
   --version, -v          Print version and exit
@@ -101,6 +109,7 @@ Options:
 
 Commands:
   render-dump            Render from a debugger dump file
+  render-schema          Render from a YAML schema file
   inspect-dump           Render text form from a debugger dump file
 ```
 
