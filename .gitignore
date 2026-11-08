@@ -122,3 +122,4 @@ tools/visualizer/testdata/*
 /pkg/graph/test/netgraph.*
 /pkg/graph/frogql/frogql_wasm_bg.wasm
 /pkg/graph/frogql/frogql_gen.go
+/am-dbg/
