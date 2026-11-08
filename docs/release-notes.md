@@ -6,7 +6,12 @@
 
 ## [v0.19.6](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.6) (2026-11-07)
 
-> The highlight of this release is the traces view.
+The highlight of this release is the traces view.
+
+<img width="1287" height="1037" alt="am-dbg-traces" src="https://github.com/user-attachments/assets/5b5b7394-66a9-4bca-bc34-bb6d1ce3ac4b" />
+
+
+
 
 ### release/v0.19.6
 
