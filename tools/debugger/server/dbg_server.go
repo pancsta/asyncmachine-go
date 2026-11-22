@@ -156,6 +156,30 @@ func (c *Client) TxAtQueueTick(qTick uint64) int {
 	return i
 }
 
+// TxAtStateTick returns the index of the first transition after which [state]
+// reached the [tick] of its clock, or the closest later transition.
+func (c *Client) TxAtStateTick(state string, tick uint64) int {
+	states := c.MsgStruct.StatesIndex
+	if slices.Index(states, state) == -1 {
+		return -1
+	}
+
+	l := len(c.MsgTxs)
+	if l == 0 {
+		return -1
+	}
+
+	i := sort.Search(l, func(i int) bool {
+		return c.MsgTxs[i].Clock(states, state) >= tick
+	})
+
+	if i == l {
+		i = l - 1
+	}
+
+	return i
+}
+
 func (c *Client) TxAtHTime(hTime time.Time) int {
 	l := len(c.MsgTxs)
 	if l == 0 {

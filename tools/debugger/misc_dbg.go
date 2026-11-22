@@ -38,10 +38,16 @@ const (
 	// TODO customize
 	playInterval = 500 * time.Millisecond
 	// TODO add param --max-clients
-	maxClients            = 5000
-	timeFormat            = "15:04:05.000000000"
-	fastJumpAmount        = 50
-	arrowThrottleMs       = 200
+	maxClients      = 5000
+	timeFormat      = "15:04:05.000000000"
+	fastJumpAmount  = 50
+	arrowThrottleMs = 200
+	// arrowHoldWindowMs is the max gap between arrow key repeats which still
+	// counts as holding the key.
+	arrowHoldWindowMs = 500
+	// arrowRepeatMs is the min interval between steps while an arrow key is
+	// held (~20 transitions per second).
+	arrowRepeatMs         = 50
 	logUpdateDebounce     = 300 * time.Millisecond
 	sidebarUpdateDebounce = time.Second
 	searchAsTypeWindow    = 1500 * time.Millisecond

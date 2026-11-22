@@ -34,7 +34,7 @@ func (d *Debugger) hInitUiComponents() {
 
 	// groups dropdown
 	d.treeGroups = cview.NewDropDown()
-	d.treeGroups.SetLabel(" Group ")
+	d.treeGroups.SetLabel(" Group      ")
 	d.treeGroups.SetFieldBackgroundColor(tcell.GetColor(theme.Highlight))
 	d.treeGroups.SetDropDownBackgroundColor(tcell.GetColor(theme.Highlight))
 	d.treeGroups.SetDropDownSelectedTextColor(cview.Styles.PrimaryTextColor)
@@ -388,7 +388,7 @@ func (d *Debugger) hInitAddressBar() {
 			d.Mach.Eval("addressBar.SetSelectedStyle", func() {
 				d.addressBar.SetSelectedStyle(tcell.GetColor(theme.Active),
 					cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
-				d.draw(d.addressBar)
+				d.hDraw(d.addressBar)
 			}, nil)
 		}()
 	})
@@ -441,7 +441,7 @@ func (d *Debugger) hInitToolbar() {
 				d.Mach.Eval("toolbar", func() {
 					d.toolbars[i].SetSelectedStyle(tcell.GetColor(theme.Active),
 						cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
-					d.draw(d.toolbars[i])
+					d.hDraw(d.toolbars[i])
 				}, nil)
 			}()
 		})
@@ -707,7 +707,7 @@ func (d *Debugger) hInitExportDialog() *cview.Modal {
 		if buttonLabel == "Save" && filename != "" {
 			form.GetButton(0).SetLabel("Saving...")
 			// form.Draw(d.App.GetScreen())
-			d.draw()
+			d.hDraw()
 			d.hExportData(filename, moment)
 			form.GetButton(0).SetLabel("Save")
 		}
@@ -967,10 +967,11 @@ func (d *Debugger) hInitLayout() {
 	d.mainGrid = cview.NewGrid()
 
 	panels := cview.NewPanels()
-	panels.AddPanel(DialogExport, d.exportDialog, false, true)
-	panels.AddPanel(DialogHelp, d.helpDialog, true, true)
-	panels.AddPanel("overlay", d.overlay, false, true)
+	// main is drawn first, optional layers are raised by visibility
 	panels.AddPanel("main", d.mainGrid, true, true)
+	panels.AddPanel("overlay", d.overlay, false, false)
+	panels.AddPanel(DialogExport, d.exportDialog, false, false)
+	panels.AddPanel(DialogHelp, d.helpDialog, true, false)
 
 	d.LayoutRoot = panels
 
@@ -986,9 +987,16 @@ func (d *Debugger) hUpdateLayout() {
 	d.mainGrid.Clear()
 	d.mainGrid.SetRows(1, 1, -1, 1, 1, 1, 1, 1)
 
+	// keep the client list out of the draw path when hidden, targeted repaints
+	// would draw it over the content otherwise
+	narrow := d.Mach.Is1(ss.NarrowLayout)
+	if d.clientList != nil {
+		d.clientList.SetVisible(!narrow)
+	}
+
 	// columns
 	var cols []int
-	if d.Mach.Is1(ss.NarrowLayout) {
+	if narrow {
 		cols = []int{ /*content*/ -1, -1, -1, -1, -1, -1, -1, -1}
 	} else {
 		cols = []int{
@@ -1006,7 +1014,7 @@ func (d *Debugger) hUpdateLayout() {
 	d.mainGrid.AddItem(d.tagsBar, 1, 0, 1, len(cols), 0, 0, false)
 
 	// row 2
-	if d.Mach.Not1(ss.NarrowLayout) {
+	if !narrow {
 		d.mainGrid.AddItem(d.clientList, 2, 0, 1, 2, 0, 0, true)
 
 		// row 2 mid, right
@@ -1055,7 +1063,7 @@ func (d *Debugger) hUpdateLayout() {
 func (d *Debugger) hDrawViews() {
 	d.hUpdateViews(true)
 	d.Mach.Add1(ss.UpdateFocus, nil)
-	d.draw()
+	d.hDraw()
 }
 
 // hRedrawFull updates the common components of the UI, except:
@@ -1070,11 +1078,33 @@ func (d *Debugger) hRedrawFull(immediate bool) {
 	d.hUpdateStatusBar()
 	d.hUpdateBorderColor()
 	d.hUpdateAddressBar()
-	d.draw()
+	d.hDraw()
 }
 
-func (d *Debugger) draw(components ...cview.Primitive) {
-	// TODO detect visibility of requested components??? or in cview
+func (d *Debugger) hDraw(components ...cview.Primitive) {
+	// merge this request with any pending repaint
+	d.repaintMx.Lock()
+	if len(components) == 0 {
+		// a full draw supersedes targeted ones
+		d.repaintAll = true
+		d.repaintComponents = nil
+	} else if !d.repaintAll {
+		if d.repaintComponents == nil {
+			d.repaintComponents = map[cview.Primitive]struct{}{}
+		}
+		for _, p := range components {
+			if p != nil {
+				d.repaintComponents[p] = struct{}{}
+			}
+		}
+	}
+	d.repaintMx.Unlock()
+
+	d.scheduleRepaint()
+}
+
+// scheduleRepaint starts a debounced repaint worker, unless one is running.
+func (d *Debugger) scheduleRepaint() {
 	if !d.repaintScheduled.CompareAndSwap(false, true) {
 		return
 	}
@@ -1082,16 +1112,34 @@ func (d *Debugger) draw(components ...cview.Primitive) {
 	go func() {
 		select {
 		case <-d.Mach.Context().Done():
+			d.repaintScheduled.Store(false)
 			return
 
 		// debounce every 16msec
 		case <-time.After(16 * time.Millisecond):
 		}
 
-		// TODO re-draw only changed components
-		// TODO re-draw only c.Box.Draw() when simply changing focus
-		// TODO maybe: use QueueUpdate and call GetRoot.Draw() in Eval? bench and
-		//  compare?
+		// snapshot and clear the pending requests
+		d.repaintMx.Lock()
+		all := d.repaintAll
+		var comps []cview.Primitive
+		if !all {
+			for p := range d.repaintComponents {
+				if p.GetVisible() {
+					comps = append(comps, p)
+				}
+			}
+		}
+		d.repaintAll = false
+		clear(d.repaintComponents)
+		d.repaintComponents = nil
+		d.repaintMx.Unlock()
+
+		if !all && len(comps) == 0 {
+			d.repaintScheduled.Store(false)
+			return
+		}
+
 		d.App.QueueUpdateDraw(func() {
 			// run and dispose a registered callback
 			if d.redrawCallback != nil {
@@ -1099,7 +1147,15 @@ func (d *Debugger) draw(components ...cview.Primitive) {
 				d.redrawCallback = nil
 			}
 			d.repaintScheduled.Store(false)
-		}, components...)
+
+			// pick up requests merged while this repaint was scheduled
+			d.repaintMx.Lock()
+			pending := d.repaintAll || len(d.repaintComponents) > 0
+			d.repaintMx.Unlock()
+			if pending {
+				d.scheduleRepaint()
+			}
+		}, comps...)
 	}()
 }
 

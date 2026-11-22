@@ -352,7 +352,7 @@ var _ = ss.Paused
 func (d *Debugger) PausedState(e *am.Event) {
 	// TODO stop scrolling the log when coming from TailMode (confirm)
 	d.hUpdateTxBars()
-	d.draw()
+	d.hDraw()
 }
 
 var _ = ss.TailMode
@@ -505,7 +505,7 @@ func (d *Debugger) ToggleMarkState(e *am.Event) {
 	d.hUpdateTimelineTx()
 	d.hUpdateTimelineMarker()
 	d.hUpdateToolbar()
-	d.draw()
+	d.hDraw()
 }
 
 var _ = ss.Toolbar1Focused
@@ -731,7 +731,7 @@ func (d *Debugger) ConnectEventState(e *am.Event) {
 	d.hUpdateGraphHash()
 	d.Mach.EvAdd1(e, ss.DiagramsGraphRendering, nil)
 
-	d.draw()
+	d.hDraw()
 }
 
 var _ = ss.DisconnectEvent
@@ -782,7 +782,7 @@ func (d *Debugger) DisconnectEventState(e *am.Event) {
 	} else {
 		d.hUpdateClientList()
 	}
-	d.draw()
+	d.hDraw()
 }
 
 // ///// CLIENTS
@@ -908,7 +908,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 	d.hUpdateAddressBar()
 
 	if selectedUpdated {
-		d.draw()
+		d.hDraw()
 	}
 }
 
@@ -974,7 +974,7 @@ func (d *Debugger) RemoveClientState(e *am.Event) {
 		d.buildClientList(d.clientList.GetCurrentItemIndex() - 1)
 	}
 
-	d.draw()
+	d.hDraw()
 }
 
 var _ = ss.SetGroup
@@ -1217,7 +1217,7 @@ func (d *Debugger) ClientSelectedState(e *am.Event) {
 
 	d.hUpdateBorderColor()
 	d.hUpdateAddressBar()
-	d.draw()
+	d.hDraw()
 }
 
 func (d *Debugger) ClientSelectedEnd(e *am.Event) {
@@ -1241,28 +1241,28 @@ func (d *Debugger) HelpDialogState(e *am.Event) {
 	d.hUpdateHelpDialog()
 	d.hUpdateFocusableOrder()
 	d.hUpdateToolbar()
-	// TODO use Visibility instead of SendToFront
-	d.LayoutRoot.SendToFront("main")
-	d.LayoutRoot.SendToFront(DialogHelp)
+	d.LayoutRoot.ShowPanel(DialogHelp)
+	d.hDraw()
 	d.Mach.EvAdd1(e, ss.AfterFocus, Pass(&A{
 		FocusPrimitive: d.helpDialogLeft,
 	}))
 }
 
 func (d *Debugger) HelpDialogEnd(e *am.Event) {
+	d.LayoutRoot.HidePanel(DialogHelp)
 	d.Mach.EvRemove1(e, ss.DialogFocused, nil)
 }
 
 var _ = ss.ExportDialog
 
 func (d *Debugger) ExportDialogState(e *am.Event) {
-	// TODO use Visibility instead of SendToFront
-	d.LayoutRoot.SendToFront("main")
-	d.LayoutRoot.SendToFront(DialogExport)
+	d.LayoutRoot.ShowPanel(DialogExport)
+	d.hDraw()
 	d.Mach.EvAdd(e, am.S{ss.UpdateFocus, ss.DialogFocused}, nil)
 }
 
 func (d *Debugger) ExportDialogEnd(e *am.Event) {
+	d.LayoutRoot.HidePanel(DialogExport)
 	d.Mach.EvRemove1(e, ss.DialogFocused, nil)
 }
 
@@ -1273,7 +1273,6 @@ func (d *Debugger) DialogFocusedEnd(e *am.Event) {
 	diff := am.StatesDiff(states.DebuggerGroups.Dialog, tx.TargetStates())
 	if len(diff) == len(states.DebuggerGroups.Dialog) {
 		// all dialogs closed, show main
-		d.LayoutRoot.SendToFront("main")
 		d.hUpdateToolbar()
 
 		// focus prev one
@@ -1282,7 +1281,7 @@ func (d *Debugger) DialogFocusedEnd(e *am.Event) {
 			d.Mach.EvAdd(e, am.S{ss.UpdateFocus, state}, nil)
 		}
 
-		d.draw()
+		d.hDraw()
 	}
 }
 
@@ -1735,7 +1734,7 @@ func (d *Debugger) ToolToggledState(e *am.Event) {
 	d.hUpdateTimelineTx()
 	d.hUpdateMatrix()
 	d.hUpdateTxBars()
-	d.draw()
+	d.hDraw()
 }
 
 var _ = ss.SwitchingClientTx
@@ -2234,7 +2233,7 @@ func (d *Debugger) AfterFocusState(e *am.Event) {
 
 	// cview draws right after the Tab key is captured, before the queued focus
 	// mutation runs, so redraw once the new focus is applied
-	d.draw()
+	d.hDraw()
 }
 
 var _ = ss.ToolRain
@@ -2266,7 +2265,7 @@ func (d *Debugger) AnyState(e *am.Event) {
 	// TODO this should be done better
 	if tx.IsAuto() && tx.IsAccepted.Load() {
 		d.hUpdateTxBars()
-		d.draw()
+		d.hDraw()
 	}
 }
 
@@ -2362,7 +2361,7 @@ func (d *Debugger) ResizedState(e *am.Event) {
 			return // expired
 		}
 		// force a redraw TODO bug?
-		d.draw()
+		d.hDraw()
 	})
 }
 
@@ -2448,7 +2447,7 @@ func (d *Debugger) LoadingState(e *am.Event) {
 				d.loadingPos = i
 				d.hUpdateStatusBar()
 			}, ctx)
-			d.draw(d.statusBarLeft)
+			d.hDraw(d.statusBarLeft)
 			i = i % 9
 			time.Sleep(100 * time.Millisecond)
 
@@ -2466,7 +2465,7 @@ func (d *Debugger) LoadingExit(e *am.Event) bool {
 
 func (d *Debugger) LoadingEnd(e *am.Event) {
 	d.hUpdateStatusBar()
-	d.draw(d.statusBarLeft)
+	d.hDraw(d.statusBarLeft)
 }
 
 var _ = ss.UpdateTraces

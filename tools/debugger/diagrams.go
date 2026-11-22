@@ -344,8 +344,7 @@ func (d *Debugger) DiagramsStateRenderingState(e *am.Event) {
 		}
 	}
 
-	// TODO --diagrams-concurrency
-	pool := amhelp.Pool(ctx, 3)
+	pool := amhelp.Pool(ctx, d.params.OutputDiagConcurrency)
 	for _, state := range order {
 		// no zoom-in on common states
 		if state == am.StateStart || state == am.StateReady {
