@@ -3,7 +3,6 @@ package rpc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"maps"
 	"net"
 	"os"
@@ -17,6 +16,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/tmc/go-iroh/key"
 
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -247,7 +247,7 @@ func NewClient(
 
 		err := amhelp.Implements(opts.Consumer.StateNames(), ssCo.Names())
 		if err != nil {
-			err := fmt.Errorf(
+			err := nofmt.Errorf(
 				"consumer has to implement pkg/rpc/states/ConsumerStatesDef: %w", err,
 			)
 
@@ -809,7 +809,7 @@ func (c *Client) updateStatesSchema(resp *MsgSrvHello) {
 	l1 := len(resp.Serialized.StateNames)
 	l2 := len(resp.Serialized.Time)
 	if l1 != l2 {
-		c.Mach.AddErr(fmt.Errorf(
+		c.Mach.AddErr(nofmt.Errorf(
 			"resp.Serialized len invalid: %d != %d", l1, l2,
 		), nil)
 		// TODO ret err
@@ -1138,13 +1138,13 @@ func (c *Client) call(
 	}
 	// err test
 	if c.TmpTestErr != nil {
-		AddErrNetwork(nil, c.Mach, fmt.Errorf("%w: %s", c.TmpTestErr, mName))
+		AddErrNetwork(nil, c.Mach, nofmt.Errorf("%w: %s", c.TmpTestErr, mName))
 		c.TmpTestErr = nil
 		return false
 	}
 	// err test
 	if c.permTestErr != nil {
-		AddErrNetwork(nil, c.Mach, fmt.Errorf("%w: %s", c.TmpTestErr, mName))
+		AddErrNetwork(nil, c.Mach, nofmt.Errorf("%w: %s", c.TmpTestErr, mName))
 		return false
 	}
 	// err

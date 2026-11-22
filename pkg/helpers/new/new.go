@@ -2,10 +2,10 @@ package new
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/oleiade/reflections"
 
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhist "github.com/pancsta/asyncmachine-go/pkg/history"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -57,17 +57,17 @@ func FullMach[GStates am.States, GGroups any](
 
 	// required states
 	if !p.Schema.Implements(ssam.DisposedSchema) {
-		return nil, fmt.Errorf("schema does not implement disposed states")
+		return nil, nofmt.Errorf("schema does not implement disposed states")
 	}
 	if !p.Schema.Implements(ssam.BasicSchema) {
-		return nil, fmt.Errorf("schema does not implement basic states")
+		return nil, nofmt.Errorf("schema does not implement basic states")
 	}
 
 	// init handlers
 	if err := reflections.SetField(
 		p.Handlers, ssam.DisposedStructField, &ssam.DisposedHandlers{},
 	); err != nil {
-		return nil, fmt.Errorf("initialize handlers %s field: %w",
+		return nil, nofmt.Errorf("initialize handlers %s field: %w",
 			ssam.DisposedStructField, err)
 	}
 

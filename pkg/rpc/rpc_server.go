@@ -4,7 +4,6 @@ package rpc
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -18,6 +17,7 @@ import (
 	"github.com/cenkalti/rpc2"
 	"github.com/coder/websocket"
 
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -187,18 +187,18 @@ func NewServer(
 	}
 	// TODO WASM auto-tunnel
 	if opts.WebSocketTunnel != "" && addr == "" {
-		return nil, fmt.Errorf("addr required for WebSocketTunnel")
+		return nil, nofmt.Errorf("addr required for WebSocketTunnel")
 	}
 	if opts.WebSocket && addr == "" {
-		return nil, fmt.Errorf("addr required for WebSocket")
+		return nil, nofmt.Errorf("addr required for WebSocket")
 	}
 
 	// check the source
 	if stateSource == nil {
-		return nil, fmt.Errorf("stateSource required")
+		return nil, nofmt.Errorf("stateSource required")
 	}
 	if !stateSource.StatesVerified() {
-		return nil, fmt.Errorf(
+		return nil, nofmt.Errorf(
 			"net source states not verified, call VerifyStates()",
 		)
 	}
@@ -206,7 +206,7 @@ func NewServer(
 
 	if hasHandlers && !stateSource.Has(ssSs.Names()) {
 		// error only when some handlers bound, skip deterministic machines
-		err := fmt.Errorf(
+		err := nofmt.Errorf(
 			"%w: StateSource mach with handlers has to implement "+
 				"pkg/rpc/states.StateSourceStatesDef",
 			am.ErrSchema,
@@ -530,7 +530,7 @@ func (s *Server) RpcAcceptingState(e *am.Event) {
 			} else if lis != nil {
 				srv.Accept(*lis)
 			} else {
-				AddErrNetwork(e, s.Mach, fmt.Errorf("no listener"))
+				AddErrNetwork(e, s.Mach, nofmt.Errorf("no listener"))
 				s.Mach.EvRemove1(e, ssS.RpcReady, nil)
 
 				return
@@ -676,7 +676,7 @@ func (s *Server) SendPayload(
 	// check destination
 	id := s.ClientId()
 	if payload.Destination != "" && id != payload.Destination {
-		return fmt.Errorf("%w: %s != %s", ErrDestination, payload.Destination, id)
+		return nofmt.Errorf("%w: %s != %s", ErrDestination, payload.Destination, id)
 	}
 
 	defer s.Mach.PanicToErr(nil)
@@ -1026,7 +1026,7 @@ func (s *Server) RemoteHello(
 	if authIds != nil && len(*authIds) > 0 && !slices.Contains(*authIds, req.Id) {
 		s.Mach.Remove1(ssS.Handshaking, nil)
 
-		return fmt.Errorf("%w: %d keys, but not '%s'",
+		return nofmt.Errorf("%w: %d keys, but not '%s'",
 			ErrNoAccess, len(*authIds), req.Id)
 	}
 
@@ -1332,7 +1332,7 @@ func BindServer(
 ) (string, error) {
 	// TODO use ampipe.BindMany
 	if rpcReady == "" || clientReady == "" {
-		return "", fmt.Errorf("rpcReady and clientConn must be set")
+		return "", nofmt.Errorf("rpcReady and clientConn must be set")
 	}
 
 	h := &struct {
@@ -1360,7 +1360,8 @@ func BindServerMulti(
 	source, target *am.Machine, rpcReady, clientConn, clientDisconn string,
 ) (string, error) {
 	if rpcReady == "" || clientConn == "" || clientDisconn == "" {
-		return "", fmt.Errorf("rpcReady, clientConn, and clientDisconn must be set")
+		return "", nofmt.Errorf(
+			"rpcReady, clientConn, and clientDisconn must be set")
 	}
 	// TODO use ampipe.BindMany
 

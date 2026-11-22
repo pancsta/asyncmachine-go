@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"os"
 	"slices"
@@ -24,6 +23,7 @@ import (
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhist "github.com/pancsta/asyncmachine-go/pkg/history"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -354,7 +354,7 @@ func (t *tracer) SchemaChange(machine am.Api, old am.Schema) {
 
 	// sync mach record
 	if err := m.Db.Save(m.machRec).Error; err != nil {
-		m.onErr(fmt.Errorf("failed to save: %w", err))
+		m.onErr(nofmt.Errorf("failed to save: %w", err))
 	}
 }
 
@@ -628,7 +628,7 @@ func NewMemory(
 
 	c.TrackedStates = mach.ParseStates(c.TrackedStates)
 	if len(c.TrackedStates) == 0 {
-		return nil, fmt.Errorf("%w: no states to track", am.ErrStateMissing)
+		return nil, nofmt.Errorf("%w: no states to track", am.ErrStateMissing)
 	}
 
 	// init and bind
@@ -976,7 +976,7 @@ func (m *Memory) checkGc() {
 				Limit(m.Cfg.MaxRecords)).
 			Delete(m.Ctx)
 		if err != nil {
-			m.onErr(fmt.Errorf("failed to GC times: %w", err))
+			m.onErr(nofmt.Errorf("failed to GC times: %w", err))
 		}
 
 		// GC ticks of the times just removed above
@@ -988,7 +988,7 @@ func (m *Memory) checkGc() {
 				Where("machine_id = ?", m.machRec.ID)).
 			Delete(m.Ctx)
 		if err != nil {
-			m.onErr(fmt.Errorf("failed to GC ticks: %w", err))
+			m.onErr(nofmt.Errorf("failed to GC ticks: %w", err))
 		}
 
 		m.SavedGc.Store(m.Saved.Load())
@@ -1053,7 +1053,7 @@ func (m *Memory) writeDb(rLocked bool) {
 		// TODO retry loop?
 		// sync mach record TODO skip saving states
 		if err := m.Db.Save(machRec).Error; err != nil {
-			m.onErr(fmt.Errorf("failed to save: %w", err))
+			m.onErr(nofmt.Errorf("failed to save: %w", err))
 			return err
 		}
 		// TODO optimize: parallel save?

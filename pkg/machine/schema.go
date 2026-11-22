@@ -2,7 +2,6 @@ package machine
 
 import (
 	"errors"
-	"fmt"
 	"maps"
 	"reflect"
 	"runtime"
@@ -343,7 +342,7 @@ func (s Schema) Parse() (Schema, error) {
 		// detect require-remove conflicts
 		for _, required := range state.Require {
 			if slices.Contains(state.Remove, required) {
-				errs = errors.Join(errs, fmt.Errorf(
+				errs = errors.Join(errs, errorf(
 					"%w: require-remove conflict for %s to %s",
 					ErrSchema, name, required,
 				))

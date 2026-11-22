@@ -1,7 +1,6 @@
 package machine
 
 import (
-	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -484,11 +483,11 @@ func (t *Transition) String() string {
 	source := ""
 	mutSrc := t.Mutation.Source
 	if mutSrc != nil {
-		source = fmt.Sprintf("\nsource: [%s](%s/%s/t%d)", mutSrc.TxId,
+		source = sprintf("\nsource: [%s](%s/%s/t%d)", mutSrc.TxId,
 			mutSrc.MachId, mutSrc.TxId, mutSrc.MachTime)
 	}
 
-	return fmt.Sprintf("tx#%s\n%s%s%s", t.Id, t.Mutation.StringFromIndex(index),
+	return sprintf("tx#%s\n%s%s%s", t.Id, t.Mutation.StringFromIndex(index),
 		source, steps)
 }
 
