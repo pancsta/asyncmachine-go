@@ -254,7 +254,6 @@ func TestClientSupervisorFallback(t *testing.T) {
 // TODO TestKillWorker
 
 func TestClientWorker(t *testing.T) {
-	t.Skip("TODO refac to SendPayload method")
 	// t.Parallel()
 	// amhelp.EnableDebugging(false)
 	ctx, cancel := context.WithCancel(context.Background())

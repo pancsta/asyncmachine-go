@@ -291,6 +291,7 @@ func (s *Supervisor) ClientDisconnectedState(e *am.Event) {
 	srv, ok := s.PublicRpcs[addr]
 	if !ok {
 		s.log("client %s disconnected, but not found", addr)
+		return
 	}
 	srv.Stop(e, true)
 	delete(s.PublicRpcs, addr)
@@ -876,15 +877,22 @@ func (s *Supervisor) NormalizingPoolState(e *am.Event) {
 var _ = ssS.ProvideWorker
 
 func (s *Supervisor) ProvideWorkerEnter(e *am.Event) bool {
-	a := am.ParseArgs[A](e.Args)
+	a := am.ParseArgs[ARpc](e.Args)
 	return a.WorkerRpcId != "" && a.SuperRpcId != ""
 }
 
 func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 	s.Mach.Remove1(ssS.ProvideWorker, nil)
-	args := am.ParseArgs[A](e.Args)
+	args := am.ParseArgs[ARpc](e.Args)
 	ctx := s.Mach.NewStateCtx(ssS.Start)
 	idle := s.idleWorkers()
+
+	// find the RPC server of the requesting client
+	clientSrv := s.clientRpc(args.SuperRpcId)
+	if clientSrv == nil {
+		s.log("client rpc not found: %s", args.SuperRpcId)
+		return
+	}
 
 	// unblock
 	go func() {
@@ -896,33 +904,32 @@ func (s *Supervisor) ProvideWorkerState(e *am.Event) {
 		for _, info := range idle {
 
 			// confirm with the worker
-			ok := amhelp.Add1Sync(ctx, info.rpc.NetMach, ssW.ServeClient,
+			accepted := amhelp.EvAdd1Sync(ctx, e, info.rpc.NetMach, ssW.ServeClient,
 				Pass(&ARpc{
 					Id: args.WorkerRpcId,
 				}))
 			if ctx.Err() != nil {
 				return // expired
 			}
-			if ok {
+			if !accepted {
 				s.log("worker %s rejected %s", info.rpc.NetMach.Id(), args.WorkerRpcId)
 				continue
 			}
 
-			// TODO refac to SendPayload() method
-			// var nodeClientRpcSrv *arpc.Server
-			return
-
 			// send the addr to the client via RPC SendPayload
-			// _ = nodeClientRpcSrv.SendPayload(ctx, e, &arpc.MsgSrvPayload{
-			// 	Name:        ssS.ProvideWorker,
-			// 	Source:      s.Mach.Id(),
-			// 	Destination: args.SuperRpcId,
-			// 	Data:        info.publicAddr,
-			// })
-			//
-			// s.log("worker %s provided to %s", info.rpc.NetMach.Id(),
-			//   args.SuperRpcId)
-			// break
+			err := clientSrv.SendPayload(ctx, e, &arpc.MsgSrvPayload{
+				Name:        ssS.ProvideWorker,
+				Destination: args.SuperRpcId,
+				Data:        info.publicAddr,
+			})
+			if err != nil {
+				s.log("failed to provide worker %s to %s: %v",
+					info.rpc.NetMach.Id(), args.SuperRpcId, err)
+				return
+			}
+
+			s.log("worker %s provided to %s", info.rpc.NetMach.Id(), args.SuperRpcId)
+			break
 		}
 	}()
 }
@@ -1067,6 +1074,18 @@ func (s *Supervisor) rpcWorkers() []*workerInfo {
 	return ret
 }
 
+// clientRpc returns the RPC server of a connected client, by its RPC machine
+// ID. Only call in handlers or via [am.Machine.Eval].
+func (s *Supervisor) clientRpc(id string) *arpc.Server {
+	for _, srv := range s.PublicRpcs {
+		if srv.ClientId() == id {
+			return srv
+		}
+	}
+
+	return nil
+}
+
 // IdleWorkers returns Idle workers. Only call in handlers or use the
 // [ListWorkers] state.
 func (s *Supervisor) idleWorkers() []*workerInfo {
@@ -1152,13 +1171,21 @@ func (s *Supervisor) newClientConn(
 	}
 
 	// store
+	addr := conn.RemoteAddr().String()
 	ok := s.Mach.Eval("newClientConn", func() {
 		// TODO check ctx
-		s.PublicRpcs[conn.RemoteAddr().String()] = rpcS
+		s.PublicRpcs[addr] = rpcS
 	}, ctx)
 	if !ok {
 		return nil, am.ErrHandlerTimeout
 	}
+
+	// remove the ref when the mux disposes the server
+	rpcS.Mach.OnDispose(func(id string, ctx context.Context) {
+		_ = s.Mach.Eval("clientDisposed", func() {
+			delete(s.PublicRpcs, addr)
+		}, ctx)
+	})
 
 	s.log("new client connection %s ready", id)
 	return rpcS, nil
