@@ -5,9 +5,6 @@ import (
 	"os"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestWithOpts(t *testing.T) {
@@ -217,11 +214,14 @@ var TestStatesFileStruct = TestStatesFileSuperSchema.Merge(
 var (
 	testStates = NewStates(TestStatesFileStatesDef{})
 	testGroups = NewStateGroups(TestStatesFileGroupsDef{
-		FooBar: S{testStates.Foo, testStates.Bar},
+		FooBar: S{testSuperStates.Foo, testStates.Bar},
 	}, testSuperGroups)
 )
 
 func TestStatesFile(t *testing.T) {
+	if isTinyGo {
+		t.Skip("struct reflection is not available in tinygo")
+	}
 	if os.Getenv(EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}

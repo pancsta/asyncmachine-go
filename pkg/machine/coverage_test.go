@@ -7,9 +7,6 @@ import (
 	"regexp"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 type coverageHandlers struct{}
@@ -95,8 +92,7 @@ func TestMachineCoverage(t *testing.T) {
 	assert.Equal(t, []string{"Group1"}, order)
 	assert.Equal(t, []int{mach.Index1("Foo")}, groups["Group1"])
 
-	assert.Regexp(t, `^github\.com/pancsta/asyncmachine-go/pkg/machine\.TestMachineCoverage\.func\d+$`,
-		funcName(func() {}))
+	assertFuncName(t, func() {})
 	mach.GoAfter(ctx, 1*time.Millisecond, func() {})
 	// e has no bound Transition, so it's never a valid event to fork from
 	assert.False(t, mach.PoolFork(ctx, e, func() {}))
@@ -134,7 +130,7 @@ func TestMachineCoverage(t *testing.T) {
 	mach.LogCtx(ctx, "test")
 
 	mach3 := New(ctx, Schema{"Foo": {Auto: true}, "Bar": {}}, &Opts{LogLevel: LogEverything})
-	_, err = mach3.BindHandlers(&coverageHandlers{})
+	_, err = bindHandlerMaps(mach3, &coverageHandlers{})
 	require.NoError(t, err)
 	assert.Equal(t, Executed, mach3.Add1("Foo", nil)) // triggers the FooFoo self handler
 	assert.True(t, mach3.Is1("Foo"))
@@ -148,7 +144,7 @@ func TestMachineCoverage(t *testing.T) {
 	assert.Equal(t, uint64(3), mach3.Tick("Foo"))
 
 	mach4 := New(ctx, Schema{"Foo": {}}, &Opts{DontPanicToException: false})
-	_, err = mach4.BindHandlers(&panicHandlers{})
+	_, err = bindHandlerMaps(mach4, &panicHandlers{})
 	require.NoError(t, err)
 	assert.Equal(t, Canceled, mach4.Add(S{"Foo"}, nil))
 	time.Sleep(10 * time.Millisecond)
@@ -161,7 +157,7 @@ func TestMachineCoverage(t *testing.T) {
 	// (nil pool counter) and gets recovered into the Exception state, so Foo
 	// never actually activates.
 	mach5 := New(ctx, Schema{"Foo": {}}, nil)
-	_, err = mach5.BindHandlers(&poolForkHandlers{})
+	_, err = bindHandlerMaps(mach5, &poolForkHandlers{})
 	require.NoError(t, err)
 	assert.Equal(t, Canceled, mach5.Add1("Foo", nil))
 	assert.True(t, mach5.IsErr())
@@ -243,7 +239,7 @@ func TestMachineCoverage(t *testing.T) {
 	// handlerLoop graceful shutdown
 	ctxCancel, cancel := context.WithCancel(ctx)
 	mach8 := New(ctxCancel, Schema{"Foo": {}}, nil)
-	_, err = mach8.BindHandlers(&coverageHandlers{})
+	_, err = bindHandlerMaps(mach8, &coverageHandlers{})
 	require.NoError(t, err)
 	assert.Equal(t, Executed, mach8.Add(S{"Foo"}, nil))
 	cancel()
@@ -605,9 +601,8 @@ func TestCoverageAdvanced(t *testing.T) {
 	assert.True(t, isClosed(chT))
 
 	// --- SetSchema with handlers already bound ---
-	type localHandlers struct{}
 	mach6 := New(ctx, Schema{"Foo": {}}, nil)
-	_, err := mach6.BindHandlers(&localHandlers{})
+	_, err := mach6.HandlersBindMaps(nil, nil)
 	require.NoError(t, err)
 	// mach6's schema is already 2 states (Foo, Exception); 1 state is shorter
 	err = mach6.SetSchema(Schema{"Bar": {}}, S{"Bar"})
@@ -683,10 +678,9 @@ func TestCoverageAdvanced(t *testing.T) {
 	assert.False(t, mach9.Eval("test-canceled", func() {}, ctxEval))
 
 	// --- setHandlers locked=true path (via bindHandlers internal) ---
-	// This is triggered when HandlersBind is called a second time
-	type myH struct{}
+	// This is triggered when HandlersBindMaps is called a second time
 	mach9b := New(ctx, Schema{"Foo": {}, "Bar": {}}, nil)
-	id9b, err := mach9b.HandlersBind(&myH{})
+	id9b, err := mach9b.HandlersBindMaps(nil, nil)
 	require.NoError(t, err)
 	assert.NoError(t, mach9b.HandlersDetach(id9b))
 	_, err = mach9b.HandlersBindMaps(
@@ -759,7 +753,7 @@ func TestCoverageNegotiation(t *testing.T) {
 	// emitHandler Canceled + isLogSteps (need LogLevel >= LogEverything to get steps)
 	// --- cancelEnterHandlers: emitEnterEvents Canceled branch ---
 	mach1 := New(ctx, Schema{"Foo": {}}, &Opts{LogLevel: LogEverything})
-	_, err := mach1.BindHandlers(&cancelEnterHandlers{})
+	_, err := bindHandlerMaps(mach1, &cancelEnterHandlers{})
 	require.NoError(t, err)
 	assert.Equal(t, Canceled, mach1.Add1("Foo", nil)) // FooEnter returns false -> Canceled
 	time.Sleep(5 * time.Millisecond)
@@ -767,7 +761,7 @@ func TestCoverageNegotiation(t *testing.T) {
 
 	// --- cancelExitHandlers: emitExitEvents Canceled branch ---
 	mach2 := New(ctx, Schema{"Foo": {}}, &Opts{LogLevel: LogEverything})
-	_, err = mach2.BindHandlers(&cancelExitHandlers{})
+	_, err = bindHandlerMaps(mach2, &cancelExitHandlers{})
 	require.NoError(t, err)
 	assert.Equal(t, Executed, mach2.Add1("Foo", nil))    // activate Foo
 	assert.Equal(t, Canceled, mach2.Remove1("Foo", nil)) // FooExit returns false -> Canceled
@@ -776,7 +770,7 @@ func TestCoverageNegotiation(t *testing.T) {
 
 	// --- cancelSelfHandlers: emitSelfEvents Canceled branch ---
 	mach3 := New(ctx, Schema{"Foo": {}}, &Opts{LogLevel: LogEverything})
-	_, err = mach3.BindHandlers(&cancelSelfHandlers{})
+	_, err = bindHandlerMaps(mach3, &cancelSelfHandlers{})
 	require.NoError(t, err)
 	assert.Equal(t, Executed, mach3.Add1("Foo", nil)) // activate Foo
 	assert.Equal(t, Canceled, mach3.Add1("Foo", nil)) // FooFoo returns false -> Canceled in emitSelfEvents
@@ -785,16 +779,12 @@ func TestCoverageNegotiation(t *testing.T) {
 
 	// --- logStepsHandlers to cover emitHandler from=="" branch ---
 	mach4 := New(ctx, Schema{"Foo": {}, "Bar": {}}, &Opts{LogLevel: LogEverything})
-	_, err = mach4.BindHandlers(&logStepsHandlers{})
+	_, err = bindHandlerMaps(mach4, &logStepsHandlers{})
 	require.NoError(t, err)
 	assert.Equal(t, Canceled, mach4.Add1("Foo", nil)) // FooEnter returns false
 	assert.Equal(t, Canceled, mach4.Add1("Foo", nil))
 	assert.Equal(t, Executed, mach4.Remove1("Foo", nil)) // Foo was never active; trivial no-op
 	assert.False(t, mach4.Is1("Foo"))
-
-	// --- HandlersBind with non-pointer (error branch) ---
-	_, err = mach4.HandlersBind(42)
-	assert.EqualError(t, err, "BindHandlers expects a pointer to a struct")
 
 	// --- TargetStates with mach==nil (returns nil) ---
 	trans := &Transition{}
@@ -843,9 +833,8 @@ func TestCoveragePoolFork(t *testing.T) {
 
 	// --- setHandlers locked=true (called internally when already holding the lock) ---
 	// This is triggered via bindHandlers which calls setHandlers(true, ...)
-	type sh2 struct{}
 	machSH := New(ctx, Schema{"Foo": {}}, nil)
-	hid, err := machSH.HandlersBind(&sh2{})
+	hid, err := machSH.HandlersBindMaps(nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{hid}, machSH.Handlers())
 	// Also call setHandlers(false) directly (the unlocked path); it replaces
