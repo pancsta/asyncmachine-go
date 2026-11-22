@@ -23,8 +23,10 @@ type ReplStatesDef struct {
 
 	CmdAdd         string
 	CmdRemove      string
+	CmdSet         string
 	CmdGroupAdd    string
 	CmdGroupRemove string
+	CmdGroupSet    string
 	CmdList        string
 	CmdScript      string
 	CmdWhenTime    string
@@ -91,11 +93,19 @@ var ReplSchema = ss.BasicSchema.Merge(
 			Multi:   true,
 			Require: S{ssC.Connected},
 		},
+		ssC.CmdSet: {
+			Multi:   true,
+			Require: S{ssC.Connected},
+		},
 		ssC.CmdGroupAdd: {
 			Multi:   true,
 			Require: S{ssC.Connected},
 		},
 		ssC.CmdGroupRemove: {
+			Multi:   true,
+			Require: S{ssC.Connected},
+		},
+		ssC.CmdGroupSet: {
 			Multi:   true,
 			Require: S{ssC.Connected},
 		},
@@ -150,7 +160,9 @@ var ReplSchema = ss.BasicSchema.Merge(
 var (
 	ssC = am.NewStates(ReplStatesDef{})
 	sgC = am.NewStateGroups(ReplGroupsDef{
-		Cmds: S{ssC.CmdAdd, ssC.CmdRemove, ssC.CmdList, ssC.CmdScript,
+		Cmds: S{ssC.CmdAdd, ssC.CmdRemove, ssC.CmdSet,
+			ssC.CmdGroupAdd, ssC.CmdGroupRemove, ssC.CmdGroupSet,
+			ssC.CmdList, ssC.CmdScript,
 			ssC.CmdWhenTime, ssC.CmdWhen, ssC.CmdWhenNot, ssC.CmdInspect,
 			ssC.CmdStatus},
 	}, ss.ConnectedGroups)
