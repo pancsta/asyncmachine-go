@@ -15,6 +15,7 @@ import (
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 )
 
@@ -190,6 +191,39 @@ func TestMux(t *testing.T) {
 
 	if amhelp.IsTelemetry() {
 		time.Sleep(1 * time.Second)
+	}
+}
+
+func TestAddrTag(t *testing.T) {
+	TemplateTestAddrTag(t, newTest)
+}
+
+func TestMuxAddrTag(t *testing.T) {
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// bind to an open port
+	listener := utils.RandListener("localhost")
+	addr := listener.Addr().String()
+
+	// init source & mux
+	netSrc := utils.NewRelsNetSrc(t, nil)
+	mux, err := arpc.NewMux(ctx, "", t.Name(), netSrc, &arpc.MuxOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux.Listener = listener
+	mux.Start(nil)
+	amhelpt.WaitForAll(t, "mux Ready", ctx, 2*time.Second,
+		mux.Mach.When1(ssM.Ready, ctx))
+
+	// assert the addr tag, set once the listener is ready
+	if tag := amhelp.TagValue(mux.Mach.Tags(), ssrpc.TagKeyAddr); tag != addr {
+		t.Fatalf("mux addr tag %q != %q", tag, addr)
 	}
 }
 

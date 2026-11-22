@@ -1514,6 +1514,17 @@ func TagSetValue(tags []string, key string, value string) ([]string, bool) {
 	return append(ret, newTag), true
 }
 
+// TagSetOnMach sets a "key:value" tag on mach, replacing any previous value of
+// the key. Returns true if the tags changed.
+func TagSetOnMach(mach am.Api, key string, value string) bool {
+	tags, changed := TagSetValue(mach.Tags(), key, value)
+	if changed {
+		mach.SetTags(tags)
+	}
+
+	return changed
+}
+
 // TagValue returns the value part from a text tag "key:value" or empty string.
 func TagValue(tags []string, key string) string {
 	// TODO move to a dedicated Schema struct

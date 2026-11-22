@@ -89,6 +89,10 @@ func TestTunnelMatchers(t *testing.T) {
 	relay.Start(nil)
 	<-relay.Mach.When1(ssR.HttpReady, nil)
 
+	// addr tag, set once the listener is ready
+	assert.Equal(t, relayAddr,
+		amhelp.TagValue(relay.Mach.Tags(), ssS.TagKeyAddr), "relay addr tag")
+
 	// test
 
 	// Authorized server tunneling to /listen/ (browser-bar tunneling to relay)
@@ -172,6 +176,10 @@ func TestDialMatchers(t *testing.T) {
 	relay.AllowedPubKeys.Store(&[]string{validPK.String()})
 	relay.Start(nil)
 	<-relay.Mach.When1(ssR.HttpReady, nil)
+
+	// addr tag, set once the listener is ready
+	assert.Equal(t, relayAddr,
+		amhelp.TagValue(relay.Mach.Tags(), ssS.TagKeyAddr), "relay addr tag")
 
 	// test
 

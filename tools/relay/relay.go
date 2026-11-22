@@ -152,6 +152,10 @@ func (r *Relay) StartState(e *am.Event) {
 			r.Mach.EvAddErr(e, err, nil)
 			return
 		}
+		// addr tag, once the listener is ready
+		if cmd.ListenAddr != "" {
+			amhelp.TagSetOnMach(r.Mach, ssrpc.TagKeyAddr, cmd.ListenAddr)
+		}
 		r.Mach.Go(ctx, func() {
 			if err := srvMux.Serve(); err != nil &&
 				!errors.Is(err, cmux.ErrListenerClosed) &&
@@ -232,6 +236,11 @@ var _ = ssR.HttpReady
 
 func (r *Relay) HttpReadyState(e *am.Event) {
 	r.out("WASM relay listening on http://%s\n", r.Args.Wasm.ListenAddr)
+
+	// addr tag, once the listener is ready
+	if r.Args.Wasm.ListenAddr != "" {
+		amhelp.TagSetOnMach(r.Mach, ssrpc.TagKeyAddr, r.Args.Wasm.ListenAddr)
+	}
 
 	// static
 	if dir := r.Args.Wasm.StaticDir; dir != "" {
