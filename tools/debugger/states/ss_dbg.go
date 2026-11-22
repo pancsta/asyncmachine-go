@@ -86,6 +86,7 @@ type DebuggerStatesDef struct {
 	// focus group
 	TreeFocused            string
 	TreeGroupsFocused      string
+	TreeFilterFocused      string
 	LogFocused             string
 	ClientListFocused      string
 	TimelineTxsFocused     string
@@ -180,9 +181,10 @@ type DebuggerStatesDef struct {
 	BuildingLog string
 	LogBuilt    string
 
-	SetCursor string
-	SetGroup  string
-	SshServer string
+	SetCursor    string
+	SetGroup     string
+	SetFilterOut string
+	SshServer    string
 
 	DiagramsGraphRendering string
 	DiagramsGraphReady     string
@@ -258,6 +260,7 @@ var DebuggerSchema = ssApp.AppSchema.Merge(
 
 		ssD.TreeFocused:            {Remove: sgD.Focused},
 		ssD.TreeGroupsFocused:      {Remove: sgD.Focused},
+		ssD.TreeFilterFocused:      {Remove: sgD.Focused},
 		ssD.LogFocused:             {Remove: sgD.Focused},
 		ssD.ClientListFocused:      {Remove: sgD.Focused},
 		ssD.TimelineTxsFocused:     {Remove: sgD.Focused},
@@ -477,6 +480,9 @@ var DebuggerSchema = ssApp.AppSchema.Merge(
 			Multi:   true,
 			Require: S{ssD.ClientSelected},
 		},
+		ssD.SetFilterOut: {
+			Multi: true,
+		},
 		ssD.SshServer: {Require: S{Start}},
 
 		// diagrams
@@ -555,7 +561,7 @@ type DebuggerGroupsDef struct {
 var (
 	groupFocus = am.S{
 		ssD.AddressFocused, ssD.ClientListFocused,
-		ssD.TreeGroupsFocused, ssD.TreeFocused,
+		ssD.TreeGroupsFocused, ssD.TreeFilterFocused, ssD.TreeFocused,
 
 		ssD.LogFocused, ssD.LogReaderFocused, ssD.MatrixFocused,
 

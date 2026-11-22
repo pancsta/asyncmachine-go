@@ -308,14 +308,10 @@ func (d *Debugger) hHandleExpanded(
 
 func (d *Debugger) hBuildSchemaTree() {
 	c := d.C
-	msg := c.MsgStruct
 	d.treeRoot.ClearChildren()
 
-	// pick states
-	states := msg.StatesIndex
-	if c.SelectedGroup != "" {
-		states = c.MsgSchemaParsed.Groups[c.SelectedGroup]
-	}
+	// pick states (group and the "filter out" regexp)
+	states := d.hGroupStates(c)
 	d.schemaTreeStates = states
 
 	// build

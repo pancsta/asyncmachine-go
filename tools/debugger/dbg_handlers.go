@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -579,6 +580,18 @@ func (d *Debugger) TreeGroupsFocusedEnd(e *am.Event) {
 	d.hUpdateToolbar()
 }
 
+var _ = ss.TreeFilterFocused
+
+func (d *Debugger) TreeFilterFocusedState(e *am.Event) {
+	d.treeFilterOut.SetBackgroundColor(d.hGetFocusColor())
+	d.hUpdateToolbar()
+}
+
+func (d *Debugger) TreeFilterFocusedEnd(e *am.Event) {
+	d.treeFilterOut.SetBackgroundColor(cview.Styles.PrimitiveBackgroundColor)
+	d.hUpdateToolbar()
+}
+
 // ///// CONNECTION
 
 var _ = ss.ConnectEvent
@@ -1006,6 +1019,43 @@ func (d *Debugger) SetGroupState(e *am.Event) {
 	if d.params.OutputDiagGroup == types.ParamsOutDiagGroupSkip {
 		d.diagSkipGroup.Store(&group)
 	}
+}
+
+var _ = ss.SetFilterOut
+
+func (d *Debugger) SetFilterOutState(e *am.Event) {
+	filterOut := am.ParseArgs[A](e.Args).FilterOut
+
+	// compile as case-insensitive by default, unless overridden inline
+	var re *regexp.Regexp
+	if filterOut != "" {
+		var err error
+		re, err = regexp.Compile("(?i)" + filterOut)
+		if err != nil {
+			d.Mach.Log("Error: invalid filter-out regexp: %s\n", err)
+			return
+		}
+	}
+
+	d.filterOutStr = filterOut
+	d.filterOut.Store(re)
+	if d.C == nil {
+		return
+	}
+
+	d.hBuildSchemaTree()
+	d.hUpdateSchemaTree()
+	// combined mutation, like SetGroupState
+	d.Mach.EvAdd(e, S{
+		ss.DiagramsMachRendering,
+		ss.DiagramsStateRendering,
+		ss.ToolToggled,
+		ss.UpdateLogScheduled,
+	},
+		Pass(&A{
+			FilterTxs:     true,
+			LogRebuildEnd: len(d.C.MsgTxs),
+		}))
 }
 
 var _ = ss.SelectingClient
@@ -2032,6 +2082,8 @@ func (d *Debugger) UpdateFocusState(e *am.Event) {
 		focused = d.tree
 	case ss.TreeGroupsFocused:
 		focused = d.treeGroups
+	case ss.TreeFilterFocused:
+		focused = d.treeFilterOut
 	case ss.LogFocused:
 		focused = d.log
 	case ss.LogReaderFocused:
@@ -2100,8 +2152,8 @@ func (d *Debugger) hFocusNeighbour(state string) cview.Primitive {
 	switch view {
 	case ss.MatrixView:
 		switch state {
-		case ss.TreeFocused, ss.TreeGroupsFocused, ss.LogFocused,
-			ss.LogReaderFocused:
+		case ss.TreeFocused, ss.TreeGroupsFocused, ss.TreeFilterFocused,
+			ss.LogFocused, ss.LogReaderFocused:
 			return d.matrix
 		}
 	case ss.TreeMatrixView:
