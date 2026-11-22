@@ -148,7 +148,8 @@ func TestFwdMissingSinkDoesntKillOthers(t *testing.T) {
 		return sink.txCnt.Load() >= transitions
 	}, 10*time.Second, 50*time.Millisecond)
 	if !ok {
-		t.Fatalf("healthy fwd sink received %d/%d txs; a missing 2nd fwd sink must not stop the other sinks",
+		t.Fatalf("healthy fwd sink received %d/%d txs; "+
+			"a missing 2nd fwd sink must not stop the other sinks",
 			sink.txCnt.Load(), transitions)
 	}
 }

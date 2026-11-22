@@ -1366,7 +1366,8 @@ func BindServerMulti(
 	source, target *am.Machine, rpcReady, clientConn, clientDisconn string,
 ) (string, error) {
 	if rpcReady == "" || clientConn == "" || clientDisconn == "" {
-		return "", nofmt.Errorf("rpcReady, clientConn, and clientDisconn must be set")
+		return "", nofmt.Errorf(
+			"rpcReady, clientConn, and clientDisconn must be set")
 	}
 	// TODO use ampipe.BindMany
 

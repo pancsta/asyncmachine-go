@@ -221,13 +221,13 @@ func (s S) Delete1(states ...string) S {
 }
 
 // Sub returns the states from [s] that are missing in [other] (subtract).
-// Deprecated use [S.Delete].
+// Deprecated, [S.Delete].
 func (s S) Sub(other S) S {
 	return StatesDiff(s, other)
 }
 
 // Sub1 returns the states from [s] without [state] (subtract).
-// Deprecated use [S.Delete1].
+// Deprecated, use [S.Delete1].
 func (s S) Sub1(state string) S {
 	return StatesDiff(s, S{state})
 }
@@ -531,7 +531,7 @@ func StateAdd(source State, overlay State) State {
 	return s
 }
 
-// StateSet is Deprecated, use [State.Set].
+// StateSet is deprecated, use [State.Set].
 // Deprecated.
 func StateSet(source State, auto, multi bool, overlay State) State {
 	// TODO example

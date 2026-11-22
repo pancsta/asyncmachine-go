@@ -1,3 +1,5 @@
+// package main adds `var _ = ss.Foo` state refs before transition handler methods.
+// TODO test
 package main
 
 import (

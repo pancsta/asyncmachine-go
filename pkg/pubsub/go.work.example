@@ -1,0 +1,8 @@
+// Copy to go.work for dev and CI builds. go.work and go.work.sum are
+// gitignored; this template is committed.
+go 1.26.5
+
+use (
+	.
+	../..
+)

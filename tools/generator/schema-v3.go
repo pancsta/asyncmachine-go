@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/dave/jennifer/jen"
+
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -24,7 +25,7 @@ func WriteSchemaV3(pkg string, schema string) error {
 	}
 	path := strings.Split(pkg, "/")
 	name := path[len(path)-1] + ".gen.go"
-	return os.WriteFile(name, []byte(schema), 0644)
+	return os.WriteFile(name, []byte(schema), 0o644)
 }
 
 type SchemaV3 struct {
@@ -184,35 +185,46 @@ func GenSchemaV3(schemas []SchemaV3) string {
 
 		// type FileStatesDef struct { ... }
 		f.Comment(exportName + "StatesDef contains states for " + exportName + ".")
-		genStatesDef = slices.Concat([]jen.Code{jen.Op("*").Qual(amPath, "StatesBase")}, genStatesDef)
+		genStatesDef = slices.Concat(
+			[]jen.Code{jen.Op("*").Qual(amPath, "StatesBase")}, genStatesDef)
 		f.Type().Id(exportName + "StatesDef").Struct(genStatesDef...)
 
 		f.Line()
 
 		// type FileGroupsDef struct { ... }
-		f.Comment(exportName + "GroupsDef contains all the state groups of the " + exportName + " state schema.")
+		f.Comment(exportName +
+			"GroupsDef contains all the state groups of the " +
+			exportName + " state schema.")
 		f.Type().Id(exportName + "GroupsDef").Struct(genGroupsDef...)
 
 		f.Line()
 
 		// var FileSchema = am.Schema{ ... }
-		f.Comment(exportName + "Schema represents all relations and properties of " + exportName + "States.")
-		f.Var().Id(exportName+"Schema").Op("=").Qual(amPath, "Schema").Values(genSchema)
+		f.Comment(exportName +
+			"Schema represents all relations and properties of " +
+			exportName + "States.")
+		f.Var().Id(exportName+"Schema").Op("=").
+			Qual(amPath, "Schema").Values(genSchema)
 
 		f.Line()
 
 		// exports
 		f.Comment("EXPORTS AND GROUPS")
 		genStatesInit[jen.Id("StatesBase")] = jen.Op("&").Qual(amPath, "StatesBase").Values(jen.Dict{
-			jen.Id("Exception"): jen.Lit("Exception")})
+			jen.Id("Exception"): jen.Lit("Exception"),
+		})
 		f.Var().Defs(
-			jen.Id("ss"+suffix).Op("=").Id(exportName+"StatesDef").Values(genStatesInit),
-			jen.Id("sg"+suffix).Op("=").Id(exportName+"GroupsDef").Values(genGroupsInit),
+			jen.Id("ss"+suffix).Op("=").
+				Id(exportName+"StatesDef").Values(genStatesInit),
+			jen.Id("sg"+suffix).Op("=").
+				Id(exportName+"GroupsDef").Values(genGroupsInit),
 			jen.Line(),
-			jen.Comment(exportName+"States contains all the states for the "+exportName+" state schema."),
+			jen.Comment(exportName+"States contains all the states for the "+
+				exportName+" state schema."),
 			jen.Id(exportName+"States").Op("=").Id("ss"+suffix),
 			jen.Line(),
-			jen.Comment(exportName+"Groups contains all the state groups for the "+exportName+" state schema."),
+			jen.Comment(exportName+"Groups contains all the state groups for the "+
+				exportName+" state schema."),
 			jen.Id(exportName+"Groups").Op("=").Id("sg"+suffix),
 		)
 
@@ -220,10 +232,12 @@ func GenSchemaV3(schemas []SchemaV3) string {
 
 		// func init() { ... }
 		f.Func().Id("init").Params().Block(
-			// Note: I preserved your exact string values here, even though they contain
-			// "CreatingExpense" etc. from the previous schema instance.
-			jen.Id("ss"+suffix).Dot("SetNames").Call(jen.Id("S").Values(genStateNames...)),
-			jen.Id("groups").Op(":=").Map(jen.String()).Index().Int().Values(genGroupsMap),
+			// Note: I preserved your exact string values here, even though
+			// they contain "CreatingExpense" etc. from the previous schema instance.
+			jen.Id("ss"+suffix).Dot("SetNames").
+				Call(jen.Id("S").Values(genStateNames...)),
+			jen.Id("groups").Op(":=").Map(jen.String()).
+				Index().Int().Values(genGroupsMap),
 			jen.Id("ss"+suffix).Dot("SetStateGroups").Call(
 				jen.Id("groups"),
 				jen.Index().String().Values(genGroupsNames...),
@@ -273,7 +287,7 @@ func ExtractGroupsOrdered(obj any) []Group {
 
 func extract(v reflect.Value, result map[string]S, order *[]string) {
 	// 1. Dereference pointers and interfaces to get to the underlying value
-	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
 			return // Skip nil pointers entirely to avoid panics
 		}
@@ -299,7 +313,8 @@ func extract(v reflect.Value, result map[string]S, order *[]string) {
 
 		// Dereference field if it's a pointer to check its underlying type
 		valToInspect := fieldVal
-		for valToInspect.Kind() == reflect.Ptr || valToInspect.Kind() == reflect.Interface {
+		for valToInspect.Kind() == reflect.Pointer ||
+			valToInspect.Kind() == reflect.Interface {
 			if valToInspect.IsNil() {
 				break
 			}
@@ -335,7 +350,7 @@ func extract(v reflect.Value, result map[string]S, order *[]string) {
 func WriteHandlers(schema string) error {
 	path := strings.Split(os.Getenv("GOPACKAGE"), "/")
 	name := path[len(path)-1] + ".gen.go"
-	return os.WriteFile(name, []byte(schema), 0644)
+	return os.WriteFile(name, []byte(schema), 0o644)
 }
 
 type Handlers struct {
@@ -371,7 +386,7 @@ func GenHandlers(pkg string, _ *Args, handlers ...Handlers) string {
 		states := h.States
 
 		v := reflect.ValueOf(h.Handlers)
-		if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+		if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
 			panic("GenHandlers expects a pointer to a struct")
 		}
 
@@ -393,7 +408,8 @@ func GenHandlers(pkg string, _ *Args, handlers ...Handlers) string {
 			}
 		}
 
-		// func MachineHandlersNegotiations(h *MachineHandlers) map[string]am.HandlerNegotiation { ... }
+		// func MachineHandlersNegotiations(h *MachineHandlers)
+		// map[string]am.HandlerNegotiation { ... }
 		f.Func().Id(name+"Negotiations").
 			Params(jen.Id("h").Op("*").Id(name)).
 			Map(jen.String()).Qual(amPath, "HandlerNegotiation").
@@ -405,7 +421,8 @@ func GenHandlers(pkg string, _ *Args, handlers ...Handlers) string {
 
 		f.Line()
 
-		// func MachineHandlersFinals(h *MachineHandlers) map[string]am.HandlerFinal { ... }
+		// func MachineHandlersFinals(h *MachineHandlers)
+		// map[string]am.HandlerFinal { ... }
 		f.Func().Id(name+"Finals").
 			Params(jen.Id("h").Op("*").Id(name)).
 			Map(jen.String()).Qual(amPath, "HandlerFinal").
@@ -434,7 +451,7 @@ func ExportedFields(obj interface{}) []string {
 	t := reflect.TypeOf(obj)
 
 	// 2. If it's a pointer, dereference it to get the underlying type
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 

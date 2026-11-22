@@ -14,7 +14,8 @@ func TestParseMachUrl(t *testing.T) {
 	t.Parallel()
 
 	addr, err := ParseMachUrl(
-		"mach://mach-1/tx-1/2?t=100&q=5&ht=2026-11-10T12:00:00Z&state=Ready&group=grp",
+		"mach://mach-1/tx-1/2?t=100&q=5&ht=2026-11-10T12:00:00Z" +
+			"&state=Ready&group=grp",
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "mach-1", addr.MachId)
@@ -22,7 +23,8 @@ func TestParseMachUrl(t *testing.T) {
 	assert.Equal(t, 2, addr.Step)
 	assert.Equal(t, uint64(100), addr.MachTime)
 	assert.Equal(t, uint64(5), addr.QueueTick)
-	assert.Equal(t, time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC), addr.HumanTime)
+	assert.Equal(t, time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC),
+		addr.HumanTime)
 	assert.Equal(t, "Ready", addr.State)
 	assert.Equal(t, "grp", addr.Group)
 	assert.False(t, addr.IsCtx)

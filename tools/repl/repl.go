@@ -796,7 +796,10 @@ func (r *Repl) NetMach(machId string) *arpc.NetworkMachine {
 		return nil
 	}
 
-	rpcs, _ := r.ListMachines(&ListFilters{MachGroupFilter: amhelp.MachGroupFilter{IdExact: machId}})
+	filters := &ListFilters{
+		MachGroupFilter: amhelp.MachGroupFilter{IdExact: machId},
+	}
+	rpcs, _ := r.ListMachines(filters)
 	if len(rpcs) == 0 {
 		r.PrintErr("mach ID unknown")
 		return nil
@@ -818,7 +821,10 @@ func (r *Repl) NetMachArgs(machId string) []string {
 		return nil
 	}
 
-	rpcs, _ := r.ListMachines(&ListFilters{MachGroupFilter: amhelp.MachGroupFilter{IdExact: machId}})
+	filters := &ListFilters{
+		MachGroupFilter: amhelp.MachGroupFilter{IdExact: machId},
+	}
+	rpcs, _ := r.ListMachines(filters)
 	if len(rpcs) == 0 {
 		r.PrintErr("mach ID unknown")
 		return nil
@@ -827,7 +833,9 @@ func (r *Repl) NetMachArgs(machId string) []string {
 	return rpcs[0].Args()
 }
 
-func (r *Repl) newRpcClient(addr NamedAddr, idSuffix string) (*replClient, error) {
+func (r *Repl) newRpcClient(
+	addr NamedAddr, idSuffix string,
+) (*replClient, error) {
 	ctx := r.Mach.NewStateCtx(ss.Start)
 
 	parsed := strings.Split(addr.Addr, "/")

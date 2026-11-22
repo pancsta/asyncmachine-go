@@ -82,6 +82,7 @@ type (
 // sync add
 
 // Add1Sync is [AddSync] for a single state.
+// TODO extract e from ctx
 func Add1Sync(
 	ctx context.Context, mach am.Api, state string, args ...am.A,
 ) bool {
@@ -1238,121 +1239,28 @@ func ResultToErr(result am.Result) error {
 	}
 }
 
+// Pool creates a highly configurable pond pool. Use SubmitErr or Submit on the
+// result.
+func Pool(ctx context.Context, limit int) pond.Pool {
+	return pond.NewPool(limit, pond.WithContext(ctx))
+}
+
+// CloseSafe closes a channel if it is not already closed.
+func CloseSafe[T any](ch chan T) {
+	select {
+	case <-ch:
+	default:
+		close(ch)
+	}
+}
+
+// ///// ///// /////
+
+// ///// MACH GROUP
+
+// ///// ///// /////
+
 type MachGroup []am.Api
-
-func (g *MachGroup) Is1(state string) bool {
-	if g == nil {
-		return false
-	}
-
-	for _, m := range *g {
-		if m.Not1(state) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// MachGroupFilter filters a group of machines by ID, hierarchy, machine time,
-// and states. The zero value matches all machines. Pagination is applied by
-// [MachGroup.Filter].
-type MachGroupFilter struct {
-	// ID and hierarchy
-
-	IdExact  string
-	IdSubstr string
-	IdRegexp *regexp.Regexp
-	IdPrefix string
-	IdSuffix string
-	Parent   string
-
-	// mtime
-
-	MtimeMin    uint64
-	MtimeMax    uint64
-	MtimeStates am.S
-
-	// states
-
-	StatesActive   am.S
-	StatesInactive am.S
-
-	// TODO conditions which have to match
-	Conds []Cond
-	// TODO conditions which cant match
-	CondsNot []Cond
-
-	// pagination
-
-	Limit    int
-	StartIdx int
-}
-
-// Matches reports whether mach passes all filters. Pagination is not applied.
-// For machines exposing RemoteId (eg rpc.NetworkMachine), the remote ID is
-// matched instead of the local one.
-func (f *MachGroupFilter) Matches(mach am.Api) bool {
-	if mach == nil {
-		return false
-	}
-
-	// ID
-	id := mach.Id()
-
-	if f.IdExact != "" && id != f.IdExact {
-		return false
-	}
-	if f.IdRegexp != nil && !f.IdRegexp.MatchString(id) {
-		return false
-	}
-	if f.IdSubstr != "" && !strings.Contains(id, f.IdSubstr) {
-		return false
-	}
-	if f.IdPrefix != "" && !strings.HasPrefix(id, f.IdPrefix) {
-		return false
-	}
-	if f.IdSuffix != "" && !strings.HasSuffix(id, f.IdSuffix) {
-		return false
-	}
-
-	// hierarchy
-	if f.Parent != "" && mach.ParentId() != f.Parent {
-		return false
-	}
-
-	// mtime
-	mtime := mach.Time(f.MtimeStates).Sum(nil)
-	if f.MtimeMin > 0 && f.MtimeMin > mtime {
-		return false
-	}
-	if f.MtimeMax > 0 && f.MtimeMax < mtime {
-		return false
-	}
-
-	// states
-	names := mach.StateNames()
-	if len(f.StatesActive) > 0 {
-		// missing states
-		if Implements(names, f.StatesActive) != nil {
-			return false
-		}
-		if !mach.Is(f.StatesActive) {
-			return false
-		}
-	}
-	if len(f.StatesInactive) > 0 {
-		// missing states
-		if Implements(names, f.StatesInactive) != nil {
-			return false
-		}
-		if !mach.Not(f.StatesInactive) {
-			return false
-		}
-	}
-
-	return true
-}
 
 // Filter returns machines from the group passing [MachGroupFilter.Matches],
 // honoring StartIdx and Limit.
@@ -1373,24 +1281,9 @@ func (g MachGroup) Filter(f *MachGroupFilter) MachGroup {
 	return ret
 }
 
-// Pool creates a highly configurable pond pool. Use SubmitErr or Submit on the
-// result.
-func Pool(ctx context.Context, limit int) pond.Pool {
-	return pond.NewPool(limit, pond.WithContext(ctx))
-}
-
-// CloseSafe closes a channel if it is not already closed.
-func CloseSafe[T any](ch chan T) {
-	select {
-	case <-ch:
-	default:
-		close(ch)
-	}
-}
-
 // ///// ///// /////
 
-// ///// CONDITION
+// ///// CONDITIONS
 
 // ///// ///// /////
 
@@ -1525,6 +1418,106 @@ func (c Cond) IsEmpty() bool {
 		len(c.Any) == 0 &&
 		len(c.IsMatch) == 0 && len(c.AnyMatch) == 0 && len(c.NotMatch) == 0 &&
 		len(c.Query) == 0 && len(c.AnyQuery) == 0 && len(c.NotQuery) == 0
+}
+
+// MachGroupFilter filters a group of machines by ID, hierarchy, machine time,
+// and states. The zero value matches all machines. Pagination is applied by
+// [MachGroup.Filter].
+type MachGroupFilter struct {
+	// ID and hierarchy
+
+	IdExact  string
+	IdSubstr string
+	IdRegexp *regexp.Regexp
+	IdPrefix string
+	IdSuffix string
+	Parent   string
+
+	// mtime
+
+	MtimeMin    uint64
+	MtimeMax    uint64
+	MtimeStates am.S
+
+	// states
+
+	StatesActive   am.S
+	StatesInactive am.S
+
+	// TODO conditions which have to match
+	Conds []Cond
+	// TODO conditions which cant match
+	CondsNot []Cond
+
+	// pagination
+
+	Limit    int
+	StartIdx int
+}
+
+// Matches reports whether mach passes all filters. Pagination is not applied.
+// For machines exposing RemoteId (eg rpc.NetworkMachine), the remote ID is
+// matched instead of the local one.
+func (f *MachGroupFilter) Matches(mach am.Api) bool {
+	if mach == nil {
+		return false
+	}
+
+	// ID
+	id := mach.Id()
+
+	if f.IdExact != "" && id != f.IdExact {
+		return false
+	}
+	if f.IdRegexp != nil && !f.IdRegexp.MatchString(id) {
+		return false
+	}
+	if f.IdSubstr != "" && !strings.Contains(id, f.IdSubstr) {
+		return false
+	}
+	if f.IdPrefix != "" && !strings.HasPrefix(id, f.IdPrefix) {
+		return false
+	}
+	if f.IdSuffix != "" && !strings.HasSuffix(id, f.IdSuffix) {
+		return false
+	}
+
+	// hierarchy
+	if f.Parent != "" && mach.ParentId() != f.Parent {
+		return false
+	}
+
+	// mtime
+	mtime := mach.Time(f.MtimeStates).Sum(nil)
+	if f.MtimeMin > 0 && f.MtimeMin > mtime {
+		return false
+	}
+	if f.MtimeMax > 0 && f.MtimeMax < mtime {
+		return false
+	}
+
+	// states
+	names := mach.StateNames()
+	if len(f.StatesActive) > 0 {
+		// missing states
+		if Implements(names, f.StatesActive) != nil {
+			return false
+		}
+		if !mach.Is(f.StatesActive) {
+			return false
+		}
+	}
+	if len(f.StatesInactive) > 0 {
+		// missing states
+		if Implements(names, f.StatesInactive) != nil {
+			return false
+		}
+		if !mach.Not(f.StatesInactive) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // ///// ///// /////

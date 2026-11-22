@@ -19,10 +19,11 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/creack/pty"
-	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/term"
+
+	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 
 	sst "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"

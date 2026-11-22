@@ -243,6 +243,9 @@ func (m *DbgMsgTx) CalledStateNames(statesIndex am.S) am.S {
 	ret := make(am.S, len(m.CalledStatesIdxs))
 
 	for i, idx := range m.CalledStatesIdxs {
+		if idx < 0 || idx >= len(statesIndex) {
+			ret[i] = "unknown"
+		}
 		ret[i] = statesIndex[idx]
 	}
 

@@ -246,8 +246,11 @@ func (s *Step) StringFromIndex(idx S) string {
 
 	suffix := ""
 	if s.Type == StepHandler {
+		// cut **
+		line = line[0 : len(line)-2]
 		if s.IsSelf {
-			suffix = line
+			// trim markdown
+			suffix = line[2:]
 		} else if s.IsFinal && s.IsEnter {
 			suffix = SuffixState
 		} else if s.IsFinal && !s.IsEnter {
@@ -257,6 +260,7 @@ func (s *Step) StringFromIndex(idx S) string {
 		} else if !s.IsFinal && !s.IsEnter {
 			suffix = SuffixExit
 		}
+		suffix += "**"
 	}
 
 	// infer the name

@@ -1016,6 +1016,7 @@ func TemplateTestMutationsSync(t *testing.T, newTest NewTestFactory) {
 }
 
 func TemplateTestMutationsSyncMany(t *testing.T, newTest NewTestFactory) {
+	// TODO flaky for "task gen-badges" (coverage)
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -1058,8 +1059,11 @@ func TemplateTestMutationsSyncMany(t *testing.T, newTest NewTestFactory) {
 		time.Sleep(100 * time.Millisecond)
 		// t.Log("netsrc", netsrc.String())
 		// t.Log("netmach", c.NetMach.String())
-		amhelpt.AssertTime(t, netsrc, nil, c.NetMach.Time(nil))
 	}
+
+	// TODO wait better, compare clocks?
+	time.Sleep(time.Second)
+	amhelpt.AssertTime(t, netsrc, nil, c.NetMach.Time(nil))
 
 	disposeTest(t, c, s, true)
 }

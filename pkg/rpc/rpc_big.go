@@ -180,8 +180,10 @@ func (m *NetworkMachine) handle(h *handler, i int, state, suffix string) {
 }
 
 // rpcServer and rpcClient alias the rpc2 implementation for regular builds.
-type rpcServer = rpc2.Server
-type rpcClient = rpc2.Client
+type (
+	rpcServer = rpc2.Server
+	rpcClient = rpc2.Client
+)
 
 func newRpcServer() *rpcServer {
 	return rpc2.NewServer()

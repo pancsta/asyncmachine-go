@@ -6,9 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 )
 
 func TestPromptStr(t *testing.T) {
@@ -129,7 +130,8 @@ func TestConnStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		connected, fully := connStatus(tt.ready, tt.total)
-		assert.Equal(t, tt.connected, connected, "connected %d/%d", tt.ready, tt.total)
+		assert.Equal(t, tt.connected, connected,
+			"connected %d/%d", tt.ready, tt.total)
 		assert.Equal(t, tt.fully, fully, "fully %d/%d", tt.ready, tt.total)
 	}
 }

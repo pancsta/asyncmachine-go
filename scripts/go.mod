@@ -6,12 +6,10 @@ tool go101.org/golds
 
 replace github.com/pancsta/asyncmachine-go => ..
 
-//replace github.com/pancsta/cview => ../../cview
-
 require (
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/alecthomas/chroma/v2 v2.27.0
-	github.com/chromedp/chromedp v0.14.2
+	github.com/chromedp/chromedp v0.21.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-echarts/go-echarts/v2 v2.6.7
 	github.com/gomarkdown/markdown v0.0.0-20250810172220-2e2c11897d1a
@@ -20,7 +18,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0
 	github.com/joho/godotenv v1.5.1
 	github.com/nkall/compactnumber v1.1.1
-	github.com/pancsta/asyncmachine-go v0.19.3
+	github.com/pancsta/asyncmachine-go v0.19.6
 	go101.org/golds v0.8.2
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/tools v0.48.0
@@ -35,15 +33,14 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cenkalti/hub v1.0.2 // indirect
 	github.com/cenkalti/rpc2 v1.0.4 // indirect
-	github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327 // indirect
-	github.com/chromedp/sysutil v1.1.0 // indirect
+	github.com/chromedp/cdproto v0.157.8 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/dlclark/regexp2/v2 v2.6.0 // indirect
 	github.com/failsafe-go/failsafe-go v0.6.8 // indirect
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/gdamore/tcell/v2 v2.13.9 // indirect
-	github.com/go-json-experiment/json v0.0.0-20250725192818-e39067aee2d2 // indirect
+	github.com/go-json-experiment/json v0.0.0-20260213210345-44df1a37e875 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect

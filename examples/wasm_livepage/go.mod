@@ -4,15 +4,15 @@ go 1.26.5
 
 replace github.com/pancsta/asyncmachine-go => ../../
 
-replace github.com/pancsta/livepage => ../../../../livepage-clones/tinygo
+// https://github.com/open-telemetry/opentelemetry-go/pull/8120
+replace go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp => github.com/pancsta/opentelemetry-go/exporters/otlp/otlptrace/otlptracehttp v0.0.0-20260331193851-f087fcb1fc48
 
 require (
-	github.com/chromedp/cdproto v0.157.8
 	github.com/chromedp/chromedp v0.21.0
 	github.com/joho/godotenv v1.5.1
-	github.com/pancsta/asyncmachine-go v0.19.5
+	github.com/pancsta/asyncmachine-go v0.19.6
 	github.com/pancsta/go-app v0.0.0-20261030132146-e4194936713d
-	github.com/pancsta/livepage v0.1.1
+	github.com/pancsta/livepage v0.1.3
 	honnef.co/go/js/dom/v2 v2.0.0-20250304181735-b5e52f05e89d
 )
 
@@ -21,11 +21,11 @@ require (
 	github.com/K-Phoen/grabana v0.22.2 // indirect
 	github.com/K-Phoen/sdk v0.12.4 // indirect
 	github.com/alitto/pond/v2 v2.7.1 // indirect
-	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cenkalti/hub v1.0.2 // indirect
 	github.com/cenkalti/rpc2 v1.0.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/chromedp/cdproto v0.157.8 // indirect
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/dave/jennifer v1.7.1 // indirect
 	github.com/failsafe-go/failsafe-go v0.6.8 // indirect

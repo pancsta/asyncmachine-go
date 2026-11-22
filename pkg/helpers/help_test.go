@@ -126,18 +126,25 @@ func TestCondQuery(t *testing.T) {
 	none := func(am.Clock) bool { return false }
 	var nilQuery func(am.Clock) bool
 
+	bothQ := []func(am.Clock) bool{both, both}
+	bothFooQ := []func(am.Clock) bool{both, fooOnly}
+	fooBothQ := []func(am.Clock) bool{fooOnly, both}
+	fooNoneQ := []func(am.Clock) bool{fooOnly, none}
+	noneBothQ := []func(am.Clock) bool{none, both}
+	nilQ := []func(am.Clock) bool{nilQuery}
+
 	tests := []struct {
 		name string
 		cond amhelp.Cond
 		want bool
 	}{
-		{"all match", amhelp.Cond{Query: []func(am.Clock) bool{both, both}}, true},
-		{"all match fail", amhelp.Cond{Query: []func(am.Clock) bool{both, fooOnly}}, false},
-		{"any match", amhelp.Cond{AnyQuery: []func(am.Clock) bool{fooOnly, both}}, true},
-		{"any match fail", amhelp.Cond{AnyQuery: []func(am.Clock) bool{fooOnly, none}}, false},
-		{"not match", amhelp.Cond{NotQuery: []func(am.Clock) bool{fooOnly, none}}, true},
-		{"not match fail", amhelp.Cond{NotQuery: []func(am.Clock) bool{none, both}}, false},
-		{"nil query", amhelp.Cond{Query: []func(am.Clock) bool{nilQuery}}, true},
+		{"all match", amhelp.Cond{Query: bothQ}, true},
+		{"all match fail", amhelp.Cond{Query: bothFooQ}, false},
+		{"any match", amhelp.Cond{AnyQuery: fooBothQ}, true},
+		{"any match fail", amhelp.Cond{AnyQuery: fooNoneQ}, false},
+		{"not match", amhelp.Cond{NotQuery: fooNoneQ}, true},
+		{"not match fail", amhelp.Cond{NotQuery: noneBothQ}, false},
+		{"nil query", amhelp.Cond{Query: nilQ}, true},
 	}
 
 	for _, tt := range tests {
@@ -147,7 +154,9 @@ func TestCondQuery(t *testing.T) {
 	}
 }
 
-func newTestMach(t *testing.T, id, parentId string, states ...string) *am.Machine {
+func newTestMach(
+	t *testing.T, id, parentId string, states ...string,
+) *am.Machine {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -169,6 +178,21 @@ func TestMachGroupFilter(t *testing.T) {
 	child.Add1("Bar", nil)
 	other.Add1("Baz", nil)
 
+	fIDExactChild := amhelp.MachGroupFilter{IdExact: "child"}
+	fIDExactOther := amhelp.MachGroupFilter{IdExact: "other"}
+	fIDSubstr := amhelp.MachGroupFilter{IdSubstr: "hil"}
+	fIDPrefix := amhelp.MachGroupFilter{IdPrefix: "chi"}
+	fIDSuffix := amhelp.MachGroupFilter{IdSuffix: "ild"}
+	fIDRegexp := amhelp.MachGroupFilter{
+		IdRegexp: regexp.MustCompile("^chi"),
+	}
+	fParent := amhelp.MachGroupFilter{Parent: "parent"}
+	fParentNo := amhelp.MachGroupFilter{Parent: "nope"}
+	fActiveBar := amhelp.MachGroupFilter{StatesActive: am.S{"Bar"}}
+	fActiveBaz := amhelp.MachGroupFilter{StatesActive: am.S{"Baz"}}
+	fInactiveFoo := amhelp.MachGroupFilter{StatesInactive: am.S{"Foo"}}
+	fInactiveBar := amhelp.MachGroupFilter{StatesInactive: am.S{"Bar"}}
+
 	tests := []struct {
 		name   string
 		filter amhelp.MachGroupFilter
@@ -176,18 +200,18 @@ func TestMachGroupFilter(t *testing.T) {
 		want   bool
 	}{
 		{"empty", amhelp.MachGroupFilter{}, child, true},
-		{"id exact match", amhelp.MachGroupFilter{IdExact: "child"}, child, true},
-		{"id exact mismatch", amhelp.MachGroupFilter{IdExact: "other"}, child, false},
-		{"id substr", amhelp.MachGroupFilter{IdSubstr: "hil"}, child, true},
-		{"id prefix", amhelp.MachGroupFilter{IdPrefix: "chi"}, child, true},
-		{"id suffix", amhelp.MachGroupFilter{IdSuffix: "ild"}, child, true},
-		{"id regexp", amhelp.MachGroupFilter{IdRegexp: regexp.MustCompile("^chi")}, child, true},
-		{"parent", amhelp.MachGroupFilter{Parent: "parent"}, child, true},
-		{"parent mismatch", amhelp.MachGroupFilter{Parent: "nope"}, child, false},
-		{"active states", amhelp.MachGroupFilter{StatesActive: am.S{"Bar"}}, child, true},
-		{"missing active state", amhelp.MachGroupFilter{StatesActive: am.S{"Baz"}}, child, false},
-		{"inactive states", amhelp.MachGroupFilter{StatesInactive: am.S{"Foo"}}, child, true},
-		{"bis inactive state", amhelp.MachGroupFilter{StatesInactive: am.S{"Bar"}}, child, false},
+		{"id exact match", fIDExactChild, child, true},
+		{"id exact mismatch", fIDExactOther, child, false},
+		{"id substr", fIDSubstr, child, true},
+		{"id prefix", fIDPrefix, child, true},
+		{"id suffix", fIDSuffix, child, true},
+		{"id regexp", fIDRegexp, child, true},
+		{"parent", fParent, child, true},
+		{"parent mismatch", fParentNo, child, false},
+		{"active states", fActiveBar, child, true},
+		{"missing active state", fActiveBaz, child, false},
+		{"inactive states", fInactiveFoo, child, true},
+		{"bis inactive state", fInactiveBar, child, false},
 		{"mtime min", amhelp.MachGroupFilter{MtimeMin: 1}, child, true},
 		{"mtime min mismatch", amhelp.MachGroupFilter{MtimeMin: 2}, child, false},
 		{"mtime max", amhelp.MachGroupFilter{MtimeMax: 1}, child, true},
@@ -202,7 +226,11 @@ func TestMachGroupFilter(t *testing.T) {
 			amhelp.MachGroupFilter{MtimeMin: 1, MtimeStates: am.S{"Foo"}},
 			child, false,
 		},
-		{"other mach", amhelp.MachGroupFilter{StatesActive: am.S{"Baz"}}, other, true},
+		{
+			"other mach",
+			amhelp.MachGroupFilter{StatesActive: am.S{"Baz"}},
+			other, true,
+		},
 	}
 
 	for _, tt := range tests {

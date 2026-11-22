@@ -5,14 +5,21 @@ dotenv: [ '.env' ]
 env:
   GOFMT: gofumpt
 
+includes:
+  local:
+    taskfile: ./.local/Taskfile.yml
+    optional: true
+
 tasks:
 
   build:
     desc: Build the project, but don't create files
     cmds:
+      - task: link-pubsub
       - go build -o /dev/null $(go list ./examples/...
           | grep -v -E '/(wasm/client|fsm|nfa|temporal_expense)')
       - go build -o /dev/null ./pkg/...
+      - cd ./pkg/pubsub && go build -o /dev/null ./...
       - go build -o /dev/null ./internal/...
       - go build -o /dev/null ./tools/...
 
@@ -239,24 +246,29 @@ tasks:
       AM_TEST_RUNNER: 1
     desc: Run all simple tests
     cmds:
+      - task: link-pubsub
       - task: build-wasm
       - task: clean-test
       - go test ./... {{.CLI_ARGS}}
+      - cd ./pkg/pubsub && go test ./... {{.CLI_ARGS}}
 
   test-all:
     env:
       AM_TEST_RUNNER: 1
     desc: Run simple and integration tests
     cmds:
+      - task: link-pubsub
       - task: build-wasm
       - task: clean-test
       - go test -tags integration ./... {{.CLI_ARGS}}
+      - cd ./pkg/pubsub && go test -tags integration ./... {{.CLI_ARGS}}
 
   test-integration:
     env:
       AM_TEST_RUNNER: 1
     desc: Run only integration tests
     cmds:
+      - task: link-pubsub
       - task: test-integration-dbg
       - task: test-integration-wasm
       - task: clean-test
@@ -272,11 +284,13 @@ tasks:
           ./examples/pipes
           ./examples/raw_strings
           ./examples/subscriptions
+          ./pkg/helpers/new
           ./pkg/history/gorm
           ./pkg/graph/test
           ./pkg/rpc/test
           ./pkg/rpc/iroh
           {{.CLI_ARGS}}
+      - cd ./pkg/pubsub && go test -tags integration -p 1 --parallel 1 ./...
 
   test-integration-dbg:
     env:
@@ -289,18 +303,26 @@ tasks:
         ./tools/debugger/test
         {{.CLI_ARGS}}
 
+  test-rpc-wasm:
+    env:
+      AM_TEST_RUNNER: 1
+    desc: Run pkg/rpc/test in browser WASM via gobwas/ws
+    cmds:
+      - go test -tags integration ./pkg/rpc/test -run '^TestWasmRPC$'
+          -v -count=1 {{.CLI_ARGS}}
+
   test-integration-wasm:
     env:
       AM_TEST_RUNNER: 1
     desc: Run WASM example integration tests
     cmds:
       - task: clean-test
-      - cd examples/wasm &&
-          go mod tidy &&
-          go test -tags integration . {{.CLI_ARGS}}
-      - cd examples/wasm_workflow &&
-          go mod tidy &&
-          go test -tags integration . {{.CLI_ARGS}}
+      - task: test-rpc-wasm
+      - cmd: '{{.TASK_EXE}} tidy-examples-wasm'
+        ignore_error: true
+      - cd examples/wasm && go test -tags integration . {{.CLI_ARGS}}
+      - cd examples/wasm_workflow && go test -tags integration . {{.CLI_ARGS}}
+      - cd examples/wasm_livepage && go test -tags integration -run '^TestWasmLivepage$' . {{.CLI_ARGS}}
 
   test-path:
     env:
@@ -310,6 +332,90 @@ tasks:
       - task: clean-test
       - go test {{.CLI_ARGS}}
       - go test -race -timeout 1m {{.CLI_ARGS}}
+
+  test-pubsub:
+    env:
+      AM_TEST_RUNNER: 1
+    desc: Run /pkg/pubsub tests (dedicated go.mod)
+    dir: pkg/pubsub
+    cmds:
+      - task: link-pubsub
+      - go test ./... {{.CLI_ARGS}}
+      - go test -race -timeout 1m ./... {{.CLI_ARGS}}
+
+  test-pubsub-integration:
+    env:
+      AM_TEST_RUNNER: 1
+    desc: Run /pkg/pubsub integration tests (dedicated go.mod)
+    dir: pkg/pubsub
+    cmds:
+      - task: link-pubsub
+      - go test -tags integration -p 1 --parallel 1 ./... {{.CLI_ARGS}}
+
+  link-pubsub:
+    desc: Link /pkg/pubsub to the monorepo (dev and CI only)
+    dir: pkg/pubsub
+    cmds:
+      - test -f go.work || cp go.work.example go.work
+      - go work use . ../..
+
+  tidy:
+    desc: go root mod tidy with temporary monorepo links
+    cmds:
+      - task: script-goworkmod
+        vars: {CLI_ARGS: 'apply -work .. -tidy'}
+      - task: script-goworkmod
+        vars: {CLI_ARGS: 'revert -work ..'}
+
+  tidy-all:
+    cmds:
+      - task: tidy
+      - task: tidy-pubsub
+      - task: tidy-examples-wasm
+
+  tidy-pubsub:
+    desc: Tidy /pkg/pubsub with a temporary monorepo link
+    cmds:
+      - task: script-goworkmod
+        vars: {CLI_ARGS: 'apply -work ../pkg/pubsub -tidy'}
+      - task: script-goworkmod
+        vars: {CLI_ARGS: 'revert -work ../pkg/pubsub'}
+
+  tidy-examples-wasm:
+    desc: Tidy /examples/wasm* with temporary monorepo links
+    cmds:
+      - task: script-goworkmod
+        vars: {CLI_ARGS: 'apply -work ../examples/wasm -tidy'}
+      - task: script-goworkmod
+        vars: {CLI_ARGS: 'revert -work ../examples/wasm'}
+      - task: script-goworkmod
+        vars: {CLI_ARGS: 'apply -work ../examples/wasm_workflow -tidy'}
+      - task: script-goworkmod
+        vars: {CLI_ARGS: 'revert -work ../examples/wasm_workflow'}
+      - task: script-goworkmod
+        vars: {CLI_ARGS: 'apply -work ../examples/wasm_livepage -tidy'}
+      - task: script-goworkmod
+        vars: {CLI_ARGS: 'revert -work ../examples/wasm_livepage'}
+
+  script-goworkmod:
+    desc: Run ./scripts/goworkmod, eg "task script-goworkmod -- apply -work .. -tidy"
+    dir: scripts
+    cmds:
+      - GOWORK=off go run ./goworkmod {{.CLI_ARGS}}
+
+  test-tinygo:
+    env:
+      AM_TEST_RUNNER: 1
+    desc: Run pkg/machine tests in TinyGo (safe build tag required by testify)
+    cmds:
+      - tinygo test -tags safe {{.CLI_ARGS}} ./pkg/machine
+
+  test-tinygo-rpc:
+    env:
+      AM_TEST_RUNNER: 1
+    desc: Run pkg/rpc tests in TinyGo
+    cmds:
+      - tinygo test -tags safe -parallel 1 {{.CLI_ARGS}} ./pkg/rpc/test
 
   test-integration-path:
     env:
@@ -374,8 +480,10 @@ tasks:
       AM_TEST_RUNNER: 1
     desc: Run all local tests in a series
     cmds:
+      - task: link-pubsub
       - task: clean-test
       - go test -p 1 --parallel 1 ./... {{.CLI_ARGS}}
+      - cd ./pkg/pubsub && go test -p 1 --parallel 1 ./... {{.CLI_ARGS}}
 
   test-race:
     env:
@@ -383,8 +491,10 @@ tasks:
       AM_DETECT_EVAL: 1
     desc: Run all local tests with -race
     cmds:
+      - task: link-pubsub
       - task: clean-test
       - go test -v -race ./... {{.CLI_ARGS}}
+      - cd ./pkg/pubsub && go test -v -race ./... {{.CLI_ARGS}}
 
   test-debugger:
     desc: Run local am-dbg integration tests
@@ -404,14 +514,18 @@ tasks:
 
   test-pubsub-trace:
     desc: Run the pubsub load test with tracing
+    dir: pkg/pubsub
     cmds:
+      - task: link-pubsub
       - task: clean-test
-      - go test -trace=trace.out ./pkg/pubsub/ -test.run '^\QTestExposingMany\E$' -v
+      - go test -trace=trace.out -test.run '^\QTestExposingMany\E$' -v
       - go tool trace trace.out
 
   precommit:
     cmds:
       - go mod tidy
+      - task: tidy-pubsub
+      - task: link-pubsub
       - task: clean
       - task: format
       - task: test-all
@@ -541,13 +655,18 @@ tasks:
   install-am-gen: go install ./tools/cmd/am-gen
 
   install-deps-ci:
-    - go mod tidy
-    - go install github.com/hhatto/gocloc/cmd/gocloc@latest
+    cmds:
+      - go mod tidy
+      - task: tidy-pubsub
+      - task: link-pubsub
+      - go install github.com/hhatto/gocloc/cmd/gocloc@latest
 
   install-deps:
     desc: Install project dependencies
     cmds:
       - go mod tidy
+      - task: tidy-pubsub
+      - task: link-pubsub
       - go install github.com/mattn/goreman@latest
       - go install github.com/hhatto/gocloc/cmd/gocloc@latest
       - task: install-deps-linter
@@ -562,9 +681,10 @@ tasks:
     desc: Install documentation dependencies
     cmds:
       - go install go101.org/golds@latest
+      # TODO use go module
       - curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
       - chmod +x tailwindcss-linux-x64
-      - sudo mv tailwindcss-linux-x64 /usr/local/bin/tailwindcss
+      - mv tailwindcss-linux-x64 ~/.local/bin/tailwindcss
 
   install-deps-scripts:
     desc: Install go.mod for /scripts
@@ -602,7 +722,7 @@ tasks:
         docker run --rm -v "$(pwd):/data" pandoc/extra \
           -f markdown-implicit_figures docs/manual.md \
           -o manual.pdf
-      - mv manual.pdf assets/asyncmachine-go/manual.pdf
+      - mv -f manual.pdf assets/asyncmachine-go/manual.pdf
 
   prof-cpu-img:
     cmds:
