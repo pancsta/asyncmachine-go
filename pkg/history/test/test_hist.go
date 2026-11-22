@@ -33,7 +33,12 @@ func AssertBasics(t *testing.T, mem amhist.MemoryApi, rounds int) {
 
 	t.Logf("mach: %s", time.Since(start))
 
-	require.NoError(t, mem.Sync())
+	require.NoError(t, mem.Sync(ctx))
+
+	// canceled ctx is honored
+	cancelCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	require.ErrorIs(t, mem.Sync(cancelCtx), context.Canceled)
 
 	t.Logf("db: %s", time.Since(start))
 
@@ -62,7 +67,41 @@ func AssertBasics(t *testing.T, mem amhist.MemoryApi, rounds int) {
 	require.Equal(t, int(machRec.NextId)-25, int(latest[24].Time.MTimeSum),
 		"time sum matches")
 
+	// latest state queries
+	require.Equal(t, ss.Start, mem.LatestActivated(ctx, ss.Start),
+		"Start was activated last")
+	require.Equal(t, ss.Start, mem.LatestDeactivated(ctx, ss.Start),
+		"Start was deactivated last")
+	require.Empty(t, mem.LatestActivated(ctx), "no states passed")
+	require.Empty(t, mem.LatestActivated(ctx, ss.Ready), "Ready isn't tracked")
+
 	t.Logf("query: %s", time.Since(start))
+}
+
+// AssertLatestStates tests the latest state queries with multiple tracked
+// states. The memory needs to track the Start and Heartbeat states.
+func AssertLatestStates(t *testing.T, mem amhist.MemoryApi) {
+	ctx := context.Background()
+	mach := mem.Machine()
+
+	// activate Heartbeat first, then Start
+	mach.Add1(ss.Heartbeat, nil)
+	mach.Add1(ss.Start, nil)
+	require.NoError(t, mem.Sync(ctx))
+
+	require.Equal(t, ss.Start, mem.LatestActivated(ctx, ss.Start, ss.Heartbeat),
+		"Start was activated after Heartbeat")
+	require.Equal(t, ss.Start, mem.LatestActivated(ctx, ss.Heartbeat, ss.Start),
+		"argument order is irrelevant")
+
+	// deactivate Start first, then Heartbeat
+	mach.Remove1(ss.Start, nil)
+	mach.Remove1(ss.Heartbeat, nil)
+	require.NoError(t, mem.Sync(ctx))
+
+	require.Equal(t, ss.Heartbeat,
+		mem.LatestDeactivated(ctx, ss.Start, ss.Heartbeat),
+		"Heartbeat was deactivated after Start")
 }
 
 func AssertGc(t *testing.T, mem amhist.MemoryApi, rounds int) {

@@ -68,7 +68,7 @@ func TestGormTrack(t *testing.T) {
 	}
 	cfg := Config{
 		BaseConfig: amhist.BaseConfig{
-			TrackedStates: am.S{ss.Start},
+			TrackedStates: am.S{ss.Start, ss.Heartbeat},
 		},
 		QueueBatch: 10,
 	}
@@ -88,6 +88,9 @@ func TestGormTrack(t *testing.T) {
 
 	// common test
 	testhist.AssertBasics(t, mem, rounds)
+
+	// latest state tests
+	testhist.AssertLatestStates(t, mem)
 }
 
 func TestGormTrackMany(t *testing.T) {
