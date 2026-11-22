@@ -50,6 +50,7 @@ type Params struct {
 	CleanOnConnect  bool     `arg:"--clean-on-connect" default:"true" help:"Clean up disconnected clients on the 1st connection"`
 	ImportData      string   `arg:"-i,--import-data" help:"Import an exported gob.br file"`
 	FwdData         []string `arg:"-f,--fwd-data,separate" help:"Forward incoming data to other instances (repeatable)"`
+	FwdReplayMax    int      `arg:"--fwd-replay-max" default:"100" help:"Max number of recent tx msgs kept for replay to (re)connected fwd targets"`
 	SelectConnected bool     `arg:"-c,--select-connected" help:"Select the newly connected machine, if no other is connected"`
 
 	// minor params
@@ -885,6 +886,14 @@ var StateCalls = []am.CallSignature{
 	{States: am.S{ss.Redraw}, Optional: []string{"Immediate"}},
 	{States: am.S{ss.Fwd}, Optional: []string{"Amount"}},
 	{States: am.S{ss.Back}, Optional: []string{"Amount"}},
+	{
+		States: am.S{ss.FwdMarker},
+		Desc:   "Go to the next marker.",
+	},
+	{
+		States: am.S{ss.BackMarker},
+		Desc:   "Go to the previous marker.",
+	},
 	{States: am.S{ss.ConnectEvent}, Needed: []string{"MsgStruct", "ConnId"}},
 	{States: am.S{ss.DisconnectEvent}, Needed: []string{"ConnId"}},
 	{
