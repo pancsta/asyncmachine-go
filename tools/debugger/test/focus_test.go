@@ -119,6 +119,7 @@ func TestFocusOrderWide(t *testing.T) {
 
 	assertFocusSeq(t, d, ss.ClientListFocused, []string{
 		ss.TreeGroupsFocused,
+		ss.TreeFilterFocused,
 		ss.TreeFocused,
 		ss.LogFocused,
 		ss.LogReaderFocused,
@@ -141,6 +142,7 @@ func TestFocusOrderNarrow(t *testing.T) {
 	})
 
 	assertFocusSeq(t, d, ss.TreeGroupsFocused, []string{
+		ss.TreeFilterFocused,
 		ss.TreeFocused,
 		ss.LogFocused,
 		ss.LogReaderFocused,
@@ -162,6 +164,7 @@ func TestFocusOrderNoLog(t *testing.T) {
 
 	assertFocusSeq(t, d, ss.ClientListFocused, []string{
 		ss.TreeGroupsFocused,
+		ss.TreeFilterFocused,
 		ss.TreeFocused,
 		ss.LogReaderFocused,
 		ss.TimelineTxsFocused,
@@ -182,6 +185,7 @@ func TestFocusOrderNoReader(t *testing.T) {
 
 	assertFocusSeq(t, d, ss.ClientListFocused, []string{
 		ss.TreeGroupsFocused,
+		ss.TreeFilterFocused,
 		ss.TreeFocused,
 		ss.LogFocused,
 		ss.TimelineTxsFocused,
@@ -202,6 +206,7 @@ func TestFocusOrderNoTimelines(t *testing.T) {
 
 	assertFocusSeq(t, d, ss.ClientListFocused, []string{
 		ss.TreeGroupsFocused,
+		ss.TreeFilterFocused,
 		ss.TreeFocused,
 		ss.LogFocused,
 		ss.LogReaderFocused,
@@ -240,6 +245,7 @@ func TestFocusOrderTreeMatrix(t *testing.T) {
 
 	assertFocusSeq(t, d, ss.ClientListFocused, []string{
 		ss.TreeGroupsFocused,
+		ss.TreeFilterFocused,
 		ss.TreeFocused,
 		ss.MatrixFocused,
 		ss.TimelineTxsFocused,
@@ -398,6 +404,18 @@ func clientListFocused(d *debugger.Debugger) bool {
 	}
 
 	return false
+}
+
+func TestFilterOutFlag(t *testing.T) {
+	d := newFocusWorker(t, types.Params{
+		FilterOutStates: "^Err",
+		ViewTimelines:   types.ParamsViewTimelinesOne,
+		Filters:         &types.Filters{LogLevel: am.LogChanges},
+	})
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(screenText(d), "^Err")
+	}, 2*time.Second, 10*time.Millisecond, "filter out input not initialised")
 }
 
 func TestFocusRedraw(t *testing.T) {

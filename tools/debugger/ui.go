@@ -51,6 +51,18 @@ func (d *Debugger) hInitUiComponents() {
 		d.treeGroupSkip = false
 	})
 
+	// "filter out" regexp for top-level states
+	d.treeFilterOut = cview.NewInputField()
+	d.treeFilterOut.SetLabel(" Filter out ")
+	d.treeFilterOut.SetPlaceholder("regexp")
+	d.treeFilterOut.SetFieldBackgroundColor(tcell.GetColor(theme.Highlight))
+	d.treeFilterOut.SetChangedFunc(func(text string) {
+		d.Mach.Add1(ss.SetFilterOut, Pass(&A{FilterOut: text}))
+	})
+	if d.params.FilterOutStates != "" {
+		d.treeFilterOut.SetText(d.params.FilterOutStates)
+	}
+
 	// sidebar
 	d.hInitClientList()
 
@@ -918,6 +930,7 @@ func (d *Debugger) hInitLayout() {
 	d.treeLayout = cview.NewFlex()
 	d.treeLayout.SetDirection(cview.FlexRow)
 	d.treeLayout.AddItem(d.treeGroups, 1, 1, false)
+	d.treeLayout.AddItem(d.treeFilterOut, 1, 1, false)
 	d.treeLayout.AddItem(d.tree, 0, 1, false)
 
 	// transition rows
@@ -1161,6 +1174,12 @@ func (d *Debugger) hBoxFromPrimitive(p any) (*cview.Box, string) {
 	case d.tree.Box:
 		box = d.tree.Box
 		state = ss.TreeFocused
+
+	case d.treeFilterOut:
+		fallthrough
+	case d.treeFilterOut.Box:
+		box = d.treeFilterOut.Box
+		state = ss.TreeFilterFocused
 
 	case d.log:
 		fallthrough

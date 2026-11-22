@@ -22,6 +22,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -158,10 +159,14 @@ type Debugger struct {
 	logReaderSelectedLevel  int
 	logReaderSelectedParent string
 	treeGroups              *cview.DropDown
+	treeFilterOut           *cview.InputField
 	treeLayout              *cview.Flex
 	// list of states to show, bypassing other ones from the schema
 	schemaTreeStates am.S
 	selectedGroup    atomic.Pointer[string]
+	// filterOut hides top-level states matching this regexp (dynamic group)
+	filterOut    atomic.Pointer[regexp.Regexp]
+	filterOutStr string
 	// number of appended log msgs without a rebuild
 	logAppends        int
 	logRenderedClient string
@@ -2367,10 +2372,7 @@ func (d *Debugger) hUpdateMatrixRelations() {
 		return
 	}
 
-	index := c.MsgStruct.StatesIndex
-	if c.SelectedGroup != "" {
-		index = c.MsgSchemaParsed.Groups[c.SelectedGroup]
-	}
+	index := d.hGroupStates(c)
 	tx := d.hCurrentTx()
 	if tx == nil {
 		return
@@ -2513,10 +2515,7 @@ func (d *Debugger) hUpdateMatrixRain() {
 	d.matrix.SetSelectable(true, true)
 
 	index := c.MsgStruct.StatesIndex
-	states := index
-	if g := c.SelectedGroup; g != "" {
-		states = c.MsgSchemaParsed.Groups[g]
-	}
+	states := d.hGroupStates(c)
 	tx := d.hCurrentTx()
 	prevTx := d.hPrevTx()
 	_, _, _, height := d.matrix.GetInnerRect()
@@ -2788,6 +2787,34 @@ func (d *Debugger) hFiltersFromStates() *types.Filters {
 	}
 }
 
+// hGroupStates returns the states of the selected group (or all states), minus
+// the ones matching the "filter out" regexp. The filter acts as a dynamic
+// group and applies to top-level state names only.
+func (d *Debugger) hGroupStates(c *Client) am.S {
+	if c == nil || c.MsgStruct == nil {
+		return nil
+	}
+
+	states := c.MsgStruct.StatesIndex
+	if c.SelectedGroup != "" && c.MsgSchemaParsed != nil {
+		states = c.MsgSchemaParsed.Groups[c.SelectedGroup]
+	}
+
+	re := d.filterOut.Load()
+	if re == nil {
+		return states
+	}
+
+	ret := make(am.S, 0, len(states))
+	for _, name := range states {
+		if !re.MatchString(name) {
+			ret = append(ret, name)
+		}
+	}
+
+	return ret
+}
+
 func (d *Debugger) statesFromFilters(filters *types.Filters) {
 	add := d.Mach.Add1
 	rm := d.Mach.Remove1
@@ -2882,10 +2909,18 @@ func (d *Debugger) hFilterTx(c *Client, idx int, filters *types.Filters) bool {
 		return false
 	}
 
-	// filter out txs without called from the group (if any)
-	if f.SkipOutGroup && group != "" {
-		groupStates := c.MsgSchemaParsed.Groups[group]
-		if len(am.StatesShared(called, groupStates)) == 0 {
+	// filter out txs without called states from the group (dynamic group from
+	// the "filter out" regexp)
+	if f.SkipOutGroup && (group != "" || d.filterOut.Load() != nil) {
+		groupStates := c.MsgStruct.StatesIndex
+		if group != "" {
+			groupStates = c.MsgSchemaParsed.Groups[group]
+		}
+		shared := am.StatesShared(called, groupStates)
+		if re := d.filterOut.Load(); re != nil {
+			shared = slices.DeleteFunc(shared, re.MatchString)
+		}
+		if len(shared) == 0 {
 			return false
 		}
 	}
@@ -3257,10 +3292,10 @@ func (d *Debugger) hBuildTraceSpans(ctx context.Context) []traces.StateTrace {
 	}
 
 	index := c.MsgStruct.StatesIndex
-	states := index
+	states := d.hGroupStates(c)
 	if c.SelectedGroup != "" && c.MsgSchemaParsed != nil {
 		// TODO extract group sorting
-		states = slices.Clone(c.MsgSchemaParsed.Groups[c.SelectedGroup])
+		states = slices.Clone(states)
 		slices.SortStableFunc(states, func(a, b string) int {
 			aIdx := slices.Index(index, a)
 			bIdx := slices.Index(index, b)

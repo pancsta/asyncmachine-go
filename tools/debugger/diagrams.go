@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"net/http"
 	"os"
 	"path"
@@ -247,13 +248,16 @@ func (d *Debugger) DiagramsMachRenderingState(e *am.Event) {
 
 	// state groups
 	var states S
-	if g := c.SelectedGroup; g != "" &&
-		d.params.OutputDiagGroup == types.ParamsOutDiagGroupSkip {
+	if g := c.SelectedGroup; d.params.OutputDiagGroup == types.ParamsOutDiagGroupSkip &&
+		(g != "" || d.filterOut.Load() != nil) {
 
-		states = c.MsgSchemaParsed.Groups[g]
-		diagName = fmt.Sprintf("mach-%s-%s-%d-%s",
-			c.Id, types.NormalizeGroupName(g), lvl, c.SchemaHash)
+		states = d.hGroupStates(c)
+		if g != "" {
+			diagName = fmt.Sprintf("mach-%s-%s-%d-%s",
+				c.Id, types.NormalizeGroupName(g), lvl, c.SchemaHash)
+		}
 	}
+	diagName += d.hDiagFilterSuffix()
 
 	// unblock
 	d.Mach.Fork(ctx, e, func() {
@@ -326,8 +330,8 @@ func (d *Debugger) DiagramsStateRenderingState(e *am.Event) {
 	groupOnly := d.params.OutputDiagGroup != types.ParamsOutDiagGroupNone
 	hash := c.SchemaHash
 	var allowStates S
-	if groupName != "" {
-		allowStates = c.MsgSchemaParsed.Groups[groupName]
+	if groupName != "" || d.filterOut.Load() != nil {
+		allowStates = d.hGroupStates(c)
 	}
 	machId := c.Id
 	schema := c.MsgStruct.States.Clone()
@@ -412,9 +416,9 @@ func (d *Debugger) hDiagramsStepsRendering(
 
 	var group am.S
 	if d.params.OutputDiagGroup != types.ParamsOutDiagGroupNone &&
-		c.SelectedGroup != "" {
+		(c.SelectedGroup != "" || d.filterOut.Load() != nil) {
 
-		group = c.MsgSchemaParsed.Groups[c.SelectedGroup]
+		group = d.hGroupStates(c)
 	}
 
 	visTx := amvis.Transition{
@@ -491,9 +495,9 @@ func (d *Debugger) hDiagramsFilters(
 		}
 	}
 	if d.params.OutputDiagGroup == types.ParamsOutDiagGroupHide &&
-		c.SelectedGroup != "" {
+		(c.SelectedGroup != "" || d.filterOut.Load() != nil) {
 
-		diagFilters.Visible = c.MsgSchemaParsed.Groups[c.SelectedGroup]
+		diagFilters.Visible = d.hGroupStates(c)
 	}
 
 	return diagFilters
@@ -980,7 +984,17 @@ func (d *Debugger) diagramsStateDiagName(
 			machId, types.NormalizeGroupName(groupName), state, hash)
 	}
 
-	return name
+	return name + d.hDiagFilterSuffix()
+}
+
+// hDiagFilterSuffix returns a short suffix for diagrams narrowed by the
+// "filter out" regexp, so filtered renders don't reuse cached files.
+func (d *Debugger) hDiagFilterSuffix() string {
+	re := d.filterOut.Load()
+	if re == nil {
+		return ""
+	}
+	return fmt.Sprintf("-f%x", crc32.ChecksumIEEE([]byte(re.String())))
 }
 
 func (d *Debugger) diagramsStatesPush(ctx context.Context, diagPath string) {

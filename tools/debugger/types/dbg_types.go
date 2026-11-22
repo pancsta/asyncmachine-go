@@ -67,6 +67,7 @@ type Params struct {
 	FilterGroup          bool        `arg:"--filter-group" default:"true" help:"Filter transitions by a selected group"`
 	FilterHealthTx       bool        `arg:"--filter-health" help:"Filter health-check transitions"`
 	FilterLogLevel       am.LogLevel `arg:"--filter-log-level" default:"2" help:"Filter transitions up to this log level, 0-5 (silent-everything)"`
+	FilterOutStates      string      `arg:"--filter-out-states" help:"Filter out top-level states matching this regexp"`
 	FilterReaderGroup    bool        `arg:"--filter-reader-group" help:"Narrow down the log reader to the selected group"`
 	FilterRpcMachs       bool        `arg:"--filter-rpc-machs" help:"Filter RPC machines"`
 	FilterQueuedTx       bool        `arg:"--filter-queued" help:"Filter queued transitions"`
@@ -779,6 +780,8 @@ type A struct {
 
 	State string `log:"state"`
 	Group string
+	// FilterOut is a case-insensitive regexp removing top-level state names.
+	FilterOut string `log:"filter_out"`
 
 	// tool toggling
 
@@ -871,6 +874,8 @@ type ARpc struct {
 
 	State string `log:"state"`
 	Group string
+	// FilterOut is a case-insensitive regexp removing top-level state names.
+	FilterOut string `log:"filter_out"`
 
 	// tool toggling
 
@@ -930,13 +935,13 @@ var StateCalls = []am.CallSignature{
 	{States: am.S{ss.Fwd}, Optional: []string{"Amount"}},
 	{States: am.S{ss.Back}, Optional: []string{"Amount"}},
 	{
-		States: am.S{ss.FwdMarker},
-		Desc:   "Go to the next marker.",
+		States:   am.S{ss.FwdMarker},
+		Desc:     "Go to the next marker.",
 		Optional: []string{"Amount"},
 	},
 	{
-		States: am.S{ss.BackMarker},
-		Desc:   "Go to the previous marker.",
+		States:   am.S{ss.BackMarker},
+		Desc:     "Go to the previous marker.",
 		Optional: []string{"Amount"},
 	},
 	{States: am.S{ss.ConnectEvent}, Needed: []string{"MsgStruct", "ConnId"}},
@@ -952,6 +957,10 @@ var StateCalls = []am.CallSignature{
 	{
 		States: am.S{ss.SetGroup},
 		Needed: []string{"Group"},
+	},
+	{
+		States: am.S{ss.SetFilterOut},
+		Needed: []string{"FilterOut"},
 	},
 	{
 		States:   am.S{ss.SelectingClient},
