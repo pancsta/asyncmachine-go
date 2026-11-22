@@ -553,6 +553,8 @@ type Memory struct {
 	SavedGc atomic.Uint64
 
 	savePool *errgroup.Group
+	// pending DB writes (awaited by Sync)
+	saveWg sync.WaitGroup
 	// sync lock (read: flush, write: sync)
 	syncMx sync.RWMutex
 	// TODO use Context
@@ -641,7 +643,7 @@ func NewMemory(
 		cacheTrackedIdxs: mach.Index(c.TrackedStates),
 		cacheDbIdxs:      make(map[string]uint),
 	}
-	mem.BaseMemory = amhist.NewBaseMemory(ctx, mach, cfg.BaseConfig, mem)
+	mem.BaseMemory = amhist.NewBaseMemory(ctx, mach, c.BaseConfig, mem)
 	mem.savePool.SetLimit(c.SavePool)
 	tr := &tracer{
 		mem: mem,
@@ -1007,7 +1009,10 @@ func (m *Memory) Machine() am.Api {
 }
 
 // Sync is [amhist.BaseMemory.Sync].
-func (m *Memory) Sync() error {
+func (m *Memory) Sync(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.log("sync...")
 
 	// locks
@@ -1016,10 +1021,30 @@ func (m *Memory) Sync() error {
 	m.syncMx.Lock()
 	defer m.syncMx.Unlock()
 	m.writeDb(false)
+	// wait for the DB writes to finish, so new records appear in queries
+	if err := m.waitSave(ctx); err != nil {
+		return err
+	}
 
 	m.log("sync OK")
 
 	return nil
+}
+
+// waitSave waits for the pending DB writes to finish or until ctx is done.
+func (m *Memory) waitSave(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		m.saveWg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return ctx.Err()
+	case <-ctx.Done():
+		return errors.Join(ctx.Err(), m.Ctx.Err())
+	}
 }
 
 // writeDb requires [Memory.mx].
@@ -1042,7 +1067,9 @@ func (m *Memory) writeDb(rLocked bool) {
 	m.SavePending.Add(-int32(l))
 
 	// fork
+	m.saveWg.Add(1)
 	go m.savePool.Go(func() error {
+		defer m.saveWg.Done()
 		if m.disposed.Load() {
 			return nil
 		}

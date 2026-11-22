@@ -5,7 +5,6 @@ package machine // import "github.com/pancsta/asyncmachine-go/pkg/machine"
 import (
 	"context"
 	"errors"
-	"maps"
 	"math"
 	"os"
 	"regexp"
@@ -1874,26 +1873,22 @@ func (m *Machine) ParseStates(states S) S {
 		return nil
 	}
 
-	// check if all states are defined in the schema
-	seen := make(map[string]struct{})
-	dups := false
+	// check if all states are defined in the schema, preserving the order
 	schema := m.schemaSafe()
-	for i := range states {
-		if _, ok := schema[states[i]]; !ok {
+	seen := make(map[string]struct{}, len(states))
+	ret := make(S, 0, len(states))
+	for _, state := range states {
+		if _, ok := schema[state]; !ok {
 			continue
 		}
-		if _, ok := seen[states[i]]; !ok {
-			seen[states[i]] = struct{}{}
-		} else {
-			// mark as duplicated
-			dups = true
+		if _, ok := seen[state]; ok {
+			continue
 		}
+		seen[state] = struct{}{}
+		ret = append(ret, state)
 	}
 
-	if dups {
-		return slicesUniq(states)
-	}
-	return slices.Collect(maps.Keys(seen))
+	return ret
 }
 
 // VerifyStates verifies an array of state names and returns an error in case

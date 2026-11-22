@@ -57,3 +57,25 @@ func TestTrackMany(t *testing.T) {
 	rounds := 50_000
 	AssertBasics(t, mem, rounds)
 }
+
+func TestLatestStates(t *testing.T) {
+	// configs
+	onErr := func(err error) {
+		t.Error(err)
+	}
+	cfg := amhist.Config{
+		TrackedStates: am.S{ss.Start, ss.Heartbeat},
+	}
+
+	// init machine and history
+	ctx := context.Background()
+	mach := am.New(ctx, amss.BasicSchema, &am.Opts{Id: "MyMach1"})
+	mem, err := amhist.NewMemory(ctx, nil, mach, cfg, onErr)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, mem.Dispose())
+	}()
+
+	// common test
+	AssertLatestStates(t, mem)
+}
