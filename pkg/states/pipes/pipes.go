@@ -174,11 +174,6 @@ func BindAny(source, target am.Api) (string, error) {
 		}
 		target.Set(states, e.Args)
 	}
-	h := &struct {
-		AnyState am.HandlerFinal
-	}{
-		AnyState: fn,
-	}
 
 	// graph info TODO? optimize in bulk
 	semLog := source.SemLogger()
@@ -191,7 +186,9 @@ func BindAny(source, target am.Api) (string, error) {
 	source.OnDispose(gcHandler(target))
 	target.OnDispose(gcHandler(source))
 
-	bindId, err := source.HandlersBind(h, am.BindOpts{
+	bindId, err := source.HandlersBindMaps(nil, map[string]am.HandlerFinal{
+		"AnyState": fn,
+	}, am.BindOpts{
 		Id: "BindAny-" + target.Id(),
 	})
 	if err != nil {

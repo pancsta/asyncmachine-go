@@ -5,16 +5,12 @@ import (
 	"errors"
 	"maps"
 	"os"
-	"os/signal"
-	"reflect"
 	"regexp"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -763,7 +759,7 @@ func TestQueue(t *testing.T) {
 	history := trackTransitions(m)
 
 	// handlers
-	_, err := m.HandlersBind(&TestQueueHandlers{})
+	_, err := bindHandlerMaps(m, &TestQueueHandlers{})
 	assert.NoError(t, err)
 
 	// triggers Add(C) from BEnter
@@ -830,7 +826,7 @@ func TestNegotiationCancel(t *testing.T) {
 			m := NewNoRels(t, S{"A"})
 
 			// bind handlers
-			_, err := m.HandlersBind(&TestNegotiationCancelHandlers{})
+			_, err := bindHandlerMaps(m, &TestNegotiationCancelHandlers{})
 			assert.NoError(t, err)
 
 			// bind logger
@@ -851,6 +847,362 @@ func TestNegotiationCancel(t *testing.T) {
 			<-m.WhenDisposed()
 		})
 	}
+}
+
+type TestPartialNegHandlers struct{}
+
+func (h *TestPartialNegHandlers) AEnter(e *Event) S {
+	if !e.StateCalled() {
+		return e.Accept()
+	}
+
+	return e.AcceptWithoutThis()
+}
+
+func TestPartialNeg(t *testing.T) {
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+	m := NewNoRels(t, nil)
+	_, _ = bindHandlerMaps(m, &TestPartialNegHandlers{})
+	m.Add(S{"A", "B"}, nil)
+	assert.True(t, m.Is1("B"))
+	assert.True(t, m.Not1("A"))
+
+	// dispose
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+type TestPartialAcceptHandlers struct{}
+
+func (h *TestPartialAcceptHandlers) AEnter(e *Event) S {
+	return e.Accept()
+}
+
+type TestPartialAcceptWithout1Handlers struct{}
+
+func (h *TestPartialAcceptWithout1Handlers) AEnter(e *Event) S {
+	return e.AcceptWithout1("A")
+}
+
+type TestPartialAcceptWithoutHandlers struct{}
+
+func (h *TestPartialAcceptWithoutHandlers) AEnter(e *Event) S {
+	return e.AcceptWithout(S{"A", "C"})
+}
+
+type TestPartialCancelHandlers struct{}
+
+func (h *TestPartialCancelHandlers) AEnter(e *Event) S {
+	return e.Cancel()
+}
+
+func TestPartialNegMethods(t *testing.T) {
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+
+	t.Run("Accept", func(t *testing.T) {
+		t.Parallel()
+		m := NewNoRels(t, nil)
+		_, err := bindHandlerMaps(m, &TestPartialAcceptHandlers{})
+		require.NoError(t, err)
+
+		assert.Equal(t, Executed, m.Add(S{"A", "B"}, nil))
+		assert.True(t, m.Is1("A"))
+		assert.True(t, m.Is1("B"))
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+
+	t.Run("AcceptWithout1", func(t *testing.T) {
+		t.Parallel()
+		m := NewNoRels(t, nil)
+		_, err := bindHandlerMaps(m, &TestPartialAcceptWithout1Handlers{})
+		require.NoError(t, err)
+
+		assert.Equal(t, Executed, m.Add(S{"A", "B"}, nil))
+		assert.True(t, m.Is1("B"))
+		assert.True(t, m.Not1("A"))
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+
+	t.Run("AcceptWithout", func(t *testing.T) {
+		t.Parallel()
+		m := NewNoRels(t, nil)
+		_, err := bindHandlerMaps(m, &TestPartialAcceptWithoutHandlers{})
+		require.NoError(t, err)
+
+		assert.Equal(t, Executed, m.Add(S{"A", "B", "C"}, nil))
+		assert.True(t, m.Is1("B"))
+		assert.True(t, m.Not1("A"))
+		assert.True(t, m.Not1("C"))
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+
+	t.Run("Cancel", func(t *testing.T) {
+		t.Parallel()
+		m := NewNoRels(t, nil)
+		_, err := bindHandlerMaps(m, &TestPartialCancelHandlers{})
+		require.NoError(t, err)
+
+		assert.Equal(t, Canceled, m.Add1("A", nil))
+		assert.True(t, m.Not1("A"))
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+}
+
+func TestStateImplied(t *testing.T) {
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+
+	m := NewCustomStates(t, Schema{
+		"A": {Add: S{"B"}},
+		"B": {},
+	})
+
+	var calledA, impliedA, calledB, impliedB bool
+	_, err := m.HandlersBindMapsPartial(nil,
+		map[string]HandlerNegotiationPartial{
+			"AEnter": func(e *Event) S {
+				calledA, impliedA = e.StateCalled(), e.StateImplied()
+				return e.Accept()
+			},
+			"BEnter": func(e *Event) S {
+				calledB, impliedB = e.StateCalled(), e.StateImplied()
+				return e.Accept()
+			},
+		}, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, Executed, m.Add1("A", nil))
+	assertStates(t, m, S{"A", "B"})
+	assert.True(t, calledA, "A should be called")
+	assert.False(t, impliedA, "A should not be implied")
+	assert.False(t, calledB, "B should not be called")
+	assert.True(t, impliedB, "B should be implied")
+
+	m.Dispose()
+	<-m.WhenDisposed()
+}
+
+func TestPartialImplied(t *testing.T) {
+	if os.Getenv(EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+
+	t.Run("Self", func(t *testing.T) {
+		t.Parallel()
+		m := NewCustomStates(t, Schema{
+			"A": {Add: S{"B"}},
+			"B": {},
+		})
+		_, err := m.HandlersBindMapsPartial(nil,
+			map[string]HandlerNegotiationPartial{
+				"BEnter": func(e *Event) S {
+					if e.StateImplied() {
+						return e.AcceptWithoutThis()
+					}
+					return e.Accept()
+				},
+			}, nil)
+		require.NoError(t, err)
+
+		assert.Equal(t, Executed, m.Add1("A", nil))
+		assertStates(t, m, S{"A"})
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+
+	t.Run("CalledRejectsImplied", func(t *testing.T) {
+		t.Parallel()
+		m := NewCustomStates(t, Schema{
+			"A": {Add: S{"B"}},
+			"B": {},
+		})
+		_, err := m.HandlersBindMapsPartial(nil,
+			map[string]HandlerNegotiationPartial{
+				"AEnter": func(e *Event) S {
+					if e.StateImplied() {
+						return e.Accept()
+					}
+					return e.AcceptWithout1("B")
+				},
+			}, nil)
+		require.NoError(t, err)
+
+		assert.Equal(t, Executed, m.Add1("A", nil))
+		assertStates(t, m, S{"A"})
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+
+	t.Run("Transitive", func(t *testing.T) {
+		t.Parallel()
+		m := NewCustomStates(t, Schema{
+			"A": {Add: S{"B"}},
+			"B": {Add: S{"C"}},
+			"C": {},
+		})
+		_, err := m.HandlersBindMapsPartial(nil,
+			map[string]HandlerNegotiationPartial{
+				"BEnter": func(e *Event) S {
+					if e.StateImplied() {
+						return e.AcceptWithoutThis()
+					}
+					return e.Accept()
+				},
+			}, nil)
+		require.NoError(t, err)
+
+		assert.Equal(t, Executed, m.Add1("A", nil))
+		assertStates(t, m, S{"A"})
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+
+	t.Run("ImpliedRejectsImplied", func(t *testing.T) {
+		t.Parallel()
+		m := NewCustomStates(t, Schema{
+			"A": {Add: S{"B", "C"}},
+			"B": {},
+			"C": {},
+		})
+		_, err := m.HandlersBindMapsPartial(nil,
+			map[string]HandlerNegotiationPartial{
+				"BEnter": func(e *Event) S {
+					if e.StateImplied() {
+						return e.AcceptWithout1("C")
+					}
+					return e.Accept()
+				},
+			}, nil)
+		require.NoError(t, err)
+
+		assert.Equal(t, Executed, m.Add1("A", nil))
+		assertStates(t, m, S{"A", "B"})
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+
+	t.Run("Combined", func(t *testing.T) {
+		t.Parallel()
+		m := NewCustomStates(t, Schema{
+			"A": {Add: S{"B"}},
+			"B": {},
+			"C": {},
+		})
+		_, err := m.HandlersBindMapsPartial(nil,
+			map[string]HandlerNegotiationPartial{
+				"AEnter": func(e *Event) S {
+					if e.StateImplied() {
+						return e.Accept()
+					}
+					return e.AcceptWithout(S{"B", "C"})
+				},
+			}, nil)
+		require.NoError(t, err)
+
+		assert.Equal(t, Executed, m.Add(S{"A", "C"}, nil))
+		assertStates(t, m, S{"A"})
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+
+	t.Run("Idempotent", func(t *testing.T) {
+		t.Parallel()
+		m := NewCustomStates(t, Schema{
+			"A": {Add: S{"B"}},
+			"B": {},
+		})
+		var calls atomic.Int32
+		_, err := m.HandlersBindMapsPartial(nil,
+			map[string]HandlerNegotiationPartial{
+				"AEnter": func(e *Event) S {
+					calls.Add(1)
+					if e.StateImplied() {
+						return e.Accept()
+					}
+					return e.AcceptWithout1("B")
+				},
+			}, nil)
+		require.NoError(t, err)
+
+		assert.Equal(t, Executed, m.Add1("A", nil))
+		assertStates(t, m, S{"A"})
+		assert.GreaterOrEqual(t, calls.Load(), int32(2))
+		assert.Less(t, calls.Load(), int32(5), "should not loop until the limit")
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+
+	t.Run("BoolCancel", func(t *testing.T) {
+		t.Parallel()
+		m := NewCustomStates(t, Schema{
+			"A": {Add: S{"B"}},
+			"B": {},
+		})
+		_, err := m.HandlersBindMaps(
+			map[string]HandlerNegotiation{
+				"BEnter": func(e *Event) bool { return false },
+			}, nil)
+		require.NoError(t, err)
+
+		assert.Equal(t, Canceled, m.Add1("A", nil))
+		assert.True(t, m.Not1("A"))
+		assert.True(t, m.Not1("B"))
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
+
+	t.Run("ImpliedByActive", func(t *testing.T) {
+		t.Parallel()
+		m := NewCustomStates(t, Schema{
+			"X": {Multi: true, Add: S{"B"}},
+			"B": {},
+			"C": {},
+		})
+		var reject atomic.Bool
+		_, err := m.HandlersBindMapsPartial(nil,
+			map[string]HandlerNegotiationPartial{
+				"BEnter": func(e *Event) S {
+					if e.StateImplied() && reject.Load() {
+						return e.AcceptWithoutThis()
+					}
+					return e.Accept()
+				},
+			}, nil)
+		require.NoError(t, err)
+
+		// X implies B, but B gets rejected
+		reject.Store(true)
+		assert.Equal(t, Executed, m.Set(S{"X"}, nil))
+		assertStates(t, m, S{"X"})
+
+		// B is implied again by the now active X and accepts
+		reject.Store(false)
+		assert.Equal(t, Executed, m.Add1("C", nil))
+		assertStates(t, m, S{"X", "B", "C"})
+
+		m.Dispose()
+		<-m.WhenDisposed()
+	})
 }
 
 func TestAutoStates(t *testing.T) {
@@ -934,17 +1286,14 @@ func TestPartialAutoStatesByStateState(t *testing.T) {
 	})
 
 	// CB cancels
-	_, _ = m.HandlersBind(&struct {
-		CB     HandlerNegotiation
-		BState HandlerFinal
-	}{
-		CB: func(e *Event) bool {
-			return false
+	_, _ = m.HandlersBindMaps(
+		map[string]HandlerNegotiation{
+			"CB": func(e *Event) bool { return false },
 		},
-		BState: func(e *Event) {
-			t.Log("BState should not be called")
+		map[string]HandlerFinal{
+			"BState": func(e *Event) { t.Log("BState should not be called") },
 		},
-	})
+	)
 
 	// trigger mut
 	go m.Add1("C", nil)
@@ -978,13 +1327,14 @@ func TestPartialAutoStatesByEnter(t *testing.T) {
 	})
 
 	// BEnter cancels
-	_, _ = m.HandlersBind(&struct {
-		BEnter HandlerNegotiation
-		BState HandlerFinal
-	}{
-		BEnter: func(e *Event) bool { return false },
-		BState: func(e *Event) { t.Log("BState should not be called") },
-	})
+	_, _ = m.HandlersBindMaps(
+		map[string]HandlerNegotiation{
+			"BEnter": func(e *Event) bool { return false },
+		},
+		map[string]HandlerFinal{
+			"BState": func(e *Event) { t.Log("BState should not be called") },
+		},
+	)
 
 	// trigger mut
 	go m.Add1("C", nil)
@@ -1016,16 +1366,17 @@ func TestPartialAutoStatesBySelfHandler(t *testing.T) {
 	})
 
 	// CB cancels
-	_, _ = m.HandlersBind(&struct {
-		CC     HandlerNegotiation
-		BState HandlerFinal
-	}{
-		// C rejects the 2nd auto tx
-		CC: func(e *Event) bool { return false },
-		BState: func(e *Event) {
-			t.Log("BState should not be called")
+	_, _ = m.HandlersBindMaps(
+		map[string]HandlerNegotiation{
+			// C rejects the 2nd auto tx
+			"CC": func(e *Event) bool { return false },
 		},
-	})
+		map[string]HandlerFinal{
+			"BState": func(e *Event) {
+				t.Log("BState should not be called")
+			},
+		},
+	)
 
 	// trigger mut
 	go m.Add1("C", nil)
@@ -1057,7 +1408,7 @@ func TestNegotiationRemove(t *testing.T) {
 	m := NewNoRels(t, S{"A"})
 
 	// bind handlers
-	_, err := m.HandlersBind(&TestNegotiationRemoveHandlers{})
+	_, err := bindHandlerMaps(m, &TestNegotiationRemoveHandlers{})
 	assert.NoError(t, err)
 
 	// bind logger
@@ -1140,7 +1491,7 @@ func TestHandlerStateInfo(t *testing.T) {
 	history := trackTransitions(m)
 
 	// bind handlers
-	_, err = m.HandlersBind(&TestHandlerStateInfoHandlers{
+	_, err = bindHandlerMaps(m, &TestHandlerStateInfoHandlers{
 		t: t,
 	})
 	assert.NoError(t, err)
@@ -1303,7 +1654,7 @@ func TestHandlerArgs(t *testing.T) {
 	history := trackTransitions(m)
 
 	// bind handlers
-	_, err := m.HandlersBind(&TestHandlerArgsHandlers{})
+	_, err := bindHandlerMaps(m, &TestHandlerArgsHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -1344,7 +1695,7 @@ func TestEvMutations(t *testing.T) {
 	history := trackTransitions(m)
 
 	// bind handlers
-	_, err := m.HandlersBind(&TestEvH{})
+	_, err := bindHandlerMaps(m, &TestEvH{})
 	assert.NoError(t, err)
 
 	// test
@@ -1414,6 +1765,9 @@ func TestEvalNested(t *testing.T) {
 }
 
 func TestEvalNestedHandlers(t *testing.T) {
+	if isTinyGo {
+		t.Skip("goroutine IDs are not available in tinygo")
+	}
 	// init
 
 	a := 0
@@ -1423,21 +1777,22 @@ func TestEvalNestedHandlers(t *testing.T) {
 	m := NewNoRels(t, nil)
 	m.detectEval = true
 	m.EvalTimeout = time.Millisecond
-	_, _ = m.HandlersBind(&struct {
-		AState HandlerFinal
-	}{
-		AState: func(e *Event) {
-			direct = m.Eval(t.Name(), func() {
-				a++
-			}, nil)
-			m.Fork(context.Background(), e, func() {
-				forked = m.Eval(t.Name(), func() {
+	_, _ = m.HandlersBindMaps(
+		nil,
+		map[string]HandlerFinal{
+			"AState": func(e *Event) {
+				direct = m.Eval(t.Name(), func() {
 					a++
 				}, nil)
-				close(done)
-			})
+				m.Fork(context.Background(), e, func() {
+					forked = m.Eval(t.Name(), func() {
+						a++
+					}, nil)
+					close(done)
+				})
+			},
 		},
-	})
+	)
 
 	m.Add1("A", nil)
 	<-done
@@ -1483,19 +1838,19 @@ func TestHandlerStateState(t *testing.T) {
 
 	// init
 	m := NewNoRels(t, S{"A"})
-	_, _ = m.HandlersBind(&struct {
-		AB HandlerNegotiation
-		BA HandlerNegotiation
-	}{
-		AB: func(e *Event) bool {
-			ab = true
-			return true
+	_, _ = m.HandlersBindMaps(
+		map[string]HandlerNegotiation{
+			"AB": func(e *Event) bool {
+				ab = true
+				return true
+			},
+			"BA": func(e *Event) bool {
+				ba = true
+				return true
+			},
 		},
-		BA: func(e *Event) bool {
-			ba = true
-			return true
-		},
-	})
+		nil,
+	)
 
 	// test
 	m.Add1("B", nil)
@@ -1516,17 +1871,17 @@ func TestHandlerNegotiationStateState(t *testing.T) {
 
 	// init
 	m := NewNoRels(t, S{"A"})
-	_, _ = m.HandlersBind(&struct {
-		AB HandlerNegotiation
-		BA HandlerNegotiation
-	}{
-		AB: func(e *Event) bool {
-			return false
+	_, _ = m.HandlersBindMaps(
+		map[string]HandlerNegotiation{
+			"AB": func(e *Event) bool {
+				return false
+			},
+			"BA": func(e *Event) bool {
+				return true
+			},
 		},
-		BA: func(e *Event) bool {
-			return true
-		},
-	})
+		nil,
+	)
 
 	// test
 	res := m.Add1("B", nil)
@@ -1548,17 +1903,18 @@ func TestAnonHandlers(t *testing.T) {
 	ok := false
 
 	// bind handlers
-	_, err := m.HandlersBind(&struct {
-		AExit func(e *Event) bool
-		AEnd  func(e *Event)
-	}{
-		AExit: func(e *Event) bool {
-			return true
+	_, err := m.HandlersBindMaps(
+		map[string]HandlerNegotiation{
+			"AExit": func(e *Event) bool {
+				return true
+			},
 		},
-		AEnd: func(e *Event) {
-			ok = true
+		map[string]HandlerFinal{
+			"AEnd": func(e *Event) {
+				ok = true
+			},
 		},
-	})
+	)
 	assert.NoError(t, err)
 
 	// test
@@ -1593,7 +1949,7 @@ func TestSelfHandlersCancellable(t *testing.T) {
 	history := trackTransitions(m)
 
 	// bind handlers
-	_, err := m.HandlersBind(&TestSelfHandlersCancellableHandlers{})
+	_, err := bindHandlerMaps(m, &TestSelfHandlersCancellableHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -1738,7 +2094,7 @@ func TestWhen(t *testing.T) {
 	m := NewNoRels(t, nil)
 
 	// bind handlers
-	_, err := m.HandlersBind(&TestWhenHandlers{})
+	_, err := bindHandlerMaps(m, &TestWhenHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -1847,7 +2203,7 @@ func TestWhenNot(t *testing.T) {
 	m := NewNoRels(t, S{"B", "C"})
 
 	// bind handlers
-	_, err := m.HandlersBind(&TestWhenNotHandlers{})
+	_, err := bindHandlerMaps(m, &TestWhenNotHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -1941,7 +2297,7 @@ func TestPartialNegotiationPanic(t *testing.T) {
 	captureLog(t, m, &log)
 
 	// bind handlers
-	_, err := m.HandlersBind(&TestPartialNegotiationPanicHandlers{})
+	_, err := bindHandlerMaps(m, &TestPartialNegotiationPanicHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -1977,7 +2333,7 @@ func TestPartialFinalPanic(t *testing.T) {
 	captureLog(t, m, &log)
 
 	// bind handlers
-	_, err := m.HandlersBind(&TestPartialFinalPanicHandlers{})
+	_, err := bindHandlerMaps(m, &TestPartialFinalPanicHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -1987,9 +2343,11 @@ func TestPartialFinalPanic(t *testing.T) {
 	assertStates(t, m, S{"A", "Exception"})
 	assert.Contains(t, log, "[error:add] A B C (BState",
 		"log contains the target states and handler")
-	assert.Contains(t, log,
-		"pkg/machine.(*TestPartialFinalPanicHandlers)",
-		"log contains the stack trace")
+	if !isTinyGo {
+		assert.Contains(t, log,
+			"pkg/machine.(*TestPartialFinalPanicHandlers)",
+			"log contains the stack trace")
+	}
 	assert.Regexp(t, `\[cancel] \(A B C\) by recover`, log,
 		"log contains the target states and handler")
 
@@ -2030,7 +2388,7 @@ func TestStateCtx(t *testing.T) {
 
 	// bind handlers
 	handlers := &TestStateCtxHandlers{}
-	_, err := m.HandlersBind(handlers)
+	_, err := bindHandlerMaps(m, handlers)
 	assert.NoError(t, err)
 
 	// test
@@ -2119,7 +2477,7 @@ func TestQueueCheckable(t *testing.T) {
 
 	// bind handlers
 	handlers := &TestQueueCheckableHandlers{}
-	_, err := m.HandlersBind(handlers)
+	_, err := bindHandlerMaps(m, handlers)
 	require.NoError(t, err)
 
 	// test
@@ -2239,9 +2597,7 @@ func TestWhenCtx(t *testing.T) {
 	m.Set(S{"A", "B"}, nil)
 
 	// wait on "when" methods with a "step" context
-	ctx, cancel := signal.NotifyContext(
-		context.Background(), os.Interrupt, os.Kill,
-	)
+	ctx, cancel := testSignalContext()
 	whenTimeCh := m.WhenTime(S{"A", "B"}, Time{3, 3}, ctx)
 	whenTimeSumCh := m.WhenTimeSum(6, ctx)
 	whenTicks1Ch := m.WhenTicks("A", 2, ctx)
@@ -2424,7 +2780,9 @@ func TestNewCommon(t *testing.T) {
 	// init
 	s := Schema{"A": {}, StateException: {}}
 	m, err := NewCommon(context.TODO(), "foo", s, slices.Collect(maps.Keys(s)),
-		&TestNewCommonHandlers{}, nil, nil)
+		nil, nil, nil)
+	assert.NoError(t, err)
+	_, err = bindHandlerMaps(m, &TestNewCommonHandlers{})
 
 	// assert
 	assert.NoError(t, err)
@@ -2439,7 +2797,9 @@ func TestNewCommonLessCommon(t *testing.T) {
 	// init
 	s := Schema{"A": {}, StateException: {}}
 	m2, err := NewCommon(context.TODO(), "foo", s, slices.Collect(maps.Keys(s)),
-		&TestNewCommonHandlers{}, m, &Opts{LogLevel: LogChanges})
+		nil, m, &Opts{LogLevel: LogChanges})
+	assert.NoError(t, err)
+	_, err = bindHandlerMaps(m2, &TestNewCommonHandlers{})
 
 	// assert
 	assert.NoError(t, err)
@@ -2447,7 +2807,7 @@ func TestNewCommonLessCommon(t *testing.T) {
 	assert.Greater(t, m2.HandlerTimeout, m.HandlerTimeout)
 
 	_, err = NewCommon(context.TODO(), "foo", s, S{"A", "B"},
-		&TestNewCommonHandlers{}, m, &Opts{LogLevel: LogChanges})
+		nil, m, &Opts{LogLevel: LogChanges})
 	assert.Error(t, err)
 }
 
@@ -2479,7 +2839,7 @@ func TestTracers(t *testing.T) {
 		Tracers: []Tracer{tNoop},
 		Parent:  m,
 	})
-	_, _ = m2.HandlersBind(&TestTracersHandlers{})
+	_, _ = bindHandlerMaps(m2, &TestTracersHandlers{})
 	assert.Equal(t, 1, len(m2.tracers))
 	assert.False(t, m2.tracers[0].Inheritable())
 	m2.Add1("A", nil)
@@ -2753,7 +3113,7 @@ func TestWhenQueueEnds(t *testing.T) {
 	}
 
 	// bind handlers
-	_, err = m.HandlersBind(&TestWhenQueueEndsHandlers{})
+	_, err = bindHandlerMaps(m, &TestWhenQueueEndsHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -2811,7 +3171,7 @@ func TestWhenQueue(t *testing.T) {
 
 	// bind handlers
 	h := &TestWhenQueueHandlers{}
-	_, err := m.HandlersBind(h)
+	_, err := bindHandlerMaps(m, h)
 	require.NoError(t, err)
 
 	m.Add1("A", A{"t": t})
@@ -2913,7 +3273,7 @@ func TestNestedMutation(t *testing.T) {
 	m := NewNoRels(t, S{"B"})
 
 	// bind handlers
-	_, err := m.HandlersBind(&TestNestedMutationHandlers{})
+	_, err := bindHandlerMaps(m, &TestNestedMutationHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -3102,7 +3462,7 @@ func TestHandlerTimeout(t *testing.T) {
 	m.HandlerDeadline = time.Second
 
 	// bind handlers
-	_, err := m.HandlersBind(&TestHandlerTimeoutHandlers{})
+	_, err := bindHandlerMaps(m, &TestHandlerTimeoutHandlers{})
 	assert.NoError(t, err)
 
 	// test
@@ -3145,6 +3505,9 @@ type TestBindTracerTracer struct {
 }
 
 func TestBindTracer(t *testing.T) {
+	if isTinyGo {
+		t.Skip("non-pointer tracer validation requires reflection")
+	}
 	if os.Getenv(EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -3185,7 +3548,7 @@ func TestUnbindHandlers(t *testing.T) {
 	h := &TestUnbindHandlersHandlers{}
 
 	// test
-	bindId, err := m.HandlersBind(h)
+	bindId, err := bindHandlerMaps(m, h)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3371,7 +3734,6 @@ func TestDisposedNoOp(t *testing.T) {
 	assert.Empty(t, m.Eval("test", func() {}, nil))
 	assert.Empty(t, m.VerifyStates(s))
 	assert.Empty(t, m.NewStateCtx("A"))
-	assert.Empty(t, m.newHandlerStruct(struct{}{}, &reflect.Value{}))
 	assert.Empty(t, m.setActiveStates(s, s, false))
 	m.log(LogChanges, "")
 	m.Log("")
@@ -3379,96 +3741,6 @@ func TestDisposedNoOp(t *testing.T) {
 	m.PanicToErr(A{})
 	m.PanicToErrState("A", A{})
 	m.queueMutation(MutationAdd, s, A{}, nil)
-}
-
-// SCHEMA GROUPS
-
-type TestGroups0Def struct {
-	// shadow duplicated StatesBase
-	*StatesBase
-
-	State00 string
-	State01 string
-}
-type TestGroups1Def struct {
-	// shadow duplicated StatesBase
-	*TestGroups0Def
-
-	State10 string
-	State11 string
-}
-type TestGroups2Def struct {
-	// shadow duplicated StatesBase
-	*TestGroups1Def
-
-	State20 string
-	State21 string
-}
-
-type TestGroupsBaseGroupsDef struct {
-	BaseGroup0 S
-	BaseGroup1 S
-}
-
-type TestGroups2GroupsDef struct {
-	*TestGroupsBaseGroupsDef
-	Group0           S
-	GroupTestNameBar S
-}
-
-var testGroups0Schema = Schema{
-	testGroups2S.State00: {},
-	testGroups2S.State01: {},
-}
-
-var testGroups1Schema = testGroups0Schema.Merge(Schema{
-	testGroups2S.State10: {},
-	testGroups2S.State11: {},
-})
-
-var testGroups2Schema = testGroups1Schema.Merge(Schema{
-	testGroups2S.State20: {},
-	testGroups2S.State21: {},
-})
-
-// EXPORTS AND GROUPS
-
-var (
-	testGroups2S   = NewStates(TestGroups2Def{})
-	testGroupsBase = NewStateGroups(TestGroupsBaseGroupsDef{
-		BaseGroup0: S{"State10", "State11"},
-		BaseGroup1: S{"State21", "State10"},
-	})
-	testGroupsG = NewStateGroups(TestGroups2GroupsDef{
-		Group0:           S{"State20", "State21"},
-		GroupTestNameBar: S{"State11", "State20"},
-	}, testGroupsBase)
-)
-
-func TestGroups(t *testing.T) {
-	if os.Getenv(EnvAmTestDbgAddr) == "" {
-		t.Parallel()
-	}
-
-	m := NewCustomStates(t, testGroups2Schema)
-	m.SetGroups(testGroupsG, testGroups2S)
-	groups, order := m.Groups()
-
-	assert.Equal(t, groups, map[string][]int{
-		"BaseGroup0":       {3, 4},
-		"BaseGroup1":       {6, 3},
-		"Group0":           {5, 6},
-		"GroupTestNameBar": {4, 5},
-
-		// schema
-		"self":           {5, 6},
-		"TestGroups1Def": {3, 4},
-		"TestGroups0Def": {1, 2},
-	})
-	assert.Equal(t, order, []string{
-		"Group0", "GroupTestNameBar", "BaseGroup0", "BaseGroup1",
-		"self", "TestGroups1Def", "TestGroups0Def",
-	})
 }
 
 func TestCanAdd(t *testing.T) {
@@ -3597,160 +3869,4 @@ func TestActivatedAt(t *testing.T) {
 	// dispose
 	m.Dispose()
 	<-m.WhenDisposed()
-}
-
-type NestedStatesDef struct {
-	*StatesBase
-
-	Nested1 string
-	Nested2 string
-	Nested3 string
-}
-
-var NestedSchema = Schema{
-	ssN.Nested1: {Remove: S{ssN.Nested2, ssB.Heartbeat}},
-	ssN.Nested2: {Multi: true},
-	ssN.Nested3: {Multi: true},
-}
-
-type BasicStatesDef struct {
-	*StatesBase
-
-	Heartbeat string
-	Parent1   *NestedStatesDef
-}
-
-var BasicSchema = Schema{}.Merge(
-	// prefix with "Parent1"
-	NestedSchema.Nest(par1, ssN.Names()),
-	Schema{
-		ssB.Heartbeat: {},
-		// override a nested state
-		par1 + ssN.Nested3: {},
-	})
-
-var (
-	par1 = ssB.Parent1.Prefix()
-	ssB  = NewStates(BasicStatesDef{})
-	ssN  = NewStates(NestedStatesDef{})
-)
-
-func TestNestedSchema(t *testing.T) {
-	assert.Equal(t, "Parent1", ssB.Parent1.Prefix())
-	assert.Equal(t, "Parent1Nested1", ssB.Parent1.Nested1)
-	assert.Equal(t, "Parent1Nested2", BasicSchema[ssB.Parent1.Nested1].Remove[0])
-	assert.Equal(t, "Heartbeat", BasicSchema[ssB.Parent1.Nested1].Remove[1])
-	assert.True(t, BasicSchema[ssB.Parent1.Nested2].Multi)
-	assert.False(t, BasicSchema[ssB.Parent1.Nested3].Multi)
-}
-
-type TestPartialNegHandlers struct{}
-
-func (h *TestPartialNegHandlers) AEnter(e *Event) S {
-	if !e.StateCalled() {
-		return e.Accept()
-	}
-
-	return e.AcceptWithoutThis()
-}
-
-func TestPartialNeg(t *testing.T) {
-	if os.Getenv(EnvAmTestDbgAddr) == "" {
-		t.Parallel()
-	}
-	m := NewNoRels(t, nil)
-	_, _ = m.BindHandlers(&TestPartialNegHandlers{})
-	m.Add(S{"A", "B"}, nil)
-	assert.True(t, m.Is1("B"))
-	assert.True(t, m.Not1("A"))
-
-	// dispose
-	m.Dispose()
-	<-m.WhenDisposed()
-}
-
-type TestPartialAcceptHandlers struct{}
-
-func (h *TestPartialAcceptHandlers) AEnter(e *Event) S {
-	return e.Accept()
-}
-
-type TestPartialAcceptWithout1Handlers struct{}
-
-func (h *TestPartialAcceptWithout1Handlers) AEnter(e *Event) S {
-	return e.AcceptWithout1("A")
-}
-
-type TestPartialAcceptWithoutHandlers struct{}
-
-func (h *TestPartialAcceptWithoutHandlers) AEnter(e *Event) S {
-	return e.AcceptWithout(S{"A", "C"})
-}
-
-type TestPartialCancelHandlers struct{}
-
-func (h *TestPartialCancelHandlers) AEnter(e *Event) S {
-	return e.Cancel()
-}
-
-func TestPartialNegMethods(t *testing.T) {
-	if os.Getenv(EnvAmTestDbgAddr) == "" {
-		t.Parallel()
-	}
-
-	t.Run("Accept", func(t *testing.T) {
-		t.Parallel()
-		m := NewNoRels(t, nil)
-		_, err := m.BindHandlers(&TestPartialAcceptHandlers{})
-		require.NoError(t, err)
-
-		assert.Equal(t, Executed, m.Add(S{"A", "B"}, nil))
-		assert.True(t, m.Is1("A"))
-		assert.True(t, m.Is1("B"))
-
-		m.Dispose()
-		<-m.WhenDisposed()
-	})
-
-	t.Run("AcceptWithout1", func(t *testing.T) {
-		t.Parallel()
-		m := NewNoRels(t, nil)
-		_, err := m.BindHandlers(&TestPartialAcceptWithout1Handlers{})
-		require.NoError(t, err)
-
-		assert.Equal(t, Executed, m.Add(S{"A", "B"}, nil))
-		assert.True(t, m.Is1("B"))
-		assert.True(t, m.Not1("A"))
-
-		m.Dispose()
-		<-m.WhenDisposed()
-	})
-
-	t.Run("AcceptWithout", func(t *testing.T) {
-		t.Parallel()
-		m := NewNoRels(t, nil)
-		_, err := m.BindHandlers(&TestPartialAcceptWithoutHandlers{})
-		require.NoError(t, err)
-
-		assert.Equal(t, Executed, m.Add(S{"A", "B", "C"}, nil))
-		assert.True(t, m.Is1("B"))
-		assert.True(t, m.Not1("A"))
-		assert.True(t, m.Not1("C"))
-
-		m.Dispose()
-		<-m.WhenDisposed()
-	})
-
-	t.Run("Cancel", func(t *testing.T) {
-		t.Parallel()
-		m := NewNoRels(t, nil)
-		_, err := m.BindHandlers(&TestPartialCancelHandlers{})
-		require.NoError(t, err)
-
-		assert.Equal(t, Canceled, m.Add1("A", nil))
-		assert.True(t, m.Not1("A"))
-
-		m.Dispose()
-		<-m.WhenDisposed()
-	})
 }

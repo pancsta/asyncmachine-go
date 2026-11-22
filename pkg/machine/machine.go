@@ -8,9 +8,7 @@ import (
 	"maps"
 	"math"
 	"os"
-	"reflect"
 	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -1643,18 +1641,6 @@ func (m *Machine) bindHandlers(h *handler, opts ...BindOpts) (string, error) {
 // TODO move
 var idRe = regexp.MustCompile(`[^a-zA-Z0-9-_.]+`)
 
-// HandlersBind binds a struct of handler methods to machine's states, based on
-// the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
-// optionally return bool.
-func (m *Machine) HandlersBind(handlers any, opts ...BindOpts) (string, error) {
-	v := reflect.ValueOf(handlers)
-	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
-		return "", errors.New("BindHandlers expects a pointer to a struct")
-	}
-
-	return m.bindHandlers(m.newHandlerStruct(handlers, &v), optBindOpts(opts))
-}
-
 // HandlersBindMaps is like [Machine.BindHandlers] but accepts maps of
 // handlers to bypass reflecting structs. It may lead to higher performance.
 // Returns a binding ID.
@@ -1662,7 +1648,18 @@ func (m *Machine) HandlersBindMaps(
 	negotiations map[string]HandlerNegotiation, finals map[string]HandlerFinal,
 	opts ...BindOpts,
 ) (string, error) {
-	return m.bindHandlers(m.newHandlerMap(negotiations, finals),
+	return m.HandlersBindMapsPartial(negotiations, nil, finals, opts...)
+}
+
+// HandlersBindMapsPartial is like [Machine.HandlersBindMaps] but additionally
+// accepts partial acceptance negotiation handlers.
+func (m *Machine) HandlersBindMapsPartial(
+	negotiations map[string]HandlerNegotiation,
+	partials map[string]HandlerNegotiationPartial,
+	finals map[string]HandlerFinal,
+	opts ...BindOpts,
+) (string, error) {
+	return m.bindHandlers(m.newHandlerMap(negotiations, partials, finals),
 		optBindOpts(opts))
 }
 
@@ -1719,9 +1716,11 @@ func (m *Machine) Handlers() []string {
 	return ret
 }
 
-// newHandlerStruct creates a [handler] binding for a map.
+// newHandlerMap creates a [handler] binding for a map.
 func (m *Machine) newHandlerMap(
-	negotiations map[string]HandlerNegotiation, finals map[string]HandlerFinal,
+	negotiations map[string]HandlerNegotiation,
+	partials map[string]HandlerNegotiationPartial,
+	finals map[string]HandlerFinal,
 ) *handler {
 	if m.disposing.Load() {
 		return &handler{}
@@ -1730,24 +1729,7 @@ func (m *Machine) newHandlerMap(
 		isMap:        true,
 		finals:       finals,
 		negotiations: negotiations,
-	}
-
-	return e
-}
-
-// newHandlerStruct creates a [handler] binding for a struct.
-func (m *Machine) newHandlerStruct(
-	handlers any, methods *reflect.Value,
-) *handler {
-	if m.disposing.Load() {
-		return &handler{}
-	}
-	e := &handler{
-		isMap:        false,
-		h:            handlers,
-		methods:      methods,
-		methodCache:  make(map[string]reflect.Value),
-		missingCache: make(map[string]struct{}),
+		partials:     partials,
 	}
 
 	return e
@@ -3653,9 +3635,8 @@ func (m *Machine) TracerBind(tracer Tracer) (string, error) {
 	m.tracersMx.Lock()
 	defer m.tracersMx.Unlock()
 
-	v := reflect.ValueOf(tracer)
-	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
-		return "", errors.New("BindTracer expects a pointer to a struct")
+	if err := tracerValidate(tracer); err != nil {
+		return "", err
 	}
 
 	m.tracers = append(m.tracers, tracer)
@@ -3722,87 +3703,6 @@ func (m *Machine) Backoff() bool {
 // any handlers.
 func (m *Machine) OnChange(fn HandlerChange) {
 	m.onChange.Store(&fn)
-}
-
-// SetGroups organizes the schema into a tree using schema-v2 structs.
-func (m *Machine) SetGroups(groups any, optStates States) {
-	// TODO rename to SchemaOrganize(optGroups, optStates, ...)
-	// TODO call VerifyStates from optStates.Names()
-
-	m.schemaMx.Lock()
-	defer m.schemaMx.Unlock()
-	list := map[string][]int{}
-	order := []string{}
-	index := m.stateNames
-
-	// add all the groups
-	if groups != nil {
-		// TODO extract
-		var walk func(reflect.Value)
-		walk = func(val reflect.Value) {
-			if val.Kind() == reflect.Pointer {
-				if val.IsNil() {
-					return
-				}
-				val = val.Elem()
-			}
-			if val.Kind() != reflect.Struct {
-				return
-			}
-
-			typ := val.Type()
-			// Local groups first.
-			for i := 0; i < val.NumField(); i++ {
-				field := typ.Field(i)
-				if field.Type.Kind() != reflect.Slice {
-					continue
-				}
-				value := val.Field(i)
-				if !value.CanInterface() {
-					continue
-				}
-				states, ok := value.Interface().(S)
-				if !ok {
-					continue
-				}
-				if _, ok := list[field.Name]; ok {
-					continue
-				}
-				list[field.Name] = index.Index(states)
-				order = append(order, field.Name)
-			}
-
-			// Then inherited embedded groups.
-			for i := 0; i < val.NumField(); i++ {
-				field := typ.Field(i)
-				if !field.Anonymous {
-					continue
-				}
-				kind := field.Type.Kind()
-				if kind == reflect.Struct ||
-					(kind == reflect.Pointer &&
-						field.Type.Elem().Kind() == reflect.Struct) {
-
-					walk(val.Field(i))
-				}
-			}
-		}
-		walk(reflect.ValueOf(groups))
-	}
-
-	// add all the schemas (nested)
-
-	// state schema structure
-	if optStates != nil {
-		groups, order2 := optStates.StateGroups()
-		for _, name := range order2 {
-			list[name] = groups[name]
-			order = append(order, name)
-		}
-	}
-
-	m.groups = list
-	m.groupsOrder = order
 }
 
 // SetGroupsString is like SetGroups, but work with the schema-v1 format.
@@ -3872,19 +3772,6 @@ func (m *Machine) Go(ctx context.Context, fn func()) {
 
 		fn() // watch: caller
 	}()
-}
-
-// TODO move
-func funcName(fn func()) string {
-	funcPtr := reflect.ValueOf(fn).Pointer()
-	funcObj := runtime.FuncForPC(funcPtr)
-	if funcObj == nil {
-		return ""
-	}
-	funcName := funcObj.Name()
-
-	// file, line := funcObj.FileLine(funcPtr)
-	return funcName
 }
 
 // GoAfter is like [Go], but with a delay.

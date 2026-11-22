@@ -18,7 +18,6 @@ import (
 
 	ss "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
-	ssnode "github.com/pancsta/asyncmachine-go/pkg/node/states"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 )
 
@@ -48,6 +47,20 @@ func RandListener(host string) net.Listener {
 
 	ConnInit.Lock()
 	defer ConnInit.Unlock()
+
+	// TinyGo's net.Listen does not support port 0 (it reports :0 and does not
+	// bind), so use a random port in the 40000-50000 range instead.
+	if isTinyGo {
+		for range 100 {
+			p := RandPort(40000, 50000)
+			l, err := net.Listen("tcp4", host+":"+p)
+			if err == nil {
+				return l
+			}
+		}
+
+		panic("could not create listener on " + host)
+	}
 
 	// var (
 	// 	err error
@@ -115,37 +128,6 @@ func NewRelsNetSrc(t *testing.T, initialState am.S) *am.Machine {
 	if initialState != nil {
 		mach.Set(initialState, nil)
 	}
-
-	return mach
-}
-
-// inherit from RPC worker
-
-var (
-	RelsNodeWorkerSchema = ssnode.WorkerSchema.Merge(ss.States)
-	RelsNodeWorkerStates = am.SAdd(ss.Names, ssnode.WorkerStates.Names())
-)
-
-// NewRelsNodeWorker creates a new Node worker machine with basic relations
-// between ABCD states.
-func NewRelsNodeWorker(t *testing.T, initialState am.S) *am.Machine {
-
-	// machine init
-	mach := am.New(context.Background(), RelsNodeWorkerSchema, &am.Opts{
-		Id: "t-" + t.Name()})
-	err := mach.VerifyStates(RelsNodeWorkerStates)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	mach.SemLogger().SetLevel(am.EnvLogLevel(os.Getenv(am.EnvAmLog)))
-	if os.Getenv(am.EnvAmDebug) != "" && os.Getenv(EnvAmTestRunner) == "" {
-		mach.HandlerTimeout = 2 * time.Minute
-	}
-	if initialState != nil {
-		mach.Set(initialState, nil)
-	}
-	mach.SemLogger().SetArgsMapper(am.NewLogArgsMapper(50, am.LogArgs))
 
 	return mach
 }
