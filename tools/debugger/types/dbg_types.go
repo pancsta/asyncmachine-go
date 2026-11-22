@@ -72,23 +72,25 @@ type Params struct {
 	FilterRpcMachs       bool        `arg:"--filter-rpc-machs" help:"Filter RPC machines"`
 	FilterQueuedTx       bool        `arg:"--filter-queued" help:"Filter queued transitions"`
 
-	OutputCallLog    bool                 `arg:"--output-call-log" help:"Write called handlers as Go code into call-log/{mach-id}/{mtime}.go inside --dir (EXPERIMENTAL)"`
-	OutputClients    bool                 `arg:"--output-clients" help:"Write a detailed client list into clients.md inside --dir"`
-	OutputDiagrams   ParamsOutputDiagrams `arg:"--output-diagrams" help:"Enable graph diagrams and set the level of detail for machine diagrams in --dir (0 off, 1-3 on) (EXPERIMENTAL)"`
-	OutputDiagGroup  ParamsOutDiagGroup   `arg:"--output-diag-group" help:"Only show states from the selected group (valid: hide, skip)" default:"hide"`
-	OutputDiagLayout ParamsDiagLayout     `arg:"--output-diag-layout" help:"D2 layout engine for state and graph diagrams (valid: tala, elk, dagre)" default:"tala"`
-	OutputDiagTx     ParamsOutDiagTx      `arg:"--output-diag-tx" help:"Dim states and rels unrelated to a transition (valid: called, changed, touched, relations)"`
-	OutputGraph      bool                 `arg:"--output-graph" help:"Write the current network graph as graph.(md|mgml) inside --dir (EXPERIMENTAL)"`
-	OutputLog        bool                 `arg:"--output-log" help:"Write the current log buffer to log.md inside --dir"`
-	OutputMach       bool                 `arg:"--output-mach" default:"true" help:"Write the serialized machine state into mach.yml and schema.yml inside --dir"`
-	OutputTx         bool                 `arg:"--output-tx" default:"true" help:"Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir"`
+	OutputCallLog         bool                 `arg:"--output-call-log" help:"Write called handlers as Go code into call-log/{mach-id}/{mtime}.go inside --dir (EXPERIMENTAL)"`
+	OutputClients         bool                 `arg:"--output-clients" help:"Write a detailed client list into clients.md inside --dir"`
+	OutputDiagrams        ParamsOutputDiagrams `arg:"--output-diagrams" help:"Enable graph diagrams and set the level of detail for machine diagrams in --dir (0 off, 1-3 on) (EXPERIMENTAL)"`
+	OutputDiagConcurrency int                  `arg:"--output-diag-concurrency" default:"3" help:"Max number of state-zoom diagram renders (0 = no limit)"`
+	OutputDiagGroup       ParamsOutDiagGroup   `arg:"--output-diag-group" help:"Only show states from the selected group (valid: hide, skip)" default:"hide"`
+	OutputDiagLayout      ParamsDiagLayout     `arg:"--output-diag-layout" help:"D2 layout engine for state and graph diagrams (valid: tala, elk, dagre)" default:"tala"`
+	OutputDiagTx          ParamsOutDiagTx      `arg:"--output-diag-tx" help:"Dim states and rels unrelated to a transition (valid: called, changed, touched, relations)"`
+	OutputGraph           bool                 `arg:"--output-graph" help:"Write the current network graph as graph.(md|mgml) inside --dir (EXPERIMENTAL)"`
+	OutputLog             bool                 `arg:"--output-log" help:"Write the current log buffer to log.md inside --dir"`
+	OutputMach            bool                 `arg:"--output-mach" default:"true" help:"Write the serialized machine state into mach.yml and schema.yml inside --dir"`
+	OutputStackTrace      bool                 `arg:"--output-stacktrace" help:"Write the stack trace of the current queued mutation to stacktrace.md inside --dir (empty when none)"`
+	OutputTx              bool                 `arg:"--output-tx" default:"true" help:"Write the current transition with steps into tx.md / d2 / mermaid / txt inside --dir"`
 
 	// ui
 
 	UiMcp      bool `arg:"--ui-mcp" help:"Enable MCP server on port --listen-addr +1 (requires --ui-web) (EXPERIMENTAL)" default:"true"`
 	UiPty      bool `arg:"--ui-pty" default:"true" help:"Enable the local PTY UI (disable for a headless 80x25 sim screen, eg for MCP or SSH)"`
 	UiSsh      bool `arg:"--ui-ssh" help:"Enable the SSH UI on port --listen-addr +2 (EXPERIMENTAL)"`
-	UiLivepage bool `arg:"--ui-livepage" help:"Enable headless livepage HTML mode at /livepage on --listen-addr +1 (requires --ui-web) (EXPERIMENTAL)"`
+	UiLivepage bool `arg:"--ui-livepage" help:"Enable headless livepage HTML mode at /livepage on --listen-addr +1 (requires --ui-web) (EXPERIMENTAL)" default:"true"`
 	UiWeb      bool `arg:"--ui-web" default:"true" help:"Start a web server for --dir and diagrams on --listen-addr +1"`
 
 	// view

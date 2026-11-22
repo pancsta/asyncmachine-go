@@ -146,7 +146,7 @@ func (d *Debugger) hDrawClientList() {
 		return
 	}
 	if n, _ := d.LayoutRoot.GetFrontPanel(); n == "main" {
-		d.draw(d.clientList)
+		d.hDraw(d.clientList)
 	}
 }
 
@@ -388,7 +388,11 @@ func (d *Debugger) hInitClientList() {
 		// if d.Mach.EvalRunning() {
 		// 	return
 		// }
-		go d.Mach.Eval("clientList.SetChangedFunc", d.hUpdateClientList, nil)
+		go d.Mach.Eval("clientList.SetChangedFunc", func() {
+			d.hUpdateClientList()
+			// skip when hidden (narrow layout) or covered by a dialog
+			d.hDrawClientList()
+		}, nil)
 	})
 	// switch clients and handle history
 	d.clientList.SetSelectedFunc(func(i int, listItem *cview.ListItem) {
@@ -421,7 +425,7 @@ func (d *Debugger) hInitClientList() {
 			d.Mach.Eval("clientList.SetSelectedFunc2", func() {
 				d.hPrependHistory(&types.MachAddress{MachId: clickedId})
 				d.hUpdateAddressBar()
-				d.draw(d.addressBar)
+				d.hDraw(d.addressBar)
 			}, ctx)
 		}()
 	})

@@ -295,13 +295,15 @@ func (d *Debugger) OverlayState(e *am.Event) {
 	d.overlay.SetVisible(true)
 	x, y, _, h := d.logReader.GetRect()
 	d.overlay.SetRect(0, y, x, h)
-	d.LayoutRoot.SendToFront("overlay")
+	d.LayoutRoot.ShowPanel("overlay")
+	d.hDraw(d.overlay)
 	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
 }
 
 func (d *Debugger) OverlayEnd(e *am.Event) {
-	d.LayoutRoot.SendToBack("overlay")
 	d.overlay.SetVisible(false)
+	d.LayoutRoot.HidePanel("overlay")
+	d.hDraw()
 	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
 }
 
@@ -838,7 +840,7 @@ func (d *Debugger) hLogReaderSelected(
 	text := node.GetText()
 	node.SetText("[" + tcell.GetColor(theme.Active).String() + "::u]" +
 		removeStyleBracketsRe.ReplaceAllString(text, ""))
-	d.draw(d.logReader)
+	d.hDraw(d.logReader)
 
 	ctx := d.Mach.NewStateCtx(ss.LogReaderVisible)
 	d.Mach.Go(ctx, func() {
@@ -851,7 +853,7 @@ func (d *Debugger) hLogReaderSelected(
 		}
 		d.Mach.Eval("hLogReaderSelected", func() {
 			node.SetText(text)
-			d.draw(d.logReader)
+			d.hDraw(d.logReader)
 		}, ctx)
 	})
 
@@ -1025,7 +1027,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 	d.logReader.SetScrollOffset(d.logReaderScroll)
 
 	// TODO check if still needed
-	d.draw()
+	d.hDraw()
 }
 
 func (d *Debugger) hNewLogReaderUpdate(
@@ -2325,8 +2327,12 @@ func (u *logReaderUpdate) buildCanceled() error {
 			continue
 		}
 		state := step.GetToState(u.statesIndex)
-		label := fmt.Sprintf("%s ["+theme.Grey+"]%s[-]",
-			state, prev.StringFromIndex(u.statesIndex))
+
+		label := state
+		if prev.Type == am.StepHandler {
+			label = fmt.Sprintf("%s ["+theme.Grey+"]%s[-]",
+				state, prev.StringFromIndex(u.statesIndex))
+		}
 		node := cview.NewTreeNode(strings.ReplaceAll(label, "**", ""))
 		node.SetReference(&logReaderTreeRef{
 			stateNames: S{state},

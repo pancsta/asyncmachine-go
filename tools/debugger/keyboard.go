@@ -636,7 +636,11 @@ func (d *Debugger) hJumpBackKey(ev *tcell.EventKey) *tcell.EventKey {
 		})
 	} else {
 		// fast jump, dont block the event loop
-		amount := min(fastJumpAmount, d.C.CursorTx1)
+		target := d.hFastJumpCursor1(true)
+		if target == d.C.CursorTx1 {
+			return nil
+		}
+		amount := d.C.CursorTx1 - target
 		d.Mach.Go(ctx, func() {
 			amhelp.Add1Sync(ctx, d.Mach, ss.Back, Pass(&A{
 				Amount: amount,
@@ -679,7 +683,11 @@ func (d *Debugger) hJumpFwdKey(ev *tcell.EventKey) *tcell.EventKey {
 		})
 	} else {
 		// fast jump, dont block the event loop
-		amount := min(fastJumpAmount, len(d.C.MsgTxs)-d.C.CursorTx1)
+		target := d.hFastJumpCursor1(false)
+		if target == d.C.CursorTx1 {
+			return nil
+		}
+		amount := target - d.C.CursorTx1
 		d.Mach.Go(ctx, func() {
 			amhelp.Add1Sync(ctx, d.Mach, ss.Fwd, Pass(&A{
 				Amount: amount,
