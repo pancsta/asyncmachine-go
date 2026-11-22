@@ -51,11 +51,6 @@ var pageHtml string
 // TODO define schema
 var stateUpdateTraces = "UpdateTraces"
 
-// HtmlPage wraps the rendered trace component into a full HTML document.
-func HtmlPage(body string) string {
-	return strings.Replace(pageHtml, "{{body}}", body, 1)
-}
-
 // NewPage creates a live trace page served under prefix. A new set of demo
 // spans is generated periodically.
 func NewPage(
@@ -64,7 +59,9 @@ func NewPage(
 	view := &View{mach: mach, Zoom: 5}
 
 	page, err := livepage.New(ctx, view, livepage.Opts{
-		HtmlPage: HtmlPage,
+		HtmlPage: func(body string) string {
+			return strings.Replace(pageHtml, "{{body}}", body, 1)
+		},
 		Debounce: 50 * time.Millisecond,
 		Prefix:   prefix,
 		DiffHtml: true,
@@ -75,6 +72,12 @@ func NewPage(
 
 	return page, nil
 }
+
+// ///// ///// /////
+
+// ///// TRACES
+
+// ///// ///// /////
 
 type View struct {
 	livepage.Compo
@@ -198,6 +201,7 @@ func (u *View) renderRuler(min, max uint64) UI {
 				Text("t"+formatMachineTime(min+span*uint64(i)/4)),
 		)
 	}
+
 	return Div().Class("ruler").Body(ticks...)
 }
 
@@ -217,29 +221,41 @@ func (u *View) traceSpanCell(trace StateTrace, min, max uint64) UI {
 	if total == 0 {
 		total = 1
 	}
+	// current position line
+	nowLine := u.currMTime >= min && u.currMTime <= max
+	now := float64(u.currMTime-min) / float64(total) * 100
 
-	bars := make([]UI, len(trace.Spans)+1)
-	for i, span := range trace.Spans {
-		start := float64(span.Start-min) / float64(total) * 100
-		duration := float64(span.End-span.Start) / float64(total) * 100
+	return Div().Class("track").Body(
+		Range(trace.Spans).Slice(func(i int) UI {
+			span, start, duration := spanCellBarVars(i, trace, min, total)
+			return Div().Class("bar").
+				Styles(map[string]string{
+					"left":       fmt.Sprintf("%.4f%%", start),
+					"width":      fmt.Sprintf("%.4f%%", duration),
+					"background": "gray",
+				}).
+				Title(spanTitle(trace.State, span))
+		}),
+		If(nowLine, func() UI {
+			return Div().
+				Class("now-line").
+				Style("left", fmt.Sprintf("%.4f%%", now))
+		}))
+}
 
-		bars[i] = Div().Class("bar").
-			Styles(map[string]string{
-				"left":       fmt.Sprintf("%.4f%%", start),
-				"width":      fmt.Sprintf("%.4f%%", duration),
-				"background": "gray",
-			}).
-			Title(spanTitle(trace.State, span))
-	}
+// ///// ///// /////
 
-	if u.currMTime >= min && u.currMTime <= max {
-		now := float64(u.currMTime-min) / float64(total) * 100
-		bars = append(bars, Div().
-			Class("now-line").
-			Style("left", fmt.Sprintf("%.4f%%", now)))
-	}
+// ///// UTILS
 
-	return Div().Class("track").Body(bars...)
+// ///// ///// /////
+
+func spanCellBarVars(
+	i int, trace StateTrace, min uint64, total uint64,
+) (*TraceSpan, float64, float64) {
+	span := &trace.Spans[i]
+	start := float64(span.Start-min) / float64(total) * 100
+	duration := float64(span.End-span.Start) / float64(total) * 100
+	return span, start, duration
 }
 
 func (u *View) spanRange() (uint64, uint64) {
@@ -283,12 +299,12 @@ func (u *View) visibleSpans() []StateTrace {
 	return spans
 }
 
-func spanTitle(state string, span TraceSpan) string {
+func spanTitle(state string, span *TraceSpan) string {
 	title := ""
 	if span.Name != "" {
 		title += span.Name + " | "
 	}
-	return fmt.Sprintf("%st%s to t%s = %s ticks",
+	return fmt.Sprintf("From %st%s to t%s = %s ticks",
 		title,
 		formatMachineTime(span.Start),
 		formatMachineTime(span.End),

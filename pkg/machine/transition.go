@@ -793,8 +793,10 @@ func (t *Transition) emitEvents() Result {
 				continue
 			}
 
-			// hard limit
-			if i > 100 {
+			// hard limit TODO config
+			limit := 100
+			if i > limit {
+				m.errInternal(errorf("tx called recalc %d limit reached", limit))
 				ret.canceled = true
 				break
 			}

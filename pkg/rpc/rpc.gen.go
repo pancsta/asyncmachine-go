@@ -34,6 +34,7 @@ func ClientFinals(h *Client) map[string]am.HandlerFinal {
 		"StartState":           h.StartState,
 	}
 }
+
 func ServerNegotiations(h *Server) map[string]am.HandlerNegotiation {
 	return map[string]am.HandlerNegotiation{
 		"ExceptionEnter":    h.ExceptionEnter,

@@ -248,7 +248,8 @@ func (d *Debugger) DiagramsMachRenderingState(e *am.Event) {
 
 	// state groups
 	var states S
-	if g := c.SelectedGroup; d.params.OutputDiagGroup == types.ParamsOutDiagGroupSkip &&
+	if g := c.SelectedGroup; d.params.OutputDiagGroup ==
+		types.ParamsOutDiagGroupSkip &&
 		(g != "" || d.filterOut.Load() != nil) {
 
 		states = d.hGroupStates(c)

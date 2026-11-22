@@ -367,12 +367,16 @@ type Api interface {
 	// Deprecated, to be removed soon.
 
 	// BindHandlers is deprecated, use [Api.HandlersBind].
+	// Deprecated.
 	BindHandlers(handlers any, opts ...BindOpts) (string, error)
 	// DetachHandlers is deprecated, use [Api.HandlersDetach].
+	// Deprecated.
 	DetachHandlers(bindingId string) error
 	// DetachTracer is deprecated, use [Api.TracerDetach].
+	// Deprecated.
 	DetachTracer(id string) error
 	// BindTracer is deprecated, use [Api.TracerBind].
+	// Deprecated.
 	BindTracer(tracer Tracer) (string, error)
 
 	// Debug

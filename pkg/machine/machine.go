@@ -56,8 +56,8 @@ type Machine struct {
 	// subs is the subscription manager.
 	subs *Subscriptions
 
-	errInternal chan error
-	panicCaught atomic.Bool
+	errInternalCh chan error
+	panicCaught   atomic.Bool
 	// If true, logs will start with the machine's id (5 chars).
 	// Default: true.
 	logId atomic.Bool
@@ -226,17 +226,17 @@ func New(ctx context.Context, schema Schema, opts *Opts) *Machine {
 		QueueLimit:       1000,
 		DisposeTimeout:   time.Second,
 
-		errInternal:  make(chan error, 10),
-		id:           randId(16),
-		schema:       parsedStates,
-		clock:        Clock{},
-		activatedAt:  make(map[string]uint64),
-		handlers:     []*handler{},
-		handlerStart: make(chan *handlerCall),
-		handlerEnd:   make(chan *handlerReturn),
-		handlerPanic: make(chan recoveryData),
-		handlerTimer: time.NewTimer(24 * time.Hour),
-		whenDisposed: make(chan struct{}),
+		errInternalCh: make(chan error, 10),
+		id:            randId(16),
+		schema:        parsedStates,
+		clock:         Clock{},
+		activatedAt:   make(map[string]uint64),
+		handlers:      []*handler{},
+		handlerStart:  make(chan *handlerCall),
+		handlerEnd:    make(chan *handlerReturn),
+		handlerPanic:  make(chan recoveryData),
+		handlerTimer:  time.NewTimer(24 * time.Hour),
+		whenDisposed:  make(chan struct{}),
 		// queue ticks start from 1 to align with the [Result] enum
 		queueTick:       1,
 		pools:           map[string]*atomic.Int32{},
@@ -482,7 +482,7 @@ func (m *Machine) doDispose(force bool) {
 
 	// dispose chans
 
-	close(m.errInternal)
+	close(m.errInternalCh)
 	m.subs.dispose()
 	for _, mut := range m.queue {
 		if !mut.IsCheck {
@@ -1449,7 +1449,7 @@ func (m *Machine) queueMutation(
 //
 // Note: usage of Eval is discouraged. But if you have to, use AM_DETECT_EVAL in
 // tests for deadlock detection. Most usages of eval can be replaced with
-// atomics or returning from mutation via channels. Evals can be better then
+// atomics or returning from mutation via channels. Evals can be better than
 // Multi states in some cases.
 func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	if m.disposing.Load() {
@@ -1477,7 +1477,7 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	}
 
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = m.Context()
 	}
 
 	// prepend to the queue the queue, but ignore the result
@@ -1497,10 +1497,7 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 		canceled.Store(true)
 		m.log(LogOps, "[eval:timeout] %s", source)
 		err := errorf("%w: eval:%s", ErrEvalTimeout, source)
-		select {
-		case m.errInternal <- err:
-		default:
-		}
+		m.errInternal(err)
 		return false
 
 	case <-m.ctx.Done():
@@ -1517,6 +1514,14 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 
 	m.log(LogEverything, "[eval:end] %s", source)
 	return true
+}
+
+// errInternal reports an internal error over the dedicated chan.
+func (m *Machine) errInternal(err error) {
+	select {
+	case m.errInternalCh <- err:
+	default:
+	}
 }
 
 func (m *Machine) isNestedEval(source string) bool {
@@ -2446,6 +2451,7 @@ func (m *Machine) handle(
 }
 
 func (m *Machine) processHandlers(state string, e *Event) *handlerReturn {
+	// TODO extract: call, negotiation
 	if m.disposing.Load() {
 		return &handlerReturn{canceled: true}
 	}
@@ -2505,10 +2511,7 @@ func (m *Machine) processHandlers(state string, e *Event) *handlerReturn {
 			m.log(LogOps, "[cancel] (%s) by timeout", j(tx.TargetStates()))
 			m.log(LogDecisions, "[handler:timeout]: %s from %s", methodName, h.id)
 			err := errorf("%w: %s from %s", ErrHandlerTimeout, methodName, h.id)
-			select {
-			case m.errInternal <- err:
-			default:
-			}
+			m.errInternal(err)
 			timeout = true
 
 			// wait for the handler to exit within HandlerDeadline
@@ -2716,10 +2719,7 @@ func (m *Machine) handlerLoop() {
 			)
 			m.log(LogOps, "[error] %s", err)
 			// report via internal err chan, avoid the queue
-			select {
-			case m.errInternal <- err:
-			default:
-			}
+			m.errInternal(err)
 		}
 
 		m.loopLock.Lock()
@@ -2842,7 +2842,7 @@ func (m *Machine) IsLocal() bool {
 // so they can be handled accordingly without passing through mutations.
 // This method always returns a closed channel for [Api.IsLocal] == false.
 func (m *Machine) ErrInternal() <-chan error {
-	return m.errInternal
+	return m.errInternalCh
 }
 
 // Clock returns current machine's clock, a state-keyed map of ticks. If states

@@ -1,6 +1,6 @@
 // Package uds was auto-translated from rust-libp2p.
 // https://github.com/libp2p/rust-libp2p/blob/master/transports/uds/src/lib.rs
-package libp2p_uds
+package uds
 
 import (
 	"context"

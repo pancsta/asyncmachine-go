@@ -28,7 +28,7 @@ const envWasmBrowser = "AM_WASM_BROWSER"
 // TestWasmRPC compiles pkg/rpc/test for GOOS=js GOARCH=wasm, serves it with a
 // native gobwas/ws pairing bridge, and runs the suite in headless Chromium.
 // The browser side uses a WebSocket net.Conn pair for every newTest call.
-func TestWasmRPC(t *testing.T) {
+func TestWasmRpc(t *testing.T) {
 	if os.Getenv("GITHUB_ACTIONS") == "true" {
 		t.Skip("skipping browser WASM tests in CI")
 	}

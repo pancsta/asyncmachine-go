@@ -16,7 +16,7 @@ tool github.com/pancsta/asyncmachine-go/tools/cmd/arpc
 require (
 	github.com/gookit/goutil v0.8.0
 	github.com/joho/godotenv v1.5.1
-	github.com/pancsta/asyncmachine-go v0.19.5
+	github.com/pancsta/asyncmachine-go v0.19.6
 )
 
 require (
@@ -31,8 +31,8 @@ require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
 	github.com/andybalholm/cascadia v1.3.4 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
-	github.com/carapace-sh/carapace v1.7.1 // indirect
-	github.com/carapace-sh/carapace-shlex v1.0.1 // indirect
+	github.com/carapace-sh/carapace v1.11.6 // indirect
+	github.com/carapace-sh/carapace-shlex v1.1.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cenkalti/hub v1.0.2 // indirect
 	github.com/cenkalti/rpc2 v1.0.4 // indirect
@@ -63,6 +63,7 @@ require (
 	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
+	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02 // indirect
 	github.com/ic2hrmk/promtail v0.0.5 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
@@ -72,18 +73,18 @@ require (
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/mazznoer/csscolorparser v0.1.8 // indirect
 	github.com/orsinium-labs/enum v1.4.0 // indirect
-	github.com/pancsta/cview v1.5.24 // indirect
+	github.com/pancsta/cview v1.6.0 // indirect
 	github.com/pancsta/d2 v0.8.2-go1.26 // indirect
 	github.com/pancsta/go-app v0.0.0-20261030132146-e4194936713d // indirect
-	github.com/pancsta/livepage v0.1.0 // indirect
+	github.com/pancsta/livepage v0.1.3 // indirect
 	github.com/pires/go-proxyproto v0.12.0 // indirect
-	github.com/reeflective/console v0.1.25 // indirect
-	github.com/reeflective/readline v1.1.3 // indirect
+	github.com/reeflective/console v0.5.0 // indirect
+	github.com/reeflective/readline v1.3.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
-	github.com/spf13/cobra v1.9.1 // indirect
+	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/teivah/onecontext v1.3.0 // indirect
 	github.com/tmc/go-iroh v0.1.0 // indirect
@@ -116,5 +117,5 @@ require (
 	google.golang.org/grpc v1.79.3 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	mvdan.cc/sh/v3 v3.7.0 // indirect
+	mvdan.cc/sh/v3 v3.13.1 // indirect
 )

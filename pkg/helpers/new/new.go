@@ -42,7 +42,8 @@ type FullMachParams[GStates am.States, GGroups any] struct {
 	ReplOpts    *arpc.ReplOpts
 	History     bool
 	HistoryOpts amhist.BaseConfig
-	Tracer      *am.Tracer
+	// Tracer is an optional tracer bound to the machine via [am.Opts.Tracers].
+	Tracer am.Tracer
 }
 
 type FullMachRet struct {
@@ -71,8 +72,16 @@ func FullMach[GStates am.States, GGroups any](
 			ssam.DisposedStructField, err)
 	}
 
+	machOpts := p.MachineOpts
+	if machOpts == nil {
+			machOpts = &am.Opts{}
+		}
+	if p.Tracer != nil {
+		machOpts.Tracers = append(machOpts.Tracers, p.Tracer)
+	}
+
 	mach, err := am.NewCommon(p.Ctx, p.Id, p.Schema, p.States.Names(),
-		p.Handlers, p.Parent, p.MachineOpts)
+		p.Handlers, p.Parent, machOpts)
 	if err != nil {
 		return nil, err
 	}

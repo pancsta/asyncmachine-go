@@ -41,6 +41,7 @@ vendor/
 
 # Go workspace file
 go.work
+go.work.sum
 
 # local dev
 /.dev
