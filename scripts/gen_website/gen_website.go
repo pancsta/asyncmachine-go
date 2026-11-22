@@ -282,6 +282,7 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		highlightCode(s, lexerYaml, formatter, style)
 	})
 	doc.Find("pre > code").Parent().AddClass("p-2 rounded-lg overflow-x-auto")
+	// TODO add Graph Query Language highliting (custom made)
 
 	// fix ULs and H1
 	doc.Find("#page-content > ul").RemoveClass("ps-5")
@@ -495,6 +496,15 @@ func processHtml(e sitemap.Entry, htmlContent string) (string, error) {
 		href := img.AttrOr("src", "")
 		img.SetAttr("src", strings.ReplaceAll(href, "light", "dark"))
 		s.ReplaceWithNodes(img.Nodes...)
+	})
+
+	// style tables from markdown
+	doc.Find("#page-content table").Each(func(i int, s *goquery.Selection) {
+		s.AddClass("w-full my-4 text-sm text-left border-collapse border border-gray-300 dark:border-gray-700")
+		s.Find("thead").AddClass("text-xs uppercase bg-gray-200 dark:bg-gray-700")
+		s.Find("th").AddClass("px-3 py-2 font-bold border border-gray-300 dark:border-gray-700")
+		s.Find("td").AddClass("px-3 py-2 align-top border border-gray-300 dark:border-gray-700")
+		s.Find("tbody tr").AddClass("even:bg-gray-200/50 dark:even:bg-gray-800/50")
 	})
 
 	// 6. output the modified HTML

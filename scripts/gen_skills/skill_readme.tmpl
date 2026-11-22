@@ -1,8 +1,14 @@
-{{.Base}}
+---
+name: am-readme
+description: "asyncmachine - reference only (maximal detail): every /pkg package README,
+  no core guide."
+---
 
-## Package READMEs
+# Package READMEs
 {{range .Readmes}}
+-------------
 ### {{.Path}}
+-------------
 
 {{.Content}}
 {{end}}

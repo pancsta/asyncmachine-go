@@ -129,7 +129,7 @@ type Ret struct {
 
 ## Status
 
-Alpha, work in progress, not semantically versioned.
+Testing, not semantically versioned.
 
 ## monorepo
 

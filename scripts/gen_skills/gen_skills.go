@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -227,12 +228,14 @@ type ReadmeSection struct {
 }
 
 type FullData struct {
-	Base   string
-	Manual string
+	Base    string
+	Manual  string
+	Wasm    string
+	AI      string
+	Editors string
 }
 
 type ReadmeData struct {
-	Base    string
 	Readmes []ReadmeSection
 }
 
@@ -290,7 +293,7 @@ func genSkillCook(amSkill string) (string, error) {
 	}
 
 	out, err := renderTemplate("skill_cook.tmpl", CookData{
-		Base:     renameSkill(amSkill, "am-cook"),
+		Base:     renameSkill(amSkill, "am-cook", descCook),
 		Cookbook: cookbook,
 	})
 	if err != nil {
@@ -300,16 +303,32 @@ func genSkillCook(amSkill string) (string, error) {
 	return out, writeSkill("am-cook", out)
 }
 
-// genSkillFull extends the "am-cook" skill with the manual.
+// genSkillFull extends the "am-cook" skill with the manual, WASM, AI, and
+// editor docs.
 func genSkillFull(cookSkill string) error {
 	manual, err := readMarkdownSection("docs/manual.md")
 	if err != nil {
 		return err
 	}
+	wasm, err := readMarkdownSection("docs/wasm.md")
+	if err != nil {
+		return err
+	}
+	ai, err := readMarkdownSection("docs/ai.md")
+	if err != nil {
+		return err
+	}
+	editors, err := readMarkdownSection("docs/editors/README.md")
+	if err != nil {
+		return err
+	}
 
 	out, err := renderTemplate("skill_full.tmpl", FullData{
-		Base:   renameSkill(cookSkill, "am-full"),
-		Manual: manual,
+		Base:    renameSkill(cookSkill, "am-full", descFull),
+		Manual:  manual,
+		Wasm:    wasm,
+		AI:      ai,
+		Editors: editors,
 	})
 	if err != nil {
 		return err
@@ -318,15 +337,15 @@ func genSkillFull(cookSkill string) error {
 	return writeSkill("am-full", out)
 }
 
-// genSkillReadme extends the "am" skill with every package README.
-func genSkillReadme(amSkill string) error {
+// genSkillReadme generates the "am-readme" skill out of every package README,
+// without the base "am" guidelines.
+func genSkillReadme() error {
 	readmes, err := readPackageReadmes()
 	if err != nil {
 		return err
 	}
 
 	out, err := renderTemplate("skill_readme.tmpl", ReadmeData{
-		Base:    renameSkill(amSkill, "am-readme"),
 		Readmes: readmes,
 	})
 	if err != nil {
@@ -354,7 +373,7 @@ func genSkillMini() error {
 	}
 
 	out, err := renderTemplate("skill_mini.tmpl", MiniData{
-		Base:           renameSkill(strings.TrimSpace(base), "am-mini"),
+		Base:           renameSkill(strings.TrimSpace(base), "am-mini", descMini),
 		Mini:           strings.TrimSpace(mini),
 		GettingStarted: gettingStarted,
 	})
@@ -368,36 +387,61 @@ func genSkillMini() error {
 // readPackageReadmes returns the README.md of every /pkg package, sorted by
 // path, for inclusion in the am-readme skill.
 func readPackageReadmes() ([]ReadmeSection, error) {
-	matches, err := filepath.Glob("pkg/*/README.md")
-	if err != nil {
-		return nil, fmt.Errorf("failed to glob pkg READMEs: %w", err)
+	readmes := make([]ReadmeSection, 0, 10)
+	paths := []string{
+		"pkg/*/README.md",
+		"tools/cmd/*/README.md",
 	}
-	sort.Strings(matches)
-
-	readmes := make([]ReadmeSection, 0, len(matches))
-	for _, path := range matches {
-		content, err := readMarkdownSection(path)
+	for _, path := range paths {
+		matches, err := filepath.Glob(path)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to glob %s: %w", path, err)
 		}
-		readmes = append(readmes, ReadmeSection{
-			Path:    filepath.ToSlash(path),
-			Content: content,
-		})
+		sort.Strings(matches)
+
+		for _, path := range matches {
+			content, err := readMarkdownSection(path)
+			if err != nil {
+				return nil, err
+			}
+			readmes = append(readmes, ReadmeSection{
+				Path:    filepath.ToSlash(path),
+				Content: content,
+			})
+		}
 	}
 
 	return readmes, nil
 }
 
-var frontmatterNameRe = regexp.MustCompile(`(?m)^name: .*$`)
+var (
+	frontmatterNameRe = regexp.MustCompile(`(?m)^name: .*$`)
+	// frontmatterDescriptionRe matches `description:` along with its folded
+	// continuation lines.
+	frontmatterDescriptionRe = regexp.MustCompile(`(?m)^description:[^\n]*(?:\n[ \t]+[^\n]*)*`)
+)
 
-// renameSkill rewrites the `name:` field of a skill's YAML frontmatter.
-func renameSkill(content, newName string) string {
+// Descriptions of the generated skills, each stating the level of detail and
+// the content unique to that skill.
+const (
+	descMini = "asyncmachine - minimal guide: condensed cheatsheet plus " +
+		"getting-started tutorial for quick lookups."
+	descCook = "asyncmachine - detailed guide: the full core guide plus cookbook " +
+		"recipes and real-world patterns."
+	descFull = "asyncmachine - complete guide: core guide, cookbook, and the full " +
+		"manual (largest variant)."
+)
+
+// renameSkill rewrites the `name:` and `description:` fields of a skill's YAML
+// frontmatter.
+func renameSkill(content, newName, description string) string {
 	parts := strings.SplitN(content, "---", 3)
 	if len(parts) < 3 {
 		return content
 	}
 	parts[1] = frontmatterNameRe.ReplaceAllString(parts[1], "name: "+newName)
+	parts[1] = frontmatterDescriptionRe.ReplaceAllString(
+		parts[1], "description: "+strconv.Quote(description))
 
 	return parts[0] + "---" + parts[1] + "---" + parts[2]
 }
@@ -508,7 +552,7 @@ func main() {
 		panic(fmt.Errorf("gen skill am-full: %w", err))
 	}
 
-	if err := genSkillReadme(amSkill); err != nil {
+	if err := genSkillReadme(); err != nil {
 		panic(fmt.Errorf("gen skill am-readme: %w", err))
 	}
 

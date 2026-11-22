@@ -54,6 +54,8 @@ through a **[clock-based state machine](/pkg/machine/README.md)**. It features [
  [diagrams](/tools/cmd/am-vis/README.md), and [UDP-mesh discovery](/pkg/graph/README.md) (plus support for
 [WASM](/docs/wasm.md) and [AI](/docs/ai.md)).
 
+**Platforms**: Go, TinyGo, [GopherJS](https://github.com/pancsta/asyncmachine-go-js).
+
 As a control flow library, it decides about running of predefined bits of code (transition handlers) - their order and
 which ones to run, according to currently active states (flags). Thanks to a [novel state machine](/pkg/machine/README.md),
 the number of handlers can be minimized while maximizing scenario coverage. It's lightweight, fault-tolerant by design,
@@ -83,13 +85,14 @@ vector formats. It aims to create **autonomous** workflows with **organic** cont
 - ***logical clock***
 - subscription topic
 - multiple methods
+- command
 - metric
 - trace
 - lock
 - breakpoint
 
 Besides the main use-case of **workflows**, it can be used for **stateful applications of any size** - daemons, UIs,
-stateful RPC UIs, configs, live sessions, bots, firewalls, synchronization consensus, games, smart graphs, microservice
+stateful RPC UIs, configs, flag servers, live sessions, bots, firewalls, synchronization consensus, games, smart graphs, microservice
 orchestration, robots, contracts, streams, DI containers, message broking, test scenarios, simulators, as well as
 **"real-time" systems** which rely on instant cancelation.
 
@@ -253,7 +256,7 @@ All examples and benchmarks can be found in [`/examples`](/examples/README.md).
   - with [`/examples/mach_template`](/examples/mach_template) being ready for copy-paste
   - also [Basic](/examples/basic), [CLI Daemon](/examples/cli_daemon), [aRPC](/examples/arpc),
     [WASM Workflow](/examples/wasm_workflow/README.md), [TUI](/examples/tui)
-  - and classic like [FSM](/examples/fsm), [NFA](/examples/nfa), [DAG](/examples/dag_dependency_graph)
+  - and classics like [FSM](/examples/fsm), [NFA](/examples/nfa), [DAG](/examples/dag_dependency_graph)
   - migrating from [Temporal](/examples/temporal_expense)?
 - [`/tools/cmd/am-gen`](/tools/cmd/am-gen) and [`/docs/editors`](/docs/editors/README.md) will bootstrap
 - [`/tools/cmd/am-dbg`](/tools/cmd/am-dbg/README.md) will record every detail
@@ -275,7 +278,7 @@ Other packages:
 - [`/pkg/rpc`](/pkg/rpc) Remote state machines, with the same API as local ones.
 - [`/pkg/history`](/pkg/history) History tracking and traversal in mem, KV, and SQL.
 - [`/pkg/integrations`](/pkg/integrations) Integrations for JSON, NATS, MCP, and yaegi.
-- [`/pkg/graph`](/pkg/graph) Directional multigraph of connected state machines with a UDP sync.
+- [`/pkg/graph`](/pkg/graph) Directional multigraph of connected state machines (UDP synced).
 
 Experimental:
 
@@ -304,9 +307,10 @@ Experimental:
 
 **asyncmachine-go** synchronizes state for the following projects:
 
-- [Taskbot.APP](https://taskbot.app) - AI Browser Workflows
-- [secai](https://github.com/pancsta/secai) - AI Workflows framework
-- [secai Web UI](https://github.com/pancsta/secai/tree/main/web) - WebAssembly [go-app](https://go-app.dev/) PWA
+- [DEEPSWAPP Browser](https://deepswapp.com) - Browse your browser with another browser
+- [secai](https://github.com/pancsta/secai) - AI Workflows
+  - [livepage](TODO) [go-app](https://go-app.dev/) HTML projection ([code](TODO))
+  - WebAssembly [go-app](https://go-app.dev/) PWA ([code](TODO))
 - Self-hosting of [pkg/rpc](pkg/rpc/states), [pkg/node](pkg/node/states), [pkg/pubsub](pkg/pubsub/states)
 - [arpc REPL](/tools/repl/states) - Cobra-based REPL
 - [am-dbg TUI Debugger](/tools/debugger/states) - Single state-machine TUI app
@@ -379,9 +383,9 @@ Under development, status depends on each package. The bottom layers seem prod g
 
 ### Roadmap
 
+- high perf netgraph
 - more tooling, diagrams, integrations
 - bug fixes and optimizations
-- network security with ACLs
 - [ROADMAP.md](/ROADMAP.md)
 
 <div align="center">
