@@ -7,11 +7,13 @@ import (
 	"io/fs"
 	"net"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -22,6 +24,7 @@ import (
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
+	tclive "github.com/pancsta/cview/tcell-livepage"
 )
 
 // TODO use utils.Sp for all multilines
@@ -47,18 +50,19 @@ var (
 	  $ arpc localhost:6452
 	- REPL from a file
 	  $ arpc -f mymach.addr
+	- REPL in the browser (livepage)
+	  $ arpc localhost:6452 --livepage
 	- CLI add states with args
 	  $ arpc localhost:6452 -- add mach1 Foo Bar \
 	    --arg name1 --val val1
 	- CLI add states with args to the first machine
-		$ arpc localhost:6452 -- add . Foo Bar \
+	  $ arpc localhost:6452 -- add . Foo Bar \
 	    --arg name1 --val val1
 	- CLI wait on 2 states to be active
 	  $ arpc localhost:6452 -- when mach1 Foo Bar
 	- CLI add states to a group of machines
 	  $ arpc localhost:6452 -- group-add -r ma.\* Foo Bar
 `)
-	arrFlags []*[]string
 )
 
 func NewRootCommand(repl *Repl, cliArgs, osArgs []string) *cobra.Command {
@@ -68,7 +72,7 @@ func NewRootCommand(repl *Repl, cliArgs, osArgs []string) *cobra.Command {
 
 	// CLI
 	cliCmd := &cobra.Command{
-		Use:     "arpc ADDR",
+		Use:     CmdRoot.Value + " ADDR",
 		Short:   title,
 		Args:    cobra.ExactArgs(1),
 		Example: example,
@@ -76,7 +80,7 @@ func NewRootCommand(repl *Repl, cliArgs, osArgs []string) *cobra.Command {
 
 	// REPL
 	rootCmd = &cobra.Command{
-		Use:     "arpc ADDR",
+		Use:     CmdRoot.Value + " ADDR",
 		Short:   title,
 		Args:    cobra.ExactArgs(1),
 		Example: example,
@@ -87,32 +91,36 @@ func NewRootCommand(repl *Repl, cliArgs, osArgs []string) *cobra.Command {
 
 	// flags
 
-	rootCmd.Flags().BoolP("file", "f", false,
+	rootCmd.Flags().BoolP(FlagCliFile.Value, FlagCliFileShort.Value, false,
 		"Load addresses from a file")
-	rootCmd.Flags().BoolP("dir", "d", false,
+	rootCmd.Flags().BoolP(FlagCliDir.Value, FlagCliDirShort.Value, false,
 		"Load *.addr files from a directory")
-	rootCmd.Flags().BoolP("watch", "w", true,
+	rootCmd.Flags().BoolP(FlagCliWatch.Value, FlagCliWatchShort.Value, true,
 		"Watch the addr file / dir for changes (EXPERIMENTAL)")
-	rootCmd.Flags().String("am-dbg-addr", "",
+	rootCmd.Flags().String(FlagCliAmDbgAddr.Value, "",
 		"Connect this client to am-dbg")
-	rootCmd.Flags().Int("log-level", 0,
+	rootCmd.Flags().Int(FlagCliLogLevel.Value, 0,
 		"Log level, 0-5 (silent-everything)")
+	rootCmd.Flags().Bool(FlagCliLivepage.Value, false,
+		"Serve the REPL TUI over HTTP using livepage (EXPERIMENTAL, disables PTY)")
+	rootCmd.Flags().String(FlagCliLivepageAddr.Value, "localhost:6841",
+		"Livepage HTTP listen address")
 	// TODO --log-file
 
 	// CLI only flags
 
 	if len(cliArgs) > 0 || len(osArgs) == 0 {
-		rootCmd.Flags().BoolP("req-all", "a", false,
-			"Require all addrs to connect (CLI only)")
+		rootCmd.Flags().BoolP(FlagCliReqAll.Value, FlagCliReqAllShort.Value,
+			false, "Require all addrs to connect (CLI only)")
 	}
 
 	// GROUPS
 
 	groups := []*cobra.Group{
-		{ID: "mutating", Title: "Mutations"},
-		{ID: "waiting", Title: "Waiting"},
-		{ID: "inspecting", Title: "Checking"},
-		{ID: "repl", Title: "REPL"},
+		{ID: GroupMutating.Value, Title: "Mutations"},
+		{ID: GroupWaiting.Value, Title: "Waiting"},
+		{ID: GroupInspecting.Value, Title: "Checking"},
+		{ID: GroupRepl.Value, Title: "REPL"},
 	}
 	for _, g := range groups {
 		rootCmd.AddGroup(g)
@@ -151,7 +159,7 @@ func NewRootCommand(repl *Repl, cliArgs, osArgs []string) *cobra.Command {
 		cliCmd.AddCommand(cmd)
 	}
 
-	rootCmd.SetHelpCommandGroupID("repl")
+	rootCmd.SetHelpCommandGroupID(GroupRepl.Value)
 
 	return rootCmd
 }
@@ -161,16 +169,14 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 
 	// Add command
 	addCmd := &cobra.Command{
-		Use: "add MACH STATES",
+		Use: CmdAdd.Value + " MACH STATES",
 		Example: "$ add mach1 Foo Bar \\\n" +
 			"    --arg name1 --val val1 \\\n" +
 			"    --arg name2 --val val2",
 		Short:   "Add states to a single machine",
 		Args:    cobra.MinimumNArgs(2),
-		GroupID: "mutating",
+		GroupID: GroupMutating.Value,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			defer resetArrFlags(cmd)
-
 			if repl.Mach.Not1(ss.Connected) {
 				return fmt.Errorf("not connected\n")
 			}
@@ -198,16 +204,14 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 
 	// Remove command
 	removeCmd := &cobra.Command{
-		Use: "remove MACH STATES",
+		Use: CmdRemove.Value + " MACH STATES",
 		Example: "$ remove mach1 Foo Bar \\\n" +
 			"    --arg name1 --val val1 \\\n" +
 			"    --arg name2 --val val2",
 		Short:   "Removed states from a single machine",
 		Args:    cobra.MinimumNArgs(2),
-		GroupID: "mutating",
+		GroupID: GroupMutating.Value,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			defer resetArrFlags(cmd)
-
 			if repl.Mach.Not1(ss.Connected) {
 				return fmt.Errorf("not connected\n")
 			}
@@ -230,20 +234,48 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 	}
 	MutationFlags(repl, removeCmd, false)
 
-	// TODO cmd: set
+	// Set command
+	setCmd := &cobra.Command{
+		Use: CmdSet.Value + " MACH STATES",
+		Example: "$ set mach1 Foo Bar \\\n" +
+			"    --arg name1 --val val1 \\\n" +
+			"    --arg name2 --val val2",
+		Short:   "Set states of a single machine",
+		Args:    cobra.MinimumNArgs(2),
+		GroupID: GroupMutating.Value,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if repl.Mach.Not1(ss.Connected) {
+				return fmt.Errorf("not connected\n")
+			}
+
+			mutArgs, err := mutationGetArgs(cmd)
+			if err != nil {
+				return err
+			}
+
+			// mutation
+			mut := A{
+				MachId:  args[0],
+				States:  args[1:],
+				MutArgs: mutArgs,
+			}
+			res := mach.Add1(ss.CmdSet, Pass(&mut))
+
+			return amhelp.ResultToErr(res)
+		},
+	}
+	MutationFlags(repl, setCmd, false)
 
 	// Group Add command
 	groupAddCmd := &cobra.Command{
-		Use: "group-add STATES",
+		Use: CmdGroupAdd.Value + " STATES",
 		Example: "$ group-add -r myid-.\\* Foo Bar \\\n" +
 			"    --arg name1 --val val1 \\\n" +
 			"    --arg name2 --val val2",
 		Short:   "Add states to a group of machines",
 		Args:    cobra.MinimumNArgs(1),
-		GroupID: "mutating",
+		GroupID: GroupMutating.Value,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			defer resetArrFlags(cmd)
-
 			if repl.Mach.Not1(ss.Connected) {
 				return fmt.Errorf("not connected\n")
 			}
@@ -289,16 +321,14 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 
 	// Group Add command
 	groupRemoveCmd := &cobra.Command{
-		Use: "group-remove STATES",
+		Use: CmdGroupRemove.Value + " STATES",
 		Example: "$ group-remove -r myid-.\\* Foo Bar \\\n" +
 			"    --arg name1 --val val1 \\\n" +
 			"    --arg name2 --val val2",
 		Short:   "Remove states from a group of machines",
 		Args:    cobra.MinimumNArgs(1),
-		GroupID: "mutating",
+		GroupID: GroupMutating.Value,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			defer resetArrFlags(cmd)
-
 			if repl.Mach.Not1(ss.Connected) {
 				return fmt.Errorf("not connected\n")
 			}
@@ -342,17 +372,71 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 	}
 	MutationFlags(repl, groupRemoveCmd, true)
 
-	return []*cobra.Command{addCmd, removeCmd, groupAddCmd, groupRemoveCmd}
+	// Group Set command
+	groupSetCmd := &cobra.Command{
+		Use: CmdGroupSet.Value + " STATES",
+		Example: "$ group-set -r myid-.\\* Foo Bar \\\n" +
+			"    --arg name1 --val val1 \\\n" +
+			"    --arg name2 --val val2",
+		Short:   "Set states for a group of machines",
+		Args:    cobra.MinimumNArgs(1),
+		GroupID: GroupMutating.Value,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if repl.Mach.Not1(ss.Connected) {
+				return fmt.Errorf("not connected\n")
+			}
+
+			mutArgs, err := mutationGetArgs(cmd)
+			if err != nil {
+				return err
+			}
+
+			// filters
+			filters, err := listFlagsToFilters(cmd)
+			if err != nil {
+				return err
+			}
+			filters.SkipDisconn = true
+
+			// list machines and collect IDs
+			rpcs, err := repl.ListMachines(filters)
+			if err != nil {
+				repl.PrintErr(err.Error())
+				return nil
+			}
+			ws := make([]string, len(rpcs))
+			for i, c := range rpcs {
+				ws[i] = c.NetMach.RemoteId()
+			}
+
+			// mutation
+			mut := A{
+				MachIds: ws,
+				States:  args,
+				MutArgs: mutArgs,
+			}
+			res := mach.Add1(ss.CmdGroupSet, Pass(&mut))
+			if res != am.Executed {
+				repl.Print(res.String())
+			}
+
+			return nil
+		},
+	}
+	MutationFlags(repl, groupSetCmd, true)
+
+	return []*cobra.Command{addCmd, removeCmd, setCmd, groupAddCmd,
+		groupRemoveCmd, groupSetCmd}
 }
 
 func MutationFlags(repl ReplApi, cmd *cobra.Command, groupCmd bool) {
-	registerArrFlag(cmd.Flags().StringArray("arg", []string{},
-		"Argument name (repeatable)"))
-	registerArrFlag(cmd.Flags().StringArray("val", []string{},
-		"Argument value (repeatable)"))
+	cmd.Flags().StringArray(FlagArg.Value, []string{},
+		"Argument name (repeatable)")
+	cmd.Flags().StringArray(FlagVal.Value, []string{},
+		"Argument value (repeatable)")
 
 	// completion TODO groups
-	_ = cmd.RegisterFlagCompletionFunc("arg", func(
+	_ = cmd.RegisterFlagCompletionFunc(FlagArg.Value, func(
 		cmd *cobra.Command, args []string, toComplete string,
 	) ([]string, cobra.ShellCompDirective) {
 		// TODO feat: narrow down to only mentioned states (State.Arg)
@@ -372,23 +456,30 @@ func MutationFlags(repl ReplApi, cmd *cobra.Command, groupCmd bool) {
 }
 
 func ListingFlags(cmd *cobra.Command) {
-	registerArrFlag(cmd.Flags().StringArrayP("active", "a", []string{},
-		"Filter by an active state (repeatable)"))
-	registerArrFlag(cmd.Flags().StringArrayP("inactive", "i", []string{},
-		"Filter by an inactive state (repeatable)"))
-	registerArrFlag(cmd.Flags().StringArrayP("mtime-states", "m", []string{},
-		"Take machine time only from these states (repeatable)"))
-	cmd.Flags().Uint64P("mtime-min", "t", 0,
+	cmd.Flags().StringArrayP(FlagActive.Value, FlagActiveShort.Value,
+		[]string{}, "Filter by an active state (repeatable)")
+	cmd.Flags().StringArrayP(FlagInactive.Value, FlagInactiveShort.Value,
+		[]string{}, "Filter by an inactive state (repeatable)")
+	cmd.Flags().StringArrayP(FlagMtimeStates.Value, FlagMtimeStatesShort.Value,
+		[]string{}, "Take machine time only from these states (repeatable)")
+	cmd.Flags().Uint64P(FlagMtimeMin.Value, FlagMtimeMinShort.Value, 0,
 		"Min machine time, e.g. \"1631616000\"")
-	cmd.Flags().Uint64P("mtime-max", "T", 0,
+	cmd.Flags().Uint64P(FlagMtimeMax.Value, FlagMtimeMaxShort.Value, 0,
 		"Max machine time, e.g. \"1631616000\"")
-	cmd.Flags().StringP("parent", "P", "", "Filter by parent ID")
-	cmd.Flags().StringP("id-regexp", "r", "", "Regexp to match machine IDs")
-	cmd.Flags().StringP("id-partial", "I", "", "Substring to match machine IDs")
-	cmd.Flags().StringP("id-prefix", "p", "", "Prefix to match machine IDs")
-	cmd.Flags().StringP("id-suffix", "s", "", "Suffix to match machine IDs")
-	cmd.Flags().IntP("limit", "l", 0, "Mutate up to N machines")
-	cmd.Flags().IntP("from", "f", 0, "Start from this index")
+	cmd.Flags().StringP(FlagParent.Value, FlagParentShort.Value, "",
+		"Filter by parent ID")
+	cmd.Flags().StringP(FlagIdRegexp.Value, FlagIdRegexpShort.Value, "",
+		"Regexp to match machine IDs")
+	cmd.Flags().StringP(FlagIdPartial.Value, FlagIdPartialShort.Value, "",
+		"Substring to match machine IDs")
+	cmd.Flags().StringP(FlagIdPrefix.Value, FlagIdPrefixShort.Value, "",
+		"Prefix to match machine IDs")
+	cmd.Flags().StringP(FlagIdSuffix.Value, FlagIdSuffixShort.Value, "",
+		"Suffix to match machine IDs")
+	cmd.Flags().IntP(FlagLimit.Value, FlagLimitShort.Value, 0,
+		"Mutate up to N machines")
+	cmd.Flags().IntP(FlagFrom.Value, FlagFromShort.Value, 0,
+		"Start from this index")
 }
 
 func SysCmds(repl *Repl) []*cobra.Command {
@@ -396,9 +487,9 @@ func SysCmds(repl *Repl) []*cobra.Command {
 
 	// Script command
 	scriptCmd := &cobra.Command{
-		Use:     "script FILE",
+		Use:     CmdScript.Value + " FILE",
 		Short:   "Execute a REPL script from a file",
-		GroupID: "repl",
+		GroupID: GroupRepl.Value,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return nil
@@ -407,9 +498,9 @@ func SysCmds(repl *Repl) []*cobra.Command {
 
 	// Exit command
 	exitCmd := &cobra.Command{
-		Use:     "exit",
+		Use:     CmdExit.Value,
 		Short:   "Exit the REPL",
-		GroupID: "repl",
+		GroupID: GroupRepl.Value,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mach.Add1(ss.Disposing, nil)
 			mach.Remove1(ss.ReplMode, nil)
@@ -420,9 +511,9 @@ func SysCmds(repl *Repl) []*cobra.Command {
 
 	// Cheatsheet command
 	chshCmd := &cobra.Command{
-		Use:     "cheatsheet",
+		Use:     CmdCheatsheet.Value,
 		Short:   "Show cheatsheet",
-		GroupID: "repl",
+		GroupID: GroupRepl.Value,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repl.Print("Printing from cheatsheet command")
 
@@ -433,22 +524,59 @@ func SysCmds(repl *Repl) []*cobra.Command {
 	return []*cobra.Command{scriptCmd, exitCmd, chshCmd}
 }
 
+// ReplCmds are cmds present only in the REPL, not CLI.
 func ReplCmds(repl *Repl) []*cobra.Command {
 	mach := repl.Mach
 
 	// Connect command
-	// TODO connet to a new mach via addr
 	connCmd := &cobra.Command{
-		Use:     "connect",
-		Short:   "Try to re-connect to all machines",
-		GroupID: "repl",
+		Use:               CmdConnect.Value + " [ADDR]",
+		Short:             "Connect a new machine, or reconnect all",
+		Example:           "$ connect localhost:6452",
+		GroupID:           GroupRepl.Value,
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			res := mach.Add1(ss.Connecting, nil)
-			repl.Print(res.String())
+			// reconnect all
+			if len(args) == 0 {
+				res := mach.Add1(ss.Connecting, nil)
+				repl.Print(res.String())
 
-			// TODO block for some time, print info
+				return amhelp.ResultToErr(res)
+			}
 
-			return amhelp.ResultToErr(res)
+			// connect a new addr
+			addr := args[0]
+			if err := validateConnectAddr(addr); err != nil {
+				return err
+			}
+
+			c, added, err := repl.connectAddr(nil, addr)
+			if err != nil {
+				return err
+			}
+			if !added {
+				res := c.Start(nil)
+				repl.Print("Reconnecting %s (%s): %s", c.Name, c.Addr, res)
+
+				return amhelp.ResultToErr(res)
+			}
+
+			repl.Print("Connecting %s (%s)", c.Name, c.Addr)
+			go func() {
+				ctx, cancel := context.WithTimeout(repl.Mach.Context(),
+					5*time.Second)
+				defer cancel()
+
+				select {
+				case <-c.Mach.When1(ssrpc.ClientStates.Ready, ctx):
+					repl.Print("Connected %s (%s)", c.Name, c.Addr)
+				case <-ctx.Done():
+					repl.Print("Still connecting %s (%s)", c.Name, c.Addr)
+				}
+			}()
+
+			return nil
 		},
 	}
 
@@ -460,11 +588,11 @@ func WaitingCmds(repl *Repl) []*cobra.Command {
 
 	// When command
 	whenCmd := &cobra.Command{
-		Use:     "when MACH STATE",
+		Use:     CmdWhen.Value + " MACH STATE",
 		Short:   "Wait for active states of a single machine",
 		Example: "when mach1 Foo",
 		Args:    cobra.ExactArgs(2),
-		GroupID: "waiting",
+		GroupID: GroupWaiting.Value,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if repl.Mach.Not1(ss.Connected) {
 				return fmt.Errorf("not connected\n")
@@ -488,11 +616,11 @@ func WaitingCmds(repl *Repl) []*cobra.Command {
 
 	// When-not command
 	whenNotCmd := &cobra.Command{
-		Use:     "when-not MACH STATE",
+		Use:     CmdWhenNot.Value + " MACH STATE",
 		Short:   "Wait for inactive states of a single machine",
 		Example: "when-not mach1 Foo",
 		Args:    cobra.ExactArgs(2),
-		GroupID: "waiting",
+		GroupID: GroupWaiting.Value,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if repl.Mach.Not1(ss.Connected) {
 				return fmt.Errorf("not connected\n")
@@ -516,14 +644,12 @@ func WaitingCmds(repl *Repl) []*cobra.Command {
 
 	// When-time command
 	whenTimeCmd := &cobra.Command{
-		Use:     "when-time MACH STATES TIMES",
+		Use:     CmdWhenTime.Value + " MACH STATES TIMES",
 		Short:   "Wait for a specific machine time of a single machine",
 		Example: "when-time mach1 -s Foo -t 1000 -s Bar -t 2000",
-		GroupID: "waiting",
+		GroupID: GroupWaiting.Value,
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			defer resetArrFlags(cmd)
-
 			if repl.Mach.Not1(ss.Connected) {
 				return fmt.Errorf("not connected\n")
 			}
@@ -534,11 +660,11 @@ func WaitingCmds(repl *Repl) []*cobra.Command {
 			}
 
 			// Fetching the flag values
-			states, err := cmd.Flags().GetStringArray("state")
+			states, err := cmd.Flags().GetStringArray(FlagState.Value)
 			if err != nil {
 				return err
 			}
-			times, err := cmd.Flags().GetStringArray("time")
+			times, err := cmd.Flags().GetStringArray(FlagTime.Value)
 			if err != nil {
 				return err
 			}
@@ -571,10 +697,10 @@ func WaitingCmds(repl *Repl) []*cobra.Command {
 			return nil
 		},
 	}
-	registerArrFlag(whenTimeCmd.Flags().StringArrayP("time", "t", []string{},
-		"Machine time (repeatable)"))
-	registerArrFlag(whenTimeCmd.Flags().StringArrayP("state", "s", []string{},
-		"State name (repeatable)"))
+	whenTimeCmd.Flags().StringArrayP(FlagTime.Value, FlagTimeShort.Value,
+		[]string{}, "Machine time (repeatable)")
+	whenTimeCmd.Flags().StringArrayP(FlagState.Value, FlagStateShort.Value,
+		[]string{}, "State name (repeatable)")
 	// TODO timeout
 
 	// TODO when-args
@@ -586,19 +712,21 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 	// List command
 	// TODO support returning net addresses
 	listCmd := &cobra.Command{
-		Use:     "list",
+		Use:     CmdList.Value,
 		Example: "list -a Foo -a Bar --mtime-min 1631",
 		Short:   "List handshaked machines",
-		GroupID: "repl",
+		GroupID: GroupRepl.Value,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return listRun(repl, cmd, args)
 		},
 	}
 	ListingFlags(listCmd)
-	listCmd.Flags().BoolP("states", "z", true, "Print states")
-	listCmd.Flags().BoolP("states-all", "Z", false,
+	listCmd.Flags().BoolP(FlagStates.Value, FlagStatesShort.Value, true,
+		"Print states")
+	listCmd.Flags().BoolP(FlagStatesAll.Value, FlagStatesAllShort.Value, false,
 		"Print all states (requires --states)")
-	listCmd.Flags().BoolP("disconn", "d", true, "Show disconnected")
+	listCmd.Flags().BoolP(FlagDisconn.Value, FlagDisconnShort.Value, true,
+		"Show disconnected")
 	// TODO --show-inherited (true)
 
 	// TODO update usage to:
@@ -610,9 +738,9 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 
 	// Mach command
 	stateCmd := &cobra.Command{
-		Use:     "mach",
+		Use:     CmdMach.Value,
 		Short:   "Show states of a single machine",
-		GroupID: "inspecting",
+		GroupID: GroupInspecting.Value,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			w := repl.NetMach(args[0])
@@ -622,7 +750,7 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 			}
 
 			ret := w.String()
-			if cmd.Flag("all").Changed {
+			if cmd.Flag(FlagAll.Value).Changed {
 				ret = w.StringAll()
 			}
 			repl.Print(ret)
@@ -630,15 +758,15 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 			return nil
 		},
 	}
-	stateCmd.Flags().Bool("all", false, "Show all states")
+	stateCmd.Flags().Bool(FlagAll.Value, false, "Show all states")
 
 	// Time command
 	// TODO specific states via param
 	timeCmd := &cobra.Command{
-		Use:     "time",
+		Use:     CmdTime.Value,
 		Short:   "Show the time of a single machine",
 		Example: "sum mach1 Foo Bar",
-		GroupID: "inspecting",
+		GroupID: GroupInspecting.Value,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			w := repl.NetMach(args[0])
@@ -647,7 +775,7 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 				return nil
 			}
 
-			sum, err := cmd.Flags().GetBool("sum")
+			sum, err := cmd.Flags().GetBool(FlagSum.Value)
 			if err != nil {
 				return err
 			}
@@ -665,14 +793,14 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 			return nil
 		},
 	}
-	timeCmd.Flags().Bool("sum", false, "Show the time sum")
+	timeCmd.Flags().Bool(FlagSum.Value, false, "Show the time sum")
 
 	// Inspect command
 	// TODO specific states via param
 	inspectCmd := &cobra.Command{
-		Use:     "inspect MACH",
+		Use:     CmdInspect.Value + " MACH",
 		Short:   "Inspect a single machine",
-		GroupID: "inspecting",
+		GroupID: GroupInspecting.Value,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			w := repl.NetMach(args[0])
@@ -691,36 +819,37 @@ func InspectingCmds(repl *Repl) []*cobra.Command {
 
 	// Status command
 	statusCmd := &cobra.Command{
-		Use:     "status",
+		Use:     CmdStatus.Value,
 		Short:   "Show the connection status",
-		GroupID: "repl",
+		GroupID: GroupRepl.Value,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rpcs, err := repl.ListMachines(&ListFilters{NoSchema: true})
-			if err != nil {
-				repl.PrintErr(err.Error())
-				return nil
-			}
-
-			conn, disconn, inprog := 0, 0, 0
-			for _, rpc := range rpcs {
-				if rpc.Mach.Is1(ssrpc.ClientStates.Ready) {
+			statuses := repl.clientStatuses()
+			conn, disconn, inprog, retrying := 0, 0, 0, 0
+			for _, status := range statuses {
+				switch status.State {
+				case "connected":
 					conn++
-				} else if rpc.Mach.Is1(ss.Connecting) {
+				case "connecting":
 					inprog++
-				} else {
+				case "retrying":
+					retrying++
+				default:
 					disconn++
 				}
 			}
 
-			// TODO get the list via a state, take total from list of registered
-			//  (named) addresses
 			repl.Print(
-				strings.Repeat("%-15s %d\n", 4),
+				strings.Repeat("%-15s %d\n", 5),
 				"Connected:", conn,
 				"Connecting:", inprog,
+				"Retrying:", retrying,
 				"Disconnected:", disconn,
-				"Total:", len(rpcs),
+				"Total:", len(repl.addrs()),
 			)
+			for _, status := range statuses {
+				repl.Print("%-25s %-35s %s",
+					status.Name, status.Addr, status.State)
+			}
 
 			return nil
 		},
@@ -734,7 +863,7 @@ func rootRun(
 	cliCmd *cobra.Command,
 ) error {
 	var watcher *fsnotify.Watcher
-	var addrs []string
+	var addrs []NamedAddr
 	mach := repl.Mach
 
 	// CLI mode
@@ -746,15 +875,15 @@ func rootRun(
 	}
 
 	// flags
-	isWatch, err := cmd.Flags().GetBool("watch")
+	isWatch, err := cmd.Flags().GetBool(FlagCliWatch.Value)
 	if err != nil {
 		return err
 	}
-	isDir, err := cmd.Flags().GetBool("dir")
+	isDir, err := cmd.Flags().GetBool(FlagCliDir.Value)
 	if err != nil {
 		return err
 	}
-	isFile, err := cmd.Flags().GetBool("file")
+	isFile, err := cmd.Flags().GetBool(FlagCliFile.Value)
 	if err != nil {
 		return err
 	}
@@ -774,6 +903,23 @@ func rootRun(
 	}
 	clipath := args[0]
 
+	// livepage mode (REPL only)
+	isLivepage, err := cmd.Flags().GetBool(FlagCliLivepage.Value)
+	if err != nil {
+		return err
+	}
+	if isLivepage && os.Getenv(tclive.EnvLivepageChild) == "" {
+		if len(cliArgs) > 0 {
+			return fmt.Errorf("livepage is not supported in CLI mode")
+		}
+		livepageAddr, err := cmd.Flags().GetString(FlagCliLivepageAddr.Value)
+		if err != nil {
+			return err
+		}
+
+		return runLivepage(repl, livepageAddr)
+	}
+
 	// debug
 	dbgAddr, err := handleDebug(cmd, mach)
 	if err != nil {
@@ -791,11 +937,13 @@ func rootRun(
 	// addr from a file
 	if isFile {
 
-		content, err := os.ReadFile(clipath)
+		addrs, err = namedAddrsFromFile(clipath)
 		if err != nil {
-			return fmt.Errorf("%w\n", err)
+			return err
 		}
-		addrs = []string{strings.TrimSpace(string(content))}
+		if len(addrs) == 0 {
+			return fmt.Errorf("no address found in %s", clipath)
+		}
 
 		// watch
 		if isWatch {
@@ -825,7 +973,7 @@ func rootRun(
 
 		// addr from CLI
 	} else {
-		addrs = []string{clipath}
+		addrs = []NamedAddr{{Name: "CLI0", Addr: clipath}}
 	}
 
 	// collected addresses
@@ -836,7 +984,7 @@ func rootRun(
 	if len(cliArgs) > 0 {
 
 		// parse dedicated CLI flags
-		reqAll, err := cmd.Flags().GetBool("req-all")
+		reqAll, err := cmd.Flags().GetBool(FlagCliReqAll.Value)
 		if err != nil {
 			return err
 		}
@@ -876,21 +1024,51 @@ func rootRun(
 	return amhelp.ResultToErr(res)
 }
 
-func addrsFromDir(dirpath string) ([]string, error) {
-	var addrs []string
+// namedAddrsFromFile reads a single address from a file.
+func namedAddrsFromFile(path string) ([]NamedAddr, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("%w\n", err)
+	}
+	addr := strings.TrimSpace(string(content))
+	if addr == "" {
+		return nil, nil
+	}
+
+	return []NamedAddr{{Name: filepath.Base(path), Addr: addr}}, nil
+}
+
+// addrsFromDir reads named addresses from all *.addr files in a directory.
+func addrsFromDir(dirpath string) ([]NamedAddr, error) {
+	var addrs []NamedAddr
+	names := map[string]int{}
 
 	err := filepath.WalkDir(dirpath,
 		func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
-			if !d.IsDir() && strings.HasSuffix(path, ".addr") {
-				content, err := os.ReadFile(path)
-				if err != nil {
-					return fmt.Errorf("%s: %w\n", path, err)
-				}
-				addrs = append(addrs, strings.TrimSpace(string(content)))
+			if d.IsDir() || !strings.HasSuffix(path, ".addr") {
+				return nil
 			}
+
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("%s: %w\n", path, err)
+			}
+			addr := strings.TrimSpace(string(content))
+			if addr == "" {
+				return nil
+			}
+
+			// deterministic names, with a suffix on collisions
+			base := filepath.Base(path)
+			name := base
+			if n := names[base]; n > 0 {
+				name = fmt.Sprintf("%s#%d", base, n+1)
+			}
+			names[base]++
+			addrs = append(addrs, NamedAddr{Name: name, Addr: addr})
 
 			return nil
 		})
@@ -899,13 +1077,13 @@ func addrsFromDir(dirpath string) ([]string, error) {
 }
 
 func handleDebug(cmd *cobra.Command, mach *am.Machine) (string, error) {
-	logLevelInt, err := cmd.Flags().GetInt("log-level")
+	logLevelInt, err := cmd.Flags().GetInt(FlagCliLogLevel.Value)
 	if err != nil {
 		return "", err
 	}
 	logLevelInt = min(3, logLevelInt)
 	logLevel := am.LogLevel(logLevelInt)
-	dbgAddr, err := cmd.Flags().GetString("am-dbg-addr")
+	dbgAddr, err := cmd.Flags().GetString(FlagCliAmDbgAddr.Value)
 	if err != nil {
 		return "", err
 	}
@@ -920,7 +1098,7 @@ func handleDebug(cmd *cobra.Command, mach *am.Machine) (string, error) {
 	return dbgAddr, nil
 }
 
-// TODO watch in a state, handle filenames other then *.addr, add/remove
+// TODO watch in a state, handle filenames other than *.addr
 //   - only affected clients, dont re-start
 func initWatcher(
 	mach *am.Machine, watchpath string, isDir bool,
@@ -935,34 +1113,20 @@ func initWatcher(
 
 	// watch for changes and trigger AddrChanged
 	go func() {
-		var running atomic.Bool
-
-		// TODO how very (not) nice
-		var restart func()
-		restart = func() {
-			mach.Log("watcher: restarting")
-			time.Sleep(time.Second)
-			var addrs []string
-			if isDir {
-				addrs, err = addrsFromDir(watchpath)
-				if err != nil {
-					mach.AddErr(err, nil)
-					return
-				}
-			} else {
-				content, err := os.ReadFile(watchpath)
-				if err != nil {
-					mach.AddErr(err, nil)
-				}
-				addrs = []string{string(content)}
+		var debounce *time.Timer
+		var debounceCh <-chan time.Time
+		schedule := func() {
+			if debounce != nil {
+				debounce.Stop()
 			}
-			mach.Log("watcher: collected %d addresses", len(addrs))
-
-			mach.Add1(ss.AddrChanged, Pass(&A{
-				Addrs: addrs,
-			}))
-			running.Store(false)
+			debounce = time.NewTimer(time.Second)
+			debounceCh = debounce.C
 		}
+		defer func() {
+			if debounce != nil {
+				debounce.Stop()
+			}
+		}()
 
 		for {
 			select {
@@ -973,25 +1137,44 @@ func initWatcher(
 				if !ok {
 					return
 				}
-
-				// change
-				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
-					if !strings.HasSuffix(event.Name, ".addr") {
-						continue
-					}
-
-					if !running.CompareAndSwap(false, true) {
-						// already scheduled
-						continue
-					}
-
-					// debounce and re-start
-					go restart()
+				if !strings.HasSuffix(event.Name, ".addr") {
+					continue
 				}
 
-				// removed TODO handle better
-				// if event.Op&fsnotify.Remove == fsnotify.Remove {
-				// }
+				// change, add, or remove
+				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) ||
+					event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
+
+					schedule()
+				}
+
+			case <-debounceCh:
+				debounceCh = nil
+
+				var addrs []NamedAddr
+				var err error
+				if isDir {
+					addrs, err = addrsFromDir(watchpath)
+				} else {
+					addrs, err = namedAddrsFromFile(watchpath)
+				}
+				if err != nil {
+					// keep the previous list on transient errors, eg atomic
+					// file replaces
+					mach.Log("watcher: %s", err)
+					continue
+				}
+
+				mach.Log("watcher: collected %d addresses", len(addrs))
+				mach.Add1(ss.AddrChanged, Pass(&A{
+					Addrs: addrs,
+				}))
+
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				mach.Log("watcher: %s", err)
 			}
 		}
 	}()
@@ -1003,7 +1186,7 @@ func listFlagsToFilters(cmd *cobra.Command) (*ListFilters, error) {
 	filters := &ListFilters{}
 
 	// id-regexp
-	if idReg, err := cmd.Flags().GetString("id-regexp"); err != nil {
+	if idReg, err := cmd.Flags().GetString(FlagIdRegexp.Value); err != nil {
 		return nil, err
 	} else if idReg != "" {
 		reg, err := regexp.Compile(idReg)
@@ -1014,48 +1197,48 @@ func listFlagsToFilters(cmd *cobra.Command) (*ListFilters, error) {
 	}
 
 	// id-partial
-	if idPartial, err := cmd.Flags().GetString("id-partial"); err != nil {
+	if idPartial, err := cmd.Flags().GetString(FlagIdPartial.Value); err != nil {
 		return nil, err
 	} else if idPartial != "" {
 		filters.IdSubstr = idPartial
 	}
 
-	if idPrefix, err := cmd.Flags().GetString("id-prefix"); err != nil {
+	if idPrefix, err := cmd.Flags().GetString(FlagIdPrefix.Value); err != nil {
 		return nil, err
 	} else if idPrefix != "" {
 		filters.IdPrefix = idPrefix
 	}
 
 	// id-suffix
-	if idSuffix, err := cmd.Flags().GetString("id-suffix"); err != nil {
+	if idSuffix, err := cmd.Flags().GetString(FlagIdSuffix.Value); err != nil {
 		return nil, err
 	} else if idSuffix != "" {
 		filters.IdSuffix = idSuffix
 	}
 
 	// parent
-	if parent, err := cmd.Flags().GetString("parent"); err != nil {
+	if parent, err := cmd.Flags().GetString(FlagParent.Value); err != nil {
 		return nil, err
 	} else if parent != "" {
 		filters.Parent = parent
 	}
 
 	// limit
-	if limit, err := cmd.Flags().GetInt("limit"); err != nil {
+	if limit, err := cmd.Flags().GetInt(FlagLimit.Value); err != nil {
 		return nil, err
 	} else if limit > 0 {
 		filters.Limit = limit
 	}
 
 	// from
-	if from, err := cmd.Flags().GetInt("from"); err != nil {
+	if from, err := cmd.Flags().GetInt(FlagFrom.Value); err != nil {
 		return nil, err
 	} else if from > 0 {
 		filters.StartIdx = from
 	}
 
 	// active
-	if activeStates, err := cmd.Flags().GetStringArray("active"); err != nil {
+	if activeStates, err := cmd.Flags().GetStringArray(FlagActive.Value); err != nil {
 		return nil, err
 	} else if len(activeStates) > 0 {
 		filters.StatesActive = activeStates
@@ -1063,7 +1246,7 @@ func listFlagsToFilters(cmd *cobra.Command) (*ListFilters, error) {
 
 	// inactive
 	if inactiveStates, err := cmd.Flags().GetStringArray(
-		"inactive",
+		FlagInactive.Value,
 	); err != nil {
 		return nil, err
 	} else if len(inactiveStates) > 0 {
@@ -1071,14 +1254,14 @@ func listFlagsToFilters(cmd *cobra.Command) (*ListFilters, error) {
 	}
 
 	// mtime-min
-	if mtimeMin, err := cmd.Flags().GetUint64("mtime-min"); err != nil {
+	if mtimeMin, err := cmd.Flags().GetUint64(FlagMtimeMin.Value); err != nil {
 		return nil, err
 	} else if mtimeMin > 0 {
 		filters.MtimeMin = mtimeMin
 	}
 
 	// mtime-max
-	if mtimeMax, err := cmd.Flags().GetUint64("mtime-max"); err != nil {
+	if mtimeMax, err := cmd.Flags().GetUint64(FlagMtimeMax.Value); err != nil {
 		return nil, err
 	} else if mtimeMax > 0 {
 		filters.MtimeMax = mtimeMax
@@ -1086,7 +1269,7 @@ func listFlagsToFilters(cmd *cobra.Command) (*ListFilters, error) {
 
 	// mtime-states
 	if mtimeStates, err := cmd.Flags().GetStringArray(
-		"mtime-states",
+		FlagMtimeStates.Value,
 	); err != nil {
 		return nil, err
 	} else if len(mtimeStates) > 0 {
@@ -1099,58 +1282,44 @@ func listFlagsToFilters(cmd *cobra.Command) (*ListFilters, error) {
 func mutationGetArgs(cmd *cobra.Command) ([2][]string, error) {
 	var empty [2][]string
 
-	// check flags
-	argsFlags, err := cmd.Flags().GetStringArray("arg")
+	argsFlags, err := cmd.Flags().GetStringArray(FlagArg.Value)
 	if err != nil {
 		return empty, err
 	}
-	valFlags, err := cmd.Flags().GetStringArray("val")
+	valFlags, err := cmd.Flags().GetStringArray(FlagVal.Value)
 	if err != nil {
 		return empty, err
 	}
 	if len(argsFlags) != len(valFlags) {
 		return empty, fmt.Errorf(
-			"the number of arguments (--arg) and values (--val) must match",
+			"the number of arguments (--%s) and values (--%s) must match",
+			FlagArg.Value, FlagVal.Value,
 		)
 	}
 
 	return [2][]string{argsFlags, valFlags}, nil
 }
 
-func registerArrFlag(val *[]string) {
-	arrFlags = append(arrFlags, val)
-}
-
-// resetArrFlags resets all the array flags (StringArray, StringArrayP). Cobra
-// should, but it does not.
-func resetArrFlags(cmd *cobra.Command) {
-	for _, v := range arrFlags {
-		*v = nil
-	}
-}
-
 func listRun(repl *Repl, cmd *cobra.Command, args []string) error {
 	// -> 1. C ns_id123 22d t6,7234,234 (Foo:1 Bar:1)
 	// mach := repl.Mach
-
-	defer resetArrFlags(cmd)
 
 	filters, err := listFlagsToFilters(cmd)
 	if err != nil {
 		return err
 	}
 
-	statesAll, err := cmd.Flags().GetBool("states-all")
+	statesAll, err := cmd.Flags().GetBool(FlagStatesAll.Value)
 	if err != nil {
 		return err
 	}
 
-	states, err := cmd.Flags().GetBool("states")
+	states, err := cmd.Flags().GetBool(FlagStates.Value)
 	if err != nil {
 		return err
 	}
 
-	disconn, err := cmd.Flags().GetBool("disconn")
+	disconn, err := cmd.Flags().GetBool(FlagDisconn.Value)
 	if err != nil {
 		return err
 	}
@@ -1190,4 +1359,30 @@ func listRun(repl *Repl, cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// runLivepage serves the REPL TUI over HTTP using livepage. The REPL runs in a
+// child process on a PTY, so readline sees a real terminal.
+func runLivepage(repl *Repl, addr string) error {
+	ctx, stop := signal.NotifyContext(repl.Machine().Context(),
+		os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("livepage executable: %w", err)
+	}
+	child := exec.Command(exe, os.Args[1:]...)
+	child.Env = append(os.Environ(),
+		tclive.EnvLivepageChild+"=1",
+		"TERM=xterm-256color",
+	)
+
+	return tclive.RunCmd(ctx, child, tclive.CmdOpts{
+		Title: "arpc",
+		Addr:  addr,
+		Printf: func(msg string, args ...any) {
+			fmt.Fprintf(os.Stderr, msg+"\n", args...)
+		},
+	})
 }
