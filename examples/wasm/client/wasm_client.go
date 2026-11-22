@@ -34,10 +34,35 @@ func main() {
 		uiDoc:  uiDoc,
 		uiList: uiList,
 	}
+	var bindBar am.HandlersBind
+	bindBar = func(mach *am.Machine, opts ...am.BindOpts) (string, error) {
+			h := barHandlers
+		return mach.HandlersBindMaps(
+			map[string]am.HandlerNegotiation{
+				"MsgEnter": h.MsgEnter,
+			},
+			map[string]am.HandlerFinal{
+				"StartState": h.StartState,
+				"MsgState": h.MsgState,
+				"SubmitMsgState": h.SubmitMsgState,
+
+			},
+			opts...)
+	}
+	var bindFoo am.HandlersBind
+	bindFoo = func(mach *am.Machine, opts ...am.BindOpts) (string, error) {
+		h := fooHandlers
+		return mach.HandlersBindMaps(
+			map[string]am.HandlerNegotiation{},
+			map[string]am.HandlerFinal{
+				"BoredState": h.BoredState,
+			},
+		)
+	}
 
 	// machines
 
-	barMach, fooClient, fooHandMach, err := initMachines(ctx, barHandlers, fooHandlers)
+	barMach, fooClient, fooHandMach, err := InitMachines(ctx, bindBar, bindFoo)
 	if err != nil {
 		panic("initMachines: " + err.Error())
 	}

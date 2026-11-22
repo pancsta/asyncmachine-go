@@ -1181,7 +1181,11 @@ func TemplateTestNestedMutation(t *testing.T, newTest NewTestFactory) {
 	// machine
 	mach := utils.NewNoRelsNetSrc(t, nil, "")
 	// bind handlers
-	_, err := mach.HandlersBind(&TestNestedMutationHandlers{})
+	h := &TestNestedMutationHandlers{}
+	_, err := mach.HandlersBindMaps(nil, map[string]am.HandlerFinal{
+		"AState":         h.AState,
+		"ExceptionState": h.ExceptionState,
+	})
 	assert.NoError(t, err)
 
 	// worker

@@ -7,8 +7,6 @@ replace go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp => githu
 
 replace github.com/pancsta/asyncmachine-go => ../../
 
-//replace github.com/pancsta/d2 => ../../../d2
-
 tool github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg
 
 tool github.com/pancsta/asyncmachine-go/tools/cmd/am-vis
@@ -59,6 +57,9 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-text/typesetting v0.3.4 // indirect
+	github.com/gobwas/httphead v0.1.0 // indirect
+	github.com/gobwas/pool v0.2.1 // indirect
+	github.com/gobwas/ws v1.4.0 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect

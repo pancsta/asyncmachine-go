@@ -2,10 +2,9 @@
 package rpc
 
 import (
-	"bufio"
+	"context"
 	"encoding/gob"
 	"errors"
-	"io"
 	"math"
 	"net"
 	"os"
@@ -18,7 +17,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cenkalti/rpc2"
 	"github.com/orsinium-labs/enum"
 
 	"github.com/pancsta/asyncmachine-go/internal/nofmt"
@@ -300,7 +298,7 @@ func (AServerPayload) ArgsState() string {
 type AClientConnected struct {
 	Args `json:"-"`
 
-	Client *rpc2.Client
+	Client *rpcClient
 }
 
 func (AClientConnected) ArgsState() string {
@@ -331,27 +329,27 @@ func init() {
 type serverRpcMethods interface {
 	// rpc
 
-	RemoteHello(client *rpc2.Client, args *MsgCliHello, resp *MsgSrvHello) error
+	RemoteHello(client *rpcClient, args *MsgCliHello, resp *MsgSrvHello) error
 
 	// mutations
 
 	RemoteAdd(
-		client *rpc2.Client, args *MsgCliMutation, resp *MsgSrvMutation) error
+		client *rpcClient, args *MsgCliMutation, resp *MsgSrvMutation) error
 	RemoteRemove(
-		client *rpc2.Client, args *MsgCliMutation, resp *MsgSrvMutation) error
+		client *rpcClient, args *MsgCliMutation, resp *MsgSrvMutation) error
 	RemoteSet(
-		client *rpc2.Client, args *MsgCliMutation, reply *MsgSrvMutation) error
+		client *rpcClient, args *MsgCliMutation, reply *MsgSrvMutation) error
 }
 
 // clientRpcMethods is the RPC server exposed by the RPC client for bi-di comm.
 type clientRpcMethods interface {
-	RemoteUpdate(worker *rpc2.Client, args *MsgSrvUpdate, resp *MsgEmpty) error
+	RemoteUpdate(worker *rpcClient, args *MsgSrvUpdate, resp *MsgEmpty) error
 	RemoteUpdateMutations(
-		worker *rpc2.Client, args *MsgSrvUpdateMuts, resp *MsgEmpty) error
+		worker *rpcClient, args *MsgSrvUpdateMuts, resp *MsgEmpty) error
 	RemoteSendingPayload(
-		worker *rpc2.Client, file *MsgSrvPayload, resp *MsgEmpty) error
+		worker *rpcClient, file *MsgSrvPayload, resp *MsgEmpty) error
 	RemoteSendPayload(
-		worker *rpc2.Client, file *MsgSrvPayload, resp *MsgEmpty) error
+		worker *rpcClient, file *MsgSrvPayload, resp *MsgEmpty) error
 }
 
 // ///// ///// /////
@@ -704,25 +702,22 @@ func (s *semLogger) IsCan() bool {
 // ///// ///// /////
 // handler represents a single event consumer, synchronized by channels.
 type handler struct {
-	h            any
-	id           string
-	num          int
-	mx           sync.Mutex
+	h   any
+	id  string
+	num int
+	mx  sync.Mutex
+	// TODO
+	opts  *am.BindOpts
+	isMap bool
+
+	// maps
+	negotiations map[string]am.HandlerNegotiation
+	finals       map[string]am.HandlerFinal
+
+	// reflect
 	methods      *reflect.Value
 	methodCache  map[string]reflect.Value
 	missingCache map[string]struct{}
-}
-
-func newHandler(
-	handlers any, name string, methods *reflect.Value,
-) *handler {
-	return &handler{
-		id:           name,
-		h:            handlers,
-		methods:      methods,
-		methodCache:  make(map[string]reflect.Value),
-		missingCache: make(map[string]struct{}),
-	}
 }
 
 // ///// ///// /////
@@ -888,97 +883,6 @@ func (t *SourceTracer) calcTrackedStates(states am.S) {
 }
 
 // ///// ///// /////
-
-// ///// MSGPACK
-
-// ///// ///// /////
-// TODO
-
-type msgpackCoded struct {
-	rwc io.ReadWriteCloser
-	// TODO
-	dec    *gob.Decoder
-	enc    *gob.Encoder
-	encBuf *bufio.Writer
-	mutex  sync.Mutex
-}
-
-type msgpackMsg struct {
-	Seq    uint64
-	Method string
-	Error  string
-}
-
-// TODO optimize with msgpack
-func NewMsgpackCodec(conn io.ReadWriteCloser) rpc2.Codec {
-	buf := bufio.NewWriter(conn)
-	return &msgpackCoded{
-		rwc: conn,
-		// TODO
-		dec:    gob.NewDecoder(conn),
-		enc:    gob.NewEncoder(buf),
-		encBuf: buf,
-	}
-}
-
-func (c *msgpackCoded) ReadHeader(
-	req *rpc2.Request, resp *rpc2.Response,
-) error {
-	var msg msgpackMsg
-	if err := c.dec.Decode(&msg); err != nil {
-		return err
-	}
-
-	if msg.Method != "" {
-		req.Seq = msg.Seq
-		req.Method = msg.Method
-	} else {
-		resp.Seq = msg.Seq
-		resp.Error = msg.Error
-	}
-	return nil
-}
-
-func (c *msgpackCoded) ReadRequestBody(body any) error {
-	return c.dec.Decode(body)
-}
-
-func (c *msgpackCoded) ReadResponseBody(body any) error {
-	return c.dec.Decode(body)
-}
-
-func (c *msgpackCoded) WriteRequest(
-	r *rpc2.Request, body any,
-) (err error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if err = c.enc.Encode(r); err != nil {
-		return
-	}
-	if err = c.enc.Encode(body); err != nil {
-		return
-	}
-
-	return c.encBuf.Flush()
-}
-
-func (c *msgpackCoded) WriteResponse(
-	r *rpc2.Response, body any,
-) (err error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if err = c.enc.Encode(r); err != nil {
-		return
-	}
-	if err = c.enc.Encode(body); err != nil {
-		return
-	}
-	return c.encBuf.Flush()
-}
-
-func (c *msgpackCoded) Close() error {
-	return c.rwc.Close()
-}
 
 // ///// ///// /////
 
@@ -1256,4 +1160,14 @@ func WsListenPath(machId, addr string) string {
 // Eg /dial/MyMach/localhost:1234
 func WsDialPath(machId, addr string) string {
 	return WsPathDial + machId + "/" + addr
+}
+
+// isNetTimeout reports whether err is a network or context timeout.
+func isNetTimeout(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
 }

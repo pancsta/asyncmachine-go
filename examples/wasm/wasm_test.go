@@ -93,25 +93,46 @@ func buildWasm(t *testing.T, ctx context.Context) {
 	t.Helper()
 
 	dir := exampleDir(t)
+	tinygo := os.Getenv("AM_WASM_TINYGO") != ""
 
-	// go build -o client/main.wasm ./client
-	build := exec.CommandContext(ctx, "go", "build", "-o", "client/main.wasm",
-		"./client")
-	build.Dir = dir
-	// CGO_ENABLED defaults to 0 for js/wasm, but an inherited CGO_ENABLED=1
-	// overrides that default and breaks eg os/user
-	build.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm", "CGO_ENABLED=0")
+	// build the client
+	var build *exec.Cmd
+	if tinygo {
+		// tinygo build -target wasm -o client/main.wasm ./client
+		build = exec.CommandContext(ctx, "tinygo", "build", "-target", "wasm",
+			"-buildvcs=false", "-o", "client/main.wasm", "./client")
+		build.Dir = dir
+		build.Env = os.Environ()
+	} else {
+		// go build -o client/main.wasm ./client
+		build = exec.CommandContext(ctx, "go", "build", "-o", "client/main.wasm",
+			"./client")
+		build.Dir = dir
+		// CGO_ENABLED defaults to 0 for js/wasm, but an inherited CGO_ENABLED=1
+		// overrides that default and breaks eg os/user
+		build.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm", "CGO_ENABLED=0")
+	}
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build wasm: %s\n%s", err, out)
 	}
 
-	// cp $(go env GOROOT)/lib/wasm/wasm_exec.js ./client
-	goRoot, err := exec.CommandContext(ctx, "go", "env", "GOROOT").Output()
-	if err != nil {
-		t.Fatalf("go env GOROOT: %s", err)
+	// copy the matching wasm_exec.js
+	var src string
+	if tinygo {
+		tinyRoot, err := exec.CommandContext(ctx, "tinygo", "env", "TINYGOROOT").Output()
+		if err != nil {
+			t.Fatalf("tinygo env TINYGOROOT: %s", err)
+		}
+		src = filepath.Join(strings.TrimSpace(string(tinyRoot)), "targets",
+			"wasm_exec.js")
+	} else {
+		goRoot, err := exec.CommandContext(ctx, "go", "env", "GOROOT").Output()
+		if err != nil {
+			t.Fatalf("go env GOROOT: %s", err)
+		}
+		src = filepath.Join(strings.TrimSpace(string(goRoot)), "lib", "wasm",
+			"wasm_exec.js")
 	}
-	src := filepath.Join(strings.TrimSpace(string(goRoot)), "lib", "wasm",
-		"wasm_exec.js")
 	data, err := os.ReadFile(src)
 	if err != nil {
 		t.Fatalf("read wasm_exec.js: %s", err)

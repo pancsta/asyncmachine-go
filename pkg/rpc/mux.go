@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	"github.com/soheilhy/cmux"
-
 	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 
@@ -56,7 +54,7 @@ type Mux struct {
 	NewServerErr error
 	Opts         MuxOpts
 
-	cmux          cmux.CMux
+	muxImpl
 	countConns    atomic.Int64
 	countDisconns atomic.Int64
 }
@@ -84,10 +82,7 @@ func NewMux(
 		Opts:       *opts,
 	}
 
-	mach, err := am.NewCommon(ctx, "rm-"+name, states.MuxSchema, ssM.Names(),
-		d, opts.Parent, &am.Opts{
-			Tags: []string{states.TagRpcMux},
-		})
+	mach, err := newMuxMachine(ctx, d, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -153,8 +148,7 @@ func (m *Mux) StartState(e *am.Event) {
 		// create a listener if not provided TODO websockets
 		if m.Listener == nil {
 			// use Start as the context
-			cfg := net.ListenConfig{}
-			lis, err := cfg.Listen(ctx, "tcp4", addr)
+			lis, err := listenTCP(ctx, "tcp4", addr)
 			if err != nil {
 				// add err to mach
 				AddErrNetwork(e, mach, err)
@@ -167,24 +161,17 @@ func (m *Mux) StartState(e *am.Event) {
 			m.Listener = lis
 		}
 
-		// Create a new cmux instance.
-		m.cmux = cmux.New(m.Listener)
-
 		// update Addr from listener (support for external and :0)
 		m.Addr = m.Listener.Addr().String()
 		m.log("mux started on %s", m.Addr)
 
-		// fork
-		l := m.cmux.Match(cmux.Any())
-		go m.accept(e, l)
+		// addr tag, unless the mux creator (eg iroh) already set a dialable addr
+		if amhelp.TagValue(m.Mach.Tags(), states.TagKeyAddr) == "" {
+			amhelp.TagSetOnMach(m.Mach, states.TagKeyAddr, m.Addr)
+		}
 
 		// TODO healthcheck loop
-
-		// start cmux
-		if err := m.cmux.Serve(); err != nil {
-			mach.AddErr(err, nil)
-			mach.EvRemove1(e, ssM.Start, nil)
-		}
+		m.serveMux(ctx, e)
 	}()
 }
 
@@ -349,15 +336,16 @@ func BindMux(
 // func (h *wsHandlerMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // 	mach := h.m.Mach
 //
-// 	connWs, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-// 		// TODO security
-// 		InsecureSkipVerify: true,
-// 	})
+// 	connWs, rw, _, err := ws.UpgradeHTTP(r, w)
 // 	if err != nil {
 // 		log.Printf("Upgrade error: %v", err)
 // 		return
 // 	}
-// 	conn := websocket.NetConn(mach.Context(), connWs, websocket.MessageBinary)
+// 	conn, err := utils.NewServerWSConn(connWs, rw)
+// 	if err != nil {
+// 		log.Printf("WebSocket conn error: %v", err)
+// 		return
+// 	}
 //
 // 	// TODO RpcAcceptingState
 // 	// next and stay alive
