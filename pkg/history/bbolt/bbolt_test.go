@@ -60,7 +60,7 @@ func TestBboltTrack(t *testing.T) {
 		QueueBatch: 10,
 		BaseConfig: amhist.BaseConfig{
 			Log:           debug,
-			TrackedStates: am.S{ss.Start},
+			TrackedStates: am.S{ss.Start, ss.Heartbeat},
 			MaxRecords:    30,
 		},
 		EncJson: debug,
@@ -85,6 +85,9 @@ func TestBboltTrack(t *testing.T) {
 
 	// common test
 	testhist.AssertBasics(t, mem, rounds)
+
+	// latest state tests
+	testhist.AssertLatestStates(t, mem)
 
 	// GC test
 	mem.checkGc()

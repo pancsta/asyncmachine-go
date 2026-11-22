@@ -328,6 +328,8 @@ type Memory struct {
 
 	// sync lock (read: flush, write: sync)
 	syncMx sync.RWMutex
+	// pending DB writes (awaited by Sync)
+	saveWg sync.WaitGroup
 	// nextId sequence ID
 	nextId atomic.Uint64
 	// garbage collector lock (read: query, write: GC)
@@ -378,7 +380,7 @@ func NewMemory(
 		onErr:            onErr,
 		queue:            &queue{},
 	}
-	mem.BaseMemory = amhist.NewBaseMemory(ctx, mach, cfg.BaseConfig, mem)
+	mem.BaseMemory = amhist.NewBaseMemory(ctx, mach, c.BaseConfig, mem)
 	tr := &tracer{
 		mem: mem,
 		id:  amhelp.RandId(4),
@@ -414,10 +416,6 @@ func (m *Memory) FindLatest(
 
 		machId := mach.Id()
 		mTimeIdxs := mach.Index(s.MTimeStates)
-		var older *amhist.MemoryRecord
-		r := &amhist.MemoryRecord{
-			Time: &amhist.TimeRecord{},
-		}
 		var ret []*amhist.MemoryRecord
 
 		for id := m.nextId.Load() - 1; id > 0; id-- {
@@ -432,37 +430,11 @@ func (m *Memory) FindLatest(
 			}
 
 			// read TimeRecord
-			// 1st pass, move 1 more down
-			if older == nil {
-				id--
-				r.Time, err = DecTimeRecord(machId, id, v, cfg.EncJson)
-				v2, err2 := getVal(txn, timeKey(machId, id))
-				if err2 == nil {
-					older = &amhist.MemoryRecord{
-						Time: &amhist.TimeRecord{},
-					}
-					older.Time, err = DecTimeRecord(machId, id, v2, cfg.EncJson)
-					if err != nil {
-						m.onErr(err)
-						return nil
-					}
-				}
-
-				// 2nd and later passes
-			} else if v != nil {
-				r = older
-				older = &amhist.MemoryRecord{
-					Time: &amhist.TimeRecord{},
-				}
-				older.Time, err = DecTimeRecord(machId, id, v, cfg.EncJson)
-				// TODO tx
-
-				// last pass
-			} else {
-				r = older
-				older = nil
+			r := &amhist.MemoryRecord{
+				Time: &amhist.TimeRecord{},
 			}
-			// err
+			r.Time, err = DecTimeRecord(machId, id, v, cfg.EncJson)
+			// TODO tx
 			if err != nil {
 				m.onErr(err)
 				return nil
@@ -471,39 +443,23 @@ func (m *Memory) FindLatest(
 			// states conditions
 			t := r.Time
 
-			// Active
-			for _, state := range query.Active {
-				if !am.IsActiveTick(t.MTimeTracked[m.Index1(state)]) {
-					continue
+			// older record, required by some state conditions
+			var olderTime *amhist.TimeRecord
+			if id > 1 && (len(query.Activated) > 0 ||
+				len(query.Deactivated) > 0) {
+
+				if vb, err := getVal(txn, timeKey(machId, id-1)); err == nil {
+					olderTime, err = DecTimeRecord(machId, id-1, vb,
+						cfg.EncJson)
+					if err != nil {
+						m.onErr(err)
+						return nil
+					}
 				}
 			}
-			// Activated
-			for _, state := range query.Activated {
-				idx := m.Index1(state)
-				if !am.IsActiveTick(t.MTimeTracked[idx]) {
-					continue
-				}
-				// if has previously been active
-				if older != nil && am.IsActiveTick(older.Time.MTimeTracked[idx]) {
-					continue
-				}
-			}
-			// Inactive
-			for _, state := range query.Inactive {
-				if am.IsActiveTick(t.MTimeTracked[mach.Index1(state)]) {
-					continue
-				}
-			}
-			// Deactivated
-			for _, state := range query.Deactivated {
-				idx := m.Index1(state)
-				if am.IsActiveTick(t.MTimeTracked[idx]) {
-					continue
-				}
-				// if has previously been inactive
-				if older != nil && !am.IsActiveTick(older.Time.MTimeTracked[idx]) {
-					continue
-				}
+
+			if !m.MatchStates(t, olderTime, query) {
+				continue
 			}
 			// MTimeStates
 			if len(s.MTimeStates) > 0 {
@@ -588,7 +544,10 @@ func (m *Memory) FindLatest(
 }
 
 // Sync is [amhist.BaseMemory.Sync].
-func (m *Memory) Sync() error {
+func (m *Memory) Sync(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.log("sync...")
 
 	// locks
@@ -597,10 +556,30 @@ func (m *Memory) Sync() error {
 	m.syncMx.Lock()
 	defer m.syncMx.Unlock()
 	m.writeDb(false)
+	// wait for the DB write to finish, so new records appear in queries
+	if err := m.waitSave(ctx); err != nil {
+		return err
+	}
 
 	m.log("sync OK")
 
 	return nil
+}
+
+// waitSave waits for the pending DB writes to finish or until ctx is done.
+func (m *Memory) waitSave(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		m.saveWg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return ctx.Err()
+	case <-ctx.Done():
+		return errors.Join(ctx.Err(), m.Ctx.Err())
+	}
 }
 
 // Match returns records that match the MatcherFn.
@@ -696,7 +675,9 @@ func (m *Memory) writeDb(rLocked bool) {
 	m.SavePending.Add(-int32(l))
 
 	// fork
+	m.saveWg.Add(1)
 	go func() {
+		defer m.saveWg.Done()
 		if rLocked {
 			defer m.syncMx.RUnlock()
 		}

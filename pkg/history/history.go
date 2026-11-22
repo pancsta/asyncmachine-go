@@ -337,6 +337,7 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 	if (!tx.IsAccepted.Load() && !m.Cfg.TrackRejected) || tx.Mutation.IsCheck {
 		return
 	}
+	// TODO also skip if tx didnt change tracked states, unless Cfg.TrackEmpty
 
 	mach := m.Mach
 	called := tx.CalledStates()
@@ -466,6 +467,12 @@ type MemoryApi interface {
 		ctx context.Context, state string, start, end time.Time,
 	) bool
 	InactiveBetween(ctx context.Context, state string, start, end time.Time) bool
+	// LatestActivated returns the most recently activated state of the passed
+	// ones, or an empty string if none of them was.
+	LatestActivated(ctx context.Context, states ...string) string
+	// LatestDeactivated returns the most recently deactivated state of the
+	// passed ones, or an empty string if none of them was.
+	LatestDeactivated(ctx context.Context, states ...string) string
 
 	// DB queries
 
@@ -474,8 +481,9 @@ type MemoryApi interface {
 	) ([]*MemoryRecord, error)
 	// Sync synchronizes the batch buffer with the underlying backend, making
 	// those new records appear in queries. Doesn't guarantee persistence.
-	// Useful when querying very fresh records.
-	Sync() error
+	// Useful when querying very fresh records. Returns [context.Canceled] if ctx
+	// is done, possibly before the batch is flushed.
+	Sync(ctx context.Context) error
 
 	// converters
 
@@ -555,8 +563,9 @@ func (m *BaseMemory) ActivatedBetween(
 	return err == nil && ret != nil
 }
 
-func (m *BaseMemory) Sync() error {
-	return nil
+// Sync is a no-op for the in-process memory, which has no batch buffer.
+func (m *BaseMemory) Sync(ctx context.Context) error {
+	return ctx.Err()
 }
 
 // ActiveBetween returns true if the state was activated all the time within
@@ -577,9 +586,58 @@ func (m *BaseMemory) ActiveBetween(
 	return err == nil && ret != nil
 }
 
-// Was [state] activated after the [afterState]
-// TODO LatestActivated(ctx, state...string) state
-// TODO LatestDeactivated(ctx, state...string) state
+// LatestActivated returns the state of the passed ones which was activated most
+// recently, or an empty string if none of them was.
+func (m *BaseMemory) LatestActivated(
+	ctx context.Context, states ...string,
+) string {
+	return m.latestState(ctx, true, states)
+}
+
+// LatestDeactivated returns the state of the passed ones which was deactivated
+// most recently, or an empty string if none of them was.
+func (m *BaseMemory) LatestDeactivated(
+	ctx context.Context, states ...string,
+) string {
+	return m.latestState(ctx, false, states)
+}
+
+// latestState returns the state from states which was activated (or
+// deactivated) most recently. Untracked states are skipped, and an empty string
+// means no match.
+func (m *BaseMemory) latestState(
+	ctx context.Context, activated bool, states []string,
+) string {
+	var ret string
+	var retSum uint64
+	found := false
+
+	// query separately, as multiple states in a single query mean "all of them"
+	for _, state := range states {
+		// skip untracked states, as they can't be queried
+		if m.Index1(state) == -1 {
+			continue
+		}
+		q := Query{}
+		if activated {
+			q.Activated = am.S{state}
+		} else {
+			q.Deactivated = am.S{state}
+		}
+
+		recs, err := m.memImpl.FindLatest(ctx, false, 1, q)
+		if err != nil || len(recs) == 0 || recs[0].Time == nil {
+			continue
+		}
+
+		// the most recent machine time wins, argument order breaks ties
+		if sum := recs[0].Time.MTimeSum; !found || sum > retSum {
+			ret, retSum, found = state, sum, true
+		}
+	}
+
+	return ret
+}
 
 func (m *BaseMemory) DeactivatedBetween(
 	ctx context.Context, state string, start, end time.Time,
@@ -655,6 +713,60 @@ func (m *BaseMemory) Index(states am.S) []int {
 // Index1 is [BaseMemory.Index] for a single state.
 func (m *BaseMemory) Index1(state string) int {
 	return slices.Index(m.Cfg.TrackedStates, state)
+}
+
+// MatchStates returns true if the passed time record matches all state
+// conditions of the query. Optional older is the previous record, required for
+// [Query.Activated] and [Query.Deactivated] conditions. States need to be
+// tracked.
+func (m *BaseMemory) MatchStates(
+	t, older *TimeRecord, query Query,
+) bool {
+	if t == nil {
+		return false
+	}
+	// active reports whether the tracked state was active in the record
+	active := func(rec *TimeRecord, idx int) bool {
+		return rec != nil && idx != -1 && idx < len(rec.MTimeTracked) &&
+			am.IsActiveTick(rec.MTimeTracked[idx])
+	}
+
+	// Active
+	for _, state := range query.Active {
+		if !active(t, m.Index1(state)) {
+			return false
+		}
+	}
+	// Activated
+	for _, state := range query.Activated {
+		idx := m.Index1(state)
+		if !active(t, idx) {
+			return false
+		}
+		// if has previously been active
+		if older != nil && active(older, idx) {
+			return false
+		}
+	}
+	// Inactive
+	for _, state := range query.Inactive {
+		if active(t, m.Index1(state)) {
+			return false
+		}
+	}
+	// Deactivated
+	for _, state := range query.Deactivated {
+		idx := m.Index1(state)
+		if active(t, idx) {
+			return false
+		}
+		// if has previously been inactive
+		if older != nil && !active(older, idx) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // records methods
@@ -828,11 +940,15 @@ func (m *Memory) Config() BaseConfig {
 }
 
 func (m *Memory) Dispose() error {
+	// detach before locking
+	err := m.Mach.DetachTracer(m.tr.TracerId())
+
 	m.mx.Lock()
 	defer m.mx.Unlock()
 
 	m.db = nil
-	return m.Mach.DetachTracer(m.tr.TracerId())
+
+	return err
 }
 
 // FindLatest is [BaseMemory.FindLatest] for in-process memory.
@@ -844,7 +960,6 @@ func (m *Memory) FindLatest(
 	}
 	s := query.Start
 	e := query.End
-	mach := m.Mach
 
 	return m.Match(ctx, func(
 		now *am.TimeIndex, db []*MemoryRecord,
@@ -864,40 +979,12 @@ func (m *Memory) FindLatest(
 			}
 
 			// states conditions
-
-			// Active
-			for _, state := range query.Active {
-				if !am.IsActiveTick(r.Time.MTimeTracked[m.Index1(state)]) {
-					continue
-				}
+			var olderTime *TimeRecord
+			if older != nil {
+				olderTime = older.Time
 			}
-			// Activated
-			for _, state := range query.Activated {
-				idx := m.Index1(state)
-				if !am.IsActiveTick(r.Time.MTimeTracked[idx]) {
-					continue
-				}
-				// if has previously been active
-				if older != nil && am.IsActiveTick(older.Time.MTimeTracked[idx]) {
-					continue
-				}
-			}
-			// Inactive
-			for _, state := range query.Inactive {
-				if am.IsActiveTick(r.Time.MTimeTracked[mach.Index1(state)]) {
-					continue
-				}
-			}
-			// Deactivated
-			for _, state := range query.Deactivated {
-				idx := m.Index1(state)
-				if am.IsActiveTick(r.Time.MTimeTracked[idx]) {
-					continue
-				}
-				// if has previously been inactive
-				if older != nil && !am.IsActiveTick(older.Time.MTimeTracked[idx]) {
-					continue
-				}
+			if !m.MatchStates(r.Time, olderTime, query) {
+				continue
 			}
 			// MTimeStates
 			if len(s.MTimeStates) > 0 {

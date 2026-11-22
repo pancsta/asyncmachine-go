@@ -90,8 +90,7 @@ func InitMachines(
 	// mutate and query
 	barMach.Add1(ssB.Heartbeat, nil)
 	now := time.Now().UTC()
-	err = mem.Sync()
-	time.Sleep(100 * time.Millisecond)
+	err = mem.Sync(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
