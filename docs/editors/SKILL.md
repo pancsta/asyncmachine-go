@@ -1,7 +1,7 @@
 ---
 name: am
-description: asyncmachine - generate handlers, schemas, args, telemetry, dbg, RPC, state waiting,
-  state targeting, and more.
+description: "asyncmachine - core guide (medium detail): general rules, example schema,
+  predefined states, and basic/mach_template boilerplate."
 ---
 
 # General

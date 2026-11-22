@@ -137,7 +137,7 @@ for _, mach := range workers {
 
 ## Status
 
-Alpha, work in progress, not semantically versioned.
+Alpha, not semantically versioned.
 
 ## Credits
 

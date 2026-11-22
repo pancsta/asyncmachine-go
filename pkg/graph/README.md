@@ -13,7 +13,7 @@ is an essential tool to handle large swarms of state machines.
 
 ## Graph
 
-The in-memory graph is based on [github.com/dominikbraun/graph](https://github.com/dominikbraun/graph)
+The in-memory graph is based on [dominikbraun/graph](https://github.com/dominikbraun/graph)
 and consumes `/pkg/telemetry/dbg` (large and explicit) or
 `/pkg/rpc.MsgServerUpdate` (checksumed diffs). It outputs as MD, DOT, SVG, D2,
 Mermaid, and `encoding/gob`. RPC connections are inferred from machine tags.
@@ -139,7 +139,7 @@ The native backend simply traverses `/pkg/graph.Graph` using a GQL parser from
 
 ## Status
 
-Alpha, work in progress, not semantically versioned.
+Testing, work in progress, not semantically versioned.
 
 ## monorepo
 

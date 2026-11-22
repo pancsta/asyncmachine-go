@@ -60,7 +60,7 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 - **rain view**: high-level view of transitions with error highlighting and human time, one per line.
 - **client list**: all the currently nad previously connected state machines, with search-as-you-type, error
   highlighting, and remaining transitions marker.
-- **fast jumps**: jump by 100 transitions, or select a state from the tree and jump to its next occurrence.
+- **fast jumps**: jump by 50 transitions (skipping filtered out ones), or select a state from the tree and jump to its next occurrence.
 - **keyboard navigation**: the UI is keyboard accessible, just press the **? key**.
 - **mouse support**: most elements can be clicked and scrolled.
 - **SSH access**: an instance of the debugger can be shared directly from an edge server via a built-in SSH server.
@@ -226,7 +226,52 @@ destinations. It will duplicate all the memory allocations and won't scale far, 
 
 ## MCP Server
 
-TODO list cmds
+The debugger can be controlled from an AI model via an MCP server, including TUI snapshots. It's
+enabled by default via `--ui-mcp` (requires `--ui-web`) and served over Streamable HTTP at
+[http://localhost:6832/mcp](http://localhost:6832/mcp) (`--listen-addr` + 1).
+
+```json
+{
+    "mcpServers": {
+        "am-dbg": {
+            "type": "http",
+            "url": "http://localhost:6832/mcp"
+        }
+    }
+}
+```
+
+- TUI control
+  - **Keystroke**: press a predefined key combination (`space`, `left`, `right`, `alt+h`, `alt+l`,
+    `home`, `end`, `?`, `ctrl+q`, ...).
+  - **PressKey**: press any key combination (`enter`, `tab`, `shift+tab`, `alt+h`, `ctrl+q`, ...).
+  - **TypeText**: type text into the focused TUI input or view.
+  - **MouseClick**: simulate a mouse left click at a grid position (x, y, 0-indexed).
+  - **MouseScroll**: simulate mouse scrolling at a grid position (`up`, `down`, `left`, `right`).
+- TUI snapshots
+  - **TextScreen**: text content of the TUI screen.
+  - **TextLogReader**: text content of the Log Reader pane.
+  - **TextHelp**: text content of the Help dialog.
+  - **TextLog**: current log buffer (requires `--output-log`).
+  - **TextClients**: full clients list (requires `--output-clients`).
+  - **NetworkGraph**: XML of the network graph (requires `--output-graph`).
+  - **Transition Steps**: markdown sequence diagram of the transition steps (requires `--output-tx`).
+  - **SerializedMachine**: YAML of the serialized machine state (requires `--output-mach`).
+- Navigation
+  - **GoToMachAddr**: show a specific machine, transition, or mach time.
+  - **Add: Fwd** / **Add: Back**: navigate transitions.
+  - **Add: FwdMarker** / **Add: BackMarker**: go to the next / previous marker.
+  - **Add: ScrollToTx** / **Add: ScrollToMarker** / **Add: ScrollToMutTx**: scroll to a transition, a
+    marker, or a transition which mutated the passed state.
+  - **Add: ToggleMark**: toggle a mark on the current transition.
+  - **Add: SwitchingClientTx**: go to the N-th transition of a client.
+  - **Add: SelectingClient** / **Add: SetGroup** / **Add: StateNameSelected**: select a client, a
+    group, or a state in the tree.
+- State machine access
+  - **Add** / **Remove**: add or remove a state of the debugger machine, with optional typed args.
+    - All mutations return the clocks of currently active states.
+
+See [`/pkg/integrations/README.md`](/pkg/integrations/README.md) for the MCP integration itself.
 
 ## monorepo
 

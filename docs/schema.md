@@ -238,7 +238,7 @@ var (
 
 See [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) for schema bootstrapping commands.
 
-## Schema-v3
+## Schema v3
 
 - type safety **YES**
 - reflection **NO**
@@ -246,8 +246,82 @@ See [`/tools/cmd/am-gen`](/tools/cmd/am-gen/README.md) for schema bootstrapping 
 - generated **YES**
 - bootstrapped **NO**
 
-Schema v3 is flattened schema v2 which doesn't use `reflect`, but requires a generation step. It's a WIP in the
-[`/feat/tinygo`](https://github.com/pancsta/asyncmachine-go/pull/382) branch.
+The `v3` schema file format is a flattened `v2` via a code generation script rooted in each `states` directory. It works
+well with **TinyGo** and can also be useful to examine the whole inherited schema in a single file. It's API compatible
+with `v2`, so no code changes are required besides adding the `tinygo` build tag.
+
+```go
+type ServerStatesDef struct {
+	*am.StatesBase
+	Ready             string
+	RpcStarting       string
+	RpcAccepting      string
+	RpcReady          string
+	ClientConnected   string
+	HandshakeDone     string
+	MetricSync        string
+	WebSocketTunnel   string
+	ErrNetworkTimeout string
+	ErrRpc            string
+	ErrDelivery       string
+	Handshaking       string
+	ErrNetwork        string
+	ErrHandlerTimeout string
+	Start             string
+	Healthcheck       string
+	Heartbeat         string
+	ErrOnClient       string
+}
+
+var ServerSchema = am.Schema{
+	ssS2.ClientConnected: {Require: S{ssS2.RpcReady}},
+	ssS2.ErrDelivery:     {Require: S{ssS2.Exception}},
+	ssS2.ErrHandlerTimeout: {
+		Add:     S{ssS2.Exception},
+		Multi:   true,
+		Require: S{ssS2.Exception},
+	},
+	ssS2.ErrNetwork: {
+		Remove:  S{ssS2.ClientConnected},
+		Require: S{ssS2.Exception},
+	},
+	ssS2.ErrNetworkTimeout: {Require: S{ssS2.Exception}},
+	ssS2.ErrOnClient:       {Require: S{ssS2.Exception}},
+	ssS2.ErrRpc:            {Require: S{ssS2.Exception}},
+	ssS2.Exception:         {Multi: true},
+	ssS2.HandshakeDone: {
+		Remove:  S{ssS2.Handshaking, ssS2.HandshakeDone, ssS2.Exception},
+		Require: S{ssS2.Start, ssS2.ClientConnected},
+	},
+	ssS2.Handshaking: {
+		Remove:  S{ssS2.Handshaking, ssS2.HandshakeDone},
+		Require: S{ssS2.Start},
+	},
+	ssS2.Healthcheck: {Multi: true},
+	ssS2.Heartbeat:   {},
+	ssS2.MetricSync:  {Multi: true},
+	ssS2.Ready: {
+		Auto:    true,
+		Require: S{ssS2.HandshakeDone, ssS2.RpcReady},
+	},
+	ssS2.RpcAccepting: {
+		Remove:  S{ssS2.RpcStarting, ssS2.RpcAccepting, ssS2.RpcReady},
+		Require: S{ssS2.Start},
+	},
+	ssS2.RpcReady: {
+		Remove:  S{ssS2.RpcStarting, ssS2.RpcAccepting, ssS2.RpcReady},
+		Require: S{ssS2.Start},
+	},
+	ssS2.RpcStarting: {
+		Remove:  S{ssS2.RpcStarting, ssS2.RpcAccepting, ssS2.RpcReady},
+		Require: S{ssS2.Start},
+	},
+	ssS2.Start:           {Add: S{ssS2.RpcStarting}},
+	ssS2.WebSocketTunnel: {},
+}
+```
+
+See [`/tools/generator`](/tools/generator/README.md) for a generation scripts.
 
 ## YAML Schema
 
