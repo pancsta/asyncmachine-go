@@ -176,15 +176,19 @@ type Debugger struct {
 	mouseFocusChanged bool
 	Focused           cview.Primitive
 	// skip the next selection action
-	treeGroupSkip   bool
-	preModalFocus   cview.Primitive
-	overlay         *cview.TextView
-	graphFileMd     *os.File
-	graphFileMgml   *os.File
-	ServerMux       cmux.CMux
-	ServerHttp      *http.Server
-	tracePage       *livepage.Page[*traces.View]
-	livepageScreen  *tclive.Screen
+	treeGroupSkip  bool
+	preModalFocus  cview.Primitive
+	overlay        *cview.TextView
+	graphFileMd    *os.File
+	graphFileMgml  *os.File
+	ServerMux      cmux.CMux
+	ServerHttp     *http.Server
+	tracePage      *livepage.Page[*traces.View]
+	livepageScreen *tclive.Screen
+	// livepageHandler counts livepage browser connections
+	livepageHandler http.Handler
+	// screenMux is the single cview screen, projected to all UIs
+	screenMux       *tclive.ScreenMux
 	ctxCancelCursor context.CancelFunc
 	ctxCursor       context.Context
 	callLogFiles    map[string]*os.File
@@ -220,7 +224,6 @@ type Debugger struct {
 	diagStepsFileMermaid      *os.File
 	diagStepsFileMermaidAscii *os.File
 	loadingPos                int
-	sshSrvKick                chan struct{}
 	cacheToolbarMarked        bool
 }
 
@@ -300,18 +303,35 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch {
-	case d.params.Screen != nil:
-		d.App.SetScreen(d.params.Screen)
-	case d.params.UiSsh:
-		screen := tcell.NewSimulationScreen("UTF-8")
-		if err := screen.Init(); err != nil {
-			return nil, err
+
+	// single sim screen, projected to all enabled UIs
+	d.screenMux, err = tclive.NewScreenMux(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// screen override (tests, embedders)
+	if d.params.Screen != nil {
+		d.screenMux.Attach(d.params.Screen, nil, tclive.AttachOpts{})
+	}
+	// local PTY
+	if d.params.Screen == nil && d.params.UiPty {
+		screen, err := tcell.NewScreen()
+		if err == nil {
+			err = screen.Init()
 		}
-		d.App.SetScreen(screen)
-	case d.params.UiLivepage:
+		if err != nil {
+			mach.Log("local PTY disabled: %s", err)
+		} else {
+			d.screenMux.Attach(screen, nil, tclive.AttachOpts{})
+		}
+	}
+	// livepage
+	if d.params.UiLivepage {
+		w, h := d.screenMux.Size()
 		screen, err := tclive.NewScreen(ctx, tclive.Opts{
 			Title:           "am-dbg",
+			Cols:            w,
+			Rows:            h,
 			RefreshInterval: 100 * time.Millisecond,
 			Live: livepage.Opts{
 				Prefix:   livepagePrefix,
@@ -319,11 +339,22 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 			},
 		})
 		if err != nil {
+			d.screenMux.Fini()
 			return nil, err
 		}
 		d.livepageScreen = screen
-		d.App.SetScreen(screen)
+		live := &livepageTracker{handler: screen.Handler()}
+		client := d.screenMux.Attach(screen, nil, tclive.AttachOpts{
+			DeferredSize: true,
+			Clients:      live.Clients,
+		})
+		live.onEmpty = func() {
+			// the last browser is gone, follow the other UIs again
+			d.screenMux.SetDeferred(client, true)
+		}
+		d.livepageHandler = live
 	}
+	d.App.SetScreen(d.screenMux)
 
 	if d.params.Version == "" {
 		d.params.Version = "(devel)"
@@ -332,9 +363,7 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	if d.params.UiWeb {
 		d.tracePage, err = traces.NewPage(ctx, mach, "/traces")
 		if err != nil {
-			if d.livepageScreen != nil {
-				d.livepageScreen.Fini()
-			}
+			d.screenMux.Fini()
 			return nil, err
 		}
 	}
@@ -431,10 +460,6 @@ func (d *Debugger) hSetParams(p types.Params) error {
 	p.AddrSsh = sshAddr
 	p.UiSsh = p.UiSsh && sshAddr != ""
 	p.UiWeb = p.UiWeb && httpAddr != ""
-	// both modes swap the single cview screen
-	if p.UiSsh && p.UiLivepage {
-		return fmt.Errorf("--ui-livepage cannot be combined with --ui-ssh")
-	}
 	if p.UiLivepage && !p.UiWeb {
 		mach.Log("--ui-livepage requires --ui-web, disabling")
 	}

@@ -783,7 +783,10 @@ func NewSourceTracer(id string, config *SourceConfig) *SourceTracer {
 		TracerNoOp: &am.TracerNoOp{Id: id},
 		Config:     config,
 	}
-	t.DataLatest.Store(new(TracerData{QueueTick: 1}))
+	t.DataLatest.Store(&TracerData{
+		QueueTick: 1,
+		Checksum:  Checksum(0, 1, 0),
+	})
 
 	return t
 }

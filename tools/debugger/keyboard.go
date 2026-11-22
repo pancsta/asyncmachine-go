@@ -337,13 +337,6 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 
 		// quit the app
 		"ctrl+q": func(ev *tcell.EventKey) *tcell.EventKey {
-			// SSH PTY
-			if d.Mach.Is1(ss.SshServer) {
-				d.Mach.Add1(ss.SshDisconn, nil)
-				return nil
-			}
-
-			// local PTY
 			d.App.Stop()
 			return nil
 		},

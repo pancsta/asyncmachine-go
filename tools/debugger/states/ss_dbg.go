@@ -180,10 +180,9 @@ type DebuggerStatesDef struct {
 	BuildingLog string
 	LogBuilt    string
 
-	SetCursor  string
-	SetGroup   string
-	SshServer  string
-	SshDisconn string
+	SetCursor string
+	SetGroup  string
+	SshServer string
 
 	DiagramsGraphRendering string
 	DiagramsGraphReady     string
@@ -479,10 +478,6 @@ var DebuggerSchema = ssApp.AppSchema.Merge(
 			Require: S{ssD.ClientSelected},
 		},
 		ssD.SshServer: {Require: S{Start}},
-		ssD.SshDisconn: {
-			Multi:   true,
-			Require: S{ssD.SshServer},
-		},
 
 		// diagrams
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"charm.land/ssh"
@@ -20,6 +22,7 @@ import (
 	"github.com/gdamore/tcell/v2/terminfo"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/pancsta/cview/cbind"
+	"github.com/pancsta/livepage"
 
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 
@@ -673,4 +676,36 @@ func (m *mcpServer) mouseScroll(
 	}
 
 	return mcp.NewToolResultText("ok"), nil
+}
+
+// ///// ///// /////
+
+// ///// LIVEPAGE
+
+// ///// ///// /////
+
+// livepageTracker counts livepage WebSocket connections. The page's WS handler
+// blocks for the whole lifetime of a connection.
+type livepageTracker struct {
+	handler http.Handler
+	count   atomic.Int32
+	onEmpty func()
+}
+
+func (t *livepageTracker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	isWs := r.URL.Path == livepagePrefix+livepage.PathWs
+	if isWs {
+		t.count.Add(1)
+		defer func() {
+			if t.count.Add(-1) == 0 && t.onEmpty != nil {
+				t.onEmpty()
+			}
+		}()
+	}
+	t.handler.ServeHTTP(w, r)
+}
+
+// Clients returns the number of connected browsers.
+func (t *livepageTracker) Clients() int {
+	return int(t.count.Load())
 }
