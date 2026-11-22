@@ -112,7 +112,11 @@ type Debugger struct {
 	lastScrolledTxTime time.Time
 	// repaintScheduled controls the UI paint debounce
 	repaintScheduled atomic.Bool
-	graph            *amgraph.Graph
+	// repaintMx guards the pending repaint requests
+	repaintMx         sync.Mutex
+	repaintComponents map[cview.Primitive]struct{}
+	repaintAll        bool
+	graph             *amgraph.Graph
 	// update client list scheduled
 	updateCLScheduled  atomic.Bool
 	buildCLScheduled   atomic.Bool
@@ -128,7 +132,7 @@ type Debugger struct {
 	selectedClient     atomic.Pointer[string]
 	selectedSchemaHash atomic.Pointer[string]
 	// TODO should be after a redraw, not before
-	// redrawCallback is auto-disposed in draw()
+	// redrawCallback is auto-disposed in hDraw()
 	redrawCallback func()
 	heartbeatT     *time.Ticker
 	logReader      *cview.TreeView
@@ -142,6 +146,7 @@ type Debugger struct {
 	toolbarItems     [4][]toolbarItem
 	clientListFile   *os.File
 	txFileMd         *os.File
+	stackTraceFileMd *os.File
 	machFileYml      *os.File
 	schemaFileYml    *os.File
 	msgsDelayed      []*dbg.DbgMsgTx
@@ -419,6 +424,7 @@ func (d *Debugger) hSetParams(p types.Params) error {
 		p.FilterLogLevel = am.LogEverything
 	}
 	p.OutputDiagrams.Value = max(p.OutputDiagrams.Value, p.OutputDiagrams.Value)
+	p.OutputDiagConcurrency = max(p.OutputDiagConcurrency, 0)
 	p.ViewTimelines.Value = max(p.ViewTimelines.Value, p.ViewTimelines.Value)
 
 	// rain adjusts the default view
@@ -585,6 +591,13 @@ func (d *Debugger) hSetParams(p types.Params) error {
 		}
 	}
 
+	// stack trace file
+	if p.OutputStackTrace {
+		if err := d.hInitStackTraceFile(); err != nil {
+			return err
+		}
+	}
+
 	// mach file
 	if p.OutputMach {
 		if err := d.hInitMachFile(); err != nil {
@@ -641,6 +654,41 @@ func (d *Debugger) hUpdateTxFile() error {
 	index := d.C.MsgStruct.StatesIndex
 	_ = d.txFileMd.Truncate(0)
 	_, err := d.txFileMd.WriteAt([]byte(tx.TxString(index)), 0)
+	return err
+}
+
+func (d *Debugger) hInitStackTraceFile() error {
+	loc := path.Join(d.params.OutputDir, "stacktrace.md")
+	f, err := os.Create(loc)
+	if err != nil {
+		return err
+	}
+	d.stackTraceFileMd = f
+
+	return nil
+}
+
+func (d *Debugger) hCloseStackTraceFile() error {
+	if d.stackTraceFileMd == nil {
+		return nil
+	}
+	return d.stackTraceFileMd.Close()
+}
+
+// hUpdateStackTraceFile writes the stack trace of the current queued mutation
+// into stacktrace.md, or truncates the file when there's none.
+func (d *Debugger) hUpdateStackTraceFile() error {
+	if !d.params.OutputStackTrace || d.stackTraceFileMd == nil || d.C == nil {
+		return nil
+	}
+
+	trace := ""
+	if tx := d.hCurrentTx(); tx != nil {
+		trace = tx.StackTrace
+	}
+
+	_ = d.stackTraceFileMd.Truncate(0)
+	_, err := d.stackTraceFileMd.WriteAt([]byte(trace), 0)
 	return err
 }
 
@@ -845,6 +893,7 @@ func (d *Debugger) hSetCursor1(e *am.Event, args *A) {
 			d.lastScrolledTxTime = *tx.Time
 		}
 		_ = d.hUpdateTxFile()
+		_ = d.hUpdateStackTraceFile()
 
 		// diagram steps
 		if d.params.OutputDiagrams != types.ParamsOutputDiagramsNone &&
@@ -992,6 +1041,14 @@ func (d *Debugger) GoToMachAddress(
 		mach.Add1(ss.ScrollToTx, Pass(&A{
 			TxId: tx.ID,
 		}))
+
+	} else if addr.IsCtx && addr.State != "" {
+		tx := d.C.Tx(d.C.TxAtStateTick(addr.State, addr.StateTick))
+		if tx != nil {
+			mach.Add1(ss.ScrollToTx, Pass(&A{
+				TxId: tx.ID,
+			}))
+		}
 	}
 
 	// TODO needed?
@@ -2029,6 +2086,38 @@ func (d *Debugger) hFilterTxCursor1(c *Client, newCursor1 int, back bool) int {
 	}
 
 	return newCursor1
+}
+
+// hFastJumpCursor1 returns the cursor (1-based) after a fast jump of up to
+// [fastJumpAmount] txs, skipping filtered out ones.
+func (d *Debugger) hFastJumpCursor1(back bool) int {
+	c := d.C
+	target := c.CursorTx1
+	for range fastJumpAmount {
+		var next int
+		if back {
+			if target == 0 {
+				break
+			}
+			next = d.hFilterTxCursor1(c, target-1, true)
+			if next >= target {
+				// no more visible txs
+				break
+			}
+		} else {
+			if target >= len(c.MsgTxs) {
+				break
+			}
+			next = d.hFilterTxCursor1(c, target+1, false)
+			if next <= target {
+				// no more visible txs
+				break
+			}
+		}
+		target = next
+	}
+
+	return target
 }
 
 // TODO highlight selected state names, extract common logic

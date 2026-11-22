@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/pancsta/cview"
 	"github.com/pancsta/livepage"
@@ -57,6 +58,63 @@ func TestFilterErrs(t *testing.T) {
 	assert.True(t, d.hFilterTx(c, 2, filter), "regular state")
 	assert.True(t, d.hFilterTx(c, 3, filter), "Err* with other states")
 	assert.True(t, d.hFilterTx(c, 0, &types.Filters{}), "filter disabled")
+}
+
+func TestFastJumpFiltered(t *testing.T) {
+	newJumpClient := func(n int) *Client {
+		c := &Client{
+			Client: server.NewClient("connId", &dbg.DbgMsgStruct{
+				ID:          "mach-1",
+				StatesIndex: am.S{"Foo"},
+			}),
+		}
+		for i := range n {
+			// every 2nd tx canceled
+			c.MsgTxs = append(c.MsgTxs, &dbg.DbgMsgTx{
+				MachineID:    "mach-1",
+				CalledStates: am.S{"Foo"},
+				Accepted:     i%2 == 0,
+			})
+		}
+		c.MsgTxsParsed = make([]*types.MsgTxParsed, n)
+		for i := range c.MsgTxsParsed {
+			c.MsgTxsParsed[i] = &types.MsgTxParsed{}
+		}
+
+		return c
+	}
+
+	d := &Debugger{
+		Mach: am.New(nil, states.DebuggerSchema, nil),
+		C:    newJumpClient(120),
+	}
+
+	// no filters
+	require.False(t, d.hFiltersActive())
+	d.C.CursorTx1 = 1
+	assert.Equal(t, 51, d.hFastJumpCursor1(false))
+	d.C.CursorTx1 = 0
+	assert.Equal(t, 50, d.hFastJumpCursor1(false))
+	d.C.CursorTx1 = 20
+	assert.Equal(t, 0, d.hFastJumpCursor1(true))
+
+	// filter out canceled txs (every 2nd one)
+	d.Mach.Add1(states.DebuggerStates.FilterCanceledTx, nil)
+	d.hFilterClientTxs()
+	require.True(t, d.hFiltersActive())
+	require.Len(t, d.C.MsgTxsFiltered, 60)
+
+	// jump by 50 visible txs, not 50 raw ones
+	d.C.CursorTx1 = 1
+	assert.Equal(t, 101, d.hFastJumpCursor1(false))
+	d.C.CursorTx1 = 101
+	assert.Equal(t, 1, d.hFastJumpCursor1(true))
+	d.C.CursorTx1 = 101
+	assert.Equal(t, 119, d.hFastJumpCursor1(false))
+	d.C.CursorTx1 = 119
+	assert.Equal(t, 19, d.hFastJumpCursor1(true))
+	d.C.CursorTx1 = 0
+	assert.Equal(t, 99, d.hFastJumpCursor1(false))
 }
 
 func TestFilterOutStates(t *testing.T) {
@@ -331,6 +389,57 @@ func TestExportMach(t *testing.T) {
 	assert.Equal(t, schema, gotSchema)
 }
 
+func TestOutputStackTrace(t *testing.T) {
+	tempDir := t.TempDir()
+
+	d := &Debugger{
+		params: types.Params{
+			OutputDir:        tempDir,
+			OutputStackTrace: true,
+		},
+		Clients: make(map[string]*Client),
+	}
+
+	err := d.hInitStackTraceFile()
+	require.NoError(t, err)
+	defer func() { _ = d.hCloseStackTraceFile() }()
+
+	trace := "goroutine 1 [running]:\nmain.main()"
+	client := &Client{
+		Client: &server.Client{
+			Id: "test-mach",
+			Exportable: &server.Exportable{
+				MsgStruct: &dbg.DbgMsgStruct{
+					ID:          "test-mach",
+					StatesIndex: am.S{"Foo"},
+				},
+				MsgTxs: []*dbg.DbgMsgTx{
+					{ID: "tx-0", StackTrace: trace},
+					{ID: "tx-1"},
+				},
+			},
+		},
+		CursorTx1: 1,
+	}
+	d.C = client
+	d.Clients[client.Id] = client
+
+	// queued mutation with a stack trace
+	err = d.hUpdateStackTraceFile()
+	require.NoError(t, err)
+	content, err := os.ReadFile(filepath.Join(tempDir, "stacktrace.md"))
+	require.NoError(t, err)
+	assert.Equal(t, trace, string(content))
+
+	// no stack trace
+	client.CursorTx1 = 2
+	err = d.hUpdateStackTraceFile()
+	require.NoError(t, err)
+	content, err = os.ReadFile(filepath.Join(tempDir, "stacktrace.md"))
+	require.NoError(t, err)
+	assert.Empty(t, content)
+}
+
 func TestMcp(t *testing.T) {
 	ctx := context.Background()
 	mach, err := am.NewCommon(
@@ -576,4 +685,26 @@ func TestLivepageTracker(t *testing.T) {
 		t.Fatal("onEmpty not called")
 	}
 	assert.Equal(t, 0, tr.Clients())
+}
+
+func TestThrottleArrow(t *testing.T) {
+	d := &Debugger{}
+	right := tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone)
+	left := tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone)
+
+	// the first press always passes
+	assert.False(t, d.hThrottleArrow(right))
+	// an immediate repeat is throttled
+	assert.True(t, d.hThrottleArrow(right))
+	// a repeat after the interval passes
+	d.lastKeystrokeTime = time.Now().Add(
+		-time.Duration(arrowRepeatMs+1) * time.Millisecond)
+	assert.False(t, d.hThrottleArrow(right))
+	// a different key starts a new press
+	assert.False(t, d.hThrottleArrow(left))
+	// a gap over the hold window starts a new press
+	d.lastKeystroke = tcell.KeyRight
+	d.lastKeystrokeTime = time.Now().Add(
+		-time.Duration(arrowHoldWindowMs+1) * time.Millisecond)
+	assert.False(t, d.hThrottleArrow(right))
 }

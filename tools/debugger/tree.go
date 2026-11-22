@@ -75,6 +75,16 @@ func (d *Debugger) hInitSchemaTree() *cview.TreeView {
 		}))
 		d.hUpdateLogReader(nil)
 		d.hUpdateMatrix()
+
+		// redraw the panes affected by the selection; the app no longer
+		// redraws the whole screen after keys
+		d.hDraw(d.tree, d.statusBarLeft, d.statusBarRight)
+		if d.Mach.Is1(ss.LogReaderVisible) {
+			d.hDraw(d.logReader)
+		}
+		if d.Mach.Any1(ss.MatrixView, ss.TreeMatrixView) {
+			d.hDraw(d.matrix)
+		}
 	})
 
 	// click

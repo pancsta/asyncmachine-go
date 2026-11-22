@@ -315,3 +315,28 @@ func TestFwdReplayAfterReconnect(t *testing.T) {
 	assert.GreaterOrEqual(t, unique3, phase1+phase3,
 		"replayed msgs lost after a reconnect")
 }
+
+func TestTxAtStateTick(t *testing.T) {
+	t.Parallel()
+
+	c := server.NewClient("connId", &dbg.DbgMsgStruct{
+		ID:          "mach-1",
+		StatesIndex: am.S{"Ready", "Foo"},
+	})
+	assert.Equal(t, -1, c.TxAtStateTick("Ready", 1), "no transitions")
+
+	c.MsgTxs = []*dbg.DbgMsgTx{
+		{Clocks: am.Time{1, 0}},
+		{Clocks: am.Time{1, 2}},
+		{Clocks: am.Time{1, 4}},
+		{Clocks: am.Time{3, 5}},
+	}
+
+	assert.Equal(t, 0, c.TxAtStateTick("Ready", 1))
+	assert.Equal(t, 3, c.TxAtStateTick("Ready", 2))
+	assert.Equal(t, 3, c.TxAtStateTick("Ready", 3))
+	assert.Equal(t, 1, c.TxAtStateTick("Foo", 2))
+	assert.Equal(t, 3, c.TxAtStateTick("Foo", 5))
+	assert.Equal(t, 3, c.TxAtStateTick("Foo", 6), "closest later transition")
+	assert.Equal(t, -1, c.TxAtStateTick("Unknown", 1))
+}
