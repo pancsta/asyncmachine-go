@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"os"
-	"reflect"
 	"regexp"
 	"runtime"
 	"slices"
@@ -578,13 +577,11 @@ type handler struct {
 
 	// maps
 	negotiations map[string]HandlerNegotiation
+	partials     map[string]HandlerNegotiationPartial
 	finals       map[string]HandlerFinal
 
 	// reflect
-	h            any
-	methods      *reflect.Value
-	methodCache  map[string]reflect.Value
-	missingCache map[string]struct{}
+	refl handlerReflect
 }
 
 // BindOpts define how the methods are bound to the state machine. Optional.
@@ -620,102 +617,15 @@ type handlerReturn struct {
 }
 
 type handlerCall struct {
-	fn *reflect.Value
+	refl handlerCallReflect
 	// TODO debug only
-	name        string
-	negotiation HandlerNegotiation
-	final       HandlerFinal
-	event       *Event
-	timeout     bool
-	debug       string
-}
-
-func (c *handlerCall) Exec() *handlerReturn {
-	ret := handlerReturn{}
-	if c.fn != nil {
-		callRet := c.fn.Call([]reflect.Value{reflect.ValueOf(c.event)})
-		ret.called = true
-		if len(callRet) > 0 {
-			// TODO log err?
-			v1, ok1 := callRet[0].Interface().(bool)
-			v2, ok2 := callRet[0].Interface().(S)
-			if ok1 {
-				ret.retBool = v1
-			} else if ok2 {
-				// TODO optimize: with nil as prev value
-				ret.retStates = v2
-				ret.partialNeg = true
-			}
-		} else {
-			// default
-			ret.retBool = true
-		}
-	} else if c.negotiation != nil {
-		ret.retBool = c.negotiation(c.event)
-		// TODO List ret for map handlers
-	} else if c.final != nil {
-		c.final(c.event)
-	} else {
-		panic("invalid handler call " + c.name)
-	}
-
-	return &ret
-}
-
-func newHandlerCallStruct(
-	e *Event, h *handler, methodName string, m *Machine,
-) *handlerCall {
-	//
-
-	// cache
-	_, ok := h.missingCache[methodName]
-	if ok {
-		h.mx.Unlock()
-
-		return nil
-	}
-	method, ok := h.methodCache[methodName]
-	if !ok {
-		method = h.methods.MethodByName(methodName)
-
-		// support field handlers
-		if !method.IsValid() {
-			method = h.methods.Elem().FieldByName(methodName)
-		}
-		if !method.IsValid() {
-			h.missingCache[methodName] = struct{}{}
-			h.mx.Unlock()
-
-			return nil
-		}
-		h.methodCache[methodName] = method
-	}
-	h.mx.Unlock()
-
-	// call the handler
-	m.log(LogOps, "[handler:%d] %s", h.num, methodName)
-	m.currentHandler.Store(methodName)
-
-	// tracers
-	m.tracersMx.RLock()
-	for i := range m.tracers {
-		m.tracers[i].HandlerStart(m.t.Load(), h.id, methodName)
-	}
-	m.tracersMx.RUnlock()
-
-	c := &handlerCall{
-		fn:      &method,
-		name:    methodName,
-		event:   e,
-		timeout: false,
-	}
-
-	// TODO not via env?
-	if os.Getenv(EnvAmDetectEval) != "" {
-		c.debug = h.id + "." + methodName
-	}
-
-	return c
+	name               string
+	negotiation        HandlerNegotiation
+	negotiationPartial HandlerNegotiationPartial
+	final              HandlerFinal
+	event              *Event
+	timeout            bool
+	debug              string
 }
 
 func newHandlerCallMap(
@@ -732,7 +642,9 @@ func newHandlerCallMap(
 			return nil
 		}
 	} else {
-		if _, ok := h.negotiations[methodName]; !ok {
+		_, isNeg := h.negotiations[methodName]
+		_, isPartial := h.partials[methodName]
+		if !isNeg && !isPartial {
 			h.mx.Unlock()
 			return nil
 		}
@@ -758,8 +670,10 @@ func newHandlerCallMap(
 
 	if isFinal {
 		call.final = h.finals[methodName]
+	} else if neg, ok := h.negotiations[methodName]; ok {
+		call.negotiation = neg
 	} else {
-		call.negotiation = h.negotiations[methodName]
+		call.negotiationPartial = h.partials[methodName]
 	}
 
 	return call

@@ -1,19 +1,19 @@
+//go:build !tinygo
+
 // Package states provides reusable state definitions.
 //
 // - basic
 // - connected
+// - connection pool
 // - disposed
+//
+//go:generate go run ./gen
 package states
 
 import (
-	_ "embed"
-
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	. "github.com/pancsta/asyncmachine-go/pkg/states/global"
 )
-
-//go:embed global/states_utils.go
-var UtilsFile string
 
 var (
 	// TagRepl tags states which are safe to invoke via REPL.
