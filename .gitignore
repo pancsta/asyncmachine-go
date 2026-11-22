@@ -97,6 +97,9 @@ tools/visualizer/testdata/*
 /examples/wasm/deps.md
 /examples/wasm/tmp/
 /examples/wasm/client/prod.wasm
+/examples/wasm_livepage/client/wasm_exec.js
+/examples/wasm_livepage/client/*.wasm
+/examples/wasm_livepage/tmp/
 /examples/wasm_workflow/**/wasm_exec.js
 /examples/wasm_workflow/**/*.wasm
 /examples/wasm_workflow/deps-graph.svg

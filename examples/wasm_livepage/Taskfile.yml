@@ -1,0 +1,68 @@
+version: '3'
+
+dotenv:
+  - .env
+
+vars:
+  PKG: "github.com/pancsta/asyncmachine-go/examples/wasm_livepage"
+
+tasks:
+  build:
+    desc: Development build
+    env:
+      GOOS: js
+      GOARCH: wasm
+    cmds:
+      - go mod tidy
+      - cp $(go env GOROOT)/lib/wasm/wasm_exec.js ./client
+      - go build -buildvcs=false -o client/main.wasm ./client
+
+  start:
+    desc: Build and start the server
+    silent: true
+    deps:
+      - build
+    cmds:
+      - echo "Open http://{{.LIVEPAGE_HTTP_ADDR}}"
+      - echo ""
+      - go run ./server
+
+  build-tinygo:
+    desc: Development build with TinyGo
+    cmds:
+      - go mod tidy
+      - cp $(tinygo env TINYGOROOT)/targets/wasm_exec.js ./client
+      - tinygo build -target wasm -buildvcs=false -o client/main.wasm ./client
+
+  build-tinygo-prod:
+    desc: Optimized build with TinyGo
+    cmds:
+      - tinygo build -target wasm -no-debug -buildvcs=false -o client/prod.wasm ./client
+      - wasm-opt -O3 client/prod.wasm -o client/prod.wasm --enable-bulk-memory-opt
+
+  start-tinygo:
+    desc: Build with TinyGo and start the server
+    silent: true
+    deps:
+      - build-tinygo
+    cmds:
+      - echo "Open http://{{.LIVEPAGE_HTTP_ADDR}}"
+      - echo ""
+      - go run ./server
+
+  test-tinygo:
+    desc: Integration test with a TinyGo browser client
+    env:
+      AM_WASM_TINYGO: "1"
+    cmds:
+      - go test -tags integration -run '^TestWasmLivepage$' -v -count=1 .
+
+  test:
+    desc: Integration test with a Go browser client
+    cmds:
+      - go test -tags integration -run '^TestWasmLivepage$' -v -count=1 .
+
+  generate:
+    desc: Regenerate states.gen.go
+    cmds:
+      - go generate ./...
