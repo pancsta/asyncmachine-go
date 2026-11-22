@@ -86,7 +86,7 @@ type Params struct {
 
 	UiMcp      bool `arg:"--ui-mcp" help:"Enable MCP server on port --listen-addr +1 (requires --ui-web) (EXPERIMENTAL)" default:"true"`
 	UiSsh      bool `arg:"--ui-ssh" help:"Enable SSH headless mode on port --listen-addr +2 (EXPERIMENTAL)"`
-	UiLivepage bool `arg:"--ui-livepage" help:"Enable headless livepage HTML mode at /livepage on --listen-addr +1 (requires --ui-web) (EXPERIMENTAL)"`
+	UiLivepage bool `arg:"--ui-livepage" help:"Enable headless livepage HTML mode at /livepage on --listen-addr +1 (requires --ui-web) (EXPERIMENTAL)" default:"true"`
 	UiWeb      bool `arg:"--ui-web" default:"true" help:"Start a web server for --dir and diagrams on --listen-addr +1"`
 
 	// view
