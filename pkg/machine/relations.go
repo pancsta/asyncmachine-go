@@ -11,6 +11,8 @@ import (
 // TODO refac Relations
 type RelationsResolver interface {
 	// TargetStates returns the target states after parsing the relations.
+	// States rejected during the negotiation phase (see
+	// [Transition.RejectedStates]) must be excluded.
 	TargetStates(t *Transition, calledStates, index S) S
 	// NewAutoMutation returns an (optional) auto mutation which is appended to
 	// the queue after the transition is executed. It also returns the names of
@@ -44,6 +46,7 @@ type DefaultRelationsResolver struct {
 	Index        S
 	topology     S
 	statesBefore S
+	rejected     S
 }
 
 var _ RelationsResolver = &DefaultRelationsResolver{}
@@ -84,11 +87,13 @@ func (rr *DefaultRelationsResolver) TargetStates(
 	rr.Machine = t.Machine
 	rr.Index = index
 	rr.statesBefore = t.StatesBefore()
+	rr.rejected = t.RejectedStates().Delete(rr.statesBefore)
 
 	m := t.Machine
 	statesToSet = m.mustParseStates(statesToSet)
 	statesToSet = rr.parseAdd(statesToSet)
 	statesToSet = slicesUniq(statesToSet)
+	statesToSet = statesToSet.Delete(rr.rejected)
 	statesToSet = rr.parseRequire(statesToSet)
 
 	// start from the end
@@ -144,7 +149,7 @@ func (rr *DefaultRelationsResolver) TargetStates(
 	}
 	resolvedS = slicesFilter(rr.parseAdd(resolvedS),
 		func(name string, _ int) bool {
-			return !slices.Contains(toRemove, name)
+			return !slices.Contains(toRemove, name) && !rr.rejected.Has(name)
 		})
 	resolvedS = slicesUniq(resolvedS)
 
@@ -247,6 +252,9 @@ func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 	for changed {
 		changed = false
 		for _, name := range states {
+			if rr.rejected.Has(name) {
+				continue
+			}
 			state := rr.Machine.schema[name]
 
 			if slices.Contains(rr.statesBefore, name) && !state.Multi {
@@ -256,13 +264,17 @@ func (rr *DefaultRelationsResolver) parseAdd(states S) S {
 				continue
 			}
 
-			// filter the Add relation from states called for removal
+			// filter the Add relation from states called for removal and
+			// states rejected during negotiation
 			var addStates S
 			for _, add := range state.Add {
 				idxAdd := slices.Index(rr.Index, add)
 				if t.Type() == MutationRemove &&
 					slices.Contains(t.Mutation.Called, idxAdd) {
 
+					continue
+				}
+				if rr.rejected.Has(add) {
 					continue
 				}
 				addStates = append(addStates, add)
