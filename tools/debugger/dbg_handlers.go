@@ -46,35 +46,11 @@ func (d *Debugger) StartState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.Start)
 	view := d.params.StartupView
 
-	// cview TUI app
-	d.App = cview.NewApplication()
-	if d.params.Screen != nil {
-		d.App.SetScreen(d.params.Screen)
-
-		// headless mode
-	} else if d.params.UiSsh {
+	// headless SSH mode
+	if d.params.UiSsh {
 		d.Mach.EvAdd1(e, ss.SshServer, nil)
-		d.App.SetScreen(tcell.NewSimulationScreen("UTF-8"))
 	}
 
-	// forceful race solving
-	d.App.SetBeforeDrawFunc(func(_ tcell.Screen) bool {
-		// dont draw while transitioning
-		ok := d.Mach.Transition() == nil
-		if !ok {
-			// reschedule this repaint
-			// d.Mach.Log("postpone draw")
-			d.repaintPending.Store(true)
-			return true
-		}
-
-		// mark as in progress
-		d.drawing.Store(true)
-		return false
-	})
-	d.App.SetAfterDrawFunc(func(_ tcell.Screen) {
-		d.drawing.Store(false)
-	})
 	d.App.SetAfterResizeFunc(func(width int, height int) {
 		d.Mach.Go(ctx, func() {
 			time.Sleep(time.Millisecond * 300)
@@ -110,16 +86,9 @@ func (d *Debugger) StartState(e *am.Event) {
 	}
 	d.Mach.EvAdd(e, filters, nil)
 
-	// draw in a goroutine
-	d.Mach.Fork(ctx, e, func() {
-		d.App.SetRoot(d.LayoutRoot, true)
-		err := d.App.Run()
-		if err != nil {
-			d.Mach.AddErr(err, nil)
-		}
-
-		d.Mach.EvAdd1(e, ss.Disposing, nil)
-	})
+	// the cview app is driven by the same machine, so its event loop starts
+	// with the Start state
+	d.App.SetRoot(d.LayoutRoot, true)
 
 	// post-start ops
 	d.Mach.Go(ctx, func() {
@@ -161,6 +130,13 @@ func (d *Debugger) StartState(e *am.Event) {
 				"/traces/", d.tracePage.NewHandler())
 		}
 
+		if d.livepageScreen != nil {
+			d.ServerHttp.Handler.(*http.ServeMux).Handle(
+				livepagePrefix+"/", d.livepageScreen.Handler())
+			d.params.Print("\nLivepage: http://%s%s\n\n",
+				d.params.AddrHttp, livepagePrefix)
+		}
+
 		if d.params.UiMcp {
 			mcp, err := newMcpServer(d)
 			if err != nil {
@@ -187,8 +163,13 @@ func (d *Debugger) StartState(e *am.Event) {
 }
 
 func (d *Debugger) StartEnd(e *am.Event) {
-	if d.App.GetScreen() != nil {
-		d.App.Stop()
+	// finalize the screen (or stop the app when Start is still active)
+	d.App.Stop()
+
+	// quitting removes Start (e.g. via App.Stop), so dispose the debugger
+	// machine as well
+	if d.Mach.Not1(ss.Disposing) && d.Mach.Not1(ss.Disposed) {
+		d.Mach.EvAdd1(e, ss.Disposing, nil)
 	}
 }
 
@@ -530,7 +511,7 @@ func (d *Debugger) ToggleMarkState(e *am.Event) {
 var _ = ss.Toolbar1Focused
 
 func (d *Debugger) Toolbar1FocusedState(e *am.Event) {
-	d.toolbars[0].SetBackgroundColor(d.getFocusColor())
+	d.toolbars[0].SetBackgroundColor(d.hGetFocusColor())
 	d.hUpdateToolbar()
 }
 
@@ -542,7 +523,7 @@ func (d *Debugger) Toolbar1FocusedEnd(e *am.Event) {
 var _ = ss.Toolbar2Focused
 
 func (d *Debugger) Toolbar2FocusedState(e *am.Event) {
-	d.toolbars[1].SetBackgroundColor(d.getFocusColor())
+	d.toolbars[1].SetBackgroundColor(d.hGetFocusColor())
 	d.hUpdateToolbar()
 }
 
@@ -554,7 +535,7 @@ func (d *Debugger) Toolbar2FocusedEnd(e *am.Event) {
 var _ = ss.Toolbar3Focused
 
 func (d *Debugger) Toolbar3FocusedState(e *am.Event) {
-	d.toolbars[2].SetBackgroundColor(d.getFocusColor())
+	d.toolbars[2].SetBackgroundColor(d.hGetFocusColor())
 	d.hUpdateToolbar()
 }
 
@@ -566,7 +547,7 @@ func (d *Debugger) Toolbar3FocusedEnd(e *am.Event) {
 var _ = ss.Toolbar4Focused
 
 func (d *Debugger) Toolbar4FocusedState(e *am.Event) {
-	d.toolbars[3].SetBackgroundColor(d.getFocusColor())
+	d.toolbars[3].SetBackgroundColor(d.hGetFocusColor())
 	d.hUpdateToolbar()
 }
 
@@ -578,7 +559,7 @@ func (d *Debugger) Toolbar4FocusedEnd(e *am.Event) {
 var _ = ss.AddressFocused
 
 func (d *Debugger) AddressFocusedState(e *am.Event) {
-	d.addressBar.SetBackgroundColor(d.getFocusColor())
+	d.addressBar.SetBackgroundColor(d.hGetFocusColor())
 	d.hUpdateToolbar()
 }
 
@@ -590,7 +571,7 @@ func (d *Debugger) AddressFocusedEnd(e *am.Event) {
 var _ = ss.TreeGroupsFocused
 
 func (d *Debugger) TreeGroupsFocusedState(e *am.Event) {
-	d.treeGroups.SetBackgroundColor(d.getFocusColor())
+	d.treeGroups.SetBackgroundColor(d.hGetFocusColor())
 	d.hUpdateToolbar()
 }
 
@@ -864,7 +845,7 @@ func (d *Debugger) ClientMsgState(e *am.Event) {
 		idx := len(c.MsgTxs)
 		c.MsgTxs = append(c.MsgTxs, msg)
 		d.hParseMsg(c, idx)
-		filterOK := d.hFilterTx(c, idx, d.filtersFromStates())
+		filterOK := d.hFilterTx(c, idx, d.hFiltersFromStates())
 		if filterOK {
 			c.MsgTxsFiltered = append(c.MsgTxsFiltered, idx)
 		}
@@ -1098,12 +1079,17 @@ func (d *Debugger) SelectingClientState(e *am.Event) {
 		// TODO diagrams?
 
 		// scroll client list item into view
-		selOffset := d.hGetSidebarCurrClientIdx()
-		offset, _ := d.clientList.GetOffset()
-		_, _, _, lines := d.clientList.GetInnerRect()
-		if selOffset-offset > lines {
-			d.clientList.SetCurrentItem(selOffset)
-			d.updateClientList()
+		d.Mach.Eval("SelectingClientState", func() {
+			selOffset := d.hGetSidebarCurrClientIdx()
+			offset, _ := d.clientList.GetOffset()
+			_, _, _, lines := d.clientList.GetInnerRect()
+			if selOffset-offset > lines {
+				d.clientList.SetCurrentItem(selOffset)
+				d.updateClientList()
+			}
+		}, ctx)
+		if ctx.Err() != nil {
+			return // expired
 		}
 
 		// rebuild the whole log
@@ -1446,6 +1432,7 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 	case types.ToolLog:
 		d.params.Filters.LogLevel = (d.params.Filters.LogLevel + 1) % 6
 		d.hUpdateSchemaLogGrid()
+		d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
 
 	case types.ToolDiagrams:
 		switch d.params.OutputDiagrams {
@@ -1540,7 +1527,7 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 			d.hCloseLogFile()
 		} else {
 			d.hInitLogFile()
-			d.Mach.EvAddErr(e, d.outputLogFile(d.Mach.Context()), nil)
+			d.Mach.EvAddErr(e, d.hOutputLogFile(d.Mach.Context()), nil)
 		}
 
 	case types.ToolTimelines:
@@ -1636,7 +1623,7 @@ func (d *Debugger) ToggleToolState(e *am.Event) {
 		d.hToolExpand()
 
 	case types.ToolMatrix:
-		d.toolMatrix()
+		d.hToolMatrix()
 
 	case types.ToolExport:
 		d.Mach.EvAdd(e, am.S{ss.ExportDialog, ss.DialogFocused}, nil)
@@ -1774,7 +1761,7 @@ func (d *Debugger) ScrollToMutTxState(e *am.Event) {
 		}
 
 		// skip filtered out
-		if d.filtersActive() && !slices.Contains(c.MsgTxsFiltered, msgIdx) {
+		if d.hFiltersActive() && !slices.Contains(c.MsgTxsFiltered, msgIdx) {
 			continue
 		}
 
@@ -1930,7 +1917,7 @@ func (d *Debugger) GcMsgsState(e *am.Event) {
 				}))
 				c.CursorTx1 = int(math.Max(0, float64(c.CursorTx1-idx)))
 				// re-filter
-				if d.filtersActive() {
+				if d.hFiltersActive() {
 					d.hFilterClientTxs()
 				}
 			}
@@ -1991,7 +1978,9 @@ func (d *Debugger) ClientListVisibleState(e *am.Event) {
 		if !amhelp.Wait(ctx, sidebarUpdateDebounce) {
 			return
 		}
-		d.drawClientList()
+		d.Mach.Eval("ClientListVisibleState", func() {
+			d.hDrawClientList()
+		}, ctx)
 	})
 }
 
@@ -2003,38 +1992,39 @@ func (d *Debugger) ClientListVisibleEnd(e *am.Event) {
 var _ = ss.TimelineTxHidden
 
 func (d *Debugger) TimelineTxHiddenState(e *am.Event) {
-	// handled in TimelineMarkersHiddenState
-	if e.Machine().Is1(ss.TimelineMarkersHidden) {
-		return
-	}
-
 	d.hUpdateLayout()
+	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
 }
 
 func (d *Debugger) TimelineTxHiddenEnd(e *am.Event) {
 	d.hUpdateLayout()
+	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
 }
 
 var _ = ss.TimelineMarkersHidden
 
 func (d *Debugger) TimelineMarkersHiddenEnd(e *am.Event) {
 	d.hUpdateLayout()
+	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
 }
 
 func (d *Debugger) TimelineMarkersHiddenState(e *am.Event) {
 	d.hUpdateLayout()
+	d.Mach.EvAdd1(e, ss.UpdateFocus, nil)
 }
 
 var _ = ss.UpdateFocus
 
 func (d *Debugger) UpdateFocusState(e *am.Event) {
 	old := d.focusablePrims
+	oldFocused := d.Focused
 	d.hUpdateFocusableOrder()
 	d.hUpdateBorderColor()
 
 	var focused cview.Primitive
 	// change focus (or not) when changing view types
-	switch d.Mach.Switch(states.DebuggerGroups.Focused) {
+	focusedState := d.Mach.Switch(states.DebuggerGroups.Focused)
+	switch focusedState {
 	case ss.ClientListFocused:
 		focused = d.clientList
 	case ss.AddressFocused:
@@ -2068,17 +2058,87 @@ func (d *Debugger) UpdateFocusState(e *am.Event) {
 		case d.Mach.Is1(ss.ExportDialog):
 			focused = d.exportDialog
 		}
-
-	// layout changed, focus the nearest
-	default:
-		focusIdx := slices.Index(old, d.Focused)
-		idx := min(max(focusIdx-1, 0), len(d.focusablePrims)-1)
-		var state string
-		focused, state = d.hBoxFromPrimitive(d.focusablePrims[idx])
-		// fix state
-		d.Mach.EvAdd1(e, state, nil)
 	}
+
+	// the focused state may point to a panel hidden by a layout change (narrow
+	// layout, hidden log / reader / timeline, matrix view, closed dialog)
+	if focused == nil || !slices.Contains(d.focusablePrims, focused) {
+		_, oldState := d.hBoxFromPrimitive(oldFocused)
+		focused = d.hFocusNeighbour(focusedState)
+		if focused == nil || !slices.Contains(d.focusablePrims, focused) {
+			focused = d.hFocusNeighbour(oldState)
+		}
+
+		// fallback to the nearest index from the previous order
+		if focused == nil || !slices.Contains(d.focusablePrims, focused) {
+			if len(d.focusablePrims) == 0 {
+				focused = nil
+			} else {
+				idx := slices.Index(old, oldFocused)
+				if idx < 0 {
+					idx = 0
+				}
+				idx = min(idx, len(d.focusablePrims)-1)
+				focused = d.focusablePrims[idx]
+			}
+		}
+
+		if focused != nil {
+			_, state := d.hBoxFromPrimitive(focused)
+			d.Mach.EvAdd1(e, state, nil)
+		}
+	}
+
 	d.App.SetFocus(focused)
+}
+
+// hFocusNeighbour returns the nearest visible panel for a focus state whose
+// panel got hidden by a layout change.
+func (d *Debugger) hFocusNeighbour(state string) cview.Primitive {
+	view := d.Mach.Switch(states.DebuggerGroups.Views)
+
+	// log and reader live only in the tree-log view
+	switch view {
+	case ss.MatrixView:
+		switch state {
+		case ss.TreeFocused, ss.TreeGroupsFocused, ss.LogFocused,
+			ss.LogReaderFocused:
+			return d.matrix
+		}
+	case ss.TreeMatrixView:
+		switch state {
+		case ss.LogFocused, ss.LogReaderFocused:
+			return d.matrix
+		}
+	}
+
+	switch state {
+	case ss.ClientListFocused:
+		return d.treeGroups
+	case ss.TreeGroupsFocused:
+		return d.tree
+	case ss.LogFocused:
+		if d.Mach.Is1(ss.LogReaderVisible) {
+			return d.logReader
+		}
+		return d.tree
+	case ss.LogReaderFocused:
+		if d.params.Filters.LogLevel != am.LogNothing {
+			return d.log
+		}
+		return d.tree
+	case ss.TimelineMarkersFocused:
+		if d.Mach.Not1(ss.TimelineTxHidden) {
+			return d.timelineTxs
+		}
+		return d.toolbars[0]
+	case ss.TimelineTxsFocused:
+		return d.toolbars[0]
+	case ss.MatrixFocused:
+		return d.tree
+	}
+
+	return nil
 }
 
 var _ = ss.AfterFocus
@@ -2120,6 +2180,10 @@ func (d *Debugger) AfterFocusState(e *am.Event) {
 	d.hUpdateClientList()
 	d.hUpdateStatusBar()
 	d.hUpdateTimelineTx()
+
+	// cview draws right after the Tab key is captured, before the queued focus
+	// mutation runs, so redraw once the new focus is applied
+	d.draw()
 }
 
 var _ = ss.ToolRain
@@ -2131,78 +2195,26 @@ func (d *Debugger) ToolRainState(e *am.Event) {
 		d.Mach.EvAdd(e, am.S{ss.MatrixRain, ss.TreeMatrixView}, nil)
 		// TODO force redraw to get rect size, not ideal
 		d.redrawCallback = func() {
-			time.Sleep(16 * time.Millisecond)
-			d.Mach.Eval("ToolRainState", func() {
-				d.hDrawViews()
-			}, nil)
+			go func() {
+				time.Sleep(16 * time.Millisecond)
+				d.Mach.Eval("ToolRainState", func() {
+					d.hDrawViews()
+				}, nil)
+			}()
 		}
 	}
 }
 
 var _ = am.StateAny
-
-// AnyEnter prevents most of mutations during a UI redraw (and vice versa)
-// forceful race solving
-// TODO avoid this, use go-tui
-func (d *Debugger) AnyEnter(e *am.Event) bool {
-	// always pass network traffic
-	mach := d.Mach
-	mut := e.Mutation()
-	called := mut.CalledIndex(ss.Names())
-	pass := S{
-		ss.ClientMsg, ss.ConnectEvent, ss.DisconnectEvent,
-		am.StateException,
-	}
-	if called.Any1(pass...) {
-		return true
-	}
-
-	// dont allow mutations while drawing, pull 10 times
-	delay := mach.HandlerTimeout / 10
-	tries := 100
-	// compensate extended timeouts
-	if amhelp.IsDebug() {
-		delay = 10 * time.Millisecond
-	}
-	for e.IsValid() {
-		ok := !d.drawing.Load()
-		if ok {
-			// ok
-			return true
-		}
-
-		// delay, but avoid the race detector which gets stuck here
-		if !d.params.RaceDetector {
-			time.Sleep(delay)
-		}
-
-		tries--
-		if tries <= 0 {
-			// not ok
-			break
-		}
-	}
-
-	// prepend this mutation to the queue and try again TODO loop guard
-	// d.Mach.Log("postpone mut")
-	go mach.PrependMut(mut.Clone())
-
-	return false
-}
 
 // AnyState is a global final handler
-var _ = am.StateAny
-
 func (d *Debugger) AnyState(e *am.Event) {
 	tx := e.Transition()
 
 	// redraw on auto states
 	// TODO this should be done better
 	if tx.IsAuto() && tx.IsAccepted.Load() {
-		d.repaintPending.Store(false)
 		d.hUpdateTxBars()
-		d.draw()
-	} else if d.repaintPending.Swap(false) {
 		d.draw()
 	}
 }

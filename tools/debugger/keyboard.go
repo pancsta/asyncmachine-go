@@ -1,7 +1,6 @@
 package debugger
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"regexp"
@@ -14,7 +13,6 @@ import (
 	"github.com/pancsta/cview/cbind"
 
 	"github.com/pancsta/asyncmachine-go/tools/debugger/states"
-	"github.com/pancsta/asyncmachine-go/tools/debugger/types"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -310,7 +308,7 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 
 		// matrix view
 		"alt+m": func(ev *tcell.EventKey) *tcell.EventKey {
-			d.toolMatrix()
+			d.hToolMatrix()
 
 			return nil
 		},
@@ -346,7 +344,7 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 			}
 
 			// local PTY
-			d.Mach.Remove1(ss.Start, nil)
+			d.App.Stop()
 			return nil
 		},
 
@@ -395,7 +393,7 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 				return nil
 			}
 
-			d.focusDefault()
+			d.hFocusDefault()
 
 			return ev
 		},
@@ -457,7 +455,7 @@ func (d *Debugger) hDeleteClient() {
 	}))
 }
 
-func (d *Debugger) focusDefault() {
+func (d *Debugger) hFocusDefault() {
 	tick := false
 
 	// default focus element
@@ -509,7 +507,7 @@ func (d *Debugger) hNextTxKey() tcellKeyFn {
 		}
 
 		// skip if scrolling
-		if d.shouldScrollCurrView() {
+		if d.hShouldScrollCurrView() {
 			return ev
 		}
 
@@ -552,7 +550,7 @@ func (d *Debugger) hPrevTxKey() tcellKeyFn {
 		}
 
 		// skip if scrolling
-		if d.shouldScrollCurrView() {
+		if d.hShouldScrollCurrView() {
 			return ev
 		}
 
@@ -582,7 +580,7 @@ func (d *Debugger) hJumpBackKey(ev *tcell.EventKey) *tcell.EventKey {
 	}
 
 	// TODO Start?
-	ctx := context.TODO()
+	ctx := d.Mach.Context()
 	d.Mach.Remove(am.S{ss.Playing, ss.TailMode}, nil)
 
 	if d.Mach.Is1(ss.StateNameSelected) {
@@ -591,18 +589,26 @@ func (d *Debugger) hJumpBackKey(ev *tcell.EventKey) *tcell.EventKey {
 		// 	state = ss.ScrollToTouchTx
 		// }
 
-		// state jump TODO dont block
-		amhelp.Add1Sync(ctx, d.Mach, state, Pass(&A{
+		// state jump, dont block the event loop
+		args := Pass(&A{
 			State: d.C.SelectedState,
 			Fwd:   false,
-		}))
-		// sidebar for errs TODO update in [state]
-		d.hUpdateClientList()
+		})
+		d.Mach.Go(ctx, func() {
+			amhelp.Add1Sync(ctx, d.Mach, state, args)
+			// sidebar for errs TODO update in [state]
+			d.Mach.Eval("hJumpBackKey", func() {
+				d.hUpdateClientList()
+			}, nil)
+		})
 	} else {
-		// fast jump TODO dont block
-		amhelp.Add1Sync(ctx, d.Mach, ss.Back, Pass(&A{
-			Amount: min(fastJumpAmount, d.C.CursorTx1),
-		}))
+		// fast jump, dont block the event loop
+		amount := min(fastJumpAmount, d.C.CursorTx1)
+		d.Mach.Go(ctx, func() {
+			amhelp.Add1Sync(ctx, d.Mach, ss.Back, Pass(&A{
+				Amount: amount,
+			}))
+		})
 	}
 
 	return nil
@@ -617,7 +623,7 @@ func (d *Debugger) hJumpFwdKey(ev *tcell.EventKey) *tcell.EventKey {
 	}
 
 	// TODO Start?
-	ctx := context.TODO()
+	ctx := d.Mach.Context()
 	d.Mach.Remove(am.S{ss.Playing, ss.TailMode}, nil)
 
 	if d.Mach.Is1(ss.StateNameSelected) {
@@ -626,24 +632,32 @@ func (d *Debugger) hJumpFwdKey(ev *tcell.EventKey) *tcell.EventKey {
 		// 	state = ss.ScrollToTouchTx
 		// }
 
-		// state jump TODO dont block
-		amhelp.Add1Sync(ctx, d.Mach, state, Pass(&A{
+		// state jump, dont block the event loop
+		args := Pass(&A{
 			State: d.C.SelectedState,
 			Fwd:   true,
-		}))
-		// sidebar for errs TODO update in [state]
-		d.hUpdateClientList()
+		})
+		d.Mach.Go(ctx, func() {
+			amhelp.Add1Sync(ctx, d.Mach, state, args)
+			// sidebar for errs TODO update in [state]
+			d.Mach.Eval("hJumpFwdKey", func() {
+				d.hUpdateClientList()
+			}, nil)
+		})
 	} else {
-		// fast jump TODO dont block
-		amhelp.Add1Sync(ctx, d.Mach, ss.Fwd, Pass(&A{
-			Amount: min(fastJumpAmount, len(d.C.MsgTxs)-d.C.CursorTx1),
-		}))
+		// fast jump, dont block the event loop
+		amount := min(fastJumpAmount, len(d.C.MsgTxs)-d.C.CursorTx1)
+		d.Mach.Go(ctx, func() {
+			amhelp.Add1Sync(ctx, d.Mach, ss.Fwd, Pass(&A{
+				Amount: amount,
+			}))
+		})
 	}
 
 	return nil
 }
 
-func (d *Debugger) toolMatrix() {
+func (d *Debugger) hToolMatrix() {
 	is1 := d.Mach.Is1
 	not1 := d.Mach.Not1
 	switch {
@@ -746,7 +760,7 @@ func (d *Debugger) hToolExpand() {
 	// TODO maybe expand recursively?
 }
 
-func (d *Debugger) shouldScrollCurrView() bool {
+func (d *Debugger) hShouldScrollCurrView() bool {
 	// always scroll matrix and log views
 	return d.Mach.Any1(ss.MatrixFocused, ss.LogFocused)
 	// TODO scroll tree when relations expanded (support H scroll)
@@ -800,66 +814,74 @@ func (d *Debugger) FocusPrevState(e *am.Event) {
 }
 
 func (d *Debugger) hUpdateFocusableOrder() {
-	var prims []cview.Primitive
+	var (
+		boxes []*cview.Box
+		prims []cview.Primitive
+	)
+	// keep both lists in sync, so a Tab index always has a matching box
+	add := func(prim cview.Primitive, box *cview.Box) {
+		prims = append(prims, prim)
+		boxes = append(boxes, box)
+	}
 
 	// dialogs
 	if d.Mach.Is1(ss.ExportDialog) {
-		d.focusable = []*cview.Box{d.exportDialog.Box}
-		d.focusablePrims = []cview.Primitive{d.exportDialog}
+		add(d.exportDialog, d.exportDialog.Box)
+		d.focusable, d.focusablePrims = boxes, prims
 
 		return
 	} else if d.Mach.Is1(ss.HelpDialog) {
-		d.focusable = []*cview.Box{d.helpDialogLeft.Box, d.helpDialogRight.Box}
-		d.focusablePrims = []cview.Primitive{d.helpDialogLeft, d.helpDialogRight}
+		add(d.helpDialogLeft, d.helpDialogLeft.Box)
+		add(d.helpDialogRight, d.helpDialogRight.Box)
+		d.focusable, d.focusablePrims = boxes, prims
 
 		return
 	}
 
-	d.focusable = []*cview.Box{
-		d.addressBar.Box, d.clientList.Box, d.treeGroups.Box, d.tree.Box,
-	}
-	prims = []cview.Primitive{
-		d.addressBar, d.clientList, d.treeGroups, d.tree,
-	}
+	// address bar
+	add(d.addressBar, d.addressBar.Box)
 
-	if d.Mach.Not1(ss.ClientListVisible) {
-		d.focusable = slices.Delete(d.focusable, 1, 2)
-		prims = slices.Delete(prims, 1, 2)
+	// client list (hidden in narrow layout)
+	if d.Mach.Not1(ss.NarrowLayout) && d.Mach.Is1(ss.ClientListVisible) {
+		add(d.clientList, d.clientList.Box)
 	}
 
-	// matrix
-	if d.Mach.Any1(ss.MatrixView, ss.TreeMatrixView) {
-		d.focusable = append(d.focusable, d.matrix.Box)
-		prims = append(prims, d.matrix)
+	// content panels, depending on the current view
+	switch d.Mach.Switch(states.DebuggerGroups.Views) {
 
-		// log
-	} else if d.params.Filters.LogLevel != am.LogNothing {
-		d.focusable = append(d.focusable, d.log.Box)
-		prims = append(prims, d.log)
+	case ss.MatrixView:
+		add(d.matrix, d.matrix.Box)
+
+	case ss.TreeMatrixView:
+		add(d.treeGroups, d.treeGroups.Box)
+		add(d.tree, d.tree.Box)
+		add(d.matrix, d.matrix.Box)
+
+	default: // TreeLogView
+		add(d.treeGroups, d.treeGroups.Box)
+		add(d.tree, d.tree.Box)
+
+		if d.params.Filters.LogLevel != am.LogNothing {
+			add(d.log, d.log.Box)
+		}
+		if d.Mach.Is1(ss.LogReaderVisible) {
+			add(d.logReader, d.logReader.Box)
+		}
 	}
 
-	// add log reader
-	if d.Mach.Is1(ss.LogReaderVisible) {
-		d.focusable = append(d.focusable, d.logReader.Box)
-		prims = append(prims, d.logReader)
+	// timelines
+	if d.Mach.Not1(ss.TimelineTxHidden) {
+		add(d.timelineTxs, d.timelineTxs.Box)
+	}
+	if d.Mach.Not1(ss.TimelineMarkersHidden) {
+		add(d.timelineMarkers, d.timelineMarkers.Box)
 	}
 
-	// add timelines
-	switch d.params.ViewTimelines {
-	case types.ParamsViewTimelinesTwo:
-		d.focusable = append(d.focusable, d.timelineTxs.Box, d.timelineMarkers.Box)
-		prims = append(prims, d.timelineTxs.Box, d.timelineMarkers.Box)
-	case types.ParamsViewTimelinesOne:
-		d.focusable = append(d.focusable, d.timelineTxs.Box)
-		prims = append(prims, d.timelineTxs.Box)
-
+	// toolbars
+	for i := range d.toolbars {
+		add(d.toolbars[i], d.toolbars[i].Box)
 	}
 
-	// add toolbars
-	d.focusable = append(d.focusable, d.toolbars[0].Box, d.toolbars[1].Box,
-		d.toolbars[2].Box, d.toolbars[3].Box)
-	prims = append(prims,
-		d.toolbars[0], d.toolbars[1], d.toolbars[2], d.toolbars[3])
-
+	d.focusable = boxes
 	d.focusablePrims = prims
 }

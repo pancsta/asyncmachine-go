@@ -58,7 +58,6 @@ func init() {
 		EnableClipboard: false,
 	})
 
-	worker.Mach.EvalTimeout = time.Hour
 	if err != nil {
 		panic(err)
 	}
