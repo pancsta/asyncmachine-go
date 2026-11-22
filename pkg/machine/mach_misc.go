@@ -1075,6 +1075,10 @@ type Event struct {
 	// the current Transition and Mutation.
 	machine *Machine
 	machApi Api
+
+	// rejected holds implied states rejected via AcceptWithout during the
+	// current handler call. Collected by processHandlers for partial acceptance.
+	rejected S
 }
 
 // NewEvent creates a new Event struct with private fields initialized.
@@ -1137,6 +1141,21 @@ func (e *Event) StateCalled() bool {
 	return state != "" && tx.CalledStates().Has(state)
 }
 
+// StateImplied returns true if the state of this event is about to be
+// activated, but wasn't explicitly called (requested) in the current
+// transition. Such states are implied by relations of the called states.
+// Useful as a guard for partial acceptance, together with [Event.StateCalled].
+// Returns false for events not bound to a single state, eg AnyEnter.
+func (e *Event) StateImplied() bool {
+	tx := e.Transition()
+	if tx == nil {
+		return false
+	}
+
+	state := e.StateName()
+	return state != "" && tx.ImpliedStates().Has(state)
+}
+
 // Accept returns all called states of the transition, effectively accepting
 // the whole transition. Meant to be returned from a negotiation handler.
 func (e *Event) Accept() S {
@@ -1155,23 +1174,44 @@ func (e *Event) AcceptWithout1(state string) S {
 }
 
 // AcceptWithout returns all called states of the transition, except for the
-// passed states. An empty result means a full rejection of the transition.
+// passed states. Both called and implied states can be rejected this way;
+// rejected implied states will be excluded from the relation resolution. An
+// empty result means a full rejection of the transition.
 func (e *Event) AcceptWithout(states S) S {
 	tx := e.Transition()
 	if tx == nil {
-		return nil
+		return e.Cancel()
 	}
 
-	return tx.CalledStates().Delete(states)
+	called := tx.CalledStates()
+	implied := tx.ImpliedStates()
+	rejected := tx.RejectedStates()
+
+	// only states taking part in the transition can be rejected
+	for _, s := range states {
+		if called.Has(s) || implied.Has(s) || rejected.Has(s) {
+			continue
+		}
+		return e.Cancel()
+	}
+
+	// collect implied states to be injected into the resolver
+	for _, s := range states {
+		if !called.Has(s) && !rejected.Has(s) && !e.rejected.Has(s) {
+			e.rejected = append(e.rejected, s)
+		}
+	}
+
+	return called.Delete(states)
 }
 
 // AcceptWithoutThis returns all called states of the transition, except for
-// the state of this event. For events not bound to a single state (eg
-// AnyEnter), it cancels the whole transition. If the state wasn't called
-// directly, the whole transition gets canceled.
+// the state of this event. Works for both called and implied states. For
+// events not bound to a single state (eg AnyEnter), or states not taking part
+// in the transition, it cancels the whole transition.
 func (e *Event) AcceptWithoutThis() S {
 	state := e.StateName()
-	if state == "" || !e.StateCalled() {
+	if state == "" {
 		return e.Cancel()
 	}
 

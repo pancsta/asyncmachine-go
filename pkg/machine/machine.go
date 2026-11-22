@@ -2440,8 +2440,11 @@ func (m *Machine) handle(
 				j(t.TargetStates()), eventName)
 		}
 	} else if ret.partiallyAccepted {
-		m.log(LogOps, "[rejected] (%s) by %s",
-			j(t.CalledInitial().Remove(ret.retStates)), eventName)
+		rejected := ret.rejected
+		if len(rejected) == 0 {
+			rejected = t.CalledInitial().Remove(ret.retStates)
+		}
+		m.log(LogOps, "[rejected] (%s) by %s", j(rejected), eventName)
 	}
 
 	return ret
@@ -2619,12 +2622,26 @@ func (m *Machine) processHandlers(state string, e *Event) *handlerReturn {
 					m.log(LogOps,
 						"[accept:error] handler states outside of called states")
 					ret.canceled = true
+					return ret
 				}
 
-				if len(called) == len(ret.retStates) {
+				// called states rejected by this handler
+				rejectedCalled := called.Delete(ret.retStates)
+				// implied states rejected by this handler, but not yet rejected
+				// and not active
+				rejectedImplied := ret.rejectedImplied.
+					Delete(t.RejectedStates()).
+					Delete(t.StatesBefore())
+				newRejected := rejectedCalled.Add(rejectedImplied)
+				ret.rejected = newRejected
+
+				if len(newRejected) == 0 {
 					// fully accepted
 					continue
 				}
+
+				// inject rejected states into the resolver
+				t.rejected = t.rejected.Add(newRejected)
 
 				// re-run with new called states
 				tx.IsPartial = true
@@ -2683,9 +2700,15 @@ func (m *Machine) handlerLoop() {
 	handleCall := func(call *handlerCall) bool {
 		var ret *handlerReturn
 
+		// reset implied rejections from previous bindings of this event
+		call.event.rejected = nil
+
 		// handler signature: FooState(e *am.Event)
 		if call.event.IsValid() {
 			ret = call.Exec()
+			if ret != nil {
+				ret.rejectedImplied = call.event.rejected
+			}
 		} else {
 			m.log(LogDecisions, "[handler:invalid] %s", call.name)
 		}

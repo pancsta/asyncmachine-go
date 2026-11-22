@@ -614,6 +614,11 @@ type handlerReturn struct {
 	partialNeg bool
 	// only for partialNeg true
 	partiallyAccepted bool
+	// implied states rejected via Event.AcceptWithout in the current handler
+	rejectedImplied S
+	// states rejected in this partial acceptance (called and implied),
+	// used for logging
+	rejected S
 }
 
 type handlerCall struct {

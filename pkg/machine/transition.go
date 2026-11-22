@@ -63,6 +63,11 @@ type Transition struct {
 	// initial called states of the mutation
 	calledInitial []int
 
+	// rejected states of this transition (called and implied), accumulated
+	// during partial acceptance. Implied ones are excluded from relation
+	// resolution.
+	rejected S
+
 	// last step info for panic recovery
 	latestHandlerIsEnter bool
 	latestHandlerIsFinal bool
@@ -259,6 +264,7 @@ func (t *Transition) CleanCache() {
 	t.cacheClockBefore.Store(nil)
 	t.Mutation.cacheCalled.Store(nil)
 	t.cacheSchema = nil
+	t.rejected = nil
 }
 
 // StatesBefore is a list of states before the transition.
@@ -340,6 +346,20 @@ func (t *Transition) CalledStates() S {
 	}
 
 	return IndexToStates(t.MachApi.StateNames(), t.Mutation.Called)
+}
+
+// ImpliedStates returns states which are about to be activated, but were not
+// called directly. They are implied by relations of the called states, eg by
+// the Add relation.
+func (t *Transition) ImpliedStates() S {
+	return t.TargetStates().Delete(t.CalledStates(), t.StatesBefore())
+}
+
+// RejectedStates returns states rejected during the partial acceptance phase of
+// this transition, both called and implied. Relation resolvers must exclude
+// them from the target states, see [RelationsResolver.TargetStates].
+func (t *Transition) RejectedStates() S {
+	return t.rejected
 }
 
 // TimeIndexAfter return TimeAfter bound to an index, for easy querying.
