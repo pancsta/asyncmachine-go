@@ -276,7 +276,7 @@ func (w *Worker) HealthcheckState(e *am.Event) {
 var _ = ssW.ServeClient
 
 func (w *Worker) ServeClientEnter(e *am.Event) bool {
-	a := am.ParseArgs[A](e.Args)
+	a := am.ParseArgs[ARpc](e.Args)
 	return a != nil && a.Id != ""
 }
 
@@ -285,9 +285,33 @@ var _ = ssW.ServeClient
 func (w *Worker) ServeClientState(e *am.Event) {
 	w.Mach.Remove1(ssW.ServeClient, nil)
 
-	args := am.ParseArgs[A](e.Args)
+	args := am.ParseArgs[ARpc](e.Args)
 	w.AcceptClient = args.Id
 	w.PublicRpc.AllowedMachIds.Store(&[]string{w.AcceptClient})
+}
+
+var _ = ssW.ClientSendPayload
+
+func (w *Worker) ClientSendPayloadEnter(e *am.Event) bool {
+	a := am.ParseArgs[rpc.AServerPayload](e.Args)
+	return a != nil && a.Name != "" && a.Payload != nil
+}
+
+func (w *Worker) ClientSendPayloadState(e *am.Event) {
+	w.Mach.Remove1(ssW.ClientSendPayload, nil)
+
+	args := am.ParseArgs[rpc.AServerPayload](e.Args)
+	ctx := w.Mach.NewStateCtx(ssW.Start)
+
+	// unblock
+	go func() {
+		ctx, cancel := context.WithTimeout(ctx, w.DeliveryTimeout)
+		defer cancel()
+
+		if err := w.PublicRpc.SendPayload(ctx, e, args.Payload); err != nil {
+			AddErrRpc(e, w.Mach, err, nil)
+		}
+	}()
 }
 
 // ///// ///// /////
