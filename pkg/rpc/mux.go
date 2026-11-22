@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"os"
 	"strconv"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/soheilhy/cmux"
 
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	ampipe "github.com/pancsta/asyncmachine-go/pkg/states/pipes"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -330,7 +330,7 @@ func BindMux(
 	source, target *am.Machine, activeState, inactiveState string,
 ) (string, error) {
 	if activeState == "" {
-		return "", fmt.Errorf("active state must be set")
+		return "", nofmt.Errorf("active state must be set")
 	}
 	if inactiveState == "" {
 		inactiveState = activeState

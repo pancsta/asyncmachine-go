@@ -5,7 +5,6 @@ package machine // import "github.com/pancsta/asyncmachine-go/pkg/machine"
 import (
 	"context"
 	"errors"
-	"fmt"
 	"maps"
 	"math"
 	"os"
@@ -609,7 +608,7 @@ func (m *Machine) WhenTime(
 
 	// close early on invalid
 	if len(states) != len(times) || len(states) == 0 {
-		err := fmt.Errorf(
+		err := errorf(
 			"whenTime: states and times must have the "+
 				"same length (%s) > 0", j(states),
 		)
@@ -864,11 +863,11 @@ func (m *Machine) Url(incTime bool) string {
 	if incTime || tx == nil {
 		t := m.Time(nil).Sum(nil)
 		if t > 0 {
-			suf = fmt.Sprintf("?t=%d", t)
+			suf = sprintf("?t=%d", t)
 		}
 	}
 
-	return fmt.Sprintf("mach://%s%s%s", m.Id(), txId, suf)
+	return sprintf("mach://%s%s%s", m.Id(), txId, suf)
 }
 
 // PrependMut prepends the mutation to the front of the queue. This is a special
@@ -1106,7 +1105,7 @@ func (m *Machine) PanicToErr(args A) {
 	if err, ok := r.(error); ok {
 		m.AddErr(err, args)
 	} else {
-		m.AddErr(fmt.Errorf("%v", err), args)
+		m.AddErr(errorf("%v", err), args)
 	}
 }
 
@@ -1128,7 +1127,7 @@ func (m *Machine) PanicToErrState(state string, args A) {
 	if err, ok := r.(error); ok {
 		m.AddErrState(state, err, args)
 	} else {
-		m.AddErrState(state, fmt.Errorf("%v", err), args)
+		m.AddErrState(state, errorf("%v", err), args)
 	}
 }
 
@@ -1500,7 +1499,7 @@ func (m *Machine) Eval(source string, fn func(), ctx context.Context) bool {
 	case <-time.After(m.EvalTimeout):
 		canceled.Store(true)
 		m.log(LogOps, "[eval:timeout] %s", source)
-		err := fmt.Errorf("%w: eval:%s", ErrEvalTimeout, source)
+		err := errorf("%w: eval:%s", ErrEvalTimeout, source)
 		select {
 		case m.errInternal <- err:
 		default:
@@ -1537,13 +1536,13 @@ func (m *Machine) isNestedEval(source string) bool {
 	eval := m.currentEval.Load().(string)
 	var err error
 	if handler != "" {
-		err = fmt.Errorf("%w: eval:%s called directly in handler %s(),"+
+		err = errorf("%w: eval:%s called directly in handler %s(),"+
 			" skipping", ErrNestedEval, source, handler)
 	} else if eval != "" {
-		err = fmt.Errorf("%w: eval:%s called directly in eval.%s, skipping",
+		err = errorf("%w: eval:%s called directly in eval.%s, skipping",
 			ErrNestedEval, source, eval)
 	} else {
-		err = fmt.Errorf("%w: eval:%s called directly in ???, skipping",
+		err = errorf("%w: eval:%s called directly in ???, skipping",
 			ErrNestedEval, source)
 	}
 	m.log(LogOps, "[eval] %s", err)
@@ -1773,7 +1772,7 @@ func (m *Machine) recoverToErr(handler *handler, r recoveryData) {
 	}
 
 	m.log(LogOps, "[recover] handling panic...")
-	err := fmt.Errorf("%s", r.err)
+	err := errorf("%s", r.err)
 	m.err.Store(&err)
 
 	// final phase, trouble...
@@ -1866,7 +1865,7 @@ func (m *Machine) mustParseStates(states S) S {
 	for i := range states {
 		s := states[i]
 		if _, ok := schema[s]; !ok {
-			panic(fmt.Errorf(
+			panic(errorf(
 				"%w: %s not defined in schema for %s", ErrStateMissing,
 				s, m.id,
 			))
@@ -1934,13 +1933,13 @@ func (m *Machine) verifyStates(states S) error {
 	var checked []string
 
 	if slices.Contains(states, "") {
-		err := fmt.Errorf("noname state detected for schema for %s", m.id)
+		err := errorf("noname state detected for schema for %s", m.id)
 		errs = append(errs, err)
 	}
 
 	for _, s := range states {
 		if _, ok := m.schema[s]; !ok {
-			err := fmt.Errorf("state %s not defined in schema for %s", s, m.id)
+			err := errorf("state %s not defined in schema for %s", s, m.id)
 			errs = append(errs, err)
 			continue
 		}
@@ -1956,7 +1955,7 @@ func (m *Machine) verifyStates(states S) error {
 
 	if len(m.stateNames) > len(states) {
 		missing := StatesDiff(m.stateNames, checked)
-		return fmt.Errorf(
+		return errorf(
 			"error: trying to verify less states than registered for %s; "+
 				"missing: %s", m.id, j(missing),
 		)
@@ -2354,12 +2353,12 @@ func (m *Machine) logEv(e *Event, level LogLevel, msg string, args ...any) {
 
 	msg = prefix + msg
 
-	out := fmt.Sprintf(msg, args...)
+	out := sprintf(msg, args...)
 	logger := m.semLogger.Logger()
 	if logger != nil {
 		logger(level, msg, args...)
 	} else {
-		fmt.Println(out)
+		printLine(out)
 	}
 
 	// dont modify completed transitions
@@ -2525,7 +2524,7 @@ func (m *Machine) processHandlers(state string, e *Event) *handlerReturn {
 			// timeout, fork a new handler loop
 			m.log(LogOps, "[cancel] (%s) by timeout", j(tx.TargetStates()))
 			m.log(LogDecisions, "[handler:timeout]: %s from %s", methodName, h.id)
-			err := fmt.Errorf("%w: %s from %s", ErrHandlerTimeout, methodName, h.id)
+			err := errorf("%w: %s from %s", ErrHandlerTimeout, methodName, h.id)
 			select {
 			case m.errInternal <- err:
 			default:
@@ -2554,7 +2553,7 @@ func (m *Machine) processHandlers(state string, e *Event) *handlerReturn {
 				// TODO dispose all argCheckDone chans
 
 				// enqueue the relevant err
-				err := fmt.Errorf("%w: %s from %s", ErrHandlerTimeout, methodName,
+				err := errorf("%w: %s from %s", ErrHandlerTimeout, methodName,
 					h.id)
 				m.EvAddErr(e, err, Pass(&AException{
 					TargetStates: tx.TargetStates(),
@@ -2712,7 +2711,7 @@ func (m *Machine) handlerLoop() {
 		// exit, a new clone is running
 		currVer := m.handlerLoopVer.Load()
 		if currVer != ver {
-			err := fmt.Errorf(
+			err := errorf(
 				"deadlined handler finished, theoretical leak: %s", call.name,
 			)
 			m.log(LogOps, "[error] %s", err)
@@ -3189,7 +3188,7 @@ func (m *Machine) String() string {
 		if ret != "(" {
 			ret += " "
 		}
-		ret += fmt.Sprintf("%s:%d", state, m.clock[state])
+		ret += sprintf("%s:%d", state, m.clock[state])
 	}
 
 	return ret + ")"
@@ -3213,14 +3212,14 @@ func (m *Machine) StringAll() string {
 			if ret != "(" {
 				ret += " "
 			}
-			ret += fmt.Sprintf("%s:%d", state, m.clock[state])
+			ret += sprintf("%s:%d", state, m.clock[state])
 			continue
 		}
 
 		if ret2 != "[" {
 			ret2 += " "
 		}
-		ret2 += fmt.Sprintf("%s:%d", state, m.clock[state])
+		ret2 += sprintf("%s:%d", state, m.clock[state])
 	}
 
 	return ret + ") " + ret2 + "]"
@@ -3250,7 +3249,7 @@ func (m *Machine) Inspect(states S) string {
 			active = "1"
 		}
 
-		ret += fmt.Sprintf("%s %s\n"+
+		ret += sprintf("%s %s\n"+
 			"    |Tick     %d\n", active, name, m.clock[name])
 		if state.Auto {
 			ret += "    |Auto     true\n"
@@ -3372,7 +3371,7 @@ func (m *Machine) SchemaVer() int {
 // changes). The length of the schema is also the version of the schema.
 func (m *Machine) SetSchema(newSchema Schema, names S) error {
 	if m.Transition() != nil {
-		return fmt.Errorf("%w: cannot set schema during a transition", ErrSchema)
+		return errorf("%w: cannot set schema during a transition", ErrSchema)
 	}
 
 	// locks
@@ -3383,12 +3382,12 @@ func (m *Machine) SetSchema(newSchema Schema, names S) error {
 	// validate
 	if len(newSchema) <= len(m.schema) {
 		m.schemaMx.Unlock()
-		return fmt.Errorf("%w: new schema too short (> %d states)",
+		return errorf("%w: new schema too short (> %d states)",
 			ErrSchema, len(m.schema))
 	}
 	if len(newSchema) != len(names) {
 		m.schemaMx.Unlock()
-		return fmt.Errorf("%w: new schema has to be the same length as"+
+		return errorf("%w: new schema has to be the same length as"+
 			" state names", ErrSchema)
 	}
 
@@ -3545,7 +3544,7 @@ func (m *Machine) Export() (*Serialized, Schema, error) {
 	defer m.schemaMx.RUnlock()
 
 	if !m.statesVerified.Load() {
-		return nil, nil, fmt.Errorf("%w: call VerifyStates first", ErrSchema)
+		return nil, nil, errorf("%w: call VerifyStates first", ErrSchema)
 	}
 
 	t := m.time(nil)
@@ -3577,10 +3576,10 @@ func (m *Machine) Import(data *Serialized) error {
 
 	// verify
 	if m.id != data.ID {
-		return fmt.Errorf("import ID mismatch")
+		return errorf("import ID mismatch")
 	}
 	if len(m.schema) != len(data.StateNames) {
-		return fmt.Errorf("%w: importing diff state len", ErrSchema)
+		return errorf("%w: importing diff state len", ErrSchema)
 	}
 
 	// restore active states and clocks
@@ -3591,7 +3590,7 @@ func (m *Machine) Import(data *Serialized) error {
 		sum += v
 
 		if !slices.Contains(m.stateNames, state) {
-			return fmt.Errorf("%w: %s", ErrStateUnknown, state)
+			return errorf("%w: %s", ErrStateUnknown, state)
 		}
 		if IsActiveTick(v) {
 			m.activeStates = append(m.activeStates, state)

@@ -2,7 +2,6 @@ package iroh
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/netip"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/key"
 
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
@@ -51,7 +51,7 @@ func NewServer(
 		opts = &ServerOpts{}
 	}
 	if addr == "" {
-		return nil, nil, fmt.Errorf("addr required for iroh server")
+		return nil, nil, nofmt.Errorf("addr required for iroh server")
 	}
 
 	bindOpts := []iroh.Option{}
@@ -112,7 +112,7 @@ func NewClient(
 		opts = &ClientOpts{}
 	}
 	if irohAddr == "" {
-		return nil, nil, fmt.Errorf("irohAddr required for iroh client")
+		return nil, nil, nofmt.Errorf("irohAddr required for iroh client")
 	}
 
 	epAddr, err := endpointticket.Decode(irohAddr)
@@ -172,7 +172,7 @@ func NewMux(
 		opts = &MuxOpts{}
 	}
 	if addr == "" {
-		return nil, nil, fmt.Errorf("addr required for iroh mux")
+		return nil, nil, nofmt.Errorf("addr required for iroh mux")
 	}
 
 	bindOpts := []iroh.Option{}

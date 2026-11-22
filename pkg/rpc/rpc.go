@@ -5,7 +5,6 @@ import (
 	"bufio"
 	"encoding/gob"
 	"errors"
-	"fmt"
 	"io"
 	"math"
 	"net"
@@ -22,6 +21,7 @@ import (
 	"github.com/cenkalti/rpc2"
 	"github.com/orsinium-labs/enum"
 
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc/states"
@@ -383,17 +383,17 @@ var (
 // wrapping error setters
 
 func AddErrRpcStr(e *am.Event, mach *am.Machine, msg string) am.Result {
-	err := fmt.Errorf("%w: %s", ErrRpc, msg)
+	err := nofmt.Errorf("%w: %s", ErrRpc, msg)
 	return mach.EvAddErrState(e, ss.ErrRpc, err, nil)
 }
 
 func AddErrParams(e *am.Event, mach *am.Machine, err error) am.Result {
-	err = fmt.Errorf("%w: %w", ErrInvalidParams, err)
+	err = nofmt.Errorf("%w: %w", ErrInvalidParams, err)
 	return mach.AddErrState(ss.ErrRpc, err, nil)
 }
 
 func AddErrResp(e *am.Event, mach *am.Machine, err error) am.Result {
-	err = fmt.Errorf("%w: %w", ErrInvalidResp, err)
+	err = nofmt.Errorf("%w: %w", ErrInvalidResp, err)
 	return mach.AddErrState(ss.ErrRpc, err, nil)
 }
 
@@ -406,7 +406,7 @@ func AddErrNetworkTimeout(e *am.Event, mach *am.Machine, err error) am.Result {
 }
 
 func AddErrNoConn(e *am.Event, mach *am.Machine, err error) am.Result {
-	err = fmt.Errorf("%w: %w", ErrNoConn, err)
+	err = nofmt.Errorf("%w: %w", ErrNoConn, err)
 	return mach.AddErrState(ss.ErrNetwork, err, nil)
 }
 
@@ -414,7 +414,7 @@ func AddErrNoConn(e *am.Event, mach *am.Machine, err error) am.Result {
 // TODO also return error for compat
 func AddErr(e *am.Event, mach *am.Machine, msg string, err error) {
 	if msg != "" {
-		err = fmt.Errorf("%w: %s", err, msg)
+		err = nofmt.Errorf("%w: %s", err, msg)
 	}
 
 	if strings.HasPrefix(err.Error(), "gob: ") {
@@ -616,10 +616,10 @@ func (s *semLogger) Pipes() []*am.LogEntry {
 		// outbound
 		var text string
 		if p.SourceState != "" {
-			text = fmt.Sprintf("[pipe-out:%s] %s to %s", kind, p.SourceState,
+			text = nofmt.Sprintf("[pipe-out:%s] %s to %s", kind, p.SourceState,
 				p.TargetMach)
 		} else {
-			text = fmt.Sprintf("[pipe-in:%s] %s from %s", kind, p.TargetState,
+			text = nofmt.Sprintf("[pipe-in:%s] %s from %s", kind, p.TargetState,
 				p.SourceMach)
 		}
 		ret[i] = &am.LogEntry{
@@ -1059,7 +1059,7 @@ func MachRepl(mach am.Api, addr string, opts *ReplOpts) error {
 	}
 
 	if len(mach.Handlers()) > 0 && !mach.Has(ssSs.Names()) {
-		err := fmt.Errorf(
+		err := nofmt.Errorf(
 			"%w: REPL source has to implement pkg/rpc/states/StateSourceStatesDef",
 			am.ErrSchema,
 		)
@@ -1152,7 +1152,7 @@ func MachReplWs(mach am.Api, addr string, opts *ReplOpts) (*Server, error) {
 	}
 
 	if len(mach.Handlers()) > 0 && !mach.Has(ssSs.Names()) {
-		err := fmt.Errorf(
+		err := nofmt.Errorf(
 			"%w: REPL source has to implement pkg/rpc/states/StateSourceStatesDef",
 			am.ErrSchema,
 		)

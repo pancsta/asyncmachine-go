@@ -1,7 +1,6 @@
 package machine
 
 import (
-	"fmt"
 	"os"
 	"slices"
 	"strings"
@@ -193,7 +192,7 @@ func captureLog(t *testing.T, m *Machine, log *string) {
 		mx.Lock()
 		defer mx.Unlock()
 
-		*log += fmt.Sprintf(msg+"\n", args...)
+		*log += sprintf(msg+"\n", args...)
 	})
 }
 

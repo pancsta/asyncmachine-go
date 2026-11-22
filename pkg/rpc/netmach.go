@@ -3,7 +3,6 @@ package rpc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"maps"
 	"os"
 	"reflect"
@@ -14,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -335,7 +335,7 @@ func (m *NetworkMachine) AddErrState(
 	// log a stack trace to the local log
 	if m.LogStackTrace {
 		trace := utils.CaptureStackTrace()
-		m.log(am.LogChanges, fmt.Sprintf("ERROR: %s\nTrace:\n%s", err, trace))
+		m.log(am.LogChanges, nofmt.Sprintf("ERROR: %s\nTrace:\n%s", err, trace))
 	}
 
 	// build args
@@ -452,7 +452,7 @@ func (m *NetworkMachine) EvAddErrState(
 	// log a stack trace to the local log
 	if m.LogStackTrace {
 		trace := utils.CaptureStackTrace()
-		m.log(am.LogChanges, fmt.Sprintf("ERROR: %s\nTrace:\n%s", err, trace))
+		m.log(am.LogChanges, nofmt.Sprintf("ERROR: %s\nTrace:\n%s", err, trace))
 	}
 
 	// build args
@@ -740,7 +740,7 @@ func (m *NetworkMachine) WhenTime(
 
 	// close early on invalid
 	if len(states) != len(times) {
-		err := fmt.Errorf(
+		err := nofmt.Errorf(
 			"whenTime: states and times must have the same length (%s)",
 			utils.J(states),
 		)
@@ -1021,7 +1021,7 @@ func (m *NetworkMachine) String() string {
 			ret += " "
 		}
 		idx := slices.Index(index, state)
-		ret += fmt.Sprintf("%s:%d", state, m.machTime[idx])
+		ret += nofmt.Sprintf("%s:%d", state, m.machTime[idx])
 	}
 
 	return ret + ")"
@@ -1043,14 +1043,14 @@ func (m *NetworkMachine) StringAll() string {
 			if ret != "(" {
 				ret += " "
 			}
-			ret += fmt.Sprintf("%s:%d", state, m.machTime[idx])
+			ret += nofmt.Sprintf("%s:%d", state, m.machTime[idx])
 			continue
 		}
 
 		if ret2 != "[" {
 			ret2 += " "
 		}
-		ret2 += fmt.Sprintf("%s:%d", state, m.machTime[idx])
+		ret2 += nofmt.Sprintf("%s:%d", state, m.machTime[idx])
 	}
 
 	return ret + ") " + ret2 + "]"
@@ -1077,7 +1077,7 @@ func (m *NetworkMachine) Inspect(states am.S) string {
 		}
 
 		idx := slices.Index(index, name)
-		ret += fmt.Sprintf("%s %s\n"+
+		ret += nofmt.Sprintf("%s %s\n"+
 			"    |Tick     %d\n", active, name, m.machTime[idx])
 		if state.Auto {
 			ret += "    |Auto     true\n"
@@ -1117,12 +1117,12 @@ func (m *NetworkMachine) log(level am.LogLevel, msg string, args ...any) {
 		msg = prefix + msg
 	}
 
-	out := fmt.Sprintf(msg, args...)
+	out := nofmt.Sprintf(msg, args...)
 	logger := m.semLogger.Logger()
 	if logger != nil {
 		logger(level, msg, args...)
 	} else {
-		fmt.Println(out)
+		nofmt.Println(out)
 	}
 
 	m.logEntriesLock.Lock()
@@ -1142,7 +1142,7 @@ func (m *NetworkMachine) MustParseStates(states am.S) am.S {
 	// check if all states are defined in m.Schema
 	for _, s := range states {
 		if !slices.Contains(m.stateNames, s) {
-			panic(fmt.Sprintf("state %s is not defined for %s (via %s)", s,
+			panic(nofmt.Sprintf("state %s is not defined for %s (via %s)", s,
 				m.remoteId, m.id))
 		}
 	}

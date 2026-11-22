@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"slices"
 	"sync"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	"github.com/vmihailenco/msgpack/v5"
 
@@ -367,7 +367,7 @@ func NewMemory(
 
 	c.TrackedStates = mach.ParseStates(c.TrackedStates)
 	if len(c.TrackedStates) == 0 {
-		return nil, fmt.Errorf("%w: no states to track", am.ErrStateMissing)
+		return nil, nofmt.Errorf("%w: no states to track", am.ErrStateMissing)
 	}
 
 	// init and bind tracer
