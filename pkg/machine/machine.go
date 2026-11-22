@@ -121,8 +121,9 @@ type Machine struct {
 	// Default: *DefaultRelationsResolver.
 	resolver RelationsResolver
 	// List of all the registered state names.
-	stateNames       S
-	stateNamesExport S
+	stateNames S
+	// stateNamesExport is a cached copy of stateNames, see [Machine.StateNames].
+	stateNamesExport atomic.Pointer[S]
 	loopLock         sync.Mutex
 	handlers         []*handler
 	handlersMx       sync.RWMutex
@@ -1963,7 +1964,7 @@ func (m *Machine) verifyStates(states S) error {
 
 	// memorize the state names order
 	m.stateNames = slicesUniq(states)
-	m.stateNamesExport = nil
+	m.stateNamesExport.Store(nil)
 	m.statesVerified.Store(true)
 
 	// tracers
@@ -3324,11 +3325,14 @@ func (m *Machine) StateNames() S {
 	m.schemaMx.RLock()
 	defer m.schemaMx.RUnlock()
 
-	if m.stateNamesExport == nil {
-		m.stateNamesExport = slices.Clone(m.stateNames)
+	if exp := m.stateNamesExport.Load(); exp != nil {
+		return *exp
 	}
 
-	return m.stateNamesExport
+	exp := slices.Clone(m.stateNames)
+	m.stateNamesExport.Store(&exp)
+
+	return exp
 }
 
 // Queue returns a copy of the currently active states.
@@ -3598,7 +3602,7 @@ func (m *Machine) Import(data *Serialized) error {
 
 	// restore ID and state names
 	m.stateNames = data.StateNames
-	m.stateNamesExport = nil
+	m.stateNamesExport.Store(nil)
 	m.statesVerified.Store(true)
 	m.machineTick = data.MachineTick + 1
 	m.tags.Store(new(slices.Clone(data.Tags)))
