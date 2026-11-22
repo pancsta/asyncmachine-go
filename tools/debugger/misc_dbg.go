@@ -478,14 +478,24 @@ func (m *mcpServer) textReader(
 func (m *mcpServer) textScreen(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText(m.d.App.ScreenText()), nil
+	var text string
+	m.d.Mach.Eval("textScreen", func() {
+		text = m.d.App.ScreenText()
+	}, ctx)
+
+	return mcp.NewToolResultText(text), nil
 }
 
 func (m *mcpServer) textHelp(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText(textViewToText(m.d.helpDialogLeft) + "\n\n" +
-		textViewToText(m.d.helpDialogRight)), nil
+	var text string
+	m.d.Mach.Eval("textHelp", func() {
+		text = textViewToText(m.d.helpDialogLeft) + "\n\n" +
+			textViewToText(m.d.helpDialogRight)
+	}, ctx)
+
+	return mcp.NewToolResultText(text), nil
 }
 
 func (m *mcpServer) textLog(

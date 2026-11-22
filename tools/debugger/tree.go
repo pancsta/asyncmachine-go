@@ -291,11 +291,11 @@ func (d *Debugger) hUpdateTreeRelCols(
 		if !ok {
 			continue
 		}
-		d.handleExpanded(node, ref, c)
+		d.hHandleExpanded(node, ref, c)
 	}
 }
 
-func (d *Debugger) handleExpanded(
+func (d *Debugger) hHandleExpanded(
 	node *cview.TreeNode, ref *nodeRef, c *Client,
 ) {
 	// TODO ref lock? copy?

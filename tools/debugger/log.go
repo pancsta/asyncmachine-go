@@ -51,7 +51,7 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 	maxDiff := float64(maxVisible * 1)
 	if d.lastResize == d.logLastResize && d.C.logRenderedLevel == level &&
 		d.logRenderedClient == d.C.MsgStruct.ID &&
-		d.C.logRenderedFilters.Equal(d.filtersFromStates()) &&
+		d.C.logRenderedFilters.Equal(d.hFiltersFromStates()) &&
 		d.C.logRenderedGroup == d.C.SelectedGroup &&
 		d.C.logRenderedTimestamps == d.Mach.Is1(ss.LogTimestamps) &&
 		math.Abs(float64(d.C.logRenderedCursor1)-float64(cursorTx1)) < maxDiff {
@@ -116,14 +116,17 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 			return // expired
 		}
 
-		// cview is thread safe
-		d.log.Clear()
-		_, err := d.log.Write([]byte(buf))
-		if ctx.Err() != nil {
+		var failed bool
+		if !d.Mach.Eval("BuildingLog", func() {
+			d.log.Clear()
+			if _, err := d.log.Write([]byte(buf)); err != nil {
+				failed = true
+				d.Mach.EvAddErr(e, err, nil)
+			}
+		}, ctx) {
 			return // expired
 		}
-		if err != nil {
-			d.Mach.EvAddErr(e, err, nil)
+		if failed {
 			return
 		}
 
@@ -132,7 +135,9 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 		if updated && d.params.OutputLog {
 			// TODO bind context to current AND NEXT tick of LogBuilt
 			d.Mach.Go(d.Mach.NewStateCtx(ss.Start), func() {
-				d.Mach.EvAddErr(e, d.outputLogFile(ctx), nil)
+				d.Mach.Eval("hOutputLogFile", func() {
+					d.Mach.EvAddErr(e, d.hOutputLogFile(ctx), nil)
+				}, ctx)
 			})
 		}
 
@@ -160,14 +165,14 @@ func (d *Debugger) LogBuiltState(e *am.Event) {
 		d.C.logRenderedLevel = level
 		d.C.logRenderedGroup = group
 		d.logRenderedClient = d.C.MsgStruct.ID
-		d.C.logRenderedFilters = d.filtersFromStates()
+		d.C.logRenderedFilters = d.hFiltersFromStates()
 		d.C.logRenderedTimestamps = d.Mach.Is1(ss.LogTimestamps)
 		d.logAppends = 0
 	}
-	d.handleLogScroll()
+	d.hHandleLogScroll()
 }
 
-func (d *Debugger) outputLogFile(ctx context.Context) error {
+func (d *Debugger) hOutputLogFile(ctx context.Context) error {
 	d.logFileMx.Lock()
 	defer d.logFileMx.Unlock()
 
@@ -302,7 +307,7 @@ func (d *Debugger) OverlayEnd(e *am.Event) {
 
 // ///// ///// /////
 
-func (d *Debugger) handleLogScroll() {
+func (d *Debugger) hHandleLogScroll() {
 	if d.Mach.Is1(ss.LogUserScrolled) {
 		// TODO restore scroll
 		return
@@ -363,7 +368,7 @@ func (d *Debugger) hParseMsgLog(c *Client, msgTx *dbg.DbgMsgTx, idx int) {
 
 	// pre-tx log entries
 	for _, entry := range msgTx.PreLogEntries {
-		readerEntries = d.parseMsgReader(c, entry, readerEntries, tx)
+		readerEntries = d.hParseMsgReader(c, entry, readerEntries, tx)
 		if pe := d.hParseMsgLogEntry(c, tx, entry); pe != nil {
 			logEntries = append(logEntries, pe)
 		}
@@ -371,7 +376,7 @@ func (d *Debugger) hParseMsgLog(c *Client, msgTx *dbg.DbgMsgTx, idx int) {
 
 	// tx log entries
 	for _, entry := range msgTx.LogEntries {
-		readerEntries = d.parseMsgReader(c, entry, readerEntries, tx)
+		readerEntries = d.hParseMsgReader(c, entry, readerEntries, tx)
 		if pe := d.hParseMsgLogEntry(c, tx, entry); pe != nil {
 			logEntries = append(logEntries, pe)
 		}
@@ -741,7 +746,7 @@ type logReaderTreeRef struct {
 
 var removeStyleBracketsRe = regexp.MustCompile(`\[[^\]]*\]`)
 
-func (d *Debugger) initLogReader() *cview.TreeView {
+func (d *Debugger) hInitLogReader() *cview.TreeView {
 	root := cview.NewTreeNode("Extracted")
 	root.SetIndent(0)
 	root.SetReference(&logReaderTreeRef{})
@@ -755,24 +760,24 @@ func (d *Debugger) initLogReader() *cview.TreeView {
 	tree.SetTopLevel(1)
 
 	tree.SetChangedFunc(func(node *cview.TreeNode) {
-		d.onLogReaderChanged(root, node)
+		d.hLogReaderChanged(root, node)
 	})
 
 	tree.SetSelectedFunc(func(node *cview.TreeNode) {
-		d.onLogReaderSelected(tree, node)
+		d.hLogReaderSelected(tree, node)
 	})
 
 	return tree
 }
 
-func (d *Debugger) onLogReaderChanged(root, node *cview.TreeNode) {
+func (d *Debugger) hLogReaderChanged(root, node *cview.TreeNode) {
 	ref, ok := node.GetReference().(*logReaderTreeRef)
-	d.updateLogReaderOverlay(ref)
+	d.hUpdateLogReaderOverlay(ref)
 	if !ok || ref == nil {
 		return
 	}
 
-	d.rememberLogReaderSelection(root, node)
+	d.hRememberLogReaderSelection(root, node)
 	if len(ref.stateNames) < 1 {
 		d.Mach.Remove1(ss.StateNameSelected, nil)
 		return
@@ -783,15 +788,9 @@ func (d *Debugger) onLogReaderChanged(root, node *cview.TreeNode) {
 	}))
 }
 
-func (d *Debugger) onLogReaderSelected(
+func (d *Debugger) hLogReaderSelected(
 	tree *cview.TreeView, node *cview.TreeNode,
 ) {
-	// TODO this is a joke
-	if !tree.TryRLock() {
-		return
-	}
-	tree.RUnlock()
-
 	defer d.Mach.PanicToErr(nil)
 
 	// TODO support extMachTime
@@ -846,14 +845,16 @@ func (d *Debugger) onLogReaderSelected(
 		if tick != d.Mach.Tick(ss.UpdateLogReader) {
 			return
 		}
-		node.SetText(text)
-		d.draw(d.logReader)
+		d.Mach.Eval("hLogReaderSelected", func() {
+			node.SetText(text)
+			d.draw(d.logReader)
+		}, ctx)
 	})
 
-	d.updateLogReaderOverlay(ref)
+	d.hUpdateLogReaderOverlay(ref)
 }
 
-func (d *Debugger) updateLogReaderOverlay(ref *logReaderTreeRef) {
+func (d *Debugger) hUpdateLogReaderOverlay(ref *logReaderTreeRef) {
 	if ref != nil && ref.info != "" {
 		d.Mach.Add1(ss.Overlay, Pass(&A{
 			Text: ref.info,
@@ -863,28 +864,26 @@ func (d *Debugger) updateLogReaderOverlay(ref *logReaderTreeRef) {
 	}
 }
 
-func (d *Debugger) rememberLogReaderSelection(root, node *cview.TreeNode) {
-	d.Mach.Eval("initLogReader", func() {
-		d.logReaderSelected = node.GetText()
-		d.logReaderSelectedLevel = node.GetIndent()
-		d.logReaderSelectedParent = node.GetParent().GetText()
-		d.logReaderScroll = d.logReader.GetScrollOffset()
+func (d *Debugger) hRememberLogReaderSelection(root, node *cview.TreeNode) {
+	d.logReaderSelected = node.GetText()
+	d.logReaderSelectedLevel = node.GetIndent()
+	d.logReaderSelectedParent = node.GetParent().GetText()
+	d.logReaderScroll = d.logReader.GetScrollOffset()
 
-		posY := -1
-		root.Walk(func(n, parent *cview.TreeNode, depth int) bool {
-			if posY == -1 {
-				posY++
-				return true
-			}
-			if n == node {
-				d.logReaderSelectedY = posY
-				return false
-			}
-
+	posY := -1
+	root.Walk(func(n, parent *cview.TreeNode, depth int) bool {
+		if posY == -1 {
 			posY++
 			return true
-		})
-	}, nil)
+		}
+		if n == node {
+			d.logReaderSelectedY = posY
+			return false
+		}
+
+		posY++
+		return true
+	})
 }
 
 func (d *Debugger) hStateTrace(tx *dbg.DbgMsgTx) []*types.StateTraceItem {
@@ -970,7 +969,7 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 	root := d.logReader.GetRoot()
 	root.ClearChildren()
 
-	u := d.newLogReaderUpdate(e, root)
+	u := d.hNewLogReaderUpdate(e, root)
 	if u == nil {
 		return
 	}
@@ -1015,17 +1014,17 @@ func (d *Debugger) hUpdateLogReader(e *am.Event) {
 	}
 
 	for _, parent := range parents {
-		d.appendLogReaderParent(root, parent, u.parentSource, u.parentQueue)
+		d.hAppendLogReaderParent(root, parent, u.parentSource, u.parentQueue)
 	}
 	d.logReader.SetScrollOffset(d.logReaderScroll)
-	d.logReader.SetCurrentNode(d.restoreLogReaderSelection(root, u.parentSource))
+	d.logReader.SetCurrentNode(d.hRestoreLogReaderSelection(root, u.parentSource))
 	d.logReader.SetScrollOffset(d.logReaderScroll)
 
 	// TODO check if still needed
 	d.draw()
 }
 
-func (d *Debugger) newLogReaderUpdate(
+func (d *Debugger) hNewLogReaderUpdate(
 	e *am.Event, root *cview.TreeNode,
 ) *logReaderUpdate {
 	c := d.C
@@ -1052,7 +1051,7 @@ func (d *Debugger) newLogReaderUpdate(
 	}
 }
 
-func (d *Debugger) appendLogReaderParent(
+func (d *Debugger) hAppendLogReaderParent(
 	root, parent, parentSource, parentQueue *cview.TreeNode,
 ) {
 	if parent == nil {
@@ -1083,7 +1082,7 @@ func (d *Debugger) appendLogReaderParent(
 	}
 }
 
-func (d *Debugger) restoreLogReaderSelection(
+func (d *Debugger) hRestoreLogReaderSelection(
 	root, fallback *cview.TreeNode,
 ) *cview.TreeNode {
 	selected := fallback
@@ -1131,7 +1130,7 @@ func (d *Debugger) restoreLogReaderSelection(
 	return selected
 }
 
-func (d *Debugger) parseMsgReader(
+func (d *Debugger) hParseMsgReader(
 	c *Client, log *am.LogEntry, txEntries []*types.LogReaderEntryPtr,
 	tx *dbg.DbgMsgTx,
 ) []*types.LogReaderEntryPtr {

@@ -24,8 +24,8 @@ const (
 )
 
 func (d *Debugger) hInitUiComponents() {
-	d.helpDialog = d.initHelpDialog()
-	d.exportDialog = d.initExportDialog()
+	d.helpDialog = d.hInitHelpDialog()
+	d.exportDialog = d.hInitExportDialog()
 
 	// tree view
 	d.tree = d.hInitSchemaTree()
@@ -73,7 +73,6 @@ func (d *Debugger) hInitUiComponents() {
 		// unblock
 		go func() {
 			// scroll to tx
-			txIdx := d.C.TxIndex(txId)
 			d.Mach.Add1(ss.ScrollToTx, Pass(&A{
 				TxId: txId,
 			}))
@@ -82,6 +81,7 @@ func (d *Debugger) hInitUiComponents() {
 			d.Mach.Eval("log.SetClickedFunc", func() {
 				defer d.Mach.PanicToErr(nil)
 
+				txIdx := d.C.TxIndex(txId)
 				logs := d.C.MsgTxs[txIdx].LogEntries
 				for _, l := range logs {
 					for _, prefix := range statePrefixes {
@@ -107,7 +107,7 @@ func (d *Debugger) hInitUiComponents() {
 	})
 
 	// reader view
-	d.logReader = d.initLogReader()
+	d.logReader = d.hInitLogReader()
 	d.logReader.SetTitle(" Reader ")
 	d.logReader.SetBorder(true)
 	d.logReader.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
@@ -205,7 +205,7 @@ func (d *Debugger) hInitTimelineMarkers() {
 			return a, event
 		}
 
-		if d.MarkersCount() == 0 {
+		if len(d.markers) == 0 {
 			return a, event
 		}
 
@@ -258,7 +258,7 @@ func (d *Debugger) hInitTimelineTx() {
 		_, _, width, _ := d.timelineTxs.GetRect()
 		x, _ := event.Position()
 		pos := float64(x) / float64(width)
-		txNum := math.Round(float64(d.TxCount()) * pos)
+		txNum := math.Round(float64(len(c.MsgTxs)) * pos)
 		d.Mach.Add1(ss.ScrollToTx, Pass(&A{
 			CursorTx1:   int(txNum),
 			TrimHistory: true,
@@ -318,7 +318,7 @@ func (d *Debugger) hInitAddressBar() {
 			}
 			addr := d.History[d.HistoryCursor]
 			// d.params.Print("go:\n" + addr.String() + "\n")
-			d.GoToMachAddress(addr, true, true)
+			go d.GoToMachAddress(addr, true, true)
 		case colPrev:
 			if d.HistoryCursor >= len(d.History)-1 {
 				return
@@ -326,7 +326,7 @@ func (d *Debugger) hInitAddressBar() {
 			d.HistoryCursor++
 			addr := d.History[d.HistoryCursor]
 			// d.params.Print("go:\n" + addr.String() + "\n")
-			d.GoToMachAddress(addr, true, true)
+			go d.GoToMachAddress(addr, true, true)
 
 		case colNext:
 			if d.HistoryCursor <= 0 {
@@ -335,7 +335,7 @@ func (d *Debugger) hInitAddressBar() {
 			d.HistoryCursor--
 			addr := d.History[d.HistoryCursor]
 			// d.params.Print("go:\n" + addr.String() + "\n")
-			d.GoToMachAddress(addr, true, true)
+			go d.GoToMachAddress(addr, true, true)
 		case colNextMach:
 			if d.HistoryCursor <= 0 {
 				return
@@ -349,7 +349,7 @@ func (d *Debugger) hInitAddressBar() {
 			}
 			addr := d.History[d.HistoryCursor]
 			// d.params.Print("go:\n" + addr.String() + "\n")
-			d.GoToMachAddress(addr, true, true)
+			go d.GoToMachAddress(addr, true, true)
 
 		case colCopy:
 			if d.clip == nil {
@@ -364,7 +364,7 @@ func (d *Debugger) hInitAddressBar() {
 			}
 			txt, _ := d.clip.ReadAll(clipper.RegClipboard)
 			if addr, err := types.ParseMachUrl(string(txt)); err == nil {
-				d.GoToMachAddress(addr, false, true)
+				go d.GoToMachAddress(addr, false, true)
 			}
 		}
 
@@ -373,9 +373,11 @@ func (d *Debugger) hInitAddressBar() {
 			cview.Styles.PrimitiveBackgroundColor, tcell.AttrUnderline)
 		go func() {
 			time.Sleep(time.Millisecond * 200)
-			d.addressBar.SetSelectedStyle(tcell.GetColor(theme.Active),
-				cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
-			d.draw(d.addressBar)
+			d.Mach.Eval("addressBar.SetSelectedStyle", func() {
+				d.addressBar.SetSelectedStyle(tcell.GetColor(theme.Active),
+					cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
+				d.draw(d.addressBar)
+			}, nil)
 		}()
 	})
 
@@ -417,14 +419,18 @@ func (d *Debugger) hInitToolbar() {
 				// prevent toolbar stealing focus from dialogs
 				if item.skipFocus {
 					d.Mach.Add1(ss.UpdateFocus, nil)
-					d.hUpdateToolbar()
+					d.Mach.Eval("toolbar", func() {
+						d.hUpdateToolbar()
+					}, nil)
 				}
 
 				// unclick
 				time.Sleep(time.Millisecond * 200)
-				d.toolbars[i].SetSelectedStyle(tcell.GetColor(theme.Active),
-					cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
-				d.draw(d.toolbars[i])
+				d.Mach.Eval("toolbar", func() {
+					d.toolbars[i].SetSelectedStyle(tcell.GetColor(theme.Active),
+						cview.Styles.PrimitiveBackgroundColor, tcell.AttrBold)
+					d.draw(d.toolbars[i])
+				}, nil)
 			}()
 		})
 
@@ -661,7 +667,7 @@ func (d *Debugger) hInitToolbar() {
 	d.hUpdateToolbar()
 }
 
-func (d *Debugger) initExportDialog() *cview.Modal {
+func (d *Debugger) hInitExportDialog() *cview.Modal {
 	exportDialog := cview.NewModal()
 	form := exportDialog.GetForm()
 	form.AddInputField("Filename", "am-dbg-dump", 20, nil, nil)
@@ -702,7 +708,7 @@ func (d *Debugger) initExportDialog() *cview.Modal {
 // TODO modal titles
 // TODO state color meanings
 // TODO page up/down on tx timeline
-func (d *Debugger) initHelpDialog() *cview.Flex {
+func (d *Debugger) hInitHelpDialog() *cview.Flex {
 	left := cview.NewTextView()
 	left.SetBackgroundColor(tcell.GetColor(theme.Highlight))
 	left.SetScrollBarColor(tcell.GetColor(theme.Highlight2))

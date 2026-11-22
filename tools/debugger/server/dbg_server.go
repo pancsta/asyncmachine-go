@@ -1157,6 +1157,9 @@ func httpHandlerIndex(
 			"Step Diagram</a></li>")
 	}
 	fmt.Fprintf(w, `<li><a href="/traces">Traces View</a></li>`)
+	if p.UiLivepage {
+		fmt.Fprintf(w, `<li><a href="/livepage">Livepage UI</a></li>`)
+	}
 
 	if p.UiMcp {
 		fmt.Fprintf(w, `<li>MCP: http://%s/mcp</li>`, httpAddr)

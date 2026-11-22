@@ -35,6 +35,7 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
+	tclive "github.com/pancsta/cview/tcell-livepage"
 	"github.com/pancsta/livepage"
 	"github.com/soheilhy/cmux"
 	"github.com/zyedidia/clipper"
@@ -57,6 +58,9 @@ type (
 	S = am.S
 	A = types.A
 )
+
+// livepagePrefix is the URL prefix of the livepage UI on the web server.
+const livepagePrefix = "/livepage"
 
 var (
 	Pass = am.Pass
@@ -87,9 +91,7 @@ type Debugger struct {
 	// sorted list of markers TODO clean up on client disconn
 	markers []*MarkerItem
 	// graphHash is a hash of all schema hashes
-	graphHash string
-	// UI is currently being drawn
-	drawing            atomic.Bool
+	graphHash          string
 	tree               *cview.TreeView
 	treeRoot           *cview.TreeNode
 	log                *cview.TextView
@@ -109,9 +111,7 @@ type Debugger struct {
 	lastScrolledTxTime time.Time
 	// repaintScheduled controls the UI paint debounce
 	repaintScheduled atomic.Bool
-	// repaintPending indicates a skipped repaint
-	repaintPending atomic.Bool
-	graph          *amgraph.Graph
+	graph            *amgraph.Graph
 	// update client list scheduled
 	updateCLScheduled  atomic.Bool
 	buildCLScheduled   atomic.Bool
@@ -184,6 +184,7 @@ type Debugger struct {
 	ServerMux       cmux.CMux
 	ServerHttp      *http.Server
 	tracePage       *livepage.Page[*traces.View]
+	livepageScreen  *tclive.Screen
 	ctxCancelCursor context.CancelFunc
 	ctxCursor       context.Context
 	callLogFiles    map[string]*os.File
@@ -267,6 +268,10 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	d.Mach = mach
 	mach.SetGroups(states.DebuggerGroups, ss)
 
+	// cview UI work runs on the machine's queue via Eval, so match the
+	// timeout cview uses for its own event loop
+	mach.EvalTimeout = 30 * time.Second
+
 	// self debug
 	if p.DebugAddr != "" {
 		_ = amhelp.MachDebug(mach, p.DebugAddr, p.LogLevel, false,
@@ -289,6 +294,37 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// cview TUI app, driven by the debugger's state machine
+	d.App, err = cview.NewApplicationWithMach(mach)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case d.params.Screen != nil:
+		d.App.SetScreen(d.params.Screen)
+	case d.params.UiSsh:
+		screen := tcell.NewSimulationScreen("UTF-8")
+		if err := screen.Init(); err != nil {
+			return nil, err
+		}
+		d.App.SetScreen(screen)
+	case d.params.UiLivepage:
+		screen, err := tclive.NewScreen(ctx, tclive.Opts{
+			Title:           "am-dbg",
+			RefreshInterval: 100 * time.Millisecond,
+			Live: livepage.Opts{
+				Prefix:   livepagePrefix,
+				Debounce: 100 * time.Millisecond,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		d.livepageScreen = screen
+		d.App.SetScreen(screen)
+	}
+
 	if d.params.Version == "" {
 		d.params.Version = "(devel)"
 	}
@@ -296,6 +332,9 @@ func New(ctx context.Context, p types.Params) (*Debugger, error) {
 	if d.params.UiWeb {
 		d.tracePage, err = traces.NewPage(ctx, mach, "/traces")
 		if err != nil {
+			if d.livepageScreen != nil {
+				d.livepageScreen.Fini()
+			}
 			return nil, err
 		}
 	}
@@ -392,6 +431,14 @@ func (d *Debugger) hSetParams(p types.Params) error {
 	p.AddrSsh = sshAddr
 	p.UiSsh = p.UiSsh && sshAddr != ""
 	p.UiWeb = p.UiWeb && httpAddr != ""
+	// both modes swap the single cview screen
+	if p.UiSsh && p.UiLivepage {
+		return fmt.Errorf("--ui-livepage cannot be combined with --ui-ssh")
+	}
+	if p.UiLivepage && !p.UiWeb {
+		mach.Log("--ui-livepage requires --ui-web, disabling")
+	}
+	p.UiLivepage = p.UiLivepage && p.UiWeb && httpAddr != ""
 	p.TailMode = p.TailMode && p.MachUrl == ""
 	p.Version = utils.GetVersion()
 
@@ -1274,6 +1321,7 @@ func (d *Debugger) SetFilterLogLevel(lvl am.LogLevel) {
 		// process the toolbarItem change
 		d.Mach.Add1(ss.ToolToggled, nil)
 		d.hUpdateSchemaLogGrid()
+		d.Mach.Add1(ss.UpdateFocus, nil)
 		d.hRedrawFull(false)
 	}, nil)
 }
@@ -1704,13 +1752,13 @@ func (d *Debugger) hParseMsg(c *Client, idx int) {
 	msgTx.CalledStates = amhelp.IndexesToStates(index, msgTx.CalledStatesIdxs)
 
 	if d.params.OutputCallLog && len(msgTx.Steps) > 0 {
-		if err := d.appendCallLog(c, msgTx, msgTxParsed); err != nil {
+		if err := d.hAppendCallLog(c, msgTx, msgTxParsed); err != nil {
 			d.Mach.AddErr(err, nil)
 		}
 	}
 }
 
-func (d *Debugger) appendCallLog(
+func (d *Debugger) hAppendCallLog(
 	c *Client, msgTx *dbg.DbgMsgTx, msgTxParsed *types.MsgTxParsed,
 ) error {
 	steps := ""
@@ -1803,12 +1851,12 @@ func (d *Debugger) appendCallLog(
 		}
 
 		// clean up on start
-		if err := d.callLogCleanup(dir); err != nil {
+		if err := d.hCallLogCleanup(dir); err != nil {
 			return err
 		}
 
 		// create init.go
-		if err := d.callLogBootstrap(dir); err != nil {
+		if err := d.hCallLogBootstrap(dir); err != nil {
 			return err
 		}
 
@@ -1887,7 +1935,7 @@ func callStepsToContent(name string, steps string) []byte {
 	return []byte(code)
 }
 
-func (d *Debugger) callLogCleanup(dir string) error {
+func (d *Debugger) hCallLogCleanup(dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -1913,7 +1961,7 @@ func (d *Debugger) callLogCleanup(dir string) error {
 // hIsTxSkipped checks if the tx at the given index is skipped by toolbarItems
 // idx is 0-based
 func (d *Debugger) hIsTxSkipped(c *Client, idx int) bool {
-	if !d.filtersActive() {
+	if !d.hFiltersActive() {
 		return false
 	}
 	return slices.Index(c.MsgTxsFiltered, idx) == -1
@@ -1922,7 +1970,7 @@ func (d *Debugger) hIsTxSkipped(c *Client, idx int) bool {
 // hFilterTxCursor1 fixes the current cursor according to toolbarItems
 // by skipping filtered out txs. If none found, returns the current cursor.
 func (d *Debugger) hFilterTxCursor1(c *Client, newCursor1 int, back bool) int {
-	if !d.filtersActive() {
+	if !d.hFiltersActive() {
 		return newCursor1
 	}
 
@@ -2016,7 +2064,7 @@ func (d *Debugger) hUpdateTimelineTx() {
 
 	// title
 	var title string
-	if d.filtersActive() {
+	if d.hFiltersActive() {
 		pos := slices.Index(c.MsgTxsFiltered, c.CursorTx1-1) + 1
 		if c.CursorTx1 == 0 {
 			pos = 0
@@ -2113,7 +2161,7 @@ func (d *Debugger) hExportData(filename string, snapshot bool) {
 
 	// prepare the format
 	now := time.Now()
-	if d.PrevTx() != nil {
+	if d.hPrevTx() != nil {
 		now = *d.C.Tx(max(0, d.C.CursorTx1-1)).Time
 	}
 	data := make([]*server.Exportable, 0, len(d.Clients))
@@ -2685,20 +2733,20 @@ func (d *Debugger) hGetSidebarCurrClientIdx() int {
 // hFilterClientTxs filters client's txs according the selected
 // toolbarItems. Called by toolbarItem states, not directly.
 func (d *Debugger) hFilterClientTxs() {
-	if d.C == nil || !d.filtersActive() {
+	if d.C == nil || !d.hFiltersActive() {
 		return
 	}
 
 	d.C.MsgTxsFiltered = nil
 	for i := range d.C.MsgTxs {
-		match := d.hFilterTx(d.C, i, d.filtersFromStates())
+		match := d.hFilterTx(d.C, i, d.hFiltersFromStates())
 		if match {
 			d.C.MsgTxsFiltered = append(d.C.MsgTxsFiltered, i)
 		}
 	}
 }
 
-func (d *Debugger) filtersFromStates() *types.Filters {
+func (d *Debugger) hFiltersFromStates() *types.Filters {
 	is := d.Mach.Is1
 
 	return &types.Filters{
@@ -2771,8 +2819,8 @@ func (d *Debugger) statesFromFilters(filters *types.Filters) {
 	}
 }
 
-// filtersActive checks if any filters are active.
-func (d *Debugger) filtersActive() bool {
+// hFiltersActive checks if any filters are active.
+func (d *Debugger) hFiltersActive() bool {
 	return d.Mach.Any1(states.DebuggerGroups.Filters...)
 }
 
@@ -2887,7 +2935,7 @@ func (d *Debugger) hSyncOptsTimelines() {
 	}
 }
 
-func (d *Debugger) getFocusColor() tcell.Color {
+func (d *Debugger) hGetFocusColor() tcell.Color {
 	color := cview.Styles.MoreContrastBackgroundColor
 	if d.Mach.IsErr() {
 		color = tcell.GetColor(theme.Err)
@@ -2917,7 +2965,7 @@ func (d *Debugger) hRemoveClient(id string) {
 	// TODO remove from graph?
 }
 
-func (d *Debugger) callLogBootstrap(dir string) error {
+func (d *Debugger) hCallLogBootstrap(dir string) error {
 	code := utils.Sp(`
 		package main
 		
@@ -3009,7 +3057,7 @@ func (d *Debugger) hBuildMarkersIndex() {
 			}
 
 			// tx filters
-			if d.filtersActive() && d.hIsTxSkipped(c, txIdx) {
+			if d.hFiltersActive() && d.hIsTxSkipped(c, txIdx) {
 				continue
 			}
 

@@ -61,7 +61,7 @@ func TestLogReaderEval(t *testing.T) {
 
 	// evals are not stored as reader entries
 	d := &Debugger{}
-	d.parseMsgReader(c, &am.LogEntry{Text: "[eval] fooEval"}, nil, tx)
+	d.hParseMsgReader(c, &am.LogEntry{Text: "[eval] fooEval"}, nil, tx)
 	assert.Empty(t, c.LogReader["tx-1"])
 
 	u := &logReaderUpdate{
@@ -511,4 +511,18 @@ func TestHadErrSince(t *testing.T) {
 	assert.True(t, c.HadErrSinceTx(6, 2), "tx: %d, dist: %d", 6, 2)
 	assert.True(t, c.HadErrSinceTx(100, 2), "tx: %d, dist: %d", 100, 2)
 	assert.True(t, c.HadErrSinceTx(1, 1), "tx: %d, dist: %d", 1, 1)
+}
+
+func TestUiLivepageConflict(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	_, err := New(ctx, types.Params{
+		UiSsh:           true,
+		UiLivepage:      true,
+		ListenAddr:      "localhost:6831",
+		EnableClipboard: false,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "ui-livepage")
 }
