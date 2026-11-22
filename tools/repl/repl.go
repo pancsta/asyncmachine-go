@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/reeflective/console"
@@ -30,20 +31,30 @@ type Repl struct {
 	*am.ExceptionHandler
 
 	Mach *am.Machine
-	// Addrs ending with /* are WebSockets
-	// TODO keep NAMED addresses eg CLI0, filename1, filename2, CLI1
-	//  and manipulate when watching for changes, keeping the prev ones
-	Addrs []string
+	// Addrs are named addresses, ending with /* for WebSockets. Names are
+	// stable across watched address file changes, keeping existing connections.
+	Addrs []NamedAddr
 	Cmd   *cobra.Command
 	C     *console.Console
 	// am-dbg address for new clients
 	DbgAddr string
 
-	// TODO avoid empty entries
-	rpcClients   []*arpc.Client
+	rpcClients   []*replClient
+	clientsMu    sync.RWMutex
+	clientSeq    int
 	lastMsg      string
 	selectedMach string
 }
+
+// replClient is a named aRPC client, kept in the ordered [Repl.rpcClients]
+// registry. The slice has no empty entries.
+type replClient struct {
+	Name string
+	*arpc.Client
+}
+
+// Machine returns the REPL state machine.
+func (r *Repl) Machine() *am.Machine { return r.Mach }
 
 func New(ctx context.Context, id string) (*Repl, error) {
 	r := &Repl{}
@@ -67,6 +78,12 @@ func New(ctx context.Context, id string) (*Repl, error) {
 	if err != nil {
 		return nil, err
 	}
+	// stop clients on disposal
+	disposed.RegisterDisposal(nil, mach, func(id string, ctx context.Context) {
+		for _, c := range r.clients() {
+			c.Stop(ctx, nil, false)
+		}
+	})
 	r.Mach = mach
 	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
 
@@ -86,8 +103,8 @@ func (r *Repl) StartEnter(e *am.Event) bool {
 }
 
 func (r *Repl) StartState(e *am.Event) {
-	// init clients TODO avoid empty entries
-	r.rpcClients = make([]*arpc.Client, len(r.Addrs))
+	r.clientsMu.Lock()
+	r.rpcClients = make([]*replClient, 0, len(r.Addrs))
 	for i, addr := range r.Addrs {
 
 		// create
@@ -98,8 +115,10 @@ func (r *Repl) StartState(e *am.Event) {
 		}
 
 		// save
-		r.rpcClients[i] = c
+		r.rpcClients = append(r.rpcClients, c)
 	}
+	r.clientSeq = len(r.rpcClients)
+	r.clientsMu.Unlock()
 
 	r.Mach.Add1(ss.Connecting, nil)
 }
@@ -107,15 +126,12 @@ func (r *Repl) StartState(e *am.Event) {
 var _ = ss.Connecting
 
 func (r *Repl) ConnectingEnter(e *am.Event) bool {
-	return len(r.rpcClients) > 0
+	return len(r.clients()) > 0
 }
 
 func (r *Repl) ConnectingState(e *am.Event) {
 	// reconn existing clients
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	for _, c := range r.clients() {
 		if c.Mach.Not1(ss.Start) {
 			c.Start(e)
 		} else {
@@ -125,10 +141,11 @@ func (r *Repl) ConnectingState(e *am.Event) {
 }
 
 func (r *Repl) ConnectingExit(e *am.Event) bool {
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	if isShuttingDown(e) {
+		return true
+	}
+
+	for _, c := range r.clients() {
 		if c.Mach.Is1(ssrpc.ClientStates.Connecting) {
 			return false
 		}
@@ -145,9 +162,8 @@ func (r *Repl) RpcConnEnter(e *am.Event) bool {
 
 func (r *Repl) RpcConnState(e *am.Event) {
 	mut := e.Transition().Mutation
-	r.Mach.Log("Connected to %s", mut.Source.MachId)
-	r.Mach.Add1(ss.Connected, nil)
-	r.Mach.Add1(ss.ConnectedFully, nil)
+	r.Mach.Log("Connected to %s", r.clientName(mut.Source.MachId))
+	r.updateConnStates()
 }
 
 var _ = ss.RpcDisconn
@@ -158,9 +174,8 @@ func (r *Repl) RpcDisconnEnter(e *am.Event) bool {
 
 func (r *Repl) RpcDisconnState(e *am.Event) {
 	mut := e.Transition().Mutation
-	r.Mach.Log("Disconnected from %s", mut.Source.MachId)
-	r.Mach.Remove1(ss.Connected, nil)
-	r.Mach.Remove1(ss.ConnectedFully, nil)
+	r.Mach.Log("Disconnected from %s", r.clientName(mut.Source.MachId))
+	r.updateConnStates()
 }
 
 var _ = ss.ReplMode
@@ -208,7 +223,7 @@ func (r *Repl) ReplModeState(e *am.Event) {
 		return r.Cmd
 	})
 	menu.AddInterrupt(io.EOF, r.exitCtrlD)
-	setupPrompt(menu)
+	r.setupPrompt(menu)
 
 	// fork and start
 	go func() {
@@ -226,10 +241,7 @@ func (r *Repl) CmdAddEnter(e *am.Event) bool {
 
 	// confirm theres a Ready worker
 	var mach *arpc.NetworkMachine
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	for _, c := range r.clients() {
 		if c.Mach.Not1(ssrpc.ClientStates.Ready) {
 			continue
 		}
@@ -256,10 +268,7 @@ func (r *Repl) CmdAddState(e *am.Event) {
 
 	// confirm theres a Ready worker
 	var mach *arpc.NetworkMachine
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	for _, c := range r.clients() {
 		if c.Mach.Not1(ssrpc.ClientStates.Ready) {
 			continue
 		}
@@ -287,10 +296,7 @@ func (r *Repl) CmdRemoveEnter(e *am.Event) bool {
 
 	// confirm theres a Ready worker
 	var mach *arpc.NetworkMachine
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	for _, c := range r.clients() {
 		if c.Mach.Not1(ssrpc.ClientStates.Ready) {
 			continue
 		}
@@ -317,10 +323,7 @@ func (r *Repl) CmdRemoveState(e *am.Event) {
 
 	// confirm theres a Ready worker
 	var mach *arpc.NetworkMachine
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	for _, c := range r.clients() {
 		if c.Mach.Not1(ssrpc.ClientStates.Ready) {
 			continue
 		}
@@ -341,6 +344,61 @@ func (r *Repl) CmdRemoveState(e *am.Event) {
 	r.Print(res.String())
 }
 
+var _ = ss.CmdSet
+
+func (r *Repl) CmdSetEnter(e *am.Event) bool {
+	args := am.ParseArgs[A](e.Args)
+
+	// confirm theres a Ready worker
+	var mach *arpc.NetworkMachine
+	for _, c := range r.clients() {
+		if c.Mach.Not1(ssrpc.ClientStates.Ready) {
+			continue
+		}
+		if c.NetMach.RemoteId() == args.MachId || args.MachId == "." {
+			mach = c.NetMach
+			break
+		}
+	}
+	if mach == nil {
+		return false
+	}
+
+	if nil != amhelp.Implements(mach.StateNames(), args.States) {
+		return false
+	}
+
+	// TODO confirm args integrity
+
+	return true
+}
+
+func (r *Repl) CmdSetState(e *am.Event) {
+	args := am.ParseArgs[A](e.Args)
+
+	// confirm theres a Ready worker
+	var mach *arpc.NetworkMachine
+	for _, c := range r.clients() {
+		if c.Mach.Not1(ssrpc.ClientStates.Ready) {
+			continue
+		}
+		if c.NetMach.RemoteId() == args.MachId || args.MachId == "." {
+			mach = c.NetMach
+			break
+		}
+	}
+
+	// pass cli args
+	mutArgs := am.A{}
+	for i, k := range args.MutArgs[0] {
+		v := args.MutArgs[1][i]
+		mutArgs[k] = v
+	}
+
+	res := mach.Set(args.States, mutArgs)
+	r.Print(res.String())
+}
+
 var _ = ss.CmdGroupAdd
 
 func (r *Repl) CmdGroupAddEnter(e *am.Event) bool {
@@ -352,7 +410,7 @@ func (r *Repl) CmdGroupAddEnter(e *am.Event) bool {
 	// find at least one good match
 	// TODO --strict
 	var match bool
-	for _, c := range r.rpcClients {
+	for _, c := range r.clients() {
 		if slices.Contains(args.MachIds, c.NetMach.RemoteId()) &&
 			amhelp.Implements(c.NetMach.StateNames(), args.States) == nil {
 
@@ -380,10 +438,7 @@ func (r *Repl) CmdGroupAddState(e *am.Event) {
 	}
 
 	sc, se, sq := 0, 0, 0
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	for _, c := range r.clients() {
 		if !slices.Contains(args.MachIds, c.NetMach.RemoteId()) ||
 			amhelp.Implements(c.NetMach.StateNames(), args.States) != nil {
 
@@ -419,10 +474,7 @@ func (r *Repl) CmdGroupRemoveEnter(e *am.Event) bool {
 	// find at least one good match
 	// TODO --strict
 	var match bool
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	for _, c := range r.clients() {
 		if slices.Contains(args.MachIds, c.NetMach.RemoteId()) &&
 			amhelp.Implements(c.NetMach.StateNames(), args.States) == nil {
 
@@ -450,10 +502,7 @@ func (r *Repl) CmdGroupRemoveState(e *am.Event) {
 	}
 
 	sc, se, sq := 0, 0, 0
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	for _, c := range r.clients() {
 		if !slices.Contains(args.MachIds, c.NetMach.RemoteId()) ||
 			amhelp.Implements(c.NetMach.StateNames(), args.States) != nil {
 
@@ -462,6 +511,70 @@ func (r *Repl) CmdGroupRemoveState(e *am.Event) {
 
 		// count results
 		switch c.NetMach.Remove(args.States, mutArgs) {
+		case am.Executed:
+			se++
+		case am.Canceled:
+			sc++
+		default:
+			sq++
+		}
+	}
+
+	r.Print(`
+		Executed: %d
+		Queued: %d
+		Canceled: %d`,
+		se, sq, sc)
+}
+
+var _ = ss.CmdGroupSet
+
+func (r *Repl) CmdGroupSetEnter(e *am.Event) bool {
+	args := am.ParseArgs[A](e.Args)
+	if len(args.MachIds) == 0 {
+		return false
+	}
+
+	// find at least one good match
+	// TODO --strict
+	var match bool
+	for _, c := range r.clients() {
+		if slices.Contains(args.MachIds, c.NetMach.RemoteId()) &&
+			amhelp.Implements(c.NetMach.StateNames(), args.States) == nil {
+
+			match = true
+			break
+		}
+	}
+	if !match {
+		return false
+	}
+
+	// TODO confirm args integrity
+
+	return true
+}
+
+func (r *Repl) CmdGroupSetState(e *am.Event) {
+	args := am.ParseArgs[A](e.Args)
+
+	// pass cli args
+	mutArgs := am.A{}
+	for i, k := range args.MutArgs[0] {
+		v := args.MutArgs[1][i]
+		mutArgs[k] = v
+	}
+
+	sc, se, sq := 0, 0, 0
+	for _, c := range r.clients() {
+		if !slices.Contains(args.MachIds, c.NetMach.RemoteId()) ||
+			amhelp.Implements(c.NetMach.StateNames(), args.States) != nil {
+
+			continue
+		}
+
+		// count results
+		switch c.NetMach.Set(args.States, mutArgs) {
 		case am.Executed:
 			se++
 		case am.Canceled:
@@ -488,8 +601,6 @@ func (r *Repl) ListMachinesEnter(e *am.Event) bool {
 }
 
 func (r *Repl) ListMachinesState(e *am.Event) {
-	// TODO maybe merge with pkg/pubsub.Topic#ListMachineStates
-	// TODO extract to pkg/helpers.MachGroup
 	r.Mach.Remove1(ss.ListMachines, nil)
 
 	args := am.ParseArgs[A](e.Args)
@@ -500,18 +611,12 @@ func (r *Repl) ListMachinesState(e *am.Event) {
 	retCh := args.RpcCh
 	ret := make([]*arpc.Client, 0)
 
-	for i, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	for i, c := range r.clients() {
 
-		// start time
-		// TODO optimize
+		// pagination is REPL-specific (mixes in schema-less clients)
 		if filters.StartIdx > 0 && i < filters.StartIdx {
 			continue
 		}
-
-		// limit the number of results
 		if filters.Limit > 0 && len(ret) >= filters.Limit {
 			break
 		}
@@ -520,7 +625,7 @@ func (r *Repl) ListMachinesState(e *am.Event) {
 		// TODO list NoSchema as disconnected, but marked
 		if c.Mach.Tick(ssrpc.ClientStates.Ready) == 0 {
 			if filters.NoSchema {
-				ret = append(ret, c)
+				ret = append(ret, c.Client)
 			}
 			continue
 		}
@@ -530,74 +635,11 @@ func (r *Repl) ListMachinesState(e *am.Event) {
 			continue
 		}
 
-		w := c.NetMach
-		remId := w.RemoteId()
-
-		// ID
-
-		// exact
-		if filters.IdExact != "" && remId != filters.IdExact {
-			continue
-		}
-		// regexp
-		if filters.IdRegexp != nil && !filters.IdRegexp.MatchString(remId) {
-			continue
-		}
-		// substring
-		if filters.IdSubstr != "" && !strings.Contains(remId, filters.IdSubstr) {
-			continue
-		}
-		// prefix match
-		if filters.IdPrefix != "" && !strings.HasPrefix(remId, filters.IdPrefix) {
-			continue
-		}
-		// suffix match
-		if filters.IdSuffix != "" && !strings.HasSuffix(remId, filters.IdSuffix) {
-			continue
-		}
-		// parent ID
-		if filters.Parent != "" && w.ParentId() != filters.Parent {
+		if !filters.Matches(c.NetMach) {
 			continue
 		}
 
-		// mtime
-
-		// min
-		if filters.MtimeMin > 0 && filters.MtimeMin > w.Time(nil).Sum(nil) {
-			continue
-		}
-		// max
-		if filters.MtimeMax > 0 && filters.MtimeMax < w.Time(nil).Sum(nil) {
-			continue
-		}
-
-		// states
-		names := w.StateNames()
-
-		// check if inactive states match
-		if len(filters.StatesActive) > 0 {
-			// missing states
-			if amhelp.Implements(names, filters.StatesActive) != nil {
-				continue
-			}
-
-			if !w.Is(filters.StatesActive) {
-				continue
-			}
-		}
-		// check if inactive states match
-		if len(filters.StatesInactive) > 0 {
-			// missing states
-			if amhelp.Implements(names, filters.StatesInactive) != nil {
-				continue
-			}
-
-			if !w.Not(filters.StatesInactive) {
-				continue
-			}
-		}
-
-		ret = append(ret, c)
+		ret = append(ret, c.Client)
 	}
 
 	retCh <- ret
@@ -607,44 +649,22 @@ var _ = ss.ConnectedFully
 
 func (r *Repl) ConnectedFullyEnter(e *am.Event) bool {
 	// enter only if all ready
-	conns := 0
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
-		if c.Mach.Is1(ssrpc.ClientStates.Ready) {
-			conns++
-		}
-	}
+	clients := r.clients()
+	ready := countReady(clients)
 
-	return conns > 0 && conns == len(r.rpcClients)
+	return ready > 0 && ready == len(clients)
 }
 
 func (r *Repl) ConnectedFullyExit(e *am.Event) bool {
 	// exit if going to Disconnecting / Disconnected
 	// TODO use TimeIndex
-	t := e.Transition().TargetStates()
-	mut := e.Mutation()
-	iStart := e.Machine().Index1(ss.Start)
-	if slices.Contains(t, ss.Disconnected) ||
-		slices.Contains(t, ss.Disconnecting) ||
-		// dont block a restart
-		(mut.Type == am.MutationRemove && mut.IsCalled(iStart)) {
+	if isShuttingDown(e) {
 		return true
 	}
 
-	// exit only if all ready
-	conns := 0
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
-		if c.Mach.Is1(ssrpc.ClientStates.Ready) {
-			conns++
-		}
-	}
-
-	return conns == 0 && conns == len(r.rpcClients)
+	// exit if not all ready anymore, or if the pool is empty
+	clients := r.clients()
+	return len(clients) == 0 || countReady(clients) < len(clients)
 }
 
 var _ = ss.Disconnecting
@@ -658,11 +678,8 @@ func (r *Repl) DisconnectingState(e *am.Event) {
 		}
 
 		// TODO parallel
-		for _, c := range r.rpcClients {
-			if c == nil {
-				continue
-			}
-			c.Stop(ctx, e, false)
+		for _, c := range r.clients() {
+			c.Stop(ctx, nil, false)
 		}
 
 		r.Mach.Add1(ss.Disconnected, nil)
@@ -672,10 +689,7 @@ func (r *Repl) DisconnectingState(e *am.Event) {
 var _ = ss.Disconnected
 
 func (r *Repl) DisconnectedState(e *am.Event) {
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	for _, c := range r.clients() {
 		c.Stop(context.Background(), e, false)
 	}
 }
@@ -684,53 +698,30 @@ var _ = ss.Connected
 
 func (r *Repl) ConnectedState(e *am.Event) {
 	r.Mach.Remove1(ss.Connecting, nil)
-	r.Mach.Add1(ss.ConnectedFully, nil)
+	r.updateConnStates()
 }
 
 func (r *Repl) ConnectedExit(e *am.Event) bool {
 	// exit if going to Disconnecting / Disconnected
-	t := e.Transition().TargetStates()
-	if slices.Contains(t, ss.Disconnected) ||
-		slices.Contains(t, ss.Disconnecting) {
+	if isShuttingDown(e) {
 		return true
 	}
 
 	// exit only if none connected
-	conns := 0
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
-		if c.Mach.Is1(ssrpc.ClientStates.Ready) {
-			conns++
-		}
-	}
-
-	return conns == 0
+	return countReady(r.clients()) == 0
 }
 
 var _ = ss.AddrChanged
 
 func (r *Repl) AddrChangedEnter(e *am.Event) bool {
-	return len(am.ParseArgs[A](e.Args).Addrs) > 0
+	// allow empty lists, so removed addresses can be disconnected
+	_, ok := am.ParseArgsCheck[A](e.Args)
+	return ok
 }
 
-// TODO avoid a full restart
 func (r *Repl) AddrChangedState(e *am.Event) {
-	mach := r.Mach
-
-	// use the new addr list and dispose
-	r.Addrs = am.ParseArgs[A](e.Args).Addrs
-	whenDisconn := mach.WhenTicks(ss.Disconnected, 1, nil)
-	mach.Add1(ss.Disconnecting, nil)
-
-	// then restart
-	go func() {
-		// TODO not safe
-		<-whenDisconn
-		mach.Remove(S{ss.Start, ss.Disconnected}, nil)
-		mach.Add(S{ss.Start, ss.Connecting}, nil)
-	}()
+	r.Mach.Remove1(ss.AddrChanged, nil)
+	r.reconcileClients(e, am.ParseArgs[A](e.Args).Addrs)
 }
 
 var _ = ss.ErrNetwork
@@ -796,10 +787,7 @@ func (r *Repl) ListMachines(filters *ListFilters) ([]*arpc.Client, error) {
 func (r *Repl) NetMach(machId string) *arpc.NetworkMachine {
 	// first connected TODO document
 	if machId == "." {
-		for _, c := range r.rpcClients {
-			if c == nil {
-				continue
-			}
+		for _, c := range r.clients() {
 			if c.Mach.Is1(ssrpc.ClientStates.Ready) {
 				return c.NetMach
 			}
@@ -808,7 +796,7 @@ func (r *Repl) NetMach(machId string) *arpc.NetworkMachine {
 		return nil
 	}
 
-	rpcs, _ := r.ListMachines(&ListFilters{IdExact: machId})
+	rpcs, _ := r.ListMachines(&ListFilters{MachGroupFilter: amhelp.MachGroupFilter{IdExact: machId}})
 	if len(rpcs) == 0 {
 		r.PrintErr("mach ID unknown")
 		return nil
@@ -821,10 +809,7 @@ func (r *Repl) NetMach(machId string) *arpc.NetworkMachine {
 func (r *Repl) NetMachArgs(machId string) []string {
 	// first connected TODO document
 	if machId == "." {
-		for _, c := range r.rpcClients {
-			if c == nil {
-				continue
-			}
+		for _, c := range r.clients() {
 			if c.Mach.Is1(ssrpc.ClientStates.Ready) {
 				return c.Args()
 			}
@@ -833,7 +818,7 @@ func (r *Repl) NetMachArgs(machId string) []string {
 		return nil
 	}
 
-	rpcs, _ := r.ListMachines(&ListFilters{IdExact: machId})
+	rpcs, _ := r.ListMachines(&ListFilters{MachGroupFilter: amhelp.MachGroupFilter{IdExact: machId}})
 	if len(rpcs) == 0 {
 		r.PrintErr("mach ID unknown")
 		return nil
@@ -842,10 +827,10 @@ func (r *Repl) NetMachArgs(machId string) []string {
 	return rpcs[0].Args()
 }
 
-func (r *Repl) newRpcClient(addr, idSuffix string) (*arpc.Client, error) {
+func (r *Repl) newRpcClient(addr NamedAddr, idSuffix string) (*replClient, error) {
 	ctx := r.Mach.NewStateCtx(ss.Start)
 
-	parsed := strings.Split(addr, "/")
+	parsed := strings.Split(addr.Addr, "/")
 	// empty schema RPC client (`rc-WDHASH-0` for 1st client) TODO what?
 	id := strings.Replace(r.Mach.Id(), "repl-", "", 1) + "-" + idSuffix
 	opts := &arpc.ClientOpts{
@@ -855,7 +840,7 @@ func (r *Repl) newRpcClient(addr, idSuffix string) (*arpc.Client, error) {
 	if len(parsed) > 1 {
 		opts.WebSocket = parsed[1]
 	}
-	client, err := arpc.NewClient(ctx, addr, id, am.Schema{}, opts)
+	client, err := arpc.NewClient(ctx, addr.Addr, id, am.Schema{}, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -877,7 +862,7 @@ func (r *Repl) newRpcClient(addr, idSuffix string) (*arpc.Client, error) {
 		return nil, err
 	}
 
-	return client, nil
+	return &replClient{Name: addr.Name, Client: client}, nil
 }
 
 func (r *Repl) exitCtrlD(c *console.Console) {
@@ -905,38 +890,41 @@ func (r *Repl) exitCtrlD(c *console.Console) {
 // injectCompletions switches completion types.
 func (r *Repl) injectCompletions() {
 	for _, cmd := range r.Cmd.Commands() {
-		switch cmd.Name() {
-		// TODO enum, not strings
+		switch cmdName(cmd) {
 
-		case "add", "remove", "when", "when-not":
+		case CmdAdd, CmdRemove, CmdSet, CmdWhen, CmdWhenNot:
 			// MACH STATES
 			cmd.ValidArgsFunction = r.newCompletionFunc(r.completeMachStates)
 
-		case "inspect", "mach", "time":
+		case CmdInspect, CmdMach, CmdTime:
 			// MACH
 			cmd.ValidArgsFunction = r.newCompletionFunc(r.completeMach)
 
-		case "when-time":
+		case CmdWhenTime:
 			// MACH and state flag
 			cmd.ValidArgsFunction = r.newCompletionFunc(r.completeMach)
 			completeStates := r.newCompletionFunc(r.completeStates)
-			_ = cmd.RegisterFlagCompletionFunc("state", completeStates)
+			_ = cmd.RegisterFlagCompletionFunc(FlagState.Value, completeStates)
 
-		case "group-add", "group-remove":
+		case CmdGroupAdd, CmdGroupRemove, CmdGroupSet:
 			// MACH
 			cmd.ValidArgsFunction = r.newCompletionFunc(r.completeAllStatesFlags)
 			completeStates := r.newCompletionFunc(r.completeAllStates)
 			// TODO return err
-			_ = cmd.RegisterFlagCompletionFunc("active", completeStates)
-			_ = cmd.RegisterFlagCompletionFunc("inactive", completeStates)
+			_ = cmd.RegisterFlagCompletionFunc(FlagActive.Value, completeStates)
+			_ = cmd.RegisterFlagCompletionFunc(FlagInactive.Value, completeStates)
 
-		case "list":
+		case CmdList:
 			// flags only
 			completeStates := r.newCompletionFunc(r.completeAllStates)
 			// TODO return err
-			_ = cmd.RegisterFlagCompletionFunc("active", completeStates)
-			_ = cmd.RegisterFlagCompletionFunc("inactive", completeStates)
+			_ = cmd.RegisterFlagCompletionFunc(FlagActive.Value, completeStates)
+			_ = cmd.RegisterFlagCompletionFunc(FlagInactive.Value, completeStates)
 			cmd.ValidArgsFunction = r.newCompletionFunc(r.completeFlags)
+
+		case CmdConnect:
+			// arbitrary address, not a file
+			cmd.ValidArgsFunction = cobra.NoFileCompletions
 		}
 	}
 }
@@ -945,14 +933,12 @@ func (r *Repl) newCompletionFunc(complete completionFunc) completionFunc {
 	return func(
 		cmd *cobra.Command, args []string, toComplete string,
 	) ([]string, cobra.ShellCompDirective) {
-		resetArrFlags(nil)
 		if r.Mach.Not1(ss.Connected) {
 			r.PrintMsg("not connected")
 			return []string{}, cobra.ShellCompDirectiveNoFileComp
 		}
-		ret1, ret2 := complete(cmd, args, toComplete)
-		resetArrFlags(nil)
-		return ret1, ret2
+
+		return complete(cmd, args, toComplete)
 	}
 }
 
@@ -965,10 +951,7 @@ func (r *Repl) completeStates(
 
 	// states
 	var mach *arpc.NetworkMachine
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	for _, c := range r.clients() {
 		// dotmach
 		if args[0] == "." {
 			mach = c.NetMach
@@ -997,10 +980,7 @@ func (r *Repl) completeAllStatesFlags(
 	cmd *cobra.Command, args []string, toComplete string,
 ) ([]string, cobra.ShellCompDirective) {
 	allStates := S{}
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	for _, c := range r.clients() {
 		allStates = append(allStates, c.NetMach.StateNames()...)
 	}
 
@@ -1018,10 +998,7 @@ func (r *Repl) completeAllStates(
 	cmd *cobra.Command, args []string, toComplete string,
 ) ([]string, cobra.ShellCompDirective) {
 	allStates := S{}
-	for _, c := range r.rpcClients {
-		if c == nil {
-			continue
-		}
+	for _, c := range r.clients() {
 		allStates = append(allStates, c.NetMach.StateNames()...)
 	}
 
@@ -1037,6 +1014,8 @@ func (r *Repl) completeMachStates(
 ) ([]string, cobra.ShellCompDirective) {
 	var resources []string
 	l := len(args)
+	argFlag := "--" + FlagArg.Value
+	valFlag := "--" + FlagVal.Value
 
 	switch l {
 	case 0:
@@ -1052,10 +1031,7 @@ func (r *Repl) completeMachStates(
 	default:
 		// states
 		var mach *arpc.NetworkMachine
-		for _, c := range r.rpcClients {
-			if c == nil {
-				continue
-			}
+		for _, c := range r.clients() {
 			// dotmach
 			if args[0] == "." {
 				mach = c.NetMach
@@ -1074,11 +1050,11 @@ func (r *Repl) completeMachStates(
 		r.selectedMach = mach.RemoteId()
 
 		// filter available states
-		if cmd.Name() == "add" {
+		if cmdName(cmd) == CmdAdd {
 			resources = slices.DeleteFunc(resources, func(s string) bool {
 				return mach.Is1(s) && !amhelp.IsMulti(mach, s)
 			})
-		} else if cmd.Name() == "remove" {
+		} else if cmdName(cmd) == CmdRemove {
 			resources = slices.DeleteFunc(resources, func(s string) bool {
 				return mach.Not1(s)
 			})
@@ -1093,7 +1069,7 @@ func (r *Repl) completeMachStates(
 	// either --arg or --var, but only when a state name present
 	if l == 1 {
 		resources = slices.DeleteFunc(resources, func(s string) bool {
-			return s == "--val" || s == "--arg"
+			return s == valFlag || s == argFlag
 		})
 
 		// states present
@@ -1101,11 +1077,11 @@ func (r *Repl) completeMachStates(
 		words, _, _ := r.C.Shell().Line().TokenizeSpace(0)
 
 		// TODO fix missing --arg --val
-		if !slices.Contains(resources, "--arg") {
-			resources = append(resources, "--arg")
+		if !slices.Contains(resources, argFlag) {
+			resources = append(resources, argFlag)
 		}
-		if !slices.Contains(resources, "--val") {
-			resources = append(resources, "--val")
+		if !slices.Contains(resources, valFlag) {
+			resources = append(resources, valFlag)
 		}
 
 		// TODO complete --val with example tags
@@ -1116,9 +1092,9 @@ func (r *Repl) completeMachStates(
 		states := []string{}
 		for _, w := range words {
 			w = strings.TrimSpace(w)
-			if w == "--arg" {
+			if w == argFlag {
 				countArg++
-			} else if w == "--val" {
+			} else if w == valFlag {
 				countVal++
 			}
 			if strings.HasPrefix(w, "--") {
@@ -1136,11 +1112,11 @@ func (r *Repl) completeMachStates(
 		// --arg first, then --val
 		if countArg != countVal {
 			resources = slices.DeleteFunc(resources, func(s string) bool {
-				return s == "--arg"
+				return s == argFlag
 			})
 		} else {
 			resources = slices.DeleteFunc(resources, func(s string) bool {
-				return s == "--val"
+				return s == valFlag
 			})
 		}
 
@@ -1165,8 +1141,8 @@ func (r *Repl) completeMach(
 	var resources []string
 
 	if len(args) == 0 {
-		for _, c := range r.rpcClients {
-			if c == nil || c.NetMach == nil {
+		for _, c := range r.clients() {
+			if c.NetMach == nil {
 				continue
 			}
 			resources = append(resources, c.NetMach.RemoteId())
