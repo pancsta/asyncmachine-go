@@ -693,11 +693,9 @@ type RPCServer struct {
 	// copied from the fwd targets. See [fwdReplayMaxDefault].
 	replayMax int
 
-	// debounced tx queue
-	queue       []*dbg.DbgMsgTx
-	queueConnId []string
-	queueMx     sync.Mutex
-	scheduled   bool
+	// txBatch batches incoming tx msgs into [ss.ClientMsg] mutations, see
+	// [RPCServer.flushTxs].
+	txBatch *amhelp.Batch[txBatchItem]
 
 	// clientMsgs holds the last [RPCServer.replayMax] tx msgs of this conn's
 	// stream (a direct client, or all clients behind a fwd link), for replaying
@@ -925,40 +923,43 @@ func (r *RPCServer) DbgMsgSchema(
 }
 
 func (r *RPCServer) DbgMsgTx(msgTx *dbg.DbgMsgTx, _ *string) error {
-	r.queueMx.Lock()
-
-	if !r.scheduled {
-		r.scheduled = true
-		go func() {
-			// debounce
-			time.Sleep(time.Second)
-
-			r.queueMx.Lock()
-			defer r.queueMx.Unlock()
-
-			r.Mach.Add1(ss.ClientMsg, Pass(&A{
-				MsgsTx:  r.queue,
-				ConnIds: r.queueConnId,
-			}))
-			// DEBUG
-			// println("sent", len(r.queue), "msgs")
-			r.queue = nil
-			r.queueConnId = nil
-			r.scheduled = false
-		}()
-	}
-
-	now := time.Now()
-	msgTx.Time = &now
-	r.queue = append(r.queue, msgTx)
-	r.queueConnId = append(r.queueConnId, r.ConnID)
-	r.queueMx.Unlock()
-
-	// fwd to other instances, outside the queue lock, so a slow fwd target
-	// cannot stall the queue nor the other targets
-	r.fwdTx(msgTx, r.ConnID)
+	r.enqueueTx(msgTx, r.ConnID)
 
 	return nil
+}
+
+// txBatchItem is a tx msg with its origin conn ID, batched before being
+// pushed as [ss.ClientMsg].
+type txBatchItem struct {
+	MsgTx  *dbg.DbgMsgTx
+	ConnId string
+}
+
+// enqueueTx batches a tx msg for the [ss.ClientMsg] mutation and forwards it
+// to other instances (best effort).
+func (r *RPCServer) enqueueTx(msgTx *dbg.DbgMsgTx, connId string) {
+	now := time.Now()
+	msgTx.Time = &now
+	r.txBatch.Add(txBatchItem{MsgTx: msgTx, ConnId: connId})
+
+	// fwd to other instances, outside the batch lock, so a slow fwd target
+	// cannot stall the batch nor the other targets
+	r.fwdTx(msgTx, connId)
+}
+
+// flushTxs pushes a batch of tx msgs as a single [ss.ClientMsg] mutation.
+func (r *RPCServer) flushTxs(items []txBatchItem) {
+	msgs := make([]*dbg.DbgMsgTx, len(items))
+	connIds := make([]string, len(items))
+	for i, item := range items {
+		msgs[i] = item.MsgTx
+		connIds[i] = item.ConnId
+	}
+
+	r.Mach.Add1(ss.ClientMsg, Pass(&A{
+		MsgsTx:  msgs,
+		ConnIds: connIds,
+	}))
 }
 
 // fwdTx forwards a message to all fwd targets, best effort. Errors are logged
@@ -990,40 +991,7 @@ type DbgMsgTx struct {
 
 // TODO rename to RemoteMsgTxReceive (compat break)
 func (r *RPCServer) DbgMsgTxFwd(msg *DbgMsgTx, _ *string) error {
-	r.queueMx.Lock()
-
-	msgTx := msg.MsgTx
-	connId := msg.ConnId
-
-	if !r.scheduled {
-		r.scheduled = true
-		go func() {
-			// debounce
-			time.Sleep(time.Second)
-
-			r.queueMx.Lock()
-			defer r.queueMx.Unlock()
-
-			r.Mach.Add1(ss.ClientMsg, Pass(&A{
-				MsgsTx:  r.queue,
-				ConnIds: r.queueConnId,
-			}))
-			// DEBUG
-			// println("sent", len(r.queue), "msgs")
-			r.queue = nil
-			r.queueConnId = nil
-			r.scheduled = false
-		}()
-	}
-
-	now := time.Now()
-	msgTx.Time = &now
-	r.queue = append(r.queue, msgTx)
-	r.queueConnId = append(r.queueConnId, connId)
-	r.queueMx.Unlock()
-
-	// fwd to other instances (best effort), see [RPCServer.fwdTx]
-	r.fwdTx(msgTx, connId)
+	r.enqueueTx(msg.MsgTx, msg.ConnId)
 
 	return nil
 }
@@ -1055,6 +1023,10 @@ func AcceptConn(
 		Mach:   mach,
 		ConnID: connId,
 		FwdTo:  fwdTo,
+	}
+	rcvr.txBatch = &amhelp.Batch[txBatchItem]{
+		Window: time.Second,
+		Flush:  rcvr.flushTxs,
 	}
 	// all fwd targets share the same replay budget, see [newFwdConn]
 	if len(fwdTo) > 0 {
