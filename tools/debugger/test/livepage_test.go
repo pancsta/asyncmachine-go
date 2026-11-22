@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	amtest "github.com/pancsta/asyncmachine-go/internal/testing"
@@ -25,6 +26,7 @@ func TestLivepageUI(t *testing.T) {
 	d, err := amtest.NewDbgWorker(true, types.Params{
 		Id:              "livepage-worker",
 		UiWeb:           true,
+		UiSsh:           true,
 		UiLivepage:      true,
 		ListenAddr:      addr,
 		EnableClipboard: false,
@@ -32,6 +34,9 @@ func TestLivepageUI(t *testing.T) {
 	})
 	require.NoError(t, err)
 	t.Cleanup(d.Mach.Dispose)
+
+	// all UIs share one screen, no conflict
+	assert.NotEmpty(t, d.Params.Load().AddrSsh)
 
 	_, portStr, err := net.SplitHostPort(addr)
 	require.NoError(t, err)

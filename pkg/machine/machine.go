@@ -2585,7 +2585,7 @@ func (m *Machine) processHandlers(state string, e *Event) *handlerReturn {
 		case strings.HasSuffix(e.Name, SuffixEnd):
 			// returns from State and End handlers are ignored
 		default:
-			if !ret.called {
+			if ret == nil || !ret.called {
 				continue
 			}
 			t := m.t.Load()

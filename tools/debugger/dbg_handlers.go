@@ -13,12 +13,11 @@ import (
 	"runtime"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"charm.land/ssh"
-	"github.com/gdamore/tcell/v2"
 	"github.com/pancsta/cview"
+	tclive "github.com/pancsta/cview/tcell-livepage"
 	"github.com/soheilhy/cmux"
 	"golang.org/x/exp/maps"
 
@@ -130,9 +129,9 @@ func (d *Debugger) StartState(e *am.Event) {
 				"/traces/", d.tracePage.NewHandler())
 		}
 
-		if d.livepageScreen != nil {
+		if d.livepageHandler != nil {
 			d.ServerHttp.Handler.(*http.ServeMux).Handle(
-				livepagePrefix+"/", d.livepageScreen.Handler())
+				livepagePrefix+"/", d.livepageHandler)
 			d.params.Print("\nLivepage: http://%s%s\n\n",
 				d.params.AddrHttp, livepagePrefix)
 		}
@@ -2323,56 +2322,34 @@ func (d *Debugger) SshServerEnter(e *am.Event) bool {
 
 func (d *Debugger) SshServerState(e *am.Event) {
 	ctx := d.Mach.NewStateCtx(ss.SshServer)
-	// TODO SshClientState
-	busy := atomic.Bool{}
-	d.sshSrvKick = make(chan struct{})
+
 	handler := func(sess ssh.Session) {
-		d.Mach.Log("new SSH session " + sess.RemoteAddr().String())
-		if busy.Load() && sess.User() != "force" {
-			_, _ = sess.Write([]byte("am-dbg server busy...\n"))
+		addr := sess.RemoteAddr().String()
+		if _, _, isPty := sess.Pty(); !isPty {
 			_ = sess.Close()
 			return
 		}
 
-		// kick out if busy
-		select {
-		case d.sshSrvKick <- struct{}{}:
-			// TODO reply
-			_, _ = sess.Write([]byte("am-dbg kicking out...\n"))
-			time.Sleep(time.Second)
-		default:
-			// no one
-		}
-		// TODO prevent double conns via SshServerConnectedState
-
-		_, _, isPty := sess.Pty()
-		if !isPty {
-			return
-		}
 		screen, err := NewSessionScreen(sess)
+		if err == nil {
+			err = screen.Init()
+		}
 		if err != nil {
-			d.Mach.EvAddErr(e, err, nil)
+			d.Mach.Log("SSH: %s", err)
+			_ = sess.Close()
 			return
 		}
-		d.App.SetScreen(screen)
-		busy.Store(true)
 
-		// TODO https://github.com/gliderlabs/ssh/issues/226
-		sigCh := make(chan ssh.Signal, 1)
-		sess.Signals(sigCh)
-		defer close(sigCh)
+		d.Mach.Log("new SSH session " + addr)
+		client := d.screenMux.Attach(screen,
+			func() { _ = sess.Close() },
+			tclive.AttachOpts{DetachOnCtrlQ: true})
 
-		// wait till end
 		select {
-		case <-d.Mach.WhenTicks(ss.SshDisconn, 1, nil):
-		case <-sigCh: // TODO
+		case <-client.Done():
 		case <-ctx.Done():
-		case <-d.sshSrvKick:
+			d.screenMux.Detach(client)
 		}
-
-		// restore sim screen
-		busy.Store(false)
-		d.App.SetScreen(tcell.NewSimulationScreen("UTF-8"))
 	}
 
 	d.Mach.Fork(ctx, e, func() {
@@ -2393,9 +2370,6 @@ func (d *Debugger) SshServerState(e *am.Event) {
 		p("$ ssh %s -p %s -o UserKnownHostsFile=/dev/null "+
 			"-o StrictHostKeyChecking=no\n", d.listenHost, port)
 		p("\n")
-		p("Force connect via:\n")
-		p("$ ssh force@%s -p %s -o UserKnownHostsFile=/dev/null "+
-			"-o StrictHostKeyChecking=no\n", d.listenHost, port)
 		d.Mach.EvAddErr(
 			e, ssh.ListenAndServe(d.params.AddrSsh, handler, optSrv), nil,
 		)
@@ -2403,8 +2377,9 @@ func (d *Debugger) SshServerState(e *am.Event) {
 }
 
 func (d *Debugger) SshServerEnd(e *am.Event) {
-	d.sshSrv.Close()
-	close(d.sshSrvKick)
+	if d.sshSrv != nil {
+		_ = d.sshSrv.Close()
+	}
 }
 
 var _ = ss.Loading

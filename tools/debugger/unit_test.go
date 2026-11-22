@@ -2,6 +2,8 @@ package debugger
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/pancsta/cview"
+	"github.com/pancsta/livepage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -513,16 +516,35 @@ func TestHadErrSince(t *testing.T) {
 	assert.True(t, c.HadErrSinceTx(1, 1), "tx: %d, dist: %d", 1, 1)
 }
 
-func TestUiLivepageConflict(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func TestLivepageTracker(t *testing.T) {
+	release := make(chan struct{})
+	empty := make(chan struct{}, 1)
+	tr := &livepageTracker{
+		handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == livepagePrefix+livepage.PathWs {
+				<-release
+			}
+		}),
+		onEmpty: func() { empty <- struct{}{} },
+	}
 
-	_, err := New(ctx, types.Params{
-		UiSsh:           true,
-		UiLivepage:      true,
-		ListenAddr:      "localhost:6831",
-		EnableClipboard: false,
-	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "ui-livepage")
+	// a page request does not count
+	tr.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(
+		http.MethodGet, livepagePrefix+"/", nil))
+	assert.Equal(t, 0, tr.Clients())
+
+	// a WS request counts until it closes
+	go tr.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(
+		http.MethodGet, livepagePrefix+livepage.PathWs, nil))
+	require.Eventually(t, func() bool {
+		return tr.Clients() == 1
+	}, time.Second, 10*time.Millisecond)
+
+	close(release)
+	select {
+	case <-empty:
+	case <-time.After(time.Second):
+		t.Fatal("onEmpty not called")
+	}
+	assert.Equal(t, 0, tr.Clients())
 }
