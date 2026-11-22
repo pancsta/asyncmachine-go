@@ -14,7 +14,6 @@ import (
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhist "github.com/pancsta/asyncmachine-go/pkg/history"
-	amhistb "github.com/pancsta/asyncmachine-go/pkg/history/badger"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
@@ -24,8 +23,8 @@ import (
 var ssF = states.FooStates
 var ssB = states.BarStates
 
-func initMachines(
-	ctx context.Context, barHandlers any, fooHandlers any,
+func InitMachines(
+	ctx context.Context, bindBar, bindFoo am.HandlersBind,
 ) (*am.Machine, *arpc.Client, *am.Machine, error) {
 
 	//
@@ -35,8 +34,11 @@ func initMachines(
 	//
 
 	sessId := utils.RandId(3)
-	barMach, err := am.NewCommon(ctx, "browser-bar-"+sessId, states.BarSchema, ssB.Names(), barHandlers, nil, nil)
+	barMach, err := am.NewCommon(ctx, "browser-bar-"+sessId, states.BarSchema, ssB.Names(), nil, nil, nil)
 	if err != nil {
+		log.Fatal(err.Error())
+	}
+	if _, err := bindBar(barMach); err != nil {
 		log.Fatal(err.Error())
 	}
 	barMach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
@@ -75,22 +77,12 @@ func initMachines(
 	onErr := func(err error) {
 		log.Print("err: ", err.Error())
 	}
-	// backend and base configs
-	cfg := amhistb.Config{
-		BaseConfig: amhist.Config{
-			MaxRecords:    10 ^ 6,
-			TrackedStates: ssB.Names(),
-		},
-		EncJson: true,
+	// base config
+	cfg := amhist.BaseConfig{
+		MaxRecords:    1_000_000,
+		TrackedStates: ssB.Names(),
 	}
-	db, err := amhistb.NewDb("")
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	barMach.OnDispose(func(id string, ctx context.Context) {
-		db.Close()
-	})
-	mem, err := amhistb.NewMemory(ctx, db, barMach, cfg, onErr)
+	mem, err := amhist.NewMemory(ctx, nil, barMach, cfg, onErr)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -104,7 +96,7 @@ func initMachines(
 		return nil, nil, nil, err
 	}
 	ok := mem.ActivatedBetween(ctx, ssB.Heartbeat, now.Add(-time.Second), now)
-	fmt.Printf("Badger history: %v\n", ok)
+	fmt.Printf("History: %v\n", ok)
 
 	//
 
@@ -114,10 +106,13 @@ func initMachines(
 
 	// RPC Handlers Machine
 
-	fooHandlerMach, err := am.NewCommon(ctx, "browser-foo-"+sessId, states.FooSchema, ssF.Names(), fooHandlers, barMach, &am.Opts{
+	fooHandlerMach, err := am.NewCommon(ctx, "browser-foo-"+sessId, states.FooSchema, ssF.Names(), nil, barMach, &am.Opts{
 		Tags: []string{"rpc-handler"},
 	})
 	if err != nil {
+		log.Fatal(err.Error())
+	}
+	if _, err := bindFoo(fooHandlerMach); err != nil {
 		log.Fatal(err.Error())
 	}
 	amhelp.MachDebugEnv(fooHandlerMach)

@@ -92,6 +92,12 @@ func TestMux(t *testing.T) {
 	// numClients := 10
 	numClients := 3
 
+	if isTinyGo {
+		t.Skip("mux disabled in tinygo")
+	}
+	if amhelp.IsWasm() {
+		t.Skip("mux requires a TCP listener")
+	}
 	// TODO flaky
 	//  test_help.go:60: error for cWorkers A: timeout
 	//  --- FAIL: TestMux (2.04s)
@@ -237,10 +243,26 @@ func newTest(t *testing.T, ctx context.Context, netSrc *am.Machine,
 
 	t.Helper()
 
-	// bind to an open port
-	listener := utils.RandListener("localhost")
-	serverAddr := listener.Addr().String()
-	connAddr := serverAddr
+	wasm := amhelp.IsWasm()
+
+	var (
+		listener   net.Listener
+		serverAddr string
+		connAddr   string
+		serverConn net.Conn
+		clientConn net.Conn
+		counter    <-chan int64
+	)
+
+	if wasm {
+		// browser WASM has no TCP stack, inject a WebSocket pair instead
+		serverConn, clientConn, counter = wasmPair(t, disposeMeter)
+	} else {
+		// bind to an open port
+		listener = utils.RandListener("localhost")
+		serverAddr = listener.Addr().String()
+		connAddr = serverAddr
+	}
 
 	// worker init
 	if netSrc == nil {
@@ -249,16 +271,16 @@ func newTest(t *testing.T, ctx context.Context, netSrc *am.Machine,
 	amhelpt.MachDebugEnv(t, netSrc)
 
 	// traffic counter init
-	var counter chan int64
-	if disposeMeter != nil {
+	if !wasm && disposeMeter != nil {
 		counterListener := utils.RandListener("localhost")
 		connAddr = counterListener.Addr().String()
 		if amhelp.IsDebug() {
 			t.Logf("Meter addr: %s", connAddr)
 		}
-		counter = make(chan int64, 1)
+		c := make(chan int64, 1)
+		counter = c
 
-		go TCPMeter(counterListener, serverAddr, counter, disposeMeter)
+		go TCPMeter(counterListener, serverAddr, c, disposeMeter)
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -267,12 +289,25 @@ func newTest(t *testing.T, ctx context.Context, netSrc *am.Machine,
 		serverOpts = &arpc.ServerOpts{}
 	}
 	serverOpts.Parent = netSrc
-	s, err := arpc.NewServer(ctx, serverAddr, t.Name(), netSrc, serverOpts)
+	var (
+		s   *arpc.Server
+		err error
+	)
+	if wasm {
+		s, err = arpc.NewServer(ctx, "", t.Name(), netSrc, serverOpts)
+		if s != nil {
+			s.Conn = serverConn
+		}
+	} else {
+		s, err = arpc.NewServer(ctx, serverAddr, t.Name(), netSrc, serverOpts)
+		if s != nil {
+			// set the test listener to avoid port conflicts
+			s.Listener.Store(&listener)
+		}
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	// set the test listener to avoid port conflicts
-	s.Listener.Store(&listener)
 	amhelpt.MachDebugEnv(t, s.Mach)
 	if pushInterval > 0 {
 		s.PushInterval.Store(&pushInterval)
@@ -289,7 +324,15 @@ func newTest(t *testing.T, ctx context.Context, netSrc *am.Machine,
 	if clientOpts.NoSchema {
 		schema = nil
 	}
-	c, err := arpc.NewClient(ctx, connAddr, t.Name(), schema, clientOpts)
+	var c *arpc.Client
+	if wasm {
+		c, err = arpc.NewClient(ctx, "", t.Name(), schema, clientOpts)
+		if c != nil {
+			c.Conn.Store(&clientConn)
+		}
+	} else {
+		c, err = arpc.NewClient(ctx, connAddr, t.Name(), schema, clientOpts)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,6 +370,12 @@ func newTest(t *testing.T, ctx context.Context, netSrc *am.Machine,
 }
 
 func TestWebSocketAuth(t *testing.T) {
+	if isTinyGo {
+		t.Skip("WebSocket server is not supported in tinygo")
+	}
+	if amhelp.IsWasm() {
+		t.Skip("WebSocket server requires a TCP listener")
+	}
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -387,6 +436,9 @@ func TestWebSocketAuth(t *testing.T) {
 }
 
 func TestAllowedIds(t *testing.T) {
+	if amhelp.IsWasm() {
+		t.Skip("requires a TCP listener")
+	}
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
