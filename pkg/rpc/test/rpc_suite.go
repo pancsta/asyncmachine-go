@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"math/rand/v2"
 	"net"
@@ -16,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	sst "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -313,7 +313,7 @@ func TemplateTestManyStates(t *testing.T, newTest NewTestFactory) {
 	names := am.SAdd(ssrpc.StateSourceStates.Names(), sst.Names)
 	randAmount := 100
 	for i := 0; i < randAmount; i++ {
-		n := fmt.Sprintf("State%d", i)
+		n := nofmt.Sprintf("State%d", i)
 		names = append(names, n)
 		schema[n] = am.State{}
 	}
@@ -447,7 +447,7 @@ func TemplateTestRetryCall(t *testing.T, newTest NewTestFactory) {
 	require.NoError(t, err)
 
 	// inject a fake error
-	c.TmpTestErr = fmt.Errorf("IGNORE MOCK ERR")
+	c.TmpTestErr = nofmt.Errorf("IGNORE MOCK ERR")
 	whenRetrying := c.Mach.When1(ssrpc.ClientStates.RetryingCall, nil)
 	c.NetMach.Add1(sst.A, nil)
 	amhelpt.WaitForAll(t, "RetryingCall", ctx, 2*time.Second, whenRetrying)
@@ -1084,7 +1084,7 @@ func TCPMeter(
 	// callFailsafe the destination
 	destination, err := net.Dial("tcp4", fwdTo)
 	if err != nil {
-		fmt.Println("Error connecting to destination:", err.Error())
+		nofmt.Println("Error connecting to destination:", err.Error())
 		return
 	}
 	defer destination.Close()
@@ -1092,7 +1092,7 @@ func TCPMeter(
 	// wait for the connection
 	conn, err := listener.Accept()
 	if err != nil {
-		fmt.Println("Error accepting connection:", err.Error())
+		nofmt.Println("Error accepting connection:", err.Error())
 		return
 	}
 	defer conn.Close()

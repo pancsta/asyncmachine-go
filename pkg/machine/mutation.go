@@ -2,7 +2,6 @@ package machine
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"sync/atomic"
 )
@@ -53,7 +52,7 @@ type Mutation struct {
 }
 
 func (m *Mutation) String() string {
-	return fmt.Sprintf("[%s] %v", m.Type, m.Called)
+	return sprintf("[%s] %v", m.Type, m.Called)
 }
 
 func (m *Mutation) IsCalled(idx int) bool {

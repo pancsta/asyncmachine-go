@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"maps"
 	"os"
@@ -25,6 +24,7 @@ import (
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
 
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
@@ -696,7 +696,7 @@ func WaitForErrAll(
 			// TODO check and log state ctx name
 			return ctx.Err()
 		case <-whenErr:
-			return fmt.Errorf("%s: %w", am.StateException, mach.Err())
+			return nofmt.Errorf("%s: %w", am.StateException, mach.Err())
 		case <-t:
 			return am.ErrTimeout
 		case <-ch:
@@ -949,7 +949,7 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 
 				txt += `"` + utils.TruncateStr(el, maxLen/2) + `"`
 				if ii >= maxLen/2 {
-					txt += fmt.Sprintf(" ... (%d more)", len(v)-ii)
+					txt += nofmt.Sprintf(" ... (%d more)", len(v)-ii)
 					break
 				}
 
@@ -965,13 +965,13 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 			if !v {
 				continue
 			}
-			result[key] = fmt.Sprintf("%v", v)
+			result[key] = nofmt.Sprintf("%v", v)
 		case []bool:
 			// combine []bool into a single comma-separated string
 			if len(v) == 0 {
 				continue
 			}
-			result[key] = fmt.Sprintf("%v", v)
+			result[key] = nofmt.Sprintf("%v", v)
 			// TODO fix highlighting issues in am-dbg
 			result[key] = strings.Trim(result[key], "[]")
 
@@ -982,25 +982,25 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 			if v == 0 {
 				continue
 			}
-			result[key] = fmt.Sprintf("%d", v)
+			result[key] = nofmt.Sprintf("%d", v)
 		case uint:
 			// skip default
 			if v == 0 {
 				continue
 			}
-			result[key] = fmt.Sprintf("%d", v)
+			result[key] = nofmt.Sprintf("%d", v)
 		case int64:
 			// skip default
 			if v == 0 {
 				continue
 			}
-			result[key] = fmt.Sprintf("%d", v)
+			result[key] = nofmt.Sprintf("%d", v)
 		case uint64:
 			// skip default
 			if v == 0 {
 				continue
 			}
-			result[key] = fmt.Sprintf("%d", v)
+			result[key] = nofmt.Sprintf("%d", v)
 
 		// int slices
 
@@ -1009,7 +1009,7 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 			if len(v) == 0 {
 				continue
 			}
-			result[key] = fmt.Sprintf("%d", v)
+			result[key] = nofmt.Sprintf("%d", v)
 			// TODO fix highlighting issues in am-dbg
 			result[key] = strings.Trim(result[key], "[]")
 		case []uint:
@@ -1017,7 +1017,7 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 			if len(v) == 0 {
 				continue
 			}
-			result[key] = fmt.Sprintf("%d", v)
+			result[key] = nofmt.Sprintf("%d", v)
 			// TODO fix highlighting issues in am-dbg
 			result[key] = strings.Trim(result[key], "[]")
 		case []int64:
@@ -1025,7 +1025,7 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 			if len(v) == 0 {
 				continue
 			}
-			result[key] = fmt.Sprintf("%d", v)
+			result[key] = nofmt.Sprintf("%d", v)
 			// TODO fix highlighting issues in am-dbg
 			result[key] = strings.Trim(result[key], "[]")
 		case []uint64:
@@ -1033,7 +1033,7 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 			if len(v) == 0 {
 				continue
 			}
-			result[key] = fmt.Sprintf("%d", v)
+			result[key] = nofmt.Sprintf("%d", v)
 			// TODO fix highlighting issues in am-dbg
 			result[key] = strings.Trim(result[key], "[]")
 
@@ -1045,7 +1045,7 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 			result[key] = v.String()
 
 			// MutString() method
-		case fmt.Stringer:
+		case nofmt.Stringer:
 			// check nil ptr
 			val := reflect.ValueOf(v)
 			if val.Kind() == reflect.Pointer && val.IsNil() {
@@ -1072,14 +1072,14 @@ func ArgsToLogMap(args any, maxLen int) map[string]string {
 
 			for i := 0; i < valLen; i++ {
 				el := field.Index(i).Interface()
-				s, ok := el.(fmt.Stringer)
+				s, ok := el.(nofmt.Stringer)
 				if ok && s.String() != "" {
 					if txt != "" {
 						txt += ", "
 					}
 					txt += `"` + utils.TruncateStr(s.String(), maxLen/2) + `"`
 					if i >= maxLen/2 {
-						txt += fmt.Sprintf(" ... (%d more)", valLen-ii)
+						txt += nofmt.Sprintf(" ... (%d more)", valLen-ii)
 						break
 					}
 				}
@@ -1213,7 +1213,7 @@ func GroupWhen1(
 	// validate states
 	for _, mach := range machs {
 		if !mach.Has1(state) {
-			return nil, fmt.Errorf(
+			return nil, nofmt.Errorf(
 				"%w: %s in machine %s", am.ErrStateMissing, state, mach.Id(),
 			)
 		}
@@ -1357,7 +1357,7 @@ type Cond struct {
 }
 
 func (c Cond) String() string {
-	return fmt.Sprintf("is: %s, any: %s, not: %s, clock: %v",
+	return nofmt.Sprintf("is: %s, any: %s, not: %s, clock: %v",
 		c.Is, c.Any1, c.Not, c.Clock)
 }
 
@@ -1430,7 +1430,7 @@ func (l *StateLoop) String() string {
 		ok = "ended"
 	}
 
-	return fmt.Sprintf("StateLoop: %s for %s/%s", ok, l.mach.Id(), l.loopState)
+	return nofmt.Sprintf("StateLoop: %s for %s/%s", ok, l.mach.Id(), l.loopState)
 }
 
 // Break breaks the loop.
@@ -1455,7 +1455,7 @@ func (l *StateLoop) Ok(ctx context.Context) bool {
 		return false
 
 	} else if l.mach.Not1(l.loopState) {
-		err := fmt.Errorf("loop: state ctx expired for %s/%s", l.mach.Id(),
+		err := nofmt.Errorf("loop: state ctx expired for %s/%s", l.mach.Id(),
 			l.loopState)
 		l.mach.AddErr(err, nil)
 		l.ended.Store(true)
@@ -1481,7 +1481,7 @@ func (l *StateLoop) Ok(ctx context.Context) bool {
 
 		// check the current interval window
 	} else if int(sum) > l.Threshold {
-		err := fmt.Errorf("loop: threshold exceeded for %s/%s", l.mach.Id(),
+		err := nofmt.Errorf("loop: threshold exceeded for %s/%s", l.mach.Id(),
 			l.loopState)
 		l.mach.AddErr(err, nil)
 		l.ended.Store(true)
@@ -1687,7 +1687,7 @@ func NewMirror(
 	var methodNames []string
 	methodNames, err := listHandlers(handlers, states)
 	if err != nil {
-		return nil, fmt.Errorf("listing handlers: %w", err)
+		return nil, nofmt.Errorf("listing handlers: %w", err)
 	}
 
 	// TODO support am.Api
@@ -1721,7 +1721,7 @@ func NewMirror(
 		} else if strings.HasSuffix(method, am.SuffixEnd) {
 			state = method[:len(method)-len(am.SuffixEnd)]
 		} else {
-			return nil, fmt.Errorf("unsupported handler %s for %s", method, id)
+			return nil, nofmt.Errorf("unsupported handler %s for %s", method, id)
 		}
 
 		// pipe
@@ -1765,12 +1765,12 @@ func listHandlers(handlers any, states S) ([]string, error) {
 	check := func(method string) {
 		s1, s2 := am.IsHandler(states, method)
 		if s1 != "" && !slices.Contains(states, s1) {
-			errs = append(errs, fmt.Errorf(
+			errs = append(errs, nofmt.Errorf(
 				"%w: %s from handler %s", am.ErrStateMissing, s1, method,
 			))
 		}
 		if s2 != "" && !slices.Contains(states, s2) {
-			errs = append(errs, fmt.Errorf(
+			errs = append(errs, nofmt.Errorf(
 				"%w: %s from handler %s", am.ErrStateMissing, s2, method,
 			))
 		}
@@ -1818,7 +1818,7 @@ func CopySchema(source am.Schema, target *am.Machine, states am.S) error {
 	newSchema := target.Schema()
 	for _, name := range states {
 		if _, ok := source[name]; !ok {
-			return fmt.Errorf("%w: state %s in source schema",
+			return nofmt.Errorf("%w: state %s in source schema",
 				am.ErrStateMissing, name)
 		}
 
@@ -1908,7 +1908,7 @@ func EvalGetter[T any](
 	for range min(maxTries, 1) {
 		if !mach.Eval("Get/"+source, evalOuter, ctx) {
 			// eval err
-			retErr = fmt.Errorf("%w: EvalGet/%s", am.ErrEvalTimeout, source)
+			retErr = nofmt.Errorf("%w: EvalGet/%s", am.ErrEvalTimeout, source)
 		} else {
 			break
 		}
@@ -1933,7 +1933,7 @@ func EvalSetter(
 	for range min(maxTries, 1) {
 		if !mach.Eval("Set/"+source, evalOuter, ctx) {
 			// eval err
-			retErr = fmt.Errorf("%w: EvalSet/%s", am.ErrEvalTimeout, source)
+			retErr = nofmt.Errorf("%w: EvalSet/%s", am.ErrEvalTimeout, source)
 		} else {
 			break
 		}

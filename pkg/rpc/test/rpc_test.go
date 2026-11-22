@@ -2,13 +2,13 @@ package test
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	sst "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -133,7 +133,7 @@ func TestMux(t *testing.T) {
 
 	// client fac
 	newC := func(num int) *arpc.Client {
-		name := fmt.Sprintf("%s-%d", t.Name(), num)
+		name := nofmt.Sprintf("%s-%d", t.Name(), num)
 		c, err := arpc.NewClient(ctx, serverAddr, name, netSrc.Schema(),
 			&arpc.ClientOpts{Parent: mux.Mach})
 		if err != nil {

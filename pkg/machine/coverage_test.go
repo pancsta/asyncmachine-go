@@ -4,7 +4,6 @@ package machine
 import (
 	"context"
 	"errors"
-	"fmt"
 	"regexp"
 	"testing"
 	"time"
@@ -471,7 +470,7 @@ func TestUtilsCoverage(t *testing.T) {
 		defer func() {
 			r := recover()
 			require.NotNil(t, r)
-			assert.Contains(t, fmt.Sprint(r), "missing states")
+			assert.Contains(t, sprint(r), "missing states")
 		}()
 		mach10.CanAdd(S{"Unknown"}, A{})
 		t.Fatal("expected CanAdd with an unknown state to panic")

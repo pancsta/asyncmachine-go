@@ -1,7 +1,6 @@
 package machine
 
 import (
-	"fmt"
 	"slices"
 	"sort"
 )
@@ -385,10 +384,10 @@ func (rr *DefaultRelationsResolver) RelationsBetween(
 	m := rr.Machine
 
 	if !m.Has1(fromState) {
-		return nil, fmt.Errorf("%w: %s", ErrStateUnknown, fromState)
+		return nil, errorf("%w: %s", ErrStateUnknown, fromState)
 	}
 	if !m.Has1(toState) {
-		return nil, fmt.Errorf("%w: %s", ErrStateUnknown, toState)
+		return nil, errorf("%w: %s", ErrStateUnknown, toState)
 	}
 
 	state := m.schema[fromState]
@@ -421,7 +420,7 @@ func (rr *DefaultRelationsResolver) RelationsOf(fromState string) (
 	m := rr.Machine
 
 	if !m.Has1(fromState) {
-		return nil, fmt.Errorf("%w: %s", ErrStateUnknown, fromState)
+		return nil, errorf("%w: %s", ErrStateUnknown, fromState)
 	}
 	state := m.schema[fromState]
 
@@ -453,7 +452,7 @@ func (rr *DefaultRelationsResolver) InboundRelationsOf(toState string) (
 	m := rr.Machine
 
 	if !m.Has1(toState) {
-		return nil, fmt.Errorf("%w: %s", ErrStateUnknown, toState)
+		return nil, errorf("%w: %s", ErrStateUnknown, toState)
 	}
 
 	var states S
@@ -506,7 +505,7 @@ func (g *graph) TopologicalSort() ([]string, error) {
 	var visit func(string) error
 	visit = func(node string) error {
 		if tempMarked[node] {
-			return fmt.Errorf("state %s has a Require cycle", node)
+			return errorf("state %s has a Require cycle", node)
 		}
 		if !visited[node] {
 			tempMarked[node] = true

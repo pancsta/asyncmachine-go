@@ -2,7 +2,6 @@ package iroh
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"github.com/tmc/go-iroh/key"
 	"github.com/tmc/go-iroh/netaddr"
 
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	"github.com/pancsta/asyncmachine-go/internal/testing/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
@@ -358,7 +358,7 @@ func TestIrohMux(t *testing.T) {
 	// client fac
 	var cliEps []*iroh.Endpoint
 	newC := func(num int) *arpc.Client {
-		name := fmt.Sprintf("%s-%d", t.Name(), num)
+		name := nofmt.Sprintf("%s-%d", t.Name(), num)
 		cOpts := &ClientOpts{
 			ClientOpts: arpc.ClientOpts{Parent: mux.Mach},
 		}

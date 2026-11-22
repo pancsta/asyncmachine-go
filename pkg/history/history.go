@@ -5,13 +5,13 @@ package history
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 	"sync"
 	"time"
 
 	"github.com/orsinium-labs/enum"
 
+	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -24,12 +24,12 @@ import (
 // ///// ///// /////
 
 var (
-	ErrIncompatibleType = fmt.Errorf("incompatible type")
-	ErrCondition        = fmt.Errorf("incorrect condition")
+	ErrIncompatibleType = nofmt.Errorf("incompatible type")
+	ErrCondition        = nofmt.Errorf("incorrect condition")
 )
 
 // TODO bind ErrConfig
-var ErrConfig = fmt.Errorf("incorrect config")
+var ErrConfig = nofmt.Errorf("incorrect config")
 
 type MatcherFn func(now *am.TimeIndex, db []*MemoryRecord) []*MemoryRecord
 
@@ -724,18 +724,18 @@ func (m *BaseMemory) ValidateQuery(query Query) error {
 		query.Deactivated, query.Start.MTimeStates, query.End.MTimeStates)
 	for _, state := range names {
 		if !m.IsTracked1(state) {
-			return fmt.Errorf("%w: %w: %s not tracked",
+			return nofmt.Errorf("%w: %w: %s not tracked",
 				ErrCondition, am.ErrStateMissing, state)
 		}
 	}
 
 	// validate MTime len == MTimeStates len
 	if len(query.Start.MTimeStates) != len(query.Start.MTime) {
-		return fmt.Errorf("%w: state list and machine time mismatch: %d != %d",
+		return nofmt.Errorf("%w: state list and machine time mismatch: %d != %d",
 			ErrCondition, len(query.Start.MTimeStates), len(query.Start.MTime))
 	}
 	if len(query.End.MTimeStates) != len(query.End.MTime) {
-		return fmt.Errorf("%w: state list and machine time mismatch: %d != %d",
+		return nofmt.Errorf("%w: state list and machine time mismatch: %d != %d",
 			ErrCondition, len(query.End.MTimeStates), len(query.End.MTime))
 	}
 
@@ -780,7 +780,7 @@ func NewMemory(
 
 	c.TrackedStates = mach.ParseStates(c.TrackedStates)
 	if len(c.TrackedStates) == 0 {
-		return nil, fmt.Errorf("%w: no states to track", am.ErrStateMissing)
+		return nil, nofmt.Errorf("%w: no states to track", am.ErrStateMissing)
 	}
 
 	// init and bind

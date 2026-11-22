@@ -3,7 +3,6 @@ package machine
 import (
 	"context"
 	"errors"
-	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -442,14 +441,14 @@ func (c *CtxValue) UrlTx(incTime bool) string {
 	}
 	suf := ""
 	if c.MachTime > 0 && incTime {
-		suf = fmt.Sprintf("?t=%d", c.MachTime)
+		suf = sprintf("?t=%d", c.MachTime)
 	}
 
-	return fmt.Sprintf("mach://%s/%s%s", c.Id, tx, suf)
+	return sprintf("mach://%s/%s%s", c.Id, tx, suf)
 }
 
 func (c *CtxValue) Url() string {
-	return fmt.Sprintf("ctx://%s/%s/%d", c.Id, c.State, c.Tick)
+	return sprintf("ctx://%s/%s/%d", c.Id, c.State, c.Tick)
 }
 
 func (c *CtxValue) TxId() string {
@@ -837,10 +836,10 @@ func (s *semLogger) Pipes() []*LogEntry {
 		// outbound
 		var text string
 		if p.SourceState != "" {
-			text = fmt.Sprintf("[pipe-out:%s] %s to %s", kind, p.SourceState,
+			text = sprintf("[pipe-out:%s] %s to %s", kind, p.SourceState,
 				p.TargetMach)
 		} else {
-			text = fmt.Sprintf("[pipe-in:%s] %s from %s", kind, p.TargetState,
+			text = sprintf("[pipe-in:%s] %s from %s", kind, p.TargetState,
 				p.SourceMach)
 		}
 		ret[i] = &LogEntry{
@@ -961,7 +960,7 @@ func NewLogArgsMapper(
 			if !oks[i] {
 				continue
 			}
-			ret[name] = truncateStr(fmt.Sprintf("%v", args[name]), maxLen)
+			ret[name] = truncateStr(sprintf("%v", args[name]), maxLen)
 		}
 
 		return ret
