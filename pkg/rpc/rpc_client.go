@@ -12,8 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cenkalti/rpc2"
-	"github.com/coder/websocket"
 	"github.com/tmc/go-iroh/key"
 
 	"github.com/pancsta/asyncmachine-go/internal/nofmt"
@@ -30,7 +28,7 @@ var (
 )
 
 type ClientOpts struct {
-	// Consumer is an optional target for the [states.SendPayload] state.
+	// Consumer is an optional target for the [states.ConsumerStatesDef.ServerPayload] state.
 	Consumer *am.Machine
 	// Parent is a parent state machine for a new Client state machine. See
 	// [am.Opts].
@@ -145,7 +143,7 @@ type Client struct {
 	lockQueue sync.Mutex
 	// locks calling the server
 	callLock sync.Mutex
-	rpc      atomic.Pointer[rpc2.Client]
+	rpc      atomic.Pointer[rpcClient]
 	// schema of the network machine
 	schema am.Schema
 	// TmpTestErr is an error to return on the next call or notify, only for
@@ -224,12 +222,18 @@ func NewClient(
 	}
 
 	// state machine
+	tags := []string{states.TagRpcClient}
+	// addr may be unknown yet (eg a provided Conn), in which case it's set as a
+	// tag later via [amhelp.TagSetOnMach]
+	if addr != "" {
+		tags = append(tags, states.TagKeyAddr+":"+addr)
+	}
 	mach, err := am.NewCommon(ctx, GetClientId(id), states.ClientSchema,
-		ssC.Names(), c, opts.Parent, &am.Opts{Tags: []string{
-			states.TagRpcClient,
-			states.TagKeyAddr + ":" + addr,
-		}})
+		ssC.Names(), nil, opts.Parent, &am.Opts{Tags: tags})
 	if err != nil {
+		return nil, err
+	}
+	if _, err = BindHandlersClient(c, mach); err != nil {
 		return nil, err
 	}
 	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
@@ -336,21 +340,18 @@ func (c *Client) ConnectingState(e *am.Event) {
 		}
 		if c.Conn.Load() == nil && c.Opts.WebSocket != "" {
 			mach.Log("dialing WS %s", c.Addr)
-			var dialOpts *websocket.DialOptions
+			var protocols []string
 			if c.Opts.WebSocketPubKey != "" {
-				dialOpts = &websocket.DialOptions{
-					Subprotocols: []string{"X-API-Key", c.Opts.WebSocketPubKey},
-				}
+				protocols = []string{"X-API-Key", c.Opts.WebSocketPubKey}
 			}
 
-			wsConn, _, err := websocket.Dial(ctx,
-				"ws://"+c.Addr+c.Opts.WebSocket, dialOpts)
+			conn, err := dialWebSocket(ctxStart,
+				"ws://"+c.Addr+c.Opts.WebSocket, protocols, timeout)
 			if err != nil {
 				mach.EvAdd1(e, ssC.Disconnected, nil)
 				AddErrNetwork(e, mach, err)
 				return
 			}
-			conn := websocket.NetConn(ctxStart, wsConn, websocket.MessageBinary)
 			c.Conn.Store(&conn)
 
 		} else if c.Conn.Load() == nil {
@@ -896,10 +897,10 @@ func (c *Client) log(msg string, args ...any) {
 	c.Mach.Log(msg, args...)
 }
 
-func (c *Client) bindRpcHandlers(conn net.Conn) *rpc2.Client {
+func (c *Client) bindRpcHandlers(conn net.Conn) *rpcClient {
 	c.log("new rpc2 client")
 
-	client := rpc2.NewClient(conn)
+	client := newRpcClient(conn)
 	client.Handle(ClientUpdate.Value, c.RemoteUpdate)
 	client.Handle(ClientUpdateMutations.Value, c.RemoteUpdateMutations)
 	client.Handle(ClientSendPayload.Value, c.RemoteSendPayload)
@@ -1274,7 +1275,7 @@ func (c *Client) notify(
 // RemoteUpdate updates the clock of NetMach from a cumulative diff. Only
 // called by the server.
 func (c *Client) RemoteUpdate(
-	_ *rpc2.Client, update *MsgSrvUpdate, _ *MsgEmpty,
+	_ *rpcClient, update *MsgSrvUpdate, _ *MsgEmpty,
 ) error {
 	// validate
 	if update == nil {
@@ -1291,7 +1292,7 @@ func (c *Client) RemoteUpdate(
 // RemoteUpdateMutations updates the clock of NetMach from a list of mutations.
 // Only called by the server.
 func (c *Client) RemoteUpdateMutations(
-	_ *rpc2.Client, updates *MsgSrvUpdateMuts, _ *MsgEmpty,
+	_ *rpcClient, updates *MsgSrvUpdateMuts, _ *MsgEmpty,
 ) error {
 	// validate
 	if updates == nil {
@@ -1312,7 +1313,7 @@ func (c *Client) RemoteUpdateMutations(
 // Client. This payload shouldn't contain the data itself, only the name and
 // token.
 func (c *Client) RemoteSendingPayload(
-	_ *rpc2.Client, payload *MsgSrvPayload, _ *MsgEmpty,
+	_ *rpcClient, payload *MsgSrvPayload, _ *MsgEmpty,
 ) error {
 	// TODO test
 	c.log("RemoteSendingPayload %s", payload.Name)
@@ -1328,7 +1329,7 @@ func (c *Client) RemoteSendingPayload(
 // [states.ClientStatesDef.ServerPayload]. The Consumer should bind his
 // handlers and handle this state to receive the data.
 func (c *Client) RemoteSendPayload(
-	_ *rpc2.Client, payload *MsgSrvPayload, _ *MsgEmpty,
+	_ *rpcClient, payload *MsgSrvPayload, _ *MsgEmpty,
 ) error {
 	c.log("RemoteSendPayload %s:%s", payload.Name, payload.Token)
 	c.Mach.Add1(ssC.ServerPayload, Pass(&AServerPayload{
@@ -1342,7 +1343,7 @@ func (c *Client) RemoteSendPayload(
 // RemoteBye is called by the server on a planned disconnect.
 // TODO take a reason / source event?
 func (c *Client) RemoteBye(
-	_ *rpc2.Client, _ *MsgEmpty, _ *MsgEmpty,
+	_ *rpcClient, _ *MsgEmpty, _ *MsgEmpty,
 ) error {
 	// TODO check if this expected / covers all scenarios
 	c.Mach.Remove1(ssC.Start, nil)
@@ -1351,7 +1352,7 @@ func (c *Client) RemoteBye(
 
 // RemoteSchemaChange is called by the server on a source machine schema change.
 func (c *Client) RemoteSchemaChange(
-	_ *rpc2.Client, msg *MsgSrvHello, _ *MsgEmpty,
+	_ *rpcClient, msg *MsgSrvHello, _ *MsgEmpty,
 ) error {
 	c.log("new schema v" + strconv.Itoa(len(msg.Serialized.StateNames)))
 	c.updateStatesSchema(msg)

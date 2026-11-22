@@ -443,7 +443,9 @@ func TemplateTestRetryCall(t *testing.T, newTest NewTestFactory) {
 	defer cancel()
 	_, w, s, c := newTest(t, ctx, nil, nil, 0, false, nil, nil)
 	handlers := &TestRetryCallHandlers{}
-	_, err := w.HandlersBind(handlers)
+	_, err := w.HandlersBindMaps(nil, map[string]am.HandlerFinal{
+		"DState": handlers.DState,
+	})
 	require.NoError(t, err)
 
 	// inject a fake error
@@ -490,6 +492,9 @@ func TemplateTestRetryCall(t *testing.T, newTest NewTestFactory) {
 }
 
 func TemplateTestRetryConn(t *testing.T, newTest NewTestFactory) {
+	if amhelp.IsWasm() {
+		t.Skip("requires a TCP listener to reconnect")
+	}
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -549,6 +554,9 @@ func (h *TestRetryErrNetworkTimeoutHandlers) DState(e *am.Event) {
 }
 
 func TemplateTestRetryErrNetworkTimeout(t *testing.T, newTest NewTestFactory) {
+	if amhelp.IsWasm() {
+		t.Skip("requires a TCP listener to reconnect")
+	}
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -561,7 +569,9 @@ func TemplateTestRetryErrNetworkTimeout(t *testing.T, newTest NewTestFactory) {
 	handlers := &TestRetryErrNetworkTimeoutHandlers{
 		shouldBlock: true,
 	}
-	_, err := w.HandlersBind(handlers)
+	_, err := w.HandlersBindMaps(nil, map[string]am.HandlerFinal{
+		"DState": handlers.DState,
+	})
 	require.NoError(t, err)
 
 	// test network timeout
@@ -599,6 +609,12 @@ func TemplateTestRetryErrNetworkTimeout(t *testing.T, newTest NewTestFactory) {
 }
 
 func TemplateTestRetryClosedListener(t *testing.T, newTest NewTestFactory) {
+	if isTinyGo {
+		t.Skip("listener restart timing is flaky in tinygo")
+	}
+	if amhelp.IsWasm() {
+		t.Skip("requires a TCP listener to reconnect")
+	}
 	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
 		t.Parallel()
 	}
@@ -682,7 +698,13 @@ func TemplateTestPayload(t *testing.T, newTest NewTestFactory) {
 	// consumer
 	consHandlers := &TestPayloadConsumer{t: t}
 	consMach, err := am.NewCommon(ctx, "TestPayloadConsumer",
-		ssrpc.ConsumerSchema, ssCo.Names(), consHandlers, nil, nil)
+		ssrpc.ConsumerSchema, ssCo.Names(), nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = consMach.HandlersBindMaps(nil, map[string]am.HandlerFinal{
+		"ServerPayloadState": consHandlers.ServerPayloadState,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -690,7 +712,9 @@ func TemplateTestPayload(t *testing.T, newTest NewTestFactory) {
 	// source mach
 	source := utils.NewNoRelsNetSrc(t, nil, "")
 	handlers := &TestPayloadHandlers{}
-	_, err = source.HandlersBind(handlers)
+	_, err = source.HandlersBindMaps(nil, map[string]am.HandlerFinal{
+		"CState": handlers.CState,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

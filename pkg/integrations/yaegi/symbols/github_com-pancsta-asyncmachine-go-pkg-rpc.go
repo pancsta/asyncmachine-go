@@ -59,7 +59,6 @@ func init() {
 		"MachReplEnv":              reflect.ValueOf(rpc.MachReplEnv),
 		"MachReplWs":               reflect.ValueOf(rpc.MachReplWs),
 		"NewClient":                reflect.ValueOf(rpc.NewClient),
-		"NewMsgpackCodec":          reflect.ValueOf(rpc.NewMsgpackCodec),
 		"NewMux":                   reflect.ValueOf(rpc.NewMux),
 		"NewNetworkMachine":        reflect.ValueOf(rpc.NewNetworkMachine),
 		"NewServer":                reflect.ValueOf(rpc.NewServer),

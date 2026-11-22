@@ -4,18 +4,16 @@ package rpc
 
 import (
 	"context"
-	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/cenkalti/rpc2"
-	"github.com/coder/websocket"
 
 	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	"github.com/pancsta/asyncmachine-go/internal/utils"
@@ -119,9 +117,9 @@ type Server struct {
 
 	// internal
 
-	rpcServer *rpc2.Server
+	rpcServer *rpcServer
 	// rpcClient is the internal rpc2 client.
-	rpcClient atomic.Pointer[rpc2.Client]
+	rpcClient atomic.Pointer[rpcClient]
 	tracer    *SourceTracer
 	// TODO bind the a machine ticker (if handlers bound)
 	ticker *time.Ticker
@@ -139,7 +137,6 @@ type Server struct {
 	lastPushData    *TracerData
 	httpSrv         *http.Server
 	wsTunRetryRound atomic.Int32
-	wsConn          *websocket.Conn
 	Config          *SourceConfig
 }
 
@@ -192,6 +189,9 @@ func NewServer(
 	if opts.WebSocket && addr == "" {
 		return nil, nofmt.Errorf("addr required for WebSocket")
 	}
+	if opts.WebSocket && amhelp.IsWasm() {
+		return nil, nofmt.Errorf("WebSocket server not supported in browser WASM")
+	}
 
 	// check the source
 	if stateSource == nil {
@@ -242,10 +242,13 @@ func NewServer(
 
 	// state machine
 	mach, err := am.NewCommon(ctx, "rs-"+name, states.ServerSchema, ssS.Names(),
-		s, opts.Parent, &am.Opts{
+		nil, opts.Parent, &am.Opts{
 			Tags: []string{states.TagRpcServer},
 		})
 	if err != nil {
+		return nil, err
+	}
+	if _, err = BindHandlersServer(s, mach); err != nil {
 		return nil, err
 	}
 	mach.SemLogger().SetArgsMapper(amhelp.LogArgsMapper)
@@ -307,9 +310,6 @@ func (s *Server) ExceptionState(e *am.Event) {
 	// WebsocketTunnel
 	if s.Mach.Is1(ssS.WebSocketTunnel) {
 		// clean up on errs
-		if s.wsConn != nil {
-			_ = s.wsConn.Close(websocket.StatusInternalError, "")
-		}
 		if s.Conn != nil {
 			_ = s.Conn.Close()
 		}
@@ -353,11 +353,14 @@ func (s *Server) StartState(e *am.Event) {
 
 func (s *Server) StartEnd(e *am.Event) {
 	if s.Opts.WebSocket {
+		if s.Conn != nil {
+			_ = s.Conn.Close()
+		}
 		go func() {
 			_ = s.httpSrv.Shutdown(s.Mach.Context())
 		}()
-	} else if s.Mach.Is1(ssS.WebSocketTunnel) && s.wsConn != nil {
-		_ = s.wsConn.Close(websocket.StatusNormalClosure, "")
+	} else if s.Mach.Is1(ssS.WebSocketTunnel) && s.Conn != nil {
+		_ = s.Conn.Close()
 	}
 	if am.ParseArgs[A](e.Args).Dispose {
 		s.Mach.Dispose()
@@ -409,18 +412,16 @@ func (s *Server) RpcStartingState(e *am.Event) {
 				}
 
 				// dial
-				ctxWs, cancel := context.WithTimeout(ctxStart, s.WsTunConnTimeout)
 				s.log("Dialing (round %d) %s", s.wsTunRetryRound.Load(), addr)
-				var dialOpts *websocket.DialOptions
+				var protocols []string
 				if s.Opts.WebSocketTunnelPubKey != "" {
-					dialOpts = &websocket.DialOptions{
-						Subprotocols: []string{"X-API-Key", s.Opts.WebSocketTunnelPubKey},
-					}
+					protocols = []string{"X-API-Key", s.Opts.WebSocketTunnelPubKey}
 				}
-				ws, _, err := websocket.Dial(ctxWs, addr, dialOpts)
+				conn, err := dialWebSocket(ctxStart, addr, protocols,
+					s.WsTunConnTimeout)
 				if err != nil {
 					s.log("WebSocket err")
-					if ctxStart.Err() == nil && ctxWs.Err() != nil {
+					if ctxStart.Err() == nil && isNetTimeout(err) {
 						AddErrNetworkTimeout(e, mach, err)
 					} else {
 						AddErrNetwork(e, mach, err)
@@ -428,19 +429,12 @@ func (s *Server) RpcStartingState(e *am.Event) {
 
 				} else {
 					s.log("WebSocket OK")
-					s.wsConn = ws
-					if err != nil {
-						AddErrNetwork(e, mach, err)
-					} else {
-						s.log("Tunnel OK")
-						s.Conn = websocket.NetConn(ctxStart, ws, websocket.MessageBinary)
-						// reset the retry counter
-						s.wsTunRetryRound.Store(0)
-					}
-					cancel()
+					s.log("Tunnel OK")
+					s.Conn = conn
+					// reset the retry counter
+					s.wsTunRetryRound.Store(0)
 					break
 				}
-				cancel()
 
 				// double the delay when backoff set
 				if s.WsTunConnRetryBackoff > 0 {
@@ -480,8 +474,7 @@ func (s *Server) RpcStartingState(e *am.Event) {
 		} else {
 			// create a listener if not provided
 			// use Start as the context
-			cfg := net.ListenConfig{}
-			lis, err := cfg.Listen(ctxStart, "tcp4", s.Addr)
+			lis, err := listenTCP(ctxStart, "tcp4", s.Addr)
 			if err != nil {
 				// add err to mach
 				AddErrNetwork(e, mach, err)
@@ -557,12 +550,12 @@ func (s *Server) RpcAcceptingState(e *am.Event) {
 		})
 
 		// bind to RPC server events (or override)
-		srv.OnDisconnect(func(client *rpc2.Client) {
+		srv.OnDisconnect(func(client *rpcClient) {
 			s.Mach.EvRemove1(e, ssS.ClientConnected, Pass(&AClientConnected{
 				Client: client,
 			}))
 		})
-		srv.OnConnect(func(client *rpc2.Client) {
+		srv.OnConnect(func(client *rpcClient) {
 			s.Mach.EvAdd1(e, ssS.ClientConnected, Pass(&AClientConnected{
 				Client: client,
 			}))
@@ -717,11 +710,11 @@ func (s *Server) log(msg string, args ...any) {
 
 func (s *Server) bindRpcHandlers() {
 	// new RPC instance, release prev resources
-	s.rpcServer = rpc2.NewServer()
+	s.rpcServer = newRpcServer()
 	if os.Getenv(EnvAmRpcLogServer) != "" &&
 		os.Getenv(am.EnvAmTestRunner) == "" {
 
-		rpc2.DebugLog = true
+		setRpcDebugLog(true)
 	}
 
 	s.rpcServer.Handle(ServerHello.Value, s.RemoteHello)
@@ -952,6 +945,14 @@ func (s *Server) storeLastPush(data *TracerData) {
 
 func (s *Server) newWebsocketHandler(e *am.Event) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// check origin
+		if !wsOriginAllowed(r, s.Opts.AllowedWsOrigins) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error": "forbidden origin"}`))
+			return
+		}
+
 		// check API key
 		keysPtr := s.AllowedWsPubKeys.Load()
 		if keysPtr != nil && len(*keysPtr) > 0 {
@@ -1004,7 +1005,7 @@ func (s *Server) newWebsocketHandler(e *am.Event) http.HandlerFunc {
 // TODO add local errs
 
 func (s *Server) RemoteHello(
-	client *rpc2.Client, req *MsgCliHello, resp *MsgSrvHello,
+	client *rpcClient, req *MsgCliHello, resp *MsgSrvHello,
 ) error {
 	// validate
 	if s.Mach.Not1(ssS.Start) {
@@ -1090,7 +1091,7 @@ func (s *Server) RemoteHello(
 }
 
 func (s *Server) RemoteHandshake(
-	client *rpc2.Client, _ *MsgEmpty, _ *MsgEmpty,
+	client *rpcClient, _ *MsgEmpty, _ *MsgEmpty,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
@@ -1113,7 +1114,7 @@ func (s *Server) RemoteHandshake(
 }
 
 func (s *Server) RemoteAdd(
-	_ *rpc2.Client, req *MsgCliMutation, resp *MsgSrvMutation,
+	_ *rpcClient, req *MsgCliMutation, resp *MsgSrvMutation,
 ) error {
 	//
 
@@ -1155,7 +1156,7 @@ func (s *Server) RemoteAdd(
 }
 
 func (s *Server) RemoteAddNS(
-	_ *rpc2.Client, req *MsgCliMutation, _ *MsgEmpty,
+	_ *rpcClient, req *MsgCliMutation, _ *MsgEmpty,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
@@ -1182,7 +1183,7 @@ func (s *Server) RemoteAddNS(
 }
 
 func (s *Server) RemoteRemove(
-	_ *rpc2.Client, req *MsgCliMutation, resp *MsgSrvMutation,
+	_ *rpcClient, req *MsgCliMutation, resp *MsgSrvMutation,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
@@ -1214,7 +1215,7 @@ func (s *Server) RemoteRemove(
 }
 
 func (s *Server) RemoteSet(
-	_ *rpc2.Client, req *MsgCliMutation, resp *MsgSrvMutation,
+	_ *rpcClient, req *MsgCliMutation, resp *MsgSrvMutation,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
@@ -1246,7 +1247,7 @@ func (s *Server) RemoteSet(
 }
 
 func (s *Server) RemoteSync(
-	_ *rpc2.Client, _ *MsgEmpty, resp *MsgSrvSync,
+	_ *rpcClient, _ *MsgEmpty, resp *MsgSrvSync,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
@@ -1264,7 +1265,7 @@ func (s *Server) RemoteSync(
 
 // RemoteArgs returns a list of registered arguments.
 func (s *Server) RemoteArgs(
-	_ *rpc2.Client, _ *MsgEmpty, resp *MsgSrvArgs,
+	_ *rpcClient, _ *MsgEmpty, resp *MsgSrvArgs,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
@@ -1286,7 +1287,7 @@ func (s *Server) RemoteArgs(
 
 // RemoteBye means the client says goodbye and will disconnect shortly.
 func (s *Server) RemoteBye(
-	_ *rpc2.Client, _ *MsgEmpty, _ *MsgEmpty,
+	_ *rpcClient, _ *MsgEmpty, _ *MsgEmpty,
 ) error {
 	if s.Mach.Not1(ssS.Start) {
 		return am.ErrCanceled
@@ -1360,8 +1361,7 @@ func BindServerMulti(
 	source, target *am.Machine, rpcReady, clientConn, clientDisconn string,
 ) (string, error) {
 	if rpcReady == "" || clientConn == "" || clientDisconn == "" {
-		return "", nofmt.Errorf(
-			"rpcReady, clientConn, and clientDisconn must be set")
+		return "", nofmt.Errorf("rpcReady, clientConn, and clientDisconn must be set")
 	}
 	// TODO use ampipe.BindMany
 
@@ -1530,37 +1530,52 @@ func genShallowUpdate(
 	return indexes, ticks
 }
 
-// WEBSOCKET SERVER (not tunnel)
+// wsOriginAllowed checks the Origin header against the allowed patterns. An
+// empty list allows any origin. Patterns can be either hosts or full origins
+// and support wildcards, eg "*.example.com".
+func wsOriginAllowed(r *http.Request, allowed []string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
 
-type wsHandlerServer struct {
-	s     *Server
-	event *am.Event
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return false
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	host := u.Hostname()
+
+	for _, pattern := range allowed {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		// full origins as well as bare hosts
+		if pu, err := url.Parse(pattern); err == nil && pu.Host != "" {
+			if matchWSHost(pu.Hostname(), host) {
+				return true
+			}
+			continue
+		}
+		if matchWSHost(pattern, host) {
+			return true
+		}
+	}
+
+	return false
 }
 
-// ServeHTTP continues [Server.RpcStartingState].
-func (h *wsHandlerServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	mach := h.s.Mach
-
-	acceptOpts := &websocket.AcceptOptions{}
-	if len(h.s.Opts.AllowedWsOrigins) == 0 {
-		acceptOpts.InsecureSkipVerify = true
-	} else {
-		acceptOpts.OriginPatterns = h.s.Opts.AllowedWsOrigins
+func matchWSHost(pattern, host string) bool {
+	if pattern == host {
+		return true
+	}
+	if strings.Contains(pattern, "*") {
+		ok, err := path.Match(pattern, host)
+		return err == nil && ok
 	}
 
-	connWs, err := websocket.Accept(w, r, acceptOpts)
-	if err != nil {
-		log.Printf("Upgrade error: %v", err)
-		return
-	}
-	conn := websocket.NetConn(mach.Context(), connWs, websocket.MessageBinary)
-	h.s.Conn = conn
-
-	// next and stay alive TODO JSON-RPC compat via RpcAcceptingJson
-	// TODO add Opts.JsonRpc (req Opts.WebSocket)
-	mach.EvAdd1(h.event, ssS.RpcAccepting, nil)
-	select {
-	case <-mach.WhenNot1(ss.Start, nil):
-	case <-r.Context().Done():
-	}
+	return false
 }
