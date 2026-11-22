@@ -1071,6 +1071,28 @@ func TemplateTestExport(t *testing.T, newTest NewTestFactory) {
 	// TODO schema change
 }
 
+// TemplateTestAddrTag asserts the server machine carries an addr tag, set once
+// the listener is ready. See [amhelp.TagSetOnMach].
+func TemplateTestAddrTag(t *testing.T, newTest NewTestFactory) {
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+
+	// config
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// init server and client
+	_, _, s, c := newTest(t, ctx, nil, nil, 0, false, nil, nil)
+
+	// assert
+	tag := amhelp.TagValue(s.Mach.Tags(), ssrpc.TagKeyAddr)
+	assert.NotEmpty(t, tag, "server addr tag: %v", s.Mach.Tags())
+
+	// shut down
+	disposeTest(t, c, s, false)
+}
+
 // ///// ///// /////
 
 // ///// UTILS
