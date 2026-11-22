@@ -1,6 +1,8 @@
 package states
 
 import (
+	ssApp "github.com/pancsta/cview/states"
+
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
@@ -192,13 +194,14 @@ type DebuggerStatesDef struct {
 	DiagramsStateReady     string
 
 	*ssam.BasicStatesDef
+	*ssApp.CviewStatesDef
 	*ServerStatesDef
 	*ssrpc.StateSourceStatesDef
 	*ssam.DisposedStatesDef
 }
 
 // DebuggerSchema represents all relations and properties of DebuggerStates.
-var DebuggerSchema = ssam.BasicSchema.Merge(
+var DebuggerSchema = ssApp.AppSchema.Merge(
 	ServerSchema,
 	ssrpc.StateSourceSchema,
 	ssam.DisposedSchema,

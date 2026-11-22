@@ -167,6 +167,8 @@ func NewDbgWorker(
 	}
 
 	// start at the same place
+	// set before Start, as the app event loop starts reading it
+	d.Mach.EvalTimeout = time.Hour
 	res := d.Mach.Add1(ssdbg.Start, nil)
 	if res == am.Canceled {
 		return nil, errors.New("failed to start am-d")

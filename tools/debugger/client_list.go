@@ -35,7 +35,7 @@ func (d *Debugger) buildClientList(selectedIndex int) {
 		update := func() {
 			d.hBuildClientList(selectedIndex)
 			// draw after a debounce
-			d.drawClientList()
+			d.hDrawClientList()
 		}
 		// TODO avoid eval
 		go d.Mach.Eval("hBuildClientList", update, nil)
@@ -136,12 +136,12 @@ func (d *Debugger) updateClientList() {
 
 		d.Mach.Eval("updateClientList", func() {
 			d.hUpdateClientList()
-			d.drawClientList()
+			d.hDrawClientList()
 		}, nil)
 	}()
 }
 
-func (d *Debugger) drawClientList() {
+func (d *Debugger) hDrawClientList() {
 	if d.LayoutRoot == nil || d.Mach.Not1(ss.ClientListVisible) {
 		return
 	}
@@ -394,32 +394,36 @@ func (d *Debugger) hInitClientList() {
 	d.clientList.SetSelectedFunc(func(i int, listItem *cview.ListItem) {
 		client := listItem.GetReference().(*clientListRef)
 		clickedId := client.name
-		selectedId := ""
-		if c, _ := d.Client(); c != nil {
-			selectedId = c.Id
-		}
-		if clickedId == selectedId {
-			return
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
 
-		amhelp.Add1Async(
-			ctx, d.Mach, ss.ClientSelected,
-			ss.SelectingClient, Pass(&A{
-				ClientId: clickedId,
-			}),
-		)
-		if ctx.Err() != nil {
-			d.Mach.Log("timeout when selecting client %s", clickedId)
-			return
-		}
-		// TODO do these in ClientSelectedState
-		d.Mach.Eval("clientList.SetSelectedFunc2", func() {
-			d.hPrependHistory(&types.MachAddress{MachId: clickedId})
-			d.hUpdateAddressBar()
-			d.draw(d.addressBar)
-		}, ctx)
+		// dont block the cview event loop
+		go func() {
+			selectedId := ""
+			if c, _ := d.Client(); c != nil {
+				selectedId = c.Id
+			}
+			if clickedId == selectedId {
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			amhelp.Add1Async(
+				ctx, d.Mach, ss.ClientSelected,
+				ss.SelectingClient, Pass(&A{
+					ClientId: clickedId,
+				}),
+			)
+			if ctx.Err() != nil {
+				d.Mach.Log("timeout when selecting client %s", clickedId)
+				return
+			}
+			// TODO do these in ClientSelectedState
+			d.Mach.Eval("clientList.SetSelectedFunc2", func() {
+				d.hPrependHistory(&types.MachAddress{MachId: clickedId})
+				d.hUpdateAddressBar()
+				d.draw(d.addressBar)
+			}, ctx)
+		}()
 	})
 	d.clientList.SetSelectedAlwaysVisible(true)
 	d.clientList.SetScrollBarColor(tcell.GetColor(theme.Highlight2))
