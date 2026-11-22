@@ -141,7 +141,8 @@ func (r *Relay) StartState(e *am.Event) {
 		}
 		dbgParams := func() *typesdbg.Params {
 			return &typesdbg.Params{
-				FwdData: cmd.FwdAddrs,
+				FwdData:      cmd.FwdAddrs,
+				FwdReplayMax: cmd.FwdReplayMax,
 			}
 		}
 		srvMux, _, err := server.New(r.Mach, cmd.ListenAddr, dbgParams)

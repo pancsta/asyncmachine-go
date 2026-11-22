@@ -392,28 +392,63 @@ func (c *Client) ParseSchema() {
 // ///// ///// /////
 
 const (
-	fwdBackoffMin = 500 * time.Millisecond
-	fwdBackoffMax = 30 * time.Second
+	fwdBackoffMin  = 500 * time.Millisecond
+	fwdBackoffMax  = 5 * time.Second
+	fwdDialTimeout = 5 * time.Second
+	fwdCallTimeout = 5 * time.Second
+	// fwdDialWait is how long [fwdConn.Call] waits for an in-flight dial (and
+	// its replays) before dropping the msg. Kept short, so a black-holed dial
+	// can't stall the other fwd targets.
+	fwdDialWait = 200 * time.Millisecond
+	// fwdReplayMaxDefault is the default number of recent tx msgs kept in
+	// memory for replaying to (re)connected fwd targets. Overridable via the
+	// --fwd-replay-max CLI param.
+	fwdReplayMaxDefault = 100
 )
 
 // fwdConn is a lazily- and re-dialed RPC connection to a forwarding target.
 // It survives target downtime (both at startup and mid-stream) by redialing
 // in the background with an exponential backoff, instead of failing the
 // whole dbg server or permanently giving up on a forward target.
+//
+// Failing targets are isolated: callers treat fwd errors as non-fatal, and
+// both dialing and calls are bounded with timeouts, so a missing or hung
+// target cannot stall the other fwd targets nor the sending client.
 type fwdConn struct {
 	addr string
 	mach *am.Machine
+	// replayMax is the number of recent tx msgs kept per stream, see
+	// [fwdReplayMaxDefault].
+	replayMax int
 
 	mx       sync.Mutex
 	cli      *rpc.Client
+	dialing  bool
 	backoff  time.Duration
 	nextDial time.Time
+	// dialDone is closed when the in-flight dial attempt finishes, so callers
+	// can wait for it (and its replays) instead of dropping msgs.
+	// See [fwdConn.Call].
+	dialDone chan struct{}
+	// streams are the replay sources of this dbg server, one per accepted
+	// conn, injected on accept and removed on disconnect.
+	// See [fwdConn.addStream].
+	streams []*RPCServer
+	// detached keeps the streams of disconnected conns, so their buffered
+	// msgs stay replayable until evicted by the [fwdConn.replayMax] budget.
+	// See [fwdConn.removeStream].
+	detached []*RPCServer
 }
 
 // newFwdConn creates a fwdConn and kicks off the initial (non-blocking)
 // dial.
-func newFwdConn(mach *am.Machine, addr string) *fwdConn {
-	f := &fwdConn{addr: addr, mach: mach, backoff: fwdBackoffMin}
+func newFwdConn(mach *am.Machine, addr string, replayMax int) *fwdConn {
+	f := &fwdConn{
+		addr:      addr,
+		mach:      mach,
+		replayMax: replayMax,
+		backoff:   fwdBackoffMin,
+	}
 	go f.dial()
 
 	return f
@@ -430,67 +465,127 @@ func (f *fwdConn) retry(reason error) {
 	}
 	f.mach.Log("dbg fwd to %s failed, retrying in %s: %s",
 		f.addr, delay, reason)
-	// TODO fix missing fwd sink deadlocks all the other sinks
 	go func() {
 		time.Sleep(delay)
 		f.dial()
 	}()
 }
 
-// dial (re)connects, replays known client schemas as the first messages on
-// the fresh connection, and resets the backoff on success. Safe to call
-// concurrently.
+// dial (re)connects, replays known client schemas and recent msgs as the first
+// messages on the fresh connection, and resets the backoff on success. Safe to
+// call concurrently. f.mx is not held while dialing, so a hanging target cannot
+// block calls to the other targets.
 func (f *fwdConn) dial() {
 	f.mx.Lock()
-	defer f.mx.Unlock()
-
-	if f.cli != nil || time.Now().Before(f.nextDial) {
+	if f.cli != nil || f.dialing || time.Now().Before(f.nextDial) {
+		f.mx.Unlock()
 		return
 	}
+	f.dialing = true
+	done := make(chan struct{})
+	f.dialDone = done
+	f.mx.Unlock()
 
-	cli, err := rpc.Dial("tcp", f.addr)
-	if err != nil {
-		f.retry(err)
-		return
+	// waiters in [fwdConn.Call] get released on every path, after f.cli is set
+	defer close(done)
+
+	cli, err := dialFwd(f.addr)
+	if err == nil {
+		// replay known client schemas first, so a (re)connected target learns
+		// about clients it missed while this fwd link was down
+		err = f.pushClientSchemas(cli)
+		if err == nil {
+			// then the recent tx msgs it missed
+			err = f.pushClientMsgs(cli)
+		}
+		if err != nil {
+			err = fmt.Errorf("replay: %w", err)
+		}
 	}
 
-	// replay known client schemas first, so a (re)connected target learns
-	// about clients it missed while this fwd link was down
-	// TODO collect last N msgs and push after the schema msg, memorize last msg
-	//  ID sent per client
-	if err := pushClientSchemas(cli); err != nil {
+	f.mx.Lock()
+	f.dialing = false
+	if err == nil {
+		f.mach.Log("dbg fwd to %s connected", f.addr)
+		f.cli = cli
+		f.backoff = fwdBackoffMin
+		f.mx.Unlock()
+		return
+	}
+	if cli != nil {
 		_ = cli.Close()
-		f.retry(fmt.Errorf("schema replay: %w", err))
-		return
 	}
-
-	f.mach.Log("dbg fwd to %s connected", f.addr)
-	f.cli = cli
-	f.backoff = fwdBackoffMin
+	f.retry(err)
+	f.mx.Unlock()
 }
 
-// Call forwards an RPC call over the current connection. If disconnected, or
-// the call fails, it triggers a reconnect with a backoff and returns an
-// error, leaving the caller to drop or retry the message.
+// dialFwd connects to addr with a timeout, so a missing or black-holed target
+// cannot hang the dialer.
+func dialFwd(addr string) (*rpc.Client, error) {
+	conn, err := net.DialTimeout("tcp", addr, fwdDialTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	return rpc.NewClient(conn), nil
+}
+
+// call performs an RPC call with a timeout, so a half-open (accepted but
+// unresponsive) target cannot hang the caller. f.mx is not required.
+func (f *fwdConn) call(
+	cli *rpc.Client, serviceMethod string, args, reply any,
+) error {
+	// client.Call has no timeout, so use Go + a timer to survive half-open
+	// (accepted but unresponsive) targets
+	call := cli.Go(serviceMethod, args, reply, make(chan *rpc.Call, 1))
+	select {
+	case res := <-call.Done:
+		return res.Error
+	case <-time.After(fwdCallTimeout):
+		return fmt.Errorf("dbg fwd to %s: call timeout after %s",
+			f.addr, fwdCallTimeout)
+	}
+}
+
+// Call forwards an RPC call over the current connection. If a dial (and its
+// replays) is in flight, it waits for it first. If disconnected, or the call
+// fails or times out, it triggers a reconnect with a backoff and returns an
+// error, leaving the caller to drop the message. Callers must treat errors as
+// non-fatal for the other fwd targets.
 func (f *fwdConn) Call(serviceMethod string, args, reply any) error {
 	f.mx.Lock()
 	cli := f.cli
+	done := f.dialDone
 	f.mx.Unlock()
+
+	// wait for an in-flight (re)connect, incl. its schema and msg replays,
+	// instead of dropping the msg - otherwise anything sent during a replay
+	// (eg a new client's schema) would be lost until the next reconnect
+	if cli == nil && done != nil {
+		select {
+		case <-done:
+		case <-time.After(fwdDialWait):
+		}
+		f.mx.Lock()
+		cli = f.cli
+		f.mx.Unlock()
+	}
 
 	if cli == nil {
 		go f.dial()
 		return fmt.Errorf("dbg fwd to %s: not connected", f.addr)
 	}
 
-	err := cli.Call(serviceMethod, args, reply)
+	err := f.call(cli, serviceMethod, args, reply)
+
 	if err != nil {
 		f.mx.Lock()
 		if f.cli == cli {
 			_ = cli.Close()
 			f.cli = nil
 		}
+		f.retry(err)
 		f.mx.Unlock()
-		go f.dial()
 	}
 
 	return err
@@ -520,9 +615,13 @@ func New(
 
 	// connect to other instances (non-blocking, reconnects with a backoff)
 	// TODO add mutable FwdData setter
+	replayMax := p.FwdReplayMax
+	if replayMax <= 0 {
+		replayMax = fwdReplayMaxDefault
+	}
 	fwdTo := make([]*fwdConn, len(p.FwdData))
 	for i, a := range p.FwdData {
-		fwdTo[i] = newFwdConn(mach, a)
+		fwdTo[i] = newFwdConn(mach, a, replayMax)
 	}
 
 	// first cmux for tcp
@@ -590,12 +689,25 @@ type RPCServer struct {
 	// TODO ConnId
 	ConnID string
 	FwdTo  []*fwdConn
+	// replayMax is the max number of recent tx msgs to buffer for replay,
+	// copied from the fwd targets. See [fwdReplayMaxDefault].
+	replayMax int
 
 	// debounced tx queue
 	queue       []*dbg.DbgMsgTx
 	queueConnId []string
 	queueMx     sync.Mutex
 	scheduled   bool
+
+	// clientMsgs holds the last [RPCServer.replayMax] tx msgs of this conn's
+	// stream (a direct client, or all clients behind a fwd link), for replaying
+	// to (re)connected fwd targets. Copy-on-write, see [RPCServer.appendMsg].
+	clientMsgs atomic.Pointer[[]*DbgMsgTx]
+
+	// clientSchemas holds the latest schema of each client of this conn's
+	// stream, keyed by machine ID. A new schema always replaces the old one.
+	// Copy-on-write, see [RPCServer.setSchema].
+	clientSchemas atomic.Pointer[map[string]*DbgMsgSchemaFwd]
 }
 
 type DbgMsgSchemaFwd struct {
@@ -603,28 +715,157 @@ type DbgMsgSchemaFwd struct {
 	ConnId    string
 }
 
-var (
-	// clientSchemas holds the latest known schema of each currently
-	// connected client (direct or forwarded), keyed by its origin ConnId.
-	// Replayed to fwd targets on (re)connect, see [pushClientSchemas].
-	clientSchemas   = make(map[string]*DbgMsgSchemaFwd)
-	clientSchemasMx sync.Mutex
-)
+// appendMsg buffers msg as one of the last [RPCServer.replayMax] msgs of this
+// conn's stream, which get replayed to (re)connected fwd targets. Older msgs
+// are dropped. Published snapshots are copy-on-write, so replaying needs no
+// locks, and the CAS loop keeps concurrent appends (one goroutine per RPC call)
+// safe.
+func (r *RPCServer) appendMsg(msg *DbgMsgTx) {
+	for {
+		old := r.clientMsgs.Load()
+		var msgs []*DbgMsgTx
+		if old != nil {
+			msgs = slices.Clone(*old)
+		}
+
+		// drop the oldest ones over the limit
+		if r.replayMax > 0 && len(msgs) >= r.replayMax {
+			msgs = msgs[len(msgs)-r.replayMax+1:]
+		}
+		msgs = append(msgs, msg)
+
+		if r.clientMsgs.CompareAndSwap(old, &msgs) {
+			return
+		}
+	}
+}
+
+// msgCount returns the number of buffered msgs of this conn.
+func (r *RPCServer) msgCount() int {
+	if msgs := r.clientMsgs.Load(); msgs != nil {
+		return len(*msgs)
+	}
+
+	return 0
+}
+
+// setSchema caches the latest schema of a client of this conn's stream, keyed
+// by machine ID, replacing any older schema of that client. Published
+// snapshots are copy-on-write, so replaying needs no locks, and the CAS loop
+// keeps concurrent updates (one goroutine per RPC call) safe.
+func (r *RPCServer) setSchema(msg *DbgMsgSchemaFwd) {
+	for {
+		old := r.clientSchemas.Load()
+		schemas := make(map[string]*DbgMsgSchemaFwd)
+		if old != nil {
+			for id, schema := range *old {
+				schemas[id] = schema
+			}
+		}
+		schemas[msg.MsgStruct.ID] = msg
+
+		if r.clientSchemas.CompareAndSwap(old, &schemas) {
+			return
+		}
+	}
+}
+
+// clearSchemas drops all cached schemas of this conn, so a disconnected client
+// is never resent to fwd targets. Buffered msgs are kept, see
+// [fwdConn.removeStream].
+func (r *RPCServer) clearSchemas() {
+	r.clientSchemas.Store(nil)
+}
+
+// addStream injects conn as a replay source for this target, so its schemas
+// and buffered msgs get replayed on (re)connect. See [fwdConn.dial].
+func (f *fwdConn) addStream(r *RPCServer) {
+	f.mx.Lock()
+	defer f.mx.Unlock()
+
+	f.streams = append(f.streams, r)
+}
+
+// removeStream drops conn from the replay sources, but keeps it in [detached]
+// so its buffered msgs stay replayable until evicted by the
+// [fwdConn.replayMax] budget. Schemas are cleared by the caller, see
+// [RPCServer.clearSchemas].
+func (f *fwdConn) removeStream(r *RPCServer) {
+	f.mx.Lock()
+	defer f.mx.Unlock()
+
+	for i, s := range f.streams {
+		if s == r {
+			f.streams = append(f.streams[:i], f.streams[i+1:]...)
+			break
+		}
+	}
+
+	f.detached = append(f.detached, r)
+
+	// evict the oldest detached streams over the msgs budget
+	total := 0
+	for _, s := range f.detached {
+		total += s.msgCount()
+	}
+	for total > f.replayMax && len(f.detached) > 0 {
+		total -= f.detached[0].msgCount()
+		f.detached = f.detached[1:]
+	}
+}
 
 // pushClientSchemas replays the schema of every currently connected client
 // over cli, as the first messages on a freshly (re)connected fwd link, so
 // the target learns about clients it missed while disconnected.
-func pushClientSchemas(cli *rpc.Client) error {
-	clientSchemasMx.Lock()
-	msgs := make([]*DbgMsgSchemaFwd, 0, len(clientSchemas))
-	for _, msg := range clientSchemas {
-		msgs = append(msgs, msg)
-	}
-	clientSchemasMx.Unlock()
+func (f *fwdConn) pushClientSchemas(cli *rpc.Client) error {
+	f.mx.Lock()
+	streams := slices.Clone(f.streams)
+	f.mx.Unlock()
 
-	for _, msg := range msgs {
-		if err := cli.Call("RPCServer.DbgMsgSchemaFwd", msg, nil); err != nil {
-			return err
+	for _, stream := range streams {
+		schemas := stream.clientSchemas.Load()
+		if schemas == nil {
+			continue
+		}
+
+		// deterministic order, so replays are stable
+		ids := make([]string, 0, len(*schemas))
+		for id := range *schemas {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+
+		for _, id := range ids {
+			msg := (*schemas)[id]
+			if err := f.call(cli, "RPCServer.DbgMsgSchemaFwd", msg, nil); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// pushClientMsgs replays the buffered tx msgs right after
+// [fwdConn.pushClientSchemas] on a freshly (re)connected fwd link. It pushes
+// everything, so the target is always fully caught up. Msgs of disconnected
+// conns are replayed last, from [fwdConn.detached].
+func (f *fwdConn) pushClientMsgs(cli *rpc.Client) error {
+	f.mx.Lock()
+	streams := slices.Clone(f.streams)
+	streams = append(streams, f.detached...)
+	f.mx.Unlock()
+
+	for _, stream := range streams {
+		msgs := stream.clientMsgs.Load()
+		if msgs == nil {
+			continue
+		}
+
+		for _, msg := range *msgs {
+			if err := f.call(cli, "RPCServer.DbgMsgTxFwd", msg, nil); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -642,9 +883,10 @@ func (r *RPCServer) DbgMsgSchemaFwd(
 		ClientId:  msg.MsgStruct.ID,
 	}))
 
-	clientSchemasMx.Lock()
-	clientSchemas[msg.ConnId] = msg
-	clientSchemasMx.Unlock()
+	// cache for fwd replay, a new schema replaces the old one of that client
+	if len(r.FwdTo) > 0 {
+		r.setSchema(msg)
+	}
 
 	return nil
 }
@@ -659,24 +901,24 @@ func (r *RPCServer) DbgMsgSchema(
 		ClientId:  msgSchema.ID,
 	}))
 
-	clientSchemasMx.Lock()
-	clientSchemas[r.ConnID] = &DbgMsgSchemaFwd{
-		MsgStruct: msgSchema,
-		ConnId:    r.ConnID,
+	// cache for fwd replay, a new schema replaces the old one of that client
+	if len(r.FwdTo) > 0 {
+		r.setSchema(&DbgMsgSchemaFwd{
+			MsgStruct: msgSchema,
+			ConnId:    r.ConnID,
+		})
 	}
-	clientSchemasMx.Unlock()
 
-	// fwd to other instances
+	// fwd to other instances (best effort), a missing target must not affect
+	// the sender nor the other targets
 	for _, host := range r.FwdTo {
 		fwdMsg := DbgMsgSchemaFwd{
 			MsgStruct: msgSchema,
 			ConnId:    r.ConnID,
 		}
 		// TODO const name
-		err := host.Call("RPCServer.DbgMsgSchemaFwd", &fwdMsg, nil)
-		if err != nil {
-			return err
-		}
+		// errors are logged and retried by the fwd conn itself
+		_ = host.Call("RPCServer.DbgMsgSchemaFwd", &fwdMsg, nil)
 	}
 
 	return nil
@@ -684,7 +926,6 @@ func (r *RPCServer) DbgMsgSchema(
 
 func (r *RPCServer) DbgMsgTx(msgTx *dbg.DbgMsgTx, _ *string) error {
 	r.queueMx.Lock()
-	defer r.queueMx.Unlock()
 
 	if !r.scheduled {
 		r.scheduled = true
@@ -711,21 +952,35 @@ func (r *RPCServer) DbgMsgTx(msgTx *dbg.DbgMsgTx, _ *string) error {
 	msgTx.Time = &now
 	r.queue = append(r.queue, msgTx)
 	r.queueConnId = append(r.queueConnId, r.ConnID)
+	r.queueMx.Unlock()
 
-	// fwd to other instances
-	for _, host := range r.FwdTo {
-		fwdMsg := DbgMsgTx{
-			MsgTx:  msgTx,
-			ConnId: r.ConnID,
-		}
-		// TODO const name
-		err := host.Call("RPCServer.DbgMsgTxFwd", fwdMsg, nil)
-		if err != nil {
-			return err
-		}
-	}
+	// fwd to other instances, outside the queue lock, so a slow fwd target
+	// cannot stall the queue nor the other targets
+	r.fwdTx(msgTx, r.ConnID)
 
 	return nil
+}
+
+// fwdTx forwards a message to all fwd targets, best effort. Errors are logged
+// and retried by [fwdConn] itself; one failing target must not affect the
+// others nor the sending client.
+func (r *RPCServer) fwdTx(msgTx *dbg.DbgMsgTx, connId string) {
+	fwdMsg := &DbgMsgTx{
+		MsgTx:  msgTx,
+		ConnId: connId,
+	}
+
+	// buffer recent msgs, so (re)connected targets can be caught up after
+	// their schemas, see [fwdConn.pushClientMsgs]. Instances without fwd
+	// targets pay nothing.
+	if len(r.FwdTo) > 0 {
+		r.appendMsg(fwdMsg)
+	}
+
+	for _, host := range r.FwdTo {
+		// TODO const name
+		_ = host.Call("RPCServer.DbgMsgTxFwd", fwdMsg, nil)
+	}
 }
 
 type DbgMsgTx struct {
@@ -736,7 +991,6 @@ type DbgMsgTx struct {
 // TODO rename to RemoteMsgTxReceive (compat break)
 func (r *RPCServer) DbgMsgTxFwd(msg *DbgMsgTx, _ *string) error {
 	r.queueMx.Lock()
-	defer r.queueMx.Unlock()
 
 	msgTx := msg.MsgTx
 	connId := msg.ConnId
@@ -766,18 +1020,10 @@ func (r *RPCServer) DbgMsgTxFwd(msg *DbgMsgTx, _ *string) error {
 	msgTx.Time = &now
 	r.queue = append(r.queue, msgTx)
 	r.queueConnId = append(r.queueConnId, connId)
+	r.queueMx.Unlock()
 
-	// fwd to other instances
-	for _, host := range r.FwdTo {
-		fwdMsg := DbgMsgTx{
-			MsgTx:  msgTx,
-			ConnId: connId,
-		}
-		err := host.Call("RPCServer.DbgMsgTxFwd", &fwdMsg, nil)
-		if err != nil {
-			return err
-		}
-	}
+	// fwd to other instances (best effort), see [RPCServer.fwdTx]
+	r.fwdTx(msgTx, connId)
 
 	return nil
 }
@@ -810,6 +1056,10 @@ func AcceptConn(
 		ConnID: connId,
 		FwdTo:  fwdTo,
 	}
+	// all fwd targets share the same replay budget, see [newFwdConn]
+	if len(fwdTo) > 0 {
+		rcvr.replayMax = fwdTo[0].replayMax
+	}
 
 	err := server.Register(rcvr)
 	if err != nil {
@@ -818,11 +1068,21 @@ func AcceptConn(
 		fmt.Println(err)
 		return
 	}
+
+	// inject the conn as a replay source, so fwd targets get its schemas and
+	// buffered msgs on (re)connect. This happens before ServeConn, so no msg
+	// of this conn can be missed by a replay.
+	for _, f := range fwdTo {
+		f.addStream(rcvr)
+	}
+
 	server.ServeConn(conn)
 
-	clientSchemasMx.Lock()
-	delete(clientSchemas, connId)
-	clientSchemasMx.Unlock()
+	// keep the buffered msgs replayable, but stop resending dead schemas
+	rcvr.clearSchemas()
+	for _, f := range fwdTo {
+		f.removeStream(rcvr)
+	}
 
 	// TODO pass to range fwdTo (dedicated RPC method)
 	rcvr.Mach.Add1(ss.DisconnectEvent, Pass(&A{
