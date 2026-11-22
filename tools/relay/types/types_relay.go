@@ -11,7 +11,10 @@ import (
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 )
 
-const CmdRotateDbg = "rotate-dbg"
+const (
+	CmdRotateDbg = "rotate-dbg"
+	CmdArpcToDbg = "arpc-to-dbg"
+)
 
 type OutputFunc func(msg string, args ...any)
 
@@ -19,6 +22,7 @@ type OutputFunc func(msg string, args ...any)
 type CliArgs struct {
 	RotateDbg *ArgsRotateDbg `arg:"subcommand:rotate-dbg" help:"Rotate dbg protocol with fragmented dump files"`
 	Wasm      *ArgsWasm      `arg:"subcommand:wasm" help:"WebSockets to local TCP listeners for WASM"`
+	ArpcToDbg *ArgsArpcToDbg `arg:"subcommand:arpc-to-dbg" help:"aRPC to am-dbg telemetry proxy (remote schema sync)"`
 	Debug     bool           `arg:"--debug" help:"Enable debugging for asyncmachine"`
 	Name      string         `arg:"-n,--name" help:"Name of this relay"`
 	// List of allowed WebSocket origins (optional, repeatable).
@@ -49,6 +53,14 @@ type ArgsRotateDbg struct {
 	Dir           string `arg:"-d,--dir" default:"." help:"Output directory"`
 	OutputMach    bool   `arg:"--output-mach" default:"true" help:"Export serialized machines as YAML into dir/machs/id.yml and dir/machs/id.schema.yml"`
 	OutputClients bool   `arg:"--output-clients" help:"Write a plain text client list into clients.txt inside --dir"`
+}
+
+// ArgsArpcToDbg proxies an aRPC NetMach's telemetry to am-dbg.
+// am-relay arpc-to-dbg RPC_ADDR DBG_ADDR
+// nolint:lll
+type ArgsArpcToDbg struct {
+	RpcAddr string `arg:"positional,required" help:"Address of the aRPC server to connect to"`
+	DbgAddr string `arg:"positional,required" help:"Address of the am-dbg server"`
 }
 
 // ArgsWasm

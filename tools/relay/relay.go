@@ -57,6 +57,8 @@ type Relay struct {
 	// counter of WS TCP tunnels
 	cWsTcpTuns int
 	dbgClients map[string]*server.Client
+	// aRPC client of the arpc-to-dbg command
+	arpcClient *arpc.Client
 	out        types.OutputFunc
 	lastExport time.Time
 	http       *http.Server
@@ -163,6 +165,10 @@ func (r *Relay) StartState(e *am.Event) {
 	if a.Wasm != nil {
 		r.Mach.Add1(ssR.HttpStarting, nil)
 	}
+
+	if a.ArpcToDbg != nil {
+		r.startArpcToDbg(ctx, e, a.ArpcToDbg)
+	}
 }
 
 // TODO StartEnd
@@ -178,6 +184,14 @@ func (r *Relay) Start(e *am.Event) am.Result {
 }
 
 func (r *Relay) Stop(e *am.Event) am.Result {
+	// disconnect the arpc-to-dbg proxy
+	if c := r.arpcClient; c != nil {
+		if c.NetMach != nil {
+			c.Stop(nil, e, true)
+		}
+		r.arpcClient = nil
+	}
+
 	return r.Mach.EvRemove1(e, ssR.Start, nil)
 }
 
