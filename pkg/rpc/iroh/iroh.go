@@ -38,6 +38,9 @@ type MuxOpts struct {
 }
 
 // NewServer is [arpc.NewServer] decorated with a go-iroh overlay.
+// TODO server should start listening on StartIrohState, not here
+//   - create dedicated IrohServer embedding arpc.Server, override
+//     `Start(e *am.Event) am.Result`
 func NewServer(
 	ctx context.Context, addr string, name string, stateSource am.Api,
 	opts *ServerOpts,

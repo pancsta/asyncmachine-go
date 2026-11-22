@@ -39,9 +39,10 @@ type CliArgs struct {
 // am-relay convert-dbg am-dbg-dump.gob.br -o am-vis
 // nolint:lll
 type ArgsRotateDbg struct {
-	ListenAddr string   `arg:"-l,--listen-addr" default:"localhost:12732" help:"Listen address for the RPC server"`
-	FwdAddrs   []string `arg:"-f,--fwd-addr,separate" help:"Address of an RPC server to forward data to (repeatable)"`
-	IntervalTx int      `arg:"--interval-tx" default:"10000" help:"Amount of transitions to create a dump file"`
+	ListenAddr   string        `arg:"-l,--listen-addr" default:"localhost:12732" help:"Listen address for the RPC server"`
+	FwdAddrs     []string      `arg:"-f,--fwd-addr,separate" help:"Address of an RPC server to forward data to (repeatable)"`
+	FwdReplayMax int           `arg:"--fwd-replay-max" default:"100" help:"Max number of recent tx msgs kept for replay to (re)connected fwd targets"`
+	IntervalTx   int           `arg:"--interval-tx" default:"10000" help:"Amount of transitions to create a dump file"`
 	IntervalTime time.Duration `arg:"--interval-duration" default:"24h" help:"Amount of human time to create a dump file"`
 	// TODO max file size
 	Filename      string `arg:"-o,--output" default:"am-dbg-dump" help:"Output file base name"`
