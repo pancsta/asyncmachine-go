@@ -30,7 +30,8 @@ func main() {
 	}
 
 	if p.Subcommand() == nil {
-		p.Fail("missing subcommand (" + types.CmdRotateDbg + ")")
+		p.Fail("missing subcommand (" + types.CmdRotateDbg + ", " +
+			types.CmdArpcToDbg + ")")
 	}
 
 	switch {
@@ -40,7 +41,11 @@ func main() {
 		}
 	case args.Wasm != nil:
 		if err := run(ctx, args); err != nil {
-			_ = p.FailSubcommand(err.Error(), types.CmdRotateDbg)
+			_ = p.FailSubcommand(err.Error(), "wasm")
+		}
+	case args.ArpcToDbg != nil:
+		if err := run(ctx, args); err != nil {
+			_ = p.FailSubcommand(err.Error(), types.CmdArpcToDbg)
 		}
 	}
 }
