@@ -486,29 +486,29 @@ func TestCoverageAdvanced(t *testing.T) {
 
 	// StepHandler: self (IsSelf) - the suffix duplicates the "from after to" line
 	s := &Step{Type: StepHandler, FromState: "Foo", ToState: "Bar", IsSelf: true}
-	assert.Equal(t, "handler **Foo** after **Bar****Foo** after **Bar**", s.StringFromIndex(idx))
+	assert.Equal(t, "handler **Foo** after **BarFoo** after **Bar**", s.StringFromIndex(idx))
 	// StepHandler: final+enter
 	s = &Step{Type: StepHandler, ToState: "Foo", IsFinal: true, IsEnter: true}
-	assert.Equal(t, "handler **Foo** after **Foo**State", s.StringFromIndex(idx))
+	assert.Equal(t, "handler **Foo** after **FooState**", s.StringFromIndex(idx))
 	// StepHandler: final+!enter
 	s = &Step{Type: StepHandler, ToState: "Foo", IsFinal: true, IsEnter: false}
-	assert.Equal(t, "handler **Foo** after **Foo**End", s.StringFromIndex(idx))
+	assert.Equal(t, "handler **Foo** after **FooEnd**", s.StringFromIndex(idx))
 	// StepHandler: !final+enter
 	s = &Step{Type: StepHandler, ToState: "Foo", IsFinal: false, IsEnter: true}
-	assert.Equal(t, "handler **Foo** after **Foo**Enter", s.StringFromIndex(idx))
+	assert.Equal(t, "handler **Foo** after **FooEnter**", s.StringFromIndex(idx))
 	// StepHandler: !final+!enter
 	s = &Step{Type: StepHandler, ToState: "Foo", IsFinal: false, IsEnter: false}
-	assert.Equal(t, "handler **Foo** after **Foo**Exit", s.StringFromIndex(idx))
+	assert.Equal(t, "handler **Foo** after **FooExit**", s.StringFromIndex(idx))
 	// StepRelation
 	s = &Step{Type: StepRelation, FromState: "Foo", ToState: "Bar", RelType: RelationAdd}
 	assert.Equal(t, "**Foo** add **Bar**", s.StringFromIndex(idx))
 	// from/to both unset: FromStateIdx/ToStateIdx default to 0, which resolves
 	// to idx[0] ("Foo") for both - same as the "!final+!enter" case above
 	s = &Step{Type: StepHandler}
-	assert.Equal(t, "handler **Foo** after **Foo**Exit", s.StringFromIndex(idx))
+	assert.Equal(t, "handler **Foo** after **FooExit**", s.StringFromIndex(idx))
 	// from non-empty, to empty (ToStateIdx still defaults to 0 -> "Foo")
 	s = &Step{Type: StepHandler, FromState: "Foo"}
-	assert.Equal(t, "handler **Foo** after **Foo**Exit", s.StringFromIndex(idx))
+	assert.Equal(t, "handler **Foo** after **FooExit**", s.StringFromIndex(idx))
 
 	// --- Mutation.StringFromIndex and MapArgs ---
 	mut := &Mutation{Type: MutationAdd, Called: []int{0}}

@@ -679,6 +679,7 @@ func (sm *Subscriptions) When(states S, ctx context.Context) <-chan struct{} {
 	defer sm.Mx.Unlock()
 
 	// try to reuse an existing channel
+	// TODO perf: from all the passed states +elsewhere
 	for _, bind := range sm.when[states[0]] {
 		names := slices.Collect(maps.Keys(bind.States))
 		if !bind.Negation && S(names).Equal(states) && bind.Ctx == ctx {

@@ -19,12 +19,13 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 
+	tclive "github.com/pancsta/cview/tcell-livepage"
+
 	"github.com/pancsta/asyncmachine-go/internal/utils"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ssam "github.com/pancsta/asyncmachine-go/pkg/states"
-	tclive "github.com/pancsta/cview/tcell-livepage"
 )
 
 // TODO use utils.Sp for all multilines
@@ -425,8 +426,10 @@ func MutationCmds(repl *Repl) []*cobra.Command {
 	}
 	MutationFlags(repl, groupSetCmd, true)
 
-	return []*cobra.Command{addCmd, removeCmd, setCmd, groupAddCmd,
-		groupRemoveCmd, groupSetCmd}
+	return []*cobra.Command{
+		addCmd, removeCmd, setCmd, groupAddCmd,
+		groupRemoveCmd, groupSetCmd,
+	}
 }
 
 func MutationFlags(repl ReplApi, cmd *cobra.Command, groupCmd bool) {
@@ -1238,7 +1241,8 @@ func listFlagsToFilters(cmd *cobra.Command) (*ListFilters, error) {
 	}
 
 	// active
-	if activeStates, err := cmd.Flags().GetStringArray(FlagActive.Value); err != nil {
+	if activeStates, err := cmd.Flags().
+		GetStringArray(FlagActive.Value); err != nil {
 		return nil, err
 	} else if len(activeStates) > 0 {
 		filters.StatesActive = activeStates

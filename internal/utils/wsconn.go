@@ -137,11 +137,25 @@ func (c *wsConn) Close() error {
 	return c.conn.Close()
 }
 
-func (c *wsConn) LocalAddr() net.Addr                { return c.conn.LocalAddr() }
-func (c *wsConn) RemoteAddr() net.Addr               { return c.conn.RemoteAddr() }
-func (c *wsConn) SetDeadline(t time.Time) error      { return c.conn.SetDeadline(t) }
-func (c *wsConn) SetReadDeadline(t time.Time) error  { return c.conn.SetReadDeadline(t) }
-func (c *wsConn) SetWriteDeadline(t time.Time) error { return c.conn.SetWriteDeadline(t) }
+func (c *wsConn) LocalAddr() net.Addr {
+	return c.conn.LocalAddr()
+}
+
+func (c *wsConn) RemoteAddr() net.Addr {
+	return c.conn.RemoteAddr()
+}
+
+func (c *wsConn) SetDeadline(t time.Time) error {
+	return c.conn.SetDeadline(t)
+}
+
+func (c *wsConn) SetReadDeadline(t time.Time) error {
+	return c.conn.SetReadDeadline(t)
+}
+
+func (c *wsConn) SetWriteDeadline(t time.Time) error {
+	return c.conn.SetWriteDeadline(t)
+}
 
 // wsRW combines a buffered reader with a plain writer. Control frames are
 // written directly to the underlying conn, so they are not stuck in a buffer.

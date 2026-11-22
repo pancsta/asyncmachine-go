@@ -19,7 +19,7 @@ var (
 	EnvReplDir  string
 )
 
-//go:embed .env
+//go:embed config.env
 var env string
 
 func init() {

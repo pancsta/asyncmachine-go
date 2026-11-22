@@ -1,7 +1,7 @@
 version: '3'
 
 dotenv:
-  - .env
+  - config.env
 
 vars:
   PKG: "github.com/pancsta/asyncmachine-go/examples/wasm_livepage"

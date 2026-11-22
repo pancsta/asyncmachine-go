@@ -112,7 +112,9 @@ func TestTracePageRenders(t *testing.T) {
 	defer cancel()
 
 	page, err := livepage.New(ctx, view, livepage.Opts{
-		HtmlPage: HtmlPage,
+		HtmlPage: func(body string) string {
+			return strings.Replace(pageHtml, "{{body}}", body, 1)
+		},
 		Debounce: 10 * time.Millisecond,
 	})
 	if err != nil {

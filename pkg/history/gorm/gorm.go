@@ -372,6 +372,8 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 		return
 	}
 
+	// TODO also skip if tx didnt change tracked states, unless Cfg.TrackEmpty
+
 	// locks TODO no blocking in tracers, fork
 	m.mx.Lock()
 	defer m.mx.Unlock()
@@ -477,6 +479,8 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 	}
 
 	// insert state ticks
+	// TODO perf: dont insert empty ticks, check query time impact,
+	// space is very bad
 	ticks := make([]Tick, len(mTimeTracked))
 	i := 0
 	for hIdx, state := range m.Cfg.TrackedStates {
@@ -1077,8 +1081,8 @@ func (m *Memory) writeDb(rLocked bool) {
 			defer m.syncMx.RUnlock()
 		}
 
-		// TODO retry loop?
-		// sync mach record TODO skip saving states
+		// TODO sqlite-busy retry loop
+		// sync mach record
 		if err := m.Db.Save(machRec).Error; err != nil {
 			m.onErr(nofmt.Errorf("failed to save: %w", err))
 			return err
