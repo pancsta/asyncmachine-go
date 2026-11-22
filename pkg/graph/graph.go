@@ -1,5 +1,6 @@
 // Package graph provides a graph or interconnected state-machines and their
 // states, based on the dbg telemetry protocol.
+// TODO perf: migrate to https://github.com/mlange-42/ark
 package graph
 
 import (

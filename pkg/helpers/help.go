@@ -12,11 +12,13 @@ import (
 	"maps"
 	"os"
 	"reflect"
+	"regexp"
 	"runtime"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -1171,11 +1173,59 @@ func GetTransitionStates(
 	return added, removed, utils.SlicesUniq(touched)
 }
 
-// TODO batch and merge with am-dbg
-// func Batch(input <-chan any, state string, arg string, window time.Duration,
-//   maxElement int) {
-//
-// }
+// Batch batches items added via [Batch.Add] and flushes them using
+// [Batch.Flush] after [Batch.Window] elapses or [Batch.MaxSize] is reached.
+// Add is safe for concurrent use, but the config fields must be set before the
+// first Add. Flush must not block: it's called from a background goroutine, or
+// from Add once MaxSize is reached.
+type Batch[T any] struct {
+	// Window is the time to collect items before flushing them.
+	Window time.Duration
+	// MaxSize flushes the batch early once it reaches this size. 0 disables it.
+	MaxSize int
+	// Flush receives a non-empty batch of items.
+	Flush func(items []T)
+
+	mx        sync.Mutex
+	items     []T
+	scheduled bool
+}
+
+// Add appends an item to the batch and schedules a flush.
+func (b *Batch[T]) Add(item T) {
+	b.mx.Lock()
+	b.items = append(b.items, item)
+
+	// flush early on a full batch
+	if b.MaxSize > 0 && len(b.items) >= b.MaxSize {
+		items := b.items
+		b.items = nil
+		b.mx.Unlock()
+		b.Flush(items)
+		return
+	}
+
+	if b.scheduled {
+		b.mx.Unlock()
+		return
+	}
+	b.scheduled = true
+	b.mx.Unlock()
+
+	go func() {
+		time.Sleep(b.Window)
+
+		b.mx.Lock()
+		items := b.items
+		b.items = nil
+		b.scheduled = false
+		b.mx.Unlock()
+
+		if len(items) > 0 {
+			b.Flush(items)
+		}
+	}()
+}
 
 func ResultToErr(result am.Result) error {
 	switch result {
@@ -1204,6 +1254,125 @@ func (g *MachGroup) Is1(state string) bool {
 	return true
 }
 
+// MachGroupFilter filters a group of machines by ID, hierarchy, machine time,
+// and states. The zero value matches all machines. Pagination is applied by
+// [MachGroup.Filter].
+type MachGroupFilter struct {
+	// ID and hierarchy
+
+	IdExact  string
+	IdSubstr string
+	IdRegexp *regexp.Regexp
+	IdPrefix string
+	IdSuffix string
+	Parent   string
+
+	// mtime
+
+	MtimeMin    uint64
+	MtimeMax    uint64
+	MtimeStates am.S
+
+	// states
+
+	StatesActive   am.S
+	StatesInactive am.S
+
+	// TODO conditions which have to match
+	Conds []Cond
+	// TODO conditions which cant match
+	CondsNot []Cond
+
+	// pagination
+
+	Limit    int
+	StartIdx int
+}
+
+// Matches reports whether mach passes all filters. Pagination is not applied.
+// For machines exposing RemoteId (eg rpc.NetworkMachine), the remote ID is
+// matched instead of the local one.
+func (f *MachGroupFilter) Matches(mach am.Api) bool {
+	if mach == nil {
+		return false
+	}
+
+	// ID
+	id := mach.Id()
+
+	if f.IdExact != "" && id != f.IdExact {
+		return false
+	}
+	if f.IdRegexp != nil && !f.IdRegexp.MatchString(id) {
+		return false
+	}
+	if f.IdSubstr != "" && !strings.Contains(id, f.IdSubstr) {
+		return false
+	}
+	if f.IdPrefix != "" && !strings.HasPrefix(id, f.IdPrefix) {
+		return false
+	}
+	if f.IdSuffix != "" && !strings.HasSuffix(id, f.IdSuffix) {
+		return false
+	}
+
+	// hierarchy
+	if f.Parent != "" && mach.ParentId() != f.Parent {
+		return false
+	}
+
+	// mtime
+	mtime := mach.Time(f.MtimeStates).Sum(nil)
+	if f.MtimeMin > 0 && f.MtimeMin > mtime {
+		return false
+	}
+	if f.MtimeMax > 0 && f.MtimeMax < mtime {
+		return false
+	}
+
+	// states
+	names := mach.StateNames()
+	if len(f.StatesActive) > 0 {
+		// missing states
+		if Implements(names, f.StatesActive) != nil {
+			return false
+		}
+		if !mach.Is(f.StatesActive) {
+			return false
+		}
+	}
+	if len(f.StatesInactive) > 0 {
+		// missing states
+		if Implements(names, f.StatesInactive) != nil {
+			return false
+		}
+		if !mach.Not(f.StatesInactive) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Filter returns machines from the group passing [MachGroupFilter.Matches],
+// honoring StartIdx and Limit.
+func (g MachGroup) Filter(f *MachGroupFilter) MachGroup {
+	ret := make(MachGroup, 0, len(g))
+	for i, mach := range g {
+		if f.StartIdx > 0 && i < f.StartIdx {
+			continue
+		}
+		if f.Limit > 0 && len(ret) >= f.Limit {
+			break
+		}
+		if f.Matches(mach) {
+			ret = append(ret, mach)
+		}
+	}
+
+	return ret
+}
+
 // Pool creates a highly configurable pond pool. Use SubmitErr or Submit on the
 // result.
 func Pool(ctx context.Context, limit int) pond.Pool {
@@ -1228,8 +1397,6 @@ func CloseSafe[T any](ch chan T) {
 // Cond is a set of state conditions, which when all met make the condition
 // true.
 type Cond struct {
-	// TODO IsMatch, AnyMatch, ... for regexps
-
 	// Only if all these states are active.
 	Is S
 	// Only if any of these groups of states are active.
@@ -1238,18 +1405,29 @@ type Cond struct {
 	Any1 S
 	// Only if none of these states are active.
 	Not S
+	// Only if all these state name regexps match at least one active state.
+	IsMatch S
+	// Only if any of these state name regexps matches an active state.
+	AnyMatch S
+	// Only if none of these state name regexps match an active state.
+	NotMatch S
 	// Only if the clock is equal or higher then.
 	Clock am.Clock
 
-	// TODO time queries
-	// Query string
-	// AnyQuery string
-	// NotQuery string
+	// Only if all these clock queries match.
+	Query []func(clock am.Clock) bool
+	// Only if any of these clock queries matches.
+	AnyQuery []func(clock am.Clock) bool
+	// Only if none of these clock queries match.
+	NotQuery []func(clock am.Clock) bool
 }
 
 func (c Cond) String() string {
-	return nofmt.Sprintf("is: %s, any: %s, not: %s, clock: %v",
-		c.Is, c.Any1, c.Not, c.Clock)
+	return nofmt.Sprintf(
+		"is: %s, any: %s, not: %s, isMatch: %s, anyMatch: %s, notMatch: %s, "+
+			"clock: %v, queries: %d/%d/%d",
+		c.Is, c.Any1, c.Not, c.IsMatch, c.AnyMatch, c.NotMatch, c.Clock,
+		len(c.Query), len(c.AnyQuery), len(c.NotQuery))
 }
 
 // Check compares the specified conditions against the passed machine. When mach
@@ -1271,6 +1449,55 @@ func (c Cond) Check(mach am.Api) bool {
 	if len(c.Any) > 0 && !mach.Any(c.Any...) {
 		return false
 	}
+
+	// state name regexps
+	if len(c.IsMatch)+len(c.AnyMatch)+len(c.NotMatch) > 0 {
+		active := mach.ActiveStates(nil)
+
+		// all patterns must match
+		for _, pattern := range c.IsMatch {
+			if !matchStates(active, S{pattern}) {
+				return false
+			}
+		}
+		// any pattern must match
+		if len(c.AnyMatch) > 0 && !matchStates(active, c.AnyMatch) {
+			return false
+		}
+		// no pattern can match
+		if matchStates(active, c.NotMatch) {
+			return false
+		}
+	}
+
+	// clock queries
+	if len(c.Query)+len(c.AnyQuery)+len(c.NotQuery) > 0 {
+		clock := mach.Clock(nil)
+
+		for _, query := range c.Query {
+			if query != nil && !query(clock) {
+				return false
+			}
+		}
+		if len(c.AnyQuery) > 0 {
+			matched := false
+			for _, query := range c.AnyQuery {
+				if query != nil && query(clock) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				return false
+			}
+		}
+		for _, query := range c.NotQuery {
+			if query != nil && query(clock) {
+				return false
+			}
+		}
+	}
+
 	if !mach.WasClock(c.Clock) {
 		return false
 	}
@@ -1278,9 +1505,26 @@ func (c Cond) Check(mach am.Api) bool {
 	return true
 }
 
+// matchStates reports whether any of the states matches any of the regexps.
+// Invalid regexps don't match.
+func matchStates(states S, patterns S) bool {
+	for _, state := range states {
+		for _, pattern := range patterns {
+			if ok, err := regexp.MatchString(pattern, state); err == nil && ok {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // IsEmpty returns false if no condition is defined.
 func (c Cond) IsEmpty() bool {
-	return c.Is == nil && c.Any1 == nil && c.Not == nil && c.Clock == nil
+	return c.Is == nil && c.Any1 == nil && c.Not == nil && c.Clock == nil &&
+		len(c.Any) == 0 &&
+		len(c.IsMatch) == 0 && len(c.AnyMatch) == 0 && len(c.NotMatch) == 0 &&
+		len(c.Query) == 0 && len(c.AnyQuery) == 0 && len(c.NotQuery) == 0
 }
 
 // ///// ///// /////
