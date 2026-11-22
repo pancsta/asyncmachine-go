@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +31,27 @@ var readyTimeout = 3 * time.Second
 
 func TestBasic(t *testing.T) {
 	test.TemplateTestBasic(t, newTest)
+}
+
+func TestAddrTag(t *testing.T) {
+	test.TemplateTestAddrTag(t, newTest)
+}
+
+func TestAddrTagTicket(t *testing.T) {
+	if os.Getenv(am.EnvAmTestDbgAddr) == "" {
+		t.Parallel()
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	netSrc := utils.NewRelsNetSrc(t, nil)
+	_, _, s, _ := newTest(t, ctx, netSrc, nil, 0, false, nil, nil)
+
+	// the iroh addr tag carries the dialable endpoint ticket
+	tag := amhelp.TagValue(s.Mach.Tags(), ssrpc.TagKeyAddr)
+	assert.True(t, strings.HasPrefix(tag, endpointticket.Kind),
+		"iroh server addr tag should be an endpoint ticket: %q", tag)
 }
 
 func TestTypeSafe(t *testing.T) {

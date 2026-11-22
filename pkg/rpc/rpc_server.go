@@ -507,6 +507,11 @@ func (s *Server) RpcAcceptingState(e *am.Event) {
 
 	s.log("RPC started on %s", s.Addr)
 
+	// addr tag, unless the server creator (eg iroh) already set a dialable addr
+	if amhelp.TagValue(s.Mach.Tags(), states.TagKeyAddr) == "" {
+		amhelp.TagSetOnMach(s.Mach, states.TagKeyAddr, s.Addr)
+	}
+
 	// unblock
 	s.Mach.Fork(ctx, e, func() {
 		// fork to accept TODO state?

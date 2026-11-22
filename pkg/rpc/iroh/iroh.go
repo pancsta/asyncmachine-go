@@ -15,6 +15,7 @@ import (
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 )
 
 const ALPN = "arpc/1"
@@ -100,6 +101,9 @@ func NewServer(
 	}
 	s.Listener.Store(&nlis)
 
+	// addr tag with the dialable endpoint ticket, once the listener is ready
+	amhelp.TagSetOnMach(s.Mach, ssrpc.TagKeyAddr, endpointTicket(ep))
+
 	return s, ep, nil
 }
 
@@ -138,6 +142,9 @@ func NewClient(
 		_ = ep.Shutdown(ctx)
 		return nil, nil, err
 	}
+
+	// addr tag with the dialed ticket, the addr param is reserved for reconns
+	amhelp.TagSetOnMach(c.Mach, ssrpc.TagKeyAddr, irohAddr)
 
 	conn, err := ep.Connect(ctx, epAddr, ALPN)
 	if err != nil {
@@ -215,6 +222,9 @@ func NewMux(
 		allowedPubKeys: opts.AllowedPubKeys,
 	}
 
+	// addr tag with the dialable endpoint ticket, once the listener is ready
+	amhelp.TagSetOnMach(m.Mach, ssrpc.TagKeyAddr, endpointTicket(ep))
+
 	return m, ep, nil
 }
 
@@ -258,4 +268,9 @@ func (l *irohListener) Accept() (net.Conn, error) {
 		}
 		return conn, nil
 	}
+}
+
+// endpointTicket returns the dialable ticket of ep, used as the "addr" tag.
+func endpointTicket(ep *iroh.Endpoint) string {
+	return endpointticket.Encode(ep.Addr())
 }
