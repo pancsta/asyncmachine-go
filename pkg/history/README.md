@@ -134,8 +134,7 @@ mach.Add1("A", nil)
 
 // run a query
 now := time.Now().UTC()
-mem.Sync()
-time.Sleep(100 * time.Millisecond)
+mem.Sync(ctx)
 mem.ActivatedBetween(ctx, "A", now.Add(-time.Second), now) // true
 ```
 
@@ -213,8 +212,7 @@ mem, err := amhistg.NewMemory(ctx, db, mach, cfg, onErr)
 // mutate and query
 mach.Add1("A", nil)
 now := time.Now().UTC()
-mem.Sync()
-time.Sleep(100 * time.Millisecond)
+mem.Sync(ctx)
 mem.ActivatedBetween(ctx, "A", now.Add(-time.Second), now) // true
 ```
 
@@ -290,8 +288,7 @@ mem, err := amhistbb.NewMemory(ctx, db, mach, cfg, onErr)
 // mutate and query
 mach.Add1("A", nil)
 now := time.Now().UTC()
-mem.Sync()
-time.Sleep(100 * time.Millisecond)
+mem.Sync(ctx)
 mem.ActivatedBetween(ctx, "A", now.Add(-time.Second), now) // true
 ```
 
@@ -369,8 +366,7 @@ mem, err := amhistb.NewMemory(ctx, db, mach, cfg, onErr)
 // mutate and query
 mach.Add1("A", nil)
 now := time.Now().UTC()
-mem.Sync()
-time.Sleep(100 * time.Millisecond)
+mem.Sync(ctx)
 mem.ActivatedBetween(ctx, "A", now.Add(-time.Second), now) // true
 ```
 

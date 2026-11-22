@@ -3,12 +3,13 @@
 **asyncmachine-go** support WebAssembly through WebSockets-to-TCP tunnels and MessageChannels between WebWorkers for all
 packages besides `/pkg/pubsub` and `/pkg/node` (not due to technical reasons). The distributed nature of the framework
 makes a perfect fit for a [single-threaded environment of WASM](https://github.com/tinygo-org/tinygo/issues/2630),
-which can easily synchronize and chunk work between CPU cores.
+and **WebWorkers**, which can easily synchronize and chunk work between CPU cores.
 
-Extensive information about WASM for **asyncmachine** can be found at:
+Extensive information about WASM for **asyncmachine-go** can be found at:
 
 - [`/examples/wasm`](/examples/wasm)
 - [`/examples/wasm_workflow`](/examples/wasm_workflow)
+- [`/examples/wasm_livepage`](/examples/livepage)
 - [`/tools/cmd/am-relay`](/tools/cmd/am-relay/README.md#relay-of-webassembly)
 
 Building WASM is as simple as:
@@ -47,6 +48,8 @@ repl, err := arpc.MachReplWs(mach, addrRelay, &arpc.ReplOpts{
     WebSocketTunnel: arpc.WsListenPath("repl-"+mach.Id(), addrListen),
 })
 ```
+
+// TODO ## tinygo - gen step, tinygo build cmds
 
 ## Debugging
 

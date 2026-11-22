@@ -22,9 +22,8 @@ var MainMenu = []Entry{
 	{Url: "history", Path: "pkg/history/README.md"},
 	{"", "", false, false},
 	{Url: "rpc", Path: "pkg/rpc/README.md"},
+	{Url: "graph", Path: "pkg/graph/README.md"},
 	{Url: "integrations", Path: "pkg/integrations/README.md"},
-	{Url: "node", Path: "pkg/node/README.md"},
-	{Url: "pubsub", Path: "pkg/pubsub/README.md"},
 	{"", "", false, false},
 	{Url: "am-dbg", Path: "tools/cmd/am-dbg/README.md"},
 	{Url: "arpc", Path: "tools/cmd/arpc/README.md"},
@@ -37,6 +36,11 @@ var MainMenu = []Entry{
 	{Url: "changelog", Path: "CHANGELOG.md", SkipMenu: true},
 	{Url: "release-notes", Path: "docs/release-notes.md", SkipMenu: true},
 	{Url: "env-configs", Path: "docs/env-configs.md", SkipMenu: true},
+
+	// hidden
+
+	{Url: "node", Path: "pkg/node/README.md", SkipMenu: true},
+	{Url: "pubsub", Path: "pkg/pubsub/README.md", SkipMenu: true},
 
 	// examples
 

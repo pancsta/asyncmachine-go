@@ -16,6 +16,16 @@ distributed across _n_ servers and _m_ browsers, using efficient diff-based sync
 3. `../../scripts/dep-taskfile.sh`
 4. `task start`
 
+## TinyGo
+
+Requires TinyGo 0.44+ and `wasm-opt` for the optimized build.
+
+```bash
+task start-tinygo       # dev build, ~11 MB
+task build-tinygo-prod  # optimized build, ~3.5 MB
+task test-tinygo        # TinyGo browser client against the big Go server
+```
+
 ## Testing
 
 `wasm_test.go` is an integration test which runs the same commands as `task start` (WASM build, `go run ./server`),
@@ -100,12 +110,16 @@ am-vis --bird render-dump am-dbg-dump.gob.br
 $ task --list-all
 
 task: Available tasks for this project:
-* build:            Development build
-* build-prod:       Optimized build
-* deps:             List dependencies in deps.md
-* deps-graph:       Render dependencies graph in deps-graph.svg
-* repl:             Start REPL for both server and browser
-* start:            Build and start server
+* build:             Development build
+* build-prod:        Optimized build
+* build-tinygo:      Development build with TinyGo
+* build-tinygo-prod: Optimized build with TinyGo
+* deps:              List dependencies in deps.md
+* deps-graph:        Render dependencies graph in deps-graph.svg
+* repl:              Start REPL for both server and browser
+* start:             Build and start server
+* start-tinygo:      Build with TinyGo and start server
+* test-tinygo:       Integration test with a TinyGo browser client
 ```
 
 ## Practical Implementation
