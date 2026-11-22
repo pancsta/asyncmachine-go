@@ -38,7 +38,49 @@ func (d *Debugger) hBindKeyboard() {
 	}
 
 	d.hSearchSchemaClients(inputHandler)
-	d.App.SetInputCapture(inputHandler.Capture)
+
+	// Draw only the affected components: am-dbg handlers/states redraw their
+	// changes, and app-level keys redraw the focused primitive instead of the
+	// whole screen (which repaints unrelated layers).
+	d.App.SetDrawOnKey(false)
+	d.App.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
+		// the schema filter accepts all keys except focus cycling and quit
+		var out *tcell.EventKey
+		isFilter := d.App.GetFocus() == d.treeFilterOut
+		if isFilter && ev.Key() != tcell.KeyTab &&
+			ev.Key() != tcell.KeyBacktab && ev.Key() != tcell.KeyCtrlQ {
+			out = ev
+		} else {
+			out = inputHandler.Capture(ev)
+		}
+		if out == nil {
+			if ev.Key() == tcell.KeyCtrlQ {
+				return nil // quitting
+			}
+
+			// consumed by am-dbg; its handlers and states draw what changed
+			d.hDraw()
+			return nil
+		}
+		if out.Key() == tcell.KeyCtrlC {
+			return out // let cview stop the app
+		}
+
+		// not handled by am-dbg: forward to the focused primitive and redraw
+		// only the affected components
+		oldFocus := d.App.GetFocus()
+		if oldFocus == nil {
+			return out
+		}
+		handler := oldFocus.InputHandler()
+		if handler == nil {
+			return out
+		}
+		handler(out, d.App.SetFocus)
+		d.hDraw(oldFocus, d.App.GetFocus())
+
+		return nil
+	})
 }
 
 func (d *Debugger) hInitFocusManager() *cbind.Configuration {
@@ -145,7 +187,7 @@ func (d *Debugger) hSearchSchemaClients(inputHandler *cbind.Configuration) {
 					if strings.HasPrefix(text, buffer) {
 						d.clientList.SetCurrentItem(i)
 						d.hUpdateClientList()
-						d.draw(d.clientList)
+						d.hDraw(d.clientList)
 						break
 					}
 				}
@@ -205,7 +247,7 @@ func (d *Debugger) hSearchSchemaClients(inputHandler *cbind.Configuration) {
 					}
 					d.hUpdateSchemaTree()
 					d.hUpdateLogReader(nil)
-					d.draw()
+					d.hDraw()
 					d.tree.SetCurrentNode(nodeMatch)
 				}
 
@@ -360,7 +402,7 @@ func (d *Debugger) getKeystrokes() map[string]tcellKeyFn {
 			} else {
 				d.App.SetFocus(d.clientList)
 			}
-			d.draw()
+			d.hDraw()
 
 			return ev
 		},
@@ -494,8 +536,7 @@ func (d *Debugger) hNextTxKey() tcellKeyFn {
 		if d.Mach.Not1(ss.ClientSelected) {
 			return nil
 		}
-		if d.hThrottleKey(ev, arrowThrottleMs) {
-			// TODO fast jump scroll while holding the key
+		if d.hThrottleArrow(ev) {
 			return nil
 		}
 
@@ -537,8 +578,7 @@ func (d *Debugger) hPrevTxKey() tcellKeyFn {
 		if d.Mach.Not1(ss.ClientSelected) {
 			return nil
 		}
-		if d.hThrottleKey(ev, arrowThrottleMs) {
-			// TODO fast jump scroll while holding the key
+		if d.hThrottleArrow(ev) {
 			return nil
 		}
 
@@ -775,6 +815,28 @@ func (d *Debugger) hThrottleKey(ev *tcell.EventKey, ms int) bool {
 	return false
 }
 
+// hThrottleArrow lets the first arrow press through and then steps at most once
+// per arrowRepeatMs while the key is held. A gap above arrowHoldWindowMs starts
+// a new press.
+func (d *Debugger) hThrottleArrow(ev *tcell.EventKey) bool {
+	// throttle TODO atomics
+	now := time.Now()
+	sameKey := d.lastKeystroke == ev.Key() &&
+		now.Sub(d.lastKeystrokeTime) <= arrowHoldWindowMs*time.Millisecond
+	if !sameKey {
+		d.lastKeystroke = ev.Key()
+		d.lastKeystrokeTime = now
+		return false
+	}
+	if now.Sub(d.lastKeystrokeTime) < arrowRepeatMs*time.Millisecond {
+		return true
+	}
+
+	d.lastKeystrokeTime = now
+
+	return false
+}
+
 var _ = ss.FocusNext
 
 // TODO move
@@ -847,11 +909,13 @@ func (d *Debugger) hUpdateFocusableOrder() {
 
 	case ss.TreeMatrixView:
 		add(d.treeGroups, d.treeGroups.Box)
+		add(d.treeFilterOut, d.treeFilterOut.Box)
 		add(d.tree, d.tree.Box)
 		add(d.matrix, d.matrix.Box)
 
 	default: // TreeLogView
 		add(d.treeGroups, d.treeGroups.Box)
+		add(d.treeFilterOut, d.treeFilterOut.Box)
 		add(d.tree, d.tree.Box)
 
 		if d.params.Filters.LogLevel != am.LogNothing {

@@ -72,6 +72,7 @@ type Client struct {
 	logRenderedLevel      am.LogLevel
 	logRenderedFilters    *types.Filters
 	logRenderedGroup      string
+	logRenderedFilterOut  string
 	logRenderedTimestamps bool
 	logReaderMx           sync.Mutex
 }

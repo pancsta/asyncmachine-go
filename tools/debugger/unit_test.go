@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +57,34 @@ func TestFilterErrs(t *testing.T) {
 	assert.True(t, d.hFilterTx(c, 2, filter), "regular state")
 	assert.True(t, d.hFilterTx(c, 3, filter), "Err* with other states")
 	assert.True(t, d.hFilterTx(c, 0, &types.Filters{}), "filter disabled")
+}
+
+func TestFilterOutStates(t *testing.T) {
+	c := newClient("connId", &dbg.DbgMsgStruct{
+		ID:          "mach-1",
+		StatesIndex: am.S{"Foo", "Bar", "ErrFoo"},
+	})
+	c.MsgSchemaParsed = &types.MsgSchemaParsed{
+		Groups: map[string]am.S{"g": {"Foo", "ErrFoo"}},
+	}
+	d := &Debugger{}
+
+	// no filter
+	assert.Equal(t, am.S{"Foo", "Bar", "ErrFoo"}, d.hGroupStates(c))
+
+	// filter out, case-insensitive
+	re, err := regexp.Compile("(?i)^err")
+	require.NoError(t, err)
+	d.filterOut.Store(re)
+	assert.Equal(t, am.S{"Foo", "Bar"}, d.hGroupStates(c))
+
+	// filter is part of the selected group
+	c.SelectedGroup = "g"
+	assert.Equal(t, am.S{"Foo"}, d.hGroupStates(c))
+
+	// group without filter
+	d.filterOut.Store(nil)
+	assert.Equal(t, am.S{"Foo", "ErrFoo"}, d.hGroupStates(c))
 }
 
 func TestLogReaderEval(t *testing.T) {

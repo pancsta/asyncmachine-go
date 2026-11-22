@@ -49,10 +49,12 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 	// skip when within the range
 	// TODO optimize: count lines from log per level and same params
 	maxDiff := float64(maxVisible * 1)
+	filterOut := d.filterOutStr
 	if d.lastResize == d.logLastResize && d.C.logRenderedLevel == level &&
 		d.logRenderedClient == d.C.MsgStruct.ID &&
 		d.C.logRenderedFilters.Equal(d.hFiltersFromStates()) &&
 		d.C.logRenderedGroup == d.C.SelectedGroup &&
+		d.C.logRenderedFilterOut == filterOut &&
 		d.C.logRenderedTimestamps == d.Mach.Is1(ss.LogTimestamps) &&
 		math.Abs(float64(d.C.logRenderedCursor1)-float64(cursorTx1)) < maxDiff {
 
@@ -146,6 +148,7 @@ func (d *Debugger) BuildingLogState(e *am.Event) {
 			CursorTx1: cursorTx1,
 			LogLevel:  level,
 			Group:     group,
+			FilterOut: filterOut,
 		}))
 	})
 }
@@ -164,6 +167,7 @@ func (d *Debugger) LogBuiltState(e *am.Event) {
 		d.C.logRenderedCursor1 = cursorTx1
 		d.C.logRenderedLevel = level
 		d.C.logRenderedGroup = group
+		d.C.logRenderedFilterOut = lArgs.FilterOut
 		d.logRenderedClient = d.C.MsgStruct.ID
 		d.C.logRenderedFilters = d.hFiltersFromStates()
 		d.C.logRenderedTimestamps = d.Mach.Is1(ss.LogTimestamps)
@@ -1033,9 +1037,9 @@ func (d *Debugger) hNewLogReaderUpdate(
 	}
 
 	var groupStates S
-	if d.Mach.Is1(ss.FilterReaderGroup) && c.SelectedGroup != "" &&
-		c.MsgSchemaParsed != nil {
-		groupStates = c.MsgSchemaParsed.Groups[c.SelectedGroup]
+	if d.Mach.Is1(ss.FilterReaderGroup) && c.MsgSchemaParsed != nil &&
+		(c.SelectedGroup != "" || d.filterOut.Load() != nil) {
+		groupStates = d.hGroupStates(c)
 	}
 
 	return &logReaderUpdate{
