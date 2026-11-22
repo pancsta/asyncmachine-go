@@ -60,7 +60,7 @@ Additionally, remote RPC network-machines can also have RPC servers attached to 
 ### Network State Source
 
 Any state machine can be exposed as an RPC state source, as long as it implements [`/pkg/rpc/states/StateSourceSchemaDef`](/pkg/rpc/states/ss_rpc.go).
-This can be done either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.SchemaMerge),
+This can be done either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SchemaMerge),
 [SAdd](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SAdd)), or by generating a schema file with
 [am-gen](/tools/cmd/am-gen/README.md). It's also required to have the states verified by [Machine.VerifyStates](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.VerifyStates).
 Network Machine can send data to the client via the `SendPayload` state.
@@ -189,8 +189,8 @@ fail-safety for both connection (eg [ConnRetries](https://pkg.go.dev/github.com/
 After the client's `Ready` state becomes active, it exposes a remote **network machine** at `client.NetMach`. Remote
 network machine implements most of the
 [Machine](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine)'s methods, many of which
-are evaluated locally (like [Is](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#NetMach.Is), [When](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#NetMach.When),
-[NewStateCtx](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#NetMach.NewStateCtx)). See [machine.Api](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Api)
+are evaluated locally (like [Is](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#NetworkMachine.Is), [When](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#NetworkMachine.When),
+[NewStateCtx](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#NetworkMachine.NewStateCtx)). See [machine.Api](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Api)
 for a full list.
 
 Time diffs received by the RPC cliebt are merged (contain multiple mutations in one diff), but can be split
@@ -553,8 +553,8 @@ type Api interface {
 
 ## Tests
 
-**aRPC** passes the [whole test suite](/pkg/rpc/rpc_machine_test.go) of [`/pkg/machine`](/pkg/machine/machine_test.go)
-for the exposed methods and provides a couple of [optimization-focused tests](/pkg/rpc/rpc_test.go) (on top of tests for
+**aRPC** passes the [whole test suite](/pkg/rpc/test/netmach_test.go) of [`/pkg/machine`](/pkg/machine/machine_test.go)
+for the exposed methods and provides a couple of [optimization-focused tests](/pkg/rpc/test/rpc_test.go) (on top of tests for
 basic RPC).
 
 ## Status

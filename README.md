@@ -85,16 +85,16 @@ vector formats. It aims to create **autonomous** workflows with **organic** cont
 - ***logical clock***
 - subscription topic
 - multiple methods
-- command
 - metric
 - trace
 - lock
 - breakpoint
+- CLI command
 
 Besides the main use-case of **workflows**, it can be used for **stateful applications of any size** - daemons, UIs,
-stateful RPC UIs, configs, flag servers, live sessions, bots, firewalls, synchronization consensus, games, smart graphs, microservice
-orchestration, robots, contracts, streams, DI containers, message broking, test scenarios, simulators, as well as
-**"real-time" systems** which rely on instant cancelation.
+stateful RPC UIs, configs, flag servers, live sessions, bots, firewalls, synchronization consensus, games, smart
+graphs, microservice orchestration, robots, contracts, streams, DI containers, message broking, test scenarios,
+simulators, as well as **"real-time" systems** which rely on instant cancelation.
 
 <div align="center">
     <a href="https://github.com/pancsta/assets/blob/main/asyncmachine-go/am-vis.svg?raw=true">
@@ -309,8 +309,8 @@ Experimental:
 
 - [DEEPSWAPP Browser](https://deepswapp.com) - Browse your browser with another browser
 - [secai](https://github.com/pancsta/secai) - AI Workflows
-  - [livepage](TODO) [go-app](https://go-app.dev/) HTML projection ([code](TODO))
-  - WebAssembly [go-app](https://go-app.dev/) PWA ([code](TODO))
+  - [livepage](https://github.com/pancsta/livepage) [go-app](https://go-app.dev/) HTML projection ([code](https://github.com/pancsta/secai/tree/main/web/browser))
+  - WebAssembly [go-app](https://go-app.dev/) PWA ([code](https://github.com/pancsta/secai/blob/v0.8.0/web))
 - Self-hosting of [pkg/rpc](pkg/rpc/states), [pkg/node](pkg/node/states), [pkg/pubsub](pkg/pubsub/states)
 - [arpc REPL](/tools/repl/states) - Cobra-based REPL
 - [am-dbg TUI Debugger](/tools/debugger/states) - Single state-machine TUI app

@@ -210,7 +210,8 @@ func GenSchemaV3(schemas []SchemaV3) string {
 
 		// exports
 		f.Comment("EXPORTS AND GROUPS")
-		genStatesInit[jen.Id("StatesBase")] = jen.Op("&").Qual(amPath, "StatesBase").Values(jen.Dict{
+		statesBase := jen.Op("&").Qual(amPath, "StatesBase")
+		genStatesInit[jen.Id("StatesBase")] = statesBase.Values(jen.Dict{
 			jen.Id("Exception"): jen.Lit("Exception"),
 		})
 		f.Var().Defs(

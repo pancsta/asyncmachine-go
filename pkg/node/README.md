@@ -51,7 +51,7 @@ import amnode "github.com/pancsta/asyncmachine-go/pkg/node"
 ### Worker
 
 Any state machine can be exposed as a Node Worker, as long as it implements `/pkg/node/states.WorkerStructDef`. This can
-be done either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.SchemaMerge),
+be done either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SchemaMerge),
 [SAdd](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SAdd)), or by generating a schema file with [am-gen](/tools/cmd/am-gen/README.md).
 It's also required to have the states verified by [Machine.VerifyStates](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.VerifyStates).
 Worker should respond to `WorkRequested` and produce `ClientSendPayload` to send data to the client.
@@ -161,13 +161,13 @@ State schema from [/pkg/node/states/ss_supervisor.go](/pkg/node/states/ss_superv
 ## Client
 
 Any state machine can be a Node Client, as long as it implements `/pkg/node/states.ClientStructDef`. This can be done
-either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.SchemaMerge),
+either manually, or by using state helpers ([SchemaMerge](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SchemaMerge),
 [SAdd](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SAdd)), or by generating a schema file with [am-gen](/tools/cmd/am-gen/README.md).
 Client also needs to know his worker's machine schema. To connect to the worker pool, client accepts a list
 of supervisor addresses (PubSub discovery in on the roadmap), and will be trying to connect to them in order. After
-`SuperReady` activates, client can call [`Client.ReqWorker(ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Client.ReqWorker),
+`SuperReady` activates, client can call [`Client.ReqWorker(ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/node#Client.ReqWorker),
 which will request a worker from the supervisor, resulting in `WorkerReady`. At this point client can access the worker
-at [`Client.WorkerRpc.NetMach`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/rpc#Client), then add the
+at [`Client.RpcWorker.NetMach`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/node#Client.RpcWorker), then add the
 `WorkRequested` state multiple times, and handle `WorkerPayload`.
 
 - [schema file](/pkg/node/states/ss_node_client.go)
@@ -207,7 +207,7 @@ err := amhelp.WaitForAll(ctx, 2*time.Second,
 client.ReqWorker(ctx)
 err := amhelp.WaitForAll(ctx, 2*time.Second,
     super.When1(ssnode.ClientStates.WorkerReady, ctx))
-worker := client.WorkerRpc.NetMach
+worker := client.RpcWorker.NetMach
 worker.Add1(ssnode.WorkerStates.WorkRequested, am.A{"input": 2})
 ```
 

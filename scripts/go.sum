@@ -98,6 +98,8 @@ github.com/nkall/compactnumber v1.1.1 h1:5mTobZOsK+kOiS4WEdmFi4URnaV6vYb9dfS1uvv
 github.com/nkall/compactnumber v1.1.1/go.mod h1:NLxufZ+8QKDIlqCwLE3WAnJRLNelv4/1PypZzQ6qnBg=
 github.com/orsinium-labs/enum v1.4.0 h1:3NInlfV76kuAg0kq2FFUondmg3WO7gMEgrPPrlzLDUM=
 github.com/orsinium-labs/enum v1.4.0/go.mod h1:Qj5IK2pnElZtkZbGDxZMjpt7SUsn4tqE5vRelmWaBbc=
+github.com/pancsta/cview v1.6.0 h1:KbmUk/viV2j7w1rXLfUw0BGsG0q8dlKhaBRezBGlG5U=
+github.com/pancsta/cview v1.6.0/go.mod h1:l1rUeBXwGAigsWWUhCktCEkpRgTvLNrLtUSmYfdrre0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 h1:o4JXh1EVt9k/+g42oCprj/FisM4qX9L3sZB3upGN2ZU=
 github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55/go.mod h1:OmDBASR4679mdNQnz2pUhc2G8CO2JrUAVFDRBDP/hJE=

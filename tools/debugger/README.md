@@ -8,7 +8,7 @@
 To read about **am-dbg**, go to [/tools/cmd/am-dbg](/tools/cmd/am-dbg/README.md). This package is about the
 implementation, not the end-user application.
 
-`/tools/debugger` is a [cview](https://code.rocket9labs.com/tslocum/cview) TUI app with a single state-machine
+`/tools/debugger` is a [cview](https://github.com/pancsta/cview) TUI app with a single state-machine
 consisting of:
 
 - input events (7 states)
@@ -16,7 +16,8 @@ consisting of:
 - actions (18 states)
 
 This state machine features a decent amount of relations within a large number of states and 5 state groups. It's also a
-good example to see how easily an AM-based program can be controller with a script in [/internal/cmd/am-dbg-video](/internal/cmd/am-dbg-video/main_dbg_video.go).
+good example to see how easily an AM-based program can be controlled with a script in
+[/internal/cmd/am-dbg-video/cmd_dbg_video.go](https://github.com/pancsta/asyncmachine-go/blob/v0.18.8/internal/cmd/am-dbg-video/cmd_dbg_video.go).
 
 <details>
 
@@ -209,8 +210,8 @@ You can read the source at [/tools/debugger](/tools/debugger) and states at [/to
 ## Integration Tests
 
 [/tools/debugger/test](/tools/debugger/test/integration_test.go) contains integration tests which use a **local worker**
-instance, which is then controlled with [Add1Block](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#Add1Block)
-and [Add1AsyncBlock](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#Add1AsyncBlock) from [/pkg/helpers](/pkg/helpers)
+instance, which is then controlled with [Add1Sync](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#Add1Sync)
+and [Add1Async](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#Add1Async) from [/pkg/helpers](/pkg/helpers)
 to perform test scenarios. None of the tests ever calls `time.Sleep`, as everything is synchronized via **asyncmachine's**
 clock. The local test worker doesn't have UI and uses **tcell.SimulationScreen** instead.
 

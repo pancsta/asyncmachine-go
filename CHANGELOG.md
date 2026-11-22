@@ -5,6 +5,28 @@
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
+## [v0.19.7](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.7) (2026-11-22)
+
+- release/v0.19.7 [\#544](https://github.com/pancsta/asyncmachine-go/pull/544) (@pancsta)
+- feat: release v0.19.7 tail [\#542](https://github.com/pancsta/asyncmachine-go/pull/542) (@pancsta)
+- feat\(am-dbg\): release am-dbg v0.19.7 [\#541](https://github.com/pancsta/asyncmachine-go/pull/541) (@pancsta)
+- feat\(helpers\): add Batch, MachGroup.Filter, and expand Conds [\#540](https://github.com/pancsta/asyncmachine-go/pull/540) (@pancsta)
+- feat\(history\): add LatestActivated, LatestDeactivated state comparisons [\#539](https://github.com/pancsta/asyncmachine-go/pull/539) (@pancsta)
+- feat\(am-dbg\): add schema tree filter-out input [\#538](https://github.com/pancsta/asyncmachine-go/pull/538) (@pancsta)
+- feat\(am-dbg\): add UI multiplexing [\#537](https://github.com/pancsta/asyncmachine-go/pull/537) (@pancsta)
+- feat\(repl\): add livepage UI for REPL [\#536](https://github.com/pancsta/asyncmachine-go/pull/536) (@pancsta)
+- feat\(rpc\): add #addr tags to server, mux, and relay machines [\#535](https://github.com/pancsta/asyncmachine-go/pull/535) (@pancsta)
+- feat\(machine\): add partial acceptance for implied states #524 [\#534](https://github.com/pancsta/asyncmachine-go/pull/534) (@pancsta)
+- docs\(examples\): add wasm_livepage example with tinygo [\#533](https://github.com/pancsta/asyncmachine-go/pull/533) (@pancsta)
+- feat\(am-dbg\): add livepage web UI [\#532](https://github.com/pancsta/asyncmachine-go/pull/532) (@pancsta)
+- feat\(rpc\): add tinygo compat [\#531](https://github.com/pancsta/asyncmachine-go/pull/531) (@pancsta)
+- feat\(machine\): add tinygo compat and drop testify [\#530](https://github.com/pancsta/asyncmachine-go/pull/530) (@pancsta)
+- refac: drop fmt deps from machine, rpc, helpers, history [\#529](https://github.com/pancsta/asyncmachine-go/pull/529) (@pancsta)
+- feat\(relay\): add a relay of aRPC to dbg [\#528](https://github.com/pancsta/asyncmachine-go/pull/528) (@pancsta)
+- feat\(am-dbg\): keep a msg buffer for fwded dbg clients [\#527](https://github.com/pancsta/asyncmachine-go/pull/527) (@pancsta)
+- fix\(node\): deliver worker addr on SendPayload #395 [\#526](https://github.com/pancsta/asyncmachine-go/pull/526) (@pancsta)
+- fix\(machine\): fix race in StateNames\(\) [\#525](https://github.com/pancsta/asyncmachine-go/pull/525) (@pancsta)
+
 ## [v0.19.6](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.6) (2026-11-07)
 
 - release/v0.19.6 [\#521](https://github.com/pancsta/asyncmachine-go/pull/521) (@pancsta)

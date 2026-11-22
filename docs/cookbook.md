@@ -651,7 +651,9 @@ func (h *Handlers) ClientSelectedEnd(e *am.Event) {
 
 ## Batch data into a single transition
 
-Use [`amhelp.Batch`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#Batch) to collect items and mutate the machine in bulk, once per window. Set `MaxSize` to flush early, and remember that `Flush` must not block, as it's called from a background goroutine or from `Add` on `MaxSize`.
+Use [`amhelp.Batch`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#Batch) to collect items and
+mutate the machine in bulk, once per window. Set `MaxSize` to flush early, and remember that `Flush` must not block, as
+it's called from a background goroutine or from `Add` on `MaxSize`.
 
 ```go
 batch := &amhelp.Batch[*Msg]{

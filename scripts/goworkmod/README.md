@@ -57,7 +57,7 @@ Re-derives the keys from the current `go.work` and drops a replace only when:
 
 Everything else is left alone and reported:
 
-```
+```text
   note: 1 local replace(s) left untouched: example.com/other => ../other
 ```
 

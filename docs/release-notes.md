@@ -4,6 +4,151 @@
 
 ---
 
+## [v0.19.7](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.7) (2026-11-22)
+
+The highlight of this release is am-dbg web UI with multiplexing.
+
+<img width="1515" height="1510" alt="ss-2026-11-22-18-58-39" src="https://github.com/user-attachments/assets/039c4e07-9321-4324-8cb4-2874c5b94e29" />
+
+
+
+
+### release/v0.19.7
+
+PR: [\#544](https://github.com/pancsta/asyncmachine-go/pull/544) (@pancsta)
+
+_No PR description provided._
+
+### feat: release v0.19.7 tail
+
+PR: [\#542](https://github.com/pancsta/asyncmachine-go/pull/542) (@pancsta)
+
+- feat(js): add JS port with aRPC https://github.com/pancsta/asyncmachine-go-js
+
+The remainder of `v0.19.7` is in this PR.
+
+### feat\(am-dbg\): release am-dbg v0.19.7
+
+PR: [\#541](https://github.com/pancsta/asyncmachine-go/pull/541) (@pancsta)
+
+- fix(am-dbg): fix filtered jumping
+- feat(am-dbg): synchronize TUI rendering via asyncmachine
+- feat(am-dbg): fix tab order
+- feat(am-dbg): support ctx:// URLs on paste and CLI
+- feat(am-dbg): add --output-stacktrace
+- feat(am-dbg): add --output-diag-concurrency
+
+The remainder of `am-dbg v0.19.7` is in this PR.
+
+### feat\(helpers\): add Batch, MachGroup.Filter, and expand Conds
+
+PR: [\#540](https://github.com/pancsta/asyncmachine-go/pull/540) (@pancsta)
+
+Better handling of state machine groups, extracted from REPL group commands and secai story conditions. These are very useful for managing large swarm of local instances (possibly NetMachs).
+
+Complements the remote `/pkg/graph.DbGraph`.
+
+### feat\(history\): add LatestActivated, LatestDeactivated state comparisons
+
+PR: [\#539](https://github.com/pancsta/asyncmachine-go/pull/539) (@pancsta)
+
+- fix: IsActive condition
+- fix: Sync(ctx)
+
+`LatestActivated()` is like `Machine.Switch`, but for the past tense.
+
+### feat\(am-dbg\): add schema tree filter-out input
+
+PR: [\#538](https://github.com/pancsta/asyncmachine-go/pull/538) (@pancsta)
+
+Regexp filtering out is the easiest way to get rid of noise in the schema list group.
+
+<img width="377" height="590" alt="ss-2026-11-22-19-02-03" src="https://github.com/user-attachments/assets/2e86d8b6-d9fc-4b46-acae-d86ba70a8393" />
+
+### feat\(am-dbg\): add UI multiplexing
+
+PR: [\#537](https://github.com/pancsta/asyncmachine-go/pull/537) (@pancsta)
+
+All `--ui-pty`, `--ui-ssh`, `--ui-livepage` will project the same view and shrink to the smallest client.
+
+### feat\(repl\): add livepage UI for REPL
+
+PR: [\#536](https://github.com/pancsta/asyncmachine-go/pull/536) (@pancsta)
+
+Just like am-dbg, arpc REPL is also on the web now. Unfortunately for windows users, not just yet.
+
+### feat\(rpc\): add #addr tags to server, mux, and relay machines
+
+PR: [\#535](https://github.com/pancsta/asyncmachine-go/pull/535) (@pancsta)
+
+It should now be possible to conn to a remote peer after discovering it over `pkg/graph.NetGraph`.
+
+### feat\(machine\): add partial acceptance for implied states #524
+
+PR: [\#534](https://github.com/pancsta/asyncmachine-go/pull/534) (@pancsta)
+
+Full feature alignment of transition handlers with the relational consensus, a new `Event.StateImplied()` method, along with some metrics of partial acceptance.
+
+### docs\(examples\): add wasm_livepage example with tinygo
+
+PR: [\#533](https://github.com/pancsta/asyncmachine-go/pull/533) (@pancsta)
+
+_No PR description provided._
+
+### feat\(am-dbg\): add livepage web UI
+
+PR: [\#532](https://github.com/pancsta/asyncmachine-go/pull/532) (@pancsta)
+
+We can now use am-dbg in any web browser without any relays like gotty. The underlying tcell screen is bound to a [streaming HTML livepage](https://github.com/pancsta/livepage).
+
+<img width="1515" height="1510" alt="ss-2026-11-22-18-58-39" src="https://github.com/user-attachments/assets/6813b164-380e-47ed-b967-5ea399b8c631" />
+
+### feat\(rpc\): add tinygo compat
+
+PR: [\#531](https://github.com/pancsta/asyncmachine-go/pull/531) (@pancsta)
+
+TinyGo has a generated aRPC client from remote methods and `github.com/cenkalti/rpc2`. Only gob uses reflection, which is supported in v0.44.
+
+### feat\(machine\): add tinygo compat and drop testify
+
+PR: [\#530](https://github.com/pancsta/asyncmachine-go/pull/530) (@pancsta)
+
+The TinyGo branch finally gets merged and pkg/machine is going full dependency-less, including testify. This also gives reflection-less builds.
+
+### refac: drop fmt deps from machine, rpc, helpers, history
+
+PR: [\#529](https://github.com/pancsta/asyncmachine-go/pull/529) (@pancsta)
+
+This is useful for WASM and JS targets.
+
+### feat\(relay\): add a relay of aRPC to dbg
+
+PR: [\#528](https://github.com/pancsta/asyncmachine-go/pull/528) (@pancsta)
+
+One can now `am-relay arpc-to-dbg RPCADDR DBGADDR` and see the aRPC server in am-dbg (instead of the REPL).
+
+### feat\(am-dbg\): keep a msg buffer for fwded dbg clients
+
+PR: [\#527](https://github.com/pancsta/asyncmachine-go/pull/527) (@pancsta)
+
+- fix(am-dbg): fix missing fwd sink deadlocks all the other sinks #522
+
+Buffering old transitions covers new fwd clients as well as dropped conns. Useful for am-relay and dashboards.
+
+### fix\(node\): deliver worker addr on SendPayload #395
+
+PR: [\#526](https://github.com/pancsta/asyncmachine-go/pull/526) (@pancsta)
+
+_No PR description provided._
+
+### fix\(machine\): fix race in StateNames\(\)
+
+PR: [\#525](https://github.com/pancsta/asyncmachine-go/pull/525) (@pancsta)
+
+_No PR description provided._
+
+---
+
 ## [v0.19.6](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.6) (2026-11-07)
 
 The highlight of this release is the traces view.

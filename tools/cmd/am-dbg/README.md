@@ -60,7 +60,8 @@ go run github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest \
 - **rain view**: high-level view of transitions with error highlighting and human time, one per line.
 - **client list**: all the currently nad previously connected state machines, with search-as-you-type, error
   highlighting, and remaining transitions marker.
-- **fast jumps**: jump by 50 transitions (skipping filtered out ones), or select a state from the tree and jump to its next occurrence.
+- **fast jumps**: jump by 50 transitions (skipping filtered out ones), or select a state from the tree and jump to its
+  next occurrence.
 - **keyboard navigation**: the UI is keyboard accessible, just press the **? key**.
 - **mouse support**: most elements can be clicked and scrolled.
 - **SSH access**: an instance of the debugger can be shared directly from an edge server via a built-in SSH server.

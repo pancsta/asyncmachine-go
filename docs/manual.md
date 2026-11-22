@@ -2,7 +2,7 @@
 
 <!-- TOC -->
 
-- version `v0.19.6`
+- version `v0.19.7`
 - [Legend](#legend)
 - [Machine and States](#machine-and-states)
   - [Machine Schema](#machine-schema)
@@ -50,6 +50,7 @@
     - [Arguments Logging](#arguments-logging)
   - [Tracing and Metrics](#tracing-and-metrics)
   - [Optimizing Data Input](#optimizing-data-input)
+  - [Exporting and Importing](#exporting-and-importing)
   - [Disposal and GC](#disposal-and-gc)
   - [Dynamic State Machines](#dynamic-state-machines)
 - [Cheatsheet](#cheatsheet)
@@ -73,7 +74,7 @@ used:
 
 ### Machine Schema
 
-**States** are defined using [`am.Schema`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Struct),
+**States** are defined using [`am.Schema`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Schema),
 a string-keyed map of the [`am.State` struct](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#State),
 which consists of **properties and [relations](#relations)**. List of **state names** have a readability shorthand
 of [`am.S`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#S)
@@ -195,12 +196,10 @@ and [`am.TimeIndex`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/m
 An instance of state context gets canceled once the state's tick changes, which means it works for both active and
 inactive states.
 
-// TODO MachineTick, Time slice methods +TimeIndex
-
 Other related methods and functions:
 
-- [`Machine.Tick(state string) uint64`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Clock)
-- [`Machine.Time(states am.S) Time`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Time)
+- [`Machine.Tick(state string) uint64`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Tick)
+- [`Machine.Time(states am.S) Time`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Time)
 - [`Machine.IsTime(time Time) bool`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.IsTime)
 - [`IsActiveTick(tick uint64)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#IsActiveTick)
 - [`Time.Is(stateIdxs []int)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Time.Is)
@@ -436,7 +435,7 @@ func (h *Handlers) ClickState(e *am.Event) {
 ### Mutations
 
 **Mutation** is a request to change the currently [active states](#active-states) of a machine. Each mutation
-has a list of states knows as **called states**, which are different from **target states**
+has a list of **called states**, which are different from **target states**
 ([calculated during a transition](#calculating-target-states)).
 
 Mutations are [queued](#queue-and-history), thus they are never nested - one can happen only after the previous one has
@@ -447,7 +446,7 @@ been processed. Mutation methods return a
 - `Canceled` (1)
 - `Queued` (>=2)
 
-You can check if the machine is busy executing a transition by calling [`Machine.DuringTransition()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Result)
+You can check if the machine is busy executing a transition by calling [`Machine.Transition()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Transition)
 (see [queue](#queue-and-history)), or wait until it's done with [`<-Machine.WhenQueueEnds()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenQueueEnds).
 Almost every queued mutation receives a [queue tick](#queue-ticks) (of type `Result`), which can be waited on via
 [`<-Machine.WhenQueue(result)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenQueue).
@@ -565,7 +564,7 @@ full list of each transition's handlers.
 There are [negotiation handlers](#negotiation-handlers) (returning a `bool`) and [final handlers](#final-handlers) (with
 no return). Order of the handlers depends on currently [active states](#active-states) and relations of
 [active](#active-states) and [target states](#calculating-target-states). Handlers are executed in a dedicated
-goroutine, with a timeout of [`Machine.HandlerTimeout`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine).
+goroutine, with a timeout of [`Machine.HandlerTimeout`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.HandlerTimeout).
 
 **Example** - handlers for the state Foo
 
@@ -1232,7 +1231,7 @@ these channels will be reused and should scale way better.
 - [`Machine.WhenArgs(state, args, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenArgs)
 - [`Machine.WhenTime(states, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTime)
 - [`Machine.WhenTime1(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTime1)
-- [`Machine.WhenTicks(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTick)
+- [`Machine.WhenTicks(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenTicks)
 - [`Machine.WhenQueue(queueTick)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenQueue)
 - [`Machine.WhenQueueEnds()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenQueueEnds)
 - [`Machine.WhenErr(state, ctx)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenErr)
@@ -1280,7 +1279,7 @@ Side effects:
 
 ### Error Handling
 
-Considering that everything meaningful can be a state, so can errors. Every machine has a predefined [`Exception`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Exception)
+Considering that everything meaningful can be a state, so can errors. Every machine has a predefined [`Exception`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#StateException)
 state (which is a [`Multi` state](#multi-states)), and an optional [`ExceptionHandler`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#ExceptionHandler)
 method, which can be embedded into [handler structs](#defining-handlers).
 
@@ -1359,8 +1358,8 @@ Side effects:
 **Panics** are automatically caught and transformed into the [`Exception` state](#error-handling) in case they take
 place in the main body of any handler method. This can be disabled using [`Machine.PanicToException`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.PanicToException)
 or [`Opts.DontPanicToException`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Opts.DontPanicToException).
-Same goes for [`Machine.LogStackTrace`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.PrintExceptions)
-and [`DontLogStackTrace`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Opts.DontPrintExceptions),
+Same goes for [`Machine.LogStackTrace`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.LogStackTrace)
+and [`DontLogStackTrace`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Opts.DontLogStackTrace),
 which decides about printing stack traces to the [log sink](#logging).
 
 In case of a panic inside a transition handler, the recovery flow depends on the type of the erroneous handler.
@@ -1438,8 +1437,8 @@ Both sources can help to make informed decisions based on scheduled and past act
 
 - [`Machine.Queue()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Queue)
 - [`Machine.IsQueued(mutationType, states, withoutArgsOnly, statesStrictEqual, startIndex)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.IsQueued)
-- [`Machine.Transition()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.DuringTransition)
-- [`History.ActivatedRecently(state, duration)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/history#History.ActivatedRecently)
+- [`Machine.Transition()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Transition)
+- [`BaseMemory.ActivatedBetween(ctx, state, start, end)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/history#BaseMemory.ActivatedBetween)
 - [`Machine.WhenQueueEnds()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WhenQueueEnds)
 - [`Machine.WillBe()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WillBe)
 - [`Machine.WillBeRemoved()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.WillBeRemoved)
@@ -1512,7 +1511,7 @@ mach := am.New(ctx, am.Schema{
   },
   // disable ID logging
 }, &am.Opts{DontLogId: true})
-m.SetLogLevel(am.LogOps)
+mach.SemLogger().SetLevel(am.LogOps)
 
 // ...
 
@@ -1580,14 +1579,16 @@ mach.Add1("Foo", nil) // Executed
 Logging-related methods:
 
 - [`Machine.Log(msg string, args ...any)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Log)
-- [`Machine.SetLoggerSimple(sprintf, level LogLevel)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.SetLoggerSimple)
-- [`Machine.SetLoggerEmpty(level LogLevel)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.SetLoggerEmpty)
-- [`Machine.SetLogLevel(level LogLevel)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.SetLogLevel)
-- [`Machine.GetLogLevel() LogLevel`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.GetLogLevel)
-- [`Machine.SetLogger(fn Logger)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.SetLogger)
-- [`Machine.GetLogger(fn Logger): *Logger`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.GetLogger)
-- [`Machine.SetLogArgs(mapper LogArgsMapper)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.SetLogArgs)
-- [`Machine.GetLogArgs() LogArgsMapper`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.GetLogArgs)
+- [`Machine.SemLogger()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.SemLogger) returns
+  a [`SemLogger`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SemLogger), which provides:
+  - [`SemLogger.SetSimple(logf, level)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SemLogger.SetSimple)
+  - [`SemLogger.SetEmpty(level)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SemLogger.SetEmpty)
+  - [`SemLogger.SetLevel(level)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SemLogger.SetLevel)
+  - [`SemLogger.Level() LogLevel`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SemLogger.Level)
+  - [`SemLogger.SetLogger(fn LoggerFn)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SemLogger.SetLogger)
+  - [`SemLogger.Logger() LoggerFn`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SemLogger.Logger)
+  - [`SemLogger.SetArgsMapper(mapper LogArgsMapperFn)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SemLogger.SetArgsMapper)
+  - [`SemLogger.ArgsMapper() LogArgsMapperFn`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SemLogger.ArgsMapper)
 
 #### Customizing Logging
 
@@ -1595,23 +1596,23 @@ Logging-related methods:
 
 ```go
 // test log with the minimal log level
-mach.SetLoggerSimple(t.Logf, am.LogChanges)
+mach.SemLogger().SetSimple(t.Logf, am.LogChanges)
 ```
 
 **Example** - logging [mutation arguments](#arguments)
 
 ```go
 // include some args in the log and traces
-mach.SetLogArgs(am.NewArgsMapper([]string{"id", "name"}, 20))
+mach.SemLogger().SetArgsMapper(am.NewLogArgsMapper(0, []string{"id", "name"}))
 ```
 
 **Example** - custom logger
 
 ```go
 // max out the log level
-mach.SetLogLevel(am.LogEverything)
+mach.SemLogger().SetLevel(am.LogEverything)
 // level based dispatcher
-mach.SetLogger(func(level LogLevel, msg string, args ...any) {
+mach.SemLogger().SetLogger(func(level am.LogLevel, msg string, args ...any) {
   if level > am.LogChanges {
     customLogDetails(msg, args...)
     return
@@ -1631,7 +1632,7 @@ Environment variables used for debugging can be found in [/docs/env-configs.md](
 
 #### Steps To Debug
 
-1. Install `go install github.com/pancsta/asyncmachine-go/tools/am-dbg@latest`
+1. Install `go install github.com/pancsta/asyncmachine-go/tools/cmd/am-dbg@latest`
 2. Run `am-dbg`
 3. [Enable telemetry](#enabling-telemetry)
 4. Run your code with `env AM_DEBUG=1` to increase timeouts and enable stack traces
@@ -1641,8 +1642,8 @@ Environment variables used for debugging can be found in [/docs/env-configs.md](
 Telemetry for **am-dbg** can be enabled manually using [`/pkg/telemetry`](/pkg/telemetry/README.md), or with a helper
 from [`/pkg/helpers`](/pkg/helpers/README.md).
 
-- [`MachDebug(*am.Machine, string, am.LogLevel, bool)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#MachDebug)
-- [`MachDebugt(*am.Machine, bool)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#MachDebugT)
+- [`MachDebug(*am.Machine, string, am.LogLevel, bool, *am.SemConfig)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#MachDebug)
+- [`MachDebugEnv(*am.Machine)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#MachDebugEnv)
 
 **Example** - enable telemetry manually
 
@@ -1818,7 +1819,7 @@ func (s *Supervisor) ForkingWorkerState(e *am.Event) {
 
 #### Arguments Logging
 
-Typesafe arguments can be easily extracted for logging via [`Machine.SetLogArgs`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.SetLogArgs).
+Typesafe arguments can be easily extracted for logging via [`SemLogger.SetArgsMapper`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#SemLogger.SetArgsMapper).
 See [`amhelp.ArgsToLogMap`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#ArgsToLogMap)
 from [`pkg/helpers`](/pkg/helpers/README.md).
 
@@ -1891,6 +1892,30 @@ func Msg(msgTx *Msg) {
 }
 ```
 
+**Example** - same, but using [`amhelp.Batch`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#Batch)
+
+```go
+var batch = &amhelp.Batch[*Msg]{
+  Window: time.Second,
+  // flush early once 100 items are collected (0 disables it)
+  MaxSize: 100,
+  Flush: func(msgs []*Msg) {
+    // add in bulk
+    mach.Add1("Msgs", am.A{"msgs": msgs})
+  },
+}
+
+func Msg(msgTx *Msg) {
+  batch.Add(msgTx)
+}
+```
+
+Side effects:
+
+- [`Batch.Flush`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#Batch.Flush) must not block, as
+  it's called from a background goroutine (or from `Add` once `MaxSize` is reached)
+- the config fields (`Window`, `MaxSize`, `Flush`) must be set before the first `Add`
+
 ### Disposal and GC
 
 Each machine will dispose with the passed context, after a max grace period to finish a running transition (if any).
@@ -1918,17 +1943,36 @@ amhelp.Dispose(mach)
 <-r.Mach.WhenDisposed()
 ```
 
+### Exporting and Importing
+
+Each machine can be serialized into
+[`Serialized`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Serialized) by
+[`Machine.Export`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Export) and then imported
+using [`Machine.Import(*Serialized)`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Machine.Import).
+Importing a machine does not trigger handlers of the imported active states, which need to be handled manually
+(eg by `ImportedState`, which calls handler methods manually).
+
+**MachineTick** from **Serialized** tells the number of times the machine has been re-started by being imported.
+
+Side effects:
+
+- the machine will loose its queue when imported
+
+See also:
+
+- [`/pkg/history`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/history)
+
 ### Dynamic State Machines
 
 **asyncmachine-go** supports dynamism in a couple of ways (regular struct-based handlers can be added at any time).
 The schema can be changed, as long as it's longer than the previous one (changes relations too), which creates a
 version of that machine schema. New state machines can be initialized easily from dynamic handler names via
-[`amhelp.NewDynMach()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers#NewDynMach). It's also
+[`amnew.DynMach()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers/new#DynMach). It's also
 possible to parse Go code fully dynamically to create new or extend existing state machines using
 [`/pkg/integrations/yaegi`](/pkg/integrations/yaegi) (language limitations apply).
 
 ```go
-import amhelp "TODO"
+import amnew "github.com/pancsta/asyncmachine-go/pkg/helpers/new"
 
 // ...
 
@@ -1940,7 +1984,7 @@ var (
 )
 
 // machine
-mach, err := amhelp.NewDynMach(ctx, machine.Schema{
+mach, err := amnew.DynMach(ctx, machine.Schema{
   // schema
 
   StateFoo: {
@@ -1971,7 +2015,7 @@ mach, err := amhelp.NewDynMach(ctx, machine.Schema{
       mach.EvRemove1(e, StateBar, nil)
     })
   },
-}
+}, nil)
 
 // ...
 

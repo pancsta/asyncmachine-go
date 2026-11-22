@@ -54,13 +54,13 @@ Very basic, yet modern example of **asyncmachine-go**.
 
 ### [CLI](/examples/cli)
 
-[go-arg](https://github.com/pancsta/go-arg) based CLI example.
+[go-arg](https://github.com/alexflint/go-arg) based CLI example.
 
 - `#template #relations #handlers #template`
 
 ### [CLI Daemon](/examples/cli_daemon)
 
-[go-arg](https://github.com/pancsta/go-arg) based CLI with an aRPC daemon example.
+[go-arg](https://github.com/alexflint/go-arg) based CLI with an aRPC daemon example.
 
 - `#template #relations #handlers #arpc #payload #template`
 

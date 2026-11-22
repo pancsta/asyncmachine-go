@@ -13,8 +13,8 @@ way to view the results is [bench.md](https://github.com/pancsta/go-libp2p-pubsu
 be viewed in Jaeger and am-dbg after `task test-discovery`. Benchmark uses go1.22 traces, thus needs at least this
 version.
 
-![Test duration chart](https://pancsta.github.io/assets/asyncmachine-go/libp2-bench.dark.jpg#gh-dark-mode-only)
-![Test duration chart](https://pancsta.github.io/assets/asyncmachine-go/libp2-bench.light.png#gh-light-mode-only)
+![Test duration chart](https://pancsta.github.io/assets/asyncmachine-go/libp2p-bench.dark.jpg#gh-dark-mode-only)
+![Test duration chart](https://pancsta.github.io/assets/asyncmachine-go/libp2p-bench.light.png#gh-light-mode-only)
 
 - **pubsub host** - eg `ps-17` (20 states)<br />
   PubSub state machine is a simple event loop with [multi states](/docs/manual.md#multi-states) which get responses via arg
