@@ -5,17 +5,16 @@
 > [!NOTE]
 > **asyncmachine-go** is a declarative execution model based on AOP, actor model, and state machines.
 
-**/pkg/graph** handles a [directional multigraph](https://en.wikipedia.org/wiki/Multigraph)
-of connected state machines. It's used by the debugging tools (`am-dbg`
-and `am-vis`) and the `NetworkGraph` based discovery network. The graph
-is an essential tool to handle large swarms of state machines.
+**/pkg/graph** is a [directional multigraph with edge identity](https://en.wikipedia.org/wiki/Multigraph)
+of connected state machines. It's used by the debugging tools (`am-dbg`, `am-vis`) and the `NetworkGraph` based discovery
+network. The graph is an essential tool to handle large swarms of state machines.
 
 ## Graph
 
-The in-memory graph is based on [dominikbraun/graph](https://github.com/dominikbraun/graph)
-and consumes `/pkg/telemetry/dbg` (large and explicit) or
+The in-memory graph is based on [ark ECS](https://github.com/mlange-42/ark) (Entity Component System) which gives it scalability and typesafe queries. It
+consumes either `/pkg/telemetry/dbg` (large and explicit) or
 `/pkg/rpc.MsgServerUpdate` (checksumed diffs). It outputs as MD, DOT, SVG, D2,
-Mermaid, and `encoding/gob`. RPC connections are inferred from machine tags.
+Mermaid, and `encoding/gob`. aRPC connections are inferred from machine tags.
 
 ## NetworkGraph
 
@@ -166,5 +165,7 @@ de-duplication prevents an infinite sync loop. This is both a suggested topology
 Testing, work in progress, not semantically versioned.
 
 ## monorepo
+
+- [`/pkg/integrations/ark`](/pkg/integrations/ark)
 
 [Go back to the monorepo root](/README.md) to continue reading.
