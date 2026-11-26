@@ -2,6 +2,7 @@ package graph
 
 import (
 	"bytes"
+	"errors"
 	"net"
 	"reflect"
 	"slices"
@@ -626,3 +627,298 @@ func TestSinkReconnect(t *testing.T) {
 		t.Fatalf("peer read: %v", err)
 	}
 }
+
+// ///// ///// /////
+
+// ///// CIPHER
+
+// ///// ///// /////
+
+var testKey = bytes.Repeat([]byte{7}, CipherKeySize)
+
+func TestCipherRoundTrip(t *testing.T) {
+	c, err := NewCipher(0, testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := c.Overhead(), 30; got != want {
+		t.Fatalf("overhead = %d, want %d", got, want)
+	}
+
+	a, b := net.Pipe()
+	defer a.Close()
+	defer b.Close()
+	ca := c.WrapConn(a)
+	cb := c.WrapConn(b)
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := cb.Write([]byte("hello"))
+		errCh <- err
+	}()
+	buf := make([]byte, 64)
+	n, err := ca.Read(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
+	}
+	if string(buf[:n]) != "hello" {
+		t.Fatalf("read %q", buf[:n])
+	}
+
+	go func() {
+		_, err := ca.Write([]byte("world"))
+		errCh <- err
+	}()
+	n, err = cb.Read(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
+	}
+	if string(buf[:n]) != "world" {
+		t.Fatalf("read %q", buf[:n])
+	}
+}
+
+func TestCipherTamper(t *testing.T) {
+	c, err := NewCipher(0, testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nonce := [12]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+	pkt := c.sealNonce(nonce, []byte("payload"))
+	plain, counter, err := c.open(pkt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(plain) != "payload" || counter == 0 {
+		t.Fatalf("opened %q, counter %d", plain, counter)
+	}
+
+	// flip a ciphertext bit
+	bad := slices.Clone(pkt)
+	bad[len(bad)-1] ^= 1
+	if _, _, err := c.open(bad); !errors.Is(err, ErrCipher) {
+		t.Fatalf("tamper error = %v", err)
+	}
+
+	// truncate
+	if _, _, err := c.open(pkt[:len(pkt)-1]); !errors.Is(err, ErrCipher) {
+		t.Fatalf("short error = %v", err)
+	}
+
+	// unknown key ID
+	other, err := NewCipher(1, bytes.Repeat([]byte{9}, CipherKeySize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := c.open(other.sealNonce(nonce, []byte("x"))); !errors.Is(err,
+		ErrCipher) {
+
+		t.Fatalf("unknown key error = %v", err)
+	}
+}
+
+func TestCipherKeyRotation(t *testing.T) {
+	oldKey := bytes.Repeat([]byte{1}, CipherKeySize)
+	newKey := bytes.Repeat([]byte{2}, CipherKeySize)
+
+	sender, err := NewCipher(1, newKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recv, err := NewCipher(0, oldKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.AddKey(1, newKey); err != nil {
+		t.Fatal(err)
+	}
+
+	nonce := [12]byte{1, 2, 3, 4}
+	plain, _, err := recv.open(sender.sealNonce(nonce, []byte("rotated")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(plain) != "rotated" {
+		t.Fatalf("opened %q", plain)
+	}
+}
+
+func TestReplayWindow(t *testing.T) {
+	var w replayWindow
+	if !w.accept(100) {
+		t.Fatal("first packet rejected")
+	}
+	if !w.accept(101) {
+		t.Fatal("new packet rejected")
+	}
+	if w.accept(101) {
+		t.Fatal("duplicate accepted")
+	}
+	if !w.accept(99) {
+		t.Fatal("in-window packet rejected")
+	}
+	if w.accept(99) {
+		t.Fatal("in-window duplicate accepted")
+	}
+	if w.accept(101 - 64) {
+		t.Fatal("old packet accepted")
+	}
+	if !w.accept(1000) {
+		t.Fatal("jump rejected")
+	}
+	if w.accept(500) {
+		t.Fatal("pre-jump packet accepted")
+	}
+}
+
+func TestCipherPacketConnReplay(t *testing.T) {
+	c, err := NewCipher(0, testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonce := [12]byte{1, 2, 3, 4, 5, 6, 7, 8}
+	pkt := c.sealNonce(nonce, []byte("hello"))
+	pc := &replayPacketConn{packets: [][]byte{pkt, pkt}}
+	wrapped := c.WrapPacketConn(pc)
+
+	buf := make([]byte, 64)
+	n, _, err := wrapped.ReadFrom(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(buf[:n]) != "hello" {
+		t.Fatalf("read %q", buf[:n])
+	}
+
+	// the replayed packet is dropped, then the fake conn is closed
+	if _, _, err := wrapped.ReadFrom(buf); !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("replay error = %v", err)
+	}
+	if got := c.MetricDropped.Load(); got != 1 {
+		t.Fatalf("dropped = %d, want 1", got)
+	}
+}
+
+// TestNetworkGraphCipher asserts that encrypted graphs sync and that graphs
+// with another key ignore the traffic.
+func TestNetworkGraphCipher(t *testing.T) {
+	ctx := t.Context()
+
+	cipher, err := NewCipher(0, testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherCipher, err := NewCipher(0, bytes.Repeat([]byte{9}, CipherKeySize))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mach := am.New(ctx, ssrel.States, &am.Opts{Id: "cipher-1"})
+	if err := mach.VerifyStates(ssrel.Names); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(mach.Dispose)
+
+	newGraph := func(id string, cr *Cipher) (*Graph, *NetworkGraph) {
+		server := am.New(ctx, ssdbg.ServerSchema, &am.Opts{Id: "srv-" + id})
+		g, err := New(server)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ng, err := NewNetworkGraph(ctx, "127.0.0.1:0", g,
+			NetworkGraphOpts{Cipher: cr})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			_ = ng.Close()
+			server.Dispose()
+		})
+		return g, ng
+	}
+
+	recvGraph, recv := newGraph("recv", cipher)
+	badGraph, bad := newGraph("bad", otherCipher)
+	_, sender := newGraph("sender", cipher)
+
+	schemaHash := amhelp.SchemaHash(mach.Schema())
+	recv.SchemaStore[schemaHash] = SchemaInfo{
+		Schema:      mach.Schema(),
+		StatesIndex: mach.StateNames(),
+	}
+	bad.SchemaStore[schemaHash] = SchemaInfo{
+		Schema:      mach.Schema(),
+		StatesIndex: mach.StateNames(),
+	}
+
+	if _, err := sender.TraceMach(mach); err != nil {
+		t.Fatal(err)
+	}
+	sender.EmitToAddr(recv.Addr)
+	sender.EmitToAddr(bad.Addr)
+
+	mach.Add1(ssrel.B, nil)
+	<-mach.When1(ssrel.B, ctx)
+
+	expected := mach.Time(nil)
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		var got am.Time
+		if c, ok := recvGraph.Machine(mach.Id()); ok {
+			got = slices.Clone(c.Time)
+		}
+		if slices.Equal(got, expected) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("encrypted receiver did not sync: %v != %v", got, expected)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// the wrong key drops the traffic
+	time.Sleep(100 * time.Millisecond)
+	if _, ok := badGraph.Machine(mach.Id()); ok {
+		t.Fatal("wrong key received the machine")
+	}
+	if got := otherCipher.MetricDropped.Load(); got == 0 {
+		t.Fatal("wrong key did not drop any datagrams")
+	}
+}
+
+// replayPacketConn replays the same datagrams and then closes.
+type replayPacketConn struct {
+	packets [][]byte
+	idx     int
+}
+
+func (c *replayPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
+	if c.idx >= len(c.packets) {
+		return 0, nil, net.ErrClosed
+	}
+	n := copy(p, c.packets[c.idx])
+	c.idx++
+
+	return n, c.LocalAddr(), nil
+}
+
+func (c *replayPacketConn) WriteTo(p []byte, addr net.Addr) (int, error) {
+	return len(p), nil
+}
+
+func (c *replayPacketConn) Close() error { return nil }
+
+func (c *replayPacketConn) LocalAddr() net.Addr {
+	return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}
+}
+
+func (c *replayPacketConn) SetDeadline(t time.Time) error      { return nil }
+func (c *replayPacketConn) SetReadDeadline(t time.Time) error  { return nil }
+func (c *replayPacketConn) SetWriteDeadline(t time.Time) error { return nil }

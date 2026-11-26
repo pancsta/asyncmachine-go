@@ -55,6 +55,10 @@ fi
 # limit the container to 25% of the host CPUs by default
 CPUS=${AM_NETGRAPH_CPUS:-$(awk -v n="$(nproc)" 'BEGIN { printf "%.2f", n * 0.25 }')}
 
+# limit the container to 50% of the host RAM (no swap) by default
+MEM_KB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+MEM=${AM_NETGRAPH_MEM:-$(awk -v kb="$MEM_KB" 'BEGIN { printf "%dm", kb / 1024 / 2 }')}
+
 GOROOT=${GOROOT:-/usr/lib/go}
 GOMODCACHE=${GOMODCACHE:-$(go env GOMODCACHE 2>/dev/null || echo "$HOME/go/pkg/mod")}
 
@@ -62,7 +66,7 @@ if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
   docker pull "$IMAGE"
 fi
 
-echo "test=$TEST nodes=$NODES iters=$ITERS nofile=$NOFILE timeout=$TIMEOUT cpus=$CPUS"
+echo "test=$TEST nodes=$NODES iters=$ITERS nofile=$NOFILE timeout=$TIMEOUT cpus=$CPUS mem=$MEM"
 echo "machines=$MACHINES star=$STAR shards=$SHARDS dur=$DUR active=$ACTIVE loss=$LOSS"
 echo "source=$ROOT"
 echo "go=$GOROOT modcache=$GOMODCACHE"
@@ -106,6 +110,8 @@ fi
 
 exec docker run --rm --network=host \
   --cpus "$CPUS" \
+  --memory "$MEM" \
+  --memory-swap "$MEM" \
   --ulimit "nofile=$NOFILE:$NOFILE" \
   --pids-limit=-1 \
   "${MOUNTS[@]}" \
