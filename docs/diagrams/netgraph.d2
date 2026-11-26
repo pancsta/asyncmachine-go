@@ -1,0 +1,1669 @@
+	vars: {
+		d2-config: {
+			theme-id: 201
+			layout-engine: elk
+			theme-overrides: {
+				N7: black
+
+				# mach border
+				B1: "#5F5C5C"
+				B2: grey
+				B3: "#6C7086"
+				# mach background
+				B4: "#262424"
+				B5: "#45475A"
+				B6: "#313244"
+
+				AA2: "#f38BA8"
+				AA4: "#45475A"
+				AA5: "#313244"
+
+				AB4: "#45475A"
+				AB5: "#313244"
+			}
+		}
+	}
+	classes: {
+		# active
+		_1: {
+			style: {
+				font-color: black
+				fill: yellow
+				border-radius: 999
+				double-border: true
+			}
+		}
+		# inactive
+		_0: {
+			style: {
+				stroke: white
+				border-radius: 999
+				double-border: true
+			}
+		}
+
+		# active inherited
+		_1i: {
+			style: {
+				font-color: black
+				fill: "yellow"
+				border-radius: 999
+			}
+		}
+		# inactive inherited
+		_0i: {
+			style: {
+				border-radius: 999
+			}
+		}
+
+		# active Start
+		_1s: {
+			style: {
+				font-color: black
+				fill: "#329241"
+				border-radius: 999
+			}
+		}
+		# inactive Start
+		_0s: {
+			style: {
+				border-radius: 999
+			}
+		}
+
+		# active Ready
+		_1r: {
+			style: {
+				font-color: black
+				fill: "deepskyblue"
+				border-radius: 999
+			}
+		}
+		# inactive Ready
+		_0r: {
+			style: {
+				border-radius: 999
+			}
+		}
+
+		# require relation
+		req: {
+			style.stroke: "lightblue"
+			target-arrowhead.style.filled: true
+			target-arrowhead.shape: circle
+		}
+		# add relation
+		add: {
+			style.stroke: "orange"
+			target-arrowhead.shape: triangle
+			target-arrowhead.style.filled: true
+		}
+		# remove relation
+		rem: {
+			style.stroke: "#DA70D6"
+			style.stroke-width: 2
+			target-arrowhead.style.filled: true
+			target-arrowhead.shape: diamond
+			source-arrowhead.style.filled: true
+			source-arrowhead.shape: diamond
+		}
+		# double remove relation
+		rem2: {
+			style.stroke: "#DA70D6"
+			style.stroke-width: 3
+			target-arrowhead.style.filled: true
+			target-arrowhead.shape: diamond
+			source-arrowhead.style.filled: true
+			source-arrowhead.shape: diamond
+		}
+		# add pipe
+		pipe_add: {
+			style.stroke: "orange"
+			style.stroke-dash: 3
+			target-arrowhead.style.filled: false
+		}
+		# remove pipe
+		pipe_rem: {
+			style.stroke: "#DA70D6"
+			target-arrowhead.shape: diamond
+			style.stroke-dash: 3
+		}
+		# pipe (mach -> mach)
+		pipe: {
+			style.stroke: white
+		}
+
+		# parent hierarchy relation
+		parent: {
+			style.stroke: white
+			style.stroke-width: 8
+			target-arrowhead.shape: circle
+		}
+		mach: {
+      style: {
+				font-size: 50
+				fill: "black"
+				border-radius: 40
+				stroke-width: 4
+			}
+			label.near: top-center
+		}
+		state: {
+      style.font-size: 30
+		}
+		called: {
+			style.stroke-width: 10
+			style.stroke: "white"
+			style.stroke-dash: 3
+		}
+		handler: {
+			style.stroke: "#2596be"
+		}
+		cancel: {
+			style: {
+				stroke: red
+				stroke-width: 5
+			}
+		}
+		state-zoom: {
+			style: {
+				font-size: 50
+				stroke-width: 10
+			}
+		}
+		rel-zoom: {
+			style.stroke-width: 10
+		}
+		rpc: {
+			style: {
+				# TODO dedicated color
+				stroke: "orange"
+				stroke-width: 4
+			}
+		}
+	  lifeline: {
+	    style.stroke: grey
+	  }
+
+		M_node-1-1-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-4-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-1-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-1-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-4-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-3-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-3-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-2-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-2-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-1-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-2-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-1-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-2-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-4-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-2-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-3-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-3-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-4-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-2-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-1-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-2-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-4-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-3-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-4-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-3-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-3-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-4-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-3-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-1-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-3-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-4-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-4-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-3-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-3-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-4-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-3-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-1-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-3-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-3-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-4-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-2-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-4-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-1-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-4-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-2-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-3-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-1-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-4-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-4-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-2-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-4-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-2-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-2-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-1-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-1-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-1-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-1-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-2-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-2-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-2-mach-1: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-4-mach-4: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-1-1-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-3-1-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-2-mach-2: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+	M_node-2-3-mach-3: {}
+	F_Exception: {}
+	T_Exception: {}
+	F_A: {}
+	T_A: {}
+	F_B: {}
+	T_B: {}
+	F_C: {}
+	T_C: {}
+	F_D: {}
+	T_D: {}
+
+	}
+	direction: right
+
+a: node-1-3-mach-2 {
+	class: [M_node-1-3-mach-2; mach]
+
+}
+
+
+b: node-3-1-mach-3 {
+	class: [M_node-3-1-mach-3; mach]
+
+}
+b -> c: rpc {
+	class: rpc
+}
+
+
+d: node-2-mach-1 {
+	class: [M_node-2-mach-1; mach]
+
+}
+d -> e: rpc {
+	class: rpc
+}
+
+
+f: node-3-3-mach-1 {
+	class: [M_node-3-3-mach-1; mach]
+
+}
+f -> g: rpc {
+	class: rpc
+}
+
+
+h: node-2-1-mach-1 {
+	class: [M_node-2-1-mach-1; mach]
+
+}
+
+
+i: node-2-2-mach-3 {
+	class: [M_node-2-2-mach-3; mach]
+
+}
+i -> j: rpc {
+	class: rpc
+}
+
+
+k: node-4-3-mach-1 {
+	class: [M_node-4-3-mach-1; mach]
+
+}
+k -> l: rpc {
+	class: rpc
+}
+
+
+m: node-2-4-mach-4 {
+	class: [M_node-2-4-mach-4; mach]
+
+}
+
+
+n: node-3-2-mach-4 {
+	class: [M_node-3-2-mach-4; mach]
+
+}
+n -> o: rpc {
+	class: rpc
+}
+
+
+p: node-4-mach-1 {
+	class: [M_node-4-mach-1; mach]
+
+}
+
+
+q: node-4-2-mach-3 {
+	class: [M_node-4-2-mach-3; mach]
+
+}
+
+
+r: node-3-4-mach-4 {
+	class: [M_node-3-4-mach-4; mach]
+
+}
+r -> j: rpc {
+	class: rpc
+}
+
+
+s: node-4-2-mach-4 {
+	class: [M_node-4-2-mach-4; mach]
+
+}
+
+
+t: node-3-mach-3 {
+	class: [M_node-3-mach-3; mach]
+
+}
+
+
+u: node-3-mach-4 {
+	class: [M_node-3-mach-4; mach]
+
+}
+
+
+v: node-1-4-mach-3 {
+	class: [M_node-1-4-mach-3; mach]
+
+}
+
+
+w: node-3-1-mach-4 {
+	class: [M_node-3-1-mach-4; mach]
+
+}
+
+
+x: node-3-3-mach-3 {
+	class: [M_node-3-3-mach-3; mach]
+
+}
+x -> y: rpc {
+	class: rpc
+}
+
+
+z: node-1-4-mach-4 {
+	class: [M_node-1-4-mach-4; mach]
+
+}
+z -> m: rpc {
+	class: rpc
+}
+
+
+0: node-3-mach-2 {
+	class: [M_node-3-mach-2; mach]
+
+}
+0 -> 1: rpc {
+	class: rpc
+}
+
+
+2: node-4-1-mach-1 {
+	class: [M_node-4-1-mach-1; mach]
+
+}
+
+
+3: node-2-3-mach-4 {
+	class: [M_node-2-3-mach-4; mach]
+
+}
+
+
+4: node-4-1-mach-2 {
+	class: [M_node-4-1-mach-2; mach]
+
+}
+
+
+5: node-4-4-mach-3 {
+	class: [M_node-4-4-mach-3; mach]
+
+}
+5 -> 6: rpc {
+	class: rpc
+}
+
+
+7: node-4-3-mach-4 {
+	class: [M_node-4-3-mach-4; mach]
+
+}
+7 -> q: rpc {
+	class: rpc
+}
+
+
+8: node-1-3-mach-4 {
+	class: [M_node-1-3-mach-4; mach]
+
+}
+8 -> 9: rpc {
+	class: rpc
+}
+
+
+aa: node-2-1-mach-2 {
+	class: [M_node-2-1-mach-2; mach]
+
+}
+aa -> 4: rpc {
+	class: rpc
+}
+
+
+ab: node-4-mach-4 {
+	class: [M_node-4-mach-4; mach]
+
+}
+ab -> ac: rpc {
+	class: rpc
+}
+
+
+1: node-3-3-mach-4 {
+	class: [M_node-3-3-mach-4; mach]
+
+}
+1 -> ad: rpc {
+	class: rpc
+}
+
+
+ae: node-4-4-mach-2 {
+	class: [M_node-4-4-mach-2; mach]
+
+}
+ae -> u: rpc {
+	class: rpc
+}
+
+
+af: node-2-1-mach-3 {
+	class: [M_node-2-1-mach-3; mach]
+
+}
+af -> x: rpc {
+	class: rpc
+}
+
+
+ac: node-2-3-mach-1 {
+	class: [M_node-2-3-mach-1; mach]
+
+}
+ac -> ag: rpc {
+	class: rpc
+}
+
+
+ah: node-3-3-mach-2 {
+	class: [M_node-3-3-mach-2; mach]
+
+}
+ah -> ai: rpc {
+	class: rpc
+}
+
+
+aj: node-1-2-mach-3 {
+	class: [M_node-1-2-mach-3; mach]
+
+}
+aj -> v: rpc {
+	class: rpc
+}
+
+
+ak: node-2-mach-3 {
+	class: [M_node-2-mach-3; mach]
+
+}
+
+
+al: node-1-1-mach-2 {
+	class: [M_node-1-1-mach-2; mach]
+
+}
+
+
+am: node-1-1-mach-3 {
+	class: [M_node-1-1-mach-3; mach]
+
+}
+am -> e: rpc {
+	class: rpc
+}
+
+
+an: node-1-2-mach-4 {
+	class: [M_node-1-2-mach-4; mach]
+
+}
+
+
+ao: node-2-4-mach-3 {
+	class: [M_node-2-4-mach-3; mach]
+
+}
+ao -> ap: rpc {
+	class: rpc
+}
+
+
+aq: node-1-4-mach-1 {
+	class: [M_node-1-4-mach-1; mach]
+
+}
+aq -> p: rpc {
+	class: rpc
+}
+
+
+ad: node-4-4-mach-1 {
+	class: [M_node-4-4-mach-1; mach]
+
+}
+ad -> a: rpc {
+	class: rpc
+}
+
+
+ar: node-1-1-mach-4 {
+	class: [M_node-1-1-mach-4; mach]
+
+}
+ar -> y: rpc {
+	class: rpc
+}
+
+
+as: node-4-1-mach-3 {
+	class: [M_node-4-1-mach-3; mach]
+
+}
+as -> at: rpc {
+	class: rpc
+}
+
+
+au: node-1-mach-1 {
+	class: [M_node-1-mach-1; mach]
+
+}
+au -> ag: rpc {
+	class: rpc
+}
+
+
+e: node-3-2-mach-2 {
+	class: [M_node-3-2-mach-2; mach]
+
+}
+
+
+ap: node-3-2-mach-1 {
+	class: [M_node-3-2-mach-1; mach]
+
+}
+ap -> q: rpc {
+	class: rpc
+}
+
+
+av: node-4-4-mach-4 {
+	class: [M_node-4-4-mach-4; mach]
+
+}
+
+
+aw: node-1-4-mach-2 {
+	class: [M_node-1-4-mach-2; mach]
+
+}
+
+
+ai: node-1-mach-3 {
+	class: [M_node-1-mach-3; mach]
+
+}
+
+
+ax: node-2-2-mach-4 {
+	class: [M_node-2-2-mach-4; mach]
+
+}
+
+
+ay: node-3-2-mach-3 {
+	class: [M_node-3-2-mach-3; mach]
+
+}
+ay -> 6: rpc {
+	class: rpc
+}
+
+
+az: node-2-4-mach-2 {
+	class: [M_node-2-4-mach-2; mach]
+
+}
+az -> o: rpc {
+	class: rpc
+}
+
+
+y: node-2-3-mach-3 {
+	class: [M_node-2-3-mach-3; mach]
+
+}
+y -> aj: rpc {
+	class: rpc
+}
+
+
+a0: node-4-mach-3 {
+	class: [M_node-4-mach-3; mach]
+
+}
+a0 -> 9: rpc {
+	class: rpc
+}
+
+
+c: node-3-1-mach-2 {
+	class: [M_node-3-1-mach-2; mach]
+
+}
+
+
+a1: node-3-4-mach-3 {
+	class: [M_node-3-4-mach-3; mach]
+
+}
+
+
+9: node-2-2-mach-1 {
+	class: [M_node-2-2-mach-1; mach]
+
+}
+9 -> an: rpc {
+	class: rpc
+}
+
+
+a2: node-3-mach-1 {
+	class: [M_node-3-mach-1; mach]
+
+}
+
+
+l: node-2-4-mach-1 {
+	class: [M_node-2-4-mach-1; mach]
+
+}
+l -> af: rpc {
+	class: rpc
+}
+
+
+a3: node-4-1-mach-4 {
+	class: [M_node-4-1-mach-4; mach]
+
+}
+
+
+g: node-2-2-mach-2 {
+	class: [M_node-2-2-mach-2; mach]
+
+}
+
+
+a4: node-4-2-mach-2 {
+	class: [M_node-4-2-mach-2; mach]
+
+}
+
+
+a5: node-3-4-mach-1 {
+	class: [M_node-3-4-mach-1; mach]
+
+}
+
+
+at: node-1-2-mach-1 {
+	class: [M_node-1-2-mach-1; mach]
+
+}
+
+
+a6: node-2-1-mach-4 {
+	class: [M_node-2-1-mach-4; mach]
+
+}
+
+
+a7: node-4-3-mach-2 {
+	class: [M_node-4-3-mach-2; mach]
+
+}
+
+
+j: node-1-3-mach-3 {
+	class: [M_node-1-3-mach-3; mach]
+
+}
+
+
+a8: node-2-3-mach-2 {
+	class: [M_node-2-3-mach-2; mach]
+
+}
+
+
+a9: node-3-1-mach-1 {
+	class: [M_node-3-1-mach-1; mach]
+
+}
+a9 -> ao: rpc {
+	class: rpc
+}
+
+
+ba: node-1-mach-4 {
+	class: [M_node-1-mach-4; mach]
+
+}
+
+
+bb: node-1-1-mach-1 {
+	class: [M_node-1-1-mach-1; mach]
+
+}
+bb -> bc: rpc {
+	class: rpc
+}
+
+
+bd: node-1-mach-2 {
+	class: [M_node-1-mach-2; mach]
+
+}
+bd -> a0: rpc {
+	class: rpc
+}
+
+
+be: node-3-4-mach-2 {
+	class: [M_node-3-4-mach-2; mach]
+
+}
+
+
+o: node-4-2-mach-1 {
+	class: [M_node-4-2-mach-1; mach]
+
+}
+
+
+bc: node-2-mach-4 {
+	class: [M_node-2-mach-4; mach]
+
+}
+
+
+ag: node-1-2-mach-2 {
+	class: [M_node-1-2-mach-2; mach]
+
+}
+ag -> az: rpc {
+	class: rpc
+}
+
+
+bf: node-2-mach-2 {
+	class: [M_node-2-mach-2; mach]
+
+}
+
+
+bg: node-4-mach-2 {
+	class: [M_node-4-mach-2; mach]
+
+}
+
+
+bh: node-1-3-mach-1 {
+	class: [M_node-1-3-mach-1; mach]
+
+}
+
+
+6: node-4-3-mach-3 {
+	class: [M_node-4-3-mach-3; mach]
+
+}
+
+

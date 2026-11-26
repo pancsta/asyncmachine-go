@@ -15,6 +15,7 @@
   - [**TUI**](/examples/tui)
   - [**WASM**](/examples/wasm)
   - [**WASM Workflow**](/examples/wasm_workflow)
+  - [Asynq FileProcessing](/examples/asynq_fileprocessing/fileprocessing_task.go)
   - [DAG Dependency Graph](/examples/dag_dependency_graph/dependency_graph.go)
   - [Fan Out Fan In](/examples/fan_out_in/example_fan_out_in.go)
   - [FSM - Finite State Machine](/examples/fsm/fsm_test.go)
@@ -27,6 +28,7 @@
   - [Subscriptions](/examples/subscriptions/example_subscriptions.go)
   - [Temporal Expense Workflow](/examples/temporal_expense/expense_test.go)
   - [Temporal FileProcessing Workflow](/examples/temporal_fileprocessing/fileprocessing.go)
+  - [WASM livepage](/examples/wasm_livepage)
 - [Benchmarks](#benchmarks)
   - [**Benchmark State Source**](/examples/benchmark_state_source)
   - [Benchmark gRPC](/examples/benchmark_grpc)
@@ -87,13 +89,19 @@ Single writer distributed to multiple readers in a tree structure.
 
 aRPC WASM architecture with a simple chat.
 
-- `#relations #handlers #arpc-handlers #arpc #relay #ui #websocket`
+- `#relations #handlers #arpc-handlers #arpc #relay #ui #websocket #tinygo`
 
 ### [WASM Workflow](/examples/wasm_workflow)
 
 WebWorker WASM workflow example.
 
 - `#relations #handlers #arpc-handlers #arpc #relay #websocket #webworkers #payload`
+
+### [Asynq FileProcessing](/examples/asynq_fileprocessing/fileprocessing_task.go)
+
+Asynq worker with retries, scheduling, and queue management over Redis, based on the file processing flow.
+
+- `#relations #handlers #async #negotiation #auto #asynq`
 
 ### [DAG Dependency Graph](/examples/dag_dependency_graph/dependency_graph.go)
 
@@ -177,6 +185,12 @@ Workflow ported from Temporal.
 - `#relations #handlers #async #auto #temporal`
 - [origin](https://github.com/temporalio/samples-go/blob/main/fileprocessing/)
 - [Asynq worker version](/examples/asynq_fileprocessing/fileprocessing_task.go)
+
+### [WASM livepage](/examples/wasm_livepage)
+
+TinyGo WASM client with full-duplex aRPC over a single livepage WebSocket.
+
+- `#relations #handlers #arpc-handlers #arpc #websocket #livepage #ui #tinygo`
 
 ## Benchmarks
 

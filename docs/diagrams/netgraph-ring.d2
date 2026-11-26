@@ -1,0 +1,228 @@
+vars: {
+	d2-config: {
+		theme-id: 201
+		layout-engine: elk
+		theme-overrides: {
+			N7: black
+
+			# mach border
+			B1: "#5F5C5C"
+			B2: grey
+			B3: "#6C7086"
+			# mach background
+			B4: "#262424"
+			B5: "#45475A"
+			B6: "#313244"
+
+			AA2: "#f38BA8"
+			AA4: "#45475A"
+			AA5: "#313244"
+
+			AB4: "#45475A"
+			AB5: "#313244"
+		}
+	}
+}
+classes: {
+	net: {
+		style: {
+			font-size: 22
+			fill: "#262424"
+			stroke: "#6C7086"
+			font-color: white
+			border-radius: 8
+		}
+	}
+	sink: {
+		style: {
+			font-size: 24
+			fill: "#f9e2af"
+			stroke: "#45475A"
+			font-color: black
+			border-radius: 8
+		}
+	}
+	# parent hierarchy relation
+	parent: {
+		style.stroke: white
+		style.stroke-width: 4
+		target-arrowhead.shape: circle
+	}
+	# rpc / ring relation
+	ring: {
+		style: {
+			stroke: "orange"
+			stroke-width: 6
+		}
+	}
+}
+direction: right
+
+c0_sink: "c0 sink\nGQL DB" {class: sink}
+c0_node_1: "c0 node-1" {class: net}
+c0_node_1_1: "c0 node-1-1" {class: net}
+c0_node_1_2: "c0 node-1-2" {class: net}
+c0_node_1_3: "c0 node-1-3" {class: net}
+c0_node_1_4: "c0 node-1-4" {class: net}
+c0_node_2: "c0 node-2" {class: net}
+c0_node_2_1: "c0 node-2-1" {class: net}
+c0_node_2_2: "c0 node-2-2" {class: net}
+c0_node_2_3: "c0 node-2-3" {class: net}
+c0_node_2_4: "c0 node-2-4" {class: net}
+c0_node_3: "c0 node-3" {class: net}
+c0_node_3_1: "c0 node-3-1" {class: net}
+c0_node_3_2: "c0 node-3-2" {class: net}
+c0_node_3_3: "c0 node-3-3" {class: net}
+c0_node_3_4: "c0 node-3-4" {class: net}
+c0_node_4: "c0 node-4" {class: net}
+c0_node_4_1: "c0 node-4-1" {class: net}
+c0_node_4_2: "c0 node-4-2" {class: net}
+c0_node_4_3: "c0 node-4-3" {class: net}
+c0_node_4_4: "c0 node-4-4" {class: net}
+c1_sink: "c1 sink\nGQL DB" {class: sink}
+c1_node_1: "c1 node-1" {class: net}
+c1_node_1_1: "c1 node-1-1" {class: net}
+c1_node_1_2: "c1 node-1-2" {class: net}
+c1_node_1_3: "c1 node-1-3" {class: net}
+c1_node_1_4: "c1 node-1-4" {class: net}
+c1_node_2: "c1 node-2" {class: net}
+c1_node_2_1: "c1 node-2-1" {class: net}
+c1_node_2_2: "c1 node-2-2" {class: net}
+c1_node_2_3: "c1 node-2-3" {class: net}
+c1_node_2_4: "c1 node-2-4" {class: net}
+c1_node_3: "c1 node-3" {class: net}
+c1_node_3_1: "c1 node-3-1" {class: net}
+c1_node_3_2: "c1 node-3-2" {class: net}
+c1_node_3_3: "c1 node-3-3" {class: net}
+c1_node_3_4: "c1 node-3-4" {class: net}
+c1_node_4: "c1 node-4" {class: net}
+c1_node_4_1: "c1 node-4-1" {class: net}
+c1_node_4_2: "c1 node-4-2" {class: net}
+c1_node_4_3: "c1 node-4-3" {class: net}
+c1_node_4_4: "c1 node-4-4" {class: net}
+c2_sink: "c2 sink\nGQL DB" {class: sink}
+c2_node_1: "c2 node-1" {class: net}
+c2_node_1_1: "c2 node-1-1" {class: net}
+c2_node_1_2: "c2 node-1-2" {class: net}
+c2_node_1_3: "c2 node-1-3" {class: net}
+c2_node_1_4: "c2 node-1-4" {class: net}
+c2_node_2: "c2 node-2" {class: net}
+c2_node_2_1: "c2 node-2-1" {class: net}
+c2_node_2_2: "c2 node-2-2" {class: net}
+c2_node_2_3: "c2 node-2-3" {class: net}
+c2_node_2_4: "c2 node-2-4" {class: net}
+c2_node_3: "c2 node-3" {class: net}
+c2_node_3_1: "c2 node-3-1" {class: net}
+c2_node_3_2: "c2 node-3-2" {class: net}
+c2_node_3_3: "c2 node-3-3" {class: net}
+c2_node_3_4: "c2 node-3-4" {class: net}
+c2_node_4: "c2 node-4" {class: net}
+c2_node_4_1: "c2 node-4-1" {class: net}
+c2_node_4_2: "c2 node-4-2" {class: net}
+c2_node_4_3: "c2 node-4-3" {class: net}
+c2_node_4_4: "c2 node-4-4" {class: net}
+c3_sink: "c3 sink\nGQL DB" {class: sink}
+c3_node_1: "c3 node-1" {class: net}
+c3_node_1_1: "c3 node-1-1" {class: net}
+c3_node_1_2: "c3 node-1-2" {class: net}
+c3_node_1_3: "c3 node-1-3" {class: net}
+c3_node_1_4: "c3 node-1-4" {class: net}
+c3_node_2: "c3 node-2" {class: net}
+c3_node_2_1: "c3 node-2-1" {class: net}
+c3_node_2_2: "c3 node-2-2" {class: net}
+c3_node_2_3: "c3 node-2-3" {class: net}
+c3_node_2_4: "c3 node-2-4" {class: net}
+c3_node_3: "c3 node-3" {class: net}
+c3_node_3_1: "c3 node-3-1" {class: net}
+c3_node_3_2: "c3 node-3-2" {class: net}
+c3_node_3_3: "c3 node-3-3" {class: net}
+c3_node_3_4: "c3 node-3-4" {class: net}
+c3_node_4: "c3 node-4" {class: net}
+c3_node_4_1: "c3 node-4-1" {class: net}
+c3_node_4_2: "c3 node-4-2" {class: net}
+c3_node_4_3: "c3 node-4-3" {class: net}
+c3_node_4_4: "c3 node-4-4" {class: net}
+c0_node_1 -> c0_sink: "" {class: parent}
+c0_node_1_1 -> c0_node_1: "" {class: parent}
+c0_node_1_2 -> c0_node_1: "" {class: parent}
+c0_node_1_3 -> c0_node_1: "" {class: parent}
+c0_node_1_4 -> c0_node_1: "" {class: parent}
+c0_node_2 -> c0_sink: "" {class: parent}
+c0_node_2_1 -> c0_node_2: "" {class: parent}
+c0_node_2_2 -> c0_node_2: "" {class: parent}
+c0_node_2_3 -> c0_node_2: "" {class: parent}
+c0_node_2_4 -> c0_node_2: "" {class: parent}
+c0_node_3 -> c0_sink: "" {class: parent}
+c0_node_3_1 -> c0_node_3: "" {class: parent}
+c0_node_3_2 -> c0_node_3: "" {class: parent}
+c0_node_3_3 -> c0_node_3: "" {class: parent}
+c0_node_3_4 -> c0_node_3: "" {class: parent}
+c0_node_4 -> c0_sink: "" {class: parent}
+c0_node_4_1 -> c0_node_4: "" {class: parent}
+c0_node_4_2 -> c0_node_4: "" {class: parent}
+c0_node_4_3 -> c0_node_4: "" {class: parent}
+c0_node_4_4 -> c0_node_4: "" {class: parent}
+c1_node_1 -> c1_sink: "" {class: parent}
+c1_node_1_1 -> c1_node_1: "" {class: parent}
+c1_node_1_2 -> c1_node_1: "" {class: parent}
+c1_node_1_3 -> c1_node_1: "" {class: parent}
+c1_node_1_4 -> c1_node_1: "" {class: parent}
+c1_node_2 -> c1_sink: "" {class: parent}
+c1_node_2_1 -> c1_node_2: "" {class: parent}
+c1_node_2_2 -> c1_node_2: "" {class: parent}
+c1_node_2_3 -> c1_node_2: "" {class: parent}
+c1_node_2_4 -> c1_node_2: "" {class: parent}
+c1_node_3 -> c1_sink: "" {class: parent}
+c1_node_3_1 -> c1_node_3: "" {class: parent}
+c1_node_3_2 -> c1_node_3: "" {class: parent}
+c1_node_3_3 -> c1_node_3: "" {class: parent}
+c1_node_3_4 -> c1_node_3: "" {class: parent}
+c1_node_4 -> c1_sink: "" {class: parent}
+c1_node_4_1 -> c1_node_4: "" {class: parent}
+c1_node_4_2 -> c1_node_4: "" {class: parent}
+c1_node_4_3 -> c1_node_4: "" {class: parent}
+c1_node_4_4 -> c1_node_4: "" {class: parent}
+c2_node_1 -> c2_sink: "" {class: parent}
+c2_node_1_1 -> c2_node_1: "" {class: parent}
+c2_node_1_2 -> c2_node_1: "" {class: parent}
+c2_node_1_3 -> c2_node_1: "" {class: parent}
+c2_node_1_4 -> c2_node_1: "" {class: parent}
+c2_node_2 -> c2_sink: "" {class: parent}
+c2_node_2_1 -> c2_node_2: "" {class: parent}
+c2_node_2_2 -> c2_node_2: "" {class: parent}
+c2_node_2_3 -> c2_node_2: "" {class: parent}
+c2_node_2_4 -> c2_node_2: "" {class: parent}
+c2_node_3 -> c2_sink: "" {class: parent}
+c2_node_3_1 -> c2_node_3: "" {class: parent}
+c2_node_3_2 -> c2_node_3: "" {class: parent}
+c2_node_3_3 -> c2_node_3: "" {class: parent}
+c2_node_3_4 -> c2_node_3: "" {class: parent}
+c2_node_4 -> c2_sink: "" {class: parent}
+c2_node_4_1 -> c2_node_4: "" {class: parent}
+c2_node_4_2 -> c2_node_4: "" {class: parent}
+c2_node_4_3 -> c2_node_4: "" {class: parent}
+c2_node_4_4 -> c2_node_4: "" {class: parent}
+c3_node_1 -> c3_sink: "" {class: parent}
+c3_node_1_1 -> c3_node_1: "" {class: parent}
+c3_node_1_2 -> c3_node_1: "" {class: parent}
+c3_node_1_3 -> c3_node_1: "" {class: parent}
+c3_node_1_4 -> c3_node_1: "" {class: parent}
+c3_node_2 -> c3_sink: "" {class: parent}
+c3_node_2_1 -> c3_node_2: "" {class: parent}
+c3_node_2_2 -> c3_node_2: "" {class: parent}
+c3_node_2_3 -> c3_node_2: "" {class: parent}
+c3_node_2_4 -> c3_node_2: "" {class: parent}
+c3_node_3 -> c3_sink: "" {class: parent}
+c3_node_3_1 -> c3_node_3: "" {class: parent}
+c3_node_3_2 -> c3_node_3: "" {class: parent}
+c3_node_3_3 -> c3_node_3: "" {class: parent}
+c3_node_3_4 -> c3_node_3: "" {class: parent}
+c3_node_4 -> c3_sink: "" {class: parent}
+c3_node_4_1 -> c3_node_4: "" {class: parent}
+c3_node_4_2 -> c3_node_4: "" {class: parent}
+c3_node_4_3 -> c3_node_4: "" {class: parent}
+c3_node_4_4 -> c3_node_4: "" {class: parent}
+c0_sink -> c1_sink: "UDP" {class: ring}
+c1_sink -> c2_sink: "UDP" {class: ring}
+c2_sink -> c3_sink: "UDP" {class: ring}
+c3_sink -> c0_sink: "UDP" {class: ring}
