@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"math/rand/v2"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -959,4 +960,234 @@ func mockRegPause() time.Duration {
 	}
 
 	return d
+}
+
+const (
+	mockNetPortStart = 40000
+	// mockNetQueueMax bounds one conn's receive queue.
+	mockNetQueueMax = 1 << 20
+)
+
+// mockNet is an in-memory lossy datagram hub. It serves net.PacketConn
+// listeners and net.Conn dialers, so [NetworkGraph] can run without sockets.
+type mockNet struct {
+	mu       sync.Mutex
+	rnd      *rand.Rand
+	loss     float64
+	nextPort int
+	conns    map[string]*mockConn
+
+	sent    atomic.Int64
+	dropped atomic.Int64
+}
+
+type mockPacket struct {
+	data []byte
+	from *net.UDPAddr
+}
+
+// mockConn is both a net.PacketConn (listener) and a net.Conn (dialer).
+type mockConn struct {
+	hub    *mockNet
+	local  *net.UDPAddr
+	remote *net.UDPAddr
+
+	mu     sync.Mutex
+	cond   *sync.Cond
+	queue  []mockPacket
+	closed bool
+}
+
+func newMockNet(seed uint64, loss float64) *mockNet {
+	return &mockNet{
+		rnd:      rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15)),
+		loss:     loss,
+		nextPort: mockNetPortStart,
+		conns:    make(map[string]*mockConn),
+	}
+}
+
+// SetLoss sets the datagram drop probability.
+func (m *mockNet) SetLoss(loss float64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.loss = loss
+}
+
+// Stats returns the number of datagrams sent and dropped.
+func (m *mockNet) Stats() (sent, dropped int64) {
+	return m.sent.Load(), m.dropped.Load()
+}
+
+// Listen creates an in-memory datagram listener. addr is ignored.
+func (m *mockNet) Listen(_ string) (net.PacketConn, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	c := m.newConn()
+
+	return c, nil
+}
+
+// Dial creates an in-memory datagram conn to addr.
+func (m *mockNet) Dial(addr string) (net.Conn, error) {
+	remote, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return nil, err
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	c := m.newConn()
+	c.remote = remote
+
+	return c, nil
+}
+
+// newConn allocates and registers a conn. The caller must hold hub.mu.
+func (m *mockNet) newConn() *mockConn {
+	port := m.nextPort
+	m.nextPort++
+	c := &mockConn{
+		hub:   m,
+		local: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port},
+	}
+	c.cond = sync.NewCond(&c.mu)
+	m.conns[c.local.String()] = c
+
+	return c
+}
+
+// deliver enqueues a datagram to dst, dropping it on simulated loss or
+// congestion.
+func (m *mockNet) deliver(dst *net.UDPAddr, from *net.UDPAddr, data []byte) {
+	m.sent.Add(1)
+
+	m.mu.Lock()
+	conn := m.conns[dst.String()]
+	drop := conn == nil
+	if !drop && m.loss > 0 && m.rnd.Float64() < m.loss {
+		drop = true
+	}
+	m.mu.Unlock()
+
+	if drop {
+		m.dropped.Add(1)
+		return
+	}
+
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+	if conn.closed || len(conn.queue) >= mockNetQueueMax {
+		// congestion drop
+		m.dropped.Add(1)
+		return
+	}
+	conn.queue = append(conn.queue, mockPacket{
+		data: append([]byte(nil), data...),
+		from: from,
+	})
+	conn.cond.Signal()
+}
+
+// read pops a datagram, blocking until one arrives or the conn closes.
+func (c *mockConn) read() (mockPacket, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for len(c.queue) == 0 && !c.closed {
+		c.cond.Wait()
+	}
+	if len(c.queue) == 0 {
+		return mockPacket{}, net.ErrClosed
+	}
+
+	pkt := c.queue[0]
+	c.queue[0] = mockPacket{}
+	c.queue = c.queue[1:]
+
+	return pkt, nil
+}
+
+// net.PacketConn
+
+func (c *mockConn) ReadFrom(p []byte) (int, net.Addr, error) {
+	pkt, err := c.read()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return copy(p, pkt.data), pkt.from, nil
+}
+
+func (c *mockConn) WriteTo(p []byte, addr net.Addr) (int, error) {
+	dst, ok := addr.(*net.UDPAddr)
+	if !ok {
+		return 0, fmt.Errorf("mock net: unsupported addr %T", addr)
+	}
+	c.hub.deliver(dst, c.local, p)
+
+	return len(p), nil
+}
+
+func (c *mockConn) Close() error {
+	c.hub.mu.Lock()
+	if c.hub.conns[c.local.String()] == c {
+		delete(c.hub.conns, c.local.String())
+	}
+	c.hub.mu.Unlock()
+
+	c.mu.Lock()
+	c.closed = true
+	c.queue = nil
+	c.cond.Broadcast()
+	c.mu.Unlock()
+
+	return nil
+}
+
+func (c *mockConn) LocalAddr() net.Addr {
+	return c.local
+}
+
+// net.Conn
+
+func (c *mockConn) Read(p []byte) (int, error) {
+	pkt, err := c.read()
+	if err != nil {
+		return 0, err
+	}
+
+	return copy(p, pkt.data), nil
+}
+
+func (c *mockConn) Write(p []byte) (int, error) {
+	if c.remote == nil {
+		return 0, fmt.Errorf("mock net: not connected")
+	}
+	c.hub.deliver(c.remote, c.local, p)
+
+	return len(p), nil
+}
+
+func (c *mockConn) RemoteAddr() net.Addr {
+	if c.remote == nil {
+		return nil
+	}
+
+	return c.remote
+}
+
+func (c *mockConn) SetDeadline(_ time.Time) error {
+	return nil
+}
+
+func (c *mockConn) SetReadDeadline(_ time.Time) error {
+	return nil
+}
+
+func (c *mockConn) SetWriteDeadline(_ time.Time) error {
+	return nil
 }

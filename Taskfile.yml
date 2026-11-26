@@ -961,6 +961,14 @@ tasks:
     desc: Serve local website
     cmd: static-server -addr localhost:1293 docs/website
 
+  gen-docs-netgraph:
+    desc: Generate NetworkGraph D2 diagrams for docs
+    dir: pkg/graph/test
+    cmds:
+      - go test -tags integration -run TestNetworkGraphDiagrams -count=1 .
+      - cp netgraph.d2 ../../../docs/diagrams/netgraph.d2
+      - cp netgraph_ring.d2 ../../../docs/diagrams/netgraph-ring.d2
+
   gen-docs-diagrams:
     dir: docs/diagrams
     cmds:
@@ -1041,6 +1049,8 @@ tasks:
 
   bench-frogql:
     desc: Benchmark DbGraph query TPS on a fully synced graph ("frogql" tag)
+    env:
+      AM_BENCH_BACKEND: frogql
     cmds:
       - task: gen-graph-frogql
       - go test -tags frogql,integration -run=^$ -bench . -benchtime 2s ./pkg/graph/test/
@@ -1056,6 +1066,8 @@ tasks:
 
   bench-graph-gochickpeas:
     desc: Benchmark gochickpeas DbGraph query TPS on a fully synced graph
+    env:
+      AM_BENCH_BACKEND: gochickpeas
     cmds:
       - go test -tags integration -run=^$ -bench . -benchtime 2s ./pkg/graph/test/
 
@@ -1070,8 +1082,10 @@ tasks:
 
   bench-graph-gql:
     desc: Benchmark native GQL DbGraph query TPS on a fully synced graph
+    env:
+      AM_BENCH_BACKEND: gql
     cmds:
-      - go test -tags integration -run=^$ -bench 'gql$' -benchtime 2s ./pkg/graph/test/
+      - go test -tags integration -run=^$ -bench . -benchtime 2s ./pkg/graph/test/
 
   bench-netgraph-docker:
     desc: Run a NetGraph scale test in Docker (default TestNetGraphFullUDP)

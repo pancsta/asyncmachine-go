@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"maps"
 	"math/rand/v2"
 	"net/http"
@@ -145,6 +147,174 @@ func TestNetworkGraphGochickpeasDb(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	RunDbMirrorSuite(t, f, db)
+}
+
+// TestNetworkGraphRing connects 4 independent graphs into a ring of their sink
+// nodes and asserts that every sink mirrors all 4 clusters without duplicates.
+func TestNetworkGraphRing(t *testing.T) {
+	ctx := t.Context()
+	const clusters = 4
+
+	var nets [clusters]*MachineGraph
+	var bases [clusters]string
+	var allIDs []string
+	seen := make(map[string]struct{})
+
+	for i := range clusters {
+		db, err := gochickpeas.NewDbGraph()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+
+		// prefix the node IDs, so each cluster has unique machines
+		spec := strings.ReplaceAll(DefaultGraphSpec, "node",
+			fmt.Sprintf("c%dnode", i))
+		nets[i] = NewMachineGraph(t, ctx, spec, GraphOpts{
+			SinkDb:       db,
+			Quiet:        true,
+			NoRandomTags: true,
+		})
+		for _, mach := range nets[i].Machines {
+			id := mach.Id()
+			if _, ok := seen[id]; ok {
+				t.Fatalf("duplicate machine ID %s", id)
+			}
+			seen[id] = struct{}{}
+			allIDs = append(allIDs, id)
+		}
+
+		addr, err := nets[i].Sink.Net.StartDbHttpServer("127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		bases[i] = "http://" + addr
+	}
+
+	// quiet the ring: it intentionally produces resend requests
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	for i := range clusters {
+		for _, n := range nets[i].Nodes {
+			n.Net.Logger = quiet
+		}
+	}
+
+	// ring of sinks, each emitting to the next one
+	for i := range clusters {
+		_, cancel := nets[i].Sink.Net.EmitToAddr(
+			nets[(i+1)%clusters].Sink.Net.Addr)
+		t.Cleanup(cancel)
+	}
+
+	// one change per machine, so all of them get emitted
+	for i := range clusters {
+		nets[i].AddState(ssrel.B)
+	}
+
+	// wait until every sink mirrors every cluster
+	want := len(allIDs)
+	idsBySink := make([]map[string]int, clusters)
+	for i := range clusters {
+		idsBySink[i] = waitRingMachines(t, bases[i], want)
+	}
+
+	for i := range clusters {
+		ids := idsBySink[i]
+		if len(ids) != want {
+			t.Fatalf("sink %d: %d unique machines, want %d", i, len(ids), want)
+		}
+		for id, n := range ids {
+			if n != 1 {
+				t.Fatalf("sink %d: %d copies of %s", i, n, id)
+			}
+		}
+		for _, id := range allIDs {
+			if _, ok := ids[id]; !ok {
+				t.Fatalf("sink %d: missing machine %s", i, id)
+			}
+		}
+		// all 4 clusters are present
+		for c := range clusters {
+			prefix := fmt.Sprintf("c%dnode", c)
+			wantC := len(nets[c].Machines)
+			got := 0
+			for id := range ids {
+				if strings.HasPrefix(id, prefix) {
+					got++
+				}
+			}
+			if got != wantC {
+				t.Fatalf("sink %d: cluster %d has %d/%d machines",
+					i, c, got, wantC)
+			}
+		}
+		if got := nets[i].Sink.Graph.MachineCount(); got != want {
+			t.Fatalf("sink %d: graph has %d machines, want %d", i, got, want)
+		}
+	}
+
+	// no duplicate state vertices or HAS edges per machine
+	states := len(ssrel.Names)
+	for i := range clusters {
+		rows, err := queryGql(bases[i],
+			"MATCH (s:State) RETURN s.mach AS mach, s.name AS name")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != want*states {
+			t.Fatalf("sink %d: %d state vertices, want %d",
+				i, len(rows), want*states)
+		}
+		pairs := make(map[string]struct{}, len(rows))
+		for _, row := range rows {
+			mach, _ := row["mach"].(string)
+			name, _ := row["name"].(string)
+			pairs[mach+"\x00"+name] = struct{}{}
+		}
+		if len(pairs) != len(rows) {
+			t.Fatalf("sink %d: duplicate state vertices", i)
+		}
+
+		for c := range clusters {
+			id := nets[c].Machines[0].Id()
+			rows, err := queryGql(bases[i], fmt.Sprintf(
+				"MATCH (m:Machine {id: '%s'})-[:HAS]->(s:State) "+
+					"RETURN s.name AS name", id))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != states {
+				t.Fatalf("sink %d: %s has %d HAS edges, want %d",
+					i, id, len(rows), states)
+			}
+		}
+	}
+}
+
+// waitRingMachines waits until a GQL DB mirrors want machines.
+func waitRingMachines(t *testing.T, base string, want int) map[string]int {
+	t.Helper()
+
+	deadline := time.Now().Add(60 * time.Second)
+	var err error
+	for {
+		var rows []map[string]any
+		rows, err = queryGql(base, "MATCH (m:Machine) RETURN m.id AS id")
+		if err == nil {
+			ids := make(map[string]int, len(rows))
+			for _, row := range rows {
+				id, _ := row["id"].(string)
+				ids[id]++
+			}
+			if len(ids) >= want {
+				return ids
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %d machines in GQL: %v", want, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // TestNetworkGraphSim builds the full tree, discovers node addresses from #addr
@@ -685,11 +855,17 @@ func reportTps(b *testing.B, start time.Time) {
 	b.ReportMetric(float64(b.N)/elapsed.Seconds(), "tps")
 }
 
-// runBackends runs a benchmark body for every registered backend.
+// runBackends runs a benchmark body for every registered backend, optionally
+// filtered by AM_BENCH_BACKEND.
 func runBackends(
 	b *testing.B, body func(b *testing.B, env *benchEnv),
 ) {
 	names := slices.Sorted(maps.Keys(benchBackends))
+	if filter := os.Getenv("AM_BENCH_BACKEND"); filter != "" {
+		names = slices.DeleteFunc(names, func(name string) bool {
+			return name != filter
+		})
+	}
 	for _, name := range names {
 		factory := benchBackends[name]
 		b.Run(name, func(b *testing.B) {

@@ -2,6 +2,9 @@ package graph
 
 import (
 	"context"
+	"crypto/cipher"
+	crand "crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +24,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/vmihailenco/msgpack/v5"
+	"golang.org/x/crypto/chacha20poly1305"
 
 	gtypes "github.com/pancsta/asyncmachine-go/pkg/graph/types"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
@@ -165,6 +169,8 @@ type NetworkGraph struct {
 	listener    net.PacketConn
 	readBufSize int
 	sinkLocal   string
+	// cipher optionally encrypts all datagrams of this graph.
+	cipher *Cipher
 	// dial creates a datagram conn to a sink address. Overridable for tests.
 	dial func(addr string) (net.Conn, error)
 	ctx  context.Context
@@ -205,6 +211,9 @@ type NetworkGraphOpts struct {
 	Listener func(addr string) (net.PacketConn, error)
 	// Dial optionally creates a datagram sink conn. Tests only, nil uses UDP.
 	Dial func(addr string) (net.Conn, error)
+	// Cipher optionally encrypts all graph datagrams with a PSK. The same keys
+	// must be configured on peers. See [NewCipher].
+	Cipher *Cipher
 }
 
 // NewNetworkGraph creates a NetworkGraph listening on addr and mirroring g.
@@ -217,6 +226,7 @@ func NewNetworkGraph(
 
 	listen := listenUDP
 	var dial func(addr string) (net.Conn, error)
+	var cr *Cipher
 	if len(opts) > 0 {
 		if opts[0].Listener != nil {
 			listen = opts[0].Listener
@@ -224,10 +234,14 @@ func NewNetworkGraph(
 		if opts[0].Dial != nil {
 			dial = opts[0].Dial
 		}
+		cr = opts[0].Cipher
 	}
 	conn, err := listen(addr)
 	if err != nil {
 		return nil, err
+	}
+	if cr != nil {
+		conn = cr.WrapPacketConn(conn)
 	}
 
 	n := &NetworkGraph{
@@ -244,6 +258,7 @@ func NewNetworkGraph(
 		dbDone:       make(chan struct{}),
 		listener:     conn,
 		readBufSize:  64 * 1024,
+		cipher:       cr,
 		ctx:          ctx,
 		sinks:        make(map[string]net.Conn),
 		sinkRetry:    make(map[string]chan struct{}),
@@ -269,9 +284,19 @@ func NewNetworkGraph(
 	} else {
 		n.dial = dial
 	}
+	if n.cipher != nil {
+		dialFn := n.dial
+		n.dial = func(addr string) (net.Conn, error) {
+			c, err := dialFn(addr)
+			if err != nil {
+				return nil, err
+			}
+			return n.cipher.WrapConn(c), nil
+		}
+	}
 
 	// fork loops
-	go n.receiveFromDownstream()
+	go n.receiveFromUpstream()
 	if n.PushInterval > 0 {
 		go n.broadcastLoop(n.PushInterval)
 	}
@@ -381,8 +406,7 @@ func (n *NetworkGraph) EmitToAddr(
 		n.sinksMx.Lock()
 		n.sinks[addr] = conn
 		n.sinksMx.Unlock()
-		// TODO flip upstream / downstream, as they are wrong, EmitToAddr accepts downstreams, as data flows into it
-		go n.receiveFromUpstream(conn)
+		go n.receiveFromDownstream(conn)
 	}
 
 	go n.sinkLoop(ctx, addr, retry, conn)
@@ -415,8 +439,12 @@ func (n *NetworkGraph) Broadcast(update *MsgGraphUpdate) error {
 		return err
 	}
 
-	if len(data) > 1472 {
-		n.Logger.Warn("data exceeds 1,472 bytes", "len", len(data))
+	wireLen := len(data)
+	if n.cipher != nil {
+		wireLen += n.cipher.Overhead()
+	}
+	if wireLen > 1472 {
+		n.Logger.Warn("data exceeds 1,472 bytes", "len", wireLen)
 	}
 
 	type peer struct {
@@ -518,7 +546,7 @@ func (n *NetworkGraph) sinkLoop(
 			n.sinksMx.Unlock()
 
 			n.MetricReconnects.Add(1)
-			go n.receiveFromUpstream(conn)
+			go n.receiveFromDownstream(conn)
 		}
 
 		select {
@@ -845,9 +873,9 @@ func (n *NetworkGraph) schemaInfo(hash string) (SchemaInfo, bool) {
 	return schema, ok
 }
 
-// receiveFromUpstream receives messages from upstream peers from
+// receiveFromDownstream receives messages from downstream peers added via
 // [NetworkGraph.EmitToAddr]. It's usually due to data corruption.
-func (n *NetworkGraph) receiveFromUpstream(conn net.Conn) {
+func (n *NetworkGraph) receiveFromDownstream(conn net.Conn) {
 	buf := make([]byte, n.readBufSize)
 	for {
 		read, err := conn.Read(buf)
@@ -860,12 +888,14 @@ func (n *NetworkGraph) receiveFromUpstream(conn net.Conn) {
 			continue
 		}
 		if msg.MachId != "" {
-			n.sendSerializedToUpstream(msg.MachId, conn)
+			n.sendSerializedToDownstream(msg.MachId, conn)
 		}
 	}
 }
 
-func (n *NetworkGraph) receiveFromDownstream() {
+// receiveFromUpstream receives graph updates from upstream peers, i.e. peers
+// which emit into this graph's listener.
+func (n *NetworkGraph) receiveFromUpstream() {
 	buf := make([]byte, n.readBufSize)
 	for {
 		read, addr, err := n.listener.ReadFrom(buf)
@@ -876,7 +906,7 @@ func (n *NetworkGraph) receiveFromDownstream() {
 		var update MsgGraphUpdate
 		err = n.unmarshal(buf[:read], &update)
 		if err != nil || update.MachId == "" {
-			// a full serialized machine resend (see sendSerializedToUpstream)
+			// a full serialized machine resend (see sendSerializedToDownstream)
 			var ser am.Serialized
 			if serErr := n.unmarshal(buf[:read], &ser); serErr == nil &&
 				ser.ID != "" {
@@ -889,7 +919,7 @@ func (n *NetworkGraph) receiveFromDownstream() {
 			continue
 		}
 
-		n.processDownstreamUpdate(&update, addr)
+		n.processUpstreamUpdate(&update, addr)
 	}
 }
 
@@ -922,13 +952,13 @@ func (n *NetworkGraph) processSerializedMachine(ser *am.Serialized) {
 	// queue the DB clock sync, coalesced on the sync tick
 	n.queueDbSync(ser.ID)
 
-	// relay upstream
+	// relay downstream
 	n.relayPendingMx.Lock()
 	n.relayPending[ser.ID] = struct{}{}
 	n.relayPendingMx.Unlock()
 }
 
-func (n *NetworkGraph) processDownstreamUpdate(
+func (n *NetworkGraph) processUpstreamUpdate(
 	msg *MsgGraphUpdate, from net.Addr,
 ) {
 	n.Graph.loop.Lock()
@@ -1023,10 +1053,10 @@ func (n *NetworkGraph) processDownstreamUpdate(
 
 	n.Logger.Warn("graph apply failed, requesting resend", "mach", msg.MachId)
 	n.MetricResendRequests.Add(1)
-	_ = n.reqSerializedFromDownstream(from, msg.MachId)
+	_ = n.reqSerializedFromUpstream(from, msg.MachId)
 }
 
-func (n *NetworkGraph) reqSerializedFromDownstream(
+func (n *NetworkGraph) reqSerializedFromUpstream(
 	addr net.Addr, machID string,
 ) error {
 	data, err := n.marshal(&MsgGraphReqSerialized{MachId: machID})
@@ -1038,7 +1068,7 @@ func (n *NetworkGraph) reqSerializedFromDownstream(
 	return err
 }
 
-func (n *NetworkGraph) sendSerializedToUpstream(
+func (n *NetworkGraph) sendSerializedToDownstream(
 	machId string, conn net.Conn,
 ) {
 	if machId == "" {
@@ -1068,11 +1098,11 @@ func (n *NetworkGraph) sendSerializedToUpstream(
 
 	data, err := n.marshal(ser)
 	if err != nil {
-		n.Logger.Error("sendSerializedToUpstream", "err", err)
+		n.Logger.Error("sendSerializedToDownstream", "err", err)
 		return
 	}
 	if _, err := conn.Write(data); err != nil {
-		n.Logger.Error("sendSerializedToUpstream", "err", err)
+		n.Logger.Error("sendSerializedToDownstream", "err", err)
 	}
 }
 
@@ -1704,4 +1734,409 @@ func toUint64(v any) uint64 {
 // values containing a single quote are unsupported.
 func gqlStr(s string) string {
 	return "'" + s + "'"
+}
+
+// ///// ///// /////
+
+// ///// CRYPTO
+
+// ///// ///// /////
+
+const (
+	// CipherKeySize is the required PSK size in bytes.
+	CipherKeySize = chacha20poly1305.KeySize
+	// cipherVersion is the wire format version.
+	cipherVersion = 1
+	// cipherHeaderSize is version + key ID + nonce.
+	cipherHeaderSize = 2 + chacha20poly1305.NonceSize
+	// cipherOverhead is the wire overhead of a plaintext datagram.
+	cipherOverhead = cipherHeaderSize + chacha20poly1305.Overhead
+)
+
+// ErrCipher is returned for invalid cipher packets.
+var ErrCipher = errors.New("graph: cipher")
+
+// Cipher encrypts NetworkGraph datagrams with pre-shared ChaCha20-Poly1305
+// keys. The same keys must be configured on all peers.
+//
+// The wire format is version|keyID|nonce|ciphertext|tag, where nonce is a
+// random session prefix followed by a monotonic counter. Datagrams with an
+// unknown key, a bad tag, or a replayed counter are dropped.
+//
+// A Cipher is safe for concurrent use, but keys should be added before the
+// cipher is passed to [NetworkGraphOpts].
+type Cipher struct {
+	mx     sync.RWMutex
+	keys   map[uint8]cipher.AEAD
+	sendID uint8
+
+	// MetricDropped counts datagrams dropped due to decryption, unknown key,
+	// or replay errors.
+	MetricDropped atomic.Int64
+}
+
+// NewCipher returns a cipher sending with sendID and the given key, which has
+// to be [CipherKeySize] bytes long.
+func NewCipher(sendID uint8, key []byte) (*Cipher, error) {
+	c := &Cipher{
+		keys:   make(map[uint8]cipher.AEAD),
+		sendID: sendID,
+	}
+	if err := c.AddKey(sendID, key); err != nil {
+		return nil, err
+	}
+
+	return c, nil
+}
+
+// AddKey registers a receive key, e.g. an old key during rotation.
+func (c *Cipher) AddKey(id uint8, key []byte) error {
+	if len(key) != CipherKeySize {
+		return fmt.Errorf("%w: key %d must be %d bytes, got %d", ErrCipher,
+			id, CipherKeySize, len(key))
+	}
+	aead, err := chacha20poly1305.New(key)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrCipher, err)
+	}
+
+	c.mx.Lock()
+	defer c.mx.Unlock()
+
+	c.keys[id] = aead
+
+	return nil
+}
+
+// Overhead returns the number of bytes added to each datagram.
+func (c *Cipher) Overhead() int {
+	return cipherOverhead
+}
+
+// WrapPacketConn returns an encrypted view of pc.
+func (c *Cipher) WrapPacketConn(pc net.PacketConn) net.PacketConn {
+	return &cipherPacketConn{
+		pc:     pc,
+		c:      c,
+		nonces: newNonceSource(),
+		peers:  make(map[string]*replayWindow),
+	}
+}
+
+// WrapConn returns an encrypted view of conn, with one replay window for the
+// peer.
+func (c *Cipher) WrapConn(conn net.Conn) net.Conn {
+	return &cipherConn{
+		conn:   conn,
+		c:      c,
+		nonces: newNonceSource(),
+	}
+}
+
+// seal encrypts plain with the next nonce of the given source.
+func (c *Cipher) seal(n *nonceSource, plain []byte) []byte {
+	return c.sealNonce(n.next(), plain)
+}
+
+// sealNonce encrypts plain with a specific nonce, used by tests.
+func (c *Cipher) sealNonce(nonce [chacha20poly1305.NonceSize]byte,
+	plain []byte,
+) []byte {
+	c.mx.RLock()
+	aead := c.keys[c.sendID]
+	id := c.sendID
+	c.mx.RUnlock()
+
+	hdr := make([]byte, cipherHeaderSize)
+	hdr[0] = cipherVersion
+	hdr[1] = id
+	copy(hdr[2:], nonce[:])
+
+	out := make([]byte, 0, cipherHeaderSize+len(plain)+
+		chacha20poly1305.Overhead)
+	out = append(out, hdr...)
+
+	return aead.Seal(out, nonce[:], plain, hdr)
+}
+
+// open decrypts pkt and returns the plaintext and its replay counter.
+func (c *Cipher) open(pkt []byte) ([]byte, uint64, error) {
+	return c.openTo(nil, pkt)
+}
+
+// openTo decrypts pkt into dst (when it has enough capacity) and returns the
+// plaintext and its replay counter.
+func (c *Cipher) openTo(dst, pkt []byte) ([]byte, uint64, error) {
+	if len(pkt) < cipherOverhead {
+		return nil, 0, fmt.Errorf("%w: short packet", ErrCipher)
+	}
+	if pkt[0] != cipherVersion {
+		return nil, 0, fmt.Errorf("%w: version %d", ErrCipher, pkt[0])
+	}
+
+	id := pkt[1]
+	nonce := pkt[2:cipherHeaderSize]
+	c.mx.RLock()
+	aead := c.keys[id]
+	c.mx.RUnlock()
+	if aead == nil {
+		return nil, 0, fmt.Errorf("%w: unknown key %d", ErrCipher, id)
+	}
+
+	var plain []byte
+	var err error
+	if cap(dst) >= len(pkt)-cipherOverhead {
+		plain, err = aead.Open(dst[:0], nonce, pkt[cipherHeaderSize:],
+			pkt[:cipherHeaderSize])
+	} else {
+		plain, err = aead.Open(nil, nonce, pkt[cipherHeaderSize:],
+			pkt[:cipherHeaderSize])
+	}
+	if err != nil {
+		return nil, 0, fmt.Errorf("%w: %w", ErrCipher, err)
+	}
+
+	return plain, binary.BigEndian.Uint64(nonce[4:]), nil
+}
+
+// nonceSeq is a process-wide counter, so wrappers sharing a key never reuse a
+// nonce. It starts at the process start time to stay above counters of a
+// previous process.
+var nonceSeq atomic.Uint64
+
+func init() {
+	nonceSeq.Store(uint64(time.Now().UnixNano()))
+}
+
+// nonceSource generates unique nonces: a random session prefix and the global
+// monotonic counter.
+type nonceSource struct {
+	prefix [4]byte
+}
+
+func newNonceSource() *nonceSource {
+	n := &nonceSource{}
+	if _, err := crand.Read(n.prefix[:]); err != nil {
+		panic(fmt.Sprintf("%s: crypto/rand: %s", ErrCipher, err))
+	}
+
+	return n
+}
+
+func (n *nonceSource) next() [chacha20poly1305.NonceSize]byte {
+	c := nonceSeq.Add(1)
+
+	var nonce [chacha20poly1305.NonceSize]byte
+	copy(nonce[:4], n.prefix[:])
+	binary.BigEndian.PutUint64(nonce[4:], c)
+
+	return nonce
+}
+
+// replayWindow is a 64-bit sliding replay window.
+type replayWindow struct {
+	mx     sync.Mutex
+	max    uint64
+	bits   uint64
+	inited bool
+}
+
+// accept returns true if counter is new.
+func (w *replayWindow) accept(counter uint64) bool {
+	if counter == 0 {
+		return false
+	}
+
+	w.mx.Lock()
+	defer w.mx.Unlock()
+
+	if !w.inited {
+		w.inited = true
+		w.max = counter
+		w.bits = 1
+		return true
+	}
+
+	if counter > w.max {
+		shift := counter - w.max
+		if shift >= 64 {
+			w.bits = 1
+		} else {
+			w.bits = (w.bits << shift) | 1
+		}
+		w.max = counter
+		return true
+	}
+
+	diff := w.max - counter
+	if diff >= 64 {
+		return false
+	}
+	mask := uint64(1) << diff
+	if w.bits&mask != 0 {
+		return false
+	}
+	w.bits |= mask
+
+	return true
+}
+
+// cipherPacketConn encrypts a shared [net.PacketConn].
+type cipherPacketConn struct {
+	pc     net.PacketConn
+	c      *Cipher
+	nonces *nonceSource
+
+	mx    sync.Mutex
+	peers map[string]*replayWindow
+
+	readMx sync.Mutex
+	enc    []byte
+}
+
+func (c *cipherPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
+	c.readMx.Lock()
+	defer c.readMx.Unlock()
+
+	need := len(p) + c.c.Overhead()
+	if cap(c.enc) < need {
+		c.enc = make([]byte, need)
+	}
+	buf := c.enc[:need]
+
+	for {
+		n, addr, err := c.pc.ReadFrom(buf)
+		if err != nil {
+			return 0, nil, err
+		}
+
+		plain, counter, err := c.c.openTo(p, buf[:n])
+		if err != nil {
+			c.c.MetricDropped.Add(1)
+			continue
+		}
+		if !c.window(addr).accept(counter) {
+			c.c.MetricDropped.Add(1)
+			continue
+		}
+
+		return len(plain), addr, nil
+	}
+}
+
+// window returns the replay window of a peer.
+func (c *cipherPacketConn) window(addr net.Addr) *replayWindow {
+	key := addr.String()
+
+	c.mx.Lock()
+	defer c.mx.Unlock()
+
+	w := c.peers[key]
+	if w == nil {
+		w = &replayWindow{}
+		c.peers[key] = w
+	}
+
+	return w
+}
+
+func (c *cipherPacketConn) WriteTo(p []byte, addr net.Addr) (int, error) {
+	if _, err := c.pc.WriteTo(c.c.seal(c.nonces, p), addr); err != nil {
+		return 0, err
+	}
+
+	return len(p), nil
+}
+
+func (c *cipherPacketConn) Close() error {
+	return c.pc.Close()
+}
+
+func (c *cipherPacketConn) LocalAddr() net.Addr {
+	return c.pc.LocalAddr()
+}
+
+func (c *cipherPacketConn) SetDeadline(t time.Time) error {
+	return c.pc.SetDeadline(t)
+}
+
+func (c *cipherPacketConn) SetReadDeadline(t time.Time) error {
+	return c.pc.SetReadDeadline(t)
+}
+
+func (c *cipherPacketConn) SetWriteDeadline(t time.Time) error {
+	return c.pc.SetWriteDeadline(t)
+}
+
+// cipherConn encrypts a connected [net.Conn].
+type cipherConn struct {
+	conn   net.Conn
+	c      *Cipher
+	nonces *nonceSource
+	win    replayWindow
+
+	readMx sync.Mutex
+	enc    []byte
+}
+
+func (c *cipherConn) Read(p []byte) (int, error) {
+	c.readMx.Lock()
+	defer c.readMx.Unlock()
+
+	need := len(p) + c.c.Overhead()
+	if cap(c.enc) < need {
+		c.enc = make([]byte, need)
+	}
+	buf := c.enc[:need]
+
+	for {
+		n, err := c.conn.Read(buf)
+		if err != nil {
+			return 0, err
+		}
+
+		plain, counter, err := c.c.openTo(p, buf[:n])
+		if err != nil {
+			c.c.MetricDropped.Add(1)
+			continue
+		}
+		if !c.win.accept(counter) {
+			c.c.MetricDropped.Add(1)
+			continue
+		}
+
+		return len(plain), nil
+	}
+}
+
+func (c *cipherConn) Write(p []byte) (int, error) {
+	if _, err := c.conn.Write(c.c.seal(c.nonces, p)); err != nil {
+		return 0, err
+	}
+
+	return len(p), nil
+}
+
+func (c *cipherConn) Close() error {
+	return c.conn.Close()
+}
+
+func (c *cipherConn) LocalAddr() net.Addr {
+	return c.conn.LocalAddr()
+}
+
+func (c *cipherConn) RemoteAddr() net.Addr {
+	return c.conn.RemoteAddr()
+}
+
+func (c *cipherConn) SetDeadline(t time.Time) error {
+	return c.conn.SetDeadline(t)
+}
+
+func (c *cipherConn) SetReadDeadline(t time.Time) error {
+	return c.conn.SetReadDeadline(t)
+}
+
+func (c *cipherConn) SetWriteDeadline(t time.Time) error {
+	return c.conn.SetWriteDeadline(t)
 }

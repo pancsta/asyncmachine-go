@@ -593,7 +593,7 @@ func (f *MachineGraph) dialSource(
 
 	// the netmach carries the src-id tag, which becomes a CONNECTED_TO edge.
 	// Only the sink mirrors its clients: its graph is the GQL source and it has
-	// no upstream to relay late-bound netmach baselines to.
+	// no downstream to relay late-bound netmach baselines to.
 	if n == f.Sink {
 		if _, err := n.Net.TraceMach(cl.NetMach); err != nil {
 			cl.Stop(nil, nil, true)
