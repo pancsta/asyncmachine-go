@@ -17,7 +17,6 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/andybalholm/brotli"
-	"github.com/dominikbraun/graph"
 	"gopkg.in/yaml.v3"
 
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
@@ -429,7 +428,7 @@ type Renderer struct {
 	shortIdMap map[string]string
 	lastId     string
 	buf        strings.Builder
-	adjMap     map[string]map[string]graph.Edge[string]
+	adjMap     map[string]map[string]amgraph.Edge
 	// rendered RPC connections. Key "source:target".
 	renderedPipes map[string]struct{}
 	// rendered RPC connections. Key "mach_id:mach_id".
@@ -545,17 +544,14 @@ func (r *Renderer) outputMermaid(ctx context.Context) error {
 	)
 	r.buf.WriteString("flowchart LR\n")
 
-	graphMap, err := r.graph.G.AdjacencyMap()
-	if err != nil {
-		return fmt.Errorf("failed to get adjacency map: %w", err)
-	}
+	graphMap := r.graph.AdjacencyMap()
 
 	if r.RenderActive {
 		r.buf.WriteString("\tclassDef _active color:black,fill:yellow;\n")
 	}
 
 	for src, targets := range graphMap {
-		src, err := r.graph.G.Vertex(src)
+		src, err := r.graph.Vertex(src)
 		if err != nil {
 			return fmt.Errorf("failed to get vertex for source %s: %w", src, err)
 		}
@@ -567,7 +563,8 @@ func (r *Renderer) outputMermaid(ctx context.Context) error {
 	}
 
 	// generate mermaid
-	err = os.WriteFile(r.OutputFilename+".mermaid", []byte(r.buf.String()), 0o644)
+	mermaid := []byte(r.buf.String())
+	err := os.WriteFile(r.OutputFilename+".mermaid", mermaid, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to write mermaid file: %w", err)
 	}
@@ -589,7 +586,7 @@ func (r *Renderer) outputMermaid(ctx context.Context) error {
 }
 
 func (r *Renderer) outputMermaidMach(
-	ctx context.Context, machId string, targets map[string]graph.Edge[string],
+	ctx context.Context, machId string, targets map[string]amgraph.Edge,
 ) error {
 	// blacklist
 	if slices.Contains(r.RenderSkipMachs, machId) {
@@ -623,7 +620,7 @@ func (r *Renderer) outputMermaidMach(
 			return nil // expired
 		}
 
-		target, err := r.graph.G.Vertex(edge.Target)
+		target, err := r.graph.Vertex(edge.Target)
 		if err != nil {
 			return fmt.Errorf("failed to get vertex for target %s: %w", edge.Target,
 				err)
@@ -876,7 +873,7 @@ func (r *Renderer) isMachCloseEnough(machId string) bool {
 	}
 
 	for _, renderMachId := range r.renderMachIds() {
-		path, err := graph.ShortestPath(r.graph.Map, machId, renderMachId)
+		path, err := r.graph.ShortestPath(machId, renderMachId)
 
 		if err == nil && len(path) <= r.RenderDistance+1 {
 			return true

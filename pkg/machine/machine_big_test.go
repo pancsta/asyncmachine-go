@@ -146,6 +146,7 @@ var (
 	ssN  = NewStates(NestedStatesDef{})
 )
 
+// TODO move to _all
 func TestNestedSchema(t *testing.T) {
 	assert.Equal(t, "Parent1", ssB.Parent1.Prefix())
 	assert.Equal(t, "Parent1Nested1", ssB.Parent1.Nested1)

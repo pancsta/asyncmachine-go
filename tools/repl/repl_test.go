@@ -5,7 +5,6 @@ package repl
 import (
 	"bytes"
 	"context"
-	"io"
 	"net"
 	"net/http"
 	"os"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/creack/pty"
+	"github.com/goforj/httpx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/term"
@@ -670,18 +670,14 @@ func startLivepage(t *testing.T, rpcAddr string) (
 func TestLivepageUI(t *testing.T) {
 	_, rpcAddr := startServer(t)
 	base, cmd, stdout, stderr := startLivepage(t, rpcAddr)
+	httpc := httpx.New()
 
 	get := func(path string) (int, string) {
-		res, err := http.Get(base + path)
-		if err != nil {
+		res := httpx.Get[[]byte](httpc, base+path)
+		if res.Response == nil {
 			return 0, ""
 		}
-		defer res.Body.Close()
-		body, err := io.ReadAll(res.Body)
-		if err != nil {
-			return res.StatusCode, ""
-		}
-		return res.StatusCode, string(body)
+		return res.Response.StatusCode, string(res.Response.Bytes())
 	}
 
 	var page string
