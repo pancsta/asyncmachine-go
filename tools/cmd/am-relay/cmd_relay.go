@@ -29,9 +29,9 @@ func main() {
 		os.Exit(0)
 	}
 
-	if p.Subcommand() == nil {
+	if p.Subcommand() == nil && !args.Rest {
 		p.Fail("missing subcommand (" + types.CmdRotateDbg + ", " +
-			types.CmdArpcToDbg + ")")
+			types.CmdArpcToDbg + ") or --rest")
 	}
 
 	switch {
@@ -46,6 +46,10 @@ func main() {
 	case args.ArpcToDbg != nil:
 		if err := run(ctx, args); err != nil {
 			_ = p.FailSubcommand(err.Error(), types.CmdArpcToDbg)
+		}
+	case args.Rest:
+		if err := run(ctx, args); err != nil {
+			p.Fail(err.Error())
 		}
 	}
 }

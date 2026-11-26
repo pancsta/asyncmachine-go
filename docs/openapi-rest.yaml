@@ -1,0 +1,570 @@
+openapi: 3.0.3
+info:
+  title: asyncmachine-go REST API
+  description: |
+    JSON REST API exposing a group of asyncmachines, implemented in
+    [`/pkg/integrations/rest`](../pkg/integrations/rest/rest.go).
+
+    Start it with `am-relay`:
+
+    ```bash
+    am-relay --rest --rest-addr localhost:12734
+    ```
+
+    Machines are represented as `am.Serialized` (`id`, `state_names`, `time`,
+    `queue_tick`, `machine_tick`, `tags`). Active states can be derived from
+    odd ticks in `time` at the matching `state_names` index.
+
+    Machine lists support `amhelp.MachGroupFilter` query params. List params
+    accept both repeated values and comma-separated values.
+  version: 0.1.0
+  license:
+    name: MIT
+    url: https://github.com/pancsta/asyncmachine-go/blob/master/LICENSE
+servers:
+  - url: http://localhost:12734
+    description: am-relay default REST address
+tags:
+  - name: Machines
+    description: List, inspect, and create state machines.
+  - name: Mutations
+    description: Change active states.
+  - name: Waiting
+    description: Block until states become active or inactive.
+  - name: Lifecycle
+    description: Dispose machines.
+paths:
+  /mach:
+    get:
+      tags: [Machines]
+      operationId: listMachines
+      summary: List machines
+      description: |
+        Returns all machines in the group passing the passed filters.
+        The result is filtered server-side using `amhelp.MachGroup.Filter`.
+      parameters:
+        - $ref: '#/components/parameters/IdFilter'
+        - $ref: '#/components/parameters/IdSubstrFilter'
+        - $ref: '#/components/parameters/IdRegexpFilter'
+        - $ref: '#/components/parameters/IdPrefixFilter'
+        - $ref: '#/components/parameters/IdSuffixFilter'
+        - $ref: '#/components/parameters/ParentFilter'
+        - $ref: '#/components/parameters/MtimeMinFilter'
+        - $ref: '#/components/parameters/MtimeMaxFilter'
+        - $ref: '#/components/parameters/MtimeStatesFilter'
+        - $ref: '#/components/parameters/ActiveFilter'
+        - $ref: '#/components/parameters/InactiveFilter'
+        - $ref: '#/components/parameters/LimitFilter'
+        - $ref: '#/components/parameters/StartIdxFilter'
+      responses:
+        '200':
+          description: Machines passing the filters.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Serialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    post:
+      tags: [Machines]
+      operationId: createMachine
+      summary: Create a machine
+      description: |
+        Creates a new machine from `schema`, optionally restoring state from
+        the `am.Serialized` fields. The request can be built from the response
+        of `GET /mach/{id}` by adding `schema`.
+
+        A supplied `id` must be unique. A supplied `time`, `state_names` or
+        `machine_tick` restores the machine state via `Machine.Import`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewMachReq'
+            examples:
+              fresh:
+                summary: Fresh machine
+                value:
+                  id: consensus-1
+                  tags: [consensus]
+                  schema:
+                    Foo:
+                      require: [Bar]
+                    Bar: {}
+              restored:
+                summary: Restored machine
+                value:
+                  id: consensus-1
+                  machine_tick: 5
+                  state_names: [Bar, Exception, Foo]
+                  time: [1, 0, 0]
+                  tags: [consensus]
+                  schema:
+                    Foo:
+                      require: [Bar]
+                    Bar: {}
+      responses:
+        '201':
+          description: Machine created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Serialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /mach/{id}:
+    get:
+      tags: [Machines]
+      operationId: getMachine
+      summary: Get a machine
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Machine state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Serialized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Mutations]
+      operationId: mutateMachine
+      summary: Mutate states
+      description: |
+        Adds or removes states. The request uses the same JSON format as the
+        NATS integration. A missing `kind` defaults to `am_req_mutation`.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MutationReq'
+            examples:
+              add:
+                summary: Add a state
+                value:
+                  add: [Foo]
+                  args:
+                    id: 1
+              remove:
+                summary: Remove a state
+                value:
+                  remove: [Foo]
+      responses:
+        '200':
+          description: Mutation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MutationResp'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /mach/{id}/wait:
+    post:
+      tags: [Waiting]
+      operationId: waitForStates
+      summary: Wait for states
+      description: |
+        Blocks until the requested states become active (`states`) or inactive
+        (`states_not`), or until `time` is reached. The request context is
+        canceled when the client disconnects. A missing `kind` defaults to
+        `am_req_waiting`.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WaitingReq'
+            examples:
+              active:
+                summary: Wait for active states
+                value:
+                  states: [Foo, Bar]
+              inactive:
+                summary: Wait for inactive states
+                value:
+                  states_not: [Exception]
+              time:
+                summary: Wait for machine time
+                value:
+                  states: [Foo, Bar]
+                  time: [10, 20]
+      responses:
+        '200':
+          description: Waited states.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WaitingResp'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /dispose/{id}:
+    post:
+      tags: [Lifecycle]
+      operationId: disposeMachine
+      summary: Dispose a machine
+      description: Removes the machine from the group and calls `Dispose()`.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Machine disposed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisposeResp'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      description: Machine ID.
+      schema:
+        type: string
+    IdFilter:
+      name: id
+      in: query
+      description: Exact machine ID.
+      schema:
+        type: string
+    IdSubstrFilter:
+      name: id_substr
+      in: query
+      description: Machine ID substring.
+      schema:
+        type: string
+    IdRegexpFilter:
+      name: id_regexp
+      in: query
+      description: Machine ID regular expression (Go syntax).
+      schema:
+        type: string
+    IdPrefixFilter:
+      name: id_prefix
+      in: query
+      description: Machine ID prefix.
+      schema:
+        type: string
+    IdSuffixFilter:
+      name: id_suffix
+      in: query
+      description: Machine ID suffix.
+      schema:
+        type: string
+    ParentFilter:
+      name: parent
+      in: query
+      description: Parent machine ID.
+      schema:
+        type: string
+    MtimeMinFilter:
+      name: mtime_min
+      in: query
+      description: Minimal machine time (sum of `mtime_states`).
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    MtimeMaxFilter:
+      name: mtime_max
+      in: query
+      description: Maximal machine time (sum of `mtime_states`).
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    MtimeStatesFilter:
+      name: mtime_states
+      in: query
+      description: States used for `mtime_min` / `mtime_max`.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+    ActiveFilter:
+      name: active
+      in: query
+      description: Only machines with all of these states active.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+    InactiveFilter:
+      name: inactive
+      in: query
+      description: Only machines with all of these states inactive.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+    LimitFilter:
+      name: limit
+      in: query
+      description: Max number of returned machines.
+      schema:
+        type: integer
+        minimum: 0
+    StartIdxFilter:
+      name: start_idx
+      in: query
+      description: Skip this number of machines before applying `limit`.
+      schema:
+        type: integer
+        minimum: 0
+  responses:
+    BadRequest:
+      description: Invalid request, filter, schema, or mutation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Machine not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Machine ID already exists.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Serialized:
+      type: object
+      description: |
+        A machine state serialized to a JSON-compatible struct. Active states
+        are the states with odd ticks at the matching `state_names` index.
+      required: [id, state_names, time, queue_tick, machine_tick, tags]
+      properties:
+        id:
+          type: string
+          description: Machine ID.
+        state_names:
+          type: array
+          description: Ordered list of state names.
+          items:
+            type: string
+        time:
+          type: array
+          description: Machine time, a tick per state from `state_names`.
+          items:
+            type: integer
+            format: int64
+            minimum: 0
+        queue_tick:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Current queue tick.
+        machine_tick:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Current machine tick.
+        tags:
+          type: array
+          description: Machine tags.
+          nullable: true
+          items:
+            type: string
+    NewMachReq:
+      type: object
+      description: |
+        A new machine definition. It extends `am.Serialized` with a `schema`,
+        so an exported machine can be re-created by adding a schema.
+      required: [schema]
+      properties:
+        id:
+          type: string
+          description: Optional machine ID. Generated when empty.
+        state_names:
+          type: array
+          description: Optional ordered state names, restored via `Machine.Import`.
+          items:
+            type: string
+        time:
+          type: array
+          description: Optional machine time, restored via `Machine.Import`.
+          items:
+            type: integer
+            format: int64
+            minimum: 0
+        queue_tick:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Optional queue tick. Currently informational only.
+        machine_tick:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Optional machine tick, restored via `Machine.Import`.
+        tags:
+          type: array
+          description: Optional machine tags.
+          nullable: true
+          items:
+            type: string
+        schema:
+          $ref: '#/components/schemas/Schema'
+    Schema:
+      type: object
+      description: State schema, a map of state names to state definitions.
+      additionalProperties:
+        $ref: '#/components/schemas/State'
+    State:
+      type: object
+      description: A single state definition.
+      properties:
+        auto:
+          type: boolean
+        multi:
+          type: boolean
+        require:
+          type: array
+          items:
+            type: string
+        add:
+          type: array
+          items:
+            type: string
+        remove:
+          type: array
+          items:
+            type: string
+        after:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+    MutationReq:
+      type: object
+      description: Add or remove states. Exactly one of `add` / `remove` is required.
+      oneOf:
+        - required: [add]
+        - required: [remove]
+      properties:
+        kind:
+          type: string
+          enum: [am_req_mutation]
+          default: am_req_mutation
+        add:
+          type: array
+          items:
+            type: string
+        remove:
+          type: array
+          items:
+            type: string
+        args:
+          type: object
+          description: Arguments passed to transition handlers.
+          additionalProperties: true
+    MutationResp:
+      type: object
+      required: [kind, result]
+      properties:
+        kind:
+          type: string
+          enum: [am_resp_mutation]
+        result:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            `0` executed, `1` canceled, `2` or higher queued at this queue tick.
+    WaitingReq:
+      type: object
+      description: Wait for active states, inactive states, or machine time.
+      anyOf:
+        - required: [states]
+        - required: [states_not]
+      properties:
+        kind:
+          type: string
+          enum: [am_req_waiting]
+          default: am_req_waiting
+        states:
+          type: array
+          description: Wait for all of these states to be active.
+          items:
+            type: string
+        states_not:
+          type: array
+          description: Wait for all of these states to be inactive.
+          items:
+            type: string
+        time:
+          type: array
+          description: Wait for this machine time per `states` entry.
+          items:
+            type: integer
+            format: int64
+            minimum: 0
+    WaitingResp:
+      type: object
+      required: [kind, mach_id]
+      properties:
+        kind:
+          type: string
+          enum: [am_resp_waiting]
+        mach_id:
+          type: string
+        states:
+          type: array
+          items:
+            type: string
+        states_not:
+          type: array
+          items:
+            type: string
+        time:
+          type: array
+          items:
+            type: integer
+            format: int64
+            minimum: 0
+    DisposeResp:
+      type: object
+      required: [id, disposed]
+      properties:
+        id:
+          type: string
+        disposed:
+          type: boolean
+          enum: [true]
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
