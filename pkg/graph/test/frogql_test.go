@@ -8,7 +8,7 @@ import (
 	ssrel "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	"github.com/pancsta/asyncmachine-go/pkg/graph/frogql"
-	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
+	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/types"
 )
 
 func init() {
@@ -18,9 +18,9 @@ func init() {
 		})
 }
 
-// TestNetGraphFrogqlDb mirrors the shared machine graph into a frogql DB and
+// TestNetworkGraphFrogqlDb mirrors the shared machine graph into a frogql DB and
 // asserts it over HTTP+JSON.
-func TestNetGraphFrogqlDb(t *testing.T) {
+func TestNetworkGraphFrogqlDb(t *testing.T) {
 	f := NewMachineGraph(t, t.Context(), DefaultGraphSpec)
 
 	// sync the sink graph without the DB first, the mirroring slows the

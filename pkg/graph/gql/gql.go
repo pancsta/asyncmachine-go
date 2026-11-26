@@ -32,7 +32,7 @@ import (
 	"github.com/pancsta/gochickpeas/gql/gqlparser"
 
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
-	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
+	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/types"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
@@ -42,7 +42,7 @@ import (
 // executor over it, so queries always see the latest state without any
 // mirroring or sync loop.
 //
-// Wire it to the same graph the NetGraph maintains:
+// Wire it to the same graph the NetworkGraph maintains:
 //
 //	netGraph.Db = gql.NewDb(netGraph.Graph)
 //
@@ -125,7 +125,7 @@ func (d *Db) EdgeCount() int {
 }
 
 // UpsertMachine is a no-op: the queried store is the live graph instance,
-// which the NetGraph updates before pushing to Db.
+// which the NetworkGraph updates before pushing to Db.
 func (d *Db) UpsertMachine(*amtypes.Machine) error {
 	return nil
 }

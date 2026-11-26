@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
+	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/types"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
@@ -61,7 +61,7 @@ type dbMachInfo struct {
 }
 
 // NewDbGraph opens an in-memory frogql database, optionally composed into
-// NetGraph via NetGraph.Db. Requires the "frogql" build
+// NetworkGraph via NetworkGraph.Db. Requires the "frogql" build
 // tag.
 func NewDbGraph() (amtypes.DbGraph, error) {
 	conn, err := Open()

@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/goforj/httpx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -62,21 +62,20 @@ func TestFilter(t *testing.T) {
 	require.Len(t, exact, 1)
 	assert.Equal(t, mach2.Id(), exact[0].ID)
 
-	res := get(t, ts.URL+"/mach?id_regexp=%5B")
-	defer res.Body.Close()
-	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	code, _ := get(t, ts.URL+"/mach?id_regexp=%5B")
+	assert.Equal(t, http.StatusBadRequest, code)
 }
 
 func TestCreate(t *testing.T) {
 	srv, ts := newSrv(t)
-	body := `{"id":"created","tags":["x"],"schema":{"Foo":{"require":["Bar"]},"Bar":{}}}`
+	body := `{"id":"created","tags":["x"],` +
+		`"schema":{"Foo":{"require":["Bar"]},"Bar":{}}}`
 
-	res := postJson(t, ts.URL+"/mach", body)
-	defer res.Body.Close()
-	require.Equal(t, http.StatusCreated, res.StatusCode)
+	code, raw := postJson(t, ts.URL+"/mach", body)
+	require.Equal(t, http.StatusCreated, code)
 
 	var ser am.Serialized
-	require.NoError(t, json.NewDecoder(res.Body).Decode(&ser))
+	require.NoError(t, json.Unmarshal(raw, &ser))
 	assert.Equal(t, "created", ser.ID)
 	assert.ElementsMatch(t, am.S{"Bar", "Exception", "Foo"}, ser.StateNames)
 	assert.Equal(t, []string{"x"}, ser.Tags)
@@ -87,14 +86,12 @@ func TestCreate(t *testing.T) {
 	assert.True(t, mach.Is1("Foo"))
 
 	// duplicate ID
-	res = postJson(t, ts.URL+"/mach", body)
-	defer res.Body.Close()
-	assert.Equal(t, http.StatusConflict, res.StatusCode)
+	code, _ = postJson(t, ts.URL+"/mach", body)
+	assert.Equal(t, http.StatusConflict, code)
 
 	// missing schema
-	res = postJson(t, ts.URL+"/mach", `{"id":"no-schema"}`)
-	defer res.Body.Close()
-	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	code, _ = postJson(t, ts.URL+"/mach", `{"id":"no-schema"}`)
+	assert.Equal(t, http.StatusBadRequest, code)
 }
 
 func TestCreateRestore(t *testing.T) {
@@ -103,9 +100,8 @@ func TestCreateRestore(t *testing.T) {
 		`"schema":{"Foo":{"require":["Bar"]},"Bar":{}},` +
 		`"state_names":["Bar","Exception","Foo"],"time":[1,0,0]}`
 
-	res := postJson(t, ts.URL+"/mach", body)
-	defer res.Body.Close()
-	require.Equal(t, http.StatusCreated, res.StatusCode)
+	code, _ := postJson(t, ts.URL+"/mach", body)
+	require.Equal(t, http.StatusCreated, code)
 
 	mach := srv.mach("restored")
 	require.NotNil(t, mach)
@@ -118,12 +114,11 @@ func TestMutation(t *testing.T) {
 	mach := testutils.NewRels(t, nil)
 	_, ts := newSrv(t, mach)
 
-	res := postJson(t, ts.URL+"/mach/"+mach.Id(), `{"add":["C"]}`)
-	defer res.Body.Close()
-	require.Equal(t, http.StatusOK, res.StatusCode)
+	code, raw := postJson(t, ts.URL+"/mach/"+mach.Id(), `{"add":["C"]}`)
+	require.Equal(t, http.StatusOK, code)
 
 	var resp integrations.MutationResp
-	require.NoError(t, json.NewDecoder(res.Body).Decode(&resp))
+	require.NoError(t, json.Unmarshal(raw, &resp))
 	assert.Equal(t, am.Executed, resp.Result)
 	assert.True(t, mach.Is1("C"))
 }
@@ -139,17 +134,18 @@ func TestWaiting(t *testing.T) {
 	}
 	ch := make(chan result, 1)
 	go func() {
-		res, err := http.Post(ts.URL+"/mach/"+mach.Id()+"/wait", "application/json",
-			strings.NewReader(`{"states":["D"]}`))
-		if err != nil {
-			ch <- result{err: err}
+		res := httpx.Post[string, integrations.WaitingResp](nil,
+			ts.URL+"/mach/"+mach.Id()+"/wait", `{"states":["D"]}`,
+			httpx.Header("Content-Type", "application/json"))
+		if res.Err != nil {
+			ch <- result{err: res.Err}
 			return
 		}
-		defer res.Body.Close()
-
-		var resp integrations.WaitingResp
-		err = json.NewDecoder(res.Body).Decode(&resp)
-		ch <- result{status: res.StatusCode, resp: resp, err: err}
+		status := 0
+		if res.Response != nil {
+			status = res.Response.StatusCode
+		}
+		ch <- result{status: status, resp: res.Body}
 	}()
 
 	mach.Add1("D", nil)
@@ -166,23 +162,20 @@ func TestErrors(t *testing.T) {
 	_, ts := newSrv(t, mach)
 
 	// unknown machine
-	res := get(t, ts.URL+"/mach/nope")
-	defer res.Body.Close()
-	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	code, raw := get(t, ts.URL+"/mach/nope")
+	assert.Equal(t, http.StatusNotFound, code)
 
 	var errResp ErrResp
-	require.NoError(t, json.NewDecoder(res.Body).Decode(&errResp))
+	require.NoError(t, json.Unmarshal(raw, &errResp))
 	assert.NotEmpty(t, errResp.Error)
 
 	// invalid JSON
-	res = postJson(t, ts.URL+"/mach/"+mach.Id(), `{`)
-	defer res.Body.Close()
-	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	code, _ = postJson(t, ts.URL+"/mach/"+mach.Id(), `{`)
+	assert.Equal(t, http.StatusBadRequest, code)
 
 	// unknown state
-	res = postJson(t, ts.URL+"/mach/"+mach.Id(), `{"add":["Nope"]}`)
-	defer res.Body.Close()
-	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	code, _ = postJson(t, ts.URL+"/mach/"+mach.Id(), `{"add":["Nope"]}`)
+	assert.Equal(t, http.StatusBadRequest, code)
 }
 
 func TestDispose(t *testing.T) {
@@ -190,16 +183,14 @@ func TestDispose(t *testing.T) {
 	_, ts := newSrv(t, mach)
 	url := ts.URL + "/dispose/" + mach.Id()
 
-	res := postJson(t, url, "")
-	defer res.Body.Close()
-	require.Equal(t, http.StatusOK, res.StatusCode)
+	code, _ := postJson(t, url, "")
+	require.Equal(t, http.StatusOK, code)
 
 	assert.Eventually(t, mach.IsDisposed, testTimeout, testTick)
 	assert.Empty(t, getJson[[]*am.Serialized](t, ts.URL+"/mach"))
 
-	res = postJson(t, url, "")
-	defer res.Body.Close()
-	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	code, _ = postJson(t, url, "")
+	assert.Equal(t, http.StatusNotFound, code)
 }
 
 // ///// ///// /////
@@ -230,30 +221,34 @@ func newSrv(t *testing.T, machs ...am.Api) (*Server, *httptest.Server) {
 	return srv, ts
 }
 
-func get(t *testing.T, url string) *http.Response {
+func get(t *testing.T, url string) (int, []byte) {
 	t.Helper()
 
-	res, err := http.Get(url)
-	require.NoError(t, err)
-	return res
+	return statusBody(t, httpx.Get[[]byte](nil, url))
+}
+
+// statusBody returns the status code and the raw body of a response.
+func statusBody[T any](t *testing.T, res httpx.Result[T]) (int, []byte) {
+	t.Helper()
+
+	require.NotNil(t, res.Response, "no response: %v", res.Err)
+
+	return res.Response.StatusCode, res.Response.Bytes()
 }
 
 func getJson[T any](t *testing.T, url string) T {
 	t.Helper()
 
-	res := get(t, url)
-	defer res.Body.Close()
-	require.Equal(t, http.StatusOK, res.StatusCode)
-
-	var v T
-	require.NoError(t, json.NewDecoder(res.Body).Decode(&v))
-	return v
+	res := httpx.Get[T](nil, url)
+	require.NoError(t, res.Err)
+	return res.Body
 }
 
-func postJson(t *testing.T, url, body string) *http.Response {
+func postJson(t *testing.T, url, body string) (int, []byte) {
 	t.Helper()
 
-	res, err := http.Post(url, "application/json", strings.NewReader(body))
-	require.NoError(t, err)
-	return res
+	res := httpx.Post[string, []byte](nil, url, body,
+		httpx.Header("Content-Type", "application/json"))
+
+	return statusBody(t, res)
 }

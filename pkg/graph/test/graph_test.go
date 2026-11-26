@@ -5,8 +5,8 @@ package test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"math/rand/v2"
 	"net/http"
@@ -19,15 +19,17 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/goforj/httpx"
+	"github.com/vmihailenco/msgpack/v5"
+
 	amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
-	"github.com/vmihailenco/msgpack/v5"
 
 	ssrel "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	"github.com/pancsta/asyncmachine-go/pkg/graph/gochickpeas"
 	"github.com/pancsta/asyncmachine-go/pkg/graph/gql"
-	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
+	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/types"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
@@ -84,9 +86,9 @@ func TestDbServerAuth(t *testing.T) {
 	}
 }
 
-// TestNetGraphDAGVisual renders the shared machine graph as a D2 SVG.
+// TestNetworkGraphDAGVisual renders the shared machine graph as a D2 SVG.
 // TODO similar test for frogql, behind "frogql integration" tags, query the graph over JSON to assert according to the spec
-func TestNetGraphDiagrams(t *testing.T) {
+func TestNetworkGraphDiagrams(t *testing.T) {
 	f := NewMachineGraph(t, t.Context(), DefaultGraphSpec)
 	f.AddState(ssrel.B)
 	f.WaitSink()
@@ -126,9 +128,9 @@ func TestNetGraphDiagrams(t *testing.T) {
 	}
 }
 
-// TestNetGraphGochickpeasDb mirrors the shared machine graph into a
+// TestNetworkGraphGochickpeasDb mirrors the shared machine graph into a
 // gochickpeas DB and asserts it over HTTP+JSON.
-func TestNetGraphGochickpeasDb(t *testing.T) {
+func TestNetworkGraphGochickpeasDb(t *testing.T) {
 	f := NewMachineGraph(t, t.Context(), DefaultGraphSpec)
 
 	// sync the sink graph without the DB first, the mirroring slows the
@@ -145,10 +147,10 @@ func TestNetGraphGochickpeasDb(t *testing.T) {
 	RunDbMirrorSuite(t, f, db)
 }
 
-// TestNetGraphSim builds the full tree, discovers node addresses from #addr
+// TestNetworkGraphSim builds the full tree, discovers node addresses from #addr
 // tags over real TCP RPC conns, and measures how long a state change on the
 // deepest node takes to show up in a GQL query against the sink's DB.
-func TestNetGraphSim(t *testing.T) {
+func TestNetworkGraphSim(t *testing.T) {
 	ctx := t.Context()
 
 	// mirror the sink into a GQL DB from the start
@@ -259,8 +261,8 @@ func TestNetGraphSim(t *testing.T) {
 	}
 }
 
-// TestNetGraphDAG builds the shared machine graph over UDP.
-func TestNetGraph(t *testing.T) {
+// TestNetworkGraphDAG builds the shared machine graph over UDP.
+func TestNetworkGraph(t *testing.T) {
 	ctx, stop := signal.NotifyContext(t.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -293,9 +295,9 @@ func TestNetGraph(t *testing.T) {
 	}
 }
 
-// TestNetGraphDAGLive keeps the same graph alive while mutating every machine
+// TestNetworkGraphDAGLive keeps the same graph alive while mutating every machine
 // once per second. With AM_DBG_ADDR set, machines are connected via amhelpt.
-func TestNetGraphLive(t *testing.T) {
+func TestNetworkGraphLive(t *testing.T) {
 	t.Skip("LIVE TEST")
 
 	if testing.Short() {
@@ -391,26 +393,20 @@ func BenchmarkMachineListExecParallel(b *testing.B) {
 // BenchmarkMachineListHttp queries all machines over HTTP+JSON.
 func BenchmarkMachineListHttp(b *testing.B) {
 	runBackends(b, func(b *testing.B, env *benchEnv) {
-		client := &http.Client{}
+		client := httpx.New()
 
 		b.ReportAllocs()
 		b.ResetTimer()
 		start := time.Now()
 		for i := 0; i < b.N; i++ {
-			resp, err := client.Post(env.base+"/query", "text/plain",
-				strings.NewReader(benchQueryList))
-			if err != nil {
-				b.Fatal(err)
+			res := httpx.Post[string, []map[string]any](client,
+				env.base+"/query", benchQueryList,
+				httpx.Header("Content-Type", "text/plain"))
+			if res.Err != nil {
+				b.Fatal(res.Err)
 			}
-			var rows []map[string]any
-			err = json.NewDecoder(resp.Body).Decode(&rows)
-			_ = resp.Body.Close()
-			if err != nil {
-				b.Fatal(err)
-			}
-			if resp.StatusCode != http.StatusOK || len(rows) != benchMachines {
-				b.Fatalf("unexpected result: %d %d", resp.StatusCode,
-					len(rows))
+			if len(res.Body) != benchMachines {
+				b.Fatalf("unexpected result: %d", len(res.Body))
 			}
 		}
 		reportTps(b, start)
@@ -421,30 +417,22 @@ func BenchmarkMachineListHttp(b *testing.B) {
 // multiple goroutines, exposing the DB mutex contention.
 func BenchmarkMachineListHttpParallel(b *testing.B) {
 	runBackends(b, func(b *testing.B, env *benchEnv) {
-		client := &http.Client{}
+		client := httpx.New()
 
 		b.ResetTimer()
 		b.ReportAllocs()
 		start := time.Now()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				resp, err := client.Post(env.base+"/query", "text/plain",
-					strings.NewReader(benchQueryList))
-				if err != nil {
-					b.Error(err)
+				res := httpx.Post[string, []map[string]any](client,
+					env.base+"/query", benchQueryList,
+					httpx.Header("Content-Type", "text/plain"))
+				if res.Err != nil {
+					b.Error(res.Err)
 					return
 				}
-				var rows []map[string]any
-				err = json.NewDecoder(resp.Body).Decode(&rows)
-				_ = resp.Body.Close()
-				if err != nil {
-					b.Error(err)
-					return
-				}
-				if resp.StatusCode != http.StatusOK ||
-					len(rows) != benchMachines {
-					b.Errorf("unexpected result: %d %d", resp.StatusCode,
-						len(rows))
+				if len(res.Body) != benchMachines {
+					b.Errorf("unexpected result: %d", len(res.Body))
 					return
 				}
 			}
@@ -457,30 +445,21 @@ func BenchmarkMachineListHttpParallel(b *testing.B) {
 // HTTP+JSON, incl its states and tags.
 func BenchmarkMachineSerializedHttp(b *testing.B) {
 	runBackends(b, func(b *testing.B, env *benchEnv) {
-		client := &http.Client{}
+		client := httpx.New()
 		url := env.base + "/machine?id=bench-mach-40"
 
 		b.ReportAllocs()
 		b.ResetTimer()
 		start := time.Now()
 		for i := 0; i < b.N; i++ {
-			resp, err := client.Get(url)
-			if err != nil {
-				b.Fatal(err)
+			res := httpx.Get[am.Serialized](client, url)
+			if res.Err != nil {
+				b.Fatal(res.Err)
 			}
-			body, err := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
-			if err != nil {
-				b.Fatal(err)
-			}
-			var ser am.Serialized
-			if err := json.Unmarshal(body, &ser); err != nil {
-				b.Fatal(err)
-			}
-			if resp.StatusCode != http.StatusOK ||
-				ser.ID != "bench-mach-40" ||
+			ser := res.Body
+			if ser.ID != "bench-mach-40" ||
 				!slices.Equal(ser.StateNames, ssrel.Names) {
-				b.Fatalf("unexpected machine: %d %s", resp.StatusCode, body)
+				b.Fatalf("unexpected machine: %#v", ser)
 			}
 		}
 		reportTps(b, start)
@@ -633,7 +612,7 @@ func newBenchEnv(b *testing.B, factory dbBackendFactory) *benchEnv {
 	if err != nil {
 		b.Fatal(err)
 	}
-	ng, err := amgraph.NewNetGraph(ctx, "127.0.0.1:0", g)
+	ng, err := amgraph.NewNetworkGraph(ctx, "127.0.0.1:0", g)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -745,7 +724,7 @@ func runDbServerAuth(t *testing.T, factory dbBackendFactory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ng, err := amgraph.NewNetGraph(ctx, "127.0.0.1:0", g)
+	ng, err := amgraph.NewNetworkGraph(ctx, "127.0.0.1:0", g)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -774,70 +753,64 @@ func runDbServerAuth(t *testing.T, factory dbBackendFactory) {
 		t.Fatal(err)
 	}
 	base := "http://" + addr
+	httpc := httpx.New()
 
-	query := func(key string) int {
+	status := func(key string) int {
 		t.Helper()
-		req, err := http.NewRequest("POST", base+"/query",
-			strings.NewReader("MATCH (m:Machine) RETURN m.id AS id"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		opts := []httpx.Option{httpx.Header("Content-Type", "text/plain")}
 		if key != "" {
-			req.Header.Set("X-API-Key", key)
+			opts = append(opts, httpx.Header("X-API-Key", key))
 		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
+		res := httpx.Post[string, []byte](httpc, base+"/query",
+			"MATCH (m:Machine) RETURN m.id AS id", opts...)
+		if res.Err == nil {
+			return http.StatusOK
 		}
-		_ = resp.Body.Close()
-
-		return resp.StatusCode
+		var httpErr *httpx.HTTPError
+		if errors.As(res.Err, &httpErr) {
+			return httpErr.StatusCode
+		}
+		t.Fatalf("query %q: %v", key, res.Err)
+		return 0
 	}
 
 	// HTTP auth
-	if code := query(""); code != http.StatusUnauthorized {
+	if code := status(""); code != http.StatusUnauthorized {
 		t.Fatalf("missing key: %d", code)
 	}
-	if code := query("wrong"); code != http.StatusUnauthorized {
+	if code := status("wrong"); code != http.StatusUnauthorized {
 		t.Fatalf("wrong key: %d", code)
 	}
-	if code := query("secret-1"); code != http.StatusOK {
+	if code := status("secret-1"); code != http.StatusOK {
 		t.Fatalf("valid key: %d", code)
 	}
 
 	// /machine auth
-	resp, err := http.Get(base + "/machine?id=mach-auth")
-	if err != nil {
-		t.Fatal(err)
+	res := httpx.Get[[]byte](httpc, base+"/machine?id=mach-auth")
+	var httpErr *httpx.HTTPError
+	if !errors.As(res.Err, &httpErr) ||
+		httpErr.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("machine without key: %v", res.Err)
 	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("machine without key: %d", resp.StatusCode)
+	res = httpx.Get[[]byte](httpc, base+"/machine?id=mach-auth",
+		httpx.Header("X-API-Key", "secret-2"))
+	if res.Err != nil {
+		t.Fatalf("machine with key: %v", res.Err)
 	}
-	req, err := http.NewRequest("GET", base+"/machine?id=mach-auth", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("X-API-Key", "secret-2")
-	resp, err = http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("machine with key: %d", resp.StatusCode)
+	if res.Response.StatusCode != http.StatusOK {
+		t.Fatalf("machine with key: %d", res.Response.StatusCode)
 	}
 
 	// WS without a key
-	_, resp, err = websocket.Dial(ctx, "ws://"+addr+"/ws", nil)
+	_, wsResp, err := websocket.Dial(ctx, "ws://"+addr+"/ws", nil)
 	if err == nil {
 		t.Fatal("expected a WS handshake error without a key")
 	}
-	if resp != nil {
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("ws no key: %d", resp.StatusCode)
+	if wsResp != nil {
+		if wsResp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("ws no key: %d", wsResp.StatusCode)
 		}
-		_ = resp.Body.Close()
+		_ = wsResp.Body.Close()
 	}
 
 	// WS with the X-API-Key header

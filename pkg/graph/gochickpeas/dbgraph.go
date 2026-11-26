@@ -19,7 +19,7 @@ import (
 	"github.com/freeeve/gochickpeas/gql"
 	gqlvalue "github.com/freeeve/gochickpeas/gql/value"
 
-	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
+	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/types"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
@@ -54,7 +54,7 @@ type dbMachInfo struct {
 var _ amtypes.DbGraph = (*dbGraph)(nil)
 
 // NewDbGraph opens an in-memory gochickpeas database, optionally composed
-// into NetGraph via NetGraph.Db. Requires the "gochickpeas" build tag.
+// into NetworkGraph via NetworkGraph.Db. Requires the "gochickpeas" build tag.
 func NewDbGraph() (amtypes.DbGraph, error) {
 	return &dbGraph{
 		snap:     chickpeas.NewBuilder(0, 0).Finalize(),
