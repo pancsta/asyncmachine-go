@@ -4,6 +4,64 @@
 
 ---
 
+## [v0.19.8](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.8) (2026-11-26)
+
+The highlight of this release is the NetworkGraph discovery network.
+
+<img width="300" height="332" alt="netgraph-ring d2 dark" src="https://github.com/user-attachments/assets/81e4c7ca-f2d2-4ec3-9e33-2b172764cf77" />
+
+
+
+### feat: release v0.19.8
+
+PR: [\#554](https://github.com/pancsta/asyncmachine-go/pull/554) (@pancsta)
+
+_No PR description provided._
+
+### feat: release v0.19.8 tail
+
+PR: [\#551](https://github.com/pancsta/asyncmachine-go/pull/551) (@pancsta)
+
+The remainder of `v0.19.8` is in this PR.
+
+### feat\(graph\): add UDP encryption
+
+PR: [\#550](https://github.com/pancsta/asyncmachine-go/pull/550) (@pancsta)
+
+Simple encryption for netgraph nodes is available, and along with GQL endpoints behind API keys, allows the discovery network to stay in public.
+
+### perf\(history\): dont store empty ticks and match against JSON column
+
+PR: [\#549](https://github.com/pancsta/asyncmachine-go/pull/549) (@pancsta)
+
+Way less storage used and faster queries, also an explicit retry mechanism.
+
+### feat\(graph\): bind Graph to SQL history and expose via NetworkGraph
+
+PR: [\#548](https://github.com/pancsta/asyncmachine-go/pull/548) (@pancsta)
+
+Expose each as `pkg/rpc.NetworkMachine` locally and the history over HTTP/WS. Data is sharded between several SQLite instances.
+
+### feat\(integrations\): add ark ECS integration and test
+
+PR: [\#547](https://github.com/pancsta/asyncmachine-go/pull/547) (@pancsta)
+
+Existing Ark applications can have pkg/graph injected and maintained in their Worlds.
+
+### feat\(integrations\): add REST and gRPC endpoints
+
+PR: [\#546](https://github.com/pancsta/asyncmachine-go/pull/546) (@pancsta)
+
+New integrations for common protocols, for not only local state machines, but also accepting schemas to create temp instances. Useful for resolving consensus remotely, eg from JS clients.
+
+### feat\(graph\): migrate pkg/graph to ark ECS
+
+PR: [\#545](https://github.com/pancsta/asyncmachine-go/pull/545) (@pancsta)
+
+For speed and typesafe queries, the graph along with the current API has been ported to a gaming component engine.
+
+---
+
 ## [v0.19.7](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.7) (2026-11-22)
 
 The highlight of this release is am-dbg web UI with multiplexing.

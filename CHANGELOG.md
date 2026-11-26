@@ -5,6 +5,17 @@
 - [Repo Traffic](https://github.com/pancsta/asyncmachine-go/pulse)
 - [Release Feed](https://github.com/pancsta/asyncmachine-go/releases.atom)
 
+## [v0.19.8](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.8) (2026-11-26)
+
+- feat: release v0.19.8 [\#554](https://github.com/pancsta/asyncmachine-go/pull/554) (@pancsta)
+- feat: release v0.19.8 tail [\#551](https://github.com/pancsta/asyncmachine-go/pull/551) (@pancsta)
+- feat\(graph\): add UDP encryption [\#550](https://github.com/pancsta/asyncmachine-go/pull/550) (@pancsta)
+- perf\(history\): dont store empty ticks and match against JSON column [\#549](https://github.com/pancsta/asyncmachine-go/pull/549) (@pancsta)
+- feat\(graph\): bind Graph to SQL history and expose via NetworkGraph [\#548](https://github.com/pancsta/asyncmachine-go/pull/548) (@pancsta)
+- feat\(integrations\): add ark ECS integration and test [\#547](https://github.com/pancsta/asyncmachine-go/pull/547) (@pancsta)
+- feat\(integrations\): add REST and gRPC endpoints [\#546](https://github.com/pancsta/asyncmachine-go/pull/546) (@pancsta)
+- feat\(graph\): migrate pkg/graph to ark ECS [\#545](https://github.com/pancsta/asyncmachine-go/pull/545) (@pancsta)
+
 ## [v0.19.7](https://github.com/pancsta/asyncmachine-go/releases/tag/v0.19.7) (2026-11-22)
 
 - release/v0.19.7 [\#544](https://github.com/pancsta/asyncmachine-go/pull/544) (@pancsta)
