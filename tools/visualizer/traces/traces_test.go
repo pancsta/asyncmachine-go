@@ -2,12 +2,12 @@ package traces
 
 import (
 	"context"
-	"io"
-	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/goforj/httpx"
 
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 
@@ -71,29 +71,17 @@ func TestNewPagePrefix(t *testing.T) {
 	srv := httptest.NewServer(page.NewHandler())
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/traces/")
-	if err != nil {
-		t.Fatal(err)
+	res := httpx.Get[string](nil, srv.URL+"/traces/")
+	if res.Err != nil {
+		t.Fatalf("page: %v", res.Err)
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("page status = %d, want 200", res.StatusCode)
-	}
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(body), `class="ruler"`) {
+	if !strings.Contains(res.Body, `class="ruler"`) {
 		t.Fatal("page response does not contain the trace ruler")
 	}
 
-	asset, err := http.Get(srv.URL + "/traces/assets/livepage.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	asset.Body.Close()
-	if asset.StatusCode != http.StatusOK {
-		t.Fatalf("asset status = %d, want 200", asset.StatusCode)
+	asset := httpx.Get[[]byte](nil, srv.URL+"/traces/assets/livepage.js")
+	if asset.Err != nil {
+		t.Fatalf("asset: %v", asset.Err)
 	}
 }
 
@@ -124,17 +112,11 @@ func TestTracePageRenders(t *testing.T) {
 	srv := httptest.NewServer(page.NewHandler())
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL)
-	if err != nil {
-		t.Fatal(err)
+	res := httpx.Get[string](nil, srv.URL)
+	if res.Err != nil {
+		t.Fatalf("page: %v", res.Err)
 	}
-	defer res.Body.Close()
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	html := string(body)
+	html := res.Body
 
 	for _, want := range []string{
 		"Foo",

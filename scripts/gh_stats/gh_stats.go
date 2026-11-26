@@ -382,23 +382,26 @@ func render(theme, bg string) {
 	var imageBuf []byte
 	fmt.Println("Capturing screenshot... (this may take a few seconds)")
 
-	err = chromedp.Run(ctx,
+	err = chromedp.Do(ctx,
 		// Navigate to the local HTML file
 		chromedp.Navigate(fileURL),
 
 		// Wait for the charts to render.
 		// We look for the canvas tag which echarts generates.
-		chromedp.WaitVisible("canvas", chromedp.ByQuery),
-		chromedp.Evaluate("document.body.style.backgroundColor = '"+bg+"'", nil),
+		chromedp.WaitVisible(chromedp.CSS("canvas")),
+		chromedp.Evaluate[chromedp.Void]("document.body.style.backgroundColor = '"+bg+"'"),
 
 		// IMPORTANT: Echarts has a startup animation.
 		// We sleep briefly to ensure the lines are fully drawn before snapping.
 		chromedp.Sleep(2*time.Second),
-
-		// Capture the full page (or specific element)
-		chromedp.FullScreenshot(&imageBuf, 90),
 	)
 
+	if err != nil {
+		log.Fatalf("Error taking screenshot: %v", err)
+	}
+
+	// Capture the full page (or specific element)
+	imageBuf, err = chromedp.Run(ctx, chromedp.FullScreenshot(90))
 	if err != nil {
 		log.Fatalf("Error taking screenshot: %v", err)
 	}

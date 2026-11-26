@@ -241,6 +241,22 @@ func TestNamedAddrsFromFile(t *testing.T) {
 	assert.Empty(t, addrs)
 }
 
+func TestClientSuffixUnique(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	r1, err := New(ctx, "repl-test-a")
+	require.NoError(t, err)
+	t.Cleanup(r1.Mach.Dispose)
+	r2, err := New(ctx, "repl-test-b")
+	require.NoError(t, err)
+	t.Cleanup(r2.Mach.Dispose)
+
+	require.NotEmpty(t, r1.clientSuffix)
+	require.NotEmpty(t, r2.clientSuffix)
+	assert.NotEqual(t, r1.clientSuffix, r2.clientSuffix)
+}
+
 func TestAddrsFromDir(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(
