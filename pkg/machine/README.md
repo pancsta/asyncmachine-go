@@ -280,18 +280,26 @@ t2.DiffSince(t1).NonZeroStates().Is1("Foo")
 
 ### Negotiation
 
-Returning a `bool` cancels the whole transition, and returning a sublist of called states cancels the missing ones only.
+Returning `false` cancels the whole transition, while returning a sublist of called states cancels the missing ones only.
 
 ```go
-// reject if called directly
-if e.Called() {
+// reject this state if called directly
+if e.StateCalled() {
   return e.AcceptWithoutThis()
 }
 return e.Accept()
 
 // ...
 
-// reject Foo if called
+// reject this state if implied by another state
+if e.StateImplied() {
+  return e.AcceptWithoutThis()
+}
+return e.Accept()
+
+// ...
+
+// reject Foo if called directly
 if tx.CalledStates().Is1("Foo") {
   return e.AcceptWithout1("Foo")
 }
@@ -403,9 +411,10 @@ All examples and benchmarks can be found in [/examples](/examples/README.md).
 
 **asyncmachine-go** synchronizes state for the following projects:
 
-- [Taskbot.APP](https://taskbot.app) - AI Browser Automation
-- [secai](https://github.com/pancsta/secai) - AI Workflows framework
-- [secai Web UI](https://github.com/pancsta/secai/tree/main/web) - WebAssembly [go-app](https://go-app.dev/) PWA
+- [DEEPSWAPP Browser](https://deepswapp.com) - Browse your browser with another browser
+- [secai](https://github.com/pancsta/secai) - AI Workflows
+  - [livepage](https://github.com/pancsta/livepage) [go-app](https://go-app.dev/) HTML projection ([code](https://github.com/pancsta/secai/tree/main/web/browser))
+  - WebAssembly [go-app](https://go-app.dev/) PWA ([code](https://github.com/pancsta/secai/blob/v0.8.0/web))
 - Self-hosting of [pkg/rpc](/pkg/rpc/states), [pkg/node](/pkg/node/states), [pkg/pubsub](/pkg/pubsub/states)
 - [arpc REPL](/tools/repl/states) - Cobra-based REPL
 - [am-dbg TUI Debugger](/tools/debugger/states) - Single state-machine TUI app

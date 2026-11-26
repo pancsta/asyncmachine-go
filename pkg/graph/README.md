@@ -6,9 +6,8 @@
 > **asyncmachine-go** is a declarative execution model based on AOP, actor model, and state machines.
 
 **/pkg/graph** handles a [directional multigraph](https://en.wikipedia.org/wiki/Multigraph)
-of connected state machines. It's mostly used by the debugging tools (`am-dbg`
-and `am-vis`), but an experimental `NetGraph` with a swappable DB engine is
-being worked on to replace `/pkg/pubsub` and `/pkg/integrations/nats`. The graph
+of connected state machines. It's used by the debugging tools (`am-dbg`
+and `am-vis`) and the `NetworkGraph` based discovery network. The graph
 is an essential tool to handle large swarms of state machines.
 
 ## Graph
@@ -18,12 +17,12 @@ and consumes `/pkg/telemetry/dbg` (large and explicit) or
 `/pkg/rpc.MsgServerUpdate` (checksumed diffs). It outputs as MD, DOT, SVG, D2,
 Mermaid, and `encoding/gob`. RPC connections are inferred from machine tags.
 
-## NetGraph
+## NetworkGraph
 
-**NetGraph** is a UDP-based synchronization node for **Graph** instances. It can
+**NetworkGraph** is a UDP-based synchronization node for **Graph** instances. It can
 form any custom mesh network topology to create the desired redundancy of streams
-and leaf nodes. It does not have a DHT or encryption, so it needs to run over
-**Wireguard** for now. It also requires a locally injected `SchemaStore` for all the
+and sink nodes (cycles allowed). It features basic encryption, but running over
+**Wireguard** is advised. It also requires a locally injected `SchemaStore` for all the
 observed state machines.
 
 ### Features
@@ -32,13 +31,21 @@ observed state machines.
 - emit to multiple downstreams
 - receive from multiple upstreams
 - deduplication via machine time (cycles allowed)
+- optional ChaCha20-Poly1305 PSK datagram encryption
+
+```go
+cipher, _ := graph.NewCipher(1, psk) // 32-byte key
+cipher.AddKey(0, oldPsk)             // optional rotation grace period
+ng, _ := graph.NewNetworkGraph(ctx, addr, g,
+    graph.NetworkGraphOpts{Cipher: cipher})
+```
 
 ## DbGraph
 
 **DbGraph** is a swappable DB backend serving over HTTP and WebSocket and
 speaking [Graph Query Language](https://en.wikipedia.org/wiki/Graph_Query_Language)
-(not GraphQL) in read-only mode. It can be attached to a **NetGraph**, which
-usually happens on redundant leaf nodes.
+(not GraphQL) in read-only mode. It can be attached to a **NetworkGraph**, which
+usually happens on redundant sink nodes.
 
 Dictionary:
 
@@ -86,14 +93,14 @@ The [gochickpeas](https://github.com/freeeve/gochickpeas) backend is the fastest
 
 | benchmark | ns/op | tps | allocs/op |
 |---|---:|---:|---:|
-| `MachineListExec` | 39 k | 25321 | 299 |
-| `MachineListExecParallel` | 24 k | 42022 | 299 |
-| `MachineListHttp` | 215 k | 4654 | 1048 |
-| `MachineListHttpParallel` | 49 k | 20511 | 1077 |
-| `MachineSerializedHttp` | 76 k | 13152 | 226 |
-| `WsQueryJson` | 158 k | 6320 | 1010 |
-| `WsQueryMsgpack` | 114 k | 8770 | 762 |
-| `WsQueryMsgpackParallel` | 40 k | 25169 | 762 |
+| `MachineListExec` | 38 k | 26278 | 305 |
+| `MachineListExecParallel` | 24 k | 41476 | 305 |
+| `MachineListHttp` | 246 k | 4070 | 1108 |
+| `MachineListHttpParallel` | 53 k | 18978 | 1136 |
+| `MachineSerializedHttp` | 110 k | 9080 | 308 |
+| `WsQueryJson` | 158 k | 6319 | 1016 |
+| `WsQueryMsgpack` | 118 k | 8480 | 768 |
+| `WsQueryMsgpackParallel` | 37 k | 27062 | 768 |
 
 #### FrogDB
 
@@ -104,14 +111,14 @@ Behind `frogql` tag, see `task gen-graph-frogql`.
 
 | benchmark | ns/op | tps | allocs/op |
 |---|---:|---:|---:|
-| `MachineListExec` | 489 k | 2045 | 723 |
-| `MachineListExecParallel` | 506 k | 1976 | 723 |
-| `MachineListHttp` | 942 k | 1062 | 1472 |
-| `MachineListHttpParallel` | 571 k | 1752 | 1472 |
-| `MachineSerializedHttp` | 887 k | 1127 | 197 |
-| `WsQueryJson` | 628 k | 1593 | 1434 |
-| `WsQueryMsgpack` | 584 k | 1713 | 1186 |
-| `WsQueryMsgpackParallel` | 548 k | 1824 | 1188 |
+| `MachineListExec` | 483 k | 2071 | 723 |
+| `MachineListExecParallel` | 496 k | 2015 | 723 |
+| `MachineListHttp` | 820 k | 1219 | 1527 |
+| `MachineListHttpParallel` | 564 k | 1772 | 1527 |
+| `MachineSerializedHttp` | 920 k | 1087 | 247 |
+| `WsQueryJson` | 645 k | 1549 | 1434 |
+| `WsQueryMsgpack` | 595 k | 1680 | 1186 |
+| `WsQueryMsgpackParallel` | 554 k | 1804 | 1188 |
 
 #### Native
 
@@ -120,22 +127,39 @@ The native backend simply traverses `/pkg/graph.Graph` using a GQL parser from
 
 | benchmark | ns/op | tps | allocs/op |
 |---|---:|---:|---:|
-| `MachineListExec` | 1.17 M | 858 | 5304 |
-| `MachineListExecParallel` | 489 k | 2047 | 5304 |
-| `MachineListHttp` | 1.29 M | 778 | 6067 |
-| `MachineListHttpParallel` | 469 k | 2131 | 6085 |
-| `MachineSerializedHttp` | 1.10 M | 911 | 4901 |
-| `WsQueryJson` | 1.17 M | 852 | 6020 |
-| `WsQueryMsgpack` | 1.12 M | 897 | 5769 |
-| `WsQueryMsgpackParallel` | 457 k | 2188 | 5772 |
+| `MachineListExec` | 761 k | 1314 | 6971 |
+| `MachineListExecParallel` | 326 k | 3066 | 6971 |
+| `MachineListHttp` | 1.09 M | 922 | 7788 |
+| `MachineListHttpParallel` | 375 k | 2669 | 7809 |
+| `MachineSerializedHttp` | 913 k | 1095 | 6619 |
+| `WsQueryJson` | 947 k | 1056 | 7687 |
+| `WsQueryMsgpack` | 894 k | 1119 | 7435 |
+| `WsQueryMsgpackParallel` | 348 k | 2874 | 7438 |
+
+## HistoryGraph
+
+**HistoryGraph** wraps **Graph** and tracks history via `/pkg/history/gorm` (N-shards) for all machine present in the
+graph. **NetworkGraph** supports running
+[MemoryApi](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/history#MemoryApi) queries over the `/history`
+endpoint.
+
+### Topology Examples
+
+<div align="center">
+    <a href="https://pancsta.github.io/assets/asyncmachine-go/diagrams/netgraph-ring.d2.dark.svg">
+        <img style="min-height: 135px"
+            src="https://pancsta.github.io/assets/asyncmachine-go/diagrams/netgraph-ring.d2.dark.svg"
+            alt="4-cluster GQL ring diagram" />
+    </a>
+</div>
+
+Example of clustered **NetworkGraph**s in tree structures with a single sink per cluster. The sink nodes have public
+endpoints, but also (as netgraphs) synchronize the graph between each other in a ring. Machine-time backed
+de-duplication prevents an infinite sync loop. This is both a suggested topology and a runnable test.
 
 ## TODO
 
-- cyclic and multi-graph edges redundancy tests
-- sync time benchmark
-- full network simulation with discovery resulting in iroh P2P connections for writes
 - optimizations
-- UDP encryption
 
 ## Status
 

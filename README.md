@@ -11,10 +11,6 @@ It should be used to solve complexity in time.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/pancsta/asyncmachine-go.svg)](https://pkg.go.dev/github.com/pancsta/asyncmachine-go)
 [![website](https://img.shields.io/badge/asyncmachine-.dev-blue)](https://asyncmachine.dev)
-![pkg lines of code](https://pancsta.github.io/assets/asyncmachine-go/badges/loc-pkg.svg)
-![tools lines of code](https://pancsta.github.io/assets/asyncmachine-go/badges/loc-tools.svg)
-![tests](https://pancsta.github.io/assets/asyncmachine-go/badges/tests.svg)
-![pkg tests](https://pancsta.github.io/assets/asyncmachine-go/badges/tests-pkg.svg)
 ![machine coverage](https://pancsta.github.io/assets/asyncmachine-go/badges/coverage-machine.svg)
 ![pkg coverage](https://pancsta.github.io/assets/asyncmachine-go/badges/coverage-pkg.svg)
 ![tools coverage](https://pancsta.github.io/assets/asyncmachine-go/badges/coverage-tools.svg)
