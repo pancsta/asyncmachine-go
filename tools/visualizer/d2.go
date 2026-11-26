@@ -249,10 +249,7 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 	r.cleanBuffer()
 
 	var err error
-	r.adjMap, err = r.graph.G.AdjacencyMap()
-	if err != nil {
-		return fmt.Errorf("failed to get adjacency map: %w", err)
-	}
+	r.adjMap = r.graph.AdjacencyMap()
 
 	// state classes
 	classes := ""
@@ -277,7 +274,7 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 			return ctx.Err()
 		}
 
-		srcVertex, err := r.graph.G.Vertex(src)
+		srcVertex, err := r.graph.Vertex(src)
 		if err != nil {
 			return fmt.Errorf("failed to get vertex for source %s: %w", src, err)
 		}
@@ -319,17 +316,14 @@ func (r *Renderer) outputD2(ctx context.Context) error {
 		r.RenderParentRel && r.RenderHalfHierarchy
 
 	if machSelected && renderHalfs {
-		predMap, err := r.graph.G.PredecessorMap()
-		if err != nil {
-			return fmt.Errorf("failed to get predecessor map: %w", err)
-		}
+		predMap := r.graph.PredecessorMap()
 		for _, machId := range renderedMachs {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
 
 			for predId := range predMap[machId] {
-				target, err := r.graph.G.Vertex(predId)
+				target, err := r.graph.Vertex(predId)
 				if err != nil {
 					return err
 				}
@@ -643,7 +637,7 @@ func (r *Renderer) outputD2Mach(ctx context.Context, machId string) error {
 			return ctx.Err()
 		}
 
-		target, err := r.graph.G.Vertex(edge.Target)
+		target, err := r.graph.Vertex(edge.Target)
 		if err != nil {
 			return fmt.Errorf("failed to get vertex for target %s: %w",
 				edge.Target, err)

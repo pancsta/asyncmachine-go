@@ -1447,7 +1447,7 @@ func (h *TestHandlerStateInfoHandlers) DEnter(e *Event) bool {
 	assert.True(t, e.Mutation().IsCalled(idxD),
 		"provide the called states of the transition")
 	txStrExp := "tx#" + e.TransitionId + "\n[set] D\n- called **D**\n" +
-		"- activate **D**\n- deactivate **A**\n- handler **A**Exit"
+		"- activate **D**\n- deactivate **A**\n- handler **AExit**"
 	txStr := tx.String()
 	assert.Equal(t, txStrExp, txStr,
 		"provide a string version of the transition")

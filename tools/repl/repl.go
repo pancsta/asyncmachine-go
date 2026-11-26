@@ -44,6 +44,9 @@ type Repl struct {
 	clientSeq    int
 	lastMsg      string
 	selectedMach string
+	// clientSuffix makes RPC client IDs unique per REPL instance, so multiple
+	// clients (eg the auto-REPL and a web REPL) can connect to one server.
+	clientSuffix string
 }
 
 // replClient is a named aRPC client, kept in the ordered [Repl.rpcClients]
@@ -57,7 +60,9 @@ type replClient struct {
 func (r *Repl) Machine() *am.Machine { return r.Mach }
 
 func New(ctx context.Context, id string) (*Repl, error) {
-	r := &Repl{}
+	r := &Repl{
+		clientSuffix: amhelp.RandId(4),
+	}
 
 	// REPL machine
 	mach, err := am.NewCommon(ctx, id, states.ReplSchema, ss.Names(), r, nil,
@@ -840,7 +845,9 @@ func (r *Repl) newRpcClient(
 
 	parsed := strings.Split(addr.Addr, "/")
 	// empty schema RPC client (`rc-WDHASH-0` for 1st client) TODO what?
-	id := strings.Replace(r.Mach.Id(), "repl-", "", 1) + "-" + idSuffix
+	// the suffix makes the client IDs unique per REPL process
+	id := strings.Replace(r.Mach.Id(), "repl-", "", 1) + "-" + idSuffix + "-" +
+		r.clientSuffix
 	opts := &arpc.ClientOpts{
 		Parent:       r.Mach,
 		DebugDisable: true,

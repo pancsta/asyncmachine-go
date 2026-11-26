@@ -550,7 +550,7 @@ func (r *MutRequest) Delay(delay time.Duration) *MutRequest {
 // [am.Canceled], or until too many errors.
 func (r *MutRequest) Run(ctx context.Context) (am.Result, error) {
 	// policies
-	retry := retrypolicy.Builder[am.Result]().
+	retry := retrypolicy.NewBuilder[am.Result]().
 		WithMaxDuration(r.PolicyMaxDuration).
 		WithMaxRetries(r.PolicyRetries)
 
@@ -560,7 +560,7 @@ func (r *MutRequest) Run(ctx context.Context) (am.Result, error) {
 		retry = retry.WithDelay(r.PolicyDelay)
 	}
 
-	res, err := failsafe.NewExecutor[am.Result](retry.Build()).WithContext(ctx).
+	res, err := failsafe.With[am.Result](retry.Build()).WithContext(ctx).
 		Get(r.get)
 
 	return res, err

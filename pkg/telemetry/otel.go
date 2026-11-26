@@ -791,16 +791,16 @@ func BindOtelLogger(
 			default:
 			}
 		}
-		r.SetBody(olog.StringValue(fmt.Sprintf(msg, args...)))
+		r.SetBody(attribute.StringValue(fmt.Sprintf(msg, args...)))
 
 		if service != "" {
 			r.AddAttributes(
-				olog.String("service.name", service),
+				attribute.String("service.name", service),
 			)
 		}
 
 		r.AddAttributes(
-			olog.String("asyncmachine.id", mach.Id()),
+			attribute.String("asyncmachine.id", mach.Id()),
 		)
 
 		l.Emit(mach.Context(), r)
