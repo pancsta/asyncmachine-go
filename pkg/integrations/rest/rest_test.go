@@ -232,6 +232,7 @@ func statusBody[T any](t *testing.T, res httpx.Result[T]) (int, []byte) {
 	t.Helper()
 
 	require.NotNil(t, res.Response, "no response: %v", res.Err)
+	require.NotNil(t, res.Response.Response, "no HTTP response: %v", res.Err)
 
 	return res.Response.StatusCode, res.Response.Bytes()
 }

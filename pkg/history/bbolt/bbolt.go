@@ -226,16 +226,18 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 	// time record
 	var recordDiff uint64
 	if m.lastRec != nil {
-		recordDiff = sum - m.lastRec.MTimeSum
+		recordDiff = max(sum, m.lastRec.MTimeSum) - m.lastRec.MTimeSum
 	}
 	machTick := mach.MachineTick()
 	now := time.Now().UTC()
+	beforeSum := tx.TimeBefore.Sum(nil)
+	beforeTrackedSum := tx.TimeBefore.Sum(m.cacheTrackedIdxs)
 	recTime := &amhist.TimeRecord{
 		MutType:             mut.Type,
 		MTimeSum:            sum,
 		MTimeTrackedSum:     sumTracked,
-		MTimeDiffSum:        sum - tx.TimeBefore.Sum(nil),
-		MTimeTrackedDiffSum: sumTracked - tx.TimeBefore.Sum(m.cacheTrackedIdxs),
+		MTimeDiffSum:        max(sum, beforeSum) - beforeSum,
+		MTimeTrackedDiffSum: max(sumTracked, beforeTrackedSum) - beforeTrackedSum,
 		MTimeRecordDiffSum:  recordDiff,
 		MachTick:            machTick,
 		HTime:               now,

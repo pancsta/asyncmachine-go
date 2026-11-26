@@ -47,7 +47,7 @@ func TestLivepageUI(t *testing.T) {
 
 	get := func(path string) (int, string) {
 		res := httpx.Get[[]byte](httpc, base+path)
-		if res.Response == nil {
+		if res.Response == nil || res.Response.Response == nil {
 			return 0, ""
 		}
 		return res.Response.StatusCode, string(res.Response.Bytes())

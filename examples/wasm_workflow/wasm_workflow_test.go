@@ -202,7 +202,7 @@ func startOrchestrator(t *testing.T, ctx context.Context) *proc {
 	waitFor(t, ctx, orch, nil, "the relay at "+EnvRelayHttpAddr, startTimeout,
 		func() bool {
 			res := httpx.GetCtx[[]byte](httpc, ctx, "http://"+EnvRelayHttpAddr+"/")
-			return res.Response != nil &&
+			return res.Response != nil && res.Response.Response != nil &&
 				res.Response.StatusCode == http.StatusOK
 		})
 

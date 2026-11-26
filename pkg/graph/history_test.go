@@ -480,7 +480,7 @@ func getHistoryStatus(t *testing.T, c *httpx.Client, url string) int {
 	t.Helper()
 
 	res := httpx.Get[[]byte](c, url)
-	if res.Response == nil {
+	if res.Response == nil || res.Response.Response == nil {
 		t.Fatalf("get %s: %v", url, res.Err)
 	}
 
