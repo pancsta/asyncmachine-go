@@ -1,0 +1,68 @@
+direction: right
+
+machines: {
+  shape: sql_table
+  id: uint32 {constraint: primary_key}
+  mach_id: text {constraint: "index"}
+  state_names: json
+  schema: json
+  first_tracking: datetime
+  last_tracking: datetime
+  last_sync: datetime
+  mach_tick: uint32
+  m_time: json
+  m_time_sum: uint64
+  next_id: uint64
+}
+
+times: {
+  shape: sql_table
+  id: uint64 {constraint: primary_key}
+  machine_id: uint32 {constraint: primary_key}
+  mut_type: int
+  m_time_sum: uint64
+  m_time_tracked_sum: uint64
+  m_time_diff_sum: uint64
+  m_time_tracked_diff_sum: uint64
+  m_time_record_diff_sum: uint64
+  h_time: datetime
+  m_time_tracked: json
+  m_time_tracked_diff: json
+  mach_tick: uint32
+  tx_id: text {constraint: "index"}
+  tx_source_tx: text
+  tx_source_mach: text
+  tx_is_auto: bool
+  tx_is_accepted: bool
+  tx_is_check: bool
+  tx_is_broken: bool
+  tx_queue_len: uint16
+  tx_queued_at: uint64
+  tx_executed_at: uint64
+  tx_called: json
+  tx_arguments: json
+}
+
+states: {
+  shape: sql_table
+  id: uint {constraint: primary_key}
+  machine_id: text {constraint: "index: machine_state"}
+  index: int {constraint: "index: machine_state"}
+  name: text
+}
+
+ticks: {
+  shape: sql_table
+  time_id: uint64 {constraint: primary_key}
+  machine_id: uint32 {constraint: primary_key}
+  state_id: uint {constraint: primary_key}
+  tick: uint64
+  activated: bool {constraint: "index"}
+  deactivated: bool
+  active: bool
+}
+
+machines.id -> times.machine_id: times
+machines.id -> states.machine_id: states
+times.id -> ticks.time_id: ticks
+states.id -> ticks.state_id: ticks
