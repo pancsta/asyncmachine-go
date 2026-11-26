@@ -10,7 +10,7 @@ import (
 	ssrel "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	"github.com/pancsta/asyncmachine-go/pkg/graph/frogql"
-	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
+	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/types"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
@@ -151,7 +151,7 @@ func TestDbGraph(t *testing.T) {
 	}
 }
 
-func TestNetGraphDb(t *testing.T) {
+func TestNetworkGraphDb(t *testing.T) {
 	ctx := t.Context()
 
 	server := am.New(ctx, ssdbg.ServerSchema, &am.Opts{Id: "srv-db"})
@@ -166,7 +166,7 @@ func TestNetGraphDb(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	ng, err := amgraph.NewNetGraph(ctx, "127.0.0.1:0", g)
+	ng, err := amgraph.NewNetworkGraph(ctx, "127.0.0.1:0", g)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestNetGraphDb(t *testing.T) {
 	}
 }
 
-func TestNetGraphDbSync(t *testing.T) {
+func TestNetworkGraphDbSync(t *testing.T) {
 	ctx := t.Context()
 
 	mach := am.New(ctx, ssrel.States, &am.Opts{Id: "db-sync-1"})
@@ -206,13 +206,13 @@ func TestNetGraphDbSync(t *testing.T) {
 	}
 	t.Cleanup(mach.Dispose)
 
-	newGraph := func(id string) (*amgraph.Graph, *amgraph.NetGraph, amtypes.DbGraph) {
+	newGraph := func(id string) (*amgraph.Graph, *amgraph.NetworkGraph, amtypes.DbGraph) {
 		server := am.New(ctx, ssdbg.ServerSchema, &am.Opts{Id: "srv-" + id})
 		g, err := amgraph.New(server)
 		if err != nil {
 			t.Fatal(err)
 		}
-		ng, err := amgraph.NewNetGraph(ctx, "127.0.0.1:0", g)
+		ng, err := amgraph.NewNetworkGraph(ctx, "127.0.0.1:0", g)
 		if err != nil {
 			t.Fatal(err)
 		}

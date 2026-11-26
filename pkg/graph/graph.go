@@ -15,33 +15,21 @@ import (
 	"strings"
 	"sync"
 
-	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
+	"github.com/mlange-42/ark/ecs"
+
+	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/types"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
-
-	"github.com/mlange-42/ark/ecs"
 )
 
 var (
 	ErrGraph      = errors.New("graph error")
 	StateErrGraph = am.PrefixErr + "Graph"
 )
-
-// AddErrGraph adds [ErrGraph].
-func AddErrGraph(
-	event *am.Event, mach *am.Machine, err error, args ...am.A,
-) am.Result {
-	if err == nil {
-		return am.Executed
-	}
-	err = fmt.Errorf("%w: %w", ErrGraph, err)
-
-	return mach.EvAddErrState(event, ss.ErrGraph, err, am.OptArgs(args))
-}
 
 var ss = ssdbg.ServerStates
 
@@ -72,6 +60,11 @@ type EdgeData struct {
 	StateRelation []*StateRelation
 }
 
+type MachineHas struct {
+	Auto  bool
+	Multi bool
+}
+
 // Client:
 // - has State auto:bool multi:bool
 // - connectedTo Client addr:string
@@ -81,11 +74,6 @@ type EdgeData struct {
 // State:
 // - relation type:require|add|remove State
 // - pipeTo Client|state add:bool
-
-type MachineHas struct {
-	Auto  bool
-	Multi bool
-}
 
 type StateRelation struct {
 	RelType am.Relation
@@ -117,6 +105,18 @@ type MachInspect struct {
 	MTimeSum uint64
 }
 
+// AddErrGraph adds [ErrGraph].
+func AddErrGraph(
+	event *am.Event, mach *am.Machine, err error, args ...am.A,
+) am.Result {
+	if err == nil {
+		return am.Executed
+	}
+	err = fmt.Errorf("%w: %w", ErrGraph, err)
+
+	return mach.EvAddErrState(event, ss.ErrGraph, err, am.OptArgs(args))
+}
+
 // ///// ///// /////
 
 // ///// GRAPH
@@ -131,6 +131,9 @@ type Graph struct {
 	// store is an ark-backed directed graph of machines and states with
 	// metadata.
 	store *store
+
+	// hist is an optional history mirror, see [HistoryGraph].
+	hist *HistoryGraph
 
 	// lock for Clone(), called by a consumer
 	loop sync.Mutex
@@ -184,6 +187,31 @@ func (g *Graph) PredecessorMap() map[string]map[string]Edge {
 // Edges returns all edges.
 func (g *Graph) Edges() []Edge {
 	return g.store.Edges()
+}
+
+// EdgesOfKind returns all edges of a GQL relationship kind, e.g.
+// [amtypes.RelHas] or [amtypes.RelRequire]. Pipes are returned one edge per
+// pipe.
+func (g *Graph) EdgesOfKind(kind amtypes.RelKind) []Edge {
+	return g.store.edgesOfKind(kind, "")
+}
+
+// EdgesFrom returns all edges of a GQL relationship kind starting at source.
+func (g *Graph) EdgesFrom(source string, kind amtypes.RelKind) []Edge {
+	return g.store.edgesOfKind(kind, source)
+}
+
+// Hist returns the attached history mirror, or nil.
+func (g *Graph) Hist() *HistoryGraph {
+	return g.hist
+}
+
+// histSync pushes the current clocks of a machine into the history mirror.
+func (g *Graph) histSync(c *Machine, qTick uint64) {
+	if g.hist == nil {
+		return
+	}
+	g.hist.Update(c.ID, c.Time, qTick, c.MachineTick)
 }
 
 // Snapshot returns all vertices and edges in one batch.
@@ -295,15 +323,19 @@ func (g *Graph) AddMachine(gmach *Machine) error {
 	g.Machines[id] = c
 	g.setClientTags(c, tags)
 
+	if g.hist != nil {
+		g.hist.Track(c)
+	}
+
 	return nil
 }
 
 func (g *Graph) RemoveMachine(id string) error {
 	g.loop.Lock()
-	defer g.loop.Unlock()
 
 	c, ok := g.Machines[id]
 	if !ok {
+		g.loop.Unlock()
 		return nil
 	}
 	delete(g.Machines, id)
@@ -316,11 +348,16 @@ func (g *Graph) RemoveMachine(id string) error {
 		hashes[hash(&Vertex{MachId: id, TagName: tag})] = struct{}{}
 	}
 	g.store.removeVertices(hashes)
+	g.loop.Unlock()
+
+	if g.hist != nil {
+		g.hist.Remove(id)
+	}
 
 	return nil
 }
 
-// RemoveTags removes all tag vertices and their edges of a machine, e.g. for
+// RemoveTags removes all tag vertices and their edges of a machine, e.g. forx
 // render snapshots which don't need tags.
 func (g *Graph) RemoveTags(id string) {
 	g.loop.Lock()
@@ -368,9 +405,21 @@ func (g *Graph) Machine(id string) (*Machine, bool) {
 	return c.Clone(), true
 }
 
+// MachineCount returns the number of machines in the graph.
+func (g *Graph) MachineCount() int {
+	g.loop.Lock()
+	defer g.loop.Unlock()
+
+	return len(g.Machines)
+}
+
 func (g *Graph) Clear() {
 	clear(g.Machines)
 	g.store.reset()
+
+	if g.hist != nil {
+		g.hist.clearAll()
+	}
 }
 
 func (g *Graph) ParseMsgDbg(id string, msgTx *dbg.DbgMsgTx) {
@@ -427,6 +476,8 @@ func (g *Graph) ParseMsgDbg(id string, msgTx *dbg.DbgMsgTx) {
 	// TODO assert clocks
 	c.Time = msgTx.Clocks
 	c.MTimeSum = sum
+
+	g.histSync(c, msgTx.QueueTick)
 }
 
 // ParseMsgRpc applies a network graph update to the local clock data.
@@ -470,6 +521,8 @@ func (g *Graph) ParseMsgRpc(update *MsgGraphUpdate) bool {
 	c.MTimeSum = sum
 	c.QueueTick = qTick
 	c.MachineTick = machTick
+
+	g.histSync(c, qTick)
 
 	return true
 }
@@ -530,22 +583,23 @@ func (g *Graph) Inspect() (map[string]*MachInspect, error) {
 		}
 
 		for _, edge := range adjs {
-			conn, _ := g.Connection(machId, edge.Target)
+			data := edge.data()
+			if data == nil {
+				continue
+			}
 
-			if conn.Edge.MachChildOf {
+			if data.MachChildOf {
 				inspect[machId].Child = edge.Target
 			}
-			if conn.Edge.MachConnectedTo {
+			if data.MachConnectedTo {
 				inspect[machId].Conns = append(inspect[machId].Conns, edge.Target)
 			}
-			if conn.Edge.MachPipesTo != nil {
-				for _, pipe := range conn.Edge.MachPipesTo {
-					inspect[machId].Pipes[edge.Target] = append(
-						inspect[machId].Pipes[edge.Target], fmt.Sprintf(
-							"[%s] %s -> %s", pipe.MutType, pipe.FromState, pipe.ToState,
-						),
-					)
-				}
+			for _, pipe := range data.MachPipesTo {
+				inspect[machId].Pipes[edge.Target] = append(
+					inspect[machId].Pipes[edge.Target], fmt.Sprintf(
+						"[%s] %s -> %s", pipe.MutType, pipe.FromState, pipe.ToState,
+					),
+				)
 			}
 		}
 	}
@@ -707,10 +761,6 @@ func (g *Graph) parseMsgDbgReader(
 			data = link.data()
 			if data == nil {
 				data = &EdgeData{}
-				err := g.store.UpdateEdge(sourceMachId, targetMachId, data)
-				if err != nil {
-					return err
-				}
 			}
 		}
 
@@ -726,12 +776,14 @@ func (g *Graph) parseMsgDbgReader(
 
 		// update the missing state from the other side of the pipe
 		found := false
+		changed := false
 		for _, pipe := range data.MachPipesTo {
 			// IN
 			if !isPipeOut && pipe.MutType == mut && pipe.ToState == "" {
 
 				pipe.ToState = state
 				found = true
+				changed = true
 
 				// DUP
 			} else if !isPipeOut && pipe.MutType == mut && pipe.ToState == state {
@@ -743,6 +795,7 @@ func (g *Graph) parseMsgDbgReader(
 
 				pipe.FromState = state
 				found = true
+				changed = true
 
 				// DUP
 			} else if isPipeOut && pipe.MutType == mut && pipe.FromState == state {
@@ -768,6 +821,16 @@ func (g *Graph) parseMsgDbgReader(
 			}
 
 			data.MachPipesTo = append(data.MachPipesTo, pipe)
+			changed = true
+		}
+
+		// persist the edge metadata
+		if changed {
+			if err := g.store.UpdateEdge(
+				sourceMachId, targetMachId, data,
+			); err != nil {
+				return err
+			}
 		}
 
 		// REMOVE PIPE
@@ -816,7 +879,7 @@ func (g *Graph) SaveGob(w io.Writer) error {
 		snap.Edges = append(snap.Edges, gobEdge{
 			Source: edge.Source,
 			Target: edge.Target,
-			Data:   cloneEdgeData(edge.data()),
+			Data:   edge.data(),
 		})
 	}
 
@@ -859,6 +922,14 @@ func (g *Graph) LoadGob(r io.Reader) error {
 		return fmt.Errorf("graph load: %w", err)
 	}
 
+	// re-track all loaded machines
+	if g.hist != nil {
+		g.hist.clearAll()
+		for _, c := range g.Machines {
+			g.hist.Track(c)
+		}
+	}
+
 	return nil
 }
 
@@ -870,40 +941,6 @@ func (g *Graph) LoadGob(r io.Reader) error {
 
 // gobFormatVersion is the on-wire format of [Graph.SaveGob].
 const gobFormatVersion = 1
-
-// cloneEdgeData deep-copies edge metadata for serialization.
-func cloneEdgeData(data *EdgeData) *EdgeData {
-	if data == nil {
-		return nil
-	}
-	cp := *data
-	if data.MachHas != nil {
-		has := *data.MachHas
-		cp.MachHas = &has
-	}
-	if data.MachPipesTo != nil {
-		cp.MachPipesTo = make([]*MachPipeTo, len(data.MachPipesTo))
-		for i, pipe := range data.MachPipesTo {
-			if pipe == nil {
-				continue
-			}
-			p := *pipe
-			cp.MachPipesTo[i] = &p
-		}
-	}
-	if data.StateRelation != nil {
-		cp.StateRelation = make([]*StateRelation, len(data.StateRelation))
-		for i, rel := range data.StateRelation {
-			if rel == nil {
-				continue
-			}
-			r := *rel
-			cp.StateRelation[i] = &r
-		}
-	}
-
-	return &cp
-}
 
 // gobSnapshot is the serializable form of [Graph]: the clients, vertices, and
 // edges with their metadata. Runtime state (ParentMach, mutexes, the ark ECS

@@ -11,7 +11,9 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,7 +22,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/vmihailenco/msgpack/v5"
 
-	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
+	gtypes "github.com/pancsta/asyncmachine-go/pkg/graph/types"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	"github.com/pancsta/asyncmachine-go/pkg/rpc"
@@ -28,6 +30,13 @@ import (
 
 // ErrGraphDrop indicates a test-injected dropped graph update.
 var ErrGraphDrop = errors.New("graph update dropped")
+
+// errNoDb is returned when a GQL DB operation is requested without a Db.
+var errNoDb = errors.New("graph: Db is nil")
+
+// errNoHistory is returned when a history operation is requested without a
+// [HistoryGraph].
+var errNoHistory = errors.New("graph: history is nil")
 
 // SchemaInfo describes a source schema for remote graph mirroring.
 type SchemaInfo struct {
@@ -108,9 +117,9 @@ const (
 
 // ///// ///// /////
 
-// NetGraph transports directional graph updates over UDP using the standard
+// NetworkGraph transports directional graph updates over UDP using the standard
 // library and [GraphUpdate] as the wire message.
-type NetGraph struct {
+type NetworkGraph struct {
 	// Addr is the local UDP listen address.
 	Addr string
 	// Graph is the graph being mirrored.
@@ -118,7 +127,7 @@ type NetGraph struct {
 	// Db optionally mirrors all graph changes into a graph database.
 	// See [DbGraph] and pkg/graph/frogql ("frogql" build tag).
 	// TODO expose via HTTP+JSON, open way for more transports later
-	Db amtypes.DbGraph
+	Db gtypes.DbGraph
 	// PushInterval is the interval for emitting clock updates. 0 disables
 	// periodic updates.
 	PushInterval time.Duration
@@ -153,16 +162,18 @@ type NetGraph struct {
 	relaySentMx    sync.Mutex
 	relaySent      map[string]*am.Serialized
 
-	listener    *net.UDPConn
+	listener    net.PacketConn
 	readBufSize int
 	sinkLocal   string
-	ctx         context.Context
+	// dial creates a datagram conn to a sink address. Overridable for tests.
+	dial func(addr string) (net.Conn, error)
+	ctx  context.Context
 
 	tracedMx sync.Mutex
 	traced   []*NetTracer
 
 	sinksMx      sync.Mutex
-	sinks        map[string]*net.UDPConn
+	sinks        map[string]net.Conn
 	sinkRetry    map[string]chan struct{}
 	sinkStop     chan struct{}
 	sinkStopOnce sync.Once
@@ -178,10 +189,10 @@ type NetGraph struct {
 	dbLoopOnce  sync.Once
 }
 
-// NetGraphOpts configures a new [NetGraph].
-type NetGraphOpts struct {
+// NetworkGraphOpts configures a new [NetworkGraph].
+type NetworkGraphOpts struct {
 	// Db optionally mirrors all graph changes into a graph database.
-	Db amtypes.DbGraph
+	Db gtypes.DbGraph
 	// PushInterval overrides the default clock emit interval.
 	PushInterval time.Duration
 	// ReadBufSize overrides the UDP read buffer size. Defaults to 64KB.
@@ -189,26 +200,37 @@ type NetGraphOpts struct {
 	// SinkLocalAddr optionally binds sinks to a specific local address, eg
 	// "127.1.2.3:0". Useful when many sinks share the default local address.
 	SinkLocalAddr string
+	// Listener optionally creates the datagram listener. Tests only, nil uses
+	// UDP.
+	Listener func(addr string) (net.PacketConn, error)
+	// Dial optionally creates a datagram sink conn. Tests only, nil uses UDP.
+	Dial func(addr string) (net.Conn, error)
 }
 
-// NewNetGraph creates a NetGraph listening on addr and mirroring g.
-func NewNetGraph(
-	ctx context.Context, addr string, g *Graph, opts ...NetGraphOpts,
-) (*NetGraph, error) {
+// NewNetworkGraph creates a NetworkGraph listening on addr and mirroring g.
+func NewNetworkGraph(
+	ctx context.Context, addr string, g *Graph, opts ...NetworkGraphOpts,
+) (*NetworkGraph, error) {
 	if g == nil {
 		return nil, errors.New("graph is nil")
 	}
 
-	udpAddr, err := net.ResolveUDPAddr("udp", addr)
-	if err != nil {
-		return nil, err
+	listen := listenUDP
+	var dial func(addr string) (net.Conn, error)
+	if len(opts) > 0 {
+		if opts[0].Listener != nil {
+			listen = opts[0].Listener
+		}
+		if opts[0].Dial != nil {
+			dial = opts[0].Dial
+		}
 	}
-	conn, err := net.ListenUDP("udp", udpAddr)
+	conn, err := listen(addr)
 	if err != nil {
 		return nil, err
 	}
 
-	n := &NetGraph{
+	n := &NetworkGraph{
 		Addr:           conn.LocalAddr().String(),
 		Graph:          g,
 		PushInterval:   250 * time.Millisecond,
@@ -223,7 +245,7 @@ func NewNetGraph(
 		listener:     conn,
 		readBufSize:  64 * 1024,
 		ctx:          ctx,
-		sinks:        make(map[string]*net.UDPConn),
+		sinks:        make(map[string]net.Conn),
 		sinkRetry:    make(map[string]chan struct{}),
 		sinkStop:     make(chan struct{}),
 	}
@@ -241,6 +263,13 @@ func NewNetGraph(
 		n.sinkLocal = opts[0].SinkLocalAddr
 	}
 
+	// use the default dialer unless overridden
+	if dial == nil {
+		n.dial = n.dialUDP
+	} else {
+		n.dial = dial
+	}
+
 	// fork loops
 	go n.receiveFromDownstream()
 	if n.PushInterval > 0 {
@@ -252,7 +281,7 @@ func NewNetGraph(
 
 // TraceMach adds a machine to the mirrored graph and starts emitting its clock
 // updates. It returns the tracer ID used by the source machine.
-func (n *NetGraph) TraceMach(mach am.Api) (string, error) {
+func (n *NetworkGraph) TraceMach(mach am.Api) (string, error) {
 	id := mach.Id()
 	schema := mach.Schema()
 	states := mach.StateNames()
@@ -324,10 +353,10 @@ func (n *NetGraph) TraceMach(mach am.Api) (string, error) {
 // The first dial happens synchronously (so an immediate broadcast lands), then
 // the sink is maintained in the background: failed dials are retried with
 // exponential backoff, and broken sinks (write errors) are dropped and
-// re-dialed. Use [NetGraph.Sinks] to check the live set and
-// [NetGraph.MetricReconnects] for dial counts. Only one sink per address is
+// re-dialed. Use [NetworkGraph.Sinks] to check the live set and
+// [NetworkGraph.MetricReconnects] for dial counts. Only one sink per address is
 // supported; a duplicate call returns an already-cancelled context.
-func (n *NetGraph) EmitToAddr(
+func (n *NetworkGraph) EmitToAddr(
 	addr string,
 ) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(n.ctx)
@@ -344,7 +373,7 @@ func (n *NetGraph) EmitToAddr(
 	n.sinksMx.Unlock()
 
 	// try the first dial synchronously, so an immediate broadcast lands
-	conn, err := n.dialSink(addr)
+	conn, err := n.dial(addr)
 	if err != nil {
 		n.Logger.Warn("sink dial failed, retrying", "addr", addr, "err", err)
 	} else {
@@ -361,7 +390,7 @@ func (n *NetGraph) EmitToAddr(
 }
 
 // Sinks returns the addresses of the currently connected sinks.
-func (n *NetGraph) Sinks() []string {
+func (n *NetworkGraph) Sinks() []string {
 	n.sinksMx.Lock()
 	defer n.sinksMx.Unlock()
 
@@ -375,7 +404,7 @@ func (n *NetGraph) Sinks() []string {
 }
 
 // Broadcast sends an update to every registered UDP destination.
-func (n *NetGraph) Broadcast(update *MsgGraphUpdate) error {
+func (n *NetworkGraph) Broadcast(update *MsgGraphUpdate) error {
 	if n.TestBroadcastRandomDrops.Load() && rand.IntN(2) == 0 {
 		return ErrGraphDrop
 	}
@@ -391,7 +420,7 @@ func (n *NetGraph) Broadcast(update *MsgGraphUpdate) error {
 
 	type peer struct {
 		addr string
-		conn *net.UDPConn
+		conn net.Conn
 	}
 	n.sinksMx.Lock()
 	peers := make([]peer, 0, len(n.sinks))
@@ -412,7 +441,7 @@ func (n *NetGraph) Broadcast(update *MsgGraphUpdate) error {
 }
 
 // Close stops the receiver and all emitters.
-func (n *NetGraph) Close() error {
+func (n *NetworkGraph) Close() error {
 	// stop the DB sync loop and flush the pending clock updates
 	n.dbDoneOnce.Do(func() { close(n.dbDone) })
 	n.flushDbSyncAll()
@@ -446,8 +475,8 @@ func (n *NetGraph) Close() error {
 
 // sinkLoop maintains one sink connection, re-dialing on write errors and
 // failed dials.
-func (n *NetGraph) sinkLoop(
-	ctx context.Context, addr string, retry chan struct{}, conn *net.UDPConn,
+func (n *NetworkGraph) sinkLoop(
+	ctx context.Context, addr string, retry chan struct{}, conn net.Conn,
 ) {
 	defer func() {
 		n.sinksMx.Lock()
@@ -459,7 +488,7 @@ func (n *NetGraph) sinkLoop(
 	for {
 		if conn == nil {
 			var err error
-			conn, err = n.dialSink(addr)
+			conn, err = n.dial(addr)
 			if err != nil {
 				n.Logger.Warn("sink dial failed, retrying", "addr", addr,
 					"err", err, "backoff", backoff)
@@ -505,8 +534,8 @@ func (n *NetGraph) sinkLoop(
 	}
 }
 
-// dialSink resolves and dials a UDP sink.
-func (n *NetGraph) dialSink(addr string) (*net.UDPConn, error) {
+// dialUDP resolves and dials a UDP sink.
+func (n *NetworkGraph) dialUDP(addr string) (net.Conn, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return nil, err
@@ -523,8 +552,18 @@ func (n *NetGraph) dialSink(addr string) (*net.UDPConn, error) {
 	return net.DialUDP("udp", local, udpAddr)
 }
 
+// listenUDP creates the default UDP listener.
+func listenUDP(addr string) (net.PacketConn, error) {
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return net.ListenUDP("udp", udpAddr)
+}
+
 // removeSink closes and unregisters a sink, if it's still current.
-func (n *NetGraph) removeSink(addr string, conn *net.UDPConn) {
+func (n *NetworkGraph) removeSink(addr string, conn net.Conn) {
 	n.sinksMx.Lock()
 	defer n.sinksMx.Unlock()
 
@@ -535,7 +574,7 @@ func (n *NetGraph) removeSink(addr string, conn *net.UDPConn) {
 }
 
 // dropSink removes a broken sink and schedules a reconnect.
-func (n *NetGraph) dropSink(addr string, conn *net.UDPConn) {
+func (n *NetworkGraph) dropSink(addr string, conn net.Conn) {
 	n.sinksMx.Lock()
 	defer n.sinksMx.Unlock()
 
@@ -553,7 +592,7 @@ func (n *NetGraph) dropSink(addr string, conn *net.UDPConn) {
 	}
 }
 
-func (n *NetGraph) pushLocalTracer(tracer *NetTracer) {
+func (n *NetworkGraph) pushLocalTracer(tracer *NetTracer) {
 	data := tracer.DataLatest.Load()
 	if data == nil {
 		return
@@ -610,7 +649,7 @@ func (n *NetGraph) pushLocalTracer(tracer *NetTracer) {
 }
 
 // broadcastLoop emits local tracers and relays relayPending mirrored machines.
-func (n *NetGraph) broadcastLoop(interval time.Duration) {
+func (n *NetworkGraph) broadcastLoop(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -628,14 +667,14 @@ func (n *NetGraph) broadcastLoop(interval time.Duration) {
 	}
 }
 
-func (n *NetGraph) tracers() []*NetTracer {
+func (n *NetworkGraph) tracers() []*NetTracer {
 	n.tracedMx.Lock()
 	defer n.tracedMx.Unlock()
 
 	return n.traced
 }
 
-func (n *NetGraph) pushPendingRelay() {
+func (n *NetworkGraph) pushPendingRelay() {
 	n.relayPendingMx.Lock()
 	ids := slices.Collect(maps.Keys(n.relayPending))
 	clear(n.relayPending)
@@ -703,7 +742,7 @@ func (n *NetGraph) pushPendingRelay() {
 }
 
 // queueDbSync schedules a coalesced clock sync of machId to the DB.
-func (n *NetGraph) queueDbSync(machId string) {
+func (n *NetworkGraph) queueDbSync(machId string) {
 	if n.Db == nil || machId == "" {
 		return
 	}
@@ -716,7 +755,7 @@ func (n *NetGraph) queueDbSync(machId string) {
 }
 
 // dbSyncLoop flushes coalesced clock syncs on the push interval.
-func (n *NetGraph) dbSyncLoop(done chan struct{}) {
+func (n *NetworkGraph) dbSyncLoop(done chan struct{}) {
 	interval := n.PushInterval
 	if interval <= 0 {
 		interval = 250 * time.Millisecond
@@ -738,7 +777,7 @@ func (n *NetGraph) dbSyncLoop(done chan struct{}) {
 }
 
 // flushDbSync pushes up to [dbSyncChunk] pending clock syncs to the DB.
-func (n *NetGraph) flushDbSync() {
+func (n *NetworkGraph) flushDbSync() {
 	if n.Db == nil {
 		return
 	}
@@ -766,7 +805,7 @@ func (n *NetGraph) flushDbSync() {
 }
 
 // flushDbSyncAll drains all pending clock syncs.
-func (n *NetGraph) flushDbSyncAll() {
+func (n *NetworkGraph) flushDbSyncAll() {
 	for {
 		n.dbPendingMx.Lock()
 		pending := len(n.dbPending)
@@ -778,21 +817,21 @@ func (n *NetGraph) flushDbSyncAll() {
 	}
 }
 
-func (n *NetGraph) marshal(v any) ([]byte, error) {
+func (n *NetworkGraph) marshal(v any) ([]byte, error) {
 	if n.Json {
 		return json.Marshal(v)
 	}
 	return msgpack.Marshal(v)
 }
 
-func (n *NetGraph) unmarshal(data []byte, v any) error {
+func (n *NetworkGraph) unmarshal(data []byte, v any) error {
 	if n.Json {
 		return json.Unmarshal(data, v)
 	}
 	return msgpack.Unmarshal(data, v)
 }
 
-func (n *NetGraph) schemaInfo(hash string) (SchemaInfo, bool) {
+func (n *NetworkGraph) schemaInfo(hash string) (SchemaInfo, bool) {
 	n.schemaStoreMx.Lock()
 	defer n.schemaStoreMx.Unlock()
 
@@ -806,8 +845,8 @@ func (n *NetGraph) schemaInfo(hash string) (SchemaInfo, bool) {
 }
 
 // receiveFromUpstream receives messages from upstream peers from
-// [NetGraph.EmitToAddr]. It's usually due to data corruption.
-func (n *NetGraph) receiveFromUpstream(conn *net.UDPConn) {
+// [NetworkGraph.EmitToAddr]. It's usually due to data corruption.
+func (n *NetworkGraph) receiveFromUpstream(conn net.Conn) {
 	buf := make([]byte, n.readBufSize)
 	for {
 		read, err := conn.Read(buf)
@@ -825,10 +864,10 @@ func (n *NetGraph) receiveFromUpstream(conn *net.UDPConn) {
 	}
 }
 
-func (n *NetGraph) receiveFromDownstream() {
+func (n *NetworkGraph) receiveFromDownstream() {
 	buf := make([]byte, n.readBufSize)
 	for {
-		read, addr, err := n.listener.ReadFromUDP(buf)
+		read, addr, err := n.listener.ReadFrom(buf)
 		if err != nil {
 			return
 		}
@@ -854,7 +893,7 @@ func (n *NetGraph) receiveFromDownstream() {
 }
 
 // processSerializedMachine applies a full machine resend to the local mirror.
-func (n *NetGraph) processSerializedMachine(ser *am.Serialized) {
+func (n *NetworkGraph) processSerializedMachine(ser *am.Serialized) {
 	n.Graph.loop.Lock()
 	defer n.Graph.loop.Unlock()
 
@@ -872,6 +911,7 @@ func (n *NetGraph) processSerializedMachine(ser *am.Serialized) {
 	gm.MTimeSum = ser.Time.Sum(nil)
 	gm.TagsMTimeSum = gm.MTimeSum
 	n.Graph.setClientTags(gm, ser.Tags)
+	n.Graph.histSync(gm, ser.QueueTick)
 
 	// drop the relay baseline, so the next relay is a full update
 	n.relaySentMx.Lock()
@@ -887,8 +927,8 @@ func (n *NetGraph) processSerializedMachine(ser *am.Serialized) {
 	n.relayPendingMx.Unlock()
 }
 
-func (n *NetGraph) processDownstreamUpdate(
-	msg *MsgGraphUpdate, from *net.UDPAddr,
+func (n *NetworkGraph) processDownstreamUpdate(
+	msg *MsgGraphUpdate, from net.Addr,
 ) {
 	n.Graph.loop.Lock()
 	defer n.Graph.loop.Unlock()
@@ -985,19 +1025,21 @@ func (n *NetGraph) processDownstreamUpdate(
 	_ = n.reqSerializedFromDownstream(from, msg.MachId)
 }
 
-func (n *NetGraph) reqSerializedFromDownstream(
-	addr *net.UDPAddr, machID string,
+func (n *NetworkGraph) reqSerializedFromDownstream(
+	addr net.Addr, machID string,
 ) error {
 	data, err := n.marshal(&MsgGraphReqSerialized{MachId: machID})
 	if err != nil {
 		return err
 	}
-	_, err = n.listener.WriteToUDP(data, addr)
+	_, err = n.listener.WriteTo(data, addr)
 
 	return err
 }
 
-func (n *NetGraph) sendSerializedToUpstream(machId string, conn *net.UDPConn) {
+func (n *NetworkGraph) sendSerializedToUpstream(
+	machId string, conn net.Conn,
+) {
 	if machId == "" {
 		return
 	}
@@ -1035,7 +1077,7 @@ func (n *NetGraph) sendSerializedToUpstream(machId string, conn *net.UDPConn) {
 
 // serializedLocal returns a full serialized snapshot of a locally traced
 // machine, or nil if the machine is not traced.
-func (n *NetGraph) serializedLocal(machId string) *am.Serialized {
+func (n *NetworkGraph) serializedLocal(machId string) *am.Serialized {
 	n.tracedMx.Lock()
 	defer n.tracedMx.Unlock()
 
@@ -1072,19 +1114,22 @@ type DbServerOpts struct {
 	ApiKeys []string
 }
 
-// Server exposes a types.DbGraph over HTTP+JSON and WebSocket on a single
-// listener. Raw GQL is executed against [NetGraph.Db].
+// Server exposes a types.DbGraph and an optional [HistoryGraph] over
+// HTTP+JSON and WebSocket on a single listener. Raw GQL is executed against
+// [NetworkGraph.Db].
 //
 //	POST /query          raw GQL body, JSON reply (msgpack via Accept)
 //	GET  /machine?id=X   one machine as [am.Serialized], lowercase JSON
+//	GET  /history?id=X   history API of one machine as [HistResp], with
+//	                     &action=<HistAction>&state=&states=&start=&end=&limit=
 //	GET  /ws             WebSocket, one frame per request:
-//	                     GQL / {"machine": "X"} -> JSON or msgpack reply,
-//	                     matching the frame type
+//	                     GQL / {"machine": "X"} / {"history": "X", ...}
+//	                     -> JSON or msgpack reply, matching the frame type
 type Server struct {
 	// Addr is the actual listen address.
 	Addr string
 
-	graph   *NetGraph
+	graph   *NetworkGraph
 	srv     *http.Server
 	apiKeys []string
 
@@ -1093,13 +1138,14 @@ type Server struct {
 	ws map[*websocket.Conn]struct{}
 }
 
-// StartDbHttpServer starts a [Server] on addr exposing [NetGraph.Db]. It
-// returns the actual listen address. [NetGraph.Close] shuts it down.
-func (n *NetGraph) StartDbHttpServer(
+// StartDbHttpServer starts a [Server] on addr exposing [NetworkGraph.Db] and
+// the optional [HistoryGraph]. It returns the actual listen address.
+// [NetworkGraph.Close] shuts it down.
+func (n *NetworkGraph) StartDbHttpServer(
 	addr string, opts ...DbServerOpts,
 ) (string, error) {
-	if n.Db == nil {
-		return "", errors.New("graph: Db is nil")
+	if n.Db == nil && n.Graph.Hist() == nil {
+		return "", errors.New("graph: Db and history are nil")
 	}
 
 	n.dbSrvMx.Lock()
@@ -1123,9 +1169,10 @@ func (n *NetGraph) StartDbHttpServer(
 		s.apiKeys = slices.Clone(opt.ApiKeys)
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /query", s.handleQuery)
-	mux.HandleFunc("GET /machine", s.handleMachine)
-	mux.HandleFunc("GET /ws", s.handleWS)
+	mux.HandleFunc("POST "+gtypes.EndpointQuery.Value, s.handleQuery)
+	mux.HandleFunc("GET "+gtypes.EndpointMachine.Value, s.handleMachine)
+	mux.HandleFunc("GET "+gtypes.EndpointHistory.Value, s.handleHistory)
+	mux.HandleFunc("GET "+gtypes.EndpointWS.Value, s.handleWS)
 	s.srv = &http.Server{Handler: s.authMiddleware(mux)}
 
 	go func() {
@@ -1214,6 +1261,12 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// no GQL database attached
+	if s.graph.Db == nil {
+		s.writeErr(w, r, http.StatusBadRequest, errNoDb)
+		return
+	}
+
 	res, err := s.graph.Db.Exec(q)
 	if err != nil {
 		s.writeErr(w, r, http.StatusBadRequest, err)
@@ -1230,6 +1283,10 @@ func (s *Server) handleMachine(w http.ResponseWriter, r *http.Request) {
 		s.writeErr(w, r, http.StatusBadRequest, errors.New("missing id"))
 		return
 	}
+	if s.graph.Db == nil {
+		s.writeErr(w, r, http.StatusBadRequest, errNoDb)
+		return
+	}
 
 	ser, err := s.machineSerialized(id)
 	if err != nil {
@@ -1244,12 +1301,121 @@ func (s *Server) handleMachine(w http.ResponseWriter, r *http.Request) {
 	s.write(w, r, http.StatusOK, ser)
 }
 
+// handleHistory serves GET /history?id=X as the history API of a machine. See
+// [amtypes.HistoryAction] for the available actions and their params.
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	hg := s.graph.Graph.Hist()
+	if hg == nil {
+		s.writeErr(w, r, http.StatusBadRequest, errNoHistory)
+		return
+	}
+
+	q := r.URL.Query()
+	id := q.Get("id")
+	if id == "" {
+		s.writeErr(w, r, http.StatusBadRequest, errors.New("missing id"))
+		return
+	}
+
+	action, params, err := parseHistReq(q)
+	if err != nil {
+		s.writeErr(w, r, http.StatusBadRequest, err)
+		return
+	}
+
+	res, err := hg.History(r.Context(), id, action, params)
+	switch {
+	case errors.Is(err, ErrMachineNotTracked):
+		s.writeErr(w, r, http.StatusNotFound, err)
+		return
+	case errors.Is(err, ErrHistoryParams), errors.Is(err, ErrHistoryAction):
+		s.writeErr(w, r, http.StatusBadRequest, err)
+		return
+	case err != nil:
+		s.writeErr(w, r, http.StatusInternalServerError, err)
+		return
+	}
+
+	s.write(w, r, http.StatusOK, res)
+}
+
+// parseHistReq parses a history action and its params from request values.
+func parseHistReq(values url.Values) (gtypes.HistoryAction, HistParams, error) {
+	var p HistParams
+	action := gtypes.HistFindLatest
+
+	if a := values.Get("action"); a != "" {
+		parsed := gtypes.HistActions.Parse(a)
+		if parsed == nil {
+			return action, p, fmt.Errorf("%w: %s", ErrHistoryAction, a)
+		}
+		action = *parsed
+	}
+
+	p.State = values.Get("state")
+	p.States = splitCsv(values.Get("states"))
+	p.Query.Active = splitCsv(values.Get("active"))
+	p.Query.Activated = splitCsv(values.Get("activated"))
+	p.Query.Inactive = splitCsv(values.Get("inactive"))
+	p.Query.Deactivated = splitCsv(values.Get("deactivated"))
+
+	for key, dst := range map[string]*time.Time{
+		"start": &p.Start,
+		"end":   &p.End,
+	} {
+		raw := values.Get(key)
+		if raw == "" {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return action, p, fmt.Errorf(
+				"%w: %s: %w", ErrHistoryParams, key, err)
+		}
+		*dst = t
+	}
+	p.Query.Start.HTime = p.Start
+	p.Query.End.HTime = p.End
+
+	if l := values.Get("limit"); l != "" {
+		n, err := strconv.Atoi(l)
+		if err != nil || n <= 0 {
+			return action, p, fmt.Errorf("%w: limit", ErrHistoryParams)
+		}
+		p.Limit = n
+	}
+
+	return action, p, nil
+}
+
+// splitCsv splits a comma-separated list into a state list.
+func splitCsv(s string) am.S {
+	if s == "" {
+		return nil
+	}
+
+	var ret am.S
+	for _, name := range strings.Split(s, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			ret = append(ret, name)
+		}
+	}
+
+	return ret
+}
+
 // handleWS serves GET /ws, one frame per request:
 //
 //	GQL text frame                -> JSON rows
 //	{"machine": "<id>"} text      -> JSON [am.Serialized]
+//	{"history": "<id>"} text      -> JSON [HistResp]
 //	msgpack GQL string (binary)   -> msgpack rows
 //	msgpack {"machine": "<id>"}   -> msgpack [am.Serialized]
+//	msgpack {"history": "<id>"}   -> msgpack [HistResp]
+//
+// History frames accepts any [amtypes.HistoryAction], e.g.:
+//
+//	{"history": "X", "action": "latest-activated", "states": "A,B"}
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		InsecureSkipVerify: true,
@@ -1275,11 +1441,33 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		q, machID := wsFrameRequest(typ, data)
+		q, machID, hist := wsFrameRequest(typ, data)
 
 		var res any
 		switch {
+		case hist != nil:
+			hg := s.graph.Graph.Hist()
+			if hg == nil {
+				res = map[string]string{"error": errNoHistory.Error()}
+				break
+			}
+			action, params, err := parseHistReq(hist)
+			if err != nil {
+				res = map[string]string{"error": err.Error()}
+				break
+			}
+			if out, err := hg.History(
+				ctx, hist.Get("history"), action, params,
+			); err != nil {
+				res = map[string]string{"error": err.Error()}
+			} else {
+				res = out
+			}
 		case machID != "":
+			if s.graph.Db == nil {
+				res = map[string]string{"error": errNoDb.Error()}
+				break
+			}
 			ser, err := s.machineSerialized(machID)
 			switch {
 			case err != nil:
@@ -1291,6 +1479,8 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			}
 		case q == "":
 			res = map[string]string{"error": "empty query"}
+		case s.graph.Db == nil:
+			res = map[string]string{"error": errNoDb.Error()}
 		default:
 			if rows, err := s.graph.Db.Exec(q); err != nil {
 				res = map[string]string{"error": err.Error()}
@@ -1337,11 +1527,11 @@ func tracerDataFromSerialized(ser *am.Serialized) *rpc.TracerData {
 	}
 }
 
-// wsFrameRequest parses a WS frame into a GQL query or a serialized machine
-// request, matching the frame encoding.
+// wsFrameRequest parses a WS frame into a GQL query, a serialized machine
+// request, or a history request, matching the frame encoding.
 func wsFrameRequest(
 	typ websocket.MessageType, data []byte,
-) (gqlQuery string, machID string) {
+) (gqlQuery string, machID string, hist url.Values) {
 	unmarshal := json.Unmarshal
 	if typ == websocket.MessageBinary {
 		unmarshal = msgpack.Unmarshal
@@ -1351,7 +1541,14 @@ func wsFrameRequest(
 	var env map[string]string
 	if err := unmarshal(data, &env); err == nil {
 		if id := env["machine"]; id != "" {
-			return "", id
+			return "", id, nil
+		}
+		if id := env["history"]; id != "" {
+			hist = make(url.Values, len(env))
+			for key, val := range env {
+				hist.Set(key, val)
+			}
+			return "", "", hist
 		}
 	}
 
@@ -1364,7 +1561,7 @@ func wsFrameRequest(
 		}
 	}
 
-	return strings.TrimSpace(q), ""
+	return strings.TrimSpace(q), "", nil
 }
 
 // machineSerialized rebuilds an [am.Serialized] from the mirrored DB, with

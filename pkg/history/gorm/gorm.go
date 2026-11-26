@@ -8,20 +8,23 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"math/rand/v2"
 	"os"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/ncruces/go-sqlite3"
 	"github.com/ncruces/go-sqlite3/gormlite"
 	"github.com/ncruces/go-sqlite3/vfs"
-	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
+
+	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 
 	"github.com/pancsta/asyncmachine-go/internal/nofmt"
 	"github.com/pancsta/asyncmachine-go/internal/utils"
@@ -38,6 +41,18 @@ type Config struct {
 	QueueBatch int32
 	// amount of goroutines doing bulk saving (default: 10)
 	SavePool int
+	// KeepDb prevents Dispose from closing the underlying *sql.DB, for
+	// [Memory] instances sharing a database connection. Default: false.
+	KeepDb bool
+	// SkipMigrate prevents NewMemory from migrating the DB schema. Useful for
+	// sharded setups, where the schema is migrated once per shard via
+	// [Migrate]. Default: false.
+	SkipMigrate bool
+}
+
+// Migrate creates or updates the history schema of db.
+func Migrate(db *gorm.DB) error {
+	return db.AutoMigrate(&Machine{}, &Time{}, &State{}, &Tick{})
 }
 
 // ///// ///// /////
@@ -249,11 +264,13 @@ func (t *tracer) MachineInit(mach am.Api) context.Context {
 		// TODO cache
 		rec.Schema, err = json.Marshal(mach.Schema())
 		if err != nil {
+			m.initErr = err
 			m.onErr(err)
 			return nil
 		}
 		rec.StateNames, err = json.Marshal(mach.StateNames())
 		if err != nil {
+			m.initErr = err
 			m.onErr(err)
 			return nil
 		}
@@ -291,6 +308,7 @@ func (t *tracer) MachineInit(mach am.Api) context.Context {
 		// TODO cascade delete data in other tables
 	}).Create(rec).Error
 	if err != nil {
+		m.initErr = nofmt.Errorf("init machine: %w", err)
 		m.onErr(err)
 		return nil
 	}
@@ -555,6 +573,10 @@ type Memory struct {
 	Saved          atomic.Uint64
 	// Value of Saved at the end of the last GC
 	SavedGc atomic.Uint64
+	// MetricSqliteBusy counts busy database retries of history writes.
+	MetricSqliteBusy atomic.Int32
+	// MetricDropped counts records dropped after busy retries were exhausted.
+	MetricDropped atomic.Int32
 
 	savePool *errgroup.Group
 	// pending DB writes (awaited by Sync)
@@ -564,8 +586,13 @@ type Memory struct {
 	// TODO use Context
 	disposed atomic.Bool
 	machRec  *Machine
-	queue    *queue
-	onErr    func(err error)
+	// initErr is set when the machine record could not be initialized.
+	initErr error
+	queue   *queue
+	onErr   func(err error)
+	// errMx guards lastErr, the last failed write.
+	errMx   sync.Mutex
+	lastErr error
 	// global lock, needed mostly for [Memory.MachineRecord].
 	mx               sync.Mutex
 	cacheTrackedIdxs []int
@@ -583,11 +610,10 @@ func NewMemory(
 ) (*Memory, error) {
 
 	// update the DB schema
-	err := db.AutoMigrate(
-		&Machine{}, &Time{}, &State{}, &Tick{},
-	)
-	if err != nil {
-		return nil, err
+	if !cfg.SkipMigrate {
+		if err := Migrate(db); err != nil {
+			return nil, err
+		}
 	}
 
 	// TODO view per machine with state names as columns
@@ -655,13 +681,16 @@ func NewMemory(
 	}
 	mem.tr = tr
 	tr.MachineInit(mach)
+	if mem.initErr != nil {
+		return nil, mem.initErr
+	}
 	amhelp.DisposeBind(mach, func(id string, ctx context.Context) {
 		err := mem.Dispose()
 		if err != nil {
 			mem.onErr(err)
 		}
 	})
-	_, err = mach.BindTracer(tr)
+	_, err := mach.TracerBind(tr)
 
 	return mem, err
 }
@@ -677,7 +706,7 @@ func (m *Memory) FindLatest(
 	s := query.Start
 	e := query.End
 
-	return m.Match(ctx, limit, func(now *am.TimeIndex, db *gorm.DB) *gorm.DB {
+	matcher := func(now *am.TimeIndex, db *gorm.DB) *gorm.DB {
 
 		// states conditions
 
@@ -717,10 +746,6 @@ func (m *Memory) FindLatest(
 		// states
 		for _, state := range utils.SlicesUniq(joins) {
 			db = m.JoinState(db, state)
-		}
-		// tx
-		if retTx && m.Cfg.StoreTransitions {
-			db = m.JoinTransition(db)
 		}
 
 		// time conditions
@@ -783,7 +808,20 @@ func (m *Memory) FindLatest(
 		}
 
 		return db
-	})
+	}
+	// TODO perf: pass retTx
+	records, err := m.Match(ctx, limit, matcher)
+	if err != nil || retTx {
+		return records, err
+	}
+	// transitions live on the Time row, drop them when not requested
+	for _, rec := range records {
+		if rec != nil {
+			rec.Transition = nil
+		}
+	}
+
+	return records, nil
 }
 
 // MachineRecord is [amhist.BaseMemory.MachineRecord].
@@ -828,6 +866,9 @@ func (m *Memory) Dispose() error {
 	defer m.mx.Unlock()
 
 	trErr := m.Mach.DetachTracer(m.tr.TracerId())
+	if m.Cfg.KeepDb {
+		return trErr
+	}
 	if stdDb, err := m.Db.DB(); err != nil {
 		return errors.Join(err, trErr)
 	} else {
@@ -844,11 +885,6 @@ func (m *Memory) JoinState(query *gorm.DB, name string) *gorm.DB {
 			ON `+name+`.time_id = times.id 
 			AND `+name+`.machine_id = times.machine_id
 	`)).Where(name+".state_id = ?", sId)
-}
-
-func (m *Memory) JoinTransition(query *gorm.DB) *gorm.DB {
-	// TODO test
-	return query.Preload("transitions")
 }
 
 // func (m *Memory) SelectTime(query *gorm.DB, name string) *gorm.DB {
@@ -925,24 +961,24 @@ func (m *Memory) Match(
 			}
 
 			// optional fields
-			retTx := ret[i].Transition
+			txRec := ret[i].Transition
 			if r.TxSourceTx != nil && r.TxSourceMach != nil {
-				retTx.SourceTx = *r.TxSourceTx
-				retTx.SourceMach = *r.TxSourceMach
+				txRec.SourceTx = *r.TxSourceTx
+				txRec.SourceMach = *r.TxSourceMach
 			}
 			if r.TxQueuedAt != nil && r.TxExecutedAt != nil {
-				retTx.QueuedAt = *r.TxQueuedAt
-				retTx.ExecutedAt = *r.TxExecutedAt
+				txRec.QueuedAt = *r.TxQueuedAt
+				txRec.ExecutedAt = *r.TxExecutedAt
 			}
 
 			// json fields
 			if r.TxCalled != nil {
-				if err := json.Unmarshal(r.TxCalled, &retTx.Called); err != nil {
+				if err := json.Unmarshal(r.TxCalled, &txRec.Called); err != nil {
 					return nil, err
 				}
 			}
 			if r.TxArguments != nil {
-				if err := json.Unmarshal(*r.TxArguments, &retTx.Arguments); err != nil {
+				if err := json.Unmarshal(*r.TxArguments, &txRec.Arguments); err != nil {
 					return nil, err
 				}
 			}
@@ -1032,7 +1068,7 @@ func (m *Memory) Sync(ctx context.Context) error {
 
 	m.log("sync OK")
 
-	return nil
+	return m.takeErr()
 }
 
 // waitSave waits for the pending DB writes to finish or until ctx is done.
@@ -1058,6 +1094,15 @@ func (m *Memory) writeDb(rLocked bool) {
 	}
 
 	q := m.queue
+	if m.machRec == nil {
+		// no machine record to attach the batch to
+		l := len(q.times)
+		q.times = nil
+		q.ticks = nil
+		m.SavePending.Add(-int32(l))
+
+		return
+	}
 
 	// copy
 	machRec := *m.machRec
@@ -1081,31 +1126,108 @@ func (m *Memory) writeDb(rLocked bool) {
 			defer m.syncMx.RUnlock()
 		}
 
-		// TODO sqlite-busy retry loop
-		// sync mach record
-		if err := m.Db.Save(machRec).Error; err != nil {
-			m.onErr(nofmt.Errorf("failed to save: %w", err))
-			return err
-		}
-		// TODO optimize: parallel save?
-		// times
-		dbTimes := gorm.G[Time](m.Db)
-		err := dbTimes.CreateInBatches(m.Mach.Context(), &times, 100)
-		if err != nil {
-			m.onErr(err)
-			return err
-		}
-
-		// ticks
-		dbTicks := gorm.G[Tick](m.Db)
-		err = dbTicks.CreateInBatches(m.Mach.Context(), &ticks, 100)
-		if err != nil {
+		if err := m.writeBatch(&machRec, times, ticks); err != nil {
+			m.setErr(err)
 			m.onErr(err)
 			return err
 		}
 
 		return nil
 	})
+}
+
+// TODO move
+const (
+	// busyRetryMax is the max number of write attempts on a busy database.
+	busyRetryMax = 5
+	// busyRetryWindow is the max time spent retrying a busy database.
+	busyRetryWindow     = 2 * time.Minute
+	busyRetryBackoff    = 50 * time.Millisecond
+	busyRetryBackoffMax = 2 * time.Second
+)
+
+// writeBatch writes one flush batch, retrying on a busy database. The batch is
+// written in a transaction, so retries don't duplicate rows.
+func (m *Memory) writeBatch(
+	machRec *Machine, times []Time, ticks []Tick,
+) error {
+	deadline := time.Now().Add(busyRetryWindow)
+	backoff := busyRetryBackoff
+
+	for attempt := 0; ; attempt++ {
+		err := m.writeBatchOnce(machRec, times, ticks)
+		if err == nil {
+			return nil
+		}
+		if !isBusyErr(err) || attempt >= busyRetryMax-1 ||
+			time.Now().After(deadline) {
+
+			m.MetricDropped.Add(int32(len(times)))
+			return err
+		}
+
+		m.MetricSqliteBusy.Add(1)
+		// jittered backoff, to avoid a thundering herd on unblock
+		jitter := rand.Int64N(int64(backoff/2) + 1)
+		select {
+		case <-m.Mach.Context().Done():
+			m.MetricDropped.Add(int32(len(times)))
+			return err
+		case <-time.After(backoff/2 + time.Duration(jitter)):
+		}
+		backoff = min(backoff*2, busyRetryBackoffMax)
+	}
+}
+
+// writeBatchOnce writes one flush batch in a single transaction.
+func (m *Memory) writeBatchOnce(
+	machRec *Machine, times []Time, ticks []Tick,
+) error {
+	ctx := m.Mach.Context()
+
+	return m.Db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(machRec).Error; err != nil {
+			return nofmt.Errorf("failed to save: %w", err)
+		}
+		if len(times) > 0 {
+			err := gorm.G[Time](tx).CreateInBatches(ctx, &times, 100)
+			if err != nil {
+				return err
+			}
+		}
+		if len(ticks) > 0 {
+			err := gorm.G[Tick](tx).CreateInBatches(ctx, &ticks, 100)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
+// isBusyErr returns true for sqlite busy / locked errors.
+func isBusyErr(err error) bool {
+	return errors.Is(err, sqlite3.BUSY) || errors.Is(err, sqlite3.LOCKED)
+}
+
+// setErr stores the last failed write, returned by [Memory.Sync].
+func (m *Memory) setErr(err error) {
+	m.errMx.Lock()
+	defer m.errMx.Unlock()
+
+	m.lastErr = err
+}
+
+// takeErr returns and clears the last failed write.
+func (m *Memory) takeErr() error {
+	m.errMx.Lock()
+	defer m.errMx.Unlock()
+
+	err := m.lastErr
+	m.lastErr = nil
+
+	return err
 }
 
 func (m *Memory) log(msg string, args ...any) {

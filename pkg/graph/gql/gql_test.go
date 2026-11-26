@@ -3,20 +3,22 @@ package gql_test
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/goforj/httpx"
+
+	"github.com/vmihailenco/msgpack/v5"
+
 	ssrel "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
-	"github.com/vmihailenco/msgpack/v5"
 
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
 	"github.com/pancsta/asyncmachine-go/pkg/graph/gql"
-	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
+	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/types"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 
@@ -26,7 +28,7 @@ import (
 
 // ///// ///// /////
 
-// TestDbHttpServer wires the native backend into NetGraph's generic DB HTTP
+// TestDbHttpServer wires the native backend into NetworkGraph's generic DB HTTP
 // server (POST /query, GET /machine).
 func TestDbHttpServer(t *testing.T) {
 	ctx := t.Context()
@@ -38,7 +40,7 @@ func TestDbHttpServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ng, err := amgraph.NewNetGraph(ctx, "127.0.0.1:0", g)
+	ng, err := amgraph.NewNetworkGraph(ctx, "127.0.0.1:0", g)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,27 +82,19 @@ func TestDbHttpServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := "http://" + addr
+	httpc := httpx.New()
 
 	post := func(accept, q string) (int, []byte) {
 		t.Helper()
-		req, err := http.NewRequest("POST", base+"/query", strings.NewReader(q))
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("Content-Type", "text/plain")
+		opts := []httpx.Option{httpx.Header("Content-Type", "text/plain")}
 		if accept != "" {
-			req.Header.Set("Accept", accept)
+			opts = append(opts, httpx.Header("Accept", accept))
 		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
+		res := httpx.Post[string, []byte](httpc, base+"/query", q, opts...)
+		if res.Response == nil {
+			t.Fatalf("query %q: %v", q, res.Err)
 		}
-		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return resp.StatusCode, body
+		return res.Response.StatusCode, res.Response.Bytes()
 	}
 
 	// query, JSON
@@ -137,20 +131,11 @@ func TestDbHttpServer(t *testing.T) {
 	}
 
 	// serialized machine
-	resp, err := http.Get(base + "/machine?id=mach-http")
-	if err != nil {
-		t.Fatal(err)
+	gres := httpx.Get[am.Serialized](httpc, base+"/machine?id=mach-http")
+	if gres.Err != nil {
+		t.Fatalf("machine: %v", gres.Err)
 	}
-	body, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("machine: %d %s", resp.StatusCode, body)
-	}
-
-	var ser am.Serialized
-	if err := json.Unmarshal(body, &ser); err != nil {
-		t.Fatal(err)
-	}
+	ser := gres.Body
 	if ser.ID != "mach-http" || len(ser.StateNames) != len(ssrel.Names) {
 		t.Fatalf("unexpected machine: %#v", ser)
 	}
@@ -162,13 +147,11 @@ func TestDbHttpServer(t *testing.T) {
 	}
 
 	// missing machine
-	resp, err = http.Get(base + "/machine?id=nope")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("missing machine: %d", resp.StatusCode)
+	gres = httpx.Get[am.Serialized](httpc, base+"/machine?id=nope")
+	var httpErr *httpx.HTTPError
+	if !errors.As(gres.Err, &httpErr) ||
+		httpErr.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing machine: %v", gres.Err)
 	}
 }
 
