@@ -1,0 +1,14 @@
+name: setup
+description: Sets up Go and Task with a single module/build cache.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: "**/go.sum"
+    - uses: arduino/setup-task@v3.0.0
+      with:
+        version: 3.x
+        repo-token: ${{ github.token }}

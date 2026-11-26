@@ -343,7 +343,7 @@ tasks:
       - go test ./... {{.CLI_ARGS}}
       - go test -race -timeout 1m ./... {{.CLI_ARGS}}
 
-  test-pubsub-integration:
+  test-integration-pubsub:
     env:
       AM_TEST_RUNNER: 1
     desc: Run /pkg/pubsub integration tests (dedicated go.mod)
@@ -655,11 +655,10 @@ tasks:
   install-am-gen: go install ./tools/cmd/am-gen
 
   install-deps-ci:
+    desc: Install CI dependencies without modifying modules
     cmds:
-      - go mod tidy
-      - task: tidy-pubsub
+      - go mod download
       - task: link-pubsub
-      - go install github.com/hhatto/gocloc/cmd/gocloc@latest
 
   install-deps:
     desc: Install project dependencies

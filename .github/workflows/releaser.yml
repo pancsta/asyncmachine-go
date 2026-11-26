@@ -8,21 +8,26 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
-      -
-        name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      -
-        name: Set up Go
-        uses: actions/setup-go@v4
-      -
-        name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: "**/go.sum"
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: latest

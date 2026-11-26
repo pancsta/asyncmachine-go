@@ -2,52 +2,25 @@ name: Linter
 
 on: release
 
-jobs:
-  build:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
+jobs:
+  lint:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go-version: [ '1.23' ]
 
     steps:
-      # Get values for cache paths to be used in later steps
-      # Using the modern GITHUB_OUTPUT method
-      - id: go-cache-paths
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Markdown
         run: |
-          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
-          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+          uv tool install --force rumdl
+          task lint-md
 
-      # set up
-      - uses: actions/checkout@v4
-      # rumdl is installed via `uv tool install` in install-deps-linter
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-go@v4
+      - name: Go
+        uses: golangci/golangci-lint-action@v9
         with:
-          go-version: ${{ matrix.go-version }}
-
-      - name: GolangCI-Lint Cache
-        uses: actions/cache@v4
-        with:
-          # Default cache path for golangci-lint on Linux
-          path: ~/.cache/golangci-lint
-          # Key on go.sum and the linter config file
-          key: ${{ runner.os }}-golangci-lint-${{ hashFiles('**/go.sum', '.golangci.yml', '.golangci.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-golangci-lint-
-
-      - name: Task Cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/bin/task
-          key: ${{ runner.os }}
-
-      # deps
-      - name: Install Task
-        run: ./scripts/dep-taskfile.sh
-      - name: Install linter dependencies
-        run: task install-deps-linter
-
-      # run
-      - name: Run linters
-        run: task lint-ci
+          args: --timeout 15m
