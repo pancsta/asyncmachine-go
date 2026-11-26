@@ -543,6 +543,10 @@ func (m *Machine) setHandlers(locked bool, handlers []*handler) {
 // StateException state.
 //
 // ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenErr(nil)
 func (m *Machine) WhenErr(disposeCtx context.Context) <-chan struct{} {
 	return m.When([]string{StateException}, disposeCtx)
 }
@@ -551,6 +555,10 @@ func (m *Machine) WhenErr(disposeCtx context.Context) <-chan struct{} {
 // become active or the machine gets disposed.
 //
 // ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.When(am.S{"Foo", "Bar"}, nil)
 func (m *Machine) When(states S, ctx context.Context) <-chan struct{} {
 	if m.disposed.Load() {
 		return m.subs.Closed
@@ -565,6 +573,10 @@ func (m *Machine) When(states S, ctx context.Context) <-chan struct{} {
 
 // When1 is an alias to When() for a single state.
 // See When.
+//
+// # Example
+//
+//	<-mach.When1("Foo", nil)
 func (m *Machine) When1(state string, ctx context.Context) <-chan struct{} {
 	return m.When(S{state}, ctx)
 }
@@ -573,6 +585,10 @@ func (m *Machine) When1(state string, ctx context.Context) <-chan struct{} {
 // become inactive or the machine gets disposed.
 //
 // ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenNot(am.S{"Foo"}, nil)
 func (m *Machine) WhenNot(states S, ctx context.Context) <-chan struct{} {
 	if m.disposed.Load() {
 		return m.subs.Closed
@@ -587,6 +603,10 @@ func (m *Machine) WhenNot(states S, ctx context.Context) <-chan struct{} {
 
 // WhenNot1 is an alias to WhenNot() for a single state.
 // See WhenNot.
+//
+// # Example
+//
+//	<-mach.WhenNot1("Foo", nil)
 func (m *Machine) WhenNot1(state string, ctx context.Context) <-chan struct{} {
 	return m.WhenNot(S{state}, ctx)
 }
@@ -596,6 +616,10 @@ func (m *Machine) WhenNot1(state string, ctx context.Context) <-chan struct{} {
 // Machine time can be sourced from [Machine.Time](), or [Machine.Clock]().
 //
 // ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenTime(am.S{"Foo", "Bar"}, am.Time{6, 10}, nil)
 func (m *Machine) WhenTime(
 	states S, times Time, ctx context.Context,
 ) <-chan struct{} {
@@ -625,6 +649,10 @@ func (m *Machine) WhenTime(
 // higher).
 //
 // ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenTime1("Foo", 6, nil)
 func (m *Machine) WhenTime1(
 	state string, ticks uint64, ctx context.Context,
 ) <-chan struct{} {
@@ -634,6 +662,10 @@ func (m *Machine) WhenTime1(
 // WhenTimeSum waits till machine time equals the given value (or higher).
 //
 // ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenTimeSum(16, nil)
 func (m *Machine) WhenTimeSum(
 	mtime uint64, ctx context.Context,
 ) <-chan struct{} {
@@ -659,6 +691,10 @@ func (m *Machine) WhenTimeSum(
 // underneath.
 //
 // ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenTicks("Foo", 2, nil)
 func (m *Machine) WhenTicks(
 	state string, ticks int, ctx context.Context,
 ) <-chan struct{} {
@@ -669,6 +705,10 @@ func (m *Machine) WhenTicks(
 // activity.
 //
 // ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenNextActive("Foo", nil)
 func (m *Machine) WhenNextActive(
 	state string, ctx context.Context,
 ) <-chan struct{} {
@@ -677,9 +717,16 @@ func (m *Machine) WhenNextActive(
 
 // WhenQuery returns a channel that will be closed when the passed [clockCheck]
 // function returns true. [clockCheck] should be a pure function and
-// non-blocking.`
+// non-blocking.
 //
 // ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenQuery(func(c am.Clock) bool {
+//		// Foo activated >5 times and Bar activated twice as much
+//		return c["Foo"] >= 10 && c["Bar"] >= 2*c["Foo"]
+//	}, nil)
 func (m *Machine) WhenQuery(
 	clockCheck func(clock Clock) bool, ctx context.Context,
 ) <-chan struct{} {
@@ -714,7 +761,10 @@ func (m *Machine) WhenQueueEnds() <-chan struct{} {
 }
 
 // WhenQueue waits until the passed queueTick gets processed.
-// TODO example
+//
+// # Example
+//
+//	<-mach.WhenQueue(mach.Add1("Foo", nil))
 func (m *Machine) WhenQueue(tick Result) <-chan struct{} {
 	if m.disposed.Load() {
 		return m.subs.Closed
@@ -739,6 +789,10 @@ func (m *Machine) WhenQueue(tick Result) <-chan struct{} {
 // a specific call.
 //
 // ctx: optional context that will close the channel when handler loop ends.
+//
+// # Example
+//
+//	<-mach.WhenArgs("Foo", am.A{"ID": 123}, nil)
 func (m *Machine) WhenArgs(
 	state string, args A, ctx context.Context,
 ) <-chan struct{} {
@@ -916,6 +970,11 @@ func (m *Machine) PrependMut(mut *Mutation) Result {
 // Add activates a list of states in the machine, returning the result of the
 // transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
+//
+// # Example
+//
+//	mach.Add(am.S{"Foo", "Bar"}, nil)
+//	// (Foo:1 Bar:1)
 func (m *Machine) Add(states S, args A) Result {
 	if m.disposing.Load() || m.Backoff() {
 		return Canceled
@@ -944,6 +1003,11 @@ func (m *Machine) Add(states S, args A) Result {
 
 // Add1 is a shorthand method to add a single state with the passed args.
 // See Add().
+//
+// # Example
+//
+//	mach.Add1("Foo", nil)
+//	// (Foo:1)
 func (m *Machine) Add1(state string, args A) Result {
 	return m.Add(S{state}, args)
 }
@@ -1146,6 +1210,11 @@ func (m *Machine) Err() error {
 // Remove deactivates a list of states in the machine, returning the result of
 // the transition (Executed, Queued, Canceled).
 // Like every mutation method, it will resolve relations and trigger handlers.
+//
+// # Example
+//
+//	mach.Remove(am.S{"Foo"}, nil)
+//	// ()
 func (m *Machine) Remove(states S, args A) Result {
 	if m.disposing.Load() || m.Backoff() {
 		return Canceled
@@ -1188,7 +1257,12 @@ func (m *Machine) Remove(states S, args A) Result {
 	return res
 }
 
-// Remove1 is [Machine.Remove1] for a single state.
+// Remove1 is [Machine.Remove] for a single state.
+//
+// # Example
+//
+//	mach.Remove1("Foo", nil)
+//	// ()
 func (m *Machine) Remove1(state string, args A) Result {
 	return m.Remove(S{state}, args)
 }
@@ -1196,6 +1270,11 @@ func (m *Machine) Remove1(state string, args A) Result {
 // Set deactivates a list of states in the machine, returning the result of
 // the transition (Executed, Canceled, Queued).
 // Like every mutation method, it will resolve relations and trigger handlers.
+//
+// # Example
+//
+//	mach.Set(am.S{"Foo"}, nil)
+//	// (Foo:1)
 func (m *Machine) Set(states S, args A) Result {
 	if m.disposing.Load() || uint16(m.queueLen.Load()) >= m.QueueLimit {
 		return Canceled
@@ -1246,7 +1325,7 @@ func (m *Machine) SetTags(tags []string) {
 // Is checks if all the passed states are currently active.
 //
 //	machine.StringAll() // ()[Foo:0 Bar:0 Baz:0]
-//	machine.Add(S{"Foo"})
+//	machine.Add(S{"Foo"}, nil)
 //	machine.Is(S{"Foo"}) // true
 //	machine.Is(S{"Foo", "Bar"}) // false
 func (m *Machine) Is(states S) bool {
@@ -1290,7 +1369,7 @@ func (m *Machine) is(states S) bool {
 //
 //	machine.StringAll()
 //	// -> ()[A:0 B:0 C:0 D:0]
-//	machine.Add(S{"A", "B"})
+//	machine.Add(S{"A", "B"}, nil)
 //
 //	// not(A) and not(C)
 //	machine.Not(S{"A", "C"})
@@ -1322,7 +1401,7 @@ func (m *Machine) Not1(state string) bool {
 // from Is.
 //
 //	machine.StringAll() // ()[Foo:0 Bar:0 Baz:0]
-//	machine.Add(S{"Foo"})
+//	machine.Add(S{"Foo"}, nil)
 //	// is(Foo, Bar) or is(Bar)
 //	machine.Any(S{"Foo", "Bar"}, S{"Bar"}) // false
 //	// is(Foo) or is(Bar)
@@ -1645,7 +1724,7 @@ func (m *Machine) bindHandlers(h *handler, opts ...BindOpts) (string, error) {
 // TODO move
 var idRe = regexp.MustCompile(`[^a-zA-Z0-9-_.]+`)
 
-// HandlersBindMaps is like [Machine.BindHandlers] but accepts maps of
+// HandlersBindMaps is like [Machine.HandlersBind] but accepts maps of
 // handlers to bypass reflecting structs. It may lead to higher performance.
 // Returns a binding ID.
 func (m *Machine) HandlersBindMaps(
@@ -2040,6 +2119,7 @@ func (m *Machine) setActiveStates(
 	return previous
 }
 
+// AddBreakpoint1 is a single state version of [Machine.AddBreakpoint].
 func (m *Machine) AddBreakpoint1(added string, removed string, strict bool) {
 	if added != "" {
 		m.AddBreakpoint(S{added}, nil, strict)
@@ -2757,6 +2837,8 @@ loop:
 			}
 			break loop
 
+		// TODO perf: add 100 nil wait chans and WaitOnCh(chan, callback) method
+
 		case call, ok := <-m.handlerStart:
 			if !ok {
 				return
@@ -2987,6 +3069,7 @@ func (m *Machine) IsQueuedAbove(threshold int, mutType MutationType,
 	return false
 }
 
+// QueueLen returns the number of mutations currently in the queue.
 func (m *Machine) QueueLen() uint16 {
 	return uint16(m.queueLen.Load())
 }
@@ -3739,6 +3822,8 @@ func (m *Machine) SetGroupsString(groups map[string]S, order []string) {
 	m.groupsOrder = order
 }
 
+// Groups returns the machine's state groups as indexes, along with the
+// group order. See [Machine.SetGroups].
 func (m *Machine) Groups() (map[string][]int, []string) {
 	// TODO rename to SchemaTree(optGroups, optStates, ...)
 	//  return a CLEAR tree (groups, inherited) per each mach

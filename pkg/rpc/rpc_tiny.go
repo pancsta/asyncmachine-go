@@ -476,8 +476,13 @@ func BindHandlersServer(h *Server, mach *am.Machine) (string, error) {
 
 // ///// ///// /////
 
-// HandlersBind is [am.Api.BindHandlers]. Not supported in TinyGo, use
-// [am.Machine.HandlerBindMaps] instead.
+// HandlersBind binds a struct of handler methods to machine's states, based on
+// the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
+// optionally return bool.
+//
+// # TinyGo
+//
+// Not supported in TinyGo, use [am.Machine.HandlersBindMaps] instead.
 func (m *NetworkMachine) HandlersBind(
 	handlers any, opts ...am.BindOpts,
 ) (string, error) {

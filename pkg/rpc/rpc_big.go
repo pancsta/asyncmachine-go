@@ -76,7 +76,11 @@ func newHandler(
 	}
 }
 
-// HandlersBind is [am.Api.BindHandlers].
+// HandlersBind binds a struct of handler methods to machine's states, based on
+// the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
+// optionally return bool.
+//
+// # NetworkMachine
 //
 // NetworkMachine supports only pipe handlers (final ones, without negotiation).
 func (m *NetworkMachine) HandlersBind(

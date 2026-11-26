@@ -157,211 +157,451 @@ type Api interface {
 
 	// Mutations (remote)
 
-	// Add1 is [Machine.Add1].
+	// Add1 is a shorthand method to add a single state with the passed args.
+	// See Add().
+	//
+	// # Example
+	//
+	// 	mach.Add1("Foo", nil)
+	// 	// (Foo:1)
 	Add1(state string, args A) Result
-	// Add is [Machine.Add].
+	// Add activates a list of states in the machine, returning the result of the
+	// transition (Executed, Queued, Canceled).
+	// Like every mutation method, it will resolve relations and trigger handlers.
+	//
+	// # Example
+	//
+	// 	mach.Add(am.S{"Foo", "Bar"}, nil)
+	// 	// (Foo:1 Bar:1)
 	Add(states S, args A) Result
-	// Remove1 is [Machine.Remove1].
+	// Remove1 is [Machine.Remove] for a single state.
+	//
+	// # Example
+	//
+	// 	mach.Remove1("Foo", nil)
+	// 	// ()
 	Remove1(state string, args A) Result
-	// Remove is [Machine.Remove].
+	// Remove deactivates a list of states in the machine, returning the result of
+	// the transition (Executed, Queued, Canceled).
+	// Like every mutation method, it will resolve relations and trigger handlers.
+	//
+	// # Example
+	//
+	// 	mach.Remove(am.S{"Foo"}, nil)
+	// 	// ()
 	Remove(states S, args A) Result
-	// AddErr is [Machine.AddErr].
+	// AddErr is a dedicated method to add the StateException state with the
+	// passed error and optional arguments.
+	// Like every mutation method, it will resolve relations and trigger handlers.
+	// AddErr produces a stack trace of the error, if LogStackTrace is enabled.
 	AddErr(err error, args A) Result
-	// AddErrState is [Machine.AddErrState].
+	// AddErrState adds a dedicated error state, along with the build in
+	// StateException state. Like every mutation method, it will resolve relations
+	// and trigger handlers. AddErrState produces a stack trace of the error, if
+	// LogStackTrace is enabled.
 	AddErrState(state string, err error, args A) Result
-	// Toggle is [Machine.Toggle].
+	// Toggle deactivates a list of states in case all are active, or activates
+	// them otherwise. Returns the result of the transition (Executed, Queued,
+	// Canceled).
 	Toggle(states S, args A) Result
-	// Toggle1 is [Machine.Toggle1].
+	// Toggle1 activates or deactivates a single state, depending on its current
+	// state. Returns the result of the transition (Executed, Queued, Canceled).
 	Toggle1(state string, args A) Result
-	// Set is [Machine.Set].
+	// Set deactivates a list of states in the machine, returning the result of
+	// the transition (Executed, Canceled, Queued).
+	// Like every mutation method, it will resolve relations and trigger handlers.
+	//
+	// # Example
+	//
+	// 	mach.Set(am.S{"Foo"}, nil)
+	// 	// (Foo:1)
 	Set(states S, args A) Result
 
 	// Traced mutations (remote)
 
-	// EvAdd1 is [Machine.EvAdd1].
+	// EvAdd1 is like Add1 but passed the source event as the 1st param, which
+	// results in traceable transitions.
 	EvAdd1(event *Event, state string, args A) Result
-	// EvAdd is [Machine.EvAdd].
+	// EvAdd is like Add, but passed the source event as the 1st param, which
+	// results in traceable transitions.
 	EvAdd(event *Event, states S, args A) Result
-	// EvRemove1 is [Machine.EvRemove1].
+	// EvRemove1 is like Remove1, but passed the source event as the 1st param,
+	// which results in traceable transitions.
 	EvRemove1(event *Event, state string, args A) Result
-	// EvRemove is [Machine.EvRemove].
+	// EvRemove is like Remove but passed the source event as the 1st param, which
+	// results in traceable transitions.
 	EvRemove(event *Event, states S, args A) Result
-	// EvAddErr is [Machine.EvAddErr].
+	// EvAddErr is like AddErr, but passed the source event as the 1st param,
+	// which results in traceable transitions.
 	EvAddErr(event *Event, err error, args A) Result
-	// EvAddErrState is [Machine.EvAddErrState].
+	// EvAddErrState is like AddErrState, but passed the source event as the 1st
+	// param, which results in traceable transitions.
 	EvAddErrState(event *Event, state string, err error, args A) Result
-	// EvToggle is [Machine.Toggle].
+	// EvToggle is a traced version of [Machine.Toggle].
 	EvToggle(event *Event, states S, args A) Result
-	// EvToggle1 is [Machine.Toggle1].
+	// EvToggle1 is a traced version of [Machine.Toggle1].
 	EvToggle1(event *Event, state string, args A) Result
 
 	// Waiting (remote)
 
-	// WhenArgs is [Machine.WhenArgs].
+	// WhenArgs returns a channel that will be closed when the passed state
+	// becomes active with all the passed args. ArgsBase are compared using
+	// the native
+	// '=='. It's meant to be used with async Multi states, to filter out
+	// a specific call.
+	//
+	// ctx: optional context that will close the channel when handler loop ends.
+	//
+	// # Example
+	//
+	// 	<-mach.WhenArgs("Foo", am.A{"ID": 123}, nil)
 	WhenArgs(state string, args A, ctx context.Context) <-chan struct{}
 
 	// ///// LOCAL
 
 	// Checking (local)
 
-	// Err is [Machine.Err].
+	// Err returns the last error.
 	Err() error
-	// IsErr is [Machine.IsErr].
+	// IsErr checks if the machine has the StateException state currently active.
 	IsErr() bool
-	// Is is [Machine.Is].
+	// Is checks if all the passed states are currently active.
+	//
+	// 	machine.StringAll() // ()[Foo:0 Bar:0 Baz:0]
+	// 	machine.Add(S{"Foo"}, nil)
+	// 	machine.Is(S{"Foo"}) // true
+	// 	machine.Is(S{"Foo", "Bar"}) // false
 	Is(states S) bool
-	// Is1 is [Machine.Is1].
+	// Is1 is [Machine.Is] for a single state.
 	Is1(state string) bool
-	// Any is [Machine.Any].
+	// Any is a group call to Is, returns true if any of the params return true
+	// from Is.
+	//
+	// 	machine.StringAll() // ()[Foo:0 Bar:0 Baz:0]
+	// 	machine.Add(S{"Foo"}, nil)
+	// 	// is(Foo, Bar) or is(Bar)
+	// 	machine.Any(S{"Foo", "Bar"}, S{"Bar"}) // false
+	// 	// is(Foo) or is(Bar)
+	// 	machine.Any(S{"Foo"}, S{"Bar"}) // true
 	Any(states ...S) bool
-	// Any1 is [Machine.Any1].
+	// Any1 is group call to [Machine.Is1], returns true if any of the params
+	// return true from [Machine.Is1].
 	Any1(state ...string) bool
-	// Not is [Machine.Not].
+	// Not checks if **none** of the passed states are currently active.
+	//
+	// 	machine.StringAll()
+	// 	// -> ()[A:0 B:0 C:0 D:0]
+	// 	machine.Add(S{"A", "B"}, nil)
+	//
+	// 	// not(A) and not(C)
+	// 	machine.Not(S{"A", "C"})
+	// 	// -> false
+	//
+	// 	// not(C) and not(D)
+	// 	machine.Not(S{"C", "D"})
+	// 	// -> true
 	Not(states S) bool
-	// Not1 is [Machine.Not1].
+	// Not1 is [Machine.Not] for a single state.
 	Not1(state string) bool
-	// IsTime is [Machine.IsTime].
+	// IsTime checks if the machine has changed since the passed
+	// time (list of ticks). Returns true if at least one state has changed. The
+	// states param is optional and can be used to check only a subset of states.
 	IsTime(time Time, states S) bool
-	// WasTime is [Machine.WasTime].
+	// WasTime checks if the passed time has happened (or happening right now).
+	// Returns false if at least one state is too early. The
+	// states param is optional and can be used to check only a subset of states.
 	WasTime(time Time, states S) bool
-	// IsClock is [Machine.IsClock].
+	// IsClock checks if the machine has changed since the passed
+	// clock. Returns true if at least one state has changed.
 	IsClock(clock Clock) bool
-	// WasClock is [Machine.WasClock].
+	// WasClock checks if the passed time has happened (or happening right now).
+	// Returns false if at least one state is too early.
 	WasClock(clock Clock) bool
-	// Has is [Machine.Has].
+	// Has return true is passed states are registered in the machine. Useful for
+	// checking if a machine implements a specific state set.
 	Has(states S) bool
-	// Has1 is [Machine.Has1].
+	// Has1 is shorthand for Has. It returns true if the passed state is
+	// registered in the machine.
 	Has1(state string) bool
-	// CanAdd is [Machine.CanAdd].
+	// CanAdd checks if [states] can be added and returns Executed or
+	// [AT.CheckDone] if a dry run mutation passes. Useful for reducing failed
+	// negotiations.
 	CanAdd(states S, args A) Result
-	// CanAdd1 is [Machine.CanAdd1].
+	// CanAdd1 is [Machine.CanAdd] for a single state.
 	CanAdd1(state string, args A) Result
-	// CanRemove is [Machine.CanRemove].
+	// CanRemove checks if [states] can be removed and returns Executed or
+	// [AT.CheckDone] if a dry run mutation passes. Useful for reducing failed
+	// negotiations.
 	CanRemove(states S, args A) Result
-	// CanRemove1 is [Machine.CanRemove1].
+	// CanRemove1 is [Machine.CanRemove] for a single state.
 	CanRemove1(state string, args A) Result
-	// Transition is [Machine.Transition].
+	// Transition returns the current transition, if any.
 	Transition() *Transition
-	// IsLocal is [Machine.IsLocal].
+	// IsLocal returns true for *am.Machine and false for *arpc.NetworkMachine.
 	IsLocal() bool
-	// ErrInternal is [Machine.ErrInternal].
+	// ErrInternal returns a channel which receives handler and eval timeout
+	// errors, so they can be handled accordingly without passing through
+	// mutations.
+	// This method always returns a closed channel for [Api.IsLocal] == false.
 	ErrInternal() <-chan error
 	// TODO ActivatedAt
 
 	// Waiting (local)
 
-	// When is [Machine.When].
+	// When returns a channel that will be closed when all the passed states
+	// become active or the machine gets disposed.
+	//
+	// ctx: optional context that will close the channel early.
+	//
+	// # Example
+	//
+	// 	<-mach.When(am.S{"Foo", "Bar"}, nil)
 	When(states S, ctx context.Context) <-chan struct{}
-	// When1 is [Machine.When1].
+	// When1 is an alias to When() for a single state.
+	// See When.
+	//
+	// # Example
+	//
+	// 	<-mach.When1("Foo", nil)
 	When1(state string, ctx context.Context) <-chan struct{}
-	// WhenNot is [Machine.WhenNot].
+	// WhenNot returns a channel that will be closed when all the passed states
+	// become inactive or the machine gets disposed.
+	//
+	// ctx: optional context that will close the channel early.
+	//
+	// # Example
+	//
+	// 	<-mach.WhenNot(am.S{"Foo"}, nil)
 	WhenNot(states S, ctx context.Context) <-chan struct{}
-	// WhenNot1 is [Machine.WhenNot1].
+	// WhenNot1 is an alias to WhenNot() for a single state.
+	// See WhenNot.
+	//
+	// # Example
+	//
+	// 	<-mach.WhenNot1("Foo", nil)
 	WhenNot1(state string, ctx context.Context) <-chan struct{}
-	// WhenTime is [Machine.WhenTime].
+	// WhenTime returns a channel that will be closed when all the passed states
+	// have passed the specified time. The time is a logical clock of the state.
+	// Machine time can be sourced from [Machine.Time](), or [Machine.Clock]().
+	//
+	// ctx: optional context that will close the channel early.
+	//
+	// # Example
+	//
+	// 	<-mach.WhenTime(am.S{"Foo", "Bar"}, am.Time{6, 10}, nil)
 	WhenTime(states S, times Time, ctx context.Context) <-chan struct{}
-	// WhenTime1 is [Machine.WhenTime1].
+	// WhenTime1 waits till ticks for a single state equal the given value (or
+	// higher).
+	//
+	// ctx: optional context that will close the channel early.
+	//
+	// # Example
+	//
+	// 	<-mach.WhenTime1("Foo", 6, nil)
 	WhenTime1(state string, tick uint64, ctx context.Context) <-chan struct{}
-	// WhenTicks is [Machine.WhenTicks].
+	// WhenTicks waits N ticks of a single state (relative to now). Uses WhenTime
+	// underneath.
+	//
+	// ctx: optional context that will close the channel early.
+	//
+	// # Example
+	//
+	// 	<-mach.WhenTicks("Foo", 2, nil)
 	WhenTicks(state string, ticks int, ctx context.Context) <-chan struct{}
-	// WhenNextActive is [Machine.WhenNextActive].
+	// WhenNextActive waits until the state becomes active, excluding the current
+	// activity.
+	//
+	// ctx: optional context that will close the channel early.
+	//
+	// # Example
+	//
+	// 	<-mach.WhenNextActive("Foo", nil)
 	WhenNextActive(state string, ctx context.Context) <-chan struct{}
-	// WhenQuery is [Machine.WhenQuery].
+	// WhenQuery returns a channel that will be closed when the passed
+	// [clockCheck] function returns true. [clockCheck] should be a pure
+	// function and non-blocking.
+	//
+	// ctx: optional context that will close the channel early.
+	//
+	// # Example
+	//
+	// 	<-mach.WhenQuery(func(c am.Clock) bool {
+	// 		// Foo activated >5 times and Bar activated twice as much
+	// 		return c["Foo"] >= 10 && c["Bar"] >= 2*c["Foo"]
+	// 	}, nil)
 	WhenQuery(query func(clock Clock) bool, ctx context.Context) <-chan struct{}
-	// WhenErr is [Machine.WhenErr].
+	// WhenErr returns a channel that will be closed when the machine is in the
+	// StateException state.
+	//
+	// ctx: optional context that will close the channel early.
+	//
+	// # Example
+	//
+	// 	<-mach.WhenErr(nil)
 	WhenErr(ctx context.Context) <-chan struct{}
-	// WhenQueue is [Machine.WhenQueue].
+	// WhenQueue waits until the passed queueTick gets processed.
+	//
+	// # Example
+	//
+	// 	<-mach.WhenQueue(mach.Add1("Foo", nil))
 	WhenQueue(tick Result) <-chan struct{}
 	// TODO WhenTimeSum
 
 	// Getters (local)
 
-	// StateNames is [Machine.StateNames].
+	// StateNames returns a SHARED copy of all the state names.
 	StateNames() S
-	// ActiveStates is [Machine.ActiveStates].
+	// ActiveStates returns a copy of the currently active states when states is
+	// nil, optionally limiting the results to a subset of states.
 	ActiveStates(states S) S
-	// Tick is [Machine.Tick].
+	// Tick return the current tick for a given state.
 	Tick(state string) uint64
-	// Clock is [Machine.Clock].
+	// Clock returns current machine's clock, a state-keyed map of ticks. If
+	// states are passed, only the ticks of the passed states are returned.
 	Clock(states S) Clock
-	// Time is [Machine.Time].
+	// Time returns machine's time, a list of ticks per state. Returned value
+	// includes the specified states, or all the states if nil.
 	Time(states S) Time
-	// QueueTick is [Machine.QueueTick].
+	// QueueTick is the number of times the queue has processed a mutation. Starts
+	// from [1], for easy comparison with [Result].
 	QueueTick() uint64
-	// MachineTick is [Machine.MachineTick].
+	// MachineTick is the number of times the machine has been started. Each start
+	// means an empty queue. Only set by [Machine.Import].
 	MachineTick() uint32
-	// QueueLen is [Machine.QueueLen].
+	// QueueLen returns the number of mutations currently in the queue.
 	QueueLen() uint16
-	// NewStateCtx is [Machine.NewStateCtx].
+	// NewStateCtx returns a new sub-context, bound to the current clock's tick of
+	// the passed state.
+	//
+	// Context cancels when the state has been deactivated, or right away,
+	// if it isn't currently active.
+	//
+	// State contexts are used to check state expirations and should be checked
+	// often inside goroutines.
+	//
+	// [e]: optional [Event] to bind to this context.
 	NewStateCtx(state string, e ...*Event) context.Context
-	// Export is [Machine.Export].
+	// Export exports the machine state as Serialized: ID, machine time, and
+	// state names.
 	Export() (*Serialized, Schema, error)
-	// Schema is [Machine.Schema].
+	// Schema returns a copy of machine's schema.
 	Schema() Schema
-	// Switch is [Machine.Switch].
+	// Switch returns the first state from the passed list that is currently
+	// active, making it handy for switch statements. Useful for state groups.
+	//
+	// 	switch mach.Switch(ss.GroupPlaying) {
+	// 	case "Playing":
+	// 	case "Paused":
+	// 	case "Stopped":
+	// 	}
 	Switch(groups ...S) string
-	// Groups is [Machine.Groups].
+	// Groups returns the machine's state groups as indexes, along with the
+	// group order. See [Machine.SetGroups].
 	Groups() (map[string][]int, []string)
-	// Index is [Machine.Index].
+	// Index returns a list of state indexes in the machine's StateNames() list,
+	// with -1s for missing ones.
 	Index(states S) []int
-	// Index1 is [Machine.Index1].
+	// Index1 returns the index of a state in the machine's StateNames() list, or
+	// -1 when not found or machine has been disposed.
 	Index1(state string) int
 
 	// Misc (local)
 
-	// Id is [Machine.Id].
+	// Id returns the machine's id.
 	Id() string
-	// ParentId is [Machine.ParentId].
+	// ParentId returns the ID of the parent machine (if any).
 	ParentId() string
-	// ParseStates is [Machine.ParseStates].
+	// ParseStates parses a list of states, removing unknown ones and duplicates.
+	// Use [Machine.Has] and [Machine.Has1] to check if a state is defined for the
+	// machine.
 	ParseStates(states S) S
-	// Tags is [Machine.Tags].
+	// Tags returns machine's tags, a list of unstructured strings without spaces.
 	Tags() []string
-	// SetTags is [Machine.SetTags].
+	// SetTags updates the machine's tags with the provided slice of strings.
 	SetTags(tags []string)
-	// Context is [Machine.Ctx].
+	// Context returns the machine's context. This context lives longer than
+	// the parent context and allows for graceful shutdown. This is the context
+	// which should be used to create submachines. See also
+	// [Machine.DisposeTimeout].
 	Context() context.Context
-	// ContextParent is [Machine.ContextParent].
+	// ContextParent returns the original context passed to the constructor.
 	ContextParent() context.Context
-	// String is [Machine.String].
+	// String returns a one line representation of the currently active states,
+	// with their clock values. Inactive states are omitted.
+	// Eg: (Foo:1 Bar:3)
 	String() string
-	// StringAll is [Machine.StringAll].
+	// StringAll returns a one line representation of all the states, with their
+	// clock values. Inactive states are in square brackets.
+	//
+	// 	(Foo:1 Bar:3) [Baz:2]
 	StringAll() string
-	// Log is [Machine.Log].
+	// Log logs an [extern] message unless LogNothing is set.
+	// Optionally redirects to a custom logger from [SemLogger.SetLogger].
 	Log(msg string, args ...any)
-	// SemLogger is [Machine.SemLogger].
+	// SemLogger returns the semantic logger of the machine
 	SemLogger() SemLogger
-	// Inspect is [Machine.Inspect].
+	// Inspect returns a multi-line string representation of the machine (states,
+	// relations, clocks).
+	// states: param for ordered or partial results.
 	Inspect(states S) string
-	// HandlersBind is [Machine.HandlersBind].
+	// HandlersBind binds a struct of handler methods to machine's states, based
+	// on the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
+	// optionally return bool.
 	HandlersBind(handlers any, opts ...BindOpts) (string, error)
-	// HandlersBindMaps is [Machine.HandlersBindMaps].
-	// TODO v0.20 add HandlerNegotiationPartial
+	// HandlersBindMaps is like [Machine.HandlersBind] but accepts maps of
+	// handlers to bypass reflecting structs. It may lead to higher performance.
+	// Returns a binding ID.
+	//
+	// # TODO
+	//
+	// v0.20 add HandlerNegotiationPartial
 	HandlersBindMaps(negotiations map[string]HandlerNegotiation,
 		finals map[string]HandlerFinal, opts ...BindOpts) (string, error)
-	// HandlersDetach is [Machine.HandlersDetach].
+	// HandlersDetach detaches previously bound machine handlers.
 	HandlersDetach(bindingId string) error
-	// Handlers is [Machine.Handlers].
+	// Handlers returns the IDs of bound handlers.
 	Handlers() []string
-	// StatesVerified is [Machine.StatesVerified].
+	// StatesVerified returns true if the state names have been ordered
+	// using VerifyStates.
 	StatesVerified() bool
-	// Tracers is [Machine.Tracers].
+	// Tracers return a copy of currently attached tracers.
 	Tracers() []Tracer
-	// TracerDetach is [Machine.TracerDetach].
+	// TracerDetach tries to remove a tracer from the machine. Returns an error in
+	// case the tracer wasn't bound.
 	TracerDetach(id string) error
-	// TracerBind is [Machine.TracerBind].
+	// TracerBind binds a Tracer to the machine. Tracers can cause StateException
+	// in submachines, before any handlers are bound. Use the Err() getter to
+	// examine such errors.
 	TracerBind(tracer Tracer) (string, error)
-	// AddBreakpoint is [Machine.AddBreakpoint].
+	// AddBreakpoint adds a breakpoint for an outcome of mutation (added and
+	// removed states) checked by mutation equality. Once such a mutation happens,
+	// a log message will be printed out. We can set an IDE's breakpoint on this
+	// line and see the mutation's sync stack trace. If [Machine.LogStackTrace]
+	// is set, the stack trace will be printed out as well. Many breakpoints can
+	// be added, but none removed.
+	//
+	// Breakpoints are useful to find the caller of a mutation, but don't work
+	// with [Machine.Set].
+	//
+	// strict: strict skips already active / inactive (for strict of diff
+	// equality).
 	AddBreakpoint(added S, removed S, strict bool)
-	// AddBreakpoint1 is [Machine.AddBreakpoint1].
+	// AddBreakpoint1 is a single state version of [Machine.AddBreakpoint].
 	AddBreakpoint1(added string, removed string, strict bool)
-	// Dispose is [Machine.Dispose].
+	// Dispose disposes the machine and all its emitters. You can wait for the
+	// completion of the disposal with `<-mach.WhenDisposed()`. It's advised to
+	// use Dispose() func from pkg/helpers instead, which handles Disposed state
+	// mixing.
 	Dispose()
-	// WhenDisposed is [Machine.WhenDisposed].
+	// WhenDisposed returns a channel that will be closed when the machine is
+	// disposed.
 	WhenDisposed() <-chan struct{}
-	// IsDisposed is [Machine.IsDisposed].
+	// IsDisposed returns true if the machine has been disposed.
 	IsDisposed() bool
-	// OnDispose is [Machine.OnDispose].
+	// OnDispose adds a function to be called after the machine gets disposed.
+	// These functions will run synchronously just before WhenDisposed() channel
+	// gets closed. Considering it's a low-level feature, it's advised to handle
+	// disposal via dedicated states.
 	OnDispose(fn HandlerDispose)
 
 	// Deprecated, to be removed soon.
