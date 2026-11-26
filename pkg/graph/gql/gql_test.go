@@ -91,7 +91,7 @@ func TestDbHttpServer(t *testing.T) {
 			opts = append(opts, httpx.Header("Accept", accept))
 		}
 		res := httpx.Post[string, []byte](httpc, base+"/query", q, opts...)
-		if res.Response == nil {
+		if res.Response == nil || res.Response.Response == nil {
 			t.Fatalf("query %q: %v", q, res.Err)
 		}
 		return res.Response.StatusCode, res.Response.Bytes()

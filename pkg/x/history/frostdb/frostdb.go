@@ -163,10 +163,12 @@ func (t *Tracer) TransitionEnd(tx *am.Transition) {
 	}
 
 	// time and tx records
+	afterSum := tx.TimeAfter.Sum(nil)
+	beforeSum := tx.TimeBefore.Sum(nil)
 	recTime := &Time{
 		MutType:      uint64(tx.Mutation.Type),
 		TimeSum:      tx.Machine.Time(nil).Sum(nil),
-		TimeDiff:     tx.TimeAfter.Sum(nil) - tx.TimeBefore.Sum(nil),
+		TimeDiff:     max(afterSum, beforeSum) - beforeSum,
 		TransitionId: tx.Id,
 		States:       make(map[string]uint64, len(ssB.Names())),
 	}
