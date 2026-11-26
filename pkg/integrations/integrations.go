@@ -299,3 +299,58 @@ func HandlerGetter(
 
 	return resp, nil
 }
+
+// Serialize returns a serialized version of the machine state.
+func Serialize(mach am.Api) *am.Serialized {
+	return &am.Serialized{
+		ID:          mach.Id(),
+		StateNames:  mach.StateNames(),
+		Time:        mach.Time(nil),
+		QueueTick:   mach.QueueTick(),
+		MachineTick: mach.MachineTick(),
+		Tags:        mach.Tags(),
+	}
+}
+
+// NewMach creates a new state machine from schema. A non-nil serialized state
+// restores state names, time, tags, and machine tick via [am.Machine.Import].
+func NewMach(
+	ctx context.Context, schema am.Schema, ser *am.Serialized,
+) (*am.Machine, error) {
+	if len(schema) == 0 {
+		return nil, errors.New("schema required")
+	}
+	if _, err := schema.Parse(); err != nil {
+		return nil, err
+	}
+
+	opts := &am.Opts{}
+	if ser != nil {
+		opts.Id = ser.ID
+		opts.Tags = ser.Tags
+	}
+	mach := am.New(ctx, schema, opts)
+	if err := mach.VerifyStates(mach.StateNames()); err != nil {
+		mach.Dispose()
+		return nil, err
+	}
+
+	if ser != nil &&
+		(len(ser.StateNames) > 0 || len(ser.Time) > 0 || ser.MachineTick > 0) {
+
+		data := *ser
+		data.ID = mach.Id()
+		if len(data.StateNames) == 0 {
+			data.StateNames = mach.StateNames()
+		}
+		if len(data.Time) == 0 {
+			data.Time = make(am.Time, len(data.StateNames))
+		}
+		if err := mach.Import(&data); err != nil {
+			mach.Dispose()
+			return nil, err
+		}
+	}
+
+	return mach, nil
+}

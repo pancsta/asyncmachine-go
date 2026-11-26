@@ -768,6 +768,8 @@ tasks:
 
   benchmark-grpc:
     dir: examples/benchmark_grpc
+    env:
+      GOWORK: "off"
     cmds:
       - echo "Running 10_000 server events"
       - go test -bench=. -benchtime=10000x -v

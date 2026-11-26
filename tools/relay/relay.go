@@ -25,6 +25,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
+	amrest "github.com/pancsta/asyncmachine-go/pkg/integrations/rest"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
@@ -62,6 +63,7 @@ type Relay struct {
 	out        types.OutputFunc
 	lastExport time.Time
 	http       *http.Server
+	rest       *amrest.Server
 }
 
 var TagRelay = "relay"
@@ -173,6 +175,10 @@ func (r *Relay) StartState(e *am.Event) {
 	if a.ArpcToDbg != nil {
 		r.startArpcToDbg(ctx, e, a.ArpcToDbg)
 	}
+
+	if a.Rest {
+		r.startRest(ctx, e)
+	}
 }
 
 // TODO StartEnd
@@ -188,6 +194,12 @@ func (r *Relay) Start(e *am.Event) am.Result {
 }
 
 func (r *Relay) Stop(e *am.Event) am.Result {
+	// close the REST API
+	if srv := r.rest; srv != nil {
+		_ = srv.Close()
+		r.rest = nil
+	}
+
 	// disconnect the arpc-to-dbg proxy
 	if c := r.arpcClient; c != nil {
 		if c.NetMach != nil {
@@ -197,6 +209,32 @@ func (r *Relay) Stop(e *am.Event) am.Result {
 	}
 
 	return r.Mach.EvRemove1(e, ssR.Start, nil)
+}
+
+// ///// ///// /////
+
+// ///// HANDLERS (REST)
+
+// ///// ///// /////
+
+// startRest exposes state machines over the JSON REST API.
+func (r *Relay) startRest(ctx context.Context, e *am.Event) {
+	a := r.Args
+	machs := amhelp.MachGroup(a.RestMachs)
+	if len(machs) == 0 {
+		machs = amhelp.MachGroup{r.Mach}
+	}
+
+	srv := amrest.New(ctx, machs)
+	r.rest = srv
+	r.out("REST API listening on http://%s\n", a.RestAddr)
+
+	r.Mach.Fork(ctx, e, func() {
+		err := srv.ListenAndServe(a.RestAddr)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			r.Mach.EvAddErr(e, err, nil)
+		}
+	})
 }
 
 // ///// ///// /////
