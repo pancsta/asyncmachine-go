@@ -24,7 +24,7 @@ Highlights:
 // prod
 import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 // tests
-import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
+import amhelpt "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 ```
 
 ## Synchronous Calls
@@ -32,8 +32,18 @@ import amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers/testing"
 Synchronous wrappers of async state machine calls, which assume a single, blocking scenario controlled with context.
 [Multi states](/docs/manual.md#multi-states) are handled automatically.
 
+- AddSync
 - Add1Sync
+- AddAsync
 - Add1Async
+- RemoveSync
+- Remove1Sync
+- EvAddSync
+- EvAdd1Sync
+- EvAddAsync
+- EvAdd1Async
+- EvRemoveSync
+- EvRemove1Sync
 
 **Example** - add state `StateNameSelected` and wait until it becomes active
 
@@ -60,11 +70,16 @@ print(res) // am.Executed or am.Canceled, never am.Queued
 Activate debugging in 1 line - either for a single machine, or for the whole process.
 
 - EnableDebugging
-- SetLogLevel
-- MachDebugEnv
-- MachDebug
-- Healthcheck
+- SetEnvLogLevel
 - IsDebug
+- IsTelemetry
+- IsTestRunner
+- SemConfigEnv
+- Healthcheck
+- MachDebug
+- MachDebugEnv
+- MachDebugWs
+- MachToSlog
 
 **Example** - enable dbg telemetry using [conventional env vars](/docs/env-configs.md).
 
@@ -82,13 +97,17 @@ Waiting helpers mostly provide wrappers for [when methods](/docs/manual.md#waiti
 transformed into `am.ErrTimeout`. It reduces state context checking, if used as a first call after a blocking call /
 start (which is a common case).
 
+- Wait
+- WaitCh
 - WaitForAll
 - WaitForErrAll
 - WaitForAny
 - WaitForErrAny
 - GroupWhen1
-- Wait
 - ExecAndClose
+- WhenFunc
+- WhenFuncErr
+- WhenFuncOk
 
 **Example** - wait for bootstrap RPC to become ready.
 
@@ -152,6 +171,8 @@ machines and populated queues. Policies can be customized and ``MutRequest`` obj
 - NewReqRemove1
 - NewMutRequest
 
+With methods: `Run`, `Clone`, `Retries`, `Delay`, `Backoff`, and `MaxDuration`.
+
 **Example** - try to add state `WorkerRequested` with 10 retries, 100ms delay, 5s backoff, and 5s max duration.
 
 ```go
@@ -165,22 +186,26 @@ if err != nil {
 ## Test Helpers
 
 Test helpers mostly provide assertions for [stretchr/testify](https://github.com/stretchr/testify), but also wrappers
-for regular helpers which go `t.Fatal` on errors (to save some lines).
+for regular helpers which go `t.Fatal` on errors (to save some lines). They're available in
+[`/pkg/helpers/testing`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/helpers/testing) as `amhelpt`.
 
 - AssertIs
 - AssertIs1
 - AssertNot
 - AssertNot1
+- AssertErr
 - AssertNoErrNow
 - AssertNoErrEver
-- AssertErr
+- AssertNoErrQueued
+- AssertString
+- AssertTime
 - MachDebug
 - MachDebugEnv
+- LogToTestLog
 - Wait
 - WaitForAll
 - WaitForAny
 - WaitForErrAll
-- WaitForErrAny
 - GroupWhen1
 
 **Example** - assert `mach` has `ClientConnected` active.
@@ -198,7 +223,7 @@ amhelpt.AssertNoErrEver(t, mach)
 ## Complete API
 
 ```go
-Package-Level Functions (total 83)
+Package-Level Functions (total 98)
 
 	 func Activations(u uint64) int
 	 func Add1Async(ctx context.Context, mach am.Api, waitState string, addState string, args ...am.A) bool
@@ -207,7 +232,7 @@ Package-Level Functions (total 83)
 	 func AddSync(ctx context.Context, mach am.Api, states S, args ...am.A) bool
 	 func ArgsNames(args []am.ArgsApi) ([]string, error)
 	 func ArgsToLogMap(args any, maxLen int) map[string]string
-	 func ArgsUnmarshal[G](args am.A, def G) am.A
+	 func ArgsUnmarshal[G am.ArgsApi](args am.A, def G) am.A
 	 func AskAdd(mach am.Api, states am.S, args am.A) am.Result
 	 func AskAdd1(mach am.Api, state string, args am.A) am.Result
 	 func AskEvAdd(e *am.Event, mach am.Api, states am.S, args am.A) am.Result
@@ -220,6 +245,8 @@ Package-Level Functions (total 83)
 	 func CantAdd1(mach am.Api, state string, args am.A) bool
 	 func CantRemove(mach am.Api, states am.S, args am.A) bool
 	 func CantRemove1(mach am.Api, state string, args am.A) bool
+	 func ChanToCtx(ch <-chan struct{}) context.Context
+	 func CloseSafe[T any](ch chan T)
 	 func CopySchema(source am.Schema, target *am.Machine, states am.S) error
 	 func CountRelations(state *am.State) int
 	 func Dispose(mach am.Api)
@@ -230,10 +257,10 @@ Package-Level Functions (total 83)
 	 func EvAdd1Sync(ctx context.Context, e *am.Event, mach am.Api, state string, args ...am.A) bool
 	 func EvAddAsync(ctx context.Context, e *am.Event, mach am.Api, waitState string, addStates S, args ...am.A) bool
 	 func EvAddSync(ctx context.Context, e *am.Event, mach am.Api, states S, args ...am.A) bool
-	 func EvalGetter[T](ctx context.Context, source string, maxTries int, mach *am.Machine, eval func() (T, error)) (T, error)
-	 func EvalSetter(ctx context.Context, source string, maxTries int, mach *am.Machine, eval func() error) error
 	 func EvRemove1Sync(ctx context.Context, e *am.Event, mach am.Api, state string, args ...am.A) bool
 	 func EvRemoveSync(ctx context.Context, e *am.Event, mach am.Api, states S, args ...am.A) bool
+	 func EvalGetter[T any](ctx context.Context, source string, maxTries int, mach *am.Machine, eval func() (T, error)) (T, error)
+	 func EvalSetter(ctx context.Context, source string, maxTries int, mach *am.Machine, eval func() error) error
 	 func ExecAndClose(fn func()) <-chan struct{}
 	 func GetTransitionStates(tx *am.Transition, index am.S) (added am.S, removed am.S, touched am.S)
 	 func GroupWhen1(machs []am.Api, state string, ctx context.Context) ([]<-chan struct{}, error)
@@ -248,6 +275,7 @@ Package-Level Functions (total 83)
 	 func IsTestRunner() bool
 	 func IsWasi() bool
 	 func IsWasm() bool
+	 func ListHandlers(handlers any, states S) ([]string, error)
 	 func LogArgs(args am.A, maxLen int) map[string]string
 	 func LogArgsMapper(args am.A) map[string]string
 	 func MachDebug(mach am.Api, amDbgAddr string, logLvl am.LogLevel, stdout bool, semConfig *am.SemConfig) error
@@ -263,7 +291,15 @@ Package-Level Functions (total 83)
 	 func NewReqRemove(mach am.Api, states am.S, args am.A) *MutRequest
 	 func NewReqRemove1(mach am.Api, state string, args am.A) *MutRequest
 	 func NewStateLoop(mach *am.Machine, loopState string, optCheck func() bool) *StateLoop
-	 func Pool(ctx context.Context, limit int) pond.TaskGroup
+	 func Pool(ctx context.Context, limit int) pond.Pool
+	 func PromiseAdd(mach am.Api, states am.S, args am.A) *Promise
+	 func PromiseAdd1(mach am.Api, state string, args am.A) *Promise
+	 func PromiseEvAdd(e *am.Event, mach am.Api, states am.S, args am.A) *Promise
+	 func PromiseEvAdd1(e *am.Event, mach am.Api, state string, args am.A) *Promise
+	 func PromiseEvRemove(e *am.Event, mach am.Api, states am.S, args am.A) *Promise
+	 func PromiseEvRemove1(e *am.Event, mach am.Api, state string, args am.A) *Promise
+	 func PromiseRemove(mach am.Api, states am.S, args am.A) *Promise
+	 func PromiseRemove1(mach am.Api, state string, args am.A) *Promise
 	 func RandId(strLen int) string
 	 func Remove1Sync(ctx context.Context, mach am.Api, state string, args ...am.A) bool
 	 func RemoveMulti(mach am.Api, state string) am.HandlerFinal
@@ -274,34 +310,77 @@ Package-Level Functions (total 83)
 	 func SemConfigEnv(forceFull bool) *am.SemConfig
 	 func SetEnvLogLevel(level am.LogLevel)
 	 func StatesToIndexes(allStates am.S, states am.S) []int
+	 func TagSetOnMach(mach am.Api, key string, value string) bool
+	 func TagSetValue(tags []string, key string, value string) ([]string, bool)
 	 func TagValue(tags []string, key string) string
 	 func TagValueInt(tags []string, key string) int
 	 func Wait(ctx context.Context, length time.Duration) bool
+	 func WaitCh(ctx context.Context, length time.Duration) <-chan struct{}
 	 func WaitForAll(ctx context.Context, timeout time.Duration, chans ...<-chan struct{}) error
 	 func WaitForAny(ctx context.Context, timeout time.Duration, chans ...<-chan struct{}) error
 	 func WaitForErrAll(ctx context.Context, timeout time.Duration, mach am.Api, chans ...<-chan struct{}) error
 	 func WaitForErrAny(ctx context.Context, timeout time.Duration, mach *am.Machine, chans ...<-chan struct{}) error
 	 func WhenFunc(fn func()) <-chan struct{}
+	 func WhenFuncErr(fn func() error) <-chan struct{}
 	 func WhenFuncOk(fn func() bool) <-chan bool
 
-Package-Level Variables (only one)
+Package-Level Variables (total 1)
 
-	  var SlogToMachLogOpts *slog.HandlerOptions
+	 var SlogToMachLogOpts = &slog.HandlerOptions{ ... }
 
 Package-Level Constants (total 12)
 
-	const EnvAmHealthcheck = "AM_HEALTHCHECK"
-	const EnvAmLogArgs = "AM_LOG_ARGS"
-	const EnvAmLogChecks = "AM_LOG_CHECKS"
-	const EnvAmLogFile = "AM_LOG_FILE"
-	const EnvAmLogFull = "AM_LOG_FULL"
-	const EnvAmLogGraph = "AM_LOG_GRAPH"
-	const EnvAmLogPrint = "AM_LOG_PRINT"
-	const EnvAmLogQueued = "AM_LOG_QUEUED"
-	const EnvAmLogStateCtx = "AM_LOG_STATE_CTX"
-	const EnvAmLogSteps = "AM_LOG_STEPS"
-	const EnvAmLogWhen = "AM_LOG_WHEN"
-	const EnvAmTestRunner = "AM_TEST_RUNNER"
+	 const EnvAmHealthcheck = "AM_HEALTHCHECK"
+	 const EnvAmLogArgs = "AM_LOG_ARGS"
+	 const EnvAmLogChecks = "AM_LOG_CHECKS"
+	 const EnvAmLogFile = "AM_LOG_FILE"
+	 const EnvAmLogFull = "AM_LOG_FULL"
+	 const EnvAmLogGraph = "AM_LOG_GRAPH"
+	 const EnvAmLogPrint = "AM_LOG_PRINT"
+	 const EnvAmLogQueued = "AM_LOG_QUEUED"
+	 const EnvAmLogStateCtx = "AM_LOG_STATE_CTX"
+	 const EnvAmLogSteps = "AM_LOG_STEPS"
+	 const EnvAmLogWhen = "AM_LOG_WHEN"
+	 const EnvAmTestRunner = "AM_TEST_RUNNER"
+
+Package-Level Types (total 13)
+
+	 type A = am.A
+	 type ArgsUnmarshallerFn func(args am.A) am.A
+	 type Batch[T any] struct{ ... }
+	   func (b *Batch[T]) Add(item T)
+	 type Cond struct{ ... }
+	   func (c Cond) Check(mach am.Api) bool
+	   func (c Cond) IsEmpty() bool
+	   func (c Cond) String() string
+	 type IoWriterToMachLog struct{ ... }
+	   func (l IoWriterToMachLog) Write(p []byte) (n int, err error)
+	 type MachGroup []am.Api
+	   func (g MachGroup) Filter(f *MachGroupFilter) MachGroup
+	 type MachGroupFilter struct{ ... }
+	   func (f *MachGroupFilter) Matches(mach am.Api) bool
+	 type MutRequest struct{ ... }
+	   func (r *MutRequest) Backoff(backoff time.Duration) *MutRequest
+	   func (r *MutRequest) Clone(mach am.Api, mutType am.MutationType, states am.S, args am.A) *MutRequest
+	   func (r *MutRequest) Delay(delay time.Duration) *MutRequest
+	   func (r *MutRequest) MaxDuration(maxDuration time.Duration) *MutRequest
+	   func (r *MutRequest) Retries(retries int) *MutRequest
+	   func (r *MutRequest) Run(ctx context.Context) (am.Result, error)
+	 type Promise struct{ ... }
+	   func (p *Promise) Again() am.Result
+	   func (p *Promise) Called() bool
+	   func (p *Promise) Now() am.Result
+	 type S = am.S
+	 type Schema = am.Schema
+	 type SlogToMachLog struct{ ... }
+	   func (l SlogToMachLog) Write(p []byte) (n int, err error)
+	 type StateLoop struct{ ... }
+	   func (l *StateLoop) Break()
+	   func (l *StateLoop) Ended() bool
+	   func (l *StateLoop) Ok(ctx context.Context) bool
+	   func (l *StateLoop) String() string
+	   func (l *StateLoop) Sum() uint64
+
 ```
 
 ## Documentation

@@ -2,7 +2,7 @@
 
 <!-- TOC -->
 
-- version `v0.19.7`
+- version `v0.19.8`
 - [Legend](#legend)
 - [Machine and States](#machine-and-states)
   - [Machine Schema](#machine-schema)
@@ -724,8 +724,10 @@ func (h *Handlers) FooState(e *am.Event) {
 
 [Called states](#mutations) combined with currently [active states](#active-states) and
 a [relations resolver](#relations) result in **target states** of a transition. This phase is **cancelable** - if
-**any** of the [called states](#mutations) gets rejected, the **transition is canceled**. This isn't true for
-[Auto states](#auto-states), which can be partially rejected.
+**any** of the [target states](#mutations) rejects the transition, the **transition is canceled**. This isn't true for
+[Auto states](#auto-states), which can be partially rejected by rejected the transition. Additionally, [partial
+acceptance](#negotiation-handlers) can exclude **called states** and **implied states**. With no more called states,
+the transition is also canceled.
 
 Transition exposes the currently called, target, and previous states using:
 
@@ -735,7 +737,12 @@ Transition exposes the currently called, target, and previous states using:
 - [`e.Transition.ClockAfter()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.ClockAfter)
 - [`e.Transition.CalledStates()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.CalledStates)
 - [`e.Transition.Args()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.Args)
-- // TODO list TimeIndex* methods
+- [`e.Transition.TimeIndexBefore()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.TimeIndexBefore) - `TimeBefore` as an index
+- [`e.Transition.TimeIndexAfter()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.TimeIndexAfter) - `TimeAfter` as an index
+- [`e.Transition.TimeIndexCalled()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.TimeIndexCalled) - called states as an index
+- [`e.Transition.TimeIndexTimeDiff()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.TimeIndexTimeDiff) - states with tick changes, as active
+- [`e.Transition.TimeIndexDiff()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.TimeIndexDiff) - added and removed states (added includes `Multi` states)
+- [`e.Transition.TimeIndexTouched()`](https://pkg.go.dev/github.com/pancsta/asyncmachine-go/pkg/machine#Transition.TimeIndexTouched) - all touched states (requires `SemLogger.IsSteps`)
 
 ```go
 // machine

@@ -17,6 +17,9 @@ These are documentation diagrams, if you're looking for machine diagrams head ov
   * [aRPC Sync (Clocks)](#arpc-sync-clocks)
   * [aRPC Partial Distribution](#arpc-partial-distribution)
   * [aRPC Handler Mutations](#arpc-handler-mutations)
+* [Graph](#graph)
+  * [NetworkGraph](#networkgraph)
+  * [4-cluster GQL ring](#4-cluster-gql-ring)
 * [Worker Pool Architecture](#worker-pool-architecture)
 * [Flows](#flows)
   * [Legend](#legend)
@@ -126,6 +129,20 @@ Channel-broadcast waiting on clock values.
 ### aRPC Handler Mutations
 
 ![aRPC Handler Mutations diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/arpc-handlers.d2.dark.svg)
+
+## Graph
+
+### NetworkGraph
+
+A machine graph mirrored over UDP between NetworkGraph nodes (machines, states, and relations).
+
+![NetworkGraph diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/netgraph.d2.dark.svg)
+
+### 4-cluster GQL ring
+
+4 independent clusters whose sink nodes form a UDP ring; every sink mirrors all 4 clusters in its GQL DB.
+
+![4-cluster GQL ring diagram](https://pancsta.github.io/assets/asyncmachine-go/diagrams/netgraph-ring.d2.dark.svg)
 
 ## Worker Pool Architecture
 
