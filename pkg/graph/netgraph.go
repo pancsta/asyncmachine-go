@@ -153,8 +153,10 @@ type NetGraph struct {
 	relaySentMx    sync.Mutex
 	relaySent      map[string]*am.Serialized
 
-	listener *net.UDPConn
-	ctx      context.Context
+	listener    *net.UDPConn
+	readBufSize int
+	sinkLocal   string
+	ctx         context.Context
 
 	tracedMx sync.Mutex
 	traced   []*NetTracer
@@ -176,9 +178,22 @@ type NetGraph struct {
 	dbLoopOnce  sync.Once
 }
 
+// NetGraphOpts configures a new [NetGraph].
+type NetGraphOpts struct {
+	// Db optionally mirrors all graph changes into a graph database.
+	Db amtypes.DbGraph
+	// PushInterval overrides the default clock emit interval.
+	PushInterval time.Duration
+	// ReadBufSize overrides the UDP read buffer size. Defaults to 64KB.
+	ReadBufSize int
+	// SinkLocalAddr optionally binds sinks to a specific local address, eg
+	// "127.1.2.3:0". Useful when many sinks share the default local address.
+	SinkLocalAddr string
+}
+
 // NewNetGraph creates a NetGraph listening on addr and mirroring g.
 func NewNetGraph(
-	ctx context.Context, addr string, g *Graph,
+	ctx context.Context, addr string, g *Graph, opts ...NetGraphOpts,
 ) (*NetGraph, error) {
 	if g == nil {
 		return nil, errors.New("graph is nil")
@@ -206,10 +221,24 @@ func NewNetGraph(
 		dbPending:    make(map[string]struct{}),
 		dbDone:       make(chan struct{}),
 		listener:     conn,
+		readBufSize:  64 * 1024,
 		ctx:          ctx,
 		sinks:        make(map[string]*net.UDPConn),
 		sinkRetry:    make(map[string]chan struct{}),
 		sinkStop:     make(chan struct{}),
+	}
+
+	if len(opts) > 0 {
+		if opts[0].Db != nil {
+			n.Db = opts[0].Db
+		}
+		if opts[0].PushInterval > 0 {
+			n.PushInterval = opts[0].PushInterval
+		}
+		if opts[0].ReadBufSize > 0 {
+			n.readBufSize = opts[0].ReadBufSize
+		}
+		n.sinkLocal = opts[0].SinkLocalAddr
 	}
 
 	// fork loops
@@ -249,7 +278,12 @@ func (n *NetGraph) TraceMach(mach am.Api) (string, error) {
 		Schema:     schema.Clone(),
 		Parent:     mach.ParentId(),
 	}
-	if err := n.Graph.AddMachine(graphMach); err != nil {
+	// AddMachine isn't locked internally (it's called under the lock by the
+	// receive loop), while TraceMach can run at runtime, eg on discovery.
+	n.Graph.loop.Lock()
+	err := n.Graph.AddMachine(graphMach)
+	n.Graph.loop.Unlock()
+	if err != nil {
 		return "", err
 	}
 
@@ -478,7 +512,15 @@ func (n *NetGraph) dialSink(addr string) (*net.UDPConn, error) {
 		return nil, err
 	}
 
-	return net.DialUDP("udp", nil, udpAddr)
+	var local *net.UDPAddr
+	if n.sinkLocal != "" {
+		local, err = net.ResolveUDPAddr("udp", n.sinkLocal)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return net.DialUDP("udp", local, udpAddr)
 }
 
 // removeSink closes and unregisters a sink, if it's still current.
@@ -645,6 +687,12 @@ func (n *NetGraph) pushPendingRelay() {
 			Tags:         ser.Tags,
 			TagsTime:     tagTick,
 		}); err != nil {
+			n.Logger.Warn("relay broadcast failed", "mach", id, "err", err)
+			// retry on the next tick, otherwise a transient send error would
+			// drop the relayed machine forever
+			n.relayPendingMx.Lock()
+			n.relayPending[id] = struct{}{}
+			n.relayPendingMx.Unlock()
 			continue
 		}
 
@@ -760,7 +808,7 @@ func (n *NetGraph) schemaInfo(hash string) (SchemaInfo, bool) {
 // receiveFromUpstream receives messages from upstream peers from
 // [NetGraph.EmitToAddr]. It's usually due to data corruption.
 func (n *NetGraph) receiveFromUpstream(conn *net.UDPConn) {
-	buf := make([]byte, 64*1024)
+	buf := make([]byte, n.readBufSize)
 	for {
 		read, err := conn.Read(buf)
 		if err != nil {
@@ -778,7 +826,7 @@ func (n *NetGraph) receiveFromUpstream(conn *net.UDPConn) {
 }
 
 func (n *NetGraph) receiveFromDownstream() {
-	buf := make([]byte, 64*1024)
+	buf := make([]byte, n.readBufSize)
 	for {
 		read, addr, err := n.listener.ReadFromUDP(buf)
 		if err != nil {

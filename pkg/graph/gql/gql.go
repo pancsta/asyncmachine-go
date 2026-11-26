@@ -1,8 +1,8 @@
 // Package gql implements a GQL query engine over the in-memory graph of
 // [github.com/pancsta/asyncmachine-go/pkg/graph]. It uses the parser front-end
 // of the gochickpeas fork (gql/gqlparser) and a native executor that reads the
-// live github.com/dominikbraun/graph instance directly, with no separate
-// storage and no chickpeas snapshot.
+// live graph instance directly, with no separate storage and no chickpeas
+// snapshot.
 //
 // The exposed graph model mirrors the frogql backend, so queries are portable
 // between the two:
@@ -38,8 +38,8 @@ import (
 
 // Db implements [amtypes.DbGraph] over a live in-memory graph instance. It
 // keeps no data of its own: every Exec projects the current graph (through
-// dominikbraun/graph's locked accessors, which return copies) and runs the
-// native executor over it, so queries always see the latest state without any
+// the graph's locked accessors, which return copies) and runs the native
+// executor over it, so queries always see the latest state without any
 // mirroring or sync loop.
 //
 // Wire it to the same graph the NetGraph maintains:
@@ -96,9 +96,8 @@ func (d *Db) Exec(statement string) (any, error) {
 }
 
 // snapshot projects the current graph into the queryable store. The store
-// build reads through dominikbraun/graph's locked accessors, which return
-// copies, so no full graph [amgraph.Graph.Clone] (and no Map mirror clone) is
-// needed per query.
+// build reads through the graph's locked accessors, which return copies, so no
+// full graph [amgraph.Graph.Clone] is needed per query.
 func (d *Db) snapshot() (*store, error) {
 	if d == nil || d.graph == nil {
 		return nil, errors.New("gql: nil graph")
@@ -1853,13 +1852,13 @@ const (
 
 // node is one queryable vertex.
 type node struct {
-	// id is the dominikbraun/graph vertex hash.
+	// id is the graph vertex hash.
 	id    string
 	label string
 	props map[string]Value
 }
 
-// rel is one logical relationship. A single dominikbraun/graph edge may
+// rel is one logical relationship. A single graph edge may
 // expand into several (state relations are lists on one edge).
 type rel struct {
 	idx    int
@@ -1882,46 +1881,35 @@ type store struct {
 	byLabel map[string][]int
 }
 
-// newStore snapshots g into a queryable store. The caller passes an already
-// cloned graph, so no locking is needed.
+// newStore snapshots g into a queryable store in one batch.
 func newStore(g *amgraph.Graph) (*store, error) {
-	if g == nil || g.G == nil {
+	if g == nil {
 		return nil, fmt.Errorf("%w: nil graph", ErrGraph)
 	}
 
-	adj, err := g.G.AdjacencyMap()
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrGraph, err)
-	}
+	verts, edges := g.Snapshot()
 
 	s := &store{
-		byID:    make(map[string]int, len(adj)),
+		byID:    make(map[string]int, len(verts)),
 		byLabel: make(map[string][]int),
 	}
 
-	// vertices; the adjacency map covers isolated ones too
-	for hash := range adj {
-		v, err := g.G.Vertex(hash)
-		if err != nil {
-			continue
-		}
-		s.addVertex(hash, v, g.Machines)
+	for _, v := range verts {
+		s.addVertex(v.Hash(), v, g.Machines)
 	}
 
 	// edges, expanded into logical relationships
-	for srcHash, targets := range adj {
-		src, ok := s.byID[srcHash]
+	for _, edge := range edges {
+		src, ok := s.byID[edge.Source]
 		if !ok {
 			continue
 		}
-		for tgtHash, edge := range targets {
-			dst, ok := s.byID[tgtHash]
-			if !ok {
-				continue
-			}
-			data, _ := edge.Properties.Data.(*amgraph.EdgeData)
-			s.addEdgeData(src, dst, data)
+		dst, ok := s.byID[edge.Target]
+		if !ok {
+			continue
 		}
+		data, _ := edge.Properties.Data.(*amgraph.EdgeData)
+		s.addEdgeData(src, dst, data)
 	}
 
 	// adjacency indices

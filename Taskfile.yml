@@ -1071,6 +1071,11 @@ tasks:
     cmds:
       - go test -tags integration -run=^$ -bench 'gql$' -benchtime 2s ./pkg/graph/test/
 
+  bench-netgraph-docker:
+    desc: Run a NetGraph scale test in Docker (default TestNetGraphFullUDP)
+    cmds:
+      - ./scripts/run-netgraph-bench-docker.sh {{.CLI_ARGS}}
+
 #  TODO bench-graph
 
   gen-yaegi-symbols:
