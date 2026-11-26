@@ -10,6 +10,13 @@ import "errors"
 
 // ///// ///// /////
 
+// HandlersBind binds a struct of handler methods to machine's states, based on
+// the naming convention, eg `FooState(e *Event)`. Negotiation handlers can
+// optionally return bool.
+//
+// # TinyGo
+//
+// Not supported in TinyGo, use [Machine.HandlersBindMaps] instead.
 func (m *Machine) HandlersBind(handlers any, opts ...BindOpts) (string, error) {
 	panic("not available in tinygo, use BindHandlerMaps()")
 }
