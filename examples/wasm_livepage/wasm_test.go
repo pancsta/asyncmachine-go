@@ -81,14 +81,14 @@ func TestWasmLivepage(t *testing.T) {
 
 	if err := chromedp.Do(browserCtx,
 		chromedp.Navigate("http://"+srv.Addr+"/"),
-		chromedp.WaitVisible("#rpc-log"),
+		chromedp.WaitVisible(chromedp.ID("rpc-log")),
 	); err != nil {
 		t.Fatalf("navigate: %s\n%s", err, consoleLog())
 	}
 
 	logText := func() string {
-		txt, _ := chromedp.Run(browserCtx, chromedp.Text("#rpc-log"))
-		server, _ := chromedp.Run(browserCtx, chromedp.Text("#server-log"))
+		txt, _ := chromedp.Run(browserCtx, chromedp.Text(chromedp.ID("rpc-log")))
+		server, _ := chromedp.Run(browserCtx, chromedp.Text(chromedp.ID("server-log")))
 		return txt + "\n-- server --\n" + server
 	}
 	poll := func(expr, what string, timeout time.Duration) {
@@ -148,7 +148,7 @@ func TestWasmLivepage(t *testing.T) {
 	}
 
 	// text frames (DOM events) still work on the same socket
-	if err := chromedp.Do(browserCtx, chromedp.Click("#incr")); err != nil {
+	if err := chromedp.Do(browserCtx, chromedp.Click(chromedp.ID("incr"))); err != nil {
 		t.Fatal(err)
 	}
 	poll(`(() => { const el = document.querySelector("#count");`+

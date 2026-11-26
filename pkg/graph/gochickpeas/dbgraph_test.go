@@ -6,7 +6,7 @@ import (
 
 	ssrel "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	"github.com/pancsta/asyncmachine-go/pkg/graph/gochickpeas"
-	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
+	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/types"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 )
 

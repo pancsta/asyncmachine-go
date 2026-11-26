@@ -11,9 +11,11 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	ssrel "github.com/pancsta/asyncmachine-go/internal/testing/states"
+	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/types"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
+	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
 
@@ -270,11 +272,184 @@ func TestWorldInjection(t *testing.T) {
 
 // ///// ///// /////
 
+// ///// EDGE KINDS
+
+// ///// ///// /////
+
+// TestEdgesOfKind asserts GQL-style relationship queries over the typed ark
+// store, e.g. MATCH (m:Machine)-[:HAS]->(s:State), (m)-[:HAS_TAG]->(t:Tag).
+func TestEdgesOfKind(t *testing.T) {
+	ctx := t.Context()
+
+	server := am.New(ctx, ssdbg.ServerSchema, &am.Opts{Id: "srv-kinds"})
+	t.Cleanup(server.Dispose)
+	g, err := New(server)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mach := &Machine{
+		Serialized: &am.Serialized{
+			ID:         "m-1",
+			StateNames: ssrel.Names,
+			Time:       make(am.Time, len(ssrel.Names)),
+			QueueTick:  1,
+			Tags:       []string{"tag-x", "src-id:p-1"},
+		},
+		SchemaHash: "hash-kinds",
+		Schema:     ssrel.States,
+		Parent:     "p-1",
+	}
+	if err := g.AddMachine(mach); err != nil {
+		t.Fatal(err)
+	}
+	// pipes are stored as separate edge entities
+	err = g.store.addEdge("m-1", "p-1", &EdgeData{
+		MachPipesTo: []*MachPipeTo{
+			{FromState: ssrel.A, ToState: ssrel.B, MutType: am.MutationAdd},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// MATCH (m:Machine)-[:HAS]->(s:State)
+	has := g.EdgesOfKind(amtypes.RelHas)
+	if len(has) != len(ssrel.States) {
+		t.Fatalf("HAS edges = %d, want %d", len(has), len(ssrel.States))
+	}
+	for _, edge := range has {
+		data := edge.Properties.Data.(*EdgeData)
+		if edge.Source != "m-1" || data.MachHas == nil {
+			t.Fatalf("unexpected HAS edge: %#v", edge)
+		}
+	}
+
+	// MATCH (m:Machine)-[:HAS]->(s:State), (m)-[:HAS_TAG]->(t:Tag)
+	tags := g.EdgesFrom(has[0].Source, amtypes.RelHasTag)
+	if len(tags) != 2 {
+		t.Fatalf("HAS_TAG edges = %d, want 2", len(tags))
+	}
+
+	// state relations
+	for kind, want := range map[amtypes.RelKind]int{
+		amtypes.RelRequire: 1, // A -> C
+		amtypes.RelAdd:     3, // B -> C, D -> C, D -> B
+		amtypes.RelRemove:  0,
+	} {
+		if got := len(g.EdgesOfKind(kind)); got != want {
+			t.Fatalf("%s edges = %d, want %d", kind.Value, got, want)
+		}
+	}
+
+	// pipes are returned one edge per pipe
+	pipes := g.EdgesOfKind(amtypes.RelPipe)
+	if len(pipes) != 1 {
+		t.Fatalf("PIPE edges = %d, want 1", len(pipes))
+	}
+	pipeData := pipes[0].Properties.Data.(*EdgeData)
+	if len(pipeData.MachPipesTo) != 1 ||
+		pipeData.MachPipesTo[0].FromState != ssrel.A {
+		t.Fatalf("unexpected PIPE edge: %#v", pipes[0])
+	}
+
+	// the pair edge aggregates all metadata, including pipes
+	conn, err := g.Edge("m-1", "p-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := conn.data()
+	if data == nil || !data.MachChildOf || !data.MachConnectedTo ||
+		len(data.MachPipesTo) != 1 {
+		t.Fatalf("unexpected pair edge: %#v", conn)
+	}
+
+	// unknown kinds are a no-op
+	if got := g.EdgesOfKind(amtypes.RelKind{Value: "NOPE"}); len(got) != 0 {
+		t.Fatalf("unknown kind returned %d edges", len(got))
+	}
+}
+
+// TestRelKinds asserts the relationship kind enum.
+func TestRelKinds(t *testing.T) {
+	if got := amtypes.RelKinds.Len(); got != 9 {
+		t.Fatalf("RelKinds = %d, want 9", got)
+	}
+	if !amtypes.RelKinds.Contains(amtypes.RelPipe) {
+		t.Fatal("RelKinds misses RelPipe")
+	}
+	if kind := amtypes.RelKinds.Parse("HAS"); kind == nil ||
+		*kind != amtypes.RelHas {
+		t.Fatalf("unexpected HAS kind: %v", kind)
+	}
+	if kind := amtypes.RelKinds.Parse("NOPE"); kind != nil {
+		t.Fatalf("unexpected NOPE kind: %v", kind)
+	}
+}
+
+// TestPipeLog asserts pipe log parsing is persisted through the typed store.
+func TestPipeLog(t *testing.T) {
+	ctx := t.Context()
+
+	server := am.New(ctx, ssdbg.ServerSchema, &am.Opts{Id: "srv-pipes"})
+	t.Cleanup(server.Dispose)
+	g, err := New(server)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m1 := &Machine{Serialized: &am.Serialized{ID: "p-1"}}
+	m2 := &Machine{Serialized: &am.Serialized{ID: "p-2"}}
+
+	// OUT from p-1
+	tx := &dbg.DbgMsgTx{LogEntries: []*am.LogEntry{
+		{Text: "[pipe-out:add] A to p-2"},
+	}}
+	if err := g.parseMsgDbgLog(m1, tx); err != nil {
+		t.Fatal(err)
+	}
+	// IN to p-2, twice (the second one is a dup)
+	tx = &dbg.DbgMsgTx{LogEntries: []*am.LogEntry{
+		{Text: "[pipe-in:add] B from p-1"},
+		{Text: "[pipe-in:add] B from p-1"},
+	}}
+	if err := g.parseMsgDbgLog(m2, tx); err != nil {
+		t.Fatal(err)
+	}
+
+	edge, err := g.Edge("p-1", "p-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := edge.data()
+	if data == nil || len(data.MachPipesTo) != 1 {
+		t.Fatalf("unexpected pipes: %#v", data)
+	}
+	pipe := data.MachPipesTo[0]
+	if pipe.FromState != "A" || pipe.ToState != "B" ||
+		pipe.MutType != am.MutationAdd {
+		t.Fatalf("unexpected pipe: %#v", pipe)
+	}
+
+	// pipe GC removes incident edges
+	tx = &dbg.DbgMsgTx{LogEntries: []*am.LogEntry{
+		{Text: "[pipe:gc] p-1"},
+	}}
+	if err := g.parseMsgDbgLog(m1, tx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Edge("p-1", "p-2"); err == nil {
+		t.Fatal("pipe edges not removed by gc")
+	}
+}
+
+// ///// ///// /////
+
 // ///// NET GRAPH
 
 // ///// ///// /////
 
-func TestNetGraphResend(t *testing.T) {
+func TestNetworkGraphResend(t *testing.T) {
 	ctx := t.Context()
 
 	mach := am.New(ctx, ssrel.States, &am.Opts{Id: "resend-1"})
@@ -283,13 +458,13 @@ func TestNetGraphResend(t *testing.T) {
 	}
 	t.Cleanup(mach.Dispose)
 
-	newGraph := func(id string) (*Graph, *NetGraph) {
+	newGraph := func(id string) (*Graph, *NetworkGraph) {
 		server := am.New(ctx, ssdbg.ServerSchema, &am.Opts{Id: "srv-" + id})
 		g, err := New(server)
 		if err != nil {
 			t.Fatal(err)
 		}
-		ng, err := NewNetGraph(ctx, "127.0.0.1:0", g)
+		ng, err := NewNetworkGraph(ctx, "127.0.0.1:0", g)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -385,7 +560,7 @@ func TestSinkReconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ng, err := NewNetGraph(ctx, "127.0.0.1:0", g)
+	ng, err := NewNetworkGraph(ctx, "127.0.0.1:0", g)
 	if err != nil {
 		t.Fatal(err)
 	}

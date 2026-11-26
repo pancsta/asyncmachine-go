@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,6 +19,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/goforj/httpx"
 )
 
 // envBrowser overrides the headless browser binary used by the tests.
@@ -242,22 +242,12 @@ func startServer(t *testing.T, ctx context.Context) *proc {
 	srv.start(t)
 
 	// wait for the relay's HTTP server
-	client := &http.Client{Timeout: time.Second}
+	httpc := httpx.New(httpx.Timeout(time.Second))
 	waitFor(t, ctx, srv, nil, "the relay at "+EnvRelayHttpAddr, startTimeout,
 		func() bool {
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-				"http://"+EnvRelayHttpAddr+"/", nil)
-			if err != nil {
-				return false
-			}
-			resp, err := client.Do(req)
-			if err != nil {
-				return false
-			}
-			defer resp.Body.Close()
-			_, _ = io.Copy(io.Discard, resp.Body)
-
-			return resp.StatusCode == http.StatusOK
+			res := httpx.GetCtx[[]byte](httpc, ctx, "http://"+EnvRelayHttpAddr+"/")
+			return res.Response != nil &&
+				res.Response.StatusCode == http.StatusOK
 		})
 
 	return srv
@@ -475,26 +465,17 @@ func pageWebSocketUrl(ctx context.Context, devtools string) (string, error) {
 		return "", err
 	}
 	list := url.URL{Scheme: "http", Host: u.Host, Path: "/json"}
+	httpc := httpx.New(httpx.Timeout(time.Second))
 
 	for {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-			list.String(), nil)
-		if err != nil {
-			return "", err
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err == nil {
-			var targets []struct {
-				Type                 string `json:"type"`
-				WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
-			}
-			decErr := json.NewDecoder(resp.Body).Decode(&targets)
-			resp.Body.Close()
-			if decErr == nil {
-				for _, target := range targets {
-					if target.Type == "page" && target.WebSocketDebuggerURL != "" {
-						return target.WebSocketDebuggerURL, nil
-					}
+		res := httpx.GetCtx[[]struct {
+			Type                 string `json:"type"`
+			WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
+		}](httpc, ctx, list.String())
+		if res.Err == nil {
+			for _, target := range res.Body {
+				if target.Type == "page" && target.WebSocketDebuggerURL != "" {
+					return target.WebSocketDebuggerURL, nil
 				}
 			}
 		}

@@ -4,13 +4,13 @@ package integration
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/goforj/httpx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -43,18 +43,14 @@ func TestLivepageUI(t *testing.T) {
 	port, err := strconv.Atoi(portStr)
 	require.NoError(t, err)
 	base := fmt.Sprintf("http://localhost:%d", port+1)
+	httpc := httpx.New()
 
 	get := func(path string) (int, string) {
-		res, err := http.Get(base + path)
-		if err != nil {
+		res := httpx.Get[[]byte](httpc, base+path)
+		if res.Response == nil {
 			return 0, ""
 		}
-		defer res.Body.Close()
-		body, err := io.ReadAll(res.Body)
-		if err != nil {
-			return 0, ""
-		}
-		return res.StatusCode, string(body)
+		return res.Response.StatusCode, string(res.Response.Bytes())
 	}
 
 	var page string

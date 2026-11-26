@@ -72,12 +72,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/goforj/httpx"
 	"github.com/joho/godotenv"
 
 	ss "github.com/pancsta/asyncmachine-go/examples/temporal_expense/states"
@@ -123,20 +123,13 @@ func (h *MachineHandlers) CreatingExpenseState(e *am.Event) {
 		if stateCtx.Err() != nil {
 			return // expired
 		}
-		resp, err := http.Get(expenseBackendURL + "?id=" + h.expenseID)
-		if err != nil {
-			e.Machine().AddErr(err, nil)
+		res := httpx.Get[string](nil, expenseBackendURL+"?id="+h.expenseID)
+		if res.Err != nil {
+			e.Machine().AddErr(res.Err, nil)
 			return
 		}
-
-		body, err := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if err != nil {
-			e.Machine().AddErr(err, nil)
-			return
-		}
-		if string(body) != "SUCCEED" {
-			e.Machine().AddErr(fmt.Errorf("%s", body), nil)
+		if res.Body != "SUCCEED" {
+			e.Machine().AddErr(fmt.Errorf("%s", res.Body), nil)
 			return
 		}
 
@@ -171,20 +164,13 @@ func (h *MachineHandlers) PaymentInProgressState(e *am.Event) {
 			return // expired
 		}
 		url := paymentBackendURL + "?id=" + h.expenseID
-		resp, err := http.Get(url)
-		if err != nil {
-			e.Machine().AddErr(err, nil)
+		res := httpx.Get[string](nil, url)
+		if res.Err != nil {
+			e.Machine().AddErr(res.Err, nil)
 			return
 		}
-		body, err := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if err != nil {
-			e.Machine().AddErr(err, nil)
-			return
-		}
-
-		if string(body) != "SUCCEED" {
-			e.Machine().AddErr(fmt.Errorf("%s", body), nil)
+		if res.Body != "SUCCEED" {
+			e.Machine().AddErr(fmt.Errorf("%s", res.Body), nil)
 			return
 		}
 

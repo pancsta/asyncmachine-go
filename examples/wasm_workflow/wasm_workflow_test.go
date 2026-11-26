@@ -4,7 +4,6 @@ package example
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/goforj/httpx"
 )
 
 // envBrowser overrides the headless browser binary used by the test.
@@ -197,22 +198,12 @@ func startOrchestrator(t *testing.T, ctx context.Context) *proc {
 	orch.start(t)
 
 	// wait for the relay's HTTP server
-	client := &http.Client{Timeout: time.Second}
+	httpc := httpx.New(httpx.Timeout(time.Second))
 	waitFor(t, ctx, orch, nil, "the relay at "+EnvRelayHttpAddr, startTimeout,
 		func() bool {
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-				"http://"+EnvRelayHttpAddr+"/", nil)
-			if err != nil {
-				return false
-			}
-			resp, err := client.Do(req)
-			if err != nil {
-				return false
-			}
-			defer resp.Body.Close()
-			_, _ = io.Copy(io.Discard, resp.Body)
-
-			return resp.StatusCode == http.StatusOK
+			res := httpx.GetCtx[[]byte](httpc, ctx, "http://"+EnvRelayHttpAddr+"/")
+			return res.Response != nil &&
+				res.Response.StatusCode == http.StatusOK
 		})
 
 	return orch

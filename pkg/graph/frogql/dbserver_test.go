@@ -4,7 +4,7 @@ package frogql_test
 
 import (
 	"encoding/json"
-	"io"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/goforj/httpx"
 	"github.com/vmihailenco/msgpack/v5"
 
 	ssrel "github.com/pancsta/asyncmachine-go/internal/testing/states"
@@ -35,7 +36,7 @@ func TestDbHttpServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ng, err := amgraph.NewNetGraph(ctx, "127.0.0.1:0", g)
+	ng, err := amgraph.NewNetworkGraph(ctx, "127.0.0.1:0", g)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,28 +73,19 @@ func TestDbHttpServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := "http://" + addr
+	httpc := httpx.New()
 
 	post := func(accept, q string) (int, []byte) {
 		t.Helper()
-		req, err := http.NewRequest("POST", base+"/query",
-			strings.NewReader(q))
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("Content-Type", "text/plain")
+		opts := []httpx.Option{httpx.Header("Content-Type", "text/plain")}
 		if accept != "" {
-			req.Header.Set("Accept", accept)
+			opts = append(opts, httpx.Header("Accept", accept))
 		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
+		res := httpx.Post[string, []byte](httpc, base+"/query", q, opts...)
+		if res.Response == nil {
+			t.Fatalf("query %q: %v", q, res.Err)
 		}
-		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return resp.StatusCode, body
+		return res.Response.StatusCode, res.Response.Bytes()
 	}
 
 	// query, JSON
@@ -130,15 +122,11 @@ func TestDbHttpServer(t *testing.T) {
 	}
 
 	// serialized machine, lowercase keys
-	resp, err := http.Get(base + "/machine?id=mach-http")
-	if err != nil {
-		t.Fatal(err)
+	mres := httpx.Get[[]byte](httpc, base+"/machine?id=mach-http")
+	if mres.Err != nil {
+		t.Fatalf("machine: %v", mres.Err)
 	}
-	body, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("machine: %d %s", resp.StatusCode, body)
-	}
+	body = mres.Body
 	if !strings.Contains(string(body), `"state_names"`) {
 		t.Fatalf("not lowercase: %s", body)
 	}
@@ -157,13 +145,11 @@ func TestDbHttpServer(t *testing.T) {
 	}
 
 	// missing machine
-	resp, err = http.Get(base + "/machine?id=nope")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("missing machine: %d", resp.StatusCode)
+	mres = httpx.Get[[]byte](httpc, base+"/machine?id=nope")
+	var httpErr *httpx.HTTPError
+	if !errors.As(mres.Err, &httpErr) ||
+		httpErr.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing machine: %v", mres.Err)
 	}
 
 	// websocket, text
@@ -286,7 +272,7 @@ func TestDbHttpServerClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ng, err := amgraph.NewNetGraph(ctx, "127.0.0.1:0", g)
+	ng, err := amgraph.NewNetworkGraph(ctx, "127.0.0.1:0", g)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,21 +289,19 @@ func TestDbHttpServerClose(t *testing.T) {
 	}
 
 	// reachable (empty query -> 400, but the connection works)
-	resp, err := http.Get("http://" + addr + "/query")
-	if err != nil {
-		t.Fatalf("server unreachable: %v", err)
+	url := "http://" + addr + "/query"
+	if reach := httpx.Get[[]byte](nil, url); reach.Response == nil {
+		t.Fatalf("server unreachable: %v", reach.Err)
 	}
-	resp.Body.Close()
 
-	// closed with the NetGraph
+	// closed with the NetworkGraph
 	if err := ng.Close(); err != nil {
 		t.Fatal(err)
 	}
 	_ = db.Close()
 
-	client := &http.Client{Timeout: time.Second}
-	if resp, err := client.Get("http://" + addr + "/query"); err == nil {
-		resp.Body.Close()
+	client := httpx.New(httpx.Timeout(time.Second))
+	if reach := httpx.Get[[]byte](client, url); reach.Response != nil {
 		t.Fatal("server still reachable after Close")
 	}
 }

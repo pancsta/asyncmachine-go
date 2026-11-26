@@ -2,9 +2,8 @@ package test
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"math/rand/v2"
 	"net/http"
 	"slices"
@@ -13,9 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/goforj/httpx"
+
 	ssrel "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	amgraph "github.com/pancsta/asyncmachine-go/pkg/graph"
-	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
+	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/types"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
 	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
@@ -32,8 +33,8 @@ import (
 // MachinesPerNode is the number of source machines per graph node.
 const MachinesPerNode = 4
 
-// NetGraphPushInterval is the graph sync interval used by the simulation.
-const NetGraphPushInterval = 10 * time.Millisecond
+// NetworkGraphPushInterval is the graph sync interval used by the simulation.
+const NetworkGraphPushInterval = 10 * time.Millisecond
 
 // MachineIds returns the machine IDs owned by a graph node.
 func MachineIds(nodeId string) []string {
@@ -159,20 +160,20 @@ func TreeSpec(depth, fanout int) string {
 	return b.String()
 }
 
-// NetNode is one NetGraph node with locally traced machines.
+// NetNode is one NetworkGraph node with locally traced machines.
 type NetNode struct {
 	ID       string
 	ParentID string
 	Machines []*am.Machine
 	Server   *am.Machine
 	Graph    *amgraph.Graph
-	Net      *amgraph.NetGraph
+	Net      *amgraph.NetworkGraph
 
 	// discovered maps source machine IDs already dialed by this node.
 	discovered map[string]struct{}
 }
 
-// MachineGraph is a reusable multi-node NetGraph test fixture.
+// MachineGraph is a reusable multi-node NetworkGraph test fixture.
 type MachineGraph struct {
 	T             *testing.T
 	Nodes         []*NetNode
@@ -215,6 +216,9 @@ type GraphOpts struct {
 	NoRandomTags bool
 	// WaitTimeout is the graph sync wait timeout. Defaults to 3s.
 	WaitTimeout time.Duration
+	// NetOpts are extra [amgraph.NetworkGraphOpts] applied to every node
+	// (tests). Only Listener and Dial are honored.
+	NetOpts amgraph.NetworkGraphOpts
 }
 
 // NewMachineGraph creates the supplied machine topology over UDP.
@@ -276,8 +280,8 @@ func NewMachineGraph(
 			// simulate a random RPC conn via a src-id tag, like real RPC
 			// clients (pkg/rpc/rpc_client.go)
 			if !o.NoRandomTags {
-				if target := allMachines[rand.IntN(len(allMachines))]; target != machID &&
-					rand.IntN(2) == 0 {
+				target := allMachines[rand.IntN(len(allMachines))]
+				if target != machID && rand.IntN(2) == 0 {
 					mach.SetTags([]string{ssrpc.TagKeySrcId + ":" + target})
 				}
 			}
@@ -296,10 +300,12 @@ func NewMachineGraph(
 		if id == spec.Root {
 			db = o.SinkDb
 		}
-		n.Net, err = amgraph.NewNetGraph(ctx, "127.0.0.1:0", n.Graph,
-			amgraph.NetGraphOpts{
+		n.Net, err = amgraph.NewNetworkGraph(ctx, "127.0.0.1:0", n.Graph,
+			amgraph.NetworkGraphOpts{
 				Db:           db,
-				PushInterval: NetGraphPushInterval,
+				PushInterval: NetworkGraphPushInterval,
+				Listener:     o.NetOpts.Listener,
+				Dial:         o.NetOpts.Dial,
 			})
 		if err != nil {
 			t.Fatal(err)
@@ -426,7 +432,7 @@ func (f *MachineGraph) WaitClients(g *amgraph.Graph, machines []*am.Machine) {
 // ///// ///// /////
 
 // StartDiscovery starts one RPC server per node, advertises it as an #addr
-// tag, and dials every #addr discovered through the local NetGraph. Every
+// tag, and dials every #addr discovered through the local NetworkGraph. Every
 // connection is a real TCP RPC client, mirrored as a CONNECTED_TO edge.
 func (f *MachineGraph) StartDiscovery(opts ...DiscoveryOpts) {
 	f.T.Helper()
@@ -534,7 +540,7 @@ func (f *MachineGraph) subtreeSources(id string) []string {
 func (f *MachineGraph) discoveryLoop(ctx context.Context, n *NetNode) {
 	defer f.discoveryWg.Done()
 
-	ticker := time.NewTicker(NetGraphPushInterval)
+	ticker := time.NewTicker(NetworkGraphPushInterval)
 	defer ticker.Stop()
 
 	for {
@@ -599,29 +605,6 @@ func (f *MachineGraph) dialSource(
 	f.discoveryMx.Lock()
 	f.Clients = append(f.Clients, cl)
 	f.discoveryMx.Unlock()
-}
-
-// queryGql runs a GQL query against a Db HTTP server and returns its rows.
-func queryGql(base string, q string) ([]map[string]any, error) {
-	resp, err := http.Post(base+"/query", "text/plain", strings.NewReader(q))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%d %s", resp.StatusCode, body)
-	}
-
-	var rows []map[string]any
-	if err := json.Unmarshal(body, &rows); err != nil {
-		return nil, err
-	}
-	return rows, nil
 }
 
 func (f *MachineGraph) wait(
@@ -757,6 +740,7 @@ func RunDbMirrorSuite(t *testing.T, f *MachineGraph, db amtypes.DbGraph) {
 		t.Fatal(err)
 	}
 	base := "http://" + addr
+	httpc := httpx.New()
 
 	// trigger a fresh burst of updates, so every machine hits the DB
 	f.AddState(ssrel.D)
@@ -766,22 +750,12 @@ func RunDbMirrorSuite(t *testing.T, f *MachineGraph, db amtypes.DbGraph) {
 		t.Helper()
 		start := time.Now()
 
-		resp, err := http.Post(base+"/query", "text/plain", strings.NewReader(q))
-		if err != nil {
-			t.Fatalf("query %q: %v", q, err)
+		res := httpx.Post[string, []map[string]any](httpc, base+"/query", q,
+			httpx.Header("Content-Type", "text/plain"))
+		if res.Err != nil {
+			t.Fatalf("query %q: %v", q, res.Err)
 		}
-		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("query %q: %d %s", q, resp.StatusCode, body)
-		}
-		var rows []map[string]any
-		if err := json.Unmarshal(body, &rows); err != nil {
-			t.Fatalf("query %q: %v: %s", q, err, body)
-		}
+		rows := res.Body
 
 		t.Logf("query %q: %s (%d rows)", q, time.Since(start), len(rows))
 		return rows
@@ -879,20 +853,12 @@ func RunDbMirrorSuite(t *testing.T, f *MachineGraph, db amtypes.DbGraph) {
 	// serialized machine over HTTP, compared to the sink's mirror
 	mach := f.Machines[0]
 	wait("serialized clocks", func() bool {
-		resp, err := http.Get(base + "/machine?id=" + mach.Id())
-		if err != nil {
+		res := httpx.Get[am.Serialized](httpc, base+"/machine?id="+mach.Id())
+		if res.Err != nil {
 			return false
 		}
-		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			return false
-		}
+		ser := res.Body
 
-		var ser am.Serialized
-		if err := json.Unmarshal(body, &ser); err != nil {
-			return false
-		}
 		if ser.ID != mach.Id() || !slices.Equal(ser.StateNames, ssrel.Names) {
 			t.Fatalf("unexpected machine: %#v", ser)
 		}
@@ -913,13 +879,11 @@ func RunDbMirrorSuite(t *testing.T, f *MachineGraph, db amtypes.DbGraph) {
 	})
 
 	// error path
-	resp, err := http.Post(base+"/query", "text/plain",
-		strings.NewReader("NOPE ("))
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("bad query: %d", resp.StatusCode)
+	res := httpx.Post[string, []byte](httpc, base+"/query", "NOPE (",
+		httpx.Header("Content-Type", "text/plain"))
+	var httpErr *httpx.HTTPError
+	if !errors.As(res.Err, &httpErr) ||
+		httpErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad query: %v", res.Err)
 	}
 }
