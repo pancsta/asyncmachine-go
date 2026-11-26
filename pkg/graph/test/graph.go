@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
+	arpc "github.com/pancsta/asyncmachine-go/pkg/rpc"
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
 )
@@ -30,10 +32,18 @@ import (
 // MachinesPerNode is the number of source machines per graph node.
 const MachinesPerNode = 4
 
+// NetGraphPushInterval is the graph sync interval used by the simulation.
+const NetGraphPushInterval = 10 * time.Millisecond
+
 // MachineIds returns the machine IDs owned by a graph node.
 func MachineIds(nodeId string) []string {
-	res := make([]string, 0, MachinesPerNode)
-	for i := 1; i <= MachinesPerNode; i++ {
+	return machineIds(nodeId, MachinesPerNode)
+}
+
+// machineIds returns count machine IDs owned by a graph node.
+func machineIds(nodeId string, count int) []string {
+	res := make([]string, 0, count)
+	for i := 1; i <= count; i++ {
 		res = append(res, fmt.Sprintf("%s-mach-%d", nodeId, i))
 	}
 	return res
@@ -126,13 +136,40 @@ func parseSpec(t *testing.T, specText string) Graph {
 	return g
 }
 
+// TreeSpec returns a deterministic tree spec with the given depth and fanout.
+// The root is "sink"; children are IDs like "node-1", "node-1-2", which
+// [parseSpec] links by trimming the last "-" segment.
+func TreeSpec(depth, fanout int) string {
+	var b strings.Builder
+	b.WriteString("sink\n")
+
+	level := []string{"node"}
+	for range depth {
+		next := make([]string, 0, len(level)*fanout)
+		for _, parent := range level {
+			for i := 1; i <= fanout; i++ {
+				id := fmt.Sprintf("%s-%d", parent, i)
+				b.WriteString(id + "\n")
+				next = append(next, id)
+			}
+		}
+		level = next
+	}
+
+	return b.String()
+}
+
 // NetNode is one NetGraph node with locally traced machines.
 type NetNode struct {
 	ID       string
+	ParentID string
 	Machines []*am.Machine
 	Server   *am.Machine
 	Graph    *amgraph.Graph
 	Net      *amgraph.NetGraph
+
+	// discovered maps source machine IDs already dialed by this node.
+	discovered map[string]struct{}
 }
 
 // MachineGraph is a reusable multi-node NetGraph test fixture.
@@ -147,13 +184,58 @@ type MachineGraph struct {
 	NodeMachines  map[string][]*am.Machine
 	Machines      []*am.Machine
 	Idx           int
+	waitTimeout   time.Duration
+
+	ctx              context.Context
+	Servers          map[string]*arpc.Server
+	Clients          []*arpc.Client
+	discoverySources map[string][]string
+	discoveryWant    int
+	discoveryMx      sync.Mutex
+	discoveryWg      sync.WaitGroup
+}
+
+// DiscoveryOpts configures [MachineGraph.StartDiscovery].
+type DiscoveryOpts struct {
+	// SinkOnly runs discovery only on the sink, dialing every source machine
+	// visible to it.
+	SinkOnly bool
+}
+
+// GraphOpts configures [NewMachineGraph].
+type GraphOpts struct {
+	// SinkDb mirrors the sink's graph into a DB from the start.
+	SinkDb amtypes.DbGraph
+	// MachinesPerNode is the number of source machines per node. Defaults to
+	// [MachinesPerNode].
+	MachinesPerNode int
+	// Quiet disables printing the topology for large graphs.
+	Quiet bool
+	// NoRandomTags disables random src-id tags on source machines.
+	NoRandomTags bool
+	// WaitTimeout is the graph sync wait timeout. Defaults to 3s.
+	WaitTimeout time.Duration
 }
 
 // NewMachineGraph creates the supplied machine topology over UDP.
 func NewMachineGraph(
-	t *testing.T, ctx context.Context, specText string,
+	t *testing.T, ctx context.Context, specText string, opts ...GraphOpts,
 ) *MachineGraph {
 	t.Helper()
+
+	o := GraphOpts{
+		MachinesPerNode: MachinesPerNode,
+		WaitTimeout:     3 * time.Second,
+	}
+	if len(opts) > 0 {
+		o = opts[0]
+		if o.MachinesPerNode == 0 {
+			o.MachinesPerNode = MachinesPerNode
+		}
+		if o.WaitTimeout == 0 {
+			o.WaitTimeout = 3 * time.Second
+		}
+	}
 
 	spec := parseSpec(t, specText)
 	f := &MachineGraph{
@@ -162,6 +244,8 @@ func NewMachineGraph(
 		Children:      make(map[string][]*NetNode),
 		RelayExpected: make(map[string][]*am.Machine),
 		NodeMachines:  make(map[string][]*am.Machine),
+		ctx:           ctx,
+		waitTimeout:   o.WaitTimeout,
 	}
 	t.Cleanup(func() {
 		for i := len(f.Nodes) - 1; i >= 0; i-- {
@@ -175,12 +259,15 @@ func NewMachineGraph(
 
 	var allMachines []string
 	for _, node := range spec.Nodes {
-		allMachines = append(allMachines, MachineIds(node.ID)...)
+		allMachines = append(allMachines, machineIds(node.ID, o.MachinesPerNode)...)
 	}
 
 	newNode := func(id string, machineCount int) *NetNode {
-		n := &NetNode{ID: id}
-		for _, machID := range MachineIds(id)[:machineCount] {
+		n := &NetNode{
+			ID:         id,
+			discovered: make(map[string]struct{}),
+		}
+		for _, machID := range machineIds(id, machineCount) {
 			mach := am.New(ctx, ssrel.States, &am.Opts{Id: machID})
 			if err := mach.VerifyStates(ssrel.Names); err != nil {
 				t.Fatal(err)
@@ -188,9 +275,11 @@ func NewMachineGraph(
 
 			// simulate a random RPC conn via a src-id tag, like real RPC
 			// clients (pkg/rpc/rpc_client.go)
-			if target := allMachines[rand.IntN(len(allMachines))]; target != machID &&
-				rand.IntN(2) == 0 {
-				mach.SetTags([]string{ssrpc.TagKeySrcId + ":" + target})
+			if !o.NoRandomTags {
+				if target := allMachines[rand.IntN(len(allMachines))]; target != machID &&
+					rand.IntN(2) == 0 {
+					mach.SetTags([]string{ssrpc.TagKeySrcId + ":" + target})
+				}
 			}
 
 			n.Machines = append(n.Machines, mach)
@@ -202,11 +291,19 @@ func NewMachineGraph(
 		if err != nil {
 			t.Fatal(err)
 		}
-		n.Net, err = amgraph.NewNetGraph(ctx, "127.0.0.1:0", n.Graph)
+		// mirror the sink into the DB from the start, so no late attach races
+		var db amtypes.DbGraph
+		if id == spec.Root {
+			db = o.SinkDb
+		}
+		n.Net, err = amgraph.NewNetGraph(ctx, "127.0.0.1:0", n.Graph,
+			amgraph.NetGraphOpts{
+				Db:           db,
+				PushInterval: NetGraphPushInterval,
+			})
 		if err != nil {
 			t.Fatal(err)
 		}
-		n.Net.PushInterval = 10 * time.Millisecond
 		f.Nodes = append(f.Nodes, n)
 		f.ByID[id] = n
 		f.NodeMachines[id] = n.Machines
@@ -217,12 +314,13 @@ func NewMachineGraph(
 	f.Sink = newNode(spec.Root, 0)
 
 	for _, n := range spec.Nodes {
-		newNode(n.ID, MachinesPerNode)
+		newNode(n.ID, o.MachinesPerNode)
 	}
 
 	for _, n := range spec.Nodes {
 		node := f.ByID[n.ID]
 		parent := f.ByID[n.Parent]
+		node.ParentID = n.Parent
 		node.Net.EmitToAddr(parent.Net.Addr)
 		f.Children[parent.ID] = append(f.Children[parent.ID], node)
 		if len(spec.Children[n.ID]) > 0 {
@@ -246,7 +344,9 @@ func NewMachineGraph(
 		n.Net.SchemaStore[schemaHash] = schema
 	}
 
-	printTopology(f)
+	if !o.Quiet && len(f.Nodes) <= 64 {
+		printTopology(f)
+	}
 
 	for _, n := range f.Nodes {
 		for _, mach := range n.Machines {
@@ -319,12 +419,217 @@ func (f *MachineGraph) WaitClients(g *amgraph.Graph, machines []*am.Machine) {
 	})
 }
 
+// ///// ///// /////
+
+// ///// DISCOVERY
+
+// ///// ///// /////
+
+// StartDiscovery starts one RPC server per node, advertises it as an #addr
+// tag, and dials every #addr discovered through the local NetGraph. Every
+// connection is a real TCP RPC client, mirrored as a CONNECTED_TO edge.
+func (f *MachineGraph) StartDiscovery(opts ...DiscoveryOpts) {
+	f.T.Helper()
+
+	o := DiscoveryOpts{}
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+
+	ctx, cancel := context.WithCancel(f.ctx)
+	f.Servers = make(map[string]*arpc.Server)
+
+	// start the servers first, so all #addr tags can propagate at once
+	for _, n := range f.Nodes {
+		if len(n.Machines) == 0 {
+			continue
+		}
+		src := n.Machines[0]
+		srv, err := arpc.NewServer(ctx, "127.0.0.1:0", n.ID, src, nil)
+		if err != nil {
+			f.T.Fatal(err)
+		}
+		srv.Start(nil)
+		select {
+		case <-srv.Mach.When1(ssrpc.ServerStates.RpcReady, ctx):
+		case <-time.After(5 * time.Second):
+			f.T.Fatalf("rpc server %s did not start", n.ID)
+		}
+		// advertise the TCP listener on the traced source machine
+		amhelp.TagSetOnMach(src, ssrpc.TagKeyAddr, srv.Addr)
+		f.Servers[n.ID] = srv
+	}
+
+	// precompute the source machines visible to each node
+	f.discoverySources = make(map[string][]string, len(f.Nodes))
+	for _, n := range f.Nodes {
+		f.discoverySources[n.ID] = f.subtreeSources(n.ID)
+	}
+
+	f.discoveryWant = 0
+	for _, n := range f.Nodes {
+		if o.SinkOnly && n != f.Sink {
+			continue
+		}
+		f.discoveryWant += len(f.discoverySources[n.ID])
+		f.discoveryWg.Add(1)
+		go f.discoveryLoop(ctx, n)
+	}
+
+	f.T.Cleanup(func() {
+		cancel()
+		f.discoveryWg.Wait()
+		for _, cl := range f.Clients {
+			if cl.NetMach != nil {
+				cl.Stop(nil, nil, true)
+			} else {
+				cl.Mach.Dispose()
+			}
+		}
+		for _, srv := range f.Servers {
+			srv.Stop(nil, true)
+		}
+	})
+}
+
+// WaitDiscovery waits until the configured scope dialed all its descendants.
+func (f *MachineGraph) WaitDiscovery(timeout time.Duration) {
+	f.T.Helper()
+
+	want := f.discoveryWant
+	if want == 0 {
+		for _, ids := range f.discoverySources {
+			want += len(ids)
+		}
+	}
+
+	deadline := time.Now().Add(timeout)
+	for {
+		f.discoveryMx.Lock()
+		got := len(f.Clients)
+		f.discoveryMx.Unlock()
+		if got >= want {
+			f.T.Logf("discovered %d TCP RPC conns", got)
+			return
+		}
+		if time.Now().After(deadline) {
+			f.T.Fatalf("discovered %d/%d TCP RPC conns", got, want)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// subtreeSources returns the source machine IDs of all descendants of a node.
+func (f *MachineGraph) subtreeSources(id string) []string {
+	var res []string
+	for _, child := range f.Children[id] {
+		if len(child.Machines) > 0 {
+			res = append(res, child.Machines[0].Id())
+		}
+		res = append(res, f.subtreeSources(child.ID)...)
+	}
+	return res
+}
+
+func (f *MachineGraph) discoveryLoop(ctx context.Context, n *NetNode) {
+	defer f.discoveryWg.Done()
+
+	ticker := time.NewTicker(NetGraphPushInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			for _, srcID := range f.discoverySources[n.ID] {
+				f.dialSource(ctx, n, srcID)
+			}
+		}
+	}
+}
+
+// dialSource connects to a source machine once its #addr tag is mirrored.
+func (f *MachineGraph) dialSource(
+	ctx context.Context, n *NetNode, srcID string,
+) {
+	if _, ok := n.discovered[srcID]; ok {
+		return
+	}
+
+	src, ok := n.Graph.Machine(srcID)
+	if !ok {
+		return
+	}
+	addr := amhelp.TagValue(src.Tags, ssrpc.TagKeyAddr)
+	if addr == "" {
+		return
+	}
+	n.discovered[srcID] = struct{}{}
+
+	cl, err := arpc.NewClient(ctx, addr, "cl-"+n.ID+"-"+srcID, src.Schema,
+		&arpc.ClientOpts{Parent: n.Server})
+	if err != nil {
+		f.T.Logf("rpc client %s: %v", srcID, err)
+		delete(n.discovered, srcID)
+		return
+	}
+	cl.Start(nil)
+	select {
+	case <-cl.Mach.When1(ssrpc.ClientStates.HandshakeDone, ctx):
+	case <-time.After(5 * time.Second):
+		cl.Stop(nil, nil, true)
+		delete(n.discovered, srcID)
+		return
+	case <-ctx.Done():
+		return
+	}
+
+	// the netmach carries the src-id tag, which becomes a CONNECTED_TO edge.
+	// Only the sink mirrors its clients: its graph is the GQL source and it has
+	// no upstream to relay late-bound netmach baselines to.
+	if n == f.Sink {
+		if _, err := n.Net.TraceMach(cl.NetMach); err != nil {
+			cl.Stop(nil, nil, true)
+			delete(n.discovered, srcID)
+			return
+		}
+	}
+
+	f.discoveryMx.Lock()
+	f.Clients = append(f.Clients, cl)
+	f.discoveryMx.Unlock()
+}
+
+// queryGql runs a GQL query against a Db HTTP server and returns its rows.
+func queryGql(base string, q string) ([]map[string]any, error) {
+	resp, err := http.Post(base+"/query", "text/plain", strings.NewReader(q))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%d %s", resp.StatusCode, body)
+	}
+
+	var rows []map[string]any
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (f *MachineGraph) wait(
 	g *amgraph.Graph, machines []*am.Machine, readyFn func(*amgraph.Machine) bool,
 ) {
 	f.T.Helper()
 
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(f.waitTimeout)
 	for {
 		ready := true
 		var missing []string

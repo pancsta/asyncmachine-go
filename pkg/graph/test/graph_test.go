@@ -145,6 +145,120 @@ func TestNetGraphGochickpeasDb(t *testing.T) {
 	RunDbMirrorSuite(t, f, db)
 }
 
+// TestNetGraphSim builds the full tree, discovers node addresses from #addr
+// tags over real TCP RPC conns, and measures how long a state change on the
+// deepest node takes to show up in a GQL query against the sink's DB.
+func TestNetGraphSim(t *testing.T) {
+	ctx := t.Context()
+
+	// mirror the sink into a GQL DB from the start
+	db, err := gochickpeas.NewDbGraph()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	f := NewMachineGraph(t, ctx, DefaultGraphSpec, GraphOpts{SinkDb: db})
+	addr, err := f.Sink.Net.StartDbHttpServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := "http://" + addr
+
+	f.AddState(ssrel.B)
+	f.WaitParents()
+	f.WaitSink()
+
+	// discovery from #addr tags, resulting in real TCP RPC conns
+	f.StartDiscovery()
+	f.WaitDiscovery(15 * time.Second)
+
+	// the deepest node, 3 UDP hops from the sink
+	deep := f.ByID["node-4-4"].Machines[0]
+	deepID := deep.Id()
+	if tagAddr := amhelp.TagValue(deep.Tags(), ssrpc.TagKeyAddr); tagAddr == "" {
+		t.Fatalf("%s has no %s tag", deepID, ssrpc.TagKeyAddr)
+	}
+
+	// wait until the sink's GQL DB sees the deep node in the given state
+	waitActive := func(active bool) time.Duration {
+		t.Helper()
+		start := time.Now()
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			rows, err := queryGql(base, fmt.Sprintf(
+				"MATCH (m:Machine {id: '%s'})-[:HAS]->(s:State) "+
+					"WHERE s.name = '%s' AND s.active = %t "+
+					"RETURN m.id AS id", deepID, ssrel.B, active))
+			if err == nil && len(rows) > 0 {
+				return time.Since(start)
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s active=%t in GQL: %v",
+					deepID, active, err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	// initial sync
+	waitActive(true)
+
+	// measure deep changes until they are discoverable by GQL
+	var samples []time.Duration
+	for i := range 5 {
+		start := time.Now()
+		deep.Remove1(ssrel.B, nil)
+		waitActive(false)
+		removed := time.Since(start)
+
+		start = time.Now()
+		deep.Add1(ssrel.B, nil)
+		waitActive(true)
+		added := time.Since(start)
+
+		samples = append(samples, removed, added)
+		t.Logf("round %d: remove %s, add %s", i+1, removed, added)
+	}
+	slices.Sort(samples)
+	t.Logf("deep state change -> GQL: min=%s p50=%s max=%s (n=%d)",
+		samples[0], samples[len(samples)/2], samples[len(samples)-1],
+		len(samples))
+
+	// the discovered TCP conn is mirrored as a CONNECTED_TO edge
+	var clientID string
+	f.discoveryMx.Lock()
+	for _, cl := range f.Clients {
+		if cl.NetMach != nil && cl.NetMach.RemoteId() == deepID &&
+			cl.Mach.ParentId() == f.Sink.Server.Id() {
+			clientID = cl.NetMach.Id()
+			break
+		}
+	}
+	f.discoveryMx.Unlock()
+	if clientID == "" {
+		t.Fatalf("sink has no RPC client for %s", deepID)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	var rows []map[string]any
+	for {
+		rows, err = queryGql(base, fmt.Sprintf(
+			"MATCH (m:Machine)-[:CONNECTED_TO]->(src:Machine) "+
+				"WHERE m.id = '%s' RETURN src.id AS src", clientID))
+		if err == nil && len(rows) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s: no CONNECTED_TO edge to %s: %v", clientID, deepID, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := rows[0]["src"]; got != deepID {
+		t.Fatalf("%s: CONNECTED_TO %v, want %s", clientID, got, deepID)
+	}
+}
+
 // TestNetGraphDAG builds the shared machine graph over UDP.
 func TestNetGraph(t *testing.T) {
 	ctx, stop := signal.NotifyContext(t.Context(), os.Interrupt, syscall.SIGTERM)
@@ -169,7 +283,7 @@ func TestNetGraph(t *testing.T) {
 	}
 
 	tagID := source.Id() + "#" + tags[0]
-	tagVertex, err := f.Sink.Graph.G.Vertex(tagID)
+	tagVertex, err := f.Sink.Graph.Vertex(tagID)
 	if err != nil || tagVertex.TagName != tags[0] {
 		t.Fatalf("tag vertex missing: %v", err)
 	}
