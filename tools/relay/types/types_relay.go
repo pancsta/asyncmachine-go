@@ -31,12 +31,18 @@ type CliArgs struct {
 	AllowedIds []string `arg:"-i,--id,separate" help:"List of allowed machine IDs (repeatable)"`
 	// List of allowed API keys (optional, repeatable).
 	AllowedPubKeys []string `arg:"-k,--key,separate" help:"List of allowed API keys (repeatable)"`
-	Version        bool     `arg:"-v,--version" help:"Print version and exit"`
+	// Expose state machines over the JSON REST API.
+	Rest bool `arg:"--rest" help:"Expose state machines over the JSON REST API"`
+	// Listen address for the REST API.
+	RestAddr string `arg:"--rest-addr" default:"localhost:12734" help:"Listen address for the REST API"`
+	Version  bool   `arg:"-v,--version" help:"Print version and exit"`
 
 	// internal
 
 	Output OutputFunc `arg:"-"`
 	Parent am.Api     `arg:"-"`
+	// Machines exposed via --rest. Defaults to the relay machine.
+	RestMachs []am.Api `arg:"-"`
 }
 
 // ArgsRotateDbg converts dbg dumps to other formats / versions.

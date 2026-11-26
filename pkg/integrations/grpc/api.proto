@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package amgrpc;
+
+option go_package = "github.com/pancsta/asyncmachine-go/pkg/integrations/grpc;grpc";
+
+import "google/protobuf/struct.proto";
+
+// AsyncmachineService is a gRPC equivalent of the REST API in
+// /pkg/integrations/rest.
+service AsyncmachineService {
+  // ListMachines returns machines passing the filters.
+  rpc ListMachines (ListMachinesReq) returns (ListMachinesResp);
+  // GetMachine returns a machine state.
+  rpc GetMachine (GetMachineReq) returns (Serialized);
+  // CreateMachine creates a machine from a schema and optional serialized state.
+  rpc CreateMachine (CreateMachineReq) returns (Serialized);
+  // Mutate adds or removes states.
+  rpc Mutate (MutateReq) returns (MutateResp);
+  // Wait blocks until states become active or inactive, or time is reached.
+  rpc Wait (WaitReq) returns (WaitResp);
+  // Dispose disposes a machine.
+  rpc Dispose (DisposeReq) returns (DisposeResp);
+}
+
+message Serialized {
+  string id = 1;
+  repeated string state_names = 2;
+  repeated uint64 time = 3;
+  uint64 queue_tick = 4;
+  uint32 machine_tick = 5;
+  repeated string tags = 6;
+}
+
+message ListMachinesReq {
+  string id = 1;
+  string id_substr = 2;
+  string id_regexp = 3;
+  string id_prefix = 4;
+  string id_suffix = 5;
+  string parent = 6;
+  uint64 mtime_min = 7;
+  uint64 mtime_max = 8;
+  repeated string mtime_states = 9;
+  repeated string active = 10;
+  repeated string inactive = 11;
+  int32 limit = 12;
+  int32 start_idx = 13;
+}
+
+message ListMachinesResp {
+  repeated Serialized machines = 1;
+}
+
+message GetMachineReq {
+  string id = 1;
+}
+
+message CreateMachineReq {
+  // Optional serialized state (ID, tags, time, machine tick).
+  Serialized serialized = 1;
+  // Schema of the new machine.
+  google.protobuf.Struct schema = 2;
+}
+
+message MutateReq {
+  string id = 1;
+  repeated string add = 2;
+  repeated string remove = 3;
+  // Arguments passed to transition handlers.
+  google.protobuf.Struct args = 4;
+}
+
+message MutateResp {
+  // 0 executed, 1 canceled, 2 or higher queued at this queue tick.
+  int64 result = 1;
+}
+
+message WaitReq {
+  string id = 1;
+  repeated string states = 2;
+  repeated string states_not = 3;
+  repeated uint64 time = 4;
+}
+
+message WaitResp {
+  string id = 1;
+  repeated string states = 2;
+  repeated string states_not = 3;
+  repeated uint64 time = 4;
+}
+
+message DisposeReq {
+  string id = 1;
+}
+
+message DisposeResp {
+  bool disposed = 1;
+}
