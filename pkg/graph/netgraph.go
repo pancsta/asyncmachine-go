@@ -381,6 +381,7 @@ func (n *NetworkGraph) EmitToAddr(
 		n.sinksMx.Lock()
 		n.sinks[addr] = conn
 		n.sinksMx.Unlock()
+		// TODO flip upstream / downstream, as they are wrong, EmitToAddr accepts downstreams, as data flows into it
 		go n.receiveFromUpstream(conn)
 	}
 

@@ -653,8 +653,11 @@ func runMockHistory(t *testing.T, o mockOpts) *mockRun {
 		r.tracked = hg.TrackedCount()
 		r.shardCounts = hg.ShardCounts()
 		for _, path := range dbPaths {
-			if fi, err := os.Stat(path); err == nil {
-				r.dbMB += float64(fi.Size()) / (1 << 20)
+			// include the WAL, it may not be checkpointed yet
+			for _, suffix := range []string{"", "-wal"} {
+				if fi, err := os.Stat(path + suffix); err == nil {
+					r.dbMB += float64(fi.Size()) / (1 << 20)
+				}
 			}
 		}
 	}

@@ -127,7 +127,7 @@ func (t Time) DiffSince(before Time) Time {
 	}
 
 	for i := range before {
-		ret[i] = t[i] - before[i]
+		ret[i] = max(0, t[i] - before[i])
 	}
 
 	return ret

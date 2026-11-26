@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math/rand/v2"
 	"os"
@@ -109,8 +110,9 @@ type Machine struct {
 type Time struct {
 	// PK
 
-	ID        uint64 `gorm:"primaryKey;autoIncrement:false"`
-	MachineID uint32 `gorm:"primaryKey"`
+	// nolint:lll
+	ID        uint64 `gorm:"primaryKey;autoIncrement:false;index:mach_time,priority:2"`
+	MachineID uint32 `gorm:"primaryKey;index:mach_time,priority:1"`
 
 	// rels
 
@@ -444,25 +446,27 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 	argsBt, _ := json.Marshal(args)
 	mTimeBt, _ := json.Marshal(mTime)
 	mTimeTrackedBt, _ := json.Marshal(mTimeTracked)
-	mTimeTrackedDiffBt, _ := json.Marshal(
-		mTimeTracked.DiffSince(mTimeTrackedBefore))
+	mTimeTrackedDiff := mTimeTracked.DiffSince(mTimeTrackedBefore)
+	mTimeTrackedDiffBt, _ := json.Marshal(mTimeTrackedDiff)
 
 	// time record
 	var recordDiff uint64
 	if t.mem.lastRec != nil {
-		recordDiff = sum - t.mem.lastRec.MTimeSum
+		recordDiff = max(0, sum - t.mem.lastRec.MTimeSum)
 	}
 	machTick := mach.MachineTick()
 	now := time.Now().UTC()
 	id := m.nextId.Load()
+	diffSum := max(0, sum - tx.TimeBefore.Sum(nil))
+	diffTrackedSum := max(0, sumTracked - tx.TimeBefore.Sum(m.cacheTrackedIdxs))
 	timeRec := Time{
 		ID:                  id,
 		MachineID:           m.machRec.ID,
 		MutType:             mut.Type,
 		MTimeSum:            sum,
 		MTimeTrackedSum:     sumTracked,
-		MTimeDiffSum:        sum - tx.TimeBefore.Sum(nil),
-		MTimeTrackedDiffSum: sumTracked - tx.TimeBefore.Sum(m.cacheTrackedIdxs),
+		MTimeDiffSum:        diffSum,
+		MTimeTrackedDiffSum: diffTrackedSum,
 		MTimeRecordDiffSum:  recordDiff,
 		HTime:               now,
 		MTimeTracked:        mTimeTrackedBt,
@@ -496,12 +500,16 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 		}
 	}
 
-	// insert state ticks
-	// TODO perf: dont insert empty ticks, check query time impact,
-	// space is very bad
-	ticks := make([]Tick, len(mTimeTracked))
-	i := 0
+	// insert state ticks, only for states changed in this transition, to save
+	// space (see FindLatest for the Active/Inactive queries)
+	ticks := make([]Tick, 0, len(mTimeTracked))
 	for hIdx, state := range m.Cfg.TrackedStates {
+		// unchanged ticks can be derived from the previous record
+		if m.lastRec != nil &&
+			m.lastRec.cacheMTimeTracked[hIdx] == mTimeTracked[hIdx] {
+
+			continue
+		}
 		isActive := am.IsActiveTick(mTimeTracked[hIdx])
 		tickRec := Tick{
 			StateID:   m.cacheDbIdxs[state],
@@ -512,21 +520,17 @@ func (t *tracer) TransitionEnd(tx *am.Transition) {
 		}
 
 		// activated & deactivated
-		if isActive &&
-			(m.lastRec == nil ||
-				m.lastRec.cacheMTimeTracked[hIdx] != mTimeTracked[hIdx]) {
-
+		if isActive {
 			tickRec.Activated = true
-		}
-		if !isActive &&
-			m.lastRec != nil &&
-			(m.lastRec.cacheMTimeTracked[hIdx] != mTimeTracked[hIdx]) {
-
+		} else if m.lastRec != nil {
 			tickRec.Deactivated = true
+		} else {
+			// baseline: inactive states need no row, Active/Inactive come
+			// from times.m_time_tracked
+			continue
 		}
 
-		ticks[i] = tickRec
-		i++
+		ticks = append(ticks, tickRec)
 	}
 	m.queue.ticks = append(m.queue.ticks, ticks...)
 
@@ -711,10 +715,11 @@ func (m *Memory) FindLatest(
 		// states conditions
 
 		joins := []string{}
-		// Active
+		// Active/Inactive use the tracked clock stored on the Time row,
+		// because unchanged ticks are not stored (see processTransition)
 		for _, state := range query.Active {
-			db = db.Where(state+".active = ?", true)
-			joins = append(joins, state)
+			db = db.Where("(json_extract(times.m_time_tracked, ?) % 2) = 1",
+				m.trackedPath(state))
 		}
 		// Activated
 		for _, state := range query.Activated {
@@ -723,8 +728,8 @@ func (m *Memory) FindLatest(
 		}
 		// Inactive
 		for _, state := range query.Inactive {
-			db = db.Where(state+".active = ?", false)
-			joins = append(joins, state)
+			db = db.Where("(json_extract(times.m_time_tracked, ?) % 2) = 0",
+				m.trackedPath(state))
 		}
 		// Deactivated
 		for _, state := range query.Deactivated {
@@ -733,12 +738,12 @@ func (m *Memory) FindLatest(
 		}
 		// MTimeStates
 		for i, state := range s.MTimeStates {
-			db = db.Where(state+".m_time >= ?", s.MTime[i])
-			joins = append(joins, state)
+			db = db.Where("json_extract(times.m_time_tracked, ?) >= ?",
+				m.trackedPath(state), s.MTime[i])
 		}
 		for i, state := range e.MTimeStates {
-			db = db.Where(state+".m_time <= ?", e.MTime[i])
-			joins = append(joins, state)
+			db = db.Where("json_extract(times.m_time_tracked, ?) <= ?",
+				m.trackedPath(state), e.MTime[i])
 		}
 
 		// joins
@@ -885,6 +890,11 @@ func (m *Memory) JoinState(query *gorm.DB, name string) *gorm.DB {
 			ON `+name+`.time_id = times.id 
 			AND `+name+`.machine_id = times.machine_id
 	`)).Where(name+".state_id = ?", sId)
+}
+
+// trackedPath returns a JSON path to a state's tick in [Time.MTimeTracked].
+func (m *Memory) trackedPath(state string) string {
+	return fmt.Sprintf("$[%d]", m.Index1(state))
 }
 
 // func (m *Memory) SelectTime(query *gorm.DB, name string) *gorm.DB {
