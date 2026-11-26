@@ -52,6 +52,11 @@ func (i *NetMachInternal) Unlock() {
 // NetworkMachine is a subset of `pkg/machine#Machine` for RPC. Lacks the queue
 // and other local methods. Most methods are clock-based, thus executed locally.
 // NetworkMachine implements [am.Api].
+//
+// # Example
+//
+//	c.NetMach.Add1("Foo", nil)
+//	<-c.NetMach.When1("Bar", nil)
 type NetworkMachine struct {
 	// If true, the machine will print all exceptions to stdout. Default: true.
 	// Requires an ExceptionHandler binding and Machine.PanicToException set.
@@ -179,7 +184,18 @@ func NewNetworkMachine(
 
 // ///// Mutations (remote)
 
-// Add is [am.Api.Add], but BLOCKING.
+// Add activates a list of states in the machine, returning the result of the
+// transition (Executed, Queued, Canceled).
+// Like every mutation method, it will resolve relations and trigger handlers.
+//
+// # Example
+//
+//	mach.Add(am.S{"Foo", "Bar"}, nil)
+//	// (Foo:1 Bar:1)
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) Add(states am.S, args am.A) am.Result {
 	if m.conn == nil || m.disposed.Load() {
 		return am.Canceled
@@ -205,7 +221,17 @@ func (m *NetworkMachine) Add(states am.S, args am.A) am.Result {
 	return resp.Result
 }
 
-// Add1 is [am.Api.Add1], but BLOCKING.
+// Add1 is a shorthand method to add a single state with the passed args.
+// See Add().
+//
+// # Example
+//
+//	mach.Add1("Foo", nil)
+//	// (Foo:1)
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) Add1(state string, args am.A) am.Result {
 	if m.conn == nil || m.disposed.Load() {
 		return am.Canceled
@@ -249,7 +275,18 @@ func (m *NetworkMachine) Add1NS(state string, args am.A) am.Result {
 	return m.AddNS(am.S{state}, args)
 }
 
-// Remove is [am.Api.Remove], but BLOCKING.
+// Remove deactivates a list of states in the machine, returning the result of
+// the transition (Executed, Queued, Canceled).
+// Like every mutation method, it will resolve relations and trigger handlers.
+//
+// # Example
+//
+//	mach.Remove(am.S{"Foo"}, nil)
+//	// ()
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) Remove(states am.S, args am.A) am.Result {
 	if m.conn == nil || m.disposed.Load() {
 		return am.Canceled
@@ -275,7 +312,16 @@ func (m *NetworkMachine) Remove(states am.S, args am.A) am.Result {
 	return resp.Result
 }
 
-// Remove1 is [am.Api.Remove1], but BLOCKING.
+// Remove1 is [am.Machine.Remove] for a single state.
+//
+// # Example
+//
+//	mach.Remove1("Foo", nil)
+//	// ()
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) Remove1(state string, args am.A) am.Result {
 	if m.conn == nil || m.disposed.Load() {
 		return am.Canceled
@@ -283,7 +329,18 @@ func (m *NetworkMachine) Remove1(state string, args am.A) am.Result {
 	return m.Remove(am.S{state}, args)
 }
 
-// Set is [am.Api.Set], but BLOCKING.
+// Set deactivates a list of states in the machine, returning the result of
+// the transition (Executed, Canceled, Queued).
+// Like every mutation method, it will resolve relations and trigger handlers.
+//
+// # Example
+//
+//	mach.Set(am.S{"Foo"}, nil)
+//	// (Foo:1)
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) Set(states am.S, args am.A) am.Result {
 	if m.conn == nil || m.disposed.Load() {
 		return am.Canceled
@@ -309,7 +366,10 @@ func (m *NetworkMachine) Set(states am.S, args am.A) am.Result {
 	return resp.Result
 }
 
-// AddErr is [am.Api.AddErr].
+// AddErr is a dedicated method to add the StateException state with the passed
+// error and optional arguments.
+// Like every mutation method, it will resolve relations and trigger handlers.
+// AddErr produces a stack trace of the error, if LogStackTrace is enabled.
 func (m *NetworkMachine) AddErr(err error, args am.A) am.Result {
 	if m.conn == nil || m.disposed.Load() {
 		return am.Canceled
@@ -317,7 +377,10 @@ func (m *NetworkMachine) AddErr(err error, args am.A) am.Result {
 	return m.AddErrState(am.StateException, err, args)
 }
 
-// AddErrState is [am.Api.AddErrState].
+// AddErrState adds a dedicated error state, along with the build in
+// StateException state. Like every mutation method, it will resolve relations
+// and trigger handlers. AddErrState produces a stack trace of the error, if
+// LogStackTrace is enabled.
 func (m *NetworkMachine) AddErrState(
 	state string, err error, args am.A,
 ) am.Result {
@@ -350,7 +413,12 @@ func (m *NetworkMachine) AddErrState(
 	return m.Add(errStates, am.PassMerge(args, args2))
 }
 
-// EvAdd is [am.Api.EvAdd], but BLOCKING.
+// EvAdd is like Add, but passed the source event as the 1st param, which
+// results in traceable transitions.
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) EvAdd(
 	event *am.Event, states am.S, args am.A,
 ) am.Result {
@@ -376,7 +444,12 @@ func (m *NetworkMachine) EvAdd(
 	return resp.Result
 }
 
-// EvAdd1 is [am.Api.EvAdd1], but BLOCKING.
+// EvAdd1 is like Add1 but passed the source event as the 1st param, which
+// results in traceable transitions.
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) EvAdd1(
 	event *am.Event, state string, args am.A,
 ) am.Result {
@@ -388,7 +461,12 @@ func (m *NetworkMachine) EvAdd1(
 
 // TODO EvAddNS
 
-// EvRemove1 is [am.Api.EvRemove1], but BLOCKING.
+// EvRemove1 is like Remove1, but passed the source event as the 1st param,
+// which results in traceable transitions.
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) EvRemove1(
 	event *am.Event, state string, args am.A,
 ) am.Result {
@@ -398,7 +476,12 @@ func (m *NetworkMachine) EvRemove1(
 	return m.EvRemove(event, am.S{state}, args)
 }
 
-// EvRemove is [am.Api.EvRemove], but BLOCKING.
+// EvRemove is like Remove but passed the source event as the 1st param, which
+// results in traceable transitions.
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) EvRemove(
 	event *am.Event, states am.S, args am.A,
 ) am.Result {
@@ -424,7 +507,12 @@ func (m *NetworkMachine) EvRemove(
 	return resp.Result
 }
 
-// EvAddErr is [am.Api.EvAddErr], but BLOCKING.
+// EvAddErr is like AddErr, but passed the source event as the 1st param, which
+// results in traceable transitions.
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) EvAddErr(
 	event *am.Event, err error, args am.A,
 ) am.Result {
@@ -434,7 +522,12 @@ func (m *NetworkMachine) EvAddErr(
 	return m.EvAddErrState(event, am.StateException, err, args)
 }
 
-// EvAddErrState is [am.Api.EvAddErrState], but BLOCKING.
+// EvAddErrState is like AddErrState, but passed the source event as the 1st
+// param, which results in traceable transitions.
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) EvAddErrState(
 	event *am.Event, state string, err error, args am.A,
 ) am.Result {
@@ -467,7 +560,13 @@ func (m *NetworkMachine) EvAddErrState(
 	return m.EvAdd(event, errStates, am.PassMerge(args, args2))
 }
 
-// Toggle is [am.Api.Toggle], but BLOCKING.
+// Toggle deactivates a list of states in case all are active, or activates
+// them otherwise. Returns the result of the transition (Executed, Queued,
+// Canceled).
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) Toggle(states am.S, args am.A) am.Result {
 	if m.conn == nil || m.disposed.Load() {
 		return am.Canceled
@@ -479,7 +578,12 @@ func (m *NetworkMachine) Toggle(states am.S, args am.A) am.Result {
 	}
 }
 
-// Toggle1 is [am.Api.Toggle1], but BLOCKING.
+// Toggle1 activates or deactivates a single state, depending on its current
+// state. Returns the result of the transition (Executed, Queued, Canceled).
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) Toggle1(state string, args am.A) am.Result {
 	if m.conn == nil || m.disposed.Load() {
 		return am.Canceled
@@ -491,7 +595,11 @@ func (m *NetworkMachine) Toggle1(state string, args am.A) am.Result {
 	}
 }
 
-// EvToggle is [am.Api.EvToggle], but BLOCKING.
+// EvToggle is a traced version of [am.Machine.Toggle].
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) EvToggle(
 	e *am.Event, states am.S, args am.A,
 ) am.Result {
@@ -505,7 +613,11 @@ func (m *NetworkMachine) EvToggle(
 	}
 }
 
-// EvToggle1 is [am.Api.EvToggle1], but BLOCKING.
+// EvToggle1 is a traced version of [am.Machine.Toggle1].
+//
+// # Blocking
+//
+// This method is blocking and waits for the remote result.
 func (m *NetworkMachine) EvToggle1(
 	e *am.Event, state string, args am.A,
 ) am.Result {
@@ -520,12 +632,17 @@ func (m *NetworkMachine) EvToggle1(
 
 // ///// Checking (local)
 
-// Is is [am.Api.Is].
+// Is checks if all the passed states are currently active.
+//
+//	machine.StringAll() // ()[Foo:0 Bar:0 Baz:0]
+//	machine.Add(am.S{"Foo"}, nil)
+//	machine.Is(am.S{"Foo"}) // true
+//	machine.Is(am.S{"Foo", "Bar"}) // false
 func (m *NetworkMachine) Is(states am.S) bool {
 	return m.is(states)
 }
 
-// Is1 is [am.Api.Is1].
+// Is1 is [am.Machine.Is] for a single state.
 func (m *NetworkMachine) Is1(state string) bool {
 	return m.Is(am.S{state})
 }
@@ -541,12 +658,24 @@ func (m *NetworkMachine) is(states am.S) bool {
 	return true
 }
 
-// IsErr is [am.Api.IsErr].
+// IsErr checks if the machine has the StateException state currently active.
 func (m *NetworkMachine) IsErr() bool {
 	return m.Is1(am.StateException)
 }
 
-// Not is [am.Api.Not].
+// Not checks if **none** of the passed states are currently active.
+//
+//	machine.StringAll()
+//	// -> ()[A:0 B:0 C:0 D:0]
+//	machine.Add(am.S{"A", "B"}, nil)
+//
+//	// not(A) and not(C)
+//	machine.Not(am.S{"A", "C"})
+//	// -> false
+//
+//	// not(C) and not(D)
+//	machine.Not(am.S{"C", "D"})
+//	// -> true
 func (m *NetworkMachine) Not(states am.S) bool {
 	m.clockMx.RLock()
 	defer m.clockMx.RUnlock()
@@ -558,12 +687,20 @@ func (m *NetworkMachine) not(states am.S) bool {
 	return utils.SlicesNone(m.MustParseStates(states), m.ActiveStates(nil))
 }
 
-// Not1 is [am.Api.No1].
+// Not1 is [am.Machine.Not] for a single state.
 func (m *NetworkMachine) Not1(state string) bool {
 	return m.Not(am.S{state})
 }
 
-// Any is [am.Api.Any].
+// Any is a group call to Is, returns true if any of the params return true
+// from Is.
+//
+//	machine.StringAll() // ()[Foo:0 Bar:0 Baz:0]
+//	machine.Add(am.S{"Foo"}, nil)
+//	// is(Foo, Bar) or is(Bar)
+//	machine.Any(am.S{"Foo", "Bar"}, am.S{"Bar"}) // false
+//	// is(Foo) or is(Bar)
+//	machine.Any(am.S{"Foo"}, am.S{"Bar"}) // true
 func (m *NetworkMachine) Any(states ...am.S) bool {
 	for _, s := range states {
 		if m.Is(s) {
@@ -573,7 +710,8 @@ func (m *NetworkMachine) Any(states ...am.S) bool {
 	return false
 }
 
-// Any1 is [am.Api.Any1].
+// Any1 is group call to [am.Machine.Is1], returns true if any of the params
+// return true from [am.Machine.Is1].
 func (m *NetworkMachine) Any1(states ...string) bool {
 	for _, s := range states {
 		if m.Is1(s) {
@@ -583,17 +721,20 @@ func (m *NetworkMachine) Any1(states ...string) bool {
 	return false
 }
 
-// Has is [am.Api.Has].
+// Has return true is passed states are registered in the machine. Useful for
+// checking if a machine implements a specific state set.
 func (m *NetworkMachine) Has(states am.S) bool {
 	return utils.SlicesEvery(m.StateNames(), states)
 }
 
-// Has1 is [am.Api.Has1].
+// Has1 is shorthand for Has. It returns true if the passed state is
+// registered in the machine.
 func (m *NetworkMachine) Has1(state string) bool {
 	return m.Has(am.S{state})
 }
 
-// IsClock is [am.Api.IsClock].
+// IsClock checks if the machine has changed since the passed
+// clock. Returns true if at least one state has changed.
 func (m *NetworkMachine) IsClock(clock am.Clock) bool {
 	m.clockMx.RLock()
 	defer m.clockMx.RUnlock()
@@ -607,7 +748,8 @@ func (m *NetworkMachine) IsClock(clock am.Clock) bool {
 	return true
 }
 
-// WasClock is [am.Api.WasClock].
+// WasClock checks if the passed time has happened (or happening right now).
+// Returns false if at least one state is too early.
 func (m *NetworkMachine) WasClock(clock am.Clock) bool {
 	m.clockMx.RLock()
 	defer m.clockMx.RUnlock()
@@ -621,7 +763,9 @@ func (m *NetworkMachine) WasClock(clock am.Clock) bool {
 	return true
 }
 
-// IsTime is [am.Api.IsTime].
+// IsTime checks if the machine has changed since the passed
+// time (list of ticks). Returns true if at least one state has changed. The
+// states param is optional and can be used to check only a subset of states.
 func (m *NetworkMachine) IsTime(t am.Time, states am.S) bool {
 	m.MustParseStates(states)
 	m.clockMx.RLock()
@@ -641,7 +785,9 @@ func (m *NetworkMachine) IsTime(t am.Time, states am.S) bool {
 	return true
 }
 
-// WasTime is [am.Api.WasTime].
+// WasTime checks if the passed time has happened (or happening right now).
+// Returns false if at least one state is too early. The
+// states param is optional and can be used to check only a subset of states.
 func (m *NetworkMachine) WasTime(t am.Time, states am.S) bool {
 	m.MustParseStates(states)
 	m.clockMx.RLock()
@@ -661,7 +807,14 @@ func (m *NetworkMachine) WasTime(t am.Time, states am.S) bool {
 	return true
 }
 
-// Switch is [am.Api.Switch].
+// Switch returns the first state from the passed list that is currently active,
+// making it handy for switch statements. Useful for state groups.
+//
+//	switch mach.Switch(ss.GroupPlaying) {
+//	case "Playing":
+//	case "Paused":
+//	case "Stopped":
+//	}
 func (m *NetworkMachine) Switch(groups ...am.S) string {
 	activeStates := m.ActiveStates(nil)
 	for _, states := range groups {
@@ -677,12 +830,26 @@ func (m *NetworkMachine) Switch(groups ...am.S) string {
 
 // ///// Waiting (local)
 
-// WhenErr is [am.Api.WhenErr].
+// WhenErr returns a channel that will be closed when the machine is in the
+// StateException state.
+//
+// ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenErr(nil)
 func (m *NetworkMachine) WhenErr(disposeCtx context.Context) <-chan struct{} {
 	return m.When([]string{am.StateException}, disposeCtx)
 }
 
-// When is [am.Api.When].
+// When returns a channel that will be closed when all the passed states
+// become active or the machine gets disposed.
+//
+// ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.When(am.S{"Foo", "Bar"}, nil)
 func (m *NetworkMachine) When(
 	states am.S, ctx context.Context,
 ) <-chan struct{} {
@@ -697,14 +864,26 @@ func (m *NetworkMachine) When(
 	return m.subs.When(m.MustParseStates(states), ctx)
 }
 
-// When1 is [am.Api.When1].
+// When1 is an alias to When() for a single state.
+// See When.
+//
+// # Example
+//
+//	<-mach.When1("Foo", nil)
 func (m *NetworkMachine) When1(
 	state string, ctx context.Context,
 ) <-chan struct{} {
 	return m.When(am.S{state}, ctx)
 }
 
-// WhenNot is [am.Api.WhenNot].
+// WhenNot returns a channel that will be closed when all the passed states
+// become inactive or the machine gets disposed.
+//
+// ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenNot(am.S{"Foo"}, nil)
 func (m *NetworkMachine) WhenNot(
 	states am.S, ctx context.Context,
 ) <-chan struct{} {
@@ -721,14 +900,28 @@ func (m *NetworkMachine) WhenNot(
 	return m.subs.WhenNot(m.MustParseStates(states), ctx)
 }
 
-// WhenNot1 is [am.Api.WhenNot1].
+// WhenNot1 is an alias to WhenNot() for a single state.
+// See WhenNot.
+//
+// # Example
+//
+//	<-mach.WhenNot1("Foo", nil)
 func (m *NetworkMachine) WhenNot1(
 	state string, ctx context.Context,
 ) <-chan struct{} {
 	return m.WhenNot(am.S{state}, ctx)
 }
 
-// WhenTime is [am.Api.WhenTime].
+// WhenTime returns a channel that will be closed when all the passed states
+// have passed the specified time. The time is a logical clock of the state.
+// Machine time can be sourced from [am.Machine.Time](), or
+// [am.Machine.Clock]().
+//
+// ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenTime(am.S{"Foo", "Bar"}, am.Time{6, 10}, nil)
 func (m *NetworkMachine) WhenTime(
 	states am.S, times am.Time, ctx context.Context,
 ) <-chan struct{} {
@@ -754,21 +947,42 @@ func (m *NetworkMachine) WhenTime(
 	return m.subs.WhenTime(states, times, ctx)
 }
 
-// WhenTime1 is [am.Api.WhenTime1].
+// WhenTime1 waits till ticks for a single state equal the given value (or
+// higher).
+//
+// ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenTime1("Foo", 6, nil)
 func (m *NetworkMachine) WhenTime1(
 	state string, ticks uint64, ctx context.Context,
 ) <-chan struct{} {
 	return m.WhenTime(am.S{state}, am.Time{ticks}, ctx)
 }
 
-// WhenTicks is [am.Api.WhenTicks].
+// WhenTicks waits N ticks of a single state (relative to now). Uses WhenTime
+// underneath.
+//
+// ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenTicks("Foo", 2, nil)
 func (m *NetworkMachine) WhenTicks(
 	state string, ticks int, ctx context.Context,
 ) <-chan struct{} {
 	return m.WhenTime(am.S{state}, am.Time{uint64(ticks) + m.Tick(state)}, ctx)
 }
 
-// WhenNextActive is [am.Api.WhenNextActive].
+// WhenNextActive waits until the state becomes active, excluding the current
+// activity.
+//
+// ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenNextActive("Foo", nil)
 func (m *NetworkMachine) WhenNextActive(
 	state string, ctx context.Context,
 ) <-chan struct{} {
@@ -776,7 +990,18 @@ func (m *NetworkMachine) WhenNextActive(
 	return m.WhenTicks(state, am.NextActiveIn(m.Tick(state)), ctx)
 }
 
-// WhenQuery is [am.Api.WhenQuery].
+// WhenQuery returns a channel that will be closed when the passed [clockCheck]
+// function returns true. [clockCheck] should be a pure function and
+// non-blocking.
+//
+// ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenQuery(func(c am.Clock) bool {
+//		// Foo activated >5 times and Bar activated twice as much
+//		return c["Foo"] >= 10 && c["Bar"] >= 2*c["Foo"]
+//	}, nil)
 func (m *NetworkMachine) WhenQuery(
 	clockCheck func(clock am.Clock) bool, ctx context.Context,
 ) <-chan struct{} {
@@ -787,7 +1012,11 @@ func (m *NetworkMachine) WhenQuery(
 	return m.subs.WhenQuery(clockCheck, ctx)
 }
 
-// WhenQueue is [am.Api.WhenQueue].
+// WhenQueue waits until the passed queueTick gets processed.
+//
+// # Example
+//
+//	<-mach.WhenQueue(mach.Add1("Foo", nil))
 func (m *NetworkMachine) WhenQueue(tick am.Result) <-chan struct{} {
 	// locks
 	m.clockMx.Lock()
@@ -801,7 +1030,13 @@ func (m *NetworkMachine) WhenQueue(tick am.Result) <-chan struct{} {
 	return m.subs.WhenQueue(tick)
 }
 
-// WhenTimeSum is [am.Api.WhenTimeSum].
+// WhenTimeSum waits till machine time equals the given value (or higher).
+//
+// ctx: optional context that will close the channel early.
+//
+// # Example
+//
+//	<-mach.WhenTimeSum(16, nil)
 func (m *NetworkMachine) WhenTimeSum(
 	mtime uint64, ctx context.Context,
 ) <-chan struct{} {
@@ -825,7 +1060,17 @@ func (m *NetworkMachine) WhenTimeSum(
 
 // ///// Waiting (remote)
 
-// WhenArgs is [am.Api.WhenArgs].
+// WhenArgs returns a channel that will be closed when the passed state
+// becomes active with all the passed args. ArgsBase are compared using
+// the native
+// '=='. It's meant to be used with async Multi states, to filter out
+// a specific call.
+//
+// ctx: optional context that will close the channel when handler loop ends.
+//
+// # Example
+//
+//	<-mach.WhenArgs("Foo", am.A{"ID": 123}, nil)
 func (m *NetworkMachine) WhenArgs(
 	state string, args am.A, ctx context.Context,
 ) <-chan struct{} {
@@ -835,7 +1080,7 @@ func (m *NetworkMachine) WhenArgs(
 
 // ///// Getters (remote)
 
-// Err is [am.Api.Err].
+// Err returns the last error.
 func (m *NetworkMachine) Err() error {
 	err := m.err.Load()
 	if err == nil {
@@ -846,7 +1091,7 @@ func (m *NetworkMachine) Err() error {
 
 // ///// Getters (local)
 
-// StateNames is [am.Api.StateNames].
+// StateNames returns a SHARED copy of all the state names.
 func (m *NetworkMachine) StateNames() am.S {
 	m.schemaMx.Lock()
 	defer m.schemaMx.Unlock()
@@ -854,7 +1099,8 @@ func (m *NetworkMachine) StateNames() am.S {
 	return slices.Clone(m.stateNames)
 }
 
-// ActiveStates is [am.Api.ActiveStates].
+// ActiveStates returns a copy of the currently active states when states is
+// nil, optionally limiting the results to a subset of states.
 func (m *NetworkMachine) ActiveStates(states am.S) am.S {
 	active := *m.activeStates.Load()
 	if states == nil {
@@ -871,7 +1117,7 @@ func (m *NetworkMachine) ActiveStates(states am.S) am.S {
 	return ret
 }
 
-// Tick is [am.Api.Tick].
+// Tick return the current tick for a given state.
 func (m *NetworkMachine) Tick(state string) uint64 {
 	m.clockMx.RLock()
 	defer m.clockMx.RUnlock()
@@ -884,7 +1130,8 @@ func (m *NetworkMachine) tick(state string) uint64 {
 	return m.machClock[state]
 }
 
-// Clock is [am.Api.Clock].
+// Clock returns current machine's clock, a state-keyed map of ticks. If states
+// are passed, only the ticks of the passed states are returned.
 func (m *NetworkMachine) Clock(states am.S) am.Clock {
 	m.clockMx.RLock()
 	defer m.clockMx.RUnlock()
@@ -902,7 +1149,8 @@ func (m *NetworkMachine) Clock(states am.S) am.Clock {
 	return ret
 }
 
-// Time is [am.Api.Time].
+// Time returns machine's time, a list of ticks per state. Returned value
+// includes the specified states, or all the states if nil.
 func (m *NetworkMachine) Time(states am.S) am.Time {
 	m.clockMx.RLock()
 	defer m.clockMx.RUnlock()
@@ -925,7 +1173,16 @@ func (m *NetworkMachine) time(states am.S) am.Time {
 	return ret
 }
 
-// NewStateCtx is [am.Api.NewStateCtx].
+// NewStateCtx returns a new sub-context, bound to the current clock's tick of
+// the passed state.
+//
+// Context cancels when the state has been deactivated, or right away,
+// if it isn't currently active.
+//
+// State contexts are used to check state expirations and should be checked
+// often inside goroutines.
+//
+// [e]: optional [am.Event] to bind to this context.
 func (m *NetworkMachine) NewStateCtx(
 	state string, event ...*am.Event,
 ) context.Context {
@@ -946,47 +1203,52 @@ func (m *NetworkMachine) NewStateCtx(
 
 // ///// MISC
 
-// Log is [am.Api.Log].
+// Log logs an [extern] message unless LogNothing is set.
+// Optionally redirects to a custom logger from [SemLogger.SetLogger].
 func (m *NetworkMachine) Log(msg string, args ...any) {
 	m.log(am.LogExternal, msg, args...)
 }
 
-// SemLogger is [am.Api.SemLogger].
+// SemLogger returns the semantic logger of the machine
 func (m *NetworkMachine) SemLogger() am.SemLogger {
 	return m.semLogger
 }
 
-// StatesVerified is [am.Api.StatesVerified].
+// StatesVerified returns true if the state names have been ordered
+// using VerifyStates.
 func (m *NetworkMachine) StatesVerified() bool {
 	return true
 }
 
-// Context is [am.Api.Context].
+// Context returns the machine's context. This context lives longer than
+// the parent context and allows for graceful shutdown. This is the context
+// which should be used to create submachines. See also
+// [am.Machine.DisposeTimeout].
 func (m *NetworkMachine) Context() context.Context {
 	return m.ctx
 }
 
-// ContextParent is [am.Api.ContextParent].
+// ContextParent returns the original context passed to the constructor.
 func (m *NetworkMachine) ContextParent() context.Context {
 	return m.ctx
 }
 
-// Id is [am.Api.Id].
+// Id returns the machine's id.
 func (m *NetworkMachine) Id() string {
 	return m.id
 }
 
-// RemoteId is [am.Api.RemoteId].
+// RemoteId returns the ID of the remote state machine.
 func (m *NetworkMachine) RemoteId() string {
 	return m.remoteId
 }
 
-// ParentId is [am.Api.ParentId].
+// ParentId returns the ID of the parent machine (if any).
 func (m *NetworkMachine) ParentId() string {
 	return m.parentId
 }
 
-// Tags is [am.Api.Tags].
+// Tags returns machine's tags, a list of unstructured strings without spaces.
 func (m *NetworkMachine) Tags() []string {
 	tags := m.tags.Load()
 	if tags == nil {
@@ -995,14 +1257,16 @@ func (m *NetworkMachine) Tags() []string {
 	return slices.Clone(*tags)
 }
 
-// SetTags is [am.Api.SetTags].
+// SetTags updates the machine's tags with the provided slice of strings.
 func (m *NetworkMachine) SetTags(tags []string) {
 	tags = slices.Clone(tags)
 	m.tags.Store(&tags)
 	m.semLogger.SetTags()
 }
 
-// String is [am.Api.String].
+// String returns a one line representation of the currently active states,
+// with their clock values. Inactive states are omitted.
+// Eg: (Foo:1 Bar:3)
 func (m *NetworkMachine) String() string {
 	m.clockMx.RLock()
 	defer m.clockMx.RUnlock()
@@ -1025,7 +1289,10 @@ func (m *NetworkMachine) String() string {
 	return ret + ")"
 }
 
-// StringAll is [am.Api.StringAll].
+// StringAll returns a one line representation of all the states, with their
+// clock values. Inactive states are in square brackets.
+//
+//	(Foo:1 Bar:3) [Baz:2]
 func (m *NetworkMachine) StringAll() string {
 	m.clockMx.RLock()
 	defer m.clockMx.RUnlock()
@@ -1054,7 +1321,9 @@ func (m *NetworkMachine) StringAll() string {
 	return ret + ") " + ret2 + "]"
 }
 
-// Inspect is [am.Api.Inspect].
+// Inspect returns a multi-line string representation of the machine (states,
+// relations, clocks).
+// states: param for ordered or partial results.
 func (m *NetworkMachine) Inspect(states am.S) string {
 	m.clockMx.RLock()
 	defer m.clockMx.RUnlock()
@@ -1132,7 +1401,8 @@ func (m *NetworkMachine) log(level am.LogLevel, msg string, args ...any) {
 	})
 }
 
-// MustParseStates is [am.Api.MustParseStates].
+// MustParseStates parses a list of states, panicking on
+// states which are not defined for the machine, and removing duplicates.
 func (m *NetworkMachine) MustParseStates(states am.S) am.S {
 	m.schemaMx.Lock()
 	defer m.schemaMx.Unlock()
@@ -1148,12 +1418,14 @@ func (m *NetworkMachine) MustParseStates(states am.S) am.S {
 	return utils.SlicesUniq(states)
 }
 
-// Index1 is [am.Api.Index1].
+// Index1 returns the index of a state in the machine's StateNames() list, or -1
+// when not found or machine has been disposed.
 func (m *NetworkMachine) Index1(state string) int {
 	return slices.Index(m.StateNames(), state)
 }
 
-// Index is [am.Api.Index].
+// Index returns a list of state indexes in the machine's StateNames() list,
+// with -1s for missing ones.
 func (m *NetworkMachine) Index(states am.S) []int {
 	ret := make([]int, len(states))
 	for i, state := range states {
@@ -1163,7 +1435,9 @@ func (m *NetworkMachine) Index(states am.S) []int {
 	return ret
 }
 
-// Dispose is [am.Api.Dispose].
+// Dispose disposes the machine and all its emitters. You can wait for the
+// completion of the disposal with `<-mach.WhenDisposed()`. It's advised to use
+// Dispose() func from pkg/helpers instead, which handles Disposed state mixing.
 func (m *NetworkMachine) Dispose() {
 	if !m.disposed.CompareAndSwap(false, true) {
 		return
@@ -1187,17 +1461,19 @@ func (m *NetworkMachine) Dispose() {
 	// TODO push remotely?
 }
 
-// IsDisposed is [am.Api.IsDisposed].
+// IsDisposed returns true if the machine has been disposed.
 func (m *NetworkMachine) IsDisposed() bool {
 	return m.disposed.Load()
 }
 
-// WhenDisposed is [am.Api.WhenDisposed].
+// WhenDisposed returns a channel that will be closed when the machine is
+// disposed.
 func (m *NetworkMachine) WhenDisposed() <-chan struct{} {
 	return m.whenDisposed
 }
 
-// Export exports the machine state: id, time and state names.
+// Export exports the machine state as Serialized: ID, machine time, and
+// state names.
 func (m *NetworkMachine) Export() (*am.Serialized, am.Schema, error) {
 	m.clockMx.RLock()
 	defer m.clockMx.RUnlock()
@@ -1215,12 +1491,14 @@ func (m *NetworkMachine) Export() (*am.Serialized, am.Schema, error) {
 	}, m.schema.Clone(), nil
 }
 
-// Schema returns a copy of machine's state structure.
+// Schema returns a copy of machine's schema.
 func (m *NetworkMachine) Schema() am.Schema {
 	return m.schema
 }
 
-// HandlersBindMaps is [am.Api.HandlersBindMaps].
+// HandlersBindMaps is like [am.Machine.HandlersBind] but accepts maps of
+// handlers to bypass reflecting structs. It may lead to higher performance.
+// Returns a binding ID.
 func (m *NetworkMachine) HandlersBindMaps(
 	negotiations map[string]am.HandlerNegotiation,
 	finals map[string]am.HandlerFinal, opts ...am.BindOpts,
@@ -1303,7 +1581,7 @@ func optBindOpts(args []am.BindOpts) am.BindOpts {
 // TODO move
 var idRe = regexp.MustCompile(`[^a-zA-Z0-9-_]+`)
 
-// Handlers is [am.Api.Handlers].
+// Handlers returns the IDs of bound handlers.
 func (m *NetworkMachine) Handlers() []string {
 	// TODO lock, support id
 	// w.handlersLock.Lock()
@@ -1317,7 +1595,7 @@ func (m *NetworkMachine) Handlers() []string {
 	return ret
 }
 
-// HandlersDetach is [am.Api.DetachHandlers].
+// HandlersDetach detaches previously bound machine handlers.
 func (m *NetworkMachine) HandlersDetach(bindingId string) error {
 	old := m.handlers
 
@@ -1334,19 +1612,23 @@ func (m *NetworkMachine) HandlersDetach(bindingId string) error {
 	return errors.New("handlers not bound")
 }
 
-// BindHandlers is deprecated, use [Api.HandlersBind].
+// BindHandlers is deprecated, use [am.Api.HandlersBind].
 func (m *NetworkMachine) BindHandlers(handlers any,
 	opts ...am.BindOpts,
 ) (string, error) {
 	return m.HandlersBind(handlers, opts...)
 }
 
-// DetachHandlers is deprecated, use [Api.HandlersDetach].
+// DetachHandlers is deprecated, use [am.Api.HandlersDetach].
 func (m *NetworkMachine) DetachHandlers(bindingId string) error {
 	return m.DetachHandlers(bindingId)
 }
 
-// TracerBind is [am.Machine.TracerBind].
+// TracerBind binds a Tracer to the machine. Tracers can cause StateException in
+// submachines, before any handlers are bound. Use the Err() getter to examine
+// such errors.
+//
+// # NetworkMachine
 //
 // NetworkMachine tracers cannot mutate synchronously, as network machines
 // don't have a queue and WILL deadlock when nested.
@@ -1365,7 +1647,8 @@ func (m *NetworkMachine) TracerBind(tracer am.Tracer) (string, error) {
 	return tracer.TracerId(), nil
 }
 
-// TracerDetach is [am.Api.TracerDetach].
+// TracerDetach tries to remove a tracer from the machine. Returns an error in
+// case the tracer wasn't bound.
 func (m *NetworkMachine) TracerDetach(id string) error {
 	m.tracersMx.Lock()
 	defer m.tracersMx.Unlock()
@@ -1393,7 +1676,7 @@ func (m *NetworkMachine) DetachTracer(id string) error {
 	return m.TracerDetach(id)
 }
 
-// Tracers is [am.Api.Tracers].
+// Tracers return a copy of currently attached tracers.
 func (m *NetworkMachine) Tracers() []am.Tracer {
 	m.clockMx.Lock()
 	defer m.clockMx.Unlock()
@@ -1582,66 +1865,87 @@ func (m *NetworkMachine) processSubscriptions(
 	}
 }
 
-// AddBreakpoint1 is [am.Api.AddBreakpoint1].
+// AddBreakpoint1 is a single state version of [am.Machine.AddBreakpoint].
 func (m *NetworkMachine) AddBreakpoint1(
 	added string, removed string, strict bool,
 ) {
 	// TODO
 }
 
-// AddBreakpoint is [am.Api.AddBreakpoint].
+// AddBreakpoint adds a breakpoint for an outcome of mutation (added and
+// removed states) checked by mutation equality. Once such a mutation happens,
+// a log message will be printed out. We can set an IDE's breakpoint on this
+// line and see the mutation's sync stack trace. If
+// [am.Machine.LogStackTrace] is set, the stack trace will be printed out as
+// well. Many breakpoints can be added, but none removed.
+//
+// Breakpoints are useful to find the caller of a mutation, but don't work with
+// [am.Machine.Set].
+//
+// strict: strict skips already active / inactive (for strict of diff equality).
 func (m *NetworkMachine) AddBreakpoint(
 	added am.S, removed am.S, strict bool,
 ) {
 	// TODO
 }
 
-// Groups is [am.Api.Groups].
+// Groups returns the machine's state groups as indexes, along with the
+// group order. See [am.Machine.SetGroups].
 func (m *NetworkMachine) Groups() (map[string][]int, []string) {
 	// TODO maybe sync along with schema?
 	return nil, nil
 }
 
-// CanAdd is [am.Api.CanAdd].
+// CanAdd checks if [states] can be added and returns Executed or
+// [AT.CheckDone] if a dry run mutation passes. Useful for reducing failed
+// negotiations.
 func (m *NetworkMachine) CanAdd(states am.S, args am.A) am.Result {
 	// TODO check relations
 	return am.Executed
 }
 
-// CanAdd1 is [am.Api.CanAdd1].
+// CanAdd1 is [am.Machine.CanAdd] for a single state.
 func (m *NetworkMachine) CanAdd1(state string, args am.A) am.Result {
 	// TODO check relations
 	return am.Executed
 }
 
-// CanRemove is [am.Api.CanRemove].
+// CanRemove checks if [states] can be removed and returns Executed or
+// [AT.CheckDone] if a dry run mutation passes. Useful for reducing failed
+// negotiations.
 func (m *NetworkMachine) CanRemove(states am.S, args am.A) am.Result {
 	// TODO check relations
 	return am.Executed
 }
 
-// CanRemove1 is [am.Api.CanRemove1].
+// CanRemove1 is [am.Machine.CanRemove] for a single state.
 func (m *NetworkMachine) CanRemove1(state string, args am.A) am.Result {
 	// TODO check relations
 	return am.Executed
 }
 
-// Transition is [am.Machine.Transition].
+// Transition returns the current transition, if any.
 func (m *NetworkMachine) Transition() *am.Transition {
 	return m.t.Load()
 }
 
-// IsLocal is [am.Machine.IsLocal].
+// IsLocal returns true for *am.Machine and false for *arpc.NetworkMachine.
 func (m *NetworkMachine) IsLocal() bool {
 	return false
 }
 
-// ErrInternal return an empty channel from network machines.
+// ErrInternal returns a channel which receives handler and eval timeout errors,
+// so they can be handled accordingly without passing through mutations.
+// This method always returns a closed channel for [am.Api.IsLocal] == false.
 func (m *NetworkMachine) ErrInternal() <-chan error {
 	return m.errInternal
 }
 
-// QueueLen is [am.Api.QueueLen].
+// QueueLen returns the number of mutations currently in the queue.
+//
+// # NetworkMachine
+//
+// Always returns 0, outbound throttling is not implemented.
 func (m *NetworkMachine) QueueLen() uint16 {
 	// TODO implement outbound throttling
 	return 0
@@ -1651,7 +1955,8 @@ func (m *NetworkMachine) queueFlush() {
 	m.subs.QueueFlush()
 }
 
-// QueueTick is [am.Api.QueueTick].
+// QueueTick is the number of times the queue has processed a mutation. Starts
+// from [1], for easy comparison with [Result].
 func (m *NetworkMachine) QueueTick() uint64 {
 	m.clockMx.RLock()
 	defer m.clockMx.RUnlock()
@@ -1659,7 +1964,8 @@ func (m *NetworkMachine) QueueTick() uint64 {
 	return m.queueTick
 }
 
-// MachineTick is [am.Api.MachineTick].
+// MachineTick is the number of times the machine has been started. Each start
+// means an empty queue. Only set by [am.Machine.Import].
 func (m *NetworkMachine) MachineTick() uint32 {
 	m.clockMx.RLock()
 	defer m.clockMx.RUnlock()
@@ -1667,7 +1973,12 @@ func (m *NetworkMachine) MachineTick() uint32 {
 	return m.machTick
 }
 
-// ActivatedAt is [am.Api.ActivatedAt].
+// ActivatedAt returns the machine time of the last activation of the passed
+// state (even if the state isnt currently active).
+//
+// # NetworkMachine
+//
+// Not implemented yet, panics.
 func (m *NetworkMachine) ActivatedAt(state string) uint64 {
 	// TOOD copy test
 	if m.disposed.Load() {
@@ -1676,7 +1987,9 @@ func (m *NetworkMachine) ActivatedAt(state string) uint64 {
 	panic("not implemented yet")
 }
 
-// ParseStates is [am.Api.ParseStates].
+// ParseStates parses a list of states, removing unknown ones and duplicates.
+// Use [am.Machine.Has] and [am.Machine.Has1] to check if a state is defined
+// for the machine.
 func (m *NetworkMachine) ParseStates(states am.S) am.S {
 	m.schemaMx.Lock()
 	defer m.schemaMx.Unlock()
@@ -1702,7 +2015,10 @@ func (m *NetworkMachine) ParseStates(states am.S) am.S {
 	return slices.Collect(maps.Keys(seen))
 }
 
-// OnDispose is [am.Api.OnDispose].
+// OnDispose adds a function to be called after the machine gets disposed.
+// These functions will run synchronously just before WhenDisposed() channel
+// gets closed. Considering it's a low-level feature, it's advised to handle
+// disposal via dedicated states.
 func (m *NetworkMachine) OnDispose(fn am.HandlerDispose) {
 	m.handlersMx.Lock()
 	defer m.handlersMx.Unlock()
