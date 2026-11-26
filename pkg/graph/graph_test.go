@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mlange-42/ark/ecs"
+
 	ssrel "github.com/pancsta/asyncmachine-go/internal/testing/states"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -111,27 +113,10 @@ func TestGraphGob(t *testing.T) {
 	}
 
 	// vertices and edges with metadata
-	adj1, err := g.G.AdjacencyMap()
-	if err != nil {
-		t.Fatal(err)
-	}
-	adj2, err := g2.G.AdjacencyMap()
-	if err != nil {
-		t.Fatal(err)
-	}
+	adj1 := g.AdjacencyMap()
+	adj2 := g2.AdjacencyMap()
 	if !reflect.DeepEqual(adj1, adj2) {
 		t.Fatalf("adjacency mismatch:\n%#v\n%#v", adj1, adj2)
-	}
-	map1, err := g.Map.AdjacencyMap()
-	if err != nil {
-		t.Fatal(err)
-	}
-	map2, err := g2.Map.AdjacencyMap()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(map1, map2) {
-		t.Fatalf("map adjacency mismatch:\n%#v\n%#v", map1, map2)
 	}
 
 	// inspect + markdown
@@ -175,6 +160,111 @@ func TestGraphGobEmpty(t *testing.T) {
 	}
 	if inspect, err := g2.Inspect(); err != nil || len(inspect) != 0 {
 		t.Fatalf("unexpected inspect: %v %v", inspect, err)
+	}
+}
+
+// TestAddMachineIdempotent asserts that re-adding a machine doesn't duplicate
+// graph vertices or edges.
+func TestAddMachineIdempotent(t *testing.T) {
+	ctx := t.Context()
+
+	server := am.New(ctx, ssdbg.ServerSchema, &am.Opts{Id: "srv-add"})
+	t.Cleanup(server.Dispose)
+	g, err := New(server)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newMach := func() *Machine {
+		return &Machine{
+			Serialized: &am.Serialized{
+				ID:         "mach-1",
+				StateNames: ssrel.Names,
+				Time:       make(am.Time, len(ssrel.Names)),
+				QueueTick:  1,
+				Tags:       []string{"tag-a"},
+			},
+			SchemaHash: "hash-1",
+			Schema:     ssrel.States,
+		}
+	}
+
+	count := func() (int, int) {
+		adj := g.AdjacencyMap()
+		var edges int
+		for _, targets := range adj {
+			edges += len(targets)
+		}
+		return len(adj), edges
+	}
+
+	if err := g.AddMachine(newMach()); err != nil {
+		t.Fatal(err)
+	}
+	verts, edges := count()
+	used := g.store.world.Stats().Entities.Used
+
+	if err := g.AddMachine(newMach()); err != nil {
+		t.Fatal(err)
+	}
+	verts2, edges2 := count()
+	if verts2 != verts || edges2 != edges {
+		t.Fatalf("graph grew after re-add: %d/%d != %d/%d",
+			verts2, edges2, verts, edges)
+	}
+	if used2 := g.store.world.Stats().Entities.Used; used2 != used {
+		t.Fatalf("entities grew after re-add: %d != %d", used2, used)
+	}
+
+	edge, err := g.Edge("mach-1", "mach-1:"+ssrel.B)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := edge.data()
+	if data == nil || data.MachHas == nil || !data.MachHas.Multi {
+		t.Fatalf("unexpected state edge: %#v", data)
+	}
+}
+
+// TestWorldInjection asserts that a graph shares an injected ark world and
+// leaves custom entities intact on Clear.
+func TestWorldInjection(t *testing.T) {
+	type custom struct {
+		Val int
+	}
+
+	world := ecs.NewWorld()
+	g, err := NewWithWorld(nil, world)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	customMap := ecs.NewMap1[custom](world)
+	customEnt := customMap.NewEntity(&custom{Val: 1})
+
+	mach := &Machine{
+		Serialized: &am.Serialized{
+			ID:         "mach-world",
+			StateNames: ssrel.Names,
+			Time:       make(am.Time, len(ssrel.Names)),
+			QueueTick:  1,
+		},
+		SchemaHash: "hash-world",
+		Schema:     ssrel.States,
+	}
+	if err := g.AddMachine(mach); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.AdjacencyMap()) == 0 {
+		t.Fatal("graph is empty")
+	}
+
+	g.Clear()
+	if got := len(g.AdjacencyMap()); got != 0 {
+		t.Fatalf("graph not cleared: %d", got)
+	}
+	if !world.Alive(customEnt) || !customMap.HasAll(customEnt) {
+		t.Fatal("custom world entity was removed by Clear")
 	}
 }
 

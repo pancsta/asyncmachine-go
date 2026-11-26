@@ -42,7 +42,6 @@ require (
 	github.com/d2lang/util-go v0.2.0
 	github.com/dave/jennifer v1.7.1
 	github.com/dgraph-io/badger/v4 v4.9.1
-	github.com/dominikbraun/graph v0.23.0
 	github.com/failsafe-go/failsafe-go v0.6.8
 	github.com/freeeve/gochickpeas v0.27.0
 	github.com/fsnotify/fsnotify v1.10.1
@@ -54,6 +53,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lithammer/dedent v1.1.0
 	github.com/mark3labs/mcp-go v0.48.0
+	github.com/mlange-42/ark v0.8.3
 	github.com/nats-io/nats-server/v2 v2.12.3
 	github.com/nats-io/nats.go v1.48.0
 	github.com/ncruces/go-sqlite3 v0.34.0

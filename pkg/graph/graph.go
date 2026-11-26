@@ -1,6 +1,6 @@
 // Package graph provides a graph or interconnected state-machines and their
-// states, based on the dbg telemetry protocol.
-// TODO perf: migrate to https://github.com/mlange-42/ark
+// states, based on the dbg telemetry protocol. The graph is stored in an ark
+// ECS.
 package graph
 
 import (
@@ -15,9 +15,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dominikbraun/graph"
-	"github.com/dominikbraun/graph/draw"
-
 	amtypes "github.com/pancsta/asyncmachine-go/pkg/graph/shared"
 	amhelp "github.com/pancsta/asyncmachine-go/pkg/helpers"
 	am "github.com/pancsta/asyncmachine-go/pkg/machine"
@@ -25,6 +22,8 @@ import (
 	ssrpc "github.com/pancsta/asyncmachine-go/pkg/rpc/states"
 	"github.com/pancsta/asyncmachine-go/pkg/telemetry/dbg"
 	ssdbg "github.com/pancsta/asyncmachine-go/tools/debugger/states"
+
+	"github.com/mlange-42/ark/ecs"
 )
 
 var (
@@ -52,7 +51,10 @@ type Vertex struct {
 	MachId    string
 }
 
-type Edge = graph.Edge[*Vertex]
+// Hash returns the graph hash of the vertex.
+func (v *Vertex) Hash() string {
+	return hash(v)
+}
 
 type EdgeData struct {
 	// machine has a state
@@ -126,22 +128,28 @@ type Graph struct {
 	ParentMach *am.Machine
 	Machines   map[string]*Machine
 
-	// G is a directed graph of machines and states with metadata.
-	G graph.Graph[string, *Vertex]
-	// Map is a unidirectional mirror of g, without metadata.
-	Map graph.Graph[string, *Vertex]
+	// store is an ark-backed directed graph of machines and states with
+	// metadata.
+	store *store
 
 	// lock for Clone(), called by a consumer
 	loop sync.Mutex
 }
 
+// New creates a graph backed by a new ark world. See [NewWithWorld] to share
+// the world with other ark users.
 func New(parentMach *am.Machine) (*Graph, error) {
+	return NewWithWorld(parentMach, nil)
+}
+
+// NewWithWorld creates a graph backed by the given ark world. A nil world
+// creates a new one.
+func NewWithWorld(parentMach *am.Machine, world *ecs.World) (*Graph, error) {
 	// TODO verify parentMach has ErrGraph
 
 	g := &Graph{
 		ParentMach: parentMach,
-		G:          graph.New(hash, graph.Directed()),
-		Map:        graph.New(hash),
+		store:      newStore(world),
 		Machines:   make(map[string]*Machine),
 	}
 
@@ -153,24 +161,58 @@ func New(parentMach *am.Machine) (*Graph, error) {
 	return g, nil
 }
 
+// Vertex returns a copy of a vertex by its hash.
+func (g *Graph) Vertex(hash string) (*Vertex, error) {
+	return g.store.Vertex(hash)
+}
+
+// Edge returns a copy of an edge by its source and target hashes.
+func (g *Graph) Edge(source, target string) (Edge, error) {
+	return g.store.Edge(source, target)
+}
+
+// AdjacencyMap returns all vertices and their outgoing edges.
+func (g *Graph) AdjacencyMap() map[string]map[string]Edge {
+	return g.store.AdjacencyMap()
+}
+
+// PredecessorMap returns all vertices and their incoming edges.
+func (g *Graph) PredecessorMap() map[string]map[string]Edge {
+	return g.store.PredecessorMap()
+}
+
+// Edges returns all edges.
+func (g *Graph) Edges() []Edge {
+	return g.store.Edges()
+}
+
+// Snapshot returns all vertices and edges in one batch.
+func (g *Graph) Snapshot() ([]*Vertex, []Edge) {
+	return g.store.Snapshot()
+}
+
+// ShortestPath returns the shortest undirected path between two vertices.
+func (g *Graph) ShortestPath(from, to string) ([]string, error) {
+	return g.store.shortestPath(from, to)
+}
+
 // Connection returns a Connection for the given source-target.
 func (g *Graph) Connection(source, target string) (*Connection, error) {
-	edge, err := g.G.Edge(source, target)
+	edge, err := g.store.Edge(source, target)
 	if err != nil {
 		return nil, err
 	}
-	data := edge.Properties.Data.(*EdgeData)
-	targetVert, err := g.G.Vertex(target)
+	sourceVert, err := g.store.Vertex(source)
 	if err != nil {
 		return nil, err
 	}
-	sourceVert, err := g.G.Vertex(source)
+	targetVert, err := g.store.Vertex(target)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Connection{
-		Edge:   data,
+		Edge:   edge.data(),
 		Source: sourceVert,
 		Target: targetVert,
 	}, nil
@@ -182,114 +224,76 @@ func (g *Graph) AddMachine(gmach *Machine) error {
 		return nil
 	}
 	id := c.ID
-	g.Machines[id] = c
 
-	// add machine
-	var err error
-	if err = g.addMach(c.ID, c); err != nil {
-		return err
-	}
-
-	// add tags
-	tags := slices.Clone(c.Tags)
-	c.Tags = nil
-	g.setClientTags(c, tags)
-
-	// parent
+	// collect a single batch
+	verts := []*Vertex{{MachId: id}}
+	edges := []Edge{}
 	if c.Parent != "" {
-		err = g.addEdge(c.ID, c.Parent, &EdgeData{MachChildOf: true})
-		if err != nil {
-			return err
-		}
-		_ = g.Map.AddEdge(c.ID, c.Parent)
+		verts = append(verts, &Vertex{MachId: c.Parent})
+		edges = append(edges, Edge{
+			Source:     id,
+			Target:     c.Parent,
+			Properties: EdgeProperties{Data: &EdgeData{MachChildOf: true}},
+		})
 	}
 
-	// add states
+	// states
 	for name, props := range c.Schema {
-		// vertex
-		err = g.G.AddVertex(&Vertex{
-			MachId:    id,
-			StateName: name,
+		stateID := id + ":" + name
+		verts = append(verts, &Vertex{MachId: id, StateName: name})
+		edges = append(edges, Edge{
+			Source: id,
+			Target: stateID,
+			Properties: EdgeProperties{Data: &EdgeData{
+				MachHas: &MachineHas{
+					Auto:  props.Auto,
+					Multi: props.Multi,
+				},
+			}},
 		})
-		if err != nil {
-			return err
-		}
-		_ = g.Map.AddVertex(&Vertex{
-			MachId:    id,
-			StateName: name,
-		})
-
-		// edge
-		err = g.G.AddEdge(id, id+":"+name, graph.EdgeData(&EdgeData{
-			MachHas: &MachineHas{
-				Auto:  props.Auto,
-				Multi: props.Multi,
-			},
-		}))
-		if err != nil {
-			return err
-		}
-		_ = g.Map.AddEdge(id, id+":"+name)
 	}
-
-	// DEBUG
-	// if c.ID == "rc-srv-browser2" {
-	// 	ver, _ := g.G.Vertex("rc-srv-browser2")
-	// 	ver = ver
-	// 	print()
-	// }
 
 	type relation struct {
 		states  am.S
 		relType am.Relation
 	}
 
-	// add relations
+	// relations
 	for name, state := range c.Schema {
-
-		// define
 		toAdd := []relation{
 			{states: state.Require, relType: am.RelationRequire},
 			{states: state.Add, relType: am.RelationAdd},
 			{states: state.Remove, relType: am.RelationRemove},
 		}
-
-		// per relation
 		for _, item := range toAdd {
-			// per state
 			for _, relState := range item.states {
-				from := id + ":" + name
-				to := id + ":" + relState
-
-				// update an existing edge
-				if edge, err := g.G.Edge(from, to); err == nil {
-					data := edge.Properties.Data.(*EdgeData)
-					data.StateRelation = append(data.StateRelation, &StateRelation{
-						RelType: item.relType,
-					})
-					err = g.G.UpdateEdge(from, to, graph.EdgeData(data))
-					if err != nil {
-						return err
-					}
-
-					continue
-				}
-
-				// add if doesnt exist
-				err = g.G.AddEdge(from, to, graph.EdgeData(&EdgeData{
-					StateRelation: []*StateRelation{
-						{RelType: item.relType},
-					},
-				}))
-				if err != nil {
-					return err
-				}
-				_ = g.Map.AddEdge(from, to)
+				verts = append(verts, &Vertex{MachId: id, StateName: relState})
+				edges = append(edges, Edge{
+					Source: id + ":" + name,
+					Target: id + ":" + relState,
+					Properties: EdgeProperties{Data: &EdgeData{
+						StateRelation: []*StateRelation{
+							{RelType: item.relType},
+						},
+					}},
+				})
 			}
 		}
 	}
 
-	// TODO add tags
+	if err := g.store.addBatch(verts, edges); err != nil {
+		return err
+	}
+
+	// tags: keep the previous tags for diffing, or clear them for a new machine
+	tags := slices.Clone(c.Tags)
+	if old, ok := g.Machines[id]; ok {
+		c.Tags = slices.Clone(old.Tags)
+	} else {
+		c.Tags = nil
+	}
+	g.Machines[id] = c
+	g.setClientTags(c, tags)
 
 	return nil
 }
@@ -304,32 +308,14 @@ func (g *Graph) RemoveMachine(id string) error {
 	}
 	delete(g.Machines, id)
 
-	adj, err := g.G.AdjacencyMap()
-	if err != nil {
-		return err
-	}
-	for _, edge := range adj[id] {
-		_ = g.G.RemoveEdge(id, edge.Target)
-		_ = g.Map.RemoveEdge(id, edge.Target)
-	}
-	pred, err := g.G.PredecessorMap()
-	if err != nil {
-		return err
-	}
-	for _, edge := range pred[id] {
-		_ = g.G.RemoveEdge(edge.Source, id)
-		_ = g.Map.RemoveEdge(edge.Source, id)
-	}
-
+	hashes := map[string]struct{}{id: {}}
 	for name := range c.Schema {
-		_ = g.G.RemoveVertex(id + ":" + name)
-		_ = g.Map.RemoveVertex(id + ":" + name)
+		hashes[id+":"+name] = struct{}{}
 	}
 	for _, tag := range c.Tags {
-		g.removeTagVertex(id, tag)
+		hashes[hash(&Vertex{MachId: id, TagName: tag})] = struct{}{}
 	}
-	_ = g.G.RemoveVertex(id)
-	_ = g.Map.RemoveVertex(id)
+	g.store.removeVertices(hashes)
 
 	return nil
 }
@@ -344,9 +330,11 @@ func (g *Graph) RemoveTags(id string) {
 	if !ok || c == nil {
 		return
 	}
+	hashes := make(map[string]struct{}, len(c.Tags))
 	for _, tag := range c.Tags {
-		g.removeTagVertex(id, tag)
+		hashes[hash(&Vertex{MachId: id, TagName: tag})] = struct{}{}
 	}
+	g.store.removeVertices(hashes)
 }
 
 // Clone returns a deep clone of the graph.
@@ -355,20 +343,10 @@ func (g *Graph) Clone() (*Graph, error) {
 	g.loop.Lock()
 	defer g.loop.Unlock()
 
-	c1, err := g.G.Clone()
-	if err != nil {
-		return nil, err
-	}
-
-	c2, err := g.Map.Clone()
-	if err != nil {
-		return nil, err
-	}
-
 	g2 := &Graph{
-		G:        c1,
-		Map:      c2,
-		Machines: make(map[string]*Machine, len(g.Machines)),
+		ParentMach: g.ParentMach,
+		store:      g.store.clone(),
+		Machines:   make(map[string]*Machine, len(g.Machines)),
 	}
 
 	for id, c := range g.Machines {
@@ -392,8 +370,7 @@ func (g *Graph) Machine(id string) (*Machine, bool) {
 
 func (g *Graph) Clear() {
 	clear(g.Machines)
-	g.G = graph.New(hash, graph.Directed())
-	g.Map = graph.New(hash)
+	g.store.reset()
 }
 
 func (g *Graph) ParseMsgDbg(id string, msgTx *dbg.DbgMsgTx) {
@@ -505,14 +482,29 @@ func (g *Graph) DumpGv(path string) error {
 	if err != nil {
 		return err
 	}
-	return draw.DOT(g.G, file)
+	defer file.Close()
+
+	if _, err := file.WriteString("digraph G {\n"); err != nil {
+		return err
+	}
+	for hash := range g.AdjacencyMap() {
+		if _, err := fmt.Fprintf(file, "  %q;\n", hash); err != nil {
+			return err
+		}
+	}
+	for _, edge := range g.Edges() {
+		_, err := fmt.Fprintf(file, "  %q -> %q;\n",
+			edge.Source, edge.Target)
+		if err != nil {
+			return err
+		}
+	}
+	_, err = file.WriteString("}\n")
+	return err
 }
 
 func (g *Graph) Inspect() (map[string]*MachInspect, error) {
-	adjacencyMap, err := g.G.AdjacencyMap()
-	if err != nil {
-		return nil, err
-	}
+	adjacencyMap := g.AdjacencyMap()
 	inspect := make(map[string]*MachInspect)
 	for machId, adjs := range adjacencyMap {
 		if len(strings.Split(machId, ":")) == 2 {
@@ -586,8 +578,7 @@ func (g *Graph) setClientTags(c *Machine, tags []string) {
 	}
 
 	if oldSrc != "" && oldSrc != newSrc {
-		_ = g.G.RemoveEdge(c.ID, oldSrc)
-		_ = g.Map.RemoveEdge(c.ID, oldSrc)
+		_ = g.store.RemoveEdge(c.ID, oldSrc)
 	}
 	if newSrc != "" && newSrc != oldSrc {
 		_ = g.addEdge(c.ID, newSrc, &EdgeData{MachConnectedTo: true})
@@ -597,19 +588,14 @@ func (g *Graph) setClientTags(c *Machine, tags []string) {
 func (g *Graph) addTagVertex(id string, tag string) {
 	v := &Vertex{MachId: id, TagName: tag}
 	tagID := hash(v)
-	_ = g.G.AddVertex(v)
-	_ = g.Map.AddVertex(&Vertex{MachId: id, TagName: tag})
-	_ = g.G.AddEdge(id, tagID, graph.EdgeData(&EdgeData{MachHasTag: true}))
-	_ = g.Map.AddEdge(id, tagID)
+	_ = g.store.addVertex(v)
+	_ = g.store.addEdge(id, tagID, &EdgeData{MachHasTag: true})
 }
 
 func (g *Graph) removeTagVertex(id string, tag string) {
-	v := &Vertex{MachId: id, TagName: tag}
-	tagID := hash(v)
-	_ = g.G.RemoveEdge(id, tagID)
-	_ = g.Map.RemoveEdge(id, tagID)
-	_ = g.G.RemoveVertex(tagID)
-	_ = g.Map.RemoveVertex(tagID)
+	g.store.removeVertices(map[string]struct{}{
+		hash(&Vertex{MachId: id, TagName: tag}): {},
+	})
 }
 
 func (g *Graph) parseRpcConns(c *Machine, msgTx *dbg.DbgMsgTx) error {
@@ -619,7 +605,6 @@ func (g *Graph) parseRpcConns(c *Machine, msgTx *dbg.DbgMsgTx) error {
 		if err != nil {
 			return err
 		}
-		_ = g.Map.AddEdge(c.ID, id)
 	}
 
 	return nil
@@ -633,34 +618,19 @@ func (g *Graph) addEdge(srcId, destId string, data *EdgeData) error {
 		return err
 	}
 
-	err := g.G.AddEdge(srcId, destId, graph.EdgeData(data))
-	if err == nil {
-		_ = g.Map.AddEdge(srcId, destId)
-	}
-
-	return err
+	return g.store.addEdge(srcId, destId, data)
 }
 
 // addMach upsert a mach or a placeholder
 func (g *Graph) addMach(id string, client *Machine) error {
-	err := g.G.AddVertex(&Vertex{
-		MachId: id,
-	})
-	if errors.Is(err, graph.ErrVertexAlreadyExists) {
-		// update
-		if client != nil && client.Serialized != nil {
-			g.Machines[id] = client
-		}
-
-		return nil
-	}
-	if err != nil {
+	if err := g.store.addVertex(&Vertex{MachId: id}); err != nil {
 		return err
 	}
-	_ = g.Map.AddVertex(&Vertex{
-		MachId: id,
-	})
-	return err
+	if client != nil && client.Serialized != nil {
+		g.Machines[id] = client
+	}
+
+	return nil
 }
 
 func (g *Graph) parseMsgDbgLog(c *Machine, msgTx *dbg.DbgMsgTx) error {
@@ -726,24 +696,22 @@ func (g *Graph) parseMsgDbgReader(
 		}
 
 		// get edge
-		link, linkErr := g.G.Edge(sourceMachId, targetMachId)
+		link, linkErr := g.store.Edge(sourceMachId, targetMachId)
 		var data *EdgeData
 		if linkErr != nil {
 			data = &EdgeData{}
-			err := g.G.AddEdge(sourceMachId, targetMachId, graph.EdgeData(data))
-			if err != nil {
-				// too early, add a dummy mach
-				if err = g.addMach(otherMach, nil); err != nil {
-					return err
-				}
-				err = g.G.AddEdge(sourceMachId, targetMachId, graph.EdgeData(data))
+			if err := g.addEdge(sourceMachId, targetMachId, data); err != nil {
+				return err
+			}
+		} else {
+			data = link.data()
+			if data == nil {
+				data = &EdgeData{}
+				err := g.store.UpdateEdge(sourceMachId, targetMachId, data)
 				if err != nil {
 					return err
 				}
 			}
-			_ = g.Map.AddEdge(sourceMachId, targetMachId)
-		} else {
-			data = link.Properties.Data.(*EdgeData)
 		}
 
 		// debug
@@ -807,32 +775,7 @@ func (g *Graph) parseMsgDbgReader(
 		l := strings.Split(log.Text, " ")
 		id := l[1]
 		// TODO make it safe
-
-		// outbound
-		adjs, err := g.G.AdjacencyMap()
-		if err != nil {
-			return err
-		}
-		for _, edge := range adjs[id] {
-			err := g.G.RemoveEdge(id, edge.Target)
-			if err != nil {
-				return err
-			}
-			_ = g.Map.RemoveEdge(id, edge.Target)
-		}
-
-		// inbound
-		preds, err := g.G.PredecessorMap()
-		if err != nil {
-			return err
-		}
-		for _, edge := range preds[id] {
-			err := g.G.RemoveEdge(edge.Source, id)
-			if err != nil {
-				return err
-			}
-			_ = g.Map.RemoveEdge(edge.Source, id)
-		}
+		g.store.removeIncidentEdges(id)
 	}
 
 	// TODO detached pipe handlers
@@ -843,9 +786,8 @@ func (g *Graph) parseMsgDbgReader(
 // SaveGob writes the graph to w using encoding/gob.
 //
 // Only the exported graph data is saved: clients ([Machine]), vertices, and
-// edges with their [EdgeData]. Runtime-only state (ParentMach, locks, the
-// dominikbraun graph internals) is not serialized; [Graph.LoadGob] rebuilds
-// them.
+// edges with their [EdgeData]. Runtime-only state (ParentMach, locks, the ark
+// ECS internals) is not serialized; [Graph.LoadGob] rebuilds them.
 func (g *Graph) SaveGob(w io.Writer) error {
 	if g == nil {
 		return errors.New("graph is nil")
@@ -862,15 +804,7 @@ func (g *Graph) SaveGob(w io.Writer) error {
 		snap.Clients[id] = client.Clone()
 	}
 
-	adj, err := g.G.AdjacencyMap()
-	if err != nil {
-		return fmt.Errorf("graph adjacency: %w", err)
-	}
-	for vertexHash := range adj {
-		v, err := g.G.Vertex(vertexHash)
-		if err != nil {
-			return fmt.Errorf("graph vertex %q: %w", vertexHash, err)
-		}
+	for _, v := range g.store.Vertices() {
 		snap.Vertices = append(snap.Vertices, &Vertex{
 			StateName: v.StateName,
 			TagName:   v.TagName,
@@ -878,16 +812,11 @@ func (g *Graph) SaveGob(w io.Writer) error {
 		})
 	}
 
-	edges, err := g.G.Edges()
-	if err != nil {
-		return fmt.Errorf("graph edges: %w", err)
-	}
-	for _, edge := range edges {
-		data, _ := edge.Properties.Data.(*EdgeData)
+	for _, edge := range g.store.Edges() {
 		snap.Edges = append(snap.Edges, gobEdge{
 			Source: edge.Source,
 			Target: edge.Target,
-			Data:   cloneEdgeData(data),
+			Data:   cloneEdgeData(edge.data()),
 		})
 	}
 
@@ -912,38 +841,22 @@ func (g *Graph) LoadGob(r io.Reader) error {
 	g.loop.Lock()
 	defer g.loop.Unlock()
 
-	g.G = graph.New(hash, graph.Directed())
-	g.Map = graph.New(hash)
+	g.store.reset()
 	g.Machines = make(map[string]*Machine, len(snap.Clients))
 	for id, client := range snap.Clients {
 		g.Machines[id] = client
 	}
 
-	for _, v := range snap.Vertices {
-		if err := g.G.AddVertex(&Vertex{
-			StateName: v.StateName,
-			TagName:   v.TagName,
-			MachId:    v.MachId,
-		}); err != nil {
-			return fmt.Errorf("graph vertex %q: %w", hash(v), err)
-		}
-		if err := g.Map.AddVertex(&Vertex{
-			StateName: v.StateName,
-			TagName:   v.TagName,
-			MachId:    v.MachId,
-		}); err != nil {
-			return fmt.Errorf("map vertex %q: %w", hash(v), err)
-		}
-	}
-
+	edges := make([]Edge, 0, len(snap.Edges))
 	for _, e := range snap.Edges {
-		if err := g.G.AddEdge(e.Source, e.Target,
-			graph.EdgeData(e.Data)); err != nil {
-			return fmt.Errorf("graph edge %q->%q: %w", e.Source, e.Target, err)
-		}
-		if err := g.Map.AddEdge(e.Source, e.Target); err != nil {
-			return fmt.Errorf("map edge %q->%q: %w", e.Source, e.Target, err)
-		}
+		edges = append(edges, Edge{
+			Source:     e.Source,
+			Target:     e.Target,
+			Properties: EdgeProperties{Data: e.Data},
+		})
+	}
+	if err := g.store.addBatch(snap.Vertices, edges); err != nil {
+		return fmt.Errorf("graph load: %w", err)
 	}
 
 	return nil
@@ -993,8 +906,8 @@ func cloneEdgeData(data *EdgeData) *EdgeData {
 }
 
 // gobSnapshot is the serializable form of [Graph]: the clients, vertices, and
-// edges with their metadata. Runtime state (ParentMach, mutexes, the
-// dominikbraun internals) is rebuilt on load.
+// edges with their metadata. Runtime state (ParentMach, mutexes, the ark ECS
+// internals) is rebuilt on load.
 type gobSnapshot struct {
 	Version  int
 	Clients  map[string]*Machine
